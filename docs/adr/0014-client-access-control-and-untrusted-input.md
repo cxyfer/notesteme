@@ -30,7 +30,7 @@ HTTP API 與 MCP 共用 bearer token。Token 可以設定到期時間，也可�
 | `read` | 查詢影音、字幕、筆記，全文搜尋 |
 | `agent` | 領取與提交 LLM 任務 |
 | `ingest` | 新增影音、重新處理、匯入字幕（會花錢） |
-| `admin` | 設定、secrets、訂閱、token 管理 |
+| `admin` | 設定、secrets、訂閱、token 管理、刪除影音 |
 
 - 給 Agent 用的 token 預設是 `read + agent`。
 - MCP HTTP 啟用 DNS rebinding 防護與 Origin 檢查。

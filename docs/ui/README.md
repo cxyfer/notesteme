@@ -121,6 +121,7 @@
 | 佇列 | 佇列是空的。新增影音，或等訂閱的頻道有新內容。 | 新增 |
 | 訂閱 | 還沒有訂閱。訂閱頻道後，新內容會自動處理。 | 新增訂閱 |
 | 篩選結果為空 | 沒有符合條件的影音。 | 清除篩選條件 |
+| 垃圾桶 | 垃圾桶是空的。刪除的影音會在這裡保留 30 天。 | — |
 
 ## 5. 用語表
 
@@ -141,6 +142,8 @@
 | waiting | 稍後檢查 | 稍后检查 | Checking later |
 | awaiting_user | 等你決定 | 等你决定 | Awaiting your decision |
 | output target | 輸出目標 | 输出目标 | Output target |
+| trash | 垃圾桶 | 回收站 | Trash |
+| purge | 永久刪除 | 永久删除 | Delete forever |
 | subscription | 訂閱 | 订阅 | Subscription |
 | channel | 頻道 | 频道 | Channel |
 | cue | 字幕句 | 字幕句 | Line |

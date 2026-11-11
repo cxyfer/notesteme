@@ -125,8 +125,11 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - 點擊列會打開影音詳情頁；點擊時間帶會定位到該時間。
   - 列表使用虛擬捲動，數千筆也保持流暢。
   - 新項目進來時只顯示「有 N 個新項目」的提示，不會打亂目前的列表。
+- **垃圾桶**（M1）：媒體庫的檢視切換中有「垃圾桶（N）」。
+  - 每列顯示刪除時間與「N 天後永久刪除」，可以還原或永久刪除；頂部有「清空垃圾桶」。
+  - 永久刪除與清空都要再確認一次，訊息為「永久刪除後無法復原，已花費的金額仍會保留在成本紀錄中。」
 - **狀態**：空狀態與篩選結果為空，文案見 [README §4.3](README.md#43-空狀態範例)。
-- **API**：`GET /api/items`、`GET /api/search`、`POST /api/items/batch`、`GET/POST /api/views`
+- **API**：`GET /api/items`、`GET /api/search`、`POST /api/items/batch`、`GET/POST /api/views`、`GET /api/trash`、`POST /api/trash/:id/restore`、`DELETE /api/trash/:id`、`DELETE /api/trash`
 
 ## 4. 影音詳情
 
@@ -186,6 +189,10 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - 換 prompt 或模型重新生成，會產生新版本，舊版本保留。
   - 改用 API 處理（只在任務等待 Agent 時出現）。
 - **匯出**選單：SRT、VTT、ASS（選擇樣式）、雙語 SRT、純文字、Markdown 筆記、bundle。
+- **更多**選單（`⋯`，位在匯出之後）：刪除（M1）。
+  - 確認對話框列出會失去的產出數、可釋放的磁碟空間，以及這部影音已經花掉的金額（刪除不會退費）。
+  - M2 起有輸出檔時，多一個選項「同時刪除未修改過的輸出檔（N 個）」，預設不勾選；改過的檔案列出路徑並標示「已修改，不會刪除」。
+  - 確認後回到媒體庫，顯示「已移到垃圾桶。」與「復原」。規則見 [DEL 規格](../specs/DEL-delete.md)。
 - **API**：
   - `GET /api/items/:id`
   - `GET /api/items/:id/cues?variant=&lang=&from=&to=`
@@ -195,6 +202,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - `POST /api/items/:id/rerun`
   - `GET /api/artifacts/:id/content?format=`
   - `GET /api/items/:id/media`（Range）
+  - `GET /api/items/:id/deletion-preview`、`DELETE /api/items/:id`
 
 ## 5. 訂閱
 

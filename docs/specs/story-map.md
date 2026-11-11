@@ -23,15 +23,15 @@
 
 | 里程碑 | 收集影音 | 取得字幕 | 加工字幕 | 取用與輸出 | 安全與維運 |
 |---|---|---|---|---|---|
-| **M1** | [ING](ING-ingest.md) | [SRC](SRC-transcript-sources.md)、[NRM](NRM-normalize.md)、[PIPE](PIPE-pipeline-queue.md) | — | [OUT](OUT-subtitle-output.md)（SRT／VTT）、[LIB](LIB-library.md)、[CLI](CLI-cli.md) | [AUTH](AUTH-access.md)、[SEC](SEC-config-secrets.md)、[GRD](GRD-guards.md)、[OPS](OPS-operations.md) |
-| **M2** | — | — | [LLM](LLM-execution.md)、[SEG](SEG-segment.md)、[COR](COR-correct.md)、[TRN](TRN-translate.md)、[PRM](PRM-prompts.md)、[PRF](PRF-profiles.md) | [OUT](OUT-subtitle-output.md)（ASS、sidecar、匯入）、[LIB](LIB-library.md)（對照檢視）、[MCP](MCP-tools.md)、[AGT](AGT-agent-tasks.md) | [AUTH](AUTH-access.md)（MCP Origin）、[SEC](SEC-config-secrets.md)（設定匯出入） |
+| **M1** | [ING](ING-ingest.md) | [SRC](SRC-transcript-sources.md)、[NRM](NRM-normalize.md)、[PIPE](PIPE-pipeline-queue.md) | — | [OUT](OUT-subtitle-output.md)（SRT／VTT）、[LIB](LIB-library.md)、[DEL](DEL-delete.md)、[CLI](CLI-cli.md) | [AUTH](AUTH-access.md)、[SEC](SEC-config-secrets.md)、[GRD](GRD-guards.md)、[OPS](OPS-operations.md) |
+| **M2** | — | — | [LLM](LLM-execution.md)、[SEG](SEG-segment.md)、[COR](COR-correct.md)、[TRN](TRN-translate.md)、[PRM](PRM-prompts.md)、[PRF](PRF-profiles.md) | [OUT](OUT-subtitle-output.md)（ASS、sidecar、匯入）、[LIB](LIB-library.md)（對照檢視）、[DEL](DEL-delete.md)（輸出檔）、[MCP](MCP-tools.md)、[AGT](AGT-agent-tasks.md) | [AUTH](AUTH-access.md)（MCP Origin）、[SEC](SEC-config-secrets.md)（設定匯出入） |
 | **M3** | — | SPB | FRM、CHAP、NOTE、GEM | VAULT | — |
 | **M4** | SUB、ENTRY、BND | SRC-10 | DIG、BATCH、GLOS | SRCH、LIB-08、LIB-09、NOTIFY | COST、AUTH-06～08、OPS-06～08 |
 | **M5** | HUB | HUB | — | HUB | HUB |
 
 ## 3. M1、M2 故事索引
 
-M1、M2 共 19 項能力、101 則故事。故事的角色、目的與理由見各份規格的 User stories 表。
+M1、M2 共 20 項能力、108 則故事。故事的角色、目的與理由見各份規格的 User stories 表。
 
 ### 收集影音
 
@@ -119,6 +119,13 @@ M1、M2 共 19 項能力、101 則故事。故事的角色、目的與理由見�
 | LIB-05 | the library and item pages to update live while processing | M1 | [LIB](LIB-library.md) |
 | LIB-06 | compare the original, corrected and translated subtitles and see the differences | M2 | [LIB](LIB-library.md) |
 | LIB-07 | rerun an item from any stage or with another prompt or model | M2 | [LIB](LIB-library.md) |
+| DEL-01 | deleted items to go to a trash first | M1 | [DEL](DEL-delete.md) |
+| DEL-02 | see what will be lost before I delete an item | M1 | [DEL](DEL-delete.md) |
+| DEL-03 | a permanently deleted item to leave nothing behind in my data directory except my spending records | M1 | [DEL](DEL-delete.md) |
+| DEL-04 | files written to my vault or media folders left alone unless I ask, and never deleted if I edited them | M2 | [DEL](DEL-delete.md) |
+| DEL-05 | deleted items not to come back on their own | M1 | [DEL](DEL-delete.md) |
+| DEL-06 | only admin tokens to be able to delete, with no MCP tool for it | M1 | [DEL](DEL-delete.md) |
+| DEL-07 | delete, restore and empty the trash from the CLI | M1 | [DEL](DEL-delete.md) |
 | CLI-01 | CLI commands to work the same whether or not the server is running | M1 | [CLI](CLI-cli.md) |
 | CLI-02 | machine-readable output and meaningful exit codes | M1 | [CLI](CLI-cli.md) |
 | CLI-03 | a CLI on Windows to talk to the instance running in WSL Docker | M1 | [CLI](CLI-cli.md) |
@@ -235,6 +242,7 @@ M1、M2 共 19 項能力、101 則故事。故事的角色、目的與理由見�
 - **SUB-02** As the owner, I want to choose how far back a subscription goes and what it skips, so that I only pay for what I care about.
   - 回補範圍：只抓新的、最近 N 部、或全部。
   - 過濾：片長、Shorts、直播、標題 regex。
+  - 垃圾桶中與已永久刪除（有 tombstone）的影音不會被重新加入（DEL-R11）。
 - **SUB-03** As the owner, I want a dry run of a subscription, so that I can see what it would pick up before it costs anything.
   - 列出會處理與會略過的項目及原因；不建立任何影音。
 - **SUB-04** As the owner, I want to import my subscriptions from OPML and Google Takeout, so that I do not re-enter them by hand.
@@ -307,6 +315,7 @@ M1、M2 共 19 項能力、101 則故事。故事的角色、目的與理由見�
 
 - **LIB-08** As the owner, I want to select many items and act on them at once, so that I can rerun, pause or delete in bulk.
   - 動作前顯示影響的數量與預估費用。
+  - 批次刪除套用 DEL 的所有規則；確認對話框合計顯示 DEL-R3 的影響範圍。
 - **LIB-09** As the owner, I want an overview page, so that I see what needs my attention first.
   - 顯示需要處理的項目、最近完成、本月花費與磁碟用量。
 
@@ -347,8 +356,7 @@ M1、M2 共 19 項能力、101 則故事。故事的角色、目的與理由見�
 
 - 說話者辨識、語意搜尋、Telegram bot（plan 第 3.4 節）。
 - Postgres＋Redis backend（plan 第 26 節，M4 之後視需要）。
-- **刪除影音**：目前沒有任何規格定義刪除單一影音時要清掉哪些資料（產出、媒體快取、`outputs` 寫出的檔案、全文索引、成本紀錄）。建議在 M1 補一則 LIB 故事，至少確定成本帳本與已寫出的檔案要保留。
-- **媒體檔保留策略**（plan 第 14 節）：N 天後刪影片、只保留選中的畫面、UI 顯示磁碟用量。plan 沒有排入里程碑，暫定與 LIB-09 一起在 M4。
+- **媒體檔保留策略**（plan 第 14 節）：N 天後刪影片、只保留選中的畫面、UI 顯示磁碟用量。plan 沒有排入里程碑，暫定與 LIB-09 一起在 M4。只套用在可以重新下載的媒體快取，不包括上傳的原始檔。
 
 ## 8. M0 待驗證的問題
 

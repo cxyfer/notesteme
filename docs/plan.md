@@ -439,7 +439,8 @@ language:
 - 篩選條件：頻道、平台、各步驟狀態、錯誤類別、發布日、片長、語言、已讀狀態、有沒有筆記。
 - 全文搜尋用 SQLite FTS5 trigram tokenizer。trigram 無法用索引查少於 3 個字的詞，但中文常見的詞都是 2 個字，所以 2 字以下改用掃描查詢；個人規模的資料量足以應付。
 - 只索引現行版本的校正字幕與譯文字幕，被取代的舊版本不進索引。
-- 媒體檔保留策略：例如 N 天後刪影片、只保留選中的畫面。產出舊版本的保留規則見 5.1 節。UI 顯示磁碟用量。
+- 媒體檔保留策略：例如 N 天後刪影片、只保留選中的畫面。產出舊版本的保留規則見 5.1 節。UI 顯示磁碟用量。保留策略只套用在可以重新下載的媒體快取，不包括上傳的原始檔（`/data/uploads`）。
+- 刪除影音先移到垃圾桶，保留 30 天後永久刪除。Notesteme 寫到外部的檔案預設保留，使用者改過的一律不刪（[DEL 規格](specs/DEL-delete.md)）。
 
 ## 15. 成本與預算
 
@@ -478,6 +479,9 @@ Prompt 模板透過 MCP prompts capability 提供。
 notesteme serve                       # Web UI + API + MCP(HTTP) + worker + scheduler
 notesteme ingest <url|path> [--profile p] [--until transcript] [--json]
 notesteme items ls [--status ...] [--channel ...]
+notesteme items rm <ref>... [--delete-outputs] [--purge] [--yes]   # 移到垃圾桶
+notesteme items restore <ref>...
+notesteme trash ls | empty [--yes]
 notesteme export <item> --format srt|vtt|ass|bundle
 notesteme import <bundle|subtitle> [--item <id>]
 notesteme mcp                         # stdio MCP
@@ -517,7 +521,7 @@ Image 內容：Go binary、ffmpeg（含 libass）、python3 + `yt-dlp[default]`�
 
 Volume 配置：
 
-- `/data`：DB、產出、媒體快取、工具。
+- `/data`：DB、產出、媒體快取、上傳的原始檔、工具。
 - `/vault`：bind mount，或作為 git adapter 的工作目錄。
 - `/config`：設定檔。
 
@@ -558,7 +562,7 @@ compose 提供兩份 profile：`wsl` 和 `vps`。選配 sidecar：PO Token provi
   | `read` | 查詢影音、字幕、筆記，全文搜尋 |
   | `agent` | 領取與提交 LLM 任務 |
   | `ingest` | 新增影音、重新處理、匯入字幕（會花錢） |
-  | `admin` | 設定、secrets、訂閱、token 管理 |
+  | `admin` | 設定、secrets、訂閱、token 管理、刪除影音 |
 
   給 Agent 用的 token 預設是 `read + agent`。MCP HTTP 啟用 DNS rebinding 防護與 Origin 檢查。
 - **會執行命令的設定**：`command` adapter 與 publish hook 只能寫在設定檔。
@@ -607,7 +611,7 @@ subscriptions    (id, kind, platform, external_id, url, title, channel_id, profi
                   -- kind: channel | playlist | collection | feed
 items            (id, platform, external_id, part, channel_id, subscription_id, profile_id, overrides_json,
                   title, url, published_at, duration_s, original_lang, lang_source, lang_mixed,
-                  availability, media_kind, metadata_json, read_state, instance_id, created_at)
+                  availability, media_kind, metadata_json, read_state, instance_id, created_at, deleted_at)
                   -- UNIQUE (platform, external_id, part)；lang_source: metadata | asr | detected
 source_probes    (id, item_id, source_id, lang, kind, available, est_cost, rejected_reason, probed_at)
 artifacts        (id, item_id, kind, variant, lang, format, path, sha256, size, parents_json,
@@ -625,8 +629,9 @@ profiles         (id, name, version, config_json)
 ass_styles       (id, name, builtin, style_json)
 glossaries       (id, scope, scope_id, terms_json, updated_at)      -- scope: global | channel
 glossary_candidates (id, channel_id, item_id, term, suggestion, state, created_at)
-cost_ledger      (id, item_id, stage_run_id, task_id, provider, model, units, unit_type, usd,
+cost_ledger      (id, item_id, item_title, stage_run_id, task_id, provider, model, units, unit_type, usd,
                   state, attempt, outcome, unit_price_json, at)     -- state: reserved | actual | unknown
+item_tombstones  (platform, external_id, part, sha256, purged_at)  -- 永久刪除後避免 inbox 與訂閱加回來
 price_overrides  (provider, model, unit_type, usd_per_unit, checked_at)
 encryption_keys  (id, wrapped_key, created_at, retired_at)          -- 由 master key 加密的資料金鑰
 secrets          (id, name, key_id, ciphertext, updated_at)
@@ -641,6 +646,7 @@ cues_fts         (FTS5 trigram：item_id, artifact_id, start_ms, text) -- 只索
 - `channels` 只存頻道本身的資料，訂閱設定都在 `subscriptions`。
 - 多個目標語言時，`translate` 每個語言各一筆 `stage_runs`。
 - `stage_runs` 不存金額，一律從 `cost_ledger` 加總。
+- 刪除影音先設定 `deleted_at`（垃圾桶，預設 30 天），永久刪除時清除影音的所有資料，但 `cost_ledger` 保留（`item_id` 改為空，`item_title` 記錄標題），並寫入 `item_tombstones`。細節見 [DEL 規格](specs/DEL-delete.md)。
 - 每筆 `stage_runs` 都指向一份 `config_snapshots`，用來回答「這份產出當時是用什麼設定做的」。
 - 摘要、章節、SponsorBlock 片段都存成產出，`kind` 分別為 `summary`、`chapters`、`sponsor_segments`。
 - `outputs` 取代舊的匯出產出，也是 ADR-0010 用來偵測使用者修改的「上次寫入的 hash」。

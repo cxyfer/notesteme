@@ -2,7 +2,7 @@
 
 - 狀態：已採納
 - 日期：2026-11-11
-- 修訂：2026-11-12，新增 `/data` 單一擁有者、選配 Postgres＋Redis backend、備份與 migration 快照、產出版本保留
+- 修訂：2026-11-12，新增 `/data` 單一擁有者、選配 Postgres＋Redis backend、備份與 migration 快照、產出版本保留、上傳原始檔的位置
 
 ## 背景
 
@@ -23,6 +23,7 @@
   - 同一組 `(item, kind, variant, lang)` 預設保留最近 3 版，畫面只保留現行版本。
   - 被輸出目標或 bundle 引用的版本標記 `pinned`，不會被清除。
 - **媒體快取**放在 `/data/media`，套用保留策略。例如 N 天後刪影片；選中的畫面複製成產出後，就刪除其餘候選畫面。
+- **上傳的原始檔**放在 `/data/uploads`，無法重新下載，所以不套用媒體快取的保留策略，只在影音永久刪除時清除。
 - **Migration** 用 goose，**查詢**用 sqlc。
 - **單一擁有者**：`serve` 啟動時對 `/data` 取得 flock。CLI 偵測到 lock 就自動改走 client 模式，沒有 lock 時才直接開 DB。這樣 scheduler、並行計數與限流都只有一份，CLI 執行的任務事件也會出現在 UI。
 - **備份**：

@@ -43,6 +43,7 @@ Notesteme 採用規格驅動（SDD）的開發方式，驗收以行為（BDD）�
 | CLI | CLI 與資料擁有權 | M1 | [CLI-cli.md](CLI-cli.md) | [CLI-cli.feature](../../features/CLI-cli.feature) |
 | OPS | 備份、健康檢查與外部工具 | M1 | [OPS-operations.md](OPS-operations.md) | [OPS-operations.feature](../../features/OPS-operations.feature) |
 | LIB | 媒體庫、影音詳情與佇列頁 | M1、M2 | [LIB-library.md](LIB-library.md) | [LIB-library.feature](../../features/LIB-library.feature) |
+| DEL | 刪除影音與垃圾桶 | M1、M2 | [DEL-delete.md](DEL-delete.md) | [DEL-delete.feature](../../features/DEL-delete.feature) |
 | LLM | LLM 執行、chunk 與驗證 | M2 | [LLM-execution.md](LLM-execution.md) | [LLM-execution.feature](../../features/LLM-execution.feature) |
 | SEG | 斷句 | M2 | [SEG-segment.md](SEG-segment.md) | [SEG-segment.feature](../../features/SEG-segment.feature) |
 | COR | 校正 | M2 | [COR-correct.md](COR-correct.md) | [COR-correct.feature](../../features/COR-correct.feature) |

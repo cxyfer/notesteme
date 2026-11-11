@@ -36,6 +36,9 @@
 | Needs you | 需要你處理 | 狀態為 `blocked`、原因為 `needs_action` 的項目 |
 | scope | 權限範圍 | token 的權限：`read`、`agent`、`ingest`、`admin` |
 | inbox | inbox | 放入檔案就會自動新增的本機資料夾 |
+| trash | 垃圾桶 | 刪除後、永久刪除前的暫存區，預設保留 30 天 |
+| purge | 永久刪除 | 從垃圾桶清除，`/data` 中不留這部影音的內容 |
+| tombstone | 刪除紀錄 | 永久刪除後留下的識別資料，避免 inbox 與訂閱把影音加回來 |
 
 步驟狀態：`pending`、`running`、`waiting`、`awaiting_agent`、`blocked`、`done`、`skipped`、`failed`。
 `blocked` 的原因：`needs_action`、`budget_blocked`、`awaiting_user`。
@@ -56,7 +59,7 @@
 
 其他代入規則：
 
-- 請求路徑中的代號（例如 `GET /api/items/yt:abc123`）會換成實際的影音 ID；`channel-of:<代號>` 換成該影音所屬頻道的 ID。
+- 請求路徑中的代號（例如 `GET /api/items/yt:abc123`）會換成實際的影音 ID；`channel-of:<代號>` 換成該影音所屬頻道的 ID。影音在垃圾桶中，或已永久刪除時，代號仍然換成原本的 ID；永久刪除後再新增，換成新的 ID。
 - CLI 指令與請求中的 `{token:<名稱>}` 會換成該 token 的實際內容。
 - 預期結果的 JSON 中，值為 `"*"` 代表「欄位存在即可，不比對內容」。
 - 影音或 fixture 不存在時，`Given the item … has been processed up to …` 依代號從 `features/fixtures/items/` 建立。
@@ -156,8 +159,8 @@
 | `Given the {string} transcript of {string} is:` | 指定變體的字幕；表格欄位：`#`、`start`、`end`、`text`，可加 `words`、`timing` |
 | `Given the {string} transcript of {string} in {string} is:` | 同上，指定語言 |
 | `When the worker runs until idle` | worker 持續執行，直到沒有可以執行的任務 |
-| `Then the library contains {int} items` | 影音總數 |
-| `Then the library contains {string}` | 影音存在 |
+| `Then the library contains {int} items` | 影音總數，不含垃圾桶中的影音 |
+| `Then the library contains {string}` | 影音存在，且不在垃圾桶中 |
 | `Then the stage {string} of {string} is {string}` | 步驟狀態 |
 | `Then the stage {string} of {string} is blocked with the reason {string}` | `blocked` 及其原因 |
 | `Then the stage {string} of {string} failed with the error class {string}` | `failed` 及錯誤類別 |
@@ -178,6 +181,12 @@
 | `Then the {string} artifact of {string} has the provenance:` | 來源紀錄；表格欄位：`field`、`value`，`field` 可用點號表示巢狀欄位 |
 | `Then the {string} artifact of {string} has {int} versions` | 版本數，包含被取代的版本 |
 | `Then the item {string} has no {string} artifact` | 沒有這種產出 |
+| `Given the media of {string} is cached` | 媒體快取中已有這部影音下載好的檔案 |
+| `Then the trash contains {string}` | 影音在垃圾桶中 |
+| `Then the trash does not contain {string}` | 影音不在垃圾桶中 |
+| `Then the trash contains {int} items` | 垃圾桶中的影音數 |
+| `Given the cost ledger has an entry of {string} USD for {string}` | 成本帳本中有一筆這部影音的實際金額 |
+| `Then the cost ledger has an entry of {string} USD titled {string}` | 成本帳本中有一筆這個金額的紀錄，`item_title` 為指定標題 |
 
 ### 4.5 Pipeline 與佇列（`steps/queue.go`）
 
@@ -259,6 +268,8 @@
 | `Then the file {string} is:` | 檔案內容完全相同 |
 | `Then the file {string} has the mode {string}` | 檔案權限，例如 `"0600"` |
 | `Then the data directory does not contain {string}` | `/data` 中所有檔案（包括 DB）都不含這段文字 |
+| `Then the data directory has no files of {string}` | `/data` 的 artifacts、media、uploads、tmp 中沒有屬於這部影音的檔案 |
+| `Then the media cache has no files of {string}` | `/data/media` 中沒有屬於這部影音的檔案 |
 | `Then the logs do not contain {string}` | log 中不含這段文字 |
 
 ### 4.10 網路（`steps/network.go`）
