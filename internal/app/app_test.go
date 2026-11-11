@@ -3,8 +3,17 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/store"
 )
 
 func run(args ...string) (code int, stdout, stderr string) {
@@ -28,7 +37,7 @@ func TestRunVersion(t *testing.T) {
 }
 
 func TestRunNotImplemented(t *testing.T) {
-	code, stdout, stderr := run("serve")
+	code, stdout, stderr := run("frobnicate")
 	if code != 2 {
 		t.Errorf("exit = %d, want 2", code)
 	}
@@ -47,5 +56,199 @@ func TestRunNoArgs(t *testing.T) {
 	}
 	if stderr == "" {
 		t.Error("stderr is empty, want usage")
+	}
+}
+
+func TestRunServeUnknownArgument(t *testing.T) {
+	if code, _, stderr := run("serve", "--bogus"); code != 2 || !strings.Contains(stderr, "--bogus") {
+		t.Errorf("exit = %d, stderr = %q", code, stderr)
+	}
+}
+
+// testEnv 回傳指向暫存資料目錄的 Env，listener 綁在 127.0.0.1:0。
+func testEnv(t *testing.T) Env {
+	t.Helper()
+	root := t.TempDir()
+	return Env{
+		Vars: map[string]string{
+			"NOTESTEME_CONFIG":     filepath.Join(root, "none.yaml"),
+			"NOTESTEME_DATA":       filepath.Join(root, "data"),
+			"NOTESTEME_PASSWORD":   "pw",
+			"NOTESTEME_MASTER_KEY": "mk",
+		},
+		Clock:  clock.NewFake(time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)),
+		Listen: func(_, _ string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") },
+		Test:   &TestControls{LowCostPasswordHash: true},
+	}
+}
+
+func get(t *testing.T, addr, path string) int {
+	t.Helper()
+	tr := &http.Transport{}
+	defer tr.CloseIdleConnections()
+	resp, err := (&http.Client{Transport: tr}).Get("http://" + addr + path)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+func TestStartServerGuards(t *testing.T) {
+	t.Run("沒有 master key", func(t *testing.T) {
+		env := testEnv(t)
+		delete(env.Vars, "NOTESTEME_MASTER_KEY")
+		_, err := StartServer(context.Background(), env)
+		if !errors.Is(err, ErrNoMasterKey) || !strings.Contains(err.Error(), "尚未設定 NOTESTEME_MASTER_KEY。") {
+			t.Fatalf("err = %v", err)
+		}
+		if _, statErr := os.Stat(env.Vars["NOTESTEME_DATA"]); !os.IsNotExist(statErr) {
+			t.Error("master key 檢查失敗時不應該建立資料目錄")
+		}
+	})
+	t.Run("沒有密碼", func(t *testing.T) {
+		env := testEnv(t)
+		delete(env.Vars, "NOTESTEME_PASSWORD")
+		_, err := StartServer(context.Background(), env)
+		if err == nil || !strings.Contains(err.Error(), "尚未設定登入密碼。請設定 NOTESTEME_PASSWORD 後重新啟動。") {
+			t.Fatalf("err = %v", err)
+		}
+		// 失敗後要釋放鎖，讓之後可以重新啟動。
+		env.Vars["NOTESTEME_PASSWORD"] = "pw"
+		srv, err := StartServer(context.Background(), env)
+		if err != nil {
+			t.Fatalf("retry after failed start: %v", err)
+		}
+		srv.Kill()
+	})
+	t.Run("兩者都沒有時回報 master key", func(t *testing.T) {
+		env := testEnv(t)
+		delete(env.Vars, "NOTESTEME_PASSWORD")
+		delete(env.Vars, "NOTESTEME_MASTER_KEY")
+		if _, err := StartServer(context.Background(), env); !errors.Is(err, ErrNoMasterKey) {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("DB 已有密碼時不需要環境變數", func(t *testing.T) {
+		env := testEnv(t)
+		srv, err := StartServer(context.Background(), env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := srv.Shutdown(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		delete(env.Vars, "NOTESTEME_PASSWORD")
+		srv, err = StartServer(context.Background(), env)
+		if err != nil {
+			t.Fatalf("restart without NOTESTEME_PASSWORD: %v", err)
+		}
+		srv.Kill()
+	})
+}
+
+func TestServerLifecycle(t *testing.T) {
+	env := testEnv(t)
+	data := env.Vars["NOTESTEME_DATA"]
+	if err := os.MkdirAll(filepath.Join(data, "tmp"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(data, "tmp", "stale")
+	if err := os.WriteFile(stale, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	srv, err := StartServer(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Error("啟動時應該清空 /data/tmp")
+	}
+	if code := get(t, srv.Addr(), "/readyz"); code != 200 {
+		t.Errorf("readyz = %d", code)
+	}
+	info, err := store.ReadLockInfo(data)
+	if err != nil || info == nil || info.Holder != "serve" || info.Listen != srv.Addr() || info.PID != os.Getpid() {
+		t.Fatalf("lock info = %+v, %v", info, err)
+	}
+	if _, err := StartServer(context.Background(), env); !errors.Is(err, store.ErrLocked) {
+		t.Errorf("second start err = %v, want ErrLocked", err)
+	}
+
+	// Kill：不清鎖檔內容，但釋放 flock，可以立刻重新啟動。
+	srv.Kill()
+	if info, _ := store.ReadLockInfo(data); info == nil {
+		t.Error("Kill 不應該清空鎖檔內容")
+	}
+	srv, err = StartServer(context.Background(), env)
+	if err != nil {
+		t.Fatalf("restart after Kill: %v", err)
+	}
+
+	// 正常關閉：清空鎖檔內容。
+	if err := srv.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if info, _ := store.ReadLockInfo(data); info != nil {
+		t.Errorf("鎖檔內容應該被清空，got %+v", info)
+	}
+	select {
+	case <-srv.Done():
+	default:
+		t.Error("Done 應該已關閉")
+	}
+	// 重複呼叫不出錯。
+	srv.Kill()
+	if err := srv.Shutdown(context.Background()); err != nil {
+		t.Errorf("second Shutdown: %v", err)
+	}
+}
+
+// lineWriter 把每次寫入的內容送到 channel，讓測試以訊號（而不是輪詢）等待 serve 就緒。
+type lineWriter struct{ ch chan string }
+
+func (w lineWriter) Write(p []byte) (int, error) {
+	w.ch <- string(p)
+	return len(p), nil
+}
+
+func TestRunServeShutsDownOnCancel(t *testing.T) {
+	env := testEnv(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	lines := make(chan string, 4)
+	var errOut bytes.Buffer
+	codeCh := make(chan int, 1)
+	go func() {
+		codeCh <- Run(ctx, []string{"serve"}, IO{Stdout: lineWriter{lines}, Stderr: &errOut}, env)
+	}()
+
+	// serve 在 listener 就緒後輸出一行 "notesteme listening on <addr>"。
+	var addr string
+	select {
+	case line := <-lines:
+		addr = strings.TrimSpace(strings.TrimPrefix(line, "notesteme listening on "))
+	case code := <-codeCh:
+		t.Fatalf("serve exited early: %d %s", code, errOut.String())
+	}
+	if code := get(t, addr, "/healthz"); code != 200 {
+		t.Errorf("healthz = %d", code)
+	}
+	cancel()
+	if code := <-codeCh; code != 0 {
+		t.Fatalf("exit = %d, stderr = %s", code, errOut.String())
+	}
+	if info, _ := store.ReadLockInfo(env.Vars["NOTESTEME_DATA"]); info != nil {
+		t.Errorf("正常關閉後鎖檔應該是空的，got %+v", info)
+	}
+}
+
+func TestRunServeStartFailure(t *testing.T) {
+	env := testEnv(t)
+	delete(env.Vars, "NOTESTEME_MASTER_KEY")
+	var errOut bytes.Buffer
+	code := Run(context.Background(), []string{"serve"}, IO{Stdout: &bytes.Buffer{}, Stderr: &errOut}, env)
+	if code != 1 || !strings.Contains(errOut.String(), "尚未設定 NOTESTEME_MASTER_KEY。") {
+		t.Errorf("exit = %d, stderr = %q", code, errOut.String())
 	}
 }

@@ -5,20 +5,41 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
+	"time"
+
+	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/netguard"
 )
 
 // version 在建置時可由 -ldflags 覆寫。
 var version = "dev"
 
-// Env 是程式對外部環境的全部依賴；production 程式碼只能經由它取得環境變數與 log 輸出。
+// Env 是程式對外部環境的全部依賴（ADR-0015）。
+// production 程式碼只能經由它取得環境變數、時間、網路與 log 輸出；
+// 只有 cmd/notesteme/main.go 可以讀 os.Environ 與建立真實的 clock、listener。
 //
-// TODO: 之後依 ADR-0015 補上 Clock、網路依賴（netguard.Deps）、外部工具 runner、
-// listener 與測試用的 worker 控制點（Test）。
+// TODO: 之後補上外部工具 runner 與 worker 的手動控制點。
 type Env struct {
 	// Vars 是環境變數，key 為變數名稱。
 	Vars map[string]string
+	// Clock 是時鐘；serve 必須提供。
+	Clock clock.Clock
+	// Net 是對外 HTTP 的依賴（DNS、dialer、根憑證），交給 netguard。
+	Net netguard.Deps
+	// Listen 建立 HTTP listener；serve 必須提供。測試把設定的位址換成 127.0.0.1:0。
+	Listen func(network, addr string) (net.Listener, error)
 	// Log 是 log 輸出，nil 時視為丟棄。
 	Log io.Writer
+
+	// Test 只在驗收與單元測試設定；production（main.go）永遠是 nil。
+	Test *TestControls
+}
+
+// TestControls 是只給測試使用的開關。
+type TestControls struct {
+	// LowCostPasswordHash 使用低成本的 argon2id 參數，讓測試不必等密碼雜湊。
+	LowCostPasswordHash bool
 }
 
 // IO 是標準輸入輸出。
@@ -28,11 +49,11 @@ type IO struct {
 	Stderr io.Writer
 }
 
+// shutdownTimeout 是收到訊號後等待正常關閉的上限。
+const shutdownTimeout = 30 * time.Second
+
 // Run 執行一次命令並回傳結束碼。args 不含程式名稱。
 func Run(ctx context.Context, args []string, stdio IO, env Env) int {
-	_ = ctx
-	_ = env
-
 	if len(args) == 0 {
 		fmt.Fprintln(stdio.Stderr, "usage: notesteme <command> [flags]")
 		return 2
@@ -42,8 +63,45 @@ func Run(ctx context.Context, args []string, stdio IO, env Env) int {
 	case "--version":
 		fmt.Fprintf(stdio.Stdout, "notesteme %s\n", version)
 		return 0
+	case "serve":
+		return runServe(ctx, args[1:], stdio, env)
 	default:
 		fmt.Fprintf(stdio.Stderr, "notesteme: %q is not implemented\n", args[0])
 		return 2
 	}
+}
+
+// runServe 啟動 server，直到 ctx 被取消（main.go 在收到 SIGINT／SIGTERM 時取消）後正常關閉。
+func runServe(ctx context.Context, args []string, stdio IO, env Env) int {
+	// TODO(AUTH-R3)：--insecure-no-auth 才允許在沒有密碼時啟動。
+	if len(args) > 0 {
+		fmt.Fprintf(stdio.Stderr, "notesteme serve: unknown argument %q\n", args[0])
+		return 2
+	}
+
+	srv, err := StartServer(ctx, env)
+	if err != nil {
+		fmt.Fprintf(stdio.Stderr, "notesteme: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdio.Stdout, "notesteme listening on %s\n", srv.Addr())
+
+	select {
+	case <-ctx.Done():
+	case <-srv.Done():
+		// serve 自己停止了（listener 出錯）。
+		if err := srv.Err(); err != nil {
+			fmt.Fprintf(stdio.Stderr, "notesteme: %v\n", err)
+			return 1
+		}
+	}
+
+	// ctx 已取消，正常關閉要用新的 context。
+	shutCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shutCtx); err != nil {
+		fmt.Fprintf(stdio.Stderr, "notesteme: 關閉時發生錯誤：%v\n", err)
+		return 1
+	}
+	return 0
 }
