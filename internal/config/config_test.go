@@ -71,3 +71,14 @@ func TestLoadEmptyFile(t *testing.T) {
 		t.Errorf("listen = %q", cfg.Listen)
 	}
 }
+
+func TestLoadToolPaths(t *testing.T) {
+	p := writeFile(t, "tools:\n  ffmpeg: /opt/ffmpeg/bin/ffmpeg\n  yt-dlp: /opt/yt-dlp\n")
+	cfg, err := Load(Sources{File: p, Env: map[string]string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Tools["ffmpeg"] != "/opt/ffmpeg/bin/ffmpeg" || cfg.Tools["yt-dlp"] != "/opt/yt-dlp" {
+		t.Errorf("tools = %v", cfg.Tools)
+	}
+}

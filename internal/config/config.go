@@ -64,6 +64,8 @@ type Config struct {
 	Data string
 	// ConfigFile 是實際讀取的設定檔路徑。
 	ConfigFile string
+	// Tools 是設定檔 tools 區段指定的外部工具路徑，key 為工具名稱（yt-dlp、ffmpeg；OPS-R8）。
+	Tools map[string]string
 
 	// Origin 記錄每個欄位生效值的來源，key 為欄位名稱。
 	Origin map[string]Source
@@ -80,12 +82,12 @@ func (c *Config) SourceOf(field string) Source {
 // fileSchema 是設定檔允許的欄位。
 // tools、outbound、providers、hooks 的內容由之後的切片定義，這裡只確認欄位名稱合法。
 type fileSchema struct {
-	Listen    string    `yaml:"listen"`
-	Data      string    `yaml:"data"`
-	Tools     yaml.Node `yaml:"tools"`
-	Outbound  yaml.Node `yaml:"outbound"`
-	Providers yaml.Node `yaml:"providers"`
-	Hooks     yaml.Node `yaml:"hooks"`
+	Listen    string            `yaml:"listen"`
+	Data      string            `yaml:"data"`
+	Tools     map[string]string `yaml:"tools"`
+	Outbound  yaml.Node         `yaml:"outbound"`
+	Providers yaml.Node         `yaml:"providers"`
+	Hooks     yaml.Node         `yaml:"hooks"`
 }
 
 // Load 依 src 載入設定。
@@ -158,5 +160,6 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 	if f.Data != "" {
 		cfg.Data, cfg.Origin[FieldData] = f.Data, SourceConfigFile
 	}
+	cfg.Tools = f.Tools
 	return nil
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/netguard"
+	"github.com/cxyfer/notesteme/internal/toolexec"
 )
 
 // version 在建置時可由 -ldflags 覆寫。
@@ -18,8 +19,6 @@ var version = "dev"
 // Env 是程式對外部環境的全部依賴（ADR-0015）。
 // production 程式碼只能經由它取得環境變數、時間、網路與 log 輸出；
 // 只有 cmd/notesteme/main.go 可以讀 os.Environ 與建立真實的 clock、listener。
-//
-// TODO: 之後補上外部工具 runner 與 worker 的手動控制點。
 type Env struct {
 	// Vars 是環境變數，key 為變數名稱。
 	Vars map[string]string
@@ -31,6 +30,9 @@ type Env struct {
 	Listen func(network, addr string) (net.Listener, error)
 	// Log 是 log 輸出，nil 時視為丟棄。
 	Log io.Writer
+	// Runner 是執行外部工具（yt-dlp、ffmpeg）的 runner；nil 時使用 production 實作，
+	// 它只帶 allowlist 內的環境變數，並以 Vars["PATH"] 尋找工具（ADR-0009、ADR-0015）。
+	Runner toolexec.Runner
 
 	// Test 只在驗收與單元測試設定；production（main.go）永遠是 nil。
 	Test *TestControls
@@ -40,6 +42,9 @@ type Env struct {
 type TestControls struct {
 	// LowCostHashing 讓密碼雜湊與 master key 的金鑰推導使用低成本的 argon2id 參數，測試不必等待。
 	LowCostHashing bool
+	// ManualWorker 讓 server 不自己執行 worker：任務只在測試呼叫 Server.RunUntilIdle 或
+	// Server.RunRound 時才會被領取與執行（ADR-0015）。
+	ManualWorker bool
 }
 
 // IO 是標準輸入輸出。

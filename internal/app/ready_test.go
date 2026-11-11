@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/cxyfer/notesteme/internal/toolexec"
 )
 
 func TestReadyzReportsMissingTools(t *testing.T) {
@@ -40,24 +42,30 @@ func TestReadyzReportsMissingTools(t *testing.T) {
 	}
 }
 
-func TestLookTool(t *testing.T) {
+func TestToolChecksFollowResolveOrder(t *testing.T) {
 	dir := t.TempDir()
 	tool := filepath.Join(dir, "yt-dlp")
 	_ = os.WriteFile(tool, nil, 0o755)
-	_ = os.WriteFile(filepath.Join(dir, "ffmpeg"), nil, 0o644) // 沒有執行權限
-	spec := toolSpec{name: "yt-dlp", envVar: "NOTESTEME_YTDLP"}
 
-	if p, err := lookTool(map[string]string{"PATH": "/nonexistent" + string(os.PathListSeparator) + dir}, spec); err != nil || p != tool {
-		t.Errorf("PATH lookup = %q, %v", p, err)
+	checks := toolChecks(toolexec.Resolver{Vars: map[string]string{"PATH": dir}})
+	for _, c := range checks {
+		err := c.Check(context.Background())
+		if c.Name == "yt-dlp" && err != nil {
+			t.Errorf("yt-dlp 在 PATH 中，卻回報 %v", err)
+		}
+		if c.Name == "ffmpeg" && err == nil {
+			t.Error("ffmpeg 不在 PATH 中，卻通過檢查")
+		}
 	}
-	if _, err := lookTool(map[string]string{"PATH": dir}, toolSpec{name: "ffmpeg"}); err == nil {
-		t.Error("non-executable file should not count")
+
+	// 設定檔的路徑優先於環境變數與 PATH，而且指定了就不退回後面的來源。
+	r := toolexec.Resolver{
+		Vars:   map[string]string{"PATH": dir},
+		Config: map[string]string{"yt-dlp": "/nonexistent/yt-dlp"},
 	}
-	// 環境變數有設定時只認它，不退回 PATH。
-	if _, err := lookTool(map[string]string{"PATH": dir, "NOTESTEME_YTDLP": "/nonexistent/yt-dlp"}, spec); err == nil {
-		t.Error("env override should not fall back to PATH")
-	}
-	if p, err := lookTool(map[string]string{"NOTESTEME_YTDLP": tool}, spec); err != nil || p != tool {
-		t.Errorf("env lookup = %q, %v", p, err)
+	for _, c := range toolChecks(r) {
+		if c.Name == "yt-dlp" && c.Check(context.Background()) == nil {
+			t.Error("設定檔指定了不存在的路徑，不應退回 PATH")
+		}
 	}
 }

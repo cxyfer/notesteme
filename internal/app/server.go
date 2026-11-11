@@ -19,6 +19,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/secrets"
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/toolexec"
 )
 
 // 環境變數名稱（設定檔相關的在 config 套件）。
@@ -152,7 +153,7 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 	s.http = &http.Server{
 		Handler: api.New(api.Deps{
 			Store: s.store, Auth: authSvc, Clock: env.Clock, Log: log, Version: version,
-			ReadyChecks: toolChecks(env.Vars),
+			ReadyChecks: toolChecks(toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}),
 		}),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
