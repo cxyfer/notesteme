@@ -115,7 +115,7 @@ go test ./features -godog.tags="@M2"        # 只跑 M2
 
 - 步驟實作放在 `features/steps/`，依 [`steps.md`](steps.md) 的分組拆檔。
 - `@ui` 場景在 M1 期間先用 `@manual` 驗收，Playwright 的執行環境建好後再改成自動。
-- 規格的一致性檢查目前是 `scripts/spec/` 中的 Python 腳本，之後改寫成 Go 測試（NFR-TEST-4）：
+- 規格的一致性檢查（NFR-TEST-4）已改寫成 Go 測試 `features/speccheck_test.go`，隨 `go test ./features` 執行；另外會檢查 `steps.md` 的每個句型都已在 `features/steps/` 註冊。`scripts/spec/` 的 Python 腳本暫時保留，用來比對結果：
 
   ```
   python3 -I scripts/spec/check_steps.py .   # 每個步驟都在 steps.md 中
