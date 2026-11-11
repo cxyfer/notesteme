@@ -54,6 +54,13 @@ func (f *Fake) Advance(d time.Duration) {
 	f.fireDueLocked()
 }
 
+// PendingTimers 回傳尚未到期、也沒有被停止的計時器數量，讓測試確認某個元件已經開始等待。
+func (f *Fake) PendingTimers() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.timers)
+}
+
 // fireDueLocked 觸發已到期的計時器；呼叫時需持有 f.mu。
 func (f *Fake) fireDueLocked() {
 	sort.SliceStable(f.timers, func(i, j int) bool {
