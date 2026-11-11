@@ -75,7 +75,11 @@ type Net struct {
 	conns      []Conn
 	lookups    []Lookup
 	violations []string
+	closed     bool
 }
+
+// ErrClosed 表示 Net 已經 Close，不再啟動 fake origin。
+var ErrClosed = errors.New("fakenet: closed")
 
 var (
 	_ netguard.Resolver = (*Net)(nil)
@@ -142,7 +146,10 @@ func (n *Net) LookupNetIP(_ context.Context, network, hostName string) ([]netip.
 	if h == nil || (len(h.ips) == 0 && h.handler == nil) {
 		return nil, &net.DNSError{Err: "no such host", Name: hostName, IsNotFound: true}
 	}
+	// 先挑出這次要回傳的 IP（不推進序列）；依 network 過濾後為空時，
+	// 不推進 rebinding 序列，否則 ip4 與 ip6 的並行查詢會吃掉彼此的序列位置。
 	var ip netip.Addr
+	advance := false
 	if len(h.ips) == 0 {
 		ip = DefaultIP
 	} else {
@@ -150,21 +157,17 @@ func (n *Net) LookupNetIP(_ context.Context, network, hostName string) ([]netip.
 		if i >= len(h.ips) {
 			i = len(h.ips) - 1
 		} else {
-			h.next++
+			advance = true
 		}
 		ip = h.ips[i]
 	}
-	n.lookups = append(n.lookups, Lookup{Host: hostName, IPs: []netip.Addr{ip}})
-	switch network {
-	case "ip4":
-		if !ip.Is4() {
-			return nil, nil
-		}
-	case "ip6":
-		if !ip.Is6() {
-			return nil, nil
-		}
+	if (network == "ip4" && !ip.Is4()) || (network == "ip6" && !ip.Is6()) {
+		return nil, nil
 	}
+	if advance {
+		h.next++
+	}
+	n.lookups = append(n.lookups, Lookup{Host: hostName, IPs: []netip.Addr{ip}})
 	return []netip.Addr{ip}, nil
 }
 
@@ -193,6 +196,10 @@ func (n *Net) originFor(t netguard.Target) *host {
 // Dial 實作 netguard.Dialer：記錄連線，再轉到對應 fake origin 的本機 server。
 func (n *Net) Dial(ctx context.Context, t netguard.Target) (net.Conn, error) {
 	n.mu.Lock()
+	if n.closed {
+		n.mu.Unlock()
+		return nil, ErrClosed
+	}
 	n.conns = append(n.conns, Conn{Host: strings.ToLower(t.Host), IP: t.IP, Port: t.Port})
 	h := n.originFor(t)
 	if h == nil {
@@ -293,9 +300,10 @@ func (n *Net) Violations() []string {
 	return append([]string(nil), n.violations...)
 }
 
-// Close 關閉所有已啟動的 fake origin server。
+// Close 關閉所有已啟動的 fake origin server。Close 之後的 Dial 回傳 ErrClosed，不會重新啟動 server。
 func (n *Net) Close() {
 	n.mu.Lock()
+	n.closed = true
 	var srvs []*httptest.Server
 	for _, h := range n.hosts {
 		if h.plain != nil {

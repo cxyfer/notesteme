@@ -2,6 +2,7 @@ package fakenet
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -227,5 +228,51 @@ func TestTrapBlocksDefaultTransportAndResolver(t *testing.T) {
 	}
 	if len(TrapViolations()) != 0 {
 		t.Fatal("drain 後應清空")
+	}
+}
+
+func TestLookupFilteredEmptyDoesNotAdvanceSequence(t *testing.T) {
+	n := New()
+	defer n.Close()
+	if err := n.Resolves("rebind.test", "93.184.216.34", "127.0.0.1"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	// ip6 過濾後為空：不應推進序列，也不記錄成一次解析。
+	for i := 0; i < 3; i++ {
+		if got, err := n.LookupNetIP(ctx, "ip6", "rebind.test"); err != nil || len(got) != 0 {
+			t.Fatalf("ip6 = %v, %v", got, err)
+		}
+	}
+	if len(n.Lookups()) != 0 {
+		t.Fatalf("過濾為空的查詢不應記錄: %v", n.Lookups())
+	}
+	for i, w := range []string{"93.184.216.34", "127.0.0.1"} {
+		got, err := n.LookupNetIP(ctx, "ip4", "rebind.test")
+		if err != nil || len(got) != 1 || got[0] != netip.MustParseAddr(w) {
+			t.Fatalf("lookup %d = %v, %v; want %s", i, got, err, w)
+		}
+	}
+}
+
+func TestDialAfterCloseDoesNotRestartServer(t *testing.T) {
+	n := New()
+	n.Handle("example.com", hello("x"))
+	if body, err := get(t, newClient(n), "http://example.com/"); err != nil || !strings.HasPrefix(body, "x") {
+		t.Fatalf("body=%q err=%v", body, err)
+	}
+	n.Close()
+	before := len(n.Connections())
+	_, err := n.Dial(context.Background(), netguard.Target{Network: "tcp", Host: "example.com", IP: DefaultIP, Port: 80})
+	if !errors.Is(err, ErrClosed) {
+		t.Fatalf("err = %v，應為 ErrClosed", err)
+	}
+	for _, h := range n.hosts {
+		if h.plain != nil || h.tlsSrv != nil {
+			t.Fatal("Close 之後不應重新啟動 server")
+		}
+	}
+	if len(n.Connections()) != before || len(n.Violations()) != 0 {
+		t.Fatal("Close 之後的 Dial 不應留下連線或違規紀錄")
 	}
 }

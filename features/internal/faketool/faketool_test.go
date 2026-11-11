@@ -296,10 +296,29 @@ func TestGateBlocksUntilRemoved(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
+	// 等子程序寫入「已進入 gate」的標記（不是睡一段固定時間）；子程序提早結束就是失敗。
+	waiting := gate + GateWaitingSuffix
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(waiting); err == nil {
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("子程序在進入 gate 前結束: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			_ = cmd.Process.Kill()
+			t.Fatal("子程序沒有進入 gate")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	// 已進入 gate 且 gate 還在：程序必須仍在執行。
 	select {
 	case err := <-done:
 		t.Fatalf("gate 存在時不應結束: %v", err)
-	case <-time.After(300 * time.Millisecond):
+	default:
 	}
 	if err := os.Remove(gate); err != nil {
 		t.Fatal(err)
@@ -495,5 +514,66 @@ func TestInstallReplacesExisting(t *testing.T) {
 		if fi, err := os.Lstat(filepath.Join(bin, n)); err != nil || fi.Mode()&os.ModeSymlink == 0 {
 			t.Fatalf("%s: %v %v", n, fi, err)
 		}
+	}
+}
+
+func TestRefusesOutsideScenario(t *testing.T) {
+	// 只有 bin/ 的 symlink，沒有 fake/state.json：假工具必須以 2 結束，且不建立任何東西。
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := Install(bin); err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range []string{"yt-dlp", "ffmpeg", "ffprobe"} {
+		var errb bytes.Buffer
+		cmd := &exec.Cmd{
+			Path: filepath.Join(bin, tool), Args: []string{tool, "--version"},
+			Dir: root, Env: []string{"PATH=" + bin}, Stderr: &errb,
+		}
+		var ee *exec.ExitError
+		if err := cmd.Run(); !errors.As(err, &ee) || ee.ExitCode() != 2 {
+			t.Fatalf("%s: err=%v，應以結束碼 2 結束", tool, err)
+		}
+		if !strings.Contains(errb.String(), "state.json") {
+			t.Errorf("%s: stderr 應說明找不到狀態檔: %q", tool, errb.String())
+		}
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "bin" {
+		t.Fatalf("不應建立任何檔案或目錄: %v", entries)
+	}
+}
+
+func TestAppendCallDoesNotCreateDir(t *testing.T) {
+	root := t.TempDir()
+	if err := AppendCall(root, Call{Tool: "yt-dlp"}); err == nil {
+		t.Fatal("fake/ 不存在時 AppendCall 應失敗")
+	}
+	if _, err := os.Stat(FakeDir(root)); err == nil {
+		t.Fatal("AppendCall 不應建立 fake/")
+	}
+}
+
+func TestYtDlpDoubleDashIsPositional(t *testing.T) {
+	s := newScenario(t, sampleState(t))
+	// "--" 之後的參數即使長得像旗標，也只當位置參數（網址），不會被當成未知選項。
+	code, _, errs := s.inproc("yt-dlp", "-J", "--", "https://www.youtube.com/watch?v=abc123")
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%q", code, errs)
+	}
+	code, _, errs = s.inproc("yt-dlp", "-J", "--", "--no-such-flag")
+	if code != 1 || strings.Contains(errs, "unrecognized option") {
+		t.Fatalf("應視為位置參數（網址不合法，結束碼 1）：code=%d stderr=%q", code, errs)
+	}
+	code, _, errs = s.inproc("yt-dlp", "-J", "--", "https://www.youtube.com/watch?v=abc123", "extra")
+	if code != 2 || !strings.Contains(errs, "extra argument") {
+		t.Fatalf("code=%d stderr=%q", code, errs)
+	}
+	// "--" 之前的未知旗標仍然失敗。
+	if code, _, _ := s.inproc("yt-dlp", "-J", "--bogus", "--", "https://www.youtube.com/watch?v=abc123"); code != 2 {
+		t.Fatalf("code=%d", code)
 	}
 }

@@ -163,10 +163,8 @@ func ReadState(root string) (State, error) {
 }
 
 // AppendCall 把一次呼叫附加到 root 場景的 calls.jsonl。
+// 不建立 fake/ 目錄：場景由 WriteState 建立，目錄不存在時回傳錯誤。
 func AppendCall(root string, c Call) error {
-	if err := os.MkdirAll(FakeDir(root), 0o755); err != nil {
-		return err
-	}
 	b, err := json.Marshal(c)
 	if err != nil {
 		return err

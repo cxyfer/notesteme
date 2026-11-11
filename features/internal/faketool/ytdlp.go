@@ -51,15 +51,25 @@ func parseYtDlp(args []string) (ytArgs, error) {
 		*i++
 		return args[*i], nil
 	}
+	positional := false // 遇到 "--" 之後，其餘參數一律是位置參數
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+		if !positional && arg == "--" {
+			positional = true
+			continue
+		}
 		flag, inline, hasInline := arg, "", false
-		if strings.HasPrefix(arg, "--") {
+		if !positional && strings.HasPrefix(arg, "--") {
 			if k, v, ok := strings.Cut(arg, "="); ok {
 				flag, inline, hasInline = k, v, true
 			}
 		}
 		switch {
+		case positional:
+			if a.url != "" {
+				return a, fmt.Errorf("unexpected extra argument %q", arg)
+			}
+			a.url = arg
 		case flag == "--version":
 			a.version = true
 		case flag == "-J" || flag == "--dump-single-json":
@@ -216,12 +226,24 @@ func logCall(e env, cookies string) {
 	_ = AppendCall(e.root, c)
 }
 
-// waitGate 在 gate 檔存在時阻塞，直到檔案被刪除（上限 5 分鐘，避免測試卡死）。
+// GateWaitingSuffix 是 waitGate 開始阻塞時建立的標記檔（<gate>.waiting）的後綴，
+// 讓測試不必靠睡眠就能知道呼叫已經進入 gate。
+const GateWaitingSuffix = ".waiting"
+
+// gateTimeout 是 waitGate 的等待上限，避免測試卡死。
+const gateTimeout = 30 * time.Second
+
+// waitGate 在 gate 檔存在時阻塞，直到檔案被刪除（上限 gateTimeout）。
 func waitGate(gate string) {
 	if gate == "" {
 		return
 	}
-	deadline := time.Now().Add(5 * time.Minute)
+	if _, err := os.Stat(gate); err != nil {
+		return
+	}
+	// 標記已進入 gate；寫入失敗不影響阻塞行為。
+	_ = os.WriteFile(gate+GateWaitingSuffix, nil, 0o644)
+	deadline := time.Now().Add(gateTimeout)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(gate); err != nil {
 			return

@@ -62,6 +62,11 @@ func Dispatch() {
 	}
 	cwd, _ := os.Getwd()
 	root := filepath.Dir(selfDir())
+	// 找不到場景狀態代表不是在場景內被執行：不建立任何檔案，直接失敗。
+	if err := requireScenario(root); err != nil {
+		fmt.Fprintf(os.Stderr, "fake %s: %v\n", tool, err)
+		os.Exit(2)
+	}
 	os.Exit(run(env{
 		tool:   tool,
 		root:   root,
@@ -70,6 +75,16 @@ func Dispatch() {
 		stdout: os.Stdout,
 		stderr: os.Stderr,
 	}))
+}
+
+// requireScenario 確認 root 下有場景狀態檔（<root>/fake/state.json）。
+// 假工具被誤放到場景外（例如 PATH 指到別處）時，不能在陌生的目錄建立 fake/ 或 calls.jsonl。
+func requireScenario(root string) error {
+	p := statePath(root)
+	if _, err := os.Stat(p); err != nil {
+		return fmt.Errorf("找不到場景狀態檔 %s（%v）；假工具只能在驗收場景內執行，不會建立任何檔案", p, err)
+	}
+	return nil
 }
 
 // selfDir 回傳假工具 symlink 所在的目錄（<root>/bin）。
