@@ -24,8 +24,8 @@ func main() {
 	}, app.Env{
 		Vars:  environ(os.Environ()),
 		Clock: clock.Real{},
-		// 零值的 Deps 使用系統的 resolver、dialer 與根憑證。
-		Net:    netguard.Deps{},
+		// 明確使用系統的 resolver、dialer 與根憑證；零值的 Deps 會拒絕連線。
+		Net:    netguard.SystemDeps(),
 		Listen: net.Listen,
 		Log:    os.Stderr,
 	})

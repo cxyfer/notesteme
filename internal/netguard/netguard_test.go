@@ -119,11 +119,42 @@ func TestDialInvalidAddr(t *testing.T) {
 	}
 }
 
-func TestDefaultDepsFallback(t *testing.T) {
+func TestTransportRefusesWithoutDeps(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer srv.Close()
-	// Resolver、Dialer 皆為 nil：IP 字面值走系統 Dialer，不需要 DNS。
-	resp, err := (&http.Client{Transport: Transport(Deps{})}).Get(srv.URL)
+	d := &recDialer{addr: srv.Listener.Addr().String()}
+	cases := map[string]Deps{
+		"全部為 nil":    {},
+		"缺 Dialer":   {Resolver: stubResolver{ips: []netip.Addr{netip.MustParseAddr("93.184.216.34")}}},
+		"缺 Resolver": {Dialer: d},
+	}
+	for name, deps := range cases {
+		// IP 字面值（指向真實可連的 httptest server）也不能退回系統 dialer。
+		for _, url := range []string{srv.URL, "http://example.com/"} {
+			resp, err := (&http.Client{Transport: Transport(deps)}).Get(url)
+			if err == nil {
+				resp.Body.Close()
+				t.Fatalf("%s %s：應失敗", name, url)
+			}
+			if !errors.Is(err, ErrNoDialer) {
+				t.Errorf("%s %s：err = %v，應為 ErrNoDialer", name, url, err)
+			}
+		}
+	}
+	if len(d.targets) != 0 {
+		t.Fatalf("不應呼叫 Dialer: %v", d.targets)
+	}
+}
+
+func TestSystemDeps(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+	deps := SystemDeps()
+	if deps.Resolver == nil || deps.Dialer == nil {
+		t.Fatalf("SystemDeps 應提供 Resolver 與 Dialer: %+v", deps)
+	}
+	// IP 字面值走系統 Dialer，不需要 DNS。
+	resp, err := (&http.Client{Transport: Transport(deps)}).Get(srv.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
