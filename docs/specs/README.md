@@ -104,10 +104,14 @@ M3 到 M5 的能力目前只在 [`story-map.md`](story-map.md) 中列出故事�
 ### 5.3 執行
 
 ```
-go test ./features/...                       # 執行所有非 @wip、非 @manual 的場景
-go test ./features/... -godog.tags="@M1"      # 只跑 M1
-go test ./features/... -godog.tags="@ING-01"  # 只跑一則故事
+go test ./features/...                     # 驗收場景、規格一致性檢查與測試替身的單元測試
+go test ./features -godog.tags="@ING-01"    # 只跑一則故事
+go test ./features -godog.tags="@M2"        # 只跑 M2
 ```
+
+- 沒有指定 tag 時，預設為 `@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`。
+- 指定 `-godog.tags` 時，`@manual`、`@pending-m0`、`@wip`、`@ui` 的排除條件會自動併入；明確寫出其中某個 tag 時，才會選到它（ADR-0015）。
+- `-godog.*` 旗標只在 `features` 這個 package 中定義，所以帶旗標時寫 `./features`，不要寫 `./features/...`。
 
 - 步驟實作放在 `features/steps/`，依 [`steps.md`](steps.md) 的分組拆檔。
 - `@ui` 場景在 M1 期間先用 `@manual` 驗收，Playwright 的執行環境建好後再改成自動。

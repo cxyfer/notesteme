@@ -42,4 +42,4 @@
 ## 待決問題
 
 - 300ms、40ms 的門檻是否要依來源調整，M0 量測 segment 長度分佈後再決定。
-- NRM-R1 的文字與場景不一致（2026-11-12，M1 實作時發現）：規則寫「後一句的文字以前一句的文字開頭時，只保留新增的部分」，照字面會得到三句 `so today we`、`talk about`、`Kafka`；場景 `Rolling auto captions are de-duplicated` 卻預期合併成一句 `so today we talk about Kafka`（00:00:01–00:00:06）。建議以場景為準，把規則改寫成「後一句的文字以前一句的文字開頭時，兩句合併成一句：文字取後一句，時間取前一句的 start 到後一句的 end」。確認前 NRM-R1 先不實作。
+- NRM-R1 的文字與場景不一致（2026-11-12，M1 實作時發現）：規則寫「後一句的文字以前一句的文字開頭時，只保留新增的部分」，照字面會得到三句 `so today we`、`talk about`、`Kafka`；場景 `Rolling auto captions are de-duplicated` 卻預期合併成一句 `so today we talk about Kafka`（00:00:01–00:00:06）。建議以場景為準，把規則改寫成「後一句的文字以前一句的文字開頭時，兩句合併成一句：文字取後一句，時間取前一句的 start 到後一句的 end」。確認前 NRM-R1 先不實作。NRM-R6 的場景 `Word timings survive a merge` 也要靠這條合併規則才成立，一併等待。
