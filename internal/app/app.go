@@ -38,8 +38,8 @@ type Env struct {
 
 // TestControls 是只給測試使用的開關。
 type TestControls struct {
-	// LowCostPasswordHash 使用低成本的 argon2id 參數，讓測試不必等密碼雜湊。
-	LowCostPasswordHash bool
+	// LowCostHashing 讓密碼雜湊與 master key 的金鑰推導使用低成本的 argon2id 參數，測試不必等待。
+	LowCostHashing bool
 }
 
 // IO 是標準輸入輸出。

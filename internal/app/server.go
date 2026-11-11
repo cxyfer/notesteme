@@ -17,6 +17,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/netguard"
+	"github.com/cxyfer/notesteme/internal/secrets"
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
@@ -43,6 +44,7 @@ type Server struct {
 	ln    net.Listener
 	http  *http.Server
 	store *store.Store
+	keys  *secrets.Keyring
 	lock  *store.DirLock
 
 	// root 是 server 的根 context；背景工作（之後的 worker、scheduler）都掛在它底下，cancel 會取消它。
@@ -60,9 +62,10 @@ type Server struct {
 // 開啟並 migrate DB、建立 listener 後開始服務。回傳時 listener 已經在接受連線。
 //
 // 檢查順序（錯誤訊息與場景逐字相同）：
-//  1. master key（SEC-R5）：最先檢查，還沒碰資料目錄就失敗，不留下任何檔案。
-//  2. 資料目錄的 flock。
-//  3. 登入密碼（AUTH-R3）：要看 DB 裡有沒有密碼，所以在開啟 DB 之後。
+//  1. master key 是否設定（SEC-R5）：最先檢查，還沒碰資料目錄就失敗，不留下任何檔案。
+//  2. 資料目錄的 flock，開啟 DB。
+//  3. master key 是否正確（SEC-R5）：要解開 DB 裡的資料金鑰，所以在開啟 DB 之後。
+//  4. 登入密碼（AUTH-R3）：要看 DB 裡有沒有密碼，所以在開啟 DB 之後。
 //
 // 兩個檢查同時不滿足時回報 master key；目前沒有場景同時缺兩者。
 func StartServer(ctx context.Context, env Env) (*Server, error) {
@@ -83,7 +86,7 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 		return nil, err
 	}
 
-	// TODO(SEC-R4)：master key 之後用來解開資料金鑰；現在只檢查有設定，值不寫進 log 與 DB。
+	// master key 的值不寫進 log 與 DB；之後用來解開資料金鑰（見 secrets.Open）。
 	if env.Vars[envMasterKey] == "" {
 		return nil, ErrNoMasterKey
 	}
@@ -118,11 +121,16 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 		return nil, err
 	}
 
-	params := auth.ProductionParams
-	if env.Test != nil && env.Test.LowCostPasswordHash {
-		params = auth.TestParams
+	hashParams, kdf := auth.ProductionParams, secrets.ProductionKDF
+	if env.Test != nil && env.Test.LowCostHashing {
+		hashParams, kdf = auth.TestParams, secrets.TestKDF
 	}
-	authSvc := auth.New(auth.Config{Store: s.store, Clock: env.Clock, Params: params})
+	// 第一次啟動建立資料金鑰；之後以 master key 解開，錯誤時拒絕啟動（SEC-R5）。
+	if s.keys, err = secrets.Open(ctx, s.store, env.Vars[envMasterKey], kdf); err != nil {
+		return nil, err
+	}
+
+	authSvc := auth.New(auth.Config{Store: s.store, Clock: env.Clock, Params: hashParams})
 	if err := authSvc.EnsurePassword(ctx, env.Vars[envPassword]); err != nil {
 		return nil, err
 	}
@@ -144,6 +152,7 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 	s.http = &http.Server{
 		Handler: api.New(api.Deps{
 			Store: s.store, Auth: authSvc, Clock: env.Clock, Log: log, Version: version,
+			ReadyChecks: toolChecks(env.Vars),
 		}),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),

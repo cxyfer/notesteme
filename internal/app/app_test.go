@@ -69,8 +69,19 @@ func TestRunServeUnknownArgument(t *testing.T) {
 func testEnv(t *testing.T) Env {
 	t.Helper()
 	root := t.TempDir()
+	// /readyz 要求 ffmpeg 與 yt-dlp 可執行：放兩個空的可執行檔到 PATH。
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"ffmpeg", "yt-dlp"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return Env{
 		Vars: map[string]string{
+			"PATH":                 bin,
 			"NOTESTEME_CONFIG":     filepath.Join(root, "none.yaml"),
 			"NOTESTEME_DATA":       filepath.Join(root, "data"),
 			"NOTESTEME_PASSWORD":   "pw",
@@ -78,7 +89,7 @@ func testEnv(t *testing.T) Env {
 		},
 		Clock:  clock.NewFake(time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)),
 		Listen: func(_, _ string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") },
-		Test:   &TestControls{LowCostPasswordHash: true},
+		Test:   &TestControls{LowCostHashing: true},
 	}
 }
 
@@ -118,6 +129,29 @@ func TestStartServerGuards(t *testing.T) {
 		srv, err := StartServer(context.Background(), env)
 		if err != nil {
 			t.Fatalf("retry after failed start: %v", err)
+		}
+		srv.Kill()
+	})
+	t.Run("master key 不正確", func(t *testing.T) {
+		env := testEnv(t)
+		srv, err := StartServer(context.Background(), env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := srv.Shutdown(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		env.Vars["NOTESTEME_MASTER_KEY"] = "other"
+		_, err = StartServer(context.Background(), env)
+		if err == nil || !strings.Contains(err.Error(), "master key 不正確，無法解開資料金鑰。") ||
+			!strings.Contains(err.Error(), "notesteme secrets reset") {
+			t.Fatalf("err = %v", err)
+		}
+		// 失敗後釋放鎖，用正確的 key 可以再啟動。
+		env.Vars["NOTESTEME_MASTER_KEY"] = "mk"
+		srv, err = StartServer(context.Background(), env)
+		if err != nil {
+			t.Fatalf("retry with correct key: %v", err)
 		}
 		srv.Kill()
 	})
