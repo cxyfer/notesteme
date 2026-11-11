@@ -11,8 +11,10 @@ import (
 // LockFileName 是 /data 下的鎖專用檔（ADR-0007、ADR-0015）。
 const LockFileName = "notesteme.lock"
 
-// ErrLocked 表示資料目錄已被另一個 serve 或獨立模式的 CLI 持有。
-var ErrLocked = errors.New("資料目錄已被另一個 notesteme 程序使用。")
+// ErrLocked 表示資料目錄已被另一個 serve 持有（CLI-R1）。
+//
+// TODO: 持有者是獨立模式的 CLI 時要有不同的訊息，之後依鎖檔的 holder 區分。
+var ErrLocked = errors.New("資料目錄已經由另一個 notesteme serve 使用中。")
 
 // LockInfo 是寫進鎖檔的內容，client 模式的 CLI 依此連到 serve。
 type LockInfo struct {
