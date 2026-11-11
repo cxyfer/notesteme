@@ -3,12 +3,15 @@ package features
 
 import (
 	"flag"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/cucumber/godog"
 
+	"github.com/cxyfer/notesteme/features/internal/fakenet"
+	"github.com/cxyfer/notesteme/features/internal/faketool"
 	"github.com/cxyfer/notesteme/features/steps"
 )
 
@@ -32,8 +35,26 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	// TODO(slice0-B): 假工具分派（faketool.Dispatch）
-	os.Exit(m.Run())
+	// 測試 binary 以 yt-dlp、ffmpeg、ffprobe 的名稱被執行時，改扮假工具（ADR-0015）。
+	faketool.Dispatch()
+	// 繞過 netguard 的對外連線一律失敗並記錄違規（NFR-TEST-1）。
+	restore := fakenet.InstallTrap()
+	code := m.Run()
+	restore()
+	os.Exit(code)
+}
+
+// TestOutboundTrap 確認繞過 netguard 的連線在測試程序中會失敗並被記錄。
+func TestOutboundTrap(t *testing.T) {
+	fakenet.DrainTrapViolations()
+	resp, err := http.Get("http://example.com/")
+	if err == nil {
+		resp.Body.Close()
+		t.Fatal("http.Get 應該被 trap 擋下")
+	}
+	if v := fakenet.DrainTrapViolations(); len(v) == 0 {
+		t.Fatal("trap 沒有記錄違規")
+	}
 }
 
 func TestFeatures(t *testing.T) {

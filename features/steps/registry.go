@@ -5,12 +5,20 @@
 package steps
 
 import (
+	"context"
+	"fmt"
 	"regexp"
 
 	"github.com/cucumber/godog"
 
+	"github.com/cxyfer/notesteme/features/internal/harness"
 	"github.com/cxyfer/notesteme/features/internal/vocab"
 )
+
+// Scenario 持有一個場景的狀態；每個場景各自一份（ADR-0015）。
+type Scenario struct {
+	World *harness.World
+}
 
 // Def 是一個已註冊的步驟定義。
 type Def struct {
@@ -79,7 +87,34 @@ func register(r *Registry) {
 }
 
 // Initialize 把全部步驟註冊到 godog 的 ScenarioContext。
+//
+// 每個場景開始前建立新的 World（獨立的暫存目錄、fake clock、fakenet、假工具），
+// 結束後檢查是否有未攔截的對外連線，有就讓場景失敗，最後清掉暫存目錄。
 func Initialize(sc *godog.ScenarioContext) {
+	s := &Scenario{}
+	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
+		w, err := harness.New()
+		if err != nil {
+			return ctx, fmt.Errorf("建立場景環境：%w", err)
+		}
+		s.World = w
+		return ctx, nil
+	})
+	sc.After(func(ctx context.Context, _ *godog.Scenario, err error) (context.Context, error) {
+		if s.World == nil {
+			return ctx, err
+		}
+		checkErr := s.World.Check()
+		closeErr := s.World.Close()
+		s.World = nil
+		if err != nil {
+			return ctx, err
+		}
+		if checkErr != nil {
+			return ctx, checkErr
+		}
+		return ctx, closeErr
+	})
 	register(&Registry{sc: sc})
 }
 
