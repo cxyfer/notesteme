@@ -20,6 +20,7 @@
 | [0012](0012-hub-access-control.md) | Hub 權限：可見度、群組與自動規則 | 提議中 |
 | [0013](0013-config-sources-and-secrets.md) | 設定來源分層，secrets 用信封加密 | 已採納 |
 | [0014](0014-client-access-control-and-untrusted-input.md) | Client 的存取控制與不可信輸入 | 已採納 |
+| [0015](0015-acceptance-test-harness.md) | 驗收測試在程序內執行，外部依賴在注入點替換 | 已採納 |
 
 ## 範本
 
