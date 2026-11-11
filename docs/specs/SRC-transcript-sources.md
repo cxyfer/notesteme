@@ -1,8 +1,8 @@
 # SRC：字幕來源與品質
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M1
-- 相關：plan 第 5.2、6.1、6.3、7 節；ADR-0003、ADR-0006、ADR-0009
+- 相關：plan 第 5.2、6.1、6.3、7 節；ADR-0003、ADR-0006、ADR-0009；UI [影音詳情](../ui/pages.md#4-影音詳情)、[總覽](../ui/pages.md#1-總覽)（需要你處理）
 - 驗收場景：[`features/SRC-transcript-sources.feature`](../../features/SRC-transcript-sources.feature)
 
 ## 目的

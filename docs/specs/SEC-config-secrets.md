@@ -1,8 +1,8 @@
 # SEC：設定與 secrets
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M1（`config export`／`import` 在 M2，和處理方案一起）
-- 相關：plan 第 19 節；ADR-0013
+- 相關：plan 第 19 節；ADR-0013；UI [設定](../ui/pages.md#12-設定)
 - 驗收場景：[`features/SEC-config-secrets.feature`](../../features/SEC-config-secrets.feature)
 
 ## 目的

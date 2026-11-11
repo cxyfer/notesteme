@@ -1,6 +1,6 @@
 # ING：新增影音
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M1（MCP 的 `ingest` 在 M2，見 MCP）
 - 相關：plan 第 3.3、5、7 節；UI [新增](../ui/pages.md#2-新增)
 - 驗收場景：[`features/ING-ingest.feature`](../../features/ING-ingest.feature)

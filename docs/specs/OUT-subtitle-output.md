@@ -1,6 +1,6 @@
 # OUT：字幕輸出與匯入
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M1（SRT、VTT、純文字、cues JSON 的即時渲染）、M2（ASS、雙語、輸出目標、匯入外部字幕）
 - 相關：plan 第 11 節；ADR-0003、ADR-0010；UI [影音詳情](../ui/pages.md#4-影音詳情)、[字幕樣式](../ui/pages.md#9-字幕樣式)
 - 驗收場景：[`features/OUT-subtitle-output.feature`](../../features/OUT-subtitle-output.feature)

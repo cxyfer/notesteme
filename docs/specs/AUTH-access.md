@@ -1,6 +1,6 @@
 # AUTH：登入與 token
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M1（密碼登入、session、CSRF、token 與 scope、CLI 建立 token）、M2（MCP HTTP 的 Origin 檢查、UI 管理 token）
 - 相關：plan 第 19 節；ADR-0014；UI [登入](../ui/pages.md#13-登入)、[設定](../ui/pages.md#12-設定)
 - 驗收場景：[`features/AUTH-access.feature`](../../features/AUTH-access.feature)
@@ -40,6 +40,8 @@
 - API：`POST /api/auth/login`、`POST /api/auth/logout`、`GET/POST/DELETE /api/tokens`
 - CLI：`notesteme tokens create|ls|revoke`、`notesteme password set`
 - 環境變數：`NOTESTEME_PASSWORD`
+- Session 與 CSRF：登入成功後設定 `notesteme_session`（`HttpOnly`、`SameSite=Lax`）與 `notesteme_csrf` 兩個 cookie。`notesteme_csrf` 可以由前端讀取；非 GET 請求把它的值放在 `X-CSRF-Token` 標頭（double-submit）。
+- Bearer token：`Authorization: Bearer <token>`。
 
 ## 不在範圍內
 

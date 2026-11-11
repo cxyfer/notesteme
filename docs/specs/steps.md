@@ -82,6 +82,10 @@
 - 數量後面的名詞可以用單數或複數（`1 item`、`2 items`），步驟實作的 regex 都接受。
 - 只有 `@manual` 場景可以使用這份清單以外的句子，因為它們不會被自動執行。
 - 單次覆寫的 YAML 可以包含 `until: <stage>`，等同 API 的 `until` 欄位。
+- 測試環境的預設值（ADR-0015）：`NOTESTEME_PASSWORD`、`NOTESTEME_MASTER_KEY` 都有測試用的值，`PATH` 只含假的外部工具。場景要驗證缺少它們的情況時，用 `Given the environment variable {string} is not set` 移除。
+- `Given` 步驟只累積設定。server 還沒啟動時，第一個送出請求的步驟以當時的設定啟動它；`Given the owner is signed in` 也在第一次送出請求時才建立 session。
+- 場景中的 `/data`、`/config` 等路徑，會換成這個場景專用的暫存目錄。
+- `Given {string} has {word} captions in {string}` 沒有對應的 fixture 時，產生 120 句的字幕軌。
 
 ### 4.1 環境與時間（`steps/env.go`）
 
