@@ -1,0 +1,63 @@
+# SRC：字幕來源與品質
+
+- 狀態：draft
+- 里程碑：M1
+- 相關：plan 第 5.2、6.1、6.3、7 節；ADR-0003、ADR-0006、ADR-0009
+- 驗收場景：[`features/SRC-transcript-sources.feature`](../../features/SRC-transcript-sources.feature)
+
+## 目的
+
+用最便宜、最可靠的方式拿到原始字幕：先用平台字幕，必要時才付費轉錄；拿到的結果不能用時自動換下一個來源；卡住時明確告訴使用者要做什麼。
+
+## User stories
+
+| ID | Story |
+|---|---|
+| SRC-01 | As the owner, I want platform captions to be used whenever they exist, in my preferred order of languages and kinds, so that I get good subtitles at no cost. |
+| SRC-02 | As the owner, I want paid sources to be used only when no platform caption fits, in the order I set, so that I control what I pay for. |
+| SRC-03 | As the owner, I want unusable results such as the wrong language, hallucinations or music-only tracks to be skipped automatically, so that bad input never reaches the later stages. |
+| SRC-04 | As the owner, I want Notesteme to wait and check again when captions are not ready yet, so that I do not pay for transcription that would soon be free. |
+| SRC-05 | As the owner, I want a clear message and a fix action when a source needs something from me, so that I can unblock it in one step. |
+| SRC-06 | As the owner, I want long recordings to be transcribed even when they exceed a provider's file limit, so that length is never a reason to fail. |
+| SRC-07 | As the owner, I want to know which source a transcript came from and how its timing was obtained, so that I can judge how far to trust it. |
+| SRC-08 | As the owner, I want the original language detected when the platform does not provide it, so that the right languages and prompts are used. |
+| SRC-09 | As the owner, I want subtitles that come with my local files or podcast feeds to be used before any transcription, so that existing work is reused. |
+
+## 規則
+
+| ID | 規則 |
+|---|---|
+| SRC-R1 | 依 `language.caption_priority` 的順序尋找平台字幕軌，使用第一個符合的。`original` 代表影音的原文語言。 |
+| SRC-R2 | 平台機器翻譯的字幕軌（`platform-translated`）預設不採用，除非 `allow_platform_translated: true`。 |
+| SRC-R3 | 平台字幕都不符合時，依 `language.fallback` 的順序使用其他來源，預設為 `[supadata, groq]`。 |
+| SRC-R4 | 每個來源的結果都要通過品質檢查，沒通過就記錄原因、標記 `rejected`，改用下一個來源：涵蓋率低於片長的 50%（`low_coverage`）、語言和預期不符（`language_mismatch`）、重複句比例超過 30%（`repetition`）、超過 80% 的 cue 只有音樂標記（`music_only`）。門檻是預設值，依 M0 結果調整。 |
+| SRC-R5 | 所有來源都用完仍沒有可用的字幕時，`transcript` 為 `failed`（`permanent`），訊息為「找不到可用的字幕來源。」，動作為「設定語音轉錄服務」。 |
+| SRC-R6 | YouTube 自動字幕還沒生成時，`transcript` 為 `waiting`，2 小時後再檢查，不消耗重試次數。從發布時間算起超過 24 小時仍沒有，就改用下一個來源。訊息為「YouTube 還沒產生自動字幕，預計 2 小時後再檢查。」，動作為「現在改用語音轉錄」。 |
+| SRC-R7 | 直播中或首播尚未開始的影音，`metadata` 為 `waiting`，直到有 VOD。 |
+| SRC-R8 | 來源需要 cookie 但沒有可用的 cookie 時，步驟為 `blocked`（`needs_action`），訊息說明需要哪個平台的 cookie，動作為「上傳 cookie」與「改用語音轉錄」。 |
+| SRC-R9 | yt-dlp 回傳 403 時，步驟為 `blocked`（`needs_action`），訊息為「YouTube 拒絕了下載請求（403）。先更新 yt-dlp 再重試；如果仍然失敗，上傳 YouTube cookie。」，動作為「更新 yt-dlp」與「上傳 cookie」。 |
+| SRC-R10 | 需要 API key 的來源沒有設定 key 時，步驟為 `blocked`（`needs_action`），動作為「設定 API key」。 |
+| SRC-R11 | 原文語言依序採用：平台中繼資料、ASR 回報的語言、文字語言偵測。兩種語言都各占 20% 以上的字元時，標記為 `mixed`，主要語言取占比較高的一種。 |
+| SRC-R12 | ASR 前處理：轉成單聲道 16kHz 並壓縮。仍超過 provider 的單檔上限時，在靜音處切塊並保留重疊；合併時修正時間偏移、移除重疊區的重複內容，結果的時間必須單調遞增。 |
+| SRC-R13 | 過濾 Whisper 幻覺：`no_speech_prob` 高於 0.6 且 `compression_ratio` 高於 2.4 的 segment 移除；連續 3 次以上完全相同的句子只保留一次。 |
+| SRC-R14 | 本機檔案依序使用：同名的外掛字幕檔（`<stem>.<lang>.srt`／`.vtt`）、ffprobe 偵測到的內嵌字幕軌，最後才用 ASR。Podcast 有 `<podcast:transcript>` 時優先使用。 |
+| SRC-R15 | Podcast 下載音檔時記錄 `sha256` 與實際長度；和 transcript 的最後一個 cue 相差超過 2% 時，影音顯示「時間可能偏移」。 |
+| SRC-R16 | 原始字幕的來源紀錄包含：`source`、`timing`（時間粒度）、`tool_versions`（使用 yt-dlp 時包含其版本）。每個 cue 的時間來源為 `source`；Gemini 為 `model`。 |
+| SRC-R17 | 每次 `Probe` 的結果都記錄在 `source_probes`，API 的影音詳情可以列出各來源的狀態與不採用的原因。 |
+
+## 介面
+
+- API：`GET /api/items/:id`（含 `sources` 清單）、`GET /api/items/:id/cues?variant=source`
+- CLI：`notesteme items show <item>`
+- 設定：`language.caption_priority`、`language.allow_platform_translated`、`language.fallback`；設定檔中的 `asr.providers`
+
+## 不在範圍內
+
+- 發布後 7 天內重新 `Probe` 與「發現更好的來源」通知（M4，故事地圖 SRC-10）。
+- 詞彙表傳給 ASR（M2，見 COR）。
+- Gemini 當作字幕來源（M3）。
+
+## 待決問題
+
+- 品質檢查的門檻（SRC-R4）、幻覺過濾的門檻（SRC-R13），依 M0 樣本調整；相關場景標記 `@pending-m0`。
+- Groq 是否提供 word 級時間戳（M0）。沒有的話，Groq 的時間粒度改為 `segment`。

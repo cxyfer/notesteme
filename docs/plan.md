@@ -1,7 +1,7 @@
 # Notesteme 計畫
 
 > 狀態：草案 v0.2（2026-11-12，修訂紀錄見第 28 節）
-> 相關文件：[ADR 索引](adr/README.md)、[UI 規格](ui/README.md)
+> 相關文件：[ADR 索引](adr/README.md)、[UI 規格](ui/README.md)、[規格與驗收](specs/README.md)
 
 ## 1. 背景與目標
 
@@ -698,7 +698,11 @@ notesteme/
     hub/                   # Hub UI（M5）
     shared/                # 共用元件，例如時間帶、字幕列表
   deploy/docker/           # Dockerfile、compose（wsl／vps）
+  features/                # Gherkin 驗收場景，由 godog 執行（見 docs/specs/README.md）
+    steps/                 # step definitions
+    fixtures/              # yt-dlp 輸出、字幕檔、fake provider 的回應
   docs/
+    specs/                 # 能力規格、故事地圖、步驟詞彙、非功能需求
 ```
 
 ## 24. Roadmap
