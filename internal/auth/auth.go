@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/clock"
@@ -31,6 +32,12 @@ const SessionIdleTimeout = 30 * 24 * time.Hour
 // sessionTouchInterval 是延長 session 到期時間的最短間隔，避免每個請求都寫 DB。
 const sessionTouchInterval = time.Hour
 
+// 登入鎖定（AUTH-R6）：連續 maxFailures 次密碼錯誤後鎖定 lockDuration。
+const (
+	maxFailures  = 5
+	lockDuration = time.Minute
+)
+
 // settingPasswordHash 是 settings 中存 owner 密碼 hash 的 key。
 const settingPasswordHash = "owner_password_hash"
 
@@ -45,6 +52,14 @@ var (
 	ErrCSRF = errors.New("CSRF token 缺少或不正確。")
 )
 
+// LockedError 表示登入被鎖定（AUTH-R6）。訊息與密碼錯誤相同，不透露其他資訊；
+// 剩餘時間由 RetryAfter 帶給呼叫端。
+type LockedError struct {
+	RetryAfter time.Duration
+}
+
+func (e *LockedError) Error() string { return ErrInvalidPassword.Error() }
+
 // Config 是 Service 的設定。
 type Config struct {
 	Store *store.Store
@@ -58,6 +73,11 @@ type Service struct {
 	store  *store.Store
 	clock  clock.Clock
 	params HashParams
+
+	// 登入失敗計數只有 owner 一個帳號，所以是全域的；只存在記憶體，重啟後歸零。
+	mu          sync.Mutex
+	failures    int
+	lockedUntil time.Time
 }
 
 // New 建立 Service。
@@ -103,9 +123,11 @@ type Credentials struct {
 }
 
 // Login 驗證密碼並建立 session。
-//
-// TODO(AUTH-R6)：連續 5 次錯誤後鎖定 1 分鐘，鎖定期間回傳 429 與剩餘秒數。
+// 連續 5 次密碼錯誤後鎖定 1 分鐘，鎖定期間連正確的密碼也拒絕，回傳 *LockedError（AUTH-R6）。
 func (s *Service) Login(ctx context.Context, password, ip, userAgent string) (Credentials, error) {
+	if retry := s.lockRemaining(); retry > 0 {
+		return Credentials{}, &LockedError{RetryAfter: retry}
+	}
 	encoded, ok, err := s.store.GetSetting(ctx, settingPasswordHash)
 	if err != nil {
 		return Credentials{}, err
@@ -118,8 +140,10 @@ func (s *Service) Login(ctx context.Context, password, ip, userAgent string) (Cr
 		return Credentials{}, err
 	}
 	if !match {
+		s.recordFailure()
 		return Credentials{}, ErrInvalidPassword
 	}
+	s.resetFailures()
 
 	token, err := randomToken()
 	if err != nil {
@@ -130,6 +154,30 @@ func (s *Service) Login(ctx context.Context, password, ip, userAgent string) (Cr
 		return Credentials{}, err
 	}
 	return Credentials{Token: token, CSRF: csrfFor(token), ExpiresAt: sess.ExpiresAt}, nil
+}
+
+// lockRemaining 回傳鎖定還剩多久；沒有鎖定時為 0。
+func (s *Service) lockRemaining() time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return max(0, s.lockedUntil.Sub(s.clock.Now()))
+}
+
+// recordFailure 記錄一次密碼錯誤；達到上限時開始鎖定並重新計數。
+func (s *Service) recordFailure() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failures++
+	if s.failures >= maxFailures {
+		s.failures = 0
+		s.lockedUntil = s.clock.Now().Add(lockDuration)
+	}
+}
+
+func (s *Service) resetFailures() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failures = 0
 }
 
 // Logout 讓 session 立即失效；token 不存在時不算錯誤。

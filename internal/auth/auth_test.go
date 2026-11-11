@@ -147,3 +147,44 @@ func TestBearerNotYetSupported(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestLoginLockout(t *testing.T) {
+	ctx := context.Background()
+	svc, _, clk := newService(t)
+	if err := svc.EnsurePassword(ctx, "pw"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		if _, err := svc.Login(ctx, "wrong", "", ""); !errors.Is(err, ErrInvalidPassword) {
+			t.Fatalf("attempt %d: err = %v", i+1, err)
+		}
+	}
+	// 鎖定期間連正確的密碼也拒絕，並回報剩餘時間。
+	var locked *LockedError
+	_, err := svc.Login(ctx, "pw", "", "")
+	if !errors.As(err, &locked) || locked.RetryAfter != time.Minute || err.Error() != "密碼不正確。" {
+		t.Fatalf("err = %v (%+v)", err, locked)
+	}
+	clk.Advance(20 * time.Second)
+	if _, err := svc.Login(ctx, "pw", "", ""); !errors.As(err, &locked) || locked.RetryAfter != 40*time.Second {
+		t.Fatalf("after 20s: err = %v (%+v)", err, locked)
+	}
+	clk.Advance(41 * time.Second)
+	if _, err := svc.Login(ctx, "pw", "", ""); err != nil {
+		t.Fatalf("after the lock expires: %v", err)
+	}
+}
+
+func TestSuccessResetsFailureCount(t *testing.T) {
+	ctx := context.Background()
+	svc, _, _ := newService(t)
+	_ = svc.EnsurePassword(ctx, "pw")
+	for round := 0; round < 3; round++ {
+		for i := 0; i < 4; i++ {
+			_, _ = svc.Login(ctx, "wrong", "", "")
+		}
+		if _, err := svc.Login(ctx, "pw", "", ""); err != nil {
+			t.Fatalf("round %d: %v", round, err)
+		}
+	}
+}
