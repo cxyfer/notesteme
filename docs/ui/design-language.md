@@ -79,11 +79,16 @@
 --text-primary     /* Ink | Paper */
 --text-secondary   /* Pewter | Pewter Dim */
 --mark-now         /* Cue：播放頭、目前句、選中 */
---state-done       /* Ink | Paper：實心 */
+--surface-hover    /* Ink 5% | Paper 5%：hover 底色 */
+--state-done       /* Ink | Paper：處理中的 chunk、等待 Agent 的虛線 */
+--state-done-quiet /* Ink 34% | Paper 34%：已完成的步驟帶，刻意保持安靜 */
 --state-pending    /* Pewter：虛線 */
 --state-failed     /* Fault */
 --state-ok-text    /* Signal */
 --rule             /* Pewter 24% */
+--density-fill     /* Ink 14% | Paper 12%：說話密度的面積 */
+--density-line     /* Ink 55% | Paper 55%：說話密度的輪廓線 */
+--chapter          /* Ink 40% | Paper 38%：章節線 */
 ```
 
 ## 4. 字體
@@ -98,19 +103,21 @@
 | 程式碼 | 系統等寬字體 | 只用在 prompt 編輯器與 JSON 檢視 |
 
 - 時間碼、時長、金額一律用 Barlow 的 `font-variant-numeric: tabular-nums`。**不用等寬字體顯示小型資料標籤。**
-- M1 要驗證 Barlow 的 `tnum` 支援；不支援時改用 IBM Plex Sans Condensed。
+- 已在 mockup 中驗證：Barlow 支援 `tnum`。開啟後「1111」與「0000」的寬度相同；未開啟時寬度差了約 60%。
 
 ### 4.2 依語言的字型堆疊
 
-同一個漢字在繁中、简中、日文中的字形不同。`<html lang>` 要跟隨 UI 語言，並用 `:lang()` 選擇字型：
+同一個漢字在繁中、简中、日文中的字形不同。`<html lang>` 要跟隨 UI 語言，內容元素則標上內容自己的 `lang`（例如简中的影片標題、字幕）。
+
+只在 `:root` 設定一次字型堆疊是不夠的：子元素繼承的是已經解析好的 `font-family`，所以繁中頁面裡的简中標題仍會用繁中字形。mockup 改用下面的寫法，讓每個元素都依自己的語言重新解析：
 
 ```css
-:root:lang(zh-Hant) { --font-ui: "Barlow", "PingFang TC", "Microsoft JhengHei UI", "Noto Sans CJK TC", "Noto Sans TC", sans-serif; }
-:root:lang(zh-Hans) { --font-ui: "Barlow", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Noto Sans SC", sans-serif; }
-:root:lang(en)      { --font-ui: "Barlow", system-ui, sans-serif; }
+:root          { --family: "Barlow"; }
+:lang(zh-Hant) { --cjk: "PingFang TC", "Microsoft JhengHei UI", "Noto Sans CJK TC", "Noto Sans TC"; }
+:lang(zh-Hans) { --cjk: "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Noto Sans SC"; }
+*              { font-family: var(--family), var(--cjk), sans-serif; }
+.cond          { --family: "Barlow Semi Condensed"; }  /* 元件只改 --family，不直接寫 font-family */
 ```
-
-字幕內容的語言可能和 UI 語言不同。顯示字幕的元素要設定該字幕自己的 `lang`。
 
 ### 4.3 字級（沿用 Bringhurst 的傳統級數）
 
@@ -196,10 +203,11 @@
 
 | 圖層 | 內容 | 表現 |
 |---|---|---|
-| 底軌 | 影音全長 | Sheet 底，1px `--rule` 邊，2px 圓角 |
-| 說話密度 | 每個時間區間的字數／秒 | Ink 32% 的直條，看得出沉默與密集的段落 |
-| 章節 | 章節起點 | 1px Ink 48% 的直線，hover 顯示章節名稱 |
-| 步驟帶 | 字幕、校正、翻譯（依處理方案顯示） | 底軌下方，每條 3px，間隔 2px |
+| 底軌 | 影音全長 | `--surface-app` 色調（放在 Sheet 上），2px 圓角，不加外框 |
+| 說話密度 | 每個時間區間的平均說話速度（字數／秒，依重疊時間加權） | 平滑的面積輪廓：`--density-fill` 填色加 1px `--density-line` 輪廓線。沉默會讓輪廓下降。還沒轉錄的部分只畫一條點狀基線 |
+| 章節 | 章節起點 | 1px `--chapter` 直線；`###` 小節只畫下半段；hover 顯示章節名稱 |
+| 處理範圍 | 正在處理或失敗的時間範圍（只在完整版） | 底軌上淡淡的 Ink 8% 或 Fault 12% 區塊，對應下方步驟帶的位置 |
+| 步驟帶 | 字幕、校正、翻譯（依處理方案顯示） | 底軌下方；精簡版每條 3px、間隔 2px；完整版每條 6px，右側 112px 欄位放逐列對齊的標籤 |
 | 畫面 | 候選與選中的畫面 | 候選：底軌下方 1px Pewter 刻度；選中：底軌上方 6px Cue 三角，加 1px Ink 邊 |
 | 播放頭 | 目前播放位置（只在詳情頁） | 2px Cue 直線，加 1px Ink 邊，可以拖曳 |
 
@@ -207,17 +215,19 @@
 
 | 狀態 | 表現 | 文字 |
 |---|---|---|
-| 完成 | 實心 Ink | 完成 |
-| 處理中 | 已完成的 chunk 依它的時間範圍填實；目前的 chunk 顯示「顯影」動畫；其餘為 Pewter 虛線 | 校正 9/16 |
-| 等待 Agent | Ink 虛線，起點有 Agent 圖示 | 等待 Agent |
-| 失敗 | 失敗 chunk 的時間範圍用 Fault 加斜線紋 | 失敗：第 10 段 |
+| 完成 | `--state-done-quiet` 實心，刻意保持安靜 | 完成 |
+| 處理中 | 已完成的 chunk 依它的時間範圍，用和「完成」相同的淡色填實；目前的 chunk 用 Ink 顯示「顯影」動畫；其餘為 Pewter 虛線 | 校正 9/16 |
+| 等待 Agent | Ink 實色長虛線 | 等待 Agent |
+| 失敗 | 失敗 chunk 的時間範圍用 Fault 加白色斜線紋 | 失敗：第 7 段 |
 | 略過 | 不顯示這條帶子，tooltip 說明 | 已略過 |
 
 LLM 的 chunk 本身就對應影片中的時間範圍，所以進度可以畫在實際的時間位置上。使用者看得到**是影片的哪一段**卡住了，不只是一個百分比。
 
+強弱的分配原則：已完成是常態，所以很安靜；只有例外狀態（處理中、失敗、等待 Agent）使用強色。一頁的媒體庫掃過去，目光會自動停在需要注意的列上。
+
 **尺寸**：
 
-- 精簡版：底軌 24px 加上步驟帶，用在媒體庫的列、佇列、訂閱預覽。
+- 精簡版：底軌 24px 加上步驟帶，用在媒體庫的列、佇列、訂閱預覽。步驟帶太細，放不下逐條標籤，文字改放在列右側的狀態欄。
 - 完整版：底軌 72px，加上時間刻度（Barlow Semi Condensed 12px），用在影音詳情頁的頂部，同時當作播放器的拖曳軸。
 
 **互動**：
@@ -244,9 +254,9 @@ LLM 的 chunk 本身就對應影片中的時間範圍，所以進度可以畫在
 ### 6.2 字幕句列表
 
 ```
-  04:12   我們先看一下為什麼 Postgres 的擴充性
-▌ 04:16   這麼好，關鍵在於它的 extension 機制          ← 目前句：左側 3px Cue 條
-  04:21 ◦ 你可以把它想成一個外掛系統                    ← ◦ 表示時間由停頓推算
+  06:22   應該是提高工作效率的
+▌ 06:25   比如說 daily stand-up                      ← 目前句：左側 3px Cue 條
+  06:26 ◦ 原本的目的是提升團隊的資訊同步             ← ◦ 表示時間由停頓推算
 ```
 
 - 時間碼靠右對齊、用 tabular 數字、Pewter 色；點擊時間碼會跳到該時間。
@@ -272,7 +282,7 @@ LLM 的 chunk 本身就對應影片中的時間範圍，所以進度可以畫在
 | `pending` | 空心圓 | 等待中 |
 | `running` | 半實心圓 | 處理中 |
 | `awaiting_agent` | Agent 圖示 | 等待 Agent |
-| `done` | 實心圓 | 完成 |
+| `done` | 實心勾（Signal 色；文字用次要色，保持安靜） | 完成 |
 | `skipped` | 斜線圓 | 已略過 |
 | `failed` | 叉號 | 失敗 |
 | `needs_action` | 驚嘆號 | 需要你處理 |
@@ -307,8 +317,23 @@ LLM 的 chunk 本身就對應影片中的時間範圍，所以進度可以畫在
 | 選中的畫面用手繪色筆圈 | 會和時間帶搶注意力 | 依「出門前拿掉一件配件」的原則，改成簡單的 Cue 框 |
 | 背景用暖色米白紙張 | 與「米白 + 襯線 + 陶土色」的常見組合重疊 | 改用偏冷的 Opal；襯線只用在閱讀區，用來區分「操作」和「閱讀」 |
 
+### 8.1 Mockup 第一輪的修正（2026-11-12）
+
+用 vault 中的真實內容（11 部影片的章節、選中畫面與 SRT）做 [mockup](mockups/library.html)，截圖檢查後修正：
+
+| 看到的問題 | 修正 |
+|---|---|
+| 說話密度畫成直條，像條碼，很吵；以每格最大值計算，長片的起伏都被抹平 | 改成平滑的面積輪廓，並用依重疊時間加權的平均值，沉默會讓輪廓下降 |
+| 已完成的步驟帶是實心 Ink，像刪除線，比例外狀態還搶眼 | 已完成改用 `--state-done-quiet`；只有處理中、失敗、等待 Agent 用強色 |
+| 底軌加外框後和步驟帶擠在一起，顯得厚重 | 拿掉外框，只用色調區分 |
+| 完整版右側的步驟帶標籤擠成一團 | 改成逐列對齊的右側欄位 |
+| 只看下方步驟帶，看不出處理中的是影片哪一段 | 在底軌上淡淡標出處理中或失敗的時間範圍 |
+| 在 `:root` 設定字型堆疊，繁中頁面裡的简中標題仍用繁中字形 | 改成每個元素依自己的 `lang` 重新解析（見 §4.2） |
+| 平板寬度把播放器堆疊到整頁寬，太搶眼 | 900px 以上維持兩欄；更窄時播放器最寬 640px |
+| 手機版的篩選按鈕佔掉兩行 | 手機版合併成一個「篩選」按鈕，長度改放到標題下方 |
+
 ## 9. 驗證方式
 
-- M1 先用真實內容（vault 裡現有的影片）做媒體庫和影音詳情兩頁的靜態 mockup，截圖檢查後再調整 token。
+- 媒體庫與影音詳情的靜態 mockup 放在 [`mockups/`](mockups/)，執行方式見 [`mockups/README.md`](mockups/README.md)。第一輪的修正見 §8.1。
 - 每個里程碑結束時截圖，對照本文件檢查有沒有偏離設計語言。
 - 對比、焦點、`prefers-reduced-motion`、手機版面，都要納入驗收項目。
