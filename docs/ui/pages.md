@@ -310,20 +310,19 @@ Prompt 庫 › 校正 › correct-default
 
 ```
 處理方案 › 標準筆記                                   [ 複製 ]   [ 儲存變更 ]
-字幕 › 斷句 › 校正 › 翻譯 › 匯出 › 關鍵畫面 › 筆記 › 寫入 vault
+字幕 › 斷句 › 校正 › 翻譯 › 關鍵畫面 › 筆記 › 輸出
 
-1 字幕來源    順序  人工字幕 › 自動字幕 › Supadata › whisper-1    [ 調整 ]
+1 字幕來源    順序  人工字幕 › 自動字幕 › Supadata › Groq         [ 調整 ]
               原文語言優先  original › zh-Hans      平台機器翻譯字幕  不使用
 2 斷句        API 處理 ▾     openai ／ <model-id> ▾      prompt  segment-default v2 ▾
               段內切分的時間   需要時才切，先找停頓點 ▾
 3 校正        交給 Agent ▾                                prompt  correct-default v3 ▾
 4 翻譯        API 處理 ▾     anthropic ／ <model-id> ▾   目標語言  zh-Hant-TW、en
               中文只差字形時   在地化翻譯（localize）▾      prompt  localize-zh-hant-tw v1 ▾
-5 匯出        SRT、ASS（樣式 default）
-6 關鍵畫面    每分鐘最多 1 張，整部最多 16 張，依片長的建議範圍 ✓
+5 關鍵畫面    每分鐘最多 1 張，整部最多 16 張，依片長的建議範圍 ✓
               選圖  API 處理 ▾  gemini ／ <model-id> ▾
-7 筆記        模板  Video Notes 預設 ▾    API 處理 ▾
-8 寫入 vault  git：private/master ▾
+6 筆記        模板  Video Notes 預設 ▾    API 處理 ▾
+7 輸出        vault  git：private/master ▾      字幕檔  SRT、ASS（樣式 default）
 ```
 
 - 步驟本身有先後順序，所以這裡使用編號。
@@ -393,24 +392,24 @@ Prompt 庫 › 校正 › correct-default
 
 | 分區 | 內容 | 里程碑 |
 |---|---|---|
-| 服務與金鑰 | ASR、LLM、Supadata 的 provider 與 API key；每個都有「測試連線」按鈕；顯示模型的停用公告 | M1 |
+| 服務與金鑰 | ASR、LLM、Supadata 的 provider 與 API key；每個都有「測試連線」按鈕；顯示模型的停用公告。`command` adapter 只能在設定檔中定義，這裡唯讀顯示 | M1 |
 | 帳號與 Cookie | 上傳 YouTube、Bilibili cookie，加密存放；顯示最後一次成功使用的時間與是否失效 | M1 |
 | 語言 | 預設目標語言、原文字幕的語言優先順序、介面語言 | M1 |
-| 輸出 | Vault 寫入方式（本機資料夾或 git）、路徑或 repo、分支、使用者修改過時的處理方式、寫入後執行的命令 | M3 |
-| MCP 與 Agent | 產生與撤銷 token；顯示 Claude Code 的設定片段；Agent 一次最多領取幾個、租約時長 | M2 |
+| 輸出 | 輸出目標：vault（本機資料夾或 git）、本機影片旁、指定資料夾；路徑或 repo、分支、使用者修改過時的處理方式；寫入後執行的 hook（只能選用設定檔中定義的項目） | M2 本機影片旁與資料夾，M3 vault |
+| MCP 與 Agent | 產生與撤銷 token，選擇 scope 與到期時間；顯示 Claude Code 的設定片段；Agent 一次最多領取幾個、租約時長、逾時後的處理方式 | M2 |
 | 通知 | ntfy、Discord、Telegram、webhook；分別勾選要通知哪些事件；「傳送測試通知」 | M4 |
 | 預算 | 月預算、單部上限、預算將用完時的通知門檻 | M4 |
 | 系統 | yt-dlp、ffmpeg、Deno 的版本；「更新 yt-dlp」與「回到上一個版本」；磁碟用量；媒體檔保留天數 | M1 |
 | 外觀 | 淺色、深色或跟隨系統；介面密度 | M1 |
-| 登入 | 修改密碼；目前的登入工作階段 | M4 |
+| 登入 | 修改密碼（M1）；目前的登入工作階段、反向代理驗證與 OIDC（M4） | M1 起逐步補齊 |
 
 - **安全**：API key 儲存後只顯示末四碼，不能再次查看完整內容，只能更換。
-- **API**：`GET/PUT /api/settings/:section`、`POST /api/providers/:id/test`、`POST /api/cookies`、`GET /api/system`、`POST /api/tools/yt-dlp/update`、`GET/POST/DELETE /api/mcp-tokens`
+- **API**：`GET/PUT /api/settings/:section`、`POST /api/providers/:id/test`、`POST /api/cookies`、`GET /api/system`、`POST /api/tools/yt-dlp/update`、`GET/POST/DELETE /api/tokens`
 
 ## 13. 登入
 
-- **目的**：保護部署在 VPS 或區網上的實例。
-- **里程碑**：M4
+- **目的**：保護所有部署的實例，包括只在本機使用的情況。
+- **里程碑**：M1。反向代理驗證與 OIDC 在 M4。
 - **版面**：
   - Opal 背景中央放一張 Sheet 卡片，內容是 notesteme 字標、密碼欄位、「登入」按鈕。
   - 背景是一條淡化的時間帶，畫的是固定的示意資料。登入前不能露出任何實際內容，所以不使用真實影片的資料。登入頁只有這一個裝飾元素。

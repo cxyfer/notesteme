@@ -33,7 +33,7 @@
 | [筆記模板](pages.md#10-筆記模板) | `/note-templates`、`/note-templates/:id` | M3 |
 | [成本](pages.md#11-成本) | `/costs` | M4 |
 | [設定](pages.md#12-設定) | `/settings/:section` | M1 起逐步補齊 |
-| [登入](pages.md#13-登入) | `/login` | M4 |
+| [登入](pages.md#13-登入) | `/login` | M1 |
 
 ## 3. 共用互動模式
 
@@ -138,6 +138,9 @@
 | awaiting_agent | 等待 Agent | 等待 Agent | Waiting for agent |
 | needs_action | 需要你處理 | 需要你处理 | Needs you |
 | budget_blocked | 超出預算 | 超出预算 | Over budget |
+| waiting | 稍後檢查 | 稍后检查 | Checking later |
+| awaiting_user | 等你決定 | 等你决定 | Awaiting your decision |
+| output target | 輸出目標 | 输出目标 | Output target |
 | subscription | 訂閱 | 订阅 | Subscription |
 | channel | 頻道 | 频道 | Channel |
 | cue | 字幕句 | 字幕句 | Line |

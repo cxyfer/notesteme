@@ -2,6 +2,7 @@
 
 - 狀態：已採納
 - 日期：2026-11-11
+- 修訂：2026-11-12，新增句群翻譯、章節與筆記的時間來源、`split_timing_audio`，`Cue` 預留 `Speaker`
 
 ## 背景
 
@@ -15,7 +16,7 @@
 
 ## 決策
 
-1. **LLM 只回傳文字和斷點標記，時間一律由程式計算。**
+1. **LLM 只回傳文字和斷點標記，時間一律由程式計算。** 章節與筆記也一樣，LLM 只引用 cue 編號。
 2. 各種操作的時間來源：
 
    | 操作 | 時間來源 |
@@ -24,11 +25,14 @@
    | 合併相鄰 cue | 第一句的 start 到最後一句的 end |
    | 段內切分，有 word 級時間 | 斷點所在字詞的 end |
    | 段內切分，沒有 word 級時間 | 依 `split_timing` 策略處理 |
+   | 句群翻譯（一句跨越多個 cue） | LLM 在譯文中插入切分標記，程式依標記把譯文分回原本的 cue，時間不變；標記數不符時退回逐 cue 翻譯 |
+   | 章節起點、筆記中的時間連結 | LLM 引用的 cue 的 start，程式檢查編號確實存在 |
 
 3. `split_timing` 策略：
    - `forbid`：不允許段內切分，時間 100% 來自來源。
    - `when_needed`（預設）：只有超過長度或時長上限時才切。先用 ffmpeg `silencedetect` 在段內找停頓點，找不到才依字數比例插值。
    - `free`：讓 LLM 自由斷句，時間的處理方式和 `when_needed` 相同。
+   - `silencedetect` 需要音訊，是否為此下載由 `split_timing_audio` 控制：`auto` 在需要段內切分、又沒有 word 級時間時只下載音訊；`never` 直接依字數插值。`wsl` profile 預設 `auto`，`vps` profile 預設 `never`，因為在 VPS 上下載音訊一樣會觸發 YouTube 反爬。
 4. 每個 cue 記錄時間怎麼來的：
 
    ```go
@@ -39,6 +43,7 @@
        Text       string
        Words      []Word       // 可為空
        Timing     TimingOrigin
+       Speaker    string       // 可為空，對應 Transcript.Speakers 的 id；說話者辨識之後再做，格式先預留
    }
    ```
 
@@ -58,5 +63,5 @@
   - UI 可以標示哪些 cue 的時間是推算出來的。
   - Hub 上的使用者可以依時間來源篩選。
 - 代價：
-  - 需要實作「斷點標記對回字詞與時間」的對齊程式（LLM 可能改動文字，要用模糊比對），並寫完整的 golden 測試。
-- M0 要用實際樣本量測各來源的 segment 長度分佈，用來調整 `when_needed` 的門檻。
+  - 需要實作「斷點標記對回字詞與時間」的對齊程式（LLM 可能改動文字，要用模糊比對），並寫完整的 golden 測試。句群翻譯的切分標記也一樣需要 golden 測試。
+- M0 要用實際樣本量測各來源的 segment 長度分佈，用來調整 `when_needed` 的門檻；同時量測斷點標記對齊的成功率。

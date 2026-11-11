@@ -2,6 +2,7 @@
 
 - 狀態：已採納
 - 日期：2026-11-11
+- 修訂：2026-11-12，新增品質檢查、語言偵測與重新 Probe；預設 fallback 改用 Groq；`command` adapter 只能寫在設定檔
 
 ## 背景
 
@@ -41,6 +42,10 @@ type Caps struct {
 
 - 依處理方案中的 `caption_priority` 與 `fallback` 順序，逐一呼叫 `Probe`，用第一個可用的來源。
 - 平台的字幕規則（人工或自動、語言）也透過同一個介面實作。
+- `Fetch` 之後先做品質檢查：時間涵蓋率、語言是否符合預期、重複句與幻覺的比例、是否幾乎只有音樂標記。沒有通過就記錄原因、標記 `rejected`，改用下一個來源。門檻在 M0 用樣本調整。
+- 原文語言依序採用：平台中繼資料、ASR 回報的語言、文字語言偵測的結果。中英夾雜時記錄主要語言並標記 `mixed`。
+- 影音發布後 7 天內，如果採用的是較低優先的來源，會定期重新 `Probe`。發現更好的來源時預設只通知，由使用者決定是否重跑。
+- 每次 `Probe` 的結果都記錄在 `source_probes`，UI 可以顯示有哪些來源、為什麼沒有採用。
 
 ### 外部 adapter（不用重新編譯）
 
@@ -58,8 +63,11 @@ asr:
       env_allowlist: [PATH, HOME, HF_HOME]
 ```
 
+- 預設的 ASR fallback 是 `groq`。`whisper-1` 會在 2027-02-26 停止服務，只當作選項。Groq 能否提供 word 級時間戳在 M0 確認。
 - `openai-compatible`：OpenAI、Groq、自架的 Speaches 或 faster-whisper server 都能用。
 - `command`：執行本機 CLI，再解析它的輸出（`whisperx-json`、`srt`、`vtt`、`notesteme-cues+json`）。執行時清除無關的環境變數。
+  - `command` adapter 等於能在主機上執行命令，所以只能寫在設定檔，API 與 MCP 只能選用（ADR-0013）。
+  - 參數只能來自模板變數，以 argv 陣列直接傳入，不經過 shell；一律套用逾時與輸出大小上限。
 
 ### ASR 共用前處理
 

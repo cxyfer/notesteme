@@ -2,6 +2,7 @@
 
 - 狀態：已採納
 - 日期：2026-11-11
+- 修訂：2026-11-12，新增 process group、限定 extractor、更新後自我檢查與自動回退
 
 ## 背景
 
@@ -13,11 +14,13 @@
 
 1. **一律以子程序執行**，不嵌入 Python：
    - 用 `exec.CommandContext` 處理逾時與取消。
+   - 子程序放在獨立的 process group 中執行（Windows 用 Job Object），取消或關閉時整組一起結束，不留下孤兒程序。
    - stdout 和 stderr 限制大小。
    - 解析結構化的輸出：`yt-dlp -J`、`--print`、`--progress-template` 搭配 `--newline`、`ffprobe -of json`。
 2. **安裝 yt-dlp**：
    - 在 `/data/tools/yt-dlp-venv` 建立 venv，用 pip 安裝 `yt-dlp[default]`。這樣會附帶 `yt-dlp-ejs`，也能安裝 PO Token provider 之類的 plugin。
    - 排程自動更新，UI 上也有「更新 yt-dlp」按鈕。
+   - 更新後執行自我檢查：`--version`，並對一部已知的影片跑一次 `Probe`。失敗就自動回退到上一版並發出通知。
    - 每次執行時記錄使用的 yt-dlp 版本，寫進來源紀錄。
 3. **Docker image** 以 Debian slim 為基礎，內含：
    - `python3`（只給 yt-dlp 用）。
@@ -31,6 +34,7 @@
    - 在 UI 上傳，加密存放，執行時才寫成暫存檔交給 yt-dlp。
    - 記錄最後一次成功使用的時間；失敗時歸為 `needs_action`。
 7. **選配 sidecar**：PO Token provider，透過 yt-dlp plugin 連到 sidecar。
+8. **限定 extractor**：yt-dlp 的請求不經過 Notesteme 的對外 HTTP client，無法套用 SSRF 防護（ADR-0014）。所以呼叫時只開放 YouTube 與 Bilibili 的 extractor，關閉 generic extractor；Podcast 音檔由 Notesteme 自己下載。
 
 ## 考慮過的選項
 
@@ -45,4 +49,4 @@
   - 錯誤訊息具體、可行動。
 - 代價：
   - image 要包含 Python 和 Deno，大約幾百 MB。
-  - 執行期更新可能引入新的錯誤，所以 UI 要能固定或回退 yt-dlp 的版本。
+  - 執行期更新可能引入新的錯誤，所以 UI 要能固定或回退 yt-dlp 的版本，自我檢查失敗時也會自動回退。

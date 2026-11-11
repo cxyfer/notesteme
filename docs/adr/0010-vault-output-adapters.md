@@ -1,7 +1,8 @@
-# ADR-0010：Vault 輸出用 fs 與 git adapter，不覆蓋使用者修改
+# ADR-0010：輸出目標用統一介面，vault 用 fs 與 git adapter，不覆蓋使用者修改
 
 - 狀態：已採納
 - 日期：2026-11-11
+- 修訂：2026-11-12，vault 改為輸出目標的一種，新增 `sidecar` 與 `folder`；寫入紀錄存在 `outputs`；hook 只能寫在設定檔
 
 ## 背景
 
@@ -16,30 +17,41 @@
 
 ## 決策
 
-1. **Adapter 介面**：
+1. **Adapter 介面**：所有輸出目標都實作同一個介面，由 `publish` 步驟呼叫。字幕在寫出時才從 cues JSON 渲染成 SRT、ASS 等格式。
 
    ```go
-   type VaultWriter interface {
-       Plan(ctx context.Context, note NoteBundle) (WritePlan, error) // 列出要寫哪些檔、哪些有衝突
+   type OutputWriter interface {
+       Plan(ctx context.Context, out OutputBundle) (WritePlan, error) // 列出要寫哪些檔、哪些有衝突
        Apply(ctx context.Context, plan WritePlan) (Result, error)
    }
    ```
+
+   | 目標 | 用途 |
+   |---|---|
+   | `vault`（`fs`、`git`） | 筆記、附件與筆記引用的字幕檔 |
+   | `sidecar` | 只用於本機檔案，依 Jellyfin、Plex 的命名慣例把字幕寫在影片檔旁邊 |
+   | `folder` | 寫到指定資料夾 |
+
+   vault 的兩種 adapter：
 
    - `fs`：直接寫入 bind mount 的目錄。
    - `git`：
      1. 在 `/data/vault-repo` clone vault。
      2. 寫入檔案。
      3. 只 `git add` 這次產出的檔案，commit 後 push 到設定的分支。
-     4. 遇到 non-fast-forward 或認證失敗時，任務標記為 `needs_action`。不自動 rebase、merge 或 stash。
+     4. 遇到 non-fast-forward 或認證失敗時，步驟標記為 `blocked`（原因 `needs_action`）。不自動 rebase、merge 或 stash。
 2. **檔名與路徑**：
    - 過濾 NTFS 不允許的字元 `\/:*?"<>|`，避開保留名稱（`CON`、`NUL` 等），並限制路徑長度。
    - 資料夾版面規則（`Channel/` 與其他資料夾的差異）寫成可調整的設定。預設值依照 `Video Notes/AGENTS.md`。
 3. **不覆蓋使用者修改**：
-   - 每次寫入時記錄檔案的 `sha256`。
+   - 每次寫入時，把檔案的 `sha256` 記錄在 `outputs` 表。所有輸出目標都適用。
    - 重新生成時，如果目標檔案的 hash 和上次寫入的不同，就代表使用者改過。依設定擇一處理：
      - 另存為新檔（例如 `<名稱> (notesteme 2026-11-11).md`）。
      - 跳過，並在 UI 上標記「需要你處理」。
-4. **Hook**：寫入完成後可以執行自訂命令，例如通知或額外的 git 操作。命令的參數只能來自模板變數，不接受任意的 shell 字串。
+4. **Hook**：寫入完成後可以執行自訂命令，例如通知或額外的 git 操作。
+   - Hook 只能寫在設定檔，UI、API、MCP 只能選用已定義的 hook（ADR-0013）。
+   - 命令的參數只能來自模板變數，以 argv 陣列直接傳入，不接受任意的 shell 字串。
+   - 一律套用環境變數 allowlist、逾時與輸出大小上限。
 
 ## 考慮過的選項
 

@@ -2,6 +2,7 @@
 
 - 狀態：提議中（格式細節在 M5 前定案）
 - 日期：2026-11-11
+- 修訂：2026-11-12，衍生圖移除 ASS、加入摘要與章節；新增 Agent 自述模型、`imported_from`、`speakers`、`availability` 與匯入規則
 
 ## 背景
 
@@ -17,9 +18,12 @@
 
 ```
 transcript(source) → transcript(normalized) → transcript(segmented)
-  → transcript(corrected) → transcript(translated, zh-Hant-TW) → ass
-                          └→ note ← frames(selected)
+  → transcript(corrected) → transcript(translated, zh-Hant-TW)
+                          └→ note ← frames(selected)、chapters
+transcript(normalized) → summary、chapters
 ```
+
+SRT、VTT、ASS 是取用時即時渲染的格式，不在衍生圖中。
 
 `provenance_json` 範例：
 
@@ -35,6 +39,10 @@ transcript(source) → transcript(normalized) → transcript(segmented)
   "created_at": "2026-11-11T10:00:00Z"
 }
 ```
+
+- `executor` 為 `agent` 時，模型由 Agent 自行回報，無法驗證：改記為 `model_reported`，並加上 `"model_verified": false`。Hub 依模型篩選時，這類版本另外標示。
+- 從 bundle 匯入的產出，來源紀錄加上 `imported_from`（來源 bundle 的 `created_by` 與 hash），不視為已驗證。
+- 匯入外部編輯過的字幕時，`executor` 記為 `human`。
 
 ### Bundle 格式 v0
 
@@ -56,7 +64,8 @@ artifacts/<artifact-id>.<ext>
     "channel": { "external_id": "<channel-id>", "title": "…" },
     "published_at": "2026-11-01",
     "duration_s": 1935,
-    "original_lang": "en"
+    "original_lang": "en",
+    "availability": "public"
   },
   "artifacts": [
     {
@@ -77,8 +86,15 @@ artifacts/<artifact-id>.<ext>
 ```
 
 - 原始字幕和衍生字幕都用 `notesteme-cues+json`，保留 `Timing` 和 word 級資料。SRT、ASS 是匯出時另外產生的格式。
+- `notesteme-cues+json` 的頂層預留 `speakers: [{id, label}]`，每個 cue 有可為空的 `speaker`。MVP 不填，之後加入說話者辨識時就不是不相容的變更。
+- `availability` 來自 yt-dlp。不是 `public` 的影音（會員限定、私人、需要登入），以及用 cookie 取得的字幕，預設禁止上傳到 Hub。
 - 筆記中引用的圖片放在 `artifacts/`。預設**不包含**媒體檔。
 - 匯入時，用 `(platform, external_id, part)` 比對既有的影音，並用 `sha256` 去重。
+- Bundle 是不可信的輸入，匯入時：
+  - 拒絕絕對路徑、`..` 與 symlink。
+  - 限制解壓後的總大小、檔案數與壓縮比，防止 zip bomb。
+  - 逐檔驗證 `sha256`，manifest 用 JSON schema 驗證。
+  - 筆記的 Markdown 在 UI 渲染時不允許原始 HTML。
 
 ## 考慮過的選項
 
