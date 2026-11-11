@@ -166,6 +166,70 @@ func TestLoginWrongPassword(t *testing.T) {
 	}
 }
 
+func TestLoginLockedAfterFiveFailures(t *testing.T) {
+	s := newTestServer(t)
+	for i := 0; i < 5; i++ {
+		if rec := s.do("POST", "/api/auth/login", `{"password":"nope"}`, nil); rec.Code != 401 {
+			t.Fatalf("attempt %d status = %d", i+1, rec.Code)
+		}
+	}
+	rec := s.do("POST", "/api/auth/login", `{"password":"pw"}`, nil)
+	if rec.Code != 429 {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+	var e Error
+	_ = json.Unmarshal(rec.Body.Bytes(), &e)
+	if e.Message != "密碼不正確。" || e.RetryAfterS == nil || *e.RetryAfterS != 60 || e.Code != CodeLoginLocked {
+		t.Errorf("error = %+v", e)
+	}
+	s.clk.Advance(61 * time.Second)
+	if rec := s.do("POST", "/api/auth/login", `{"password":"pw"}`, nil); rec.Code != 200 {
+		t.Errorf("after the lock expires status = %d", rec.Code)
+	}
+}
+
+func TestReadyzFailedChecks(t *testing.T) {
+	clk := clock.NewFake(time.Unix(1_700_000_000, 0))
+	st, err := store.Open(context.Background(), t.TempDir(), clk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	h := New(Deps{
+		Store: st, Auth: auth.New(auth.Config{Store: st, Clock: clk, Params: auth.TestParams}), Clock: clk,
+		Log: slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		ReadyChecks: []ReadyCheck{
+			{Name: "ok", Check: func(context.Context) error { return nil }},
+			{Name: "ffmpeg", Check: func(context.Context) error { return io.EOF }},
+		},
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/readyz", nil))
+	var e Error
+	_ = json.Unmarshal(rec.Body.Bytes(), &e)
+	if rec.Code != 503 || e.Code != CodeNotReady || len(e.Failed) != 1 || e.Failed[0] != "ffmpeg" {
+		t.Errorf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+	if strings.Contains(rec.Body.String(), "EOF") {
+		t.Error("readyz must not leak the underlying error")
+	}
+}
+
+func TestPlannedRoutesAnswer501(t *testing.T) {
+	s := newTestServer(t)
+	sess, csrf := s.login(t)
+	for _, c := range [][2]string{
+		{"GET", "/api/settings/services"}, {"PUT", "/api/settings/services"}, {"POST", "/api/providers"},
+	} {
+		rec := s.do(c[0], c[1], "", withCookies(sess, csrf, csrf))
+		var e Error
+		_ = json.Unmarshal(rec.Body.Bytes(), &e)
+		if rec.Code != 501 || e.Code != CodeNotImplemented {
+			t.Errorf("%s %s = %d %s", c[0], c[1], rec.Code, rec.Body)
+		}
+	}
+}
+
 func TestLoginBadBody(t *testing.T) {
 	s := newTestServer(t)
 	rec := s.do("POST", "/api/auth/login", `{}`, nil)

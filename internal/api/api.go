@@ -8,7 +8,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -26,6 +28,14 @@ type Deps struct {
 	Clock   clock.Clock
 	Log     *slog.Logger
 	Version string
+	// ReadyChecks 是 /readyz 在「DB 可寫」之外要檢查的項目（OPS-R5），例如外部工具是否可執行。
+	ReadyChecks []ReadyCheck
+}
+
+// ReadyCheck 是 /readyz 的一個檢查項目；Check 回傳 nil 代表正常。
+type ReadyCheck struct {
+	Name  string
+	Check func(ctx context.Context) error
 }
 
 // readyTimeout 是 /readyz 檢查 DB 是否可寫的上限。
@@ -125,6 +135,19 @@ func (rt *routes) register(api huma.API) {
 		OperationID: "queue-pause", Method: http.MethodPost, Path: "/api/queue/pause",
 		Summary: "暫停佇列（尚未實作）",
 	}, notImplemented)
+	// 之後切片才會實作的路由：先明確回應 501，不要讓它們看起來像不存在（404）。
+	huma.Register(api, huma.Operation{
+		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",
+		Summary: "讀取設定區段（尚未實作）",
+	}, notImplementedSection)
+	huma.Register(api, huma.Operation{
+		OperationID: "settings-put", Method: http.MethodPut, Path: "/api/settings/{section}",
+		Summary: "更新設定區段（尚未實作）",
+	}, notImplementedSection)
+	huma.Register(api, huma.Operation{
+		OperationID: "providers-create", Method: http.MethodPost, Path: "/api/providers",
+		Summary: "新增 provider（尚未實作）",
+	}, notImplemented)
 	huma.Register(api, huma.Operation{
 		OperationID: "mcp", Method: http.MethodPost, Path: "/mcp",
 		Summary: "MCP Streamable HTTP（尚未實作）",
@@ -135,12 +158,26 @@ func (rt *routes) healthz(context.Context, *struct{}) (*statusOutput, error) {
 	return &statusOutput{Body: statusBody{Status: "ok"}}, nil
 }
 
+// readyz 檢查資料庫可寫與各項 ReadyChecks；有失敗項目時回傳 503 並列出（OPS-R5）。
+// 回應只含項目名稱，不含任何內容資料或內部路徑。
 func (rt *routes) readyz(ctx context.Context, _ *struct{}) (*statusOutput, error) {
 	ctx, cancel := context.WithTimeout(ctx, readyTimeout)
 	defer cancel()
+	var failed []string
 	if err := rt.d.Store.CheckWritable(ctx); err != nil {
 		rt.d.Log.ErrorContext(ctx, "readyz：資料庫不可寫", "error", err)
-		return nil, newError(http.StatusServiceUnavailable, CodeNotReady, "資料庫目前無法寫入。")
+		failed = append(failed, "database")
+	}
+	for _, c := range rt.d.ReadyChecks {
+		if err := c.Check(ctx); err != nil {
+			rt.d.Log.WarnContext(ctx, "readyz：檢查失敗", "check", c.Name, "error", err)
+			failed = append(failed, c.Name)
+		}
+	}
+	if len(failed) > 0 {
+		e := newError(http.StatusServiceUnavailable, CodeNotReady, "服務尚未就緒："+strings.Join(failed, "、")+" 無法使用。")
+		e.Failed = failed
+		return nil, e
 	}
 	return &statusOutput{Body: statusBody{Status: "ok"}}, nil
 }
@@ -148,9 +185,15 @@ func (rt *routes) readyz(ctx context.Context, _ *struct{}) (*statusOutput, error
 func (rt *routes) login(ctx context.Context, in *loginInput) (*loginOutput, error) {
 	info := infoFrom(ctx)
 	cred, err := rt.d.Auth.Login(ctx, in.Body.Password, info.IP, info.UserAgent)
+	var locked *auth.LockedError
 	switch {
 	case errors.Is(err, auth.ErrInvalidPassword):
 		return nil, newError(http.StatusUnauthorized, CodeInvalidPass, auth.ErrInvalidPassword.Error())
+	case errors.As(err, &locked):
+		secs := int(math.Ceil(locked.RetryAfter.Seconds()))
+		e := newError(http.StatusTooManyRequests, CodeLoginLocked, locked.Error())
+		e.RetryAfterS = &secs
+		return nil, e
 	case err != nil:
 		rt.d.Log.ErrorContext(ctx, "登入時發生錯誤", "error", err)
 		return nil, asError(err)
@@ -184,6 +227,14 @@ func (rt *routes) listItems(context.Context, *struct{}) (*listItemsOutput, error
 
 // notImplemented 是尚未實作的路由；驗證與 CSRF 已先由 middleware 處理。
 func notImplemented(context.Context, *struct{}) (*emptyOutput, error) {
+	return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
+}
+
+type sectionInput struct {
+	Section string `path:"section"`
+}
+
+func notImplementedSection(context.Context, *sectionInput) (*emptyOutput, error) {
 	return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
 }
 

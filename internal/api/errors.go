@@ -19,8 +19,10 @@ type Error struct {
 	// RequiredScope 在 token 缺少 scope 時指出需要哪一個（AUTH-R8）。
 	RequiredScope string `json:"required_scope,omitempty"`
 	// RetryAfterS 在被鎖定時指出剩餘秒數（AUTH-R6）。
-	RetryAfterS *int     `json:"retry_after_s,omitempty"`
-	Details     []string `json:"details,omitempty"`
+	RetryAfterS *int `json:"retry_after_s,omitempty"`
+	// Failed 在 /readyz 回報 503 時列出失敗的項目（OPS-R5）。
+	Failed  []string `json:"failed,omitempty"`
+	Details []string `json:"details,omitempty"`
 }
 
 // Error 實作 error。
@@ -33,6 +35,7 @@ func (e *Error) GetStatus() int { return e.Status }
 const (
 	CodeUnauthorized   = "unauthorized"
 	CodeInvalidPass    = "invalid_password"
+	CodeLoginLocked    = "login_locked"
 	CodeCSRF           = "csrf_invalid"
 	CodeForbidden      = "forbidden"
 	CodeNotFound       = "not_found"
