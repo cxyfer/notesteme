@@ -117,3 +117,6 @@ func (q *Queue) release(ctx context.Context, f func(*store.Repo) (int, error)) (
 func (q *Queue) NextDue(ctx context.Context) (time.Time, bool, error) {
 	return q.st.Read().NextTaskTime(ctx, ExecutorBuiltin)
 }
+
+// WaitRecheckDefault 是 wait 類的結果沒有指定時間時，下一次檢查的間隔。
+const WaitRecheckDefault = 15 * time.Minute

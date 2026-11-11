@@ -1,0 +1,165 @@
+package pipeline
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+
+	"github.com/cxyfer/notesteme/internal/source/youtube"
+	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/subtitle"
+	"github.com/cxyfer/notesteme/internal/transcript"
+)
+
+// 沒有任何可用字幕來源時，使用者看到的訊息與修正動作（SRC-R5）。
+const (
+	msgNoSource    = "找不到可用的字幕來源。"
+	actionSetupASR = "設定語音轉錄服務"
+)
+
+// sourceTiming 是各平台字幕來源宣告的時間粒度（ADR-0006 的 Caps.Timing、plan 第 6.1 節）。
+// 它是來源的宣告，不是逐檔檢查的結果：YouTube 自動字幕是近 word 級。
+func sourceTiming(kind string) string {
+	if kind == transcript.KindAuto {
+		return "word"
+	}
+	return "cue"
+}
+
+// runTranscript 依 language.caption_priority 選出第一個符合的平台字幕軌並下載（SRC-R1、SRC-R2），
+// 產出 source 變體。每次 Probe 的結果都記錄在 source_probes（SRC-R17）。
+//
+// TODO(SRC-R3、SRC-R4)：平台字幕都沒有時依 language.fallback 使用 Supadata、ASR；
+// 每個來源的結果還要通過品質檢查。這兩者都還沒做，所以目前沒有平台字幕時步驟直接失敗（SRC-R5）。
+// TODO(SRC-R6)：自動字幕還沒生成時等待（waiting），超過 24 小時才改用下一個來源。
+// TODO(SRC-R8)：來源需要 cookie 而沒有時 blocked。
+func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Language) (result, error) {
+	key := cacheKey{
+		Item: it.ID, Stage: StageTranscript, Impl: transcriptImplVersion, Provider: "yt-dlp",
+		Upstream: paramsSHA(map[string]any{"title": it.Title, "duration_s": it.DurationS, "original_lang": it.OriginalLang, "availability": it.Availability}),
+		Params:   paramsSHA(map[string]any{"caption_priority": lang.CaptionPriority, "allow_platform_translated": lang.AllowPlatformTranslated, "fallback": lang.Fallback}),
+	}.String()
+	stage := &store.StageResult{Executor: "local", CacheKey: key, ImplVersion: transcriptImplVersion}
+
+	// 快取鍵相同的步驟已經完成：直接重用，不呼叫外部工具，也不建立新版本（PIPE-R5）。
+	if hit, err := p.st.Read().DoneStageByCacheKey(ctx, it.ID, StageTranscript, key); err == nil && hit.ArtifactID != "" {
+		stage.ArtifactID = hit.ArtifactID
+		return result{task: taskDone, advance: true, stage: stage, state: store.StageState{Status: store.StatusDone}}, nil
+	}
+
+	info, err := p.yt.Probe(ctx, it.ExternalID)
+	if err != nil {
+		return result{}, err
+	}
+	tracks := make([]transcript.Track, 0, len(info.Tracks))
+	for _, t := range info.Tracks {
+		tracks = append(tracks, transcript.Track{Lang: t.Lang, Kind: t.Kind})
+	}
+	chosen, decisions := transcript.Select(tracks, it.OriginalLang, lang.CaptionPriority, lang.AllowPlatformTranslated)
+
+	var cues []subtitle.Cue
+	if chosen != nil {
+		if cues, err = p.fetchCues(ctx, it.ExternalID, *chosen); err != nil {
+			return result{}, err
+		}
+		if len(cues) == 0 {
+			for i := range decisions {
+				if decisions[i].State == transcript.StateUsed {
+					decisions[i].State, decisions[i].Reason = transcript.StateRejected, "empty"
+				}
+			}
+			chosen = nil
+		}
+	}
+
+	if chosen == nil {
+		for _, f := range lang.Fallback {
+			decisions = append(decisions, transcript.Decision{Source: f, State: transcript.StateUnavailable, Reason: transcript.ReasonNotConfigured})
+		}
+		return result{
+			task: taskFailed, stage: stage, probes: toProbes(decisions),
+			state: store.StageState{
+				Status: store.StatusFailed, ErrorClass: "permanent", Message: msgNoSource, Actions: []string{actionSetupASR},
+			},
+		}, nil
+	}
+
+	version, err := p.yt.Version(ctx)
+	if err != nil {
+		return result{}, err
+	}
+	srcID := transcript.PlatformSource(chosen.Kind)
+	artLang := transcript.NormalizeLang(chosen.Lang)
+	prov, err := p.provenance(map[string]any{
+		"stage": StageTranscript, "impl_version": transcriptImplVersion,
+		"source": srcID, "timing": sourceTiming(chosen.Kind),
+		"track":         map[string]string{"lang": artLang, "kind": chosen.Kind},
+		"params_sha256": paramsSHA(map[string]any{"caption_priority": lang.CaptionPriority, "allow_platform_translated": lang.AllowPlatformTranslated}),
+	}, map[string]string{"yt-dlp": version})
+	if err != nil {
+		return result{}, err
+	}
+	art, err := p.newCuesArtifact(it.ID, subtitle.Transcript{Lang: artLang, Variant: subtitle.VariantSource, Cues: cues}, nil, prov)
+	if err != nil {
+		return result{}, err
+	}
+	return result{
+		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions),
+		state: store.StageState{Status: store.StatusDone},
+	}, nil
+}
+
+// fetchCues 下載一條字幕軌並解析成 cue。暫存檔放在 <data>/tmp，用完就清除（啟動時也會清空）。
+func (p *Pipeline) fetchCues(ctx context.Context, videoID string, t transcript.Track) ([]subtitle.Cue, error) {
+	tmpRoot := filepath.Join(p.dataDir, "tmp")
+	if err := os.MkdirAll(tmpRoot, dirPerm); err != nil {
+		return nil, err
+	}
+	dir, err := os.MkdirTemp(tmpRoot, "sub-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+
+	data, err := p.yt.FetchCaptions(ctx, videoID, youtube.Track{Lang: t.Lang, Kind: t.Kind}, dir)
+	if err != nil {
+		return nil, err
+	}
+	cues, err := subtitle.ParseVTT(data)
+	if err != nil {
+		// 平台給的檔案格式不對，重試也不會變好。
+		return nil, errPermanent(fmt.Sprintf("字幕檔無法解析：%v", err))
+	}
+	return cues, nil
+}
+
+// newCuesArtifact 把字幕寫成產出檔，回傳要寫進資料庫的記錄。
+func (p *Pipeline) newCuesArtifact(itemID string, tr subtitle.Transcript, parents []string, prov json.RawMessage) (*store.NewArtifact, error) {
+	id := store.NewID()
+	rel, sha, size, err := writeArtifactFile(p.dataDir, itemID, id, func(w io.Writer) error {
+		return subtitle.RenderCuesJSON(w, tr)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("寫入產出檔：%w", err)
+	}
+	return &store.NewArtifact{
+		ID: id, ItemID: itemID, Kind: "transcript", Variant: string(tr.Variant), Lang: tr.Lang,
+		Format: cuesFormat, Path: rel, SHA256: sha, Size: size, Parents: parents, Provenance: prov,
+	}, nil
+}
+
+// toProbes 把選擇的結果轉成 source_probes 的列。
+func toProbes(ds []transcript.Decision) []store.NewProbe {
+	out := make([]store.NewProbe, 0, len(ds))
+	for _, d := range ds {
+		out = append(out, store.NewProbe{
+			SourceID: d.Source, Lang: d.Lang, Kind: d.Kind,
+			Available: d.State == transcript.StateUsed || d.State == transcript.StateRejected,
+			State:     d.State, Reason: d.Reason,
+		})
+	}
+	return out
+}
