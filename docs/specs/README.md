@@ -111,6 +111,13 @@ go test ./features/... -godog.tags="@ING-01"  # 只跑一則故事
 
 - 步驟實作放在 `features/steps/`，依 [`steps.md`](steps.md) 的分組拆檔。
 - `@ui` 場景在 M1 期間先用 `@manual` 驗收，Playwright 的執行環境建好後再改成自動。
+- 規格的一致性檢查目前是 `scripts/spec/` 中的 Python 腳本，之後改寫成 Go 測試（NFR-TEST-4）：
+
+  ```
+  python3 -I scripts/spec/check_steps.py .   # 每個步驟都在 steps.md 中
+  python3 -I scripts/spec/check_trace.py .   # 規則與故事都有場景、沒有不存在的 tag
+  uv run --with gherkin-official python -I scripts/spec/parse_all.py features   # Gherkin 語法
+  ```
 
 ## 6. 開發流程
 
