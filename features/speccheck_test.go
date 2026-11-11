@@ -77,6 +77,77 @@ func hasTag(tags []*messages.Tag, name string) bool {
 	return false
 }
 
+// walkFeature 走訪 Feature 的全部 Background 與 Scenario（含 Outline），並遞迴進 Rule。
+// ruleTags 是所屬 Rule 的 tag（不在 Rule 內時為 nil）。
+func walkFeature(f *messages.Feature, onBackground func(*messages.Background), onScenario func(sc *messages.Scenario, ruleTags []*messages.Tag)) {
+	if f == nil {
+		return
+	}
+	for _, c := range f.Children {
+		switch {
+		case c.Background != nil:
+			onBackground(c.Background)
+		case c.Scenario != nil:
+			onScenario(c.Scenario, nil)
+		case c.Rule != nil:
+			for _, rc := range c.Rule.Children {
+				switch {
+				case rc.Background != nil:
+					onBackground(rc.Background)
+				case rc.Scenario != nil:
+					onScenario(rc.Scenario, c.Rule.Tags)
+				}
+			}
+		}
+	}
+}
+
+// countScenarios 回傳 Scenario 與 Scenario Outline 的數量（含 Rule 內的）。
+func countScenarios(f *messages.Feature) int {
+	n := 0
+	walkFeature(f, func(*messages.Background) {}, func(*messages.Scenario, []*messages.Tag) { n++ })
+	return n
+}
+
+// stepsToCheck 回傳要對照句型的步驟：Background 的步驟，以及不是 @manual 的場景的步驟。
+// 只看場景自己的 @manual（不繼承 Feature 的 tag）；Rule 的 @manual 套用到它底下的場景。
+func stepsToCheck(f *messages.Feature) []*messages.Step {
+	var out []*messages.Step
+	walkFeature(f,
+		func(bg *messages.Background) { out = append(out, bg.Steps...) },
+		func(sc *messages.Scenario, ruleTags []*messages.Tag) {
+			if hasTag(sc.Tags, "@manual") || hasTag(ruleTags, "@manual") {
+				return
+			}
+			out = append(out, sc.Steps...)
+		})
+	return out
+}
+
+// traceTags 回傳 Feature、Rule、Scenario 與 Examples 上的全部 tag。
+func traceTags(f *messages.Feature) []*messages.Tag {
+	if f == nil {
+		return nil
+	}
+	out := append([]*messages.Tag(nil), f.Tags...)
+	seenRules := map[string]bool{}
+	walkFeature(f, func(*messages.Background) {}, func(sc *messages.Scenario, ruleTags []*messages.Tag) {
+		for _, tag := range ruleTags {
+			// 同一個 Rule 的 tag 只收一次。
+			key := fmt.Sprintf("%d:%d:%s", tag.Location.Line, tag.Location.Column, tag.Name)
+			if !seenRules[key] {
+				seenRules[key] = true
+				out = append(out, tag)
+			}
+		}
+		out = append(out, sc.Tags...)
+		for _, ex := range sc.Examples {
+			out = append(out, ex.Tags...)
+		}
+	})
+	return out
+}
+
 // TestGherkinParses 等同 parse_all.py：每個 .feature 都能解析。
 func TestGherkinParses(t *testing.T) {
 	features := parseFeatures(t)
@@ -86,11 +157,7 @@ func TestGherkinParses(t *testing.T) {
 			t.Errorf("%s: 沒有 Feature", f.name)
 			continue
 		}
-		for _, c := range f.doc.Feature.Children {
-			if c.Scenario != nil {
-				scenarios++
-			}
-		}
+		scenarios += countScenarios(f.doc.Feature)
 	}
 	if len(features) == 0 {
 		t.Fatal("沒有找到任何 .feature")
@@ -140,14 +207,7 @@ func TestStepsInVocabulary(t *testing.T) {
 		if f.doc.Feature == nil {
 			continue
 		}
-		for _, c := range f.doc.Feature.Children {
-			switch {
-			case c.Background != nil:
-				check(f.name, c.Background.Steps)
-			case c.Scenario != nil && !hasTag(c.Scenario.Tags, "@manual"):
-				check(f.name, c.Scenario.Steps)
-			}
-		}
+		check(f.name, stepsToCheck(f.doc.Feature))
 	}
 
 	var unused []string
@@ -207,16 +267,7 @@ func TestTraceability(t *testing.T) {
 		if f.doc.Feature == nil {
 			continue
 		}
-		note(f.name, f.doc.Feature.Tags)
-		for _, c := range f.doc.Feature.Children {
-			if c.Scenario == nil {
-				continue
-			}
-			note(f.name, c.Scenario.Tags)
-			for _, ex := range c.Scenario.Examples {
-				note(f.name, ex.Tags)
-			}
-		}
+		note(f.name, traceTags(f.doc.Feature))
 	}
 
 	var missingRules, missingStories []string
@@ -278,14 +329,9 @@ func stepLocations(doc *messages.GherkinDocument) map[string]int64 {
 	if doc.Feature == nil {
 		return lines
 	}
-	for _, c := range doc.Feature.Children {
-		if c.Background != nil {
-			add(c.Background.Steps)
-		}
-		if c.Scenario != nil {
-			add(c.Scenario.Steps)
-		}
-	}
+	walkFeature(doc.Feature,
+		func(bg *messages.Background) { add(bg.Steps) },
+		func(sc *messages.Scenario, _ []*messages.Tag) { add(sc.Steps) })
 	return lines
 }
 
@@ -386,4 +432,90 @@ func sortedKeys(m map[string]bool) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// 以 in-memory 的 Gherkin 證明 Rule 區塊內的 Background、Scenario、步驟與 tag 都會被走訪。
+func TestSpecCheckIncludesRuleBlocks(t *testing.T) {
+	const src = `@AUTH-01
+Feature: rules
+  Background:
+    Given a top background
+
+  Scenario: top level
+    When the top level runs
+
+  @manual
+  Scenario: top manual
+    When the manual one is skipped
+
+  @AUTH-R1
+  Rule: first rule
+    Background:
+      Given a rule background
+
+    @AUTH-R2
+    Scenario: inside rule
+      When the rule scenario runs
+
+    @AUTH-R3
+    Scenario Outline: outline inside rule
+      When the rule outline runs <n>
+
+      @AUTH-R4
+      Examples:
+        | n |
+        | 1 |
+
+  @manual
+  Rule: manual rule
+    Scenario: manual inside rule
+      When the manual rule scenario is skipped
+`
+	doc, err := gherkin.ParseGherkinDocument(strings.NewReader(src), (&messages.Incrementing{}).NewId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Feature == nil {
+		t.Fatal("沒有 Feature")
+	}
+
+	// 5 個場景（含 Outline）：頂層 2 個、Rule 內 3 個。
+	if got := countScenarios(doc.Feature); got != 5 {
+		t.Errorf("countScenarios = %d，want 5", got)
+	}
+
+	var texts []string
+	for _, s := range stepsToCheck(doc.Feature) {
+		texts = append(texts, s.Text)
+	}
+	wantSteps := []string{
+		"a top background", "the top level runs",
+		"a rule background", "the rule scenario runs", "the rule outline runs <n>",
+	}
+	if strings.Join(texts, "|") != strings.Join(wantSteps, "|") {
+		t.Errorf("stepsToCheck = %q\nwant %q", texts, wantSteps)
+	}
+
+	var tags []string
+	for _, tag := range traceTags(doc.Feature) {
+		tags = append(tags, tag.Name)
+	}
+	sort.Strings(tags)
+	wantTags := []string{"@AUTH-01", "@AUTH-R1", "@AUTH-R2", "@AUTH-R3", "@AUTH-R4", "@manual", "@manual"}
+	if strings.Join(tags, "|") != strings.Join(wantTags, "|") {
+		t.Errorf("traceTags = %q\nwant %q", tags, wantTags)
+	}
+
+	lines := stepLocations(doc)
+	for _, s := range []string{"a rule background", "the rule scenario runs"} {
+		found := false
+		for _, st := range stepsToCheck(doc.Feature) {
+			if st.Text == s && lines[st.Id] == st.Location.Line {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("stepLocations 沒有收錄 Rule 內的步驟 %q", s)
+		}
+	}
 }
