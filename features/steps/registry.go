@@ -6,14 +6,10 @@
 package steps
 
 import (
-	"context"
-	"errors"
-	"fmt"
 	"regexp"
 
 	"github.com/cucumber/godog"
 
-	"github.com/cxyfer/notesteme/features/internal/harness"
 	"github.com/cxyfer/notesteme/features/internal/vocab"
 )
 
@@ -89,28 +85,10 @@ func register(r *Registry, s *Scenario) {
 // godog 為每個場景建立一個 ScenarioContext，所以這裡的 Scenario 每個場景各一份。
 // 每個場景開始前建立新的 World（獨立的暫存目錄、fake clock、fakenet、假工具），
 // 結束後停止 server、檢查是否有未攔截的對外連線與 log 中的 secret，最後清掉暫存目錄。
+// 結束階段發現的違規也會記進 HarnessFailures，見 hooks.go。
 func Initialize(sc *godog.ScenarioContext) {
 	s := &Scenario{}
-	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
-		w, err := harness.New()
-		if err != nil {
-			return ctx, fmt.Errorf("建立場景環境：%w", err)
-		}
-		s.reset(w)
-		return ctx, nil
-	})
-	sc.After(func(ctx context.Context, _ *godog.Scenario, err error) (context.Context, error) {
-		if s.World == nil {
-			return ctx, err
-		}
-		stopErr := s.close()
-		checkErr := s.World.Check()
-		leakErr := s.checkLogs()
-		closeErr := s.World.Close()
-		s.World = nil
-		// 步驟本身失敗時 godog 已經記錄那個錯誤；這裡只回報清理與檢查階段的額外問題，避免重複。
-		return ctx, errors.Join(stopErr, checkErr, leakErr, closeErr)
-	})
+	installHooks(sc, s)
 	register(&Registry{sc: sc}, s)
 }
 

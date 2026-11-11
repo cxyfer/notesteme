@@ -67,7 +67,13 @@ func TestFeatures(t *testing.T) {
 		ScenarioInitializer: steps.Initialize,
 		Options:             &o,
 	}
-	if suite.Run() != 0 {
+	status := suite.Run()
+	// pending 場景的 After hook 錯誤會被 godog 吞掉（非 strict 模式），
+	// 所以另外讀取收集器，確保 harness 違規一定讓測試失敗。
+	for _, f := range steps.HarnessFailures() {
+		t.Errorf("harness 違規：%s", f)
+	}
+	if status != 0 {
 		t.Fatal("non-zero status returned, failed to run feature tests")
 	}
 }
