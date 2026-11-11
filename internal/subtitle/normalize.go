@@ -1,0 +1,191 @@
+package subtitle
+
+import (
+	"regexp"
+	"sort"
+	"strings"
+	"unicode"
+)
+
+const (
+	// minCueMS 為 cue 的最短長度（NRM-R2、NRM-R4）。
+	minCueMS int64 = 300
+	// overlapGapMS 為重疊修正時，前一句 end 與後一句 start 之間保留的間隔（NRM-R4）。
+	overlapGapMS int64 = 40
+)
+
+var (
+	htmlTag = regexp.MustCompile(`</?[A-Za-z][^>]*>|<(?:\d{1,4}:)?\d{1,2}:\d{2}[.,]\d{1,3}>`)
+	assTag  = regexp.MustCompile(`\{\\[^}]*\}`)
+)
+
+// Normalize 把原始 cue 整理成乾淨、時間單調的序列，不修改輸入。
+// 處理順序：
+//  1. NRM-R3 去除格式標記與重複空白（保留 [Music]、♪）
+//  2. NRM-R5 移除空白 cue
+//  3. NRM-R4 依 start 排序
+//     TODO(NRM-R1): 滾動字幕去重，規則文字與場景不一致，待使用者決定後在此插入
+//  4. NRM-R2 碎句併入前一句
+//  5. NRM-R4 修正重疊，修正後過短的與後一句合併
+//  6. 重新編號（從 1 起算）
+//
+// 合併與修正都保留各字詞原本的時間（NRM-R6）。
+func Normalize(cues []Cue) []Cue {
+	out := cloneCues(cues)
+	for _, step := range normalizeSteps {
+		out = step(out)
+	}
+	for i := range out {
+		out[i].Index = i + 1
+	}
+	return out
+}
+
+// normalizeSteps 為依序執行的步驟，之後新增規則（例如 NRM-R1）在此插入。
+var normalizeSteps = []func([]Cue) []Cue{
+	cleanText,     // NRM-R3
+	dropEmpty,     // NRM-R5
+	sortByStart,   // NRM-R4
+	mergeFragment, // NRM-R2
+	fixOverlaps,   // NRM-R4
+}
+
+func cloneCues(in []Cue) []Cue {
+	out := make([]Cue, len(in))
+	for i, c := range in {
+		if c.Words != nil {
+			c.Words = append([]Word(nil), c.Words...)
+		}
+		if c.Speaker != nil {
+			s := *c.Speaker
+			c.Speaker = &s
+		}
+		if c.Timing == "" {
+			c.Timing = TimingSource
+		}
+		out[i] = c
+	}
+	return out
+}
+
+// cleanText 實作 NRM-R3，並確保 end 不早於 start。
+func cleanText(cues []Cue) []Cue {
+	for i := range cues {
+		t := assTag.ReplaceAllString(cues[i].Text, "")
+		t = htmlTag.ReplaceAllString(t, "")
+		cues[i].Text = strings.Join(strings.Fields(t), " ")
+		if cues[i].EndMS < cues[i].StartMS {
+			cues[i].EndMS = cues[i].StartMS
+		}
+	}
+	return cues
+}
+
+// dropEmpty 實作 NRM-R5。
+func dropEmpty(cues []Cue) []Cue {
+	out := cues[:0]
+	for _, c := range cues {
+		if c.Text != "" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// sortByStart 依 start、end 穩定排序。
+func sortByStart(cues []Cue) []Cue {
+	sort.SliceStable(cues, func(i, j int) bool {
+		if cues[i].StartMS != cues[j].StartMS {
+			return cues[i].StartMS < cues[j].StartMS
+		}
+		return cues[i].EndMS < cues[j].EndMS
+	})
+	return cues
+}
+
+// mergeFragment 實作 NRM-R2：長度不到 300ms 或只有標點的 cue 併入前一句。
+// 第一句沒有前一句可併，維持原樣。
+func mergeFragment(cues []Cue) []Cue {
+	out := make([]Cue, 0, len(cues))
+	for _, c := range cues {
+		if n := len(out); n > 0 && (c.EndMS-c.StartMS < minCueMS || isPunctOnly(c.Text)) {
+			out[n-1] = mergeCues(out[n-1], c)
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// fixOverlaps 實作 NRM-R4 的重疊修正：前一句 end 改為後一句 start 減 40ms；
+// 修正後短於 300ms 就和後一句合併。結果中每句的 start 都不早於前一句的 end。
+func fixOverlaps(cues []Cue) []Cue {
+	out := make([]Cue, 0, len(cues))
+	for _, c := range cues {
+		for len(out) > 0 && out[len(out)-1].EndMS > c.StartMS {
+			prev := out[len(out)-1]
+			origEnd := prev.EndMS
+			prev.EndMS = c.StartMS - overlapGapMS
+			if prev.EndMS-prev.StartMS >= minCueMS {
+				out[len(out)-1] = prev
+				break
+			}
+			// 太短：與後一句合併，合併結果再和更前面的 cue 比對。
+			out = out[:len(out)-1]
+			prev.EndMS = origEnd
+			c = mergeCues(prev, c)
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// mergeCues 把 b 併入 a：時間取 a.start 到較晚的 end，文字接合，
+// 字詞時間原樣保留（文字與時間都相同的重複字詞只留一個），Timing 標為 merged。
+func mergeCues(a, b Cue) Cue {
+	a.Text = joinText(a.Text, b.Text)
+	if b.EndMS > a.EndMS {
+		a.EndMS = b.EndMS
+	}
+	a.Words = mergeWords(a.Words, b.Words)
+	a.Timing = TimingMerged
+	return a
+}
+
+// joinText 接合文字：只有標點時直接接在後面，其餘以一個空白連接。
+func joinText(a, b string) string {
+	if isPunctOnly(b) {
+		return a + b
+	}
+	return a + " " + b
+}
+
+func isPunctOnly(s string) bool {
+	found := false
+	for _, r := range s {
+		switch {
+		case unicode.IsPunct(r):
+			found = true
+		case unicode.IsSpace(r):
+		default:
+			return false
+		}
+	}
+	return found
+}
+
+// mergeWords 串接兩組字詞並去除文字與時間都相同的重複字詞。
+func mergeWords(a, b []Word) []Word {
+	if len(a) == 0 && len(b) == 0 {
+		return nil
+	}
+	seen := make(map[Word]bool, len(a)+len(b))
+	out := make([]Word, 0, len(a)+len(b))
+	for _, w := range append(append([]Word(nil), a...), b...) {
+		if !seen[w] {
+			seen[w] = true
+			out = append(out, w)
+		}
+	}
+	return out
+}
