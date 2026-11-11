@@ -1,0 +1,153 @@
+// Package store 是 SQLite 儲存層（modernc.org/sqlite，WAL）。
+//
+// 設計重點：
+//   - 所有寫入走同一個寫入連線（NFR-REL-4）；讀取用另一個唯讀的連線池。
+//   - migration 以 goose 執行，SQL 檔嵌入 binary。
+//   - ID 一律 UUIDv7；時間存 Unix 毫秒，一律取自注入的 clock。
+//
+// TODO: plan 第 22 節指定以 sqlc 產生查詢程式碼；目前表格很少，先用 database/sql 手寫，
+// 等表格增加後再導入 sqlc。
+package store
+
+import (
+	"context"
+	"database/sql"
+	"embed"
+	"errors"
+	"fmt"
+	"io/fs"
+	"net/url"
+	"path/filepath"
+	"time"
+
+	"github.com/pressly/goose/v3"
+	_ "modernc.org/sqlite" // 註冊 "sqlite" driver
+
+	"github.com/cxyfer/notesteme/internal/clock"
+)
+
+// DBFileName 是資料目錄下的資料庫檔名。
+const DBFileName = "notesteme.db"
+
+// ErrNotFound 表示查不到資料。
+var ErrNotFound = errors.New("not found")
+
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
+
+// Store 持有 SQLite 的寫入連線與讀取連線池。
+type Store struct {
+	w     *sql.DB // 唯一的寫入連線
+	r     *sql.DB // 唯讀連線池
+	clock clock.Clock
+}
+
+// Open 開啟 dir/notesteme.db 並套用 migration。dir 必須已存在。
+func Open(ctx context.Context, dir string, clk clock.Clock) (*Store, error) {
+	path := filepath.Join(dir, DBFileName)
+
+	w, err := openDB(path, false)
+	if err != nil {
+		return nil, err
+	}
+	w.SetMaxOpenConns(1)
+
+	sub, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		_ = w.Close()
+		return nil, err
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, w, sub)
+	if err != nil {
+		_ = w.Close()
+		return nil, fmt.Errorf("初始化 migration 失敗：%w", err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		_ = w.Close()
+		return nil, fmt.Errorf("執行 migration 失敗：%w", err)
+	}
+
+	r, err := openDB(path, true)
+	if err != nil {
+		_ = w.Close()
+		return nil, err
+	}
+	r.SetMaxOpenConns(4)
+
+	return &Store{w: w, r: r, clock: clk}, nil
+}
+
+func openDB(path string, readOnly bool) (*sql.DB, error) {
+	q := url.Values{}
+	q.Add("_pragma", "busy_timeout(5000)")
+	q.Add("_pragma", "journal_mode(WAL)")
+	q.Add("_pragma", "synchronous(NORMAL)")
+	q.Add("_pragma", "foreign_keys(1)")
+	if readOnly {
+		q.Add("_pragma", "query_only(1)")
+	}
+	u := url.URL{Scheme: "file", Path: path, RawQuery: q.Encode()}
+	db, err := sql.Open("sqlite", u.String())
+	if err != nil {
+		return nil, fmt.Errorf("開啟資料庫失敗：%w", err)
+	}
+	return db, nil
+}
+
+// Close 關閉所有連線（SQLite 會在最後一個連線關閉時做 WAL checkpoint）。
+func (s *Store) Close() error {
+	return errors.Join(s.r.Close(), s.w.Close())
+}
+
+// CheckWritable 確認寫入連線可以取得寫入鎖（供 /readyz 使用）；不會寫入任何資料。
+func (s *Store) CheckWritable(ctx context.Context) error {
+	conn, err := s.w.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	_, err = conn.ExecContext(ctx, "ROLLBACK")
+	return err
+}
+
+// nowMs 回傳注入 clock 的目前時間（Unix 毫秒）。
+func (s *Store) nowMs() int64 { return s.clock.Now().UnixMilli() }
+
+func toMs(t time.Time) int64    { return t.UnixMilli() }
+func fromMs(ms int64) time.Time { return time.UnixMilli(ms).UTC() }
+
+// GetSetting 讀取 settings 的值；不存在時 ok 為 false。
+func (s *Store) GetSetting(ctx context.Context, key string) (value string, ok bool, err error) {
+	err = s.r.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, key).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return value, true, nil
+}
+
+// SetSetting 寫入（或覆寫）settings 的值。
+func (s *Store) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.w.ExecContext(ctx,
+		`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+		 ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+		key, value, s.nowMs())
+	return err
+}
+
+// SetSettingIfAbsent 只在 key 不存在時寫入；回傳是否寫入。
+func (s *Store) SetSettingIfAbsent(ctx context.Context, key, value string) (bool, error) {
+	res, err := s.w.ExecContext(ctx,
+		`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (key) DO NOTHING`,
+		key, value, s.nowMs())
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
