@@ -59,7 +59,7 @@ asr:
 ```
 
 - `openai-compatible`：OpenAI、Groq、自架的 Speaches 或 faster-whisper server 都能用。
-- `command`：執行本機 CLI，再解析它的輸出（`whisperx-json`、`srt`、`vtt`、`episteme-cues+json`）。執行時清除無關的環境變數。
+- `command`：執行本機 CLI，再解析它的輸出（`whisperx-json`、`srt`、`vtt`、`notesteme-cues+json`）。執行時清除無關的環境變數。
 
 ### ASR 共用前處理
 

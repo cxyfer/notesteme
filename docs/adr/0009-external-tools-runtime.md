@@ -25,7 +25,7 @@
    - Deno（官方發布的 `deno`，不是 `denort`）。
 4. **工具探索**：
    - 順序：設定的路徑 → 環境變數 → `PATH`。
-   - `episteme doctor` 檢查版本與可用性；UI 的系統狀態頁也顯示同樣的資訊。
+   - `notesteme doctor` 檢查版本與可用性；UI 的系統狀態頁也顯示同樣的資訊。
 5. **錯誤分類**：把 yt-dlp 和 ffmpeg 的錯誤對應到 `retryable`、`wait`、`needs_action`、`permanent`（見 plan 第 5.2 節），並附上修正方式。例如 403 時先建議更新 yt-dlp。
 6. **cookie**：
    - 在 UI 上傳，加密存放，執行時才寫成暫存檔交給 yt-dlp。

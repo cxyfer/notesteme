@@ -37,14 +37,14 @@
 3. **不覆蓋使用者修改**：
    - 每次寫入時記錄檔案的 `sha256`。
    - 重新生成時，如果目標檔案的 hash 和上次寫入的不同，就代表使用者改過。依設定擇一處理：
-     - 另存為新檔（例如 `<名稱> (episteme 2026-11-11).md`）。
+     - 另存為新檔（例如 `<名稱> (notesteme 2026-11-11).md`）。
      - 跳過，並在 UI 上標記「需要你處理」。
 4. **Hook**：寫入完成後可以執行自訂命令，例如通知或額外的 git 操作。命令的參數只能來自模板變數，不接受任意的 shell 字串。
 
 ## 考慮過的選項
 
 - **Obsidian Local REST API plugin**：Obsidian 必須在本機開著，VPS 也連不到，所以只當作未來的選項。
-- **Syncthing、Remotely Save**：可行，但屬於外部設定，Episteme 只負責寫入一個資料夾（`fs` adapter）。
+- **Syncthing、Remotely Save**：可行，但屬於外部設定，Notesteme 只負責寫入一個資料夾（`fs` adapter）。
 - **一律覆蓋**：會丟失使用者的修改。
 
 ## 影響

@@ -1,4 +1,4 @@
-# Episteme 計畫
+# Notesteme 計畫
 
 > 狀態：草案 v0.1（2026-11-11）
 > 相關文件：[ADR 索引](adr/README.md)、[UI 規格](ui/README.md)
@@ -10,7 +10,7 @@
 - 轉錄效率低，每次都要 Agent 一步步推進。
 - 常卡在下載、轉錄這類非核心問題上，例如 yt-dlp 403、缺少 binary、模型安裝。
 
-Episteme 把流程拆成兩段：
+Notesteme 把流程拆成兩段：
 
 - **確定性 workflow**：下載、取得字幕、轉錄、匯出。不需要 Agent，可以排程、重試、續跑。
 - **LLM 步驟**：斷句、校正、翻譯、選圖、寫筆記。可以用內建 API 執行，也可以透過 MCP 交給 Agent。
@@ -88,7 +88,7 @@ Client 必須能獨立擁有分享以外的所有功能，Hub 只是資源站，
 ## 4. 系統架構
 
 ```
- ┌──────────────────── episteme（Client：單一 Go binary／Docker）──────────────────────┐
+ ┌──────────────────── notesteme（Client：單一 Go binary／Docker）──────────────────────┐
  │ 入口：Web UI ｜ CLI ｜ MCP（stdio、Streamable HTTP）｜ Scheduler                      │
  │                     └──────────── 全部走同一層 Service／HTTP API ────────────┘        │
  │                                                                                     │
@@ -101,7 +101,7 @@ Client 必須能獨立擁有分享以外的所有功能，Hub 只是資源站，
  │ Artifact Store：檔案 + SQLite（含來源紀錄）  External Tools：yt-dlp、ffmpeg、deno     │
  └─────────────────────────────────┬───────────────────────────────────────────────────┘
                                    │ bundle（manifest + srt/ass/md）
-                           episteme-hub（M5：OAuth、權限、版本、篩選、MCP）
+                           notesteme-hub（M5：OAuth、權限、版本、篩選、MCP）
 ```
 
 設計原則：
@@ -270,7 +270,7 @@ language:
 
 ## 11. 字幕輸出
 
-- 格式：SRT、VTT、ASS、雙語 SRT、純文字、episteme cues JSON。
+- 格式：SRT、VTT、ASS、雙語 SRT、純文字、notesteme cues JSON。
 - ASS：
   - 內建樣式：`default`（底部雙語、原文小字）、`translation-top`、`translation-only`、`large`、`boxed`、`minimal`。
   - 自訂：分別調整「原文行」和「譯文行」的樣式欄位與版面；也可以從現有 `.ass` 檔匯入 `[V4+ Styles]`。
@@ -281,7 +281,7 @@ language:
 
 - **結構由模板產生，LLM 只寫內文**：frontmatter、影片資訊表、SRT 連結、標題的時間戳連結、檔名與資料夾規則，都由程式碼處理。
 - 預設模板依照 `@Library/Video Notes/AGENTS.md`：章節式、`##`／`###` 標題帶時間戳連結、frontmatter 欄位、callout 用法、圖片命名、`Channel/` 與其他資料夾的版面差異。這些規則寫成可調整的設定，不寫死在程式裡。
-- frontmatter 加上 `episteme_id` 和處理狀態，讓 Obsidian Dataview 可以直接篩選。
+- frontmatter 加上 `notesteme_id` 和處理狀態，讓 Obsidian Dataview 可以直接篩選。
 - 超過 1 小時的影片用 map-reduce 方式產生。
 - 輸出後自動檢查：標題都有時間戳、引用的圖片檔都存在、frontmatter 欄位齊全。
 - Gemini 直接生成模式：把 YouTube URL 直接交給 Gemini，不用下載影片，再套用同一份模板。
@@ -320,7 +320,7 @@ language:
 
 ## 16. MCP 介面
 
-同時提供 stdio（`episteme mcp`）和 Streamable HTTP（`/mcp`，需要 bearer token）兩種方式。
+同時提供 stdio（`notesteme mcp`）和 Streamable HTTP（`/mcp`，需要 bearer token）兩種方式。
 
 | Tool | 用途 |
 |---|---|
@@ -339,13 +339,13 @@ Prompt 模板透過 MCP prompts capability 提供。
 ## 17. CLI 概要
 
 ```
-episteme serve                       # Web UI + API + MCP(HTTP) + worker + scheduler
-episteme ingest <url|path> [--profile p] [--until transcript] [--json]
-episteme items ls [--status ...] [--channel ...]
-episteme export <item> --format srt|vtt|ass|bundle
-episteme mcp                         # stdio MCP
-episteme doctor                      # 檢查 yt-dlp、ffmpeg、deno、API key
-episteme tools update                # 更新 yt-dlp
+notesteme serve                       # Web UI + API + MCP(HTTP) + worker + scheduler
+notesteme ingest <url|path> [--profile p] [--until transcript] [--json]
+notesteme items ls [--status ...] [--channel ...]
+notesteme export <item> --format srt|vtt|ass|bundle
+notesteme mcp                         # stdio MCP
+notesteme doctor                      # 檢查 yt-dlp、ffmpeg、deno、API key
+notesteme tools update                # 更新 yt-dlp
 ```
 
 CLI 有兩種模式：獨立模式使用本機的 SQLite；client 模式用 `--server <url> --token <t>` 連到正在執行的實例。例如 Windows 上的 Agent 可以呼叫 WSL Docker 裡的實例。
@@ -442,8 +442,8 @@ cues_fts      (FTS5 trigram：item_id, artifact_id, start_ms, text)
 ## 23. Repo 結構
 
 ```
-episteme/
-  cmd/episteme/            # serve | ingest | mcp | doctor | tools 子命令
+notesteme/
+  cmd/notesteme/            # serve | ingest | mcp | doctor | tools 子命令
   internal/
     source/                # youtube, bilibili, podcast, local
     transcript/            # 字幕來源與 ASR adapter

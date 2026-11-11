@@ -1,4 +1,4 @@
-# Episteme 頁面規格
+# Notesteme 頁面規格
 
 > 狀態：草案 v0.1（2026-11-11）
 > 設計語言見 [design-language.md](design-language.md)，共用模式與文案見 [README.md](README.md)。
@@ -43,7 +43,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
 
 ## 2. 新增
 
-- **目的**：把網址或檔案交給 Episteme 處理。這是最常用的動作。
+- **目的**：把網址或檔案交給 Notesteme 處理。這是最常用的動作。
 - **里程碑**：M1
 - **開啟方式**：
   - 導覽列的「新增」按鈕。
@@ -411,7 +411,7 @@ Prompt 庫 › 校正 › correct-default
 - **目的**：保護部署在 VPS 或區網上的實例。
 - **里程碑**：M4
 - **版面**：
-  - Opal 背景中央放一張 Sheet 卡片，內容是 episteme 字標、密碼欄位、「登入」按鈕。
+  - Opal 背景中央放一張 Sheet 卡片，內容是 notesteme 字標、密碼欄位、「登入」按鈕。
   - 背景是一條淡化的時間帶，畫的是固定的示意資料。登入前不能露出任何實際內容，所以不使用真實影片的資料。登入頁只有這一個裝飾元素。
 - **錯誤**：「密碼不正確。」連續失敗 5 次後鎖定 1 分鐘，並顯示剩餘時間。
 - **API**：`POST /api/auth/login`、`POST /api/auth/logout`

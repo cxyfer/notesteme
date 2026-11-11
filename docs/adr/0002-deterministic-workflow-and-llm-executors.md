@@ -26,7 +26,7 @@ LLM 的處理方式有兩種需求：
    - `agent`：建立任務，狀態設為 `awaiting_agent`，等 Agent 透過 MCP 領取（見 ADR-0004）。
    - `off`：跳過這個步驟。下游會改用上游的產出；例如跳過 `correct`，`translate` 就直接處理斷句後的字幕。
 3. **不依賴 MCP sampling**：各 agent host 的支援程度不一，不適合當主要路徑。
-4. 需要無人值守的 Agent 模式時，在主機上排程執行 headless Agent（例如 `claude -p` 或 Codex）來消化佇列。這件事在 Episteme 外部設定。
+4. 需要無人值守的 Agent 模式時，在主機上排程執行 headless Agent（例如 `claude -p` 或 Codex）來消化佇列。這件事在 Notesteme 外部設定。
 5. Gemini 多模態引擎是一種特殊的 `api` executor，可以擔任三種角色：
    - 直接把 URL 或影片轉成筆記。
    - 當作字幕來源（時間標記為 `model`）。

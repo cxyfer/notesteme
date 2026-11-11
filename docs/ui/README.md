@@ -1,4 +1,4 @@
-# Episteme UI 規格總覽
+# Notesteme UI 規格總覽
 
 > 狀態：草案 v0.1（2026-11-11）
 

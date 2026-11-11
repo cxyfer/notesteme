@@ -1,6 +1,6 @@
-// Episteme 設計方向驗證用 mockup：導覽、時間帶、媒體庫與影音詳情的渲染。
+// Notesteme 設計方向驗證用 mockup：導覽、時間帶、媒體庫與影音詳情的渲染。
 (() => {
-  const DATA = window.EPISTEME_MOCK;
+  const DATA = window.NOTESTEME_MOCK;
   const h = (tag, attrs = {}, ...kids) => {
     const el = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
@@ -24,12 +24,12 @@
 
   // ---------- 主題 ----------
   const params = new URLSearchParams(location.search);
-  const theme = params.get("theme") || localStorage.getItem("episteme-theme") || "light";
+  const theme = params.get("theme") || localStorage.getItem("notesteme-theme") || "light";
   document.documentElement.dataset.theme = theme;
   const toggleTheme = () => {
     const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
-    localStorage.setItem("episteme-theme", next);
+    localStorage.setItem("notesteme-theme", next);
     document.querySelectorAll("[data-theme-icon]").forEach((i) => (i.className = `ph ph-${next === "dark" ? "sun" : "moon"}`));
   };
 
@@ -41,7 +41,7 @@
   ];
   function renderNav(current) {
     const nav = h("nav", { class: "nav", "aria-label": "主要導覽" },
-      h("a", { class: "nav__mark cond", href: "library.html" }, "episteme"),
+      h("a", { class: "nav__mark cond", href: "library.html" }, "notesteme"),
       h("button", { class: "button button--primary nav__new", type: "button" }, icon("plus"), h("span", {}, "新增")));
     for (const [group, items] of NAV) {
       if (group) nav.append(h("div", { class: "nav__group" }, group));
@@ -367,5 +367,5 @@
     requestAnimationFrame(() => seek(playhead));
   }
 
-  window.EpistemeMockup = { renderNav, renderTopbar, renderLibrary, renderItem };
+  window.NotestemeMockup = { renderNav, renderTopbar, renderLibrary, renderItem };
 })();

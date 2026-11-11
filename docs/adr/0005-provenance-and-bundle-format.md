@@ -31,14 +31,14 @@ transcript(source) → transcript(normalized) → transcript(segmented)
   "prompt": { "id": "correct-default", "version": 3, "sha256": "…" },
   "params_sha256": "…",
   "timing": "word",
-  "tool_versions": { "episteme": "0.1.0", "yt-dlp": "2026.11.01" },
+  "tool_versions": { "notesteme": "0.1.0", "yt-dlp": "2026.11.01" },
   "created_at": "2026-11-11T10:00:00Z"
 }
 ```
 
 ### Bundle 格式 v0
 
-副檔名為 `.episteme.zip`，結構如下：
+副檔名為 `.notesteme.zip`，結構如下：
 
 ```
 manifest.json
@@ -64,7 +64,7 @@ artifacts/<artifact-id>.<ext>
       "kind": "transcript",
       "variant": "source",
       "lang": "en",
-      "format": "episteme-cues+json",
+      "format": "notesteme-cues+json",
       "path": "artifacts/<uuidv7>.json",
       "sha256": "…",
       "parents": [],
@@ -76,7 +76,7 @@ artifacts/<artifact-id>.<ext>
 }
 ```
 
-- 原始字幕和衍生字幕都用 `episteme-cues+json`，保留 `Timing` 和 word 級資料。SRT、ASS 是匯出時另外產生的格式。
+- 原始字幕和衍生字幕都用 `notesteme-cues+json`，保留 `Timing` 和 word 級資料。SRT、ASS 是匯出時另外產生的格式。
 - 筆記中引用的圖片放在 `artifacts/`。預設**不包含**媒體檔。
 - 匯入時，用 `(platform, external_id, part)` 比對既有的影音，並用 `sha256` 去重。
 

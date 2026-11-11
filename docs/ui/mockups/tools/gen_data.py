@@ -99,7 +99,7 @@ detail = {
     "state": {"kind": "correcting", "done": 8, "total": 16},
 }
 OUT.write_text("// 由 docs/ui/mockups/tools/gen_data.py 從 vault 產生，內含真實字幕片段，未經確認前不要 commit。\n"
-               f"window.EPISTEME_MOCK = {json.dumps({'items': items, 'detail': detail}, ensure_ascii=False)};\n", encoding="utf-8")
+               f"window.NOTESTEME_MOCK = {json.dumps({'items': items, 'detail': detail}, ensure_ascii=False)};\n", encoding="utf-8")
 for it in items:
     print(f"{it['channel']:6} {it['duration']:>7} frames={len(it['frames']):2} ch={len(it['chapters']):2} dens={sum(1 for v in it['density'] if v>0):3} {it['title'][:30]}")
 print("detail cues", len(detail["cues"]), "chapters", len(detail["chapters"]), "frames", len(detail["frames"]))
