@@ -118,7 +118,7 @@ Client 必須能獨立擁有分享以外的所有功能，Hub 只是資源站，
 | `discover` | 確定性 | 訂閱 | 影音清單 | RSS、Supadata、yt-dlp；套用過濾規則 |
 | `metadata` | 確定性 | URL | 中繼資料 | 標題、頻道、發布日、片長、章節、可用字幕軌、原文語言 |
 | `transcript` | 確定性 | 中繼資料 | 原始字幕 | 依來源優先順序取得（見第 6 節） |
-| `normalize` | 確定性 | 原始字幕 | 正規化字幕 | 去除重複的滾動字幕、合併碎句、簡繁轉換、時間單調性檢查 |
+| `normalize` | 確定性 | 原始字幕 | 正規化字幕 | 去除重複的滾動字幕、合併碎句、簡繁轉換（`variant_strategy: convert` 時）、時間單調性檢查 |
 | `segment` | LLM | 正規化字幕 | 斷句字幕 | 只回傳斷點標記，時間由程式計算；人工字幕預設跳過 |
 | `correct` | LLM | 斷句字幕 | 校正字幕 | 一對一校正，使用詞彙表 |
 | `translate` | LLM | 校正字幕 | 譯文字幕 | 一對一翻譯，可有多個目標語言 |
@@ -193,12 +193,22 @@ language:
     - { lang: zh-Hans,  kind: manual }   # 命中後依目標語言做簡繁轉換
   allow_platform_translated: false   # 平台機器翻譯的字幕預設排除
   fallback: [supadata, whisper-1]    # 平台都沒有字幕時才用，順序可調
+  variant_strategy: convert          # 原文與目標只差中文字形時：convert 或 localize（見下方）
 ```
 
 - OpenCC 只在目標語言是中文變體時套用，依地區選轉換表：`s2twp`、`s2hk` 或 `t2s`。
-- 原文是中文、目標是另一種中文字形時（例如原文是简中、目標是 `zh-Hant-TW`），視為同一種語言：在 `normalize` 轉換字形，之後的校正都在目標字形上進行，不需要翻譯步驟。
+- 原文是中文、目標是另一種中文字形時（例如原文是简中、目標是 `zh-Hant-TW`），依 `variant_strategy` 處理。可以在處理方案、頻道或單次執行中切換：
+
+  | 選項 | 流程 | 適合 |
+  |---|---|---|
+  | `convert`（預設） | 在 `normalize` 用 OpenCC 轉字形，之後的校正都在目標字形上進行，不跑翻譯步驟 | 成本最低；用詞差異不大的內容 |
+  | `localize` | 校正在原文字形上進行，接著跑翻譯步驟，用在地化 prompt（預設為 `localize-zh-hant-tw`）調整成目標地區的用詞 | 想要遣詞用字符合目標地區習慣的內容 |
+
+- `localize` 存在的原因：OpenCC 的詞庫只能處理固定的詞組對應，遇到要看語境的用詞就無法判斷。例如「质量」可能是「品質」也可能是物理上的「質量」，「视频」可能是「影片」也可能是「視訊」；口語的語氣也需要調整。
+- `localize` 的翻譯步驟會先用 OpenCC 轉換一次，LLM 只負責修正用詞與語氣。驗證時，相似度以 OpenCC 轉換後的文字為基準，正常的在地化改寫才不會被誤判為改壞字幕。
+- 使用 `localize` 時，原文字形的校正字幕和在地化後的譯文都會保留。可以輸出雙語，也可以只輸出譯文。
 - 平台若同時有原文和目標語言的人工字幕，可以直接當雙語來源，依時間重疊對齊，不必再呼叫 LLM 翻譯。
-- 原文語言和目標語言相同時，只輸出單語字幕。
+- 原文語言和目標語言相同時（包括 `convert` 模式下只差字形的情況），只輸出單語字幕。
 - UI 語言（繁中、简中、English）和字幕目標語言分開設定。
 
 ## 8. LLM 處理
@@ -223,7 +233,7 @@ language:
 
 ### 8.3 Prompt
 
-- 依類型分為 `segment`、`correct`、`translate`、`frames.select`、`note`。
+- 依類型分為 `segment`、`correct`、`translate`、`frames.select`、`note`。`translate` 類型也包含中文字形的在地化 prompt（例如 `localize-zh-hant-tw`、`localize-zh-hans-cn`）。
 - 有版本，可以比較差異，可以宣告變數：`title`、`channel`、`description`、`chapters`、`glossary`、`source_lang`、`target_lang`。
 - 可以設為頻道的預設值，單次執行也能覆寫。執行時記錄 prompt 的 `id`、`version` 和 `sha256`。
 - 透過 MCP prompts capability 對外提供。

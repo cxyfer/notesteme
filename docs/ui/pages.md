@@ -170,7 +170,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - 本機檔案與 Podcast 用 HTML5 media，由後端提供並支援 Range 請求。
 - **分頁**：
   - **字幕**：使用字幕句列表元件（見設計語言 §6.2）。切換顯示模式不會改變捲動位置。
-    - 原文與目標只差字形時（例如 zh-Hans 轉 zh-Hant-TW），只顯示「原始、校正、差異」三種模式，不顯示譯文與對照。
+    - 原文與目標只差字形時（例如 zh-Hans 轉 zh-Hant-TW）：採用 `convert` 時只顯示「原始、校正、差異」；採用 `localize` 時另外顯示「譯文」與「對照」，可以比對在地化前後的用詞。
     - 校正還沒完成時，「校正」模式只顯示已完成的段落，其餘段落顯示原始字幕並標示「尚未校正」。
   - **畫面**（M3）：使用印樣元件。可以只看選中的畫面，也可以看全部候選；每張選中的畫面都顯示圖說與它所屬的章節。
   - **筆記**（M3）：
@@ -318,6 +318,7 @@ Prompt 庫 › 校正 › correct-default
               段內切分的時間   需要時才切，先找停頓點 ▾
 3 校正        交給 Agent ▾                                prompt  correct-default v3 ▾
 4 翻譯        API 處理 ▾     anthropic ／ <model-id> ▾   目標語言  zh-Hant-TW、en
+              中文只差字形時   在地化翻譯（localize）▾      prompt  localize-zh-hant-tw v1 ▾
 5 匯出        SRT、ASS（樣式 default）
 6 關鍵畫面    每分鐘最多 1 張，整部最多 16 張，依片長的建議範圍 ✓
               選圖  API 處理 ▾  gemini ／ <model-id> ▾
