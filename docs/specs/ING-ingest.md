@@ -68,3 +68,4 @@
 
 - 上傳檔案的大小上限，暫定 4GB，可在設定檔調整。
 - inbox 的穩定判定時間暫定 10 秒，是否需要依檔案大小調整，M1 實作時觀察。
+- Podcast feed 的辨識方式（2026-11-12，M1 實作時發現）：場景 `Recognise what a URL points to` 預期 `https://feeds.example.com/show.xml` 辨識成 `podcast`／`feed`，但沒有宣告 feed 的 fixture；`Reject a URL that no platform recognises` 又要求 `https://example.com/some/page` 回傳 422。只看網址無法區分兩者，要抓取內容才知道是不是 RSS。建議二選一：(a) 辨識時實際抓取，場景補上 `Given a podcast feed "show" with the episodes:`；(b) 辨識只看網址（路徑以 `.xml`、`.rss` 結尾，或 `Content-Type` 未知時先當成候選），列出各集延到新增時。確認前 `When the owner resolves {string}` 先不實作。
