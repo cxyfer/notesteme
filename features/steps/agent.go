@@ -3,7 +3,7 @@ package steps
 import "github.com/cucumber/godog"
 
 // registerAgent 註冊「Agent 與 MCP」的步驟，句型見 docs/specs/steps.md。
-func registerAgent(r *Registry) {
+func registerAgent(r *Registry, s *Scenario) {
 	r.Step(`an agent {string} using the token {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`the agent {string} claims up to {int} tasks of kind {string}`, func(string, int, string) error { return godog.ErrPending })
 	r.Step(`the agent {string} holds {int} tasks`, func(string, int) error { return godog.ErrPending })

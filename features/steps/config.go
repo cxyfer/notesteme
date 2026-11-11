@@ -3,7 +3,7 @@ package steps
 import "github.com/cucumber/godog"
 
 // registerConfig 註冊「Prompt 與處理方案」的步驟，句型見 docs/specs/steps.md。
-func registerConfig(r *Registry) {
+func registerConfig(r *Registry, s *Scenario) {
 	r.Step(`the prompt {string} version {int} is:`, func(string, int, *godog.DocString) error { return godog.ErrPending })
 	r.Step(`the default prompt for {string} is {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`the profile {string} is:`, func(string, *godog.DocString) error { return godog.ErrPending })

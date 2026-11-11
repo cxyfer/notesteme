@@ -1,11 +1,13 @@
 // Package steps 註冊 docs/specs/steps.md 列出的全部 godog 步驟。
 //
 // 步驟實作依 steps.md 第 4 節的分組拆成多個檔案，每個檔案一個 registerXxx。
-// 切片 0 的所有 handler 都回傳 godog.ErrPending，之後逐步換成真正的實作。
+// 尚未實作的 handler 回傳 godog.ErrPending，之後逐步換成真正的實作。
+// 場景的狀態（World、server、HTTP client、最後的回應）放在 Scenario，見 scenario.go。
 package steps
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 
@@ -14,11 +16,6 @@ import (
 	"github.com/cxyfer/notesteme/features/internal/harness"
 	"github.com/cxyfer/notesteme/features/internal/vocab"
 )
-
-// Scenario 持有一個場景的狀態；每個場景各自一份（ADR-0015）。
-type Scenario struct {
-	World *harness.World
-}
 
 // Def 是一個已註冊的步驟定義。
 type Def struct {
@@ -71,25 +68,27 @@ func (r *Registry) add(keyword, template string, handler any) *regexp.Regexp {
 }
 
 // register 依序呼叫 steps.md 第 4 節各分組的註冊函式。
-func register(r *Registry) {
-	registerEnv(r)
-	registerAccess(r)
-	registerSources(r)
-	registerItems(r)
-	registerQueue(r)
-	registerLLM(r)
-	registerAgent(r)
-	registerCLI(r)
-	registerFiles(r)
-	registerNetwork(r)
-	registerConfig(r)
-	registerOps(r)
+// s 是 handler 共用的場景狀態；只收集定義時（Definitions）傳入的 s 不會被使用。
+func register(r *Registry, s *Scenario) {
+	registerEnv(r, s)
+	registerAccess(r, s)
+	registerSources(r, s)
+	registerItems(r, s)
+	registerQueue(r, s)
+	registerLLM(r, s)
+	registerAgent(r, s)
+	registerCLI(r, s)
+	registerFiles(r, s)
+	registerNetwork(r, s)
+	registerConfig(r, s)
+	registerOps(r, s)
 }
 
 // Initialize 把全部步驟註冊到 godog 的 ScenarioContext。
 //
+// godog 為每個場景建立一個 ScenarioContext，所以這裡的 Scenario 每個場景各一份。
 // 每個場景開始前建立新的 World（獨立的暫存目錄、fake clock、fakenet、假工具），
-// 結束後檢查是否有未攔截的對外連線，有就讓場景失敗，最後清掉暫存目錄。
+// 結束後停止 server、檢查是否有未攔截的對外連線與 log 中的 secret，最後清掉暫存目錄。
 func Initialize(sc *godog.ScenarioContext) {
 	s := &Scenario{}
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
@@ -97,30 +96,27 @@ func Initialize(sc *godog.ScenarioContext) {
 		if err != nil {
 			return ctx, fmt.Errorf("建立場景環境：%w", err)
 		}
-		s.World = w
+		s.reset(w)
 		return ctx, nil
 	})
 	sc.After(func(ctx context.Context, _ *godog.Scenario, err error) (context.Context, error) {
 		if s.World == nil {
 			return ctx, err
 		}
+		stopErr := s.close()
 		checkErr := s.World.Check()
+		leakErr := s.checkLogs()
 		closeErr := s.World.Close()
 		s.World = nil
-		if err != nil {
-			return ctx, err
-		}
-		if checkErr != nil {
-			return ctx, checkErr
-		}
-		return ctx, closeErr
+		// 步驟本身失敗時 godog 已經記錄那個錯誤；這裡只回報清理與檢查階段的額外問題，避免重複。
+		return ctx, errors.Join(stopErr, checkErr, leakErr, closeErr)
 	})
-	register(&Registry{sc: sc})
+	register(&Registry{sc: sc}, s)
 }
 
 // Definitions 回傳全部步驟定義，不需要 ScenarioContext。
 func Definitions() []Def {
 	r := &Registry{}
-	register(r)
+	register(r, &Scenario{})
 	return r.defs
 }

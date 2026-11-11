@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cxyfer/notesteme/features/internal/fakenet"
@@ -57,6 +58,12 @@ type World struct {
 	// FixturesDir 是 features/fixtures 的絕對路徑。
 	FixturesDir string
 
+	// Log 是 serve 的 log 輸出，見 AppEnv。
+	Log *LogBuffer
+
+	listenMu sync.Mutex
+	listens  []ListenRecord
+
 	closed bool
 }
 
@@ -84,6 +91,7 @@ func New() (*World, error) {
 		Tools:       faketool.State{FixturesDir: fx, Videos: map[string]*faketool.Video{}},
 		Refs:        map[string]string{},
 		FixturesDir: fx,
+		Log:         &LogBuffer{},
 	}
 	for _, d := range []string{w.DataDir(), w.InboxDir(), w.ConfigDir(), w.BinDir(), w.FakeDir(), w.HomeDir()} {
 		if err := os.MkdirAll(d, 0o755); err != nil {

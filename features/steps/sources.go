@@ -3,7 +3,7 @@ package steps
 import "github.com/cucumber/godog"
 
 // registerSources 註冊「平台與來源的 fixture」的步驟，句型見 docs/specs/steps.md。
-func registerSources(r *Registry) {
+func registerSources(r *Registry, s *Scenario) {
 	r.Step(`a YouTube video {string} titled {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`a YouTube video {string} with:`, func(string, *godog.Table) error { return godog.ErrPending })
 	r.Step(`a Bilibili video {string} with {int} parts`, func(string, int) error { return godog.ErrPending })

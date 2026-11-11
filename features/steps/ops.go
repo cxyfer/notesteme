@@ -3,7 +3,7 @@ package steps
 import "github.com/cucumber/godog"
 
 // registerOps 註冊「維運」的步驟，句型見 docs/specs/steps.md。
-func registerOps(r *Registry) {
+func registerOps(r *Registry, s *Scenario) {
 	r.Step(`the data directory was created by schema version {int}`, func(int) error { return godog.ErrPending })
 	r.Step(`the current schema version is {int}`, func(int) error { return godog.ErrPending })
 	r.Step(`migration {int} fails`, func(int) error { return godog.ErrPending })

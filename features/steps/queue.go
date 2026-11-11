@@ -3,7 +3,7 @@ package steps
 import "github.com/cucumber/godog"
 
 // registerQueue 註冊「Pipeline 與佇列」的步驟，句型見 docs/specs/steps.md。
-func registerQueue(r *Registry) {
+func registerQueue(r *Registry, s *Scenario) {
 	r.Step(`the concurrency limit of {string} is {int}`, func(string, int) error { return godog.ErrPending })
 	r.Step(`the queue is paused`, func() error { return godog.ErrPending })
 	r.Step(`the resource class {string} is paused`, func(string) error { return godog.ErrPending })

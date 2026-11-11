@@ -3,7 +3,7 @@ package steps
 import "github.com/cucumber/godog"
 
 // registerItems 註冊「影音與產出」的步驟，句型見 docs/specs/steps.md。
-func registerItems(r *Registry) {
+func registerItems(r *Registry, s *Scenario) {
 	r.Step(`the owner resolves {string}`, func(string) error { return godog.ErrPending })
 	r.Step(`the owner ingests {string}`, func(string) error { return godog.ErrPending })
 	r.Step(`the owner ingests {string} with the profile {string}`, func(string, string) error { return godog.ErrPending })
