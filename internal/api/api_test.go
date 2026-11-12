@@ -264,9 +264,10 @@ func TestSessionRequests(t *testing.T) {
 	if rec.Code != 501 {
 		t.Errorf("with csrf: status = %d, body = %s", rec.Code, rec.Body)
 	}
-	for _, p := range []string{"/api/items", "/mcp"} {
-		if rec = s.do("POST", p, "", withCookies(sess, csrf, csrf)); rec.Code != 501 {
-			t.Errorf("POST %s = %d", p, rec.Code)
+	// 沒有 pipeline 時（這個測試 server 只有驗證層），新增影音與 MCP 都回 501。
+	for p, body := range map[string]string{"/api/items": `{"url":"https://example.com/x"}`, "/mcp": ""} {
+		if rec = s.do("POST", p, body, withCookies(sess, csrf, csrf)); rec.Code != 501 {
+			t.Errorf("POST %s = %d %s", p, rec.Code, rec.Body)
 		}
 	}
 }

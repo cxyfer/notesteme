@@ -18,6 +18,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
@@ -28,6 +29,8 @@ type Deps struct {
 	Clock   clock.Clock
 	Log     *slog.Logger
 	Version string
+	// Pipeline 提供影音的新增與查詢；nil 時相關的路由回應 501。
+	Pipeline *pipeline.Pipeline
 	// ReadyChecks 是 /readyz 在「DB 可寫」之外要檢查的項目（OPS-R5），例如外部工具是否可執行。
 	ReadyChecks []ReadyCheck
 }
@@ -93,15 +96,6 @@ type logoutOutput struct {
 	SetCookie []string `header:"Set-Cookie"`
 }
 
-// Item 是影音項目；欄位在 ING 切片加入。
-type Item struct{}
-
-type listItemsOutput struct {
-	Body struct {
-		Items []Item `json:"items"`
-	}
-}
-
 type emptyOutput struct{}
 
 func (rt *routes) register(api huma.API) {
@@ -129,21 +123,38 @@ func (rt *routes) register(api huma.API) {
 	}, rt.listItems)
 	huma.Register(api, huma.Operation{
 		OperationID: "items-create", Method: http.MethodPost, Path: "/api/items",
-		Summary: "新增影音（尚未實作）",
+		Summary:       "新增影音：成功建立回 201，已存在回 200（ING-R2）",
+		DefaultStatus: http.StatusCreated,
+	}, rt.createItems)
+	// 之後切片才會實作的路由：先明確回應 501，不要讓它們看起來像不存在（404）。
+	huma.Register(api, huma.Operation{
+		OperationID: "resolve", Method: http.MethodPost, Path: "/api/resolve",
+		Summary: "辨識網址指向什麼內容（尚未實作）",
 	}, notImplemented)
+	huma.Register(api, huma.Operation{
+		OperationID: "estimate", Method: http.MethodPost, Path: "/api/estimate",
+		Summary: "估算花費（尚未實作）",
+	}, notImplemented)
+	huma.Register(api, huma.Operation{
+		OperationID: "items-get", Method: http.MethodGet, Path: "/api/items/{id}",
+		Summary: "影音詳情：各步驟的狀態與各字幕來源的結果",
+	}, rt.getItem)
+	huma.Register(api, huma.Operation{
+		OperationID: "items-cues", Method: http.MethodGet, Path: "/api/items/{id}/cues",
+		Summary: "字幕內容（cues）",
+	}, rt.getCues)
 	huma.Register(api, huma.Operation{
 		OperationID: "queue-pause", Method: http.MethodPost, Path: "/api/queue/pause",
 		Summary: "暫停佇列（尚未實作）",
 	}, notImplemented)
-	// 之後切片才會實作的路由：先明確回應 501，不要讓它們看起來像不存在（404）。
 	huma.Register(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",
-		Summary: "讀取設定區段（尚未實作）",
-	}, notImplementedSection)
+		Summary: "讀取全域設定區段（目前只有 language；其他區段尚未實作）",
+	}, rt.getSettings)
 	huma.Register(api, huma.Operation{
 		OperationID: "settings-put", Method: http.MethodPut, Path: "/api/settings/{section}",
-		Summary: "更新設定區段（尚未實作）",
-	}, notImplementedSection)
+		Summary: "取代全域設定區段（目前只有 language；其他區段尚未實作）",
+	}, rt.putSettings)
 	huma.Register(api, huma.Operation{
 		OperationID: "providers-create", Method: http.MethodPost, Path: "/api/providers",
 		Summary: "新增 provider（尚未實作）",
@@ -219,22 +230,8 @@ func (rt *routes) logout(ctx context.Context, in *logoutInput) (*logoutOutput, e
 	}}, nil
 }
 
-func (rt *routes) listItems(context.Context, *struct{}) (*listItemsOutput, error) {
-	out := &listItemsOutput{}
-	out.Body.Items = []Item{}
-	return out, nil
-}
-
 // notImplemented 是尚未實作的路由；驗證與 CSRF 已先由 middleware 處理。
 func notImplemented(context.Context, *struct{}) (*emptyOutput, error) {
-	return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
-}
-
-type sectionInput struct {
-	Section string `path:"section"`
-}
-
-func notImplementedSection(context.Context, *sectionInput) (*emptyOutput, error) {
 	return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
 }
 

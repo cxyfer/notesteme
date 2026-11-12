@@ -17,9 +17,13 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/netguard"
+	"github.com/cxyfer/notesteme/internal/pipeline"
+	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/secrets"
+	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/toolexec"
+	"github.com/cxyfer/notesteme/internal/worker"
 )
 
 // 環境變數名稱（設定檔相關的在 config 套件）。
@@ -48,7 +52,13 @@ type Server struct {
 	keys  *secrets.Keyring
 	lock  *store.DirLock
 
-	// root 是 server 的根 context；背景工作（之後的 worker、scheduler）都掛在它底下，cancel 會取消它。
+	pipeline *pipeline.Pipeline
+	queue    *queue.Queue
+	worker   *worker.Worker
+	// workerDone 在 production 的 worker 迴圈結束時關閉；手動模式（測試）沒有迴圈，為 nil。
+	workerDone chan struct{}
+
+	// root 是 server 的根 context；背景工作（worker、之後的 scheduler）都掛在它底下，cancel 會取消它。
 	root   context.Context
 	cancel context.CancelFunc
 
@@ -141,6 +151,12 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 		log.InfoContext(ctx, "已清除過期的 session", "count", n)
 	}
 
+	// root 是 server 的根 context：worker 與它啟動的子程序都掛在它底下，關閉時一起取消。
+	s.root, s.cancel = context.WithCancel(ctx)
+	if err := s.startPipeline(ctx, env, cfg, log); err != nil {
+		return nil, err
+	}
+
 	s.ln, err = env.Listen("tcp", cfg.Listen)
 	if err != nil {
 		return nil, fmt.Errorf("監聽 %s 失敗：%w", cfg.Listen, err)
@@ -149,11 +165,11 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 		return nil, fmt.Errorf("寫入鎖檔失敗：%w", err)
 	}
 
-	s.root, s.cancel = context.WithCancel(ctx)
 	s.http = &http.Server{
 		Handler: api.New(api.Deps{
 			Store: s.store, Auth: authSvc, Clock: env.Clock, Log: log, Version: version,
 			ReadyChecks: toolChecks(toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}),
+			Pipeline:    s.pipeline,
 		}),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
@@ -168,6 +184,71 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 	started = true
 	log.InfoContext(ctx, "server started", "listen", s.ln.Addr().String(), "data", cfg.Data)
 	return s, nil
+}
+
+// startPipeline 組出 pipeline 與 worker。啟動時先把別的 worker 留下的租約放回佇列（PIPE-R11）；
+// production 模式在背景執行 worker，手動模式（測試）由測試呼叫 RunRound、RunUntilIdle 驅動（ADR-0015）。
+func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger) error {
+	runner := env.Runner
+	if runner == nil {
+		runner = toolexec.New(env.Vars)
+	}
+	yt := &youtube.Client{Runner: runner, Tools: toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}}
+	s.queue = queue.New(s.store, env.Clock, store.NewID())
+	s.pipeline = pipeline.New(pipeline.Deps{
+		Store: s.store, Clock: env.Clock, DataDir: cfg.Data, Log: log, YouTube: yt, Wake: s.queue.Wake, Version: version,
+	})
+	s.worker = worker.New(s.queue, s.pipeline, env.Clock, log)
+
+	if n, err := s.queue.RecoverStale(ctx); err != nil {
+		return fmt.Errorf("放回上次留下的租約失敗：%w", err)
+	} else if n > 0 {
+		log.InfoContext(ctx, "已放回上次執行留下的租約", "count", n)
+	}
+	if env.Test != nil && env.Test.ManualWorker {
+		return nil
+	}
+	s.workerDone = make(chan struct{})
+	go func() {
+		defer close(s.workerDone)
+		s.worker.Run(s.root)
+	}()
+	return nil
+}
+
+// RunRound 讓 worker 領取一輪任務並開始執行，不等待完成。只供手動模式（測試）使用。
+// 開始執行的任務在 RunRound 回傳之後還要繼續，所以它們的 context 不能在這裡取消：
+// 只在 server 關閉（root 取消）或呼叫端的 ctx 取消時才結束。
+func (s *Server) RunRound(ctx context.Context) (int, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	context.AfterFunc(s.root, cancel)
+	return s.worker.RunRound(ctx)
+}
+
+// RunUntilIdle 讓 worker 執行到沒有可以執行的任務為止。只供手動模式（測試）使用。
+func (s *Server) RunUntilIdle(ctx context.Context) error {
+	ctx, stop := s.withRoot(ctx)
+	defer stop()
+	return s.worker.RunUntilIdle(ctx)
+}
+
+// WaitWorker 等到 worker 執行中的任務都結束。只供手動模式（測試）使用。
+func (s *Server) WaitWorker() error { return s.worker.Wait() }
+
+// withRoot 讓 ctx 在 server 關閉（root 取消）時也一起取消，worker 啟動的子程序才會被結束。
+func (s *Server) withRoot(ctx context.Context) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(s.root, cancel)
+	return ctx, func() { stop(); cancel() }
+}
+
+// stopWorker 取消 root，等 worker 結束（production）或執行中的任務結束（手動模式）。
+func (s *Server) stopWorker() {
+	s.cancel()
+	if s.workerDone != nil {
+		<-s.workerDone
+	}
+	_ = s.worker.Wait()
 }
 
 // Addr 回傳實際監聽的位址。
@@ -200,7 +281,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			_ = s.http.Close() // 等不到就強制中斷，避免資源殘留
 		}
 		<-s.done
-		s.cancel()
+		// 先停止領取並等執行中的任務結束，再把還持有的租約放回佇列（PIPE-R12）。
+		s.stopWorker()
+		if _, err := s.queue.ReleaseOwned(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("釋放租約：%w", err))
+		}
 		errs = append(errs, s.store.Close(), s.lock.Release())
 		s.closeErr = errors.Join(errs...)
 	})
@@ -214,6 +299,7 @@ func (s *Server) Kill() {
 		s.cancel()
 		_ = s.http.Close()
 		<-s.done
+		s.stopWorker() // 不釋放租約：模擬程序被中斷
 		_ = s.store.Close()
 		_ = s.lock.Close()
 	})
@@ -221,6 +307,12 @@ func (s *Server) Kill() {
 
 // abort 在啟動途中失敗時釋放已取得的資源。
 func (s *Server) abort() {
+	if s.cancel != nil {
+		s.cancel()
+		if s.workerDone != nil {
+			<-s.workerDone
+		}
+	}
 	if s.ln != nil {
 		_ = s.ln.Close()
 	}
