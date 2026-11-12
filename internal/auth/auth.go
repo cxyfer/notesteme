@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -66,6 +67,8 @@ type Config struct {
 	Clock clock.Clock
 	// Params 是 argon2id 參數；零值使用 ProductionParams。
 	Params HashParams
+	// Log 是 log 輸出；nil 時使用 slog.Default()。
+	Log *slog.Logger
 }
 
 // Service 提供登入、session 驗證與登出。
@@ -73,6 +76,14 @@ type Service struct {
 	store  *store.Store
 	clock  clock.Clock
 	params HashParams
+	// verify 驗證密碼；測試可替換以計數實際進入驗證的次數。
+	verify func(password, encoded string) (bool, error)
+	// extend 延長 session 的到期時間；測試可替換以模擬失敗。
+	extend func(ctx context.Context, id string, expiresAt time.Time) error
+	log    *slog.Logger
+
+	// loginMu 讓同一時間只有一個登入在驗證密碼。
+	loginMu sync.Mutex
 
 	// 登入失敗計數只有 owner 一個帳號，所以是全域的；只存在記憶體，重啟後歸零。
 	mu          sync.Mutex
@@ -86,7 +97,15 @@ func New(cfg Config) *Service {
 	if p == (HashParams{}) {
 		p = ProductionParams
 	}
-	return &Service{store: cfg.Store, clock: cfg.Clock, params: p}
+	lg := cfg.Log
+	if lg == nil {
+		lg = slog.Default()
+	}
+	s := &Service{store: cfg.Store, clock: cfg.Clock, params: p, verify: verifyPassword, log: lg}
+	if cfg.Store != nil {
+		s.extend = cfg.Store.ExtendSession
+	}
+	return s
 }
 
 // EnsurePassword 確保 DB 有登入密碼（AUTH-R2、AUTH-R3）：
@@ -125,6 +144,11 @@ type Credentials struct {
 // Login 驗證密碼並建立 session。
 // 連續 5 次密碼錯誤後鎖定 1 分鐘，鎖定期間連正確的密碼也拒絕，回傳 *LockedError（AUTH-R6）。
 func (s *Service) Login(ctx context.Context, password, ip, userAgent string) (Credentials, error) {
+	// 「檢查鎖定 → 驗證 → 記錄失敗」必須是同一個臨界區，否則並行請求會在鎖定生效前全部進入驗證；
+	// 序列化同時把並行的 argon2 驗證（每次約 64MiB）限制為一個。鎖定後排隊的請求會直接被拒絕。
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+
 	if retry := s.lockRemaining(); retry > 0 {
 		return Credentials{}, &LockedError{RetryAfter: retry}
 	}
@@ -135,7 +159,7 @@ func (s *Service) Login(ctx context.Context, password, ip, userAgent string) (Cr
 	if !ok {
 		return Credentials{}, ErrNoPassword
 	}
-	match, err := verifyPassword(password, encoded)
+	match, err := s.verify(password, encoded)
 	if err != nil {
 		return Credentials{}, err
 	}
@@ -211,8 +235,9 @@ func (s *Service) AuthenticateSession(ctx context.Context, sessionToken string) 
 	}
 	now := s.clock.Now()
 	if next := now.Add(SessionIdleTimeout); next.Sub(sess.ExpiresAt) >= sessionTouchInterval {
-		if err := s.store.ExtendSession(ctx, sess.ID, next); err != nil {
-			return Principal{}, err
+		// 延長失敗不影響這次請求：session 仍然有效，下次請求會再試一次。
+		if err := s.extend(ctx, sess.ID, next); err != nil {
+			s.log.WarnContext(ctx, "延長 session 失敗", "error", err)
 		}
 	}
 	return Principal{Kind: "session"}, nil
