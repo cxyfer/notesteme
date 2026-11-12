@@ -91,22 +91,23 @@ func runServe(ctx context.Context, args []string, stdio IO, env Env) int {
 	}
 	fmt.Fprintf(stdio.Stdout, "notesteme listening on %s\n", srv.Addr())
 
+	code := 0
 	select {
 	case <-ctx.Done():
 	case <-srv.Done():
-		// serve 自己停止了（listener 出錯）。
+		// serve 自己停止了（listener 出錯）：回報錯誤，但仍要走 Shutdown 釋放 DB、鎖與 worker。
 		if err := srv.Err(); err != nil {
 			fmt.Fprintf(stdio.Stderr, "notesteme: %v\n", err)
-			return 1
+			code = 1
 		}
 	}
 
-	// ctx 已取消，正常關閉要用新的 context。
+	// ctx 可能已取消，正常關閉要用新的 context。
 	shutCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutCtx); err != nil {
 		fmt.Fprintf(stdio.Stderr, "notesteme: 關閉時發生錯誤：%v\n", err)
 		return 1
 	}
-	return 0
+	return code
 }
