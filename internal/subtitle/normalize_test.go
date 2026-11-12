@@ -273,6 +273,26 @@ func TestNormalizeExtra(t *testing.T) {
 		checkCues(t, got, []row{{text: "a b c"}, {text: "x < y > z"}, {text: "♪ la ♪"}})
 	})
 
+	t.Run("only real formatting tags are removed", func(t *testing.T) {
+		for in, want := range map[string]string{
+			"if a<b and b>c then x <3 y":          "if a<b and b>c then x <3 y",
+			"<i>x</i> <b>y</b> <u>z</u> <s>w</s>": "x y z w",
+			`<font color="#fff" size=2>a</font>`:  "a",
+			"<c.colorE5E5E5>a</c><v Bob>b</v>":    "ab",
+			"<ruby>漢<rt>kan</rt></ruby>":          "漢kan",
+			`<lang en>hi</lang>`:                  "hi",
+			"a<00:00:01.000><c> b</c>":            "a b",
+			"1 <2 and 3> 4":                       "1 <2 and 3> 4",
+			"use <br> or <div>x</div> literally":  "use <br> or <div>x</div> literally",
+			"<I>caps</I>":                         "caps",
+		} {
+			got := Normalize([]Cue{{StartMS: 0, EndMS: 1000, Text: in}})
+			if len(got) != 1 || got[0].Text != want {
+				t.Errorf("%q -> %+v, want %q", in, got, want)
+			}
+		}
+	})
+
 	t.Run("invalid end and empty input", func(t *testing.T) {
 		got := Normalize([]Cue{{StartMS: 5000, EndMS: 1000, Text: "x"}})
 		if len(got) != 1 || got[0].EndMS != 5000 || got[0].Timing != TimingSource {

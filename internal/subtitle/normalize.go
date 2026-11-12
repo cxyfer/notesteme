@@ -15,7 +15,11 @@ const (
 )
 
 var (
-	htmlTag = regexp.MustCompile(`</?[A-Za-z][^>]*>|<(?:\d{1,4}:)?\d{1,2}:\d{2}[.,]\d{1,3}>`)
+	// htmlTag 只匹配真正的字幕格式標籤，避免吃掉 "a<b and b>c" 這類一般文字：
+	//   - i、b、u、s、c、ruby、rt：不帶屬性，只允許 VTT class（<c.color>）
+	//   - font、v、lang：可帶屬性或註記（<font color=..>、<v Bob>、<lang en>）
+	//   - VTT 字詞時間標記 <00:00:01.000>
+	htmlTag = regexp.MustCompile(`(?i)</?(?:(?:i|b|u|s|c|ruby|rt)(?:\.[^>\s]*)*|(?:font|v|lang)(?:[.\s][^>]*)?)>|<(?:\d{1,4}:)?\d{1,2}:\d{2}[.,]\d{1,3}>`)
 	assTag  = regexp.MustCompile(`\{\\[^}]*\}`)
 )
 
