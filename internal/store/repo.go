@@ -36,17 +36,27 @@ func (s *Store) Read() *Repo { return &Repo{q: s.r, clock: s.clock} }
 // Write 回傳寫入用的 Repo（單一陳述句，自動提交）。
 func (s *Store) Write() *Repo { return &Repo{q: s.w, clock: s.clock} }
 
-// Tx 在一個交易中執行 fn；fn 回傳錯誤或 ctx 取消時回復。
-func (s *Store) Tx(ctx context.Context, fn func(*Repo) error) error {
+// Tx 在一個交易中執行 fn；fn 回傳錯誤、panic 或 ctx 取消時回復。
+// panic 時也必須回復並釋放唯一的寫入連線，否則之後的寫入會永遠卡住；回復後重新 panic。
+func (s *Store) Tx(ctx context.Context, fn func(*Repo) error) (err error) {
 	tx, err := s.w.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback() // 失敗與 panic 都走這裡；panic 會在 defer 結束後繼續往上拋
+		}
+	}()
 	if err := fn(&Repo{q: tx, clock: s.clock}); err != nil {
-		_ = tx.Rollback()
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 // NewID 產生 UUIDv7。

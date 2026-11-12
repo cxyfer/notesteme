@@ -108,6 +108,35 @@ func TestTxRollsBackOnError(t *testing.T) {
 	}
 }
 
+// callback panic 時必須回復並釋放唯一的寫入連線，否則之後的寫入會永遠卡住。
+func TestTxRollsBackOnPanic(t *testing.T) {
+	ctx := context.Background()
+	s, _ := openTest(t)
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("panic 應該被重新拋出")
+			}
+		}()
+		_ = s.Tx(ctx, func(r *Repo) error {
+			if _, _, err := r.InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "p", URL: "u"}); err != nil {
+				return err
+			}
+			panic("boom")
+		})
+	}()
+
+	wctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if _, _, err := s.Write().InsertItemIfAbsent(wctx, NewItem{Platform: "youtube", ExternalID: "after", URL: "u"}); err != nil {
+		t.Fatalf("panic 之後的寫入應該能完成：%v", err)
+	}
+	items, _ := s.Read().ListItems(ctx)
+	if len(items) != 1 || items[0].ExternalID != "after" {
+		t.Errorf("panic 的交易應已回復，實際 %+v", items)
+	}
+}
+
 func claimOpts(owner string, max int) ClaimOptions {
 	return ClaimOptions{Owner: owner, Max: max, Lease: 10 * time.Minute, Executor: "builtin", AgingInterval: 10 * time.Minute}
 }
