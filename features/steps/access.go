@@ -76,8 +76,17 @@ func (s *Scenario) requestBody(doc *godog.DocString) []byte {
 // 而不是 failed：這些路由屬於之後的切片，M1 期間是非 strict 模式（ADR-0015）。
 // 只有 server 自己宣告的 501 才算；404、其他狀態碼與錯誤的內容仍然是 failed，不會被遮住。
 // 預期的狀態碼本身就是 501 時不套用。
+// 預期 401 時也不套用，預期 403 且請求缺少完整憑證（不帶身分、非 GET 缺 CSRF）時同樣不套用：
+// 驗證與 CSRF 在路由之前決定，回 501 代表這些檢查被繞過，必須是 failed 而不是 pending。
+// 帶著完整憑證卻預期 403 的場景（例如不能經 API 建立 command provider）是 handler 的規則，
+// 屬於尚未實作的路由，仍視為 pending。
 func (s *Scenario) pendingIfNotImplemented(wantStatus int) error {
-	if wantStatus == http.StatusNotImplemented || s.last.status != http.StatusNotImplemented {
+	switch {
+	case wantStatus == http.StatusNotImplemented, wantStatus == http.StatusUnauthorized,
+		wantStatus == http.StatusForbidden && s.last.preRoute403:
+		return nil
+	}
+	if s.last.status != http.StatusNotImplemented {
 		return nil
 	}
 	var e struct {

@@ -49,6 +49,8 @@ type response struct {
 	status int
 	header http.Header
 	body   []byte
+	// preRoute403 表示這個請求缺少完整憑證，預期的 403 應該在路由之前就回應（見 pendingIfNotImplemented）。
+	preRoute403 bool
 }
 
 // reset 以新的 World 重設場景狀態。
@@ -239,15 +241,16 @@ func (s *Scenario) ensureOwner() error {
 	return nil
 }
 
-// storeCookies 依回應的 Set-Cookie 更新 owner 的 cookie；已清除（MaxAge < 0 或空值）的刪除。
+// storeCookies 依回應的 Set-Cookie 更新 owner 的 cookie。
+// 伺服器的清除指令（MaxAge < 0 或空值）刻意忽略：這模擬攻擊者或另一個分頁仍持有舊 cookie，
+// 登出後的請求照樣帶著它，才能驗證 session 在伺服器端真的失效，而不是只靠 client 把 cookie 丟掉。
 func (s *Scenario) storeCookies(resp *response) {
 	r := http.Response{Header: resp.header}
 	for _, c := range r.Cookies() {
 		if c.MaxAge < 0 || c.Value == "" {
-			delete(s.owner, c.Name)
-		} else {
-			s.owner[c.Name] = c.Value
+			continue
 		}
+		s.owner[c.Name] = c.Value
 	}
 }
 
@@ -288,6 +291,8 @@ func (s *Scenario) do(method, path string, o requestOpts) (*response, error) {
 		return nil, fmt.Errorf("讀取回應：%w", err)
 	}
 	resp := &response{status: httpResp.StatusCode, header: httpResp.Header, body: raw}
+	// 沒有完整的 owner 憑證（不帶身分，或非 GET 缺 CSRF）的請求，403 由路由之前的檢查決定。
+	resp.preRoute403 = o.who == asClient || (o.noCSRF && method != http.MethodGet && method != http.MethodHead && method != http.MethodOptions)
 	if o.who == asOwner {
 		s.storeCookies(resp)
 	}
