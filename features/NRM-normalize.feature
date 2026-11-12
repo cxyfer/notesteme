@@ -20,6 +20,44 @@ Feature: Normalize transcripts
       | # | start    | end      | text                         |
       | 1 | 00:00:01 | 00:00:06 | so today we talk about Kafka |
 
+  @NRM-01 @NRM-R1
+  Scenario: Rolling Chinese captions are de-duplicated without spaces
+    Given the "source" transcript of "yt:abc123" is:
+      | # | start    | end      | text              |
+      | 1 | 00:00:01 | 00:00:03 | 今天我們          |
+      | 2 | 00:00:02 | 00:00:05 | 今天我們來談 Kafka |
+    When the owner reruns "yt:abc123" from "normalize"
+    And the worker runs until idle
+    Then the "normalized" transcript of "yt:abc123" is:
+      | # | start    | end      | text              |
+      | 1 | 00:00:01 | 00:00:05 | 今天我們來談 Kafka |
+
+  @NRM-01 @NRM-R1
+  Scenario: A cue that only shares the first letters of a word is not merged
+    Given the "source" transcript of "yt:abc123" is:
+      | # | start    | end      | text         |
+      | 1 | 00:00:01 | 00:00:02 | Go           |
+      | 2 | 00:00:02 | 00:00:04 | Gone fishing |
+    When the owner reruns "yt:abc123" from "normalize"
+    And the worker runs until idle
+    Then the "normalized" transcript of "yt:abc123" is:
+      | # | text         |
+      | 1 | Go           |
+      | 2 | Gone fishing |
+
+  @NRM-01 @NRM-R1
+  Scenario: The same line far apart in time is kept twice
+    Given the "source" transcript of "yt:abc123" is:
+      | # | start    | end      | text |
+      | 1 | 00:00:01 | 00:00:02 | Yes. |
+      | 2 | 00:10:00 | 00:10:01 | Yes. |
+    When the owner reruns "yt:abc123" from "normalize"
+    And the worker runs until idle
+    Then the "normalized" transcript of "yt:abc123" is:
+      | # | start    | end      | text |
+      | 1 | 00:00:01 | 00:00:02 | Yes. |
+      | 2 | 00:10:00 | 00:10:01 | Yes. |
+
   @NRM-01 @NRM-R2
   Scenario: A tiny fragment is merged into the previous cue
     Given the "source" transcript of "yt:abc123" is:

@@ -114,6 +114,7 @@
 | `Given a token {string} with scopes {string}` | 建立 token，scope 以逗號分隔，例如 `"read,agent"` |
 | `Given the token {string} expired` | 讓 token 過期 |
 | `When someone signs in with the password {string}` | `POST /api/auth/login` |
+| `When someone signs in from {string} with the password {string}` | 從指定的來源位址送出 `POST /api/auth/login`；測試中用 `127.0.0.0/8` 內的位址 |
 | `When the owner sends {string}` | 用 owner 的 session 送出請求，例如 `"GET /api/items"`；非 GET 請求自動帶 CSRF token |
 | `When the owner sends {string} with:` | 同上，帶 JSON body |
 | `When the owner sends {string} without a CSRF token` | 用 session 送出請求，但不帶 CSRF token |

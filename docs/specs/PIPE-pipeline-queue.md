@@ -27,7 +27,7 @@
 |---|---|
 | PIPE-R1 | 步驟依 DAG 執行，上游完成後才建立下游任務。`until` 指定的步驟完成後就停止，之後的步驟為 `pending` 但不建立任務。 |
 | PIPE-R2 | 步驟狀態與錯誤類別的對應見 plan 第 5.2、5.3 節：`retryable` 重試中為 `pending`、用盡後為 `failed`；`wait` 為 `waiting`；`needs_action`、`budget_blocked` 為 `blocked`；`permanent` 為 `failed`。 |
-| PIPE-R3 | `retryable` 錯誤以指數退避重試（30 秒、2 分鐘、8 分鐘），最多 3 次嘗試。 |
+| PIPE-R3 | `retryable` 錯誤以指數退避重試（30 秒、2 分鐘），最多 3 次嘗試。 |
 | PIPE-R4 | `blocked` 的步驟在使用者執行修正動作（例如上傳 cookie）後自動回到 `pending`；也可以手動重試。 |
 | PIPE-R5 | 快取鍵相同的步驟直接重用既有產出，不呼叫外部服務，也不建立新版本。快取鍵見 plan 第 5.1 節。 |
 | PIPE-R6 | 步驟的 `impl_version` 改變後，舊的快取不再命中。 |
@@ -54,5 +54,4 @@
 
 ## 待決問題
 
-- PIPE-R3 的文字自相矛盾（2026-11-12，切片 1 審查時發現）：列了三個退避時間（30 秒、2 分鐘、8 分鐘），但「最多 3 次嘗試」只會等待兩次，8 分鐘永遠用不到。場景 `A temporary failure becomes a failure after three attempts` 與「3 次嘗試」一致。建議改成「最多 4 次嘗試」，或刪掉 8 分鐘。
 - 退避的時間與次數是否依資源類別區分（例如 `download` 遇到 429 時等更久），M1 實作時觀察實際的 rate limit。

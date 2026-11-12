@@ -83,6 +83,20 @@ Feature: Sign-in and tokens
     And someone signs in with the password "correct horse"
     Then the response status is 200
 
+  @M1 @AUTH-02 @AUTH-R6
+  Scenario: A lockout from one address does not lock out another
+    Given the owner password is "correct horse"
+    And the server is running
+    When someone signs in from "127.0.0.2" with the password "wrong 1"
+    And someone signs in from "127.0.0.2" with the password "wrong 2"
+    And someone signs in from "127.0.0.2" with the password "wrong 3"
+    And someone signs in from "127.0.0.2" with the password "wrong 4"
+    And someone signs in from "127.0.0.2" with the password "wrong 5"
+    And someone signs in from "127.0.0.2" with the password "correct horse"
+    Then the response status is 429
+    When someone signs in from "127.0.0.3" with the password "correct horse"
+    Then the response status is 200
+
   @M1 @AUTH-03 @AUTH-R7 @AUTH-R10 @cli
   Scenario: A token is shown once and stored only as a hash
     When the owner runs "notesteme tokens create --name agent --scopes read,agent --json"

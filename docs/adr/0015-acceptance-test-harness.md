@@ -2,6 +2,7 @@
 
 - 狀態：已採納
 - 日期：2026-11-12
+- 修訂：2026-11-13，排程確定自寫，不用 gocron v2
 
 ## 背景
 
@@ -45,7 +46,7 @@
   - fakenet 遇到沒有登記的目標就記錄違規，場景的 After hook 讓場景失敗。
   - `TestMain` 把 `http.DefaultTransport` 換成一律失敗的版本，`net.DefaultResolver` 改用一律失敗的 `Dial`，繞過 netguard 的連線也會失敗。
   - `Then no connection was made to {string}` 比對 fakenet 的連線紀錄。
-- **時間**：重試、租約、`not_before`、登入鎖定都以「DB 中的時間 ≤ `Clock.Now()`」判斷，不 sleep。`When the clock advances by …` 只推進時鐘，到期的工作在下一次 worker 執行時處理。Scheduler 也必須提供可由測試同步驅動的介面；plan 第 22 節指定的 gocron v2 會在自己的 goroutine 中非同步觸發，實作 scheduler 時要另外確認或改用自寫的排程。
+- **時間**：重試、租約、`not_before`、登入鎖定都以「DB 中的時間 ≤ `Clock.Now()`」判斷，不 sleep。`When the clock advances by …` 只推進時鐘，到期的工作在下一次 worker 執行時處理。Scheduler 也必須提供可由測試同步驅動的介面，所以排程自己寫，不用 gocron v2（plan 第 22 節）。
 
 ### 場景的隔離與代入
 

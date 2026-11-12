@@ -28,7 +28,7 @@
 | AUTH-R3 | 還沒有密碼、也沒有 `NOTESTEME_PASSWORD` 時，`serve` 拒絕啟動，訊息為「尚未設定登入密碼。請設定 NOTESTEME_PASSWORD 後重新啟動。」只有加上 `--insecure-no-auth` 才能在沒有密碼的情況下啟動，並在 log 與 UI 頂部持續顯示警告。 | M1 |
 | AUTH-R4 | session cookie 設 `HttpOnly`、`SameSite=Lax`，經 HTTPS 存取時加上 `Secure`；閒置 30 天失效。登出後 session 立即失效。 | M1 |
 | AUTH-R5 | 用 session 送出的非 GET 請求必須帶 CSRF token，否則回傳 403。用 bearer token 的請求不需要 CSRF token。 | M1 |
-| AUTH-R6 | 連續 5 次密碼錯誤後鎖定 1 分鐘；鎖定期間連正確的密碼也拒絕，回傳 429，回應包含剩餘秒數。錯誤訊息一律為「密碼不正確。」，不透露其他資訊。 | M1 |
+| AUTH-R6 | 同一個來源位址連續 5 次密碼錯誤後，該位址鎖定 1 分鐘；鎖定期間連正確的密碼也拒絕，回傳 429，回應包含剩餘秒數。其他位址不受影響。錯誤訊息一律為「密碼不正確。」，不透露其他資訊。來源位址取自連線；連線來自設定檔 `trusted_proxies` 中的位址時，改用 `X-Forwarded-For` 中最右邊一個不在 `trusted_proxies` 內的位址。 | M1 |
 | AUTH-R7 | token 建立時只顯示一次完整內容，DB 只存 hash。每個 token 有名稱、scope、可選的到期時間。 | M1 |
 | AUTH-R8 | 每個 API 與 MCP tool 都宣告需要的 scope（見 plan 第 16、19 節）。token 缺少需要的 scope 時回傳 403，並在回應中說明需要哪個 scope。session 擁有全部權限。 | M1 |
 | AUTH-R9 | 撤銷或過期的 token 立即失效，回傳 401。 | M1 |
@@ -40,6 +40,7 @@
 - API：`POST /api/auth/login`、`POST /api/auth/logout`、`GET/POST/DELETE /api/tokens`
 - CLI：`notesteme tokens create|ls|revoke`、`notesteme password set`
 - 環境變數：`NOTESTEME_PASSWORD`
+- 設定檔：`trusted_proxies`（CIDR 清單，預設為空；放在 Caddy 等反向代理後面時填入 proxy 的位址）
 - Session 與 CSRF：登入成功後設定 `notesteme_session`（`HttpOnly`、`SameSite=Lax`）與 `notesteme_csrf` 兩個 cookie。`notesteme_csrf` 可以由前端讀取；非 GET 請求把它的值放在 `X-CSRF-Token` 標頭（double-submit）。
 - Bearer token：`Authorization: Bearer <token>`。
 
@@ -51,4 +52,3 @@
 ## 待決問題
 
 - session 閒置期限 30 天是否太長，M1 期間依實際使用調整。
-- AUTH-R6 的鎖定是全域的（2026-11-12，切片 1 審查時發現）：任何能連到服務的人，每分鐘送 5 次錯誤密碼，就能讓 owner 一直無法登入。建議的緩解方式：依來源 IP 分開計數，或已持有有效 session 的請求不受鎖定影響。部署在 VPS 上時影響較大。

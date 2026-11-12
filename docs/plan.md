@@ -1,6 +1,6 @@
 # Notesteme 計畫
 
-> 狀態：草案 v0.2（2026-11-12，修訂紀錄見第 28 節）
+> 狀態：草案 v0.3（2026-11-13，修訂紀錄見第 28 節）
 > 相關文件：[ADR 索引](adr/README.md)、[UI 規格](ui/README.md)、[規格與驗收](specs/README.md)
 
 ## 1. 背景與目標
@@ -662,7 +662,7 @@ cues_fts         (FTS5 trigram：item_id, artifact_id, start_ms, text) -- 只索
 | 語言 | Go（穩定版，至少 1.25，MCP SDK 的最低需求） |
 | HTTP／API | `net/http` + Huma v2（產生 OpenAPI 3.1） |
 | DB | Client：SQLite（`modernc.org/sqlite`，WAL，FTS5），選配 Postgres＋Redis；Hub：Postgres（pgx）；migration 用 goose，查詢用 sqlc |
-| 任務與排程 | 自寫 stage runner + 租約佇列；排程用 gocron v2 |
+| 任務與排程 | 自寫 stage runner + 租約佇列 + 排程（到期判斷取自注入的時鐘，測試可以同步驅動，見 ADR-0015） |
 | LLM | `openai-go`、`anthropic-sdk-go`、`google.golang.org/genai`，外面包一層薄介面 |
 | MCP | `modelcontextprotocol/go-sdk` |
 | 字幕 | `go-astisub` 讀寫 SRT／VTT；ASS 輸出自己實作 |
@@ -769,3 +769,4 @@ notesteme/
 |---|---|---|
 | v0.1 | 2026-11-11 | 初版 |
 | v0.2 | 2026-11-12 | 依審查修訂：簡繁轉換移到 `translate`、句群翻譯、步驟狀態加上 `waiting` 與 `blocked`、字幕格式改為即時渲染、登入提前到 M1、設定來源分層、安全與維運規則、資料模型調整、選配 Postgres＋Redis；新增摘要、自動章節、SponsorBlock、外部字幕匯入、sidecar 輸出、訂閱匯入、Batch API 等功能 |
+| v0.3 | 2026-11-13 | 排程改為自寫，不用 gocron v2：gocron 在自己的 goroutine 中非同步觸發，驗收測試無法確定排程已經處理完（ADR-0015） |
