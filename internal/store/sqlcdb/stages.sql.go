@@ -167,7 +167,7 @@ func (q *Queries) SetStageResult(ctx context.Context, arg SetStageResultParams) 
 	return err
 }
 
-const setStageState = `-- name: SetStageState :exec
+const setStageState = `-- name: SetStageState :one
 UPDATE stage_runs SET
   status        = ?1,
   block_reason  = ?2,
@@ -178,6 +178,7 @@ UPDATE stage_runs SET
   started_at    = COALESCE(?7, started_at),
   finished_at   = ?8
 WHERE id = ?9
+RETURNING item_id, stage, status
 `
 
 type SetStageStateParams struct {
@@ -192,10 +193,16 @@ type SetStageStateParams struct {
 	ID           string
 }
 
+type SetStageStateRow struct {
+	ItemID string
+	Stage  string
+	Status string
+}
+
 // Every descriptive column is written (unset means cleared); started_at only changes when given,
 // finished_at is always overwritten.
-func (q *Queries) SetStageState(ctx context.Context, arg SetStageStateParams) error {
-	_, err := q.db.ExecContext(ctx, setStageState,
+func (q *Queries) SetStageState(ctx context.Context, arg SetStageStateParams) (SetStageStateRow, error) {
+	row := q.db.QueryRowContext(ctx, setStageState,
 		arg.Status,
 		arg.BlockReason,
 		arg.ErrorClass,
@@ -206,7 +213,9 @@ func (q *Queries) SetStageState(ctx context.Context, arg SetStageStateParams) er
 		arg.FinishedAt,
 		arg.ID,
 	)
-	return err
+	var i SetStageStateRow
+	err := row.Scan(&i.ItemID, &i.Stage, &i.Status)
+	return i, err
 }
 
 const snapshotConfig = `-- name: SnapshotConfig :one

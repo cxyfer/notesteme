@@ -19,7 +19,7 @@ SELECT * FROM stage_runs WHERE id = sqlc.arg(id);
 -- name: StageRunsByItem :many
 SELECT * FROM stage_runs WHERE item_id = sqlc.arg(item_id) ORDER BY created_at, rowid;
 
--- name: SetStageState :exec
+-- name: SetStageState :one
 -- Every descriptive column is written (unset means cleared); started_at only changes when given,
 -- finished_at is always overwritten.
 UPDATE stage_runs SET
@@ -31,7 +31,8 @@ UPDATE stage_runs SET
   not_before    = sqlc.narg(not_before),
   started_at    = COALESCE(sqlc.narg(started_at), started_at),
   finished_at   = sqlc.narg(finished_at)
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id)
+RETURNING item_id, stage, status;
 
 -- name: SetStageResult :exec
 UPDATE stage_runs SET

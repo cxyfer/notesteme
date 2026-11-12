@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 
 	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
 )
@@ -71,6 +72,7 @@ func (r *Repo) InsertStageRun(ctx context.Context, n NewStageRun) (StageRun, err
 	if err != nil {
 		return StageRun{}, err
 	}
+	r.emitStage(ctx, n.ItemID, n.Stage, n.Status)
 	return r.StageRun(ctx, id)
 }
 
@@ -114,7 +116,7 @@ func (r *Repo) SetStageState(ctx context.Context, id string, st StageState) erro
 	case StatusDone, StatusFailed, StatusSkipped:
 		finished = &now
 	}
-	return r.q.SetStageState(ctx, sqlcdb.SetStageStateParams{
+	row, err := r.q.SetStageState(ctx, sqlcdb.SetStageStateParams{
 		Status:       st.Status,
 		BlockReason:  st.BlockReason,
 		ErrorClass:   st.ErrorClass,
@@ -125,6 +127,14 @@ func (r *Repo) SetStageState(ctx context.Context, id string, st StageState) erro
 		FinishedAt:   finished,
 		ID:           id,
 	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil // 沒有這個步驟：沿用過去 :exec 的行為，不視為錯誤，也沒有狀態可以發布
+	}
+	if err != nil {
+		return err
+	}
+	r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
+	return nil
 }
 
 // SetStageResult 記錄步驟的快取鍵、版本與產出。
