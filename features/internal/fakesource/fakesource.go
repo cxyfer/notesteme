@@ -32,7 +32,8 @@ type source struct {
 	returns  map[string]string // item key -> fixture 名稱
 	nothing  map[string]bool
 	cookie   string
-	maxBytes int64 // 0 代表沒有上限
+	apiKey   string // 非空時，請求必須帶有這把 API key
+	maxBytes int64  // 0 代表沒有上限
 	calls    int
 }
 
@@ -91,6 +92,14 @@ func (s *Script) RequiresCookie(sourceID, cookie string) {
 	s.src(sourceID).cookie = cookie
 }
 
+// RequiresAPIKey 讓來源要求請求帶有這把 API key（x-api-key 標頭，或 Authorization: Bearer），否則回 401。
+// 用來確認被測程式真的送出 key；key 本身不會被記錄。
+func (s *Script) RequiresAPIKey(sourceID, key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.src(sourceID).apiKey = key
+}
+
 // RequiredCookie 回傳來源要求的 cookie 名稱（沒有要求時為空字串）。
 func (s *Script) RequiredCookie(sourceID string) string {
 	s.mu.Lock()
@@ -117,8 +126,12 @@ func (s *Script) begin(sourceID string, w http.ResponseWriter, r *http.Request) 
 	s.mu.Lock()
 	src := s.src(sourceID)
 	src.calls++
-	cookie := src.cookie
+	cookie, apiKey := src.cookie, src.apiKey
 	s.mu.Unlock()
+	if apiKey != "" && r.Header.Get("x-api-key") != apiKey && r.Header.Get("Authorization") != "Bearer "+apiKey {
+		writeJSON(w, http.StatusUnauthorized, `{"error":"invalid_api_key"}`)
+		return false
+	}
 	if cookie != "" {
 		if _, err := r.Cookie(cookie); err != nil {
 			writeJSON(w, http.StatusUnauthorized, `{"error":"cookie_required","cookie":`+strconv.Quote(cookie)+`}`)

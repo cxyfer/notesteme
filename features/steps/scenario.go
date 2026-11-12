@@ -14,6 +14,7 @@ import (
 	"github.com/cxyfer/notesteme/features/internal/harness"
 	"github.com/cxyfer/notesteme/internal/app"
 	"github.com/cxyfer/notesteme/internal/auth"
+	"github.com/cxyfer/notesteme/internal/config"
 )
 
 // Scenario 持有一個場景的狀態；每個場景各自一份（ADR-0015）。
@@ -44,8 +45,6 @@ type Scenario struct {
 	givenSettings map[string]any
 	// givenQueue 是 Given 累積的佇列上限與暫停設定，同樣延到第一個送出請求的步驟才套用。
 	givenQueue queueConfig
-	// scriptedSources 是場景用 `the source … returns` 腳本化的來源（見 pendingForUnwiredSource）。
-	scriptedSources map[string]bool
 }
 
 // response 是最近一次請求的回應。
@@ -129,8 +128,8 @@ func (s *Scenario) close() error {
 // checkLogs 確認 server 的 log 沒有出現環境變數中的密碼或 master key（NFR-SEC-3）。
 func (s *Scenario) checkLogs() error {
 	logs := s.World.Log.String()
-	secrets := map[string]bool{harness.TestPassword: true, harness.TestMasterKey: true}
-	for _, k := range []string{"NOTESTEME_PASSWORD", "NOTESTEME_MASTER_KEY"} {
+	secrets := map[string]bool{harness.TestPassword: true, harness.TestMasterKey: true, harness.TestSupadataKey: true}
+	for _, k := range []string{"NOTESTEME_PASSWORD", "NOTESTEME_MASTER_KEY", config.EnvSupadataAPIKey} {
 		if v := s.World.Env[k]; len(v) >= 4 {
 			secrets[v] = true
 		}
@@ -234,7 +233,7 @@ func (s *Scenario) send(spec string, o requestOpts) error {
 	if err != nil {
 		return err
 	}
-	s.last = s.pendingIfUnwiredSource(method, path, resp)
+	s.last = resp
 	return nil
 }
 

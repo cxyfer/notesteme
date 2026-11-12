@@ -227,3 +227,29 @@ func TestItemKey(t *testing.T) {
 		}
 	}
 }
+
+func TestRequiresAPIKey(t *testing.T) {
+	s := New(fixturesDir(t))
+	s.Returns("supadata", "yt:abc123", "supadata-en.json")
+	s.RequiresAPIKey("supadata", "k-123")
+	h := s.SupadataHandler()
+	if rec := supadataGet(h, "https://youtu.be/abc123"); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("沒有 key 應為 401: %d", rec.Code)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/v1/transcript?url="+url.QueryEscape("https://youtu.be/abc123"), nil)
+	req.Header.Set("x-api-key", "wrong")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("key 不符應為 401: %d", rec.Code)
+	}
+	req.Header.Set("x-api-key", "k-123")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("key 正確應為 200: %d", rec.Code)
+	}
+	if s.Calls("supadata") != 3 {
+		t.Fatalf("被拒絕的請求也要計入：%d", s.Calls("supadata"))
+	}
+}

@@ -26,7 +26,7 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`the item {string} has been ingested`, s.itemHasBeenIngested)
 	r.Step(`the item {string} has been ingested as {word}`, s.itemHasBeenIngestedAs)
 	r.Step(`{string} is a mixed-language item`, func(string) error { return godog.ErrPending })
-	r.Step(`the item {string} has been processed up to {string}`, func(string, string) error { return godog.ErrPending })
+	r.Step(`the item {string} has been processed up to {string}`, s.itemProcessedUpTo)
 	r.Given(`the {string} transcript of {string} is:`, func(variant, ref string, t *godog.Table) error {
 		return s.seedTranscript(variant, ref, "", t)
 	})
@@ -40,9 +40,9 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`the library contains {string}`, s.libraryContains)
 	r.Step(`the stage {string} of {string} is {string}`, s.stageIs)
 	r.Step(`the stage {string} of {string} is blocked with the reason {string}`, func(string, string, string) error { return godog.ErrPending })
-	r.Step(`the stage {string} of {string} failed with the error class {string}`, func(string, string, string) error { return godog.ErrPending })
+	r.Step(`the stage {string} of {string} failed with the error class {string}`, s.stageFailedWith)
 	r.Step(`the stage {string} of {string} waits until {string}`, func(string, string, string) error { return godog.ErrPending })
-	r.Step(`the stage {string} of {string} retries at {string}`, func(string, string, string) error { return godog.ErrPending })
+	r.Step(`the stage {string} of {string} retries at {string}`, s.stageRetriesAt)
 	r.Step(`{string} shows the message {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`{string} offers the actions {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`the transcript of {string} came from {string}`, s.transcriptCameFrom)
@@ -54,7 +54,7 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`every cue of the {string} transcript of {string} follows the subtitle rules for {string}`, func(string, string, string) error { return godog.ErrPending })
 	r.Step(`every cue of the {string} transcript of {string} has the timing {string}`, func(string, string, string) error { return godog.ErrPending })
 	r.Step(`the {string} artifact of {string} has the provenance:`, func(string, string, *godog.Table) error { return godog.ErrPending })
-	r.Step(`the {string} artifact of {string} has {int} versions`, func(string, string, int) error { return godog.ErrPending })
+	r.Step(`the {string} artifact of {string} has {int} versions`, s.artifactHasVersions)
 	r.Step(`the item {string} has no {string} artifact`, s.itemHasNoArtifact)
 	r.Step(`the media of {string} is cached`, func(string) error { return godog.ErrPending })
 	r.Step(`the trash contains {string}`, func(string) error { return godog.ErrPending })
@@ -176,27 +176,12 @@ func (s *Scenario) stageIs(stage, ref, want string) error {
 				if s.last != nil && s.last.status == http.StatusNotImplemented && isNotImplemented(s.last.body) {
 					return fmt.Errorf("最近的請求還沒有實作：%w", godog.ErrPending)
 				}
-				if err := s.pendingForUnwiredSource(it); err != nil {
-					return err
-				}
 				return fmt.Errorf("%s 的步驟 %s 是 %q，預期 %q（%s）", ref, stage, st.Status, want, describeStage(st))
 			}
 			return nil
 		}
 	}
 	return fmt.Errorf("%s 沒有步驟 %q", ref, stage)
-}
-
-// pendingForUnwiredSource 在場景用 `the source … returns` 腳本化了某個來源、影音詳情卻回報該來源
-// not_configured（產品還沒有這個來源的實作）時回傳 pending：結果不符是因為來源還沒實作，不是這個步驟的行為有錯。
-// 只在比對已經不符之後才呼叫，所以不會遮住真正的失敗。
-func (s *Scenario) pendingForUnwiredSource(it itemJSON) error {
-	for _, src := range it.Sources {
-		if s.scriptedSources[src.Source] && src.Reason == "not_configured" {
-			return fmt.Errorf("來源 %q 還沒有實作（not_configured）：%w", src.Source, godog.ErrPending)
-		}
-	}
-	return nil
 }
 
 func describeStage(st stageJSON) string {
@@ -225,9 +210,6 @@ func (s *Scenario) transcriptCameFrom(ref, want string) error {
 			}
 			return nil
 		}
-	}
-	if err := s.pendingForUnwiredSource(it); err != nil {
-		return err
 	}
 	return fmt.Errorf("%s 沒有採用任何字幕來源（sources：%+v）", ref, it.Sources)
 }

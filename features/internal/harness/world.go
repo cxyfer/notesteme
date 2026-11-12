@@ -20,13 +20,19 @@ import (
 	"github.com/cxyfer/notesteme/features/internal/fakesource"
 	"github.com/cxyfer/notesteme/features/internal/faketool"
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/config"
 )
 
 // 測試用的預設 secret。這些值只用於測試；NFR-SEC-3 的掃描會在 log 與 calls.jsonl 中尋找它們。
 const (
 	TestPassword  = "nst-test-password-4f1b9c"
 	TestMasterKey = "nst-test-master-key-7d2e8a0c5b31f964a8e1d3c7"
+	// TestSupadataKey 是測試環境提供給 Supadata 的假 API key（fake origin 會檢查它）。
+	TestSupadataKey = "nst-test-supadata-key-3a9c61e0f2"
 )
+
+// SupadataHost 是 Supadata API 的主機名稱；fakenet 把它導到腳本化的 fake origin。
+const SupadataHost = "api.supadata.ai"
 
 // DefaultNow 是新場景的 fake clock 起始時間。
 var DefaultNow = time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
@@ -82,8 +88,10 @@ func New() (*World, error) {
 			"NOTESTEME_DATA":       filepath.Join(root, "data"),
 			"NOTESTEME_PASSWORD":   TestPassword,
 			"NOTESTEME_MASTER_KEY": TestMasterKey,
-			"PATH":                 filepath.Join(root, "bin"),
-			"HOME":                 filepath.Join(root, "home"),
+			// 測試環境預設有 Supadata 的 API key（steps.md 第 4.1 節：fake provider 預設有 key）。
+			config.EnvSupadataAPIKey: TestSupadataKey,
+			"PATH":                   filepath.Join(root, "bin"),
+			"HOME":                   filepath.Join(root, "home"),
 		},
 		Clock:       clock.NewFake(DefaultNow),
 		Net:         fakenet.New(),
@@ -93,6 +101,9 @@ func New() (*World, error) {
 		FixturesDir: fx,
 		Log:         &LogBuffer{},
 	}
+	// 腳本化的 Supadata 掛在它的正式主機名稱上，被測程式照正常路徑連線（經 netguard 與 fakenet）。
+	w.Sources.RequiresAPIKey("supadata", TestSupadataKey)
+	w.Net.Handle(SupadataHost, w.Sources.SupadataHandler())
 	for _, d := range []string{w.DataDir(), w.InboxDir(), w.ConfigDir(), w.BinDir(), w.FakeDir(), w.HomeDir()} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			_ = w.Close()

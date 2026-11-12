@@ -1,9 +1,7 @@
 package steps
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,6 +10,7 @@ import (
 	"github.com/cucumber/godog"
 
 	"github.com/cxyfer/notesteme/features/internal/faketool"
+	"github.com/cxyfer/notesteme/internal/source"
 )
 
 // registerSources 註冊「平台與來源的 fixture」的步驟，句型見 docs/specs/steps.md。
@@ -25,9 +24,9 @@ func registerSources(r *Registry, s *Scenario) {
 	r.Step(`{string} has no caption tracks`, s.hasNoCaptions)
 	r.Step(`the auto captions of {string} are not ready yet`, func(string) error { return godog.ErrPending })
 	r.Step(`the source {string} returns {string} for {string}`, s.sourceReturns)
-	r.Step(`the source {string} has nothing for {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the source {string} requires the cookie {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the source {string} accepts files up to {string}`, func(string, string) error { return godog.ErrPending })
+	r.Step(`the source {string} has nothing for {string}`, s.sourceHasNothing)
+	r.Step(`the source {string} requires the cookie {string}`, s.sourceRequiresCookie)
+	r.Step(`the source {string} accepts files up to {string}`, s.sourceAcceptsUpTo)
 	r.Step(`the audio of {string} is {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`yt-dlp fails for {string} with {string}`, func(string, string) error { return godog.ErrPending })
 }
@@ -190,38 +189,60 @@ func (s *Scenario) hasNoCaptions(ref string) error {
 	})
 }
 
-// sourceReturns 讓來源對影音回傳指定的 fixture（腳本化的 fake origin，見 fakesource）。
-func (s *Scenario) sourceReturns(source, fixture, ref string) error {
-	s.World.Sources.Returns(source, ref, fixture)
-	if s.scriptedSources == nil {
-		s.scriptedSources = map[string]bool{}
+// scriptableSource 確認場景能腳本化這個來源：
+//   - 產品還沒實作的來源（source.Implemented）讓場景停在這個 Given，標為 pending；
+//     場景預期的行為不可能出現，不是靠事後把失敗轉成 pending。
+//   - 平台字幕（youtube-*）由假 yt-dlp 提供，不經過 fakesource，這個步驟無法腳本化它們。
+func scriptableSource(id string) error {
+	if !source.Implemented(id) {
+		return fmt.Errorf("來源 %q 還沒有實作：%w", id, godog.ErrPending)
 	}
-	s.scriptedSources[source] = true
+	if _, platform := platformCaptionFlag[id]; platform {
+		return fmt.Errorf("平台字幕 %q 由假 yt-dlp 提供，這個步驟還不能腳本化它：%w", id, godog.ErrPending)
+	}
 	return nil
 }
 
-// itemDetailPath 辨識 GET /api/items/{id}（影音詳情）。
-var itemDetailPath = regexp.MustCompile(`^/api/items/[^/?]+$`)
+// sourceReturns 讓來源對影音回傳指定的 fixture（腳本化的 fake origin，見 fakesource）。
+func (s *Scenario) sourceReturns(id, fixture, ref string) error {
+	if err := scriptableSource(id); err != nil {
+		return err
+	}
+	s.World.Sources.Returns(id, ref, fixture)
+	return nil
+}
 
-// pendingIfUnwiredSource 處理「場景腳本化了某個來源，產品卻還沒有這個來源的實作」：
-// 影音詳情的 sources 把該來源列為 not_configured 時，場景預期的結果不可能出現，
-// 把這個回應換成 501 not_implemented，讓斷言回應的步驟依 ADR-0015 的約定成為 pending。
-// 只在詳情本身列出這個原因時才換，其他回應不受影響。
-func (s *Scenario) pendingIfUnwiredSource(method, path string, resp *response) *response {
-	if len(s.scriptedSources) == 0 || method != http.MethodGet || resp.status != http.StatusOK || !itemDetailPath.MatchString(path) {
-		return resp
+// sourceHasNothing 讓來源對影音沒有結果。
+func (s *Scenario) sourceHasNothing(id, ref string) error {
+	if err := scriptableSource(id); err != nil {
+		return err
 	}
-	var detail struct {
-		Sources []sourceJSON `json:"sources"`
+	s.World.Sources.Nothing(id, ref)
+	return nil
+}
+
+// sourceRequiresCookie 讓來源要求指定的 cookie 才能取得。
+func (s *Scenario) sourceRequiresCookie(id, cookie string) error {
+	if err := scriptableSource(id); err != nil {
+		return err
 	}
-	if json.Unmarshal(resp.body, &detail) != nil {
-		return resp
+	s.World.Sources.RequiresCookie(id, cookie)
+	return nil
+}
+
+var sizePattern = regexp.MustCompile(`^(\d+)\s*(KB|MB|GB)$`)
+
+// sourceAcceptsUpTo 設定來源的單檔大小上限，例如 "25MB"。
+func (s *Scenario) sourceAcceptsUpTo(id, size string) error {
+	if err := scriptableSource(id); err != nil {
+		return err
 	}
-	for _, src := range detail.Sources {
-		if s.scriptedSources[src.Source] && src.Reason == "not_configured" {
-			body := fmt.Sprintf(`{"code":"not_implemented","message":"來源 %s 還沒有實作"}`, src.Source)
-			return &response{status: http.StatusNotImplemented, header: resp.header, body: []byte(body)}
-		}
+	m := sizePattern.FindStringSubmatch(size)
+	if m == nil {
+		return fmt.Errorf("大小 %q 應是數字加 KB、MB 或 GB", size)
 	}
-	return resp
+	n, _ := strconv.ParseInt(m[1], 10, 64)
+	unit := map[string]int64{"KB": 1 << 10, "MB": 1 << 20, "GB": 1 << 30}[m[2]]
+	s.World.Sources.AcceptsUpTo(id, n*unit)
+	return nil
 }
