@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/cucumber/godog"
+	"github.com/cxyfer/notesteme/internal/pipeline"
 )
 
 // gateWaitLimit 是等被 gate 擋住的程序就位的真實時間上限，只用來防止卡死；結果由標記檔決定。
@@ -24,7 +24,7 @@ func registerQueue(r *Registry, s *Scenario) {
 	r.Step(`the worker starts one round`, s.workerStartsOneRound)
 	r.Step(`{int} tasks of {string} are running`, s.tasksOfClassAreRunning)
 	r.Step(`1 task of {string} is running`, func(class string) error { return s.tasksOfClassAreRunning(1, class) })
-	r.Step(`the implementation version of the stage {string} is {int}`, func(string, int) error { return godog.ErrPending })
+	r.Step(`the implementation version of the stage {string} is {int}`, s.implementationVersionIs)
 	r.Step(`the next task belongs to {string}`, s.nextTaskBelongsTo)
 	r.Step(`the task of {string} for {string} has {int} attempts`, s.taskHasAttempts)
 	r.Step(`the source {string} was called {int} times`, s.sourceWasCalled)
@@ -53,6 +53,22 @@ func (s *Scenario) queueIsPaused() error {
 
 func (s *Scenario) resourceClassIsPaused(class string) error {
 	s.givenQueue.pausedClasses = append(s.givenQueue.pausedClasses, class)
+	return nil
+}
+
+// implementationVersionIs 覆寫步驟的 impl_version（PIPE-R6）。
+// server 已啟動就呼叫測試介面；還沒啟動就記在 World，啟動時經 TestControls 帶入（與 SeedTranscript 的做法一致）。
+func (s *Scenario) implementationVersionIs(stage string, v int) error {
+	if !pipeline.ValidStage(stage) {
+		return fmt.Errorf("步驟 %q 不正確，應是 %v 其中之一", stage, pipeline.Stages)
+	}
+	if s.server != nil {
+		return s.server.SetImplVersion(stage, v)
+	}
+	if s.World.ImplVersions == nil {
+		s.World.ImplVersions = map[string]int{}
+	}
+	s.World.ImplVersions[stage] = v
 	return nil
 }
 

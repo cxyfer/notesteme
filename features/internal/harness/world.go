@@ -67,6 +67,9 @@ type World struct {
 	// Log 是 serve 的 log 輸出，見 AppEnv。
 	Log *LogBuffer
 
+	// ImplVersions 是 server 還沒啟動時累積的步驟 impl_version 覆寫（PIPE-R6），見 AppEnv。
+	ImplVersions map[string]int
+
 	listenMu sync.Mutex
 	listens  []ListenRecord
 

@@ -20,14 +20,15 @@ const (
 var Stages = []string{StageMetadata, StageTranscript, StageNormalize}
 
 // 每個步驟宣告的版本（plan 第 5.1 節）：演算法的行為改變時遞增，舊的快取就不再命中（PIPE-R6）。
-// TODO(PIPE-R6)：`Given the implementation version of the stage … is …` 需要可以在測試中覆寫。
+// 這是預設值；測試可以經 Deps.ImplVersions 或 Pipeline.SetImplVersion 覆寫，模擬步驟改版。
 const (
 	metadataImplVersion   = 1
 	transcriptImplVersion = 1
 	normalizeImplVersion  = 1
 )
 
-func implVersion(stage string) int {
+// defaultImplVersion 是步驟宣告的 impl_version。
+func defaultImplVersion(stage string) int {
 	switch stage {
 	case StageMetadata:
 		return metadataImplVersion
@@ -37,6 +38,34 @@ func implVersion(stage string) int {
 		return normalizeImplVersion
 	}
 	return 0
+}
+
+// implVersion 回傳步驟目前生效的 impl_version：有覆寫用覆寫值，否則用宣告的預設值。
+func (p *Pipeline) implVersion(stage string) int {
+	p.implMu.RLock()
+	defer p.implMu.RUnlock()
+	if v, ok := p.impl[stage]; ok {
+		return v
+	}
+	return defaultImplVersion(stage)
+}
+
+// SetImplVersion 覆寫步驟的 impl_version，之後新建立的快取鍵與 stage run 都用這個值（PIPE-R6）。
+// 只給驗收測試的 harness 使用（經 app.Server.SetImplVersion）；不對應任何 HTTP 端點。
+func (p *Pipeline) SetImplVersion(stage string, v int) error {
+	if !ValidStage(stage) {
+		return invalidf("不認識的步驟 %q。", stage)
+	}
+	if v < 1 {
+		return invalidf("impl_version 必須至少是 1，收到 %d。", v)
+	}
+	p.implMu.Lock()
+	defer p.implMu.Unlock()
+	if p.impl == nil {
+		p.impl = map[string]int{}
+	}
+	p.impl[stage] = v
+	return nil
 }
 
 // resourceClass 是步驟使用的資源類別（ADR-0004）。

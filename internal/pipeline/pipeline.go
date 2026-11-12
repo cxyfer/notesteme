@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
@@ -44,6 +45,8 @@ type Deps struct {
 	Wake func()
 	// Version 是 notesteme 的版本，寫進來源紀錄。
 	Version string
+	// ImplVersions 覆寫步驟的 impl_version（PIPE-R6），key 是步驟名稱；只給測試使用，nil 代表全用預設值。
+	ImplVersions map[string]int
 }
 
 // Pipeline 是影音處理的入口：API 呼叫 Ingest 與查詢方法，worker 呼叫 Handle。
@@ -58,6 +61,10 @@ type Pipeline struct {
 	http     *http.Client
 	wake     func()
 	version  string
+
+	// impl 是 impl_version 的覆寫（PIPE-R6）；worker 與測試介面並行存取，用 implMu 保護。
+	implMu sync.RWMutex
+	impl   map[string]int
 }
 
 // New 建立 Pipeline。
@@ -70,7 +77,14 @@ func New(d Deps) *Pipeline {
 	if wake == nil {
 		wake = func() {}
 	}
-	return &Pipeline{st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, fetchers: newFetchers(d), http: d.HTTP, wake: wake, version: d.Version}
+	var impl map[string]int
+	if len(d.ImplVersions) > 0 {
+		impl = make(map[string]int, len(d.ImplVersions))
+		for k, v := range d.ImplVersions {
+			impl[k] = v
+		}
+	}
+	return &Pipeline{impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, fetchers: newFetchers(d), http: d.HTTP, wake: wake, version: d.Version}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。

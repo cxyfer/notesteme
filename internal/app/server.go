@@ -227,6 +227,9 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 		Store: s.store, Clock: env.Clock, DataDir: cfg.Data, Log: log, YouTube: yt, Wake: s.queue.Wake, Version: version,
 		HTTP: outboundClient(env.Net),
 	}
+	if env.Test != nil {
+		deps.ImplVersions = env.Test.ImplVersions
+	}
 	if err := s.configureSources(ctx, &deps, env, cfg); err != nil {
 		return err
 	}

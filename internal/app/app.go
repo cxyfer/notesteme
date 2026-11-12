@@ -47,6 +47,9 @@ type TestControls struct {
 	ManualWorker bool
 	// SkipShutdownGrace 讓正常關閉的寬限期為 0：執行中的任務立刻被取消，驗收場景不必推進時鐘（PIPE-R12）。
 	SkipShutdownGrace bool
+	// ImplVersions 覆寫步驟的 impl_version（PIPE-R6），key 是步驟名稱；沒列出的步驟用預設值。
+	// server 已啟動時改用 Server.SetImplVersion。
+	ImplVersions map[string]int
 }
 
 // IO 是標準輸入輸出。
