@@ -47,12 +47,14 @@ SELECT * FROM stage_runs
 WHERE item_id = sqlc.arg(item_id) AND stage = sqlc.arg(stage) AND cache_key = sqlc.arg(cache_key) AND status = 'done'
 ORDER BY created_at DESC, rowid DESC LIMIT 1;
 
--- name: MarkStageRunning :exec
+-- name: MarkStageRunning :one
 -- Claiming a task marks its stage as running and clears the previous message and finish time.
 UPDATE stage_runs SET status = 'running', block_reason = '', error_class = '', error_message = '',
   actions_json = '[]', not_before = NULL, started_at = CAST(sqlc.arg(started_at) AS INTEGER), finished_at = NULL
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id)
+RETURNING item_id, stage, status;
 
--- name: ResetRunningStage :exec
--- When a lease goes back to the queue, a stage still running returns to pending.
-UPDATE stage_runs SET status = 'pending' WHERE id = sqlc.arg(id) AND status = 'running';
+-- name: ResetRunningStage :one
+-- When a lease goes back to the queue, a stage still running returns to pending (no row when it was not running).
+UPDATE stage_runs SET status = 'pending' WHERE id = sqlc.arg(id) AND status = 'running'
+RETURNING item_id, stage, status;

@@ -142,9 +142,14 @@ func (r *Repo) ClaimTasks(ctx context.Context, o ClaimOptions) ([]Task, error) {
 			return nil, err
 		}
 		claimed[i].LeaseToken = token
-		if err := r.q.MarkStageRunning(ctx, sqlcdb.MarkStageRunningParams{StartedAt: now, ID: claimed[i].StageRunID}); err != nil {
+		row, err := r.q.MarkStageRunning(ctx, sqlcdb.MarkStageRunningParams{StartedAt: now, ID: claimed[i].StageRunID})
+		if errors.Is(err, sql.ErrNoRows) {
+			continue // 步驟已不存在：沒有狀態可以發布
+		}
+		if err != nil {
 			return nil, err
 		}
+		r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
 	}
 	return claimed, nil
 }
@@ -242,9 +247,14 @@ func (r *Repo) ReleaseOwned(ctx context.Context, owner string) (int, error) {
 // resetStages 把放回佇列的任務所屬、仍是 running 的步驟回到 pending；回傳任務數。
 func (r *Repo) resetStages(ctx context.Context, stageRunIDs []string) (int, error) {
 	for _, id := range stageRunIDs {
-		if err := r.q.ResetRunningStage(ctx, id); err != nil {
+		row, err := r.q.ResetRunningStage(ctx, id)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue // 步驟不是 running：沒有改變，不發布
+		}
+		if err != nil {
 			return 0, err
 		}
+		r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
 	}
 	return len(stageRunIDs), nil
 }
@@ -284,4 +294,13 @@ func (r *Repo) CancelPendingTasks(ctx context.Context, stageRunIDs []string) (in
 		n += int(c)
 	}
 	return n, nil
+}
+
+// TaskCancelled 是被取消的任務的狀態（PIPE-R15）：不再被領取，租約也已清除，晚到的寫回不會有任何作用。
+const TaskCancelled = "cancelled"
+
+// CancelItemTasks 把影音所有還沒結束（pending 或 leased）的任務改為 cancelled，回傳它們的 ID，
+// 讓呼叫端通知 worker 結束其中正在執行的。
+func (r *Repo) CancelItemTasks(ctx context.Context, itemID string) ([]string, error) {
+	return r.q.CancelItemTasks(ctx, itemID)
 }

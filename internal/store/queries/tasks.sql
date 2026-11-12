@@ -80,6 +80,14 @@ SELECT COUNT(*) FROM tasks WHERE state = sqlc.arg(state);
 -- name: CancelPendingTasks :execrows
 UPDATE tasks SET state = 'failed' WHERE stage_run_id = sqlc.arg(stage_run_id) AND state = 'pending';
 
+-- name: CancelItemTasks :many
+-- Cancel every unfinished (pending or leased) task of an item and drop its lease, so a late write-back
+-- from the former holder matches no row. Returns the ids so the worker can stop what is running.
+UPDATE tasks SET state = 'cancelled', lease_token = NULL, lease_owner = NULL, lease_until = NULL
+WHERE state IN ('pending', 'leased')
+  AND stage_run_id IN (SELECT id FROM stage_runs WHERE item_id = sqlc.arg(item_id))
+RETURNING id;
+
 -- name: ListQueueTasks :many
 -- Unfinished tasks of one executor for the queue page: leased first, then pending in claim order.
 -- Pending tasks that are not due yet (not_before in the future) come after the due ones, because

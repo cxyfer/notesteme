@@ -112,10 +112,11 @@ func (q *Queries) InsertStageRun(ctx context.Context, arg InsertStageRunParams) 
 	return err
 }
 
-const markStageRunning = `-- name: MarkStageRunning :exec
+const markStageRunning = `-- name: MarkStageRunning :one
 UPDATE stage_runs SET status = 'running', block_reason = '', error_class = '', error_message = '',
   actions_json = '[]', not_before = NULL, started_at = CAST(?1 AS INTEGER), finished_at = NULL
 WHERE id = ?2
+RETURNING item_id, stage, status
 `
 
 type MarkStageRunningParams struct {
@@ -123,20 +124,37 @@ type MarkStageRunningParams struct {
 	ID        string
 }
 
-// Claiming a task marks its stage as running and clears the previous message and finish time.
-func (q *Queries) MarkStageRunning(ctx context.Context, arg MarkStageRunningParams) error {
-	_, err := q.db.ExecContext(ctx, markStageRunning, arg.StartedAt, arg.ID)
-	return err
+type MarkStageRunningRow struct {
+	ItemID string
+	Stage  string
+	Status string
 }
 
-const resetRunningStage = `-- name: ResetRunningStage :exec
+// Claiming a task marks its stage as running and clears the previous message and finish time.
+func (q *Queries) MarkStageRunning(ctx context.Context, arg MarkStageRunningParams) (MarkStageRunningRow, error) {
+	row := q.db.QueryRowContext(ctx, markStageRunning, arg.StartedAt, arg.ID)
+	var i MarkStageRunningRow
+	err := row.Scan(&i.ItemID, &i.Stage, &i.Status)
+	return i, err
+}
+
+const resetRunningStage = `-- name: ResetRunningStage :one
 UPDATE stage_runs SET status = 'pending' WHERE id = ?1 AND status = 'running'
+RETURNING item_id, stage, status
 `
 
-// When a lease goes back to the queue, a stage still running returns to pending.
-func (q *Queries) ResetRunningStage(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, resetRunningStage, id)
-	return err
+type ResetRunningStageRow struct {
+	ItemID string
+	Stage  string
+	Status string
+}
+
+// When a lease goes back to the queue, a stage still running returns to pending (no row when it was not running).
+func (q *Queries) ResetRunningStage(ctx context.Context, id string) (ResetRunningStageRow, error) {
+	row := q.db.QueryRowContext(ctx, resetRunningStage, id)
+	var i ResetRunningStageRow
+	err := row.Scan(&i.ItemID, &i.Stage, &i.Status)
+	return i, err
 }
 
 const setStageResult = `-- name: SetStageResult :exec

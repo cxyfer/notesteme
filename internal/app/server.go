@@ -62,6 +62,8 @@ type Server struct {
 	worker   *worker.Worker
 	// workerDone 在 production 的 worker 迴圈結束時關閉；手動模式（測試）沒有迴圈，為 nil。
 	workerDone chan struct{}
+	// grace 是正常關閉時等待執行中任務的寬限期（PIPE-R12）。
+	grace time.Duration
 	// events 是 SSE 的事件匯流排與狀態（PIPE-R14），見 events.go。
 	events eventsState
 
@@ -121,7 +123,10 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 		return nil, err
 	}
 
-	s := &Server{cfg: cfg, log: log, netw: env.Net, lock: lock, done: make(chan struct{})}
+	s := &Server{cfg: cfg, log: log, netw: env.Net, lock: lock, done: make(chan struct{}), grace: shutdownGrace}
+	if env.Test != nil && env.Test.SkipShutdownGrace {
+		s.grace = 0
+	}
 	started := false
 	defer func() {
 		if !started {
@@ -188,6 +193,7 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 			Pipeline:    s.pipeline,
 			Queue:       s.queue,
 			Events:      s.eventsHandler(),
+			Tasks:       s.worker,
 		}),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
@@ -312,11 +318,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			_ = s.http.Close() // 等不到就強制中斷，避免資源殘留
 		}
 		<-s.done
-		// 先停止領取並等執行中的任務結束，再把還持有的租約放回佇列（PIPE-R12）。
-		s.stopWorker()
-		if _, err := s.queue.ReleaseOwned(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("釋放租約：%w", err))
+		// 先停止領取，等執行中的任務在寬限期內完成，之後取消剩下的並把租約放回佇列（PIPE-R12）。
+		if err := s.worker.Drain(ctx, s.grace); err != nil {
+			errs = append(errs, err)
 		}
+		s.stopWorker()
 		errs = append(errs, s.store.Close(), s.lock.Release())
 		s.closeErr = errors.Join(errs...)
 	})

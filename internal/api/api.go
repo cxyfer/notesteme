@@ -34,6 +34,8 @@ type Deps struct {
 	Pipeline *pipeline.Pipeline
 	// Queue 提供佇列的狀態與控制（上限、暫停，PIPE-R8、PIPE-R10）；nil 時相關的路由回應 501。
 	Queue *queue.Queue
+	// Tasks 結束正在執行的任務（取消影音，PIPE-R15）；nil 時只在資料庫中取消。
+	Tasks TaskCanceller
 	// ReadyChecks 是 /readyz 在「DB 可寫」之外要檢查的項目（OPS-R5），例如外部工具是否可執行。
 	ReadyChecks []ReadyCheck
 	// Events 是 GET /api/events 的 SSE handler（PIPE-R14）；nil 時回應 501。
@@ -166,9 +168,9 @@ func (rt *routes) register(api huma.API) {
 		Summary: "從指定步驟重新處理，產出新版本（PIPE-R7）", DefaultStatus: http.StatusAccepted,
 	}, rt.rerun)
 	rt.registerQueue(api)
-	// 之後切片才會實作的路由（PIPE-R15、PIPE-R13、DEL）：先明確回應 501。
+	rt.registerCancel(api)
+	// 之後切片才會實作的路由（PIPE-R13、DEL）：先明確回應 501。
 	for _, op := range []huma.Operation{
-		{OperationID: "items-cancel", Method: http.MethodPost, Path: "/api/items/{id}/cancel", Summary: "取消影音的處理（尚未實作）"},
 		{OperationID: "items-runs", Method: http.MethodGet, Path: "/api/items/{id}/runs", Summary: "步驟的執行紀錄與當時的設定（尚未實作）"},
 		{OperationID: "items-delete", Method: http.MethodDelete, Path: "/api/items/{id}", Summary: "刪除影音，移入垃圾桶（尚未實作）"},
 		{OperationID: "trash-restore", Method: http.MethodPost, Path: "/api/trash/{id}/restore", Summary: "從垃圾桶還原（尚未實作）"},
