@@ -217,10 +217,14 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	}
 	yt := &youtube.Client{Runner: runner, Tools: toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}}
 	s.queue = queue.New(s.store, env.Clock, store.NewID())
-	s.pipeline = pipeline.New(pipeline.Deps{
+	deps := pipeline.Deps{
 		Store: s.store, Clock: env.Clock, DataDir: cfg.Data, Log: log, YouTube: yt, Wake: s.queue.Wake, Version: version,
 		HTTP: outboundClient(env.Net),
-	})
+	}
+	if err := s.configureSources(ctx, &deps, env, cfg); err != nil {
+		return err
+	}
+	s.pipeline = pipeline.New(deps)
 	s.worker = worker.New(s.queue, s.pipeline, env.Clock, log)
 
 	if n, err := s.queue.RecoverStale(ctx); err != nil {
