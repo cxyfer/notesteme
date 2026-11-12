@@ -243,6 +243,9 @@ func (w *Worker) RunUntilIdle(ctx context.Context) error {
 func (w *Worker) Run(ctx context.Context) {
 	defer func() { _ = w.Wait() }()
 	for ctx.Err() == nil {
+		// 睡眠只看「這一輪開始之後才到期」的任務：領不到的到期任務（類別暫停或已滿）
+		// 不能遮蔽其他類別之後才到期的重試；它們由通知（恢復、調高上限、任務結束）喚醒。
+		since := w.clk.Now()
 		n, err := w.RunRound(ctx)
 		if err != nil {
 			w.log.Error("領取任務失敗", "error", err)
@@ -250,21 +253,24 @@ func (w *Worker) Run(ctx context.Context) {
 		if n > 0 {
 			continue
 		}
-		w.sleep(ctx)
+		w.sleep(ctx, since)
 	}
 }
 
-// sleep 等到有事可做：收到通知、下一個任務到期，或 ctx 取消。
-func (w *Worker) sleep(ctx context.Context) {
+// sleep 等到有事可做：收到通知、下一個任務到期，或 ctx 取消。after 是這一輪領取開始前的時間。
+func (w *Worker) sleep(ctx context.Context, after time.Time) {
 	var timeout <-chan time.Time
-	if at, ok, err := w.q.NextDue(ctx); err != nil {
+	if at, ok, err := w.q.NextDue(ctx, after); err != nil {
 		w.log.Error("查詢下一個任務的時間失敗", "error", err)
 	} else if ok {
-		if d := at.Sub(w.clk.Now()); d > 0 {
-			t := w.clk.NewTimer(d)
-			defer t.Stop()
-			timeout = t.C()
+		d := at.Sub(w.clk.Now())
+		if d <= 0 {
+			// 領取期間剛好到期：不睡，馬上再領一輪。
+			return
 		}
+		t := w.clk.NewTimer(d)
+		defer t.Stop()
+		timeout = t.C()
 	}
 	select {
 	case <-ctx.Done():

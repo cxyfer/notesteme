@@ -69,10 +69,13 @@ WHERE state = 'leased' AND lease_owner = CAST(sqlc.arg(owner) AS TEXT)
 RETURNING stage_run_id;
 
 -- name: NextTaskTime :one
--- Earliest time a pending task can be claimed (NULL not_before counts as 0); no row when nothing is pending.
+-- Earliest not_before strictly after after_ms among pending tasks; no row when no pending task waits for a later time.
+-- Tasks that are already due are left out on purpose: when they cannot be claimed (paused or full class),
+-- they must not hide a later retry time. A wake-up covers the change that makes them claimable.
 SELECT CAST(COALESCE(not_before, 0) AS INTEGER) AS due_ms FROM tasks
 WHERE state = 'pending' AND executor = sqlc.arg(executor)
-ORDER BY COALESCE(not_before, 0) LIMIT 1;
+  AND not_before IS NOT NULL AND not_before > CAST(sqlc.arg(after_ms) AS INTEGER)
+ORDER BY not_before LIMIT 1;
 
 -- name: CountTasks :one
 SELECT COUNT(*) FROM tasks WHERE state = sqlc.arg(state);

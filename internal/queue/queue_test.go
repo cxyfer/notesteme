@@ -113,7 +113,8 @@ func TestClaimAndRecoverAfterRestart(t *testing.T) {
 	if n, err := next.ReleaseOwned(ctx); err != nil || n != 1 {
 		t.Fatalf("ReleaseOwned = %d, %v", n, err)
 	}
-	if at, ok, _ := next.NextDue(ctx); !ok || !at.Equal(clk.Now()) {
+	// 放回的任務已到期，不算「之後才到期」。
+	if at, ok, _ := next.NextDue(ctx, clk.Now()); ok {
 		t.Errorf("NextDue = %v, %v", at, ok)
 	}
 }
