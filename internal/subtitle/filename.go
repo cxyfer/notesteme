@@ -22,6 +22,18 @@ var windowsReserved = map[string]bool{
 	"LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true,
 }
 
+// isBidiControl 判斷是否為雙向文字控制字元（可用來偽裝副檔名）：
+// U+202A–U+202E、U+2066–U+2069、U+200E、U+200F。
+func isBidiControl(r rune) bool {
+	return (r >= 0x202A && r <= 0x202E) || (r >= 0x2066 && r <= 0x2069) || r == 0x200E || r == 0x200F
+}
+
+// isWindowsReserved 以第一個 "." 之前的部分判斷（Windows 會忽略副檔名，CON.foo 一樣是裝置）。
+func isWindowsReserved(name string) bool {
+	base, _, _ := strings.Cut(name, ".")
+	return windowsReserved[strings.ToUpper(strings.TrimRight(base, " "))]
+}
+
 // sanitizeName 移除 NTFS 不允許的字元與控制字元，合併連續空白，去掉頭尾空白與尾端句點。
 func sanitizeName(s string) string {
 	var sb strings.Builder
@@ -31,7 +43,7 @@ func sanitizeName(s string) string {
 		case unicode.IsSpace(r):
 			space = true
 			continue
-		case strings.ContainsRune(ntfsForbidden, r), unicode.IsControl(r), r == utf8.RuneError:
+		case strings.ContainsRune(ntfsForbidden, r), unicode.IsControl(r), r == utf8.RuneError, isBidiControl(r):
 			continue
 		}
 		if space && sb.Len() > 0 {
@@ -59,7 +71,7 @@ func DownloadFileName(title, lang, ext string) string {
 	if t == "" {
 		t = "untitled"
 	}
-	if windowsReserved[strings.ToUpper(t)] {
+	if isWindowsReserved(t) {
 		t = "_" + t
 	}
 	name := t
