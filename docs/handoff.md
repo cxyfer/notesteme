@@ -98,7 +98,9 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 - **測試中的執行方式**：
   - server 與 CLI 都在測試程序內執行。
   - `When the server restarts` 用 `Server.Kill()` 模擬，不釋放租約。
-  - worker 是手動模式：`RunRound` 只領取任務，`RunUntilIdle` 執行到沒有任務為止。
+  - worker 是手動模式：
+    - `RunRound` 領取一輪任務、標記為 running，並在 goroutine 中開始執行，不等完成就回傳。要斷言任務停在 running 時，用假工具的 gate 擋住，不要依賴時序。
+    - `RunUntilIdle` 執行到沒有任務為止。
 - **測試替身**（`features/internal/`）：
   - `harness.World`：每個場景一份，包含暫存根目錄、env map、fake clock、fakenet、假工具狀態。
   - `fakenet`：可指定的 DNS 解析加程序內的 fake origin；也會攔截 `http.DefaultTransport` 等繞過 netguard 的連線。
