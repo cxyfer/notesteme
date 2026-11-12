@@ -9,6 +9,38 @@ import (
 	"context"
 )
 
+const cancelItemTasks = `-- name: CancelItemTasks :many
+UPDATE tasks SET state = 'cancelled', lease_token = NULL, lease_owner = NULL, lease_until = NULL
+WHERE state IN ('pending', 'leased')
+  AND stage_run_id IN (SELECT id FROM stage_runs WHERE item_id = ?1)
+RETURNING id
+`
+
+// Cancel every unfinished (pending or leased) task of an item and drop its lease, so a late write-back
+// from the former holder matches no row. Returns the ids so the worker can stop what is running.
+func (q *Queries) CancelItemTasks(ctx context.Context, itemID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, cancelItemTasks, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const cancelPendingTasks = `-- name: CancelPendingTasks :execrows
 UPDATE tasks SET state = 'failed' WHERE stage_run_id = ?1 AND state = 'pending'
 `
