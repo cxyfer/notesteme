@@ -40,7 +40,7 @@ const (
 )
 
 // backoff 是 retryable 錯誤重試前的等待時間（PIPE-R3）。
-var backoff = []time.Duration{30 * time.Second, 2 * time.Minute, 8 * time.Minute}
+var backoff = []time.Duration{30 * time.Second, 2 * time.Minute}
 
 // RetryDelay 回傳第 attempts 次嘗試失敗後，到下一次嘗試的等待時間。
 // attempts 已達 maxAttempts 時 ok 為 false，代表重試次數用盡。

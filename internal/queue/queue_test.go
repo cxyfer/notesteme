@@ -18,8 +18,8 @@ func TestRetryDelay(t *testing.T) {
 		{1, 3, 30 * time.Second, true},
 		{2, 3, 2 * time.Minute, true},
 		{3, 3, 0, false},
-		{3, 4, 8 * time.Minute, true},
-		{5, 6, 8 * time.Minute, true}, // 超過退避表時沿用最後一個
+		{3, 4, 2 * time.Minute, true}, // 超過退避表時沿用最後一個
+		{5, 6, 2 * time.Minute, true},
 		{0, 3, 30 * time.Second, true},
 	}
 	for _, tt := range tests {
