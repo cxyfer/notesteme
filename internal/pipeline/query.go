@@ -58,6 +58,15 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 	return Detail{Item: it, Stages: stages, Sources: probes, Attempts: attempts}, nil
 }
 
+// Runs 列出影音實際執行過的步驟與當時的生效設定，由新到舊（PIPE-R13）；影音不存在時回傳 store.ErrNotFound。
+func (p *Pipeline) Runs(ctx context.Context, id string) ([]store.ExecutedRun, error) {
+	r := p.st.Read()
+	if _, err := r.ItemByID(ctx, id); err != nil {
+		return nil, err
+	}
+	return r.ExecutedRunsByItem(ctx, id)
+}
+
 // CuesQuery 是取得字幕內容的條件。
 type CuesQuery struct {
 	// Variant 為空時依 OUT-R2 選處理得最完整的變體。

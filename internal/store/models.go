@@ -105,6 +105,19 @@ type StageRun struct {
 	CreatedAt        time.Time
 }
 
+// ExecutedRun 是一次實際執行過的步驟，附上當時生效的設定（PIPE-R13）。
+type ExecutedRun struct {
+	ID          string
+	Stage       string
+	Status      string
+	StartedAt   time.Time
+	FinishedAt  *time.Time
+	CacheKey    string
+	ImplVersion int
+	// ConfigJSON 是該次 config snapshot 的生效設定。
+	ConfigJSON string
+}
+
 // NewStageRun 是新增步驟所需的欄位。
 type NewStageRun struct {
 	ItemID           string

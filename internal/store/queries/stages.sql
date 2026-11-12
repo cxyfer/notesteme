@@ -58,3 +58,11 @@ RETURNING item_id, stage, status;
 -- When a lease goes back to the queue, a stage still running returns to pending (no row when it was not running).
 UPDATE stage_runs SET status = 'pending' WHERE id = sqlc.arg(id) AND status = 'running'
 RETURNING item_id, stage, status;
+
+-- name: ExecutedRunsByItem :many
+-- Runs that were actually started, newest first, with the effective config they used.
+SELECT sr.id, sr.stage, sr.status, sr.started_at, sr.finished_at, sr.cache_key, sr.impl_version, cs.config_json
+FROM stage_runs sr
+JOIN config_snapshots cs ON cs.id = sr.config_snapshot_id
+WHERE sr.item_id = sqlc.arg(item_id) AND sr.started_at IS NOT NULL
+ORDER BY sr.started_at DESC, sr.rowid DESC;
