@@ -28,9 +28,17 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 	if err != nil {
 		return Detail{}, err
 	}
-	stages, err := r.StageRunsByItem(ctx, id)
+	all, err := r.StageRunsByItem(ctx, id)
 	if err != nil {
 		return Detail{}, err
+	}
+	// 重跑之後同一個步驟有多筆 stage run，詳情只列最新的一筆，依步驟順序。
+	latest := latestRuns(all)
+	var stages []store.StageRun
+	for _, s := range Stages {
+		if run, ok := latest[s]; ok {
+			stages = append(stages, run)
+		}
 	}
 	probes, err := r.LatestProbes(ctx, id)
 	if err != nil {
@@ -55,17 +63,23 @@ var ErrNoTranscript = errors.New("這部影音還沒有符合條件的字幕。"
 
 // Cues 回傳字幕。找不到符合的產出時回傳 ErrNoTranscript。
 func (p *Pipeline) Cues(ctx context.Context, itemID string, q CuesQuery) (subtitle.Transcript, error) {
+	_, tr, err := p.CuesWithItem(ctx, itemID, q)
+	return tr, err
+}
+
+// CuesWithItem 同 Cues，另外回傳影音（下載檔名要用標題）。
+func (p *Pipeline) CuesWithItem(ctx context.Context, itemID string, q CuesQuery) (store.Item, subtitle.Transcript, error) {
 	r := p.st.Read()
 	it, err := r.ItemByID(ctx, itemID)
 	if err != nil {
-		return subtitle.Transcript{}, err
+		return store.Item{}, subtitle.Transcript{}, err
 	}
 	if q.Variant != "" && !subtitle.Variant(q.Variant).Valid() {
-		return subtitle.Transcript{}, invalidf("variant 必須是 source、normalized、segmented、corrected、translated 或 edited。")
+		return store.Item{}, subtitle.Transcript{}, invalidf("variant 必須是 source、normalized、segmented、corrected、translated 或 edited。")
 	}
 	arts, err := r.CurrentArtifacts(ctx, itemID, "transcript")
 	if err != nil {
-		return subtitle.Transcript{}, err
+		return store.Item{}, subtitle.Transcript{}, err
 	}
 	// 先依語言篩選，再選變體：沒指定變體時，用篩選後還有的變體中最完整的。
 	if q.Lang != "" {
@@ -79,13 +93,13 @@ func (p *Pipeline) Cues(ctx context.Context, itemID string, q CuesQuery) (subtit
 		}
 		v, ok := subtitle.PickVariant(have)
 		if !ok {
-			return subtitle.Transcript{}, ErrNoTranscript
+			return store.Item{}, subtitle.Transcript{}, ErrNoTranscript
 		}
 		variant = v
 	}
 	arts = filterArtifacts(arts, func(a store.Artifact) bool { return a.Variant == string(variant) })
 	if len(arts) == 0 {
-		return subtitle.Transcript{}, ErrNoTranscript
+		return store.Item{}, subtitle.Transcript{}, ErrNoTranscript
 	}
 	chosen := arts[len(arts)-1] // 最近產生的
 	if q.Lang == "" && it.OriginalLang != "" {
@@ -97,10 +111,10 @@ func (p *Pipeline) Cues(ctx context.Context, itemID string, q CuesQuery) (subtit
 	}
 	tr, err := readTranscript(p.dataDir, chosen.Path, chosen.SHA256)
 	if err != nil {
-		return subtitle.Transcript{}, err
+		return store.Item{}, subtitle.Transcript{}, err
 	}
 	tr.Cues = subtitle.FilterRange(tr.Cues, q.FromMS, q.ToMS)
-	return tr, nil
+	return it, tr, nil
 }
 
 func filterArtifacts(in []store.Artifact, keep func(store.Artifact) bool) []store.Artifact {

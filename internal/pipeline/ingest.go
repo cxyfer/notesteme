@@ -131,3 +131,15 @@ func insertStageTask(ctx context.Context, r *store.Repo, itemID string, run stor
 		MaxAttempts: queue.DefaultMaxAttempts,
 	})
 }
+
+// decodeOverrides 讀出影音新增時記錄的單次覆寫。
+func decodeOverrides(raw json.RawMessage) (map[string]any, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}

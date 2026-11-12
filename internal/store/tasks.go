@@ -238,3 +238,18 @@ func (r *Repo) CountTasks(ctx context.Context, state string) (n int, err error) 
 	err = r.q.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE state = ?`, state).Scan(&n)
 	return n, err
 }
+
+// CancelPendingTasks 把指定步驟中還沒被領取的任務標記為 failed，讓它們不再執行。
+// 重跑取代了這些步驟時使用；已經被領取的任務不受影響。回傳被取消的任務數。
+func (r *Repo) CancelPendingTasks(ctx context.Context, stageRunIDs []string) (int, error) {
+	n := 0
+	for _, id := range stageRunIDs {
+		res, err := r.q.ExecContext(ctx, `UPDATE tasks SET state = 'failed' WHERE stage_run_id = ? AND state = 'pending'`, id)
+		if err != nil {
+			return n, err
+		}
+		c, _ := res.RowsAffected()
+		n += int(c)
+	}
+	return n, nil
+}

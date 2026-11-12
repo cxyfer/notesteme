@@ -159,3 +159,15 @@ func (r *Repo) UpsertChannel(ctx context.Context, c Channel) (string, error) {
 		NewID(), c.Platform, c.ExternalID, c.Title, c.URL, r.nowMs()).Scan(&id)
 	return id, err
 }
+
+// SetItemUntil 更新影音「做到哪個步驟為止」；空字串代表做到最後（PIPE-R1）。
+func (r *Repo) SetItemUntil(ctx context.Context, id, until string) error {
+	res, err := r.q.ExecContext(ctx, `UPDATE items SET until_stage = ? WHERE id = ?`, until, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("更新影音 %s：%w", id, ErrNotFound)
+	}
+	return nil
+}

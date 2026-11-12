@@ -198,13 +198,16 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 			if err != nil {
 				return err
 			}
-			for _, nr := range runs {
-				if nr.Stage == next {
-					if _, err := insertStageTask(ctx, r, it.ID, nr, t.Priority); err != nil {
-						return err
-					}
-					wake = true
+			// 重跑之後同一個步驟有多筆 stage run：只有最新的一筆往下走，舊的結果不會觸發下游。
+			latest := latestRuns(runs)
+			if latest[run.Stage].ID != run.ID {
+				return nil
+			}
+			if nr, ok := latest[next]; ok {
+				if _, err := insertStageTask(ctx, r, it.ID, nr, t.Priority); err != nil {
+					return err
 				}
+				wake = true
 			}
 		}
 		return nil
