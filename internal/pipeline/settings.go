@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
@@ -18,6 +19,16 @@ type Language struct {
 	AllowPlatformTranslated bool              `json:"allow_platform_translated"`
 	Fallback                []string          `json:"fallback"`
 	VariantStrategy         string            `json:"variant_strategy"`
+
+	// Supadata 是 supadata 區段的生效值。它不屬於 language 區段（所以不序列化），
+	// 由 Effective.Language 一併讀出，讓只拿到 Language 的步驟也能取得來源的參數。
+	Supadata SupadataParams `json:"-"`
+}
+
+// SupadataParams 是 supadata 設定區段：影響結果的參數，所以也是快取鍵的一部分。
+type SupadataParams struct {
+	// Mode 是 native、generate 或 auto（預設）。
+	Mode string `json:"mode"`
 }
 
 // DefaultLanguage 是內建的預設值（plan 第 7 節、SRC-R3）。
@@ -77,7 +88,7 @@ func BuildEffective(layers ...map[string]any) (Effective, error) {
 	if err != nil {
 		return nil, err
 	}
-	eff := Effective{"language": defaults}
+	eff := Effective{"language": defaults, "supadata": map[string]any{"mode": supadata.ModeAuto}}
 	for _, l := range layers {
 		eff = Effective(merge(eff, l))
 	}
@@ -103,7 +114,32 @@ func (e Effective) Language() (Language, error) {
 	if err := dec.Decode(&l); err != nil {
 		return Language{}, invalidf("language 設定不正確：%v", err)
 	}
+	if l.Supadata, err = e.supadata(); err != nil {
+		return Language{}, err
+	}
 	return l, nil
+}
+
+// supadata 取出 supadata 區段；沒有這個區段（較早的快照）時使用預設值。
+func (e Effective) supadata() (SupadataParams, error) {
+	p := SupadataParams{Mode: supadata.ModeAuto}
+	raw, ok := e["supadata"]
+	if !ok {
+		return p, nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return p, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&p); err != nil {
+		return p, invalidf("supadata 設定不正確：%v", err)
+	}
+	if !supadata.ValidMode(p.Mode) {
+		return p, invalidf("supadata.mode 必須是 %s、%s 或 %s。", supadata.ModeNative, supadata.ModeGenerate, supadata.ModeAuto)
+	}
+	return p, nil
 }
 
 // Snapshot 回傳快照的內容與它的 sha256。encoding/json 對 map 依 key 排序，所以相同的設定得到相同的結果。

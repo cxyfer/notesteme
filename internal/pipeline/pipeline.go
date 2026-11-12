@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
 )
@@ -22,6 +23,11 @@ type YouTube interface {
 	Version(ctx context.Context) (string, error)
 }
 
+// Supadata 是 Supadata 字幕來源（*supadata.Client 實作它）；測試可以替換。
+type Supadata interface {
+	Fetch(ctx context.Context, videoURL, mode string) (*supadata.Result, error)
+}
+
 // Deps 是 Pipeline 的依賴。
 type Deps struct {
 	Store *store.Store
@@ -30,6 +36,8 @@ type Deps struct {
 	DataDir string
 	Log     *slog.Logger
 	YouTube YouTube
+	// Supadata 是 Supadata 字幕來源（SRC-R3）；nil 代表沒有設定 API key，fallback 列出它時記為 not_configured。
+	Supadata Supadata
 	// HTTP 是對外 HTTP 的 client（netguard 的 Transport，ADR-0014）；nil 時辨識網址不會抓取任何內容。
 	HTTP *http.Client
 	// Wake 在建立了新任務時呼叫，讓 worker 醒來；可以是 nil。
@@ -45,6 +53,7 @@ type Pipeline struct {
 	dataDir string
 	log     *slog.Logger
 	yt      YouTube
+	sd      Supadata
 	http    *http.Client
 	wake    func()
 	version string
@@ -60,7 +69,7 @@ func New(d Deps) *Pipeline {
 	if wake == nil {
 		wake = func() {}
 	}
-	return &Pipeline{st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, http: d.HTTP, wake: wake, version: d.Version}
+	return &Pipeline{st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, sd: d.Supadata, http: d.HTTP, wake: wake, version: d.Version}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。

@@ -43,6 +43,22 @@ func TestRecognize(t *testing.T) {
 	}
 }
 
+func TestImplemented(t *testing.T) {
+	for _, id := range []string{"youtube-manual", "youtube-auto", "supadata"} {
+		if !Implemented(id) {
+			t.Errorf("%s 應該已實作", id)
+		}
+	}
+	for _, id := range []string{"groq", "bilibili-ai", "local-sidecar", "podcast-transcript", ""} {
+		if Implemented(id) {
+			t.Errorf("%s 還沒有實作", id)
+		}
+	}
+	if got := ImplementedSources(); len(got) != 3 {
+		t.Errorf("ImplementedSources = %v", got)
+	}
+}
+
 func TestRef(t *testing.T) {
 	tests := []struct {
 		platform, id string

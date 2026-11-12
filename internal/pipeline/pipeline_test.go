@@ -78,7 +78,7 @@ type rig struct {
 	dir string
 }
 
-func newRig(t *testing.T) *rig {
+func newRig(t *testing.T, opts ...func(*Deps)) *rig {
 	t.Helper()
 	clk := clock.NewFake(time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC))
 	dir := t.TempDir()
@@ -90,7 +90,11 @@ func newRig(t *testing.T) *rig {
 	yt := &fakeYT{cues: 4, info: youtube.Info{ID: "abc123", Title: "T", Language: "en"}}
 	q := queue.New(st, clk, "w1")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	p := New(Deps{Store: st, Clock: clk, DataDir: dir, Log: log, YouTube: yt, Wake: q.Wake, Version: "test"})
+	deps := Deps{Store: st, Clock: clk, DataDir: dir, Log: log, YouTube: yt, Wake: q.Wake, Version: "test"}
+	for _, o := range opts {
+		o(&deps)
+	}
+	p := New(deps)
 	return &rig{t: t, p: p, st: st, clk: clk, w: worker.New(q, p, clk, log), yt: yt, dir: dir}
 }
 
