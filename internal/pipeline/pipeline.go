@@ -53,10 +53,11 @@ type Pipeline struct {
 	dataDir string
 	log     *slog.Logger
 	yt      YouTube
-	sd      Supadata
-	http    *http.Client
-	wake    func()
-	version string
+	// fetchers 是可以執行的 fallback 來源（SRC-R3），依來源 ID。
+	fetchers map[string]fallbackFetcher
+	http     *http.Client
+	wake     func()
+	version  string
 }
 
 // New 建立 Pipeline。
@@ -69,7 +70,7 @@ func New(d Deps) *Pipeline {
 	if wake == nil {
 		wake = func() {}
 	}
-	return &Pipeline{st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, sd: d.Supadata, http: d.HTTP, wake: wake, version: d.Version}
+	return &Pipeline{st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, fetchers: newFetchers(d), http: d.HTTP, wake: wake, version: d.Version}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。

@@ -372,12 +372,10 @@ func TestNoUsableSourceFailsWithFixAction(t *testing.T) {
 	r.run()
 
 	st := r.stage(it, StageTranscript)
-	if st.Status != store.StatusFailed || st.ErrorClass != "permanent" || st.Message != "找不到可用的字幕來源。" ||
-		len(st.Actions) != 1 || st.Actions[0] != "設定語音轉錄服務" {
+	// 預設的 fallback（supadata、groq）都還沒有設定：沒有來源真的執行過，是 blocked 而不是 permanent（SRC-R10）。
+	if st.Status != store.StatusBlocked || st.BlockReason != "needs_action" ||
+		len(st.Actions) != 1 || st.Actions[0] != "設定 API key" {
 		t.Errorf("transcript = %+v", st)
-	}
-	if st.FinishedAt == nil {
-		t.Error("failed 的步驟要有結束時間")
 	}
 	d, _ := r.p.Item(ctx, it.ID)
 	var names []string
@@ -544,7 +542,8 @@ func TestEmptyCaptionFileIsRejected(t *testing.T) {
 	it := r.ingest(watch, nil, "transcript")
 	r.run()
 	st := r.stage(it, StageTranscript)
-	if st.Status != store.StatusFailed {
+	// 檔案是空的所以被拒絕；fallback 的來源都沒有設定，等使用者設定（SRC-R10）。
+	if st.Status != store.StatusBlocked {
 		t.Fatalf("%+v", st)
 	}
 	d, _ := r.p.Item(context.Background(), it.ID)
