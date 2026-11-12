@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -112,6 +113,21 @@ func (s *Script) AcceptsUpTo(sourceID string, bytes int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.src(sourceID).maxBytes = bytes
+}
+
+// ReturnedFor 回傳腳本化為對 ref 回傳 fixture 的來源 ID（排序；`has nothing` 不算）。
+func (s *Script) ReturnedFor(ref string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	k := ItemKey(ref)
+	var out []string
+	for id, src := range s.sources {
+		if _, ok := src.returns[k]; ok {
+			out = append(out, id)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // Calls 回傳來源收到的請求次數（包含被拒絕的請求）。

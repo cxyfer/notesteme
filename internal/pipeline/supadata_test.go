@@ -121,7 +121,8 @@ func TestSupadataFallbackOrderFollowsSettings(t *testing.T) {
 	if sd.calls() != 0 {
 		t.Errorf("fallback 沒有列出 supadata 時不該呼叫：%d", sd.calls())
 	}
-	if st := r.stage(it, StageTranscript); st.Status != store.StatusFailed {
+	// groq 沒有設定，沒有來源真的執行過：blocked。
+	if st := r.stage(it, StageTranscript); st.Status != store.StatusBlocked {
 		t.Errorf("transcript = %+v", st)
 	}
 }

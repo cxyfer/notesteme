@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/cucumber/godog"
 
 	"github.com/cxyfer/notesteme/internal/pipeline"
+	"github.com/cxyfer/notesteme/internal/source"
+	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
 // 這個檔案放「讓影音真的處理到某個步驟」與「步驟結果的斷言」，步驟的註冊在 items.go。
@@ -87,6 +90,9 @@ func (s *Scenario) itemProcessedUpTo(ref, stage string) error {
 	if !pipeline.ValidStage(stage) {
 		return fmt.Errorf("步驟 %q 不正確，應是 %v 其中之一", stage, pipeline.Stages)
 	}
+	if err := s.pendingWithoutItemFixture(ref, stage); err != nil {
+		return err
+	}
 	if err := s.prepareOwner(); err != nil {
 		return err
 	}
@@ -150,29 +156,50 @@ func (s *Scenario) itemProcessedUpTo(ref, stage string) error {
 		return err
 	}
 	if st.Status != "done" {
-		if err := s.pendingWithoutItemFixture(ref); err != nil {
-			return err
-		}
 		return fmt.Errorf("%s 沒有處理到 %s：步驟是 %q（%s）", ref, stage, st.Status, describeStage(st))
 	}
 	return nil
 }
 
-// pendingWithoutItemFixture 處理這個 Given 唯一缺的一塊：features/fixtures/items/ 還沒有（steps.md：
-// 「影音或 fixture 不存在時，依代號從 fixtures/items/ 建立」）。場景沒有替影音準備任何可用的字幕來源
-// （沒有符合的平台字幕軌，也沒有腳本化的 fallback 來源），transcript 步驟以 SRC-R5 失敗時，
-// 這個前提只能靠 fixture 填入產出，目前建立不起來：視為步驟尚未完整實作而 pending。
-// 只涵蓋 transcript 以 permanent 失敗這一種情況；其他沒走到目標步驟的原因（例如重試中、blocked）仍然失敗。
-// 實作 fixtures/items/ 之後整個函式刪除。
-func (s *Scenario) pendingWithoutItemFixture(ref string) error {
-	st, err := s.stageOf(ref, pipeline.StageTranscript)
+// hasTranscriptSource 回報場景有沒有替影音準備任何字幕來源。只看場景自己累積的狀態，不看執行結果：
+//   - 已用 `the … transcript of … is:` 寫入字幕。
+//   - 假 yt-dlp 的狀態中，有符合 caption_priority（內建預設）的平台字幕軌。
+//   - 腳本化了已實作的 fallback 來源（`the source … returns …`）。
+func (s *Scenario) hasTranscriptSource(ref string) bool {
+	if s.seeded[ref] {
+		return true
+	}
+	for _, id := range s.World.Sources.ReturnedFor(ref) {
+		if source.Implemented(id) {
+			return true
+		}
+	}
+	id, err := youtubeID(ref)
 	if err != nil {
+		return false
+	}
+	v, ok := s.World.Tools.Videos[id]
+	if !ok {
+		return false
+	}
+	tracks := make([]transcript.Track, 0, len(v.Tracks))
+	for _, t := range v.Tracks {
+		tracks = append(tracks, transcript.Track{Lang: t.Lang, Kind: t.Kind})
+	}
+	chosen, _ := transcript.Select(tracks, v.Language, pipeline.DefaultLanguage().CaptionPriority, false)
+	return chosen != nil
+}
+
+// pendingWithoutItemFixture 在執行之前處理這個 Given 缺的一塊：features/fixtures/items/ 還沒有
+// （steps.md：「影音或 fixture 不存在時，依代號從 fixtures/items/ 建立」）。
+// 目標步驟需要字幕（transcript 以後），而場景沒有替影音準備任何字幕來源時，產出只能靠 fixture 填入，
+// 目前建立不起來：視為步驟尚未完整實作而 pending。有準備來源卻沒處理到目標步驟，由呼叫端一律當作失敗。
+// 實作 fixtures/items/ 之後整個函式刪除。
+func (s *Scenario) pendingWithoutItemFixture(ref, stage string) error {
+	if slices.Index(pipeline.Stages, stage) < slices.Index(pipeline.Stages, pipeline.StageTranscript) || s.hasTranscriptSource(ref) {
 		return nil
 	}
-	if st.Status == "failed" && st.ErrorClass == "permanent" {
-		return fmt.Errorf("%s 沒有可用的字幕來源，需要 features/fixtures/items/ 填入產出（還沒實作）：%w", ref, godog.ErrPending)
-	}
-	return nil
+	return fmt.Errorf("場景沒有替 %s 準備字幕來源，需要 features/fixtures/items/ 填入產出（還沒實作）：%w", ref, godog.ErrPending)
 }
 
 // firstUnfinished 回傳從開頭到 upTo（含）第一個還不是 done 的步驟；都完成了回傳空字串。
