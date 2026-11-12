@@ -193,6 +193,7 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 			Pipeline:    s.pipeline,
 			Queue:       s.queue,
 			Events:      s.eventsHandler(),
+			Tasks:       s.worker,
 		}),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
