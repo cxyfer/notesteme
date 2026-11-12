@@ -38,13 +38,16 @@ uid="$(docker run --rm --entrypoint id "$IMAGE" -u)"
 [[ "$uid" != 0 ]] || fail "容器以 root 執行"
 
 step "外部工具"
+# 容器內的 sh 沒有 pipefail：先把輸出存進變數，讓工具本身失敗時 set -e 會中止，
+# 不會被 pipeline 最後的 head 或 grep 蓋掉結束碼。
 run_shell 'set -e
+  first_line() { printf "%s\n" "$1" | head -n 1; }
   yt-dlp --version
-  ffmpeg -hide_banner -version | head -n 1
-  ffmpeg -hide_banner -buildconf | grep -q -- --enable-libass
-  echo "ffmpeg: libass enabled"
-  ffprobe -hide_banner -version | head -n 1
-  deno --version | head -n 1' || fail "外部工具不齊全"
+  out="$(ffmpeg -hide_banner -version)"; first_line "$out"
+  conf="$(ffmpeg -hide_banner -buildconf)"
+  case "$conf" in *--enable-libass*) echo "ffmpeg: libass enabled" ;; *) echo "ffmpeg: libass missing" >&2; exit 1 ;; esac
+  out="$(ffprobe -hide_banner -version)"; first_line "$out"
+  out="$(deno --version)"; first_line "$out"' || fail "外部工具不齊全"
 
 step "沒有 master key 時拒絕啟動"
 set +e
