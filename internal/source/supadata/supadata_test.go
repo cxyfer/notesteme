@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
@@ -105,6 +106,39 @@ func TestFetchNetworkErrorIsRetryable(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if strings.Contains(err.Error(), "sk-secret-123") {
+		t.Errorf("錯誤訊息含有 API key：%v", err)
+	}
+}
+
+// 跨網域轉址時，x-api-key 不可以帶到另一個 host（NFR-SEC-3）；3xx 視為 permanent。
+func TestFetchDoesNotFollowRedirectWithKey(t *testing.T) {
+	var leaked atomic.Bool
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-api-key") != "" {
+			leaked.Store(true)
+		}
+		_, _ = w.Write([]byte(okBody))
+	}))
+	t.Cleanup(other.Close)
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/v1/transcript", http.StatusFound)
+	}))
+	t.Cleanup(origin.Close)
+
+	// 呼叫端提供的 client 預設會跟隨轉址；Fetch 必須自己關掉。
+	hc := &http.Client{}
+	c := &Client{HTTP: hc, BaseURL: origin.URL, APIKey: "sk-secret-123"}
+	_, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123", ModeAuto)
+	if leaked.Load() {
+		t.Fatal("轉址後 API key 被帶到另一個 host")
+	}
+	if got, ok := errclass.ClassOf(err); !ok || got != errclass.ClassPermanent {
+		t.Fatalf("err = %v，預期 permanent", err)
+	}
+	if hc.CheckRedirect != nil {
+		t.Error("不可以修改呼叫端提供的 client")
+	}
+	if err != nil && strings.Contains(err.Error(), "sk-secret-123") {
 		t.Errorf("錯誤訊息含有 API key：%v", err)
 	}
 }

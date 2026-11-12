@@ -101,7 +101,11 @@ func (c *Client) Fetch(ctx context.Context, videoURL, mode string) (*Result, err
 	req.Header.Set("x-api-key", c.APIKey)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.HTTP.Do(req)
+	// API key 放在自訂標頭，Go 跨網域轉址時不會移除它；所以不跟隨轉址，3xx 當成 permanent。
+	// 複製 client，不改動呼叫端提供的那一個。
+	hc := *c.HTTP
+	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := hc.Do(req)
 	if err != nil {
 		// url.Error 只含網址（沒有標頭），不會帶出 API key。
 		return nil, fail(errclass.ClassRetryable, "", err)
@@ -121,6 +125,8 @@ func (c *Client) Fetch(ctx context.Context, videoURL, mode string) (*Result, err
 		return nil, fail(errclass.ClassRetryable, fmt.Sprintf("HTTP %d", resp.StatusCode), nil)
 	case resp.StatusCode == http.StatusAccepted:
 		return nil, fail(errclass.ClassPermanent, "回應為非同步任務（202），還沒有支援輪詢", nil)
+	case resp.StatusCode >= 300 && resp.StatusCode < 400:
+		return nil, fail(errclass.ClassPermanent, fmt.Sprintf("HTTP %d（不跟隨轉址）", resp.StatusCode), nil)
 	case resp.StatusCode != http.StatusOK:
 		return nil, fail(errclass.ClassPermanent, fmt.Sprintf("HTTP %d", resp.StatusCode), nil)
 	}
