@@ -62,6 +62,8 @@ type Server struct {
 	worker   *worker.Worker
 	// workerDone 在 production 的 worker 迴圈結束時關閉；手動模式（測試）沒有迴圈，為 nil。
 	workerDone chan struct{}
+	// events 是 SSE 的事件匯流排與狀態（PIPE-R14），見 events.go。
+	events eventsState
 
 	// root 是 server 的根 context；背景工作（worker、之後的 scheduler）都掛在它底下，cancel 會取消它。
 	root   context.Context
@@ -166,6 +168,7 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 
 	// root 是 server 的根 context：worker 與它啟動的子程序都掛在它底下，關閉時一起取消。
 	s.root, s.cancel = context.WithCancel(ctx)
+	s.startEvents()
 	if err := s.startPipeline(ctx, env, cfg, log); err != nil {
 		return nil, err
 	}
@@ -183,12 +186,15 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 			Store: s.store, Auth: authSvc, Clock: env.Clock, Log: log, Version: version,
 			ReadyChecks: toolChecks(toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}),
 			Pipeline:    s.pipeline,
+			Events:      s.eventsHandler(),
 		}),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		IdleTimeout:       idleTimeout,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
+	// http.Server.Shutdown 不會結束長連線的 SSE 串流，要主動通知它們結束。
+	s.http.RegisterOnShutdown(s.stopEvents)
 	go func() {
 		defer close(s.done)
 		if err := s.http.Serve(s.ln); !errors.Is(err, http.ErrServerClosed) {

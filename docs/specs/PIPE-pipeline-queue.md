@@ -43,7 +43,10 @@
 
 ## 介面
 
-- API：`GET /api/queue`、`PATCH /api/queue/limits`、`POST /api/queue/pause`、`POST /api/queue/resume`、`POST /api/tasks/:id/retry`、`POST /api/tasks/:id/cancel`、`POST /api/items/:id/rerun`、`GET /api/items/:id/runs`、`GET /api/events`（SSE）
+- API：`GET /api/queue`、`PATCH /api/queue/limits`、`POST /api/queue/pause`、`POST /api/queue/resume`、`POST /api/tasks/:id/retry`、`POST /api/tasks/:id/cancel`、`POST /api/items/:id/cancel`、`POST /api/items/:id/rerun`、`GET /api/items/:id/runs`、`GET /api/events`（SSE）
+  - `PATCH /api/queue/limits`：body 是 `{ "<資源類別>": <上限> }`，只改有給的類別；上限至少 1，不認識的類別回 422。
+  - `POST /api/queue/pause`、`POST /api/queue/resume`：沒有 body 時作用在整個佇列；`{ "class": "asr" }` 只作用在該資源類別。
+  - `POST /api/items/:id/cancel`：取消該影音所有未結束的步驟（PIPE-R15）；`POST /api/tasks/:id/cancel` 只取消單一任務。
 - CLI：`notesteme items ls --status <stage>=<status>`、`notesteme items rerun <item> --from <stage>`
 
 ## 不在範圍內
@@ -55,3 +58,6 @@
 ## 待決問題
 
 - 退避的時間與次數是否依資源類別區分（例如 `download` 遇到 429 時等更久），M1 實作時觀察實際的 rate limit。
+- aging 的級距：手動與回補只差 2 級，依 PIPE-R9 每 10 分鐘提高 1 級，回補等 20 分鐘就會排在新的手動新增前面。M1 先照規則實作；之後依實際使用調整級距或 aging 速度，但差距不能超過 17 級，否則「等 3 小時的回補排在前面」的場景不成立（2026-11-13，PIPE 切片設計時發現）。
+- `transcript` 的資源類別要在建立任務時決定，但這時還不知道平台字幕是否可用。暫定：`fallback` 的第一個來源是 ASR，且平台字幕不符合 `caption_priority` 時歸為 `asr`，否則歸為 `download`。長期可以把下載音訊與 ASR 拆成兩個任務。
+- 執行期回收過期租約延到 AGT：同一份 `/data` 只有一個 `serve`，內建任務也不延長租約，執行期回收會讓超過租約時間的 ASR 任務被重複執行。M1 只在啟動時回收（PIPE-R11）。

@@ -33,6 +33,9 @@ type Deps struct {
 	Pipeline *pipeline.Pipeline
 	// ReadyChecks 是 /readyz 在「DB 可寫」之外要檢查的項目（OPS-R5），例如外部工具是否可執行。
 	ReadyChecks []ReadyCheck
+	// Events 是 GET /api/events 的 SSE handler（PIPE-R14）；nil 時回應 501。
+	// SSE 是長連線串流，不經過 Huma，直接掛在 mux 上，但仍在驗證 middleware 之後。
+	Events http.Handler
 }
 
 // ReadyCheck 是 /readyz 的一個檢查項目；Check 回傳 nil 代表正常。
@@ -58,6 +61,14 @@ func New(d Deps) http.Handler {
 
 	r := &routes{d: d}
 	r.register(api)
+	if d.Events != nil {
+		mux.Handle("GET /api/events", d.Events)
+	} else {
+		huma.Register(api, huma.Operation{
+			OperationID: "events", Method: http.MethodGet, Path: "/api/events",
+			Summary: "狀態變更事件的 SSE 串流（尚未實作）",
+		}, notImplemented)
+	}
 
 	var h http.Handler = mux
 	h = authMiddleware(d.Auth, d.Log)(h)
