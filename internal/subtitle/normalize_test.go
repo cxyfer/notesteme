@@ -326,3 +326,89 @@ func TestNormalizeExtra(t *testing.T) {
 		}
 	})
 }
+
+func TestNormalizeRollingBoundaries(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []row
+		want []row
+	}{
+		{
+			name: "prefix inside a word is not merged",
+			in: []row{
+				{start: "00:00:01", end: "00:00:02", text: "Go"},
+				{start: "00:00:02", end: "00:00:04", text: "Gone fishing"},
+			},
+			want: []row{{text: "Go"}, {text: "Gone fishing"}},
+		},
+		{
+			name: "same line ten minutes apart is kept twice",
+			in: []row{
+				{start: "00:00:01", end: "00:00:02", text: "Yes."},
+				{start: "00:10:00", end: "00:10:01", text: "Yes."},
+			},
+			want: []row{{start: "00:00:01", text: "Yes."}, {start: "00:10:00", text: "Yes."}},
+		},
+		{
+			name: "chinese prefix is merged without spaces",
+			in: []row{
+				{start: "00:00:01", end: "00:00:03", text: "今天我們"},
+				{start: "00:00:02", end: "00:00:05", text: "今天我們來談 Kafka"},
+			},
+			want: []row{{start: "00:00:01", end: "00:00:05", text: "今天我們來談 Kafka"}},
+		},
+		{
+			name: "prefix followed by punctuation is merged",
+			in: []row{
+				{start: "00:00:01", end: "00:00:03", text: "Hello"},
+				{start: "00:00:02", end: "00:00:05", text: "Hello, world"},
+			},
+			want: []row{{start: "00:00:01", end: "00:00:05", text: "Hello, world"}},
+		},
+		{
+			name: "gap of exactly one second is merged",
+			in: []row{
+				{start: "00:00:01", end: "00:00:03", text: "so today"},
+				{start: "00:00:04", end: "00:00:06", text: "so today we"},
+			},
+			want: []row{{start: "00:00:01", end: "00:00:06", text: "so today we"}},
+		},
+		{
+			name: "gap just over one second is not merged",
+			in: []row{
+				{start: "00:00:01", end: "00:00:03", text: "so today"},
+				{start: "00:00:04.001", end: "00:00:06", text: "so today we"},
+			},
+			want: []row{{text: "so today"}, {text: "so today we"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checkCues(t, Normalize(cuesOf(t, tt.in)), tt.want)
+		})
+	}
+}
+
+func TestEndsAtWordBoundary(t *testing.T) {
+	tests := []struct {
+		prefix, rest string
+		want         bool
+	}{
+		{"Go", "", true},
+		{"Go", " fishing", true},
+		{"Go", "!", true},
+		{"Go", "ne fishing", false},
+		{"今天我們", "來談", true},
+		{"Kafka", "是", true},
+		{"今天", " Kafka", true},
+		{"今天 Kafka", "s", false},
+		{"こんにちは", "世界", true},
+		{"カタカナ", "x", true},
+		{"안녕", "하세요", true},
+	}
+	for _, tt := range tests {
+		if got := endsAtWordBoundary(tt.prefix, tt.rest); got != tt.want {
+			t.Errorf("endsAtWordBoundary(%q, %q) = %v, want %v", tt.prefix, tt.rest, got, tt.want)
+		}
+	}
+}

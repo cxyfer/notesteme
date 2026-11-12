@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -12,6 +13,9 @@ const (
 	minCueMS int64 = 300
 	// overlapGapMS 為重疊修正時，前一句 end 與後一句 start 之間保留的間隔（NRM-R4）。
 	overlapGapMS int64 = 40
+	// rollingGapMS 為滾動字幕去重（NRM-R1）允許的最大間隔：後一句的 start 不晚於前一句的 end 加此值。
+	// 暫定值，M0 量測後再調整。
+	rollingGapMS int64 = 1000
 )
 
 var (
@@ -108,13 +112,14 @@ func sortByStart(cues []Cue) []Cue {
 	return cues
 }
 
-// mergeRolling 實作 NRM-R1：後一句的文字以前一句的文字開頭（包括完全相同）時，兩句合併成一句，
+// mergeRolling 實作 NRM-R1：後一句的文字以前一句的文字開頭（包括完全相同），
+// 且前綴結束在字詞邊界、兩句時間重疊或相鄰（見 rollingGapMS）時，兩句合併成一句，
 // 文字取後一句，時間取前一句的 start 到後一句的 end；連續多句依序合併（合併結果再和下一句比對）。
 // 字詞時間依 NRM-R6 原樣保留並去重。
 func mergeRolling(cues []Cue) []Cue {
 	out := make([]Cue, 0, len(cues))
 	for _, c := range cues {
-		if n := len(out); n > 0 && strings.HasPrefix(c.Text, out[n-1].Text) {
+		if n := len(out); n > 0 && isRollingContinuation(out[n-1], c) {
 			prev := out[n-1]
 			merged := mergeCues(prev, c)
 			merged.Text = c.Text
@@ -124,6 +129,40 @@ func mergeRolling(cues []Cue) []Cue {
 		out = append(out, c)
 	}
 	return out
+}
+
+// isRollingContinuation 判斷 next 是否為 prev 的滾動延伸（NRM-R1 的前綴、字詞邊界與時間條件）。
+func isRollingContinuation(prev, next Cue) bool {
+	if !strings.HasPrefix(next.Text, prev.Text) {
+		return false
+	}
+	// cue 已依 start 排序，所以 next.StartMS <= prev.EndMS 即為時間重疊。
+	if next.StartMS > prev.EndMS+rollingGapMS {
+		return false
+	}
+	return endsAtWordBoundary(prev.Text, next.Text[len(prev.Text):])
+}
+
+// endsAtWordBoundary 判斷前綴 prefix 之後接 rest 時是否落在字詞邊界：
+// rest 為空、以空白或標點開頭，或前綴的最後一個字、rest 的第一個字是不以空白分詞的文字。
+// 這類文字包含中文（Han）、日文（Hiragana、Katakana），
+// 另外也把韓文（Hangul）當成邊界：現代韓文雖以空白分詞，但助詞黏在字詞後面，
+// 滾動字幕可能在助詞前後截斷，以空白判斷會漏掉合併。
+func endsAtWordBoundary(prefix, rest string) bool {
+	if rest == "" {
+		return true
+	}
+	first, _ := utf8.DecodeRuneInString(rest)
+	if unicode.IsSpace(first) || unicode.IsPunct(first) {
+		return true
+	}
+	last, _ := utf8.DecodeLastRuneInString(prefix)
+	return isUnspacedScript(first) || isUnspacedScript(last)
+}
+
+// isUnspacedScript 回傳 r 是否為中日韓文字。
+func isUnspacedScript(r rune) bool {
+	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul)
 }
 
 // mergeFragment 實作 NRM-R2：長度不到 300ms 或只有標點的 cue 併入前一句。
