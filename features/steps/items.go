@@ -376,7 +376,14 @@ func (s *Scenario) seedTranscript(variant, ref, lang string, table *godog.Table)
 	if err != nil {
 		return err
 	}
-	return s.server.SeedTranscript(s.ctx, pipeline.SeedRequest{ItemID: id, Variant: subtitle.Variant(variant), Lang: lang, Cues: cues})
+	if err := s.server.SeedTranscript(s.ctx, pipeline.SeedRequest{ItemID: id, Variant: subtitle.Variant(variant), Lang: lang, Cues: cues}); err != nil {
+		return err
+	}
+	if s.seeded == nil {
+		s.seeded = map[string]bool{}
+	}
+	s.seeded[ref] = true
+	return nil
 }
 
 // 字幕 API 回應的形狀。

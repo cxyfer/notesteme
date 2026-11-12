@@ -45,6 +45,8 @@ type Scenario struct {
 	givenSettings map[string]any
 	// givenQueue 是 Given 累積的佇列上限與暫停設定，同樣延到第一個送出請求的步驟才套用。
 	givenQueue queueConfig
+	// seeded 是已用 `the … transcript of … is:` 直接寫入字幕的影音代號（見 hasTranscriptSource）。
+	seeded map[string]bool
 }
 
 // response 是最近一次請求的回應。
