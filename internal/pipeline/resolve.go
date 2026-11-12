@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/source"
 )
 
@@ -75,7 +76,11 @@ func (p *Pipeline) Resolve(ctx context.Context, raw string) (Resolution, error) 
 	}
 	feed, err := p.fetchFeed(ctx, u.String())
 	if err != nil {
-		p.log.Debug("網址不是可辨識的 feed", "error", err.Error())
+		if errors.Is(err, netguard.ErrBlockedAddress) {
+			p.log.Warn("辨識網址時連線被 IP 政策擋下", "error", err.Error())
+		} else {
+			p.log.Debug("網址不是可辨識的 feed", "error", err.Error())
+		}
 		return Resolution{}, ErrUnrecognizedURL
 	}
 	return Resolution{Platform: source.PlatformPodcast, Kind: source.KindFeed, URL: u.String(), Title: feed.Title, Episodes: feed.Episodes}, nil
@@ -98,7 +103,7 @@ func (p *Pipeline) flagCookie(ctx context.Context, res *Resolution) {
 
 // platformHost 回報主機是不是 YouTube 或 Bilibili：這些平台只看網址，不抓取內容。
 func platformHost(host string) bool {
-	host = strings.ToLower(host)
+	host = strings.TrimSuffix(strings.ToLower(host), ".") // FQDN 尾端的 "." 是同一個主機
 	for _, d := range []string{"youtube.com", "youtu.be", "bilibili.com", "b23.tv"} {
 		if host == d || strings.HasSuffix(host, "."+d) {
 			return true

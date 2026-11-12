@@ -118,6 +118,28 @@ func TestResolveFetchesOtherURLs(t *testing.T) {
 	}
 }
 
+// 主機名稱尾端的 "." 是同一個主機（FQDN），不能因此繞過平台判斷而去抓取。
+func TestPlatformHostIgnoresTrailingDot(t *testing.T) {
+	for host, want := range map[string]bool{
+		"youtube.com": true, "youtube.com.": true, "WWW.YouTube.com.": true, "youtu.be.": true,
+		"m.bilibili.com.": true, "b23.tv.": true,
+		"example.com": false, "example.com.": false, "notyoutube.com.": false,
+	} {
+		if got := platformHost(host); got != want {
+			t.Errorf("platformHost(%q) = %v，預期 %v", host, got, want)
+		}
+	}
+	var hits []string
+	r := newRig(t)
+	r.p.http = feedClient(200, rssBody, &hits)
+	if _, err := r.p.Resolve(context.Background(), "https://www.youtube.com./feed/trending"); !errors.Is(err, ErrUnrecognizedURL) {
+		t.Errorf("err = %v", err)
+	}
+	if len(hits) != 0 {
+		t.Errorf("不該抓取：%v", hits)
+	}
+}
+
 func TestParseFeedTruncatedStillRecognised(t *testing.T) {
 	info, err := parseFeed(strings.NewReader(rssBody[:120]))
 	if err != nil {

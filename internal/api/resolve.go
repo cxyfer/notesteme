@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 )
 
@@ -36,7 +37,9 @@ type resolveOutput struct{ Body Resolution }
 
 func (rt *routes) resolve(ctx context.Context, in *resolveInput) (*resolveOutput, error) {
 	if rt.d.Pipeline == nil {
-		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
+		// 沒有注入 Pipeline 是設定錯誤；501 在這個專案代表「功能還沒做」，不能拿來表示設定錯誤。
+		rt.d.Log.LogAttrs(ctx, slog.LevelError, "處理請求時發生錯誤", slog.String("error", "api: 沒有設定 Pipeline"))
+		return nil, newError(http.StatusInternalServerError, CodeInternal, defaultMessages[http.StatusInternalServerError].msg)
 	}
 	r, err := rt.d.Pipeline.Resolve(ctx, in.Body.URL)
 	if err != nil {

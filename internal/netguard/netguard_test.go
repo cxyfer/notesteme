@@ -80,7 +80,7 @@ func TestTransportIPLiteralSkipsResolver(t *testing.T) {
 func TestTransportTriesNextIP(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer srv.Close()
-	bad, good := netip.MustParseAddr("10.0.0.1"), netip.MustParseAddr("93.184.216.34")
+	bad, good := netip.MustParseAddr("93.184.216.35"), netip.MustParseAddr("93.184.216.34")
 	d := &recDialer{addr: srv.Listener.Addr().String(), failFor: map[netip.Addr]bool{bad: true}}
 	tr := Transport(Deps{Resolver: stubResolver{ips: []netip.Addr{bad, good}}, Dialer: d})
 	resp, err := (&http.Client{Transport: tr}).Get("http://example.com/")
@@ -111,10 +111,10 @@ func TestTransportErrors(t *testing.T) {
 }
 
 func TestDialInvalidAddr(t *testing.T) {
-	if _, err := dial(context.Background(), stubResolver{}, &recDialer{}, "tcp", "no-port"); err == nil {
+	if _, err := dial(context.Background(), stubResolver{}, &recDialer{}, nil, "tcp", "no-port"); err == nil {
 		t.Fatal("缺少 port 應失敗")
 	}
-	if _, err := dial(context.Background(), stubResolver{}, &recDialer{}, "tcp", "a.test:99999"); err == nil {
+	if _, err := dial(context.Background(), stubResolver{}, &recDialer{}, nil, "tcp", "a.test:99999"); err == nil {
 		t.Fatal("port 超出範圍應失敗")
 	}
 }
@@ -153,7 +153,11 @@ func TestSystemDeps(t *testing.T) {
 	if deps.Resolver == nil || deps.Dialer == nil {
 		t.Fatalf("SystemDeps 應提供 Resolver 與 Dialer: %+v", deps)
 	}
-	// IP 字面值走系統 Dialer，不需要 DNS。
+	// httptest 在 loopback 上：預設被政策擋下，明確 allowlist 之後才能連。
+	if _, err := (&http.Client{Transport: Transport(deps)}).Get(srv.URL); !errors.Is(err, ErrBlockedAddress) {
+		t.Fatalf("loopback 應被擋下：%v", err)
+	}
+	deps.Allowlist = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}
 	resp, err := (&http.Client{Transport: Transport(deps)}).Get(srv.URL)
 	if err != nil {
 		t.Fatal(err)

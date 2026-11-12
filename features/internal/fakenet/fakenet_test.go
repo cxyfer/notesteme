@@ -150,7 +150,11 @@ func TestUnregisteredTargetIsViolation(t *testing.T) {
 	if err := n.Resolves("internal.test", "10.0.0.5"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := get(t, newClient(n), "http://internal.test/"); err == nil {
+	// netguard 預設就會擋下內網位址；這裡 allowlist 10.0.0.0/8，讓請求到得了 Dialer，才能測 fakenet 自己的違規記錄。
+	d := n.Deps()
+	d.Allowlist = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	c := &http.Client{Transport: netguard.Transport(d), Timeout: 10 * time.Second}
+	if _, err := get(t, c, "http://internal.test/"); err == nil {
 		t.Fatal("應失敗")
 	}
 	v := n.Violations()
