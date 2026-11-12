@@ -24,7 +24,18 @@ Feature: Ingest media
       | https://www.youtube.com/@somechannel                  | youtube  | channel  |
       | https://www.bilibili.com/video/BV1xx411c7mD?p=2       | bilibili | video    |
       | https://space.bilibili.com/12345                      | bilibili | channel  |
-      | https://feeds.example.com/show.xml                    | podcast  | feed     |
+
+  @ING-02 @ING-R1
+  Scenario: Recognise a podcast feed by its content
+    Given a podcast feed "show" with the episodes:
+      | guid  | title      | audio    |
+      | ep-42 | Episode 42 | ep42.mp3 |
+    When the owner resolves "https://feeds.example.com/show.xml"
+    Then the response status is 200
+    And the response contains:
+      """
+      { "platform": "podcast", "kind": "feed" }
+      """
 
   @ING-02 @ING-R1
   Scenario: Reject a URL that no platform recognises

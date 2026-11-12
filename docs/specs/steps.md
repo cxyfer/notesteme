@@ -134,7 +134,7 @@
 | `Given a YouTube video {string} titled {string}` | 建立 fake 的 YouTube 影片 |
 | `Given a YouTube video {string} with:` | 同上，用表格（`field`、`value`）指定 `title`、`duration`、`language`、`availability`、`chapters`、`live_status` 等 |
 | `Given a Bilibili video {string} with {int} parts` | 建立 fake 的 Bilibili 影片（`1 part` 亦可） |
-| `Given a podcast feed {string} with the episodes:` | 建立 fake 的 feed，表格欄位：`guid`、`title`、`audio` |
+| `Given a podcast feed {string} with the episodes:` | 建立 fake 的 feed，表格欄位：`guid`、`title`、`audio`；feed 的網址為 `https://feeds.example.com/<名稱>.xml` |
 | `Given a local file {string} in the inbox` | 在 inbox 放入 fixture 檔案 |
 | `Given {string} has {word} captions in {string}` | 平台字幕軌；`{word}` 為 `manual`、`auto`、`platform-translated`。Bilibili 的 AI 字幕屬於 `auto` |
 | `Given {string} has no caption tracks` | 平台沒有任何字幕 |
