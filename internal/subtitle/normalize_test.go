@@ -98,6 +98,17 @@ func TestNormalizeScenarios(t *testing.T) {
 		want []row
 	}{
 		{
+			name: "Rolling auto captions are de-duplicated",
+			in: []row{
+				{start: "00:00:01", end: "00:00:03", text: "so today we"},
+				{start: "00:00:02", end: "00:00:04", text: "so today we talk about"},
+				{start: "00:00:03", end: "00:00:06", text: "so today we talk about Kafka"},
+			},
+			want: []row{
+				{start: "00:00:01", end: "00:00:06", text: "so today we talk about Kafka"},
+			},
+		},
+		{
 			name: "A tiny fragment is merged into the previous cue",
 			in: []row{
 				{start: "00:00:01.000", end: "00:00:03.000", text: "this is the end"},
@@ -156,11 +167,9 @@ func TestNormalizeScenarios(t *testing.T) {
 }
 
 // 場景 "Word timings survive a merge"：兩句都不短、也沒有重疊，
-// 合併成一句只能靠 NRM-R1（前一句文字是後一句的開頭）。R1 待使用者決定，
-// 所以場景輸入先跳過；下面另測 R2、R4 合併時字詞時間的保留與去重（NRM-R6）。
+// 合併成一句靠 NRM-R1（前一句文字是後一句的開頭）；另測 R2 合併時字詞時間的保留與去重（NRM-R6）。
 func TestNormalizeWordTimingsSurviveMerge(t *testing.T) {
-	t.Run("scenario input needs NRM-R1", func(t *testing.T) {
-		t.Skip("depends on NRM-R1 (rolling caption de-duplication), pending owner decision; see docs/specs/NRM-normalize.md")
+	t.Run("rolling merge (scenario input)", func(t *testing.T) {
 		in := cuesOf(t, []row{
 			{start: "00:00:01", end: "00:00:02", text: "hello", words: "hello@00:00:01.000-00:00:01.800"},
 			{start: "00:00:02", end: "00:00:03", text: "hello world", words: "hello@00:00:01.000-00:00:01.800 world@00:00:02.100-00:00:02.900"},
@@ -172,12 +181,12 @@ func TestNormalizeWordTimingsSurviveMerge(t *testing.T) {
 
 	t.Run("fragment merge keeps word timings and drops exact duplicates", func(t *testing.T) {
 		in := cuesOf(t, []row{
-			{start: "00:00:01", end: "00:00:02", text: "hello", words: "hello@00:00:01.000-00:00:01.800"},
+			{start: "00:00:01", end: "00:00:02", text: "say hello", words: "hello@00:00:01.000-00:00:01.800"},
 			{start: "00:00:02", end: "00:00:02.200", text: "hello world", words: "hello@00:00:01.000-00:00:01.800 world@00:00:02.100-00:00:02.200"},
 		})
 		got := Normalize(in)
 		checkCues(t, got, []row{
-			{start: "00:00:01", end: "00:00:02.200", text: "hello hello world", timing: "merged",
+			{start: "00:00:01", end: "00:00:02.200", text: "say hello hello world", timing: "merged",
 				words: "hello@00:00:01.000-00:00:01.800 world@00:00:02.100-00:00:02.200"},
 		})
 	})
@@ -196,6 +205,22 @@ func TestNormalizeWordTimingsSurviveMerge(t *testing.T) {
 }
 
 func TestNormalizeExtra(t *testing.T) {
+	t.Run("identical consecutive text is merged", func(t *testing.T) {
+		got := Normalize(cuesOf(t, []row{
+			{start: "00:00:01", end: "00:00:03", text: "same"},
+			{start: "00:00:03", end: "00:00:05", text: "same"},
+		}))
+		checkCues(t, got, []row{{start: "00:00:01", end: "00:00:05", text: "same", timing: "merged"}})
+	})
+
+	t.Run("text that does not start with the previous one is kept", func(t *testing.T) {
+		got := Normalize(cuesOf(t, []row{
+			{start: "00:00:01", end: "00:00:03", text: "hello world"},
+			{start: "00:00:03", end: "00:00:05", text: "hello"},
+		}))
+		checkCues(t, got, []row{{text: "hello world"}, {text: "hello"}})
+	})
+
 	t.Run("overlap leaving a short cue merges with the next", func(t *testing.T) {
 		got := Normalize(cuesOf(t, []row{
 			{start: "00:00:01.000", end: "00:00:03.000", text: "alpha"},

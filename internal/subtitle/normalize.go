@@ -24,10 +24,10 @@ var (
 //  1. NRM-R3 去除格式標記與重複空白（保留 [Music]、♪）
 //  2. NRM-R5 移除空白 cue
 //  3. NRM-R4 依 start 排序
-//     TODO(NRM-R1): 滾動字幕去重，規則文字與場景不一致，待使用者決定後在此插入
-//  4. NRM-R2 碎句併入前一句
-//  5. NRM-R4 修正重疊，修正後過短的與後一句合併
-//  6. 重新編號（從 1 起算）
+//  4. NRM-R1 滾動字幕去重（要在 R2、R4 之前：滾動字幕彼此重疊，先去重才不會被 R4 當成重疊而截短）
+//  5. NRM-R2 碎句併入前一句
+//  6. NRM-R4 修正重疊，修正後過短的與後一句合併
+//  7. 重新編號（從 1 起算）
 //
 // 合併與修正都保留各字詞原本的時間（NRM-R6）。
 func Normalize(cues []Cue) []Cue {
@@ -41,11 +41,12 @@ func Normalize(cues []Cue) []Cue {
 	return out
 }
 
-// normalizeSteps 為依序執行的步驟，之後新增規則（例如 NRM-R1）在此插入。
+// normalizeSteps 為依序執行的步驟。
 var normalizeSteps = []func([]Cue) []Cue{
 	cleanText,     // NRM-R3
 	dropEmpty,     // NRM-R5
 	sortByStart,   // NRM-R4
+	mergeRolling,  // NRM-R1
 	mergeFragment, // NRM-R2
 	fixOverlaps,   // NRM-R4
 }
@@ -101,6 +102,24 @@ func sortByStart(cues []Cue) []Cue {
 		return cues[i].EndMS < cues[j].EndMS
 	})
 	return cues
+}
+
+// mergeRolling 實作 NRM-R1：後一句的文字以前一句的文字開頭（包括完全相同）時，兩句合併成一句，
+// 文字取後一句，時間取前一句的 start 到後一句的 end；連續多句依序合併（合併結果再和下一句比對）。
+// 字詞時間依 NRM-R6 原樣保留並去重。
+func mergeRolling(cues []Cue) []Cue {
+	out := make([]Cue, 0, len(cues))
+	for _, c := range cues {
+		if n := len(out); n > 0 && strings.HasPrefix(c.Text, out[n-1].Text) {
+			prev := out[n-1]
+			merged := mergeCues(prev, c)
+			merged.Text = c.Text
+			out[n-1] = merged
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 // mergeFragment 實作 NRM-R2：長度不到 300ms 或只有標點的 cue 併入前一句。
