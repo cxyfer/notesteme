@@ -47,9 +47,12 @@ type State struct {
 
 // Video 是一部假的平台影片。
 type Video struct {
-	Title        string    `json:"title,omitempty"`
-	Duration     int       `json:"duration,omitempty"` // 秒
-	Language     string    `json:"language,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Duration    int    `json:"duration,omitempty"` // 秒
+	Language    string `json:"language,omitempty"`
+	Description string `json:"description,omitempty"`
+	// PublishedAt 是 RFC 3339 的發布時間；-J 輸出為 timestamp 與 upload_date。
+	PublishedAt  string    `json:"published_at,omitempty"`
 	Availability string    `json:"availability,omitempty"` // 預設 public
 	LiveStatus   string    `json:"live_status,omitempty"`  // 預設 not_live
 	ChannelID    string    `json:"channel_id,omitempty"`

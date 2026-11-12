@@ -32,6 +32,7 @@ type ytArgs struct {
 var ytBoolFlags = map[string]bool{
 	"--no-playlist": true, "--newline": true, "--no-progress": true,
 	"--quiet": true, "-q": true, "--no-warnings": true, "--no-colors": true,
+	"--ignore-config": true,
 }
 
 // 帶一個值、直接接受並忽略的旗標。
@@ -345,6 +346,10 @@ func ytInfo(e env, id, platform string, part int, v *Video) int {
 			continue
 		}
 		s := sub{Ext: "vtt", URL: fmt.Sprintf("https://fake.invalid/sub/%s/%s.vtt", id, t.Lang), Name: trackName(t)}
+		if t.Kind == KindPlatformTranslated {
+			// 與真實的 yt-dlp 相同：機器翻譯的字幕軌，網址帶有 tlang 參數。
+			s.URL += "?tlang=" + t.Lang
+		}
 		if t.Kind == KindManual {
 			subs[t.Lang] = append(subs[t.Lang], s)
 		} else {
@@ -374,6 +379,15 @@ func ytInfo(e env, id, platform string, part int, v *Video) int {
 		"chapters":           chapters,
 		"subtitles":          subs,
 		"automatic_captions": autos,
+	}
+	if v.Description != "" {
+		info["description"] = v.Description
+	}
+	if v.PublishedAt != "" {
+		if t, err := time.Parse(time.RFC3339, v.PublishedAt); err == nil {
+			info["timestamp"] = t.Unix()
+			info["upload_date"] = t.UTC().Format("20060102")
+		}
 	}
 	if part > 1 || v.Parts > 1 {
 		info["playlist_index"] = part

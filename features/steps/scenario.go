@@ -38,6 +38,10 @@ type Scenario struct {
 
 	// last 是最近一次請求的回應。
 	last *response
+
+	// givenSettings 是 `Given the global settings are:` 累積的全域設定（區段名稱對應內容）。
+	// Given 步驟只累積設定，第一個送出請求的步驟才套用（ADR-0015）。
+	givenSettings map[string]any
 }
 
 // response 是最近一次請求的回應。
@@ -195,7 +199,17 @@ func (s *Scenario) send(spec string, o requestOpts) error {
 			return err
 		}
 	}
-	resp, err := s.do(method, s.World.Subst(path), o)
+	// 影音代號要換成實際的 ID，查詢與 Given 累積的設定都需要 owner 的身分。
+	if o.who == asOwner || refPattern.MatchString(path) {
+		if err := s.prepareOwner(); err != nil {
+			return err
+		}
+	}
+	path, err = s.substRefs(s.World.Subst(path))
+	if err != nil {
+		return err
+	}
+	resp, err := s.do(method, path, o)
 	if err != nil {
 		return err
 	}
@@ -288,4 +302,16 @@ func snippet(b []byte) string {
 		s = s[:max] + "…"
 	}
 	return s
+}
+
+// prepareOwner 確保 server 在執行、owner 已登入，並套用 Given 累積的全域設定。
+// 全域設定在 server 啟動之後才能透過 API 寫入，所以延到第一個送出請求的步驟。
+func (s *Scenario) prepareOwner() error {
+	if err := s.ensureServer(); err != nil {
+		return err
+	}
+	if err := s.ensureOwner(); err != nil {
+		return err
+	}
+	return s.flushSettings()
 }

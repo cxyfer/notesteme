@@ -577,3 +577,33 @@ func TestYtDlpDoubleDashIsPositional(t *testing.T) {
 		t.Fatalf("code=%d", code)
 	}
 }
+
+func TestInfoJSONPublishedAtDescriptionAndTranslatedTracks(t *testing.T) {
+	s := newScenario(t, State{Videos: map[string]*Video{"abc123": {
+		Title: "T", Description: "desc", PublishedAt: "2026-11-12T09:30:00Z",
+		Tracks: []Track{{Kind: KindAuto, Lang: "en"}, {Kind: KindPlatformTranslated, Lang: "zh-Hans"}},
+	}}})
+	code, out, stderr := s.exec(YtDlp, "--ignore-config", "--use-extractors", "youtube", "--no-playlist", "-J", "--", "https://www.youtube.com/watch?v=abc123")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	var info struct {
+		Timestamp  int64  `json:"timestamp"`
+		UploadDate string `json:"upload_date"`
+		Desc       string `json:"description"`
+		Auto       map[string][]struct {
+			URL string `json:"url"`
+		} `json:"automatic_captions"`
+	}
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		t.Fatal(err)
+	}
+	want := time.Date(2026, 11, 12, 9, 30, 0, 0, time.UTC)
+	if info.Timestamp != want.Unix() || info.UploadDate != "20261112" || info.Desc != "desc" {
+		t.Errorf("info = %+v", info)
+	}
+	// 只有機器翻譯的字幕軌帶有 tlang 參數，與真實的 yt-dlp 一致。
+	if strings.Contains(info.Auto["en"][0].URL, "tlang=") || !strings.Contains(info.Auto["zh-Hans"][0].URL, "tlang=zh-Hans") {
+		t.Errorf("automatic_captions = %+v", info.Auto)
+	}
+}

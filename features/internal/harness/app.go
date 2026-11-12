@@ -68,6 +68,6 @@ func (w *World) AppEnv() app.Env {
 		Net:    w.Net.Deps(),
 		Listen: w.Listen,
 		Log:    w.Log,
-		Test:   &app.TestControls{LowCostHashing: true},
+		Test:   &app.TestControls{LowCostHashing: true, ManualWorker: true},
 	}
 }
