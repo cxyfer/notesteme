@@ -101,3 +101,41 @@ func TestLoadToolPaths(t *testing.T) {
 		t.Errorf("tools = %v", cfg.Tools)
 	}
 }
+
+func TestLoadTrustedProxies(t *testing.T) {
+	p := writeFile(t, "trusted_proxies:\n  - 172.18.0.0/16\n  - \"fd00::/8\"\n  - 10.1.2.3/8\n")
+	cfg, err := Load(Sources{File: p, Env: map[string]string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, p := range cfg.TrustedProxies {
+		got = append(got, p.String())
+	}
+	want := []string{"172.18.0.0/16", "fd00::/8", "10.0.0.0/8"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("TrustedProxies = %v, want %v", got, want)
+	}
+}
+
+func TestLoadTrustedProxiesDefaultsToEmpty(t *testing.T) {
+	cfg, err := Load(Sources{File: writeFile(t, "listen: 127.0.0.1:1\n"), Env: map[string]string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.TrustedProxies) != 0 {
+		t.Errorf("TrustedProxies = %v", cfg.TrustedProxies)
+	}
+}
+
+func TestLoadRejectsInvalidTrustedProxies(t *testing.T) {
+	for _, body := range []string{
+		"trusted_proxies:\n  - 172.18.0.0/16\n  - not-a-cidr\n",
+		"trusted_proxies:\n  - 10.0.0.1\n", // 缺少遮罩
+	} {
+		_, err := Load(Sources{File: writeFile(t, body), Env: map[string]string{}})
+		if err == nil || !strings.Contains(err.Error(), "trusted_proxies") {
+			t.Errorf("err = %v，應指出 trusted_proxies", err)
+		}
+	}
+}

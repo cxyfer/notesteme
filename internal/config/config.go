@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/netip"
 	"os"
 	"sort"
 	"strings"
@@ -64,6 +65,9 @@ type Config struct {
 	Data string
 	// ConfigFile 是實際讀取的設定檔路徑。
 	ConfigFile string
+	// TrustedProxies 是可信任的反向代理位址（設定檔 trusted_proxies，CIDR 清單，預設為空）。
+	// 連線來自這些位址時，AUTH-R6 的來源位址改取 X-Forwarded-For。
+	TrustedProxies []netip.Prefix
 	// Tools 是設定檔 tools 區段指定的外部工具路徑，key 為工具名稱（yt-dlp、ffmpeg；OPS-R8）。
 	Tools map[string]string
 
@@ -83,13 +87,15 @@ func (c *Config) SourceOf(field string) Source {
 // tools、outbound、providers、asr、hooks 的內容由之後的切片定義，這裡只確認欄位名稱合法。
 // asr.providers 放會執行命令的 provider，只能寫在設定檔（ADR-0013）。
 type fileSchema struct {
-	Listen    string            `yaml:"listen"`
-	Data      string            `yaml:"data"`
-	Tools     map[string]string `yaml:"tools"`
-	Outbound  yaml.Node         `yaml:"outbound"`
-	Providers yaml.Node         `yaml:"providers"`
-	ASR       yaml.Node         `yaml:"asr"`
-	Hooks     yaml.Node         `yaml:"hooks"`
+	Listen string            `yaml:"listen"`
+	Data   string            `yaml:"data"`
+	Tools  map[string]string `yaml:"tools"`
+	// TrustedProxies 先讀成字串，解析失敗時才能指出是哪一個值。
+	TrustedProxies []string  `yaml:"trusted_proxies"`
+	Outbound       yaml.Node `yaml:"outbound"`
+	Providers      yaml.Node `yaml:"providers"`
+	ASR            yaml.Node `yaml:"asr"`
+	Hooks          yaml.Node `yaml:"hooks"`
 }
 
 // Load 依 src 載入設定。
@@ -140,7 +146,7 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 	var unknown []string
 	for k := range top {
 		switch k {
-		case "listen", "data", "tools", "outbound", "providers", "hooks", "asr":
+		case "listen", "data", "trusted_proxies", "tools", "outbound", "providers", "hooks", "asr":
 		default:
 			unknown = append(unknown, k)
 		}
@@ -163,5 +169,12 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 		cfg.Data, cfg.Origin[FieldData] = f.Data, SourceConfigFile
 	}
 	cfg.Tools = f.Tools
+	for i, v := range f.TrustedProxies {
+		p, err := netip.ParsePrefix(strings.TrimSpace(v))
+		if err != nil {
+			return fmt.Errorf("設定檔 %s 的欄位 trusted_proxies[%d] 不是有效的 CIDR（例如 \"172.18.0.0/16\"）：%q", path, i, v)
+		}
+		cfg.TrustedProxies = append(cfg.TrustedProxies, p.Masked())
+	}
 	return nil
 }

@@ -61,7 +61,7 @@ func New(d Deps) http.Handler {
 
 	var h http.Handler = mux
 	h = authMiddleware(d.Auth, d.Log)(h)
-	h = requestInfoMiddleware(h)
+	h = requestInfoMiddleware(d.Auth)(h)
 	h = logMiddleware(d.Log, d.Clock)(h)
 	h = recoverMiddleware(d.Log)(h)
 	return h

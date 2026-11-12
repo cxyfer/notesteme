@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -33,7 +34,7 @@ const SessionIdleTimeout = 30 * 24 * time.Hour
 // sessionTouchInterval 是延長 session 到期時間的最短間隔，避免每個請求都寫 DB。
 const sessionTouchInterval = time.Hour
 
-// 登入鎖定（AUTH-R6）：連續 maxFailures 次密碼錯誤後鎖定 lockDuration。
+// 登入鎖定（AUTH-R6）：同一個來源位址連續 maxFailures 次密碼錯誤後，該位址鎖定 lockDuration。
 const (
 	maxFailures  = 5
 	lockDuration = time.Minute
@@ -69,6 +70,9 @@ type Config struct {
 	Params HashParams
 	// Log 是 log 輸出；nil 時使用 slog.Default()。
 	Log *slog.Logger
+	// TrustedProxies 是可信任的反向代理位址（設定檔 trusted_proxies）；預設為空。
+	// 連線來自這些位址時，來源位址改取 X-Forwarded-For，見 SourceAddr。
+	TrustedProxies []netip.Prefix
 }
 
 // Service 提供登入、session 驗證與登出。
@@ -82,13 +86,12 @@ type Service struct {
 	extend func(ctx context.Context, id string, expiresAt time.Time) error
 	log    *slog.Logger
 
-	// loginMu 讓同一時間只有一個登入在驗證密碼。
+	// loginMu 讓同一時間只有一個登入在驗證密碼（全域，不分位址）。
 	loginMu sync.Mutex
 
-	// 登入失敗計數只有 owner 一個帳號，所以是全域的；只存在記憶體，重啟後歸零。
-	mu          sync.Mutex
-	failures    int
-	lockedUntil time.Time
+	// locks 以來源位址記錄登入失敗與鎖定；只存在記憶體，有筆數上限。
+	locks   *lockouts
+	trusted []netip.Prefix
 }
 
 // New 建立 Service。
@@ -101,7 +104,8 @@ func New(cfg Config) *Service {
 	if lg == nil {
 		lg = slog.Default()
 	}
-	s := &Service{store: cfg.Store, clock: cfg.Clock, params: p, verify: verifyPassword, log: lg}
+	s := &Service{store: cfg.Store, clock: cfg.Clock, params: p, verify: verifyPassword, log: lg,
+		locks: newLockouts(maxLockoutRecords), trusted: cfg.TrustedProxies}
 	if cfg.Store != nil {
 		s.extend = cfg.Store.ExtendSession
 	}
@@ -141,15 +145,26 @@ type Credentials struct {
 	ExpiresAt time.Time
 }
 
-// Login 驗證密碼並建立 session。
-// 連續 5 次密碼錯誤後鎖定 1 分鐘，鎖定期間連正確的密碼也拒絕，回傳 *LockedError（AUTH-R6）。
+// SourceAddr 依設定的 trusted proxies 決定請求的來源位址（AUTH-R6）。
+func (s *Service) SourceAddr(remoteAddr string, forwardedFor []string) string {
+	return SourceAddr(remoteAddr, forwardedFor, s.trusted)
+}
+
+// Login 驗證密碼並建立 session。ip 是 SourceAddr 決定的來源位址，失敗計數以它為單位。
+// 同一個位址連續 5 次密碼錯誤後鎖定 1 分鐘，鎖定期間連正確的密碼也拒絕，回傳 *LockedError（AUTH-R6）。
 func (s *Service) Login(ctx context.Context, password, ip, userAgent string) (Credentials, error) {
 	// 「檢查鎖定 → 驗證 → 記錄失敗」必須是同一個臨界區，否則並行請求會在鎖定生效前全部進入驗證；
 	// 序列化同時把並行的 argon2 驗證（每次約 64MiB）限制為一個。鎖定後排隊的請求會直接被拒絕。
+	// 序列化是全域的：每個位址各自的臨界區仍不夠，因為 argon2 的記憶體用量是整個程序共用的。
+
+	// 已鎖定的位址不必排隊等別人的驗證，先快速拒絕；真正的判斷在臨界區內再做一次。
+	if retry := s.locks.remaining(ip, s.clock.Now()); retry > 0 {
+		return Credentials{}, &LockedError{RetryAfter: retry}
+	}
 	s.loginMu.Lock()
 	defer s.loginMu.Unlock()
 
-	if retry := s.lockRemaining(); retry > 0 {
+	if retry := s.locks.remaining(ip, s.clock.Now()); retry > 0 {
 		return Credentials{}, &LockedError{RetryAfter: retry}
 	}
 	encoded, ok, err := s.store.GetSetting(ctx, settingPasswordHash)
@@ -164,10 +179,10 @@ func (s *Service) Login(ctx context.Context, password, ip, userAgent string) (Cr
 		return Credentials{}, err
 	}
 	if !match {
-		s.recordFailure()
+		s.locks.fail(ip, s.clock.Now())
 		return Credentials{}, ErrInvalidPassword
 	}
-	s.resetFailures()
+	s.locks.reset(ip)
 
 	token, err := randomToken()
 	if err != nil {
@@ -178,30 +193,6 @@ func (s *Service) Login(ctx context.Context, password, ip, userAgent string) (Cr
 		return Credentials{}, err
 	}
 	return Credentials{Token: token, CSRF: csrfFor(token), ExpiresAt: sess.ExpiresAt}, nil
-}
-
-// lockRemaining 回傳鎖定還剩多久；沒有鎖定時為 0。
-func (s *Service) lockRemaining() time.Duration {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return max(0, s.lockedUntil.Sub(s.clock.Now()))
-}
-
-// recordFailure 記錄一次密碼錯誤；達到上限時開始鎖定並重新計數。
-func (s *Service) recordFailure() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.failures++
-	if s.failures >= maxFailures {
-		s.failures = 0
-		s.lockedUntil = s.clock.Now().Add(lockDuration)
-	}
-}
-
-func (s *Service) resetFailures() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.failures = 0
 }
 
 // Logout 讓 session 立即失效；token 不存在時不算錯誤。

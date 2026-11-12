@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"strings"
 
@@ -38,20 +37,26 @@ func principalFrom(ctx context.Context) (auth.Principal, bool) {
 	return p, ok
 }
 
-// requestInfoMiddleware 把來源 IP、User-Agent 與是否為 HTTPS 放進 context。
-func requestInfoMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			ip = r.RemoteAddr
-		}
-		info := requestInfo{
-			IP:        ip,
-			UserAgent: r.UserAgent(),
-			Secure:    r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"),
-		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), keyRequestInfo, info)))
-	})
+// requestInfoMiddleware 把來源位址、User-Agent 與是否為 HTTPS 放進 context。
+// 來源位址取自連線；連線來自 trusted_proxies 時改用 X-Forwarded-For（AUTH-R6，見 auth.SourceAddr）。
+// svc 為 nil 時（沒有設定 trusted proxies）只用連線位址。
+func requestInfoMiddleware(svc *auth.Service) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var ip string
+			if svc != nil {
+				ip = svc.SourceAddr(r.RemoteAddr, r.Header.Values("X-Forwarded-For"))
+			} else {
+				ip = auth.SourceAddr(r.RemoteAddr, nil, nil)
+			}
+			info := requestInfo{
+				IP:        ip,
+				UserAgent: r.UserAgent(),
+				Secure:    r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"),
+			}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), keyRequestInfo, info)))
+		})
+	}
 }
 
 // needsAuth 回報路徑是否受 AUTH-R1 保護：/api/* 與 /mcp，例外只有 POST /api/auth/login。

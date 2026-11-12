@@ -153,7 +153,8 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 		return nil, err
 	}
 
-	authSvc := auth.New(auth.Config{Store: s.store, Clock: env.Clock, Params: hashParams, Log: log})
+	authSvc := auth.New(auth.Config{Store: s.store, Clock: env.Clock, Params: hashParams, Log: log,
+		TrustedProxies: cfg.TrustedProxies})
 	if err := authSvc.EnsurePassword(ctx, env.Vars[envPassword]); err != nil {
 		return nil, err
 	}

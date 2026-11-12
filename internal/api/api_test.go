@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -304,5 +305,64 @@ func TestSessionIdleExpiry(t *testing.T) {
 	s.clk.Advance(auth.SessionIdleTimeout + time.Minute)
 	if rec := s.do("GET", "/api/items", "", withCookies(sess, csrf, "")); rec.Code != 401 {
 		t.Errorf("status = %d", rec.Code)
+	}
+}
+
+// newProxyServer 建立信任 10.0.0.0/8 的 server，請求的連線位址由測試指定。
+func newProxyServer(t *testing.T) *testServer {
+	t.Helper()
+	clk := clock.NewFake(time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC))
+	st, err := store.Open(context.Background(), t.TempDir(), clk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	svc := auth.New(auth.Config{
+		Store: st, Clock: clk, Params: auth.TestParams,
+		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+	})
+	if err := svc.EnsurePassword(context.Background(), "pw"); err != nil {
+		t.Fatal(err)
+	}
+	h := New(Deps{Store: st, Auth: svc, Clock: clk, Version: "test", Log: slog.New(slog.NewJSONHandler(io.Discard, nil))})
+	return &testServer{h: h, clk: clk}
+}
+
+func loginFrom(s *testServer, remote, xff, password string) int {
+	return s.do("POST", "/api/auth/login", `{"password":"`+password+`"}`, func(r *http.Request) {
+		r.RemoteAddr = remote
+		if xff != "" {
+			r.Header.Set("X-Forwarded-For", xff)
+		}
+	}).Code
+}
+
+// 沒有設定 trusted proxies 時，X-Forwarded-For 被忽略：改標頭不能繞過鎖定，也不能嫁禍別人。
+func TestLoginLockoutIgnoresForwardedForFromUntrustedConnection(t *testing.T) {
+	s := newTestServer(t)
+	for i := 0; i < 5; i++ {
+		loginFrom(s, "203.0.113.5:1000", "198.51.100.1", "nope")
+	}
+	if got := loginFrom(s, "203.0.113.5:1001", "198.51.100.2", "pw"); got != 429 {
+		t.Errorf("換標頭不應繞過鎖定，status = %d", got)
+	}
+	if got := loginFrom(s, "203.0.113.6:1000", "198.51.100.1", "pw"); got != 200 {
+		t.Errorf("其他連線位址不應受影響，status = %d", got)
+	}
+}
+
+// 連線來自 trusted proxy 時，依 X-Forwarded-For 最右邊不可信任的位址計數；最左側偽造的位址不被採用。
+func TestLoginLockoutBehindTrustedProxy(t *testing.T) {
+	s := newProxyServer(t)
+	proxy := "10.0.0.2:5000"
+	for i := 0; i < 5; i++ {
+		// 攻擊者每次都在最左邊塞不同的位址，真正的位址由 proxy 附加在最右邊。
+		loginFrom(s, proxy, "9.9.9."+string(rune('1'+i))+", 198.51.100.7", "nope")
+	}
+	if got := loginFrom(s, proxy, "8.8.8.8, 198.51.100.7", "pw"); got != 429 {
+		t.Errorf("同一個真實位址應被鎖定，status = %d", got)
+	}
+	if got := loginFrom(s, proxy, "198.51.100.8", "pw"); got != 200 {
+		t.Errorf("同一個 proxy 後面的其他位址不應受影響，status = %d", got)
 	}
 }
