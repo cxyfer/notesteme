@@ -107,3 +107,24 @@ func TestResultAfterCancelIsDiscarded(t *testing.T) {
 		t.Errorf("被丟棄的產出檔要清掉，還有 %d 個", len(files))
 	}
 }
+
+// blocked 的步驟也要取消：否則使用者之後完成修正動作（PIPE-R4），已取消的影音又會開始處理。
+func TestCancelItemSkipsBlockedStage(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	// 沒有平台字幕、fallback 的來源都沒有 key：transcript 停在 blocked（SRC-R10）。
+	it := r.ingest(watch, nil, "")
+	r.run()
+	if run := r.stage(it, StageTranscript); run.Status != store.StatusBlocked {
+		t.Fatalf("前提：transcript 應為 blocked：%+v", run)
+	}
+	if _, err := r.p.CancelItem(ctx, it.ID); err != nil {
+		t.Fatal(err)
+	}
+	if run := r.stage(it, StageTranscript); run.Status != store.StatusSkipped || run.BlockReason != "cancelled" {
+		t.Errorf("blocked 的 transcript 應改為 skipped（cancelled）：%+v", run)
+	}
+	if run := r.stage(it, StageMetadata); run.Status != store.StatusDone {
+		t.Errorf("已完成的 metadata 不應改動：%+v", run)
+	}
+}

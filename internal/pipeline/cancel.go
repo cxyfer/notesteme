@@ -8,8 +8,9 @@ import (
 )
 
 // unfinishedStatuses 是「還沒結束」的步驟狀態：取消會把它們改成 skipped。
-// blocked 與 failed 已經停下來等使用者處理，不在其中；done、skipped 已經結束。
-var unfinishedStatuses = []string{store.StatusPending, store.StatusRunning, store.StatusWaiting, store.StatusAwaitingAgent}
+// blocked 也算：使用者完成修正動作後它會自動回到 pending（PIPE-R4），不取消的話，
+// 已取消的影音會在上傳 cookie 之後又開始處理。failed、done、skipped 已經結束。
+var unfinishedStatuses = []string{store.StatusPending, store.StatusRunning, store.StatusWaiting, store.StatusBlocked, store.StatusAwaitingAgent}
 
 // cancelledState 是被取消的步驟的狀態（PIPE-R15）。skipped 與被重跑取代的步驟相同，原因寫在 block_reason。
 func cancelledState() store.StageState {
