@@ -272,6 +272,7 @@ func TestRestartPutsLeasesBackAndFinishes(t *testing.T) {
 func TestGracefulShutdownReleasesLeases(t *testing.T) {
 	env := testEnv(t)
 	env.Test.ManualWorker = true
+	env.Test.SkipShutdownGrace = true // 寬限期為 0：執行中的任務立刻被取消；寬限期本身見 shutdown_test.go
 	block := &ytRunner{block: make(chan struct{}), inProg: make(chan struct{})}
 	env.Runner = block
 	srv, err := StartServer(t.Context(), env)

@@ -45,6 +45,8 @@ type TestControls struct {
 	// ManualWorker 讓 server 不自己執行 worker：任務只在測試呼叫 Server.RunUntilIdle 或
 	// Server.RunRound 時才會被領取與執行（ADR-0015）。
 	ManualWorker bool
+	// SkipShutdownGrace 讓正常關閉的寬限期為 0：執行中的任務立刻被取消，驗收場景不必推進時鐘（PIPE-R12）。
+	SkipShutdownGrace bool
 }
 
 // IO 是標準輸入輸出。
@@ -54,8 +56,12 @@ type IO struct {
 	Stderr io.Writer
 }
 
-// shutdownTimeout 是收到訊號後等待正常關閉的上限。
-const shutdownTimeout = 30 * time.Second
+// shutdownGrace 是正常關閉時等待執行中任務完成的寬限期（PIPE-R12）。
+const shutdownGrace = 30 * time.Second
+
+// shutdownTimeout 是收到訊號後等待正常關閉的上限：寬限期之外還要留時間給放回租約與關閉資料庫，
+// 否則放回租約時 ctx 已經逾時。
+const shutdownTimeout = shutdownGrace + 10*time.Second
 
 // Run 執行一次命令並回傳結束碼。args 不含程式名稱。
 func Run(ctx context.Context, args []string, stdio IO, env Env) int {
