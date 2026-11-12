@@ -167,11 +167,14 @@ func (rt *routes) register(api huma.API) {
 		OperationID: "items-rerun", Method: http.MethodPost, Path: "/api/items/{id}/rerun",
 		Summary: "從指定步驟重新處理，產出新版本（PIPE-R7）", DefaultStatus: http.StatusAccepted,
 	}, rt.rerun)
+	huma.Register(api, huma.Operation{
+		OperationID: "items-runs", Method: http.MethodGet, Path: "/api/items/{id}/runs",
+		Summary: "步驟實際執行過的紀錄與當時生效的設定，由新到舊（PIPE-R13）",
+	}, rt.listRuns)
 	rt.registerQueue(api)
 	rt.registerCancel(api)
-	// 之後切片才會實作的路由（PIPE-R13、DEL）：先明確回應 501。
+	// 之後切片才會實作的路由（DEL 等）：先明確回應 501。
 	for _, op := range []huma.Operation{
-		{OperationID: "items-runs", Method: http.MethodGet, Path: "/api/items/{id}/runs", Summary: "步驟的執行紀錄與當時的設定（尚未實作）"},
 		{OperationID: "items-delete", Method: http.MethodDelete, Path: "/api/items/{id}", Summary: "刪除影音，移入垃圾桶（尚未實作）"},
 		{OperationID: "trash-restore", Method: http.MethodPost, Path: "/api/trash/{id}/restore", Summary: "從垃圾桶還原（尚未實作）"},
 		{OperationID: "tasks-retry", Method: http.MethodPost, Path: "/api/tasks/{id}/retry", Summary: "重試任務（尚未實作）"},

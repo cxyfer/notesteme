@@ -209,6 +209,50 @@ func toDetail(d pipeline.Detail) ItemDetail {
 	return out
 }
 
+// ---- 執行紀錄 ----
+
+// Run 是步驟的一次實際執行與當時生效的設定（PIPE-R13）。
+type Run struct {
+	ID          string          `json:"id"`
+	Stage       string          `json:"stage"`
+	Status      string          `json:"status"`
+	StartedAt   time.Time       `json:"started_at"`
+	FinishedAt  *time.Time      `json:"finished_at"`
+	CacheKey    string          `json:"cache_key"`
+	ImplVersion int             `json:"impl_version"`
+	Config      json.RawMessage `json:"config" doc:"該次執行的 config snapshot：四層覆寫合併後的生效設定"`
+}
+
+type runsOutput struct {
+	Body struct {
+		Runs []Run `json:"runs"`
+	}
+}
+
+// listRuns 回傳影音實際執行過的步驟，由新到舊。
+func (rt *routes) listRuns(ctx context.Context, in *itemInput) (*runsOutput, error) {
+	if rt.d.Pipeline == nil {
+		return nil, newError(http.StatusNotFound, CodeNotFound, "找不到這部影音。")
+	}
+	runs, err := rt.d.Pipeline.Runs(ctx, in.ID)
+	if err != nil {
+		return nil, rt.mapErr(ctx, err)
+	}
+	out := &runsOutput{}
+	out.Body.Runs = make([]Run, 0, len(runs))
+	for _, r := range runs {
+		cfg := json.RawMessage(r.ConfigJSON)
+		if !json.Valid(cfg) {
+			cfg = json.RawMessage("{}")
+		}
+		out.Body.Runs = append(out.Body.Runs, Run{
+			ID: r.ID, Stage: r.Stage, Status: r.Status, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt,
+			CacheKey: r.CacheKey, ImplVersion: r.ImplVersion, Config: cfg,
+		})
+	}
+	return out, nil
+}
+
 // ---- 重跑 ----
 
 type rerunInput struct {

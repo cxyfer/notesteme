@@ -62,12 +62,19 @@ func (w *World) AppEnv() app.Env {
 	for k, v := range w.Env {
 		vars[k] = v
 	}
+	var impl map[string]int
+	if len(w.ImplVersions) > 0 {
+		impl = make(map[string]int, len(w.ImplVersions))
+		for k, v := range w.ImplVersions {
+			impl[k] = v
+		}
+	}
 	return app.Env{
 		Vars:   vars,
 		Clock:  w.Clock,
 		Net:    w.Net.Deps(),
 		Listen: w.Listen,
 		Log:    w.Log,
-		Test:   &app.TestControls{LowCostHashing: true, ManualWorker: true, SkipShutdownGrace: true},
+		Test:   &app.TestControls{LowCostHashing: true, ManualWorker: true, SkipShutdownGrace: true, ImplVersions: impl},
 	}
 }

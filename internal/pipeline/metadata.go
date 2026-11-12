@@ -49,8 +49,8 @@ func (p *Pipeline) runMetadata(ctx context.Context, it store.Item) (result, erro
 	res := result{
 		meta: mu,
 		stage: &store.StageResult{
-			Executor: "local", ImplVersion: metadataImplVersion,
-			CacheKey: cacheKey{Item: it.ID, Stage: StageMetadata, Impl: metadataImplVersion, Provider: "yt-dlp", Params: paramsSHA(it.URL)}.String(),
+			Executor: "local", ImplVersion: p.implVersion(StageMetadata),
+			CacheKey: cacheKey{Item: it.ID, Stage: StageMetadata, Impl: p.implVersion(StageMetadata), Provider: "yt-dlp", Params: paramsSHA(it.URL)}.String(),
 		},
 	}
 	if info.Live() {

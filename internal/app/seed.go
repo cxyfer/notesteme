@@ -30,3 +30,9 @@ func (s *Server) IngestAs(ctx context.Context, url, priority string) error {
 	_, err := s.pipeline.Ingest(ctx, pipeline.IngestRequest{URL: url, Priority: p})
 	return err
 }
+
+// SetImplVersion 覆寫步驟的 impl_version，模擬步驟的實作改版（PIPE-R6）。只供驗收測試的 harness 使用：
+// 它不對應任何 HTTP 端點或 CLI 指令，production 程式不會呼叫它。
+func (s *Server) SetImplVersion(stage string, v int) error {
+	return s.pipeline.SetImplVersion(stage, v)
+}

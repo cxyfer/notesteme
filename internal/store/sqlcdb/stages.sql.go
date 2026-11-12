@@ -48,6 +48,58 @@ func (q *Queries) DoneStageByCacheKey(ctx context.Context, arg DoneStageByCacheK
 	return i, err
 }
 
+const executedRunsByItem = `-- name: ExecutedRunsByItem :many
+SELECT sr.id, sr.stage, sr.status, sr.started_at, sr.finished_at, sr.cache_key, sr.impl_version, cs.config_json
+FROM stage_runs sr
+JOIN config_snapshots cs ON cs.id = sr.config_snapshot_id
+WHERE sr.item_id = ?1 AND sr.started_at IS NOT NULL
+ORDER BY sr.started_at DESC, sr.rowid DESC
+`
+
+type ExecutedRunsByItemRow struct {
+	ID          string
+	Stage       string
+	Status      string
+	StartedAt   *int64
+	FinishedAt  *int64
+	CacheKey    string
+	ImplVersion int64
+	ConfigJson  string
+}
+
+// Runs that were actually started, newest first, with the effective config they used.
+func (q *Queries) ExecutedRunsByItem(ctx context.Context, itemID string) ([]ExecutedRunsByItemRow, error) {
+	rows, err := q.db.QueryContext(ctx, executedRunsByItem, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExecutedRunsByItemRow
+	for rows.Next() {
+		var i ExecutedRunsByItemRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Stage,
+			&i.Status,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.CacheKey,
+			&i.ImplVersion,
+			&i.ConfigJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSnapshotIDBySHA = `-- name: GetSnapshotIDBySHA :one
 SELECT id FROM config_snapshots WHERE sha256 = ?1
 `

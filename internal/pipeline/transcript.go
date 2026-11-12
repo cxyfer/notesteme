@@ -74,11 +74,11 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		params["supadata"] = lang.Supadata
 	}
 	key := cacheKey{
-		Item: it.ID, Stage: StageTranscript, Impl: transcriptImplVersion, Provider: "yt-dlp",
+		Item: it.ID, Stage: StageTranscript, Impl: p.implVersion(StageTranscript), Provider: "yt-dlp",
 		Upstream: paramsSHA(map[string]any{"tracks": sortedTracks(tracks), "original_lang": it.OriginalLang}),
 		Params:   paramsSHA(params),
 	}.String()
-	stage := &store.StageResult{Executor: "local", CacheKey: key, ImplVersion: transcriptImplVersion}
+	stage := &store.StageResult{Executor: "local", CacheKey: key, ImplVersion: p.implVersion(StageTranscript)}
 
 	// 快取鍵相同的步驟已經完成：直接重用，不下載字幕，也不建立新版本（PIPE-R5）。
 	// Probe 的結果照樣記錄（SRC-R17）。
@@ -116,7 +116,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	srcID := transcript.PlatformSource(chosen.Kind)
 	artLang := transcript.NormalizeLang(chosen.Lang)
 	prov, err := p.provenance(map[string]any{
-		"stage": StageTranscript, "impl_version": transcriptImplVersion,
+		"stage": StageTranscript, "impl_version": p.implVersion(StageTranscript),
 		"source": srcID, "timing": sourceTiming(chosen.Kind),
 		"track":         map[string]string{"lang": artLang, "kind": chosen.Kind},
 		"params_sha256": paramsSHA(map[string]any{"caption_priority": lang.CaptionPriority, "allow_platform_translated": lang.AllowPlatformTranslated}),
@@ -220,7 +220,7 @@ func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, l
 	}
 	decisions = append(decisions, transcript.Decision{Source: id, Lang: artLang, State: transcript.StateUsed})
 	prov, err := p.provenance(map[string]any{
-		"stage": StageTranscript, "impl_version": transcriptImplVersion,
+		"stage": StageTranscript, "impl_version": p.implVersion(StageTranscript),
 		"source": id, "timing": f.timing,
 		"params_sha256": paramsSHA(f.params(lang)),
 	}, nil)
