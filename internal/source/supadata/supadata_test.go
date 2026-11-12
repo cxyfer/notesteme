@@ -71,9 +71,13 @@ func TestFetchErrorClasses(t *testing.T) {
 		{"200 但沒有內容", 200, `{"lang":"en","content":[]}`, true, ""},
 		{"429", 429, `{}`, false, errclass.ClassRetryable},
 		{"503", 503, `{}`, false, errclass.ClassRetryable},
-		{"401", 401, `{}`, false, errclass.ClassNeedsAction},
-		{"403", 403, `{}`, false, errclass.ClassNeedsAction},
+		{"401 key 無效", 401, `{}`, false, errclass.ClassNeedsAction},
+		{"402 方案不支援", 402, `{}`, false, errclass.ClassNeedsAction},
+		{"403 內容私人或受限", 403, `{"error":"forbidden"}`, true, ""},
+		{"206 transcript-unavailable", 206, `{"error":"transcript-unavailable"}`, true, ""},
 		{"400", 400, `{}`, false, errclass.ClassPermanent},
+		{"422 其他 4xx", 422, `{}`, false, errclass.ClassPermanent},
+		{"500", 500, `{}`, false, errclass.ClassRetryable},
 		{"回應不是 JSON", 200, `<html>`, false, errclass.ClassRetryable},
 		{"非同步任務", 202, `{"jobId":"j1"}`, false, errclass.ClassPermanent},
 	}
@@ -95,6 +99,23 @@ func TestFetchErrorClasses(t *testing.T) {
 				t.Errorf("錯誤訊息含有 API key：%v", err)
 			}
 		})
+	}
+}
+
+// 401 與 402 都是 needs_action，但呼叫端要能分辨：前者是 key 的問題，後者是方案不支援。
+func TestFetchDistinguishesKeyAndPlanErrors(t *testing.T) {
+	c, _ := serve(t, 401, `{}`)
+	_, err := c.Fetch(context.Background(), "https://youtu.be/abc123", ModeAuto)
+	if !errors.Is(err, ErrKeyRejected) || errors.Is(err, ErrPlanUnsupported) {
+		t.Errorf("401：err = %v", err)
+	}
+	c, _ = serve(t, 402, `{}`)
+	_, err = c.Fetch(context.Background(), "https://youtu.be/abc123", ModeAuto)
+	if !errors.Is(err, ErrPlanUnsupported) || errors.Is(err, ErrKeyRejected) {
+		t.Errorf("402：err = %v", err)
+	}
+	if strings.Contains(err.Error(), "sk-secret-123") {
+		t.Errorf("錯誤訊息含有 API key：%v", err)
 	}
 }
 

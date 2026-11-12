@@ -50,6 +50,14 @@ const (
 // ErrNoTranscript 表示 Supadata 沒有這部影片的字幕（404 或內容為空）；呼叫端改用下一個來源。
 var ErrNoTranscript = errors.New("supadata：沒有字幕")
 
+// 401、402 都是 needs_action，但要使用者做的事不同，呼叫端用這兩個錯誤分辨。
+var (
+	// ErrKeyRejected 表示 API key 無效（401）。
+	ErrKeyRejected = errors.New("API key 無效")
+	// ErrPlanUnsupported 表示目前的 Supadata 方案不支援這個功能（402）。
+	ErrPlanUnsupported = errors.New("方案不支援這個功能")
+)
+
 // Client 是 Supadata 的 HTTP client。
 type Client struct {
 	// HTTP 是對外 HTTP 的 client（netguard 的 Transport）。
@@ -81,11 +89,12 @@ type transcriptResponse struct {
 
 // Fetch 取得 videoURL 的字幕。
 //
-// 錯誤分類（plan 第 5.2 節）：
-//   - 404、內容為空：ErrNoTranscript。
+// 錯誤分類（plan 第 5.2 節；狀態碼的意義見 https://docs.supadata.ai/errors/list）：
+//   - 404、403（內容私人或受限）、206（transcript-unavailable）、內容為空：ErrNoTranscript，
+//     這個來源沒有結果，呼叫端改用下一個來源。
+//   - 401（key 無效）、402（方案不支援）：needs_action，分別帶 ErrKeyRejected、ErrPlanUnsupported。
 //   - 429、5xx、網路錯誤、無法解析的回應：retryable。
-//   - 401、403：needs_action（API key 無效或被拒絕）。
-//   - 其他 4xx 與非同步任務（202）：permanent；非同步任務的輪詢還沒做。
+//   - 3xx（不跟隨轉址）、400 及其他 4xx、非同步任務（202）：permanent；非同步任務的輪詢還沒做。
 func (c *Client) Fetch(ctx context.Context, videoURL, mode string) (*Result, error) {
 	base := c.BaseURL
 	if base == "" {
@@ -117,10 +126,14 @@ func (c *Client) Fetch(ctx context.Context, videoURL, mode string) (*Result, err
 	}
 
 	switch {
-	case resp.StatusCode == http.StatusNotFound:
+	case resp.StatusCode == http.StatusNotFound, resp.StatusCode == http.StatusForbidden, resp.StatusCode == http.StatusPartialContent:
+		// 404：沒有結果；403：內容私人或受限；206 transcript-unavailable：沒有字幕。
+		// 都是這個來源沒有結果，不是 key 的問題。
 		return nil, ErrNoTranscript
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return nil, fail(errclass.ClassNeedsAction, fmt.Sprintf("HTTP %d（API key 無效或被拒絕）", resp.StatusCode), nil)
+	case resp.StatusCode == http.StatusUnauthorized:
+		return nil, fail(errclass.ClassNeedsAction, "HTTP 401（API key 無效）", ErrKeyRejected)
+	case resp.StatusCode == http.StatusPaymentRequired:
+		return nil, fail(errclass.ClassNeedsAction, "HTTP 402（方案不支援）", ErrPlanUnsupported)
 	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
 		return nil, fail(errclass.ClassRetryable, fmt.Sprintf("HTTP %d", resp.StatusCode), nil)
 	case resp.StatusCode == http.StatusAccepted:

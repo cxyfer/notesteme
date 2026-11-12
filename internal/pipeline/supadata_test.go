@@ -230,6 +230,66 @@ func TestSupadataRejectedKeyBlocksWithFixAction(t *testing.T) {
 	}
 }
 
+// 402：方案不支援，訊息要說明原因與出路，不能說成 key 被拒絕。
+func TestSupadataUnsupportedPlanBlocksWithPlanMessage(t *testing.T) {
+	r, sd := newSupadataRig(t)
+	sd.err = &errclass.Error{Class: errclass.ClassNeedsAction, Source: "supadata", Detail: "HTTP 402", Err: supadata.ErrPlanUnsupported}
+	it := r.ingest(watch, nil, StageTranscript)
+	r.run()
+
+	st := r.stage(it, StageTranscript)
+	if st.Status != store.StatusBlocked || st.BlockReason != "needs_action" {
+		t.Fatalf("transcript = %+v", st)
+	}
+	if !strings.Contains(st.Message, "方案不支援") || !strings.Contains(st.Message, "native") || strings.Contains(st.Message, "拒絕了 API key") {
+		t.Errorf("訊息 = %q", st.Message)
+	}
+}
+
+// 某個來源 permanent（請求有問題、非同步 job）時，記下原因後繼續下一個來源（SRC-R3）。
+func TestFallbackPermanentErrorMovesOnToTheNextSource(t *testing.T) {
+	r, sd := newSupadataRig(t)
+	sd.err = &errclass.Error{Class: errclass.ClassPermanent, Source: "supadata", Detail: "HTTP 400"}
+	next := &fakeSupadata{lang: "en", cues: 2}
+	r.p.fetchers["asr-fake"] = fallbackFetcher{
+		timing: "segment",
+		params: func(Language) any { return nil },
+		fetch: func(ctx context.Context, it store.Item, _ Language) (*supadata.Result, error) {
+			return next.Fetch(ctx, it.URL, "")
+		},
+	}
+	it := r.ingest(watch, fallbackOverride("supadata", "asr-fake"), StageTranscript)
+	r.run()
+
+	if st := r.stage(it, StageTranscript); st.Status != store.StatusDone {
+		t.Fatalf("transcript = %+v", st)
+	}
+	d, _ := r.p.Item(context.Background(), it.ID)
+	var got []string
+	for _, s := range d.Sources[len(d.Sources)-2:] {
+		got = append(got, s.SourceID+":"+s.State+":"+s.Reason)
+	}
+	if strings.Join(got, " ") != "supadata:unavailable:permanent asr-fake:used:" {
+		t.Errorf("sources = %v", got)
+	}
+}
+
+// 所有來源都用完仍沒有結果（含 permanent）：照 SRC-R5。
+func TestFallbackAllSourcesExhaustedFailsWithNoSourceMessage(t *testing.T) {
+	r, sd := newSupadataRig(t)
+	sd.err = &errclass.Error{Class: errclass.ClassPermanent, Source: "supadata", Detail: "回應為非同步任務（202）"}
+	it := r.ingest(watch, nil, StageTranscript)
+	r.run()
+
+	st := r.stage(it, StageTranscript)
+	if st.Status != store.StatusFailed || st.ErrorClass != "permanent" || st.Message != "找不到可用的字幕來源。" {
+		t.Fatalf("transcript = %+v", st)
+	}
+	if sd.calls() != 1 {
+		t.Errorf("permanent 不該重試：呼叫 %d 次", sd.calls())
+	}
+}
+
 func TestWithoutSupadataItIsNotConfigured(t *testing.T) {
 	r := newRig(t)
 	it := r.ingest(watch, nil, StageTranscript)
