@@ -132,6 +132,10 @@ func (s *Scenario) serverRestarts() error {
 		s.server.Kill()
 		s.server = nil
 	}
+	// 中斷後，卡在 gate 的程序已被結束；解除 gate，重啟後的任務才能執行。
+	if err := s.World.OpenGate(); err != nil {
+		return fmt.Errorf("解除 gate：%w", err)
+	}
 	if err := s.startServer(); err != nil {
 		return fmt.Errorf("重新啟動失敗：%w", err)
 	}

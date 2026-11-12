@@ -24,7 +24,7 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`the owner uploads {string}`, func(string) error { return godog.ErrPending })
 	r.Step(`the owner reruns {string} from {string}`, s.ownerReruns)
 	r.Step(`the item {string} has been ingested`, s.itemHasBeenIngested)
-	r.Step(`the item {string} has been ingested as {word}`, func(string, string) error { return godog.ErrPending })
+	r.Step(`the item {string} has been ingested as {word}`, s.itemHasBeenIngestedAs)
 	r.Step(`{string} is a mixed-language item`, func(string) error { return godog.ErrPending })
 	r.Step(`the item {string} has been processed up to {string}`, func(string, string) error { return godog.ErrPending })
 	r.Given(`the {string} transcript of {string} is:`, func(variant, ref string, t *godog.Table) error {
@@ -113,10 +113,23 @@ func (s *Scenario) itemHasBeenIngested(ref string) error {
 	return nil
 }
 
+// itemHasBeenIngestedAs 以指定的優先級（manual、subscription、backfill）新增影音。
+// 優先級不開放給 API，透過程序內 server 的測試專用介面（ADR-0015）。
+func (s *Scenario) itemHasBeenIngestedAs(ref, priority string) error {
+	if err := s.prepareOwner(); err != nil {
+		return err
+	}
+	return s.server.IngestAs(s.ctx, refToURL(ref), priority)
+}
+
 // workerRunsUntilIdle 讓程序內 server 的手動 worker 執行到沒有可以執行的任務（ADR-0015）；不使用 sleep。
 func (s *Scenario) workerRunsUntilIdle() error {
 	if err := s.prepareOwner(); err != nil {
 		return err
+	}
+	// 先前的 worker 輪次可能把任務擋在 gate 前；解除後才會跑到閒置。
+	if err := s.World.OpenGate(); err != nil {
+		return fmt.Errorf("解除 gate：%w", err)
 	}
 	return s.server.RunUntilIdle(s.ctx)
 }
@@ -159,12 +172,31 @@ func (s *Scenario) stageIs(stage, ref, want string) error {
 	for _, st := range it.Stages {
 		if st.Stage == stage {
 			if st.Status != want {
+				// 場景最近一次送出的請求是還沒實作的路由（例如取消、刪除）：步驟狀態不符是因為那個動作沒有發生。
+				if s.last != nil && s.last.status == http.StatusNotImplemented && isNotImplemented(s.last.body) {
+					return fmt.Errorf("最近的請求還沒有實作：%w", godog.ErrPending)
+				}
+				if err := s.pendingForUnwiredSource(it); err != nil {
+					return err
+				}
 				return fmt.Errorf("%s 的步驟 %s 是 %q，預期 %q（%s）", ref, stage, st.Status, want, describeStage(st))
 			}
 			return nil
 		}
 	}
 	return fmt.Errorf("%s 沒有步驟 %q", ref, stage)
+}
+
+// pendingForUnwiredSource 在場景用 `the source … returns` 腳本化了某個來源、影音詳情卻回報該來源
+// not_configured（產品還沒有這個來源的實作）時回傳 pending：結果不符是因為來源還沒實作，不是這個步驟的行為有錯。
+// 只在比對已經不符之後才呼叫，所以不會遮住真正的失敗。
+func (s *Scenario) pendingForUnwiredSource(it itemJSON) error {
+	for _, src := range it.Sources {
+		if s.scriptedSources[src.Source] && src.Reason == "not_configured" {
+			return fmt.Errorf("來源 %q 還沒有實作（not_configured）：%w", src.Source, godog.ErrPending)
+		}
+	}
+	return nil
 }
 
 func describeStage(st stageJSON) string {
@@ -193,6 +225,9 @@ func (s *Scenario) transcriptCameFrom(ref, want string) error {
 			}
 			return nil
 		}
+	}
+	if err := s.pendingForUnwiredSource(it); err != nil {
+		return err
 	}
 	return fmt.Errorf("%s 沒有採用任何字幕來源（sources：%+v）", ref, it.Sources)
 }
