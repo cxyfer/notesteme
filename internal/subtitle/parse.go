@@ -20,14 +20,17 @@ type block struct {
 }
 
 // splitBlocks 去除 BOM、統一換行並以空行切成區塊。
-func splitBlocks(data []byte) []block {
+// strictBlank 為 true（VTT）時只有真正的空行（長度為 0）才是分隔；只含空白的行屬於 cue 內容
+// （yt-dlp 的 YouTube 自動字幕常以單一空白當 cue 的第一行）。
+// 為 false（SRT）時維持原行為，只含空白的行也視為分隔。
+func splitBlocks(data []byte, strictBlank bool) []block {
 	s := strings.TrimPrefix(string(data), "\uFEFF")
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
 	var blocks []block
 	var cur block
 	for i, line := range strings.Split(s, "\n") {
-		if strings.TrimSpace(line) == "" {
+		if line == "" || (!strictBlank && strings.TrimSpace(line) == "") {
 			if len(cur.lines) > 0 {
 				blocks = append(blocks, cur)
 				cur = block{}
@@ -83,7 +86,7 @@ func isVTTNonCueBlock(first string) bool {
 // 沒有 --> 的區塊（例如 header 的中繼資料）會被忽略；時間行不合法時回傳 *ParseError。
 func ParseVTT(data []byte) ([]Cue, error) {
 	var cues []Cue
-	for bi, b := range splitBlocks(data) {
+	for bi, b := range splitBlocks(data, true) {
 		lines := b.lines
 		if bi == 0 && strings.HasPrefix(lines[0], "WEBVTT") {
 			lines = lines[1:]
@@ -183,7 +186,7 @@ func cleanVTTText(line string) string {
 // ParseSRT 解析 SRT 字幕。識別碼行可省略；時間行或區塊不合法時回傳 *ParseError。
 func ParseSRT(data []byte) ([]Cue, error) {
 	var cues []Cue
-	for _, b := range splitBlocks(data) {
+	for _, b := range splitBlocks(data, false) {
 		n := len(cues) + 1
 		arrow := -1
 		for i, l := range b.lines {
