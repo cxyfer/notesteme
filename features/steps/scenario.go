@@ -42,6 +42,10 @@ type Scenario struct {
 	// givenSettings 是 `Given the global settings are:` 累積的全域設定（區段名稱對應內容）。
 	// Given 步驟只累積設定，第一個送出請求的步驟才套用（ADR-0015）。
 	givenSettings map[string]any
+	// givenQueue 是 Given 累積的佇列上限與暫停設定，同樣延到第一個送出請求的步驟才套用。
+	givenQueue queueConfig
+	// scriptedSources 是場景用 `the source … returns` 腳本化的來源（見 pendingForUnwiredSource）。
+	scriptedSources map[string]bool
 }
 
 // response 是最近一次請求的回應。
@@ -100,11 +104,15 @@ func (s *Scenario) isServerAddr(addr string) bool {
 // close 停止 server 並釋放 client 資源（After hook 使用）。
 func (s *Scenario) close() error {
 	var err error
+	// 先解除 gate，被擋住的程序才不會卡住關閉流程。
+	if gateErr := s.World.OpenGate(); gateErr != nil {
+		err = fmt.Errorf("解除 gate：%w", gateErr)
+	}
 	if s.server != nil {
 		shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if e := s.server.Shutdown(shutCtx); e != nil {
 			s.server.Kill()
-			err = fmt.Errorf("關閉 server：%w", e)
+			err = errors.Join(err, fmt.Errorf("關閉 server：%w", e))
 		}
 		cancel()
 		s.server = nil
@@ -226,7 +234,7 @@ func (s *Scenario) send(spec string, o requestOpts) error {
 	if err != nil {
 		return err
 	}
-	s.last = resp
+	s.last = s.pendingIfUnwiredSource(method, path, resp)
 	return nil
 }
 
@@ -337,5 +345,8 @@ func (s *Scenario) prepareOwner() error {
 	if err := s.ensureOwner(); err != nil {
 		return err
 	}
-	return s.flushSettings()
+	if err := s.flushSettings(); err != nil {
+		return err
+	}
+	return s.flushQueue()
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -286,6 +287,10 @@ func TestGateBlocksUntilRemoved(t *testing.T) {
 	if err := WriteState(s.root, st); err != nil {
 		t.Fatal(err)
 	}
+	// 有資料目錄時，被擋住的程序要留下部分檔（PIPE-R11 驗證重啟會清空 /data/tmp）。
+	if err := os.MkdirAll(filepath.Join(s.root, "data"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	cmd := &exec.Cmd{
 		Path: filepath.Join(s.bin, "yt-dlp"),
 		Args: []string{"yt-dlp", "-J", "https://www.youtube.com/watch?v=abc123"},
@@ -297,10 +302,12 @@ func TestGateBlocksUntilRemoved(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	// 等子程序寫入「已進入 gate」的標記（不是睡一段固定時間）；子程序提早結束就是失敗。
-	waiting := gate + GateWaitingSuffix
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		if _, err := os.Stat(waiting); err == nil {
+		if m, _ := GateWaiting(gate); len(m) == 1 {
+			if want := fmt.Sprintf("%s%s.%d", gate, GateWaitingSuffix, cmd.Process.Pid); m[0] != want {
+				t.Fatalf("標記檔 = %s，預期 %s", m[0], want)
+			}
 			break
 		}
 		select {
@@ -314,11 +321,14 @@ func TestGateBlocksUntilRemoved(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	// 已進入 gate 且 gate 還在：程序必須仍在執行。
+	// 已進入 gate 且 gate 還在：程序必須仍在執行，部分檔已經寫好。
 	select {
 	case err := <-done:
 		t.Fatalf("gate 存在時不應結束: %v", err)
 	default:
+	}
+	if b, err := os.ReadFile(filepath.Join(s.root, "data", filepath.FromSlash(PartialDownload))); err != nil || len(b) == 0 {
+		t.Fatalf("被擋住時應有部分檔：%q, %v", b, err)
 	}
 	if err := os.Remove(gate); err != nil {
 		t.Fatal(err)
@@ -331,6 +341,10 @@ func TestGateBlocksUntilRemoved(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		_ = cmd.Process.Kill()
 		t.Fatal("gate 移除後應結束")
+	}
+	// 乾淨結束：自己的標記檔已移除。
+	if m, _ := GateWaiting(gate); len(m) != 0 {
+		t.Fatalf("結束後不應留下標記檔：%v", m)
 	}
 }
 

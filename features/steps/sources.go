@@ -1,7 +1,10 @@
 package steps
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -21,7 +24,7 @@ func registerSources(r *Registry, s *Scenario) {
 	r.Step(`{string} has {word} captions in {string}`, s.hasCaptions)
 	r.Step(`{string} has no caption tracks`, s.hasNoCaptions)
 	r.Step(`the auto captions of {string} are not ready yet`, func(string) error { return godog.ErrPending })
-	r.Step(`the source {string} returns {string} for {string}`, func(string, string, string) error { return godog.ErrPending })
+	r.Step(`the source {string} returns {string} for {string}`, s.sourceReturns)
 	r.Step(`the source {string} has nothing for {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`the source {string} requires the cookie {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`the source {string} accepts files up to {string}`, func(string, string) error { return godog.ErrPending })
@@ -185,4 +188,40 @@ func (s *Scenario) hasNoCaptions(ref string) error {
 		v.Tracks = nil
 		return nil
 	})
+}
+
+// sourceReturns 讓來源對影音回傳指定的 fixture（腳本化的 fake origin，見 fakesource）。
+func (s *Scenario) sourceReturns(source, fixture, ref string) error {
+	s.World.Sources.Returns(source, ref, fixture)
+	if s.scriptedSources == nil {
+		s.scriptedSources = map[string]bool{}
+	}
+	s.scriptedSources[source] = true
+	return nil
+}
+
+// itemDetailPath 辨識 GET /api/items/{id}（影音詳情）。
+var itemDetailPath = regexp.MustCompile(`^/api/items/[^/?]+$`)
+
+// pendingIfUnwiredSource 處理「場景腳本化了某個來源，產品卻還沒有這個來源的實作」：
+// 影音詳情的 sources 把該來源列為 not_configured 時，場景預期的結果不可能出現，
+// 把這個回應換成 501 not_implemented，讓斷言回應的步驟依 ADR-0015 的約定成為 pending。
+// 只在詳情本身列出這個原因時才換，其他回應不受影響。
+func (s *Scenario) pendingIfUnwiredSource(method, path string, resp *response) *response {
+	if len(s.scriptedSources) == 0 || method != http.MethodGet || resp.status != http.StatusOK || !itemDetailPath.MatchString(path) {
+		return resp
+	}
+	var detail struct {
+		Sources []sourceJSON `json:"sources"`
+	}
+	if json.Unmarshal(resp.body, &detail) != nil {
+		return resp
+	}
+	for _, src := range detail.Sources {
+		if s.scriptedSources[src.Source] && src.Reason == "not_configured" {
+			body := fmt.Sprintf(`{"code":"not_implemented","message":"來源 %s 還沒有實作"}`, src.Source)
+			return &response{status: http.StatusNotImplemented, header: resp.header, body: []byte(body)}
+		}
+	}
+	return resp
 }

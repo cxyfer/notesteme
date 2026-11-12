@@ -19,6 +19,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/pipeline"
+	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
@@ -31,6 +32,8 @@ type Deps struct {
 	Version string
 	// Pipeline 提供影音的新增與查詢；nil 時相關的路由回應 501。
 	Pipeline *pipeline.Pipeline
+	// Queue 提供佇列的狀態與控制（上限、暫停，PIPE-R8、PIPE-R10）；nil 時相關的路由回應 501。
+	Queue *queue.Queue
 	// ReadyChecks 是 /readyz 在「DB 可寫」之外要檢查的項目（OPS-R5），例如外部工具是否可執行。
 	ReadyChecks []ReadyCheck
 	// Events 是 GET /api/events 的 SSE handler（PIPE-R14）；nil 時回應 501。
@@ -162,10 +165,18 @@ func (rt *routes) register(api huma.API) {
 		OperationID: "items-rerun", Method: http.MethodPost, Path: "/api/items/{id}/rerun",
 		Summary: "從指定步驟重新處理，產出新版本（PIPE-R7）", DefaultStatus: http.StatusAccepted,
 	}, rt.rerun)
-	huma.Register(api, huma.Operation{
-		OperationID: "queue-pause", Method: http.MethodPost, Path: "/api/queue/pause",
-		Summary: "暫停佇列（尚未實作）",
-	}, notImplemented)
+	rt.registerQueue(api)
+	// 之後切片才會實作的路由（PIPE-R15、PIPE-R13、DEL）：先明確回應 501。
+	for _, op := range []huma.Operation{
+		{OperationID: "items-cancel", Method: http.MethodPost, Path: "/api/items/{id}/cancel", Summary: "取消影音的處理（尚未實作）"},
+		{OperationID: "items-runs", Method: http.MethodGet, Path: "/api/items/{id}/runs", Summary: "步驟的執行紀錄與當時的設定（尚未實作）"},
+		{OperationID: "items-delete", Method: http.MethodDelete, Path: "/api/items/{id}", Summary: "刪除影音，移入垃圾桶（尚未實作）"},
+		{OperationID: "trash-restore", Method: http.MethodPost, Path: "/api/trash/{id}/restore", Summary: "從垃圾桶還原（尚未實作）"},
+		{OperationID: "tasks-retry", Method: http.MethodPost, Path: "/api/tasks/{id}/retry", Summary: "重試任務（尚未實作）"},
+		{OperationID: "tasks-cancel", Method: http.MethodPost, Path: "/api/tasks/{id}/cancel", Summary: "取消單一任務（尚未實作）"},
+	} {
+		huma.Register(api, op, notImplemented)
+	}
 	huma.Register(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",
 		Summary: "讀取全域設定區段（目前只有 language；其他區段尚未實作）",

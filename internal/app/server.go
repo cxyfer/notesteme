@@ -186,6 +186,7 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 			Store: s.store, Auth: authSvc, Clock: env.Clock, Log: log, Version: version,
 			ReadyChecks: toolChecks(toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}),
 			Pipeline:    s.pipeline,
+			Queue:       s.queue,
 			Events:      s.eventsHandler(),
 		}),
 		ReadHeaderTimeout: readHeaderTimeout,
@@ -226,6 +227,10 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 		return fmt.Errorf("放回上次留下的租約失敗：%w", err)
 	} else if n > 0 {
 		log.InfoContext(ctx, "已放回上次執行留下的租約", "count", n)
+	}
+	// 上限與暫停存在資料庫，重啟後保留；worker 開始領取之前先讀入。
+	if err := s.queue.Control().Load(ctx); err != nil {
+		return err
 	}
 	if env.Test != nil && env.Test.ManualWorker {
 		return nil

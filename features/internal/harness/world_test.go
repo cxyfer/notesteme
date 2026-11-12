@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cxyfer/notesteme/features/internal/fakenet"
 	"github.com/cxyfer/notesteme/features/internal/faketool"
@@ -215,5 +216,66 @@ func TestCloseRemovesRootAndIsIdempotent(t *testing.T) {
 	}
 	if err := w.Close(); err != nil {
 		t.Fatalf("重複 Close: %v", err)
+	}
+}
+
+func TestGateArmAndOpen(t *testing.T) {
+	w := NewT(t)
+	// 沒有啟用時，解除與計數都是空操作。
+	if err := w.OpenGate(); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := w.GateWaiting(); err != nil || n != 0 {
+		t.Fatalf("GateWaiting = %d, %v", n, err)
+	}
+
+	if err := w.ArmGate(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(w.GatePath()); err != nil {
+		t.Fatalf("gate 檔應存在：%v", err)
+	}
+	st, err := faketool.ReadState(w.Root)
+	if err != nil || st.Gate != w.GatePath() {
+		t.Fatalf("狀態檔的 Gate = %q, %v", st.Gate, err)
+	}
+
+	// 兩個程序停在 gate 前；再次 ArmGate 不會清掉它們的標記。
+	for _, name := range []string{".waiting.101", ".waiting.102"} {
+		if err := os.WriteFile(w.GatePath()+name, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.ArmGate(); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := w.GateWaiting(); n != 2 {
+		t.Fatalf("GateWaiting = %d，預期 2", n)
+	}
+	if err := w.WaitGateWaiting(2, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.WaitGateWaiting(3, 30*time.Millisecond); err == nil {
+		t.Fatal("只有 2 個程序就位，等 3 個應逾時")
+	}
+
+	// 解除：gate 檔與（可能是被 kill 的程序留下的）標記都清掉；可再次啟用。
+	if err := w.OpenGate(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(w.GatePath()); !os.IsNotExist(err) {
+		t.Fatalf("gate 檔應已移除：%v", err)
+	}
+	if n, _ := w.GateWaiting(); n != 0 {
+		t.Fatalf("標記應已清除：%d", n)
+	}
+	if err := w.OpenGate(); err != nil {
+		t.Fatalf("重複解除不應失敗：%v", err)
+	}
+	if err := w.ArmGate(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(w.GatePath()); err != nil {
+		t.Fatalf("解除後可再次啟用：%v", err)
 	}
 }

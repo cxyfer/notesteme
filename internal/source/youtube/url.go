@@ -24,7 +24,7 @@ type Target struct {
 }
 
 var (
-	videoID    = regexp.MustCompile(`^[A-Za-z0-9_-]{3,64}$`)
+	videoID    = regexp.MustCompile(`^[A-Za-z0-9_-]{2,64}$`)
 	playlistID = regexp.MustCompile(`^[A-Za-z0-9_-]{3,128}$`)
 	handle     = regexp.MustCompile(`^@[\p{L}\p{N}._-]{1,100}$`)
 	channelID  = regexp.MustCompile(`^UC[A-Za-z0-9_-]{10,40}$`)

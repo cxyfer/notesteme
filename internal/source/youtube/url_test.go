@@ -15,6 +15,9 @@ func TestParse(t *testing.T) {
 		{"https://youtube.com/watch?v=abc123&t=30", Target{Video, "abc123"}, true},
 		{"https://m.youtube.com/watch?v=abc123", Target{Video, "abc123"}, true},
 		{"https://youtu.be/abc123", Target{Video, "abc123"}, true},
+		// 場景（PIPE-R8）用 yt:v1 這種兩個字元的代號。
+		{"https://www.youtube.com/watch?v=v1", Target{Video, "v1"}, true},
+		{"https://www.youtube.com/watch?v=v", Target{}, false},
 		{"https://youtu.be/abc123?si=xyz", Target{Video, "abc123"}, true},
 		{"https://www.youtube.com/shorts/abc123", Target{Video, "abc123"}, true},
 		{"https://www.youtube.com/live/abc123", Target{Video, "abc123"}, true},

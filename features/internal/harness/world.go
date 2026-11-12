@@ -154,6 +154,73 @@ func (w *World) Video(id string) *faketool.Video {
 	return v
 }
 
+// GatePath 回傳假 yt-dlp 的 gate 檔路徑。
+func (w *World) GatePath() string { return filepath.Join(w.FakeDir(), "gate") }
+
+// ArmGate 啟用 gate：之後處理網址的假 yt-dlp 呼叫會阻塞（並留下標記檔與部分檔，見 faketool.State.Gate），
+// 直到 OpenGate。已經啟用時不動作，不會清掉正停在 gate 前的程序的標記。
+// 任務停在 running 的場景用它代替時序：被擋住的任務不會自己結束。
+func (w *World) ArmGate() error {
+	gate := w.GatePath()
+	if _, err := os.Stat(gate); err == nil {
+		return nil
+	}
+	if err := os.WriteFile(gate, nil, 0o600); err != nil {
+		return err
+	}
+	w.Tools.Gate = gate
+	return w.SyncTools()
+}
+
+// OpenGate 解除 gate，讓被擋住的程序繼續，並清掉被 kill 的程序來不及移除的標記檔。
+// gate 沒有啟用時不動作。場景結束或模擬重啟前呼叫，才不會讓程序卡住。
+func (w *World) OpenGate() error {
+	if w.Tools.Gate == "" {
+		return nil
+	}
+	if err := os.Remove(w.Tools.Gate); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	marks, err := faketool.GateWaiting(w.Tools.Gate)
+	if err != nil {
+		return err
+	}
+	for _, m := range marks {
+		if err := os.Remove(m); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+// GateWaiting 回傳目前停在 gate 前的程序數。
+func (w *World) GateWaiting() (int, error) {
+	if w.Tools.Gate == "" {
+		return 0, nil
+	}
+	marks, err := faketool.GateWaiting(w.Tools.Gate)
+	return len(marks), err
+}
+
+// WaitGateWaiting 等到至少 n 個程序停在 gate 前。只以真實時間 limit 防止卡死；
+// 結果由標記檔決定，不靠睡一段固定時間。
+func (w *World) WaitGateWaiting(n int, limit time.Duration) error {
+	deadline := time.Now().Add(limit)
+	for {
+		got, err := w.GateWaiting()
+		if err != nil {
+			return err
+		}
+		if got >= n {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("等待 %d 個程序停在 gate 前，%v 內只有 %d 個", n, limit, got)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // ToolCalls 讀取假工具到目前為止的呼叫紀錄。
 func (w *World) ToolCalls() ([]faketool.Call, error) { return faketool.ReadCalls(w.Root) }
 

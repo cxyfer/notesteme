@@ -41,7 +41,8 @@ type State struct {
 	// Videos 的 key 是平台 ID，例如 abc123、BV1xx411c7mD。
 	Videos map[string]*Video `json:"videos,omitempty"`
 	// Gate 是 gate 檔的路徑；檔案存在時，處理網址的 yt-dlp 呼叫會阻塞，
-	// 直到檔案被刪除。
+	// 直到檔案被刪除。每個被擋住的程序各寫一個 <Gate>.waiting.<pid> 標記檔，
+	// 並在 <root>/data/tmp 寫下部分檔（見 waitGate）。
 	Gate string `json:"gate,omitempty"`
 }
 

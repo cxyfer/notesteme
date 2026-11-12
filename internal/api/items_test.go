@@ -59,7 +59,7 @@ func newItemsRig(t *testing.T) *itemsRig {
 		YouTube: stubYT{info: youtube.Info{ID: "abc123", Title: "Hello", Language: "en", DurationS: &dur,
 			Tracks: []youtube.Track{{Lang: "en", Kind: "manual"}}}},
 	})
-	h := New(Deps{Store: st, Auth: svc, Clock: clk, Log: log, Version: "test", Pipeline: p})
+	h := New(Deps{Store: st, Auth: svc, Clock: clk, Log: log, Version: "test", Pipeline: p, Queue: q})
 	r := &itemsRig{h: h, worker: worker.New(q, p, clk, log), clk: clk, t: t}
 	rec := r.do("POST", "/api/auth/login", `{"password":"pw"}`, nil)
 	for _, c := range rec.Result().Cookies() {

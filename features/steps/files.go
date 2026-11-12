@@ -15,7 +15,7 @@ import (
 func registerFiles(r *Registry, s *Scenario) {
 	r.Step(`the file {string} contains:`, func(string, *godog.DocString) error { return godog.ErrPending })
 	r.Step(`the file {string} exists`, func(string) error { return godog.ErrPending })
-	r.Step(`the file {string} does not exist`, func(string) error { return godog.ErrPending })
+	r.Step(`the file {string} does not exist`, s.fileDoesNotExist)
 	r.Step(`the file {string} contains {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`the file {string} does not contain {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`the data directory does not contain the created token`, func() error { return godog.ErrPending })
@@ -66,4 +66,18 @@ func (s *Scenario) dataDirDoesNotContain(text string) error {
 		return fmt.Errorf("資料目錄中的這些檔案含有 %q：%v", text, found)
 	}
 	return nil
+}
+
+// fileDoesNotExist 確認檔案不存在；虛擬路徑（/data、/config）先改寫成場景根目錄下的實際路徑。
+func (s *Scenario) fileDoesNotExist(path string) error {
+	real := s.World.Expand(path)
+	_, err := os.Stat(real)
+	switch {
+	case err == nil:
+		return fmt.Errorf("檔案 %s 存在，預期不存在", path)
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	default:
+		return fmt.Errorf("檢查檔案 %s：%w", path, err)
+	}
 }
