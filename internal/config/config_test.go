@@ -62,6 +62,25 @@ func TestLoadRejectsDatabaseManagedFields(t *testing.T) {
 	}
 }
 
+// 會執行命令的 ASR provider 只能寫在設定檔的頂層 asr（plan 第 19 節、ADR-0013），不可被當成 DB 管理的欄位。
+// 內容取自 SEC 場景 "Command providers from the config file are listed read-only"。
+func TestLoadAcceptsTopLevelASRProviders(t *testing.T) {
+	p := writeFile(t, `asr:
+  providers:
+    whisperx:
+      type: command
+      command: ["whisperx", "{audio}", "--output_format", "json", "--output_dir", "{out}"]
+      output: { format: whisperx-json, path: "{out}/{stem}.json" }
+`)
+	cfg, err := Load(Sources{File: p, Env: map[string]string{}})
+	if err != nil {
+		t.Fatalf("asr providers in the config file must load: %v", err)
+	}
+	if cfg.Listen != DefaultListen {
+		t.Errorf("listen = %q", cfg.Listen)
+	}
+}
+
 func TestLoadEmptyFile(t *testing.T) {
 	cfg, err := Load(Sources{File: writeFile(t, "")})
 	if err != nil {

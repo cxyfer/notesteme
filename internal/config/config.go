@@ -80,13 +80,15 @@ func (c *Config) SourceOf(field string) Source {
 }
 
 // fileSchema 是設定檔允許的欄位。
-// tools、outbound、providers、hooks 的內容由之後的切片定義，這裡只確認欄位名稱合法。
+// tools、outbound、providers、asr、hooks 的內容由之後的切片定義，這裡只確認欄位名稱合法。
+// asr.providers 放會執行命令的 provider，只能寫在設定檔（ADR-0013）。
 type fileSchema struct {
 	Listen    string            `yaml:"listen"`
 	Data      string            `yaml:"data"`
 	Tools     map[string]string `yaml:"tools"`
 	Outbound  yaml.Node         `yaml:"outbound"`
 	Providers yaml.Node         `yaml:"providers"`
+	ASR       yaml.Node         `yaml:"asr"`
 	Hooks     yaml.Node         `yaml:"hooks"`
 }
 
@@ -138,7 +140,7 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 	var unknown []string
 	for k := range top {
 		switch k {
-		case "listen", "data", "tools", "outbound", "providers", "hooks":
+		case "listen", "data", "tools", "outbound", "providers", "hooks", "asr":
 		default:
 			unknown = append(unknown, k)
 		}
