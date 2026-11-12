@@ -61,4 +61,4 @@
 
 - 品質檢查的門檻（SRC-R4）、幻覺過濾的門檻（SRC-R13），依 M0 樣本調整；相關場景標記 `@pending-m0`。
 - Groq 是否提供 word 級時間戳（M0）。沒有的話，Groq 的時間粒度改為 `segment`。
-- SRC-R10 與預設 `fallback: [supadata, groq]` 的關係：如果沒有 key 就 `blocked`，只想用其中一個來源的人，每部沒有平台字幕的影音都會被擋住。暫定：`fallback` 中沒有 key 的來源依序略過，記為 `not_configured`；全部都因為缺 key 或未設定而無法執行時，才 `blocked`（`needs_action`，動作「設定 API key」）。key 被拒（401、403）一律 `blocked`。現有場景只有 groq 一個來源，兩種解讀的結果相同（2026-11-13，PIPE 切片實作 Supadata 時發現）。
+- SRC-R10 與預設 `fallback: [supadata, groq]` 的關係：如果沒有 key 就 `blocked`，只想用其中一個來源的人，每部沒有平台字幕的影音都會被擋住。暫定：`fallback` 中沒有 key 的來源依序略過，記為 `not_configured`；全部都因為缺 key 或未設定而無法執行時，才 `blocked`（`needs_action`，動作「設定 API key」）。key 被拒（Supadata 的 401）或方案不支援（Supadata 的 402）一律 `blocked`。Supadata 的 403 代表內容私人或受限、206 代表沒有字幕，都視為這個來源沒有結果，繼續下一個來源（依 [Supadata 的錯誤碼說明](https://docs.supadata.ai/errors/list)）。現有場景只有 groq 一個來源，兩種解讀的結果相同（2026-11-13，PIPE 切片實作 Supadata 時發現）。
