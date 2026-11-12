@@ -185,6 +185,25 @@ func TestFetchCaptionsArguments(t *testing.T) {
 	}
 }
 
+// yt-dlp 的 -o 是輸出模板：目錄裡的 % 要跳脫成 %%，否則 %(title)s 之類會被展開。
+func TestFetchCaptionsEscapesPercentInOutputTemplate(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "100% done %(title)s")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := &stubRunner{after: func(toolexec.Cmd) {
+		_ = os.WriteFile(filepath.Join(dir, "sub.en.vtt"), []byte("WEBVTT\n"), 0o644)
+	}}
+	if _, err := newClient(t, r).FetchCaptions(context.Background(), "abc123", Track{"en", KindManual}, dir); err != nil {
+		t.Fatal(err)
+	}
+	args := r.calls[0].Args
+	want := filepath.Join(strings.ReplaceAll(dir, "%", "%%"), "sub.%(ext)s")
+	if i := slices.Index(args, "-o"); i < 0 || args[i+1] != want {
+		t.Errorf("-o = %v，預期 %q", args, want)
+	}
+}
+
 func TestFetchCaptionsRejectsUnsafeLanguage(t *testing.T) {
 	for _, lang := range []string{"-en", "all", "en,ja", "en.*", "", "a b"} {
 		r := &stubRunner{}

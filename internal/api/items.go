@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -303,7 +304,8 @@ func parseTime(s string) (int64, error) {
 		return subtitle.ParseTimecode(s)
 	}
 	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	if err != nil || f < 0 || f > 1e7 {
+	// NaN 與 Inf 不能只靠大小比較擋下（NaN 的比較一律為 false），要明確檢查。
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 0 || f > 1e7 {
 		return 0, errors.New("invalid seconds")
 	}
 	return int64(f * 1000), nil

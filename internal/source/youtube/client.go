@@ -265,7 +265,8 @@ func (c *Client) FetchCaptions(ctx context.Context, videoID string, t Track, dir
 		write = "--write-subs"
 	}
 	args := append(baseArgs(), "--skip-download", write, "--sub-langs", t.Lang, "--sub-format", "vtt",
-		"-o", filepath.Join(dir, "sub.%(ext)s"), "--", WatchURL(videoID))
+		// -o 是 yt-dlp 的輸出模板，目錄中的 % 要跳脫成 %%；檔案實際寫在原本的 dir。
+		"-o", filepath.Join(strings.ReplaceAll(dir, "%", "%%"), "sub.%(ext)s"), "--", WatchURL(videoID))
 	if _, err := c.run(ctx, captionTimeout, args); err != nil {
 		return nil, err
 	}
