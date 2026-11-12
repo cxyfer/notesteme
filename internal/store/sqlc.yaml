@@ -1,0 +1,12 @@
+version: "2"
+sql:
+  - engine: sqlite
+    # 直接讀 goose 的 migration；sqlc 會略過 "-- +goose Down" 之後的內容。
+    schema: migrations
+    queries: queries
+    gen:
+      go:
+        package: sqlcdb
+        out: sqlcdb
+        # 可為 NULL 的欄位用指標表示，不用 sql.NullXxx。
+        emit_pointers_for_null_types: true

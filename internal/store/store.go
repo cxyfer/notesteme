@@ -5,8 +5,16 @@
 //   - migration 以 goose 執行，SQL 檔嵌入 binary。
 //   - ID 一律 UUIDv7；時間存 Unix 毫秒，一律取自注入的 clock。
 //
-// TODO: plan 第 22 節指定以 sqlc 產生查詢程式碼；目前表格很少，先用 database/sql 手寫，
-// 等表格增加後再導入 sqlc。
+// 查詢由 sqlc 產生：SQL 寫在 queries/*.sql，schema 直接讀 migrations/ 的 goose 檔，
+// 產生的程式碼在 sqlcdb/（已提交，不要手改）。sqlc 要求的 Go 版本比本專案新，所以不加進 go.mod，
+// 一律以固定版本從 module 外執行。修改 migration 或 queries 後：
+//
+//	go generate ./internal/store/                                                          # 重新產生
+//	go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 diff -f internal/store/sqlc.yaml     # 檢查產生的程式碼是否最新
+//	go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 vet -f internal/store/sqlc.yaml      # 檢查查詢
+//
+// 注意：sqlc 的 sqlite parser 會被 queries/*.sql 內的非 ASCII 字元（含註解）弄錯位移，
+// 所以那些檔案的註解一律用英文。
 package store
 
 import (
@@ -26,6 +34,8 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/clock"
 )
+
+//go:generate go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
 
 // DBFileName 是資料目錄下的資料庫檔名。
 const DBFileName = "notesteme.db"
