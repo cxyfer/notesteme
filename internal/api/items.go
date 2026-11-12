@@ -129,7 +129,7 @@ type createItemOutput struct {
 // createItems 新增影音：有新建立的回 201，全部已經存在回 200（ING-R2）。
 func (rt *routes) createItems(ctx context.Context, in *createItemInput) (*createItemOutput, error) {
 	if rt.d.Pipeline == nil {
-		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
+		return nil, rt.noPipeline(ctx)
 	}
 	switch {
 	case in.Body.Path != "":
@@ -224,7 +224,7 @@ type rerunOutput struct{ Body ItemDetail }
 // rerun 從指定步驟重新建立 stage run 與任務（PIPE-R7）：產出新版本，舊版本標記 superseded_by。
 func (rt *routes) rerun(ctx context.Context, in *rerunInput) (*rerunOutput, error) {
 	if rt.d.Pipeline == nil {
-		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
+		return nil, rt.noPipeline(ctx)
 	}
 	d, err := rt.d.Pipeline.Rerun(ctx, in.ID, pipeline.RerunRequest{From: in.Body.From, Overrides: in.Body.Overrides, Until: in.Body.Until})
 	if err != nil {
@@ -327,7 +327,7 @@ type settingsOutput struct{ Body map[string]any }
 
 func (rt *routes) getSettings(ctx context.Context, in *settingsInput) (*settingsOutput, error) {
 	if rt.d.Pipeline == nil {
-		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
+		return nil, rt.noPipeline(ctx)
 	}
 	v, err := rt.d.Pipeline.GetSettings(ctx, in.Section)
 	if err != nil {
@@ -338,7 +338,7 @@ func (rt *routes) getSettings(ctx context.Context, in *settingsInput) (*settings
 
 func (rt *routes) putSettings(ctx context.Context, in *putSettingsInput) (*settingsOutput, error) {
 	if rt.d.Pipeline == nil {
-		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
+		return nil, rt.noPipeline(ctx)
 	}
 	var body map[string]any
 	if in.Body != nil {
@@ -377,5 +377,12 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 		return newError(http.StatusNotFound, CodeNotFound, "找不到這部影音。")
 	}
 	rt.d.Log.LogAttrs(ctx, slog.LevelError, "處理請求時發生錯誤", slog.String("error", err.Error()))
+	return newError(http.StatusInternalServerError, CodeInternal, defaultMessages[http.StatusInternalServerError].msg)
+}
+
+// noPipeline 回傳沒有注入 Pipeline 時的錯誤。這是設定錯誤，回 500；
+// 501 在這個專案代表「功能還沒做」，測試會把它當成 pending，不能拿來表示設定錯誤（ADR-0015）。
+func (rt *routes) noPipeline(ctx context.Context) error {
+	rt.d.Log.LogAttrs(ctx, slog.LevelError, "處理請求時發生錯誤", slog.String("error", "api: 沒有設定 Pipeline"))
 	return newError(http.StatusInternalServerError, CodeInternal, defaultMessages[http.StatusInternalServerError].msg)
 }

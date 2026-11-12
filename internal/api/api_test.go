@@ -219,7 +219,7 @@ func TestPlannedRoutesAnswer501(t *testing.T) {
 	s := newTestServer(t)
 	sess, csrf := s.login(t)
 	for _, c := range [][2]string{
-		{"GET", "/api/settings/services"}, {"PUT", "/api/settings/services"}, {"POST", "/api/providers"},
+		{"POST", "/api/providers"},
 	} {
 		rec := s.do(c[0], c[1], "", withCookies(sess, csrf, csrf))
 		var e Error
@@ -264,10 +264,19 @@ func TestSessionRequests(t *testing.T) {
 	if rec.Code != 501 {
 		t.Errorf("with csrf: status = %d, body = %s", rec.Code, rec.Body)
 	}
-	// 沒有 pipeline 時（這個測試 server 只有驗證層），新增影音與 MCP 都回 501。
-	for p, body := range map[string]string{"/api/items": `{"url":"https://example.com/x"}`, "/mcp": ""} {
-		if rec = s.do("POST", p, body, withCookies(sess, csrf, csrf)); rec.Code != 501 {
-			t.Errorf("POST %s = %d %s", p, rec.Code, rec.Body)
+	// MCP 尚未實作：501。
+	if rec = s.do("POST", "/mcp", "", withCookies(sess, csrf, csrf)); rec.Code != 501 {
+		t.Errorf("POST /mcp = %d %s", rec.Code, rec.Body)
+	}
+	// 這個測試 server 只有驗證層、沒有注入 Pipeline：這是設定錯誤，回 500 而不是 501，
+	// 因為 501 在驗收測試中代表「功能還沒做」（ADR-0015）。
+	for _, c := range [][3]string{
+		{"POST", "/api/items", `{"url":"https://example.com/x"}`},
+		{"GET", "/api/settings/language", ""},
+		{"PUT", "/api/settings/language", `{"targets":["en"]}`},
+	} {
+		if rec = s.do(c[0], c[1], c[2], withCookies(sess, csrf, csrf)); rec.Code != 500 {
+			t.Errorf("%s %s = %d %s", c[0], c[1], rec.Code, rec.Body)
 		}
 	}
 }
