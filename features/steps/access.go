@@ -26,8 +26,7 @@ func registerAccess(r *Registry, s *Scenario) {
 	r.Step(`the client sends {string} with the token {string} and:`, func(string, string, *godog.DocString) error { return godog.ErrPending })
 	r.Step(`the client sends {string} with the token {string} from the origin {string}`, func(string, string, string) error { return godog.ErrPending })
 	r.Step(`the owner sends {string} with the header {string} set to {string}`, func(string, string, string) error { return godog.ErrPending })
-	r.Step(`the owner is listening to events`, func() error { return godog.ErrPending })
-	r.Step(`an event is received:`, func(*godog.DocString) error { return godog.ErrPending })
+	registerEvents(r, s) // the owner is listening to events、an event is received:
 	r.Step(`the response status is {int}`, s.responseStatusIs)
 	r.Step(`the response contains:`, s.responseContains)
 	r.Step(`the response header {string} contains {string}`, s.responseHeaderContains)
