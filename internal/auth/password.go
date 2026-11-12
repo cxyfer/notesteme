@@ -40,7 +40,14 @@ func hashPassword(password string, p HashParams) (string, error) {
 		base64.RawStdEncoding.EncodeToString(key)), nil
 }
 
-var errBadHash = errors.New("auth: malformed password hash")
+// 驗證時接受的 hash 參數上限（遠高於 ProductionParams）。
+const (
+	maxVerifyMemory  = 256 * 1024 // KiB
+	maxVerifyTime    = 16
+	maxVerifyThreads = 16
+)
+
+var errBadHash =errors.New("auth: malformed password hash")
 
 // verifyPassword 比對密碼與 PHC 格式的 hash（參數取自 hash 本身）。
 func verifyPassword(password, encoded string) (bool, error) {
@@ -55,6 +62,12 @@ func verifyPassword(password, encoded string) (bool, error) {
 	var memory, time uint32
 	var threads uint8
 	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &time, &threads); err != nil {
+		return false, errBadHash
+	}
+	// 參數來自 DB，可能被竄改：0 會讓 argon2 panic，過大則耗盡記憶體或 CPU。
+	if memory < 1 || memory > maxVerifyMemory ||
+		time < 1 || time > maxVerifyTime ||
+		threads < 1 || threads > maxVerifyThreads {
 		return false, errBadHash
 	}
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])

@@ -115,6 +115,7 @@ func unwrap(masterKey, wrapped string) ([]byte, error) {
 	}
 	var p KDFParams
 	if _, err := fmt.Sscanf(parts[1], "m=%d,t=%d,p=%d", &p.Memory, &p.Time, &p.Threads); err != nil ||
+		p.Memory < 1 || p.Time < 1 || p.Threads < 1 || // 0 會讓 argon2 panic
 		p.Memory > maxKDFMemory || p.Time > maxKDFTime || p.Threads > maxKDFThreads {
 		return nil, errors.New("secrets: 資料金鑰的參數不正確")
 	}

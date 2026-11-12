@@ -94,6 +94,31 @@ func TestUnwrapRejectsTamperedParameters(t *testing.T) {
 	}
 }
 
+// t=0、p=0、m=0 會讓 argon2 panic；被竄改的包裝參數必須回傳格式錯誤。
+func TestUnwrapRejectsZeroParameters(t *testing.T) {
+	w, _ := wrap("key-one", bytes.Repeat([]byte{1}, keyLen), TestKDF)
+	for name, params := range map[string]string{
+		"t=0": "m=8,t=0,p=1",
+		"p=0": "m=8,t=1,p=0",
+		"m=0": "m=0,t=1,p=1",
+	} {
+		bad := strings.Replace(w, "m=8,t=1,p=1", params, 1)
+		if bad == w {
+			t.Fatalf("%s: 測試字串沒有被替換：%s", name, w)
+		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("%s: panic: %v", name, r)
+				}
+			}()
+			if _, err := unwrap("key-one", bad); err == nil || errors.Is(err, ErrWrongMasterKey) {
+				t.Errorf("%s: err = %v, want a format error", name, err)
+			}
+		}()
+	}
+}
+
 func TestProductionKDFNotLowered(t *testing.T) {
 	if ProductionKDF.Memory < 19*1024 || ProductionKDF.Time < 2 {
 		t.Errorf("ProductionKDF too weak: %+v", ProductionKDF)
