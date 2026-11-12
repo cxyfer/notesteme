@@ -58,9 +58,15 @@ func (s *Scenario) reset(w *harness.World) {
 	*s = Scenario{World: w, owner: map[string]string{}}
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 
-	// 用自己的 Transport，不碰被 trap 的 http.DefaultTransport；
-	// 只允許連到這個場景 server 的實際位址，其他一律拒絕。
-	s.client = &http.Client{
+	s.client = s.newClient(nil)
+}
+
+// newClient 建立測試用的 HTTP client。
+// 用自己的 Transport，不碰被 trap 的 http.DefaultTransport；
+// 只允許連到這個場景 server 的實際位址，其他一律拒絕。
+// local 非 nil 時以該位址作為連線的來源位址（Linux 上 127.0.0.0/8 的任何位址都能 bind）。
+func (s *Scenario) newClient(local net.IP) *http.Client {
+	return &http.Client{
 		Transport: &http.Transport{
 			Proxy:             nil,
 			DisableKeepAlives: true,
@@ -68,7 +74,10 @@ func (s *Scenario) reset(w *harness.World) {
 				if !s.isServerAddr(addr) {
 					return nil, fmt.Errorf("測試 client 只能連到 server 的 loopback 位址，收到 %q", addr)
 				}
-				var d net.Dialer
+				d := net.Dialer{}
+				if local != nil {
+					d.LocalAddr = &net.TCPAddr{IP: local}
+				}
 				return d.DialContext(ctx, network, addr)
 			},
 		},
@@ -175,6 +184,8 @@ type requestOpts struct {
 	noCSRF bool
 	// headers 是額外的標頭。
 	headers map[string]string
+	// from 非空時，以這個本機位址（例如 "127.0.0.2"）作為連線的來源位址。
+	from string
 }
 
 // parseRequest 把 "GET /api/items" 拆成方法與路徑。
@@ -281,7 +292,15 @@ func (s *Scenario) do(method, path string, o requestOpts) (*response, error) {
 			}
 		}
 	}
-	httpResp, err := s.client.Do(req)
+	client := s.client
+	if o.from != "" {
+		ip := net.ParseIP(o.from)
+		if ip == nil {
+			return nil, fmt.Errorf("來源位址 %q 不是有效的 IP", o.from)
+		}
+		client = s.newClient(ip)
+	}
+	httpResp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%s %s：%w", method, path, err)
 	}

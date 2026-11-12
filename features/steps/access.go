@@ -17,6 +17,7 @@ func registerAccess(r *Registry, s *Scenario) {
 	r.Step(`a token {string} with scopes {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`the token {string} expired`, func(string) error { return godog.ErrPending })
 	r.Step(`someone signs in with the password {string}`, s.someoneSignsIn)
+	r.Step(`someone signs in from {string} with the password {string}`, s.someoneSignsInFrom)
 	r.Step(`the owner sends {string}`, s.ownerSends)
 	r.Step(`the owner sends {string} with:`, s.ownerSendsWith)
 	r.Step(`the owner sends {string} without a CSRF token`, s.ownerSendsWithoutCSRF)
@@ -49,6 +50,15 @@ func (s *Scenario) someoneSignsIn(password string) error {
 		return err
 	}
 	return s.send("POST /api/auth/login", requestOpts{who: asClient, body: body})
+}
+
+// someoneSignsInFrom 與 someoneSignsIn 相同，但以指定的本機位址作為連線來源（AUTH-R6 依來源位址計數）。
+func (s *Scenario) someoneSignsInFrom(addr, password string) error {
+	body, err := json.Marshal(map[string]string{"password": password})
+	if err != nil {
+		return err
+	}
+	return s.send("POST /api/auth/login", requestOpts{who: asClient, body: body, from: addr})
 }
 
 func (s *Scenario) ownerSends(spec string) error {
