@@ -283,3 +283,83 @@ func TestItemRoutesRequireAuth(t *testing.T) {
 		t.Errorf("缺 CSRF = %d", rec.Code)
 	}
 }
+
+func TestSubtitlesDownload(t *testing.T) {
+	r := newItemsRig(t)
+	id := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123"}`)).Items[0].ID
+	if err := r.worker.RunUntilIdle(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		query, typ, body string
+	}{
+		{"format=srt", "application/x-subrip", "1\n00:00:00,000 --> 00:00:02,000\none\n"},
+		{"format=vtt", "text/vtt", "WEBVTT"},
+		{"format=txt", "text/plain", "one\ntwo\nthree\n"},
+		{"format=cues-json", "application/json", `"variant":"normalized"`},
+		{"", "application/x-subrip", "one"},
+		{"format=srt&from=2&to=4", "application/x-subrip", "two"},
+	}
+	for _, tt := range tests {
+		rec := r.owner("GET", "/api/items/"+id+"/subtitles?"+tt.query, "")
+		if rec.Code != 200 || !strings.Contains(rec.Header().Get("Content-Type"), tt.typ) || !strings.Contains(rec.Body.String(), tt.body) {
+			t.Errorf("%q：%d %s\n%s", tt.query, rec.Code, rec.Header(), rec.Body)
+		}
+		if cd := rec.Header().Get("Content-Disposition"); !strings.Contains(cd, "Hello.en.") {
+			t.Errorf("%q：Content-Disposition = %q", tt.query, cd)
+		}
+	}
+	if rec := r.owner("GET", "/api/items/"+id+"/subtitles?format=srt&from=2&to=4", ""); strings.Contains(rec.Body.String(), "one") || !strings.Contains(rec.Body.String(), "00:00:02,000") {
+		t.Errorf("時間範圍要保留原始時間：%s", rec.Body)
+	}
+	// 下載不會建立 srt 之類的產出（OUT-R1）。
+	// 錯誤：M2 格式 501、未知格式 422、沒有字幕 404。
+	for _, c := range []struct {
+		query  string
+		status int
+	}{{"format=ass", 501}, {"format=bilingual-srt", 501}, {"format=docx", 422}, {"format=srt&from=x", 422}, {"format=srt&lang=ja", 404}} {
+		if rec := r.owner("GET", "/api/items/"+id+"/subtitles?"+c.query, ""); rec.Code != c.status {
+			t.Errorf("%s：%d %s", c.query, rec.Code, rec.Body)
+		}
+	}
+	if rec := r.owner("GET", "/api/items/nope/subtitles?format=srt", ""); rec.Code != 404 {
+		t.Errorf("不存在的影音 = %d", rec.Code)
+	}
+	if rec := r.do("GET", "/api/items/"+id+"/subtitles?format=srt", "", nil); rec.Code != 401 {
+		t.Errorf("未登入 = %d", rec.Code)
+	}
+}
+
+func TestRerunEndpoint(t *testing.T) {
+	r := newItemsRig(t)
+	id := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123"}`)).Items[0].ID
+	if err := r.worker.RunUntilIdle(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	rec := r.owner("POST", "/api/items/"+id+"/rerun", `{"from":"normalize","overrides":{"language":{"targets":["en"]}}}`)
+	if rec.Code != 202 {
+		t.Fatalf("rerun = %d %s", rec.Code, rec.Body)
+	}
+	if d := decode[ItemDetail](t, rec); d.Stages[2].Stage != "normalize" || d.Stages[2].Status != "pending" || d.Stages[1].Status != "done" {
+		t.Errorf("stages = %+v", d.Stages)
+	}
+	if err := r.worker.RunUntilIdle(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if d := decode[ItemDetail](t, r.owner("GET", "/api/items/"+id, "")); d.Stages[2].Status != "done" {
+		t.Errorf("重跑後 stages = %+v", d.Stages)
+	}
+	for _, c := range []struct {
+		path, body string
+		status     int
+	}{
+		{"/api/items/" + id + "/rerun", `{"from":"correct"}`, 501},
+		{"/api/items/" + id + "/rerun", `{"from":"nope"}`, 422},
+		{"/api/items/" + id + "/rerun", `{}`, 422},
+		{"/api/items/missing/rerun", `{"from":"normalize"}`, 404},
+	} {
+		if rec := r.owner("POST", c.path, c.body); rec.Code != c.status {
+			t.Errorf("%s %s = %d %s", c.path, c.body, rec.Code, rec.Body)
+		}
+	}
+}

@@ -193,14 +193,43 @@ func (rt *routes) getItem(ctx context.Context, in *itemInput) (*itemDetailOutput
 	if err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}
-	out := &itemDetailOutput{Body: ItemDetail{Item: toItem(d.Item), Stages: []Stage{}, Sources: []Source{}}}
+	return &itemDetailOutput{Body: toDetail(d)}, nil
+}
+
+func toDetail(d pipeline.Detail) ItemDetail {
+	out := ItemDetail{Item: toItem(d.Item), Stages: []Stage{}, Sources: []Source{}}
 	for _, s := range d.Stages {
-		out.Body.Stages = append(out.Body.Stages, toStage(s))
+		out.Stages = append(out.Stages, toStage(s))
 	}
 	for _, p := range d.Sources {
-		out.Body.Sources = append(out.Body.Sources, Source{Source: p.SourceID, Lang: p.Lang, Kind: p.Kind, State: p.State, Reason: p.Reason})
+		out.Sources = append(out.Sources, Source{Source: p.SourceID, Lang: p.Lang, Kind: p.Kind, State: p.State, Reason: p.Reason})
 	}
-	return out, nil
+	return out
+}
+
+// ---- 重跑 ----
+
+type rerunInput struct {
+	ID   string `path:"id" doc:"影音 ID"`
+	Body struct {
+		From      string         `json:"from" minLength:"1" doc:"從哪個步驟開始重新處理"`
+		Overrides map[string]any `json:"overrides,omitempty" doc:"這次重跑的單次覆寫"`
+		Until     string         `json:"until,omitempty" doc:"做到哪個步驟為止（含）；沒有指定時做到最後"`
+	}
+}
+
+type rerunOutput struct{ Body ItemDetail }
+
+// rerun 從指定步驟重新建立 stage run 與任務（PIPE-R7）：產出新版本，舊版本標記 superseded_by。
+func (rt *routes) rerun(ctx context.Context, in *rerunInput) (*rerunOutput, error) {
+	if rt.d.Pipeline == nil {
+		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
+	}
+	d, err := rt.d.Pipeline.Rerun(ctx, in.ID, pipeline.RerunRequest{From: in.Body.From, Overrides: in.Body.Overrides, Until: in.Body.Until})
+	if err != nil {
+		return nil, rt.mapErr(ctx, err)
+	}
+	return &rerunOutput{Body: toDetail(d)}, nil
 }
 
 // Cue 是 API 回傳的一句字幕；時間用 subtitle.FormatDisplayTime 格式化。
@@ -210,6 +239,25 @@ type Cue struct {
 	End    string `json:"end" example:"00:00:03.500"`
 	Text   string `json:"text"`
 	Timing string `json:"timing,omitempty" doc:"時間的來源：source、merged、silence、interpolated、model"`
+	Words  []Word `json:"words,omitempty" doc:"字詞級時間；來源沒有時省略"`
+}
+
+// Word 是一個字詞的時間。
+type Word struct {
+	Text  string `json:"text"`
+	Start string `json:"start" example:"00:00:01.000"`
+	End   string `json:"end" example:"00:00:01.800"`
+}
+
+func toCue(c subtitle.Cue) Cue {
+	out := Cue{
+		Index: c.Index, Start: subtitle.FormatDisplayTime(c.StartMS), End: subtitle.FormatDisplayTime(c.EndMS),
+		Text: c.Text, Timing: string(c.Timing),
+	}
+	for _, w := range c.Words {
+		out.Words = append(out.Words, Word{Text: w.Text, Start: subtitle.FormatDisplayTime(w.StartMS), End: subtitle.FormatDisplayTime(w.EndMS)})
+	}
+	return out
 }
 
 type cuesInput struct {
@@ -232,17 +280,9 @@ func (rt *routes) getCues(ctx context.Context, in *cuesInput) (*cuesOutput, erro
 	if rt.d.Pipeline == nil {
 		return nil, newError(http.StatusNotFound, CodeNotFound, "找不到這部影音。")
 	}
-	q := pipeline.CuesQuery{Variant: in.Variant, Lang: in.Lang, ToMS: -1}
-	var err error
-	if in.From != "" {
-		if q.FromMS, err = parseTime(in.From); err != nil {
-			return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "from 不是正確的時間。")
-		}
-	}
-	if in.To != "" {
-		if q.ToMS, err = parseTime(in.To); err != nil {
-			return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "to 不是正確的時間。")
-		}
+	q, err := cuesQuery(in.Variant, in.Lang, in.From, in.To)
+	if err != nil {
+		return nil, err
 	}
 	tr, err := rt.d.Pipeline.Cues(ctx, in.ID, q)
 	if err != nil {
@@ -252,10 +292,7 @@ func (rt *routes) getCues(ctx context.Context, in *cuesInput) (*cuesOutput, erro
 	out.Body.Variant, out.Body.Lang = string(tr.Variant), tr.Lang
 	out.Body.Cues = make([]Cue, 0, len(tr.Cues))
 	for _, c := range tr.Cues {
-		out.Body.Cues = append(out.Body.Cues, Cue{
-			Index: c.Index, Start: subtitle.FormatDisplayTime(c.StartMS), End: subtitle.FormatDisplayTime(c.EndMS),
-			Text: c.Text, Timing: string(c.Timing),
-		})
+		out.Body.Cues = append(out.Body.Cues, toCue(c))
 	}
 	return out, nil
 }

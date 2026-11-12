@@ -144,6 +144,14 @@ func (rt *routes) register(api huma.API) {
 		Summary: "字幕內容（cues）",
 	}, rt.getCues)
 	huma.Register(api, huma.Operation{
+		OperationID: "items-subtitles", Method: http.MethodGet, Path: "/api/items/{id}/subtitles",
+		Summary: "下載字幕：從 cues 即時渲染成 srt、vtt、txt 或 cues-json（OUT-R1）",
+	}, rt.getSubtitles)
+	huma.Register(api, huma.Operation{
+		OperationID: "items-rerun", Method: http.MethodPost, Path: "/api/items/{id}/rerun",
+		Summary: "從指定步驟重新處理，產出新版本（PIPE-R7）", DefaultStatus: http.StatusAccepted,
+	}, rt.rerun)
+	huma.Register(api, huma.Operation{
 		OperationID: "queue-pause", Method: http.MethodPost, Path: "/api/queue/pause",
 		Summary: "暫停佇列（尚未實作）",
 	}, notImplemented)
