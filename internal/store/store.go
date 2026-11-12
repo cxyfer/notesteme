@@ -5,8 +5,16 @@
 //   - migration 以 goose 執行，SQL 檔嵌入 binary。
 //   - ID 一律 UUIDv7；時間存 Unix 毫秒，一律取自注入的 clock。
 //
-// TODO: plan 第 22 節指定以 sqlc 產生查詢程式碼；目前表格很少，先用 database/sql 手寫，
-// 等表格增加後再導入 sqlc。
+// 查詢由 sqlc 產生：SQL 寫在 queries/*.sql，schema 直接讀 migrations/ 的 goose 檔，
+// 產生的程式碼在 sqlcdb/（已提交，不要手改）。sqlc 要求的 Go 版本比本專案新，所以不加進 go.mod，
+// 一律以固定版本從 module 外執行。修改 migration 或 queries 後：
+//
+//	go generate ./internal/store/                                                          # 重新產生
+//	go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 diff -f internal/store/sqlc.yaml     # 檢查產生的程式碼是否最新
+//	go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 vet -f internal/store/sqlc.yaml      # 檢查查詢
+//
+// 注意：sqlc 的 sqlite parser 會被 queries/*.sql 內的非 ASCII 字元（含註解）弄錯位移，
+// 所以那些檔案的註解一律用英文。
 package store
 
 import (
@@ -25,7 +33,10 @@ import (
 	_ "modernc.org/sqlite" // 註冊 "sqlite" driver
 
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
 )
+
+//go:generate go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
 
 // DBFileName 是資料目錄下的資料庫檔名。
 const DBFileName = "notesteme.db"
@@ -40,6 +51,8 @@ var migrationsFS embed.FS
 type Store struct {
 	w     *sql.DB // 唯一的寫入連線
 	r     *sql.DB // 唯讀連線池
+	wq    *sqlcdb.Queries
+	rq    *sqlcdb.Queries
 	clock clock.Clock
 }
 
@@ -87,7 +100,7 @@ func Open(ctx context.Context, dir string, clk clock.Clock) (*Store, error) {
 		_ = w.Close()
 		return nil, err
 	}
-	return &Store{w: w, r: r, clock: clk}, nil
+	return &Store{w: w, r: r, wq: sqlcdb.New(w), rq: sqlcdb.New(r), clock: clk}, nil
 }
 
 // ensurePrivateFiles 把 DB 與 -wal、-shm 的權限設為 0600。create 為 true 時 DB 不存在會先以 0600 建立；
@@ -154,7 +167,7 @@ func fromMs(ms int64) time.Time { return time.UnixMilli(ms).UTC() }
 
 // GetSetting 讀取 settings 的值；不存在時 ok 為 false。
 func (s *Store) GetSetting(ctx context.Context, key string) (value string, ok bool, err error) {
-	err = s.r.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, key).Scan(&value)
+	value, err = s.rq.GetSetting(ctx, key)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil
 	}
@@ -166,21 +179,11 @@ func (s *Store) GetSetting(ctx context.Context, key string) (value string, ok bo
 
 // SetSetting 寫入（或覆寫）settings 的值。
 func (s *Store) SetSetting(ctx context.Context, key, value string) error {
-	_, err := s.w.ExecContext(ctx,
-		`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
-		 ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-		key, value, s.nowMs())
-	return err
+	return s.wq.SetSetting(ctx, sqlcdb.SetSettingParams{Key: key, Value: value, UpdatedAt: s.nowMs()})
 }
 
 // SetSettingIfAbsent 只在 key 不存在時寫入；回傳是否寫入。
 func (s *Store) SetSettingIfAbsent(ctx context.Context, key, value string) (bool, error) {
-	res, err := s.w.ExecContext(ctx,
-		`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (key) DO NOTHING`,
-		key, value, s.nowMs())
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
+	n, err := s.wq.SetSettingIfAbsent(ctx, sqlcdb.SetSettingIfAbsentParams{Key: key, Value: value, UpdatedAt: s.nowMs()})
 	return n > 0, err
 }

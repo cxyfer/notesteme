@@ -2,11 +2,11 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
 )
 
 // Session 是一個登入 session；token 只以 hash 存放。
@@ -34,50 +34,44 @@ func (s *Store) CreateSession(ctx context.Context, tokenHash string, ttl time.Du
 		IP:        ip,
 		UserAgent: userAgent,
 	}
-	_, err = s.w.ExecContext(ctx,
-		`INSERT INTO sessions (id, token_hash, created_at, expires_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?)`,
-		sess.ID, sess.TokenHash, toMs(sess.CreatedAt), toMs(sess.ExpiresAt), ip, userAgent)
+	err = s.wq.CreateSession(ctx, sqlcdb.CreateSessionParams{
+		ID:        sess.ID,
+		TokenHash: sess.TokenHash,
+		CreatedAt: toMs(sess.CreatedAt),
+		ExpiresAt: toMs(sess.ExpiresAt),
+		Ip:        ip,
+		UserAgent: userAgent,
+	})
 	return sess, err
 }
 
 // SessionByHash 以 token hash 查詢尚未到期的 session；不存在或已到期時回傳 ErrNotFound。
 func (s *Store) SessionByHash(ctx context.Context, tokenHash string) (Session, error) {
-	var (
-		sess             Session
-		createdMs, expMs int64
-	)
-	err := s.r.QueryRowContext(ctx,
-		`SELECT id, token_hash, created_at, expires_at, ip, user_agent
-		   FROM sessions WHERE token_hash = ? AND expires_at > ?`,
-		tokenHash, s.nowMs()).
-		Scan(&sess.ID, &sess.TokenHash, &createdMs, &expMs, &sess.IP, &sess.UserAgent)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Session{}, ErrNotFound
-	}
+	row, err := s.rq.SessionByHash(ctx, sqlcdb.SessionByHashParams{TokenHash: tokenHash, Now: s.nowMs()})
 	if err != nil {
-		return Session{}, err
+		return Session{}, notFound(err)
 	}
-	sess.CreatedAt, sess.ExpiresAt = fromMs(createdMs), fromMs(expMs)
-	return sess, nil
+	return Session{
+		ID:        row.ID,
+		TokenHash: row.TokenHash,
+		CreatedAt: fromMs(row.CreatedAt),
+		ExpiresAt: fromMs(row.ExpiresAt),
+		IP:        row.Ip,
+		UserAgent: row.UserAgent,
+	}, nil
 }
 
 // ExtendSession 把 session 的到期時間設為 expiresAt。
 func (s *Store) ExtendSession(ctx context.Context, id string, expiresAt time.Time) error {
-	_, err := s.w.ExecContext(ctx, `UPDATE sessions SET expires_at = ? WHERE id = ?`, toMs(expiresAt), id)
-	return err
+	return s.wq.ExtendSession(ctx, sqlcdb.ExtendSessionParams{ExpiresAt: toMs(expiresAt), ID: id})
 }
 
 // DeleteSessionByHash 刪除 session，立即失效；不存在時不算錯誤。
 func (s *Store) DeleteSessionByHash(ctx context.Context, tokenHash string) error {
-	_, err := s.w.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash = ?`, tokenHash)
-	return err
+	return s.wq.DeleteSessionByHash(ctx, tokenHash)
 }
 
 // DeleteExpiredSessions 清除已到期的 session，回傳刪除的筆數。
 func (s *Store) DeleteExpiredSessions(ctx context.Context) (int64, error) {
-	res, err := s.w.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= ?`, s.nowMs())
-	if err != nil {
-		return 0, err
-	}
-	return res.RowsAffected()
+	return s.wq.DeleteExpiredSessions(ctx, s.nowMs())
 }

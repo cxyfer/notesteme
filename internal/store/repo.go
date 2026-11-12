@@ -10,14 +10,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
 )
-
-// dbtx 是 *sql.DB 與 *sql.Tx 共有的查詢介面。
-type dbtx interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}
 
 // Repo 是影音、產出、步驟與任務的資料存取。它綁定在一個連線來源上：
 //   - Store.Read：唯讀連線池，只能查詢；
@@ -26,15 +20,15 @@ type dbtx interface {
 //
 // 在 Store.Tx 的 callback 裡只能使用傳進來的 Repo；那時呼叫 Write 會等待同一個寫入連線而卡死。
 type Repo struct {
-	q     dbtx
+	q     *sqlcdb.Queries
 	clock clock.Clock
 }
 
 // Read 回傳唯讀的 Repo。
-func (s *Store) Read() *Repo { return &Repo{q: s.r, clock: s.clock} }
+func (s *Store) Read() *Repo { return &Repo{q: s.rq, clock: s.clock} }
 
 // Write 回傳寫入用的 Repo（單一陳述句，自動提交）。
-func (s *Store) Write() *Repo { return &Repo{q: s.w, clock: s.clock} }
+func (s *Store) Write() *Repo { return &Repo{q: s.wq, clock: s.clock} }
 
 // Tx 在一個交易中執行 fn；fn 回傳錯誤、panic 或 ctx 取消時回復。
 // panic 時也必須回復並釋放唯一的寫入連線，否則之後的寫入會永遠卡住；回復後重新 panic。
@@ -49,7 +43,7 @@ func (s *Store) Tx(ctx context.Context, fn func(*Repo) error) (err error) {
 			_ = tx.Rollback() // 失敗與 panic 都走這裡；panic 會在 defer 結束後繼續往上拋
 		}
 	}()
-	if err := fn(&Repo{q: tx, clock: s.clock}); err != nil {
+	if err := fn(&Repo{q: s.wq.WithTx(tx), clock: s.clock}); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -71,26 +65,41 @@ func NewID() string {
 
 func (r *Repo) nowMs() int64 { return r.clock.Now().UnixMilli() }
 
-// msPtr 把可為空的時間轉成資料庫的值。
-func msPtr(t *time.Time) any {
+// msPtr 把可為空的時間轉成資料庫的值（Unix 毫秒）。
+func msPtr(t *time.Time) *int64 {
 	if t == nil {
 		return nil
 	}
-	return t.UnixMilli()
+	ms := t.UnixMilli()
+	return &ms
 }
 
-// scanOne 取出單列；沒有資料時回傳 ErrNotFound。
-func scanOne(row *sql.Row, dest ...any) error {
-	if err := row.Scan(dest...); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
-		}
-		return err
+// msToTime 是 msPtr 的反向。
+func msToTime(ms *int64) *time.Time {
+	if ms == nil {
+		return nil
 	}
-	return nil
+	t := fromMs(*ms)
+	return &t
 }
 
-func boolInt(b bool) int {
+// notFound 把「沒有資料列」轉成 ErrNotFound，其他錯誤原樣回傳。
+func notFound(err error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
+// deref 取出可為空欄位的值；NULL 視為空字串。
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func boolInt(b bool) int64 {
 	if b {
 		return 1
 	}
