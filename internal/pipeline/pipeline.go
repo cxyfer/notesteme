@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
 
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
@@ -29,6 +30,8 @@ type Deps struct {
 	DataDir string
 	Log     *slog.Logger
 	YouTube YouTube
+	// HTTP 是對外 HTTP 的 client（netguard 的 Transport，ADR-0014）；nil 時辨識網址不會抓取任何內容。
+	HTTP *http.Client
 	// Wake 在建立了新任務時呼叫，讓 worker 醒來；可以是 nil。
 	Wake func()
 	// Version 是 notesteme 的版本，寫進來源紀錄。
@@ -42,6 +45,7 @@ type Pipeline struct {
 	dataDir string
 	log     *slog.Logger
 	yt      YouTube
+	http    *http.Client
 	wake    func()
 	version string
 }
@@ -56,7 +60,7 @@ func New(d Deps) *Pipeline {
 	if wake == nil {
 		wake = func() {}
 	}
-	return &Pipeline{st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, wake: wake, version: d.Version}
+	return &Pipeline{st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, http: d.HTTP, wake: wake, version: d.Version}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。

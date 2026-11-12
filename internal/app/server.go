@@ -197,6 +197,7 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	s.queue = queue.New(s.store, env.Clock, store.NewID())
 	s.pipeline = pipeline.New(pipeline.Deps{
 		Store: s.store, Clock: env.Clock, DataDir: cfg.Data, Log: log, YouTube: yt, Wake: s.queue.Wake, Version: version,
+		HTTP: outboundClient(env.Net),
 	})
 	s.worker = worker.New(s.queue, s.pipeline, env.Clock, log)
 
@@ -321,5 +322,22 @@ func (s *Server) abort() {
 	}
 	if s.lock != nil {
 		_ = s.lock.Release()
+	}
+}
+
+// maxRedirects 是對外請求最多跟隨的轉址次數。
+const maxRedirects = 5
+
+// outboundClient 建立對外 HTTP 的 client：連線一律經過 netguard（ADR-0014），不使用 http.DefaultClient。
+// 逾時與內容大小由各呼叫端自己限制。
+func outboundClient(d netguard.Deps) *http.Client {
+	return &http.Client{
+		Transport: netguard.Transport(d),
+		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+			if len(via) >= maxRedirects {
+				return errors.New("轉址次數過多")
+			}
+			return nil
+		},
 	}
 }

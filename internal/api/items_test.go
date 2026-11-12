@@ -363,3 +363,22 @@ func TestRerunEndpoint(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveEndpoint(t *testing.T) {
+	r := newItemsRig(t)
+	rec := r.owner("POST", "/api/resolve", `{"url":"https://www.youtube.com/@somechannel"}`)
+	got := decode[Resolution](t, rec)
+	if rec.Code != 200 || got.Platform != "youtube" || got.Kind != "channel" || !got.Subscribable {
+		t.Errorf("channel：%d %s", rec.Code, rec.Body)
+	}
+	rec = r.owner("POST", "/api/resolve", `{"url":"https://example.com/some/page"}`)
+	if e := decode[Error](t, rec); rec.Code != 422 || e.Code != CodeUnrecognizedURL || e.Message != "無法辨識這個網址。目前支援 YouTube、Bilibili、Podcast RSS 與本機檔案。" {
+		t.Errorf("unrecognised：%d %s", rec.Code, rec.Body)
+	}
+	if rec := r.owner("POST", "/api/resolve", `{}`); rec.Code != 422 {
+		t.Errorf("缺 url = %d", rec.Code)
+	}
+	if rec := r.do("POST", "/api/resolve", `{"url":"https://youtu.be/abc123"}`, nil); rec.Code != 401 {
+		t.Errorf("未登入 = %d", rec.Code)
+	}
+}

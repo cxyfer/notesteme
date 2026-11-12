@@ -129,8 +129,8 @@ func (rt *routes) register(api huma.API) {
 	// 之後切片才會實作的路由：先明確回應 501，不要讓它們看起來像不存在（404）。
 	huma.Register(api, huma.Operation{
 		OperationID: "resolve", Method: http.MethodPost, Path: "/api/resolve",
-		Summary: "辨識網址指向什麼內容（尚未實作）",
-	}, notImplemented)
+		Summary: "辨識網址指向什麼內容，不建立影音（ING-R1、R5、R9）", DefaultStatus: http.StatusOK,
+	}, rt.resolve)
 	huma.Register(api, huma.Operation{
 		OperationID: "estimate", Method: http.MethodPost, Path: "/api/estimate",
 		Summary: "估算花費（尚未實作）",
