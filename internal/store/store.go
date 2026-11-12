@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -43,8 +44,15 @@ type Store struct {
 }
 
 // Open 開啟 dir/notesteme.db 並套用 migration。dir 必須已存在。
+// DB 與 WAL／SHM 的權限一律為 0600（NFR-SEC-5）。
 func Open(ctx context.Context, dir string, clk clock.Clock) (*Store, error) {
 	path := filepath.Join(dir, DBFileName)
+
+	// NFR-SEC-5：DB 與 WAL／SHM 一律 0600，不受 umask 影響。SQLite 建立 WAL／SHM 時沿用 DB 檔的權限，
+	// 所以先以 0600 建好 DB（已存在的也收緊），開啟後再確認一次。
+	if err := ensurePrivateFiles(path, true); err != nil {
+		return nil, err
+	}
 
 	w, err := openDB(path, false)
 	if err != nil {
@@ -74,7 +82,32 @@ func Open(ctx context.Context, dir string, clk clock.Clock) (*Store, error) {
 	}
 	r.SetMaxOpenConns(4)
 
+	if err := ensurePrivateFiles(path, false); err != nil {
+		_ = r.Close()
+		_ = w.Close()
+		return nil, err
+	}
 	return &Store{w: w, r: r, clock: clk}, nil
+}
+
+// ensurePrivateFiles 把 DB 與 -wal、-shm 的權限設為 0600。create 為 true 時 DB 不存在會先以 0600 建立；
+// -wal、-shm 只在存在時處理。
+func ensurePrivateFiles(path string, create bool) error {
+	if create {
+		f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+		if err != nil {
+			return fmt.Errorf("建立資料庫檔失敗：%w", err)
+		}
+		if err := f.Close(); err != nil {
+			return err
+		}
+	}
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("設定 %s 的權限失敗：%w", p, err)
+		}
+	}
+	return nil
 }
 
 func openDB(path string, readOnly bool) (*sql.DB, error) {

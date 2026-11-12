@@ -94,7 +94,7 @@ func New() (*World, error) {
 		Log:         &LogBuffer{},
 	}
 	for _, d := range []string{w.DataDir(), w.InboxDir(), w.ConfigDir(), w.BinDir(), w.FakeDir(), w.HomeDir()} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
+		if err := os.MkdirAll(d, 0o700); err != nil {
 			_ = w.Close()
 			return nil, err
 		}

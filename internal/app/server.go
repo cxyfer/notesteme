@@ -39,6 +39,11 @@ const (
 	dataDirPerm = 0o700
 	// readHeaderTimeout 防止 slowloris；其他逾時由各 handler 決定（SSE 需要長連線）。
 	readHeaderTimeout = 10 * time.Second
+	// readTimeout 是讀完整個請求（含 body）的上限。
+	readTimeout = 2 * time.Minute
+	// idleTimeout 是 keep-alive 連線閒置多久後關閉。
+	idleTimeout = 2 * time.Minute
+	// 刻意不設 WriteTimeout：下載字幕與 SSE 是串流回應，固定的寫入期限會截斷慢速 client 的正常下載。
 )
 
 // Server 是執行中的 serve。
@@ -105,6 +110,10 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 	if err := os.MkdirAll(cfg.Data, dataDirPerm); err != nil {
 		return nil, fmt.Errorf("建立資料目錄 %s 失敗：%w", cfg.Data, err)
 	}
+	// MkdirAll 受 umask 影響，也不會改已存在目錄的權限；NFR-SEC-5 要求一律 0700。
+	if err := os.Chmod(cfg.Data, dataDirPerm); err != nil {
+		return nil, fmt.Errorf("設定資料目錄 %s 的權限失敗：%w", cfg.Data, err)
+	}
 	lock, err := store.LockDir(cfg.Data)
 	if err != nil {
 		return nil, err
@@ -125,6 +134,9 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 	}
 	if err := os.MkdirAll(tmp, dataDirPerm); err != nil {
 		return nil, fmt.Errorf("建立 %s 失敗：%w", tmp, err)
+	}
+	if err := os.Chmod(tmp, dataDirPerm); err != nil {
+		return nil, fmt.Errorf("設定 %s 的權限失敗：%w", tmp, err)
 	}
 
 	s.store, err = store.Open(ctx, cfg.Data, env.Clock)
@@ -172,6 +184,8 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 			Pipeline:    s.pipeline,
 		}),
 		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		IdleTimeout:       idleTimeout,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 	go func() {
