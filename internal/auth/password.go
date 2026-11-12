@@ -47,7 +47,7 @@ const (
 	maxVerifyThreads = 16
 )
 
-var errBadHash =errors.New("auth: malformed password hash")
+var errBadHash = errors.New("auth: malformed password hash")
 
 // verifyPassword 比對密碼與 PHC 格式的 hash（參數取自 hash 本身）。
 func verifyPassword(password, encoded string) (bool, error) {
