@@ -40,6 +40,11 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 	if req.Until != "" && !ValidStage(req.Until) {
 		return Detail{}, invalidf("until 必須是 %v 其中之一。", Stages)
 	}
+	// from 在 until 之後時，這次重跑一個步驟都不會執行；回傳 422 而不是悄悄放寬 until，
+	// 讓呼叫端明確知道自己的請求互相矛盾（PIPE-R1）。
+	if req.Until != "" && slices.Index(Stages, req.From) > slices.Index(Stages, req.Until) {
+		return Detail{}, invalidf("from（%s）不能在 until（%s）之後。", req.From, req.Until)
+	}
 
 	it, err := p.st.Read().ItemByID(ctx, itemID)
 	if err != nil {
@@ -83,6 +88,16 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		}
 		if _, err := r.CancelPendingTasks(ctx, superseded); err != nil {
 			return err
+		}
+		// 任務被取消的舊步驟不能殘留成 pending：標為 skipped（取消後的終止狀態，PIPE-R15）。
+		// 執行中（running）的不動，它完成時 apply 會發現自己已不是最新而丟棄結果；
+		// 已經是 done／failed／blocked 的保留原狀，那是它自己的結果。
+		for _, s := range Stages[slices.Index(Stages, req.From):] {
+			if old, ok := latest[s]; ok && (old.Status == store.StatusPending || old.Status == store.StatusWaiting) {
+				if err := r.SetStageState(ctx, old.ID, supersededState()); err != nil {
+					return err
+				}
+			}
 		}
 		if err := r.SetItemUntil(ctx, itemID, req.Until); err != nil {
 			return err

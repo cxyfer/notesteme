@@ -32,6 +32,7 @@ type fakeYT struct {
 	probes   int
 	fetched  []youtube.Track
 	cues     int // 下載的字幕有幾句；0 代表空檔
+	tagKind  bool // 為 true 時字幕文字帶上字幕軌種類，讓不同軌的內容（sha256）不同
 	onProbe  func()
 }
 
@@ -56,7 +57,11 @@ func (f *fakeYT) FetchCaptions(_ context.Context, _ string, t youtube.Track, _ s
 	var sb strings.Builder
 	sb.WriteString("WEBVTT\n\n")
 	for i := 0; i < f.cues; i++ {
-		fmt.Fprintf(&sb, "00:00:%02d.000 --> 00:00:%02d.000\nline %d\n\n", i*2, i*2+2, i+1)
+		tag := ""
+		if f.tagKind {
+			tag = " (" + t.Kind + ")"
+		}
+		fmt.Fprintf(&sb, "00:00:%02d.000 --> 00:00:%02d.000\nline %d%s\n\n", i*2, i*2+2, i+1, tag)
 	}
 	return []byte(sb.String()), nil
 }
@@ -578,8 +583,9 @@ func TestCacheKeyHitReusesArtifact(t *testing.T) {
 	if len(after) != len(before) {
 		t.Errorf("快取命中不建立新版本：%d → %d", len(before), len(after))
 	}
-	if r.yt.probes != probes || len(r.yt.fetched) != fetches {
-		t.Errorf("快取命中不呼叫外部工具：Probe %d → %d，下載 %d → %d", probes, r.yt.probes, fetches, len(r.yt.fetched))
+	// transcript 的快取鍵含字幕軌清單，所以要 Probe 一次（只讀 metadata）；字幕不會重新下載。
+	if r.yt.probes != probes+1 || len(r.yt.fetched) != fetches {
+		t.Errorf("快取命中只 Probe、不下載：Probe %d → %d，下載 %d → %d", probes, r.yt.probes, fetches, len(r.yt.fetched))
 	}
 }
 

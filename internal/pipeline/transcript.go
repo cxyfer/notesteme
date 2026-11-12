@@ -1,12 +1,15 @@
 package pipeline
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -37,19 +40,8 @@ func sourceTiming(kind string) string {
 // TODO(SRC-R6)：自動字幕還沒生成時等待（waiting），超過 24 小時才改用下一個來源。
 // TODO(SRC-R8)：來源需要 cookie 而沒有時 blocked。
 func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Language) (result, error) {
-	key := cacheKey{
-		Item: it.ID, Stage: StageTranscript, Impl: transcriptImplVersion, Provider: "yt-dlp",
-		Upstream: paramsSHA(map[string]any{"title": it.Title, "duration_s": it.DurationS, "original_lang": it.OriginalLang, "availability": it.Availability}),
-		Params:   paramsSHA(map[string]any{"caption_priority": lang.CaptionPriority, "allow_platform_translated": lang.AllowPlatformTranslated, "fallback": lang.Fallback}),
-	}.String()
-	stage := &store.StageResult{Executor: "local", CacheKey: key, ImplVersion: transcriptImplVersion}
-
-	// 快取鍵相同的步驟已經完成：直接重用，不呼叫外部工具，也不建立新版本（PIPE-R5）。
-	if hit, err := p.st.Read().DoneStageByCacheKey(ctx, it.ID, StageTranscript, key); err == nil && hit.ArtifactID != "" {
-		stage.ArtifactID = hit.ArtifactID
-		return result{task: taskDone, advance: true, stage: stage, state: store.StageState{Status: store.StatusDone}}, nil
-	}
-
+	// 選軌需要平台目前的字幕軌清單，所以一定要先 Probe；快取鍵只含會影響選軌結果的輸入
+	// （字幕軌清單、原文語言與選軌參數），標題、片長這類不影響結果的 metadata 不算。
 	info, err := p.yt.Probe(ctx, it.ExternalID)
 	if err != nil {
 		return result{}, err
@@ -59,6 +51,23 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		tracks = append(tracks, transcript.Track{Lang: t.Lang, Kind: t.Kind})
 	}
 	chosen, decisions := transcript.Select(tracks, it.OriginalLang, lang.CaptionPriority, lang.AllowPlatformTranslated)
+
+	key := cacheKey{
+		Item: it.ID, Stage: StageTranscript, Impl: transcriptImplVersion, Provider: "yt-dlp",
+		Upstream: paramsSHA(map[string]any{"tracks": sortedTracks(tracks), "original_lang": it.OriginalLang}),
+		Params:   paramsSHA(map[string]any{"caption_priority": lang.CaptionPriority, "allow_platform_translated": lang.AllowPlatformTranslated, "fallback": lang.Fallback}),
+	}.String()
+	stage := &store.StageResult{Executor: "local", CacheKey: key, ImplVersion: transcriptImplVersion}
+
+	// 快取鍵相同的步驟已經完成：直接重用，不下載字幕，也不建立新版本（PIPE-R5）。
+	// Probe 的結果照樣記錄（SRC-R17）。
+	if hit, err := p.st.Read().DoneStageByCacheKey(ctx, it.ID, StageTranscript, key); err == nil && hit.ArtifactID != "" {
+		stage.ArtifactID = hit.ArtifactID
+		return result{
+			task: taskDone, advance: true, stage: stage, probes: toProbes(decisions),
+			state: store.StageState{Status: store.StatusDone},
+		}, nil
+	}
 
 	var cues []subtitle.Cue
 	if chosen != nil {
@@ -110,6 +119,15 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions),
 		state: store.StageState{Status: store.StatusDone},
 	}, nil
+}
+
+// sortedTracks 回傳排序後的字幕軌副本，讓快取鍵不受平台回報順序影響。
+func sortedTracks(in []transcript.Track) []transcript.Track {
+	out := slices.Clone(in)
+	slices.SortFunc(out, func(a, b transcript.Track) int {
+		return cmp.Or(strings.Compare(a.Lang, b.Lang), strings.Compare(a.Kind, b.Kind))
+	})
+	return out
 }
 
 // fetchCues 下載一條字幕軌並解析成 cue。暫存檔放在 <data>/tmp，用完就清除（啟動時也會清空）。

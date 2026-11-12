@@ -109,7 +109,6 @@ func TestRerunFromTranscriptRunsDownstreamOnce(t *testing.T) {
 	it := r.ingest(watch, nil, "")
 	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
 	r.run()
-	r.yt.info.Title = "changed" // 讓 transcript 的快取鍵改變，重跑才會產生新版本
 	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageTranscript}); err != nil {
 		t.Fatal(err)
 	}

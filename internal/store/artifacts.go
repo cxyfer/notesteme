@@ -89,6 +89,27 @@ func (r *Repo) InsertArtifact(ctx context.Context, n NewArtifact) (Artifact, err
 	return r.Artifact(ctx, n.ID)
 }
 
+// RestoreArtifact 讓一個被取代的產出重新成為現行版本：原本的現行版本改為被它取代，
+// 它自己的 superseded_by 清除。已經是現行版本時什麼都不做。
+// 快取命中重用舊產出時使用（PIPE-R5）：設定改回舊值，現行版本也要跟著回到那一版。
+func (r *Repo) RestoreArtifact(ctx context.Context, id string) error {
+	a, err := r.Artifact(ctx, id)
+	if err != nil {
+		return err
+	}
+	if a.SupersededBy == "" {
+		return nil
+	}
+	if _, err := r.q.ExecContext(ctx,
+		`UPDATE artifacts SET superseded_by = ?
+		 WHERE item_id = ? AND kind = ? AND variant = ? AND lang = ? AND superseded_by IS NULL AND id <> ?`,
+		a.ID, a.ItemID, a.Kind, a.Variant, a.Lang, a.ID); err != nil {
+		return err
+	}
+	_, err = r.q.ExecContext(ctx, `UPDATE artifacts SET superseded_by = NULL WHERE id = ?`, a.ID)
+	return err
+}
+
 // Artifact 以 ID 查詢產出。
 func (r *Repo) Artifact(ctx context.Context, id string) (Artifact, error) {
 	a, err := scanArtifact(r.q.QueryRowContext(ctx, `SELECT `+artifactColumns+` FROM artifacts WHERE id = ?`, id))

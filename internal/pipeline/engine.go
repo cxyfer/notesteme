@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
@@ -137,9 +139,22 @@ func (p *Pipeline) classify(t store.Task, err error) result {
 }
 
 // apply 在一個交易中寫回任務的結果；成功後視需要建立下游任務。
+//
+// 重跑之後同一個步驟有多筆 stage run；寫入前先確認這一筆仍是該步驟最新的。
+// 不是的話代表較新的重跑已經取代了它，結果整份丟棄（含已寫出的產出檔），
+// 否則較晚完成的舊任務會蓋掉較新的現行版本。
 func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, it store.Item, res result) error {
-	var wake bool
+	var wake, stale bool
 	err := p.st.Tx(ctx, func(r *store.Repo) error {
+		runs, err := r.StageRunsByItem(ctx, it.ID)
+		if err != nil {
+			return err
+		}
+		latest := latestRuns(runs)
+		if latest[run.Stage].ID != run.ID {
+			stale = true
+			return discardStale(ctx, r, t, run)
+		}
 		if len(res.probes) > 0 {
 			if err := r.InsertProbes(ctx, it.ID, res.probes); err != nil {
 				return err
@@ -166,6 +181,14 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 					return err
 				}
 				sr.ArtifactID = a.ID
+			}
+			if res.artifact == nil && sr.ArtifactID != "" {
+				// 快取命中重用既有產出（PIPE-R5）。它可能已被後來的版本取代
+				// （設定 A → B → 改回 A）：選擇「恢復」而不是重新產生，
+				// 因為快取鍵相同就是不要重複付費；恢復讓它重新成為現行版本，原本的現行版本改指向它。
+				if err := r.RestoreArtifact(ctx, sr.ArtifactID); err != nil {
+					return err
+				}
 			}
 			if err := r.SetStageResult(ctx, run.ID, sr); err != nil {
 				return err
@@ -194,15 +217,7 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 			if !ok {
 				return nil
 			}
-			runs, err := r.StageRunsByItem(ctx, it.ID)
-			if err != nil {
-				return err
-			}
-			// 重跑之後同一個步驟有多筆 stage run：只有最新的一筆往下走，舊的結果不會觸發下游。
-			latest := latestRuns(runs)
-			if latest[run.Stage].ID != run.ID {
-				return nil
-			}
+			// 走到這裡時這一筆一定是最新的（上面已檢查），舊的結果不會觸發下游。
 			if nr, ok := latest[next]; ok {
 				if _, err := insertStageTask(ctx, r, it.ID, nr, t.Priority); err != nil {
 					return err
@@ -215,10 +230,34 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 	if err != nil {
 		return err
 	}
+	if stale && res.artifact != nil {
+		// 結果已丟棄，沒有記錄會指向這個檔案；清掉避免留下孤兒檔。
+		if err := os.Remove(filepath.Join(p.dataDir, filepath.FromSlash(res.artifact.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
+			p.log.Warn("清除被丟棄的產出檔失敗", "path", res.artifact.Path, "error", err)
+		}
+	}
 	if wake {
 		p.wake()
 	}
 	return nil
+}
+
+// reasonCancelled 是步驟因取消而 skipped 時的原因（PIPE-R15），寫在 block_reason。
+const reasonCancelled = "cancelled"
+
+// discardStale 處理已被較新重跑取代的 stage run 所領取的任務：
+// 任務完成（不重試、不放回佇列），步驟標為 skipped 而不是留在 running／pending。
+// skipped 是既有狀態值中最貼近「被取消、不再處理」的終止狀態（PIPE-R15）。
+func discardStale(ctx context.Context, r *store.Repo, t store.Task, run store.StageRun) error {
+	if err := r.SetStageState(ctx, run.ID, supersededState()); err != nil {
+		return err
+	}
+	return r.CompleteTask(ctx, t.ID)
+}
+
+// supersededState 是被重跑取代的步驟的狀態。
+func supersededState() store.StageState {
+	return store.StageState{Status: store.StatusSkipped, BlockReason: reasonCancelled, Message: "已被較新的重跑取代。"}
 }
 
 // errPermanent 建立 permanent 錯誤。

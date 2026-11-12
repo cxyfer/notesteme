@@ -359,6 +359,33 @@ func TestArtifactRequiresProvenanceAndSupersedesPrevious(t *testing.T) {
 	}
 }
 
+func TestRestoreArtifactMakesSupersededVersionCurrent(t *testing.T) {
+	ctx := context.Background()
+	s, _ := openTest(t)
+	it, _ := seedItem(t, s, "a")
+	n := NewArtifact{ItemID: it.ID, Kind: "transcript", Variant: "source", Lang: "en", Format: "notesteme-cues+json",
+		Path: "artifacts/x.json", SHA256: "abc", Size: 3, Provenance: json.RawMessage(`{"source":"x"}`)}
+	first, _ := s.Write().InsertArtifact(ctx, n)
+	second, _ := s.Write().InsertArtifact(ctx, n)
+
+	if err := s.Write().RestoreArtifact(ctx, second.ID); err != nil { // 已經是現行版本：不變
+		t.Fatal(err)
+	}
+	if err := s.Write().RestoreArtifact(ctx, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	cur, err := s.Read().CurrentArtifacts(ctx, it.ID, "transcript")
+	if err != nil || len(cur) != 1 || cur[0].ID != first.ID {
+		t.Fatalf("現行版本 = %+v, %v", cur, err)
+	}
+	if b, _ := s.Read().Artifact(ctx, second.ID); b.SupersededBy != first.ID {
+		t.Errorf("原本的現行版本應被取代：%+v", b)
+	}
+	if err := s.Write().RestoreArtifact(ctx, "missing"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("err = %v", err)
+	}
+}
+
 func TestLatestProbesReturnsOnlyTheLastRun(t *testing.T) {
 	ctx := context.Background()
 	s, _ := openTest(t)
