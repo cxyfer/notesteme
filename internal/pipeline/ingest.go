@@ -19,6 +19,9 @@ type IngestRequest struct {
 	Overrides map[string]any
 	// Until 指定做到哪個步驟為止；空字串代表全部。
 	Until string
+	// Priority 是任務的優先順序（queue.PriorityXxx，PIPE-R9）；0 代表手動新增。
+	// API 不開放指定：訂閱與回補來自內部的排程（之後的切片），測試也透過測試專用介面使用。
+	Priority int
 }
 
 // IngestResult 是新增的結果：新建立的影音，或已經存在的影音（ING-R2）。
@@ -107,7 +110,11 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResul
 				first = run
 			}
 		}
-		_, err = insertStageTask(ctx, r, it.ID, first, queue.PriorityManual)
+		priority := req.Priority
+		if priority == 0 {
+			priority = queue.PriorityManual
+		}
+		_, err = insertStageTask(ctx, r, it.ID, first, priority)
 		return err
 	})
 	if err != nil {

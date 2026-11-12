@@ -19,6 +19,8 @@ type Detail struct {
 	Item    store.Item
 	Stages  []store.StageRun
 	Sources []store.Probe
+	// Attempts 是各步驟（以 stage run ID 為 key）最近一個任務已經嘗試的次數；還沒有任務的步驟不在其中。
+	Attempts map[string]int
 }
 
 // Item 回傳影音詳情；不存在時回傳 store.ErrNotFound。
@@ -35,16 +37,25 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 	// 重跑之後同一個步驟有多筆 stage run，詳情只列最新的一筆，依步驟順序。
 	latest := latestRuns(all)
 	var stages []store.StageRun
+	attempts := map[string]int{}
 	for _, s := range Stages {
-		if run, ok := latest[s]; ok {
-			stages = append(stages, run)
+		run, ok := latest[s]
+		if !ok {
+			continue
+		}
+		stages = append(stages, run)
+		switch t, err := r.TaskByStageRun(ctx, run.ID); {
+		case err == nil:
+			attempts[run.ID] = t.Attempts
+		case !errors.Is(err, store.ErrNotFound):
+			return Detail{}, err
 		}
 	}
 	probes, err := r.LatestProbes(ctx, id)
 	if err != nil {
 		return Detail{}, err
 	}
-	return Detail{Item: it, Stages: stages, Sources: probes}, nil
+	return Detail{Item: it, Stages: stages, Sources: probes, Attempts: attempts}, nil
 }
 
 // CuesQuery 是取得字幕內容的條件。

@@ -199,15 +199,15 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 		}
 		switch res.task {
 		case taskDone:
-			if err := r.CompleteTask(ctx, t.ID); err != nil {
+			if err := r.CompleteTask(ctx, t.ID, t.LeaseToken); err != nil {
 				return err
 			}
 		case taskFailed:
-			if err := r.FailTask(ctx, t.ID); err != nil {
+			if err := r.FailTask(ctx, t.ID, t.LeaseToken); err != nil {
 				return err
 			}
 		case taskRequeue:
-			if err := r.RequeueTask(ctx, t.ID, res.notBefore, res.countAttempt); err != nil {
+			if err := r.RequeueTask(ctx, t.ID, t.LeaseToken, res.notBefore, res.countAttempt); err != nil {
 				return err
 			}
 			wake = true
@@ -227,10 +227,17 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 		}
 		return nil
 	})
+	// 租約已經失效（被放回、到期後被別人領走，或任務已被取消）：寫回的交易已整個回復，
+	// 這次的結果不算數。不是錯誤；產出檔沒有記錄指向它，一併丟棄。
+	lost := errors.Is(err, store.ErrLeaseLost)
+	if lost {
+		p.log.Warn("任務的租約已失效，丟棄這次的結果", "task", t.ID, "stage", run.Stage)
+		err = nil
+	}
 	if err != nil {
 		return err
 	}
-	if stale && res.artifact != nil {
+	if (stale || lost) && res.artifact != nil {
 		// 結果已丟棄，沒有記錄會指向這個檔案；清掉避免留下孤兒檔。
 		if err := os.Remove(filepath.Join(p.dataDir, filepath.FromSlash(res.artifact.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
 			p.log.Warn("清除被丟棄的產出檔失敗", "path", res.artifact.Path, "error", err)
@@ -252,7 +259,7 @@ func discardStale(ctx context.Context, r *store.Repo, t store.Task, run store.St
 	if err := r.SetStageState(ctx, run.ID, supersededState()); err != nil {
 		return err
 	}
-	return r.CompleteTask(ctx, t.ID)
+	return r.CompleteTask(ctx, t.ID, t.LeaseToken)
 }
 
 // supersededState 是被重跑取代的步驟的狀態。

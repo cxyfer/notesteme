@@ -281,10 +281,10 @@ func TestRequeueTask(t *testing.T) {
 	s, clk := openTest(t)
 	_, sr := seedItem(t, s, "a")
 	tk := newTask(t, s, sr, 3, nil)
-	claim(t, s, claimOpts("w", 1))
+	first := claim(t, s, claimOpts("w", 1))
 
 	nb := clk.Now().Add(30 * time.Second)
-	if err := s.Write().RequeueTask(ctx, tk.ID, &nb, true); err != nil {
+	if err := s.Write().RequeueTask(ctx, tk.ID, first[0].LeaseToken, &nb, true); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := s.Read().Task(ctx, tk.ID)
@@ -293,8 +293,8 @@ func TestRequeueTask(t *testing.T) {
 	}
 	claim(t, s, claimOpts("w", 1)) // 未到期，不會領取
 	clk.Advance(time.Minute)
-	claim(t, s, claimOpts("w", 1))
-	if err := s.Write().RequeueTask(ctx, tk.ID, &nb, false); err != nil {
+	second := claim(t, s, claimOpts("w", 1))
+	if err := s.Write().RequeueTask(ctx, tk.ID, second[0].LeaseToken, &nb, false); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.Read().Task(ctx, tk.ID)

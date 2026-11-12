@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sync"
 	"time"
 
@@ -20,9 +21,6 @@ import (
 
 // 預設值。
 const (
-	// DefaultMaxInFlight 是同時執行的任務上限。
-	// TODO(PIPE-R8)：依資源類別（download、asr、llm…）分別設定並行上限。
-	DefaultMaxInFlight = 4
 	// MaxRounds 是 RunUntilIdle 的輪數上限，避免任務無限地互相產生而卡住測試。
 	MaxRounds = 1000
 )
@@ -40,36 +38,38 @@ type Worker struct {
 	log *slog.Logger
 	clk clock.Clock
 
-	maxInFlight int
-	maxRounds   int
+	maxRounds int
 
-	mu       sync.Mutex
-	inFlight int
-	errs     []error
-	wg       sync.WaitGroup
+	// roundMu 讓一次領取（計算空位、領取、登記執行中）不被另一個 RunRound 打斷。
+	roundMu sync.Mutex
+	mu      sync.Mutex
+	// running 是各資源類別在記憶體中執行中的任務數；領取的空位是類別的上限減去它（PIPE-R8）。
+	running map[string]int
+	errs    []error
+	wg      sync.WaitGroup
 }
 
 // New 建立 Worker。
 func New(q *queue.Queue, h Handler, clk clock.Clock, log *slog.Logger) *Worker {
-	return &Worker{q: q, h: h, clk: clk, log: log, maxInFlight: DefaultMaxInFlight, maxRounds: MaxRounds}
+	return &Worker{q: q, h: h, clk: clk, log: log, running: map[string]int{}, maxRounds: MaxRounds}
 }
 
 // RunRound 領取一輪可以執行的任務，把它們的步驟標記為 running，各自開始執行後就回傳，不等待完成。
+// 每個資源類別依自己的上限與暫停設定領取（PIPE-R8、PIPE-R10）；設定改變後的下一輪就生效。
 // 回傳領取的任務數。
 func (w *Worker) RunRound(ctx context.Context) (int, error) {
+	w.roundMu.Lock()
+	defer w.roundMu.Unlock()
 	w.mu.Lock()
-	free := w.maxInFlight - w.inFlight
+	running := maps.Clone(w.running)
 	w.mu.Unlock()
-	if free <= 0 {
-		return 0, nil
-	}
-	tasks, err := w.q.Claim(ctx, free)
+	tasks, err := w.q.ClaimFree(ctx, running)
 	if err != nil {
 		return 0, fmt.Errorf("領取任務：%w", err)
 	}
 	for _, t := range tasks {
 		w.mu.Lock()
-		w.inFlight++
+		w.running[t.ResourceClass]++
 		w.mu.Unlock()
 		w.wg.Add(1)
 		go w.execute(ctx, t)
@@ -81,7 +81,7 @@ func (w *Worker) execute(ctx context.Context, t store.Task) {
 	defer w.wg.Done()
 	defer func() {
 		w.mu.Lock()
-		w.inFlight--
+		w.running[t.ResourceClass]--
 		w.mu.Unlock()
 		// 完成一個任務就有空位了；下游任務也可能已經建立。
 		w.q.Wake()

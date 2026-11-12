@@ -57,6 +57,7 @@ type Stage struct {
 	ArtifactID       string     `json:"artifact_id,omitempty"`
 	StartedAt        *time.Time `json:"started_at"`
 	FinishedAt       *time.Time `json:"finished_at"`
+	Attempts         int        `json:"attempts" doc:"最近一個任務已經嘗試的次數；重啟時放回的租約不計入（PIPE-R11）"`
 }
 
 // Source 是一個字幕來源在最近一次 Probe 中的結果（SRC-R17）。
@@ -93,7 +94,7 @@ func toItem(it store.Item) Item {
 	return out
 }
 
-func toStage(s store.StageRun) Stage {
+func toStage(s store.StageRun, attempts int) Stage {
 	actions := s.Actions
 	if actions == nil {
 		actions = []string{}
@@ -101,7 +102,7 @@ func toStage(s store.StageRun) Stage {
 	return Stage{
 		Stage: s.Stage, Status: s.Status, BlockReason: s.BlockReason, ErrorClass: s.ErrorClass, NotBefore: s.NotBefore,
 		Message: s.Message, Actions: actions, ConfigSnapshotID: s.ConfigSnapshotID, ArtifactID: s.ArtifactID,
-		StartedAt: s.StartedAt, FinishedAt: s.FinishedAt,
+		StartedAt: s.StartedAt, FinishedAt: s.FinishedAt, Attempts: attempts,
 	}
 }
 
@@ -200,7 +201,7 @@ func (rt *routes) getItem(ctx context.Context, in *itemInput) (*itemDetailOutput
 func toDetail(d pipeline.Detail) ItemDetail {
 	out := ItemDetail{Item: toItem(d.Item), Stages: []Stage{}, Sources: []Source{}}
 	for _, s := range d.Stages {
-		out.Stages = append(out.Stages, toStage(s))
+		out.Stages = append(out.Stages, toStage(s, d.Attempts[s.ID]))
 	}
 	for _, p := range d.Sources {
 		out.Sources = append(out.Sources, Source{Source: p.SourceID, Lang: p.Lang, Kind: p.Kind, State: p.State, Reason: p.Reason})
