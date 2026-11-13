@@ -259,21 +259,18 @@ func (r *Repo) resetStages(ctx context.Context, stageRunIDs []string) (int, erro
 	return len(stageRunIDs), nil
 }
 
-// NextTaskTime 回傳最早可以領取的 pending 任務的時間（not_before 為空或已到期時是現在）；沒有 pending 任務時 ok 為 false。
-// production 的 worker 用它決定要睡到什麼時候，而不是忙碌輪詢。
-func (r *Repo) NextTaskTime(ctx context.Context, executor string) (t time.Time, ok bool, err error) {
-	ms, err := r.q.NextTaskTime(ctx, executor)
+// NextTaskTime 回傳 pending 任務中，not_before 晚於 after 的最早時間；沒有這樣的任務時 ok 為 false。
+// 已到期的任務不算：領不到的到期任務（類別暫停或已滿）不該遮蔽之後才到期的任務，
+// 它們由「通知」喚醒 worker。production 的 worker 用它決定要睡到什麼時候，而不是忙碌輪詢。
+func (r *Repo) NextTaskTime(ctx context.Context, executor string, after time.Time) (t time.Time, ok bool, err error) {
+	ms, err := r.q.NextTaskTime(ctx, sqlcdb.NextTaskTimeParams{Executor: executor, AfterMs: toMs(after)})
 	if errors.Is(err, sql.ErrNoRows) {
 		return time.Time{}, false, nil
 	}
 	if err != nil {
 		return time.Time{}, false, err
 	}
-	t = fromMs(ms)
-	if now := r.clock.Now(); t.Before(now) {
-		t = now
-	}
-	return t, true, nil
+	return fromMs(ms), true, nil
 }
 
 // CountTasks 回傳指定狀態的任務數；用於測試與診斷。

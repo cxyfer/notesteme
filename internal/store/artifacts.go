@@ -114,6 +114,64 @@ func (r *Repo) RestoreArtifact(ctx context.Context, id string) error {
 	return r.q.ClearArtifactSuperseded(ctx, a.ID)
 }
 
+// PurgeOldArtifacts 清除同一組 (item, kind, variant, lang) 中比最近 keep 版更舊的版本（PIPE-R7）。
+// 下列版本永遠保留：現行版本（沒有被取代的）、被引用的版本（pinned），以及被其他產出列為 parent 的版本，
+// 否則來源紀錄會指向不存在的產出。
+//
+// 被清除的列從資料庫刪除；指向它們的步驟紀錄改為沒有產出（外鍵），原本被它們取代的版本改為被現行版本取代，
+// 所以 superseded_by 不會指向不存在的列。回傳被清除的產出，呼叫端應該在 commit 之後刪除它們的檔案。
+// 必須在交易中呼叫，與新增版本的 InsertArtifact 一起成功或回復。
+func (r *Repo) PurgeOldArtifacts(ctx context.Context, itemID, kind, variant, lang string, keep int) ([]Artifact, error) {
+	rows, err := r.q.ArtifactGroup(ctx, sqlcdb.ArtifactGroupParams{ItemID: itemID, Kind: kind, Variant: variant, Lang: lang})
+	if err != nil || len(rows) <= keep {
+		return nil, err
+	}
+	refs, err := r.q.ArtifactParentRefs(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	parents := map[string]bool{}
+	for _, ref := range refs {
+		var ids []string
+		if err := json.Unmarshal([]byte(ref.ParentsJson), &ids); err != nil {
+			return nil, fmt.Errorf("產出 %s 的 parents：%w", ref.ID, err)
+		}
+		for _, id := range ids {
+			parents[id] = true
+		}
+	}
+
+	var purged []Artifact
+	current := ""
+	for i, row := range rows {
+		if row.SupersededBy == nil {
+			current = row.ID
+		}
+		if i < keep || row.SupersededBy == nil || row.Pinned != 0 || parents[row.ID] {
+			continue
+		}
+		a, err := artifactFromRow(row)
+		if err != nil {
+			return nil, err
+		}
+		if err := r.q.DetachStageRunsFromArtifact(ctx, &row.ID); err != nil {
+			return nil, err
+		}
+		if err := r.q.DeleteArtifact(ctx, row.ID); err != nil {
+			return nil, err
+		}
+		purged = append(purged, a)
+	}
+	if len(purged) > 0 && current != "" {
+		if err := r.q.RepointDanglingSuperseded(ctx, sqlcdb.RepointDanglingSupersededParams{
+			CurrentID: current, ItemID: itemID, Kind: kind, Variant: variant, Lang: lang,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	return purged, nil
+}
+
 // Artifact 以 ID 查詢產出。
 func (r *Repo) Artifact(ctx context.Context, id string) (Artifact, error) {
 	row, err := r.q.ArtifactByID(ctx, id)

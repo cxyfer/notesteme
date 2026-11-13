@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
@@ -70,9 +71,13 @@ func TestFetchErrorClasses(t *testing.T) {
 		{"200 但沒有內容", 200, `{"lang":"en","content":[]}`, true, ""},
 		{"429", 429, `{}`, false, errclass.ClassRetryable},
 		{"503", 503, `{}`, false, errclass.ClassRetryable},
-		{"401", 401, `{}`, false, errclass.ClassNeedsAction},
-		{"403", 403, `{}`, false, errclass.ClassNeedsAction},
+		{"401 key 無效", 401, `{}`, false, errclass.ClassNeedsAction},
+		{"402 方案不支援", 402, `{}`, false, errclass.ClassNeedsAction},
+		{"403 內容私人或受限", 403, `{"error":"forbidden"}`, true, ""},
+		{"206 transcript-unavailable", 206, `{"error":"transcript-unavailable"}`, true, ""},
 		{"400", 400, `{}`, false, errclass.ClassPermanent},
+		{"422 其他 4xx", 422, `{}`, false, errclass.ClassPermanent},
+		{"500", 500, `{}`, false, errclass.ClassRetryable},
 		{"回應不是 JSON", 200, `<html>`, false, errclass.ClassRetryable},
 		{"非同步任務", 202, `{"jobId":"j1"}`, false, errclass.ClassPermanent},
 	}
@@ -97,6 +102,23 @@ func TestFetchErrorClasses(t *testing.T) {
 	}
 }
 
+// 401 與 402 都是 needs_action，但呼叫端要能分辨：前者是 key 的問題，後者是方案不支援。
+func TestFetchDistinguishesKeyAndPlanErrors(t *testing.T) {
+	c, _ := serve(t, 401, `{}`)
+	_, err := c.Fetch(context.Background(), "https://youtu.be/abc123", ModeAuto)
+	if !errors.Is(err, ErrKeyRejected) || errors.Is(err, ErrPlanUnsupported) {
+		t.Errorf("401：err = %v", err)
+	}
+	c, _ = serve(t, 402, `{}`)
+	_, err = c.Fetch(context.Background(), "https://youtu.be/abc123", ModeAuto)
+	if !errors.Is(err, ErrPlanUnsupported) || errors.Is(err, ErrKeyRejected) {
+		t.Errorf("402：err = %v", err)
+	}
+	if strings.Contains(err.Error(), "sk-secret-123") {
+		t.Errorf("錯誤訊息含有 API key：%v", err)
+	}
+}
+
 func TestFetchNetworkErrorIsRetryable(t *testing.T) {
 	c, _ := serve(t, 200, okBody)
 	c.BaseURL = "http://127.0.0.1:1" // 沒有人在聽
@@ -105,6 +127,39 @@ func TestFetchNetworkErrorIsRetryable(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if strings.Contains(err.Error(), "sk-secret-123") {
+		t.Errorf("錯誤訊息含有 API key：%v", err)
+	}
+}
+
+// 跨網域轉址時，x-api-key 不可以帶到另一個 host（NFR-SEC-3）；3xx 視為 permanent。
+func TestFetchDoesNotFollowRedirectWithKey(t *testing.T) {
+	var leaked atomic.Bool
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-api-key") != "" {
+			leaked.Store(true)
+		}
+		_, _ = w.Write([]byte(okBody))
+	}))
+	t.Cleanup(other.Close)
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/v1/transcript", http.StatusFound)
+	}))
+	t.Cleanup(origin.Close)
+
+	// 呼叫端提供的 client 預設會跟隨轉址；Fetch 必須自己關掉。
+	hc := &http.Client{}
+	c := &Client{HTTP: hc, BaseURL: origin.URL, APIKey: "sk-secret-123"}
+	_, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123", ModeAuto)
+	if leaked.Load() {
+		t.Fatal("轉址後 API key 被帶到另一個 host")
+	}
+	if got, ok := errclass.ClassOf(err); !ok || got != errclass.ClassPermanent {
+		t.Fatalf("err = %v，預期 permanent", err)
+	}
+	if hc.CheckRedirect != nil {
+		t.Error("不可以修改呼叫端提供的 client")
+	}
+	if err != nil && strings.Contains(err.Error(), "sk-secret-123") {
 		t.Errorf("錯誤訊息含有 API key：%v", err)
 	}
 }

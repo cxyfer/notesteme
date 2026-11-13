@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -162,6 +164,39 @@ func TestSupadataModeIsPartOfTheCacheKey(t *testing.T) {
 	}
 }
 
+// PIPE-R7：同一組 (item, kind, variant, lang) 只保留最近 3 版，更舊的記錄與檔案都清除。
+func TestRerunKeepsOnlyTheLatestThreeVersionsAndDeletesOlderFiles(t *testing.T) {
+	r, _ := newSupadataRig(t)
+	it := r.ingest(watch, nil, StageTranscript)
+	r.run()
+	// 每次的 fallback 不同，快取鍵就不同，每次都產生新版本。
+	for _, fb := range [][]any{{"supadata", "a"}, {"supadata", "b"}, {"supadata", "c"}, {"supadata", "d"}} {
+		if err := r.rerunTranscript(it, fallbackOverride(fb...)); err != nil {
+			t.Fatal(err)
+		}
+		r.run()
+	}
+
+	if n := r.sourceVersions(it); n != 3 {
+		t.Errorf("版本數 = %d，預期 3（5 次產生，只留最近 3 版）", n)
+	}
+	if n := artifactFiles(r, it.ID); n != 3 {
+		t.Errorf("產出檔 = %d 個，預期 3（舊版本的檔案要一併刪除）", n)
+	}
+	arts, err := r.st.Read().CurrentArtifacts(context.Background(), it.ID, "transcript")
+	if err != nil || len(arts) != 1 {
+		t.Fatalf("現行版本 = %+v, %v", arts, err)
+	}
+	// 留下的每個檔案都對應一筆記錄。
+	if _, err := os.Stat(filepath.Join(r.dir, filepath.FromSlash(arts[0].Path))); err != nil {
+		t.Errorf("現行版本的檔案不見了：%v", err)
+	}
+	// 清除後仍能讀取字幕，也能再重跑。
+	if tr, err := r.p.Cues(context.Background(), it.ID, CuesQuery{Variant: "source", ToMS: -1}); err != nil || len(tr.Cues) != 3 {
+		t.Errorf("cues = %+v, %v", tr, err)
+	}
+}
+
 func TestSupadataModeMustBeKnown(t *testing.T) {
 	r, _ := newSupadataRig(t)
 	it := r.ingest(watch, nil, StageTranscript)
@@ -227,6 +262,66 @@ func TestSupadataRejectedKeyBlocksWithFixAction(t *testing.T) {
 	st := r.stage(it, StageTranscript)
 	if st.Status != store.StatusBlocked || st.BlockReason != "needs_action" || len(st.Actions) != 1 || st.Actions[0] != "設定 API key" {
 		t.Errorf("transcript = %+v", st)
+	}
+}
+
+// 402：方案不支援，訊息要說明原因與出路，不能說成 key 被拒絕。
+func TestSupadataUnsupportedPlanBlocksWithPlanMessage(t *testing.T) {
+	r, sd := newSupadataRig(t)
+	sd.err = &errclass.Error{Class: errclass.ClassNeedsAction, Source: "supadata", Detail: "HTTP 402", Err: supadata.ErrPlanUnsupported}
+	it := r.ingest(watch, nil, StageTranscript)
+	r.run()
+
+	st := r.stage(it, StageTranscript)
+	if st.Status != store.StatusBlocked || st.BlockReason != "needs_action" {
+		t.Fatalf("transcript = %+v", st)
+	}
+	if !strings.Contains(st.Message, "方案不支援") || !strings.Contains(st.Message, "native") || strings.Contains(st.Message, "拒絕了 API key") {
+		t.Errorf("訊息 = %q", st.Message)
+	}
+}
+
+// 某個來源 permanent（請求有問題、非同步 job）時，記下原因後繼續下一個來源（SRC-R3）。
+func TestFallbackPermanentErrorMovesOnToTheNextSource(t *testing.T) {
+	r, sd := newSupadataRig(t)
+	sd.err = &errclass.Error{Class: errclass.ClassPermanent, Source: "supadata", Detail: "HTTP 400"}
+	next := &fakeSupadata{lang: "en", cues: 2}
+	r.p.fetchers["asr-fake"] = fallbackFetcher{
+		timing: "segment",
+		params: func(Language) any { return nil },
+		fetch: func(ctx context.Context, it store.Item, _ Language) (*supadata.Result, error) {
+			return next.Fetch(ctx, it.URL, "")
+		},
+	}
+	it := r.ingest(watch, fallbackOverride("supadata", "asr-fake"), StageTranscript)
+	r.run()
+
+	if st := r.stage(it, StageTranscript); st.Status != store.StatusDone {
+		t.Fatalf("transcript = %+v", st)
+	}
+	d, _ := r.p.Item(context.Background(), it.ID)
+	var got []string
+	for _, s := range d.Sources[len(d.Sources)-2:] {
+		got = append(got, s.SourceID+":"+s.State+":"+s.Reason)
+	}
+	if strings.Join(got, " ") != "supadata:unavailable:permanent asr-fake:used:" {
+		t.Errorf("sources = %v", got)
+	}
+}
+
+// 所有來源都用完仍沒有結果（含 permanent）：照 SRC-R5。
+func TestFallbackAllSourcesExhaustedFailsWithNoSourceMessage(t *testing.T) {
+	r, sd := newSupadataRig(t)
+	sd.err = &errclass.Error{Class: errclass.ClassPermanent, Source: "supadata", Detail: "回應為非同步任務（202）"}
+	it := r.ingest(watch, nil, StageTranscript)
+	r.run()
+
+	st := r.stage(it, StageTranscript)
+	if st.Status != store.StatusFailed || st.ErrorClass != "permanent" || st.Message != "找不到可用的字幕來源。" {
+		t.Fatalf("transcript = %+v", st)
+	}
+	if sd.calls() != 1 {
+		t.Errorf("permanent 不該重試：呼叫 %d 次", sd.calls())
 	}
 }
 

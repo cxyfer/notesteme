@@ -217,6 +217,33 @@ func TestRunWakesOnNotificationAndOnDueTime(t *testing.T) {
 	}
 }
 
+// 暫停的類別有到期的任務時，睡眠不能被它遮蔽：另一類的退避重試要準時醒來。
+func TestSleepIsNotShadowedByDueTasksThatCannotBeClaimed(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	if err := r.q.Control().Pause(ctx, queue.ResourceASR); err != nil {
+		t.Fatal(err)
+	}
+	r.addTaskIn(t, "paused", queue.ResourceASR, nil) // 到期但領不到
+	retryAt := r.clk.Now().Add(30 * time.Second)
+	r.addTaskIn(t, "retry", queue.ResourceDownload, &retryAt)
+
+	h := &recorder{st: r.st}
+	w := New(r.q, h, r.clk, quiet)
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { defer close(done); w.Run(runCtx) }()
+	defer func() {
+		cancel()
+		<-done
+	}()
+
+	// worker 應該為 30 秒後的任務設好計時器，而不是被領不到的 asr 任務逼得不睡。
+	waitFor(t, func() bool { return r.clk.PendingTimers() > 0 })
+	r.clk.Advance(30 * time.Second)
+	waitFor(t, func() bool { h.mu.Lock(); defer h.mu.Unlock(); return len(h.seen) == 1 })
+}
+
 func waitFor(t *testing.T, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)

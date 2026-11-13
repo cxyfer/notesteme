@@ -173,9 +173,11 @@ func (q *Queue) release(ctx context.Context, f func(*store.Repo) (int, error)) (
 	return n, err
 }
 
-// NextDue 回傳最早可以領取任務的時間；沒有 pending 任務時 ok 為 false。
-func (q *Queue) NextDue(ctx context.Context) (time.Time, bool, error) {
-	return q.st.Read().NextTaskTime(ctx, ExecutorBuiltin)
+// NextDue 回傳 not_before 晚於 after 的 pending 任務中最早的時間；沒有這樣的任務時 ok 為 false。
+// 已到期的任務不算（領不到的到期任務不能遮蔽之後才到期的重試），它們靠 Wake 喚醒 worker。
+// after 應該是這一輪領取「開始前」的時間，這樣領取期間才到期的任務不會漏掉。
+func (q *Queue) NextDue(ctx context.Context, after time.Time) (time.Time, bool, error) {
+	return q.st.Read().NextTaskTime(ctx, ExecutorBuiltin, after)
 }
 
 // WaitRecheckDefault 是 wait 類的結果沒有指定時間時，下一次檢查的間隔。

@@ -191,7 +191,7 @@ func (q *Queries) MarkStageRunning(ctx context.Context, arg MarkStageRunningPara
 }
 
 const resetRunningStage = `-- name: ResetRunningStage :one
-UPDATE stage_runs SET status = 'pending' WHERE id = ?1 AND status = 'running'
+UPDATE stage_runs SET status = 'pending', started_at = NULL WHERE id = ?1 AND status = 'running'
 RETURNING item_id, stage, status
 `
 
@@ -202,6 +202,7 @@ type ResetRunningStageRow struct {
 }
 
 // When a lease goes back to the queue, a stage still running returns to pending (no row when it was not running).
+// started_at is cleared: a run that was only claimed never really executed, so it must not be listed as executed.
 func (q *Queries) ResetRunningStage(ctx context.Context, id string) (ResetRunningStageRow, error) {
 	row := q.db.QueryRowContext(ctx, resetRunningStage, id)
 	var i ResetRunningStageRow

@@ -306,20 +306,27 @@ func TestRequeueTask(t *testing.T) {
 func TestNextTaskTime(t *testing.T) {
 	ctx := context.Background()
 	s, clk := openTest(t)
-	if _, ok, err := s.Read().NextTaskTime(ctx, "builtin"); err != nil || ok {
+	if _, ok, err := s.Read().NextTaskTime(ctx, "builtin", clk.Now()); err != nil || ok {
 		t.Fatalf("沒有任務：%v, %v", ok, err)
 	}
 	_, sr := seedItem(t, s, "a")
 	future := clk.Now().Add(time.Hour)
 	newTask(t, s, sr, 3, &future)
-	at, ok, err := s.Read().NextTaskTime(ctx, "builtin")
+	at, ok, err := s.Read().NextTaskTime(ctx, "builtin", clk.Now())
 	if err != nil || !ok || !at.Equal(future) {
 		t.Fatalf("NextTaskTime = %v, %v, %v", at, ok, err)
 	}
+	// 已到期的任務（not_before 為空，或不晚於 after）不遮蔽之後才到期的任務。
 	newTask(t, s, sr, 3, nil)
-	at, _, _ = s.Read().NextTaskTime(ctx, "builtin")
-	if !at.Equal(clk.Now()) {
-		t.Errorf("已有可領取的任務時應是現在，實際 %v", at)
+	soon := clk.Now().Add(30 * time.Second)
+	newTask(t, s, sr, 3, &soon)
+	at, ok, _ = s.Read().NextTaskTime(ctx, "builtin", clk.Now())
+	if !ok || !at.Equal(soon) {
+		t.Errorf("應是最早的未來時間 %v，實際 %v, %v", soon, at, ok)
+	}
+	// after 之後沒有更晚的任務。
+	if _, ok, _ := s.Read().NextTaskTime(ctx, "builtin", future); ok {
+		t.Error("不晚於 after 的任務不該被回傳")
 	}
 }
 

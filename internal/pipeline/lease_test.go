@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/subtitle"
 )
 
 // 任務的租約在重啟時被放回並由新的 worker 重新領取之後，舊的 worker 晚到的結果必須整份丟棄：
@@ -73,6 +75,68 @@ func TestLateResultAfterLeaseWasReclaimedIsDiscarded(t *testing.T) {
 	}
 	if got, _ := r.st.Read().Task(ctx, newTask.ID); got.State != store.TaskDone {
 		t.Errorf("任務應完成：%+v", got)
+	}
+}
+
+// artifactFiles 回傳影音的產出檔數量。
+func artifactFiles(r *rig, itemID string) int {
+	files, _ := os.ReadDir(filepath.Join(r.dir, artifactsDir, itemID))
+	return len(files)
+}
+
+// 執行到一半 ctx 被取消（關閉中）：產出檔已經寫出但不會 commit，要清掉，不留孤兒檔。
+func TestCancelledContextAfterWritingArtifactLeavesNoOrphanFile(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
+	it := r.ingest(watch, nil, "metadata")
+	r.run()
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageTranscript, Until: StageTranscript}); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := queue.New(r.st, r.clk, "w2").Claim(ctx, 5)
+	if err != nil || len(claimed) != 1 || claimed[0].Kind != StageTranscript {
+		t.Fatalf("claim = %+v, %v", claimed, err)
+	}
+
+	hctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	r.yt.mu.Lock()
+	r.yt.onVersion = cancel // 取消發生在字幕下載之後、產出檔寫出之前
+	r.yt.mu.Unlock()
+	if err := r.p.Handle(hctx, claimed[0]); err != nil {
+		t.Fatalf("ctx 取消不是錯誤：%v", err)
+	}
+	if n := artifactFiles(r, it.ID); n != 0 {
+		t.Errorf("ctx 取消後不該留下產出檔，還有 %d 個", n)
+	}
+	if run := latestStage(t, r, it.ID, StageTranscript); run.Status != store.StatusRunning {
+		t.Errorf("取消時不該改變步驟狀態：%+v", run)
+	}
+}
+
+// 寫回的交易因 ctx 取消而失敗：沒有記錄會指向產出檔，同樣要清掉。
+func TestApplyFailureLeavesNoOrphanFile(t *testing.T) {
+	r := newRig(t)
+	it := r.ingest(watch, nil, "metadata")
+	run := r.stage(it, StageMetadata)
+	art, err := r.p.newCuesArtifact(it.ID, subtitle.Transcript{Lang: "en", Variant: subtitle.VariantSource,
+		Cues: []subtitle.Cue{{Index: 1, StartMS: 0, EndMS: 1000, Text: "x", Timing: subtitle.TimingSource}}}, nil, json.RawMessage(`{"source":"t"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifactFiles(r, it.ID) != 1 {
+		t.Fatal("前置條件：產出檔應已寫出")
+	}
+
+	cctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	res := result{task: taskDone, artifact: art, stage: &store.StageResult{CacheKey: "k"}, state: store.StageState{Status: store.StatusDone}}
+	if err := r.p.apply(cctx, store.Task{ID: "t"}, run, it, res); err == nil {
+		t.Fatal("ctx 已取消，寫回應該失敗")
+	}
+	if n := artifactFiles(r, it.ID); n != 0 {
+		t.Errorf("寫回失敗後不該留下產出檔，還有 %d 個", n)
 	}
 }
 

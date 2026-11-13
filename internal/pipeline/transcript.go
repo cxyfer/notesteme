@@ -28,6 +28,9 @@ const (
 	// Supadata 拒絕 API key 時的訊息與修正動作（SRC-R10）。
 	msgSupadataKey = "Supadata 拒絕了 API key。請確認 API key 正確、帳號仍有額度。"
 	actionSetKey   = "設定 API key"
+	// Supadata 的方案不支援所選功能時（402）的訊息與修正動作。
+	msgSupadataPlan   = "Supadata 方案不支援這個功能。請升級方案，或把 supadata.mode 改為 native。"
+	actionUpgradePlan = "升級 Supadata 方案"
 	// 所有 fallback 來源都沒有設定（缺 API key 或尚未實作）時的訊息。
 	msgNoKey = "沒有可用的字幕來源：fallback 中的來源都還沒有設定 API key。"
 )
@@ -160,7 +163,8 @@ func newFetchers(d Deps) map[string]fallbackFetcher {
 
 // runFallback 在平台字幕都不符合時，依 language.fallback 的順序嘗試其他來源（SRC-R3）。
 // decisions 是平台字幕的選擇結果，這裡接著記錄每個被嘗試的來源（SRC-R17）。
-// 回傳的錯誤交給 classify 依類別處理；needs_action 在這裡直接轉成帶修正動作的 blocked 狀態。
+// 回傳的錯誤交給 classify 依類別處理（retryable 退避重試）；needs_action 在這裡直接轉成帶修正動作的
+// blocked 狀態；某個來源 permanent 時記下原因後繼續下一個來源（SRC-R3 依序用完）。
 //
 // 沒有設定（缺 API key、尚未實作）的來源記為 not_configured 並略過。所有來源都因此無法執行時，
 // 步驟是 blocked（needs_action，動作「設定 API key」），而不是 permanent 失敗；
@@ -182,13 +186,21 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: reasonNoTranscript})
 		case isNeedsAction(err):
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: string(errclass.ClassNeedsAction)})
-			return blockedForKey(stage, decisions, msgSupadataKey), nil
+			if errors.Is(err, supadata.ErrPlanUnsupported) {
+				return blockedFor(stage, decisions, msgSupadataPlan, actionUpgradePlan), nil
+			}
+			return blockedFor(stage, decisions, msgSupadataKey, actionSetKey), nil
+		case isPermanent(err):
+			// 這個來源的請求有問題（重試也不會好）：記下原因後繼續下一個來源；全部用完才照 SRC-R5。
+			// err 只含狀態碼等診斷資訊，不含 API key（NFR-SEC-3）。
+			p.log.Warn("字幕來源回報永久性錯誤，改用下一個來源", "source", id, "error", err)
+			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: string(errclass.ClassPermanent)})
 		default:
 			return result{}, err
 		}
 	}
 	if !executed && len(lang.Fallback) > 0 {
-		return blockedForKey(stage, decisions, msgNoKey), nil
+		return blockedFor(stage, decisions, msgNoKey, actionSetKey), nil
 	}
 	return result{
 		task: taskFailed, stage: stage, probes: toProbes(decisions),
@@ -198,13 +210,13 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 	}, nil
 }
 
-// blockedForKey 是需要使用者設定或更換 API key 的步驟結果（SRC-R10）。
-func blockedForKey(stage *store.StageResult, decisions []transcript.Decision, msg string) result {
+// blockedFor 是需要使用者處理的步驟結果（SRC-R10）：設定或更換 API key、升級方案。
+func blockedFor(stage *store.StageResult, decisions []transcript.Decision, msg, action string) result {
 	return result{
 		task: taskFailed, stage: stage, probes: toProbes(decisions),
 		state: store.StageState{
 			Status: store.StatusBlocked, BlockReason: string(errclass.ClassNeedsAction), ErrorClass: string(errclass.ClassNeedsAction),
-			Message: msg, Actions: []string{actionSetKey},
+			Message: msg, Actions: []string{action},
 		},
 	}
 }
@@ -241,6 +253,12 @@ func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, l
 func isNeedsAction(err error) bool {
 	c, ok := errclass.ClassOf(err)
 	return ok && c == errclass.ClassNeedsAction
+}
+
+// isPermanent 回報 err 是否為 permanent 類別。
+func isPermanent(err error) bool {
+	c, ok := errclass.ClassOf(err)
+	return ok && c == errclass.ClassPermanent
 }
 
 // sortedTracks 回傳排序後的字幕軌副本，讓快取鍵不受平台回報順序影響。

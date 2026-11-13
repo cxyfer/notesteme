@@ -310,12 +310,20 @@ func (q *Queries) ListQueueTasks(ctx context.Context, arg ListQueueTasksParams) 
 const nextTaskTime = `-- name: NextTaskTime :one
 SELECT CAST(COALESCE(not_before, 0) AS INTEGER) AS due_ms FROM tasks
 WHERE state = 'pending' AND executor = ?1
-ORDER BY COALESCE(not_before, 0) LIMIT 1
+  AND not_before IS NOT NULL AND not_before > CAST(?2 AS INTEGER)
+ORDER BY not_before LIMIT 1
 `
 
-// Earliest time a pending task can be claimed (NULL not_before counts as 0); no row when nothing is pending.
-func (q *Queries) NextTaskTime(ctx context.Context, executor string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, nextTaskTime, executor)
+type NextTaskTimeParams struct {
+	Executor string
+	AfterMs  int64
+}
+
+// Earliest not_before strictly after after_ms among pending tasks; no row when no pending task waits for a later time.
+// Tasks that are already due are left out on purpose: when they cannot be claimed (paused or full class),
+// they must not hide a later retry time. A wake-up covers the change that makes them claimable.
+func (q *Queries) NextTaskTime(ctx context.Context, arg NextTaskTimeParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, nextTaskTime, arg.Executor, arg.AfterMs)
 	var due_ms int64
 	err := row.Scan(&due_ms)
 	return due_ms, err

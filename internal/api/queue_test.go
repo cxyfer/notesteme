@@ -50,6 +50,8 @@ func TestQueueLimitsRejectBadInput(t *testing.T) {
 		"零":         `{"download": 0}`,
 		"負數":        `{"download": -3}`,
 		"不是整數":      `{"download": "many"}`,
+		"超過最大值":     `{"download": 65}`,
+		"極大的值":      `{"download": 1000000000}`,
 	} {
 		rec := r.owner("PATCH", "/api/queue/limits", body)
 		if rec.Code != 422 {
