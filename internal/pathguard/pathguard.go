@@ -83,22 +83,61 @@ func within(root, path string) bool {
 // 不先對 p 做 filepath.Clean：a/link/../b 在作業系統中是「先跟著 link 再往上」，
 // 與純字串的 Clean 結果不同。EvalSymlinks 依作業系統的語意處理既有的部分；
 // 不存在的部分不可能含有 symlink，才用字串方式化簡。
-func resolve(p string) (string, error) {
+func resolve(p string) (string, error) { return resolveDepth(p, 0) }
+
+// maxSymlinkDepth 是解析 dangling symlink 時最多跟隨的次數，防止迴圈；超過一律拒絕。
+const maxSymlinkDepth = 40
+
+// resolveDepth 是 resolve 的實作；depth 記錄已跟隨的 dangling symlink 次數。
+func resolveDepth(p string, depth int) (string, error) {
 	if !filepath.IsAbs(p) {
 		return "", errors.New("必須是絕對路徑")
+	}
+	if depth > maxSymlinkDepth {
+		return "", errors.New("symlink 層數過多")
 	}
 	sep := string(filepath.Separator)
 	cur := p
 	var tail []string // 從尾端依序切下來的元件
+	join := func(r string) string {
+		slices.Reverse(tail)
+		return filepath.Clean(filepath.Join(append([]string{r}, tail...)...))
+	}
 	for {
 		r, err := filepath.EvalSymlinks(cur)
 		if err == nil {
-			slices.Reverse(tail)
-			return filepath.Clean(filepath.Join(append([]string{r}, tail...)...)), nil
+			return join(r), nil
 		}
 		// 元件不存在，或前面的元件是檔案（ENOTDIR）：切掉最後一段再試。其他錯誤（權限、symlink 迴圈）拒絕。
 		if !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR) {
 			return "", err
+		}
+		// dangling symlink：EvalSymlinks 因目標不存在而失敗，但這個元件本身是 symlink，
+		// 不能當成不存在的元件切掉，必須解析它指向哪裡，再接上其餘的部分。
+		if fi, lerr := os.Lstat(cur); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(cur)
+			if err != nil {
+				return "", err
+			}
+			if !filepath.IsAbs(target) {
+				// 相對目標從 symlink 所在目錄起算。父目錄先解析（不能用會 Clean 的 filepath.Dir），
+				// 目標字串原樣接上，由遞迴依作業系統語意處理其中的 ".."。
+				i := strings.LastIndex(cur, sep)
+				parent := cur[:i]
+				if parent == "" {
+					parent = sep
+				}
+				rp, err := resolveDepth(parent, depth+1)
+				if err != nil {
+					return "", err
+				}
+				target = strings.TrimRight(rp, sep) + sep + target
+			}
+			rt, err := resolveDepth(target, depth+1)
+			if err != nil {
+				return "", err
+			}
+			return join(rt), nil
 		}
 		trimmed := strings.TrimRight(cur, sep)
 		i := strings.LastIndex(trimmed, sep)
