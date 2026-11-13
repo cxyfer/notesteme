@@ -41,7 +41,7 @@ func TestStandaloneIngestAndRunUntilIdle(t *testing.T) {
 		t.Fatalf("lock info = %+v, %v", info, err)
 	}
 	// standalone 沒有 socket。
-	if _, err := os.Lstat(socketPath(env.Vars["NOTESTEME_DATA"])); err == nil {
+	if _, err := os.Lstat(SocketPath(env.Vars["NOTESTEME_DATA"])); err == nil {
 		t.Error("standalone 不應該建立 socket")
 	}
 
@@ -126,7 +126,7 @@ func TestOpenStandaloneWhileServeHoldsLock(t *testing.T) {
 		t.Fatalf("err = %v，預期 store.ErrLocked", err)
 	}
 	info, err := store.ReadLockInfo(env.Vars["NOTESTEME_DATA"])
-	if err != nil || info == nil || info.Holder != "serve" || info.Socket != socketPath(env.Vars["NOTESTEME_DATA"]) || info.Listen != srv.Addr() {
+	if err != nil || info == nil || info.Holder != "serve" || info.Socket != SocketPath(env.Vars["NOTESTEME_DATA"]) || info.Listen != srv.Addr() {
 		t.Errorf("lock info = %+v, %v", info, err)
 	}
 }

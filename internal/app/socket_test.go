@@ -53,7 +53,7 @@ func TestSocketNeedsNoCredentialsButTCPDoes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer srv.Kill()
-	sock := socketPath(env.Vars["NOTESTEME_DATA"])
+	sock := SocketPath(env.Vars["NOTESTEME_DATA"])
 	uc := unixClient(t, sock)
 
 	if code, body := statusOf(t, uc, "GET", "http://local/api/items", ""); code != 200 {
@@ -100,7 +100,7 @@ func TestSocketIngestPublishesItemCreated(t *testing.T) {
 	}
 	defer sub.Close()
 
-	uc := unixClient(t, socketPath(env.Vars["NOTESTEME_DATA"]))
+	uc := unixClient(t, SocketPath(env.Vars["NOTESTEME_DATA"]))
 	code, body := statusOf(t, uc, "POST", "http://local/api/items", `{"url":"https://www.youtube.com/watch?v=abcdefghijk"}`)
 	if code != 201 {
 		t.Fatalf("POST /api/items = %d %s", code, body)
@@ -118,7 +118,7 @@ func TestSocketIngestPublishesItemCreated(t *testing.T) {
 // 正常關閉移除 socket；Kill 不移除，下次啟動時清掉；遺留的 socket 不會擋住啟動。
 func TestSocketLifecycle(t *testing.T) {
 	env := testEnv(t)
-	sock := socketPath(env.Vars["NOTESTEME_DATA"])
+	sock := SocketPath(env.Vars["NOTESTEME_DATA"])
 	exists := func() bool { _, err := os.Lstat(sock); return err == nil }
 
 	srv, err := StartServer(t.Context(), env)
@@ -156,7 +156,7 @@ func TestSocketPathOccupiedByFile(t *testing.T) {
 	if err := os.MkdirAll(data, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	path := socketPath(data)
+	path := SocketPath(data)
 	if err := os.WriteFile(path, []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
 	}

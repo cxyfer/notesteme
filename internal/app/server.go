@@ -58,7 +58,7 @@ type Server struct {
 	lock  *store.DirLock
 
 	// sockLn、sockHTTP 是本機 Unix socket（/data/notesteme.sock）與它的 http.Server，只有 serve 有；
-	// 它的 handler 是 api.NewLocal，不驗證 cookie 與 CSRF，見 socket.go。
+	// 它的 handler 是 api.NewLocal，不驗證 cookie 與 CSRF，見 socket.go。路徑太長時略過，三者都是 nil。
 	sockLn   net.Listener
 	sockHTTP *http.Server
 	sockDone chan struct{} // sockHTTP.Serve 結束時關閉
@@ -122,32 +122,36 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("監聽 %s 失敗：%w", cfg.Listen, err)
 	}
-	// 本機 Unix socket 在 TCP 之後建立：路徑太長之類的錯誤也要讓整個啟動失敗，client 模式的 CLI 才找得到 serve。
+	// 本機 Unix socket 在 TCP 之後建立。路徑太長時 sockLn 為 nil（已 log Warn）：略過 socket，鎖檔的 Socket 留空。
 	if s.sockLn, err = listenSocket(env, cfg.Data, log); err != nil {
 		return nil, err
 	}
-	if err := s.lock.WriteInfo(store.LockInfo{
-		Holder: holderServe, PID: os.Getpid(), Listen: s.ln.Addr().String(), Socket: socketPath(cfg.Data),
-	}); err != nil {
+	info := store.LockInfo{Holder: holderServe, PID: os.Getpid(), Listen: s.ln.Addr().String()}
+	if s.sockLn != nil {
+		info.Socket = SocketPath(cfg.Data)
+	}
+	if err := s.lock.WriteInfo(info); err != nil {
 		return nil, fmt.Errorf("寫入鎖檔失敗：%w", err)
 	}
 
 	deps := s.apiDeps(env)
 	s.http = s.newHTTPServer(api.New(deps))
-	s.sockHTTP = s.newHTTPServer(api.NewLocal(deps))
-	s.sockDone = make(chan struct{})
 	go func() {
 		defer close(s.done)
 		if err := s.http.Serve(s.ln); !errors.Is(err, http.ErrServerClosed) {
 			s.serveErr = err
 		}
 	}()
-	go func() {
-		defer close(s.sockDone)
-		if err := s.sockHTTP.Serve(s.sockLn); !errors.Is(err, http.ErrServerClosed) {
-			log.Error("本機 socket 停止服務", "error", err)
-		}
-	}()
+	if s.sockLn != nil {
+		s.sockHTTP = s.newHTTPServer(api.NewLocal(deps))
+		s.sockDone = make(chan struct{})
+		go func() {
+			defer close(s.sockDone)
+			if err := s.sockHTTP.Serve(s.sockLn); !errors.Is(err, http.ErrServerClosed) {
+				log.Error("本機 socket 停止服務", "error", err)
+			}
+		}()
+	}
 
 	started = true
 	log.InfoContext(ctx, "server started", "listen", s.ln.Addr().String(), "data", cfg.Data)
@@ -278,14 +282,19 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		var errs []error
 		s.worker.StopClaiming()
 		for _, srv := range []*http.Server{s.http, s.sockHTTP} {
+			if srv == nil {
+				continue
+			}
 			if err := srv.Shutdown(ctx); err != nil {
 				errs = append(errs, err)
 				_ = srv.Close() // 等不到就強制中斷，避免資源殘留
 			}
 		}
 		<-s.done
-		<-s.sockDone
-		removeSocket(s.cfg.Data) // 正常關閉才移除 socket 檔；Kill 不移除，下次啟動時清掉
+		if s.sockLn != nil {
+			<-s.sockDone
+			removeSocket(s.cfg.Data) // 正常關閉才移除 socket 檔；Kill 不移除，下次啟動時清掉
+		}
 		errs = append(errs, s.drainAndClose(ctx))
 		s.closeErr = errors.Join(errs...)
 	})
@@ -315,9 +324,11 @@ func (s *Server) Kill() {
 		s.cancel()
 		keepSocket(s.sockLn) // 模擬程序中斷：socket 檔留著，下次啟動清掉
 		_ = s.http.Close()
-		_ = s.sockHTTP.Close()
 		<-s.done
-		<-s.sockDone
+		if s.sockLn != nil {
+			_ = s.sockHTTP.Close()
+			<-s.sockDone
+		}
 		s.stopWorker() // 不釋放租約：模擬程序被中斷
 		_ = s.store.Close()
 		_ = s.lock.Close()
