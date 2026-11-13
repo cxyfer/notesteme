@@ -30,7 +30,11 @@ type Error struct {
 	ExitCode int
 	// Detail 是工具輸出的摘要，只供 log 與診斷。
 	Detail string
-	Err    error
+	// Message 與 Actions 是給使用者看的訊息與修正動作（SRC-R9）；只有 needs_action 這類
+	// 使用者要處理的錯誤會填。空的 Message 表示沒有具體說明，由呼叫端用通用訊息。
+	Message string
+	Actions []string
+	Err     error
 }
 
 func (e *Error) Error() string {
