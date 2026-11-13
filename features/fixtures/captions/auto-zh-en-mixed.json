@@ -1,0 +1,15 @@
+WEBVTT
+Kind: captions
+Language: zh
+
+00:00:01.000 --> 00:00:03.000
+今天我們來聊聊 database 的 index
+
+00:00:03.000 --> 00:00:06.000
+先說明 B-tree 為什麼適合 range query
+
+00:00:06.000 --> 00:00:09.000
+然後比較 hash index 跟 covering index
+
+00:00:09.000 --> 00:00:12.000
+最後看一個 real world 的 migration 案例

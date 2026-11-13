@@ -67,7 +67,7 @@ type World struct {
 	// Log 是 serve 的 log 輸出，見 AppEnv。
 	Log *LogBuffer
 
-	// ImplVersions 是 server 還沒啟動時累積的步驟 impl_version 覆寫（PIPE-R6），見 AppEnv。
+	// ImplVersions 是步驟 impl_version 的覆寫（PIPE-R6），見 AppEnv。server 已啟動時也會寫入，重啟後覆寫仍然存在。
 	ImplVersions map[string]int
 
 	listenMu sync.Mutex
@@ -207,29 +207,40 @@ func (w *World) OpenGate() error {
 	return nil
 }
 
-// GateWaiting 回傳目前停在 gate 前的程序數。
+// GateWaiting 回傳目前停在 gate 前且仍存活的程序數。
+// 被 kill 的程序不會移除自己的標記檔，所以只數存活的：已結束的程序不能算成「還在執行」，
+// 也不會讓 WaitGateWaiting 的 before+n 偏掉。
 func (w *World) GateWaiting() (int, error) {
 	if w.Tools.Gate == "" {
 		return 0, nil
 	}
-	marks, err := faketool.GateWaiting(w.Tools.Gate)
-	return len(marks), err
+	return faketool.GateAlive(w.Tools.Gate)
 }
 
-// WaitGateWaiting 等到至少 n 個程序停在 gate 前。只以真實時間 limit 防止卡死；
-// 結果由標記檔決定，不靠睡一段固定時間。
+// WaitGateWaiting 等到至少 n 個存活的程序停在 gate 前。只以真實時間 limit 防止卡死；
+// 結果由標記檔與程序是否存活決定，不靠睡一段固定時間。
 func (w *World) WaitGateWaiting(n int, limit time.Duration) error {
+	return w.waitGate(limit, func(got int) bool { return got >= n }, fmt.Sprintf("至少 %d", n))
+}
+
+// WaitGateCount 等到恰好 n 個存活的程序停在 gate 前，用來確認工作確實被停止（或確實在執行）。
+// 程序結束可能有短暫延遲，所以輪詢；limit 只防止卡死。
+func (w *World) WaitGateCount(n int, limit time.Duration) error {
+	return w.waitGate(limit, func(got int) bool { return got == n }, fmt.Sprintf("恰好 %d", n))
+}
+
+func (w *World) waitGate(limit time.Duration, ok func(int) bool, want string) error {
 	deadline := time.Now().Add(limit)
 	for {
 		got, err := w.GateWaiting()
 		if err != nil {
 			return err
 		}
-		if got >= n {
+		if ok(got) {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("等待 %d 個程序停在 gate 前，%v 內只有 %d 個", n, limit, got)
+			return fmt.Errorf("等待%s 個存活的程序停在 gate 前，%v 內變成 %d 個", want, limit, got)
 		}
 		time.Sleep(5 * time.Millisecond)
 	}

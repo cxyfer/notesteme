@@ -2,9 +2,11 @@ package harness
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/netip"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -240,9 +242,14 @@ func TestGateArmAndOpen(t *testing.T) {
 		t.Fatalf("狀態檔的 Gate = %q, %v", st.Gate, err)
 	}
 
-	// 兩個程序停在 gate 前；再次 ArmGate 不會清掉它們的標記。
-	for _, name := range []string{".waiting.101", ".waiting.102"} {
-		if err := os.WriteFile(w.GatePath()+name, nil, 0o644); err != nil {
+	// 兩個存活的程序停在 gate 前（用測試程序自己與它的父程序代表）；再次 ArmGate 不會清掉它們的標記。
+	// 另外一個標記屬於已結束的程序（被 kill 而來不及移除標記），不能算數。
+	dead := exec.Command(os.Args[0], "-test.run=^$")
+	if err := dead.Run(); err != nil {
+		t.Fatal(err)
+	}
+	for _, pid := range []int{os.Getpid(), os.Getppid(), dead.Process.Pid} {
+		if err := os.WriteFile(fmt.Sprintf("%s.waiting.%d", w.GatePath(), pid), nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -250,13 +257,19 @@ func TestGateArmAndOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n, _ := w.GateWaiting(); n != 2 {
-		t.Fatalf("GateWaiting = %d，預期 2", n)
+		t.Fatalf("GateWaiting = %d，預期 2（已結束的程序不算）", n)
 	}
 	if err := w.WaitGateWaiting(2, time.Second); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.WaitGateWaiting(3, 30*time.Millisecond); err == nil {
 		t.Fatal("只有 2 個程序就位，等 3 個應逾時")
+	}
+	if err := w.WaitGateCount(2, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.WaitGateCount(1, 30*time.Millisecond); err == nil {
+		t.Fatal("有 2 個程序存活，等恰好 1 個應逾時")
 	}
 
 	// 解除：gate 檔與（可能是被 kill 的程序留下的）標記都清掉；可再次啟用。

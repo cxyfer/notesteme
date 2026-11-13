@@ -152,9 +152,16 @@ func (s *Scenario) serverShutsDown() error {
 	defer cancel()
 	srv := s.server
 	s.server = nil
+	// 場景明確讓 server 停下：之後讀取狀態的步驟直接查資料庫，不隱含啟動新的 server。
+	s.stopped = true
 	if err := srv.Shutdown(ctx); err != nil {
 		srv.Kill()
 		return fmt.Errorf("正常關閉失敗：%w", err)
+	}
+	// 測試中的寬限期是 0，關閉應該立即完成。Drain 沒有取消仍在執行的任務時，會一直等到 ctx 的期限才放回租約
+	// （Shutdown 不回報錯誤），這裡用期限是否用完來抓出它。
+	if ctx.Err() != nil {
+		return fmt.Errorf("正常關閉用盡了時間上限：執行中的任務沒有被取消？（%w）", ctx.Err())
 	}
 	return nil
 }

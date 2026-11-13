@@ -243,13 +243,22 @@ func TestRequiresAPIKey(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("key 不符應為 401: %d", rec.Code)
 	}
+	// Supadata 只接受 x-api-key；Authorization: Bearer 不算數。
+	req.Header.Del("x-api-key")
+	req.Header.Set("Authorization", "Bearer k-123")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("Bearer 不應被接受: %d", rec.Code)
+	}
+	req.Header.Del("Authorization")
 	req.Header.Set("x-api-key", "k-123")
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != 200 {
 		t.Fatalf("key 正確應為 200: %d", rec.Code)
 	}
-	if s.Calls("supadata") != 3 {
+	if s.Calls("supadata") != 4 {
 		t.Fatalf("被拒絕的請求也要計入：%d", s.Calls("supadata"))
 	}
 }
