@@ -26,7 +26,7 @@ func TestCheckIPBlocksNonPublicAddresses(t *testing.T) {
 		"255.255.255.255", "240.0.0.1",
 	}
 	for _, s := range blocked {
-		if err := checkIP(netip.MustParseAddr(s), nil); !errors.Is(err, ErrBlockedAddress) {
+		if err := checkIP("", netip.MustParseAddr(s), Allowlist{}); !errors.Is(err, ErrBlockedAddress) {
 			t.Errorf("%s 應被擋下：%v", s, err)
 		}
 	}
@@ -35,30 +35,30 @@ func TestCheckIPBlocksNonPublicAddresses(t *testing.T) {
 		"2606:2800:220:1:248:1893:25c8:1946", "64:ff9b::808:808", "::ffff:8.8.8.8",
 	}
 	for _, s := range allowed {
-		if err := checkIP(netip.MustParseAddr(s), nil); err != nil {
+		if err := checkIP("", netip.MustParseAddr(s), Allowlist{}); err != nil {
 			t.Errorf("%s 應放行：%v", s, err)
 		}
 	}
 }
 
 func TestAllowlistOpensRangesButNeverMetadata(t *testing.T) {
-	allow := []netip.Prefix{
+	allow := Allowlist{Prefixes: []netip.Prefix{
 		netip.MustParsePrefix("10.0.0.0/8"),
 		netip.MustParsePrefix("169.254.0.0/16"),
 		netip.MustParsePrefix("fd00::/8"),
 		netip.MustParsePrefix("100.64.0.0/10"),
-	}
+	}}
 	for _, s := range []string{"10.1.2.3", "169.254.1.1", "fd00::1", "100.64.0.1"} {
-		if err := checkIP(netip.MustParseAddr(s), allow); err != nil {
+		if err := checkIP("", netip.MustParseAddr(s), allow); err != nil {
 			t.Errorf("%s 在 allowlist 內，應放行：%v", s, err)
 		}
 	}
 	for _, s := range []string{"169.254.169.254", "fd00:ec2::254", "100.100.100.200", "::ffff:169.254.169.254"} {
-		if err := checkIP(netip.MustParseAddr(s), allow); !errors.Is(err, ErrBlockedAddress) {
+		if err := checkIP("", netip.MustParseAddr(s), allow); !errors.Is(err, ErrBlockedAddress) {
 			t.Errorf("metadata 位址 %s 不能被 allowlist 開放：%v", s, err)
 		}
 	}
-	if err := checkIP(netip.MustParseAddr("192.168.1.1"), allow); !errors.Is(err, ErrBlockedAddress) {
+	if err := checkIP("", netip.MustParseAddr("192.168.1.1"), allow); !errors.Is(err, ErrBlockedAddress) {
 		t.Errorf("不在 allowlist 內仍要擋下：%v", err)
 	}
 }
@@ -175,7 +175,7 @@ func TestDialPassesTimeoutToDialer(t *testing.T) {
 		return nil, errors.New("refused")
 	})
 	start := time.Now()
-	_, _ = dial(context.Background(), stubResolver{ips: []netip.Addr{netip.MustParseAddr("93.184.216.34")}}, d, nil, "tcp", "example.com:80")
+	_, _ = dial(context.Background(), stubResolver{ips: []netip.Addr{netip.MustParseAddr("93.184.216.34")}}, d, Allowlist{}, "tcp", "example.com:80")
 	if !ok {
 		t.Fatal("Dialer 的 ctx 應有 deadline")
 	}

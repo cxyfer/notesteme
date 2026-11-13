@@ -51,8 +51,10 @@ type Deps struct {
 	Dialer   Dialer
 	// RootCAs 為 TLS 驗證用的根憑證；nil 代表使用系統的根憑證。
 	RootCAs *x509.CertPool
-	// Allowlist 是明確允許連線的位址範圍（之後由設定檔提供，預設為空），
-	// 例如家用網路內自架的 Podcast feed。雲端 metadata 位址永遠不會被它開放（ADR-0014）。
+	// AllowPrivate 是設定檔 network.allow_private 解析後的結果（GRD-R3，預設為空）：
+	// 明確允許的網段與主機名稱，例如自架的 RSSHub、NAS。雲端 metadata 位址永遠不會被它開放（ADR-0014）。
+	AllowPrivate Allowlist
+	// Allowlist 是額外允許的網段，與 AllowPrivate.Prefixes 合併使用；保留給只需要網段的呼叫端。
 	Allowlist []netip.Prefix
 }
 
@@ -81,10 +83,15 @@ var blockedPrefixes = []netip.Prefix{
 var nat64 = netip.MustParsePrefix("64:ff9b::/96")
 
 // checkIP 依政策檢查要連線的 IP；被擋下時回傳包含 ErrBlockedAddress 的錯誤。
+// host 是網址中的主機名稱（IP 字面值時為 IP 字串）。
 // 擋下：loopback、RFC 1918 私有網段與 fc00::/7、link-local（169.254.0.0/16、fe80::/10）、
 // CGNAT、unspecified、multicast、保留網段與雲端 metadata 位址。
-// allow 內的位址放行，但 metadata 位址不受 allowlist 影響。
-func checkIP(ip netip.Addr, allow []netip.Prefix) error {
+// 判斷順序：
+//  1. metadata 位址一律擋下，不受 allowlist 影響。
+//  2. IP 在 allowlist 的網段內就放行。
+//  3. host 在 allowlist 的主機名稱內就放行。
+//  4. 其餘套用預設規則。
+func checkIP(host string, ip netip.Addr, allow Allowlist) error {
 	ip = ip.Unmap().WithZone("")
 	if !ip.IsValid() {
 		return fmt.Errorf("%w: 無效的位址", ErrBlockedAddress)
@@ -92,15 +99,13 @@ func checkIP(ip netip.Addr, allow []netip.Prefix) error {
 	if nat64.Contains(ip) {
 		b := ip.As16()
 		// 內嵌的 IPv4 被擋下，這個 NAT64 位址就也被擋下。
-		return checkIP(netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}), allow)
+		return checkIP(host, netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}), allow)
 	}
 	if slices.Contains(metadataAddrs, ip) {
 		return fmt.Errorf("%w: %s 是雲端 metadata 位址", ErrBlockedAddress, ip)
 	}
-	for _, p := range allow {
-		if p.Contains(ip) {
-			return nil
-		}
+	if allow.containsIP(ip) || allow.containsHost(host) {
+		return nil
 	}
 	blocked := ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
 		ip.IsInterfaceLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified()
@@ -144,7 +149,11 @@ func SystemDeps() Deps {
 // 通過的才交給 Dialer；全部被擋下時錯誤符合 ErrBlockedAddress。
 // 每次連線嘗試有 10 秒逾時。
 func Transport(d Deps) *http.Transport {
-	res, dialer, allow := d.Resolver, d.Dialer, slices.Clone(d.Allowlist)
+	res, dialer := d.Resolver, d.Dialer
+	allow := Allowlist{
+		Prefixes: append(slices.Clone(d.AllowPrivate.Prefixes), d.Allowlist...),
+		Hosts:    slices.Clone(d.AllowPrivate.Hosts),
+	}
 	return &http.Transport{
 		// 不使用環境變數的 proxy，避免繞過檢查。
 		Proxy: nil,
@@ -158,7 +167,7 @@ func Transport(d Deps) *http.Transport {
 	}
 }
 
-func dial(ctx context.Context, res Resolver, dialer Dialer, allow []netip.Prefix, network, addr string) (net.Conn, error) {
+func dial(ctx context.Context, res Resolver, dialer Dialer, allow Allowlist, network, addr string) (net.Conn, error) {
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
@@ -179,21 +188,26 @@ func dial(ctx context.Context, res Resolver, dialer Dialer, allow []netip.Prefix
 	if len(ips) == 0 {
 		return nil, fmt.Errorf("netguard: no addresses for %q", host)
 	}
-	var errs []error
+	var blockedErrs, dialErrs []error
 	for _, ip := range ips {
 		ip = ip.Unmap()
-		// 只連通過政策的 IP；被擋下的略過，全部被擋下時錯誤符合 ErrBlockedAddress。
-		if err := checkIP(ip, allow); err != nil {
-			errs = append(errs, fmt.Errorf("%w（主機 %s）", err, host))
+		// 只連通過政策的 IP；被擋下的略過。
+		if err := checkIP(host, ip, allow); err != nil {
+			blockedErrs = append(blockedErrs, fmt.Errorf("%w（主機 %s）", err, host))
 			continue
 		}
 		conn, err := dialWithTimeout(ctx, dialer, Target{Network: "tcp", Host: host, IP: ip, Port: uint16(port)})
 		if err == nil {
 			return conn, nil
 		}
-		errs = append(errs, err)
+		dialErrs = append(dialErrs, err)
 	}
-	return nil, errors.Join(errs...)
+	if len(dialErrs) == 0 {
+		// 全部被擋下才算被封鎖（GRD-R2）。
+		return nil, errors.Join(blockedErrs...)
+	}
+	// 有通過檢查的 IP 但連線失敗：這是連線錯誤，不是封鎖。
+	return nil, errors.Join(dialErrs...)
 }
 
 // dialWithTimeout 對單一 Target 連線，逾時 dialTimeout。

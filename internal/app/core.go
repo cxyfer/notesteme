@@ -96,7 +96,7 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 		return nil, fmt.Errorf("寫入鎖檔失敗：%w", err)
 	}
 
-	s := &Server{cfg: cfg, log: log, netw: env.Net, lock: lock, done: make(chan struct{}), grace: shutdownGrace}
+	s := &Server{cfg: cfg, log: log, netw: netDeps(env.Net, cfg), lock: lock, done: make(chan struct{}), grace: shutdownGrace}
 	if env.Test != nil && env.Test.SkipShutdownGrace {
 		s.grace = 0
 	}
