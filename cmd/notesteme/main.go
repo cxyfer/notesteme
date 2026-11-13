@@ -11,13 +11,14 @@ import (
 	"syscall"
 
 	"github.com/cxyfer/notesteme/internal/app"
+	"github.com/cxyfer/notesteme/internal/cli"
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/netguard"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	code := app.Run(ctx, os.Args[1:], app.IO{
+	res := cli.Execute(ctx, os.Args[1:], app.IO{
 		Stdin:  os.Stdin,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
@@ -30,7 +31,7 @@ func main() {
 		Log:    os.Stderr,
 	})
 	stop()
-	os.Exit(code)
+	os.Exit(res.Code)
 }
 
 // environ 把 KEY=VALUE 形式的環境變數轉成 map。
