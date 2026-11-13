@@ -186,7 +186,7 @@ func (s *Scenario) hasTranscriptSource(ref string) bool {
 	for _, t := range v.Tracks {
 		tracks = append(tracks, transcript.Track{Lang: t.Lang, Kind: t.Kind})
 	}
-	chosen, _ := transcript.Select(tracks, v.Language, pipeline.DefaultLanguage().CaptionPriority, false)
+	chosen, _ := transcript.Select(tracks, s.declaredLanguage(ref, v), pipeline.DefaultLanguage().CaptionPriority, false)
 	return chosen != nil
 }
 
