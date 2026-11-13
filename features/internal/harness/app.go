@@ -37,7 +37,13 @@ type ListenRecord struct {
 
 // Listen 是 app.Env.Listen 的測試版：不論設定的位址為何，一律綁 127.0.0.1:0，
 // 並記錄設定值與實際位址的對照，避免場景之間搶同一個 port。
+//
+// "unix" 照原樣 listen、也不記錄：路徑由 serve 決定（資料目錄下的 notesteme.sock），
+// 場景之間本來就不會重複，而 World.Root 刻意用很短的暫存路徑，讓它不會超過 sockaddr_un 的長度上限。
 func (w *World) Listen(network, addr string) (net.Listener, error) {
+	if network == "unix" {
+		return net.Listen(network, addr)
+	}
 	ln, err := net.Listen(network, "127.0.0.1:0")
 	if err != nil {
 		return nil, err

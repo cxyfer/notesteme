@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -34,6 +35,23 @@ func TestListenBindsLoopbackAndRecords(t *testing.T) {
 	}
 	if !strings.HasPrefix(ln.Addr().String(), "127.0.0.1:") {
 		t.Errorf("addr = %s, want a 127.0.0.1 port", ln.Addr())
+	}
+}
+
+// "unix" 照原樣 listen，而且不記進 Listens（那是 TCP 位址的對照）。
+func TestListenUnixAsIs(t *testing.T) {
+	w := NewT(t)
+	path := filepath.Join(w.Root, "t.sock")
+	ln, err := w.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	if ln.Addr().Network() != "unix" || ln.Addr().String() != path {
+		t.Errorf("addr = %s %s", ln.Addr().Network(), ln.Addr())
+	}
+	if got := w.Listens(); len(got) != 0 {
+		t.Errorf("listens = %+v，unix 不應該被記錄", got)
 	}
 }
 

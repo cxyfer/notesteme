@@ -68,7 +68,7 @@ func TestRunServeUnknownArgument(t *testing.T) {
 // testEnv 回傳指向暫存資料目錄的 Env，listener 綁在 127.0.0.1:0。
 func testEnv(t *testing.T) Env {
 	t.Helper()
-	root := t.TempDir()
+	root := shortTempDir(t)
 	// /readyz 要求 ffmpeg 與 yt-dlp 可執行：放兩個空的可執行檔到 PATH。
 	bin := filepath.Join(root, "bin")
 	if err := os.MkdirAll(bin, 0o755); err != nil {
@@ -88,9 +88,28 @@ func testEnv(t *testing.T) Env {
 			"NOTESTEME_MASTER_KEY": "mk",
 		},
 		Clock:  clock.NewFake(time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)),
-		Listen: func(_, _ string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") },
+		Listen: testListen,
 		Test:   &TestControls{LowCostHashing: true},
 	}
+}
+
+// shortTempDir 建立很短的暫存目錄：t.TempDir 含測試名稱，可能超過 Unix socket 的路徑長度上限。
+func shortTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "nst")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
+// testListen 把 TCP 綁在 127.0.0.1:0，"unix" 照原樣 listen（與 harness.World.Listen 相同）。
+func testListen(network, addr string) (net.Listener, error) {
+	if network == "unix" {
+		return net.Listen(network, addr)
+	}
+	return net.Listen("tcp", "127.0.0.1:0")
 }
 
 func get(t *testing.T, addr, path string) int {

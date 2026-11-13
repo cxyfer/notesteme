@@ -54,9 +54,11 @@ func TestStageEventsPublishedAfterCommit(t *testing.T) {
 	if seenInTx != 0 {
 		t.Errorf("交易還沒 commit 就發布了 %d 個事件", seenInTx)
 	}
+	// 影音新增的事件排在步驟事件之前（寫入的順序）。
+	created := events.Event{Type: "item.created", Item: "yt:abc123", ItemID: it.ID}
 	want := events.Event{Type: "stage.status", Item: "yt:abc123", ItemID: it.ID, Stage: "metadata", Status: "pending"}
-	if evs := got(); len(evs) != 1 || evs[0] != want {
-		t.Fatalf("事件 = %+v，預期 [%+v]", evs, want)
+	if evs := got(); len(evs) != 2 || evs[0] != created || evs[1] != want {
+		t.Fatalf("事件 = %+v，預期 [%+v %+v]", evs, created, want)
 	}
 
 	// 單一陳述句：成功後立即發布。
@@ -64,8 +66,8 @@ func TestStageEventsPublishedAfterCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	evs := got()
-	if len(evs) != 2 || evs[1].Status != "done" || evs[1].Item != "yt:abc123" {
-		t.Fatalf("事件 = %+v，預期第二個是 done", evs)
+	if len(evs) != 3 || evs[2].Status != "done" || evs[2].Item != "yt:abc123" {
+		t.Fatalf("事件 = %+v，預期第三個是 done", evs)
 	}
 }
 

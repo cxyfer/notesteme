@@ -61,6 +61,9 @@ func (r *Repo) InsertItemIfAbsent(ctx context.Context, n NewItem) (it Item, crea
 	}
 	if rows > 0 {
 		it, err = r.ItemByID(ctx, id)
+		if err == nil {
+			r.emitItemCreated(it)
+		}
 		return it, true, err
 	}
 	it, err = r.ItemByKey(ctx, n.Platform, n.ExternalID, n.Part)
