@@ -1,6 +1,6 @@
 # PIPE：Pipeline 與任務佇列
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M1（chunk 任務與 Agent executor 在 M2，見 LLM、AGT）
 - 相關：plan 第 5、9 節；ADR-0002、ADR-0004；UI [佇列](../ui/pages.md#6-佇列)
 - 驗收場景：[`features/PIPE-pipeline-queue.feature`](../../features/PIPE-pipeline-queue.feature)
