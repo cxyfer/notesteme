@@ -108,7 +108,7 @@ type plan struct {
 var errHelp = errors.New("help")
 
 // Execute 執行一個子命令。args 不含程式名稱。
-func Execute(ctx context.Context, args []string, stdio app.IO, env app.Env) Result {
+func Execute(ctx context.Context, args []string, stdio app.IO, env app.Env) (res Result) {
 	if stdio.Stdout == nil {
 		stdio.Stdout = io.Discard
 	}
@@ -166,11 +166,7 @@ func Execute(ctx context.Context, args []string, stdio app.IO, env app.Env) Resu
 		if be.warn != "" {
 			fmt.Fprintf(stdio.Stderr, "notesteme: 警告：%s\n", be.warn)
 		}
-		defer func() {
-			if err := be.close(); err != nil {
-				fmt.Fprintf(stdio.Stderr, "notesteme: 關閉時發生錯誤：%v\n", err)
-			}
-		}()
+		defer func() { res = withCloseError(res, be.close(), stdio.Stderr) }()
 	}
 
 	code, err := p.run(ctx, s)
@@ -250,3 +246,16 @@ const usageText = `用法：notesteme <子命令> [旗標]
 全域旗標：--server <url> --token <t> --data <dir> --json
 結束碼：0 成功、1 執行錯誤、2 參數錯誤、3 需要使用者處理、4 等待中
 `
+
+// withCloseError 把關閉時的錯誤反映到結束碼：獨立模式關閉時要放回租約、關閉 DB、釋放鎖，
+// 失敗代表這次操作沒有完整收尾，不能回報成功。已經是非 0 的結束碼保留原狀（比較具體）。
+func withCloseError(res Result, err error, stderr io.Writer) Result {
+	if err == nil {
+		return res
+	}
+	fmt.Fprintf(stderr, "notesteme: 關閉時發生錯誤：%v\n", err)
+	if res.Code == exitOK {
+		res.Code = exitError
+	}
+	return res
+}
