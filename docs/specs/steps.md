@@ -135,7 +135,7 @@
 
 | 步驟 | 意思 |
 |---|---|
-| `Given a YouTube video {string} titled {string}` | 建立 fake 的 YouTube 影片 |
+| `Given a YouTube video {string} titled {string}` | 建立 fake 的 YouTube 影片；沒有另外指定時，原文語言為 `en` |
 | `Given a YouTube video {string} with:` | 同上，用表格（`field`、`value`）指定 `title`、`duration`、`language`、`availability`、`chapters`、`live_status` 等 |
 | `Given a Bilibili video {string} with {int} parts` | 建立 fake 的 Bilibili 影片（`1 part` 亦可） |
 | `Given a podcast feed {string} with the episodes:` | 建立 fake 的 feed，表格欄位：`guid`、`title`、`audio`；feed 的網址為 `https://feeds.example.com/<名稱>.xml` |
