@@ -20,6 +20,11 @@ func TestSplitArgs(t *testing.T) {
 		{`a b\ c`, []string{"a", "b c"}},
 		{`a "x\"y"`, []string{"a", `x"y`}},
 		{`--flag="a b"`, []string{"--flag=a b"}},
+		// 雙引號內只有 \" 與 \\ 是跳脫，其他反斜線原樣保留。
+		{`a "C:\x\y z"`, []string{"a", `C:\x\y z`}},
+		{`a "x\\y"`, []string{"a", `x\y`}},
+		{`a 'C:\x'`, []string{"a", `C:\x`}},
+		{`a "p\qr\"s"`, []string{"a", `p\qr"s`}},
 		{``, nil},
 	}
 	for _, c := range cases {
@@ -58,8 +63,22 @@ func TestWorldDial(t *testing.T) {
 	c.Close()
 	<-accepted
 
-	if _, err := w.Dial(context.Background(), "tcp", "example.com:9999"); err == nil || !strings.Contains(err.Error(), "9999") {
+	// loopback 與 localhost 都對到本機的 server。
+	for _, addr := range []string{"localhost:8080", "[::1]:8080"} {
+		c, err := w.Dial(context.Background(), "tcp", addr)
+		if err != nil {
+			t.Fatalf("Dial(%s)：%v", addr, err)
+		}
+		c.Close()
+	}
+	if _, err := w.Dial(context.Background(), "tcp", "127.0.0.1:9999"); err == nil || !strings.Contains(err.Error(), "9999") {
 		t.Errorf("沒有對應 listener 時應該失敗，得到 %v", err)
+	}
+	// 其他 host 就算 port 相同也不連線（不會接到本機的 server）。
+	for _, addr := range []string{"example.com:8080", "10.0.0.5:8080", "0.0.0.0:8080", "[2001:db8::1]:8080"} {
+		if _, err := w.Dial(context.Background(), "tcp", addr); err == nil || !strings.Contains(err.Error(), "loopback") {
+			t.Errorf("Dial(%s) 應該因為 host 不是 loopback 而失敗，得到 %v", addr, err)
+		}
 	}
 	if _, err := w.Dial(context.Background(), "tcp", "no-port"); err == nil {
 		t.Error("位址不正確時應該失敗")

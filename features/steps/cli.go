@@ -43,28 +43,42 @@ func registerCLI(r *Registry, s *Scenario) {
 // ownerRuns 在程序內執行 cli.Execute（ADR-0015）。
 //
 // 這個步驟不會隱含啟動 server：CLI 自己判斷模式，沒有 server 時就是獨立模式（場景 2）。
-// 所以也不呼叫 prepareOwner：Given 累積的全域設定要靠 server 套用，沒有 server 時無處可套，直接失敗，
-// 不默默忽略。
+// Given 累積的全域設定與佇列要靠 server 套用：
+//   - server 已在執行：先呼叫 prepareOwner 把設定與佇列送出，CLI 才看得到它們。
+//   - server 沒有在執行：無處可套，直接失敗，不默默忽略。
+//
+// 只執行 notesteme；docker 指令目前是 pending（OPS 切片處理），其他指令一律失敗。
 func (s *Scenario) ownerRuns(line string) error {
-	// 先代入 {token:…}，再把虛擬路徑換成實際路徑，最後才切開：代入的內容不會被當成引號或空白處理。
-	argv, err := harness.SplitArgs(s.World.Expand(s.World.Subst(line)))
+	// 先依引號切開，再對每個參數代入 {token:…} 並把虛擬路徑換成實際路徑：
+	// 含空白的暫存路徑與代入的內容都不會被切壞，也不會被當成引號或空白處理。
+	argv, err := harness.SplitArgs(line)
 	if err != nil {
 		return err
 	}
 	if len(argv) == 0 {
 		return fmt.Errorf("指令是空的：%q", line)
 	}
-	if argv[0] != "notesteme" {
-		// 這個步驟執行的是 notesteme 的 CLI；其他程式（例如 docker compose）harness 不會執行。
-		// TODO(OPS-R9)：這個場景要另外的驗證方式（讀 deploy/docker/compose.yaml），或改成 @manual；
-		// 這是 handoff 允許的三種 pending 之外的一種，已在回報中請 owner 決定。
-		return fmt.Errorf("harness 不執行 %q（只執行 notesteme 的 CLI）：%w", argv[0], godog.ErrPending)
+	for i, a := range argv {
+		argv[i] = s.World.Expand(s.World.Subst(a))
+	}
+	switch argv[0] {
+	case "notesteme":
+	case "docker":
+		// docker compose 的場景要另外的驗證方式（讀 deploy/docker/compose.yaml），由 OPS 切片處理；
+		// handoff 第 4 節的允許清單列有 docker 指令。
+		return fmt.Errorf("harness 不執行 docker 指令（OPS 切片處理）：%w", godog.ErrPending)
+	default:
+		return fmt.Errorf("harness 只執行 notesteme 的 CLI，不認得指令 %q（打錯字？）", argv[0])
 	}
 	args := argv[1:]
 
-	q := s.givenQueue
-	if s.server == nil && (len(s.givenSettings) > 0 || q.limits != nil || q.pausedQueue || len(q.pausedClasses) > 0) {
-		return errors.New("場景用 Given 設定了全域設定或佇列，但 server 沒有在執行：這些設定要靠 server 套用，CLI 的獨立模式不會套用（需要 server 的步驟才會隱含啟動它）")
+	if s.hasGivenConfig() {
+		if s.server == nil {
+			return errors.New("場景用 Given 設定了全域設定或佇列，但 server 沒有在執行：這些設定要靠 server 套用，CLI 的獨立模式不會套用（需要 server 的步驟才會隱含啟動它）")
+		}
+		if err := s.prepareOwner(); err != nil {
+			return err
+		}
 	}
 	// TODO：client 模式又帶 --wait 時，harness 要在另一個 goroutine 反覆 RunUntilIdle（手動 worker 不會自己執行任務）。
 	if s.server != nil && slices.Contains(args, "--wait") && !slices.Contains(args, "--server") {
@@ -79,6 +93,12 @@ func (s *Scenario) ownerRuns(line string) error {
 		res: res, out: s.World.Unexpand(stdout.String()), errOut: s.World.Unexpand(stderr.String()), step: s.step,
 	}
 	return nil
+}
+
+// hasGivenConfig 回報是否有 Given 累積、尚未送出的全域設定或佇列設定（見 prepareOwner）。
+func (s *Scenario) hasGivenConfig() bool {
+	q := s.givenQueue
+	return len(s.givenSettings) > 0 || q.limits != nil || q.pausedQueue || len(q.pausedClasses) > 0
 }
 
 // needCommand 回傳最近一次的指令結果；還沒有執行過指令時失敗。
@@ -115,7 +135,8 @@ func (s *Scenario) commandOutputContains(want string) error {
 	if err != nil {
 		return err
 	}
-	want = s.World.Expand(s.World.Subst(want))
+	// 輸出已經 Unexpand 成虛擬路徑（/data/…），預期值只代入 token，不 Expand，兩邊才對稱。
+	want = s.World.Subst(want)
 	if !strings.Contains(c.out, want) && !strings.Contains(c.errOut, want) {
 		return fmt.Errorf("指令的輸出沒有 %q\nstdout：%s\nstderr：%s", want, snippet([]byte(c.out)), snippet([]byte(c.errOut)))
 	}
@@ -130,7 +151,8 @@ func (s *Scenario) commandOutputJSON(doc *godog.DocString) error {
 	if err != nil {
 		return err
 	}
-	want := []byte(s.World.Expand(s.World.Subst(doc.Content)))
+	// 同 commandOutputContains：輸出已是虛擬路徑，預期值不 Expand。
+	want := []byte(s.World.Subst(doc.Content))
 	got := strings.TrimSpace(c.out)
 	if !json.Valid([]byte(got)) {
 		got, _, _ = strings.Cut(got, "\n")

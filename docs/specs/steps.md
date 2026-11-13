@@ -257,8 +257,8 @@
 
 | 步驟 | 意思 |
 |---|---|
-| `When the owner runs {string}` | 執行 CLI，例如 `"notesteme items ls --json"` |
-| `Then the command exits with {int}` | 結束碼 |
+| `When the owner runs {string}` | 執行 CLI，例如 `"notesteme items ls --json"`。只執行 `notesteme`；`docker …` 目前為 pending（OPS 切片處理）；不會隱含啟動 server |
+| `Then the command exits with {int}` | 結束碼。指令回報 `not_implemented`（尚未實作的子命令，或 API 回 501）且結果來自前一個步驟時為 pending |
 | `Then the command output contains {string}` | stdout 或 stderr 包含指定文字 |
 | `Then the command output is JSON containing:` | stdout 是 JSON，且包含指定內容 |
 | `Then the command ran in {word} mode` | `standalone` 或 `client` |
