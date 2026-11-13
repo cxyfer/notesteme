@@ -224,3 +224,50 @@ func TestShutdownCancelsRunningTasksWhenGraceExpires(t *testing.T) {
 		t.Errorf("重啟後應完成：%+v", d)
 	}
 }
+
+// production 的 runServe 在收到 SIGINT／SIGTERM 時取消傳給 StartServer 的 ctx，之後才呼叫 Shutdown。
+// worker 的 root 不能繼承這個取消，否則任務在 Drain 之前就被中止，寬限期形同虛設（PIPE-R12）。
+func TestStartupContextCancelDoesNotAbortRunningTasks(t *testing.T) {
+	env := testEnv(t)
+	env.Test.ManualWorker = true
+	clk := env.Clock.(*clock.Fake)
+	block := &ytRunner{block: make(chan struct{}), inProg: make(chan struct{})}
+	env.Runner = block
+	signalCtx, signal := context.WithCancel(t.Context())
+	srv, err := StartServer(signalCtx, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(srv.Kill)
+	id := ingest(t, login(t, srv))
+	if n, err := srv.RunRound(t.Context()); err != nil || n != 1 {
+		t.Fatalf("RunRound = %d, %v", n, err)
+	}
+	waitClosed(t, block.inProg)
+
+	signal() // 模擬收到 SIGTERM
+	done := make(chan error, 1)
+	go func() { done <- srv.Shutdown(context.WithoutCancel(t.Context())) }()
+	waitTimers(t, clk, 1)
+	close(block.block) // 任務在寬限期內完成
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("任務完成後 Shutdown 沒有結束")
+	}
+
+	env.Runner = &ytRunner{}
+	srv2, err := StartServer(t.Context(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv2.Kill()
+	var d detail
+	login(t, srv2).json("GET", "/api/items/"+id, "", &d)
+	if d.status("metadata") != "done" {
+		t.Errorf("收到關閉訊號後，寬限期內完成的步驟應寫回為 done：%+v", d)
+	}
+}

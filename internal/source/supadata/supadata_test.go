@@ -174,3 +174,24 @@ func TestValidMode(t *testing.T) {
 		t.Error("不認識的 mode 不該有效")
 	}
 }
+
+// 超過上限的回應不能被截斷後接受或重試：完整的 JSON 後面帶著超量的內容也一樣是 permanent。
+func TestFetchRejectsOversizedResponse(t *testing.T) {
+	for name, body := range map[string]string{
+		"截斷的 JSON":     `{"lang":"en","content":[` + strings.Repeat(" ", maxBodySize),
+		"完整 JSON 後的填充": okBody + strings.Repeat(" ", maxBodySize),
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, _ := serve(t, 200, body)
+			_, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123xxxxx", ModeNative)
+			if got, ok := errclass.ClassOf(err); !ok || got != errclass.ClassPermanent {
+				t.Fatalf("err = %v，類別 %q，預期 permanent", err, got)
+			}
+		})
+	}
+	// 剛好在上限內的回應仍然正常解析。
+	c, _ := serve(t, 200, okBody+strings.Repeat(" ", maxBodySize-len(okBody)))
+	if _, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123xxxxx", ModeNative); err != nil {
+		t.Fatalf("上限內的回應應該成功：%v", err)
+	}
+}

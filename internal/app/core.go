@@ -124,7 +124,9 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 	}
 
 	// root 是 server 的根 context：worker 與它啟動的子程序都掛在它底下，關閉時一起取消。
-	s.root, s.cancel = context.WithCancel(ctx)
+	// 不繼承 ctx 的取消：runServe 收到 SIGINT／SIGTERM 時會先取消 ctx 再呼叫 Shutdown，
+	// 繼承的話任務在 Drain 之前就被中止，寬限期無效（PIPE-R12）。只由 Shutdown、Kill、Close 取消。
+	s.root, s.cancel = context.WithCancel(context.WithoutCancel(ctx))
 	s.startEvents()
 	if err := s.startPipeline(ctx, env, cfg, log, opts.manualWorker); err != nil {
 		return nil, err
