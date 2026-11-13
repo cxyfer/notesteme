@@ -11,8 +11,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -41,6 +43,16 @@ const (
 	reasonLanguageMismatch = "language_mismatch"
 )
 
+// 等待 YouTube 自動字幕（SRC-R6）：每 2 小時檢查一次，從發布時間算起 24 小時後放棄。
+const (
+	autoWaitInterval = 2 * time.Hour
+	autoWaitDeadline = 24 * time.Hour
+	// reasonNotReady 是自動字幕還沒生成（source_probes.reason）。
+	reasonNotReady  = "not_ready"
+	msgAutoNotReady = "YouTube 還沒產生自動字幕，預計 2 小時後再檢查。"
+	actionUseASRNow = "現在改用語音轉錄"
+)
+
 // sourceTiming 是各平台字幕來源宣告的時間粒度（ADR-0006 的 Caps.Timing、plan 第 6.1 節）。
 // 它是來源的宣告，不是逐檔檢查的結果：YouTube 自動字幕是近 word 級。
 func sourceTiming(kind string) string {
@@ -59,7 +71,7 @@ const supadataTiming = "chunk"
 // 平台字幕都不符合時，依 language.fallback 的順序嘗試其他來源（SRC-R3）；目前只有 Supadata 已實作，
 // 其他來源（ASR 等）記為 not_configured 並略過。
 // TODO(SRC-R4)：每個來源的結果還要通過品質檢查（涵蓋率、語言、重複句、純音樂）。
-// TODO(SRC-R6)：自動字幕還沒生成時等待（waiting），超過 24 小時才改用下一個來源。
+// 自動字幕還沒生成時等待（SRC-R6，見 waitForAutoCaptions），超過 24 小時才改用下一個來源。
 // TODO(SRC-R8)：來源需要 cookie 而沒有時 blocked。
 func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Language) (result, error) {
 	// 選軌需要平台目前的字幕軌清單，所以一定要先 Probe；快取鍵只含會影響選軌結果的輸入
@@ -112,6 +124,9 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	}
 
 	if chosen == nil {
+		if res, ok := p.waitForAutoCaptions(it, lang, info, decisions); ok {
+			return res, nil
+		}
 		return p.runFallback(ctx, it, lang, stage, decisions)
 	}
 
@@ -138,6 +153,46 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions),
 		state: store.StageState{Status: store.StatusDone},
 	}, nil
+}
+
+// waitForAutoCaptions 在 YouTube 自動字幕可能還沒生成時，回傳 waiting 的結果（SRC-R6）；不需要等待時 ok 為 false。
+//
+// YouTube 沒有「還沒生成」的訊號，所以用推定：以下條件全部成立才等待。
+//  1. 平台是 YouTube。
+//  2. 沒有選到字幕軌（呼叫端保證）。
+//  3. language.caption_priority 有 kind 為 auto 的規則。
+//  4. 平台的 automatic_captions 完全是空的（含機器翻譯軌）。
+//  5. 有發布時間，而且現在還沒超過發布時間 + 24 小時。
+//
+// 沒有語音的影片永遠不會有自動字幕，會白等 24 小時；這是已知的取捨（見 SRC 規格的待決問題）。
+// 等待不消耗重試次數，下次檢查固定是 2 小時後，不截到 24 小時的期限：期限過後的那次檢查才改用下一個來源。
+func (p *Pipeline) waitForAutoCaptions(it store.Item, lang Language, info *youtube.Info, decisions []transcript.Decision) (result, bool) {
+	if it.Platform != source.PlatformYouTube || info.PublishedAt == nil || !p.clock.Now().Before(info.PublishedAt.Add(autoWaitDeadline)) {
+		return result{}, false
+	}
+	if !slices.ContainsFunc(lang.CaptionPriority, func(r transcript.Rule) bool { return r.Kind == transcript.KindAuto }) {
+		return result{}, false
+	}
+	if slices.ContainsFunc(info.Tracks, func(t youtube.Track) bool {
+		return t.Kind == youtube.KindAuto || t.Kind == youtube.KindPlatformTranslated
+	}) {
+		return result{}, false
+	}
+	// 自動字幕的來源記為 unavailable（not_ready），讓影音詳情說明為什麼還沒有結果（SRC-R17）。
+	probes := slices.Clone(decisions)
+	for i, d := range probes {
+		if d.Kind == transcript.KindAuto && d.State == transcript.StateUnavailable {
+			probes[i].Reason = reasonNotReady
+		}
+	}
+	at := p.clock.Now().Add(autoWaitInterval)
+	return result{
+		task: taskRequeue, notBefore: &at, countAttempt: false, probes: toProbes(probes),
+		state: store.StageState{
+			Status: store.StatusWaiting, ErrorClass: string(errclass.ClassWait), NotBefore: &at,
+			Message: msgAutoNotReady, Actions: []string{actionUseASRNow},
+		},
+	}, true
 }
 
 // fetchResult 是 fallback 來源回傳的字幕，與來源無關（Supadata、Groq 等各自轉成這個形狀）。
