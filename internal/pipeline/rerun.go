@@ -110,7 +110,7 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 				return err
 			}
 			if s == req.From {
-				if _, err := insertStageTask(ctx, r, itemID, run, queue.PriorityManual); err != nil {
+				if _, err := insertStageTask(ctx, r, itemID, run, queue.PriorityManual, false); err != nil {
 					return err
 				}
 			}

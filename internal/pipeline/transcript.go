@@ -11,8 +11,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -35,8 +37,21 @@ const (
 	msgNoKey = "沒有可用的字幕來源：fallback 中的來源都還沒有設定 API key。"
 )
 
-// reasonNoTranscript 是來源沒有這部影片的字幕（source_probes.reason）。
-const reasonNoTranscript = "no_transcript"
+// source_probes.reason：來源沒有這部影片的字幕；來源回報的語言和影音原文語言不同（SRC-R4）。
+const (
+	reasonNoTranscript     = "no_transcript"
+	reasonLanguageMismatch = "language_mismatch"
+)
+
+// 等待 YouTube 自動字幕（SRC-R6）：每 2 小時檢查一次，從發布時間算起 24 小時後放棄。
+const (
+	autoWaitInterval = 2 * time.Hour
+	autoWaitDeadline = 24 * time.Hour
+	// reasonNotReady 是自動字幕還沒生成（source_probes.reason）。
+	reasonNotReady  = "not_ready"
+	msgAutoNotReady = "YouTube 還沒產生自動字幕，預計 2 小時後再檢查。"
+	actionUseASRNow = "現在改用語音轉錄"
+)
 
 // sourceTiming 是各平台字幕來源宣告的時間粒度（ADR-0006 的 Caps.Timing、plan 第 6.1 節）。
 // 它是來源的宣告，不是逐檔檢查的結果：YouTube 自動字幕是近 word 級。
@@ -56,7 +71,7 @@ const supadataTiming = "chunk"
 // 平台字幕都不符合時，依 language.fallback 的順序嘗試其他來源（SRC-R3）；目前只有 Supadata 已實作，
 // 其他來源（ASR 等）記為 not_configured 並略過。
 // TODO(SRC-R4)：每個來源的結果還要通過品質檢查（涵蓋率、語言、重複句、純音樂）。
-// TODO(SRC-R6)：自動字幕還沒生成時等待（waiting），超過 24 小時才改用下一個來源。
+// 自動字幕還沒生成時等待（SRC-R6，見 waitForAutoCaptions），超過 24 小時才改用下一個來源。
 // TODO(SRC-R8)：來源需要 cookie 而沒有時 blocked。
 func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Language) (result, error) {
 	// 選軌需要平台目前的字幕軌清單，所以一定要先 Probe；快取鍵只含會影響選軌結果的輸入
@@ -109,6 +124,9 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	}
 
 	if chosen == nil {
+		if res, ok := p.waitForAutoCaptions(it, lang, info, decisions); ok {
+			return res, nil
+		}
 		return p.runFallback(ctx, it, lang, stage, decisions)
 	}
 
@@ -137,13 +155,64 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	}, nil
 }
 
+// waitForAutoCaptions 在 YouTube 自動字幕可能還沒生成時，回傳 waiting 的結果（SRC-R6）；不需要等待時 ok 為 false。
+//
+// YouTube 沒有「還沒生成」的訊號，所以用推定：以下條件全部成立才等待。
+//  1. 平台是 YouTube。
+//  2. 沒有選到字幕軌（呼叫端保證）。
+//  3. language.caption_priority 有 kind 為 auto 的規則。
+//  4. 平台的 automatic_captions 完全是空的（含機器翻譯軌）。
+//  5. 有發布時間，而且現在還沒超過發布時間 + 24 小時。
+//
+// 沒有語音的影片永遠不會有自動字幕，會白等 24 小時；這是已知的取捨（見 SRC 規格的待決問題）。
+// 等待不消耗重試次數，下次檢查固定是 2 小時後，不截到 24 小時的期限：期限過後的那次檢查才改用下一個來源。
+func (p *Pipeline) waitForAutoCaptions(it store.Item, lang Language, info *youtube.Info, decisions []transcript.Decision) (result, bool) {
+	if it.Platform != source.PlatformYouTube || info.PublishedAt == nil || !p.clock.Now().Before(info.PublishedAt.Add(autoWaitDeadline)) {
+		return result{}, false
+	}
+	if !slices.ContainsFunc(lang.CaptionPriority, func(r transcript.Rule) bool { return r.Kind == transcript.KindAuto }) {
+		return result{}, false
+	}
+	if slices.ContainsFunc(info.Tracks, func(t youtube.Track) bool {
+		return t.Kind == youtube.KindAuto || t.Kind == youtube.KindPlatformTranslated
+	}) {
+		return result{}, false
+	}
+	// 自動字幕的來源記為 unavailable（not_ready），讓影音詳情說明為什麼還沒有結果（SRC-R17）。
+	probes := slices.Clone(decisions)
+	for i, d := range probes {
+		if d.Kind == transcript.KindAuto && d.State == transcript.StateUnavailable {
+			probes[i].Reason = reasonNotReady
+		}
+	}
+	at := p.clock.Now().Add(autoWaitInterval)
+	return result{
+		task: taskRequeue, notBefore: &at, countAttempt: false, probes: toProbes(probes),
+		state: store.StageState{
+			Status: store.StatusWaiting, ErrorClass: string(errclass.ClassWait), NotBefore: &at,
+			Message: msgAutoNotReady, Actions: []string{actionUseASRNow},
+		},
+	}, true
+}
+
+// fetchResult 是 fallback 來源回傳的字幕，與來源無關（Supadata、Groq 等各自轉成這個形狀）。
+type fetchResult struct {
+	// Lang 是來源回報的語言，可能為空。
+	Lang string
+	Cues []subtitle.Cue
+	// Timing 非空時，覆寫 fallbackFetcher.timing 寫進來源紀錄（來源依這次的結果才知道時間粒度時使用）。
+	Timing string
+	// ToolVersions 是這次結果用到的外部工具版本（例如 ffmpeg），寫進來源紀錄的 tool_versions；可以是 nil。
+	ToolVersions map[string]string
+}
+
 // fallbackFetcher 是一個可以執行的 fallback 來源；沒有設定（缺 API key）的來源不在 Pipeline.fetchers 中。
 type fallbackFetcher struct {
 	// timing 是來源宣告的時間粒度（寫進來源紀錄）。
 	timing string
 	// params 是會影響結果的設定（寫進來源紀錄）。
 	params func(Language) any
-	fetch  func(ctx context.Context, it store.Item, lang Language) (*supadata.Result, error)
+	fetch  func(ctx context.Context, it store.Item, lang Language) (*fetchResult, error)
 }
 
 // newFetchers 依 deps 建立可執行的 fallback 來源。
@@ -153,8 +222,12 @@ func newFetchers(d Deps) map[string]fallbackFetcher {
 		out[supadata.ID] = fallbackFetcher{
 			timing: supadataTiming,
 			params: func(l Language) any { return l.Supadata },
-			fetch: func(ctx context.Context, it store.Item, l Language) (*supadata.Result, error) {
-				return sd.Fetch(ctx, it.URL, l.Supadata.Mode)
+			fetch: func(ctx context.Context, it store.Item, l Language) (*fetchResult, error) {
+				got, err := sd.Fetch(ctx, it.URL, l.Supadata.Mode)
+				if err != nil {
+					return nil, err
+				}
+				return &fetchResult{Lang: got.Lang, Cues: got.Cues}, nil
 			},
 		}
 	}
@@ -180,6 +253,12 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 		executed = true
 		got, err := f.fetch(ctx, it, lang)
 		switch {
+		case err == nil && langMismatch(it.OriginalLang, got.Lang):
+			// 來源回報的語言和影音的原文語言不同：不採用，繼續下一個來源（SRC-R4）。
+			// TODO(SRC-R4)：其他門檻（low_coverage、repetition、music_only）與文字語言偵測。
+			decisions = append(decisions, transcript.Decision{
+				Source: id, Lang: transcript.NormalizeLang(got.Lang), State: transcript.StateRejected, Reason: reasonLanguageMismatch,
+			})
 		case err == nil:
 			return p.fallbackResult(id, f, it, lang, stage, decisions, got)
 		case errors.Is(err, supadata.ErrNoTranscript):
@@ -222,7 +301,7 @@ func blockedFor(stage *store.StageResult, decisions []transcript.Decision, msg, 
 }
 
 // fallbackResult 把 fallback 來源回傳的字幕寫成原始字幕的產出。
-func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, lang Language, stage *store.StageResult, decisions []transcript.Decision, got *supadata.Result) (result, error) {
+func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, lang Language, stage *store.StageResult, decisions []transcript.Decision, got *fetchResult) (result, error) {
 	artLang := transcript.NormalizeLang(got.Lang)
 	if artLang == "" {
 		// 來源沒回報語言時，用影音的原文語言；都不知道就標為 und。
@@ -231,11 +310,12 @@ func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, l
 		}
 	}
 	decisions = append(decisions, transcript.Decision{Source: id, Lang: artLang, State: transcript.StateUsed})
+	timing := cmp.Or(got.Timing, f.timing)
 	prov, err := p.provenance(map[string]any{
 		"stage": StageTranscript, "impl_version": p.implVersion(StageTranscript),
-		"source": id, "timing": f.timing,
+		"source": id, "timing": timing,
 		"params_sha256": paramsSHA(f.params(lang)),
-	}, nil)
+	}, got.ToolVersions)
 	if err != nil {
 		return result{}, err
 	}
@@ -247,6 +327,26 @@ func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, l
 		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions),
 		state: store.StageState{Status: store.StatusDone},
 	}, nil
+}
+
+// langMismatch 回報來源回報的語言 got 是否和影音的原文語言 want 不同（SRC-R4 的 language_mismatch）。
+// M1 只比較來源回報的語言，不做文字語言偵測；任一邊未知（空字串或 und）時略過檢查。
+// 只比主要語言：zh 與 zh-Hans、en 與 en-orig 視為相同。
+func langMismatch(want, got string) bool {
+	w, g := primaryLang(want), primaryLang(got)
+	return w != "" && g != "" && w != g
+}
+
+// primaryLang 回傳語言代碼的主要語言（小寫）；未知（空字串或 und）回傳空字串。
+func primaryLang(l string) string {
+	l = strings.ToLower(transcript.NormalizeLang(strings.TrimSpace(l)))
+	if i := strings.IndexAny(l, "-_"); i >= 0 {
+		l = l[:i]
+	}
+	if l == "und" {
+		return ""
+	}
+	return l
 }
 
 // isNeedsAction 回報 err 是否為 needs_action 類別。

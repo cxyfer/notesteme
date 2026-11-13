@@ -593,7 +593,7 @@ func TestCacheKeyHitReusesArtifact(t *testing.T) {
 			if run, err = rp.InsertStageRun(ctx, store.NewStageRun{ItemID: it.ID, Stage: stage, Status: store.StatusPending, ConfigSnapshotID: old.ConfigSnapshotID}); err != nil {
 				return err
 			}
-			_, err = insertStageTask(ctx, rp, it.ID, run, queue.PriorityManual)
+			_, err = insertStageTask(ctx, rp, it.ID, run, queue.PriorityManual, false)
 			return err
 		})
 		if err != nil {

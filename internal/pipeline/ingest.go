@@ -129,7 +129,7 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResul
 					first = run
 				}
 			}
-			if _, err := insertStageTask(ctx, r, it.ID, first, priority); err != nil {
+			if _, err := insertStageTask(ctx, r, it.ID, first, priority, false); err != nil {
 				return err
 			}
 		}
@@ -178,15 +178,15 @@ func (p *Pipeline) expandPlaylist(ctx context.Context, t source.Target) ([]sourc
 	return targets, nil
 }
 
-// insertStageTask 為步驟建立任務。
-func insertStageTask(ctx context.Context, r *store.Repo, itemID string, run store.StageRun, priority int) (store.Task, error) {
+// insertStageTask 為步驟建立任務。transcriptASR 的意義見 resourceClass；不知道字幕軌時傳 false。
+func insertStageTask(ctx context.Context, r *store.Repo, itemID string, run store.StageRun, priority int, transcriptASR bool) (store.Task, error) {
 	payload, err := json.Marshal(map[string]string{"item_id": itemID})
 	if err != nil {
 		return store.Task{}, err
 	}
 	return r.InsertTask(ctx, store.NewTask{
 		StageRunID: run.ID, Kind: run.Stage, Executor: queue.ExecutorBuiltin,
-		ResourceClass: resourceClass(run.Stage), Priority: priority, Payload: payload,
+		ResourceClass: resourceClass(run.Stage, transcriptASR), Priority: priority, Payload: payload,
 		MaxAttempts: queue.DefaultMaxAttempts,
 	})
 }

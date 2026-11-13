@@ -39,6 +39,8 @@ type result struct {
 	meta     *metaUpdate
 	// advance 為 true 時，成功後建立下游步驟的任務（until 之前）。
 	advance bool
+	// transcriptASR 只用於 metadata：下游的 transcript 任務是否歸為 asr 資源類別。
+	transcriptASR bool
 }
 
 type metaUpdate struct {
@@ -78,7 +80,7 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	var res result
 	switch run.Stage {
 	case StageMetadata:
-		res, err = p.runMetadata(ctx, it)
+		res, err = p.runMetadata(ctx, it, lang)
 	case StageTranscript:
 		res, err = p.runTranscript(ctx, it, lang)
 	case StageNormalize:
@@ -121,14 +123,20 @@ func (p *Pipeline) classify(t store.Task, err error) result {
 			Status: store.StatusFailed, ErrorClass: string(class), Message: "這個步驟無法完成，重試也不會成功。",
 		}}
 	case errclass.ClassNeedsAction, errclass.ClassBudgetBlocked:
-		// TODO(SRC-R8、SRC-R9)：依原因給出具體的訊息與修正動作（上傳 cookie、更新 yt-dlp、設定 API key）。
 		reason := "needs_action"
 		if class == errclass.ClassBudgetBlocked {
 			reason = "budget_blocked"
 		}
-		return result{task: taskFailed, state: store.StageState{
+		st := store.StageState{
 			Status: store.StatusBlocked, BlockReason: reason, ErrorClass: string(class), Message: "這個步驟需要你處理才能繼續。",
-		}}
+		}
+		// 錯誤自己帶了給使用者看的訊息與修正動作時採用（SRC-R9：403 → 更新 yt-dlp、上傳 cookie）。
+		// TODO(SRC-R8)：需要 cookie 的來源（Bilibili AI 字幕等）在來源實作時同樣填入 Message 與 Actions。
+		var ce *errclass.Error
+		if errors.As(err, &ce) && ce.Message != "" {
+			st.Message, st.Actions = ce.Message, ce.Actions
+		}
+		return result{task: taskFailed, state: st}
 	case errclass.ClassWait:
 		// wait 類的錯誤由執行者自己決定何時再檢查（見 runMetadata）；走到這裡代表沒有指定時間，稍後再試且不計入次數。
 		at := p.clock.Now().Add(queue.WaitRecheckDefault)
@@ -235,7 +243,7 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 			}
 			// 走到這裡時這一筆一定是最新的（上面已檢查），舊的結果不會觸發下游。
 			if nr, ok := latest[next]; ok {
-				if _, err := insertStageTask(ctx, r, it.ID, nr, t.Priority); err != nil {
+				if _, err := insertStageTask(ctx, r, it.ID, nr, t.Priority, res.transcriptASR); err != nil {
 					return err
 				}
 				wake = true
