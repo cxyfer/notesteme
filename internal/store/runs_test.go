@@ -6,6 +6,45 @@ import (
 	"time"
 )
 
+// 只被領取、還沒真的執行完就放回佇列（重啟、關閉）的步驟，不算執行過：不出現在 runs 清單中。
+// 重新領取後才有新的開始時間。
+func TestReleasedRunsAreNotListedAsExecuted(t *testing.T) {
+	ctx := context.Background()
+	s, clk := openTest(t)
+	it, sr := seedItem(t, s, "a")
+	newTask(t, s, sr, 3, nil)
+	if got := claim(t, s, claimOpts("old-worker", 1)); len(got) != 1 {
+		t.Fatal("應領取到任務")
+	}
+	if got, _ := s.Read().ExecutedRunsByItem(ctx, it.ID); len(got) != 1 {
+		t.Fatalf("領取後步驟是 running，應列出：%+v", got)
+	}
+
+	// 重啟：別人的租約放回，步驟回到 pending。
+	if n, err := s.Write().ReleaseLeases(ctx, "new-worker"); err != nil || n != 1 {
+		t.Fatalf("ReleaseLeases = %d, %v", n, err)
+	}
+	if got, err := s.Read().ExecutedRunsByItem(ctx, it.ID); err != nil || len(got) != 0 {
+		t.Errorf("放回的步驟沒有真的執行過，不該列出：%+v，%v", got, err)
+	}
+
+	// 重新領取之後有新的開始時間。
+	clk.Advance(time.Minute)
+	claim(t, s, claimOpts("new-worker", 1))
+	got, _ := s.Read().ExecutedRunsByItem(ctx, it.ID)
+	if len(got) != 1 || !got[0].StartedAt.Equal(clk.Now()) {
+		t.Errorf("重新領取後 = %+v", got)
+	}
+
+	// 正常關閉（放回自己的租約）也一樣。
+	if n, err := s.Write().ReleaseOwned(ctx, "new-worker"); err != nil || n != 1 {
+		t.Fatalf("ReleaseOwned = %d, %v", n, err)
+	}
+	if got, _ := s.Read().ExecutedRunsByItem(ctx, it.ID); len(got) != 0 {
+		t.Errorf("關閉時放回的步驟不該列出：%+v", got)
+	}
+}
+
 func TestExecutedRunsByItemListsStartedRunsNewestFirstWithConfig(t *testing.T) {
 	ctx := context.Background()
 	s, clk := openTest(t)

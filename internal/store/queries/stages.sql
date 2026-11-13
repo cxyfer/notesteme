@@ -56,7 +56,8 @@ RETURNING item_id, stage, status;
 
 -- name: ResetRunningStage :one
 -- When a lease goes back to the queue, a stage still running returns to pending (no row when it was not running).
-UPDATE stage_runs SET status = 'pending' WHERE id = sqlc.arg(id) AND status = 'running'
+-- started_at is cleared: a run that was only claimed never really executed, so it must not be listed as executed.
+UPDATE stage_runs SET status = 'pending', started_at = NULL WHERE id = sqlc.arg(id) AND status = 'running'
 RETURNING item_id, stage, status;
 
 -- name: ExecutedRunsByItem :many
