@@ -162,6 +162,11 @@ func (p *Pipeline) expandPlaylist(ctx context.Context, t source.Target) ([]sourc
 			return nil, invalidf("找不到這個播放清單，可能已刪除或不是公開的。")
 		}
 		if class, ok := errclass.ClassOf(err); ok && class == errclass.ClassNeedsAction {
+			// 錯誤自己帶了給使用者看的訊息時採用（例如 403：先更新 yt-dlp，SRC-R9）；否則是找不到 yt-dlp 之類。
+			var ce *errclass.Error
+			if errors.As(err, &ce) && ce.Message != "" {
+				return nil, &UpstreamError{Msg: ce.Message, Err: err}
+			}
 			return nil, &UpstreamError{Msg: "無法執行 yt-dlp，請確認已安裝（可執行 notesteme doctor）。", Err: err}
 		}
 		return nil, &UpstreamError{Msg: "yt-dlp 讀取播放清單失敗，請稍後再試。", Err: err}
