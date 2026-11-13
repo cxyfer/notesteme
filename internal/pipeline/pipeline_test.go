@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -36,6 +37,17 @@ type fakeYT struct {
 	onProbe  func()
 	// onVersion 在查詢工具版本時呼叫；transcript 在這之後才寫出產出檔。
 	onVersion func()
+	// playlist 與 playlistErr 是 Playlist 的回傳值；playlists 記錄展開過哪些播放清單 ID。
+	playlist    []youtube.PlaylistEntry
+	playlistErr error
+	playlists   []string
+}
+
+func (f *fakeYT) Playlist(_ context.Context, id string) ([]youtube.PlaylistEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.playlists = append(f.playlists, id)
+	return slices.Clone(f.playlist), f.playlistErr
 }
 
 func (f *fakeYT) Probe(context.Context, string) (*youtube.Info, error) {
@@ -196,7 +208,6 @@ func TestIngestRejections(t *testing.T) {
 		{"影片 ID 少於 11 個字元", IngestRequest{URL: "https://www.youtube.com/watch?v=abc123xxxx"}, func(e error) bool { return errors.Is(e, ErrUnrecognizedURL) }},
 		{"影片 ID 多於 11 個字元", IngestRequest{URL: "https://youtu.be/abc123xxxxxx"}, func(e error) bool { return errors.Is(e, ErrUnrecognizedURL) }},
 		{"Bilibili 影片", IngestRequest{URL: "https://www.bilibili.com/video/BV1xx411c7mD"}, func(e error) bool { return errors.As(e, &ni) }},
-		{"播放清單", IngestRequest{URL: "https://www.youtube.com/playlist?list=PL123"}, func(e error) bool { return errors.As(e, &ni) }},
 		{"處理方案", IngestRequest{URL: watch, Profile: "standard"}, func(e error) bool { return errors.As(e, &ni) }},
 		{"未知的 until", IngestRequest{URL: watch, Until: "publish"}, func(e error) bool { return errors.As(e, &inv) }},
 		{"YouTube 不能指定分P", IngestRequest{URL: watch, Parts: []int{1}}, func(e error) bool { return errors.As(e, &inv) }},

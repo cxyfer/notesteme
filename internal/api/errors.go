@@ -51,6 +51,9 @@ const (
 
 	// 本機路徑不在 inbox 或 media_roots 之內（GRD-R7）。
 	CodePathOutsideRoots = "path_outside_roots"
+
+	// 外部工具失敗（例如 yt-dlp 展開播放清單，ING-R4）；稍後重試或處理環境後可能成功。
+	CodeUpstream = "upstream_failed"
 )
 
 func newError(status int, code, message string) *Error {

@@ -20,8 +20,16 @@ import (
 	"github.com/cxyfer/notesteme/internal/worker"
 )
 
-// stubYT 回傳固定的影片資訊與一份 3 句的 VTT。
-type stubYT struct{ info youtube.Info }
+// stubYT 回傳固定的影片資訊與一份 3 句的 VTT；Playlist 回傳 playlist 或 playlistErr。
+type stubYT struct {
+	info        youtube.Info
+	playlist    []youtube.PlaylistEntry
+	playlistErr error
+}
+
+func (s stubYT) Playlist(context.Context, string) ([]youtube.PlaylistEntry, error) {
+	return s.playlist, s.playlistErr
+}
 
 func (s stubYT) Probe(context.Context, string) (*youtube.Info, error) { i := s.info; return &i, nil }
 func (stubYT) FetchCaptions(context.Context, string, youtube.Track, string) ([]byte, error) {
@@ -154,7 +162,6 @@ func TestCreateItemErrors(t *testing.T) {
 		{"無法辨識", `{"url":"https://example.com/some/page"}`, 422, CodeUnrecognizedURL, "無法辨識這個網址。目前支援 YouTube、Bilibili、Podcast RSS 與本機檔案。"},
 		{"影片 ID 不是 11 個字元", `{"url":"https://www.youtube.com/watch?v=abc123xxxx"}`, 422, CodeUnrecognizedURL, "無法辨識這個網址。目前支援 YouTube、Bilibili、Podcast RSS 與本機檔案。"},
 		{"Bilibili 影片", `{"url":"https://www.bilibili.com/video/BV1xx411c7mD"}`, 501, CodeNotImplemented, ""},
-		{"播放清單", `{"url":"https://www.youtube.com/playlist?list=PL123"}`, 501, CodeNotImplemented, ""},
 		{"未知的 until", `{"url":"https://youtu.be/abc123xxxxx","until":"publish"}`, 422, CodeInvalidInput, ""},
 		{"缺少 url", `{}`, 422, CodeInvalidInput, ""},
 		{"多餘的欄位", `{"url":"https://youtu.be/abc123xxxxx","nope":1}`, 422, CodeInvalidInput, ""},

@@ -412,11 +412,16 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 	var (
 		inv *pipeline.InvalidError
 		ni  *pipeline.NotImplementedError
+		up  *pipeline.UpstreamError
 	)
 	if pe := policyError(err); pe != nil {
 		return pe
 	}
 	switch {
+	case errors.As(err, &up):
+		// 原始錯誤（yt-dlp 的輸出）只寫進 log，不回傳給 client。
+		rt.d.Log.LogAttrs(ctx, slog.LevelWarn, "外部工具失敗", slog.Any("error", up.Err))
+		return newError(http.StatusBadGateway, CodeUpstream, up.Msg)
 	case errors.Is(err, pipeline.ErrUnrecognizedURL):
 		return newError(http.StatusUnprocessableEntity, CodeUnrecognizedURL, err.Error())
 	case errors.Is(err, pipeline.ErrChannel):
