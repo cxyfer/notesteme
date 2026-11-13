@@ -310,19 +310,26 @@ func (s *Server) Err() error {
 	}
 }
 
-// Shutdown 正常關閉：停止接受新連線並等待處理中的請求（受 ctx 限制），
-// 之後關閉 DB（SQLite 會做 WAL checkpoint）並清空、釋放資料目錄的鎖。
+// Shutdown 正常關閉（PIPE-R12）：
+//  1. 先讓 worker 停止領取新任務；之後才關閉 HTTP，避免關閉期間又開始新任務。
+//  2. 停止接受新連線並等待處理中的請求；ctx 只限制這一段。
+//  3. 讓執行中的任務在寬限期內完成，之後取消剩下的並把租約放回佇列。這一段有獨立的期限
+//     （寬限期加放回租約的上限），不受 ctx 與 HTTP 關閉已經花掉的時間影響。
+//  4. 關閉 DB（SQLite 會做 WAL checkpoint）並清空、釋放資料目錄的鎖。
+//
 // 可重複呼叫，只有第一次生效。
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.closeOnce.Do(func() {
 		var errs []error
+		s.worker.StopClaiming()
 		if err := s.http.Shutdown(ctx); err != nil {
 			errs = append(errs, err)
 			_ = s.http.Close() // 等不到就強制中斷，避免資源殘留
 		}
 		<-s.done
-		// 先停止領取，等執行中的任務在寬限期內完成，之後取消剩下的並把租約放回佇列（PIPE-R12）。
-		if err := s.worker.Drain(ctx, s.grace); err != nil {
+		drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.grace+worker.ReleaseTimeout)
+		defer cancel()
+		if err := s.worker.Drain(drainCtx, s.grace); err != nil {
 			errs = append(errs, err)
 		}
 		s.stopWorker()

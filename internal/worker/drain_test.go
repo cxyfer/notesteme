@@ -179,6 +179,36 @@ func TestDrainStopsClaiming(t *testing.T) {
 	}
 }
 
+// StopClaiming 之後不再領取新任務，執行中的任務不受影響，之後的 Drain 仍然完整運作。
+func TestStopClaimingStopsNewTasksButKeepsRunningOnes(t *testing.T) {
+	r := newRig(t)
+	a := r.addTask(t, "a", nil)
+	h := newStoppable(r.st)
+	w := New(r.q, h, r.clk, quiet)
+	roundOf(t, w)
+	<-h.started
+
+	w.StopClaiming()
+	b := r.addTask(t, "b", nil)
+	if n := roundOf(t, w); n != 0 {
+		t.Errorf("StopClaiming 之後不該領取，領了 %d 個", n)
+	}
+	if got, _ := r.st.Read().Task(context.Background(), b.ID); got.State != store.TaskPending {
+		t.Errorf("新任務應維持 pending：%+v", got)
+	}
+	if got, _ := r.st.Read().Task(context.Background(), a.ID); got.State != store.TaskLeased {
+		t.Errorf("執行中的任務不該受影響：%+v", got)
+	}
+	w.StopClaiming() // 可重複呼叫
+
+	done := startDrain(t, r, w, 30*time.Second)
+	close(h.gate)
+	waitDrain(t, done)
+	if got, _ := r.st.Read().Task(context.Background(), a.ID); got.State != store.TaskDone {
+		t.Errorf("寬限期內完成的任務應為 done：%+v", got)
+	}
+}
+
 // Drain 本身的 ctx 取消時不再等任務，但租約仍然放回。
 func TestDrainReleasesLeasesWhenCallerContextIsCancelled(t *testing.T) {
 	r := newRig(t)
@@ -226,6 +256,49 @@ func TestCancelStopsRunningTasks(t *testing.T) {
 	close(h.gate)
 	if err := w.Wait(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// 領取進行中（Claim 的交易已 commit、任務還沒登記）時，Cancel 要等這一輪結束才查 active，
+// 否則會找不到剛領取的任務，而它之後會照常執行。
+func TestCancelWaitsForClaimRoundInProgress(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	w := New(r.q, newStoppable(r.st), r.clk, quiet)
+
+	w.roundMu.Lock() // 模擬 RunRound 正在領取
+	tctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	at := &activeTask{cancel: cancel, done: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() { done <- w.Cancel(ctx, []string{"t1"}) }()
+
+	select {
+	case err := <-done:
+		w.roundMu.Unlock()
+		t.Fatalf("領取進行中 Cancel 不該先回傳（會漏掉剛領取的任務）：%v", err)
+	case <-time.After(50 * time.Millisecond): // 確認 Cancel 真的在等
+	}
+
+	// 這一輪登記好任務並結束：Cancel 接著要看得到它。
+	w.mu.Lock()
+	w.active["t1"] = at
+	w.mu.Unlock()
+	w.roundMu.Unlock()
+
+	select {
+	case <-tctx.Done():
+	case <-time.After(10 * time.Second): // 只是防止卡死的上限
+		t.Fatal("Cancel 沒有取消剛登記的任務")
+	}
+	close(at.done)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("任務結束後 Cancel 沒有回傳")
 	}
 }
 

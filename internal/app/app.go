@@ -62,9 +62,9 @@ type IO struct {
 // shutdownGrace 是正常關閉時等待執行中任務完成的寬限期（PIPE-R12）。
 const shutdownGrace = 30 * time.Second
 
-// shutdownTimeout 是收到訊號後等待正常關閉的上限：寬限期之外還要留時間給放回租約與關閉資料庫，
-// 否則放回租約時 ctx 已經逾時。
-const shutdownTimeout = shutdownGrace + 10*time.Second
+// httpShutdownTimeout 是收到訊號後等待 HTTP 處理中請求的上限。它只限制 HTTP 這一段：
+// 任務的寬限期與放回租約有獨立的期限（Server.Shutdown），不受它影響。
+const httpShutdownTimeout = 10 * time.Second
 
 // Run 執行一次命令並回傳結束碼。args 不含程式名稱。
 func Run(ctx context.Context, args []string, stdio IO, env Env) int {
@@ -112,7 +112,7 @@ func runServe(ctx context.Context, args []string, stdio IO, env Env) int {
 	}
 
 	// ctx 可能已取消，正常關閉要用新的 context。
-	shutCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+	shutCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), httpShutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutCtx); err != nil {
 		fmt.Fprintf(stdio.Stderr, "notesteme: 關閉時發生錯誤：%v\n", err)

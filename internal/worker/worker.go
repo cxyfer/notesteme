@@ -40,7 +40,8 @@ type Worker struct {
 
 	maxRounds int
 
-	// roundMu 讓一次領取（計算空位、領取、登記執行中）不被另一個 RunRound 打斷。
+	// roundMu 讓一次領取（計算空位、領取、登記執行中）不被另一個 RunRound、Cancel、StopClaiming 打斷：
+	// Cancel 與 StopClaiming 取得它時，一定看不到「已領取但還沒登記」的任務。
 	roundMu sync.Mutex
 	// draining 為 true 時不再領取（PIPE-R12）；由 roundMu 保護。
 	draining bool
@@ -81,7 +82,7 @@ func (w *Worker) RunRound(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("領取任務：%w", err)
 	}
 	for _, t := range tasks {
-		// 先登記再啟動：Cancel 與 Drain 在領取完成後就一定找得到這個任務。
+		// 先登記再啟動；領取到登記的整段期間都持有 roundMu，Cancel 與 Drain 取得 roundMu 之後就一定找得到這個任務。
 		tctx, cancel := context.WithCancel(ctx)
 		at := &activeTask{cancel: cancel, done: make(chan struct{})}
 		w.mu.Lock()
@@ -142,6 +143,10 @@ func (w *Worker) Wait() error {
 // 呼叫端應該先在資料庫中把任務改為 cancelled（pipeline.CancelItem），這樣即使任務在 Cancel 之後才做完，
 // 寫回也會因為租約失效而被丟棄（PIPE-R15）。
 func (w *Worker) Cancel(ctx context.Context, taskIDs []string) error {
+	// RunRound 在領取（交易 commit）與登記到 active 的整段期間都持有 roundMu。先取得它，
+	// 才不會在這之間查 active 而漏掉剛領取的任務。已領取的任務之後即使開始執行，
+	// 租約也已經因為資料庫中的 cancelled 而失效，寫回會被丟棄。
+	w.roundMu.Lock()
 	var waits []*activeTask
 	w.mu.Lock()
 	for _, id := range taskIDs {
@@ -151,6 +156,7 @@ func (w *Worker) Cancel(ctx context.Context, taskIDs []string) error {
 		}
 	}
 	w.mu.Unlock()
+	w.roundMu.Unlock() // 只在查詢與取消期間持有；等待任務結束時不擋住領取
 	for _, at := range waits {
 		select {
 		case <-at.done:
@@ -161,17 +167,25 @@ func (w *Worker) Cancel(ctx context.Context, taskIDs []string) error {
 	return nil
 }
 
-// releaseTimeout 是 Drain 放回租約的上限；放回租約用不受呼叫端 ctx 取消影響的 ctx，避免寬限期用掉了期限。
-const releaseTimeout = 10 * time.Second
+// ReleaseTimeout 是 Drain 放回租約的上限；放回租約用不受呼叫端 ctx 取消影響的 ctx，避免寬限期用掉了期限。
+// 呼叫端替 Drain 設定期限時，應該是寬限期加上它。
+const ReleaseTimeout = 10 * time.Second
+
+// StopClaiming 讓 worker 不再領取新任務（PIPE-R12），執行中的任務不受影響。可重複呼叫。
+// 正常關閉一開始就要呼叫，不能等到 HTTP 關閉之後：關閉期間 worker 不該再開始新任務。
+func (w *Worker) StopClaiming() {
+	// 取得 roundMu 代表沒有一輪領取正在進行；之後的 RunRound 都會看到 draining。
+	w.roundMu.Lock()
+	w.draining = true
+	w.roundMu.Unlock()
+}
 
 // Drain 正常關閉（PIPE-R12）：停止領取，最多等 grace（用注入的 clock 計時）讓執行中的任務完成；
 // 到期後取消剩下的任務並等它們結束（子程序整組結束），最後把還持有的租約放回 pending。
 // 被取消的任務不計入重試次數。ctx 取消時視同寬限期到期，也不再等待任務結束，但租約仍會放回。
 // 租約放回之後，沒結束的任務即使晚點寫回也會因為租約失效而被丟棄。
 func (w *Worker) Drain(ctx context.Context, grace time.Duration) error {
-	w.roundMu.Lock()
-	w.draining = true
-	w.roundMu.Unlock()
+	w.StopClaiming()
 
 	idle := make(chan struct{})
 	go func() {
@@ -208,7 +222,7 @@ func (w *Worker) Drain(ctx context.Context, grace time.Duration) error {
 		}
 	}
 
-	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), releaseTimeout)
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ReleaseTimeout)
 	defer cancel()
 	n, err := w.q.ReleaseOwned(rctx)
 	if err != nil {
