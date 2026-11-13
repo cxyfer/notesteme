@@ -407,6 +407,9 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 		inv *pipeline.InvalidError
 		ni  *pipeline.NotImplementedError
 	)
+	if pe := policyError(err); pe != nil {
+		return pe
+	}
 	switch {
 	case errors.Is(err, pipeline.ErrUnrecognizedURL):
 		return newError(http.StatusUnprocessableEntity, CodeUnrecognizedURL, err.Error())

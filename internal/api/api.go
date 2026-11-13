@@ -184,6 +184,9 @@ func (rt *routes) register(api huma.API) {
 		{OperationID: "trash-restore", Method: http.MethodPost, Path: "/api/trash/{id}/restore", Summary: "從垃圾桶還原（尚未實作）"},
 		{OperationID: "tasks-retry", Method: http.MethodPost, Path: "/api/tasks/{id}/retry", Summary: "重試任務（尚未實作）"},
 		{OperationID: "tasks-cancel", Method: http.MethodPost, Path: "/api/tasks/{id}/cancel", Summary: "取消單一任務（尚未實作）"},
+		// SEC、OPS 的場景會讀這兩個路由；先回 501，之後的切片再實作。
+		{OperationID: "system-get", Method: http.MethodGet, Path: "/api/system", Summary: "生效的設定與其來源、外部工具（尚未實作）"},
+		{OperationID: "providers-get", Method: http.MethodGet, Path: "/api/providers/{id}", Summary: "讀取 provider（尚未實作）"},
 	} {
 		huma.Register(api, op, notImplemented)
 	}

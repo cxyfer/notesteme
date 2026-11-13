@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
 )
@@ -103,6 +104,13 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 // classify 把步驟的錯誤依 plan 第 5.2 節的錯誤類別對應到步驟狀態與任務的處置。
 // 沒有分類的錯誤（解析失敗、檔案系統…）視為 retryable。
 func (p *Pipeline) classify(t store.Task, err error) result {
+	// 被防護擋下（內部網路、轉址太多、回應太大）時重試也不會成功，歸為 permanent 並告訴使用者原因。
+	// 要在 ClassOf 之前判斷：來源會把連線錯誤包成 retryable，例如 Supadata。
+	if msg, ok := netguard.PolicyMessage(err); ok {
+		return result{task: taskFailed, state: store.StageState{
+			Status: store.StatusFailed, ErrorClass: string(errclass.ClassPermanent), Message: msg,
+		}}
+	}
 	class := errclass.ClassRetryable
 	if c, ok := errclass.ClassOf(err); ok {
 		class = c

@@ -38,7 +38,7 @@ type itemsRig struct {
 	t      *testing.T
 }
 
-func newItemsRig(t *testing.T) *itemsRig {
+func newItemsRig(t *testing.T, opts ...func(*pipeline.Deps)) *itemsRig {
 	t.Helper()
 	clk := clock.NewFake(time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC))
 	dir := t.TempDir()
@@ -54,11 +54,15 @@ func newItemsRig(t *testing.T) *itemsRig {
 	log := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	q := queue.New(st, clk, "w")
 	dur := 100
-	p := pipeline.New(pipeline.Deps{
+	deps := pipeline.Deps{
 		Store: st, Clock: clk, DataDir: dir, Log: log, Wake: q.Wake, Version: "test",
 		YouTube: stubYT{info: youtube.Info{ID: "abc123xxxxx", Title: "Hello", Language: "en", DurationS: &dur,
 			Tracks: []youtube.Track{{Lang: "en", Kind: "manual"}}}},
-	})
+	}
+	for _, o := range opts {
+		o(&deps)
+	}
+	p := pipeline.New(deps)
 	h := New(Deps{Store: st, Auth: svc, Clock: clk, Log: log, Version: "test", Pipeline: p, Queue: q})
 	r := &itemsRig{h: h, worker: worker.New(q, p, clk, log), clk: clk, t: t}
 	rec := r.do("POST", "/api/auth/login", `{"password":"pw"}`, nil)

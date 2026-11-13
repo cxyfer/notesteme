@@ -2,8 +2,12 @@ package api
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
+
+	"github.com/cxyfer/notesteme/internal/netguard"
+	"github.com/cxyfer/notesteme/internal/pipeline"
 )
 
 type resolveInput struct {
@@ -43,6 +47,9 @@ func (rt *routes) resolve(ctx context.Context, in *resolveInput) (*resolveOutput
 	}
 	r, err := rt.d.Pipeline.Resolve(ctx, in.Body.URL)
 	if err != nil {
+		if pe := policyError(err); pe != nil {
+			return nil, pe
+		}
 		return nil, rt.mapErr(ctx, err)
 	}
 	out := &resolveOutput{Body: Resolution{
@@ -53,4 +60,21 @@ func (rt *routes) resolve(ctx context.Context, in *resolveInput) (*resolveOutput
 		out.Body.Episodes = append(out.Body.Episodes, Episode{GUID: e.GUID, Title: e.Title})
 	}
 	return out, nil
+}
+
+// policyError 把對外請求被防護擋下的錯誤對應成 422（GRD-R2、R4、R5）；不是防護的錯誤回傳 nil。
+// 訊息取自 pipeline 已經轉好的 PolicyError，種類由原始錯誤決定。
+func policyError(err error) *Error {
+	var pe *pipeline.PolicyError
+	if !errors.As(err, &pe) {
+		return nil
+	}
+	code := CodeBlockedAddress
+	switch {
+	case errors.Is(pe.Err, netguard.ErrTooManyRedirects):
+		code = CodeTooManyRedirects
+	case errors.Is(pe.Err, netguard.ErrTooLarge):
+		code = CodeResponseTooLarge
+	}
+	return newError(http.StatusUnprocessableEntity, code, pe.Msg)
 }

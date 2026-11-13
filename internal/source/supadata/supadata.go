@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
 
@@ -41,11 +42,8 @@ func ValidMode(m string) bool {
 	return m == ModeNative || m == ModeGenerate || m == ModeAuto
 }
 
-// 逾時與大小上限。
-const (
-	requestTimeout = 90 * time.Second
-	maxBodySize    = 16 << 20
-)
+// requestTimeout 是整個請求的逾時；回應大小上限用 netguard.LimitFeed（GRD-R5）。
+const requestTimeout = 90 * time.Second
 
 // ErrNoTranscript 表示 Supadata 沒有這部影片的字幕（404 或內容為空）；呼叫端改用下一個來源。
 var ErrNoTranscript = errors.New("supadata：沒有字幕")
@@ -120,14 +118,14 @@ func (c *Client) Fetch(ctx context.Context, videoURL, mode string) (*Result, err
 		return nil, fail(errclass.ClassRetryable, "", err)
 	}
 	defer resp.Body.Close()
-	// 多讀 1 個 byte 才能分辨「剛好到上限」與「超過上限」；LimitReader 到上限時只會回 EOF，
+	// LimitBody 多讀 1 個 byte 才能分辨「剛好到上限」與「超過上限」；一般的 LimitReader 到上限時只會回 EOF，
 	// 截斷的 JSON 會被當成暫時性錯誤一直重試，甚至接受後面帶垃圾的完整文件。
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodySize+1))
+	body, err := io.ReadAll(netguard.LimitBody(resp, netguard.LimitFeed))
 	if err != nil {
+		if errors.Is(err, netguard.ErrTooLarge) {
+			return nil, fail(errclass.ClassPermanent, "回應超過大小上限", err)
+		}
 		return nil, fail(errclass.ClassRetryable, "讀取回應失敗", err)
-	}
-	if len(body) > maxBodySize {
-		return nil, fail(errclass.ClassPermanent, fmt.Sprintf("回應超過 %d MiB 的上限", maxBodySize>>20), nil)
 	}
 
 	switch {

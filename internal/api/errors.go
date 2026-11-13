@@ -43,6 +43,11 @@ const (
 	CodeNotReady       = "not_ready"
 	CodeNotImplemented = "not_implemented"
 	CodeInternal       = "internal_error"
+
+	// 對外請求被防護擋下（GRD 介面）。
+	CodeBlockedAddress   = "blocked_address"
+	CodeTooManyRedirects = "too_many_redirects"
+	CodeResponseTooLarge = "response_too_large"
 )
 
 func newError(status int, code, message string) *Error {
