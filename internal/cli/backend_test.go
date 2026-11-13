@@ -2,12 +2,39 @@ package cli
 
 import (
 	"context"
+	"errors"
+	"net"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/app"
 )
+
+// dialFunc 是唯一的撥號實作：沒有設定 Env.Dial 時用 net.Dialer；有設定時原樣轉給它。
+func TestDialFunc(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	c, err := dialFunc(app.Env{}, 0)(t.Context(), "tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = c.Close()
+
+	boom := errors.New("boom")
+	var gotNet, gotAddr string
+	env := app.Env{Dial: func(_ context.Context, network, addr string) (net.Conn, error) {
+		gotNet, gotAddr = network, addr
+		return nil, boom
+	}}
+	if _, err := dialFunc(env, 0)(t.Context(), "tcp", "example.test:80"); !errors.Is(err, boom) || gotNet != "tcp" || gotAddr != "example.test:80" {
+		t.Errorf("err = %v, network = %q, addr = %q", err, gotNet, gotAddr)
+	}
+}
 
 // withoutKey 回傳沒有 master key 的環境複本。
 func withoutKey(env app.Env) app.Env {

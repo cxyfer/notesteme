@@ -55,15 +55,6 @@ type TestControls struct {
 	ImplVersions map[string]int
 }
 
-// dial 依 Env.Dial 連線；沒有設定時用預設的 net.Dialer。
-func (e Env) dial(ctx context.Context, network, addr string) (net.Conn, error) {
-	if e.Dial != nil {
-		return e.Dial(ctx, network, addr)
-	}
-	var d net.Dialer
-	return d.DialContext(ctx, network, addr)
-}
-
 // IO 是標準輸入輸出。
 type IO struct {
 	Stdin  io.Reader
