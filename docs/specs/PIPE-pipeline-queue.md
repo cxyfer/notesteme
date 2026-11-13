@@ -64,3 +64,4 @@
 - **場景驗證不到規則，需要修改場景（待 owner 同意）**（2026-11-13，PIPE 切片審查以變異測試發現）：
   - PIPE-R7「Only the three most recent versions are kept」：第三次 rerun（`mode: auto`）與初次處理的快取鍵相同，不會產生新版本，總共剛好 3 版；拿掉清除邏輯場景仍然通過。建議：初次處理改用 `mode: native` 以外的另一組設定，或多一次 rerun，讓同一組產出累積到 4 個不同版本，再斷言只剩 3 版。清除邏輯先以單元測試驗證。
   - PIPE-R13「Each run records the settings it used」：陣列只比對前 N 個元素，預設的 `fallback: [supadata, groq]` 也符合 `["supadata"]`，分不出覆寫與預設值。建議：斷言改成覆寫獨有的值，例如 `"targets": ["en"]`（預設不是 `en`）。
+- PIPE-R7 的清除另外保留「被其他產出當作來源（parent）的版本」，避免來源紀錄指向已刪除的產出；有衍生產出時，同一組可能超過 3 版。被清除版本的 stage run 不再指向產出，之後視為快取未命中。
