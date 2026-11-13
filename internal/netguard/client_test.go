@@ -150,6 +150,7 @@ func TestPolicyMessage(t *testing.T) {
 		{wrap(&TooLargeError{Limit: LimitFeed}), "回應超過大小上限（10 MiB）。", true},
 		{wrap(&TooLargeError{Limit: LimitAudio}), "回應超過大小上限（2 GiB）。", true},
 		{wrap(ErrTooLarge), "回應超過大小上限。", true},
+		{wrap(fmt.Errorf("%w：%q", ErrUnsupportedScheme, "ftp")), "只支援 http 與 https 網址。", true},
 		{errors.New("HTTP 500"), "", false},
 		{nil, "", false},
 	}

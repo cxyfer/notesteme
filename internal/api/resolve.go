@@ -62,7 +62,7 @@ func (rt *routes) resolve(ctx context.Context, in *resolveInput) (*resolveOutput
 	return out, nil
 }
 
-// policyError 把對外請求被防護擋下的錯誤對應成 422（GRD-R2、R4、R5）；不是防護的錯誤回傳 nil。
+// policyError 把對外請求被防護擋下的錯誤對應成 422（GRD-R1、R2、R4、R5）；不是防護的錯誤回傳 nil。
 // 訊息取自 pipeline 已經轉好的 PolicyError，種類由原始錯誤決定。
 func policyError(err error) *Error {
 	var pe *pipeline.PolicyError
@@ -75,6 +75,8 @@ func policyError(err error) *Error {
 		code = CodeTooManyRedirects
 	case errors.Is(pe.Err, netguard.ErrTooLarge):
 		code = CodeResponseTooLarge
+	case errors.Is(pe.Err, netguard.ErrUnsupportedScheme):
+		code = CodeUnsupportedScheme
 	}
 	return newError(http.StatusUnprocessableEntity, code, pe.Msg)
 }

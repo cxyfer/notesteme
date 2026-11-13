@@ -39,8 +39,8 @@ type UpstreamError struct {
 func (e *UpstreamError) Error() string { return e.Msg }
 func (e *UpstreamError) Unwrap() error { return e.Err }
 
-// PolicyError 是對外請求被防護擋下（GRD-R2、R4、R5）：Msg 是給使用者看的訊息（netguard.PolicyMessage），
-// Err 是原始錯誤，用 errors.Is 對 netguard.ErrBlockedAddress、ErrTooManyRedirects、ErrTooLarge 判斷種類。
+// PolicyError 是對外請求被防護擋下（GRD-R1、R2、R4、R5）：Msg 是給使用者看的訊息（netguard.PolicyMessage），
+// Err 是原始錯誤，用 errors.Is 對 netguard.ErrBlockedAddress、ErrTooManyRedirects、ErrTooLarge、ErrUnsupportedScheme 判斷種類。
 type PolicyError struct {
 	Msg string
 	Err error

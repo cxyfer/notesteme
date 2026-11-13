@@ -34,7 +34,7 @@ Notesteme 會依使用者或外部內容提供的網址主動發出請求，也�
 ## 介面
 
 - 設定檔：`network.allow_private`（字串陣列）、`media_roots`（絕對路徑陣列）、`inbox`（預設 `<資料目錄>/inbox`）
-- 被擋的辨識請求（`POST /api/resolve`）回 422，code 分別為 `blocked_address`、`too_many_redirects`、`response_too_large`；路徑不在根目錄內回 403，code 為 `path_outside_roots`。
+- 被擋的辨識請求（`POST /api/resolve`）回 422，code 分別為 `blocked_address`、`too_many_redirects`、`response_too_large`、`unsupported_scheme`（轉址到 `http`、`https` 以外的 scheme，訊息為「只支援 http 與 https 網址。」）；路徑不在根目錄內回 403，code 為 `path_outside_roots`。
 
 ## 不在範圍內
 

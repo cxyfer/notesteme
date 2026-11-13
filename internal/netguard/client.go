@@ -93,7 +93,7 @@ func (l *limitedBody) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// PolicyMessage 把防護造成的錯誤對應成給使用者看的訊息（GRD-R2、R4、R5）；不是防護的錯誤回傳 false。
+// PolicyMessage 把防護造成的錯誤對應成給使用者看的訊息（GRD-R1、R2、R4、R5）；不是防護的錯誤回傳 false。
 func PolicyMessage(err error) (string, bool) {
 	var tl *TooLargeError
 	switch {
@@ -103,6 +103,8 @@ func PolicyMessage(err error) (string, bool) {
 		return "這個網址指向內部網路，已封鎖。", true
 	case errors.Is(err, ErrTooManyRedirects):
 		return fmt.Sprintf("轉址超過 %d 次。", MaxRedirects), true
+	case errors.Is(err, ErrUnsupportedScheme):
+		return "只支援 http 與 https 網址。", true
 	case errors.As(err, &tl):
 		return fmt.Sprintf("回應超過大小上限（%s）。", formatLimit(tl.Limit)), true
 	case errors.Is(err, ErrTooLarge):

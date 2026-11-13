@@ -21,9 +21,10 @@ func TestResolveMapsPolicyErrorsTo422(t *testing.T) {
 		err           error
 		code, message string
 	}{
-		"內部網路": {fmt.Errorf("%w: 192.168.1.1", netguard.ErrBlockedAddress), CodeBlockedAddress, "這個網址指向內部網路，已封鎖。"},
-		"轉址太多": {netguard.ErrTooManyRedirects, CodeTooManyRedirects, "轉址超過 5 次。"},
-		"回應太大": {&netguard.TooLargeError{Limit: netguard.LimitFeed}, CodeResponseTooLarge, "回應超過大小上限（10 MiB）。"},
+		"內部網路":        {fmt.Errorf("%w: 192.168.1.1", netguard.ErrBlockedAddress), CodeBlockedAddress, "這個網址指向內部網路，已封鎖。"},
+		"轉址太多":        {netguard.ErrTooManyRedirects, CodeTooManyRedirects, "轉址超過 5 次。"},
+		"回應太大":        {&netguard.TooLargeError{Limit: netguard.LimitFeed}, CodeResponseTooLarge, "回應超過大小上限（10 MiB）。"},
+		"不支援的 scheme": {fmt.Errorf("%w：%q", netguard.ErrUnsupportedScheme, "file"), CodeUnsupportedScheme, "只支援 http 與 https 網址。"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := newItemsRig(t, func(d *pipeline.Deps) {

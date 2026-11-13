@@ -35,9 +35,10 @@ func TestResolveReturnsPolicyErrors(t *testing.T) {
 		err  error
 		want string
 	}{
-		"被擋":   {fmt.Errorf("%w: 10.0.0.5", netguard.ErrBlockedAddress), "這個網址指向內部網路，已封鎖。"},
-		"轉址太多": {netguard.ErrTooManyRedirects, "轉址超過 5 次。"},
-		"回應太大": {&netguard.TooLargeError{Limit: netguard.LimitFeed}, "回應超過大小上限（10 MiB）。"},
+		"被擋":          {fmt.Errorf("%w: 10.0.0.5", netguard.ErrBlockedAddress), "這個網址指向內部網路，已封鎖。"},
+		"轉址太多":        {netguard.ErrTooManyRedirects, "轉址超過 5 次。"},
+		"回應太大":        {&netguard.TooLargeError{Limit: netguard.LimitFeed}, "回應超過大小上限（10 MiB）。"},
+		"不支援的 scheme": {fmt.Errorf("%w：%q", netguard.ErrUnsupportedScheme, "ftp"), "只支援 http 與 https 網址。"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := newRig(t)
@@ -96,10 +97,12 @@ func TestClassifyPolicyErrorsArePermanent(t *testing.T) {
 		err  error
 		want string
 	}{
-		"被擋（包成 retryable）": {wrapped(fmt.Errorf("%w: 192.168.1.1", netguard.ErrBlockedAddress)), "這個網址指向內部網路，已封鎖。"},
-		"被擋（沒有分類）":         {fmt.Errorf("抓取音檔：%w", netguard.ErrBlockedAddress), "這個網址指向內部網路，已封鎖。"},
-		"轉址太多":             {wrapped(netguard.ErrTooManyRedirects), "轉址超過 5 次。"},
-		"回應太大":             {wrapped(&netguard.TooLargeError{Limit: netguard.LimitAudio}), "回應超過大小上限（2 GiB）。"},
+		"被擋（包成 retryable）":     {wrapped(fmt.Errorf("%w: 192.168.1.1", netguard.ErrBlockedAddress)), "這個網址指向內部網路，已封鎖。"},
+		"被擋（沒有分類）":             {fmt.Errorf("抓取音檔：%w", netguard.ErrBlockedAddress), "這個網址指向內部網路，已封鎖。"},
+		"轉址太多":                 {wrapped(netguard.ErrTooManyRedirects), "轉址超過 5 次。"},
+		"回應太大":                 {wrapped(&netguard.TooLargeError{Limit: netguard.LimitAudio}), "回應超過大小上限（2 GiB）。"},
+		"不支援的 scheme（轉址到 ftp）": {wrapped(fmt.Errorf("%w：%q", netguard.ErrUnsupportedScheme, "ftp")), "只支援 http 與 https 網址。"},
+		"不支援的 scheme（沒有分類）":    {fmt.Errorf("抓取音檔：%w", netguard.ErrUnsupportedScheme), "只支援 http 與 https 網址。"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			// Attempts 還有餘裕：若被當成 retryable 就會排程重試。
