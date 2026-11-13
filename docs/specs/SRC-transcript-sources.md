@@ -35,7 +35,7 @@
 | SRC-R6 | YouTube 自動字幕還沒生成時，`transcript` 為 `waiting`，2 小時後再檢查，不消耗重試次數。從發布時間算起超過 24 小時仍沒有，就改用下一個來源。訊息為「YouTube 還沒產生自動字幕，預計 2 小時後再檢查。」，動作為「現在改用語音轉錄」。 |
 | SRC-R7 | 直播中或首播尚未開始的影音，`metadata` 為 `waiting`，直到有 VOD。 |
 | SRC-R8 | 來源需要 cookie 但沒有可用的 cookie 時，步驟為 `blocked`（`needs_action`），訊息說明需要哪個平台的 cookie，動作為「上傳 cookie」與「改用語音轉錄」。 |
-| SRC-R9 | yt-dlp 回傳 403 時，步驟為 `blocked`（`needs_action`），訊息為「YouTube 拒絕了下載請求（403）。先更新 yt-dlp 再重試；如果仍然失敗，上傳 YouTube cookie。」，動作為「更新 yt-dlp」與「上傳 cookie」。 |
+| SRC-R9 | yt-dlp 回傳 403 時，步驟為 `blocked`（`needs_action`），訊息為「YouTube 拒絕了下載請求（403）。先更新 yt-dlp 再重試；如果仍然失敗，上傳 YouTube cookie。」，動作為「更新 yt-dlp」與「上傳 cookie」。yt-dlp 回報影片不存在（已刪除、私人、無法取得）時，步驟為 `failed`（`permanent`），不重試。 |
 | SRC-R10 | 需要 API key 的來源沒有設定 key 時，步驟為 `blocked`（`needs_action`），動作為「設定 API key」。 |
 | SRC-R11 | 原文語言依序採用：平台中繼資料、ASR 回報的語言、文字語言偵測。兩種語言都各占 20% 以上的字元時，標記為 `mixed`，主要語言取占比較高的一種。 |
 | SRC-R12 | ASR 前處理：轉成單聲道 16kHz 並壓縮。仍超過 provider 的單檔上限時，在靜音處切塊並保留重疊；合併時修正時間偏移、移除重疊區的重複內容，結果的時間必須單調遞增。 |

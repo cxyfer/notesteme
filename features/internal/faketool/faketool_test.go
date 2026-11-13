@@ -367,7 +367,8 @@ func TestInProcessBranches(t *testing.T) {
 	})
 
 	t.Run("unknown video and urls", func(t *testing.T) {
-		if code, _, errs := s.inproc("yt-dlp", "-J", yt+"nopexxxxxxx"); code != 1 || !strings.Contains(errs, "Video unavailable") {
+		// 沒有登記的影片：輸出與真實的 yt-dlp 同格式的錯誤（youtube 的 client 依此判斷 permanent）。
+		if code, _, errs := s.inproc("yt-dlp", "-J", yt+"nopexxxxxxx"); code != 1 || strings.TrimSpace(errs) != "ERROR: [youtube] nopexxxxxxx: Video unavailable" {
 			t.Fatalf("code=%d stderr=%q", code, errs)
 		}
 		for _, u := range []string{"https://example.com/x", "https://www.youtube.com/", "not a url"} {

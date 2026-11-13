@@ -137,6 +137,52 @@ func TestProbeClassifiesFailures(t *testing.T) {
 	}
 }
 
+// yt-dlp 回報影片不存在（已刪除、私人、無法取得）是 permanent，不重試；其他錯誤維持 retryable。
+func TestClassifyVideoGone(t *testing.T) {
+	tests := []struct {
+		name   string
+		stderr string
+		want   errclass.Class
+	}{
+		{"影片不存在", "ERROR: [youtube] abc123xxxxx: Video unavailable\n", errclass.ClassPermanent},
+		{"上傳者移除", "ERROR: [youtube] abc123xxxxx: Video unavailable. This video has been removed by the uploader\n", errclass.ClassPermanent},
+		{"帳號已終止", "ERROR: [youtube] abc123xxxxx: Video unavailable. This video is no longer available because the YouTube account associated with this video has been terminated.\n", errclass.ClassPermanent},
+		{"私人影片", "ERROR: [youtube] abc123xxxxx: Private video. Sign in if you've been granted access to this video\n", errclass.ClassPermanent},
+		{"舊版的移除訊息", "ERROR: [youtube] abc123xxxxx: This video has been removed for violating YouTube's Terms of Service\n", errclass.ClassPermanent},
+		{"舊版的無法取得訊息", "ERROR: [youtube] abc123xxxxx: This video is no longer available due to a copyright claim\n", errclass.ClassPermanent},
+		{"extractor 名稱帶後綴", "ERROR: [youtube:tab] abc123xxxxx: Video unavailable\n", errclass.ClassPermanent},
+		{"前面有其他輸出", "[youtube] Extracting URL: https://www.youtube.com/watch?v=abc123xxxxx\nERROR: [youtube] abc123xxxxx: Video unavailable\n", errclass.ClassPermanent},
+		{"大小寫不同", "error: [YouTube] abc123xxxxx: video unavailable\n", errclass.ClassPermanent},
+
+		{"被限流", "ERROR: [youtube] abc123xxxxx: Video unavailable. This content isn't available, try again later. The current session has been rate-limited by YouTube for up to an hour.\n", errclass.ClassRetryable},
+		{"403", "ERROR: [youtube] abc123xxxxx: unable to download video data: HTTP Error 403: Forbidden\n", errclass.ClassRetryable},
+		{"會員限定", "ERROR: [youtube] abc123xxxxx: Join this channel to get access to members-only content like this video\n", errclass.ClassRetryable},
+		{"機器人驗證", "ERROR: [youtube] abc123xxxxx: Sign in to confirm you're not a bot\n", errclass.ClassRetryable},
+		{"不是 youtube extractor", "ERROR: [BiliBili] BV1xx411c7mD: Video unavailable\n", errclass.ClassRetryable},
+		{"只是輸出提到", "WARNING: Video unavailable is mentioned here\nERROR: unable to connect\n", errclass.ClassRetryable},
+		{"沒有輸出", "", errclass.ClassRetryable},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &stubRunner{res: toolexec.Result{ExitCode: 1, Stderr: []byte(tt.stderr)}}
+			c := newClient(t, r)
+			for op, call := range map[string]func() error{
+				"Probe": func() error { _, err := c.Probe(context.Background(), "abc123xxxxx"); return err },
+				"FetchCaptions": func() error {
+					_, err := c.FetchCaptions(context.Background(), "abc123xxxxx", Track{"en", KindManual}, t.TempDir())
+					return err
+				},
+			} {
+				err := call()
+				var e *errclass.Error
+				if !errors.As(err, &e) || e.Class != tt.want || e.ExitCode != 1 {
+					t.Errorf("%s：err = %#v，預期類別 %s", op, err, tt.want)
+				}
+			}
+		})
+	}
+}
+
 func TestProbeWithoutToolNeedsAction(t *testing.T) {
 	c := &Client{Runner: &stubRunner{}, Tools: toolexec.Resolver{Vars: map[string]string{"PATH": t.TempDir()}}}
 	_, err := c.Probe(context.Background(), "x")

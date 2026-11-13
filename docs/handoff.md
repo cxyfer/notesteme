@@ -160,7 +160,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - `queue/control.go` 更新時持有寫鎖做 SQLite 寫入；pause 回傳後，進行中的一輪領取仍可能多領一個任務（毫秒級）。
   - `GET /api/queue` 只列 `executor=builtin` 的任務，agent 任務留給 AGT。
 - **SRC**：
-  - yt-dlp 的錯誤分類：目前全部當成 `retryable`，403 還沒對應到 SRC-R9。
+  - yt-dlp 的錯誤分類：影片不存在、私人、已移除是 `permanent`（依 stderr 的 `ERROR: [youtube] <id>: …`，見 `source/youtube/client.go`，還沒對真實的 yt-dlp 驗證過訊息）；其餘都當成 `retryable`，403 還沒對應到 SRC-R9。
   - 原文語言未知時，應該從 `*-orig` 字幕軌推斷。
   - 還沒做：ASR、自動字幕等待（SRC-R6）、cookie（SRC-R8）、品質檢查（SRC-R4）。
   - Supadata：API key 只能用環境變數 `NOTESTEME_SUPADATA_API_KEY`，還沒加密存放（SEC-R4）；非同步 job（202）還不會輪詢，目前當 permanent；暫時性錯誤時不會寫入 `source_probes`。

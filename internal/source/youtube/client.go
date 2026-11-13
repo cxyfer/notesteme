@@ -103,13 +103,51 @@ func (c *Client) run(ctx context.Context, timeout time.Duration, args []string) 
 	return res, nil
 }
 
+// videoGoneLine 比對 yt-dlp 回報「影片不存在」的錯誤行。YouTube extractor 在 stderr 輸出
+// "ERROR: [youtube] <id>: <原因>"（結束碼 1），原因的開頭有：
+//   - "Video unavailable"：影片不存在；後面常接「This video has been removed by the uploader」、
+//     「…the YouTube account associated with this video has been terminated」，地區封鎖也是這個開頭
+//     （ADR-0009 同樣視為 permanent）。
+//   - "Private video"：私人影片（「Private video. Sign in if you've been granted access to this video」）。
+//   - "This video has been removed"、"This video is no longer available"：已移除的影片（舊版訊息）。
+//
+// 這些原因的依據是 yt-dlp 的 YouTube extractor 原始碼，沒有在此環境對真實的 yt-dlp 驗證（測試不連外網）。
+// 會員限定（"Join this channel"）、年齡限制、"Sign in to confirm you're not a bot" 可以靠 cookie 解決，
+// 不屬於這一類，維持原本的分類。
+var videoGoneLine = regexp.MustCompile(
+	`(?im)^ERROR: \[youtube[^\]]*\] \S+: (?:Video unavailable|Private video|This video has been removed|This video is no longer available)(.*)$`)
+
+// 被限流時 yt-dlp 也會輸出「Video unavailable. This content isn't available, try again later.」，
+// 那是暫時性的限制，不是影片不存在。
+var videoGoneExceptions = []string{"try again later", "rate-limited"}
+
+// videoGone 回報 yt-dlp 的 stderr 是否表示影片不存在（已刪除、私人、無法取得）。
+func videoGone(stderr []byte) bool {
+	for _, m := range videoGoneLine.FindAllSubmatch(stderr, -1) {
+		rest := strings.ToLower(string(m[1]))
+		transient := false
+		for _, s := range videoGoneExceptions {
+			transient = transient || strings.Contains(rest, s)
+		}
+		if !transient {
+			return true
+		}
+	}
+	return false
+}
+
 // classify 把 yt-dlp 的非 0 結束碼對應到錯誤類別（ADR-0009）。
 //
+// 影片不存在、私人或已移除是 permanent，重試也不會成功（SRC 規格）。
 // TODO(SRC-R9)：HTTP 403 → needs_action，訊息建議先更新 yt-dlp；
-// TODO(ADR-0009)：影片已刪除、私人、地區封鎖 → permanent；429、5xx → retryable 並依 Retry-After 退避。
-// 目前所有非 0 結束碼一律視為 retryable：有次數上限，用盡後步驟為 failed。
+// TODO(ADR-0009)：429、5xx → retryable 並依 Retry-After 退避。
+// 其他非 0 結束碼一律視為 retryable：有次數上限，用盡後步驟為 failed。
 func classify(res toolexec.Result) error {
-	return &errclass.Error{Class: errclass.ClassRetryable, Source: "yt-dlp", ExitCode: res.ExitCode, Detail: tail(res.Stderr, 300)}
+	class := errclass.ClassRetryable
+	if videoGone(res.Stderr) {
+		class = errclass.ClassPermanent
+	}
+	return &errclass.Error{Class: class, Source: "yt-dlp", ExitCode: res.ExitCode, Detail: tail(res.Stderr, 300)}
 }
 
 // tail 回傳輸出最後 n 個位元組的單行摘要。
