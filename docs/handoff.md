@@ -1,6 +1,6 @@
 # 交接：M1 開發進度
 
-> 更新：2026-11-13。PR #2（交接檔）、#3（CI 與 Docker）已合併；PIPE 切片在 PR #4（`feat/pipe-queue`）。
+> 更新：2026-11-13。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；CLI 切片在 `feat/cli` 的 PR。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -11,12 +11,14 @@
   - 切片 1：已登入的 owner 新增有人工字幕的 YouTube 影片，下載到 SRT。
   - 依審查結果修正，以及 PR #1（引入 sqlc）。
   - PIPE 切片：依類別的並行上限與暫停、優先順序與 aging、重啟回收、正常關閉的寬限期、取消、SSE 事件、lease_token 檢查、保留最近 3 版、執行紀錄 API、最小的 Supadata 來源。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：187 個場景，67 passed、120 pending、0 failed、0 undefined。
+  - YouTube 影片 ID 改為嚴格的 11 個字元（場景代號一併改名，例如 `abc123xxxxx`）；yt-dlp 回報影片不存在時不重試。
+  - CLI 切片：`internal/cli`（`ingest`、`items`、`export`、`doctor`）、standalone 與 client 模式、本機 Unix socket（`/data/notesteme.sock`）、`--server` 加 token、結束碼、`internal/doctor`、`item.created` 事件、通過場景的棘輪（`features/passing.txt`）。
+- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：187 個場景，73 passed、114 pending、0 failed、0 undefined。
 
   | Feature | passed | pending |
   |---|---|---|
   | AUTH | 12 | 11 |
-  | CLI | 1 | 8 |
+  | CLI | 7 | 2 |
   | DEL | 0 | 21 |
   | GRD | 2 | 18 |
   | ING | 12 | 12 |
@@ -28,20 +30,20 @@
   | SEC | 2 | 8 |
   | SRC | 4 | 16 |
 
-  PIPE 剩下的兩個 pending 都要等 SRC 的來源：R4 要 bilibili-ai 加 cookie，R10「Pausing one resource class」要 groq。
+  PIPE 剩下的兩個 pending 都要等 SRC 的來源：R4 要 bilibili-ai 加 cookie，R10「Pausing one resource class」要 groq。CLI 剩下的兩個：`--server` 加 token 要等 AUTH 的 token（AUTH-R7～R9），等待 Bilibili 影音要等 SRC 的 Bilibili 來源。
 
   M1 的 OUT 場景全部通過，但 OUT 的 M2 部分還沒做，所以規格狀態仍是 `ready`，不是 `implemented`。
 
-- **規格狀態**：AUTH、SEC、ING、SRC、NRM、OUT、PIPE 是 `ready`，其餘都是 `draft`。還沒有任何規格達到 `implemented`，因為每份都還有 pending 的場景。
+- **規格狀態**：AUTH、SEC、ING、SRC、NRM、OUT、PIPE、CLI 是 `ready`，其餘都是 `draft`。還沒有任何規格達到 `implemented`，因為每份都還有 pending 的場景。
 
 ## 2. 下一步
 
-使用者暫定的切片順序：PIPE（完成，PR 待合併）→ **CLI 與 `/data` 鎖** → GRD → 其餘 SRC 來源 → OPS → LIB → DEL。
+使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成，PR 待合併）→ **GRD** → 其餘 SRC 來源 → OPS → LIB → DEL。使用者要求每個切片完成後自動開始下一個。
 
 接下來：
 
-1. 等使用者決定 PIPE-R7、R13 的場景修改（見第 7 節），同意後在同一個 commit 修改規格與場景。
-2. 開始 CLI 切片：讓 `scout` 列出 `features/CLI-*.feature` 的 `@M1` 場景與用到的步驟，做 DoR 檢查。
+1. 開始 GRD 切片：讓 `scout` 列出 `features/GRD-*.feature` 的 `@M1` 場景與用到的步驟，做 DoR 檢查。netguard 的 allowlist 還沒接到設定檔，見第 6 節。
+2. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
 3. `features/fixtures/items/` 還沒做：DEL、NRM、SEC 共 17 個場景停在 `Given the item … has been processed up to …`。做了之後拿掉 `features/steps/processing.go` 的 `pendingWithoutItemFixture`。
 
 ## 3. 怎麼執行
@@ -76,10 +78,20 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 - **不要讓已實作的步驟依參數回傳 pending 來避開失敗**。場景的步驟都已實作、行為還沒做時：
   - 小的行為就直接實作。
   - 大的就讓真正還沒實作的那個步驟維持 pending。
-  - 目前允許的 pending 只有三種：
-    - 斷言遇到 production 回應的 `501 not_implemented`，而且這個回應必須是前一個步驟送出的請求。
+  - 目前允許的 pending 只有下列幾種：
+    - 斷言遇到 production 回應的 `501 not_implemented`，或 CLI 回報 `not_implemented`（`the command exits with` 遇到尚未實作的子命令或 API 的 501），而且這個回應或結果必須是前一個步驟送出、執行的。
     - 腳本化來源的步驟查 production 的 `source.Implemented`，得知來源還沒實作。
-    - 暫時保留的 `pendingWithoutItemFixture`：執行前就判斷場景沒有準備任何字幕來源。
+    - 暫時保留的 `pendingWithoutItemFixture`：執行前就判斷場景沒有準備任何字幕來源。判斷用 `declaredLanguage`（`titled` 補上的預設語言不算場景宣告的語言），所以下列 3 個 DEL 場景在 DEL 切片完成時要移除這個例外：
+      - The deletion preview shows what will be lost without changing anything
+      - Adding an item that is in the trash offers to restore it
+      - An item added again after a permanent delete starts fresh
+    - `docker` 指令：`When the owner runs "docker …"` 回 pending，OPS 切片處理（其他不是 `notesteme` 的指令一律失敗）。
+    - 步驟本身還沒實作。
+- **通過場景的棘輪**（`features/passing.txt`）：
+  - 「501 → pending」這類規則可能讓已通過的場景退步成 pending，整套測試卻仍然是綠的（審查用變異測試證明：讓 `GET /api/items` 回 501，CLI 場景 5 從 passed 變成 pending）。
+  - `features/passing.txt` 一行一個通過的場景，格式 `<feature 檔名>: <場景名稱>`；Scenario Outline 的每個 example 加上 ` [example N]`（整份 Examples 的第幾列）。
+  - `TestFeatures` 跑完後讀取每個場景的結果（自訂的 godog formatter，見 `features/ratchet_test.go`）：清單中的場景不是 passed（pending、failed、undefined、沒有被執行）就讓測試失敗並列出場景；通過但不在清單中的場景只提示。只有預設 tag 才要求清單中的場景都被執行；用 `-godog.tags` 指定其他 tag 時只檢查有執行到的。
+  - **每個切片完成後要更新 `features/passing.txt`**：`go test ./features -run TestFeatures -update-passing`，檢視 diff 後一起 commit。清單中的場景不得退步；改場景名稱或刪除場景時，清單也要同步修改。
 - **指令被權限限制擋下時不要繞過**（例如把指令寫進腳本再執行）；停下來回報給使用者。
 - **subagent 分工**：
   - `architect`（opus，唯讀）：設計。
@@ -165,6 +177,12 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - 還沒做：ASR、自動字幕等待（SRC-R6）、cookie（SRC-R8）、品質檢查（SRC-R4）。
   - Supadata：API key 只能用環境變數 `NOTESTEME_SUPADATA_API_KEY`，還沒加密存放（SEC-R4）；非同步 job（202）還不會輪詢，目前當 permanent；暫時性錯誤時不會寫入 `source_probes`。
   - 做 `youtube-auto` 前，要評估改用 yt-dlp 的 `json3` 格式（見 NRM 待決問題）。`features/fixtures/captions/auto-zh-en-mixed.json` 目前內容是 VTT，決定後與假 yt-dlp 一起改。
+- **CLI**：
+  - client 模式加 `--wait`、而 serve 是手動 worker 時，harness 還不會在背景推動 worker，步驟會失敗並說明（目前沒有場景用到）。
+  - `items ls --status`、`--channel` 回 2（尚未支援）；本機路徑的 `ingest` 要等 upload／path API（目前 API 回 501）。
+  - `doctor` 的網路連線檢查要等 OPS 的已知影片；API key 只檢查 Supadata。
+  - JSON Lines 輸出在步驟中只比對第一個物件。
+  - 非 Linux 平台的本機 socket 只靠檔案權限，沒有 uid 檢查。
 - **GRD**：netguard 的 allowlist 還沒接到設定檔；`the host … resolves to` 等網路步驟還沒實作。
 - **OPS**：migration 前的快照（OPS-R3）；DB schema 比程式新時拒絕啟動（OPS-R4）；`/readyz` 限速。
 - **AUTH**：

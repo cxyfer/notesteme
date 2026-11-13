@@ -28,6 +28,9 @@ type Env struct {
 	Net netguard.Deps
 	// Listen 建立 HTTP listener；serve 必須提供。測試把設定的位址換成 127.0.0.1:0。
 	Listen func(network, addr string) (net.Listener, error)
+	// Dial 建立 CLI 連到 --server 的連線（client 模式，CLI-R3）；nil 時用 net.Dialer。
+	// 它不經過 netguard：目標是使用者自己指定的 server（可能在本機或區網），不是不受信任的外部網址。
+	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
 	// Log 是 log 輸出，nil 時視為丟棄。
 	Log io.Writer
 	// Runner 是執行外部工具（yt-dlp、ffmpeg）的 runner；nil 時使用 production 實作，

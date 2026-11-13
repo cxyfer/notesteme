@@ -58,10 +58,24 @@ func (r *Repo) emitStage(ctx context.Context, itemID, stage, status string) {
 	if err != nil {
 		return
 	}
-	ev := events.Event{
+	r.emit(events.Event{
 		Type: events.TypeStageStatus, Item: source.Ref(it.Platform, it.ExternalID, it.Part),
 		ItemID: itemID, Stage: stage, Status: status,
+	})
+}
+
+// emitItemCreated 記下影音新增；排隊與發布的時機同 emitStage，所以 rollback 時不會發布。
+func (r *Repo) emitItemCreated(it Item) {
+	if r.s == nil || r.s.sink.Load() == nil {
+		return
 	}
+	r.emit(events.Event{
+		Type: events.TypeItemCreated, Item: source.Ref(it.Platform, it.ExternalID, it.Part), ItemID: it.ID,
+	})
+}
+
+// emit 交易中先排隊（commit 之後才發布），單一陳述句則立即發布。
+func (r *Repo) emit(ev events.Event) {
 	if r.queued != nil {
 		*r.queued = append(*r.queued, ev)
 		return

@@ -44,6 +44,8 @@ type State struct {
 	// 直到檔案被刪除。每個被擋住的程序各寫一個 <Gate>.waiting.<pid> 標記檔，
 	// 並在 <root>/data/tmp 寫下部分檔（見 waitGate）。
 	Gate string `json:"gate,omitempty"`
+	// FFmpegNoLibass 為 true 時，假 ffmpeg 的 -buildconf 不含 --enable-libass。
+	FFmpegNoLibass bool `json:"ffmpeg_no_libass,omitempty"`
 }
 
 // Video 是一部假的平台影片。

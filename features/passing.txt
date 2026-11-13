@@ -1,0 +1,73 @@
+AUTH-access.feature: Unauthenticated requests are refused [example 1]
+AUTH-access.feature: Unauthenticated requests are refused [example 2]
+AUTH-access.feature: Unauthenticated requests are refused [example 3]
+AUTH-access.feature: Unauthenticated requests are refused [example 4]
+AUTH-access.feature: Unauthenticated requests are refused [example 5]
+AUTH-access.feature: The first start takes the password from the environment
+AUTH-access.feature: The server refuses to start without any password
+AUTH-access.feature: The session cookie is locked down
+AUTH-access.feature: Signing out ends the session
+AUTH-access.feature: A state-changing request without a CSRF token is refused
+AUTH-access.feature: Five wrong passwords lock sign-in for a minute
+AUTH-access.feature: A lockout from one address does not lock out another
+CLI-cli.feature: A second server on the same data directory refuses to start
+CLI-cli.feature: Without a running server the CLI opens the database itself
+CLI-cli.feature: With a running server the CLI goes through it
+CLI-cli.feature: JSON output matches the API
+CLI-cli.feature: A bad argument exits with 2
+CLI-cli.feature: Waiting until the transcript is ready
+CLI-cli.feature: Doctor reports each dependency with a fix
+GRD-guards.feature: Non-HTTP schemes are refused
+GRD-guards.feature: yt-dlp is never asked to open an arbitrary site
+ING-ingest.feature: Recognise what a URL points to [example 1]
+ING-ingest.feature: Recognise what a URL points to [example 2]
+ING-ingest.feature: Recognise what a URL points to [example 3]
+ING-ingest.feature: Recognise what a URL points to [example 4]
+ING-ingest.feature: Recognise what a URL points to [example 5]
+ING-ingest.feature: Recognise what a URL points to [example 6]
+ING-ingest.feature: Recognise what a URL points to [example 7]
+ING-ingest.feature: Reject a URL that no platform recognises
+ING-ingest.feature: Ingesting a YouTube video creates an item and starts the pipeline
+ING-ingest.feature: Ingesting an item that is already in the library does not duplicate it
+ING-ingest.feature: A channel cannot be ingested directly
+ING-ingest.feature: Content that needs a cookie is flagged before submitting
+NRM-normalize.feature: Rolling auto captions are de-duplicated
+NRM-normalize.feature: Rolling Chinese captions are de-duplicated without spaces
+NRM-normalize.feature: A cue that only shares the first letters of a word is not merged
+NRM-normalize.feature: The same line far apart in time is kept twice
+NRM-normalize.feature: A tiny fragment is merged into the previous cue
+NRM-normalize.feature: Formatting tags and empty cues are removed but music markers stay
+NRM-normalize.feature: Overlapping cues are trimmed so timings always move forward
+NRM-normalize.feature: Out-of-order cues are sorted by start time
+NRM-normalize.feature: Word timings survive a merge
+OPS-operations.feature: Readiness reports what is broken
+OUT-subtitle-output.feature: Download SRT rendered from the cues
+OUT-subtitle-output.feature: Every M1 format is available [example 1]
+OUT-subtitle-output.feature: Every M1 format is available [example 2]
+OUT-subtitle-output.feature: Every M1 format is available [example 3]
+OUT-subtitle-output.feature: Every M1 format is available [example 4]
+OUT-subtitle-output.feature: The most processed variant is used by default
+OUT-subtitle-output.feature: A time range keeps the original timestamps
+OUT-subtitle-output.feature: The download file name is safe on Windows
+PIPE-pipeline-queue.feature: Processing stops after the requested stage
+PIPE-pipeline-queue.feature: A temporary failure is retried with backoff
+PIPE-pipeline-queue.feature: A temporary failure becomes a failure after three attempts
+PIPE-pipeline-queue.feature: Rerunning with the same settings reuses the cached result
+PIPE-pipeline-queue.feature: A new stage implementation invalidates the cache
+PIPE-pipeline-queue.feature: Only the three most recent versions are kept
+PIPE-pipeline-queue.feature: The concurrency limit caps running tasks
+PIPE-pipeline-queue.feature: Raising the limit takes effect on the next round
+PIPE-pipeline-queue.feature: A paused queue starts nothing new
+PIPE-pipeline-queue.feature: Items added by hand run before backfill
+PIPE-pipeline-queue.feature: A long-waiting backfill task eventually goes first
+PIPE-pipeline-queue.feature: Leased tasks come back after a crash without using up attempts
+PIPE-pipeline-queue.feature: A graceful shutdown releases what it cannot finish
+PIPE-pipeline-queue.feature: Each run records the settings it used
+PIPE-pipeline-queue.feature: Status changes are pushed as events
+PIPE-pipeline-queue.feature: Cancelling an item stops its running work
+SEC-config-secrets.feature: The server refuses to start without a master key
+SEC-config-secrets.feature: A wrong master key is reported with the way out
+SRC-transcript-sources.feature: Manual captions in the original language win over auto captions
+SRC-transcript-sources.feature: A lower entry in the priority list is used when the first ones are missing
+SRC-transcript-sources.feature: Platform machine translations are not used by default
+SRC-transcript-sources.feature: A live stream waits for its replay

@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -46,7 +44,8 @@ const (
 	// 刻意不設 WriteTimeout：下載字幕與 SSE 是串流回應，固定的寫入期限會截斷慢速 client 的正常下載。
 )
 
-// Server 是執行中的 serve。
+// Server 是執行中的 serve。openCore 建立的核心欄位（設定、DB、pipeline、worker 等）
+// 也是 standalone 使用的部分（見 standalone.go），所以 Standalone 同樣包一個 *Server。
 type Server struct {
 	cfg   *config.Config
 	log   *slog.Logger
@@ -55,7 +54,14 @@ type Server struct {
 	http  *http.Server
 	store *store.Store
 	keys  *secrets.Keyring
+	auth  *auth.Service
 	lock  *store.DirLock
+
+	// sockLn、sockHTTP 是本機 Unix socket（/data/notesteme.sock）與它的 http.Server，只有 serve 有；
+	// 它的 handler 是 api.NewLocal，不驗證 cookie 與 CSRF，見 socket.go。路徑太長時略過，三者都是 nil。
+	sockLn   net.Listener
+	sockHTTP *http.Server
+	sockDone chan struct{} // sockHTTP.Serve 結束時關閉
 
 	pipeline *pipeline.Pipeline
 	queue    *queue.Queue
@@ -78,54 +84,31 @@ type Server struct {
 	closeErr  error
 }
 
-// StartServer 依 env 啟動 serve：載入設定、檢查啟動條件、鎖定資料目錄、
-// 開啟並 migrate DB、建立 listener 後開始服務。回傳時 listener 已經在接受連線。
-//
-// 檢查順序（錯誤訊息與場景逐字相同）：
-//  1. master key 是否設定（SEC-R5）：最先檢查，還沒碰資料目錄就失敗，不留下任何檔案。
-//  2. 資料目錄的 flock，開啟 DB。
-//  3. master key 是否正確（SEC-R5）：要解開 DB 裡的資料金鑰，所以在開啟 DB 之後。
-//  4. 登入密碼（AUTH-R3）：要看 DB 裡有沒有密碼，所以在開啟 DB 之後。
-//
-// 兩個檢查同時不滿足時回報 master key；目前沒有場景同時缺兩者。
+// StartServer 依 env 啟動 serve：先做 openCore（載入設定、檢查啟動條件、鎖定資料目錄、
+// 開啟並 migrate DB、組 pipeline 與 worker），再建立 listener 與本機 Unix socket 後開始服務。
+// 回傳時 listener 已經在接受連線。檢查順序與錯誤訊息見 openCore。
 func StartServer(ctx context.Context, env Env) (*Server, error) {
-	if env.Clock == nil {
-		return nil, errors.New("app: Env.Clock 不可為 nil")
-	}
 	if env.Listen == nil {
 		return nil, errors.New("app: Env.Listen 不可為 nil")
 	}
-	logw := env.Log
-	if logw == nil {
-		logw = io.Discard
-	}
-	log := slog.New(slog.NewJSONHandler(logw, nil))
-
-	cfg, err := config.Load(config.Sources{Env: env.Vars})
+	s, err := openCore(ctx, env, coreOpts{
+		holder:       holderServe,
+		explainLock:  true,
+		manualWorker: env.Test != nil && env.Test.ManualWorker,
+		check: func(ctx context.Context, s *Server) error {
+			if err := s.auth.EnsurePassword(ctx, env.Vars[envPassword]); err != nil {
+				return err
+			}
+			if n, err := s.store.DeleteExpiredSessions(ctx); err != nil {
+				return err
+			} else if n > 0 {
+				s.log.InfoContext(ctx, "已清除過期的 session", "count", n)
+			}
+			return nil
+		},
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	// master key 的值不寫進 log 與 DB；之後用來解開資料金鑰（見 secrets.Open）。
-	if env.Vars[envMasterKey] == "" {
-		return nil, ErrNoMasterKey
-	}
-
-	if err := os.MkdirAll(cfg.Data, dataDirPerm); err != nil {
-		return nil, fmt.Errorf("建立資料目錄 %s 失敗：%w", cfg.Data, err)
-	}
-	// MkdirAll 受 umask 影響，也不會改已存在目錄的權限；NFR-SEC-5 要求一律 0700。
-	if err := os.Chmod(cfg.Data, dataDirPerm); err != nil {
-		return nil, fmt.Errorf("設定資料目錄 %s 的權限失敗：%w", cfg.Data, err)
-	}
-	lock, err := store.LockDir(cfg.Data)
-	if err != nil {
-		return nil, err
-	}
-
-	s := &Server{cfg: cfg, log: log, netw: env.Net, lock: lock, done: make(chan struct{}), grace: shutdownGrace}
-	if env.Test != nil && env.Test.SkipShutdownGrace {
-		s.grace = 0
 	}
 	started := false
 	defer func() {
@@ -134,91 +117,65 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 		}
 	}()
 
-	// /data/tmp 的內容在重啟後沒有意義（PIPE-R11 之後會放 pipeline 的暫存），啟動時清空。
-	tmp := filepath.Join(cfg.Data, "tmp")
-	if err := os.RemoveAll(tmp); err != nil {
-		return nil, fmt.Errorf("清空 %s 失敗：%w", tmp, err)
-	}
-	if err := os.MkdirAll(tmp, dataDirPerm); err != nil {
-		return nil, fmt.Errorf("建立 %s 失敗：%w", tmp, err)
-	}
-	if err := os.Chmod(tmp, dataDirPerm); err != nil {
-		return nil, fmt.Errorf("設定 %s 的權限失敗：%w", tmp, err)
-	}
-
-	s.store, err = store.Open(ctx, cfg.Data, env.Clock)
-	if err != nil {
-		return nil, err
-	}
-
-	hashParams, kdf := auth.ProductionParams, secrets.ProductionKDF
-	if env.Test != nil && env.Test.LowCostHashing {
-		hashParams, kdf = auth.TestParams, secrets.TestKDF
-	}
-	// 第一次啟動建立資料金鑰；之後以 master key 解開，錯誤時拒絕啟動（SEC-R5）。
-	if s.keys, err = secrets.Open(ctx, s.store, env.Vars[envMasterKey], kdf); err != nil {
-		return nil, err
-	}
-
-	authSvc := auth.New(auth.Config{Store: s.store, Clock: env.Clock, Params: hashParams, Log: log,
-		TrustedProxies: cfg.TrustedProxies})
-	if err := authSvc.EnsurePassword(ctx, env.Vars[envPassword]); err != nil {
-		return nil, err
-	}
-	if n, err := s.store.DeleteExpiredSessions(ctx); err != nil {
-		return nil, err
-	} else if n > 0 {
-		log.InfoContext(ctx, "已清除過期的 session", "count", n)
-	}
-
-	// root 是 server 的根 context：worker 與它啟動的子程序都掛在它底下，關閉時一起取消。
-	// 不繼承 ctx 的取消：runServe 收到 SIGINT／SIGTERM 時會先取消 ctx 再呼叫 Shutdown，
-	// 繼承的話任務在 Drain 之前就被中止，寬限期無效（PIPE-R12）。只由 Shutdown、Kill 取消。
-	s.root, s.cancel = context.WithCancel(context.WithoutCancel(ctx))
-	s.startEvents()
-	if err := s.startPipeline(ctx, env, cfg, log); err != nil {
-		return nil, err
-	}
-
+	cfg, log := s.cfg, s.log
 	s.ln, err = env.Listen("tcp", cfg.Listen)
 	if err != nil {
 		return nil, fmt.Errorf("監聽 %s 失敗：%w", cfg.Listen, err)
 	}
-	if err := lock.WriteInfo(store.LockInfo{Holder: "serve", PID: os.Getpid(), Listen: s.ln.Addr().String()}); err != nil {
+	// 本機 Unix socket 在 TCP 之後建立。路徑太長時 sockLn 為 nil（已 log Warn）：略過 socket，鎖檔的 Socket 留空。
+	if s.sockLn, err = listenSocket(env, cfg.Data, log); err != nil {
+		return nil, err
+	}
+	info := store.LockInfo{Holder: holderServe, PID: os.Getpid(), Listen: s.ln.Addr().String()}
+	if s.sockLn != nil {
+		info.Socket = SocketPath(cfg.Data)
+	}
+	if err := s.lock.WriteInfo(info); err != nil {
 		return nil, fmt.Errorf("寫入鎖檔失敗：%w", err)
 	}
 
-	s.http = &http.Server{
-		Handler: api.New(api.Deps{
-			Store: s.store, Auth: authSvc, Clock: env.Clock, Log: log, Version: version,
-			ReadyChecks: toolChecks(toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}),
-			Pipeline:    s.pipeline,
-			Queue:       s.queue,
-			Events:      s.eventsHandler(),
-			Tasks:       s.worker,
-		}),
-		ReadHeaderTimeout: readHeaderTimeout,
-		ReadTimeout:       readTimeout,
-		IdleTimeout:       idleTimeout,
-		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
-	}
-	// http.Server.Shutdown 不會結束長連線的 SSE 串流，要主動通知它們結束。
-	s.http.RegisterOnShutdown(s.stopEvents)
+	deps := s.apiDeps(env)
+	s.http = s.newHTTPServer(api.New(deps))
 	go func() {
 		defer close(s.done)
 		if err := s.http.Serve(s.ln); !errors.Is(err, http.ErrServerClosed) {
 			s.serveErr = err
 		}
 	}()
+	if s.sockLn != nil {
+		s.sockHTTP = s.newHTTPServer(api.NewLocal(deps))
+		s.sockDone = make(chan struct{})
+		go func() {
+			defer close(s.sockDone)
+			if err := s.sockHTTP.Serve(s.sockLn); !errors.Is(err, http.ErrServerClosed) {
+				log.Error("本機 socket 停止服務", "error", err)
+			}
+		}()
+	}
 
 	started = true
 	log.InfoContext(ctx, "server started", "listen", s.ln.Addr().String(), "data", cfg.Data)
 	return s, nil
 }
 
+// newHTTPServer 建立 http.Server：TCP 與 Unix socket 的逾時設定相同。
+func (s *Server) newHTTPServer(h http.Handler) *http.Server {
+	srv := &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		IdleTimeout:       idleTimeout,
+		ErrorLog:          slog.NewLogLogger(s.log.Handler(), slog.LevelWarn),
+	}
+	// http.Server.Shutdown 不會結束長連線的 SSE 串流，要主動通知它們結束。
+	srv.RegisterOnShutdown(s.stopEvents)
+	return srv
+}
+
 // startPipeline 組出 pipeline 與 worker。啟動時先把別的 worker 留下的租約放回佇列（PIPE-R11）；
-// production 模式在背景執行 worker，手動模式（測試）由測試呼叫 RunRound、RunUntilIdle 驅動（ADR-0015）。
-func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger) error {
+// 預設在背景執行 worker；manual 為 true（測試的手動模式與 standalone）時由呼叫端用 RunRound、
+// RunUntilIdle 驅動（ADR-0015）。
+func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, manual bool) error {
 	runner := env.Runner
 	if runner == nil {
 		runner = toolexec.New(env.Vars)
@@ -247,7 +204,7 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	if err := s.queue.Control().Load(ctx); err != nil {
 		return err
 	}
-	if env.Test != nil && env.Test.ManualWorker {
+	if manual {
 		return nil
 	}
 	s.workerDone = make(chan struct{})
@@ -324,21 +281,40 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.closeOnce.Do(func() {
 		var errs []error
 		s.worker.StopClaiming()
-		if err := s.http.Shutdown(ctx); err != nil {
-			errs = append(errs, err)
-			_ = s.http.Close() // 等不到就強制中斷，避免資源殘留
+		for _, srv := range []*http.Server{s.http, s.sockHTTP} {
+			if srv == nil {
+				continue
+			}
+			if err := srv.Shutdown(ctx); err != nil {
+				errs = append(errs, err)
+				_ = srv.Close() // 等不到就強制中斷，避免資源殘留
+			}
 		}
 		<-s.done
-		drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.grace+worker.ReleaseTimeout)
-		defer cancel()
-		if err := s.worker.Drain(drainCtx, s.grace); err != nil {
-			errs = append(errs, err)
+		if s.sockLn != nil {
+			<-s.sockDone
+			removeSocket(s.cfg.Data) // 正常關閉才移除 socket 檔；Kill 不移除，下次啟動時清掉
 		}
-		s.stopWorker()
-		errs = append(errs, s.store.Close(), s.lock.Release())
+		errs = append(errs, s.drainAndClose(ctx))
 		s.closeErr = errors.Join(errs...)
 	})
 	return s.closeErr
+}
+
+// drainAndClose 是 Shutdown 的後半（serve 與 standalone 共用）：讓執行中的任務在寬限期內完成，
+// 之後取消剩下的並把租約放回佇列，再關閉 DB 並清空、釋放資料目錄的鎖。
+// 這一段有獨立的期限（寬限期加放回租約的上限），不受 ctx 已經花掉的時間影響。
+// 呼叫之前 worker 必須已經 StopClaiming。
+func (s *Server) drainAndClose(ctx context.Context) error {
+	var errs []error
+	drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.grace+worker.ReleaseTimeout)
+	defer cancel()
+	if err := s.worker.Drain(drainCtx, s.grace); err != nil {
+		errs = append(errs, err)
+	}
+	s.stopWorker()
+	errs = append(errs, s.store.Close(), s.lock.Release())
+	return errors.Join(errs...)
 }
 
 // Kill 模擬程序中斷（ADR-0015）：不等待處理中的請求，不清空鎖檔內容，
@@ -346,8 +322,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func (s *Server) Kill() {
 	s.closeOnce.Do(func() {
 		s.cancel()
+		keepSocket(s.sockLn) // 模擬程序中斷：socket 檔留著，下次啟動清掉
 		_ = s.http.Close()
 		<-s.done
+		if s.sockLn != nil {
+			_ = s.sockHTTP.Close()
+			<-s.sockDone
+		}
 		s.stopWorker() // 不釋放租約：模擬程序被中斷
 		_ = s.store.Close()
 		_ = s.lock.Close()
@@ -364,6 +345,9 @@ func (s *Server) abort() {
 	}
 	if s.ln != nil {
 		_ = s.ln.Close()
+	}
+	if s.sockLn != nil {
+		_ = s.sockLn.Close() // 已建立的 Unix listener 會在關閉時刪除 socket 檔
 	}
 	if s.store != nil {
 		_ = s.store.Close()

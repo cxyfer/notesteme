@@ -38,7 +38,7 @@
 | PIPE-R11 | 重新啟動時，上一次執行的 worker 持有的租約放回 `pending`；`running` 的步驟重新推導狀態；`/data/tmp` 清空。這次中斷不計入重試次數。 |
 | PIPE-R12 | 正常關閉時先停止領取，最多等 30 秒讓執行中的任務完成，之後主動釋放其餘租約。 |
 | PIPE-R13 | 每筆 stage run 都記錄生效設定的快照（`config_snapshot_id`），API 可以查到當時的設定。 |
-| PIPE-R14 | 步驟狀態改變時，透過 SSE（`GET /api/events`）推送事件。 |
+| PIPE-R14 | 步驟狀態改變時，透過 SSE（`GET /api/events`）推送事件。事件型別：`item.created`（`type`、`item`、`item_id`）、`stage.status`（另加 `stage`、`status`）。 |
 | PIPE-R15 | 可以取消某部影音的處理；取消後，執行中的子程序整組結束，步驟為 `skipped`（原因 `cancelled`）。 |
 
 ## 介面

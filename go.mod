@@ -9,6 +9,7 @@ require (
 	github.com/danielgtaylor/huma/v2 v2.34.1
 	github.com/google/uuid v1.6.0
 	github.com/pressly/goose/v3 v3.26.0
+	github.com/spf13/pflag v1.0.10
 	golang.org/x/crypto v0.42.0
 	golang.org/x/sys v0.36.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -26,7 +27,6 @@ require (
 	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/sethvargo/go-retry v0.5.0 // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/sync v0.17.0 // indirect

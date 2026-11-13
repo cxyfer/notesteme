@@ -45,6 +45,8 @@ type Scenario struct {
 	step int
 	// last 是最近一次請求的回應。
 	last *response
+	// cmd 是最近一次 CLI 指令的結果（見 cli.go）。
+	cmd *cliRun
 
 	// givenSettings 是 `Given the global settings are:` 累積的全域設定（區段名稱對應內容）。
 	// Given 步驟只累積設定，第一個送出請求的步驟才套用（ADR-0015）。
@@ -53,6 +55,8 @@ type Scenario struct {
 	givenQueue queueConfig
 	// seeded 是已用 `the … transcript of … is:` 直接寫入字幕的影音代號（見 hasTranscriptSource）。
 	seeded map[string]bool
+	// defaultedLang 是語言由 `a YouTube video … titled` 補上預設值的影音代號（見 declaredLanguage）。
+	defaultedLang map[string]bool
 }
 
 // response 是最近一次請求的回應。
