@@ -18,6 +18,10 @@ import (
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// serve 有自己的關閉流程；其他子命令（獨立模式）第一次中斷後恢復預設行為，第二次 Ctrl-C 立刻結束程序。
+	if len(os.Args) < 2 || os.Args[1] != "serve" {
+		go stopAfterFirstSignal(ctx, stop)
+	}
 	res := cli.Execute(ctx, os.Args[1:], app.IO{
 		Stdin:  os.Stdin,
 		Stdout: os.Stdout,
@@ -32,6 +36,13 @@ func main() {
 	})
 	stop()
 	os.Exit(res.Code)
+}
+
+// stopAfterFirstSignal 在 ctx 被取消（收到第一次訊號）後呼叫 stop，讓之後的訊號回到預設的結束行為。
+// 第一次中斷會讓執行中的任務有機會乾淨地結束（放回租約、釋放資料目錄）；使用者等不及時，第二次 Ctrl-C 直接中斷。
+func stopAfterFirstSignal(ctx context.Context, stop func()) {
+	<-ctx.Done()
+	stop()
 }
 
 // environ 把 KEY=VALUE 形式的環境變數轉成 map。

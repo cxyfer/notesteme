@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // buildBinary 實際建置 notesteme：補上程序內執行跳過 main() 的部分（ADR-0015）。
@@ -75,4 +77,22 @@ func TestBinarySmoke(t *testing.T) {
 			t.Error("不應該在目前目錄建立 data")
 		}
 	})
+}
+
+// 第一次訊號（ctx 取消）之後才呼叫 stop，讓第二次 Ctrl-C 回到預設行為。
+func TestStopAfterFirstSignal(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	go stopAfterFirstSignal(ctx, func() { close(stopped) })
+	select {
+	case <-stopped:
+		t.Fatal("還沒收到訊號就呼叫了 stop")
+	case <-time.After(20 * time.Millisecond): // 只是確認「還沒」，不影響正確性
+	}
+	cancel()
+	select {
+	case <-stopped:
+	case <-time.After(10 * time.Second):
+		t.Fatal("收到訊號後沒有呼叫 stop")
+	}
 }
