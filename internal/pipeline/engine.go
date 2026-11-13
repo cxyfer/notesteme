@@ -86,6 +86,8 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		err = &errclass.Error{Class: errclass.ClassPermanent, Source: "pipeline", Detail: "不認識的步驟 " + run.Stage}
 	}
 	if ctx.Err() != nil {
+		// 關閉或取消中：不寫回，已寫出的產出檔也不會有記錄指向它。
+		p.discardArtifactFile(res.artifact)
 		return nil
 	}
 	if err != nil {
@@ -235,18 +237,29 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 		err = nil
 	}
 	if err != nil {
+		// 交易沒有 commit（例如 ctx 取消、資料庫錯誤）：沒有記錄會指向已寫出的產出檔。
+		p.discardArtifactFile(res.artifact)
 		return err
 	}
-	if (stale || lost) && res.artifact != nil {
+	if stale || lost {
 		// 結果已丟棄，沒有記錄會指向這個檔案；清掉避免留下孤兒檔。
-		if err := os.Remove(filepath.Join(p.dataDir, filepath.FromSlash(res.artifact.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
-			p.log.Warn("清除被丟棄的產出檔失敗", "path", res.artifact.Path, "error", err)
-		}
+		p.discardArtifactFile(res.artifact)
 	}
 	if wake {
 		p.wake()
 	}
 	return nil
+}
+
+// discardArtifactFile 刪除已寫出但不會被任何記錄指向的產出檔（沒有 commit 或結果被丟棄）。a 為 nil 時不做事。
+// 刪除失敗只記錄：檔案留下來不影響正確性，只是多一個孤兒檔。
+func (p *Pipeline) discardArtifactFile(a *store.NewArtifact) {
+	if a == nil {
+		return
+	}
+	if err := os.Remove(filepath.Join(p.dataDir, filepath.FromSlash(a.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
+		p.log.Warn("清除被丟棄的產出檔失敗", "path", a.Path, "error", err)
+	}
 }
 
 // reasonCancelled 是步驟因取消而 skipped 時的原因（PIPE-R15），寫在 block_reason。

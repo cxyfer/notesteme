@@ -34,6 +34,8 @@ type fakeYT struct {
 	cues     int  // 下載的字幕有幾句；0 代表空檔
 	tagKind  bool // 為 true 時字幕文字帶上字幕軌種類，讓不同軌的內容（sha256）不同
 	onProbe  func()
+	// onVersion 在查詢工具版本時呼叫；transcript 在這之後才寫出產出檔。
+	onVersion func()
 }
 
 func (f *fakeYT) Probe(context.Context, string) (*youtube.Info, error) {
@@ -66,7 +68,15 @@ func (f *fakeYT) FetchCaptions(_ context.Context, _ string, t youtube.Track, _ s
 	return []byte(sb.String()), nil
 }
 
-func (f *fakeYT) Version(context.Context) (string, error) { return "2026.11.01", nil }
+func (f *fakeYT) Version(context.Context) (string, error) {
+	f.mu.Lock()
+	hook := f.onVersion
+	f.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	return "2026.11.01", nil
+}
 
 type rig struct {
 	t   *testing.T
