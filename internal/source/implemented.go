@@ -3,6 +3,7 @@ package source
 import (
 	"slices"
 
+	"github.com/cxyfer/notesteme/internal/source/groq"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/transcript"
 )
@@ -14,6 +15,7 @@ var implemented = []string{
 	transcript.SourceYouTubeManual,
 	transcript.SourceYouTubeAuto,
 	supadata.ID,
+	groq.ID,
 }
 
 // Implemented 回報字幕來源 id 是否已經實作。

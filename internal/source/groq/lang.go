@@ -59,3 +59,22 @@ func BCP47(name string) string {
 	}
 	return ""
 }
+
+// whisperCodes 是 Whisper 支援的語言代碼集合。
+var whisperCodes = func() map[string]bool {
+	m := make(map[string]bool, len(whisperLanguages))
+	for _, code := range whisperLanguages {
+		m[code] = true
+	}
+	return m
+}()
+
+// LangHint 把影音的原文語言（BCP-47）轉成要送給 Whisper 的語言提示：只取主要語言，
+// 且必須是 Whisper 支援的代碼；未知（空字串、und）或不支援時回傳空字串，讓 Whisper 自行偵測。
+func LangHint(lang string) string {
+	primary, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(lang)), "-")
+	if whisperCodes[primary] {
+		return primary
+	}
+	return ""
+}

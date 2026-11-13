@@ -41,6 +41,9 @@ type fakeYT struct {
 	playlist    []youtube.PlaylistEntry
 	playlistErr error
 	playlists   []string
+	// audioDirs 記錄 DownloadAudio 收到的暫存目錄；audioErr 非 nil 時下載失敗。
+	audioDirs []string
+	audioErr  error
 }
 
 func (f *fakeYT) Playlist(_ context.Context, id string) ([]youtube.PlaylistEntry, error) {
@@ -88,6 +91,18 @@ func (f *fakeYT) Version(context.Context) (string, error) {
 		hook()
 	}
 	return "2026.11.01", nil
+}
+
+// DownloadAudio 在 dir 寫出假的音檔，並記錄 dir；audioErr 非 nil 時失敗（dir 仍被記錄）。
+func (f *fakeYT) DownloadAudio(_ context.Context, _ string, dir string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.audioDirs = append(f.audioDirs, dir)
+	if f.audioErr != nil {
+		return "", f.audioErr
+	}
+	path := filepath.Join(dir, "audio.m4a")
+	return path, os.WriteFile(path, []byte("AUDIO"), 0o600)
 }
 
 type rig struct {

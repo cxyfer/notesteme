@@ -41,8 +41,7 @@ const SupadataHost = "api.supadata.ai"
 const GroqHost = "api.groq.com"
 
 // GroqAPIKeyEnv 是 Groq API key 的環境變數。
-// TODO：internal/config 加上 EnvGroqAPIKey 之後，改用該常數並刪除這個字面值。
-const GroqAPIKeyEnv = "NOTESTEME_GROQ_API_KEY"
+const GroqAPIKeyEnv = config.EnvGroqAPIKey
 
 // DefaultNow 是新場景的 fake clock 起始時間。
 var DefaultNow = time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)

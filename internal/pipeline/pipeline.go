@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/source/groq"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -24,11 +25,22 @@ type YouTube interface {
 	// Playlist 展開播放清單（ING-R4）。
 	Playlist(ctx context.Context, playlistID string) ([]youtube.PlaylistEntry, error)
 	Version(ctx context.Context) (string, error)
+	// DownloadAudio 下載影片的最佳音訊到 dir，回傳檔案路徑（ASR 來源使用）。
+	DownloadAudio(ctx context.Context, videoID, dir string) (string, error)
 }
 
 // Supadata 是 Supadata 字幕來源（*supadata.Client 實作它）；測試可以替換。
 type Supadata interface {
 	Fetch(ctx context.Context, videoURL, mode string) (*supadata.Result, error)
+}
+
+// Groq 是 Groq 的語音轉錄來源（*groq.Client 實作它）；測試可以替換。
+type Groq interface {
+	Transcribe(ctx context.Context, audioPath, langHint string) (*groq.Result, error)
+	// Configured 回報有沒有 API key；沒有時不下載音訊。
+	Configured() bool
+	// Endpoint 回傳實際使用的 base_url 與 model，它們影響結果，屬於快取鍵。
+	Endpoint() (baseURL, model string)
 }
 
 // Deps 是 Pipeline 的依賴。
@@ -41,6 +53,9 @@ type Deps struct {
 	YouTube YouTube
 	// Supadata 是 Supadata 字幕來源（SRC-R3）；nil 代表沒有設定 API key，fallback 列出它時記為 not_configured。
 	Supadata Supadata
+	// Groq 是 Groq 語音轉錄來源（SRC-R3）；nil 代表來源沒有註冊，fallback 列出它時記為 not_configured。
+	// 沒有 API key 時，client 仍然存在，Transcribe 會回報 ErrNoKey（同樣記為 not_configured）。
+	Groq Groq
 	// HTTP 是對外 HTTP 的 client（netguard 的 Transport，ADR-0014）；nil 時辨識網址不會抓取任何內容。
 	HTTP *http.Client
 	// Wake 在建立了新任務時呼叫，讓 worker 醒來；可以是 nil。

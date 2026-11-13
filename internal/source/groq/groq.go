@@ -68,6 +68,21 @@ type Client struct {
 	APIKey string
 }
 
+// Configured 回報有沒有 API key；沒有時 Transcribe 不會發出請求。
+func (c *Client) Configured() bool { return c.APIKey != "" }
+
+// Endpoint 回傳實際使用的 base_url 與 model（空值已換成預設值）；兩者影響結果，所以屬於快取鍵的 params。
+func (c *Client) Endpoint() (baseURL, model string) {
+	baseURL, model = c.BaseURL, c.Model
+	if baseURL == "" {
+		baseURL = DefaultBaseURL
+	}
+	if model == "" {
+		model = DefaultModel
+	}
+	return baseURL, model
+}
+
 // Result 是轉錄結果。
 type Result struct {
 	// Lang 是 BCP-47 語言代碼，例如 en；Whisper 回報的語言不在對照表內時為空。
@@ -98,7 +113,7 @@ type transcriptionResponse struct {
 //   - segments 為空：ErrNoTranscript，這個來源沒有結果。
 //   - ctx 被取消時回傳 ctx.Err()，不是來源的錯。
 func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*Result, error) {
-	if c.APIKey == "" {
+	if !c.Configured() {
 		return nil, fail(errclass.ClassNeedsAction, "", ErrNoKey)
 	}
 	f, err := os.Open(audioPath)
@@ -107,14 +122,7 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*R
 	}
 	defer f.Close()
 
-	base := c.BaseURL
-	if base == "" {
-		base = DefaultBaseURL
-	}
-	model := c.Model
-	if model == "" {
-		model = DefaultModel
-	}
+	base, model := c.Endpoint()
 
 	// 以 pipe 串流上傳，不把整個音檔讀進記憶體。
 	pr, pw := io.Pipe()

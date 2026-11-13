@@ -15,6 +15,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/source"
+	"github.com/cxyfer/notesteme/internal/source/groq"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -92,6 +93,10 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	if chosen == nil && slices.Contains(lang.Fallback, supadata.ID) {
 		// 會用到 Supadata 時，它的參數影響結果，要進快取鍵；用平台字幕時不受影響。
 		params["supadata"] = lang.Supadata
+	}
+	if f, ok := p.fetchers[groq.ID]; ok && chosen == nil && slices.Contains(lang.Fallback, groq.ID) {
+		// 同理，Groq 的 base_url 與 model 影響結果。
+		params["groq"] = f.params(lang)
 	}
 	key := cacheKey{
 		Item: it.ID, Stage: StageTranscript, Impl: p.implVersion(StageTranscript), Provider: "yt-dlp",
@@ -233,7 +238,56 @@ func newFetchers(d Deps) map[string]fallbackFetcher {
 			},
 		}
 	}
+	if gc := d.Groq; gc != nil && d.YouTube != nil {
+		out[groq.ID] = groqFetcher(d, gc)
+	}
 	return out
+}
+
+// groqFetcher 是 Groq 語音轉錄來源：用 yt-dlp 下載音訊到該任務的暫存目錄，再送去轉錄（SRC-R3）。
+func groqFetcher(d Deps, gc Groq) fallbackFetcher {
+	return fallbackFetcher{
+		timing: groq.Timing,
+		params: func(Language) any {
+			baseURL, model := gc.Endpoint()
+			return map[string]string{"base_url": baseURL, "model": model}
+		},
+		fetch: func(ctx context.Context, it store.Item, _ Language) (*fetchResult, error) {
+			// 沒有 API key 時不下載音訊，直接回報沒有設定（SRC-R10）。
+			if !gc.Configured() {
+				return nil, &errclass.Error{Class: errclass.ClassNeedsAction, Source: groq.ID, Err: groq.ErrNoKey}
+			}
+			if it.Platform != source.PlatformYouTube {
+				// 目前只有 YouTube 能取得音訊；其他平台等各自的下載實作。
+				return nil, &errclass.Error{Class: errclass.ClassPermanent, Source: groq.ID, Detail: "還不支援這個平台的音訊下載"}
+			}
+			// 暫存檔放在 <data>/tmp（啟動時也會清空），完成或失敗都清掉。
+			tmpRoot := filepath.Join(d.DataDir, "tmp")
+			if err := os.MkdirAll(tmpRoot, dirPerm); err != nil {
+				return nil, err
+			}
+			dir, err := os.MkdirTemp(tmpRoot, "asr-")
+			if err != nil {
+				return nil, err
+			}
+			defer os.RemoveAll(dir)
+
+			audio, err := d.YouTube.DownloadAudio(ctx, it.ExternalID, dir)
+			if err != nil {
+				return nil, err
+			}
+			// 有原文語言才送提示；未知時讓 Whisper 自行偵測。
+			got, err := gc.Transcribe(ctx, audio, groq.LangHint(it.OriginalLang))
+			if err != nil {
+				return nil, err
+			}
+			version, err := d.YouTube.Version(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return &fetchResult{Lang: got.Lang, Cues: got.Cues, Timing: groq.Timing, ToolVersions: map[string]string{"yt-dlp": version}}, nil
+		},
+	}
 }
 
 // supadataUserError 為 Supadata 的 needs_action 錯誤補上給使用者看的訊息與修正動作：

@@ -37,7 +37,7 @@ const (
 	// 加密存放的 secrets 還沒做（SEC-R4），目前只從環境變數讀取；沒有設定時 Supadata 視為 not_configured。
 	EnvSupadataAPIKey = "NOTESTEME_SUPADATA_API_KEY"
 	// EnvGroqAPIKey 是 Groq 的 API key（SEC-R1，對應 asr.providers.groq 的 key）。
-	// 只定義名稱；讀取與接線在 Groq 來源實作時加入，沒有設定時 Groq 視為 not_configured。
+	// 目前只從環境變數讀取（SEC-R4 加密存放時一併整理命名）；沒有設定時 Groq 視為 not_configured。
 	EnvGroqAPIKey = "NOTESTEME_GROQ_API_KEY"
 )
 
