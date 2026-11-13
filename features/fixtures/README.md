@@ -31,6 +31,15 @@
 
 - `http-<狀態碼>`（例如 `http-503`）：不是檔案，`fakesource` 直接以該 HTTP 狀態碼回應。
 
+## 字幕來源的回應格式
+
+- `supadata-*.json`：Supadata `GET /v1/transcript` 的回應（`lang`、`availableLangs`、`content[{text, offset, duration, lang}]`，時間單位為毫秒）。
+  `supadata-in-german.json` 是德文（`lang: de`），用來驗證語言不符時不採用（SRC-R4、R17）。
+- `groq-*.json`：Groq（OpenAI 相容 `POST /audio/transcriptions`）的 `verbose_json` 回應：
+  `language`（全名，例如 `english`，不是 `en`）、`duration`（秒）、`segments[{id, start, end, text}]`（秒）。
+  fake 的端點要求請求帶 `response_format=verbose_json`，並以 `Authorization: Bearer <key>` 驗證；
+  測試環境預設有 key（`NOTESTEME_GROQ_API_KEY`），`Given the provider "groq" has no API key` 才會移除。
+
 ## 字幕軌
 
 假 yt-dlp 的字幕軌（`faketool.Track`）有三種內容來源：

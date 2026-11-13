@@ -29,10 +29,20 @@ const (
 	TestMasterKey = "nst-test-master-key-7d2e8a0c5b31f964a8e1d3c7"
 	// TestSupadataKey 是測試環境提供給 Supadata 的假 API key（fake origin 會檢查它）。
 	TestSupadataKey = "nst-test-supadata-key-3a9c61e0f2"
+	// TestGroqKey 是測試環境提供給 Groq 的假 API key（fake origin 要求 Authorization: Bearer 帶有它）。
+	TestGroqKey = "nst-test-groq-key-8e4b17d92c"
 )
 
 // SupadataHost 是 Supadata API 的主機名稱；fakenet 把它導到腳本化的 fake origin。
 const SupadataHost = "api.supadata.ai"
+
+// GroqHost 是 Groq API 的主機名稱（預設 base_url 為 https://api.groq.com/openai/v1）；fakenet 把它導到
+// 腳本化的 OpenAI 相容 ASR 端點。
+const GroqHost = "api.groq.com"
+
+// GroqAPIKeyEnv 是 Groq API key 的環境變數。
+// TODO：internal/config 加上 EnvGroqAPIKey 之後，改用該常數並刪除這個字面值。
+const GroqAPIKeyEnv = "NOTESTEME_GROQ_API_KEY"
 
 // DefaultNow 是新場景的 fake clock 起始時間。
 var DefaultNow = time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
@@ -95,6 +105,7 @@ func New() (*World, error) {
 			"NOTESTEME_MASTER_KEY": TestMasterKey,
 			// 測試環境預設有 Supadata 的 API key（steps.md 第 4.1 節：fake provider 預設有 key）。
 			config.EnvSupadataAPIKey: TestSupadataKey,
+			GroqAPIKeyEnv:            TestGroqKey,
 			"PATH":                   filepath.Join(root, "bin"),
 			"HOME":                   filepath.Join(root, "home"),
 		},
@@ -109,6 +120,9 @@ func New() (*World, error) {
 	// 腳本化的 Supadata 掛在它的正式主機名稱上，被測程式照正常路徑連線（經 netguard 與 fakenet）。
 	w.Sources.RequiresAPIKey("supadata", TestSupadataKey)
 	w.Net.Handle(SupadataHost, w.Sources.SupadataHandler())
+	// Groq 同理：OpenAI 相容的 ASR 端點掛在正式主機名稱上，要求 Authorization: Bearer。
+	w.Sources.RequiresAPIKey("groq", TestGroqKey)
+	w.Net.Handle(GroqHost, w.Sources.OpenAIHandler("groq"))
 	for _, d := range []string{w.DataDir(), w.InboxDir(), w.ConfigDir(), w.BinDir(), w.FakeDir(), w.HomeDir()} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			_ = w.Close()
@@ -202,6 +216,24 @@ func (w *World) Video(id string) *faketool.Video {
 		w.Tools.Videos[id] = v
 	}
 	return v
+}
+
+// RemoveAPIKey 移除字幕來源（ASR provider、Supadata）的 API key：環境變數不再帶入，fake origin 也不再要求 key。
+// 兩邊都移除，被測程式若沒檢查 key 就直接呼叫來源，會拿到轉錄結果而不是 blocked，場景因此失敗。
+// 不是已知的來源 ID 時回傳錯誤。
+func (w *World) RemoveAPIKey(sourceID string) error {
+	var env string
+	switch sourceID {
+	case "supadata":
+		env = config.EnvSupadataAPIKey
+	case "groq":
+		env = GroqAPIKeyEnv
+	default:
+		return fmt.Errorf("harness 不知道來源 %q 的 API key 要怎麼移除（只有 supadata、groq）", sourceID)
+	}
+	delete(w.Env, env)
+	w.Sources.RequiresAPIKey(sourceID, "")
+	return nil
 }
 
 // GatePath 回傳假 yt-dlp 的 gate 檔路徑。

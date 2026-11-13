@@ -93,7 +93,8 @@ func (s *Script) RequiresCookie(sourceID, cookie string) {
 	s.src(sourceID).cookie = cookie
 }
 
-// RequiresAPIKey 讓來源要求請求帶有這把 API key（x-api-key 標頭，Supadata 只接受這種），否則回 401。
+// RequiresAPIKey 讓來源要求請求帶有這把 API key，否則回 401；空字串代表不要求（模擬沒有設定 key）。
+// Supadata 只接受 x-api-key 標頭；OpenAI 相容的 ASR 端點只接受 Authorization: Bearer <key>。
 // 用來確認被測程式真的送出 key；key 本身不會被記錄。
 func (s *Script) RequiresAPIKey(sourceID, key string) {
 	s.mu.Lock()
@@ -137,14 +138,26 @@ func (s *Script) Calls(sourceID string) int {
 	return s.src(sourceID).calls
 }
 
-// begin 記錄一次呼叫並檢查 cookie；失敗時已寫入回應，回傳 false。
-func (s *Script) begin(sourceID string, w http.ResponseWriter, r *http.Request) bool {
+// headerAPIKey 取出 Supadata 風格的 key（x-api-key 標頭）。
+func headerAPIKey(r *http.Request) string { return r.Header.Get("x-api-key") }
+
+// bearerAPIKey 取出 OpenAI 風格的 key（Authorization: Bearer <key>）；格式不符回傳空字串。
+func bearerAPIKey(r *http.Request) string {
+	key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok {
+		return ""
+	}
+	return key
+}
+
+// begin 記錄一次呼叫並檢查 API key（以 keyOf 取出）與 cookie；失敗時已寫入回應，回傳 false。
+func (s *Script) begin(sourceID string, w http.ResponseWriter, r *http.Request, keyOf func(*http.Request) string) bool {
 	s.mu.Lock()
 	src := s.src(sourceID)
 	src.calls++
 	cookie, apiKey := src.cookie, src.apiKey
 	s.mu.Unlock()
-	if apiKey != "" && r.Header.Get("x-api-key") != apiKey {
+	if apiKey != "" && keyOf(r) != apiKey {
 		writeJSON(w, http.StatusUnauthorized, `{"error":"invalid_api_key"}`)
 		return false
 	}
@@ -217,6 +230,8 @@ func writeJSON(w http.ResponseWriter, code int, body string) {
 // OpenAIHandler 回傳 OpenAI 相容的 ASR 端點：POST /openai/v1/audio/transcriptions
 // （multipart；file 欄位為假媒體檔，用其中的標記決定是哪個 item）。
 // sourceID 是 provider 的 ID（groq、whisper-1、voxtral）。
+// 請求必須帶 response_format=verbose_json（否則沒有 segments 與時間），並在有 RequiresAPIKey 時帶 Authorization: Bearer。
+// 回應的內容是 verbose_json 形狀：language（全名，如 english）、duration、segments[{start,end,text}]。
 // 沒有結果時回 200 與空的轉錄；上傳超過 AcceptsUpTo 時回 413。
 func (s *Script) OpenAIHandler(sourceID string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -228,7 +243,7 @@ func (s *Script) OpenAIHandler(sourceID string) http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if !s.begin(sourceID, w, r) {
+		if !s.begin(sourceID, w, r, bearerAPIKey) {
 			return
 		}
 		mr, err := r.MultipartReader()
@@ -239,6 +254,7 @@ func (s *Script) OpenAIHandler(sourceID string) http.Handler {
 		var head []byte
 		var size int64
 		var haveFile bool
+		var format string
 		for {
 			part, err := mr.NextPart()
 			if err == io.EOF {
@@ -247,6 +263,11 @@ func (s *Script) OpenAIHandler(sourceID string) http.Handler {
 			if err != nil {
 				writeJSON(w, http.StatusBadRequest, `{"error":"bad multipart body"}`)
 				return
+			}
+			if part.FormName() == "response_format" {
+				b, _ := io.ReadAll(io.LimitReader(part, 64))
+				format = string(b)
+				continue
 			}
 			if part.FormName() != "file" {
 				_, _ = io.Copy(io.Discard, part)
@@ -261,6 +282,10 @@ func (s *Script) OpenAIHandler(sourceID string) http.Handler {
 		}
 		if !haveFile {
 			writeJSON(w, http.StatusBadRequest, `{"error":"missing file"}`)
+			return
+		}
+		if format != "verbose_json" {
+			writeJSON(w, http.StatusBadRequest, `{"error":"fakesource: response_format must be verbose_json"}`)
 			return
 		}
 		if limit := s.maxBytes(sourceID); limit > 0 && size > limit {
@@ -291,7 +316,7 @@ func (s *Script) SupadataHandler() http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if !s.begin(sourceID, w, r) {
+		if !s.begin(sourceID, w, r, headerAPIKey) {
 			return
 		}
 		item, err := faketool.ItemKeyFromURL(r.URL.Query().Get("url"))
