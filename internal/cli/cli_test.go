@@ -206,3 +206,35 @@ func TestDoctorFailsWithoutTools(t *testing.T) {
 		t.Errorf("文字輸出：%+v %q", res, out)
 	}
 }
+
+// 全域旗標也可以放在子命令之前，效果與放在之後相同；放在之後的優先。
+func TestGlobalFlagsBeforeSubcommand(t *testing.T) {
+	env, _ := testEnv(t)
+	root := shortTempDir(t)
+	other := filepath.Join(root, "other")
+
+	res, out, errOut := run(t, env, "--data", other, "--json", "items", "ls")
+	if res.Code != 0 || res.Mode != ModeStandalone || !strings.Contains(out, `"items"`) {
+		t.Fatalf("結果 = %+v，out = %q，stderr：%s", res, out, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(other, "notesteme.db")); err != nil {
+		t.Errorf("--data 放在子命令之前沒有生效：%v", err)
+	}
+	// 等號形式；子命令之後的 --data 優先。
+	third := filepath.Join(root, "third")
+	res, _, errOut = run(t, env, "--data="+other, "items", "ls", "--data", third)
+	if res.Code != 0 {
+		t.Fatalf("結果 = %+v，stderr：%s", res, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(third, "notesteme.db")); err != nil {
+		t.Errorf("子命令之後的 --data 應該優先：%v", err)
+	}
+	// 之前的 --server 缺少 --token：與放在之後一樣是參數錯誤。
+	if res, _, errOut := run(t, env, "--server", "http://127.0.0.1:1", "items", "ls"); res.Code != 2 || !strings.Contains(errOut, "--token") {
+		t.Errorf("結果 = %+v，stderr：%s", res, errOut)
+	}
+	// 只有旗標沒有子命令。
+	if res, _, _ := run(t, env, "--json"); res.Code != 2 {
+		t.Errorf("只有全域旗標：%+v", res)
+	}
+}

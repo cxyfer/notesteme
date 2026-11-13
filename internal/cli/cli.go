@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 
 	"github.com/spf13/pflag"
 
@@ -51,6 +53,36 @@ func (g *globals) bind(fs *pflag.FlagSet) {
 	fs.StringVar(&g.token, "token", "", "--server 使用的 API token")
 	fs.StringVar(&g.data, "data", "", "資料目錄（獨立模式）")
 	fs.BoolVar(&g.json, "json", false, "輸出 JSON")
+}
+
+// fill 把 pre（子命令之前的全域旗標）補進沒有設定的欄位；子命令之後的旗標優先。
+func (g *globals) fill(pre *globals) {
+	if g.server == "" {
+		g.server = pre.server
+	}
+	if g.token == "" {
+		g.token = pre.token
+	}
+	if g.data == "" {
+		g.data = pre.data
+	}
+	g.json = g.json || pre.json
+}
+
+// leadingGlobals 解析放在子命令之前的全域旗標，回傳它們與剩下的參數（從子命令開始）。
+// 第一個參數不是全域旗標時原樣回傳 args。
+func leadingGlobals(args []string) (*globals, []string, error) {
+	pre := &globals{}
+	name, _, _ := strings.Cut(args[0], "=")
+	if !slices.Contains([]string{"--server", "--token", "--data", "--json"}, name) {
+		return pre, args, nil
+	}
+	fs := pflag.NewFlagSet("notesteme", pflag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.SetInterspersed(false) // 遇到第一個非旗標（子命令）就停止
+	pre.bind(fs)
+	rest, err := parseFlags(fs, args)
+	return pre, rest, err
 }
 
 // session 是一次子命令執行時用到的東西。
@@ -98,6 +130,20 @@ func Execute(ctx context.Context, args []string, stdio app.IO, env app.Env) Resu
 		return Result{Code: exitOK}
 	}
 
+	// 全域旗標也可以放在子命令之前（`notesteme --json items ls`）。
+	pre, args, err := leadingGlobals(args)
+	if errors.Is(err, errHelp) {
+		fmt.Fprint(stdio.Stdout, usageText)
+		return Result{Code: exitOK}
+	}
+	if err != nil {
+		return fail(stdio, err, "")
+	}
+	if len(args) == 0 {
+		fmt.Fprint(stdio.Stderr, usageText)
+		return Result{Code: exitUsage}
+	}
+
 	// 參數錯誤一律在判斷模式之前檢查（CLI-R6）。
 	p, err := parse(args)
 	if errors.Is(err, errHelp) {
@@ -108,6 +154,7 @@ func Execute(ctx context.Context, args []string, stdio app.IO, env app.Env) Resu
 		return fail(stdio, err, "")
 	}
 
+	p.g.fill(pre)
 	s := &session{g: p.g, env: env, clock: env.Clock, stdout: stdio.Stdout, stderr: stdio.Stderr}
 	var mode Mode
 	if !p.noBackend {
