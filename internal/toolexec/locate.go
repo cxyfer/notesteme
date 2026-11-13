@@ -21,6 +21,10 @@ type Spec struct {
 var (
 	YtDlp  = Spec{Name: "yt-dlp", EnvVar: "NOTESTEME_YTDLP", ConfigKey: "yt-dlp"}
 	FFmpeg = Spec{Name: "ffmpeg", EnvVar: "NOTESTEME_FFMPEG", ConfigKey: "ffmpeg"}
+	// FFprobe 與 FFmpeg 分開設定：兩者不一定在同一個目錄。
+	FFprobe = Spec{Name: "ffprobe", EnvVar: "NOTESTEME_FFPROBE", ConfigKey: "ffprobe"}
+	// Deno 是 yt-dlp 解析部分 YouTube 內容所需的 JS runtime（ADR-0009）。
+	Deno = Spec{Name: "deno", EnvVar: "NOTESTEME_DENO", ConfigKey: "deno"}
 )
 
 // Resolver 依 OPS-R8 的順序尋找工具：設定檔的路徑 → 環境變數 → PATH。
