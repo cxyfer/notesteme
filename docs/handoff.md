@@ -1,6 +1,6 @@
 # 交接：M1 開發進度
 
-> 更新：2026-11-14。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；CLI 切片是 PR #5（`feat/cli`，審查通過、待 owner 合併）；GRD 切片在 `feat/guards`（疊在 `feat/cli` 上）。
+> 更新：2026-11-14。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；#5（CLI）已合併；GRD 切片是 PR #6（`feat/guards`）。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -39,11 +39,11 @@
 
 ## 2. 下一步
 
-使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成，PR #5 待合併）→ GRD（完成，PR 待開）→ **其餘 SRC 來源** → OPS → LIB → DEL。使用者要求每個切片完成後自動開始下一個。
+使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成）→ GRD（完成，PR #6）→ **其餘 SRC 來源** → OPS → LIB → DEL。使用者要求每個切片完成後自動開始下一個。
 
 接下來：
 
-1. PR #5 合併後，把 master 併進 `feat/guards`（squash 之後用 `-s ours`，先確認樹與 `feat/cli` 的 tip 相同），開 GRD 的 PR。
+1. PR #6（GRD）等 CI 與 Codex 審查，通過後由 owner 合併（自動模式不允許 agent 執行 `gh pr merge`）。
 2. 開始 SRC 切片（其餘來源）：讓 `scout` 列出 `features/SRC-*.feature` 的 `@M1` pending 場景與用到的步驟，做 DoR 檢查。PIPE-R4、R10 與 CLI 的 Bilibili 場景也在等這個切片。
 3. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
 4. `features/fixtures/items/` 還沒做：DEL、NRM、SEC 共 17 個場景停在 `Given the item … has been processed up to …`。做了之後拿掉 `features/steps/processing.go` 的 `pendingWithoutItemFixture`。
