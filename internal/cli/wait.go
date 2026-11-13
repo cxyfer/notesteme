@@ -119,14 +119,31 @@ func (s *session) waitFor(ctx context.Context, ids []ingested, opts waitOpts) (i
 // waitStandalone 反覆「執行任務到閒置 → 取得影音 → 判斷」。閒置之後仍然沒有結果時：
 // 有任務在等未來的時間（重試的退避、等待字幕），而且在 --timeout 之內，就等到那個時間再繼續；
 // 否則回報目前的狀況（waiting 為 4）。
+//
+// --timeout 在任務執行期間也要生效：用注入的 clock 建立計時器，時間到就取消 tctx，
+// 執行中的任務隨之被取消（租約由 Close 的 Drain 放回佇列），結果是 waiting（結束碼 4），不是錯誤。
 func (s *session) waitStandalone(ctx context.Context, ids []ingested, opts waitOpts) (snapshot, error) {
 	deadline := s.clock.Now().Add(opts.timeout)
+	tctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	timer := s.clock.NewTimer(opts.timeout)
+	defer timer.Stop()
+	go func() {
+		select {
+		case <-timer.C():
+			cancel()
+		case <-tctx.Done():
+		}
+	}()
+	// timedOut 只在 --timeout 到期時為 true；使用者中斷（ctx 取消）仍然是錯誤。
+	timedOut := func() bool { return ctx.Err() == nil && tctx.Err() != nil }
+
 	for {
-		if err := s.be.standalone.RunUntilIdle(ctx); err != nil {
+		if err := s.be.standalone.RunUntilIdle(tctx); err != nil && !timedOut() {
 			return snapshot{}, fmt.Errorf("執行任務失敗：%w", err)
 		}
 		sn, err := s.snapshot(ctx, ids, opts.until)
-		if err != nil || sn.v != verdictWaiting {
+		if err != nil || sn.v != verdictWaiting || timedOut() {
 			return sn, err
 		}
 		now := s.clock.Now()
@@ -137,8 +154,11 @@ func (s *session) waitStandalone(ctx context.Context, ids []ingested, opts waitO
 		t := s.clock.NewTimer(next.Sub(now))
 		select {
 		case <-t.C():
-		case <-ctx.Done():
+		case <-tctx.Done():
 			t.Stop()
+			if timedOut() {
+				return sn, nil
+			}
 			return sn, ctx.Err()
 		}
 	}
