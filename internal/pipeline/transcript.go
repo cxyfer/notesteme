@@ -35,6 +35,8 @@ const (
 	actionUpgradePlan = "升級 Supadata 方案"
 	// 所有 fallback 來源都沒有設定（缺 API key 或尚未實作）時的訊息。
 	msgNoKey = "沒有可用的字幕來源：fallback 中的來源都還沒有設定 API key。"
+	// 來源回報 needs_action 卻沒有帶訊息時的通用訊息。
+	msgSourceNeedsAction = "字幕來源需要你處理才能繼續。"
 )
 
 // source_probes.reason：來源沒有這部影片的字幕；來源回報的語言和影音原文語言不同（SRC-R4）。
@@ -225,7 +227,7 @@ func newFetchers(d Deps) map[string]fallbackFetcher {
 			fetch: func(ctx context.Context, it store.Item, l Language) (*fetchResult, error) {
 				got, err := sd.Fetch(ctx, it.URL, l.Supadata.Mode)
 				if err != nil {
-					return nil, err
+					return nil, supadataUserError(err)
 				}
 				return &fetchResult{Lang: got.Lang, Cues: got.Cues}, nil
 			},
@@ -234,10 +236,27 @@ func newFetchers(d Deps) map[string]fallbackFetcher {
 	return out
 }
 
+// supadataUserError 為 Supadata 的 needs_action 錯誤補上給使用者看的訊息與修正動作：
+// 方案不支援（402）與 API key 被拒（401）要使用者做的事不同。已經帶訊息的錯誤原樣回傳。
+func supadataUserError(err error) error {
+	var ce *errclass.Error
+	if !errors.As(err, &ce) || ce.Class != errclass.ClassNeedsAction || ce.Message != "" {
+		return err
+	}
+	out := *ce
+	if errors.Is(err, supadata.ErrPlanUnsupported) {
+		out.Message, out.Actions = msgSupadataPlan, []string{actionUpgradePlan}
+	} else {
+		out.Message, out.Actions = msgSupadataKey, []string{actionSetKey}
+	}
+	return &out
+}
+
 // runFallback 在平台字幕都不符合時，依 language.fallback 的順序嘗試其他來源（SRC-R3）。
 // decisions 是平台字幕的選擇結果，這裡接著記錄每個被嘗試的來源（SRC-R17）。
-// 回傳的錯誤交給 classify 依類別處理（retryable 退避重試）；needs_action 在這裡直接轉成帶修正動作的
-// blocked 狀態；某個來源 permanent 時記下原因後繼續下一個來源（SRC-R3 依序用完）。
+// 回傳的錯誤交給 classify 依類別處理（retryable 退避重試）；needs_action 在這裡直接轉成 blocked 狀態，
+// 訊息與修正動作用來源回傳的 errclass.Error.Message 與 Actions；某個來源 permanent 時記下原因後繼續下一個來源
+// （SRC-R3 依序用完）。這裡不認得任何特定來源：「沒有結果」與「沒有設定」用 errclass 的哨兵錯誤判斷。
 //
 // 沒有設定（缺 API key、尚未實作）的來源記為 not_configured 並略過。所有來源都因此無法執行時，
 // 步驟是 blocked（needs_action，動作「設定 API key」），而不是 permanent 失敗；
@@ -250,8 +269,10 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: transcript.ReasonNotConfigured})
 			continue
 		}
-		executed = true
 		got, err := f.fetch(ctx, it, lang)
+		if !errors.Is(err, errclass.ErrNotConfigured) {
+			executed = true
+		}
 		switch {
 		case err == nil && langMismatch(it.OriginalLang, got.Lang):
 			// 來源回報的語言和影音的原文語言不同：不採用，繼續下一個來源（SRC-R4）。
@@ -261,14 +282,19 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 			})
 		case err == nil:
 			return p.fallbackResult(id, f, it, lang, stage, decisions, got)
-		case errors.Is(err, supadata.ErrNoTranscript):
+		case errors.Is(err, errclass.ErrNoResult):
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: reasonNoTranscript})
+		case errors.Is(err, errclass.ErrNotConfigured):
+			// 來源本身沒有設定（缺 API key）：和沒有註冊的來源一樣略過。
+			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: transcript.ReasonNotConfigured})
 		case isNeedsAction(err):
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: string(errclass.ClassNeedsAction)})
-			if errors.Is(err, supadata.ErrPlanUnsupported) {
-				return blockedFor(stage, decisions, msgSupadataPlan, actionUpgradePlan), nil
+			msg, actions := msgSourceNeedsAction, []string(nil)
+			var ce *errclass.Error
+			if errors.As(err, &ce) && ce.Message != "" {
+				msg, actions = ce.Message, ce.Actions
 			}
-			return blockedFor(stage, decisions, msgSupadataKey, actionSetKey), nil
+			return blockedFor(stage, decisions, msg, actions...), nil
 		case isPermanent(err):
 			// 這個來源的請求有問題（重試也不會好）：記下原因後繼續下一個來源；全部用完才照 SRC-R5。
 			// err 只含狀態碼等診斷資訊，不含 API key（NFR-SEC-3）。
@@ -290,12 +316,12 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 }
 
 // blockedFor 是需要使用者處理的步驟結果（SRC-R10）：設定或更換 API key、升級方案。
-func blockedFor(stage *store.StageResult, decisions []transcript.Decision, msg, action string) result {
+func blockedFor(stage *store.StageResult, decisions []transcript.Decision, msg string, actions ...string) result {
 	return result{
 		task: taskFailed, stage: stage, probes: toProbes(decisions),
 		state: store.StageState{
 			Status: store.StatusBlocked, BlockReason: string(errclass.ClassNeedsAction), ErrorClass: string(errclass.ClassNeedsAction),
-			Message: msg, Actions: []string{action},
+			Message: msg, Actions: actions,
 		},
 	}
 }

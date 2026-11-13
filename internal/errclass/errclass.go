@@ -23,6 +23,14 @@ const (
 	ClassPermanent Class = "permanent"
 )
 
+// 來源中立的哨兵錯誤：來源套件用 %w 包裝它們，呼叫端（pipeline）不必認得每個來源自己的錯誤。
+var (
+	// ErrNoResult 表示來源沒有這部影片的結果（Supadata 的 206、Groq 的 segments 為空）；呼叫端改用下一個來源。
+	ErrNoResult = errors.New("來源沒有結果")
+	// ErrNotConfigured 表示來源沒有設定（缺 API key），沒有發出請求；呼叫端記為 not_configured 並略過。
+	ErrNotConfigured = errors.New("來源沒有設定")
+)
+
 // Error 是外部來源（yt-dlp 等）回報的錯誤，附上分類。Source 是來源或工具的名稱。
 type Error struct {
 	Class    Class

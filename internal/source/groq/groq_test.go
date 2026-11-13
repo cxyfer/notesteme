@@ -216,6 +216,14 @@ func TestTranscribeKeyRejectedSentinel(t *testing.T) {
 	if !errors.Is(err, ErrKeyRejected) {
 		t.Errorf("err = %v", err)
 	}
+	// 帶給使用者看的訊息與修正動作（SRC-R10）；key 被拒不是「沒有設定」，也不是「沒有結果」。
+	var ce *errclass.Error
+	if !errors.As(err, &ce) || ce.Message != MsgKeyRejected || len(ce.Actions) != 1 || ce.Actions[0] != ActionSetKey {
+		t.Errorf("Message／Actions = %+v", ce)
+	}
+	if errors.Is(err, errclass.ErrNotConfigured) || errors.Is(err, errclass.ErrNoResult) {
+		t.Errorf("key 被拒不該是沒有設定或沒有結果：%v", err)
+	}
 }
 
 func TestTranscribeNoKeyDoesNotRequest(t *testing.T) {
@@ -225,7 +233,7 @@ func TestTranscribeNoKeyDoesNotRequest(t *testing.T) {
 	c := newClient(srv)
 	c.APIKey = ""
 	_, err := c.Transcribe(context.Background(), audioFile(t), "")
-	if called || !errors.Is(err, ErrNoKey) || classOf(t, err) != errclass.ClassNeedsAction {
+	if called || !errors.Is(err, ErrNoKey) || !errors.Is(err, errclass.ErrNotConfigured) || classOf(t, err) != errclass.ClassNeedsAction {
 		t.Errorf("called = %v, err = %v", called, err)
 	}
 }

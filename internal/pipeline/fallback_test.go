@@ -2,9 +2,11 @@ package pipeline
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
 
 	"github.com/cxyfer/notesteme/internal/store"
@@ -79,5 +81,68 @@ func TestEmptyFallbackFailsPermanently(t *testing.T) {
 	r.run()
 	if st := r.stage(it, StageTranscript); st.Status != store.StatusFailed || st.ErrorClass != "permanent" {
 		t.Errorf("transcript = %+v", st)
+	}
+}
+
+// fakeSource 是只回傳固定錯誤的 fallback 來源，用來驗證 runFallback 與來源無關。
+func fakeSource(err error) fallbackFetcher {
+	return fallbackFetcher{
+		timing: "segment",
+		params: func(Language) any { return nil },
+		fetch:  func(context.Context, store.Item, Language) (*fetchResult, error) { return nil, err },
+	}
+}
+
+// needs_action 的訊息與動作由來源的錯誤決定，不綁定特定來源；沒帶訊息時用通用訊息、不帶動作。
+func TestFallbackNeedsActionUsesTheSourceMessageAndActions(t *testing.T) {
+	r := newRig(t)
+	r.p.fetchers["asr-fake"] = fakeSource(&errclass.Error{
+		Class: errclass.ClassNeedsAction, Source: "asr-fake", Message: "asr-fake 要你處理。", Actions: []string{"動作甲", "動作乙"},
+	})
+	it := r.ingest(watch, fallbackOverride("asr-fake"), StageTranscript)
+	r.run()
+	st := r.stage(it, StageTranscript)
+	if st.Status != store.StatusBlocked || st.BlockReason != "needs_action" || st.Message != "asr-fake 要你處理。" ||
+		!slices.Equal(st.Actions, []string{"動作甲", "動作乙"}) {
+		t.Errorf("transcript = %+v", st)
+	}
+
+	r = newRig(t)
+	r.p.fetchers["asr-fake"] = fakeSource(&errclass.Error{Class: errclass.ClassNeedsAction, Source: "asr-fake"})
+	it = r.ingest(watch, fallbackOverride("asr-fake"), StageTranscript)
+	r.run()
+	if st := r.stage(it, StageTranscript); st.Status != store.StatusBlocked || st.Message != msgSourceNeedsAction || len(st.Actions) != 0 {
+		t.Errorf("沒有訊息：transcript = %+v", st)
+	}
+}
+
+// 來源自己回報沒有設定（errclass.ErrNotConfigured）：記為 not_configured 並略過；全部如此時 blocked。
+func TestFallbackSourceReportingNotConfiguredIsSkipped(t *testing.T) {
+	r := newRig(t)
+	r.p.fetchers["asr-fake"] = fakeSource(&errclass.Error{Class: errclass.ClassNeedsAction, Source: "asr-fake", Err: errclass.ErrNotConfigured})
+	it := r.ingest(watch, fallbackOverride("asr-fake"), StageTranscript)
+	r.run()
+	st := r.stage(it, StageTranscript)
+	if st.Status != store.StatusBlocked || !slices.Equal(st.Actions, []string{"設定 API key"}) {
+		t.Errorf("transcript = %+v", st)
+	}
+	d, _ := r.p.Item(context.Background(), it.ID)
+	if last := d.Sources[len(d.Sources)-1]; last.SourceID != "asr-fake" || last.State != "unavailable" || last.Reason != "not_configured" {
+		t.Errorf("sources = %+v", d.Sources)
+	}
+}
+
+// 來源回報沒有結果（errclass.ErrNoResult）：繼續下一個來源，最後照 SRC-R5。
+func TestFallbackSourceReportingNoResultMovesOn(t *testing.T) {
+	r := newRig(t)
+	r.p.fetchers["asr-fake"] = fakeSource(errclass.ErrNoResult)
+	it := r.ingest(watch, fallbackOverride("asr-fake"), StageTranscript)
+	r.run()
+	if st := r.stage(it, StageTranscript); st.Status != store.StatusFailed || st.ErrorClass != "permanent" {
+		t.Errorf("transcript = %+v", st)
+	}
+	d, _ := r.p.Item(context.Background(), it.ID)
+	if last := d.Sources[len(d.Sources)-1]; last.Reason != "no_transcript" {
+		t.Errorf("sources = %+v", d.Sources)
 	}
 }

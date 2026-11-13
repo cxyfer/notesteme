@@ -46,7 +46,7 @@ func ValidMode(m string) bool {
 const requestTimeout = 90 * time.Second
 
 // ErrNoTranscript 表示 Supadata 沒有這部影片的字幕（404 或內容為空）；呼叫端改用下一個來源。
-var ErrNoTranscript = errors.New("supadata：沒有字幕")
+var ErrNoTranscript = fmt.Errorf("supadata：沒有字幕：%w", errclass.ErrNoResult)
 
 // 401、402 都是 needs_action，但要使用者做的事不同，呼叫端用這兩個錯誤分辨。
 var (

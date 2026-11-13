@@ -36,16 +36,22 @@ const (
 	Timing = "segment"
 )
 
+// key 被拒時給使用者看的訊息與修正動作（SRC-R10）。
+const (
+	MsgKeyRejected = "Groq 拒絕了 API key。請確認 API key 正確、帳號仍有額度。"
+	ActionSetKey   = "設定 API key"
+)
+
 // requestTimeout 是整個請求（含上傳音檔）的逾時；回應大小上限用 netguard.LimitFeed（GRD-R5）。
 const requestTimeout = 10 * time.Minute
 
 // ErrNoTranscript 表示 Groq 回傳的 segments 為空（例如靜音或沒有語音）；呼叫端改用下一個來源。
-var ErrNoTranscript = errors.New("groq：沒有轉錄結果")
+var ErrNoTranscript = fmt.Errorf("groq：沒有轉錄結果：%w", errclass.ErrNoResult)
 
 // 401、403 都是 needs_action；ErrNoKey 與 ErrKeyRejected 讓呼叫端分辨「沒設定」與「被拒絕」。
 var (
 	// ErrNoKey 表示沒有設定 API key（SRC-R10）；不會發出請求。
-	ErrNoKey = errors.New("沒有設定 API key")
+	ErrNoKey = fmt.Errorf("沒有設定 API key：%w", errclass.ErrNotConfigured)
 	// ErrKeyRejected 表示 API key 無效或沒有權限（401、403）。
 	ErrKeyRejected = errors.New("API key 無效或沒有權限")
 )
@@ -158,7 +164,10 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*R
 	// 錯誤訊息只帶狀態碼，不帶回應內文。
 	switch code := resp.StatusCode; {
 	case code == http.StatusUnauthorized, code == http.StatusForbidden:
-		return nil, fail(errclass.ClassNeedsAction, fmt.Sprintf("HTTP %d", code), ErrKeyRejected)
+		return nil, &errclass.Error{
+			Class: errclass.ClassNeedsAction, Source: ID, Detail: fmt.Sprintf("HTTP %d", code), Err: ErrKeyRejected,
+			Message: MsgKeyRejected, Actions: []string{ActionSetKey},
+		}
 	case code == http.StatusTooManyRequests || code >= 500:
 		return nil, fail(errclass.ClassRetryable, fmt.Sprintf("HTTP %d", code), nil)
 	case code == http.StatusRequestEntityTooLarge:
