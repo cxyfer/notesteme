@@ -162,6 +162,12 @@ func Load(src Sources) (*Config, error) {
 	if v := src.Env[EnvData]; v != "" {
 		cfg.Data, cfg.Origin[FieldData] = v, SourceEnv
 	}
+	// 資料目錄轉成絕對路徑：相對路徑會讓預設 inbox 也變成相對路徑，被 pathguard 靜默忽略（GRD-R7）。
+	abs, err := filepath.Abs(cfg.Data)
+	if err != nil {
+		return nil, fmt.Errorf("無法取得資料目錄 %q 的絕對路徑：%w", cfg.Data, err)
+	}
+	cfg.Data = abs
 	// inbox 的預設值依賴 data，所以要等環境變數覆寫 data 之後才計算。
 	if cfg.Inbox == "" {
 		cfg.Inbox = filepath.Join(cfg.Data, "inbox")
