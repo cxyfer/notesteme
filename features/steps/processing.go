@@ -2,10 +2,12 @@ package steps
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -64,6 +66,149 @@ func (s *Scenario) stageRetriesAt(stage, ref, at string) error {
 		return fmt.Errorf("%s 的步驟 %s 預計在 %s 重試，預期 %s", ref, stage, got.UTC().Format(time.RFC3339), want.UTC().Format(time.RFC3339))
 	}
 	return nil
+}
+
+// liveStage 取得影音步驟目前的狀態（讀 API）。場景讓 server 停下之後，讀 API 會隱含啟動新的 server，
+// 啟動時的租約回收會蓋掉要驗證的結果（ADR-0015），所以直接失敗，不默默改變狀態。
+// message、actions 資料庫沒有對應的唯讀查詢，目前沒有場景在 server 停下後用到這些步驟。
+func (s *Scenario) liveStage(ref, stage string) (stageJSON, error) {
+	if s.stopped {
+		return stageJSON{}, fmt.Errorf("server 已停止：這個步驟還不支援讀資料庫，請在 server 執行時斷言步驟 %s 的細節", stage)
+	}
+	return s.stageOf(ref, stage)
+}
+
+// stageIsBlockedWith 比對步驟為 blocked，且 block_reason 相符。
+func (s *Scenario) stageIsBlockedWith(stage, ref, reason string) error {
+	st, err := s.liveStage(ref, stage)
+	if err != nil {
+		return err
+	}
+	return checkBlocked(ref, st, reason)
+}
+
+func checkBlocked(ref string, st stageJSON, reason string) error {
+	if st.Status != "blocked" || st.BlockReason != reason {
+		return fmt.Errorf("%s 的步驟 %s 是 %q，預期 blocked 且原因為 %q（%s）", ref, st.Stage, st.Status, reason, describeStage(st))
+	}
+	return nil
+}
+
+// stageWaitsUntil 比對步驟為 waiting，且 not_before 等於指定時間（RFC 3339，以時間點比較，不比時區寫法）。
+func (s *Scenario) stageWaitsUntil(stage, ref, at string) error {
+	st, err := s.liveStage(ref, stage)
+	if err != nil {
+		return err
+	}
+	return checkWaits(ref, st, at)
+}
+
+func checkWaits(ref string, st stageJSON, at string) error {
+	want, err := time.Parse(time.RFC3339, at)
+	if err != nil {
+		return fmt.Errorf("時間 %q 不是 RFC 3339：%w", at, err)
+	}
+	stage := st.Stage
+	if st.Status != "waiting" || st.NotBefore == nil {
+		return fmt.Errorf("%s 的步驟 %s 是 %q，預期 waiting 並有 not_before（%s）", ref, stage, st.Status, describeStage(st))
+	}
+	got, err := time.Parse(time.RFC3339, *st.NotBefore)
+	if err != nil {
+		return fmt.Errorf("not_before %q 不是 RFC 3339：%w", *st.NotBefore, err)
+	}
+	if !got.Equal(want) {
+		return fmt.Errorf("%s 的步驟 %s 會等到 %s，預期 %s", ref, stage, got.UTC().Format(time.RFC3339), want.UTC().Format(time.RFC3339))
+	}
+	return nil
+}
+
+// attentionStage 回傳影音「正在顯示訊息」的步驟：依 pipeline 的順序，第一個不是 done 且有 message 的步驟。
+// 沒有這樣的步驟時回傳錯誤並列出各步驟的狀態。
+func (s *Scenario) attentionStage(ref string) (stageJSON, error) {
+	if s.stopped {
+		return stageJSON{}, errors.New("server 已停止：這個步驟還不支援讀資料庫，請在 server 執行時斷言訊息與動作")
+	}
+	it, err := s.item(ref)
+	if err != nil {
+		return stageJSON{}, err
+	}
+	return pickAttentionStage(ref, it)
+}
+
+// pickAttentionStage 是 attentionStage 的選擇規則（純函式）。
+func pickAttentionStage(ref string, it itemJSON) (stageJSON, error) {
+	byName := map[string]stageJSON{}
+	for _, st := range it.Stages {
+		byName[st.Stage] = st
+	}
+	var seen []string
+	for _, name := range pipeline.Stages {
+		st, ok := byName[name]
+		if !ok {
+			continue
+		}
+		if st.Status != "done" && st.Message != "" {
+			return st, nil
+		}
+		seen = append(seen, fmt.Sprintf("%s=%s", name, st.Status))
+	}
+	return stageJSON{}, fmt.Errorf("%s 沒有任何「不是 done 而且有訊息」的步驟（%s）", ref, strings.Join(seen, "、"))
+}
+
+// itemShowsMessage 比對影音顯示的狀態訊息（見 attentionStage），訊息必須完全相同。
+func (s *Scenario) itemShowsMessage(ref, want string) error {
+	st, err := s.attentionStage(ref)
+	if err != nil {
+		return err
+	}
+	if st.Message != want {
+		return fmt.Errorf("%s 的步驟 %s（%s）顯示訊息 %q，預期 %q", ref, st.Stage, st.Status, st.Message, want)
+	}
+	return nil
+}
+
+// itemOffersActions 比對同一個步驟（見 attentionStage）可以執行的動作：
+// 參數以逗號切開並去掉前後空白，與動作清單依序完全相等。
+func (s *Scenario) itemOffersActions(ref, want string) error {
+	st, err := s.attentionStage(ref)
+	if err != nil {
+		return err
+	}
+	wantList := splitList(want)
+	if !slices.Equal(st.Actions, wantList) {
+		return fmt.Errorf("%s 的步驟 %s（%s）提供動作 %q，預期 %q", ref, st.Stage, st.Status, st.Actions, wantList)
+	}
+	return nil
+}
+
+// splitList 以逗號切開並去掉前後空白；空字串代表空清單。
+func splitList(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, ",")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+// sourceRejectedFor 比對影音詳情的 sources 中，這個來源的狀態是 rejected 且原因相符（SRC-R4、R17）。
+func (s *Scenario) sourceRejectedFor(src, ref, reason string) error {
+	it, err := s.item(ref)
+	if err != nil {
+		return err
+	}
+	return checkRejected(ref, it, src, reason)
+}
+
+func checkRejected(ref string, it itemJSON, src, reason string) error {
+	for _, e := range it.Sources {
+		if e.Source == src && e.State == "rejected" && e.Reason == reason {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s 的 sources 沒有「%s 因 %s 被不採用」：%+v", ref, src, reason, it.Sources)
 }
 
 // artifactHasVersions 比對產出的版本數，包含被取代的版本。

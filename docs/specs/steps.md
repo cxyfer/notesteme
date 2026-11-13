@@ -101,7 +101,7 @@
 | `Given the environment variable {string} is not set` | 移除環境變數 |
 | `Given the server is running` | 以目前的設定啟動 `serve` |
 | `Given the server is not running` | 確認沒有 `serve` 持有資料目錄 |
-| `Given the provider {string} has no API key` | 移除 provider 的 API key（fake provider 預設有 key） |
+| `Given the provider {string} has no API key` | 移除 provider 的 API key（fake provider 預設有 key：Supadata 的 `NOTESTEME_SUPADATA_API_KEY`、Groq 的 `NOTESTEME_GROQ_API_KEY`）。參數是字幕來源 ID（第 3 節）時，同時移除環境變數與 fake 的 key 要求，所以產品沒檢查 key 就呼叫來源會拿到轉錄結果、場景失敗；來源還沒實作（`source.Implemented`）時 pending；必須放在 server 啟動之前（環境變數只在啟動時讀取）。LLM provider 的版本還沒實作，pending |
 | `When the server starts` | 啟動 `serve`，等到 `/readyz` 回應或啟動失敗 |
 | `When the server restarts` | 模擬程序中斷後重新啟動（不經過正常關閉） |
 | `When the server shuts down gracefully` | 送出關閉訊號，等待正常關閉 |
@@ -142,13 +142,13 @@
 | `Given a local file {string} in the inbox` | 在 inbox 放入 fixture 檔案 |
 | `Given {string} has {word} captions in {string}` | 平台字幕軌；`{word}` 為 `manual`、`auto`、`platform-translated`。Bilibili 的 AI 字幕屬於 `auto` |
 | `Given {string} has no caption tracks` | 平台沒有任何字幕 |
-| `Given the auto captions of {string} are not ready yet` | YouTube 自動字幕還沒生成 |
+| `Given the auto captions of {string} are not ready yet` | YouTube 自動字幕還沒生成：假 yt-dlp 不列出、也不下載自動字幕與平台翻譯字幕，人工字幕不受影響。只接受 `yt:` |
 | `Given the source {string} returns {string} for {string}` | 字幕來源回傳指定的 fixture |
 | `Given the source {string} has nothing for {string}` | 字幕來源沒有結果 |
 | `Given the source {string} requires the cookie {string}` | 需要指定的 cookie 才能取得 |
 | `Given the source {string} accepts files up to {string}` | ASR 的單檔大小上限，例如 `"25MB"` |
 | `Given the audio of {string} is {string}` | 音訊 fixture，例如長度或大小不同的檔案 |
-| `Given yt-dlp fails for {string} with {string}` | yt-dlp 對這個影音回傳指定的錯誤輸出 |
+| `Given yt-dlp fails for {string} with {string}` | yt-dlp 對這個影音的所有操作（取得資訊、下載字幕、下載媒體）都以結束碼 1 失敗，stderr 為指定的錯誤輸出。只接受 `yt:` |
 
 ### 4.4 影音與產出（`steps/items.go`）
 
@@ -170,14 +170,14 @@
 | `Then the library contains {int} items` | 影音總數，不含垃圾桶中的影音 |
 | `Then the library contains {string}` | 影音存在，且不在垃圾桶中 |
 | `Then the stage {string} of {string} is {string}` | 步驟狀態 |
-| `Then the stage {string} of {string} is blocked with the reason {string}` | `blocked` 及其原因 |
+| `Then the stage {string} of {string} is blocked with the reason {string}` | 狀態為 `blocked`，且 `block_reason` 相符 |
 | `Then the stage {string} of {string} failed with the error class {string}` | `failed` 及錯誤類別 |
-| `Then the stage {string} of {string} waits until {string}` | `waiting`，`not_before` 為指定時間 |
+| `Then the stage {string} of {string} waits until {string}` | 狀態為 `waiting`，`not_before` 與指定的 RFC 3339 時間是同一個時間點（不比時區寫法） |
 | `Then the stage {string} of {string} retries at {string}` | `pending`（重試中），下一次嘗試的時間為指定時間 |
-| `Then {string} shows the message {string}` | 影音的狀態訊息（UI 與 API 共用的文案） |
-| `Then {string} offers the actions {string}` | 可以執行的修正動作，以逗號分隔 |
+| `Then {string} shows the message {string}` | 影音的狀態訊息（UI 與 API 共用的文案）：依 pipeline 的順序，取第一個「不是 `done` 而且有 `message`」的步驟，訊息必須完全相同；沒有這樣的步驟就失敗 |
+| `Then {string} offers the actions {string}` | 可以執行的修正動作：同一個步驟（同上）的 `actions`；參數以逗號切開並去掉前後空白，與 `actions` 依序完全相等 |
 | `Then the transcript of {string} came from {string}` | 採用的字幕來源 |
-| `Then the source {string} was rejected for {string} because {string}` | 品質檢查不通過的原因 |
+| `Then the source {string} was rejected for {string} because {string}` | 品質檢查不通過的原因：影音詳情的 `sources` 中，有一筆 `source` 相符、`state` 為 `rejected`、`reason` 相符 |
 | `Then the original language of {string} is {string}` | 原文語言 |
 | `Then the original language of {string} is marked as mixed` | 標記為中英夾雜等混合語言 |
 | `Then the {string} transcript of {string} is:` | 字幕內容，表格欄位同上；只比對表格中出現的欄位 |
@@ -185,8 +185,8 @@
 | `Then the {string} transcript of {string} has {int} cues` | cue 數 |
 | `Then the {string} transcript of {string} in {string} has {int} cues` | 同上，指定語言 |
 | `Then every cue of the {string} transcript of {string} follows the subtitle rules for {string}` | 每個 cue 都符合指定文字系統（`cjk`、`latin`）的字幕規則（plan 第 8.5 節） |
-| `Then every cue of the {string} transcript of {string} has the timing {string}` | 所有 cue 的時間來源 |
-| `Then the {string} artifact of {string} has the provenance:` | 來源紀錄；表格欄位：`field`、`value`，`field` 可用點號表示巢狀欄位 |
+| `Then every cue of the {string} transcript of {string} has the timing {string}` | 所有 cue 的時間來源（`GET /api/items/:id/cues`）；沒有任何 cue 視為失敗 |
+| `Then the {string} artifact of {string} has the provenance:` | 現行產出的來源紀錄（`provenance_json`）；表格欄位：`field`、`value`。`field` 用點號表示巢狀欄位，數字的段落是陣列索引（例如 `tool_versions.yt-dlp`），值一律以字串比較（數字用原本的寫法）。`parents` 是上游產出的變體名稱清單（值以逗號分隔、依序相等，例如 `source`）。符合名稱的現行產出必須剛好一個；harness 經測試用的 hook 讀取，不新增 API |
 | `Then the {string} artifact of {string} has {int} versions` | 版本數，包含被取代的版本 |
 | `Then the item {string} has no {string} artifact` | 沒有這種產出 |
 | `Given the media of {string} is cached` | 媒體快取中已有這部影音下載好的檔案 |

@@ -144,8 +144,11 @@ func (s *Scenario) close() error {
 // checkLogs 確認 server 的 log 沒有出現環境變數中的密碼或 master key（NFR-SEC-3）。
 func (s *Scenario) checkLogs() error {
 	logs := s.World.Log.String()
-	secrets := map[string]bool{harness.TestPassword: true, harness.TestMasterKey: true, harness.TestSupadataKey: true}
-	for _, k := range []string{"NOTESTEME_PASSWORD", "NOTESTEME_MASTER_KEY", config.EnvSupadataAPIKey} {
+	secrets := map[string]bool{
+		harness.TestPassword: true, harness.TestMasterKey: true, harness.TestSupadataKey: true, harness.TestGroqKey: true,
+	}
+	// harness.GroqAPIKeyEnv 之後改用 config.EnvGroqAPIKey（見 harness.GroqAPIKeyEnv 的 TODO）。
+	for _, k := range []string{"NOTESTEME_PASSWORD", "NOTESTEME_MASTER_KEY", config.EnvSupadataAPIKey, harness.GroqAPIKeyEnv} {
 		if v := s.World.Env[k]; len(v) >= 4 {
 			secrets[v] = true
 		}
