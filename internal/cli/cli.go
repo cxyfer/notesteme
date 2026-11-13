@@ -116,6 +116,9 @@ func Execute(ctx context.Context, args []string, stdio app.IO, env app.Env) Resu
 			return fail(stdio, err, "")
 		}
 		s.be, mode = be, be.mode
+		if be.warn != "" {
+			fmt.Fprintf(stdio.Stderr, "notesteme: 警告：%s\n", be.warn)
+		}
 		defer func() {
 			if err := be.close(); err != nil {
 				fmt.Fprintf(stdio.Stderr, "notesteme: 關閉時發生錯誤：%v\n", err)

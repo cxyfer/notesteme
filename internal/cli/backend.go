@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/app"
 	"github.com/cxyfer/notesteme/internal/config"
@@ -27,6 +28,8 @@ type backend struct {
 	hc    *http.Client
 	base  string
 	token string
+	// warn 是要在 stderr 印出的警告（目前只有明文 http 的 token）。
+	warn string
 
 	// standalone 只在獨立模式有值：用來執行任務與釋放資料目錄的鎖。
 	standalone *app.Standalone
@@ -94,17 +97,25 @@ func withData(env app.Env, data string) app.Env {
 
 // dialFunc 回傳連線用的函式：Env.Dial，沒有設定時用預設的 net.Dialer。
 // 它不經過 netguard：目標是使用者自己指定的 server，不是不受信任的外部網址（見 app.Env.Dial）。
-func dialFunc(env app.Env) func(ctx context.Context, network, addr string) (net.Conn, error) {
+// timeout > 0 時限制連線所花的時間（Env.Dial 也一樣，用 ctx 的期限）。
+func dialFunc(env app.Env, timeout time.Duration) func(ctx context.Context, network, addr string) (net.Conn, error) {
 	if env.Dial != nil {
-		return env.Dial
+		if timeout <= 0 {
+			return env.Dial
+		}
+		return func(ctx context.Context, network, addr string) (net.Conn, error) {
+			ctx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+			return env.Dial(ctx, network, addr)
+		}
 	}
-	var d net.Dialer
+	d := net.Dialer{Timeout: timeout}
 	return d.DialContext
 }
 
 // openSocket 連到 serve 的本機 Unix socket（本機 client 模式，不需要 token）。
 func openSocket(path string, env app.Env) *backend {
-	dial := dialFunc(env)
+	dial := dialFunc(env, 0)
 	tr := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return dial(ctx, "unix", path)
@@ -114,26 +125,60 @@ func openSocket(path string, env app.Env) *backend {
 	return &backend{mode: ModeClient, hc: &http.Client{Transport: tr}, base: localBase}
 }
 
+// --server 連線的逾時：連線與等待回應標頭有上限；回應 body 不設限（SSE 是長連線）。
+// 做成變數只是為了讓測試縮短等待。
+var (
+	remoteDialTimeout   = 10 * time.Second
+	remoteHeaderTimeout = 30 * time.Second
+)
+
+// envToken 是 --token 的環境變數版本；兩者都有時以 --token 為準。
+const envToken = "NOTESTEME_TOKEN"
+
+// isLoopbackHost 回傳 host（不含 port）是不是本機：localhost 或 loopback 位址。
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // openRemote 連到 --server 指定的位址，HTTP 帶 Authorization: Bearer（CLI-R3）。
 // 不碰 --data，也不檢查本機的資料目錄。
+//
+// 安全：token 只會送給 --server 指定的主機。轉址一律不跟隨（連到另一個 port 時 net/http 也會帶著
+// Authorization），收到轉址當成錯誤；http:// 而且不是本機時，警告 token 會以明文傳送。
 func openRemote(g *globals, env app.Env) (*backend, error) {
-	if g.token == "" {
-		return nil, usagef("--server 需要同時指定 --token。")
+	token := g.token
+	if token == "" {
+		token = env.Vars[envToken]
+	}
+	if token == "" {
+		return nil, usagef("--server 需要同時指定 --token（或設定環境變數 %s）。", envToken)
 	}
 	u, err := url.Parse(g.server)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, usagef("--server 必須是 http:// 或 https:// 開頭的位址，收到 %q。", g.server)
 	}
-	dial := dialFunc(env)
 	tr := &http.Transport{
 		// 不讀環境變數的 proxy 設定：連線完全由 Env.Dial 決定。
-		DialContext:       dial,
-		DisableKeepAlives: true,
+		DialContext:           dialFunc(env, remoteDialTimeout),
+		ResponseHeaderTimeout: remoteHeaderTimeout,
+		DisableKeepAlives:     true,
 	}
-	return &backend{
-		mode: ModeClient, hc: &http.Client{Transport: tr}, token: g.token,
-		base: strings.TrimRight(u.String(), "/"),
-	}, nil
+	b := &backend{
+		mode: ModeClient, token: token, base: strings.TrimRight(u.String(), "/"),
+		hc: &http.Client{
+			Transport: tr,
+			// 不設 Client.Timeout：它連 body 一起限制，會截斷 SSE。
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+	}
+	if u.Scheme == "http" && !isLoopbackHost(u.Hostname()) {
+		b.warn = fmt.Sprintf("--server %s 使用 http://，token 會以明文傳送；請改用 https://，或只連到本機。", g.server)
+	}
+	return b, nil
 }
 
 // open 送出請求並回傳回應（不論狀態碼）；呼叫端負責關閉 Body。body 非 nil 時以 JSON 送出。
@@ -159,6 +204,12 @@ func (b *backend) open(ctx context.Context, method, path string, body any) (*htt
 	resp, err := b.hc.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("連線失敗：%w", err)
+	}
+	if resp.StatusCode >= 300 && resp.StatusCode <= 399 {
+		// 只有 --server 會走到這裡（它不跟隨轉址）。Authorization 不能跟著轉址送到別處。
+		loc := resp.Header.Get("Location")
+		resp.Body.Close()
+		return nil, fmt.Errorf("server 回了轉址（HTTP %d，Location：%q），CLI 不會跟隨；請確認 --server 的位址（例如應該用 https://）。", resp.StatusCode, loc)
 	}
 	return resp, nil
 }

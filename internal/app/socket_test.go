@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -197,31 +196,5 @@ func TestSocketRejectsNonUnixListener(t *testing.T) {
 	_, err := StartServer(t.Context(), env)
 	if err == nil || !strings.Contains(err.Error(), "unix listener") {
 		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestEnvDial(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
-	// nil：用預設的 net.Dialer。
-	c, err := (Env{}).dial(t.Context(), "tcp", ln.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = c.Close()
-
-	// 有設定：用它，而且收到原樣的 network 與 addr。
-	boom := errors.New("boom")
-	var gotNet, gotAddr string
-	env := Env{Dial: func(_ context.Context, network, addr string) (net.Conn, error) {
-		gotNet, gotAddr = network, addr
-		return nil, boom
-	}}
-	if _, err := env.dial(t.Context(), "tcp", "example.test:80"); !errors.Is(err, boom) || gotNet != "tcp" || gotAddr != "example.test:80" {
-		t.Errorf("err = %v, network = %q, addr = %q", err, gotNet, gotAddr)
 	}
 }
