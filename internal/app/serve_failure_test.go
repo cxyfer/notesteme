@@ -19,7 +19,10 @@ func (failingListener) Accept() (net.Conn, error) { return nil, errors.New("acce
 // server 自己失敗時，runServe 也要走 Shutdown（釋放資料目錄的鎖）再回傳 1。
 func TestRunServeShutsDownWhenServeFails(t *testing.T) {
 	env := testEnv(t)
-	env.Listen = func(_, _ string) (net.Listener, error) {
+	env.Listen = func(network, addr string) (net.Listener, error) {
+		if network == "unix" {
+			return net.Listen(network, addr)
+		}
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		return failingListener{ln}, err
 	}

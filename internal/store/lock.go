@@ -11,9 +11,8 @@ import (
 // LockFileName 是 /data 下的鎖專用檔（ADR-0007、ADR-0015）。
 const LockFileName = "notesteme.lock"
 
-// ErrLocked 表示資料目錄已被另一個 serve 持有（CLI-R1）。
-//
-// TODO: 持有者是獨立模式的 CLI 時要有不同的訊息，之後依鎖檔的 holder 區分。
+// ErrLocked 表示資料目錄已被另一個程序持有（CLI-R1）。訊息是 serve 持有時的版本，
+// 持有者是獨立模式的 CLI 時，呼叫端要讀 ReadLockInfo 依 Holder 另外說明（見 app.lockedError）。
 var ErrLocked = errors.New("資料目錄已經由另一個 notesteme serve 使用中。")
 
 // LockInfo 是寫進鎖檔的內容，client 模式的 CLI 依此連到 serve。
@@ -23,6 +22,8 @@ type LockInfo struct {
 	PID    int    `json:"pid"`
 	// Listen 是 serve 實際監聽的位址；cli 持有時為空。
 	Listen string `json:"listen,omitempty"`
+	// Socket 是 serve 的本機 Unix socket 路徑（client 模式的 CLI 連到這裡）；cli 持有時為空。
+	Socket string `json:"socket,omitempty"`
 }
 
 // DirLock 是資料目錄的 flock。

@@ -52,8 +52,13 @@ type ReadyCheck struct {
 // readyTimeout 是 /readyz 檢查 DB 是否可寫的上限。
 const readyTimeout = 5 * time.Second
 
-// New 建立完整的 HTTP handler。
+// New 建立完整的 HTTP handler：受保護的路徑要有 session 或 token（AUTH-R1）。
 func New(d Deps) http.Handler {
+	return build(d, authMiddleware(d.Auth, d.Log))
+}
+
+// build 組出路由與 middleware；authn 決定受保護路徑的驗證方式（New 與 NewLocal 的唯一差異）。
+func build(d Deps, authn func(http.Handler) http.Handler) http.Handler {
 	mux := http.NewServeMux()
 
 	cfg := huma.DefaultConfig("Notesteme", d.Version)
@@ -76,7 +81,7 @@ func New(d Deps) http.Handler {
 	}
 
 	var h http.Handler = mux
-	h = authMiddleware(d.Auth, d.Log)(h)
+	h = authn(h)
 	h = requestInfoMiddleware(d.Auth)(h)
 	h = logMiddleware(d.Log, d.Clock)(h)
 	h = recoverMiddleware(d.Log)(h)

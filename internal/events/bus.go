@@ -6,8 +6,13 @@ package events
 
 import "sync"
 
-// TypeStageStatus 是步驟狀態改變的事件類型。
-const TypeStageStatus = "stage.status"
+// 事件類型。
+const (
+	// TypeStageStatus 是步驟狀態改變。
+	TypeStageStatus = "stage.status"
+	// TypeItemCreated 是影音新增（已存在而沒有新增時不發布）。
+	TypeItemCreated = "item.created"
+)
 
 // Event 是推送給訂閱者的事件；JSON 欄位就是 SSE 的 data。
 type Event struct {
@@ -15,8 +20,9 @@ type Event struct {
 	// Item 是影音的短代號（例如 yt:abc123xxxxx），ItemID 是內部 ID。
 	Item   string `json:"item"`
 	ItemID string `json:"item_id"`
-	Stage  string `json:"stage"`
-	Status string `json:"status"`
+	// Stage 與 Status 只有 stage.status 事件才有。
+	Stage  string `json:"stage,omitempty"`
+	Status string `json:"status,omitempty"`
 }
 
 // DefaultBuffer 是每個訂閱者的 buffer 大小。
