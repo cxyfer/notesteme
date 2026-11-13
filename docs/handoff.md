@@ -1,6 +1,6 @@
 # 交接：M1 開發進度
 
-> 更新：2026-11-13。`master` 位於 `625f5d7`；PIPE 切片在 `feat/pipe-queue` 的 PR，尚未合併。
+> 更新：2026-11-13。PR #2（交接檔）、#3（CI 與 Docker）已合併；PIPE 切片在 PR #4（`feat/pipe-queue`）。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -176,7 +176,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - YouTube 影片 ID 的最短長度放寬為 2，讓場景的 `yt:v1` 能被辨識。
   - 字幕讀取端沒有串流（NFR-RES-3 只做到輸出端）。
   - 有 HTML 回應時要加上 CSP 等標頭（NFR-SEC-1）。
-  - CI 在 PR #3（尚未合併）：gofmt、`go mod tidy -diff`、vet、`go test -race`、`sqlc diff`、Docker image 與冒煙測試。還沒有規格檢查與 `govulncheck`。
+  - CI（`.github/workflows/ci.yml`，PR #3）：gofmt、`go mod tidy -diff`、vet、`go test -race`、`sqlc diff`、Docker image 與冒煙測試；push 到 `master` 或 `v*` tag 時發布 image 到 GHCR。還沒有 Python 版規格檢查（Go 版在 `go test` 中）與 `govulncheck`。
 
 ## 7. 仍有效的待決問題
 
