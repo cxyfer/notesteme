@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/source/supadata"
+
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
@@ -43,13 +44,7 @@ func TestFallbackWithoutKeysBlocksForAPIKey(t *testing.T) {
 func TestFallbackSkipsUnconfiguredSourceAndUsesTheNext(t *testing.T) {
 	r := newRig(t) // supadata 沒有 key
 	next := &fakeSupadata{lang: "en", cues: 2}
-	r.p.fetchers["asr-fake"] = fallbackFetcher{
-		timing: "segment",
-		params: func(Language) any { return nil },
-		fetch: func(ctx context.Context, it store.Item, _ Language) (*supadata.Result, error) {
-			return next.Fetch(ctx, it.URL, "")
-		},
-	}
+	r.p.fetchers["asr-fake"] = next.asFetcher("segment")
 	it := r.ingest(watch, fallbackOverride("supadata", "asr-fake"), StageTranscript)
 	r.run()
 

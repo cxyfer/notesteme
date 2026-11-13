@@ -137,13 +137,24 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	}, nil
 }
 
+// fetchResult 是 fallback 來源回傳的字幕，與來源無關（Supadata、Groq 等各自轉成這個形狀）。
+type fetchResult struct {
+	// Lang 是來源回報的語言，可能為空。
+	Lang string
+	Cues []subtitle.Cue
+	// Timing 非空時，覆寫 fallbackFetcher.timing 寫進來源紀錄（來源依這次的結果才知道時間粒度時使用）。
+	Timing string
+	// ToolVersions 是這次結果用到的外部工具版本（例如 ffmpeg），寫進來源紀錄的 tool_versions；可以是 nil。
+	ToolVersions map[string]string
+}
+
 // fallbackFetcher 是一個可以執行的 fallback 來源；沒有設定（缺 API key）的來源不在 Pipeline.fetchers 中。
 type fallbackFetcher struct {
 	// timing 是來源宣告的時間粒度（寫進來源紀錄）。
 	timing string
 	// params 是會影響結果的設定（寫進來源紀錄）。
 	params func(Language) any
-	fetch  func(ctx context.Context, it store.Item, lang Language) (*supadata.Result, error)
+	fetch  func(ctx context.Context, it store.Item, lang Language) (*fetchResult, error)
 }
 
 // newFetchers 依 deps 建立可執行的 fallback 來源。
@@ -153,8 +164,12 @@ func newFetchers(d Deps) map[string]fallbackFetcher {
 		out[supadata.ID] = fallbackFetcher{
 			timing: supadataTiming,
 			params: func(l Language) any { return l.Supadata },
-			fetch: func(ctx context.Context, it store.Item, l Language) (*supadata.Result, error) {
-				return sd.Fetch(ctx, it.URL, l.Supadata.Mode)
+			fetch: func(ctx context.Context, it store.Item, l Language) (*fetchResult, error) {
+				got, err := sd.Fetch(ctx, it.URL, l.Supadata.Mode)
+				if err != nil {
+					return nil, err
+				}
+				return &fetchResult{Lang: got.Lang, Cues: got.Cues}, nil
 			},
 		}
 	}
@@ -222,7 +237,7 @@ func blockedFor(stage *store.StageResult, decisions []transcript.Decision, msg, 
 }
 
 // fallbackResult 把 fallback 來源回傳的字幕寫成原始字幕的產出。
-func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, lang Language, stage *store.StageResult, decisions []transcript.Decision, got *supadata.Result) (result, error) {
+func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, lang Language, stage *store.StageResult, decisions []transcript.Decision, got *fetchResult) (result, error) {
 	artLang := transcript.NormalizeLang(got.Lang)
 	if artLang == "" {
 		// 來源沒回報語言時，用影音的原文語言；都不知道就標為 und。
@@ -231,11 +246,12 @@ func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, l
 		}
 	}
 	decisions = append(decisions, transcript.Decision{Source: id, Lang: artLang, State: transcript.StateUsed})
+	timing := cmp.Or(got.Timing, f.timing)
 	prov, err := p.provenance(map[string]any{
 		"stage": StageTranscript, "impl_version": p.implVersion(StageTranscript),
-		"source": id, "timing": f.timing,
+		"source": id, "timing": timing,
 		"params_sha256": paramsSHA(f.params(lang)),
-	}, nil)
+	}, got.ToolVersions)
 	if err != nil {
 		return result{}, err
 	}

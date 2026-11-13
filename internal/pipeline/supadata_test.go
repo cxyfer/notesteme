@@ -43,6 +43,21 @@ func (f *fakeSupadata) Fetch(_ context.Context, videoURL, mode string) (*supadat
 	return res, nil
 }
 
+// asFetcher 把替身包成 fallback 來源，測試用它模擬 Supadata 以外的來源。
+func (f *fakeSupadata) asFetcher(timing string) fallbackFetcher {
+	return fallbackFetcher{
+		timing: timing,
+		params: func(Language) any { return nil },
+		fetch: func(ctx context.Context, it store.Item, _ Language) (*fetchResult, error) {
+			got, err := f.Fetch(ctx, it.URL, "")
+			if err != nil {
+				return nil, err
+			}
+			return &fetchResult{Lang: got.Lang, Cues: got.Cues}, nil
+		},
+	}
+}
+
 func (f *fakeSupadata) calls() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -286,13 +301,7 @@ func TestFallbackPermanentErrorMovesOnToTheNextSource(t *testing.T) {
 	r, sd := newSupadataRig(t)
 	sd.err = &errclass.Error{Class: errclass.ClassPermanent, Source: "supadata", Detail: "HTTP 400"}
 	next := &fakeSupadata{lang: "en", cues: 2}
-	r.p.fetchers["asr-fake"] = fallbackFetcher{
-		timing: "segment",
-		params: func(Language) any { return nil },
-		fetch: func(ctx context.Context, it store.Item, _ Language) (*supadata.Result, error) {
-			return next.Fetch(ctx, it.URL, "")
-		},
-	}
+	r.p.fetchers["asr-fake"] = next.asFetcher("segment")
 	it := r.ingest(watch, fallbackOverride("supadata", "asr-fake"), StageTranscript)
 	r.run()
 
