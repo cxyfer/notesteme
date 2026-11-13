@@ -287,7 +287,7 @@
 | `Given the host {string} resolves to {string}` | fake DNS |
 | `Given the host {string} resolves to {string} and then {string}` | 第二次之後解析成不同的 IP，用來模擬 DNS rebinding |
 | `Given the URL {string} redirects to {string}` | fake origin 回傳轉址 |
-| `Given the URL {string} serves {string}` | fake origin 回傳 fixture |
+| `Given the URL {string} serves {string}` | fake origin 回傳 fixture（`features/fixtures/http/`）。YouTube 與 Bilibili 的網址由 yt-dlp 處理、不是 HTTP 請求：播放清單網址（`/playlist?list=…`）改為登記 `features/fixtures/ytdlp/` 的 fixture 作為假 yt-dlp `--flat-playlist -J` 的輸出（內容是 yt-dlp 的 JSON，`entries` 中每部影片有 11 字元的 `id`）；其他 YouTube、Bilibili 網址不支援這個步驟 |
 | `Given the URL {string} serves {int} bytes` | fake origin 回傳指定大小的內容 |
 | `Then no connection was made to {string}` | 沒有對指定的 IP 或主機建立連線 |
 

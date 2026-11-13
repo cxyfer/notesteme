@@ -20,6 +20,7 @@ type ytArgs struct {
 	writeSubs    bool
 	writeAuto    bool
 	noPlaylist   bool
+	flatPlaylist bool
 	subLangs     []string
 	subFormat    string
 	output       string
@@ -32,7 +33,7 @@ type ytArgs struct {
 var ytBoolFlags = map[string]bool{
 	"--no-playlist": true, "--newline": true, "--no-progress": true,
 	"--quiet": true, "-q": true, "--no-warnings": true, "--no-colors": true,
-	"--ignore-config": true,
+	"--ignore-config": true, "--flat-playlist": true,
 }
 
 // 帶一個值、直接接受並忽略的旗標。
@@ -82,8 +83,11 @@ func parseYtDlp(args []string) (ytArgs, error) {
 		case flag == "--write-auto-subs":
 			a.writeAuto = true
 		case ytBoolFlags[flag]:
-			if flag == "--no-playlist" {
+			switch flag {
+			case "--no-playlist":
 				a.noPlaylist = true
+			case "--flat-playlist":
+				a.flatPlaylist = true
 			}
 		case flag == "--sub-langs", flag == "--sub-format", flag == "-o", flag == "--output",
 			flag == "-f", flag == "--format", flag == "--cookies", ytIgnoredValueFlags[flag]:
@@ -168,6 +172,11 @@ func runYtDlp(e env, args []string) int {
 		return 1
 	}
 	waitGate(e.root, st.Gate)
+
+	// 展開播放清單：--flat-playlist -J 加上播放清單網址。其他網址（含影片網址）照一般流程處理。
+	if listID, ok := PlaylistID(a.url); ok && op == OpInfo && a.flatPlaylist {
+		return ytPlaylist(e, st, listID)
+	}
 
 	id, part, platform, err := parseVideoURL(a.url)
 	if err != nil {
@@ -342,6 +351,45 @@ func parseVideoURL(raw string) (id string, part int, platform string, err error)
 		return "", 0, "", fmt.Errorf("Unsupported URL: %s", raw)
 	}
 	return id, part, platform, nil
+}
+
+// playlistID 從 YouTube 播放清單網址（/playlist?list=<id>）取出播放清單 ID。
+func PlaylistID(raw string) (string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", false
+	}
+	switch strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.") {
+	case "youtube.com", "m.youtube.com", "music.youtube.com":
+	default:
+		return "", false
+	}
+	if strings.TrimSuffix(u.Path, "/") != "/playlist" {
+		return "", false
+	}
+	id := u.Query().Get("list")
+	return id, id != ""
+}
+
+// ytPlaylist 輸出 State.Playlists 登記的 fixture（FixturesDir/ytdlp/<檔名>）。
+// 沒有登記時與真實的 yt-dlp 相同：回報播放清單不存在。
+func ytPlaylist(e env, st State, listID string) int {
+	name, ok := st.Playlists[listID]
+	if !ok {
+		fmt.Fprintf(e.stderr, "ERROR: [youtube:tab] %s: The playlist does not exist.\n", listID)
+		return 1
+	}
+	if st.FixturesDir == "" {
+		fmt.Fprintf(e.stderr, "ERROR: fake state has no fixtures_dir; cannot read playlist fixture %q\n", name)
+		return 1
+	}
+	b, err := os.ReadFile(filepath.Join(st.FixturesDir, "ytdlp", filepath.Clean("/"+name)))
+	if err != nil {
+		fmt.Fprintf(e.stderr, "ERROR: playlist fixture %q: %v\n", name, err)
+		return 1
+	}
+	fmt.Fprintln(e.stdout, strings.TrimSpace(string(b)))
+	return 0
 }
 
 // ItemKeyFromURL 從影片網址取出假媒體標記中的 item（見 itemKey），

@@ -1,10 +1,12 @@
 package steps
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/cucumber/godog"
 
 	"github.com/cxyfer/notesteme/features/internal/fakenet"
+	"github.com/cxyfer/notesteme/features/internal/faketool"
 	"github.com/cxyfer/notesteme/internal/netguard"
 )
 
@@ -99,6 +102,64 @@ func TestServesRejectsBadFixture(t *testing.T) {
 		} else if err == godog.ErrPending {
 			t.Errorf("fixture %q 不能轉成 pending", name)
 		}
+	}
+}
+
+// YouTube 播放清單的網址由 yt-dlp 讀取，不是 HTTP：serves 把 fixture（ytdlp/）登記到假 yt-dlp 的狀態，
+// 不會在 fakenet 上建立路由（steps.md 4.10）。
+func TestServesYtDlpPlaylistURL(t *testing.T) {
+	s := newTestScenario(t)
+	const rawURL = "https://www.youtube.com/playlist?list=PL123"
+	if err := s.urlServes(rawURL, "playlist-3-videos.json"); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.World.Tools.Playlists["PL123"]; got != "playlist-3-videos.json" {
+		t.Fatalf("Tools.Playlists = %v", s.World.Tools.Playlists)
+	}
+	st, err := faketool.ReadState(s.World.Root)
+	if err != nil || st.Playlists["PL123"] != "playlist-3-videos.json" {
+		t.Fatalf("狀態檔沒有同步：%+v, %v", st.Playlists, err)
+	}
+	// fixture 是 3 部影片、11 字元的 ID。
+	b, err := os.ReadFile(filepath.Join(s.World.FixturesDir, "ytdlp", "playlist-3-videos.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pl struct {
+		Entries []struct{ ID string } `json:"entries"`
+	}
+	if err := json.Unmarshal(b, &pl); err != nil || len(pl.Entries) != 3 {
+		t.Fatalf("fixture 應有 3 部影片：%v, %v", pl, err)
+	}
+	for _, e := range pl.Entries {
+		if len(e.ID) != 11 {
+			t.Errorf("影片 ID %q 不是 11 個字元", e.ID)
+		}
+	}
+	// 假的 yt-dlp 在 fakenet 上沒有任何連線。
+	if err := s.noConnectionTo("www.youtube.com"); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestServesYtDlpURLsOtherThanPlaylistsFail(t *testing.T) {
+	s := newTestScenario(t)
+	for _, u := range []string{
+		"https://www.youtube.com/watch?v=abc123xxxxx", "https://youtu.be/abc123xxxxx",
+		"https://www.bilibili.com/video/BV1xx411c7mD", "https://www.youtube.com/@somechannel",
+	} {
+		err := s.urlServes(u, "playlist-3-videos.json")
+		if err == nil || err == godog.ErrPending || !strings.Contains(err.Error(), "yt-dlp") {
+			t.Errorf("%s：err = %v，應該明確失敗並說明是 yt-dlp 的網址", u, err)
+		}
+	}
+	// fixture 不存在時立即失敗，不是等到執行時才發現。
+	err := s.urlServes("https://www.youtube.com/playlist?list=PL123", "no-such-playlist.json")
+	if err == nil || err == godog.ErrPending {
+		t.Errorf("不存在的 fixture：err = %v", err)
+	}
+	if len(s.World.Tools.Playlists) != 0 {
+		t.Errorf("失敗時不應登記：%v", s.World.Tools.Playlists)
 	}
 }
 

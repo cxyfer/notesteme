@@ -9,8 +9,8 @@
 |---|---|---|
 | `captions/` | 平台字幕軌的 VTT 檔，例如 `en-manual.vtt` | 假 yt-dlp 寫字幕時 |
 | `sources/` | 字幕來源（ASR、Supadata）回傳的 JSON，例如 `supadata-en.json`、`groq-en.json` | `fakesource` 的 handler |
-| `ytdlp/` | 假 yt-dlp 的輸出樣本（info JSON 的片段、錯誤輸出） | 假 yt-dlp |
-| `http/` | fake origin 提供的 HTTP 內容（`the URL … serves "<name>"`），例如網頁、RSS feed | `fakenet` 上的 handler |
+| `ytdlp/` | 假 yt-dlp 的輸出樣本（info JSON 的片段、錯誤輸出）；播放清單網址的 `the URL … serves "<name>"` 讀這裡，例如 `playlist-3-videos.json` | 假 yt-dlp（`--flat-playlist -J`） |
+| `http/` | fake origin 提供的 HTTP 內容（`the URL … serves "<name>"`，網址不是 YouTube／Bilibili 時），例如網頁、RSS feed | `fakenet` 上的 handler |
 | `items/` | `Given the item … has been processed up to …` 使用的影音資料 | steps |
 | `media/` | `Given the audio of … is "<name>"` 使用的音訊描述（長度、大小） | 假 yt-dlp、fake ASR |
 | `llm/` | fake LLM provider 的回應 | fake LLM |
