@@ -74,13 +74,25 @@ var metadataAddrs = []netip.Addr{
 
 // blockedPrefixes 是 netip.Addr 的 IsLoopback、IsPrivate、IsLinkLocal 等判斷沒有涵蓋的保留網段。
 var blockedPrefixes = []netip.Prefix{
-	netip.MustParsePrefix("0.0.0.0/8"),     // 「本網路」
-	netip.MustParsePrefix("100.64.0.0/10"), // CGNAT（RFC 6598）
-	netip.MustParsePrefix("240.0.0.0/4"),   // 保留（含廣播位址）
+	netip.MustParsePrefix("0.0.0.0/8"),       // 「本網路」
+	netip.MustParsePrefix("100.64.0.0/10"),   // CGNAT（RFC 6598）
+	netip.MustParsePrefix("192.0.0.0/24"),    // IETF 協定保留（RFC 6890）
+	netip.MustParsePrefix("192.0.2.0/24"),    // 文件用 TEST-NET-1
+	netip.MustParsePrefix("198.18.0.0/15"),   // 網路效能測試（RFC 2544）
+	netip.MustParsePrefix("198.51.100.0/24"), // 文件用 TEST-NET-2
+	netip.MustParsePrefix("203.0.113.0/24"),  // 文件用 TEST-NET-3
+	netip.MustParsePrefix("240.0.0.0/4"),     // 保留（含廣播位址）
+	netip.MustParsePrefix("fec0::/10"),       // site-local（已棄用）
+	netip.MustParsePrefix("::/96"),           // IPv4-compatible（已棄用）
+	netip.MustParsePrefix("2001:db8::/32"),   // 文件用
 }
 
-// nat64 是 NAT64 前綴（RFC 6052）；內嵌的 IPv4 位址要依同一套政策檢查。
-var nat64 = netip.MustParsePrefix("64:ff9b::/96")
+// 內嵌 IPv4 位址的 IPv6 轉換前綴；內嵌的 IPv4 要依同一套政策檢查，否則可用它們繞過 IPv4 的封鎖。
+var (
+	nat64  = netip.MustParsePrefix("64:ff9b::/96") // NAT64（RFC 6052）
+	sixto4 = netip.MustParsePrefix("2002::/16")    // 6to4（RFC 3056）：IPv4 在第 2–5 byte
+	teredo = netip.MustParsePrefix("2001::/32")    // Teredo（RFC 4380）：server 在第 4–7 byte，client 在最後 4 byte 且反相
+)
 
 // checkIP 依政策檢查要連線的 IP；被擋下時回傳包含 ErrBlockedAddress 的錯誤。
 // host 是網址中的主機名稱（IP 字面值時為 IP 字串）。
@@ -100,6 +112,18 @@ func checkIP(host string, ip netip.Addr, allow Allowlist) error {
 		b := ip.As16()
 		// 內嵌的 IPv4 被擋下，這個 NAT64 位址就也被擋下。
 		return checkIP(host, netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}), allow)
+	}
+	if sixto4.Contains(ip) {
+		b := ip.As16()
+		return checkIP(host, netip.AddrFrom4([4]byte{b[2], b[3], b[4], b[5]}), allow)
+	}
+	if teredo.Contains(ip) {
+		b := ip.As16()
+		// server 與 client 任一個被擋下，這個 Teredo 位址就被擋下。
+		if err := checkIP(host, netip.AddrFrom4([4]byte{b[4], b[5], b[6], b[7]}), allow); err != nil {
+			return err
+		}
+		return checkIP(host, netip.AddrFrom4([4]byte{^b[12], ^b[13], ^b[14], ^b[15]}), allow)
 	}
 	if slices.Contains(metadataAddrs, ip) {
 		return fmt.Errorf("%w: %s 是雲端 metadata 位址", ErrBlockedAddress, ip)
