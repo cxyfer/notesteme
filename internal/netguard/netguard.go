@@ -65,6 +65,13 @@ var ErrBlockedAddress = errors.New("netguard: 目的位址被封鎖")
 // dialTimeout 是每次連線嘗試的逾時。
 const dialTimeout = 10 * time.Second
 
+// 連線建立之後各階段的逾時（GRD-R5）。整體逾時與大小由呼叫端依用途設定，
+// 但這兩個階段沒有上限時，惡意伺服器可以停在 TLS 握手或不送回應標頭，一直佔住連線。
+const (
+	tlsHandshakeTimeout   = 10 * time.Second // 與連線逾時一致
+	responseHeaderTimeout = 30 * time.Second // 送出請求後等待回應標頭；不含 body，大檔下載不受影響
+)
+
 // metadataAddrs 是雲端 metadata 服務的位址，任何情況都不允許連線（含 allowlist）。
 var metadataAddrs = []netip.Addr{
 	netip.MustParseAddr("169.254.169.254"), // AWS、GCP、Azure 等
@@ -171,7 +178,7 @@ func SystemDeps() Deps {
 // IP 政策（ADR-0014）在 dial 階段對「實際要連線的 IP」檢查，見 checkIP：
 // 主機名稱解析後的每個 IP、IP 字面值、以及轉址每一跳的目的地都經過同一個檢查，
 // 通過的才交給 Dialer；全部被擋下時錯誤符合 ErrBlockedAddress。
-// 每次連線嘗試有 10 秒逾時。
+// 每次連線嘗試有 10 秒逾時；TLS 握手 10 秒、等待回應標頭 30 秒（GRD-R5）。
 func Transport(d Deps) *http.Transport {
 	res, dialer := d.Resolver, d.Dialer
 	allow := Allowlist{
@@ -187,7 +194,9 @@ func Transport(d Deps) *http.Transport {
 			}
 			return dial(ctx, res, dialer, allow, network, addr)
 		},
-		TLSClientConfig: &tls.Config{RootCAs: d.RootCAs, MinVersion: tls.VersionTLS12},
+		TLSClientConfig:       &tls.Config{RootCAs: d.RootCAs, MinVersion: tls.VersionTLS12},
+		TLSHandshakeTimeout:   tlsHandshakeTimeout,
+		ResponseHeaderTimeout: responseHeaderTimeout,
 	}
 }
 
