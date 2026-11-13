@@ -49,7 +49,7 @@ func TestExecutedRunsByItemListsStartedRunsNewestFirstWithConfig(t *testing.T) {
 	ctx := context.Background()
 	s, clk := openTest(t)
 	w := s.Write()
-	it, _, err := w.InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123", URL: "u"})
+	it, _, err := w.InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123xxxxx", URL: "u"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -30,45 +30,45 @@ func TestScriptableSource(t *testing.T) {
 // 平台字幕的腳本化寫進假 yt-dlp 的字幕軌狀態。
 func TestPlatformSourceScripting(t *testing.T) {
 	s := newTestScenario(t)
-	if err := s.hasCaptions("yt:mix001", "auto", "zh"); err != nil {
+	if err := s.hasCaptions("yt:mix001xxxxx", "auto", "zh"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.sourceReturns("youtube-auto", "auto-zh-en-mixed.json", "yt:mix001"); err != nil {
+	if err := s.sourceReturns("youtube-auto", "auto-zh-en-mixed.json", "yt:mix001xxxxx"); err != nil {
 		t.Fatal(err)
 	}
-	tracks := s.World.Tools.Videos["mix001"].Tracks
+	tracks := s.World.Tools.Videos["mix001xxxxx"].Tracks
 	if len(tracks) != 1 || tracks[0].Kind != faketool.KindAuto || tracks[0].Lang != "zh" || tracks[0].Fixture != "auto-zh-en-mixed.json" {
 		t.Fatalf("字幕軌 = %+v", tracks)
 	}
 	st, err := faketool.ReadState(s.World.Root)
-	if err != nil || st.Videos["mix001"].Tracks[0].Fixture != "auto-zh-en-mixed.json" {
+	if err != nil || st.Videos["mix001xxxxx"].Tracks[0].Fixture != "auto-zh-en-mixed.json" {
 		t.Fatalf("狀態檔沒有同步：%+v, %v", st, err)
 	}
 
 	// 沒有既有字幕軌時用影片的語言；兩者都沒有就失敗（不是 pending）。
-	s.World.Video("manual1").Language = "en"
-	if err := s.sourceReturns("youtube-manual", "auto-zh-en-mixed.json", "yt:manual1"); err != nil {
+	s.World.Video("manual1xxxx").Language = "en"
+	if err := s.sourceReturns("youtube-manual", "auto-zh-en-mixed.json", "yt:manual1xxxx"); err != nil {
 		t.Fatal(err)
 	}
-	if tr := s.World.Tools.Videos["manual1"].Tracks; len(tr) != 1 || tr[0].Kind != faketool.KindManual || tr[0].Lang != "en" {
+	if tr := s.World.Tools.Videos["manual1xxxx"].Tracks; len(tr) != 1 || tr[0].Kind != faketool.KindManual || tr[0].Lang != "en" {
 		t.Fatalf("字幕軌 = %+v", tr)
 	}
-	if err := s.sourceReturns("youtube-manual", "auto-zh-en-mixed.json", "yt:nolang"); err == nil || errors.Is(err, godog.ErrPending) {
+	if err := s.sourceReturns("youtube-manual", "auto-zh-en-mixed.json", "yt:nolangxxxxx"); err == nil || errors.Is(err, godog.ErrPending) {
 		t.Fatalf("沒有語言應該失敗而不是 pending：%v", err)
 	}
 	// fixture 不存在：失敗。
-	if err := s.sourceReturns("youtube-auto", "nope.json", "yt:mix001"); err == nil || errors.Is(err, godog.ErrPending) {
+	if err := s.sourceReturns("youtube-auto", "nope.json", "yt:mix001xxxxx"); err == nil || errors.Is(err, godog.ErrPending) {
 		t.Fatalf("fixture 不存在應該失敗：%v", err)
 	}
 
 	// has nothing：移除這個種類的字幕軌，其他種類不動。
-	if err := s.hasCaptions("yt:mix001", "manual", "zh"); err != nil {
+	if err := s.hasCaptions("yt:mix001xxxxx", "manual", "zh"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.sourceHasNothing("youtube-auto", "yt:mix001"); err != nil {
+	if err := s.sourceHasNothing("youtube-auto", "yt:mix001xxxxx"); err != nil {
 		t.Fatal(err)
 	}
-	if tr := s.World.Tools.Videos["mix001"].Tracks; len(tr) != 1 || tr[0].Kind != faketool.KindManual {
+	if tr := s.World.Tools.Videos["mix001xxxxx"].Tracks; len(tr) != 1 || tr[0].Kind != faketool.KindManual {
 		t.Fatalf("字幕軌 = %+v", tr)
 	}
 }

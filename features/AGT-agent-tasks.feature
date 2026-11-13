@@ -24,14 +24,14 @@ Feature: Agent tasks
     And a token "codex" with scopes "read,agent"
     And an agent "claude" using the token "claude-code"
     And an agent "codex" using the token "codex"
-    And a YouTube video "yt:long08" titled "A very long talk (8 chunks)"
-    And the item "yt:long08" has been processed up to "segment"
-    And the owner reruns "yt:long08" from "correct"
+    And a YouTube video "yt:long08xxxxx" titled "A very long talk (8 chunks)"
+    And the item "yt:long08xxxxx" has been processed up to "segment"
+    And the owner reruns "yt:long08xxxxx" from "correct"
     And the worker runs until idle
 
   @AGT-01 @AGT-R1 @AGT-R2
   Scenario: An agent claims several tasks with their full context
-    Then the stage "correct" of "yt:long08" is "awaiting_agent"
+    Then the stage "correct" of "yt:long08xxxxx" is "awaiting_agent"
     When the agent "claude" claims up to 10 tasks of kind "correct"
     Then the agent "claude" holds 4 tasks
     And the tool result contains:
@@ -71,7 +71,7 @@ Feature: Agent tasks
     And the agent "claude" submits "correct-wrong-count" for its task 1
     And the agent "claude" submits "correct-wrong-count" for its task 1
     Then the agent "claude" holds 0 tasks
-    And the stage "correct" of "yt:long08" is "awaiting_agent"
+    And the stage "correct" of "yt:long08xxxxx" is "awaiting_agent"
 
   @AGT-04 @AGT-R4
   Scenario: An expired lease returns the task to the queue
@@ -112,8 +112,8 @@ Feature: Agent tasks
     Given the LLM provider "anthropic" answers "correct" with "correct-echo"
     When the clock advances by "25h"
     And the worker runs until idle
-    Then the stage "correct" of "yt:long08" is "done"
-    And the "corrected" artifact of "yt:long08" has the provenance:
+    Then the stage "correct" of "yt:long08xxxxx" is "done"
+    And the "corrected" artifact of "yt:long08xxxxx" has the provenance:
       | field    | value     |
       | executor | api       |
       | provider | anthropic |
@@ -126,16 +126,16 @@ Feature: Agent tasks
         correct: { executor: agent, prompt: correct-default }
       agent: { timeout: 24h, on_timeout: notify }
       """
-    And the owner sends "POST /api/items/yt:long08/rerun" with:
+    And the owner sends "POST /api/items/yt:long08xxxxx/rerun" with:
       """
       { "from": "correct", "profile": "agent-notify" }
       """
     And the worker runs until idle
     When the clock advances by "25h"
     And the worker runs until idle
-    Then the stage "correct" of "yt:long08" is blocked with the reason "needs_action"
-    And "yt:long08" shows the message "這個任務等待 Agent 超過 24 小時。"
-    And "yt:long08" offers the actions "改用 API 處理"
+    Then the stage "correct" of "yt:long08xxxxx" is blocked with the reason "needs_action"
+    And "yt:long08xxxxx" shows the message "這個任務等待 Agent 超過 24 小時。"
+    And "yt:long08xxxxx" offers the actions "改用 API 處理"
 
   @AGT-06 @AGT-R10
   Scenario: Agent results are marked as agent-reported
@@ -144,7 +144,7 @@ Feature: Agent tasks
     And the agent "claude" claims up to 10 tasks of kind "correct"
     And the agent "claude" submits "correct-echo-reported-model" for all its tasks
     And the worker runs until idle
-    Then the "corrected" artifact of "yt:long08" has the provenance:
+    Then the "corrected" artifact of "yt:long08xxxxx" has the provenance:
       | field          | value |
       | executor       | agent         |
       | agent          | claude-code   |
@@ -155,14 +155,14 @@ Feature: Agent tasks
   Scenario: The owner switches a waiting task to the API
     Given the LLM provider "anthropic" answers "correct" with "correct-echo"
     When the agent "claude" claims up to 1 task of kind "correct"
-    And the owner sends "POST /api/items/yt:long08/switch-executor" with:
+    And the owner sends "POST /api/items/yt:long08xxxxx/switch-executor" with:
       """
       { "stage": "correct", "executor": "api" }
       """
     And the worker runs until idle
     And the agent "claude" submits "correct-echo" for its task 1
     Then the submission is rejected with "lease_expired"
-    And the stage "correct" of "yt:long08" is "done"
+    And the stage "correct" of "yt:long08xxxxx" is "done"
 
   @AGT-01 @AGT-R12
   Scenario: A token without the agent scope cannot claim

@@ -106,13 +106,13 @@ func TestQueuePauseAndResume(t *testing.T) {
 // 狀態頁列出任務與影音代號；pending 的第一筆就是下一個會被領取的任務。
 func TestQueueListsTasksWithItemsAndCounts(t *testing.T) {
 	r := newItemsRig(t)
-	for _, id := range []string{"abc123", "def456"} {
+	for _, id := range []string{"abc123xxxxx", "def456xxxxx"} {
 		if rec := r.owner("POST", "/api/items", `{"url":"https://www.youtube.com/watch?v=`+id+`"}`); rec.Code != 201 {
 			t.Fatalf("新增 %s：%d %s", id, rec.Code, rec.Body)
 		}
 	}
 	q := queueOf(t, r)
-	if len(q.Tasks) != 2 || q.Tasks[0].Item != "yt:abc123" || q.Tasks[0].State != "pending" ||
+	if len(q.Tasks) != 2 || q.Tasks[0].Item != "yt:abc123xxxxx" || q.Tasks[0].State != "pending" ||
 		q.Tasks[0].Stage != "metadata" || q.Tasks[0].ResourceClass != "download" || q.Tasks[0].ItemID == "" {
 		t.Fatalf("tasks = %+v", q.Tasks)
 	}
@@ -137,7 +137,7 @@ func TestQueueListsTasksWithItemsAndCounts(t *testing.T) {
 
 func TestItemDetailShowsAttempts(t *testing.T) {
 	r := newItemsRig(t)
-	rec := r.owner("POST", "/api/items", `{"url":"https://www.youtube.com/watch?v=abc123"}`)
+	rec := r.owner("POST", "/api/items", `{"url":"https://www.youtube.com/watch?v=abc123xxxxx"}`)
 	id := decode[itemsBody](t, rec).Items[0].ID
 	detail := decode[ItemDetail](t, r.owner("GET", "/api/items/"+id, ""))
 	if detail.Stages[0].Attempts != 0 {

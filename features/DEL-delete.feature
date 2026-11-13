@@ -6,17 +6,17 @@ Feature: Deleting items and the trash
   Background:
     Given the server is running
     And the owner is signed in
-    And a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
-    And "yt:abc123" has manual captions in "en"
+    And a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
+    And "yt:abc123xxxxx" has manual captions in "en"
 
   @M1 @DEL-01 @DEL-R1
   Scenario: A deleted item moves to the trash and disappears from the library
-    Given the item "yt:abc123" has been processed up to "transcript"
-    When the owner sends "DELETE /api/items/yt:abc123"
+    Given the item "yt:abc123xxxxx" has been processed up to "transcript"
+    When the owner sends "DELETE /api/items/yt:abc123xxxxx"
     Then the response status is 200
     And the library contains 0 items
-    And the trash contains "yt:abc123"
-    When the owner sends "GET /api/items/yt:abc123"
+    And the trash contains "yt:abc123xxxxx"
+    When the owner sends "GET /api/items/yt:abc123xxxxx"
     Then the response status is 404
     And the response contains:
       """
@@ -26,70 +26,70 @@ Feature: Deleting items and the trash
   @M1 @DEL-01 @DEL-R1 @mcp
   Scenario: Agents cannot read an item in the trash
     Given a token "agent" with scopes "read,agent"
-    And the item "yt:abc123" has been processed up to "transcript"
-    When the owner sends "DELETE /api/items/yt:abc123"
+    And the item "yt:abc123xxxxx" has been processed up to "transcript"
+    When the owner sends "DELETE /api/items/yt:abc123xxxxx"
     And the MCP client with the token "agent" calls "get_transcript" with:
       """
-      { "item": "yt:abc123", "format": "srt" }
+      { "item": "yt:abc123xxxxx", "format": "srt" }
       """
     Then the tool call fails with "in_trash"
 
   @M1 @DEL-01 @DEL-R2
   Scenario: Deleting stops processing and frees the media cache
-    Given the item "yt:abc123" has been ingested
-    And the media of "yt:abc123" is cached
+    Given the item "yt:abc123xxxxx" has been ingested
+    And the media of "yt:abc123xxxxx" is cached
     And the worker starts one round
-    When the owner sends "DELETE /api/items/yt:abc123"
+    When the owner sends "DELETE /api/items/yt:abc123xxxxx"
     Then no task is running
-    And the stage "metadata" of "yt:abc123" is "skipped"
-    And the media cache has no files of "yt:abc123"
+    And the stage "metadata" of "yt:abc123xxxxx" is "skipped"
+    And the media cache has no files of "yt:abc123xxxxx"
 
   @M1 @DEL-02 @DEL-R3
   Scenario: The deletion preview shows what will be lost without changing anything
-    Given the item "yt:abc123" has been processed up to "transcript"
-    When the owner sends "GET /api/items/yt:abc123/deletion-preview"
+    Given the item "yt:abc123xxxxx" has been processed up to "transcript"
+    When the owner sends "GET /api/items/yt:abc123xxxxx/deletion-preview"
     Then the response status is 200
     And the response contains:
       """
       { "artifacts": "*", "bytes": "*", "spent_usd": "*", "outputs": "*" }
       """
-    And the library contains "yt:abc123"
+    And the library contains "yt:abc123xxxxx"
 
   @M1 @DEL-01 @DEL-R4 @DEL-R5
   Scenario: A restored item comes back with its subtitles
-    Given the item "yt:abc123" has been processed up to "transcript"
-    And the owner sends "DELETE /api/items/yt:abc123"
-    When the owner sends "POST /api/trash/yt:abc123/restore"
+    Given the item "yt:abc123xxxxx" has been processed up to "transcript"
+    And the owner sends "DELETE /api/items/yt:abc123xxxxx"
+    When the owner sends "POST /api/trash/yt:abc123xxxxx/restore"
     Then the response status is 200
-    And the library contains "yt:abc123"
-    When the owner sends "GET /api/items/yt:abc123/subtitles?format=srt"
+    And the library contains "yt:abc123xxxxx"
+    When the owner sends "GET /api/items/yt:abc123xxxxx/subtitles?format=srt"
     Then the response status is 200
 
   @M1 @DEL-01 @DEL-R5
   Scenario: A step cancelled by the deletion can be retried after restoring
-    Given the item "yt:abc123" has been ingested
+    Given the item "yt:abc123xxxxx" has been ingested
     And the worker starts one round
-    And the owner sends "DELETE /api/items/yt:abc123"
-    When the owner sends "POST /api/trash/yt:abc123/restore"
-    Then the stage "metadata" of "yt:abc123" is "skipped"
-    And "yt:abc123" offers the actions "重試"
+    And the owner sends "DELETE /api/items/yt:abc123xxxxx"
+    When the owner sends "POST /api/trash/yt:abc123xxxxx/restore"
+    Then the stage "metadata" of "yt:abc123xxxxx" is "skipped"
+    And "yt:abc123xxxxx" offers the actions "重試"
 
   @M1 @DEL-03 @DEL-R4 @DEL-R6
   Scenario: The trash is emptied after 30 days
     Given the clock is at "2026-11-12T10:00:00Z"
-    And the item "yt:abc123" has been processed up to "transcript"
-    And the owner sends "DELETE /api/items/yt:abc123"
+    And the item "yt:abc123xxxxx" has been processed up to "transcript"
+    And the owner sends "DELETE /api/items/yt:abc123xxxxx"
     And the owner is listening to events
     When the clock advances by "696h"
     And the worker runs until idle
-    Then the trash contains "yt:abc123"
+    Then the trash contains "yt:abc123xxxxx"
     When the clock advances by "48h"
     And the worker runs until idle
-    Then the trash does not contain "yt:abc123"
-    And the data directory has no files of "yt:abc123"
+    Then the trash does not contain "yt:abc123xxxxx"
+    And the data directory has no files of "yt:abc123xxxxx"
     And an event is received:
       """
-      { "type": "item.purged", "ref": "yt:abc123", "title": "PostgreSQL in 100 Seconds" }
+      { "type": "item.purged", "ref": "yt:abc123xxxxx", "title": "PostgreSQL in 100 Seconds" }
       """
 
   @M1 @DEL-03 @DEL-R6 @DEL-R8
@@ -108,39 +108,39 @@ Feature: Deleting items and the trash
 
   @M1 @DEL-03 @DEL-R7
   Scenario: Spending records survive a permanent delete
-    Given the item "yt:abc123" has been processed up to "transcript"
-    And the cost ledger has an entry of "0.42" USD for "yt:abc123"
-    And the owner sends "DELETE /api/items/yt:abc123"
-    When the owner sends "DELETE /api/trash/yt:abc123"
+    Given the item "yt:abc123xxxxx" has been processed up to "transcript"
+    And the cost ledger has an entry of "0.42" USD for "yt:abc123xxxxx"
+    And the owner sends "DELETE /api/items/yt:abc123xxxxx"
+    When the owner sends "DELETE /api/trash/yt:abc123xxxxx"
     Then the cost ledger has an entry of "0.42" USD titled "PostgreSQL in 100 Seconds"
 
   @M1 @DEL-05 @DEL-R10
   Scenario: Adding an item that is in the trash offers to restore it
-    Given the item "yt:abc123" has been processed up to "transcript"
-    And the owner sends "DELETE /api/items/yt:abc123"
+    Given the item "yt:abc123xxxxx" has been processed up to "transcript"
+    And the owner sends "DELETE /api/items/yt:abc123xxxxx"
     When the owner sends "POST /api/items" with:
       """
-      { "url": "https://www.youtube.com/watch?v=abc123" }
+      { "url": "https://www.youtube.com/watch?v=abc123xxxxx" }
       """
     Then the response status is 409
     And the response contains:
       """
       { "code": "in_trash", "message": "這部影音在垃圾桶中。" }
       """
-    And "yt:abc123" offers the actions "還原"
+    And "yt:abc123xxxxx" offers the actions "還原"
 
   @M1 @DEL-05 @DEL-R10 @DEL-R11
   Scenario: An item added again after a permanent delete starts fresh
-    Given the item "yt:abc123" has been processed up to "transcript"
-    And the owner sends "DELETE /api/items/yt:abc123"
-    And the owner sends "DELETE /api/trash/yt:abc123"
+    Given the item "yt:abc123xxxxx" has been processed up to "transcript"
+    And the owner sends "DELETE /api/items/yt:abc123xxxxx"
+    And the owner sends "DELETE /api/trash/yt:abc123xxxxx"
     When the owner sends "POST /api/items" with:
       """
-      { "url": "https://www.youtube.com/watch?v=abc123" }
+      { "url": "https://www.youtube.com/watch?v=abc123xxxxx" }
       """
     Then the response status is 201
-    And the library contains "yt:abc123"
-    And the item "yt:abc123" has no "transcript" artifact
+    And the library contains "yt:abc123xxxxx"
+    And the item "yt:abc123xxxxx" has no "transcript" artifact
 
   @M1 @DEL-05 @DEL-R11
   Scenario: The inbox does not bring back a permanently deleted file
@@ -234,16 +234,16 @@ Feature: Deleting items and the trash
 
   @M1 @DEL-06 @DEL-R12
   Scenario Outline: Only admin tokens can delete or restore
-    Given the item "yt:abc123" has been processed up to "transcript"
+    Given the item "yt:abc123xxxxx" has been processed up to "transcript"
     And a token "t" with scopes "<scopes>"
     When the client sends "<request>" with the token "t"
     Then the response status is <status>
 
     Examples:
-      | scopes            | request                     | status |
-      | read,agent,ingest | DELETE /api/items/yt:abc123 | 403    |
-      | admin             | DELETE /api/items/yt:abc123 | 200    |
-      | read              | GET /api/trash              | 200    |
+      | scopes            | request                          | status |
+      | read,agent,ingest | DELETE /api/items/yt:abc123xxxxx | 403    |
+      | admin             | DELETE /api/items/yt:abc123xxxxx | 200    |
+      | read              | GET /api/trash                   | 200    |
       | read,ingest       | DELETE /api/trash           | 403    |
 
   @M1 @DEL-06 @DEL-R12 @mcp
@@ -254,21 +254,21 @@ Feature: Deleting items and the trash
 
   @M1 @DEL-07 @DEL-R13 @cli
   Scenario: Delete from the CLI
-    Given the item "yt:abc123" has been processed up to "transcript"
-    When the owner runs "notesteme items rm yt:abc123 --yes --json"
+    Given the item "yt:abc123xxxxx" has been processed up to "transcript"
+    When the owner runs "notesteme items rm yt:abc123xxxxx --yes --json"
     Then the command exits with 0
-    And the trash contains "yt:abc123"
-    When the owner runs "notesteme items restore yt:abc123"
+    And the trash contains "yt:abc123xxxxx"
+    When the owner runs "notesteme items restore yt:abc123xxxxx"
     Then the command exits with 0
-    And the library contains "yt:abc123"
+    And the library contains "yt:abc123xxxxx"
 
   @M1 @DEL-07 @DEL-R13 @cli
   Scenario: The CLI refuses to delete without confirmation outside a terminal
-    Given the item "yt:abc123" has been processed up to "transcript"
-    When the owner runs "notesteme items rm yt:abc123"
+    Given the item "yt:abc123xxxxx" has been processed up to "transcript"
+    When the owner runs "notesteme items rm yt:abc123xxxxx"
     Then the command exits with 2
     And the command output contains "--yes"
-    And the library contains "yt:abc123"
+    And the library contains "yt:abc123xxxxx"
 
   @M1 @DEL-07 @DEL-R13 @cli
   Scenario: A Bilibili reference without a part deletes every part
@@ -282,15 +282,15 @@ Feature: Deleting items and the trash
 
   @M1 @DEL-07 @DEL-R13 @cli
   Scenario: Purge skips the trash
-    Given the item "yt:abc123" has been processed up to "transcript"
-    When the owner runs "notesteme items rm yt:abc123 --purge --yes"
+    Given the item "yt:abc123xxxxx" has been processed up to "transcript"
+    When the owner runs "notesteme items rm yt:abc123xxxxx --purge --yes"
     Then the command exits with 0
-    And the trash does not contain "yt:abc123"
-    And the data directory has no files of "yt:abc123"
+    And the trash does not contain "yt:abc123xxxxx"
+    And the data directory has no files of "yt:abc123xxxxx"
 
   @M1 @DEL-02 @DEL-R3 @ui @manual
   Scenario: The delete dialog explains the consequences and can be undone
-    Given the owner is on the item page of "yt:abc123"
+    Given the owner is on the item page of "yt:abc123xxxxx"
     When the owner chooses "刪除" from the "更多" menu
     Then the dialog shows the number of outputs, the disk space freed and the money already spent
     When the owner confirms

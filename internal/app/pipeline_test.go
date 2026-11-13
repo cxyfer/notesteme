@@ -46,7 +46,7 @@ func (r *ytRunner) Run(ctx context.Context, c toolexec.Cmd) (toolexec.Result, er
 				return toolexec.Result{}, ctx.Err()
 			}
 		}
-		return toolexec.Result{Stdout: []byte(`{"id":"abc123","title":"Hello","duration":60,"language":"en","availability":"public",
+		return toolexec.Result{Stdout: []byte(`{"id":"abc123xxxxx","title":"Hello","duration":60,"language":"en","availability":"public",
 			"live_status":"not_live","subtitles":{"en":[{"ext":"vtt","url":"https://x/en.vtt"}]},"automatic_captions":{}}`)}, nil
 	case slices.Contains(c.Args, "--skip-download"):
 		i := slices.Index(c.Args, "-o")
@@ -142,7 +142,7 @@ func ingest(t *testing.T, c *httpClient) string {
 	var out struct {
 		Items []detail `json:"items"`
 	}
-	if code := c.json("POST", "/api/items", `{"url":"https://www.youtube.com/watch?v=abc123"}`, &out); code != 201 {
+	if code := c.json("POST", "/api/items", `{"url":"https://www.youtube.com/watch?v=abc123xxxxx"}`, &out); code != 201 {
 		t.Fatalf("POST /api/items = %d", code)
 	}
 	return out.Items[0].ID

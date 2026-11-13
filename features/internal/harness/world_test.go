@@ -73,7 +73,7 @@ func TestWorldsDoNotOverlap(t *testing.T) {
 	a.Env["X"] = "1"
 	a.Clock.Advance(3600e9)
 	a.Net.Handle("example.com", http.NotFoundHandler())
-	a.Video("abc123").Title = "A"
+	a.Video("abc123xxxxx").Title = "A"
 	if _, ok := b.Env["X"]; ok || !b.Clock.Now().Equal(DefaultNow) {
 		t.Fatal("Env 或 Clock 被共用")
 	}
@@ -177,7 +177,7 @@ func TestWorldHostsFakeOrigin(t *testing.T) {
 	if _, err := w.Net.LookupNetIP(context.Background(), "ip", "example.com"); err != nil {
 		t.Fatal(err)
 	}
-	w.Sources.Returns("groq", "yt:a", "groq-en.json")
+	w.Sources.Returns("groq", "yt:axxxxxxxxxx", "groq-en.json")
 	if w.Sources.Calls("groq") != 0 {
 		t.Fatal("calls 應為 0")
 	}
@@ -185,17 +185,17 @@ func TestWorldHostsFakeOrigin(t *testing.T) {
 
 func TestVideoAndSyncTools(t *testing.T) {
 	w := NewT(t)
-	v := w.Video("abc123")
+	v := w.Video("abc123xxxxx")
 	v.Title = "T"
 	v.Tracks = append(v.Tracks, faketool.Track{Kind: faketool.KindManual, Lang: "en"})
-	if w.Video("abc123") != v {
+	if w.Video("abc123xxxxx") != v {
 		t.Fatal("Video 應回傳同一個物件")
 	}
 	if err := w.SyncTools(); err != nil {
 		t.Fatal(err)
 	}
 	st, err := faketool.ReadState(w.Root)
-	if err != nil || st.Videos["abc123"] == nil || st.Videos["abc123"].Title != "T" {
+	if err != nil || st.Videos["abc123xxxxx"] == nil || st.Videos["abc123xxxxx"].Title != "T" {
 		t.Fatalf("state = %+v err = %v", st, err)
 	}
 	calls, err := w.ToolCalls()

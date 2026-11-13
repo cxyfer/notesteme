@@ -36,7 +36,7 @@ func TestInsertItemIfAbsentIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	s, clk := openTest(t)
 
-	a, created, err := s.Write().InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123", URL: "u"})
+	a, created, err := s.Write().InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123xxxxx", URL: "u"})
 	if err != nil || !created {
 		t.Fatalf("first insert = %v, %v", created, err)
 	}
@@ -46,7 +46,7 @@ func TestInsertItemIfAbsentIsIdempotent(t *testing.T) {
 	if !a.CreatedAt.Equal(clk.Now()) {
 		t.Errorf("created_at = %v，預期取自注入的 clock %v", a.CreatedAt, clk.Now())
 	}
-	b, created, err := s.Write().InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123", URL: "other"})
+	b, created, err := s.Write().InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123xxxxx", URL: "other"})
 	if err != nil || created || b.ID != a.ID {
 		t.Fatalf("second insert = %+v, %v, %v；預期回傳既有的影音", b, created, err)
 	}
@@ -66,7 +66,7 @@ func TestInsertItemIfAbsentIsIdempotent(t *testing.T) {
 func TestUpdateItemMetaKeepsMissingFields(t *testing.T) {
 	ctx := context.Background()
 	s, _ := openTest(t)
-	it, _ := seedItem(t, s, "abc123")
+	it, _ := seedItem(t, s, "abc123xxxxx")
 
 	dur := 600
 	ch, err := s.Write().UpsertChannel(ctx, Channel{Platform: "youtube", ExternalID: "UC1", Title: "Chan"})

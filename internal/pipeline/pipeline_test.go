@@ -97,7 +97,7 @@ func newRig(t *testing.T, opts ...func(*Deps)) *rig {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	yt := &fakeYT{cues: 4, info: youtube.Info{ID: "abc123", Title: "T", Language: "en"}}
+	yt := &fakeYT{cues: 4, info: youtube.Info{ID: "abc123xxxxx", Title: "T", Language: "en"}}
 	q := queue.New(st, clk, "w1")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	deps := Deps{Store: st, Clock: clk, DataDir: dir, Log: log, YouTube: yt, Wake: q.Wake, Version: "test"}
@@ -139,17 +139,17 @@ func (r *rig) stage(item store.Item, name string) store.StageRun {
 	return store.StageRun{}
 }
 
-const watch = "https://www.youtube.com/watch?v=abc123"
+const watch = "https://www.youtube.com/watch?v=abc123xxxxx"
 
 func TestIngestCreatesItemStagesAndManualTask(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
-	res, err := r.p.Ingest(ctx, IngestRequest{URL: "https://youtu.be/abc123"})
+	res, err := r.p.Ingest(ctx, IngestRequest{URL: "https://youtu.be/abc123xxxxx"})
 	if err != nil || len(res) != 1 || res[0].AlreadyInLibrary {
 		t.Fatalf("Ingest = %+v, %v", res, err)
 	}
 	it := res[0].Item
-	if it.Platform != "youtube" || it.ExternalID != "abc123" || it.Part != 0 || it.URL != watch {
+	if it.Platform != "youtube" || it.ExternalID != "abc123xxxxx" || it.Part != 0 || it.URL != watch {
 		t.Errorf("item = %+v", it)
 	}
 	for _, s := range Stages {
@@ -193,6 +193,8 @@ func TestIngestRejections(t *testing.T) {
 		{"Bilibili 個人空間", IngestRequest{URL: "https://space.bilibili.com/12345"}, func(e error) bool { return errors.Is(e, ErrChannel) }},
 		{"無法辨識", IngestRequest{URL: "https://example.com/some/page"}, func(e error) bool { return errors.Is(e, ErrUnrecognizedURL) }},
 		{"不是網址", IngestRequest{URL: "abc"}, func(e error) bool { return errors.Is(e, ErrUnrecognizedURL) }},
+		{"影片 ID 少於 11 個字元", IngestRequest{URL: "https://www.youtube.com/watch?v=abc123xxxx"}, func(e error) bool { return errors.Is(e, ErrUnrecognizedURL) }},
+		{"影片 ID 多於 11 個字元", IngestRequest{URL: "https://youtu.be/abc123xxxxxx"}, func(e error) bool { return errors.Is(e, ErrUnrecognizedURL) }},
 		{"Bilibili 影片", IngestRequest{URL: "https://www.bilibili.com/video/BV1xx411c7mD"}, func(e error) bool { return errors.As(e, &ni) }},
 		{"播放清單", IngestRequest{URL: "https://www.youtube.com/playlist?list=PL123"}, func(e error) bool { return errors.As(e, &ni) }},
 		{"處理方案", IngestRequest{URL: watch, Profile: "standard"}, func(e error) bool { return errors.As(e, &ni) }},
@@ -219,7 +221,7 @@ func TestFullRunProducesSourceAndNormalizedTranscripts(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	dur := 612
-	r.yt.info = youtube.Info{ID: "abc123", Title: "PostgreSQL in 100 Seconds", DurationS: &dur, Language: "en", Availability: "public",
+	r.yt.info = youtube.Info{ID: "abc123xxxxx", Title: "PostgreSQL in 100 Seconds", DurationS: &dur, Language: "en", Availability: "public",
 		ChannelID: "UC1", Channel: "Fireship", Tracks: []youtube.Track{{Lang: "en", Kind: "manual"}, {Lang: "en", Kind: "auto"}}}
 	it := r.ingest(watch, nil, "")
 	r.run()
@@ -313,7 +315,7 @@ func TestUntilStopsTheChain(t *testing.T) {
 		t.Errorf("until 之後的步驟不建立任務：%v", err)
 	}
 
-	it2 := r.ingest("https://www.youtube.com/watch?v=meta0", nil, "metadata")
+	it2 := r.ingest("https://www.youtube.com/watch?v=meta0xxxxxx", nil, "metadata")
 	r.run()
 	if r.stage(it2, StageMetadata).Status != store.StatusDone || r.stage(it2, StageTranscript).Status != store.StatusPending {
 		t.Error("until=metadata 只做 metadata")
@@ -343,14 +345,14 @@ func TestCaptionPriorityFromGlobalSettingsAndOverrides(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	b := r.ingest("https://www.youtube.com/watch?v=second", nil, "transcript")
+	b := r.ingest("https://www.youtube.com/watch?v=secondxxxxx", nil, "transcript")
 	r.run()
 	if last := r.yt.fetched[len(r.yt.fetched)-1]; last != (youtube.Track{Lang: "zh-Hans", Kind: "manual"}) {
 		t.Fatalf("全域設定應生效：%+v", r.yt.fetched)
 	}
 
 	// 單次覆寫優先於全域設定，而且記錄在影音與快照中，不改全域設定（ING-R7）。
-	c := r.ingest("https://www.youtube.com/watch?v=third", map[string]any{
+	c := r.ingest("https://www.youtube.com/watch?v=thirdxxxxxx", map[string]any{
 		"language": map[string]any{"caption_priority": []any{map[string]any{"lang": "original", "kind": "auto"}}},
 	}, "transcript")
 	r.run()

@@ -42,17 +42,17 @@ func upload(t *testing.T, h http.Handler, item string, duration int, padding int
 
 func TestOpenAIReturnsFixtureAndCountsCalls(t *testing.T) {
 	s := New(fixturesDir(t))
-	s.Returns("groq", "yt:nocap1", "groq-en.json")
+	s.Returns("groq", "yt:nocap1xxxxx", "groq-en.json")
 	h := s.OpenAIHandler("groq")
 
-	rec := upload(t, h, "nocap1", 6, 0)
+	rec := upload(t, h, "nocap1xxxxx", 6, 0)
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"language": "english"`) {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
 	if got := rec.Header().Get("Content-Type"); got != "application/json" {
 		t.Fatalf("content-type = %q", got)
 	}
-	upload(t, h, "nocap1", 6, 0)
+	upload(t, h, "nocap1xxxxx", 6, 0)
 	if s.Calls("groq") != 2 || s.Calls("supadata") != 0 {
 		t.Fatalf("calls groq=%d supadata=%d", s.Calls("groq"), s.Calls("supadata"))
 	}
@@ -60,27 +60,27 @@ func TestOpenAIReturnsFixtureAndCountsCalls(t *testing.T) {
 
 func TestOpenAINothingAndUnscripted(t *testing.T) {
 	s := New(fixturesDir(t))
-	s.Returns("groq", "yt:a", "groq-en.json")
-	s.Nothing("groq", "yt:a") // 後設定的覆蓋先前的 Returns
+	s.Returns("groq", "yt:axxxxxxxxxx", "groq-en.json")
+	s.Nothing("groq", "yt:axxxxxxxxxx") // 後設定的覆蓋先前的 Returns
 	h := s.OpenAIHandler("groq")
-	rec := upload(t, h, "a", 1, 0)
+	rec := upload(t, h, "axxxxxxxxxx", 1, 0)
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"segments":[]`) {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if rec := upload(t, h, "other", 1, 0); rec.Code != http.StatusNotFound {
+	if rec := upload(t, h, "otherxxxxxx", 1, 0); rec.Code != http.StatusNotFound {
 		t.Fatalf("unscripted code=%d", rec.Code)
 	}
 }
 
 func TestOpenAISizeLimit(t *testing.T) {
 	s := New(fixturesDir(t))
-	s.Returns("groq", "yt:a", "groq-en.json")
+	s.Returns("groq", "yt:axxxxxxxxxx", "groq-en.json")
 	s.AcceptsUpTo("groq", 1000)
 	h := s.OpenAIHandler("groq")
-	if rec := upload(t, h, "a", 1, 500); rec.Code != 200 {
+	if rec := upload(t, h, "axxxxxxxxxx", 1, 500); rec.Code != 200 {
 		t.Fatalf("limit 內 code=%d", rec.Code)
 	}
-	if rec := upload(t, h, "a", 1, 5000); rec.Code != http.StatusRequestEntityTooLarge {
+	if rec := upload(t, h, "axxxxxxxxxx", 1, 5000); rec.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("超過上限 code=%d", rec.Code)
 	}
 	if s.Calls("groq") != 2 {
@@ -148,26 +148,26 @@ func supadataGet(h http.Handler, videoURL string) *httptest.ResponseRecorder {
 
 func TestSupadataReturnsNothingAndStatus(t *testing.T) {
 	s := New(fixturesDir(t))
-	s.Returns("supadata", "yt:abc123", "supadata-en.json")
-	s.Nothing("supadata", "yt:empty1")
-	s.Returns("supadata", "yt:flaky1", "http-503")
+	s.Returns("supadata", "yt:abc123xxxxx", "supadata-en.json")
+	s.Nothing("supadata", "yt:empty1xxxxx")
+	s.Returns("supadata", "yt:flaky1xxxxx", "http-503")
 	s.Returns("supadata", "bili:BV1ai411c7mD/p1", "supadata-en.json")
 	h := s.SupadataHandler()
 
-	rec := supadataGet(h, "https://www.youtube.com/watch?v=abc123")
+	rec := supadataGet(h, "https://www.youtube.com/watch?v=abc123xxxxx")
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "PostgreSQL is a relational database.") {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if rec := supadataGet(h, "https://youtu.be/empty1"); rec.Code != 404 {
+	if rec := supadataGet(h, "https://youtu.be/empty1xxxxx"); rec.Code != 404 {
 		t.Fatalf("nothing code=%d", rec.Code)
 	}
-	if rec := supadataGet(h, "https://www.youtube.com/watch?v=flaky1"); rec.Code != 503 {
+	if rec := supadataGet(h, "https://www.youtube.com/watch?v=flaky1xxxxx"); rec.Code != 503 {
 		t.Fatalf("http-503 code=%d", rec.Code)
 	}
 	if rec := supadataGet(h, "https://www.bilibili.com/video/BV1ai411c7mD?p=1"); rec.Code != 200 {
 		t.Fatalf("bili code=%d", rec.Code)
 	}
-	if rec := supadataGet(h, "https://www.youtube.com/watch?v=unknown"); rec.Code != 404 {
+	if rec := supadataGet(h, "https://www.youtube.com/watch?v=unknownxxxx"); rec.Code != 404 {
 		t.Fatalf("unscripted code=%d", rec.Code)
 	}
 	if rec := supadataGet(h, "https://example.com/x"); rec.Code != 400 {
@@ -177,8 +177,8 @@ func TestSupadataReturnsNothingAndStatus(t *testing.T) {
 		t.Fatalf("calls = %d", s.Calls("supadata"))
 	}
 	// 缺少的 fixture 檔案回 500 並說明原因。
-	s.Returns("supadata", "yt:missing", "does-not-exist.json")
-	if rec := supadataGet(h, "https://youtu.be/missing"); rec.Code != 500 || !strings.Contains(rec.Body.String(), "does-not-exist.json") {
+	s.Returns("supadata", "yt:missingxxxx", "does-not-exist.json")
+	if rec := supadataGet(h, "https://youtu.be/missingxxxx"); rec.Code != 500 || !strings.Contains(rec.Body.String(), "does-not-exist.json") {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
 	// 非 GET 與其他路徑。
@@ -196,16 +196,16 @@ func TestSupadataReturnsNothingAndStatus(t *testing.T) {
 
 func TestRequiresCookie(t *testing.T) {
 	s := New(fixturesDir(t))
-	s.Returns("supadata", "yt:abc123", "supadata-en.json")
+	s.Returns("supadata", "yt:abc123xxxxx", "supadata-en.json")
 	s.RequiresCookie("supadata", "session")
 	if s.RequiredCookie("supadata") != "session" || s.RequiredCookie("groq") != "" {
 		t.Fatal("RequiredCookie 不符")
 	}
 	h := s.SupadataHandler()
-	if rec := supadataGet(h, "https://youtu.be/abc123"); rec.Code != http.StatusUnauthorized {
+	if rec := supadataGet(h, "https://youtu.be/abc123xxxxx"); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("沒有 cookie 應為 401: %d", rec.Code)
 	}
-	req := httptest.NewRequest(http.MethodGet, "/v1/transcript?url="+url.QueryEscape("https://youtu.be/abc123"), nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/transcript?url="+url.QueryEscape("https://youtu.be/abc123xxxxx"), nil)
 	req.AddCookie(&http.Cookie{Name: "session", Value: "v"})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -216,7 +216,7 @@ func TestRequiresCookie(t *testing.T) {
 
 func TestItemKey(t *testing.T) {
 	for ref, want := range map[string]string{
-		"yt:abc123":            "abc123",
+		"yt:abc123xxxxx":       "abc123xxxxx",
 		"bili:BV1ai411c7mD/p1": "BV1ai411c7mD",
 		"bili:BV1ai411c7mD/p2": "BV1ai411c7mD/p2",
 		"local:meetup.mp4":     "local:meetup.mp4",
@@ -230,13 +230,13 @@ func TestItemKey(t *testing.T) {
 
 func TestRequiresAPIKey(t *testing.T) {
 	s := New(fixturesDir(t))
-	s.Returns("supadata", "yt:abc123", "supadata-en.json")
+	s.Returns("supadata", "yt:abc123xxxxx", "supadata-en.json")
 	s.RequiresAPIKey("supadata", "k-123")
 	h := s.SupadataHandler()
-	if rec := supadataGet(h, "https://youtu.be/abc123"); rec.Code != http.StatusUnauthorized {
+	if rec := supadataGet(h, "https://youtu.be/abc123xxxxx"); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("沒有 key 應為 401: %d", rec.Code)
 	}
-	req := httptest.NewRequest(http.MethodGet, "/v1/transcript?url="+url.QueryEscape("https://youtu.be/abc123"), nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/transcript?url="+url.QueryEscape("https://youtu.be/abc123xxxxx"), nil)
 	req.Header.Set("x-api-key", "wrong")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

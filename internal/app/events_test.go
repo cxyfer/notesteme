@@ -52,10 +52,10 @@ func TestEventsHandlerStreamsEventsAfterOk(t *testing.T) {
 	r := bufio.NewReader(resp.Body)
 	readUntil(t, r, ": ok")
 
-	s.events.bus.Publish(events.Event{Type: events.TypeStageStatus, Item: "yt:a", ItemID: "i", Stage: "metadata", Status: "pending"})
+	s.events.bus.Publish(events.Event{Type: events.TypeStageStatus, Item: "yt:axxxxxxxxxx", ItemID: "i", Stage: "metadata", Status: "pending"})
 	readUntil(t, r, "event: stage.status")
 	data := readUntil(t, r, "data:")
-	for _, want := range []string{`"item":"yt:a"`, `"stage":"metadata"`, `"status":"pending"`} {
+	for _, want := range []string{`"item":"yt:axxxxxxxxxx"`, `"stage":"metadata"`, `"status":"pending"`} {
 		if !strings.Contains(data, want) {
 			t.Errorf("data = %s，缺少 %s", data, want)
 		}

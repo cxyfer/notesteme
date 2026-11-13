@@ -173,7 +173,6 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - IPv6 的鎖定以單一位址計數。
 - **其他**：
   - `Given the item … has been processed up to …` 會真的執行 pipeline；沒有準備字幕來源的場景需要 `features/fixtures/items/`（見第 2 節）。
-  - YouTube 影片 ID 的最短長度放寬為 2，讓場景的 `yt:v1` 能被辨識。
   - 字幕讀取端沒有串流（NFR-RES-3 只做到輸出端）。
   - 有 HTML 回應時要加上 CSP 等標頭（NFR-SEC-1）。
   - CI（`.github/workflows/ci.yml`，PR #3）：gofmt、`go mod tidy -diff`、vet、`go test -race`、`sqlc diff`、Docker image 與冒煙測試；push 到 `master` 或 `v*` tag 時發布 image 到 GHCR。還沒有 Python 版規格檢查（Go 版在 `go test` 中）與 `govulncheck`。

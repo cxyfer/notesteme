@@ -51,11 +51,11 @@ func TestLastFromPreviousStep(t *testing.T) {
 // 新 server 啟動時的 RecoverStale 會把租約放回，蓋掉關閉的結果（PIPE-R12）。
 func TestStateStepsReadDatabaseAfterShutdown(t *testing.T) {
 	s := newTestScenario(t)
-	s.World.Video("abc123").Title = "t"
+	s.World.Video("abc123xxxxx").Title = "t"
 	if err := s.World.SyncTools(); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.itemHasBeenIngested("yt:abc123"); err != nil {
+	if err := s.itemHasBeenIngested("yt:abc123xxxxx"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.startRound(); err != nil {
@@ -68,7 +68,7 @@ func TestStateStepsReadDatabaseAfterShutdown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.stageIs("metadata", "yt:abc123", "pending"); err != nil {
+	if err := s.stageIs("metadata", "yt:abc123xxxxx", "pending"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.noTaskIsRunning(); err != nil {
@@ -77,7 +77,7 @@ func TestStateStepsReadDatabaseAfterShutdown(t *testing.T) {
 	if s.server != nil {
 		t.Fatal("讀取狀態的步驟不應該啟動新的 server")
 	}
-	if err := s.stageIs("metadata", "yt:abc123", "done"); err == nil || !strings.Contains(err.Error(), "讀自資料庫") {
+	if err := s.stageIs("metadata", "yt:abc123xxxxx", "done"); err == nil || !strings.Contains(err.Error(), "讀自資料庫") {
 		t.Fatalf("狀態不符應該失敗，實際：%v", err)
 	}
 	if s.server != nil {
@@ -91,7 +91,7 @@ func TestStateStepsReadDatabaseAfterShutdown(t *testing.T) {
 	if s.stopped {
 		t.Fatal("啟動後 stopped 應該解除")
 	}
-	if err := s.stageIs("metadata", "yt:abc123", "pending"); err != nil {
+	if err := s.stageIs("metadata", "yt:abc123xxxxx", "pending"); err != nil {
 		t.Fatal(err)
 	}
 }

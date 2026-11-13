@@ -12,7 +12,7 @@ const TypeStageStatus = "stage.status"
 // Event 是推送給訂閱者的事件；JSON 欄位就是 SSE 的 data。
 type Event struct {
 	Type string `json:"type"`
-	// Item 是影音的短代號（例如 yt:abc123），ItemID 是內部 ID。
+	// Item 是影音的短代號（例如 yt:abc123xxxxx），ItemID 是內部 ID。
 	Item   string `json:"item"`
 	ItemID string `json:"item_id"`
 	Stage  string `json:"stage"`

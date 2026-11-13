@@ -148,9 +148,9 @@ func TestIngestPriorityDefaultsToManual(t *testing.T) {
 		priority int
 		want     int
 	}{
-		{"https://www.youtube.com/watch?v=aaa", 0, queue.PriorityManual},
-		{"https://www.youtube.com/watch?v=bbb", queue.PriorityBackfill, queue.PriorityBackfill},
-		{"https://www.youtube.com/watch?v=ccc", queue.PrioritySubscription, queue.PrioritySubscription},
+		{"https://www.youtube.com/watch?v=aaaxxxxxxxx", 0, queue.PriorityManual},
+		{"https://www.youtube.com/watch?v=bbbxxxxxxxx", queue.PriorityBackfill, queue.PriorityBackfill},
+		{"https://www.youtube.com/watch?v=cccxxxxxxxx", queue.PrioritySubscription, queue.PrioritySubscription},
 	} {
 		res, err := r.p.Ingest(ctx, IngestRequest{URL: tt.url, Priority: tt.priority})
 		if err != nil {

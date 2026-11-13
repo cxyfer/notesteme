@@ -26,7 +26,7 @@ const (
 // Item 是影音（ING、LIB 規格的欄位）。
 type Item struct {
 	ID           string         `json:"id"`
-	Ref          string         `json:"ref" doc:"影音的短代號，例如 yt:abc123"`
+	Ref          string         `json:"ref" doc:"影音的短代號，例如 yt:abc123xxxxx"`
 	Platform     string         `json:"platform"`
 	ExternalID   string         `json:"external_id"`
 	Part         int            `json:"part,omitempty" doc:"Bilibili 的分P，其他平台沒有"`

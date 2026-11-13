@@ -28,7 +28,7 @@ func fuzzCheck(t *testing.T, cues []Cue, err error) {
 }
 
 func FuzzParseVTT(f *testing.F) {
-	f.Add([]byte(generateVTT("abc123", "en", 2)))
+	f.Add([]byte(generateVTT("abc123xxxxx", "en", 2)))
 	f.Add([]byte("WEBVTT\n\nNOTE x\n\n00:00:01.000 --> 00:00:02.000 align:start position:0%\nso<00:00:01.500><c> we</c>\n"))
 	f.Add([]byte("\uFEFFWEBVTT\r\n\r\n1\r\n01:02.000 --> 01:03.000\r\n<i>x</i>\r\n"))
 	f.Add([]byte("00:00:01.000 --> 00:00:00.500\n"))

@@ -116,7 +116,7 @@ func TestShutdownStopsClaimingWhileHTTPIsClosing(t *testing.T) {
 	_, srv, block, _ := startBlocked(t)
 	addr := srv.Addr()
 	// 第二部影音的任務還有空位可以領取（download 上限 2，執行中 1）。
-	if code := login(t, srv).json("POST", "/api/items", `{"url":"https://www.youtube.com/watch?v=def456"}`, nil); code != 201 {
+	if code := login(t, srv).json("POST", "/api/items", `{"url":"https://www.youtube.com/watch?v=def456xxxxx"}`, nil); code != 201 {
 		t.Fatalf("POST /api/items = %d", code)
 	}
 	release := stuckRequest(t, addr)

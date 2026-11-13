@@ -21,7 +21,7 @@ func TestParseTimeRejectsNonFiniteAndNegative(t *testing.T) {
 // NaN 與 Inf 經過 API 也是 422，不會變成奇怪的範圍。
 func TestCuesEndpointRejectsNonFiniteTimes(t *testing.T) {
 	r := newItemsRig(t)
-	id := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123"}`)).Items[0].ID
+	id := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123xxxxx"}`)).Items[0].ID
 	if err := r.worker.RunUntilIdle(context.Background()); err != nil {
 		t.Fatal(err)
 	}

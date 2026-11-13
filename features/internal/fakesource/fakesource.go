@@ -53,7 +53,7 @@ func (s *Script) src(id string) *source {
 }
 
 // ItemKey 把場景中的影音代號轉成假媒體標記與網址中使用的 item：
-// yt:abc123 -> abc123；bili:BV../p1 -> BV..；bili:BV../p2 -> BV../p2；其他代號維持原樣
+// yt:abc123xxxxx -> abc123xxxxx；bili:BV../p1 -> BV..；bili:BV../p2 -> BV../p2；其他代號維持原樣
 // （例如 local:meetup.mp4）。
 func ItemKey(ref string) string {
 	if id, ok := strings.CutPrefix(ref, "yt:"); ok {

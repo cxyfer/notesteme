@@ -40,7 +40,7 @@ func newClient(t *testing.T, r *stubRunner) *Client {
 }
 
 const sampleInfo = `{
-  "id": "abc123", "title": "PostgreSQL in 100 Seconds", "duration": 612.4, "language": "en",
+  "id": "abc123xxxxx", "title": "PostgreSQL in 100 Seconds", "duration": 612.4, "language": "en",
   "availability": "public", "live_status": "not_live", "channel_id": "UC1", "channel": "Fireship",
   "timestamp": 1794477000, "description": "desc",
   "chapters": [{"title": "Intro", "start_time": 0, "end_time": 30.5}],
@@ -55,7 +55,7 @@ const sampleInfo = `{
 func TestProbeParsesInfoAndUsesSafeArguments(t *testing.T) {
 	r := &stubRunner{res: toolexec.Result{Stdout: []byte(sampleInfo)}}
 	c := newClient(t, r)
-	info, err := c.Probe(context.Background(), "abc123")
+	info, err := c.Probe(context.Background(), "abc123xxxxx")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestProbeParsesInfoAndUsesSafeArguments(t *testing.T) {
 		t.Errorf("--use-extractors 應只開放 youtube：%v", args)
 	}
 	// 網址一律放在 -- 之後，而且是正規化的網址。
-	if n := len(args); args[n-2] != "--" || args[n-1] != "https://www.youtube.com/watch?v=abc123" {
+	if n := len(args); args[n-2] != "--" || args[n-1] != "https://www.youtube.com/watch?v=abc123xxxxx" {
 		t.Errorf("網址應在 -- 之後：%v", args)
 	}
 	if !filepath.IsAbs(r.calls[0].Path) {
@@ -159,7 +159,7 @@ func TestFetchCaptionsArguments(t *testing.T) {
 		r := &stubRunner{after: func(c toolexec.Cmd) {
 			_ = os.WriteFile(filepath.Join(dir, "sub."+tt.track.Lang+".vtt"), []byte("WEBVTT\n"), 0o644)
 		}}
-		data, err := newClient(t, r).FetchCaptions(context.Background(), "abc123", tt.track, dir)
+		data, err := newClient(t, r).FetchCaptions(context.Background(), "abc123xxxxx", tt.track, dir)
 		if err != nil || string(data) != "WEBVTT\n" {
 			t.Fatalf("%+v：%q, %v", tt.track, data, err)
 		}
@@ -194,7 +194,7 @@ func TestFetchCaptionsEscapesPercentInOutputTemplate(t *testing.T) {
 	r := &stubRunner{after: func(toolexec.Cmd) {
 		_ = os.WriteFile(filepath.Join(dir, "sub.en.vtt"), []byte("WEBVTT\n"), 0o644)
 	}}
-	if _, err := newClient(t, r).FetchCaptions(context.Background(), "abc123", Track{"en", KindManual}, dir); err != nil {
+	if _, err := newClient(t, r).FetchCaptions(context.Background(), "abc123xxxxx", Track{"en", KindManual}, dir); err != nil {
 		t.Fatal(err)
 	}
 	args := r.calls[0].Args

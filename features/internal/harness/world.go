@@ -57,7 +57,7 @@ type World struct {
 	Tools faketool.State
 
 	// Refs 是代入用的對照表，之後由 steps 填入：
-	// 影音代號（例如 "yt:abc123"）對應實際的影音 ID，
+	// 影音代號（例如 "yt:abc123xxxxx"）對應實際的影音 ID，
 	// 以及 "token:<名稱>" 對應該 token 的實際內容。見 Subst。
 	Refs map[string]string
 

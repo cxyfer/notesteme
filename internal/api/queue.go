@@ -25,7 +25,7 @@ type QueueClass struct {
 type QueueTask struct {
 	ID            string     `json:"id"`
 	ItemID        string     `json:"item_id"`
-	Item          string     `json:"item" doc:"影音的短代號，例如 yt:abc123"`
+	Item          string     `json:"item" doc:"影音的短代號，例如 yt:abc123xxxxx"`
 	Stage         string     `json:"stage"`
 	ResourceClass string     `json:"resource_class"`
 	State         string     `json:"state" enum:"leased,pending"`

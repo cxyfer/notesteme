@@ -125,8 +125,8 @@ func TestQueueTasksFirstPendingIsWhatClaimTakes(t *testing.T) {
 func TestQueueTasksListsLeasedFirstWithItem(t *testing.T) {
 	ctx := context.Background()
 	s, _ := openTest(t)
-	_, sr1 := seedItem(t, s, "abc123")
-	_, sr2 := seedItem(t, s, "def456")
+	_, sr1 := seedItem(t, s, "abc123xxxxx")
+	_, sr2 := seedItem(t, s, "def456xxxxx")
 	first := newTask(t, s, sr1, 3, nil)
 	newTask(t, s, sr2, 3, nil)
 	claim(t, s, claimOpts("w", 1))
@@ -135,7 +135,7 @@ func TestQueueTasksListsLeasedFirstWithItem(t *testing.T) {
 	if err != nil || len(list) != 2 {
 		t.Fatalf("QueueTasks = %v, %v", list, err)
 	}
-	if e := list[0]; e.ID != first.ID || e.State != TaskLeased || e.Platform != "youtube" || e.ExternalID != "abc123" ||
+	if e := list[0]; e.ID != first.ID || e.State != TaskLeased || e.Platform != "youtube" || e.ExternalID != "abc123xxxxx" ||
 		e.Stage != "metadata" || e.ResourceClass != "download" || e.Attempts != 1 || e.ItemID == "" {
 		t.Errorf("leased 的任務應排在前面且帶有影音資訊：%+v", e)
 	}

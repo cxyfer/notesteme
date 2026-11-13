@@ -11,23 +11,23 @@ Feature: CLI and data ownership
 
   @CLI-01 @CLI-R2
   Scenario: Without a running server the CLI opens the database itself
-    Given a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
-    When the owner runs "notesteme ingest https://www.youtube.com/watch?v=abc123 --json"
+    Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
+    When the owner runs "notesteme ingest https://www.youtube.com/watch?v=abc123xxxxx --json"
     Then the command ran in standalone mode
     And the command exits with 0
-    And the library contains "yt:abc123"
+    And the library contains "yt:abc123xxxxx"
 
   @CLI-01 @CLI-R2 @CLI-R4
   Scenario: With a running server the CLI goes through it
     Given the server is running
     And the owner is signed in
-    And a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
+    And a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
     And the owner is listening to events
-    When the owner runs "notesteme ingest https://www.youtube.com/watch?v=abc123"
+    When the owner runs "notesteme ingest https://www.youtube.com/watch?v=abc123xxxxx"
     Then the command ran in client mode
     And an event is received:
       """
-      { "type": "item.created", "item": "yt:abc123" }
+      { "type": "item.created", "item": "yt:abc123xxxxx" }
       """
 
   @CLI-03 @CLI-R3
@@ -40,13 +40,13 @@ Feature: CLI and data ownership
 
   @CLI-02 @CLI-R5
   Scenario: JSON output matches the API
-    Given a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
-    And the item "yt:abc123" has been ingested
+    Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
+    And the item "yt:abc123xxxxx" has been ingested
     When the owner runs "notesteme items ls --json"
     Then the command exits with 0
     And the command output is JSON containing:
       """
-      { "items": [ { "ref": "yt:abc123", "title": "PostgreSQL in 100 Seconds" } ] }
+      { "items": [ { "ref": "yt:abc123xxxxx", "title": "PostgreSQL in 100 Seconds" } ] }
       """
 
   @CLI-02 @CLI-R6
@@ -65,9 +65,9 @@ Feature: CLI and data ownership
 
   @CLI-02 @CLI-R7
   Scenario: Waiting until the transcript is ready
-    Given a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
-    And "yt:abc123" has manual captions in "en"
-    When the owner runs "notesteme ingest yt:abc123 --until transcript --wait --json"
+    Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
+    And "yt:abc123xxxxx" has manual captions in "en"
+    When the owner runs "notesteme ingest yt:abc123xxxxx --until transcript --wait --json"
     Then the command exits with 0
     And the command output is JSON containing:
       """

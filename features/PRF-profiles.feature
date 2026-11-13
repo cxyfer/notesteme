@@ -5,7 +5,7 @@ Feature: Profiles and layered settings
 
   Background:
     Given the owner is signed in
-    And a YouTube video "yt:talk01" titled "Kafka talk"
+    And a YouTube video "yt:talk01xxxxx" titled "Kafka talk"
 
   @PRF-02 @PRF-R2
   Scenario: Each layer overrides the one before it
@@ -18,15 +18,15 @@ Feature: Profiles and layered settings
       """
       timing: { split_timing: forbid }
       """
-    And the channel of "yt:talk01" has the overrides:
+    And the channel of "yt:talk01xxxxx" has the overrides:
       """
       language: { targets: [ja] }
       """
-    When the owner ingests "yt:talk01" with the overrides:
+    When the owner ingests "yt:talk01xxxxx" with the overrides:
       """
       language: { fallback: [groq] }
       """
-    Then the effective config of "yt:talk01" for "transcript" contains:
+    Then the effective config of "yt:talk01xxxxx" for "transcript" contains:
       """
       language: { targets: [ja], fallback: [groq] }
       timing: { split_timing: forbid }
@@ -38,11 +38,11 @@ Feature: Profiles and layered settings
       """
       language: { targets: [zh-Hant-TW, en] }
       """
-    When the owner ingests "yt:talk01" with the overrides:
+    When the owner ingests "yt:talk01xxxxx" with the overrides:
       """
       language: { targets: [ja] }
       """
-    Then the effective config of "yt:talk01" for "translate" contains:
+    Then the effective config of "yt:talk01xxxxx" for "translate" contains:
       """
       language: { targets: [ja] }
       """
@@ -55,12 +55,12 @@ Feature: Profiles and layered settings
         correct: { executor: api, provider: anthropic, model: fixture-model, prompt: correct-default }
       """
     And the LLM provider "anthropic" answers "correct" with "correct-echo"
-    And the item "yt:talk01" has been processed up to "correct"
+    And the item "yt:talk01xxxxx" has been processed up to "correct"
     When the owner sends "PATCH /api/profiles/standard" with:
       """
       { "config": { "stages": { "correct": { "model": "fixture-model-2" } } } }
       """
-    Then the "corrected" artifact of "yt:talk01" has 1 version
+    Then the "corrected" artifact of "yt:talk01xxxxx" has 1 version
     And the response contains:
       """
       { "version": 2 }
@@ -118,14 +118,14 @@ Feature: Profiles and layered settings
         correct:   { executor: agent, prompt: correct-default }
         translate: { executor: api, provider: anthropic, model: fixture-model, prompt: translate-default }
       """
-    And the item "yt:talk01" has been processed up to "normalize"
-    When the owner sends "POST /api/items/yt:talk01/rerun" with:
+    And the item "yt:talk01xxxxx" has been processed up to "normalize"
+    When the owner sends "POST /api/items/yt:talk01xxxxx/rerun" with:
       """
       { "from": "segment", "profile": "mixed" }
       """
     And the worker runs until idle
-    Then the stage "segment" of "yt:talk01" is "skipped"
-    And the stage "correct" of "yt:talk01" is "awaiting_agent"
+    Then the stage "segment" of "yt:talk01xxxxx" is "skipped"
+    And the stage "correct" of "yt:talk01xxxxx" is "awaiting_agent"
 
   @PRF-01 @PRF-R7
   Scenario: The built-in default profile cannot be deleted
@@ -134,13 +134,13 @@ Feature: Profiles and layered settings
 
   @PRF-02 @PRF-R8
   Scenario: Channel overrides apply to later items of that channel
-    Given a YouTube video "yt:talk02" titled "Kafka talk part 2"
-    And the channel of "yt:talk01" has the overrides:
+    Given a YouTube video "yt:talk02xxxxx" titled "Kafka talk part 2"
+    And the channel of "yt:talk01xxxxx" has the overrides:
       """
       language: { targets: [ja] }
       """
-    When the owner ingests "yt:talk02"
-    Then the effective config of "yt:talk02" for "translate" contains:
+    When the owner ingests "yt:talk02xxxxx"
+    Then the effective config of "yt:talk02xxxxx" for "translate" contains:
       """
       language: { targets: [ja] }
       """

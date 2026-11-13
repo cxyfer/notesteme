@@ -8,7 +8,7 @@ import (
 )
 
 func ev(n int) Event {
-	return Event{Type: TypeStageStatus, Item: "yt:a", ItemID: "i", Stage: "metadata", Status: fmt.Sprint(n)}
+	return Event{Type: TypeStageStatus, Item: "yt:axxxxxxxxxx", ItemID: "i", Stage: "metadata", Status: fmt.Sprint(n)}
 }
 
 func recv(t *testing.T, s *Subscription) Event {

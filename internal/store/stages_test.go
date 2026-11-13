@@ -35,7 +35,7 @@ func TestStageEventsPublishedAfterCommit(t *testing.T) {
 	var sr StageRun
 	err := s.Tx(ctx, func(r *Repo) error {
 		var err error
-		if it, _, err = r.InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123", URL: "u"}); err != nil {
+		if it, _, err = r.InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123xxxxx", URL: "u"}); err != nil {
 			return err
 		}
 		snap, err := r.EnsureSnapshot(ctx, "sha", `{}`)
@@ -54,7 +54,7 @@ func TestStageEventsPublishedAfterCommit(t *testing.T) {
 	if seenInTx != 0 {
 		t.Errorf("交易還沒 commit 就發布了 %d 個事件", seenInTx)
 	}
-	want := events.Event{Type: "stage.status", Item: "yt:abc123", ItemID: it.ID, Stage: "metadata", Status: "pending"}
+	want := events.Event{Type: "stage.status", Item: "yt:abc123xxxxx", ItemID: it.ID, Stage: "metadata", Status: "pending"}
 	if evs := got(); len(evs) != 1 || evs[0] != want {
 		t.Fatalf("事件 = %+v，預期 [%+v]", evs, want)
 	}
@@ -64,7 +64,7 @@ func TestStageEventsPublishedAfterCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	evs := got()
-	if len(evs) != 2 || evs[1].Status != "done" || evs[1].Item != "yt:abc123" {
+	if len(evs) != 2 || evs[1].Status != "done" || evs[1].Item != "yt:abc123xxxxx" {
 		t.Fatalf("事件 = %+v，預期第二個是 done", evs)
 	}
 }
@@ -76,7 +76,7 @@ func TestStageEventsDroppedOnRollback(t *testing.T) {
 
 	boom := errors.New("boom")
 	err := s.Tx(ctx, func(r *Repo) error {
-		it, _, err := r.InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123", URL: "u"})
+		it, _, err := r.InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123xxxxx", URL: "u"})
 		if err != nil {
 			return err
 		}
@@ -110,7 +110,7 @@ func TestSetStageStateOfMissingStageIsNotAnError(t *testing.T) {
 
 func TestStageWritesWithoutSinkStillWork(t *testing.T) {
 	s, _ := openTest(t)
-	_, sr := seedItem(t, s, "abc123")
+	_, sr := seedItem(t, s, "abc123xxxxx")
 	if err := s.Write().SetStageState(context.Background(), sr.ID, StageState{Status: StatusRunning}); err != nil {
 		t.Fatal(err)
 	}

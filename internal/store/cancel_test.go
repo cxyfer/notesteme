@@ -10,13 +10,13 @@ import (
 func TestClaimAndReleasePublishStageEvents(t *testing.T) {
 	ctx := context.Background()
 	s, _ := openTest(t)
-	_, sr := seedItem(t, s, "abc123")
+	_, sr := seedItem(t, s, "abc123xxxxx")
 	newTask(t, s, sr, 3, nil)
 	got := recordEvents(s) // 建立之後才開始記錄，只看領取與放回
 
 	claim(t, s, claimOpts("w1", 1))
 	evs := got()
-	if len(evs) != 1 || evs[0].Stage != "metadata" || evs[0].Status != StatusRunning || evs[0].Item != "yt:abc123" {
+	if len(evs) != 1 || evs[0].Stage != "metadata" || evs[0].Status != StatusRunning || evs[0].Item != "yt:abc123xxxxx" {
 		t.Fatalf("領取後的事件 = %+v，預期一個 metadata running", evs)
 	}
 
@@ -45,7 +45,7 @@ func TestClaimAndReleasePublishStageEvents(t *testing.T) {
 func TestClaimEventsDroppedOnRollback(t *testing.T) {
 	ctx := context.Background()
 	s, _ := openTest(t)
-	_, sr := seedItem(t, s, "abc123")
+	_, sr := seedItem(t, s, "abc123xxxxx")
 	newTask(t, s, sr, 3, nil)
 	got := recordEvents(s)
 

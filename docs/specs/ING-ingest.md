@@ -26,7 +26,7 @@
 
 | ID | 規則 |
 |---|---|
-| ING-R1 | 辨識的網址種類：YouTube 影片（`watch`、`youtu.be`、`shorts`）、YouTube 播放清單、YouTube 頻道（`@handle`、`/channel/`）、Bilibili 影片（`BV` 號，可帶 `p`）、Bilibili 個人空間、Podcast RSS feed。YouTube 與 Bilibili 只看網址；其他網址透過對外 HTTP client（GRD）實際抓取，內容是 RSS 才辨識成 Podcast feed。其他網址回傳「無法辨識這個網址。目前支援 YouTube、Bilibili、Podcast RSS 與本機檔案。」 |
+| ING-R1 | 辨識的網址種類：YouTube 影片（`watch`、`youtu.be`、`shorts`）（影片 ID 為 11 個字元）、YouTube 播放清單、YouTube 頻道（`@handle`、`/channel/`）、Bilibili 影片（`BV` 號，可帶 `p`）、Bilibili 個人空間、Podcast RSS feed。YouTube 與 Bilibili 只看網址；其他網址透過對外 HTTP client（GRD）實際抓取，內容是 RSS 才辨識成 Podcast feed。其他網址回傳「無法辨識這個網址。目前支援 YouTube、Bilibili、Podcast RSS 與本機檔案。」 |
 | ING-R2 | 影音以 `(platform, external_id, part)` 識別。新增已存在的影音不會建立新項目，回應標示 `already_in_library` 並附上影音 ID。影音在垃圾桶中時見 DEL-R10。 |
 | ING-R3 | Bilibili 每個分P 是一個影音。預設新增全部分P，也可以只指定部分分P。 |
 | ING-R4 | YouTube 播放清單在新增時展開成多部影音，每部各自套用 ING-R2。展開結果是一次性的，不會持續追蹤（持續追蹤是 M4 的訂閱）。 |
@@ -68,4 +68,3 @@
 
 - 上傳檔案的大小上限，暫定 4GB，可在設定檔調整。
 - inbox 的穩定判定時間暫定 10 秒，是否需要依檔案大小調整，M1 實作時觀察。
-- YouTube 影片 ID 的驗證：真實的 ID 固定 11 個字元（`[A-Za-z0-9_-]`），但場景用 `abc123`、`v1` 這類短代號，所以目前只要求 2～64 個字元，打錯的網址也會被當成影片新增。建議：網址辨識改為嚴格的 11 個字元，場景的代號改成 11 個字元（例如 `yt:abc123def45`），同時把 yt-dlp 回報「影片不存在」歸為 `permanent`，不重試。要修改多個 `.feature`，等 owner 同意（2026-11-13，PR #4 的 Codex 審查提出）。

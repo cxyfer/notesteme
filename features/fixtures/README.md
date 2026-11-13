@@ -20,7 +20,7 @@
 ## 命名規則
 
 - 檔名使用場景裡出現的名稱，讓人可以從場景直接找到檔案。
-  - `Given the source "supadata" returns "supadata-en.json" for "yt:abc123"` 對應 `sources/supadata-en.json`。
+  - `Given the source "supadata" returns "supadata-en.json" for "yt:abc123xxxxx"` 對應 `sources/supadata-en.json`。
   - 字幕軌的 fixture 同理，放在 `captions/`。
 - 名稱用小寫英文、數字與 `-`，語言標記放在名稱裡，例如 `groq-no-language-ja.json`。
 - 一個 fixture 對應一種情境。不同情境不要共用檔案後再靠欄位覆寫；需要差異就新增檔案。
@@ -52,7 +52,7 @@
 NOTESTEME-FAKE-MEDIA item=<平台ID> duration=<秒>
 ```
 
-- `item` 是平台 ID，例如 `abc123`、`BV1xx411c7mD`；Bilibili 第 2 分P 以後為 `BV1xx411c7mD/p2`；
+- `item` 是平台 ID，例如 `abc123xxxxx`、`BV1xx411c7mD`；Bilibili 第 2 分P 以後為 `BV1xx411c7mD/p2`；
   本機檔案使用場景中的代號，例如 `local:meetup.mp4`。
 - 假 ffprobe 讀取這行標記回報長度；fake ASR 讀取上傳檔案的標記，決定回傳哪個 `sources/` fixture。
 - 檔案內容還可以在標記之後接任意填充（用來模擬檔案大小）。

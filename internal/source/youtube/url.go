@@ -24,7 +24,8 @@ type Target struct {
 }
 
 var (
-	videoID    = regexp.MustCompile(`^[A-Za-z0-9_-]{2,64}$`)
+	// videoID 是影片 ID：YouTube 的影片 ID 固定 11 個字元（ING-R1），長度不符的網址不辨識。
+	videoID    = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
 	playlistID = regexp.MustCompile(`^[A-Za-z0-9_-]{3,128}$`)
 	handle     = regexp.MustCompile(`^@[\p{L}\p{N}._-]{1,100}$`)
 	channelID  = regexp.MustCompile(`^UC[A-Za-z0-9_-]{10,40}$`)

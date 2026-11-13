@@ -8,10 +8,10 @@ import (
 
 func TestRefToURL(t *testing.T) {
 	tests := map[string]string{
-		"yt:abc123":                "https://www.youtube.com/watch?v=abc123",
-		"bili:BV1xx411c7mD/p2":     "https://www.bilibili.com/video/BV1xx411c7mD?p=2",
-		"https://youtu.be/abc123":  "https://youtu.be/abc123",
-		"https://example.com/page": "https://example.com/page",
+		"yt:abc123xxxxx":               "https://www.youtube.com/watch?v=abc123xxxxx",
+		"bili:BV1xx411c7mD/p2":         "https://www.bilibili.com/video/BV1xx411c7mD?p=2",
+		"https://youtu.be/abc123xxxxx": "https://youtu.be/abc123xxxxx",
+		"https://example.com/page":     "https://example.com/page",
 	}
 	for in, want := range tests {
 		if got := refToURL(in); got != want {
@@ -22,11 +22,11 @@ func TestRefToURL(t *testing.T) {
 
 func TestRefPatternFindsRefsInPaths(t *testing.T) {
 	tests := map[string]string{
-		"/api/items/yt:abc123":               "yt:abc123",
-		"/api/items/yt:abc123/cues?lang=en":  "yt:abc123",
-		"/api/items/bili:BV1xx411c7mD/p3":    "bili:BV1xx411c7mD/p3",
-		"/api/channels/channel-of:yt:abc123": "channel-of:yt:abc123",
-		"/api/items/pod:show/ep-42":          "pod:show/ep-42",
+		"/api/items/yt:abc123xxxxx":               "yt:abc123xxxxx",
+		"/api/items/yt:abc123xxxxx/cues?lang=en":  "yt:abc123xxxxx",
+		"/api/items/bili:BV1xx411c7mD/p3":         "bili:BV1xx411c7mD/p3",
+		"/api/channels/channel-of:yt:abc123xxxxx": "channel-of:yt:abc123xxxxx",
+		"/api/items/pod:show/ep-42":               "pod:show/ep-42",
 	}
 	for in, want := range tests {
 		if got := refPattern.FindString(in); got != want {

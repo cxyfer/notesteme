@@ -23,7 +23,7 @@ type runsBody struct {
 func TestRunsListsExecutedStagesNewestFirstWithConfig(t *testing.T) {
 	r := newItemsRig(t)
 	id := decode[itemsBody](t, r.owner("POST", "/api/items",
-		`{"url":"https://youtu.be/abc123","overrides":{"language":{"targets":["en"],"fallback":["supadata"]}},"until":"transcript"}`)).Items[0].ID
+		`{"url":"https://youtu.be/abc123xxxxx","overrides":{"language":{"targets":["en"],"fallback":["supadata"]}},"until":"transcript"}`)).Items[0].ID
 
 	// 還沒有步驟開始：空陣列（不是 null）。
 	rec := r.owner("GET", "/api/items/"+id+"/runs", "")

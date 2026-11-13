@@ -38,7 +38,7 @@ func serve(t *testing.T, status int, body string) (*Client, *http.Request) {
 
 func TestFetchParsesCues(t *testing.T) {
 	c, req := serve(t, 200, okBody)
-	res, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123", ModeAuto)
+	res, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123xxxxx", ModeAuto)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestFetchParsesCues(t *testing.T) {
 	if c := res.Cues[1]; c.Index != 2 || c.StartMS != 2000 || c.EndMS != 4500 || c.Text != "Second line." || c.Timing != subtitle.TimingSource {
 		t.Errorf("cue 2 = %+v", c)
 	}
-	if req.URL.Path != "/v1/transcript" || req.URL.Query().Get("url") != "https://www.youtube.com/watch?v=abc123" || req.URL.Query().Get("mode") != "auto" {
+	if req.URL.Path != "/v1/transcript" || req.URL.Query().Get("url") != "https://www.youtube.com/watch?v=abc123xxxxx" || req.URL.Query().Get("mode") != "auto" {
 		t.Errorf("請求 = %s", req.URL)
 	}
 	if req.Header.Get("x-api-key") != "sk-secret-123" {
@@ -84,7 +84,7 @@ func TestFetchErrorClasses(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c, _ := serve(t, tt.status, tt.body)
-			_, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123", ModeNative)
+			_, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123xxxxx", ModeNative)
 			if tt.none {
 				if !errors.Is(err, ErrNoTranscript) {
 					t.Fatalf("err = %v，預期 ErrNoTranscript", err)
@@ -105,12 +105,12 @@ func TestFetchErrorClasses(t *testing.T) {
 // 401 與 402 都是 needs_action，但呼叫端要能分辨：前者是 key 的問題，後者是方案不支援。
 func TestFetchDistinguishesKeyAndPlanErrors(t *testing.T) {
 	c, _ := serve(t, 401, `{}`)
-	_, err := c.Fetch(context.Background(), "https://youtu.be/abc123", ModeAuto)
+	_, err := c.Fetch(context.Background(), "https://youtu.be/abc123xxxxx", ModeAuto)
 	if !errors.Is(err, ErrKeyRejected) || errors.Is(err, ErrPlanUnsupported) {
 		t.Errorf("401：err = %v", err)
 	}
 	c, _ = serve(t, 402, `{}`)
-	_, err = c.Fetch(context.Background(), "https://youtu.be/abc123", ModeAuto)
+	_, err = c.Fetch(context.Background(), "https://youtu.be/abc123xxxxx", ModeAuto)
 	if !errors.Is(err, ErrPlanUnsupported) || errors.Is(err, ErrKeyRejected) {
 		t.Errorf("402：err = %v", err)
 	}
@@ -122,7 +122,7 @@ func TestFetchDistinguishesKeyAndPlanErrors(t *testing.T) {
 func TestFetchNetworkErrorIsRetryable(t *testing.T) {
 	c, _ := serve(t, 200, okBody)
 	c.BaseURL = "http://127.0.0.1:1" // 沒有人在聽
-	_, err := c.Fetch(context.Background(), "https://youtu.be/abc123", ModeAuto)
+	_, err := c.Fetch(context.Background(), "https://youtu.be/abc123xxxxx", ModeAuto)
 	if got, ok := errclass.ClassOf(err); !ok || got != errclass.ClassRetryable {
 		t.Fatalf("err = %v", err)
 	}
@@ -149,7 +149,7 @@ func TestFetchDoesNotFollowRedirectWithKey(t *testing.T) {
 	// 呼叫端提供的 client 預設會跟隨轉址；Fetch 必須自己關掉。
 	hc := &http.Client{}
 	c := &Client{HTTP: hc, BaseURL: origin.URL, APIKey: "sk-secret-123"}
-	_, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123", ModeAuto)
+	_, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123xxxxx", ModeAuto)
 	if leaked.Load() {
 		t.Fatal("轉址後 API key 被帶到另一個 host")
 	}
