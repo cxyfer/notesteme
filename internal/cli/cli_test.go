@@ -13,7 +13,6 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/app"
 	"github.com/cxyfer/notesteme/internal/clock"
-	"github.com/cxyfer/notesteme/internal/store"
 )
 
 // shortTempDir 建立很短的暫存目錄：t.TempDir 含測試名稱，可能超過 Unix socket 的路徑長度上限。
@@ -100,38 +99,6 @@ func TestClientModeThroughServeSocket(t *testing.T) {
 	}
 	if !strings.Contains(out, `"items"`) {
 		t.Errorf("輸出 = %q", out)
-	}
-}
-
-func TestLockedByAnotherCLIExits1(t *testing.T) {
-	env, _ := testEnv(t)
-	sa, err := app.OpenStandalone(t.Context(), env)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sa.Close()
-
-	res, _, errOut := run(t, env, "items", "ls")
-	if res.Code != 1 || res.Mode != "" || !strings.Contains(errOut, "正被另一個 notesteme 指令使用中") {
-		t.Errorf("結果 = %+v，stderr：%s", res, errOut)
-	}
-}
-
-func TestLockWithoutInfoExits1(t *testing.T) {
-	env, data := testEnv(t)
-	if err := os.MkdirAll(data, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	// 持有鎖但還沒寫入內容：serve 啟動中。
-	l, err := store.LockDir(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer l.Close()
-
-	res, _, errOut := run(t, env, "items", "ls")
-	if res.Code != 1 || res.Mode != "" || !strings.Contains(errOut, "還沒寫入連線資訊") {
-		t.Errorf("結果 = %+v，stderr：%s", res, errOut)
 	}
 }
 

@@ -44,42 +44,101 @@ func (b *backend) close() error {
 	return nil
 }
 
+// 資料目錄的鎖剛好在轉換（serve 啟動中、別的 CLI 正要結束）時，CLI 短暫重試而不是立刻失敗。
+// 時間用注入的 clock，測試不需要真的等待；做成變數只是為了讓測試縮短等待。
+var (
+	lockRetryWindow = 2 * time.Second
+	lockRetryStep   = 100 * time.Millisecond
+	// socketProbeTimeout 是探測本機 socket 時，單次撥號的真實時間上限（防止卡死）。
+	socketProbeTimeout = 2 * time.Second
+)
+
 // openBackend 依 CLI-R2、R3 判斷模式並建立連線。
+//
+// 資料目錄被鎖定時看持有者是誰：serve 就連它的本機 socket；其他情況（鎖檔還是空的、serve 還沒寫入連線資訊、
+// 持有者是另一個 CLI、socket 還連不上）會在 lockRetryWindow 內每隔 lockRetryStep 重試，
+// 超過仍然不行才回報錯誤。serve 沒有提供 socket（路徑太長）不會因為等待而改變，直接回報。
 func openBackend(ctx context.Context, g *globals, env app.Env) (*backend, error) {
 	if g.server != "" {
 		return openRemote(g, env)
 	}
 
 	env = withData(env, g.data)
-	sa, err := app.OpenStandalone(ctx, env)
-	switch {
-	case err == nil:
-		return &backend{
-			mode: ModeStandalone, standalone: sa, base: localBase,
-			hc: &http.Client{Transport: handlerTransport{h: sa.Handler()}},
-		}, nil
-	case !errors.Is(err, store.ErrLocked):
-		return nil, err
-	}
+	for waited := time.Duration(0); ; waited += lockRetryStep {
+		sa, err := app.OpenStandalone(ctx, env)
+		switch {
+		case err == nil:
+			return &backend{
+				mode: ModeStandalone, standalone: sa, base: localBase,
+				hc: &http.Client{Transport: handlerTransport{h: sa.Handler()}},
+			}, nil
+		case !errors.Is(err, store.ErrLocked):
+			return nil, err
+		}
 
-	// 資料目錄已被鎖定：看持有者是誰。
-	cfg, cerr := config.Load(config.Sources{Env: env.Vars})
-	if cerr != nil {
-		return nil, cerr
+		be, retry, err := connectHolder(ctx, env)
+		if be != nil {
+			return be, nil
+		}
+		if !retry || waited >= lockRetryWindow {
+			return nil, err
+		}
+		t := env.Clock.NewTimer(lockRetryStep)
+		select {
+		case <-t.C():
+		case <-ctx.Done():
+			t.Stop()
+			return nil, ctx.Err()
+		}
 	}
-	info, rerr := store.ReadLockInfo(cfg.Data)
+}
+
+// connectHolder 讀鎖檔判斷持有者並嘗試連線。回傳 backend，或 (nil, retry, err)：
+// retry 為 true 表示這個狀況可能很快改變（值得重試），err 是重試用完之後要回報的說明。
+func connectHolder(ctx context.Context, env app.Env) (be *backend, retry bool, err error) {
+	cfg, err := config.Load(config.Sources{Env: env.Vars})
+	if err != nil {
+		return nil, false, err
+	}
+	info, err := store.ReadLockInfo(cfg.Data)
 	switch {
-	case rerr != nil:
-		return nil, rerr
-	case info == nil || (info.Holder == "serve" && info.Socket == ""):
-		// 鎖檔還是空的：serve 正在啟動，還沒寫入連線資訊。
-		return nil, errors.New("資料目錄已被鎖定，但持有者還沒寫入連線資訊（notesteme serve 可能正在啟動），請稍後再試。")
-	case info.Holder == "serve":
-		return openSocket(info.Socket, env), nil
-	case info.Holder == "cli":
-		return nil, fmt.Errorf("資料目錄正被另一個 notesteme 指令使用中（%d），請等它結束。", info.PID)
+	case err != nil:
+		// 讀到寫到一半的內容：持有者正在更新鎖檔，稍後會完整。
+		return nil, true, err
+	case info == nil || (info.Holder == holderServe && info.Listen == ""):
+		// 鎖檔是空的，或 serve 只寫了持有者：serve 正在啟動，還沒寫入連線資訊。
+		return nil, true, errors.New("資料目錄已被鎖定，但持有者還沒寫入連線資訊（notesteme serve 正在啟動），請稍後再試。")
+	case info.Holder == holderServe && info.Socket == "":
+		// serve 已完成啟動，但路徑太長所以沒有建立本機 socket；等待也不會改變。
+		return nil, false, errors.New("serve 沒有提供本機 socket（資料目錄路徑太長），請改用 --server。")
+	case info.Holder == holderServe:
+		// 以 CLI 自己算出的絕對路徑為準，不信任鎖檔裡的路徑（可能是別的工作目錄寫的）。
+		path := app.SocketPath(cfg.Data)
+		if err := probeSocket(ctx, env, path); err != nil {
+			return nil, true, fmt.Errorf("無法連到 serve 的本機 socket %s：%w", path, err)
+		}
+		return openSocket(path, env), false, nil
+	case info.Holder == holderCLI:
+		return nil, true, fmt.Errorf("資料目錄正被另一個 notesteme 指令使用中（%d），請等它結束。", info.PID)
 	}
-	return nil, fmt.Errorf("資料目錄已被鎖定，持有者不明（%q）。", info.Holder)
+	return nil, false, fmt.Errorf("資料目錄已被鎖定，持有者不明（%q）。", info.Holder)
+}
+
+// 鎖檔 Holder 的值（與 app 套件的 holderServe、holderCLI 相同）。
+const (
+	holderServe = "serve"
+	holderCLI   = "cli"
+)
+
+// probeSocket 試著連一次 path 再關閉：確認 serve 的 socket 已經可以連線。
+func probeSocket(ctx context.Context, env app.Env, path string) error {
+	ctx, cancel := context.WithTimeout(ctx, socketProbeTimeout)
+	defer cancel()
+	c, err := dialFunc(env, 0)(ctx, "unix", path)
+	if err != nil {
+		return err
+	}
+	return c.Close()
 }
 
 // withData 回傳 Vars 複本，--data 有指定時覆寫資料目錄。
