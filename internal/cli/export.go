@@ -2,11 +2,15 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 )
 
@@ -64,18 +68,37 @@ func parseExport(args []string) (*plan, error) {
 	}}, nil
 }
 
-// writeFile 把 r 寫到 path；寫入失敗時不留下不完整的檔案。
+// writeFile 把 r 寫到 path：先寫同目錄的暫存檔，完整寫完才 Rename 蓋過目標。
+// 中途失敗（連線中斷、磁碟已滿）時目標檔維持原樣，也不留下暫存檔。
 func writeFile(path string, r io.Reader) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	dir, base := filepath.Split(path)
+	var (
+		f   *os.File
+		tmp string
+		err error
+	)
+	// 暫存檔名帶亂數並以 O_EXCL 建立；權限與一般檔案相同（受 umask 影響）。
+	for range 10 {
+		tmp = filepath.Join(dir, fmt.Sprintf(".%s.%08x.tmp", base, rand.Uint32()))
+		f, err = os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if !errors.Is(err, fs.ErrExist) {
+			break
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("無法寫入 %s：%w", path, err)
 	}
 	if _, err := io.Copy(f, r); err != nil {
 		f.Close()
-		os.Remove(path)
+		os.Remove(tmp)
 		return fmt.Errorf("寫入 %s 失敗：%w", path, err)
 	}
 	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("寫入 %s 失敗：%w", path, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
 		return fmt.Errorf("寫入 %s 失敗：%w", path, err)
 	}
 	return nil
