@@ -39,6 +39,8 @@ type result struct {
 	meta     *metaUpdate
 	// advance 為 true 時，成功後建立下游步驟的任務（until 之前）。
 	advance bool
+	// transcriptASR 只用於 metadata：下游的 transcript 任務是否歸為 asr 資源類別。
+	transcriptASR bool
 }
 
 type metaUpdate struct {
@@ -78,7 +80,7 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	var res result
 	switch run.Stage {
 	case StageMetadata:
-		res, err = p.runMetadata(ctx, it)
+		res, err = p.runMetadata(ctx, it, lang)
 	case StageTranscript:
 		res, err = p.runTranscript(ctx, it, lang)
 	case StageNormalize:
@@ -241,7 +243,7 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 			}
 			// 走到這裡時這一筆一定是最新的（上面已檢查），舊的結果不會觸發下游。
 			if nr, ok := latest[next]; ok {
-				if _, err := insertStageTask(ctx, r, it.ID, nr, t.Priority); err != nil {
+				if _, err := insertStageTask(ctx, r, it.ID, nr, t.Priority, res.transcriptASR); err != nil {
 					return err
 				}
 				wake = true
