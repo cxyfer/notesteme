@@ -1,6 +1,6 @@
 # 交接：M1 開發進度
 
-> 更新：2026-11-13。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；CLI 切片在 `feat/cli` 的 PR。
+> 更新：2026-11-14。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；CLI 切片是 PR #5（`feat/cli`，審查通過、待 owner 合併）；GRD 切片在 `feat/guards`（疊在 `feat/cli` 上）。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -13,38 +13,40 @@
   - PIPE 切片：依類別的並行上限與暫停、優先順序與 aging、重啟回收、正常關閉的寬限期、取消、SSE 事件、lease_token 檢查、保留最近 3 版、執行紀錄 API、最小的 Supadata 來源。
   - YouTube 影片 ID 改為嚴格的 11 個字元（場景代號一併改名，例如 `abc123xxxxx`）；yt-dlp 回報影片不存在時不重試。
   - CLI 切片：`internal/cli`（`ingest`、`items`、`export`、`doctor`）、standalone 與 client 模式、本機 Unix socket（`/data/notesteme.sock`）、`--server` 加 token、結束碼、`internal/doctor`、`item.created` 事件、通過場景的棘輪（`features/passing.txt`）。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：187 個場景，73 passed、114 pending、0 failed、0 undefined。
+  - GRD 切片：netguard 的 allowlist（網段、單一 IP、主機名稱）接到設定檔 `network.allow_private`；轉址上限 5 次；回應大小上限（feed 10 MiB、音檔 2 GiB，超過即拒絕不截斷）；被擋的請求回 422（`blocked_address`、`too_many_redirects`、`response_too_large`、`unsupported_scheme`）並歸為 permanent；`internal/pathguard`（inbox 與 `media_roots`，解析 symlink、`..`、dangling symlink）在 serve 與本機 socket 回 403 `path_outside_roots`，standalone 不受限；YouTube 播放清單展開（ING-R4，yt-dlp `--flat-playlist -J`，同一個交易建立）。
+- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：189 個場景，92 passed、97 pending、0 failed、0 undefined。
 
   | Feature | passed | pending |
   |---|---|---|
   | AUTH | 12 | 11 |
   | CLI | 7 | 2 |
   | DEL | 0 | 21 |
-  | GRD | 2 | 18 |
-  | ING | 12 | 12 |
+  | GRD | 19 | 3 |
+  | ING | 13 | 11 |
   | LIB | 0 | 10 |
   | NRM | 9 | 2 |
   | OPS | 1 | 12 |
   | OUT | 8 | 0 |
   | PIPE | 16 | 2 |
-  | SEC | 2 | 8 |
+  | SEC | 3 | 7 |
   | SRC | 4 | 16 |
 
-  PIPE 剩下的兩個 pending 都要等 SRC 的來源：R4 要 bilibili-ai 加 cookie，R10「Pausing one resource class」要 groq。CLI 剩下的兩個：`--server` 加 token 要等 AUTH 的 token（AUTH-R7～R9），等待 Bilibili 影音要等 SRC 的 Bilibili 來源。
+  PIPE 剩下的兩個 pending 都要等 SRC 的來源：R4 要 bilibili-ai 加 cookie，R10「Pausing one resource class」要 groq。CLI 剩下的兩個：`--server` 加 token 要等 AUTH 的 token（AUTH-R7～R9），等待 Bilibili 影音要等 SRC 的 Bilibili 來源。GRD 剩下的三個：DNS rebinding 要等 ING 的 podcast feed，GRD-R7 預期 201 的兩個例子要等 ING-05（本機檔案的新增）。
 
   M1 的 OUT 場景全部通過，但 OUT 的 M2 部分還沒做，所以規格狀態仍是 `ready`，不是 `implemented`。
 
-- **規格狀態**：AUTH、SEC、ING、SRC、NRM、OUT、PIPE、CLI 是 `ready`，其餘都是 `draft`。還沒有任何規格達到 `implemented`，因為每份都還有 pending 的場景。
+- **規格狀態**：AUTH、SEC、ING、SRC、NRM、OUT、PIPE、CLI、GRD 是 `ready`，其餘都是 `draft`。還沒有任何規格達到 `implemented`，因為每份都還有 pending 的場景。
 
 ## 2. 下一步
 
-使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成，PR 待合併）→ **GRD** → 其餘 SRC 來源 → OPS → LIB → DEL。使用者要求每個切片完成後自動開始下一個。
+使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成，PR #5 待合併）→ GRD（完成，PR 待開）→ **其餘 SRC 來源** → OPS → LIB → DEL。使用者要求每個切片完成後自動開始下一個。
 
 接下來：
 
-1. 開始 GRD 切片：讓 `scout` 列出 `features/GRD-*.feature` 的 `@M1` 場景與用到的步驟，做 DoR 檢查。netguard 的 allowlist 還沒接到設定檔，見第 6 節。
-2. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
-3. `features/fixtures/items/` 還沒做：DEL、NRM、SEC 共 17 個場景停在 `Given the item … has been processed up to …`。做了之後拿掉 `features/steps/processing.go` 的 `pendingWithoutItemFixture`。
+1. PR #5 合併後，把 master 併進 `feat/guards`（squash 之後用 `-s ours`，先確認樹與 `feat/cli` 的 tip 相同），開 GRD 的 PR。
+2. 開始 SRC 切片（其餘來源）：讓 `scout` 列出 `features/SRC-*.feature` 的 `@M1` pending 場景與用到的步驟，做 DoR 檢查。PIPE-R4、R10 與 CLI 的 Bilibili 場景也在等這個切片。
+3. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
+4. `features/fixtures/items/` 還沒做：DEL、NRM、SEC 共 17 個場景停在 `Given the item … has been processed up to …`。做了之後拿掉 `features/steps/processing.go` 的 `pendingWithoutItemFixture`。
 
 ## 3. 怎麼執行
 
@@ -183,7 +185,14 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - `doctor` 的網路連線檢查要等 OPS 的已知影片；API key 只檢查 Supadata。
   - JSON Lines 輸出在步驟中只比對第一個物件。
   - 非 Linux 平台的本機 socket 只靠檔案權限，沒有 uid 檢查。
-- **GRD**：netguard 的 allowlist 還沒接到設定檔；`the host … resolves to` 等網路步驟還沒實作。
+- **GRD**：
+  - GRD-R7、R8 的 403 場景在路徑檢查失效時會變成 pending（501），不是 failed，只靠 `passing.txt` 棘輪把關，不可以順手更新掉。
+  - 直接輸入非 http 網址的場景驗證不到我們自己的 scheme 檢查（Go 的 `http.Client` 也會拒絕），由轉址場景與單元測試把關；GRD-R6 的 `--use-extractors` 只由單元測試把關（見 GRD 待決問題）。
+  - 設定檔中「由資料庫管理的欄位」清單（profiles、prompts、budget(s)、settings、subscriptions、tokens、secrets、cookies、language、notifications）是實作時自訂的，需要 owner 確認；拿掉其中一項，`KnownFields` 仍會拒絕，場景驗證不到專用訊息。
+  - `netguard.Deps` 同時有舊的 `Allowlist []netip.Prefix` 與新的 `AllowPrivate`，`features/internal/fakenet` 改用新欄位後可移除舊欄位。
+  - pathguard 檢查與實際開檔之間的 TOCTOU 屬於 ING-05。
+  - 播放清單沒有項目數上限；yt-dlp 的播放清單錯誤訊息還沒對真實 yt-dlp 驗證（見 ING 待決問題）。
+  - Supadata 回應超過大小上限時仍走 `isPermanent` 換下一個來源，最後訊息是「找不到可用的字幕來源」，看不到大小上限的訊息。
 - **OPS**：migration 前的快照（OPS-R3）；DB schema 比程式新時拒絕啟動（OPS-R4）；`/readyz` 限速。
 - **AUTH**：
   - token（AUTH-R7～R9）還沒做，bearer 一律回 401。
