@@ -35,8 +35,11 @@ const (
 	msgNoKey = "沒有可用的字幕來源：fallback 中的來源都還沒有設定 API key。"
 )
 
-// reasonNoTranscript 是來源沒有這部影片的字幕（source_probes.reason）。
-const reasonNoTranscript = "no_transcript"
+// source_probes.reason：來源沒有這部影片的字幕；來源回報的語言和影音原文語言不同（SRC-R4）。
+const (
+	reasonNoTranscript     = "no_transcript"
+	reasonLanguageMismatch = "language_mismatch"
+)
 
 // sourceTiming 是各平台字幕來源宣告的時間粒度（ADR-0006 的 Caps.Timing、plan 第 6.1 節）。
 // 它是來源的宣告，不是逐檔檢查的結果：YouTube 自動字幕是近 word 級。
@@ -195,6 +198,12 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 		executed = true
 		got, err := f.fetch(ctx, it, lang)
 		switch {
+		case err == nil && langMismatch(it.OriginalLang, got.Lang):
+			// 來源回報的語言和影音的原文語言不同：不採用，繼續下一個來源（SRC-R4）。
+			// TODO(SRC-R4)：其他門檻（low_coverage、repetition、music_only）與文字語言偵測。
+			decisions = append(decisions, transcript.Decision{
+				Source: id, Lang: transcript.NormalizeLang(got.Lang), State: transcript.StateRejected, Reason: reasonLanguageMismatch,
+			})
 		case err == nil:
 			return p.fallbackResult(id, f, it, lang, stage, decisions, got)
 		case errors.Is(err, supadata.ErrNoTranscript):
@@ -263,6 +272,26 @@ func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, l
 		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions),
 		state: store.StageState{Status: store.StatusDone},
 	}, nil
+}
+
+// langMismatch 回報來源回報的語言 got 是否和影音的原文語言 want 不同（SRC-R4 的 language_mismatch）。
+// M1 只比較來源回報的語言，不做文字語言偵測；任一邊未知（空字串或 und）時略過檢查。
+// 只比主要語言：zh 與 zh-Hans、en 與 en-orig 視為相同。
+func langMismatch(want, got string) bool {
+	w, g := primaryLang(want), primaryLang(got)
+	return w != "" && g != "" && w != g
+}
+
+// primaryLang 回傳語言代碼的主要語言（小寫）；未知（空字串或 und）回傳空字串。
+func primaryLang(l string) string {
+	l = strings.ToLower(transcript.NormalizeLang(strings.TrimSpace(l)))
+	if i := strings.IndexAny(l, "-_"); i >= 0 {
+		l = l[:i]
+	}
+	if l == "und" {
+		return ""
+	}
+	return l
 }
 
 // isNeedsAction 回報 err 是否為 needs_action 類別。
