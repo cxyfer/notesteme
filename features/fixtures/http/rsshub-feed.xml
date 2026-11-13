@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>RSSHub Bilibili Videos</title>
+    <link>http://rsshub.lan/bilibili/user/video/12345</link>
+    <description>Videos of a self-hosted RSSHub test user</description>
+    <language>zh-CN</language>
+    <item>
+      <title>RSSHub Episode 1</title>
+      <guid isPermaLink="false">rsshub-ep-1</guid>
+      <link>https://www.bilibili.com/video/BV1xx411c7mD</link>
+      <pubDate>Wed, 11 Nov 2026 10:00:00 GMT</pubDate>
+      <enclosure url="http://rsshub.lan/media/ep1.mp3" type="audio/mpeg" length="1024"/>
+    </item>
+  </channel>
+</rss>

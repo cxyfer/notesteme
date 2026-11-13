@@ -32,7 +32,7 @@
 | 時間 | `clock.Fake`（`Now`、`Set`、`Advance`） | `app.Env.Clock` |
 | worker | 手動模式：`RunRound`（領取並標記 running 後回傳）、`RunUntilIdle`（執行到沒有可執行的任務，上限 1000 輪） | `app.Env.Test` |
 | yt-dlp、ffmpeg、ffprobe | 測試 binary 本身：`TestMain` 依 `argv[0]` 的檔名改扮假工具，讀場景的狀態檔與 `features/fixtures/` | 每個場景的 `bin/` 放 symlink，`PATH` 指到這裡 |
-| DNS 與 HTTP origin | `fakenet`：resolver 依 `resolves to` 回傳指定的 IP；dialer 把通過 netguard 檢查的目標轉到本機的 fake origin | `netguard.Deps{Resolver, Dialer, RootCAs}` |
+| DNS 與 HTTP origin | `fakenet`：resolver 依 `resolves to` 回傳指定的 IP（`and then` 依序回傳，模擬 rebinding）；dialer 把通過 netguard 檢查的目標轉到本機的 fake origin。origin 以 `Route(url, handler)` 登記：每個主機一組路由，以 path 加 query 完全相同才算比對成功，沒有登記的路徑回 404，可與整個主機共用的 `Handle` 共存（先 Route，再退回 Handle）。內建回應：`redirects to` 回 302、`serves "<name>"` 回 `features/fixtures/http/<name>`、`serves N bytes` 回總長剛好 N bytes 並帶 Content-Length 的合法 RSS（開頭與結尾之間以註解填充，讓大小上限的場景驗證的是上限，而不是「不是 feed」） | `netguard.Deps{Resolver, Dialer, RootCAs}` |
 | ASR、Supadata 等字幕來源 | 腳本化的 fake origin，依步驟回傳 fixture、回報沒有結果或要求 cookie，並記錄呼叫次數 | 同上，掛在 fakenet 上 |
 | `/data`、`/config`、inbox | 每個場景一個 `os.MkdirTemp("", "nst")` 的根目錄 | `NOTESTEME_CONFIG`、`NOTESTEME_DATA` |
 | 環境變數 | 每個場景一份 map，不呼叫 `os.Setenv` | `app.Env.Vars` |
