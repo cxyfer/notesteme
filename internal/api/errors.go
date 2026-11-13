@@ -48,6 +48,9 @@ const (
 	CodeBlockedAddress   = "blocked_address"
 	CodeTooManyRedirects = "too_many_redirects"
 	CodeResponseTooLarge = "response_too_large"
+
+	// 本機路徑不在 inbox 或 media_roots 之內（GRD-R7）。
+	CodePathOutsideRoots = "path_outside_roots"
 )
 
 func newError(status int, code, message string) *Error {

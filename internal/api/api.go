@@ -18,6 +18,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -41,6 +42,10 @@ type Deps struct {
 	// Events 是 GET /api/events 的 SSE handler（PIPE-R14）；nil 時回應 501。
 	// SSE 是長連線串流，不經過 Huma，直接掛在 mux 上，但仍在驗證 middleware 之後。
 	Events http.Handler
+	// Paths 檢查 POST /api/items 的本機路徑是否在 inbox 與 media_roots 之內（GRD-R7）。
+	// serve 的 TCP 與本機 socket 用 pathguard.New；獨立模式用 pathguard.Unrestricted（GRD-R8）。
+	// nil 時一律拒絕（fail closed）。
+	Paths *pathguard.Guard
 }
 
 // ReadyCheck 是 /readyz 的一個檢查項目；Check 回傳 nil 代表正常。

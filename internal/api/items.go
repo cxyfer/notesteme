@@ -129,12 +129,18 @@ type createItemOutput struct {
 
 // createItems 新增影音：有新建立的回 201，全部已經存在回 200（ING-R2）。
 func (rt *routes) createItems(ctx context.Context, in *createItemInput) (*createItemOutput, error) {
+	// 路徑防護最先處理（GRD-R7）：不在根目錄內的路徑，不論後面的功能做了沒有都不會被接受。
+	if in.Body.Path != "" {
+		if err := rt.d.Paths.Check(in.Body.Path); err != nil {
+			return nil, newError(http.StatusForbidden, CodePathOutsideRoots, "只能新增媒體資料夾中的檔案。")
+		}
+	}
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}
 	switch {
 	case in.Body.Path != "":
-		// TODO(ING-05、GRD-R7)：本機檔案；路徑必須在 inbox 或 media_roots 之內。
+		// TODO(ING-05)：本機檔案的新增（檔案是否必須存在、是否經過 ffprobe）；路徑已通過 GRD-R7。
 		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "新增本機檔案尚未實作。")
 	case in.Body.URL == "":
 		return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "請提供要新增的網址（url）。")

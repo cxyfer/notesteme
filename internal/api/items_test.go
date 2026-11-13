@@ -40,6 +40,12 @@ type itemsRig struct {
 
 func newItemsRig(t *testing.T, opts ...func(*pipeline.Deps)) *itemsRig {
 	t.Helper()
+	return newItemsRigAPI(t, nil, opts...)
+}
+
+// newItemsRigAPI 同 newItemsRig，另外可以調整 api.Deps（例如注入 Paths）。
+func newItemsRigAPI(t *testing.T, apiOpt func(*Deps), opts ...func(*pipeline.Deps)) *itemsRig {
+	t.Helper()
 	clk := clock.NewFake(time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC))
 	dir := t.TempDir()
 	st, err := store.Open(context.Background(), dir, clk)
@@ -63,7 +69,11 @@ func newItemsRig(t *testing.T, opts ...func(*pipeline.Deps)) *itemsRig {
 		o(&deps)
 	}
 	p := pipeline.New(deps)
-	h := New(Deps{Store: st, Auth: svc, Clock: clk, Log: log, Version: "test", Pipeline: p, Queue: q})
+	ad := Deps{Store: st, Auth: svc, Clock: clk, Log: log, Version: "test", Pipeline: p, Queue: q}
+	if apiOpt != nil {
+		apiOpt(&ad)
+	}
+	h := New(ad)
 	r := &itemsRig{h: h, worker: worker.New(q, p, clk, log), clk: clk, t: t}
 	rec := r.do("POST", "/api/auth/login", `{"password":"pw"}`, nil)
 	for _, c := range rec.Result().Cookies() {
