@@ -31,8 +31,11 @@ const (
 // 任何一步失敗時已取得的資源都會釋放，回傳 nil。
 //
 // 檢查順序（錯誤訊息與場景逐字相同）：
-//  1. master key 是否設定（SEC-R5）：最先檢查，還沒碰資料目錄就失敗，不留下任何檔案。
+//  1. master key 是否設定（SEC-R5）：serve 最先檢查，還沒碰資料目錄就失敗，不留下任何檔案。
+//     standalone（keyAfterLock）改在取得鎖之後檢查，因為鎖被 serve 持有時 CLI 走 client 模式，不需要 master key；
+//     資料目錄不存在時（不可能有 serve 持有）仍然先檢查，不建立目錄。
 //  2. 資料目錄的 flock，開啟 DB。已被持有時回傳 store.ErrLocked（原樣，由呼叫端決定怎麼說明）。
+//     取得鎖之後才把資料目錄設為 0700（NFR-SEC-5），探測鎖的 client 模式不會改動既有目錄的權限。
 //  3. master key 是否正確（SEC-R5）：要解開 DB 裡的資料金鑰，所以在開啟 DB 之後。
 //  4. opts.check（serve 的登入密碼，AUTH-R3）：要看 DB 裡有沒有密碼，所以在開啟 DB 之後，pipeline 啟動之前。
 //
@@ -53,16 +56,20 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 	}
 
 	// master key 的值不寫進 log 與 DB；之後用來解開資料金鑰（見 secrets.Open）。
-	if env.Vars[envMasterKey] == "" {
+	noKey := env.Vars[envMasterKey] == ""
+	if noKey && !opts.keyAfterLock {
 		return nil, ErrNoMasterKey
 	}
 
-	if err := os.MkdirAll(cfg.Data, dataDirPerm); err != nil {
-		return nil, fmt.Errorf("建立資料目錄 %s 失敗：%w", cfg.Data, err)
-	}
-	// MkdirAll 受 umask 影響，也不會改已存在目錄的權限；NFR-SEC-5 要求一律 0700。
-	if err := os.Chmod(cfg.Data, dataDirPerm); err != nil {
-		return nil, fmt.Errorf("設定資料目錄 %s 的權限失敗：%w", cfg.Data, err)
+	// 資料目錄不存在時才建立：不存在就不可能有 serve 持有它，所以 standalone 也可以先檢查 master key，
+	// 失敗時不留下任何檔案。已存在的目錄在取得鎖之前不動它的權限（見下方）。
+	if _, err := os.Stat(cfg.Data); errors.Is(err, os.ErrNotExist) {
+		if noKey {
+			return nil, ErrNoMasterKey
+		}
+		if err := os.MkdirAll(cfg.Data, dataDirPerm); err != nil {
+			return nil, fmt.Errorf("建立資料目錄 %s 失敗：%w", cfg.Data, err)
+		}
 	}
 	lock, err := store.LockDir(cfg.Data)
 	if err != nil {
@@ -70,6 +77,17 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 			err = lockedError(cfg.Data, err)
 		}
 		return nil, err
+	}
+	// 只有取得鎖的程序才會改資料目錄的權限；client 模式的 CLI 探測到鎖已被持有時不會走到這裡。
+	// standalone 的 master key 檢查也在取得鎖之後：資料目錄被 serve 持有時，CLI 改走 client 模式，不需要 master key。
+	if noKey {
+		_ = lock.Release()
+		return nil, ErrNoMasterKey
+	}
+	// MkdirAll 受 umask 影響，也不會改已存在目錄的權限；NFR-SEC-5 要求一律 0700。
+	if err := os.Chmod(cfg.Data, dataDirPerm); err != nil {
+		_ = lock.Release()
+		return nil, fmt.Errorf("設定資料目錄 %s 的權限失敗：%w", cfg.Data, err)
 	}
 	// 取得鎖之後立刻寫入持有者，讓其他程序讀到的不是上一個持有者（例如被 Kill 的 serve）留下的內容；
 	// serve 之後會補上 Listen 與 Socket。
@@ -137,6 +155,10 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 type coreOpts struct {
 	// holder 寫進鎖檔，是 holderServe 或 holderCLI。
 	holder string
+	// keyAfterLock 為 true 時，沒有 master key 的錯誤等到取得資料目錄的鎖之後才回報（standalone）：
+	// 鎖已被 serve 持有時，CLI 要改走 client 模式，client 模式不需要 master key。
+	// serve 為 false：SEC-R5 要求先檢查 master key，還沒碰資料目錄就失敗。
+	keyAfterLock bool
 	// explainLock 為 true 時，資料目錄被 CLI 持有的錯誤改用說明持有者的訊息（見 lockedError）；
 	// 否則原樣回傳 store.ErrLocked，讓呼叫端（standalone）自己讀 LockInfo 決定怎麼辦。
 	explainLock bool

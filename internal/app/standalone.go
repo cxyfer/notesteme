@@ -28,7 +28,7 @@ type Standalone struct {
 // 持有者是 serve 時改走 client 模式（Socket 是本機 Unix socket 的路徑）。
 // 其他啟動檢查的錯誤與 serve 相同，例如 ErrNoMasterKey。
 func OpenStandalone(ctx context.Context, env Env) (*Standalone, error) {
-	core, err := openCore(ctx, env, coreOpts{holder: holderCLI, manualWorker: true})
+	core, err := openCore(ctx, env, coreOpts{holder: holderCLI, manualWorker: true, keyAfterLock: true})
 	if err != nil {
 		return nil, err
 	}
