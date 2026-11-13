@@ -95,3 +95,5 @@
 - SRC-R9 的訊息字串還沒對真實的 yt-dlp 驗證：目前依 yt-dlp 原始碼，比對 stderr 中以 `ERROR:` 開頭、含 `HTTP Error 403` 的行（涵蓋 `unable to download video data` 與 `Unable to download webpage`）。實際的 403 多半在下載媒體（ASR 需要的音訊）時發生，不是 `-J` 或字幕；等 `media.go` 與真實環境驗證後再確認字串與分類。
 - SRC-R4 的 `language_mismatch` 在 M1 只比較來源回報的語言與影音的原文語言（只比主要語言，`zh` 與 `zh-Hans` 視為相同）；任一邊未知時略過檢查。文字語言偵測與其他門檻（`low_coverage`、`repetition`、`music_only`）仍待實作。
 - SRC-R5 失敗之後才補上 API key，影音不會自動重跑：步驟已是 `failed`（`permanent`），不是 `blocked`，PIPE-R4 的自動回到 `pending` 不適用。使用者要手動重跑 transcript。key 設定在步驟 `blocked`（SRC-R10）時才會自動繼續（2026-11-14，SRC 切片實作時發現）。
+- ~~SRC-R10、R17 的場景與規格不一致~~：已結案（2026-11-14，owner 同意）。R10 原本在設定檔用 `openai-compatible` 定義 groq，和 ADR-0013、SEC-R2（一般 provider 由 DB 管理）以及 steps.md「fake provider 預設有 key」衝突，改用 `Given the provider "groq" has no API key`；Groq 的預設 preset 內建在程式中。R17 的 `sources` 依評估順序列出，平台字幕的列排在前面，場景補上這三列。
+- Groq 的 API key 暫時用環境變數 `NOTESTEME_GROQ_API_KEY`（與 Supadata 一致）；SEC-R1 的字面規則會得到 `NOTESTEME_PROVIDERS_GROQ_API_KEY`，SEC-R4 加密存放時一併整理命名（2026-11-14）。

@@ -190,12 +190,7 @@ Feature: Transcript sources and quality
 
   @SRC-05 @SRC-R10
   Scenario: A paid source without an API key asks for the key
-    Given the config file contains:
-      """
-      asr:
-        providers:
-          groq: { type: openai-compatible, base_url: https://api.groq.com/openai/v1, model: whisper-large-v3-turbo }
-      """
+    Given the provider "groq" has no API key
     And a YouTube video "yt:nocap1xxxxx" titled "No captions here"
     And "yt:nocap1xxxxx" has no caption tracks
     When the owner ingests "yt:nocap1xxxxx" with the overrides:
@@ -326,6 +321,9 @@ Feature: Transcript sources and quality
     Then the response contains:
       """
       { "sources": [
+          { "source": "youtube-manual", "lang": "en", "state": "unavailable", "reason": "no_track" },
+          { "source": "youtube-auto", "lang": "en", "state": "unavailable", "reason": "no_track" },
+          { "source": "youtube-manual", "lang": "zh-Hans", "state": "unavailable", "reason": "no_track" },
           { "source": "supadata", "state": "rejected", "reason": "language_mismatch" },
           { "source": "groq", "state": "used" }
       ] }
