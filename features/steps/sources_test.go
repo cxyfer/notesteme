@@ -20,7 +20,8 @@ func TestScriptableSource(t *testing.T) {
 			t.Errorf("%s 已實作，應該可以腳本化：%v", id, err)
 		}
 	}
-	for _, id := range []string{"groq", "bilibili-ai", "whisper-1", "podcast-transcript"} {
+	// groq 由另一個切片實作（source.Implemented），不放進這份「尚未實作」的清單。
+	for _, id := range []string{"bilibili-ai", "whisper-1", "podcast-transcript"} {
 		if err := scriptableSource(id); !errors.Is(err, godog.ErrPending) {
 			t.Errorf("%s 應該讓場景 pending：%v", id, err)
 		}

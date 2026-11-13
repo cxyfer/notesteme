@@ -25,13 +25,13 @@ func registerSources(r *Registry, s *Scenario) {
 	r.Step(`a local file {string} in the inbox`, func(string) error { return godog.ErrPending })
 	r.Step(`{string} has {word} captions in {string}`, s.hasCaptions)
 	r.Step(`{string} has no caption tracks`, s.hasNoCaptions)
-	r.Step(`the auto captions of {string} are not ready yet`, func(string) error { return godog.ErrPending })
+	r.Step(`the auto captions of {string} are not ready yet`, s.autoCaptionsNotReady)
 	r.Step(`the source {string} returns {string} for {string}`, s.sourceReturns)
 	r.Step(`the source {string} has nothing for {string}`, s.sourceHasNothing)
 	r.Step(`the source {string} requires the cookie {string}`, s.sourceRequiresCookie)
 	r.Step(`the source {string} accepts files up to {string}`, s.sourceAcceptsUpTo)
 	r.Step(`the audio of {string} is {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`yt-dlp fails for {string} with {string}`, func(string, string) error { return godog.ErrPending })
+	r.Step(`yt-dlp fails for {string} with {string}`, s.ytdlpFails)
 }
 
 // youtubeID 取出 yt:<id> 代號中的平台 ID。
@@ -206,6 +206,23 @@ func (s *Scenario) hasCaptions(ref, kind, lang string) error {
 			}
 		}
 		v.Tracks = append(v.Tracks, faketool.Track{Kind: kind, Lang: lang})
+		return nil
+	})
+}
+
+// autoCaptionsNotReady 讓影片的自動字幕（與平台翻譯字幕）尚未生成：假 yt-dlp 不列出、也不下載（SRC-R6）。
+func (s *Scenario) autoCaptionsNotReady(ref string) error {
+	return s.editVideo(ref, func(v *faketool.Video) error {
+		v.AutoNotReady = true
+		return nil
+	})
+}
+
+// ytdlpFails 讓假 yt-dlp 對這部影片的所有操作（info、字幕、媒體）都以結束碼 1 失敗，並輸出指定的 stderr。
+// 只接受 yt:<id>；Bilibili 等其他平台的假 yt-dlp 失敗還沒有場景用到。
+func (s *Scenario) ytdlpFails(ref, stderr string) error {
+	return s.editVideo(ref, func(v *faketool.Video) error {
+		v.Fail = &faketool.Failure{Stderr: stderr, ExitCode: 1}
 		return nil
 	})
 }

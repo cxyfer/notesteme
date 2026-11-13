@@ -1,0 +1,9 @@
+{
+  "lang": "de",
+  "availableLangs": ["de"],
+  "content": [
+    { "text": "PostgreSQL ist eine relationale Datenbank.", "offset": 0, "duration": 2000, "lang": "de" },
+    { "text": "Sie wird seit mehr als 30 Jahren entwickelt.", "offset": 2000, "duration": 2500, "lang": "de" },
+    { "text": "Schauen wir uns an, wie sie funktioniert.", "offset": 4500, "duration": 2000, "lang": "de" }
+  ]
+}
