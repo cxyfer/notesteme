@@ -41,6 +41,8 @@ var DefaultNow = time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
 const (
 	VirtualData   = "/data"
 	VirtualConfig = "/config"
+	// VirtualMedia 是 GRD-R7 場景使用的媒體根目錄（media_roots: [/media]）。
+	VirtualMedia = "/media"
 )
 
 // World 是一個場景的全部狀態。
@@ -76,8 +78,8 @@ type World struct {
 	closed bool
 }
 
-// New 建立場景的根目錄與子目錄（data/、data/inbox/、config/、bin/、fake/、home/），
-// 放入假工具的 symlink 與初始狀態檔。失敗時已建立的目錄會被清除。
+// New 建立場景的根目錄與子目錄（data/、data/inbox/、config/、bin/、fake/、home/、media/talks/），
+// 放入假工具的 symlink、初始狀態檔，以及 media/link-to-root（指向 / 的 symlink，GRD-R7 用）。失敗時已建立的目錄會被清除。
 func New() (*World, error) {
 	root, err := os.MkdirTemp("", "nst")
 	if err != nil {
@@ -113,6 +115,10 @@ func New() (*World, error) {
 			return nil, err
 		}
 	}
+	if err := w.seedMedia(); err != nil {
+		_ = w.Close()
+		return nil, err
+	}
 	if err := faketool.Install(w.BinDir()); err != nil {
 		_ = w.Close()
 		return nil, err
@@ -146,6 +152,36 @@ func (w *World) ConfigDir() string { return filepath.Join(w.Root, "config") }
 func (w *World) BinDir() string    { return filepath.Join(w.Root, "bin") }
 func (w *World) FakeDir() string   { return faketool.FakeDir(w.Root) }
 func (w *World) HomeDir() string   { return filepath.Join(w.Root, "home") }
+func (w *World) MediaDir() string  { return filepath.Join(w.Root, "media") }
+
+// mediaLinkName 是 media/ 下指向 / 的 symlink 名稱：驗證路徑檢查會解析 symlink（GRD-R7）。
+const mediaLinkName = "link-to-root"
+
+// seedMedia 建立 media/talks/（放一個小檔案，供 GRD-R7 預期通過的例子使用）
+// 與 media/link-to-root -> /。symlink 只用來讓程式的路徑檢查解析；harness 自己絕不透過它讀寫。
+func (w *World) seedMedia() error {
+	talks := filepath.Join(w.MediaDir(), "talks")
+	if err := os.MkdirAll(talks, 0o700); err != nil {
+		return err
+	}
+	marker := faketool.MediaMarker("local:keynote.mp4", 60)
+	if err := os.WriteFile(filepath.Join(talks, "keynote.mp4"), []byte(marker), 0o600); err != nil {
+		return err
+	}
+	return os.Symlink("/", filepath.Join(w.MediaDir(), mediaLinkName))
+}
+
+// removeRoot 清除場景根目錄。場景內含指向 / 的 symlink，所以先以 os.Remove 移除該 symlink 本身
+// （unlink，不跟隨），再 RemoveAll；RemoveAll 本身也不跟隨 symlink，這裡是雙重保險。
+func removeRoot(root string) error {
+	link := filepath.Join(root, "media", mediaLinkName)
+	if fi, err := os.Lstat(link); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		if err := os.Remove(link); err != nil {
+			return err
+		}
+	}
+	return os.RemoveAll(root)
+}
 
 // SyncTools 把 Tools 寫入假工具的狀態檔。
 func (w *World) SyncTools() error {
@@ -280,7 +316,7 @@ func (w *World) Close() error {
 	if w.Root == "" {
 		return nil
 	}
-	return os.RemoveAll(w.Root)
+	return removeRoot(w.Root)
 }
 
 // virtuals 回傳虛擬路徑與實際路徑的對照。
@@ -288,10 +324,11 @@ func (w *World) virtuals() [][2]string {
 	return [][2]string{
 		{VirtualData, w.DataDir()},
 		{VirtualConfig, w.ConfigDir()},
+		{VirtualMedia, w.MediaDir()},
 	}
 }
 
-// Expand 把字串中的虛擬路徑（/data、/config）改寫成場景根目錄下的實際路徑。
+// Expand 把字串中的虛擬路徑（/data、/config、/media）改寫成場景根目錄下的實際路徑。
 // 只在路徑段的邊界比對：/data/x 與 "/data" 會被改寫，/database 與 /home/u/data 不會。
 // 用於設定檔內容、CLI 參數、請求 body、檔案路徑。
 func (w *World) Expand(s string) string {

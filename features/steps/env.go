@@ -5,19 +5,22 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
 
 	"github.com/cxyfer/notesteme/internal/app"
+	"github.com/cxyfer/notesteme/internal/config"
 )
 
 // registerEnv 註冊「環境與時間」的步驟，句型見 docs/specs/steps.md。
 func registerEnv(r *Registry, s *Scenario) {
 	r.Step(`the clock is at {string}`, s.clockIsAt)
 	r.Step(`the clock advances by {string}`, s.clockAdvances)
-	r.Step(`the config file contains:`, func(*godog.DocString) error { return godog.ErrPending })
+	r.Step(`the config file contains:`, s.configFileContains)
 	r.Step(`the environment variable {string} is {string}`, s.setEnv)
 	r.Step(`the environment variable {string} is not set`, s.unsetEnv)
 	r.Step(`the server is running`, s.serverIsRunning)
@@ -27,6 +30,25 @@ func registerEnv(r *Registry, s *Scenario) {
 	r.Step(`the server restarts`, s.serverRestarts)
 	r.Step(`the server shuts down gracefully`, s.serverShutsDown)
 	r.Step(`the server fails to start with {string}`, s.serverFailsToStart)
+}
+
+// configFileContains 把內容（虛擬路徑換成實際路徑）寫成設定檔，下一次啟動 server 時生效。
+// server 已在執行時設定檔不會重新載入，寫入也不會生效，所以讓步驟失敗，而不是默默忽略。
+func (s *Scenario) configFileContains(doc *godog.DocString) error {
+	if s.server != nil {
+		return errors.New("server 已經在執行，設定檔只在啟動時讀取：`the config file contains:` 必須放在啟動 server 的步驟之前")
+	}
+	path := s.World.Expand(s.World.Env[config.EnvConfig])
+	if path == "" {
+		return errors.New("Env 沒有設定 NOTESTEME_CONFIG，無法寫入設定檔")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("建立設定檔目錄：%w", err)
+	}
+	if err := os.WriteFile(path, []byte(s.World.Expand(doc.Content)), 0o600); err != nil {
+		return fmt.Errorf("寫入設定檔：%w", err)
+	}
+	return nil
 }
 
 // setEnv 只累積設定：之後啟動的 server 才會看到（已在執行的 server 不受影響）。
