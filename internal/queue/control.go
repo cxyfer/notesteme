@@ -46,9 +46,12 @@ func DefaultLimit(class string) int {
 var (
 	// ErrUnknownClass 表示資源類別不存在（或不開放調整）。
 	ErrUnknownClass = errors.New("不認識的資源類別")
-	// ErrInvalidLimit 表示並行上限小於 1。
-	ErrInvalidLimit = errors.New("並行上限至少是 1")
+	// ErrInvalidLimit 表示並行上限小於 1 或大於 MaxLimit。
+	ErrInvalidLimit = errors.New("並行上限必須介於 1 與 64")
 )
+
+// MaxLimit 是並行上限可以設定的最大值，避免一個打錯的數字讓任務數量失控。
+const MaxLimit = 64
 
 // controlKey 是控制設定在 settings 表中的 key。
 const controlKey = "queue"
@@ -174,7 +177,7 @@ func (c *Control) SetLimits(ctx context.Context, limits map[string]int) error {
 		if !slices.Contains(Classes, class) {
 			return fmt.Errorf("%w %q，只有 %v", ErrUnknownClass, class, Classes)
 		}
-		if n < 1 {
+		if n < 1 || n > MaxLimit {
 			return fmt.Errorf("%w（%s 是 %d）", ErrInvalidLimit, class, n)
 		}
 	}

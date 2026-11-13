@@ -44,6 +44,19 @@ func TestControlValidatesInput(t *testing.T) {
 			t.Errorf("上限 %d：%v", n, err)
 		}
 	}
+	// 上限的最大值是 MaxLimit：剛好可以，超過就拒絕。
+	if err := c.SetLimits(ctx, map[string]int{ResourceDownload: MaxLimit}); err != nil {
+		t.Errorf("上限 %d 應該可以：%v", MaxLimit, err)
+	}
+	if err := c.SetLimits(ctx, map[string]int{ResourceDownload: MaxLimit + 1}); !errors.Is(err, ErrInvalidLimit) {
+		t.Errorf("上限 %d：%v", MaxLimit+1, err)
+	}
+	if got := c.Limit(ResourceDownload); got != MaxLimit {
+		t.Errorf("超過上限的請求不該改動設定，download = %d", got)
+	}
+	if err := c.SetLimits(ctx, map[string]int{ResourceDownload: 2}); err != nil {
+		t.Fatal(err)
+	}
 	// 有一項不合法就全部不改。
 	if err := c.SetLimits(ctx, map[string]int{ResourceDownload: 5, "bogus": 1}); err == nil {
 		t.Fatal("應失敗")
