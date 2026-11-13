@@ -255,13 +255,13 @@ func TestSessionRequests(t *testing.T) {
 
 	// 缺 CSRF 標頭、標頭錯誤：403。
 	for name, hdr := range map[string]string{"缺標頭": "", "錯誤的標頭": "forged"} {
-		rec = s.do("POST", "/api/queue/pause", "", withCookies(sess, csrf, hdr))
+		rec = s.do("POST", "/api/tasks/t1/retry", "", withCookies(sess, csrf, hdr))
 		if rec.Code != 403 {
 			t.Errorf("%s: status = %d", name, rec.Code)
 		}
 	}
 	// 有 CSRF：通過驗證，到達尚未實作的 handler。
-	rec = s.do("POST", "/api/queue/pause", "", withCookies(sess, csrf, csrf))
+	rec = s.do("POST", "/api/tasks/t1/retry", "", withCookies(sess, csrf, csrf))
 	if rec.Code != 501 {
 		t.Errorf("with csrf: status = %d, body = %s", rec.Code, rec.Body)
 	}

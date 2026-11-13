@@ -5,22 +5,22 @@ Feature: Subtitle output and import
 
   Background:
     Given the owner is signed in
-    And a YouTube video "yt:abc123" titled "Kafka: in 100 seconds?"
-    And the "corrected" transcript of "yt:abc123" in "en" is:
+    And a YouTube video "yt:abc123xxxxx" titled "Kafka: in 100 seconds?"
+    And the "corrected" transcript of "yt:abc123xxxxx" in "en" is:
       | # | start        | end          | text                   |
       | 1 | 00:00:01.000 | 00:00:03.500 | We use Kafka for this. |
       | 2 | 00:00:04.000 | 00:00:06.000 | It is a log.           |
 
   @M1 @OUT-01 @OUT-R1
   Scenario: Download SRT rendered from the cues
-    When the owner sends "GET /api/items/yt:abc123/subtitles?format=srt"
+    When the owner sends "GET /api/items/yt:abc123xxxxx/subtitles?format=srt"
     Then the response status is 200
     And the response header "Content-Type" contains "application/x-subrip"
-    And the item "yt:abc123" has no "srt" artifact
+    And the item "yt:abc123xxxxx" has no "srt" artifact
 
   @M1 @OUT-01 @OUT-R1
   Scenario Outline: Every M1 format is available
-    When the owner sends "GET /api/items/yt:abc123/subtitles?format=<format>"
+    When the owner sends "GET /api/items/yt:abc123xxxxx/subtitles?format=<format>"
     Then the response status is 200
     And the response header "Content-Type" contains "<type>"
 
@@ -33,10 +33,10 @@ Feature: Subtitle output and import
 
   @M1 @OUT-01 @OUT-R2
   Scenario: The most processed variant is used by default
-    Given the "normalized" transcript of "yt:abc123" in "en" is:
+    Given the "normalized" transcript of "yt:abc123xxxxx" in "en" is:
       | # | start        | end          | text                  |
       | 1 | 00:00:01.000 | 00:00:03.500 | we use cafca for this |
-    When the owner sends "GET /api/items/yt:abc123/cues"
+    When the owner sends "GET /api/items/yt:abc123xxxxx/cues"
     Then the response contains:
       """
       { "variant": "corrected", "cues": [ { "text": "We use Kafka for this." } ] }
@@ -44,7 +44,7 @@ Feature: Subtitle output and import
 
   @M1 @OUT-01 @OUT-R3
   Scenario: A time range keeps the original timestamps
-    When the owner sends "GET /api/items/yt:abc123/cues?from=00:00:03.800&to=00:00:10"
+    When the owner sends "GET /api/items/yt:abc123xxxxx/cues?from=00:00:03.800&to=00:00:10"
     Then the response contains:
       """
       { "cues": [ { "start": "00:00:04.000", "text": "It is a log." } ] }
@@ -52,29 +52,29 @@ Feature: Subtitle output and import
 
   @M1 @OUT-01 @OUT-R4
   Scenario: The download file name is safe on Windows
-    When the owner sends "GET /api/items/yt:abc123/subtitles?format=srt"
+    When the owner sends "GET /api/items/yt:abc123xxxxx/subtitles?format=srt"
     Then the response header "Content-Disposition" contains "Kafka in 100 seconds.en.srt"
 
   @M2 @OUT-02 @OUT-R5
   Scenario: Bilingual ASS puts both languages in each cue
-    Given the "translated" transcript of "yt:abc123" in "zh-Hant-TW" is:
+    Given the "translated" transcript of "yt:abc123xxxxx" in "zh-Hant-TW" is:
       | # | start        | end          | text                 |
       | 1 | 00:00:01.000 | 00:00:03.500 | 我們在這裡用 Kafka。 |
       | 2 | 00:00:04.000 | 00:00:06.000 | 它是一個日誌。       |
-    When the owner sends "GET /api/items/yt:abc123/subtitles?format=ass&lang=zh-Hant-TW&style=default"
+    When the owner sends "GET /api/items/yt:abc123xxxxx/subtitles?format=ass&lang=zh-Hant-TW&style=default"
     Then the response status is 200
     And the response header "Content-Type" contains "text/x-ssa"
 
   @M2 @OUT-02 @OUT-R5
   Scenario: Same-language content is never rendered as bilingual
-    Given a YouTube video "yt:zh001" titled "简中影片"
-    And the "translated" transcript of "yt:zh001" in "zh-Hant-TW" is:
+    Given a YouTube video "yt:zh001xxxxxx" titled "简中影片"
+    And the "translated" transcript of "yt:zh001xxxxxx" in "zh-Hant-TW" is:
       | # | start        | end          | text       |
       | 1 | 00:00:01.000 | 00:00:03.000 | 這是一部影片 |
-    And the "corrected" transcript of "yt:zh001" in "zh-Hans" is:
+    And the "corrected" transcript of "yt:zh001xxxxxx" in "zh-Hans" is:
       | # | start        | end          | text       |
       | 1 | 00:00:01.000 | 00:00:03.000 | 这是一部视频 |
-    When the owner sends "GET /api/items/yt:zh001/subtitles?format=bilingual-srt&lang=zh-Hant-TW"
+    When the owner sends "GET /api/items/yt:zh001xxxxxx/subtitles?format=bilingual-srt&lang=zh-Hant-TW"
     Then the response status is 200
     And the response contains:
       """
@@ -123,10 +123,10 @@ Feature: Subtitle output and import
 
   @M2 @OUT-03 @OUT-R9
   Scenario: Preview a style on a real frame
-    Given the item "yt:abc123" has been processed up to "transcript"
+    Given the item "yt:abc123xxxxx" has been processed up to "transcript"
     When the owner sends "POST /api/ass-styles/preview" with:
       """
-      { "style": "default", "item": "yt:abc123", "at": "00:00:02" }
+      { "style": "default", "item": "yt:abc123xxxxx", "at": "00:00:02" }
       """
     Then the response status is 200
     And the response header "Content-Type" contains "image/png"
@@ -151,9 +151,9 @@ Feature: Subtitle output and import
       outputs:
         - { target: sidecar, formats: [srt], lang: [en] }
       """
-    When the owner ingests "yt:abc123" with the profile "media-server"
+    When the owner ingests "yt:abc123xxxxx" with the profile "media-server"
     And the worker runs until idle
-    Then the stage "publish" of "yt:abc123" is "skipped"
+    Then the stage "publish" of "yt:abc123xxxxx" is "skipped"
 
   @M2 @OUT-05 @OUT-R11 @OUT-R12
   Scenario: A file edited by hand is saved alongside instead of overwritten
@@ -201,19 +201,19 @@ Feature: Subtitle output and import
       00:00:01,000 --> 00:00:03,500
       We use Apache Kafka for this.
       """
-    When the owner sends "POST /api/items/yt:abc123/subtitles/import" with:
+    When the owner sends "POST /api/items/yt:abc123xxxxx/subtitles/import" with:
       """
       { "path": "/tmp/fixed.srt", "lang": "en" }
       """
     Then the response status is 201
-    And the "edited" artifact of "yt:abc123" has the provenance:
+    And the "edited" artifact of "yt:abc123xxxxx" has the provenance:
       | field    | value |
       | executor | human |
-    And the stage "translate" of "yt:abc123" is "pending"
+    And the stage "translate" of "yt:abc123xxxxx" is "pending"
 
   @M2 @OUT-06 @OUT-R14
   Scenario: Existing translations are flagged after an import
-    Given the "translated" transcript of "yt:abc123" in "zh-Hant-TW" is:
+    Given the "translated" transcript of "yt:abc123xxxxx" in "zh-Hant-TW" is:
       | # | start        | end          | text                 |
       | 1 | 00:00:01.000 | 00:00:03.500 | 我們在這裡用 Kafka。 |
     And the file "/tmp/fixed.srt" contains:
@@ -222,12 +222,12 @@ Feature: Subtitle output and import
       00:00:01,000 --> 00:00:03,500
       We use Apache Kafka for this.
       """
-    When the owner sends "POST /api/items/yt:abc123/subtitles/import" with:
+    When the owner sends "POST /api/items/yt:abc123xxxxx/subtitles/import" with:
       """
       { "path": "/tmp/fixed.srt", "lang": "en" }
       """
-    Then "yt:abc123" shows the message "字幕已更新，譯文可能過時"
-    And "yt:abc123" offers the actions "重新翻譯"
+    Then "yt:abc123xxxxx" shows the message "字幕已更新，譯文可能過時"
+    And "yt:abc123xxxxx" offers the actions "重新翻譯"
 
   @M2 @OUT-06 @OUT-R15
   Scenario: An import with broken timings points at the bad line
@@ -241,7 +241,7 @@ Feature: Subtitle output and import
       00:00:02,000 --> 00:00:01,000
       second
       """
-    When the owner sends "POST /api/items/yt:abc123/subtitles/import" with:
+    When the owner sends "POST /api/items/yt:abc123xxxxx/subtitles/import" with:
       """
       { "path": "/tmp/broken.srt", "lang": "en" }
       """

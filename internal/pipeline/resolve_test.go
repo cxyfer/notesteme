@@ -34,9 +34,9 @@ func TestResolveByURLOnly(t *testing.T) {
 		kind          source.Kind
 		subscribable  bool
 	}{
-		{"https://www.youtube.com/watch?v=abc123", "youtube", source.KindVideo, false},
-		{"https://youtu.be/abc123", "youtube", source.KindVideo, false},
-		{"https://www.youtube.com/shorts/abc123", "youtube", source.KindVideo, false},
+		{"https://www.youtube.com/watch?v=abc123xxxxx", "youtube", source.KindVideo, false},
+		{"https://youtu.be/abc123xxxxx", "youtube", source.KindVideo, false},
+		{"https://www.youtube.com/shorts/abc123xxxxx", "youtube", source.KindVideo, false},
 		{"https://www.youtube.com/playlist?list=PL123", "youtube", source.KindPlaylist, false},
 		{"https://www.youtube.com/@somechannel", "youtube", source.KindChannel, true},
 		{"https://www.bilibili.com/video/BV1xx411c7mD?p=2", "bilibili", source.KindVideo, false},
@@ -104,7 +104,7 @@ func TestResolveFetchesOtherURLs(t *testing.T) {
 	// 沒有 HTTP client、不是 http(s)、或是 YouTube／Bilibili 的其他頁面：不抓取，直接無法辨識。
 	hits = nil
 	r.p.http = feedClient(200, rssBody, &hits)
-	for _, u := range []string{"ftp://example.com/feed", "not a url", "https://www.youtube.com/feed/trending", "https://www.bilibili.com/anime"} {
+	for _, u := range []string{"ftp://example.com/feed", "not a url", "https://www.youtube.com/feed/trending", "https://www.bilibili.com/anime", "https://www.youtube.com/watch?v=abc123xxxx"} {
 		if _, err := r.p.Resolve(ctx, u); !errors.Is(err, ErrUnrecognizedURL) {
 			t.Errorf("%s：%v", u, err)
 		}

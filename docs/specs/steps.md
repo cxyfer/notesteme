@@ -59,7 +59,7 @@
 
 其他代入規則：
 
-- 請求路徑中的代號（例如 `GET /api/items/yt:abc123`）會換成實際的影音 ID；`channel-of:<代號>` 換成該影音所屬頻道的 ID。影音在垃圾桶中，或已永久刪除時，代號仍然換成原本的 ID；永久刪除後再新增，換成新的 ID。
+- 請求路徑中的代號（例如 `GET /api/items/yt:abc123xxxxx`）會換成實際的影音 ID；`channel-of:<代號>` 換成該影音所屬頻道的 ID。影音在垃圾桶中，或已永久刪除時，代號仍然換成原本的 ID；永久刪除後再新增，換成新的 ID。
 - CLI 指令與請求中的 `{token:<名稱>}` 會換成該 token 的實際內容。
 - 預期結果的 JSON 中，值為 `"*"` 代表「欄位存在即可，不比對內容」。
 - 物件只比對預期中出現的欄位。陣列依序比對：預期的第 n 個元素對應實際的第 n 個元素，實際陣列可以比預期長；要確認數量時，另外用計數的步驟。
@@ -85,6 +85,8 @@
 - 單次覆寫的 YAML 可以包含 `until: <stage>`，等同 API 的 `until` 欄位。
 - 測試環境的預設值（ADR-0015）：`NOTESTEME_PASSWORD`、`NOTESTEME_MASTER_KEY` 都有測試用的值，`PATH` 只含假的外部工具。場景要驗證缺少它們的情況時，用 `Given the environment variable {string} is not set` 移除。
 - `Given` 步驟只累積設定。server 還沒啟動時，第一個送出請求的步驟以當時的設定啟動它；`Given the owner is signed in` 也在第一次送出請求時才建立 session。
+- 場景明確讓 server 停下之後（`When the server shuts down gracefully`），讀取狀態的 `Then` 步驟不會隱含啟動 server，而是唯讀查詢資料庫；否則新 server 啟動時的租約回收（PIPE-R11）會蓋掉要驗證的結果。下一個送出請求的步驟仍然會啟動 server。
+- 「任務正在執行」同時要求資料庫中的租約有效，且對應的外部工具程序仍然存活。
 - 場景中的 `/data`、`/config` 等路徑，會換成這個場景專用的暫存目錄。
 - `Given {string} has {word} captions in {string}` 沒有對應的 fixture 時，產生 120 句的字幕軌。
 

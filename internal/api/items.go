@@ -26,7 +26,7 @@ const (
 // Item 是影音（ING、LIB 規格的欄位）。
 type Item struct {
 	ID           string         `json:"id"`
-	Ref          string         `json:"ref" doc:"影音的短代號，例如 yt:abc123"`
+	Ref          string         `json:"ref" doc:"影音的短代號，例如 yt:abc123xxxxx"`
 	Platform     string         `json:"platform"`
 	ExternalID   string         `json:"external_id"`
 	Part         int            `json:"part,omitempty" doc:"Bilibili 的分P，其他平台沒有"`
@@ -57,6 +57,7 @@ type Stage struct {
 	ArtifactID       string     `json:"artifact_id,omitempty"`
 	StartedAt        *time.Time `json:"started_at"`
 	FinishedAt       *time.Time `json:"finished_at"`
+	Attempts         int        `json:"attempts" doc:"最近一個任務已經嘗試的次數；重啟時放回的租約不計入（PIPE-R11）"`
 }
 
 // Source 是一個字幕來源在最近一次 Probe 中的結果（SRC-R17）。
@@ -93,7 +94,7 @@ func toItem(it store.Item) Item {
 	return out
 }
 
-func toStage(s store.StageRun) Stage {
+func toStage(s store.StageRun, attempts int) Stage {
 	actions := s.Actions
 	if actions == nil {
 		actions = []string{}
@@ -101,7 +102,7 @@ func toStage(s store.StageRun) Stage {
 	return Stage{
 		Stage: s.Stage, Status: s.Status, BlockReason: s.BlockReason, ErrorClass: s.ErrorClass, NotBefore: s.NotBefore,
 		Message: s.Message, Actions: actions, ConfigSnapshotID: s.ConfigSnapshotID, ArtifactID: s.ArtifactID,
-		StartedAt: s.StartedAt, FinishedAt: s.FinishedAt,
+		StartedAt: s.StartedAt, FinishedAt: s.FinishedAt, Attempts: attempts,
 	}
 }
 
@@ -200,12 +201,56 @@ func (rt *routes) getItem(ctx context.Context, in *itemInput) (*itemDetailOutput
 func toDetail(d pipeline.Detail) ItemDetail {
 	out := ItemDetail{Item: toItem(d.Item), Stages: []Stage{}, Sources: []Source{}}
 	for _, s := range d.Stages {
-		out.Stages = append(out.Stages, toStage(s))
+		out.Stages = append(out.Stages, toStage(s, d.Attempts[s.ID]))
 	}
 	for _, p := range d.Sources {
 		out.Sources = append(out.Sources, Source{Source: p.SourceID, Lang: p.Lang, Kind: p.Kind, State: p.State, Reason: p.Reason})
 	}
 	return out
+}
+
+// ---- 執行紀錄 ----
+
+// Run 是步驟的一次實際執行與當時生效的設定（PIPE-R13）。
+type Run struct {
+	ID          string          `json:"id"`
+	Stage       string          `json:"stage"`
+	Status      string          `json:"status"`
+	StartedAt   time.Time       `json:"started_at"`
+	FinishedAt  *time.Time      `json:"finished_at"`
+	CacheKey    string          `json:"cache_key"`
+	ImplVersion int             `json:"impl_version"`
+	Config      json.RawMessage `json:"config" doc:"該次執行的 config snapshot：四層覆寫合併後的生效設定"`
+}
+
+type runsOutput struct {
+	Body struct {
+		Runs []Run `json:"runs"`
+	}
+}
+
+// listRuns 回傳影音實際執行過的步驟，由新到舊。
+func (rt *routes) listRuns(ctx context.Context, in *itemInput) (*runsOutput, error) {
+	if rt.d.Pipeline == nil {
+		return nil, newError(http.StatusNotFound, CodeNotFound, "找不到這部影音。")
+	}
+	runs, err := rt.d.Pipeline.Runs(ctx, in.ID)
+	if err != nil {
+		return nil, rt.mapErr(ctx, err)
+	}
+	out := &runsOutput{}
+	out.Body.Runs = make([]Run, 0, len(runs))
+	for _, r := range runs {
+		cfg := json.RawMessage(r.ConfigJSON)
+		if !json.Valid(cfg) {
+			cfg = json.RawMessage("{}")
+		}
+		out.Body.Runs = append(out.Body.Runs, Run{
+			ID: r.ID, Stage: r.Stage, Status: r.Status, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt,
+			CacheKey: r.CacheKey, ImplVersion: r.ImplVersion, Config: cfg,
+		})
+	}
+	return out, nil
 }
 
 // ---- 重跑 ----

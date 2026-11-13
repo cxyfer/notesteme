@@ -100,7 +100,7 @@ func fakeVTTTime(sec int) string {
 
 func TestParseVTT(t *testing.T) {
 	t.Run("faketool format", func(t *testing.T) {
-		cues, err := ParseVTT([]byte(generateVTT("abc123", "en", 3)))
+		cues, err := ParseVTT([]byte(generateVTT("abc123xxxxx", "en", 3)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -108,7 +108,7 @@ func TestParseVTT(t *testing.T) {
 			t.Fatalf("got %d cues", len(cues))
 		}
 		c := cues[2]
-		if c.Index != 3 || c.StartMS != 4000 || c.EndMS != 6000 || c.Text != "Sentence 3 of abc123 (en)." || c.Timing != TimingSource {
+		if c.Index != 3 || c.StartMS != 4000 || c.EndMS != 6000 || c.Text != "Sentence 3 of abc123xxxxx (en)." || c.Timing != TimingSource {
 			t.Fatalf("cue = %+v", c)
 		}
 	})

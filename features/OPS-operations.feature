@@ -6,8 +6,8 @@ Feature: Backup, health and external tools
   @OPS-01 @OPS-R1 @cli
   Scenario: Back up while the server is running
     Given the server is running
-    And a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
-    And the item "yt:abc123" has been ingested
+    And a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
+    And the item "yt:abc123xxxxx" has been ingested
     When the owner runs "notesteme backup --out /backups"
     Then the command exits with 0
     And the file "/backups/notesteme-backup-latest.tar.gz" exists
@@ -15,15 +15,15 @@ Feature: Backup, health and external tools
 
   @OPS-01 @OPS-R2 @cli
   Scenario: Restore brings the library back
-    Given a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
-    And the item "yt:abc123" has been ingested
+    Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
+    And the item "yt:abc123xxxxx" has been ingested
     And the owner runs "notesteme backup --out /backups"
-    And a YouTube video "yt:later01" titled "Added after the backup"
-    And the item "yt:later01" has been ingested
+    And a YouTube video "yt:later01xxxx" titled "Added after the backup"
+    And the item "yt:later01xxxx" has been ingested
     When the owner runs "notesteme restore /backups/notesteme-backup-latest.tar.gz"
     Then the command exits with 0
     And the library contains 1 item
-    And the library contains "yt:abc123"
+    And the library contains "yt:abc123xxxxx"
 
   @OPS-01 @OPS-R2 @cli
   Scenario: Restore refuses to run while the server is running

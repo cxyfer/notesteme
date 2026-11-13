@@ -21,77 +21,77 @@ Feature: Transcript sources and quality
 
   @SRC-01 @SRC-R1
   Scenario: Manual captions in the original language win over auto captions
-    Given a YouTube video "yt:abc123" with:
+    Given a YouTube video "yt:abc123xxxxx" with:
       | field    | value |
       | language | en    |
-    And "yt:abc123" has manual captions in "en"
-    And "yt:abc123" has auto captions in "en"
-    When the owner ingests "yt:abc123" with the overrides:
+    And "yt:abc123xxxxx" has manual captions in "en"
+    And "yt:abc123xxxxx" has auto captions in "en"
+    When the owner ingests "yt:abc123xxxxx" with the overrides:
       """
       until: transcript
       """
     And the worker runs until idle
-    Then the transcript of "yt:abc123" came from "youtube-manual"
+    Then the transcript of "yt:abc123xxxxx" came from "youtube-manual"
     And the source "supadata" was called 0 times
 
   @SRC-01 @SRC-R1
   Scenario: A lower entry in the priority list is used when the first ones are missing
-    Given a YouTube video "yt:zh001" with:
+    Given a YouTube video "yt:zh001xxxxxx" with:
       | field    | value |
       | language | ja    |
-    And "yt:zh001" has manual captions in "zh-Hans"
-    When the owner ingests "yt:zh001" with the overrides:
+    And "yt:zh001xxxxxx" has manual captions in "zh-Hans"
+    When the owner ingests "yt:zh001xxxxxx" with the overrides:
       """
       until: transcript
       """
     And the worker runs until idle
-    Then the transcript of "yt:zh001" came from "youtube-manual"
-    And the "source" transcript of "yt:zh001" in "zh-Hans" has 120 cues
+    Then the transcript of "yt:zh001xxxxxx" came from "youtube-manual"
+    And the "source" transcript of "yt:zh001xxxxxx" in "zh-Hans" has 120 cues
 
   @SRC-01 @SRC-R2
   Scenario: Platform machine translations are not used by default
-    Given a YouTube video "yt:abc123" with:
+    Given a YouTube video "yt:abc123xxxxx" with:
       | field    | value |
       | language | en    |
-    And "yt:abc123" has platform-translated captions in "zh-Hans"
-    And the source "supadata" returns "supadata-en.json" for "yt:abc123"
-    When the owner ingests "yt:abc123" with the overrides:
+    And "yt:abc123xxxxx" has platform-translated captions in "zh-Hans"
+    And the source "supadata" returns "supadata-en.json" for "yt:abc123xxxxx"
+    When the owner ingests "yt:abc123xxxxx" with the overrides:
       """
       until: transcript
       """
     And the worker runs until idle
-    Then the transcript of "yt:abc123" came from "supadata"
+    Then the transcript of "yt:abc123xxxxx" came from "supadata"
 
   @SRC-02 @SRC-R3
   Scenario: Fallback sources are tried in the configured order
-    Given a YouTube video "yt:nocap1" titled "No captions here"
-    And "yt:nocap1" has no caption tracks
-    And the source "supadata" has nothing for "yt:nocap1"
-    And the source "groq" returns "groq-en.json" for "yt:nocap1"
-    When the owner ingests "yt:nocap1" with the overrides:
+    Given a YouTube video "yt:nocap1xxxxx" titled "No captions here"
+    And "yt:nocap1xxxxx" has no caption tracks
+    And the source "supadata" has nothing for "yt:nocap1xxxxx"
+    And the source "groq" returns "groq-en.json" for "yt:nocap1xxxxx"
+    When the owner ingests "yt:nocap1xxxxx" with the overrides:
       """
       until: transcript
       """
     And the worker runs until idle
-    Then the transcript of "yt:nocap1" came from "groq"
+    Then the transcript of "yt:nocap1xxxxx" came from "groq"
     And the source "supadata" was called 1 time
 
   @SRC-03 @SRC-R4 @pending-m0
   Scenario Outline: Unusable results are rejected and the next source is used
-    Given a YouTube video "yt:bad001" with:
+    Given a YouTube video "yt:bad001xxxxx" with:
       | field    | value |
       | language | en    |
       | duration | 600   |
-    And "yt:bad001" has no caption tracks
-    And the source "supadata" returns "<fixture>" for "yt:bad001"
-    And the source "groq" returns "groq-en.json" for "yt:bad001"
-    When the owner ingests "yt:bad001" with the overrides:
+    And "yt:bad001xxxxx" has no caption tracks
+    And the source "supadata" returns "<fixture>" for "yt:bad001xxxxx"
+    And the source "groq" returns "groq-en.json" for "yt:bad001xxxxx"
+    When the owner ingests "yt:bad001xxxxx" with the overrides:
       """
       until: transcript
       """
     And the worker runs until idle
-    Then the source "supadata" was rejected for "yt:bad001" because "<reason>"
-    And the transcript of "yt:bad001" came from "groq"
+    Then the source "supadata" was rejected for "yt:bad001xxxxx" because "<reason>"
+    And the transcript of "yt:bad001xxxxx" came from "groq"
 
     Examples:
       | fixture                     | reason            |
@@ -102,49 +102,49 @@ Feature: Transcript sources and quality
 
   @SRC-02 @SRC-R5
   Scenario: Running out of sources fails with a fix action
-    Given a YouTube video "yt:nocap1" titled "No captions here"
-    And "yt:nocap1" has no caption tracks
-    And the source "supadata" has nothing for "yt:nocap1"
-    And the source "groq" has nothing for "yt:nocap1"
-    When the owner ingests "yt:nocap1" with the overrides:
+    Given a YouTube video "yt:nocap1xxxxx" titled "No captions here"
+    And "yt:nocap1xxxxx" has no caption tracks
+    And the source "supadata" has nothing for "yt:nocap1xxxxx"
+    And the source "groq" has nothing for "yt:nocap1xxxxx"
+    When the owner ingests "yt:nocap1xxxxx" with the overrides:
       """
       until: transcript
       """
     And the worker runs until idle
-    Then the stage "transcript" of "yt:nocap1" failed with the error class "permanent"
-    And "yt:nocap1" shows the message "找不到可用的字幕來源。"
-    And "yt:nocap1" offers the actions "設定語音轉錄服務"
+    Then the stage "transcript" of "yt:nocap1xxxxx" failed with the error class "permanent"
+    And "yt:nocap1xxxxx" shows the message "找不到可用的字幕來源。"
+    And "yt:nocap1xxxxx" offers the actions "設定語音轉錄服務"
 
   @SRC-04 @SRC-R6
   Scenario: Wait for YouTube auto captions instead of paying for ASR
-    Given a YouTube video "yt:fresh1" with:
+    Given a YouTube video "yt:fresh1xxxxx" with:
       | field        | value                |
       | language     | en                   |
       | published_at | 2026-11-12T09:30:00Z |
-    And the auto captions of "yt:fresh1" are not ready yet
-    And the source "groq" returns "groq-en.json" for "yt:fresh1"
-    When the owner ingests "yt:fresh1" with the overrides:
+    And the auto captions of "yt:fresh1xxxxx" are not ready yet
+    And the source "groq" returns "groq-en.json" for "yt:fresh1xxxxx"
+    When the owner ingests "yt:fresh1xxxxx" with the overrides:
       """
       language:
         fallback: [groq]
       until: transcript
       """
     And the worker runs until idle
-    Then the stage "transcript" of "yt:fresh1" waits until "2026-11-12T12:00:00Z"
-    And "yt:fresh1" shows the message "YouTube 還沒產生自動字幕，預計 2 小時後再檢查。"
-    And "yt:fresh1" offers the actions "現在改用語音轉錄"
+    Then the stage "transcript" of "yt:fresh1xxxxx" waits until "2026-11-12T12:00:00Z"
+    And "yt:fresh1xxxxx" shows the message "YouTube 還沒產生自動字幕，預計 2 小時後再檢查。"
+    And "yt:fresh1xxxxx" offers the actions "現在改用語音轉錄"
     And the source "groq" was called 0 times
-    And the task of "transcript" for "yt:fresh1" has 0 attempts
+    And the task of "transcript" for "yt:fresh1xxxxx" has 0 attempts
 
   @SRC-04 @SRC-R6
   Scenario: Stop waiting for auto captions after 24 hours
-    Given a YouTube video "yt:fresh1" with:
+    Given a YouTube video "yt:fresh1xxxxx" with:
       | field        | value                |
       | language     | en                   |
       | published_at | 2026-11-12T09:30:00Z |
-    And the auto captions of "yt:fresh1" are not ready yet
-    And the source "groq" returns "groq-en.json" for "yt:fresh1"
-    When the owner ingests "yt:fresh1" with the overrides:
+    And the auto captions of "yt:fresh1xxxxx" are not ready yet
+    And the source "groq" returns "groq-en.json" for "yt:fresh1xxxxx"
+    When the owner ingests "yt:fresh1xxxxx" with the overrides:
       """
       language:
         fallback: [groq]
@@ -153,16 +153,16 @@ Feature: Transcript sources and quality
     And the worker runs until idle
     And the clock advances by "25h"
     And the worker runs until idle
-    Then the transcript of "yt:fresh1" came from "groq"
+    Then the transcript of "yt:fresh1xxxxx" came from "groq"
 
   @SRC-04 @SRC-R7
   Scenario: A live stream waits for its replay
-    Given a YouTube video "yt:live01" with:
+    Given a YouTube video "yt:live01xxxxx" with:
       | field       | value   |
       | live_status | is_live |
-    When the owner ingests "yt:live01"
+    When the owner ingests "yt:live01xxxxx"
     And the worker runs until idle
-    Then the stage "metadata" of "yt:live01" is "waiting"
+    Then the stage "metadata" of "yt:live01xxxxx" is "waiting"
 
   @SRC-05 @SRC-R8
   Scenario: Bilibili AI captions without a cookie ask for one
@@ -180,13 +180,13 @@ Feature: Transcript sources and quality
 
   @SRC-05 @SRC-R9
   Scenario: A 403 from YouTube suggests updating yt-dlp first
-    Given a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
-    And yt-dlp fails for "yt:abc123" with "ERROR: unable to download video data: HTTP Error 403: Forbidden"
-    When the owner ingests "yt:abc123"
+    Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
+    And yt-dlp fails for "yt:abc123xxxxx" with "ERROR: unable to download video data: HTTP Error 403: Forbidden"
+    When the owner ingests "yt:abc123xxxxx"
     And the worker runs until idle
-    Then the stage "metadata" of "yt:abc123" is blocked with the reason "needs_action"
-    And "yt:abc123" shows the message "YouTube 拒絕了下載請求（403）。先更新 yt-dlp 再重試；如果仍然失敗，上傳 YouTube cookie。"
-    And "yt:abc123" offers the actions "更新 yt-dlp, 上傳 cookie"
+    Then the stage "metadata" of "yt:abc123xxxxx" is blocked with the reason "needs_action"
+    And "yt:abc123xxxxx" shows the message "YouTube 拒絕了下載請求（403）。先更新 yt-dlp 再重試；如果仍然失敗，上傳 YouTube cookie。"
+    And "yt:abc123xxxxx" offers the actions "更新 yt-dlp, 上傳 cookie"
 
   @SRC-05 @SRC-R10
   Scenario: A paid source without an API key asks for the key
@@ -196,17 +196,17 @@ Feature: Transcript sources and quality
         providers:
           groq: { type: openai-compatible, base_url: https://api.groq.com/openai/v1, model: whisper-large-v3-turbo }
       """
-    And a YouTube video "yt:nocap1" titled "No captions here"
-    And "yt:nocap1" has no caption tracks
-    When the owner ingests "yt:nocap1" with the overrides:
+    And a YouTube video "yt:nocap1xxxxx" titled "No captions here"
+    And "yt:nocap1xxxxx" has no caption tracks
+    When the owner ingests "yt:nocap1xxxxx" with the overrides:
       """
       language:
         fallback: [groq]
       until: transcript
       """
     And the worker runs until idle
-    Then the stage "transcript" of "yt:nocap1" is blocked with the reason "needs_action"
-    And "yt:nocap1" offers the actions "設定 API key"
+    Then the stage "transcript" of "yt:nocap1xxxxx" is blocked with the reason "needs_action"
+    And "yt:nocap1xxxxx" offers the actions "設定 API key"
 
   @SRC-08 @SRC-R11
   Scenario: Detect the original language when metadata does not have it
@@ -218,16 +218,16 @@ Feature: Transcript sources and quality
 
   @SRC-08 @SRC-R11
   Scenario: Code-switching speech is marked as mixed
-    Given a YouTube video "yt:mix001" titled "混合語言的分享"
-    And "yt:mix001" has auto captions in "zh"
-    And the source "youtube-auto" returns "auto-zh-en-mixed.json" for "yt:mix001"
-    When the owner ingests "yt:mix001" with the overrides:
+    Given a YouTube video "yt:mix001xxxxx" titled "混合語言的分享"
+    And "yt:mix001xxxxx" has auto captions in "zh"
+    And the source "youtube-auto" returns "auto-zh-en-mixed.json" for "yt:mix001xxxxx"
+    When the owner ingests "yt:mix001xxxxx" with the overrides:
       """
       until: normalize
       """
     And the worker runs until idle
-    Then the original language of "yt:mix001" is "zh"
-    And the original language of "yt:mix001" is marked as mixed
+    Then the original language of "yt:mix001xxxxx" is "zh"
+    And the original language of "yt:mix001xxxxx" is marked as mixed
 
   @SRC-06 @SRC-R12
   Scenario: Audio above the provider limit is split and stitched back seamlessly
@@ -295,34 +295,34 @@ Feature: Transcript sources and quality
 
   @SRC-07 @SRC-R16
   Scenario: The source transcript records where it came from
-    Given a YouTube video "yt:abc123" with:
+    Given a YouTube video "yt:abc123xxxxx" with:
       | field    | value |
       | language | en    |
-    And "yt:abc123" has auto captions in "en"
-    When the owner ingests "yt:abc123" with the overrides:
+    And "yt:abc123xxxxx" has auto captions in "en"
+    When the owner ingests "yt:abc123xxxxx" with the overrides:
       """
       until: transcript
       """
     And the worker runs until idle
-    Then the "source" artifact of "yt:abc123" has the provenance:
+    Then the "source" artifact of "yt:abc123xxxxx" has the provenance:
       | field                 | value        |
       | source                | youtube-auto |
       | timing                | word         |
       | tool_versions.yt-dlp  | 2026.11.01   |
-    And every cue of the "source" transcript of "yt:abc123" has the timing "source"
+    And every cue of the "source" transcript of "yt:abc123xxxxx" has the timing "source"
 
   @SRC-07 @SRC-R17
   Scenario: The item lists every source that was probed and why it was not used
-    Given a YouTube video "yt:nocap1" titled "No captions here"
-    And "yt:nocap1" has no caption tracks
-    And the source "supadata" returns "supadata-in-german.json" for "yt:nocap1"
-    And the source "groq" returns "groq-en.json" for "yt:nocap1"
-    When the owner ingests "yt:nocap1" with the overrides:
+    Given a YouTube video "yt:nocap1xxxxx" titled "No captions here"
+    And "yt:nocap1xxxxx" has no caption tracks
+    And the source "supadata" returns "supadata-in-german.json" for "yt:nocap1xxxxx"
+    And the source "groq" returns "groq-en.json" for "yt:nocap1xxxxx"
+    When the owner ingests "yt:nocap1xxxxx" with the overrides:
       """
       until: transcript
       """
     And the worker runs until idle
-    And the owner sends "GET /api/items/yt:nocap1"
+    And the owner sends "GET /api/items/yt:nocap1xxxxx"
     Then the response contains:
       """
       { "sources": [

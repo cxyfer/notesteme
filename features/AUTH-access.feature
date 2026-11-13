@@ -59,7 +59,7 @@ Feature: Sign-in and tokens
     And a token "cli" with scopes "ingest"
     When the client sends "POST /api/items" with the token "cli" and:
       """
-      { "url": "https://www.youtube.com/watch?v=abc123" }
+      { "url": "https://www.youtube.com/watch?v=abc123xxxxx" }
       """
     Then the response status is 201
 

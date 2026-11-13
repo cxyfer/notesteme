@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,7 +33,8 @@ type source struct {
 	returns  map[string]string // item key -> fixture 名稱
 	nothing  map[string]bool
 	cookie   string
-	maxBytes int64 // 0 代表沒有上限
+	apiKey   string // 非空時，請求必須帶有這把 API key
+	maxBytes int64  // 0 代表沒有上限
 	calls    int
 }
 
@@ -51,7 +53,7 @@ func (s *Script) src(id string) *source {
 }
 
 // ItemKey 把場景中的影音代號轉成假媒體標記與網址中使用的 item：
-// yt:abc123 -> abc123；bili:BV../p1 -> BV..；bili:BV../p2 -> BV../p2；其他代號維持原樣
+// yt:abc123xxxxx -> abc123xxxxx；bili:BV../p1 -> BV..；bili:BV../p2 -> BV../p2；其他代號維持原樣
 // （例如 local:meetup.mp4）。
 func ItemKey(ref string) string {
 	if id, ok := strings.CutPrefix(ref, "yt:"); ok {
@@ -91,6 +93,14 @@ func (s *Script) RequiresCookie(sourceID, cookie string) {
 	s.src(sourceID).cookie = cookie
 }
 
+// RequiresAPIKey 讓來源要求請求帶有這把 API key（x-api-key 標頭，Supadata 只接受這種），否則回 401。
+// 用來確認被測程式真的送出 key；key 本身不會被記錄。
+func (s *Script) RequiresAPIKey(sourceID, key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.src(sourceID).apiKey = key
+}
+
 // RequiredCookie 回傳來源要求的 cookie 名稱（沒有要求時為空字串）。
 func (s *Script) RequiredCookie(sourceID string) string {
 	s.mu.Lock()
@@ -105,6 +115,21 @@ func (s *Script) AcceptsUpTo(sourceID string, bytes int64) {
 	s.src(sourceID).maxBytes = bytes
 }
 
+// ReturnedFor 回傳腳本化為對 ref 回傳 fixture 的來源 ID（排序；`has nothing` 不算）。
+func (s *Script) ReturnedFor(ref string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	k := ItemKey(ref)
+	var out []string
+	for id, src := range s.sources {
+		if _, ok := src.returns[k]; ok {
+			out = append(out, id)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 // Calls 回傳來源收到的請求次數（包含被拒絕的請求）。
 func (s *Script) Calls(sourceID string) int {
 	s.mu.Lock()
@@ -117,8 +142,12 @@ func (s *Script) begin(sourceID string, w http.ResponseWriter, r *http.Request) 
 	s.mu.Lock()
 	src := s.src(sourceID)
 	src.calls++
-	cookie := src.cookie
+	cookie, apiKey := src.cookie, src.apiKey
 	s.mu.Unlock()
+	if apiKey != "" && r.Header.Get("x-api-key") != apiKey {
+		writeJSON(w, http.StatusUnauthorized, `{"error":"invalid_api_key"}`)
+		return false
+	}
 	if cookie != "" {
 		if _, err := r.Cookie(cookie); err != nil {
 			writeJSON(w, http.StatusUnauthorized, `{"error":"cookie_required","cookie":`+strconv.Quote(cookie)+`}`)

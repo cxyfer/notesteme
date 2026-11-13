@@ -67,19 +67,19 @@ Feature: Prompt library
       stages:
         correct: { executor: api, provider: anthropic, model: fixture-model, prompt: my-correct@1 }
       """
-    And a YouTube video "yt:talk01" titled "Kafka talk"
-    And the item "yt:talk01" has been processed up to "segment"
+    And a YouTube video "yt:talk01xxxxx" titled "Kafka talk"
+    And the item "yt:talk01xxxxx" has been processed up to "segment"
     And the LLM provider "anthropic" answers "correct" with "correct-echo"
     When the owner sends "POST /api/prompts/my-correct/versions" with:
       """
       { "body": "新的版本 {{glossary}}" }
       """
-    And the owner sends "POST /api/items/yt:talk01/rerun" with:
+    And the owner sends "POST /api/items/yt:talk01xxxxx/rerun" with:
       """
       { "from": "correct", "profile": "standard" }
       """
     And the worker runs until idle
-    Then the "corrected" artifact of "yt:talk01" has the provenance:
+    Then the "corrected" artifact of "yt:talk01xxxxx" has the provenance:
       | field          | value      |
       | prompt.id      | my-correct |
       | prompt.version | 1          |
@@ -95,30 +95,30 @@ Feature: Prompt library
       """
       新的版本 {{glossary}}
       """
-    And a YouTube video "yt:talk01" titled "Kafka talk"
-    And the item "yt:talk01" has been processed up to "segment"
+    And a YouTube video "yt:talk01xxxxx" titled "Kafka talk"
+    And the item "yt:talk01xxxxx" has been processed up to "segment"
     And the LLM provider "anthropic" answers "correct" with "correct-echo"
     When the owner sends "POST /api/prompts/my-correct/default" with:
       """
       { "version": 2 }
       """
-    And the owner sends "POST /api/items/yt:talk01/rerun" with:
+    And the owner sends "POST /api/items/yt:talk01xxxxx/rerun" with:
       """
       { "from": "correct", "profile": "standard" }
       """
     And the worker runs until idle
-    Then the "corrected" artifact of "yt:talk01" has the provenance:
+    Then the "corrected" artifact of "yt:talk01xxxxx" has the provenance:
       | field          | value |
       | prompt.version | 2     |
 
   @PRM-02 @PRM-R6
   Scenario: A playground run changes nothing
-    Given a YouTube video "yt:talk01" titled "Kafka talk"
-    And the item "yt:talk01" has been processed up to "correct"
+    Given a YouTube video "yt:talk01xxxxx" titled "Kafka talk"
+    And the item "yt:talk01xxxxx" has been processed up to "correct"
     And the LLM provider "anthropic" answers "correct" with "correct-echo"
     When the owner sends "POST /api/prompts/playground" with:
       """
-      { "prompt": "my-correct@1", "item": "yt:talk01", "from": "00:06:00", "to": "00:08:00",
+      { "prompt": "my-correct@1", "item": "yt:talk01xxxxx", "from": "00:06:00", "to": "00:08:00",
         "provider": "anthropic", "model": "fixture-model" }
       """
     Then the response status is 200
@@ -126,8 +126,8 @@ Feature: Prompt library
       """
       { "validation": { "passed": true }, "estimate_usd": "*" }
       """
-    And the "corrected" artifact of "yt:talk01" has 1 version
-    And the stage "correct" of "yt:talk01" is "done"
+    And the "corrected" artifact of "yt:talk01xxxxx" has 1 version
+    And the stage "correct" of "yt:talk01xxxxx" is "done"
 
   @PRM-02 @PRM-R7
   Scenario: Compare two versions on the same lines
@@ -135,12 +135,12 @@ Feature: Prompt library
       """
       新的版本 {{glossary}}
       """
-    And a YouTube video "yt:talk01" titled "Kafka talk"
-    And the item "yt:talk01" has been processed up to "segment"
+    And a YouTube video "yt:talk01xxxxx" titled "Kafka talk"
+    And the item "yt:talk01xxxxx" has been processed up to "segment"
     And the LLM provider "anthropic" answers "correct" with "correct-echo"
     When the owner sends "POST /api/prompts/my-correct/compare" with:
       """
-      { "a": 1, "b": 2, "item": "yt:talk01", "from": "00:00:00", "to": "00:01:00" }
+      { "a": 1, "b": 2, "item": "yt:talk01xxxxx", "from": "00:00:00", "to": "00:01:00" }
       """
     Then the response contains:
       """

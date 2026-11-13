@@ -167,7 +167,7 @@ func runYtDlp(e env, args []string) int {
 		fmt.Fprintln(e.stderr, "ERROR:", err)
 		return 1
 	}
-	waitGate(st.Gate)
+	waitGate(e.root, st.Gate)
 
 	id, part, platform, err := parseVideoURL(a.url)
 	if err != nil {
@@ -227,23 +227,73 @@ func logCall(e env, cookies string) {
 	_ = AppendCall(e.root, c)
 }
 
-// GateWaitingSuffix 是 waitGate 開始阻塞時建立的標記檔（<gate>.waiting）的後綴，
-// 讓測試不必靠睡眠就能知道呼叫已經進入 gate。
+// GateWaitingSuffix 是 waitGate 開始阻塞時建立的標記檔（<gate>.waiting.<pid>）的前綴：
+// 每個被擋住的程序各寫一個，讓測試不必靠睡眠就能知道有幾個呼叫已經進入 gate（見 GateWaiting）。
 const GateWaitingSuffix = ".waiting"
+
+// PartialDownload 是被 gate 擋住的假 yt-dlp 在場景資料目錄寫下的部分檔（相對於 <root>/data），
+// 模擬下載到一半的暫存檔：程序中斷後，重啟時清空 /data/tmp 才會把它清掉（PIPE-R11）。
+const PartialDownload = "tmp/partial-download.part"
 
 // gateTimeout 是 waitGate 的等待上限，避免測試卡死。
 const gateTimeout = 30 * time.Second
 
+// GateWaiting 回傳目前停在 gate 前的程序所寫的標記檔（路徑已排序）。
+func GateWaiting(gate string) ([]string, error) {
+	dir, prefix := filepath.Dir(gate), filepath.Base(gate)+GateWaitingSuffix+"."
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), prefix) {
+			out = append(out, filepath.Join(dir, e.Name()))
+		}
+	}
+	return out, nil
+}
+
+// GateAlive 回傳停在 gate 前且程序仍存活的數量。被 kill 的程序來不及移除標記檔，
+// 所以只數標記不夠：標記的 pid 已經結束（或是殭屍）的不算。
+func GateAlive(gate string) (int, error) {
+	marks, err := GateWaiting(gate)
+	if err != nil {
+		return 0, err
+	}
+	prefix := gate + GateWaitingSuffix + "."
+	n := 0
+	for _, m := range marks {
+		pid, err := strconv.Atoi(strings.TrimPrefix(m, prefix))
+		if err == nil && pidAlive(pid) {
+			n++
+		}
+	}
+	return n, nil
+}
+
 // waitGate 在 gate 檔存在時阻塞，直到檔案被刪除（上限 gateTimeout）。
-func waitGate(gate string) {
+// 阻塞期間在 <root>/data/tmp 留下部分檔，並寫自己的標記檔 <gate>.waiting.<pid>；
+// gate 解除後（或逾時）移除自己的標記檔。被 kill 時沒有機會清理，由 harness 的 OpenGate 清除。
+func waitGate(root, gate string) {
 	if gate == "" {
 		return
 	}
 	if _, err := os.Stat(gate); err != nil {
 		return
 	}
-	// 標記已進入 gate；寫入失敗不影響阻塞行為。
-	_ = os.WriteFile(gate+GateWaitingSuffix, nil, 0o644)
+	// 資料目錄存在才寫部分檔（單元測試的根目錄沒有 data/）；寫入失敗不影響阻塞行為。
+	data := filepath.Join(root, "data")
+	if fi, err := os.Stat(data); err == nil && fi.IsDir() {
+		part := filepath.Join(data, filepath.FromSlash(PartialDownload))
+		if os.MkdirAll(filepath.Dir(part), 0o700) == nil {
+			_ = os.WriteFile(part, []byte("partial"), 0o600)
+		}
+	}
+	// 部分檔寫好之後才寫標記：測試看到標記時，部分檔一定已經在了。
+	marker := fmt.Sprintf("%s%s.%d", gate, GateWaitingSuffix, os.Getpid())
+	_ = os.WriteFile(marker, nil, 0o644)
+	defer os.Remove(marker)
 	deadline := time.Now().Add(gateTimeout)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(gate); err != nil {

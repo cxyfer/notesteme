@@ -14,6 +14,7 @@ import (
 	"github.com/cxyfer/notesteme/features/internal/harness"
 	"github.com/cxyfer/notesteme/internal/app"
 	"github.com/cxyfer/notesteme/internal/auth"
+	"github.com/cxyfer/notesteme/internal/config"
 )
 
 // Scenario 持有一個場景的狀態；每個場景各自一份（ADR-0015）。
@@ -36,12 +37,22 @@ type Scenario struct {
 	owner         map[string]string
 	ownerLoggedIn bool
 
+	// stopped 表示場景明確讓 server 停下（graceful shutdown）而尚未重新啟動：
+	// 讀取狀態的步驟改由 harness 唯讀地直接查 SQLite，不隱含啟動新的 server（見 stageStatusOf）。
+	stopped bool
+
+	// step 是目前執行中的步驟序號（每個步驟開始時加一，見 installHooks）。
+	step int
 	// last 是最近一次請求的回應。
 	last *response
 
 	// givenSettings 是 `Given the global settings are:` 累積的全域設定（區段名稱對應內容）。
 	// Given 步驟只累積設定，第一個送出請求的步驟才套用（ADR-0015）。
 	givenSettings map[string]any
+	// givenQueue 是 Given 累積的佇列上限與暫停設定，同樣延到第一個送出請求的步驟才套用。
+	givenQueue queueConfig
+	// seeded 是已用 `the … transcript of … is:` 直接寫入字幕的影音代號（見 hasTranscriptSource）。
+	seeded map[string]bool
 }
 
 // response 是最近一次請求的回應。
@@ -51,6 +62,8 @@ type response struct {
 	body   []byte
 	// preRoute403 表示這個請求缺少完整憑證，預期的 403 應該在路由之前就回應（見 pendingIfNotImplemented）。
 	preRoute403 bool
+	// step 是送出這個請求的步驟序號（Scenario.step）。
+	step int
 }
 
 // reset 以新的 World 重設場景狀態。
@@ -100,14 +113,20 @@ func (s *Scenario) isServerAddr(addr string) bool {
 // close 停止 server 並釋放 client 資源（After hook 使用）。
 func (s *Scenario) close() error {
 	var err error
+	// 先正常關閉（測試中的寬限期是 0）：Drain 取消仍被 gate 擋住的任務並結束它們的子程序，
+	// 之後才解除 gate 並清掉被 kill 的程序留下的標記；順序反過來的話，解除 gate 的瞬間
+	// 程序可能已經往下執行並在清理之後才寫標記。
 	if s.server != nil {
 		shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if e := s.server.Shutdown(shutCtx); e != nil {
 			s.server.Kill()
-			err = fmt.Errorf("關閉 server：%w", e)
+			err = errors.Join(err, fmt.Errorf("關閉 server：%w", e))
 		}
 		cancel()
 		s.server = nil
+	}
+	if gateErr := s.World.OpenGate(); gateErr != nil {
+		err = errors.Join(err, fmt.Errorf("解除 gate：%w", gateErr))
 	}
 	if s.cancel != nil {
 		s.cancel()
@@ -121,8 +140,8 @@ func (s *Scenario) close() error {
 // checkLogs 確認 server 的 log 沒有出現環境變數中的密碼或 master key（NFR-SEC-3）。
 func (s *Scenario) checkLogs() error {
 	logs := s.World.Log.String()
-	secrets := map[string]bool{harness.TestPassword: true, harness.TestMasterKey: true}
-	for _, k := range []string{"NOTESTEME_PASSWORD", "NOTESTEME_MASTER_KEY"} {
+	secrets := map[string]bool{harness.TestPassword: true, harness.TestMasterKey: true, harness.TestSupadataKey: true}
+	for _, k := range []string{"NOTESTEME_PASSWORD", "NOTESTEME_MASTER_KEY", config.EnvSupadataAPIKey} {
 		if v := s.World.Env[k]; len(v) >= 4 {
 			secrets[v] = true
 		}
@@ -141,6 +160,7 @@ func (s *Scenario) checkLogs() error {
 // startServer 以場景目前的設定啟動 server。啟動失敗時錯誤記在 startErr 並回傳。
 func (s *Scenario) startServer() error {
 	s.started = true
+	s.stopped = false
 	srv, err := app.StartServer(s.ctx, s.World.AppEnv())
 	if err != nil {
 		s.server, s.startErr = nil, err
@@ -226,8 +246,15 @@ func (s *Scenario) send(spec string, o requestOpts) error {
 	if err != nil {
 		return err
 	}
+	resp.step = s.step
 	s.last = resp
 	return nil
+}
+
+// lastFromPreviousStep 回報 s.last 是不是緊接在前一個步驟送出的請求。
+// 用來判斷「步驟的結果不符是因為前一個動作還沒實作」：更早的請求與這個斷言無關。
+func (s *Scenario) lastFromPreviousStep() bool {
+	return s.last != nil && s.last.step == s.step-1
 }
 
 // ensureOwner 在第一次 owner 請求時登入並記下 cookie（Given the owner is signed in 只是這個意圖）。
@@ -337,5 +364,8 @@ func (s *Scenario) prepareOwner() error {
 	if err := s.ensureOwner(); err != nil {
 		return err
 	}
-	return s.flushSettings()
+	if err := s.flushSettings(); err != nil {
+		return err
+	}
+	return s.flushQueue()
 }

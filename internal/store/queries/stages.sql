@@ -19,7 +19,7 @@ SELECT * FROM stage_runs WHERE id = sqlc.arg(id);
 -- name: StageRunsByItem :many
 SELECT * FROM stage_runs WHERE item_id = sqlc.arg(item_id) ORDER BY created_at, rowid;
 
--- name: SetStageState :exec
+-- name: SetStageState :one
 -- Every descriptive column is written (unset means cleared); started_at only changes when given,
 -- finished_at is always overwritten.
 UPDATE stage_runs SET
@@ -31,7 +31,8 @@ UPDATE stage_runs SET
   not_before    = sqlc.narg(not_before),
   started_at    = COALESCE(sqlc.narg(started_at), started_at),
   finished_at   = sqlc.narg(finished_at)
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id)
+RETURNING item_id, stage, status;
 
 -- name: SetStageResult :exec
 UPDATE stage_runs SET
@@ -46,12 +47,23 @@ SELECT * FROM stage_runs
 WHERE item_id = sqlc.arg(item_id) AND stage = sqlc.arg(stage) AND cache_key = sqlc.arg(cache_key) AND status = 'done'
 ORDER BY created_at DESC, rowid DESC LIMIT 1;
 
--- name: MarkStageRunning :exec
+-- name: MarkStageRunning :one
 -- Claiming a task marks its stage as running and clears the previous message and finish time.
 UPDATE stage_runs SET status = 'running', block_reason = '', error_class = '', error_message = '',
   actions_json = '[]', not_before = NULL, started_at = CAST(sqlc.arg(started_at) AS INTEGER), finished_at = NULL
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id)
+RETURNING item_id, stage, status;
 
--- name: ResetRunningStage :exec
--- When a lease goes back to the queue, a stage still running returns to pending.
-UPDATE stage_runs SET status = 'pending' WHERE id = sqlc.arg(id) AND status = 'running';
+-- name: ResetRunningStage :one
+-- When a lease goes back to the queue, a stage still running returns to pending (no row when it was not running).
+-- started_at is cleared: a run that was only claimed never really executed, so it must not be listed as executed.
+UPDATE stage_runs SET status = 'pending', started_at = NULL WHERE id = sqlc.arg(id) AND status = 'running'
+RETURNING item_id, stage, status;
+
+-- name: ExecutedRunsByItem :many
+-- Runs that were actually started, newest first, with the effective config they used.
+SELECT sr.id, sr.stage, sr.status, sr.started_at, sr.finished_at, sr.cache_key, sr.impl_version, cs.config_json
+FROM stage_runs sr
+JOIN config_snapshots cs ON cs.id = sr.config_snapshot_id
+WHERE sr.item_id = sqlc.arg(item_id) AND sr.started_at IS NOT NULL
+ORDER BY sr.started_at DESC, sr.rowid DESC;

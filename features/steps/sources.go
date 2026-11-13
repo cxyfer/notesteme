@@ -2,6 +2,10 @@ package steps
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -9,6 +13,7 @@ import (
 	"github.com/cucumber/godog"
 
 	"github.com/cxyfer/notesteme/features/internal/faketool"
+	"github.com/cxyfer/notesteme/internal/source"
 )
 
 // registerSources 註冊「平台與來源的 fixture」的步驟，句型見 docs/specs/steps.md。
@@ -21,10 +26,10 @@ func registerSources(r *Registry, s *Scenario) {
 	r.Step(`{string} has {word} captions in {string}`, s.hasCaptions)
 	r.Step(`{string} has no caption tracks`, s.hasNoCaptions)
 	r.Step(`the auto captions of {string} are not ready yet`, func(string) error { return godog.ErrPending })
-	r.Step(`the source {string} returns {string} for {string}`, func(string, string, string) error { return godog.ErrPending })
-	r.Step(`the source {string} has nothing for {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the source {string} requires the cookie {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the source {string} accepts files up to {string}`, func(string, string) error { return godog.ErrPending })
+	r.Step(`the source {string} returns {string} for {string}`, s.sourceReturns)
+	r.Step(`the source {string} has nothing for {string}`, s.sourceHasNothing)
+	r.Step(`the source {string} requires the cookie {string}`, s.sourceRequiresCookie)
+	r.Step(`the source {string} accepts files up to {string}`, s.sourceAcceptsUpTo)
 	r.Step(`the audio of {string} is {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`yt-dlp fails for {string} with {string}`, func(string, string) error { return godog.ErrPending })
 }
@@ -185,4 +190,126 @@ func (s *Scenario) hasNoCaptions(ref string) error {
 		v.Tracks = nil
 		return nil
 	})
+}
+
+// platformCaptionKind 是平台字幕來源對應的假 yt-dlp 字幕軌種類。
+var platformCaptionKind = map[string]string{
+	"youtube-manual": faketool.KindManual,
+	"youtube-auto":   faketool.KindAuto,
+}
+
+// scriptableSource 確認場景能腳本化這個來源：產品還沒實作的來源（source.Implemented）
+// 讓場景停在這個 Given，標為 pending；場景預期的行為不可能出現，不是靠事後把失敗轉成 pending。
+// 平台字幕（youtube-*）由假 yt-dlp 提供，腳本化時寫進假 yt-dlp 的字幕軌狀態，不經過 fakesource。
+func scriptableSource(id string) error {
+	if !source.Implemented(id) {
+		return fmt.Errorf("來源 %q 還沒有實作：%w", id, godog.ErrPending)
+	}
+	return nil
+}
+
+// platformTrackLang 決定腳本化平台字幕時使用的語言：這個種類既有的字幕軌（只能有一條），
+// 沒有就用影片的語言；兩者都沒有時，場景沒有說明要用哪個語言，讓步驟失敗。
+func platformTrackLang(v *faketool.Video, kind string) (string, error) {
+	var langs []string
+	for _, t := range v.Tracks {
+		if t.Kind == kind {
+			langs = append(langs, t.Lang)
+		}
+	}
+	switch {
+	case len(langs) == 1:
+		return langs[0], nil
+	case len(langs) > 1:
+		return "", fmt.Errorf("影片有多條 %s 字幕軌（%v），無法判斷要腳本化哪一條", kind, langs)
+	case v.Language != "":
+		return v.Language, nil
+	}
+	return "", fmt.Errorf("影片沒有 %s 字幕軌，也沒有指定語言，無法決定腳本化字幕的語言（先用 `has … captions in …` 加入字幕軌）", kind)
+}
+
+// platformReturns 讓平台來源對影音回傳指定的 fixture：把 captions/ 內的檔案寫進假 yt-dlp 對應種類的字幕軌。
+func (s *Scenario) platformReturns(id, fixture, ref string) error {
+	kind := platformCaptionKind[id]
+	if _, err := os.Stat(filepath.Join(s.World.FixturesDir, "captions", filepath.Clean("/"+fixture))); err != nil {
+		return fmt.Errorf("字幕 fixture %q 不存在（features/fixtures/captions/）：%w", fixture, err)
+	}
+	return s.editVideo(ref, func(v *faketool.Video) error {
+		lang, err := platformTrackLang(v, kind)
+		if err != nil {
+			return err
+		}
+		for i := range v.Tracks {
+			if v.Tracks[i].Kind == kind && v.Tracks[i].Lang == lang {
+				v.Tracks[i].Fixture, v.Tracks[i].Cues = fixture, 0
+				return nil
+			}
+		}
+		v.Tracks = append(v.Tracks, faketool.Track{Kind: kind, Lang: lang, Fixture: fixture})
+		return nil
+	})
+}
+
+// platformNothing 讓平台來源對影音沒有結果：移除假 yt-dlp 中這個種類的字幕軌。
+func (s *Scenario) platformNothing(id, ref string) error {
+	kind := platformCaptionKind[id]
+	return s.editVideo(ref, func(v *faketool.Video) error {
+		v.Tracks = slices.DeleteFunc(v.Tracks, func(t faketool.Track) bool { return t.Kind == kind })
+		return nil
+	})
+}
+
+// sourceReturns 讓來源對影音回傳指定的 fixture（ASR、Supadata 是腳本化的 fake origin，見 fakesource；
+// 平台字幕寫進假 yt-dlp 的字幕軌）。
+func (s *Scenario) sourceReturns(id, fixture, ref string) error {
+	if err := scriptableSource(id); err != nil {
+		return err
+	}
+	if _, platform := platformCaptionKind[id]; platform {
+		return s.platformReturns(id, fixture, ref)
+	}
+	s.World.Sources.Returns(id, ref, fixture)
+	return nil
+}
+
+// sourceHasNothing 讓來源對影音沒有結果。
+func (s *Scenario) sourceHasNothing(id, ref string) error {
+	if err := scriptableSource(id); err != nil {
+		return err
+	}
+	if _, platform := platformCaptionKind[id]; platform {
+		return s.platformNothing(id, ref)
+	}
+	s.World.Sources.Nothing(id, ref)
+	return nil
+}
+
+// sourceRequiresCookie 讓來源要求指定的 cookie 才能取得。平台字幕由 yt-dlp 的 cookie 檔處理，
+// 假 yt-dlp 還不能腳本化它：失敗而不是 pending，場景要用就先補上假工具的行為。
+func (s *Scenario) sourceRequiresCookie(id, cookie string) error {
+	if err := scriptableSource(id); err != nil {
+		return err
+	}
+	if _, platform := platformCaptionKind[id]; platform {
+		return fmt.Errorf("假 yt-dlp 還不能腳本化平台字幕 %q 的 cookie 需求", id)
+	}
+	s.World.Sources.RequiresCookie(id, cookie)
+	return nil
+}
+
+var sizePattern = regexp.MustCompile(`^(\d+)\s*(KB|MB|GB)$`)
+
+// sourceAcceptsUpTo 設定來源的單檔大小上限，例如 "25MB"。
+func (s *Scenario) sourceAcceptsUpTo(id, size string) error {
+	if err := scriptableSource(id); err != nil {
+		return err
+	}
+	m := sizePattern.FindStringSubmatch(size)
+	if m == nil {
+		return fmt.Errorf("大小 %q 應是數字加 KB、MB 或 GB", size)
+	}
+	n, _ := strconv.ParseInt(m[1], 10, 64)
+	unit := map[string]int64{"KB": 1 << 10, "MB": 1 << 20, "GB": 1 << 30}[m[2]]
+	s.World.Sources.AcceptsUpTo(id, n*unit)
+	return nil
 }

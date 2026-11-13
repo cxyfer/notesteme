@@ -9,6 +9,38 @@ import (
 	"context"
 )
 
+const cancelItemTasks = `-- name: CancelItemTasks :many
+UPDATE tasks SET state = 'cancelled', lease_token = NULL, lease_owner = NULL, lease_until = NULL
+WHERE state IN ('pending', 'leased')
+  AND stage_run_id IN (SELECT id FROM stage_runs WHERE item_id = ?1)
+RETURNING id
+`
+
+// Cancel every unfinished (pending or leased) task of an item and drop its lease, so a late write-back
+// from the former holder matches no row. Returns the ids so the worker can stop what is running.
+func (q *Queries) CancelItemTasks(ctx context.Context, itemID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, cancelItemTasks, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const cancelPendingTasks = `-- name: CancelPendingTasks :execrows
 UPDATE tasks SET state = 'failed' WHERE stage_run_id = ?1 AND state = 'pending'
 `
@@ -109,13 +141,23 @@ func (q *Queries) ClaimTasks(ctx context.Context, arg ClaimTasksParams) ([]Task,
 	return items, nil
 }
 
-const completeTask = `-- name: CompleteTask :exec
-UPDATE tasks SET state = 'done', lease_token = NULL, lease_owner = NULL, lease_until = NULL WHERE id = ?1
+const completeTask = `-- name: CompleteTask :execrows
+UPDATE tasks SET state = 'done', lease_token = NULL, lease_owner = NULL, lease_until = NULL
+WHERE id = ?1 AND state = 'leased' AND lease_token = CAST(?2 AS TEXT)
 `
 
-func (q *Queries) CompleteTask(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, completeTask, id)
-	return err
+type CompleteTaskParams struct {
+	ID         string
+	LeaseToken string
+}
+
+// Only the holder of the current lease can write the result back: 0 rows means the lease was lost.
+func (q *Queries) CompleteTask(ctx context.Context, arg CompleteTaskParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, completeTask, arg.ID, arg.LeaseToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const countTasks = `-- name: CountTasks :one
@@ -129,13 +171,22 @@ func (q *Queries) CountTasks(ctx context.Context, state string) (int64, error) {
 	return count, err
 }
 
-const failTask = `-- name: FailTask :exec
-UPDATE tasks SET state = 'failed', lease_token = NULL, lease_owner = NULL, lease_until = NULL WHERE id = ?1
+const failTask = `-- name: FailTask :execrows
+UPDATE tasks SET state = 'failed', lease_token = NULL, lease_owner = NULL, lease_until = NULL
+WHERE id = ?1 AND state = 'leased' AND lease_token = CAST(?2 AS TEXT)
 `
 
-func (q *Queries) FailTask(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, failTask, id)
-	return err
+type FailTaskParams struct {
+	ID         string
+	LeaseToken string
+}
+
+func (q *Queries) FailTask(ctx context.Context, arg FailTaskParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, failTask, arg.ID, arg.LeaseToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const insertTask = `-- name: InsertTask :exec
@@ -177,15 +228,102 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 	return err
 }
 
+const listQueueTasks = `-- name: ListQueueTasks :many
+SELECT t.id AS id, t.kind AS kind, t.resource_class AS resource_class, t.state AS state, t.attempts AS attempts,
+       t.priority AS priority, t.not_before AS not_before, sr.item_id AS item_id,
+       i.platform AS platform, i.external_id AS external_id, i.part AS part,
+       CASE WHEN t.state = 'leased' THEN 0
+            WHEN t.not_before IS NOT NULL AND t.not_before > CAST(?1 AS INTEGER) THEN 2
+            ELSE 1 END AS bucket,
+       t.priority + (CAST(?1 AS INTEGER) - t.created_at) / CAST(?2 AS INTEGER) AS score
+FROM tasks AS t
+JOIN stage_runs AS sr ON sr.id = t.stage_run_id
+JOIN items AS i ON i.id = sr.item_id
+WHERE t.state IN ('leased', 'pending') AND t.executor = ?3
+ORDER BY bucket, score DESC, t.created_at, t.rowid
+`
+
+type ListQueueTasksParams struct {
+	Now      int64
+	AgingMs  int64
+	Executor string
+}
+
+type ListQueueTasksRow struct {
+	ID            string
+	Kind          string
+	ResourceClass string
+	State         string
+	Attempts      int64
+	Priority      int64
+	NotBefore     *int64
+	ItemID        string
+	Platform      string
+	ExternalID    string
+	Part          int64
+	Bucket        int64
+	Score         int64
+}
+
+// Unfinished tasks of one executor for the queue page: leased first, then pending in claim order.
+// Pending tasks that are not due yet (not_before in the future) come after the due ones, because
+// ClaimTasks skips them. Due pending tasks use the same score as ClaimTasks, so the first pending
+// row is the task the next claim takes. The score is computed in the select list because sqlc does
+// not rewrite parameters inside ORDER BY.
+func (q *Queries) ListQueueTasks(ctx context.Context, arg ListQueueTasksParams) ([]ListQueueTasksRow, error) {
+	rows, err := q.db.QueryContext(ctx, listQueueTasks, arg.Now, arg.AgingMs, arg.Executor)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListQueueTasksRow
+	for rows.Next() {
+		var i ListQueueTasksRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.ResourceClass,
+			&i.State,
+			&i.Attempts,
+			&i.Priority,
+			&i.NotBefore,
+			&i.ItemID,
+			&i.Platform,
+			&i.ExternalID,
+			&i.Part,
+			&i.Bucket,
+			&i.Score,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const nextTaskTime = `-- name: NextTaskTime :one
 SELECT CAST(COALESCE(not_before, 0) AS INTEGER) AS due_ms FROM tasks
 WHERE state = 'pending' AND executor = ?1
-ORDER BY COALESCE(not_before, 0) LIMIT 1
+  AND not_before IS NOT NULL AND not_before > CAST(?2 AS INTEGER)
+ORDER BY not_before LIMIT 1
 `
 
-// Earliest time a pending task can be claimed (NULL not_before counts as 0); no row when nothing is pending.
-func (q *Queries) NextTaskTime(ctx context.Context, executor string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, nextTaskTime, executor)
+type NextTaskTimeParams struct {
+	Executor string
+	AfterMs  int64
+}
+
+// Earliest not_before strictly after after_ms among pending tasks; no row when no pending task waits for a later time.
+// Tasks that are already due are left out on purpose: when they cannot be claimed (paused or full class),
+// they must not hide a later retry time. A wake-up covers the change that makes them claimable.
+func (q *Queries) NextTaskTime(ctx context.Context, arg NextTaskTimeParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, nextTaskTime, arg.Executor, arg.AfterMs)
 	var due_ms int64
 	err := row.Scan(&due_ms)
 	return due_ms, err
@@ -257,23 +395,32 @@ func (q *Queries) ReleaseOwnedLeases(ctx context.Context, owner string) ([]strin
 	return items, nil
 }
 
-const requeueTask = `-- name: RequeueTask :exec
+const requeueTask = `-- name: RequeueTask :execrows
 UPDATE tasks SET state = 'pending', lease_token = NULL, lease_owner = NULL, lease_until = NULL,
   not_before = ?1,
   attempts = CASE WHEN CAST(?2 AS INTEGER) <> 0 THEN attempts ELSE MAX(attempts - 1, 0) END
-WHERE id = ?3
+WHERE id = ?3 AND state = 'leased' AND lease_token = CAST(?4 AS TEXT)
 `
 
 type RequeueTaskParams struct {
 	NotBefore    *int64
 	CountAttempt int64
 	ID           string
+	LeaseToken   string
 }
 
 // count_attempt = 0 means this claim does not count towards attempts.
-func (q *Queries) RequeueTask(ctx context.Context, arg RequeueTaskParams) error {
-	_, err := q.db.ExecContext(ctx, requeueTask, arg.NotBefore, arg.CountAttempt, arg.ID)
-	return err
+func (q *Queries) RequeueTask(ctx context.Context, arg RequeueTaskParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, requeueTask,
+		arg.NotBefore,
+		arg.CountAttempt,
+		arg.ID,
+		arg.LeaseToken,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const setTaskLeaseToken = `-- name: SetTaskLeaseToken :exec

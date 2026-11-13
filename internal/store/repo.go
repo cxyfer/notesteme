@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/events"
+	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
 )
 
@@ -22,13 +24,50 @@ import (
 type Repo struct {
 	q     *sqlcdb.Queries
 	clock clock.Clock
+	s     *Store
+	// queued 只在交易中非 nil：步驟狀態的事件先記在這裡，commit 之後才發布；rollback 就丟掉。
+	queued *[]events.Event
 }
 
 // Read 回傳唯讀的 Repo。
-func (s *Store) Read() *Repo { return &Repo{q: s.rq, clock: s.clock} }
+func (s *Store) Read() *Repo { return &Repo{q: s.rq, clock: s.clock, s: s} }
 
-// Write 回傳寫入用的 Repo（單一陳述句，自動提交）。
-func (s *Store) Write() *Repo { return &Repo{q: s.wq, clock: s.clock} }
+// Write 回傳寫入用的 Repo（單一陳述句，自動提交；成功後立即發布事件）。
+func (s *Store) Write() *Repo { return &Repo{q: s.wq, clock: s.clock, s: s} }
+
+// SetEventSink 設定接收步驟狀態事件的函式（PIPE-R14）。必須在開始寫入之前呼叫；
+// 函式會在寫入端的 goroutine 中同步執行，所以必須不阻塞（events.Bus.Publish 符合）。
+func (s *Store) SetEventSink(fn func(events.Event)) { s.sink.Store(&fn) }
+
+// Clock 回傳 store 使用的（注入的）時鐘，讓 SSE 等元件共用同一個時間來源。
+func (s *Store) Clock() clock.Clock { return s.clock }
+
+func (s *Store) publish(ev events.Event) {
+	if fn := s.sink.Load(); fn != nil {
+		(*fn)(ev)
+	}
+}
+
+// emitStage 記下一次步驟狀態變更：交易中先排隊，單一陳述句則立即發布。
+// 事件只是通知，查不到影音（例如已被刪除）時略過，不影響寫入本身。
+func (r *Repo) emitStage(ctx context.Context, itemID, stage, status string) {
+	if r.s == nil || r.s.sink.Load() == nil {
+		return
+	}
+	it, err := r.ItemByID(ctx, itemID)
+	if err != nil {
+		return
+	}
+	ev := events.Event{
+		Type: events.TypeStageStatus, Item: source.Ref(it.Platform, it.ExternalID, it.Part),
+		ItemID: itemID, Stage: stage, Status: status,
+	}
+	if r.queued != nil {
+		*r.queued = append(*r.queued, ev)
+		return
+	}
+	r.s.publish(ev)
+}
 
 // Tx 在一個交易中執行 fn；fn 回傳錯誤、panic 或 ctx 取消時回復。
 // panic 時也必須回復並釋放唯一的寫入連線，否則之後的寫入會永遠卡住；回復後重新 panic。
@@ -43,13 +82,18 @@ func (s *Store) Tx(ctx context.Context, fn func(*Repo) error) (err error) {
 			_ = tx.Rollback() // 失敗與 panic 都走這裡；panic 會在 defer 結束後繼續往上拋
 		}
 	}()
-	if err := fn(&Repo{q: s.wq.WithTx(tx), clock: s.clock}); err != nil {
+	var queued []events.Event
+	if err := fn(&Repo{q: s.wq.WithTx(tx), clock: s.clock, s: s, queued: &queued}); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
 	committed = true
+	// commit 之後才發布，訂閱者讀到事件時資料一定已經落地。
+	for _, ev := range queued {
+		s.publish(ev)
+	}
 	return nil
 }
 

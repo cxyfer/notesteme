@@ -4,11 +4,11 @@ Feature: Library, item page and queue page
 
   Background:
     Given the owner is signed in
-    And a YouTube video "yt:pg100" titled "PostgreSQL in 100 Seconds"
-    And a YouTube video "yt:agile43" titled "我们都只是在假装着做Agile"
+    And a YouTube video "yt:pg100xxxxxx" titled "PostgreSQL in 100 Seconds"
+    And a YouTube video "yt:agile43xxxx" titled "我们都只是在假装着做Agile"
     And a Bilibili video "BV1xx411c7mD" with 1 part
-    And the item "yt:pg100" has been processed up to "normalize"
-    And the item "yt:agile43" has been ingested
+    And the item "yt:pg100xxxxxx" has been processed up to "normalize"
+    And the item "yt:agile43xxxx" has been ingested
     And the item "bili:BV1xx411c7mD/p1" has been ingested
 
   @M1 @LIB-01 @LIB-R1
@@ -24,7 +24,7 @@ Feature: Library, item page and queue page
     When the owner sends "GET /api/items?status=normalize:done"
     Then the response contains:
       """
-      { "items": [ { "ref": "yt:pg100" } ], "total": 1 }
+      { "items": [ { "ref": "yt:pg100xxxxxx" } ], "total": 1 }
       """
 
   @M1 @LIB-01 @LIB-R1
@@ -44,10 +44,10 @@ Feature: Library, item page and queue page
       """
 
     Examples:
-      | query      | ref        |
-      | postgresql | yt:pg100   |
-      | Agile      | yt:agile43 |
-      | 假装       | yt:agile43 |
+      | query      | ref            |
+      | postgresql | yt:pg100xxxxxx |
+      | Agile      | yt:agile43xxxx |
+      | 假装       | yt:agile43xxxx |
 
   @M1 @LIB-01 @LIB-R4
   Scenario: Pages are limited and use a cursor
@@ -59,14 +59,14 @@ Feature: Library, item page and queue page
 
   @M1 @LIB-03 @LIB-R7
   Scenario: Items with estimated timings can be filtered
-    Given the "normalized" transcript of "yt:agile43" is:
+    Given the "normalized" transcript of "yt:agile43xxxx" is:
       | # | start    | end      | text  | timing       |
       | 1 | 00:00:01 | 00:00:03 | 第一句 | source       |
       | 2 | 00:00:03 | 00:00:05 | 第二句 | interpolated |
     When the owner sends "GET /api/items?timing=interpolated"
     Then the response contains:
       """
-      { "items": [ { "ref": "yt:agile43" } ], "total": 1 }
+      { "items": [ { "ref": "yt:agile43xxxx" } ], "total": 1 }
       """
 
   @M1 @LIB-03 @LIB-R6
@@ -94,7 +94,7 @@ Feature: Library, item page and queue page
 
   @M1 @LIB-03 @LIB-R5 @LIB-R6 @ui @manual
   Scenario: Clicking a line seeks the player
-    Given the owner is on the item page of "yt:pg100"
+    Given the owner is on the item page of "yt:pg100xxxxxx"
     When the owner clicks the line at 00:01:05
     Then the YouTube player jumps to 00:01:05
     And switching between "原始" and "正規化" keeps the scroll position
@@ -114,7 +114,7 @@ Feature: Library, item page and queue page
 
   @M2 @LIB-06 @LIB-R12 @ui @manual
   Scenario: The diff view highlights what the LLM changed
-    Given "yt:agile43" has corrected subtitles
+    Given "yt:agile43xxxx" has corrected subtitles
     When the owner opens the "差異" mode
     Then each changed character is highlighted against the original
 
@@ -122,10 +122,10 @@ Feature: Library, item page and queue page
   Scenario: Rerun from a stage with another model keeps the old version
     Given the LLM provider "anthropic" answers "correct" with "correct-ok.json"
     And the LLM provider "openai" answers "correct" with "correct-ok-alt.json"
-    And the item "yt:pg100" has been processed up to "correct"
-    When the owner sends "POST /api/items/yt:pg100/rerun" with:
+    And the item "yt:pg100xxxxxx" has been processed up to "correct"
+    When the owner sends "POST /api/items/yt:pg100xxxxxx/rerun" with:
       """
       { "from": "correct", "overrides": { "stages": { "correct": { "provider": "openai", "model": "fixture-model" } } } }
       """
     And the worker runs until idle
-    Then the "corrected" artifact of "yt:pg100" has 2 versions
+    Then the "corrected" artifact of "yt:pg100xxxxxx" has 2 versions

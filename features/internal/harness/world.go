@@ -20,13 +20,19 @@ import (
 	"github.com/cxyfer/notesteme/features/internal/fakesource"
 	"github.com/cxyfer/notesteme/features/internal/faketool"
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/config"
 )
 
 // 測試用的預設 secret。這些值只用於測試；NFR-SEC-3 的掃描會在 log 與 calls.jsonl 中尋找它們。
 const (
 	TestPassword  = "nst-test-password-4f1b9c"
 	TestMasterKey = "nst-test-master-key-7d2e8a0c5b31f964a8e1d3c7"
+	// TestSupadataKey 是測試環境提供給 Supadata 的假 API key（fake origin 會檢查它）。
+	TestSupadataKey = "nst-test-supadata-key-3a9c61e0f2"
 )
+
+// SupadataHost 是 Supadata API 的主機名稱；fakenet 把它導到腳本化的 fake origin。
+const SupadataHost = "api.supadata.ai"
 
 // DefaultNow 是新場景的 fake clock 起始時間。
 var DefaultNow = time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
@@ -51,7 +57,7 @@ type World struct {
 	Tools faketool.State
 
 	// Refs 是代入用的對照表，之後由 steps 填入：
-	// 影音代號（例如 "yt:abc123"）對應實際的影音 ID，
+	// 影音代號（例如 "yt:abc123xxxxx"）對應實際的影音 ID，
 	// 以及 "token:<名稱>" 對應該 token 的實際內容。見 Subst。
 	Refs map[string]string
 
@@ -60,6 +66,9 @@ type World struct {
 
 	// Log 是 serve 的 log 輸出，見 AppEnv。
 	Log *LogBuffer
+
+	// ImplVersions 是步驟 impl_version 的覆寫（PIPE-R6），見 AppEnv。server 已啟動時也會寫入，重啟後覆寫仍然存在。
+	ImplVersions map[string]int
 
 	listenMu sync.Mutex
 	listens  []ListenRecord
@@ -82,8 +91,10 @@ func New() (*World, error) {
 			"NOTESTEME_DATA":       filepath.Join(root, "data"),
 			"NOTESTEME_PASSWORD":   TestPassword,
 			"NOTESTEME_MASTER_KEY": TestMasterKey,
-			"PATH":                 filepath.Join(root, "bin"),
-			"HOME":                 filepath.Join(root, "home"),
+			// 測試環境預設有 Supadata 的 API key（steps.md 第 4.1 節：fake provider 預設有 key）。
+			config.EnvSupadataAPIKey: TestSupadataKey,
+			"PATH":                   filepath.Join(root, "bin"),
+			"HOME":                   filepath.Join(root, "home"),
 		},
 		Clock:       clock.NewFake(DefaultNow),
 		Net:         fakenet.New(),
@@ -93,6 +104,9 @@ func New() (*World, error) {
 		FixturesDir: fx,
 		Log:         &LogBuffer{},
 	}
+	// 腳本化的 Supadata 掛在它的正式主機名稱上，被測程式照正常路徑連線（經 netguard 與 fakenet）。
+	w.Sources.RequiresAPIKey("supadata", TestSupadataKey)
+	w.Net.Handle(SupadataHost, w.Sources.SupadataHandler())
 	for _, d := range []string{w.DataDir(), w.InboxDir(), w.ConfigDir(), w.BinDir(), w.FakeDir(), w.HomeDir()} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			_ = w.Close()
@@ -152,6 +166,84 @@ func (w *World) Video(id string) *faketool.Video {
 		w.Tools.Videos[id] = v
 	}
 	return v
+}
+
+// GatePath 回傳假 yt-dlp 的 gate 檔路徑。
+func (w *World) GatePath() string { return filepath.Join(w.FakeDir(), "gate") }
+
+// ArmGate 啟用 gate：之後處理網址的假 yt-dlp 呼叫會阻塞（並留下標記檔與部分檔，見 faketool.State.Gate），
+// 直到 OpenGate。已經啟用時不動作，不會清掉正停在 gate 前的程序的標記。
+// 任務停在 running 的場景用它代替時序：被擋住的任務不會自己結束。
+func (w *World) ArmGate() error {
+	gate := w.GatePath()
+	if _, err := os.Stat(gate); err == nil {
+		return nil
+	}
+	if err := os.WriteFile(gate, nil, 0o600); err != nil {
+		return err
+	}
+	w.Tools.Gate = gate
+	return w.SyncTools()
+}
+
+// OpenGate 解除 gate，讓被擋住的程序繼續，並清掉被 kill 的程序來不及移除的標記檔。
+// gate 沒有啟用時不動作。場景結束或模擬重啟前呼叫，才不會讓程序卡住。
+func (w *World) OpenGate() error {
+	if w.Tools.Gate == "" {
+		return nil
+	}
+	if err := os.Remove(w.Tools.Gate); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	marks, err := faketool.GateWaiting(w.Tools.Gate)
+	if err != nil {
+		return err
+	}
+	for _, m := range marks {
+		if err := os.Remove(m); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+// GateWaiting 回傳目前停在 gate 前且仍存活的程序數。
+// 被 kill 的程序不會移除自己的標記檔，所以只數存活的：已結束的程序不能算成「還在執行」，
+// 也不會讓 WaitGateWaiting 的 before+n 偏掉。
+func (w *World) GateWaiting() (int, error) {
+	if w.Tools.Gate == "" {
+		return 0, nil
+	}
+	return faketool.GateAlive(w.Tools.Gate)
+}
+
+// WaitGateWaiting 等到至少 n 個存活的程序停在 gate 前。只以真實時間 limit 防止卡死；
+// 結果由標記檔與程序是否存活決定，不靠睡一段固定時間。
+func (w *World) WaitGateWaiting(n int, limit time.Duration) error {
+	return w.waitGate(limit, func(got int) bool { return got >= n }, fmt.Sprintf("至少 %d", n))
+}
+
+// WaitGateCount 等到恰好 n 個存活的程序停在 gate 前，用來確認工作確實被停止（或確實在執行）。
+// 程序結束可能有短暫延遲，所以輪詢；limit 只防止卡死。
+func (w *World) WaitGateCount(n int, limit time.Duration) error {
+	return w.waitGate(limit, func(got int) bool { return got == n }, fmt.Sprintf("恰好 %d", n))
+}
+
+func (w *World) waitGate(limit time.Duration, ok func(int) bool, want string) error {
+	deadline := time.Now().Add(limit)
+	for {
+		got, err := w.GateWaiting()
+		if err != nil {
+			return err
+		}
+		if ok(got) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("等待%s 個存活的程序停在 gate 前，%v 內變成 %d 個", want, limit, got)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 // ToolCalls 讀取假工具到目前為止的呼叫紀錄。

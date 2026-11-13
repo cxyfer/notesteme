@@ -55,7 +55,7 @@ func (p *Pipeline) SeedTranscript(ctx context.Context, req SeedRequest) error {
 	case subtitle.VariantNormalized:
 		stage = StageNormalize
 	}
-	prov, err := p.provenance(map[string]any{"stage": stage, "impl_version": implVersion(stage), "seeded": true}, nil)
+	prov, err := p.provenance(map[string]any{"stage": stage, "impl_version": p.implVersion(stage), "seeded": true}, nil)
 	if err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func (p *Pipeline) SeedTranscript(ctx context.Context, req SeedRequest) error {
 		if _, err := r.CancelPendingTasks(ctx, []string{run.ID}); err != nil {
 			return err
 		}
-		if err := r.SetStageResult(ctx, run.ID, store.StageResult{Executor: "local", ImplVersion: implVersion(stage), ArtifactID: a.ID}); err != nil {
+		if err := r.SetStageResult(ctx, run.ID, store.StageResult{Executor: "local", ImplVersion: p.implVersion(stage), ArtifactID: a.ID}); err != nil {
 			return err
 		}
 		return r.SetStageState(ctx, run.ID, store.StageState{Status: store.StatusDone})

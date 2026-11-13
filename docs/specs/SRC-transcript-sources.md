@@ -35,7 +35,7 @@
 | SRC-R6 | YouTube 自動字幕還沒生成時，`transcript` 為 `waiting`，2 小時後再檢查，不消耗重試次數。從發布時間算起超過 24 小時仍沒有，就改用下一個來源。訊息為「YouTube 還沒產生自動字幕，預計 2 小時後再檢查。」，動作為「現在改用語音轉錄」。 |
 | SRC-R7 | 直播中或首播尚未開始的影音，`metadata` 為 `waiting`，直到有 VOD。 |
 | SRC-R8 | 來源需要 cookie 但沒有可用的 cookie 時，步驟為 `blocked`（`needs_action`），訊息說明需要哪個平台的 cookie，動作為「上傳 cookie」與「改用語音轉錄」。 |
-| SRC-R9 | yt-dlp 回傳 403 時，步驟為 `blocked`（`needs_action`），訊息為「YouTube 拒絕了下載請求（403）。先更新 yt-dlp 再重試；如果仍然失敗，上傳 YouTube cookie。」，動作為「更新 yt-dlp」與「上傳 cookie」。 |
+| SRC-R9 | yt-dlp 回傳 403 時，步驟為 `blocked`（`needs_action`），訊息為「YouTube 拒絕了下載請求（403）。先更新 yt-dlp 再重試；如果仍然失敗，上傳 YouTube cookie。」，動作為「更新 yt-dlp」與「上傳 cookie」。yt-dlp 回報影片不存在（已刪除、私人、無法取得）時，步驟為 `failed`（`permanent`），不重試。 |
 | SRC-R10 | 需要 API key 的來源沒有設定 key 時，步驟為 `blocked`（`needs_action`），動作為「設定 API key」。 |
 | SRC-R11 | 原文語言依序採用：平台中繼資料、ASR 回報的語言、文字語言偵測。兩種語言都各占 20% 以上的字元時，標記為 `mixed`，主要語言取占比較高的一種。 |
 | SRC-R12 | ASR 前處理：轉成單聲道 16kHz 並壓縮。仍超過 provider 的單檔上限時，在靜音處切塊並保留重疊；合併時修正時間偏移、移除重疊區的重複內容，結果的時間必須單調遞增。 |
@@ -61,3 +61,4 @@
 
 - 品質檢查的門檻（SRC-R4）、幻覺過濾的門檻（SRC-R13），依 M0 樣本調整；相關場景標記 `@pending-m0`。
 - Groq 是否提供 word 級時間戳（M0）。沒有的話，Groq 的時間粒度改為 `segment`。
+- SRC-R10 與預設 `fallback: [supadata, groq]` 的關係：如果沒有 key 就 `blocked`，只想用其中一個來源的人，每部沒有平台字幕的影音都會被擋住。暫定：`fallback` 中沒有 key 的來源依序略過，記為 `not_configured`；全部都因為缺 key 或未設定而無法執行時，才 `blocked`（`needs_action`，動作「設定 API key」）。key 被拒（Supadata 的 401）或方案不支援（Supadata 的 402）一律 `blocked`。Supadata 的 403 代表內容私人或受限、206 代表沒有字幕，都視為這個來源沒有結果，繼續下一個來源（依 [Supadata 的錯誤碼說明](https://docs.supadata.ai/errors/list)）。現有場景只有 groq 一個來源，兩種解讀的結果相同（2026-11-13，PIPE 切片實作 Supadata 時發現）。

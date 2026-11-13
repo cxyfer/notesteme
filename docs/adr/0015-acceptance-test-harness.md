@@ -2,7 +2,7 @@
 
 - 狀態：已採納
 - 日期：2026-11-12
-- 修訂：2026-11-13，排程確定自寫，不用 gocron v2
+- 修訂：2026-11-13，排程確定自寫，不用 gocron v2；server 停下後的狀態斷言不隱含啟動
 
 ## 背景
 
@@ -54,6 +54,8 @@
 - 虛擬路徑 `/data`、`/config` 等在設定檔內容、CLI 參數、請求 body、檔案路徑中改寫成場景根目錄下的路徑（只在路徑段的邊界比對）；比對輸出前做反向改寫。影音代號與 `{token:<名稱>}` 依 [steps.md 第 2 節](../specs/steps.md#2-影音的引用方式)代入。
 - 預設環境：`NOTESTEME_PASSWORD`、`NOTESTEME_MASTER_KEY` 有測試用的預設值，`PATH` 只含場景的 `bin/`。場景用 `Given the environment variable … is not set` 移除。
 - **需要 server 的步驟會隱含啟動 server**：`Given` 步驟只累積設定，第一個送出請求的步驟才以當時的設定啟動。`Given the owner is signed in` 也是在第一次送出請求時才建立 session。
+  - 例外：場景明確停下 server（`When the server shuts down gracefully`）之後，讀取狀態的 `Then` 步驟直接唯讀開啟 SQLite 查詢，不啟動新 server。新 server 啟動時會回收租約（PIPE-R11），會讓 PIPE-R12 的斷言恆真（2026-11-13，PIPE 切片審查以變異測試發現）。
+  - 「任務正在執行」除了 DB 中的租約，也檢查被 gate 擋住的假工具程序是否仍然存活（`kill(pid, 0)`），否則取消、正常關閉沒有結束子程序也驗證不到。
 - listener 一律綁 `127.0.0.1:0`，並記錄設定的位址與實際位址的對照。
 - 場景之間沒有共用狀態，可以用 `-godog.concurrency` 並行；先設為 1，穩定後再調高。
 

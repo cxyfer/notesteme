@@ -17,9 +17,9 @@ Feature: Ingest media
 
     Examples:
       | url                                                   | platform | kind     |
-      | https://www.youtube.com/watch?v=abc123                | youtube  | video    |
-      | https://youtu.be/abc123                               | youtube  | video    |
-      | https://www.youtube.com/shorts/abc123                 | youtube  | video    |
+      | https://www.youtube.com/watch?v=abc123xxxxx           | youtube  | video    |
+      | https://youtu.be/abc123xxxxx                          | youtube  | video    |
+      | https://www.youtube.com/shorts/abc123xxxxx            | youtube  | video    |
       | https://www.youtube.com/playlist?list=PL123           | youtube  | playlist |
       | https://www.youtube.com/@somechannel                  | youtube  | channel  |
       | https://www.bilibili.com/video/BV1xx411c7mD?p=2       | bilibili | video    |
@@ -48,21 +48,21 @@ Feature: Ingest media
 
   @ING-01 @ING-R12
   Scenario: Ingesting a YouTube video creates an item and starts the pipeline
-    Given a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
-    When the owner ingests "https://www.youtube.com/watch?v=abc123"
+    Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
+    When the owner ingests "https://www.youtube.com/watch?v=abc123xxxxx"
     Then the response status is 201
-    And the library contains "yt:abc123"
-    And the stage "metadata" of "yt:abc123" is "pending"
+    And the library contains "yt:abc123xxxxx"
+    And the stage "metadata" of "yt:abc123xxxxx" is "pending"
 
   @ING-06 @ING-R2
   Scenario: Ingesting an item that is already in the library does not duplicate it
-    Given a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
-    And the item "yt:abc123" has been ingested
-    When the owner ingests "https://youtu.be/abc123"
+    Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
+    And the item "yt:abc123xxxxx" has been ingested
+    When the owner ingests "https://youtu.be/abc123xxxxx"
     Then the response status is 200
     And the response contains:
       """
-      { "items": [ { "ref": "yt:abc123", "already_in_library": true } ] }
+      { "items": [ { "ref": "yt:abc123xxxxx", "already_in_library": true } ] }
       """
     And the library contains 1 item
 
@@ -155,18 +155,18 @@ Feature: Ingest media
 
   @ING-07 @ING-R7
   Scenario: Per-run overrides do not change the profile
-    Given a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
+    Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
     And the profile "standard" is:
       """
       language:
         targets: [zh-Hant-TW]
       """
-    When the owner ingests "yt:abc123" with the overrides:
+    When the owner ingests "yt:abc123xxxxx" with the overrides:
       """
       language:
         targets: [en]
       """
-    Then the effective config of "yt:abc123" for "transcript" contains:
+    Then the effective config of "yt:abc123xxxxx" for "transcript" contains:
       """
       language:
         targets: [en]
@@ -179,11 +179,11 @@ Feature: Ingest media
 
   @ING-08 @ING-R8
   Scenario: The estimate leaves out ASR when platform captions exist
-    Given a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
-    And "yt:abc123" has auto captions in "en"
+    Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
+    And "yt:abc123xxxxx" has auto captions in "en"
     When the owner sends "POST /api/estimate" with:
       """
-      { "url": "https://www.youtube.com/watch?v=abc123" }
+      { "url": "https://www.youtube.com/watch?v=abc123xxxxx" }
       """
     Then the response status is 200
     And the response contains:
@@ -194,11 +194,11 @@ Feature: Ingest media
 
   @ING-08 @ING-R9
   Scenario: Content that needs a cookie is flagged before submitting
-    Given a YouTube video "yt:members1" with:
+    Given a YouTube video "yt:members1xxx" with:
       | field        | value           |
       | title        | Members only    |
       | availability | subscriber_only |
-    When the owner resolves "https://www.youtube.com/watch?v=members1"
+    When the owner resolves "https://www.youtube.com/watch?v=members1xxx"
     Then the response contains:
       """
       { "requires_cookie": true, "settings_link": "/settings/accounts" }

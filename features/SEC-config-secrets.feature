@@ -83,14 +83,14 @@ Feature: Configuration and secrets
   Scenario: A cookie is handed to yt-dlp as a private temporary file
     Given the server is running
     And the owner is signed in
-    And a YouTube video "yt:members1" with:
+    And a YouTube video "yt:members1xxx" with:
       | field        | value           |
       | availability | subscriber_only |
     When the owner sends "POST /api/cookies" with:
       """
       { "platform": "youtube", "content": "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tsecret-sid" }
       """
-    And the owner ingests "yt:members1"
+    And the owner ingests "yt:members1xxx"
     And the worker starts one round
     Then the file "/data/tmp/cookies-youtube.txt" has the mode "0600"
     When the worker runs until idle
@@ -140,8 +140,8 @@ Feature: Configuration and secrets
 
   @M1 @SEC-04 @SEC-R9 @cli
   Scenario: Resetting secrets keeps the library
-    Given a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
-    And the item "yt:abc123" has been processed up to "transcript"
+    Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
+    And the item "yt:abc123xxxxx" has been processed up to "transcript"
     And the environment variable "NOTESTEME_MASTER_KEY" is "key-lost"
     When the owner runs "notesteme secrets reset --yes"
     Then the command exits with 0
@@ -150,7 +150,7 @@ Feature: Configuration and secrets
     And the owner sends "GET /api/items"
     Then the response contains:
       """
-      { "items": [ { "ref": "yt:abc123" } ] }
+      { "items": [ { "ref": "yt:abc123xxxxx" } ] }
       """
 
   @M2 @SEC-05 @SEC-R10 @cli

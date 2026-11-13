@@ -62,6 +62,10 @@ type Server struct {
 	worker   *worker.Worker
 	// workerDone 在 production 的 worker 迴圈結束時關閉；手動模式（測試）沒有迴圈，為 nil。
 	workerDone chan struct{}
+	// grace 是正常關閉時等待執行中任務的寬限期（PIPE-R12）。
+	grace time.Duration
+	// events 是 SSE 的事件匯流排與狀態（PIPE-R14），見 events.go。
+	events eventsState
 
 	// root 是 server 的根 context；背景工作（worker、之後的 scheduler）都掛在它底下，cancel 會取消它。
 	root   context.Context
@@ -119,7 +123,10 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 		return nil, err
 	}
 
-	s := &Server{cfg: cfg, log: log, netw: env.Net, lock: lock, done: make(chan struct{})}
+	s := &Server{cfg: cfg, log: log, netw: env.Net, lock: lock, done: make(chan struct{}), grace: shutdownGrace}
+	if env.Test != nil && env.Test.SkipShutdownGrace {
+		s.grace = 0
+	}
 	started := false
 	defer func() {
 		if !started {
@@ -165,7 +172,10 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 	}
 
 	// root 是 server 的根 context：worker 與它啟動的子程序都掛在它底下，關閉時一起取消。
-	s.root, s.cancel = context.WithCancel(ctx)
+	// 不繼承 ctx 的取消：runServe 收到 SIGINT／SIGTERM 時會先取消 ctx 再呼叫 Shutdown，
+	// 繼承的話任務在 Drain 之前就被中止，寬限期無效（PIPE-R12）。只由 Shutdown、Kill 取消。
+	s.root, s.cancel = context.WithCancel(context.WithoutCancel(ctx))
+	s.startEvents()
 	if err := s.startPipeline(ctx, env, cfg, log); err != nil {
 		return nil, err
 	}
@@ -183,12 +193,17 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 			Store: s.store, Auth: authSvc, Clock: env.Clock, Log: log, Version: version,
 			ReadyChecks: toolChecks(toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}),
 			Pipeline:    s.pipeline,
+			Queue:       s.queue,
+			Events:      s.eventsHandler(),
+			Tasks:       s.worker,
 		}),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		IdleTimeout:       idleTimeout,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
+	// http.Server.Shutdown 不會結束長連線的 SSE 串流，要主動通知它們結束。
+	s.http.RegisterOnShutdown(s.stopEvents)
 	go func() {
 		defer close(s.done)
 		if err := s.http.Serve(s.ln); !errors.Is(err, http.ErrServerClosed) {
@@ -210,16 +225,27 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	}
 	yt := &youtube.Client{Runner: runner, Tools: toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}}
 	s.queue = queue.New(s.store, env.Clock, store.NewID())
-	s.pipeline = pipeline.New(pipeline.Deps{
+	deps := pipeline.Deps{
 		Store: s.store, Clock: env.Clock, DataDir: cfg.Data, Log: log, YouTube: yt, Wake: s.queue.Wake, Version: version,
 		HTTP: outboundClient(env.Net),
-	})
+	}
+	if env.Test != nil {
+		deps.ImplVersions = env.Test.ImplVersions
+	}
+	if err := s.configureSources(ctx, &deps, env, cfg); err != nil {
+		return err
+	}
+	s.pipeline = pipeline.New(deps)
 	s.worker = worker.New(s.queue, s.pipeline, env.Clock, log)
 
 	if n, err := s.queue.RecoverStale(ctx); err != nil {
 		return fmt.Errorf("放回上次留下的租約失敗：%w", err)
 	} else if n > 0 {
 		log.InfoContext(ctx, "已放回上次執行留下的租約", "count", n)
+	}
+	// 上限與暫停存在資料庫，重啟後保留；worker 開始領取之前先讀入。
+	if err := s.queue.Control().Load(ctx); err != nil {
+		return err
 	}
 	if env.Test != nil && env.Test.ManualWorker {
 		return nil
@@ -286,22 +312,29 @@ func (s *Server) Err() error {
 	}
 }
 
-// Shutdown 正常關閉：停止接受新連線並等待處理中的請求（受 ctx 限制），
-// 之後關閉 DB（SQLite 會做 WAL checkpoint）並清空、釋放資料目錄的鎖。
+// Shutdown 正常關閉（PIPE-R12）：
+//  1. 先讓 worker 停止領取新任務；之後才關閉 HTTP，避免關閉期間又開始新任務。
+//  2. 停止接受新連線並等待處理中的請求；ctx 只限制這一段。
+//  3. 讓執行中的任務在寬限期內完成，之後取消剩下的並把租約放回佇列。這一段有獨立的期限
+//     （寬限期加放回租約的上限），不受 ctx 與 HTTP 關閉已經花掉的時間影響。
+//  4. 關閉 DB（SQLite 會做 WAL checkpoint）並清空、釋放資料目錄的鎖。
+//
 // 可重複呼叫，只有第一次生效。
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.closeOnce.Do(func() {
 		var errs []error
+		s.worker.StopClaiming()
 		if err := s.http.Shutdown(ctx); err != nil {
 			errs = append(errs, err)
 			_ = s.http.Close() // 等不到就強制中斷，避免資源殘留
 		}
 		<-s.done
-		// 先停止領取並等執行中的任務結束，再把還持有的租約放回佇列（PIPE-R12）。
-		s.stopWorker()
-		if _, err := s.queue.ReleaseOwned(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("釋放租約：%w", err))
+		drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.grace+worker.ReleaseTimeout)
+		defer cancel()
+		if err := s.worker.Drain(drainCtx, s.grace); err != nil {
+			errs = append(errs, err)
 		}
+		s.stopWorker()
 		errs = append(errs, s.store.Close(), s.lock.Release())
 		s.closeErr = errors.Join(errs...)
 	})

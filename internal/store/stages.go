@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 
 	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
 )
@@ -71,6 +72,7 @@ func (r *Repo) InsertStageRun(ctx context.Context, n NewStageRun) (StageRun, err
 	if err != nil {
 		return StageRun{}, err
 	}
+	r.emitStage(ctx, n.ItemID, n.Stage, n.Status)
 	return r.StageRun(ctx, id)
 }
 
@@ -100,6 +102,27 @@ func (r *Repo) StageRunsByItem(ctx context.Context, itemID string) ([]StageRun, 
 	return out, nil
 }
 
+// ExecutedRunsByItem 列出影音實際執行過（有開始時間）的步驟，依開始時間由新到舊，附上當時的生效設定（PIPE-R13）。
+// 同一毫秒開始的以建立順序的相反順序排列，所以後建立的步驟在前。
+func (r *Repo) ExecutedRunsByItem(ctx context.Context, itemID string) ([]ExecutedRun, error) {
+	rows, err := r.q.ExecutedRunsByItem(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ExecutedRun, 0, len(rows))
+	for _, row := range rows {
+		run := ExecutedRun{
+			ID: row.ID, Stage: row.Stage, Status: row.Status, FinishedAt: msToTime(row.FinishedAt),
+			CacheKey: row.CacheKey, ImplVersion: int(row.ImplVersion), ConfigJSON: row.ConfigJson,
+		}
+		if row.StartedAt != nil {
+			run.StartedAt = fromMs(*row.StartedAt)
+		}
+		out = append(out, run)
+	}
+	return out, nil
+}
+
 // SetStageState 寫入步驟的狀態與說明。進入 running 時記錄開始時間，進入 done／failed／skipped 時記錄結束時間。
 func (r *Repo) SetStageState(ctx context.Context, id string, st StageState) error {
 	actions, err := json.Marshal(nonNil(st.Actions))
@@ -114,7 +137,7 @@ func (r *Repo) SetStageState(ctx context.Context, id string, st StageState) erro
 	case StatusDone, StatusFailed, StatusSkipped:
 		finished = &now
 	}
-	return r.q.SetStageState(ctx, sqlcdb.SetStageStateParams{
+	row, err := r.q.SetStageState(ctx, sqlcdb.SetStageStateParams{
 		Status:       st.Status,
 		BlockReason:  st.BlockReason,
 		ErrorClass:   st.ErrorClass,
@@ -125,6 +148,14 @@ func (r *Repo) SetStageState(ctx context.Context, id string, st StageState) erro
 		FinishedAt:   finished,
 		ID:           id,
 	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil // 沒有這個步驟：沿用過去 :exec 的行為，不視為錯誤，也沒有狀態可以發布
+	}
+	if err != nil {
+		return err
+	}
+	r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
+	return nil
 }
 
 // SetStageResult 記錄步驟的快取鍵、版本與產出。

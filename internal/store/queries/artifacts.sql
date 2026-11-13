@@ -44,3 +44,27 @@ SELECT * FROM source_probes AS sp
 WHERE sp.item_id = sqlc.arg(item_id)
   AND sp.run_id = (SELECT p.run_id FROM source_probes AS p WHERE p.item_id = sqlc.arg(item_id) ORDER BY p.rowid DESC LIMIT 1)
 ORDER BY sp.rowid;
+
+-- name: ArtifactGroup :many
+-- Every version of an (item, kind, variant, lang) group, newest first (creation order breaks ties).
+SELECT * FROM artifacts
+WHERE item_id = sqlc.arg(item_id) AND kind = sqlc.arg(kind) AND variant = sqlc.arg(variant) AND lang = sqlc.arg(lang)
+ORDER BY created_at DESC, rowid DESC;
+
+-- name: ArtifactParentRefs :many
+-- Parent lists of every artifact of an item, so versions others were derived from are kept.
+SELECT id, parents_json FROM artifacts WHERE item_id = sqlc.arg(item_id);
+
+-- name: DetachStageRunsFromArtifact :exec
+-- A purged artifact must not be referenced by stage runs (foreign key); they stay as history without a result.
+UPDATE stage_runs SET artifact_id = NULL WHERE artifact_id = sqlc.arg(artifact_id);
+
+-- name: DeleteArtifact :exec
+DELETE FROM artifacts WHERE id = sqlc.arg(id);
+
+-- name: RepointDanglingSuperseded :exec
+-- After a purge, versions that were superseded by a deleted row are superseded by the current version instead.
+UPDATE artifacts SET superseded_by = CAST(sqlc.arg(current_id) AS TEXT)
+WHERE artifacts.item_id = sqlc.arg(item_id) AND artifacts.kind = sqlc.arg(kind) AND artifacts.variant = sqlc.arg(variant)
+  AND artifacts.lang = sqlc.arg(lang) AND artifacts.superseded_by IS NOT NULL
+  AND artifacts.superseded_by NOT IN (SELECT a.id FROM artifacts AS a);

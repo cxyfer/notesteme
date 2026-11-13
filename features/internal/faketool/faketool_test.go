@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -89,7 +90,7 @@ func sampleState(t *testing.T) State {
 	return State{
 		FixturesDir: fx,
 		Videos: map[string]*Video{
-			"abc123": {
+			"abc123xxxxx": {
 				Title: "PostgreSQL in 100 Seconds", Duration: 125, Language: "en",
 				Chapters: []Chapter{{Title: "Intro", Start: 0, End: 30}},
 				Tracks: []Track{
@@ -99,10 +100,10 @@ func sampleState(t *testing.T) State {
 				},
 			},
 			"BV1xx411c7mD": {Title: "分P", Duration: 60, Parts: 2, Tracks: []Track{{Kind: KindAuto, Lang: "zh-Hans"}}},
-			"late1":        {Title: "Late", Language: "en", AutoNotReady: true, Tracks: []Track{{Kind: KindAuto, Lang: "en"}}},
-			"broken": {Title: "Broken", Fail: &Failure{
+			"late1xxxxxx":  {Title: "Late", Language: "en", AutoNotReady: true, Tracks: []Track{{Kind: KindAuto, Lang: "en"}}},
+			"brokenxxxxx": {Title: "Broken", Fail: &Failure{
 				Stderr: "ERROR: unable to download video data: HTTP Error 403: Forbidden", ExitCode: 1, On: []string{OpInfo}}},
-			"failmedia": {Title: "FM", Duration: 5, Fail: &Failure{Stderr: "ERROR: media 500", ExitCode: 7, On: []string{OpMedia}}},
+			"failmediaxx": {Title: "FM", Duration: 5, Fail: &Failure{Stderr: "ERROR: media 500", ExitCode: 7, On: []string{OpMedia}}},
 		},
 	}
 }
@@ -129,7 +130,7 @@ func TestVersionViaSymlink(t *testing.T) {
 func TestInfoJSONViaSymlink(t *testing.T) {
 	s := newScenario(t, sampleState(t))
 	code, out, errs := s.exec("yt-dlp", "-J", "--no-playlist", "--use-extractors", "youtube,bilibili",
-		"--cookies", "cookies.txt", "https://www.youtube.com/watch?v=abc123")
+		"--cookies", "cookies.txt", "https://www.youtube.com/watch?v=abc123xxxxx")
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%q", code, errs)
 	}
@@ -144,7 +145,7 @@ func TestInfoJSONViaSymlink(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &info); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	if info.ID != "abc123" || info.Title != "PostgreSQL in 100 Seconds" || info.Duration != 125 ||
+	if info.ID != "abc123xxxxx" || info.Title != "PostgreSQL in 100 Seconds" || info.Duration != 125 ||
 		info.Language != "en" || info.Availability != "public" || info.LiveStatus != "not_live" {
 		t.Fatalf("info = %+v", info)
 	}
@@ -160,25 +161,25 @@ func TestSubtitlesViaSymlink(t *testing.T) {
 	s := newScenario(t, sampleState(t))
 	// 人工字幕來自 fixture。
 	code, out, errs := s.exec("yt-dlp", "--skip-download", "--write-subs", "--sub-langs", "en",
-		"--sub-format", "vtt", "-o", "subs/%(id)s.%(ext)s", "https://youtu.be/abc123")
+		"--sub-format", "vtt", "-o", "subs/%(id)s.%(ext)s", "https://youtu.be/abc123xxxxx")
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%q", code, errs)
 	}
-	if !strings.Contains(out, "subs/abc123.en.vtt") {
+	if !strings.Contains(out, "subs/abc123xxxxx.en.vtt") {
 		t.Fatalf("stdout = %q", out)
 	}
-	b, err := os.ReadFile(filepath.Join(s.work, "subs", "abc123.en.vtt"))
+	b, err := os.ReadFile(filepath.Join(s.work, "subs", "abc123xxxxx.en.vtt"))
 	if err != nil || !strings.Contains(string(b), "fixture line") {
 		t.Fatalf("content=%q err=%v", b, err)
 	}
 
 	// 自動字幕：依預設產生 120 句。
 	code, _, errs = s.exec("yt-dlp", "--skip-download", "--write-auto-subs", "--sub-langs", "en",
-		"-o", "%(id)s-auto.%(ext)s", "https://www.youtube.com/watch?v=abc123")
+		"-o", "%(id)s-auto.%(ext)s", "https://www.youtube.com/watch?v=abc123xxxxx")
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%q", code, errs)
 	}
-	b, err = os.ReadFile(filepath.Join(s.work, "abc123-auto.en.vtt"))
+	b, err = os.ReadFile(filepath.Join(s.work, "abc123xxxxx-auto.en.vtt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +190,7 @@ func TestSubtitlesViaSymlink(t *testing.T) {
 
 func TestUnknownArgumentExits2AndIsLogged(t *testing.T) {
 	s := newScenario(t, sampleState(t))
-	code, _, errs := s.exec("yt-dlp", "--frobnicate", "https://www.youtube.com/watch?v=abc123")
+	code, _, errs := s.exec("yt-dlp", "--frobnicate", "https://www.youtube.com/watch?v=abc123xxxxx")
 	if code != 2 || !strings.Contains(errs, "--frobnicate") {
 		t.Fatalf("code=%d stderr=%q", code, errs)
 	}
@@ -221,8 +222,8 @@ func TestCookiesModeLogged(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{
-		{"--cookies", ck, "-J", "https://www.youtube.com/watch?v=abc123"},
-		{"--cookies=missing.txt", "-J", "https://www.youtube.com/watch?v=abc123"},
+		{"--cookies", ck, "-J", "https://www.youtube.com/watch?v=abc123xxxxx"},
+		{"--cookies=missing.txt", "-J", "https://www.youtube.com/watch?v=abc123xxxxx"},
 	} {
 		if code, _, errs := s.exec("yt-dlp", args...); code != 0 {
 			t.Fatalf("code=%d stderr=%q", code, errs)
@@ -240,17 +241,17 @@ func TestCookiesModeLogged(t *testing.T) {
 func TestMediaAndFFprobeRoundTrip(t *testing.T) {
 	s := newScenario(t, sampleState(t))
 	code, _, errs := s.exec("yt-dlp", "-f", "bestaudio", "-o", "media/%(id)s.%(ext)s",
-		"--newline", "--no-progress", "--quiet", "https://www.youtube.com/watch?v=abc123")
+		"--newline", "--no-progress", "--quiet", "https://www.youtube.com/watch?v=abc123xxxxx")
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%q", code, errs)
 	}
-	p := filepath.Join(s.work, "media", "abc123.m4a")
+	p := filepath.Join(s.work, "media", "abc123xxxxx.m4a")
 	b, err := os.ReadFile(p)
-	if err != nil || string(b) != "NOTESTEME-FAKE-MEDIA item=abc123 duration=125\n" {
+	if err != nil || string(b) != "NOTESTEME-FAKE-MEDIA item=abc123xxxxx duration=125\n" {
 		t.Fatalf("media=%q err=%v", b, err)
 	}
 	item, dur, ok := ParseMediaMarker(b)
-	if !ok || item != "abc123" || dur != 125 {
+	if !ok || item != "abc123xxxxx" || dur != 125 {
 		t.Fatalf("marker = %q %d %v", item, dur, ok)
 	}
 
@@ -286,9 +287,13 @@ func TestGateBlocksUntilRemoved(t *testing.T) {
 	if err := WriteState(s.root, st); err != nil {
 		t.Fatal(err)
 	}
+	// 有資料目錄時，被擋住的程序要留下部分檔（PIPE-R11 驗證重啟會清空 /data/tmp）。
+	if err := os.MkdirAll(filepath.Join(s.root, "data"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	cmd := &exec.Cmd{
 		Path: filepath.Join(s.bin, "yt-dlp"),
-		Args: []string{"yt-dlp", "-J", "https://www.youtube.com/watch?v=abc123"},
+		Args: []string{"yt-dlp", "-J", "https://www.youtube.com/watch?v=abc123xxxxx"},
 		Dir:  s.work, Env: []string{"PATH=" + s.bin},
 	}
 	if err := cmd.Start(); err != nil {
@@ -297,10 +302,12 @@ func TestGateBlocksUntilRemoved(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	// 等子程序寫入「已進入 gate」的標記（不是睡一段固定時間）；子程序提早結束就是失敗。
-	waiting := gate + GateWaitingSuffix
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		if _, err := os.Stat(waiting); err == nil {
+		if m, _ := GateWaiting(gate); len(m) == 1 {
+			if want := fmt.Sprintf("%s%s.%d", gate, GateWaitingSuffix, cmd.Process.Pid); m[0] != want {
+				t.Fatalf("標記檔 = %s，預期 %s", m[0], want)
+			}
 			break
 		}
 		select {
@@ -314,11 +321,14 @@ func TestGateBlocksUntilRemoved(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	// 已進入 gate 且 gate 還在：程序必須仍在執行。
+	// 已進入 gate 且 gate 還在：程序必須仍在執行，部分檔已經寫好。
 	select {
 	case err := <-done:
 		t.Fatalf("gate 存在時不應結束: %v", err)
 	default:
+	}
+	if b, err := os.ReadFile(filepath.Join(s.root, "data", filepath.FromSlash(PartialDownload))); err != nil || len(b) == 0 {
+		t.Fatalf("被擋住時應有部分檔：%q, %v", b, err)
 	}
 	if err := os.Remove(gate); err != nil {
 		t.Fatal(err)
@@ -332,6 +342,10 @@ func TestGateBlocksUntilRemoved(t *testing.T) {
 		_ = cmd.Process.Kill()
 		t.Fatal("gate 移除後應結束")
 	}
+	// 乾淨結束：自己的標記檔已移除。
+	if m, _ := GateWaiting(gate); len(m) != 0 {
+		t.Fatalf("結束後不應留下標記檔：%v", m)
+	}
 }
 
 func TestInProcessBranches(t *testing.T) {
@@ -339,21 +353,22 @@ func TestInProcessBranches(t *testing.T) {
 	yt := "https://www.youtube.com/watch?v="
 
 	t.Run("failure applies only to configured op", func(t *testing.T) {
-		code, _, errs := s.inproc("yt-dlp", "-J", yt+"broken")
+		code, _, errs := s.inproc("yt-dlp", "-J", yt+"brokenxxxxx")
 		if code != 1 || !strings.Contains(errs, "HTTP Error 403") {
 			t.Fatalf("code=%d stderr=%q", code, errs)
 		}
-		code, _, errs = s.inproc("yt-dlp", "-f", "best", "-o", "%(id)s.%(ext)s", yt+"failmedia")
+		code, _, errs = s.inproc("yt-dlp", "-f", "best", "-o", "%(id)s.%(ext)s", yt+"failmediaxx")
 		if code != 7 || !strings.Contains(errs, "media 500") {
 			t.Fatalf("code=%d stderr=%q", code, errs)
 		}
-		if code, _, _ := s.inproc("yt-dlp", "-J", yt+"failmedia"); code != 0 {
+		if code, _, _ := s.inproc("yt-dlp", "-J", yt+"failmediaxx"); code != 0 {
 			t.Fatalf("info 不應失敗: %d", code)
 		}
 	})
 
 	t.Run("unknown video and urls", func(t *testing.T) {
-		if code, _, errs := s.inproc("yt-dlp", "-J", yt+"nope"); code != 1 || !strings.Contains(errs, "Video unavailable") {
+		// 沒有登記的影片：輸出與真實的 yt-dlp 同格式的錯誤（youtube 的 client 依此判斷 permanent）。
+		if code, _, errs := s.inproc("yt-dlp", "-J", yt+"nopexxxxxxx"); code != 1 || strings.TrimSpace(errs) != "ERROR: [youtube] nopexxxxxxx: Video unavailable" {
 			t.Fatalf("code=%d stderr=%q", code, errs)
 		}
 		for _, u := range []string{"https://example.com/x", "https://www.youtube.com/", "not a url"} {
@@ -385,11 +400,11 @@ func TestInProcessBranches(t *testing.T) {
 	})
 
 	t.Run("auto captions not ready are hidden", func(t *testing.T) {
-		_, out, _ := s.inproc("yt-dlp", "-J", yt+"late1")
+		_, out, _ := s.inproc("yt-dlp", "-J", yt+"late1xxxxxx")
 		if strings.Contains(out, `"en":[`) {
 			t.Fatalf("自動字幕尚未生成時不應列出: %s", out)
 		}
-		code, _, errs := s.inproc("yt-dlp", "--skip-download", "--write-auto-subs", "--sub-langs", "en", "-o", "late.%(ext)s", yt+"late1")
+		code, _, errs := s.inproc("yt-dlp", "--skip-download", "--write-auto-subs", "--sub-langs", "en", "-o", "late.%(ext)s", yt+"late1xxxxxx")
 		if code != 0 || !strings.Contains(errs, "no subtitles") {
 			t.Fatalf("code=%d stderr=%q", code, errs)
 		}
@@ -400,16 +415,16 @@ func TestInProcessBranches(t *testing.T) {
 
 	t.Run("translated track and all", func(t *testing.T) {
 		code, _, errs := s.inproc("yt-dlp", "--skip-download", "--write-subs", "--write-auto-subs", "--sub-langs", "all",
-			"-o", "subtitle:all-%(id)s.%(ext)s", yt+"abc123")
+			"-o", "subtitle:all-%(id)s.%(ext)s", yt+"abc123xxxxx")
 		if code != 0 {
 			t.Fatalf("code=%d stderr=%q", code, errs)
 		}
-		b, err := os.ReadFile(filepath.Join(s.work, "all-abc123.zh-Hans.vtt"))
+		b, err := os.ReadFile(filepath.Join(s.work, "all-abc123xxxxx.zh-Hans.vtt"))
 		if err != nil || strings.Count(string(b), " --> ") != 3 {
 			t.Fatalf("zh-Hans = %q err=%v", b, err)
 		}
 		// 同一語言有人工字幕時優先使用人工字幕。
-		b, _ = os.ReadFile(filepath.Join(s.work, "all-abc123.en.vtt"))
+		b, _ = os.ReadFile(filepath.Join(s.work, "all-abc123xxxxx.en.vtt"))
 		if !strings.Contains(string(b), "fixture line") {
 			t.Fatalf("en = %q", b)
 		}
@@ -420,10 +435,10 @@ func TestInProcessBranches(t *testing.T) {
 			{"-J"},
 			{"--sub-langs"},
 			{"-o"},
-			{"-J", yt + "abc123", yt + "abc123"},
-			{"--skip-download", "--write-subs", "--sub-langs", "en", yt + "abc123"},
-			{"--skip-download", "--write-subs", "--sub-format", "srt", "-o", "x", yt + "abc123"},
-			{yt + "abc123"},
+			{"-J", yt + "abc123xxxxx", yt + "abc123xxxxx"},
+			{"--skip-download", "--write-subs", "--sub-langs", "en", yt + "abc123xxxxx"},
+			{"--skip-download", "--write-subs", "--sub-format", "srt", "-o", "x", yt + "abc123xxxxx"},
+			{yt + "abc123xxxxx"},
 		}
 		for _, args := range cases {
 			if code, _, errs := s.inproc("yt-dlp", args...); code != 2 || errs == "" {
@@ -449,8 +464,8 @@ func TestInProcessBranches(t *testing.T) {
 }
 
 func TestGenerateVTTAndTemplate(t *testing.T) {
-	v := GenerateVTT("abc123", "en", 2)
-	if !strings.HasPrefix(v, "WEBVTT") || !strings.Contains(v, "00:00:02.000 --> 00:00:04.000\nSentence 2 of abc123 (en).") {
+	v := GenerateVTT("abc123xxxxx", "en", 2)
+	if !strings.HasPrefix(v, "WEBVTT") || !strings.Contains(v, "00:00:02.000 --> 00:00:04.000\nSentence 2 of abc123xxxxx (en).") {
 		t.Fatalf("vtt = %q", v)
 	}
 	got := expandTemplate("a/%(id)s-%(title)s-%(nope)s-100%%.%(ext)s", map[string]string{"id": "i", "title": "x/y", "ext": "mp4"})
@@ -468,12 +483,12 @@ func TestStateRoundTripAndMissing(t *testing.T) {
 	if calls, err := ReadCalls(root); err != nil || calls != nil {
 		t.Fatalf("calls=%v err=%v", calls, err)
 	}
-	want := State{Gate: "/x", Videos: map[string]*Video{"a": {Title: "t", Tracks: []Track{{Kind: KindManual, Lang: "en", Cues: 5}}}}}
+	want := State{Gate: "/x", Videos: map[string]*Video{"axxxxxxxxxx": {Title: "t", Tracks: []Track{{Kind: KindManual, Lang: "en", Cues: 5}}}}}
 	if err := WriteState(root, want); err != nil {
 		t.Fatal(err)
 	}
 	got, err := ReadState(root)
-	if err != nil || got.Gate != "/x" || got.Videos["a"].Tracks[0].Cues != 5 {
+	if err != nil || got.Gate != "/x" || got.Videos["axxxxxxxxxx"].Tracks[0].Cues != 5 {
 		t.Fatalf("got=%+v err=%v", got, err)
 	}
 	if err := os.WriteFile(filepath.Join(FakeDir(root), "state.json"), []byte("{bad"), 0o644); err != nil {
@@ -560,7 +575,7 @@ func TestAppendCallDoesNotCreateDir(t *testing.T) {
 func TestYtDlpDoubleDashIsPositional(t *testing.T) {
 	s := newScenario(t, sampleState(t))
 	// "--" 之後的參數即使長得像旗標，也只當位置參數（網址），不會被當成未知選項。
-	code, _, errs := s.inproc("yt-dlp", "-J", "--", "https://www.youtube.com/watch?v=abc123")
+	code, _, errs := s.inproc("yt-dlp", "-J", "--", "https://www.youtube.com/watch?v=abc123xxxxx")
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%q", code, errs)
 	}
@@ -568,22 +583,22 @@ func TestYtDlpDoubleDashIsPositional(t *testing.T) {
 	if code != 1 || strings.Contains(errs, "unrecognized option") {
 		t.Fatalf("應視為位置參數（網址不合法，結束碼 1）：code=%d stderr=%q", code, errs)
 	}
-	code, _, errs = s.inproc("yt-dlp", "-J", "--", "https://www.youtube.com/watch?v=abc123", "extra")
+	code, _, errs = s.inproc("yt-dlp", "-J", "--", "https://www.youtube.com/watch?v=abc123xxxxx", "extra")
 	if code != 2 || !strings.Contains(errs, "extra argument") {
 		t.Fatalf("code=%d stderr=%q", code, errs)
 	}
 	// "--" 之前的未知旗標仍然失敗。
-	if code, _, _ := s.inproc("yt-dlp", "-J", "--bogus", "--", "https://www.youtube.com/watch?v=abc123"); code != 2 {
+	if code, _, _ := s.inproc("yt-dlp", "-J", "--bogus", "--", "https://www.youtube.com/watch?v=abc123xxxxx"); code != 2 {
 		t.Fatalf("code=%d", code)
 	}
 }
 
 func TestInfoJSONPublishedAtDescriptionAndTranslatedTracks(t *testing.T) {
-	s := newScenario(t, State{Videos: map[string]*Video{"abc123": {
+	s := newScenario(t, State{Videos: map[string]*Video{"abc123xxxxx": {
 		Title: "T", Description: "desc", PublishedAt: "2026-11-12T09:30:00Z",
 		Tracks: []Track{{Kind: KindAuto, Lang: "en"}, {Kind: KindPlatformTranslated, Lang: "zh-Hans"}},
 	}}})
-	code, out, stderr := s.exec(YtDlp, "--ignore-config", "--use-extractors", "youtube", "--no-playlist", "-J", "--", "https://www.youtube.com/watch?v=abc123")
+	code, out, stderr := s.exec(YtDlp, "--ignore-config", "--use-extractors", "youtube", "--no-playlist", "-J", "--", "https://www.youtube.com/watch?v=abc123xxxxx")
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}

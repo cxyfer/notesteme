@@ -24,9 +24,9 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`the owner uploads {string}`, func(string) error { return godog.ErrPending })
 	r.Step(`the owner reruns {string} from {string}`, s.ownerReruns)
 	r.Step(`the item {string} has been ingested`, s.itemHasBeenIngested)
-	r.Step(`the item {string} has been ingested as {word}`, func(string, string) error { return godog.ErrPending })
+	r.Step(`the item {string} has been ingested as {word}`, s.itemHasBeenIngestedAs)
 	r.Step(`{string} is a mixed-language item`, func(string) error { return godog.ErrPending })
-	r.Step(`the item {string} has been processed up to {string}`, func(string, string) error { return godog.ErrPending })
+	r.Step(`the item {string} has been processed up to {string}`, s.itemProcessedUpTo)
 	r.Given(`the {string} transcript of {string} is:`, func(variant, ref string, t *godog.Table) error {
 		return s.seedTranscript(variant, ref, "", t)
 	})
@@ -40,9 +40,9 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`the library contains {string}`, s.libraryContains)
 	r.Step(`the stage {string} of {string} is {string}`, s.stageIs)
 	r.Step(`the stage {string} of {string} is blocked with the reason {string}`, func(string, string, string) error { return godog.ErrPending })
-	r.Step(`the stage {string} of {string} failed with the error class {string}`, func(string, string, string) error { return godog.ErrPending })
+	r.Step(`the stage {string} of {string} failed with the error class {string}`, s.stageFailedWith)
 	r.Step(`the stage {string} of {string} waits until {string}`, func(string, string, string) error { return godog.ErrPending })
-	r.Step(`the stage {string} of {string} retries at {string}`, func(string, string, string) error { return godog.ErrPending })
+	r.Step(`the stage {string} of {string} retries at {string}`, s.stageRetriesAt)
 	r.Step(`{string} shows the message {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`{string} offers the actions {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`the transcript of {string} came from {string}`, s.transcriptCameFrom)
@@ -54,7 +54,7 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`every cue of the {string} transcript of {string} follows the subtitle rules for {string}`, func(string, string, string) error { return godog.ErrPending })
 	r.Step(`every cue of the {string} transcript of {string} has the timing {string}`, func(string, string, string) error { return godog.ErrPending })
 	r.Step(`the {string} artifact of {string} has the provenance:`, func(string, string, *godog.Table) error { return godog.ErrPending })
-	r.Step(`the {string} artifact of {string} has {int} versions`, func(string, string, int) error { return godog.ErrPending })
+	r.Step(`the {string} artifact of {string} has {int} versions`, s.artifactHasVersions)
 	r.Step(`the item {string} has no {string} artifact`, s.itemHasNoArtifact)
 	r.Step(`the media of {string} is cached`, func(string) error { return godog.ErrPending })
 	r.Step(`the trash contains {string}`, func(string) error { return godog.ErrPending })
@@ -113,10 +113,23 @@ func (s *Scenario) itemHasBeenIngested(ref string) error {
 	return nil
 }
 
+// itemHasBeenIngestedAs 以指定的優先級（manual、subscription、backfill）新增影音。
+// 優先級不開放給 API，透過程序內 server 的測試專用介面（ADR-0015）。
+func (s *Scenario) itemHasBeenIngestedAs(ref, priority string) error {
+	if err := s.prepareOwner(); err != nil {
+		return err
+	}
+	return s.server.IngestAs(s.ctx, refToURL(ref), priority)
+}
+
 // workerRunsUntilIdle 讓程序內 server 的手動 worker 執行到沒有可以執行的任務（ADR-0015）；不使用 sleep。
 func (s *Scenario) workerRunsUntilIdle() error {
 	if err := s.prepareOwner(); err != nil {
 		return err
+	}
+	// 先前的 worker 輪次可能把任務擋在 gate 前；解除後才會跑到閒置。
+	if err := s.World.OpenGate(); err != nil {
+		return fmt.Errorf("解除 gate：%w", err)
 	}
 	return s.server.RunUntilIdle(s.ctx)
 }
@@ -151,7 +164,29 @@ func (s *Scenario) libraryContains(ref string) error {
 	return fmt.Errorf("資料庫沒有影音 %q（共 %d 部）", ref, len(items))
 }
 
+// stageIsFromDB 在場景讓 server 停下之後比對步驟狀態：直接讀資料庫，不啟動新的 server。
+func (s *Scenario) stageIsFromDB(stage, ref, want string) error {
+	id, ok := s.World.Refs[ref]
+	if !ok {
+		return fmt.Errorf("server 已停止，而且場景沒有記下影音 %q 的 ID，無法直接讀資料庫", ref)
+	}
+	got, found, err := s.World.DBStageStatus(id, stage)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("%s 沒有步驟 %q（讀自資料庫）", ref, stage)
+	}
+	if got != want {
+		return fmt.Errorf("%s 的步驟 %s 是 %q，預期 %q（server 已停止，讀自資料庫）", ref, stage, got, want)
+	}
+	return nil
+}
+
 func (s *Scenario) stageIs(stage, ref, want string) error {
+	if s.stopped {
+		return s.stageIsFromDB(stage, ref, want)
+	}
 	it, err := s.item(ref)
 	if err != nil {
 		return err
@@ -159,6 +194,11 @@ func (s *Scenario) stageIs(stage, ref, want string) error {
 	for _, st := range it.Stages {
 		if st.Stage == stage {
 			if st.Status != want {
+				// 緊接在前一個步驟送出的請求是還沒實作的路由（例如取消、刪除）：步驟狀態不符是因為那個動作沒有發生。
+				// 更早的請求與這個斷言無關，不能用來把失敗轉成 pending。
+				if s.lastFromPreviousStep() && s.last.status == http.StatusNotImplemented && isNotImplemented(s.last.body) {
+					return fmt.Errorf("最近的請求還沒有實作：%w", godog.ErrPending)
+				}
 				return fmt.Errorf("%s 的步驟 %s 是 %q，預期 %q（%s）", ref, stage, st.Status, want, describeStage(st))
 			}
 			return nil
@@ -359,7 +399,14 @@ func (s *Scenario) seedTranscript(variant, ref, lang string, table *godog.Table)
 	if err != nil {
 		return err
 	}
-	return s.server.SeedTranscript(s.ctx, pipeline.SeedRequest{ItemID: id, Variant: subtitle.Variant(variant), Lang: lang, Cues: cues})
+	if err := s.server.SeedTranscript(s.ctx, pipeline.SeedRequest{ItemID: id, Variant: subtitle.Variant(variant), Lang: lang, Cues: cues}); err != nil {
+		return err
+	}
+	if s.seeded == nil {
+		s.seeded = map[string]bool{}
+	}
+	s.seeded[ref] = true
+	return nil
 }
 
 // 字幕 API 回應的形狀。

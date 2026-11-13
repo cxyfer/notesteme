@@ -19,6 +19,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/pipeline"
+	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
@@ -31,8 +32,15 @@ type Deps struct {
 	Version string
 	// Pipeline 提供影音的新增與查詢；nil 時相關的路由回應 501。
 	Pipeline *pipeline.Pipeline
+	// Queue 提供佇列的狀態與控制（上限、暫停，PIPE-R8、PIPE-R10）；nil 時相關的路由回應 501。
+	Queue *queue.Queue
+	// Tasks 結束正在執行的任務（取消影音，PIPE-R15）；nil 時只在資料庫中取消。
+	Tasks TaskCanceller
 	// ReadyChecks 是 /readyz 在「DB 可寫」之外要檢查的項目（OPS-R5），例如外部工具是否可執行。
 	ReadyChecks []ReadyCheck
+	// Events 是 GET /api/events 的 SSE handler（PIPE-R14）；nil 時回應 501。
+	// SSE 是長連線串流，不經過 Huma，直接掛在 mux 上，但仍在驗證 middleware 之後。
+	Events http.Handler
 }
 
 // ReadyCheck 是 /readyz 的一個檢查項目；Check 回傳 nil 代表正常。
@@ -58,6 +66,14 @@ func New(d Deps) http.Handler {
 
 	r := &routes{d: d}
 	r.register(api)
+	if d.Events != nil {
+		mux.Handle("GET /api/events", d.Events)
+	} else {
+		huma.Register(api, huma.Operation{
+			OperationID: "events", Method: http.MethodGet, Path: "/api/events",
+			Summary: "狀態變更事件的 SSE 串流（尚未實作）",
+		}, notImplemented)
+	}
 
 	var h http.Handler = mux
 	h = authMiddleware(d.Auth, d.Log)(h)
@@ -152,9 +168,20 @@ func (rt *routes) register(api huma.API) {
 		Summary: "從指定步驟重新處理，產出新版本（PIPE-R7）", DefaultStatus: http.StatusAccepted,
 	}, rt.rerun)
 	huma.Register(api, huma.Operation{
-		OperationID: "queue-pause", Method: http.MethodPost, Path: "/api/queue/pause",
-		Summary: "暫停佇列（尚未實作）",
-	}, notImplemented)
+		OperationID: "items-runs", Method: http.MethodGet, Path: "/api/items/{id}/runs",
+		Summary: "步驟實際執行過的紀錄與當時生效的設定，由新到舊（PIPE-R13）",
+	}, rt.listRuns)
+	rt.registerQueue(api)
+	rt.registerCancel(api)
+	// 之後切片才會實作的路由（DEL 等）：先明確回應 501。
+	for _, op := range []huma.Operation{
+		{OperationID: "items-delete", Method: http.MethodDelete, Path: "/api/items/{id}", Summary: "刪除影音，移入垃圾桶（尚未實作）"},
+		{OperationID: "trash-restore", Method: http.MethodPost, Path: "/api/trash/{id}/restore", Summary: "從垃圾桶還原（尚未實作）"},
+		{OperationID: "tasks-retry", Method: http.MethodPost, Path: "/api/tasks/{id}/retry", Summary: "重試任務（尚未實作）"},
+		{OperationID: "tasks-cancel", Method: http.MethodPost, Path: "/api/tasks/{id}/cancel", Summary: "取消單一任務（尚未實作）"},
+	} {
+		huma.Register(api, op, notImplemented)
+	}
 	huma.Register(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",
 		Summary: "讀取全域設定區段（目前只有 language；其他區段尚未實作）",

@@ -26,9 +26,9 @@ func (p *Pipeline) runNormalize(ctx context.Context, it store.Item) (result, err
 	}
 
 	key := cacheKey{
-		Item: it.ID, Stage: StageNormalize, Impl: normalizeImplVersion, Provider: "local", Upstream: src.SHA256,
+		Item: it.ID, Stage: StageNormalize, Impl: p.implVersion(StageNormalize), Provider: "local", Upstream: src.SHA256,
 	}.String()
-	stage := &store.StageResult{Executor: "local", CacheKey: key, ImplVersion: normalizeImplVersion}
+	stage := &store.StageResult{Executor: "local", CacheKey: key, ImplVersion: p.implVersion(StageNormalize)}
 	done := store.StageState{Status: store.StatusDone}
 
 	// 同一份上游、同一版演算法的結果已經存在：重用（PIPE-R5）。
@@ -47,7 +47,7 @@ func (p *Pipeline) runNormalize(ctx context.Context, it store.Item) (result, err
 	out := subtitle.Transcript{Lang: tr.Lang, Variant: subtitle.VariantNormalized, Speakers: tr.Speakers, Cues: subtitle.Normalize(tr.Cues)}
 
 	prov, err := p.provenance(map[string]any{
-		"stage": StageNormalize, "impl_version": normalizeImplVersion,
+		"stage": StageNormalize, "impl_version": p.implVersion(StageNormalize),
 		"derived_from": []map[string]string{{"artifact": src.ID, "variant": src.Variant, "sha256": src.SHA256}},
 	}, nil)
 	if err != nil {

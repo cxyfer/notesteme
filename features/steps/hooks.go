@@ -48,6 +48,11 @@ func installHooks(sc *godog.ScenarioContext, s *Scenario) {
 		s.reset(w)
 		return ctx, nil
 	})
+	// 每個步驟開始時遞增序號，讓斷言能分辨「緊接在前一個步驟送出的請求」（見 lastFromPreviousStep）。
+	sc.StepContext().Before(func(ctx context.Context, _ *godog.Step) (context.Context, error) {
+		s.step++
+		return ctx, nil
+	})
 	sc.After(func(ctx context.Context, sn *godog.Scenario, err error) (context.Context, error) {
 		return ctx, finishScenario(s, sn.Name, err)
 	})

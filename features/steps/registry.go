@@ -68,6 +68,7 @@ func (r *Registry) add(keyword, template string, handler any) *regexp.Regexp {
 func register(r *Registry, s *Scenario) {
 	registerEnv(r, s)
 	registerAccess(r, s)
+	registerEvents(r, s)
 	registerSources(r, s)
 	registerItems(r, s)
 	registerQueue(r, s)

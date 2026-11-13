@@ -35,6 +35,12 @@ func newRig(t *testing.T) *rig {
 
 func (r *rig) addTask(t *testing.T, ext string, nb *time.Time) store.Task {
 	t.Helper()
+	return r.addTaskIn(t, ext, queue.ResourceDownload, nb)
+}
+
+// addTaskIn 新增一個指定資源類別的任務。
+func (r *rig) addTaskIn(t *testing.T, ext, class string, nb *time.Time) store.Task {
+	t.Helper()
 	ctx := context.Background()
 	var tk store.Task
 	err := r.st.Tx(ctx, func(rp *store.Repo) error {
@@ -51,7 +57,7 @@ func (r *rig) addTask(t *testing.T, ext string, nb *time.Time) store.Task {
 			return err
 		}
 		tk, err = rp.InsertTask(ctx, store.NewTask{StageRunID: sr.ID, Kind: "metadata", Executor: queue.ExecutorBuiltin,
-			ResourceClass: queue.ResourceDownload, Priority: queue.PriorityManual, NotBefore: nb})
+			ResourceClass: class, Priority: queue.PriorityManual, NotBefore: nb})
 		return err
 	})
 	if err != nil {
@@ -78,7 +84,7 @@ func (h *recorder) Handle(ctx context.Context, t store.Task) error {
 		}
 	}
 	return h.st.Tx(ctx, func(r *store.Repo) error {
-		if err := r.CompleteTask(ctx, t.ID); err != nil {
+		if err := r.CompleteTask(ctx, t.ID, t.LeaseToken); err != nil {
 			return err
 		}
 		return r.SetStageState(ctx, t.StageRunID, store.StageState{Status: store.StatusDone})
@@ -167,7 +173,7 @@ func TestRunUntilIdleGivesUpAfterMaxRounds(t *testing.T) {
 	// 每次處理完都再放回佇列，永遠有事可做。
 	h := &recorder{st: r.st}
 	h2 := HandlerFunc(func(ctx context.Context, tk store.Task) error {
-		return r.st.Tx(ctx, func(rp *store.Repo) error { return rp.RequeueTask(ctx, tk.ID, nil, false) })
+		return r.st.Tx(ctx, func(rp *store.Repo) error { return rp.RequeueTask(ctx, tk.ID, tk.LeaseToken, nil, false) })
 	})
 	_ = h
 	w := New(r.q, h2, r.clk, quiet)
@@ -211,6 +217,33 @@ func TestRunWakesOnNotificationAndOnDueTime(t *testing.T) {
 	}
 }
 
+// 暫停的類別有到期的任務時，睡眠不能被它遮蔽：另一類的退避重試要準時醒來。
+func TestSleepIsNotShadowedByDueTasksThatCannotBeClaimed(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	if err := r.q.Control().Pause(ctx, queue.ResourceASR); err != nil {
+		t.Fatal(err)
+	}
+	r.addTaskIn(t, "paused", queue.ResourceASR, nil) // 到期但領不到
+	retryAt := r.clk.Now().Add(30 * time.Second)
+	r.addTaskIn(t, "retry", queue.ResourceDownload, &retryAt)
+
+	h := &recorder{st: r.st}
+	w := New(r.q, h, r.clk, quiet)
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { defer close(done); w.Run(runCtx) }()
+	defer func() {
+		cancel()
+		<-done
+	}()
+
+	// worker 應該為 30 秒後的任務設好計時器，而不是被領不到的 asr 任務逼得不睡。
+	waitFor(t, func() bool { return r.clk.PendingTimers() > 0 })
+	r.clk.Advance(30 * time.Second)
+	waitFor(t, func() bool { h.mu.Lock(); defer h.mu.Unlock(); return len(h.seen) == 1 })
+}
+
 func waitFor(t *testing.T, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -221,4 +254,156 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("等待條件成立逾時")
+}
+
+// blockingHandler 讓任務停住，直到 release 被呼叫；started 收到每個開始執行的任務。
+type blockingHandler struct {
+	st      *store.Store
+	started chan store.Task
+	gate    chan struct{}
+}
+
+func newBlockingHandler(st *store.Store) *blockingHandler {
+	return &blockingHandler{st: st, started: make(chan store.Task, 32), gate: make(chan struct{})}
+}
+
+func (h *blockingHandler) Handle(ctx context.Context, t store.Task) error {
+	h.started <- t
+	<-h.gate
+	return h.st.Tx(ctx, func(r *store.Repo) error {
+		if err := r.CompleteTask(ctx, t.ID, t.LeaseToken); err != nil {
+			return err
+		}
+		return r.SetStageState(ctx, t.StageRunID, store.StageState{Status: store.StatusDone})
+	})
+}
+
+func roundOf(t *testing.T, w *Worker) int {
+	t.Helper()
+	n, err := w.RunRound(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestRunRoundCapsEachResourceClass(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	for _, id := range []string{"a", "b", "c"} {
+		r.addTask(t, id, nil)
+	}
+	h := newBlockingHandler(r.st)
+	w := New(r.q, h, r.clk, quiet)
+
+	// download 的預設上限是 2。
+	if n := roundOf(t, w); n != 2 {
+		t.Fatalf("第一輪領取 %d 個，預期 2（上限 2）", n)
+	}
+	if n := roundOf(t, w); n != 0 {
+		t.Fatalf("已達上限，第二輪領取 %d 個，預期 0", n)
+	}
+	// 調高上限，下一輪就生效（PIPE-R8）。
+	if err := r.q.Control().SetLimits(ctx, map[string]int{queue.ResourceDownload: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if n := roundOf(t, w); n != 1 {
+		t.Fatalf("上限調高後領取 %d 個，預期 1", n)
+	}
+	close(h.gate)
+	if err := w.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	// 做完之後空位回來了：再來一個任務可以直接領取。
+	r.addTask(t, "d", nil)
+	w2 := New(r.q, &recorder{st: r.st}, r.clk, quiet)
+	if n := roundOf(t, w2); n != 1 {
+		t.Fatalf("任務結束後應有空位，領取 %d 個", n)
+	}
+	_ = w2.Wait()
+}
+
+func TestClassesHaveIndependentLimits(t *testing.T) {
+	r := newRig(t)
+	for _, id := range []string{"a", "b", "c"} {
+		r.addTaskIn(t, id, queue.ResourceDownload, nil)
+	}
+	r.addTaskIn(t, "x", queue.ResourceASR, nil)
+	r.addTaskIn(t, "y", queue.ResourceLocal, nil)
+	h := newBlockingHandler(r.st)
+	w := New(r.q, h, r.clk, quiet)
+
+	// download 2 個（上限 2）、asr 1 個、local 1 個：一個類別滿了不影響其他類別。
+	if n := roundOf(t, w); n != 4 {
+		t.Fatalf("領取 %d 個，預期 4", n)
+	}
+	close(h.gate)
+	_ = w.Wait()
+}
+
+func TestPausedQueueAndClassStartNothingNew(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	r.addTaskIn(t, "a", queue.ResourceDownload, nil)
+	r.addTaskIn(t, "b", queue.ResourceASR, nil)
+	h := newBlockingHandler(r.st)
+	w := New(r.q, h, r.clk, quiet)
+	ctl := r.q.Control()
+
+	// 只暫停 asr：download 照常領取（PIPE-R10）。
+	if err := ctl.Pause(ctx, queue.ResourceASR); err != nil {
+		t.Fatal(err)
+	}
+	if n := roundOf(t, w); n != 1 {
+		t.Fatalf("asr 暫停時領取 %d 個，預期只有 download 的 1 個", n)
+	}
+	if got := (<-h.started).ResourceClass; got != queue.ResourceDownload {
+		t.Errorf("領取到 %s，預期 download", got)
+	}
+
+	// 整個佇列暫停：什麼都不領取，執行中的任務仍會做完。
+	if err := ctl.Resume(ctx, queue.ResourceASR); err != nil {
+		t.Fatal(err)
+	}
+	if err := ctl.Pause(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	if n := roundOf(t, w); n != 0 {
+		t.Fatalf("佇列暫停時領取 %d 個，預期 0", n)
+	}
+	close(h.gate)
+	if err := w.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := r.st.Read().CountTasks(ctx, store.TaskDone); n != 1 {
+		t.Errorf("暫停時執行中的任務應做完，done = %d", n)
+	}
+
+	// 恢復後才領取剩下的。
+	if err := ctl.Resume(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	if n := roundOf(t, w); n != 1 {
+		t.Fatalf("恢復後領取 %d 個，預期 1", n)
+	}
+	_ = w.Wait()
+}
+
+func TestResumeAndLimitChangesWakeTheWorker(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	for len(r.q.Wakeups()) > 0 {
+		<-r.q.Wakeups()
+	}
+	if err := r.q.Control().Pause(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.q.Control().Resume(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-r.q.Wakeups():
+	default:
+		t.Error("恢復佇列後應喚醒 worker")
+	}
 }

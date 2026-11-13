@@ -36,7 +36,7 @@ func TestInsertItemIfAbsentIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	s, clk := openTest(t)
 
-	a, created, err := s.Write().InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123", URL: "u"})
+	a, created, err := s.Write().InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123xxxxx", URL: "u"})
 	if err != nil || !created {
 		t.Fatalf("first insert = %v, %v", created, err)
 	}
@@ -46,7 +46,7 @@ func TestInsertItemIfAbsentIsIdempotent(t *testing.T) {
 	if !a.CreatedAt.Equal(clk.Now()) {
 		t.Errorf("created_at = %v，預期取自注入的 clock %v", a.CreatedAt, clk.Now())
 	}
-	b, created, err := s.Write().InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123", URL: "other"})
+	b, created, err := s.Write().InsertItemIfAbsent(ctx, NewItem{Platform: "youtube", ExternalID: "abc123xxxxx", URL: "other"})
 	if err != nil || created || b.ID != a.ID {
 		t.Fatalf("second insert = %+v, %v, %v；預期回傳既有的影音", b, created, err)
 	}
@@ -66,7 +66,7 @@ func TestInsertItemIfAbsentIsIdempotent(t *testing.T) {
 func TestUpdateItemMetaKeepsMissingFields(t *testing.T) {
 	ctx := context.Background()
 	s, _ := openTest(t)
-	it, _ := seedItem(t, s, "abc123")
+	it, _ := seedItem(t, s, "abc123xxxxx")
 
 	dur := 600
 	ch, err := s.Write().UpsertChannel(ctx, Channel{Platform: "youtube", ExternalID: "UC1", Title: "Chan"})
@@ -281,10 +281,10 @@ func TestRequeueTask(t *testing.T) {
 	s, clk := openTest(t)
 	_, sr := seedItem(t, s, "a")
 	tk := newTask(t, s, sr, 3, nil)
-	claim(t, s, claimOpts("w", 1))
+	first := claim(t, s, claimOpts("w", 1))
 
 	nb := clk.Now().Add(30 * time.Second)
-	if err := s.Write().RequeueTask(ctx, tk.ID, &nb, true); err != nil {
+	if err := s.Write().RequeueTask(ctx, tk.ID, first[0].LeaseToken, &nb, true); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := s.Read().Task(ctx, tk.ID)
@@ -293,8 +293,8 @@ func TestRequeueTask(t *testing.T) {
 	}
 	claim(t, s, claimOpts("w", 1)) // 未到期，不會領取
 	clk.Advance(time.Minute)
-	claim(t, s, claimOpts("w", 1))
-	if err := s.Write().RequeueTask(ctx, tk.ID, &nb, false); err != nil {
+	second := claim(t, s, claimOpts("w", 1))
+	if err := s.Write().RequeueTask(ctx, tk.ID, second[0].LeaseToken, &nb, false); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.Read().Task(ctx, tk.ID)
@@ -306,20 +306,27 @@ func TestRequeueTask(t *testing.T) {
 func TestNextTaskTime(t *testing.T) {
 	ctx := context.Background()
 	s, clk := openTest(t)
-	if _, ok, err := s.Read().NextTaskTime(ctx, "builtin"); err != nil || ok {
+	if _, ok, err := s.Read().NextTaskTime(ctx, "builtin", clk.Now()); err != nil || ok {
 		t.Fatalf("沒有任務：%v, %v", ok, err)
 	}
 	_, sr := seedItem(t, s, "a")
 	future := clk.Now().Add(time.Hour)
 	newTask(t, s, sr, 3, &future)
-	at, ok, err := s.Read().NextTaskTime(ctx, "builtin")
+	at, ok, err := s.Read().NextTaskTime(ctx, "builtin", clk.Now())
 	if err != nil || !ok || !at.Equal(future) {
 		t.Fatalf("NextTaskTime = %v, %v, %v", at, ok, err)
 	}
+	// 已到期的任務（not_before 為空，或不晚於 after）不遮蔽之後才到期的任務。
 	newTask(t, s, sr, 3, nil)
-	at, _, _ = s.Read().NextTaskTime(ctx, "builtin")
-	if !at.Equal(clk.Now()) {
-		t.Errorf("已有可領取的任務時應是現在，實際 %v", at)
+	soon := clk.Now().Add(30 * time.Second)
+	newTask(t, s, sr, 3, &soon)
+	at, ok, _ = s.Read().NextTaskTime(ctx, "builtin", clk.Now())
+	if !ok || !at.Equal(soon) {
+		t.Errorf("應是最早的未來時間 %v，實際 %v, %v", soon, at, ok)
+	}
+	// after 之後沒有更晚的任務。
+	if _, ok, _ := s.Read().NextTaskTime(ctx, "builtin", future); ok {
+		t.Error("不晚於 after 的任務不該被回傳")
 	}
 }
 

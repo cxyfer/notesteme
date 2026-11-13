@@ -27,12 +27,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // 註冊 "sqlite" driver
 
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/events"
 	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
 )
 
@@ -54,6 +56,8 @@ type Store struct {
 	wq    *sqlcdb.Queries
 	rq    *sqlcdb.Queries
 	clock clock.Clock
+	// sink 接收步驟狀態變更的事件（PIPE-R14）；沒有設定時不產生事件。見 SetEventSink。
+	sink atomic.Pointer[func(events.Event)]
 }
 
 // Open 開啟 dir/notesteme.db 並套用 migration。dir 必須已存在。

@@ -31,6 +31,9 @@ const (
 	EnvConfig = "NOTESTEME_CONFIG"
 	EnvListen = "NOTESTEME_LISTEN"
 	EnvData   = "NOTESTEME_DATA"
+	// EnvSupadataAPIKey 是 Supadata 的 API key（SEC-R1：NOTESTEME_ 加上設定路徑 supadata.api_key）。
+	// 加密存放的 secrets 還沒做（SEC-R4），目前只從環境變數讀取；沒有設定時 Supadata 視為 not_configured。
+	EnvSupadataAPIKey = "NOTESTEME_SUPADATA_API_KEY"
 )
 
 // Source 是設定值的來源。

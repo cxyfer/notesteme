@@ -7,8 +7,8 @@ Feature: MCP tools
     Given the server is running
     And a token "reader" with scopes "read"
     And a token "helper" with scopes "read,ingest"
-    And a YouTube video "yt:talk01" titled "Kafka talk"
-    And the "corrected" transcript of "yt:talk01" in "en" is:
+    And a YouTube video "yt:talk01xxxxx" titled "Kafka talk"
+    And the "corrected" transcript of "yt:talk01xxxxx" in "en" is:
       | # | start        | end          | text                   |
       | 1 | 00:00:01.000 | 00:00:03.500 | We use Kafka for this. |
       | 2 | 00:00:04.000 | 00:00:06.000 | It is a log.           |
@@ -23,7 +23,7 @@ Feature: MCP tools
   Scenario: Calling a tool outside the scope names the missing scope
     When the MCP client with the token "reader" calls "ingest" with:
       """
-      { "url": "https://www.youtube.com/watch?v=abc123" }
+      { "url": "https://www.youtube.com/watch?v=abc123xxxxx" }
       """
     Then the tool call fails with "ingest"
 
@@ -31,7 +31,7 @@ Feature: MCP tools
   Scenario: Get part of a transcript as SRT
     When the MCP client with the token "reader" calls "get_transcript" with:
       """
-      { "item": "yt:talk01", "format": "srt", "from": "00:00:03.800", "to": "00:00:10" }
+      { "item": "yt:talk01xxxxx", "format": "srt", "from": "00:00:03.800", "to": "00:00:10" }
       """
     Then the tool result contains:
       """
@@ -40,22 +40,22 @@ Feature: MCP tools
 
   @MCP-03 @MCP-R3
   Scenario: Ingest through MCP behaves like the API
-    Given a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
+    Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
     When the MCP client with the token "helper" calls "ingest" with:
       """
-      { "url": "https://youtu.be/abc123", "until": "transcript" }
+      { "url": "https://youtu.be/abc123xxxxx", "until": "transcript" }
       """
     Then the tool result contains:
       """
-      { "items": [ { "ref": "yt:abc123", "already_in_library": false } ] }
+      { "items": [ { "ref": "yt:abc123xxxxx", "already_in_library": false } ] }
       """
     When the MCP client with the token "helper" calls "ingest" with:
       """
-      { "url": "https://youtu.be/abc123" }
+      { "url": "https://youtu.be/abc123xxxxx" }
       """
     Then the tool result contains:
       """
-      { "items": [ { "ref": "yt:abc123", "already_in_library": true } ] }
+      { "items": [ { "ref": "yt:abc123xxxxx", "already_in_library": true } ] }
       """
 
   @MCP-03 @MCP-R3
@@ -70,7 +70,7 @@ Feature: MCP tools
   Scenario: Import a fixed subtitle through MCP
     When the MCP client with the token "helper" calls "import_transcript" with:
       """
-      { "item": "yt:talk01", "lang": "en", "format": "srt",
+      { "item": "yt:talk01xxxxx", "lang": "en", "format": "srt",
         "content": "1\n00:00:01,000 --> 00:00:03,500\nWe use Apache Kafka for this.\n" }
       """
     Then the tool result contains:
@@ -82,7 +82,7 @@ Feature: MCP tools
   Scenario: Video context for a processed item comes back at once
     When the MCP client with the token "reader" calls "get_video_context" with:
       """
-      { "url": "https://www.youtube.com/watch?v=talk01" }
+      { "url": "https://www.youtube.com/watch?v=talk01xxxxx" }
       """
     Then the tool result contains:
       """
@@ -91,26 +91,26 @@ Feature: MCP tools
 
   @MCP-02 @MCP-R5
   Scenario: Video context for a new item processes it up to the transcript
-    Given a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
-    And "yt:abc123" has manual captions in "en"
+    Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
+    And "yt:abc123xxxxx" has manual captions in "en"
     When the MCP client with the token "helper" calls "get_video_context" with:
       """
-      { "url": "https://www.youtube.com/watch?v=abc123", "timeout_s": 60 }
+      { "url": "https://www.youtube.com/watch?v=abc123xxxxx", "timeout_s": 60 }
       """
     Then the tool result contains:
       """
       { "status": "ready", "transcript": { "cues": "*" } }
       """
-    And the stage "normalize" of "yt:abc123" is "done"
-    And the stage "correct" of "yt:abc123" is "pending"
+    And the stage "normalize" of "yt:abc123xxxxx" is "done"
+    And the stage "correct" of "yt:abc123xxxxx" is "pending"
 
   @MCP-02 @MCP-R5
   Scenario: Video context reports what blocks it
-    Given a YouTube video "yt:abc123" titled "PostgreSQL in 100 Seconds"
-    And yt-dlp fails for "yt:abc123" with "ERROR: unable to download video data: HTTP Error 403: Forbidden"
+    Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
+    And yt-dlp fails for "yt:abc123xxxxx" with "ERROR: unable to download video data: HTTP Error 403: Forbidden"
     When the MCP client with the token "helper" calls "get_video_context" with:
       """
-      { "url": "https://www.youtube.com/watch?v=abc123", "timeout_s": 60 }
+      { "url": "https://www.youtube.com/watch?v=abc123xxxxx", "timeout_s": 60 }
       """
     Then the tool result contains:
       """
@@ -121,7 +121,7 @@ Feature: MCP tools
   Scenario: Video context for a new item needs the ingest scope
     When the MCP client with the token "reader" calls "get_video_context" with:
       """
-      { "url": "https://www.youtube.com/watch?v=brandnew" }
+      { "url": "https://www.youtube.com/watch?v=brandnewxxx" }
       """
     Then the tool call fails with "ingest"
 
@@ -133,7 +133,7 @@ Feature: MCP tools
       """
     Then the tool result contains:
       """
-      { "items": [ { "ref": "yt:talk01" } ] }
+      { "items": [ { "ref": "yt:talk01xxxxx" } ] }
       """
     When the MCP client with the token "reader" calls "search" with:
       """

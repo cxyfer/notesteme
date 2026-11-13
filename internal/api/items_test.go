@@ -56,10 +56,10 @@ func newItemsRig(t *testing.T) *itemsRig {
 	dur := 100
 	p := pipeline.New(pipeline.Deps{
 		Store: st, Clock: clk, DataDir: dir, Log: log, Wake: q.Wake, Version: "test",
-		YouTube: stubYT{info: youtube.Info{ID: "abc123", Title: "Hello", Language: "en", DurationS: &dur,
+		YouTube: stubYT{info: youtube.Info{ID: "abc123xxxxx", Title: "Hello", Language: "en", DurationS: &dur,
 			Tracks: []youtube.Track{{Lang: "en", Kind: "manual"}}}},
 	})
-	h := New(Deps{Store: st, Auth: svc, Clock: clk, Log: log, Version: "test", Pipeline: p})
+	h := New(Deps{Store: st, Auth: svc, Clock: clk, Log: log, Version: "test", Pipeline: p, Queue: q})
 	r := &itemsRig{h: h, worker: worker.New(q, p, clk, log), clk: clk, t: t}
 	rec := r.do("POST", "/api/auth/login", `{"password":"pw"}`, nil)
 	for _, c := range rec.Result().Cookies() {
@@ -105,16 +105,16 @@ type itemsBody struct {
 
 func TestCreateItemStatusAndBody(t *testing.T) {
 	r := newItemsRig(t)
-	rec := r.owner("POST", "/api/items", `{"url":"https://www.youtube.com/watch?v=abc123"}`)
+	rec := r.owner("POST", "/api/items", `{"url":"https://www.youtube.com/watch?v=abc123xxxxx"}`)
 	if rec.Code != 201 {
 		t.Fatalf("status = %d %s", rec.Code, rec.Body)
 	}
 	body := decode[itemsBody](t, rec)
-	if len(body.Items) != 1 || body.Items[0].Ref != "yt:abc123" || body.Items[0].AlreadyInLibrary || body.Items[0].ID == "" {
+	if len(body.Items) != 1 || body.Items[0].Ref != "yt:abc123xxxxx" || body.Items[0].AlreadyInLibrary || body.Items[0].ID == "" {
 		t.Fatalf("body = %+v", body)
 	}
 
-	rec = r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123"}`)
+	rec = r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123xxxxx"}`)
 	if rec.Code != 200 {
 		t.Fatalf("已存在應回 200：%d %s", rec.Code, rec.Body)
 	}
@@ -122,7 +122,7 @@ func TestCreateItemStatusAndBody(t *testing.T) {
 		t.Errorf("again = %+v", again)
 	}
 	list := decode[struct{ Items []Item }](t, r.owner("GET", "/api/items", ""))
-	if len(list.Items) != 1 || list.Items[0].Ref != "yt:abc123" {
+	if len(list.Items) != 1 || list.Items[0].Ref != "yt:abc123xxxxx" {
 		t.Errorf("list = %+v", list)
 	}
 }
@@ -138,11 +138,12 @@ func TestCreateItemErrors(t *testing.T) {
 		{"頻道", `{"url":"https://www.youtube.com/@somechannel"}`, 422, CodeChannel, "這是頻道。要追蹤新內容，請建立訂閱。"},
 		{"Bilibili 個人空間", `{"url":"https://space.bilibili.com/12345"}`, 422, CodeChannel, "這是頻道。要追蹤新內容，請建立訂閱。"},
 		{"無法辨識", `{"url":"https://example.com/some/page"}`, 422, CodeUnrecognizedURL, "無法辨識這個網址。目前支援 YouTube、Bilibili、Podcast RSS 與本機檔案。"},
+		{"影片 ID 不是 11 個字元", `{"url":"https://www.youtube.com/watch?v=abc123xxxx"}`, 422, CodeUnrecognizedURL, "無法辨識這個網址。目前支援 YouTube、Bilibili、Podcast RSS 與本機檔案。"},
 		{"Bilibili 影片", `{"url":"https://www.bilibili.com/video/BV1xx411c7mD"}`, 501, CodeNotImplemented, ""},
 		{"播放清單", `{"url":"https://www.youtube.com/playlist?list=PL123"}`, 501, CodeNotImplemented, ""},
-		{"未知的 until", `{"url":"https://youtu.be/abc123","until":"publish"}`, 422, CodeInvalidInput, ""},
+		{"未知的 until", `{"url":"https://youtu.be/abc123xxxxx","until":"publish"}`, 422, CodeInvalidInput, ""},
 		{"缺少 url", `{}`, 422, CodeInvalidInput, ""},
-		{"多餘的欄位", `{"url":"https://youtu.be/abc123","nope":1}`, 422, CodeInvalidInput, ""},
+		{"多餘的欄位", `{"url":"https://youtu.be/abc123xxxxx","nope":1}`, 422, CodeInvalidInput, ""},
 	}
 	for _, tt := range tests {
 		rec := r.owner("POST", "/api/items", tt.body)
@@ -158,7 +159,7 @@ func TestCreateItemErrors(t *testing.T) {
 
 func TestItemDetailStagesAndSources(t *testing.T) {
 	r := newItemsRig(t)
-	created := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123","overrides":{"language":{"targets":["en"]}},"until":"transcript"}`))
+	created := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123xxxxx","overrides":{"language":{"targets":["en"]}},"until":"transcript"}`))
 	id := created.Items[0].ID
 
 	d := decode[ItemDetail](t, r.owner("GET", "/api/items/"+id, ""))
@@ -193,7 +194,7 @@ func TestItemDetailStagesAndSources(t *testing.T) {
 
 func TestCuesEndpoint(t *testing.T) {
 	r := newItemsRig(t)
-	id := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123"}`)).Items[0].ID
+	id := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123xxxxx"}`)).Items[0].ID
 	if rec := r.owner("GET", "/api/items/"+id+"/cues", ""); rec.Code != 404 {
 		t.Errorf("還沒有字幕：%d %s", rec.Code, rec.Body)
 	}
@@ -279,14 +280,14 @@ func TestItemRoutesRequireAuth(t *testing.T) {
 		}
 	}
 	// 缺 CSRF 的寫入被拒絕。
-	if rec := r.do("POST", "/api/items", `{"url":"https://youtu.be/abc123"}`, withCookies(r.sess, r.csrf, "")); rec.Code != 403 {
+	if rec := r.do("POST", "/api/items", `{"url":"https://youtu.be/abc123xxxxx"}`, withCookies(r.sess, r.csrf, "")); rec.Code != 403 {
 		t.Errorf("缺 CSRF = %d", rec.Code)
 	}
 }
 
 func TestSubtitlesDownload(t *testing.T) {
 	r := newItemsRig(t)
-	id := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123"}`)).Items[0].ID
+	id := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123xxxxx"}`)).Items[0].ID
 	if err := r.worker.RunUntilIdle(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +333,7 @@ func TestSubtitlesDownload(t *testing.T) {
 
 func TestRerunEndpoint(t *testing.T) {
 	r := newItemsRig(t)
-	id := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123"}`)).Items[0].ID
+	id := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123xxxxx"}`)).Items[0].ID
 	if err := r.worker.RunUntilIdle(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +379,7 @@ func TestResolveEndpoint(t *testing.T) {
 	if rec := r.owner("POST", "/api/resolve", `{}`); rec.Code != 422 {
 		t.Errorf("缺 url = %d", rec.Code)
 	}
-	if rec := r.do("POST", "/api/resolve", `{"url":"https://youtu.be/abc123"}`, nil); rec.Code != 401 {
+	if rec := r.do("POST", "/api/resolve", `{"url":"https://youtu.be/abc123xxxxx"}`, nil); rec.Code != 401 {
 		t.Errorf("未登入 = %d", rec.Code)
 	}
 }

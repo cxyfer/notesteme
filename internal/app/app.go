@@ -45,6 +45,11 @@ type TestControls struct {
 	// ManualWorker 讓 server 不自己執行 worker：任務只在測試呼叫 Server.RunUntilIdle 或
 	// Server.RunRound 時才會被領取與執行（ADR-0015）。
 	ManualWorker bool
+	// SkipShutdownGrace 讓正常關閉的寬限期為 0：執行中的任務立刻被取消，驗收場景不必推進時鐘（PIPE-R12）。
+	SkipShutdownGrace bool
+	// ImplVersions 覆寫步驟的 impl_version（PIPE-R6），key 是步驟名稱；沒列出的步驟用預設值。
+	// server 已啟動時改用 Server.SetImplVersion。
+	ImplVersions map[string]int
 }
 
 // IO 是標準輸入輸出。
@@ -54,8 +59,12 @@ type IO struct {
 	Stderr io.Writer
 }
 
-// shutdownTimeout 是收到訊號後等待正常關閉的上限。
-const shutdownTimeout = 30 * time.Second
+// shutdownGrace 是正常關閉時等待執行中任務完成的寬限期（PIPE-R12）。
+const shutdownGrace = 30 * time.Second
+
+// httpShutdownTimeout 是收到訊號後等待 HTTP 處理中請求的上限。它只限制 HTTP 這一段：
+// 任務的寬限期與放回租約有獨立的期限（Server.Shutdown），不受它影響。
+const httpShutdownTimeout = 10 * time.Second
 
 // Run 執行一次命令並回傳結束碼。args 不含程式名稱。
 func Run(ctx context.Context, args []string, stdio IO, env Env) int {
@@ -103,7 +112,7 @@ func runServe(ctx context.Context, args []string, stdio IO, env Env) int {
 	}
 
 	// ctx 可能已取消，正常關閉要用新的 context。
-	shutCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+	shutCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), httpShutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutCtx); err != nil {
 		fmt.Fprintf(stdio.Stderr, "notesteme: 關閉時發生錯誤：%v\n", err)

@@ -142,27 +142,87 @@ func (r *Repo) ClaimTasks(ctx context.Context, o ClaimOptions) ([]Task, error) {
 			return nil, err
 		}
 		claimed[i].LeaseToken = token
-		if err := r.q.MarkStageRunning(ctx, sqlcdb.MarkStageRunningParams{StartedAt: now, ID: claimed[i].StageRunID}); err != nil {
+		row, err := r.q.MarkStageRunning(ctx, sqlcdb.MarkStageRunningParams{StartedAt: now, ID: claimed[i].StageRunID})
+		if errors.Is(err, sql.ErrNoRows) {
+			continue // 步驟已不存在：沒有狀態可以發布
+		}
+		if err != nil {
 			return nil, err
 		}
+		r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
 	}
 	return claimed, nil
 }
 
-// CompleteTask 把任務標記為 done 並清除租約。
-func (r *Repo) CompleteTask(ctx context.Context, id string) error {
-	return r.q.CompleteTask(ctx, id)
+// ErrLeaseLost 表示任務已經不在呼叫端的租約之下（租約被放回、到期後被別人領走，或任務已經結束）。
+// 寫回結果的操作都要帶 lease_token：舊的持有者晚到的結果不能蓋掉現在的狀態。
+var ErrLeaseLost = errors.New("任務的租約已經失效")
+
+// leaseWrite 把「只影響持有該租約的任務」的更新結果轉成錯誤：影響 0 列代表租約已失效。
+func leaseWrite(n int64, err error) error {
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrLeaseLost
+	}
+	return nil
 }
 
-// FailTask 把任務標記為 failed 並清除租約。
-func (r *Repo) FailTask(ctx context.Context, id string) error {
-	return r.q.FailTask(ctx, id)
+// CompleteTask 把 leaseToken 持有的任務標記為 done 並清除租約。租約已失效時回傳 ErrLeaseLost。
+func (r *Repo) CompleteTask(ctx context.Context, id, leaseToken string) error {
+	return leaseWrite(r.q.CompleteTask(ctx, sqlcdb.CompleteTaskParams{ID: id, LeaseToken: leaseToken}))
 }
 
-// RequeueTask 讓任務回到 pending，在 notBefore 之後才能再被領取。
-// countAttempt 為 false 時這次領取不計入 attempts（wait 類的重新檢查、重啟時放回的租約）。
-func (r *Repo) RequeueTask(ctx context.Context, id string, notBefore *time.Time, countAttempt bool) error {
-	return r.q.RequeueTask(ctx, sqlcdb.RequeueTaskParams{NotBefore: msPtr(notBefore), CountAttempt: boolInt(countAttempt), ID: id})
+// FailTask 把 leaseToken 持有的任務標記為 failed 並清除租約。租約已失效時回傳 ErrLeaseLost。
+func (r *Repo) FailTask(ctx context.Context, id, leaseToken string) error {
+	return leaseWrite(r.q.FailTask(ctx, sqlcdb.FailTaskParams{ID: id, LeaseToken: leaseToken}))
+}
+
+// RequeueTask 讓 leaseToken 持有的任務回到 pending，在 notBefore 之後才能再被領取。租約已失效時回傳 ErrLeaseLost。
+// countAttempt 為 false 時這次領取不計入 attempts（wait 類的重新檢查）。
+func (r *Repo) RequeueTask(ctx context.Context, id, leaseToken string, notBefore *time.Time, countAttempt bool) error {
+	return leaseWrite(r.q.RequeueTask(ctx, sqlcdb.RequeueTaskParams{
+		NotBefore: msPtr(notBefore), CountAttempt: boolInt(countAttempt), ID: id, LeaseToken: leaseToken,
+	}))
+}
+
+// QueueEntry 是佇列頁的一列：還沒結束的任務與它所屬的影音。
+type QueueEntry struct {
+	ID            string
+	ItemID        string
+	Platform      string
+	ExternalID    string
+	Part          int
+	Stage         string
+	ResourceClass string
+	State         string // leased 或 pending
+	Attempts      int
+	Priority      int
+	NotBefore     *time.Time
+}
+
+// QueueTasks 列出 executor 還沒結束的任務：先是已被領取的，再是 pending 的。
+// pending 的排序與 ClaimTasks 完全相同（priority 加 aging、建立順序），到期的在前、還在等 not_before 的在後，
+// 所以第一筆 pending 就是下一次領取（max=1）會拿到的任務。
+func (r *Repo) QueueTasks(ctx context.Context, executor string, aging time.Duration) ([]QueueEntry, error) {
+	aging64 := aging.Milliseconds()
+	if aging64 <= 0 {
+		aging64 = 1 << 40
+	}
+	rows, err := r.q.ListQueueTasks(ctx, sqlcdb.ListQueueTasksParams{Now: r.nowMs(), AgingMs: aging64, Executor: executor})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]QueueEntry, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, QueueEntry{
+			ID: row.ID, ItemID: row.ItemID, Platform: row.Platform, ExternalID: row.ExternalID, Part: int(row.Part),
+			Stage: row.Kind, ResourceClass: row.ResourceClass, State: row.State, Attempts: int(row.Attempts),
+			Priority: int(row.Priority), NotBefore: msToTime(row.NotBefore),
+		})
+	}
+	return out, nil
 }
 
 // ReleaseLeases 把租約放回佇列：不是 keepOwner 持有的，或已經到期的 leased 任務回到 pending，
@@ -187,28 +247,30 @@ func (r *Repo) ReleaseOwned(ctx context.Context, owner string) (int, error) {
 // resetStages 把放回佇列的任務所屬、仍是 running 的步驟回到 pending；回傳任務數。
 func (r *Repo) resetStages(ctx context.Context, stageRunIDs []string) (int, error) {
 	for _, id := range stageRunIDs {
-		if err := r.q.ResetRunningStage(ctx, id); err != nil {
+		row, err := r.q.ResetRunningStage(ctx, id)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue // 步驟不是 running：沒有改變，不發布
+		}
+		if err != nil {
 			return 0, err
 		}
+		r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
 	}
 	return len(stageRunIDs), nil
 }
 
-// NextTaskTime 回傳最早可以領取的 pending 任務的時間（not_before 為空或已到期時是現在）；沒有 pending 任務時 ok 為 false。
-// production 的 worker 用它決定要睡到什麼時候，而不是忙碌輪詢。
-func (r *Repo) NextTaskTime(ctx context.Context, executor string) (t time.Time, ok bool, err error) {
-	ms, err := r.q.NextTaskTime(ctx, executor)
+// NextTaskTime 回傳 pending 任務中，not_before 晚於 after 的最早時間；沒有這樣的任務時 ok 為 false。
+// 已到期的任務不算：領不到的到期任務（類別暫停或已滿）不該遮蔽之後才到期的任務，
+// 它們由「通知」喚醒 worker。production 的 worker 用它決定要睡到什麼時候，而不是忙碌輪詢。
+func (r *Repo) NextTaskTime(ctx context.Context, executor string, after time.Time) (t time.Time, ok bool, err error) {
+	ms, err := r.q.NextTaskTime(ctx, sqlcdb.NextTaskTimeParams{Executor: executor, AfterMs: toMs(after)})
 	if errors.Is(err, sql.ErrNoRows) {
 		return time.Time{}, false, nil
 	}
 	if err != nil {
 		return time.Time{}, false, err
 	}
-	t = fromMs(ms)
-	if now := r.clock.Now(); t.Before(now) {
-		t = now
-	}
-	return t, true, nil
+	return fromMs(ms), true, nil
 }
 
 // CountTasks 回傳指定狀態的任務數；用於測試與診斷。
@@ -229,4 +291,13 @@ func (r *Repo) CancelPendingTasks(ctx context.Context, stageRunIDs []string) (in
 		n += int(c)
 	}
 	return n, nil
+}
+
+// TaskCancelled 是被取消的任務的狀態（PIPE-R15）：不再被領取，租約也已清除，晚到的寫回不會有任何作用。
+const TaskCancelled = "cancelled"
+
+// CancelItemTasks 把影音所有還沒結束（pending 或 leased）的任務改為 cancelled，回傳它們的 ID，
+// 讓呼叫端通知 worker 結束其中正在執行的。
+func (r *Repo) CancelItemTasks(ctx context.Context, itemID string) ([]string, error) {
+	return r.q.CancelItemTasks(ctx, itemID)
 }

@@ -48,6 +48,58 @@ func (q *Queries) DoneStageByCacheKey(ctx context.Context, arg DoneStageByCacheK
 	return i, err
 }
 
+const executedRunsByItem = `-- name: ExecutedRunsByItem :many
+SELECT sr.id, sr.stage, sr.status, sr.started_at, sr.finished_at, sr.cache_key, sr.impl_version, cs.config_json
+FROM stage_runs sr
+JOIN config_snapshots cs ON cs.id = sr.config_snapshot_id
+WHERE sr.item_id = ?1 AND sr.started_at IS NOT NULL
+ORDER BY sr.started_at DESC, sr.rowid DESC
+`
+
+type ExecutedRunsByItemRow struct {
+	ID          string
+	Stage       string
+	Status      string
+	StartedAt   *int64
+	FinishedAt  *int64
+	CacheKey    string
+	ImplVersion int64
+	ConfigJson  string
+}
+
+// Runs that were actually started, newest first, with the effective config they used.
+func (q *Queries) ExecutedRunsByItem(ctx context.Context, itemID string) ([]ExecutedRunsByItemRow, error) {
+	rows, err := q.db.QueryContext(ctx, executedRunsByItem, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExecutedRunsByItemRow
+	for rows.Next() {
+		var i ExecutedRunsByItemRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Stage,
+			&i.Status,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.CacheKey,
+			&i.ImplVersion,
+			&i.ConfigJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSnapshotIDBySHA = `-- name: GetSnapshotIDBySHA :one
 SELECT id FROM config_snapshots WHERE sha256 = ?1
 `
@@ -112,10 +164,11 @@ func (q *Queries) InsertStageRun(ctx context.Context, arg InsertStageRunParams) 
 	return err
 }
 
-const markStageRunning = `-- name: MarkStageRunning :exec
+const markStageRunning = `-- name: MarkStageRunning :one
 UPDATE stage_runs SET status = 'running', block_reason = '', error_class = '', error_message = '',
   actions_json = '[]', not_before = NULL, started_at = CAST(?1 AS INTEGER), finished_at = NULL
 WHERE id = ?2
+RETURNING item_id, stage, status
 `
 
 type MarkStageRunningParams struct {
@@ -123,20 +176,38 @@ type MarkStageRunningParams struct {
 	ID        string
 }
 
-// Claiming a task marks its stage as running and clears the previous message and finish time.
-func (q *Queries) MarkStageRunning(ctx context.Context, arg MarkStageRunningParams) error {
-	_, err := q.db.ExecContext(ctx, markStageRunning, arg.StartedAt, arg.ID)
-	return err
+type MarkStageRunningRow struct {
+	ItemID string
+	Stage  string
+	Status string
 }
 
-const resetRunningStage = `-- name: ResetRunningStage :exec
-UPDATE stage_runs SET status = 'pending' WHERE id = ?1 AND status = 'running'
+// Claiming a task marks its stage as running and clears the previous message and finish time.
+func (q *Queries) MarkStageRunning(ctx context.Context, arg MarkStageRunningParams) (MarkStageRunningRow, error) {
+	row := q.db.QueryRowContext(ctx, markStageRunning, arg.StartedAt, arg.ID)
+	var i MarkStageRunningRow
+	err := row.Scan(&i.ItemID, &i.Stage, &i.Status)
+	return i, err
+}
+
+const resetRunningStage = `-- name: ResetRunningStage :one
+UPDATE stage_runs SET status = 'pending', started_at = NULL WHERE id = ?1 AND status = 'running'
+RETURNING item_id, stage, status
 `
 
-// When a lease goes back to the queue, a stage still running returns to pending.
-func (q *Queries) ResetRunningStage(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, resetRunningStage, id)
-	return err
+type ResetRunningStageRow struct {
+	ItemID string
+	Stage  string
+	Status string
+}
+
+// When a lease goes back to the queue, a stage still running returns to pending (no row when it was not running).
+// started_at is cleared: a run that was only claimed never really executed, so it must not be listed as executed.
+func (q *Queries) ResetRunningStage(ctx context.Context, id string) (ResetRunningStageRow, error) {
+	row := q.db.QueryRowContext(ctx, resetRunningStage, id)
+	var i ResetRunningStageRow
+	err := row.Scan(&i.ItemID, &i.Stage, &i.Status)
+	return i, err
 }
 
 const setStageResult = `-- name: SetStageResult :exec
@@ -167,7 +238,7 @@ func (q *Queries) SetStageResult(ctx context.Context, arg SetStageResultParams) 
 	return err
 }
 
-const setStageState = `-- name: SetStageState :exec
+const setStageState = `-- name: SetStageState :one
 UPDATE stage_runs SET
   status        = ?1,
   block_reason  = ?2,
@@ -178,6 +249,7 @@ UPDATE stage_runs SET
   started_at    = COALESCE(?7, started_at),
   finished_at   = ?8
 WHERE id = ?9
+RETURNING item_id, stage, status
 `
 
 type SetStageStateParams struct {
@@ -192,10 +264,16 @@ type SetStageStateParams struct {
 	ID           string
 }
 
+type SetStageStateRow struct {
+	ItemID string
+	Stage  string
+	Status string
+}
+
 // Every descriptive column is written (unset means cleared); started_at only changes when given,
 // finished_at is always overwritten.
-func (q *Queries) SetStageState(ctx context.Context, arg SetStageStateParams) error {
-	_, err := q.db.ExecContext(ctx, setStageState,
+func (q *Queries) SetStageState(ctx context.Context, arg SetStageStateParams) (SetStageStateRow, error) {
+	row := q.db.QueryRowContext(ctx, setStageState,
 		arg.Status,
 		arg.BlockReason,
 		arg.ErrorClass,
@@ -206,7 +284,9 @@ func (q *Queries) SetStageState(ctx context.Context, arg SetStageStateParams) er
 		arg.FinishedAt,
 		arg.ID,
 	)
-	return err
+	var i SetStageStateRow
+	err := row.Scan(&i.ItemID, &i.Stage, &i.Status)
+	return i, err
 }
 
 const snapshotConfig = `-- name: SnapshotConfig :one

@@ -86,6 +86,8 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		err = &errclass.Error{Class: errclass.ClassPermanent, Source: "pipeline", Detail: "不認識的步驟 " + run.Stage}
 	}
 	if ctx.Err() != nil {
+		// 關閉或取消中：不寫回，已寫出的產出檔也不會有記錄指向它。
+		p.discardArtifactFile(res.artifact)
 		return nil
 	}
 	if err != nil {
@@ -145,7 +147,9 @@ func (p *Pipeline) classify(t store.Task, err error) result {
 // 否則較晚完成的舊任務會蓋掉較新的現行版本。
 func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, it store.Item, res result) error {
 	var wake, stale bool
+	var purged []store.Artifact
 	err := p.st.Tx(ctx, func(r *store.Repo) error {
+		purged = nil
 		runs, err := r.StageRunsByItem(ctx, it.ID)
 		if err != nil {
 			return err
@@ -181,6 +185,10 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 					return err
 				}
 				sr.ArtifactID = a.ID
+				// 新版本寫入後，同一組只保留最近幾版（PIPE-R7）；檔案在 commit 之後才刪。
+				if purged, err = r.PurgeOldArtifacts(ctx, a.ItemID, a.Kind, a.Variant, a.Lang, keepArtifactVersions); err != nil {
+					return err
+				}
 			}
 			if res.artifact == nil && sr.ArtifactID != "" {
 				// 快取命中重用既有產出（PIPE-R5）。它可能已被後來的版本取代
@@ -199,15 +207,15 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 		}
 		switch res.task {
 		case taskDone:
-			if err := r.CompleteTask(ctx, t.ID); err != nil {
+			if err := r.CompleteTask(ctx, t.ID, t.LeaseToken); err != nil {
 				return err
 			}
 		case taskFailed:
-			if err := r.FailTask(ctx, t.ID); err != nil {
+			if err := r.FailTask(ctx, t.ID, t.LeaseToken); err != nil {
 				return err
 			}
 		case taskRequeue:
-			if err := r.RequeueTask(ctx, t.ID, res.notBefore, res.countAttempt); err != nil {
+			if err := r.RequeueTask(ctx, t.ID, t.LeaseToken, res.notBefore, res.countAttempt); err != nil {
 				return err
 			}
 			wake = true
@@ -227,13 +235,25 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 		}
 		return nil
 	})
+	// 租約已經失效（被放回、到期後被別人領走，或任務已被取消）：寫回的交易已整個回復，
+	// 這次的結果不算數。不是錯誤；產出檔沒有記錄指向它，一併丟棄。
+	lost := errors.Is(err, store.ErrLeaseLost)
+	if lost {
+		p.log.Warn("任務的租約已失效，丟棄這次的結果", "task", t.ID, "stage", run.Stage)
+		err = nil
+	}
 	if err != nil {
+		// 交易沒有 commit（例如 ctx 取消、資料庫錯誤）：沒有記錄會指向已寫出的產出檔。
+		p.discardArtifactFile(res.artifact)
 		return err
 	}
-	if stale && res.artifact != nil {
+	if stale || lost {
 		// 結果已丟棄，沒有記錄會指向這個檔案；清掉避免留下孤兒檔。
-		if err := os.Remove(filepath.Join(p.dataDir, filepath.FromSlash(res.artifact.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
-			p.log.Warn("清除被丟棄的產出檔失敗", "path", res.artifact.Path, "error", err)
+		p.discardArtifactFile(res.artifact)
+	} else {
+		// 已 commit：被清除版本的記錄不在了，檔案也一併刪除。
+		for _, a := range purged {
+			p.discardArtifactFile(&store.NewArtifact{Path: a.Path})
 		}
 	}
 	if wake {
@@ -241,6 +261,20 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 	}
 	return nil
 }
+
+// discardArtifactFile 刪除已寫出但不會被任何記錄指向的產出檔（沒有 commit 或結果被丟棄）。a 為 nil 時不做事。
+// 刪除失敗只記錄：檔案留下來不影響正確性，只是多一個孤兒檔。
+func (p *Pipeline) discardArtifactFile(a *store.NewArtifact) {
+	if a == nil {
+		return
+	}
+	if err := os.Remove(filepath.Join(p.dataDir, filepath.FromSlash(a.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
+		p.log.Warn("清除被丟棄的產出檔失敗", "path", a.Path, "error", err)
+	}
+}
+
+// keepArtifactVersions 是同一組 (item, kind, variant, lang) 保留的最近版本數（PIPE-R7）。
+const keepArtifactVersions = 3
 
 // reasonCancelled 是步驟因取消而 skipped 時的原因（PIPE-R15），寫在 block_reason。
 const reasonCancelled = "cancelled"
@@ -252,7 +286,7 @@ func discardStale(ctx context.Context, r *store.Repo, t store.Task, run store.St
 	if err := r.SetStageState(ctx, run.ID, supersededState()); err != nil {
 		return err
 	}
-	return r.CompleteTask(ctx, t.ID)
+	return r.CompleteTask(ctx, t.ID, t.LeaseToken)
 }
 
 // supersededState 是被重跑取代的步驟的狀態。

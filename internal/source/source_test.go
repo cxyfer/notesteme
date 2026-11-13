@@ -12,16 +12,20 @@ func TestRecognize(t *testing.T) {
 		canonical  string
 		recognized bool
 	}{
-		{"https://youtu.be/abc123", PlatformYouTube, KindVideo, "abc123", 0, "https://www.youtube.com/watch?v=abc123", true},
-		{"https://www.youtube.com/shorts/abc123", PlatformYouTube, KindVideo, "abc123", 0, "https://www.youtube.com/watch?v=abc123", true},
+		{"https://youtu.be/abc123xxxxx", PlatformYouTube, KindVideo, "abc123xxxxx", 0, "https://www.youtube.com/watch?v=abc123xxxxx", true},
+		{"https://www.youtube.com/shorts/abc123xxxxx", PlatformYouTube, KindVideo, "abc123xxxxx", 0, "https://www.youtube.com/watch?v=abc123xxxxx", true},
 		{"https://www.youtube.com/playlist?list=PL123", PlatformYouTube, KindPlaylist, "PL123", 0, "", true},
 		{"https://www.youtube.com/@somechannel", PlatformYouTube, KindChannel, "@somechannel", 0, "", true},
 		{"https://www.bilibili.com/video/BV1xx411c7mD?p=2", PlatformBilibili, KindVideo, "BV1xx411c7mD", 2, "https://www.bilibili.com/video/BV1xx411c7mD?p=2", true},
 		{"https://www.bilibili.com/video/BV1xx411c7mD", PlatformBilibili, KindVideo, "BV1xx411c7mD", 1, "https://www.bilibili.com/video/BV1xx411c7mD?p=1", true},
 		{"https://space.bilibili.com/12345", PlatformBilibili, KindChannel, "12345", 0, "", true},
 		{"https://example.com/some/page", "", "", "", 0, "", false},
-		{"ftp://www.youtube.com/watch?v=abc123", "", "", "", 0, "", false},
+		{"ftp://www.youtube.com/watch?v=abc123xxxxx", "", "", "", 0, "", false},
 		{"not a url", "", "", "", 0, "", false},
+		// YouTube 影片 ID 必須剛好 11 個字元（ING-R1）。
+		{"https://www.youtube.com/watch?v=abc123xxxx", "", "", "", 0, "", false},
+		{"https://www.youtube.com/watch?v=abc123xxxxxx", "", "", "", 0, "", false},
+		{"https://youtu.be/abc123", "", "", "", 0, "", false},
 		{"https://www.bilibili.com/video/notabvid", "", "", "", 0, "", false},
 		{"https://space.bilibili.com/abc", "", "", "", 0, "", false},
 	}
@@ -43,13 +47,29 @@ func TestRecognize(t *testing.T) {
 	}
 }
 
+func TestImplemented(t *testing.T) {
+	for _, id := range []string{"youtube-manual", "youtube-auto", "supadata"} {
+		if !Implemented(id) {
+			t.Errorf("%s 應該已實作", id)
+		}
+	}
+	for _, id := range []string{"groq", "bilibili-ai", "local-sidecar", "podcast-transcript", ""} {
+		if Implemented(id) {
+			t.Errorf("%s 還沒有實作", id)
+		}
+	}
+	if got := ImplementedSources(); len(got) != 3 {
+		t.Errorf("ImplementedSources = %v", got)
+	}
+}
+
 func TestRef(t *testing.T) {
 	tests := []struct {
 		platform, id string
 		part         int
 		want         string
 	}{
-		{PlatformYouTube, "abc123", 0, "yt:abc123"},
+		{PlatformYouTube, "abc123xxxxx", 0, "yt:abc123xxxxx"},
 		{PlatformBilibili, "BV1xx411c7mD", 3, "bili:BV1xx411c7mD/p3"},
 		{PlatformPodcast, "show/ep-42", 0, "pod:show/ep-42"},
 		{PlatformLocal, "talk.mp4", 0, "local:talk.mp4"},
