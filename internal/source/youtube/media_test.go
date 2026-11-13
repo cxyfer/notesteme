@@ -108,7 +108,8 @@ func TestDownloadAudioClassifiesFailures(t *testing.T) {
 	}{
 		"影片不存在": {"ERROR: [youtube] abc123xxxxx: Video unavailable\n", errclass.ClassPermanent},
 		"私人影片":  {"ERROR: [youtube] abc123xxxxx: Private video. Sign in\n", errclass.ClassPermanent},
-		"其他錯誤":  {"ERROR: unable to download video data: HTTP Error 403: Forbidden\n", errclass.ClassRetryable},
+		"403":   {"ERROR: unable to download video data: HTTP Error 403: Forbidden\n", errclass.ClassNeedsAction},
+		"其他錯誤":  {"ERROR: unable to download video data: HTTP Error 503: Service Unavailable\n", errclass.ClassRetryable},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := &stubRunner{res: toolexec.Result{ExitCode: 1, Stderr: []byte(tt.stderr)}}
