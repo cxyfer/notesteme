@@ -2,6 +2,7 @@ package steps
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -57,18 +58,19 @@ func (s *Scenario) resourceClassIsPaused(class string) error {
 }
 
 // implementationVersionIs 覆寫步驟的 impl_version（PIPE-R6）。
-// server 已啟動就呼叫測試介面；還沒啟動就記在 World，啟動時經 TestControls 帶入（與 SeedTranscript 的做法一致）。
+// 覆寫記在 World，啟動（或重啟）時經 TestControls 帶入；server 已啟動時另外呼叫測試介面，立即生效。
 func (s *Scenario) implementationVersionIs(stage string, v int) error {
 	if !pipeline.ValidStage(stage) {
 		return fmt.Errorf("步驟 %q 不正確，應是 %v 其中之一", stage, pipeline.Stages)
 	}
-	if s.server != nil {
-		return s.server.SetImplVersion(stage, v)
-	}
+	// 不論 server 有沒有在執行都記在 World：重啟後的 server 由 AppEnv 帶入同一份覆寫。
 	if s.World.ImplVersions == nil {
 		s.World.ImplVersions = map[string]int{}
 	}
 	s.World.ImplVersions[stage] = v
+	if s.server != nil {
+		return s.server.SetImplVersion(stage, v)
+	}
 	return nil
 }
 
@@ -112,6 +114,7 @@ func (s *Scenario) queueRequest(spec string, body []byte) error {
 	if err != nil {
 		return err
 	}
+	resp.step = s.step
 	s.last = resp
 	if resp.status < 200 || resp.status > 299 {
 		return fmt.Errorf("%s：HTTP %d %s", spec, resp.status, snippet(resp.body))
@@ -130,24 +133,30 @@ func (s *Scenario) queueControl(action string) error {
 // workerStartsOneRound 讓 worker 領取一輪任務並開始執行，不等完成。
 // 先啟用 gate，被領取的任務在假 yt-dlp 前停住；領到幾個就等幾個程序就位，之後任務維持 running，不靠時序。
 func (s *Scenario) workerStartsOneRound() error {
+	_, err := s.startRound()
+	return err
+}
+
+// startRound 執行一輪領取並回傳領到的任務數。before 只數存活的程序，所以先前被 kill 而留下標記的程序不會讓 before+n 偏掉。
+func (s *Scenario) startRound() (int, error) {
 	if err := s.prepareOwner(); err != nil {
-		return err
+		return 0, err
 	}
 	if err := s.World.ArmGate(); err != nil {
-		return fmt.Errorf("啟用 gate：%w", err)
+		return 0, fmt.Errorf("啟用 gate：%w", err)
 	}
 	before, err := s.World.GateWaiting()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	n, err := s.server.RunRound(s.ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if n == 0 {
-		return nil
+		return 0, nil
 	}
-	return s.World.WaitGateWaiting(before+n, gateWaitLimit)
+	return n, s.World.WaitGateWaiting(before+n, gateWaitLimit)
 }
 
 // 佇列 API 回應的形狀（只列出步驟會用到的欄位）。
@@ -189,44 +198,86 @@ func (q queueJSON) running(class string) []queueTaskJSON {
 	return out
 }
 
+// processWaitLimit 是等存活的假工具程序數符合預期的真實時間上限，只用來防止卡死。
+// 是變數只為了讓單元測試縮短它。
+var processWaitLimit = 10 * time.Second
+
+// leasedByClass 回傳目前被領取（leased）的任務數，依資源類別分組。
+// server 在執行時讀 GET /api/queue；場景讓 server 停下之後直接讀資料庫，不隱含啟動新的 server。
+func (s *Scenario) leasedByClass() (map[string]int, error) {
+	if s.stopped {
+		return s.World.DBLeasedTasks()
+	}
+	q, err := s.queueState()
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]int{}
+	for _, t := range q.running("") {
+		out[t.ResourceClass]++
+	}
+	return out, nil
+}
+
+// checkRunning 確認執行中的任務數：資料庫的狀態與實際存活的程序要同時符合。
+//   - class 為空代表不限資源類別。
+//   - 只看 DB 的話，任務被標成取消、程序卻還在跑也會通過（取消沒有真的停止工作）；
+//     所以 gate 啟用時，存活的假工具程序數也必須等於被領取的任務總數（被 kill 的程序不算）。
+func (s *Scenario) checkRunning(class string, want int) error {
+	leased, err := s.leasedByClass()
+	if err != nil {
+		return err
+	}
+	total, got := 0, 0
+	for c, n := range leased {
+		total += n
+		if class == "" || c == class {
+			got += n
+		}
+	}
+	if got != want {
+		if class == "" {
+			return fmt.Errorf("有 %d 個任務在執行，預期 %d 個：%v", got, want, leased)
+		}
+		return fmt.Errorf("資源類別 %q 有 %d 個任務在執行，預期 %d 個：%v", class, got, want, leased)
+	}
+	if s.World.Tools.Gate == "" {
+		return nil // 場景沒有讓任何程序停在 gate 前，沒有程序可數
+	}
+	if err := s.World.WaitGateCount(total, processWaitLimit); err != nil {
+		return fmt.Errorf("資料庫有 %d 個被領取的任務，但存活的程序數不符：%w", total, err)
+	}
+	return nil
+}
+
 func (s *Scenario) tasksOfClassAreRunning(want int, class string) error {
-	q, err := s.queueState()
-	if err != nil {
-		return err
-	}
-	if got := q.running(class); len(got) != want {
-		return fmt.Errorf("資源類別 %q 有 %d 個任務在執行，預期 %d 個：%+v", class, len(got), want, q.Tasks)
-	}
-	return nil
+	return s.checkRunning(class, want)
 }
 
-func (s *Scenario) noTaskIsRunning() error {
-	q, err := s.queueState()
-	if err != nil {
-		return err
-	}
-	if got := q.running(""); len(got) > 0 {
-		return fmt.Errorf("有 %d 個任務在執行，預期沒有：%+v", len(got), got)
-	}
-	return nil
-}
+func (s *Scenario) noTaskIsRunning() error { return s.checkRunning("", 0) }
 
-// nextTaskBelongsTo 看佇列中 pending 任務的第一筆：它就是下一個會被領取的任務。
+// nextTaskBelongsTo 讓 worker 實際領取一輪，檢查被領取（leased）的那一筆任務屬於哪部影音。
+// 只看列表排序驗證不到領取的規則（ClaimTasks 的排序）。場景以並行上限 1 讓每輪只領取一筆。
 func (s *Scenario) nextTaskBelongsTo(ref string) error {
+	n, err := s.startRound()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return errors.New("worker 沒有領取任何任務")
+	}
 	q, err := s.queueState()
 	if err != nil {
 		return err
 	}
-	for _, t := range q.Tasks {
-		if t.State != "pending" {
-			continue
-		}
-		if t.Item != ref {
-			return fmt.Errorf("下一個任務屬於 %q，預期 %q：%+v", t.Item, ref, q.Tasks)
-		}
-		return nil
+	leased := q.running("")
+	if len(leased) != 1 {
+		return fmt.Errorf("這一輪領取了 %d 個任務，預期 1 個（場景應設定並行上限為 1）：%+v", len(leased), leased)
 	}
-	return fmt.Errorf("佇列中沒有 pending 的任務：%+v", q.Tasks)
+	if leased[0].Item != ref {
+		return fmt.Errorf("下一個被領取的任務屬於 %q，預期 %q：%+v", leased[0].Item, ref, q.Tasks)
+	}
+	return nil
 }
 
 // taskHasAttempts 比對步驟最近一個任務的嘗試次數（影音詳情的 stages[].attempts）。

@@ -93,7 +93,7 @@ func (s *Script) RequiresCookie(sourceID, cookie string) {
 	s.src(sourceID).cookie = cookie
 }
 
-// RequiresAPIKey 讓來源要求請求帶有這把 API key（x-api-key 標頭，或 Authorization: Bearer），否則回 401。
+// RequiresAPIKey 讓來源要求請求帶有這把 API key（x-api-key 標頭，Supadata 只接受這種），否則回 401。
 // 用來確認被測程式真的送出 key；key 本身不會被記錄。
 func (s *Script) RequiresAPIKey(sourceID, key string) {
 	s.mu.Lock()
@@ -144,7 +144,7 @@ func (s *Script) begin(sourceID string, w http.ResponseWriter, r *http.Request) 
 	src.calls++
 	cookie, apiKey := src.cookie, src.apiKey
 	s.mu.Unlock()
-	if apiKey != "" && r.Header.Get("x-api-key") != apiKey && r.Header.Get("Authorization") != "Bearer "+apiKey {
+	if apiKey != "" && r.Header.Get("x-api-key") != apiKey {
 		writeJSON(w, http.StatusUnauthorized, `{"error":"invalid_api_key"}`)
 		return false
 	}

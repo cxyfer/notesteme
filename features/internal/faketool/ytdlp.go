@@ -254,6 +254,24 @@ func GateWaiting(gate string) ([]string, error) {
 	return out, nil
 }
 
+// GateAlive 回傳停在 gate 前且程序仍存活的數量。被 kill 的程序來不及移除標記檔，
+// 所以只數標記不夠：標記的 pid 已經結束（或是殭屍）的不算。
+func GateAlive(gate string) (int, error) {
+	marks, err := GateWaiting(gate)
+	if err != nil {
+		return 0, err
+	}
+	prefix := gate + GateWaitingSuffix + "."
+	n := 0
+	for _, m := range marks {
+		pid, err := strconv.Atoi(strings.TrimPrefix(m, prefix))
+		if err == nil && pidAlive(pid) {
+			n++
+		}
+	}
+	return n, nil
+}
+
 // waitGate 在 gate 檔存在時阻塞，直到檔案被刪除（上限 gateTimeout）。
 // 阻塞期間在 <root>/data/tmp 留下部分檔，並寫自己的標記檔 <gate>.waiting.<pid>；
 // gate 解除後（或逾時）移除自己的標記檔。被 kill 時沒有機會清理，由 harness 的 OpenGate 清除。

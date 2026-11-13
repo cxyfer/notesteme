@@ -164,7 +164,29 @@ func (s *Scenario) libraryContains(ref string) error {
 	return fmt.Errorf("資料庫沒有影音 %q（共 %d 部）", ref, len(items))
 }
 
+// stageIsFromDB 在場景讓 server 停下之後比對步驟狀態：直接讀資料庫，不啟動新的 server。
+func (s *Scenario) stageIsFromDB(stage, ref, want string) error {
+	id, ok := s.World.Refs[ref]
+	if !ok {
+		return fmt.Errorf("server 已停止，而且場景沒有記下影音 %q 的 ID，無法直接讀資料庫", ref)
+	}
+	got, found, err := s.World.DBStageStatus(id, stage)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("%s 沒有步驟 %q（讀自資料庫）", ref, stage)
+	}
+	if got != want {
+		return fmt.Errorf("%s 的步驟 %s 是 %q，預期 %q（server 已停止，讀自資料庫）", ref, stage, got, want)
+	}
+	return nil
+}
+
 func (s *Scenario) stageIs(stage, ref, want string) error {
+	if s.stopped {
+		return s.stageIsFromDB(stage, ref, want)
+	}
 	it, err := s.item(ref)
 	if err != nil {
 		return err
@@ -172,8 +194,9 @@ func (s *Scenario) stageIs(stage, ref, want string) error {
 	for _, st := range it.Stages {
 		if st.Stage == stage {
 			if st.Status != want {
-				// 場景最近一次送出的請求是還沒實作的路由（例如取消、刪除）：步驟狀態不符是因為那個動作沒有發生。
-				if s.last != nil && s.last.status == http.StatusNotImplemented && isNotImplemented(s.last.body) {
+				// 緊接在前一個步驟送出的請求是還沒實作的路由（例如取消、刪除）：步驟狀態不符是因為那個動作沒有發生。
+				// 更早的請求與這個斷言無關，不能用來把失敗轉成 pending。
+				if s.lastFromPreviousStep() && s.last.status == http.StatusNotImplemented && isNotImplemented(s.last.body) {
 					return fmt.Errorf("最近的請求還沒有實作：%w", godog.ErrPending)
 				}
 				return fmt.Errorf("%s 的步驟 %s 是 %q，預期 %q（%s）", ref, stage, st.Status, want, describeStage(st))
