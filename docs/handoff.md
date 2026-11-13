@@ -76,10 +76,20 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 - **不要讓已實作的步驟依參數回傳 pending 來避開失敗**。場景的步驟都已實作、行為還沒做時：
   - 小的行為就直接實作。
   - 大的就讓真正還沒實作的那個步驟維持 pending。
-  - 目前允許的 pending 只有三種：
-    - 斷言遇到 production 回應的 `501 not_implemented`，而且這個回應必須是前一個步驟送出的請求。
+  - 目前允許的 pending 只有下列幾種：
+    - 斷言遇到 production 回應的 `501 not_implemented`，或 CLI 回報 `not_implemented`（`the command exits with` 遇到尚未實作的子命令或 API 的 501），而且這個回應或結果必須是前一個步驟送出、執行的。
     - 腳本化來源的步驟查 production 的 `source.Implemented`，得知來源還沒實作。
-    - 暫時保留的 `pendingWithoutItemFixture`：執行前就判斷場景沒有準備任何字幕來源。
+    - 暫時保留的 `pendingWithoutItemFixture`：執行前就判斷場景沒有準備任何字幕來源。判斷用 `declaredLanguage`（`titled` 補上的預設語言不算場景宣告的語言），所以下列 3 個 DEL 場景在 DEL 切片完成時要移除這個例外：
+      - The deletion preview shows what will be lost without changing anything
+      - Adding an item that is in the trash offers to restore it
+      - An item added again after a permanent delete starts fresh
+    - `docker` 指令：`When the owner runs "docker …"` 回 pending，OPS 切片處理（其他不是 `notesteme` 的指令一律失敗）。
+    - 步驟本身還沒實作。
+- **通過場景的棘輪**（`features/passing.txt`）：
+  - 「501 → pending」這類規則可能讓已通過的場景退步成 pending，整套測試卻仍然是綠的（審查用變異測試證明：讓 `GET /api/items` 回 501，CLI 場景 5 從 passed 變成 pending）。
+  - `features/passing.txt` 一行一個通過的場景，格式 `<feature 檔名>: <場景名稱>`；Scenario Outline 的每個 example 加上 ` [example N]`（整份 Examples 的第幾列）。
+  - `TestFeatures` 跑完後讀取每個場景的結果（自訂的 godog formatter，見 `features/ratchet_test.go`）：清單中的場景不是 passed（pending、failed、undefined、沒有被執行）就讓測試失敗並列出場景；通過但不在清單中的場景只提示。只有預設 tag 才要求清單中的場景都被執行；用 `-godog.tags` 指定其他 tag 時只檢查有執行到的。
+  - **每個切片完成後要更新 `features/passing.txt`**：`go test ./features -run TestFeatures -update-passing`，檢視 diff 後一起 commit。清單中的場景不得退步；改場景名稱或刪除場景時，清單也要同步修改。
 - **指令被權限限制擋下時不要繞過**（例如把指令寫進腳本再執行）；停下來回報給使用者。
 - **subagent 分工**：
   - `architect`（opus，唯讀）：設計。

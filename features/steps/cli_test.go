@@ -86,19 +86,85 @@ func TestCommandAssertionKeepsResultFresh(t *testing.T) {
 	}
 }
 
-// 不是 notesteme 的指令 harness 不會執行；沒有 server 卻有尚未送出的 Given 設定時失敗，不默默忽略。
-func TestOwnerRunsGuards(t *testing.T) {
+// 只有 docker 指令是 pending（OPS 切片處理）；其他不是 notesteme 的指令（例如打錯字）一律失敗並說明原因。
+func TestOwnerRunsOnlyDockerIsPending(t *testing.T) {
 	s := newTestScenario(t)
 	if err := s.ownerRuns(`docker compose config`); !errors.Is(err, godog.ErrPending) {
 		t.Errorf("docker：%v", err)
 	}
+	for _, line := range []string{`notestem items ls`, `Docker compose config`, `ls -l`, `docker-compose up`} {
+		err := s.ownerRuns(line)
+		if err == nil || errors.Is(err, godog.ErrPending) || !strings.Contains(err.Error(), "只執行 notesteme") {
+			t.Errorf("%q 應該失敗並說明原因，得到 %v", line, err)
+		}
+	}
+	if err := s.ownerRuns(`   `); err == nil || errors.Is(err, godog.ErrPending) {
+		t.Errorf("空指令應該失敗：%v", err)
+	}
+}
+
+// 沒有 server 卻有尚未送出的 Given 設定時失敗，不默默忽略；引號沒有結束也失敗。
+func TestOwnerRunsGivenWithoutServer(t *testing.T) {
+	s := newTestScenario(t)
 	s.givenSettings = map[string]any{"language": map[string]any{}}
 	if err := s.ownerRuns(`notesteme items ls`); err == nil || errors.Is(err, godog.ErrPending) || !strings.Contains(err.Error(), "server 沒有在執行") {
 		t.Errorf("有尚未送出的設定：%v", err)
 	}
 	s.givenSettings = nil
+	s.givenQueue.pausedQueue = true
+	if err := s.ownerRuns(`notesteme items ls`); err == nil || !strings.Contains(err.Error(), "server 沒有在執行") {
+		t.Errorf("有尚未送出的佇列設定：%v", err)
+	}
+	s.givenQueue = queueConfig{}
 	if err := s.ownerRuns(`notesteme export "unterminated`); err == nil {
 		t.Error("引號沒有結束應該失敗")
+	}
+}
+
+// server 已經在執行時，尚未送出的 Given 設定與佇列要先送出，不能被默默忽略（P1）。
+func TestOwnerRunsFlushesGivenWhenServerRunning(t *testing.T) {
+	s := newTestScenario(t)
+	if err := s.startServer(); err != nil {
+		t.Fatal(err)
+	}
+	s.givenQueue.pausedQueue = true
+	s.givenSettings = map[string]any{"language": map[string]any{}}
+	if err := s.ownerRuns(`notesteme items ls --json`); err != nil {
+		t.Fatalf("ownerRuns：%v", err)
+	}
+	if s.hasGivenConfig() {
+		t.Error("設定與佇列應該已經送出")
+	}
+	if !s.ownerLoggedIn {
+		t.Error("送出設定前要先登入 owner")
+	}
+	q, err := s.queueState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !q.Paused {
+		t.Error("Given 的暫停沒有套用到 server")
+	}
+}
+
+// 輸出已經 Unexpand 成虛擬路徑；預期值不 Expand，兩邊才對稱。
+func TestCommandOutputExpectationsStayVirtual(t *testing.T) {
+	s := newTestScenario(t)
+	real := s.World.DataDir()
+	s.step = 1
+	s.cmd = &cliRun{out: s.World.Unexpand(`{"path":"` + real + `/x.srt"}`), step: 1}
+	s.step = 2
+	if err := s.commandOutputContains(`/data/x.srt`); err != nil {
+		t.Errorf("預期值是虛擬路徑：%v", err)
+	}
+	if err := s.commandOutputContains(real + `/x.srt`); err == nil {
+		t.Error("預期值不應該被 Expand 成實際路徑，輸出裡沒有實際路徑")
+	}
+	if err := s.commandOutputJSON(&godog.DocString{Content: `{"path":"/data/x.srt"}`}); err != nil {
+		t.Errorf("JSON 預期值是虛擬路徑：%v", err)
+	}
+	if err := s.commandOutputJSON(&godog.DocString{Content: `{"path":"` + real + `/x.srt"}`}); err == nil {
+		t.Error("JSON 預期值不應該被 Expand")
 	}
 }
 

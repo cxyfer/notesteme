@@ -57,9 +57,19 @@ func TestOutboundTrap(t *testing.T) {
 	}
 }
 
+// updatePassing 用這次預設 tag 的結果重寫 passing.txt：go test ./features -run TestFeatures -update-passing
+var updatePassing = flag.Bool("update-passing", false, "用這次通過的場景重寫 passing.txt（只能用預設 tag）")
+
+// isDefaultRun 回報這次是不是沒有被使用者改過範圍的完整執行：沒有指定 -godog.tags，也沒有改 paths。
+// 只有完整執行時，passing.txt 的場景都應該被執行到。
+func isDefaultRun(o godog.Options) bool {
+	return strings.TrimSpace(o.Tags) == "" && len(o.Paths) == 1 && o.Paths[0] == "."
+}
+
 func TestFeatures(t *testing.T) {
 	o := opts
 	o.Tags = tagExpr(opts.Tags)
+	o.Format = withRatchetFormat(opts.Format)
 	o.TestingT = t
 
 	suite := godog.TestSuite{
@@ -73,8 +83,44 @@ func TestFeatures(t *testing.T) {
 	for _, f := range steps.HarnessFailures() {
 		t.Errorf("harness 違規：%s", f)
 	}
+	checkPassing(t, isDefaultRun(opts))
 	if status != 0 {
 		t.Fatal("non-zero status returned, failed to run feature tests")
+	}
+}
+
+// checkPassing 做通過場景的棘輪檢查（見 ratchet_test.go）：
+// passing.txt 中的場景不是 passed 就讓測試失敗；通過但不在清單中的場景只提示。
+func checkPassing(t *testing.T, full bool) {
+	t.Helper()
+	results := ratchet.results()
+	if *updatePassing {
+		if !full {
+			t.Fatal("-update-passing 只能搭配預設 tag 與 paths 使用")
+		}
+		if err := writePassing(passingFile, results); err != nil {
+			t.Fatalf("寫入 %s：%v", passingFile, err)
+		}
+		t.Logf("已重寫 %s：%d 個通過的場景", passingFile, len(passedKeys(results)))
+		return
+	}
+	content, err := os.ReadFile(passingFile)
+	if err != nil {
+		t.Errorf("讀取 %s：%v（用 -update-passing 產生）", passingFile, err)
+		return
+	}
+	listed, err := parsePassing(string(content))
+	if err != nil {
+		t.Errorf("%v", err)
+		return
+	}
+	rep := checkRatchet(listed, results, full)
+	for _, f := range rep.failures {
+		t.Errorf("通過場景的棘輪：%s", f)
+	}
+	if len(rep.unlisted) > 0 {
+		t.Logf("以下 %d 個場景通過，但不在 %s，請加入（或執行 -update-passing）：\n  %s",
+			len(rep.unlisted), passingFile, strings.Join(rep.unlisted, "\n  "))
 	}
 }
 
