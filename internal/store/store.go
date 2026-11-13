@@ -63,6 +63,10 @@ type Store struct {
 // Open 開啟 dir/notesteme.db 並套用 migration。dir 必須已存在。
 // DB 與 WAL／SHM 的權限一律為 0600（NFR-SEC-5）。
 func Open(ctx context.Context, dir string, clk clock.Clock) (*Store, error) {
+	// 一律用絕對路徑：file: URI 遇到相對路徑會把第一段當成 host（file://data/x.db），資料目錄是相對路徑時就開不起來。
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
 	path := filepath.Join(dir, DBFileName)
 
 	// NFR-SEC-5：DB 與 WAL／SHM 一律 0600，不受 umask 影響。SQLite 建立 WAL／SHM 時沿用 DB 檔的權限，

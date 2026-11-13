@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net"
@@ -173,20 +174,57 @@ func TestSocketPathOccupiedByFile(t *testing.T) {
 	_ = lock.Close()
 }
 
-// 路徑超過 sockaddr_un 的上限時，回傳說明原因的錯誤（不靜默略過），並釋放鎖與 TCP listener。
-func TestSocketPathTooLong(t *testing.T) {
+// 路徑超過 sockaddr_un 的上限時，serve 照常啟動：log Warn 並略過本機 socket，
+// 鎖檔的 Socket 留空（CLI 據此回報「改用 --server」）。TCP 不受影響。
+func TestSocketPathTooLongSkipsSocket(t *testing.T) {
 	env := testEnv(t)
+	var logs bytes.Buffer
+	env.Log = &logs
 	long := filepath.Join(shortTempDir(t), strings.Repeat("d", sockPathMax))
 	env.Vars["NOTESTEME_DATA"] = long
-	_, err := StartServer(t.Context(), env)
-	if err == nil || !strings.Contains(err.Error(), "太長") || !strings.Contains(err.Error(), "NOTESTEME_DATA") {
-		t.Fatalf("err = %v", err)
+	srv, err := StartServer(t.Context(), env)
+	if err != nil {
+		t.Fatalf("路徑太長不應該讓 serve 無法啟動：%v", err)
 	}
-	lock, lerr := store.LockDir(long)
-	if lerr != nil {
-		t.Fatalf("啟動失敗後鎖應該已釋放：%v", lerr)
+	if code := get(t, srv.Addr(), "/healthz"); code != 200 {
+		t.Errorf("TCP /healthz = %d", code)
 	}
-	_ = lock.Close()
+	info, err := store.ReadLockInfo(long)
+	if err != nil || info == nil || info.Holder != "serve" || info.Socket != "" || info.Listen != srv.Addr() {
+		t.Errorf("lock info = %+v, %v；預期 Socket 留空、Listen 有值", info, err)
+	}
+	if err := srv.Shutdown(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(logs.String(), "太長") || !strings.Contains(logs.String(), `"level":"WARN"`) {
+		t.Errorf("應該 log Warn 說明路徑太長：%s", logs.String())
+	}
+	if info, _ := store.ReadLockInfo(long); info != nil {
+		t.Errorf("正常關閉後鎖檔應該是空的：%+v", info)
+	}
+}
+
+// 鎖檔寫入絕對路徑的 socket：資料目錄是相對路徑時，從別的工作目錄也找得到。
+func TestLockInfoHasAbsoluteSocketPath(t *testing.T) {
+	env := testEnv(t)
+	root := shortTempDir(t)
+	t.Chdir(root)
+	env.Vars["NOTESTEME_DATA"] = "data"
+	srv, err := StartServer(t.Context(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Kill()
+	info, err := store.ReadLockInfo(filepath.Join(root, "data"))
+	if err != nil || info == nil {
+		t.Fatalf("lock info = %+v, %v", info, err)
+	}
+	if !filepath.IsAbs(info.Socket) || filepath.Base(info.Socket) != socketName {
+		t.Errorf("Socket = %q，預期絕對路徑", info.Socket)
+	}
+	if got := SocketPath("data"); !filepath.IsAbs(got) {
+		t.Errorf("SocketPath(相對路徑) = %q，預期絕對路徑", got)
+	}
 }
 
 // Env.Listen 回傳的不是 Unix listener 時拒絕（它不受檔案權限與 uid 檢查保護，卻會以 owner 身分服務）。

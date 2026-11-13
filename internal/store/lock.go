@@ -45,6 +45,13 @@ func LockDir(dir string) (*DirLock, error) {
 		}
 		return nil, fmt.Errorf("鎖定資料目錄失敗：%w", err)
 	}
+	// 取得鎖之後立刻清空：上一個持有者（例如被中斷的 serve）留下的內容不再有效，
+	// 其他程序讀到空內容就知道「持有者還沒寫入連線資訊」，而不是連到舊的 socket。
+	if err := f.Truncate(0); err != nil {
+		unflock(f)
+		_ = f.Close()
+		return nil, fmt.Errorf("清空鎖檔失敗：%w", err)
+	}
 	return &DirLock{f: f}, nil
 }
 
