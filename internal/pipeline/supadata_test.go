@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -159,6 +161,39 @@ func TestSupadataModeIsPartOfTheCacheKey(t *testing.T) {
 	}
 	if n := r.sourceVersions(it); n != 3 {
 		t.Errorf("版本數 = %d，預期 3", n)
+	}
+}
+
+// PIPE-R7：同一組 (item, kind, variant, lang) 只保留最近 3 版，更舊的記錄與檔案都清除。
+func TestRerunKeepsOnlyTheLatestThreeVersionsAndDeletesOlderFiles(t *testing.T) {
+	r, _ := newSupadataRig(t)
+	it := r.ingest(watch, nil, StageTranscript)
+	r.run()
+	// 每次的 fallback 不同，快取鍵就不同，每次都產生新版本。
+	for _, fb := range [][]any{{"supadata", "a"}, {"supadata", "b"}, {"supadata", "c"}, {"supadata", "d"}} {
+		if err := r.rerunTranscript(it, fallbackOverride(fb...)); err != nil {
+			t.Fatal(err)
+		}
+		r.run()
+	}
+
+	if n := r.sourceVersions(it); n != 3 {
+		t.Errorf("版本數 = %d，預期 3（5 次產生，只留最近 3 版）", n)
+	}
+	if n := artifactFiles(r, it.ID); n != 3 {
+		t.Errorf("產出檔 = %d 個，預期 3（舊版本的檔案要一併刪除）", n)
+	}
+	arts, err := r.st.Read().CurrentArtifacts(context.Background(), it.ID, "transcript")
+	if err != nil || len(arts) != 1 {
+		t.Fatalf("現行版本 = %+v, %v", arts, err)
+	}
+	// 留下的每個檔案都對應一筆記錄。
+	if _, err := os.Stat(filepath.Join(r.dir, filepath.FromSlash(arts[0].Path))); err != nil {
+		t.Errorf("現行版本的檔案不見了：%v", err)
+	}
+	// 清除後仍能讀取字幕，也能再重跑。
+	if tr, err := r.p.Cues(context.Background(), it.ID, CuesQuery{Variant: "source", ToMS: -1}); err != nil || len(tr.Cues) != 3 {
+		t.Errorf("cues = %+v, %v", tr, err)
 	}
 }
 

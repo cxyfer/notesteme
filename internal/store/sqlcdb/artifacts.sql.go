@@ -35,6 +35,96 @@ func (q *Queries) ArtifactByID(ctx context.Context, id string) (Artifact, error)
 	return i, err
 }
 
+const artifactGroup = `-- name: ArtifactGroup :many
+SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at FROM artifacts
+WHERE item_id = ?1 AND kind = ?2 AND variant = ?3 AND lang = ?4
+ORDER BY created_at DESC, rowid DESC
+`
+
+type ArtifactGroupParams struct {
+	ItemID  string
+	Kind    string
+	Variant string
+	Lang    string
+}
+
+// Every version of an (item, kind, variant, lang) group, newest first (creation order breaks ties).
+func (q *Queries) ArtifactGroup(ctx context.Context, arg ArtifactGroupParams) ([]Artifact, error) {
+	rows, err := q.db.QueryContext(ctx, artifactGroup,
+		arg.ItemID,
+		arg.Kind,
+		arg.Variant,
+		arg.Lang,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Artifact
+	for rows.Next() {
+		var i Artifact
+		if err := rows.Scan(
+			&i.ID,
+			&i.ItemID,
+			&i.Kind,
+			&i.Variant,
+			&i.Lang,
+			&i.Format,
+			&i.Path,
+			&i.Sha256,
+			&i.Size,
+			&i.ParentsJson,
+			&i.ProvenanceJson,
+			&i.SupersededBy,
+			&i.Pinned,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const artifactParentRefs = `-- name: ArtifactParentRefs :many
+SELECT id, parents_json FROM artifacts WHERE item_id = ?1
+`
+
+type ArtifactParentRefsRow struct {
+	ID          string
+	ParentsJson string
+}
+
+// Parent lists of every artifact of an item, so versions others were derived from are kept.
+func (q *Queries) ArtifactParentRefs(ctx context.Context, itemID string) ([]ArtifactParentRefsRow, error) {
+	rows, err := q.db.QueryContext(ctx, artifactParentRefs, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ArtifactParentRefsRow
+	for rows.Next() {
+		var i ArtifactParentRefsRow
+		if err := rows.Scan(&i.ID, &i.ParentsJson); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const clearArtifactSuperseded = `-- name: ClearArtifactSuperseded :exec
 UPDATE artifacts SET superseded_by = NULL WHERE id = ?1
 `
@@ -118,6 +208,25 @@ func (q *Queries) CurrentArtifacts(ctx context.Context, arg CurrentArtifactsPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const deleteArtifact = `-- name: DeleteArtifact :exec
+DELETE FROM artifacts WHERE id = ?1
+`
+
+func (q *Queries) DeleteArtifact(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteArtifact, id)
+	return err
+}
+
+const detachStageRunsFromArtifact = `-- name: DetachStageRunsFromArtifact :exec
+UPDATE stage_runs SET artifact_id = NULL WHERE artifact_id = ?1
+`
+
+// A purged artifact must not be referenced by stage runs (foreign key); they stay as history without a result.
+func (q *Queries) DetachStageRunsFromArtifact(ctx context.Context, artifactID *string) error {
+	_, err := q.db.ExecContext(ctx, detachStageRunsFromArtifact, artifactID)
+	return err
 }
 
 const insertArtifact = `-- name: InsertArtifact :exec
@@ -237,6 +346,33 @@ func (q *Queries) LatestProbes(ctx context.Context, itemID string) ([]SourceProb
 		return nil, err
 	}
 	return items, nil
+}
+
+const repointDanglingSuperseded = `-- name: RepointDanglingSuperseded :exec
+UPDATE artifacts SET superseded_by = CAST(?1 AS TEXT)
+WHERE artifacts.item_id = ?2 AND artifacts.kind = ?3 AND artifacts.variant = ?4
+  AND artifacts.lang = ?5 AND artifacts.superseded_by IS NOT NULL
+  AND artifacts.superseded_by NOT IN (SELECT a.id FROM artifacts AS a)
+`
+
+type RepointDanglingSupersededParams struct {
+	CurrentID string
+	ItemID    string
+	Kind      string
+	Variant   string
+	Lang      string
+}
+
+// After a purge, versions that were superseded by a deleted row are superseded by the current version instead.
+func (q *Queries) RepointDanglingSuperseded(ctx context.Context, arg RepointDanglingSupersededParams) error {
+	_, err := q.db.ExecContext(ctx, repointDanglingSuperseded,
+		arg.CurrentID,
+		arg.ItemID,
+		arg.Kind,
+		arg.Variant,
+		arg.Lang,
+	)
+	return err
 }
 
 const supersedeCurrentArtifacts = `-- name: SupersedeCurrentArtifacts :exec
