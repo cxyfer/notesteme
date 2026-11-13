@@ -2,7 +2,7 @@
 
 - 狀態：已採納
 - 日期：2026-11-12
-- 修訂：2026-11-13，排程確定自寫，不用 gocron v2；server 停下後的狀態斷言不隱含啟動
+- 修訂：2026-11-13，排程確定自寫，不用 gocron v2；server 停下後的狀態斷言不隱含啟動；CLI 的入口改為 `cli.Execute`
 
 ## 背景
 
@@ -17,10 +17,10 @@
 ### 執行方式
 
 - **`serve` 在測試程序內執行。** 程式的入口是 `internal/app`：
-  - `app.Run(ctx, args, IO, Env)` 是所有子命令的入口，`cmd/notesteme/main.go` 只把 `os` 的內容轉成 `app.Env` 再呼叫它。
+  - `cli.Execute(ctx, args, IO, Env)` 是所有子命令的入口，`cmd/notesteme/main.go` 只把 `os` 的內容轉成 `app.Env` 再呼叫它；`serve` 與 `--version` 由 `cli.Execute` 轉給 `app.Run`（`internal/cli` 依賴 `internal/app`，反過來不行）。
   - `app.Env` 帶入環境變數 map、時鐘、網路依賴、外部工具 runner、listener 與 log 輸出。程式裡只有 `main.go` 可以讀 `os.Environ` 與 `time.Now`。
   - `When the server restarts` 用 `Server.Kill()` 模擬：取消 root context、結束子程序的 process group、關閉 DB 與檔案，不執行釋放租約的流程。真正的 `kill -9` 由 NFR-REL-1 的故障注入 bench 驗證。
-- **CLI 也在程序內執行**，呼叫 `cli.Execute`，回傳結束碼與實際使用的模式（`standalone` 或 `client`），`Then the command ran in {word} mode` 直接比對這個值。
+- **CLI 也在程序內執行**，呼叫 `cli.Execute`，回傳結束碼與實際使用的模式（`standalone` 或 `client`），`Then the command ran in {word} mode` 直接比對這個值。三種模式都透過 HTTP API：獨立模式用程序內的 handler，本機 client 用 `/data/notesteme.sock`，`--server` 用 TCP 與 bearer。`the owner runs` 不會隱含啟動 server。
   - `/data` 的鎖用 `flock(2)`，鎖專用檔 `/data/notesteme.lock`。Linux 上同一程序內兩個 open file description 的 flock 也會互斥，所以程序內的 CLI 能偵測到程序內的 `serve`。不使用 `fcntl` 鎖，它在同一程序內不互斥。
   - 鎖檔內容記錄持有者與連線位址，client 模式依此連到 `serve`。
 - 另外保留一個冒煙測試：實際建置 binary，執行 `--version` 與 `serve` 的啟動與關閉，補上程序內執行跳過 `main()` 的部分。

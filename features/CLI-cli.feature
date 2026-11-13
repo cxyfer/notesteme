@@ -41,7 +41,7 @@ Feature: CLI and data ownership
   @CLI-02 @CLI-R5
   Scenario: JSON output matches the API
     Given a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
-    And the item "yt:abc123xxxxx" has been ingested
+    And the item "yt:abc123xxxxx" has been processed up to "metadata"
     When the owner runs "notesteme items ls --json"
     Then the command exits with 0
     And the command output is JSON containing:
@@ -51,7 +51,7 @@ Feature: CLI and data ownership
 
   @CLI-02 @CLI-R6
   Scenario: A bad argument exits with 2
-    When the owner runs "notesteme export --format docx"
+    When the owner runs "notesteme export yt:abc123xxxxx --format docx"
     Then the command exits with 2
 
   @CLI-02 @CLI-R6 @CLI-R7
