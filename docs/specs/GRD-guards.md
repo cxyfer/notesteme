@@ -22,7 +22,7 @@ Notesteme 會依使用者或外部內容提供的網址主動發出請求，也�
 
 | ID | 規則 |
 |---|---|
-| GRD-R1 | 所有對外 HTTP 請求（RSS、Podcast 音檔與 transcript、Supadata、通知 webhook）都經過同一個 client，只接受 `http` 與 `https`。 |
+| GRD-R1 | 所有對外 HTTP 請求（RSS、Podcast 音檔與 transcript、Supadata、通知 webhook）都經過同一個 client，只接受 `http` 與 `https`；轉址到其他 scheme 時錯誤類別為 `permanent`，訊息為「只支援 http 與 https 網址。」 |
 | GRD-R2 | 建立連線時檢查實際的目標 IP，至少擋掉 loopback（`127.0.0.0/8`、`::1`）、私有網段（`10/8`、`172.16/12`、`192.168/16`、`fc00::/7`）、link-local（`169.254/16`、`fe80::/10`），以及 CGNAT、multicast 等非公開位址。一個主機名稱解析出多個 IP 時，只連到通過檢查的 IP；全部被擋才算被封鎖。檢查的是實際連線的 IP，所以 DNS rebinding 也一併擋掉。被擋的請求錯誤類別為 `permanent`，訊息為「這個網址指向內部網路，已封鎖。」 |
 | GRD-R3 | 設定檔的 `network.allow_private` 可以列出允許的主機或網段。主機名稱比對的是網址中的主機名稱，不分大小寫、完全相同才算（不支援萬用字元）；網段用 CIDR 或單一 IP。雲端 metadata 位址（`169.254.169.254`、`fd00:ec2::254`）一律封鎖：直接把它列進 allowlist 時拒絕啟動；網段包含它時可以設定，但它仍然被封鎖。 |
 | GRD-R4 | 最多轉址 5 次，每一跳都重新套用 GRD-R1 到 GRD-R3。超過時錯誤類別為 `permanent`，訊息為「轉址超過 5 次。」 |
@@ -43,6 +43,7 @@ Notesteme 會依使用者或外部內容提供的網址主動發出請求，也�
 
 ## 待決問題
 
-- 「Redirects are followed at most five times」場景中，最後的 `feed.xml` 沒有設定回應，就算拿掉轉址上限也一樣失敗，驗證不到規則。建議：補上 `the URL ".../feed.xml" serves "rsshub-feed.xml"`，並斷言回應含「轉址超過 5 次。」。要修改 `.feature`，等 owner 同意（2026-11-13，GRD 切片設計時發現）。
+- ~~「Too many redirects are refused」場景驗證不到轉址上限~~：已結案（2026-11-14，owner 同意）。最後的 `feed.xml` 補上回應，並斷言 code 與訊息；同時補強轉址、大小上限場景的 code 斷言，新增「metadata 在允許的網段內仍被封鎖」與「轉址到非 http scheme」兩個場景。直接輸入非 http 網址的場景改用有主機名稱的 `ftp://`，但 Go 的 `http.Client` 本身也拒絕非 http scheme，這個場景驗證不到我們自己的檢查，由轉址場景與單元測試把關。
 - 「DNS rebinding」場景：連線時才檢查 IP 的設計下，第一次解析到公開 IP 的那次連線會真的送出。場景沒有寫明哪一次解析對應哪一個請求（feed 與音檔），這個場景依賴 ING 的 podcast feed，交給 ING 切片釐清。
 - 「Paths outside the media folders are refused」中預期 201 的兩個例子，要等 ING-05（本機檔案的新增）決定檔案是否必須存在、是否要經過 ffprobe；GRD 切片只做到路徑檢查，通過檢查後仍回 501。
+- GRD-R6 的 extractor 限制（`--use-extractors`）只由 `internal/source/youtube` 的單元測試把關：假 yt-dlp 不模擬 extractor，「yt-dlp is never asked to open an arbitrary site」驗證的是辨識階段的拒絕。若要在驗收層驗證，需要新增斷言 yt-dlp 參數的句型。

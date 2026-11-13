@@ -24,10 +24,12 @@ GRD-guards.feature: Feeds pointing into private networks are blocked [example 4]
 GRD-guards.feature: Feeds pointing into private networks are blocked [example 5]
 GRD-guards.feature: An allow-listed private host can be used
 GRD-guards.feature: Cloud metadata cannot be allow-listed
+GRD-guards.feature: Cloud metadata stays blocked inside an allow-listed range
 GRD-guards.feature: A redirect into the private network is blocked
 GRD-guards.feature: Too many redirects are refused
 GRD-guards.feature: An oversized feed is cut off
 GRD-guards.feature: Non-HTTP schemes are refused
+GRD-guards.feature: A redirect to a non-HTTP scheme is refused
 GRD-guards.feature: yt-dlp is never asked to open an arbitrary site
 GRD-guards.feature: Paths outside the media folders are refused [example 3]
 GRD-guards.feature: Paths outside the media folders are refused [example 4]
