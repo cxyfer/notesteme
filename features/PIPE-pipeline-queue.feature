@@ -89,24 +89,20 @@ Feature: Pipeline and task queue
 
   @PIPE-07 @PIPE-R7
   Scenario: Only the three most recent versions are kept
-    Given the source "supadata" returns "supadata-en.json" for "yt:abc123"
-    And the item "yt:abc123" has been processed up to "transcript"
-    When the owner sends "POST /api/items/yt:abc123/rerun" with:
-      """
-      { "from": "transcript", "overrides": { "supadata": { "mode": "native" } } }
-      """
+    Given the "source" transcript of "yt:abc123" is:
+      | # | start    | end      | text  |
+      | 1 | 00:00:01 | 00:00:03 | hello |
+    And the item "yt:abc123" has been processed up to "normalize"
+    And the implementation version of the stage "normalize" is 2
+    When the owner reruns "yt:abc123" from "normalize"
     And the worker runs until idle
-    And the owner sends "POST /api/items/yt:abc123/rerun" with:
-      """
-      { "from": "transcript", "overrides": { "supadata": { "mode": "generate" } } }
-      """
+    And the implementation version of the stage "normalize" is 3
+    And the owner reruns "yt:abc123" from "normalize"
     And the worker runs until idle
-    And the owner sends "POST /api/items/yt:abc123/rerun" with:
-      """
-      { "from": "transcript", "overrides": { "supadata": { "mode": "auto" } } }
-      """
+    And the implementation version of the stage "normalize" is 4
+    And the owner reruns "yt:abc123" from "normalize"
     And the worker runs until idle
-    Then the "source" artifact of "yt:abc123" has 3 versions
+    Then the "normalized" artifact of "yt:abc123" has 3 versions
 
   @PIPE-04 @PIPE-R8
   Scenario: The concurrency limit caps running tasks
@@ -207,7 +203,7 @@ Feature: Pipeline and task queue
     And the owner sends "GET /api/items/yt:abc123/runs"
     Then the response contains:
       """
-      { "runs": [ { "stage": "transcript", "config": { "language": { "fallback": ["supadata"] } } } ] }
+      { "runs": [ { "stage": "transcript", "config": { "language": { "targets": ["en"], "fallback": ["supadata"] } } } ] }
       """
 
   @PIPE-01 @PIPE-R14

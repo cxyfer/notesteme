@@ -61,7 +61,5 @@
 - aging 的級距：手動與回補只差 2 級，依 PIPE-R9 每 10 分鐘提高 1 級，回補等 20 分鐘就會排在新的手動新增前面。M1 先照規則實作；之後依實際使用調整級距或 aging 速度，但差距不能超過 17 級，否則「等 3 小時的回補排在前面」的場景不成立（2026-11-13，PIPE 切片設計時發現）。
 - `transcript` 的資源類別要在建立任務時決定，但這時還不知道平台字幕是否可用。暫定：`fallback` 的第一個來源是 ASR，且平台字幕不符合 `caption_priority` 時歸為 `asr`，否則歸為 `download`。長期可以把下載音訊與 ASR 拆成兩個任務。M1 目前一律歸為 `download`，等 ASR 來源實作時一起處理（「Pausing one resource class」場景因 groq 尚未實作而 pending）。
 - 執行期回收過期租約延到 AGT：同一份 `/data` 只有一個 `serve`，內建任務也不延長租約，執行期回收會讓超過租約時間的 ASR 任務被重複執行。M1 只在啟動時回收（PIPE-R11）。
-- **場景驗證不到規則，需要修改場景（待 owner 同意）**（2026-11-13，PIPE 切片審查以變異測試發現）：
-  - PIPE-R7「Only the three most recent versions are kept」：第三次 rerun（`mode: auto`）與初次處理的快取鍵相同，不會產生新版本，總共剛好 3 版；拿掉清除邏輯場景仍然通過。建議：初次處理改用 `mode: native` 以外的另一組設定，或多一次 rerun，讓同一組產出累積到 4 個不同版本，再斷言只剩 3 版。清除邏輯先以單元測試驗證。
-  - PIPE-R13「Each run records the settings it used」：陣列只比對前 N 個元素，預設的 `fallback: [supadata, groq]` 也符合 `["supadata"]`，分不出覆寫與預設值。建議：斷言改成覆寫獨有的值，例如 `"targets": ["en"]`（預設不是 `en`）。
+- PIPE-R7、R13 的場景原本驗證不到規則（2026-11-13，PIPE 切片審查以變異測試發現），經 owner 同意已修改：R7 改以 `normalize` 的實作版本累積 4 個版本，斷言只剩 3 版（Supadata 的 `mode` 只有三種，湊不出 4 個不同的快取鍵）；R13 改為斷言覆寫獨有的 `targets: [en]`。
 - PIPE-R7 的清除另外保留「被其他產出當作來源（parent）的版本」，避免來源紀錄指向已刪除的產出；有衍生產出時，同一組可能超過 3 版。被清除版本的 stage run 不再指向產出，之後視為快取未命中。
