@@ -31,6 +31,7 @@ const (
 	NameYtDlp    = "yt-dlp"
 	NameDeno     = "deno"
 	NameSupadata = "api_key.supadata"
+	NameGroq     = "api_key.groq"
 )
 
 // toolTimeout 是單次工具呼叫的逾時；只是查版本或設定，不需要太久。
@@ -71,7 +72,7 @@ type Deps struct {
 	Env map[string]string
 }
 
-// Run 依固定順序執行檢查：ffmpeg、ffprobe、yt-dlp、deno、API key。
+// Run 依固定順序執行檢查：ffmpeg、ffprobe、yt-dlp、deno、API key（Supadata、Groq）。
 // 單項檢查失敗不會中斷後面的項目；ctx 取消時，仍在執行的工具檢查會回報 fail。
 func Run(ctx context.Context, d Deps) Report {
 	return Report{Checks: []Check{
@@ -80,6 +81,7 @@ func Run(ctx context.Context, d Deps) Report {
 		checkYtDlp(ctx, d),
 		checkDeno(ctx, d),
 		checkSupadata(d),
+		checkGroq(d),
 	}}
 }
 
@@ -186,10 +188,20 @@ func checkDeno(ctx context.Context, d Deps) Check {
 
 // checkSupadata 沒有設定 API key 時是 warn：只是少一個 fallback，不影響其他來源。
 func checkSupadata(d Deps) Check {
-	c := Check{Name: NameSupadata}
-	if strings.TrimSpace(d.Env[config.EnvSupadataAPIKey]) == "" {
-		c.Status, c.Detail = StatusWarn, config.EnvSupadataAPIKey+" 未設定"
-		c.Fix = "設定環境變數 " + config.EnvSupadataAPIKey + "；未設定時會略過 Supadata 這個逐字稿 fallback"
+	return checkAPIKey(d, NameSupadata, config.EnvSupadataAPIKey, "Supadata")
+}
+
+// checkGroq 沒有設定 API key 時是 warn：只是少一個語音轉錄 fallback，不影響其他來源。
+func checkGroq(d Deps) Check {
+	return checkAPIKey(d, NameGroq, config.EnvGroqAPIKey, "Groq")
+}
+
+// checkAPIKey 檢查來源的 API key 環境變數有沒有設定；只回報有沒有設定，不輸出值。
+func checkAPIKey(d Deps, name, envVar, label string) Check {
+	c := Check{Name: name}
+	if strings.TrimSpace(d.Env[envVar]) == "" {
+		c.Status, c.Detail = StatusWarn, envVar+" 未設定"
+		c.Fix = "設定環境變數 " + envVar + "；未設定時會略過 " + label + " 這個逐字稿 fallback"
 		return c
 	}
 	c.Status, c.Detail = StatusOK, "已設定"
