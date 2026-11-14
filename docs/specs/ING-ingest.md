@@ -72,3 +72,10 @@ YouTube 播放清單（ING-R4）展開時由 yt-dlp 列出清單內容：清單�
 - inbox 的穩定判定時間暫定 10 秒，是否需要依檔案大小調整，M1 實作時觀察。
 - 播放清單（ING-R4）展開的項目數目前沒有上限，整份清單在一個交易中建立。是否需要上限、超過時要截斷還是拒絕，等 ING 切片決定（2026-11-13，GRD 切片實作 ING-R4 時發現）。
 - 播放清單展開時 yt-dlp 的錯誤訊息（例如 `The playlist does not exist.`）是依 yt-dlp 原始碼判斷的，還沒有對真實 yt-dlp 驗證；ING 切片做 `@manual` 煙霧測試時確認。
+- ING-R3 的細節（2026-11-14，SRC-B 切片實作時決定）：
+  - 網址沒有 `p` 時，以 yt-dlp `--flat-playlist -J` 展開全部分P，同一個交易建立；只有一個分P 時結果是 `p1`。`Recognize` 對沒有 `p` 的網址回傳 `Part = 0`（代表「未指定」）；影音的短代號仍是 `bili:<BV>/p<n>`（`Ref` 以 `p1` 起算）。
+  - 網址有 `p=N` 時，只建立那一個分P，不呼叫 yt-dlp，所以 `N` 超出範圍要等處理時才知道。
+  - 網址已有 `p` 又給 `parts` 回 422；`parts` 的編號小於 1、或超出影片的分P 範圍也是 422；`parts` 中重複的編號去掉，結果依分P 順序。
+  - 展開失敗沿用 ING-R4 的對應：影片不存在或地區限制回 422；找不到 yt-dlp、要求登入與其他失敗回 502（`upstream_failed`），yt-dlp 的輸出只寫進 log。
+  - Bilibili 的依賴沒有設定（程式沒有接線）時，新增 Bilibili 影片仍回 501。
+- ING-R9 的 Bilibili 部分在未登入時做不到：Bilibili 的 AI 字幕需要 cookie，但未登入時 yt-dlp 不列出字幕，辨識（`POST /api/resolve`）看不出這部影片有沒有 AI 字幕，無法標示 `requires_cookie`。目前只有 YouTube 的 `availability` 會標示；Bilibili 的標示記為待修的規則，等 M0 驗證後再決定（可能改成只在 transcript 步驟 `blocked` 時提示，見 SRC-R8）。
