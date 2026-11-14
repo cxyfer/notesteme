@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
 )
@@ -113,6 +114,10 @@ func (r *Repo) ListItems(ctx context.Context) ([]Item, error) {
 	return out, nil
 }
 
+// FoldTitle 是標題搜尋比對用的形式（LIB-R3）：Go 的 strings.ToLower。
+// 不用 SQLite 的 lower() 或 LIKE，它們只對 ASCII 不分大小寫。
+func FoldTitle(s string) string { return strings.ToLower(s) }
+
 // UpdateItemMeta 寫入 metadata 步驟取得的欄位；沒有提供的欄位維持原值。
 func (r *Repo) UpdateItemMeta(ctx context.Context, id string, m ItemMeta) error {
 	metadata := m.Metadata
@@ -126,6 +131,7 @@ func (r *Repo) UpdateItemMeta(ctx context.Context, id string, m ItemMeta) error 
 	}
 	n, err := r.q.UpdateItemMeta(ctx, sqlcdb.UpdateItemMetaParams{
 		Title:        m.Title,
+		TitleFold:    FoldTitle(m.Title),
 		DurationS:    dur,
 		PublishedAt:  msPtr(m.PublishedAt),
 		OriginalLang: m.OriginalLang,

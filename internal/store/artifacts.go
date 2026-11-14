@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
 )
@@ -24,6 +25,8 @@ type NewArtifact struct {
 	Parents []string
 	// Provenance 是來源紀錄（ADR-0005），必須是非空的 JSON 物件；沒有來源紀錄的產出視為錯誤。
 	Provenance json.RawMessage
+	// Timings 是字幕產出的 cue 中出現過的 timing origin（LIB-R7）；寫入時排序並去重，非字幕產出留空。
+	Timings []string
 }
 
 // ErrNoProvenance 表示產出沒有來源紀錄（ADR-0005）。
@@ -59,6 +62,17 @@ func artifactFromRow(row sqlcdb.Artifact) (Artifact, error) {
 	return a, nil
 }
 
+// normalizeTimings 排序並去重；nil 轉成空陣列，寫進資料庫的永遠是 JSON 陣列。
+func normalizeTimings(in []string) []string {
+	out := slices.Clone(in)
+	slices.Sort(out)
+	out = slices.Compact(out)
+	if out == nil {
+		return []string{}
+	}
+	return out
+}
+
 // InsertArtifact 新增產出。同一組 (item, kind, variant, lang) 原有的現行版本標記為被這一版取代（PIPE-R7）。
 func (r *Repo) InsertArtifact(ctx context.Context, n NewArtifact) (Artifact, error) {
 	if err := validateProvenance(n.Provenance); err != nil {
@@ -68,6 +82,10 @@ func (r *Repo) InsertArtifact(ctx context.Context, n NewArtifact) (Artifact, err
 		n.ID = NewID()
 	}
 	parents, err := json.Marshal(nonNil(n.Parents))
+	if err != nil {
+		return Artifact{}, err
+	}
+	timings, err := json.Marshal(normalizeTimings(n.Timings))
 	if err != nil {
 		return Artifact{}, err
 	}
@@ -88,6 +106,7 @@ func (r *Repo) InsertArtifact(ctx context.Context, n NewArtifact) (Artifact, err
 		Size:           n.Size,
 		ParentsJson:    string(parents),
 		ProvenanceJson: string(n.Provenance),
+		TimingsJson:    string(timings),
 		CreatedAt:      r.nowMs(),
 	}); err != nil {
 		return Artifact{}, err

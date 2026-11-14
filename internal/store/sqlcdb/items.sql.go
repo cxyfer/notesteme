@@ -9,6 +9,68 @@ import (
 	"context"
 )
 
+const countItemsFiltered = `-- name: CountItemsFiltered :one
+SELECT COUNT(*) FROM items
+WHERE deleted_at IS NULL
+  AND (CAST(?1 AS TEXT) = '' OR platform = ?1)
+  AND (CAST(?2 AS TEXT) = '' OR channel_id = ?2)
+  AND (CAST(?3 AS TEXT) = '' OR lower(original_lang) = lower(?3))
+  AND (CAST(?4 AS INTEGER) IS NULL OR published_at >= CAST(?4 AS INTEGER))
+  AND (CAST(?5 AS INTEGER) IS NULL OR published_at <= CAST(?5 AS INTEGER))
+  AND (CAST(?6 AS INTEGER) IS NULL OR duration_s >= CAST(?6 AS INTEGER))
+  AND (CAST(?7 AS INTEGER) IS NULL OR duration_s <= CAST(?7 AS INTEGER))
+  AND (CAST(?8 AS TEXT) = '' OR instr(title_fold, ?8) > 0)
+  AND (CAST(?9 AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM stage_runs AS sr
+        WHERE sr.item_id = items.id AND sr.error_class = ?9
+          AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                       ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)))
+  AND (CAST(?10 AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
+        WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = ?10))
+  AND NOT EXISTS (
+        SELECT 1 FROM json_each(CAST(?11 AS TEXT)) AS f
+        WHERE NOT EXISTS (
+          SELECT 1 FROM stage_runs AS sr
+          WHERE sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = json_extract(f.value, '$.stage')
+                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)
+            AND sr.status IN (SELECT s.value FROM json_each(json_extract(f.value, '$.statuses')) AS s)))
+`
+
+type CountItemsFilteredParams struct {
+	Platform      string
+	ChannelID     string
+	Lang          string
+	PublishedFrom *int64
+	PublishedTo   *int64
+	DurationMin   *int64
+	DurationMax   *int64
+	QFold         string
+	ErrorClass    string
+	Timing        string
+	StatusFilters string
+}
+
+// Total of the same filters, without the keyset condition and the limit. Keep the WHERE block identical to ListItemsPage.
+func (q *Queries) CountItemsFiltered(ctx context.Context, arg CountItemsFilteredParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countItemsFiltered,
+		arg.Platform,
+		arg.ChannelID,
+		arg.Lang,
+		arg.PublishedFrom,
+		arg.PublishedTo,
+		arg.DurationMin,
+		arg.DurationMax,
+		arg.QFold,
+		arg.ErrorClass,
+		arg.Timing,
+		arg.StatusFilters,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const insertItemIfAbsent = `-- name: InsertItemIfAbsent :execrows
 INSERT INTO items (id, platform, external_id, part, profile_id, overrides_json, until_stage, url, created_at)
 VALUES (?1, ?2, ?3, ?4, NULLIF(CAST(?5 AS TEXT), ''),
@@ -47,7 +109,7 @@ func (q *Queries) InsertItemIfAbsent(ctx context.Context, arg InsertItemIfAbsent
 }
 
 const itemByID = `-- name: ItemByID :one
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at FROM items WHERE id = ?1
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold FROM items WHERE id = ?1
 `
 
 func (q *Queries) ItemByID(ctx context.Context, id string) (Item, error) {
@@ -74,12 +136,13 @@ func (q *Queries) ItemByID(ctx context.Context, id string) (Item, error) {
 		&i.MetadataJson,
 		&i.CreatedAt,
 		&i.DeletedAt,
+		&i.TitleFold,
 	)
 	return i, err
 }
 
 const itemByKey = `-- name: ItemByKey :one
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at FROM items WHERE platform = ?1 AND external_id = ?2 AND part = ?3
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold FROM items WHERE platform = ?1 AND external_id = ?2 AND part = ?3
 `
 
 type ItemByKeyParams struct {
@@ -112,12 +175,13 @@ func (q *Queries) ItemByKey(ctx context.Context, arg ItemByKeyParams) (Item, err
 		&i.MetadataJson,
 		&i.CreatedAt,
 		&i.DeletedAt,
+		&i.TitleFold,
 	)
 	return i, err
 }
 
 const listItems = `-- name: ListItems :many
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at FROM items WHERE deleted_at IS NULL ORDER BY created_at, rowid
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold FROM items WHERE deleted_at IS NULL ORDER BY created_at, rowid
 `
 
 func (q *Queries) ListItems(ctx context.Context) ([]Item, error) {
@@ -150,6 +214,120 @@ func (q *Queries) ListItems(ctx context.Context) ([]Item, error) {
 			&i.MetadataJson,
 			&i.CreatedAt,
 			&i.DeletedAt,
+			&i.TitleFold,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listItemsPage = `-- name: ListItemsPage :many
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold FROM items
+WHERE deleted_at IS NULL
+  AND (CAST(?1 AS TEXT) = '' OR platform = ?1)
+  AND (CAST(?2 AS TEXT) = '' OR channel_id = ?2)
+  AND (CAST(?3 AS TEXT) = '' OR lower(original_lang) = lower(?3))
+  AND (CAST(?4 AS INTEGER) IS NULL OR published_at >= CAST(?4 AS INTEGER))
+  AND (CAST(?5 AS INTEGER) IS NULL OR published_at <= CAST(?5 AS INTEGER))
+  AND (CAST(?6 AS INTEGER) IS NULL OR duration_s >= CAST(?6 AS INTEGER))
+  AND (CAST(?7 AS INTEGER) IS NULL OR duration_s <= CAST(?7 AS INTEGER))
+  AND (CAST(?8 AS TEXT) = '' OR instr(title_fold, ?8) > 0)
+  AND (CAST(?9 AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM stage_runs AS sr
+        WHERE sr.item_id = items.id AND sr.error_class = ?9
+          AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                       ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)))
+  AND (CAST(?10 AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
+        WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = ?10))
+  AND NOT EXISTS (
+        SELECT 1 FROM json_each(CAST(?11 AS TEXT)) AS f
+        WHERE NOT EXISTS (
+          SELECT 1 FROM stage_runs AS sr
+          WHERE sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = json_extract(f.value, '$.stage')
+                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)
+            AND sr.status IN (SELECT s.value FROM json_each(json_extract(f.value, '$.statuses')) AS s)))
+  AND created_at <= CAST(?12 AS INTEGER)
+  AND (created_at < CAST(?12 AS INTEGER) OR id < CAST(?13 AS TEXT))
+ORDER BY created_at DESC, id DESC
+LIMIT ?14
+`
+
+type ListItemsPageParams struct {
+	Platform       string
+	ChannelID      string
+	Lang           string
+	PublishedFrom  *int64
+	PublishedTo    *int64
+	DurationMin    *int64
+	DurationMax    *int64
+	QFold          string
+	ErrorClass     string
+	Timing         string
+	StatusFilters  string
+	AfterCreatedAt int64
+	AfterID        string
+	PageSize       int64
+}
+
+// The library list (LIB-R1, R3, R4, R7). Keep the WHERE block identical to CountItemsFiltered.
+// status_filters is a JSON array of {"stage": ..., "statuses": [...]}: values of one stage are OR, stages are AND,
+// and a stage counts by its latest run. q_fold is already lowercased by Go. Without a cursor, after_created_at is
+// the maximum int64 and after_id is empty. Keyset order is (created_at, id) descending.
+func (q *Queries) ListItemsPage(ctx context.Context, arg ListItemsPageParams) ([]Item, error) {
+	rows, err := q.db.QueryContext(ctx, listItemsPage,
+		arg.Platform,
+		arg.ChannelID,
+		arg.Lang,
+		arg.PublishedFrom,
+		arg.PublishedTo,
+		arg.DurationMin,
+		arg.DurationMax,
+		arg.QFold,
+		arg.ErrorClass,
+		arg.Timing,
+		arg.StatusFilters,
+		arg.AfterCreatedAt,
+		arg.AfterID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Item
+	for rows.Next() {
+		var i Item
+		if err := rows.Scan(
+			&i.ID,
+			&i.Platform,
+			&i.ExternalID,
+			&i.Part,
+			&i.ChannelID,
+			&i.ProfileID,
+			&i.OverridesJson,
+			&i.UntilStage,
+			&i.Title,
+			&i.Url,
+			&i.PublishedAt,
+			&i.DurationS,
+			&i.OriginalLang,
+			&i.LangSource,
+			&i.LangMixed,
+			&i.Availability,
+			&i.MediaKind,
+			&i.MetadataJson,
+			&i.CreatedAt,
+			&i.DeletedAt,
+			&i.TitleFold,
 		); err != nil {
 			return nil, err
 		}
@@ -184,18 +362,20 @@ func (q *Queries) SetItemUntil(ctx context.Context, arg SetItemUntilParams) (int
 const updateItemMeta = `-- name: UpdateItemMeta :execrows
 UPDATE items SET
   title         = COALESCE(NULLIF(CAST(?1 AS TEXT), ''), title),
-  duration_s    = COALESCE(?2, duration_s),
-  published_at  = COALESCE(?3, published_at),
-  original_lang = COALESCE(NULLIF(CAST(?4 AS TEXT), ''), original_lang),
-  lang_source   = CASE WHEN CAST(?4 AS TEXT) <> '' THEN CAST(?5 AS TEXT) ELSE lang_source END,
-  availability  = COALESCE(NULLIF(CAST(?6 AS TEXT), ''), availability),
-  channel_id    = COALESCE(NULLIF(CAST(?7 AS TEXT), ''), channel_id),
-  metadata_json = ?8
-WHERE id = ?9
+  title_fold    = COALESCE(NULLIF(CAST(?2 AS TEXT), ''), title_fold),
+  duration_s    = COALESCE(?3, duration_s),
+  published_at  = COALESCE(?4, published_at),
+  original_lang = COALESCE(NULLIF(CAST(?5 AS TEXT), ''), original_lang),
+  lang_source   = CASE WHEN CAST(?5 AS TEXT) <> '' THEN CAST(?6 AS TEXT) ELSE lang_source END,
+  availability  = COALESCE(NULLIF(CAST(?7 AS TEXT), ''), availability),
+  channel_id    = COALESCE(NULLIF(CAST(?8 AS TEXT), ''), channel_id),
+  metadata_json = ?9
+WHERE id = ?10
 `
 
 type UpdateItemMetaParams struct {
 	Title        string
+	TitleFold    string
 	DurationS    *int64
 	PublishedAt  *int64
 	OriginalLang string
@@ -207,10 +387,12 @@ type UpdateItemMetaParams struct {
 }
 
 // Empty string and NULL mean the platform gave nothing: keep the old value.
+// title_fold is the Go-lowercased title, written together with it.
 // lang_source is only written when original_lang is non-empty.
 func (q *Queries) UpdateItemMeta(ctx context.Context, arg UpdateItemMetaParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, updateItemMeta,
 		arg.Title,
+		arg.TitleFold,
 		arg.DurationS,
 		arg.PublishedAt,
 		arg.OriginalLang,

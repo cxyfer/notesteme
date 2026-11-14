@@ -10,7 +10,7 @@ import (
 )
 
 const artifactByID = `-- name: ArtifactByID :one
-SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at FROM artifacts WHERE id = ?1
+SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at, timings_json FROM artifacts WHERE id = ?1
 `
 
 func (q *Queries) ArtifactByID(ctx context.Context, id string) (Artifact, error) {
@@ -31,12 +31,13 @@ func (q *Queries) ArtifactByID(ctx context.Context, id string) (Artifact, error)
 		&i.SupersededBy,
 		&i.Pinned,
 		&i.CreatedAt,
+		&i.TimingsJson,
 	)
 	return i, err
 }
 
 const artifactGroup = `-- name: ArtifactGroup :many
-SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at FROM artifacts
+SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at, timings_json FROM artifacts
 WHERE item_id = ?1 AND kind = ?2 AND variant = ?3 AND lang = ?4
 ORDER BY created_at DESC, rowid DESC
 `
@@ -78,6 +79,7 @@ func (q *Queries) ArtifactGroup(ctx context.Context, arg ArtifactGroupParams) ([
 			&i.SupersededBy,
 			&i.Pinned,
 			&i.CreatedAt,
+			&i.TimingsJson,
 		); err != nil {
 			return nil, err
 		}
@@ -161,7 +163,7 @@ func (q *Queries) CountArtifactVersions(ctx context.Context, arg CountArtifactVe
 }
 
 const currentArtifacts = `-- name: CurrentArtifacts :many
-SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at FROM artifacts
+SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at, timings_json FROM artifacts
 WHERE item_id = ?1 AND (CAST(?2 AS TEXT) = '' OR kind = ?2) AND superseded_by IS NULL
 ORDER BY created_at, rowid
 `
@@ -196,6 +198,7 @@ func (q *Queries) CurrentArtifacts(ctx context.Context, arg CurrentArtifactsPara
 			&i.SupersededBy,
 			&i.Pinned,
 			&i.CreatedAt,
+			&i.TimingsJson,
 		); err != nil {
 			return nil, err
 		}
@@ -230,9 +233,9 @@ func (q *Queries) DetachStageRunsFromArtifact(ctx context.Context, artifactID *s
 }
 
 const insertArtifact = `-- name: InsertArtifact :exec
-INSERT INTO artifacts (id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, created_at)
+INSERT INTO artifacts (id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, timings_json, created_at)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7,
-        ?8, ?9, ?10, ?11, ?12)
+        ?8, ?9, ?10, ?11, ?12, ?13)
 `
 
 type InsertArtifactParams struct {
@@ -247,6 +250,7 @@ type InsertArtifactParams struct {
 	Size           int64
 	ParentsJson    string
 	ProvenanceJson string
+	TimingsJson    string
 	CreatedAt      int64
 }
 
@@ -263,6 +267,7 @@ func (q *Queries) InsertArtifact(ctx context.Context, arg InsertArtifactParams) 
 		arg.Size,
 		arg.ParentsJson,
 		arg.ProvenanceJson,
+		arg.TimingsJson,
 		arg.CreatedAt,
 	)
 	return err
