@@ -86,10 +86,11 @@ func TestCommandAssertionKeepsResultFresh(t *testing.T) {
 	}
 }
 
-// 只有 docker 指令是 pending（OPS 切片處理）；其他不是 notesteme 的指令（例如打錯字）一律失敗並說明原因。
-func TestOwnerRunsOnlyDockerIsPending(t *testing.T) {
+// docker 由 fakecompose 模擬，不支援的 docker 指令是失敗而不是 pending（見 docker_test.go）；
+// 其他不是 notesteme 的指令（例如打錯字）一律失敗並說明原因。
+func TestOwnerRunsRejectsOtherCommands(t *testing.T) {
 	s := newTestScenario(t)
-	if err := s.ownerRuns(`docker compose config`); !errors.Is(err, godog.ErrPending) {
+	if err := s.ownerRuns(`docker compose config`); err == nil || errors.Is(err, godog.ErrPending) {
 		t.Errorf("docker：%v", err)
 	}
 	for _, line := range []string{`notestem items ls`, `Docker compose config`, `ls -l`, `docker-compose up`} {
