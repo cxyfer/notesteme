@@ -89,7 +89,7 @@
 - 「任務正在執行」同時要求資料庫中的租約有效，且對應的外部工具程序仍然存活。
 - 場景中的 `/data`、`/config` 等路徑，會換成這個場景專用的暫存目錄。對應規則（虛擬路徑 → 實際路徑）：
   - `/data` → `<場景根目錄>/data`、`/config` → `<場景根目錄>/config`、`/media` → `<場景根目錄>/media`、`/backups` → `<場景根目錄>/backups`。
-  - `/backups` 不加 `/tmp` 前綴：場景根目錄本身就在 `/tmp` 底下，不需要再多一層。
+  - `/tmp/<x>` → `<場景根目錄>/tmp/<x>`：場景中的 `/tmp/...`（例如上傳用的 `/tmp/fansub.ass`）不寫到真正的 `/tmp`。目前只有檔案步驟套用；之後 `the owner uploads "/tmp/..."` 等步驟實作時，也要用同一個對應。
 - After hook 的 secret 掃描（NFR-SEC-3）除了 log 與假工具的呼叫紀錄，也涵蓋 `/backups`：其中的 `.tar.gz` 解壓後，逐一檢查每個項目的內容不含 master key 的值（OPS-R1）。
 - `Given {string} has {word} captions in {string}` 沒有對應的 fixture 時，產生 120 句的字幕軌。
 
