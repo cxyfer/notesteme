@@ -230,6 +230,10 @@ func (s *Scenario) fileContainsDoc(path string, doc *godog.DocString) error {
 	if err := os.WriteFile(real, []byte(doc.Content), 0o600); err != nil {
 		return fmt.Errorf("寫入檔案 %s：%w", path, err)
 	}
+	if s.fixtureFiles == nil {
+		s.fixtureFiles = map[string][]byte{}
+	}
+	s.fixtureFiles[real] = []byte(doc.Content)
 	return nil
 }
 
@@ -237,32 +241,35 @@ func (s *Scenario) fileContainsDoc(path string, doc *godog.DocString) error {
 const maxArchiveBytes = 256 << 20
 
 // fileBlobs 讀出要搜尋的內容：`.tar.gz`（與 `.tgz`）先 gunzip 再逐一取出每個 tar 項目的內容（檔名不算），
-// `.gz` 只 gunzip，其他檔案原樣。strict 為 false 時，壓縮檔解不開就退回原始位元組（After hook 掃描用）。
-func fileBlobs(real string, strict bool) ([][]byte, error) {
+// `.gz` 只 gunzip，其他檔案原樣。壓縮檔解不開就回傳錯誤，不退回掃描壓縮後的原始位元組
+// （壓縮後的內容看不到明文，退回去會讓「不含」變成假通過）。
+func fileBlobs(real string) ([][]byte, error) {
 	raw, err := os.ReadFile(real)
 	if err != nil {
 		return nil, err
 	}
-	lower := strings.ToLower(real)
-	var blobs [][]byte
 	switch {
-	case strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz"):
-		blobs, err = untar(raw)
-	case strings.HasSuffix(lower, ".gz"):
-		var b []byte
-		if b, err = gunzip(raw); err == nil {
-			blobs = [][]byte{b}
-		}
-	default:
-		return [][]byte{raw}, nil
-	}
-	if err != nil {
-		if strict {
+	case isTarArchive(real):
+		return untar(raw)
+	case strings.HasSuffix(strings.ToLower(real), ".gz"):
+		b, err := gunzip(raw)
+		if err != nil {
 			return nil, err
 		}
-		return [][]byte{raw}, nil
+		return [][]byte{b}, nil
 	}
-	return blobs, nil
+	return [][]byte{raw}, nil
+}
+
+// isTarArchive 判斷檔名是否為 `.tar.gz` 或 `.tgz`。
+func isTarArchive(real string) bool {
+	lower := strings.ToLower(real)
+	return strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz")
+}
+
+// errEmptyArchive 是封存檔解開後沒有任何一般檔案項目：空的封存檔不能證明「含有」或「不含」任何東西。
+func errEmptyArchive(path string) error {
+	return fmt.Errorf("封存檔 %s 沒有任何檔案，不能用來判斷內容", path)
 }
 
 func gunzip(raw []byte) ([]byte, error) {
@@ -318,9 +325,13 @@ func (s *Scenario) fileContainsText(path, text string) error {
 	if text == "" {
 		return errors.New("要搜尋的文字不能是空的")
 	}
-	blobs, err := fileBlobs(s.filePath(path), true)
+	real := s.filePath(path)
+	blobs, err := fileBlobs(real)
 	if err != nil {
 		return fmt.Errorf("讀取檔案 %s：%w", path, err)
+	}
+	if isTarArchive(real) && len(blobs) == 0 {
+		return errEmptyArchive(path)
 	}
 	for _, b := range blobs {
 		if bytes.Contains(b, []byte(text)) {
@@ -336,9 +347,13 @@ func (s *Scenario) fileDoesNotContainText(path, text string) error {
 	if text == "" {
 		return errors.New("要搜尋的文字不能是空的")
 	}
-	blobs, err := fileBlobs(s.filePath(path), true)
+	real := s.filePath(path)
+	blobs, err := fileBlobs(real)
 	if err != nil {
 		return fmt.Errorf("讀取檔案 %s：%w", path, err)
+	}
+	if isTarArchive(real) && len(blobs) == 0 {
+		return errEmptyArchive(path)
 	}
 	for i, b := range blobs {
 		if bytes.Contains(b, []byte(text)) {
@@ -346,6 +361,21 @@ func (s *Scenario) fileDoesNotContainText(path, text string) error {
 		}
 	}
 	return nil
+}
+
+// backupBlobs 讀出 /backups 中一個檔案要掃描的內容：場景自己寫入且沒被改過的 fixture 照字面掃描，
+// 其他檔案用嚴格模式解開（見 fileBlobs）。
+func (s *Scenario) backupBlobs(path string) ([][]byte, error) {
+	if want, ok := s.fixtureFiles[path]; ok {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		if bytes.Equal(raw, want) {
+			return [][]byte{raw}, nil
+		}
+	}
+	return fileBlobs(path)
 }
 
 // checkBackupSecrets 在 After hook 掃描 /backups（OPS-R1）：每個檔案（`.tar.gz` 先解開）的內容都不能含有 master key 的值。
@@ -366,12 +396,14 @@ func (s *Scenario) checkBackupSecrets() error {
 		if !d.Type().IsRegular() {
 			return nil // 目錄與 symlink（latest 指向的檔案會另外掃到）
 		}
-		blobs, err := fileBlobs(path, false)
+		blobs, err := s.backupBlobs(path)
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}
 		if err != nil {
-			return err
+			// 解不開的備份是 harness 錯誤：不能退回掃描壓縮後的位元組，否則 master key 外洩也看不到。
+			errs = append(errs, fmt.Errorf("harness 錯誤：備份 %s 解不開，無法掃描 master key：%w", s.World.Unexpand(path), err))
+			return nil
 		}
 		for _, b := range blobs {
 			for n := range needles {

@@ -132,8 +132,27 @@ func TestFileContainsText(t *testing.T) {
 	}
 }
 
+// 空的 .tar.gz（沒有任何一般檔案項目）不能證明任何事：contains 與 does not contain 都要失敗並說明原因。
+func TestFileContainsTextFailsOnEmptyArchive(t *testing.T) {
+	s := newTestScenario(t)
+	if err := os.MkdirAll(s.World.BackupsDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(s.World.BackupsDir(), "empty.tar.gz"), makeTarGz(t, nil), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, err := range map[string]error{
+		"contains":         s.fileContainsText("/backups/empty.tar.gz", "x"),
+		"does not contain": s.fileDoesNotContainText("/backups/empty.tar.gz", "x"),
+	} {
+		if err == nil || !strings.Contains(err.Error(), "沒有任何檔案") {
+			t.Errorf("%s：錯誤 = %v，預期說明封存檔沒有任何檔案", name, err)
+		}
+	}
+}
+
 // After hook 的備份掃描：/backups 中的內容（.tar.gz 解開後）含有 master key 就失敗；
-// 解不開的檔案原樣掃描；symlink 不重複計算。
+// production 產生的壓縮檔解不開時是 harness 錯誤（不退回掃原始位元組）；場景自己寫入的 fixture 照字面掃描；symlink 不重複計算。
 func TestCheckBackupSecrets(t *testing.T) {
 	s := newTestScenario(t)
 	if err := s.checkBackupSecrets(); err != nil {
@@ -145,10 +164,27 @@ func TestCheckBackupSecrets(t *testing.T) {
 	dir := s.World.BackupsDir()
 	clean := makeTarGz(t, map[string]string{"notesteme.db": "no secrets here"})
 	_ = os.WriteFile(filepath.Join(dir, "clean.tar.gz"), clean, 0o600)
-	_ = os.WriteFile(filepath.Join(dir, "old.tar.gz"), []byte("fixture: backup-schema-3"), 0o600)
+	// 場景用 `the file … contains:` 放的不合法封存檔是 fixture，照字面掃描、不算 harness 錯誤。
+	if err := s.fileContainsDoc("/backups/old.tar.gz", &godog.DocString{Content: "fixture: backup-schema-3"}); err != nil {
+		t.Fatal(err)
+	}
 	_ = os.Symlink("clean.tar.gz", filepath.Join(dir, "latest.tar.gz"))
 	if err := s.checkBackupSecrets(); err != nil {
 		t.Fatalf("乾淨的備份不該失敗：%v", err)
+	}
+	// 不是 fixture 的壓縮檔解不開：harness 錯誤；即使原始位元組含有 master key，也不退回去掃。
+	_ = os.WriteFile(filepath.Join(dir, "broken.tar.gz"), []byte("not gzip"), 0o600)
+	if err := s.checkBackupSecrets(); err == nil || !strings.Contains(err.Error(), "harness 錯誤") || !strings.Contains(err.Error(), "/backups/broken.tar.gz") {
+		t.Fatalf("解不開的備份：錯誤 = %v，預期 harness 錯誤", err)
+	}
+	_ = os.Remove(filepath.Join(dir, "broken.tar.gz"))
+	// fixture 被改過就不再享有例外。
+	_ = os.WriteFile(filepath.Join(dir, "old.tar.gz"), []byte("changed by production"), 0o600)
+	if err := s.checkBackupSecrets(); err == nil || !strings.Contains(err.Error(), "harness 錯誤") {
+		t.Fatalf("被改過的 fixture：錯誤 = %v", err)
+	}
+	if err := s.fileContainsDoc("/backups/old.tar.gz", &godog.DocString{Content: "fixture: backup-schema-3"}); err != nil {
+		t.Fatal(err)
 	}
 
 	s.World.Env["NOTESTEME_MASTER_KEY"] = "ops-backup-master-key-1"

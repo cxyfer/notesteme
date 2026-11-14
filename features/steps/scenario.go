@@ -59,6 +59,10 @@ type Scenario struct {
 	defaultedLang map[string]bool
 	// cookieSecrets 是場景用 POST /api/cookies 送出的 cookie 值（見 cookieNeedles），secret 掃描要找它們。
 	cookieSecrets map[string]bool
+	// fixtureFiles 是 `Given the file … contains:` 寫入的檔案（實際路徑對應寫入的內容）。
+	// After hook 掃 /backups 時，內容仍與寫入時相同的檔案是場景自己放的 fixture（例如故意不合法的 old.tar.gz），
+	// 照字面掃描；被 production 改過的檔案仍走嚴格解壓。
+	fixtureFiles map[string][]byte
 }
 
 // response 是最近一次請求的回應。
