@@ -102,6 +102,23 @@ func TestCreateDBAtSchemaAndCheck(t *testing.T) {
 	}
 }
 
+// 參考資料庫建在場景根目錄的 tmp，不碰真正的 /tmp：把 TMPDIR 指向不存在的目錄，檢查仍然成功，而且不留下暫存檔。
+func TestCheckDBSchemaKeepsItsReferenceDBInsideTheScenarioRoot(t *testing.T) {
+	ctx := context.Background()
+	w := NewT(t)
+	if err := w.CreateDBAtSchema(ctx, 3); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", filepath.Join(w.Root, "no-such-real-tmp"))
+	if err := w.CheckDBSchema(ctx, 3); err != nil {
+		t.Fatalf("參考資料庫不該用 TMPDIR：%v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(w.Root, "tmp"))
+	if err != nil || len(entries) != 0 {
+		t.Errorf("檢查後 %s/tmp 應該是空的：%v %v", w.Root, entries, err)
+	}
+}
+
 // 超過內建最新版本：補合成的 migration，版本與 schema 都對得上。
 func TestCreateDBAtSyntheticSchema(t *testing.T) {
 	ctx := context.Background()

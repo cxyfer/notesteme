@@ -38,7 +38,7 @@ func (w *World) InsertEventAt(at time.Time) error {
 	return nil
 }
 
-// EventCount 以唯讀連線回報 events 表的筆數。
+// EventCount 以唯讀連線回報 events 表的筆數：計算整張表，包括場景以外寫入的事件（見 steps.md 4.12）。
 func (w *World) EventCount() (n int, err error) {
 	err = w.dbQuery(func(ctx context.Context, db *sql.DB) error {
 		return db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events`).Scan(&n)

@@ -217,7 +217,12 @@ func (w *World) CheckDBSchema(ctx context.Context, version int) error {
 		return fmt.Errorf("資料庫的 schema 版本是 %d，預期 %d", gotVersion, version)
 	}
 
-	dir, err := os.MkdirTemp("", "nstschema")
+	// 參考資料庫建在場景根目錄的 tmp（場景路徑 /tmp 的對應位置），不碰真正的 /tmp。
+	tmp := filepath.Join(w.Root, "tmp")
+	if err := os.MkdirAll(tmp, 0o700); err != nil {
+		return err
+	}
+	dir, err := os.MkdirTemp(tmp, "nstschema")
 	if err != nil {
 		return err
 	}
