@@ -47,6 +47,9 @@ var cookieErrors = []struct {
 	{cookies.ErrInvalidFormat, CodeCookieInvalidFormat},
 }
 
+// resumeTimeout 是 cookie 儲存後恢復 blocked 步驟的時間上限。
+const resumeTimeout = 30 * time.Second
+
 // maxCookieBodyBytes 是 POST /api/cookies 請求本體的上限：內容上限 64 KiB，
 // 加上 JSON 跳脫（每個字元最多展開成 6 個位元組）的餘裕後仍在 512 KiB 之內。
 const maxCookieBodyBytes = 512 << 10
@@ -127,7 +130,10 @@ func (rt *routes) putCookies(ctx context.Context, in *cookiesInput) (*cookiesOut
 	}
 	// 恢復失敗不影響 cookie 已經儲存的事實；使用者之後仍可手動重試。
 	if rt.d.Resumer != nil {
-		n, err := rt.d.Resumer.ResumeBlocked(ctx, "cookie:"+in.Body.Platform)
+		// cookie 已經存好：客戶端之後斷線（請求 ctx 取消）不該讓恢復做到一半就中斷，所以脫離請求的取消，另設逾時。
+		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resumeTimeout)
+		defer cancel()
+		n, err := rt.d.Resumer.ResumeBlocked(rctx, "cookie:"+in.Body.Platform)
 		if err != nil {
 			rt.d.Log.ErrorContext(ctx, "cookie 已儲存，但恢復 blocked 步驟失敗", "platform", in.Body.Platform, "error", err)
 		} else if n > 0 {
