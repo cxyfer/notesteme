@@ -119,7 +119,7 @@ func (s *Scenario) youtubeVideoTitled(ref, title string) error {
 
 // declaredLanguage 回傳場景替影片宣告的原文語言：`titled` 補上的預設值不算。
 // hasTranscriptSource 用它判斷場景有沒有準備字幕來源，這樣預設值不會改變 DEL 等場景目前的 pending
-// （它們要等 fixtures/items/ 與各自的功能，見 pendingWithoutItemFixture）。
+// （它們要等 fixtures/items/ 與各自的功能，見 itemFixtureFor）。
 func (s *Scenario) declaredLanguage(ref string, v *faketool.Video) string {
 	if s.defaultedLang[ref] {
 		return ""

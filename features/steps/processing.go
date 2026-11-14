@@ -1,11 +1,15 @@
 package steps
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -14,6 +18,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/source"
+	"github.com/cxyfer/notesteme/internal/subtitle"
 	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
@@ -230,16 +235,22 @@ func (s *Scenario) artifactHasVersions(name, ref string, want int) error {
 // itemProcessedUpTo 讓影音真的處理到指定步驟（steps.md 第 4.4 節）：
 // 影音還不存在就新增（until 為該步驟）；已存在就從第一個還沒完成的步驟重跑到該步驟為止。
 // 接著執行 worker 到閒置，最後確認該步驟是 done，否則失敗。
-// TODO：fixtures/items/ 還沒有，影音不是用代號新增時無法從 fixture 建立。
+// 目標步驟需要字幕而場景沒有準備來源時，改由 features/fixtures/items/ 填入 source（見 itemFixtureFor）。
 func (s *Scenario) itemProcessedUpTo(ref, stage string) error {
 	if !pipeline.ValidStage(stage) {
 		return fmt.Errorf("步驟 %q 不正確，應是 %v 其中之一", stage, pipeline.Stages)
 	}
-	if err := s.pendingWithoutItemFixture(ref, stage); err != nil {
+	fx, err := s.itemFixtureFor(ref, stage)
+	if err != nil {
 		return err
 	}
 	if err := s.prepareOwner(); err != nil {
 		return err
+	}
+	if fx != nil {
+		if err := s.seedItemFixture(ref, fx); err != nil {
+			return err
+		}
 	}
 	items, err := s.listItems()
 	if err != nil {
@@ -335,16 +346,93 @@ func (s *Scenario) hasTranscriptSource(ref string) bool {
 	return chosen != nil
 }
 
-// pendingWithoutItemFixture 在執行之前處理這個 Given 缺的一塊：features/fixtures/items/ 還沒有
-// （steps.md：「影音或 fixture 不存在時，依代號從 fixtures/items/ 建立」）。
-// 目標步驟需要字幕（transcript 以後），而場景沒有替影音準備任何字幕來源時，產出只能靠 fixture 填入，
-// 目前建立不起來：視為步驟尚未完整實作而 pending。有準備來源卻沒處理到目標步驟，由呼叫端一律當作失敗。
-// 實作 fixtures/items/ 之後整個函式刪除。
-func (s *Scenario) pendingWithoutItemFixture(ref, stage string) error {
-	if slices.Index(pipeline.Stages, stage) < slices.Index(pipeline.Stages, pipeline.StageTranscript) || s.hasTranscriptSource(ref) {
-		return nil
+// itemFixture 是 features/fixtures/items/<代號>.json 的內容：影音處理到 transcript 時 source 字幕的 cue。
+type itemFixture struct {
+	Ref    string `json:"ref"`
+	Source struct {
+		Lang string `json:"lang"`
+		Cues []struct {
+			Start string `json:"start"`
+			End   string `json:"end"`
+			Text  string `json:"text"`
+		} `json:"cues"`
+	} `json:"source"`
+}
+
+// itemFixtureName 把代號轉成 fixture 檔名：`:`、`/` 換成 `-`，例如 yt:pg100xxxxxx → yt-pg100xxxxxx.json。
+func itemFixtureName(ref string) string {
+	return strings.NewReplacer(":", "-", "/", "-").Replace(ref) + ".json"
+}
+
+// hasAnyTrack 回報假 yt-dlp 中這部影片是否有任何字幕軌（不論是否符合 caption_priority）。
+func (s *Scenario) hasAnyTrack(ref string) bool {
+	key, err := s.videoKey(ref)
+	if err != nil {
+		return false
 	}
-	return fmt.Errorf("場景沒有替 %s 準備字幕來源，需要 features/fixtures/items/ 填入產出（還沒實作）：%w", ref, godog.ErrPending)
+	v, ok := s.World.Tools.Videos[key]
+	return ok && len(v.Tracks) > 0
+}
+
+// itemFixtureFor 決定 `has been processed up to` 要怎麼取得字幕（steps.md 第 4.4 節）：
+//  1. 目標步驟在 transcript 之前，或場景已準備字幕來源（hasTranscriptSource）：回傳 nil，照常跑 pipeline。
+//  2. 影片沒有任何字幕軌、場景也沒寫入字幕或腳本化來源，而且 fixtures/items/<代號>.json 存在：回傳該 fixture。
+//  3. 其他情況：pending（場景沒有任何方式產生字幕）。
+//
+// fixture 的 ref 必須與檔名一致，否則失敗。是否 pending 只看場景準備了什麼，不看步驟的參數內容。
+func (s *Scenario) itemFixtureFor(ref, stage string) (*itemFixture, error) {
+	if slices.Index(pipeline.Stages, stage) < slices.Index(pipeline.Stages, pipeline.StageTranscript) || s.hasTranscriptSource(ref) {
+		return nil, nil
+	}
+	if !s.hasAnyTrack(ref) && len(s.World.Sources.ReturnedFor(ref)) == 0 {
+		name := itemFixtureName(ref)
+		raw, err := os.ReadFile(filepath.Join(s.World.FixturesDir, "items", name))
+		if err == nil {
+			dec := json.NewDecoder(bytes.NewReader(raw))
+			dec.DisallowUnknownFields()
+			var fx itemFixture
+			if err := dec.Decode(&fx); err != nil {
+				return nil, fmt.Errorf("fixture %s 格式不正確：%w", name, err)
+			}
+			if fx.Ref != ref {
+				return nil, fmt.Errorf("fixture %s 的 ref 是 %q，必須與檔名一致（%q）", name, fx.Ref, ref)
+			}
+			return &fx, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("讀取 fixture %s：%w", name, err)
+		}
+	}
+	return nil, fmt.Errorf("場景沒有替 %s 準備字幕來源，也沒有 features/fixtures/items/ 的 fixture：%w", ref, godog.ErrPending)
+}
+
+// seedItemFixture 建立影音（做到 metadata），再把 fixture 的 source 字幕直接寫成產出。
+func (s *Scenario) seedItemFixture(ref string, fx *itemFixture) error {
+	cues := make([]subtitle.Cue, 0, len(fx.Source.Cues))
+	for i, c := range fx.Source.Cues {
+		cue := subtitle.Cue{Index: i + 1, Text: c.Text}
+		var err error
+		if cue.StartMS, err = subtitle.ParseTimecode(c.Start); err != nil {
+			return fmt.Errorf("fixture %s 第 %d 個 cue 的 start：%w", ref, i+1, err)
+		}
+		if cue.EndMS, err = subtitle.ParseTimecode(c.End); err != nil {
+			return fmt.Errorf("fixture %s 第 %d 個 cue 的 end：%w", ref, i+1, err)
+		}
+		cues = append(cues, cue)
+	}
+	id, err := s.ensureItemForSeed(ref)
+	if err != nil {
+		return err
+	}
+	req := pipeline.SeedRequest{ItemID: id, Variant: subtitle.VariantSource, Lang: fx.Source.Lang, Cues: cues}
+	if err := s.server.SeedTranscript(s.ctx, req); err != nil {
+		return err
+	}
+	if s.seeded == nil {
+		s.seeded = map[string]bool{}
+	}
+	s.seeded[ref] = true
+	return nil
 }
 
 // firstUnfinished 回傳從開頭到 upTo（含）第一個還不是 done 的步驟；都完成了回傳空字串。
