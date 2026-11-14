@@ -219,8 +219,14 @@ func parse(args []string) (*plan, error) {
 		return parseExport(args[1:])
 	case "doctor":
 		return parseDoctor(args[1:])
-	case "backup", "restore", "tokens", "secrets", "config", "mcp", "tools":
-		// 屬於之後的切片（OPS、AUTH、SEC、MCP）：不判斷模式，直接回報還沒實作。
+	case "backup":
+		return parseBackup(args[1:])
+	case "restore":
+		return parseRestore(args[1:])
+	case "tools":
+		return parseTools(args[1:])
+	case "tokens", "secrets", "config", "mcp":
+		// 屬於之後的切片（AUTH、SEC、MCP）：不判斷模式，直接回報還沒實作。
 		return unimplemented(name), nil
 	default:
 		return nil, usagef("不認得的子命令 %q。", name)
