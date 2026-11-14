@@ -3,6 +3,8 @@ package groq
 import (
 	"regexp"
 	"strings"
+
+	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
 // whisperLanguages 是 Whisper 回報的語言全名（小寫）對應到 BCP-47 的表，
@@ -70,10 +72,12 @@ var whisperCodes = func() map[string]bool {
 }()
 
 // LangHint 把影音的原文語言（BCP-47）轉成要送給 Whisper 的語言提示：只取主要語言，
-// 且必須是 Whisper 支援的代碼；未知（空字串、und）或不支援時回傳空字串，讓 Whisper 自行偵測。
+// 且必須是 Whisper 支援的兩個字母代碼（API 只接受 ISO-639-1，三字母的 yue、haw 不送）；
+// 別名先換成同一個代碼（nb → no、fil → tl 等，見 transcript.PrimaryLang）。
+// 未知（空字串、und）或不支援時回傳空字串，讓 Whisper 自行偵測。
 func LangHint(lang string) string {
-	primary, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(lang)), "-")
-	if whisperCodes[primary] {
+	primary := transcript.PrimaryLang(lang)
+	if len(primary) == 2 && whisperCodes[primary] {
 		return primary
 	}
 	return ""

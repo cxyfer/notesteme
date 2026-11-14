@@ -24,6 +24,16 @@ func TestLangMismatch(t *testing.T) {
 		{"und", "ja", false}, // und 也是未知
 		{"en", "", false},    // 來源沒有回報語言：沒有可比較的
 		{"en", "und", false},
+		// 同一語言的別名（舊代碼與新代碼）視為相同。
+		{"no", "nb", false},
+		{"nb", "no", false},
+		{"nn", "no", false},
+		{"tl", "fil", false},
+		{"he", "iw", false},
+		{"id", "in", false},
+		{"jv", "jw", false},
+		{"nb-NO", "no", false},
+		{"no", "sv", true},
 	} {
 		if got := langMismatch(tt.want, tt.got); got != tt.mismatch {
 			t.Errorf("langMismatch(%q, %q) = %v", tt.want, tt.got, got)

@@ -414,20 +414,8 @@ func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, l
 // M1 只比較來源回報的語言，不做文字語言偵測；任一邊未知（空字串或 und）時略過檢查。
 // 只比主要語言：zh 與 zh-Hans、en 與 en-orig 視為相同。
 func langMismatch(want, got string) bool {
-	w, g := primaryLang(want), primaryLang(got)
+	w, g := transcript.PrimaryLang(want), transcript.PrimaryLang(got)
 	return w != "" && g != "" && w != g
-}
-
-// primaryLang 回傳語言代碼的主要語言（小寫）；未知（空字串或 und）回傳空字串。
-func primaryLang(l string) string {
-	l = strings.ToLower(transcript.NormalizeLang(strings.TrimSpace(l)))
-	if i := strings.IndexAny(l, "-_"); i >= 0 {
-		l = l[:i]
-	}
-	if l == "und" {
-		return ""
-	}
-	return l
 }
 
 // isNeedsAction 回報 err 是否為 needs_action 類別。
