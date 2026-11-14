@@ -17,7 +17,7 @@ type QueueClass struct {
 	Class   string `json:"class" doc:"資源類別：download、asr、llm、frames"`
 	Limit   int    `json:"limit" doc:"並行上限"`
 	Running int    `json:"running" doc:"正在執行（已被領取）的任務數"`
-	Pending int    `json:"pending" doc:"等待領取的任務數"`
+	Waiting int    `json:"waiting" doc:"等待領取的任務數"`
 	Paused  bool   `json:"paused" doc:"這個類別是否單獨暫停；整個佇列暫停時不一定是 true，看最上層的 paused"`
 }
 
@@ -35,9 +35,9 @@ type QueueTask struct {
 
 // QueueStatus 是佇列的狀態。tasks 先列已被領取的，再列 pending 的，pending 的順序就是之後領取的順序。
 type QueueStatus struct {
-	Paused  bool         `json:"paused" doc:"整個佇列是否暫停"`
-	Classes []QueueClass `json:"classes"`
-	Tasks   []QueueTask  `json:"tasks"`
+	Paused bool         `json:"paused" doc:"整個佇列是否暫停"`
+	Lanes  []QueueClass `json:"lanes"`
+	Tasks  []QueueTask  `json:"tasks"`
 }
 
 type queueOutput struct{ Body QueueStatus }
@@ -73,7 +73,7 @@ func (rt *routes) queueStatus(ctx context.Context) (QueueStatus, error) {
 		return QueueStatus{}, err
 	}
 	ctl := q.Control().Status()
-	out := QueueStatus{Paused: ctl.Paused, Classes: make([]QueueClass, 0, len(ctl.Classes)), Tasks: make([]QueueTask, 0, len(entries))}
+	out := QueueStatus{Paused: ctl.Paused, Lanes: make([]QueueClass, 0, len(ctl.Classes)), Tasks: make([]QueueTask, 0, len(entries))}
 	running, pending := map[string]int{}, map[string]int{}
 	for _, e := range entries {
 		if e.State == "leased" {
@@ -87,8 +87,8 @@ func (rt *routes) queueStatus(ctx context.Context) (QueueStatus, error) {
 		})
 	}
 	for _, c := range ctl.Classes {
-		out.Classes = append(out.Classes, QueueClass{
-			Class: c.Class, Limit: c.Limit, Running: running[c.Class], Pending: pending[c.Class], Paused: c.Paused,
+		out.Lanes = append(out.Lanes, QueueClass{
+			Class: c.Class, Limit: c.Limit, Running: running[c.Class], Waiting: pending[c.Class], Paused: c.Paused,
 		})
 	}
 	return out, nil

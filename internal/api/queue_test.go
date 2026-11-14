@@ -16,12 +16,12 @@ func queueOf(t *testing.T, r *itemsRig) QueueStatus {
 
 func classOf(t *testing.T, q QueueStatus, class string) QueueClass {
 	t.Helper()
-	for _, c := range q.Classes {
+	for _, c := range q.Lanes {
 		if c.Class == class {
 			return c
 		}
 	}
-	t.Fatalf("佇列狀態沒有資源類別 %s：%+v", class, q.Classes)
+	t.Fatalf("佇列狀態沒有資源類別 %s：%+v", class, q.Lanes)
 	return QueueClass{}
 }
 
@@ -38,7 +38,7 @@ func TestQueueLimitsPatchOnlyChangesGivenClasses(t *testing.T) {
 	}
 	q = queueOf(t, r)
 	if classOf(t, q, "download").Limit != 5 || classOf(t, q, "asr").Limit != 3 || classOf(t, q, "llm").Limit != 4 {
-		t.Errorf("只應改 download：%+v", q.Classes)
+		t.Errorf("只應改 download：%+v", q.Lanes)
 	}
 }
 
@@ -116,7 +116,7 @@ func TestQueueListsTasksWithItemsAndCounts(t *testing.T) {
 		q.Tasks[0].Stage != "metadata" || q.Tasks[0].ResourceClass != "download" || q.Tasks[0].ItemID == "" {
 		t.Fatalf("tasks = %+v", q.Tasks)
 	}
-	if c := classOf(t, q, "download"); c.Pending != 2 || c.Running != 0 {
+	if c := classOf(t, q, "download"); c.Waiting != 2 || c.Running != 0 {
 		t.Errorf("download = %+v", c)
 	}
 
