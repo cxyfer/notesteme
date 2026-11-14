@@ -174,8 +174,9 @@ func classify(res toolexec.Result) error {
 }
 
 // tail 回傳輸出最後 n 個位元組的單行摘要。
+// 先遮蔽 yt-dlp 讀 cookie 檔的警告行：它們會夾帶 cookie 的值，不能進入錯誤訊息與 log（SEC-R4）。
 func tail(b []byte, n int) string {
-	b = bytes.TrimSpace(b)
+	b = bytes.TrimSpace(toolexec.RedactCookieLines(b))
 	if len(b) > n {
 		b = b[len(b)-n:]
 	}
