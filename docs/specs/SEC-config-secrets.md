@@ -29,7 +29,7 @@
 | SEC-R4 | secrets 以資料金鑰加密，資料金鑰再由 master key（`NOTESTEME_MASTER_KEY`）加密。DB、log、備份中都不會出現 secret 的明文。 | M1 |
 | SEC-R5 | 沒有設定 master key 時，`serve` 拒絕啟動，訊息為「尚未設定 NOTESTEME_MASTER_KEY。」master key 錯誤時拒絕啟動，訊息為「master key 不正確，無法解開資料金鑰。」並提示 `notesteme secrets reset`。 | M1 |
 | SEC-R6 | API key 儲存後，API 與 UI 只回傳末四碼。 | M1 |
-| SEC-R7 | cookie 在執行時才寫成權限 `0600` 的暫存檔交給 yt-dlp，子程序結束後立即刪除。 | M1 |
+| SEC-R7 | cookie 在執行時才寫成權限 `0600` 的暫存檔交給 yt-dlp，子程序結束後立即刪除。每次呼叫各用一個檔名：yt-dlp 結束時會截斷並重寫 cookie 檔，共用檔案在並行時會讀到寫到一半的內容。 | M1 |
 | SEC-R8 | `notesteme secrets rotate-key` 用新的 master key 重新加密資料金鑰；完成後舊的 master key 無法再啟動。 | M1 |
 | SEC-R9 | `notesteme secrets reset` 刪除所有 secrets 與資料金鑰，並以新的 master key 建立新的資料金鑰；影音、產出、設定都保留，token 與密碼不受影響。 | M1 |
 | SEC-R10 | `notesteme config export` 輸出 DB 管理的設定（不含 secrets）；`notesteme config import` 匯入時先驗證整份內容，有錯誤就整份不套用。 | M2 |
@@ -48,3 +48,4 @@
 ## 待決問題
 
 - master key 的格式（32 bytes 的 base64，或允許任意密語再經 KDF）。暫定兩者都接受：長度不是 32 bytes 時用 argon2id 推導。
+- SEC-R7 的場景原本寫死 `/data/tmp/cookies-youtube.txt`，與每次呼叫一個檔名的設計衝突，改成斷言「交給 yt-dlp 的 cookie 檔」的權限與「沒有 cookie 檔留下」（2026-11-14，owner 同意；依據是 yt-dlp 的 `YoutubeDLCookieJar.save` 會先截斷再重寫）。

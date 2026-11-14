@@ -275,6 +275,8 @@
 | `Then the data directory does not contain the created token` | `/data` 中不含最近一次建立的 token 明文 |
 | `Then the file {string} is:` | 檔案內容完全相同 |
 | `Then the file {string} has the mode {string}` | 檔案權限，例如 `"0600"` |
+| `Then the cookie file given to yt-dlp has the mode {string}` | 目前執行中、帶 `--cookies` 的假 yt-dlp 呼叫所收到的 cookie 檔存在，且權限相符。暫存檔每次呼叫一個檔名（SEC-R7），所以不寫死路徑 |
+| `Then no cookie file remains in {string}` | 該目錄（場景路徑對應到測試資料目錄）中沒有任何曾交給假 yt-dlp 的 cookie 檔，也沒有符合 cookie 暫存檔命名的檔案 |
 | `Then the data directory does not contain {string}` | `/data` 中所有檔案（包括 DB）都不含這段文字 |
 | `Then the data directory has no files of {string}` | `/data` 的 artifacts、media、uploads、tmp 中沒有屬於這部影音的檔案 |
 | `Then the media cache has no files of {string}` | `/data/media` 中沒有屬於這部影音的檔案 |

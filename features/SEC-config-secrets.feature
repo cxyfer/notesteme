@@ -92,9 +92,9 @@ Feature: Configuration and secrets
       """
     And the owner ingests "yt:members1xxx"
     And the worker starts one round
-    Then the file "/data/tmp/cookies-youtube.txt" has the mode "0600"
+    Then the cookie file given to yt-dlp has the mode "0600"
     When the worker runs until idle
-    Then the file "/data/tmp/cookies-youtube.txt" does not exist
+    Then no cookie file remains in "/data/tmp"
     And the data directory does not contain "secret-sid"
 
   @M1 @SEC-04 @SEC-R5
