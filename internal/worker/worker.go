@@ -48,6 +48,8 @@ type Worker struct {
 	clk clock.Clock
 	// periodic 是每一輪開頭執行的定期工作，可以是 nil；只能在 worker 開始執行之前用 SetPeriodic 設定。
 	periodic Periodic
+	// periodicFired 是已經因為「到期」而立刻再跑過一輪的定期工作時間；同一個時間不重複觸發（見 nextWake）。
+	periodicFired time.Time
 
 	maxRounds int
 
@@ -317,8 +319,10 @@ func (w *Worker) sleep(ctx context.Context, after time.Time) {
 }
 
 // nextWake 回傳距離下一個該醒來的時間點還有多久：下一個任務到期，或定期工作到期，取較早的；都沒有時 ok 為 false。
-// 定期工作只計入「還在未來」的時間：它在這一輪開頭已經跑過，若仍是過去的時間，代表它失敗了，
-// 這時不能因此立刻醒來而不停地重試，改等下一次通知或到期。
+// 定期工作已經到期（pd <= 0）代表它在這一輪開頭之後才到期，要立刻再跑一輪，不能當成沒有 timer。
+// 但同一個到期時間只觸發一次（periodicFired）：跑了之後時間仍停在原處（失敗又沒有重新排定），
+// 再醒來也只是不停地重試；這時改等下一次通知或新的到期時間，由定期工作自己決定重試的時間。
+// 只有 sleep（Run 的 goroutine）會呼叫它，所以 periodicFired 不需要鎖。
 func (w *Worker) nextWake(ctx context.Context, after time.Time) (d time.Duration, ok bool) {
 	if at, has, err := w.q.NextDue(ctx, after); err != nil {
 		w.log.Error("查詢下一個任務的時間失敗", "error", err)
@@ -328,8 +332,11 @@ func (w *Worker) nextWake(ctx context.Context, after time.Time) (d time.Duration
 	if w.periodic != nil {
 		if at, has, err := w.periodic.NextAt(ctx); err != nil {
 			w.log.Error("查詢定期工作的時間失敗", "error", err)
-		} else if pd := at.Sub(w.clk.Now()); has && pd > 0 && (!ok || pd < d) {
+		} else if pd := at.Sub(w.clk.Now()); has && (pd > 0 || !at.Equal(w.periodicFired)) && (!ok || pd < d) {
 			d, ok = pd, true
+			if pd <= 0 {
+				w.periodicFired = at
+			}
 		}
 	}
 	return d, ok

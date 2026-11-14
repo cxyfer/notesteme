@@ -107,6 +107,20 @@ func TestLoadASRProvidersRejectsBadID(t *testing.T) {
 	}
 }
 
+// env_allowlist 寫成 NAME=value（常見的誤用）時，錯誤訊息不得回顯 = 之後的內容（NFR-SEC-3）。
+func TestLoadASREnvAllowlistErrorDoesNotEchoValue(t *testing.T) {
+	_, err := loadASR(t, "asr:\n  providers:\n    p:\n"+validCommand+"      env_allowlist: [\"GROQ_API_KEY=s3cr3t-value\"]\n")
+	if err == nil {
+		t.Fatal("應該載入失敗")
+	}
+	if strings.Contains(err.Error(), "s3cr3t") {
+		t.Errorf("錯誤訊息洩漏了 = 之後的內容：%v", err)
+	}
+	if !strings.Contains(err.Error(), "env_allowlist[0]") {
+		t.Errorf("錯誤訊息沒有指出欄位：%v", err)
+	}
+}
+
 // providers 不是 map（例如寫成陣列）時載入失敗。
 func TestLoadASRProvidersRejectsWrongShape(t *testing.T) {
 	if _, err := loadASR(t, "asr:\n  providers: [a, b]\n"); err == nil {

@@ -339,7 +339,7 @@ func TestPinInstallsTheRequestedVersion(t *testing.T) {
 			pip = a
 		}
 	}
-	if strings.Join(pip, " ") != "python -m pip install --disable-pip-version-check --no-input yt-dlp[default]==2026.10.20" {
+	if strings.Join(pip, " ") != "python -m pip install --isolated --disable-pip-version-check --no-input yt-dlp[default]==2026.10.20" {
 		t.Errorf("pip 的參數 = %q", pip)
 	}
 	if got := e.linkTarget(); !strings.HasSuffix(got, "2026.10.20") {
@@ -386,10 +386,10 @@ func TestValidVersion(t *testing.T) {
 }
 
 func TestPipArgsAreAFixedAllowlist(t *testing.T) {
-	if got := strings.Join(PipArgs("2026.11.10"), " "); got != "-m pip install --disable-pip-version-check --no-input yt-dlp[default]==2026.11.10" {
+	if got := strings.Join(PipArgs("2026.11.10"), " "); got != "-m pip install --isolated --disable-pip-version-check --no-input yt-dlp[default]==2026.11.10" {
 		t.Errorf("指定版本：%q", got)
 	}
-	if got := strings.Join(PipArgs(""), " "); got != "-m pip install --disable-pip-version-check --no-input -U yt-dlp[default]" {
+	if got := strings.Join(PipArgs(""), " "); got != "-m pip install --isolated --disable-pip-version-check --no-input -U yt-dlp[default]" {
 		t.Errorf("最新版：%q", got)
 	}
 	for _, a := range append(PipArgs(""), PipArgs("2026.11.10")...) {

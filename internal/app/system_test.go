@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -141,21 +142,18 @@ func TestSystemReportsManagedYtDlpAndState(t *testing.T) {
 // /readyz 與 /api/system、實際執行工具用同一個尋找方式：受管理的 yt-dlp 可用時，PATH 上沒有 yt-dlp 也就緒；
 // 受管理的壞了，不會退回 PATH 而假裝就緒。
 func TestReadyzFollowsTheSameLocator(t *testing.T) {
-	ready := func(env Env) (int, string) {
-		rec := standaloneGet(t, env, "/readyz")
-		return rec.Code, rec.Body.String()
-	}
+	ready := func(env Env) (int, []string) { return readyzResult(t, env) }
 
 	env := testEnv(t)
 	if err := os.Remove(filepath.Join(env.Vars["PATH"], "yt-dlp")); err != nil {
 		t.Fatal(err)
 	}
-	if code, body := ready(env); code != 503 || !strings.Contains(body, "yt-dlp") {
-		t.Fatalf("沒有任何 yt-dlp：%d %s", code, body)
+	if code, failed := ready(env); code != 503 || !slices.Equal(failed, []string{"yt-dlp"}) {
+		t.Fatalf("沒有任何 yt-dlp：%d %v", code, failed)
 	}
 	installManaged(t, env, "2026.11.01")
-	if code, body := ready(env); code != 200 {
-		t.Fatalf("受管理的 yt-dlp：%d %s", code, body)
+	if code, failed := ready(env); code != 200 || len(failed) != 0 {
+		t.Fatalf("受管理的 yt-dlp：%d %v", code, failed)
 	}
 
 	// PATH 上有可用的 yt-dlp，但受管理的壞了（symlink 在、目標不見）。
@@ -166,8 +164,8 @@ func TestReadyzFollowsTheSameLocator(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(ytdlp.VersionsDir(tools), "2026.11.01")); err != nil {
 		t.Fatal(err)
 	}
-	if code, body := ready(env); code != 503 || !strings.Contains(body, "yt-dlp") {
-		t.Fatalf("受管理的壞了：%d %s", code, body)
+	if code, failed := ready(env); code != 503 || !slices.Equal(failed, []string{"yt-dlp"}) {
+		t.Fatalf("受管理的壞了：%d %v", code, failed)
 	}
 }
 

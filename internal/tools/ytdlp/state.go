@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 // State 是 <tools>/yt-dlp/state.json 的內容：固定的版本與上一版（供 rollback）。
@@ -25,7 +26,22 @@ func statePath(tools string) string {
 	return filepath.Join(VersionsDir(tools), stateFileName)
 }
 
-// LoadState 讀取狀態；檔案不存在時回傳空的 State。
+// ErrStateCorrupt 表示 state.json 無法解析，或內容不合法（例如 id 含路徑分隔字元）。
+// 檔案只是記錄固定的版本與上一版，刪除後重來不會損失資料。
+var ErrStateCorrupt = errors.New("yt-dlp 的狀態檔損毀")
+
+// idRe 是 venv 目錄名稱（id）可以使用的字元：目錄名稱會被拿去組路徑與切換 symlink。
+var idRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// ValidID 回報 id 是不是合法的 venv 目錄名稱：只含 [A-Za-z0-9._-]，而且不是 . 或 ..。
+func ValidID(id string) bool { return idRe.MatchString(id) && id != "." && id != ".." }
+
+// corruptError 組出 ErrStateCorrupt，訊息指出檔案位置與處理方式。
+func corruptError(tools string, cause error) error {
+	return fmt.Errorf("%w：%s 無法使用（%v）；可以刪除這個檔案後重試，只會失去固定的版本與上一版的記錄。", ErrStateCorrupt, statePath(tools), cause)
+}
+
+// LoadState 讀取狀態；檔案不存在時回傳空的 State。無法解析或內容不合法時回傳 ErrStateCorrupt。
 func LoadState(tools string) (State, error) {
 	var st State
 	b, err := os.ReadFile(statePath(tools))
@@ -36,7 +52,14 @@ func LoadState(tools string) (State, error) {
 		return st, err
 	}
 	if err := json.Unmarshal(b, &st); err != nil {
-		return State{}, fmt.Errorf("yt-dlp 的狀態檔 %s 無法解析：%w", statePath(tools), err)
+		return State{}, corruptError(tools, err)
+	}
+	// id 之後會組成 <tools>/yt-dlp/<id> 並建立 symlink，檔案內容不可信任：../ 之類的值會讓 symlink 指到別處。
+	if st.PreviousID != "" && !ValidID(st.PreviousID) {
+		return State{}, corruptError(tools, errors.New("previous_id 含有不合法的字元"))
+	}
+	if st.Pinned != "" && !ValidVersion(st.Pinned) {
+		return State{}, corruptError(tools, errors.New("pinned 不是合法的版本"))
 	}
 	return st, nil
 }

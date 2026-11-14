@@ -33,10 +33,15 @@ type ToolView struct {
 }
 
 // YtDlpView 是 yt-dlp 的固定版本與上一版（OPS-R6、R7）；沒有時為空字串。
+// 狀態檔無法讀取時 Pinned 與 Previous 為 null，Error 說明原因（其他欄位照常回傳，不讓 /api/system 整個失敗）。
 type YtDlpView struct {
-	Pinned   string `json:"pinned"`
-	Previous string `json:"previous"`
+	Pinned   *string `json:"pinned"`
+	Previous *string `json:"previous"`
+	Error    string  `json:"error,omitempty" doc:"狀態檔無法使用時的簡短說明"`
 }
+
+// Str 回傳 s 的指標，供組 YtDlpView 使用。
+func Str(s string) *string { return &s }
 
 type systemOutput struct{ Body SystemView }
 

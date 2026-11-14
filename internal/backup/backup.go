@@ -69,7 +69,18 @@ const (
 )
 
 // Limits 是 Extract 對每個項目的大小上限（位元組）；零值使用預設。
-type Limits struct{ Manifest, Config, DB int64 }
+type Limits struct {
+	Manifest, Config, DB int64
+	// FreeSpace 回傳 dir 的剩餘位元組數；nil 時用平台的實作（unix 為 statfs）。
+	// 回傳 ErrSpaceUnknown 表示無法得知，Extract 會略過空間檢查。
+	FreeSpace func(dir string) (uint64, error)
+}
+
+// ErrSpaceUnknown 表示這個平台無法查詢剩餘空間。
+var ErrSpaceUnknown = errors.New("無法得知剩餘空間")
+
+// ErrInsufficientSpace 表示目的目錄的剩餘空間不夠解開備份的資料庫。
+var ErrInsufficientSpace = errors.New("磁碟剩餘空間不足")
 
 func (l Limits) withDefaults() Limits {
 	if l.Manifest <= 0 {
@@ -80,6 +91,9 @@ func (l Limits) withDefaults() Limits {
 	}
 	if l.DB <= 0 {
 		l.DB = maxDBBytes
+	}
+	if l.FreeSpace == nil {
+		l.FreeSpace = freeSpace
 	}
 	return l
 }
@@ -251,6 +265,14 @@ func Extract(r io.Reader, dir string, lim Limits) (c *Contents, err error) {
 		}
 		switch h.Name {
 		case DBName:
+			// 標頭宣告的大小不可信，但足以先擋下明顯放不下的備份，避免寫到一半把磁碟塞滿。
+			if free, ferr := lim.FreeSpace(dir); ferr == nil {
+				if uint64(h.Size) >= free {
+					return nil, fmt.Errorf("%w：資料庫需要 %d 位元組，%s 只剩 %d", ErrInsufficientSpace, h.Size, dir, free)
+				}
+			} else if !errors.Is(ferr, ErrSpaceUnknown) {
+				return nil, fmt.Errorf("查詢 %s 的剩餘空間失敗：%w", dir, ferr)
+			}
 			if err := writeNew(dbPath, tr); err != nil {
 				return nil, err
 			}

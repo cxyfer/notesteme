@@ -163,7 +163,8 @@ func decodeASRProvider(n *yaml.Node, id, field, path string) (ASRProvider, error
 		}
 		for i, e := range p.EnvAllowlist {
 			if strings.TrimSpace(e) == "" || strings.ContainsAny(e, "=\x00") {
-				return ASRProvider{}, bad(fmt.Sprintf("env_allowlist[%d]", i), "必須是環境變數的名稱（不含 = 與空字元）：%q", e)
+				// 常見的誤寫是 NAME=value，值可能是 secret，所以訊息不回顯內容，只指出索引（NFR-SEC-3）。
+				return ASRProvider{}, bad(fmt.Sprintf("env_allowlist[%d]", i), "必須是環境變數的名稱（不含 = 與空字元），不要寫成 NAME=value。")
 			}
 		}
 	case ASRTypeOpenAICompatible, ASRTypeMistral:

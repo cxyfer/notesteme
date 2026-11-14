@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/cxyfer/notesteme/internal/toolexec"
 	"github.com/cxyfer/notesteme/internal/tools/ytdlp"
 )
 
@@ -24,7 +25,14 @@ const (
 	CodeToolExternallyManaged = "tool_externally_managed"
 	CodeUpdateInProgress      = "update_in_progress"
 	CodeNoPreviousVersion     = "no_previous_version"
+	// CodeToolStateCorrupt 表示 yt-dlp 的 state.json 損毀；訊息指出檔案位置，刪除後可以重來。
+	CodeToolStateCorrupt = "tool_state_corrupt"
+	// CodeToolUnsupportedPlatform 表示這個平台不支援受管理的 yt-dlp。
+	CodeToolUnsupportedPlatform = "tool_unsupported_platform"
 )
+
+// installFailedMessage 是安裝失敗時回給 client 的固定訊息；pip 的輸出只寫進 log。
+const installFailedMessage = "yt-dlp 安裝失敗，詳見 server log。"
 
 // requireOwner 只讓 owner（session 或本機）通過：token 即使帶了 scope 也不行，因為這些操作會執行程式或洩漏管理資訊。
 func requireOwner(ctx context.Context, what string) error {
@@ -102,9 +110,14 @@ func (rt *routes) mapToolErr(ctx context.Context, err error) error {
 		return newError(http.StatusConflict, CodeUpdateInProgress, err.Error())
 	case errors.Is(err, ytdlp.ErrNoPrevious):
 		return newError(http.StatusConflict, CodeNoPreviousVersion, err.Error())
+	case errors.Is(err, ytdlp.ErrStateCorrupt):
+		return newError(http.StatusConflict, CodeToolStateCorrupt, err.Error())
+	case errors.Is(err, ytdlp.ErrUnsupportedPlatform):
+		return newError(http.StatusConflict, CodeToolUnsupportedPlatform, err.Error())
 	case errors.Is(err, ytdlp.ErrInstall):
-		rt.d.Log.WarnContext(ctx, "安裝 yt-dlp 失敗", "error", err)
-		return newError(http.StatusBadGateway, CodeUpstream, err.Error())
+		// 錯誤訊息帶有 pip 的 stderr 尾段：只寫進 log，而且先遮蔽 cookie 內容；回應不含這些內容。
+		rt.d.Log.WarnContext(ctx, "安裝 yt-dlp 失敗", "error", string(toolexec.RedactCookieLines([]byte(err.Error()))))
+		return newError(http.StatusBadGateway, CodeUpstream, installFailedMessage)
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return newError(http.StatusServiceUnavailable, CodeInternal, "更新被中斷，沒有做任何變更。")
 	}
