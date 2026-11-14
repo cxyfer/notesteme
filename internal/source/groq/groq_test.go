@@ -374,3 +374,42 @@ func TestTimingIsSegment(t *testing.T) {
 		t.Error("常數不符")
 	}
 }
+
+// Groq 要轉錄完才回標頭，長音檔會等很久；Transport 的 ResponseHeaderTimeout 不能截斷它，
+// 要放寬到整個請求的逾時（保留 Transport 的其他設定）。
+func TestResponseHeaderTimeoutIsRelaxedToTheRequestTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		time.Sleep(300 * time.Millisecond) // 比 Transport 的標頭逾時久
+		io.WriteString(w, okBody)
+	}))
+	defer srv.Close()
+
+	tr := srv.Client().Transport.(*http.Transport).Clone()
+	tr.ResponseHeaderTimeout = 50 * time.Millisecond
+	c := &Client{HTTP: &http.Client{Transport: tr}, BaseURL: srv.URL, APIKey: testKey, timeout: 5 * time.Second}
+	if _, err := c.Transcribe(context.Background(), audioFile(t), ""); err != nil {
+		t.Fatalf("Transcribe = %v", err)
+	}
+	// 呼叫端提供的 Transport 不被改動。
+	if tr.ResponseHeaderTimeout != 50*time.Millisecond {
+		t.Errorf("呼叫端的 Transport 被改動：%v", tr.ResponseHeaderTimeout)
+	}
+}
+
+// 不是 *http.Transport 的 Transport 原樣使用。
+func TestOtherTransportsAreKept(t *testing.T) {
+	srv := respond(200, okBody)
+	defer srv.Close()
+	used := false
+	base := srv.Client().Transport
+	rt := roundTripFunc(func(r *http.Request) (*http.Response, error) { used = true; return base.RoundTrip(r) })
+	c := &Client{HTTP: &http.Client{Transport: rt}, BaseURL: srv.URL, APIKey: testKey}
+	if _, err := c.Transcribe(context.Background(), audioFile(t), ""); err != nil || !used {
+		t.Fatalf("Transcribe = %v，使用自訂 Transport = %v", err, used)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

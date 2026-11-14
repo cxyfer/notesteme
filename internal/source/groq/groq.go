@@ -66,6 +66,17 @@ type Client struct {
 	Model string
 	// APIKey 是 Groq 的 API key。
 	APIKey string
+
+	// timeout 非 0 時取代 requestTimeout（讓測試不必真的等數分鐘）。
+	timeout time.Duration
+}
+
+// requestTimeout 是整個請求的逾時。
+func (c *Client) requestTimeout() time.Duration {
+	if c.timeout > 0 {
+		return c.timeout
+	}
+	return requestTimeout
 }
 
 // Configured 回報有沒有 API key；沒有時 Transcribe 不會發出請求。
@@ -131,7 +142,7 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*R
 		pw.CloseWithError(writeForm(mw, f, filepath.Base(audioPath), model, langHint))
 	}()
 
-	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+	reqCtx, cancel := context.WithTimeout(ctx, c.requestTimeout())
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, strings.TrimRight(base, "/")+"/audio/transcriptions", pr)
 	if err != nil {
@@ -145,6 +156,15 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*R
 	// 標頭帶有 API key，所以不跟隨轉址，3xx 當成 permanent。複製 client，不改動呼叫端提供的那一個。
 	hc := *c.HTTP
 	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	// Groq 要轉錄完才回標頭，長音檔會超過 Transport 預設的 ResponseHeaderTimeout（netguard 為 30 秒），
+	// 所以複製 Transport 並把標頭逾時放寬到整個請求的逾時；DialContext 等 netguard 的防護原樣保留。
+	// Transport 不是 *http.Transport 時（例如測試替身）維持原樣，無法調整標頭逾時。
+	if tr, ok := hc.Transport.(*http.Transport); ok {
+		tr = tr.Clone()
+		tr.ResponseHeaderTimeout = c.requestTimeout()
+		defer tr.CloseIdleConnections() // 複本只用這一次，結束時關掉閒置連線
+		hc.Transport = tr
+	}
 	resp, err := hc.Do(req)
 	if err != nil {
 		pr.Close() // 讓上傳的 goroutine 結束
