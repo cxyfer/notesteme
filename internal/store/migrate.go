@@ -107,18 +107,16 @@ func migrate(ctx context.Context, w *sql.DB, dir string, sub fs.FS) (snapshot st
 	return snapshot, nil
 }
 
-// restoreSnapshot 把快照還原成 path 的資料庫：先複製到暫存名稱再 rename，並刪除 -wal、-shm。
+// restoreSnapshot 把快照還原成 path 的資料庫：先刪除 -wal、-shm，再複製到暫存名稱後 rename。
+// 順序不能反過來：先換主檔的話，中途失敗會留下新的主檔配舊的 -wal（與 app.Restore 的順序一致）。
 // 呼叫時資料庫的連線都必須已經關閉。
 func restoreSnapshot(snapshot, path string) error {
-	if err := copyPrivate(snapshot, path); err != nil {
-		return err
-	}
 	for _, p := range []string{path + "-wal", path + "-shm"} {
 		if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 	}
-	return nil
+	return copyPrivate(snapshot, path)
 }
 
 // copyPrivate 把 src 複製成 dst（0600）：先寫同目錄的暫存名稱，完整寫完才 rename。

@@ -97,7 +97,7 @@ func Restore(ctx context.Context, env Env, file string) (*RestoreResult, error) 
 	dbPath := filepath.Join(dataDir, store.DBFileName)
 
 	if _, err := os.Stat(dbPath); err == nil {
-		res.PreRestore = filepath.Join(backups, "pre-restore-"+stamp+".db")
+		res.PreRestore = uniquePath(backups, "pre-restore-", stamp, ".db")
 		if err := savePreRestore(ctx, dbPath, res.PreRestore); err != nil {
 			return nil, fmt.Errorf("還原前保留目前的資料庫失敗：%w", err)
 		}
@@ -116,7 +116,7 @@ func Restore(ctx context.Context, env Env, file string) (*RestoreResult, error) 
 	}
 
 	if contents.HasConfig {
-		dir := filepath.Join(backups, "restored-config-"+stamp)
+		dir := uniquePath(backups, "restored-config-", stamp, "")
 		if err := os.MkdirAll(dir, dataDirPerm); err != nil {
 			return nil, fmt.Errorf("建立 %s 失敗：%w", dir, err)
 		}
@@ -169,22 +169,68 @@ func tooNewError(backupVersion, latest int64) error {
 // savePreRestore 把目前的資料庫存成 dest：優先用 VACUUM INTO（一致，也會處理遺留的 WAL）；
 // 資料庫本身壞了、開不起來時（常見的還原理由）退而複製原始的檔案，不讓還原因此卡住。
 func savePreRestore(ctx context.Context, dbPath, dest string) error {
-	err := store.SnapshotFile(ctx, dbPath, dest)
-	if err == nil {
+	if err := os.MkdirAll(filepath.Dir(dest), dataDirPerm); err != nil {
+		return err
+	}
+	// 先把原始的檔案另存一份：嘗試開啟損毀的資料庫時，SQLite 可能丟棄看不懂的 -wal，之後就沒有東西可以保存了。
+	raw, err := os.MkdirTemp(filepath.Dir(dest), ".pre-restore-raw-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(raw)
+	suffixes := []string{"-wal", "-shm", ""}
+	for _, suffix := range suffixes {
+		if cerr := copyIfExists(dbPath+suffix, filepath.Join(raw, store.DBFileName+suffix)); cerr != nil {
+			return cerr
+		}
+	}
+
+	serr := store.SnapshotFile(ctx, dbPath, dest)
+	if serr == nil {
 		return nil
 	}
-	if merr := os.MkdirAll(filepath.Dir(dest), dataDirPerm); merr != nil {
-		return errors.Join(err, merr)
-	}
-	in, oerr := os.Open(dbPath)
-	if oerr != nil {
-		return errors.Join(err, oerr)
-	}
-	defer in.Close()
-	if werr := store.WriteFileAtomic(dest, in); werr != nil {
-		return errors.Join(err, werr)
+	// 退而複製原始的檔案，-wal 與 -shm 要一併保存：WAL 裡已提交的資料還沒寫回主檔，
+	// 之後還原會刪掉它們，不保存就會遺失。主檔放最後，有任何一個失敗都不會留下看似完整的快照。
+	for _, suffix := range suffixes {
+		if cerr := copyIfExists(filepath.Join(raw, store.DBFileName+suffix), dest+suffix); cerr != nil {
+			return errors.Join(serr, cerr)
+		}
 	}
 	return nil
+}
+
+// copyIfExists 把 src 複製成 dst（0600、先寫暫存名稱再 rename）；src 不存在時什麼都不做。
+func copyIfExists(src, dst string) error {
+	in, err := os.Open(src)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	return store.WriteFileAtomic(dst, in)
+}
+
+// uniquePath 回傳 dir 下 <prefix><stamp><ext> 的路徑；已存在（含 -wal、-shm 附屬檔）時依序加上 -2、-3…，不覆蓋既有的檔案。
+func uniquePath(dir, prefix, stamp, ext string) string {
+	for n := 1; ; n++ {
+		name := prefix + stamp
+		if n > 1 {
+			name += fmt.Sprintf("-%d", n)
+		}
+		path := filepath.Join(dir, name+ext)
+		taken := false
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			if _, err := os.Lstat(path + suffix); err == nil {
+				taken = true
+				break
+			}
+		}
+		if !taken {
+			return path
+		}
+	}
 }
 
 // writeBytes 以 0600 寫出 content（先寫暫存名稱再 rename）。
