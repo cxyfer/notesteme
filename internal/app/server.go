@@ -192,7 +192,7 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	deps := pipeline.Deps{
 		Store: s.store, Clock: env.Clock, DataDir: cfg.Data, Log: log, YouTube: yt, Wake: s.queue.Wake, Version: version,
 		// Bilibili 與 YouTube 共用 runner、工具解析與 cookie 存放；Probe 不帶 --no-warnings，才看得到需要登入的警告（SRC-R8）。
-		Bilibili: &bilibili.Client{Runner: runner, Tools: toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}, Cookies: s.cookies},
+		Bilibili: &bilibili.Client{Runner: runner, Tools: toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}, Cookies: s.cookies, Log: log},
 		// 對外請求一律經過 netguard（ADR-0014），不使用 http.DefaultClient；逾時與大小由各呼叫端限制。
 		HTTP: netguard.NewClient(s.netw),
 	}
