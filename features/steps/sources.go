@@ -20,7 +20,7 @@ import (
 func registerSources(r *Registry, s *Scenario) {
 	r.Step(`a YouTube video {string} titled {string}`, s.youtubeVideoTitled)
 	r.Step(`a YouTube video {string} with:`, s.youtubeVideoWith)
-	r.Step(`a Bilibili video {string} with {int} parts`, func(string, int) error { return godog.ErrPending })
+	r.Step(`a Bilibili video {string} with {int} parts`, s.bilibiliVideo)
 	r.Step(`a podcast feed {string} with the episodes:`, func(string, *godog.Table) error { return godog.ErrPending })
 	r.Step(`a local file {string} in the inbox`, func(string) error { return godog.ErrPending })
 	r.Step(`{string} has {word} captions in {string}`, s.hasCaptions)
@@ -43,14 +43,59 @@ func youtubeID(ref string) (string, error) {
 	return id, nil
 }
 
-// editVideo 修改假工具狀態中的影片（必要時建立），成功後寫入狀態檔。
-func (s *Scenario) editVideo(ref string, edit func(v *faketool.Video) error) error {
+// biliRef 是 bili:<bvid>/p<n>。
+var biliRef = regexp.MustCompile(`^bili:([A-Za-z0-9]+)/p([0-9]+)$`)
+
+// videoKey 把影音代號換成假工具狀態（faketool.State.Videos）中的 key：
+// yt:<id> 是平台 ID；bili:<bvid>/p<n> 是分P 的 key（faketool.PartKey），影片必須已用
+// `a Bilibili video … with … parts` 建立，而且分P 存在，否則失敗。
+func (s *Scenario) videoKey(ref string) (string, error) {
+	if m := biliRef.FindStringSubmatch(ref); m != nil {
+		n, _ := strconv.Atoi(m[2])
+		v := s.World.Tools.Videos[m[1]]
+		if v == nil {
+			return "", fmt.Errorf("Bilibili 影片 %s 還沒建立（先用 `a Bilibili video … with … parts`）", m[1])
+		}
+		if n < 1 || n > max(v.Parts, 1) {
+			return "", fmt.Errorf("%s 不存在：%s 只有 %d 個分P", ref, m[1], max(v.Parts, 1))
+		}
+		return faketool.PartKey(m[1], n), nil
+	}
 	id, err := youtubeID(ref)
+	if err != nil {
+		return "", fmt.Errorf("%q 不是影音的代號（yt:<id> 或 bili:<bvid>/p<n>）", ref)
+	}
+	return id, nil
+}
+
+// editVideo 修改假工具狀態中的影片或 Bilibili 分P（YouTube 影片必要時建立），成功後寫入狀態檔。
+func (s *Scenario) editVideo(ref string, edit func(v *faketool.Video) error) error {
+	key, err := s.videoKey(ref)
 	if err != nil {
 		return err
 	}
-	if err := edit(s.World.Video(id)); err != nil {
+	if err := edit(s.World.Video(key)); err != nil {
 		return err
+	}
+	return s.World.SyncTools()
+}
+
+// bilibiliVideo 建立 fake 的 Bilibili 影片：參數是不帶 bili: 的 BV 號。
+// 各分P 一開始沒有字幕軌、沒有原文語言，標題預設為 BV 號；之後用 `bili:<BV>/p<n>` 逐分P 設定。
+func (s *Scenario) bilibiliVideo(bvid string, parts int) error {
+	if !regexp.MustCompile(`^[A-Za-z0-9]+$`).MatchString(bvid) {
+		return fmt.Errorf("%q 不是 BV 號（不帶 bili: 前綴，例如 BV1xx411c7mD）", bvid)
+	}
+	if parts < 1 {
+		return fmt.Errorf("分P 數 %d 不正確，至少 1", parts)
+	}
+	v := s.World.Video(bvid)
+	v.Title, v.Parts = bvid, parts
+	for n := 1; n <= parts; n++ {
+		p := s.World.Video(faketool.PartKey(bvid, n))
+		if p.Title == "" {
+			p.Title = bvid
+		}
 	}
 	return s.World.SyncTools()
 }
@@ -198,6 +243,9 @@ func (s *Scenario) hasCaptions(ref, kind, lang string) error {
 	default:
 		return fmt.Errorf("字幕軌的種類 %q 不正確，應是 manual、auto 或 platform-translated", kind)
 	}
+	if strings.HasPrefix(ref, "bili:") && kind == faketool.KindPlatformTranslated {
+		return fmt.Errorf("Bilibili 沒有平台翻譯字幕，只有 manual（CC）與 auto（AI）")
+	}
 	return s.editVideo(ref, func(v *faketool.Video) error {
 		for i, t := range v.Tracks {
 			if t.Kind == kind && t.Lang == lang {
@@ -212,6 +260,9 @@ func (s *Scenario) hasCaptions(ref, kind, lang string) error {
 
 // autoCaptionsNotReady 讓影片的自動字幕（與平台翻譯字幕）尚未生成：假 yt-dlp 不列出、也不下載（SRC-R6）。
 func (s *Scenario) autoCaptionsNotReady(ref string) error {
+	if _, err := youtubeID(ref); err != nil {
+		return err // 只接受 yt:
+	}
 	return s.editVideo(ref, func(v *faketool.Video) error {
 		v.AutoNotReady = true
 		return nil
@@ -221,6 +272,9 @@ func (s *Scenario) autoCaptionsNotReady(ref string) error {
 // ytdlpFails 讓假 yt-dlp 對這部影片的所有操作（info、字幕、媒體）都以結束碼 1 失敗，並輸出指定的 stderr。
 // 只接受 yt:<id>；Bilibili 等其他平台的假 yt-dlp 失敗還沒有場景用到。
 func (s *Scenario) ytdlpFails(ref, stderr string) error {
+	if _, err := youtubeID(ref); err != nil {
+		return err // 只接受 yt:
+	}
 	return s.editVideo(ref, func(v *faketool.Video) error {
 		v.Fail = &faketool.Failure{Stderr: stderr, ExitCode: 1}
 		return nil
@@ -234,10 +288,28 @@ func (s *Scenario) hasNoCaptions(ref string) error {
 	})
 }
 
-// platformCaptionKind 是平台字幕來源對應的假 yt-dlp 字幕軌種類。
-var platformCaptionKind = map[string]string{
-	"youtube-manual": faketool.KindManual,
-	"youtube-auto":   faketool.KindAuto,
+// platformSource 描述一個平台字幕來源：對應的假 yt-dlp 字幕軌種類，以及它所屬的平台（影音代號的前綴）。
+type platformSource struct {
+	kind     string
+	platform string // "yt" 或 "bili"
+	login    string // 取得字幕需要登入的平台（cookie 的平台）
+}
+
+// platformSources 是由假 yt-dlp 提供字幕的來源；Bilibili 的 AI 字幕屬於 auto。
+var platformSources = map[string]platformSource{
+	"youtube-manual": {kind: faketool.KindManual, platform: "yt", login: "youtube"},
+	"youtube-auto":   {kind: faketool.KindAuto, platform: "yt", login: "youtube"},
+	"bilibili-cc":    {kind: faketool.KindManual, platform: "bili", login: "bilibili"},
+	"bilibili-ai":    {kind: faketool.KindAuto, platform: "bili", login: "bilibili"},
+}
+
+// platformFor 確認影音代號屬於這個平台字幕來源的平台；不符時失敗（例如對 yt: 影片腳本化 bilibili-ai）。
+func platformFor(id, ref string) (platformSource, error) {
+	ps := platformSources[id]
+	if !strings.HasPrefix(ref, ps.platform+":") {
+		return ps, fmt.Errorf("來源 %q 屬於 %s: 的影音，%q 不符", id, ps.platform, ref)
+	}
+	return ps, nil
 }
 
 // scriptableSource 確認場景能腳本化這個來源：產品還沒實作的來源（source.Implemented）
@@ -272,7 +344,11 @@ func platformTrackLang(v *faketool.Video, kind string) (string, error) {
 
 // platformReturns 讓平台來源對影音回傳指定的 fixture：把 captions/ 內的檔案寫進假 yt-dlp 對應種類的字幕軌。
 func (s *Scenario) platformReturns(id, fixture, ref string) error {
-	kind := platformCaptionKind[id]
+	ps, err := platformFor(id, ref)
+	if err != nil {
+		return err
+	}
+	kind := ps.kind
 	if _, err := os.Stat(filepath.Join(s.World.FixturesDir, "captions", filepath.Clean("/"+fixture))); err != nil {
 		return fmt.Errorf("字幕 fixture %q 不存在（features/fixtures/captions/）：%w", fixture, err)
 	}
@@ -294,7 +370,11 @@ func (s *Scenario) platformReturns(id, fixture, ref string) error {
 
 // platformNothing 讓平台來源對影音沒有結果：移除假 yt-dlp 中這個種類的字幕軌。
 func (s *Scenario) platformNothing(id, ref string) error {
-	kind := platformCaptionKind[id]
+	ps, err := platformFor(id, ref)
+	if err != nil {
+		return err
+	}
+	kind := ps.kind
 	return s.editVideo(ref, func(v *faketool.Video) error {
 		v.Tracks = slices.DeleteFunc(v.Tracks, func(t faketool.Track) bool { return t.Kind == kind })
 		return nil
@@ -307,7 +387,7 @@ func (s *Scenario) sourceReturns(id, fixture, ref string) error {
 	if err := scriptableSource(id); err != nil {
 		return err
 	}
-	if _, platform := platformCaptionKind[id]; platform {
+	if _, platform := platformSources[id]; platform {
 		return s.platformReturns(id, fixture, ref)
 	}
 	s.World.Sources.Returns(id, ref, fixture)
@@ -319,24 +399,41 @@ func (s *Scenario) sourceHasNothing(id, ref string) error {
 	if err := scriptableSource(id); err != nil {
 		return err
 	}
-	if _, platform := platformCaptionKind[id]; platform {
+	if _, platform := platformSources[id]; platform {
 		return s.platformNothing(id, ref)
 	}
 	s.World.Sources.Nothing(id, ref)
 	return nil
 }
 
-// sourceRequiresCookie 讓來源要求指定的 cookie 才能取得。平台字幕由 yt-dlp 的 cookie 檔處理，
-// 假 yt-dlp 還不能腳本化它：失敗而不是 pending，場景要用就先補上假工具的行為。
+// sourceRequiresCookie 讓來源要求指定的 cookie 才能取得。
+// 平台字幕（bilibili-*）的參數是 cookie 的平台：假 yt-dlp 沒有收到該平台的有效 cookie 檔時，
+// 不列出也不下載這個來源的字幕軌，並印出 login WARNING（見 faketool 的 bilibili.go）。
+// youtube-* 沒有場景用到，失敗而不是 pending：場景要用就先補上假工具的行為。
 func (s *Scenario) sourceRequiresCookie(id, cookie string) error {
 	if err := scriptableSource(id); err != nil {
 		return err
 	}
-	if _, platform := platformCaptionKind[id]; platform {
-		return fmt.Errorf("假 yt-dlp 還不能腳本化平台字幕 %q 的 cookie 需求", id)
+	if _, platform := platformSources[id]; platform {
+		return s.platformRequiresCookie(id, cookie)
 	}
 	s.World.Sources.RequiresCookie(id, cookie)
 	return nil
+}
+
+func (s *Scenario) platformRequiresCookie(id, cookie string) error {
+	ps := platformSources[id]
+	if ps.login != "bilibili" {
+		return fmt.Errorf("假 yt-dlp 還不能腳本化平台字幕 %q 的 cookie 需求", id)
+	}
+	if cookie != ps.login {
+		return fmt.Errorf("來源 %q 需要的是 %q 的 cookie，不是 %q", id, ps.login, cookie)
+	}
+	if s.World.Tools.CookieKinds == nil {
+		s.World.Tools.CookieKinds = map[string]string{}
+	}
+	s.World.Tools.CookieKinds[ps.kind] = cookie
+	return s.World.SyncTools()
 }
 
 var sizePattern = regexp.MustCompile(`^(\d+)\s*(KB|MB|GB)$`)

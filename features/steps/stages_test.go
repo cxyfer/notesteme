@@ -330,7 +330,7 @@ func TestProviderHasNoAPIKey(t *testing.T) {
 		t.Errorf("LLM provider 應該 pending：%v", err)
 	}
 	// 還沒實作的字幕來源：pending，環境不動（key 還在）。
-	if err := s.providerHasNoAPIKey("bilibili-ai"); !errors.Is(err, godog.ErrPending) {
+	if err := s.providerHasNoAPIKey("whisper-1"); !errors.Is(err, godog.ErrPending) {
 		t.Errorf("未實作的來源應該 pending：%v", err)
 	}
 	if s.World.Env[harness.GroqAPIKeyEnv] == "" {
