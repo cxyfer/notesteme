@@ -163,6 +163,8 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*R
 	base, model := c.Endpoint()
 
 	// 以 pipe 串流上傳，不把整個音檔讀進記憶體。
+	// 注意：body 長度未知，會使用 chunked（Transfer-Encoding: chunked）上傳；
+	// 若遇到要求 Content-Length 的 proxy，需改為先把 multipart 寫進暫存檔再上傳。
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
 	go func() {
