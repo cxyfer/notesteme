@@ -97,4 +97,9 @@
   - R2「Restore brings the library back」在 restore 前先讓 server 正常關閉。`has been ingested` 會隱含啟動 server，而 server 執行中不能 restore。
   - R1 斷言備份中不含 master key 的值，原本只檢查變數名稱。
   - R10 加上一筆保留期限內的事件，並斷言剩下 1 筆。
+- 場景修改（2026-11-15，OPS 審查的 mutation testing 後，owner 同意）：
+  - R6 兩個場景斷言 `yt-dlp <版本> is the active version`，驗證 symlink 真的切換或沒有切換。原本只看 API 回應，更新後沒切換、回退時其實切換了都不會被發現。
+  - R10 再加一筆 53 天前的事件，剩下 2 筆，讓保留期寫成 30 天也會被發現；新增「Events are cleaned up at most once a day」，驗證清理後有排定下一次，24 小時內不重複清理。
+  - R2「Restore brings the library back」斷言 `pre-restore-<時間>.db` 存在。
+  - R2「備份的 schema 版本比目前的程式新時拒絕還原」沒有場景：現有步驟做不出「schema 較新的備份檔」，由 `internal/app/restore_test.go` 的單元測試守住。
 

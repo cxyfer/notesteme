@@ -319,6 +319,7 @@
 | `Given yt-dlp {string} is installed` | 在 OPS 規格規定的目錄結構中建立假的 venv：`/data/tools/yt-dlp/<版本>/` 是 venv，`/data/tools/yt-dlp-venv` 是指向它的 symlink；venv 內的假 yt-dlp 與假 python 回報該版本 |
 | `Given the yt-dlp release {string} passes the self-check` | 可更新到的版本，且自我檢查會通過。假 python 支援 `-m venv`、`-m pip install yt-dlp[default]==V` 與 `-U`（裝出來的 venv 回報版本 V）；不連外網 |
 | `Given the yt-dlp release {string} fails the self-check` | 可更新到的版本，但自我檢查會失敗：只有對「檢查影片」的 `Probe` 失敗，`--version` 照常成功（要驗證的是 Probe 的那一步）。安裝的支援同上 |
+| `Then yt-dlp {string} is the active version` | 目前使用中的 yt-dlp：`/data/tools/yt-dlp-venv` 解析後指向的 venv，其中的 yt-dlp 回報這個版本（驗證更新真的切換、回退真的沒有切換） |
 | `Given an event from {string} exists` | 建立一筆指定時間的事件 |
 | `Then no event older than {int} days remains` | 事件都在保留期限內 |
 | `Then the number of events is {int}` | 持久化的事件筆數（包括場景中用 `an event from … exists` 建立的）。server 已明確停下時改用唯讀方式查詢 DB |

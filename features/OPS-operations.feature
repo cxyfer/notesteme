@@ -24,6 +24,7 @@ Feature: Backup, health and external tools
     And the server shuts down gracefully
     When the owner runs "notesteme restore /backups/notesteme-backup-latest.tar.gz"
     Then the command exits with 0
+    And the file "/data/backups/pre-restore-20261112T100000Z.db" exists
     And the library contains 1 item
     And the library contains "yt:abc123xxxxx"
 
@@ -85,6 +86,7 @@ Feature: Backup, health and external tools
       """
       { "version": "2026.11.01", "rolled_back": true, "message": "yt-dlp 更新後自我檢查失敗，已回到 2026.11.01。" }
       """
+    And yt-dlp "2026.11.01" is the active version
 
   @OPS-04 @OPS-R6
   Scenario: A healthy yt-dlp update is kept
@@ -97,6 +99,7 @@ Feature: Backup, health and external tools
       """
       { "version": "2026.11.10", "rolled_back": false }
       """
+    And yt-dlp "2026.11.10" is the active version
 
   @OPS-04 @OPS-R7 @cli
   Scenario: A pinned yt-dlp is not updated
@@ -135,8 +138,22 @@ Feature: Backup, health and external tools
     Given the clock is at "2026-11-12T10:00:00Z"
     And the server is running
     And an event from "2026-08-01T00:00:00Z" exists
+    And an event from "2026-09-20T00:00:00Z" exists
     And an event from "2026-11-10T00:00:00Z" exists
     When the clock advances by "24h"
     And the worker runs until idle
     Then no event older than 90 days remains
-    And the number of events is 1
+    And the number of events is 2
+
+  @OPS-03 @OPS-R10
+  Scenario: Events are cleaned up at most once a day
+    Given the clock is at "2026-11-12T10:00:00Z"
+    And the server is running
+    And the worker runs until idle
+    And an event from "2026-08-01T00:00:00Z" exists
+    When the clock advances by "1h"
+    And the worker runs until idle
+    Then the number of events is 1
+    When the clock advances by "24h"
+    And the worker runs until idle
+    Then the number of events is 0

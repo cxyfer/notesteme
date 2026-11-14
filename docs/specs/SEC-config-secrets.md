@@ -67,6 +67,7 @@
 
 ## 待決問題
 
+- SEC-R1 新增「The config file is used when no environment variable is set」（2026-11-15，OPS 審查後 owner 同意）：原本只有「環境變數覆寫」一個案例，`listen_source` 寫死成 `env` 也會通過。
 - master key 的格式（32 bytes 的 base64，或允許任意密語再經 KDF）。暫定兩者都接受：長度不是 32 bytes 時用 argon2id 推導。
 - SEC-R7 的場景原本寫死 `/data/tmp/cookies-youtube.txt`，與每次呼叫一個檔名的設計衝突，改成斷言「交給 yt-dlp 的 cookie 檔」的權限與「沒有 cookie 檔留下」（2026-11-14，owner 同意；依據是 yt-dlp 的 `YoutubeDLCookieJar.save` 會先截斷再重寫）。
 - cookie 的使用政策是「有就每次呼叫都帶」，這會讓 YouTube 把該帳號與 yt-dlp 的流量關聯在一起，有帳號被標記（限制或停權）的風險。建議上傳分身帳號（專門給 Notesteme 用）的 cookie，不要用主要帳號。是否改成「只有在需要時（403、會員限定）才帶」要看實際被標記的狀況再決定（2026-11-14，SRC-B）。
