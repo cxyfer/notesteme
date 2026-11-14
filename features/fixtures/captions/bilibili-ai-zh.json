@@ -1,0 +1,16 @@
+{
+  "font_size": 0.4,
+  "font_color": "#FFFFFF",
+  "background_alpha": 0.5,
+  "background_color": "#9C27B0",
+  "Stroke": "none",
+  "type": "AIsubtitle",
+  "lang": "zh",
+  "version": "v1.6.0.3",
+  "body": [
+    {"from": 1.0, "to": 3.0, "sid": 1, "location": 2, "content": "今天我們來聊聊資料庫的索引", "music": 0.0},
+    {"from": 3.0, "to": 6.0, "sid": 2, "location": 2, "content": "先說明 B-tree 為什麼適合範圍查詢", "music": 0.0},
+    {"from": 6.0, "to": 9.0, "sid": 3, "location": 2, "content": "然後比較雜湊索引跟覆蓋索引", "music": 0.0},
+    {"from": 9.0, "to": 12.0, "sid": 4, "location": 2, "content": "最後看一個真實的遷移案例", "music": 0.0}
+  ]
+}

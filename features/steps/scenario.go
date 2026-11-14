@@ -57,6 +57,8 @@ type Scenario struct {
 	seeded map[string]bool
 	// defaultedLang 是語言由 `a YouTube video … titled` 補上預設值的影音代號（見 declaredLanguage）。
 	defaultedLang map[string]bool
+	// cookieSecrets 是場景用 POST /api/cookies 送出的 cookie 值（見 cookieNeedles），secret 掃描要找它們。
+	cookieSecrets map[string]bool
 }
 
 // response 是最近一次請求的回應。
@@ -152,6 +154,10 @@ func (s *Scenario) checkLogs() error {
 		if v := s.World.Env[k]; len(v) >= 4 {
 			secrets[v] = true
 		}
+	}
+	// 場景送出的 cookie 值也要掃（見 cookieNeedles）。
+	for n := range s.cookieSecrets {
+		secrets[n] = true
 	}
 	var errs []error
 	for v := range secrets {
@@ -317,6 +323,7 @@ func (s *Scenario) do(method, path string, o requestOpts) (*response, error) {
 	var body io.Reader
 	if o.body != nil {
 		body = bytes.NewReader(o.body)
+		s.noteRequest(method, path, o.body)
 	}
 	req, err := http.NewRequestWithContext(s.ctx, method, "http://"+s.server.Addr()+path, body)
 	if err != nil {

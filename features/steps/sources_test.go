@@ -21,7 +21,7 @@ func TestScriptableSource(t *testing.T) {
 		}
 	}
 	// groq 由另一個切片實作（source.Implemented），不放進這份「尚未實作」的清單。
-	for _, id := range []string{"bilibili-ai", "whisper-1", "podcast-transcript"} {
+	for _, id := range []string{"whisper-1", "podcast-transcript", "local-sidecar"} {
 		if err := scriptableSource(id); !errors.Is(err, godog.ErrPending) {
 			t.Errorf("%s 應該讓場景 pending：%v", id, err)
 		}
@@ -84,5 +84,100 @@ func TestSizePattern(t *testing.T) {
 		if sizePattern.MatchString(bad) {
 			t.Errorf("%q 應該無效", bad)
 		}
+	}
+}
+
+func TestVideoKeyAndBilibiliVideo(t *testing.T) {
+	s := newTestScenario(t)
+	// 分P 不存在（影片還沒建立、超過分P 數、p0）時失敗。
+	for _, ref := range []string{"bili:BV1xx411c7mD/p1", "yt:", "pod:feed/ep1", "local:a.mp4"} {
+		if _, err := s.videoKey(ref); err == nil {
+			t.Errorf("%q 應該失敗", ref)
+		}
+	}
+	if err := s.bilibiliVideo("BV1xx411c7mD", 3); err != nil {
+		t.Fatal(err)
+	}
+	if key, err := s.videoKey("bili:BV1xx411c7mD/p3"); err != nil || key != "BV1xx411c7mD/p3" {
+		t.Fatalf("key=%q err=%v", key, err)
+	}
+	for _, ref := range []string{"bili:BV1xx411c7mD/p4", "bili:BV1xx411c7mD/p0"} {
+		if _, err := s.videoKey(ref); err == nil {
+			t.Errorf("%q 應該失敗（只有 3 個分P）", ref)
+		}
+	}
+	if key, err := s.videoKey("yt:abc123xxxxx"); err != nil || key != "abc123xxxxx" {
+		t.Fatalf("key=%q err=%v", key, err)
+	}
+	// 各分P 沒有字幕軌、沒有原文語言，標題預設為 BV 號。
+	for n := 1; n <= 3; n++ {
+		p := s.World.Tools.Videos[faketool.PartKey("BV1xx411c7mD", n)]
+		if p == nil || p.Title != "BV1xx411c7mD" || p.Language != "" || len(p.Tracks) != 0 {
+			t.Errorf("p%d = %+v", n, p)
+		}
+	}
+	if v := s.World.Tools.Videos["BV1xx411c7mD"]; v.Parts != 3 {
+		t.Errorf("Parts = %d", v.Parts)
+	}
+	if err := s.bilibiliVideo("bili:BV1xx411c7mD", 1); err == nil {
+		t.Error("帶 bili: 的參數應該失敗")
+	}
+	// 重新建立不會洗掉已設定的分P 字幕軌。
+	if err := s.hasCaptions("bili:BV1xx411c7mD/p2", "auto", "zh-Hans"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.bilibiliVideo("BV1xx411c7mD", 3); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.World.Tools.Videos["BV1xx411c7mD/p2"].Tracks) != 1 {
+		t.Error("字幕軌被洗掉")
+	}
+	// Bilibili 沒有平台翻譯字幕。
+	if err := s.hasCaptions("bili:BV1xx411c7mD/p1", "platform-translated", "en"); err == nil {
+		t.Error("platform-translated 應該失敗")
+	}
+}
+
+// Bilibili 的平台來源：腳本化寫進分P 的字幕軌，並檢查來源與平台相符。
+func TestBilibiliPlatformSources(t *testing.T) {
+	s := newTestScenario(t)
+	if err := s.bilibiliVideo("BV1ai411c7mD", 1); err != nil {
+		t.Fatal(err)
+	}
+	ref := "bili:BV1ai411c7mD/p1"
+	if err := s.hasCaptions(ref, "auto", "zh-Hans"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.platformReturns("bilibili-ai", "bilibili-ai-zh.json", ref); err != nil {
+		t.Fatal(err)
+	}
+	tr := s.World.Tools.Videos["BV1ai411c7mD/p1"].Tracks
+	if len(tr) != 1 || tr[0].Kind != faketool.KindAuto || tr[0].Lang != "zh-Hans" || tr[0].Fixture != "bilibili-ai-zh.json" {
+		t.Fatalf("字幕軌 = %+v", tr)
+	}
+	// 來源與平台不符：失敗，不是 pending。
+	if err := s.platformReturns("bilibili-ai", "bilibili-ai-zh.json", "yt:abc123xxxxx"); err == nil {
+		t.Error("對 yt: 影片腳本化 bilibili-ai 應該失敗")
+	}
+	if err := s.platformReturns("youtube-auto", "bilibili-ai-zh.json", ref); err == nil {
+		t.Error("對 bili: 影音腳本化 youtube-auto 應該失敗")
+	}
+	// bilibili-cc 對應 manual。
+	if err := s.platformNothing("bilibili-ai", ref); err != nil || len(s.World.Tools.Videos["BV1ai411c7mD/p1"].Tracks) != 0 {
+		t.Fatalf("has nothing：%v", err)
+	}
+	// 需要 cookie：參數是 cookie 的平台，寫進假 yt-dlp 的狀態。
+	if err := s.platformRequiresCookie("bilibili-ai", "bilibili"); err != nil {
+		t.Fatal(err)
+	}
+	st, err := faketool.ReadState(s.World.Root)
+	if err != nil || st.CookieKinds[faketool.KindAuto] != "bilibili" {
+		t.Fatalf("狀態檔 = %+v, %v", st, err)
+	}
+	if err := s.platformRequiresCookie("bilibili-ai", "youtube"); err == nil {
+		t.Error("cookie 平台不符應該失敗")
+	}
+	if err := s.platformRequiresCookie("youtube-auto", "youtube"); err == nil || errors.Is(err, godog.ErrPending) {
+		t.Errorf("youtube-* 應該失敗：%v", err)
 	}
 }

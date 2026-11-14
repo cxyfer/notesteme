@@ -70,12 +70,17 @@ var subtitleSourceIDs = []string{
 }
 
 // providerHasNoAPIKey 移除 provider 的 API key（fake provider 預設有 key）。
-//   - 字幕來源 ID：先確認產品已實作這個來源（source.Implemented），否則 pending（允許的種類之一）；
+//   - 平台字幕來源（youtube-*、bilibili-*）：沒有 API key，明確失敗。
+//   - 其他字幕來源 ID：先確認產品已實作這個來源（source.Implemented），否則 pending（允許的種類之一）；
 //     再移除環境變數與 fake origin 的 key 要求，產品若沒檢查 key 就呼叫來源，會拿到結果而讓場景失敗。
 //   - 其他（LLM provider 等）：步驟本身還沒實作，維持 pending。
 func (s *Scenario) providerHasNoAPIKey(provider string) error {
 	if !slices.Contains(subtitleSourceIDs, provider) {
 		return fmt.Errorf("LLM provider %q 的 API key 還沒有支援移除：%w", provider, godog.ErrPending)
+	}
+	// 平台字幕來源沒有 API key，需要的是平台的 cookie：明確失敗，不是 pending。
+	if ps, platform := platformSources[provider]; platform {
+		return fmt.Errorf("來源 %q 是平台字幕，需要 %s 的 cookie（POST /api/cookies），沒有 API key 可以移除", provider, ps.login)
 	}
 	if err := scriptableSource(provider); err != nil {
 		return err
