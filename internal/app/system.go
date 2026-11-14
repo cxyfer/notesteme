@@ -39,10 +39,12 @@ func (i systemInfo) Info(context.Context) (*api.SystemView, error) {
 		}
 		v.Tools[sp.Name] = tv
 	}
+	// state.json 壞掉不能讓整個 /api/system 失敗（它正是用來診斷的）：yt_dlp 改回 null 加上說明，其他欄位照常。
 	st, err := i.ytdlp.State()
 	if err != nil {
-		return nil, err
+		v.YtDlp = api.YtDlpView{Error: err.Error()}
+		return v, nil
 	}
-	v.YtDlp = api.YtDlpView{Pinned: st.Pinned, Previous: st.Previous}
+	v.YtDlp = api.YtDlpView{Pinned: api.Str(st.Pinned), Previous: api.Str(st.Previous)}
 	return v, nil
 }

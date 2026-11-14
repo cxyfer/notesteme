@@ -264,6 +264,32 @@ func TestPipArgsAreIsolated(t *testing.T) {
 	}
 }
 
+// stderrRunner 讓 pip 以指定的 stderr 失敗。
+type stderrRunner struct {
+	*fakeRunner
+	stderr string
+}
+
+func (s stderrRunner) Run(ctx context.Context, c toolexec.Cmd) (toolexec.Result, error) {
+	if filepath.Base(c.Path) == "python" {
+		return toolexec.Result{ExitCode: 1, Stderr: []byte(s.stderr)}, nil
+	}
+	return s.fakeRunner.Run(ctx, c)
+}
+
+// 錯誤訊息裡的 pip stderr 已經遮蔽含 cookie 內容的行（其他行保留）。
+func TestInstallErrorRedactsCookieLines(t *testing.T) {
+	e := newEnv(t, newFakeRunner("2026.11.10"))
+	e.m.Runner = stderrRunner{fakeRunner: e.runner, stderr: "ERROR: boom\nWARNING: skipping cookie file entry: 'SID=sekrit'\n"}
+	_, err := e.m.Update(context.Background(), UpdateRequest{})
+	if !errors.Is(err, ErrInstall) {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(err.Error(), "sekrit") || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("訊息 = %q", err)
+	}
+}
+
 // 安裝失敗的錯誤保留 pip 的 stderr 尾段（供 log 與本機 CLI），API 層另外決定回給 client 的內容。
 func TestInstallErrorKeepsPipDetail(t *testing.T) {
 	r := newFakeRunner("2026.11.10")

@@ -199,7 +199,7 @@ func TestSystemRouteReturnsTheView(t *testing.T) {
 			"ffmpeg": {Path: "/opt/ffmpeg/bin/ffmpeg", Source: "config_file", Available: false, Error: "找不到"},
 			"yt-dlp": {Path: "/data/tools/yt-dlp-venv/bin/yt-dlp", Source: "managed", Available: true},
 		},
-		YtDlp: YtDlpView{Pinned: "2026.11.01"},
+		YtDlp: YtDlpView{Pinned: Str("2026.11.01"), Previous: Str("")},
 	}}
 	rec := localDo(NewLocal(d), "GET", "/api/system", "")
 	if rec.Code != 200 {

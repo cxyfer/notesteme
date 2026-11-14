@@ -363,7 +363,8 @@ func (m *Manager) run(ctx context.Context, timeout time.Duration, path string, a
 		return err
 	}
 	if res.ExitCode != 0 {
-		tail := strings.Join(strings.Fields(string(res.Stderr)), " ")
+		// 先遮蔽含 cookie 內容的行，再收斂成單行（收斂之後就無法逐行遮蔽了）。
+		tail := strings.Join(strings.Fields(string(toolexec.RedactCookieLines(res.Stderr))), " ")
 		if len(tail) > 300 {
 			tail = tail[len(tail)-300:]
 		}
