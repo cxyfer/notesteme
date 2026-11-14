@@ -59,7 +59,7 @@ func loadCookies(path, cwd string) (cookieJar, error) {
 		return nil, err
 	}
 	if strings.TrimSpace(string(b)) == "" {
-		return nil, nil // 空檔案沒有 cookie（production 每次呼叫都帶 --cookies，沒有 cookie 時是空檔）
+		return nil, nil // 空檔視為沒有 cookie；production 沒有 cookie 時不帶 --cookies
 	}
 	lines := strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
 	if !cookieMagic.MatchString(lines[0]) {
