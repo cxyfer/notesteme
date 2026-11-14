@@ -48,6 +48,8 @@
   - `notesteme.db`：用另一條沒有 `query_only` 的連線執行 `VACUUM INTO`，先寫到暫存名稱，完成後再 rename。
   - `config/notesteme.yaml`：有這個檔案時才放。
 - 不含 master key 的值。
+- 只有 owner（session 或本機）可以備份，token 回 403：備份包含整個 DB。
+- 串流中途失敗時中斷連線，client 看到截斷的串流，不會留下看似完整的檔案。
 
 **還原（OPS-R2）**
 
@@ -71,14 +73,19 @@
   - 只有 owner（session 或本機）可以觸發，token 回 403。
   - 版本字串必須符合 `^\d{4}\.\d{2}\.\d{2}(\.\d+)?$`，防止注入 pip 參數。
   - 不接受自訂的 package index。
-- 固定版本：`POST /api/tools/yt-dlp/update {"pin": "<版本>"}`，CLI 是 `notesteme tools update --pin <版本>`，`--unpin` 解除。固定後，手動與排程的更新都略過，回報「yt-dlp 已固定在 <版本>，略過更新。」，結束碼 0。
+- pip 一律帶 `--isolated`，忽略使用者與系統的 pip.conf 和 `PIP_*` 環境變數；子程序的環境只有 `PATH`、`HOME`、`LANG`。
+- 固定版本：`POST /api/tools/yt-dlp/update {"pin": "<版本>"}`，解除是 `{"unpin": true}`；CLI 是 `notesteme tools update --pin <版本>`，`--unpin` 解除。固定後，手動與排程的更新都略過，回報「yt-dlp 已固定在 <版本>，略過更新。」，結束碼 0。
 - 尋找順序：設定檔 → 環境變數 → 受管理的 venv → `PATH`。工具由設定檔或環境變數指定時，update 回 409。
-- `GET /api/system` 的回應：`listen`、`listen_source`、`data`、`data_source`、`tools.<名稱>.{path, source, available, error}`（source 是 `config_file`、`env`、`managed` 或 `path`）、`yt_dlp.{pinned, previous}`。設定檔中的路徑不能執行時，仍然回報路徑與來源，`available: false`。
+- 回應：`{version, rolled_back, message, reason?}`。`reason` 是自我檢查失敗的簡短原因（單行、遮蔽 cookie、最多 200 字元），`message` 維持上面的固定文字。CLI 在回退時結束碼 1，略過（固定）時 0。
+- 錯誤碼：版本格式不符 422；`tool_externally_managed`、`update_in_progress`、`no_previous_version`、`tool_state_corrupt`（`state.json` 損毀，訊息指出位置，可刪除後重試）、`tool_unsupported_platform`（Windows 不支援受管理的 venv）都是 409；安裝失敗 502 `upstream_failed`，回應只有「yt-dlp 安裝失敗，詳見 server log。」，pip 的輸出只寫進 log。
+- 更新與 rollback 在 server 關閉時取消，並清理新的 venv。
+- 狀態（固定版本、上一版）存在 `/data/tools/yt-dlp/state.json`（0600）。`-U` 更新時安裝前不知道版本，venv 目錄名稱是 `latest-<UTC 時間>`。
+- `GET /api/system` 的回應：`listen`、`listen_source`、`data`、`data_source`、`tools.<名稱>.{path, source, available, error}`（source 是 `config_file`、`env`、`managed` 或 `path`）、`yt_dlp.{pinned, previous}`（沒有時為 null）。設定檔中的路徑不能執行時，仍然回報路徑與來源，`available: false`。`state.json` 損毀時仍回 200，`yt_dlp` 為 `{pinned: null, previous: null, error}`。
 
 **事件（OPS-R10）**
 
 - `events` 表持久化 SSE 事件，與發布在同一個交易中寫入，也為之後 SSE 的 replay 預作準備。
-- 清理是 worker 的定期工作：每輪開頭依 settings 的 `events_cleanup_next_at` 判斷是否到期，到期就刪除 90 天前的事件，並排定下一次。
+- 清理是 worker 的定期工作：每輪開頭依 settings 的 `events_cleanup_next_at` 判斷是否到期，到期就刪除 90 天前的事件，並排定下一次（24 小時後）；失敗時 5 分鐘後重試。閒置的 worker 也會在到期時醒來。
 
 ## 不在範圍內
 
@@ -88,6 +95,7 @@
 
 ## 待決問題
 
+- 自我檢查遇到暫時性失敗（網路、限流、YouTube 的 bot 偵測）也照規則回退，原因放在 `reason`；第一次安裝（沒有上一版）時新 venv 會被刪除。是否要區分「yt-dlp 本身壞掉」與「網路問題」，等 M0 看實際的失敗率再決定（2026-11-15，OPS 審查）。
 - 自我檢查用的「已知影片」：M1 先內建一部公開、長期存在的 YouTube 影片，不開放設定檔覆寫（2026-11-15，OPS 切片設計時決定）。這部影片能不能長期使用，要在 M0 實測。
 - 執行期從 PyPI 安裝 yt-dlp 有供應鏈風險，而且 pip 的連線不經過 netguard。owner 同意照規格做，但要加上上一節的安全限制（2026-11-15）。
 - OPS-R7 原本只寫「排程更新會略過」，場景則要求手動更新也略過；兩種都略過。

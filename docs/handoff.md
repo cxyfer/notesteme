@@ -1,6 +1,6 @@
 # 交接：M1 開發進度
 
-> 更新：2026-11-15。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；#5（CLI）已合併；GRD 切片是 PR #6（`feat/guards`）；SRC-A 切片在 `feat/sources`、SRC-B 切片在 `feat/bilibili`（依序疊在 `feat/guards` 上，都還沒 push）。
+> 更新：2026-11-15。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；#5（CLI）已合併；GRD 切片是 PR #6（`feat/guards`）；SRC-A 切片在 `feat/sources`、SRC-B 切片在 `feat/bilibili`、OPS 切片在 `feat/ops`（依序疊在 `feat/guards` 上，都還沒 push）。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -16,7 +16,17 @@
   - GRD 切片：netguard 的 allowlist（網段、單一 IP、主機名稱）接到設定檔 `network.allow_private`；轉址上限 5 次；回應大小上限（feed 10 MiB、音檔 2 GiB，超過即拒絕不截斷）；被擋的請求回 422（`blocked_address`、`too_many_redirects`、`response_too_large`、`unsupported_scheme`）並歸為 permanent；`internal/pathguard`（inbox 與 `media_roots`，解析 symlink、`..`、dangling symlink）在 serve 與本機 socket 回 403 `path_outside_roots`，standalone 不受限；YouTube 播放清單展開（ING-R4，yt-dlp `--flat-playlist -J`，同一個交易建立）。
   - SRC-A 切片：Groq ASR 來源（`internal/source/groq`，OpenAI 相容的 `verbose_json`，key 用環境變數 `NOTESTEME_GROQ_API_KEY`，預設 preset 內建）、yt-dlp 音訊下載（`--max-filesize 2G`，Groq 單檔 25 MiB 上限）；fallback 錯誤改為與來源無關（`errclass.ErrNoResult`、`ErrNotConfigured`，訊息與動作由來源的 `errclass.Error` 帶）；yt-dlp 403 → `needs_action`（SRC-R9）；等待 YouTube 自動字幕（SRC-R6）；`language_mismatch`（SRC-R4 的一部分）；transcript 依第一個 fallback 來源歸 `asr` 或 `download`；doctor 檢查 Groq key；harness 新增 fake Groq（Bearer）、stage 的 blocked／waiting／message／actions 斷言、provenance 與 cue timing 步驟，secret 掃描也涵蓋假工具的參數。
   - SRC-B 切片：Bilibili 來源（`internal/source/bilibili`，yt-dlp `--use-extractors BiliBili`；Probe 不帶 `--no-warnings`，靠登入警告判斷需要 cookie；字幕軌 `ai-<lang>` 是 `bilibili-ai`，其他是 `bilibili-cc`，timing 都是 `cue`；從 AI 字幕軌推斷原文語言）；分P 展開（ING-R3）；SRC-R8 需要 cookie 時 blocked；cookie 存放（`internal/cookies`：正規化成 Netscape、`secrets` 表以資料金鑰 XChaCha20-Poly1305 加密、每次呼叫一個 0600 暫存檔）；`POST /api/cookies`（512 KiB 上限、控制字元拒絕、回應不含值）；`stage_runs.resume_on` 與 `ResumeBlocked`（上傳 cookie 後恢復同一個 token 的 blocked 步驟；執行中才補上 cookie 時改為 requeue）；YouTube 的 cookie 注入、members-only 與 403 帶 `cookie:youtube`；playlist 的 extractor 修正為 `youtube:tab,youtube:playlist`；yt-dlp stderr 中的 cookie 警告行會遮蔽；harness 的假 yt-dlp 照真實語意模擬 Bilibili、`--use-extractors`（fullmatch）、Netscape cookie 檔，secret 掃描涵蓋 cookie 值與關閉後的 `/data`，CLI 步驟有 30 秒的真實時間逾時。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：189 個場景，108 passed、81 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
+  - OPS 切片：
+    - 備份：`POST /api/backup` 串流 tar.gz，內容是 manifest、`VACUUM INTO` 的 DB 快照、設定檔；只限 owner；CLI 寫到 `--out`，並更新 `latest` symlink。
+    - 還原：`notesteme restore` 只取得資料目錄的鎖，不經 API；解壓只接受白名單項目，並檢查剩餘空間；先留 pre-restore 快照，含 WAL。
+    - migration：前置快照，失敗時還原並拒絕啟動，DB 比程式新時拒絕啟動。
+    - 新增 `events` 表：與發布在同一個交易中寫入，worker 每天清理 90 天前的事件。
+    - yt-dlp：受管理的 venv 加 symlink 切換、自我檢查失敗時回退、固定版本、`pip --isolated`。
+    - `toolexec.Locate` 的尋找順序：設定檔 → 環境變數 → 受管理的 venv → PATH，`/readyz`、`/api/system`、doctor 都使用這個順序。
+    - `GET /api/system`。
+    - 設定檔的 `asr.providers`；`POST /api/providers` 的 command 類型回 403，`GET /api/providers/{id}` 唯讀。
+    - harness：fake python 與 pip、fakecompose（離線模擬 `docker compose config`）、指定 schema 版本的 DB 與 schema 比對、`.tar.gz` 內容比對、After hook 掃描 `/backups`。
+- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，125 passed、66 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
   |---|---|---|
@@ -27,13 +37,13 @@
   | ING | 15 | 9 |
   | LIB | 0 | 10 |
   | NRM | 9 | 2 |
-  | OPS | 1 | 12 |
+  | OPS | 14 | 0 |
   | OUT | 8 | 0 |
   | PIPE | 19 | 0 |
-  | SEC | 4 | 6 |
+  | SEC | 8 | 3 |
   | SRC | 13 | 6 |
 
-  PIPE 的 M1 場景全部通過。SRC 剩下的六個：R11 本機檔案的語言偵測要 ING-05（mixed 標為 `@wip`，要文字語言偵測）；R12、R14 三個、R15 要本機檔案或 podcast。CLI 剩下的一個：`--server` 加 token 要等 AUTH 的 token（AUTH-R7～R9）。GRD 剩下的三個：DNS rebinding 要等 ING 的 podcast feed，GRD-R7 預期 201 的兩個例子要等 ING-05（本機檔案的新增）。
+  PIPE、OPS 的 M1 場景全部通過。SRC 剩下的六個：R11 本機檔案的語言偵測要 ING-05（mixed 標為 `@wip`，要文字語言偵測）；R12、R14 三個、R15 要本機檔案或 podcast。CLI 剩下的一個：`--server` 加 token 要等 AUTH 的 token（AUTH-R7～R9）。GRD 剩下的三個：DNS rebinding 要等 ING 的 podcast feed，GRD-R7 預期 201 的兩個例子要等 ING-05（本機檔案的新增）。
 
   M1 的 OUT 場景全部通過，但 OUT 的 M2 部分還沒做，所以規格狀態仍是 `ready`，不是 `implemented`。
 
@@ -41,13 +51,13 @@
 
 ## 2. 下一步
 
-使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成）→ GRD（完成，PR #6）→ SRC-A（完成，`feat/sources`）→ SRC-B（完成，`feat/bilibili`）→ **OPS** → LIB → DEL。使用者要求每個切片完成後自動開始下一個。
+使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成）→ GRD（完成，PR #6）→ SRC-A（完成，`feat/sources`）→ SRC-B（完成，`feat/bilibili`）→ OPS（完成，`feat/ops`）→ **LIB** → DEL。使用者要求每個切片完成後自動開始下一個。
 
 接下來：
 
 1. PR #6（GRD）等 CI 與 Codex 審查，通過後由 owner 合併（自動模式不允許 agent 執行 `gh pr merge`）。
-2. PR #6 整理好之後（owner push `feat/guards`、把 base 改成 `master`），依序 push `feat/sources`、`feat/bilibili` 並開 PR（base 分別是 `feat/guards`、`feat/sources`；前一個合併後改 base 為 `master`，並用 `-s ours` 併入 master）。
-3. OPS 切片：先做 DoR（`features/OPS-*.feature` 的 `@M1` pending 場景與步驟）。
+2. PR #6 整理好之後（owner push `feat/guards`、把 base 改成 `master`），依序 push `feat/sources`、`feat/bilibili`、`feat/ops` 並開 PR（base 分別是前一個分支；前一個合併後改 base 為 `master`，並用 `-s ours` 併入 master）。
+3. LIB 切片：先做 DoR（`features/LIB-*.feature` 的 `@M1` pending 場景與步驟）。
 4. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
 5. `features/fixtures/items/` 還沒做：DEL、NRM、SEC 共 17 個場景停在 `Given the item … has been processed up to …`。做了之後拿掉 `features/steps/processing.go` 的 `pendingWithoutItemFixture`。
 
@@ -78,6 +88,8 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 - **規格優先**：行為和規格不一致時，不可以為了讓測試通過去改 `.feature`。先寫進該規格的「待決問題」並問使用者；同意後，規格與場景放在同一個 commit 修改。
 - **只用 `steps.md` 的句型**：需要新句型時，先加進 `steps.md`，並在回報中列出。
 - **紅燈要紅得正確**：寫完 step definition 先跑一次，確認失敗原因是「功能還沒做」。目前多數失敗會被「501 → pending」轉成 pending，要看到真正的紅燈時，可以暫時關掉這個判斷。
+- **`docker` 指令**：`When the owner runs "docker compose -f … config --format json"` 由 `features/internal/fakecompose` 離線模擬（讀真正的 `deploy/docker/compose.yaml`），其他 docker 指令與不是 `notesteme` 的指令一律失敗，不是 pending。
+- **godog 的 tag OR 用逗號**：`-godog.tags='@A,@B'`。`'@A || @B'` 會選到 0 個場景卻顯示通過。
 - **斷言要能失敗**：PIPE 切片的審查用變異測試發現 5 個場景拿掉對應行為後仍然通過。每個切片的審查都要挑幾個場景做變異測試：在暫存 worktree 拿掉對應的 production 行為，場景必須變紅。
 - **測試不連外網**（NFR-TEST-1）；時間一律用注入的 fake clock（NFR-TEST-2）。
 - **不要讓已實作的步驟依參數回傳 pending 來避開失敗**。場景的步驟都已實作、行為還沒做時：
@@ -90,7 +102,6 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
       - The deletion preview shows what will be lost without changing anything
       - Adding an item that is in the trash offers to restore it
       - An item added again after a permanent delete starts fresh
-    - `docker` 指令：`When the owner runs "docker …"` 回 pending，OPS 切片處理（其他不是 `notesteme` 的指令一律失敗）。
     - 步驟本身還沒實作。
 - **通過場景的棘輪**（`features/passing.txt`）：
   - 「501 → pending」這類規則可能讓已通過的場景退步成 pending，整套測試卻仍然是綠的（審查用變異測試證明：讓 `GET /api/items` 回 501，CLI 場景 5 從 passed 變成 pending）。
@@ -148,18 +159,20 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   |---|---|
   | `app` | server 啟動、啟動防護、flock、手動 worker、測試用的 seeding |
   | `config` | 設定檔與環境變數（含 `asr`、`trusted_proxies`） |
-  | `store` | SQLite（單一寫入連線、WAL）、goose migration（`migrations/`）、sqlc 查詢（`queries/` → `sqlcdb/`） |
+  | `store` | SQLite（單一寫入連線、WAL）、goose migration（`migrations/`，前置快照、拒絕降級，`Options.Migrations` 可替換）、`VACUUM INTO` 快照、sqlc 查詢（`queries/` → `sqlcdb/`） |
   | `auth` | argon2id 密碼、session、CSRF（double-submit）、依來源位址的登入鎖定 |
   | `secrets` | master key 包裝資料金鑰（XChaCha20-Poly1305） |
   | `api` | Huma 路由、驗證與 CSRF middleware、items、cues、subtitles、resolve、settings |
   | `queue`、`worker` | 租約佇列、退避（30 秒、2 分鐘）、依類別的上限與暫停（`queue/control.go`，存在 settings 表）、worker 的 Drain 與 Cancel |
-  | `events` | 記憶體中的事件匯流排；store 在 commit 之後發布步驟狀態，`GET /api/events` 以 SSE 推送 |
+  | `events` | 記憶體中的事件匯流排；store 在同一個交易中寫入 `events` 表，commit 之後發布，`GET /api/events` 以 SSE 推送；`app/housekeeping.go` 每天清理 90 天前的事件 |
   | `pipeline` | metadata → transcript → normalize、重跑、快取鍵、網址辨識、取消、保留最近 3 版、可覆寫的 `impl_version` |
   | `transcript` | 依 `caption_priority` 選字幕軌 |
   | `source` | `Implemented` 宣告已實作的來源（目前 youtube-manual、youtube-auto、supadata） |
   | `source/youtube` | yt-dlp 的 Probe 與字幕下載 |
   | `source/supadata` | Supadata 的 transcript API（不跟隨轉址、依官方錯誤碼分類） |
-  | `toolexec` | 子程序（process group、輸出上限、環境變數 allowlist、OPS-R8 的尋找順序） |
+  | `toolexec` | 子程序（process group、輸出上限、環境變數 allowlist）；`Locate` 依 OPS-R8 的順序找工具並回報來源 |
+  | `tools/ytdlp` | 受管理的 yt-dlp venv：更新、自我檢查、回退、固定版本、`state.json` |
+  | `backup` | 備份封存格式、安全解壓（白名單、大小與空間檢查） |
   | `netguard` | 對外 HTTP：在連線時封鎖私有網段與 metadata 位址 |
   | `subtitle` | cue 模型、VTT／SRT 解析、Normalize（NRM-R1～R6）、渲染、檔名 |
   | `errclass`、`clock` | 錯誤類別、可注入的時鐘 |
@@ -210,7 +223,16 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - 「改用語音轉錄」對 Bilibili 只顯示（Groq 還不能下載 Bilibili 音訊）；沒有 cookie、也沒有字幕的 Bilibili 影片會照 SRC-R5 失敗，訊息「設定語音轉錄服務」可能誤導。
   - ING-R9 的 Bilibili 部分（在 resolve 標示需要 cookie）做不到，規則待修。
   - cookie 的 GET／DELETE API 還沒做；有 cookie 就每次呼叫都帶，帳號被標記的風險寫在 SEC 待決問題。
-- **OPS**：migration 前的快照（OPS-R3）；DB schema 比程式新時拒絕啟動（OPS-R4）；`/readyz` 限速。
+- **OPS**：
+  - `/readyz` 限速。
+  - 自我檢查的檢查影片 `jNQXAC9IVRw` 寫死，能否長期使用、暫時性失敗是否也回退，等 M0 實測（見 OPS 待決問題）。
+  - OPS-R9 的 `wsl` profile 實際上沒有任何服務宣告；`HEALTHCHECK` 沒有場景驗證。
+  - 「備份的 schema 版本比程式新時拒絕還原」只由 `internal/app/restore_test.go` 把關（現有步驟做不出這種備份檔）。
+  - 備份串流沒有寫入期限：慢速的 client 會讓 `<data>/tmp/backup-*` 的快照留到連線結束。
+  - 受管理的 yt-dlp 在 Windows 上不支援（回 409）。
+  - 每天的排程更新（OPS-R7 的「排程更新」）還沒做，目前只有手動更新。
+  - 修改 provider 的 API 還沒有路由（SEC-R3 說「新增或修改」都回 403）；`POST /api/providers` 的非 command 類型回 501。
+  - fixture 例外：`Given the file … contains:` 寫入、之後內容沒被改過的檔案，After hook 照字面掃描，不當成封存檔解壓（R2 刻意寫入不合法的 `.tar.gz`）。
 - **AUTH**：
   - token（AUTH-R7～R9）還沒做，bearer 一律回 401。
   - `X-Forwarded-Proto` 應該只採用可信 proxy 的值。
@@ -239,7 +261,8 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 | PIPE | **R7、R13 的場景驗證不到規則，需要修改 `.feature`** | 等使用者同意；清除邏輯先以單元測試驗證 |
 | SRC | 沒有 API key 的來源與預設 fallback（SRC-R10） | 略過沒有 key 的來源，全部都不能用才 blocked；Supadata 依官方錯誤碼分類 |
 | CLI | Windows 原生 binary 的 client 模式 | 只支援 `--server` |
-| OPS | 自我檢查用的已知影片 | 內建一部，可在設定檔覆寫 |
+| OPS | 自我檢查用的已知影片 | M1 內建一部，不開放覆寫；M0 實測 |
+| OPS | 自我檢查的暫時性失敗是否回退 | 照規則回退，原因放在 `reason` |
 
 ## 8. 已確定的技術選擇
 
@@ -258,5 +281,5 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 - 自動模式會擋下破壞性的 git 操作，例如 `git branch -D`、`git push --delete`。需要時請使用者執行，或先在設定中允許。
 - 待清理（內容都已在 `master`）：
   - `.worktrees/store-sqlc` 與 `refactor/store-sqlc` 分支（本機與遠端）。
-  - `.claude/worktrees/` 下 builder 用過的 worktree（切片 1 的 6 個加 PIPE 的 7 個），以及 `worktree-agent-*` 分支。
+  - `.claude/worktrees/` 下 builder 用過的 worktree（切片 1 到 OPS 的都是），以及 `worktree-agent-*` 分支。
   - `.worktrees/m1-skeleton`、`feat/m1-skeleton`、`docs/bdd-specs`、`docs/plan-review-revisions` 都已併入 `master`，可以一併移除。
