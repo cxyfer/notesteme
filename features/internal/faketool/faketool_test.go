@@ -437,7 +437,7 @@ func TestInProcessBranches(t *testing.T) {
 			{"-o"},
 			{"-J", yt + "abc123xxxxx", yt + "abc123xxxxx"},
 			{"--skip-download", "--write-subs", "--sub-langs", "en", yt + "abc123xxxxx"},
-			{"--skip-download", "--write-subs", "--sub-format", "srt", "-o", "x", yt + "abc123xxxxx"},
+			{"--skip-download", "--write-subs", "--sub-format", "ttml", "-o", "x", yt + "abc123xxxxx"},
 			{yt + "abc123xxxxx"},
 		}
 		for _, args := range cases {

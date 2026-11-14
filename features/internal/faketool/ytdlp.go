@@ -171,7 +171,7 @@ func runYtDlp(e env, args []string) int {
 		return usageError(e, "subtitle download requires -o <template>")
 	}
 	if op == OpSubs && !validSubFormat(a.subFormat) {
-		return usageError(e, "unsupported --sub-format %q (only vtt)", a.subFormat)
+		return usageError(e, "unsupported --sub-format %q (only vtt or srt)", a.subFormat)
 	}
 
 	// 與真實的 yt-dlp 相同：啟動時就載入 cookie 檔，格式不對直接失敗；檔案不存在視為沒有 cookie。
@@ -297,7 +297,8 @@ func extractorAllowed(spec string, names []string) bool {
 
 func validSubFormat(f string) bool {
 	switch f {
-	case "", "vtt", "best", "vtt/best":
+	// srt 是 Bilibili 的字幕格式（Bilibili 的字幕軌一律是 srt）；YouTube 的程式碼只用 vtt。
+	case "", "vtt", "best", "vtt/best", "srt", "srt/best":
 		return true
 	}
 	return false
