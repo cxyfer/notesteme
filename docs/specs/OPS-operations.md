@@ -39,6 +39,47 @@
 - CLI：`notesteme backup [--out <dir>]`、`notesteme restore <file>`、`notesteme tools update [--pin <version>]`
 - API：`GET /healthz`、`GET /readyz`、`GET /api/system`、`POST /api/tools/yt-dlp/update`、`POST /api/tools/yt-dlp/rollback`
 
+**備份（OPS-R1）**
+
+- `POST /api/backup` 回傳 tar.gz 串流。server 不寫入 client 指定的路徑，以免成為任意寫檔的管道。CLI 把串流寫到 `--out`（預設 `<資料目錄>/backups`）。
+- 檔名是 `notesteme-backup-<UTC 時間>.tar.gz`，時間格式如 `20261112T100000Z`（不含冒號）。`notesteme-backup-latest.tar.gz` 是指向它的相對 symlink；Windows 改成複製一份。
+- 內容：
+  - `manifest.json`：`schema_version`、`created_at`、`notesteme_version`。
+  - `notesteme.db`：用另一條沒有 `query_only` 的連線執行 `VACUUM INTO`，先寫到暫存名稱，完成後再 rename。
+  - `config/notesteme.yaml`：有這個檔案時才放。
+- 不含 master key 的值。
+
+**還原（OPS-R2）**
+
+- 不經 API，只取得資料目錄的鎖；這是 CLI-R2 的例外。鎖由 serve 持有時，結束碼 1，訊息「請先停止 notesteme serve，再執行 restore。」。先檢查鎖，再讀備份檔。
+- 只接受已知名稱的項目，而且必須是一般檔案；`../` 與 symlink 一律拒絕。
+- 還原前先把目前的 DB 留成 `pre-restore-<時間>.db`，並刪除 `-wal`、`-shm`。
+- 不覆寫 `/config`，因為 compose 可能以唯讀方式掛載。設定檔解到 `<資料目錄>/backups/restored-config-<時間>/`，由使用者自行替換。
+- 備份的資料金鑰是用備份當時的 master key 加密的。master key 輪替過的話，還原後 serve 會以 SEC-R5 的訊息拒絕啟動，restore 的完成訊息要提醒這一點。
+
+**migration（OPS-R3、R4）**
+
+- 新的 DB（版本 0）不留快照。快照先寫到暫存名稱再 rename，權限 0600。
+- migration 失敗時，還原快照並拒絕啟動，訊息「migration <N> 失敗：<原因>；已還原 /data/backups/pre-migration-<舊版本>.db」。
+- DB 比程式新時拒絕啟動，訊息「資料庫的 schema 版本 <DB> 比程式支援的 <程式> 新，不支援降級；請改用新版程式，或還原 /data/backups/pre-migration-*.db。」。goose 本身不會擋這種情況，要自己比較版本。
+
+**yt-dlp（OPS-R6、R7、R8）**
+
+- 目錄結構：`/data/tools/yt-dlp/<id>/` 各是一個 venv，`/data/tools/yt-dlp-venv` 是指向目前版本的 symlink。venv 不能搬移，所以用切換 symlink 的方式更新，不用 rename。image 內建的版本在 `/opt/yt-dlp`，是沒有受管理版本時的後備。
+- 更新流程：在新目錄安裝 → 自我檢查（`--version` 加上對內建檢查影片跑一次 Probe）→ 通過才切換 symlink；失敗就刪掉新目錄，回應 `rolled_back: true`。保留上一版供 rollback。檢查影片在 M1 內建，不開放覆寫。
+- 安全限制：
+  - 只有 owner（session 或本機）可以觸發，token 回 403。
+  - 版本字串必須符合 `^\d{4}\.\d{2}\.\d{2}(\.\d+)?$`，防止注入 pip 參數。
+  - 不接受自訂的 package index。
+- 固定版本：`POST /api/tools/yt-dlp/update {"pin": "<版本>"}`，CLI 是 `notesteme tools update --pin <版本>`，`--unpin` 解除。固定後，手動與排程的更新都略過，回報「yt-dlp 已固定在 <版本>，略過更新。」，結束碼 0。
+- 尋找順序：設定檔 → 環境變數 → 受管理的 venv → `PATH`。工具由設定檔或環境變數指定時，update 回 409。
+- `GET /api/system` 的回應：`listen`、`listen_source`、`data`、`data_source`、`tools.<名稱>.{path, source, available, error}`（source 是 `config_file`、`env`、`managed` 或 `path`）、`yt_dlp.{pinned, previous}`。設定檔中的路徑不能執行時，仍然回報路徑與來源，`available: false`。
+
+**事件（OPS-R10）**
+
+- `events` 表持久化 SSE 事件，與發布在同一個交易中寫入，也為之後 SSE 的 replay 預作準備。
+- 清理是 worker 的定期工作：每輪開頭依 settings 的 `events_cleanup_next_at` 判斷是否到期，到期就刪除 90 天前的事件，並排定下一次。
+
 ## 不在範圍內
 
 - 每日排程備份與保留 7 份（M4，OPS-06）。
@@ -47,4 +88,13 @@
 
 ## 待決問題
 
-- 自我檢查用的「已知影片」要內建一部，還是讓使用者設定。暫定內建一部公開且長期存在的 YouTube 影片，並允許在設定檔覆寫。
+- 自我檢查用的「已知影片」：M1 先內建一部公開、長期存在的 YouTube 影片，不開放設定檔覆寫（2026-11-15，OPS 切片設計時決定）。這部影片能不能長期使用，要在 M0 實測。
+- 執行期從 PyPI 安裝 yt-dlp 有供應鏈風險，而且 pip 的連線不經過 netguard。owner 同意照規格做，但要加上上一節的安全限制（2026-11-15）。
+- OPS-R7 原本只寫「排程更新會略過」，場景則要求手動更新也略過；兩種都略過。
+- OPS-R9 的 `wsl` profile：compose 的 profile 以服務為單位，同一個服務不能依 profile 換 port。目前 `notesteme` 服務本來就只映射到 `127.0.0.1`。`vps` profile 之後只額外加上反向代理。`docker compose config` 在沒有 `NOTESTEME_MASTER_KEY` 時會失敗，因為 compose.yaml 用了 `:?`。
+- 驗收中的「目前 schema 版本是 N」是用截斷 migration 清單來模擬。之後若啟動流程讀到 N 以後才建立的表，R3、R4 的場景會壞，屆時要改成相對版本。
+- 場景修改（2026-11-15，owner 同意）：
+  - R2「Restore brings the library back」在 restore 前先讓 server 正常關閉。`has been ingested` 會隱含啟動 server，而 server 執行中不能 restore。
+  - R1 斷言備份中不含 master key 的值，原本只檢查變數名稱。
+  - R10 加上一筆保留期限內的事件，並斷言剩下 1 筆。
+

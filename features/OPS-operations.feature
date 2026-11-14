@@ -5,13 +5,14 @@ Feature: Backup, health and external tools
 
   @OPS-01 @OPS-R1 @cli
   Scenario: Back up while the server is running
-    Given the server is running
+    Given the environment variable "NOTESTEME_MASTER_KEY" is "ops-backup-master-key-1"
+    And the server is running
     And a YouTube video "yt:abc123xxxxx" titled "PostgreSQL in 100 Seconds"
     And the item "yt:abc123xxxxx" has been ingested
     When the owner runs "notesteme backup --out /backups"
     Then the command exits with 0
     And the file "/backups/notesteme-backup-latest.tar.gz" exists
-    And the file "/backups/notesteme-backup-latest.tar.gz" does not contain "NOTESTEME_MASTER_KEY"
+    And the file "/backups/notesteme-backup-latest.tar.gz" does not contain "ops-backup-master-key-1"
 
   @OPS-01 @OPS-R2 @cli
   Scenario: Restore brings the library back
@@ -20,6 +21,7 @@ Feature: Backup, health and external tools
     And the owner runs "notesteme backup --out /backups"
     And a YouTube video "yt:later01xxxx" titled "Added after the backup"
     And the item "yt:later01xxxx" has been ingested
+    And the server shuts down gracefully
     When the owner runs "notesteme restore /backups/notesteme-backup-latest.tar.gz"
     Then the command exits with 0
     And the library contains 1 item
@@ -133,6 +135,8 @@ Feature: Backup, health and external tools
     Given the clock is at "2026-11-12T10:00:00Z"
     And the server is running
     And an event from "2026-08-01T00:00:00Z" exists
+    And an event from "2026-11-10T00:00:00Z" exists
     When the clock advances by "24h"
     And the worker runs until idle
     Then no event older than 90 days remains
+    And the number of events is 1

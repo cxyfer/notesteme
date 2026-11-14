@@ -318,3 +318,4 @@
 | `Given the yt-dlp release {string} fails the self-check` | 可更新到的版本，但自我檢查會失敗 |
 | `Given an event from {string} exists` | 建立一筆指定時間的事件 |
 | `Then no event older than {int} days remains` | 事件都在保留期限內 |
+| `Then the number of events is {int}` | 持久化的事件筆數（包括場景中用 `an event from … exists` 建立的） |
