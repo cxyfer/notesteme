@@ -88,7 +88,9 @@ func (c *Client) run(ctx context.Context, timeout time.Duration, args []string) 
 	bin, err := c.Tools.Resolve(toolexec.YtDlp)
 	if err != nil {
 		// 找不到工具要使用者先處理，重試也沒有用。
-		return toolexec.Result{}, &errclass.Error{Class: errclass.ClassNeedsAction, Source: "yt-dlp", Err: err}
+		return toolexec.Result{}, &errclass.Error{
+			Class: errclass.ClassNeedsAction, Source: "yt-dlp", Err: err, Message: msgNoYtDlp, Actions: []string{actionInstallYtDlp},
+		}
 	}
 	res, err := c.Runner.Run(ctx, toolexec.Cmd{Path: bin, Args: args, Timeout: timeout})
 	if err != nil {
@@ -150,6 +152,12 @@ const (
 	msgForbidden       = "YouTube 拒絕了下載請求（403）。先更新 yt-dlp 再重試；如果仍然失敗，上傳 YouTube cookie。"
 	actionUpdateYtDlp  = "更新 yt-dlp"
 	actionUploadCookie = "上傳 cookie"
+)
+
+// 找不到 yt-dlp 時顯示的訊息與修正動作（與播放清單展開、doctor 的文案一致）。
+const (
+	msgNoYtDlp         = "無法執行 yt-dlp，請確認已安裝（可執行 notesteme doctor）。"
+	actionInstallYtDlp = "安裝 yt-dlp"
 )
 
 // classify 把 yt-dlp 的非 0 結束碼對應到錯誤類別（ADR-0009）。

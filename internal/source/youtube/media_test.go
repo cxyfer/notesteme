@@ -146,6 +146,11 @@ func TestDownloadAudioWithoutToolNeedsAction(t *testing.T) {
 	if cl, ok := errclass.ClassOf(err); !ok || cl != errclass.ClassNeedsAction {
 		t.Errorf("找不到 yt-dlp 時應是 needs_action：%v", err)
 	}
+	// 帶著給使用者看的訊息與修正動作，步驟 blocked 時才說得清楚要做什麼。
+	var e *errclass.Error
+	if !errors.As(err, &e) || e.Message != "無法執行 yt-dlp，請確認已安裝（可執行 notesteme doctor）。" || !slices.Equal(e.Actions, []string{"安裝 yt-dlp"}) {
+		t.Errorf("Message = %q，Actions = %v", e.Message, e.Actions)
+	}
 }
 
 // 音檔上限（GRD-R5，2 GiB）交給 yt-dlp 的 --max-filesize：超過時不下載。

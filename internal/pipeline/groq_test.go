@@ -205,6 +205,54 @@ func TestGroqAudioDownloadForbiddenUsesTheErrorMessage(t *testing.T) {
 	if g.calls() != 0 {
 		t.Errorf("下載失敗不該轉錄：%d", g.calls())
 	}
+	// 下載是 yt-dlp 的問題，不是 groq 要使用者處理的事：probe 記為 download_failed，不是 needs_action。
+	if got := r.lastSources(it, 1); got != "groq:unavailable:download_failed" {
+		t.Errorf("sources = %v", got)
+	}
+}
+
+// 下載音訊失敗（影片不存在等 permanent）：groq 記為 download_failed，繼續下一個來源。
+func TestGroqAudioDownloadPermanentMovesOn(t *testing.T) {
+	r, g := newGroqRig(t)
+	r.yt.audioErr = &errclass.Error{Class: errclass.ClassPermanent, Source: "yt-dlp", Detail: "Video unavailable"}
+	next := &fakeSupadata{lang: "en", cues: 2}
+	r.p.fetchers["asr-fake"] = next.asFetcher("segment")
+	it := r.ingest(watch, fallbackOverride("groq", "asr-fake"), StageTranscript)
+	r.run()
+	if st := r.stage(it, StageTranscript); st.Status != store.StatusDone {
+		t.Fatalf("transcript = %+v", st)
+	}
+	if got := r.lastSources(it, 2); got != "groq:unavailable:download_failed asr-fake:used:" {
+		t.Errorf("sources = %v", got)
+	}
+	if g.calls() != 0 {
+		t.Errorf("下載失敗不該轉錄：%d", g.calls())
+	}
+}
+
+// groq 自己要使用者處理的事（key 被拒）仍記為 needs_action。
+func TestGroqKeyRejectedProbeIsNeedsAction(t *testing.T) {
+	r, g := newGroqRig(t)
+	g.err = &errclass.Error{Class: errclass.ClassNeedsAction, Source: "groq", Err: groq.ErrKeyRejected, Message: groq.MsgKeyRejected, Actions: []string{groq.ActionSetKey}}
+	it := r.ingest(watch, groqOnly(), StageTranscript)
+	r.run()
+	if got := r.lastSources(it, 1); got != "groq:unavailable:needs_action" {
+		t.Errorf("sources = %v", got)
+	}
+}
+
+// lastSources 回傳影音詳情中最後 n 列來源，格式為「來源:狀態:原因」，以空白分隔。
+func (r *rig) lastSources(it store.Item, n int) string {
+	r.t.Helper()
+	d, err := r.p.Item(context.Background(), it.ID)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	var got []string
+	for _, s := range d.Sources[max(0, len(d.Sources)-n):] {
+		got = append(got, s.SourceID+":"+s.State+":"+s.Reason)
+	}
+	return strings.Join(got, " ")
 }
 
 // base_url 與 model 影響結果，是快取鍵的一部分；相同設定重跑則重用。

@@ -44,6 +44,8 @@ const (
 const (
 	reasonNoTranscript     = "no_transcript"
 	reasonLanguageMismatch = "language_mismatch"
+	// reasonDownloadFailed 是 ASR 來源需要的音訊下載失敗（yt-dlp 的問題，不是來源本身的問題）。
+	reasonDownloadFailed = "download_failed"
 )
 
 // 等待 YouTube 自動字幕（SRC-R6）：每 2 小時檢查一次，從發布時間算起 24 小時後放棄。
@@ -279,7 +281,7 @@ func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 			}
 			audio, err := d.YouTube.DownloadAudio(ctx, it.ExternalID, dir)
 			if err != nil {
-				return nil, err
+				return nil, &downloadError{err}
 			}
 			// 有原文語言才送提示；未知時讓 Whisper 自行偵測。
 			got, err := gc.Transcribe(ctx, audio, groq.LangHint(it.OriginalLang))
@@ -289,6 +291,22 @@ func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 			return &fetchResult{Lang: got.Lang, Cues: got.Cues, Timing: groq.Timing, ToolVersions: map[string]string{"yt-dlp": version}}, nil
 		},
 	}
+}
+
+// downloadError 標示錯誤來自下載音訊（yt-dlp），不是 ASR 來源本身：錯誤的類別、訊息與動作沿用 yt-dlp 的，
+// 但 source_probes 不能把它記成 ASR 來源要使用者處理的事（見 runFallback）。
+type downloadError struct{ error }
+
+func (e *downloadError) Unwrap() error { return e.error }
+
+// probeReason 是 needs_action 與 permanent 錯誤記在 source_probes 的原因：
+// 下載音訊失敗記為 download_failed，其餘用錯誤類別。
+func probeReason(err error, class errclass.Class) string {
+	var de *downloadError
+	if errors.As(err, &de) {
+		return reasonDownloadFailed
+	}
+	return string(class)
 }
 
 // supadataUserError 為 Supadata 的 needs_action 錯誤補上給使用者看的訊息與修正動作：
@@ -343,7 +361,7 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 			// 來源本身沒有設定（缺 API key）：和沒有註冊的來源一樣略過。
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: transcript.ReasonNotConfigured})
 		case isNeedsAction(err):
-			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: string(errclass.ClassNeedsAction)})
+			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: probeReason(err, errclass.ClassNeedsAction)})
 			msg, actions := msgSourceNeedsAction, []string(nil)
 			var ce *errclass.Error
 			if errors.As(err, &ce) && ce.Message != "" {
@@ -354,7 +372,7 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 			// 這個來源的請求有問題（重試也不會好）：記下原因後繼續下一個來源；全部用完才照 SRC-R5。
 			// err 只含狀態碼等診斷資訊，不含 API key（NFR-SEC-3）。
 			p.log.Warn("字幕來源回報永久性錯誤，改用下一個來源", "source", id, "error", err)
-			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: string(errclass.ClassPermanent)})
+			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: probeReason(err, errclass.ClassPermanent)})
 		default:
 			return result{}, err
 		}
