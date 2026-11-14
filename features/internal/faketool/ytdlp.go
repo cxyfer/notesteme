@@ -38,7 +38,7 @@ var ytBoolFlags = map[string]bool{
 
 // 帶一個值、直接接受並忽略的旗標。
 var ytIgnoredValueFlags = map[string]bool{
-	"--use-extractors": true, "--progress-template": true,
+	"--use-extractors": true, "--progress-template": true, "--max-filesize": true,
 }
 
 func parseYtDlp(args []string) (ytArgs, error) {
