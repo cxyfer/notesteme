@@ -68,6 +68,15 @@ type Item struct {
 	DeletedAt     *int64
 }
 
+type Secret struct {
+	Kind       string
+	Name       string
+	Nonce      []byte
+	Ciphertext []byte
+	CreatedAt  int64
+	UpdatedAt  int64
+}
+
 type Session struct {
 	ID        string
 	TokenHash string
@@ -117,6 +126,7 @@ type StageRun struct {
 	StartedAt        *int64
 	FinishedAt       *int64
 	CreatedAt        int64
+	ResumeOn         string
 }
 
 type Task struct {

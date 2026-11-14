@@ -91,6 +91,7 @@ type StageRun struct {
 	Variant          string
 	Status           string
 	BlockReason      string
+	ResumeOn         string // blocked 時機器可讀的恢復條件，例如 cookie:bilibili；其他狀態為空
 	ErrorClass       string
 	Message          string
 	Actions          []string
@@ -132,6 +133,7 @@ type NewStageRun struct {
 type StageState struct {
 	Status      string
 	BlockReason string
+	ResumeOn    string // 只在 blocked 時寫入（格式見 errclass.Error.ResumeOn），其他狀態一律清空
 	ErrorClass  string
 	Message     string
 	Actions     []string

@@ -21,10 +21,11 @@ SELECT * FROM stage_runs WHERE item_id = sqlc.arg(item_id) ORDER BY created_at, 
 
 -- name: SetStageState :one
 -- Every descriptive column is written (unset means cleared); started_at only changes when given,
--- finished_at is always overwritten.
+-- finished_at is always overwritten. resume_on is only kept while the new status is blocked.
 UPDATE stage_runs SET
   status        = sqlc.arg(status),
   block_reason  = sqlc.arg(block_reason),
+  resume_on     = CASE WHEN sqlc.arg(status) = 'blocked' THEN CAST(sqlc.arg(resume_on) AS TEXT) ELSE '' END,
   error_class   = sqlc.arg(error_class),
   error_message = sqlc.arg(error_message),
   actions_json  = sqlc.arg(actions_json),
@@ -49,7 +50,7 @@ ORDER BY created_at DESC, rowid DESC LIMIT 1;
 
 -- name: MarkStageRunning :one
 -- Claiming a task marks its stage as running and clears the previous message and finish time.
-UPDATE stage_runs SET status = 'running', block_reason = '', error_class = '', error_message = '',
+UPDATE stage_runs SET status = 'running', block_reason = '', resume_on = '', error_class = '', error_message = '',
   actions_json = '[]', not_before = NULL, started_at = CAST(sqlc.arg(started_at) AS INTEGER), finished_at = NULL
 WHERE id = sqlc.arg(id)
 RETURNING item_id, stage, status;
@@ -67,3 +68,13 @@ FROM stage_runs sr
 JOIN config_snapshots cs ON cs.id = sr.config_snapshot_id
 WHERE sr.item_id = sqlc.arg(item_id) AND sr.started_at IS NOT NULL
 ORDER BY sr.started_at DESC, sr.rowid DESC;
+
+-- name: BlockedRunsByResume :many
+-- Stage runs of live items that are the latest run of their (item, stage), blocked, and waiting for the given resume token.
+SELECT sr.* FROM stage_runs sr
+JOIN items i ON i.id = sr.item_id
+WHERE i.deleted_at IS NULL AND sr.status = 'blocked' AND sr.resume_on = sqlc.arg(resume_on)
+  AND sr.rowid = (
+    SELECT s2.rowid FROM stage_runs s2 WHERE s2.item_id = sr.item_id AND s2.stage = sr.stage
+    ORDER BY s2.created_at DESC, s2.rowid DESC LIMIT 1)
+ORDER BY sr.created_at, sr.rowid;
