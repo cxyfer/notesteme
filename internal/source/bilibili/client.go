@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/url"
 	"os"
@@ -65,6 +66,15 @@ type Client struct {
 	Tools  toolexec.Resolver
 	// Cookies 可以是 nil（沒有 cookie 功能）；有的話每次呼叫 yt-dlp 都取得一次、用完釋放。
 	Cookies Cookies
+	// Log 記錄被丟掉的字幕軌等不影響結果的狀況；nil 時用 slog.Default()。
+	Log *slog.Logger
+}
+
+func (c *Client) log() *slog.Logger {
+	if c.Log != nil {
+		return c.Log
+	}
+	return slog.Default()
 }
 
 // Info 是 yt-dlp -J 的結果中，Notesteme 用得到的部分。Bilibili 沒有語言中繼資料。
@@ -191,7 +201,7 @@ func (c *Client) Probe(ctx context.Context, bvid string, part int) (*Info, error
 	if err != nil {
 		return nil, err
 	}
-	info, err := parseInfo(res.Stdout)
+	info, err := parseInfo(res.Stdout, c.log())
 	if err != nil {
 		return nil, &errclass.Error{Class: errclass.ClassRetryable, Source: "yt-dlp", Detail: "無法解析 -J 的輸出", Err: err}
 	}
@@ -222,7 +232,7 @@ func str(p *string) string {
 	return *p
 }
 
-func parseInfo(b []byte) (*Info, error) {
+func parseInfo(b []byte, log *slog.Logger) (*Info, error) {
 	var r rawInfo
 	if err := json.Unmarshal(b, &r); err != nil {
 		return nil, err
@@ -243,9 +253,16 @@ func parseInfo(b []byte) (*Info, error) {
 		info.PublishedAt = &t
 	}
 	for key, fmts := range r.Subtitles {
-		if len(fmts) > 0 {
-			info.Tracks = append(info.Tracks, key)
+		if len(fmts) == 0 {
+			continue
 		}
+		// 鍵來自不可信的平台資料；下載時 FetchCaptions 一定會拒絕不合法的鍵，
+		// 所以在這裡就丟掉，免得選軌選到下載不了的軌而白白失敗。
+		if !usableKey(key) {
+			log.Warn("丟掉不合法的字幕軌鍵", "key", key)
+			continue
+		}
+		info.Tracks = append(info.Tracks, key)
 	}
 	// map 的走訪順序不固定；排序讓結果可重現。
 	sort.Strings(info.Tracks)
@@ -310,13 +327,18 @@ func partNumber(rawURL, id string) int {
 // 而且不能以 - 開頭（yt-dlp 的 --sub-langs 以 - 表示排除）。
 var safeKey = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`)
 
+// usableKey 回報字幕軌的鍵能不能交給 yt-dlp 下載。all 在 yt-dlp 代表全部字幕軌，不能當成單一軌。
+func usableKey(key string) bool {
+	return safeKey.MatchString(key) && !strings.EqualFold(key, "all")
+}
+
 // ErrNoCaptionFile 表示 yt-dlp 結束碼為 0，卻沒有寫出字幕檔（字幕軌消失或下載被略過）。
 var ErrNoCaptionFile = errors.New("yt-dlp 沒有寫出字幕檔")
 
 // FetchCaptions 下載分P 的一條字幕軌（SRT），key 是 Probe 回報的原始鍵（例如 zh-Hans、ai-zh）。
 // 暫存檔寫在 dir，讀完後呼叫端清除 dir。
 func (c *Client) FetchCaptions(ctx context.Context, bvid string, part int, key, dir string) ([]byte, error) {
-	if !safeKey.MatchString(key) || strings.EqualFold(key, "all") { // all 在 yt-dlp 代表全部字幕軌
+	if !usableKey(key) {
 		return nil, &errclass.Error{Class: errclass.ClassPermanent, Source: "yt-dlp", Detail: fmt.Sprintf("不合法的字幕軌鍵 %q", key)}
 	}
 	args := append(baseArgs(), "--no-playlist", "--skip-download", "--write-subs", "--sub-langs", key, "--sub-format", "srt",
