@@ -50,6 +50,12 @@ type Deps struct {
 	Cookies CookieStore
 	// Resumer 在 cookie 儲存後恢復等待它的 blocked 步驟（PIPE-R4）；nil 時不恢復。
 	Resumer Resumer
+	// System、Tools、Backup、Providers 是 OPS 切片的依賴；nil 時對應的路由回應 501。
+	// 介面只定最小骨架：System 與 Tools 由 OPS-B、Backup 由 OPS-A、Providers 由 OPS-C 擴充。
+	System    SystemInfo
+	Tools     ToolManager
+	Backup    BackupSource
+	Providers ProviderRegistry
 }
 
 // ReadyCheck 是 /readyz 的一個檢查項目；Check 回傳 nil 代表正常。
@@ -195,12 +201,14 @@ func (rt *routes) register(api huma.API) {
 		{OperationID: "trash-restore", Method: http.MethodPost, Path: "/api/trash/{id}/restore", Summary: "從垃圾桶還原（尚未實作）"},
 		{OperationID: "tasks-retry", Method: http.MethodPost, Path: "/api/tasks/{id}/retry", Summary: "重試任務（尚未實作）"},
 		{OperationID: "tasks-cancel", Method: http.MethodPost, Path: "/api/tasks/{id}/cancel", Summary: "取消單一任務（尚未實作）"},
-		// SEC、OPS 的場景會讀這兩個路由；先回 501，之後的切片再實作。
-		{OperationID: "system-get", Method: http.MethodGet, Path: "/api/system", Summary: "生效的設定與其來源、外部工具（尚未實作）"},
-		{OperationID: "providers-get", Method: http.MethodGet, Path: "/api/providers/{id}", Summary: "讀取 provider（尚未實作）"},
 	} {
 		huma.Register(api, op, notImplemented)
 	}
+	// OPS 切片的路由，各自放在獨立的檔案；實作前一律回 501。
+	rt.registerSystem(api)
+	rt.registerProviders(api)
+	rt.registerTools(api)
+	rt.registerBackup(api)
 	huma.Register(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",
 		Summary: "讀取全域設定區段（目前只有 language；其他區段尚未實作）",
@@ -209,10 +217,6 @@ func (rt *routes) register(api huma.API) {
 		OperationID: "settings-put", Method: http.MethodPut, Path: "/api/settings/{section}",
 		Summary: "取代全域設定區段（目前只有 language；其他區段尚未實作）",
 	}, rt.putSettings)
-	huma.Register(api, huma.Operation{
-		OperationID: "providers-create", Method: http.MethodPost, Path: "/api/providers",
-		Summary: "新增 provider（尚未實作）",
-	}, notImplemented)
 	huma.Register(api, huma.Operation{
 		OperationID: "mcp", Method: http.MethodPost, Path: "/mcp",
 		Summary: "MCP Streamable HTTP（尚未實作）",
