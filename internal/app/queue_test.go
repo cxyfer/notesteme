@@ -27,16 +27,16 @@ func TestQueueControlSurvivesRestart(t *testing.T) {
 	defer srv.Kill()
 	c = login(t, srv)
 	var q struct {
-		Paused  bool `json:"paused"`
-		Classes []struct {
+		Paused bool `json:"paused"`
+		Lanes  []struct {
 			Class string `json:"class"`
 			Limit int    `json:"limit"`
-		} `json:"classes"`
+		} `json:"lanes"`
 	}
 	if code := c.json("GET", "/api/queue", "", &q); code != 200 {
 		t.Fatalf("GET queue = %d", code)
 	}
-	if !q.Paused || q.Classes[0].Class != "download" || q.Classes[0].Limit != 1 {
+	if !q.Paused || q.Lanes[0].Class != "download" || q.Lanes[0].Limit != 1 {
 		t.Fatalf("重啟後設定沒有保留：%+v", q)
 	}
 
