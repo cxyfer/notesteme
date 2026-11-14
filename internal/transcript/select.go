@@ -15,6 +15,15 @@ const (
 const (
 	SourceYouTubeManual = "youtube-manual"
 	SourceYouTubeAuto   = "youtube-auto"
+	// Bilibili：人工上傳的 CC 字幕，與平台產生的 AI 字幕。
+	SourceBilibiliCC = "bilibili-cc"
+	SourceBilibiliAI = "bilibili-ai"
+)
+
+// 平台名稱（與 items.platform 相同；這裡不引用 source 套件，因為它依賴本套件）。
+const (
+	PlatformYouTube  = "youtube"
+	PlatformBilibili = "bilibili"
 )
 
 // OriginalLang 在 caption_priority 中代表影音的原文語言。
@@ -56,12 +65,62 @@ const (
 	ReasonNotConfigured       = "not_configured"
 )
 
-// PlatformSource 回傳字幕軌種類對應的來源 ID。機器翻譯的字幕軌由 YouTube 的自動字幕機制產生。
-func PlatformSource(kind string) string {
+// PlatformSource 回傳平台上字幕軌種類對應的來源 ID。
+// YouTube：機器翻譯的字幕軌由自動字幕機制產生，所以和 auto 同一個來源。
+// Bilibili：auto 是平台的 AI 字幕（bilibili-ai），其餘是人工上傳的 CC 字幕（bilibili-cc）。
+// 沒有指定平台時視為 YouTube。
+func PlatformSource(platform, kind string) string {
+	if platform == PlatformBilibili {
+		if kind == KindAuto {
+			return SourceBilibiliAI
+		}
+		return SourceBilibiliCC
+	}
 	if kind == KindManual {
 		return SourceYouTubeManual
 	}
 	return SourceYouTubeAuto
+}
+
+// bilibiliAIPrefix 是 yt-dlp 的 BiliBili extractor 在 AI 字幕鍵前面加的前綴（ai-<lang>）。
+const bilibiliAIPrefix = "ai-"
+
+// bilibiliDanmaku 是 yt-dlp 一律附上的彈幕（xml）；不是字幕，選軌時忽略。
+const bilibiliDanmaku = "danmaku"
+
+// BilibiliTrack 把 yt-dlp 回報的 Bilibili 字幕軌鍵對應到字幕軌：
+// ai-<lang> 是 kind auto（來源 bilibili-ai），語言去掉前綴；其他鍵是 kind manual（來源 bilibili-cc）。
+// danmaku 與空鍵不是字幕，ok 為 false。
+func BilibiliTrack(key string) (Track, bool) {
+	if key == "" || key == bilibiliDanmaku {
+		return Track{}, false
+	}
+	if lang, ok := strings.CutPrefix(key, bilibiliAIPrefix); ok {
+		if lang == "" {
+			return Track{}, false
+		}
+		return Track{Lang: lang, Kind: KindAuto}, true
+	}
+	return Track{Lang: key, Kind: KindManual}, true
+}
+
+// BilibiliKey 是 BilibiliTrack 的反向：回傳字幕軌在 yt-dlp 的原始鍵（下載時用）。
+func BilibiliKey(t Track) string {
+	if t.Kind == KindAuto {
+		return bilibiliAIPrefix + t.Lang
+	}
+	return t.Lang
+}
+
+// BilibiliTracks 把一組原始鍵轉成字幕軌，略過彈幕；順序與輸入相同。
+func BilibiliTracks(keys []string) []Track {
+	out := make([]Track, 0, len(keys))
+	for _, k := range keys {
+		if t, ok := BilibiliTrack(k); ok {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // NormalizeLang 去掉 yt-dlp 在原文自動字幕後加的 -orig（en-orig → en）。
@@ -122,6 +181,11 @@ func best(tracks []Track, lang string, kinds ...string) (Track, bool) {
 // decisions 依規則的順序記錄每個被評估的來源：沒有符合的為 unavailable，採用的為 used；
 // 排在採用的規則之後的項目沒有被評估，不記錄。
 func Select(tracks []Track, originalLang string, rules []Rule, allowTranslated bool) (chosen *Track, decisions []Decision) {
+	return SelectFor(PlatformYouTube, tracks, originalLang, rules, allowTranslated)
+}
+
+// SelectFor 與 Select 相同，但決策中的來源 ID 依 platform 決定（見 PlatformSource）。
+func SelectFor(platform string, tracks []Track, originalLang string, rules []Rule, allowTranslated bool) (chosen *Track, decisions []Decision) {
 	seen := map[Decision]bool{}
 	add := func(d Decision) {
 		if !seen[d] {
@@ -133,7 +197,7 @@ func Select(tracks []Track, originalLang string, rules []Rule, allowTranslated b
 		lang := rule.Lang
 		if lang == OriginalLang {
 			if originalLang == "" {
-				add(Decision{Source: PlatformSource(rule.Kind), Lang: OriginalLang, Kind: rule.Kind, State: StateUnavailable, Reason: ReasonOriginalLangUnknown})
+				add(Decision{Source: PlatformSource(platform, rule.Kind), Lang: OriginalLang, Kind: rule.Kind, State: StateUnavailable, Reason: ReasonOriginalLangUnknown})
 				continue
 			}
 			lang = originalLang
@@ -143,16 +207,16 @@ func Select(tracks []Track, originalLang string, rules []Rule, allowTranslated b
 			kinds = append(kinds, KindPlatformTranslated)
 		}
 		if t, ok := best(tracks, lang, kinds...); ok {
-			add(Decision{Source: PlatformSource(t.Kind), Lang: NormalizeLang(t.Lang), Kind: t.Kind, State: StateUsed})
+			add(Decision{Source: PlatformSource(platform, t.Kind), Lang: NormalizeLang(t.Lang), Kind: t.Kind, State: StateUsed})
 			return &t, decisions
 		}
-		add(Decision{Source: PlatformSource(rule.Kind), Lang: lang, Kind: rule.Kind, State: StateUnavailable, Reason: ReasonNoTrack})
+		add(Decision{Source: PlatformSource(platform, rule.Kind), Lang: lang, Kind: rule.Kind, State: StateUnavailable, Reason: ReasonNoTrack})
 	}
 	if !allowTranslated {
 		for _, t := range tracks {
 			if t.Kind == KindPlatformTranslated {
 				// 機器翻譯的字幕軌可能有上百個語言，只記錄一筆。
-				add(Decision{Source: SourceYouTubeAuto, Kind: KindPlatformTranslated, State: StateRejected, Reason: ReasonPlatformTranslated})
+				add(Decision{Source: PlatformSource(platform, KindAuto), Kind: KindPlatformTranslated, State: StateRejected, Reason: ReasonPlatformTranslated})
 				break
 			}
 		}

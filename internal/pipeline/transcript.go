@@ -160,7 +160,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	if err != nil {
 		return result{}, err
 	}
-	srcID := transcript.PlatformSource(chosen.Kind)
+	srcID := transcript.PlatformSource(it.Platform, chosen.Kind)
 	artLang := transcript.NormalizeLang(chosen.Lang)
 	prov, err := p.provenance(map[string]any{
 		"stage": StageTranscript, "impl_version": p.implVersion(StageTranscript),
