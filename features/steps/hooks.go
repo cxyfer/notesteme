@@ -66,7 +66,7 @@ func finishScenario(s *Scenario, name string, stepErr error) error {
 	}
 	stopErr := s.close()
 	checkErr := s.World.Check()
-	leakErr := errors.Join(s.checkLogs(), s.checkDataDirSecrets()) // server 已關閉，/data 不會再變
+	leakErr := errors.Join(s.checkLogs(), s.checkDataDirSecrets(), s.checkBackupSecrets()) // server 已關閉，/data 不會再變
 	closeErr := s.World.Close()
 	s.World = nil
 
