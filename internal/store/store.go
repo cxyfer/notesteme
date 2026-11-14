@@ -30,7 +30,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // 註冊 "sqlite" driver
 
 	"github.com/cxyfer/notesteme/internal/clock"
@@ -51,6 +50,7 @@ var migrationsFS embed.FS
 
 // Store 持有 SQLite 的寫入連線與讀取連線池。
 type Store struct {
+	path  string  // 資料庫檔的絕對路徑（備份時另開連線用）
 	w     *sql.DB // 唯一的寫入連線
 	r     *sql.DB // 唯讀連線池
 	wq    *sqlcdb.Queries
@@ -106,14 +106,15 @@ func Open(ctx context.Context, dir string, clk clock.Clock, opts ...Options) (*S
 	if sub == nil {
 		sub = MigrationsFS()
 	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, w, sub)
+	// OPS-R3、R4：有待執行的 migration 先留快照；失敗時還原快照並拒絕啟動；資料庫比程式新時拒絕。
+	snapshot, err := migrate(ctx, w, dir, sub)
 	if err != nil {
 		_ = w.Close()
-		return nil, fmt.Errorf("初始化 migration 失敗：%w", err)
-	}
-	if _, err := provider.Up(ctx); err != nil {
-		_ = w.Close()
-		return nil, fmt.Errorf("執行 migration 失敗：%w", err)
+		var me *MigrationError
+		if errors.As(err, &me) && snapshot != "" {
+			me.RestoreErr = restoreSnapshot(snapshot, path)
+		}
+		return nil, err
 	}
 
 	r, err := openDB(path, true)
@@ -128,7 +129,7 @@ func Open(ctx context.Context, dir string, clk clock.Clock, opts ...Options) (*S
 		_ = w.Close()
 		return nil, err
 	}
-	return &Store{w: w, r: r, wq: sqlcdb.New(w), rq: sqlcdb.New(r), clock: clk}, nil
+	return &Store{path: path, w: w, r: r, wq: sqlcdb.New(w), rq: sqlcdb.New(r), clock: clk}, nil
 }
 
 // ensurePrivateFiles 把 DB 與 -wal、-shm 的權限設為 0600。create 為 true 時 DB 不存在會先以 0600 建立；
