@@ -272,16 +272,17 @@ func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 			}
 			defer os.RemoveAll(dir)
 
+			// 版本要在轉錄之前取得：轉錄要付費，轉錄成功之後不能再有會失敗的步驟（失敗重試會重複付費）。
+			version, err := d.YouTube.Version(ctx)
+			if err != nil {
+				return nil, err
+			}
 			audio, err := d.YouTube.DownloadAudio(ctx, it.ExternalID, dir)
 			if err != nil {
 				return nil, err
 			}
 			// 有原文語言才送提示；未知時讓 Whisper 自行偵測。
 			got, err := gc.Transcribe(ctx, audio, groq.LangHint(it.OriginalLang))
-			if err != nil {
-				return nil, err
-			}
-			version, err := d.YouTube.Version(ctx)
 			if err != nil {
 				return nil, err
 			}

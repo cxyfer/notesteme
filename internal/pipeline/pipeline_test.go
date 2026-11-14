@@ -37,6 +37,8 @@ type fakeYT struct {
 	onProbe  func()
 	// onVersion 在查詢工具版本時呼叫；transcript 在這之後才寫出產出檔。
 	onVersion func()
+	// versionErr 非 nil 時，Version 失敗。
+	versionErr error
 	// playlist 與 playlistErr 是 Playlist 的回傳值；playlists 記錄展開過哪些播放清單 ID。
 	playlist    []youtube.PlaylistEntry
 	playlistErr error
@@ -85,10 +87,13 @@ func (f *fakeYT) FetchCaptions(_ context.Context, _ string, t youtube.Track, _ s
 
 func (f *fakeYT) Version(context.Context) (string, error) {
 	f.mu.Lock()
-	hook := f.onVersion
+	hook, verr := f.onVersion, f.versionErr
 	f.mu.Unlock()
 	if hook != nil {
 		hook()
+	}
+	if verr != nil {
+		return "", verr
 	}
 	return "2026.11.01", nil
 }

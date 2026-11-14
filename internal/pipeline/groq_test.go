@@ -234,3 +234,14 @@ func TestGroqEndpointIsPartOfTheCacheKey(t *testing.T) {
 		t.Fatalf("base_url 改變應重新轉錄：呼叫 %d 次，版本 %d", g.calls(), r.sourceVersions(it))
 	}
 }
+
+// 查詢 yt-dlp 版本失敗時，不可以已經轉錄過：轉錄要付費，之後才失敗會重付費（重試時再轉錄一次）。
+func TestGroqVersionIsResolvedBeforeTranscribing(t *testing.T) {
+	r, g := newGroqRig(t)
+	r.yt.versionErr = errors.New("version boom")
+	r.ingest(watch, groqOnly(), StageTranscript)
+	r.run()
+	if g.calls() != 0 {
+		t.Errorf("版本查詢失敗時不該呼叫 Transcribe：%d", g.calls())
+	}
+}
