@@ -119,8 +119,8 @@ func TestRunWakesWhenPeriodicIsDue(t *testing.T) {
 	waitFor(t, func() bool { return p.runs.Load() == 2 })
 }
 
-// 定期工作的時間早於下一個任務時，以較早者為準；已經過去的時間（失敗後沒有重新排定）不算，避免忙碌重試。
-func TestNextWakePicksEarliestAndIgnoresPast(t *testing.T) {
+// 定期工作的時間早於下一個任務時，以較早者為準；已經到期的時間要立刻再跑一輪，但同一個到期時間只觸發一次。
+func TestNextWakePicksEarliestAndFiresOncePerDueTime(t *testing.T) {
 	r := newRig(t)
 	p := &fakePeriodic{}
 	w := New(r.q, &recorder{st: r.st}, r.clk, quiet)
@@ -132,8 +132,17 @@ func TestNextWakePicksEarliestAndIgnoresPast(t *testing.T) {
 		t.Fatal("沒有任務也沒有排定的定期工作時不該有喚醒時間")
 	}
 	p.setNext(now.Add(-time.Hour))
+	if d, ok := w.nextWake(ctx, now); !ok || d > 0 {
+		t.Fatalf("已經到期的定期工作要立刻再跑一輪：nextWake = %v, %v", d, ok)
+	}
+	// 同一個到期時間已經觸發過：再問一次不能又立刻醒來（跑了還是失敗、沒有重新排定時不會忙碌重試）。
 	if _, ok := w.nextWake(ctx, now); ok {
-		t.Fatal("已經過去的定期工作不該讓 worker 立刻醒來")
+		t.Fatal("同一個到期時間只能觸發一次")
+	}
+	// 重新排定成另一個過去的時間，是新的到期時間，會再觸發一次。
+	p.setNext(now.Add(-time.Minute))
+	if d, ok := w.nextWake(ctx, now); !ok || d > 0 {
+		t.Fatalf("新的到期時間要再觸發：nextWake = %v, %v", d, ok)
 	}
 	p.setNext(now.Add(2 * time.Hour))
 	if d, ok := w.nextWake(ctx, now); !ok || d != 2*time.Hour {
@@ -153,4 +162,35 @@ func TestNextWakePicksEarliestAndIgnoresPast(t *testing.T) {
 	if d, ok := w.nextWake(ctx, now); !ok || d != time.Hour {
 		t.Fatalf("NextAt 失敗時 nextWake = %v, %v；預期只看任務 1h", d, ok)
 	}
+}
+
+// 定期工作每輪都跑了、時間卻一直停在過去（例如失敗又沒有重新排定）：Run 只多跑一輪就睡，不會忙碌迴圈。
+func TestRunDoesNotBusyLoopOnAnOverduePeriodic(t *testing.T) {
+	r := newRig(t)
+	p := &fakePeriodic{}
+	p.setNext(r.clk.Now().Add(-time.Hour))
+	w := New(r.q, &recorder{st: r.st}, r.clk, quiet)
+	w.SetPeriodic(p)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); w.Run(ctx) }()
+	defer func() {
+		cancel()
+		<-done
+	}()
+
+	// 第一輪開頭跑一次，到期的時間讓它立刻再跑一輪，共 2 次。
+	waitFor(t, func() bool { return p.runs.Load() >= 2 })
+	time.Sleep(50 * time.Millisecond)
+	if got := p.runs.Load(); got != 2 {
+		t.Fatalf("同一個到期時間 Run 了 %d 次，預期正好 2 次（沒有忙碌迴圈）", got)
+	}
+
+	// 重新排定成未來：到期時照常醒來。
+	p.setNext(r.clk.Now().Add(time.Hour))
+	r.q.Wake()
+	waitFor(t, func() bool { return p.runs.Load() == 3 && r.clk.PendingTimers() > 0 })
+	r.clk.Advance(time.Hour)
+	waitFor(t, func() bool { return p.runs.Load() == 4 })
 }
