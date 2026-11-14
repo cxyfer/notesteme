@@ -40,6 +40,25 @@
 - 環境變數：`NOTESTEME_MASTER_KEY`、`NOTESTEME_<設定路徑>`
 - API：`GET/PUT /api/settings/:section`、`POST /api/cookies`
 - CLI：`notesteme secrets rotate-key|reset`、`notesteme config export|import`
+- `POST /api/cookies`：上傳平台的 cookie。
+  - 請求：`{ "platform": "youtube" | "bilibili", "content": "<Netscape cookie 檔，或 name=value; … 標頭>" }`，內容上限 64 KiB。
+  - 正規化：一律轉成 Netscape 格式。標頭格式的 cookie 用平台網域（`.youtube.com`、`.bilibili.com`）、path `/`、secure `TRUE`、expiry `0`；Netscape 格式只保留平台網域（含子網域）的 cookie，其他網域一律丟掉。
+  - 成功：200 `{ "platform", "cookies": <數量>, "updated_at" }`。回應與錯誤訊息永遠不含 cookie 的值。每個平台只存一份，新的取代舊的。儲存後會恢復等待這個 cookie 的 `blocked` 步驟（見 PIPE 介面）。
+  - 422，code 如下（訊息不含 cookie 的值）：
+
+    | code | 情況 |
+    |---|---|
+    | `cookie_unsupported_platform` | 平台不是 `youtube` 或 `bilibili` |
+    | `cookie_empty` | 內容是空的 |
+    | `cookie_too_large` | 內容超過 64 KiB |
+    | `cookie_no_match` | 丟掉其他網域之後，沒有剩下任何 cookie（含格式無法辨識） |
+    | `cookie_missing_sessdata` | bilibili 的 cookie 缺 `SESSDATA` |
+    | `cookie_invalid_format` | 名稱或值含控制字元（包含 tab、換行） |
+
+  - 權限：只有 owner（session 或本機）可以使用；session 要帶 CSRF token（AUTH-R5），沒登入回 401，缺 CSRF 回 403。token 不可使用，回 403 `forbidden`（cookie 等同登入憑證）。standalone 與本機 socket 走同一個 handler，不需要 session。
+- 儲存方式：secrets 表以 `(kind, name)` 為主鍵，cookie 是 `kind=cookie`、`name=<platform>`。內容用資料金鑰以 XChaCha20-Poly1305 加密，AAD 是 `kind/name`（`cookie/youtube`），每次加密用新的隨機 nonce；密文搬到別筆 secret 後無法解開。DB、WAL、log 都不會出現明文。
+- 執行時：每次呼叫 yt-dlp 時解密，在 `<data>/tmp` 以 `O_EXCL` 建立權限 `0600` 的暫存檔 `cookies-<platform>-<隨機>.txt`，每次呼叫一個新檔名（SEC-R7），子程序結束後刪除。
+- 使用政策：有該平台的 cookie 時，這個平台的每一次 yt-dlp 呼叫都帶 `--cookies`（Probe、字幕、音訊、播放清單），不是只有失敗時才用；`--version` 不帶。沒有 cookie 時不帶這個旗標。
 
 ## 不在範圍內
 
@@ -49,3 +68,5 @@
 
 - master key 的格式（32 bytes 的 base64，或允許任意密語再經 KDF）。暫定兩者都接受：長度不是 32 bytes 時用 argon2id 推導。
 - SEC-R7 的場景原本寫死 `/data/tmp/cookies-youtube.txt`，與每次呼叫一個檔名的設計衝突，改成斷言「交給 yt-dlp 的 cookie 檔」的權限與「沒有 cookie 檔留下」（2026-11-14，owner 同意；依據是 yt-dlp 的 `YoutubeDLCookieJar.save` 會先截斷再重寫）。
+- cookie 的使用政策是「有就每次呼叫都帶」，這會讓 YouTube 把該帳號與 yt-dlp 的流量關聯在一起，有帳號被標記（限制或停權）的風險。建議上傳分身帳號（專門給 Notesteme 用）的 cookie，不要用主要帳號。是否改成「只有在需要時（403、會員限定）才帶」要看實際被標記的狀況再決定（2026-11-14，SRC-B）。
+- 會員限定影片（stderr 含 `Join this channel to get access to members-only content`）歸為 `needs_action`，訊息「這部影片需要登入才能取得。上傳 YouTube cookie 後會自動繼續。」、動作「上傳 cookie」、`resume_on` 為 `cookie:youtube`。SRC 規格的待決問題要記下這個分類（由主代理負責）；文字依 yt-dlp 的原始碼，尚未對真實的 yt-dlp 驗證。

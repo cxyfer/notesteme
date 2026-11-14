@@ -48,6 +48,10 @@
   - `POST /api/queue/pause`、`POST /api/queue/resume`：沒有 body 時作用在整個佇列；`{ "class": "asr" }` 只作用在該資源類別。
   - `POST /api/items/:id/cancel`：取消該影音所有未結束的步驟（PIPE-R15）；`POST /api/tasks/:id/cancel` 只取消單一任務。
 - CLI：`notesteme items ls --status <stage>=<status>`、`notesteme items rerun <item> --from <stage>`
+- `blocked` 的恢復（PIPE-R4）：
+  - 步驟因為需要使用者補上某個東西而 `blocked` 時，記錄恢復條件 `resume_on`，格式是 `<種類>:<名稱>`，目前只有 `cookie:youtube` 與 `cookie:bilibili`（`errclass.Error.ResumeOn`）。沒有 `resume_on` 的 `blocked`（例如缺 API key）不會自動恢復，要手動重試。`resume_on` 只在步驟是 `blocked` 時保留，離開 `blocked` 就清空。
+  - `POST /api/cookies` 儲存成功後，以 `cookie:<platform>` 呼叫 `ResumeBlocked`：在同一個交易中，找出沒有刪除的影音裡每個（影音、步驟）最新一筆、`resume_on` 相符的 `blocked` 步驟，改回 `pending`，並以原本任務的優先順序與資源類別建立新任務，嘗試次數從 0 開始。
+  - 恢復是冪等的：恢復後步驟已不是 `blocked`，再呼叫一次不會重複建立任務；token 不符、已刪除的影音都不恢復。恢復失敗不影響 cookie 已經儲存的事實（API 仍回 200，錯誤記在 log）。
 
 ## 不在範圍內
 
