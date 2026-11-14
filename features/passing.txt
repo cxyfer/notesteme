@@ -74,6 +74,7 @@ OPS-operations.feature: A pinned yt-dlp is not updated
 OPS-operations.feature: The config file path wins over the environment and PATH
 OPS-operations.feature: The WSL compose profile binds to localhost only
 OPS-operations.feature: Old events are cleaned up
+OPS-operations.feature: Events are cleaned up at most once a day
 OUT-subtitle-output.feature: Download SRT rendered from the cues
 OUT-subtitle-output.feature: Every M1 format is available [example 1]
 OUT-subtitle-output.feature: Every M1 format is available [example 2]
@@ -102,6 +103,7 @@ PIPE-pipeline-queue.feature: Each run records the settings it used
 PIPE-pipeline-queue.feature: Status changes are pushed as events
 PIPE-pipeline-queue.feature: Cancelling an item stops its running work
 SEC-config-secrets.feature: Environment variables override the config file
+SEC-config-secrets.feature: The config file is used when no environment variable is set
 SEC-config-secrets.feature: Database-managed settings are not accepted in the config file
 SEC-config-secrets.feature: A command provider cannot be created through the API
 SEC-config-secrets.feature: Command providers from the config file are listed read-only
