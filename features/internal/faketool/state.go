@@ -53,6 +53,16 @@ type State struct {
 	// value 是需要登入的平台（目前只有 "bilibili"）。假 yt-dlp 沒有收到該平台的有效 cookie 檔時，
 	// 不列出也不下載這個種類的字幕軌，並印出 login WARNING（見 bilibili.go）。
 	CookieKinds map[string]string `json:"cookie_kinds,omitempty"`
+	// Releases 是假 pip 可以安裝的 yt-dlp 版本，key 是版本。沒有登記的版本裝不起來（找不到 distribution）；
+	// 沒有指定版本的安裝（-U）取最新的（版本字串最大的）一個。
+	Releases map[string]*Release `json:"releases,omitempty"`
+}
+
+// Release 是一個可以用假 pip 安裝的 yt-dlp 版本。
+type Release struct {
+	// ProbeFailsFor 列出這個版本的 yt-dlp 在 -J 時會失敗的影片 ID：`--version` 照常成功，
+	// 只有對這些影片的探測失敗，用來模擬「裝得起來但壞掉」的更新（OPS-R6 的自我檢查）。
+	ProbeFailsFor []string `json:"probe_fails_for,omitempty"`
 }
 
 // Video 是一部假的平台影片。

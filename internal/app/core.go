@@ -15,7 +15,6 @@ import (
 	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/secrets"
 	"github.com/cxyfer/notesteme/internal/store"
-	"github.com/cxyfer/notesteme/internal/toolexec"
 )
 
 // 鎖檔中 LockInfo.Holder 的值。
@@ -185,7 +184,7 @@ func (s *Server) apiDeps(env Env) api.Deps {
 	return api.Deps{
 		Paths: pathguard.New(append([]string{s.cfg.Inbox}, s.cfg.MediaRoots...)),
 		Store: s.store, Auth: s.auth, Clock: env.Clock, Log: s.log, Version: version,
-		ReadyChecks: toolChecks(toolexec.Resolver{Vars: env.Vars, Config: s.cfg.Tools}),
+		ReadyChecks: toolChecks(ToolResolver(env.Vars, s.cfg)),
 		Pipeline:    s.pipeline,
 		// cookie API（POST /api/cookies）：儲存後由 pipeline 恢復等待 cookie 的 blocked 步驟（PIPE-R4）。
 		Cookies: s.cookies,

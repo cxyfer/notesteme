@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cxyfer/notesteme/internal/app"
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/doctor"
 	"github.com/cxyfer/notesteme/internal/toolexec"
@@ -30,7 +31,7 @@ func parseDoctor(args []string) (*plan, error) {
 			runner = toolexec.New(s.env.Vars)
 		}
 		report := doctor.Run(ctx, doctor.Deps{
-			Resolver: toolexec.Resolver{Vars: s.env.Vars, Config: cfg.Tools},
+			Resolver: app.ToolResolver(s.env.Vars, cfg),
 			Runner:   runner,
 			Env:      s.env.Vars,
 		})
