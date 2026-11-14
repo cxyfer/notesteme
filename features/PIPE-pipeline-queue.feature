@@ -66,6 +66,7 @@ Feature: Pipeline and task queue
       """
     And the worker runs until idle
     Then the stage "transcript" of "bili:BV1ai411c7mD/p1" is "done"
+    And the original language of "bili:BV1ai411c7mD/p1" is "zh-Hans"
 
   @PIPE-03 @PIPE-R5
   Scenario: Rerunning with the same settings reuses the cached result

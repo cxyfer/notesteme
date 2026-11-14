@@ -47,7 +47,7 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`{string} offers the actions {string}`, s.itemOffersActions)
 	r.Step(`the transcript of {string} came from {string}`, s.transcriptCameFrom)
 	r.Step(`the source {string} was rejected for {string} because {string}`, s.sourceRejectedFor)
-	r.Step(`the original language of {string} is {string}`, func(string, string) error { return godog.ErrPending })
+	r.Step(`the original language of {string} is {string}`, s.originalLanguageIs)
 	r.Step(`the original language of {string} is marked as mixed`, func(string) error { return godog.ErrPending })
 	r.Step(`the {string} transcript of {string} has {int} cues`, s.transcriptHasCues)
 	r.Step(`the {string} transcript of {string} in {string} has {int} cues`, s.transcriptInLangHasCues)
@@ -519,6 +519,21 @@ func (s *Scenario) itemHasNoArtifact(ref, name string) error {
 		if strings.EqualFold(a.Kind, name) || strings.EqualFold(a.Variant, name) || strings.EqualFold(a.Format, name) {
 			return fmt.Errorf("%s 有 %q 產出：%s/%s（%s）", ref, name, a.Kind, a.Variant, a.Format)
 		}
+	}
+	return nil
+}
+
+// originalLanguageIs 比對影音詳情的原文語言（original_lang，SRC-R11）。server 已停止時明確失敗，不隱含啟動新的 server。
+func (s *Scenario) originalLanguageIs(ref, want string) error {
+	if s.stopped {
+		return fmt.Errorf("server 已停止，還不支援從 DB 讀原文語言")
+	}
+	it, err := s.item(ref)
+	if err != nil {
+		return err
+	}
+	if it.OriginalLang != want {
+		return fmt.Errorf("%s 的原文語言是 %q，預期 %q", ref, it.OriginalLang, want)
 	}
 	return nil
 }
