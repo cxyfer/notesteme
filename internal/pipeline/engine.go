@@ -39,6 +39,8 @@ type result struct {
 	meta     *metaUpdate
 	// advance 為 true 時，成功後建立下游步驟的任務（until 之前）。
 	advance bool
+	// startedAt 是這次執行開始的時間（Handle 開頭記下），apply 用它判斷 blocked 的恢復條件是否在執行中已經滿足。
+	startedAt time.Time
 	// transcriptASR 只用於 metadata：下游的 transcript 任務是否歸為 asr 資源類別。
 	transcriptASR bool
 }
@@ -52,6 +54,7 @@ type metaUpdate struct {
 // 步驟自己的失敗（工具錯誤、沒有字幕…）依錯誤類別寫進步驟狀態，不會回傳錯誤；
 // 回傳的錯誤只代表資料庫或檔案系統出了問題。ctx 取消（關閉中）時不改變任何狀態，租約之後會放回佇列。
 func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
+	started := p.clock.Now()
 	r := p.st.Read()
 	run, err := r.StageRun(ctx, t.StageRunID)
 	if err != nil {
@@ -97,6 +100,7 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		p.log.Warn("步驟失敗", "item", it.ID, "stage", run.Stage, "attempt", t.Attempts, "error", err)
 		res = p.classify(t, err)
 	}
+	res.startedAt = started
 	if err := p.apply(ctx, t, run, it, res); err != nil {
 		return fmt.Errorf("寫回步驟 %s 的結果：%w", run.Stage, err)
 	}
@@ -220,6 +224,19 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 			if err := r.SetStageResult(ctx, run.ID, sr); err != nil {
 				return err
 			}
+		}
+		// 執行中使用者已經補上了恢復條件（例如上傳 cookie）時，ResumeBlocked 找不到這個還在 running 的步驟，
+		// 若照常寫成 blocked 就永遠卡住；改為 requeue：pending、新任務、不計入嘗試次數。
+		resolved, err := resumeAlreadyResolved(ctx, r, res)
+		if err != nil {
+			return err
+		}
+		if resolved {
+			if err := requeueResolved(ctx, r, t, run); err != nil {
+				return err
+			}
+			wake = true
+			return nil
 		}
 		if err := r.SetStageState(ctx, run.ID, res.state); err != nil {
 			return err
