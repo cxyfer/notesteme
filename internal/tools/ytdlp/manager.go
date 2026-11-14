@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -44,6 +45,9 @@ var (
 	ErrInstall = errors.New("安裝 yt-dlp 失敗")
 	// ErrNoPrevious 表示沒有可以回到的上一版。
 	ErrNoPrevious = errors.New("沒有可以回到的上一個 yt-dlp 版本。")
+	// ErrUnsupportedPlatform 表示這個平台不支援受管理的 yt-dlp（Windows 的 venv 布局與 symlink 都不同）。
+	// 環境變數名稱取自 toolexec，與實際讀取的一致。
+	ErrUnsupportedPlatform = errors.New("受管理的 yt-dlp 在 Windows 上不支援，請用設定檔或 " + toolexec.YtDlp.EnvVar + " 指定路徑。")
 )
 
 // UpdateRequest 是更新的參數。兩者都沒有指定時，更新到最新版。
@@ -68,6 +72,9 @@ type Result struct {
 	Previous string `json:"previous"`
 	// Message 是給人看的說明（繁體中文）。
 	Message string `json:"message"`
+	// Reason 是回退（RolledBack）的簡短原因：單行、已遮蔽 cookie 內容；其他情況省略。
+	// 原因放在這裡而不是附在 Message 後面，Message 維持規格的固定文字。
+	Reason string `json:"reason,omitempty"`
 }
 
 // Manager 安裝、更新與回退受管理的 yt-dlp。所有外部指令都經過 Runner，也就是和其他工具相同的子程序限制。
@@ -81,6 +88,8 @@ type Manager struct {
 	Resolver toolexec.Resolver
 	Clock    clock.Clock
 	Log      *slog.Logger
+	// GOOS 是執行的平台；空字串用 runtime.GOOS。測試可以注入。
+	GOOS string
 
 	mu sync.Mutex
 }
@@ -98,13 +107,30 @@ func (m *Manager) log() *slog.Logger {
 	return slog.New(slog.DiscardHandler)
 }
 
+// goos 回傳要判斷的平台。
+func (m *Manager) goos() string {
+	if m.GOOS != "" {
+		return m.GOOS
+	}
+	return runtime.GOOS
+}
+
+// checkSupported 在平台不支援受管理的 yt-dlp 時回傳 ErrUnsupportedPlatform，不必等到安裝失敗才發現。
+func (m *Manager) checkSupported() error {
+	if m.goos() == "windows" {
+		return ErrUnsupportedPlatform
+	}
+	return nil
+}
+
 // State 回傳固定的版本與上一版。
 func (m *Manager) State() (State, error) { return LoadState(m.Tools) }
 
 // PipArgs 是安裝 yt-dlp 時交給 venv 內 python 的參數。固定的白名單：只有這幾個旗標，套件只有 yt-dlp[default]，
 // 不接受自訂的 package index 或其他 pip 參數；version 已經過 ValidVersion（空字串代表最新版）。
 func PipArgs(version string) []string {
-	args := []string{"-m", "pip", "install", "--disable-pip-version-check", "--no-input"}
+	// --isolated 忽略使用者與系統的 pip.conf 和 PIP_ 開頭的環境變數，這樣設定檔或環境也無法塞進自訂的 index。
+	args := []string{"-m", "pip", "install", "--isolated", "--disable-pip-version-check", "--no-input"}
 	if version == "" {
 		return append(args, "-U", "yt-dlp[default]")
 	}
@@ -129,6 +155,9 @@ func (m *Manager) Update(ctx context.Context, req UpdateRequest) (*Result, error
 
 	loc := m.Resolver.Locate(toolexec.YtDlp)
 	if err := externallyManaged(loc); err != nil {
+		return nil, err
+	}
+	if err := m.checkSupported(); err != nil {
 		return nil, err
 	}
 	st, err := LoadState(m.Tools)
@@ -193,7 +222,7 @@ func (m *Manager) install(ctx context.Context, target, cur string, st State) (*R
 		if cur == "" {
 			msg = "yt-dlp 更新後自我檢查失敗，沒有可以回到的版本。"
 		}
-		return &Result{Version: cur, RolledBack: true, Pinned: st.Pinned, Previous: st.Previous, Message: msg}, nil
+		return &Result{Version: cur, RolledBack: true, Pinned: st.Pinned, Previous: st.Previous, Message: msg, Reason: shortReason(checkErr)}, nil
 	}
 	if got == cur && target == "" {
 		// 最新版就是現在的版本：不需要切換，新 venv 由 defer 清掉。
@@ -236,6 +265,9 @@ func (m *Manager) Rollback(ctx context.Context) (*Result, error) {
 	if err := externallyManaged(loc); err != nil {
 		return nil, err
 	}
+	if err := m.checkSupported(); err != nil {
+		return nil, err
+	}
 	st, err := LoadState(m.Tools)
 	if err != nil {
 		return nil, err
@@ -262,11 +294,22 @@ func (m *Manager) Rollback(ctx context.Context) (*Result, error) {
 		next.Pinned = ""
 	}
 	if err := saveState(m.Tools, next); err != nil {
+		// 狀態沒寫進去，symlink 也要換回去，不能留下「symlink 與狀態不一致」。
+		m.restoreLink(curID)
 		return nil, err
 	}
 	m.prune(st.PreviousID, curID)
 	return &Result{Version: now, Pinned: next.Pinned, Previous: next.Previous,
 		Message: fmt.Sprintf("yt-dlp 已回到 %s。", now)}, nil
+}
+
+// shortReason 把 err 整理成單行的簡短原因：先遮蔽 cookie 內容，空白收斂成單一空格，最多 200 個字元。
+func shortReason(err error) string {
+	s := strings.Join(strings.Fields(string(toolexec.RedactCookieLines([]byte(err.Error())))), " ")
+	if r := []rune(s); len(r) > 200 {
+		s = string(r[:200]) + "…"
+	}
+	return s
 }
 
 // externallyManaged 在路徑由設定檔或環境變數指定時回傳 ErrExternallyManaged（加上是哪一個來源）。
@@ -351,7 +394,11 @@ func (m *Manager) currentID() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Base(target)
+	// 名稱之後會寫進 state.json 當 previous_id；不合法的（例如 symlink 被改成指向 ..）一律視為沒有。
+	if id := filepath.Base(target); ValidID(id) {
+		return id
+	}
+	return ""
 }
 
 // switchLink 讓 yt-dlp-venv 指向 yt-dlp/<id>：先在旁邊建立新的 symlink，再 rename 覆蓋，切換是原子的。
