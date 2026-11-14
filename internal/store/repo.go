@@ -78,11 +78,19 @@ func (r *Repo) emitItemCreated(ctx context.Context, it Item) error {
 	})
 }
 
+// inTx 讓 fn 在交易中執行：已經在交易中（Tx 傳入的 Repo）就直接執行；
+// 否則（Write 的自動提交 Repo）開一個交易，fn 拿到的是交易內的 Repo。
+// 會寫入事件的函式（見 emit）都經過它，狀態變更與事件才會同時成功或同時失敗。
+func (r *Repo) inTx(ctx context.Context, fn func(*Repo) error) error {
+	if r.queued != nil || r.s == nil {
+		return fn(r)
+	}
+	return r.s.Tx(ctx, fn)
+}
+
 // emit 先把事件寫進 events 表（OPS-R10），再發布給 SSE 訂閱者。
-//   - 交易中：寫入與狀態變更在同一個交易，一起 commit 或 rollback；發布先排隊，commit 之後才送出。
-//   - 單一陳述句（Write）：沒有包住它的交易，事件是緊接在狀態變更之後的另一個陳述句。
-//     兩者之間程序若中止，狀態已變更但事件沒有留下；目前只有 Tx 內的路徑保證原子，
-//     Write 路徑的原子性是已知的技術債（等 SSE replay 真的依賴 events 表時，再把這些寫入改走 Tx）。
+// 一定要在交易中呼叫（會寫入事件的函式都經過 inTx）：事件與狀態變更在同一個交易，一起 commit 或 rollback；
+// 發布先排隊，commit 之後才送出，rollback 就丟掉。
 func (r *Repo) emit(ctx context.Context, ev events.Event) error {
 	payload, err := json.Marshal(ev)
 	if err != nil {
