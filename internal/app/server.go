@@ -24,6 +24,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/toolexec"
+	"github.com/cxyfer/notesteme/internal/tools/ytdlp"
 	"github.com/cxyfer/notesteme/internal/worker"
 )
 
@@ -70,7 +71,11 @@ type Server struct {
 
 	pipeline *pipeline.Pipeline
 	queue    *queue.Queue
-	worker   *worker.Worker
+	// runner 執行外部工具（yt-dlp、ffmpeg 與 yt-dlp 的安裝）；startPipeline 設定。
+	runner toolexec.Runner
+	// ytdlp 管理 yt-dlp 的更新與回退（OPS-R6、R7），見 tools.go。
+	ytdlp  *ytdlp.Manager
+	worker *worker.Worker
 	// workerDone 在 production 的 worker 迴圈結束時關閉；手動模式（測試）沒有迴圈，為 nil。
 	workerDone chan struct{}
 	// grace 是正常關閉時等待執行中任務的寬限期（PIPE-R12）。
@@ -185,14 +190,17 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	if runner == nil {
 		runner = toolexec.New(env.Vars)
 	}
+	s.runner = runner
+	// 工具的尋找順序在實際執行、/readyz、/api/system 與 doctor 之間一致（OPS-R8），見 ToolResolver。
+	tools := ToolResolver(env.Vars, cfg)
 	// cookie 存放在 secrets 表（資料金鑰加密）；每次呼叫 yt-dlp 時寫成 <data>/tmp 下的暫存檔（SEC-R7）。
 	s.cookies = cookies.New(s.store, s.keys, cfg.Data)
-	yt := &youtube.Client{Runner: runner, Tools: toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}, Cookies: s.cookies}
+	yt := &youtube.Client{Runner: runner, Tools: tools, Cookies: s.cookies}
 	s.queue = queue.New(s.store, env.Clock, store.NewID())
 	deps := pipeline.Deps{
 		Store: s.store, Clock: env.Clock, DataDir: cfg.Data, Log: log, YouTube: yt, Wake: s.queue.Wake, Version: version,
 		// Bilibili 與 YouTube 共用 runner、工具解析與 cookie 存放；Probe 不帶 --no-warnings，才看得到需要登入的警告（SRC-R8）。
-		Bilibili: &bilibili.Client{Runner: runner, Tools: toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}, Cookies: s.cookies, Log: log},
+		Bilibili: &bilibili.Client{Runner: runner, Tools: tools, Cookies: s.cookies, Log: log},
 		// 對外請求一律經過 netguard（ADR-0014），不使用 http.DefaultClient；逾時與大小由各呼叫端限制。
 		HTTP: netguard.NewClient(s.netw),
 	}
