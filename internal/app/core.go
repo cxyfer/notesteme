@@ -193,6 +193,11 @@ func (s *Server) apiDeps(env Env) api.Deps {
 		Queue:   s.queue,
 		Events:  s.eventsHandler(),
 		Tasks:   s.worker,
+		// OPS 切片的依賴；各自在 system.go、tools.go、backup.go、providers.go 實作，還沒實作時為 nil。
+		System:    s.systemInfo(env),
+		Tools:     s.toolManager(env),
+		Backup:    s.backupSource(env),
+		Providers: s.providerRegistry(env),
 	}
 }
 
