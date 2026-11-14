@@ -49,21 +49,76 @@ func (s *session) resolveItem(ctx context.Context, arg string) (string, error) {
 	if !refPrefix.MatchString(arg) {
 		return arg, nil
 	}
-	var list struct {
-		Items []struct {
-			ID  string `json:"id"`
-			Ref string `json:"ref"`
-		} `json:"items"`
-	}
-	if err := s.be.getJSON(ctx, "/api/items", &list); err != nil {
+	var found string
+	err := s.walkItemPages(ctx, nil, func(page itemsPage) (bool, error) {
+		for _, raw := range page.Items {
+			var it struct {
+				ID  string `json:"id"`
+				Ref string `json:"ref"`
+			}
+			if err := json.Unmarshal(raw, &it); err != nil {
+				return false, fmt.Errorf("回應不是預期的 JSON：%w", err)
+			}
+			if it.Ref == arg {
+				found = it.ID
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	if err != nil {
 		return "", err
 	}
-	for _, it := range list.Items {
-		if it.Ref == arg {
-			return it.ID, nil
-		}
+	if found == "" {
+		return "", &apiError{Status: http.StatusNotFound, Code: "not_found", Message: fmt.Sprintf("找不到影音 %s。", arg)}
 	}
-	return "", &apiError{Status: http.StatusNotFound, Code: "not_found", Message: fmt.Sprintf("找不到影音 %s。", arg)}
+	return found, nil
+}
+
+// itemsPage 是 GET /api/items 的一頁；Items 保留原始 JSON，--json 輸出才能以 API 的回應為準（CLI-R5）。
+type itemsPage struct {
+	Items      []json.RawMessage `json:"items"`
+	Total      int               `json:"total"`
+	NextCursor string            `json:"next_cursor"`
+	// Raw 是這一頁的原始回應。
+	Raw []byte `json:"-"`
+}
+
+// maxItemPages 是讀取清單時最多讀幾頁，避免 server 異常（游標一直不結束）時無窮迴圈。
+const maxItemPages = 10000
+
+// walkItemPages 從第一頁開始依 next_cursor 讀到最後一頁；fn 回傳 true 時提前結束。
+// params 是篩選條件（status、channel 等），每一頁都帶著，游標只在相同的篩選條件下有效。
+func (s *session) walkItemPages(ctx context.Context, params url.Values, fn func(itemsPage) (stop bool, err error)) error {
+	q := url.Values{}
+	for k, v := range params {
+		q[k] = v
+	}
+	q.Set("limit", "200")
+	prev := ""
+	for range maxItemPages {
+		raw, _, err := s.be.call(ctx, http.MethodGet, "/api/items?"+q.Encode(), nil)
+		if err != nil {
+			return err
+		}
+		var page itemsPage
+		if err := json.Unmarshal(raw, &page); err != nil {
+			return fmt.Errorf("回應不是預期的 JSON：%w", err)
+		}
+		page.Raw = raw
+		if stop, err := fn(page); err != nil || stop {
+			return err
+		}
+		if page.NextCursor == "" {
+			return nil
+		}
+		if page.NextCursor == prev {
+			return fmt.Errorf("server 回傳了重複的游標，無法讀完清單")
+		}
+		prev = page.NextCursor
+		q.Set("cursor", page.NextCursor)
+	}
+	return fmt.Errorf("清單超過 %d 頁，已停止讀取", maxItemPages)
 }
 
 // fetchItem 取得影音詳情，同時回傳原始的 JSON 物件（輸出以 API 的回應為準，CLI-R5）。
@@ -154,8 +209,8 @@ func parseItems(args []string) (*plan, error) {
 func parseItemsLs(args []string) (*plan, error) {
 	g := &globals{}
 	fs := newFlagSet("items ls", g)
-	status := fs.String("status", "", "依步驟狀態篩選（<stage>=<status>）")
-	channel := fs.String("channel", "", "依頻道篩選")
+	status := fs.String("status", "", "依步驟狀態篩選（<stage>=<status>，多個以逗號分隔；同一步驟為 OR，不同步驟為 AND）")
+	channel := fs.String("channel", "", "依頻道 ID 篩選")
 	pos, err := parseFlags(fs, args)
 	if err != nil {
 		return nil, err
@@ -163,26 +218,56 @@ func parseItemsLs(args []string) (*plan, error) {
 	if len(pos) != 0 {
 		return nil, usagef("items ls 不接受位置參數：%q。", pos[0])
 	}
-	// TODO(LIB)：API 的清單還沒有篩選條件；做 --status、--channel 時加在 API 上，CLI 只傳遞參數。
-	if *status != "" || *channel != "" {
-		return nil, usagef("items ls 的 --status、--channel 尚未支援。")
+	params := url.Values{}
+	if *status != "" {
+		for _, v := range strings.Split(*status, ",") {
+			stage, st, ok := strings.Cut(strings.Replace(strings.TrimSpace(v), ":", "=", 1), "=")
+			if !ok || !pipeline.ValidStage(stage) || !pipeline.ValidStatus(st) {
+				return nil, usagef("--status 的格式是 <步驟>=<狀態>（步驟：%s），收到 %q。", strings.Join(pipeline.Stages, "、"), v)
+			}
+			// API 的格式是 <步驟>:<狀態>。
+			params.Add("status", stage+":"+st)
+		}
+	}
+	if *channel != "" {
+		params.Set("channel", *channel)
 	}
 	return &plan{g: g, run: func(ctx context.Context, s *session) (int, error) {
-		raw, _, err := s.be.call(ctx, http.MethodGet, "/api/items", nil)
+		// 一直讀到沒有 next_cursor 為止：清單由新到舊，超過一頁時不能只看第一頁。
+		var items []json.RawMessage
+		total, pages := 0, 0
+		var firstRaw []byte
+		err := s.walkItemPages(ctx, params, func(p itemsPage) (bool, error) {
+			if pages == 0 {
+				firstRaw = p.Raw
+			}
+			items = append(items, p.Items...)
+			total = p.Total
+			pages++
+			return false, nil
+		})
 		if err != nil {
 			return 0, err
 		}
 		if g.json {
-			s.printRaw(raw)
-			return exitOK, nil
+			// 只有一頁時原樣輸出 API 的回應（CLI-R5）；多頁時合併成同樣形狀的 JSON（沒有 next_cursor）。
+			if pages == 1 {
+				s.printRaw(firstRaw)
+				return exitOK, nil
+			}
+			if items == nil {
+				items = []json.RawMessage{}
+			}
+			return exitOK, s.printJSON(struct {
+				Items []json.RawMessage `json:"items"`
+				Total int               `json:"total"`
+			}{items, total})
 		}
-		var list struct {
-			Items []itemView `json:"items"`
-		}
-		if err := json.Unmarshal(raw, &list); err != nil {
-			return 0, fmt.Errorf("回應不是預期的 JSON：%w", err)
-		}
-		for _, it := range list.Items {
+		for _, raw := range items {
+			var it itemView
+			if err := json.Unmarshal(raw, &it); err != nil {
+				return 0, fmt.Errorf("回應不是預期的 JSON：%w", err)
+			}
 			fmt.Fprintf(s.stdout, "%s\t%s\n", it.label(), it.Title)
 		}
 		return exitOK, nil
