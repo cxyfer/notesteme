@@ -52,6 +52,15 @@ ING-ingest.feature: Only the selected Bilibili parts are ingested
 ING-ingest.feature: A playlist is expanded once into its videos
 ING-ingest.feature: A channel cannot be ingested directly
 ING-ingest.feature: Content that needs a cookie is flagged before submitting
+LIB-library.feature: Filter by platform
+LIB-library.feature: Filter by stage status
+LIB-library.feature: Conditions are combined with AND
+LIB-library.feature: Title search matches partial words in any language [example 1]
+LIB-library.feature: Title search matches partial words in any language [example 2]
+LIB-library.feature: Title search matches partial words in any language [example 3]
+LIB-library.feature: Pages are limited and use a cursor
+LIB-library.feature: Items with estimated timings can be filtered
+LIB-library.feature: The queue shows each lane with its limit
 NRM-normalize.feature: Rolling auto captions are de-duplicated
 NRM-normalize.feature: Rolling Chinese captions are de-duplicated without spaces
 NRM-normalize.feature: A cue that only shares the first letters of a word is not merged
