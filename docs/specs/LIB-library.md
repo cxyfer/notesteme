@@ -43,6 +43,37 @@
 - API：`GET /api/items`、`GET /api/items/:id`、`GET /api/items/:id/cues`、`GET /api/items/:id/media`、`GET /api/queue`、`GET /api/events`
 - UI：見上方連結
 
+**`GET /api/items`（LIB-R1、R3、R4、R7）**
+
+- 查詢參數：
+  - `platform`：`youtube`、`bilibili`、`podcast`、`local`。
+  - `channel`：頻道 ID。
+  - `status`：`<stage>:<狀態>`，可以重複。stage 必須是 pipeline 的步驟，狀態必須是已知的步驟狀態，否則回 422。同一個 stage 的多個值是 OR，不同 stage 之間是 AND。stage 的狀態取最新的一次執行。
+  - `error_class`、`lang`（原文語言）。
+  - `published_from`、`published_to`：RFC 3339。
+  - `duration_min`、`duration_max`：秒，不得小於 0。
+  - `timing`：timing origin。條件是影音目前的 transcript 產出中，至少有一個 cue 的 timing 是這個值。
+  - `q`：標題搜尋，去掉前後空白，最多 200 字元。
+  - `limit`：1～200，預設 50。
+  - `cursor`。
+  - `read_state`：M1 沒有資料模型，帶這個參數回 501。
+- 多個條件之間是 AND。
+- 回應：`{items, total, next_cursor}`。
+  - `total` 是符合條件的總數，和目前在第幾頁無關。
+  - 最後一頁省略 `next_cursor`，不回 null。
+- 排序：`created_at` 由新到舊，相同時依 `id`。
+- 游標：
+  - 不透明的 base64url 字串，內容是位置與篩選條件的指紋。
+  - 格式不正確、被竄改、或篩選條件改變時，回 422 `invalid_input`，訊息「游標不正確或已失效，請從第一頁重新讀取。」。
+  - 游標只代表位置，不帶權限。
+- 標題搜尋：
+  - 比對的是用 Go 的 `strings.ToLower` 轉換後的標題（存在 `items.title_fold`），用 `instr` 做子字串比對。
+  - 沒有萬用字元，2 個字以下也能搜。
+  - 不用 SQLite 的 `LIKE` 或 `lower()`，因為兩者只對 ASCII 不分大小寫。也不用 FTS5 trigram，因為它不能比對 3 個字以下的字串。
+- timing 篩選：transcript 產出寫入時，記錄 cues 中出現過的 timing origin（`artifacts.timings_json`）。
+
+**`GET /api/queue`（LIB-R8）**：`{lanes: [{class, limit, running, waiting, paused}]}`。
+
 ## 不在範圍內
 
 - 字幕全文搜尋、儲存檢視、批次操作（M4，故事地圖 SRCH、LIB-08）。
@@ -50,4 +81,9 @@
 
 ## 待決問題
 
+- 場景修改（2026-11-15，LIB 切片 DoR，owner 同意）：Background 的 `yt:agile43xxxx` 由 `has been ingested` 改成 `has been processed up to "metadata"`，R8 的 download `waiting` 由 2 改成 1。原因是新增後、取得 metadata 之前標題是空的，不能用來驗證標題搜尋（ING-R12：新增時不同步取得 metadata）。
+- LIB-R4 的「依頻道、發布日、狀態分組」是 UI 的呈現。API 目前只依建立時間排序，`group_by` 等 UI 切片再設計。
+- 標題搜尋不做 NFKC（全形英數）與簡繁互通，例如「假装」找不到「假裝」，之後再評估。
+- 舊的 transcript 產出沒有 `timings_json`，不回填。M1 尚未發布，沒有舊資料。
+- R6（本機檔案的 Range 請求）要先有 ING-05 的本機檔案新增與 inbox watcher，留給 ING 切片。
 - Bilibili 嵌入播放器能否控制播放位置（M0）。不行時，點擊字幕句改成「在 Bilibili 開啟這個時間」。

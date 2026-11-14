@@ -8,7 +8,7 @@ Feature: Library, item page and queue page
     And a YouTube video "yt:agile43xxxx" titled "我们都只是在假装着做Agile"
     And a Bilibili video "BV1xx411c7mD" with 1 part
     And the item "yt:pg100xxxxxx" has been processed up to "normalize"
-    And the item "yt:agile43xxxx" has been ingested
+    And the item "yt:agile43xxxx" has been processed up to "metadata"
     And the item "bili:BV1xx411c7mD/p1" has been ingested
 
   @M1 @LIB-01 @LIB-R1
@@ -82,7 +82,7 @@ Feature: Library, item page and queue page
     When the owner sends "GET /api/queue"
     Then the response contains:
       """
-      { "lanes": [ { "class": "download", "limit": 2, "running": 0, "waiting": 2 } ] }
+      { "lanes": [ { "class": "download", "limit": 2, "running": 0, "waiting": 1 } ] }
       """
 
   @M1 @LIB-02 @LIB-R2 @ui @manual
