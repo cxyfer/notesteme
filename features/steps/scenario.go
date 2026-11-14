@@ -141,7 +141,7 @@ func (s *Scenario) close() error {
 	return err
 }
 
-// checkLogs 確認 server 的 log 沒有出現環境變數中的密碼或 master key（NFR-SEC-3）。
+// checkLogs 確認 server 的 log 與假工具的呼叫參數沒有出現環境變數中的密碼、master key 或 API key（NFR-SEC-3）。
 func (s *Scenario) checkLogs() error {
 	logs := s.World.Log.String()
 	secrets := map[string]bool{
@@ -157,6 +157,19 @@ func (s *Scenario) checkLogs() error {
 	for v := range secrets {
 		if strings.Contains(logs, v) {
 			errs = append(errs, fmt.Errorf("server 的 log 含有 secret %q（NFR-SEC-3）", v))
+		}
+	}
+	// 假工具的呼叫參數也要掃：命令列會被 ps 看到，secret 不能出現在子程序的參數中。
+	calls, err := s.World.ToolCalls()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("讀取假工具的呼叫紀錄：%w", err))
+	}
+	for _, c := range calls {
+		argv := strings.Join(c.Argv, "\x00")
+		for v := range secrets {
+			if strings.Contains(argv, v) {
+				errs = append(errs, fmt.Errorf("假工具 %s 的呼叫參數含有 secret %q（NFR-SEC-3）：%q", c.Tool, v, c.Argv))
+			}
 		}
 	}
 	return errors.Join(errs...)
