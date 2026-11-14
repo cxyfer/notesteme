@@ -54,6 +54,9 @@ const msgFileTooLarge = "音檔超過語音轉錄服務的大小上限（25 MiB�
 // requestTimeout 是整個請求（含上傳音檔）的逾時；回應大小上限用 netguard.LimitFeed（GRD-R5）。
 const requestTimeout = 10 * time.Minute
 
+// maxErrorBody 是非 200 回應最多讀取（並丟棄）的 body 大小。
+const maxErrorBody = 4 << 10
+
 // ErrNoTranscript 表示 Groq 回傳的 segments 為空（例如靜音或沒有語音）；呼叫端改用下一個來源。
 var ErrNoTranscript = fmt.Errorf("groq：沒有轉錄結果：%w", errclass.ErrNoResult)
 
@@ -201,18 +204,11 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*R
 	defer resp.Body.Close()
 	defer pr.Close()
 
-	// LimitBody 多讀 1 個 byte 才能分辨「剛好到上限」與「超過上限」，超過時不截斷。
-	body, err := io.ReadAll(netguard.LimitBody(resp, netguard.LimitFeed))
-	if err != nil {
-		if errors.Is(err, netguard.ErrTooLarge) {
-			return nil, fail(errclass.ClassPermanent, "回應超過大小上限", err)
-		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, fail(errclass.ClassRetryable, "讀取回應失敗", err)
+	// 先依狀態碼分類，再讀 body：非 200 的 body 不影響分類（例如 401 搭超大 body 仍是 needs_action），
+	// 也不會因為 body 過大或讀取失敗而被誤判；只讀固定的少量，讓連線有機會重用。
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorBody))
 	}
-
 	// 錯誤訊息只帶狀態碼，不帶回應內文。
 	switch code := resp.StatusCode; {
 	case code == http.StatusUnauthorized, code == http.StatusForbidden:
@@ -228,6 +224,18 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*R
 		return nil, fail(errclass.ClassPermanent, fmt.Sprintf("HTTP %d（不跟隨轉址）", code), nil)
 	case code != http.StatusOK:
 		return nil, fail(errclass.ClassPermanent, fmt.Sprintf("HTTP %d", code), nil)
+	}
+
+	// 只有 200 才讀完整 body。LimitBody 多讀 1 個 byte 才能分辨「剛好到上限」與「超過上限」，超過時不截斷。
+	body, err := io.ReadAll(netguard.LimitBody(resp, netguard.LimitFeed))
+	if err != nil {
+		if errors.Is(err, netguard.ErrTooLarge) {
+			return nil, fail(errclass.ClassPermanent, "回應超過大小上限", err)
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, fail(errclass.ClassRetryable, "讀取回應失敗", err)
 	}
 
 	var out transcriptionResponse

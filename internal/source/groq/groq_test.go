@@ -466,3 +466,20 @@ func TestTranscribeRejectsFilesOverTheSizeLimit(t *testing.T) {
 		t.Errorf("剛好等於上限應可上傳：%v", err)
 	}
 }
+
+// 先依狀態碼分類，再決定要不要讀 body：非 200 的回應就算 body 很大也不影響分類（401 仍是 needs_action）。
+func TestTranscribeClassifiesByStatusBeforeReadingTheBody(t *testing.T) {
+	huge := strings.Repeat("x", int(netguard.LimitFeed)+1024)
+	for code, want := range map[int]errclass.Class{
+		401: errclass.ClassNeedsAction, 403: errclass.ClassNeedsAction,
+		429: errclass.ClassRetryable, 500: errclass.ClassRetryable,
+		400: errclass.ClassPermanent, 413: errclass.ClassPermanent,
+	} {
+		srv := respond(code, huge)
+		_, err := newClient(srv).Transcribe(context.Background(), audioFile(t), "")
+		srv.Close()
+		if got := classOf(t, err); got != want {
+			t.Errorf("HTTP %d 搭超大 body：class = %s，預期 %s", code, got, want)
+		}
+	}
+}
