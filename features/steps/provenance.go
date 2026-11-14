@@ -3,6 +3,7 @@ package steps
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,6 +16,10 @@ import (
 
 // 這個檔案放產出的來源紀錄（provenance）與 cue 時間來源的斷言，步驟的註冊在 items.go。
 
+// errServerStopped 是來源紀錄的斷言在沒有執行中的 server 時的錯誤：它經 app.Server 的測試 hook 讀取，
+// server 停止後不支援讀資料庫（見 liveStage）。
+var errServerStopped = errors.New("server 已停止：來源紀錄的斷言需要執行中的 server，請在 server 執行時斷言")
+
 // artifactHasProvenance 比對產出的來源紀錄；表格欄位 field、value，每一列都要符合。
 //   - 讀取經 app.Server.ArtifactProvenance（只供測試用的 hook，不新增 API）。
 //   - field 用點號表示巢狀；陣列的段落是索引（例如 params.0.lang）；值一律以字串比較。
@@ -24,9 +29,17 @@ func (s *Scenario) artifactHasProvenance(name, ref string, table *godog.Table) e
 	if err != nil {
 		return err
 	}
+	// 場景讓 server 停下之後，讀 API 會隱含啟動新的 server（比照 liveStage，直接失敗）。
+	if s.stopped {
+		return errServerStopped
+	}
 	id, err := s.itemID(ref)
 	if err != nil {
 		return err
+	}
+	// itemID 會視需要隱含啟動 server；這裡仍沒有 server 時明確失敗，不要 nil pointer panic。
+	if s.server == nil {
+		return errServerStopped
 	}
 	rec, err := s.server.ArtifactProvenance(s.ctx, id, name)
 	if err != nil {
