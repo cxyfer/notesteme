@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -45,6 +47,41 @@ var cookieErrors = []struct {
 	{cookies.ErrInvalidFormat, CodeCookieInvalidFormat},
 }
 
+// maxCookieBodyBytes 是 POST /api/cookies 請求本體的上限：內容上限 64 KiB，
+// 加上 JSON 跳脫（每個字元最多展開成 6 個位元組）的餘裕後仍在 512 KiB 之內。
+const maxCookieBodyBytes = 512 << 10
+
+// cookieBodyLimit 在進入 Huma 之前限制 POST /api/cookies 的請求本體：超過 maxCookieBodyBytes 時回 422 cookie_too_large。
+// Huma 的 MaxBodyBytes 超過時只會回 413，而規格要求所有「cookie 太大」都是同一個 422 code。
+// 本體最多讀到上限加 1 個位元組就停止，不會把超大的請求讀進記憶體。
+func cookieBodyLimit(next http.Handler) http.Handler {
+	tooLarge := func(w http.ResponseWriter) {
+		writeError(w, newError(http.StatusUnprocessableEntity, CodeCookieTooLarge, cookies.ErrTooLarge.Error()))
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/cookies" || r.Body == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if r.ContentLength > maxCookieBodyBytes {
+			tooLarge(w)
+			return
+		}
+		body, err := io.ReadAll(io.LimitReader(r.Body, maxCookieBodyBytes+1))
+		if err != nil {
+			writeError(w, newError(http.StatusBadRequest, CodeInvalidInput, defaultMessages[http.StatusBadRequest].msg))
+			return
+		}
+		if len(body) > maxCookieBodyBytes {
+			tooLarge(w)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
+		next.ServeHTTP(w, r)
+	})
+}
+
 type cookiesInput struct {
 	Body struct {
 		Platform string `json:"platform" doc:"youtube 或 bilibili"`
@@ -64,6 +101,8 @@ func (rt *routes) registerCookies(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "cookies-put", Method: http.MethodPost, Path: "/api/cookies",
 		Summary: "上傳平台 cookie（加密存放，每個平台一份），並恢復等待它的 blocked 步驟（SEC-R4、SRC-R8、PIPE-R4）",
+		// 明確設定上限，不用 huma 的預設值；超過時由 cookieBodyLimit 先回 422（huma 自己只會回 413）。
+		MaxBodyBytes: maxCookieBodyBytes,
 	}, rt.putCookies)
 }
 

@@ -89,7 +89,8 @@ func build(d Deps, authn func(http.Handler) http.Handler) http.Handler {
 		}, notImplemented)
 	}
 
-	var h http.Handler = mux
+	// cookie 上傳的大小限制在驗證之後、Huma 之前（沒登入的請求不會被讀取本體）。
+	var h http.Handler = cookieBodyLimit(mux)
 	h = authn(h)
 	h = requestInfoMiddleware(d.Auth)(h)
 	h = logMiddleware(d.Log, d.Clock)(h)
