@@ -75,12 +75,14 @@ func (w *World) AppEnv() app.Env {
 			impl[k] = v
 		}
 	}
+	// migration 的覆寫（OPS-R3、R4）；組合不合理的步驟在設定當下就會失敗，這裡不會有錯誤。
+	migs, _ := w.Migrations()
 	return app.Env{
 		Vars:   vars,
 		Clock:  w.Clock,
 		Net:    w.Net.Deps(),
 		Listen: w.Listen,
 		Log:    w.Log,
-		Test:   &app.TestControls{LowCostHashing: true, ManualWorker: true, SkipShutdownGrace: true, ImplVersions: impl},
+		Test:   &app.TestControls{LowCostHashing: true, ManualWorker: true, SkipShutdownGrace: true, ImplVersions: impl, Migrations: migs},
 	}
 }

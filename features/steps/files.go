@@ -1,9 +1,12 @@
 package steps
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -12,15 +15,16 @@ import (
 	"github.com/cucumber/godog"
 
 	"github.com/cxyfer/notesteme/features/internal/faketool"
+	"github.com/cxyfer/notesteme/features/internal/harness"
 )
 
 // registerFiles 註冊「檔案」的步驟，句型見 docs/specs/steps.md。
 func registerFiles(r *Registry, s *Scenario) {
-	r.Step(`the file {string} contains:`, func(string, *godog.DocString) error { return godog.ErrPending })
+	r.Step(`the file {string} contains:`, s.fileContainsDoc)
 	r.Step(`the file {string} exists`, s.fileExists)
 	r.Step(`the file {string} does not exist`, s.fileDoesNotExist)
-	r.Step(`the file {string} contains {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the file {string} does not contain {string}`, func(string, string) error { return godog.ErrPending })
+	r.Step(`the file {string} contains {string}`, s.fileContainsText)
+	r.Step(`the file {string} does not contain {string}`, s.fileDoesNotContainText)
 	r.Step(`the data directory does not contain the created token`, func() error { return godog.ErrPending })
 	r.Step(`the file {string} is:`, func(string, *godog.DocString) error { return godog.ErrPending })
 	r.Step(`the file {string} has the mode {string}`, s.fileHasMode)
@@ -205,4 +209,181 @@ func (s *Scenario) noCookieFileRemains(dir string) error {
 		}
 	}
 	return nil
+}
+
+// filePath 把場景路徑換成實際路徑：虛擬路徑（/data、/config、/media、/backups）照 World.Expand，
+// 其他 /tmp 底下的路徑放到場景根目錄的 tmp/ 之下，不會寫到真正的 /tmp。
+func (s *Scenario) filePath(path string) string {
+	real := s.World.Expand(path)
+	if strings.HasPrefix(real, "/tmp/") && !strings.HasPrefix(real, s.World.Root+string(filepath.Separator)) {
+		return filepath.Join(s.World.Root, "tmp", strings.TrimPrefix(real, "/tmp/"))
+	}
+	return real
+}
+
+// fileContainsDoc 建立檔案：內容照字面寫入，上層目錄不存在時自動建立。
+func (s *Scenario) fileContainsDoc(path string, doc *godog.DocString) error {
+	real := s.filePath(path)
+	if err := os.MkdirAll(filepath.Dir(real), 0o700); err != nil {
+		return fmt.Errorf("建立 %s 的上層目錄：%w", path, err)
+	}
+	if err := os.WriteFile(real, []byte(doc.Content), 0o600); err != nil {
+		return fmt.Errorf("寫入檔案 %s：%w", path, err)
+	}
+	return nil
+}
+
+// maxArchiveBytes 是展開壓縮檔時內容總量的上限（防止測試中的壓縮炸彈）。
+const maxArchiveBytes = 256 << 20
+
+// fileBlobs 讀出要搜尋的內容：`.tar.gz`（與 `.tgz`）先 gunzip 再逐一取出每個 tar 項目的內容（檔名不算），
+// `.gz` 只 gunzip，其他檔案原樣。strict 為 false 時，壓縮檔解不開就退回原始位元組（After hook 掃描用）。
+func fileBlobs(real string, strict bool) ([][]byte, error) {
+	raw, err := os.ReadFile(real)
+	if err != nil {
+		return nil, err
+	}
+	lower := strings.ToLower(real)
+	var blobs [][]byte
+	switch {
+	case strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz"):
+		blobs, err = untar(raw)
+	case strings.HasSuffix(lower, ".gz"):
+		var b []byte
+		if b, err = gunzip(raw); err == nil {
+			blobs = [][]byte{b}
+		}
+	default:
+		return [][]byte{raw}, nil
+	}
+	if err != nil {
+		if strict {
+			return nil, err
+		}
+		return [][]byte{raw}, nil
+	}
+	return blobs, nil
+}
+
+func gunzip(raw []byte) ([]byte, error) {
+	zr, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	defer zr.Close()
+	b, err := io.ReadAll(io.LimitReader(zr, maxArchiveBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxArchiveBytes {
+		return nil, errors.New("展開後的內容超過上限")
+	}
+	return b, nil
+}
+
+// untar 取出 tar.gz 中每個一般檔案項目的內容。
+func untar(raw []byte) ([][]byte, error) {
+	zr, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	defer zr.Close()
+	tr := tar.NewReader(zr)
+	var out [][]byte
+	total := 0
+	for {
+		h, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return out, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if h.Typeflag != tar.TypeReg {
+			continue
+		}
+		b, err := io.ReadAll(io.LimitReader(tr, maxArchiveBytes+1))
+		if err != nil {
+			return nil, err
+		}
+		if total += len(b); total > maxArchiveBytes {
+			return nil, errors.New("展開後的內容超過上限")
+		}
+		out = append(out, b)
+	}
+}
+
+// fileContainsText 實作 `the file {string} contains {string}`；壓縮檔先解開，任何一個項目包含就成立。
+func (s *Scenario) fileContainsText(path, text string) error {
+	if text == "" {
+		return errors.New("要搜尋的文字不能是空的")
+	}
+	blobs, err := fileBlobs(s.filePath(path), true)
+	if err != nil {
+		return fmt.Errorf("讀取檔案 %s：%w", path, err)
+	}
+	for _, b := range blobs {
+		if bytes.Contains(b, []byte(text)) {
+			return nil
+		}
+	}
+	return fmt.Errorf("檔案 %s 不含 %q（共 %d 個內容）", path, text, len(blobs))
+}
+
+// fileDoesNotContainText 實作 `the file {string} does not contain {string}`；壓縮檔先解開，所有項目都不包含才成立。
+// 檔案必須存在：不存在的檔案不能證明任何事。
+func (s *Scenario) fileDoesNotContainText(path, text string) error {
+	if text == "" {
+		return errors.New("要搜尋的文字不能是空的")
+	}
+	blobs, err := fileBlobs(s.filePath(path), true)
+	if err != nil {
+		return fmt.Errorf("讀取檔案 %s：%w", path, err)
+	}
+	for i, b := range blobs {
+		if bytes.Contains(b, []byte(text)) {
+			return fmt.Errorf("檔案 %s 的第 %d 個內容含有 %q", path, i+1, text)
+		}
+	}
+	return nil
+}
+
+// checkBackupSecrets 在 After hook 掃描 /backups（OPS-R1）：每個檔案（`.tar.gz` 先解開）的內容都不能含有 master key 的值。
+func (s *Scenario) checkBackupSecrets() error {
+	needles := map[string]bool{harness.TestMasterKey: true}
+	if v := s.World.Env["NOTESTEME_MASTER_KEY"]; len(v) >= 4 {
+		needles[v] = true
+	}
+	root := s.World.BackupsDir()
+	var errs []error
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if !d.Type().IsRegular() {
+			return nil // 目錄與 symlink（latest 指向的檔案會另外掃到）
+		}
+		blobs, err := fileBlobs(path, false)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		for _, b := range blobs {
+			for n := range needles {
+				if bytes.Contains(b, []byte(n)) {
+					errs = append(errs, fmt.Errorf("備份 %s 含有 master key 的值（OPS-R1、NFR-SEC-3）", s.World.Unexpand(path)))
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		errs = append(errs, fmt.Errorf("掃描 /backups：%w", err))
+	}
+	return errors.Join(errs...)
 }
