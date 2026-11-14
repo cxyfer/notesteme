@@ -251,3 +251,13 @@ func TestYouTubeWarningsHonourNoWarnings(t *testing.T) {
 		t.Fatalf("stderr = %q", errs)
 	}
 }
+
+// production 每次呼叫都帶 --cookies；沒有 cookie 時是空檔，視為沒有登入而不是格式錯誤。
+func TestEmptyCookieFileIsLoggedOut(t *testing.T) {
+	s := newScenario(t, biliState(t, true))
+	ck := writeCookies(t, s.work, "")
+	code, out, errs := s.inproc("yt-dlp", "-J", "--write-subs", "--cookies", ck, biliURL+"?p=1")
+	if code != 0 || biliInfoSubs(t, out)["ai-zh"] != nil || !strings.Contains(errs, "logged in") {
+		t.Fatalf("code=%d stderr=%q out=%q", code, errs, out)
+	}
+}

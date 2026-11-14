@@ -58,6 +58,9 @@ func loadCookies(path, cwd string) (cookieJar, error) {
 	if err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(string(b)) == "" {
+		return nil, nil // 空檔案沒有 cookie（production 每次呼叫都帶 --cookies，沒有 cookie 時是空檔）
+	}
 	lines := strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
 	if !cookieMagic.MatchString(lines[0]) {
 		return nil, fmt.Errorf("%s does not look like a Netscape format cookies file", path)

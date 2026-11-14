@@ -336,6 +336,10 @@ func TestProviderHasNoAPIKey(t *testing.T) {
 	if s.World.Env[harness.GroqAPIKeyEnv] == "" {
 		t.Error("pending 時不應該移除 key")
 	}
+	// 平台字幕來源：沒有 API key，明確失敗（不是 pending），訊息指出需要 cookie。
+	if err := s.providerHasNoAPIKey("bilibili-ai"); err == nil || errors.Is(err, godog.ErrPending) || !strings.Contains(err.Error(), "cookie") {
+		t.Errorf("bilibili-ai 應該明確失敗並說明需要 cookie：%v", err)
+	}
 	// 已實作的來源：移除環境變數與 fake 的 key 要求。
 	if err := s.providerHasNoAPIKey("supadata"); err != nil {
 		t.Fatal(err)
