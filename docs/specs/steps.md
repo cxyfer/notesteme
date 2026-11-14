@@ -260,7 +260,7 @@
 
 | 步驟 | 意思 |
 |---|---|
-| `When the owner runs {string}` | 執行 CLI，例如 `"notesteme items ls --json"`。只執行 `notesteme`；`docker …` 目前為 pending（OPS 切片處理）；不會隱含啟動 server |
+| `When the owner runs {string}` | 執行 CLI，例如 `"notesteme items ls --json"`。只執行 `notesteme` 與 `docker`；`docker compose … config --format json` 由 fakecompose 模擬，其他 `docker` 指令失敗（不是 pending）；不會隱含啟動 server |
 | `Then the command exits with {int}` | 結束碼。指令回報 `not_implemented`（尚未實作的子命令，或 API 回 501）且結果來自前一個步驟時為 pending |
 | `Then the command output contains {string}` | stdout 或 stderr 包含指定文字 |
 | `Then the command output is JSON containing:` | stdout 是 JSON，且包含指定內容 |
@@ -273,8 +273,8 @@
 | `Given the file {string} contains:` | 建立檔案：內容照字面寫入（doc string 的內容，不解析也不轉換）；上層目錄不存在時自動建立（例如 `/backups/old.tar.gz` 的 `/backups`） |
 | `Then the file {string} exists` | 檔案存在 |
 | `Then the file {string} does not exist` | 檔案不存在 |
-| `Then the file {string} contains {string}` | 檔案內容包含指定文字。`.tar.gz` 先 gunzip，再逐一比對每個 tar 項目的內容（檔名不算），任何一個項目包含就成立；其他壓縮檔照原本的方式解開 |
-| `Then the file {string} does not contain {string}` | 檔案內容不包含指定文字。`.tar.gz` 先 gunzip，再逐一比對每個 tar 項目的內容，所有項目都不包含才成立；其他壓縮檔照原本的方式解開 |
+| `Then the file {string} contains {string}` | 檔案內容包含指定文字。`.tar.gz` 先 gunzip，再逐一比對每個 tar 項目的內容（檔名不算），任何一個項目包含就成立；其他壓縮檔照原本的方式解開。解不開、或 `.tar.gz` 沒有任何一般檔案項目（「封存檔沒有任何檔案」）時失敗 |
+| `Then the file {string} does not contain {string}` | 檔案內容不包含指定文字。`.tar.gz` 先 gunzip，再逐一比對每個 tar 項目的內容，所有項目都不包含才成立；其他壓縮檔照原本的方式解開。解不開、或 `.tar.gz` 沒有任何一般檔案項目（「封存檔沒有任何檔案」）時失敗：空的封存檔不能證明「不含」 |
 | `Then the data directory does not contain the created token` | `/data` 中不含最近一次建立的 token 明文 |
 | `Then the file {string} is:` | 檔案內容完全相同 |
 | `Then the file {string} has the mode {string}` | 檔案權限，例如 `"0600"` |
@@ -322,4 +322,4 @@
 | `Then yt-dlp {string} is the active version` | 目前使用中的 yt-dlp：`/data/tools/yt-dlp-venv` 解析後指向的 venv，其中的 yt-dlp 回報這個版本（驗證更新真的切換、回退真的沒有切換） |
 | `Given an event from {string} exists` | 建立一筆指定時間的事件 |
 | `Then no event older than {int} days remains` | 事件都在保留期限內 |
-| `Then the number of events is {int}` | 持久化的事件筆數（包括場景中用 `an event from … exists` 建立的）。server 已明確停下時改用唯讀方式查詢 DB |
+| `Then the number of events is {int}` | 持久化的事件筆數：計算整張 events 表（包括場景中用 `an event from … exists` 建立的，不只是場景自己建立的）。server 已明確停下時改用唯讀方式查詢 DB |
