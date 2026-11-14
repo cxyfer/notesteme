@@ -204,6 +204,7 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	}
 	s.pipeline = pipeline.New(deps)
 	s.worker = worker.New(s.queue, s.pipeline, env.Clock, log)
+	s.worker.SetPeriodic(newHousekeeping(s.store, env.Clock, log)) // 每輪開頭清理過期事件（OPS-R10）
 
 	if n, err := s.queue.RecoverStale(ctx); err != nil {
 		return fmt.Errorf("放回上次留下的租約失敗：%w", err)

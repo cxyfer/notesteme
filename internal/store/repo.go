@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -48,39 +49,54 @@ func (s *Store) publish(ev events.Event) {
 	}
 }
 
-// emitStage 記下一次步驟狀態變更：交易中先排隊，單一陳述句則立即發布。
+// emitStage 記下一次步驟狀態變更：持久化到 events 表（OPS-R10），再依交易狀態發布（見 emit）。
 // 事件只是通知，查不到影音（例如已被刪除）時略過，不影響寫入本身。
-func (r *Repo) emitStage(ctx context.Context, itemID, stage, status string) {
-	if r.s == nil || r.s.sink.Load() == nil {
-		return
+func (r *Repo) emitStage(ctx context.Context, itemID, stage, status string) error {
+	if r.s == nil {
+		return nil
 	}
 	it, err := r.ItemByID(ctx, itemID)
-	if err != nil {
-		return
+	if errors.Is(err, ErrNotFound) {
+		return nil
 	}
-	r.emit(events.Event{
+	if err != nil {
+		return err
+	}
+	return r.emit(ctx, events.Event{
 		Type: events.TypeStageStatus, Item: source.Ref(it.Platform, it.ExternalID, it.Part),
 		ItemID: itemID, Stage: stage, Status: status,
 	})
 }
 
-// emitItemCreated 記下影音新增；排隊與發布的時機同 emitStage，所以 rollback 時不會發布。
-func (r *Repo) emitItemCreated(it Item) {
-	if r.s == nil || r.s.sink.Load() == nil {
-		return
+// emitItemCreated 記下影音新增；持久化與發布的時機同 emitStage，所以 rollback 時兩者都不會留下。
+func (r *Repo) emitItemCreated(ctx context.Context, it Item) error {
+	if r.s == nil {
+		return nil
 	}
-	r.emit(events.Event{
+	return r.emit(ctx, events.Event{
 		Type: events.TypeItemCreated, Item: source.Ref(it.Platform, it.ExternalID, it.Part), ItemID: it.ID,
 	})
 }
 
-// emit 交易中先排隊（commit 之後才發布），單一陳述句則立即發布。
-func (r *Repo) emit(ev events.Event) {
+// emit 先把事件寫進 events 表（OPS-R10），再發布給 SSE 訂閱者。
+//   - 交易中：寫入與狀態變更在同一個交易，一起 commit 或 rollback；發布先排隊，commit 之後才送出。
+//   - 單一陳述句（Write）：沒有包住它的交易，事件是緊接在狀態變更之後的另一個陳述句。
+//     兩者之間程序若中止，狀態已變更但事件沒有留下；目前只有 Tx 內的路徑保證原子，
+//     Write 路徑的原子性是已知的技術債（等 SSE replay 真的依賴 events 表時，再把這些寫入改走 Tx）。
+func (r *Repo) emit(ctx context.Context, ev events.Event) error {
+	payload, err := json.Marshal(ev)
+	if err != nil {
+		return fmt.Errorf("store: 序列化事件失敗：%w", err)
+	}
+	if err := r.InsertEvent(ctx, EventRecord{Type: ev.Type, ItemID: ev.ItemID, PayloadJSON: string(payload)}); err != nil {
+		return fmt.Errorf("store: 寫入事件失敗：%w", err)
+	}
 	if r.queued != nil {
 		*r.queued = append(*r.queued, ev)
-		return
+		return nil
 	}
 	r.s.publish(ev)
+	return nil
 }
 
 // Tx 在一個交易中執行 fn；fn 回傳錯誤、panic 或 ctx 取消時回復。

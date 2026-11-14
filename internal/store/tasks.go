@@ -149,7 +149,9 @@ func (r *Repo) ClaimTasks(ctx context.Context, o ClaimOptions) ([]Task, error) {
 		if err != nil {
 			return nil, err
 		}
-		r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
+		if err := r.emitStage(ctx, row.ItemID, row.Stage, row.Status); err != nil {
+			return nil, err
+		}
 	}
 	return claimed, nil
 }
@@ -254,7 +256,9 @@ func (r *Repo) resetStages(ctx context.Context, stageRunIDs []string) (int, erro
 		if err != nil {
 			return 0, err
 		}
-		r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
+		if err := r.emitStage(ctx, row.ItemID, row.Stage, row.Status); err != nil {
+			return 0, err
+		}
 	}
 	return len(stageRunIDs), nil
 }

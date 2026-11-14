@@ -86,6 +86,9 @@ type Config struct {
 	// MediaRoots 是 API 與 MCP 可以新增檔案的媒體根目錄，一律是 Clean 過的絕對路徑（GRD-R7）。
 	MediaRoots []string
 
+	// ASRProviders 是設定檔 asr.providers 解析並驗證後的內容，以 id 為 key（SEC-R3：command 類型只能在這裡定義）。
+	ASRProviders map[string]ASRProvider
+
 	// Origin 記錄每個欄位生效值的來源，key 為欄位名稱。
 	Origin map[string]Source
 }
@@ -221,6 +224,11 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 		cfg.Data, cfg.Origin[FieldData] = f.Data, SourceConfigFile
 	}
 	cfg.Tools = f.Tools
+	providers, err := parseASRProviders(&f.ASR, path)
+	if err != nil {
+		return err
+	}
+	cfg.ASRProviders = providers
 	for i, v := range f.TrustedProxies {
 		p, err := netip.ParsePrefix(strings.TrimSpace(v))
 		if err != nil {

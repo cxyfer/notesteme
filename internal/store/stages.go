@@ -73,7 +73,9 @@ func (r *Repo) InsertStageRun(ctx context.Context, n NewStageRun) (StageRun, err
 	if err != nil {
 		return StageRun{}, err
 	}
-	r.emitStage(ctx, n.ItemID, n.Stage, n.Status)
+	if err := r.emitStage(ctx, n.ItemID, n.Stage, n.Status); err != nil {
+		return StageRun{}, err
+	}
 	return r.StageRun(ctx, id)
 }
 
@@ -156,8 +158,7 @@ func (r *Repo) SetStageState(ctx context.Context, id string, st StageState) erro
 	if err != nil {
 		return err
 	}
-	r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
-	return nil
+	return r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
 }
 
 // SetStageResult 記錄步驟的快取鍵、版本與產出。
