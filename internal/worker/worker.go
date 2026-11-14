@@ -31,12 +31,23 @@ type Handler interface {
 	Handle(ctx context.Context, t store.Task) error
 }
 
+// Periodic 是 worker 的定期工作（例如清理過期事件，OPS-R10）：每一輪領取之前呼叫 Run，由它自己判斷到期與否。
+// 時間一律來自注入的 clock，不是 time.Now。
+type Periodic interface {
+	// Run 在每一輪開頭呼叫；還沒到期時什麼都不做。
+	Run(ctx context.Context) error
+	// NextAt 回傳下一次到期的時間；沒有排定時 ok 為 false。production 的 worker 閒置時用它決定何時醒來。
+	NextAt(ctx context.Context) (at time.Time, ok bool, err error)
+}
+
 // Worker 領取並執行任務。
 type Worker struct {
 	q   *queue.Queue
 	h   Handler
 	log *slog.Logger
 	clk clock.Clock
+	// periodic 是每一輪開頭執行的定期工作，可以是 nil；只能在 worker 開始執行之前用 SetPeriodic 設定。
+	periodic Periodic
 
 	maxRounds int
 
@@ -65,6 +76,19 @@ func New(q *queue.Queue, h Handler, clk clock.Clock, log *slog.Logger) *Worker {
 	return &Worker{q: q, h: h, clk: clk, log: log, running: map[string]int{}, active: map[string]*activeTask{}, maxRounds: MaxRounds}
 }
 
+// SetPeriodic 設定每一輪開頭執行的定期工作。必須在開始 RunRound、Run 之前呼叫。
+func (w *Worker) SetPeriodic(p Periodic) { w.periodic = p }
+
+// runPeriodic 執行定期工作。失敗只記 log，不影響領取任務：清理事件失敗不該讓影音停止處理。
+func (w *Worker) runPeriodic(ctx context.Context) {
+	if w.periodic == nil {
+		return
+	}
+	if err := w.periodic.Run(ctx); err != nil && ctx.Err() == nil {
+		w.log.Warn("定期工作失敗", "error", err)
+	}
+}
+
 // RunRound 領取一輪可以執行的任務，把它們的步驟標記為 running，各自開始執行後就回傳，不等待完成。
 // 每個資源類別依自己的上限與暫停設定領取（PIPE-R8、PIPE-R10）；設定改變後的下一輪就生效。
 // 回傳領取的任務數。
@@ -74,6 +98,7 @@ func (w *Worker) RunRound(ctx context.Context) (int, error) {
 	if w.draining {
 		return 0, nil
 	}
+	w.runPeriodic(ctx)
 	w.mu.Lock()
 	running := maps.Clone(w.running)
 	w.mu.Unlock()
@@ -271,13 +296,11 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 }
 
-// sleep 等到有事可做：收到通知、下一個任務到期，或 ctx 取消。after 是這一輪領取開始前的時間。
+// sleep 等到有事可做：收到通知、下一個任務或定期工作到期，或 ctx 取消。after 是這一輪領取開始前的時間。
 func (w *Worker) sleep(ctx context.Context, after time.Time) {
 	var timeout <-chan time.Time
-	if at, ok, err := w.q.NextDue(ctx, after); err != nil {
-		w.log.Error("查詢下一個任務的時間失敗", "error", err)
-	} else if ok {
-		d := at.Sub(w.clk.Now())
+	d, ok := w.nextWake(ctx, after)
+	if ok {
 		if d <= 0 {
 			// 領取期間剛好到期：不睡，馬上再領一輪。
 			return
@@ -291,4 +314,23 @@ func (w *Worker) sleep(ctx context.Context, after time.Time) {
 	case <-w.q.Wakeups():
 	case <-timeout:
 	}
+}
+
+// nextWake 回傳距離下一個該醒來的時間點還有多久：下一個任務到期，或定期工作到期，取較早的；都沒有時 ok 為 false。
+// 定期工作只計入「還在未來」的時間：它在這一輪開頭已經跑過，若仍是過去的時間，代表它失敗了，
+// 這時不能因此立刻醒來而不停地重試，改等下一次通知或到期。
+func (w *Worker) nextWake(ctx context.Context, after time.Time) (d time.Duration, ok bool) {
+	if at, has, err := w.q.NextDue(ctx, after); err != nil {
+		w.log.Error("查詢下一個任務的時間失敗", "error", err)
+	} else if has {
+		d, ok = at.Sub(w.clk.Now()), true
+	}
+	if w.periodic != nil {
+		if at, has, err := w.periodic.NextAt(ctx); err != nil {
+			w.log.Error("查詢定期工作的時間失敗", "error", err)
+		} else if pd := at.Sub(w.clk.Now()); has && pd > 0 && (!ok || pd < d) {
+			d, ok = pd, true
+		}
+	}
+	return d, ok
 }
