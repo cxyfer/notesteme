@@ -93,6 +93,21 @@ func TestPythonPipUpgradeInstallsLatestRelease(t *testing.T) {
 	}
 }
 
+// --isolated 有沒有帶都要能安裝（production 的 PipArgs 可能加上它）。
+func TestPythonPipAcceptsIsolatedWithOrWithoutIt(t *testing.T) {
+	s := newScenario(t, State{Releases: map[string]*Release{"2026.11.10": {}}})
+	for i, extra := range [][]string{{}, {"--isolated"}} {
+		venv := filepath.Join(s.root, "v", string(rune('a'+i)))
+		if code, _, errs := s.exec(Python3, "-m", "venv", venv); code != 0 {
+			t.Fatalf("venv：%d %q", code, errs)
+		}
+		args := pipInstall(append(extra, "yt-dlp[default]==2026.11.10")...)
+		if code, _, errs := s.execAt(filepath.Join(venv, "bin", "python"), args...); code != 0 {
+			t.Errorf("%v：code=%d stderr=%q", extra, code, errs)
+		}
+	}
+}
+
 func TestPythonPipRejectsUnknownReleaseAndArguments(t *testing.T) {
 	s := newScenario(t, State{Releases: map[string]*Release{"2026.11.10": {}}})
 	venv := filepath.Join(s.root, "v")

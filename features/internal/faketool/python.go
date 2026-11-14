@@ -21,7 +21,8 @@ const (
 var pipSpec = regexp.MustCompile(`^yt-dlp\[default\](?:==(\d{4}\.\d{2}\.\d{2}(?:\.\d+)?))?$`)
 
 // 假 pip 接受的旗標（只有 production 實際會帶的；其他一律拒絕，及早發現介面不一致，也擋下不該出現的 pip 參數）。
-var pipFlags = map[string]bool{"--disable-pip-version-check": true, "--no-input": true, "-U": true}
+// --isolated 有沒有帶都接受：production 的 PipArgs 加入它之前與之後，這個 fake 都要能用。
+var pipFlags = map[string]bool{"--disable-pip-version-check": true, "--no-input": true, "--isolated": true, "-U": true}
 
 // InstallVenv 在 dir 建立假的 venv：bin/python 指向測試 binary，pyvenv.cfg 標記它是 venv。
 // version 非空時也放上 bin/yt-dlp 並記下版本，等同已經裝好那個版本的 yt-dlp。
@@ -53,6 +54,23 @@ func installYtDlp(dir, exe, version string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, venvVersionFile), []byte(version+"\n"), 0o644)
+}
+
+// VenvYtDlpVersion 回傳假 venv（dir）內的 yt-dlp 回報的版本：與假 yt-dlp 的 --version 讀同一份記錄。
+// venv 內沒有 yt-dlp、或沒有記下版本時回傳錯誤。
+func VenvYtDlpVersion(dir string) (string, error) {
+	if _, err := os.Stat(filepath.Join(dir, "bin", exeName(YtDlp))); err != nil {
+		return "", fmt.Errorf("venv 內沒有 yt-dlp：%w", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, venvVersionFile))
+	if err != nil {
+		return "", fmt.Errorf("venv 沒有記下 yt-dlp 的版本：%w", err)
+	}
+	v := strings.TrimSpace(string(b))
+	if v == "" {
+		return "", fmt.Errorf("venv 記下的 yt-dlp 版本是空的")
+	}
+	return v, nil
 }
 
 // relink 建立指向 target 的 symlink，已存在的同名檔案會被取代。

@@ -30,6 +30,34 @@ func (s *Scenario) opsYtDlpInstalled(version string) error {
 	return os.Symlink(filepath.Join(ytdlp.VersionsDirName, version), link)
 }
 
+// opsYtDlpIsActive 實作 `yt-dlp {string} is the active version`：
+// <data>/tools/yt-dlp-venv 必須是 symlink，解析後指向 yt-dlp/ 底下的 venv，且該 venv 內的 yt-dlp 回報 version。
+// symlink 不存在、壞掉（目標不存在）、或指到別處都失敗，才抓得到「更新後沒切換」與「失敗仍切換」。
+func (s *Scenario) opsYtDlpIsActive(version string) error {
+	tools := ytdlp.ToolsDir(s.World.DataDir())
+	link := ytdlp.LinkPath(tools)
+	fi, err := os.Lstat(link)
+	if err != nil {
+		return fmt.Errorf("yt-dlp-venv 不存在：%w", err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		return fmt.Errorf("yt-dlp-venv 不是 symlink（%s）", fi.Mode())
+	}
+	venv, err := filepath.EvalSymlinks(link)
+	if err != nil {
+		target, _ := os.Readlink(link)
+		return fmt.Errorf("yt-dlp-venv 是壞掉的 symlink（指向 %q）：%w", target, err)
+	}
+	got, err := faketool.VenvYtDlpVersion(venv)
+	if err != nil {
+		return fmt.Errorf("yt-dlp-venv 指向 %s：%w", venv, err)
+	}
+	if got != version {
+		return fmt.Errorf("使用中的 yt-dlp 是 %q（%s），預期 %q", got, venv, version)
+	}
+	return nil
+}
+
 // opsYtDlpReleasePasses 實作 `the yt-dlp release {string} passes the self-check`。
 func (s *Scenario) opsYtDlpReleasePasses(version string) error {
 	return s.registerYtDlpRelease(version, false)

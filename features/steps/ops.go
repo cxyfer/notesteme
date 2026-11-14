@@ -10,6 +10,7 @@ func registerOps(r *Registry, s *Scenario) {
 	r.Step(`yt-dlp {string} is installed`, s.opsYtDlpInstalled)
 	r.Step(`the yt-dlp release {string} passes the self-check`, s.opsYtDlpReleasePasses)
 	r.Step(`the yt-dlp release {string} fails the self-check`, s.opsYtDlpReleaseFails)
+	r.Step(`yt-dlp {string} is the active version`, s.opsYtDlpIsActive)
 	r.Step(`an event from {string} exists`, s.opsEventExists)
 	r.Step(`no event older than {int} days remains`, s.opsNoEventOlderThan)
 	r.Step(`the number of events is {int}`, s.opsEventCountIs)
