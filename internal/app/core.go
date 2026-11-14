@@ -120,7 +120,11 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 		return nil, fmt.Errorf("設定 %s 的權限失敗：%w", tmp, err)
 	}
 
-	s.store, err = store.Open(ctx, cfg.Data, env.Clock)
+	var storeOpts store.Options
+	if env.Test != nil {
+		storeOpts.Migrations = env.Test.Migrations
+	}
+	s.store, err = store.Open(ctx, cfg.Data, env.Clock, storeOpts)
 	if err != nil {
 		return nil, err
 	}

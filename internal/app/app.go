@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"time"
 
@@ -53,6 +54,9 @@ type TestControls struct {
 	// ImplVersions 覆寫步驟的 impl_version（PIPE-R6），key 是步驟名稱；沒列出的步驟用預設值。
 	// server 已啟動時改用 Server.SetImplVersion。
 	ImplVersions map[string]int
+	// Migrations 取代內建的 migration（store.Options.Migrations），用來模擬「程式內建的最新 schema 版本是 N」
+	// （OPS-R3、R4）；nil 時用內建的。
+	Migrations fs.FS
 }
 
 // IO 是標準輸入輸出。
