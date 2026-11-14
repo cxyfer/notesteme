@@ -6,14 +6,12 @@ import (
 	"testing"
 )
 
-// backup、restore、tools 由各自的 parseXxx 處理；實作前訊息與其他尚未實作的子命令相同，也不碰資料目錄。
+// tools 由自己的 parseXxx 處理；實作前訊息與其他尚未實作的子命令相同，也不碰資料目錄。
 func TestOpsSubcommandsSkeleton(t *testing.T) {
 	for _, c := range []struct {
 		name string
 		args []string
 	}{
-		{"backup", []string{"backup", "--out", "/x"}},
-		{"restore", []string{"restore", "/x/notesteme-backup-latest.tar.gz"}},
 		{"tools", []string{"tools", "update", "--pin", "2026.11.01"}},
 	} {
 		env, data := testEnv(t)
