@@ -36,7 +36,7 @@ type Target struct {
 	Kind     Kind
 	// ExternalID 是平台上的 ID：YouTube 的影片 ID、Bilibili 的 BV 號；頻道與播放清單為其 ID 或 handle。
 	ExternalID string
-	// Part 是 Bilibili 的分P（從 1 起算），其他平台為 0。
+	// Part 是 Bilibili 的分P（從 1 起算）；網址沒有 p 時為 0，代表「未指定」。其他平台為 0。
 	Part int
 	// URL 是正規化的網址；呼叫外部工具時一律使用它，而不是使用者貼上的原始字串。
 	URL string
@@ -76,16 +76,16 @@ func recognizeBilibili(u *url.URL) (Target, bool) {
 		if id = strings.Trim(id, "/"); !ok || !bvid.MatchString(id) {
 			return Target{}, false
 		}
-		part := 1
+		part, canonical := 0, "https://www.bilibili.com/video/"+id // 沒有 p：Part 為 0，代表「未指定」（ING-R3）
 		if p := u.Query().Get("p"); p != "" {
 			n, err := strconv.Atoi(p)
 			if err != nil || n < 1 {
 				return Target{}, false
 			}
-			part = n
+			part, canonical = n, fmt.Sprintf("https://www.bilibili.com/video/%s?p=%d", id, n)
 		}
 		return Target{Platform: PlatformBilibili, Kind: KindVideo, ExternalID: id, Part: part,
-			URL: fmt.Sprintf("https://www.bilibili.com/video/%s?p=%d", id, part)}, true
+			URL: canonical}, true
 	case "space.bilibili.com":
 		id, _, _ := strings.Cut(strings.Trim(u.Path, "/"), "/")
 		if _, err := strconv.ParseUint(id, 10, 64); err != nil {

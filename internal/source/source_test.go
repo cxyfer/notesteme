@@ -17,7 +17,9 @@ func TestRecognize(t *testing.T) {
 		{"https://www.youtube.com/playlist?list=PL123", PlatformYouTube, KindPlaylist, "PL123", 0, "", true},
 		{"https://www.youtube.com/@somechannel", PlatformYouTube, KindChannel, "@somechannel", 0, "", true},
 		{"https://www.bilibili.com/video/BV1xx411c7mD?p=2", PlatformBilibili, KindVideo, "BV1xx411c7mD", 2, "https://www.bilibili.com/video/BV1xx411c7mD?p=2", true},
-		{"https://www.bilibili.com/video/BV1xx411c7mD", PlatformBilibili, KindVideo, "BV1xx411c7mD", 1, "https://www.bilibili.com/video/BV1xx411c7mD?p=1", true},
+		// 沒有 p：Part 為 0，代表「未指定」（ING-R3：預設展開全部分P）。
+		{"https://www.bilibili.com/video/BV1xx411c7mD", PlatformBilibili, KindVideo, "BV1xx411c7mD", 0, "https://www.bilibili.com/video/BV1xx411c7mD", true},
+		{"https://www.bilibili.com/video/BV1xx411c7mD?p=1", PlatformBilibili, KindVideo, "BV1xx411c7mD", 1, "https://www.bilibili.com/video/BV1xx411c7mD?p=1", true},
 		{"https://space.bilibili.com/12345", PlatformBilibili, KindChannel, "12345", 0, "", true},
 		{"https://example.com/some/page", "", "", "", 0, "", false},
 		{"ftp://www.youtube.com/watch?v=abc123xxxxx", "", "", "", 0, "", false},
@@ -48,17 +50,17 @@ func TestRecognize(t *testing.T) {
 }
 
 func TestImplemented(t *testing.T) {
-	for _, id := range []string{"youtube-manual", "youtube-auto", "supadata", "groq"} {
+	for _, id := range []string{"youtube-manual", "youtube-auto", "bilibili-cc", "bilibili-ai", "supadata", "groq"} {
 		if !Implemented(id) {
 			t.Errorf("%s 應該已實作", id)
 		}
 	}
-	for _, id := range []string{"bilibili-ai", "local-sidecar", "podcast-transcript", ""} {
+	for _, id := range []string{"local-sidecar", "podcast-transcript", ""} {
 		if Implemented(id) {
 			t.Errorf("%s 還沒有實作", id)
 		}
 	}
-	if got := ImplementedSources(); len(got) != 4 {
+	if got := ImplementedSources(); len(got) != 6 {
 		t.Errorf("ImplementedSources = %v", got)
 	}
 }
@@ -71,6 +73,7 @@ func TestRef(t *testing.T) {
 	}{
 		{PlatformYouTube, "abc123xxxxx", 0, "yt:abc123xxxxx"},
 		{PlatformBilibili, "BV1xx411c7mD", 3, "bili:BV1xx411c7mD/p3"},
+		{PlatformBilibili, "BV1xx411c7mD", 0, "bili:BV1xx411c7mD/p1"}, // 未指定分P 時短代號仍是 p1
 		{PlatformPodcast, "show/ep-42", 0, "pod:show/ep-42"},
 		{PlatformLocal, "talk.mp4", 0, "local:talk.mp4"},
 	}

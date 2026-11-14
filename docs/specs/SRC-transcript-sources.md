@@ -55,7 +55,7 @@
 
 | 欄位 | 說明 |
 |---|---|
-| `source` | 來源 ID：`youtube-manual`、`youtube-auto`、`supadata`、`groq` 等。 |
+| `source` | 來源 ID：`youtube-manual`、`youtube-auto`、`bilibili-cc`、`bilibili-ai`、`supadata`、`groq` 等。 |
 | `lang` | 這一列對應的語言；`caption_priority` 的 `original` 在原文語言未知時為 `original`。可能為空（來源沒有回報）。 |
 | `kind` | 平台字幕軌的種類：`manual`、`auto`、`platform-translated`；其他來源為空。 |
 | `state` | `used`（採用）、`rejected`（有結果但不採用）、`unavailable`（沒有結果或無法取得）。 |
@@ -73,7 +73,7 @@
 | `not_configured` | `unavailable` | 來源沒有設定（缺 API key 或尚未實作），略過。 |
 | `no_transcript` | `unavailable` | 來源沒有這部影片的字幕（Supadata 的 206）。 |
 | `permanent` | `unavailable` | 來源回報這個請求永遠不會成功，改用下一個來源。 |
-| `needs_action` | `unavailable` | 來源需要使用者處理（API key 被拒、方案不支援），步驟為 `blocked`。 |
+| `needs_action` | `unavailable` | 來源需要使用者處理（API key 被拒、方案不支援、需要 cookie（SRC-R8）），步驟為 `blocked`。 |
 | `download_failed` | `unavailable` | 語音轉錄來源需要的音訊下載失敗（yt-dlp 的問題，不是來源本身的問題）；步驟的狀態與訊息沿用下載錯誤的（例如 403 為 `blocked`，SRC-R9）。 |
 | `language_mismatch` | `rejected` | 來源回報的語言和影音的原文語言不同（SRC-R4）。 |
 
@@ -103,3 +103,6 @@
 - Groq 單一音檔的上限是 25 MiB（免費方案），在切塊（SRC-R12）完成前，超過的音檔不上傳，直接 `permanent`（訊息「音檔超過語音轉錄服務的大小上限（25 MiB），長音訊的切塊還沒實作。」），改用下一個來源，沒有其他來源可用時依 SRC-R5 失敗。這個訊息目前只寫進 log 與錯誤，不顯示在步驟上（SRC-R5 的訊息是固定的）；實務上 25 MiB 約等於十幾分鐘的壓縮音訊，長影音在切塊完成前無法用 Groq 轉錄。音訊下載另外帶 `--max-filesize 2G`（GRD-R5 的音檔上限，以 bytes 傳給 yt-dlp），超過時為 `permanent`；這個行為依 yt-dlp 原始碼，尚未對真實環境驗證（2026-11-14，SRC 審查後修正）。
 - R17 場景補上 groq 那一列的 `lang`（2026-11-14，owner 同意），讓 Whisper 語言全名轉成 BCP-47 有場景驗證。
 - SRC-R6 的 24 小時期限在場景中只驗證「0.5 小時仍等待」與「25.5 小時已放棄」，期限的確切值由 `internal/pipeline` 的單元測試把關（owner 決定不加 23 小時的檢查點，2026-11-14）。
+- SRC-R8 是推定：Bilibili 未登入時，yt-dlp 不列出任何字幕（結束碼 0），只在 stderr 印出 `WARNING: [BiliBili] Subtitles are only available when logged in.`，所以分不出平台有沒有 CC 或 AI 字幕，也看不到語言。實作的條件是：Probe 偵測到這行 WARNING、沒有選到字幕軌、`caption_priority` 有 `kind: auto` 的規則，三者都成立才 `blocked`（`needs_action`，`resume_on` 為 `cookie:bilibili`，`bilibili-ai` 記為 `unavailable`／`needs_action`）。已登入卻沒有任何字幕時不會有這行 WARNING，照 fallback 處理。因此 Bilibili 的 Probe 不能帶 `--no-warnings`（會吃掉這行）。這些語意依 yt-dlp 原始碼確認，等 M0 用真實環境驗證（2026-11-14，SRC-B 切片實作時決定）。動作「改用語音轉錄」目前只顯示；Groq 對非 YouTube 的平台仍是 `permanent`（音訊下載還沒支援）。
+- Bilibili 字幕軌的對應規則：yt-dlp 在 `--write-subs` 時才列出 `subtitles`，鍵是 Bilibili 的 `lan`，格式是 srt，另外一律有 `danmaku`（xml 彈幕，選軌時忽略）；沒有 `automatic_captions`。鍵是 `ai-<lang>` 的是 AI 字幕，對應 kind `auto`、來源 `bilibili-ai`，語言去掉 `ai-`；其他鍵對應 kind `manual`、來源 `bilibili-cc`。兩種字幕的來源紀錄 `timing` 都是 `cue`。下載時用原始鍵（`--sub-langs <原始鍵> --sub-format srt`，讀 `<tmpl>.<原始鍵>.srt`）。yt-dlp 的錯誤分類：stderr 的 `ERROR:` 行含 `-404`、`-10403` 或地區限制訊息 → `permanent`；含 `-101`（未登入）→ `needs_action`（訊息「Bilibili 要求登入才能存取這部影片。上傳 Bilibili cookie 後再重試。」，動作「上傳 cookie」，`resume_on` 同上）；412（風控）與其他 → `retryable`。這些訊息依原始碼推測，沒有對真實 yt-dlp 驗證。
+- Bilibili 沒有語言中繼資料，原文語言（SRC-R11）只能從字幕軌推斷：`item.original_lang` 未知、而 Probe 看得到 AI 字幕軌時，transcript 步驟用該軌的語言當原文語言，`lang_source` 為 `metadata`（取第一條 AI 字幕軌，依鍵排序）。只有 CC 字幕時不推斷，`caption_priority` 的 `original` 規則記為 `original_language_unknown`。未登入時看不到 AI 字幕軌，所以推斷不了，這是 SRC-R8 推定的一部分（2026-11-14）。
