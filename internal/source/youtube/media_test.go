@@ -6,9 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/toolexec"
 )
 
@@ -143,5 +145,34 @@ func TestDownloadAudioWithoutToolNeedsAction(t *testing.T) {
 	_, err := c.DownloadAudio(context.Background(), "x", t.TempDir())
 	if cl, ok := errclass.ClassOf(err); !ok || cl != errclass.ClassNeedsAction {
 		t.Errorf("找不到 yt-dlp 時應是 needs_action：%v", err)
+	}
+}
+
+// 音檔上限（GRD-R5，2 GiB）交給 yt-dlp 的 --max-filesize：超過時不下載。
+func TestDownloadAudioPassesTheAudioSizeLimit(t *testing.T) {
+	r := &stubRunner{after: writeAudio(t, "m4a")}
+	if _, err := newClient(t, r).DownloadAudio(context.Background(), "x", t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	args := r.calls[0].Args
+	i := slices.Index(args, "--max-filesize")
+	if i < 0 || args[i+1] != strconv.FormatInt(netguard.LimitAudio, 10) {
+		t.Errorf("--max-filesize 應為 %d bytes：%v", netguard.LimitAudio, args)
+	}
+}
+
+// 超過上限時 yt-dlp 回報 "File is larger than max-filesize"（可能結束碼為 0 而沒有寫出檔案）：重試也不會變小，permanent。
+func TestDownloadAudioTooLargeIsPermanent(t *testing.T) {
+	const line = "[download] File is larger than max-filesize (3000000000 bytes > 2147483648 bytes). Aborting.\n"
+	for name, res := range map[string]toolexec.Result{
+		"結束碼 0":  {ExitCode: 0, Stdout: []byte(line)},
+		"結束碼非 0": {ExitCode: 1, Stderr: []byte("ERROR: File is larger than max-filesize (3000000000 bytes > 2147483648 bytes)\n")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := newClient(t, &stubRunner{res: res}).DownloadAudio(context.Background(), "x", t.TempDir())
+			if cl, ok := errclass.ClassOf(err); !ok || cl != errclass.ClassPermanent {
+				t.Errorf("err = %#v，預期 permanent", err)
+			}
+		})
 	}
 }

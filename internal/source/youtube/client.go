@@ -163,6 +163,9 @@ func classify(res toolexec.Result) error {
 	switch {
 	case videoGone(res.Stderr):
 		e.Class = errclass.ClassPermanent
+	case tooLargeLine.Match(res.Stderr):
+		// 超過 --max-filesize（GRD-R5 的音檔上限）：重試也不會變小。
+		e.Class, e.Err = errclass.ClassPermanent, ErrAudioTooLarge
 	case forbiddenLine.Match(res.Stderr):
 		e.Class, e.Message, e.Actions = errclass.ClassNeedsAction, msgForbidden, []string{actionUpdateYtDlp, actionUploadCookie}
 	}

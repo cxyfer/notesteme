@@ -433,3 +433,36 @@ func TestTranscribeMalformedKeyNeedsAction(t *testing.T) {
 		t.Errorf("請求數 = %d，錯誤 = %v", hits, err)
 	}
 }
+
+// 超過 Groq 單檔上限（切塊尚未實作）的音檔不上傳，直接 permanent 並說明原因。
+func TestTranscribeRejectsFilesOverTheSizeLimit(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits++ }))
+	defer srv.Close()
+
+	path := audioFile(t)
+	if err := os.Truncate(path, MaxFileBytes+1); err != nil { // 稀疏檔，不佔磁碟
+		t.Fatal(err)
+	}
+	_, err := newClient(srv).Transcribe(context.Background(), path, "")
+	var ce *errclass.Error
+	if !errors.As(err, &ce) || ce.Class != errclass.ClassPermanent {
+		t.Fatalf("err = %#v，應為 permanent", err)
+	}
+	if want := "音檔超過語音轉錄服務的大小上限（25 MiB），長音訊的切塊還沒實作。"; ce.Message != want {
+		t.Errorf("Message = %q", ce.Message)
+	}
+	if hits != 0 {
+		t.Errorf("不該上傳：%d 次請求", hits)
+	}
+
+	// 剛好等於上限仍可上傳。
+	if err := os.Truncate(path, MaxFileBytes); err != nil {
+		t.Fatal(err)
+	}
+	srv2 := respond(200, okBody)
+	defer srv2.Close()
+	if _, err := newClient(srv2).Transcribe(context.Background(), path, ""); err != nil {
+		t.Errorf("剛好等於上限應可上傳：%v", err)
+	}
+}

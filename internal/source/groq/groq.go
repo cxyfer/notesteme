@@ -44,6 +44,13 @@ const (
 	MsgKeyMalformed = "API key 格式不正確。請重新設定 Groq 的 API key。"
 )
 
+// MaxFileBytes 是 Groq 單一音檔的大小上限（免費方案 25 MiB）。
+// 超過時應該切塊（SRC-R12），但切塊還沒實作，所以目前直接 permanent，不上傳。
+const MaxFileBytes = 25 << 20
+
+// msgFileTooLarge 是音檔超過 MaxFileBytes 時給使用者看的訊息。
+const msgFileTooLarge = "音檔超過語音轉錄服務的大小上限（25 MiB），長音訊的切塊還沒實作。"
+
 // requestTimeout 是整個請求（含上傳音檔）的逾時；回應大小上限用 netguard.LimitFeed（GRD-R5）。
 const requestTimeout = 10 * time.Minute
 
@@ -143,6 +150,12 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*R
 		return nil, fail(errclass.ClassPermanent, "無法讀取音檔", err)
 	}
 	defer f.Close()
+	if fi, err := f.Stat(); err == nil && fi.Size() > MaxFileBytes {
+		return nil, &errclass.Error{
+			Class: errclass.ClassPermanent, Source: ID, Message: msgFileTooLarge,
+			Detail: fmt.Sprintf("音檔 %d bytes，超過上限 %d bytes", fi.Size(), MaxFileBytes),
+		}
+	}
 
 	base, model := c.Endpoint()
 
