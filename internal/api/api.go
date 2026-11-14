@@ -46,6 +46,10 @@ type Deps struct {
 	// serve 的 TCP 與本機 socket 用 pathguard.New；獨立模式用 pathguard.Unrestricted（GRD-R8）。
 	// nil 時一律拒絕（fail closed）。
 	Paths *pathguard.Guard
+	// Cookies 加密存放平台 cookie（POST /api/cookies，SEC-R4）；nil 時該路由回應 501。
+	Cookies CookieStore
+	// Resumer 在 cookie 儲存後恢復等待它的 blocked 步驟（PIPE-R4）；nil 時不恢復。
+	Resumer Resumer
 }
 
 // ReadyCheck 是 /readyz 的一個檢查項目；Check 回傳 nil 代表正常。
@@ -182,6 +186,7 @@ func (rt *routes) register(api huma.API) {
 		Summary: "步驟實際執行過的紀錄與當時生效的設定，由新到舊（PIPE-R13）",
 	}, rt.listRuns)
 	rt.registerQueue(api)
+	rt.registerCookies(api)
 	rt.registerCancel(api)
 	// 之後切片才會實作的路由（DEL 等）：先明確回應 501。
 	for _, op := range []huma.Operation{
