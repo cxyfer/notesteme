@@ -188,12 +188,20 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 //  2. 沒有選到字幕軌（呼叫端保證）。
 //  3. language.caption_priority 有 kind 為 auto 的規則。
 //  4. 平台的 automatic_captions 完全是空的（含機器翻譯軌）。
-//  5. 有發布時間，而且現在還沒超過發布時間 + 24 小時。
+//  5. 有發布時間，而且現在還沒超過發布時間 + 24 小時。只有日期精度（upload_date，當天 00:00 UTC）時，
+//     實際發布時間可能是當天任何時刻，所以期限多補一天：該日 00:00 UTC + 48 小時。
 //
 // 沒有語音的影片永遠不會有自動字幕，會白等 24 小時；這是已知的取捨（見 SRC 規格的待決問題）。
 // 等待不消耗重試次數，下次檢查固定是 2 小時後，不截到 24 小時的期限：期限過後的那次檢查才改用下一個來源。
 func (p *Pipeline) waitForAutoCaptions(it store.Item, lang Language, info *youtube.Info, decisions []transcript.Decision) (result, bool) {
-	if it.Platform != source.PlatformYouTube || info.PublishedAt == nil || !p.clock.Now().Before(info.PublishedAt.Add(autoWaitDeadline)) {
+	if it.Platform != source.PlatformYouTube || info.PublishedAt == nil {
+		return result{}, false
+	}
+	deadline := info.PublishedAt.Add(autoWaitDeadline)
+	if info.PublishedAtApprox {
+		deadline = deadline.Add(24 * time.Hour)
+	}
+	if !p.clock.Now().Before(deadline) {
 		return result{}, false
 	}
 	if !slices.ContainsFunc(lang.CaptionPriority, func(r transcript.Rule) bool { return r.Kind == transcript.KindAuto }) {

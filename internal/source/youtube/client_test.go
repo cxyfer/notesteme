@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/toolexec"
@@ -93,6 +94,31 @@ func TestProbeParsesInfoAndUsesSafeArguments(t *testing.T) {
 	}
 	if !filepath.IsAbs(r.calls[0].Path) {
 		t.Errorf("工具路徑應是絕對路徑：%q", r.calls[0].Path)
+	}
+}
+
+// 只有 upload_date（日期精度）時，PublishedAt 是當天 00:00 UTC，並標示為近似；有 timestamp 時是精確的。
+func TestProbePublishedAtPrecision(t *testing.T) {
+	for name, tt := range map[string]struct {
+		json   string
+		approx bool
+		want   time.Time
+	}{
+		"timestamp":         {`{"id":"x","timestamp":1794477000,"upload_date":"20261111"}`, false, time.Unix(1794477000, 0).UTC()},
+		"只有 upload_date":    {`{"id":"x","upload_date":"20261111"}`, true, time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)},
+		"upload_date 格式不正確": {`{"id":"x","upload_date":"bad"}`, false, time.Time{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := &stubRunner{res: toolexec.Result{Stdout: []byte(tt.json)}}
+			info, err := newClient(t, r).Probe(context.Background(), "x")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.PublishedAtApprox != tt.approx || (tt.want.IsZero() != (info.PublishedAt == nil)) ||
+				(info.PublishedAt != nil && !info.PublishedAt.Equal(tt.want)) {
+				t.Errorf("published_at = %v，approx = %v", info.PublishedAt, info.PublishedAtApprox)
+			}
+		})
 	}
 }
 

@@ -136,6 +136,34 @@ func TestDoesNotWaitWhenAConditionFails(t *testing.T) {
 	}
 }
 
+// 只有日期精度（upload_date）時，實際發布時間可能是當天的任何時刻：期限是該日 00:00 UTC + 48 小時，
+// 不是 + 24 小時（否則晚發布的影片等不滿 24 小時）。
+func TestDateOnlyPublishedAtWaitsUntilTheEndOfThatDayPlus24Hours(t *testing.T) {
+	r, asr := newFreshRig(t) // 時鐘 2026-11-12 10:00 UTC
+	pub := time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)
+	r.yt.info.PublishedAt, r.yt.info.PublishedAtApprox = &pub, true
+	it := r.ingest(watch, fallbackOverride("asr-fake"), StageTranscript)
+	r.run()
+	if st := r.stage(it, StageTranscript); st.Status != store.StatusWaiting {
+		t.Fatalf("日期精度、當天 00:00 起算 34 小時：應該還在等待：%+v", st)
+	}
+	// 超過 00:00 + 48 小時（2026-11-13 00:00）後改用下一個來源。
+	r.clk.Advance(14 * time.Hour)
+	r.run()
+	if st := r.stage(it, StageTranscript); st.Status != store.StatusDone || asr.calls() != 1 {
+		t.Errorf("transcript = %+v，fallback 呼叫 %d 次", st, asr.calls())
+	}
+
+	// 精確時間不受影響：同樣的時間點，沒有標示近似就是 24 小時。
+	r, asr = newFreshRig(t)
+	r.yt.info.PublishedAt = &pub
+	it = r.ingest(watch, fallbackOverride("asr-fake"), StageTranscript)
+	r.run()
+	if st := r.stage(it, StageTranscript); st.Status != store.StatusDone || asr.calls() != 1 {
+		t.Errorf("精確時間：transcript = %+v，fallback 呼叫 %d 次", st, asr.calls())
+	}
+}
+
 // 剛好還差不到 2 小時就到 24 小時期限：仍然等 2 小時（不截到期限），下一次檢查時才改用 fallback。
 func TestWaitIsNotTruncatedToTheDeadline(t *testing.T) {
 	r, asr := newFreshRig(t)

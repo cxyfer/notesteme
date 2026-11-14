@@ -67,9 +67,12 @@ type Info struct {
 	ChannelID   string
 	Channel     string
 	PublishedAt *time.Time
-	Description string
-	Chapters    []Chapter
-	Tracks      []Track
+	// PublishedAtApprox 為 true 代表 PublishedAt 只有日期精度（來自 upload_date，是當天 00:00 UTC），
+	// 實際發布時間在當天任何時刻。
+	PublishedAtApprox bool
+	Description       string
+	Chapters          []Chapter
+	Tracks            []Track
 }
 
 // Live 回報影片是否還在直播或尚未首播（SRC-R7）。
@@ -272,7 +275,8 @@ func parseInfo(b []byte) (*Info, error) {
 		info.PublishedAt = &t
 	case r.UploadDate != nil:
 		if t, err := time.Parse("20060102", *r.UploadDate); err == nil {
-			info.PublishedAt = &t
+			// 只有日期：當天 00:00 UTC，實際時間不確定。
+			info.PublishedAt, info.PublishedAtApprox = &t, true
 		}
 	}
 	for _, c := range r.Chapters {
