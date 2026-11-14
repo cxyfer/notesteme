@@ -136,6 +136,10 @@ func (p *Pipeline) classify(t store.Task, err error) result {
 		if errors.As(err, &ce) && ce.Message != "" {
 			st.Message, st.Actions = ce.Message, ce.Actions
 		}
+		// 錯誤指定了恢復條件（例如 cookie:bilibili）時一併記錄，補上 cookie 後可依它恢復。
+		if ce != nil {
+			st.ResumeOn = ce.ResumeOn
+		}
 		return result{task: taskFailed, state: st}
 	case errclass.ClassWait:
 		// wait 類的錯誤由執行者自己決定何時再檢查（見 runMetadata）；走到這裡代表沒有指定時間，稍後再試且不計入次數。
