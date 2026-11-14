@@ -66,6 +66,20 @@ type Client struct {
 	APIKey string
 }
 
+// API key 格式不正確（含控制字元，例如貼上時多了換行）時給使用者看的訊息與修正動作（SRC-R10）。
+const (
+	msgKeyMalformed = "API key 格式不正確。請重新設定 Supadata 的 API key。"
+	actionSetKey    = "設定 API key"
+)
+
+// ErrKeyMalformed 表示 API key 含控制字元，不可能放進標頭；不會發出請求。
+var ErrKeyMalformed = errors.New("API key 格式不正確")
+
+// validKey 回報 API key 能不能放進 HTTP 標頭：不含控制字元。
+func validKey(key string) bool {
+	return !strings.ContainsFunc(key, func(r rune) bool { return r < 0x20 || r == 0x7f })
+}
+
 // Result 是取得的字幕。
 type Result struct {
 	// Lang 是 Supadata 回報的語言，可能為空。
@@ -94,6 +108,13 @@ type transcriptResponse struct {
 //   - 429、5xx、網路錯誤、無法解析的回應：retryable。
 //   - 3xx（不跟隨轉址）、400 及其他 4xx、非同步任務（202）：permanent；非同步任務的輪詢還沒做。
 func (c *Client) Fetch(ctx context.Context, videoURL, mode string) (*Result, error) {
+	// 含控制字元的 key 會讓標頭非法，被當成網路錯誤而一直重試；直接要使用者重新設定。
+	if !validKey(c.APIKey) {
+		return nil, &errclass.Error{
+			Class: errclass.ClassNeedsAction, Source: ID, Err: ErrKeyMalformed,
+			Message: msgKeyMalformed, Actions: []string{actionSetKey},
+		}
+	}
 	base := c.BaseURL
 	if base == "" {
 		base = DefaultBaseURL

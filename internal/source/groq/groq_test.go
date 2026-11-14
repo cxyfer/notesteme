@@ -413,3 +413,23 @@ func TestOtherTransportsAreKept(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// API key 含控制字元時不可能成功：needs_action 並說明格式不正確，不是 retryable，也不發出請求。
+func TestTranscribeMalformedKeyNeedsAction(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits++ }))
+	defer srv.Close()
+	c := newClient(srv)
+	c.APIKey = "gsk_abc\ndef"
+	_, err := c.Transcribe(context.Background(), audioFile(t), "")
+	var ce *errclass.Error
+	if !errors.As(err, &ce) || ce.Class != errclass.ClassNeedsAction {
+		t.Fatalf("err = %#v，應為 needs_action", err)
+	}
+	if ce.Message != "API key 格式不正確。請重新設定 Groq 的 API key。" || len(ce.Actions) != 1 || ce.Actions[0] != ActionSetKey {
+		t.Errorf("Message = %q，Actions = %v", ce.Message, ce.Actions)
+	}
+	if hits != 0 || strings.Contains(err.Error(), "gsk_abc") {
+		t.Errorf("請求數 = %d，錯誤 = %v", hits, err)
+	}
+}

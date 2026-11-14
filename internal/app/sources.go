@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strings"
 
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/pipeline"
@@ -17,9 +18,10 @@ import (
 //     base_url 與 model 用 groq 套件的預設值，還不解析設定檔的 asr.providers。連線同樣走 deps.HTTP。
 //   - 其他 ASR 來源還沒實作。
 func (s *Server) configureSources(ctx context.Context, deps *pipeline.Deps, env Env, cfg *config.Config) error {
-	if key := env.Vars[config.EnvSupadataAPIKey]; key != "" {
+	// key 前後的空白（例如 .env 的結尾換行）要去掉；只有空白視為未設定，與 doctor 一致。
+	if key := strings.TrimSpace(env.Vars[config.EnvSupadataAPIKey]); key != "" {
 		deps.Supadata = &supadata.Client{HTTP: deps.HTTP, APIKey: key}
 	}
-	deps.Groq = &groq.Client{HTTP: deps.HTTP, APIKey: env.Vars[config.EnvGroqAPIKey]}
+	deps.Groq = &groq.Client{HTTP: deps.HTTP, APIKey: strings.TrimSpace(env.Vars[config.EnvGroqAPIKey])}
 	return nil
 }

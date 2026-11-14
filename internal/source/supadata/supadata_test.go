@@ -197,3 +197,23 @@ func TestFetchRejectsOversizedResponse(t *testing.T) {
 		t.Fatalf("上限內的回應應該成功：%v", err)
 	}
 }
+
+// API key 含控制字元（例如貼上時多了換行）時不可能成功：needs_action 並說明格式不正確，不是 retryable，也不發出請求。
+func TestFetchMalformedKeyNeedsAction(t *testing.T) {
+	c, req := serve(t, 200, okBody)
+	c.APIKey = "sk-abc\ndef"
+	_, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123xxxxx", ModeAuto)
+	var ce *errclass.Error
+	if !errors.As(err, &ce) || ce.Class != errclass.ClassNeedsAction {
+		t.Fatalf("err = %#v，應為 needs_action", err)
+	}
+	if ce.Message != "API key 格式不正確。請重新設定 Supadata 的 API key。" || len(ce.Actions) != 1 || ce.Actions[0] != "設定 API key" {
+		t.Errorf("Message = %q，Actions = %v", ce.Message, ce.Actions)
+	}
+	if req.URL != nil {
+		t.Error("不該發出請求")
+	}
+	if strings.Contains(err.Error(), "sk-abc") {
+		t.Errorf("錯誤訊息不可含 API key：%v", err)
+	}
+}

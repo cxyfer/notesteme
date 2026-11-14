@@ -40,6 +40,8 @@ const (
 const (
 	MsgKeyRejected = "Groq 拒絕了 API key。請確認 API key 正確、帳號仍有額度。"
 	ActionSetKey   = "設定 API key"
+	// MsgKeyMalformed 是 API key 含控制字元（例如貼上時多了換行）時的訊息。
+	MsgKeyMalformed = "API key 格式不正確。請重新設定 Groq 的 API key。"
 )
 
 // requestTimeout 是整個請求（含上傳音檔）的逾時；回應大小上限用 netguard.LimitFeed（GRD-R5）。
@@ -52,6 +54,8 @@ var ErrNoTranscript = fmt.Errorf("groq：沒有轉錄結果：%w", errclass.ErrN
 var (
 	// ErrNoKey 表示沒有設定 API key（SRC-R10）；不會發出請求。
 	ErrNoKey = fmt.Errorf("沒有設定 API key：%w", errclass.ErrNotConfigured)
+	// ErrKeyMalformed 表示 API key 含控制字元，不可能放進標頭；不會發出請求。
+	ErrKeyMalformed = errors.New("API key 格式不正確")
 	// ErrKeyRejected 表示 API key 無效或沒有權限（401、403）。
 	ErrKeyRejected = errors.New("API key 無效或沒有權限")
 )
@@ -126,6 +130,13 @@ type transcriptionResponse struct {
 func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*Result, error) {
 	if !c.Configured() {
 		return nil, fail(errclass.ClassNeedsAction, "", ErrNoKey)
+	}
+	// 含控制字元的 key 會讓標頭非法，被當成網路錯誤而一直重試；直接要使用者重新設定。
+	if strings.ContainsFunc(c.APIKey, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return nil, &errclass.Error{
+			Class: errclass.ClassNeedsAction, Source: ID, Err: ErrKeyMalformed,
+			Message: MsgKeyMalformed, Actions: []string{ActionSetKey},
+		}
 	}
 	f, err := os.Open(audioPath)
 	if err != nil {

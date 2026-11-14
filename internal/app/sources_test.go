@@ -7,6 +7,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/source/groq"
+	"github.com/cxyfer/notesteme/internal/source/supadata"
 )
 
 func TestConfigureSourcesSupadataNeedsAnAPIKey(t *testing.T) {
@@ -52,5 +53,32 @@ func TestConfigureSourcesGroqUsesDefaultsAndKey(t *testing.T) {
 	base, model := deps.Groq.Endpoint()
 	if !deps.Groq.Configured() || base != groq.DefaultBaseURL || model != groq.DefaultModel {
 		t.Errorf("Groq = %v, %q, %q", deps.Groq.Configured(), base, model)
+	}
+}
+
+// API key 前後的空白（例如 .env 的結尾換行）要去掉；只有空白視為未設定，與 doctor 一致。
+func TestConfigureSourcesTrimsAPIKeys(t *testing.T) {
+	s := &Server{}
+	ctx := context.Background()
+
+	var deps pipeline.Deps
+	env := Env{Vars: map[string]string{config.EnvSupadataAPIKey: "  sk-1 \n", config.EnvGroqAPIKey: "\tgsk-2\r\n"}}
+	if err := s.configureSources(ctx, &deps, env, &config.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	if sd, ok := deps.Supadata.(*supadata.Client); !ok || sd.APIKey != "sk-1" {
+		t.Errorf("Supadata = %#v", deps.Supadata)
+	}
+	if g, ok := deps.Groq.(*groq.Client); !ok || g.APIKey != "gsk-2" {
+		t.Errorf("Groq = %#v", deps.Groq)
+	}
+
+	deps = pipeline.Deps{}
+	env = Env{Vars: map[string]string{config.EnvSupadataAPIKey: "  \n", config.EnvGroqAPIKey: " \t"}}
+	if err := s.configureSources(ctx, &deps, env, &config.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	if deps.Supadata != nil || deps.Groq.Configured() {
+		t.Errorf("只有空白應視為未設定：Supadata = %#v，Groq 已設定 = %v", deps.Supadata, deps.Groq.Configured())
 	}
 }
