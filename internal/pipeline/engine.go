@@ -131,7 +131,6 @@ func (p *Pipeline) classify(t store.Task, err error) result {
 			Status: store.StatusBlocked, BlockReason: reason, ErrorClass: string(class), Message: "這個步驟需要你處理才能繼續。",
 		}
 		// 錯誤自己帶了給使用者看的訊息與修正動作時採用（SRC-R9：403 → 更新 yt-dlp、上傳 cookie）。
-		// TODO(SRC-R8)：需要 cookie 的來源（Bilibili AI 字幕等）在來源實作時同樣填入 Message 與 Actions。
 		var ce *errclass.Error
 		if errors.As(err, &ce) && ce.Message != "" {
 			st.Message, st.Actions = ce.Message, ce.Actions

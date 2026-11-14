@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/store"
-	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
 // liveRecheckDelay 是直播或首播尚未開始時，再檢查有沒有 VOD 的間隔（SRC-R7）。
@@ -21,7 +19,11 @@ const liveRecheckDelay = 15 * time.Minute
 //
 // metadata 的快取鍵只記錄、不用來略過：平台上的中繼資料會改變（標題、字幕軌），重新取得才是正確的。
 func (p *Pipeline) runMetadata(ctx context.Context, it store.Item, lang Language) (result, error) {
-	info, err := p.yt.Probe(ctx, it.ExternalID)
+	ad, err := p.adapterFor(it.Platform)
+	if err != nil {
+		return result{}, err
+	}
+	info, err := ad.probe(ctx, it)
 	if err != nil {
 		return result{}, err
 	}
@@ -29,7 +31,7 @@ func (p *Pipeline) runMetadata(ctx context.Context, it store.Item, lang Language
 		"description": info.Description,
 		"chapters":    info.Chapters,
 		"live_status": info.LiveStatus,
-		"channel":     info.Channel,
+		"channel":     info.ChannelTitle,
 	})
 	if err != nil {
 		return result{}, err
@@ -42,10 +44,7 @@ func (p *Pipeline) runMetadata(ctx context.Context, it store.Item, lang Language
 		mu.item.LangSource = "metadata"
 	}
 	if info.ChannelID != "" {
-		mu.channel = &store.Channel{
-			Platform: source.PlatformYouTube, ExternalID: info.ChannelID, Title: info.Channel,
-			URL: "https://www.youtube.com/channel/" + info.ChannelID,
-		}
+		mu.channel = &store.Channel{Platform: it.Platform, ExternalID: info.ChannelID, Title: info.ChannelTitle, URL: info.ChannelURL}
 	}
 	res := result{
 		meta: mu,
@@ -54,7 +53,7 @@ func (p *Pipeline) runMetadata(ctx context.Context, it store.Item, lang Language
 			CacheKey: cacheKey{Item: it.ID, Stage: StageMetadata, Impl: p.implVersion(StageMetadata), Provider: "yt-dlp", Params: paramsSHA(it.URL)}.String(),
 		},
 	}
-	if info.Live() {
+	if info.Live {
 		at := p.clock.Now().Add(liveRecheckDelay)
 		res.task, res.notBefore, res.countAttempt = taskRequeue, &at, false
 		res.state = store.StageState{
@@ -65,11 +64,7 @@ func (p *Pipeline) runMetadata(ctx context.Context, it store.Item, lang Language
 	}
 	res.task, res.advance = taskDone, true
 	// 趁著剛取得字幕軌，決定下游 transcript 任務的資源類別（PIPE 規格待決問題）。
-	tracks := make([]transcript.Track, 0, len(info.Tracks))
-	for _, t := range info.Tracks {
-		tracks = append(tracks, transcript.Track{Lang: t.Lang, Kind: t.Kind})
-	}
-	res.transcriptASR = transcriptNeedsASR(lang, tracks, info.Language)
+	res.transcriptASR = transcriptNeedsASR(it.Platform, lang, info.Tracks, info.Language)
 	res.state = store.StageState{Status: store.StatusDone}
 	return res, nil
 }

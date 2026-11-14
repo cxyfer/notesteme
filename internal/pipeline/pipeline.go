@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/source/bilibili"
 	"github.com/cxyfer/notesteme/internal/source/groq"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
@@ -27,6 +28,17 @@ type YouTube interface {
 	Version(ctx context.Context) (string, error)
 	// DownloadAudio 下載影片的最佳音訊到 dir，回傳檔案路徑（ASR 來源使用）。
 	DownloadAudio(ctx context.Context, videoID, dir string) (string, error)
+}
+
+// Bilibili 是步驟用到的 Bilibili 功能（*bilibili.Client 實作它）；測試可以替換。
+// part 從 1 起算。
+type Bilibili interface {
+	// Parts 展開影片的分P（ING-R3）。
+	Parts(ctx context.Context, bvid string) ([]bilibili.PartEntry, error)
+	Probe(ctx context.Context, bvid string, part int) (*bilibili.Info, error)
+	// FetchCaptions 下載字幕軌；key 是 Probe 回報的原始鍵。
+	FetchCaptions(ctx context.Context, bvid string, part int, key, dir string) ([]byte, error)
+	Version(ctx context.Context) (string, error)
 }
 
 // Supadata 是 Supadata 字幕來源（*supadata.Client 實作它）；測試可以替換。
@@ -51,6 +63,8 @@ type Deps struct {
 	DataDir string
 	Log     *slog.Logger
 	YouTube YouTube
+	// Bilibili 是 Bilibili 的來源；nil 代表沒有設定，新增 Bilibili 影片時回 501。
+	Bilibili Bilibili
 	// Supadata 是 Supadata 字幕來源（SRC-R3）；nil 代表沒有設定 API key，fallback 列出它時記為 not_configured。
 	Supadata Supadata
 	// Groq 是 Groq 語音轉錄來源（SRC-R3）；nil 代表來源沒有註冊，fallback 列出它時記為 not_configured。
@@ -73,6 +87,7 @@ type Pipeline struct {
 	dataDir string
 	log     *slog.Logger
 	yt      YouTube
+	bili    Bilibili
 	// fetchers 是可以執行的 fallback 來源（SRC-R3），依來源 ID。
 	fetchers map[string]fallbackFetcher
 	http     *http.Client
@@ -101,7 +116,7 @@ func New(d Deps) *Pipeline {
 			impl[k] = v
 		}
 	}
-	return &Pipeline{impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, fetchers: newFetchers(d), http: d.HTTP, wake: wake, version: d.Version}
+	return &Pipeline{impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), http: d.HTTP, wake: wake, version: d.Version}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。
