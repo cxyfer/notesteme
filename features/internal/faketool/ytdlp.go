@@ -26,7 +26,11 @@ type ytArgs struct {
 	output       string
 	format       string
 	cookies      string
-	url          string
+	// noWarnings 對應 --no-warnings：不印 WARNING。
+	noWarnings bool
+	// useExtractors 是 --use-extractors 的值（逗號分隔的 extractor 名稱 regex）；空字串代表沒有限制。
+	useExtractors string
+	url           string
 }
 
 // 沒有值、直接接受的旗標。
@@ -38,7 +42,7 @@ var ytBoolFlags = map[string]bool{
 
 // 帶一個值、直接接受並忽略的旗標。
 var ytIgnoredValueFlags = map[string]bool{
-	"--use-extractors": true, "--progress-template": true, "--max-filesize": true,
+	"--progress-template": true, "--max-filesize": true,
 }
 
 func parseYtDlp(args []string) (ytArgs, error) {
@@ -88,9 +92,11 @@ func parseYtDlp(args []string) (ytArgs, error) {
 				a.noPlaylist = true
 			case "--flat-playlist":
 				a.flatPlaylist = true
+			case "--no-warnings":
+				a.noWarnings = true
 			}
 		case flag == "--sub-langs", flag == "--sub-format", flag == "-o", flag == "--output",
-			flag == "-f", flag == "--format", flag == "--cookies", ytIgnoredValueFlags[flag]:
+			flag == "-f", flag == "--format", flag == "--cookies", flag == "--use-extractors", ytIgnoredValueFlags[flag]:
 			v, err := valueOf(&i, flag, inline, hasInline)
 			if err != nil {
 				return a, err
@@ -111,6 +117,8 @@ func parseYtDlp(args []string) (ytArgs, error) {
 				a.format = v
 			case "--cookies":
 				a.cookies = v
+			case "--use-extractors":
+				a.useExtractors = v
 			}
 		case strings.HasPrefix(arg, "-"):
 			return a, fmt.Errorf("unrecognized option %q", arg)
@@ -166,6 +174,13 @@ func runYtDlp(e env, args []string) int {
 		return usageError(e, "unsupported --sub-format %q (only vtt)", a.subFormat)
 	}
 
+	// 與真實的 yt-dlp 相同：啟動時就載入 cookie 檔，格式不對直接失敗；檔案不存在視為沒有 cookie。
+	cookies, err := loadCookies(a.cookies, e.cwd)
+	if err != nil {
+		fmt.Fprintf(e.stderr, "ERROR: %v\n", err)
+		return 1
+	}
+
 	st, err := ReadState(e.root)
 	if err != nil {
 		fmt.Fprintln(e.stderr, "ERROR:", err)
@@ -173,16 +188,36 @@ func runYtDlp(e env, args []string) int {
 	}
 	waitGate(e.root, st.Gate)
 
+	listID, isList := PlaylistID(a.url)
+	target, terr := parseTarget(a.url)
+
+	// --use-extractors：extractor 不在清單內時，網址視為不支援（GRD-R6）。
+	if a.useExtractors != "" {
+		var names []string
+		switch {
+		case isList:
+			names = []string{"youtube:tab", "youtube:playlist"}
+		case terr == nil && target.platform == "youtube":
+			names = []string{"youtube"}
+		case terr == nil:
+			names = []string{"bilibili"}
+		}
+		if names != nil && !extractorAllowed(a.useExtractors, names) {
+			fmt.Fprintf(e.stderr, "ERROR: Unsupported URL: %s\n", a.url)
+			return 1
+		}
+	}
+
 	// 展開播放清單：--flat-playlist -J 加上播放清單網址。其他網址（含影片網址）照一般流程處理。
-	if listID, ok := PlaylistID(a.url); ok && op == OpInfo && a.flatPlaylist {
+	if isList && op == OpInfo && a.flatPlaylist {
 		return ytPlaylist(e, st, listID)
 	}
 
-	id, part, platform, err := parseVideoURL(a.url)
-	if err != nil {
-		fmt.Fprintf(e.stderr, "ERROR: %v\n", err)
+	if terr != nil {
+		fmt.Fprintf(e.stderr, "ERROR: %v\n", terr)
 		return 1
 	}
+	id, part, platform := target.id, target.part, target.platform
 	v := st.Videos[id]
 	if v != nil && v.Fail.applies(op) {
 		fmt.Fprintln(e.stderr, v.Fail.Stderr)
@@ -200,6 +235,17 @@ func runYtDlp(e env, args []string) int {
 		return 1
 	}
 
+	if platform == "BiliBili" {
+		return biliRun(e, st, a, op, target, v, cookies)
+	}
+
+	// 會員限定影片沒有 YouTube cookie 時，下載字幕與媒體會失敗（訊息依 yt-dlp）。
+	// 取得資訊（-J）不失敗：辨識網址時的 Probe 不帶 cookie，要靠 availability 標示 requires_cookie（ING-R9）。
+	if v.Availability == "subscriber_only" && op != OpInfo && !cookies.has("youtube.com", "") {
+		fmt.Fprintf(e.stderr, "ERROR: [youtube] %s: Join this channel to get access to members-only content like this video, or contact the channel owner.\n", id)
+		return 1
+	}
+
 	switch op {
 	case OpInfo:
 		return ytInfo(e, id, platform, part, v)
@@ -208,6 +254,45 @@ func runYtDlp(e env, args []string) int {
 	default:
 		return ytMedia(e, a, id, part, v)
 	}
+}
+
+// warn 印出 WARNING；有 --no-warnings 時不印。
+func warn(e env, a ytArgs, format string, args ...any) {
+	if a.noWarnings {
+		return
+	}
+	fmt.Fprintf(e.stderr, "WARNING: "+format+"\n", args...)
+}
+
+// extractorAllowed 回報 --use-extractors 的值是否允許其中一個 extractor 名稱：
+// 逗號分隔多個項目，每個項目以 re.compile(val, re.I).fullmatch 比對小寫的名稱；
+// all、default 允許全部；開頭的 - 代表排除。
+func extractorAllowed(spec string, names []string) bool {
+	allowed := false
+	for _, item := range strings.Split(spec, ",") {
+		item = strings.TrimSpace(item)
+		neg := strings.HasPrefix(item, "-")
+		item = strings.TrimPrefix(item, "-")
+		if item == "" {
+			continue
+		}
+		match := item == "all" || item == "default"
+		if !match {
+			re, err := regexp.Compile(`(?i)^(?:` + item + `)$`)
+			if err != nil {
+				continue
+			}
+			for _, n := range names {
+				if re.MatchString(strings.ToLower(n)) {
+					match = true
+				}
+			}
+		}
+		if match {
+			allowed = !neg
+		}
+	}
+	return allowed
 }
 
 func validSubFormat(f string) bool {
@@ -220,7 +305,7 @@ func validSubFormat(f string) bool {
 
 // logCall 把這次呼叫附加到 calls.jsonl；寫入失敗不影響工具本身的行為。
 func logCall(e env, cookies string) {
-	c := Call{Tool: e.tool, Argv: e.argv, Cwd: e.cwd}
+	c := Call{Tool: e.tool, Argv: e.argv, Cwd: e.cwd, Pid: os.Getpid()}
 	if cookies != "" {
 		c.CookiesFile = cookies
 		p := cookies
@@ -312,11 +397,28 @@ func waitGate(root, gate string) {
 	}
 }
 
+// videoURL 是網址解析的結果。
+type videoURL struct {
+	id       string
+	part     int  // Bilibili 的分P，預設 1
+	hasPart  bool // 網址有 p 參數
+	platform string
+}
+
 // parseVideoURL 從網址取出平台 ID 與分P（Bilibili 的 ?p=n，預設 1）。
 func parseVideoURL(raw string) (id string, part int, platform string, err error) {
+	t, err := parseTarget(raw)
+	return t.id, t.part, t.platform, err
+}
+
+// parseTarget 解析影片網址，並記下網址有沒有 p 參數（真實的 yt-dlp 依此決定要不要展開分P）。
+func parseTarget(raw string) (t videoURL, err error) {
+	var id, platform string
+	var part int
+	hasPart := false
 	u, perr := url.Parse(raw)
 	if perr != nil || u.Host == "" {
-		return "", 0, "", fmt.Errorf("[generic] '%s' is not a valid URL", raw)
+		return videoURL{}, fmt.Errorf("[generic] '%s' is not a valid URL", raw)
 	}
 	host := strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
 	part = 1
@@ -339,18 +441,18 @@ func parseVideoURL(raw string) (id string, part int, platform string, err error)
 		if p := u.Query().Get("p"); p != "" {
 			n, err := strconv.Atoi(p)
 			if err != nil || n < 1 {
-				return "", 0, "", fmt.Errorf("[BiliBili] invalid part %q", p)
+				return videoURL{}, fmt.Errorf("[BiliBili] invalid part %q", p)
 			}
-			part = n
+			part, hasPart = n, true
 		}
 		platform = "BiliBili"
 	default:
-		return "", 0, "", fmt.Errorf("Unsupported URL: %s", raw)
+		return videoURL{}, fmt.Errorf("Unsupported URL: %s", raw)
 	}
 	if id == "" {
-		return "", 0, "", fmt.Errorf("Unsupported URL: %s", raw)
+		return videoURL{}, fmt.Errorf("Unsupported URL: %s", raw)
 	}
-	return id, part, platform, nil
+	return videoURL{id: id, part: part, hasPart: hasPart, platform: platform}, nil
 }
 
 // playlistID 從 YouTube 播放清單網址（/playlist?list=<id>）取出播放清單 ID。
@@ -459,9 +561,6 @@ func ytInfo(e env, id, platform string, part int, v *Video) int {
 		chapters = append(chapters, map[string]any{"title": c.Title, "start_time": c.Start, "end_time": c.End})
 	}
 	webpage := "https://www.youtube.com/watch?v=" + id
-	if platform == "BiliBili" {
-		webpage = fmt.Sprintf("https://www.bilibili.com/video/%s?p=%d", id, part)
-	}
 	info := map[string]any{
 		"_type":              "video",
 		"id":                 id,
@@ -486,9 +585,6 @@ func ytInfo(e env, id, platform string, part int, v *Video) int {
 			info["timestamp"] = t.Unix()
 			info["upload_date"] = t.UTC().Format("20060102")
 		}
-	}
-	if part > 1 || v.Parts > 1 {
-		info["playlist_index"] = part
 	}
 	b, err := json.Marshal(info)
 	if err != nil {
@@ -578,7 +674,7 @@ func ytSubs(e env, st State, a ytArgs, id string, v *Video) int {
 			seen[l] = true
 			chosen = append(chosen, p)
 		} else if p == nil {
-			fmt.Fprintf(e.stderr, "WARNING: [info] There are no subtitles for the requested languages: %s\n", l)
+			warn(e, a, "[info] There are no subtitles for the requested languages: %s", l)
 		}
 	}
 	for _, t := range chosen {
