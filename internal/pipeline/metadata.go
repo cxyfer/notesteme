@@ -64,7 +64,9 @@ func (p *Pipeline) runMetadata(ctx context.Context, it store.Item, lang Language
 	}
 	res.task, res.advance = taskDone, true
 	// 趁著剛取得字幕軌，決定下游 transcript 任務的資源類別（PIPE 規格待決問題）。
-	res.transcriptASR = transcriptNeedsASR(it.Platform, lang, info.Tracks, info.Language)
+	// Bilibili 沒有語言中繼資料：用 AI 字幕軌推斷的原文語言判斷，與 transcript 步驟選軌時的結論一致。
+	origLang, _ := inferOriginalLang(it.Platform, info.Language, info.Tracks)
+	res.transcriptASR = transcriptNeedsASR(it.Platform, lang, info.Tracks, origLang)
 	res.state = store.StageState{Status: store.StatusDone}
 	return res, nil
 }

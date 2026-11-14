@@ -93,12 +93,10 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	tracks := info.Tracks
 	// Bilibili 沒有語言中繼資料：看得到 AI 字幕軌時，用它的語言當原文語言（lang_source 為 metadata），
 	// 寫回 item；之後的步驟與重跑都從 item 讀到。UpdateItemMeta 會整欄覆寫 metadata_json，所以原樣帶回。
-	originalLang, meta := it.OriginalLang, (*metaUpdate)(nil)
-	if it.Platform == source.PlatformBilibili && originalLang == "" {
-		if i := slices.IndexFunc(tracks, func(t transcript.Track) bool { return t.Kind == transcript.KindAuto }); i >= 0 {
-			originalLang = tracks[i].Lang
-			meta = &metaUpdate{item: store.ItemMeta{OriginalLang: originalLang, LangSource: "metadata", Metadata: it.Metadata}}
-		}
+	originalLang, inferred := inferOriginalLang(it.Platform, it.OriginalLang, tracks)
+	var meta *metaUpdate
+	if inferred {
+		meta = &metaUpdate{item: store.ItemMeta{OriginalLang: originalLang, LangSource: "metadata", Metadata: it.Metadata}}
 	}
 	chosen, decisions := transcript.SelectFor(it.Platform, tracks, originalLang, lang.CaptionPriority, lang.AllowPlatformTranslated)
 

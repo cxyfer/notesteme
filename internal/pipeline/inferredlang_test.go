@@ -4,7 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
 // 只接受人工字幕：AI 字幕軌不符合 caption_priority，會走 fallback，但原文語言仍然從 AI 軌推斷。
@@ -44,5 +46,50 @@ func TestFallbackUsesInferredOriginalLanguageAccepted(t *testing.T) {
 	r.run()
 	if st := r.stage(it, StageTranscript); st.Status != store.StatusDone {
 		t.Fatalf("transcript = %+v", st)
+	}
+}
+
+// metadata 完成、建立 transcript 任務時，Bilibili 也要用 AI 字幕軌推斷的原文語言判斷資源類別（PIPE 待決問題）：
+// 預設的 caption_priority 要求 original 語言，沒有推斷就找不到符合的軌而誤歸為 asr。
+func TestBilibiliMetadataUsesInferredLanguageForResourceClass(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		tracks []string
+		want   string
+	}{
+		{"AI 字幕軌符合推斷出的原文語言", []string{"ai-zh"}, "download"},
+		{"沒有字幕軌", nil, "asr"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			r, fb := newBiliRig(t)
+			fb.info.Tracks = tt.tracks
+			it := r.ingest(biliP1, fallbackOverride("groq"), StageTranscript)
+			r.run()
+			if got := r.transcriptClass(it); got != tt.want {
+				t.Errorf("資源類別 = %s，預期 %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestInferOriginalLang(t *testing.T) {
+	ai := []transcript.Track{{Lang: "zh", Kind: transcript.KindAuto}}
+	for _, tt := range []struct {
+		name, platform, current string
+		tracks                  []transcript.Track
+		want                    string
+		inferred                bool
+	}{
+		{"Bilibili 沒有原文語言，用 AI 軌", source.PlatformBilibili, "", ai, "zh", true},
+		{"Bilibili 已有原文語言", source.PlatformBilibili, "ja", ai, "ja", false},
+		{"Bilibili 沒有 AI 軌", source.PlatformBilibili, "", []transcript.Track{{Lang: "zh", Kind: transcript.KindManual}}, "", false},
+		{"YouTube 不推斷", source.PlatformYouTube, "", ai, "", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, inferred := inferOriginalLang(tt.platform, tt.current, tt.tracks)
+			if got != tt.want || inferred != tt.inferred {
+				t.Errorf("inferOriginalLang = %q, %v，預期 %q, %v", got, inferred, tt.want, tt.inferred)
+			}
+		})
 	}
 }

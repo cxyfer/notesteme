@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/source"
@@ -127,4 +128,17 @@ func bilibiliPart(bvid string, part int) source.Target {
 	return source.Target{
 		Platform: source.PlatformBilibili, Kind: source.KindVideo, ExternalID: bvid, Part: part, URL: bilibili.VideoURL(bvid, part),
 	}
+}
+
+// inferOriginalLang 回傳影音的原文語言：current 已有值就用它；Bilibili 沒有語言中繼資料，
+// 看得到 AI 字幕軌時用它的語言推斷（inferred 為 true）。metadata 判斷資源類別與 transcript 選軌共用這個推斷，
+// 兩邊才會對同一部影音得到相同的結論。
+func inferOriginalLang(platform, current string, tracks []transcript.Track) (lang string, inferred bool) {
+	if current != "" || platform != source.PlatformBilibili {
+		return current, false
+	}
+	if i := slices.IndexFunc(tracks, func(t transcript.Track) bool { return t.Kind == transcript.KindAuto }); i >= 0 {
+		return tracks[i].Lang, true
+	}
+	return "", false
 }
