@@ -90,7 +90,10 @@ func Normalize(platform, content string) (string, int, error) {
 	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
 	var cookies []cookie
 	if looksLikeNetscape(lines) {
-		cookies = parseNetscape(lines, domain)
+		var err error
+		if cookies, err = parseNetscape(lines, domain); err != nil {
+			return "", 0, err
+		}
 	} else {
 		var err error
 		if cookies, err = parseHeader(lines, domain); err != nil {
@@ -129,7 +132,9 @@ func looksLikeNetscape(lines []string) bool {
 }
 
 // parseNetscape 讀出 Netscape 格式中屬於 domain 的 cookie；註解、空行、格式不符的行與其他網域都略過。
-func parseNetscape(lines []string, domain string) []cookie {
+// 保留下來的 cookie 的網域、path、名稱、值含控制字元（例如 \r、NUL、ESC）時回傳 ErrInvalidFormat，與標頭格式一致：
+// 這些內容會原樣寫進 cookie 檔，控制字元會讓欄位錯位，或在 yt-dlp 的 stderr 與 log 中造成終端機跳脫。
+func parseNetscape(lines []string, domain string) ([]cookie, error) {
 	var out []cookie
 	for _, l := range lines {
 		l = strings.TrimRight(l, " ")
@@ -150,9 +155,12 @@ func parseNetscape(lines []string, domain string) []cookie {
 		if _, err := strconv.ParseInt(c.expiry, 10, 64); err != nil {
 			continue
 		}
+		if hasControl(c.domain) || hasControl(c.path) || hasControl(c.name) || hasControl(c.value) {
+			return nil, ErrInvalidFormat
+		}
 		out = append(out, c)
 	}
-	return out
+	return out, nil
 }
 
 func validBool(s string) bool { return s == "TRUE" || s == "FALSE" }
