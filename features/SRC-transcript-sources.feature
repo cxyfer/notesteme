@@ -325,6 +325,6 @@ Feature: Transcript sources and quality
           { "source": "youtube-auto", "lang": "en", "state": "unavailable", "reason": "no_track" },
           { "source": "youtube-manual", "lang": "zh-Hans", "state": "unavailable", "reason": "no_track" },
           { "source": "supadata", "state": "rejected", "reason": "language_mismatch" },
-          { "source": "groq", "state": "used" }
+          { "source": "groq", "lang": "en", "state": "used" }
       ] }
       """

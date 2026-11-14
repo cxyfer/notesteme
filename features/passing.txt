@@ -77,6 +77,7 @@ PIPE-pipeline-queue.feature: The concurrency limit caps running tasks
 PIPE-pipeline-queue.feature: Raising the limit takes effect on the next round
 PIPE-pipeline-queue.feature: A paused queue starts nothing new
 PIPE-pipeline-queue.feature: Pausing one resource class leaves the others running
+PIPE-pipeline-queue.feature: Pausing the asr class does not hold a transcript from platform captions
 PIPE-pipeline-queue.feature: Items added by hand run before backfill
 PIPE-pipeline-queue.feature: A long-waiting backfill task eventually goes first
 PIPE-pipeline-queue.feature: Leased tasks come back after a crash without using up attempts
