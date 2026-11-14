@@ -12,7 +12,11 @@ ALTER TABLE artifacts ADD COLUMN timings_json TEXT NOT NULL DEFAULT '[]';
 -- Keyset pagination order of the list: created_at DESC, id DESC (an index is read backwards just as well).
 CREATE INDEX items_created ON items (created_at, id);
 
+-- The latest run of a stage (ORDER BY created_at DESC, rowid DESC LIMIT 1) is one backwards index step.
+CREATE INDEX stage_runs_latest ON stage_runs (item_id, stage, created_at);
+
 -- +goose Down
+DROP INDEX stage_runs_latest;
 DROP INDEX items_created;
 ALTER TABLE artifacts DROP COLUMN timings_json;
 ALTER TABLE items DROP COLUMN title_fold;

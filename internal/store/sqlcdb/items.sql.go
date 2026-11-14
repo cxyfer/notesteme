@@ -10,6 +10,10 @@ import (
 )
 
 const countItemsFiltered = `-- name: CountItemsFiltered :one
+WITH sf AS (
+  SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
+  FROM json_each(CAST(?11 AS TEXT)) AS j
+)
 SELECT COUNT(*) FROM items
 WHERE deleted_at IS NULL
   AND (CAST(?1 AS TEXT) = '' OR platform = ?1)
@@ -28,13 +32,11 @@ WHERE deleted_at IS NULL
   AND (CAST(?10 AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
         WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = ?10))
-  AND NOT EXISTS (
-        SELECT 1 FROM json_each(CAST(?11 AS TEXT)) AS f
-        WHERE NOT EXISTS (
-          SELECT 1 FROM stage_runs AS sr
-          WHERE sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = json_extract(f.value, '$.stage')
-                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)
-            AND sr.status IN (SELECT s.value FROM json_each(json_extract(f.value, '$.statuses')) AS s)))
+  AND (json_array_length(CAST(?11 AS TEXT)) = 0 OR NOT EXISTS (
+        SELECT 1 FROM sf
+        WHERE COALESCE(instr(sf.statuses,
+                '|' || (SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
+                        ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) || '|'), 0) = 0))
 `
 
 type CountItemsFilteredParams struct {
@@ -230,6 +232,10 @@ func (q *Queries) ListItems(ctx context.Context) ([]Item, error) {
 }
 
 const listItemsPage = `-- name: ListItemsPage :many
+WITH sf AS (
+  SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
+  FROM json_each(CAST(?11 AS TEXT)) AS j
+)
 SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold FROM items
 WHERE deleted_at IS NULL
   AND (CAST(?1 AS TEXT) = '' OR platform = ?1)
@@ -248,13 +254,11 @@ WHERE deleted_at IS NULL
   AND (CAST(?10 AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
         WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = ?10))
-  AND NOT EXISTS (
-        SELECT 1 FROM json_each(CAST(?11 AS TEXT)) AS f
-        WHERE NOT EXISTS (
-          SELECT 1 FROM stage_runs AS sr
-          WHERE sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = json_extract(f.value, '$.stage')
-                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)
-            AND sr.status IN (SELECT s.value FROM json_each(json_extract(f.value, '$.statuses')) AS s)))
+  AND (json_array_length(CAST(?11 AS TEXT)) = 0 OR NOT EXISTS (
+        SELECT 1 FROM sf
+        WHERE COALESCE(instr(sf.statuses,
+                '|' || (SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
+                        ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) || '|'), 0) = 0))
   AND created_at <= CAST(?12 AS INTEGER)
   AND (created_at < CAST(?12 AS INTEGER) OR id < CAST(?13 AS TEXT))
 ORDER BY created_at DESC, id DESC
@@ -279,7 +283,7 @@ type ListItemsPageParams struct {
 }
 
 // The library list (LIB-R1, R3, R4, R7). Keep the WHERE block identical to CountItemsFiltered.
-// status_filters is a JSON array of {"stage": ..., "statuses": [...]}: values of one stage are OR, stages are AND,
+// status_filters is a JSON array of {"stage": ..., "statuses": "|a|b|"}: values of one stage are OR, stages are AND,
 // and a stage counts by its latest run. q_fold is already lowercased by Go. Without a cursor, after_created_at is
 // the maximum int64 and after_id is empty. Keyset order is (created_at, id) descending.
 func (q *Queries) ListItemsPage(ctx context.Context, arg ListItemsPageParams) ([]Item, error) {

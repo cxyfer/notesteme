@@ -43,9 +43,13 @@ UPDATE items SET until_stage = sqlc.arg(until_stage) WHERE id = sqlc.arg(id);
 
 -- name: ListItemsPage :many
 -- The library list (LIB-R1, R3, R4, R7). Keep the WHERE block identical to CountItemsFiltered.
--- status_filters is a JSON array of {"stage": ..., "statuses": [...]}: values of one stage are OR, stages are AND,
+-- status_filters is a JSON array of {"stage": ..., "statuses": "|a|b|"}: values of one stage are OR, stages are AND,
 -- and a stage counts by its latest run. q_fold is already lowercased by Go. Without a cursor, after_created_at is
 -- the maximum int64 and after_id is empty. Keyset order is (created_at, id) descending.
+WITH sf AS (
+  SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
+  FROM json_each(CAST(sqlc.arg(status_filters) AS TEXT)) AS j
+)
 SELECT * FROM items
 WHERE deleted_at IS NULL
   AND (CAST(sqlc.arg(platform) AS TEXT) = '' OR platform = sqlc.arg(platform))
@@ -64,13 +68,11 @@ WHERE deleted_at IS NULL
   AND (CAST(sqlc.arg(timing) AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
         WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = sqlc.arg(timing)))
-  AND NOT EXISTS (
-        SELECT 1 FROM json_each(CAST(sqlc.arg(status_filters) AS TEXT)) AS f
-        WHERE NOT EXISTS (
-          SELECT 1 FROM stage_runs AS sr
-          WHERE sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = json_extract(f.value, '$.stage')
-                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)
-            AND sr.status IN (SELECT s.value FROM json_each(json_extract(f.value, '$.statuses')) AS s)))
+  AND (json_array_length(CAST(sqlc.arg(status_filters) AS TEXT)) = 0 OR NOT EXISTS (
+        SELECT 1 FROM sf
+        WHERE COALESCE(instr(sf.statuses,
+                '|' || (SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
+                        ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) || '|'), 0) = 0))
   AND created_at <= CAST(sqlc.arg(after_created_at) AS INTEGER)
   AND (created_at < CAST(sqlc.arg(after_created_at) AS INTEGER) OR id < CAST(sqlc.arg(after_id) AS TEXT))
 ORDER BY created_at DESC, id DESC
@@ -78,6 +80,10 @@ LIMIT sqlc.arg(page_size);
 
 -- name: CountItemsFiltered :one
 -- Total of the same filters, without the keyset condition and the limit. Keep the WHERE block identical to ListItemsPage.
+WITH sf AS (
+  SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
+  FROM json_each(CAST(sqlc.arg(status_filters) AS TEXT)) AS j
+)
 SELECT COUNT(*) FROM items
 WHERE deleted_at IS NULL
   AND (CAST(sqlc.arg(platform) AS TEXT) = '' OR platform = sqlc.arg(platform))
@@ -96,10 +102,8 @@ WHERE deleted_at IS NULL
   AND (CAST(sqlc.arg(timing) AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
         WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = sqlc.arg(timing)))
-  AND NOT EXISTS (
-        SELECT 1 FROM json_each(CAST(sqlc.arg(status_filters) AS TEXT)) AS f
-        WHERE NOT EXISTS (
-          SELECT 1 FROM stage_runs AS sr
-          WHERE sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = json_extract(f.value, '$.stage')
-                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)
-            AND sr.status IN (SELECT s.value FROM json_each(json_extract(f.value, '$.statuses')) AS s)));
+  AND (json_array_length(CAST(sqlc.arg(status_filters) AS TEXT)) = 0 OR NOT EXISTS (
+        SELECT 1 FROM sf
+        WHERE COALESCE(instr(sf.statuses,
+                '|' || (SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
+                        ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) || '|'), 0) = 0));

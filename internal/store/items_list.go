@@ -38,15 +38,16 @@ type ItemPos struct {
 
 // statusFilter 是 SQL 參數 status_filters 的一個元素。
 type statusFilter struct {
-	Stage    string   `json:"stage"`
-	Statuses []string `json:"statuses"`
+	Stage string `json:"stage"`
+	// Statuses 是 "|a|b|" 的格式（狀態名稱不含 |），SQL 用 instr 比對最新狀態，避免每列展開一次 json_each。
+	Statuses string `json:"statuses"`
 }
 
 // statusFiltersJSON 把 Status 轉成 JSON 陣列；依步驟排序，讓同樣的條件得到同樣的參數。
 func statusFiltersJSON(status map[string][]string) (string, error) {
 	fs := make([]statusFilter, 0, len(status))
 	for stage, vals := range status {
-		fs = append(fs, statusFilter{Stage: stage, Statuses: nonNil(vals)})
+		fs = append(fs, statusFilter{Stage: stage, Statuses: "|" + strings.Join(vals, "|") + "|"})
 	}
 	slices.SortFunc(fs, func(a, b statusFilter) int { return strings.Compare(a.Stage, b.Stage) })
 	b, err := json.Marshal(fs)
