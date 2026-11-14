@@ -169,7 +169,11 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		if res, ok := p.waitForAutoCaptions(it, lang, info, decisions); ok {
 			return res, nil
 		}
-		res, err := p.runFallback(ctx, it, lang, stage, decisions)
+		// 原文語言可能是這次執行才推斷出來的（Bilibili），還沒寫進影音：fallback 的語言檢查、
+		// ASR 的語言提示與產出的語言都要用推斷的值，所以放進傳入的副本。
+		fit := it
+		fit.OriginalLang = originalLang
+		res, err := p.runFallback(ctx, fit, lang, stage, decisions)
 		if err == nil {
 			res.meta = meta
 		}
