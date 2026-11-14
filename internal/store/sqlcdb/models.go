@@ -45,6 +45,14 @@ type EncryptionKey struct {
 	RetiredAt  *int64
 }
 
+type Event struct {
+	ID          string
+	ItemID      string
+	Type        string
+	PayloadJson string
+	At          int64
+}
+
 type Item struct {
 	ID            string
 	Platform      string

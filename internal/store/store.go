@@ -60,9 +60,30 @@ type Store struct {
 	sink atomic.Pointer[func(events.Event)]
 }
 
+// Options 是 Open 的選項；零值等於預設行為。
+type Options struct {
+	// Migrations 是 migration 的來源，根目錄直接放 *.sql；nil 時用內建的（MigrationsFS）。
+	// 只給測試與驗收使用，例如模擬「程式內建的最新版本是 N」。
+	Migrations fs.FS
+}
+
+// MigrationsFS 回傳內建的 migration（根目錄直接放 *.sql），供 Options.Migrations 與驗收 harness 使用。
+func MigrationsFS() fs.FS {
+	sub, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		// 路徑是常數且已嵌入；失敗代表編譯期的 embed 設定壞了。
+		panic(fmt.Errorf("store: 取得內建 migration 失敗：%w", err))
+	}
+	return sub
+}
+
 // Open 開啟 dir/notesteme.db 並套用 migration。dir 必須已存在。
-// DB 與 WAL／SHM 的權限一律為 0600（NFR-SEC-5）。
-func Open(ctx context.Context, dir string, clk clock.Clock) (*Store, error) {
+// DB 與 WAL／SHM 的權限一律為 0600（NFR-SEC-5）。opts 最多一個，省略時使用預設。
+func Open(ctx context.Context, dir string, clk clock.Clock, opts ...Options) (*Store, error) {
+	var o Options
+	if len(opts) > 0 {
+		o = opts[0]
+	}
 	// 一律用絕對路徑：file: URI 遇到相對路徑會把第一段當成 host（file://data/x.db），資料目錄是相對路徑時就開不起來。
 	if abs, err := filepath.Abs(dir); err == nil {
 		dir = abs
@@ -81,10 +102,9 @@ func Open(ctx context.Context, dir string, clk clock.Clock) (*Store, error) {
 	}
 	w.SetMaxOpenConns(1)
 
-	sub, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		_ = w.Close()
-		return nil, err
+	sub := o.Migrations
+	if sub == nil {
+		sub = MigrationsFS()
 	}
 	provider, err := goose.NewProvider(goose.DialectSQLite3, w, sub)
 	if err != nil {
