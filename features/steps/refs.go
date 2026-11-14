@@ -96,13 +96,30 @@ func isNotImplemented(body []byte) bool {
 
 // listItems 回傳資料庫中的影音（不含垃圾桶中的）。
 func (s *Scenario) listItems() ([]itemJSON, error) {
-	var out struct {
-		Items []itemJSON `json:"items"`
+	var all []itemJSON
+	cursor := ""
+	for {
+		path := "/api/items?limit=200"
+		if cursor != "" {
+			path += "&cursor=" + url.QueryEscape(cursor)
+		}
+		var out struct {
+			Items      []itemJSON `json:"items"`
+			NextCursor string     `json:"next_cursor"`
+		}
+		if err := s.apiJSON(http.MethodGet, path, nil, &out); err != nil {
+			return nil, err
+		}
+		all = append(all, out.Items...)
+		// 最後一頁沒有 next_cursor（舊 API 也不回），迴圈在此結束。
+		if out.NextCursor == "" {
+			return all, nil
+		}
+		if out.NextCursor == cursor {
+			return nil, fmt.Errorf("GET /api/items 重複回傳同一個 next_cursor %q", cursor)
+		}
+		cursor = out.NextCursor
 	}
-	if err := s.apiJSON(http.MethodGet, "/api/items", nil, &out); err != nil {
-		return nil, err
-	}
-	return out.Items, nil
 }
 
 // itemID 把影音代號換成實際的影音 ID：先問 API；影音在垃圾桶中（不在清單裡）時，
