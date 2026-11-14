@@ -183,9 +183,12 @@ func (s *Server) apiDeps(env Env) api.Deps {
 		Store: s.store, Auth: s.auth, Clock: env.Clock, Log: s.log, Version: version,
 		ReadyChecks: toolChecks(toolexec.Resolver{Vars: env.Vars, Config: s.cfg.Tools}),
 		Pipeline:    s.pipeline,
-		Queue:       s.queue,
-		Events:      s.eventsHandler(),
-		Tasks:       s.worker,
+		// cookie API（POST /api/cookies）：儲存後由 pipeline 恢復等待 cookie 的 blocked 步驟（PIPE-R4）。
+		Cookies: s.cookies,
+		Resumer: s.pipeline,
+		Queue:   s.queue,
+		Events:  s.eventsHandler(),
+		Tasks:   s.worker,
 	}
 }
 

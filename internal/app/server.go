@@ -15,6 +15,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/api"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/config"
+	"github.com/cxyfer/notesteme/internal/cookies"
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/queue"
@@ -55,8 +56,10 @@ type Server struct {
 	http  *http.Server
 	store *store.Store
 	keys  *secrets.Keyring
-	auth  *auth.Service
-	lock  *store.DirLock
+	// cookies 加密存放平台 cookie，並提供 yt-dlp 用的暫存檔（SEC-R7）；startPipeline 建立。
+	cookies *cookies.Store
+	auth    *auth.Service
+	lock    *store.DirLock
 
 	// sockLn、sockHTTP 是本機 Unix socket（/data/notesteme.sock）與它的 http.Server，只有 serve 有；
 	// 它的 handler 是 api.NewLocal，不驗證 cookie 與 CSRF，見 socket.go。路徑太長時略過，三者都是 nil。
@@ -181,7 +184,9 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	if runner == nil {
 		runner = toolexec.New(env.Vars)
 	}
-	yt := &youtube.Client{Runner: runner, Tools: toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}}
+	// cookie 存放在 secrets 表（資料金鑰加密）；每次呼叫 yt-dlp 時寫成 <data>/tmp 下的暫存檔（SEC-R7）。
+	s.cookies = cookies.New(s.store, s.keys, cfg.Data)
+	yt := &youtube.Client{Runner: runner, Tools: toolexec.Resolver{Vars: env.Vars, Config: cfg.Tools}, Cookies: s.cookies}
 	s.queue = queue.New(s.store, env.Clock, store.NewID())
 	deps := pipeline.Deps{
 		Store: s.store, Clock: env.Clock, DataDir: cfg.Data, Log: log, YouTube: yt, Wake: s.queue.Wake, Version: version,
