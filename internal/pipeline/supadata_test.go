@@ -160,6 +160,29 @@ func TestSupadataSameSettingsReuseTheCache(t *testing.T) {
 	}
 }
 
+// 平台字幕軌選到了，但下載後是空的而改用 fallback 來源時，快取鍵也要含 fallback 來源的參數：
+// 否則換 mode 重跑會命中舊結果（選到字幕軌時快取鍵一開始不含 fallback 參數）。
+func TestFallbackAfterEmptyTrackKeysOnSourceParams(t *testing.T) {
+	r, sd := newSupadataRig(t)
+	r.yt.cues = 0
+	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
+	it := r.ingest(watch, nil, StageTranscript)
+	r.run()
+	if sd.calls() != 1 {
+		t.Fatalf("第一次應用 Supadata：%d", sd.calls())
+	}
+	for _, mode := range []string{"native", "auto"} {
+		if err := r.rerunTranscript(it, map[string]any{"supadata": map[string]any{"mode": mode}}); err != nil {
+			t.Fatal(err)
+		}
+		r.run()
+	}
+	// 換成 native 要重新取得；回到 auto 與第一次的快取鍵相同，重用（不再呼叫）。
+	if got := strings.Join(sd.modes, ","); got != "auto,native" {
+		t.Errorf("mode = %s", got)
+	}
+}
+
 func TestSupadataModeIsPartOfTheCacheKey(t *testing.T) {
 	r, sd := newSupadataRig(t)
 	it := r.ingest(watch, nil, StageTranscript)

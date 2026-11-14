@@ -91,30 +91,42 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	}
 	chosen, decisions := transcript.Select(tracks, it.OriginalLang, lang.CaptionPriority, lang.AllowPlatformTranslated)
 
-	params := map[string]any{"caption_priority": lang.CaptionPriority, "allow_platform_translated": lang.AllowPlatformTranslated, "fallback": lang.Fallback}
-	if chosen == nil && slices.Contains(lang.Fallback, supadata.ID) {
-		// 會用到 Supadata 時，它的參數影響結果，要進快取鍵；用平台字幕時不受影響。
-		params["supadata"] = lang.Supadata
+	// 快取鍵只含會影響結果的輸入。用平台字幕時 fallback 來源的參數不影響結果，不進快取鍵；
+	// 會用到 fallback 來源時（沒選到字幕軌，或字幕軌下載後是空的）它們的參數要進快取鍵，
+	// 所以後者要重算快取鍵，否則換 mode 或 model 重跑會命中舊結果。
+	keyFor := func(withFallback bool) string {
+		params := map[string]any{"caption_priority": lang.CaptionPriority, "allow_platform_translated": lang.AllowPlatformTranslated, "fallback": lang.Fallback}
+		if withFallback && slices.Contains(lang.Fallback, supadata.ID) {
+			// Supadata 的參數影響結果。
+			params["supadata"] = lang.Supadata
+		}
+		if f, ok := p.fetchers[groq.ID]; ok && withFallback && slices.Contains(lang.Fallback, groq.ID) {
+			// 同理，Groq 的 base_url 與 model 影響結果。
+			params["groq"] = f.params(lang)
+		}
+		return cacheKey{
+			Item: it.ID, Stage: StageTranscript, Impl: p.implVersion(StageTranscript), Provider: "yt-dlp",
+			Upstream: paramsSHA(map[string]any{"tracks": sortedTracks(tracks), "original_lang": it.OriginalLang}),
+			Params:   paramsSHA(params),
+		}.String()
 	}
-	if f, ok := p.fetchers[groq.ID]; ok && chosen == nil && slices.Contains(lang.Fallback, groq.ID) {
-		// 同理，Groq 的 base_url 與 model 影響結果。
-		params["groq"] = f.params(lang)
-	}
-	key := cacheKey{
-		Item: it.ID, Stage: StageTranscript, Impl: p.implVersion(StageTranscript), Provider: "yt-dlp",
-		Upstream: paramsSHA(map[string]any{"tracks": sortedTracks(tracks), "original_lang": it.OriginalLang}),
-		Params:   paramsSHA(params),
-	}.String()
-	stage := &store.StageResult{Executor: "local", CacheKey: key, ImplVersion: p.implVersion(StageTranscript)}
+	stage := &store.StageResult{Executor: "local", CacheKey: keyFor(chosen == nil), ImplVersion: p.implVersion(StageTranscript)}
 
-	// 快取鍵相同的步驟已經完成：直接重用，不下載字幕，也不建立新版本（PIPE-R5）。
+	// reuse 在快取鍵相同的步驟已經完成時，直接重用，不下載字幕，也不建立新版本（PIPE-R5）。
 	// Probe 的結果照樣記錄（SRC-R17）。
-	if hit, err := p.st.Read().DoneStageByCacheKey(ctx, it.ID, StageTranscript, key); err == nil && hit.ArtifactID != "" {
+	reuse := func() (result, bool) {
+		hit, err := p.st.Read().DoneStageByCacheKey(ctx, it.ID, StageTranscript, stage.CacheKey)
+		if err != nil || hit.ArtifactID == "" {
+			return result{}, false
+		}
 		stage.ArtifactID = hit.ArtifactID
 		return result{
 			task: taskDone, advance: true, stage: stage, probes: toProbes(decisions),
 			state: store.StageState{Status: store.StatusDone},
-		}, nil
+		}, true
+	}
+	if res, ok := reuse(); ok {
+		return res, nil
 	}
 
 	var cues []subtitle.Cue
@@ -129,6 +141,11 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 				}
 			}
 			chosen = nil
+			// 改用 fallback 來源：快取鍵要含它們的參數，並再確認有沒有相同鍵的完成結果。
+			stage.CacheKey = keyFor(true)
+			if res, ok := reuse(); ok {
+				return res, nil
+			}
 		}
 	}
 

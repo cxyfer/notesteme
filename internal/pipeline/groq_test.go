@@ -12,6 +12,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/source/groq"
+	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
@@ -280,6 +281,23 @@ func TestGroqEndpointIsPartOfTheCacheKey(t *testing.T) {
 	rerun()
 	if g.calls() != 3 || r.sourceVersions(it) != 3 {
 		t.Fatalf("base_url 改變應重新轉錄：呼叫 %d 次，版本 %d", g.calls(), r.sourceVersions(it))
+	}
+}
+
+// 平台字幕軌下載後是空的而改用 Groq 時，換 model 重跑不可以命中舊結果。
+func TestGroqAfterEmptyTrackKeysOnModel(t *testing.T) {
+	r, g := newGroqRig(t)
+	r.yt.cues = 0
+	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
+	it := r.ingest(watch, groqOnly(), StageTranscript)
+	r.run()
+	g.model = "whisper-large-v3"
+	if err := r.rerunTranscript(it, nil); err != nil {
+		t.Fatal(err)
+	}
+	r.run()
+	if g.calls() != 2 {
+		t.Errorf("model 改變應重新轉錄：呼叫 %d 次", g.calls())
 	}
 }
 
