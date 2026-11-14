@@ -249,7 +249,7 @@ func TestSessionRequests(t *testing.T) {
 	sess, csrf := s.login(t)
 
 	rec := s.do("GET", "/api/items", "", withCookies(sess, csrf, ""))
-	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"items":[]}` {
+	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"items":[],"total":0}` {
 		t.Errorf("GET items = %d %s", rec.Code, rec.Body)
 	}
 

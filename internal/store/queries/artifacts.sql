@@ -5,9 +5,9 @@ WHERE item_id = sqlc.arg(item_id) AND kind = sqlc.arg(kind) AND variant = sqlc.a
   AND superseded_by IS NULL;
 
 -- name: InsertArtifact :exec
-INSERT INTO artifacts (id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, created_at)
+INSERT INTO artifacts (id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, timings_json, created_at)
 VALUES (sqlc.arg(id), sqlc.arg(item_id), sqlc.arg(kind), sqlc.arg(variant), sqlc.arg(lang), sqlc.arg(format), sqlc.arg(path),
-        sqlc.arg(sha256), sqlc.arg(size), sqlc.arg(parents_json), sqlc.arg(provenance_json), sqlc.arg(created_at));
+        sqlc.arg(sha256), sqlc.arg(size), sqlc.arg(parents_json), sqlc.arg(provenance_json), sqlc.arg(timings_json), sqlc.arg(created_at));
 
 -- name: SupersedeOtherCurrentArtifacts :exec
 -- Used when restoring an old artifact: current versions other than keep_id become superseded by keep_id.

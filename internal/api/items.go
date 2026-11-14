@@ -1,15 +1,24 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/source"
@@ -165,26 +174,213 @@ func (rt *routes) createItems(ctx context.Context, in *createItemInput) (*create
 
 // ---- 查詢 ----
 
+// listItemsInput 是 GET /api/items 的查詢參數（LIB-R1、R3、R4、R7）。
+type listItemsInput struct {
+	Platform      string   `query:"platform" doc:"youtube、bilibili、podcast 或 local"`
+	Channel       string   `query:"channel" doc:"頻道 ID"`
+	Status        []string `query:"status,explode" doc:"<stage>:<狀態>，可以重複；同一個步驟的多個值是 OR，不同步驟之間是 AND"`
+	ErrorClass    string   `query:"error_class" doc:"步驟最近一次執行的錯誤分類"`
+	Lang          string   `query:"lang" doc:"原文語言"`
+	PublishedFrom string   `query:"published_from" doc:"發布時間下限（含），RFC 3339"`
+	PublishedTo   string   `query:"published_to" doc:"發布時間上限（含），RFC 3339"`
+	DurationMin   string   `query:"duration_min" doc:"長度下限（秒，含），不得小於 0"`
+	DurationMax   string   `query:"duration_max" doc:"長度上限（秒，含），不得小於 0"`
+	Timing        string   `query:"timing" doc:"目前的字幕中至少有一個 cue 的 timing 是這個值：source、merged、silence、interpolated、model"`
+	Q             string   `query:"q" doc:"標題搜尋：不分大小寫的部分字串，去掉前後空白，最多 200 字元"`
+	Limit         int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"單頁筆數"`
+	Cursor        string   `query:"cursor" doc:"上一頁回傳的 next_cursor"`
+	ReadState     string   `query:"read_state" doc:"M1 沒有資料模型；帶這個參數回 501"`
+}
+
 type listItemsOutput struct {
 	Body struct {
 		Items []Item `json:"items"`
+		Total int    `json:"total" doc:"符合條件的總數，和目前在第幾頁無關"`
+		// NextCursor 在最後一頁省略，不回 null。
+		NextCursor string `json:"next_cursor,omitempty" doc:"下一頁的游標；最後一頁沒有這個欄位"`
 	}
 }
 
-func (rt *routes) listItems(ctx context.Context, _ *struct{}) (*listItemsOutput, error) {
+// errBadCursor 是游標無法使用時的錯誤：格式不正確、被竄改、或篩選條件已經改變。
+func errBadCursor() *Error {
+	return newError(http.StatusUnprocessableEntity, CodeInvalidInput, "游標不正確或已失效，請從第一頁重新讀取。")
+}
+
+// parseStatus 把 "<stage>:<狀態>" 轉成 pipeline 的 Status；步驟與狀態是否合法由 ItemQuery.Validate 檢查。
+func parseStatus(values []string) (map[string][]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	out := map[string][]string{}
+	for _, v := range values {
+		stage, status, ok := strings.Cut(v, ":")
+		if !ok || stage == "" || status == "" {
+			return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "status 的格式是 <步驟>:<狀態>，例如 normalize:done。")
+		}
+		if !slices.Contains(out[stage], status) {
+			out[stage] = append(out[stage], status)
+		}
+	}
+	return out, nil
+}
+
+func parseRFC3339(name, v string) (*time.Time, error) {
+	if v == "" {
+		return nil, nil
+	}
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, name+" 必須是 RFC 3339 時間，例如 2026-01-02T15:04:05Z。")
+	}
+	return &t, nil
+}
+
+// parseSeconds 解析不得小於 0 的整數秒；空字串代表沒有指定。
+func parseSeconds(name, v string) (*int, error) {
+	if v == "" {
+		return nil, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, name+" 必須是不小於 0 的整數（秒）。")
+	}
+	return &n, nil
+}
+
+func (rt *routes) listItems(ctx context.Context, in *listItemsInput) (*listItemsOutput, error) {
+	if in.ReadState != "" {
+		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "read_state 尚未支援。")
+	}
+	status, err := parseStatus(in.Status)
+	if err != nil {
+		return nil, err
+	}
+	from, err := parseRFC3339("published_from", in.PublishedFrom)
+	if err != nil {
+		return nil, err
+	}
+	to, err := parseRFC3339("published_to", in.PublishedTo)
+	if err != nil {
+		return nil, err
+	}
+	durMin, err := parseSeconds("duration_min", in.DurationMin)
+	if err != nil {
+		return nil, err
+	}
+	durMax, err := parseSeconds("duration_max", in.DurationMax)
+	if err != nil {
+		return nil, err
+	}
+	q := pipeline.ItemQuery{
+		Platform: in.Platform, Channel: in.Channel, ErrorClass: in.ErrorClass, Lang: in.Lang, Timing: in.Timing,
+		Q: strings.TrimSpace(in.Q), Status: status, PublishedFrom: from, PublishedTo: to,
+		DurationMin: durMin, DurationMax: durMax, Limit: in.Limit,
+	}
 	out := &listItemsOutput{}
 	out.Body.Items = []Item{}
 	if rt.d.Pipeline == nil {
 		return out, nil
 	}
-	items, err := rt.d.Pipeline.Items(ctx)
+	if err := q.Validate(); err != nil {
+		return nil, rt.mapErr(ctx, err)
+	}
+	fp := filterFingerprint(q)
+	if in.Cursor != "" {
+		if q.After, err = decodeItemCursor(in.Cursor, fp); err != nil {
+			return nil, errBadCursor()
+		}
+	}
+	page, err := rt.d.Pipeline.ListItems(ctx, q)
 	if err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}
-	for _, it := range items {
+	for _, it := range page.Items {
 		out.Body.Items = append(out.Body.Items, toItem(it))
 	}
+	out.Body.Total = page.Total
+	if page.Next != nil {
+		out.Body.NextCursor = encodeItemCursor(*page.Next, fp)
+	}
 	return out, nil
+}
+
+// ---- 游標 ----
+
+// maxCursorLen 是游標字串的長度上限；正常的游標不到 150 字元。
+const maxCursorLen = 512
+
+// itemCursor 是游標的內容：版本、位置（created_at 毫秒與 id），以及篩選條件的指紋。
+type itemCursor struct {
+	V  int    `json:"v"`
+	T  int64  `json:"t"`
+	ID string `json:"id"`
+	F  string `json:"f"`
+}
+
+// filterFingerprint 是篩選條件的指紋（sha256 前 8 bytes 的 hex）；limit 與 cursor 不算在內。
+// 游標只在相同的篩選條件下有效，條件改變時要從第一頁重新讀取。
+func filterFingerprint(q pipeline.ItemQuery) string {
+	type stageStatus struct {
+		Stage    string   `json:"stage"`
+		Statuses []string `json:"statuses"`
+	}
+	var status []stageStatus
+	for stage, vals := range q.Status {
+		vals = slices.Sorted(slices.Values(vals))
+		status = append(status, stageStatus{stage, vals})
+	}
+	slices.SortFunc(status, func(a, b stageStatus) int { return strings.Compare(a.Stage, b.Stage) })
+	ms := func(t *time.Time) *int64 {
+		if t == nil {
+			return nil
+		}
+		v := t.UnixMilli()
+		return &v
+	}
+	b, _ := json.Marshal(struct {
+		Platform, Channel, ErrorClass, Lang, Timing, Q string
+		Status                                         []stageStatus
+		From, To                                       *int64
+		DurMin, DurMax                                 *int
+	}{q.Platform, q.Channel, q.ErrorClass, q.Lang, q.Timing, q.Q, status, ms(q.PublishedFrom), ms(q.PublishedTo), q.DurationMin, q.DurationMax})
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:8])
+}
+
+func encodeItemCursor(c pipeline.ItemCursor, fp string) string {
+	b, _ := json.Marshal(itemCursor{V: 1, T: c.CreatedAtMs, ID: c.ID, F: fp})
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// decodeItemCursor 嚴格解析游標：長度上限、base64url（不補 =）、不接受未知欄位或多餘內容、版本為 1、
+// id 必須是 UUID、指紋必須與目前的篩選條件相符。任何不符都回傳錯誤，不 panic。
+func decodeItemCursor(s, wantFP string) (*pipeline.ItemCursor, error) {
+	if len(s) > maxCursorLen {
+		return nil, errors.New("游標太長")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return nil, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var c itemCursor
+	if err := dec.Decode(&c); err != nil {
+		return nil, err
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return nil, errors.New("游標有多餘的內容")
+	}
+	if c.V != 1 || c.T < 0 {
+		return nil, errors.New("游標的版本或位置不正確")
+	}
+	if _, err := uuid.Parse(c.ID); err != nil {
+		return nil, err
+	}
+	if subtle.ConstantTimeCompare([]byte(c.F), []byte(wantFP)) != 1 {
+		return nil, errors.New("篩選條件已經改變")
+	}
+	return &pipeline.ItemCursor{CreatedAtMs: c.T, ID: c.ID}, nil
 }
 
 type itemInput struct {
