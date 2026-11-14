@@ -176,15 +176,15 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - `queue/control.go` 更新時持有寫鎖做 SQLite 寫入；pause 回傳後，進行中的一輪領取仍可能多領一個任務（毫秒級）。
   - `GET /api/queue` 只列 `executor=builtin` 的任務，agent 任務留給 AGT。
 - **SRC**：
-  - yt-dlp 的錯誤分類：影片不存在、私人、已移除是 `permanent`（依 stderr 的 `ERROR: [youtube] <id>: …`，見 `source/youtube/client.go`，還沒對真實的 yt-dlp 驗證過訊息）；其餘都當成 `retryable`，403 還沒對應到 SRC-R9。
+  - yt-dlp 的錯誤分類：影片不存在、私人、已移除是 `permanent`（依 stderr 的 `ERROR: [youtube] <id>: …`，見 `source/youtube/client.go`，還沒對真實的 yt-dlp 驗證過訊息）；`HTTP Error 403` 是 `needs_action`（SRC-R9）；其餘都當成 `retryable`。
   - 原文語言未知時，應該從 `*-orig` 字幕軌推斷。
-  - 還沒做：ASR、自動字幕等待（SRC-R6）、cookie（SRC-R8）、品質檢查（SRC-R4）。
+  - 還沒做：cookie（SRC-R8）、品質檢查（SRC-R4，只做了 `language_mismatch`）、音訊切塊（SRC-R12）、幻覺過濾（SRC-R13）。
   - Supadata：API key 只能用環境變數 `NOTESTEME_SUPADATA_API_KEY`，還沒加密存放（SEC-R4）；非同步 job（202）還不會輪詢，目前當 permanent；暫時性錯誤時不會寫入 `source_probes`。
   - 做 `youtube-auto` 前，要評估改用 yt-dlp 的 `json3` 格式（見 NRM 待決問題）。`features/fixtures/captions/auto-zh-en-mixed.json` 目前內容是 VTT，決定後與假 yt-dlp 一起改。
 - **CLI**：
   - client 模式加 `--wait`、而 serve 是手動 worker 時，harness 還不會在背景推動 worker，步驟會失敗並說明（目前沒有場景用到）。
   - `items ls --status`、`--channel` 回 2（尚未支援）；本機路徑的 `ingest` 要等 upload／path API（目前 API 回 501）。
-  - `doctor` 的網路連線檢查要等 OPS 的已知影片；API key 只檢查 Supadata。
+  - `doctor` 的網路連線檢查要等 OPS 的已知影片；API key 檢查 Supadata 與 Groq。
   - JSON Lines 輸出在步驟中只比對第一個物件。
   - 非 Linux 平台的本機 socket 只靠檔案權限，沒有 uid 檢查。
 - **GRD**：
