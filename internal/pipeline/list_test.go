@@ -2,11 +2,13 @@ package pipeline
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -24,6 +26,7 @@ type listEnv struct {
 	st   *store.Store
 	clk  *clock.Fake
 	snap string
+	dir  string
 }
 
 func newListEnv(tb testing.TB) *listEnv {
@@ -41,7 +44,57 @@ func newListEnv(tb testing.TB) *listEnv {
 	if err != nil {
 		tb.Fatal(err)
 	}
-	return &listEnv{tb: tb, p: p, st: st, clk: clk, snap: snap}
+	return &listEnv{tb: tb, p: p, st: st, clk: clk, snap: snap, dir: dir}
+}
+
+// trash 把影音移到垃圾桶（設定 deleted_at）；目前還沒有刪除功能，直接改資料庫。
+func (e *listEnv) trash(itemID string) {
+	e.tb.Helper()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(e.dir, store.DBFileName)+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		e.tb.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`UPDATE items SET deleted_at = ? WHERE id = ?`, e.clk.Now().UnixMilli(), itemID); err != nil {
+		e.tb.Fatal(err)
+	}
+}
+
+// 垃圾桶中的影音不在列表，也不計入 total（LIB 規格：由單元測試守住）。
+func TestListItemsExcludesTrashed(t *testing.T) {
+	e := newListEnv(t)
+	items := e.seed(
+		lItem{platform: "youtube", ext: "a", title: "A", stages: done(StageNormalize)},
+		lItem{platform: "youtube", ext: "b", title: "B", stages: done(StageNormalize)},
+		lItem{platform: "youtube", ext: "c", title: "C", stages: done(StageNormalize)},
+	)
+	if page, err := e.p.ListItems(context.Background(), ItemQuery{}); err != nil || page.Total != 3 || len(page.Items) != 3 {
+		t.Fatalf("前置條件：移到垃圾桶前 total=%d items=%d err=%v", page.Total, len(page.Items), err)
+	}
+	e.trash(items[1].ID)
+	queries := map[string]ItemQuery{
+		"沒有條件":      {},
+		"搭配 status": {Status: map[string][]string{StageNormalize: {"done"}}},
+		"搭配 q":      {Q: "b"},
+	}
+	for name, q := range queries {
+		page, err := e.p.ListItems(context.Background(), q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, it := range page.Items {
+			if it.ID == items[1].ID {
+				t.Errorf("%s：垃圾桶中的影音不該出現在列表", name)
+			}
+		}
+		want := 2
+		if name == "搭配 q" {
+			want = 0
+		}
+		if len(page.Items) != want || page.Total != want {
+			t.Errorf("%s：items=%d total=%d，預期 %d", name, len(page.Items), page.Total, want)
+		}
+	}
 }
 
 // lItem 描述一部要建立的影音。
