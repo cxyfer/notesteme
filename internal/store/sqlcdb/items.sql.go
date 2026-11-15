@@ -35,8 +35,8 @@ WHERE deleted_at IS NULL
   AND (json_array_length(CAST(?11 AS TEXT)) = 0 OR NOT EXISTS (
         SELECT 1 FROM sf
         WHERE COALESCE(instr(sf.statuses,
-                '|' || (SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
-                        ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) || '|'), 0) = 0))
+                '|' || COALESCE((SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
+                                 ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1), 'pending') || '|'), 0) = 0))
 `
 
 type CountItemsFilteredParams struct {
@@ -257,8 +257,8 @@ WHERE deleted_at IS NULL
   AND (json_array_length(CAST(?11 AS TEXT)) = 0 OR NOT EXISTS (
         SELECT 1 FROM sf
         WHERE COALESCE(instr(sf.statuses,
-                '|' || (SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
-                        ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) || '|'), 0) = 0))
+                '|' || COALESCE((SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
+                                 ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1), 'pending') || '|'), 0) = 0))
   AND created_at <= CAST(?12 AS INTEGER)
   AND (created_at < CAST(?12 AS INTEGER) OR id < CAST(?13 AS TEXT))
 ORDER BY created_at DESC, id DESC
@@ -284,7 +284,7 @@ type ListItemsPageParams struct {
 
 // The library list (LIB-R1, R3, R4, R7). Keep the WHERE block identical to CountItemsFiltered.
 // status_filters is a JSON array of {"stage": ..., "statuses": "|a|b|"}: values of one stage are OR, stages are AND,
-// and a stage counts by its latest run. q_fold is already lowercased by Go. Without a cursor, after_created_at is
+// and a stage counts by its latest run (a stage without any run counts as 'pending'). q_fold is already lowercased by Go. Without a cursor, after_created_at is
 // the maximum int64 and after_id is empty. Keyset order is (created_at, id) descending.
 func (q *Queries) ListItemsPage(ctx context.Context, arg ListItemsPageParams) ([]Item, error) {
 	rows, err := q.db.QueryContext(ctx, listItemsPage,

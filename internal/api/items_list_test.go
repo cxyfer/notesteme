@@ -101,7 +101,8 @@ func TestListItemsFilterParams(t *testing.T) {
 		{"?platform=bilibili", []string{bi}},
 		{"?platform=youtube&status=normalize:done", []string{ot, pg}},
 		{"?status=normalize:done", []string{ot, pg}},
-		{"?status=normalize:done&status=normalize:pending", []string{ot, ag, pg}},
+		{"?status=normalize:done&status=normalize:pending", []string{po, ot, bi, ag, pg}}, // 沒有 run 的步驟視為 pending
+		{"?status=normalize:pending", []string{po, bi, ag}},
 		{"?status=normalize:done&status=metadata:done", nil},
 		{"?q=postgresql", []string{pg}},
 		{"?q=POSTGRESQL", []string{pg}},

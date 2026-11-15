@@ -38,6 +38,7 @@ type ItemQuery struct {
 	// Q 是標題的部分字串，不分大小寫；呼叫端先去掉前後空白。
 	Q string
 	// Status 的 key 是步驟，值是可接受的狀態：同一個步驟的多個值是 OR，不同步驟之間是 AND。
+	// 步驟取最新的一次執行；沒有任何執行紀錄的步驟視為 pending。
 	Status        map[string][]string
 	PublishedFrom *time.Time
 	PublishedTo   *time.Time

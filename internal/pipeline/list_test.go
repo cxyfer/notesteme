@@ -192,10 +192,10 @@ func TestListItemsFilters(t *testing.T) {
 		{"duration_max", ItemQuery{DurationMax: ip(100)}, []string{pg}},
 		{"duration 區間", ItemQuery{DurationMin: ip(100), DurationMax: ip(600)}, []string{ag, pg}},
 		{"status", ItemQuery{Status: map[string][]string{StageNormalize: {"done"}}}, []string{pg}},
-		{"status 同步驟 OR", ItemQuery{Status: map[string][]string{StageNormalize: {"done", "pending"}}}, []string{ag, pg}},
+		{"status 同步驟 OR", ItemQuery{Status: map[string][]string{StageNormalize: {"done", "pending"}}}, []string{bi, ag, pg}},
 		{"status 不同步驟 AND", ItemQuery{Status: map[string][]string{StageMetadata: {"done"}, StageTranscript: {"failed"}}}, []string{ag}},
 		{"status AND 沒有符合", ItemQuery{Status: map[string][]string{StageMetadata: {"done"}, StageTranscript: {"pending"}}}, nil},
-		{"status 步驟沒有 run", ItemQuery{Status: map[string][]string{StageNormalize: {"pending"}}}, []string{ag}},
+		{"status 沒有 run 的步驟視為 pending", ItemQuery{Status: map[string][]string{StageNormalize: {"pending"}}}, []string{bi, ag}},
 		{"AND：platform + status", ItemQuery{Platform: "youtube", Status: map[string][]string{StageNormalize: {"done"}}}, []string{pg}},
 		{"AND：platform + lang 沒有符合", ItemQuery{Platform: "bilibili", Lang: "en"}, nil},
 		{"AND：q + timing", ItemQuery{Q: "agile", Timing: "interpolated"}, []string{ag}},
@@ -300,6 +300,34 @@ func TestListItemsStatusUsesLatestRun(t *testing.T) {
 	}
 	if page, _ := e2.p.ListItems(context.Background(), ItemQuery{Status: map[string][]string{StageTranscript: {"done"}}}); page.Total != 1 {
 		t.Errorf("同一毫秒時最後插入的 run 為最新：total = %d", page.Total)
+	}
+}
+
+// 沒有任何 run 的步驟視為 pending（LIB 規格待決問題）：只處理到 metadata 的影音，
+// normalize:pending 要列出它，normalize:done 不列出；列表與 total 一致。
+func TestListItemsStageWithoutRunIsPending(t *testing.T) {
+	e := newListEnv(t)
+	meta := e.seed(lItem{platform: "youtube", ext: "m", title: "M", stages: done(StageMetadata)})[0]
+	full := e.seed(lItem{platform: "youtube", ext: "f", title: "F", stages: done(StageMetadata, StageNormalize)})[0]
+	tests := []struct {
+		name   string
+		status map[string][]string
+		want   []string
+	}{
+		{"normalize:pending", map[string][]string{StageNormalize: {"pending"}}, []string{meta.ID}},
+		{"normalize:done", map[string][]string{StageNormalize: {"done"}}, []string{full.ID}},
+		{"normalize:done 或 pending", map[string][]string{StageNormalize: {"done", "pending"}}, []string{full.ID, meta.ID}},
+		{"normalize:failed", map[string][]string{StageNormalize: {"failed"}}, nil},
+		{"metadata:done 且 normalize:pending", map[string][]string{StageMetadata: {"done"}, StageNormalize: {"pending"}}, []string{meta.ID}},
+	}
+	for _, tt := range tests {
+		page, err := e.p.ListItems(context.Background(), ItemQuery{Status: tt.status})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := ids(page); !slices.Equal(got, nonNilStrings(tt.want)) || page.Total != len(tt.want) {
+			t.Errorf("%s：items=%v total=%d，預期 %v", tt.name, got, page.Total, tt.want)
+		}
 	}
 }
 
