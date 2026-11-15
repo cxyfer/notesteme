@@ -127,12 +127,15 @@ func TestPurgeRoute(t *testing.T) {
 	if rec.Code != http.StatusOK || rec.Body.String() == "" {
 		t.Fatalf("永久刪除 = %d %s", rec.Code, rec.Body)
 	}
+	// 回應帶著被刪除的影音的 ID 與代號：影音已經不存在，CLI 的 --json 要輸出代號。
 	var body struct {
-		Purged int `json:"purged"`
+		Purged int    `json:"purged"`
+		ID     string `json:"id"`
+		Ref    string `json:"ref"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
-	if body.Purged != 1 {
-		t.Errorf("purged = %d", body.Purged)
+	if body.Purged != 1 || body.ID != id || body.Ref != "yt:abc123xxxxx" {
+		t.Errorf("body = %+v，預期 purged 1、id %s、ref yt:abc123xxxxx", body, id)
 	}
 	if rec := r.owner("GET", "/api/items/"+id, ""); rec.Code != http.StatusNotFound || purgeErrCode(rec.Body.Bytes()) != CodeNotFound {
 		t.Errorf("永久刪除之後：%d %s，預期 404 not_found（不是 in_trash）", rec.Code, rec.Body)
@@ -160,6 +163,12 @@ func TestEmptyTrashRoute(t *testing.T) {
 		_ = json.Unmarshal(rec.Body.Bytes(), &body)
 		if rec.Code != http.StatusOK || body.Purged == nil || *body.Purged != want {
 			t.Fatalf("清空垃圾桶 = %d %s，預期 purged %d", rec.Code, rec.Body, want)
+		}
+		// 清空維持只有 {"purged": n}，不帶單一影音的欄位。
+		var raw map[string]json.RawMessage
+		_ = json.Unmarshal(rec.Body.Bytes(), &raw)
+		if _, has := raw["id"]; has || len(raw) != 1 {
+			t.Errorf("清空垃圾桶的回應 = %s，預期只有 purged", rec.Body)
 		}
 	}
 	if rec := r.owner("GET", "/api/items/"+live, ""); rec.Code != http.StatusOK {

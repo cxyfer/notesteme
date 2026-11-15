@@ -79,31 +79,45 @@ func itemDirs(dataDir, itemID string) ([]string, error) {
 // 順序：先結束殘留的任務，再用一個交易清除資料庫（見 store.Repo.PurgeItem），commit 之後才刪檔案：
 // DB 失敗時不會留下指向已刪檔案的紀錄。刪檔失敗只記 log，不讓已經完成的永久刪除變成失敗。
 func (p *Pipeline) Purge(ctx context.Context, id string) error {
+	_, err := p.PurgeItem(ctx, id)
+	return err
+}
+
+// PurgedItem 是被永久刪除的影音：影音已經不存在，API 回應用它帶出內部 ID 與代號（CLI 輸出代號）。
+type PurgedItem struct {
+	ID    string
+	Ref   string
+	Title string
+}
+
+// PurgeItem 同 Purge，另外回傳被刪除的影音的 ID、代號與標題。
+func (p *Pipeline) PurgeItem(ctx context.Context, id string) (PurgedItem, error) {
 	return p.purge(ctx, id, nil)
 }
 
 // purge 是 Purge 的實作；notAfter 不為 nil 時，影音必須在那個時間或之前刪除（到期清理用）。
-func (p *Pipeline) purge(ctx context.Context, id string, notAfter *time.Time) error {
+func (p *Pipeline) purge(ctx context.Context, id string, notAfter *time.Time) (PurgedItem, error) {
 	it, err := p.st.Read().ItemByID(ctx, id)
 	if err != nil {
-		return err
+		return PurgedItem{}, err
 	}
 	if it.DeletedAt == nil || (notAfter != nil && it.DeletedAt.After(*notAfter)) {
-		return store.ErrNotFound
+		return PurgedItem{}, store.ErrNotFound
 	}
 	// 先確認可以安全組出檔案路徑：不行就不動資料庫，免得留下刪不掉的檔案。
 	dirs, err := itemDirs(p.dataDir, it.ID)
 	if err != nil {
-		return err
+		return PurgedItem{}, err
 	}
 	if err := p.stopTasks(ctx, it.ID); err != nil {
-		return err
+		return PurgedItem{}, err
 	}
-	if _, err := p.st.Write().PurgeItem(ctx, it.ID, notAfter); err != nil {
-		return err
+	done, err := p.st.Write().PurgeItem(ctx, it.ID, notAfter)
+	if err != nil {
+		return PurgedItem{}, err
 	}
 	p.removeDirs(ctx, dirs)
-	return nil
+	return PurgedItem(done), nil
 }
 
 // stopTasks 取消影音殘留的任務並等執行中的結束。移到垃圾桶時已經做過一次；這裡再做是為了
@@ -161,7 +175,7 @@ func (p *Pipeline) purgeEach(ctx context.Context, ids []string, notAfter *time.T
 			errs = append(errs, err)
 			break
 		}
-		switch err := p.purge(ctx, id, notAfter); {
+		switch _, err := p.purge(ctx, id, notAfter); {
 		case err == nil:
 			n++
 		case errors.Is(err, store.ErrNotFound):

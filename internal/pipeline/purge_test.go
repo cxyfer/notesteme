@@ -180,6 +180,24 @@ func TestPurgeLeavesNothingBehind(t *testing.T) {
 	}
 }
 
+// PurgeItem 回傳被刪除的影音的 ID、代號與標題；Purge 是只回傳錯誤的簡化版。
+func TestPurgeItemReturnsIdentity(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	it := r.processed(t, watch)
+	r.trashDirect(it.ID, r.clk.Now())
+	got, err := r.p.PurgeItem(ctx, it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != it.ID || got.Ref != "yt:abc123xxxxx" || got.Title != "T" {
+		t.Errorf("PurgeItem = %+v", got)
+	}
+	if got, err := r.p.PurgeItem(ctx, it.ID); !errors.Is(err, store.ErrNotFound) || got != (PurgedItem{}) {
+		t.Errorf("已經刪除：%+v, %v，預期空結果與 ErrNotFound", got, err)
+	}
+}
+
 // 帳本在永久刪除之後仍在：item_id 為空、標題另存。
 func TestPurgeKeepsCostLedger(t *testing.T) {
 	r := newRig(t)
