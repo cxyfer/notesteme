@@ -199,9 +199,10 @@ func parseItems(args []string) (*plan, error) {
 		return parseItemsShow(rest)
 	case "rerun":
 		return parseItemsRerun(rest)
-	case "rm", "restore":
-		// 屬於 DEL 切片。
-		return unimplemented("items " + sub), nil
+	case "rm":
+		return parseItemsRm(rest)
+	case "restore":
+		return parseItemsRestore(rest)
 	}
 	return nil, usagef("不認得的子命令 items %s。", sub)
 }

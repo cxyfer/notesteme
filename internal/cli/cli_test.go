@@ -158,7 +158,8 @@ func TestUsageErrorsComeBeforeMode(t *testing.T) {
 }
 
 func TestUnimplementedSubcommandsReportNotImplemented(t *testing.T) {
-	for _, args := range [][]string{{"tokens", "create"}, {"items", "rm", "yt:abc123xxxxx"}} {
+	for _, args := range [][]string{{"tokens", "create"}, {"items", "rm", "yt:abc123xxxxx"},
+		{"items", "restore", "yt:abc123xxxxx"}, {"trash", "ls"}, {"trash", "empty", "--yes"}} {
 		env, data := testEnv(t)
 		res, _, _ := run(t, env, args...)
 		if res.Code != 1 || res.ErrorCode != "not_implemented" || res.Mode != "" {

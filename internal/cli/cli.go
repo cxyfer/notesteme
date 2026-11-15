@@ -225,6 +225,8 @@ func parse(args []string) (*plan, error) {
 		return parseRestore(args[1:])
 	case "tools":
 		return parseTools(args[1:])
+	case "trash":
+		return parseTrash(args[1:])
 	case "tokens", "secrets", "config", "mcp":
 		// 屬於之後的切片（AUTH、SEC、MCP）：不判斷模式，直接回報還沒實作。
 		return unimplemented(name), nil
@@ -246,6 +248,8 @@ const usageText = `用法：notesteme <子命令> [旗標]
   serve                                 啟動 server
   ingest <url|ref|path>                 新增影音（--profile、--until、--wait、--timeout）
   items ls | show <item> | rerun <item> --from <stage>
+  items rm <item>... | restore <item>...  刪除到垃圾桶、還原（DEL，尚未實作）
+  trash ls | empty                      列出、清空垃圾桶（DEL，尚未實作）
   export <item> --format srt|vtt|txt    輸出字幕（--lang、--variant、--out）
   doctor                                檢查外部工具與設定
 
