@@ -14,8 +14,12 @@ CREATE INDEX items_created ON items (created_at, id);
 
 -- The latest run of a stage (ORDER BY created_at DESC, rowid DESC LIMIT 1) is one backwards index step.
 CREATE INDEX stage_runs_latest ON stage_runs (item_id, stage, created_at);
+-- stage_runs_item (item_id, stage) is a prefix of stage_runs_latest and stage_runs_cache: every lookup it served
+-- (by item_id, or by item_id and stage) is answered by those two, so it only slows down writes.
+DROP INDEX stage_runs_item;
 
 -- +goose Down
+CREATE INDEX stage_runs_item ON stage_runs (item_id, stage);
 DROP INDEX stage_runs_latest;
 DROP INDEX items_created;
 ALTER TABLE artifacts DROP COLUMN timings_json;
