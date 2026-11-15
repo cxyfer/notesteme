@@ -640,6 +640,14 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 		return newError(http.StatusUnprocessableEntity, CodeInvalidInput, inv.Error())
 	case errors.As(err, &ni):
 		return newError(http.StatusNotImplemented, CodeNotImplemented, ni.Error())
+	case errors.Is(err, pipeline.ErrInTrash):
+		// 讀取與處理垃圾桶中的影音回 404；新增它回 409（DEL-R10），由新增的 handler 在呼叫 mapErr 之前處理。
+		var tr *pipeline.InTrashError
+		itemID := ""
+		if errors.As(err, &tr) {
+			itemID = tr.ItemID
+		}
+		return inTrashError(http.StatusNotFound, itemID)
 	case errors.Is(err, pipeline.ErrNoTranscript):
 		return newError(http.StatusNotFound, CodeNotFound, err.Error())
 	case errors.Is(err, store.ErrNotFound):

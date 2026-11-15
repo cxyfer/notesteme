@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/cxyfer/notesteme/internal/pipeline"
 )
 
 // Error 是所有錯誤回應的格式：至少有 code（機器可讀）與 message（預設繁體中文，NFR-I18N-2）。
@@ -23,6 +25,10 @@ type Error struct {
 	// Failed 在 /readyz 回報 503 時列出失敗的項目（OPS-R5）。
 	Failed  []string `json:"failed,omitempty"`
 	Details []string `json:"details,omitempty"`
+	// Actions 是可以執行的修正動作，例如影音在垃圾桶中時的「還原」（DEL-R1、R10）。
+	Actions []string `json:"actions,omitempty"`
+	// ItemID 指出錯誤是哪部影音（in_trash 時，client 用它還原）。
+	ItemID string `json:"item_id,omitempty"`
 }
 
 // Error 實作 error。
@@ -53,12 +59,24 @@ const (
 	// 本機路徑不在 inbox 或 media_roots 之內（GRD-R7）。
 	CodePathOutsideRoots = "path_outside_roots"
 
+	// 影音在垃圾桶中（DEL-R1、R10）：讀取與處理回 404，新增回 409。
+	CodeInTrash = "in_trash"
+
 	// 外部工具失敗（例如 yt-dlp 展開播放清單，ING-R4）；稍後重試或處理環境後可能成功。
 	CodeUpstream = "upstream_failed"
 )
 
 func newError(status int, code, message string) *Error {
 	return &Error{Status: status, Code: code, Message: message}
+}
+
+// inTrashError 是影音在垃圾桶中的錯誤（DEL-R1、R10）：讀取與處理它的端點回 404，新增它回 409。
+// 內容相同：訊息、動作「還原」與影音 ID。
+func inTrashError(status int, itemID string) *Error {
+	e := newError(status, CodeInTrash, pipeline.ErrInTrash.Error())
+	e.Actions = []string{"還原"}
+	e.ItemID = itemID
+	return e
 }
 
 // defaultMessages 是 Huma 自己產生的錯誤（解析、驗證等）使用的繁中訊息。

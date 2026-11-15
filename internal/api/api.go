@@ -195,10 +195,11 @@ func (rt *routes) register(api huma.API) {
 	rt.registerQueue(api)
 	rt.registerCookies(api)
 	rt.registerCancel(api)
-	// 之後切片才會實作的路由（DEL 等）：先明確回應 501。
+	// DEL 切片的路由，各自放在獨立的檔案；實作前 pipeline 回 501。
+	rt.registerTrash(api)
+	rt.registerPurge(api)
+	// 之後切片才會實作的路由：先明確回應 501。
 	for _, op := range []huma.Operation{
-		{OperationID: "items-delete", Method: http.MethodDelete, Path: "/api/items/{id}", Summary: "刪除影音，移入垃圾桶（尚未實作）"},
-		{OperationID: "trash-restore", Method: http.MethodPost, Path: "/api/trash/{id}/restore", Summary: "從垃圾桶還原（尚未實作）"},
 		{OperationID: "tasks-retry", Method: http.MethodPost, Path: "/api/tasks/{id}/retry", Summary: "重試任務（尚未實作）"},
 		{OperationID: "tasks-cancel", Method: http.MethodPost, Path: "/api/tasks/{id}/cancel", Summary: "取消單一任務（尚未實作）"},
 	} {
