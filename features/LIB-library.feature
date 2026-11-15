@@ -21,7 +21,7 @@ Feature: Library, item page and queue page
 
   @M1 @LIB-01 @LIB-R1
   Scenario: Filter by stage status
-    When the owner sends "GET /api/items?status=normalize:done"
+    When the owner sends "GET /api/items?status=metadata:done&status=normalize:done"
     Then the response contains:
       """
       { "items": [ { "ref": "yt:pg100xxxxxx" } ], "total": 1 }
@@ -78,11 +78,11 @@ Feature: Library, item page and queue page
 
   @M1 @LIB-04 @LIB-R8
   Scenario: The queue shows each lane with its limit
-    Given the concurrency limit of "download" is 2
+    Given the concurrency limit of "download" is 3
     When the owner sends "GET /api/queue"
     Then the response contains:
       """
-      { "lanes": [ { "class": "download", "limit": 2, "running": 0, "waiting": 1 } ] }
+      { "lanes": [ { "class": "download", "limit": 3, "running": 0, "waiting": 1 } ] }
       """
 
   @M1 @LIB-02 @LIB-R2 @ui @manual
