@@ -319,7 +319,7 @@ func (s *Scenario) itemProcessedUpTo(ref, stage string) error {
 
 // hasTranscriptSource 回報場景有沒有替影音準備任何字幕來源。只看場景自己累積的狀態，不看執行結果：
 //   - 已用 `the … transcript of … is:` 寫入字幕。
-//   - 假 yt-dlp 的狀態中，有符合 caption_priority（內建預設）的平台字幕軌。
+//   - 假 yt-dlp 的狀態中，有符合 caption_priority（內建預設）的平台字幕軌；原文語言用假 yt-dlp 實際回報的（steps.md 4.3）。
 //   - 腳本化了已實作的 fallback 來源（`the source … returns …`）。
 func (s *Scenario) hasTranscriptSource(ref string) bool {
 	if s.seeded[ref] {
@@ -342,7 +342,7 @@ func (s *Scenario) hasTranscriptSource(ref string) bool {
 	for _, t := range v.Tracks {
 		tracks = append(tracks, transcript.Track{Lang: t.Lang, Kind: t.Kind})
 	}
-	chosen, _ := transcript.Select(tracks, s.declaredLanguage(ref, v), pipeline.DefaultLanguage().CaptionPriority, false)
+	chosen, _ := transcript.Select(tracks, v.Language, pipeline.DefaultLanguage().CaptionPriority, false)
 	return chosen != nil
 }
 
