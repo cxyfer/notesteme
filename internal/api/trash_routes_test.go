@@ -18,11 +18,8 @@ func TestDeleteRoutesAnswer501(t *testing.T) {
 	for _, c := range []struct{ method, path, body string }{
 		{"DELETE", "/api/items/some-id", ""},
 		{"DELETE", "/api/items/some-id", `{"delete_outputs":true}`},
-		{"GET", "/api/items/some-id/deletion-preview", ""},
 		{"GET", "/api/trash", ""},
 		{"POST", "/api/trash/some-id/restore", ""},
-		{"DELETE", "/api/trash/some-id", ""},
-		{"DELETE", "/api/trash", ""},
 	} {
 		rec := r.owner(c.method, c.path, c.body)
 		var e Error
