@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestMediaCacheDir(t *testing.T) {
@@ -33,13 +32,9 @@ func TestDeleteMethodsAreNotImplemented(t *testing.T) {
 	p := &Pipeline{}
 	ctx := context.Background()
 	calls := map[string]func() error{
-		"Trash":           func() error { _, err := p.Trash(ctx, "x", TrashOptions{}); return err },
-		"Restore":         func() error { _, err := p.Restore(ctx, "x"); return err },
-		"TrashList":       func() error { _, err := p.TrashList(ctx); return err },
-		"Purge":           func() error { return p.Purge(ctx, "x") },
-		"PurgeAll":        func() error { _, err := p.PurgeAll(ctx); return err },
-		"PurgeExpired":    func() error { _, err := p.PurgeExpired(ctx, time.Time{}, time.Hour); return err },
-		"DeletionPreview": func() error { _, err := p.DeletionPreview(ctx, "x"); return err },
+		"Trash":     func() error { _, err := p.Trash(ctx, "x", TrashOptions{}); return err },
+		"Restore":   func() error { _, err := p.Restore(ctx, "x"); return err },
+		"TrashList": func() error { _, err := p.TrashList(ctx); return err },
 	}
 	for name, call := range calls {
 		var ni *NotImplementedError

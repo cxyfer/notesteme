@@ -93,6 +93,8 @@ type Pipeline struct {
 	http     *http.Client
 	wake     func()
 	version  string
+	// tasks 結束永久刪除時殘留的任務（DEL-R6）；可以是 nil，見 SetTaskCanceller。
+	tasks TaskCanceller
 
 	// impl 是 impl_version 的覆寫（PIPE-R6）；worker 與測試介面並行存取，用 implMu 保護。
 	implMu sync.RWMutex
