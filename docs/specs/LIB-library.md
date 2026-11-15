@@ -48,7 +48,7 @@
 - 查詢參數：
   - `platform`：`youtube`、`bilibili`、`podcast`、`local`。
   - `channel`：頻道 ID。
-  - `status`：`<stage>:<狀態>`，可以重複。stage 必須是 pipeline 的步驟，狀態必須是已知的步驟狀態，否則回 422。同一個 stage 的多個值是 OR，不同 stage 之間是 AND。stage 的狀態取最新的一次執行。
+  - `status`：`<stage>:<狀態>`，可以重複。stage 必須是 pipeline 的步驟，狀態必須是已知的步驟狀態，否則回 422。同一個 stage 的多個值是 OR，不同 stage 之間是 AND。stage 的狀態取最新的一次執行；沒有任何執行紀錄的 stage 視為 `pending`。值中不能用逗號分隔多個條件，含逗號時回 422 並提示改成重複 `status` 參數。
   - `error_class`、`lang`（原文語言）。
   - `published_from`、`published_to`：RFC 3339。
   - `duration_min`、`duration_max`：秒，不得小於 0。
