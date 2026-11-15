@@ -65,11 +65,6 @@ func writeMedia(t *testing.T, dataDir, itemID string) string {
 	return dir
 }
 
-func exists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
-
 // 移到垃圾桶：一個交易內設定 deleted_at、取消步驟（skipped、cancelled、動作「重試」）與任務，並寫入事件。
 func TestTrashCancelsStagesAndTasks(t *testing.T) {
 	r := newRig(t)

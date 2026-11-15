@@ -1,12 +1,10 @@
 package pipeline
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestMediaCacheDir(t *testing.T) {
@@ -25,23 +23,5 @@ func TestInTrashErrorIsErrInTrash(t *testing.T) {
 	var tr *InTrashError
 	if !errors.As(err, &tr) || tr.ItemID != "x" {
 		t.Errorf("errors.As = %v", tr)
-	}
-}
-
-// DEL-B2 的方法在實作前回傳 *NotImplementedError，API 對應成 501。
-func TestDeleteMethodsAreNotImplemented(t *testing.T) {
-	p := &Pipeline{}
-	ctx := context.Background()
-	calls := map[string]func() error{
-		"Purge":           func() error { return p.Purge(ctx, "x") },
-		"PurgeAll":        func() error { _, err := p.PurgeAll(ctx); return err },
-		"PurgeExpired":    func() error { _, err := p.PurgeExpired(ctx, time.Time{}, time.Hour); return err },
-		"DeletionPreview": func() error { _, err := p.DeletionPreview(ctx, "x"); return err },
-	}
-	for name, call := range calls {
-		var ni *NotImplementedError
-		if err := call(); !errors.As(err, &ni) {
-			t.Errorf("%s = %v，預期 *NotImplementedError", name, err)
-		}
 	}
 }

@@ -12,23 +12,6 @@ import (
 	"github.com/cxyfer/notesteme/internal/pipeline"
 )
 
-// DEL-B2 的路由已註冊（不是 404），實作前一律回 501 not_implemented；不帶 body 的 DELETE 也能通過驗證。
-func TestDeleteRoutesAnswer501(t *testing.T) {
-	r := newItemsRig(t)
-	for _, c := range []struct{ method, path, body string }{
-		{"GET", "/api/items/some-id/deletion-preview", ""},
-		{"DELETE", "/api/trash/some-id", ""},
-		{"DELETE", "/api/trash", ""},
-	} {
-		rec := r.owner(c.method, c.path, c.body)
-		var e Error
-		_ = json.Unmarshal(rec.Body.Bytes(), &e)
-		if rec.Code != http.StatusNotImplemented || e.Code != CodeNotImplemented {
-			t.Errorf("%s %s = %d %s，預期 501 not_implemented", c.method, c.path, rec.Code, rec.Body)
-		}
-	}
-}
-
 // 沒有登入或缺 CSRF 的請求在路由之前就被擋下。
 func TestDeleteRoutesNeedOwnerSession(t *testing.T) {
 	r := newItemsRig(t)

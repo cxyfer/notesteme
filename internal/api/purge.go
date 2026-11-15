@@ -66,18 +66,28 @@ type purgedOutput struct {
 	}
 }
 
-func (rt *routes) purgeItem(ctx context.Context, in *itemInput) (*purgedOutput, error) {
+// purgedItemOutput 是永久刪除單一影音的回應：影音已經不存在，所以帶出它的 ID 與代號（CLI 輸出代號）。
+type purgedItemOutput struct {
+	Body struct {
+		Purged int    `json:"purged" doc:"永久刪除的影音數，一律是 1"`
+		ID     string `json:"id" doc:"被刪除的影音的內部 ID"`
+		Ref    string `json:"ref" doc:"被刪除的影音的短代號，例如 yt:abc123xxxxx"`
+	}
+}
+
+func (rt *routes) purgeItem(ctx context.Context, in *itemInput) (*purgedItemOutput, error) {
 	if err := requireOwner(ctx, "永久刪除影音"); err != nil {
 		return nil, err
 	}
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}
-	if err := rt.d.Pipeline.Purge(ctx, in.ID); err != nil {
+	done, err := rt.d.Pipeline.PurgeItem(ctx, in.ID)
+	if err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}
-	out := &purgedOutput{}
-	out.Body.Purged = 1
+	out := &purgedItemOutput{}
+	out.Body.Purged, out.Body.ID, out.Body.Ref = 1, done.ID, done.Ref
 	return out, nil
 }
 
