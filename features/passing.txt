@@ -18,6 +18,19 @@ CLI-cli.feature: A bad argument exits with 2
 CLI-cli.feature: Waiting on an item that needs the owner exits with 3
 CLI-cli.feature: Waiting until the transcript is ready
 CLI-cli.feature: Doctor reports each dependency with a fix
+DEL-delete.feature: A deleted item moves to the trash and disappears from the library
+DEL-delete.feature: Deleting stops processing and frees the media cache
+DEL-delete.feature: The deletion preview shows what will be lost without changing anything
+DEL-delete.feature: A restored item comes back with its subtitles
+DEL-delete.feature: A step cancelled by the deletion can be retried after restoring
+DEL-delete.feature: The trash is emptied after 30 days
+DEL-delete.feature: Spending records survive a permanent delete
+DEL-delete.feature: Adding an item that is in the trash offers to restore it
+DEL-delete.feature: An item added again after a permanent delete starts fresh
+DEL-delete.feature: Delete from the CLI
+DEL-delete.feature: The CLI refuses to delete without confirmation outside a terminal
+DEL-delete.feature: A Bilibili reference without a part deletes every part
+DEL-delete.feature: Purge skips the trash
 GRD-guards.feature: Feeds pointing into private networks are blocked [example 1]
 GRD-guards.feature: Feeds pointing into private networks are blocked [example 2]
 GRD-guards.feature: Feeds pointing into private networks are blocked [example 3]
@@ -70,6 +83,7 @@ NRM-normalize.feature: Formatting tags and empty cues are removed but music mark
 NRM-normalize.feature: Overlapping cues are trimmed so timings always move forward
 NRM-normalize.feature: Out-of-order cues are sorted by start time
 NRM-normalize.feature: Word timings survive a merge
+NRM-normalize.feature: The normalized transcript points back to its source
 OPS-operations.feature: Back up while the server is running
 OPS-operations.feature: Restore brings the library back
 OPS-operations.feature: Restore refuses to run while the server is running
