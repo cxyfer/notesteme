@@ -55,9 +55,10 @@
 - 適用條件（三條規則，依序判斷）：
   1. 場景已準備字幕來源（寫入字幕、符合 `caption_priority` 的平台字幕軌、腳本化的已實作 fallback 來源）：
      不看 fixture，照常執行 pipeline。
-  2. 假 yt-dlp 中這部影片完全沒有字幕軌、場景也沒有寫入字幕或腳本化來源，而且 fixture 存在：
-     先建立影音並做到 metadata，再用 fixture 寫入 `source`，接著照常執行剩下的步驟（例如 normalize）。
-  3. 其他情況（沒有 fixture 或不符合上面的條件）：步驟 pending。
+  2. 代號是 `yt:` 或 `bili:`（假 yt-dlp 管的平台）、假 yt-dlp 中這部影片完全沒有字幕軌、場景也沒有寫入字幕或腳本化來源，
+     而且 fixture 存在：先建立影音並做到 metadata，再用 fixture 寫入 `source`，接著照常執行剩下的步驟（例如 normalize）。
+     `local:`、`pod:` 一律不套用 fixture，即使檔案存在也一樣。
+  3. 其他情況（沒有 fixture、不符合上面的條件，或代號是 `local:`、`pod:`）：步驟 pending。
 - 目標步驟在 transcript 之前（例如 `metadata`）時不需要字幕，不使用 fixture。
 
 ## 字幕軌

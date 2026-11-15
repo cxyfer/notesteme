@@ -364,6 +364,11 @@ func itemFixtureName(ref string) string {
 	return strings.NewReplacer(":", "-", "/", "-").Replace(ref) + ".json"
 }
 
+// usesItemFixture 回報這個代號能不能用影音 fixture：只有 yt: 與 bili:。
+func usesItemFixture(ref string) bool {
+	return strings.HasPrefix(ref, "yt:") || strings.HasPrefix(ref, "bili:")
+}
+
 // hasAnyTrack 回報假 yt-dlp 中這部影片是否有任何字幕軌（不論是否符合 caption_priority）。
 func (s *Scenario) hasAnyTrack(ref string) bool {
 	key, err := s.videoKey(ref)
@@ -376,15 +381,16 @@ func (s *Scenario) hasAnyTrack(ref string) bool {
 
 // itemFixtureFor 決定 `has been processed up to` 要怎麼取得字幕（steps.md 第 4.4 節）：
 //  1. 目標步驟在 transcript 之前，或場景已準備字幕來源（hasTranscriptSource）：回傳 nil，照常跑 pipeline。
-//  2. 影片沒有任何字幕軌、場景也沒寫入字幕或腳本化來源，而且 fixtures/items/<代號>.json 存在：回傳該 fixture。
-//  3. 其他情況：pending（場景沒有任何方式產生字幕）。
+//  2. 代號是 yt: 或 bili:、影片沒有任何字幕軌、場景也沒寫入字幕或腳本化來源，而且 fixtures/items/<代號>.json 存在：回傳該 fixture。
+//  3. 其他情況（包含 local:、pod:，即使有 fixture）：pending（場景沒有任何方式產生字幕）。
 //
 // fixture 的 ref 必須與檔名一致，否則失敗。是否 pending 只看場景準備了什麼，不看步驟的參數內容。
 func (s *Scenario) itemFixtureFor(ref, stage string) (*itemFixture, error) {
 	if slices.Index(pipeline.Stages, stage) < slices.Index(pipeline.Stages, pipeline.StageTranscript) || s.hasTranscriptSource(ref) {
 		return nil, nil
 	}
-	if !s.hasAnyTrack(ref) && len(s.World.Sources.ReturnedFor(ref)) == 0 {
+	// 規則 2 只適用於 yt: 與 bili:（假 yt-dlp 管的平台）；local:、pod: 不套用 fixture，落到規則 3。
+	if usesItemFixture(ref) && !s.hasAnyTrack(ref) && len(s.World.Sources.ReturnedFor(ref)) == 0 {
 		name := itemFixtureName(ref)
 		raw, err := os.ReadFile(filepath.Join(s.World.FixturesDir, "items", name))
 		if err == nil {
