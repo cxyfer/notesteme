@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/subtitle"
 )
 
 // taskOutcome 是任務的結局。
@@ -61,6 +63,11 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		if ctx.Err() != nil {
 			return nil
 		}
+		if errors.Is(err, store.ErrNotFound) {
+			// 步驟已隨影音永久刪除：沒有東西可以寫回。
+			p.log.Info("步驟已不存在，略過任務", "task", t.ID, "stage_run", t.StageRunID)
+			return nil
+		}
 		return fmt.Errorf("讀取步驟 %s：%w", t.StageRunID, err)
 	}
 	it, err := r.ItemByID(ctx, run.ItemID)
@@ -94,6 +101,11 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	if ctx.Err() != nil {
 		// 關閉或取消中：不寫回，已寫出的產出檔也不會有記錄指向它。
 		p.discardArtifactFile(res.artifact)
+		return nil
+	}
+	if errors.Is(err, errItemGone) {
+		// 影音在執行期間被移到垃圾桶或永久刪除：產出沒有寫出，也不寫回任何狀態（DEL-R2）。
+		p.log.Info("影音已不在媒體庫中，丟棄這次的結果", "item", it.ID, "stage", run.Stage)
 		return nil
 	}
 	if err != nil {
@@ -336,3 +348,21 @@ func errPermanent(detail string) error {
 }
 
 var errNoSource = errors.New("沒有原始字幕")
+
+// errItemGone 表示影音在步驟執行期間被移到垃圾桶或已被永久刪除：產出要丟棄，不寫檔（DEL-R2）。
+var errItemGone = errors.New("影音已在垃圾桶中或不存在")
+
+// writeCuesArtifact 在寫出產出檔之前，先確認影音不在垃圾桶中而且還存在，否則回傳 errItemGone，不寫任何檔案。
+// 檢查與寫檔之間仍有空隙：影音在這之後才被刪除時，任務已在資料庫中取消，寫回會因租約失效而丟棄產出檔（apply）。
+func (p *Pipeline) writeCuesArtifact(ctx context.Context, itemID string, tr subtitle.Transcript, parents []string, prov json.RawMessage) (*store.NewArtifact, error) {
+	it, err := p.st.Read().ItemByID(ctx, itemID)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return nil, errItemGone
+	case err != nil:
+		return nil, err
+	case it.DeletedAt != nil:
+		return nil, errItemGone
+	}
+	return p.newCuesArtifact(itemID, tr, parents, prov)
+}

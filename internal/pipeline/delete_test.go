@@ -28,14 +28,11 @@ func TestInTrashErrorIsErrInTrash(t *testing.T) {
 	}
 }
 
-// DEL 的方法在實作前回傳 *NotImplementedError，API 對應成 501。
+// DEL-B2 的方法在實作前回傳 *NotImplementedError，API 對應成 501。
 func TestDeleteMethodsAreNotImplemented(t *testing.T) {
 	p := &Pipeline{}
 	ctx := context.Background()
 	calls := map[string]func() error{
-		"Trash":           func() error { _, err := p.Trash(ctx, "x", TrashOptions{}); return err },
-		"Restore":         func() error { _, err := p.Restore(ctx, "x"); return err },
-		"TrashList":       func() error { _, err := p.TrashList(ctx); return err },
 		"Purge":           func() error { return p.Purge(ctx, "x") },
 		"PurgeAll":        func() error { _, err := p.PurgeAll(ctx); return err },
 		"PurgeExpired":    func() error { _, err := p.PurgeExpired(ctx, time.Time{}, time.Hour); return err },

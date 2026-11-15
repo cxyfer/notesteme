@@ -10,8 +10,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/pipeline"
 )
 
-// 這個檔案是移到垃圾桶、垃圾桶列表與還原（DEL-R1、R4、R5），由 DEL-B1 實作。
-// 骨架先讓 pipeline 回 *NotImplementedError，經 mapErr 回應 501。
+// 這個檔案是移到垃圾桶、垃圾桶列表與還原（DEL-R1、R4、R5）。
 
 // KeptOutput 是刪除時保留下來的輸出檔（DEL-R9）。
 type KeptOutput struct {
@@ -68,7 +67,11 @@ func (rt *routes) trashItem(ctx context.Context, in *trashItemInput) (*trashItem
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}
-	var opts pipeline.TrashOptions
+	// 執行中的任務由 worker 結束並等它們結束（PIPE-R15）；沒有 worker 時（nil）只改資料庫。
+	opts := pipeline.TrashOptions{}
+	if rt.d.Tasks != nil {
+		opts.Canceller = rt.d.Tasks
+	}
 	if in.Body != nil {
 		opts.DeleteOutputs = in.Body.DeleteOutputs
 	}

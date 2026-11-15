@@ -193,7 +193,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	if err != nil {
 		return result{}, err
 	}
-	art, err := p.newCuesArtifact(it.ID, subtitle.Transcript{Lang: artLang, Variant: subtitle.VariantSource, Cues: cues}, nil, prov)
+	art, err := p.writeCuesArtifact(ctx, it.ID, subtitle.Transcript{Lang: artLang, Variant: subtitle.VariantSource, Cues: cues}, nil, prov)
 	if err != nil {
 		return result{}, err
 	}
@@ -431,7 +431,7 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 				Source: id, Lang: transcript.NormalizeLang(got.Lang), State: transcript.StateRejected, Reason: reasonLanguageMismatch,
 			})
 		case err == nil:
-			return p.fallbackResult(id, f, it, lang, stage, decisions, got)
+			return p.fallbackResult(ctx, id, f, it, lang, stage, decisions, got)
 		case errors.Is(err, errclass.ErrNoResult):
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: reasonNoTranscript})
 		case errors.Is(err, errclass.ErrNotConfigured):
@@ -482,7 +482,7 @@ func blockedFor(stage *store.StageResult, decisions []transcript.Decision, resum
 }
 
 // fallbackResult 把 fallback 來源回傳的字幕寫成原始字幕的產出。
-func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, lang Language, stage *store.StageResult, decisions []transcript.Decision, got *fetchResult) (result, error) {
+func (p *Pipeline) fallbackResult(ctx context.Context, id string, f fallbackFetcher, it store.Item, lang Language, stage *store.StageResult, decisions []transcript.Decision, got *fetchResult) (result, error) {
 	artLang := transcript.NormalizeLang(got.Lang)
 	if artLang == "" {
 		// 來源沒回報語言時，用影音的原文語言；都不知道就標為 und。
@@ -500,7 +500,7 @@ func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, l
 	if err != nil {
 		return result{}, err
 	}
-	art, err := p.newCuesArtifact(it.ID, subtitle.Transcript{Lang: artLang, Variant: subtitle.VariantSource, Cues: got.Cues}, nil, prov)
+	art, err := p.writeCuesArtifact(ctx, it.ID, subtitle.Transcript{Lang: artLang, Variant: subtitle.VariantSource, Cues: got.Cues}, nil, prov)
 	if err != nil {
 		return result{}, err
 	}

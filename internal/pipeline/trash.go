@@ -2,25 +2,43 @@ package pipeline
 
 import (
 	"context"
+	"os"
 	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/cxyfer/notesteme/internal/source"
+	"github.com/cxyfer/notesteme/internal/store"
 )
 
-// 這個檔案是移到垃圾桶與還原（DEL-R1、R2、R4、R5），由 DEL-B1 實作。
-// 骨架先回傳 *NotImplementedError（API 對應成 501）。
+// 這個檔案是移到垃圾桶與還原（DEL-R1、R2、R4、R5）。
 
-// TrashOptions 是移到垃圾桶的選項；由 DEL-B1 擴充。
+// DefaultTrashRetention 是垃圾桶預設保留的時間（DEL-R4：30 天）。
+const DefaultTrashRetention = 30 * 24 * time.Hour
+
+// cancelWaitTimeout 是移到垃圾桶之後，等待執行中的任務結束的上限。
+const cancelWaitTimeout = 30 * time.Second
+
+// TaskCanceller 結束正在執行的任務並等它們結束（*worker.Worker 實作它）。
+type TaskCanceller interface {
+	Cancel(ctx context.Context, taskIDs []string) error
+}
+
+// TrashOptions 是移到垃圾桶的選項。
 type TrashOptions struct {
 	// DeleteOutputs 在 M1 接受但沒有作用，因為還沒有輸出目標（DEL-R9）。
 	DeleteOutputs bool
+	// Canceller 結束被取消的任務中、正在執行的那些（PIPE-R15）；nil 代表沒有 worker 在執行（例如測試）。
+	Canceller TaskCanceller
 }
 
-// KeptOutput 是刪除時保留下來的輸出檔（DEL-R9）；由 DEL-B1 擴充。
+// KeptOutput 是刪除時保留下來的輸出檔（DEL-R9）；M2 才會有。
 type KeptOutput struct {
 	Path   string
 	Reason string
 }
 
-// TrashResult 是移到垃圾桶的結果；由 DEL-B1 擴充。
+// TrashResult 是移到垃圾桶的結果。
 type TrashResult struct {
 	ID        string
 	Ref       string
@@ -30,7 +48,7 @@ type TrashResult struct {
 	KeptOutputs []KeptOutput
 }
 
-// TrashedItem 是垃圾桶中的一部影音；由 DEL-B1 擴充。
+// TrashedItem 是垃圾桶中的一部影音。
 type TrashedItem struct {
 	ID        string
 	Ref       string
@@ -39,17 +57,107 @@ type TrashedItem struct {
 	PurgeAt   time.Time
 }
 
-// Trash 把影音移到垃圾桶。已經在垃圾桶中時回傳 *InTrashError；影音不存在時回傳 store.ErrNotFound。
-func (p *Pipeline) Trash(ctx context.Context, id string, opts TrashOptions) (TrashResult, error) {
-	return TrashResult{}, &NotImplementedError{What: "移到垃圾桶"}
+// retention 是垃圾桶保留的時間；沒有設定時用預設值。
+func (p *Pipeline) retention() time.Duration {
+	if p.trashRetention <= 0 {
+		return DefaultTrashRetention
+	}
+	return p.trashRetention
 }
 
-// Restore 從垃圾桶還原影音；影音不在垃圾桶中時回傳 store.ErrNotFound（DEL-R5）。
+func (p *Pipeline) trashedItem(it store.Item) TrashedItem {
+	out := TrashedItem{ID: it.ID, Ref: source.Ref(it.Platform, it.ExternalID, it.Part), Title: it.Title}
+	if it.DeletedAt != nil {
+		out.DeletedAt = *it.DeletedAt
+		out.PurgeAt = it.DeletedAt.Add(p.retention())
+	}
+	return out
+}
+
+// trashedStageState 是移到垃圾桶時被取消的步驟的狀態（DEL-R1、R5）：skipped，原因 cancelled，
+// 提供「重試」；還原之後步驟維持這個狀態，使用者按「重試」才重新處理。
+func trashedStageState() store.StageState {
+	st := cancelledState()
+	st.Actions = []string{"重試"}
+	return st
+}
+
+// Trash 把影音移到垃圾桶（DEL-R1、R2）。
+//
+// 在一個交易中：設定 deleted_at、未結束的步驟改成 skipped（原因 cancelled，動作「重試」）、
+// 任務改成 cancelled、寫入 item.deleted 事件。commit 之後，依 PIPE-R15 讓 worker 結束執行中的任務
+// 並等它們結束（opts.Canceller），再刪除媒體快取。
+//
+// 已經在垃圾桶中時回傳 *InTrashError；影音不存在時回傳 store.ErrNotFound。
+func (p *Pipeline) Trash(ctx context.Context, id string, opts TrashOptions) (TrashResult, error) {
+	var it store.Item
+	var taskIDs []string
+	err := p.st.Tx(ctx, func(r *store.Repo) error {
+		taskIDs = nil
+		var changed bool
+		var err error
+		if it, changed, err = r.TrashItem(ctx, id); err != nil {
+			return err
+		}
+		if !changed {
+			return &InTrashError{ItemID: it.ID}
+		}
+		taskIDs, err = cancelItemTx(ctx, r, it.ID, trashedStageState())
+		return err
+	})
+	if err != nil {
+		return TrashResult{}, err
+	}
+
+	// 已經 commit：影音確定在垃圾桶中。client 中途斷線也要把善後做完，所以不受請求 ctx 取消影響。
+	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cancelWaitTimeout)
+	defer cancel()
+	if opts.Canceller != nil && len(taskIDs) > 0 {
+		if err := opts.Canceller.Cancel(cctx, taskIDs); err != nil {
+			// 逾時仍沒結束：只記錄。任務在資料庫中已經是 cancelled，晚點寫回會因租約失效被丟棄。
+			p.log.Warn("等待被取消的任務結束時失敗", "item", it.ID, "error", err)
+		}
+	}
+	p.removeMediaCache(it.ID)
+
+	t := p.trashedItem(it)
+	return TrashResult{ID: t.ID, Ref: t.Ref, DeletedAt: t.DeletedAt, PurgeAt: t.PurgeAt, KeptOutputs: []KeptOutput{}}, nil
+}
+
+// removeMediaCache 刪除影音的媒體快取目錄（DEL-R2）。只在 itemID 是標準形式 UUID 時才組出路徑，
+// 失敗只記錄：快取可以重新下載，不影響刪除的結果。
+func (p *Pipeline) removeMediaCache(itemID string) {
+	if u, err := uuid.Parse(itemID); err != nil || u.String() != itemID {
+		p.log.Warn("影音 ID 不是標準形式，略過刪除媒體快取", "item", itemID)
+		return
+	}
+	if err := os.RemoveAll(MediaCacheDir(p.dataDir, itemID)); err != nil {
+		p.log.Warn("刪除媒體快取失敗", "item", itemID, "error", err)
+	}
+}
+
+// Restore 從垃圾桶還原影音（DEL-R5）：deleted_at 改回 NULL，被取消的步驟維持 skipped 並保留「重試」，
+// 寫入 item.restored 事件。影音不在垃圾桶中（或不存在）時回傳 store.ErrNotFound。
 func (p *Pipeline) Restore(ctx context.Context, id string) (TrashedItem, error) {
-	return TrashedItem{}, &NotImplementedError{What: "從垃圾桶還原"}
+	it, changed, err := p.st.Write().RestoreItem(ctx, id)
+	if err != nil {
+		return TrashedItem{}, err
+	}
+	if !changed {
+		return TrashedItem{}, store.ErrNotFound
+	}
+	return p.trashedItem(it), nil
 }
 
 // TrashList 列出垃圾桶中的影音，刪除時間由新到舊（DEL-R4）。
 func (p *Pipeline) TrashList(ctx context.Context) ([]TrashedItem, error) {
-	return nil, &NotImplementedError{What: "列出垃圾桶"}
+	items, err := p.st.Read().ListTrash(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TrashedItem, 0, len(items))
+	for _, it := range items {
+		out = append(out, p.trashedItem(it))
+	}
+	return out, nil
 }

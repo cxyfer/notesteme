@@ -12,15 +12,11 @@ import (
 	"github.com/cxyfer/notesteme/internal/pipeline"
 )
 
-// DEL 的路由已註冊（不是 404），實作前一律回 501 not_implemented；不帶 body 的 DELETE 也能通過驗證。
+// DEL-B2 的路由已註冊（不是 404），實作前一律回 501 not_implemented；不帶 body 的 DELETE 也能通過驗證。
 func TestDeleteRoutesAnswer501(t *testing.T) {
 	r := newItemsRig(t)
 	for _, c := range []struct{ method, path, body string }{
-		{"DELETE", "/api/items/some-id", ""},
-		{"DELETE", "/api/items/some-id", `{"delete_outputs":true}`},
 		{"GET", "/api/items/some-id/deletion-preview", ""},
-		{"GET", "/api/trash", ""},
-		{"POST", "/api/trash/some-id/restore", ""},
 		{"DELETE", "/api/trash/some-id", ""},
 		{"DELETE", "/api/trash", ""},
 	} {

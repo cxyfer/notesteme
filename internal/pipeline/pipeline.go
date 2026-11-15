@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/source/bilibili"
@@ -76,6 +77,9 @@ type Deps struct {
 	Wake func()
 	// Version 是 notesteme 的版本，寫進來源紀錄。
 	Version string
+	// TrashRetention 是垃圾桶保留的時間，垃圾桶列表用它算出 purge_at（DEL-R4）；0 代表預設的 30 天。
+	// 由 DEL-B2 接上設定檔的 library.trash_retention_days。
+	TrashRetention time.Duration
 	// ImplVersions 覆寫步驟的 impl_version（PIPE-R6），key 是步驟名稱；只給測試使用，nil 代表全用預設值。
 	ImplVersions map[string]int
 }
@@ -93,6 +97,8 @@ type Pipeline struct {
 	http     *http.Client
 	wake     func()
 	version  string
+	// trashRetention 是垃圾桶保留的時間（已套用預設值）。
+	trashRetention time.Duration
 
 	// impl 是 impl_version 的覆寫（PIPE-R6）；worker 與測試介面並行存取，用 implMu 保護。
 	implMu sync.RWMutex
@@ -116,7 +122,11 @@ func New(d Deps) *Pipeline {
 			impl[k] = v
 		}
 	}
-	return &Pipeline{impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), http: d.HTTP, wake: wake, version: d.Version}
+	retention := d.TrashRetention
+	if retention <= 0 {
+		retention = DefaultTrashRetention
+	}
+	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), http: d.HTTP, wake: wake, version: d.Version}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。
