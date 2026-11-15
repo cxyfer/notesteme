@@ -213,6 +213,9 @@ func parseStatus(values []string) (map[string][]string, error) {
 	}
 	out := map[string][]string{}
 	for _, v := range values {
+		if strings.Contains(v, ",") {
+			return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "status 的值不能用逗號分隔；多個條件請重複 status 參數，例如 status=metadata:done&status=normalize:done。")
+		}
 		stage, status, ok := strings.Cut(v, ":")
 		if !ok || stage == "" || status == "" {
 			return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "status 的格式是 <步驟>:<狀態>，例如 normalize:done。")
@@ -276,11 +279,7 @@ func (rt *routes) listItems(ctx context.Context, in *listItemsInput) (*listItems
 		Q: strings.TrimSpace(in.Q), Status: status, PublishedFrom: from, PublishedTo: to,
 		DurationMin: durMin, DurationMax: durMax, Limit: in.Limit,
 	}
-	out := &listItemsOutput{}
-	out.Body.Items = []Item{}
-	if rt.d.Pipeline == nil {
-		return out, nil
-	}
+	// 不論有沒有 Pipeline，都先驗證參數與游標，不合法回 422。
 	if err := q.Validate(); err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}
@@ -289,6 +288,11 @@ func (rt *routes) listItems(ctx context.Context, in *listItemsInput) (*listItems
 		if q.After, err = decodeItemCursor(in.Cursor, fp); err != nil {
 			return nil, errBadCursor()
 		}
+	}
+	out := &listItemsOutput{}
+	out.Body.Items = []Item{}
+	if rt.d.Pipeline == nil {
+		return out, nil
 	}
 	page, err := rt.d.Pipeline.ListItems(ctx, q)
 	if err != nil {

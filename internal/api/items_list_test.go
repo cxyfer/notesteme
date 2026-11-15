@@ -366,6 +366,42 @@ func TestDecodeItemCursorRejectsNonCanonicalForms(t *testing.T) {
 	}
 }
 
+// 沒有注入 Pipeline 時，列表也要先驗證參數：不合法回 422，合法才回空列表。
+func TestListItemsValidatesParamsWithoutPipeline(t *testing.T) {
+	r := newItemsRigAPI(t, func(d *Deps) { d.Pipeline = nil })
+	valid := encodeItemCursor(pipeline.ItemCursor{CreatedAtMs: 1, ID: "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"}, filterFingerprint(pipeline.ItemQuery{}))
+	for _, q := range []string{
+		"?platform=vimeo", "?status=bogus:done", "?status=normalize:bogus", "?timing=bogus",
+		"?duration_min=-1", "?q=" + strings.Repeat("a", 201), "?cursor=nope", "?platform=youtube&cursor=" + valid,
+	} {
+		if rec := r.owner("GET", "/api/items"+q, ""); rec.Code != 422 {
+			t.Errorf("%s：%d，預期 422\n%s", q[:min(len(q), 30)], rec.Code, rec.Body)
+		}
+	}
+	for _, q := range []string{"", "?platform=youtube&status=normalize:done", "?cursor=" + valid} {
+		rec, b := r.list(q)
+		if rec.Code != 200 || len(b.Items) != 0 || b.Total != 0 {
+			t.Errorf("%s：%d %s，預期空列表", q, rec.Code, rec.Body)
+		}
+	}
+}
+
+// status 的值含逗號時，提示多個條件要重複 status 參數。
+func TestListItemsStatusCommaHint(t *testing.T) {
+	r := newItemsRig(t)
+	seedLibrary(t, r)
+	for _, v := range []string{"a:done,b:done", "normalize:done,pending", "normalize:done,normalize:pending"} {
+		rec := r.owner("GET", "/api/items?status="+url.QueryEscape(v), "")
+		if rec.Code != 422 {
+			t.Errorf("%s：%d，預期 422", v, rec.Code)
+			continue
+		}
+		if e := decode[Error](t, rec); !strings.Contains(e.Message, "重複 status 參數") {
+			t.Errorf("%s：訊息要提示重複 status 參數：%q", v, e.Message)
+		}
+	}
+}
+
 func TestListItemsRequiresAuth(t *testing.T) {
 	r := newItemsRig(t)
 	if rec := r.do("GET", "/api/items?limit=1", "", nil); rec.Code != 401 {
