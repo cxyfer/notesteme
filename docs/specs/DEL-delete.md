@@ -66,7 +66,67 @@
   - 影音詳情的「更多」選單 →「刪除」，確認對話框顯示 DEL-R3 的影響範圍，以及「同時刪除未修改過的輸出檔（N 個）」選項（M2）。
   - 刪除後顯示「已移到垃圾桶。」與「復原」。
   - 媒體庫的「垃圾桶」檢視：剩餘天數、還原、永久刪除、清空垃圾桶。
-- 設定：`library.trash_retention_days`
+- 設定：`library.trash_retention_days`（設定檔，預設 30，範圍 1～3650）
+
+**移到垃圾桶**（`DELETE /api/items/:id`）
+- 在一個交易中完成：
+  - 設定 `deleted_at`。
+  - 尚未結束的步驟改成 `skipped`（原因 `cancelled`），動作「重試」。
+  - 任務改成 cancelled。
+  - 寫入 `item.deleted` 事件。
+- commit 之後，先依 PIPE-R15 取消並等待執行中的任務，再刪除媒體快取目錄 `<資料目錄>/media/<item-id>/`。
+- 回應 200：`{id, ref, deleted_at, purge_at, kept_outputs: []}`。
+- 已經在垃圾桶中時回 404 `in_trash`。
+- `delete_outputs` 在 M1 接受但沒有作用，因為還沒有輸出目標。
+
+**垃圾桶中的影音**
+- `GET /api/items/:id` 與其下的端點（cues、subtitles、runs、rerun、cancel、deletion-preview）回 404。
+- 回應內容：`{code: "in_trash", message: "這部影音在垃圾桶中。", actions: ["還原"], item_id}`。
+- 新增時遇到垃圾桶中的影音，回 409，內容相同（DEL-R10）。
+- 播放清單或分P 展開時，垃圾桶中的項目不重新建立，在回應的 `items` 中標示 `in_trash: true`；全部都在垃圾桶中時才回 409。
+- 手動新增時，在同一個交易中移除 tombstone。
+
+**還原**（`POST /api/trash/:id/restore`）
+- `deleted_at` 改回 NULL，步驟維持 `skipped` 並提供「重試」，寫入 `item.restored` 事件。
+- 影音不在垃圾桶中時回 404。
+
+**永久刪除**（`DELETE /api/trash/:id`、`DELETE /api/trash`）
+1. 確認影音在垃圾桶中，再取消並等待殘留的任務。
+2. 在一個交易中完成：
+   - `cost_ledger`：`item_title` 記錄標題，`item_id` 改為 NULL。
+   - 寫入 tombstone。
+   - 刪除這部影音的 `events`，改寫一筆 `item.purged`。事件的 `item` 是代號，另外帶 `title`；`events` 表中的 `item_id` 留空。
+   - 刪除 `items`，其他紀錄依 cascade 刪除。
+   - 刪除沒有任何引用的 `config_snapshots`。
+3. commit 之後，刪除 `artifacts`、`media`、`uploads` 下的 `<item-id>` 目錄。
+   - 檔案在 DB 之後才刪，避免 DB 失敗時留下指向已刪檔案的紀錄。
+   - 刪除失敗只記錄 log。
+   - 刪檔的路徑只用 DB 中、已確認是標準形式 UUID 的 item ID。
+- 清空垃圾桶時，每部影音各用一個交易，回應 `{purged: n}`。
+
+**刪除預覽**（`GET /api/items/:id/deletion-preview`）
+- 回應：`{artifacts, bytes, spent_usd, outputs: []}`。
+  - `artifacts`：所有版本的產出數。
+  - `bytes`：產出加上 media、uploads 的大小。
+  - `spent_usd`：這部影音實際花費的總和。
+- 唯讀，不改變任何資料。
+
+**定期清理**
+- housekeeping 的工作，下次執行時間存在 settings 的 `trash_cleanup_next_at`，每 24 小時一次，失敗時 5 分鐘後重試。
+- 永久刪除 `deleted_at <= now − 保留天數` 的影音。時間一律來自注入的 clock。
+
+**tombstone**
+- 平台影音的比對鍵是 `(platform, external_id, part)`，`external_id` 用網址辨識後的標準形式。
+- 本機檔案另外比對 `sha256`（ING-05）。
+
+**CLI**
+- `items restore` 從 `GET /api/trash` 解析代號。
+- 所有代號都先解析成功，才開始刪除。
+- `--purge` 先移到垃圾桶，再永久刪除；影音已經在垃圾桶中時，直接永久刪除。
+- 只有 stdin 是終端機時才詢問確認，否則結束碼 2，訊息提示 `--yes`。
+- `trash ls`、`trash empty [--yes]`。
+
+**權限**：AUTH 的 token 完成之前，只有 owner 的 session 與本機可以執行。token 完成後，刪除類操作對應 `admin`，`GET /api/trash` 對應 `read`。
 - 資料模型：`items.deleted_at`、`cost_ledger.item_title`、`item_tombstones (platform, external_id, part, sha256, purged_at)`
 
 ## 不在範圍內
@@ -78,4 +138,9 @@
 
 ## 待決問題
 
-- 目前沒有。取消處理時，預算中的預留金額依 COST 的規則直接釋放（M4），不需要另外處理。
+- 取消處理時，預算中的預留金額依 COST 的規則直接釋放（M4），不需要另外處理。
+- 場景修改（2026-11-15，DEL 切片 DoR，owner 同意）：R4 的 `item.purged` 事件欄位由 `"ref"` 改成 `"item"`，與 CLI、PIPE 場景的事件形狀一致（`item` 就是代號）。
+- `library.trash_retention_days` 暫定放在設定檔。是否改由 DB 的 settings 管理（UI 可調），之後再決定；若改到 DB，要一併更新 GRD 的「由資料庫管理的欄位」清單。
+- 播放清單或分P 展開時遇到部分項目在垃圾桶中的處理方式，規則沒有寫，暫定如介面一節。
+- 永久刪除後再從舊備份還原，DB 會指向已經不存在的產出檔（備份不含 `/data/artifacts`），這種情況的處理要記入 OPS 的待決問題。
+- M1 還沒有 `cues_fts`、`outputs`、uploads、術語候選。之後的切片接上時，永久刪除要一併清除。

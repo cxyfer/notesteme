@@ -89,7 +89,7 @@ Feature: Deleting items and the trash
     And the data directory has no files of "yt:abc123xxxxx"
     And an event is received:
       """
-      { "type": "item.purged", "ref": "yt:abc123xxxxx", "title": "PostgreSQL in 100 Seconds" }
+      { "type": "item.purged", "item": "yt:abc123xxxxx", "title": "PostgreSQL in 100 Seconds" }
       """
 
   @M1 @DEL-03 @DEL-R6 @DEL-R8
