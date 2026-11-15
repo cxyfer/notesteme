@@ -352,15 +352,20 @@ func encodeItemCursor(c pipeline.ItemCursor, fp string) string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-// decodeItemCursor 嚴格解析游標：長度上限、base64url（不補 =）、不接受未知欄位或多餘內容、版本為 1、
-// id 必須是 UUID、指紋必須與目前的篩選條件相符。任何不符都回傳錯誤，不 panic。
+// decodeItemCursor 嚴格解析游標：長度上限、標準的 base64url（不補 =、不含換行、尾端位元為零）、
+// 不接受未知欄位或多餘內容、版本為 1、id 必須是標準形式的 UUID、指紋必須與目前的篩選條件相符。任何不符都回傳錯誤，不 panic。
 func decodeItemCursor(s, wantFP string) (*pipeline.ItemCursor, error) {
 	if len(s) > maxCursorLen {
 		return nil, errors.New("游標太長")
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(s)
+	enc := base64.RawURLEncoding.Strict()
+	raw, err := enc.DecodeString(s)
 	if err != nil {
 		return nil, err
+	}
+	// Strict 只擋尾端位元；Go 的解碼器仍會略過 \r 與 \n，所以再比對一次標準形式。
+	if enc.EncodeToString(raw) != s {
+		return nil, errors.New("游標不是標準的 base64url")
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
@@ -374,8 +379,13 @@ func decodeItemCursor(s, wantFP string) (*pipeline.ItemCursor, error) {
 	if c.V != 1 || c.T < 0 {
 		return nil, errors.New("游標的版本或位置不正確")
 	}
-	if _, err := uuid.Parse(c.ID); err != nil {
+	// 只接受小寫、帶連字號的標準形式；uuid.Parse 還會接受大括號、urn:uuid: 與沒有連字號的寫法。
+	parsed, err := uuid.Parse(c.ID)
+	if err != nil {
 		return nil, err
+	}
+	if c.ID != parsed.String() {
+		return nil, errors.New("游標的 id 不是標準的 uuid")
 	}
 	if subtle.ConstantTimeCompare([]byte(c.F), []byte(wantFP)) != 1 {
 		return nil, errors.New("篩選條件已經改變")

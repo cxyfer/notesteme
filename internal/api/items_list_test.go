@@ -321,6 +321,51 @@ func TestFilterFingerprintIgnoresLimitAndOrder(t *testing.T) {
 	}
 }
 
+// 游標只接受唯一的標準形式：同一個位置不能有多種字串表示（base64 的換行、尾端位元，uuid 的各種寫法）。
+func TestDecodeItemCursorRejectsNonCanonicalForms(t *testing.T) {
+	const fp = "0123456789abcdef"
+	const id = "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"
+	enc := func(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s)) }
+	body := func(id string) string {
+		return fmt.Sprintf(`{"v":1,"t":42,"id":%q,"f":%q}`, id, fp)
+	}
+	// 補上尾端空白，讓位元組數除以 3 餘 1，base64 的最後一個字元才有多餘的位元。
+	withSpareBits := func(id string) string {
+		s := body(id)
+		for len(s)%3 != 1 {
+			s += " "
+		}
+		return s
+	}
+	flipLastChar := func(s string) string {
+		const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+		i := strings.IndexByte(alphabet, s[len(s)-1])
+		return s[:len(s)-1] + string(alphabet[i^1])
+	}
+	good := enc(body(id))
+	if _, err := decodeItemCursor(good, fp); err != nil {
+		t.Fatalf("前置條件：標準形式要能通過：%v", err)
+	}
+	spare := enc(withSpareBits(id))
+	if _, err := decodeItemCursor(spare, fp); err != nil {
+		t.Fatalf("前置條件：尾端空白的游標要能通過：%v", err)
+	}
+	tests := []struct{ name, cursor string }{
+		{"含換行", good[:10] + "\n" + good[10:]},
+		{"含 CRLF", good[:10] + "\r\n" + good[10:]},
+		{"尾端位元不為零", flipLastChar(spare)},
+		{"uuid 用大括號", enc(body("{" + id + "}"))},
+		{"uuid 用 urn:uuid:", enc(body("urn:uuid:" + id))},
+		{"uuid 沒有連字號", enc(body(strings.ReplaceAll(id, "-", "")))},
+		{"uuid 大寫", enc(body(strings.ToUpper(id)))},
+	}
+	for _, tt := range tests {
+		if _, err := decodeItemCursor(tt.cursor, fp); err == nil {
+			t.Errorf("%s：不該被接受 %q", tt.name, tt.cursor)
+		}
+	}
+}
+
 func TestListItemsRequiresAuth(t *testing.T) {
 	r := newItemsRig(t)
 	if rec := r.do("GET", "/api/items?limit=1", "", nil); rec.Code != 401 {
