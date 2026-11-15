@@ -24,9 +24,14 @@ import (
 
 // 這個檔案放「讓影音真的處理到某個步驟」與「步驟結果的斷言」，步驟的註冊在 items.go。
 
-// stageOf 取得影音某個步驟目前的狀態。
+// stageOf 取得影音某個步驟目前的狀態。影音在垃圾桶中（詳情回 404 in_trash）時改讀資料庫：
+// 只有 Status 有值，其他欄位（錯誤類別、not_before 等）資料庫查詢沒有提供。
 func (s *Scenario) stageOf(ref, stage string) (stageJSON, error) {
 	it, err := s.item(ref)
+	if _, trashed := inTrashBody(err); trashed {
+		status, err := s.dbStageStatus(stage, ref, "影音在垃圾桶中")
+		return stageJSON{Stage: stage, Status: status}, err
+	}
 	if err != nil {
 		return stageJSON{}, err
 	}
@@ -134,6 +139,10 @@ func (s *Scenario) attentionStage(ref string) (stageJSON, error) {
 		return stageJSON{}, errors.New("server 已停止：這個步驟還不支援讀資料庫，請在 server 執行時斷言訊息與動作")
 	}
 	it, err := s.item(ref)
+	if b, trashed := inTrashBody(err); trashed {
+		// 影音在垃圾桶中：詳情的 404 回應本身帶著訊息與動作（DEL-R1），比對它們（steps.md 4.4）。
+		return stageJSON{Stage: "in_trash", Status: "404", Message: b.Message, Actions: b.Actions}, nil
+	}
 	if err != nil {
 		return stageJSON{}, err
 	}

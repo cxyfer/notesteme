@@ -71,6 +71,7 @@ func register(r *Registry, s *Scenario) {
 	registerEvents(r, s)
 	registerSources(r, s)
 	registerItems(r, s)
+	registerDelete(r, s)
 	registerQueue(r, s)
 	registerLLM(r, s)
 	registerAgent(r, s)

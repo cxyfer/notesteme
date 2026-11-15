@@ -285,6 +285,13 @@ func (s *Scenario) lastFromPreviousStep() bool {
 	return s.last != nil && s.last.step == s.step-1
 }
 
+// previousRequestNotImplemented 回報緊接在前一個步驟送出的請求是不是還沒實作的路由（501）。
+// 斷言的狀態不符，是因為那個動作（刪除、還原、取消）沒有發生時，步驟是 pending；更早的請求與這個斷言無關，
+// 不能用來把失敗轉成 pending。
+func (s *Scenario) previousRequestNotImplemented() bool {
+	return s.lastFromPreviousStep() && s.last.status == http.StatusNotImplemented && isNotImplemented(s.last.body)
+}
+
 // ensureOwner 在第一次 owner 請求時登入並記下 cookie（Given the owner is signed in 只是這個意圖）。
 // 登出後不會自動重新登入：舊的 cookie 繼續使用，才能驗證 session 已經失效。
 func (s *Scenario) ensureOwner() error {

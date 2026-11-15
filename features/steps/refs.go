@@ -2,6 +2,7 @@ package steps
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -76,7 +77,7 @@ func (s *Scenario) apiJSON(method, path string, body []byte, out any) error {
 		return godog.ErrPending
 	}
 	if resp.status < 200 || resp.status > 299 {
-		return fmt.Errorf("%s %s：HTTP %d %s", method, path, resp.status, snippet(resp.body))
+		return &apiFailure{method: method, path: path, status: resp.status, body: resp.body}
 	}
 	if out == nil {
 		return nil
@@ -85,6 +86,38 @@ func (s *Scenario) apiJSON(method, path string, body []byte, out any) error {
 		return fmt.Errorf("%s %s：回應不是預期的 JSON：%w\n%s", method, path, err, snippet(resp.body))
 	}
 	return nil
+}
+
+// apiFailure 是非 2xx 的回應；步驟可以用 errors.As 取出，依回應內容決定怎麼處理（例如垃圾桶中的影音，見 inTrashBody）。
+type apiFailure struct {
+	method, path string
+	status       int
+	body         []byte
+}
+
+func (e *apiFailure) Error() string {
+	return fmt.Sprintf("%s %s：HTTP %d %s", e.method, e.path, e.status, snippet(e.body))
+}
+
+// trashBody 是影音在垃圾桶中時，404 與 409 的回應內容（DEL-R1、R10）。
+type trashBody struct {
+	Code    string   `json:"code"`
+	Message string   `json:"message"`
+	Actions []string `json:"actions"`
+	ItemID  string   `json:"item_id"`
+}
+
+// inTrashBody 在 err 是「影音在垃圾桶中」的 404（錯誤碼 in_trash）時回傳它的內容。
+func inTrashBody(err error) (trashBody, bool) {
+	var f *apiFailure
+	if !errors.As(err, &f) || f.status != http.StatusNotFound {
+		return trashBody{}, false
+	}
+	var b trashBody
+	if json.Unmarshal(f.body, &b) != nil || b.Code != "in_trash" {
+		return trashBody{}, false
+	}
+	return b, true
 }
 
 func isNotImplemented(body []byte) bool {
@@ -166,26 +199,29 @@ func (s *Scenario) item(ref string) (itemJSON, error) {
 }
 
 // substRefs 把請求路徑中的影音代號換成實際的影音 ID；`channel-of:<代號>` 換成影音所屬頻道的 ID。
+// 代號只換成 ID，不讀影音詳情：s.itemID 先查列表，再查新增時記下的 World.Refs，所以影音在垃圾桶中
+// （詳情回 404 in_trash）時，`/api/trash/<代號>/restore` 一樣能換成正確的 ID。
 // 找不到影音的代號維持原樣，讓請求自己回報 404。
 func (s *Scenario) substRefs(path string) (string, error) {
 	var firstErr error
 	out := refPattern.ReplaceAllStringFunc(path, func(m string) string {
 		ref, channel := strings.CutPrefix(m, "channel-of:")
 		if !channel {
-			ref = m
+			id, err := s.itemID(m)
+			if err != nil {
+				return m
+			}
+			return id
 		}
 		it, err := s.item(ref)
 		if err != nil {
 			return m
 		}
-		if channel {
-			if it.ChannelID == "" {
-				firstErr = fmt.Errorf("影音 %q 沒有所屬的頻道", ref)
-				return m
-			}
-			return it.ChannelID
+		if it.ChannelID == "" {
+			firstErr = fmt.Errorf("影音 %q 沒有所屬的頻道", ref)
+			return m
 		}
-		return it.ID
+		return it.ChannelID
 	})
 	return out, firstErr
 }
