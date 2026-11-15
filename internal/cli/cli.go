@@ -91,6 +91,7 @@ type session struct {
 	g      *globals
 	env    app.Env
 	clock  clock.Clock
+	stdin  io.Reader // 可能為 nil；只有需要詢問確認的子命令會讀
 	stdout io.Writer
 	stderr io.Writer
 }
@@ -100,6 +101,8 @@ type plan struct {
 	g *globals
 	// noBackend 為 true 時不判斷模式（doctor、還沒實作的子命令）。
 	noBackend bool
+	// precheck 在判斷模式之前檢查執行環境（例如沒有 --yes 又不在終端機上）；錯誤依 exitFor 對應。
+	precheck func(stdin io.Reader) error
 	// run 執行子命令，回傳結束碼；錯誤依 exitFor 對應。
 	run func(ctx context.Context, s *session) (int, error)
 }
@@ -155,7 +158,12 @@ func Execute(ctx context.Context, args []string, stdio app.IO, env app.Env) (res
 	}
 
 	p.g.fill(pre)
-	s := &session{g: p.g, env: env, clock: env.Clock, stdout: stdio.Stdout, stderr: stdio.Stderr}
+	if p.precheck != nil {
+		if err := p.precheck(stdio.Stdin); err != nil {
+			return fail(stdio, err, "")
+		}
+	}
+	s := &session{g: p.g, env: env, clock: env.Clock, stdin: stdio.Stdin, stdout: stdio.Stdout, stderr: stdio.Stderr}
 	var mode Mode
 	if !p.noBackend {
 		be, err := openBackend(ctx, p.g, env)
@@ -248,8 +256,8 @@ const usageText = `用法：notesteme <子命令> [旗標]
   serve                                 啟動 server
   ingest <url|ref|path>                 新增影音（--profile、--until、--wait、--timeout）
   items ls | show <item> | rerun <item> --from <stage>
-  items rm <item>... | restore <item>...  刪除到垃圾桶、還原（DEL，尚未實作）
-  trash ls | empty                      列出、清空垃圾桶（DEL，尚未實作）
+  items rm <ref>... [--purge] [--delete-outputs] [--yes] | restore <ref>...
+  trash ls | empty [--yes]              列出、清空垃圾桶
   export <item> --format srt|vtt|txt    輸出字幕（--lang、--variant、--out）
   doctor                                檢查外部工具與設定
 
