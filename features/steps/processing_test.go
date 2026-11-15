@@ -65,8 +65,12 @@ func TestHasTranscriptSource(t *testing.T) {
 func TestItemFixtureFor(t *testing.T) {
 	s := newTestScenario(t)
 	// 沒有準備來源、也沒有 fixture：pending。
-	if _, err := s.itemFixtureFor("yt:abc123xxxxx", "transcript"); !errors.Is(err, godog.ErrPending) {
+	if _, err := s.itemFixtureFor("yt:nofx01xxxxx", "transcript"); !errors.Is(err, godog.ErrPending) {
 		t.Errorf("err = %v", err)
+	}
+	// DEL 場景用的 yt:abc123xxxxx 有 fixture（影片沒有任何字幕軌時才會用到）。
+	if fx, err := s.itemFixtureFor("yt:abc123xxxxx", "transcript"); err != nil || fx == nil || fx.Source.Lang != "en" || len(fx.Source.Cues) < 3 {
+		t.Errorf("abc123xxxxx 的 fixture = %+v, err = %v", fx, err)
 	}
 	// 目標是 metadata：不需要字幕來源。
 	if fx, err := s.itemFixtureFor("yt:abc123xxxxx", "metadata"); err != nil || fx != nil {
