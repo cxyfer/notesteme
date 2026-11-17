@@ -17,17 +17,18 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 )
 
-// isTerminal 判斷 stdin 是不是終端機：只有 *os.File 而且是字元裝置才算。
-// 做成變數，測試才能模擬終端機。
+// isTerminal 判斷 stdin 是不是終端機：只有 *os.File 而且 fd 是終端機（isatty）才算。
+// 只看字元裝置不夠：/dev/null 也是字元裝置。做成變數，測試才能模擬終端機。
 var isTerminal = func(r io.Reader) bool {
 	f, ok := r.(*os.File)
 	if !ok || f == nil {
 		return false
 	}
-	fi, err := f.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(int(f.Fd()))
 }
 
 // requireConfirmable 在判斷模式之前檢查：沒有 --yes 又不在終端機上是參數錯誤（DEL-R13）。
