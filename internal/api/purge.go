@@ -100,7 +100,10 @@ func (rt *routes) emptyTrash(ctx context.Context, _ *struct{}) (*purgedOutput, e
 	}
 	n, err := rt.d.Pipeline.PurgeAll(ctx)
 	if err != nil {
-		return nil, rt.mapErr(ctx, err)
+		// 部分失敗：已經刪除的不會復原，回應照錯誤格式（client 以非 2xx 判斷失敗），並帶 purged 告知已刪幾部。
+		e := asError(rt.mapErr(ctx, err))
+		e.Purged = &n
+		return nil, e
 	}
 	out := &purgedOutput{}
 	out.Body.Purged = n

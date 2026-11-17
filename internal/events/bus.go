@@ -29,7 +29,7 @@ type Event struct {
 	// Stage 與 Status 只有 stage.status 事件才有。
 	Stage  string `json:"stage,omitempty"`
 	Status string `json:"status,omitempty"`
-	// Title 只有 item.purged 事件才有：影音已不存在，事件帶著當時的標題。
+	// Title 只有 item.deleted 與 item.purged 事件才有：事件帶著當時的標題（永久刪除之後影音已不存在）。
 	Title string `json:"title,omitempty"`
 }
 

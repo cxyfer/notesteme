@@ -29,6 +29,8 @@ type Error struct {
 	Actions []string `json:"actions,omitempty"`
 	// ItemID 指出錯誤是哪部影音（in_trash 時，client 用它還原）。
 	ItemID string `json:"item_id,omitempty"`
+	// Purged 在清空垃圾桶部分失敗時指出已經永久刪除幾部（DEL-R4）；用指標，0 也要輸出。
+	Purged *int `json:"purged,omitempty"`
 }
 
 // Error 實作 error。

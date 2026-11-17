@@ -56,7 +56,7 @@ func (p *planRecorder) QueryRowContext(context.Context, string, ...any) *sql.Row
 	return nil
 }
 
-// 永久刪除影音時依 item_id 刪除事件：events_item 是部分索引（item_id <> ''），
+// 永久刪除影音時依 item_id 刪除事件：events_item 是部分索引（只含 item_id 不為空字串的事件），
 // 查詢要帶得出同樣的條件，SQLite 才會使用它，不會掃整張 events。
 func TestPurgeDeleteEventsUsesItemIndex(t *testing.T) {
 	st, err := Open(context.Background(), t.TempDir(), clock.NewFake(time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)))

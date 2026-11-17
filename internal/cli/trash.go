@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -168,8 +169,8 @@ func trashCandidates(items []trashedItem) []target {
 	return out
 }
 
-// resolveForRm 解析 items rm 的代號：先查媒體庫；--purge 時，媒體庫解析不了的再查垃圾桶
-// （已在垃圾桶中的影音直接永久刪除）。所有代號都解析成功才回傳。
+// resolveForRm 解析 items rm 的代號：先查媒體庫；--purge 時再查垃圾桶（已在垃圾桶中的影音直接永久刪除）。
+// 所有代號都解析成功才回傳。
 func (s *session) resolveForRm(ctx context.Context, args []string, purge bool) ([]target, error) {
 	const notFound = "找不到影音 %s。"
 	cands, err := s.itemCandidates(ctx)
@@ -177,8 +178,10 @@ func (s *session) resolveForRm(ctx context.Context, args []string, purge bool) (
 		return nil, err
 	}
 	if purge {
-		// 垃圾桶中的影音不會出現在清單中；只有清單解析不了時才查垃圾桶。
-		if _, err := resolveTargets(args, cands, notFound); err != nil {
+		// 垃圾桶中的影音不會出現在清單中；清單解析不了時才需要查垃圾桶。
+		// 不帶分P 的 Bilibili 代號符合所有分P，有些在媒體庫、有些在垃圾桶，所以一定要一起查。
+		_, err := resolveTargets(args, cands, notFound)
+		if err != nil || slices.ContainsFunc(args, bareBili.MatchString) {
 			items, _, terr := s.fetchTrash(ctx)
 			if terr != nil {
 				return nil, terr
