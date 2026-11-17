@@ -28,7 +28,7 @@ type TaskCanceller interface {
 type TrashOptions struct {
 	// DeleteOutputs 在 M1 接受但沒有作用，因為還沒有輸出目標（DEL-R9）。
 	DeleteOutputs bool
-	// Canceller 結束被取消的任務中、正在執行的那些（PIPE-R15）；nil 代表沒有 worker 在執行（例如測試）。
+	// Canceller 結束被取消的任務中、正在執行的那些（PIPE-R15）；nil 時用 SetTaskCanceller 設定的，都沒有代表沒有 worker 在執行（例如測試）。
 	Canceller TaskCanceller
 }
 
@@ -112,8 +112,13 @@ func (p *Pipeline) Trash(ctx context.Context, id string, opts TrashOptions) (Tra
 	// 已經 commit：影音確定在垃圾桶中。client 中途斷線也要把善後做完，所以不受請求 ctx 取消影響。
 	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cancelWaitTimeout)
 	defer cancel()
-	if opts.Canceller != nil && len(taskIDs) > 0 {
-		if err := opts.Canceller.Cancel(cctx, taskIDs); err != nil {
+	// 呼叫端沒有指定時用 SetTaskCanceller 設定的那個；兩者都沒有（例如單元測試）才不結束執行中的任務。
+	canceller := opts.Canceller
+	if canceller == nil {
+		canceller = p.tasks
+	}
+	if canceller != nil && len(taskIDs) > 0 {
+		if err := canceller.Cancel(cctx, taskIDs); err != nil {
 			// 逾時仍沒結束：只記錄。任務在資料庫中已經是 cancelled，晚點寫回會因租約失效被丟棄。
 			p.log.Warn("等待被取消的任務結束時失敗", "item", it.ID, "error", err)
 		}
