@@ -20,6 +20,31 @@ func (q *Queries) ActiveWrappedKey(ctx context.Context) (string, error) {
 	return wrapped_key, err
 }
 
+const deleteAllEncryptionKeys = `-- name: DeleteAllEncryptionKeys :exec
+DELETE FROM encryption_keys
+`
+
+func (q *Queries) DeleteAllEncryptionKeys(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteAllEncryptionKeys)
+	return err
+}
+
+const insertActiveKey = `-- name: InsertActiveKey :exec
+INSERT INTO encryption_keys (id, wrapped_key, created_at)
+VALUES (?1, ?2, ?3)
+`
+
+type InsertActiveKeyParams struct {
+	ID         string
+	WrappedKey string
+	CreatedAt  int64
+}
+
+func (q *Queries) InsertActiveKey(ctx context.Context, arg InsertActiveKeyParams) error {
+	_, err := q.db.ExecContext(ctx, insertActiveKey, arg.ID, arg.WrappedKey, arg.CreatedAt)
+	return err
+}
+
 const insertWrappedKey = `-- name: InsertWrappedKey :execrows
 INSERT INTO encryption_keys (id, wrapped_key, created_at)
 SELECT CAST(?1 AS TEXT), CAST(?2 AS TEXT), CAST(?3 AS INTEGER)
@@ -36,6 +61,20 @@ type InsertWrappedKeyParams struct {
 // CAST lets sqlc infer the types of parameters in a SELECT list.
 func (q *Queries) InsertWrappedKey(ctx context.Context, arg InsertWrappedKeyParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, insertWrappedKey, arg.ID, arg.WrappedKey, arg.CreatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const retireActiveKey = `-- name: RetireActiveKey :execrows
+UPDATE encryption_keys
+SET retired_at = CAST(?1 AS INTEGER)
+WHERE retired_at IS NULL
+`
+
+func (q *Queries) RetireActiveKey(ctx context.Context, retiredAt int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, retireActiveKey, retiredAt)
 	if err != nil {
 		return 0, err
 	}
