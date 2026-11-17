@@ -201,3 +201,54 @@ func TestCheckBackupSecrets(t *testing.T) {
 		t.Error("一般檔案含有 master key 應該失敗")
 	}
 }
+
+func TestDataDirDoesNotContainCreatedToken(t *testing.T) {
+	s := newTestScenario(t)
+	if err := s.dataDirDoesNotContainCreatedToken(); err == nil {
+		t.Fatal("還沒有建立 token 時應該失敗")
+	}
+
+	// 從 s.cmd.out 讀取 JSON token 欄位。
+	s.step = 1
+	s.cmd = &cliRun{out: `{"name":"agent","token":"nst_cmdsecret1234"}`, step: 1}
+	if err := s.dataDirDoesNotContainCreatedToken(); err != nil {
+		t.Fatalf("資料目錄不含 token：%v", err)
+	}
+	db := filepath.Join(s.World.DataDir(), "notesteme.db")
+	if err := os.WriteFile(db, []byte("plain nst_cmdsecret1234"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.dataDirDoesNotContainCreatedToken(); err == nil || !strings.Contains(err.Error(), "notesteme.db") {
+		t.Fatalf("資料目錄含 token 應該失敗：%v", err)
+	}
+	_ = os.Remove(db)
+
+	// 後續 `a token …` 更新 lastCreatedToken 時應以較新的為準。
+	s.step = 2
+	s.lastCreatedToken = "nst_stepsecret5678"
+	s.lastCreatedTokenStep = 2
+	if err := s.dataDirDoesNotContainCreatedToken(); err != nil {
+		t.Fatalf("資料目錄不含較新的 token：%v", err)
+	}
+	if err := os.WriteFile(db, []byte("plain nst_stepsecret5678"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.dataDirDoesNotContainCreatedToken(); err == nil || !strings.Contains(err.Error(), "notesteme.db") {
+		t.Fatalf("資料目錄含較新的 token 應該失敗：%v", err)
+	}
+}
+
+func TestLogsDoNotContain(t *testing.T) {
+	s := newTestScenario(t)
+	if err := s.logsDoNotContain(""); err == nil {
+		t.Fatal("空字串應該失敗")
+	}
+	_, _ = s.World.Log.Write([]byte("server started ok\n"))
+	if err := s.logsDoNotContain("gsk_supersecret1234"); err != nil {
+		t.Fatalf("log 不含 secret 時不該失敗：%v", err)
+	}
+	_, _ = s.World.Log.Write([]byte("leak gsk_supersecret1234 here\n"))
+	if err := s.logsDoNotContain("gsk_supersecret1234"); err == nil {
+		t.Fatal("log 含 secret 時應該失敗")
+	}
+}
