@@ -1,7 +1,6 @@
 package steps
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
@@ -29,16 +28,15 @@ func TestBearerHeaderAndTokenSetupPreservesState(t *testing.T) {
 		t.Errorf("Authorization = %q，預期 Bearer nst_testtoken123", got)
 	}
 
-	// tokens create 尚未實作時應回傳 ErrPending，實作後應成功；兩種情況都不該覆寫 s.last 與 s.cmd。
+	// aTokenWithScopes 應成功建立 token，且不覆寫 s.last 與 s.cmd。
 	sentinelLast := &response{status: 200}
 	sentinelCmd := &cliRun{out: "keep"}
 	s.last = sentinelLast
 	s.cmd = sentinelCmd
-	err = s.aTokenWithScopes("ci", "read")
-	if err != nil && !errors.Is(err, godog.ErrPending) {
-		t.Fatalf("aTokenWithScopes 應成功或回傳 ErrPending，得到 %v", err)
+	if err := s.aTokenWithScopes("ci", "read"); err != nil {
+		t.Fatalf("aTokenWithScopes：%v", err)
 	}
-	if err == nil && (s.World.Refs["token:ci"] == "" || s.lastCreatedToken != s.World.Refs["token:ci"]) {
+	if s.World.Refs["token:ci"] == "" || s.lastCreatedToken != s.World.Refs["token:ci"] {
 		t.Errorf("建立成功時應記錄 Refs 與 lastCreatedToken：ref=%q last=%q", s.World.Refs["token:ci"], s.lastCreatedToken)
 	}
 	if s.last != sentinelLast || s.cmd != sentinelCmd {

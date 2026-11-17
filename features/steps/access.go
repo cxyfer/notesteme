@@ -49,9 +49,6 @@ func (s *Scenario) aTokenWithScopes(name, scopes string) error {
 	if errors.Is(cctx.Err(), context.DeadlineExceeded) && s.ctx.Err() == nil {
 		return fmt.Errorf("建立 token %q 在 %d 秒內沒有結束", name, int(cliTimeout.Seconds()))
 	}
-	if res.ErrorCode == "not_implemented" {
-		return fmt.Errorf("tokens create 尚未實作：%s%w", snippet(stderr.Bytes()), godog.ErrPending)
-	}
 	if res.Code != 0 {
 		return fmt.Errorf("建立 token %q 失敗（結束碼 %d）：%s", name, res.Code, snippet(stderr.Bytes()))
 	}
