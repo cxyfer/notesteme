@@ -141,13 +141,6 @@ func TestCheckCSRF(t *testing.T) {
 	}
 }
 
-func TestBearerNotYetSupported(t *testing.T) {
-	svc, _, _ := newService(t)
-	if _, err := svc.AuthenticateBearer(context.Background(), "anything"); !errors.Is(err, ErrUnauthenticated) {
-		t.Errorf("err = %v", err)
-	}
-}
-
 func TestLoginLockout(t *testing.T) {
 	ctx := context.Background()
 	svc, _, clk := newService(t)
