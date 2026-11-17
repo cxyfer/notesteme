@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/source"
 )
@@ -95,6 +96,9 @@ func (rt *routes) queueStatus(ctx context.Context) (QueueStatus, error) {
 }
 
 func (rt *routes) getQueue(ctx context.Context, _ *struct{}) (*queueOutput, error) {
+	if err := requireScope(ctx, auth.ScopeRead); err != nil {
+		return nil, err
+	}
 	if rt.d.Queue == nil {
 		return nil, errQueueUnavailable()
 	}
@@ -116,6 +120,9 @@ type limitsInput struct {
 }
 
 func (rt *routes) patchQueueLimits(ctx context.Context, in *limitsInput) (*queueOutput, error) {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
+		return nil, err
+	}
 	if rt.d.Queue == nil {
 		return nil, errQueueUnavailable()
 	}
@@ -142,6 +149,9 @@ func (in *classInput) class() string {
 }
 
 func (rt *routes) pauseQueue(ctx context.Context, in *classInput) (*queueOutput, error) {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
+		return nil, err
+	}
 	if rt.d.Queue == nil {
 		return nil, errQueueUnavailable()
 	}
@@ -152,6 +162,9 @@ func (rt *routes) pauseQueue(ctx context.Context, in *classInput) (*queueOutput,
 }
 
 func (rt *routes) resumeQueue(ctx context.Context, in *classInput) (*queueOutput, error) {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
+		return nil, err
+	}
 	if rt.d.Queue == nil {
 		return nil, errQueueUnavailable()
 	}

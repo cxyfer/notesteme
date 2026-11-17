@@ -56,6 +56,8 @@ type Deps struct {
 	Tools     ToolManager
 	Backup    BackupSource
 	Providers ProviderRegistry
+	// Services 管理外部服務商的 API key（GET／PUT /api/settings/services，SEC-R4、SEC-R6）；nil 時回應 501。
+	Services ServiceSettingsStore
 }
 
 // ReadyCheck 是 /readyz 的一個檢查項目；Check 回傳 nil 代表正常。
@@ -87,12 +89,12 @@ func build(d Deps, authn func(http.Handler) http.Handler) http.Handler {
 	r := &routes{d: d}
 	r.register(api)
 	if d.Events != nil {
-		mux.Handle("GET /api/events", d.Events)
+		mux.Handle("GET /api/events", requireScopeHandler(auth.ScopeRead, d.Events))
 	} else {
 		huma.Register(api, huma.Operation{
 			OperationID: "events", Method: http.MethodGet, Path: "/api/events",
 			Summary: "狀態變更事件的 SSE 串流（尚未實作）",
-		}, notImplemented)
+		}, scopedNotImplemented(auth.ScopeRead))
 	}
 
 	// cookie 上傳的大小限制在驗證之後、Huma 之前（沒登入的請求不會被讀取本體）。
@@ -171,7 +173,7 @@ func (rt *routes) register(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "estimate", Method: http.MethodPost, Path: "/api/estimate",
 		Summary: "估算花費（尚未實作）",
-	}, notImplemented)
+	}, scopedNotImplemented(auth.ScopeIngest))
 	huma.Register(api, huma.Operation{
 		OperationID: "items-get", Method: http.MethodGet, Path: "/api/items/{id}",
 		Summary: "影音詳情：各步驟的狀態與各字幕來源的結果",
@@ -203,8 +205,9 @@ func (rt *routes) register(api huma.API) {
 		{OperationID: "tasks-retry", Method: http.MethodPost, Path: "/api/tasks/{id}/retry", Summary: "重試任務（尚未實作）"},
 		{OperationID: "tasks-cancel", Method: http.MethodPost, Path: "/api/tasks/{id}/cancel", Summary: "取消單一任務（尚未實作）"},
 	} {
-		huma.Register(api, op, notImplemented)
+		huma.Register(api, op, scopedNotImplemented(auth.ScopeAdmin))
 	}
+	rt.registerTokens(api)
 	// OPS 切片的路由，各自放在獨立的檔案；實作前一律回 501。
 	rt.registerSystem(api)
 	rt.registerProviders(api)
@@ -278,6 +281,9 @@ func (rt *routes) login(ctx context.Context, in *loginInput) (*loginOutput, erro
 }
 
 func (rt *routes) logout(ctx context.Context, in *logoutInput) (*logoutOutput, error) {
+	if err := requireOwner(ctx, "登出"); err != nil {
+		return nil, err
+	}
 	if err := rt.d.Auth.Logout(ctx, in.Session); err != nil {
 		rt.d.Log.ErrorContext(ctx, "登出時發生錯誤", "error", err)
 		return nil, asError(err)

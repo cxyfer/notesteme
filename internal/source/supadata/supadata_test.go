@@ -217,3 +217,49 @@ func TestFetchMalformedKeyNeedsAction(t *testing.T) {
 		t.Errorf("錯誤訊息不可含 API key：%v", err)
 	}
 }
+
+func TestFetchKeyFuncResolutionAndEnvPriority(t *testing.T) {
+	// 沒有 APIKey 與 KeyFunc 時回報 ErrNoKey（ErrNotConfigured），不發出請求。
+	c, req := serve(t, 200, okBody)
+	c.APIKey = ""
+	_, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123xxxxx", ModeAuto)
+	if !errors.Is(err, ErrNoKey) || !errors.Is(err, errclass.ErrNotConfigured) || req.URL != nil {
+		t.Fatalf("no key: err=%v req=%v", err, req.URL)
+	}
+
+	// KeyFunc 動態回傳 key；之後改變回傳值不需重建 Client 即生效。
+	dbKey := ""
+	c.KeyFunc = func(context.Context) (string, error) { return dbKey, nil }
+	_, err = c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123xxxxx", ModeAuto)
+	if !errors.Is(err, ErrNoKey) || req.URL != nil {
+		t.Fatalf("empty KeyFunc: err=%v req=%v", err, req.URL)
+	}
+
+	dbKey = "sk-from-db"
+	res, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123xxxxx", ModeAuto)
+	if err != nil || len(res.Cues) != 2 || req.Header.Get("x-api-key") != "sk-from-db" {
+		t.Fatalf("from KeyFunc: res=%+v err=%v header=%q", res, err, req.Header.Get("x-api-key"))
+	}
+
+	// APIKey（環境變數）優先於 KeyFunc（SEC-R1）。
+	c.APIKey = "sk-from-env"
+	c.KeyFunc = func(context.Context) (string, error) {
+		t.Fatal("APIKey 非空時不應呼叫 KeyFunc")
+		return "", nil
+	}
+	if _, err := c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123xxxxx", ModeAuto); err != nil {
+		t.Fatal(err)
+	}
+	if req.Header.Get("x-api-key") != "sk-from-env" {
+		t.Errorf("header = %q, want sk-from-env", req.Header.Get("x-api-key"))
+	}
+
+	// KeyFunc 回傳含控制字元的 key：needs_action 且不回顯 key。
+	c.APIKey = ""
+	c.KeyFunc = func(context.Context) (string, error) { return "sk-bad\nsecret", nil }
+	_, err = c.Fetch(context.Background(), "https://www.youtube.com/watch?v=abc123xxxxx", ModeAuto)
+	var ce *errclass.Error
+	if !errors.As(err, &ce) || ce.Class != errclass.ClassNeedsAction || strings.Contains(err.Error(), "secret") {
+		t.Errorf("malformed KeyFunc: err=%v", err)
+	}
+}

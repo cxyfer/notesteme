@@ -46,6 +46,7 @@ const (
 	CodeLoginLocked    = "login_locked"
 	CodeCSRF           = "csrf_invalid"
 	CodeForbidden      = "forbidden"
+	CodeTokenExists    = "token_exists"
 	CodeNotFound       = "not_found"
 	CodeInvalidInput   = "invalid_request"
 	CodeNotReady       = "not_ready"
@@ -70,6 +71,16 @@ const (
 
 func newError(status int, code, message string) *Error {
 	return &Error{Status: status, Code: code, Message: message}
+}
+
+func errForbidden(message string) *Error {
+	return newError(http.StatusForbidden, CodeForbidden, message)
+}
+
+func errForbiddenScope(scope string) *Error {
+	e := errForbidden("權限不足：需要 " + scope + " scope。")
+	e.RequiredScope = scope
+	return e
 }
 
 // inTrashError 是影音在垃圾桶中的錯誤（DEL-R1、R10）：讀取與處理它的端點回 404，新增它回 409。

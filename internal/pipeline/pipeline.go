@@ -51,7 +51,7 @@ type Supadata interface {
 type Groq interface {
 	Transcribe(ctx context.Context, audioPath, langHint string) (*groq.Result, error)
 	// Configured 回報有沒有 API key；沒有時不下載音訊。
-	Configured() bool
+	Configured(ctx context.Context) bool
 	// Endpoint 回傳實際使用的 base_url 與 model，它們影響結果，屬於快取鍵。
 	Endpoint() (baseURL, model string)
 }

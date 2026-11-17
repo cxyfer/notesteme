@@ -333,7 +333,10 @@ func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 		},
 		fetch: func(ctx context.Context, it store.Item, _ Language) (*fetchResult, error) {
 			// 沒有 API key 時不下載音訊，直接回報沒有設定（SRC-R10）。
-			if !gc.Configured() {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if !gc.Configured(ctx) {
 				return nil, &errclass.Error{Class: errclass.ClassNeedsAction, Source: groq.ID, Err: groq.ErrNoKey}
 			}
 			if it.Platform != source.PlatformYouTube {
@@ -390,7 +393,7 @@ func probeReason(err error, class errclass.Class) string {
 // 方案不支援（402）與 API key 被拒（401）要使用者做的事不同。已經帶訊息的錯誤原樣回傳。
 func supadataUserError(err error) error {
 	var ce *errclass.Error
-	if !errors.As(err, &ce) || ce.Class != errclass.ClassNeedsAction || ce.Message != "" {
+	if !errors.As(err, &ce) || ce.Class != errclass.ClassNeedsAction || ce.Message != "" || errors.Is(err, errclass.ErrNotConfigured) {
 		return err
 	}
 	out := *ce

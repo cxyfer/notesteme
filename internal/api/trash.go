@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 )
 
@@ -61,7 +62,7 @@ type trashItemOutput struct {
 }
 
 func (rt *routes) trashItem(ctx context.Context, in *trashItemInput) (*trashItemOutput, error) {
-	if err := requireOwner(ctx, "刪除影音"); err != nil {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
 		return nil, err
 	}
 	if rt.d.Pipeline == nil {
@@ -96,7 +97,7 @@ type trashListOutput struct {
 }
 
 func (rt *routes) listTrash(ctx context.Context, _ *struct{}) (*trashListOutput, error) {
-	if err := requireOwner(ctx, "查看垃圾桶"); err != nil {
+	if err := requireScope(ctx, auth.ScopeRead); err != nil {
 		return nil, err
 	}
 	if rt.d.Pipeline == nil {
@@ -122,7 +123,7 @@ func toTrashedItem(it pipeline.TrashedItem) TrashedItem {
 type restoreOutput struct{ Body TrashedItem }
 
 func (rt *routes) restoreItem(ctx context.Context, in *itemInput) (*restoreOutput, error) {
-	if err := requireOwner(ctx, "還原影音"); err != nil {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
 		return nil, err
 	}
 	if rt.d.Pipeline == nil {

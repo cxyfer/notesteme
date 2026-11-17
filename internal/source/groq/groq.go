@@ -78,8 +78,10 @@ type Client struct {
 	BaseURL string
 	// Model 為空時使用 DefaultModel。
 	Model string
-	// APIKey 是 Groq 的 API key。
+	// APIKey 是 Groq 的 API key（環境變數，SEC-R1 優先）。
 	APIKey string
+	// KeyFunc 在 APIKey 為空時動態取得 API key（例如由資料庫解密讀取）。
+	KeyFunc func(ctx context.Context) (string, error)
 
 	// timeout 非 0 時取代 requestTimeout（讓測試不必真的等數分鐘）。
 	timeout time.Duration
@@ -93,8 +95,21 @@ func (c *Client) requestTimeout() time.Duration {
 	return requestTimeout
 }
 
+func (c *Client) resolveKey(ctx context.Context) (string, error) {
+	if c.APIKey != "" {
+		return c.APIKey, nil
+	}
+	if c.KeyFunc == nil {
+		return "", nil
+	}
+	return c.KeyFunc(ctx)
+}
+
 // Configured 回報有沒有 API key；沒有時 Transcribe 不會發出請求。
-func (c *Client) Configured() bool { return c.APIKey != "" }
+func (c *Client) Configured(ctx context.Context) bool {
+	key, err := c.resolveKey(ctx)
+	return err == nil && key != ""
+}
 
 // Endpoint 回傳實際使用的 base_url 與 model（空值已換成預設值）；兩者影響結果，所以屬於快取鍵的 params。
 func (c *Client) Endpoint() (baseURL, model string) {
@@ -138,11 +153,18 @@ type transcriptionResponse struct {
 //   - segments 為空：ErrNoTranscript，這個來源沒有結果。
 //   - ctx 被取消時回傳 ctx.Err()，不是來源的錯。
 func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*Result, error) {
-	if !c.Configured() {
+	key, err := c.resolveKey(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, fail(errclass.ClassRetryable, "讀取 API key 失敗", err)
+	}
+	if key == "" {
 		return nil, fail(errclass.ClassNeedsAction, "", ErrNoKey)
 	}
 	// 含控制字元的 key 會讓標頭非法，被當成網路錯誤而一直重試；直接要使用者重新設定。
-	if strings.ContainsFunc(c.APIKey, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+	if strings.ContainsFunc(key, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
 		return nil, &errclass.Error{
 			Class: errclass.ClassNeedsAction, Source: ID, Err: ErrKeyMalformed,
 			Message: MsgKeyMalformed, Actions: []string{ActionSetKey},
@@ -178,7 +200,7 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*R
 		pr.Close()
 		return nil, fail(errclass.ClassPermanent, "", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.Header.Set("Accept", "application/json")
 

@@ -285,13 +285,13 @@ func TestSettingsLanguageEndpoints(t *testing.T) {
 	}
 	// 其他區段維持 501，不論有沒有內容。
 	for _, body := range []string{"", `{"a":1}`} {
-		rec := r.owner("PUT", "/api/settings/services", body)
+		rec := r.owner("PUT", "/api/settings/budget", body)
 		if rec.Code != 501 || decode[Error](t, rec).Code != CodeNotImplemented {
-			t.Errorf("services：%d %s", rec.Code, rec.Body)
+			t.Errorf("budget：%d %s", rec.Code, rec.Body)
 		}
 	}
-	if rec := r.owner("GET", "/api/settings/services", ""); rec.Code != 501 {
-		t.Errorf("GET services = %d", rec.Code)
+	if rec := r.owner("GET", "/api/settings/budget", ""); rec.Code != 501 {
+		t.Errorf("GET budget = %d", rec.Code)
 	}
 }
 

@@ -729,11 +729,11 @@ func TestSettingsValidationAndMerge(t *testing.T) {
 			t.Errorf("%s：err = %v", name, err)
 		}
 	}
-	if _, err := r.p.SetSettings(ctx, "services", map[string]any{}); !errors.As(err, &ni) {
-		t.Errorf("services：%v", err)
+	if _, err := r.p.SetSettings(ctx, "budget", map[string]any{}); !errors.As(err, &ni) {
+		t.Errorf("budget：%v", err)
 	}
-	if _, err := r.p.GetSettings(ctx, "services"); !errors.As(err, &ni) {
-		t.Errorf("services：%v", err)
+	if _, err := r.p.GetSettings(ctx, "budget"); !errors.As(err, &ni) {
+		t.Errorf("budget：%v", err)
 	}
 
 	// 沒設定過：回傳內建預設。

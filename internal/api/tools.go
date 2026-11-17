@@ -34,14 +34,6 @@ const (
 // installFailedMessage 是安裝失敗時回給 client 的固定訊息；pip 的輸出只寫進 log。
 const installFailedMessage = "yt-dlp 安裝失敗，詳見 server log。"
 
-// requireOwner 只讓 owner（session 或本機）通過：token 即使帶了 scope 也不行，因為這些操作會執行程式或洩漏管理資訊。
-func requireOwner(ctx context.Context, what string) error {
-	if p, ok := principalFrom(ctx); ok && p.Kind == "token" {
-		return newError(http.StatusForbidden, CodeForbidden, "只有 owner 可以"+what+"。")
-	}
-	return nil
-}
-
 type ytdlpUpdateInput struct {
 	// Body 可以省略：沒有 body 就是更新到最新版。
 	Body *struct {

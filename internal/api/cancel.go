@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -21,6 +22,9 @@ func (rt *routes) registerCancel(api huma.API) {
 
 // cancelItem 先在資料庫中取消步驟與任務，再讓 worker 結束執行中的任務，等它們結束才回應。
 func (rt *routes) cancelItem(ctx context.Context, in *itemInput) (*itemDetailOutput, error) {
+	if err := requireScope(ctx, auth.ScopeIngest); err != nil {
+		return nil, err
+	}
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}

@@ -50,6 +50,8 @@ var ErrNoTranscript = fmt.Errorf("supadata：沒有字幕：%w", errclass.ErrNoR
 
 // 401、402 都是 needs_action，但要使用者做的事不同，呼叫端用這兩個錯誤分辨。
 var (
+	// ErrNoKey 表示沒有設定 API key；不會發出請求。
+	ErrNoKey = fmt.Errorf("沒有設定 API key：%w", errclass.ErrNotConfigured)
 	// ErrKeyRejected 表示 API key 無效（401）。
 	ErrKeyRejected = errors.New("API key 無效")
 	// ErrPlanUnsupported 表示目前的 Supadata 方案不支援這個功能（402）。
@@ -62,8 +64,20 @@ type Client struct {
 	HTTP *http.Client
 	// BaseURL 為空時使用 DefaultBaseURL。
 	BaseURL string
-	// APIKey 是 Supadata 的 API key。
+	// APIKey 是 Supadata 的 API key（環境變數，SEC-R1 優先）。
 	APIKey string
+	// KeyFunc 在 APIKey 為空時動態取得 API key（例如由資料庫解密讀取）。
+	KeyFunc func(ctx context.Context) (string, error)
+}
+
+func (c *Client) resolveKey(ctx context.Context) (string, error) {
+	if c.APIKey != "" {
+		return c.APIKey, nil
+	}
+	if c.KeyFunc == nil {
+		return "", nil
+	}
+	return c.KeyFunc(ctx)
 }
 
 // API key 格式不正確（含控制字元，例如貼上時多了換行）時給使用者看的訊息與修正動作（SRC-R10）。
@@ -108,8 +122,18 @@ type transcriptResponse struct {
 //   - 429、5xx、網路錯誤、無法解析的回應：retryable。
 //   - 3xx（不跟隨轉址）、400 及其他 4xx、非同步任務（202）：permanent；非同步任務的輪詢還沒做。
 func (c *Client) Fetch(ctx context.Context, videoURL, mode string) (*Result, error) {
+	key, err := c.resolveKey(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, fail(errclass.ClassRetryable, "讀取 API key 失敗", err)
+	}
+	if key == "" {
+		return nil, fail(errclass.ClassNeedsAction, "", ErrNoKey)
+	}
 	// 含控制字元的 key 會讓標頭非法，被當成網路錯誤而一直重試；直接要使用者重新設定。
-	if !validKey(c.APIKey) {
+	if !validKey(key) {
 		return nil, &errclass.Error{
 			Class: errclass.ClassNeedsAction, Source: ID, Err: ErrKeyMalformed,
 			Message: msgKeyMalformed, Actions: []string{actionSetKey},
@@ -126,7 +150,7 @@ func (c *Client) Fetch(ctx context.Context, videoURL, mode string) (*Result, err
 	if err != nil {
 		return nil, fail(errclass.ClassPermanent, "", err)
 	}
-	req.Header.Set("x-api-key", c.APIKey)
+	req.Header.Set("x-api-key", key)
 	req.Header.Set("Accept", "application/json")
 
 	// API key 放在自訂標頭，Go 跨網域轉址時不會移除它；所以不跟隨轉址，3xx 當成 permanent。

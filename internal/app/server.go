@@ -58,6 +58,8 @@ type Server struct {
 	http  *http.Server
 	store *store.Store
 	keys  *secrets.Keyring
+	// services 管理加密存放的服務商 API key（GET／PUT /api/settings/services 與執行期解析）。
+	services *secrets.Services
 	// cookies 加密存放平台 cookie，並提供 yt-dlp 用的暫存檔（SEC-R7）；startPipeline 建立。
 	cookies *cookies.Store
 	auth    *auth.Service
@@ -281,6 +283,14 @@ func (s *Server) Addr() string { return s.ln.Addr().String() }
 
 // Config 回傳生效的設定。
 func (s *Server) Config() *config.Config { return s.cfg }
+
+// ExpireToken 把指定名稱的有效 API token 設為在目前時鐘時間到期（測試與驗收 harness 使用）。
+func (s *Server) ExpireToken(ctx context.Context, name string) error {
+	if s.auth == nil {
+		return errors.New("app: auth 尚未初始化")
+	}
+	return s.auth.ExpireTokenByName(ctx, name)
+}
 
 // Done 在 Serve 結束時關閉。
 func (s *Server) Done() <-chan struct{} { return s.done }

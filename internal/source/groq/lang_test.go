@@ -1,6 +1,9 @@
 package groq
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestLangHint(t *testing.T) {
 	for in, want := range map[string]string{
@@ -26,7 +29,8 @@ func TestEndpointResolvesDefaults(t *testing.T) {
 	if base != "https://x.test/v1" || model != "m" {
 		t.Errorf("Endpoint = %q, %q", base, model)
 	}
-	if (&Client{}).Configured() || !(&Client{APIKey: "k"}).Configured() {
+	ctx := context.Background()
+	if (&Client{}).Configured(ctx) || !(&Client{APIKey: "k"}).Configured(ctx) {
 		t.Error("Configured 應依 API key 判斷")
 	}
 }

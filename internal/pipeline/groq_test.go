@@ -30,7 +30,7 @@ type fakeGroq struct {
 	existed []bool // 呼叫當下音檔是否存在
 }
 
-func (f *fakeGroq) Configured() bool { return !f.noKey }
+func (f *fakeGroq) Configured(context.Context) bool { return !f.noKey }
 
 func (f *fakeGroq) Endpoint() (string, string) { return f.baseURL, f.model }
 

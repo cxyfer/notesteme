@@ -112,8 +112,8 @@ func (rt *routes) registerCookies(api huma.API) {
 // putCookies 只有 owner（session 或本機）可以使用：token 即使帶了 scope 也不行，
 // 因為 cookie 等同登入憑證。session 的 CSRF 由 authMiddleware 檢查（AUTH-R5）。
 func (rt *routes) putCookies(ctx context.Context, in *cookiesInput) (*cookiesOutput, error) {
-	if p, ok := principalFrom(ctx); ok && p.Kind == "token" {
-		return nil, newError(http.StatusForbidden, CodeForbidden, "只有 owner 可以上傳 cookie。")
+	if err := requireOwner(ctx, "上傳 cookie"); err != nil {
+		return nil, err
 	}
 	if rt.d.Cookies == nil {
 		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")

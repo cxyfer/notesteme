@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/cxyfer/notesteme/internal/auth"
 )
 
 // 這個檔案是刪除預覽、永久刪除與清空垃圾桶（DEL-R3、R4、R6），由 DEL-B2 實作。
@@ -41,7 +43,7 @@ type deletionPreviewOutput struct {
 }
 
 func (rt *routes) deletionPreview(ctx context.Context, in *itemInput) (*deletionPreviewOutput, error) {
-	if err := requireOwner(ctx, "查看刪除的影響範圍"); err != nil {
+	if err := requireScope(ctx, auth.ScopeRead); err != nil {
 		return nil, err
 	}
 	if rt.d.Pipeline == nil {
@@ -76,7 +78,7 @@ type purgedItemOutput struct {
 }
 
 func (rt *routes) purgeItem(ctx context.Context, in *itemInput) (*purgedItemOutput, error) {
-	if err := requireOwner(ctx, "永久刪除影音"); err != nil {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
 		return nil, err
 	}
 	if rt.d.Pipeline == nil {
@@ -92,7 +94,7 @@ func (rt *routes) purgeItem(ctx context.Context, in *itemInput) (*purgedItemOutp
 }
 
 func (rt *routes) emptyTrash(ctx context.Context, _ *struct{}) (*purgedOutput, error) {
-	if err := requireOwner(ctx, "清空垃圾桶"); err != nil {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
 		return nil, err
 	}
 	if rt.d.Pipeline == nil {
