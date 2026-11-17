@@ -23,8 +23,8 @@ func TestPurgeWaitsForTasksAlreadyCancelledInDB(t *testing.T) {
 	if err != nil || len(claimed) != 1 {
 		t.Fatalf("claim = %+v, %v", claimed, err)
 	}
-	// 移到垃圾桶時沒有 canceller（模擬等待逾時）：任務在資料庫中已是 cancelled，但 worker 仍在執行。
-	if _, err := r.p.Trash(ctx, it.ID, TrashOptions{}); err != nil {
+	// 移到垃圾桶時的 canceller 沒有結束它（模擬等待逾時）：任務在資料庫中已是 cancelled，但 worker 仍在執行。
+	if _, err := r.p.Trash(ctx, it.ID, TrashOptions{Canceller: &fakeCanceller{err: context.DeadlineExceeded}}); err != nil {
 		t.Fatal(err)
 	}
 	if tk, _ := r.st.Read().Task(ctx, claimed[0].ID); tk.State != store.TaskCancelled {
