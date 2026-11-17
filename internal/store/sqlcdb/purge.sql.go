@@ -119,9 +119,10 @@ func (q *Queries) PreviewSpentUSD(ctx context.Context, itemID *string) (float64,
 }
 
 const purgeDeleteEvents = `-- name: PurgeDeleteEvents :execrows
-DELETE FROM events WHERE item_id = ?1
+DELETE FROM events WHERE item_id = ?1 AND item_id <> ''
 `
 
+// The item_id <> ” term matches the partial index events_item, which SQLite only uses when the query implies it.
 func (q *Queries) PurgeDeleteEvents(ctx context.Context, itemID string) (int64, error) {
 	result, err := q.db.ExecContext(ctx, purgeDeleteEvents, itemID)
 	if err != nil {

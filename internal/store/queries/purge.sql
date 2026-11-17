@@ -19,7 +19,8 @@ VALUES (sqlc.arg(platform), sqlc.arg(external_id), sqlc.arg(part), '', sqlc.arg(
 ON CONFLICT (platform, external_id, part, sha256) DO UPDATE SET purged_at = excluded.purged_at;
 
 -- name: PurgeDeleteEvents :execrows
-DELETE FROM events WHERE item_id = sqlc.arg(item_id);
+-- The item_id <> '' term matches the partial index events_item, which SQLite only uses when the query implies it.
+DELETE FROM events WHERE item_id = sqlc.arg(item_id) AND item_id <> '';
 
 -- name: PurgeDeleteItem :execrows
 -- Artifacts, stage runs, source probes and tasks go with it (ON DELETE CASCADE).
