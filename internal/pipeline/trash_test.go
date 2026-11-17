@@ -484,7 +484,7 @@ func TestWriteCuesArtifactDiscardsWhenItemGone(t *testing.T) {
 	}
 }
 
-// Handle 遇到 errItemGone 時什麼都不寫回：步驟維持領取時的狀態，也沒有產出檔。
+// Handle 遇到 errItemGone 時不寫回結果，也沒有產出檔；任務與步驟依垃圾桶的規則結束。
 func TestHandleDropsResultOfItemTrashedMidRun(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
@@ -516,7 +516,11 @@ func TestHandleDropsResultOfItemTrashedMidRun(t *testing.T) {
 	if exists(filepath.Join(r.dir, artifactsDir)) {
 		t.Error("不應寫出任何產出檔")
 	}
-	if run := r.stage(it, StageTranscript); run.Status != store.StatusRunning {
-		t.Errorf("什麼都不寫回，步驟維持領取時的狀態：%+v", run)
+	// 不寫回結果，但任務與步驟要結束：skipped（cancelled），不能留下 running／leased。
+	if run := r.stage(it, StageTranscript); run.Status != store.StatusSkipped || run.BlockReason != "cancelled" {
+		t.Errorf("步驟應為 skipped（cancelled）：%+v", run)
+	}
+	if tk, err := r.st.Read().Task(ctx, transcript.ID); err != nil || tk.State != store.TaskCancelled {
+		t.Errorf("任務 = %+v, %v，預期 cancelled", tk, err)
 	}
 }

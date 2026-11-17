@@ -107,5 +107,5 @@ SELECT t.id AS id, t.kind AS kind, t.resource_class AS resource_class, t.state A
 FROM tasks AS t
 JOIN stage_runs AS sr ON sr.id = t.stage_run_id
 JOIN items AS i ON i.id = sr.item_id
-WHERE t.state IN ('leased', 'pending') AND t.executor = sqlc.arg(executor)
+WHERE t.state IN ('leased', 'pending') AND t.executor = sqlc.arg(executor) AND i.deleted_at IS NULL
 ORDER BY bucket, score DESC, t.created_at, t.rowid;

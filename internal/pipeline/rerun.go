@@ -70,7 +70,18 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		return Detail{}, err
 	}
 
+	if p.beforeRerunTx != nil {
+		p.beforeRerunTx()
+	}
 	err = p.st.Tx(ctx, func(r *store.Repo) error {
+		// 上面讀取之後影音可能已被移到垃圾桶或永久刪除：在交易內重新檢查，否則會替垃圾桶中的影音建立任務。
+		cur, err := r.ItemByID(ctx, itemID)
+		if err != nil {
+			return err
+		}
+		if cur.DeletedAt != nil {
+			return &InTrashError{ItemID: cur.ID}
+		}
 		snap, err := r.EnsureSnapshot(ctx, sha, cfgJSON)
 		if err != nil {
 			return err

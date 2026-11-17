@@ -146,3 +146,20 @@ func TestQueueTasksListsLeasedFirstWithItem(t *testing.T) {
 		t.Errorf("執行者不同不應列出：%v", other)
 	}
 }
+
+// 垃圾桶中的影音不出現在佇列頁：它的任務即使還殘留（取消與移到垃圾桶之間的空隙）也不是在處理中。
+func TestQueueTasksSkipsTrashedItems(t *testing.T) {
+	ctx := context.Background()
+	s, _ := openTest(t)
+	trashed, sr1 := seedItem(t, s, "abc123xxxxx")
+	_, sr2 := seedItem(t, s, "def456xxxxx")
+	newTask(t, s, sr1, 3, nil)
+	kept := newTask(t, s, sr2, 3, nil)
+	if _, _, err := s.Write().TrashItem(ctx, trashed.ID); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.Read().QueueTasks(ctx, "builtin", 10*time.Minute)
+	if err != nil || len(list) != 1 || list[0].ID != kept.ID {
+		t.Fatalf("QueueTasks = %+v, %v；預期只有媒體庫中的影音", list, err)
+	}
+}
