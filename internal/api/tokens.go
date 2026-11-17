@@ -15,19 +15,19 @@ import (
 )
 
 func (rt *routes) registerTokens(api huma.API) {
-	huma.Register(api, huma.Operation{
+	registerScoped(api, huma.Operation{
 		OperationID: "tokens-list", Method: http.MethodGet, Path: "/api/tokens",
 		Summary: "列出所有 API token 的中繼資料（不含明文與 hash，AUTH-R7）",
-	}, rt.listTokens)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeAdmin, rt.listTokens)
+	registerScoped(api, huma.Operation{
 		OperationID: "tokens-create", Method: http.MethodPost, Path: "/api/tokens",
 		Summary:       "建立 API token，只在建立時回傳一次明文 token（AUTH-R7）",
 		DefaultStatus: http.StatusCreated,
-	}, rt.createToken)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeAdmin, rt.createToken)
+	registerScoped(api, huma.Operation{
 		OperationID: "tokens-revoke", Method: http.MethodDelete, Path: "/api/tokens/{id}",
 		Summary: "撤銷 API token（依 id 或有效的名稱，AUTH-R9）",
-	}, rt.revokeToken)
+	}, auth.ScopeAdmin, rt.revokeToken)
 }
 
 type listTokensOutput struct {

@@ -45,18 +45,18 @@ type ytdlpUpdateInput struct {
 type ytdlpOutput struct{ Body ytdlp.Result }
 
 func (rt *routes) registerTools(api huma.API) {
-	huma.Register(api, huma.Operation{
+	registerOwnerOnly(api, huma.Operation{
 		OperationID: "tools-ytdlp-update", Method: http.MethodPost, Path: "/api/tools/yt-dlp/update",
 		Summary: "更新 yt-dlp，自我檢查失敗就回退；可以固定或解除固定版本（只有 owner）",
 		// body 很小，但更新要跑好幾分鐘：huma 預設在讀 body 時對連線設 5 秒的讀取期限，期限過了之後
 		// net/http 會以為 client 斷線而取消請求的 context，更新就會被中斷。BodyReadTimeout 設為負值
 		// 讓 huma 清除這個期限；body 的大小另外限制。
 		BodyReadTimeout: -1, MaxBodyBytes: 4 << 10,
-	}, rt.updateYtDlp)
-	huma.Register(api, huma.Operation{
+	}, "更新 yt-dlp", rt.updateYtDlp)
+	registerOwnerOnly(api, huma.Operation{
 		OperationID: "tools-ytdlp-rollback", Method: http.MethodPost, Path: "/api/tools/yt-dlp/rollback",
 		Summary: "把 yt-dlp 回到上一個版本（只有 owner）",
-	}, rt.rollbackYtDlp)
+	}, "回退 yt-dlp", rt.rollbackYtDlp)
 }
 
 func (rt *routes) updateYtDlp(ctx context.Context, in *ytdlpUpdateInput) (*ytdlpOutput, error) {

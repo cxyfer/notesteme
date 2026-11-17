@@ -153,13 +153,13 @@ func TestScopeMatrix(t *testing.T) {
 				t.Errorf("GET /api/events with read: %d %s, want %d", rec2.Code, rec2.Body, wantEv)
 			}
 
-			// Owner-only endpoints refuse even a token carrying all scopes.
+			// Owner-only endpoints refuse even a token carrying all scopes, even with empty body.
 			ownerOnly := [][3]string{
 				{"POST", "/api/auth/logout", ""},
-				{"POST", "/api/cookies", `{"platform":"youtube","content":"a=1"}`},
+				{"POST", "/api/cookies", ""},
 				{"POST", "/api/backup", ""},
 				{"GET", "/api/system", ""},
-				{"POST", "/api/tools/yt-dlp/update", `{}`},
+				{"POST", "/api/tools/yt-dlp/update", ""},
 				{"POST", "/api/tools/yt-dlp/rollback", ""},
 			}
 			for _, c := range ownerOnly {
@@ -172,6 +172,27 @@ func TestScopeMatrix(t *testing.T) {
 				h.ServeHTTP(rec, req)
 				if rec.Code != 403 || decodeError(t, rec.Body.Bytes()).Code != CodeForbidden {
 					t.Errorf("owner-only %s %s with all-scopes token: %d %s", c[0], c[1], rec.Code, rec.Body)
+				}
+			}
+
+			// Empty body with missing scope still returns 403 with required_scope BEFORE Huma body validation (AUTH-R8).
+			emptyBodyCases := []struct {
+				method, path, wantScope, wrongScope string
+			}{
+				{"POST", "/api/items", auth.ScopeIngest, auth.ScopeRead},
+				{"POST", "/api/resolve", auth.ScopeIngest, auth.ScopeRead},
+				{"POST", "/api/items/x/rerun", auth.ScopeIngest, auth.ScopeRead},
+				{"POST", "/api/tokens", auth.ScopeAdmin, auth.ScopeRead},
+				{"PATCH", "/api/queue/limits", auth.ScopeAdmin, auth.ScopeIngest},
+			}
+			for _, c := range emptyBodyCases {
+				req := httptest.NewRequest(c.method, c.path, nil)
+				req.Header.Set("Authorization", "Bearer "+toks[c.wrongScope])
+				rec := httptest.NewRecorder()
+				h.ServeHTTP(rec, req)
+				e := decodeError(t, rec.Body.Bytes())
+				if rec.Code != http.StatusForbidden || e.Code != CodeForbidden || e.RequiredScope != c.wantScope {
+					t.Errorf("empty-body %s %s with %q: status=%d body=%s, want 403 required_scope=%s", c.method, c.path, c.wrongScope, rec.Code, rec.Body, c.wantScope)
 				}
 			}
 		})

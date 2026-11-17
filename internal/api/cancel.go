@@ -14,10 +14,10 @@ type TaskCanceller interface {
 }
 
 func (rt *routes) registerCancel(api huma.API) {
-	huma.Register(api, huma.Operation{
+	registerScoped(api, huma.Operation{
 		OperationID: "items-cancel", Method: http.MethodPost, Path: "/api/items/{id}/cancel",
 		Summary: "取消影音所有未結束的步驟，執行中的子程序整組結束（PIPE-R15）；沒有未結束的步驟時也回 200",
-	}, rt.cancelItem)
+	}, auth.ScopeIngest, rt.cancelItem)
 }
 
 // cancelItem 先在資料庫中取消步驟與任務，再讓 worker 結束執行中的任務，等它們結束才回應。

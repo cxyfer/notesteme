@@ -24,10 +24,10 @@ type Backup interface {
 }
 
 func (rt *routes) registerBackup(api huma.API) {
-	huma.Register(api, huma.Operation{
+	registerOwnerOnly(api, huma.Operation{
 		OperationID: "backup-create", Method: http.MethodPost, Path: "/api/backup",
 		Summary: "備份：回傳 tar.gz 串流，包含資料庫快照與設定檔，不含 master key（OPS-R1）",
-	}, rt.createBackup)
+	}, "備份", rt.createBackup)
 }
 
 // createBackup 只有 owner（session 或本機）可以使用：備份含有整個資料庫，token 即使帶了 scope 也不行。

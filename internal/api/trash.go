@@ -29,18 +29,18 @@ type TrashedItem struct {
 }
 
 func (rt *routes) registerTrash(api huma.API) {
-	huma.Register(api, huma.Operation{
+	registerScoped(api, huma.Operation{
 		OperationID: "items-delete", Method: http.MethodDelete, Path: "/api/items/{id}",
 		Summary: "刪除影音，移到垃圾桶（DEL-R1）；已在垃圾桶中回 404 in_trash",
-	}, rt.trashItem)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeAdmin, rt.trashItem)
+	registerScoped(api, huma.Operation{
 		OperationID: "trash-list", Method: http.MethodGet, Path: "/api/trash",
 		Summary: "列出垃圾桶中的影音（DEL-R4）",
-	}, rt.listTrash)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeRead, rt.listTrash)
+	registerScoped(api, huma.Operation{
 		OperationID: "trash-restore", Method: http.MethodPost, Path: "/api/trash/{id}/restore",
 		Summary: "從垃圾桶還原（DEL-R5）；影音不在垃圾桶中回 404",
-	}, rt.restoreItem)
+	}, auth.ScopeAdmin, rt.restoreItem)
 }
 
 type trashItemInput struct {

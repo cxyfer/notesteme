@@ -48,14 +48,14 @@ type providerGetInput struct {
 type providerOutput struct{ Body ProviderInfo }
 
 func (rt *routes) registerProviders(api huma.API) {
-	huma.Register(api, huma.Operation{
+	registerScoped(api, huma.Operation{
 		OperationID: "providers-create", Method: http.MethodPost, Path: "/api/providers",
 		Summary: "新增 provider：command 類型只能在設定檔中定義，回 403（SEC-R3）",
-	}, rt.createProvider)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeAdmin, rt.createProvider)
+	registerScoped(api, huma.Operation{
 		OperationID: "providers-get", Method: http.MethodGet, Path: "/api/providers/{id}",
 		Summary: "讀取設定檔中定義的 provider（唯讀）",
-	}, rt.getProvider)
+	}, auth.ScopeRead, rt.getProvider)
 }
 
 // createProvider 處理 POST /api/providers。
