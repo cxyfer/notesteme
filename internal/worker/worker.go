@@ -50,6 +50,9 @@ type Worker struct {
 	periodic Periodic
 	// periodicFired 是已經因為「到期」而立刻再跑過一輪的定期工作時間；同一個時間不重複觸發（見 nextWake）。
 	periodicFired time.Time
+	// periodicMu 讓定期工作一次只執行一個；它不能和 roundMu 同時持有：
+	// 定期工作（例如永久刪除到期的影音）會呼叫 Cancel，而 Cancel 要取得 roundMu。
+	periodicMu sync.Mutex
 
 	maxRounds int
 
@@ -82,10 +85,13 @@ func New(q *queue.Queue, h Handler, clk clock.Clock, log *slog.Logger) *Worker {
 func (w *Worker) SetPeriodic(p Periodic) { w.periodic = p }
 
 // runPeriodic 執行定期工作。失敗只記 log，不影響領取任務：清理事件失敗不該讓影音停止處理。
+// 呼叫時不可以持有 roundMu：定期工作可能呼叫 Cancel（永久刪除殘留任務的影音），會死結。
 func (w *Worker) runPeriodic(ctx context.Context) {
 	if w.periodic == nil {
 		return
 	}
+	w.periodicMu.Lock()
+	defer w.periodicMu.Unlock()
 	if err := w.periodic.Run(ctx); err != nil && ctx.Err() == nil {
 		w.log.Warn("定期工作失敗", "error", err)
 	}
@@ -95,12 +101,15 @@ func (w *Worker) runPeriodic(ctx context.Context) {
 // 每個資源類別依自己的上限與暫停設定領取（PIPE-R8、PIPE-R10）；設定改變後的下一輪就生效。
 // 回傳領取的任務數。
 func (w *Worker) RunRound(ctx context.Context) (int, error) {
+	// 定期工作在領取之前、而且不持有 roundMu 時執行（見 runPeriodic）；停止領取之後不再執行。
+	if !w.isDraining() {
+		w.runPeriodic(ctx)
+	}
 	w.roundMu.Lock()
 	defer w.roundMu.Unlock()
 	if w.draining {
 		return 0, nil
 	}
-	w.runPeriodic(ctx)
 	w.mu.Lock()
 	running := maps.Clone(w.running)
 	w.mu.Unlock()
@@ -120,6 +129,13 @@ func (w *Worker) RunRound(ctx context.Context) (int, error) {
 		go w.execute(tctx, t, at)
 	}
 	return len(tasks), nil
+}
+
+// isDraining 回傳是否已停止領取。
+func (w *Worker) isDraining() bool {
+	w.roundMu.Lock()
+	defer w.roundMu.Unlock()
+	return w.draining
 }
 
 func (w *Worker) execute(ctx context.Context, t store.Task, at *activeTask) {
