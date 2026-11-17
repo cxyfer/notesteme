@@ -2,6 +2,7 @@ package steps
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -275,6 +276,7 @@ func (s *Scenario) itemProcessedUpTo(ref, stage string) error {
 	if err != nil {
 		return err
 	}
+	wasRunning := s.server != nil
 	if err := s.prepareOwner(); err != nil {
 		return err
 	}
@@ -344,6 +346,27 @@ func (s *Scenario) itemProcessedUpTo(ref, stage string) error {
 	}
 	if st.Status != "done" {
 		return fmt.Errorf("%s 沒有處理到 %s：步驟是 %q（%s）", ref, stage, st.Status, describeStage(st))
+	}
+	if !wasRunning && s.server != nil {
+		return s.stopTemporaryServer()
+	}
+	return nil
+}
+
+// stopTemporaryServer 關閉由 Given 前置步驟暫時啟動的 server，並重設執行狀態，
+// 避免在沒有呼叫 `the server is running` 的場景中佔住 /data 鎖（例如 secrets reset、server starts）。
+func (s *Scenario) stopTemporaryServer() error {
+	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+	defer cancel()
+	srv := s.server
+	s.server = nil
+	s.started = false
+	s.stopped = false
+	s.ownerLoggedIn = false
+	s.owner = map[string]string{}
+	if err := srv.Shutdown(ctx); err != nil {
+		srv.Kill()
+		return fmt.Errorf("關閉暫時啟動的 server：%w", err)
 	}
 	return nil
 }

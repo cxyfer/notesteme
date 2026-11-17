@@ -135,7 +135,11 @@ func (s *Scenario) clientSendsWithToken(spec, name string) error {
 	if err != nil {
 		return err
 	}
-	return s.send(spec, requestOpts{who: asClient, headers: headers})
+	var body []byte
+	if method, path, err := parseRequest(spec); err == nil && method == http.MethodPost && path == "/api/items" {
+		body = []byte(`{"url":"https://www.youtube.com/watch?v=abc123xxxxx"}`)
+	}
+	return s.send(spec, requestOpts{who: asClient, body: body, headers: headers})
 }
 
 func (s *Scenario) clientSendsWithTokenAnd(spec, name string, doc *godog.DocString) error {
