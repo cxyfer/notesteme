@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,10 +70,10 @@ type CreatedToken struct {
 }
 
 // CreateToken 建立一個 API bearer token（AUTH-R7）。
-// name 不可為空或含控制字元；scopes 必須非空且皆為有效 scope；expiresIn 若不為 nil 必須大於 0。
+// name 不可為空、含 '/' 或控制字元；scopes 必須非空且皆為有效 scope；expiresIn 若不為 nil 必須大於 0。
 func (s *Service) CreateToken(ctx context.Context, name string, scopes []string, expiresIn *time.Duration) (CreatedToken, error) {
-	if strings.TrimSpace(name) == "" || hasControlChar(name) {
-		return CreatedToken{}, fmt.Errorf("%w: token 名稱不可為空或包含控制字元。", ErrInvalidToken)
+	if strings.TrimSpace(name) == "" || hasControlChar(name) || strings.ContainsRune(name, '/') {
+		return CreatedToken{}, fmt.Errorf("%w: token 名稱不可為空、包含斜線或控制字元。", ErrInvalidToken)
 	}
 	cleanScopes, err := validateScopes(scopes)
 	if err != nil {
@@ -200,6 +202,43 @@ func validateScopes(scopes []string) ([]string, error) {
 
 func hasControlChar(s string) bool {
 	return strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f })
+}
+
+// ParseTokenDuration 解析 token 有效期間字串，支援整數天數前綴（例如 30d、1d12h）與大於 0 的 Go duration（例如 24h）。
+// 拒絕空字串、前後空白、0、負數與 '+' 前綴。
+func ParseTokenDuration(s string) (time.Duration, error) {
+	if s == "" || strings.TrimSpace(s) != s {
+		return 0, fmt.Errorf("%w: token 有效期間不可為空或含前後空白。", ErrInvalidToken)
+	}
+	if strings.HasPrefix(s, "+") || strings.HasPrefix(s, "-") {
+		return 0, fmt.Errorf("%w: token 有效期間必須大於 0 且不可帶正負號。", ErrInvalidToken)
+	}
+	if before, after, hasDay := strings.Cut(s, "d"); hasDay {
+		if before == "" || strings.ContainsFunc(before, func(r rune) bool { return r < '0' || r > '9' }) {
+			return 0, fmt.Errorf("%w: 天數必須為正整數。", ErrInvalidToken)
+		}
+		days, err := strconv.ParseInt(before, 10, 64)
+		if err != nil || days <= 0 || days > int64(math.MaxInt64/(24*time.Hour)) {
+			return 0, fmt.Errorf("%w: 天數不正確或超出上限。", ErrInvalidToken)
+		}
+		total := time.Duration(days) * 24 * time.Hour
+		if after != "" {
+			if strings.Contains(after, "d") || strings.HasPrefix(after, "+") || strings.HasPrefix(after, "-") {
+				return 0, fmt.Errorf("%w: token 有效期間格式不正確。", ErrInvalidToken)
+			}
+			sub, err := time.ParseDuration(after)
+			if err != nil || sub < 0 || total > math.MaxInt64-sub {
+				return 0, fmt.Errorf("%w: token 有效期間格式不正確或超出上限。", ErrInvalidToken)
+			}
+			total += sub
+		}
+		return total, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("%w: token 有效期間必須大於 0。", ErrInvalidToken)
+	}
+	return d, nil
 }
 
 func tokenInfoFromStore(t store.APIToken) TokenInfo {

@@ -3,9 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -44,8 +42,8 @@ func parseTokensCreate(args []string) (*plan, error) {
 	if len(pos) != 0 {
 		return nil, usagef("tokens create 不接受位置參數：%q。", pos[0])
 	}
-	if strings.TrimSpace(*name) == "" || hasControlChar(*name) {
-		return nil, usagef("tokens create 需要 --name <名稱>（不可為空或包含控制字元）。")
+	if strings.TrimSpace(*name) == "" || hasControlChar(*name) || strings.ContainsRune(*name, '/') {
+		return nil, usagef("tokens create 需要 --name <名稱>（不可為空、包含斜線或控制字元）。")
 	}
 	scopes, err := parseScopes(*scopesRaw)
 	if err != nil {
@@ -53,10 +51,10 @@ func parseTokensCreate(args []string) (*plan, error) {
 	}
 	var expiresIn string
 	if fs.Changed("expires") {
-		if _, err := parseTokenDuration(*expires); err != nil {
+		if _, err := auth.ParseTokenDuration(*expires); err != nil {
 			return nil, usagef("--expires 不正確：%v。", err)
 		}
-		expiresIn = strings.TrimSpace(*expires)
+		expiresIn = *expires
 	}
 	tokenName := *name
 	return &plan{g: g, run: func(ctx context.Context, s *session) (int, error) {
@@ -178,54 +176,6 @@ func parseScopes(raw string) ([]string, error) {
 		out = append(out, sc)
 	}
 	return out, nil
-}
-
-// parseTokenDuration 解析 --expires 的時間長度，支援 Go 標準單位與 d（一天 = 24 小時，例如 30d、1d12h）。
-func parseTokenDuration(raw string) (time.Duration, error) {
-	s := strings.TrimSpace(raw)
-	if s == "" {
-		return 0, errors.New("不可為空")
-	}
-	var d time.Duration
-	if before, after, hasDay := strings.Cut(s, "d"); hasDay {
-		if strings.Contains(after, "d") {
-			return 0, fmt.Errorf("%q 只能出現一次 d", raw)
-		}
-		daysAsHours, err := time.ParseDuration(before + "h")
-		if err != nil {
-			return 0, fmt.Errorf("%q 不是有效的時間長度", raw)
-		}
-		if daysAsHours <= 0 {
-			return 0, errors.New("必須大於 0")
-		}
-		if daysAsHours > math.MaxInt64/24 {
-			return 0, fmt.Errorf("%q 超出可表示的時間上限", raw)
-		}
-		d = daysAsHours * 24
-		if after != "" {
-			if strings.HasPrefix(after, "+") || strings.HasPrefix(after, "-") {
-				return 0, fmt.Errorf("%q 不是有效的時間長度", raw)
-			}
-			rest, err := time.ParseDuration(after)
-			if err != nil {
-				return 0, fmt.Errorf("%q 不是有效的時間長度", raw)
-			}
-			if d > math.MaxInt64-rest {
-				return 0, fmt.Errorf("%q 超出可表示的時間上限", raw)
-			}
-			d += rest
-		}
-	} else {
-		var err error
-		d, err = time.ParseDuration(s)
-		if err != nil {
-			return 0, fmt.Errorf("%q 不是有效的時間長度", raw)
-		}
-	}
-	if d <= 0 {
-		return 0, errors.New("必須大於 0")
-	}
-	return d, nil
 }
 
 func hasControlChar(s string) bool {

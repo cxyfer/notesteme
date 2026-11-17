@@ -3,10 +3,7 @@ package api
 import (
 	"context"
 	"errors"
-	"math"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -84,7 +81,7 @@ func (rt *routes) createToken(ctx context.Context, in *createTokenInput) (*creat
 	}
 	var expiresIn *time.Duration
 	if in.Body.ExpiresIn != "" {
-		d, err := parseTokenDuration(in.Body.ExpiresIn)
+		d, err := auth.ParseTokenDuration(in.Body.ExpiresIn)
 		if err != nil {
 			return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, err.Error())
 		}
@@ -126,37 +123,4 @@ func (rt *routes) revokeToken(ctx context.Context, in *tokenPathInput) (*revokeT
 func (rt *routes) noAuth(ctx context.Context) error {
 	rt.d.Log.ErrorContext(ctx, "處理請求時發生錯誤", "error", "api: 沒有設定 Auth")
 	return newError(http.StatusInternalServerError, CodeInternal, defaultMessages[http.StatusInternalServerError].msg)
-}
-
-// parseTokenDuration 解析 token 有效期間字串，支援 d（天 = 24h）及 Go 標準 duration（h、m、s）。
-func parseTokenDuration(s string) (time.Duration, error) {
-	if s == "" || strings.TrimSpace(s) != s {
-		return 0, errors.New("token 有效期間格式不正確。")
-	}
-	if i := strings.IndexByte(s, 'd'); i >= 0 {
-		days, err := strconv.ParseInt(s[:i], 10, 64)
-		if err != nil || days <= 0 {
-			return 0, errors.New("token 有效期間必須大於 0。")
-		}
-		if days > int64(math.MaxInt64/(24*time.Hour)) {
-			return 0, errors.New("token 有效期間過長。")
-		}
-		total := time.Duration(days) * 24 * time.Hour
-		if rest := s[i+1:]; rest != "" {
-			sub, err := time.ParseDuration(rest)
-			if err != nil || sub < 0 || total > math.MaxInt64-sub {
-				return 0, errors.New("token 有效期間格式不正確。")
-			}
-			total += sub
-		}
-		return total, nil
-	}
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return 0, errors.New("token 有效期間格式不正確。")
-	}
-	if d <= 0 {
-		return 0, errors.New("token 有效期間必須大於 0。")
-	}
-	return d, nil
 }

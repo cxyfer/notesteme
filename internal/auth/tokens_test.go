@@ -175,6 +175,7 @@ func TestTokenValidationAndPrincipalScopes(t *testing.T) {
 		{"", []string{ScopeRead}, nil},
 		{"   ", []string{ScopeRead}, nil},
 		{"bad\nname", []string{ScopeRead}, nil},
+		{"bad/name", []string{ScopeRead}, nil},
 		{"ok", nil, nil},
 		{"ok", []string{"unknown"}, nil},
 		{"ok", []string{ScopeRead}, &zero},
@@ -193,6 +194,38 @@ func TestTokenValidationAndPrincipalScopes(t *testing.T) {
 			if !p.HasScope(sc) {
 				t.Errorf("%s should have scope %s", kind, sc)
 			}
+		}
+	}
+}
+
+func TestParseTokenDuration(t *testing.T) {
+	valid := []struct {
+		in   string
+		want time.Duration
+	}{
+		{"30d", 30 * 24 * time.Hour},
+		{"1d12h", 36 * time.Hour},
+		{"1d0h", 24 * time.Hour},
+		{"24h", 24 * time.Hour},
+		{"30m", 30 * time.Minute},
+		{"1h30m", 90 * time.Minute},
+		{"45s", 45 * time.Second},
+	}
+	for _, tc := range valid {
+		got, err := ParseTokenDuration(tc.in)
+		if err != nil || got != tc.want {
+			t.Errorf("ParseTokenDuration(%q) = (%v, %v), want (%v, nil)", tc.in, got, err, tc.want)
+		}
+	}
+
+	invalid := []string{
+		"", "   ", " 1h", "0s", "0d", "-1h", "-30d", "+24h", "+30d",
+		"d", "1.5d", ".5d", "1d2d", "1d-2h", "1d+2h", "30dabc", "1h30d",
+		"soon", "200000d", "106751d25h",
+	}
+	for _, in := range invalid {
+		if got, err := ParseTokenDuration(in); !errors.Is(err, ErrInvalidToken) {
+			t.Errorf("ParseTokenDuration(%q) = (%v, %v), want ErrInvalidToken", in, got, err)
 		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/app"
+	"github.com/cxyfer/notesteme/internal/auth"
 )
 
 func TestParseTokenDuration(t *testing.T) {
@@ -18,8 +19,6 @@ func TestParseTokenDuration(t *testing.T) {
 	}{
 		{"30d", 30 * 24 * time.Hour},
 		{"1d12h", 36 * time.Hour},
-		{"1.5d", 36 * time.Hour},
-		{".5d", 12 * time.Hour},
 		{"1d0h", 24 * time.Hour},
 		{"24h", 24 * time.Hour},
 		{"30m", 30 * time.Minute},
@@ -27,42 +26,45 @@ func TestParseTokenDuration(t *testing.T) {
 		{"45s", 45 * time.Second},
 	}
 	for _, tc := range valid {
-		got, err := parseTokenDuration(tc.in)
+		got, err := auth.ParseTokenDuration(tc.in)
 		if err != nil || got != tc.want {
-			t.Errorf("parseTokenDuration(%q) = (%v, %v)，預期 (%v, nil)", tc.in, got, err, tc.want)
+			t.Errorf("auth.ParseTokenDuration(%q) = (%v, %v)，預期 (%v, nil)", tc.in, got, err, tc.want)
 		}
 	}
 
 	invalid := []string{
-		"", "   ", "0s", "0d", "-1h", "-30d", "d", "1d2d", "1d-2h", "1d+2h", "30dabc", "soon", "200000d", "106751d25h",
+		"", "   ", " 1h", "0s", "0d", "-1h", "-30d", "+24h", "d", "1.5d", ".5d", "1d2d", "1d-2h", "1d+2h", "30dabc", "1h30d", "soon", "200000d", "106751d25h",
 	}
 	for _, in := range invalid {
-		if got, err := parseTokenDuration(in); err == nil {
-			t.Errorf("parseTokenDuration(%q) = (%v, nil)，預期失敗", in, got)
+		if got, err := auth.ParseTokenDuration(in); err == nil {
+			t.Errorf("auth.ParseTokenDuration(%q) = (%v, nil)，預期失敗", in, got)
 		}
 	}
 }
 
 func TestTokensUsageErrors(t *testing.T) {
 	cases := map[string][]string{
-		"缺少子命令":            {"tokens"},
-		"不認得的子命令":          {"tokens", "bogus"},
-		"create 缺少參數":      {"tokens", "create"},
-		"create 缺 scopes":  {"tokens", "create", "--name", "agent"},
-		"create 缺 name":    {"tokens", "create", "--scopes", "read"},
-		"create 空白 name":   {"tokens", "create", "--name", "   ", "--scopes", "read"},
-		"create 控制字元":      {"tokens", "create", "--name", "bad\nname", "--scopes", "read"},
-		"create 空 scopes":  {"tokens", "create", "--name", "a", "--scopes", ""},
-		"create 無效 scope":  {"tokens", "create", "--name", "a", "--scopes", "read,bogus"},
-		"create 空 expires": {"tokens", "create", "--name", "a", "--scopes", "read", "--expires", ""},
-		"create 0 expires": {"tokens", "create", "--name", "a", "--scopes", "read", "--expires", "0d"},
-		"create 負 expires": {"tokens", "create", "--name", "a", "--scopes", "read", "--expires", "-5d"},
-		"create 壞 expires": {"tokens", "create", "--name", "a", "--scopes", "read", "--expires", "soon"},
-		"create 多餘位置參數":    {"tokens", "create", "--name", "a", "--scopes", "read", "extra"},
-		"ls 多餘位置參數":        {"tokens", "ls", "extra"},
-		"revoke 缺少目標":      {"tokens", "revoke"},
-		"revoke 空白目標":      {"tokens", "revoke", "  "},
-		"revoke 太多參數":      {"tokens", "revoke", "a", "b"},
+		"缺少子命令":             {"tokens"},
+		"不認得的子命令":           {"tokens", "bogus"},
+		"create 缺少參數":       {"tokens", "create"},
+		"create 缺 scopes":   {"tokens", "create", "--name", "agent"},
+		"create 缺 name":     {"tokens", "create", "--scopes", "read"},
+		"create 空白 name":    {"tokens", "create", "--name", "   ", "--scopes", "read"},
+		"create 控制字元":       {"tokens", "create", "--name", "bad\nname", "--scopes", "read"},
+		"create 含斜線 name":   {"tokens", "create", "--name", "bad/name", "--scopes", "read"},
+		"create 空 scopes":   {"tokens", "create", "--name", "a", "--scopes", ""},
+		"create 無效 scope":   {"tokens", "create", "--name", "a", "--scopes", "read,bogus"},
+		"create 空 expires":  {"tokens", "create", "--name", "a", "--scopes", "read", "--expires", ""},
+		"create 0 expires":  {"tokens", "create", "--name", "a", "--scopes", "read", "--expires", "0d"},
+		"create 負 expires":  {"tokens", "create", "--name", "a", "--scopes", "read", "--expires", "-5d"},
+		"create 小數 expires": {"tokens", "create", "--name", "a", "--scopes", "read", "--expires", "1.5d"},
+		"create 加號 expires": {"tokens", "create", "--name", "a", "--scopes", "read", "--expires", "1d+2h"},
+		"create 壞 expires":  {"tokens", "create", "--name", "a", "--scopes", "read", "--expires", "soon"},
+		"create 多餘位置參數":     {"tokens", "create", "--name", "a", "--scopes", "read", "extra"},
+		"ls 多餘位置參數":         {"tokens", "ls", "extra"},
+		"revoke 缺少目標":       {"tokens", "revoke"},
+		"revoke 空白目標":       {"tokens", "revoke", "  "},
+		"revoke 太多參數":       {"tokens", "revoke", "a", "b"},
 	}
 	for name, args := range cases {
 		t.Run(name, func(t *testing.T) {
