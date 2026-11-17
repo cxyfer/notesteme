@@ -138,6 +138,10 @@ func (s *Scenario) attentionStage(ref string) (stageJSON, error) {
 	if s.stopped {
 		return stageJSON{}, errors.New("server 已停止：這個步驟還不支援讀資料庫，請在 server 執行時斷言訊息與動作")
 	}
+	if b, ok := s.lastInTrashConflict(ref); ok {
+		// 新增被 409 in_trash 擋下：訊息與動作就在那個回應裡（DEL-R10），比對它（steps.md 4.4）。
+		return stageJSON{Stage: "in_trash", Status: "409", Message: b.Message, Actions: b.Actions}, nil
+	}
 	it, err := s.item(ref)
 	if b, trashed := inTrashBody(err); trashed {
 		// 影音在垃圾桶中：詳情的 404 回應本身帶著訊息與動作（DEL-R1），比對它們（steps.md 4.4）。
@@ -147,6 +151,24 @@ func (s *Scenario) attentionStage(ref string) (stageJSON, error) {
 		return stageJSON{}, err
 	}
 	return pickAttentionStage(ref, it)
+}
+
+// lastInTrashConflict 在最近一次送出的請求回應是這部影音的 409 in_trash 時回傳它的內容。
+// 斷言步驟不送出請求，所以 s.last 就是它們要檢查的那個回應；影音的 ID 必須與回應的 item_id 相同，
+// 別部影音的 409 不算。代號對應不到 ID 時不採用（交給詳情查詢回報）。
+func (s *Scenario) lastInTrashConflict(ref string) (trashBody, bool) {
+	if s.last == nil || s.last.status != http.StatusConflict {
+		return trashBody{}, false
+	}
+	var b trashBody
+	if json.Unmarshal(s.last.body, &b) != nil || b.Code != "in_trash" {
+		return trashBody{}, false
+	}
+	id, err := s.itemID(ref)
+	if err != nil || (b.ItemID != "" && b.ItemID != id) {
+		return trashBody{}, false
+	}
+	return b, true
 }
 
 // pickAttentionStage 是 attentionStage 的選擇規則（純函式）。
