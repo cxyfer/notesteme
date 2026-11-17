@@ -276,6 +276,11 @@ func (s *Scenario) send(spec string, o requestOpts) error {
 	}
 	resp.step = s.step
 	s.last = resp
+	// 新增影音成功時記下代號與 ID：影音之後進了垃圾桶或永久刪除，還要靠它找到原本的 ID；
+	// 永久刪除之後再新增會換新的 ID，所以每一次新增都要更新，不論是哪個步驟送出的。
+	if method == http.MethodPost && path == "/api/items" && resp.status/100 == 2 {
+		s.recordRefs(resp)
+	}
 	return nil
 }
 

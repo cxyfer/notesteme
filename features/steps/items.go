@@ -85,11 +85,7 @@ func (s *Scenario) ingest(target string, overrides map[string]any) error {
 	if err != nil {
 		return err
 	}
-	if err := s.send("POST /api/items", requestOpts{who: asOwner, body: raw}); err != nil {
-		return err
-	}
-	s.recordRefs(s.last)
-	return nil
+	return s.send("POST /api/items", requestOpts{who: asOwner, body: raw})
 }
 
 // itemHasBeenIngested 以 API 新增影音，worker 不執行（任務留在佇列中）。
