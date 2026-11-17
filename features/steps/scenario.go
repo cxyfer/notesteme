@@ -55,8 +55,14 @@ type Scenario struct {
 	givenQueue queueConfig
 	// seeded 是已用 `the … transcript of … is:` 直接寫入字幕的影音代號（見 hasTranscriptSource）。
 	seeded map[string]bool
+	// lastCreatedToken 是最近一次 `a token … with scopes …` 建立的 token 明文，
+	// lastCreatedTokenStep 是該步驟的序號，供 `the data directory does not contain the created token` 使用。
+	lastCreatedToken     string
+	lastCreatedTokenStep int
 	// cookieSecrets 是場景用 POST /api/cookies 送出的 cookie 值（見 cookieNeedles），secret 掃描要找它們。
 	cookieSecrets map[string]bool
+	// apiKeySecrets 是場景用 PUT /api/settings/services 送出的 API key 值，secret 掃描要找它們。
+	apiKeySecrets map[string]bool
 	// fixtureFiles 是 `Given the file … contains:` 寫入的檔案（實際路徑對應寫入的內容）。
 	// After hook 掃 /backups 時，內容仍與寫入時相同的檔案是場景自己放的 fixture（例如故意不合法的 old.tar.gz），
 	// 照字面掃描；被 production 改過的檔案仍走嚴格解壓。
@@ -157,8 +163,11 @@ func (s *Scenario) checkLogs() error {
 			secrets[v] = true
 		}
 	}
-	// 場景送出的 cookie 值也要掃（見 cookieNeedles）。
+	// 場景送出的 cookie 與 API key 值也要掃（見 noteRequest）。
 	for n := range s.cookieSecrets {
+		secrets[n] = true
+	}
+	for n := range s.apiKeySecrets {
 		secrets[n] = true
 	}
 	var errs []error

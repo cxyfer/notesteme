@@ -178,3 +178,39 @@ func TestFileHasMode(t *testing.T) {
 		t.Error("檔案不存在應該失敗")
 	}
 }
+
+// PUT /api/settings/services 送出的 api_key 也要出現在 log、假工具參數與 /data 的掃描中。
+func TestServiceAPIKeySecretsAreScanned(t *testing.T) {
+	s := newTestScenario(t)
+	s.noteRequest("GET", "/api/settings/services", []byte(`{"providers":{"groq":{"api_key":"gsk_not_a_put_1234"}}}`))
+	if len(s.apiKeySecrets) != 0 {
+		t.Fatalf("GET 不該記錄：%v", s.apiKeySecrets)
+	}
+	// 空字串（刪除 key）與太短的值不記。
+	s.noteRequest("PUT", "/api/settings/services", []byte(`{"providers":{"groq":{"api_key":""},"supadata":{"api_key":"abc"}}}`))
+	if len(s.apiKeySecrets) != 0 {
+		t.Fatalf("空字串或太短的值不該記錄：%v", s.apiKeySecrets)
+	}
+	s.noteRequest("PUT", "/api/settings/services", []byte(`{"providers":{"groq":{"api_key":"gsk_supersecret1234"}}}`))
+	if err := s.checkLogs(); err != nil {
+		t.Fatalf("沒有外洩：%v", err)
+	}
+	if err := s.checkDataDirSecrets(); err != nil {
+		t.Fatalf("沒有外洩：%v", err)
+	}
+
+	_, _ = s.World.Log.Write([]byte("saved gsk_supersecret1234"))
+	if err := s.checkLogs(); err == nil || !strings.Contains(err.Error(), "gsk_supersecret1234") {
+		t.Errorf("log 含 API key：err = %v", err)
+	}
+
+	s = newTestScenario(t)
+	s.noteRequest("PUT", "/api/settings/services", []byte(`{"providers":{"groq":{"api_key":"gsk_supersecret1234"}}}`))
+	p := filepath.Join(s.World.DataDir(), "notesteme.db")
+	if err := os.WriteFile(p, []byte("xx gsk_supersecret1234 xx"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.checkDataDirSecrets(); err == nil || !strings.Contains(err.Error(), "notesteme.db") || !strings.Contains(err.Error(), "API key") {
+		t.Errorf("資料目錄含 API key：err = %v", err)
+	}
+}

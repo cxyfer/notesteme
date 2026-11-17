@@ -65,30 +65,72 @@ func cookieNeedles(body []byte) []string {
 	return out
 }
 
-// noteRequest 記下送給 POST /api/cookies 的 cookie 值，供之後的 secret 掃描使用。
-func (s *Scenario) noteRequest(method, path string, body []byte) {
-	if method != http.MethodPost || path != "/api/cookies" {
-		return
+// minBareAPIKey 是單獨掃描 API key 值的最短長度。
+const minBareAPIKey = 4
+
+// serviceKeyNeedles 從 PUT /api/settings/services 的請求內容取出非空的 api_key 值。
+func serviceKeyNeedles(body []byte) []string {
+	var req struct {
+		Providers map[string]struct {
+			APIKey *string `json:"api_key"`
+		} `json:"providers"`
 	}
-	for _, n := range cookieNeedles(body) {
-		if s.cookieSecrets == nil {
-			s.cookieSecrets = map[string]bool{}
+	if json.Unmarshal(body, &req) != nil {
+		return nil
+	}
+	var out []string
+	for _, p := range req.Providers {
+		if p.APIKey != nil && len(*p.APIKey) >= minBareAPIKey {
+			out = append(out, *p.APIKey)
 		}
-		s.cookieSecrets[n] = true
+	}
+	return out
+}
+
+// noteRequest 記下送給 POST /api/cookies 的 cookie 值與 PUT /api/settings/services 的 API key 值，
+// 供之後的 secret 掃描使用。
+func (s *Scenario) noteRequest(method, path string, body []byte) {
+	switch {
+	case method == http.MethodPost && path == "/api/cookies":
+		for _, n := range cookieNeedles(body) {
+			if s.cookieSecrets == nil {
+				s.cookieSecrets = map[string]bool{}
+			}
+			s.cookieSecrets[n] = true
+		}
+	case method == http.MethodPut && path == "/api/settings/services":
+		for _, n := range serviceKeyNeedles(body) {
+			if s.apiKeySecrets == nil {
+				s.apiKeySecrets = map[string]bool{}
+			}
+			s.apiKeySecrets[n] = true
+		}
 	}
 }
 
 // checkDataDirSecrets 在 server 關閉之後掃描 /data 的所有檔案（包括 DB 與 WAL），
-// 確認沒有場景送出的 cookie 值。
+// 確認沒有場景送出的 cookie 值或 API key 值。
 func (s *Scenario) checkDataDirSecrets() error {
-	if len(s.cookieSecrets) == 0 {
+	if len(s.cookieSecrets) == 0 && len(s.apiKeySecrets) == 0 {
 		return nil
 	}
-	needles := make([]string, 0, len(s.cookieSecrets))
-	for n := range s.cookieSecrets {
-		needles = append(needles, n)
+	type secretNeedle struct {
+		val  string
+		kind string
 	}
-	sort.Strings(needles)
+	needles := make([]secretNeedle, 0, len(s.cookieSecrets)+len(s.apiKeySecrets))
+	for n := range s.cookieSecrets {
+		needles = append(needles, secretNeedle{val: n, kind: "cookie 值（SEC-R7、NFR-SEC-3）"})
+	}
+	for n := range s.apiKeySecrets {
+		needles = append(needles, secretNeedle{val: n, kind: "API key 值（SEC-R4、NFR-SEC-3）"})
+	}
+	sort.Slice(needles, func(i, j int) bool {
+		if needles[i].val != needles[j].val {
+			return needles[i].val < needles[j].val
+		}
+		return needles[i].kind < needles[j].kind
+	})
 	root := s.World.DataDir()
 	var errs []error
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -109,9 +151,9 @@ func (s *Scenario) checkDataDirSecrets() error {
 			return err
 		}
 		for _, n := range needles {
-			if bytes.Contains(b, []byte(n)) {
+			if bytes.Contains(b, []byte(n.val)) {
 				rel, _ := filepath.Rel(root, path)
-				errs = append(errs, fmt.Errorf("server 關閉後，資料目錄的 %s 含有 cookie 值 %q（SEC-R7、NFR-SEC-3）", filepath.ToSlash(filepath.Join(s.World.Unexpand(root), rel)), n))
+				errs = append(errs, fmt.Errorf("server 關閉後，資料目錄的 %s 含有 %s：%q", filepath.ToSlash(filepath.Join(s.World.Unexpand(root), rel)), n.kind, n.val))
 			}
 		}
 		return nil

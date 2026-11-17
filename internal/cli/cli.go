@@ -235,8 +235,12 @@ func parse(args []string) (*plan, error) {
 		return parseTools(args[1:])
 	case "trash":
 		return parseTrash(args[1:])
-	case "tokens", "secrets", "config", "mcp":
-		// 屬於之後的切片（AUTH、SEC、MCP）：不判斷模式，直接回報還沒實作。
+	case "tokens":
+		return parseTokens(args[1:])
+	case "secrets":
+		return parseSecrets(args[1:])
+	case "config", "mcp":
+		// 屬於之後的切片（SEC M2、MCP）：不判斷模式，直接回報還沒實作。
 		return unimplemented(name), nil
 	default:
 		return nil, usagef("不認得的子命令 %q。", name)
@@ -259,6 +263,8 @@ const usageText = `用法：notesteme <子命令> [旗標]
   items rm <ref>... [--purge] [--delete-outputs] [--yes] | restore <ref>...
   trash ls | empty [--yes]              列出、清空垃圾桶
   export <item> --format srt|vtt|txt    輸出字幕（--lang、--variant、--out）
+  tokens create|ls|revoke               管理 API token
+  secrets rotate-key|reset              管理 master key 與 secrets
   doctor                                檢查外部工具與設定
 
 全域旗標：--server <url> --token <t> --data <dir> --json
