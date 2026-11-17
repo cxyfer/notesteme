@@ -91,6 +91,13 @@ WHERE state IN ('pending', 'leased')
   AND stage_run_id IN (SELECT id FROM stage_runs WHERE item_id = sqlc.arg(item_id))
 RETURNING id;
 
+-- name: ItemTaskIDs :many
+-- Every task of an item whatever its state, so the worker can be asked to stop all of them: a task that is
+-- already cancelled in the database may still be running until its context is cancelled.
+SELECT t.id FROM tasks AS t
+JOIN stage_runs AS sr ON sr.id = t.stage_run_id
+WHERE sr.item_id = sqlc.arg(item_id);
+
 -- name: ListQueueTasks :many
 -- Unfinished tasks of one executor for the queue page: leased first, then pending in claim order.
 -- Pending tasks that are not due yet (not_before in the future) come after the due ones, because

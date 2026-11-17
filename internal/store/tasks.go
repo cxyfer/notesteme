@@ -341,3 +341,8 @@ const TaskCancelled = "cancelled"
 func (r *Repo) CancelItemTasks(ctx context.Context, itemID string) ([]string, error) {
 	return r.q.CancelItemTasks(ctx, itemID)
 }
+
+// ItemTaskIDs 回傳影音所有任務的 ID，不論狀態。已經在資料庫中取消的任務，worker 可能還在執行它。
+func (r *Repo) ItemTaskIDs(ctx context.Context, itemID string) ([]string, error) {
+	return r.q.ItemTaskIDs(ctx, itemID)
+}

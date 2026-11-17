@@ -93,22 +93,20 @@ func (p *Pipeline) PurgeItem(ctx context.Context, id string) (PurgedItem, error)
 
 // purge 是 Purge 的實作；notAfter 不為 nil 時，影音必須在那個時間或之前刪除（到期清理用）。
 func (p *Pipeline) purge(ctx context.Context, id string, notAfter *time.Time) (PurgedItem, error) {
-	it, err := p.st.Read().ItemByID(ctx, id)
+	ids, dirs, err := p.stopTasks(ctx, id, notAfter)
 	if err != nil {
 		return PurgedItem{}, err
 	}
-	if it.DeletedAt == nil || (notAfter != nil && it.DeletedAt.After(*notAfter)) {
-		return PurgedItem{}, store.ErrNotFound
+	// 所有任務都交給 worker：它會略過不在執行中的 ID；資料庫中已是 cancelled 的任務可能仍在執行。
+	// 等待不受請求的 ctx 取消影響：用戶端中途斷線不該留下一半的永久刪除，逾時仍沒結束就放棄這次。
+	if p.tasks != nil && len(ids) > 0 {
+		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cancelWaitTimeout)
+		defer cancel()
+		if err := p.tasks.Cancel(wctx, ids); err != nil {
+			return PurgedItem{}, fmt.Errorf("等待任務結束：%w", err)
+		}
 	}
-	// 先確認可以安全組出檔案路徑：不行就不動資料庫，免得留下刪不掉的檔案。
-	dirs, err := itemDirs(p.dataDir, it.ID)
-	if err != nil {
-		return PurgedItem{}, err
-	}
-	if err := p.stopTasks(ctx, it.ID); err != nil {
-		return PurgedItem{}, err
-	}
-	done, err := p.st.Write().PurgeItem(ctx, it.ID, notAfter)
+	done, err := p.st.Write().PurgeItem(ctx, id, notAfter)
 	if err != nil {
 		return PurgedItem{}, err
 	}
@@ -116,19 +114,33 @@ func (p *Pipeline) purge(ctx context.Context, id string, notAfter *time.Time) (P
 	return PurgedItem(done), nil
 }
 
-// stopTasks 取消影音殘留的任務並等執行中的結束。移到垃圾桶時已經做過一次；這裡再做是為了
-// 到期清理與重啟之後留下的任務：永久刪除不能在子程序還在寫檔案時刪除目錄。
-func (p *Pipeline) stopTasks(ctx context.Context, itemID string) error {
-	ids, err := p.st.Write().CancelItemTasks(ctx, itemID)
-	if err != nil {
-		return fmt.Errorf("取消殘留的任務：%w", err)
-	}
-	if p.tasks != nil && len(ids) > 0 {
-		if err := p.tasks.Cancel(ctx, ids); err != nil {
-			return fmt.Errorf("等待任務結束：%w", err)
+// stopTasks 在一個交易中確認影音仍在垃圾桶中（而且符合 notAfter），再取消它殘留的任務，回傳這部影音
+// 所有任務的 ID 與要刪除的目錄。確認與取消在同一個交易：影音先被還原、使用者又按了「重試」之後，
+// 新的任務不會被這次永久刪除取消。移到垃圾桶時已經做過一次；這裡再做是為了到期清理與重啟之後留下的任務：
+// 永久刪除不能在子程序還在寫檔案時刪除目錄。
+//
+// 不在垃圾桶中（含不存在）回傳 store.ErrNotFound；先確認可以安全組出檔案路徑，不行就不動資料庫。
+func (p *Pipeline) stopTasks(ctx context.Context, id string, notAfter *time.Time) (ids, dirs []string, err error) {
+	err = p.st.Tx(ctx, func(r *store.Repo) error {
+		it, err := r.ItemByID(ctx, id)
+		if err != nil {
+			return err
 		}
-	}
-	return nil
+		if it.DeletedAt == nil || (notAfter != nil && it.DeletedAt.After(*notAfter)) {
+			return store.ErrNotFound
+		}
+		if dirs, err = itemDirs(p.dataDir, it.ID); err != nil {
+			return err
+		}
+		if ids, err = r.ItemTaskIDs(ctx, it.ID); err != nil {
+			return fmt.Errorf("列出影音的任務：%w", err)
+		}
+		if _, err := r.CancelItemTasks(ctx, it.ID); err != nil {
+			return fmt.Errorf("取消殘留的任務：%w", err)
+		}
+		return nil
+	})
+	return ids, dirs, err
 }
 
 // removeDirs 刪除影音的資料目錄（包含目錄本身）；失敗只記 log。
