@@ -41,9 +41,10 @@ func TestPlaylistParsesEntriesAndUsesSafeArguments(t *testing.T) {
 	if slices.Contains(args, "--no-playlist") {
 		t.Errorf("不應有 --no-playlist：%v", args)
 	}
-	// 只開放 YouTube 的 extractor（GRD-R6、ADR-0009）。
-	if i := slices.Index(args, "--use-extractors"); args[i+1] != "youtube" {
-		t.Errorf("--use-extractors 應只開放 youtube：%v", args)
+	// 只開放 YouTube 播放清單的 extractor（GRD-R6、ADR-0009）：yt-dlp 以 fullmatch 比對 IE_NAME，
+	// 播放清單由 youtube:tab 與 youtube:playlist 處理，只寫 youtube 在真實的 yt-dlp 會是 Unsupported URL。
+	if i := slices.Index(args, "--use-extractors"); args[i+1] != "youtube:tab,youtube:playlist" {
+		t.Errorf("--use-extractors 應為 youtube:tab,youtube:playlist：%v", args)
 	}
 	// 網址是正規化的播放清單網址，放在 -- 之後。
 	if n := len(args); args[n-2] != "--" || args[n-1] != "https://www.youtube.com/playlist?list=PL123" {

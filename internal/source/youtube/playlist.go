@@ -41,7 +41,9 @@ type PlaylistEntry struct{ ID, Title string }
 // 錯誤：播放清單不存在或私人時是 permanent，並且 errors.Is(err, ErrPlaylistGone)；
 // 找不到 yt-dlp 是 needs_action；其他失敗與無法解析的輸出是 retryable。
 func (c *Client) Playlist(ctx context.Context, playlistID string) ([]PlaylistEntry, error) {
-	args := []string{"--ignore-config", "--use-extractors", "youtube", "--no-warnings", "--flat-playlist", "-J", "--", PlaylistURL(playlistID)}
+	// yt-dlp 以 fullmatch 比對 --use-extractors 的 IE_NAME；播放清單由 youtube:tab 與 youtube:playlist 處理，
+	// 只寫 youtube 時，真實的 yt-dlp 會回報 Unsupported URL。
+	args := []string{"--ignore-config", "--use-extractors", "youtube:tab,youtube:playlist", "--no-warnings", "--flat-playlist", "-J", "--", PlaylistURL(playlistID)}
 	res, err := c.run(ctx, playlistTimeout, args)
 	if err != nil {
 		if res.ExitCode != 0 && playlistGoneLine.Match(res.Stderr) {
