@@ -101,8 +101,8 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 			params["supadata"] = lang.Supadata
 		}
 		if f, ok := p.fetchers[groq.ID]; ok && withFallback && slices.Contains(lang.Fallback, groq.ID) {
-			// 同理，Groq 的 base_url 與 model 影響結果。
-			params["groq"] = f.params(lang)
+			// 同理，Groq 的 base_url、model 與語言提示影響結果。
+			params["groq"] = f.params(it, lang)
 		}
 		return cacheKey{
 			Item: it.ID, Stage: StageTranscript, Impl: p.implVersion(StageTranscript), Provider: "yt-dlp",
@@ -244,8 +244,8 @@ type fetchResult struct {
 type fallbackFetcher struct {
 	// timing 是來源宣告的時間粒度（寫進來源紀錄）。
 	timing string
-	// params 是會影響結果的設定（寫進來源紀錄）。
-	params func(Language) any
+	// params 是會影響結果的設定與輸入（寫進來源紀錄與快取鍵）。
+	params func(store.Item, Language) any
 	fetch  func(ctx context.Context, it store.Item, lang Language) (*fetchResult, error)
 }
 
@@ -255,7 +255,7 @@ func newFetchers(d Deps) map[string]fallbackFetcher {
 	if sd := d.Supadata; sd != nil {
 		out[supadata.ID] = fallbackFetcher{
 			timing: supadataTiming,
-			params: func(l Language) any { return l.Supadata },
+			params: func(_ store.Item, l Language) any { return l.Supadata },
 			fetch: func(ctx context.Context, it store.Item, l Language) (*fetchResult, error) {
 				got, err := sd.Fetch(ctx, it.URL, l.Supadata.Mode)
 				if err != nil {
@@ -275,9 +275,13 @@ func newFetchers(d Deps) map[string]fallbackFetcher {
 func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 	return fallbackFetcher{
 		timing: groq.Timing,
-		params: func(Language) any {
+		params: func(it store.Item, _ Language) any {
 			baseURL, model := gc.Endpoint()
-			return map[string]string{"base_url": baseURL, "model": model}
+			return map[string]string{
+				"base_url":  baseURL,
+				"model":     model,
+				"lang_hint": groq.LangHint(it.OriginalLang),
+			}
 		},
 		fetch: func(ctx context.Context, it store.Item, _ Language) (*fetchResult, error) {
 			// 沒有 API key 時不下載音訊，直接回報沒有設定（SRC-R10）。
@@ -438,7 +442,7 @@ func (p *Pipeline) fallbackResult(id string, f fallbackFetcher, it store.Item, l
 	prov, err := p.provenance(map[string]any{
 		"stage": StageTranscript, "impl_version": p.implVersion(StageTranscript),
 		"source": id, "timing": timing,
-		"params_sha256": paramsSHA(f.params(lang)),
+		"params_sha256": paramsSHA(f.params(it, lang)),
 	}, got.ToolVersions)
 	if err != nil {
 		return result{}, err

@@ -88,7 +88,7 @@ func TestEmptyFallbackFailsPermanently(t *testing.T) {
 func fakeSource(err error) fallbackFetcher {
 	return fallbackFetcher{
 		timing: "segment",
-		params: func(Language) any { return nil },
+		params: func(store.Item, Language) any { return nil },
 		fetch:  func(context.Context, store.Item, Language) (*fetchResult, error) { return nil, err },
 	}
 }
