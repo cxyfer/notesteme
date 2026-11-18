@@ -67,9 +67,12 @@ type Info struct {
 	ChannelID   string
 	Channel     string
 	PublishedAt *time.Time
-	Description string
-	Chapters    []Chapter
-	Tracks      []Track
+	// PublishedAtApprox 為 true 代表 PublishedAt 只有日期精度（來自 upload_date，是當天 00:00 UTC），
+	// 實際發布時間在當天任何時刻。
+	PublishedAtApprox bool
+	Description       string
+	Chapters          []Chapter
+	Tracks            []Track
 }
 
 // Live 回報影片是否還在直播或尚未首播（SRC-R7）。
@@ -88,7 +91,9 @@ func (c *Client) run(ctx context.Context, timeout time.Duration, args []string) 
 	bin, err := c.Tools.Resolve(toolexec.YtDlp)
 	if err != nil {
 		// 找不到工具要使用者先處理，重試也沒有用。
-		return toolexec.Result{}, &errclass.Error{Class: errclass.ClassNeedsAction, Source: "yt-dlp", Err: err}
+		return toolexec.Result{}, &errclass.Error{
+			Class: errclass.ClassNeedsAction, Source: "yt-dlp", Err: err, Message: msgNoYtDlp, Actions: []string{actionInstallYtDlp},
+		}
 	}
 	res, err := c.Runner.Run(ctx, toolexec.Cmd{Path: bin, Args: args, Timeout: timeout})
 	if err != nil {
@@ -136,18 +141,46 @@ func videoGone(stderr []byte) bool {
 	return false
 }
 
+// forbiddenLine 比對 yt-dlp 回報 HTTP 403 的錯誤行：stderr 中以 "ERROR:" 開頭、含 "HTTP Error 403"。
+// 下載媒體時是 "ERROR: unable to download video data: HTTP Error 403: Forbidden"，
+// 抓取網頁時是 "ERROR: [youtube] <id>: Unable to download webpage: HTTP Error 403: Forbidden"，兩者都涵蓋。
+// 只看 ERROR 行：WARNING 或重試中的訊息不代表最後失敗。
+//
+// 訊息格式的依據是 yt-dlp 的原始碼與 SRC-R9，沒有在此環境對真實的 yt-dlp 驗證（測試不連外網）；
+// 實際的 403 多半在下載媒體時發生（YouTube 對沒有 cookie 或過舊的 yt-dlp 回 403）。
+var forbiddenLine = regexp.MustCompile(`(?im)^ERROR:.*HTTP Error 403\b`)
+
+// 403 要使用者處理時，顯示的訊息與修正動作（SRC-R9，逐字）。
+const (
+	msgForbidden       = "YouTube 拒絕了下載請求（403）。先更新 yt-dlp 再重試；如果仍然失敗，上傳 YouTube cookie。"
+	actionUpdateYtDlp  = "更新 yt-dlp"
+	actionUploadCookie = "上傳 cookie"
+)
+
+// 找不到 yt-dlp 時顯示的訊息與修正動作（與播放清單展開、doctor 的文案一致）。
+const (
+	msgNoYtDlp         = "無法執行 yt-dlp，請確認已安裝（可執行 notesteme doctor）。"
+	actionInstallYtDlp = "安裝 yt-dlp"
+)
+
 // classify 把 yt-dlp 的非 0 結束碼對應到錯誤類別（ADR-0009）。
 //
-// 影片不存在、私人或已移除是 permanent，重試也不會成功（SRC 規格）。
-// TODO(SRC-R9)：HTTP 403 → needs_action，訊息建議先更新 yt-dlp；
+// 先判斷影片不存在、私人或已移除：permanent，重試也不會成功（SRC 規格）。
+// 再判斷 HTTP 403：needs_action，訊息建議先更新 yt-dlp，仍然失敗再上傳 cookie（SRC-R9）。
 // TODO(ADR-0009)：429、5xx → retryable 並依 Retry-After 退避。
 // 其他非 0 結束碼一律視為 retryable：有次數上限，用盡後步驟為 failed。
 func classify(res toolexec.Result) error {
-	class := errclass.ClassRetryable
-	if videoGone(res.Stderr) {
-		class = errclass.ClassPermanent
+	e := &errclass.Error{Class: errclass.ClassRetryable, Source: "yt-dlp", ExitCode: res.ExitCode, Detail: tail(res.Stderr, 300)}
+	switch {
+	case videoGone(res.Stderr):
+		e.Class = errclass.ClassPermanent
+	case tooLargeLine.Match(res.Stderr):
+		// 超過 --max-filesize（GRD-R5 的音檔上限）：重試也不會變小。
+		e.Class, e.Err = errclass.ClassPermanent, ErrAudioTooLarge
+	case forbiddenLine.Match(res.Stderr):
+		e.Class, e.Message, e.Actions = errclass.ClassNeedsAction, msgForbidden, []string{actionUpdateYtDlp, actionUploadCookie}
 	}
-	return &errclass.Error{Class: class, Source: "yt-dlp", ExitCode: res.ExitCode, Detail: tail(res.Stderr, 300)}
+	return e
 }
 
 // tail 回傳輸出最後 n 個位元組的單行摘要。
@@ -242,7 +275,8 @@ func parseInfo(b []byte) (*Info, error) {
 		info.PublishedAt = &t
 	case r.UploadDate != nil:
 		if t, err := time.Parse("20060102", *r.UploadDate); err == nil {
-			info.PublishedAt = &t
+			// 只有日期：當天 00:00 UTC，實際時間不確定。
+			info.PublishedAt, info.PublishedAtApprox = &t, true
 		}
 	}
 	for _, c := range r.Chapters {

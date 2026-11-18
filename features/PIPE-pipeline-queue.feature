@@ -153,6 +153,18 @@ Feature: Pipeline and task queue
     Then the stage "metadata" of "yt:abc123xxxxx" is "done"
     And the stage "transcript" of "yt:abc123xxxxx" is "pending"
 
+  @PIPE-04 @PIPE-R10
+  Scenario: Pausing the asr class does not hold a transcript from platform captions
+    Given the resource class "asr" is paused
+    And "yt:abc123xxxxx" has manual captions in "en"
+    When the owner ingests "yt:abc123xxxxx" with the overrides:
+      """
+      language: { fallback: [groq] }
+      until: transcript
+      """
+    And the worker runs until idle
+    Then the stage "transcript" of "yt:abc123xxxxx" is "done"
+
   @PIPE-05 @PIPE-R9
   Scenario: Items added by hand run before backfill
     Given a YouTube video "yt:old001xxxxx" titled "Backfilled"

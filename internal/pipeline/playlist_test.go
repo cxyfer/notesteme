@@ -104,6 +104,12 @@ func TestIngestPlaylistFailures(t *testing.T) {
 	gone := &errclass.Error{Class: errclass.ClassPermanent, Source: "yt-dlp", Err: youtube.ErrPlaylistGone}
 	transient := &errclass.Error{Class: errclass.ClassRetryable, Source: "yt-dlp", ExitCode: 1, Detail: "timed out"}
 	missing := &errclass.Error{Class: errclass.ClassNeedsAction, Source: "yt-dlp", Err: errors.New("找不到 yt-dlp")}
+	// 403 也是 needs_action，但帶著給使用者看的訊息（SRC-R9）：要用它，不能說成沒有安裝 yt-dlp。
+	const forbiddenMsg = "YouTube 拒絕了下載請求（403）。先更新 yt-dlp 再重試；如果仍然失敗，上傳 YouTube cookie。"
+	forbidden := &errclass.Error{
+		Class: errclass.ClassNeedsAction, Source: "yt-dlp", ExitCode: 1, Detail: "HTTP Error 403",
+		Message: forbiddenMsg, Actions: []string{"更新 yt-dlp", "上傳 cookie"},
+	}
 
 	tests := []struct {
 		name    string
@@ -122,6 +128,10 @@ func TestIngestPlaylistFailures(t *testing.T) {
 		{"找不到 yt-dlp", nil, missing, func(e error) bool {
 			var up *UpstreamError
 			return errors.As(e, &up) && up.Msg == "無法執行 yt-dlp，請確認已安裝（可執行 notesteme doctor）。"
+		}},
+		{"403", nil, forbidden, func(e error) bool {
+			var up *UpstreamError
+			return errors.As(e, &up) && up.Msg == forbiddenMsg && errors.Is(e, forbidden)
 		}},
 		{"清單是空的", nil, nil, func(e error) bool {
 			var inv *InvalidError

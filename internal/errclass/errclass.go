@@ -23,6 +23,14 @@ const (
 	ClassPermanent Class = "permanent"
 )
 
+// 來源中立的哨兵錯誤：來源套件用 %w 包裝它們，呼叫端（pipeline）不必認得每個來源自己的錯誤。
+var (
+	// ErrNoResult 表示來源沒有這部影片的結果（Supadata 的 206、Groq 的 segments 為空）；呼叫端改用下一個來源。
+	ErrNoResult = errors.New("來源沒有結果")
+	// ErrNotConfigured 表示來源沒有設定（缺 API key），沒有發出請求；呼叫端記為 not_configured 並略過。
+	ErrNotConfigured = errors.New("來源沒有設定")
+)
+
 // Error 是外部來源（yt-dlp 等）回報的錯誤，附上分類。Source 是來源或工具的名稱。
 type Error struct {
 	Class    Class
@@ -30,7 +38,11 @@ type Error struct {
 	ExitCode int
 	// Detail 是工具輸出的摘要，只供 log 與診斷。
 	Detail string
-	Err    error
+	// Message 與 Actions 是給使用者看的訊息與修正動作（SRC-R9）；只有 needs_action 這類
+	// 使用者要處理的錯誤會填。空的 Message 表示沒有具體說明，由呼叫端用通用訊息。
+	Message string
+	Actions []string
+	Err     error
 }
 
 func (e *Error) Error() string {

@@ -2,11 +2,13 @@ package fakesource
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,15 +28,27 @@ func fixturesDir(t *testing.T) string {
 
 func upload(t *testing.T, h http.Handler, item string, duration int, padding int) *httptest.ResponseRecorder {
 	t.Helper()
+	return uploadAs(t, h, item, duration, padding, "verbose_json", "")
+}
+
+// uploadAs 送出轉錄請求；format 為空代表不送 response_format，auth 非空時當作 Authorization 標頭。
+func uploadAs(t *testing.T, h http.Handler, item string, duration int, padding int, format, auth string) *httptest.ResponseRecorder {
+	t.Helper()
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	_ = mw.WriteField("model", "whisper-large-v3-turbo")
+	if format != "" {
+		_ = mw.WriteField("response_format", format)
+	}
 	fw, _ := mw.CreateFormFile("file", "audio.m4a")
 	_, _ = io.WriteString(fw, faketool.MediaMarker(item, duration))
 	_, _ = io.WriteString(fw, strings.Repeat("x", padding))
 	_ = mw.Close()
 	req := httptest.NewRequest(http.MethodPost, "/openai/v1/audio/transcriptions", &body)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
+	if auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec
@@ -114,6 +128,7 @@ func TestOpenAIBadRequests(t *testing.T) {
 	// 上傳的不是假媒體檔。
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
+	_ = mw.WriteField("response_format", "verbose_json")
 	fw, _ := mw.CreateFormFile("file", "a.m4a")
 	_, _ = io.WriteString(fw, "not fake media")
 	_ = mw.Close()
@@ -260,5 +275,90 @@ func TestRequiresAPIKey(t *testing.T) {
 	}
 	if s.Calls("supadata") != 4 {
 		t.Fatalf("被拒絕的請求也要計入：%d", s.Calls("supadata"))
+	}
+}
+
+// OpenAI 相容端點只接受 Authorization: Bearer；x-api-key 不算數；key 為空時不要求。
+func TestOpenAIRequiresBearerKey(t *testing.T) {
+	s := New(fixturesDir(t))
+	s.Returns("groq", "yt:abc123xxxxx", "groq-en.json")
+	s.RequiresAPIKey("groq", "k-123")
+	h := s.OpenAIHandler("groq")
+
+	for _, auth := range []string{"", "Bearer wrong", "Bearer", "Basic k-123", "k-123"} {
+		if rec := uploadAs(t, h, "abc123xxxxx", 6, 0, "verbose_json", auth); rec.Code != http.StatusUnauthorized {
+			t.Errorf("Authorization %q 應為 401：%d", auth, rec.Code)
+		}
+	}
+	// x-api-key 不算數。
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	_ = mw.WriteField("response_format", "verbose_json")
+	fw, _ := mw.CreateFormFile("file", "a.m4a")
+	_, _ = io.WriteString(fw, faketool.MediaMarker("abc123xxxxx", 6))
+	_ = mw.Close()
+	req := httptest.NewRequest("POST", "/openai/v1/audio/transcriptions", &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("x-api-key", "k-123")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("x-api-key 不應被接受：%d", rec.Code)
+	}
+
+	if rec := uploadAs(t, h, "abc123xxxxx", 6, 0, "verbose_json", "Bearer k-123"); rec.Code != 200 {
+		t.Fatalf("key 正確應為 200：%d %s", rec.Code, rec.Body.String())
+	}
+	if s.Calls("groq") != 7 {
+		t.Errorf("被拒絕的請求也要計入：%d", s.Calls("groq"))
+	}
+
+	// 移除要求（模擬沒有 key）：不帶 Authorization 也能呼叫。
+	s.RequiresAPIKey("groq", "")
+	if rec := uploadAs(t, h, "abc123xxxxx", 6, 0, "verbose_json", ""); rec.Code != 200 {
+		t.Fatalf("移除 key 要求後應為 200：%d", rec.Code)
+	}
+}
+
+// 轉錄請求必須要求 verbose_json，否則沒有 segments 與時間。
+func TestOpenAIRequiresVerboseJSON(t *testing.T) {
+	s := New(fixturesDir(t))
+	s.Returns("groq", "yt:abc123xxxxx", "groq-en.json")
+	h := s.OpenAIHandler("groq")
+	for _, format := range []string{"", "json", "text"} {
+		if rec := uploadAs(t, h, "abc123xxxxx", 6, 0, format, ""); rec.Code != http.StatusBadRequest {
+			t.Errorf("response_format %q 應為 400：%d", format, rec.Code)
+		}
+	}
+	if rec := uploadAs(t, h, "abc123xxxxx", 6, 0, "verbose_json", ""); rec.Code != 200 {
+		t.Errorf("verbose_json 應為 200：%d", rec.Code)
+	}
+}
+
+// groq-en.json 是 verbose_json：language 為全名，並有 duration 與 segments[{start,end,text}]。
+func TestGroqFixtureIsVerboseJSON(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(fixturesDir(t), "sources", "groq-en.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Language string  `json:"language"`
+		Duration float64 `json:"duration"`
+		Segments []struct {
+			Start *float64 `json:"start"`
+			End   *float64 `json:"end"`
+			Text  string   `json:"text"`
+		} `json:"segments"`
+	}
+	if err := json.Unmarshal(b, &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.Language != "english" || v.Duration <= 0 || len(v.Segments) == 0 {
+		t.Fatalf("不是 verbose_json：%+v", v)
+	}
+	for i, sg := range v.Segments {
+		if sg.Start == nil || sg.End == nil || sg.Text == "" {
+			t.Errorf("segment %d 缺少 start、end 或 text", i)
+		}
 	}
 }

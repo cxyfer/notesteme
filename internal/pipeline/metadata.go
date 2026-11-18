@@ -7,6 +7,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
 // liveRecheckDelay 是直播或首播尚未開始時，再檢查有沒有 VOD 的間隔（SRC-R7）。
@@ -19,7 +20,7 @@ const liveRecheckDelay = 15 * time.Minute
 // 直播中或首播尚未開始的影音，步驟為 waiting，直到有 VOD（SRC-R7）；這種等待不計入重試次數。
 //
 // metadata 的快取鍵只記錄、不用來略過：平台上的中繼資料會改變（標題、字幕軌），重新取得才是正確的。
-func (p *Pipeline) runMetadata(ctx context.Context, it store.Item) (result, error) {
+func (p *Pipeline) runMetadata(ctx context.Context, it store.Item, lang Language) (result, error) {
 	info, err := p.yt.Probe(ctx, it.ExternalID)
 	if err != nil {
 		return result{}, err
@@ -63,6 +64,12 @@ func (p *Pipeline) runMetadata(ctx context.Context, it store.Item) (result, erro
 		return res, nil
 	}
 	res.task, res.advance = taskDone, true
+	// 趁著剛取得字幕軌，決定下游 transcript 任務的資源類別（PIPE 規格待決問題）。
+	tracks := make([]transcript.Track, 0, len(info.Tracks))
+	for _, t := range info.Tracks {
+		tracks = append(tracks, transcript.Track{Lang: t.Lang, Kind: t.Kind})
+	}
+	res.transcriptASR = transcriptNeedsASR(lang, tracks, info.Language)
 	res.state = store.StageState{Status: store.StatusDone}
 	return res, nil
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -25,7 +26,7 @@ func registerEnv(r *Registry, s *Scenario) {
 	r.Step(`the environment variable {string} is not set`, s.unsetEnv)
 	r.Step(`the server is running`, s.serverIsRunning)
 	r.Step(`the server is not running`, s.serverIsNotRunning)
-	r.Step(`the provider {string} has no API key`, func(string) error { return godog.ErrPending })
+	r.Step(`the provider {string} has no API key`, s.providerHasNoAPIKey)
 	r.Step(`the server starts`, s.serverStarts)
 	r.Step(`the server restarts`, s.serverRestarts)
 	r.Step(`the server shuts down gracefully`, s.serverShutsDown)
@@ -60,6 +61,30 @@ func (s *Scenario) setEnv(name, value string) error {
 func (s *Scenario) unsetEnv(name string) error {
 	delete(s.World.Env, name)
 	return nil
+}
+
+// subtitleSourceIDs 是字幕來源 ID（steps.md 第 3 節）。
+var subtitleSourceIDs = []string{
+	"youtube-manual", "youtube-auto", "bilibili-cc", "bilibili-ai", "podcast-transcript",
+	"local-sidecar", "local-embedded", "supadata", "groq", "whisper-1", "voxtral",
+}
+
+// providerHasNoAPIKey 移除 provider 的 API key（fake provider 預設有 key）。
+//   - 字幕來源 ID：先確認產品已實作這個來源（source.Implemented），否則 pending（允許的種類之一）；
+//     再移除環境變數與 fake origin 的 key 要求，產品若沒檢查 key 就呼叫來源，會拿到結果而讓場景失敗。
+//   - 其他（LLM provider 等）：步驟本身還沒實作，維持 pending。
+func (s *Scenario) providerHasNoAPIKey(provider string) error {
+	if !slices.Contains(subtitleSourceIDs, provider) {
+		return fmt.Errorf("LLM provider %q 的 API key 還沒有支援移除：%w", provider, godog.ErrPending)
+	}
+	if err := scriptableSource(provider); err != nil {
+		return err
+	}
+	// 環境變數只在 server 啟動時讀取；已在執行時移除 fake 的要求，會讓還握著 key 的 server 照樣通過。
+	if s.server != nil {
+		return errors.New("server 已經在執行，環境變數只在啟動時讀取：`the provider … has no API key` 必須放在啟動 server 的步驟之前")
+	}
+	return s.World.RemoveAPIKey(provider)
 }
 
 func (s *Scenario) clockIsAt(ts string) error {

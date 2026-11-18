@@ -37,10 +37,15 @@ type fakeYT struct {
 	onProbe  func()
 	// onVersion 在查詢工具版本時呼叫；transcript 在這之後才寫出產出檔。
 	onVersion func()
+	// versionErr 非 nil 時，Version 失敗。
+	versionErr error
 	// playlist 與 playlistErr 是 Playlist 的回傳值；playlists 記錄展開過哪些播放清單 ID。
 	playlist    []youtube.PlaylistEntry
 	playlistErr error
 	playlists   []string
+	// audioDirs 記錄 DownloadAudio 收到的暫存目錄；audioErr 非 nil 時下載失敗。
+	audioDirs []string
+	audioErr  error
 }
 
 func (f *fakeYT) Playlist(_ context.Context, id string) ([]youtube.PlaylistEntry, error) {
@@ -82,12 +87,27 @@ func (f *fakeYT) FetchCaptions(_ context.Context, _ string, t youtube.Track, _ s
 
 func (f *fakeYT) Version(context.Context) (string, error) {
 	f.mu.Lock()
-	hook := f.onVersion
+	hook, verr := f.onVersion, f.versionErr
 	f.mu.Unlock()
 	if hook != nil {
 		hook()
 	}
+	if verr != nil {
+		return "", verr
+	}
 	return "2026.11.01", nil
+}
+
+// DownloadAudio 在 dir 寫出假的音檔，並記錄 dir；audioErr 非 nil 時失敗（dir 仍被記錄）。
+func (f *fakeYT) DownloadAudio(_ context.Context, _ string, dir string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.audioDirs = append(f.audioDirs, dir)
+	if f.audioErr != nil {
+		return "", f.audioErr
+	}
+	path := filepath.Join(dir, "audio.m4a")
+	return path, os.WriteFile(path, []byte("AUDIO"), 0o600)
 }
 
 type rig struct {
@@ -593,7 +613,7 @@ func TestCacheKeyHitReusesArtifact(t *testing.T) {
 			if run, err = rp.InsertStageRun(ctx, store.NewStageRun{ItemID: it.ID, Stage: stage, Status: store.StatusPending, ConfigSnapshotID: old.ConfigSnapshotID}); err != nil {
 				return err
 			}
-			_, err = insertStageTask(ctx, rp, it.ID, run, queue.PriorityManual)
+			_, err = insertStageTask(ctx, rp, it.ID, run, queue.PriorityManual, false)
 			return err
 		})
 		if err != nil {

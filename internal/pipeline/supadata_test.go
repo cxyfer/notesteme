@@ -43,6 +43,21 @@ func (f *fakeSupadata) Fetch(_ context.Context, videoURL, mode string) (*supadat
 	return res, nil
 }
 
+// asFetcher 把替身包成 fallback 來源，測試用它模擬 Supadata 以外的來源。
+func (f *fakeSupadata) asFetcher(timing string) fallbackFetcher {
+	return fallbackFetcher{
+		timing: timing,
+		params: func(store.Item, Language) any { return nil },
+		fetch: func(ctx context.Context, it store.Item, _ Language) (*fetchResult, error) {
+			got, err := f.Fetch(ctx, it.URL, "")
+			if err != nil {
+				return nil, err
+			}
+			return &fetchResult{Lang: got.Lang, Cues: got.Cues}, nil
+		},
+	}
+}
+
 func (f *fakeSupadata) calls() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -142,6 +157,29 @@ func TestSupadataSameSettingsReuseTheCache(t *testing.T) {
 	}
 	if n := r.sourceVersions(it); n != 1 {
 		t.Errorf("版本數 = %d", n)
+	}
+}
+
+// 平台字幕軌選到了，但下載後是空的而改用 fallback 來源時，快取鍵也要含 fallback 來源的參數：
+// 否則換 mode 重跑會命中舊結果（選到字幕軌時快取鍵一開始不含 fallback 參數）。
+func TestFallbackAfterEmptyTrackKeysOnSourceParams(t *testing.T) {
+	r, sd := newSupadataRig(t)
+	r.yt.cues = 0
+	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
+	it := r.ingest(watch, nil, StageTranscript)
+	r.run()
+	if sd.calls() != 1 {
+		t.Fatalf("第一次應用 Supadata：%d", sd.calls())
+	}
+	for _, mode := range []string{"native", "auto"} {
+		if err := r.rerunTranscript(it, map[string]any{"supadata": map[string]any{"mode": mode}}); err != nil {
+			t.Fatal(err)
+		}
+		r.run()
+	}
+	// 換成 native 要重新取得；回到 auto 與第一次的快取鍵相同，重用（不再呼叫）。
+	if got := strings.Join(sd.modes, ","); got != "auto,native" {
+		t.Errorf("mode = %s", got)
 	}
 }
 
@@ -286,13 +324,7 @@ func TestFallbackPermanentErrorMovesOnToTheNextSource(t *testing.T) {
 	r, sd := newSupadataRig(t)
 	sd.err = &errclass.Error{Class: errclass.ClassPermanent, Source: "supadata", Detail: "HTTP 400"}
 	next := &fakeSupadata{lang: "en", cues: 2}
-	r.p.fetchers["asr-fake"] = fallbackFetcher{
-		timing: "segment",
-		params: func(Language) any { return nil },
-		fetch: func(ctx context.Context, it store.Item, _ Language) (*supadata.Result, error) {
-			return next.Fetch(ctx, it.URL, "")
-		},
-	}
+	r.p.fetchers["asr-fake"] = next.asFetcher("segment")
 	it := r.ingest(watch, fallbackOverride("supadata", "asr-fake"), StageTranscript)
 	r.run()
 

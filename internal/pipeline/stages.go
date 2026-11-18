@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/cxyfer/notesteme/internal/queue"
+	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
 // M1 的步驟，依執行順序（plan 第 5 節）。
@@ -69,11 +70,30 @@ func (p *Pipeline) SetImplVersion(stage string, v int) error {
 }
 
 // resourceClass 是步驟使用的資源類別（ADR-0004）。
-func resourceClass(stage string) string {
-	if stage == StageNormalize {
+// transcriptASR 只對 transcript 有意義：true 代表這個任務很可能要走 ASR 來源（見 transcriptNeedsASR）。
+func resourceClass(stage string, transcriptASR bool) string {
+	switch {
+	case stage == StageNormalize:
 		return queue.ResourceLocal
+	case stage == StageTranscript && transcriptASR:
+		return queue.ResourceASR
 	}
 	return queue.ResourceDownload
+}
+
+// isASR 回報字幕來源是不是 ASR（語音轉錄）；目前只有 groq，新增 ASR 來源時加在這裡。
+func isASR(sourceID string) bool { return sourceID == "groq" }
+
+// transcriptNeedsASR 回報 transcript 任務是否歸為 asr 資源類別：
+// language.fallback 的第一個來源是 ASR，而且平台字幕不符合 caption_priority（用不到平台字幕）。
+// 這是建立任務時的推定（PIPE 規格待決問題）：實際走哪個來源要等 transcript 執行時才知道。
+// tracks 與 originalLang 是剛取得的平台字幕軌與原文語言；從 transcript 重跑時不知道字幕軌，呼叫端不使用這個判斷。
+func transcriptNeedsASR(lang Language, tracks []transcript.Track, originalLang string) bool {
+	if len(lang.Fallback) == 0 || !isASR(lang.Fallback[0]) {
+		return false
+	}
+	chosen, _ := transcript.Select(tracks, originalLang, lang.CaptionPriority, lang.AllowPlatformTranslated)
+	return chosen == nil
 }
 
 // ValidStage 回報 name 是不是 M1 的步驟。

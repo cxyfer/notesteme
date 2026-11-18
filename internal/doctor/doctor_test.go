@@ -60,7 +60,9 @@ func okRunner() *fakeRunner {
 
 var allTools = []string{"ffmpeg", "ffprobe", "yt-dlp", "deno"}
 
-func keyEnv() map[string]string { return map[string]string{config.EnvSupadataAPIKey: "k"} }
+func keyEnv() map[string]string {
+	return map[string]string{config.EnvSupadataAPIKey: "k", config.EnvGroqAPIKey: "k"}
+}
 
 func byName(t *testing.T, r Report, name string) Check {
 	t.Helper()
@@ -99,7 +101,7 @@ func TestOrderAndCalls(t *testing.T) {
 	for _, c := range r.Checks {
 		names = append(names, c.Name)
 	}
-	want := []string{NameFFmpeg, NameFFprobe, NameYtDlp, NameDeno, NameSupadata}
+	want := []string{NameFFmpeg, NameFFprobe, NameYtDlp, NameDeno, NameSupadata, NameGroq}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("順序 = %v，預期 %v", names, want)
 	}
@@ -227,9 +229,21 @@ func TestAPIKeyUnsetIsWarn(t *testing.T) {
 	}
 }
 
+func TestGroqAPIKeyUnsetIsWarn(t *testing.T) {
+	// 只設定 Supadata：Groq 是 warn，Supadata 是 ok，結束碼仍為 0。
+	r := Run(context.Background(), newDeps(t, allTools, okRunner(), map[string]string{config.EnvSupadataAPIKey: "k"}))
+	c := byName(t, r, NameGroq)
+	if c.Status != StatusWarn || !strings.Contains(c.Fix, config.EnvGroqAPIKey) || !strings.Contains(c.Fix, "Groq") {
+		t.Errorf("groq：%+v", c)
+	}
+	if byName(t, r, NameSupadata).Status != StatusOK || r.Exit() != 0 {
+		t.Errorf("supadata：%+v，Exit = %d", byName(t, r, NameSupadata), r.Exit())
+	}
+}
+
 func TestAPIKeyValueNeverAppearsInReport(t *testing.T) {
 	const secret = "sk-very-secret"
-	r := Run(context.Background(), newDeps(t, allTools, okRunner(), map[string]string{config.EnvSupadataAPIKey: secret}))
+	r := Run(context.Background(), newDeps(t, allTools, okRunner(), map[string]string{config.EnvSupadataAPIKey: secret, config.EnvGroqAPIKey: secret}))
 	b, _ := json.Marshal(r)
 	if strings.Contains(string(b), secret) {
 		t.Errorf("報告不應含 API key 的值：%s", b)
@@ -249,7 +263,7 @@ func TestJSONShape(t *testing.T) {
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Checks) != 5 || got.Checks[0]["name"] != "ffmpeg" || got.Checks[0]["status"] != "fail" {
+	if len(got.Checks) != 6 || got.Checks[0]["name"] != "ffmpeg" || got.Checks[0]["status"] != "fail" {
 		t.Errorf("JSON：%s", b)
 	}
 	if got.Checks[0]["fix"] == "" || got.Checks[0]["detail"] == "" {

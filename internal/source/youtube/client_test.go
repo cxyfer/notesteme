@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/toolexec"
@@ -96,6 +97,31 @@ func TestProbeParsesInfoAndUsesSafeArguments(t *testing.T) {
 	}
 }
 
+// 只有 upload_date（日期精度）時，PublishedAt 是當天 00:00 UTC，並標示為近似；有 timestamp 時是精確的。
+func TestProbePublishedAtPrecision(t *testing.T) {
+	for name, tt := range map[string]struct {
+		json   string
+		approx bool
+		want   time.Time
+	}{
+		"timestamp":         {`{"id":"x","timestamp":1794477000,"upload_date":"20261111"}`, false, time.Unix(1794477000, 0).UTC()},
+		"只有 upload_date":    {`{"id":"x","upload_date":"20261111"}`, true, time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)},
+		"upload_date 格式不正確": {`{"id":"x","upload_date":"bad"}`, false, time.Time{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := &stubRunner{res: toolexec.Result{Stdout: []byte(tt.json)}}
+			info, err := newClient(t, r).Probe(context.Background(), "x")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.PublishedAtApprox != tt.approx || (tt.want.IsZero() != (info.PublishedAt == nil)) ||
+				(info.PublishedAt != nil && !info.PublishedAt.Equal(tt.want)) {
+				t.Errorf("published_at = %v，approx = %v", info.PublishedAt, info.PublishedAtApprox)
+			}
+		})
+	}
+}
+
 func TestProbeMissingFieldsAreEmpty(t *testing.T) {
 	r := &stubRunner{res: toolexec.Result{Stdout: []byte(`{"id":"x","title":"t","language":null,"duration":null,"live_status":"is_live"}`)}}
 	info, err := newClient(t, r).Probe(context.Background(), "x")
@@ -108,11 +134,11 @@ func TestProbeMissingFieldsAreEmpty(t *testing.T) {
 }
 
 func TestProbeClassifiesFailures(t *testing.T) {
-	// 非 0 結束碼目前一律是 retryable（TODO：403 → needs_action）。
-	r := &stubRunner{res: toolexec.Result{ExitCode: 1, Stderr: []byte("ERROR: HTTP Error 403: Forbidden\n")}}
+	// 其他非 0 結束碼是 retryable；403 是 needs_action（見 TestClassify403NeedsAction）。
+	r := &stubRunner{res: toolexec.Result{ExitCode: 1, Stderr: []byte("ERROR: HTTP Error 500: Internal Server Error\n")}}
 	_, err := newClient(t, r).Probe(context.Background(), "x")
 	var e *errclass.Error
-	if !errors.As(err, &e) || e.Class != errclass.ClassRetryable || e.ExitCode != 1 || !strings.Contains(e.Detail, "403") {
+	if !errors.As(err, &e) || e.Class != errclass.ClassRetryable || e.ExitCode != 1 || !strings.Contains(e.Detail, "500") {
 		t.Fatalf("err = %#v", err)
 	}
 
@@ -155,7 +181,6 @@ func TestClassifyVideoGone(t *testing.T) {
 		{"大小寫不同", "error: [YouTube] abc123xxxxx: video unavailable\n", errclass.ClassPermanent},
 
 		{"被限流", "ERROR: [youtube] abc123xxxxx: Video unavailable. This content isn't available, try again later. The current session has been rate-limited by YouTube for up to an hour.\n", errclass.ClassRetryable},
-		{"403", "ERROR: [youtube] abc123xxxxx: unable to download video data: HTTP Error 403: Forbidden\n", errclass.ClassRetryable},
 		{"會員限定", "ERROR: [youtube] abc123xxxxx: Join this channel to get access to members-only content like this video\n", errclass.ClassRetryable},
 		{"機器人驗證", "ERROR: [youtube] abc123xxxxx: Sign in to confirm you're not a bot\n", errclass.ClassRetryable},
 		{"不是 youtube extractor", "ERROR: [BiliBili] BV1xx411c7mD: Video unavailable\n", errclass.ClassRetryable},
@@ -178,6 +203,42 @@ func TestClassifyVideoGone(t *testing.T) {
 				if !errors.As(err, &e) || e.Class != tt.want || e.ExitCode != 1 {
 					t.Errorf("%s：err = %#v，預期類別 %s", op, err, tt.want)
 				}
+			}
+		})
+	}
+}
+
+// yt-dlp 回傳 403 是 needs_action（SRC-R9），附上給使用者看的訊息與修正動作；影片不存在的判斷優先。
+func TestClassify403NeedsAction(t *testing.T) {
+	tests := []struct {
+		name   string
+		stderr string
+		want   errclass.Class
+	}{
+		{"下載媒體", "ERROR: unable to download video data: HTTP Error 403: Forbidden\n", errclass.ClassNeedsAction},
+		{"帶 extractor 前綴", "ERROR: [youtube] abc123xxxxx: unable to download video data: HTTP Error 403: Forbidden\n", errclass.ClassNeedsAction},
+		{"下載網頁", "ERROR: [youtube] abc123xxxxx: Unable to download webpage: HTTP Error 403: Forbidden (caused by <HTTPError 403: 'Forbidden'>)\n", errclass.ClassNeedsAction},
+		{"前面有其他輸出", "[youtube] Extracting URL: x\nERROR: unable to download video data: HTTP Error 403: Forbidden\n", errclass.ClassNeedsAction},
+		{"影片不存在優先", "ERROR: [youtube] abc123xxxxx: Video unavailable\nERROR: unable to download video data: HTTP Error 403: Forbidden\n", errclass.ClassPermanent},
+		{"不是 ERROR 行", "WARNING: HTTP Error 403: Forbidden, retrying\nERROR: unable to connect\n", errclass.ClassRetryable},
+		{"不是 403", "ERROR: unable to download video data: HTTP Error 4030: odd\n", errclass.ClassRetryable},
+		{"429", "ERROR: unable to download video data: HTTP Error 429: Too Many Requests\n", errclass.ClassRetryable},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &stubRunner{res: toolexec.Result{ExitCode: 1, Stderr: []byte(tt.stderr)}}
+			_, err := newClient(t, r).Probe(context.Background(), "abc123xxxxx")
+			var e *errclass.Error
+			if !errors.As(err, &e) || e.Class != tt.want {
+				t.Fatalf("err = %#v，預期類別 %s", err, tt.want)
+			}
+			if tt.want == errclass.ClassNeedsAction {
+				if e.Message != "YouTube 拒絕了下載請求（403）。先更新 yt-dlp 再重試；如果仍然失敗，上傳 YouTube cookie。" ||
+					!slices.Equal(e.Actions, []string{"更新 yt-dlp", "上傳 cookie"}) {
+					t.Errorf("訊息與動作 = %q %q", e.Message, e.Actions)
+				}
+			} else if e.Message != "" || len(e.Actions) != 0 {
+				t.Errorf("其他類別不該帶使用者訊息：%q %q", e.Message, e.Actions)
 			}
 		})
 	}

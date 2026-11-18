@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -36,6 +37,9 @@ func (stubYT) FetchCaptions(context.Context, string, youtube.Track, string) ([]b
 	return []byte("WEBVTT\n\n00:00:00.000 --> 00:00:02.000\none\n\n00:00:02.000 --> 00:00:04.000\ntwo\n\n00:00:04.000 --> 00:00:06.000\nthree\n"), nil
 }
 func (stubYT) Version(context.Context) (string, error) { return "2026.11.01", nil }
+func (stubYT) DownloadAudio(context.Context, string, string) (string, error) {
+	return "", errors.New("測試替身不下載音訊")
+}
 
 type itemsRig struct {
 	h      http.Handler
