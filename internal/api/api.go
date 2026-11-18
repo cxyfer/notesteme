@@ -18,6 +18,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -41,6 +42,10 @@ type Deps struct {
 	// Events 是 GET /api/events 的 SSE handler（PIPE-R14）；nil 時回應 501。
 	// SSE 是長連線串流，不經過 Huma，直接掛在 mux 上，但仍在驗證 middleware 之後。
 	Events http.Handler
+	// Paths 檢查 POST /api/items 的本機路徑是否在 inbox 與 media_roots 之內（GRD-R7）。
+	// serve 的 TCP 與本機 socket 用 pathguard.New；獨立模式用 pathguard.Unrestricted（GRD-R8）。
+	// nil 時一律拒絕（fail closed）。
+	Paths *pathguard.Guard
 }
 
 // ReadyCheck 是 /readyz 的一個檢查項目；Check 回傳 nil 代表正常。
@@ -184,6 +189,9 @@ func (rt *routes) register(api huma.API) {
 		{OperationID: "trash-restore", Method: http.MethodPost, Path: "/api/trash/{id}/restore", Summary: "從垃圾桶還原（尚未實作）"},
 		{OperationID: "tasks-retry", Method: http.MethodPost, Path: "/api/tasks/{id}/retry", Summary: "重試任務（尚未實作）"},
 		{OperationID: "tasks-cancel", Method: http.MethodPost, Path: "/api/tasks/{id}/cancel", Summary: "取消單一任務（尚未實作）"},
+		// SEC、OPS 的場景會讀這兩個路由；先回 501，之後的切片再實作。
+		{OperationID: "system-get", Method: http.MethodGet, Path: "/api/system", Summary: "生效的設定與其來源、外部工具（尚未實作）"},
+		{OperationID: "providers-get", Method: http.MethodGet, Path: "/api/providers/{id}", Summary: "讀取 provider（尚未實作）"},
 	} {
 		huma.Register(api, op, notImplemented)
 	}

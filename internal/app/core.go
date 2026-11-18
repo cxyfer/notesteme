@@ -12,6 +12,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/api"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/config"
+	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/secrets"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/toolexec"
@@ -96,7 +97,7 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 		return nil, fmt.Errorf("寫入鎖檔失敗：%w", err)
 	}
 
-	s := &Server{cfg: cfg, log: log, netw: env.Net, lock: lock, done: make(chan struct{}), grace: shutdownGrace}
+	s := &Server{cfg: cfg, log: log, netw: netDeps(env.Net, cfg), lock: lock, done: make(chan struct{}), grace: shutdownGrace}
 	if env.Test != nil && env.Test.SkipShutdownGrace {
 		s.grace = 0
 	}
@@ -173,8 +174,12 @@ type coreOpts struct {
 
 // apiDeps 組出 API 的依賴。serve 的 TCP 與 Unix socket、standalone 的程序內 handler 共用同一份，
 // 差別只在 api.New 或 api.NewLocal。
+//
+// Paths 預設限制在 inbox 與 media_roots 之內（GRD-R7）：serve 的 TCP 與本機 socket（client 模式）都由 server 端檢查。
+// 獨立模式不受限制（GRD-R8），由 OpenStandalone 改成 pathguard.Unrestricted。
 func (s *Server) apiDeps(env Env) api.Deps {
 	return api.Deps{
+		Paths: pathguard.New(append([]string{s.cfg.Inbox}, s.cfg.MediaRoots...)),
 		Store: s.store, Auth: s.auth, Clock: env.Clock, Log: s.log, Version: version,
 		ReadyChecks: toolChecks(toolexec.Resolver{Vars: env.Vars, Config: s.cfg.Tools}),
 		Pipeline:    s.pipeline,

@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"bytes"
 	"context"
 	"encoding/xml"
 	"errors"
@@ -15,11 +16,10 @@ import (
 	"github.com/cxyfer/notesteme/internal/source"
 )
 
-// 辨識網址時的上限：抓取 feed 的逾時與內容大小。
+// 辨識網址時的上限：抓取 feed 的逾時；內容大小用 netguard.LimitFeed（GRD-R5）。
 const (
 	resolveProbeTimeout = 30 * time.Second
 	feedFetchTimeout    = 15 * time.Second
-	maxFeedBytes        = 2 << 20
 	maxFeedEpisodes     = 500
 )
 
@@ -58,7 +58,7 @@ type Resolution struct {
 //
 // YouTube 與 Bilibili 只看網址；YouTube 影片另外以 yt-dlp 盡力取得 availability（失敗不影響辨識結果）。
 // 其他 http(s) 網址透過對外 HTTP client 實際抓取，內容是 RSS／Atom 才是 Podcast feed。
-// 無法辨識時回傳 ErrUnrecognizedURL。
+// 無法辨識時回傳 ErrUnrecognizedURL；連線被防護擋下（內部網路、轉址太多、回應太大）時回傳 *PolicyError。
 func (p *Pipeline) Resolve(ctx context.Context, raw string) (Resolution, error) {
 	raw = strings.TrimSpace(raw)
 	if t, ok := source.Recognize(raw); ok {
@@ -76,11 +76,11 @@ func (p *Pipeline) Resolve(ctx context.Context, raw string) (Resolution, error) 
 	}
 	feed, err := p.fetchFeed(ctx, u.String())
 	if err != nil {
-		if errors.Is(err, netguard.ErrBlockedAddress) {
-			p.log.Warn("辨識網址時連線被 IP 政策擋下", "error", err.Error())
-		} else {
-			p.log.Debug("網址不是可辨識的 feed", "error", err.Error())
+		if pe := asPolicyError(err); pe != nil {
+			p.log.Warn("辨識網址時請求被防護擋下", "error", err.Error())
+			return Resolution{}, pe
 		}
+		p.log.Debug("網址不是可辨識的 feed", "error", err.Error())
 		return Resolution{}, ErrUnrecognizedURL
 	}
 	return Resolution{Platform: source.PlatformPodcast, Kind: source.KindFeed, URL: u.String(), Title: feed.Title, Episodes: feed.Episodes}, nil
@@ -120,7 +120,7 @@ type feedInfo struct {
 var errNotFeed = errors.New("內容不是 RSS 或 Atom")
 
 // fetchFeed 以對外 HTTP client 抓取網址並判斷內容是不是 RSS／Atom。
-// 逾時與大小都有上限；超過大小的內容只讀前面的部分，根元素已經足以判斷。
+// 逾時與大小都有上限（LimitFeed）；超過上限時回傳錯誤，不截斷也不接受部分內容（GRD-R5）。
 func (p *Pipeline) fetchFeed(ctx context.Context, rawURL string) (feedInfo, error) {
 	if p.http == nil {
 		return feedInfo{}, errors.New("沒有設定對外 HTTP client")
@@ -140,7 +140,11 @@ func (p *Pipeline) fetchFeed(ctx context.Context, rawURL string) (feedInfo, erro
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return feedInfo{}, errors.New("HTTP " + resp.Status)
 	}
-	return parseFeed(io.LimitReader(resp.Body, maxFeedBytes))
+	body, err := io.ReadAll(netguard.LimitBody(resp, netguard.LimitFeed))
+	if err != nil {
+		return feedInfo{}, err
+	}
+	return parseFeed(bytes.NewReader(body))
 }
 
 // parseFeed 判斷 r 是不是 RSS 2.0 或 Atom，並盡量取出標題與各集。

@@ -20,8 +20,16 @@ import (
 	"github.com/cxyfer/notesteme/internal/worker"
 )
 
-// stubYT 回傳固定的影片資訊與一份 3 句的 VTT。
-type stubYT struct{ info youtube.Info }
+// stubYT 回傳固定的影片資訊與一份 3 句的 VTT；Playlist 回傳 playlist 或 playlistErr。
+type stubYT struct {
+	info        youtube.Info
+	playlist    []youtube.PlaylistEntry
+	playlistErr error
+}
+
+func (s stubYT) Playlist(context.Context, string) ([]youtube.PlaylistEntry, error) {
+	return s.playlist, s.playlistErr
+}
 
 func (s stubYT) Probe(context.Context, string) (*youtube.Info, error) { i := s.info; return &i, nil }
 func (stubYT) FetchCaptions(context.Context, string, youtube.Track, string) ([]byte, error) {
@@ -38,7 +46,13 @@ type itemsRig struct {
 	t      *testing.T
 }
 
-func newItemsRig(t *testing.T) *itemsRig {
+func newItemsRig(t *testing.T, opts ...func(*pipeline.Deps)) *itemsRig {
+	t.Helper()
+	return newItemsRigAPI(t, nil, opts...)
+}
+
+// newItemsRigAPI 同 newItemsRig，另外可以調整 api.Deps（例如注入 Paths）。
+func newItemsRigAPI(t *testing.T, apiOpt func(*Deps), opts ...func(*pipeline.Deps)) *itemsRig {
 	t.Helper()
 	clk := clock.NewFake(time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC))
 	dir := t.TempDir()
@@ -54,12 +68,20 @@ func newItemsRig(t *testing.T) *itemsRig {
 	log := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	q := queue.New(st, clk, "w")
 	dur := 100
-	p := pipeline.New(pipeline.Deps{
+	deps := pipeline.Deps{
 		Store: st, Clock: clk, DataDir: dir, Log: log, Wake: q.Wake, Version: "test",
 		YouTube: stubYT{info: youtube.Info{ID: "abc123xxxxx", Title: "Hello", Language: "en", DurationS: &dur,
 			Tracks: []youtube.Track{{Lang: "en", Kind: "manual"}}}},
-	})
-	h := New(Deps{Store: st, Auth: svc, Clock: clk, Log: log, Version: "test", Pipeline: p, Queue: q})
+	}
+	for _, o := range opts {
+		o(&deps)
+	}
+	p := pipeline.New(deps)
+	ad := Deps{Store: st, Auth: svc, Clock: clk, Log: log, Version: "test", Pipeline: p, Queue: q}
+	if apiOpt != nil {
+		apiOpt(&ad)
+	}
+	h := New(ad)
 	r := &itemsRig{h: h, worker: worker.New(q, p, clk, log), clk: clk, t: t}
 	rec := r.do("POST", "/api/auth/login", `{"password":"pw"}`, nil)
 	for _, c := range rec.Result().Cookies() {
@@ -140,7 +162,6 @@ func TestCreateItemErrors(t *testing.T) {
 		{"無法辨識", `{"url":"https://example.com/some/page"}`, 422, CodeUnrecognizedURL, "無法辨識這個網址。目前支援 YouTube、Bilibili、Podcast RSS 與本機檔案。"},
 		{"影片 ID 不是 11 個字元", `{"url":"https://www.youtube.com/watch?v=abc123xxxx"}`, 422, CodeUnrecognizedURL, "無法辨識這個網址。目前支援 YouTube、Bilibili、Podcast RSS 與本機檔案。"},
 		{"Bilibili 影片", `{"url":"https://www.bilibili.com/video/BV1xx411c7mD"}`, 501, CodeNotImplemented, ""},
-		{"播放清單", `{"url":"https://www.youtube.com/playlist?list=PL123"}`, 501, CodeNotImplemented, ""},
 		{"未知的 until", `{"url":"https://youtu.be/abc123xxxxx","until":"publish"}`, 422, CodeInvalidInput, ""},
 		{"缺少 url", `{}`, 422, CodeInvalidInput, ""},
 		{"多餘的欄位", `{"url":"https://youtu.be/abc123xxxxx","nope":1}`, 422, CodeInvalidInput, ""},

@@ -103,6 +103,13 @@ func TestExpandUnexpand(t *testing.T) {
 		{"/home/u/data/x", "/home/u/data/x"},
 		{"/var/config", "/var/config"},
 		{"/configs", "/configs"},
+		{"/media", w.MediaDir()},
+		{"/media/talks/keynote.mp4", w.MediaDir() + "/talks/keynote.mp4"},
+		{"/media/../etc/passwd", w.MediaDir() + "/../etc/passwd"},
+		{"media_roots: [/media]", "media_roots: [" + w.MediaDir() + "]"},
+		{"/media-old/x", "/media-old/x"},
+		{"/mediaplayer", "/mediaplayer"},
+		{"/var/media", "/var/media"},
 		{"no paths here", "no paths here"},
 		{"", ""},
 	}

@@ -1,0 +1,11 @@
+{
+  "_type": "playlist",
+  "id": "PL123",
+  "title": "Playlist fixture",
+  "playlist_count": 3,
+  "entries": [
+    {"_type": "url", "ie_key": "Youtube", "id": "abc123xxxxx", "url": "https://www.youtube.com/watch?v=abc123xxxxx", "title": "Playlist video 1"},
+    {"_type": "url", "ie_key": "Youtube", "id": "def456xxxxx", "url": "https://www.youtube.com/watch?v=def456xxxxx", "title": "Playlist video 2"},
+    {"_type": "url", "ie_key": "Youtube", "id": "ghi789xxxxx", "url": "https://www.youtube.com/watch?v=ghi789xxxxx", "title": "Playlist video 3"}
+  ]
+}

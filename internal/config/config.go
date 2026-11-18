@@ -12,9 +12,11 @@ import (
 	"io/fs"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/cxyfer/notesteme/internal/netguard"
 	"gopkg.in/yaml.v3"
 )
 
@@ -49,6 +51,7 @@ const (
 const (
 	FieldListen = "listen"
 	FieldData   = "data"
+	FieldInbox  = "inbox"
 )
 
 // Sources 是載入設定的輸入；設定檔以外不讀程序的環境。
@@ -73,6 +76,12 @@ type Config struct {
 	TrustedProxies []netip.Prefix
 	// Tools 是設定檔 tools 區段指定的外部工具路徑，key 為工具名稱（yt-dlp、ffmpeg；OPS-R8）。
 	Tools map[string]string
+	// AllowPrivate 是設定檔 network.allow_private 解析後的 allowlist（GRD-R3），預設為空。
+	AllowPrivate netguard.Allowlist
+	// Inbox 是 API 與 MCP 可以新增檔案的收件匣目錄，預設 <Data>/inbox（GRD-R7）。
+	Inbox string
+	// MediaRoots 是 API 與 MCP 可以新增檔案的媒體根目錄，一律是 Clean 過的絕對路徑（GRD-R7）。
+	MediaRoots []string
 
 	// Origin 記錄每個欄位生效值的來源，key 為欄位名稱。
 	Origin map[string]Source
@@ -87,7 +96,7 @@ func (c *Config) SourceOf(field string) Source {
 }
 
 // fileSchema 是設定檔允許的欄位。
-// tools、outbound、providers、asr、hooks 的內容由之後的切片定義，這裡只確認欄位名稱合法。
+// tools、providers、asr、hooks 的內容由之後的切片定義，這裡只確認欄位名稱合法。
 // asr.providers 放會執行命令的 provider，只能寫在設定檔（ADR-0013）。
 type fileSchema struct {
 	Listen string            `yaml:"listen"`
@@ -95,10 +104,27 @@ type fileSchema struct {
 	Tools  map[string]string `yaml:"tools"`
 	// TrustedProxies 先讀成字串，解析失敗時才能指出是哪一個值。
 	TrustedProxies []string  `yaml:"trusted_proxies"`
-	Outbound       yaml.Node `yaml:"outbound"`
 	Providers      yaml.Node `yaml:"providers"`
 	ASR            yaml.Node `yaml:"asr"`
 	Hooks          yaml.Node `yaml:"hooks"`
+	// Network 的子欄位用 KnownFields 檢查，打錯字時載入失敗。
+	Network    networkSchema `yaml:"network"`
+	Inbox      string        `yaml:"inbox"`
+	MediaRoots []string      `yaml:"media_roots"`
+}
+
+// networkSchema 是設定檔 network 區段（GRD-R3）。
+type networkSchema struct {
+	// AllowPrivate 先讀成字串，解析失敗時才能指出是哪一項。
+	AllowPrivate []string `yaml:"allow_private"`
+}
+
+// dbManagedFields 是由資料庫管理、不能寫在設定檔的頂層欄位（SEC-R2）。
+// 只列出已知的名稱：不在這裡也不在設定檔欄位中的名稱，會回報為「未知欄位」。
+var dbManagedFields = map[string]bool{
+	"profiles": true, "prompts": true, "budget": true, "budgets": true, "settings": true,
+	"subscriptions": true, "tokens": true, "secrets": true, "cookies": true, "language": true,
+	"notifications": true,
 }
 
 // Load 依 src 載入設定。
@@ -136,6 +162,16 @@ func Load(src Sources) (*Config, error) {
 	if v := src.Env[EnvData]; v != "" {
 		cfg.Data, cfg.Origin[FieldData] = v, SourceEnv
 	}
+	// 資料目錄轉成絕對路徑：相對路徑會讓預設 inbox 也變成相對路徑，被 pathguard 靜默忽略（GRD-R7）。
+	abs, err := filepath.Abs(cfg.Data)
+	if err != nil {
+		return nil, fmt.Errorf("無法取得資料目錄 %q 的絕對路徑：%w", cfg.Data, err)
+	}
+	cfg.Data = abs
+	// inbox 的預設值依賴 data，所以要等環境變數覆寫 data 之後才計算。
+	if cfg.Inbox == "" {
+		cfg.Inbox = filepath.Join(cfg.Data, "inbox")
+	}
 	return cfg, nil
 }
 
@@ -146,22 +182,32 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 	if err := yaml.Unmarshal(raw, &top); err != nil {
 		return fmt.Errorf("設定檔 %s 格式不正確：%w", path, err)
 	}
-	var unknown []string
+	var managed, unknown []string
 	for k := range top {
 		switch k {
-		case "listen", "data", "trusted_proxies", "tools", "outbound", "providers", "hooks", "asr":
+		case "listen", "data", "trusted_proxies", "tools", "providers", "hooks", "asr", "network", "inbox", "media_roots":
 		default:
-			unknown = append(unknown, k)
+			if dbManagedFields[k] {
+				managed = append(managed, k)
+			} else {
+				unknown = append(unknown, k)
+			}
 		}
+	}
+	if len(managed) > 0 {
+		sort.Strings(managed)
+		return fmt.Errorf("設定檔 %s 不接受欄位 %s：這些設定由資料庫管理，請改用 UI 或 API 修改。",
+			path, strings.Join(managed, "、"))
 	}
 	if len(unknown) > 0 {
 		sort.Strings(unknown)
-		return fmt.Errorf("設定檔 %s 不接受欄位 %s：這些設定由資料庫管理，請改用 UI 或 API 修改。",
-			path, strings.Join(unknown, "、"))
+		return fmt.Errorf("設定檔 %s 有不認得的欄位 %s，請檢查拼字。", path, strings.Join(unknown, "、"))
 	}
 
 	var f fileSchema
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
+	// 頂層欄位上面已經檢查過；這裡讓 network 等有明確結構的區段拒絕未知的子欄位。
+	dec.KnownFields(true)
 	if err := dec.Decode(&f); err != nil && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("設定檔 %s 格式不正確：%w", path, err)
 	}
@@ -178,6 +224,34 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 			return fmt.Errorf("設定檔 %s 的欄位 trusted_proxies[%d] 不是有效的 CIDR（例如 \"172.18.0.0/16\"）：%q", path, i, v)
 		}
 		cfg.TrustedProxies = append(cfg.TrustedProxies, p.Masked())
+	}
+
+	allow, err := netguard.ParseAllowlist(f.Network.AllowPrivate)
+	if err != nil {
+		var ee *netguard.EntryError
+		if errors.As(err, &ee) {
+			if ee.Metadata.IsValid() {
+				return fmt.Errorf("設定檔 %s 的欄位 network.allow_private[%d]：%s 是雲端 metadata 位址，一律封鎖，不能加入 allowlist。",
+					path, ee.Index, ee.Metadata)
+			}
+			return fmt.Errorf("設定檔 %s 的欄位 network.allow_private[%d] 不是有效的主機名稱、IP 或 CIDR（不支援萬用字元）：%q",
+				path, ee.Index, ee.Value)
+		}
+		return fmt.Errorf("設定檔 %s 的欄位 network.allow_private 不正確：%w", path, err)
+	}
+	cfg.AllowPrivate = allow
+
+	if f.Inbox != "" {
+		if !filepath.IsAbs(f.Inbox) {
+			return fmt.Errorf("設定檔 %s 的欄位 inbox 必須是絕對路徑：%q", path, f.Inbox)
+		}
+		cfg.Inbox, cfg.Origin[FieldInbox] = filepath.Clean(f.Inbox), SourceConfigFile
+	}
+	for i, v := range f.MediaRoots {
+		if !filepath.IsAbs(v) {
+			return fmt.Errorf("設定檔 %s 的欄位 media_roots[%d] 必須是絕對路徑：%q", path, i, v)
+		}
+		cfg.MediaRoots = append(cfg.MediaRoots, filepath.Clean(v))
 	}
 	return nil
 }

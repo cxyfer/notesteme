@@ -21,6 +21,8 @@ import (
 type YouTube interface {
 	Probe(ctx context.Context, videoID string) (*youtube.Info, error)
 	FetchCaptions(ctx context.Context, videoID string, t youtube.Track, dir string) ([]byte, error)
+	// Playlist 展開播放清單（ING-R4）。
+	Playlist(ctx context.Context, playlistID string) ([]youtube.PlaylistEntry, error)
 	Version(ctx context.Context) (string, error)
 }
 

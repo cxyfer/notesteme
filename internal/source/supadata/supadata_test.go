@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
 
@@ -177,6 +178,7 @@ func TestValidMode(t *testing.T) {
 
 // 超過上限的回應不能被截斷後接受或重試：完整的 JSON 後面帶著超量的內容也一樣是 permanent。
 func TestFetchRejectsOversizedResponse(t *testing.T) {
+	maxBodySize := int(netguard.LimitFeed) // GRD-R5：10 MiB
 	for name, body := range map[string]string{
 		"截斷的 JSON":     `{"lang":"en","content":[` + strings.Repeat(" ", maxBodySize),
 		"完整 JSON 後的填充": okBody + strings.Repeat(" ", maxBodySize),

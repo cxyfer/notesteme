@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/cxyfer/notesteme/internal/api"
+	"github.com/cxyfer/notesteme/internal/pathguard"
 )
 
 // Standalone 是獨立模式（CLI-R2）：CLI 程序自己持有資料目錄，不經過 serve。
@@ -32,7 +33,10 @@ func OpenStandalone(ctx context.Context, env Env) (*Standalone, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Standalone{core: core, h: api.NewLocal(core.apiDeps(env))}, nil
+	deps := core.apiDeps(env)
+	// GRD-R8：獨立模式下使用者就是在自己的機器上操作自己的檔案，不受 inbox 與 media_roots 限制。
+	deps.Paths = pathguard.Unrestricted()
+	return &Standalone{core: core, h: api.NewLocal(deps)}, nil
 }
 
 // Handler 回傳以 owner 身分執行的 API handler（api.NewLocal），不需要 cookie 或 CSRF。

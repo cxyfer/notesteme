@@ -3,6 +3,8 @@ package pipeline
 import (
 	"errors"
 	"fmt"
+
+	"github.com/cxyfer/notesteme/internal/netguard"
 )
 
 // 使用者看得到的錯誤（API 對應成 4xx／501）。
@@ -26,3 +28,31 @@ func invalidf(format string, a ...any) *InvalidError {
 type NotImplementedError struct{ What string }
 
 func (e *NotImplementedError) Error() string { return "這個功能尚未實作：" + e.What + "。" }
+
+// UpstreamError 表示外部工具或服務失敗，使用者稍後重試或處理環境之後可能成功（502）。
+// Msg 是給使用者看的訊息；Err 是原始錯誤（只寫進 log，不回傳給 client）。
+type UpstreamError struct {
+	Msg string
+	Err error
+}
+
+func (e *UpstreamError) Error() string { return e.Msg }
+func (e *UpstreamError) Unwrap() error { return e.Err }
+
+// PolicyError 是對外請求被防護擋下（GRD-R1、R2、R4、R5）：Msg 是給使用者看的訊息（netguard.PolicyMessage），
+// Err 是原始錯誤，用 errors.Is 對 netguard.ErrBlockedAddress、ErrTooManyRedirects、ErrTooLarge、ErrUnsupportedScheme 判斷種類。
+type PolicyError struct {
+	Msg string
+	Err error
+}
+
+func (e *PolicyError) Error() string { return e.Msg }
+func (e *PolicyError) Unwrap() error { return e.Err }
+
+// asPolicyError 在 err 是防護造成的錯誤時回傳 *PolicyError，否則回傳 nil。
+func asPolicyError(err error) *PolicyError {
+	if msg, ok := netguard.PolicyMessage(err); ok {
+		return &PolicyError{Msg: msg, Err: err}
+	}
+	return nil
+}

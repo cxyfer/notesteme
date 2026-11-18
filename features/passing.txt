@@ -17,8 +17,25 @@ CLI-cli.feature: JSON output matches the API
 CLI-cli.feature: A bad argument exits with 2
 CLI-cli.feature: Waiting until the transcript is ready
 CLI-cli.feature: Doctor reports each dependency with a fix
+GRD-guards.feature: Feeds pointing into private networks are blocked [example 1]
+GRD-guards.feature: Feeds pointing into private networks are blocked [example 2]
+GRD-guards.feature: Feeds pointing into private networks are blocked [example 3]
+GRD-guards.feature: Feeds pointing into private networks are blocked [example 4]
+GRD-guards.feature: Feeds pointing into private networks are blocked [example 5]
+GRD-guards.feature: An allow-listed private host can be used
+GRD-guards.feature: Cloud metadata cannot be allow-listed
+GRD-guards.feature: Cloud metadata stays blocked inside an allow-listed range
+GRD-guards.feature: A redirect into the private network is blocked
+GRD-guards.feature: Too many redirects are refused
+GRD-guards.feature: An oversized feed is cut off
 GRD-guards.feature: Non-HTTP schemes are refused
+GRD-guards.feature: A redirect to a non-HTTP scheme is refused
 GRD-guards.feature: yt-dlp is never asked to open an arbitrary site
+GRD-guards.feature: Paths outside the media folders are refused [example 3]
+GRD-guards.feature: Paths outside the media folders are refused [example 4]
+GRD-guards.feature: Paths outside the media folders are refused [example 5]
+GRD-guards.feature: The refusal message explains the rule
+GRD-guards.feature: The CLI in client mode is held to the same rule
 ING-ingest.feature: Recognise what a URL points to [example 1]
 ING-ingest.feature: Recognise what a URL points to [example 2]
 ING-ingest.feature: Recognise what a URL points to [example 3]
@@ -29,6 +46,7 @@ ING-ingest.feature: Recognise what a URL points to [example 7]
 ING-ingest.feature: Reject a URL that no platform recognises
 ING-ingest.feature: Ingesting a YouTube video creates an item and starts the pipeline
 ING-ingest.feature: Ingesting an item that is already in the library does not duplicate it
+ING-ingest.feature: A playlist is expanded once into its videos
 ING-ingest.feature: A channel cannot be ingested directly
 ING-ingest.feature: Content that needs a cookie is flagged before submitting
 NRM-normalize.feature: Rolling auto captions are de-duplicated
@@ -65,6 +83,7 @@ PIPE-pipeline-queue.feature: A graceful shutdown releases what it cannot finish
 PIPE-pipeline-queue.feature: Each run records the settings it used
 PIPE-pipeline-queue.feature: Status changes are pushed as events
 PIPE-pipeline-queue.feature: Cancelling an item stops its running work
+SEC-config-secrets.feature: Database-managed settings are not accepted in the config file
 SEC-config-secrets.feature: The server refuses to start without a master key
 SEC-config-secrets.feature: A wrong master key is reported with the way out
 SRC-transcript-sources.feature: Manual captions in the original language win over auto captions

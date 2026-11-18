@@ -111,10 +111,10 @@ func TestTransportErrors(t *testing.T) {
 }
 
 func TestDialInvalidAddr(t *testing.T) {
-	if _, err := dial(context.Background(), stubResolver{}, &recDialer{}, nil, "tcp", "no-port"); err == nil {
+	if _, err := dial(context.Background(), stubResolver{}, &recDialer{}, Allowlist{}, "tcp", "no-port"); err == nil {
 		t.Fatal("缺少 port 應失敗")
 	}
-	if _, err := dial(context.Background(), stubResolver{}, &recDialer{}, nil, "tcp", "a.test:99999"); err == nil {
+	if _, err := dial(context.Background(), stubResolver{}, &recDialer{}, Allowlist{}, "tcp", "a.test:99999"); err == nil {
 		t.Fatal("port 超出範圍應失敗")
 	}
 }

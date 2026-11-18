@@ -40,7 +40,7 @@ HTTP API 與 MCP 共用 bearer token。Token 可以設定到期時間，也可�
 所有對外的 HTTP 請求都走同一個 client：
 
 - 只接受 `http` 和 `https`。
-- 在建立連線時檢查實際的目標 IP（`net.Dialer.Control`），擋掉 loopback、私有網段、link-local 與雲端 metadata 位址。因為檢查的是實際連線的 IP，DNS rebinding 也一併擋掉。
+- 在建立連線時檢查實際的目標 IP（netguard 自己解析 DNS、逐一檢查 IP，只連到剛檢查過的 IP；見 ADR-0015），擋掉 loopback、私有網段、link-local 與雲端 metadata 位址。因為檢查的是實際連線的 IP，DNS rebinding 也一併擋掉。
 - 私有網段預設封鎖，兩種部署都一樣。自架的 RSSHub、NAS 等主機要寫進設定檔的 allowlist。雲端 metadata 位址一律封鎖，不能加入 allowlist。
 - 最多轉址 5 次，每一跳都重新檢查；回應大小與逾時都有上限。
 - yt-dlp 的請求不經過這個 client，所以只開放 YouTube 與 Bilibili 的 extractor（ADR-0009）。

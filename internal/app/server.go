@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -184,7 +185,8 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	s.queue = queue.New(s.store, env.Clock, store.NewID())
 	deps := pipeline.Deps{
 		Store: s.store, Clock: env.Clock, DataDir: cfg.Data, Log: log, YouTube: yt, Wake: s.queue.Wake, Version: version,
-		HTTP: outboundClient(env.Net),
+		// 對外請求一律經過 netguard（ADR-0014），不使用 http.DefaultClient；逾時與大小由各呼叫端限制。
+		HTTP: netguard.NewClient(s.netw),
 	}
 	if env.Test != nil {
 		deps.ImplVersions = env.Test.ImplVersions
@@ -357,19 +359,11 @@ func (s *Server) abort() {
 	}
 }
 
-// maxRedirects 是對外請求最多跟隨的轉址次數。
-const maxRedirects = 5
-
-// outboundClient 建立對外 HTTP 的 client：連線一律經過 netguard（ADR-0014），不使用 http.DefaultClient。
-// 逾時與內容大小由各呼叫端自己限制。
-func outboundClient(d netguard.Deps) *http.Client {
-	return &http.Client{
-		Transport: netguard.Transport(d),
-		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
-			if len(via) >= maxRedirects {
-				return errors.New("轉址次數過多")
-			}
-			return nil
-		},
+// netDeps 把設定檔的 allowlist 併入 env 提供的 netguard 依賴（GRD-R3）；不改動 d 本身。
+func netDeps(d netguard.Deps, cfg *config.Config) netguard.Deps {
+	d.AllowPrivate = netguard.Allowlist{
+		Prefixes: append(slices.Clone(d.AllowPrivate.Prefixes), cfg.AllowPrivate.Prefixes...),
+		Hosts:    append(slices.Clone(d.AllowPrivate.Hosts), cfg.AllowPrivate.Hosts...),
 	}
+	return d
 }

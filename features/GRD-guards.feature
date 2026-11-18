@@ -61,12 +61,32 @@ Feature: Outbound request and path guards
     When the server starts
     Then the server fails to start with "169.254.169.254"
 
+  @GRD-02 @GRD-R3
+  Scenario: Cloud metadata stays blocked inside an allow-listed range
+    Given the config file contains:
+      """
+      network:
+        allow_private: [169.254.0.0/16]
+      """
+    And the host "meta.example.com" resolves to "169.254.169.254"
+    When the owner resolves "http://meta.example.com/latest/meta-data/"
+    Then the response status is 422
+    And the response contains:
+      """
+      { "code": "blocked_address", "message": "這個網址指向內部網路，已封鎖。" }
+      """
+    And no connection was made to "169.254.169.254"
+
   @GRD-03 @GRD-R4
   Scenario: A redirect into the private network is blocked
     Given the host "feeds.example.com" resolves to "93.184.216.34"
     And the URL "https://feeds.example.com/show.xml" redirects to "http://192.168.1.1/admin"
     When the owner resolves "https://feeds.example.com/show.xml"
     Then the response status is 422
+    And the response contains:
+      """
+      { "code": "blocked_address" }
+      """
     And no connection was made to "192.168.1.1"
 
   @GRD-03 @GRD-R4
@@ -77,19 +97,41 @@ Feature: Outbound request and path guards
     And the URL "https://a.example.com/4" redirects to "https://a.example.com/5"
     And the URL "https://a.example.com/5" redirects to "https://a.example.com/6"
     And the URL "https://a.example.com/6" redirects to "https://a.example.com/feed.xml"
+    And the URL "https://a.example.com/feed.xml" serves "rsshub-feed.xml"
     When the owner resolves "https://a.example.com/1"
     Then the response status is 422
+    And the response contains:
+      """
+      { "code": "too_many_redirects", "message": "轉址超過 5 次。" }
+      """
 
   @GRD-03 @GRD-R5
   Scenario: An oversized feed is cut off
     Given the URL "https://feeds.example.com/huge.xml" serves 20000000 bytes
     When the owner resolves "https://feeds.example.com/huge.xml"
     Then the response status is 422
+    And the response contains:
+      """
+      { "code": "response_too_large" }
+      """
 
   @GRD-01 @GRD-R1
   Scenario: Non-HTTP schemes are refused
-    When the owner resolves "file:///etc/passwd"
+    Given the URL "https://feeds.example.com/show.xml" serves "rsshub-feed.xml"
+    When the owner resolves "ftp://feeds.example.com/show.xml"
     Then the response status is 422
+    And no connection was made to "feeds.example.com"
+
+  @GRD-01 @GRD-R1
+  Scenario: A redirect to a non-HTTP scheme is refused
+    Given the host "feeds.example.com" resolves to "93.184.216.34"
+    And the URL "https://feeds.example.com/show.xml" redirects to "ftp://feeds.example.com/show.xml"
+    When the owner resolves "https://feeds.example.com/show.xml"
+    Then the response status is 422
+    And the response contains:
+      """
+      { "code": "unsupported_scheme", "message": "只支援 http 與 https 網址。" }
+      """
 
   @GRD-01 @GRD-R6
   Scenario: yt-dlp is never asked to open an arbitrary site

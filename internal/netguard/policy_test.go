@@ -24,41 +24,56 @@ func TestCheckIPBlocksNonPublicAddresses(t *testing.T) {
 		"::ffff:10.0.0.1", "::ffff:127.0.0.1", "::ffff:169.254.169.254", // IPv4-mapped
 		"64:ff9b::a00:1", "64:ff9b::7f00:1", // NAT64 內嵌私有位址
 		"255.255.255.255", "240.0.0.1",
+		// 保留與文件用網段
+		"192.0.0.1", "192.0.0.255", "192.0.2.1", "198.18.0.1", "198.19.255.254",
+		"198.51.100.7", "203.0.113.9", "240.0.0.0", "255.255.255.254",
+		"fec0::1", "feff::1", // site-local（已棄用）
+		"::1.2.3.4", "::808:808", // IPv4-compatible
+		"2001:db8::1", "2001:db8:ffff::1", // 文件用
+		// 6to4（2002::/16）內嵌 IPv4：10.0.0.1、127.0.0.1、169.254.169.254
+		"2002:a00:1::1", "2002:7f00:1::1", "2002:a9fe:a9fe::1",
+		// Teredo（2001::/32）：server 在第 4–7 byte，client 在最後 4 byte 且反相。
+		"2001:0:a00:1:0:0:f7f7:f7f7",   // server 為 10.0.0.1
+		"2001:0:808:808:0:0:f5ff:fffe", // client 為 10.0.0.1
 	}
 	for _, s := range blocked {
-		if err := checkIP(netip.MustParseAddr(s), nil); !errors.Is(err, ErrBlockedAddress) {
+		if err := checkIP("", netip.MustParseAddr(s), Allowlist{}); !errors.Is(err, ErrBlockedAddress) {
 			t.Errorf("%s 應被擋下：%v", s, err)
 		}
 	}
 	allowed := []string{
 		"93.184.216.34", "8.8.8.8", "1.1.1.1", "172.15.255.255", "172.32.0.1", "100.63.255.255", "100.128.0.1",
 		"2606:2800:220:1:248:1893:25c8:1946", "64:ff9b::808:808", "::ffff:8.8.8.8",
+		"192.0.1.1", "198.17.255.255", "198.20.0.1", "198.51.99.255", "198.51.101.1", "203.0.112.255", "203.0.114.1",
+		"2002:808:808::1",              // 6to4 內嵌公開位址
+		"2001:0:808:808:0:0:fefe:fefe", // Teredo：server 8.8.8.8、client 1.1.1.1
+		"2001:4860:4860::8888",
 	}
 	for _, s := range allowed {
-		if err := checkIP(netip.MustParseAddr(s), nil); err != nil {
+		if err := checkIP("", netip.MustParseAddr(s), Allowlist{}); err != nil {
 			t.Errorf("%s 應放行：%v", s, err)
 		}
 	}
 }
 
 func TestAllowlistOpensRangesButNeverMetadata(t *testing.T) {
-	allow := []netip.Prefix{
+	allow := Allowlist{Prefixes: []netip.Prefix{
 		netip.MustParsePrefix("10.0.0.0/8"),
 		netip.MustParsePrefix("169.254.0.0/16"),
 		netip.MustParsePrefix("fd00::/8"),
 		netip.MustParsePrefix("100.64.0.0/10"),
-	}
+	}}
 	for _, s := range []string{"10.1.2.3", "169.254.1.1", "fd00::1", "100.64.0.1"} {
-		if err := checkIP(netip.MustParseAddr(s), allow); err != nil {
+		if err := checkIP("", netip.MustParseAddr(s), allow); err != nil {
 			t.Errorf("%s 在 allowlist 內，應放行：%v", s, err)
 		}
 	}
 	for _, s := range []string{"169.254.169.254", "fd00:ec2::254", "100.100.100.200", "::ffff:169.254.169.254"} {
-		if err := checkIP(netip.MustParseAddr(s), allow); !errors.Is(err, ErrBlockedAddress) {
+		if err := checkIP("", netip.MustParseAddr(s), allow); !errors.Is(err, ErrBlockedAddress) {
 			t.Errorf("metadata 位址 %s 不能被 allowlist 開放：%v", s, err)
 		}
 	}
-	if err := checkIP(netip.MustParseAddr("192.168.1.1"), allow); !errors.Is(err, ErrBlockedAddress) {
+	if err := checkIP("", netip.MustParseAddr("192.168.1.1"), allow); !errors.Is(err, ErrBlockedAddress) {
 		t.Errorf("不在 allowlist 內仍要擋下：%v", err)
 	}
 }
@@ -175,7 +190,7 @@ func TestDialPassesTimeoutToDialer(t *testing.T) {
 		return nil, errors.New("refused")
 	})
 	start := time.Now()
-	_, _ = dial(context.Background(), stubResolver{ips: []netip.Addr{netip.MustParseAddr("93.184.216.34")}}, d, nil, "tcp", "example.com:80")
+	_, _ = dial(context.Background(), stubResolver{ips: []netip.Addr{netip.MustParseAddr("93.184.216.34")}}, d, Allowlist{}, "tcp", "example.com:80")
 	if !ok {
 		t.Fatal("Dialer 的 ctx 應有 deadline")
 	}
