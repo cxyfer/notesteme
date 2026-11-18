@@ -12,7 +12,7 @@ const flatPlaylistJSON = `{"_type":"playlist","id":"PL123","entries":[{"id":"abc
 
 // plArgs 是 production 展開播放清單時使用的參數（見 youtube.Client.Playlist）。
 func plArgs(rawURL string) []string {
-	return []string{"--ignore-config", "--use-extractors", "youtube", "--no-warnings", "--flat-playlist", "-J", "--", rawURL}
+	return []string{"--ignore-config", "--use-extractors", "youtube:tab,youtube:playlist", "--no-warnings", "--flat-playlist", "-J", "--", rawURL}
 }
 
 func playlistState(t *testing.T) State {
