@@ -288,6 +288,14 @@ func (m *Manager) Rollback(ctx context.Context) (*Result, error) {
 		return nil, err
 	}
 	now := m.version(ctx, m.Resolver.Locate(toolexec.YtDlp))
+	if now == "" {
+		// 目標版本無法執行：把 symlink 換回原本的版本並保持 state.json 不變。
+		m.restoreLink(curID)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w：上一版 yt-dlp 無法執行。", ErrNoPrevious)
+	}
 
 	next := State{Pinned: st.Pinned, Previous: cur, PreviousID: curID}
 	if next.Pinned != "" && next.Pinned != now {

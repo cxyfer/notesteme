@@ -176,6 +176,61 @@ func TestRollbackToPathRestoresLinkWhenSavingStateFails(t *testing.T) {
 	}
 }
 
+// 上一版 venv 遺失 bin/yt-dlp 時，Rollback 要還原 symlink、保留原 state.json 並回錯，不能留下壞掉的目標。
+func TestRollbackRestoresLinkWhenPreviousManagedBinaryMissing(t *testing.T) {
+	e := newEnv(t, newFakeRunner("2026.11.10"))
+	e.install("2026.11.01", "2026.11.01")
+	mustUpdate(t, e, UpdateRequest{})
+	before := e.linkTarget()
+	beforeState := e.state()
+
+	if err := os.Remove(filepath.Join(VersionsDir(e.tools), "2026.11.01", "bin", "yt-dlp")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.m.Rollback(context.Background()); !errors.Is(err, ErrNoPrevious) {
+		t.Fatalf("err = %v，預期 ErrNoPrevious", err)
+	}
+	if got := e.linkTarget(); got != before {
+		t.Errorf("symlink = %q，預期還原成 %q", got, before)
+	}
+	if got := e.state(); got != beforeState {
+		t.Errorf("state = %+v，預期維持 %+v", got, beforeState)
+	}
+}
+
+// 上一版是 PATH 後備且已不存在時，Rollback 要把 symlink 建回原本的受管理版本、保留 state.json 並回錯。
+func TestRollbackRestoresLinkWhenPathFallbackMissing(t *testing.T) {
+	r := newFakeRunner("2026.11.10")
+	e := newEnv(t, r)
+	builtin := filepath.Join(filepath.Dir(e.tools), "opt", "yt-dlp")
+	if err := os.MkdirAll(filepath.Join(builtin, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ytBin := filepath.Join(builtin, "bin", "yt-dlp")
+	for p, c := range map[string]string{ytBin: "#!/bin/sh\n", filepath.Join(builtin, "version"): "2026.10.01"} {
+		if err := os.WriteFile(p, []byte(c), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.m.Resolver.Vars["PATH"] += string(os.PathListSeparator) + filepath.Join(builtin, "bin")
+	mustUpdate(t, e, UpdateRequest{})
+	before := e.linkTarget()
+	beforeState := e.state()
+
+	if err := os.Remove(ytBin); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.m.Rollback(context.Background()); !errors.Is(err, ErrNoPrevious) {
+		t.Fatalf("err = %v，預期 ErrNoPrevious", err)
+	}
+	if got := e.linkTarget(); got != before {
+		t.Errorf("symlink = %q，預期還原成 %q", got, before)
+	}
+	if got := e.state(); got != beforeState {
+		t.Errorf("state = %+v，預期維持 %+v", got, beforeState)
+	}
+}
+
 // Windows 不支援受管理的 yt-dlp（venv 的布局與 symlink 都不同）：明確回錯誤，不去跑 pip。
 func TestManagedYtDlpIsUnsupportedOnWindows(t *testing.T) {
 	e := newEnv(t, newFakeRunner("2026.11.10"))
