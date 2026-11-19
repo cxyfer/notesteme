@@ -181,7 +181,8 @@ func TestClassifyVideoGone(t *testing.T) {
 		{"大小寫不同", "error: [YouTube] abc123xxxxx: video unavailable\n", errclass.ClassPermanent},
 
 		{"被限流", "ERROR: [youtube] abc123xxxxx: Video unavailable. This content isn't available, try again later. The current session has been rate-limited by YouTube for up to an hour.\n", errclass.ClassRetryable},
-		{"會員限定", "ERROR: [youtube] abc123xxxxx: Join this channel to get access to members-only content like this video\n", errclass.ClassRetryable},
+		// 會員限定改為 needs_action（上傳 cookie 後自動繼續），見 TestMembersOnlyNeedsCookie。
+		{"會員限定", "ERROR: [youtube] abc123xxxxx: Join this channel to get access to members-only content like this video\n", errclass.ClassNeedsAction},
 		{"機器人驗證", "ERROR: [youtube] abc123xxxxx: Sign in to confirm you're not a bot\n", errclass.ClassRetryable},
 		{"不是 youtube extractor", "ERROR: [BiliBili] BV1xx411c7mD: Video unavailable\n", errclass.ClassRetryable},
 		{"只是輸出提到", "WARNING: Video unavailable is mentioned here\nERROR: unable to connect\n", errclass.ClassRetryable},

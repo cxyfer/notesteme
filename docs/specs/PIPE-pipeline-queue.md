@@ -48,6 +48,12 @@
   - `POST /api/queue/pause`、`POST /api/queue/resume`：沒有 body 時作用在整個佇列；`{ "class": "asr" }` 只作用在該資源類別。
   - `POST /api/items/:id/cancel`：取消該影音所有未結束的步驟（PIPE-R15）；`POST /api/tasks/:id/cancel` 只取消單一任務。
 - CLI：`notesteme items ls --status <stage>=<status>`、`notesteme items rerun <item> --from <stage>`
+- `blocked` 的恢復（PIPE-R4）：
+  - 步驟因為需要使用者補上某個東西而 `blocked` 時，記錄恢復條件 `resume_on`，格式是 `<種類>:<名稱>`，目前只有 `cookie:youtube` 與 `cookie:bilibili`（`errclass.Error.ResumeOn`）。沒有 `resume_on` 的 `blocked`（例如缺 API key）不會自動恢復，要手動重試。`resume_on` 只在步驟是 `blocked` 時保留，離開 `blocked` 就清空。
+  - `POST /api/cookies` 儲存成功後，以 `cookie:<platform>` 呼叫 `ResumeBlocked`：在同一個交易中，找出沒有刪除的影音裡每個（影音、步驟）最新一筆、`resume_on` 相符的 `blocked` 步驟，改回 `pending`，並以原本任務的優先順序與資源類別建立新任務，嘗試次數從 0 開始。
+  - 執行中補上條件：步驟在條件滿足之前開始執行、執行期間使用者才補上（例如 yt-dlp 沒帶 cookie 開始跑，這時上傳 cookie），`ResumeBlocked` 找不到 `running` 的步驟（回 0）。步驟之後回報需要 cookie 時，寫回結果的同一個交易會先檢查：`resume_on` 是 `cookie:<platform>` 時，讀 secrets 表 `(cookie, <platform>)` 的 `updated_at`；它**嚴格晚於**這次執行的開始時間（以毫秒比較，開始時間在 `Handle` 開頭用注入的 clock 記錄）就改為 requeue，不寫 `blocked`：步驟設 `pending`、原任務 `failed`、以原任務的優先順序與資源類別建立新任務，不計入嘗試次數。開始當下就存在的 cookie（例如過期被拒絕）不算，所以仍然 `blocked`，不會無限重跑。token 的解析在 `resumeSecret`，之後有新種類的 `resume_on` 時在那裡擴充。
+  - `POST /api/cookies` 呼叫 `ResumeBlocked` 時使用 `context.WithoutCancel` 加 30 秒逾時，客戶端在 cookie 儲存後斷線不會中斷恢復。
+  - 恢復是冪等的：恢復後步驟已不是 `blocked`，再呼叫一次不會重複建立任務；token 不符、已刪除的影音都不恢復。恢復失敗不影響 cookie 已經儲存的事實（API 仍回 200，錯誤記在 log）。
 
 ## 不在範圍內
 
@@ -64,3 +70,5 @@
 - PIPE-R7、R13 的場景原本驗證不到規則（2026-11-13，PIPE 切片審查以變異測試發現），經 owner 同意已修改：R7 改以 `normalize` 的實作版本累積 4 個版本，斷言只剩 3 版（Supadata 的 `mode` 只有三種，湊不出 4 個不同的快取鍵）；R13 改為斷言覆寫獨有的 `targets: [en]`。
 - PIPE-R7 的清除另外保留「被其他產出當作來源（parent）的版本」，避免來源紀錄指向已刪除的產出；有衍生產出時，同一組可能超過 3 版。被清除版本的 stage run 不再指向產出，之後視為快取未命中。
 - transcript 資源類別的兩個方向都有場景：`asr` 暫停時，需要 ASR 的 transcript 會等待；有平台字幕時，transcript 照常執行（後者是 2026-11-14 經 owner 同意新增的場景）。
+- 「執行中補上條件」的限制（2026-11-14，SRC-B 審查）：secrets 的 `updated_at` 只有毫秒精度，與開始時間在同一毫秒內上傳的 cookie 判斷為「不晚於」，仍會 `blocked`，使用者要手動重試；這個視窗極小，換取開始當下已存在的 cookie 不會被誤判。其他種類的 `resume_on` 目前沒有，之後若有，要先決定各自的「何時滿足」依據。
+- Bilibili 沒有語言中繼資料：`metadata` 判斷 `transcript` 的資源類別時，與 `transcript` 步驟選軌共用同一個推斷（`inferOriginalLang`：沒有原文語言時用 AI 字幕軌的語言），否則預設的 `caption_priority`（original）會因原文語言為空而誤歸為 `asr`（2026-11-14，SRC-B 審查）。

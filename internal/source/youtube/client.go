@@ -37,7 +37,21 @@ const (
 type Client struct {
 	Runner toolexec.Runner
 	Tools  toolexec.Resolver
+	// Cookies 提供 YouTube 的 cookie 檔；nil 或沒有 cookie 時不帶 --cookies（SEC-R7）。
+	Cookies Cookies
 }
+
+// Cookies 提供平台 cookie 的暫存檔（*cookies.Store 實作它）。
+// 沒有 cookie 時 path 為空字串，release 是 no-op；每次呼叫一個新檔案，release 時刪除。
+type Cookies interface {
+	Acquire(ctx context.Context, platform string) (path string, release func(), err error)
+}
+
+// platformYouTube 是 Cookies.Acquire 的平台名稱。
+const platformYouTube = "youtube"
+
+// cookieResumeOn 是需要 YouTube cookie 的步驟的恢復條件（見 errclass.Error.ResumeOn）。
+const cookieResumeOn = "cookie:youtube"
 
 // Track 是平台提供的一條字幕軌。
 type Track struct {
@@ -87,12 +101,33 @@ func baseArgs() []string {
 	return []string{"--ignore-config", "--use-extractors", "youtube", "--no-playlist", "--no-warnings"}
 }
 
+// run 執行 yt-dlp。有 YouTube cookie 時每次呼叫都帶 --cookies（SEC-R7）：
+// 取得一個專屬這次呼叫的暫存檔，子程序結束後立即釋放。
 func (c *Client) run(ctx context.Context, timeout time.Duration, args []string) (toolexec.Result, error) {
+	return c.exec(ctx, timeout, args, true)
+}
+
+func (c *Client) exec(ctx context.Context, timeout time.Duration, args []string, withCookies bool) (toolexec.Result, error) {
 	bin, err := c.Tools.Resolve(toolexec.YtDlp)
 	if err != nil {
 		// 找不到工具要使用者先處理，重試也沒有用。
 		return toolexec.Result{}, &errclass.Error{
 			Class: errclass.ClassNeedsAction, Source: "yt-dlp", Err: err, Message: msgNoYtDlp, Actions: []string{actionInstallYtDlp},
+		}
+	}
+	if withCookies && c.Cookies != nil {
+		path, release, err := c.Cookies.Acquire(ctx, platformYouTube)
+		if err != nil {
+			if ctx.Err() != nil {
+				return toolexec.Result{}, ctx.Err()
+			}
+			// 錯誤訊息由 cookies 套件負責不帶 cookie 內容；修好（例如重新上傳）後重試會成功。
+			return toolexec.Result{}, &errclass.Error{Class: errclass.ClassRetryable, Source: "yt-dlp", Detail: "無法取得 YouTube cookie", Err: err}
+		}
+		defer release()
+		if path != "" {
+			// 放在最前面：args 結尾有 "--" 加網址，選項不能在它之後。
+			args = append([]string{"--cookies", path}, args...)
 		}
 	}
 	res, err := c.Runner.Run(ctx, toolexec.Cmd{Path: bin, Args: args, Timeout: timeout})
@@ -117,8 +152,8 @@ func (c *Client) run(ctx context.Context, timeout time.Duration, args []string) 
 //   - "This video has been removed"、"This video is no longer available"：已移除的影片（舊版訊息）。
 //
 // 這些原因的依據是 yt-dlp 的 YouTube extractor 原始碼，沒有在此環境對真實的 yt-dlp 驗證（測試不連外網）。
-// 會員限定（"Join this channel"）、年齡限制、"Sign in to confirm you're not a bot" 可以靠 cookie 解決，
-// 不屬於這一類，維持原本的分類。
+// 會員限定（"Join this channel"，見 membersOnlyLine）、年齡限制、"Sign in to confirm you're not a bot" 可以靠 cookie 解決，
+// 不屬於這一類；其中會員限定另有 needs_action 的分類，其餘維持 retryable。
 var videoGoneLine = regexp.MustCompile(
 	`(?im)^ERROR: \[youtube[^\]]*\] \S+: (?:Video unavailable|Private video|This video has been removed|This video is no longer available)(.*)$`)
 
@@ -157,6 +192,14 @@ const (
 	actionUploadCookie = "上傳 cookie"
 )
 
+// membersOnlyLine 比對會員限定影片的錯誤行：
+// "ERROR: [youtube] <id>: Join this channel to get access to members-only content like this video, and other exclusive perks."
+// 文字依 yt-dlp 的 YouTube extractor 原始碼，沒有在此環境對真實的 yt-dlp 驗證（測試不連外網）。
+var membersOnlyLine = regexp.MustCompile(`(?im)^ERROR:.*Join this channel to get access to members-only content`)
+
+// 會員限定影片的訊息（逐字）。修正動作沿用 actionUploadCookie。
+const msgMembersOnly = "這部影片需要登入才能取得。上傳 YouTube cookie 後會自動繼續。"
+
 // 找不到 yt-dlp 時顯示的訊息與修正動作（與播放清單展開、doctor 的文案一致）。
 const (
 	msgNoYtDlp         = "無法執行 yt-dlp，請確認已安裝（可執行 notesteme doctor）。"
@@ -177,15 +220,21 @@ func classify(res toolexec.Result) error {
 	case tooLargeLine.Match(res.Stderr):
 		// 超過 --max-filesize（GRD-R5 的音檔上限）：重試也不會變小。
 		e.Class, e.Err = errclass.ClassPermanent, ErrAudioTooLarge
+	case membersOnlyLine.Match(res.Stderr):
+		// 會員限定的影片要登入才看得到：上傳 cookie 後自動繼續。
+		e.Class, e.Message, e.Actions, e.ResumeOn = errclass.ClassNeedsAction, msgMembersOnly, []string{actionUploadCookie}, cookieResumeOn
 	case forbiddenLine.Match(res.Stderr):
-		e.Class, e.Message, e.Actions = errclass.ClassNeedsAction, msgForbidden, []string{actionUpdateYtDlp, actionUploadCookie}
+		// 403 的最後手段是 cookie；上傳後自動恢復（PIPE-R4）。
+		e.Class, e.Message, e.Actions, e.ResumeOn = errclass.ClassNeedsAction, msgForbidden,
+			[]string{actionUpdateYtDlp, actionUploadCookie}, cookieResumeOn
 	}
 	return e
 }
 
 // tail 回傳輸出最後 n 個位元組的單行摘要。
+// 先遮蔽 yt-dlp 讀 cookie 檔的警告行：它們會夾帶 cookie 的值，不能進入錯誤訊息與 log（SEC-R4）。
 func tail(b []byte, n int) string {
-	b = bytes.TrimSpace(b)
+	b = bytes.TrimSpace(toolexec.RedactCookieLines(b))
 	if len(b) > n {
 		b = b[len(b)-n:]
 	}
@@ -194,7 +243,7 @@ func tail(b []byte, n int) string {
 
 // Version 回傳 yt-dlp 的版本，寫進來源紀錄（ADR-0009）。
 func (c *Client) Version(ctx context.Context) (string, error) {
-	res, err := c.run(ctx, probeTimeout, []string{"--version"})
+	res, err := c.exec(ctx, probeTimeout, []string{"--version"}, false) // 與 cookie 無關
 	if err != nil {
 		return "", err
 	}

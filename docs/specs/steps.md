@@ -136,16 +136,16 @@
 | 步驟 | 意思 |
 |---|---|
 | `Given a YouTube video {string} titled {string}` | 建立 fake 的 YouTube 影片；沒有另外指定時，原文語言為 `en` |
-| `Given a YouTube video {string} with:` | 同上，用表格（`field`、`value`）指定 `title`、`duration`、`language`、`availability`、`chapters`、`live_status` 等 |
-| `Given a Bilibili video {string} with {int} parts` | 建立 fake 的 Bilibili 影片（`1 part` 亦可） |
+| `Given a YouTube video {string} with:` | 同上，用表格（`field`、`value`）指定 `title`、`duration`、`language`、`availability`、`chapters`、`live_status` 等。`availability` 為 `subscriber_only` 時，假 yt-dlp 在下載字幕與媒體時要求含 `.youtube.com` cookie 的 `--cookies` 檔，否則回報 `ERROR: [youtube] <id>: Join this channel to get access to members-only content like this video, or contact the channel owner.`（取得資訊不失敗，辨識網址的 Probe 仍能看到 `availability`） |
+| `Given a Bilibili video {string} with {int} parts` | 建立 fake 的 Bilibili 影片（`1 part` 亦可）；參數是不帶 `bili:` 的 BV 號。各分P 沒有字幕軌、沒有原文語言，標題預設為 BV 號；之後用 `bili:<BV>/p<n>` 逐分P 設定。分P 不存在（或影片還沒建立）時，使用該代號的步驟失敗 |
 | `Given a podcast feed {string} with the episodes:` | 建立 fake 的 feed，表格欄位：`guid`、`title`、`audio`；feed 的網址為 `https://feeds.example.com/<名稱>.xml` |
 | `Given a local file {string} in the inbox` | 在 inbox 放入 fixture 檔案 |
-| `Given {string} has {word} captions in {string}` | 平台字幕軌；`{word}` 為 `manual`、`auto`、`platform-translated`。Bilibili 的 AI 字幕屬於 `auto` |
+| `Given {string} has {word} captions in {string}` | 平台字幕軌；`{word}` 為 `manual`、`auto`、`platform-translated`。Bilibili 的 AI 字幕屬於 `auto`（Bilibili 沒有 `platform-translated`） |
 | `Given {string} has no caption tracks` | 平台沒有任何字幕 |
 | `Given the auto captions of {string} are not ready yet` | YouTube 自動字幕還沒生成：假 yt-dlp 不列出、也不下載自動字幕與平台翻譯字幕，人工字幕不受影響。只接受 `yt:` |
-| `Given the source {string} returns {string} for {string}` | 字幕來源回傳指定的 fixture |
+| `Given the source {string} returns {string} for {string}` | 字幕來源回傳指定的 fixture。平台來源（`youtube-*`、`bilibili-*`）寫進假 yt-dlp 對應種類的字幕軌（`*-manual`、`bilibili-cc` 是 `manual`，`*-auto`、`bilibili-ai` 是 `auto`），來源與影音的平台必須相符；Bilibili 的 fixture 是字幕 JSON（`body[{from, to, content}]`） |
 | `Given the source {string} has nothing for {string}` | 字幕來源沒有結果 |
-| `Given the source {string} requires the cookie {string}` | 需要指定的 cookie 才能取得 |
+| `Given the source {string} requires the cookie {string}` | 需要指定的 cookie 才能取得。平台來源（`bilibili-*`）的參數是 cookie 的平台：假 yt-dlp 沒有收到該平台的有效 cookie 檔（`--cookies` 指到 Netscape 格式、含 `.bilibili.com` 網域 `SESSDATA` 的檔案）時，不列出也不下載該來源的字幕軌，結束碼 0，並在 stderr 印出 login WARNING（有 `--no-warnings` 時不印）。平台來源還沒實作（`source.Implemented`）時 pending |
 | `Given the source {string} accepts files up to {string}` | ASR 的單檔大小上限，例如 `"25MB"` |
 | `Given the audio of {string} is {string}` | 音訊 fixture，例如長度或大小不同的檔案 |
 | `Given yt-dlp fails for {string} with {string}` | yt-dlp 對這個影音的所有操作（取得資訊、下載字幕、下載媒體）都以結束碼 1 失敗，stderr 為指定的錯誤輸出。只接受 `yt:` |
@@ -275,6 +275,8 @@
 | `Then the data directory does not contain the created token` | `/data` 中不含最近一次建立的 token 明文 |
 | `Then the file {string} is:` | 檔案內容完全相同 |
 | `Then the file {string} has the mode {string}` | 檔案權限，例如 `"0600"` |
+| `Then the cookie file given to yt-dlp has the mode {string}` | 目前執行中、帶 `--cookies` 的假 yt-dlp 呼叫所收到的 cookie 檔存在，且權限相符。暫存檔每次呼叫一個檔名（SEC-R7），所以不寫死路徑。「執行中」以假 yt-dlp 記錄的程序 ID 判斷（被 gate 擋住的程序仍存活）；沒有這樣的呼叫時失敗 |
+| `Then no cookie file remains in {string}` | 曾交給假 yt-dlp 的 cookie 檔都已不存在，其中至少一個放在該目錄（場景路徑對應到測試資料目錄），而且該目錄中沒有名稱含 `cookie` 的檔案（cookie 暫存檔的命名）。沒有帶 `--cookies` 的呼叫時失敗：沒有東西可以驗證 |
 | `Then the data directory does not contain {string}` | `/data` 中所有檔案（包括 DB）都不含這段文字 |
 | `Then the data directory has no files of {string}` | `/data` 的 artifacts、media、uploads、tmp 中沒有屬於這部影音的檔案 |
 | `Then the media cache has no files of {string}` | `/data/media` 中沒有屬於這部影音的檔案 |

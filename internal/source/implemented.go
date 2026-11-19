@@ -14,6 +14,8 @@ import (
 var implemented = []string{
 	transcript.SourceYouTubeManual,
 	transcript.SourceYouTubeAuto,
+	transcript.SourceBilibiliCC,
+	transcript.SourceBilibiliAI,
 	supadata.ID,
 	groq.ID,
 }

@@ -7,7 +7,7 @@
 
 | 目錄 | 內容 | 誰讀取 |
 |---|---|---|
-| `captions/` | 平台字幕軌的 VTT 檔，例如 `en-manual.vtt` | 假 yt-dlp 寫字幕時 |
+| `captions/` | 平台字幕軌：YouTube 是 VTT，例如 `en-manual.vtt`；Bilibili 是字幕 JSON（`body[{from, to, content}]`），例如 `bilibili-ai-zh.json` | 假 yt-dlp 寫字幕時 |
 | `sources/` | 字幕來源（ASR、Supadata）回傳的 JSON，例如 `supadata-en.json`、`groq-en.json` | `fakesource` 的 handler |
 | `ytdlp/` | 假 yt-dlp 的輸出樣本（info JSON 的片段、錯誤輸出）；播放清單網址的 `the URL … serves "<name>"` 讀這裡，例如 `playlist-3-videos.json` | 假 yt-dlp（`--flat-playlist -J`） |
 | `http/` | fake origin 提供的 HTTP 內容（`the URL … serves "<name>"`，網址不是 YouTube／Bilibili 時），例如網頁、RSS feed | `fakenet` 上的 handler |
@@ -52,6 +52,30 @@
 
 字幕軌的種類：`manual`（人工）、`auto`（自動，Bilibili 的 AI 字幕屬於這類）、
 `platform-translated`（平台機器翻譯）。
+
+### Bilibili 字幕軌
+
+Bilibili 的 fixture 是 Bilibili 的字幕 JSON（`body[{from, to, content}]`，單位秒，例如 `bilibili-ai-zh.json`）。
+假 yt-dlp 依真實的 yt-dlp 行為處理：
+
+- 轉成 SRT。`-J --write-subs` 把 SRT 放在 `subtitles` 欄位的 `data`（`ext: srt`），鍵是 Bilibili 的 `lan`：
+  `manual` 的鍵是語言，`auto`（AI 字幕）的鍵是 `ai-<語言>`；另有一個 `danmaku`（xml）。沒有 `automatic_captions`。
+  下載時 `--write-subs` 寫出 `<樣板>.<鍵>.srt`（`--sub-format vtt` 仍然是 srt），`--write-auto-subs` 什麼都不寫。
+- 沒有 fixture 的字幕軌依句數產生 SRT（預設 120 句）。
+- `Given the source "bilibili-ai" requires the cookie "bilibili"` 之後，假 yt-dlp 沒有收到有效的 cookie 檔
+  （`--cookies` 指到 Netscape 格式、含 `.bilibili.com` 網域的 `SESSDATA`）時，不列出也不下載該種類的字幕軌，
+  結束碼 0，stderr 印 `WARNING: [BiliBili] Subtitles are only available when logged in. …`（有 `--no-warnings` 時不印）。
+- 影片沒有 `p` 參數而且有多個分P 時，`-J` 回傳 `url` entries（`https://www.bilibili.com/video/<BV>?p=<n>`）；
+  有 `p` 時，info 的 `id` 是 `<BV>_p<n>`。用 `uploader`、`uploader_id`，沒有 `channel`、`language`、`availability`。
+- 場景代號 `bili:<BV>/p<n>` 對應假工具狀態中的 `<BV>/p<n>`（標題、字幕軌逐分P 設定）。
+
+### cookie 檔
+
+假 yt-dlp 依真實的行為載入 `--cookies` 的檔案：第一行必須是 `# Netscape HTTP Cookie File`，其餘每行是
+tab 分隔的 7 個欄位，否則回報 `does not look like a Netscape format cookies file`、結束碼 1。
+會員限定（`availability: subscriber_only`）的 YouTube 影片，下載字幕與媒體時沒有含 `.youtube.com` cookie 的檔案就失敗
+（`取得資訊` 不失敗，讓辨識網址的 Probe 仍能看到 availability）。每次呼叫都記錄 cookie 檔的路徑、權限與程序 ID
+（`calls.jsonl`），`the cookie file given to yt-dlp has the mode` 以此判斷。
 
 ## 假媒體檔
 

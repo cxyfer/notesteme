@@ -15,9 +15,9 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/source"
+	"github.com/cxyfer/notesteme/internal/source/bilibili"
 	"github.com/cxyfer/notesteme/internal/source/groq"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
-	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 	"github.com/cxyfer/notesteme/internal/transcript"
@@ -60,8 +60,9 @@ const (
 
 // sourceTiming 是各平台字幕來源宣告的時間粒度（ADR-0006 的 Caps.Timing、plan 第 6.1 節）。
 // 它是來源的宣告，不是逐檔檢查的結果：YouTube 自動字幕是近 word 級。
-func sourceTiming(kind string) string {
-	if kind == transcript.KindAuto {
+// Bilibili 的 CC 與 AI 字幕都是 srt 的 cue 級時間。
+func sourceTiming(platform, kind string) string {
+	if platform == source.PlatformYouTube && kind == transcript.KindAuto {
 		return "word"
 	}
 	return "cue"
@@ -77,19 +78,31 @@ const supadataTiming = "chunk"
 // 其他來源（ASR 等）記為 not_configured 並略過。
 // TODO(SRC-R4)：每個來源的結果還要通過品質檢查（涵蓋率、語言、重複句、純音樂）。
 // 自動字幕還沒生成時等待（SRC-R6，見 waitForAutoCaptions），超過 24 小時才改用下一個來源。
-// TODO(SRC-R8)：來源需要 cookie 而沒有時 blocked。
+// SRC-R8：Bilibili 的 AI 字幕需要 cookie 而沒有時 blocked，在等待與 fallback 之前判斷（見 blockForCookie）。
 func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Language) (result, error) {
 	// 選軌需要平台目前的字幕軌清單，所以一定要先 Probe；快取鍵只含會影響選軌結果的輸入
 	// （字幕軌清單、原文語言與選軌參數），標題、片長這類不影響結果的 metadata 不算。
-	info, err := p.yt.Probe(ctx, it.ExternalID)
+	ad, err := p.adapterFor(it.Platform)
 	if err != nil {
 		return result{}, err
 	}
-	tracks := make([]transcript.Track, 0, len(info.Tracks))
-	for _, t := range info.Tracks {
-		tracks = append(tracks, transcript.Track{Lang: t.Lang, Kind: t.Kind})
+	info, err := ad.probe(ctx, it)
+	if err != nil {
+		return result{}, err
 	}
-	chosen, decisions := transcript.Select(tracks, it.OriginalLang, lang.CaptionPriority, lang.AllowPlatformTranslated)
+	tracks := info.Tracks
+	// Bilibili 沒有語言中繼資料：看得到 AI 字幕軌時，用它的語言當原文語言（lang_source 為 metadata），
+	// 寫回 item；之後的步驟與重跑都從 item 讀到。UpdateItemMeta 會整欄覆寫 metadata_json，所以原樣帶回。
+	originalLang, inferred := inferOriginalLang(it.Platform, it.OriginalLang, tracks)
+	var meta *metaUpdate
+	if inferred {
+		meta = &metaUpdate{item: store.ItemMeta{OriginalLang: originalLang, LangSource: "metadata", Metadata: it.Metadata}}
+	}
+	chosen, decisions := transcript.SelectFor(it.Platform, tracks, originalLang, lang.CaptionPriority, lang.AllowPlatformTranslated)
+
+	// 原文語言可能是這次執行才推斷出來的（Bilibili），快取鍵與 fallback 都要用推斷後的值。
+	fit := it
+	fit.OriginalLang = originalLang
 
 	// 快取鍵只含會影響結果的輸入。用平台字幕時 fallback 來源的參數不影響結果，不進快取鍵；
 	// 會用到 fallback 來源時（沒選到字幕軌，或字幕軌下載後是空的）它們的參數要進快取鍵，
@@ -102,11 +115,11 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		}
 		if f, ok := p.fetchers[groq.ID]; ok && withFallback && slices.Contains(lang.Fallback, groq.ID) {
 			// 同理，Groq 的 base_url、model 與語言提示影響結果。
-			params["groq"] = f.params(it, lang)
+			params["groq"] = f.params(fit, lang)
 		}
 		return cacheKey{
 			Item: it.ID, Stage: StageTranscript, Impl: p.implVersion(StageTranscript), Provider: "yt-dlp",
-			Upstream: paramsSHA(map[string]any{"tracks": sortedTracks(tracks), "original_lang": it.OriginalLang}),
+			Upstream: paramsSHA(map[string]any{"tracks": sortedTracks(tracks), "original_lang": originalLang}),
 			Params:   paramsSHA(params),
 		}.String()
 	}
@@ -121,7 +134,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		}
 		stage.ArtifactID = hit.ArtifactID
 		return result{
-			task: taskDone, advance: true, stage: stage, probes: toProbes(decisions),
+			task: taskDone, advance: true, stage: stage, probes: toProbes(decisions), meta: meta,
 			state: store.StageState{Status: store.StatusDone},
 		}, true
 	}
@@ -131,7 +144,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 
 	var cues []subtitle.Cue
 	if chosen != nil {
-		if cues, err = p.fetchCues(ctx, it.ExternalID, *chosen); err != nil {
+		if cues, err = p.fetchCues(ctx, ad, it, *chosen); err != nil {
 			return result{}, err
 		}
 		if len(cues) == 0 {
@@ -150,21 +163,30 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	}
 
 	if chosen == nil {
+		// SRC-R8：先判斷來源需不需要 cookie，才輪到等待與 fallback。
+		if res, ok := p.blockForCookie(it, lang, info, stage, decisions); ok {
+			res.meta = meta
+			return res, nil
+		}
 		if res, ok := p.waitForAutoCaptions(it, lang, info, decisions); ok {
 			return res, nil
 		}
-		return p.runFallback(ctx, it, lang, stage, decisions)
+		res, err := p.runFallback(ctx, fit, lang, stage, decisions)
+		if err == nil {
+			res.meta = meta
+		}
+		return res, err
 	}
 
-	version, err := p.yt.Version(ctx)
+	version, err := ad.version(ctx)
 	if err != nil {
 		return result{}, err
 	}
-	srcID := transcript.PlatformSource(chosen.Kind)
+	srcID := transcript.PlatformSource(it.Platform, chosen.Kind)
 	artLang := transcript.NormalizeLang(chosen.Lang)
 	prov, err := p.provenance(map[string]any{
 		"stage": StageTranscript, "impl_version": p.implVersion(StageTranscript),
-		"source": srcID, "timing": sourceTiming(chosen.Kind),
+		"source": srcID, "timing": sourceTiming(it.Platform, chosen.Kind),
 		"track":         map[string]string{"lang": artLang, "kind": chosen.Kind},
 		"params_sha256": paramsSHA(map[string]any{"caption_priority": lang.CaptionPriority, "allow_platform_translated": lang.AllowPlatformTranslated}),
 	}, map[string]string{"yt-dlp": version})
@@ -176,9 +198,39 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		return result{}, err
 	}
 	return result{
-		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions),
+		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions), meta: meta,
 		state: store.StageState{Status: store.StatusDone},
 	}, nil
+}
+
+// reasonNeedsAction 是來源需要使用者處理（例如 cookie）時記在 source_probes 的原因。
+const reasonNeedsAction = "needs_action"
+
+// blockForCookie 實作 SRC-R8：Bilibili 的 AI 字幕需要 cookie 才看得到。以下條件全部成立時，transcript 為 blocked
+// （needs_action，ResumeOn 為 cookie:bilibili），bilibili-ai 記為 unavailable／needs_action；不成立時 ok 為 false。
+//  1. 平台是 Bilibili，而且 Probe 回報未登入（NeedsLogin）。
+//  2. 沒有選到字幕軌（呼叫端保證）。
+//  3. language.caption_priority 有 kind 為 auto 的規則。
+//
+// 這是推定：未登入時分不出平台有沒有 CC 或 AI 字幕、也看不到語言（SRC 規格待決問題），等 M0 驗證。
+func (p *Pipeline) blockForCookie(it store.Item, lang Language, info *probed, stage *store.StageResult, decisions []transcript.Decision) (result, bool) {
+	if it.Platform != source.PlatformBilibili || !info.NeedsLogin {
+		return result{}, false
+	}
+	if !slices.ContainsFunc(lang.CaptionPriority, func(r transcript.Rule) bool { return r.Kind == transcript.KindAuto }) {
+		return result{}, false
+	}
+	ds := slices.Clone(decisions)
+	found := false
+	for i, d := range ds {
+		if d.Source == transcript.SourceBilibiliAI && d.State == transcript.StateUnavailable {
+			ds[i].Reason, found = reasonNeedsAction, true
+		}
+	}
+	if !found {
+		ds = append(ds, transcript.Decision{Source: transcript.SourceBilibiliAI, Kind: transcript.KindAuto, State: transcript.StateUnavailable, Reason: reasonNeedsAction})
+	}
+	return blockedFor(stage, ds, bilibili.ResumeOnCookie, bilibili.MsgAICaptionsNeedLogin, bilibili.ActionUploadCookie, bilibili.ActionUseASR), true
 }
 
 // waitForAutoCaptions 在 YouTube 自動字幕可能還沒生成時，回傳 waiting 的結果（SRC-R6）；不需要等待時 ok 為 false。
@@ -193,7 +245,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 //
 // 沒有語音的影片永遠不會有自動字幕，會白等 24 小時；這是已知的取捨（見 SRC 規格的待決問題）。
 // 等待不消耗重試次數，下次檢查固定是 2 小時後，不截到 24 小時的期限：期限過後的那次檢查才改用下一個來源。
-func (p *Pipeline) waitForAutoCaptions(it store.Item, lang Language, info *youtube.Info, decisions []transcript.Decision) (result, bool) {
+func (p *Pipeline) waitForAutoCaptions(it store.Item, lang Language, info *probed, decisions []transcript.Decision) (result, bool) {
 	if it.Platform != source.PlatformYouTube || info.PublishedAt == nil {
 		return result{}, false
 	}
@@ -207,8 +259,8 @@ func (p *Pipeline) waitForAutoCaptions(it store.Item, lang Language, info *youtu
 	if !slices.ContainsFunc(lang.CaptionPriority, func(r transcript.Rule) bool { return r.Kind == transcript.KindAuto }) {
 		return result{}, false
 	}
-	if slices.ContainsFunc(info.Tracks, func(t youtube.Track) bool {
-		return t.Kind == youtube.KindAuto || t.Kind == youtube.KindPlatformTranslated
+	if slices.ContainsFunc(info.Tracks, func(t transcript.Track) bool {
+		return t.Kind == transcript.KindAuto || t.Kind == transcript.KindPlatformTranslated
 	}) {
 		return result{}, false
 	}
@@ -391,12 +443,16 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: transcript.ReasonNotConfigured})
 		case isNeedsAction(err):
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: probeReason(err, errclass.ClassNeedsAction)})
-			msg, actions := msgSourceNeedsAction, []string(nil)
+			msg, actions, resumeOn := msgSourceNeedsAction, []string(nil), ""
 			var ce *errclass.Error
-			if errors.As(err, &ce) && ce.Message != "" {
-				msg, actions = ce.Message, ce.Actions
+			if errors.As(err, &ce) {
+				// 錯誤指定了恢復條件（例如 cookie:bilibili）時一併記錄，補上 cookie 後可依它恢復。
+				resumeOn = ce.ResumeOn
+				if ce.Message != "" {
+					msg, actions = ce.Message, ce.Actions
+				}
 			}
-			return blockedFor(stage, decisions, msg, actions...), nil
+			return blockedFor(stage, decisions, resumeOn, msg, actions...), nil
 		case isPermanent(err):
 			// 這個來源的請求有問題（重試也不會好）：記下原因後繼續下一個來源；全部用完才照 SRC-R5。
 			// err 只含狀態碼等診斷資訊，不含 API key（NFR-SEC-3）。
@@ -407,7 +463,7 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 		}
 	}
 	if !executed && len(lang.Fallback) > 0 {
-		return blockedFor(stage, decisions, msgNoKey, actionSetKey), nil
+		return blockedFor(stage, decisions, "", msgNoKey, actionSetKey), nil
 	}
 	return result{
 		task: taskFailed, stage: stage, probes: toProbes(decisions),
@@ -417,13 +473,14 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 	}, nil
 }
 
-// blockedFor 是需要使用者處理的步驟結果（SRC-R10）：設定或更換 API key、升級方案。
-func blockedFor(stage *store.StageResult, decisions []transcript.Decision, msg string, actions ...string) result {
+// blockedFor 是需要使用者處理的步驟結果（SRC-R8、SRC-R10）：設定或更換 API key、升級方案、上傳 cookie。
+// resumeOn 是機器可讀的恢復條件（例如 cookie:bilibili），沒有時傳空字串。
+func blockedFor(stage *store.StageResult, decisions []transcript.Decision, resumeOn, msg string, actions ...string) result {
 	return result{
 		task: taskFailed, stage: stage, probes: toProbes(decisions),
 		state: store.StageState{
 			Status: store.StatusBlocked, BlockReason: string(errclass.ClassNeedsAction), ErrorClass: string(errclass.ClassNeedsAction),
-			Message: msg, Actions: actions,
+			ResumeOn: resumeOn, Message: msg, Actions: actions,
 		},
 	}
 }
@@ -487,7 +544,7 @@ func sortedTracks(in []transcript.Track) []transcript.Track {
 }
 
 // fetchCues 下載一條字幕軌並解析成 cue。暫存檔放在 <data>/tmp，用完就清除（啟動時也會清空）。
-func (p *Pipeline) fetchCues(ctx context.Context, videoID string, t transcript.Track) ([]subtitle.Cue, error) {
+func (p *Pipeline) fetchCues(ctx context.Context, ad platformAdapter, it store.Item, t transcript.Track) ([]subtitle.Cue, error) {
 	tmpRoot := filepath.Join(p.dataDir, "tmp")
 	if err := os.MkdirAll(tmpRoot, dirPerm); err != nil {
 		return nil, err
@@ -497,17 +554,7 @@ func (p *Pipeline) fetchCues(ctx context.Context, videoID string, t transcript.T
 		return nil, err
 	}
 	defer os.RemoveAll(dir)
-
-	data, err := p.yt.FetchCaptions(ctx, videoID, youtube.Track{Lang: t.Lang, Kind: t.Kind}, dir)
-	if err != nil {
-		return nil, err
-	}
-	cues, err := subtitle.ParseVTT(data)
-	if err != nil {
-		// 平台給的檔案格式不對，重試也不會變好。
-		return nil, errPermanent(fmt.Sprintf("字幕檔無法解析：%v", err))
-	}
-	return cues, nil
+	return ad.fetchCues(ctx, it, t, dir)
 }
 
 // newCuesArtifact 把字幕寫成產出檔，回傳要寫進資料庫的記錄。

@@ -42,7 +42,11 @@ type Error struct {
 	// 使用者要處理的錯誤會填。空的 Message 表示沒有具體說明，由呼叫端用通用訊息。
 	Message string
 	Actions []string
-	Err     error
+	// ResumeOn 是步驟 blocked 時機器可讀的恢復條件，格式為 cookie:<platform>（例如 cookie:bilibili、
+	// cookie:youtube）；使用者補上該平台的 cookie 後，系統依它找出要恢復的步驟。空字串表示沒有自動恢復的條件。
+	// 只有 needs_action 這類會停下來的錯誤才有意義。
+	ResumeOn string
+	Err      error
 }
 
 func (e *Error) Error() string {

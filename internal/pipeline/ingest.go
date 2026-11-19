@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/queue"
@@ -39,7 +40,9 @@ type IngestResult struct {
 // YouTube 播放清單展開成多部影音，每部各自套用 ING-R2（ING-R4）；回傳的順序與清單相同。
 //
 // 錯誤：ErrUnrecognizedURL、ErrChannel、*InvalidError（422）、*UpstreamError（502，yt-dlp 失敗）、
-// *NotImplementedError（501，例如 Bilibili、Podcast、處理方案）。
+// *NotImplementedError（501，例如沒有設定 Bilibili 依賴、Podcast、處理方案）。
+//
+// Bilibili 每個分P 是一個影音（ING-R3）：網址沒有 p 時展開全部分P（或 parts 指定的），有 p=N 時只建立那一個。
 func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResult, error) {
 	t, ok := source.Recognize(req.URL)
 	switch {
@@ -51,15 +54,19 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResul
 	if req.Until != "" && !ValidStage(req.Until) {
 		return nil, invalidf("until 必須是 %v 其中之一。", Stages)
 	}
-	if t.Platform != source.PlatformYouTube {
+	switch {
+	case t.Platform == source.PlatformYouTube:
+	case t.Platform == source.PlatformBilibili && p.bili != nil:
+	default:
+		// 沒有註冊的平台（還沒實作，或 Bilibili 的依賴沒有設定）。
 		return nil, &NotImplementedError{What: "新增 " + t.Platform + " 的影音"}
 	}
 	if req.Profile != "" {
 		// TODO(PRF)：處理方案屬於 M2；之後在全域設定與單次覆寫之間插入處理方案這一層。
 		return nil, &NotImplementedError{What: "處理方案"}
 	}
-	if len(req.Parts) > 0 || len(req.Episodes) > 0 {
-		return nil, invalidf("YouTube 影片沒有分P 或單集可以選擇。")
+	if err := validateSelection(t, req); err != nil {
+		return nil, err
 	}
 
 	global, err := p.globalConfig(ctx)
@@ -83,8 +90,14 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResul
 
 	// 播放清單在這裡才展開：前面的驗證都通過了，才花時間呼叫 yt-dlp。
 	targets := []source.Target{t}
-	if t.Kind == source.KindPlaylist {
+	switch {
+	case t.Kind == source.KindPlaylist:
 		if targets, err = p.expandPlaylist(ctx, t); err != nil {
+			return nil, err
+		}
+	case t.Platform == source.PlatformBilibili && t.Part == 0:
+		// 網址沒有 p：展開分P（ING-R3）；有 p 時只建立那一個，不呼叫 yt-dlp。
+		if targets, err = p.expandParts(ctx, t, req.Parts); err != nil {
 			return nil, err
 		}
 	}
@@ -179,6 +192,68 @@ func (p *Pipeline) expandPlaylist(ctx context.Context, t source.Target) ([]sourc
 		targets = append(targets, source.Target{
 			Platform: source.PlatformYouTube, Kind: source.KindVideo, ExternalID: e.ID, URL: youtube.WatchURL(e.ID),
 		})
+	}
+	return targets, nil
+}
+
+// validateSelection 檢查 parts 與 episodes：YouTube 沒有可選的分P 或單集；Bilibili 沒有單集，
+// 網址已經有 p 就不能再給 parts，parts 的編號從 1 起算。範圍要等展開之後才知道（見 expandParts）。
+func validateSelection(t source.Target, req IngestRequest) error {
+	switch {
+	case t.Platform != source.PlatformBilibili:
+		if len(req.Parts) > 0 || len(req.Episodes) > 0 {
+			return invalidf("YouTube 影片沒有分P 或單集可以選擇。")
+		}
+	case len(req.Episodes) > 0:
+		return invalidf("Bilibili 影片沒有單集可以選擇。")
+	case t.Part > 0 && len(req.Parts) > 0:
+		return invalidf("網址已經指定了分P（p=%d），不能再指定 parts。", t.Part)
+	}
+	for _, n := range req.Parts {
+		if n < 1 {
+			return invalidf("parts 的分P 編號必須從 1 起算，收到 %d。", n)
+		}
+	}
+	return nil
+}
+
+// expandParts 以 yt-dlp 展開 Bilibili 影片的分P，回傳要建立的分P（ING-R3）：沒有指定 parts 時是全部，
+// 指定時只有那些分P（重複的去掉，依分P 順序）；有編號不在影片的分P 範圍內時是 422。
+//
+// yt-dlp 失敗時的對應同播放清單（見 expandPlaylist）：影片不存在或有地區限制是 422，其他是 *UpstreamError（502）。
+func (p *Pipeline) expandParts(ctx context.Context, t source.Target, want []int) ([]source.Target, error) {
+	entries, err := p.bili.Parts(ctx, t.ExternalID)
+	if err != nil {
+		switch class, _ := errclass.ClassOf(err); {
+		case ctx.Err() != nil:
+			return nil, ctx.Err()
+		case class == errclass.ClassPermanent:
+			return nil, invalidf("找不到這部 Bilibili 影片，可能已刪除或有地區限制。")
+		case class == errclass.ClassNeedsAction:
+			var ce *errclass.Error
+			if errors.As(err, &ce) && ce.Message != "" {
+				return nil, &UpstreamError{Msg: ce.Message, Err: err}
+			}
+			return nil, &UpstreamError{Msg: "無法執行 yt-dlp，請確認已安裝（可執行 notesteme doctor）。", Err: err}
+		}
+		return nil, &UpstreamError{Msg: "yt-dlp 讀取 Bilibili 分P 失敗，請稍後再試。", Err: err}
+	}
+	if len(entries) == 0 {
+		return nil, invalidf("這部影片沒有可新增的分P。")
+	}
+	var targets []source.Target
+	seen := map[int]bool{}
+	for _, e := range entries {
+		if seen[e.Part] || (len(want) > 0 && !slices.Contains(want, e.Part)) {
+			continue
+		}
+		seen[e.Part] = true
+		targets = append(targets, bilibiliPart(t.ExternalID, e.Part))
+	}
+	for _, n := range want {
+		if !seen[n] {
+			return nil, invalidf("這部影片沒有第 %d 個分P（共 %d 個）。", n, len(entries))
+		}
 	}
 	return targets, nil
 }

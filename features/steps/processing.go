@@ -319,11 +319,11 @@ func (s *Scenario) hasTranscriptSource(ref string) bool {
 			return true
 		}
 	}
-	id, err := youtubeID(ref)
+	key, err := s.videoKey(ref) // yt:<id> 或 bili:<bvid>/p<n>
 	if err != nil {
 		return false
 	}
-	v, ok := s.World.Tools.Videos[id]
+	v, ok := s.World.Tools.Videos[key]
 	if !ok {
 		return false
 	}

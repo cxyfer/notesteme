@@ -38,6 +38,7 @@ func stageRunFromRow(row sqlcdb.StageRun) (StageRun, error) {
 		Variant:          row.Variant,
 		Status:           row.Status,
 		BlockReason:      row.BlockReason,
+		ResumeOn:         row.ResumeOn,
 		ErrorClass:       row.ErrorClass,
 		Message:          row.ErrorMessage,
 		Executor:         row.Executor,
@@ -140,6 +141,7 @@ func (r *Repo) SetStageState(ctx context.Context, id string, st StageState) erro
 	row, err := r.q.SetStageState(ctx, sqlcdb.SetStageStateParams{
 		Status:       st.Status,
 		BlockReason:  st.BlockReason,
+		ResumeOn:     st.ResumeOn, // SQL 只在 blocked 時保留，其他狀態會清空
 		ErrorClass:   st.ErrorClass,
 		ErrorMessage: st.Message,
 		ActionsJson:  string(actions),
@@ -176,6 +178,24 @@ func (r *Repo) DoneStageByCacheKey(ctx context.Context, itemID, stage, cacheKey 
 		return StageRun{}, notFound(err)
 	}
 	return stageRunFromRow(row)
+}
+
+// BlockedRunsByResume 列出未刪除影音中，每個 (影音, 步驟) 最新一筆為 blocked 且 resume_on 等於 token 的步驟，
+// 依建立順序排列。token 的格式見 errclass.Error.ResumeOn；使用者補上 cookie 後，呼叫端用它找出要恢復的步驟。
+func (r *Repo) BlockedRunsByResume(ctx context.Context, token string) ([]StageRun, error) {
+	rows, err := r.q.BlockedRunsByResume(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]StageRun, 0, len(rows))
+	for _, row := range rows {
+		s, err := stageRunFromRow(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, nil
 }
 
 func nonNil(s []string) []string {

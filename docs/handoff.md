@@ -1,6 +1,6 @@
 # 交接：M1 開發進度
 
-> 更新：2026-11-14。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；#5（CLI）已合併；GRD 切片是 PR #6（`feat/guards`）；SRC-A 切片在 `feat/sources`（疊在 `feat/guards` 上，還沒 push）。
+> 更新：2026-11-15。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；#5（CLI）已合併；GRD 切片是 PR #6（`feat/guards`）；SRC-A 切片在 `feat/sources`、SRC-B 切片在 `feat/bilibili`（依序疊在 `feat/guards` 上，都還沒 push）。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -15,24 +15,25 @@
   - CLI 切片：`internal/cli`（`ingest`、`items`、`export`、`doctor`）、standalone 與 client 模式、本機 Unix socket（`/data/notesteme.sock`）、`--server` 加 token、結束碼、`internal/doctor`、`item.created` 事件、通過場景的棘輪（`features/passing.txt`）。
   - GRD 切片：netguard 的 allowlist（網段、單一 IP、主機名稱）接到設定檔 `network.allow_private`；轉址上限 5 次；回應大小上限（feed 10 MiB、音檔 2 GiB，超過即拒絕不截斷）；被擋的請求回 422（`blocked_address`、`too_many_redirects`、`response_too_large`、`unsupported_scheme`）並歸為 permanent；`internal/pathguard`（inbox 與 `media_roots`，解析 symlink、`..`、dangling symlink）在 serve 與本機 socket 回 403 `path_outside_roots`，standalone 不受限；YouTube 播放清單展開（ING-R4，yt-dlp `--flat-playlist -J`，同一個交易建立）。
   - SRC-A 切片：Groq ASR 來源（`internal/source/groq`，OpenAI 相容的 `verbose_json`，key 用環境變數 `NOTESTEME_GROQ_API_KEY`，預設 preset 內建）、yt-dlp 音訊下載（`--max-filesize 2G`，Groq 單檔 25 MiB 上限）；fallback 錯誤改為與來源無關（`errclass.ErrNoResult`、`ErrNotConfigured`，訊息與動作由來源的 `errclass.Error` 帶）；yt-dlp 403 → `needs_action`（SRC-R9）；等待 YouTube 自動字幕（SRC-R6）；`language_mismatch`（SRC-R4 的一部分）；transcript 依第一個 fallback 來源歸 `asr` 或 `download`；doctor 檢查 Groq key；harness 新增 fake Groq（Bearer）、stage 的 blocked／waiting／message／actions 斷言、provenance 與 cue timing 步驟，secret 掃描也涵蓋假工具的參數。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：190 個場景，102 passed、88 pending、0 failed、0 undefined。
+  - SRC-B 切片：Bilibili 來源（`internal/source/bilibili`，yt-dlp `--use-extractors BiliBili`；Probe 不帶 `--no-warnings`，靠登入警告判斷需要 cookie；字幕軌 `ai-<lang>` 是 `bilibili-ai`，其他是 `bilibili-cc`，timing 都是 `cue`；從 AI 字幕軌推斷原文語言）；分P 展開（ING-R3）；SRC-R8 需要 cookie 時 blocked；cookie 存放（`internal/cookies`：正規化成 Netscape、`secrets` 表以資料金鑰 XChaCha20-Poly1305 加密、每次呼叫一個 0600 暫存檔）；`POST /api/cookies`（512 KiB 上限、控制字元拒絕、回應不含值）；`stage_runs.resume_on` 與 `ResumeBlocked`（上傳 cookie 後恢復同一個 token 的 blocked 步驟；執行中才補上 cookie 時改為 requeue）；YouTube 的 cookie 注入、members-only 與 403 帶 `cookie:youtube`；playlist 的 extractor 修正為 `youtube:tab,youtube:playlist`；yt-dlp stderr 中的 cookie 警告行會遮蔽；harness 的假 yt-dlp 照真實語意模擬 Bilibili、`--use-extractors`（fullmatch）、Netscape cookie 檔，secret 掃描涵蓋 cookie 值與關閉後的 `/data`，CLI 步驟有 30 秒的真實時間逾時。
+- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：189 個場景，108 passed、81 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
   |---|---|---|
   | AUTH | 12 | 11 |
-  | CLI | 7 | 2 |
+  | CLI | 8 | 1 |
   | DEL | 0 | 21 |
   | GRD | 19 | 3 |
-  | ING | 13 | 11 |
+  | ING | 15 | 9 |
   | LIB | 0 | 10 |
   | NRM | 9 | 2 |
   | OPS | 1 | 12 |
   | OUT | 8 | 0 |
-  | PIPE | 18 | 1 |
-  | SEC | 3 | 7 |
-  | SRC | 12 | 8 |
+  | PIPE | 19 | 0 |
+  | SEC | 4 | 6 |
+  | SRC | 13 | 6 |
 
-  PIPE 剩下的 R4 要等 SRC-B 的 bilibili-ai 加 cookie。SRC 剩下的八個：R8 要 Bilibili 與 cookie（SRC-B）；R11 的語言偵測兩個（本機檔案要 ING-05，mixed 要文字語言偵測）；R12、R14 三個、R15 要本機檔案或 podcast。CLI 剩下的兩個：`--server` 加 token 要等 AUTH 的 token（AUTH-R7～R9），等待 Bilibili 影音要等 SRC 的 Bilibili 來源。GRD 剩下的三個：DNS rebinding 要等 ING 的 podcast feed，GRD-R7 預期 201 的兩個例子要等 ING-05（本機檔案的新增）。
+  PIPE 的 M1 場景全部通過。SRC 剩下的六個：R11 本機檔案的語言偵測要 ING-05（mixed 標為 `@wip`，要文字語言偵測）；R12、R14 三個、R15 要本機檔案或 podcast。CLI 剩下的一個：`--server` 加 token 要等 AUTH 的 token（AUTH-R7～R9）。GRD 剩下的三個：DNS rebinding 要等 ING 的 podcast feed，GRD-R7 預期 201 的兩個例子要等 ING-05（本機檔案的新增）。
 
   M1 的 OUT 場景全部通過，但 OUT 的 M2 部分還沒做，所以規格狀態仍是 `ready`，不是 `implemented`。
 
@@ -40,13 +41,13 @@
 
 ## 2. 下一步
 
-使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成）→ GRD（完成，PR #6）→ SRC-A（完成，`feat/sources`）→ **SRC-B（Bilibili 與 cookie）** → OPS → LIB → DEL。使用者要求每個切片完成後自動開始下一個。
+使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成）→ GRD（完成，PR #6）→ SRC-A（完成，`feat/sources`）→ SRC-B（完成，`feat/bilibili`）→ **OPS** → LIB → DEL。使用者要求每個切片完成後自動開始下一個。
 
 接下來：
 
 1. PR #6（GRD）等 CI 與 Codex 審查，通過後由 owner 合併（自動模式不允許 agent 執行 `gh pr merge`）。
-2. PR #6 整理好之後（owner push `feat/guards`、把 base 改成 `master`），push `feat/sources` 並開 SRC-A 的 PR（base 先用 `feat/guards`）。
-3. SRC-B：Bilibili 來源與 cookie。需要 `POST /api/cookies`（目前不存在，場景會 404 而不是 pending）、Bilibili 的 fake 與 `a Bilibili video … with … parts` 步驟；涵蓋 SRC-R8、PIPE-R4、CLI 結束碼 3 的場景。CLI 場景要求輸出含「上傳 cookie」，目前 engine 的通用訊息不符。
+2. PR #6 整理好之後（owner push `feat/guards`、把 base 改成 `master`），依序 push `feat/sources`、`feat/bilibili` 並開 PR（base 分別是 `feat/guards`、`feat/sources`；前一個合併後改 base 為 `master`，並用 `-s ours` 併入 master）。
+3. OPS 切片：先做 DoR（`features/OPS-*.feature` 的 `@M1` pending 場景與步驟）。
 4. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
 5. `features/fixtures/items/` 還沒做：DEL、NRM、SEC 共 17 個場景停在 `Given the item … has been processed up to …`。做了之後拿掉 `features/steps/processing.go` 的 `pendingWithoutItemFixture`。
 
@@ -201,6 +202,14 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - Supadata 仍是先讀完 body 再依狀態碼分類（Groq 已改成先看狀態碼）。
   - `the provider … has no API key` 對 LLM provider 依參數回 pending（steps.md 4.1 註明 LLM 版本未實作），M2 實作 LLM 時要補。
   - 動作「現在改用語音轉錄」（SRC-R6）只顯示，點擊的處理還沒做。
+- **SRC-B**：
+  - SRC-R8 是推定：Bilibili 未登入時只說「字幕需要登入」，分不出 CC 或 AI，也看不到語言；Bilibili 的錯誤字串、412 風控都依 yt-dlp 原始碼推測，等 M0 實測。
+  - 假 yt-dlp 的兩處與真實不同：members-only 只在下載時失敗（`-J` 不失敗，為了不讓 ING-R9 的 `availability` 偵測失效）；空的 cookie 檔視為未登入（production 不會產生空檔）。production 之後應把 `-J` 的 members-only 錯誤歸為需要 cookie。
+  - `ResumeBlocked` 只恢復同一個 token，沒有場景驗證（被誤恢復的步驟會再次 blocked，看不出差別），只靠單元測試。
+  - 執行中補上 cookie 的判斷用毫秒比較，同一毫秒內上傳仍會 blocked。
+  - 「改用語音轉錄」對 Bilibili 只顯示（Groq 還不能下載 Bilibili 音訊）；沒有 cookie、也沒有字幕的 Bilibili 影片會照 SRC-R5 失敗，訊息「設定語音轉錄服務」可能誤導。
+  - ING-R9 的 Bilibili 部分（在 resolve 標示需要 cookie）做不到，規則待修。
+  - cookie 的 GET／DELETE API 還沒做；有 cookie 就每次呼叫都帶，帳號被標記的風險寫在 SEC 待決問題。
 - **OPS**：migration 前的快照（OPS-R3）；DB schema 比程式新時拒絕啟動（OPS-R4）；`/readyz` 限速。
 - **AUTH**：
   - token（AUTH-R7～R9）還沒做，bearer 一律回 401。

@@ -9,8 +9,63 @@ import (
 	"context"
 )
 
+const blockedRunsByResume = `-- name: BlockedRunsByResume :many
+SELECT sr.id, sr.item_id, sr.stage, sr.lang, sr.variant, sr.status, sr.block_reason, sr.error_class, sr.error_message, sr.actions_json, sr.executor, sr.cache_key, sr.impl_version, sr.config_snapshot_id, sr.artifact_id, sr.not_before, sr.started_at, sr.finished_at, sr.created_at, sr.resume_on FROM stage_runs sr
+JOIN items i ON i.id = sr.item_id
+WHERE i.deleted_at IS NULL AND sr.status = 'blocked' AND sr.resume_on = ?1
+  AND sr.rowid = (
+    SELECT s2.rowid FROM stage_runs s2 WHERE s2.item_id = sr.item_id AND s2.stage = sr.stage
+    ORDER BY s2.created_at DESC, s2.rowid DESC LIMIT 1)
+ORDER BY sr.created_at, sr.rowid
+`
+
+// Stage runs of live items that are the latest run of their (item, stage), blocked, and waiting for the given resume token.
+func (q *Queries) BlockedRunsByResume(ctx context.Context, resumeOn string) ([]StageRun, error) {
+	rows, err := q.db.QueryContext(ctx, blockedRunsByResume, resumeOn)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StageRun
+	for rows.Next() {
+		var i StageRun
+		if err := rows.Scan(
+			&i.ID,
+			&i.ItemID,
+			&i.Stage,
+			&i.Lang,
+			&i.Variant,
+			&i.Status,
+			&i.BlockReason,
+			&i.ErrorClass,
+			&i.ErrorMessage,
+			&i.ActionsJson,
+			&i.Executor,
+			&i.CacheKey,
+			&i.ImplVersion,
+			&i.ConfigSnapshotID,
+			&i.ArtifactID,
+			&i.NotBefore,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.CreatedAt,
+			&i.ResumeOn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const doneStageByCacheKey = `-- name: DoneStageByCacheKey :one
-SELECT id, item_id, stage, lang, variant, status, block_reason, error_class, error_message, actions_json, executor, cache_key, impl_version, config_snapshot_id, artifact_id, not_before, started_at, finished_at, created_at FROM stage_runs
+SELECT id, item_id, stage, lang, variant, status, block_reason, error_class, error_message, actions_json, executor, cache_key, impl_version, config_snapshot_id, artifact_id, not_before, started_at, finished_at, created_at, resume_on FROM stage_runs
 WHERE item_id = ?1 AND stage = ?2 AND cache_key = ?3 AND status = 'done'
 ORDER BY created_at DESC, rowid DESC LIMIT 1
 `
@@ -44,6 +99,7 @@ func (q *Queries) DoneStageByCacheKey(ctx context.Context, arg DoneStageByCacheK
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.CreatedAt,
+		&i.ResumeOn,
 	)
 	return i, err
 }
@@ -165,7 +221,7 @@ func (q *Queries) InsertStageRun(ctx context.Context, arg InsertStageRunParams) 
 }
 
 const markStageRunning = `-- name: MarkStageRunning :one
-UPDATE stage_runs SET status = 'running', block_reason = '', error_class = '', error_message = '',
+UPDATE stage_runs SET status = 'running', block_reason = '', resume_on = '', error_class = '', error_message = '',
   actions_json = '[]', not_before = NULL, started_at = CAST(?1 AS INTEGER), finished_at = NULL
 WHERE id = ?2
 RETURNING item_id, stage, status
@@ -242,19 +298,21 @@ const setStageState = `-- name: SetStageState :one
 UPDATE stage_runs SET
   status        = ?1,
   block_reason  = ?2,
-  error_class   = ?3,
-  error_message = ?4,
-  actions_json  = ?5,
-  not_before    = ?6,
-  started_at    = COALESCE(?7, started_at),
-  finished_at   = ?8
-WHERE id = ?9
+  resume_on     = CASE WHEN ?1 = 'blocked' THEN CAST(?3 AS TEXT) ELSE '' END,
+  error_class   = ?4,
+  error_message = ?5,
+  actions_json  = ?6,
+  not_before    = ?7,
+  started_at    = COALESCE(?8, started_at),
+  finished_at   = ?9
+WHERE id = ?10
 RETURNING item_id, stage, status
 `
 
 type SetStageStateParams struct {
 	Status       string
 	BlockReason  string
+	ResumeOn     string
 	ErrorClass   string
 	ErrorMessage string
 	ActionsJson  string
@@ -271,11 +329,12 @@ type SetStageStateRow struct {
 }
 
 // Every descriptive column is written (unset means cleared); started_at only changes when given,
-// finished_at is always overwritten.
+// finished_at is always overwritten. resume_on is only kept while the new status is blocked.
 func (q *Queries) SetStageState(ctx context.Context, arg SetStageStateParams) (SetStageStateRow, error) {
 	row := q.db.QueryRowContext(ctx, setStageState,
 		arg.Status,
 		arg.BlockReason,
+		arg.ResumeOn,
 		arg.ErrorClass,
 		arg.ErrorMessage,
 		arg.ActionsJson,
@@ -301,7 +360,7 @@ func (q *Queries) SnapshotConfig(ctx context.Context, id string) (string, error)
 }
 
 const stageRunByID = `-- name: StageRunByID :one
-SELECT id, item_id, stage, lang, variant, status, block_reason, error_class, error_message, actions_json, executor, cache_key, impl_version, config_snapshot_id, artifact_id, not_before, started_at, finished_at, created_at FROM stage_runs WHERE id = ?1
+SELECT id, item_id, stage, lang, variant, status, block_reason, error_class, error_message, actions_json, executor, cache_key, impl_version, config_snapshot_id, artifact_id, not_before, started_at, finished_at, created_at, resume_on FROM stage_runs WHERE id = ?1
 `
 
 func (q *Queries) StageRunByID(ctx context.Context, id string) (StageRun, error) {
@@ -327,12 +386,13 @@ func (q *Queries) StageRunByID(ctx context.Context, id string) (StageRun, error)
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.CreatedAt,
+		&i.ResumeOn,
 	)
 	return i, err
 }
 
 const stageRunsByItem = `-- name: StageRunsByItem :many
-SELECT id, item_id, stage, lang, variant, status, block_reason, error_class, error_message, actions_json, executor, cache_key, impl_version, config_snapshot_id, artifact_id, not_before, started_at, finished_at, created_at FROM stage_runs WHERE item_id = ?1 ORDER BY created_at, rowid
+SELECT id, item_id, stage, lang, variant, status, block_reason, error_class, error_message, actions_json, executor, cache_key, impl_version, config_snapshot_id, artifact_id, not_before, started_at, finished_at, created_at, resume_on FROM stage_runs WHERE item_id = ?1 ORDER BY created_at, rowid
 `
 
 func (q *Queries) StageRunsByItem(ctx context.Context, itemID string) ([]StageRun, error) {
@@ -364,6 +424,7 @@ func (q *Queries) StageRunsByItem(ctx context.Context, itemID string) ([]StageRu
 			&i.StartedAt,
 			&i.FinishedAt,
 			&i.CreatedAt,
+			&i.ResumeOn,
 		); err != nil {
 			return nil, err
 		}

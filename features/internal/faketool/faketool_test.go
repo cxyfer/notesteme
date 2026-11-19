@@ -218,7 +218,7 @@ func TestUnknownArgumentExits2AndIsLogged(t *testing.T) {
 func TestCookiesModeLogged(t *testing.T) {
 	s := newScenario(t, sampleState(t))
 	ck := filepath.Join(s.work, "cookies.txt")
-	if err := os.WriteFile(ck, []byte("# Netscape\n"), 0o600); err != nil {
+	if err := os.WriteFile(ck, []byte("# Netscape HTTP Cookie File\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{
@@ -230,7 +230,7 @@ func TestCookiesModeLogged(t *testing.T) {
 		}
 	}
 	calls, _ := ReadCalls(s.root)
-	if len(calls) != 2 || calls[0].CookiesMode != "0600" || calls[0].CookiesFile != ck {
+	if len(calls) != 2 || calls[0].CookiesMode != "0600" || calls[0].CookiesFile != ck || calls[0].Pid == 0 {
 		t.Fatalf("calls = %+v", calls)
 	}
 	if calls[1].CookiesMode != "missing" {
@@ -380,7 +380,7 @@ func TestInProcessBranches(t *testing.T) {
 
 	t.Run("bilibili parts", func(t *testing.T) {
 		code, out, errs := s.inproc("yt-dlp", "-J", "https://www.bilibili.com/video/BV1xx411c7mD?p=2")
-		if code != 0 || !strings.Contains(out, `"playlist_index":2`) {
+		if code != 0 || !strings.Contains(out, `"id":"BV1xx411c7mD_p2"`) {
 			t.Fatalf("code=%d out=%q stderr=%q", code, out, errs)
 		}
 		if code, _, _ := s.inproc("yt-dlp", "-J", "https://www.bilibili.com/video/BV1xx411c7mD?p=3"); code != 1 {
@@ -437,7 +437,7 @@ func TestInProcessBranches(t *testing.T) {
 			{"-o"},
 			{"-J", yt + "abc123xxxxx", yt + "abc123xxxxx"},
 			{"--skip-download", "--write-subs", "--sub-langs", "en", yt + "abc123xxxxx"},
-			{"--skip-download", "--write-subs", "--sub-format", "srt", "-o", "x", yt + "abc123xxxxx"},
+			{"--skip-download", "--write-subs", "--sub-format", "ttml", "-o", "x", yt + "abc123xxxxx"},
 			{yt + "abc123xxxxx"},
 		}
 		for _, args := range cases {

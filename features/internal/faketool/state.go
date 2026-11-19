@@ -49,6 +49,10 @@ type State struct {
 	Gate string `json:"gate,omitempty"`
 	// FFmpegNoLibass 為 true 時，假 ffmpeg 的 -buildconf 不含 --enable-libass。
 	FFmpegNoLibass bool `json:"ffmpeg_no_libass,omitempty"`
+	// CookieKinds 讓平台字幕軌需要登入才看得到：key 是字幕軌的種類（KindManual、KindAuto），
+	// value 是需要登入的平台（目前只有 "bilibili"）。假 yt-dlp 沒有收到該平台的有效 cookie 檔時，
+	// 不列出也不下載這個種類的字幕軌，並印出 login WARNING（見 bilibili.go）。
+	CookieKinds map[string]string `json:"cookie_kinds,omitempty"`
 }
 
 // Video 是一部假的平台影片。
@@ -64,7 +68,8 @@ type Video struct {
 	ChannelID    string    `json:"channel_id,omitempty"`
 	Channel      string    `json:"channel,omitempty"`
 	Chapters     []Chapter `json:"chapters,omitempty"`
-	// Parts 是 Bilibili 的分P數；0 視為 1。
+	// Parts 是 Bilibili 的分P數；0 視為 1。各分P 的標題、原文語言與字幕軌另放在
+	// Videos["<bvid>/p<n>"]（PartKey），沒有登記的分P 沿用這部影片本身。
 	Parts  int     `json:"parts,omitempty"`
 	Tracks []Track `json:"tracks,omitempty"`
 	// AutoNotReady 為 true 時，自動字幕與平台翻譯字幕尚未生成：
@@ -117,11 +122,19 @@ type Call struct {
 	Tool string   `json:"tool"`
 	Argv []string `json:"argv"` // 含工具名稱（argv[0]）
 	Cwd  string   `json:"cwd"`
+	// Pid 是這次呼叫的程序 ID，讓測試判斷呼叫是否仍在執行（見 PidAlive）。
+	Pid int `json:"pid,omitempty"`
 	// CookiesFile 與 CookiesMode 在有 --cookies 時記錄檔案路徑與權限（例如 "0600"）；
 	// 檔案不存在或無法讀取時 CookiesMode 為 "missing"。
 	CookiesFile string `json:"cookies_file,omitempty"`
 	CookiesMode string `json:"cookies_mode,omitempty"`
 }
+
+// PartKey 是 Bilibili 分P 在 State.Videos 中的 key：<bvid>/p<n>。
+func PartKey(bvid string, part int) string { return fmt.Sprintf("%s/p%d", bvid, part) }
+
+// PidAlive 回報 pid 的程序是否仍存活（殭屍不算）。
+func PidAlive(pid int) bool { return pidAlive(pid) }
 
 // FakeDir 回傳場景根目錄 root 下放狀態檔與呼叫紀錄的目錄。
 func FakeDir(root string) string { return filepath.Join(root, "fake") }

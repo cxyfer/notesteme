@@ -1,9 +1,9 @@
 // Package secrets 處理信封加密的金鑰層（SEC-R4、SEC-R5、ADR-0013）：
 // 隨機的資料金鑰存在 DB，並由 master key（NOTESTEME_MASTER_KEY）加密。
 //
-// 目前只做到「第一次啟動建立資料金鑰、之後啟動以 master key 解開」，
-// 讓 master key 錯誤時能拒絕啟動。
-// TODO(SEC-R4、SEC-R6、SEC-R8、SEC-R9)：以資料金鑰加密 secret、輪替 master key、reset。
+// 做到「第一次啟動建立資料金鑰、之後啟動以 master key 解開」（master key 錯誤時拒絕啟動），
+// 以及以資料金鑰加解密單筆 secret（Keyring.Seal、Keyring.Open，見 seal.go）。
+// TODO(SEC-R6、SEC-R8、SEC-R9)：API key 只回末四碼、輪替 master key、reset。
 package secrets
 
 import (

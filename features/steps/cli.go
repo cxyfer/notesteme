@@ -2,11 +2,13 @@ package steps
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/cucumber/godog"
 
@@ -39,6 +41,12 @@ func registerCLI(r *Registry, s *Scenario) {
 	r.Step(`the command output is JSON containing:`, s.commandOutputJSON)
 	r.Step(`the command ran in {word} mode`, s.commandRanIn)
 }
+
+// cliTimeout 是單一 CLI 指令的真實時間上限。
+// 這是防止卡死的保護，不是被測行為：場景的時間都用 fake clock，不受它影響；
+// 只有指令在真實時間內完全沒有結束（例如 --wait 在等沒有人推進的 fake clock）才會觸發。
+// 測試可以調短它。
+var cliTimeout = 30 * time.Second
 
 // ownerRuns 在程序內執行 cli.Execute（ADR-0015）。
 //
@@ -88,7 +96,12 @@ func (s *Scenario) ownerRuns(line string) error {
 	env := s.World.AppEnv()
 	env.Dial = s.World.Dial
 	var stdout, stderr bytes.Buffer
-	res := cli.Execute(s.ctx, args, app.IO{Stdout: &stdout, Stderr: &stderr}, env)
+	cctx, cancel := context.WithTimeout(s.ctx, cliTimeout)
+	defer cancel()
+	res := cli.Execute(cctx, args, app.IO{Stdout: &stdout, Stderr: &stderr}, env)
+	if errors.Is(cctx.Err(), context.DeadlineExceeded) && s.ctx.Err() == nil {
+		return fmt.Errorf("CLI 在 %d 秒內沒有結束，可能是 --wait 在等 fake clock", int(cliTimeout.Seconds()))
+	}
 	s.cmd = &cliRun{
 		res: res, out: s.World.Unexpand(stdout.String()), errOut: s.World.Unexpand(stderr.String()), step: s.step,
 	}

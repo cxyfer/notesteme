@@ -35,6 +35,10 @@ Notesteme 會依使用者或外部內容提供的網址主動發出請求，也�
 
 - 設定檔：`network.allow_private`（字串陣列）、`media_roots`（絕對路徑陣列）、`inbox`（預設 `<資料目錄>/inbox`）
 - 被擋的辨識請求（`POST /api/resolve`）回 422，code 分別為 `blocked_address`、`too_many_redirects`、`response_too_large`、`unsupported_scheme`（轉址到 `http`、`https` 以外的 scheme，訊息為「只支援 http 與 https 網址。」）；路徑不在根目錄內回 403，code 為 `path_outside_roots`。
+- yt-dlp 的 `--use-extractors`（GRD-R6）：yt-dlp 以 fullmatch 比對 extractor 的 IE_NAME，所以名單依用途列出完整名稱：
+  - YouTube 單一影片、字幕、音訊：`youtube`。
+  - YouTube 播放清單展開（ING-R4）：`youtube:tab,youtube:playlist`。播放清單的 extractor 叫 `youtube:tab` 與 `youtube:playlist`，只寫 `youtube` 時真實的 yt-dlp 會回報 Unsupported URL。
+  - Bilibili：`BiliBili`（大小寫依 yt-dlp 的 IE_NAME）。
 
 ## 不在範圍內
 

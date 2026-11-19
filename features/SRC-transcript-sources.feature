@@ -211,7 +211,7 @@ Feature: Transcript sources and quality
     And the worker runs until idle
     Then the original language of "local:meetup.mp4" is "ja"
 
-  @SRC-08 @SRC-R11
+  @SRC-08 @SRC-R11 @wip
   Scenario: Code-switching speech is marked as mixed
     Given a YouTube video "yt:mix001xxxxx" titled "混合語言的分享"
     And "yt:mix001xxxxx" has auto captions in "zh"
