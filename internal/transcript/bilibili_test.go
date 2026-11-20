@@ -30,10 +30,10 @@ func TestBilibiliTrackMapping(t *testing.T) {
 		want Track
 		ok   bool
 	}{
-		{"zh-Hans", Track{"zh-Hans", KindManual}, true},
-		{"en", Track{"en", KindManual}, true},
-		{"ai-zh", Track{"zh", KindAuto}, true},
-		{"ai-zh-Hans", Track{"zh-Hans", KindAuto}, true},
+		{"zh-Hans", Track{Lang: "zh-Hans", Kind: KindManual}, true},
+		{"en", Track{Lang: "en", Kind: KindManual}, true},
+		{"ai-zh", Track{Lang: "zh", Kind: KindAuto}, true},
+		{"ai-zh-Hans", Track{Lang: "zh-Hans", Kind: KindAuto}, true},
 		{"danmaku", Track{}, false}, // 彈幕不是字幕
 		{"ai-", Track{}, false},
 		{"", Track{}, false},
@@ -53,16 +53,16 @@ func TestBilibiliTrackMapping(t *testing.T) {
 
 func TestBilibiliTracksSkipsDanmaku(t *testing.T) {
 	got := BilibiliTracks([]string{"ai-zh", "danmaku", "en"})
-	want := []Track{{"zh", KindAuto}, {"en", KindManual}}
+	want := []Track{{Lang: "zh", Kind: KindAuto}, {Lang: "en", Kind: KindManual}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("tracks = %+v", got)
 	}
 }
 
 func TestSelectForBilibiliUsesBilibiliSources(t *testing.T) {
-	tracks := []Track{{"zh", KindAuto}}
+	tracks := []Track{{Lang: "zh", Kind: KindAuto}}
 	got, decisions := SelectFor(PlatformBilibili, tracks, "zh", defaultRules, false)
-	if got == nil || *got != (Track{"zh", KindAuto}) {
+	if got == nil || *got != (Track{Lang: "zh", Kind: KindAuto}) {
 		t.Fatalf("chosen = %+v", got)
 	}
 	want := []Decision{
