@@ -128,6 +128,8 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 已取得資料目錄的鎖、還沒處理任何請求：清掉 crash 留下的孤兒上傳目錄。
+	cleanOrphanUploads(ctx, s.store, cfg.Data, log)
 
 	hashParams, kdf := auth.ProductionParams, secrets.ProductionKDF
 	if env.Test != nil && env.Test.LowCostHashing {
