@@ -50,17 +50,17 @@ func TestRecognize(t *testing.T) {
 }
 
 func TestImplemented(t *testing.T) {
-	for _, id := range []string{"youtube-manual", "youtube-auto", "bilibili-cc", "bilibili-ai", "local-sidecar", "local-embedded", "supadata", "groq"} {
+	for _, id := range []string{"youtube-manual", "youtube-auto", "bilibili-cc", "bilibili-ai", "local-sidecar", "local-embedded", "podcast-transcript", "supadata", "groq"} {
 		if !Implemented(id) {
 			t.Errorf("%s 應該已實作", id)
 		}
 	}
-	for _, id := range []string{"podcast-transcript", ""} {
+	for _, id := range []string{"transcript-from-the-moon", ""} {
 		if Implemented(id) {
 			t.Errorf("%s 還沒有實作", id)
 		}
 	}
-	if got := ImplementedSources(); len(got) != 8 {
+	if got := ImplementedSources(); len(got) != 9 {
 		t.Errorf("ImplementedSources = %v", got)
 	}
 }
