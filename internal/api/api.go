@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -57,10 +58,18 @@ type Deps struct {
 	Tools     ToolManager
 	Backup    BackupSource
 	Providers ProviderRegistry
-	// CursorKey 是列表游標的 HMAC 金鑰（LIB-R4）；空的時候 build 在啟動時隨機產生。
+	// CursorKey 是列表游標的 HMAC 金鑰（LIB-R4）；空的時候用 processCursorKey（每個 process 隨機產生一次）。
 	// 金鑰只存在記憶體，重新啟動後舊游標會回 422，用戶端從第一頁重新讀取即可。
 	CursorKey []byte
 }
+
+// processCursorKey 是沒有指定 CursorKey 時用的金鑰：每個 process 只產生一次，
+// 同一個 process 的所有 handler（TCP 與本機 socket）共用，游標可以跨 listener 使用。
+var processCursorKey = sync.OnceValue(func() []byte {
+	k := make([]byte, 32)
+	rand.Read(k) // Go 1.24 起 crypto/rand.Read 不會回傳錯誤
+	return k
+})
 
 // ReadyCheck 是 /readyz 的一個檢查項目；Check 回傳 nil 代表正常。
 type ReadyCheck struct {
@@ -79,8 +88,7 @@ func New(d Deps) http.Handler {
 // build 組出路由與 middleware；authn 決定受保護路徑的驗證方式（New 與 NewLocal 的唯一差異）。
 func build(d Deps, authn func(http.Handler) http.Handler) http.Handler {
 	if len(d.CursorKey) == 0 {
-		d.CursorKey = make([]byte, 32)
-		rand.Read(d.CursorKey) // Go 1.24 起 crypto/rand.Read 不會回傳錯誤
+		d.CursorKey = processCursorKey()
 	}
 	mux := http.NewServeMux()
 
