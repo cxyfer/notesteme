@@ -14,6 +14,7 @@
 | `items/` | `Given the item … has been processed up to …` 使用的影音資料 | steps |
 | `media/` | `Given the audio of … is "<name>"` 使用的音訊屬性：一行假媒體標記（沒有 item），帶 `duration`、`compressed`（ASR 前處理之後的大小）、`silences`，例如 `audio-40mb-after-compression.m4a` | steps（併進 inbox 檔或假 yt-dlp 的標記） |
 | `local/` | `Given a local file "<name>" in the inbox` 與 `When the owner uploads "<name>"` 使用的本機檔案：影音（標記加填充）、sidecar 字幕、不是影音的檔案，以及內嵌字幕的內容（`embedded/`） | steps（複製到 inbox 或上傳）、假 ffmpeg（抽內嵌字幕） |
+| `podcast/` | `Given a podcast feed … with the episodes:` 的音檔（假媒體檔），以及 `the source "podcast-transcript" returns "<檔名>" for …` 的字幕（`.vtt`、`.srt`、`.json`） | steps（交給 `fakepodcast`） |
 | `llm/` | fake LLM provider 的回應 | fake LLM |
 
 目錄在第一個 fixture 出現時才建立；沒有用到的目錄不需要預先放空檔案。
@@ -158,6 +159,29 @@ NOTESTEME-FAKE-MEDIA item=<代號> duration=<秒>[ streams=<type>/<codec>[/<lang
 步驟把 `captions/<檔名>` 寫進該影片對應種類的字幕軌（語言取自這個種類既有的字幕軌，沒有就用影片的語言）。
 注意：目前假 yt-dlp 一律把內容當 VTT 寫出，所以 `auto-zh-en-mixed.json` 的內容是 VTT，只是沿用場景中的檔名；
 `youtube-auto` 改用 json3 之前（NRM 待決問題）維持這樣。
+
+### `podcast/` 的檔案
+
+音檔是假媒體檔（標記 v2，沒有 `item`）；`fakepodcast` 提供時把標記的 `item` 改成這一集的代號（`pod:<feed>/<guid>`），
+後面的填充原樣保留，支援 HEAD 與 Range。標記多一個只給 feed 用的欄位：
+
+- `listed=<秒>`：feed 的 `<itunes:duration>` 標示的長度；沒有時 feed 沿用標記的 `duration`（即 ffprobe 量到的長度）。
+  `ParseMedia` 忽略這個欄位，提供出去的音檔也不帶它（`FormatMedia` 不輸出）。
+
+| 檔案 | 內容 |
+|---|---|
+| `ep41.mp3` | `duration=1500`，音訊 |
+| `ep42.mp3` | `duration=1800`，音訊（GRD 的 `https://rebind.example.com/ep42.mp3` 也取這個檔案：完整網址取 path 的檔名） |
+| `ep43-with-extra-ads.mp3` | `duration=3720 listed=3600`：音檔比 feed 標示的多 120 秒（插播廣告） |
+| `ep42-transcript.vtt` | 真的 WEBVTT，3 句，最後一句結束於 00:29:58.000，與 `ep42.mp3`（1800 秒）相差 0.11%：不提醒 |
+| `ep43-transcript.vtt` | 3 句，最後一句結束於 01:00:00.000，與 `ep43-with-extra-ads.mp3`（3720 秒）相差 120/3720 = 3.23%：超過 2%，提醒「時間可能偏移」（SRC-R15） |
+
+- feed 網址是 `https://feeds.example.com/<名稱>.xml`，每次請求都依當時的狀態產生 RSS：`<language>en</language>`、
+  enclosure 的 `length` 是實際提供的位元組數、`<itunes:duration>`；字幕被腳本化之後才出現 `<podcast:transcript>`。
+- `audio` 欄位是檔名時，網址為 `https://media.example.com/<名稱>/<檔名>`；是完整網址時登記到那個網址（fixture 取 path 的檔名）。
+  字幕的網址同樣是 `https://media.example.com/<名稱>/<字幕檔名>`。
+- feed、音檔與字幕都登記在 fakenet 上，連線與 DNS 解析走 fakenet 的序列，所以 `the host … resolves to … and then …` 對它們有效。
+- fixture 不存在、音檔不是假媒體檔時，步驟立即失敗。
 
 ## 新增 fixture 的步驟
 

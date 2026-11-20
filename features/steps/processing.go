@@ -172,13 +172,15 @@ func (s *Scenario) lastInTrashConflict(ref string) (trashBody, bool) {
 	return b, true
 }
 
-// pickAttentionStage 是 attentionStage 的選擇規則（純函式）。
+// pickAttentionStage 是 attentionStage 的選擇規則（純函式）：依 pipeline 順序取第一個「不是 done 而且有訊息」的步驟；
+// 沒有時退回第一個「done 而且有訊息」的步驟（例如 SRC-R15 的「時間可能偏移」掛在已完成的 transcript 步驟）。
 func pickAttentionStage(ref string, it itemJSON) (stageJSON, error) {
 	byName := map[string]stageJSON{}
 	for _, st := range it.Stages {
 		byName[st.Stage] = st
 	}
 	var seen []string
+	var doneWithMessage *stageJSON
 	for _, name := range pipeline.Stages {
 		st, ok := byName[name]
 		if !ok {
@@ -187,9 +189,15 @@ func pickAttentionStage(ref string, it itemJSON) (stageJSON, error) {
 		if st.Status != "done" && st.Message != "" {
 			return st, nil
 		}
+		if st.Status == "done" && st.Message != "" && doneWithMessage == nil {
+			doneWithMessage = &st
+		}
 		seen = append(seen, fmt.Sprintf("%s=%s", name, st.Status))
 	}
-	return stageJSON{}, fmt.Errorf("%s 沒有任何「不是 done 而且有訊息」的步驟（%s）", ref, strings.Join(seen, "、"))
+	if doneWithMessage != nil {
+		return *doneWithMessage, nil
+	}
+	return stageJSON{}, fmt.Errorf("%s 沒有任何有訊息的步驟（先找不是 done 的，再找 done 的）（%s）", ref, strings.Join(seen, "、"))
 }
 
 // itemShowsMessage 比對影音顯示的狀態訊息（見 attentionStage），訊息必須完全相同。
@@ -389,6 +397,10 @@ func (s *Scenario) hasTranscriptSource(ref string) bool {
 	}
 	if strings.HasPrefix(ref, "local:") {
 		return s.hasLocalTranscriptSource(ref)
+	}
+	if strings.HasPrefix(ref, "pod:") {
+		// Podcast：feed 腳本化了 <podcast:transcript>，而且 production 已實作這個來源。
+		return source.Implemented(podcastTranscriptID) && s.World.Podcasts.HasTranscript(ref)
 	}
 	key, err := s.videoKey(ref) // yt:<id> 或 bili:<bvid>/p<n>
 	if err != nil {

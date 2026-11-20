@@ -91,9 +91,28 @@ func TestPickAttentionStage(t *testing.T) {
 	if err != nil || st.Stage != "transcript" {
 		t.Fatalf("得到 %+v, %v；預期 transcript（metadata 已 done，略過）", st, err)
 	}
-	// 沒有訊息或都是 done：失敗並列出各步驟的狀態。
-	none := itemJSON{Stages: []stageJSON{{Stage: "metadata", Status: "done", Message: "x"}, {Stage: "transcript", Status: "pending"}}}
+	// 沒有任何訊息：失敗並列出各步驟的狀態。
+	none := itemJSON{Stages: []stageJSON{{Stage: "metadata", Status: "done"}, {Stage: "transcript", Status: "pending"}}}
 	wantFail(t, "沒有符合的步驟", func() error { _, e := pickAttentionStage("yt:a", none); return e }(), "transcript=pending")
+}
+
+// 沒有「不是 done 而且有訊息」的步驟時，退回 pipeline 順序中第一個「done 而且有訊息」的步驟
+// （SRC-R15 的提醒掛在 done 的 transcript）。
+func TestPickAttentionStageFallsBackToDone(t *testing.T) {
+	it := itemJSON{Stages: []stageJSON{
+		{Stage: "normalize", Status: "done", Message: "N"},
+		{Stage: "transcript", Status: "done", Message: "時間可能偏移"},
+		{Stage: "metadata", Status: "done"},
+	}}
+	st, err := pickAttentionStage("pod:show/ep-43", it)
+	if err != nil || st.Stage != "transcript" || st.Message != "時間可能偏移" {
+		t.Fatalf("得到 %+v, %v；預期 transcript（pipeline 順序中第一個 done 且有訊息）", st, err)
+	}
+	// 同時有 done 與非 done 的訊息：非 done 優先，即使它在 pipeline 較後面。
+	it.Stages[0] = stageJSON{Stage: "normalize", Status: "failed", Message: "失敗"}
+	if st, err := pickAttentionStage("pod:show/ep-43", it); err != nil || st.Stage != "normalize" {
+		t.Fatalf("得到 %+v, %v；預期 normalize（非 done 優先）", st, err)
+	}
 }
 
 func TestSplitList(t *testing.T) {

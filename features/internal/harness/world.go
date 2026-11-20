@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/features/internal/fakenet"
+	"github.com/cxyfer/notesteme/features/internal/fakepodcast"
 	"github.com/cxyfer/notesteme/features/internal/fakesource"
 	"github.com/cxyfer/notesteme/features/internal/faketool"
 	"github.com/cxyfer/notesteme/internal/clock"
@@ -66,6 +67,8 @@ type World struct {
 	Clock   *clock.Fake
 	Net     *fakenet.Net
 	Sources *fakesource.Script
+	// Podcasts 是假的 Podcast feed、音檔與字幕；handler 由 steps 登記到 Net。
+	Podcasts *fakepodcast.Feeds
 	// Tools 是假工具的狀態；修改後呼叫 SyncTools 寫入狀態檔。
 	Tools faketool.State
 
@@ -118,6 +121,7 @@ func New() (*World, error) {
 		Clock:       clock.NewFake(DefaultNow),
 		Net:         fakenet.New(),
 		Sources:     fakesource.New(fx),
+		Podcasts:    fakepodcast.New(),
 		Tools:       faketool.State{FixturesDir: fx, Videos: map[string]*faketool.Video{}},
 		Refs:        map[string]string{},
 		FixturesDir: fx,

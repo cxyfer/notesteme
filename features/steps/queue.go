@@ -333,6 +333,10 @@ func (s *Scenario) sourceWasCalled(id string, want int) error {
 }
 
 func (s *Scenario) sourceCalls(id string) (int, error) {
+	if id == podcastTranscriptID {
+		// feed 上的字幕檔由 fakepodcast 計次。
+		return s.World.Podcasts.TranscriptCalls(), nil
+	}
 	flag, platform := platformCaptionFlag[id]
 	if !platform {
 		return s.World.Sources.Calls(id), nil
