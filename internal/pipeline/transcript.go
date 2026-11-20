@@ -91,14 +91,15 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		return result{}, err
 	}
 	tracks := info.Tracks
-	// Bilibili 沒有語言中繼資料：看得到 AI 字幕軌時，用它的語言當原文語言（lang_source 為 metadata），
-	// 寫回 item；之後的步驟與重跑都從 item 讀到。UpdateItemMeta 會整欄覆寫 metadata_json，所以原樣帶回。
-	originalLang, inferred := inferOriginalLang(it.Platform, it.OriginalLang, tracks)
+	// Bilibili 沒有語言中繼資料：看得到 AI 字幕軌時，用它的語言當原文語言（lang_source 為 metadata）；
+	// 本機影音則用選中的本機字幕的語言。寫回 item，之後的步驟與重跑都從 item 讀到。
+	// UpdateItemMeta 會整欄覆寫 metadata_json，所以原樣帶回。
+	originalLang, inferred := inferOriginalLang(it.Platform, it.OriginalLang, tracks, lang)
 	var meta *metaUpdate
 	if inferred {
 		meta = &metaUpdate{item: store.ItemMeta{OriginalLang: originalLang, LangSource: "metadata", Metadata: it.Metadata}}
 	}
-	chosen, decisions := transcript.SelectFor(it.Platform, tracks, originalLang, lang.CaptionPriority, lang.AllowPlatformTranslated)
+	chosen, decisions := selectTracks(it.Platform, tracks, originalLang, lang)
 
 	// 原文語言可能是這次執行才推斷出來的（Bilibili），快取鍵與 fallback 都要用推斷後的值。
 	fit := it
@@ -117,8 +118,12 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 			// 同理，Groq 的 base_url、model 與語言提示影響結果。
 			params["groq"] = f.params(fit, lang)
 		}
+		if it.Platform == source.PlatformLocal {
+			// 本機影音的內容改變（sha256 不同）時，快取不能命中。
+			params["content_sha256"] = info.ContentSHA256
+		}
 		return cacheKey{
-			Item: it.ID, Stage: StageTranscript, Impl: p.implVersion(StageTranscript), Provider: "yt-dlp",
+			Item: it.ID, Stage: StageTranscript, Impl: p.implVersion(StageTranscript), Provider: cacheProvider(it.Platform),
 			Upstream: paramsSHA(map[string]any{"tracks": sortedTracks(tracks), "original_lang": originalLang}),
 			Params:   paramsSHA(params),
 		}.String()
@@ -172,13 +177,13 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 			return res, nil
 		}
 		res, err := p.runFallback(ctx, fit, lang, stage, decisions)
-		if err == nil {
+		if err == nil && meta != nil {
 			res.meta = meta
 		}
 		return res, err
 	}
 
-	version, err := ad.version(ctx)
+	versions, err := ad.toolVersions(ctx)
 	if err != nil {
 		return result{}, err
 	}
@@ -189,7 +194,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		"source": srcID, "timing": sourceTiming(it.Platform, chosen.Kind),
 		"track":         map[string]string{"lang": artLang, "kind": chosen.Kind},
 		"params_sha256": paramsSHA(map[string]any{"caption_priority": lang.CaptionPriority, "allow_platform_translated": lang.AllowPlatformTranslated}),
-	}, map[string]string{"yt-dlp": version})
+	}, versions)
 	if err != nil {
 		return result{}, err
 	}
@@ -299,15 +304,22 @@ type fallbackFetcher struct {
 	// params 是會影響結果的設定與輸入（寫進來源紀錄與快取鍵）。
 	params func(store.Item, Language) any
 	fetch  func(ctx context.Context, it store.Item, lang Language) (*fetchResult, error)
+	// supports 回報來源是否支援這個平台；nil 代表支援所有平台。
+	// 不支援的來源記為 unavailable（unsupported）並略過：不算已執行，也不送出任何資料。
+	supports func(platform string) bool
 }
+
+// supadataSupports 回報 Supadata 是否處理這個平台：它只接受公開網址，不處理本機檔案（不送出本機路徑）。
+func supadataSupports(platform string) bool { return platform != source.PlatformLocal }
 
 // newFetchers 依 deps 建立可執行的 fallback 來源。
 func newFetchers(d Deps) map[string]fallbackFetcher {
 	out := map[string]fallbackFetcher{}
 	if sd := d.Supadata; sd != nil {
 		out[supadata.ID] = fallbackFetcher{
-			timing: supadataTiming,
-			params: func(_ store.Item, l Language) any { return l.Supadata },
+			timing:   supadataTiming,
+			supports: supadataSupports,
+			params:   func(_ store.Item, l Language) any { return l.Supadata },
 			fetch: func(ctx context.Context, it store.Item, l Language) (*fetchResult, error) {
 				got, err := sd.Fetch(ctx, it.URL, l.Supadata.Mode)
 				if err != nil {
@@ -317,26 +329,28 @@ func newFetchers(d Deps) map[string]fallbackFetcher {
 			},
 		}
 	}
-	if gc := d.Groq; gc != nil && d.YouTube != nil {
+	if gc := d.Groq; gc != nil {
 		out[groq.ID] = groqFetcher(d, gc)
 	}
 	return out
 }
 
-// groqFetcher 是 Groq 語音轉錄來源：用 yt-dlp 下載音訊到該任務的暫存目錄，再送去轉錄（SRC-R3）。
+// groqFetcher 是 Groq 語音轉錄來源（SRC-R3）：取得音訊（YouTube 用 yt-dlp 下載，本機影音用原檔），
+// 前處理成 opus、必要時切塊後送去轉錄（見 transcribeASR）。
 func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 	return fallbackFetcher{
 		timing: groq.Timing,
 		params: func(it store.Item, _ Language) any {
 			baseURL, model := gc.Endpoint()
-			return map[string]string{
-				"base_url":  baseURL,
-				"model":     model,
-				"lang_hint": groq.LangHint(it.OriginalLang),
+			return map[string]any{
+				"base_url":   baseURL,
+				"model":      model,
+				"lang_hint":  groq.LangHint(it.OriginalLang),
+				"preprocess": asrPreprocess(gc.MaxFileBytes()),
 			}
 		},
 		fetch: func(ctx context.Context, it store.Item, _ Language) (*fetchResult, error) {
-			// 沒有 API key 時不下載音訊，直接回報沒有設定（SRC-R10）。
+			// 沒有 API key 時不取得音訊，直接回報沒有設定（SRC-R10）。
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
@@ -351,12 +365,16 @@ func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 			if !ok {
 				return nil, &errclass.Error{Class: errclass.ClassNeedsAction, Source: groq.ID, Err: groq.ErrNoKey}
 			}
-			if it.Platform != source.PlatformYouTube {
-				// 目前只有 YouTube 能取得音訊；其他平台等各自的下載實作。
+			src := audioSourceFor(d, it.Platform)
+			if src == nil {
+				// 其他平台等各自的音訊來源實作。
 				return nil, &errclass.Error{Class: errclass.ClassPermanent, Source: groq.ID, Detail: "還不支援這個平台的音訊下載"}
 			}
 			// 暫存檔放在 <data>/tmp（啟動時也會清空），完成或失敗都清掉。
-			tmpRoot := filepath.Join(d.DataDir, "tmp")
+			tmpRoot, err := filepath.Abs(filepath.Join(d.DataDir, "tmp"))
+			if err != nil {
+				return nil, err
+			}
 			if err := os.MkdirAll(tmpRoot, dirPerm); err != nil {
 				return nil, err
 			}
@@ -366,21 +384,26 @@ func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 			}
 			defer os.RemoveAll(dir)
 
-			// 版本要在轉錄之前取得：轉錄要付費，轉錄成功之後不能再有會失敗的步驟（失敗重試會重複付費）。
-			version, err := d.YouTube.Version(ctx)
+			path, versions, err := src.fetch(ctx, it, dir)
 			if err != nil {
 				return nil, err
 			}
-			audio, err := d.YouTube.DownloadAudio(ctx, it.ExternalID, dir)
-			if err != nil {
-				return nil, &downloadError{err}
+			// 工具版本要在轉錄之前取得：轉錄要付費，轉錄成功之後不能再有會失敗的步驟（失敗重試會重複付費）。
+			tv := map[string]string{}
+			for k, v := range versions {
+				tv[k] = v
+			}
+			if d.Media != nil {
+				if v, ok := d.Media.Versions(ctx)["ffmpeg"]; ok {
+					tv["ffmpeg"] = v
+				}
 			}
 			// 有原文語言才送提示；未知時讓 Whisper 自行偵測。
-			got, err := gc.Transcribe(ctx, audio, groq.LangHint(it.OriginalLang))
+			got, err := transcribeASR(ctx, d.Media, gc, path, dir, groq.LangHint(it.OriginalLang))
 			if err != nil {
 				return nil, err
 			}
-			return &fetchResult{Lang: got.Lang, Cues: got.Cues, Timing: groq.Timing, ToolVersions: map[string]string{"yt-dlp": version}}, nil
+			return &fetchResult{Lang: got.Lang, Cues: got.Cues, Timing: groq.Timing, ToolVersions: tv}, nil
 		},
 	}
 }
@@ -427,11 +450,17 @@ func supadataUserError(err error) error {
 // 步驟是 blocked（needs_action，動作「設定 API key」），而不是 permanent 失敗；
 // 只要有來源真的執行了並回報沒有結果，就照 SRC-R5 失敗。
 func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language, stage *store.StageResult, decisions []transcript.Decision) (result, error) {
-	executed := false
+	executed, notConfigured := false, false
 	for _, id := range lang.Fallback {
 		f, ok := p.fetchers[id]
 		if !ok {
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: transcript.ReasonNotConfigured})
+			notConfigured = true
+			continue
+		}
+		if f.supports != nil && !f.supports(it.Platform) {
+			// 來源不支援這個平台（例如 Supadata 與本機檔案）：略過，不送出任何資料，也不算已執行。
+			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: transcript.ReasonUnsupported})
 			continue
 		}
 		got, err := f.fetch(ctx, it, lang)
@@ -452,6 +481,7 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 		case errors.Is(err, errclass.ErrNotConfigured):
 			// 來源本身沒有設定（缺 API key）：和沒有註冊的來源一樣略過。
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: transcript.ReasonNotConfigured})
+			notConfigured = true
 		case isNeedsAction(err):
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: probeReason(err, errclass.ClassNeedsAction)})
 			msg, actions, resumeOn := msgSourceNeedsAction, []string(nil), ""
@@ -473,7 +503,8 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 			return result{}, err
 		}
 	}
-	if !executed && len(lang.Fallback) > 0 {
+	// 全都因為沒有設定而無法執行才 blocked；只是不支援這個平台的來源不要求使用者設定 API key。
+	if !executed && notConfigured {
 		return blockedFor(stage, decisions, "", msgNoKey, actionSetKey), nil
 	}
 	return result{
@@ -519,10 +550,16 @@ func (p *Pipeline) fallbackResult(ctx context.Context, id string, f fallbackFetc
 	if err != nil {
 		return result{}, err
 	}
-	return result{
+	res := result{
 		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions),
 		state: store.StageState{Status: store.StatusDone},
-	}, nil
+	}
+	// SRC-R11：原文語言未知、ASR 回報了語言時，寫回影音的原文語言（lang_source 為 asr）。
+	// UpdateItemMeta 會整欄覆寫 metadata_json，所以一定要帶上原本的 Metadata。
+	if isASR(id) && it.OriginalLang == "" && got.Lang != "" {
+		res.meta = &metaUpdate{item: store.ItemMeta{OriginalLang: got.Lang, LangSource: "asr", Metadata: it.Metadata}}
+	}
+	return res, nil
 }
 
 // langMismatch 回報來源回報的語言 got 是否和影音的原文語言 want 不同（SRC-R4 的 language_mismatch）。

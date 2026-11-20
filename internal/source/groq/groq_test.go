@@ -434,7 +434,7 @@ func TestTranscribeMalformedKeyNeedsAction(t *testing.T) {
 	}
 }
 
-// 超過 Groq 單檔上限（切塊尚未實作）的音檔不上傳，直接 permanent 並說明原因。
+// 超過 Groq 單檔上限的音檔不上傳，直接 permanent 並說明原因（呼叫端應該先切塊，見 pipeline 的 transcribeASR）。
 func TestTranscribeRejectsFilesOverTheSizeLimit(t *testing.T) {
 	hits := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits++ }))
@@ -449,7 +449,7 @@ func TestTranscribeRejectsFilesOverTheSizeLimit(t *testing.T) {
 	if !errors.As(err, &ce) || ce.Class != errclass.ClassPermanent {
 		t.Fatalf("err = %#v，應為 permanent", err)
 	}
-	if want := "音檔超過語音轉錄服務的大小上限（25 MiB），長音訊的切塊還沒實作。"; ce.Message != want {
+	if want := "音檔超過語音轉錄服務的大小上限（25 MiB）。"; ce.Message != want {
 		t.Errorf("Message = %q", ce.Message)
 	}
 	if hits != 0 {

@@ -118,6 +118,8 @@ type rig struct {
 	w   *worker.Worker
 	yt  *fakeYT
 	dir string
+	// fm 是 ffmpeg 與 ffprobe 的替身；沒有組裝 Media 的 rig 為 nil。
+	fm *fakeMedia
 }
 
 func newRig(t *testing.T, opts ...func(*Deps)) *rig {

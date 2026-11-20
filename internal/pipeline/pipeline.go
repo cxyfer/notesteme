@@ -56,6 +56,8 @@ type Groq interface {
 	Configured(ctx context.Context) (bool, error)
 	// Endpoint 回傳實際使用的 base_url 與 model，它們影響結果，屬於快取鍵。
 	Endpoint() (baseURL, model string)
+	// MaxFileBytes 是單一音檔的大小上限；超過就要切塊（SRC-R12）。
+	MaxFileBytes() int64
 }
 
 // Deps 是 Pipeline 的依賴。

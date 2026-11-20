@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/cxyfer/notesteme/internal/queue"
+	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
@@ -86,13 +87,16 @@ func isASR(sourceID string) bool { return sourceID == "groq" }
 
 // transcriptNeedsASR 回報 transcript 任務是否歸為 asr 資源類別：
 // language.fallback 的第一個來源是 ASR，而且平台字幕不符合 caption_priority（用不到平台字幕）。
+// 選軌依平台：本機影音有自己的規則（見 selectTracks）。
 // 這是建立任務時的推定（PIPE 規格待決問題）：實際走哪個來源要等 transcript 執行時才知道。
 // tracks 與 originalLang 是剛取得的平台字幕軌與原文語言；從 transcript 重跑時不知道字幕軌，呼叫端不使用這個判斷。
 func transcriptNeedsASR(platform string, lang Language, tracks []transcript.Track, originalLang string) bool {
-	if len(lang.Fallback) == 0 || !isASR(lang.Fallback[0]) {
+	// 不支援這個平台的來源（例如本機影音的 Supadata）不會被執行，不算「第一個來源」。
+	first := slices.IndexFunc(lang.Fallback, func(id string) bool { return id != supadata.ID || supadataSupports(platform) })
+	if first < 0 || !isASR(lang.Fallback[first]) {
 		return false
 	}
-	chosen, _ := transcript.SelectFor(platform, tracks, originalLang, lang.CaptionPriority, lang.AllowPlatformTranslated)
+	chosen, _ := selectTracks(platform, tracks, originalLang, lang)
 	return chosen == nil
 }
 

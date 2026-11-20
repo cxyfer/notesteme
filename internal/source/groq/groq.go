@@ -45,11 +45,14 @@ const (
 )
 
 // MaxFileBytes 是 Groq 單一音檔的大小上限（免費方案 25 MiB）。
-// 超過時應該切塊（SRC-R12），但切塊還沒實作，所以目前直接 permanent，不上傳。
+// 呼叫端（pipeline 的 transcribeASR）超過時先切塊（SRC-R12）；Transcribe 仍檢查一次，超過就 permanent，不上傳。
 const MaxFileBytes = 25 << 20
 
 // msgFileTooLarge 是音檔超過 MaxFileBytes 時給使用者看的訊息。
-const msgFileTooLarge = "音檔超過語音轉錄服務的大小上限（25 MiB），長音訊的切塊還沒實作。"
+const msgFileTooLarge = "音檔超過語音轉錄服務的大小上限（25 MiB）。"
+
+// MaxFileBytes 回傳單一音檔的大小上限，超過時呼叫端要先切塊。
+func (c *Client) MaxFileBytes() int64 { return MaxFileBytes }
 
 // requestTimeout 是整個請求（含上傳音檔）的逾時；回應大小上限用 netguard.LimitFeed（GRD-R5）。
 const requestTimeout = 10 * time.Minute
