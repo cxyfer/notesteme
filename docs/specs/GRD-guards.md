@@ -53,6 +53,6 @@ Notesteme 會依使用者或外部內容提供的網址主動發出請求，也�
   - 交給 ffmpeg、ffprobe 的路徑在執行前重新解析檢查，但檢查與工具開檔之間仍有 TOCTOU 的空檔，記為技術債（之後可改成傳入已開啟的檔案描述元）。
   - ffmpeg、ffprobe 一律帶 `-protocol_whitelist file`（避免繞過 netguard 連外），並用 `-format_whitelist` 排除 `hls`、`concat` 等會讀取其他檔案的格式。
   - standalone 模式加入根目錄之外的檔案後，改由 serve 處理時，在執行階段以 `permanent` 拒絕（GRD-R8）。
-- 「DNS rebinding」場景：連線時才檢查 IP 的設計下，第一次解析到公開 IP 的那次連線會真的送出。場景沒有寫明哪一次解析對應哪一個請求（feed 與音檔），這個場景依賴 ING 的 podcast feed，交給 ING 切片釐清。
+- ~~「DNS rebinding」場景：連線時才檢查 IP 的設計下，第一次解析到公開 IP 的那次連線會真的送出。場景沒有寫明哪一次解析對應哪一個請求（feed 與音檔），這個場景依賴 ING 的 podcast feed，交給 ING 切片釐清。~~ 已釐清（2026-11-21，PODCAST 切片）：第一次解析是新增時對音檔網址做的只解析、不連線的檢查（見 ING 待決問題），第二次是 `metadata` 下載音檔時的連線，在連線前被擋下，所以完全沒有連到 rebind 的主機。場景依賴「新增時剛好解析過一次」這個順序，比較脆弱；真正的保證由 `netguard` 的 `TestTransportRechecksAfterRebinding`（每次連線都重新檢查）與 `pipeline` 的 `TestPodcastMetadataRebindingBlocked` 把關。場景只斷言 `permanent`，podcast 的 metadata 還沒實作時也會是 `permanent`；建議補上 `shows the message "這個網址指向內部網路，已封鎖。"`（已確認實際訊息相同），需要 owner 同意。
 - 「Paths outside the media folders are refused」中預期 201 的兩個例子，要等 ING-05（本機檔案的新增）決定檔案是否必須存在、是否要經過 ffprobe；GRD 切片只做到路徑檢查，通過檢查後仍回 501。
 - GRD-R6 的 extractor 限制（`--use-extractors`）只由 `internal/source/youtube` 的單元測試把關：假 yt-dlp 不模擬 extractor，「yt-dlp is never asked to open an arbitrary site」驗證的是辨識階段的拒絕。若要在驗收層驗證，需要新增斷言 yt-dlp 參數的句型。

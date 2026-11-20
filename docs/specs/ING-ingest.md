@@ -86,4 +86,11 @@ YouTube 播放清單（ING-R4）展開時由 yt-dlp 列出清單內容：清單�
   - 網址已有 `p` 又給 `parts` 回 422；`parts` 的編號小於 1、或超出影片的分P 範圍也是 422；`parts` 中重複的編號去掉，結果依分P 順序。
   - 展開失敗沿用 ING-R4 的對應：影片不存在或地區限制回 422；找不到 yt-dlp、要求登入與其他失敗回 502（`upstream_failed`），yt-dlp 的輸出只寫進 log。
   - Bilibili 的依賴沒有設定（程式沒有接線）時，新增 Bilibili 影片仍回 501。
+- Podcast（ING-R1、R2、R6，2026-11-21，PODCAST 切片實作時決定，待 owner 確認；決策見 ADR-0017）：
+  - 每一集是 `(podcast, "<feed key>/<guid>", 0)`，代號 `pod:<feed key>/<guid>`。feed key 由 feed 網址最後一段推導（去副檔名、轉小寫、非英數換成 `-`，遇到 `rss`、`feed` 等泛用名稱往前取一段），存在 `channels` 中；不同 feed 撞名時加 `-2`。`items.url` 存正規化的 feed 網址（http 與 https、搬家的 feed 視為不同的 feed，不合併）。
+  - guid 是去掉前後空白後的 `<guid>`，沒有 guid 時用音檔網址；同一個 feed 中重複的 guid 以第一個為準。接受 RSS 與 Atom。
+  - 新增時沒有 `episodes` 回 422 `invalid_input`「這是 Podcast feed，請在 episodes 指定要新增的集。」；找不到的 guid 回 422「feed 中找不到這一集：<guid>。」；沒有音檔回 422「這一集沒有音檔：<guid>。」；帶 `parts` 回 422「Podcast 沒有分P 可以選擇。」。抓 feed 失敗比照辨識回 422 `unrecognized_url`。
+  - 新增時對選中各集的音檔網址做一次只解析、不連線的檢查（`netguard.CheckURL`）。全部位址都被擋時，新增就回 422 `blocked_address`；DNS 失敗只記 log，留給 metadata 處理。真正的防護仍在連線時（GRD-R2）。
+  - 「沒有指定集」的場景只斷言 422，現有程式回 `unrecognized_url` 也會通過；正確的錯誤碼由單元測試把關。建議在場景補上 `the response contains`，需要 owner 同意。
+  - 辨識只列出前 500 集，新增可以指定 feed 中的任何一集。CLI 沒有 `--episodes`。
 - ING-R9 的 Bilibili 部分在未登入時做不到：Bilibili 的 AI 字幕需要 cookie，但未登入時 yt-dlp 不列出字幕，辨識（`POST /api/resolve`）看不出這部影片有沒有 AI 字幕，無法標示 `requires_cookie`。目前只有 YouTube 的 `availability` 會標示；Bilibili 的標示記為待修的規則，等 M0 驗證後再決定（可能改成只在 transcript 步驟 `blocked` 時提示，見 SRC-R8）。
