@@ -105,6 +105,25 @@ func Restore(ctx context.Context, env Env, file string) (*RestoreResult, error) 
 		return nil, err
 	}
 
+	// 設定檔要在換上資料庫之前寫好：換上資料庫是還原的提交點，之後不能再回報失敗。
+	// 換上之前任何一步失敗，就把已經寫出的設定目錄移除。
+	committed := false
+	if contents.HasConfig {
+		dir := uniquePath(backups, "restored-config-", stamp, "")
+		defer func() {
+			if !committed {
+				_ = os.RemoveAll(dir)
+			}
+		}()
+		if err := os.MkdirAll(dir, dataDirPerm); err != nil {
+			return nil, fmt.Errorf("建立 %s 失敗：%w", dir, err)
+		}
+		if err := writeBytes(filepath.Join(dir, filepath.Base(backup.ConfigName)), contents.Config); err != nil {
+			return nil, fmt.Errorf("寫出備份中的設定檔失敗：%w", err)
+		}
+		res.ConfigDir = dir
+	}
+
 	// -wal、-shm 屬於被換掉的資料庫；留著的話 SQLite 會把它們套到新的資料庫上。
 	for _, suffix := range []string{"-wal", "-shm"} {
 		if err := os.Remove(dbPath + suffix); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -114,17 +133,8 @@ func Restore(ctx context.Context, env Env, file string) (*RestoreResult, error) 
 	if err := os.Rename(contents.DBPath, dbPath); err != nil {
 		return nil, fmt.Errorf("換上備份的資料庫失敗：%w", err)
 	}
+	committed = true
 
-	if contents.HasConfig {
-		dir := uniquePath(backups, "restored-config-", stamp, "")
-		if err := os.MkdirAll(dir, dataDirPerm); err != nil {
-			return nil, fmt.Errorf("建立 %s 失敗：%w", dir, err)
-		}
-		if err := writeBytes(filepath.Join(dir, filepath.Base(backup.ConfigName)), contents.Config); err != nil {
-			return nil, fmt.Errorf("寫出備份中的設定檔失敗：%w", err)
-		}
-		res.ConfigDir = dir
-	}
 	return res, nil
 }
 
