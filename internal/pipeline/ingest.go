@@ -43,7 +43,9 @@ type IngestResult struct {
 // YouTube 播放清單展開成多部影音，每部各自套用 ING-R2（ING-R4）；回傳的順序與清單相同。
 //
 // 錯誤：ErrUnrecognizedURL、ErrChannel、*InvalidError（422）、*UpstreamError（502，yt-dlp 失敗）、
-// *NotImplementedError（501，例如沒有設定 Bilibili 依賴、Podcast、處理方案）。
+// *NotImplementedError（501，例如沒有設定 Bilibili 依賴、處理方案）、*PolicyError（422，抓取 feed 或預檢音檔被防護擋下）。
+//
+// 網址只看網址認不出來時，當成 Podcast feed 處理（ingestPodcast）：episodes 指定要新增的集，每集一部影音。
 //
 // 影音在垃圾桶中時不重新建立：結果的 InTrash 為 true（DEL-R10）。單一目標在垃圾桶中時，
 // 是否回 409 由呼叫端決定（API 見 createItems）。
@@ -53,7 +55,8 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResul
 	t, ok := source.Recognize(req.URL)
 	switch {
 	case !ok:
-		return nil, ErrUnrecognizedURL
+		// 只看網址認不出來的，可能是 Podcast feed（要抓內容才知道，ING-R1）。
+		return p.ingestPodcast(ctx, req)
 	case t.Kind == source.KindChannel:
 		return nil, ErrChannel
 	}
@@ -75,23 +78,9 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResul
 		return nil, err
 	}
 
-	global, err := p.globalConfig(ctx)
+	plan, err := p.planIngest(ctx, req)
 	if err != nil {
 		return nil, err
-	}
-	eff, err := BuildEffective(global, req.Overrides)
-	if err != nil {
-		return nil, err
-	}
-	sha, cfgJSON, err := eff.Snapshot()
-	if err != nil {
-		return nil, err
-	}
-	overrides := json.RawMessage(`{}`)
-	if len(req.Overrides) > 0 {
-		if overrides, err = json.Marshal(req.Overrides); err != nil {
-			return nil, err
-		}
 	}
 
 	// 播放清單在這裡才展開：前面的驗證都通過了，才花時間呼叫 yt-dlp。
@@ -107,20 +96,63 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResul
 			return nil, err
 		}
 	}
+	return p.insertTargets(ctx, req, plan, func(*store.Repo) ([]source.Target, string, error) {
+		return targets, "", nil
+	})
+}
 
+// ingestPlan 是新增影音時算好的設定快照與單次覆寫，整批影音共用。
+type ingestPlan struct {
+	sha, cfgJSON string
+	overrides    json.RawMessage
+}
+
+// planIngest 合併全域設定與單次覆寫（驗證覆寫的內容），算出設定快照。要在任何耗時的外部呼叫之前做，
+// 覆寫不正確時才不必先呼叫 yt-dlp 或抓取 feed。
+func (p *Pipeline) planIngest(ctx context.Context, req IngestRequest) (ingestPlan, error) {
+	global, err := p.globalConfig(ctx)
+	if err != nil {
+		return ingestPlan{}, err
+	}
+	eff, err := BuildEffective(global, req.Overrides)
+	if err != nil {
+		return ingestPlan{}, err
+	}
+	plan := ingestPlan{overrides: json.RawMessage(`{}`)}
+	if plan.sha, plan.cfgJSON, err = eff.Snapshot(); err != nil {
+		return ingestPlan{}, err
+	}
+	if len(req.Overrides) > 0 {
+		if plan.overrides, err = json.Marshal(req.Overrides); err != nil {
+			return ingestPlan{}, err
+		}
+	}
+	return plan, nil
+}
+
+// insertTargets 在同一個交易中為每個 Target 建立影音、步驟與 metadata 任務；
+// 整份清單要嘛全部進來，要嘛都不建立。已經存在的不重新建立（ING-R2）。
+//
+// build 在交易裡呼叫，回傳要建立的 Target，以及（可為空）這些影音所屬的頻道 ID；
+// Podcast 在這裡取得 feedKey 並建立頻道，與影音同生共死。build 可能因交易重試而被呼叫多次，必須可重複執行。
+func (p *Pipeline) insertTargets(ctx context.Context, req IngestRequest, plan ingestPlan,
+	build func(*store.Repo) (targets []source.Target, channelID string, err error)) ([]IngestResult, error) {
 	priority := req.Priority
 	if priority == 0 {
 		priority = queue.PriorityManual
 	}
-	// 整份清單在同一個交易中建立：展開的結果要嘛全部進來，要嘛都不建立。
 	var results []IngestResult
-	err = p.st.Tx(ctx, func(r *store.Repo) error {
+	err := p.st.Tx(ctx, func(r *store.Repo) error {
 		results = results[:0]
+		targets, channelID, err := build(r)
+		if err != nil {
+			return err
+		}
 		snap := ""
 		for _, target := range targets {
 			it, created, err := r.InsertItemIfAbsent(ctx, store.NewItem{
 				Platform: target.Platform, ExternalID: target.ExternalID, Part: target.Part, URL: target.URL,
-				Overrides: overrides, UntilStage: req.Until,
+				Overrides: plan.overrides, UntilStage: req.Until,
 			})
 			if err != nil {
 				return err
@@ -130,13 +162,19 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResul
 				results = append(results, IngestResult{Item: it, AlreadyInLibrary: it.DeletedAt == nil, InTrash: it.DeletedAt != nil})
 				continue
 			}
+			if channelID != "" {
+				if err := r.SetItemChannel(ctx, it.ID, channelID); err != nil {
+					return err
+				}
+				it.ChannelID = channelID
+			}
 			results = append(results, IngestResult{Item: it})
 			// 手動新增視為「想要這部影音」：同一個交易中移除永久刪除留下的 tombstone（DEL-R11）。
 			if _, err := r.DeleteTombstones(ctx, target.Platform, target.ExternalID, target.Part); err != nil {
 				return err
 			}
 			if snap == "" {
-				if snap, err = r.EnsureSnapshot(ctx, sha, cfgJSON); err != nil {
+				if snap, err = r.EnsureSnapshot(ctx, plan.sha, plan.cfgJSON); err != nil {
 					return err
 				}
 			}

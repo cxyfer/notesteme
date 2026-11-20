@@ -77,6 +77,9 @@ type Deps struct {
 	Groq Groq
 	// HTTP 是對外 HTTP 的 client（netguard 的 Transport，ADR-0014）；nil 時辨識網址不會抓取任何內容。
 	HTTP *http.Client
+	// CheckURL 在不連線的情況下預檢網址的目的地會不會被封鎖（netguard.CheckURL）；新增 Podcast 單集時用來提早回報（GRD-R2）。
+	// 防護造成的錯誤（netguard.PolicyMessage 認得的）會讓新增失敗；解析失敗等其他錯誤只記 log。nil 代表略過預檢。
+	CheckURL func(ctx context.Context, rawURL string) error
 	// Media 是 ffprobe 與 ffmpeg 的包裝（ING-05）；nil 代表不支援本機影音的探測與前處理。
 	Media *media.Tool
 	// Files 是程式內讀取本機檔案的守衛（serve 為 inbox、media_roots 與 <data>/uploads；standalone 不受限制）；
@@ -104,6 +107,7 @@ type Pipeline struct {
 	// fetchers 是可以執行的 fallback 來源（SRC-R3），依來源 ID。
 	fetchers map[string]fallbackFetcher
 	http     *http.Client
+	checkFn  func(ctx context.Context, rawURL string) error
 	media    *media.Tool
 	files    *pathguard.Guard
 	wake     func()
@@ -144,7 +148,7 @@ func New(d Deps) *Pipeline {
 	if retention <= 0 {
 		retention = DefaultTrashRetention
 	}
-	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), http: d.HTTP, media: d.Media, files: d.Files, wake: wake, version: d.Version}
+	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。

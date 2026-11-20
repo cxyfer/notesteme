@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -19,8 +20,12 @@ type resolveInput struct {
 
 // Episode 是 Podcast feed 列出的一集。
 type Episode struct {
-	GUID  string `json:"guid"`
-	Title string `json:"title"`
+	GUID          string     `json:"guid"`
+	Title         string     `json:"title"`
+	PublishedAt   *time.Time `json:"published_at,omitempty" doc:"發佈時間；feed 沒有或格式不認得時省略"`
+	DurationS     *float64   `json:"duration_s,omitempty" doc:"feed 標示的長度（秒，itunes:duration）；實際長度以下載的音檔為準"`
+	HasTranscript bool       `json:"has_transcript" doc:"feed 附了可讀的字幕（vtt、srt、json）"`
+	MediaType     string     `json:"media_type,omitempty" doc:"音檔的 MIME 類型（enclosure 的 type）"`
 }
 
 // Resolution 是網址辨識的結果。
@@ -61,7 +66,10 @@ func (rt *routes) resolve(ctx context.Context, in *resolveInput) (*resolveOutput
 		Subscribable: r.Subscribable, Availability: r.Availability, RequiresCookie: r.RequiresCookie, SettingsLink: r.SettingsLink,
 	}}
 	for _, e := range r.Episodes {
-		out.Body.Episodes = append(out.Body.Episodes, Episode{GUID: e.GUID, Title: e.Title})
+		out.Body.Episodes = append(out.Body.Episodes, Episode{
+			GUID: e.GUID, Title: e.Title, PublishedAt: e.PublishedAt, DurationS: e.DurationS,
+			HasTranscript: e.HasTranscript, MediaType: e.MediaType,
+		})
 	}
 	return out, nil
 }
