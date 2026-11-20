@@ -1,7 +1,8 @@
 -- name: InsertItemIfAbsent :execrows
-INSERT INTO items (id, platform, external_id, part, profile_id, overrides_json, until_stage, url, created_at)
+INSERT INTO items (id, platform, external_id, part, profile_id, overrides_json, until_stage, url, source_path, content_sha256, origin, created_at)
 VALUES (sqlc.arg(id), sqlc.arg(platform), sqlc.arg(external_id), sqlc.arg(part), NULLIF(CAST(sqlc.arg(profile_id) AS TEXT), ''),
-        sqlc.arg(overrides_json), sqlc.arg(until_stage), sqlc.arg(url), sqlc.arg(created_at))
+        sqlc.arg(overrides_json), sqlc.arg(until_stage), sqlc.arg(url), sqlc.arg(source_path), sqlc.arg(content_sha256),
+        sqlc.arg(origin), sqlc.arg(created_at))
 ON CONFLICT (platform, external_id, part) DO NOTHING;
 
 -- name: ItemByID :one
@@ -17,7 +18,10 @@ SELECT * FROM items WHERE deleted_at IS NULL ORDER BY created_at, rowid;
 -- Empty string and NULL mean the platform gave nothing: keep the old value.
 -- title_fold is the Go-lowercased title, written together with it.
 -- lang_source is only written when original_lang is non-empty.
+-- media_kind and content_sha256 follow the same rule: an empty string keeps the old value.
 UPDATE items SET
+  media_kind     = COALESCE(NULLIF(CAST(sqlc.arg(media_kind) AS TEXT), ''), media_kind),
+  content_sha256 = COALESCE(NULLIF(CAST(sqlc.arg(content_sha256) AS TEXT), ''), content_sha256),
   title         = COALESCE(NULLIF(CAST(sqlc.arg(title) AS TEXT), ''), title),
   title_fold    = COALESCE(NULLIF(CAST(sqlc.arg(title_fold) AS TEXT), ''), title_fold),
   duration_s    = COALESCE(sqlc.narg(duration_s), duration_s),

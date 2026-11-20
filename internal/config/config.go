@@ -57,7 +57,12 @@ const (
 	FieldInbox  = "inbox"
 	// FieldTrashRetentionDays 是 library.trash_retention_days（DEL-R4）。
 	FieldTrashRetentionDays = "library.trash_retention_days"
+	// FieldUploadMaxBytes 是 library.upload_max_bytes（ING-05 上傳大小上限）。
+	FieldUploadMaxBytes = "library.upload_max_bytes"
 )
+
+// DefaultUploadMaxBytes 是上傳檔案大小上限的預設值（4 GiB）；設定值必須大於 0。
+const DefaultUploadMaxBytes int64 = 4 << 30
 
 // 垃圾桶保留天數（DEL-R4）：預設值與允許的範圍。
 const (
@@ -97,6 +102,8 @@ type Config struct {
 
 	// TrashRetentionDays 是垃圾桶保留天數（設定檔 library.trash_retention_days，預設 30，範圍 1～3650；DEL-R4）。
 	TrashRetentionDays int
+	// UploadMaxBytes 是單一上傳檔案的大小上限（設定檔 library.upload_max_bytes，預設 4 GiB，必須大於 0）。
+	UploadMaxBytes int64
 
 	// ASRProviders 是設定檔 asr.providers 解析並驗證後的內容，以 id 為 key（SEC-R3：command 類型只能在這裡定義）。
 	ASRProviders map[string]ASRProvider
@@ -136,6 +143,8 @@ type fileSchema struct {
 type librarySchema struct {
 	// TrashRetentionDays 先讀成 yaml.Node：型別不對與超出範圍時，錯誤訊息都要指出欄位。
 	TrashRetentionDays yaml.Node `yaml:"trash_retention_days"`
+	// UploadMaxBytes 同上，先讀成 yaml.Node 才能指出欄位。
+	UploadMaxBytes yaml.Node `yaml:"upload_max_bytes"`
 }
 
 // networkSchema 是設定檔 network 區段（GRD-R3）。
@@ -158,6 +167,7 @@ func Load(src Sources) (*Config, error) {
 		Listen:             DefaultListen,
 		Data:               DefaultData,
 		TrashRetentionDays: DefaultTrashRetentionDays,
+		UploadMaxBytes:     DefaultUploadMaxBytes,
 		Origin:             map[string]Source{FieldListen: SourceDefault, FieldData: SourceDefault},
 	}
 
@@ -289,6 +299,16 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 				path, MinTrashRetentionDays, MaxTrashRetentionDays, days)
 		}
 		cfg.TrashRetentionDays, cfg.Origin[FieldTrashRetentionDays] = days, SourceConfigFile
+	}
+	if n := f.Library.UploadMaxBytes; n.Kind != 0 {
+		var size int64
+		if n.Tag != "!!int" || n.Decode(&size) != nil {
+			return fmt.Errorf("設定檔 %s 的欄位 library.upload_max_bytes 必須是大於 0 的整數。", path)
+		}
+		if size <= 0 {
+			return fmt.Errorf("設定檔 %s 的欄位 library.upload_max_bytes 必須大於 0：%d", path, size)
+		}
+		cfg.UploadMaxBytes, cfg.Origin[FieldUploadMaxBytes] = size, SourceConfigFile
 	}
 	for i, v := range f.MediaRoots {
 		if !filepath.IsAbs(v) {

@@ -235,7 +235,7 @@ func (q *Queries) PurgeTrashedIDs(ctx context.Context) ([]string, error) {
 
 const purgeUpsertTombstone = `-- name: PurgeUpsertTombstone :exec
 INSERT INTO item_tombstones (platform, external_id, part, sha256, purged_at)
-VALUES (?1, ?2, ?3, '', ?4)
+VALUES (?1, ?2, ?3, ?4, ?5)
 ON CONFLICT (platform, external_id, part, sha256) DO UPDATE SET purged_at = excluded.purged_at
 `
 
@@ -243,15 +243,17 @@ type PurgeUpsertTombstoneParams struct {
 	Platform   string
 	ExternalID string
 	Part       int64
+	Sha256     string
 	PurgedAt   int64
 }
 
-// Platform items have no sha256, so the key ends with an empty string.
+// Platform items have no sha256, so the key ends with an empty string. Local items pass their content hash.
 func (q *Queries) PurgeUpsertTombstone(ctx context.Context, arg PurgeUpsertTombstoneParams) error {
 	_, err := q.db.ExecContext(ctx, purgeUpsertTombstone,
 		arg.Platform,
 		arg.ExternalID,
 		arg.Part,
+		arg.Sha256,
 		arg.PurgedAt,
 	)
 	return err
