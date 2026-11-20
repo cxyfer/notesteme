@@ -39,6 +39,9 @@ type probed struct {
 	ContentSHA256 string
 	// ComputedSHA256 只在這次探測才算出 sha256 時有值：metadata 步驟把它寫進影音（DEL-R11 需要它）。
 	ComputedSHA256 string
+	// LocalStat 是非上傳的本機檔案目前的 size 與 mtime；其他情況為 nil。
+	// 它記在 metadata_json 的 local，下次探測時用來判斷檔案有沒有被替換。
+	LocalStat *localStat
 }
 
 // platformAdapter 是步驟用到的平台功能；依 items.platform 分派（見 Pipeline.adapterFor）。

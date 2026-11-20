@@ -31,12 +31,17 @@ func (p *Pipeline) runMetadata(ctx context.Context, it store.Item, lang Language
 	if err != nil {
 		return result{}, err
 	}
-	extra, err := json.Marshal(map[string]any{
+	fields := map[string]any{
 		"description": info.Description,
 		"chapters":    info.Chapters,
 		"live_status": info.LiveStatus,
 		"channel":     info.ChannelTitle,
-	})
+	}
+	if info.LocalStat != nil {
+		// 本機檔案的 size 與 mtime：之後的探測用它判斷檔案有沒有被替換。
+		fields["local"] = info.LocalStat
+	}
+	extra, err := json.Marshal(fields)
 	if err != nil {
 		return result{}, err
 	}

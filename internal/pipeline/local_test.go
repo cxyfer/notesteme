@@ -368,6 +368,7 @@ func TestLocalTranscriptUsesSidecarAndInfersLanguage(t *testing.T) {
 	l.file("talk.ja.srt", srtEN)
 	it := l.item(media)
 	it.Metadata = json.RawMessage(`{"description":"keep me"}`)
+	it.ContentSHA256 = sha("MEDIA") // 已有 sha256：這次不重算，也不改 metadata_json
 
 	res, err := l.p.runTranscript(context.Background(), it, DefaultLanguage())
 	if err != nil {

@@ -80,6 +80,9 @@ const (
 	ReasonNotConfigured       = "not_configured"
 	// ReasonUnsupported 是來源不支援這個平台（例如 Supadata 不處理本機檔案），略過，不送出任何資料。
 	ReasonUnsupported = "unsupported"
+	// ReasonUnreadable 是選中的本機字幕（外掛或內嵌）無法使用：不在允許的目錄、不是一般檔案、超過大小上限、
+	// 解析失敗或抽取失敗。這條字幕記為 rejected，改用下一個字幕來源。
+	ReasonUnreadable = "unreadable"
 )
 
 // PlatformSource 回傳平台上字幕軌種類對應的來源 ID。

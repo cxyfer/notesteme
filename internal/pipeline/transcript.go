@@ -91,26 +91,79 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		return result{}, err
 	}
 	tracks := info.Tracks
-	// Bilibili 沒有語言中繼資料：看得到 AI 字幕軌時，用它的語言當原文語言（lang_source 為 metadata）；
-	// 本機影音則用選中的本機字幕的語言。寫回 item，之後的步驟與重跑都從 item 讀到。
-	// UpdateItemMeta 會整欄覆寫 metadata_json，所以原樣帶回。
-	originalLang, inferred := inferOriginalLang(it.Platform, it.OriginalLang, tracks, lang)
-	var meta *metaUpdate
-	if inferred {
-		meta = &metaUpdate{item: store.ItemMeta{OriginalLang: originalLang, LangSource: "metadata", Metadata: it.Metadata}}
-	}
-	chosen, decisions := selectTracks(it.Platform, tracks, originalLang, lang)
+	la, isLocal := ad.(localAdapter)
+	// 本機檔案重新計算了 sha256（內容被替換，或第一次記錄）時，隨結果一併寫回影音。
+	refresh := refreshMeta(it, info)
 
-	// 原文語言可能是這次執行才推斷出來的（Bilibili），快取鍵與 fallback 都要用推斷後的值。
-	// 例外：lang_source 為 asr 時，這個語言是本階段（ASR）自己的產出，不是輸入。
-	// 快取鍵、Groq 的語言提示與 language_mismatch 檢查都以 inputLang 為準：第一次執行時原文語言為空，
-	// 回寫之後重跑要算出相同的鍵，否則快取不會命中而重複付費。
-	inputLang := originalLang
-	if it.LangSource == "asr" {
-		inputLang = ""
+	var (
+		usable       = tracks // 還沒被拒絕的字幕軌
+		originalLang string
+		inputLang    string
+		inferred     bool
+		chosen       *transcript.Track
+		decisions    []transcript.Decision
+		rejected     []transcript.Decision // 選中但無法使用的字幕軌（本機字幕讀不了），已記為 rejected
+		meta         *metaUpdate           // 推斷出原文語言時要寫回影音的欄位
+		fit          store.Item            // 交給 fallback 來源的影音（原文語言為 inputLang）
+	)
+	// reselect 依 usable 重新選軌，並重算原文語言。
+	reselect := func() {
+		// Bilibili 沒有語言中繼資料：看得到 AI 字幕軌時，用它的語言當原文語言（lang_source 為 metadata）；
+		// 本機影音則用選中的本機字幕的語言。寫回 item，之後的步驟與重跑都從 item 讀到。
+		// UpdateItemMeta 會整欄覆寫 metadata_json，所以原樣帶回。
+		originalLang, inferred = inferOriginalLang(it.Platform, it.OriginalLang, usable, lang)
+		meta = nil
+		if inferred {
+			meta = &metaUpdate{item: store.ItemMeta{OriginalLang: originalLang, LangSource: "metadata", Metadata: it.Metadata}}
+		}
+		var fresh []transcript.Decision
+		chosen, fresh = selectTracks(it.Platform, usable, originalLang, lang)
+		decisions = mergeDecisions(rejected, fresh)
+
+		// 原文語言可能是這次執行才推斷出來的（Bilibili），快取鍵與 fallback 都要用推斷後的值。
+		// 例外：lang_source 為 asr 時，這個語言是本階段（ASR）自己的產出，不是輸入。
+		// 快取鍵、Groq 的語言提示與 language_mismatch 檢查都以 inputLang 為準：第一次執行時原文語言為空，
+		// 回寫之後重跑要算出相同的鍵，否則快取不會命中而重複付費。
+		inputLang = originalLang
+		if it.LangSource == "asr" {
+			inputLang = ""
+		}
+		fit = it
+		fit.OriginalLang = inputLang
 	}
-	fit := it
-	fit.OriginalLang = inputLang
+	// reject 把選中的字幕軌記為 rejected（reason），從可用的字幕軌移除並重新選軌：
+	// 本機字幕讀不了時依序改用下一條外掛字幕、內嵌字幕，最後才是 fallback（ASR）。
+	reject := func(reason string) {
+		for i := range decisions {
+			if decisions[i].State == transcript.StateUsed {
+				decisions[i].State, decisions[i].Reason = transcript.StateRejected, reason
+				rejected = append(rejected, decisions[i])
+			}
+		}
+		usable = slices.DeleteFunc(slices.Clone(usable), func(t transcript.Track) bool { return t == *chosen })
+		reselect()
+	}
+	reselect()
+
+	// 本機外掛字幕：在算快取鍵之前先讀取並解析，內容的 sha256 要進快取鍵（原地修改字幕後不能命中舊結果）。
+	// 不在允許的目錄、不是一般檔案、太大或解析失敗的外掛字幕不會讓步驟失敗：記為 rejected 後改用下一條。
+	var (
+		cues       []subtitle.Cue
+		sidecarSHA string
+		cuesLoaded bool
+	)
+	for isLocal && chosen != nil && chosen.Kind == transcript.KindSidecar {
+		c, sum, lerr := la.loadSidecar(*chosen)
+		if lerr == nil {
+			cues, sidecarSHA, cuesLoaded = c, sum, true
+			break
+		}
+		if !isPermanent(lerr) {
+			return result{}, lerr
+		}
+		p.log.Warn("外掛字幕無法使用，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle, "error", lerr)
+		reject(transcript.ReasonUnreadable)
+	}
 
 	// 快取鍵只含會影響結果的輸入。用平台字幕時 fallback 來源的參數不影響結果，不進快取鍵；
 	// 會用到 fallback 來源時（沒選到字幕軌，或字幕軌下載後是空的）它們的參數要進快取鍵，
@@ -129,9 +182,14 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 			// 本機影音的內容改變（sha256 不同）時，快取不能命中。
 			params["content_sha256"] = info.ContentSHA256
 		}
+		upstream := map[string]any{"tracks": sortedTracks(tracks), "original_lang": inputLang}
+		if sidecarSHA != "" {
+			// 選中的外掛字幕的內容也是輸入。
+			upstream["sidecar_sha256"] = sidecarSHA
+		}
 		return cacheKey{
 			Item: it.ID, Stage: StageTranscript, Impl: p.implVersion(StageTranscript), Provider: cacheProvider(it.Platform),
-			Upstream: paramsSHA(map[string]any{"tracks": sortedTracks(tracks), "original_lang": inputLang}),
+			Upstream: paramsSHA(upstream),
 			Params:   paramsSHA(params),
 		}.String()
 	}
@@ -146,7 +204,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		}
 		stage.ArtifactID = hit.ArtifactID
 		return result{
-			task: taskDone, advance: true, stage: stage, probes: toProbes(decisions), meta: meta,
+			task: taskDone, advance: true, stage: stage, probes: toProbes(decisions), meta: mergeMeta(meta, refresh),
 			state: store.StageState{Status: store.StatusDone},
 		}, true
 	}
@@ -154,23 +212,35 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		return res, nil
 	}
 
-	var cues []subtitle.Cue
-	if chosen != nil {
-		if cues, err = p.fetchCues(ctx, ad, it, *chosen); err != nil {
-			return result{}, err
-		}
-		if len(cues) == 0 {
-			for i := range decisions {
-				if decisions[i].State == transcript.StateUsed {
-					decisions[i].State, decisions[i].Reason = transcript.StateRejected, "empty"
+	for chosen != nil {
+		if !cuesLoaded {
+			if cues, err = p.fetchCues(ctx, ad, it, *chosen); err != nil {
+				if !isLocal || !isPermanent(err) {
+					return result{}, err
 				}
+				// 內嵌字幕抽取失敗：與外掛字幕相同，記為 rejected 後改用下一條，最後才是 fallback。
+				p.log.Warn("內嵌字幕無法使用，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle, "error", err)
+				reject(transcript.ReasonUnreadable)
+				stage.CacheKey = keyFor(chosen == nil)
+				if res, ok := reuse(); ok {
+					return res, nil
+				}
+				continue
 			}
-			chosen = nil
-			// 改用 fallback 來源：快取鍵要含它們的參數，並再確認有沒有相同鍵的完成結果。
-			stage.CacheKey = keyFor(true)
-			if res, ok := reuse(); ok {
-				return res, nil
+		}
+		if len(cues) > 0 {
+			break
+		}
+		for i := range decisions {
+			if decisions[i].State == transcript.StateUsed {
+				decisions[i].State, decisions[i].Reason = transcript.StateRejected, "empty"
 			}
+		}
+		chosen = nil
+		// 改用 fallback 來源：快取鍵要含它們的參數，並再確認有沒有相同鍵的完成結果。
+		stage.CacheKey = keyFor(true)
+		if res, ok := reuse(); ok {
+			return res, nil
 		}
 	}
 
@@ -184,8 +254,11 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 			return res, nil
 		}
 		res, err := p.runFallback(ctx, fit, lang, stage, decisions)
-		if err == nil && meta != nil {
-			res.meta = meta
+		if err == nil {
+			if meta != nil {
+				res.meta = meta
+			}
+			res.meta = mergeMeta(res.meta, refresh)
 		}
 		return res, err
 	}
@@ -210,9 +283,60 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		return result{}, err
 	}
 	return result{
-		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions), meta: meta,
+		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions), meta: mergeMeta(meta, refresh),
 		state: store.StageState{Status: store.StatusDone},
 	}, nil
+}
+
+// mergeDecisions 把已拒絕的字幕軌放在重新選軌的結果之前。
+// 已有拒絕紀錄的來源，重新選軌後沒有剩下字幕軌（no_track）的那一列略過，避免同一個來源同時 rejected 又 unavailable。
+// 結果依來源的評估順序排列（外掛字幕、內嵌字幕），同一來源內拒絕的在前。
+func mergeDecisions(rejected, fresh []transcript.Decision) []transcript.Decision {
+	out := slices.Clone(rejected)
+	for _, d := range fresh {
+		if d.State == transcript.StateUnavailable && d.Reason == transcript.ReasonNoTrack &&
+			slices.ContainsFunc(rejected, func(r transcript.Decision) bool { return r.Source == d.Source }) {
+			continue
+		}
+		out = append(out, d)
+	}
+	rank := func(d transcript.Decision) int {
+		switch d.Source {
+		case transcript.SourceLocalSidecar:
+			return 0
+		case transcript.SourceLocalEmbedded:
+			return 1
+		}
+		return 2
+	}
+	slices.SortStableFunc(out, func(a, b transcript.Decision) int { return rank(a) - rank(b) })
+	return out
+}
+
+// refreshMeta 回傳本機檔案這次探測時重新計算 sha256 後要寫回影音的欄位（content_sha256 與 metadata_json 的 local 記錄）；
+// 沒有重算時為 nil。UpdateItemMeta 會整欄覆寫 metadata_json，所以原樣帶回其他欄位。
+func refreshMeta(it store.Item, info *probed) *metaUpdate {
+	if info.ComputedSHA256 == "" {
+		return nil
+	}
+	md := it.Metadata
+	if info.LocalStat != nil {
+		md = withLocalStat(it.Metadata, *info.LocalStat)
+	}
+	return &metaUpdate{item: store.ItemMeta{ContentSHA256: info.ComputedSHA256, Metadata: md}}
+}
+
+// mergeMeta 把 refresh 的 content_sha256 與 metadata_json 併入 base；兩者的 Metadata 都由 it.Metadata 而來。
+func mergeMeta(base, refresh *metaUpdate) *metaUpdate {
+	switch {
+	case refresh == nil:
+		return base
+	case base == nil:
+		return refresh
+	}
+	out := *base
+	out.item.ContentSHA256, out.item.Metadata = refresh.item.ContentSHA256, refresh.item.Metadata
+	return &out
 }
 
 // reasonNeedsAction 是來源需要使用者處理（例如 cookie）時記在 source_probes 的原因。

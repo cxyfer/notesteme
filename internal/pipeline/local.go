@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -127,14 +128,64 @@ func (a localAdapter) probe(ctx context.Context, it store.Item) (*probed, error)
 		d := int(math.Round(info.DurationS))
 		out.DurationS = &d
 	}
-	// DEL-R11：永久刪除時 tombstone 要有 sha256，所以 metadata 步驟補算（path 新增時還沒有）。
-	if out.ContentSHA256 = it.ContentSHA256; out.ContentSHA256 == "" {
+	// DEL-R11：永久刪除時 tombstone 要有 sha256，所以補算（path 新增時還沒有）。
+	// 用路徑加入的檔案（非上傳）可能在同一路徑被替換：size 或 mtime 和上次記錄的不同就重算；
+	// 還沒有記錄時（影音已有 sha256，例如 inbox 新增時算好的）不重算，由 metadata 步驟記下目前的值作為基準。
+	// 上傳的副本不可變，只在還沒有 sha256 時算一次。
+	out.ContentSHA256 = it.ContentSHA256
+	rehash := out.ContentSHA256 == ""
+	if it.Origin != store.OriginUpload {
+		fi, err := f.Stat()
+		if err != nil {
+			return nil, err
+		}
+		// 先取 stat 再雜湊：雜湊期間檔案又被改動時，下次探測會看到差異而重算。
+		cur := localStat{Size: fi.Size(), MtimeNS: fi.ModTime().UnixNano()}
+		out.LocalStat = &cur
+		if rec := recordedLocalStat(it.Metadata); rec != nil && *rec != cur {
+			rehash = true
+		}
+	}
+	if rehash {
 		if out.ContentSHA256, err = hashFile(ctx, f); err != nil {
 			return nil, err
 		}
 		out.ComputedSHA256 = out.ContentSHA256
 	}
 	return out, nil
+}
+
+// localStat 是本機檔案的 size 與 mtime（奈秒），記在 items.metadata_json 的 local。
+type localStat struct {
+	Size    int64 `json:"size"`
+	MtimeNS int64 `json:"mtime_ns"`
+}
+
+// recordedLocalStat 讀出 metadata_json 中上次記錄的 stat；沒有記錄為 nil。
+func recordedLocalStat(metadata json.RawMessage) *localStat {
+	var m struct {
+		Local *localStat `json:"local"`
+	}
+	if len(metadata) == 0 || json.Unmarshal(metadata, &m) != nil {
+		return nil
+	}
+	return m.Local
+}
+
+// withLocalStat 回傳 metadata_json 的副本，local 欄位換成 st，其他欄位原樣保留
+// （UpdateItemMeta 會整欄覆寫 metadata_json）。metadata 不是 JSON 物件時只留下 local。
+func withLocalStat(metadata json.RawMessage, st localStat) json.RawMessage {
+	m := map[string]json.RawMessage{}
+	if len(metadata) > 0 && json.Unmarshal(metadata, &m) != nil || m == nil {
+		m = map[string]json.RawMessage{}
+	}
+	b, _ := json.Marshal(st)
+	m["local"] = b
+	out, err := json.Marshal(m)
+	if err != nil {
+		return metadata
+	}
+	return out
 }
 
 // listSidecars 列出與影音同目錄的外掛字幕檔：<stem>.<lang>.srt 或 .vtt，lang 要像語言代碼（SRC-R14）。
@@ -175,22 +226,39 @@ func embeddedTracks(info *media.Info) []transcript.Track {
 }
 
 func (a localAdapter) fetchCues(ctx context.Context, it store.Item, t transcript.Track, dir string) ([]subtitle.Cue, error) {
-	var data []byte
-	var err error
-	ext := ".srt"
 	switch t.Kind {
 	case transcript.KindSidecar:
-		ext = strings.ToLower(filepath.Ext(t.Handle))
-		data, err = a.readSidecar(t.Handle)
+		cues, _, err := a.loadSidecar(t)
+		return cues, err
 	case transcript.KindEmbedded:
-		data, err = a.extractEmbedded(ctx, it, t, dir)
-	default:
-		err = errPermanent("不認識的字幕軌種類 " + t.Kind)
+		data, err := a.extractEmbedded(ctx, it, t, dir)
+		if err != nil {
+			return nil, err
+		}
+		return parseSubtitle(data, ".srt")
 	}
+	return nil, errPermanent("不認識的字幕軌種類 " + t.Kind)
+}
+
+// loadSidecar 讀取並解析外掛字幕檔，同時回傳檔案內容的 sha256（快取鍵用）。
+// 讀不了（不在允許的目錄、不是一般檔案、超過大小上限）或解析失敗都是 permanent。
+func (a localAdapter) loadSidecar(t transcript.Track) ([]subtitle.Cue, string, error) {
+	data, err := a.readSidecar(t.Handle)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
+	sum := sha256.Sum256(data)
+	cues, err := parseSubtitle(data, strings.ToLower(filepath.Ext(t.Handle)))
+	if err != nil {
+		return nil, "", err
+	}
+	return cues, hex.EncodeToString(sum[:]), nil
+}
+
+// parseSubtitle 依副檔名解析 SRT 或 VTT；解析失敗是 permanent。
+func parseSubtitle(data []byte, ext string) ([]subtitle.Cue, error) {
 	var cues []subtitle.Cue
+	var err error
 	if ext == ".vtt" {
 		cues, err = subtitle.ParseVTT(data)
 	} else {
