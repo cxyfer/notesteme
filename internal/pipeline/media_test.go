@@ -13,7 +13,7 @@ import (
 )
 
 func TestMediaFile(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	ctx := context.Background()
 	path := filepath.Join(lr.root, "talk.mp4")
 	if err := os.WriteFile(path, []byte("VIDEO-bytes"), 0o644); err != nil {
@@ -76,7 +76,7 @@ func TestMediaFile(t *testing.T) {
 
 // 非本機影音沒有媒體快取：ErrNoMedia。
 func TestMediaFileNoMedia(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	yt := lr.ingest("https://www.youtube.com/watch?v=abc123xxxxx", nil, "")
 	if _, _, _, err := lr.p.MediaFile(context.Background(), yt.ID); !errors.Is(err, ErrNoMedia) {
 		t.Errorf("err = %v", err)
@@ -90,7 +90,7 @@ func TestMediaFileNoMedia(t *testing.T) {
 
 // root 之外：pathguard.ErrOutsideRoots（API 回 403）。
 func TestMediaFileOutsideRoots(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	outside := filepath.Join(t.TempDir(), "secret.mp4")
 	if err := os.WriteFile(outside, []byte("VIDEO"), 0o644); err != nil {
 		t.Fatal(err)

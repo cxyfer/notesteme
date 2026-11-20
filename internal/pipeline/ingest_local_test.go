@@ -16,8 +16,8 @@ import (
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
-// localRig 是本機影音的測試環境：root 是 inbox 與 media_roots 的替身，uploads 在資料目錄底下。
-type localRig struct {
+// ingestRig 是本機影音新增的測試環境：root 是 inbox 與 media_roots 的替身，uploads 在資料目錄底下。
+type ingestRig struct {
 	*rig
 	root string
 	wake int
@@ -25,13 +25,13 @@ type localRig struct {
 	evs  []events.Event
 }
 
-func newLocalRig(t *testing.T) *localRig {
+func newIngestRig(t *testing.T) *ingestRig {
 	t.Helper()
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	lr := &localRig{root: root}
+	lr := &ingestRig{root: root}
 	tool, _ := fakemedia.New(t)
 	lr.rig = newRig(t, func(d *Deps) {
 		d.Media = tool
@@ -43,7 +43,7 @@ func newLocalRig(t *testing.T) *localRig {
 	return lr
 }
 
-func (lr *localRig) created() int {
+func (lr *ingestRig) created() int {
 	lr.mu.Lock()
 	defer lr.mu.Unlock()
 	n := 0
@@ -55,7 +55,7 @@ func (lr *localRig) created() int {
 	return n
 }
 
-func (lr *localRig) ingestLocal(t LocalTarget) LocalOutcome {
+func (lr *ingestRig) ingestLocal(t LocalTarget) LocalOutcome {
 	lr.t.Helper()
 	out, err := lr.p.IngestLocal(context.Background(), t)
 	if err != nil {
@@ -65,7 +65,7 @@ func (lr *localRig) ingestLocal(t LocalTarget) LocalOutcome {
 }
 
 // tmpUpload 在資料目錄的 tmp 下寫一個上傳暫存檔，回傳路徑。
-func (lr *localRig) tmpUpload(content string) string {
+func (lr *ingestRig) tmpUpload(content string) string {
 	lr.t.Helper()
 	dir := filepath.Join(lr.dir, "tmp", "upload-x")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -80,14 +80,14 @@ func (lr *localRig) tmpUpload(content string) string {
 	return f.Name()
 }
 
-func (lr *localRig) upload(name, content, sha string) (LocalOutcome, string, error) {
+func (lr *ingestRig) upload(name, content, sha string) (LocalOutcome, string, error) {
 	lr.t.Helper()
 	tmp := lr.tmpUpload(content)
 	out, err := lr.p.IngestUpload(context.Background(), UploadRequest{Name: name, TmpPath: tmp, SHA256: sha})
 	return out, tmp, err
 }
 
-func (lr *localRig) purge(it store.Item) {
+func (lr *ingestRig) purge(it store.Item) {
 	lr.t.Helper()
 	ctx := context.Background()
 	if _, err := lr.p.Trash(ctx, it.ID, TrashOptions{}); err != nil {
@@ -98,7 +98,7 @@ func (lr *localRig) purge(it store.Item) {
 	}
 }
 
-func (lr *localRig) tombstoned(key, sha string) bool {
+func (lr *ingestRig) tombstoned(key, sha string) bool {
 	lr.t.Helper()
 	ok, err := lr.st.Read().LocalTombstoneBlocks(context.Background(), key, sha)
 	if err != nil {
@@ -108,7 +108,7 @@ func (lr *localRig) tombstoned(key, sha string) bool {
 }
 
 func TestIngestLocalCreated(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	out := lr.ingestLocal(LocalTarget{Key: "talk.mp4", SourcePath: filepath.Join(lr.root, "talk.mp4"), SHA256: "aa", Origin: store.OriginInbox})
 	if out.State != store.InboxIngested || !out.Created {
 		t.Fatalf("out = %+v", out)
@@ -140,7 +140,7 @@ func TestIngestLocalCreated(t *testing.T) {
 }
 
 func TestIngestLocalAlready(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	first := lr.ingestLocal(LocalTarget{Key: "a.mp4", SHA256: "aa", Origin: store.OriginInbox})
 	again := lr.ingestLocal(LocalTarget{Key: "a.mp4", SHA256: "aa", Origin: store.OriginInbox})
 	if again.State != store.InboxAlready || again.Created || again.Item.ID != first.Item.ID {
@@ -157,7 +157,7 @@ func TestIngestLocalAlready(t *testing.T) {
 }
 
 func TestIngestLocalConflict(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	lr.ingestLocal(LocalTarget{Key: "a.mp4", SHA256: "aa", Origin: store.OriginInbox})
 	out := lr.ingestLocal(LocalTarget{Key: "a.mp4", SHA256: "bb", Origin: store.OriginInbox})
 	if out.State != store.InboxConflict || out.Created || out.Item.ContentSHA256 != "aa" {
@@ -166,7 +166,7 @@ func TestIngestLocalConflict(t *testing.T) {
 }
 
 func TestIngestLocalInTrash(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	first := lr.ingestLocal(LocalTarget{Key: "a.mp4", SHA256: "aa", Origin: store.OriginInbox})
 	if _, err := lr.p.Trash(context.Background(), first.Item.ID, TrashOptions{}); err != nil {
 		t.Fatal(err)
@@ -178,7 +178,7 @@ func TestIngestLocalInTrash(t *testing.T) {
 }
 
 func TestIngestLocalDuplicate(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	first := lr.ingestLocal(LocalTarget{Key: "a.mp4", SHA256: "aa", Origin: store.OriginInbox})
 	out := lr.ingestLocal(LocalTarget{Key: "b.mp4", SHA256: "aa", Origin: store.OriginInbox})
 	if out.State != store.InboxDuplicate || out.Created || out.Item.ID != first.Item.ID {
@@ -191,7 +191,7 @@ func TestIngestLocalDuplicate(t *testing.T) {
 
 // inbox 遇到 tombstone：不新增，也不移除 tombstone；手動新增則移除並建立（DEL-R11）。
 func TestIngestLocalTombstone(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	first := lr.ingestLocal(LocalTarget{Key: "a.mp4", SHA256: "aa", Origin: store.OriginInbox})
 	lr.purge(first.Item)
 
@@ -215,7 +215,7 @@ func TestIngestLocalTombstone(t *testing.T) {
 }
 
 func TestIngestLocalValidation(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	if _, err := lr.p.IngestLocal(context.Background(), LocalTarget{}); err == nil {
 		t.Error("沒有 Key 應該失敗")
 	}
@@ -226,7 +226,7 @@ func TestIngestLocalValidation(t *testing.T) {
 }
 
 func TestIngestPath(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	ctx := context.Background()
 	inbox := filepath.Join(lr.root, "inbox")
 	path := filepath.Join(inbox, "talks", "keynote.mp4")
@@ -298,7 +298,7 @@ func TestValidUploadName(t *testing.T) {
 }
 
 func TestIngestUploadCreatedAndCollision(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	out, tmp, err := lr.upload("talk.m4a", "AUDIO-one", "s1")
 	if err != nil {
 		t.Fatal(err)
@@ -331,7 +331,7 @@ func TestIngestUploadCreatedAndCollision(t *testing.T) {
 }
 
 func TestIngestUploadDuplicate(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	first, _, err := lr.upload("talk.m4a", "AUDIO-one", "s1")
 	if err != nil {
 		t.Fatal(err)
@@ -359,7 +359,7 @@ func TestIngestUploadDuplicate(t *testing.T) {
 }
 
 func TestIngestUploadNotMedia(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	out, tmp, err := lr.upload("notes.m4a", "plain text", "s9")
 	if !errors.Is(err, media.ErrNotMedia) || out.Created {
 		t.Fatalf("out = %+v err = %v", out, err)
@@ -377,7 +377,7 @@ func TestIngestUploadNotMedia(t *testing.T) {
 
 // 上傳之後，相同雜湊與相同鍵的 tombstone 都被移除（DEL-R11）。
 func TestIngestUploadRemovesTombstones(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	first, _, err := lr.upload("talk.m4a", "AUDIO-one", "s1")
 	if err != nil {
 		t.Fatal(err)
@@ -396,7 +396,7 @@ func TestIngestUploadRemovesTombstones(t *testing.T) {
 }
 
 func TestIngestUploadInvalidName(t *testing.T) {
-	lr := newLocalRig(t)
+	lr := newIngestRig(t)
 	var inv *InvalidError
 	if _, _, err := lr.upload("a/b.m4a", "AUDIO", "s"); !errors.As(err, &inv) {
 		t.Errorf("err = %v", err)
