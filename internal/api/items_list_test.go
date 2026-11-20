@@ -441,3 +441,23 @@ func TestListItemsRequiresAuth(t *testing.T) {
 		t.Errorf("沒有登入應回 401：%d", rec.Code)
 	}
 }
+
+// 沒有指定 CursorKey 時，同一個 process 的 TCP 與本機 socket handler 共用金鑰：
+// 從一個 listener 拿到的游標，在另一個 listener 也能繼續讀下一頁。
+func TestListItemsCursorWorksAcrossListeners(t *testing.T) {
+	var ad Deps
+	r := newItemsRigAPI(t, func(d *Deps) { ad = *d })
+	seedLibrary(t, r)
+	local := NewLocal(ad)
+	first := decode[struct {
+		NextCursor string `json:"next_cursor"`
+	}](t, r.owner("GET", "/api/items?limit=2", ""))
+	if first.NextCursor == "" {
+		t.Fatal("前置條件：第一頁要有 next_cursor")
+	}
+	rec := httptest.NewRecorder()
+	local.ServeHTTP(rec, httptest.NewRequest("GET", "/api/items?limit=2&cursor="+first.NextCursor, nil))
+	if rec.Code != 200 {
+		t.Errorf("本機 socket 拒絕了 TCP 發出的游標：%d %s", rec.Code, rec.Body)
+	}
+}

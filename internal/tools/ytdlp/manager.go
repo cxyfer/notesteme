@@ -296,6 +296,16 @@ func (m *Manager) Rollback(ctx context.Context) (*Result, error) {
 		}
 		return nil, fmt.Errorf("%w：上一版 yt-dlp 無法執行。", ErrNoPrevious)
 	}
+	msg := fmt.Sprintf("yt-dlp 已回到 %s。", now)
+	if st.Previous != "" && now != st.Previous {
+		if st.PreviousID != "" {
+			// 受管理的 venv 回報的版本與記錄不符：內容被改過，不是使用者要回到的版本。
+			m.restoreLink(curID)
+			return nil, fmt.Errorf("%w：上一版 yt-dlp 回報的版本是 %s，與記錄的 %s 不符。", ErrNoPrevious, now, st.Previous)
+		}
+		// 映像內建的版本會隨映像升級而改變，這是正常的；拒絕的話，使用者就退不出目前（可能壞掉的）受管理版本。
+		msg = fmt.Sprintf("yt-dlp 已回到映像內建的 %s（記錄的上一版是 %s，映像已經更新）。", now, st.Previous)
+	}
 
 	next := State{Pinned: st.Pinned, Previous: cur, PreviousID: curID}
 	if next.Pinned != "" && next.Pinned != now {
@@ -307,8 +317,7 @@ func (m *Manager) Rollback(ctx context.Context) (*Result, error) {
 		return nil, err
 	}
 	m.prune(st.PreviousID, curID)
-	return &Result{Version: now, Pinned: next.Pinned, Previous: next.Previous,
-		Message: fmt.Sprintf("yt-dlp 已回到 %s。", now)}, nil
+	return &Result{Version: now, Pinned: next.Pinned, Previous: next.Previous, Message: msg}, nil
 }
 
 // shortReason 把 err 整理成單行的簡短原因：先遮蔽 cookie 內容，空白收斂成單一空格，最多 200 個字元。

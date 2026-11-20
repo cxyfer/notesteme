@@ -355,3 +355,57 @@ func TestInstallErrorKeepsPipDetail(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// 上一版 venv 回報的版本與記錄不符（內容被改過）：Rollback 要還原 symlink、保留 state.json 並回錯。
+func TestRollbackRejectsManagedPreviousWithWrongVersion(t *testing.T) {
+	e := newEnv(t, newFakeRunner("2026.11.10"))
+	e.install("2026.11.01", "2026.11.01")
+	mustUpdate(t, e, UpdateRequest{})
+	before := e.linkTarget()
+	beforeState := e.state()
+
+	if err := os.WriteFile(filepath.Join(VersionsDir(e.tools), "2026.11.01", "version"), []byte("2026.09.09"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := e.m.Rollback(context.Background())
+	if !errors.Is(err, ErrNoPrevious) || !strings.Contains(err.Error(), "2026.09.09") || !strings.Contains(err.Error(), "2026.11.01") {
+		t.Fatalf("err = %v，預期 ErrNoPrevious 並指出兩個版本", err)
+	}
+	if got := e.linkTarget(); got != before {
+		t.Errorf("symlink = %q，預期還原成 %q", got, before)
+	}
+	if got := e.state(); got != beforeState {
+		t.Errorf("state = %+v，預期維持 %+v", got, beforeState)
+	}
+}
+
+// 上一版是映像內建的版本、而映像已經更新：照樣回退（否則退不出受管理的版本），訊息指出實際與記錄的版本。
+func TestRollbackToUpgradedBuiltinReportsBothVersions(t *testing.T) {
+	e := newEnv(t, newFakeRunner("2026.11.10"))
+	builtin := filepath.Join(filepath.Dir(e.tools), "opt", "yt-dlp")
+	if err := os.MkdirAll(filepath.Join(builtin, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(version string) {
+		for p, c := range map[string]string{filepath.Join(builtin, "bin", "yt-dlp"): "#!/bin/sh\n", filepath.Join(builtin, "version"): version} {
+			if err := os.WriteFile(p, []byte(c), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	write("2026.10.01")
+	e.m.Resolver.Vars["PATH"] += string(os.PathListSeparator) + filepath.Join(builtin, "bin")
+	mustUpdate(t, e, UpdateRequest{})
+	write("2026.11.05") // 映像升級，內建版本跟著改變
+
+	res, err := e.m.Rollback(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Version != "2026.11.05" || !strings.Contains(res.Message, "2026.11.05") || !strings.Contains(res.Message, "2026.10.01") {
+		t.Errorf("結果 = %+v，訊息要指出實際（2026.11.05）與記錄（2026.10.01）的版本", res)
+	}
+	if _, err := os.Lstat(LinkPath(e.tools)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("回到映像內建的版本時 symlink 應該移除：%v", err)
+	}
+}
