@@ -13,10 +13,12 @@ CREATE TABLE api_tokens (
     revoked_at   INTEGER
 ) STRICT;
 
--- Active token names must be unique so revoking by name is unambiguous,
--- while allowing a name to be reused after the earlier token is revoked.
-CREATE UNIQUE INDEX api_tokens_active_name ON api_tokens (name) WHERE revoked_at IS NULL;
+-- Valid (not revoked, not expired) token names must be unique so revoking by name is unambiguous,
+-- while a name can be reused once the earlier token is revoked or has expired. Expiry depends on
+-- the current time, which a partial index cannot express, so CreateAPIToken checks it in the same
+-- write transaction (the store has a single write connection); this index only serves the lookup.
+CREATE INDEX api_tokens_name ON api_tokens (name);
 
 -- +goose Down
-DROP INDEX api_tokens_active_name;
+DROP INDEX api_tokens_name;
 DROP TABLE api_tokens;

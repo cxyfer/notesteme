@@ -50,6 +50,26 @@ func (q *Queries) APITokenByHash(ctx context.Context, arg APITokenByHashParams) 
 	return i, err
 }
 
+const countValidAPITokensByName = `-- name: CountValidAPITokensByName :one
+SELECT COUNT(*) FROM api_tokens
+WHERE name = ?1
+  AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > ?2)
+`
+
+type CountValidAPITokensByNameParams struct {
+	Name string
+	Now  *int64
+}
+
+// Valid means not revoked and not expired at the injected clock now.
+func (q *Queries) CountValidAPITokensByName(ctx context.Context, arg CountValidAPITokensByNameParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countValidAPITokensByName, arg.Name, arg.Now)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAPIToken = `-- name: CreateAPIToken :exec
 INSERT INTO api_tokens (id, name, prefix, scopes, token_hash, expires_at, created_at)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -82,16 +102,18 @@ const expireAPITokenByName = `-- name: ExpireAPITokenByName :execrows
 UPDATE api_tokens
 SET expires_at = CAST(?1 AS INTEGER)
 WHERE revoked_at IS NULL AND name = ?2
+  AND (expires_at IS NULL OR expires_at > ?3)
 `
 
 type ExpireAPITokenByNameParams struct {
 	ExpiresAt int64
 	Name      string
+	Now       *int64
 }
 
-// Test harness helper: marks an active token expired at the given timestamp.
+// Test harness helper: marks the valid token with this name expired at the given timestamp.
 func (q *Queries) ExpireAPITokenByName(ctx context.Context, arg ExpireAPITokenByNameParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, expireAPITokenByName, arg.ExpiresAt, arg.Name)
+	result, err := q.db.ExecContext(ctx, expireAPITokenByName, arg.ExpiresAt, arg.Name, arg.Now)
 	if err != nil {
 		return 0, err
 	}
@@ -151,7 +173,9 @@ func (q *Queries) ListAPITokens(ctx context.Context) ([]ListAPITokensRow, error)
 const revokeAPIToken = `-- name: RevokeAPIToken :execrows
 UPDATE api_tokens
 SET revoked_at = CAST(?1 AS INTEGER)
-WHERE revoked_at IS NULL AND (id = ?2 OR name = ?2)
+WHERE revoked_at IS NULL
+  AND (id = ?2
+       OR (name = ?2 AND (expires_at IS NULL OR expires_at > ?1)))
 `
 
 type RevokeAPITokenParams struct {
@@ -159,7 +183,7 @@ type RevokeAPITokenParams struct {
 	IDOrName  string
 }
 
-// Matches either id or active name; api_tokens_active_name guarantees active name uniqueness.
+// Matches either an unrevoked id or a valid name; CreateAPIToken keeps valid names unique.
 func (q *Queries) RevokeAPIToken(ctx context.Context, arg RevokeAPITokenParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, revokeAPIToken, arg.RevokedAt, arg.IDOrName)
 	if err != nil {

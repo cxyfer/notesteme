@@ -8,10 +8,15 @@ INSERT INTO encryption_keys (id, wrapped_key, created_at)
 SELECT CAST(sqlc.arg(id) AS TEXT), CAST(sqlc.arg(wrapped_key) AS TEXT), CAST(sqlc.arg(created_at) AS INTEGER)
 WHERE NOT EXISTS (SELECT 1 FROM encryption_keys WHERE retired_at IS NULL);
 
--- name: RetireActiveKey :execrows
+-- name: RewrapActiveKey :execrows
+-- Master key rotation overwrites the wrapping in place: keeping the old wrapping would let
+-- anyone holding the database and the old master key unwrap the same data key.
 UPDATE encryption_keys
-SET retired_at = CAST(sqlc.arg(retired_at) AS INTEGER)
+SET wrapped_key = CAST(sqlc.arg(wrapped_key) AS TEXT)
 WHERE retired_at IS NULL;
+
+-- name: DeleteRetiredKeys :exec
+DELETE FROM encryption_keys WHERE retired_at IS NOT NULL;
 
 -- name: InsertActiveKey :exec
 INSERT INTO encryption_keys (id, wrapped_key, created_at)

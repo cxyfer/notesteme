@@ -21,14 +21,24 @@ SELECT id, name, prefix, scopes, expires_at, created_at, last_used_at, revoked_a
 FROM api_tokens
 ORDER BY created_at DESC, id DESC;
 
+-- name: CountValidAPITokensByName :one
+-- Valid means not revoked and not expired at the injected clock now.
+SELECT COUNT(*) FROM api_tokens
+WHERE name = sqlc.arg(name)
+  AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > sqlc.arg(now));
+
 -- name: RevokeAPIToken :execrows
--- Matches either id or active name; api_tokens_active_name guarantees active name uniqueness.
+-- Matches either an unrevoked id or a valid name; CreateAPIToken keeps valid names unique.
 UPDATE api_tokens
 SET revoked_at = CAST(sqlc.arg(revoked_at) AS INTEGER)
-WHERE revoked_at IS NULL AND (id = sqlc.arg(id_or_name) OR name = sqlc.arg(id_or_name));
+WHERE revoked_at IS NULL
+  AND (id = sqlc.arg(id_or_name)
+       OR (name = sqlc.arg(id_or_name) AND (expires_at IS NULL OR expires_at > sqlc.arg(revoked_at))));
 
 -- name: ExpireAPITokenByName :execrows
--- Test harness helper: marks an active token expired at the given timestamp.
+-- Test harness helper: marks the valid token with this name expired at the given timestamp.
 UPDATE api_tokens
 SET expires_at = CAST(sqlc.arg(expires_at) AS INTEGER)
-WHERE revoked_at IS NULL AND name = sqlc.arg(name);
+WHERE revoked_at IS NULL AND name = sqlc.arg(name)
+  AND (expires_at IS NULL OR expires_at > sqlc.arg(now));

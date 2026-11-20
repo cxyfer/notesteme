@@ -29,6 +29,15 @@ func (q *Queries) DeleteAllEncryptionKeys(ctx context.Context) error {
 	return err
 }
 
+const deleteRetiredKeys = `-- name: DeleteRetiredKeys :exec
+DELETE FROM encryption_keys WHERE retired_at IS NOT NULL
+`
+
+func (q *Queries) DeleteRetiredKeys(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteRetiredKeys)
+	return err
+}
+
 const insertActiveKey = `-- name: InsertActiveKey :exec
 INSERT INTO encryption_keys (id, wrapped_key, created_at)
 VALUES (?1, ?2, ?3)
@@ -67,14 +76,16 @@ func (q *Queries) InsertWrappedKey(ctx context.Context, arg InsertWrappedKeyPara
 	return result.RowsAffected()
 }
 
-const retireActiveKey = `-- name: RetireActiveKey :execrows
+const rewrapActiveKey = `-- name: RewrapActiveKey :execrows
 UPDATE encryption_keys
-SET retired_at = CAST(?1 AS INTEGER)
+SET wrapped_key = CAST(?1 AS TEXT)
 WHERE retired_at IS NULL
 `
 
-func (q *Queries) RetireActiveKey(ctx context.Context, retiredAt int64) (int64, error) {
-	result, err := q.db.ExecContext(ctx, retireActiveKey, retiredAt)
+// Master key rotation overwrites the wrapping in place: keeping the old wrapping would let
+// anyone holding the database and the old master key unwrap the same data key.
+func (q *Queries) RewrapActiveKey(ctx context.Context, wrappedKey string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, rewrapActiveKey, wrappedKey)
 	if err != nil {
 		return 0, err
 	}

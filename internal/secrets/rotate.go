@@ -23,7 +23,7 @@ func kdfFor(lowCost bool) KDFParams {
 }
 
 // RotateMasterKey 以 currentMaster 解開現行資料金鑰，改用 newMaster 重新包裝後，
-// 在單一資料庫交易中淘汰舊金鑰並寫入新金鑰（SEC-R8）。
+// 在單一資料庫交易中以新的包裝覆寫舊的，不保留舊 master key 包裝的資料金鑰（SEC-R8）。
 // currentMaster 不正確時回傳 ErrWrongMasterKey，資料庫不做任何變更。
 func RotateMasterKey(ctx context.Context, st *store.Store, currentMaster, newMaster string, lowCost bool) error {
 	if currentMaster == "" || newMaster == "" {

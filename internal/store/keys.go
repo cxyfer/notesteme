@@ -32,23 +32,28 @@ func (s *Store) InsertWrappedKey(ctx context.Context, wrapped string) (bool, err
 	return n > 0, err
 }
 
-// RotateWrappedKey 在單一交易中將現行資料金鑰標記為已淘汰，並寫入重新加密後的新資料金鑰。
+// RotateWrappedKey 在單一交易中把現行資料金鑰的包裝換成 wrapped（SEC-R8），不保留舊的包裝：
+// 留著的話，拿到資料庫與舊 master key 的人仍能解開同一把資料金鑰，輪替就沒有撤銷舊 key 的效果。
+// commit 之後 checkpoint 並截斷 WAL：新的頁面寫回主檔、蓋掉舊的包裝，舊的頁面也不會留在 -wal 檔中。
+// 輪替之前的備份與 migration 快照仍保有舊的包裝。
 // 沒有現行金鑰時回傳 ErrNotFound。
 func (s *Store) RotateWrappedKey(ctx context.Context, wrapped string) error {
-	return s.Tx(ctx, func(tx *Repo) error {
-		n, err := tx.q.RetireActiveKey(ctx, tx.nowMs())
+	err := s.Tx(ctx, func(tx *Repo) error {
+		n, err := tx.q.RewrapActiveKey(ctx, wrapped)
 		if err != nil {
 			return err
 		}
 		if n == 0 {
 			return ErrNotFound
 		}
-		return tx.q.InsertActiveKey(ctx, sqlcdb.InsertActiveKeyParams{
-			ID:         NewID(),
-			WrappedKey: wrapped,
-			CreatedAt:  tx.nowMs(),
-		})
+		return tx.q.DeleteRetiredKeys(ctx)
 	})
+	if err != nil {
+		return err
+	}
+	// 盡力而為：有讀取中的連線時 checkpoint 可能無法截斷，WAL 的舊 frame 之後也會被新的寫入覆蓋。
+	_, _ = s.w.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
+	return nil
 }
 
 // ResetSecretsAndKey 在單一交易中刪除所有 secrets 與既有資料金鑰，並寫入新的現行資料金鑰（SEC-R9）。

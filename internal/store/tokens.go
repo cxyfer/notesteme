@@ -28,7 +28,8 @@ type APIToken struct {
 	RevokedAt  *time.Time
 }
 
-// CreateAPIToken 建立一筆 API token；有效 token 名稱重複時回傳 ErrConflict。
+// CreateAPIToken 建立一筆 API token；已有同名的有效 token 時回傳 ErrConflict。
+// 已撤銷或已到期的 token 不佔用名稱。
 func (s *Store) CreateAPIToken(ctx context.Context, name, prefix string, scopes []string, tokenHash string, expiresAt *time.Time) (APIToken, error) {
 	if scopes == nil {
 		scopes = []string{}
@@ -44,14 +45,25 @@ func (s *Store) CreateAPIToken(ctx context.Context, name, prefix string, scopes 
 		t := expiresAt.UTC()
 		expCopy = &t
 	}
-	err = s.wq.CreateAPIToken(ctx, sqlcdb.CreateAPITokenParams{
-		ID:        id,
-		Name:      name,
-		Prefix:    prefix,
-		Scopes:    string(scopesJSON),
-		TokenHash: tokenHash,
-		ExpiresAt: msPtr(expCopy),
-		CreatedAt: toMs(now),
+	// 同名限制只算有效（未撤銷、未到期）的 token：到期時間取決於現在，partial index 表達不了，
+	// 所以在同一個寫入交易中檢查（只有一個寫入連線，交易之間不會交錯）。
+	err = s.Tx(ctx, func(tx *Repo) error {
+		n, err := tx.q.CountValidAPITokensByName(ctx, sqlcdb.CountValidAPITokensByNameParams{Name: name, Now: ptr(toMs(now))})
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			return fmt.Errorf("%w: 已有同名的有效 token %q", ErrConflict, name)
+		}
+		return tx.q.CreateAPIToken(ctx, sqlcdb.CreateAPITokenParams{
+			ID:        id,
+			Name:      name,
+			Prefix:    prefix,
+			Scopes:    string(scopesJSON),
+			TokenHash: tokenHash,
+			ExpiresAt: msPtr(expCopy),
+			CreatedAt: toMs(now),
+		})
 	})
 	if err != nil {
 		if isUniqueConstraint(err) {
@@ -106,7 +118,7 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 	return out, nil
 }
 
-// RevokeAPIToken 撤銷指定的有效 token（比對 id 或有效的 name），回傳是否真的撤銷了一筆。
+// RevokeAPIToken 撤銷指定的 token（比對未撤銷的 id，或有效 token 的 name），回傳是否真的撤銷了一筆。
 func (s *Store) RevokeAPIToken(ctx context.Context, idOrName string) (bool, error) {
 	n, err := s.wq.RevokeAPIToken(ctx, sqlcdb.RevokeAPITokenParams{
 		RevokedAt: s.nowMs(),
@@ -120,6 +132,7 @@ func (s *Store) ExpireAPITokenByName(ctx context.Context, name string, expiresAt
 	n, err := s.wq.ExpireAPITokenByName(ctx, sqlcdb.ExpireAPITokenByNameParams{
 		ExpiresAt: toMs(expiresAt),
 		Name:      name,
+		Now:       ptr(s.nowMs()),
 	})
 	return n > 0, err
 }
