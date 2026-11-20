@@ -1,6 +1,6 @@
 # 交接：M1 開發進度
 
-> 更新：2026-11-18。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；#5（CLI）已合併；GRD 切片是 PR #6（`feat/guards`）；`feat/sources`、`feat/bilibili`、`feat/ops`、`feat/library`、`feat/delete`、`feat/auth-secrets`（依序疊在 `feat/guards` 上，待 push 與開 PR）。
+> 更新：2026-11-21。PR #1～#12 已合併。LOCAL 切片（ING-05）是 PR #13（`feat/local-media`）；PODCAST 切片在 `feat/podcast`，疊在 `feat/local-media` 上。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -55,28 +55,41 @@
     - Master key 輪替與重設（`internal/secrets/rotate.go`、`internal/app/secrets.go`）：在 `store.LockDir` 離線鎖與單一交易中完成（不呼 `openCore`/`secrets.Open`，確保遺失 master key 時仍可 `reset` 並保留影音庫）。
     - CLI（`internal/cli/tokens.go`、`internal/cli/secrets.go`）：`tokens create|ls|revoke`（經 `openBackend` 支援 standalone／本機 socket／`--server`）、`secrets rotate-key --new-key-env` 與 `secrets reset [--yes]`（離線鎖、拒絕 `--server`、非終端機缺 `--yes` 回 2）。
     - 驗收步驟（`features/steps/{access,files,scenario,secrets,processing}.go`）：實作 `a token … with scopes …`、`the token … expired`（經 `Server.ExpireToken`）、`the client sends … with the token …`（含 `and:` 與 `POST /api/items` 預設 body）、`the data directory does not contain the created token`、`the logs do not contain …`；`noteRequest` 追蹤 `PUT /api/settings/services` 的 `api_key`；`itemProcessedUpTo` 在未呼叫 `the server is running` 時收掉暫時啟動的 server。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，167 passed、24 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
+  - LOCAL 切片（ING-05，PR #13，決策見 ADR-0016）：
+    - migration 00009：`items` 的 `source_path`、`content_sha256`、`origin`；`inbox_entries`；tombstone 記 `sha256`。
+    - 識別：`local:<相對 inbox 的路徑>`、`local:<絕對路徑>`（media_roots）、`local:<檔名>`（上傳，撞名加 `-2`，也避開 inbox 頂層的同名檔）。
+    - `internal/pathguard/open.go`：`Resolve`、`Open`（`os.OpenRoot`、`O_NONBLOCK`、只收一般檔案）、`With`。
+    - `internal/media`：固定 argv 的 ffprobe／ffmpeg，一律帶 `-protocol_whitelist file` 與 `-format_whitelist`；`CanonicalLang`。
+    - 新增入口：`{"path"}`（延遲驗證）、multipart 上傳（4 GiB、閒置逾時 2 分鐘、並行 2、part 16，先檢查 scope 再讀 body）、`internal/inbox` watcher（穩定 10 秒、ffprobe 篩選、`sha256` 去重、tombstone）；`IngestLocal` 的判斷順序是鍵 → tombstone → `sha256`。
+    - `GET /api/items/{id}/media`：`ServeContent`、ETag、Content-Type 白名單、`nosniff`、CSP sandbox。
+    - 字幕來源 `local-sidecar`、`local-embedded`；讀不到時記 `rejected`／`unreadable`，改用下一條；Supadata 對 local 是 `unsupported`。
+    - ASR（`internal/pipeline/asr.go`、`internal/audio`）：所有平台共用前處理（Opus 16kHz），超過上限時在靜音處切塊、依中點接回。ASR 語言寫回原文語言（`lang_source=asr`），之後重跑不把它當輸入。
+    - 非上傳的本機檔案每次 probe 比對大小與修改時間，不同就重算 `sha256`；外掛字幕內容的 `sha256` 進快取鍵。
+    - 備份包含 `uploads/`（manifest 記大小與 `sha256`），還原時原本的 `uploads/` 移到 `/backups/pre-restore-uploads-<時間>/`；啟動時清理孤兒的 `uploads/<id>`。
+    - harness：marker v2（`streams`、`compressed`、`silences`、`offset`）、會轉碼／切塊／靜音偵測／抽字幕的假 ffmpeg、假 Groq 依 `offset` 過濾、`features/fixtures/{local,media}/`；字幕表格的 `#` 不從 1 起連號時依 `#` 比對。
+- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，180 passed、11 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
   |---|---|---|
   | AUTH | 23 | 0 |
   | CLI | 9 | 0 |
-  | DEL | 17 | 4 |
-  | GRD | 19 | 3 |
-  | ING | 15 | 9 |
-  | LIB | 9 | 1 |
+  | DEL | 19 | 2 |
+  | GRD | 21 | 1 |
+  | ING | 19 | 5 |
+  | LIB | 10 | 0 |
   | NRM | 10 | 1 |
   | OPS | 14 | 0 |
   | OUT | 8 | 0 |
   | PIPE | 19 | 0 |
   | SEC | 11 | 0 |
-  | SRC | 13 | 6 |
+  | SRC | 17 | 2 |
 
-  AUTH、CLI、OPS、OUT、PIPE、SEC 的 M1 場景全部通過。剩下的 24 個 pending（`DEL` 4、`GRD` 3、`ING` 9、`LIB` 1、`NRM` 1、`SRC` 6）：
-  - **ING-05 本機檔案／上傳／inbox watcher**：`DEL`（2 個：upload/inbox 清理與不重收）、`GRD-R7` 預期 201（2 個）、`ING` 本機新增／上傳／inbox（6 個）、`LIB-R6` 本機 Range（1 個）、`SRC` 本機檔案語言偵測（1 個）。
-  - **Podcast／DNS rebinding／ING-07、ING-08／SRC 進階**：`GRD` DNS rebinding（1 個）、`ING` podcast 與相關規則（3 個）、`SRC` R12／R14／R15（5 個）。
+  AUTH、CLI、LIB、OPS、OUT、PIPE、SEC 的 M1 場景全部通過。剩下的 11 個 pending：
+  - **PODCAST（6 個，`feat/podcast` 進行中）**：`ING` feed 辨識、選集、沒有選集（3 個）、`GRD` DNS rebinding（1 個）、`SRC` R14 podcast transcript、R15 時間偏移（2 個）。
+  - **ING-R7（1 個）**：單次覆寫與處理方案。場景建立名為 `standard` 的處理方案，但 PRF 規格寫 M1 只有內建的 `default`，需要 owner 決定（建議 M1 先做處理方案的最小儲存與讀取）。
+  - **ING-R8（1 個）**：`POST /api/estimate`。
+  - **NRM-R7（1 個）**：場景的影片原文語言是預設的 `en`，卻只有 `zh-Hans` 的自動字幕，預設的 `caption_priority` 不會選它，所以 `processed up to` 依規則 3 pending。場景要改（例如改成 `manual captions`，或宣告原文語言 `zh-Hans`），需要 owner 同意。
   - **DEL `@mcp`（2 個）**：需等 M2 的 MCP tool（`get_transcript`、`tools/list`）。
-  - **NRM-R7（1 個）**：中英夾雜字幕規則。
 
   M1 的 OUT 場景全部通過，但 OUT 的 M2 部分還沒做，所以規格狀態仍是 `ready`，不是 `implemented`。
 
@@ -84,19 +97,15 @@
 
 ## 2. 下一步
 
-使用者的切片進度：PIPE（完成）→ CLI 與 `/data` 鎖（完成）→ GRD（完成，PR #6）→ SRC-A（完成，`feat/sources`）→ SRC-B（完成，`feat/bilibili`）→ OPS（完成，`feat/ops`）→ LIB（完成，`feat/library`）→ DEL（完成，`feat/delete`）→ AUTH-SEC（完成，`feat/auth-secrets`）。
+切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC（PR #1～#12，已合併）→ LOCAL（PR #13）→ PODCAST（`feat/podcast`，進行中）。
 
 接下來：
 
-1. PR #6（GRD）等 CI 與 Codex 審查，通過後由 owner 合併（自動模式不允許 agent 執行 `gh pr merge`）。
-2. PR #6 整理好之後，依序 push `feat/sources`、`feat/bilibili`、`feat/ops`、`feat/library`、`feat/delete`、`feat/auth-secrets` 並開 PR（base 分別是前一個分支；前一個合併後改 base 為 `master`，並用 `-s ours` 併入 master）。
-3. 下一個切片由使用者決定。預設 tag 下剩下的 24 個 pending 主要在：
-   - ING-05 的本機檔案、上傳、inbox watcher（`ING`、`LIB-R6`、`GRD-R7` 的 201、`SRC` 本機）。
-   - podcast（`ING`、`SRC`、`GRD` 的 DNS rebinding）、`ING-07`/`ING-08`。
-   - `DEL` 的 `@mcp` 場景（2 個，等 M2 MCP）。
-   - `NRM-R7`（1 個）。
-4. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
-5. `features/fixtures/items/` 有 `yt-pg100xxxxxx.json`、`yt-abc123xxxxx.json`（後者只在影片沒有任何字幕軌時用到，目前只有 SEC 的場景用得到）。
+1. PR #13 等 Codex 複審與 owner 合併（沒有明確授權不合併）。PODCAST 疊在 #13 上：#13 合併後，把 PODCAST PR 的 base 改成 `master`，再用 `-s ours` 併入 master（見記憶中的疊加 PR 合併方式）。
+2. PODCAST 完成後，剩下 M1 的 ING-R7、ING-R8、NRM-R7（見第 1 節，其中兩個需要 owner 決定），然後進入 M2（LLM、SEG、COR、TRN、PRM、PRF、AGT、MCP，以及 OUT、LIB、DEL、AUTH、SEC 的 M2 場景）。
+3. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
+4. `features/fixtures/items/` 有 `yt-pg100xxxxxx.json`、`yt-abc123xxxxx.json`（後者只在影片沒有任何字幕軌時用到，目前只有 SEC 的場景用得到）。
+5. 大切片的做法（LOCAL、PODCAST 用過）：architect 先出設計，主代理把設計凍結成契約檔（Go 介面、argv、marker 語法、資料模型），再分給檔案所有權不重疊的 builder 並行實作；harness 的工作包可以從一開始就並行。整合後主代理跑完整驗收與變異測試，另開 builder 只看 diff 與規格做審查。
 
 ## 3. 怎麼執行
 
@@ -232,7 +241,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - 做 `youtube-auto` 前，要評估改用 yt-dlp 的 `json3` 格式（見 NRM 待決問題）。`features/fixtures/captions/auto-zh-en-mixed.json` 目前內容是 VTT，決定後與假 yt-dlp 一起改。
 - **CLI**：
   - client 模式加 `--wait`、而 serve 是手動 worker 時，harness 還不會在背景推動 worker，步驟會失敗並說明（目前沒有場景用到）。
-  - `items ls --status`、`--channel` 回 2（尚未支援）；本機路徑的 `ingest` 要等 upload／path API（目前 API 回 501）。
+  - 本機路徑的 `ingest` 一律送 `{"path"}`（standalone 走程序內 handler，路徑不受限）。
   - `doctor` 的網路連線檢查要等 OPS 的已知影片；API key 檢查 Supadata 與 Groq。
   - JSON Lines 輸出在步驟中只比對第一個物件。
   - 非 Linux 平台的本機 socket 只靠檔案權限，沒有 uid 檢查。
@@ -241,11 +250,18 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - 直接輸入非 http 網址的場景驗證不到我們自己的 scheme 檢查（Go 的 `http.Client` 也會拒絕），由轉址場景與單元測試把關；GRD-R6 的 `--use-extractors` 只由單元測試把關（見 GRD 待決問題）。
   - 設定檔中「由資料庫管理的欄位」清單（profiles、prompts、budget(s)、settings、subscriptions、tokens、secrets、cookies、language、notifications）是實作時自訂的，需要 owner 確認；拿掉其中一項，`KnownFields` 仍會拒絕，場景驗證不到專用訊息。
   - `netguard.Deps` 同時有舊的 `Allowlist []netip.Prefix` 與新的 `AllowPrivate`，`features/internal/fakenet` 改用新欄位後可移除舊欄位。
-  - pathguard 檢查與實際開檔之間的 TOCTOU 屬於 ING-05。
+  - 程式自己讀檔已改用 `Guard.Open`（`os.OpenRoot`）；交給 ffmpeg／ffprobe 的路徑仍有檢查與開檔之間的 TOCTOU（之後可在 toolexec 加 ExtraFiles，改傳 `/dev/fd/3`）。
   - 播放清單沒有項目數上限；yt-dlp 的播放清單錯誤訊息還沒對真實 yt-dlp 驗證（見 ING 待決問題）。
   - Supadata 回應超過大小上限時仍走 `isPermanent` 換下一個來源，最後訊息是「找不到可用的字幕來源」，看不到大小上限的訊息。
 - **SRC**：
-  - Groq：`verbose_json` 欄位、語言全名、25 MiB 上限、yt-dlp `--max-filesize` 的輸出字串都還沒對真實服務驗證；長音訊在切塊（SRC-R12）完成前直接 permanent，使用者只看到「找不到可用的字幕來源」，看不到大小原因。
+  - Groq：`verbose_json` 欄位、語言全名、25 MiB 上限、yt-dlp `--max-filesize` 的輸出字串都還沒對真實服務驗證。切塊（SRC-R12）已完成，但 Opus 位元率、靜音門檻、重疊長度、`-format_whitelist` 清單都是預設值，要用真實的 ffmpeg 與 Groq 確認（M0）；切塊不能續傳（`tasks.chunk_index` 尚未使用）。
+  - LOCAL：
+    - inbox 的判定原因只寫進 `inbox_entries` 與 log，還沒有 API。
+    - inbox 中之後才出現、與既有上傳同名的檔案會記為衝突，不會新增。
+    - 外掛字幕壞掉改走 ASR 時，metadata 決定的資源類別不知道這件事（只影響並行分類）。
+    - 上傳的並行上限以資料目錄為鍵、全程序共用；閒置逾時用實際時間（讀取期限是 net 層的絕對時間，不能用 fake clock）。
+    - `internal/backup.ParseUploadPath` 與 `pipeline.ValidUploadName` 各有一份檔名規則，條件一致。
+    - ffprobe 的 disposition 在假工具中固定為「每種類型的第一條是 default」。
   - Groq 上傳用 chunked（`io.Pipe`），要求 Content-Length 的 proxy 會失敗。
   - Supadata 仍是先讀完 body 再依狀態碼分類（Groq 已改成先看狀態碼）。
   - `the provider … has no API key` 對 LLM provider 依參數回 pending（steps.md 4.1 註明 LLM 版本未實作），M2 實作 LLM 時要補。
@@ -285,9 +301,9 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
     - 預覽不寫入資料。
     - purge 時取消殘留任務、刪除 events、不過度刪除。
   - 權限：`DEL-R12` 已接上（`GET /api/trash`、`deletion-preview` 為 `read`，其餘刪除／還原為 `admin`），`@mcp` 兩則留待 M2。
-  - `Ingest` 新建影音時一律移除 tombstone，因為 M1 只有手動新增。ING-05 的 inbox 與 M4 的訂閱接上時，要加「手動」旗標。
-  - tombstone 的 `sha256` 一律為空，本機檔案等 ING-05。
-  - `cues_fts`、`outputs`、uploads、術語候選還不存在，之後接上時，永久刪除要一併清除。
+  - 手動新增與上傳移除 tombstone；inbox 自動新增遇到 tombstone 時不建立、不移除（ING-05 已接上）。M4 的訂閱接上時，比照 inbox 不移除。
+  - tombstone 的 `sha256` 只有本機檔案有值（平台影音為空）。
+  - `cues_fts`、`outputs`、術語候選還不存在，之後接上時，永久刪除要一併清除（uploads 已接上）。
   - 永久刪除後從舊備份還原會留下壞的產出（見 OPS 待決問題）。
   - `removeDirs` 失敗只記 log，沒有孤兒目錄的掃描。
   - `app.Server.SeedCost`、`CostEntries` 只給 harness 用。
@@ -322,6 +338,9 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 | CLI | Windows 原生 binary 的 client 模式 | 只支援 `--server` |
 | OPS | 自我檢查用的已知影片 | M1 內建一部，不開放覆寫；M0 實測 |
 | OPS | 自我檢查的暫時性失敗是否回退 | 照規則回退，原因放在 `reason` |
+| LOCAL | steps.md 的語意補充（部分 `#` 表格依 `#` 比對；`processed up to` 規則 (1) 對 `local:` 也算外掛與內嵌字幕）、用路徑新增的延遲驗證、上傳上限 4 GiB、YouTube ASR 也走前處理、備份包含 uploads | 已依預設實作（PR #13），待 owner 確認 |
+| ING | ING-R7 的 `standard` 處理方案與 PRF 的「M1 只有 `default`」衝突 | 建議 M1 先做處理方案的最小儲存與讀取 |
+| NRM | NRM-R7 場景的字幕軌不會被 `caption_priority` 選中 | 建議改成 `manual captions` 或宣告原文語言 `zh-Hans`，需 owner 同意改 `.feature` |
 
 ## 8. 已確定的技術選擇
 
