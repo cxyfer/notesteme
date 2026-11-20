@@ -97,6 +97,7 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 	}
 
 	s := &Server{cfg: cfg, log: log, netw: netDeps(env.Net, cfg), lock: lock, done: make(chan struct{}), grace: shutdownGrace}
+	s.unrestrictedFiles = opts.holder == holderCLI
 	if env.Test != nil && env.Test.SkipShutdownGrace {
 		s.grace = 0
 	}
@@ -174,6 +175,17 @@ type coreOpts struct {
 	manualWorker bool
 	// check 在 DB 與資料金鑰都就緒、pipeline 啟動之前呼叫；回傳錯誤時整個啟動失敗。
 	check func(ctx context.Context, s *Server) error
+}
+
+// fileGuard 是 pipeline 程式內讀取本機檔案（雜湊、sidecar、媒體串流）用的 Guard：
+// serve 限制在 inbox 與 media_roots（與 API 的 Paths 相同），standalone 不受限制（GRD-R8）；
+// 兩者都加上 <data>/uploads（上傳的檔案放在資料目錄底下）。
+func (s *Server) fileGuard() *pathguard.Guard {
+	g := pathguard.New(append([]string{s.cfg.Inbox}, s.cfg.MediaRoots...))
+	if s.unrestrictedFiles {
+		g = pathguard.Unrestricted()
+	}
+	return g.With(filepath.Join(s.cfg.Data, "uploads"))
 }
 
 // apiDeps 組出 API 的依賴。serve 的 TCP 與 Unix socket、standalone 的程序內 handler 共用同一份，

@@ -16,6 +16,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/cookies"
+	"github.com/cxyfer/notesteme/internal/media"
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/queue"
@@ -51,13 +52,15 @@ const (
 // Server 是執行中的 serve。openCore 建立的核心欄位（設定、DB、pipeline、worker 等）
 // 也是 standalone 使用的部分（見 standalone.go），所以 Standalone 同樣包一個 *Server。
 type Server struct {
-	cfg   *config.Config
-	log   *slog.Logger
-	netw  netguard.Deps
-	ln    net.Listener
-	http  *http.Server
-	store *store.Store
-	keys  *secrets.Keyring
+	cfg *config.Config
+	// unrestrictedFiles 為 true（standalone）時，程式內讀取本機檔案不受 inbox 與 media_roots 限制（GRD-R8）。
+	unrestrictedFiles bool
+	log               *slog.Logger
+	netw              netguard.Deps
+	ln                net.Listener
+	http              *http.Server
+	store             *store.Store
+	keys              *secrets.Keyring
 	// services 管理加密存放的服務商 API key（GET／PUT /api/settings/services 與執行期解析）。
 	services *secrets.Services
 	// cookies 加密存放平台 cookie，並提供 yt-dlp 用的暫存檔（SEC-R7）；startPipeline 建立。
@@ -207,6 +210,9 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 		Bilibili: &bilibili.Client{Runner: runner, Tools: tools, Cookies: s.cookies, Log: log},
 		// 對外請求一律經過 netguard（ADR-0014），不使用 http.DefaultClient；逾時與大小由各呼叫端限制。
 		HTTP: netguard.NewClient(s.netw),
+		// 本機影音（ING-05）：ffprobe／ffmpeg 與 yt-dlp 共用 runner 與工具位置。
+		Media: media.New(runner, tools),
+		Files: s.fileGuard(),
 	}
 	if env.Test != nil {
 		deps.ImplVersions = env.Test.ImplVersions

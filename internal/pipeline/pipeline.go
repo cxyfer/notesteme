@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/media"
+	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/source/bilibili"
 	"github.com/cxyfer/notesteme/internal/source/groq"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
@@ -73,6 +75,11 @@ type Deps struct {
 	Groq Groq
 	// HTTP 是對外 HTTP 的 client（netguard 的 Transport，ADR-0014）；nil 時辨識網址不會抓取任何內容。
 	HTTP *http.Client
+	// Media 是 ffprobe 與 ffmpeg 的包裝（ING-05）；nil 代表不支援本機影音的探測與前處理。
+	Media *media.Tool
+	// Files 是程式內讀取本機檔案的守衛（serve 為 inbox、media_roots 與 <data>/uploads；standalone 不受限制）；
+	// nil 代表不支援讀取本機檔案。
+	Files *pathguard.Guard
 	// Wake 在建立了新任務時呼叫，讓 worker 醒來；可以是 nil。
 	Wake func()
 	// Version 是 notesteme 的版本，寫進來源紀錄。
@@ -95,6 +102,8 @@ type Pipeline struct {
 	// fetchers 是可以執行的 fallback 來源（SRC-R3），依來源 ID。
 	fetchers map[string]fallbackFetcher
 	http     *http.Client
+	media    *media.Tool
+	files    *pathguard.Guard
 	wake     func()
 	version  string
 	// trashRetention 是垃圾桶保留的時間（已套用預設值）。
@@ -133,7 +142,7 @@ func New(d Deps) *Pipeline {
 	if retention <= 0 {
 		retention = DefaultTrashRetention
 	}
-	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), http: d.HTTP, wake: wake, version: d.Version}
+	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), http: d.HTTP, media: d.Media, files: d.Files, wake: wake, version: d.Version}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。
