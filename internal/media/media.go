@@ -210,7 +210,7 @@ func (t *Tool) Probe(ctx context.Context, path string) (*Info, error) {
 			Index:       s.Index,
 			Type:        s.CodecType,
 			Codec:       s.CodecName,
-			Lang:        BCP47(tag(s.Tags, "language")),
+			Lang:        CanonicalLang(tag(s.Tags, "language")),
 			Title:       tag(s.Tags, "title"),
 			Default:     s.Disposition["default"] == 1,
 			Forced:      s.Disposition["forced"] == 1,

@@ -156,7 +156,7 @@ func listSidecars(dir, base string) []transcript.Track {
 		if !ok || !sidecarLang.MatchString(lang) {
 			continue
 		}
-		out = append(out, transcript.Track{Lang: lang, Kind: transcript.KindSidecar, Handle: filepath.Join(dir, name)})
+		out = append(out, transcript.Track{Lang: media.CanonicalLang(lang), Kind: transcript.KindSidecar, Handle: filepath.Join(dir, name)})
 	}
 	return out
 }

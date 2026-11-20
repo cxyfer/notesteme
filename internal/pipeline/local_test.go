@@ -138,6 +138,48 @@ func TestLocalProbeFindsSidecars(t *testing.T) {
 	}
 }
 
+// 外掛字幕檔名的語言碼要正規化成 BCP-47：eng → en、EN → en、zh-hant → zh-Hant。
+func TestLocalSidecarLangIsNormalized(t *testing.T) {
+	for name, want := range map[string]string{
+		"movie.eng.srt":        "en",
+		"movie.EN.srt":         "en",
+		"movie.zh-hant.vtt":    "zh-Hant",
+		"movie.zh-hant-tw.srt": "zh-Hant-TW",
+		"movie.pt-br.srt":      "pt-BR",
+		"movie.JPN.SRT":        "ja",
+	} {
+		t.Run(name, func(t *testing.T) {
+			l := newLocalRig(t)
+			media := l.file("movie.mp4", "MEDIA")
+			l.file(name, srtEN)
+			ad, _ := l.p.adapterFor("local")
+			info, err := ad.probe(context.Background(), l.item(media))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(info.Tracks) != 1 || info.Tracks[0].Lang != want {
+				t.Errorf("tracks = %+v，預期語言 %q", info.Tracks, want)
+			}
+		})
+	}
+}
+
+// 內嵌字幕與外掛字幕走同一個正規化：大小寫與三字母碼。
+func TestLocalEmbeddedLangIsNormalized(t *testing.T) {
+	l := newLocalRig(t)
+	l.fm.streams = videoStreams + `,{"index":2,"codec_type":"subtitle","codec_name":"subrip","tags":{"language":"ZHO"}},
+		{"index":3,"codec_type":"subtitle","codec_name":"subrip","tags":{"language":"zh-hant-tw"}}`
+	media := l.file("movie.mkv", "MKV")
+	ad, _ := l.p.adapterFor("local")
+	info, err := ad.probe(context.Background(), l.item(media))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := trackLangs(info.Tracks); !reflect.DeepEqual(got, []string{"embedded:zh", "embedded:zh-Hant-TW"}) {
+		t.Errorf("tracks = %v", got)
+	}
+}
+
 func resolved(t *testing.T, p string) string {
 	t.Helper()
 	r, err := filepath.EvalSymlinks(p)

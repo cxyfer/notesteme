@@ -384,6 +384,20 @@ func TestBCP47(t *testing.T) {
 	}
 }
 
+func TestCanonicalLang(t *testing.T) {
+	tests := map[string]string{
+		"eng": "en", "EN": "en", "en": "en", "en-us": "en-US", "EN_us": "en-US",
+		"zh-hant": "zh-Hant", "zh-hant-tw": "zh-Hant-TW", "ZH-HANS-CN": "zh-Hans-CN", "pt-br": "pt-BR", "es-419": "es-419",
+		"jpn": "ja", " zho ": "zh", "yue": "yue", "fil": "fil",
+		"und": "", "mul": "", "zxx": "", "": "", "qaa": "", "xyz-1": "xyz-1", "english": "", "e": "",
+	}
+	for in, want := range tests {
+		if got := CanonicalLang(in); got != want {
+			t.Errorf("CanonicalLang(%q) = %q，要 %q", in, got, want)
+		}
+	}
+}
+
 func TestIsTextSubtitle(t *testing.T) {
 	for _, c := range []string{"subrip", "ass", "ssa", "mov_text", "webvtt", "text", "SubRip"} {
 		if !IsTextSubtitle(c) {

@@ -47,7 +47,54 @@ func BCP47(iso639 string) string {
 	return ""
 }
 
-// IsTextSubtitle 回報字幕 codec 是否為文字格式（可轉成 SRT）；點陣字幕（hdmv_pgs_subtitle、dvd_subtitle、dvb_subtitle）不是。
+// CanonicalLang 把外掛字幕檔名或容器標記中的語言碼轉成 BCP-47 的標準大小寫：
+// 主語言小寫（三字母的 ISO 639-2 碼經 BCP47 對照，例如 eng → en；沒有對照的三字母碼維持小寫），
+// script 首字大寫（hant → Hant），region 大寫（tw → TW、419 不變），其餘子標籤小寫。
+// 分隔符 _ 視同 -。und、mul、zxx 等「沒有語言」的標記與空白回傳 ""。
+func CanonicalLang(tag string) string {
+	parts := strings.Split(strings.ReplaceAll(strings.TrimSpace(tag), "_", "-"), "-")
+	primary := strings.ToLower(parts[0])
+	switch len(primary) {
+	case 2:
+	case 3:
+		if m := BCP47(primary); m != "" {
+			primary = m
+		} else if undetermined[primary] || (primary >= "qaa" && primary <= "qtz") {
+			return ""
+		}
+	default:
+		return ""
+	}
+	out := []string{primary}
+	for _, p := range parts[1:] {
+		if p == "" {
+			continue
+		}
+		p = strings.ToLower(p)
+		switch {
+		case len(p) == 4 && isAlpha(p):
+			p = strings.ToUpper(p[:1]) + p[1:]
+		case len(p) == 2 && isAlpha(p):
+			p = strings.ToUpper(p)
+		}
+		out = append(out, p)
+	}
+	return strings.Join(out, "-")
+}
+
+// undetermined 是 ISO 639-2 中表示「沒有或無法判斷語言」的碼。
+var undetermined = map[string]bool{"und": true, "mul": true, "zxx": true, "mis": true}
+
+func isAlpha(s string) bool {
+	for _, r := range s {
+		if r < 'a' || r > 'z' {
+			return false
+		}
+	}
+	return true
+}
+
+// IsTextSubtitle回報字幕 codec 是否為文字格式（可轉成 SRT）；點陣字幕（hdmv_pgs_subtitle、dvd_subtitle、dvb_subtitle）不是。
 func IsTextSubtitle(codec string) bool {
 	switch strings.ToLower(codec) {
 	case "subrip", "ass", "ssa", "mov_text", "webvtt", "text":
