@@ -415,3 +415,28 @@ func TestIngestUploadWithoutMedia(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// 上傳與 inbox 共用命名空間：inbox 頂層已有同名項目（還沒新增）時，上傳要避開它。
+func TestIngestUploadAvoidsInboxNames(t *testing.T) {
+	lr := newIngestRig(t)
+	if err := os.WriteFile(filepath.Join(lr.root, "talk.m4a"), []byte("AUDIO-inbox"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// 目錄與壞掉的 symlink 也佔用名稱（Lstat，不論是否為一般檔案）。
+	if err := os.Mkdir(filepath.Join(lr.root, "talk-2.m4a"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(lr.root, "missing"), filepath.Join(lr.root, "talk-3.m4a")); err != nil {
+		t.Fatal(err)
+	}
+	tmp := lr.tmpUpload("AUDIO-one")
+	out, err := lr.p.IngestUpload(context.Background(), UploadRequest{Name: "talk.m4a", TmpPath: tmp, SHA256: "s1", Inbox: lr.root})
+	if err != nil || !out.Created || out.Item.ExternalID != "talk-4.m4a" {
+		t.Fatalf("out = %+v %v", out, err)
+	}
+	// 沒有指定 inbox 時只看資料庫。
+	out, _, err = lr.upload("talk.m4a", "AUDIO-two", "s2")
+	if err != nil || out.Item.ExternalID != "talk.m4a" {
+		t.Fatalf("無 inbox：%+v %v", out, err)
+	}
+}

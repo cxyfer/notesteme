@@ -42,6 +42,8 @@ type LocalTarget struct {
 	// Overrides、Until 是手動新增與上傳時的單次覆寫與「做到哪個步驟為止」（ING-R7）。
 	Overrides map[string]any
 	Until     string
+	// Inbox 是已解析的 inbox 目錄；只有上傳用：選鍵時要避開 inbox 頂層的同名項目（兩者共用命名空間）。空白代表不檢查。
+	Inbox string
 }
 
 // LocalOutcome 是 IngestLocal 的結果。State 是 store 的 Inbox* 常數；
@@ -134,7 +136,7 @@ func (p *Pipeline) IngestLocal(ctx context.Context, t LocalTarget) (LocalOutcome
 		if upload {
 			// 檔名撞名：加 -2、-3（插在副檔名前）；垃圾桶中的影音也佔用名稱。
 			var err error
-			if key, err = uniqueLocalKey(ctx, r, key); err != nil {
+			if key, err = uniqueLocalKey(ctx, r, key, t.Inbox); err != nil {
 				return err
 			}
 		}
@@ -195,7 +197,9 @@ func (p *Pipeline) IngestLocal(ctx context.Context, t LocalTarget) (LocalOutcome
 }
 
 // uniqueLocalKey 回傳沒有被使用的鍵：name 可用就用它，否則在副檔名前加 -2、-3……
-func uniqueLocalKey(ctx context.Context, r *store.Repo, name string) (string, error) {
+// 上傳的鍵與 inbox 檔案共用命名空間（inbox 頂層的 talk.mp4 鍵也是 talk.mp4），
+// 所以 inbox 非空時，inbox 頂層已存在的同名項目（不論型別，用 Lstat）也算被使用。
+func uniqueLocalKey(ctx context.Context, r *store.Repo, name, inbox string) (string, error) {
 	ext := filepath.Ext(name)
 	stem := strings.TrimSuffix(name, ext)
 	for n := 1; ; n++ {
@@ -205,10 +209,20 @@ func uniqueLocalKey(ctx context.Context, r *store.Repo, name string) (string, er
 		}
 		switch _, err := r.ItemByKey(ctx, source.PlatformLocal, key, 0); {
 		case errors.Is(err, store.ErrNotFound):
-			return key, nil
 		case err != nil:
 			return "", err
+		default:
+			continue
 		}
+		if inbox != "" {
+			switch _, err := os.Lstat(filepath.Join(inbox, key)); {
+			case err == nil:
+				continue
+			case !errors.Is(err, os.ErrNotExist):
+				return "", err
+			}
+		}
+		return key, nil
 	}
 }
 
@@ -274,6 +288,8 @@ type UploadRequest struct {
 	// Overrides、Until 同 IngestRequest。
 	Overrides map[string]any
 	Until     string
+	// Inbox 是已解析的 inbox 目錄（可空白）：選鍵時避開 inbox 頂層的同名項目。
+	Inbox string
 }
 
 // errNoMedia 表示沒有設定 ffprobe 或資料目錄，無法處理上傳。
@@ -325,7 +341,7 @@ func (p *Pipeline) IngestUpload(ctx context.Context, req UploadRequest) (LocalOu
 	}
 	out, err := p.IngestLocal(ctx, LocalTarget{
 		ID: id, Key: req.Name, SourcePath: filepath.ToSlash(rel), SHA256: req.SHA256, Origin: store.OriginUpload, Info: info,
-		Overrides: req.Overrides, Until: req.Until,
+		Overrides: req.Overrides, Until: req.Until, Inbox: req.Inbox,
 	})
 	if err != nil || !out.Created {
 		// 沒有建立影音：搬走的檔案要還回去，呼叫端才能統一清理暫存檔。

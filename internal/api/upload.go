@@ -132,6 +132,13 @@ func (rt *routes) upload(w http.ResponseWriter, r *http.Request, limit int64) {
 		writeError(w, apiErr)
 		return
 	}
+	// 上傳的鍵與 inbox 檔案共用命名空間：交給 pipeline 避開 inbox 頂層的同名項目。
+	// inbox 解析失敗就當成沒有 inbox（與路徑新增一致）。
+	if rt.d.Inbox != "" && rt.d.Paths != nil {
+		if inbox, err := rt.d.Paths.Resolve(rt.d.Inbox); err == nil {
+			up.Inbox = inbox
+		}
+	}
 	out, err := rt.d.Pipeline.IngestUpload(ctx, up)
 	if err != nil {
 		if errors.Is(err, media.ErrNotMedia) {
