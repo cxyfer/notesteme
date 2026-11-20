@@ -72,8 +72,9 @@ type CreatedToken struct {
 // CreateToken 建立一個 API bearer token（AUTH-R7）。
 // name 不可為空、含 '/' 或控制字元；scopes 必須非空且皆為有效 scope；expiresIn 若不為 nil 必須大於 0。
 func (s *Service) CreateToken(ctx context.Context, name string, scopes []string, expiresIn *time.Duration) (CreatedToken, error) {
-	if strings.TrimSpace(name) == "" || hasControlChar(name) || strings.ContainsRune(name, '/') {
-		return CreatedToken{}, fmt.Errorf("%w: token 名稱不可為空、包含斜線或控制字元。", ErrInvalidToken)
+	// 名稱會放進 /api/tokens/<name> 的路徑：斜線與 dot-segment（. 和 ..）會被 ServeMux 正規化成別的路徑，撤銷不到。
+	if strings.TrimSpace(name) == "" || hasControlChar(name) || strings.ContainsRune(name, '/') || name == "." || name == ".." {
+		return CreatedToken{}, fmt.Errorf("%w: token 名稱不可為空、為 . 或 ..，也不可包含斜線或控制字元。", ErrInvalidToken)
 	}
 	cleanScopes, err := validateScopes(scopes)
 	if err != nil {

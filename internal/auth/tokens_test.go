@@ -176,6 +176,8 @@ func TestTokenValidationAndPrincipalScopes(t *testing.T) {
 		{"   ", []string{ScopeRead}, nil},
 		{"bad\nname", []string{ScopeRead}, nil},
 		{"bad/name", []string{ScopeRead}, nil},
+		{".", []string{ScopeRead}, nil},  // ServeMux 會把 /api/tokens/. 正規化成別的路徑
+		{"..", []string{ScopeRead}, nil}, // 同上
 		{"ok", nil, nil},
 		{"ok", []string{"unknown"}, nil},
 		{"ok", []string{ScopeRead}, &zero},
