@@ -133,7 +133,9 @@ func TestUsageErrorsComeBeforeMode(t *testing.T) {
 		"代號缺少分P":                {"ingest", "bili:BV1ai411c7mD"},
 		"代號格式錯誤":                {"ingest", "yt:short"},
 		"--server 不是網址":         {"items", "ls", "--server", "nope", "--token", "t"},
-		"--status 尚未支援":         {"items", "ls", "--status", "transcript=done"},
+		"--status 格式錯誤":         {"items", "ls", "--status", "transcript"},
+		"--status 步驟錯誤":         {"items", "ls", "--status", "nope=done"},
+		"--status 狀態錯誤":         {"items", "ls", "--status", "transcript=nope"},
 	}
 	for name, args := range cases {
 		t.Run(name, func(t *testing.T) {

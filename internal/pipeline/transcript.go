@@ -569,7 +569,23 @@ func (p *Pipeline) newCuesArtifact(itemID string, tr subtitle.Transcript, parent
 	return &store.NewArtifact{
 		ID: id, ItemID: itemID, Kind: "transcript", Variant: string(tr.Variant), Lang: tr.Lang,
 		Format: cuesFormat, Path: rel, SHA256: sha, Size: size, Parents: parents, Provenance: prov,
+		Timings: cueTimings(tr.Cues),
 	}, nil
+}
+
+// cueTimings 回傳 cues 中出現過的 timing origin，排序並去重，供列表依 timing 篩選（LIB-R7）。
+func cueTimings(cues []subtitle.Cue) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, c := range cues {
+		if c.Timing == "" || seen[string(c.Timing)] {
+			continue
+		}
+		seen[string(c.Timing)] = true
+		out = append(out, string(c.Timing))
+	}
+	slices.Sort(out)
+	return out
 }
 
 // toProbes 把選擇的結果轉成 source_probes 的列。

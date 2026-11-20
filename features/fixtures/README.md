@@ -40,6 +40,27 @@
   fake 的端點要求請求帶 `response_format=verbose_json`，並以 `Authorization: Bearer <key>` 驗證；
   測試環境預設有 key（`NOTESTEME_GROQ_API_KEY`），`Given the provider "groq" has no API key` 才會移除。
 
+## 影音 fixture（`items/`）
+
+`Given the item … has been processed up to …` 的影音資料。檔名是影音代號，把 `:`、`/` 換成 `-`
+（`yt:pg100xxxxxx` → `items/yt-pg100xxxxxx.json`，`bili:BV1xx411c7mD/p1` → `items/bili-BV1xx411c7mD-p1.json`）：
+
+```json
+{"ref":"yt:pg100xxxxxx","source":{"lang":"en","cues":[{"start":"00:00:01.000","end":"00:00:03.000","text":"…"}]}}
+```
+
+- `ref` 必須與檔名一致，不一致時步驟失敗。
+- `source` 是 `source` 變體的字幕：`lang` 與 cue（`start`、`end`、`text`；時間為 `HH:MM:SS.mmm`）。
+  cue 保持乾淨（不重疊、長度正常），正規化之後每個 cue 的時間來源（timing）都是 `source`。
+- 適用條件（三條規則，依序判斷）：
+  1. 場景已準備字幕來源（寫入字幕、符合 `caption_priority` 的平台字幕軌、腳本化的已實作 fallback 來源）：
+     不看 fixture，照常執行 pipeline。
+  2. 代號是 `yt:` 或 `bili:`（假 yt-dlp 管的平台）、假 yt-dlp 中這部影片完全沒有字幕軌、場景也沒有寫入字幕或腳本化來源，
+     而且 fixture 存在：先建立影音並做到 metadata，再用 fixture 寫入 `source`，接著照常執行剩下的步驟（例如 normalize）。
+     `local:`、`pod:` 一律不套用 fixture，即使檔案存在也一樣。
+  3. 其他情況（沒有 fixture、不符合上面的條件，或代號是 `local:`、`pod:`）：步驟 pending。
+- 目標步驟在 transcript 之前（例如 `metadata`）時不需要字幕，不使用 fixture。
+
 ## 字幕軌
 
 假 yt-dlp 的字幕軌（`faketool.Track`）有三種內容來源：

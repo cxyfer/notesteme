@@ -19,6 +19,7 @@ type Artifact struct {
 	SupersededBy   *string
 	Pinned         int64
 	CreatedAt      int64
+	TimingsJson    string
 }
 
 type Channel struct {
@@ -74,6 +75,7 @@ type Item struct {
 	MetadataJson  string
 	CreatedAt     int64
 	DeletedAt     *int64
+	TitleFold     string
 }
 
 type Secret struct {

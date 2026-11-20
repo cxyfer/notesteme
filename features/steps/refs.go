@@ -96,13 +96,45 @@ func isNotImplemented(body []byte) bool {
 
 // listItems 回傳資料庫中的影音（不含垃圾桶中的）。
 func (s *Scenario) listItems() ([]itemJSON, error) {
-	var out struct {
-		Items []itemJSON `json:"items"`
+	return pageItems(func(path string, out any) error {
+		return s.apiJSON(http.MethodGet, path, nil, out)
+	})
+}
+
+// pageItems 用游標讀完 GET /api/items 的每一頁。get 送出 GET 請求並把回應解碼到 out。
+// 游標循環（A→A、A→B→A）與累積筆數超過 total 都視為失敗，避免無窮迴圈或悄悄回傳不完整的結果。
+func pageItems(get func(path string, out any) error) ([]itemJSON, error) {
+	var all []itemJSON
+	cursor := ""
+	seen := map[string]bool{}
+	for {
+		path := "/api/items?limit=200"
+		if cursor != "" {
+			path += "&cursor=" + url.QueryEscape(cursor)
+		}
+		var out struct {
+			Items      []itemJSON `json:"items"`
+			Total      int        `json:"total"`
+			NextCursor string     `json:"next_cursor"`
+		}
+		if err := get(path, &out); err != nil {
+			return nil, err
+		}
+		all = append(all, out.Items...)
+		if len(all) > out.Total {
+			return nil, fmt.Errorf("GET /api/items 累積了 %d 筆，超過 total %d", len(all), out.Total)
+		}
+		// 最後一頁沒有 next_cursor（舊 API 也不回），迴圈在此結束。
+		if out.NextCursor == "" {
+			return all, nil
+		}
+		// 回到讀過的游標（A→A、A→B→A）代表分頁不會結束。
+		if seen[out.NextCursor] || out.NextCursor == cursor {
+			return nil, fmt.Errorf("GET /api/items 重複回傳同一個 next_cursor %q", out.NextCursor)
+		}
+		seen[out.NextCursor] = true
+		cursor = out.NextCursor
 	}
-	if err := s.apiJSON(http.MethodGet, "/api/items", nil, &out); err != nil {
-		return nil, err
-	}
-	return out.Items, nil
 }
 
 // itemID 把影音代號換成實際的影音 ID：先問 API；影音在垃圾桶中（不在清單裡）時，

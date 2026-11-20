@@ -161,14 +161,14 @@ func (s *Scenario) startRound() (int, error) {
 
 // 佇列 API 回應的形狀（只列出步驟會用到的欄位）。
 type queueJSON struct {
-	Paused  bool `json:"paused"`
-	Classes []struct {
+	Paused bool `json:"paused"`
+	Lanes  []struct {
 		Class   string `json:"class"`
 		Limit   int    `json:"limit"`
 		Running int    `json:"running"`
-		Pending int    `json:"pending"`
+		Waiting int    `json:"waiting"`
 		Paused  bool   `json:"paused"`
-	} `json:"classes"`
+	} `json:"lanes"`
 	Tasks []queueTaskJSON `json:"tasks"`
 }
 

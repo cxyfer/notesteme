@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"testing"
+
+	"github.com/cxyfer/notesteme/internal/queue"
 )
 
 func queueOf(t *testing.T, r *itemsRig) QueueStatus {
@@ -16,12 +18,12 @@ func queueOf(t *testing.T, r *itemsRig) QueueStatus {
 
 func classOf(t *testing.T, q QueueStatus, class string) QueueClass {
 	t.Helper()
-	for _, c := range q.Classes {
+	for _, c := range q.Lanes {
 		if c.Class == class {
 			return c
 		}
 	}
-	t.Fatalf("佇列狀態沒有資源類別 %s：%+v", class, q.Classes)
+	t.Fatalf("佇列狀態沒有資源類別 %s：%+v", class, q.Lanes)
 	return QueueClass{}
 }
 
@@ -38,7 +40,7 @@ func TestQueueLimitsPatchOnlyChangesGivenClasses(t *testing.T) {
 	}
 	q = queueOf(t, r)
 	if classOf(t, q, "download").Limit != 5 || classOf(t, q, "asr").Limit != 3 || classOf(t, q, "llm").Limit != 4 {
-		t.Errorf("只應改 download：%+v", q.Classes)
+		t.Errorf("只應改 download：%+v", q.Lanes)
 	}
 }
 
@@ -116,7 +118,7 @@ func TestQueueListsTasksWithItemsAndCounts(t *testing.T) {
 		q.Tasks[0].Stage != "metadata" || q.Tasks[0].ResourceClass != "download" || q.Tasks[0].ItemID == "" {
 		t.Fatalf("tasks = %+v", q.Tasks)
 	}
-	if c := classOf(t, q, "download"); c.Pending != 2 || c.Running != 0 {
+	if c := classOf(t, q, "download"); c.Waiting != 2 || c.Running != 0 {
 		t.Errorf("download = %+v", c)
 	}
 
@@ -132,6 +134,40 @@ func TestQueueListsTasksWithItemsAndCounts(t *testing.T) {
 		if task.State != "pending" || task.Stage == "metadata" {
 			t.Errorf("metadata 做完之後只剩下游的 pending 任務：%+v", task)
 		}
+	}
+}
+
+// 有已被領取的任務時：running 只算執行中的，waiting 只算 pending（LIB-R8）。
+func TestQueueWaitingExcludesRunningTasks(t *testing.T) {
+	var q *queue.Queue
+	r := newItemsRigAPI(t, func(d *Deps) { q = d.Queue })
+	for _, id := range []string{"abc123xxxxx", "def456xxxxx", "ghi789xxxxx"} {
+		if rec := r.owner("POST", "/api/items", `{"url":"https://www.youtube.com/watch?v=`+id+`"}`); rec.Code != 201 {
+			t.Fatalf("新增 %s：%d %s", id, rec.Code, rec.Body)
+		}
+	}
+	if c := classOf(t, queueOf(t, r), "download"); c.Running != 0 || c.Waiting != 3 {
+		t.Fatalf("前置條件：領取前 download = %+v", c)
+	}
+	claimed, err := q.Claim(context.Background(), 2)
+	if err != nil || len(claimed) != 2 {
+		t.Fatalf("Claim = %d, %v", len(claimed), err)
+	}
+	st := queueOf(t, r)
+	if c := classOf(t, st, "download"); c.Running != 2 || c.Waiting != 1 {
+		t.Errorf("2 個執行中、1 個等待：download = %+v", c)
+	}
+	var leased, pending int
+	for _, task := range st.Tasks {
+		switch task.State {
+		case "leased":
+			leased++
+		case "pending":
+			pending++
+		}
+	}
+	if leased != 2 || pending != 1 {
+		t.Errorf("tasks：leased=%d pending=%d", leased, pending)
 	}
 }
 

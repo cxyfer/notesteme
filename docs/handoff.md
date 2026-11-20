@@ -1,6 +1,6 @@
 # 交接：M1 開發進度
 
-> 更新：2026-11-15。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；#5（CLI）已合併；GRD 切片是 PR #6（`feat/guards`）；SRC-A 切片在 `feat/sources`、SRC-B 切片在 `feat/bilibili`、OPS 切片在 `feat/ops`（依序疊在 `feat/guards` 上，都還沒 push）。
+> 更新：2026-11-15。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；#5（CLI）已合併；GRD 切片是 PR #6（`feat/guards`）；SRC-A 切片在 `feat/sources`、SRC-B 切片在 `feat/bilibili`、OPS 切片在 `feat/ops`、LIB 切片在 `feat/library`（依序疊在 `feat/guards` 上，都還沒 push）。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -26,7 +26,16 @@
     - `GET /api/system`。
     - 設定檔的 `asr.providers`；`POST /api/providers` 的 command 類型回 403，`GET /api/providers/{id}` 唯讀。
     - harness：fake python 與 pip、fakecompose（離線模擬 `docker compose config`）、指定 schema 版本的 DB 與 schema 比對、`.tar.gz` 內容比對、After hook 掃描 `/backups`。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，125 passed、66 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
+  - LIB 切片：
+    - `GET /api/items` 支援篩選：platform、channel、status（同一個 stage 是 OR、不同 stage 是 AND，沒有執行紀錄視為 pending）、error_class、lang、發布日、時長、timing、標題搜尋。
+    - 標題搜尋用 `items.title_fold`（Go 的 `ToLower`）加 `instr`。
+    - 分頁用 keyset cursor，`total` 另外查，排序由新到舊；cursor 帶篩選條件的指紋，只接受標準形式。
+    - `artifacts.timings_json`。
+    - migration 00006（`stage_runs_latest` 索引取代 `stage_runs_item`）。
+    - `/api/queue` 改名為 `lanes`、`waiting`。
+    - CLI 讀取所有頁面，`--status`、`--channel` 接上 API。
+    - harness：影音 fixture（`features/fixtures/items/`，只適用於 `yt:`、`bili:`，而且影片沒有任何字幕軌、場景沒有準備任何來源時才用）；`listItems` 跟著 cursor 讀完所有頁面，有循環防護。
+- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，134 passed、57 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
   |---|---|---|
@@ -35,7 +44,7 @@
   | DEL | 0 | 21 |
   | GRD | 19 | 3 |
   | ING | 15 | 9 |
-  | LIB | 0 | 10 |
+  | LIB | 9 | 1 |
   | NRM | 9 | 2 |
   | OPS | 14 | 0 |
   | OUT | 8 | 0 |
@@ -43,7 +52,7 @@
   | SEC | 8 | 3 |
   | SRC | 13 | 6 |
 
-  PIPE、OPS 的 M1 場景全部通過。SRC 剩下的六個：R11 本機檔案的語言偵測要 ING-05（mixed 標為 `@wip`，要文字語言偵測）；R12、R14 三個、R15 要本機檔案或 podcast。CLI 剩下的一個：`--server` 加 token 要等 AUTH 的 token（AUTH-R7～R9）。GRD 剩下的三個：DNS rebinding 要等 ING 的 podcast feed，GRD-R7 預期 201 的兩個例子要等 ING-05（本機檔案的新增）。
+  PIPE、OPS 的 M1 場景全部通過。LIB 剩下的 R6（本機檔案的 Range 請求）要等 ING-05 的本機檔案新增與 inbox watcher。SRC 剩下的六個：R11 本機檔案的語言偵測要 ING-05（mixed 標為 `@wip`，要文字語言偵測）；R12、R14 三個、R15 要本機檔案或 podcast。CLI 剩下的一個：`--server` 加 token 要等 AUTH 的 token（AUTH-R7～R9）。GRD 剩下的三個：DNS rebinding 要等 ING 的 podcast feed，GRD-R7 預期 201 的兩個例子要等 ING-05（本機檔案的新增）。
 
   M1 的 OUT 場景全部通過，但 OUT 的 M2 部分還沒做，所以規格狀態仍是 `ready`，不是 `implemented`。
 
@@ -51,15 +60,15 @@
 
 ## 2. 下一步
 
-使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成）→ GRD（完成，PR #6）→ SRC-A（完成，`feat/sources`）→ SRC-B（完成，`feat/bilibili`）→ OPS（完成，`feat/ops`）→ **LIB** → DEL。使用者要求每個切片完成後自動開始下一個。
+使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成）→ GRD（完成，PR #6）→ SRC-A（完成，`feat/sources`）→ SRC-B（完成，`feat/bilibili`）→ OPS（完成，`feat/ops`）→ LIB（完成，`feat/library`）→ **DEL**。使用者要求每個切片完成後自動開始下一個。
 
 接下來：
 
 1. PR #6（GRD）等 CI 與 Codex 審查，通過後由 owner 合併（自動模式不允許 agent 執行 `gh pr merge`）。
-2. PR #6 整理好之後（owner push `feat/guards`、把 base 改成 `master`），依序 push `feat/sources`、`feat/bilibili`、`feat/ops` 並開 PR（base 分別是前一個分支；前一個合併後改 base 為 `master`，並用 `-s ours` 併入 master）。
-3. LIB 切片：先做 DoR（`features/LIB-*.feature` 的 `@M1` pending 場景與步驟）。
+2. PR #6 整理好之後（owner push `feat/guards`、把 base 改成 `master`），依序 push `feat/sources`、`feat/bilibili`、`feat/ops`、`feat/library` 並開 PR（base 分別是前一個分支；前一個合併後改 base 為 `master`，並用 `-s ours` 併入 master）。
+3. DEL 切片：先做 DoR（`features/DEL-*.feature` 的 `@M1` pending 場景與步驟）。多數 DEL 場景用 `yt:abc123xxxxx` 加 `processed up to`，要新增對應的影音 fixture，或在場景中準備字幕來源。
 4. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
-5. `features/fixtures/items/` 還沒做：DEL、NRM、SEC 共 17 個場景停在 `Given the item … has been processed up to …`。做了之後拿掉 `features/steps/processing.go` 的 `pendingWithoutItemFixture`。
+5. `features/fixtures/items/` 目前只有 `yt-pg100xxxxxx.json`。DEL、NRM、SEC 中用 `processed up to`、但沒有準備字幕來源的場景仍是 pending，要補對應的 fixture。
 
 ## 3. 怎麼執行
 
@@ -98,7 +107,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - 目前允許的 pending 只有下列幾種：
     - 斷言遇到 production 回應的 `501 not_implemented`，或 CLI 回報 `not_implemented`（`the command exits with` 遇到尚未實作的子命令或 API 的 501），而且這個回應或結果必須是前一個步驟送出、執行的。
     - 腳本化來源的步驟查 production 的 `source.Implemented`，得知來源還沒實作。
-    - 暫時保留的 `pendingWithoutItemFixture`：執行前就判斷場景沒有準備任何字幕來源。判斷用 `declaredLanguage`（`titled` 補上的預設語言不算場景宣告的語言），所以下列 3 個 DEL 場景在 DEL 切片完成時要移除這個例外：
+    - `processed up to` 的影音沒有字幕來源，也沒有對應的影音 fixture（`itemFixtureFor` 的規則 3，見 steps.md 4.4）。下列 3 個 DEL 場景在 DEL 切片中要補 fixture：
       - The deletion preview shows what will be lost without changing anything
       - Adding an item that is in the trash offers to restore it
       - An item added again after a permanent delete starts fresh
@@ -238,7 +247,14 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - `X-Forwarded-Proto` 應該只採用可信 proxy 的值。
   - IPv6 的鎖定以單一位址計數。
 - **其他**：
-  - `Given the item … has been processed up to …` 會真的執行 pipeline；沒有準備字幕來源的場景需要 `features/fixtures/items/`（見第 2 節）。
+  - `Given the item … has been processed up to …` 會真的執行 pipeline；沒有準備字幕來源的場景要有 `features/fixtures/items/` 的 fixture（見第 2 節）。
+- **LIB**：
+  - 詳情 API（`Pipeline.Item` 的 `stages`）不列出沒有執行紀錄的 stage，列表篩選則視為 `pending`，UI 切片要決定是否補上。
+  - 標題搜尋不做 NFKC 與簡繁互通；00006 的回填只處理 ASCII 的大小寫（M1 尚未發布，沒有舊資料）。
+  - `group_by`（LIB-R4 的分組）、`read_state`（回 501）還沒做；`status` 只認 M1 的三個 stage。
+  - `CountItemsFiltered` 每次掃全表（10k 筆約 3ms）；status 篩選在 10k 筆約 62ms。列表與 COUNT 是兩段相同的 WHERE，靠單元測試確認一致。
+  - CLI 的 `resolveItem` 每次逐頁找，API 沒有依代號篩選的參數。
+  - 只靠單元測試守住：`waiting` 不含執行中的任務、垃圾桶中的影音不在列表、排序、`limit` 與最後一頁沒有 `next_cursor`。
   - 字幕讀取端沒有串流（NFR-RES-3 只做到輸出端）。
   - 有 HTML 回應時要加上 CSP 等標頭（NFR-SEC-1）。
   - CI（`.github/workflows/ci.yml`，PR #3）：gofmt、`go mod tidy -diff`、vet、`go test -race`、`sqlc diff`、Docker image 與冒煙測試；push 到 `master` 或 `v*` tag 時發布 image 到 GHCR。還沒有 Python 版規格檢查（Go 版在 `go test` 中）與 `govulncheck`。

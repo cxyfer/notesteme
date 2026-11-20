@@ -69,7 +69,7 @@ func TestServerModeUsesBearerAndIgnoresData(t *testing.T) {
 	if res.Code != 0 || res.Mode != ModeClient {
 		t.Fatalf("結果 = %+v，stderr：%s", res, errOut)
 	}
-	if api.auth[0] != "Bearer tok" || api.requests[0] != "GET /api/items" {
+	if api.auth[0] != "Bearer tok" || api.requests[0] != "GET /api/items?limit=200" {
 		t.Errorf("請求 = %v，Authorization = %v", api.requests, api.auth)
 	}
 	// 輸出就是 API 的回應（CLI-R5）。

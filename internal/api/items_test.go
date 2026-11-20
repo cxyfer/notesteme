@@ -47,6 +47,7 @@ type itemsRig struct {
 	csrf   string
 	worker *worker.Worker
 	clk    *clock.Fake
+	st     *store.Store
 	t      *testing.T
 }
 
@@ -86,7 +87,7 @@ func newItemsRigAPI(t *testing.T, apiOpt func(*Deps), opts ...func(*pipeline.Dep
 		apiOpt(&ad)
 	}
 	h := New(ad)
-	r := &itemsRig{h: h, worker: worker.New(q, p, clk, log), clk: clk, t: t}
+	r := &itemsRig{h: h, worker: worker.New(q, p, clk, log), clk: clk, st: st, t: t}
 	rec := r.do("POST", "/api/auth/login", `{"password":"pw"}`, nil)
 	for _, c := range rec.Result().Cookies() {
 		switch c.Name {

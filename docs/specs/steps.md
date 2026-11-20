@@ -63,7 +63,7 @@
 - CLI 指令與請求中的 `{token:<名稱>}` 會換成該 token 的實際內容。
 - 預期結果的 JSON 中，值為 `"*"` 代表「欄位存在即可，不比對內容」。
 - 物件只比對預期中出現的欄位。陣列依序比對：預期的第 n 個元素對應實際的第 n 個元素，實際陣列可以比預期長；要確認數量時，另外用計數的步驟。
-- 影音或 fixture 不存在時，`Given the item … has been processed up to …` 依代號從 `features/fixtures/items/` 建立。
+- 場景沒有準備字幕來源時，`Given the item … has been processed up to …` 依代號從 `features/fixtures/items/` 的 fixture 建立（條件見 4.4）。
 
 ## 3. 字幕來源 ID
 
@@ -166,7 +166,7 @@
 | `Given the item {string} has been ingested` | 已新增，worker 還沒執行 |
 | `Given the item {string} has been ingested as {word}` | 以指定的優先級新增：`manual`、`subscription`、`backfill` |
 | `Given {string} is a mixed-language item` | 把影音的原文語言標記為 `mixed` |
-| `Given the item {string} has been processed up to {string}` | 已完成到指定步驟，用 fixture 填入產出 |
+| `Given the item {string} has been processed up to {string}` | 已完成到指定步驟。依序判斷：(1) 場景已準備字幕來源（寫入字幕、符合 `caption_priority` 的字幕軌、腳本化的已實作來源）：照常執行 pipeline 到該步驟；(2) 代號是 `yt:` 或 `bili:`、假 yt-dlp 中這部影片完全沒有字幕軌、場景也沒有寫入字幕或腳本化來源，且 `features/fixtures/items/<代號>.json`（`:`、`/` 換成 `-`）存在：先建立影音並做到 metadata，用 fixture 寫入 `source`，再照常執行剩下的步驟；fixture 的 `ref` 必須與檔名一致；`local:`、`pod:` 一律不套用 fixture；(3) 其他情況 pending。目標在 transcript 之前（如 `metadata`）不需要字幕。fixture 格式見 `features/fixtures/README.md` |
 | `Given the {string} transcript of {string} is:` | 指定變體的字幕；表格欄位：`#`、`start`、`end`、`text`，可加 `words`、`timing` |
 | `Given the {string} transcript of {string} in {string} is:` | 同上，指定語言 |
 | `When the worker runs until idle` | worker 持續執行，直到沒有可以執行的任務 |
