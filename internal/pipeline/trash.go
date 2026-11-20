@@ -90,9 +90,17 @@ func trashedStageState() store.StageState {
 //
 // 已經在垃圾桶中時回傳 *InTrashError；影音不存在時回傳 store.ErrNotFound。
 func (p *Pipeline) Trash(ctx context.Context, id string, opts TrashOptions) (TrashResult, error) {
+	// 從交易到刪除媒體快取都持有這部影音的鎖：等待任務結束的期間若被還原、再重試，
+	// 新的任務可能已經在使用 media/<id>，這時不能再刪它（Restore 也要取得同一把鎖）。
+	unlock, err := p.trashLocks.lock(ctx, id)
+	if err != nil {
+		return TrashResult{}, err
+	}
+	defer unlock()
+
 	var it store.Item
 	var taskIDs []string
-	err := p.st.Tx(ctx, func(r *store.Repo) error {
+	err = p.st.Tx(ctx, func(r *store.Repo) error {
 		taskIDs = nil
 		var changed bool
 		var err error
@@ -143,7 +151,13 @@ func (p *Pipeline) removeMediaCache(itemID string) {
 
 // Restore 從垃圾桶還原影音（DEL-R5）：deleted_at 改回 NULL，被取消的步驟維持 skipped 並保留「重試」，
 // 寫入 item.restored 事件。影音不在垃圾桶中（或不存在）時回傳 store.ErrNotFound。
+// 同一部影音的 Trash 還在善後（等待任務結束、刪除媒體快取）時，等它做完才還原。
 func (p *Pipeline) Restore(ctx context.Context, id string) (TrashedItem, error) {
+	unlock, err := p.trashLocks.lock(ctx, id)
+	if err != nil {
+		return TrashedItem{}, err
+	}
+	defer unlock()
 	it, changed, err := p.st.Write().RestoreItem(ctx, id)
 	if err != nil {
 		return TrashedItem{}, err

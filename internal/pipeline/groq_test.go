@@ -311,3 +311,55 @@ func TestGroqVersionIsResolvedBeforeTranscribing(t *testing.T) {
 		t.Errorf("版本查詢失敗時不該呼叫 Transcribe：%d", g.calls())
 	}
 }
+
+// provenance 的 params_sha256 必須納入實際送出的語言提示（groq.LangHint），才能區分指定語言與自動偵測的轉錄結果。
+func TestGroqProvenanceParamsHashIncludesLangHint(t *testing.T) {
+	runWithLang := func(origLang string) (hint, paramsHash string) {
+		t.Helper()
+		r, g := newGroqRig(t)
+		r.yt.info.Language = origLang
+		g.lang = origLang
+		it := r.ingest(watch, groqOnly(), StageTranscript)
+		r.run()
+		arts, err := r.st.Read().CurrentArtifacts(context.Background(), it.ID, "transcript")
+		if err != nil || len(arts) != 1 {
+			t.Fatalf("artifacts(%q) = %v, %v", origLang, arts, err)
+		}
+		var prov struct {
+			ParamsSHA256 string `json:"params_sha256"`
+		}
+		if err := json.Unmarshal(arts[0].Provenance, &prov); err != nil {
+			t.Fatal(err)
+		}
+		return g.hints[0], prov.ParamsSHA256
+	}
+
+	hintEn, hashEn := runWithLang("en")
+	hintEnUS, hashEnUS := runWithLang("en-US")
+	hintEmpty, hashEmpty := runWithLang("")
+	hintYue, hashYue := runWithLang("yue")
+
+	if hintEn != "en" || hintEnUS != "en" || hintEmpty != "" || hintYue != "" {
+		t.Fatalf("意外的語言提示：en=%q, en-US=%q, empty=%q, yue=%q", hintEn, hintEnUS, hintEmpty, hintYue)
+	}
+	if hashEn == "" || hashEmpty == "" {
+		t.Fatalf("params_sha256 不應為空：en=%q, empty=%q", hashEn, hashEmpty)
+	}
+	if hashEn == hashEmpty {
+		t.Errorf("強制指定語言與自動偵測的 params_sha256 不應相同：%s", hashEn)
+	}
+	if hashEn != hashEnUS {
+		t.Errorf("實際語言提示同為 en 時 params_sha256 應相同：en=%s, en-US=%s", hashEn, hashEnUS)
+	}
+	if hashYue != hashEmpty {
+		t.Errorf("實際語言提示同為空（不支援的三字母代碼與未指定）時 params_sha256 應相同：yue=%s, empty=%s", hashYue, hashEmpty)
+	}
+	wantEn := paramsSHA(map[string]string{
+		"base_url":  groq.DefaultBaseURL,
+		"model":     groq.DefaultModel,
+		"lang_hint": "en",
+	})
+	if hashEn != wantEn {
+		t.Errorf("params_sha256 = %s，預期 %s", hashEn, wantEn)
+	}
+}

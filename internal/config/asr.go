@@ -82,7 +82,7 @@ func parseASRProviders(node *yaml.Node, path string) (map[string]ASRProvider, er
 	var asr struct {
 		Providers map[string]yaml.Node `yaml:"providers"`
 	}
-	if err := node.Decode(&asr); err != nil {
+	if err := decodeKnownYAML(node, &asr); err != nil {
 		return nil, fmt.Errorf("設定檔 %s 的欄位 asr 格式不正確：%w", path, err)
 	}
 	if len(asr.Providers) == 0 {
@@ -110,16 +110,24 @@ func parseASRProviders(node *yaml.Node, path string) (map[string]ASRProvider, er
 	return out, nil
 }
 
-// decodeASRProvider 嚴格解析一個 provider（不接受未知欄位）並依類型驗證。
-func decodeASRProvider(n *yaml.Node, id, field, path string) (ASRProvider, error) {
-	raw, err := yaml.Marshal(n)
+// decodeKnownYAML 以 KnownFields(true) 解碼 yaml.Node，拒絕未知欄位。
+func decodeKnownYAML(node *yaml.Node, dst any) error {
+	raw, err := yaml.Marshal(node)
 	if err != nil {
-		return ASRProvider{}, fmt.Errorf("設定檔 %s 的欄位 %s 格式不正確：%w", path, field, err)
+		return err
 	}
-	var s asrProviderSchema
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
-	if err := dec.Decode(&s); err != nil && !errors.Is(err, io.EOF) {
+	if err := dec.Decode(dst); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
+}
+
+// decodeASRProvider 嚴格解析一個 provider（不接受未知欄位）並依類型驗證。
+func decodeASRProvider(n *yaml.Node, id, field, path string) (ASRProvider, error) {
+	var s asrProviderSchema
+	if err := decodeKnownYAML(n, &s); err != nil {
 		return ASRProvider{}, fmt.Errorf("設定檔 %s 的欄位 %s 格式不正確：%w", path, field, err)
 	}
 

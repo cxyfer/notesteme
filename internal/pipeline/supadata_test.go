@@ -47,7 +47,7 @@ func (f *fakeSupadata) Fetch(_ context.Context, videoURL, mode string) (*supadat
 func (f *fakeSupadata) asFetcher(timing string) fallbackFetcher {
 	return fallbackFetcher{
 		timing: timing,
-		params: func(Language) any { return nil },
+		params: func(store.Item, Language) any { return nil },
 		fetch: func(ctx context.Context, it store.Item, _ Language) (*fetchResult, error) {
 			got, err := f.Fetch(ctx, it.URL, "")
 			if err != nil {
