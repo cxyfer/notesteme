@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/auth"
@@ -27,7 +28,47 @@ const (
 	CodeUploadTooLarge = "upload_too_large"
 	// CodeUnsupportedMedia：檔案沒有音訊或影片（422，ING-R11）。
 	CodeUnsupportedMedia = "unsupported_media"
+	// CodeTooManyUploads：同時進行的上傳已達上限（429）。
+	CodeTooManyUploads = "too_many_uploads"
 )
+
+const (
+	// uploadIdleTimeout 是上傳的閒置逾時：每次讀取本體前重設，超過這段時間沒有收到資料就中斷。
+	uploadIdleTimeout = 2 * time.Minute
+	// maxConcurrentUploads 是同時進行的上傳上限（同一個資料目錄，TCP 與本機 socket 共用）。
+	maxConcurrentUploads = 2
+	// maxUploadParts 是一個上傳請求的 multipart part 數上限。
+	maxUploadParts = 16
+)
+
+// uploadSlots 依資料目錄記錄並行上傳的名額：同一個 process 的各個 handler（TCP、本機 socket）共用。
+var uploadSlots sync.Map // dataDir -> chan struct{}
+
+// acquireUploadSlot 嘗試佔用一個名額；沒有名額時回傳 nil。
+func acquireUploadSlot(dataDir string) (release func()) {
+	v, _ := uploadSlots.LoadOrStore(dataDir, make(chan struct{}, maxConcurrentUploads))
+	slots := v.(chan struct{})
+	select {
+	case slots <- struct{}{}:
+		return func() { <-slots }
+	default:
+		return nil
+	}
+}
+
+// idleReader 在每次讀取本體前把讀取期限設為「現在 + 閒置逾時」：
+// 只要資料持續進來就不會逾時，卡住超過 uploadIdleTimeout 才中斷。
+// 讀取期限是 net 層以實際時間比對的絕對時間，所以這裡用 time.Now 而不是注入的 clock（fake clock 會讓期限立刻到期）。
+type idleReader struct {
+	io.ReadCloser
+	rc *http.ResponseController
+}
+
+func (i idleReader) Read(p []byte) (int, error) {
+	// 不支援時（例如測試用的 ResponseRecorder）忽略。
+	_ = i.rc.SetReadDeadline(time.Now().Add(uploadIdleTimeout))
+	return i.ReadCloser.Read(p)
+}
 
 const (
 	// uploadFormOverhead 是 multipart 本體在檔案之外的餘裕（欄位、邊界、標頭）。
@@ -41,7 +82,8 @@ const (
 // 它掛在驗證 middleware 的內側（CSRF 與身分已檢查），與 cookieBodyLimit 同層：
 // 只攔 Content-Type 是 multipart/form-data 的請求，其他（JSON 新增）原樣交給 next。
 //
-// 順序：scope → Content-Length（超過上限不讀本體）→ MaxBytesReader → 清除讀取期限 →
+// 順序：scope → Content-Length（超過上限不讀本體）→ 並行名額（最多 2 個，否則 429）→
+// MaxBytesReader 與閒置逾時（每次讀取前重設 2 分鐘的讀取期限，讀完後清除）→
 // 串流寫到 <data>/tmp 並同時計算 sha256 → ffprobe → 搬到 uploads/<id>/<name> → 交易中建立（IngestUpload）。
 // 所有路徑都會清掉暫存檔。
 func uploadIntercept(d Deps) func(http.Handler) http.Handler {
@@ -103,10 +145,16 @@ func (rt *routes) upload(w http.ResponseWriter, r *http.Request, limit int64) {
 		writeError(w, uploadTooLarge(limit))
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, limit+uploadFormOverhead)
-	// server 的 ReadTimeout 是整個請求的期限，大檔案上傳會被截斷；只清掉這個請求的讀取期限。
-	// 不支援時（例如測試用的 ResponseRecorder）忽略。
-	_ = http.NewResponseController(w).SetReadDeadline(time.Time{})
+	// 同時進行的上傳有上限：沒有名額時直接 429，不讀本體。
+	release := acquireUploadSlot(rt.d.DataDir)
+	if release == nil {
+		writeError(w, newError(http.StatusTooManyRequests, CodeTooManyUploads, "目前有其他上傳正在進行，請稍後再試。"))
+		return
+	}
+	defer release()
+	// server 的 ReadTimeout 是整個請求的期限，大檔案上傳會被截斷；改成閒置逾時：每次讀取前重設期限。
+	rc := http.NewResponseController(w)
+	r.Body = http.MaxBytesReader(w, idleReader{ReadCloser: r.Body, rc: rc}, limit+uploadFormOverhead)
 
 	mr, err := r.MultipartReader()
 	if err != nil {
@@ -128,6 +176,8 @@ func (rt *routes) upload(w http.ResponseWriter, r *http.Request, limit int64) {
 	defer os.RemoveAll(dir)
 
 	up, apiErr := rt.readUpload(mr, dir, limit)
+	// 本體讀完（或失敗）：清除期限，之後的 ffprobe 與入庫可能很久，不能讓連線的背景讀取逾時而取消 request。
+	_ = rc.SetReadDeadline(time.Time{})
 	if apiErr != nil {
 		writeError(w, apiErr)
 		return
@@ -175,13 +225,16 @@ func (rt *routes) readUpload(mr *multipart.Reader, dir string, limit int64) (pip
 		haveOver bool
 	)
 	invalid := func(msg string) *Error { return newError(http.StatusUnprocessableEntity, CodeInvalidInput, msg) }
-	for {
+	for parts := 0; ; {
 		part, err := mr.NextPart()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
 			return up, readError(err, limit)
+		}
+		if parts++; parts > maxUploadParts {
+			return up, invalid(fmt.Sprintf("欄位太多（上限 %d 個）。", maxUploadParts))
 		}
 		switch part.FormName() {
 		case "file":
@@ -207,7 +260,11 @@ func (rt *routes) readUpload(mr *multipart.Reader, dir string, limit int64) (pip
 				return up, invalid(part.FormName() + " 太長。")
 			}
 			if part.FormName() == "until" {
+				// 讀到就驗證：不要等整個檔案傳完（file 在 until 之後時，也在 ffprobe 之前就拒絕）。
 				up.Until = strings.TrimSpace(string(b))
+				if up.Until != "" && !pipeline.ValidStage(up.Until) {
+					return up, invalid(fmt.Sprintf("until 必須是 %v 其中之一。", pipeline.Stages))
+				}
 			} else {
 				profile = strings.TrimSpace(string(b))
 			}
