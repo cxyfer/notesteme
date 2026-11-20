@@ -1,9 +1,11 @@
 package pipeline
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
+	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
@@ -35,5 +37,27 @@ func TestYouTubeTranscriptCacheKeyGolden(t *testing.T) {
 	)
 	if upstream != wantUpstream || params != wantParams || key != wantKey {
 		t.Errorf("快取鍵改變了：upstream = %s，params = %s，key = %s", upstream, params, key)
+	}
+}
+
+// 會用到 fallback 來源（沒選到字幕軌）時，快取鍵含 Groq 的參數與前處理設定（preprocess）。
+// M1 尚未發布，前處理參數進快取鍵是刻意的改變；這個 golden 把目前的鍵固定下來，
+// 之後改動 Groq 或前處理參數造成鍵改變時必須明確更新。
+func TestYouTubeTranscriptCacheKeyWithFallbackGolden(t *testing.T) {
+	r, g := newGroqRig(t)
+	g.noKey = true // 不轉錄：只取結果的快取鍵
+	r.yt.info.Tracks = nil
+	it := store.Item{ID: "item-1", Platform: "youtube", ExternalID: "abc", OriginalLang: "en", LangSource: "metadata"}
+
+	res, err := r.p.runTranscript(context.Background(), it, DefaultLanguage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.stage == nil {
+		t.Fatalf("result = %+v", res)
+	}
+	const wantKey = "dcefcc7b44621247e5812c1bbbd38d81627173f920f8c698bd8b9fea81f44a64"
+	if res.stage.CacheKey != wantKey {
+		t.Errorf("含 fallback 的快取鍵改變了：%s", res.stage.CacheKey)
 	}
 }
