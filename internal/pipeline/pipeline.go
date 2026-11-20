@@ -107,6 +107,9 @@ type Pipeline struct {
 	// impl 是 impl_version 的覆寫（PIPE-R6）；worker 與測試介面並行存取，用 implMu 保護。
 	implMu sync.RWMutex
 	impl   map[string]int
+
+	// trashLocks 讓同一部影音的移到垃圾桶（含 commit 之後的善後）與還原互斥（DEL-R2、R5）。
+	trashLocks itemLocks
 }
 
 // New 建立 Pipeline。

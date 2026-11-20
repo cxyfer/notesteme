@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -117,5 +118,44 @@ func TestHandleQuietWhenItemWasPurged(t *testing.T) {
 	}
 	if r.yt.probes != 0 {
 		t.Errorf("Probe 被呼叫 %d 次", r.yt.probes)
+	}
+}
+
+// 移到垃圾桶之後還在等待任務結束時，同一部影音的還原要等善後做完：
+// 否則還原、重試後的新任務可能已經在用 media/<id>，接著才被刪掉。
+func TestRestoreWaitsForTrashCleanup(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	it := r.ingest(watch, nil, "")
+	writeMedia(t, r.dir, it.ID)
+	if _, err := queue.New(r.st, r.clk, "w1").Claim(ctx, 5); err != nil {
+		t.Fatal(err)
+	}
+	fc := &fakeCanceller{}
+	fc.check = func() {
+		// Trash 正在等任務結束：還原要被擋住，直到逾時，影音仍在垃圾桶中。
+		short, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+		defer cancel()
+		if _, err := r.p.Restore(short, it.ID); !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("善後完成前的還原 = %v，預期等到逾時", err)
+		}
+		if cur, _ := r.st.Read().ItemByID(ctx, it.ID); cur.DeletedAt == nil {
+			t.Error("善後完成前不該被還原")
+		}
+		// 別部影音不受影響。
+		other, cancelOther := context.WithTimeout(ctx, time.Second)
+		defer cancelOther()
+		if _, err := r.p.Restore(other, "0192f3a0-0000-7000-8000-0000000000aa"); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("別部影音的還原 = %v，預期不被擋住、回 ErrNotFound", err)
+		}
+	}
+	if _, err := r.p.Trash(ctx, it.ID, TrashOptions{Canceller: fc}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.p.Restore(ctx, it.ID); err != nil {
+		t.Fatalf("善後完成後的還原：%v", err)
+	}
+	if n := len(r.p.trashLocks.m); n != 0 {
+		t.Errorf("鎖用完應該移除，剩下 %d 個", n)
 	}
 }
