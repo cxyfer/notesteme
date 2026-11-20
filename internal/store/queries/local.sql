@@ -1,8 +1,9 @@
 -- name: ItemByLocalSHA :one
--- Only local items whose content has been hashed (the items_local_sha partial index). Oldest first so the result is stable.
+-- Only local items whose content has been hashed (the items_local_sha partial index).
+-- Items that are not in the trash come first, then oldest first so the result is stable.
 SELECT * FROM items
 WHERE platform = 'local' AND content_sha256 <> '' AND content_sha256 = sqlc.arg(sha)
-ORDER BY created_at, rowid
+ORDER BY (deleted_at IS NOT NULL), created_at, rowid
 LIMIT 1;
 
 -- name: LocalTombstoneBlocks :one

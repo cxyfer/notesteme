@@ -237,7 +237,8 @@ func TestItemByLocalSHA(t *testing.T) {
 	w := s.Write()
 	first, _, _ := w.InsertItemIfAbsent(ctx, newLocal("a.mp4", shaA))
 	clk.Advance(time.Second)
-	if _, _, err := w.InsertItemIfAbsent(ctx, newLocal("copy.mp4", shaA)); err != nil {
+	second, _, err := w.InsertItemIfAbsent(ctx, newLocal("copy.mp4", shaA))
+	if err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := w.InsertItemIfAbsent(ctx, newLocal("nohash.mp4", "")); err != nil {
@@ -254,6 +255,14 @@ func TestItemByLocalSHA(t *testing.T) {
 	if _, _, err := w.TrashItem(ctx, first.ID); err != nil {
 		t.Fatal(err)
 	}
+	// 沒有被刪的優先：最早的那筆在垃圾桶時，改取正常的那筆。
+	if got, err := w.ItemByLocalSHA(ctx, shaA); err != nil || got.ID != second.ID || got.DeletedAt != nil {
+		t.Errorf("沒有被刪的優先：%+v, %v；預期 %s", got, err, second.ID)
+	}
+	if _, _, err := w.TrashItem(ctx, second.ID); err != nil {
+		t.Fatal(err)
+	}
+	// 都在垃圾桶時仍然找得到（最早的）。
 	if got, err := w.ItemByLocalSHA(ctx, shaA); err != nil || got.ID != first.ID || got.DeletedAt == nil {
 		t.Errorf("垃圾桶中的影音也要找到：%+v, %v", got, err)
 	}

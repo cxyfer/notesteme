@@ -34,11 +34,12 @@ func (q *Queries) DeleteLocalTombstonesBySHA(ctx context.Context, sha string) (i
 const itemByLocalSHA = `-- name: ItemByLocalSHA :one
 SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin FROM items
 WHERE platform = 'local' AND content_sha256 <> '' AND content_sha256 = ?1
-ORDER BY created_at, rowid
+ORDER BY (deleted_at IS NOT NULL), created_at, rowid
 LIMIT 1
 `
 
-// Only local items whose content has been hashed (the items_local_sha partial index). Oldest first so the result is stable.
+// Only local items whose content has been hashed (the items_local_sha partial index).
+// Items that are not in the trash come first, then oldest first so the result is stable.
 func (q *Queries) ItemByLocalSHA(ctx context.Context, sha string) (Item, error) {
 	row := q.db.QueryRowContext(ctx, itemByLocalSHA, sha)
 	var i Item
