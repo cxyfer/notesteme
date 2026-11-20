@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
@@ -26,6 +27,9 @@ type subtitlesInput struct {
 // getSubtitles 下載字幕（OUT-R1～R4）：從 cues 即時渲染，不建立任何產出，輸出以串流寫入回應（NFR-RES-3）。
 // 錯誤都在開始輸出之前決定，所以失敗時仍然是正常的錯誤回應。
 func (rt *routes) getSubtitles(ctx context.Context, in *subtitlesInput) (*huma.StreamResponse, error) {
+	if err := requireScope(ctx, auth.ScopeRead); err != nil {
+		return nil, err
+	}
 	if rt.d.Pipeline == nil {
 		return nil, newError(http.StatusNotFound, CodeNotFound, "找不到這部影音。")
 	}

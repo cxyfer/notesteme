@@ -101,19 +101,19 @@ type cookiesOutput struct {
 }
 
 func (rt *routes) registerCookies(api huma.API) {
-	huma.Register(api, huma.Operation{
+	registerOwnerOnly(api, huma.Operation{
 		OperationID: "cookies-put", Method: http.MethodPost, Path: "/api/cookies",
 		Summary: "上傳平台 cookie（加密存放，每個平台一份），並恢復等待它的 blocked 步驟（SEC-R4、SRC-R8、PIPE-R4）",
 		// 明確設定上限，不用 huma 的預設值；超過時由 cookieBodyLimit 先回 422（huma 自己只會回 413）。
 		MaxBodyBytes: maxCookieBodyBytes,
-	}, rt.putCookies)
+	}, "上傳 cookie", rt.putCookies)
 }
 
 // putCookies 只有 owner（session 或本機）可以使用：token 即使帶了 scope 也不行，
 // 因為 cookie 等同登入憑證。session 的 CSRF 由 authMiddleware 檢查（AUTH-R5）。
 func (rt *routes) putCookies(ctx context.Context, in *cookiesInput) (*cookiesOutput, error) {
-	if p, ok := principalFrom(ctx); ok && p.Kind == "token" {
-		return nil, newError(http.StatusForbidden, CodeForbidden, "只有 owner 可以上傳 cookie。")
+	if err := requireOwner(ctx, "上傳 cookie"); err != nil {
+		return nil, err
 	}
 	if rt.d.Cookies == nil {
 		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")

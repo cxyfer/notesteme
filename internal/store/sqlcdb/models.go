@@ -4,6 +4,18 @@
 
 package sqlcdb
 
+type ApiToken struct {
+	ID         string
+	Name       string
+	Prefix     string
+	Scopes     string
+	TokenHash  string
+	ExpiresAt  *int64
+	CreatedAt  int64
+	LastUsedAt *int64
+	RevokedAt  *int64
+}
+
 type Artifact struct {
 	ID             string
 	ItemID         string

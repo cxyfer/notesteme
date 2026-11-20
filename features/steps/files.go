@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -25,13 +26,49 @@ func registerFiles(r *Registry, s *Scenario) {
 	r.Step(`the file {string} does not exist`, s.fileDoesNotExist)
 	r.Step(`the file {string} contains {string}`, s.fileContainsText)
 	r.Step(`the file {string} does not contain {string}`, s.fileDoesNotContainText)
-	r.Step(`the data directory does not contain the created token`, func() error { return godog.ErrPending })
+	r.Step(`the data directory does not contain the created token`, s.dataDirDoesNotContainCreatedToken)
 	r.Step(`the file {string} is:`, func(string, *godog.DocString) error { return godog.ErrPending })
 	r.Step(`the file {string} has the mode {string}`, s.fileHasMode)
 	r.Step(`the cookie file given to yt-dlp has the mode {string}`, s.cookieFileHasMode)
 	r.Step(`no cookie file remains in {string}`, s.noCookieFileRemains)
 	r.Step(`the data directory does not contain {string}`, s.dataDirDoesNotContain)
-	r.Step(`the logs do not contain {string}`, func(string) error { return godog.ErrPending })
+	r.Step(`the logs do not contain {string}`, s.logsDoNotContain)
+}
+
+// dataDirDoesNotContainCreatedToken 確認 /data 中不含最近一次建立的 token 明文（AUTH-R7、R10）。
+func (s *Scenario) dataDirDoesNotContainCreatedToken() error {
+	tok := s.createdToken()
+	if tok == "" {
+		return errors.New("還沒有建立任何 token（找不到 tokens create 輸出的 token 欄位）")
+	}
+	return s.dataDirDoesNotContain(tok)
+}
+
+func (s *Scenario) createdToken() string {
+	var cmdTok string
+	if s.cmd != nil && s.cmd.out != "" {
+		var out struct {
+			Token string `json:"token"`
+		}
+		if json.Unmarshal([]byte(s.cmd.out), &out) == nil {
+			cmdTok = out.Token
+		}
+	}
+	if cmdTok != "" && (s.lastCreatedToken == "" || s.cmd.step >= s.lastCreatedTokenStep) {
+		return cmdTok
+	}
+	return s.lastCreatedToken
+}
+
+// logsDoNotContain 確認 server 的 log 不含 text。
+func (s *Scenario) logsDoNotContain(text string) error {
+	if text == "" {
+		return errors.New("要搜尋的文字不能是空的")
+	}
+	if s.World.Log != nil && strings.Contains(s.World.Log.String(), text) {
+		return fmt.Errorf("server 的 log 含有 %q", text)
+	}
+	return nil
 }
 
 // dataDirDoesNotContain 掃描 /data 下所有檔案（包括 DB 與 WAL），確認都不含 text。

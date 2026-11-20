@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -151,7 +152,10 @@ type createItemOutput struct {
 
 // createItems 新增影音：有新建立的回 201，全部已經存在回 200（ING-R2）。
 func (rt *routes) createItems(ctx context.Context, in *createItemInput) (*createItemOutput, error) {
-	// 路徑防護最先處理（GRD-R7）：不在根目錄內的路徑，不論後面的功能做了沒有都不會被接受。
+	if err := requireScope(ctx, auth.ScopeIngest); err != nil {
+		return nil, err
+	}
+	// 路徑防護（GRD-R7）：不在根目錄內的路徑，不論後面的功能做了沒有都不會被接受。
 	if in.Body.Path != "" {
 		if err := rt.d.Paths.Check(in.Body.Path); err != nil {
 			return nil, newError(http.StatusForbidden, CodePathOutsideRoots, "只能新增媒體資料夾中的檔案。")
@@ -269,6 +273,9 @@ func parseSeconds(name, v string) (*int, error) {
 }
 
 func (rt *routes) listItems(ctx context.Context, in *listItemsInput) (*listItemsOutput, error) {
+	if err := requireScope(ctx, auth.ScopeRead); err != nil {
+		return nil, err
+	}
 	if in.ReadState != "" {
 		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "read_state 尚未支援。")
 	}
@@ -431,6 +438,9 @@ type itemInput struct {
 type itemDetailOutput struct{ Body ItemDetail }
 
 func (rt *routes) getItem(ctx context.Context, in *itemInput) (*itemDetailOutput, error) {
+	if err := requireScope(ctx, auth.ScopeRead); err != nil {
+		return nil, err
+	}
 	if rt.d.Pipeline == nil {
 		return nil, newError(http.StatusNotFound, CodeNotFound, "找不到這部影音。")
 	}
@@ -474,6 +484,9 @@ type runsOutput struct {
 
 // listRuns 回傳影音實際執行過的步驟，由新到舊。
 func (rt *routes) listRuns(ctx context.Context, in *itemInput) (*runsOutput, error) {
+	if err := requireScope(ctx, auth.ScopeRead); err != nil {
+		return nil, err
+	}
 	if rt.d.Pipeline == nil {
 		return nil, newError(http.StatusNotFound, CodeNotFound, "找不到這部影音。")
 	}
@@ -511,6 +524,9 @@ type rerunOutput struct{ Body ItemDetail }
 
 // rerun 從指定步驟重新建立 stage run 與任務（PIPE-R7）：產出新版本，舊版本標記 superseded_by。
 func (rt *routes) rerun(ctx context.Context, in *rerunInput) (*rerunOutput, error) {
+	if err := requireScope(ctx, auth.ScopeIngest); err != nil {
+		return nil, err
+	}
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}
@@ -566,6 +582,9 @@ type cuesOutput struct {
 }
 
 func (rt *routes) getCues(ctx context.Context, in *cuesInput) (*cuesOutput, error) {
+	if err := requireScope(ctx, auth.ScopeRead); err != nil {
+		return nil, err
+	}
 	if rt.d.Pipeline == nil {
 		return nil, newError(http.StatusNotFound, CodeNotFound, "找不到這部影音。")
 	}
@@ -614,6 +633,12 @@ type putSettingsInput struct {
 type settingsOutput struct{ Body map[string]any }
 
 func (rt *routes) getSettings(ctx context.Context, in *settingsInput) (*settingsOutput, error) {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
+		return nil, err
+	}
+	if in.Section == "services" {
+		return rt.getServicesSettings(ctx)
+	}
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}
@@ -625,6 +650,12 @@ func (rt *routes) getSettings(ctx context.Context, in *settingsInput) (*settings
 }
 
 func (rt *routes) putSettings(ctx context.Context, in *putSettingsInput) (*settingsOutput, error) {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
+		return nil, err
+	}
+	if in.Section == "services" {
+		return rt.putServicesSettings(ctx, in.Body)
+	}
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}

@@ -58,6 +58,8 @@ type Deps struct {
 	Tools     ToolManager
 	Backup    BackupSource
 	Providers ProviderRegistry
+	// Services 管理外部服務商的 API key（GET／PUT /api/settings/services，SEC-R4、SEC-R6）；nil 時回應 501。
+	Services ServiceSettingsStore
 	// CursorKey 是列表游標的 HMAC 金鑰（LIB-R4）；空的時候用 processCursorKey（每個 process 隨機產生一次）。
 	// 金鑰只存在記憶體，重新啟動後舊游標會回 422，用戶端從第一頁重新讀取即可。
 	CursorKey []byte
@@ -103,12 +105,12 @@ func build(d Deps, authn func(http.Handler) http.Handler) http.Handler {
 	r := &routes{d: d}
 	r.register(api)
 	if d.Events != nil {
-		mux.Handle("GET /api/events", d.Events)
+		mux.Handle("GET /api/events", requireScopeHandler(auth.ScopeRead, d.Events))
 	} else {
-		huma.Register(api, huma.Operation{
+		registerScoped(api, huma.Operation{
 			OperationID: "events", Method: http.MethodGet, Path: "/api/events",
 			Summary: "狀態變更事件的 SSE 串流（尚未實作）",
-		}, notImplemented)
+		}, auth.ScopeRead, notImplemented)
 	}
 
 	// cookie 上傳的大小限制在驗證之後、Huma 之前（沒登入的請求不會被讀取本體）。
@@ -165,49 +167,49 @@ func (rt *routes) register(api huma.API) {
 		OperationID: "auth-login", Method: http.MethodPost, Path: "/api/auth/login",
 		Summary: "以密碼登入，設定 session 與 CSRF cookie",
 	}, rt.login)
-	huma.Register(api, huma.Operation{
+	registerOwnerOnly(api, huma.Operation{
 		OperationID: "auth-logout", Method: http.MethodPost, Path: "/api/auth/logout",
 		Summary: "登出，session 立即失效",
-	}, rt.logout)
+	}, "登出", rt.logout)
 
-	huma.Register(api, huma.Operation{
+	registerScoped(api, huma.Operation{
 		OperationID: "items-list", Method: http.MethodGet, Path: "/api/items",
 		Summary: "影音清單",
-	}, rt.listItems)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeRead, rt.listItems)
+	registerScoped(api, huma.Operation{
 		OperationID: "items-create", Method: http.MethodPost, Path: "/api/items",
 		Summary:       "新增影音：成功建立回 201，已存在回 200（ING-R2）",
 		DefaultStatus: http.StatusCreated,
-	}, rt.createItems)
+	}, auth.ScopeIngest, rt.createItems)
 	// 之後切片才會實作的路由：先明確回應 501，不要讓它們看起來像不存在（404）。
-	huma.Register(api, huma.Operation{
+	registerScoped(api, huma.Operation{
 		OperationID: "resolve", Method: http.MethodPost, Path: "/api/resolve",
 		Summary: "辨識網址指向什麼內容，不建立影音（ING-R1、R5、R9）", DefaultStatus: http.StatusOK,
-	}, rt.resolve)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeIngest, rt.resolve)
+	registerScoped(api, huma.Operation{
 		OperationID: "estimate", Method: http.MethodPost, Path: "/api/estimate",
 		Summary: "估算花費（尚未實作）",
-	}, notImplemented)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeIngest, notImplemented)
+	registerScoped(api, huma.Operation{
 		OperationID: "items-get", Method: http.MethodGet, Path: "/api/items/{id}",
 		Summary: "影音詳情：各步驟的狀態與各字幕來源的結果",
-	}, rt.getItem)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeRead, rt.getItem)
+	registerScoped(api, huma.Operation{
 		OperationID: "items-cues", Method: http.MethodGet, Path: "/api/items/{id}/cues",
 		Summary: "字幕內容（cues）",
-	}, rt.getCues)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeRead, rt.getCues)
+	registerScoped(api, huma.Operation{
 		OperationID: "items-subtitles", Method: http.MethodGet, Path: "/api/items/{id}/subtitles",
 		Summary: "下載字幕：從 cues 即時渲染成 srt、vtt、txt 或 cues-json（OUT-R1）",
-	}, rt.getSubtitles)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeRead, rt.getSubtitles)
+	registerScoped(api, huma.Operation{
 		OperationID: "items-rerun", Method: http.MethodPost, Path: "/api/items/{id}/rerun",
 		Summary: "從指定步驟重新處理，產出新版本（PIPE-R7）", DefaultStatus: http.StatusAccepted,
-	}, rt.rerun)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeIngest, rt.rerun)
+	registerScoped(api, huma.Operation{
 		OperationID: "items-runs", Method: http.MethodGet, Path: "/api/items/{id}/runs",
 		Summary: "步驟實際執行過的紀錄與當時生效的設定，由新到舊（PIPE-R13）",
-	}, rt.listRuns)
+	}, auth.ScopeRead, rt.listRuns)
 	rt.registerQueue(api)
 	rt.registerCookies(api)
 	rt.registerCancel(api)
@@ -219,21 +221,22 @@ func (rt *routes) register(api huma.API) {
 		{OperationID: "tasks-retry", Method: http.MethodPost, Path: "/api/tasks/{id}/retry", Summary: "重試任務（尚未實作）"},
 		{OperationID: "tasks-cancel", Method: http.MethodPost, Path: "/api/tasks/{id}/cancel", Summary: "取消單一任務（尚未實作）"},
 	} {
-		huma.Register(api, op, notImplemented)
+		registerScoped(api, op, auth.ScopeAdmin, notImplemented)
 	}
+	rt.registerTokens(api)
 	// OPS 切片的路由，各自放在獨立的檔案；實作前一律回 501。
 	rt.registerSystem(api)
 	rt.registerProviders(api)
 	rt.registerTools(api)
 	rt.registerBackup(api)
-	huma.Register(api, huma.Operation{
+	registerScoped(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",
-		Summary: "讀取全域設定區段（目前只有 language；其他區段尚未實作）",
-	}, rt.getSettings)
-	huma.Register(api, huma.Operation{
+		Summary: "讀取全域設定區段（目前只有 language 與 services；其他區段尚未實作）",
+	}, auth.ScopeAdmin, rt.getSettings)
+	registerScoped(api, huma.Operation{
 		OperationID: "settings-put", Method: http.MethodPut, Path: "/api/settings/{section}",
-		Summary: "取代全域設定區段（目前只有 language；其他區段尚未實作）",
-	}, rt.putSettings)
+		Summary: "取代全域設定區段（目前只有 language 與 services；其他區段尚未實作）",
+	}, auth.ScopeAdmin, rt.putSettings)
 	huma.Register(api, huma.Operation{
 		OperationID: "mcp", Method: http.MethodPost, Path: "/mcp",
 		Summary: "MCP Streamable HTTP（尚未實作）",
@@ -294,6 +297,9 @@ func (rt *routes) login(ctx context.Context, in *loginInput) (*loginOutput, erro
 }
 
 func (rt *routes) logout(ctx context.Context, in *logoutInput) (*logoutOutput, error) {
+	if err := requireOwner(ctx, "登出"); err != nil {
+		return nil, err
+	}
 	if err := rt.d.Auth.Logout(ctx, in.Session); err != nil {
 		rt.d.Log.ErrorContext(ctx, "登出時發生錯誤", "error", err)
 		return nil, asError(err)

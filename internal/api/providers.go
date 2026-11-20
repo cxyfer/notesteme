@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/cxyfer/notesteme/internal/auth"
 )
 
 // CodeConfigFileOnly 表示這個項目只能在設定檔中定義（SEC-R3）。
@@ -46,21 +48,24 @@ type providerGetInput struct {
 type providerOutput struct{ Body ProviderInfo }
 
 func (rt *routes) registerProviders(api huma.API) {
-	huma.Register(api, huma.Operation{
+	registerScoped(api, huma.Operation{
 		OperationID: "providers-create", Method: http.MethodPost, Path: "/api/providers",
 		Summary: "新增 provider：command 類型只能在設定檔中定義，回 403（SEC-R3）",
-	}, rt.createProvider)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeAdmin, rt.createProvider)
+	registerScoped(api, huma.Operation{
 		OperationID: "providers-get", Method: http.MethodGet, Path: "/api/providers/{id}",
 		Summary: "讀取設定檔中定義的 provider（唯讀）",
-	}, rt.getProvider)
+	}, auth.ScopeRead, rt.getProvider)
 }
 
 // createProvider 處理 POST /api/providers。
 // command 類型一律拒絕（SEC-R3）：它等於能在主機上執行任意命令，所以不能由 API 建立，
 // 即使 token 外洩也一樣。其他類型的 provider 由 DB 管理，M1 的規格沒有定義建立方式，回 501。
 // 回應與日誌都不含請求內容。
-func (rt *routes) createProvider(_ context.Context, in *providerCreateInput) (*providerOutput, error) {
+func (rt *routes) createProvider(ctx context.Context, in *providerCreateInput) (*providerOutput, error) {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
+		return nil, err
+	}
 	if rt.d.Providers == nil {
 		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
 	}
@@ -80,6 +85,9 @@ func (rt *routes) createProvider(_ context.Context, in *providerCreateInput) (*p
 
 // getProvider 處理 GET /api/providers/{id}：列出設定檔中的 provider，找不到回 404。
 func (rt *routes) getProvider(ctx context.Context, in *providerGetInput) (*providerOutput, error) {
+	if err := requireScope(ctx, auth.ScopeRead); err != nil {
+		return nil, err
+	}
 	if rt.d.Providers == nil {
 		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
 	}

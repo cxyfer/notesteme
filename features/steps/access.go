@@ -1,6 +1,8 @@
 package steps
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,27 +10,69 @@ import (
 	"strings"
 
 	"github.com/cucumber/godog"
+
+	"github.com/cxyfer/notesteme/internal/app"
+	"github.com/cxyfer/notesteme/internal/cli"
 )
 
 // registerAccess 註冊「存取」的步驟，句型見 docs/specs/steps.md。
 func registerAccess(r *Registry, s *Scenario) {
 	r.Step(`the owner password is {string}`, s.ownerPasswordIs)
 	r.Step(`the owner is signed in`, s.ownerIsSignedIn)
-	r.Step(`a token {string} with scopes {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the token {string} expired`, func(string) error { return godog.ErrPending })
+	r.Step(`a token {string} with scopes {string}`, s.aTokenWithScopes)
+	r.Step(`the token {string} expired`, s.tokenExpired)
 	r.Step(`someone signs in with the password {string}`, s.someoneSignsIn)
 	r.Step(`someone signs in from {string} with the password {string}`, s.someoneSignsInFrom)
 	r.Step(`the owner sends {string}`, s.ownerSends)
 	r.Step(`the owner sends {string} with:`, s.ownerSendsWith)
 	r.Step(`the owner sends {string} without a CSRF token`, s.ownerSendsWithoutCSRF)
 	r.Step(`the client sends {string}`, s.clientSends)
-	r.Step(`the client sends {string} with the token {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the client sends {string} with the token {string} and:`, func(string, string, *godog.DocString) error { return godog.ErrPending })
+	r.Step(`the client sends {string} with the token {string}`, s.clientSendsWithToken)
+	r.Step(`the client sends {string} with the token {string} and:`, s.clientSendsWithTokenAnd)
 	r.Step(`the client sends {string} with the token {string} from the origin {string}`, func(string, string, string) error { return godog.ErrPending })
 	r.Step(`the owner sends {string} with the header {string} set to {string}`, func(string, string, string) error { return godog.ErrPending })
 	r.Step(`the response status is {int}`, s.responseStatusIs)
 	r.Step(`the response contains:`, s.responseContains)
 	r.Step(`the response header {string} contains {string}`, s.responseHeaderContains)
+}
+
+// aTokenWithScopes 在程序內執行 `notesteme tokens create --json` 建立指定 scope 的 token，
+// 不改寫 s.last 與 s.cmd；token 明文記錄於 World.Refs["token:"+name] 與 s.lastCreatedToken。
+func (s *Scenario) aTokenWithScopes(name, scopes string) error {
+	env := s.World.AppEnv()
+	env.Dial = s.World.Dial
+	var stdout, stderr bytes.Buffer
+	cctx, cancel := context.WithTimeout(s.ctx, cliTimeout)
+	defer cancel()
+	args := []string{"tokens", "create", "--name", name, "--scopes", scopes, "--json"}
+	res := cli.Execute(cctx, args, app.IO{Stdout: &stdout, Stderr: &stderr}, env)
+	if errors.Is(cctx.Err(), context.DeadlineExceeded) && s.ctx.Err() == nil {
+		return fmt.Errorf("建立 token %q 在 %d 秒內沒有結束", name, int(cliTimeout.Seconds()))
+	}
+	if res.Code != 0 {
+		return fmt.Errorf("建立 token %q 失敗（結束碼 %d）：%s", name, res.Code, snippet(stderr.Bytes()))
+	}
+	var out struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil || out.Token == "" {
+		return fmt.Errorf("解析 tokens create 輸出失敗（err=%v）：%s", err, snippet(stdout.Bytes()))
+	}
+	if s.World.Refs == nil {
+		s.World.Refs = map[string]string{}
+	}
+	s.World.Refs["token:"+name] = out.Token
+	s.lastCreatedToken = out.Token
+	s.lastCreatedTokenStep = s.step
+	return nil
+}
+
+// tokenExpired 透過 app.Server 的測試用 hook 讓指定名稱的 token 立即過期（AUTH-R9）。
+func (s *Scenario) tokenExpired(name string) error {
+	if err := s.ensureServer(); err != nil {
+		return err
+	}
+	return s.server.ExpireToken(s.ctx, name)
 }
 
 // ownerPasswordIs 設定登入密碼：第一次啟動時由 NOTESTEME_PASSWORD 寫入 DB。
@@ -73,6 +117,34 @@ func (s *Scenario) ownerSendsWithoutCSRF(spec string) error {
 
 func (s *Scenario) clientSends(spec string) error {
 	return s.send(spec, requestOpts{who: asClient})
+}
+
+func (s *Scenario) bearerHeader(name string) (map[string]string, error) {
+	tok, ok := s.World.Refs["token:"+name]
+	if !ok || tok == "" {
+		return nil, fmt.Errorf("還沒建立名稱為 %q 的 token", name)
+	}
+	return map[string]string{"Authorization": "Bearer " + tok}, nil
+}
+
+func (s *Scenario) clientSendsWithToken(spec, name string) error {
+	headers, err := s.bearerHeader(name)
+	if err != nil {
+		return err
+	}
+	var body []byte
+	if method, path, err := parseRequest(spec); err == nil && method == http.MethodPost && path == "/api/items" {
+		body = []byte(`{"url":"https://www.youtube.com/watch?v=abc123xxxxx"}`)
+	}
+	return s.send(spec, requestOpts{who: asClient, body: body, headers: headers})
+}
+
+func (s *Scenario) clientSendsWithTokenAnd(spec, name string, doc *godog.DocString) error {
+	headers, err := s.bearerHeader(name)
+	if err != nil {
+		return err
+	}
+	return s.send(spec, requestOpts{who: asClient, body: s.requestBody(doc), headers: headers})
 }
 
 // requestBody 取出 doc string 作為請求 body：虛擬路徑與 {token:…} 先代入。

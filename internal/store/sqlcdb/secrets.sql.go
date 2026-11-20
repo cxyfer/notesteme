@@ -9,6 +9,15 @@ import (
 	"context"
 )
 
+const deleteAllSecrets = `-- name: DeleteAllSecrets :exec
+DELETE FROM secrets
+`
+
+func (q *Queries) DeleteAllSecrets(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteAllSecrets)
+	return err
+}
+
 const deleteSecret = `-- name: DeleteSecret :execrows
 DELETE FROM secrets WHERE kind = ?1 AND name = ?2
 `

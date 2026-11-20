@@ -158,8 +158,9 @@ func TestUsageErrorsComeBeforeMode(t *testing.T) {
 }
 
 func TestUnimplementedSubcommandsReportNotImplemented(t *testing.T) {
-	// items rm、restore 與 trash 已由 DEL-B3 實作（見 trash_test.go）。
-	for _, args := range [][]string{{"tokens", "create"}, {"secrets", "ls"}, {"mcp", "serve"}} {
+	// items rm、restore 與 trash 已由 DEL-B3 實作（見 trash_test.go）；
+	// tokens 與 secrets 已由 AUTH/SEC M1 實作（見 tokens_test.go、secrets_test.go）。
+	for _, args := range [][]string{{"config", "export"}, {"mcp", "serve"}} {
 		env, data := testEnv(t)
 		res, _, _ := run(t, env, args...)
 		if res.Code != 1 || res.ErrorCode != "not_implemented" || res.Mode != "" {

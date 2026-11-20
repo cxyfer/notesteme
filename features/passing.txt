@@ -8,11 +8,23 @@ AUTH-access.feature: The server refuses to start without any password
 AUTH-access.feature: The session cookie is locked down
 AUTH-access.feature: Signing out ends the session
 AUTH-access.feature: A state-changing request without a CSRF token is refused
+AUTH-access.feature: Bearer tokens do not need a CSRF token
 AUTH-access.feature: Five wrong passwords lock sign-in for a minute
 AUTH-access.feature: A lockout from one address does not lock out another
+AUTH-access.feature: A token is shown once and stored only as a hash
+AUTH-access.feature: Each scope only opens its own doors [example 1]
+AUTH-access.feature: Each scope only opens its own doors [example 2]
+AUTH-access.feature: Each scope only opens its own doors [example 3]
+AUTH-access.feature: Each scope only opens its own doors [example 4]
+AUTH-access.feature: Each scope only opens its own doors [example 5]
+AUTH-access.feature: Each scope only opens its own doors [example 6]
+AUTH-access.feature: A missing scope is named in the error
+AUTH-access.feature: A revoked token stops working immediately
+AUTH-access.feature: An expired token stops working
 CLI-cli.feature: A second server on the same data directory refuses to start
 CLI-cli.feature: Without a running server the CLI opens the database itself
 CLI-cli.feature: With a running server the CLI goes through it
+CLI-cli.feature: An explicit server address always uses client mode
 CLI-cli.feature: JSON output matches the API
 CLI-cli.feature: A bad argument exits with 2
 CLI-cli.feature: Waiting on an item that needs the owner exits with 3
@@ -27,6 +39,10 @@ DEL-delete.feature: The trash is emptied after 30 days
 DEL-delete.feature: Spending records survive a permanent delete
 DEL-delete.feature: Adding an item that is in the trash offers to restore it
 DEL-delete.feature: An item added again after a permanent delete starts fresh
+DEL-delete.feature: Only admin tokens can delete or restore [example 1]
+DEL-delete.feature: Only admin tokens can delete or restore [example 2]
+DEL-delete.feature: Only admin tokens can delete or restore [example 3]
+DEL-delete.feature: Only admin tokens can delete or restore [example 4]
 DEL-delete.feature: Delete from the CLI
 DEL-delete.feature: The CLI refuses to delete without confirmation outside a terminal
 DEL-delete.feature: A Bilibili reference without a part deletes every part
@@ -130,9 +146,12 @@ SEC-config-secrets.feature: The config file is used when no environment variable
 SEC-config-secrets.feature: Database-managed settings are not accepted in the config file
 SEC-config-secrets.feature: A command provider cannot be created through the API
 SEC-config-secrets.feature: Command providers from the config file are listed read-only
+SEC-config-secrets.feature: An API key is encrypted and only its last four characters are shown
 SEC-config-secrets.feature: A cookie is handed to yt-dlp as a private temporary file
 SEC-config-secrets.feature: The server refuses to start without a master key
 SEC-config-secrets.feature: A wrong master key is reported with the way out
+SEC-config-secrets.feature: Rotating the master key keeps every secret readable
+SEC-config-secrets.feature: Resetting secrets keeps the library
 SRC-transcript-sources.feature: Manual captions in the original language win over auto captions
 SRC-transcript-sources.feature: A lower entry in the priority list is used when the first ones are missing
 SRC-transcript-sources.feature: Platform machine translations are not used by default

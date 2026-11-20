@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/cxyfer/notesteme/internal/auth"
 )
 
 // 這個檔案是刪除預覽、永久刪除與清空垃圾桶（DEL-R3、R4、R6），由 DEL-B2 實作。
@@ -17,18 +19,18 @@ type PreviewOutput struct {
 }
 
 func (rt *routes) registerPurge(api huma.API) {
-	huma.Register(api, huma.Operation{
+	registerScoped(api, huma.Operation{
 		OperationID: "items-deletion-preview", Method: http.MethodGet, Path: "/api/items/{id}/deletion-preview",
 		Summary: "刪除的影響範圍：產出數、可釋放的位元組、已花費的金額與輸出檔；唯讀（DEL-R3）",
-	}, rt.deletionPreview)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeRead, rt.deletionPreview)
+	registerScoped(api, huma.Operation{
 		OperationID: "trash-purge", Method: http.MethodDelete, Path: "/api/trash/{id}",
 		Summary: "立即永久刪除垃圾桶中的影音（DEL-R4、R6）",
-	}, rt.purgeItem)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeAdmin, rt.purgeItem)
+	registerScoped(api, huma.Operation{
 		OperationID: "trash-empty", Method: http.MethodDelete, Path: "/api/trash",
 		Summary: "清空垃圾桶，回傳永久刪除的數量（DEL-R4）",
-	}, rt.emptyTrash)
+	}, auth.ScopeAdmin, rt.emptyTrash)
 }
 
 type deletionPreviewOutput struct {
@@ -41,7 +43,7 @@ type deletionPreviewOutput struct {
 }
 
 func (rt *routes) deletionPreview(ctx context.Context, in *itemInput) (*deletionPreviewOutput, error) {
-	if err := requireOwner(ctx, "查看刪除的影響範圍"); err != nil {
+	if err := requireScope(ctx, auth.ScopeRead); err != nil {
 		return nil, err
 	}
 	if rt.d.Pipeline == nil {
@@ -76,7 +78,7 @@ type purgedItemOutput struct {
 }
 
 func (rt *routes) purgeItem(ctx context.Context, in *itemInput) (*purgedItemOutput, error) {
-	if err := requireOwner(ctx, "永久刪除影音"); err != nil {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
 		return nil, err
 	}
 	if rt.d.Pipeline == nil {
@@ -92,7 +94,7 @@ func (rt *routes) purgeItem(ctx context.Context, in *itemInput) (*purgedItemOutp
 }
 
 func (rt *routes) emptyTrash(ctx context.Context, _ *struct{}) (*purgedOutput, error) {
-	if err := requireOwner(ctx, "清空垃圾桶"); err != nil {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
 		return nil, err
 	}
 	if rt.d.Pipeline == nil {

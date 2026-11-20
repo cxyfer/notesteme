@@ -483,3 +483,72 @@ func TestTranscribeClassifiesByStatusBeforeReadingTheBody(t *testing.T) {
 		}
 	}
 }
+
+func TestKeyFuncResolutionAndEnvPriority(t *testing.T) {
+	ctx := context.Background()
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		io.WriteString(w, okBody)
+	}))
+	defer srv.Close()
+
+	dbKey := ""
+	c := &Client{
+		HTTP:    srv.Client(),
+		BaseURL: srv.URL,
+		KeyFunc: func(context.Context) (string, error) { return dbKey, nil },
+	}
+	if mustConfigured(t, c) {
+		t.Fatal("empty KeyFunc should report Configured == false")
+	}
+
+	// 動態寫入 DB key 後立即可用。
+	dbKey = "gsk-from-db"
+	if !mustConfigured(t, c) {
+		t.Fatal("non-empty KeyFunc should report Configured == true")
+	}
+	if _, err := c.Transcribe(ctx, audioFile(t), ""); err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer gsk-from-db" {
+		t.Errorf("Authorization = %q, want Bearer gsk-from-db", gotAuth)
+	}
+
+	// 環境變數（APIKey）優先於 KeyFunc（SEC-R1）。
+	c.APIKey = "gsk-from-env"
+	c.KeyFunc = func(context.Context) (string, error) {
+		t.Fatal("APIKey 非空時不應呼叫 KeyFunc")
+		return "", nil
+	}
+	if !mustConfigured(t, c) {
+		t.Fatal("APIKey should report Configured == true")
+	}
+	if _, err := c.Transcribe(ctx, audioFile(t), ""); err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer gsk-from-env" {
+		t.Errorf("Authorization = %q, want Bearer gsk-from-env", gotAuth)
+	}
+}
+
+// mustConfigured 呼叫 Configured，讀取 key 失敗時讓測試失敗。
+func mustConfigured(t *testing.T, c interface {
+	Configured(context.Context) (bool, error)
+}) bool {
+	t.Helper()
+	ok, err := c.Configured(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ok
+}
+
+// 從資料庫讀取 key 失敗時，Configured 回傳錯誤，不當成「沒有設定」。
+func TestConfiguredReportsKeyLookupFailure(t *testing.T) {
+	boom := errors.New("database is locked")
+	c := &Client{KeyFunc: func(context.Context) (string, error) { return "", boom }}
+	if ok, err := c.Configured(context.Background()); ok || !errors.Is(err, boom) {
+		t.Errorf("Configured = %v, %v；預期 false 與讀取錯誤", ok, err)
+	}
+}

@@ -1,6 +1,6 @@
 # 交接：M1 開發進度
 
-> 更新：2026-11-15。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；#5（CLI）已合併；GRD 切片是 PR #6（`feat/guards`）；SRC-A 切片在 `feat/sources`、SRC-B 切片在 `feat/bilibili`、OPS 切片在 `feat/ops`、LIB 切片在 `feat/library`、DEL 切片在 `feat/delete`（依序疊在 `feat/guards` 上，都還沒 push）。
+> 更新：2026-11-18。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；#5（CLI）已合併；GRD 切片是 PR #6（`feat/guards`）；`feat/sources`、`feat/bilibili`、`feat/ops`、`feat/library`、`feat/delete`、`feat/auth-secrets`（依序疊在 `feat/guards` 上，待 push 與開 PR）。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -46,13 +46,22 @@
     - worker 的定期工作改在 round 鎖之外執行，避免清理呼叫 `Cancel` 時死結。
     - Rerun 與 Trash 的競態已修：engine 遇到垃圾桶中的影音時，取消任務並把步驟改成 skipped。
     - harness：拿掉 `titled` 預設語言不算「宣告」的例外（與 steps.md 一致）；`substRefs` 改用 `itemID`；垃圾桶中的 stage 斷言改讀 DB；`World.Refs` 在每次新增時更新。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，148 passed、43 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
+  - AUTH-SEC 切片（`feat/auth-secrets`，疊在 `feat/delete` 上）：
+    - migration `00008_api_tokens.sql`（`api_tokens` 表 + `api_tokens_active_name` partial unique index）與 `queries/{tokens,keys,secrets}.sql`（英文註解）。
+    - API Token（`internal/auth/tokens.go`）：`nst_` + 32 bytes base64url（SHA-256 雜湊儲存、明文只在建立時回傳一次、`last_used_at` 寫入節流每小時一次）；名稱拒絕 `/` 與控制字元；共用 `auth.ParseTokenDuration`（整數 `d` 天數與 Go duration，拒絕空值／0／負數／`+`）。
+    - Scope 權限矩陣（`internal/api/scopes.go`）：透過 `registerScoped`／`registerOwnerOnly` 在 Huma `Operation.Middlewares`（解析請求 body 之前）檢查 `requireScope`／`requireOwner`；精確比對 `read`、`agent`、`ingest`、`admin`（無隱含繼承），缺少時回 403 `forbidden` 並帶 `required_scope`；涵蓋 `DEL-R12`（`GET /api/trash` 與 `deletion-preview` 為 `read`，刪除／還原／清空為 `admin`）、`GET /api/events`（`read`）、`POST /api/estimate`（`ingest`）、`POST /api/tasks/{id}/retry|cancel`（`admin`）、`GET/PUT /api/settings/{section}` 與 `POST /api/providers`（`admin`）。
+    - Token API（`internal/api/tokens.go`）：`GET /api/tokens`、`POST /api/tokens`（409 `token_exists`、422 驗證）、`DELETE /api/tokens/{id}`（支援 id 或作用中 name）。
+    - 外部服務 API key（`internal/secrets/services.go`、`internal/api/settings_services.go`）：`GET/PUT /api/settings/services` 加密寫入 `secrets` 表（`Keyring.Seal("provider_api_key", ...)`）、`GET` 即時解密計算 `api_key_last4`、空字串刪除、`nil` 保留、控制字元 422 且不回顯值；`supadata`、`groq`、`pipeline`、`app/sources.go` 支援環境變數優先於 DB 解密 fallback（存完即生效、免重啟）。
+    - Master key 輪替與重設（`internal/secrets/rotate.go`、`internal/app/secrets.go`）：在 `store.LockDir` 離線鎖與單一交易中完成（不呼 `openCore`/`secrets.Open`，確保遺失 master key 時仍可 `reset` 並保留影音庫）。
+    - CLI（`internal/cli/tokens.go`、`internal/cli/secrets.go`）：`tokens create|ls|revoke`（經 `openBackend` 支援 standalone／本機 socket／`--server`）、`secrets rotate-key --new-key-env` 與 `secrets reset [--yes]`（離線鎖、拒絕 `--server`、非終端機缺 `--yes` 回 2）。
+    - 驗收步驟（`features/steps/{access,files,scenario,secrets,processing}.go`）：實作 `a token … with scopes …`、`the token … expired`（經 `Server.ExpireToken`）、`the client sends … with the token …`（含 `and:` 與 `POST /api/items` 預設 body）、`the data directory does not contain the created token`、`the logs do not contain …`；`noteRequest` 追蹤 `PUT /api/settings/services` 的 `api_key`；`itemProcessedUpTo` 在未呼叫 `the server is running` 時收掉暫時啟動的 server。
+- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，167 passed、24 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
   |---|---|---|
-  | AUTH | 12 | 11 |
-  | CLI | 8 | 1 |
-  | DEL | 13 | 8 |
+  | AUTH | 23 | 0 |
+  | CLI | 9 | 0 |
+  | DEL | 17 | 4 |
   | GRD | 19 | 3 |
   | ING | 15 | 9 |
   | LIB | 9 | 1 |
@@ -60,10 +69,14 @@
   | OPS | 14 | 0 |
   | OUT | 8 | 0 |
   | PIPE | 19 | 0 |
-  | SEC | 8 | 3 |
+  | SEC | 11 | 0 |
   | SRC | 13 | 6 |
 
-  PIPE、OPS 的 M1 場景全部通過。LIB 剩下的 R6（本機檔案的 Range 請求）要等 ING-05 的本機檔案新增與 inbox watcher。SRC 剩下的六個：R11 本機檔案的語言偵測要 ING-05（mixed 標為 `@wip`，要文字語言偵測）；R12、R14 三個、R15 要本機檔案或 podcast。CLI 剩下的一個：`--server` 加 token 要等 AUTH 的 token（AUTH-R7～R9）。GRD 剩下的三個：DNS rebinding 要等 ING 的 podcast feed，GRD-R7 預期 201 的兩個例子要等 ING-05（本機檔案的新增）。
+  AUTH、CLI、OPS、OUT、PIPE、SEC 的 M1 場景全部通過。剩下的 24 個 pending（`DEL` 4、`GRD` 3、`ING` 9、`LIB` 1、`NRM` 1、`SRC` 6）：
+  - **ING-05 本機檔案／上傳／inbox watcher**：`DEL`（2 個：upload/inbox 清理與不重收）、`GRD-R7` 預期 201（2 個）、`ING` 本機新增／上傳／inbox（6 個）、`LIB-R6` 本機 Range（1 個）、`SRC` 本機檔案語言偵測（1 個）。
+  - **Podcast／DNS rebinding／ING-07、ING-08／SRC 進階**：`GRD` DNS rebinding（1 個）、`ING` podcast 與相關規則（3 個）、`SRC` R12／R14／R15（5 個）。
+  - **DEL `@mcp`（2 個）**：需等 M2 的 MCP tool（`get_transcript`、`tools/list`）。
+  - **NRM-R7（1 個）**：中英夾雜字幕規則。
 
   M1 的 OUT 場景全部通過，但 OUT 的 M2 部分還沒做，所以規格狀態仍是 `ready`，不是 `implemented`。
 
@@ -71,17 +84,17 @@
 
 ## 2. 下一步
 
-使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成）→ GRD（完成，PR #6）→ SRC-A（完成，`feat/sources`）→ SRC-B（完成，`feat/bilibili`）→ OPS（完成，`feat/ops`）→ LIB（完成，`feat/library`）→ DEL（完成，`feat/delete`）。使用者排定的切片都已完成。使用者要求每個切片完成後自動開始下一個。
+使用者的切片進度：PIPE（完成）→ CLI 與 `/data` 鎖（完成）→ GRD（完成，PR #6）→ SRC-A（完成，`feat/sources`）→ SRC-B（完成，`feat/bilibili`）→ OPS（完成，`feat/ops`）→ LIB（完成，`feat/library`）→ DEL（完成，`feat/delete`）→ AUTH-SEC（完成，`feat/auth-secrets`）。
 
 接下來：
 
 1. PR #6（GRD）等 CI 與 Codex 審查，通過後由 owner 合併（自動模式不允許 agent 執行 `gh pr merge`）。
-2. PR #6 整理好之後（owner push `feat/guards`、把 base 改成 `master`），依序 push `feat/sources`、`feat/bilibili`、`feat/ops`、`feat/library`、`feat/delete` 並開 PR（base 分別是前一個分支；前一個合併後改 base 為 `master`，並用 `-s ours` 併入 master）。
-3. 下一個切片由使用者決定。剩下的 43 個 pending 主要卡在：
-   - AUTH 的 token 與 MCP（AUTH-R7～R9；DEL-R1、R12 的 6 個場景，CLI 1 個）。
-   - ING-05 的本機檔案、上傳、inbox watcher（LIB-R6、DEL 2 個、SRC 本機、GRD-R7 的 201）。
-   - podcast（SRC、GRD 的 DNS rebinding）。
-   - SEC 的 secrets reset 等。
+2. PR #6 整理好之後，依序 push `feat/sources`、`feat/bilibili`、`feat/ops`、`feat/library`、`feat/delete`、`feat/auth-secrets` 並開 PR（base 分別是前一個分支；前一個合併後改 base 為 `master`，並用 `-s ours` 併入 master）。
+3. 下一個切片由使用者決定。預設 tag 下剩下的 24 個 pending 主要在：
+   - ING-05 的本機檔案、上傳、inbox watcher（`ING`、`LIB-R6`、`GRD-R7` 的 201、`SRC` 本機）。
+   - podcast（`ING`、`SRC`、`GRD` 的 DNS rebinding）、`ING-07`/`ING-08`。
+   - `DEL` 的 `@mcp` 場景（2 個，等 M2 MCP）。
+   - `NRM-R7`（1 個）。
 4. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
 5. `features/fixtures/items/` 有 `yt-pg100xxxxxx.json`、`yt-abc123xxxxx.json`（後者只在影片沒有任何字幕軌時用到，目前只有 SEC 的場景用得到）。
 
@@ -215,7 +228,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - yt-dlp 的錯誤分類：影片不存在、私人、已移除是 `permanent`（依 stderr 的 `ERROR: [youtube] <id>: …`，見 `source/youtube/client.go`，還沒對真實的 yt-dlp 驗證過訊息）；`HTTP Error 403` 是 `needs_action`（SRC-R9）；其餘都當成 `retryable`。
   - 原文語言未知時，應該從 `*-orig` 字幕軌推斷。
   - 還沒做：cookie（SRC-R8）、品質檢查（SRC-R4，只做了 `language_mismatch`）、音訊切塊（SRC-R12）、幻覺過濾（SRC-R13）。
-  - Supadata：API key 只能用環境變數 `NOTESTEME_SUPADATA_API_KEY`，還沒加密存放（SEC-R4）；非同步 job（202）還不會輪詢，目前當 permanent；暫時性錯誤時不會寫入 `source_probes`。
+  - Supadata：非同步 job（202）還不會輪詢，目前當 permanent；暫時性錯誤時不會寫入 `source_probes`。（API key 已支援 DB 加密存放與 fallback，見 SEC-R4。）
   - 做 `youtube-auto` 前，要評估改用 yt-dlp 的 `json3` 格式（見 NRM 待決問題）。`features/fixtures/captions/auto-zh-en-mixed.json` 目前內容是 VTT，決定後與假 yt-dlp 一起改。
 - **CLI**：
   - client 模式加 `--wait`、而 serve 是手動 worker 時，harness 還不會在背景推動 worker，步驟會失敗並說明（目前沒有場景用到）。
@@ -255,8 +268,11 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - 每天的排程更新（OPS-R7 的「排程更新」）還沒做，目前只有手動更新。
   - 修改 provider 的 API 還沒有路由（SEC-R3 說「新增或修改」都回 403）；`POST /api/providers` 的非 command 類型回 501。
   - fixture 例外：`Given the file … contains:` 寫入、之後內容沒被改過的檔案，After hook 照字面掃描，不當成封存檔解壓（R2 刻意寫入不合法的 `.tar.gz`）。
-- **AUTH**：
-  - token（AUTH-R7～R9）還沒做，bearer 一律回 401。
+- **AUTH / SEC**：
+  - M1 的 token（`AUTH-R7～R10`）與 secrets（`SEC-R4、R6、R8、R9`）已完成；`AUTH` 的 `@mcp` origin 檢查（`AUTH-R11`）留待 M2。
+  - `doctor` 維持 `noBackend: true`，目前仍只檢查環境變數 API key（透過 `/api/settings/services` 寫入 DB 的 key 仍會顯示 `warn`）。
+  - `cookieBodyLimit` 包在 `mux` 外層、早於 Huma middleware，因此超過 512 KiB 的 `POST /api/cookies` 帶 bearer token 時會先回 `422 cookie_too_large` 而不是 `403`。
+  - `RevokeAPIToken` 以 `id = ? OR name = ?` 比對（假設 token 名稱不會與另一個 token 的 UUIDv7 相同）；`CreateToken` 已禁止 `/` 與控制字元。
   - `X-Forwarded-Proto` 應該只採用可信 proxy 的值。
   - IPv6 的鎖定以單一位址計數。
 - **其他**：
@@ -268,7 +284,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
     - tombstone 的寫入與移除。
     - 預覽不寫入資料。
     - purge 時取消殘留任務、刪除 events、不過度刪除。
-  - 權限：刪除類操作用 `requireOwner`，token 回 403。AUTH 完成後要改：`GET /api/trash` 對應 `read`，其餘對應 `admin`。DEL-R12 的 Outline 會驗證。
+  - 權限：`DEL-R12` 已接上（`GET /api/trash`、`deletion-preview` 為 `read`，其餘刪除／還原為 `admin`），`@mcp` 兩則留待 M2。
   - `Ingest` 新建影音時一律移除 tombstone，因為 M1 只有手動新增。ING-05 的 inbox 與 M4 的訂閱接上時，要加「手動」旗標。
   - tombstone 的 `sha256` 一律為空，本機檔案等 ING-05。
   - `cues_fts`、`outputs`、uploads、術語候選還不存在，之後接上時，永久刪除要一併清除。
@@ -322,7 +338,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 - 本機是 WSL2，Go 1.26.8。
 - Bash 工具有一個 hook 會把指令改寫成 `rtk …` 的形式。自動模式會要求用改寫後的指令重送一次，照做即可。
 - 自動模式會擋下破壞性的 git 操作，例如 `git branch -D`、`git push --delete`。需要時請使用者執行，或先在設定中允許。
-- 待清理（內容都已在 `master`）：
+- 待清理（內容都已在 `master`；`feat/auth-secrets` 的 Wave 2 暫存 worktree `.worktrees/auth-secrets-cli`、`.worktrees/auth-secrets-steps` 已清除；疊加的 PR 分支 `feat/sources`～`feat/auth-secrets` 保留等待 push 與建立 PR）：
   - `.worktrees/store-sqlc` 與 `refactor/store-sqlc` 分支（本機與遠端）。
   - `.claude/worktrees/` 下 builder 用過的 worktree（切片 1 到 OPS 的都是），以及 `worktree-agent-*` 分支。
   - `.worktrees/m1-skeleton`、`feat/m1-skeleton`、`docs/bdd-specs`、`docs/plan-review-revisions` 都已併入 `master`，可以一併移除。

@@ -84,7 +84,9 @@ type Service struct {
 	verify func(password, encoded string) (bool, error)
 	// extend 延長 session 的到期時間；測試可替換以模擬失敗。
 	extend func(ctx context.Context, id string, expiresAt time.Time) error
-	log    *slog.Logger
+	// touchToken 更新 API token 的最後使用時間；測試可替換以計數或模擬失敗。
+	touchToken func(ctx context.Context, id string) error
+	log        *slog.Logger
 
 	// loginMu 讓同一時間只有一個登入在驗證密碼（全域，不分位址）。
 	loginMu sync.Mutex
@@ -108,6 +110,7 @@ func New(cfg Config) *Service {
 		locks: newLockouts(maxLockoutRecords), trusted: cfg.TrustedProxies}
 	if cfg.Store != nil {
 		s.extend = cfg.Store.ExtendSession
+		s.touchToken = cfg.Store.TouchAPIToken
 	}
 	return s
 }
@@ -205,9 +208,11 @@ func (s *Service) Logout(ctx context.Context, sessionToken string) error {
 
 // Principal 是通過驗證的身分。
 type Principal struct {
-	// Kind 是 "session" 或 "token"。
+	// Kind 是 "session"、"token" 或 "local"。
 	Kind string
-	// Scopes 為 nil 代表擁有全部權限（session）。
+	// TokenID 在 Kind == "token" 時記錄 token 的 ID。
+	TokenID string
+	// Scopes 為 nil 代表擁有全部權限（session／local）；token 列出允許的 scope。
 	Scopes []string
 }
 
@@ -232,14 +237,6 @@ func (s *Service) AuthenticateSession(ctx context.Context, sessionToken string) 
 		}
 	}
 	return Principal{Kind: "session"}, nil
-}
-
-// AuthenticateBearer 驗證 bearer token。
-//
-// TODO(AUTH-R7～R9)：下一段實作 token 的雜湊比對、scope、撤銷與到期；目前一律視為無效。
-func (s *Service) AuthenticateBearer(ctx context.Context, token string) (Principal, error) {
-	_, _ = ctx, token
-	return Principal{}, ErrUnauthenticated
 }
 
 // CheckCSRF 檢查非 GET 的 session 請求：標頭必須等於 cookie，且等於由 session token 推導的值。

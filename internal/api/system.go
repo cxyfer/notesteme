@@ -46,10 +46,10 @@ func Str(s string) *string { return &s }
 type systemOutput struct{ Body SystemView }
 
 func (rt *routes) registerSystem(api huma.API) {
-	huma.Register(api, huma.Operation{
+	registerOwnerOnly(api, huma.Operation{
 		OperationID: "system-get", Method: http.MethodGet, Path: "/api/system",
 		Summary: "生效的設定與其來源、外部工具的路徑與來源（只有 owner）",
-	}, rt.getSystem)
+	}, "查看系統資訊", rt.getSystem)
 }
 
 // getSystem 只有 owner（session 或本機）可以使用：路徑與設定的來源屬於管理資訊。

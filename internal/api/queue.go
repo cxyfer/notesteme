@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/source"
 )
@@ -43,22 +44,22 @@ type QueueStatus struct {
 type queueOutput struct{ Body QueueStatus }
 
 func (rt *routes) registerQueue(api huma.API) {
-	huma.Register(api, huma.Operation{
+	registerScoped(api, huma.Operation{
 		OperationID: "queue-get", Method: http.MethodGet, Path: "/api/queue",
 		Summary: "佇列的狀態：各資源類別的上限與負載，以及還沒結束的任務",
-	}, rt.getQueue)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeRead, rt.getQueue)
+	registerScoped(api, huma.Operation{
 		OperationID: "queue-limits", Method: http.MethodPatch, Path: "/api/queue/limits",
 		Summary: "調整資源類別的並行上限，只改有給的類別；下一次領取就生效（PIPE-R8）",
-	}, rt.patchQueueLimits)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeAdmin, rt.patchQueueLimits)
+	registerScoped(api, huma.Operation{
 		OperationID: "queue-pause", Method: http.MethodPost, Path: "/api/queue/pause",
 		Summary: "暫停整個佇列，或 body 指定的資源類別；執行中的任務會做完（PIPE-R10）",
-	}, rt.pauseQueue)
-	huma.Register(api, huma.Operation{
+	}, auth.ScopeAdmin, rt.pauseQueue)
+	registerScoped(api, huma.Operation{
 		OperationID: "queue-resume", Method: http.MethodPost, Path: "/api/queue/resume",
 		Summary: "恢復整個佇列，或 body 指定的資源類別",
-	}, rt.resumeQueue)
+	}, auth.ScopeAdmin, rt.resumeQueue)
 }
 
 func errQueueUnavailable() *Error {
@@ -95,6 +96,9 @@ func (rt *routes) queueStatus(ctx context.Context) (QueueStatus, error) {
 }
 
 func (rt *routes) getQueue(ctx context.Context, _ *struct{}) (*queueOutput, error) {
+	if err := requireScope(ctx, auth.ScopeRead); err != nil {
+		return nil, err
+	}
 	if rt.d.Queue == nil {
 		return nil, errQueueUnavailable()
 	}
@@ -116,6 +120,9 @@ type limitsInput struct {
 }
 
 func (rt *routes) patchQueueLimits(ctx context.Context, in *limitsInput) (*queueOutput, error) {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
+		return nil, err
+	}
 	if rt.d.Queue == nil {
 		return nil, errQueueUnavailable()
 	}
@@ -142,6 +149,9 @@ func (in *classInput) class() string {
 }
 
 func (rt *routes) pauseQueue(ctx context.Context, in *classInput) (*queueOutput, error) {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
+		return nil, err
+	}
 	if rt.d.Queue == nil {
 		return nil, errQueueUnavailable()
 	}
@@ -152,6 +162,9 @@ func (rt *routes) pauseQueue(ctx context.Context, in *classInput) (*queueOutput,
 }
 
 func (rt *routes) resumeQueue(ctx context.Context, in *classInput) (*queueOutput, error) {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
+		return nil, err
+	}
 	if rt.d.Queue == nil {
 		return nil, errQueueUnavailable()
 	}

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 )
@@ -40,6 +41,9 @@ type Resolution struct {
 type resolveOutput struct{ Body Resolution }
 
 func (rt *routes) resolve(ctx context.Context, in *resolveInput) (*resolveOutput, error) {
+	if err := requireScope(ctx, auth.ScopeIngest); err != nil {
+		return nil, err
+	}
 	if rt.d.Pipeline == nil {
 		// 沒有注入 Pipeline 是設定錯誤；501 在這個專案代表「功能還沒做」，不能拿來表示設定錯誤。
 		rt.d.Log.LogAttrs(ctx, slog.LevelError, "處理請求時發生錯誤", slog.String("error", "api: 沒有設定 Pipeline"))

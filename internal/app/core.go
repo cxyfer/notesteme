@@ -136,6 +136,7 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 	if s.keys, err = secrets.Open(ctx, s.store, env.Vars[envMasterKey], kdf); err != nil {
 		return nil, err
 	}
+	s.services = secrets.NewServices(s.store, s.keys)
 
 	s.auth = auth.New(auth.Config{Store: s.store, Clock: env.Clock, Params: hashParams, Log: log,
 		TrustedProxies: cfg.TrustedProxies})
@@ -197,6 +198,7 @@ func (s *Server) apiDeps(env Env) api.Deps {
 		Tools:     s.toolManager(env),
 		Backup:    s.backupSource(env),
 		Providers: s.providerRegistry(env),
+		Services:  s.services,
 	}
 }
 

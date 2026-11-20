@@ -16,3 +16,6 @@ DELETE FROM secrets WHERE kind = sqlc.arg(kind) AND name = sqlc.arg(name);
 -- name: ListSecrets :many
 -- Never returns nonce or ciphertext.
 SELECT kind, name, created_at, updated_at FROM secrets ORDER BY kind, name;
+
+-- name: DeleteAllSecrets :exec
+DELETE FROM secrets;
