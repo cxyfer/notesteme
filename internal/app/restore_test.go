@@ -367,3 +367,30 @@ func TestRestoreNeedsClock(t *testing.T) {
 		t.Error("沒有 Clock 應該失敗")
 	}
 }
+
+// 設定檔寫不出來時，還原要在換上資料庫之前失敗：回報失敗時，資料庫不能已經被換掉。
+func TestRestoreFailsBeforeReplacingDatabaseWhenConfigCannotBeWritten(t *testing.T) {
+	src := testEnv(t)
+	if err := os.WriteFile(src.Vars["NOTESTEME_CONFIG"], []byte("listen: 127.0.0.1:9\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file := makeBackup(t, src, "from-backup")
+
+	env := testEnv(t)
+	data := env.Vars["NOTESTEME_DATA"]
+	backups := filepath.Join(data, store.BackupsDirName)
+	if err := os.MkdirAll(data, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(backups, 0o500); err != nil { // 唯讀：建不了 restored-config-*
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(backups, 0o700) })
+
+	if _, err := Restore(t.Context(), env, file); err == nil {
+		t.Fatal("設定檔寫不出來，Restore 應該失敗")
+	}
+	if _, err := os.Stat(filepath.Join(data, store.DBFileName)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("回報失敗時資料庫不該已經換上：%v", err)
+	}
+}

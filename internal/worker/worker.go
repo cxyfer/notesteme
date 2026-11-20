@@ -86,12 +86,17 @@ func (w *Worker) SetPeriodic(p Periodic) { w.periodic = p }
 
 // runPeriodic 執行定期工作。失敗只記 log，不影響領取任務：清理事件失敗不該讓影音停止處理。
 // 呼叫時不可以持有 roundMu：定期工作可能呼叫 Cancel（永久刪除殘留任務的影音），會死結。
+// 停止領取之後不再執行：在 periodicMu 之下檢查 draining，StopClaiming 也會等 periodicMu，
+// 所以 StopClaiming 回傳之後一定沒有定期工作正在執行，也不會再開始。
 func (w *Worker) runPeriodic(ctx context.Context) {
 	if w.periodic == nil {
 		return
 	}
 	w.periodicMu.Lock()
 	defer w.periodicMu.Unlock()
+	if w.isDraining() {
+		return
+	}
 	if err := w.periodic.Run(ctx); err != nil && ctx.Err() == nil {
 		w.log.Warn("定期工作失敗", "error", err)
 	}
@@ -102,9 +107,7 @@ func (w *Worker) runPeriodic(ctx context.Context) {
 // 回傳領取的任務數。
 func (w *Worker) RunRound(ctx context.Context) (int, error) {
 	// 定期工作在領取之前、而且不持有 roundMu 時執行（見 runPeriodic）；停止領取之後不再執行。
-	if !w.isDraining() {
-		w.runPeriodic(ctx)
-	}
+	w.runPeriodic(ctx)
 	w.roundMu.Lock()
 	defer w.roundMu.Unlock()
 	if w.draining {
@@ -214,13 +217,17 @@ func (w *Worker) Cancel(ctx context.Context, taskIDs []string) error {
 // 呼叫端替 Drain 設定期限時，應該是寬限期加上它。
 const ReleaseTimeout = 10 * time.Second
 
-// StopClaiming 讓 worker 不再領取新任務（PIPE-R12），執行中的任務不受影響。可重複呼叫。
+// StopClaiming 讓 worker 不再領取新任務、也不再執行定期工作（PIPE-R12），執行中的任務不受影響。可重複呼叫。
+// 正在執行的定期工作會等它結束才回傳。
 // 正常關閉一開始就要呼叫，不能等到 HTTP 關閉之後：關閉期間 worker 不該再開始新任務。
 func (w *Worker) StopClaiming() {
 	// 取得 roundMu 代表沒有一輪領取正在進行；之後的 RunRound 都會看到 draining。
 	w.roundMu.Lock()
 	w.draining = true
 	w.roundMu.Unlock()
+	// 放開 roundMu 之後才等 periodicMu：定期工作可能正在呼叫 Cancel，而 Cancel 要取得 roundMu。
+	w.periodicMu.Lock()
+	w.periodicMu.Unlock()
 }
 
 // Drain 正常關閉（PIPE-R12）：停止領取，最多等 grace（用注入的 clock 計時）讓執行中的任務完成；
