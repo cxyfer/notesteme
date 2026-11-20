@@ -96,8 +96,10 @@
 ## 待決問題
 
 - 備份包含上傳的原始檔（2026-11-21，LOCAL 切片審查後決定，待 owner 確認）。OPS-R1 只排除可以重建的 `/data/artifacts` 與 `/data/media`，但上傳的檔案只存在 `/data/uploads/<id>/`，沒有其他來源。
-  - 備份在 manifest、DB、設定檔之後加入 `uploads/<id>/<name>`，manifest 記錄每個檔案的大小與 `sha256`。
-  - 還原時只接受符合這個形式的一般檔案；大小或 `sha256` 不符就拒絕。空間檢查包含這些檔案。還原後的 `/data/uploads` 只有備份中的檔案。
+  - 備份在 manifest、DB、設定檔之後加入 `uploads/<id>/<name>`，manifest 多一個選填欄位 `uploads: [{path, size, sha256}]`（沒有上傳時省略，格式與之前完全相同）。收錄的是 DB 中上傳的影音所指向的一般檔案；`sha256` 取自 DB，寫入時再算一次，不符就讓備份失敗。檔案不見或不是一般檔案時略過並記 log。
+  - 還原時只接受 manifest 中列出、符合 `uploads/<小寫 UUID>/<name>` 的一般檔案；大小或 `sha256` 不符、manifest 列出卻缺少，都拒絕還原。空間檢查包含這些檔案。上傳檔先解到暫存目錄，驗證通過後才整個換上，失敗時維持原狀。
+  - 還原後的 `/data/uploads` 只有備份中的檔案；原本的 `/data/uploads` 不刪除，移到 `/backups/pre-restore-uploads-<時間>/`（比照 pre-restore 的 DB 快照），由使用者自行清理。`notesteme restore` 會印出這個位置。
+  - manifest 的大小上限由 64 KiB 放寬為 16 MiB，讓大量上傳檔的清單放得下。
   - 沒有 uploads 的舊備份仍可還原。
   - 代價：上傳多時備份會很大（每個檔案最多 4 GiB）。之後可以考慮 `--exclude-uploads`，或改成增量備份。
 - 啟動時清理孤兒的上傳目錄（2026-11-21）：上傳是先搬到 `/data/uploads/<id>/` 再寫入 DB，中間 crash 會留下沒有影音的目錄。serve 與 standalone 取得 `/data` 鎖之後，刪除名稱是 UUID 而且 DB 中沒有對應影音的目錄。
