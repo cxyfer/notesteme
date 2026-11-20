@@ -113,6 +113,9 @@
   - 內嵌字幕只採用文字字幕（subrip、ass、ssa、mov_text、webvtt），點陣字幕（PGS、DVD、DVB）略過。有多條時，優先 `caption_priority` 中的語言，否則依 default、非 forced、串流順序。
   - 原文語言未知時，用選中的本機字幕的語言推斷，`lang_source` 為 `metadata`（比照 Bilibili 的 AI 字幕軌）。容器中音訊串流的語言標記不採用（常常是錯的或 `und`）。
   - Supadata 不處理本機檔案，記為 `unavailable`／`unsupported`，不會把本機路徑送給第三方。
+  - 外掛字幕與內嵌字幕的語言碼一律正規化成 BCP-47（三字母碼轉成兩字母、主語言小寫、地區大寫，例如 `movie.eng.srt` 為 `en`、`movie.zh-hant-tw.vtt` 為 `zh-Hant-TW`）（2026-11-21，審查後補上）。
+  - 選中的外掛字幕或內嵌字幕讀不到、解析失敗時，不讓步驟失敗：這一條記為 `rejected`，依序改用下一個外掛字幕、內嵌字幕，最後才用 fallback（與空字幕的處理一致）（2026-11-21，審查後決定）。
+  - 本機檔案可以被原地替換：非上傳的本機影音每次 probe 都比對大小與修改時間，不同就重算 `sha256`；選中的外掛字幕的內容 `sha256` 也進快取鍵，修改字幕後重跑會重新讀取（2026-11-21，審查後補上）。
 - ASR 前處理與切塊（SRC-R12，2026-11-21，LOCAL 切片實作時決定）：所有平台（含 YouTube）的 ASR 都先用 ffmpeg 轉成單聲道 16kHz 的 Opus（32 kbps）。仍超過 provider 的單檔上限時，以上限的 90% 估算塊數，在每個切點前後 30 秒內找最近的靜音中點（`silencedetect=noise=-35dB:d=0.3`），找不到就直接切；每塊前後各多取 5 秒重疊。合併時每個 cue 依中點歸屬到一塊，時間單調遞增，重疊區中時間重疊且文字相同的連續 cue 只留一句。切出的塊仍超過上限時，多切一塊重新規劃，最多多切 3 塊。編碼參數、`-format_whitelist` 清單與 silencedetect 的門檻要用真實 ffmpeg 確認（M0）。
-- SRC-R11 的 ASR 語言（2026-11-21）：原文語言未知、ASR 回報了語言時，寫回影音的原文語言，`lang_source` 為 `asr`。第三層的文字語言偵測仍未實作。
+- SRC-R11 的 ASR 語言（2026-11-21）：原文語言未知、ASR 回報了語言時，寫回影音的原文語言，`lang_source` 為 `asr`。這個語言是 transcript 步驟自己的產出，所以重跑 transcript 時不當成輸入：快取鍵、送給 ASR 的語言提示與 `language_mismatch` 檢查都視為原文語言未知，否則重跑會因為快取鍵改變而重複付費。第三層的文字語言偵測仍未實作。
 - SRC-R11「Code-switching speech is marked as mixed」暫時標為 `@wip`（2026-11-15，owner 同意）：`the original language of … is …` 實作後，這個場景會失敗。場景沒有宣告語言，harness 預設 `en`，場景卻預期由文字偵測得到 `zh`；production 也還沒有文字語言偵測。等文字語言偵測的切片一併解決這個矛盾後，再拿掉 `@wip`。

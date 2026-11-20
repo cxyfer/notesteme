@@ -75,7 +75,9 @@ YouTube 播放清單（ING-R4）展開時由 yt-dlp 列出清單內容：清單�
   - 去重（ING-R10）：inbox 與上傳都以 `sha256` 去重。上傳時相同內容已存在回 200 `already_in_library`，在垃圾桶中回 409；inbox 遇到相同內容只記錄，不建立影音。同一個 inbox 路徑的內容被換掉時，記為衝突，不自動重新處理。
   - ING-R11 的「記錄原因」：寫入資料庫（`inbox_entries.reason`）與 log，API 之後再公開。上傳不是影音時回 422 `unsupported_media`。
   - 用 `path` 新增（API、CLI client 模式）不在新增時檢查檔案是否存在或是不是影音，只檢查路徑是否在根目錄內（GRD-R7）；檔案不存在時，`metadata` 步驟以 `permanent` 失敗，訊息「找不到這個檔案。」。所以 GRD-R7 的場景中不存在的 `/data/inbox/talk.mp4` 仍回 201。同時給 `url` 與 `path` 回 422。
-  - inbox 自動新增遇到 tombstone（DEL-R11）時不建立影音，也不移除 tombstone；手動新增與上傳照舊移除同一個鍵的 tombstone。
+  - inbox 自動新增遇到 tombstone（DEL-R11）時不建立影音，也不移除 tombstone；手動新增與上傳照舊移除同一個鍵的 tombstone，上傳另外移除 `sha256` 相同的 tombstone。
+  - 上傳的檔名與 inbox 頂層的檔案共用同一個命名空間：選上傳的鍵時，跳過已存在的影音與 inbox 頂層的同名項目。反過來，inbox 中之後才出現、與既有上傳同名的檔案會記為衝突，不會新增（要改名才能新增），記為技術債。
+  - 上傳的資源限制（2026-11-21，審查後決定）：每次讀取的閒置逾時 2 分鐘；同時最多 2 個上傳，超過回 429 `too_many_uploads`「目前有其他上傳正在進行，請稍後再試。」；multipart 最多 16 個 part；`until` 盡早驗證，不等檔案傳完。
 - 播放清單（ING-R4）展開的項目數目前沒有上限，整份清單在一個交易中建立。是否需要上限、超過時要截斷還是拒絕，等 ING 切片決定（2026-11-13，GRD 切片實作 ING-R4 時發現）。
 - 播放清單展開時 yt-dlp 的錯誤訊息（例如 `The playlist does not exist.`）是依 yt-dlp 原始碼判斷的，還沒有對真實 yt-dlp 驗證；ING 切片做 `@manual` 煙霧測試時確認。
 - ING-R3 的細節（2026-11-14，SRC-B 切片實作時決定）：
