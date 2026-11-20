@@ -102,8 +102,15 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	chosen, decisions := selectTracks(it.Platform, tracks, originalLang, lang)
 
 	// 原文語言可能是這次執行才推斷出來的（Bilibili），快取鍵與 fallback 都要用推斷後的值。
+	// 例外：lang_source 為 asr 時，這個語言是本階段（ASR）自己的產出，不是輸入。
+	// 快取鍵、Groq 的語言提示與 language_mismatch 檢查都以 inputLang 為準：第一次執行時原文語言為空，
+	// 回寫之後重跑要算出相同的鍵，否則快取不會命中而重複付費。
+	inputLang := originalLang
+	if it.LangSource == "asr" {
+		inputLang = ""
+	}
 	fit := it
-	fit.OriginalLang = originalLang
+	fit.OriginalLang = inputLang
 
 	// 快取鍵只含會影響結果的輸入。用平台字幕時 fallback 來源的參數不影響結果，不進快取鍵；
 	// 會用到 fallback 來源時（沒選到字幕軌，或字幕軌下載後是空的）它們的參數要進快取鍵，
@@ -124,7 +131,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		}
 		return cacheKey{
 			Item: it.ID, Stage: StageTranscript, Impl: p.implVersion(StageTranscript), Provider: cacheProvider(it.Platform),
-			Upstream: paramsSHA(map[string]any{"tracks": sortedTracks(tracks), "original_lang": originalLang}),
+			Upstream: paramsSHA(map[string]any{"tracks": sortedTracks(tracks), "original_lang": inputLang}),
 			Params:   paramsSHA(params),
 		}.String()
 	}
