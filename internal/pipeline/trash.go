@@ -86,7 +86,7 @@ func trashedStageState() store.StageState {
 //
 // 在一個交易中：設定 deleted_at、未結束的步驟改成 skipped（原因 cancelled，動作「重試」）、
 // 任務改成 cancelled、寫入 item.deleted 事件。commit 之後，依 PIPE-R15 讓 worker 結束執行中的任務
-// 並等它們結束（opts.Canceller），再刪除媒體快取。
+// 並等它們結束（opts.Canceller），再刪除媒體快取；等不到任務結束時保留快取，到永久刪除時再刪。
 //
 // 已經在垃圾桶中時回傳 *InTrashError；影音不存在時回傳 store.ErrNotFound。
 func (p *Pipeline) Trash(ctx context.Context, id string, opts TrashOptions) (TrashResult, error) {
@@ -110,7 +110,12 @@ func (p *Pipeline) Trash(ctx context.Context, id string, opts TrashOptions) (Tra
 		if !changed {
 			return &InTrashError{ItemID: it.ID}
 		}
-		taskIDs, err = cancelItemTx(ctx, r, it.ID, trashedStageState())
+		// 要等的是這部影音所有的任務，不只這次改成 cancelled 的：同時進行的「取消」可能已經把執行中的任務
+		// 改成 cancelled（cancelItemTx 不會再回傳它），但它的子程序還在用媒體快取。worker 會略過沒在執行的 ID。
+		if taskIDs, err = r.ItemTaskIDs(ctx, it.ID); err != nil {
+			return err
+		}
+		_, err = cancelItemTx(ctx, r, it.ID, trashedStageState())
 		return err
 	})
 	if err != nil {
@@ -127,8 +132,11 @@ func (p *Pipeline) Trash(ctx context.Context, id string, opts TrashOptions) (Tra
 	}
 	if canceller != nil && len(taskIDs) > 0 {
 		if err := canceller.Cancel(cctx, taskIDs); err != nil {
-			// 逾時仍沒結束：只記錄。任務在資料庫中已經是 cancelled，晚點寫回會因租約失效被丟棄。
-			p.log.Warn("等待被取消的任務結束時失敗", "item", it.ID, "error", err)
+			// 逾時仍沒結束：任務可能還在讀寫媒體快取，所以保留它，永久刪除時再一起刪除（itemDataDirs）。
+			// 刪除本身仍然成功：任務在資料庫中已經是 cancelled，晚點寫回會因租約失效被丟棄。
+			p.log.Warn("等待被取消的任務結束時失敗，保留媒體快取到永久刪除", "item", it.ID, "error", err)
+			t := p.trashedItem(it)
+			return TrashResult{ID: t.ID, Ref: t.Ref, DeletedAt: t.DeletedAt, PurgeAt: t.PurgeAt, KeptOutputs: []KeptOutput{}}, nil
 		}
 	}
 	p.removeMediaCache(it.ID)

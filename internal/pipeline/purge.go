@@ -41,6 +41,9 @@ type Preview struct {
 }
 
 // itemDataDirs 是資料目錄下依影音 ID 分目錄存放的子目錄；永久刪除時整個目錄都要刪掉，包括目錄本身。
+// purgeWriteTimeout 是永久刪除在結束任務之後，清除資料庫與刪除檔案的上限（不受請求 ctx 取消影響）。
+const purgeWriteTimeout = 30 * time.Second
+
 var itemDataDirs = []string{"artifacts", "media", "uploads"}
 
 // itemDir 回傳影音在資料目錄 sub 子目錄下的目錄。路徑只能用資料庫中的影音 ID 組出，而且它必須是標準形式的 UUID：
@@ -99,6 +102,7 @@ func (p *Pipeline) purge(ctx context.Context, id string, notAfter *time.Time) (P
 	}
 	// 所有任務都交給 worker：它會略過不在執行中的 ID；資料庫中已是 cancelled 的任務可能仍在執行。
 	// 等待不受請求的 ctx 取消影響：用戶端中途斷線不該留下一半的永久刪除，逾時仍沒結束就放棄這次。
+	// 任務已經取消之後，資料庫的清除也用同樣不受請求取消影響的 ctx：否則斷線時停在「任務取消了、影音還在垃圾桶」。
 	if p.tasks != nil && len(ids) > 0 {
 		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cancelWaitTimeout)
 		defer cancel()
@@ -106,11 +110,13 @@ func (p *Pipeline) purge(ctx context.Context, id string, notAfter *time.Time) (P
 			return PurgedItem{}, fmt.Errorf("等待任務結束：%w", err)
 		}
 	}
-	done, err := p.st.Write().PurgeItem(ctx, id, notAfter)
+	dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), purgeWriteTimeout)
+	defer cancel()
+	done, err := p.st.Write().PurgeItem(dctx, id, notAfter)
 	if err != nil {
 		return PurgedItem{}, err
 	}
-	p.removeDirs(ctx, dirs)
+	p.removeDirs(dctx, dirs)
 	return PurgedItem(done), nil
 }
 

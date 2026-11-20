@@ -261,6 +261,30 @@ func TestPurgeStopsLeftoverTasks(t *testing.T) {
 	}
 }
 
+// disconnectingCanceller 在等待期間取消請求的 ctx，模擬用戶端中途斷線。
+type disconnectingCanceller struct{ disconnect context.CancelFunc }
+
+func (c *disconnectingCanceller) Cancel(context.Context, []string) error {
+	c.disconnect()
+	return nil
+}
+
+// 等待任務結束時用戶端斷線：任務已經取消了，資料庫的清除也要完成，不能停在影音還在垃圾桶的狀態。
+func TestPurgeFinishesAfterClientDisconnects(t *testing.T) {
+	r := newRig(t)
+	ctx, disconnect := context.WithCancel(context.Background())
+	defer disconnect()
+	r.p.SetTaskCanceller(&disconnectingCanceller{disconnect: disconnect})
+	it := r.ingest(watch, nil, "")
+	r.trashDirect(it.ID, r.clk.Now())
+	if err := r.p.Purge(ctx, it.ID); err != nil {
+		t.Fatalf("斷線後永久刪除仍應完成：%v", err)
+	}
+	if n := r.count(`SELECT COUNT(*) FROM items WHERE id = ?`, it.ID); n != 0 {
+		t.Error("影音應該已經永久刪除")
+	}
+}
+
 // canceller 失敗（例如 ctx 取消、等不到任務結束）時不刪除任何東西。
 func TestPurgeStopsWhenTasksCannotBeCancelled(t *testing.T) {
 	c := &purgeCanceller{err: errors.New("stuck")}
