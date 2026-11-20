@@ -346,7 +346,7 @@ func TestFFmpegSilencedetect(t *testing.T) {
 		t.Errorf("缺少 -format_whitelist：code=%d", code)
 	}
 	badFW := ffmpegSilenceArgs(in, "0", "60")
-	badFW[8] =testFW + ",lavfi"
+	badFW[8] = testFW + ",lavfi"
 	if code, _, _ := s.exec("ffmpeg", badFW...); code != 2 {
 		t.Errorf("白名單含 lavfi：code=%d", code)
 	}
