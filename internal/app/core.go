@@ -196,6 +196,8 @@ func (s *Server) fileGuard() *pathguard.Guard {
 func (s *Server) apiDeps(env Env) api.Deps {
 	return api.Deps{
 		Paths: pathguard.New(append([]string{s.cfg.Inbox}, s.cfg.MediaRoots...)),
+		// 本機影音（ING-05）：inbox 決定識別鍵，資料目錄放上傳的暫存與檔案。
+		Inbox: s.cfg.Inbox, DataDir: s.cfg.Data, UploadMaxBytes: s.cfg.UploadMaxBytes,
 		Store: s.store, Auth: s.auth, Clock: env.Clock, Log: s.log, Version: version,
 		ReadyChecks: toolChecks(ToolResolver(env.Vars, s.cfg)),
 		Pipeline:    s.pipeline,
