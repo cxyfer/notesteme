@@ -28,13 +28,17 @@ WHERE name = sqlc.arg(name)
   AND revoked_at IS NULL
   AND (expires_at IS NULL OR expires_at > sqlc.arg(now));
 
--- name: RevokeAPIToken :execrows
--- Matches either an unrevoked id or a valid name; CreateAPIToken keeps valid names unique.
+-- name: RevokeAPITokenByID :execrows
 UPDATE api_tokens
 SET revoked_at = CAST(sqlc.arg(revoked_at) AS INTEGER)
-WHERE revoked_at IS NULL
-  AND (id = sqlc.arg(id_or_name)
-       OR (name = sqlc.arg(id_or_name) AND (expires_at IS NULL OR expires_at > sqlc.arg(revoked_at))));
+WHERE revoked_at IS NULL AND id = sqlc.arg(id);
+
+-- name: RevokeAPITokenByName :execrows
+-- Only valid tokens; CreateAPIToken keeps valid names unique.
+UPDATE api_tokens
+SET revoked_at = CAST(sqlc.arg(revoked_at) AS INTEGER)
+WHERE revoked_at IS NULL AND name = sqlc.arg(name)
+  AND (expires_at IS NULL OR expires_at > sqlc.arg(revoked_at));
 
 -- name: ExpireAPITokenByName :execrows
 -- Test harness helper: marks the valid token with this name expired at the given timestamp.

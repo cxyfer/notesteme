@@ -170,22 +170,40 @@ func (q *Queries) ListAPITokens(ctx context.Context) ([]ListAPITokensRow, error)
 	return items, nil
 }
 
-const revokeAPIToken = `-- name: RevokeAPIToken :execrows
+const revokeAPITokenByID = `-- name: RevokeAPITokenByID :execrows
 UPDATE api_tokens
 SET revoked_at = CAST(?1 AS INTEGER)
-WHERE revoked_at IS NULL
-  AND (id = ?2
-       OR (name = ?2 AND (expires_at IS NULL OR expires_at > ?1)))
+WHERE revoked_at IS NULL AND id = ?2
 `
 
-type RevokeAPITokenParams struct {
+type RevokeAPITokenByIDParams struct {
 	RevokedAt int64
-	IDOrName  string
+	ID        string
 }
 
-// Matches either an unrevoked id or a valid name; CreateAPIToken keeps valid names unique.
-func (q *Queries) RevokeAPIToken(ctx context.Context, arg RevokeAPITokenParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, revokeAPIToken, arg.RevokedAt, arg.IDOrName)
+func (q *Queries) RevokeAPITokenByID(ctx context.Context, arg RevokeAPITokenByIDParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, revokeAPITokenByID, arg.RevokedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const revokeAPITokenByName = `-- name: RevokeAPITokenByName :execrows
+UPDATE api_tokens
+SET revoked_at = CAST(?1 AS INTEGER)
+WHERE revoked_at IS NULL AND name = ?2
+  AND (expires_at IS NULL OR expires_at > ?1)
+`
+
+type RevokeAPITokenByNameParams struct {
+	RevokedAt int64
+	Name      string
+}
+
+// Only valid tokens; CreateAPIToken keeps valid names unique.
+func (q *Queries) RevokeAPITokenByName(ctx context.Context, arg RevokeAPITokenByNameParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, revokeAPITokenByName, arg.RevokedAt, arg.Name)
 	if err != nil {
 		return 0, err
 	}

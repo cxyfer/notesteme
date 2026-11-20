@@ -118,11 +118,18 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 	return out, nil
 }
 
-// RevokeAPIToken 撤銷指定的 token（比對未撤銷的 id，或有效 token 的 name），回傳是否真的撤銷了一筆。
+// RevokeAPIToken 撤銷指定的 token，回傳是否真的撤銷了一筆。先找未撤銷的 id，找不到才比對有效 token 的 name：
+// 名稱可以長得像另一個 token 的 id，同一個請求不能同時撤銷兩筆。
 func (s *Store) RevokeAPIToken(ctx context.Context, idOrName string) (bool, error) {
-	n, err := s.wq.RevokeAPIToken(ctx, sqlcdb.RevokeAPITokenParams{
-		RevokedAt: s.nowMs(),
-		IDOrName:  idOrName,
+	var n int64
+	err := s.Tx(ctx, func(tx *Repo) error {
+		now := tx.nowMs()
+		var err error
+		if n, err = tx.q.RevokeAPITokenByID(ctx, sqlcdb.RevokeAPITokenByIDParams{RevokedAt: now, ID: idOrName}); err != nil || n > 0 {
+			return err
+		}
+		n, err = tx.q.RevokeAPITokenByName(ctx, sqlcdb.RevokeAPITokenByNameParams{RevokedAt: now, Name: idOrName})
+		return err
 	})
 	return n > 0, err
 }

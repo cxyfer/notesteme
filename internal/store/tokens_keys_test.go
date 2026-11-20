@@ -245,3 +245,33 @@ func TestRotateWrappedKeyLeavesNoOldWrappingOnDisk(t *testing.T) {
 		}
 	}
 }
+
+// 名稱剛好是另一個 token 的 id：依 id 撤銷只撤銷那一筆，不連帶撤銷以它命名的 token。
+func TestRevokeAPITokenPrefersExactID(t *testing.T) {
+	ctx := context.Background()
+	s, _ := openTest(t)
+	target, err := s.CreateAPIToken(ctx, "target", "nst_aaaa", []string{"read"}, "hash-target", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	namedLikeID, err := s.CreateAPIToken(ctx, target.ID, "nst_bbbb", []string{"read"}, "hash-named", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.RevokeAPIToken(ctx, target.ID); err != nil || !ok {
+		t.Fatalf("RevokeAPIToken = %v, %v", ok, err)
+	}
+	if _, err := s.APITokenByHash(ctx, "hash-target"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("依 id 指定的 token 應該已撤銷：%v", err)
+	}
+	if got, err := s.APITokenByHash(ctx, "hash-named"); err != nil || got.ID != namedLikeID.ID {
+		t.Errorf("以該 id 命名的 token 不該被撤銷：%+v, %v", got, err)
+	}
+	// 再用同一個字串撤銷：id 已撤銷，這次才比對名稱。
+	if ok, err := s.RevokeAPIToken(ctx, target.ID); err != nil || !ok {
+		t.Fatalf("第二次 RevokeAPIToken = %v, %v", ok, err)
+	}
+	if _, err := s.APITokenByHash(ctx, "hash-named"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("第二次應該撤銷以該 id 命名的 token：%v", err)
+	}
+}
