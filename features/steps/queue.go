@@ -9,6 +9,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/cucumber/godog"
+
 	"github.com/cxyfer/notesteme/internal/pipeline"
 )
 
@@ -236,6 +238,10 @@ func (s *Scenario) checkRunning(class string, want int) error {
 		}
 	}
 	if got != want {
+		// 緊接在前一個步驟送出的請求是還沒實作的路由（例如刪除）：任務還在執行是因為那個動作沒有發生。
+		if s.previousRequestNotImplemented() {
+			return fmt.Errorf("最近的請求還沒有實作：%w", godog.ErrPending)
+		}
 		if class == "" {
 			return fmt.Errorf("有 %d 個任務在執行，預期 %d 個：%v", got, want, leased)
 		}

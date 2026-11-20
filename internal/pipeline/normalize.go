@@ -53,7 +53,7 @@ func (p *Pipeline) runNormalize(ctx context.Context, it store.Item) (result, err
 	if err != nil {
 		return result{}, err
 	}
-	art, err := p.newCuesArtifact(it.ID, out, []string{src.ID}, prov)
+	art, err := p.writeCuesArtifact(ctx, it.ID, out, []string{src.ID}, prov)
 	if err != nil {
 		return result{}, err
 	}

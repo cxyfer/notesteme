@@ -23,12 +23,15 @@ type Detail struct {
 	Attempts map[string]int
 }
 
-// Item 回傳影音詳情；不存在時回傳 store.ErrNotFound。
+// Item 回傳影音詳情；不存在時回傳 store.ErrNotFound，在垃圾桶中時回傳 *InTrashError（DEL-R1）。
 func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 	r := p.st.Read()
 	it, err := r.ItemByID(ctx, id)
 	if err != nil {
 		return Detail{}, err
+	}
+	if it.DeletedAt != nil {
+		return Detail{}, &InTrashError{ItemID: it.ID}
 	}
 	all, err := r.StageRunsByItem(ctx, id)
 	if err != nil {
@@ -58,11 +61,16 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 	return Detail{Item: it, Stages: stages, Sources: probes, Attempts: attempts}, nil
 }
 
-// Runs 列出影音實際執行過的步驟與當時的生效設定，由新到舊（PIPE-R13）；影音不存在時回傳 store.ErrNotFound。
+// Runs 列出影音實際執行過的步驟與當時的生效設定，由新到舊（PIPE-R13）；
+// 影音不存在時回傳 store.ErrNotFound，在垃圾桶中時回傳 *InTrashError（DEL-R1）。
 func (p *Pipeline) Runs(ctx context.Context, id string) ([]store.ExecutedRun, error) {
 	r := p.st.Read()
-	if _, err := r.ItemByID(ctx, id); err != nil {
+	it, err := r.ItemByID(ctx, id)
+	if err != nil {
 		return nil, err
+	}
+	if it.DeletedAt != nil {
+		return nil, &InTrashError{ItemID: it.ID}
 	}
 	return r.ExecutedRunsByItem(ctx, id)
 }
@@ -87,12 +95,15 @@ func (p *Pipeline) Cues(ctx context.Context, itemID string, q CuesQuery) (subtit
 	return tr, err
 }
 
-// CuesWithItem 同 Cues，另外回傳影音（下載檔名要用標題）。
+// CuesWithItem 同 Cues，另外回傳影音（下載檔名要用標題）。影音在垃圾桶中時回傳 *InTrashError（DEL-R1）。
 func (p *Pipeline) CuesWithItem(ctx context.Context, itemID string, q CuesQuery) (store.Item, subtitle.Transcript, error) {
 	r := p.st.Read()
 	it, err := r.ItemByID(ctx, itemID)
 	if err != nil {
 		return store.Item{}, subtitle.Transcript{}, err
+	}
+	if it.DeletedAt != nil {
+		return store.Item{}, subtitle.Transcript{}, &InTrashError{ItemID: it.ID}
 	}
 	if q.Variant != "" && !subtitle.Variant(q.Variant).Valid() {
 		return store.Item{}, subtitle.Transcript{}, invalidf("variant 必須是 source、normalized、segmented、corrected、translated 或 edited。")

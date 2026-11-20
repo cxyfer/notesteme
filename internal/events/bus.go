@@ -12,6 +12,12 @@ const (
 	TypeStageStatus = "stage.status"
 	// TypeItemCreated 是影音新增（已存在而沒有新增時不發布）。
 	TypeItemCreated = "item.created"
+	// TypeItemDeleted 是影音移到垃圾桶（DEL-R1）。
+	TypeItemDeleted = "item.deleted"
+	// TypeItemRestored 是影音從垃圾桶還原（DEL-R5）。
+	TypeItemRestored = "item.restored"
+	// TypeItemPurged 是影音永久刪除（DEL-R6）；事件只記錄代號與標題。
+	TypeItemPurged = "item.purged"
 )
 
 // Event 是推送給訂閱者的事件；JSON 欄位就是 SSE 的 data。
@@ -23,6 +29,8 @@ type Event struct {
 	// Stage 與 Status 只有 stage.status 事件才有。
 	Stage  string `json:"stage,omitempty"`
 	Status string `json:"status,omitempty"`
+	// Title 只有 item.deleted 與 item.purged 事件才有：事件帶著當時的標題（永久刪除之後影音已不存在）。
+	Title string `json:"title,omitempty"`
 }
 
 // DefaultBuffer 是每個訂閱者的 buffer 大小。

@@ -83,6 +83,8 @@ type Source struct {
 type IngestedItem struct {
 	Item
 	AlreadyInLibrary bool `json:"already_in_library"`
+	// InTrash 為 true 代表影音在垃圾桶中，沒有重新建立；先還原才能使用（DEL-R10）。
+	InTrash bool `json:"in_trash"`
 }
 
 // ItemDetail 是影音詳情。
@@ -117,6 +119,16 @@ func toStage(s store.StageRun, attempts int) Stage {
 }
 
 // ---- 新增 ----
+
+// allInTrash 回報新增的結果是否非空，而且每一部影音都在垃圾桶中。
+func allInTrash(res []pipeline.IngestResult) bool {
+	for _, r := range res {
+		if !r.InTrash {
+			return false
+		}
+	}
+	return len(res) > 0
+}
 
 type createItemInput struct {
 	Body struct {
@@ -162,11 +174,16 @@ func (rt *routes) createItems(ctx context.Context, in *createItemInput) (*create
 	if err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}
+	// 要新增的影音全部都在垃圾桶中時回 409，動作「還原」（DEL-R10）。這要在 mapErr 之前處理：
+	// 讀取垃圾桶中的影音是 404，新增它是 409。只有部分在垃圾桶中時照常回應，在 items 中標示 in_trash。
+	if allInTrash(res) {
+		return nil, inTrashError(http.StatusConflict, res[0].Item.ID)
+	}
 	out := &createItemOutput{Status: http.StatusOK}
 	out.Body.Items = make([]IngestedItem, 0, len(res))
 	for _, r := range res {
-		out.Body.Items = append(out.Body.Items, IngestedItem{Item: toItem(r.Item), AlreadyInLibrary: r.AlreadyInLibrary})
-		if !r.AlreadyInLibrary {
+		out.Body.Items = append(out.Body.Items, IngestedItem{Item: toItem(r.Item), AlreadyInLibrary: r.AlreadyInLibrary, InTrash: r.InTrash})
+		if !r.AlreadyInLibrary && !r.InTrash {
 			out.Status = http.StatusCreated
 		}
 	}
@@ -650,6 +667,14 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 		return newError(http.StatusUnprocessableEntity, CodeInvalidInput, inv.Error())
 	case errors.As(err, &ni):
 		return newError(http.StatusNotImplemented, CodeNotImplemented, ni.Error())
+	case errors.Is(err, pipeline.ErrInTrash):
+		// 讀取與處理垃圾桶中的影音回 404；新增它回 409（DEL-R10），由新增的 handler 在呼叫 mapErr 之前處理。
+		var tr *pipeline.InTrashError
+		itemID := ""
+		if errors.As(err, &tr) {
+			itemID = tr.ItemID
+		}
+		return inTrashError(http.StatusNotFound, itemID)
 	case errors.Is(err, pipeline.ErrNoTranscript):
 		return newError(http.StatusNotFound, CodeNotFound, err.Error())
 	case errors.Is(err, store.ErrNotFound):

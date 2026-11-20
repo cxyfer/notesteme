@@ -39,6 +39,24 @@ type ConfigSnapshot struct {
 	CreatedAt  int64
 }
 
+type CostLedger struct {
+	ID            string
+	ItemID        *string
+	ItemTitle     string
+	StageRunID    *string
+	TaskID        *string
+	Provider      string
+	Model         string
+	Units         float64
+	UnitType      string
+	Usd           float64
+	State         string
+	Attempt       int64
+	Outcome       string
+	UnitPriceJson string
+	At            int64
+}
+
 type EncryptionKey struct {
 	ID         string
 	WrappedKey string
@@ -76,6 +94,14 @@ type Item struct {
 	CreatedAt     int64
 	DeletedAt     *int64
 	TitleFold     string
+}
+
+type ItemTombstone struct {
+	Platform   string
+	ExternalID string
+	Part       int64
+	Sha256     string
+	PurgedAt   int64
 }
 
 type Secret struct {

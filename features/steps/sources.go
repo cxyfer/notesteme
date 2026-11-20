@@ -103,38 +103,19 @@ func (s *Scenario) bilibiliVideo(bvid string, parts int) error {
 func (s *Scenario) youtubeVideoTitled(ref, title string) error {
 	return s.editVideo(ref, func(v *faketool.Video) error {
 		v.Title = title
-		// 沒有指定語言的影片，假 yt-dlp 回報英文：原文語言不明時，caption_priority 的 original 項目沒有符合，
+		// 沒有指定語言的影片，假 yt-dlp 回報英文（steps.md 4.3）：原文語言不明時，caption_priority 的 original 項目沒有符合，
 		// 只有 titled 與字幕軌的場景（例如 CLI 的「Waiting until the transcript is ready」）就選不到字幕。
-		// 這個預設值不算場景宣告的語言（見 declaredLanguage）；要宣告語言用 `a YouTube video … with:`。
+		// 要指定其他語言用 `a YouTube video … with:`。
 		if v.Language == "" {
 			v.Language = "en"
-			if s.defaultedLang == nil {
-				s.defaultedLang = map[string]bool{}
-			}
-			s.defaultedLang[ref] = true
 		}
 		return nil
 	})
 }
 
-// declaredLanguage 回傳場景替影片宣告的原文語言：`titled` 補上的預設值不算。
-// hasTranscriptSource 用它判斷場景有沒有準備字幕來源，這樣預設值不會改變 DEL 等場景目前的 pending
-// （它們要等 fixtures/items/ 與各自的功能，見 itemFixtureFor）。
-func (s *Scenario) declaredLanguage(ref string, v *faketool.Video) string {
-	if s.defaultedLang[ref] {
-		return ""
-	}
-	return v.Language
-}
-
 // youtubeVideoWith 依表格（field、value）設定影片的欄位。不認識的欄位讓步驟失敗，避免場景被默默忽略。
 func (s *Scenario) youtubeVideoWith(ref string, table *godog.Table) error {
 	return s.editVideo(ref, func(v *faketool.Video) error {
-		for _, row := range table.Rows {
-			if len(row.Cells) == 2 && row.Cells[0].Value == "language" {
-				delete(s.defaultedLang, ref) // 場景自己宣告了語言
-			}
-		}
 		for i, row := range table.Rows {
 			if len(row.Cells) != 2 {
 				return fmt.Errorf("表格第 %d 列應有 field 與 value 兩欄", i+1)

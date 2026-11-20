@@ -56,12 +56,6 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`the {string} artifact of {string} has the provenance:`, s.artifactHasProvenance)
 	r.Step(`the {string} artifact of {string} has {int} versions`, s.artifactHasVersions)
 	r.Step(`the item {string} has no {string} artifact`, s.itemHasNoArtifact)
-	r.Step(`the media of {string} is cached`, func(string) error { return godog.ErrPending })
-	r.Step(`the trash contains {string}`, func(string) error { return godog.ErrPending })
-	r.Step(`the trash does not contain {string}`, func(string) error { return godog.ErrPending })
-	r.Step(`the trash contains {int} items`, func(int) error { return godog.ErrPending })
-	r.Step(`the cost ledger has an entry of {string} USD for {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the cost ledger has an entry of {string} USD titled {string}`, func(string, string) error { return godog.ErrPending })
 }
 
 // ---- 新增 ----
@@ -91,11 +85,7 @@ func (s *Scenario) ingest(target string, overrides map[string]any) error {
 	if err != nil {
 		return err
 	}
-	if err := s.send("POST /api/items", requestOpts{who: asOwner, body: raw}); err != nil {
-		return err
-	}
-	s.recordRefs(s.last)
-	return nil
+	return s.send("POST /api/items", requestOpts{who: asOwner, body: raw})
 }
 
 // itemHasBeenIngested 以 API 新增影音，worker 不執行（任務留在佇列中）。
@@ -177,30 +167,44 @@ func (s *Scenario) libraryContains(ref string) error {
 	return fmt.Errorf("資料庫沒有影音 %q（共 %d 部）", ref, len(refs))
 }
 
-// stageIsFromDB 在場景讓 server 停下之後比對步驟狀態：直接讀資料庫，不啟動新的 server。
-func (s *Scenario) stageIsFromDB(stage, ref, want string) error {
+// dbStageStatus 直接讀資料庫中影音某個步驟的狀態，不經過 API：server 已停下（不啟動新的 server），
+// 或影音在垃圾桶中（詳情回 404）時使用。影音的 ID 取自新增時記下的 World.Refs。
+func (s *Scenario) dbStageStatus(stage, ref, why string) (string, error) {
 	id, ok := s.World.Refs[ref]
 	if !ok {
-		return fmt.Errorf("server 已停止，而且場景沒有記下影音 %q 的 ID，無法直接讀資料庫", ref)
+		return "", fmt.Errorf("%s，而且場景沒有記下影音 %q 的 ID，無法直接讀資料庫", why, ref)
 	}
 	got, found, err := s.World.DBStageStatus(id, stage)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !found {
-		return fmt.Errorf("%s 沒有步驟 %q（讀自資料庫）", ref, stage)
+		return "", fmt.Errorf("%s 沒有步驟 %q（讀自資料庫，%s）", ref, stage, why)
+	}
+	return got, nil
+}
+
+// stageIsFromDB 比對步驟狀態：直接讀資料庫（見 dbStageStatus）。
+func (s *Scenario) stageIsFromDB(stage, ref, want, why string) error {
+	got, err := s.dbStageStatus(stage, ref, why)
+	if err != nil {
+		return err
 	}
 	if got != want {
-		return fmt.Errorf("%s 的步驟 %s 是 %q，預期 %q（server 已停止，讀自資料庫）", ref, stage, got, want)
+		return fmt.Errorf("%s 的步驟 %s 是 %q，預期 %q（%s，讀自資料庫）", ref, stage, got, want, why)
 	}
 	return nil
 }
 
 func (s *Scenario) stageIs(stage, ref, want string) error {
 	if s.stopped {
-		return s.stageIsFromDB(stage, ref, want)
+		return s.stageIsFromDB(stage, ref, want, "server 已停止")
 	}
 	it, err := s.item(ref)
+	if _, trashed := inTrashBody(err); trashed {
+		// 影音在垃圾桶中：詳情回 404，步驟狀態改讀資料庫（steps.md 4.4）。
+		return s.stageIsFromDB(stage, ref, want, "影音在垃圾桶中")
+	}
 	if err != nil {
 		return err
 	}
@@ -208,8 +212,7 @@ func (s *Scenario) stageIs(stage, ref, want string) error {
 		if st.Stage == stage {
 			if st.Status != want {
 				// 緊接在前一個步驟送出的請求是還沒實作的路由（例如取消、刪除）：步驟狀態不符是因為那個動作沒有發生。
-				// 更早的請求與這個斷言無關，不能用來把失敗轉成 pending。
-				if s.lastFromPreviousStep() && s.last.status == http.StatusNotImplemented && isNotImplemented(s.last.body) {
+				if s.previousRequestNotImplemented() {
 					return fmt.Errorf("最近的請求還沒有實作：%w", godog.ErrPending)
 				}
 				return fmt.Errorf("%s 的步驟 %s 是 %q，預期 %q（%s）", ref, stage, st.Status, want, describeStage(st))

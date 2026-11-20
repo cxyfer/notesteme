@@ -28,7 +28,7 @@ type RerunRequest struct {
 // 快取鍵相同時重用既有產出，不建立新版本（PIPE-R5）。
 // 舊步驟中還沒被領取的任務會被取消。回傳最新的影音詳情。
 //
-// 錯誤：store.ErrNotFound、*InvalidError（步驟名稱或設定不正確）、*NotImplementedError（M1 之後的步驟）。
+// 錯誤：store.ErrNotFound、*InTrashError（影音在垃圾桶中，DEL-R1）、*InvalidError（步驟名稱或設定不正確）、*NotImplementedError（M1 之後的步驟）。
 func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (Detail, error) {
 	switch {
 	case ValidStage(req.From):
@@ -51,7 +51,7 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		return Detail{}, err
 	}
 	if it.DeletedAt != nil {
-		return Detail{}, store.ErrNotFound
+		return Detail{}, &InTrashError{ItemID: it.ID}
 	}
 	global, err := p.globalConfig(ctx)
 	if err != nil {
@@ -70,7 +70,18 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		return Detail{}, err
 	}
 
+	if p.beforeRerunTx != nil {
+		p.beforeRerunTx()
+	}
 	err = p.st.Tx(ctx, func(r *store.Repo) error {
+		// 上面讀取之後影音可能已被移到垃圾桶或永久刪除：在交易內重新檢查，否則會替垃圾桶中的影音建立任務。
+		cur, err := r.ItemByID(ctx, itemID)
+		if err != nil {
+			return err
+		}
+		if cur.DeletedAt != nil {
+			return &InTrashError{ItemID: cur.ID}
+		}
 		snap, err := r.EnsureSnapshot(ctx, sha, cfgJSON)
 		if err != nil {
 			return err

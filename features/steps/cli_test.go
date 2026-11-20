@@ -11,9 +11,9 @@ import (
 	"github.com/cxyfer/notesteme/internal/cli"
 )
 
-// `titled` 補上的預設語言讓假 yt-dlp 回報英文，但不算場景宣告的語言：
-// hasTranscriptSource 仍然視為「沒有準備字幕來源」（DEL 等場景維持 pending）。
-func TestTitledDefaultLanguageIsNotDeclared(t *testing.T) {
+// `titled` 補上的預設語言就是假 yt-dlp 實際回報的語言（steps.md 4.3）：
+// hasTranscriptSource 照它判斷人工字幕軌是否符合 caption_priority，場景有準備字幕來源。
+func TestTitledDefaultLanguageIsDeclared(t *testing.T) {
 	s := newTestScenario(t)
 	if err := s.youtubeVideoTitled("yt:abc123xxxxx", "T"); err != nil {
 		t.Fatal(err)
@@ -22,18 +22,20 @@ func TestTitledDefaultLanguageIsNotDeclared(t *testing.T) {
 	if v.Language != "en" {
 		t.Fatalf("假 yt-dlp 的語言 = %q，預期 en", v.Language)
 	}
-	v.Tracks = []faketool.Track{{Kind: faketool.KindManual, Lang: "en"}}
 	if s.hasTranscriptSource("yt:abc123xxxxx") {
-		t.Error("預設語言不算場景宣告的語言")
+		t.Error("沒有字幕軌，不算有字幕來源")
+	}
+	v.Tracks = []faketool.Track{{Kind: faketool.KindManual, Lang: "en"}}
+	if !s.hasTranscriptSource("yt:abc123xxxxx") {
+		t.Error("預設語言 en 的人工字幕軌符合 caption_priority，算有字幕來源")
 	}
 
-	// 場景自己宣告語言之後就算。
+	// 字幕軌的語言與影片的語言不符（又沒有其他可選的項目）時不算。
 	s2 := newTestScenario(t)
 	_ = s2.youtubeVideoTitled("yt:abc123xxxxx", "T")
-	s2.defaultedLang = map[string]bool{}
-	s2.World.Video("abc123xxxxx").Tracks = []faketool.Track{{Kind: faketool.KindManual, Lang: "en"}}
-	if !s2.hasTranscriptSource("yt:abc123xxxxx") {
-		t.Error("宣告過語言的影片有符合的字幕軌")
+	s2.World.Video("abc123xxxxx").Tracks = []faketool.Track{{Kind: faketool.KindManual, Lang: "ja"}}
+	if s2.hasTranscriptSource("yt:abc123xxxxx") {
+		t.Error("影片語言 en、只有 ja 的人工字幕軌：不符合 caption_priority")
 	}
 }
 

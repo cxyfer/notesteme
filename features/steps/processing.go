@@ -24,9 +24,14 @@ import (
 
 // 這個檔案放「讓影音真的處理到某個步驟」與「步驟結果的斷言」，步驟的註冊在 items.go。
 
-// stageOf 取得影音某個步驟目前的狀態。
+// stageOf 取得影音某個步驟目前的狀態。影音在垃圾桶中（詳情回 404 in_trash）時改讀資料庫：
+// 只有 Status 有值，其他欄位（錯誤類別、not_before 等）資料庫查詢沒有提供。
 func (s *Scenario) stageOf(ref, stage string) (stageJSON, error) {
 	it, err := s.item(ref)
+	if _, trashed := inTrashBody(err); trashed {
+		status, err := s.dbStageStatus(stage, ref, "影音在垃圾桶中")
+		return stageJSON{Stage: stage, Status: status}, err
+	}
 	if err != nil {
 		return stageJSON{}, err
 	}
@@ -133,11 +138,37 @@ func (s *Scenario) attentionStage(ref string) (stageJSON, error) {
 	if s.stopped {
 		return stageJSON{}, errors.New("server 已停止：這個步驟還不支援讀資料庫，請在 server 執行時斷言訊息與動作")
 	}
+	if b, ok := s.lastInTrashConflict(ref); ok {
+		// 新增被 409 in_trash 擋下：訊息與動作就在那個回應裡（DEL-R10），比對它（steps.md 4.4）。
+		return stageJSON{Stage: "in_trash", Status: "409", Message: b.Message, Actions: b.Actions}, nil
+	}
 	it, err := s.item(ref)
+	if b, trashed := inTrashBody(err); trashed {
+		// 影音在垃圾桶中：詳情的 404 回應本身帶著訊息與動作（DEL-R1），比對它們（steps.md 4.4）。
+		return stageJSON{Stage: "in_trash", Status: "404", Message: b.Message, Actions: b.Actions}, nil
+	}
 	if err != nil {
 		return stageJSON{}, err
 	}
 	return pickAttentionStage(ref, it)
+}
+
+// lastInTrashConflict 在最近一次送出的請求回應是這部影音的 409 in_trash 時回傳它的內容。
+// 斷言步驟不送出請求，所以 s.last 就是它們要檢查的那個回應；影音的 ID 必須與回應的 item_id 相同，
+// 別部影音的 409 不算。代號對應不到 ID 時不採用（交給詳情查詢回報）。
+func (s *Scenario) lastInTrashConflict(ref string) (trashBody, bool) {
+	if s.last == nil || s.last.status != http.StatusConflict {
+		return trashBody{}, false
+	}
+	var b trashBody
+	if json.Unmarshal(s.last.body, &b) != nil || b.Code != "in_trash" {
+		return trashBody{}, false
+	}
+	id, err := s.itemID(ref)
+	if err != nil || (b.ItemID != "" && b.ItemID != id) {
+		return trashBody{}, false
+	}
+	return b, true
 }
 
 // pickAttentionStage 是 attentionStage 的選擇規則（純函式）。
@@ -319,7 +350,7 @@ func (s *Scenario) itemProcessedUpTo(ref, stage string) error {
 
 // hasTranscriptSource 回報場景有沒有替影音準備任何字幕來源。只看場景自己累積的狀態，不看執行結果：
 //   - 已用 `the … transcript of … is:` 寫入字幕。
-//   - 假 yt-dlp 的狀態中，有符合 caption_priority（內建預設）的平台字幕軌。
+//   - 假 yt-dlp 的狀態中，有符合 caption_priority（內建預設）的平台字幕軌；原文語言用假 yt-dlp 實際回報的（steps.md 4.3）。
 //   - 腳本化了已實作的 fallback 來源（`the source … returns …`）。
 func (s *Scenario) hasTranscriptSource(ref string) bool {
 	if s.seeded[ref] {
@@ -342,7 +373,7 @@ func (s *Scenario) hasTranscriptSource(ref string) bool {
 	for _, t := range v.Tracks {
 		tracks = append(tracks, transcript.Track{Lang: t.Lang, Kind: t.Kind})
 	}
-	chosen, _ := transcript.Select(tracks, s.declaredLanguage(ref, v), pipeline.DefaultLanguage().CaptionPriority, false)
+	chosen, _ := transcript.Select(tracks, v.Language, pipeline.DefaultLanguage().CaptionPriority, false)
 	return chosen != nil
 }
 

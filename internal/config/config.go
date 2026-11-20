@@ -55,6 +55,15 @@ const (
 	FieldListen = "listen"
 	FieldData   = "data"
 	FieldInbox  = "inbox"
+	// FieldTrashRetentionDays 是 library.trash_retention_days（DEL-R4）。
+	FieldTrashRetentionDays = "library.trash_retention_days"
+)
+
+// 垃圾桶保留天數（DEL-R4）：預設值與允許的範圍。
+const (
+	DefaultTrashRetentionDays = 30
+	MinTrashRetentionDays     = 1
+	MaxTrashRetentionDays     = 3650
 )
 
 // Sources 是載入設定的輸入；設定檔以外不讀程序的環境。
@@ -85,6 +94,9 @@ type Config struct {
 	Inbox string
 	// MediaRoots 是 API 與 MCP 可以新增檔案的媒體根目錄，一律是 Clean 過的絕對路徑（GRD-R7）。
 	MediaRoots []string
+
+	// TrashRetentionDays 是垃圾桶保留天數（設定檔 library.trash_retention_days，預設 30，範圍 1～3650；DEL-R4）。
+	TrashRetentionDays int
 
 	// ASRProviders 是設定檔 asr.providers 解析並驗證後的內容，以 id 為 key（SEC-R3：command 類型只能在這裡定義）。
 	ASRProviders map[string]ASRProvider
@@ -117,6 +129,13 @@ type fileSchema struct {
 	Network    networkSchema `yaml:"network"`
 	Inbox      string        `yaml:"inbox"`
 	MediaRoots []string      `yaml:"media_roots"`
+	Library    librarySchema `yaml:"library"`
+}
+
+// librarySchema 是設定檔 library 區段（DEL-R4）。
+type librarySchema struct {
+	// TrashRetentionDays 先讀成 yaml.Node：型別不對與超出範圍時，錯誤訊息都要指出欄位。
+	TrashRetentionDays yaml.Node `yaml:"trash_retention_days"`
 }
 
 // networkSchema 是設定檔 network 區段（GRD-R3）。
@@ -136,9 +155,10 @@ var dbManagedFields = map[string]bool{
 // Load 依 src 載入設定。
 func Load(src Sources) (*Config, error) {
 	cfg := &Config{
-		Listen: DefaultListen,
-		Data:   DefaultData,
-		Origin: map[string]Source{FieldListen: SourceDefault, FieldData: SourceDefault},
+		Listen:             DefaultListen,
+		Data:               DefaultData,
+		TrashRetentionDays: DefaultTrashRetentionDays,
+		Origin:             map[string]Source{FieldListen: SourceDefault, FieldData: SourceDefault},
 	}
 
 	path := src.File
@@ -191,7 +211,7 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 	var managed, unknown []string
 	for k := range top {
 		switch k {
-		case "listen", "data", "trusted_proxies", "tools", "providers", "hooks", "asr", "network", "inbox", "media_roots":
+		case "listen", "data", "trusted_proxies", "tools", "providers", "hooks", "asr", "network", "inbox", "media_roots", "library":
 		default:
 			if dbManagedFields[k] {
 				managed = append(managed, k)
@@ -257,6 +277,18 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 			return fmt.Errorf("設定檔 %s 的欄位 inbox 必須是絕對路徑：%q", path, f.Inbox)
 		}
 		cfg.Inbox, cfg.Origin[FieldInbox] = filepath.Clean(f.Inbox), SourceConfigFile
+	}
+	if n := f.Library.TrashRetentionDays; n.Kind != 0 {
+		var days int
+		if n.Tag != "!!int" || n.Decode(&days) != nil { // yaml.v3 會把 1.5 截成 1，所以要先確認是整數
+			return fmt.Errorf("設定檔 %s 的欄位 library.trash_retention_days 必須是整數（%d 到 %d）。",
+				path, MinTrashRetentionDays, MaxTrashRetentionDays)
+		}
+		if days < MinTrashRetentionDays || days > MaxTrashRetentionDays {
+			return fmt.Errorf("設定檔 %s 的欄位 library.trash_retention_days 必須在 %d 到 %d 之間：%d",
+				path, MinTrashRetentionDays, MaxTrashRetentionDays, days)
+		}
+		cfg.TrashRetentionDays, cfg.Origin[FieldTrashRetentionDays] = days, SourceConfigFile
 	}
 	for i, v := range f.MediaRoots {
 		if !filepath.IsAbs(v) {

@@ -228,6 +228,37 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 	return err
 }
 
+const itemTaskIDs = `-- name: ItemTaskIDs :many
+SELECT t.id FROM tasks AS t
+JOIN stage_runs AS sr ON sr.id = t.stage_run_id
+WHERE sr.item_id = ?1
+`
+
+// Every task of an item whatever its state, so the worker can be asked to stop all of them: a task that is
+// already cancelled in the database may still be running until its context is cancelled.
+func (q *Queries) ItemTaskIDs(ctx context.Context, itemID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, itemTaskIDs, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listQueueTasks = `-- name: ListQueueTasks :many
 SELECT t.id AS id, t.kind AS kind, t.resource_class AS resource_class, t.state AS state, t.attempts AS attempts,
        t.priority AS priority, t.not_before AS not_before, sr.item_id AS item_id,
@@ -239,7 +270,7 @@ SELECT t.id AS id, t.kind AS kind, t.resource_class AS resource_class, t.state A
 FROM tasks AS t
 JOIN stage_runs AS sr ON sr.id = t.stage_run_id
 JOIN items AS i ON i.id = sr.item_id
-WHERE t.state IN ('leased', 'pending') AND t.executor = ?3
+WHERE t.state IN ('leased', 'pending') AND t.executor = ?3 AND i.deleted_at IS NULL
 ORDER BY bucket, score DESC, t.created_at, t.rowid
 `
 

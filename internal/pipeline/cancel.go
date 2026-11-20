@@ -23,34 +23,41 @@ func cancelledState() store.StageState {
 //
 // 任務先在資料庫中取消，所以還在執行的任務晚一點做完時，寫回會因為租約失效（store.ErrLeaseLost）
 // 整筆丟棄（apply），不會把步驟或任務蓋回 done。
-// 沒有未結束的步驟時什麼都不做，回傳空的清單（冪等）。影音不存在時回傳 store.ErrNotFound。
+// 沒有未結束的步驟時什麼都不做，回傳空的清單（冪等）。影音不存在時回傳 store.ErrNotFound，在垃圾桶中時回傳 *InTrashError（DEL-R1）。
 func (p *Pipeline) CancelItem(ctx context.Context, itemID string) ([]string, error) {
 	it, err := p.st.Read().ItemByID(ctx, itemID)
 	if err != nil {
 		return nil, err
 	}
 	if it.DeletedAt != nil {
-		return nil, store.ErrNotFound
+		return nil, &InTrashError{ItemID: it.ID}
 	}
 	var taskIDs []string
 	err = p.st.Tx(ctx, func(r *store.Repo) error {
-		runs, err := r.StageRunsByItem(ctx, it.ID)
-		if err != nil {
-			return err
-		}
-		for _, run := range runs {
-			if !slices.Contains(unfinishedStatuses, run.Status) {
-				continue
-			}
-			if err := r.SetStageState(ctx, run.ID, cancelledState()); err != nil {
-				return err
-			}
-		}
-		taskIDs, err = r.CancelItemTasks(ctx, it.ID)
+		var err error
+		taskIDs, err = cancelItemTx(ctx, r, it.ID, cancelledState())
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
 	return taskIDs, nil
+}
+
+// cancelItemTx 在交易 r 中把影音未結束的步驟改成 state，並把它的 pending 與 leased 任務改為 cancelled，
+// 回傳被取消的任務 ID。取消與移到垃圾桶（Trash）共用。
+func cancelItemTx(ctx context.Context, r *store.Repo, itemID string, state store.StageState) ([]string, error) {
+	runs, err := r.StageRunsByItem(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	for _, run := range runs {
+		if !slices.Contains(unfinishedStatuses, run.Status) {
+			continue
+		}
+		if err := r.SetStageState(ctx, run.ID, state); err != nil {
+			return nil, err
+		}
+	}
+	return r.CancelItemTasks(ctx, itemID)
 }

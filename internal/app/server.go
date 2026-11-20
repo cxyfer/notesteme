@@ -199,6 +199,8 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	s.queue = queue.New(s.store, env.Clock, store.NewID())
 	deps := pipeline.Deps{
 		Store: s.store, Clock: env.Clock, DataDir: cfg.Data, Log: log, YouTube: yt, Wake: s.queue.Wake, Version: version,
+		// 垃圾桶列表的 purge_at 與定期清理用同一個保留期限（DEL-R4）。
+		TrashRetention: trashRetention(cfg),
 		// Bilibili 與 YouTube 共用 runner、工具解析與 cookie 存放；Probe 不帶 --no-warnings，才看得到需要登入的警告（SRC-R8）。
 		Bilibili: &bilibili.Client{Runner: runner, Tools: tools, Cookies: s.cookies, Log: log},
 		// 對外請求一律經過 netguard（ADR-0014），不使用 http.DefaultClient；逾時與大小由各呼叫端限制。
@@ -212,7 +214,12 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	}
 	s.pipeline = pipeline.New(deps)
 	s.worker = worker.New(s.queue, s.pipeline, env.Clock, log)
-	s.worker.SetPeriodic(newHousekeeping(s.store, env.Clock, log)) // 每輪開頭清理過期事件（OPS-R10）
+	// 永久刪除要結束殘留的任務，所以 pipeline 需要 worker（worker 在 pipeline 之後才建立）。
+	s.pipeline.SetTaskCanceller(s.worker)
+	// 每輪開頭清理過期事件（OPS-R10），以及永久刪除到期的垃圾桶影音（DEL-R4）。
+	hk := newHousekeeping(s.store, env.Clock, log)
+	hk.addTrashCleanup(s.pipeline, trashRetention(cfg))
+	s.worker.SetPeriodic(hk)
 
 	if n, err := s.queue.RecoverStale(ctx); err != nil {
 		return fmt.Errorf("放回上次留下的租約失敗：%w", err)

@@ -31,8 +31,6 @@ func registerFiles(r *Registry, s *Scenario) {
 	r.Step(`the cookie file given to yt-dlp has the mode {string}`, s.cookieFileHasMode)
 	r.Step(`no cookie file remains in {string}`, s.noCookieFileRemains)
 	r.Step(`the data directory does not contain {string}`, s.dataDirDoesNotContain)
-	r.Step(`the data directory has no files of {string}`, func(string) error { return godog.ErrPending })
-	r.Step(`the media cache has no files of {string}`, func(string) error { return godog.ErrPending })
 	r.Step(`the logs do not contain {string}`, func(string) error { return godog.ErrPending })
 }
 

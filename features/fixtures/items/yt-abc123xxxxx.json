@@ -1,0 +1,12 @@
+{
+  "ref": "yt:abc123xxxxx",
+  "source": {
+    "lang": "en",
+    "cues": [
+      { "start": "00:00:01.000", "end": "00:00:03.000", "text": "PostgreSQL is a relational database." },
+      { "start": "00:00:03.000", "end": "00:00:05.000", "text": "It has been developed for over thirty years." },
+      { "start": "00:00:05.000", "end": "00:00:07.000", "text": "Data is stored in tables made of rows and columns." },
+      { "start": "00:00:07.000", "end": "00:00:09.000", "text": "You query it with the SQL language." }
+    ]
+  }
+}

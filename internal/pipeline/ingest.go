@@ -32,6 +32,9 @@ type IngestRequest struct {
 type IngestResult struct {
 	Item             store.Item
 	AlreadyInLibrary bool
+	// InTrash 為 true 代表影音在垃圾桶中：沒有重新建立，也不算在媒體庫中（DEL-R10）。
+	// 這時 AlreadyInLibrary 是 false，Item 是垃圾桶中的那一筆。
+	InTrash bool
 }
 
 // Ingest 新增影音並立刻建立 metadata 任務，優先順序為手動新增（ING-R12）。
@@ -41,6 +44,9 @@ type IngestResult struct {
 //
 // 錯誤：ErrUnrecognizedURL、ErrChannel、*InvalidError（422）、*UpstreamError（502，yt-dlp 失敗）、
 // *NotImplementedError（501，例如沒有設定 Bilibili 依賴、Podcast、處理方案）。
+//
+// 影音在垃圾桶中時不重新建立：結果的 InTrash 為 true（DEL-R10）。單一目標在垃圾桶中時，
+// 是否回 409 由呼叫端決定（API 見 createItems）。
 //
 // Bilibili 每個分P 是一個影音（ING-R3）：網址沒有 p 時展開全部分P（或 parts 指定的），有 p=N 時只建立那一個。
 func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResult, error) {
@@ -119,10 +125,15 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResul
 			if err != nil {
 				return err
 			}
-			results = append(results, IngestResult{Item: it, AlreadyInLibrary: !created})
 			if !created {
-				// TODO(DEL-R10)：影音在垃圾桶中時的行為。
+				// 影音在垃圾桶中時不重新建立，標示 InTrash，由呼叫端提示還原（DEL-R10）。
+				results = append(results, IngestResult{Item: it, AlreadyInLibrary: it.DeletedAt == nil, InTrash: it.DeletedAt != nil})
 				continue
+			}
+			results = append(results, IngestResult{Item: it})
+			// 手動新增視為「想要這部影音」：同一個交易中移除永久刪除留下的 tombstone（DEL-R11）。
+			if _, err := r.DeleteTombstones(ctx, target.Platform, target.ExternalID, target.Part); err != nil {
+				return err
 			}
 			if snap == "" {
 				if snap, err = r.EnsureSnapshot(ctx, sha, cfgJSON); err != nil {
@@ -152,7 +163,7 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResul
 		return nil, err
 	}
 	for _, r := range results {
-		if !r.AlreadyInLibrary {
+		if !r.AlreadyInLibrary && !r.InTrash {
 			p.wake()
 			break
 		}

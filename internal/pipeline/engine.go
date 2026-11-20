@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/subtitle"
 )
 
 // taskOutcome 是任務的結局。
@@ -61,11 +63,28 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		if ctx.Err() != nil {
 			return nil
 		}
+		if errors.Is(err, store.ErrNotFound) {
+			// 步驟已隨影音永久刪除：沒有東西可以寫回。
+			p.log.Info("步驟已不存在，略過任務", "task", t.ID, "stage_run", t.StageRunID)
+			return nil
+		}
 		return fmt.Errorf("讀取步驟 %s：%w", t.StageRunID, err)
 	}
 	it, err := r.ItemByID(ctx, run.ItemID)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+		if errors.Is(err, store.ErrNotFound) {
+			// 同上：影音已永久刪除。
+			p.log.Info("影音已不存在，略過任務", "task", t.ID, "item", run.ItemID)
+			return nil
+		}
 		return fmt.Errorf("讀取影音 %s：%w", run.ItemID, err)
+	}
+	if it.DeletedAt != nil {
+		// 領取之後、取消之前影音被移到垃圾桶：不執行步驟，結束任務（DEL-R1）。
+		return p.dropTrashedTask(ctx, it.ID)
 	}
 	cfgJSON, err := r.Snapshot(ctx, run.ConfigSnapshotID)
 	if err != nil {
@@ -96,6 +115,12 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		p.discardArtifactFile(res.artifact)
 		return nil
 	}
+	if errors.Is(err, errItemGone) {
+		// 影音在執行期間被移到垃圾桶或永久刪除：產出沒有寫出（DEL-R2），任務與步驟比照移到垃圾桶結束，
+		// 不能留下 leased 或 running。
+		p.log.Info("影音已不在媒體庫中，丟棄這次的結果", "item", it.ID, "stage", run.Stage)
+		return p.dropTrashedTask(ctx, it.ID)
+	}
 	if err != nil {
 		p.log.Warn("步驟失敗", "item", it.ID, "stage", run.Stage, "attempt", t.Attempts, "error", err)
 		res = p.classify(t, err)
@@ -103,6 +128,27 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	res.startedAt = started
 	if err := p.apply(ctx, t, run, it, res); err != nil {
 		return fmt.Errorf("寫回步驟 %s 的結果：%w", run.Stage, err)
+	}
+	return nil
+}
+
+// dropTrashedTask 結束垃圾桶中影音的任務（DEL-R1）：在交易內重新確認它仍在垃圾桶中，
+// 然後和移到垃圾桶時一樣把未結束的步驟改成 skipped（原因 cancelled，動作「重試」）、任務改成 cancelled。
+// 影音已被永久刪除時步驟與任務已隨之刪除，什麼都不用做；已被還原時不動，任務的租約到期後會重新領取。
+func (p *Pipeline) dropTrashedTask(ctx context.Context, itemID string) error {
+	err := p.st.Tx(ctx, func(r *store.Repo) error {
+		it, err := r.ItemByID(ctx, itemID)
+		if err != nil {
+			return err
+		}
+		if it.DeletedAt == nil {
+			return nil
+		}
+		_, err = cancelItemTx(ctx, r, itemID, trashedStageState())
+		return err
+	})
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("結束垃圾桶中影音的任務：%w", err)
 	}
 	return nil
 }
@@ -336,3 +382,21 @@ func errPermanent(detail string) error {
 }
 
 var errNoSource = errors.New("沒有原始字幕")
+
+// errItemGone 表示影音在步驟執行期間被移到垃圾桶或已被永久刪除：產出要丟棄，不寫檔（DEL-R2）。
+var errItemGone = errors.New("影音已在垃圾桶中或不存在")
+
+// writeCuesArtifact 在寫出產出檔之前，先確認影音不在垃圾桶中而且還存在，否則回傳 errItemGone，不寫任何檔案。
+// 檢查與寫檔之間仍有空隙：影音在這之後才被刪除時，任務已在資料庫中取消，寫回會因租約失效而丟棄產出檔（apply）。
+func (p *Pipeline) writeCuesArtifact(ctx context.Context, itemID string, tr subtitle.Transcript, parents []string, prov json.RawMessage) (*store.NewArtifact, error) {
+	it, err := p.st.Read().ItemByID(ctx, itemID)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return nil, errItemGone
+	case err != nil:
+		return nil, err
+	case it.DeletedAt != nil:
+		return nil, errItemGone
+	}
+	return p.newCuesArtifact(itemID, tr, parents, prov)
+}

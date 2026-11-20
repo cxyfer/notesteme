@@ -55,8 +55,6 @@ type Scenario struct {
 	givenQueue queueConfig
 	// seeded 是已用 `the … transcript of … is:` 直接寫入字幕的影音代號（見 hasTranscriptSource）。
 	seeded map[string]bool
-	// defaultedLang 是語言由 `a YouTube video … titled` 補上預設值的影音代號（見 declaredLanguage）。
-	defaultedLang map[string]bool
 	// cookieSecrets 是場景用 POST /api/cookies 送出的 cookie 值（見 cookieNeedles），secret 掃描要找它們。
 	cookieSecrets map[string]bool
 	// fixtureFiles 是 `Given the file … contains:` 寫入的檔案（實際路徑對應寫入的內容）。
@@ -278,6 +276,11 @@ func (s *Scenario) send(spec string, o requestOpts) error {
 	}
 	resp.step = s.step
 	s.last = resp
+	// 新增影音成功時記下代號與 ID：影音之後進了垃圾桶或永久刪除，還要靠它找到原本的 ID；
+	// 永久刪除之後再新增會換新的 ID，所以每一次新增都要更新，不論是哪個步驟送出的。
+	if method == http.MethodPost && path == "/api/items" && resp.status/100 == 2 {
+		s.recordRefs(resp)
+	}
 	return nil
 }
 
@@ -285,6 +288,13 @@ func (s *Scenario) send(spec string, o requestOpts) error {
 // 用來判斷「步驟的結果不符是因為前一個動作還沒實作」：更早的請求與這個斷言無關。
 func (s *Scenario) lastFromPreviousStep() bool {
 	return s.last != nil && s.last.step == s.step-1
+}
+
+// previousRequestNotImplemented 回報緊接在前一個步驟送出的請求是不是還沒實作的路由（501）。
+// 斷言的狀態不符，是因為那個動作（刪除、還原、取消）沒有發生時，步驟是 pending；更早的請求與這個斷言無關，
+// 不能用來把失敗轉成 pending。
+func (s *Scenario) previousRequestNotImplemented() bool {
+	return s.lastFromPreviousStep() && s.last.status == http.StatusNotImplemented && isNotImplemented(s.last.body)
 }
 
 // ensureOwner 在第一次 owner 請求時登入並記下 cookie（Given the owner is signed in 只是這個意圖）。

@@ -22,6 +22,8 @@ Feature: Deleting items and the trash
       """
       { "code": "in_trash" }
       """
+    When the owner sends "GET /api/items/yt:abc123xxxxx/subtitles?format=srt"
+    Then the response status is 404
 
   @M1 @DEL-01 @DEL-R1 @mcp
   Scenario: Agents cannot read an item in the trash
@@ -47,11 +49,12 @@ Feature: Deleting items and the trash
   @M1 @DEL-02 @DEL-R3
   Scenario: The deletion preview shows what will be lost without changing anything
     Given the item "yt:abc123xxxxx" has been processed up to "transcript"
+    And the cost ledger has an entry of "0.42" USD for "yt:abc123xxxxx"
     When the owner sends "GET /api/items/yt:abc123xxxxx/deletion-preview"
     Then the response status is 200
     And the response contains:
       """
-      { "artifacts": "*", "bytes": "*", "spent_usd": "*", "outputs": "*" }
+      { "artifacts": 1, "bytes": "*", "spent_usd": 0.42, "outputs": [] }
       """
     And the library contains "yt:abc123xxxxx"
 
@@ -89,7 +92,7 @@ Feature: Deleting items and the trash
     And the data directory has no files of "yt:abc123xxxxx"
     And an event is received:
       """
-      { "type": "item.purged", "ref": "yt:abc123xxxxx", "title": "PostgreSQL in 100 Seconds" }
+      { "type": "item.purged", "item": "yt:abc123xxxxx", "title": "PostgreSQL in 100 Seconds" }
       """
 
   @M1 @DEL-03 @DEL-R6 @DEL-R8

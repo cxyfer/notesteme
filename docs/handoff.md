@@ -1,6 +1,6 @@
 # 交接：M1 開發進度
 
-> 更新：2026-11-15。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；#5（CLI）已合併；GRD 切片是 PR #6（`feat/guards`）；SRC-A 切片在 `feat/sources`、SRC-B 切片在 `feat/bilibili`、OPS 切片在 `feat/ops`、LIB 切片在 `feat/library`（依序疊在 `feat/guards` 上，都還沒 push）。
+> 更新：2026-11-15。PR #2（交接檔）、#3（CI 與 Docker）、#4（PIPE）已合併；#5（CLI）已合併；GRD 切片是 PR #6（`feat/guards`）；SRC-A 切片在 `feat/sources`、SRC-B 切片在 `feat/bilibili`、OPS 切片在 `feat/ops`、LIB 切片在 `feat/library`、DEL 切片在 `feat/delete`（依序疊在 `feat/guards` 上，都還沒 push）。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -35,17 +35,28 @@
     - `/api/queue` 改名為 `lanes`、`waiting`。
     - CLI 讀取所有頁面，`--status`、`--channel` 接上 API。
     - harness：影音 fixture（`features/fixtures/items/`，只適用於 `yt:`、`bili:`，而且影片沒有任何字幕軌、場景沒有準備任何來源時才用）；`listItems` 跟著 cursor 讀完所有頁面，有循環防護。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，134 passed、57 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
+  - DEL 切片：
+    - 移到垃圾桶：在一個交易中標記 `deleted_at`，步驟改成 skipped，原因 cancelled，動作「重試」；之後取消任務、刪除媒體快取。
+    - 垃圾桶中的影音：所有讀取都回 404 `in_trash`；新增時回 409；播放清單與分P 中在垃圾桶的項目標示 `in_trash`。
+    - 還原、垃圾桶列表。
+    - 永久刪除，在一個交易中完成：cost ledger 保留標題、tombstone、刪除 events 並改寫 `item.purged`、cascade、孤兒 `config_snapshots`；之後刪除 `artifacts`、`media`、`uploads` 下的 `<id>` 目錄。
+    - 清空垃圾桶、刪除預覽、每天清理到期的影音（`library.trash_retention_days`）。
+    - CLI：`items rm`、`items restore`、`trash ls`、`trash empty`；不在終端機時沒有 `--yes` 就回 2，終端機判斷用 isatty。
+    - migration 00007：`item_tombstones`、`cost_ledger`。
+    - worker 的定期工作改在 round 鎖之外執行，避免清理呼叫 `Cancel` 時死結。
+    - Rerun 與 Trash 的競態已修：engine 遇到垃圾桶中的影音時，取消任務並把步驟改成 skipped。
+    - harness：拿掉 `titled` 預設語言不算「宣告」的例外（與 steps.md 一致）；`substRefs` 改用 `itemID`；垃圾桶中的 stage 斷言改讀 DB；`World.Refs` 在每次新增時更新。
+- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，148 passed、43 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
   |---|---|---|
   | AUTH | 12 | 11 |
   | CLI | 8 | 1 |
-  | DEL | 0 | 21 |
+  | DEL | 13 | 8 |
   | GRD | 19 | 3 |
   | ING | 15 | 9 |
   | LIB | 9 | 1 |
-  | NRM | 9 | 2 |
+  | NRM | 10 | 1 |
   | OPS | 14 | 0 |
   | OUT | 8 | 0 |
   | PIPE | 19 | 0 |
@@ -60,15 +71,19 @@
 
 ## 2. 下一步
 
-使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成）→ GRD（完成，PR #6）→ SRC-A（完成，`feat/sources`）→ SRC-B（完成，`feat/bilibili`）→ OPS（完成，`feat/ops`）→ LIB（完成，`feat/library`）→ **DEL**。使用者要求每個切片完成後自動開始下一個。
+使用者暫定的切片順序：PIPE（完成）→ CLI 與 `/data` 鎖（完成）→ GRD（完成，PR #6）→ SRC-A（完成，`feat/sources`）→ SRC-B（完成，`feat/bilibili`）→ OPS（完成，`feat/ops`）→ LIB（完成，`feat/library`）→ DEL（完成，`feat/delete`）。使用者排定的切片都已完成。使用者要求每個切片完成後自動開始下一個。
 
 接下來：
 
 1. PR #6（GRD）等 CI 與 Codex 審查，通過後由 owner 合併（自動模式不允許 agent 執行 `gh pr merge`）。
-2. PR #6 整理好之後（owner push `feat/guards`、把 base 改成 `master`），依序 push `feat/sources`、`feat/bilibili`、`feat/ops`、`feat/library` 並開 PR（base 分別是前一個分支；前一個合併後改 base 為 `master`，並用 `-s ours` 併入 master）。
-3. DEL 切片：先做 DoR（`features/DEL-*.feature` 的 `@M1` pending 場景與步驟）。多數 DEL 場景用 `yt:abc123xxxxx` 加 `processed up to`，要新增對應的影音 fixture，或在場景中準備字幕來源。
+2. PR #6 整理好之後（owner push `feat/guards`、把 base 改成 `master`），依序 push `feat/sources`、`feat/bilibili`、`feat/ops`、`feat/library`、`feat/delete` 並開 PR（base 分別是前一個分支；前一個合併後改 base 為 `master`，並用 `-s ours` 併入 master）。
+3. 下一個切片由使用者決定。剩下的 43 個 pending 主要卡在：
+   - AUTH 的 token 與 MCP（AUTH-R7～R9；DEL-R1、R12 的 6 個場景，CLI 1 個）。
+   - ING-05 的本機檔案、上傳、inbox watcher（LIB-R6、DEL 2 個、SRC 本機、GRD-R7 的 201）。
+   - podcast（SRC、GRD 的 DNS rebinding）。
+   - SEC 的 secrets reset 等。
 4. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
-5. `features/fixtures/items/` 目前只有 `yt-pg100xxxxxx.json`。DEL、NRM、SEC 中用 `processed up to`、但沒有準備字幕來源的場景仍是 pending，要補對應的 fixture。
+5. `features/fixtures/items/` 有 `yt-pg100xxxxxx.json`、`yt-abc123xxxxx.json`（後者只在影片沒有任何字幕軌時用到，目前只有 SEC 的場景用得到）。
 
 ## 3. 怎麼執行
 
@@ -98,6 +113,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 - **只用 `steps.md` 的句型**：需要新句型時，先加進 `steps.md`，並在回報中列出。
 - **紅燈要紅得正確**：寫完 step definition 先跑一次，確認失敗原因是「功能還沒做」。目前多數失敗會被「501 → pending」轉成 pending，要看到真正的紅燈時，可以暫時關掉這個判斷。
 - **`docker` 指令**：`When the owner runs "docker compose -f … config --format json"` 由 `features/internal/fakecompose` 離線模擬（讀真正的 `deploy/docker/compose.yaml`），其他 docker 指令與不是 `notesteme` 的指令一律失敗，不是 pending。
+- **pending 判斷的 helper**：`previousRequestNotImplemented()`（`features/steps/scenario.go`）只在前一個步驟的請求回 501 `not_implemented` 時才轉 pending，用在 `stageIs`、`no task is running` 與垃圾桶步驟。
 - **godog 的 tag OR 用逗號**：`-godog.tags='@A,@B'`。`'@A || @B'` 會選到 0 個場景卻顯示通過。
 - **斷言要能失敗**：PIPE 切片的審查用變異測試發現 5 個場景拿掉對應行為後仍然通過。每個切片的審查都要挑幾個場景做變異測試：在暫存 worktree 拿掉對應的 production 行為，場景必須變紅。
 - **測試不連外網**（NFR-TEST-1）；時間一律用注入的 fake clock（NFR-TEST-2）。
@@ -107,10 +123,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - 目前允許的 pending 只有下列幾種：
     - 斷言遇到 production 回應的 `501 not_implemented`，或 CLI 回報 `not_implemented`（`the command exits with` 遇到尚未實作的子命令或 API 的 501），而且這個回應或結果必須是前一個步驟送出、執行的。
     - 腳本化來源的步驟查 production 的 `source.Implemented`，得知來源還沒實作。
-    - `processed up to` 的影音沒有字幕來源，也沒有對應的影音 fixture（`itemFixtureFor` 的規則 3，見 steps.md 4.4）。下列 3 個 DEL 場景在 DEL 切片中要補 fixture：
-      - The deletion preview shows what will be lost without changing anything
-      - Adding an item that is in the trash offers to restore it
-      - An item added again after a permanent delete starts fresh
+    - `processed up to` 的影音沒有字幕來源，也沒有對應的影音 fixture（`itemFixtureFor` 的規則 3，見 steps.md 4.4）。
     - 步驟本身還沒實作。
 - **通過場景的棘輪**（`features/passing.txt`）：
   - 「501 → pending」這類規則可能讓已通過的場景退步成 pending，整套測試卻仍然是綠的（審查用變異測試證明：讓 `GET /api/items` 回 501，CLI 場景 5 從 passed 變成 pending）。
@@ -248,6 +261,20 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - IPv6 的鎖定以單一位址計數。
 - **其他**：
   - `Given the item … has been processed up to …` 會真的執行 pipeline；沒有準備字幕來源的場景要有 `features/fixtures/items/` 的 fixture（見第 2 節）。
+- **DEL**：
+  - 只靠單元測試守住：
+    - 保留期限的邊界（剛好第 30 天）。
+    - 每天只清一次。
+    - tombstone 的寫入與移除。
+    - 預覽不寫入資料。
+    - purge 時取消殘留任務、刪除 events、不過度刪除。
+  - 權限：刪除類操作用 `requireOwner`，token 回 403。AUTH 完成後要改：`GET /api/trash` 對應 `read`，其餘對應 `admin`。DEL-R12 的 Outline 會驗證。
+  - `Ingest` 新建影音時一律移除 tombstone，因為 M1 只有手動新增。ING-05 的 inbox 與 M4 的訂閱接上時，要加「手動」旗標。
+  - tombstone 的 `sha256` 一律為空，本機檔案等 ING-05。
+  - `cues_fts`、`outputs`、uploads、術語候選還不存在，之後接上時，永久刪除要一併清除。
+  - 永久刪除後從舊備份還原會留下壞的產出（見 OPS 待決問題）。
+  - `removeDirs` 失敗只記 log，沒有孤兒目錄的掃描。
+  - `app.Server.SeedCost`、`CostEntries` 只給 harness 用。
 - **LIB**：
   - 詳情 API（`Pipeline.Item` 的 `stages`）不列出沒有執行紀錄的 stage，列表篩選則視為 `pending`，UI 切片要決定是否補上。
   - 標題搜尋不做 NFKC 與簡繁互通；00006 的回填只處理 ASCII 的大小寫（M1 尚未發布，沒有舊資料）。

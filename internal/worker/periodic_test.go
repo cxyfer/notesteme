@@ -116,7 +116,9 @@ func TestRunWakesWhenPeriodicIsDue(t *testing.T) {
 		t.Fatalf("到期前 Run 了 %d 次，預期 1", got)
 	}
 	r.clk.Advance(time.Hour)
-	waitFor(t, func() bool { return p.runs.Load() == 2 })
+	// fakePeriodic 不會重新排定：到期之後 worker 會再多跑一輪（見 nextWake），所以是「至少」2 次；
+	// 用 == 2 只在輪詢剛好看到中間值時才成立，是不穩定的。
+	waitFor(t, func() bool { return p.runs.Load() >= 2 })
 }
 
 // 定期工作的時間早於下一個任務時，以較早者為準；已經到期的時間要立刻再跑一輪，但同一個到期時間只觸發一次。
@@ -192,5 +194,83 @@ func TestRunDoesNotBusyLoopOnAnOverduePeriodic(t *testing.T) {
 	r.q.Wake()
 	waitFor(t, func() bool { return p.runs.Load() == 3 && r.clk.PendingTimers() > 0 })
 	r.clk.Advance(time.Hour)
-	waitFor(t, func() bool { return p.runs.Load() == 4 })
+	waitFor(t, func() bool { return p.runs.Load() >= 4 }) // 同上：到期後會多跑一輪，不能用 == 4
+}
+
+// cancelingPeriodic 在 Run 中呼叫 Worker.Cancel，就像永久刪除到期影音的清理那樣。
+type cancelingPeriodic struct {
+	fakePeriodic
+	w *Worker
+}
+
+func (p *cancelingPeriodic) Run(ctx context.Context) error {
+	p.runs.Add(1)
+	return p.w.Cancel(ctx, []string{"no-such-task"})
+}
+
+// 定期工作可以呼叫 Cancel：它不能在持有 roundMu 時執行，否則 Cancel 等不到鎖而死結。
+func TestPeriodicMayCallCancel(t *testing.T) {
+	r := newRig(t)
+	w := New(r.q, &recorder{st: r.st}, r.clk, quiet)
+	p := &cancelingPeriodic{w: w}
+	w.SetPeriodic(p)
+	r.addTask(t, "a", nil)
+
+	done := make(chan error, 1)
+	go func() { done <- w.RunUntilIdle(context.Background()) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunUntilIdle 逾時：定期工作呼叫 Cancel 死結")
+	}
+	if p.runs.Load() == 0 {
+		t.Fatal("定期工作沒有執行")
+	}
+}
+
+// blockingPeriodic 的 Run 在 entered 關閉後停住，直到 release 關閉。
+type blockingPeriodic struct {
+	fakePeriodic
+	entered, release chan struct{}
+}
+
+func (p *blockingPeriodic) Run(context.Context) error {
+	if p.runs.Add(1) == 1 {
+		close(p.entered)
+		<-p.release
+	}
+	return nil
+}
+
+// 定期工作正在執行時停止領取：StopClaiming 要等它結束才回傳，之後的輪次不再執行定期工作。
+func TestStopClaimingWaitsForRunningPeriodic(t *testing.T) {
+	r := newRig(t)
+	p := &blockingPeriodic{entered: make(chan struct{}), release: make(chan struct{})}
+	w := New(r.q, &recorder{st: r.st}, r.clk, quiet)
+	w.SetPeriodic(p)
+
+	go func() { _, _ = w.RunRound(context.Background()) }()
+	<-p.entered
+	stopped := make(chan struct{})
+	go func() { w.StopClaiming(); close(stopped) }()
+	select {
+	case <-stopped:
+		t.Fatal("定期工作還在執行，StopClaiming 不該回傳")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(p.release)
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("定期工作結束後 StopClaiming 應該回傳")
+	}
+	if _, err := w.RunRound(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.runs.Load(); got != 1 {
+		t.Errorf("停止領取後定期工作又執行了：共 %d 次", got)
+	}
 }
