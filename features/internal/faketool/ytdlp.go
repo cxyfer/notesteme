@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -145,11 +146,7 @@ func runYtDlp(e env, args []string) int {
 			fmt.Fprintln(e.stderr, "ERROR:", err)
 			return 1
 		}
-		v := st.YtDlpVersion
-		if v == "" {
-			v = DefaultYtDlpVersion
-		}
-		fmt.Fprintln(e.stdout, v)
+		fmt.Fprintln(e.stdout, ytDlpVersion(e, st))
 		return 0
 	}
 
@@ -218,6 +215,11 @@ func runYtDlp(e env, args []string) int {
 		return 1
 	}
 	id, part, platform := target.id, target.part, target.platform
+	// 這個版本（假 venv 內的版本，或 State.YtDlpVersion）被登記為對這部影片的 -J 會失敗（見 Release.ProbeFailsFor）。
+	if rel := st.Releases[ytDlpVersion(e, st)]; op == OpInfo && rel != nil && slices.Contains(rel.ProbeFailsFor, id) {
+		fmt.Fprintf(e.stderr, "ERROR: [%s] %s: Unable to extract player response; please report this issue\n", platform, id)
+		return 1
+	}
 	v := st.Videos[id]
 	if v != nil && v.Fail.applies(op) {
 		fmt.Fprintln(e.stderr, v.Fail.Stderr)

@@ -28,9 +28,16 @@ const (
 	YtDlp   = "yt-dlp"
 	FFmpeg  = "ffmpeg"
 	FFprobe = "ffprobe"
+	// Python3 是 PATH 上的 python；venv 內的 python 以 VenvPython 的名稱被執行。
+	Python3    = "python3"
+	VenvPython = "python"
 )
 
-var toolNames = []string{YtDlp, FFmpeg, FFprobe}
+// toolNames 是 Install 在 bin/ 放 symlink 的假工具（PATH 上看得到的）。
+var toolNames = []string{YtDlp, FFmpeg, FFprobe, Python3}
+
+// dispatchNames 是 Dispatch 認得的名稱：toolNames 加上只出現在假 venv 內的 python。
+var dispatchNames = append(append([]string{}, toolNames...), VenvPython)
 
 func exeName(name string) string {
 	if runtime.GOOS == "windows" {
@@ -45,7 +52,7 @@ func toolFromArg0(arg0 string) string {
 	if runtime.GOOS == "windows" {
 		base = strings.TrimSuffix(strings.ToLower(base), ".exe")
 	}
-	for _, n := range toolNames {
+	for _, n := range dispatchNames {
 		if base == n {
 			return n
 		}
@@ -61,7 +68,7 @@ func Dispatch() {
 		return
 	}
 	cwd, _ := os.Getwd()
-	root := filepath.Dir(selfDir())
+	root := findRoot(selfDir())
 	// 找不到場景狀態代表不是在場景內被執行：不建立任何檔案，直接失敗。
 	if err := requireScenario(root); err != nil {
 		fmt.Fprintf(os.Stderr, "fake %s: %v\n", tool, err)
@@ -85,6 +92,23 @@ func requireScenario(root string) error {
 		return fmt.Errorf("找不到場景狀態檔 %s（%v）；假工具只能在驗收場景內執行，不會建立任何檔案", p, err)
 	}
 	return nil
+}
+
+// findRoot 從假工具所在的目錄往上找場景根目錄（第一個有 fake/state.json 的祖先）。
+// 假工具可能在 <root>/bin，也可能在假 venv 內（<root>/data/tools/yt-dlp/<版本>/bin），後者不能假設根目錄是上一層。
+// 找不到時回傳 binDir 的上一層，讓 requireScenario 以原本的訊息拒絕。
+func findRoot(binDir string) string {
+	for d := binDir; ; {
+		if _, err := os.Stat(statePath(d)); err == nil {
+			return d
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			break
+		}
+		d = parent
+	}
+	return filepath.Dir(binDir)
 }
 
 // selfDir 回傳假工具 symlink 所在的目錄（<root>/bin）。
@@ -145,6 +169,8 @@ func run(e env) int {
 		return runFFmpeg(e, args)
 	case FFprobe:
 		return runFFprobe(e, args)
+	case Python3, VenvPython:
+		return runPython(e, args)
 	}
 	fmt.Fprintf(e.stderr, "faketool: unknown tool %q\n", e.tool)
 	return 2

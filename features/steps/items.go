@@ -136,32 +136,45 @@ func (s *Scenario) workerRunsUntilIdle() error {
 
 // ---- 影音與步驟 ----
 
-func (s *Scenario) libraryContainsCount(want int) error {
+// libraryRefs 回傳資料庫中的影音代號（不含垃圾桶中的）。server 已明確停下時改用唯讀方式查詢 DB，
+// 不隱含啟動 server（steps.md 4.4）；否則走 API。
+func (s *Scenario) libraryRefs() ([]string, error) {
+	if s.stopped {
+		return s.World.DBItemRefs()
+	}
 	items, err := s.listItems()
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]string, len(items))
+	for i, it := range items {
+		refs[i] = it.Ref
+	}
+	return refs, nil
+}
+
+func (s *Scenario) libraryContainsCount(want int) error {
+	refs, err := s.libraryRefs()
 	if err != nil {
 		return err
 	}
-	if len(items) != want {
-		refs := make([]string, len(items))
-		for i, it := range items {
-			refs[i] = it.Ref
-		}
-		return fmt.Errorf("資料庫有 %d 部影音，預期 %d：%v", len(items), want, refs)
+	if len(refs) != want {
+		return fmt.Errorf("資料庫有 %d 部影音，預期 %d：%v", len(refs), want, refs)
 	}
 	return nil
 }
 
 func (s *Scenario) libraryContains(ref string) error {
-	items, err := s.listItems()
+	refs, err := s.libraryRefs()
 	if err != nil {
 		return err
 	}
-	for _, it := range items {
-		if it.Ref == ref {
+	for _, r := range refs {
+		if r == ref {
 			return nil
 		}
 	}
-	return fmt.Errorf("資料庫沒有影音 %q（共 %d 部）", ref, len(items))
+	return fmt.Errorf("資料庫沒有影音 %q（共 %d 部）", ref, len(refs))
 }
 
 // stageIsFromDB 在場景讓 server 停下之後比對步驟狀態：直接讀資料庫，不啟動新的 server。

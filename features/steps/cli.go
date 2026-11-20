@@ -12,6 +12,7 @@ import (
 
 	"github.com/cucumber/godog"
 
+	"github.com/cxyfer/notesteme/features/internal/fakecompose"
 	"github.com/cxyfer/notesteme/features/internal/harness"
 	"github.com/cxyfer/notesteme/internal/app"
 	"github.com/cxyfer/notesteme/internal/cli"
@@ -55,7 +56,9 @@ var cliTimeout = 30 * time.Second
 //   - server 已在執行：先呼叫 prepareOwner 把設定與佇列送出，CLI 才看得到它們。
 //   - server 沒有在執行：無處可套，直接失敗，不默默忽略。
 //
-// 只執行 notesteme；docker 指令目前是 pending（OPS 切片處理），其他指令一律失敗。
+// 只執行 notesteme 與 docker：docker 由 fakecompose 模擬（只支援 `docker compose … config --format json`，
+// 讀取 repo 內真正的 compose 檔，不會呼叫真正的 docker，見 runDocker）；其他指令一律失敗。
+// handoff 第 4 節允許清單中的「docker 指令 pending」到此結束：不支援的 docker 指令現在是失敗，不是 pending。
 func (s *Scenario) ownerRuns(line string) error {
 	// 先依引號切開，再對每個參數代入 {token:…} 並把虛擬路徑換成實際路徑：
 	// 含空白的暫存路徑與代入的內容都不會被切壞，也不會被當成引號或空白處理。
@@ -72,9 +75,7 @@ func (s *Scenario) ownerRuns(line string) error {
 	switch argv[0] {
 	case "notesteme":
 	case "docker":
-		// docker compose 的場景要另外的驗證方式（讀 deploy/docker/compose.yaml），由 OPS 切片處理；
-		// handoff 第 4 節的允許清單列有 docker 指令。
-		return fmt.Errorf("harness 不執行 docker 指令（OPS 切片處理）：%w", godog.ErrPending)
+		return s.runDocker(argv[1:])
 	default:
 		return fmt.Errorf("harness 只執行 notesteme 的 CLI，不認得指令 %q（打錯字？）", argv[0])
 	}
@@ -104,6 +105,31 @@ func (s *Scenario) ownerRuns(line string) error {
 	}
 	s.cmd = &cliRun{
 		res: res, out: s.World.Unexpand(stdout.String()), errOut: s.World.Unexpand(stderr.String()), step: s.step,
+	}
+	return nil
+}
+
+// composeEnv 是 fakecompose 代入變數用的環境：只有 compose.yaml 要求必要的變數，值是假的。
+// 不用 World.Env：真正的測試 master key 不該出現在 `config` 的輸出裡（compose 會把 environment 原樣印出）。
+var composeEnv = map[string]string{"NOTESTEME_MASTER_KEY": "fake-master-key-for-compose-config"}
+
+// runDocker 以 fakecompose 模擬 `docker <args>`（OPS-R9）。
+// compose 自己會失敗的情況（例如必要的變數沒有設定）變成非零結束碼與 stderr，和真的 docker 一樣；
+// 不支援的指令或 compose 功能是 harness 的限制，讓步驟失敗，不能被當成被測行為。
+func (s *Scenario) runDocker(args []string) error {
+	root, err := fakecompose.FindRoot(".")
+	if err != nil {
+		return err
+	}
+	out, err := fakecompose.Run(root, args, composeEnv)
+	var exit *fakecompose.ExitError
+	switch {
+	case err == nil:
+		s.cmd = &cliRun{res: cli.Result{Code: 0}, out: out, step: s.step}
+	case errors.As(err, &exit):
+		s.cmd = &cliRun{res: cli.Result{Code: exit.Code}, errOut: exit.Msg + "\n", step: s.step}
+	default:
+		return fmt.Errorf("harness 無法模擬這個 docker 指令（docker %s）：%w", strings.Join(args, " "), err)
 	}
 	return nil
 }

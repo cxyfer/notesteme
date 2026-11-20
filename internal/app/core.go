@@ -15,7 +15,6 @@ import (
 	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/secrets"
 	"github.com/cxyfer/notesteme/internal/store"
-	"github.com/cxyfer/notesteme/internal/toolexec"
 )
 
 // 鎖檔中 LockInfo.Holder 的值。
@@ -120,7 +119,11 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 		return nil, fmt.Errorf("設定 %s 的權限失敗：%w", tmp, err)
 	}
 
-	s.store, err = store.Open(ctx, cfg.Data, env.Clock)
+	var storeOpts store.Options
+	if env.Test != nil {
+		storeOpts.Migrations = env.Test.Migrations
+	}
+	s.store, err = store.Open(ctx, cfg.Data, env.Clock, storeOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +184,7 @@ func (s *Server) apiDeps(env Env) api.Deps {
 	return api.Deps{
 		Paths: pathguard.New(append([]string{s.cfg.Inbox}, s.cfg.MediaRoots...)),
 		Store: s.store, Auth: s.auth, Clock: env.Clock, Log: s.log, Version: version,
-		ReadyChecks: toolChecks(toolexec.Resolver{Vars: env.Vars, Config: s.cfg.Tools}),
+		ReadyChecks: toolChecks(ToolResolver(env.Vars, s.cfg)),
 		Pipeline:    s.pipeline,
 		// cookie API（POST /api/cookies）：儲存後由 pipeline 恢復等待 cookie 的 blocked 步驟（PIPE-R4）。
 		Cookies: s.cookies,
@@ -189,6 +192,11 @@ func (s *Server) apiDeps(env Env) api.Deps {
 		Queue:   s.queue,
 		Events:  s.eventsHandler(),
 		Tasks:   s.worker,
+		// OPS 切片的依賴；各自在 system.go、tools.go、backup.go、providers.go 實作，還沒實作時為 nil。
+		System:    s.systemInfo(env),
+		Tools:     s.toolManager(env),
+		Backup:    s.backupSource(env),
+		Providers: s.providerRegistry(env),
 	}
 }
 

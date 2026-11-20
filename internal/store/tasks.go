@@ -86,11 +86,23 @@ func (r *Repo) TaskByStageRun(ctx context.Context, stageRunID string) (Task, err
 }
 
 // ClaimTasks 以一條 SQL 原子地領取可以執行的任務（ADR-0004），並把它們的步驟標記為 running。
-// 兩個陳述句必須在同一個交易中（用 Store.Tx）。
+// 兩個陳述句在同一個交易中：呼叫端已經在 Store.Tx 裡就沿用它，否則（Write）自己開一個。
 //
 // 可領取：state 為 pending，執行者與資源類別符合，not_before 已到。
 // 排序：priority 加上等待時間換算的 aging，再依建立順序。
-func (r *Repo) ClaimTasks(ctx context.Context, o ClaimOptions) ([]Task, error) {
+func (r *Repo) ClaimTasks(ctx context.Context, o ClaimOptions) (claimed []Task, err error) {
+	err = r.inTx(ctx, func(tx *Repo) error {
+		var cerr error
+		claimed, cerr = tx.claimTasks(ctx, o)
+		return cerr
+	})
+	if err != nil {
+		return nil, err
+	}
+	return claimed, nil
+}
+
+func (r *Repo) claimTasks(ctx context.Context, o ClaimOptions) ([]Task, error) {
 	now := r.nowMs()
 	aging := o.AgingInterval.Milliseconds()
 	if aging <= 0 {
@@ -149,7 +161,9 @@ func (r *Repo) ClaimTasks(ctx context.Context, o ClaimOptions) ([]Task, error) {
 		if err != nil {
 			return nil, err
 		}
-		r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
+		if err := r.emitStage(ctx, row.ItemID, row.Stage, row.Status); err != nil {
+			return nil, err
+		}
 	}
 	return claimed, nil
 }
@@ -227,7 +241,19 @@ func (r *Repo) QueueTasks(ctx context.Context, executor string, aging time.Durat
 
 // ReleaseLeases 把租約放回佇列：不是 keepOwner 持有的，或已經到期的 leased 任務回到 pending，
 // 這次領取不計入 attempts，它們的步驟回到 pending（PIPE-R11）。回傳放回的任務數。
-func (r *Repo) ReleaseLeases(ctx context.Context, keepOwner string) (int, error) {
+func (r *Repo) ReleaseLeases(ctx context.Context, keepOwner string) (n int, err error) {
+	err = r.inTx(ctx, func(tx *Repo) error {
+		var rerr error
+		n, rerr = tx.releaseLeases(ctx, keepOwner)
+		return rerr
+	})
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+func (r *Repo) releaseLeases(ctx context.Context, keepOwner string) (int, error) {
 	ids, err := r.q.ReleaseLeases(ctx, sqlcdb.ReleaseLeasesParams{KeepOwner: keepOwner, Now: r.nowMs()})
 	if err != nil {
 		return 0, err
@@ -236,7 +262,19 @@ func (r *Repo) ReleaseLeases(ctx context.Context, keepOwner string) (int, error)
 }
 
 // ReleaseOwned 把 owner 持有的全部租約放回佇列（正常關閉，PIPE-R12）。
-func (r *Repo) ReleaseOwned(ctx context.Context, owner string) (int, error) {
+func (r *Repo) ReleaseOwned(ctx context.Context, owner string) (n int, err error) {
+	err = r.inTx(ctx, func(tx *Repo) error {
+		var rerr error
+		n, rerr = tx.releaseOwned(ctx, owner)
+		return rerr
+	})
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+func (r *Repo) releaseOwned(ctx context.Context, owner string) (int, error) {
 	ids, err := r.q.ReleaseOwnedLeases(ctx, owner)
 	if err != nil {
 		return 0, err
@@ -254,7 +292,9 @@ func (r *Repo) resetStages(ctx context.Context, stageRunIDs []string) (int, erro
 		if err != nil {
 			return 0, err
 		}
-		r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
+		if err := r.emitStage(ctx, row.ItemID, row.Stage, row.Status); err != nil {
+			return 0, err
+		}
 	}
 	return len(stageRunIDs), nil
 }

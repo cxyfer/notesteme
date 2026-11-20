@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/app"
@@ -304,50 +305,108 @@ func (b *backend) getJSON(ctx context.Context, path string, out any) error {
 
 // handlerTransport 讓獨立模式在程序內呼叫 API handler（不經過任何 listener）。
 // handler 是 api.NewLocal，以 owner 身分執行，所以只能在程序內使用。
+//
+// 回應以串流交給 client：handler 在另一個 goroutine 執行，標頭一送出（WriteHeader、第一次 Write、Flush，
+// 或 handler 結束）就回傳 *http.Response，本體透過 io.Pipe 傳遞。大型回應（備份，OPS-R1）因此不會整份留在記憶體。
 type handlerTransport struct{ h http.Handler }
 
 func (t handlerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	rec := &memWriter{header: http.Header{}, status: http.StatusOK}
-	r := req.Clone(req.Context())
+	ctx, cancel := context.WithCancel(req.Context())
+	pr, pw := io.Pipe()
+	w := &streamWriter{header: http.Header{}, pw: pw, committed: make(chan struct{})}
+	r := req.Clone(ctx)
 	r.RemoteAddr = "127.0.0.1:0"
 	r.RequestURI = req.URL.RequestURI()
 	if r.Body == nil {
 		r.Body = http.NoBody
 	}
-	t.h.ServeHTTP(rec, r)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() {
+			// 中斷（http.ErrAbortHandler，例如備份串流到一半失敗）要讓 client 讀到錯誤，而不是一份看似完整的內容；
+			// 其他 panic 也轉成讀取錯誤，不讓整個程序崩潰。
+			if v := recover(); v != nil {
+				w.commit()
+				if v == http.ErrAbortHandler { //nolint:errorlint // 官方建議以相等比較
+					pw.CloseWithError(io.ErrUnexpectedEOF)
+					return
+				}
+				pw.CloseWithError(fmt.Errorf("API handler 發生 panic：%v", v))
+			}
+		}()
+		t.h.ServeHTTP(w, r)
+		w.commit()
+		_ = pw.Close()
+	}()
+
+	select {
+	case <-w.committed:
+	case <-ctx.Done():
+		_ = pr.CloseWithError(ctx.Err())
+		<-done
+		cancel()
+		return nil, ctx.Err()
+	}
 	return &http.Response{
-		Status:        fmt.Sprintf("%d %s", rec.status, http.StatusText(rec.status)),
-		StatusCode:    rec.status,
+		Status:        fmt.Sprintf("%d %s", w.status, http.StatusText(w.status)),
+		StatusCode:    w.status,
 		Proto:         "HTTP/1.1",
 		ProtoMajor:    1,
 		ProtoMinor:    1,
-		Header:        rec.header,
-		Body:          io.NopCloser(&rec.buf),
-		ContentLength: int64(rec.buf.Len()),
+		Header:        w.sent,
+		Body:          &streamBody{pr: pr, cancel: cancel, done: done},
+		ContentLength: -1,
 		Request:       req,
 	}, nil
 }
 
-// memWriter 是記憶體中的 http.ResponseWriter；回應完整收完才交給 client（獨立模式不使用串流）。
-type memWriter struct {
+// streamWriter 是 http.ResponseWriter：標頭送出後，本體寫進 pipe（寫入會等到 client 讀走）。
+type streamWriter struct {
 	header http.Header
-	status int
-	wrote  bool
-	buf    bytes.Buffer
+	pw     *io.PipeWriter
+
+	once      sync.Once
+	committed chan struct{}
+	status    int
+	sent      http.Header // 標頭送出當下的快照；之後 handler 再改 Header() 不影響 client
 }
 
-func (w *memWriter) Header() http.Header { return w.header }
+func (w *streamWriter) Header() http.Header { return w.header }
 
-func (w *memWriter) WriteHeader(status int) {
-	if !w.wrote {
-		w.status, w.wrote = status, true
-	}
+// commit 在第一次呼叫時固定狀態與標頭，並通知 RoundTrip 可以回傳了。
+func (w *streamWriter) commit() { w.commitWith(http.StatusOK) }
+
+func (w *streamWriter) commitWith(status int) {
+	w.once.Do(func() {
+		w.status, w.sent = status, w.header.Clone()
+		close(w.committed)
+	})
 }
 
-func (w *memWriter) Write(p []byte) (int, error) {
-	w.WriteHeader(http.StatusOK)
-	return w.buf.Write(p)
+func (w *streamWriter) WriteHeader(status int) { w.commitWith(status) }
+
+func (w *streamWriter) Write(p []byte) (int, error) {
+	w.commit()
+	return w.pw.Write(p)
 }
 
-// Flush 讓 handler 的 http.ResponseController 不會因為不支援而失敗。
-func (w *memWriter) Flush() {}
+// Flush 與真正的 server 一樣：把標頭送出。
+func (w *streamWriter) Flush() { w.commit() }
+
+// streamBody 是回應的本體。Close 會中止仍在寫入的 handler，並等它結束：
+// 獨立模式隨後會釋放資料目錄，不能有 handler 還在使用它。
+type streamBody struct {
+	pr     *io.PipeReader
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
+func (b *streamBody) Read(p []byte) (int, error) { return b.pr.Read(p) }
+
+func (b *streamBody) Close() error {
+	b.cancel()
+	_ = b.pr.Close()
+	<-b.done
+	return nil
+}

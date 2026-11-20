@@ -20,6 +20,20 @@ Feature: Configuration and secrets
       { "listen": "127.0.0.1:9090", "listen_source": "env" }
       """
 
+  @M1 @SEC-01 @SEC-R1
+  Scenario: The config file is used when no environment variable is set
+    Given the config file contains:
+      """
+      listen: 127.0.0.1:8080
+      """
+    And the server is running
+    And the owner is signed in
+    When the owner sends "GET /api/system"
+    Then the response contains:
+      """
+      { "listen": "127.0.0.1:8080", "listen_source": "config_file" }
+      """
+
   @M1 @SEC-01 @SEC-R2
   Scenario: Database-managed settings are not accepted in the config file
     Given the config file contains:

@@ -58,7 +58,19 @@ func stageRunFromRow(row sqlcdb.StageRun) (StageRun, error) {
 }
 
 // InsertStageRun 新增步驟。
-func (r *Repo) InsertStageRun(ctx context.Context, n NewStageRun) (StageRun, error) {
+func (r *Repo) InsertStageRun(ctx context.Context, n NewStageRun) (run StageRun, err error) {
+	err = r.inTx(ctx, func(tx *Repo) error {
+		var ierr error
+		run, ierr = tx.insertStageRun(ctx, n)
+		return ierr
+	})
+	if err != nil {
+		return StageRun{}, err
+	}
+	return run, nil
+}
+
+func (r *Repo) insertStageRun(ctx context.Context, n NewStageRun) (StageRun, error) {
 	id := NewID()
 	err := r.q.InsertStageRun(ctx, sqlcdb.InsertStageRunParams{
 		ID:               id,
@@ -73,7 +85,9 @@ func (r *Repo) InsertStageRun(ctx context.Context, n NewStageRun) (StageRun, err
 	if err != nil {
 		return StageRun{}, err
 	}
-	r.emitStage(ctx, n.ItemID, n.Stage, n.Status)
+	if err := r.emitStage(ctx, n.ItemID, n.Stage, n.Status); err != nil {
+		return StageRun{}, err
+	}
 	return r.StageRun(ctx, id)
 }
 
@@ -126,6 +140,10 @@ func (r *Repo) ExecutedRunsByItem(ctx context.Context, itemID string) ([]Execute
 
 // SetStageState 寫入步驟的狀態與說明。進入 running 時記錄開始時間，進入 done／failed／skipped 時記錄結束時間。
 func (r *Repo) SetStageState(ctx context.Context, id string, st StageState) error {
+	return r.inTx(ctx, func(tx *Repo) error { return tx.setStageState(ctx, id, st) })
+}
+
+func (r *Repo) setStageState(ctx context.Context, id string, st StageState) error {
 	actions, err := json.Marshal(nonNil(st.Actions))
 	if err != nil {
 		return err
@@ -156,8 +174,7 @@ func (r *Repo) SetStageState(ctx context.Context, id string, st StageState) erro
 	if err != nil {
 		return err
 	}
-	r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
-	return nil
+	return r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
 }
 
 // SetStageResult 記錄步驟的快取鍵、版本與產出。

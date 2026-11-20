@@ -30,7 +30,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // 註冊 "sqlite" driver
 
 	"github.com/cxyfer/notesteme/internal/clock"
@@ -51,6 +50,7 @@ var migrationsFS embed.FS
 
 // Store 持有 SQLite 的寫入連線與讀取連線池。
 type Store struct {
+	path  string  // 資料庫檔的絕對路徑（備份時另開連線用）
 	w     *sql.DB // 唯一的寫入連線
 	r     *sql.DB // 唯讀連線池
 	wq    *sqlcdb.Queries
@@ -60,9 +60,30 @@ type Store struct {
 	sink atomic.Pointer[func(events.Event)]
 }
 
+// Options 是 Open 的選項；零值等於預設行為。
+type Options struct {
+	// Migrations 是 migration 的來源，根目錄直接放 *.sql；nil 時用內建的（MigrationsFS）。
+	// 只給測試與驗收使用，例如模擬「程式內建的最新版本是 N」。
+	Migrations fs.FS
+}
+
+// MigrationsFS 回傳內建的 migration（根目錄直接放 *.sql），供 Options.Migrations 與驗收 harness 使用。
+func MigrationsFS() fs.FS {
+	sub, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		// 路徑是常數且已嵌入；失敗代表編譯期的 embed 設定壞了。
+		panic(fmt.Errorf("store: 取得內建 migration 失敗：%w", err))
+	}
+	return sub
+}
+
 // Open 開啟 dir/notesteme.db 並套用 migration。dir 必須已存在。
-// DB 與 WAL／SHM 的權限一律為 0600（NFR-SEC-5）。
-func Open(ctx context.Context, dir string, clk clock.Clock) (*Store, error) {
+// DB 與 WAL／SHM 的權限一律為 0600（NFR-SEC-5）。opts 最多一個，省略時使用預設。
+func Open(ctx context.Context, dir string, clk clock.Clock, opts ...Options) (*Store, error) {
+	var o Options
+	if len(opts) > 0 {
+		o = opts[0]
+	}
 	// 一律用絕對路徑：file: URI 遇到相對路徑會把第一段當成 host（file://data/x.db），資料目錄是相對路徑時就開不起來。
 	if abs, err := filepath.Abs(dir); err == nil {
 		dir = abs
@@ -81,19 +102,19 @@ func Open(ctx context.Context, dir string, clk clock.Clock) (*Store, error) {
 	}
 	w.SetMaxOpenConns(1)
 
-	sub, err := fs.Sub(migrationsFS, "migrations")
+	sub := o.Migrations
+	if sub == nil {
+		sub = MigrationsFS()
+	}
+	// OPS-R3、R4：有待執行的 migration 先留快照；失敗時還原快照並拒絕啟動；資料庫比程式新時拒絕。
+	snapshot, err := migrate(ctx, w, dir, sub)
 	if err != nil {
 		_ = w.Close()
+		var me *MigrationError
+		if errors.As(err, &me) && snapshot != "" {
+			me.RestoreErr = restoreSnapshot(snapshot, path)
+		}
 		return nil, err
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, w, sub)
-	if err != nil {
-		_ = w.Close()
-		return nil, fmt.Errorf("初始化 migration 失敗：%w", err)
-	}
-	if _, err := provider.Up(ctx); err != nil {
-		_ = w.Close()
-		return nil, fmt.Errorf("執行 migration 失敗：%w", err)
 	}
 
 	r, err := openDB(path, true)
@@ -108,7 +129,7 @@ func Open(ctx context.Context, dir string, clk clock.Clock) (*Store, error) {
 		_ = w.Close()
 		return nil, err
 	}
-	return &Store{w: w, r: r, wq: sqlcdb.New(w), rq: sqlcdb.New(r), clock: clk}, nil
+	return &Store{path: path, w: w, r: r, wq: sqlcdb.New(w), rq: sqlcdb.New(r), clock: clk}, nil
 }
 
 // ensurePrivateFiles 把 DB 與 -wal、-shm 的權限設為 0600。create 為 true 時 DB 不存在會先以 0600 建立；

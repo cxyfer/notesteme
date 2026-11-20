@@ -52,6 +52,8 @@ const (
 	VirtualConfig = "/config"
 	// VirtualMedia 是 GRD-R7 場景使用的媒體根目錄（media_roots: [/media]）。
 	VirtualMedia = "/media"
+	// VirtualBackups 是備份檔的放置處（OPS-R1），不加 /tmp 前綴：場景根目錄本身就在 /tmp 底下。
+	VirtualBackups = "/backups"
 )
 
 // World 是一個場景的全部狀態。
@@ -83,6 +85,11 @@ type World struct {
 
 	listenMu sync.Mutex
 	listens  []ListenRecord
+
+	// CurrentSchema 是 `the current schema version is N` 設定的、程式內建的最新 schema 版本；0 代表用內建的全部。
+	CurrentSchema int
+	// FailMigration 是 `migration N fails` 指定會失敗的 migration 版本；0 代表沒有。
+	FailMigration int
 
 	closed bool
 }
@@ -166,6 +173,9 @@ func (w *World) BinDir() string    { return filepath.Join(w.Root, "bin") }
 func (w *World) FakeDir() string   { return faketool.FakeDir(w.Root) }
 func (w *World) HomeDir() string   { return filepath.Join(w.Root, "home") }
 func (w *World) MediaDir() string  { return filepath.Join(w.Root, "media") }
+
+// BackupsDir 是 /backups 的實際路徑（不預先建立，由 CLI 或步驟需要時建立）。
+func (w *World) BackupsDir() string { return filepath.Join(w.Root, "backups") }
 
 // mediaLinkName 是 media/ 下指向 / 的 symlink 名稱：驗證路徑檢查會解析 symlink（GRD-R7）。
 const mediaLinkName = "link-to-root"
@@ -356,10 +366,11 @@ func (w *World) virtuals() [][2]string {
 		{VirtualData, w.DataDir()},
 		{VirtualConfig, w.ConfigDir()},
 		{VirtualMedia, w.MediaDir()},
+		{VirtualBackups, w.BackupsDir()},
 	}
 }
 
-// Expand 把字串中的虛擬路徑（/data、/config、/media）改寫成場景根目錄下的實際路徑。
+// Expand 把字串中的虛擬路徑（/data、/config、/media、/backups）改寫成場景根目錄下的實際路徑。
 // 只在路徑段的邊界比對：/data/x 與 "/data" 會被改寫，/database 與 /home/u/data 不會。
 // 用於設定檔內容、CLI 參數、請求 body、檔案路徑。
 func (w *World) Expand(s string) string {

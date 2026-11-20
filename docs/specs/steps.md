@@ -87,7 +87,10 @@
 - `Given` 步驟只累積設定。server 還沒啟動時，第一個送出請求的步驟以當時的設定啟動它；`Given the owner is signed in` 也在第一次送出請求時才建立 session。
 - 場景明確讓 server 停下之後（`When the server shuts down gracefully`），讀取狀態的 `Then` 步驟不會隱含啟動 server，而是唯讀查詢資料庫；否則新 server 啟動時的租約回收（PIPE-R11）會蓋掉要驗證的結果。下一個送出請求的步驟仍然會啟動 server。
 - 「任務正在執行」同時要求資料庫中的租約有效，且對應的外部工具程序仍然存活。
-- 場景中的 `/data`、`/config` 等路徑，會換成這個場景專用的暫存目錄。
+- 場景中的 `/data`、`/config` 等路徑，會換成這個場景專用的暫存目錄。對應規則（虛擬路徑 → 實際路徑）：
+  - `/data` → `<場景根目錄>/data`、`/config` → `<場景根目錄>/config`、`/media` → `<場景根目錄>/media`、`/backups` → `<場景根目錄>/backups`。
+  - `/tmp/<x>` → `<場景根目錄>/tmp/<x>`：場景中的 `/tmp/...`（例如上傳用的 `/tmp/fansub.ass`）不寫到真正的 `/tmp`。目前只有檔案步驟套用；之後 `the owner uploads "/tmp/..."` 等步驟實作時，也要用同一個對應。
+- After hook 的 secret 掃描（NFR-SEC-3）除了 log 與假工具的呼叫紀錄，也涵蓋 `/backups`：其中的 `.tar.gz` 解壓後，逐一檢查每個項目的內容不含 master key 的值（OPS-R1）。
 - `Given {string} has {word} captions in {string}` 沒有對應的 fixture 時，產生 120 句的字幕軌。
 
 ### 4.1 環境與時間（`steps/env.go`）
@@ -167,8 +170,8 @@
 | `Given the {string} transcript of {string} is:` | 指定變體的字幕；表格欄位：`#`、`start`、`end`、`text`，可加 `words`、`timing` |
 | `Given the {string} transcript of {string} in {string} is:` | 同上，指定語言 |
 | `When the worker runs until idle` | worker 持續執行，直到沒有可以執行的任務 |
-| `Then the library contains {int} items` | 影音總數，不含垃圾桶中的影音 |
-| `Then the library contains {string}` | 影音存在，且不在垃圾桶中 |
+| `Then the library contains {int} items` | 影音總數，不含垃圾桶中的影音。server 已明確停下（`When the server shuts down gracefully`）時，不隱含啟動 server，改用唯讀方式查詢 DB |
+| `Then the library contains {string}` | 影音存在，且不在垃圾桶中。server 已明確停下時，同上，改用唯讀方式查詢 DB |
 | `Then the stage {string} of {string} is {string}` | 步驟狀態 |
 | `Then the stage {string} of {string} is blocked with the reason {string}` | 狀態為 `blocked`，且 `block_reason` 相符 |
 | `Then the stage {string} of {string} failed with the error class {string}` | `failed` 及錯誤類別 |
@@ -257,7 +260,7 @@
 
 | 步驟 | 意思 |
 |---|---|
-| `When the owner runs {string}` | 執行 CLI，例如 `"notesteme items ls --json"`。只執行 `notesteme`；`docker …` 目前為 pending（OPS 切片處理）；不會隱含啟動 server |
+| `When the owner runs {string}` | 執行 CLI，例如 `"notesteme items ls --json"`。只執行 `notesteme` 與 `docker`；`docker compose … config --format json` 由 fakecompose 模擬，其他 `docker` 指令失敗（不是 pending）；不會隱含啟動 server |
 | `Then the command exits with {int}` | 結束碼。指令回報 `not_implemented`（尚未實作的子命令，或 API 回 501）且結果來自前一個步驟時為 pending |
 | `Then the command output contains {string}` | stdout 或 stderr 包含指定文字 |
 | `Then the command output is JSON containing:` | stdout 是 JSON，且包含指定內容 |
@@ -267,11 +270,11 @@
 
 | 步驟 | 意思 |
 |---|---|
-| `Given the file {string} contains:` | 建立檔案 |
+| `Given the file {string} contains:` | 建立檔案：內容照字面寫入（doc string 的內容，不解析也不轉換）；上層目錄不存在時自動建立（例如 `/backups/old.tar.gz` 的 `/backups`） |
 | `Then the file {string} exists` | 檔案存在 |
 | `Then the file {string} does not exist` | 檔案不存在 |
-| `Then the file {string} contains {string}` | 檔案內容包含指定文字（壓縮檔會先解開） |
-| `Then the file {string} does not contain {string}` | 檔案內容不包含指定文字（壓縮檔會先解開） |
+| `Then the file {string} contains {string}` | 檔案內容包含指定文字。`.tar.gz` 先 gunzip，再逐一比對每個 tar 項目的內容（檔名不算），任何一個項目包含就成立；其他壓縮檔照原本的方式解開。解不開、或 `.tar.gz` 沒有任何一般檔案項目（「封存檔沒有任何檔案」）時失敗 |
+| `Then the file {string} does not contain {string}` | 檔案內容不包含指定文字。`.tar.gz` 先 gunzip，再逐一比對每個 tar 項目的內容，所有項目都不包含才成立；其他壓縮檔照原本的方式解開。解不開、或 `.tar.gz` 沒有任何一般檔案項目（「封存檔沒有任何檔案」）時失敗：空的封存檔不能證明「不含」 |
 | `Then the data directory does not contain the created token` | `/data` 中不含最近一次建立的 token 明文 |
 | `Then the file {string} is:` | 檔案內容完全相同 |
 | `Then the file {string} has the mode {string}` | 檔案權限，例如 `"0600"` |
@@ -309,12 +312,14 @@
 
 | 步驟 | 意思 |
 |---|---|
-| `Given the data directory was created by schema version {int}` | 用指定 schema 版本的 fixture 建立資料目錄 |
-| `Given the current schema version is {int}` | 程式內建的最新 schema 版本 |
-| `Given migration {int} fails` | 指定的 migration 會失敗 |
-| `Then the database is at schema version {int}` | DB 目前的 schema 版本 |
-| `Given yt-dlp {string} is installed` | `/data/tools` 中安裝指定版本 |
-| `Given the yt-dlp release {string} passes the self-check` | 可更新到的版本，且自我檢查會通過 |
-| `Given the yt-dlp release {string} fails the self-check` | 可更新到的版本，但自我檢查會失敗 |
+| `Given the data directory was created by schema version {int}` | 用指定 schema 版本建立 `/data` 的 DB：harness 以 `store.MigrationsFS()` 加上 goose 的 `UpTo(N)` 建立；N 比內建的最新版本大時，補上合成的 migration 讓版本到 N |
+| `Given the current schema version is {int}` | 程式內建的最新 schema 版本是 N：透過 `TestControls.Migrations` 只提供版本 1 到 N 的 migration，之後啟動的 server 都用這份 |
+| `Given migration {int} fails` | 第 N 支 migration 會失敗：以一支 `-- +goose NO TRANSACTION` 的 migration 取代第 N 支，先做一部分變更（建立一個 marker 表）再失敗，讓「失敗時只還原快照才會乾淨」可以被驗證 |
+| `Then the database is at schema version {int}` | DB 目前的 schema 版本：goose 版本表的最新版本是 N，而且 `sqlite_master` 的 schema 與「全新 DB 跑到 N」的參考 schema 完全相同，所以失敗 migration 留下的 marker 表也會被發現 |
+| `Given yt-dlp {string} is installed` | 在 OPS 規格規定的目錄結構中建立假的 venv：`/data/tools/yt-dlp/<版本>/` 是 venv，`/data/tools/yt-dlp-venv` 是指向它的 symlink；venv 內的假 yt-dlp 與假 python 回報該版本 |
+| `Given the yt-dlp release {string} passes the self-check` | 可更新到的版本，且自我檢查會通過。假 python 支援 `-m venv`、`-m pip install yt-dlp[default]==V` 與 `-U`（裝出來的 venv 回報版本 V）；不連外網 |
+| `Given the yt-dlp release {string} fails the self-check` | 可更新到的版本，但自我檢查會失敗：只有對「檢查影片」的 `Probe` 失敗，`--version` 照常成功（要驗證的是 Probe 的那一步）。安裝的支援同上 |
+| `Then yt-dlp {string} is the active version` | 目前使用中的 yt-dlp：`/data/tools/yt-dlp-venv` 解析後指向的 venv，其中的 yt-dlp 回報這個版本（驗證更新真的切換、回退真的沒有切換） |
 | `Given an event from {string} exists` | 建立一筆指定時間的事件 |
 | `Then no event older than {int} days remains` | 事件都在保留期限內 |
+| `Then the number of events is {int}` | 持久化的事件筆數：計算整張 events 表（包括場景中用 `an event from … exists` 建立的，不只是場景自己建立的）。server 已明確停下時改用唯讀方式查詢 DB |

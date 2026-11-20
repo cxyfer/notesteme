@@ -40,6 +40,18 @@ func itemFromRow(row sqlcdb.Item) Item {
 
 // InsertItemIfAbsent 新增影音；(platform, external_id, part) 已存在時不新增，回傳既有的影音，created 為 false（ING-R2）。
 func (r *Repo) InsertItemIfAbsent(ctx context.Context, n NewItem) (it Item, created bool, err error) {
+	err = r.inTx(ctx, func(tx *Repo) error {
+		var ierr error
+		it, created, ierr = tx.insertItemIfAbsent(ctx, n)
+		return ierr
+	})
+	if err != nil {
+		return Item{}, false, err
+	}
+	return it, created, nil
+}
+
+func (r *Repo) insertItemIfAbsent(ctx context.Context, n NewItem) (it Item, created bool, err error) {
 	overrides := n.Overrides
 	if len(overrides) == 0 {
 		overrides = json.RawMessage(`{}`)
@@ -62,7 +74,7 @@ func (r *Repo) InsertItemIfAbsent(ctx context.Context, n NewItem) (it Item, crea
 	if rows > 0 {
 		it, err = r.ItemByID(ctx, id)
 		if err == nil {
-			r.emitItemCreated(it)
+			err = r.emitItemCreated(ctx, it)
 		}
 		return it, true, err
 	}
