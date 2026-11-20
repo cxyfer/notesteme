@@ -42,6 +42,8 @@ type probed struct {
 	// LocalStat 是非上傳的本機檔案目前的 size 與 mtime；其他情況為 nil。
 	// 它記在 metadata_json 的 local，下次探測時用來判斷檔案有沒有被替換。
 	LocalStat *localStat
+	// AudioDurationS 是 Podcast 音檔的實際長度（metadata 下載時 ffprobe 量到的）；0 代表未知。SRC-R15 的偏移檢查用它。
+	AudioDurationS float64
 }
 
 // platformAdapter 是步驟用到的平台功能；依 items.platform 分派（見 Pipeline.adapterFor）。
@@ -63,6 +65,8 @@ func (p *Pipeline) adapterFor(platform string) (platformAdapter, error) {
 		return bilibiliAdapter{p.bili}, nil
 	case platform == source.PlatformLocal && p.files != nil:
 		return localAdapter{files: p.files, media: p.media, dataDir: p.dataDir}, nil
+	case platform == source.PlatformPodcast && p.http != nil:
+		return podcastAdapter{http: p.http}, nil
 	}
 	return nil, errPermanent(fmt.Sprintf("還不支援 %s 的處理", platform))
 }
@@ -147,19 +151,25 @@ func (a bilibiliAdapter) toolVersions(ctx context.Context) (map[string]string, e
 	return map[string]string{"yt-dlp": v}, nil
 }
 
-// cacheProvider 是快取鍵的 provider：本機影音是 local，其餘平台透過 yt-dlp。
+// cacheProvider 是快取鍵的 provider：本機影音是 local，Podcast 是 podcast，其餘平台透過 yt-dlp。
 func cacheProvider(platform string) string {
-	if platform == source.PlatformLocal {
+	switch platform {
+	case source.PlatformLocal:
 		return "local"
+	case source.PlatformPodcast:
+		return "podcast"
 	}
 	return "yt-dlp"
 }
 
-// selectTracks 依平台的規則選字幕軌：本機影音有自己的規則（SRC-R14），其餘平台用 caption_priority。
+// selectTracks 依平台的規則選字幕軌：本機影音與 Podcast 有自己的規則（SRC-R14），其餘平台用 caption_priority。
 // metadata 判斷資源類別與 transcript 選軌共用它，兩邊才會對同一部影音得到相同的結論。
 func selectTracks(platform string, tracks []transcript.Track, originalLang string, lang Language) (*transcript.Track, []transcript.Decision) {
-	if platform == source.PlatformLocal {
+	switch platform {
+	case source.PlatformLocal:
 		return transcript.SelectLocal(tracks, originalLang, lang.CaptionPriority)
+	case source.PlatformPodcast:
+		return transcript.SelectPodcast(tracks, originalLang, lang.CaptionPriority)
 	}
 	return transcript.SelectFor(platform, tracks, originalLang, lang.CaptionPriority, lang.AllowPlatformTranslated)
 }
@@ -174,6 +184,7 @@ func bilibiliPart(bvid string, part int) source.Target {
 // inferOriginalLang 回傳影音的原文語言：current 已有值就用它。
 //   - Bilibili 沒有語言中繼資料，看得到 AI 字幕軌時用它的語言推斷（inferred 為 true）。
 //   - 本機影音沒有語言中繼資料（容器的音訊語言標記不採用）：用選中的本機字幕的語言推斷。
+//   - Podcast 的 feed 沒有 <language> 時：用選中的 <podcast:transcript> 的語言推斷。
 //
 // metadata 判斷資源類別與 transcript 選軌共用這個推斷，兩邊才會對同一部影音得到相同的結論。
 func inferOriginalLang(platform, current string, tracks []transcript.Track, lang Language) (string, bool) {
@@ -187,6 +198,10 @@ func inferOriginalLang(platform, current string, tracks []transcript.Track, lang
 		}
 	case source.PlatformLocal:
 		if chosen, _ := transcript.SelectLocal(tracks, "", lang.CaptionPriority); chosen != nil && chosen.Lang != "" {
+			return transcript.NormalizeLang(chosen.Lang), true
+		}
+	case source.PlatformPodcast:
+		if chosen, _ := transcript.SelectPodcast(tracks, "", lang.CaptionPriority); chosen != nil && chosen.Lang != "" {
 			return transcript.NormalizeLang(chosen.Lang), true
 		}
 	}
