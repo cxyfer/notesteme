@@ -200,12 +200,12 @@ func (fa *ffArgs) check(want map[string]string, bools []string) error {
 			return fmt.Errorf("%s requires %s", fa.modeName(), b)
 		}
 	}
-	// 白名單：-protocol_whitelist 已在上面確認是 file；-format_whitelist 除靜音偵測外必填，且不含 hls、concat。
+	// 白名單：-protocol_whitelist 已在上面確認是 file；-format_whitelist 每種模式都必填（含靜音偵測），且不含 hls、concat 等。
 	if wl, ok := fa.vals["-format_whitelist"]; ok {
 		if err := checkFormatWhitelist(wl); err != nil {
 			return err
 		}
-	} else if fa.mode != ffSilence {
+	} else {
 		return fmt.Errorf("%s requires -format_whitelist", fa.modeName())
 	}
 	_, hasSS := fa.vals["-ss"]
@@ -264,7 +264,7 @@ func checkFormatWhitelist(wl string) error {
 		if !whitelistName.MatchString(f) {
 			return fmt.Errorf("-format_whitelist has a bad entry %q", f)
 		}
-		if f == "hls" || f == "concat" {
+		if slices.Contains([]string{"hls", "concat", "image2", "tee", "data", "lavfi"}, f) {
 			return fmt.Errorf("-format_whitelist must not include %s", f)
 		}
 	}

@@ -29,8 +29,10 @@ const (
 	versionTimeout  = 30 * time.Second
 )
 
-// formatWhitelist 是 -format_whitelist 的清單：排除 hls、concat 等會讀取其他資源的 demuxer。
-const formatWhitelist = "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,mp3,ogg,wav,flac,aac,avi,mpegts,asf,srt,webvtt,ass"
+// formatWhitelist 是 -format_whitelist 的清單：排除 hls、concat、image2、tee、data、lavfi 等
+// 會讀取其他資源或不是檔案格式的 demuxer。
+const formatWhitelist = "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,mp3,ogg,wav,flac,aac,avi,mpegts,asf,srt,webvtt,ass," +
+	"flv,mpeg,aiff,ac3,eac3,amr,caf,w64,wv"
 
 // ErrNotMedia 表示檔案不是影音：ffprobe 無法讀取，或沒有音訊與影像串流。
 // Probe 回傳的錯誤包裝了它，並帶 errclass permanent；用 errors.Is 辨識。
@@ -273,7 +275,7 @@ func (t *Tool) Silences(ctx context.Context, in string, fromS, lenS float64) ([]
 	if err := requireAbs(in); err != nil {
 		return nil, err
 	}
-	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info", "-protocol_whitelist", "file",
+	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info", "-protocol_whitelist", "file", "-format_whitelist", formatWhitelist,
 		"-ss", secs(fromS), "-t", secs(lenS), "-i", in,
 		"-af", "silencedetect=noise=-35dB:d=0.3", "-f", "null", "-"}
 	res, err := t.runFFmpeg(ctx, silenceTimeout, args)

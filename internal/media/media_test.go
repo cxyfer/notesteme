@@ -42,7 +42,32 @@ func newTool(t *testing.T, r toolexec.Runner) *Tool {
 
 func binOf(t *Tool, spec toolexec.Spec) string { p, _ := t.Tools.Resolve(spec); return p }
 
-const fw = "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,mp3,ogg,wav,flac,aac,avi,mpegts,asf,srt,webvtt,ass"
+const fw = "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,mp3,ogg,wav,flac,aac,avi,mpegts,asf,srt,webvtt,ass,flv,mpeg,aiff,ac3,eac3,amr,caf,w64,wv"
+
+// 白名單必須涵蓋常見的容器，而且不能含會讀取其他資源或不是檔案格式的 demuxer。
+func TestFormatWhitelistContents(t *testing.T) {
+	got := map[string]bool{}
+	for _, f := range strings.Split(formatWhitelist, ",") {
+		if got[f] {
+			t.Errorf("白名單重複：%s", f)
+		}
+		got[f] = true
+	}
+	for _, f := range []string{"mov", "mp4", "matroska", "webm", "mp3", "ogg", "wav", "flac", "aac", "avi", "mpegts",
+		"flv", "mpeg", "aiff", "ac3", "eac3", "amr", "caf", "w64", "wv"} {
+		if !got[f] {
+			t.Errorf("白名單缺少常見容器 %s", f)
+		}
+	}
+	for _, f := range []string{"hls", "concat", "image2", "tee", "data", "lavfi"} {
+		if got[f] {
+			t.Errorf("白名單不得含 %s", f)
+		}
+	}
+	if formatWhitelist != fw {
+		t.Errorf("formatWhitelist 與測試的 golden 不同：%s", formatWhitelist)
+	}
+}
 
 func TestArgvGolden(t *testing.T) {
 	ctx := context.Background()
@@ -87,7 +112,7 @@ func TestArgvGolden(t *testing.T) {
 			"Silences",
 			func(tl *Tool) error { _, err := tl.Silences(ctx, "/t/a.ogg", 1472, 60); return err },
 			toolexec.FFmpeg,
-			[]string{"-nostdin", "-hide_banner", "-nostats", "-v", "info", "-protocol_whitelist", "file",
+			[]string{"-nostdin", "-hide_banner", "-nostats", "-v", "info", "-protocol_whitelist", "file", "-format_whitelist", fw,
 				"-ss", "1472.000", "-t", "60.000", "-i", "/t/a.ogg",
 				"-af", "silencedetect=noise=-35dB:d=0.3", "-f", "null", "-"},
 		},

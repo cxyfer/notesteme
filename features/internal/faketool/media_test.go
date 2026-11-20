@@ -6,12 +6,13 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
 
-// testFW 是 -format_whitelist 的清單（local-design 第 4 節，不含 hls、concat）。
-const testFW = "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,mp3,ogg,wav,flac,aac,avi,mpegts,asf,srt,webvtt,ass"
+// testFW 是 -format_whitelist 的清單（與 internal/media 相同，不含 hls、concat 等）。
+const testFW = "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,mp3,ogg,wav,flac,aac,avi,mpegts,asf,srt,webvtt,ass,flv,mpeg,aiff,ac3,eac3,amr,caf,w64,wv"
 
 func TestParseMedia(t *testing.T) {
 	// v1：沒有 streams 等於一條音訊。
@@ -307,7 +308,7 @@ func TestFFmpegChunkOffset(t *testing.T) {
 
 // ffmpegSilenceArgs 是契約的靜音偵測參數。
 func ffmpegSilenceArgs(in string, from, length string) []string {
-	return []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info", "-protocol_whitelist", "file",
+	return []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info", "-protocol_whitelist", "file", "-format_whitelist", testFW,
 		"-ss", from, "-t", length, "-i", in, "-af", "silencedetect=noise=-35dB:d=0.3", "-f", "null", "-"}
 }
 
@@ -338,6 +339,16 @@ func TestFFmpegSilencedetect(t *testing.T) {
 	// 視窗內沒有靜音：沒有 silence_ 行。
 	if _, _, errs := s.exec("ffmpeg", ffmpegSilenceArgs(in, "500.000", "60.000")...); strings.Contains(errs, "silence_") {
 		t.Errorf("不該有靜音：%q", errs)
+	}
+	// 靜音偵測也必須帶 -format_whitelist，而且不含危險格式。
+	noFW := slices.Delete(ffmpegSilenceArgs(in, "0", "60"), 7, 9)
+	if code, _, _ := s.exec("ffmpeg", noFW...); code != 2 {
+		t.Errorf("缺少 -format_whitelist：code=%d", code)
+	}
+	badFW := ffmpegSilenceArgs(in, "0", "60")
+	badFW[8] =testFW + ",lavfi"
+	if code, _, _ := s.exec("ffmpeg", badFW...); code != 2 {
+		t.Errorf("白名單含 lavfi：code=%d", code)
 	}
 	// 輸出不是 -、缺少 -ss：用法錯誤。
 	bad := ffmpegSilenceArgs(in, "0", "60")
