@@ -24,6 +24,10 @@ type RestoreResult struct {
 	PreRestore string
 	// ConfigDir 是備份中的設定檔解到的目錄；備份沒有設定檔時為空。
 	ConfigDir string
+	// PreRestoreUploads 是還原前原本的 uploads/ 移到的目錄；原本沒有（或是空的）上傳檔時為空。
+	PreRestoreUploads string
+	// Uploads 是還原的上傳檔數。
+	Uploads int
 }
 
 // ErrServeRunning 表示資料目錄正由 serve 使用，不能還原（OPS-R2）。
@@ -35,6 +39,8 @@ var ErrServeRunning = errors.New("請先停止 notesteme serve，再執行 resto
 //  2. 備份檔不受信任（backup.Extract）；schema 版本比目前程式新時拒絕。
 //  3. 還原前先把目前的資料庫存成 backups/pre-restore-<時間>.db，再刪除 -wal、-shm、換上備份的資料庫。
 //  4. 設定檔不覆寫 /config（compose 可能以唯讀掛載），解到 backups/restored-config-<時間>/ 讓使用者自行替換。
+//  5. 上傳的原始檔先解到 tmp/，驗證大小與 sha256 之後，uploads/ 整個換成備份中的；原本的 uploads/ 移到
+//     backups/pre-restore-uploads-<時間>/ 保留。換上資料庫之前失敗時，uploads/ 保持原狀。
 //
 // 資料金鑰是用備份當時的 master key 加密的；master key 輪替過的話，之後 serve 會以 SEC-R5 的訊息拒絕啟動，
 // 呼叫端要把這一點告訴使用者。
@@ -91,7 +97,7 @@ func Restore(ctx context.Context, env Env, file string) (*RestoreResult, error) 
 		return nil, fmt.Errorf("備份檔 %s：%w", file, err)
 	}
 
-	res := &RestoreResult{SchemaVersion: contents.Manifest.SchemaVersion, CreatedAt: contents.Manifest.CreatedAt}
+	res := &RestoreResult{SchemaVersion: contents.Manifest.SchemaVersion, CreatedAt: contents.Manifest.CreatedAt, Uploads: len(contents.Uploads)}
 	stamp := backup.Stamp(env.Clock.Now())
 	backups := filepath.Join(dataDir, store.BackupsDirName)
 	dbPath := filepath.Join(dataDir, store.DBFileName)
@@ -124,6 +130,20 @@ func Restore(ctx context.Context, env Env, file string) (*RestoreResult, error) 
 		res.ConfigDir = dir
 	}
 
+	// 上傳的原始檔：uploads/ 整個換成備份中的（備份沒有上傳檔時，目前的 uploads/ 只是被移開）。
+	// 在換上資料庫之前做，提交點之前任何一步失敗都會還原成原狀。
+	swap, err := swapUploads(filepath.Join(dataDir, backup.UploadsPrefix), contents.UploadsDir,
+		func() string { return uniquePath(backups, "pre-restore-uploads-", stamp, "") })
+	if err != nil {
+		return nil, fmt.Errorf("換上備份的上傳檔失敗：%w", err)
+	}
+	defer func() {
+		if !committed {
+			swap.undo()
+		}
+	}()
+	res.PreRestoreUploads = swap.aside
+
 	// -wal、-shm 屬於被換掉的資料庫；留著的話 SQLite 會把它們套到新的資料庫上。
 	for _, suffix := range []string{"-wal", "-shm"} {
 		if err := os.Remove(dbPath + suffix); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -136,6 +156,56 @@ func Restore(ctx context.Context, env Env, file string) (*RestoreResult, error) 
 	committed = true
 
 	return res, nil
+}
+
+// uploadsSwap 記錄 swapUploads 做了什麼，失敗時可以還原。
+type uploadsSwap struct {
+	cur, next, aside string
+	// moved 為 true 表示 next 已經換成 cur；asideUsed 為 true 表示原本的 cur 已經移到 aside。
+	moved, asideUsed bool
+}
+
+// swapUploads 讓 cur（資料目錄的 uploads/）只剩備份中的檔案：
+// 原本的 cur（有內容時）整個移到 asidePath() 回傳的路徑保留（與還原前的資料庫快照一樣，不直接刪除使用者的檔案），
+// 再把已經解開並驗證過的 next 換成 cur。next 為空字串（備份沒有上傳檔）時，cur 只是被移開。
+// 全部是同一個檔案系統內的 rename；任何一步失敗都回到原狀。
+func swapUploads(cur, next string, asidePath func() string) (*uploadsSwap, error) {
+	s := &uploadsSwap{cur: cur, next: next}
+	// 空目錄直接刪掉（Remove 只刪空目錄）；沒有東西可以保留。
+	if err := os.Remove(cur); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if _, serr := os.Lstat(cur); serr == nil {
+			s.aside = asidePath()
+			if err := os.MkdirAll(filepath.Dir(s.aside), dataDirPerm); err != nil {
+				s.aside = ""
+				return nil, err
+			}
+			if err := os.Rename(cur, s.aside); err != nil {
+				s.aside = ""
+				return nil, err
+			}
+			s.asideUsed = true
+		}
+	}
+	if next != "" {
+		if err := os.Rename(next, cur); err != nil {
+			s.undo()
+			return nil, err
+		}
+		s.moved = true
+	}
+	return s, nil
+}
+
+// undo 還原 swapUploads 的變更（盡力而為）。
+func (s *uploadsSwap) undo() {
+	if s.moved {
+		_ = os.Rename(s.cur, s.next)
+		s.moved = false
+	}
+	if s.asideUsed {
+		_ = os.Rename(s.aside, s.cur)
+		s.asideUsed, s.aside = false, ""
+	}
 }
 
 // restoreLockError 說明資料目錄為什麼不能還原：serve 持有（或持有者不明）是 ErrServeRunning，

@@ -108,6 +108,40 @@ func (q *Queries) ListInboxEntries(ctx context.Context) ([]InboxEntry, error) {
 	return items, nil
 }
 
+const listUploadFiles = `-- name: ListUploadFiles :many
+SELECT id, source_path, content_sha256 FROM items WHERE origin = 'upload' ORDER BY rowid
+`
+
+type ListUploadFilesRow struct {
+	ID            string
+	SourcePath    string
+	ContentSha256 string
+}
+
+// Uploaded originals (items.origin = upload) that live under uploads/<id>/<name>, for backups.
+func (q *Queries) ListUploadFiles(ctx context.Context) ([]ListUploadFilesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUploadFiles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUploadFilesRow
+	for rows.Next() {
+		var i ListUploadFilesRow
+		if err := rows.Scan(&i.ID, &i.SourcePath, &i.ContentSha256); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const localTombstoneBlocks = `-- name: LocalTombstoneBlocks :one
 SELECT EXISTS (
   SELECT 1 FROM item_tombstones

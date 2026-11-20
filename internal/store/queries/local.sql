@@ -37,3 +37,7 @@ DELETE FROM inbox_entries WHERE path = sqlc.arg(path);
 -- name: DeleteLocalTombstonesBySHA :execrows
 -- An upload of the same content removes the local tombstones that would block it, whatever the old file name was.
 DELETE FROM item_tombstones WHERE platform = 'local' AND sha256 <> '' AND sha256 = sqlc.arg(sha);
+
+-- name: ListUploadFiles :many
+-- Uploaded originals (items.origin = upload) that live under uploads/<id>/<name>, for backups.
+SELECT id, source_path, content_sha256 FROM items WHERE origin = 'upload' ORDER BY rowid;

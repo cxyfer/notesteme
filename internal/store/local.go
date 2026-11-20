@@ -38,6 +38,28 @@ func (r *Repo) DeleteLocalTombstonesBySHA(ctx context.Context, sha string) (int6
 	return r.q.DeleteLocalTombstonesBySHA(ctx, sha)
 }
 
+// UploadFile 是一個上傳影音的原始檔位置，備份用。
+type UploadFile struct {
+	ItemID string
+	// SourcePath 是相對資料目錄的 uploads/<id>/<name>。
+	SourcePath string
+	// SHA256 是內容雜湊；舊資料可能為空。
+	SHA256 string
+}
+
+// UploadFiles 列出所有上傳（origin upload）的影音的原始檔位置（含垃圾桶中的），依新增順序。
+func (r *Repo) UploadFiles(ctx context.Context) ([]UploadFile, error) {
+	rows, err := r.q.ListUploadFiles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]UploadFile, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, UploadFile{ItemID: row.ID, SourcePath: row.SourcePath, SHA256: row.ContentSha256})
+	}
+	return out, nil
+}
+
 // SetItemContentSHA 寫入影音的內容雜湊；已經有雜湊時不覆蓋（只在 content_sha256 為空時寫入）。
 func (r *Repo) SetItemContentSHA(ctx context.Context, id, sha string) error {
 	return r.q.SetItemContentSHA(ctx, sqlcdb.SetItemContentSHAParams{Sha: sha, ID: id})
