@@ -77,6 +77,7 @@
 | `download_failed` | `unavailable` | 語音轉錄來源需要的音訊下載失敗（yt-dlp 的問題，不是來源本身的問題）；步驟的狀態與訊息沿用下載錯誤的（例如 403 為 `blocked`，SRC-R9）。 |
 | `language_mismatch` | `rejected` | 來源回報的語言和影音的原文語言不同（SRC-R4）。 |
 | `unsupported` | `unavailable` | 來源不支援這個平台（例如 Supadata 不處理本機檔案），略過，不送出任何資料。 |
+| `unreadable` | `rejected` | 本機的外掛字幕或內嵌字幕讀不到、超過大小上限、解析或抽取失敗；改用下一條字幕，最後才用 fallback。 |
 
 順序是評估順序：先 `caption_priority` 的各條規則，再 `fallback` 的各個來源。只列最近一次 Probe 的結果；重跑或等待後再檢查時，舊的結果被取代。其他品質檢查的原因（`low_coverage`、`repetition`、`music_only`）等 SRC-R4 其餘門檻實作後加入。
 
