@@ -21,6 +21,7 @@ import (
 type fakeGroq struct {
 	mu      sync.Mutex
 	noKey   bool
+	keyErr  error // 非 nil 時 Configured 回報讀取 key 失敗
 	baseURL string
 	model   string
 	err     error
@@ -30,7 +31,12 @@ type fakeGroq struct {
 	existed []bool // 呼叫當下音檔是否存在
 }
 
-func (f *fakeGroq) Configured(context.Context) bool { return !f.noKey }
+func (f *fakeGroq) Configured(context.Context) (bool, error) {
+	if f.keyErr != nil {
+		return false, f.keyErr
+	}
+	return !f.noKey, nil
+}
 
 func (f *fakeGroq) Endpoint() (string, string) { return f.baseURL, f.model }
 
@@ -151,6 +157,28 @@ func TestGroqWithoutKeyIsNotConfiguredAndBlocks(t *testing.T) {
 	d, _ := r.p.Item(context.Background(), it.ID)
 	if last := d.Sources[len(d.Sources)-1]; last.SourceID != "groq" || last.State != "unavailable" || last.Reason != "not_configured" {
 		t.Errorf("sources = %+v", d.Sources)
+	}
+}
+
+// 從資料庫讀取 key 失敗不是「沒有設定」：當成 retryable 退避重試，不 blocked、不記 not_configured，也不下載音訊。
+func TestGroqKeyLookupFailureIsRetryable(t *testing.T) {
+	r, g := newGroqRig(t)
+	g.keyErr = errors.New("database is locked")
+	it := r.ingest(watch, groqOnly(), StageTranscript)
+	r.run()
+
+	st := r.stage(it, StageTranscript)
+	if st.Status != store.StatusPending || st.NotBefore == nil || st.ErrorClass != "retryable" {
+		t.Errorf("transcript = %+v，預期 retryable 退避", st)
+	}
+	if len(r.yt.audioDirs) != 0 || g.calls() != 0 {
+		t.Errorf("讀不到 key 不該下載或轉錄：%v、%d", r.yt.audioDirs, g.calls())
+	}
+	d, _ := r.p.Item(context.Background(), it.ID)
+	for _, s := range d.Sources {
+		if s.SourceID == "groq" && s.Reason == "not_configured" {
+			t.Errorf("讀取 key 失敗不該記成 not_configured：%+v", s)
+		}
 	}
 }
 

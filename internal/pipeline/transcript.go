@@ -340,7 +340,15 @@ func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			if !gc.Configured(ctx) {
+			ok, err := gc.Configured(ctx)
+			if err != nil {
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+				// 讀取 key 失敗不是「沒有設定」：和 Transcribe 一樣當成可以重試的錯誤。
+				return nil, &errclass.Error{Class: errclass.ClassRetryable, Source: groq.ID, Detail: "讀取 API key 失敗", Err: err}
+			}
+			if !ok {
 				return nil, &errclass.Error{Class: errclass.ClassNeedsAction, Source: groq.ID, Err: groq.ErrNoKey}
 			}
 			if it.Platform != source.PlatformYouTube {

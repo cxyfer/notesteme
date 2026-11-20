@@ -106,9 +106,14 @@ func (c *Client) resolveKey(ctx context.Context) (string, error) {
 }
 
 // Configured 回報有沒有 API key；沒有時 Transcribe 不會發出請求。
-func (c *Client) Configured(ctx context.Context) bool {
+// 從資料庫讀取 key 失敗（例如暫時的讀取錯誤、密文損毀）時回傳錯誤，不當成「沒有設定」：
+// 那是可以重試或要回報的儲存問題，不是使用者沒設定 key。
+func (c *Client) Configured(ctx context.Context) (bool, error) {
 	key, err := c.resolveKey(ctx)
-	return err == nil && key != ""
+	if err != nil {
+		return false, err
+	}
+	return key != "", nil
 }
 
 // Endpoint 回傳實際使用的 base_url 與 model（空值已換成預設值）；兩者影響結果，所以屬於快取鍵的 params。

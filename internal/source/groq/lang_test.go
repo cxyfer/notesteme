@@ -1,7 +1,6 @@
 package groq
 
 import (
-	"context"
 	"testing"
 )
 
@@ -29,8 +28,7 @@ func TestEndpointResolvesDefaults(t *testing.T) {
 	if base != "https://x.test/v1" || model != "m" {
 		t.Errorf("Endpoint = %q, %q", base, model)
 	}
-	ctx := context.Background()
-	if (&Client{}).Configured(ctx) || !(&Client{APIKey: "k"}).Configured(ctx) {
+	if mustConfigured(t, &Client{}) || !mustConfigured(t, &Client{APIKey: "k"}) {
 		t.Error("Configured 應依 API key 判斷")
 	}
 }

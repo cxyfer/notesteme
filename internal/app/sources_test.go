@@ -49,7 +49,7 @@ func TestConfigureSourcesGroqUsesDefaultsAndKey(t *testing.T) {
 	if err := s.configureSources(ctx, &deps, Env{Vars: map[string]string{}}, &config.Config{}); err != nil {
 		t.Fatal(err)
 	}
-	if deps.Groq == nil || deps.Groq.Configured(ctx) {
+	if deps.Groq == nil || mustConfigured(t, deps.Groq) {
 		t.Fatalf("沒有 API key 時應建立未設定的 Groq：%+v", deps.Groq)
 	}
 
@@ -59,8 +59,8 @@ func TestConfigureSourcesGroqUsesDefaultsAndKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	base, model := deps.Groq.Endpoint()
-	if !deps.Groq.Configured(ctx) || base != groq.DefaultBaseURL || model != groq.DefaultModel {
-		t.Errorf("Groq = %v, %q, %q", deps.Groq.Configured(ctx), base, model)
+	if !mustConfigured(t, deps.Groq) || base != groq.DefaultBaseURL || model != groq.DefaultModel {
+		t.Errorf("Groq = %v, %q, %q", mustConfigured(t, deps.Groq), base, model)
 	}
 }
 
@@ -86,8 +86,8 @@ func TestConfigureSourcesTrimsAPIKeys(t *testing.T) {
 	if err := s.configureSources(ctx, &deps, env, &config.Config{}); err != nil {
 		t.Fatal(err)
 	}
-	if deps.Supadata != nil || deps.Groq.Configured(ctx) {
-		t.Errorf("只有空白應視為未設定：Supadata = %#v，Groq 已設定 = %v", deps.Supadata, deps.Groq.Configured(ctx))
+	if deps.Supadata != nil || mustConfigured(t, deps.Groq) {
+		t.Errorf("只有空白應視為未設定：Supadata = %#v，Groq 已設定 = %v", deps.Supadata, mustConfigured(t, deps.Groq))
 	}
 }
 
@@ -123,7 +123,7 @@ func TestConfigureSourcesDynamicDBFallbackAndEnvOverride(t *testing.T) {
 	}
 	sd := deps.Supadata.(*supadata.Client)
 	sd.BaseURL = supaSrv.URL
-	if deps.Groq.Configured(ctx) {
+	if mustConfigured(t, deps.Groq) {
 		t.Fatal("DB 還沒存 key 前 Groq 應為未設定")
 	}
 	if _, err := sd.Fetch(ctx, "https://youtu.be/abc123xxxxx", supadata.ModeAuto); !errors.Is(err, errclass.ErrNotConfigured) {
@@ -141,7 +141,7 @@ func TestConfigureSourcesDynamicDBFallbackAndEnvOverride(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !deps.Groq.Configured(ctx) {
+	if !mustConfigured(t, deps.Groq) {
 		t.Error("存入 DB key 後 Groq.Configured 應為 true")
 	}
 	if _, err := sd.Fetch(ctx, "https://youtu.be/abc123xxxxx", supadata.ModeAuto); err != nil || gotSupaHeader != kSupa {
@@ -165,4 +165,16 @@ func TestConfigureSourcesDynamicDBFallbackAndEnvOverride(t *testing.T) {
 	if gEnv := depsEnv.Groq.(*groq.Client); gEnv.APIKey != "gsk_env_wins" {
 		t.Errorf("Groq APIKey = %q, want gsk_env_wins", gEnv.APIKey)
 	}
+}
+
+// mustConfigured 呼叫 Configured，讀取 key 失敗時讓測試失敗。
+func mustConfigured(t *testing.T, c interface {
+	Configured(context.Context) (bool, error)
+}) bool {
+	t.Helper()
+	ok, err := c.Configured(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ok
 }
