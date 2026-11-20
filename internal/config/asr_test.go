@@ -49,7 +49,7 @@ func TestLoadASRProviders(t *testing.T) {
 }
 
 func TestLoadWithoutASRProviders(t *testing.T) {
-	for _, text := range []string{"", "asr: {}\n", "asr:\n  providers: {}\n"} {
+	for _, text := range []string{"", "asr:\n", "asr: {}\n", "asr:\n  providers: {}\n"} {
 		cfg, err := loadASR(t, text)
 		if err != nil {
 			t.Fatalf("%q：%v", text, err)
@@ -125,5 +125,24 @@ func TestLoadASREnvAllowlistErrorDoesNotEchoValue(t *testing.T) {
 func TestLoadASRProvidersRejectsWrongShape(t *testing.T) {
 	if _, err := loadASR(t, "asr:\n  providers: [a, b]\n"); err == nil {
 		t.Fatal("providers 是陣列時應該載入失敗")
+	}
+}
+
+// asr 區段本身有未知欄位（例如誤寫成 provider:）時載入失敗，不得靜默建立空的 registry。
+func TestLoadASRRejectsUnknownSectionFields(t *testing.T) {
+	for _, c := range []struct {
+		name, text, want string
+	}{
+		{"誤寫 provider", "asr:\n  provider:\n    p:\n" + validCommand, "provider"},
+		{"多餘欄位", "asr:\n  providers:\n    p:\n" + validCommand + "  extra: true\n", "extra"},
+	} {
+		_, err := loadASR(t, c.text)
+		if err == nil {
+			t.Errorf("%s：應該載入失敗", c.name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "asr") || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s：錯誤訊息應指出 asr 與 %s：%v", c.name, c.want, err)
+		}
 	}
 }

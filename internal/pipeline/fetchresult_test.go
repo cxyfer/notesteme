@@ -14,7 +14,7 @@ func TestFetchResultTimingAndToolVersionsReachProvenance(t *testing.T) {
 	r := newRig(t)
 	r.p.fetchers["asr-fake"] = fallbackFetcher{
 		timing: "segment",
-		params: func(Language) any { return nil },
+		params: func(store.Item, Language) any { return nil },
 		fetch: func(context.Context, store.Item, Language) (*fetchResult, error) {
 			return &fetchResult{
 				Lang: "en", Timing: "word", ToolVersions: map[string]string{"ffmpeg": "7.1"},
