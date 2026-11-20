@@ -18,38 +18,67 @@ func (p *Pipeline) checkURL(ctx context.Context, rawURL string) error {
 	return p.checkFn(ctx, rawURL)
 }
 
-// ingestPodcast 新增 Podcast feed 的單集（ING-R6）：每個指定的集是一部影音，
-// 識別為 (podcast, "<feedKey>/<guid>", 0)，網址是正規化的 feed 網址。
+// podcastSelection 是 Podcast 辨識與展開的結果：抓到的 feed，以及請求挑出的各集。
+type podcastSelection struct {
+	feed      *podcast.Feed
+	canonical string // 正規化的 feed 網址
+	slug      string // feedKey 的候選
+	picked    []podcast.Episode
+}
+
+// build 回傳 insertTargets 用的 build：交易內取得 feedKey（必要時建立頻道），再組出各集的 Target。
+func (s *podcastSelection) build(ctx context.Context) func(*store.Repo) ([]source.Target, string, error) {
+	return func(r *store.Repo) ([]source.Target, string, error) {
+		key, err := r.PodcastFeedKey(ctx, s.canonical, s.slug, s.feed.Title)
+		if err != nil {
+			return nil, "", err
+		}
+		ch, err := r.ChannelByKey(ctx, source.PlatformPodcast, key)
+		if err != nil {
+			return nil, "", err
+		}
+		targets := make([]source.Target, 0, len(s.picked))
+		for _, ep := range s.picked {
+			targets = append(targets, source.Target{
+				Platform: source.PlatformPodcast, Kind: source.KindFeed, ExternalID: podcast.ExternalID(key, ep.GUID), URL: s.canonical,
+			})
+		}
+		return targets, ch.ID, nil
+	}
+}
+
+// expandPodcast 辨識 Podcast feed 並挑出要新增的單集（ING-R6），不寫入資料庫：
+// 每個指定的集是一部影音，識別為 (podcast, "<feedKey>/<guid>", 0)，網址是正規化的 feed 網址。
 //
 // 驗證依序：until、處理方案（501）、parts（422）、網址（http(s)、有主機、不是 YouTube／Bilibili，否則無法辨識）、
 // 單次覆寫；然後抓取 feed（失敗對應同 Resolve）、episodes 不可為空、每集要在 feed 中而且有音檔；
 // 最後對每個不同的音檔主機預檢（不連線）：被防護擋下回 *PolicyError，DNS 失敗只記 log，連線時再檢查一次（GRD-R2）。
-// 交易內取得 feedKey（必要時建立頻道），再建立各集；已存在的集不重新建立（ING-R2）。
-func (p *Pipeline) ingestPodcast(ctx context.Context, req IngestRequest) ([]IngestResult, error) {
+// 新增時，交易內取得 feedKey（必要時建立頻道），再建立各集；已存在的集不重新建立（ING-R2，見 podcastSelection.build）。
+func (p *Pipeline) expandPodcast(ctx context.Context, req IngestRequest) (ingestExpansion, error) {
 	if req.Until != "" && !ValidStage(req.Until) {
-		return nil, invalidf("until 必須是 %v 其中之一。", Stages)
+		return ingestExpansion{}, invalidf("until 必須是 %v 其中之一。", Stages)
 	}
 	if req.Profile != "" {
 		// TODO(PRF)：同 Ingest。
-		return nil, &NotImplementedError{What: "處理方案"}
+		return ingestExpansion{}, &NotImplementedError{What: "處理方案"}
 	}
 	if len(req.Parts) > 0 {
-		return nil, invalidf("Podcast 沒有分P 可以選擇。")
+		return ingestExpansion{}, invalidf("Podcast 沒有分P 可以選擇。")
 	}
 	feedURL, err := podcast.CanonicalURL(req.URL)
 	if err != nil || platformHost(feedURL.Hostname()) {
-		return nil, ErrUnrecognizedURL
+		return ingestExpansion{}, ErrUnrecognizedURL
 	}
 	plan, err := p.planIngest(ctx, req)
 	if err != nil {
-		return nil, err
+		return ingestExpansion{}, err
 	}
 	feed, err := p.fetchFeed(ctx, feedURL.String())
 	if err != nil {
-		return nil, p.feedError(err)
+		return ingestExpansion{}, p.feedError(err)
 	}
 	if len(req.Episodes) == 0 {
-		return nil, invalidf("這是 Podcast feed，請在 episodes 指定要新增的集。")
+		return ingestExpansion{}, invalidf("這是 Podcast feed，請在 episodes 指定要新增的集。")
 	}
 
 	// 依請求的順序挑出各集（重複的 guid 只算一次）。
@@ -62,37 +91,20 @@ func (p *Pipeline) ingestPodcast(ctx context.Context, req IngestRequest) ([]Inge
 		}
 		ep, ok := feed.Find(guid)
 		if !ok {
-			return nil, invalidf("feed 中找不到這一集：%s。", guid)
+			return ingestExpansion{}, invalidf("feed 中找不到這一集：%s。", guid)
 		}
 		if ep.Enclosure == nil || ep.Enclosure.URL == "" {
-			return nil, invalidf("這一集沒有音檔：%s。", guid)
+			return ingestExpansion{}, invalidf("這一集沒有音檔：%s。", guid)
 		}
 		seen[guid] = true
 		picked = append(picked, *ep)
 	}
 	if err := p.precheckEnclosures(ctx, picked); err != nil {
-		return nil, err
+		return ingestExpansion{}, err
 	}
-
-	canonical := feedURL.String()
-	slug := podcast.FeedSlug(feedURL)
-	return p.insertTargets(ctx, req, plan, func(r *store.Repo) ([]source.Target, string, error) {
-		key, err := r.PodcastFeedKey(ctx, canonical, slug, feed.Title)
-		if err != nil {
-			return nil, "", err
-		}
-		ch, err := r.ChannelByKey(ctx, source.PlatformPodcast, key)
-		if err != nil {
-			return nil, "", err
-		}
-		targets := make([]source.Target, 0, len(picked))
-		for _, ep := range picked {
-			targets = append(targets, source.Target{
-				Platform: source.PlatformPodcast, Kind: source.KindFeed, ExternalID: podcast.ExternalID(key, ep.GUID), URL: canonical,
-			})
-		}
-		return targets, ch.ID, nil
-	})
+	return ingestExpansion{plan: plan, podcast: &podcastSelection{
+		feed: feed, canonical: feedURL.String(), slug: podcast.FeedSlug(feedURL), picked: picked,
+	}}, nil
 }
 
 // precheckEnclosures 對每個不同主機的音檔網址預檢一次：被防護擋下回 *PolicyError；

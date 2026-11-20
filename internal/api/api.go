@@ -198,8 +198,8 @@ func (rt *routes) register(api huma.API) {
 	}, auth.ScopeIngest, rt.resolve)
 	registerScoped(api, huma.Operation{
 		OperationID: "estimate", Method: http.MethodPost, Path: "/api/estimate",
-		Summary: "估算花費（尚未實作）",
-	}, auth.ScopeIngest, notImplemented)
+		Summary: "估算花費，不建立影音（ING-R8）", DefaultStatus: http.StatusOK,
+	}, auth.ScopeIngest, rt.estimate)
 	registerScoped(api, huma.Operation{
 		OperationID: "items-get", Method: http.MethodGet, Path: "/api/items/{id}",
 		Summary: "影音詳情：各步驟的狀態與各字幕來源的結果",

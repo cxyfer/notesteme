@@ -106,12 +106,14 @@ type Pipeline struct {
 	bili    Bilibili
 	// fetchers 是可以執行的 fallback 來源（SRC-R3），依來源 ID。
 	fetchers map[string]fallbackFetcher
-	http     *http.Client
-	checkFn  func(ctx context.Context, rawURL string) error
-	media    *media.Tool
-	files    *pathguard.Guard
-	wake     func()
-	version  string
+	// groq 只給估價用：查有沒有 API key 與使用的 model（見 Estimate）；nil 代表來源沒有註冊。
+	groq    Groq
+	http    *http.Client
+	checkFn func(ctx context.Context, rawURL string) error
+	media   *media.Tool
+	files   *pathguard.Guard
+	wake    func()
+	version string
 	// trashRetention 是垃圾桶保留的時間（已套用預設值）。
 	trashRetention time.Duration
 	// tasks 結束永久刪除時殘留的任務（DEL-R6）；可以是 nil，見 SetTaskCanceller。
@@ -151,7 +153,7 @@ func New(d Deps) *Pipeline {
 	if retention <= 0 {
 		retention = DefaultTrashRetention
 	}
-	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version}
+	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。
