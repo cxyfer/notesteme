@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -175,8 +176,8 @@ func TestTrashStopsRunningTaskThenFreesMedia(t *testing.T) {
 	}
 }
 
-// 等待任務結束失敗（逾時）不影響刪除：記錄後照常刪除媒體快取。
-func TestTrashStillFreesMediaWhenCancelFails(t *testing.T) {
+// 等待任務結束失敗（逾時）不影響刪除，但任務可能還在用媒體快取：保留它，到永久刪除時再刪。
+func TestTrashKeepsMediaWhenCancelFails(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	it := r.ingest(watch, nil, "")
@@ -187,20 +188,53 @@ func TestTrashStillFreesMediaWhenCancelFails(t *testing.T) {
 	if _, err := r.p.Trash(ctx, it.ID, TrashOptions{Canceller: &fakeCanceller{err: context.DeadlineExceeded}}); err != nil {
 		t.Fatalf("Cancel 失敗不應讓刪除失敗：%v", err)
 	}
-	if exists(media) {
-		t.Error("媒體快取應該已刪除")
+	if !exists(media) {
+		t.Error("任務還沒確定結束，媒體快取不該被刪除")
+	}
+	if cur, _ := r.st.Read().ItemByID(ctx, it.ID); cur.DeletedAt == nil {
+		t.Error("影音仍應該在垃圾桶中")
 	}
 }
 
-// 沒有任務要結束時不呼叫 canceller。
-func TestTrashWithoutTasksSkipsCanceller(t *testing.T) {
+// 同時進行的「取消」已經把執行中的任務改成 cancelled、還在等它結束：移到垃圾桶也要等它，
+// 才刪除媒體快取（cancelItemTx 不會再回傳這個任務）。
+func TestTrashWaitsForAlreadyCancelledRunningTask(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	it := r.ingest(watch, nil, "")
+	media := writeMedia(t, r.dir, it.ID)
+	claimed, err := queue.New(r.st, r.clk, "w1").Claim(ctx, 5)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim = %+v, %v", claimed, err)
+	}
+	if _, err := r.p.CancelItem(ctx, it.ID); err != nil { // 只改資料庫；worker 那邊還沒結束
+		t.Fatal(err)
+	}
+	fc := &fakeCanceller{}
+	fc.check = func() {
+		if !exists(media) {
+			t.Error("要先等任務結束，才能刪除媒體快取")
+		}
+	}
+	if _, err := r.p.Trash(ctx, it.ID, TrashOptions{Canceller: fc}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(fc.got, claimed[0].ID) {
+		t.Errorf("要等的任務 = %v，應該包含已經 cancelled 的 %s", fc.got, claimed[0].ID)
+	}
+	if exists(media) {
+		t.Error("任務結束後媒體快取應該已刪除")
+	}
+}
+
+// 已經處理完的影音：已完成的步驟與產出不改動（任務都已結束，worker 會略過它們）。
+func TestTrashOfFinishedItemKeepsDoneStages(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
 	it := r.ingest(watch, nil, "")
 	r.run()
-	fc := &fakeCanceller{check: func() { t.Error("沒有要結束的任務，不該呼叫 Cancel") }}
-	if _, err := r.p.Trash(ctx, it.ID, TrashOptions{Canceller: fc}); err != nil {
+	if _, err := r.p.Trash(ctx, it.ID, TrashOptions{Canceller: &fakeCanceller{}}); err != nil {
 		t.Fatal(err)
 	}
 	// 已完成的步驟不改動，連同它的產出。

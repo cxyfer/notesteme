@@ -74,7 +74,7 @@
   - 尚未結束的步驟改成 `skipped`（原因 `cancelled`），動作「重試」。
   - 任務改成 cancelled。
   - 寫入 `item.deleted` 事件。
-- commit 之後，先依 PIPE-R15 取消並等待執行中的任務，再刪除媒體快取目錄 `<資料目錄>/media/<item-id>/`。
+- commit 之後，先依 PIPE-R15 取消並等待執行中的任務，再刪除媒體快取目錄 `<資料目錄>/media/<item-id>/`。等待的範圍包含已經被「取消」改成 cancelled、但還在執行的任務；等不到任務結束（逾時）時保留媒體快取，到永久刪除時再一起刪除。
 - 回應 200：`{id, ref, deleted_at, purge_at, kept_outputs: []}`。
 - 已經在垃圾桶中時回 404 `in_trash`。
 - `delete_outputs` 在 M1 接受但沒有作用，因為還沒有輸出目標。
