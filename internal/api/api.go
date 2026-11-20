@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"log/slog"
 	"math"
@@ -56,6 +57,9 @@ type Deps struct {
 	Tools     ToolManager
 	Backup    BackupSource
 	Providers ProviderRegistry
+	// CursorKey 是列表游標的 HMAC 金鑰（LIB-R4）；空的時候 build 在啟動時隨機產生。
+	// 金鑰只存在記憶體，重新啟動後舊游標會回 422，用戶端從第一頁重新讀取即可。
+	CursorKey []byte
 }
 
 // ReadyCheck 是 /readyz 的一個檢查項目；Check 回傳 nil 代表正常。
@@ -74,6 +78,10 @@ func New(d Deps) http.Handler {
 
 // build 組出路由與 middleware；authn 決定受保護路徑的驗證方式（New 與 NewLocal 的唯一差異）。
 func build(d Deps, authn func(http.Handler) http.Handler) http.Handler {
+	if len(d.CursorKey) == 0 {
+		d.CursorKey = make([]byte, 32)
+		rand.Read(d.CursorKey) // Go 1.24 起 crypto/rand.Read 不會回傳錯誤
+	}
 	mux := http.NewServeMux()
 
 	cfg := huma.DefaultConfig("Notesteme", d.Version)

@@ -286,10 +286,12 @@ func TestListItemsCursorSurvivesLimitChange(t *testing.T) {
 	}
 }
 
+var testCursorKey = []byte("test-cursor-key")
+
 func TestDecodeItemCursorNeverPanics(t *testing.T) {
 	fp := "0123456789abcdef"
-	good := encodeItemCursor(pipeline.ItemCursor{CreatedAtMs: 42, ID: "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"}, fp)
-	c, err := decodeItemCursor(good, fp)
+	good := encodeItemCursor(pipeline.ItemCursor{CreatedAtMs: 42, ID: "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"}, testCursorKey, fp)
+	c, err := decodeItemCursor(good, testCursorKey, fp)
 	if err != nil || c.CreatedAtMs != 42 || c.ID != "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5" {
 		t.Fatalf("往返：%+v, %v", c, err)
 	}
@@ -297,12 +299,40 @@ func TestDecodeItemCursorNeverPanics(t *testing.T) {
 		t.Errorf("正常的游標不該超過上限：%d", len(good))
 	}
 	for _, in := range []string{"", "e30", "bnVsbA", "W10", "InN0ciI", "e30K", "eyJ2IjoxfQ", strings.Repeat("e", 600), "\x00\xff", fmt.Sprintf("%s.%s", good, good)} {
-		if _, err := decodeItemCursor(in, fp); err == nil {
+		if _, err := decodeItemCursor(in, testCursorKey, fp); err == nil {
 			t.Errorf("%q 不該被接受", in)
 		}
 	}
-	if _, err := decodeItemCursor(good, "ffffffffffffffff"); err == nil {
+	if _, err := decodeItemCursor(good, testCursorKey, "ffffffffffffffff"); err == nil {
 		t.Error("指紋不符不該被接受")
+	}
+	if _, err := decodeItemCursor(good, []byte("another-key"), fp); err == nil {
+		t.Error("其他金鑰簽的游標不該被接受")
+	}
+}
+
+// 改掉位置（t 或 id）再重新編碼、保留原本的 f，仍要被拒絕：MAC 涵蓋整個游標內容。
+func TestDecodeItemCursorRejectsTamperedPosition(t *testing.T) {
+	const fp = "0123456789abcdef"
+	good := encodeItemCursor(pipeline.ItemCursor{CreatedAtMs: 42, ID: "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"}, testCursorKey, fp)
+	raw, err := base64.RawURLEncoding.DecodeString(good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c itemCursor
+	if err := json.Unmarshal(raw, &c); err != nil {
+		t.Fatal(err)
+	}
+	for name, edit := range map[string]func(*itemCursor){
+		"改 t":  func(c *itemCursor) { c.T = 7 },
+		"改 id": func(c *itemCursor) { c.ID = "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a6" },
+	} {
+		tc := c
+		edit(&tc)
+		b, _ := json.Marshal(tc)
+		if _, err := decodeItemCursor(base64.RawURLEncoding.EncodeToString(b), testCursorKey, fp); err == nil {
+			t.Errorf("%s：被竄改的游標不該被接受", name)
+		}
 	}
 }
 
@@ -327,8 +357,10 @@ func TestDecodeItemCursorRejectsNonCanonicalForms(t *testing.T) {
 	const fp = "0123456789abcdef"
 	const id = "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"
 	enc := func(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s)) }
+	// MAC 用標準形式的 id 計算，非標準寫法的 uuid 要在格式檢查就被擋下，而不是只因 MAC 不符。
+	mac := cursorMAC(testCursorKey, 1, 42, id, fp)
 	body := func(id string) string {
-		return fmt.Sprintf(`{"v":1,"t":42,"id":%q,"f":%q}`, id, fp)
+		return fmt.Sprintf(`{"v":1,"t":42,"id":%q,"f":%q}`, id, mac)
 	}
 	// 補上尾端空白，讓位元組數除以 3 餘 1，base64 的最後一個字元才有多餘的位元。
 	withSpareBits := func(id string) string {
@@ -344,11 +376,11 @@ func TestDecodeItemCursorRejectsNonCanonicalForms(t *testing.T) {
 		return s[:len(s)-1] + string(alphabet[i^1])
 	}
 	good := enc(body(id))
-	if _, err := decodeItemCursor(good, fp); err != nil {
+	if _, err := decodeItemCursor(good, testCursorKey, fp); err != nil {
 		t.Fatalf("前置條件：標準形式要能通過：%v", err)
 	}
 	spare := enc(withSpareBits(id))
-	if _, err := decodeItemCursor(spare, fp); err != nil {
+	if _, err := decodeItemCursor(spare, testCursorKey, fp); err != nil {
 		t.Fatalf("前置條件：尾端空白的游標要能通過：%v", err)
 	}
 	tests := []struct{ name, cursor string }{
@@ -361,7 +393,7 @@ func TestDecodeItemCursorRejectsNonCanonicalForms(t *testing.T) {
 		{"uuid 大寫", enc(body(strings.ToUpper(id)))},
 	}
 	for _, tt := range tests {
-		if _, err := decodeItemCursor(tt.cursor, fp); err == nil {
+		if _, err := decodeItemCursor(tt.cursor, testCursorKey, fp); err == nil {
 			t.Errorf("%s：不該被接受 %q", tt.name, tt.cursor)
 		}
 	}
@@ -369,8 +401,8 @@ func TestDecodeItemCursorRejectsNonCanonicalForms(t *testing.T) {
 
 // 沒有注入 Pipeline 時，列表也要先驗證參數：不合法回 422，合法才回空列表。
 func TestListItemsValidatesParamsWithoutPipeline(t *testing.T) {
-	r := newItemsRigAPI(t, func(d *Deps) { d.Pipeline = nil })
-	valid := encodeItemCursor(pipeline.ItemCursor{CreatedAtMs: 1, ID: "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"}, filterFingerprint(pipeline.ItemQuery{}))
+	r := newItemsRigAPI(t, func(d *Deps) { d.Pipeline = nil; d.CursorKey = testCursorKey })
+	valid := encodeItemCursor(pipeline.ItemCursor{CreatedAtMs: 1, ID: "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"}, testCursorKey, filterFingerprint(pipeline.ItemQuery{}))
 	for _, q := range []string{
 		"?platform=vimeo", "?status=bogus:done", "?status=normalize:bogus", "?timing=bogus",
 		"?duration_min=-1", "?q=" + strings.Repeat("a", 201), "?cursor=nope", "?platform=youtube&cursor=" + valid,
