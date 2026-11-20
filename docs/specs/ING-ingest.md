@@ -68,8 +68,14 @@ YouTube 播放清單（ING-R4）展開時由 yt-dlp 列出清單內容：清單�
 
 ## 待決問題
 
-- 上傳檔案的大小上限，暫定 4GB，可在設定檔調整。
-- inbox 的穩定判定時間暫定 10 秒，是否需要依檔案大小調整，M1 實作時觀察。
+- 上傳檔案的大小上限，暫定 4GB，可在設定檔調整。LOCAL 切片解讀為 4 GiB（4294967296 bytes），設定鍵 `library.upload_max_bytes`；超過時回 413 `upload_too_large`（2026-11-21，待 owner 確認）。
+- inbox 的穩定判定時間暫定 10 秒，是否需要依檔案大小調整，M1 實作時觀察。LOCAL 切片的實作：每 5 秒掃描一次；第一次看到檔案時，以「修改時間與現在」較早者起算，之後大小或修改時間改變就重新起算，連續 10 秒不變才新增（2026-11-21）。
+- ING-05 的細節（2026-11-21，LOCAL 切片實作時決定，待 owner 確認）：
+  - 識別：本機檔案的 `platform` 為 `local`，`part` 為 0。inbox 中的檔案以相對 inbox 的路徑為 `external_id`；`media_roots` 中或 inbox 之外的檔案以解析後的絕對路徑為 `external_id`；上傳的檔案以清理過的檔名為 `external_id`，與既有影音撞名時在副檔名前加 `-2`、`-3`。內容的 `sha256` 另外記在影音上。
+  - 去重（ING-R10）：inbox 與上傳都以 `sha256` 去重。上傳時相同內容已存在回 200 `already_in_library`，在垃圾桶中回 409；inbox 遇到相同內容只記錄，不建立影音。同一個 inbox 路徑的內容被換掉時，記為衝突，不自動重新處理。
+  - ING-R11 的「記錄原因」：寫入資料庫（`inbox_entries.reason`）與 log，API 之後再公開。上傳不是影音時回 422 `unsupported_media`。
+  - 用 `path` 新增（API、CLI client 模式）不在新增時檢查檔案是否存在或是不是影音，只檢查路徑是否在根目錄內（GRD-R7）；檔案不存在時，`metadata` 步驟以 `permanent` 失敗，訊息「找不到這個檔案。」。所以 GRD-R7 的場景中不存在的 `/data/inbox/talk.mp4` 仍回 201。同時給 `url` 與 `path` 回 422。
+  - inbox 自動新增遇到 tombstone（DEL-R11）時不建立影音，也不移除 tombstone；手動新增與上傳照舊移除同一個鍵的 tombstone。
 - 播放清單（ING-R4）展開的項目數目前沒有上限，整份清單在一個交易中建立。是否需要上限、超過時要截斷還是拒絕，等 ING 切片決定（2026-11-13，GRD 切片實作 ING-R4 時發現）。
 - 播放清單展開時 yt-dlp 的錯誤訊息（例如 `The playlist does not exist.`）是依 yt-dlp 原始碼判斷的，還沒有對真實 yt-dlp 驗證；ING 切片做 `@manual` 煙霧測試時確認。
 - ING-R3 的細節（2026-11-14，SRC-B 切片實作時決定）：

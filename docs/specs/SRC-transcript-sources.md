@@ -76,6 +76,7 @@
 | `needs_action` | `unavailable` | 來源需要使用者處理（API key 被拒、方案不支援、需要 cookie（SRC-R8）），步驟為 `blocked`。 |
 | `download_failed` | `unavailable` | 語音轉錄來源需要的音訊下載失敗（yt-dlp 的問題，不是來源本身的問題）；步驟的狀態與訊息沿用下載錯誤的（例如 403 為 `blocked`，SRC-R9）。 |
 | `language_mismatch` | `rejected` | 來源回報的語言和影音的原文語言不同（SRC-R4）。 |
+| `unsupported` | `unavailable` | 來源不支援這個平台（例如 Supadata 不處理本機檔案），略過，不送出任何資料。 |
 
 順序是評估順序：先 `caption_priority` 的各條規則，再 `fallback` 的各個來源。只列最近一次 Probe 的結果；重跑或等待後再檢查時，舊的結果被取代。其他品質檢查的原因（`low_coverage`、`repetition`、`music_only`）等 SRC-R4 其餘門檻實作後加入。
 
@@ -107,4 +108,11 @@
 - Bilibili 字幕軌的對應規則：yt-dlp 在 `--write-subs` 時才列出 `subtitles`，鍵是 Bilibili 的 `lan`，格式是 srt，另外一律有 `danmaku`（xml 彈幕，選軌時忽略）；沒有 `automatic_captions`。鍵是 `ai-<lang>` 的是 AI 字幕，對應 kind `auto`、來源 `bilibili-ai`，語言去掉 `ai-`；其他鍵對應 kind `manual`、來源 `bilibili-cc`。兩種字幕的來源紀錄 `timing` 都是 `cue`。下載時用原始鍵（`--sub-langs <原始鍵> --sub-format srt`，讀 `<tmpl>.<原始鍵>.srt`）。yt-dlp 的錯誤分類：stderr 的 `ERROR:` 行含 `-404`、`-10403` 或地區限制訊息 → `permanent`；含 `-101`（未登入）→ `needs_action`（訊息「Bilibili 要求登入才能存取這部影片。上傳 Bilibili cookie 後再重試。」，動作「上傳 cookie」，`resume_on` 同上）；412（風控）與其他 → `retryable`。這些訊息依原始碼推測，沒有對真實 yt-dlp 驗證。
 - Bilibili 沒有語言中繼資料，原文語言（SRC-R11）只能從字幕軌推斷：`item.original_lang` 未知、而 Probe 看得到 AI 字幕軌時，transcript 步驟用該軌的語言當原文語言，`lang_source` 為 `metadata`（取第一條 AI 字幕軌，依鍵排序）。只有 CC 字幕時不推斷，`caption_priority` 的 `original` 規則記為 `original_language_unknown`。未登入時看不到 AI 字幕軌，所以推斷不了，這是 SRC-R8 推定的一部分（2026-11-14）。
 - PIPE-R4 的場景補上斷言 Bilibili 的原文語言由 AI 字幕軌推斷（2026-11-15，owner 同意）。`ResumeBlocked` 只恢復同一個恢復條件（token）的步驟，這點沒有場景驗證：被誤恢復的步驟重跑後會再次被擋下，狀態與嘗試次數看不出差別。由 `internal/pipeline` 與 `internal/store` 的單元測試把關（owner 決定不新增任務數的句型）。
+- 本機檔案的來源（SRC-R14，2026-11-21，LOCAL 切片實作時決定，待 owner 確認）：
+  - 外掛字幕檔只認 `<stem>.<lang>.srt`／`.vtt`，`<lang>` 必須像語言代碼；沒有語言代碼的 `<stem>.srt` 不採用。有多個時，優先 `caption_priority` 中的語言，否則 `.srt` 先於 `.vtt`、再依檔名排序。
+  - 內嵌字幕只採用文字字幕（subrip、ass、ssa、mov_text、webvtt），點陣字幕（PGS、DVD、DVB）略過。有多條時，優先 `caption_priority` 中的語言，否則依 default、非 forced、串流順序。
+  - 原文語言未知時，用選中的本機字幕的語言推斷，`lang_source` 為 `metadata`（比照 Bilibili 的 AI 字幕軌）。容器中音訊串流的語言標記不採用（常常是錯的或 `und`）。
+  - Supadata 不處理本機檔案，記為 `unavailable`／`unsupported`，不會把本機路徑送給第三方。
+- ASR 前處理與切塊（SRC-R12，2026-11-21，LOCAL 切片實作時決定）：所有平台（含 YouTube）的 ASR 都先用 ffmpeg 轉成單聲道 16kHz 的 Opus（32 kbps）。仍超過 provider 的單檔上限時，以上限的 90% 估算塊數，在每個切點前後 30 秒內找最近的靜音中點（`silencedetect=noise=-35dB:d=0.3`），找不到就直接切；每塊前後各多取 5 秒重疊。合併時每個 cue 依中點歸屬到一塊，時間單調遞增，重疊區中時間重疊且文字相同的連續 cue 只留一句。切出的塊仍超過上限時，多切一塊重新規劃，最多多切 3 塊。編碼參數、`-format_whitelist` 清單與 silencedetect 的門檻要用真實 ffmpeg 確認（M0）。
+- SRC-R11 的 ASR 語言（2026-11-21）：原文語言未知、ASR 回報了語言時，寫回影音的原文語言，`lang_source` 為 `asr`。第三層的文字語言偵測仍未實作。
 - SRC-R11「Code-switching speech is marked as mixed」暫時標為 `@wip`（2026-11-15，owner 同意）：`the original language of … is …` 實作後，這個場景會失敗。場景沒有宣告語言，harness 預設 `en`，場景卻預期由文字偵測得到 `zh`；production 也還沒有文字語言偵測。等文字語言偵測的切片一併解決這個矛盾後，再拿掉 `@wip`。

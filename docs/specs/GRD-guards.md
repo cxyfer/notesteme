@@ -48,6 +48,11 @@ Notesteme 會依使用者或外部內容提供的網址主動發出請求，也�
 ## 待決問題
 
 - ~~「Too many redirects are refused」場景驗證不到轉址上限~~：已結案（2026-11-14，owner 同意）。最後的 `feed.xml` 補上回應，並斷言 code 與訊息；同時補強轉址、大小上限場景的 code 斷言，新增「metadata 在允許的網段內仍被封鎖」與「轉址到非 http scheme」兩個場景。直接輸入非 http 網址的場景改用有主機名稱的 `ftp://`，但 Go 的 `http.Client` 本身也拒絕非 http scheme，這個場景驗證不到我們自己的檢查，由轉址場景與單元測試把關。
+- 本機檔案的防護（2026-11-21，LOCAL 切片實作時決定）：
+  - 程式自己讀取本機檔案（計算 `sha256`、讀外掛字幕、串流媒體）時，用 `os.OpenRoot` 在根目錄內開檔，並確認是一般檔案（不是 FIFO、裝置、目錄）。路徑檢查與開檔之間的 symlink 替換因此被擋下。
+  - 交給 ffmpeg、ffprobe 的路徑在執行前重新解析檢查，但檢查與工具開檔之間仍有 TOCTOU 的空檔，記為技術債（之後可改成傳入已開啟的檔案描述元）。
+  - ffmpeg、ffprobe 一律帶 `-protocol_whitelist file`（避免繞過 netguard 連外），並用 `-format_whitelist` 排除 `hls`、`concat` 等會讀取其他檔案的格式。
+  - standalone 模式加入根目錄之外的檔案後，改由 serve 處理時，在執行階段以 `permanent` 拒絕（GRD-R8）。
 - 「DNS rebinding」場景：連線時才檢查 IP 的設計下，第一次解析到公開 IP 的那次連線會真的送出。場景沒有寫明哪一次解析對應哪一個請求（feed 與音檔），這個場景依賴 ING 的 podcast feed，交給 ING 切片釐清。
 - 「Paths outside the media folders are refused」中預期 201 的兩個例子，要等 ING-05（本機檔案的新增）決定檔案是否必須存在、是否要經過 ffprobe；GRD 切片只做到路徑檢查，通過檢查後仍回 501。
 - GRD-R6 的 extractor 限制（`--use-extractors`）只由 `internal/source/youtube` 的單元測試把關：假 yt-dlp 不模擬 extractor，「yt-dlp is never asked to open an arbitrary site」驗證的是辨識階段的拒絕。若要在驗收層驗證，需要新增斷言 yt-dlp 參數的句型。
