@@ -230,3 +230,47 @@ func TestPeriodicMayCallCancel(t *testing.T) {
 		t.Fatal("定期工作沒有執行")
 	}
 }
+
+// blockingPeriodic 的 Run 在 entered 關閉後停住，直到 release 關閉。
+type blockingPeriodic struct {
+	fakePeriodic
+	entered, release chan struct{}
+}
+
+func (p *blockingPeriodic) Run(context.Context) error {
+	if p.runs.Add(1) == 1 {
+		close(p.entered)
+		<-p.release
+	}
+	return nil
+}
+
+// 定期工作正在執行時停止領取：StopClaiming 要等它結束才回傳，之後的輪次不再執行定期工作。
+func TestStopClaimingWaitsForRunningPeriodic(t *testing.T) {
+	r := newRig(t)
+	p := &blockingPeriodic{entered: make(chan struct{}), release: make(chan struct{})}
+	w := New(r.q, &recorder{st: r.st}, r.clk, quiet)
+	w.SetPeriodic(p)
+
+	go func() { _, _ = w.RunRound(context.Background()) }()
+	<-p.entered
+	stopped := make(chan struct{})
+	go func() { w.StopClaiming(); close(stopped) }()
+	select {
+	case <-stopped:
+		t.Fatal("定期工作還在執行，StopClaiming 不該回傳")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(p.release)
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("定期工作結束後 StopClaiming 應該回傳")
+	}
+	if _, err := w.RunRound(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.runs.Load(); got != 1 {
+		t.Errorf("停止領取後定期工作又執行了：共 %d 次", got)
+	}
+}
