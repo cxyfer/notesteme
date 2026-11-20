@@ -3,12 +3,13 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"math"
@@ -285,7 +286,7 @@ func (rt *routes) listItems(ctx context.Context, in *listItemsInput) (*listItems
 	}
 	fp := filterFingerprint(q)
 	if in.Cursor != "" {
-		if q.After, err = decodeItemCursor(in.Cursor, fp); err != nil {
+		if q.After, err = decodeItemCursor(in.Cursor, rt.d.CursorKey, fp); err != nil {
 			return nil, errBadCursor()
 		}
 	}
@@ -303,7 +304,7 @@ func (rt *routes) listItems(ctx context.Context, in *listItemsInput) (*listItems
 	}
 	out.Body.Total = page.Total
 	if page.Next != nil {
-		out.Body.NextCursor = encodeItemCursor(*page.Next, fp)
+		out.Body.NextCursor = encodeItemCursor(*page.Next, rt.d.CursorKey, fp)
 	}
 	return out, nil
 }
@@ -313,7 +314,8 @@ func (rt *routes) listItems(ctx context.Context, in *listItemsInput) (*listItems
 // maxCursorLen 是游標字串的長度上限；正常的游標不到 150 字元。
 const maxCursorLen = 512
 
-// itemCursor 是游標的內容：版本、位置（created_at 毫秒與 id），以及篩選條件的指紋。
+// itemCursor 是游標的內容：版本、位置（created_at 毫秒與 id），以及 MAC。
+// F 是 cursorMAC 的結果，涵蓋版本、位置與篩選條件的指紋；改動任何一項都會被拒絕。
 type itemCursor struct {
 	V  int    `json:"v"`
 	T  int64  `json:"t"`
@@ -351,14 +353,22 @@ func filterFingerprint(q pipeline.ItemQuery) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-func encodeItemCursor(c pipeline.ItemCursor, fp string) string {
-	b, _ := json.Marshal(itemCursor{V: 1, T: c.CreatedAtMs, ID: c.ID, F: fp})
+// cursorMAC 是游標內容的 HMAC-SHA256（前 16 bytes 的 hex）：涵蓋版本、位置與篩選條件的指紋。
+// 只比對篩選條件的指紋擋不住竄改：指紋不含位置，改掉 t 或 id 再重新編碼仍會通過。
+func cursorMAC(key []byte, v int, t int64, id, fp string) string {
+	m := hmac.New(sha256.New, key)
+	fmt.Fprintf(m, "%d\x00%d\x00%s\x00%s", v, t, id, fp)
+	return hex.EncodeToString(m.Sum(nil)[:16])
+}
+
+func encodeItemCursor(c pipeline.ItemCursor, key []byte, fp string) string {
+	b, _ := json.Marshal(itemCursor{V: 1, T: c.CreatedAtMs, ID: c.ID, F: cursorMAC(key, 1, c.CreatedAtMs, c.ID, fp)})
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
 // decodeItemCursor 嚴格解析游標：長度上限、標準的 base64url（不補 =、不含換行、尾端位元為零）、
-// 不接受未知欄位或多餘內容、版本為 1、id 必須是標準形式的 UUID、指紋必須與目前的篩選條件相符。任何不符都回傳錯誤，不 panic。
-func decodeItemCursor(s, wantFP string) (*pipeline.ItemCursor, error) {
+// 不接受未知欄位或多餘內容、版本為 1、id 必須是標準形式的 UUID、MAC 必須與內容及目前的篩選條件相符。任何不符都回傳錯誤，不 panic。
+func decodeItemCursor(s string, key []byte, wantFP string) (*pipeline.ItemCursor, error) {
 	if len(s) > maxCursorLen {
 		return nil, errors.New("游標太長")
 	}
@@ -391,8 +401,8 @@ func decodeItemCursor(s, wantFP string) (*pipeline.ItemCursor, error) {
 	if c.ID != parsed.String() {
 		return nil, errors.New("游標的 id 不是標準的 uuid")
 	}
-	if subtle.ConstantTimeCompare([]byte(c.F), []byte(wantFP)) != 1 {
-		return nil, errors.New("篩選條件已經改變")
+	if !hmac.Equal([]byte(c.F), []byte(cursorMAC(key, c.V, c.T, c.ID, wantFP))) {
+		return nil, errors.New("游標被竄改或篩選條件已經改變")
 	}
 	return &pipeline.ItemCursor{CreatedAtMs: c.T, ID: c.ID}, nil
 }

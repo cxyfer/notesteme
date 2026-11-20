@@ -198,3 +198,31 @@ func TestMigrateRefusesNewerDatabase(t *testing.T) {
 		t.Errorf("資料庫的版本 = %d, %v；預期維持 5", v, err)
 	}
 }
+
+// 升級到 00006 時，既有標題的 title_fold 用 Go 的 FoldTitle 回填，非 ASCII 的大小寫也要轉換（LIB-R3）。
+func TestMigrationBackfillsTitleFoldWithGoFold(t *testing.T) {
+	dir := t.TempDir()
+	s, err := openWith(t, dir, migrationsUpTo(t, 5, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const title = "ÉCOLE Straße ΣΊΣΥΦΟΣ"
+	if _, err := s.w.ExecContext(t.Context(),
+		`INSERT INTO items (id, platform, external_id, url, title, created_at) VALUES ('a', 'youtube', 'x', 'https://example.com', ?, 1)`, title); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+
+	s, err = openWith(t, dir, migrationsUpTo(t, 6, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var fold string
+	if err := s.r.QueryRowContext(t.Context(), `SELECT title_fold FROM items WHERE id = 'a'`).Scan(&fold); err != nil {
+		t.Fatal(err)
+	}
+	if want := FoldTitle(title); fold != want {
+		t.Errorf("title_fold = %q，預期 %q", fold, want)
+	}
+}
