@@ -29,6 +29,15 @@ func (r *Repo) LocalTombstoneBlocks(ctx context.Context, externalID, sha string)
 	return r.q.LocalTombstoneBlocks(ctx, sqlcdb.LocalTombstoneBlocksParams{Sha: sha, ExternalID: externalID})
 }
 
+// DeleteLocalTombstonesBySHA 移除內容雜湊為 sha 的本機 tombstone，回傳移除的筆數；sha 為空時什麼都不做。
+// 上傳相同內容的檔案時，與依鍵移除（DeleteTombstones）在同一個交易中呼叫。
+func (r *Repo) DeleteLocalTombstonesBySHA(ctx context.Context, sha string) (int64, error) {
+	if sha == "" {
+		return 0, nil
+	}
+	return r.q.DeleteLocalTombstonesBySHA(ctx, sha)
+}
+
 // SetItemContentSHA 寫入影音的內容雜湊；已經有雜湊時不覆蓋（只在 content_sha256 為空時寫入）。
 func (r *Repo) SetItemContentSHA(ctx context.Context, id, sha string) error {
 	return r.q.SetItemContentSHA(ctx, sqlcdb.SetItemContentSHAParams{Sha: sha, ID: id})

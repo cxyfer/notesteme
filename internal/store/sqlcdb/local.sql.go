@@ -18,6 +18,19 @@ func (q *Queries) DeleteInboxEntry(ctx context.Context, path string) error {
 	return err
 }
 
+const deleteLocalTombstonesBySHA = `-- name: DeleteLocalTombstonesBySHA :execrows
+DELETE FROM item_tombstones WHERE platform = 'local' AND sha256 <> '' AND sha256 = ?1
+`
+
+// An upload of the same content removes the local tombstones that would block it, whatever the old file name was.
+func (q *Queries) DeleteLocalTombstonesBySHA(ctx context.Context, sha string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteLocalTombstonesBySHA, sha)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const itemByLocalSHA = `-- name: ItemByLocalSHA :one
 SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin FROM items
 WHERE platform = 'local' AND content_sha256 <> '' AND content_sha256 = ?1

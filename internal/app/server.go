@@ -16,6 +16,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/cookies"
+	"github.com/cxyfer/notesteme/internal/inbox"
 	"github.com/cxyfer/notesteme/internal/media"
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/pipeline"
@@ -83,6 +84,9 @@ type Server struct {
 	worker *worker.Worker
 	// workerDone 在 production 的 worker 迴圈結束時關閉；手動模式（測試）沒有迴圈，為 nil。
 	workerDone chan struct{}
+	// watchCancel、watchDone 是 inbox 監看迴圈（production 的 serve 才有，ING-05）；沒有時為 nil。
+	watchCancel context.CancelFunc
+	watchDone   chan struct{}
 	// grace 是正常關閉時等待執行中任務的寬限期（PIPE-R12）。
 	grace time.Duration
 	// events 是 SSE 的事件匯流排與狀態（PIPE-R14），見 events.go。
@@ -227,7 +231,20 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	// 每輪開頭清理過期事件（OPS-R10），以及永久刪除到期的垃圾桶影音（DEL-R4）。
 	hk := newHousekeeping(s.store, env.Clock, log)
 	hk.addTrashCleanup(s.pipeline, trashRetention(cfg))
-	s.worker.SetPeriodic(hk)
+	var periodic worker.Periodic = hk
+	// inbox 監看（ING-05）只在 serve 啟動：standalone 的 CLI 是短命的程序，不自動掃描。
+	var watcher *inbox.Watcher
+	if !s.unrestrictedFiles {
+		watcher = &inbox.Watcher{
+			Clock: env.Clock, Inbox: cfg.Inbox, Files: deps.Files, Media: deps.Media,
+			Store: s.store, Ingester: s.pipeline, Log: log,
+		}
+		if manual {
+			// 手動模式：RunUntilIdle 的每一輪都掃描（測試用 fake clock 推進時間）。
+			periodic = periodics{hk, watcher}
+		}
+	}
+	s.worker.SetPeriodic(periodic)
 
 	if n, err := s.queue.RecoverStale(ctx); err != nil {
 		return fmt.Errorf("放回上次留下的租約失敗：%w", err)
@@ -246,7 +263,26 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 		defer close(s.workerDone)
 		s.worker.Run(s.root)
 	}()
+	if watcher != nil {
+		// production：獨立的迴圈每 5 秒掃描一次；關閉時與 worker 一起停止（見 stopWatcher）。
+		wctx, cancel := context.WithCancel(s.root)
+		s.watchCancel, s.watchDone = cancel, make(chan struct{})
+		go func() {
+			defer close(s.watchDone)
+			watcher.Loop(wctx)
+		}()
+	}
 	return nil
+}
+
+// stopWatcher 停止 inbox 監看並等它結束；可重複呼叫，沒有監看時什麼都不做。
+// 正常關閉一開始就要呼叫（與 StopClaiming 同時）：draining 時不該再新增影音。
+func (s *Server) stopWatcher() {
+	if s.watchCancel == nil {
+		return
+	}
+	s.watchCancel()
+	<-s.watchDone
 }
 
 // RunRound 讓 worker 領取一輪任務並開始執行，不等待完成。只供手動模式（測試）使用。
@@ -278,6 +314,7 @@ func (s *Server) withRoot(ctx context.Context) (context.Context, func()) {
 // stopWorker 取消 root，等 worker 結束（production）或執行中的任務結束（手動模式）。
 func (s *Server) stopWorker() {
 	s.cancel()
+	s.stopWatcher()
 	if s.workerDone != nil {
 		<-s.workerDone
 	}
@@ -322,6 +359,7 @@ func (s *Server) Err() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.closeOnce.Do(func() {
 		var errs []error
+		s.stopWatcher()
 		s.worker.StopClaiming()
 		for _, srv := range []*http.Server{s.http, s.sockHTTP} {
 			if srv == nil {
@@ -381,6 +419,7 @@ func (s *Server) Kill() {
 func (s *Server) abort() {
 	if s.cancel != nil {
 		s.cancel()
+		s.stopWatcher()
 		if s.workerDone != nil {
 			<-s.workerDone
 		}
