@@ -12,6 +12,8 @@ const (
 	// 本機影音的字幕軌種類：外掛字幕檔、容器內嵌字幕。
 	KindSidecar  = "sidecar"
 	KindEmbedded = "embedded"
+	// Podcast 的字幕軌種類：feed 中的 <podcast:transcript>。
+	KindPodcast = "podcast"
 )
 
 // 字幕來源 ID（steps.md 第 3 節）。
@@ -24,6 +26,8 @@ const (
 	// 本機影音：與影音同目錄的外掛字幕檔，與容器內嵌的文字字幕（SRC-R14）。
 	SourceLocalSidecar  = "local-sidecar"
 	SourceLocalEmbedded = "local-embedded"
+	// Podcast：feed 中 <podcast:transcript> 指向的字幕檔（SRC-R14）。
+	SourcePodcastTranscript = "podcast-transcript"
 )
 
 // 平台名稱（與 items.platform 相同；這裡不引用 source 套件，因為它依賴本套件）。
@@ -31,6 +35,7 @@ const (
 	PlatformYouTube  = "youtube"
 	PlatformBilibili = "bilibili"
 	PlatformLocal    = "local"
+	PlatformPodcast  = "podcast"
 )
 
 // OriginalLang 在 caption_priority 中代表影音的原文語言。
@@ -49,8 +54,10 @@ type Rule struct {
 type Track struct {
 	Lang string
 	Kind string
-	// Handle 是本機字幕軌的位置：外掛字幕檔的路徑，或內嵌字幕的串流 index。
+	// Handle 是本機字幕軌的位置：外掛字幕檔的路徑，或內嵌字幕的串流 index；Podcast 字幕是它的網址。
 	Handle string `json:",omitempty"`
+	// Format 是 Podcast 字幕的格式（vtt、srt、json）。
+	Format string `json:",omitempty"`
 	// Default 與 Forced 是內嵌字幕的旗標（容器的 disposition）。
 	Default bool `json:",omitempty"`
 	Forced  bool `json:",omitempty"`
@@ -89,8 +96,12 @@ const (
 // YouTube：機器翻譯的字幕軌由自動字幕機制產生，所以和 auto 同一個來源。
 // Bilibili：auto 是平台的 AI 字幕（bilibili-ai），其餘是人工上傳的 CC 字幕（bilibili-cc）。
 // 本機：sidecar 是 local-sidecar，embedded 是 local-embedded。
+// Podcast：一律是 podcast-transcript。
 // 沒有指定平台時視為 YouTube。
 func PlatformSource(platform, kind string) string {
+	if platform == PlatformPodcast {
+		return SourcePodcastTranscript
+	}
 	if platform == PlatformLocal {
 		if kind == KindEmbedded {
 			return SourceLocalEmbedded
