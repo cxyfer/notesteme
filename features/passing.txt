@@ -54,6 +54,7 @@ GRD-guards.feature: Feeds pointing into private networks are blocked [example 2]
 GRD-guards.feature: Feeds pointing into private networks are blocked [example 3]
 GRD-guards.feature: Feeds pointing into private networks are blocked [example 4]
 GRD-guards.feature: Feeds pointing into private networks are blocked [example 5]
+GRD-guards.feature: DNS rebinding after the first lookup is still blocked
 GRD-guards.feature: An allow-listed private host can be used
 GRD-guards.feature: Cloud metadata cannot be allow-listed
 GRD-guards.feature: Cloud metadata stays blocked inside an allow-listed range
@@ -77,6 +78,7 @@ ING-ingest.feature: Recognise what a URL points to [example 4]
 ING-ingest.feature: Recognise what a URL points to [example 5]
 ING-ingest.feature: Recognise what a URL points to [example 6]
 ING-ingest.feature: Recognise what a URL points to [example 7]
+ING-ingest.feature: Recognise a podcast feed by its content
 ING-ingest.feature: Reject a URL that no platform recognises
 ING-ingest.feature: Ingesting a YouTube video creates an item and starts the pipeline
 ING-ingest.feature: Ingesting an item that is already in the library does not duplicate it
@@ -84,6 +86,8 @@ ING-ingest.feature: A multi-part Bilibili video becomes one item per part
 ING-ingest.feature: Only the selected Bilibili parts are ingested
 ING-ingest.feature: A playlist is expanded once into its videos
 ING-ingest.feature: A channel cannot be ingested directly
+ING-ingest.feature: Pick a single episode from a podcast feed
+ING-ingest.feature: A podcast feed without selected episodes is refused
 ING-ingest.feature: A file dropped into the inbox is ingested once it stops growing
 ING-ingest.feature: The same file content is not ingested twice
 ING-ingest.feature: A file without audio or video is left alone
@@ -176,5 +180,7 @@ SRC-transcript-sources.feature: Detect the original language when metadata does 
 SRC-transcript-sources.feature: Audio above the provider limit is split and stitched back seamlessly
 SRC-transcript-sources.feature: A sidecar subtitle file next to a local video is used before ASR
 SRC-transcript-sources.feature: An embedded subtitle track is used before ASR
+SRC-transcript-sources.feature: A podcast transcript tag is used before ASR
+SRC-transcript-sources.feature: A podcast transcript that does not match the audio length is flagged
 SRC-transcript-sources.feature: The source transcript records where it came from
 SRC-transcript-sources.feature: The item lists every source that was probed and why it was not used
