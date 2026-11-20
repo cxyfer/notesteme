@@ -36,9 +36,11 @@ DEL-delete.feature: The deletion preview shows what will be lost without changin
 DEL-delete.feature: A restored item comes back with its subtitles
 DEL-delete.feature: A step cancelled by the deletion can be retried after restoring
 DEL-delete.feature: The trash is emptied after 30 days
+DEL-delete.feature: Deleting forever removes the copy of an upload but never the owner's own files
 DEL-delete.feature: Spending records survive a permanent delete
 DEL-delete.feature: Adding an item that is in the trash offers to restore it
 DEL-delete.feature: An item added again after a permanent delete starts fresh
+DEL-delete.feature: The inbox does not bring back a permanently deleted file
 DEL-delete.feature: Only admin tokens can delete or restore [example 1]
 DEL-delete.feature: Only admin tokens can delete or restore [example 2]
 DEL-delete.feature: Only admin tokens can delete or restore [example 3]
@@ -61,6 +63,8 @@ GRD-guards.feature: An oversized feed is cut off
 GRD-guards.feature: Non-HTTP schemes are refused
 GRD-guards.feature: A redirect to a non-HTTP scheme is refused
 GRD-guards.feature: yt-dlp is never asked to open an arbitrary site
+GRD-guards.feature: Paths outside the media folders are refused [example 1]
+GRD-guards.feature: Paths outside the media folders are refused [example 2]
 GRD-guards.feature: Paths outside the media folders are refused [example 3]
 GRD-guards.feature: Paths outside the media folders are refused [example 4]
 GRD-guards.feature: Paths outside the media folders are refused [example 5]
@@ -80,6 +84,10 @@ ING-ingest.feature: A multi-part Bilibili video becomes one item per part
 ING-ingest.feature: Only the selected Bilibili parts are ingested
 ING-ingest.feature: A playlist is expanded once into its videos
 ING-ingest.feature: A channel cannot be ingested directly
+ING-ingest.feature: A file dropped into the inbox is ingested once it stops growing
+ING-ingest.feature: The same file content is not ingested twice
+ING-ingest.feature: A file without audio or video is left alone
+ING-ingest.feature: Upload a local file through the API
 ING-ingest.feature: Content that needs a cookie is flagged before submitting
 LIB-library.feature: Filter by platform
 LIB-library.feature: Filter by stage status
@@ -89,6 +97,7 @@ LIB-library.feature: Title search matches partial words in any language [example
 LIB-library.feature: Title search matches partial words in any language [example 3]
 LIB-library.feature: Pages are limited and use a cursor
 LIB-library.feature: Items with estimated timings can be filtered
+LIB-library.feature: Local media supports range requests for seeking
 LIB-library.feature: The queue shows each lane with its limit
 NRM-normalize.feature: Rolling auto captions are de-duplicated
 NRM-normalize.feature: Rolling Chinese captions are de-duplicated without spaces
@@ -163,5 +172,9 @@ SRC-transcript-sources.feature: A live stream waits for its replay
 SRC-transcript-sources.feature: Bilibili AI captions without a cookie ask for one
 SRC-transcript-sources.feature: A 403 from YouTube suggests updating yt-dlp first
 SRC-transcript-sources.feature: A paid source without an API key asks for the key
+SRC-transcript-sources.feature: Detect the original language when metadata does not have it
+SRC-transcript-sources.feature: Audio above the provider limit is split and stitched back seamlessly
+SRC-transcript-sources.feature: A sidecar subtitle file next to a local video is used before ASR
+SRC-transcript-sources.feature: An embedded subtitle track is used before ASR
 SRC-transcript-sources.feature: The source transcript records where it came from
 SRC-transcript-sources.feature: The item lists every source that was probed and why it was not used
