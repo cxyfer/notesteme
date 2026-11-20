@@ -182,38 +182,3 @@ func usageError(e env, format string, a ...any) int {
 		e.tool, fmt.Sprintf(format, a...))
 	return 2
 }
-
-// 假媒體檔的第一行標記，fake ASR 與假 ffprobe 靠它辨識是哪部影音、多長。
-
-// MediaMarker 回傳假媒體檔的內容：一行 "NOTESTEME-FAKE-MEDIA item=<id> duration=<秒>"。
-func MediaMarker(item string, durationSec int) string {
-	return fmt.Sprintf("NOTESTEME-FAKE-MEDIA item=%s duration=%d\n", item, durationSec)
-}
-
-// ParseMediaMarker 解析假媒體檔的內容（只看第一行）。
-func ParseMediaMarker(b []byte) (item string, durationSec int, ok bool) {
-	line := string(b)
-	if i := strings.IndexByte(line, '\n'); i >= 0 {
-		line = line[:i]
-	}
-	const prefix = "NOTESTEME-FAKE-MEDIA "
-	if !strings.HasPrefix(line, prefix) {
-		return "", 0, false
-	}
-	var gotItem, gotDur bool
-	for _, f := range strings.Fields(strings.TrimPrefix(line, prefix)) {
-		k, v, found := strings.Cut(f, "=")
-		if !found {
-			continue
-		}
-		switch k {
-		case "item":
-			item, gotItem = v, true
-		case "duration":
-			if _, err := fmt.Sscanf(v, "%d", &durationSec); err == nil {
-				gotDur = true
-			}
-		}
-	}
-	return item, durationSec, gotItem && gotDur
-}

@@ -86,6 +86,10 @@ type Video struct {
 	// 不會出現在 info JSON，也不會被下載。
 	AutoNotReady bool     `json:"auto_not_ready,omitempty"`
 	Fail         *Failure `json:"fail,omitempty"`
+	// Compressed 與 Silences 是下載的假媒體檔標記中的 compressed、silences（ASR 前處理後的大小與靜音，見 media.go）；
+	// `Given the audio of … is …` 設定，0 與空代表不寫入。
+	Compressed int64          `json:"compressed,omitempty"`
+	Silences   []MediaSilence `json:"silences,omitempty"`
 }
 
 // Chapter 是章節。

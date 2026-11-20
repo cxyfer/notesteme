@@ -736,7 +736,7 @@ func ytMedia(e env, a ytArgs, id string, part int, v *Video) int {
 		ext = "m4a"
 	}
 	path := expandTemplate(a.output, map[string]string{"id": id, "title": v.Title, "ext": ext})
-	if err := writeFile(e, path, []byte(MediaMarker(itemKey(id, part), v.Duration))); err != nil {
+	if err := writeFile(e, path, []byte(FormatMedia(Media{Item: itemKey(id, part), Duration: float64(v.Duration), Compressed: v.Compressed, Silences: v.Silences}))); err != nil {
 		fmt.Fprintln(e.stderr, "ERROR:", err)
 		return 1
 	}

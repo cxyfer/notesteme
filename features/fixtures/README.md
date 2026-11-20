@@ -12,7 +12,8 @@
 | `ytdlp/` | 假 yt-dlp 的輸出樣本（info JSON 的片段、錯誤輸出）；播放清單網址的 `the URL … serves "<name>"` 讀這裡，例如 `playlist-3-videos.json` | 假 yt-dlp（`--flat-playlist -J`） |
 | `http/` | fake origin 提供的 HTTP 內容（`the URL … serves "<name>"`，網址不是 YouTube／Bilibili 時），例如網頁、RSS feed | `fakenet` 上的 handler |
 | `items/` | `Given the item … has been processed up to …` 使用的影音資料 | steps |
-| `media/` | `Given the audio of … is "<name>"` 使用的音訊描述（長度、大小） | 假 yt-dlp、fake ASR |
+| `media/` | `Given the audio of … is "<name>"` 使用的音訊屬性：一行假媒體標記（沒有 item），帶 `duration`、`compressed`（ASR 前處理之後的大小）、`silences`，例如 `audio-40mb-after-compression.m4a` | steps（併進 inbox 檔或假 yt-dlp 的標記） |
+| `local/` | `Given a local file "<name>" in the inbox` 與 `When the owner uploads "<name>"` 使用的本機檔案：影音（標記加填充）、sidecar 字幕、不是影音的檔案，以及內嵌字幕的內容（`embedded/`） | steps（複製到 inbox 或上傳）、假 ffmpeg（抽內嵌字幕） |
 | `llm/` | fake LLM provider 的回應 | fake LLM |
 
 目錄在第一個 fixture 出現時才建立；沒有用到的目錄不需要預先放空檔案。
@@ -35,6 +36,11 @@
 
 - `supadata-*.json`：Supadata `GET /v1/transcript` 的回應（`lang`、`availableLangs`、`content[{text, offset, duration, lang}]`，時間單位為毫秒）。
   `supadata-in-german.json` 是德文（`lang: de`），用來驗證語言不符時不採用（SRC-R4、R17）。
+- `groq-no-language-ja.json`：Groq 回報 `language: "japanese"`，用來驗證 metadata 沒有原文語言時由 ASR 偵測（SRC-R11）。
+- `groq-two-chunks.json`：約 80 個 segment、單一絕對時間軸（0 到 3004 秒）：#1–#40 在 1497 秒之前結束，
+  #41（1498–1502 "and that is where the overlap starts"）與 #42（1502–1506 "so we remove the duplicate line"）落在兩個切塊的重疊區，
+  之後到 3004 秒。切塊上傳時（標記有 `offset`），假 Groq 只回傳完全落在 `[offset, offset+duration]` 內的 segments，
+  時間減去 offset，所以兩塊都含有 #41、#42，接縫的去重由程式負責（SRC-R12）。
 - `groq-*.json`：Groq（OpenAI 相容 `POST /audio/transcriptions`）的 `verbose_json` 回應：
   `language`（全名，例如 `english`，不是 `en`）、`duration`（秒）、`segments[{id, start, end, text}]`（秒）。
   fake 的端點要求請求帶 `response_format=verbose_json`，並以 `Authorization: Bearer <key>` 驗證；
@@ -100,17 +106,53 @@ tab 分隔的 7 個欄位，否則回報 `does not look like a Netscape format c
 
 ## 假媒體檔
 
-假 yt-dlp 下載媒體時，寫出的檔案內容只有一行標記：
+假 yt-dlp 下載媒體、`local/` 的影音檔、假 ffmpeg 的輸出，內容都是一行標記（標記 v2）：
 
 ```
-NOTESTEME-FAKE-MEDIA item=<平台ID> duration=<秒>
+NOTESTEME-FAKE-MEDIA item=<代號> duration=<秒>[ streams=<type>/<codec>[/<lang>[/<fixture>]],…][ compressed=<bytes>][ silences=a-b,…][ offset=<秒>]
 ```
 
 - `item` 是平台 ID，例如 `abc123xxxxx`、`BV1xx411c7mD`；Bilibili 第 2 分P 以後為 `BV1xx411c7mD/p2`；
-  本機檔案使用場景中的代號，例如 `local:meetup.mp4`。
-- 假 ffprobe 讀取這行標記回報長度；fake ASR 讀取上傳檔案的標記，決定回傳哪個 `sources/` fixture。
+  本機檔案使用場景中的代號，例如 `local:meetup.mp4`。`media/` 的屬性 fixture 沒有 item。
+- `streams`：沒有時等於一條音訊串流（`audio/aac`）。`type` 是 `audio`、`video`、`subtitle`、`data`、`attachment`；
+  `lang` 用 ISO 639-2（`eng`、`jpn`），可以省略；`fixture` 是相對 `local/` 的路徑（內嵌字幕的內容，可含 `/`）。
+  文字字幕（`subrip`、`mov_text` 等）要有 fixture；沒有 fixture 的字幕串流視為點陣字幕，抽取會失敗。
+- `compressed`：ASR 前處理（轉成 opus）之後的檔案大小；假 ffmpeg 轉碼的輸出以 sparse `Truncate` 補到這個大小，內容開頭是新的標記。
+- `silences`：靜音區間（原始時間軸的秒），假 ffmpeg 的 silencedetect 依此輸出。
+- `offset`：這是從原檔切出來的一塊（起點在原檔第 offset 秒，長度為 `duration`）；`offset=0` 也算（第一塊）。
+- 假 ffprobe 讀標記回報長度與串流（含 `tags.language`、`disposition`）；每種類型的第一條串流是預設串流（`disposition.default`）。
+- fake ASR 讀取上傳檔案的標記，決定回傳哪個 `sources/` fixture；有 `offset` 時只回傳該區間內的 segments。
 - 檔案內容還可以在標記之後接任意填充（用來模擬檔案大小）。
-- 標記的產生與解析在 `faketool.MediaMarker`、`faketool.ParseMediaMarker`。
+- 標記的產生與解析在 `faketool.FormatMedia`、`faketool.ParseMedia`（`MediaMarker`、`ParseMediaMarker` 是沒有 streams 時的簡化版）。
+
+### `local/` 的檔案
+
+| 檔案 | 內容 |
+|---|---|
+| `talk.mp4`、`talk-copy.mp4` | 位元組完全相同（`item=local:talk.mp4`，影片加音訊）：驗證內容相同只新增一次 |
+| `notes.pdf` | 不是標記的文字：不是影音 |
+| `lecture.mp4` | 影片、英文音訊與一條內嵌文字字幕（`mov_text`，內容 `embedded/lecture-en.srt`），8 KiB（Range 要有內容） |
+| `lecture.en.srt` | sidecar 字幕（真正的 SRT，內容與內嵌字幕不同，才分得出用了哪一個） |
+| `meetup.mp4`、`long-talk.m4a` | 沒有字幕的影片、音訊：要靠 ASR |
+| `movie-with-subs.mkv` | 影片、音訊與內嵌 `subrip` 字幕（`embedded/movie-en.srt`） |
+| `lecture.m4a`、`talk.m4a` | 上傳用，只有音訊 |
+| `embedded/*.srt` | 內嵌字幕的內容，由假 ffmpeg 的抽字幕複製 |
+
+放進 inbox 的檔案，修改時間設為假時鐘的現在（`os.Chtimes`），inbox 的穩定判斷才會依假時鐘進行。
+
+### 假 ffprobe 與 ffmpeg 的參數
+
+假工具照 production 契約逐項檢查參數：缺少必要選項、值不同或有契約以外的選項，一律結束碼 2（stderr 說明原因），
+每次呼叫都記在 `calls.jsonl`。輸入不存在或不是標記時結束碼 1（`Invalid data found when processing input`）。
+
+- ffprobe：`-v error -hide_banner -protocol_whitelist file -format_whitelist <清單> -show_format -show_streams -of json <path>`。
+  `-protocol_whitelist file` 與 `-format_whitelist` 必須有，清單不能含 `hls`、`concat`。
+- ffmpeg 轉碼（ASR 前處理）：`-nostdin -hide_banner -v error -protocol_whitelist file -format_whitelist <清單> -i <in> -vn -sn -dn -map 0:a:0 -ac 1 -ar 16000 -c:a libopus -b:a 32k -application voip -f ogg -y <out>`；
+  切塊在 `-i` 前加 `-ss <S> -t <L>`，輸出標記帶 `offset`、`duration`，大小依時長比例。
+- ffmpeg 靜音偵測：`-nostdin -hide_banner -nostats -v info -protocol_whitelist file -ss <from> -t <len> -i <prepared> -af silencedetect=noise=-35dB:d=0.3 -f null -`；
+  stderr 輸出 `[silencedetect @ 0x…] silence_start: X` 與 `silence_end: Y | silence_duration: Z`，時間相對視窗起點，跨出視窗的靜音在邊界截斷。
+- ffmpeg 抽字幕：`-nostdin -hide_banner -v error -protocol_whitelist file -format_whitelist <清單> -i <in> -map 0:<idx> -c:s srt -f srt -y <out>`；
+  把串流指定的 `local/` fixture 複製到輸出；串流不是字幕或沒有 fixture（點陣字幕）時失敗。
 
 平台來源用 `Given the source "youtube-manual" / "youtube-auto" returns "<檔名>" for …` 腳本化時，
 步驟把 `captions/<檔名>` 寫進該影片對應種類的字幕軌（語言取自這個種類既有的字幕軌，沒有就用影片的語言）。

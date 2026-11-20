@@ -235,10 +235,12 @@ const (
 // requestOpts 是送出請求的選項。
 type requestOpts struct {
 	who identity
-	// body 非 nil 時以 JSON 送出。
+	// body 非 nil 時送出，預設是 JSON（見 contentType）。
 	body []byte
 	// noCSRF 為 true 時，owner 的非 GET 請求不帶 CSRF 標頭。
 	noCSRF bool
+	// contentType 非空時作為 body 的 Content-Type（例如上傳的 multipart/form-data）；空字串表示 JSON。
+	contentType string
 	// headers 是額外的標頭。
 	headers map[string]string
 	// from 非空時，以這個本機位址（例如 "127.0.0.2"）作為連線的來源位址。
@@ -353,7 +355,11 @@ func (s *Scenario) do(method, path string, o requestOpts) (*response, error) {
 		return nil, err
 	}
 	if o.body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		ct := o.contentType
+		if ct == "" {
+			ct = "application/json"
+		}
+		req.Header.Set("Content-Type", ct)
 	}
 	for k, v := range o.headers {
 		req.Header.Set(k, v)

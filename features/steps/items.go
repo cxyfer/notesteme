@@ -21,7 +21,7 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`the owner ingests {string}`, s.ownerIngests)
 	r.Step(`the owner ingests {string} with the profile {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`the owner ingests {string} with the overrides:`, s.ownerIngestsWithOverrides)
-	r.Step(`the owner uploads {string}`, func(string) error { return godog.ErrPending })
+	r.Step(`the owner uploads {string}`, s.ownerUploads)
 	r.Step(`the owner reruns {string} from {string}`, s.ownerReruns)
 	r.Step(`the item {string} has been ingested`, s.itemHasBeenIngested)
 	r.Step(`the item {string} has been ingested as {word}`, s.itemHasBeenIngestedAs)
@@ -73,7 +73,7 @@ func (s *Scenario) ownerIngestsWithOverrides(target string, doc *godog.DocString
 
 // ingest 送出 POST /api/items。target 是影音代號或完整網址。
 func (s *Scenario) ingest(target string, overrides map[string]any) error {
-	body := map[string]any{"url": refToURL(target)}
+	body := s.ingestBody(target)
 	if until, ok := overrides["until"]; ok {
 		body["until"] = until
 		delete(overrides, "until")
@@ -358,7 +358,9 @@ func (s *Scenario) ensureItemForSeed(ref string) (string, error) {
 			return it.ID, nil
 		}
 	}
-	raw, err := json.Marshal(map[string]string{"url": refToURL(ref), "until": pipeline.StageMetadata})
+	body := s.ingestBody(ref)
+	body["until"] = pipeline.StageMetadata
+	raw, err := json.Marshal(body)
 	if err != nil {
 		return "", err
 	}
@@ -426,24 +428,28 @@ func (s *Scenario) seedTranscript(variant, ref, lang string, table *godog.Table)
 }
 
 // 字幕 API 回應的形狀。
-type cuesJSON struct {
-	Variant string `json:"variant"`
-	Lang    string `json:"lang"`
-	Cues    []struct {
-		Index  int    `json:"index"`
-		Start  string `json:"start"`
-		End    string `json:"end"`
-		Text   string `json:"text"`
-		Timing string `json:"timing"`
-		Words  []struct {
-			Text  string `json:"text"`
-			Start string `json:"start"`
-			End   string `json:"end"`
-		} `json:"words"`
-	} `json:"cues"`
+type cueJSON struct {
+	Index  int    `json:"index"`
+	Start  string `json:"start"`
+	End    string `json:"end"`
+	Text   string `json:"text"`
+	Timing string `json:"timing"`
+	Words  []struct {
+		Text  string `json:"text"`
+		Start string `json:"start"`
+		End   string `json:"end"`
+	} `json:"words"`
 }
 
-// transcriptIs 透過 GET /api/items/{id}/cues 取得字幕，只比對表格中出現的欄位；cue 數必須相同。
+type cuesJSON struct {
+	Variant string    `json:"variant"`
+	Lang    string    `json:"lang"`
+	Cues    []cueJSON `json:"cues"`
+}
+
+// transcriptIs 透過 GET /api/items/{id}/cues 取得字幕，只比對表格中出現的欄位。
+// 表格有 `#` 欄，而且 `#` 不是從 1 起連號時，是「部分表格」：依 `#` 對應第 N 個 cue 比對，不檢查總句數
+// （SRC-R12 只列出接縫處的兩句）；否則 cue 數必須與表格相同，並依序比對。
 func (s *Scenario) transcriptIs(variant, ref, lang string, table *godog.Table) error {
 	want, err := tableRows(table)
 	if err != nil {
@@ -461,51 +467,97 @@ func (s *Scenario) transcriptIs(variant, ref, lang string, table *godog.Table) e
 	if err := s.apiJSON(http.MethodGet, "/api/items/"+url.PathEscape(id)+"/cues?"+q.Encode(), nil, &got); err != nil {
 		return fmt.Errorf("取得 %s 的 %s 字幕：%w", ref, variant, err)
 	}
-	if len(got.Cues) != len(want) {
+	return checkTranscript(ref, variant, got, want)
+}
+
+// checkTranscript 比對取得的字幕與表格（規則見 transcriptIs）。
+func checkTranscript(ref, variant string, got cuesJSON, want []transcriptRow) error {
+	partial, err := isPartialTable(want)
+	if err != nil {
+		return err
+	}
+	if !partial && len(got.Cues) != len(want) {
 		return fmt.Errorf("%s 的 %s 字幕（%s）有 %d 句，預期 %d 句：%s", ref, variant, got.Lang, len(got.Cues), len(want), describeCues(got))
 	}
 	for i, w := range want {
-		g := got.Cues[i]
-		fail := func(field, have, exp string) error {
-			return fmt.Errorf("%s 的 %s 字幕第 %d 句：%s 是 %q，預期 %q", ref, variant, i+1, field, have, exp)
+		pos := i // 對應的 cue 在字幕中的位置
+		if partial {
+			n, _ := strconv.Atoi(w.cells["#"])
+			if n < 1 || n > len(got.Cues) {
+				return fmt.Errorf("%s 的 %s 字幕（%s）沒有第 %d 句（共 %d 句）", ref, variant, got.Lang, n, len(got.Cues))
+			}
+			pos = n - 1
 		}
-		for field, exp := range w.cells {
-			switch field {
-			case "#":
-				if n, err := strconv.Atoi(exp); err != nil || g.Index != n {
-					return fail("#", strconv.Itoa(g.Index), exp)
-				}
-			case "text":
-				if g.Text != exp {
-					return fail("text", g.Text, exp)
-				}
-			case "timing":
-				if g.Timing != exp {
-					return fail("timing", g.Timing, exp)
-				}
-			case "start", "end":
-				have := g.Start
-				if field == "end" {
-					have = g.End
-				}
-				// 時間以毫秒比對，表格寫 00:00:01 或 00:00:01.000 都可以。
-				hm, err1 := subtitle.ParseTimecode(have)
-				em, err2 := subtitle.ParseTimecode(exp)
-				if err1 != nil || err2 != nil || hm != em {
-					return fail(field, have, exp)
-				}
-			case "words":
-				expWords, err := subtitle.ParseWords(exp)
-				if err != nil {
-					return fmt.Errorf("表格第 %d 列的 words：%w", i+1, err)
-				}
-				var haveWords []string
-				for _, hw := range g.Words {
-					haveWords = append(haveWords, hw.Text+"@"+hw.Start+"-"+hw.End)
-				}
-				if h, e := strings.Join(haveWords, " "), subtitle.FormatWords(expWords); h != e {
-					return fail("words", h, e)
-				}
+		if err := compareCueRow(ref, variant, pos+1, w, got.Cues[pos]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// isPartialTable 判斷表格是不是「部分表格」：有 `#` 欄，而且各列的 `#` 不是 1、2、3… 的連號。
+// 沒有 `#` 欄、或 `#` 從 1 起連號的表格代表完整的字幕（要求句數相同）。`#` 不是整數時回傳錯誤。
+func isPartialTable(rows []transcriptRow) (bool, error) {
+	partial := false
+	hasIndex := false
+	for i, r := range rows {
+		v, ok := r.cells["#"]
+		if !ok {
+			continue
+		}
+		hasIndex = true
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return false, fmt.Errorf("表格第 %d 列的 # 不是整數：%q", i+1, v)
+		}
+		if n != i+1 {
+			partial = true
+		}
+	}
+	return hasIndex && partial, nil
+}
+
+// compareCueRow 比對一個 cue 與表格的一列（只比對表格中出現的欄位）；pos 是 cue 在字幕中的第幾句（從 1 起），用在錯誤訊息。
+func compareCueRow(ref, variant string, pos int, w transcriptRow, g cueJSON) error {
+	fail := func(field, have, exp string) error {
+		return fmt.Errorf("%s 的 %s 字幕第 %d 句：%s 是 %q，預期 %q", ref, variant, pos, field, have, exp)
+	}
+	for field, exp := range w.cells {
+		switch field {
+		case "#":
+			if n, err := strconv.Atoi(exp); err != nil || g.Index != n {
+				return fail("#", strconv.Itoa(g.Index), exp)
+			}
+		case "text":
+			if g.Text != exp {
+				return fail("text", g.Text, exp)
+			}
+		case "timing":
+			if g.Timing != exp {
+				return fail("timing", g.Timing, exp)
+			}
+		case "start", "end":
+			have := g.Start
+			if field == "end" {
+				have = g.End
+			}
+			// 時間以毫秒比對，表格寫 00:00:01 或 00:00:01.000 都可以。
+			hm, err1 := subtitle.ParseTimecode(have)
+			em, err2 := subtitle.ParseTimecode(exp)
+			if err1 != nil || err2 != nil || hm != em {
+				return fail(field, have, exp)
+			}
+		case "words":
+			expWords, err := subtitle.ParseWords(exp)
+			if err != nil {
+				return fmt.Errorf("表格第 %d 句的 words：%w", pos, err)
+			}
+			var haveWords []string
+			for _, hw := range g.Words {
+				haveWords = append(haveWords, hw.Text+"@"+hw.Start+"-"+hw.End)
+			}
+			if h, e := strings.Join(haveWords, " "), subtitle.FormatWords(expWords); h != e {
+				return fail("words", h, e)
 			}
 		}
 	}
