@@ -157,7 +157,7 @@
 | `Given the source {string} has nothing for {string}` | 字幕來源沒有結果 |
 | `Given the source {string} requires the cookie {string}` | 需要指定的 cookie 才能取得。平台來源（`bilibili-*`）的參數是 cookie 的平台：假 yt-dlp 沒有收到該平台的有效 cookie 檔（`--cookies` 指到 Netscape 格式、含 `.bilibili.com` 網域 `SESSDATA` 的檔案）時，不列出也不下載該來源的字幕軌，結束碼 0，並在 stderr 印出 login WARNING（有 `--no-warnings` 時不印）。平台來源還沒實作（`source.Implemented`）時 pending |
 | `Given the source {string} accepts files up to {string}` | ASR 的單檔大小上限，例如 `"25MB"` |
-| `Given the audio of {string} is {string}` | 音訊 fixture，例如長度或大小不同的檔案 |
+| `Given the audio of {string} is {string}` | 音訊 fixture（`features/fixtures/media/`），例如長度或大小不同的檔案。`local:` 把 fixture 的長度、壓縮後大小與靜音區段併進 inbox 中的檔案；`yt:`、`bili:` 寫進假 yt-dlp 中這部影片的對應屬性。檔案不在 inbox、fixture 不存在時失敗 |
 | `Given yt-dlp fails for {string} with {string}` | yt-dlp 對這個影音的所有操作（取得資訊、下載字幕、下載媒體）都以結束碼 1 失敗，stderr 為指定的錯誤輸出。只接受 `yt:` |
 
 ### 4.4 影音與產出（`steps/items.go`、`steps/trash.go`）
@@ -168,7 +168,7 @@
 | `When the owner ingests {string}` | `POST /api/items`，使用預設的處理方案 |
 | `When the owner ingests {string} with the profile {string}` | 指定處理方案 |
 | `When the owner ingests {string} with the overrides:` | 帶單次覆寫（YAML） |
-| `When the owner uploads {string}` | 透過 API 上傳本機檔案 |
+| `When the owner uploads {string}` | 透過 API 上傳本機檔案（`POST /api/items`，multipart 的 `file` 欄位）。參數是 `features/fixtures/local/` 的檔名；以 `/` 開頭時是場景中的路徑（對應規則見第 4 節） |
 | `When the owner reruns {string} from {string}` | 從指定步驟重新處理 |
 | `Given the item {string} has been ingested` | 已新增，worker 還沒執行 |
 | `Given the item {string} has been ingested as {word}` | 以指定的優先級新增：`manual`、`subscription`、`backfill` |
@@ -190,7 +190,7 @@
 | `Then the source {string} was rejected for {string} because {string}` | 品質檢查不通過的原因：影音詳情的 `sources` 中，有一筆 `source` 相符、`state` 為 `rejected`、`reason` 相符 |
 | `Then the original language of {string} is {string}` | 原文語言 |
 | `Then the original language of {string} is marked as mixed` | 標記為中英夾雜等混合語言 |
-| `Then the {string} transcript of {string} is:` | 字幕內容，表格欄位同上；只比對表格中出現的欄位。`#` 欄從 1 起連號時，字幕的句數必須與表格列數相同，並依序比對；`#` 不是從 1 起連號（例如只列 `41`、`42`）時，依 `#` 比對第 N 句，不檢查總句數 |
+| `Then the {string} transcript of {string} is:` | 字幕內容，表格欄位同上；只比對表格中出現的欄位。`#` 欄從 1 起連號時，字幕的句數必須與表格列數相同，並依序比對；`#` 不是從 1 起連號（例如只列 `41`、`42`）時，依 `#` 比對第 N 句（該句的編號也必須是 N），不檢查總句數 |
 | `Then the {string} transcript of {string} in {string} is:` | 同上，指定語言 |
 | `Then the {string} transcript of {string} has {int} cues` | cue 數 |
 | `Then the {string} transcript of {string} in {string} has {int} cues` | 同上，指定語言 |
