@@ -226,7 +226,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 
 	for chosen != nil {
 		if !cuesLoaded {
-			if cues, err = p.fetchCues(ctx, ad, it, *chosen); err != nil {
+			if cues, err = p.fetchCues(ctx, ad, it, chosen); err != nil {
 				if isPodcast && ctx.Err() == nil && podcastFallbackable(err) {
 					// Podcast 的字幕抓不到（404 等）、被防護擋下或解析失敗：記為 unavailable／permanent，改用 fallback（ASR）。
 					p.log.Warn("Podcast 字幕無法使用，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle, "error", err)
@@ -832,7 +832,15 @@ func sortedTracks(in []transcript.Track) []transcript.Track {
 }
 
 // fetchCues 下載一條字幕軌並解析成 cue。暫存檔放在 <data>/tmp，用完就清除（啟動時也會清空）。
-func (p *Pipeline) fetchCues(ctx context.Context, ad platformAdapter, it store.Item, t transcript.Track) ([]subtitle.Cue, error) {
+// 平台在下載後才判斷格式時（formatSniffer），把判斷出的格式寫回 t.Format，供來源紀錄使用。
+func (p *Pipeline) fetchCues(ctx context.Context, ad platformAdapter, it store.Item, t *transcript.Track) ([]subtitle.Cue, error) {
+	if fs, ok := ad.(formatSniffer); ok {
+		cues, format, err := fs.fetchCuesWithFormat(ctx, *t)
+		if err == nil && t.Format == "" {
+			t.Format = format
+		}
+		return cues, err
+	}
 	tmpRoot := filepath.Join(p.dataDir, "tmp")
 	if err := os.MkdirAll(tmpRoot, dirPerm); err != nil {
 		return nil, err
@@ -842,7 +850,7 @@ func (p *Pipeline) fetchCues(ctx context.Context, ad platformAdapter, it store.I
 		return nil, err
 	}
 	defer os.RemoveAll(dir)
-	return ad.fetchCues(ctx, it, t, dir)
+	return ad.fetchCues(ctx, it, *t, dir)
 }
 
 // newCuesArtifact 把字幕寫成產出檔，回傳要寫進資料庫的記錄。

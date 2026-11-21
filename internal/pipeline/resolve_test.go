@@ -160,10 +160,12 @@ func TestResolveEpisodeShape(t *testing.T) {
 		podEp{guid: "ep-41", title: "Episode 41", audio: "https://media.example.com/ep41.m4a", extra: `<itunes:duration>1500</itunes:duration>` +
 			`<podcast:transcript url="https://media.example.com/ep41.html" type="text/html"/>`},
 		podEp{guid: "ep-40", title: "Episode 40"},
+		// 沒有宣告 type、網址也看不出格式：transcript 步驟會下載後看內容判斷，所以算有字幕。
+		podEp{guid: "ep-39", title: "Episode 39", audio: "https://media.example.com/ep39.mp3", extra: `<podcast:transcript url="https://media.example.com/ep39-transcript"/>`},
 	)
 	r, _, _ := newPodcastRig(t, map[string]string{showURL: feed})
 	res, err := r.p.Resolve(context.Background(), "https://Feeds.Example.com:443/show.xml#x")
-	if err != nil || res.URL != showURL || len(res.Episodes) != 3 {
+	if err != nil || res.URL != showURL || len(res.Episodes) != 4 {
 		t.Fatalf("%+v, %v", res, err)
 	}
 	e := res.Episodes[0]
@@ -177,6 +179,9 @@ func TestResolveEpisodeShape(t *testing.T) {
 	}
 	if e := res.Episodes[2]; e.HasTranscript || e.DurationS != nil || e.MediaType != "" {
 		t.Errorf("ep-40 = %+v", e)
+	}
+	if e := res.Episodes[3]; !e.HasTranscript {
+		t.Errorf("ep-39 = %+v，沒有宣告 type 的字幕應算有字幕", e)
 	}
 }
 

@@ -120,7 +120,7 @@
 - ASR 前處理與切塊（SRC-R12，2026-11-21，LOCAL 切片實作時決定）：所有平台（含 YouTube）的 ASR 都先用 ffmpeg 轉成單聲道 16kHz 的 Opus（32 kbps）。仍超過 provider 的單檔上限時，以上限的 90% 估算塊數，在每個切點前後 30 秒內找最近的靜音中點（`silencedetect=noise=-35dB:d=0.3`），找不到就直接切；每塊前後各多取 5 秒重疊。合併時每個 cue 依中點歸屬到一塊，時間單調遞增，重疊區中時間重疊且文字相同的連續 cue 只留一句。切出的塊仍超過上限時，多切一塊重新規劃，最多多切 3 塊。編碼參數、`-format_whitelist` 清單與 silencedetect 的門檻要用真實 ffmpeg 確認（M0）。
 - Podcast 的來源（SRC-R14、R15，2026-11-21，PODCAST 切片實作時決定，待 owner 確認）：
   - 音檔在 `metadata` 步驟下載到 `/data/media/<id>/episode.<ext>`（上限 2 GiB、逾時 2 小時），記錄 `sha256` 與 ffprobe 量到的長度；每次跑 `metadata` 都重新下載，因為動態插入的廣告會讓內容改變。ASR 需要音檔而快取檔不在時才補下載，不驗證 `sha256`（理由同上）。
-  - `podcast-transcript` 從 `metadata` 存下的 feed 快照取軌，不重新抓 feed，所以 feed 移除這一集後仍可繼續。支援 VTT、SRT 與 Podcasting 2.0 JSON（沒有 type 時看內容判斷）；HTML 與純文字不支援。軌的語言是 `language` 屬性，沒有時用 feed 的語言。多條時依 `caption_priority` 的語言、再依格式 VTT > SRT > JSON。
+  - `podcast-transcript` 從 `metadata` 存下的 feed 快照取軌，不重新抓 feed，所以 feed 移除這一集後仍可繼續。支援 VTT、SRT 與 Podcasting 2.0 JSON（沒有 type 時看內容判斷；這種字幕在辨識結果中也算 `has_transcript`，來源紀錄的 `timing` 依實際解析的格式記錄）；HTML 與純文字不支援。軌的語言是 `language` 屬性，沒有時用 feed 的語言。多條時依 `caption_priority` 的語言、再依格式 VTT > SRT > JSON。
   - 字幕抓取失敗（4xx、被防護擋下、解析失敗）記為 `unavailable`／`permanent`，改用 fallback；5xx、429 與連線錯誤讓步驟重試。Supadata 對 podcast 是 `unsupported`。
   - SRC-R15 的「實際長度」是 ffprobe 量到的音檔長度，不是 feed 的 `itunes:duration`；與最大的 cue 結束時間相差超過 2%（不含）時，`transcript` 步驟仍為 `done`，帶 message「時間可能偏移」，沒有動作，來源紀錄加上 `timing_check`。只檢查 `podcast-transcript`，ASR 的結果不檢查。done 步驟的訊息在 UI 顯示為提醒（`shows the message` 的語意已補上這種情況，需要 owner 確認）。
 - SRC-R11 的 ASR 語言（2026-11-21）：原文語言未知、ASR 回報了語言時，寫回影音的原文語言，`lang_source` 為 `asr`。這個語言是 transcript 步驟自己的產出，所以重跑 transcript 時不當成輸入：快取鍵、送給 ASR 的語言提示與 `language_mismatch` 檢查都視為原文語言未知，否則重跑會因為快取鍵改變而重複付費。第三層的文字語言偵測仍未實作。

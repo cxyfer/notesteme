@@ -83,6 +83,25 @@ func TestPodcastTranscriptIsUsed(t *testing.T) {
 	}
 }
 
+// 沒有宣告 type、網址也看不出格式的字幕：下載後看內容判斷，來源紀錄的 timing 依實際的格式記錄
+// （字詞級的 JSON 是 word，不是 cue）。
+func TestPodcastSniffedTranscriptFormatInProvenance(t *testing.T) {
+	const typeless = "https://media.example.com/show/ep42-transcript"
+	r := newPodRig(t)
+	r.fm.duration = 4
+	r.serveShow(`<podcast:transcript url="` + typeless + `"/>`)
+	r.net.serve(typeless, 200, `{"version":"1.0.0","segments":[{"startTime":0,"endTime":0.5,"body":"Hello"},{"startTime":0.5,"endTime":1,"body":"there."},{"startTime":2,"endTime":3.9,"body":"Bye."}]}`)
+	it := r.ingestEpisode(StageMetadata)
+
+	res, err := r.transcribe(it, DefaultLanguage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := provOf(t, res); p.Source != "podcast-transcript" || p.Timing != "word" {
+		t.Errorf("provenance = %+v，預期 timing 為 word", p)
+	}
+}
+
 // 音檔內容改變（sha256 不同）時快取鍵不同。
 func TestPodcastTranscriptCacheKeyIncludesContentSHA(t *testing.T) {
 	// 影音 ID 不同也會讓鍵不同，所以比較同一部影音：換掉音檔後重跑 metadata。
