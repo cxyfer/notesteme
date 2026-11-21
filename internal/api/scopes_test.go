@@ -98,9 +98,9 @@ func TestScopeMatrix(t *testing.T) {
 				{"DELETE", "/api/tokens/missing", "", auth.ScopeAdmin, auth.ScopeRead, 404},
 				{"POST", "/api/tasks/t1/retry", "", auth.ScopeAdmin, auth.ScopeAgent, 501},
 				{"POST", "/api/tasks/t1/cancel", "", auth.ScopeAdmin, auth.ScopeAgent, 501},
-				// M2 的 501 stub（完整清單見 TestM2StubRoutes）：每種 scope 各抽一條。
-				{"GET", "/api/profiles", "", auth.ScopeRead, auth.ScopeAdmin, 501},
-				{"POST", "/api/profiles", `{"name":"x"}`, auth.ScopeAdmin, auth.ScopeRead, 501},
+				// M2 的路由：PRF 已實作（沒有注入 Pipeline 時回 500，完整清單見 TestPRFRoutesScopes）；其餘是 501 stub（見 TestM2StubRoutes），每種 scope 各抽一條。
+				{"GET", "/api/profiles", "", auth.ScopeRead, auth.ScopeAdmin, 500},
+				{"POST", "/api/profiles", `{"name":"x"}`, auth.ScopeAdmin, auth.ScopeRead, 500},
 				{"POST", "/api/prompts/playground", "", auth.ScopeIngest, auth.ScopeRead, 501},
 			}
 

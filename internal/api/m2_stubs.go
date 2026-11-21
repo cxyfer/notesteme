@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"slices"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -43,7 +42,7 @@ var m2Stubs = []m2Stub{
 
 // registerM2Stubs 註冊 M2 的 501 stub。
 func (rt *routes) registerM2Stubs(api huma.API) {
-	for _, s := range slices.Concat(m2Stubs, prfStubs) {
+	for _, s := range m2Stubs {
 		registerScoped(api, huma.Operation{
 			OperationID: s.ID, Method: s.Method, Path: s.Path, Summary: s.Summary,
 		}, s.Scope, notImplemented)

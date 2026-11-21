@@ -243,14 +243,16 @@ func (rt *routes) register(api huma.API) {
 	rt.registerTools(api)
 	rt.registerBackup(api)
 	rt.registerPrompts(api)
+	rt.registerProfiles(api)
+	rt.registerChannels(api)
 	rt.registerM2Stubs(api)
 	registerScoped(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",
-		Summary: "讀取全域設定區段（目前只有 language 與 services；其他區段尚未實作）",
+		Summary: "讀取全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）",
 	}, auth.ScopeAdmin, rt.getSettings)
 	registerScoped(api, huma.Operation{
 		OperationID: "settings-put", Method: http.MethodPut, Path: "/api/settings/{section}",
-		Summary: "取代全域設定區段（目前只有 language 與 services；其他區段尚未實作）",
+		Summary: "取代全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）；內容不正確回 422 與逐欄位的 errors",
 	}, auth.ScopeAdmin, rt.putSettings)
 	huma.Register(api, huma.Operation{
 		OperationID: "mcp", Method: http.MethodPost, Path: "/mcp",
