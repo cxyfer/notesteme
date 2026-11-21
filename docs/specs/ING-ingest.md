@@ -97,6 +97,10 @@ YouTube 播放清單（ING-R4）展開時由 yt-dlp 列出清單內容：清單�
   - `POST /api/estimate` 的 body 與 `POST /api/items` 相同（`url`、`parts`、`episodes`、`overrides`；`until` 忽略；`profile` 比照新增回 501）。辨識與展開共用新增的流程，錯誤碼也相同；不寫入資料庫，Podcast 也不建立 feed key 的頻道。本機檔案（`path`）還不支援，回 422 `invalid_input`。需要 `ingest` scope。
   - 回應：`items[{ref, title, duration_s, expected_source, asr_usd, source_usd, llm_usd, total_usd, requires_cookie, already_in_library, notes}]`、`total_usd`、`currency`（`USD`）、`prices_as_of`、`notes`。金額為 `null` 代表不知道，`0` 代表確定不用錢；`total_usd` 只加總已知的金額，有未知金額時 `notes` 帶「部分金額未知」。
   - 每部影音以平台的 Probe 取得字幕軌與長度，依生效的 `language` 用與 transcript 步驟相同的規則選軌；選到平台字幕（或 Podcast 的 `<podcast:transcript>`）時 `asr_usd` 為 0。沒選到時，依 `fallback` 的順序找第一個有設定、支援這個平台的來源：Groq 以長度乘上內建單價（`whisper-large-v3-turbo` 0.04、`whisper-large-v3` 0.111 USD／音訊小時）；Supadata 以 credit 計價，`source_usd` 為 `null`。都沒有時 `expected_source` 為 `null`。
-  - Podcast 的長度是 feed 宣稱的 `itunes:duration`，不下載音檔；實際費用以下載後量到的長度為準。`ref` 用 feed 已有的 feed key，還沒新增過的 feed 用推導出的候選 key（新增時撞名可能變成 `-2`）。
-  - 一次估算多部影音時，單一部 Probe 失敗只在該項的 `notes` 說明；只有一部時回傳錯誤。`llm_usd` 在 M2 實作 LLM 之前一律為 `null`。內建計價表在 `internal/cost`，使用者自訂單價屬於 M4（COST-03）。
+  - Podcast 的長度是 feed 宣稱的 `itunes:duration`，不下載音檔；實際費用以下載後量到的長度為準。`ref` 與新增一樣以 feed 網址查 feed key：已經新增過的 feed 用它的 key（可能是 `-2`），並據此標示 `already_in_library`；還沒新增過的 feed 用新增此刻會取得的候選 key（之後別的 feed 先新增時仍可能改變）。
+  - 長度不是有限值、為負或超過 1000 小時時視為不知道長度（`duration_s` 為 `null`，金額未知），避免不可信的 feed 讓金額變成無限大。
+  - Groq 設定了自訂的 `base_url`（可能是其他相容服務）時，內建單價不適用，`asr_usd` 為 `null`。
+  - 預計來源是預測：執行時平台字幕、feed 字幕或 Supadata 失敗，會改用下一個來源，實際費用可能不同。直播或還沒首播的影音在 `notes` 提醒要等結束後才會處理。
+  - 資源上限：一次最多 Probe 100 部（播放清單更長時只估前 100 部，頂層 `notes` 說明總數）；整個程序同時最多 4 個估價 Probe（跨請求共用）；一次估價的 Probe 總時間上限 3 分鐘，用完時還沒輪到的影音標為未知（「估價逾時」）。
+  - 一次估算多部影音時，單一部 Probe 失敗只在該項的 `notes` 說明；全部都失敗時，頂層 `notes` 也說明，仍回 200。只有一部時回傳錯誤。`llm_usd` 在 M2 實作 LLM 之前一律為 `null`。內建計價表在 `internal/cost`，使用者自訂單價屬於 M4（COST-03）。
 - ING-R9 的 Bilibili 部分在未登入時做不到：Bilibili 的 AI 字幕需要 cookie，但未登入時 yt-dlp 不列出字幕，辨識（`POST /api/resolve`）看不出這部影片有沒有 AI 字幕，無法標示 `requires_cookie`。目前只有 YouTube 的 `availability` 會標示；Bilibili 的標示記為待修的規則，等 M0 驗證後再決定（可能改成只在 transcript 步驟 `blocked` 時提示，見 SRC-R8）。
