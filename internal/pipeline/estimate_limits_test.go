@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cxyfer/notesteme/internal/source/groq"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
 )
@@ -150,6 +151,38 @@ func TestEstimateSkipsSupadataWithoutStoredKey(t *testing.T) {
 	it := est.Items[0]
 	if srcOf(it) != "groq" || !near(it.ASRUSD, roundUSD(600.0/3600*0.04)) || !hasNote(it, "已略過 supadata：沒有設定 API key。") {
 		t.Errorf("item = %+v", it)
+	}
+}
+
+// Supadata 不處理 Podcast：先看平台、再看 API key，沒有 key 時估價不能提示「沒有設定 API key」，
+// 設定 key 也不會讓它處理 feed 網址（處理時 runFallback 也是先判斷 supports）。
+func TestEstimateDoesNotMentionSupadataKeyForPodcast(t *testing.T) {
+	feed := podFeed("The Show", podEp{guid: "ep-42", title: "Episode 42", audio: audio42, extra: `<itunes:duration>3600</itunes:duration>`})
+	for _, tt := range []struct {
+		name  string
+		setup func(r *rig)
+	}{
+		{"已註冊但沒有 key", func(r *rig) {
+			r.p.fetchers[supadata.ID] = fallbackFetcher{
+				supports:   supadataSupports,
+				configured: func(context.Context) (bool, error) { return false, nil },
+			}
+		}},
+		{"沒有註冊", func(*rig) {}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			r, _, _ := newPodcastRig(t, map[string]string{showURL: feed})
+			r.p.groq = &fakeGroq{model: groq.DefaultModel, baseURL: groq.DefaultBaseURL}
+			tt.setup(r)
+			est, err := r.p.Estimate(context.Background(), IngestRequest{URL: showURL, Episodes: []string{"ep-42"}, Overrides: fallbackOverride("supadata", "groq")})
+			if err != nil || len(est.Items) != 1 {
+				t.Fatalf("est = %+v, %v", est, err)
+			}
+			it := est.Items[0]
+			if srcOf(it) != "groq" || hasNote(it, "supadata") {
+				t.Errorf("item = %+v，不該有 supadata 的 notes", it)
+			}
+		})
 	}
 }
 

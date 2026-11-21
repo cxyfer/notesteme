@@ -98,6 +98,36 @@ func TestLocalUnchangedFileKeepsSHA(t *testing.T) {
 	}
 }
 
+// inbox 新增時已算好 sha256，但還沒有 stat 記錄：第一次探測前檔案被替換，sha256 要重算，
+// 不能把替換後檔案的 stat 配上舊的 sha256（Codex P2）。
+func TestLocalInboxItemWithoutStatBaselineIsRehashed(t *testing.T) {
+	l := newLocalRig(t)
+	media := l.file("talk.mp4", "MEDIA")
+	it := l.item(media)
+	it.Origin = store.OriginInbox
+	it.ContentSHA256 = sha("MEDIA") // watcher 雜湊後寫入的值
+	ad, _ := l.p.adapterFor("local")
+
+	// 還沒有 stat 記錄，檔案已被換成別的內容。
+	if err := os.WriteFile(media, []byte("REPLACED-LONGER"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := ad.probe(context.Background(), it)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.ContentSHA256 != sha("REPLACED-LONGER") || info.ComputedSHA256 != sha("REPLACED-LONGER") || info.LocalStat == nil {
+		t.Errorf("沒有 stat 基準時應重算：%+v", info)
+	}
+
+	// 記下基準之後，檔案沒變就不再重算。
+	it.ContentSHA256, it.Metadata = info.ContentSHA256, l.statMetadata(media, nil)
+	info, err = ad.probe(context.Background(), it)
+	if err != nil || info.ComputedSHA256 != "" || info.ContentSHA256 != sha("REPLACED-LONGER") {
+		t.Errorf("有基準且檔案沒變不該重算：%+v, %v", info, err)
+	}
+}
+
 // transcript 步驟重算 sha256 時，寫回的 metadata_json 要保留其他欄位（UpdateItemMeta 整欄覆寫），並記下新的 stat。
 func TestLocalRefreshKeepsMetadataFields(t *testing.T) {
 	l := newLocalRig(t)
