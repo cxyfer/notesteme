@@ -203,13 +203,21 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 // （stagedEpisodes 有登記），不能蓋掉它：那個任務 commit 的 sha 與長度要跟檔案內容一致（Codex P1）；
 // 回傳可以重試的錯誤，等那個任務 commit 或丟棄之後再試。檢查與 rename 在同一把鎖之內，
 // 之後才開始暫存的 metadata 任務會因為 O_EXCL 發現檔案已存在而改用別的檔名。
+// 目的檔已存在時一律不蓋掉，沿用現有的檔案。
 func recoverEpisodeFile(part, dir, name string) error {
 	stagedEpisodes.Lock()
 	defer stagedEpisodes.Unlock()
 	if _, inFlight := stagedEpisodes.paths[stagedKey(dir, name)]; inFlight {
 		return &errclass.Error{Class: errclass.ClassRetryable, Source: "podcast", Message: "音檔正由另一個 metadata 任務更新，稍後重試。"}
 	}
-	return os.Rename(part, filepath.Join(dir, name))
+	dst := filepath.Join(dir, name)
+	// 檔案現在已經存在（例如下載期間另一個 metadata 任務 commit 了同名的新檔，登記已經放掉）：
+	// 不能蓋掉它，沿用現有的檔案，丟掉這次下載（Codex P1）。
+	if _, err := os.Lstat(dst); err == nil {
+		_ = os.Remove(part)
+		return nil
+	}
+	return os.Rename(part, dst)
 }
 
 // stageEpisodeFile 把下載完成的 part 放到 dir，而且不蓋掉已存在的檔案：依序用 O_EXCL 保留 episode<ext>、

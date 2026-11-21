@@ -443,6 +443,17 @@ func TestRecoverEpisodeFileDoesNotReplaceStagedFile(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(dir, name)); string(b) != "ASR" {
 		t.Errorf("放回之後內容 = %q", b)
 	}
+	// 下載期間別的任務已 commit 了同名的新檔（登記已放掉）：不蓋掉它，沿用現有的檔案，丟掉這次下載。
+	late := part("LATE-ASR")
+	if err := recoverEpisodeFile(late, dir, name); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, name)); string(b) != "ASR" {
+		t.Errorf("已存在的檔案被蓋掉：%q", b)
+	}
+	if _, err := os.Stat(late); !os.IsNotExist(err) {
+		t.Errorf("這次下載的 part 應被刪掉：%v", err)
+	}
 }
 
 // 程序崩潰遺留的暫存檔（沒有任何執行登記它）由下一次 commit 之後的清理刪除；不符合檔名格式的檔案不動。
