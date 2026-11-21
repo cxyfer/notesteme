@@ -117,7 +117,9 @@ func (p *Pipeline) Estimate(ctx context.Context, req IngestRequest) (*Estimate, 
 		targets = targets[:maxEstimateItems]
 	}
 	if x.podcast != nil {
-		out.Items = e.podcastItems(ctx, x.podcast)
+		if out.Items, err = e.podcastItems(ctx, x.podcast); err != nil {
+			return nil, err
+		}
 	} else if out.Items, err = e.probeItems(ctx, targets); err != nil {
 		return nil, err
 	}
@@ -239,6 +241,11 @@ func (e *estimator) probeItems(ctx context.Context, targets []source.Target) ([]
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	for _, err := range errs {
+		if le := (*libraryError)(nil); errors.As(err, &le) {
+			return nil, err
+		}
+	}
 	failed := 0
 	for i, err := range errs {
 		if err == nil {
@@ -267,7 +274,11 @@ func (e *estimator) probeItems(ctx context.Context, targets []source.Target) ([]
 // probeItem 估算一部 YouTube 或 Bilibili 影音。Probe 失敗時回傳已填好 ref 的空白項目與使用者看得到的錯誤。
 func (e *estimator) probeItem(ctx context.Context, t source.Target) (EstimateItem, error) {
 	it := EstimateItem{Ref: source.Ref(t.Platform, t.ExternalID, t.Part), Notes: []string{}}
-	it.AlreadyInLibrary = e.inLibrary(ctx, t)
+	in, err := e.inLibrary(ctx, t)
+	if err != nil {
+		return it, err
+	}
+	it.AlreadyInLibrary = in
 	ad, err := e.p.adapterFor(t.Platform)
 	if err != nil {
 		return it, err
@@ -321,20 +332,21 @@ func (e *estimator) probeItem(ctx context.Context, t source.Target) (EstimateIte
 
 // podcastItems 估算 Podcast 的各集：長度與字幕來自 feed，不需要 Probe。
 // 實際長度以下載的音檔為準（itunes:duration 只是 feed 的宣稱）。
-func (e *estimator) podcastItems(ctx context.Context, s *podcastSelection) []EstimateItem {
+func (e *estimator) podcastItems(ctx context.Context, s *podcastSelection) ([]EstimateItem, error) {
 	// feedKey 只有新增時才會建立：這裡只讀。feed 已經新增過時用它的 key（和新增一樣以 feed 網址查），
 	// 才知道各集在不在媒體庫中；還沒新增過時用新增此刻會取得的 key 當候選。
 	key, existing, err := e.p.st.Read().PeekPodcastFeedKey(ctx, s.canonical, s.slug)
 	if err != nil {
-		e.p.log.Debug("估價時查詢 feed key 失敗，改用推導的候選", "error", err.Error())
-		key, existing = s.slug, false
+		return nil, &libraryError{err: err}
 	}
 	items := make([]EstimateItem, 0, len(s.picked))
 	for _, ep := range s.picked {
 		externalID := podcast.ExternalID(key, ep.GUID)
 		it := EstimateItem{Ref: source.Ref(source.PlatformPodcast, externalID, 0), Title: ep.Title, Notes: []string{}}
 		if existing {
-			it.AlreadyInLibrary = e.inLibrary(ctx, source.Target{Platform: source.PlatformPodcast, ExternalID: externalID})
+			if it.AlreadyInLibrary, err = e.inLibrary(ctx, source.Target{Platform: source.PlatformPodcast, ExternalID: externalID}); err != nil {
+				return nil, err
+			}
 		}
 		it.setDuration(ep.DurationS)
 		if e.podcastCaptions(s.feed.Language, ep) {
@@ -344,7 +356,7 @@ func (e *estimator) podcastItems(ctx context.Context, s *podcastSelection) []Est
 		}
 		items = append(items, it)
 	}
-	return items
+	return items, nil
 }
 
 // podcastCaptions 回報 transcript 步驟會不會選到這一集的 <podcast:transcript>：
@@ -378,10 +390,23 @@ func (it *EstimateItem) setDuration(d *float64) {
 }
 
 // inLibrary 回報影音是否已在媒體庫中（垃圾桶中的不算）。
-func (e *estimator) inLibrary(ctx context.Context, t source.Target) bool {
+// 找不到是 false；其他錯誤（資料庫無法讀取等）包成 libraryError 往上傳，不能被當成「不在媒體庫中」。
+func (e *estimator) inLibrary(ctx context.Context, t source.Target) (bool, error) {
 	it, err := e.p.st.Read().ItemByKey(ctx, t.Platform, t.ExternalID, t.Part)
-	return err == nil && it.DeletedAt == nil
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return false, nil
+	case err != nil:
+		return false, &libraryError{err: err}
+	}
+	return it.DeletedAt == nil, nil
 }
+
+// libraryError 是查詢媒體庫失敗：整份估價失敗，不會只記在單一項目的 notes。
+type libraryError struct{ err error }
+
+func (e *libraryError) Error() string { return "查詢媒體庫失敗：" + e.err.Error() }
+func (e *libraryError) Unwrap() error { return e.err }
 
 // platformCaptions 記錄使用平台（或 feed）字幕：不需要 ASR，費用為 0。
 func (e *estimator) platformCaptions(it *EstimateItem, src string) {
