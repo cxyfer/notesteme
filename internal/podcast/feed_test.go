@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -254,5 +255,35 @@ func TestFetch(t *testing.T) {
 	blocked := &http.Client{Transport: rtFunc(func(*http.Request) (*http.Response, error) { return nil, netguard.ErrBlockedAddress })}
 	if _, err := Fetch(ctx, blocked, "https://feeds.example.com/x"); !errors.Is(err, netguard.ErrBlockedAddress) {
 		t.Errorf("被擋：%v", err)
+	}
+}
+
+// XML 巢狀超過 64 層：停止解析並回 ErrNotFeed，不能因為深層巢狀配置大量記憶體。
+func TestParseRejectsDeepNesting(t *testing.T) {
+	const bombSize = 4 << 20
+	bomb := "<rss><channel>" + strings.Repeat("<a>", bombSize/3)
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	_, err := Parse(strings.NewReader(bomb))
+	runtime.ReadMemStats(&after)
+	if !errors.Is(err, ErrNotFeed) {
+		t.Fatalf("err = %v，預期 ErrNotFeed", err)
+	}
+	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > 32<<20 {
+		t.Errorf("解析 %d bytes 的巢狀配置了 %d MiB", len(bomb), alloc>>20)
+	}
+
+	// 深度剛好在上限內（rss、channel 加上 62 層）仍可解析，含這之前的 item。
+	ok := `<rss><channel><item><guid>g</guid><enclosure url="https://m.example.com/a.mp3"/></item>` +
+		strings.Repeat("<a>", 62) + strings.Repeat("</a>", 62) + `</channel></rss>`
+	feed, err := Parse(strings.NewReader(ok))
+	if err != nil || len(feed.Episodes) != 1 {
+		t.Fatalf("深度 64：%+v, %v", feed, err)
+	}
+	// 超過一層就拒絕。
+	tooDeep := `<rss><channel><item><guid>g</guid></item>` + strings.Repeat("<a>", 63) + strings.Repeat("</a>", 63) + `</channel></rss>`
+	if _, err := Parse(strings.NewReader(tooDeep)); !errors.Is(err, ErrNotFeed) {
+		t.Errorf("深度 65：err = %v", err)
 	}
 }

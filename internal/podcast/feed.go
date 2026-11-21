@@ -29,7 +29,11 @@ const (
 	xmlURL    = "http://www.w3.org/XML/1998/namespace"
 )
 
-// ErrNotFeed 表示內容不是 RSS 2.0 或 Atom。
+// maxXMLDepth 是 XML 元素巢狀的上限；超過就停止解析。真實的 feed 只有個位數層，
+// 但 encoding/xml 每一層都會配置記憶體，惡意的深層巢狀會讓記憶體用量遠大於內容大小。
+const maxXMLDepth = 64
+
+// ErrNotFeed 表示內容不是 RSS 2.0 或 Atom（含巢狀超過 maxXMLDepth 層的 XML）。
 var ErrNotFeed = errors.New("內容不是 RSS 或 Atom")
 
 // HTTPError 表示抓取 feed 時伺服器回了非 2xx 的狀態。
@@ -180,6 +184,9 @@ func Parse(r io.Reader) (*Feed, error) {
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
+			if len(stack) >= maxXMLDepth {
+				return nil, ErrNotFeed
+			}
 			f := &frame{name: t.Name, attrs: t.Attr}
 			stack = append(stack, f)
 			local := strings.ToLower(t.Name.Local)
