@@ -411,7 +411,8 @@ func TestPromptUsers_ProfilesSettingsChannels(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	stage := func(prompt string) map[string]any {
-		return map[string]any{"stages": map[string]any{"correct": map[string]any{"prompt": prompt}}}
+		// executor 寫 agent：處理方案中寫出來的 api 步驟必須有 provider 與 model（PRF-R5）。
+		return map[string]any{"stages": map[string]any{"correct": map[string]any{"executor": "agent", "prompt": prompt}}}
 	}
 	mustProfile(t, r, "zeta", stage("my-correct@2"))
 	mustProfile(t, r, "alpha", stage("my-correct"))

@@ -315,7 +315,8 @@ func TestMigration00010_DownUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.Down(ctx); err != nil {
+	// 降到 9（不假設 00010 是最新的一支）。
+	if _, err := provider.DownTo(ctx, 9); err != nil {
 		t.Fatalf("降級：%v", err)
 	}
 	if v, err := s.SchemaVersion(ctx); err != nil || v != 9 {

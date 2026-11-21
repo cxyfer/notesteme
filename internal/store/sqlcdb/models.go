@@ -149,6 +149,24 @@ type ProfileVersion struct {
 	CreatedAt  int64
 }
 
+type Prompt struct {
+	ID             string
+	Kind           string
+	DefaultVersion int64
+	LatestVersion  int64
+	CreatedAt      int64
+	UpdatedAt      int64
+}
+
+type PromptVersion struct {
+	PromptID      string
+	Version       int64
+	Body          string
+	Sha256        string
+	VariablesJson string
+	CreatedAt     int64
+}
+
 type Secret struct {
 	Kind       string
 	Name       string

@@ -15,6 +15,9 @@ import (
 // 沒有設定的來源依序略過（not_configured）；結果取決於有沒有來源真的執行（SRC-R10 的折衷）。
 
 func fallbackOverride(ids ...any) map[string]any {
+	if ids == nil {
+		ids = []any{} // 空的 fallback 是空陣列，不是 null（輸入的層不接受 null）
+	}
 	return map[string]any{"language": map[string]any{"fallback": ids}}
 }
 
