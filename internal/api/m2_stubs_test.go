@@ -158,8 +158,9 @@ func pathMatches(tmpl, path string) bool {
 	return true
 }
 
-// rerun 帶 profile 或 chunks：501 not_implemented（不是 422），而且沒有新增 stage run。
-func TestRerunProfileAndChunksNotImplemented(t *testing.T) {
+// rerun 帶 chunks：501 not_implemented（不是 422），而且沒有新增 stage run。
+// profile 已經由 PRF 切片實作，不再是 501。
+func TestRerunChunksNotImplemented(t *testing.T) {
 	r := newItemsRig(t)
 	id := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123xxxxx"}`)).Items[0].ID
 	if err := r.worker.RunUntilIdle(context.Background()); err != nil {
@@ -167,9 +168,8 @@ func TestRerunProfileAndChunksNotImplemented(t *testing.T) {
 	}
 	before := r.owner("GET", "/api/items/"+id, "").Body.String()
 	for _, body := range []string{
-		`{"from":"normalize","profile":"mixed"}`,
 		`{"from":"normalize","chunks":[2,3]}`,
-		`{"from":"normalize","profile":"mixed","chunks":[1]}`,
+		`{"from":"normalize","profile":"default","chunks":[1]}`,
 	} {
 		rec := r.owner("POST", "/api/items/"+id+"/rerun", body)
 		if e := decodeError(t, rec.Body.Bytes()); rec.Code != http.StatusNotImplemented || e.Code != CodeNotImplemented {

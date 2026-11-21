@@ -189,6 +189,30 @@ func (q *Queries) InsertSnapshot(ctx context.Context, arg InsertSnapshotParams) 
 	return err
 }
 
+const insertSnapshotWithLayers = `-- name: InsertSnapshotWithLayers :exec
+INSERT INTO config_snapshots (id, sha256, config_json, layers_json, created_at)
+VALUES (?1, ?2, ?3, ?4, ?5)
+`
+
+type InsertSnapshotWithLayersParams struct {
+	ID         string
+	Sha256     string
+	ConfigJson string
+	LayersJson string
+	CreatedAt  int64
+}
+
+func (q *Queries) InsertSnapshotWithLayers(ctx context.Context, arg InsertSnapshotWithLayersParams) error {
+	_, err := q.db.ExecContext(ctx, insertSnapshotWithLayers,
+		arg.ID,
+		arg.Sha256,
+		arg.ConfigJson,
+		arg.LayersJson,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const insertStageRun = `-- name: InsertStageRun :exec
 INSERT INTO stage_runs (id, item_id, stage, lang, variant, status, config_snapshot_id, created_at)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6,
@@ -244,6 +268,43 @@ func (q *Queries) MarkStageRunning(ctx context.Context, arg MarkStageRunningPara
 	var i MarkStageRunningRow
 	err := row.Scan(&i.ItemID, &i.Stage, &i.Status)
 	return i, err
+}
+
+const rebindPendingRuns = `-- name: RebindPendingRuns :many
+UPDATE stage_runs SET config_snapshot_id = ?1
+WHERE item_id = ?2 AND config_snapshot_id = ?3
+  AND stage <> 'metadata' AND status = 'pending' AND started_at IS NULL
+RETURNING id
+`
+
+type RebindPendingRunsParams struct {
+	ToID   string
+	ItemID string
+	FromID string
+}
+
+// Re-bind the stage runs of one item that have not started (pending, never started, not metadata) from one snapshot to another.
+func (q *Queries) RebindPendingRuns(ctx context.Context, arg RebindPendingRunsParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, rebindPendingRuns, arg.ToID, arg.ItemID, arg.FromID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const resetRunningStage = `-- name: ResetRunningStage :one
@@ -357,6 +418,17 @@ func (q *Queries) SnapshotConfig(ctx context.Context, id string) (string, error)
 	var config_json string
 	err := row.Scan(&config_json)
 	return config_json, err
+}
+
+const snapshotLayers = `-- name: SnapshotLayers :one
+SELECT layers_json FROM config_snapshots WHERE id = ?1
+`
+
+func (q *Queries) SnapshotLayers(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRowContext(ctx, snapshotLayers, id)
+	var layers_json string
+	err := row.Scan(&layers_json)
+	return layers_json, err
 }
 
 const stageRunByID = `-- name: StageRunByID :one

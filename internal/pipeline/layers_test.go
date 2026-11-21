@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"reflect"
 	"testing"
 )
@@ -80,14 +79,5 @@ func TestSnapshotOf(t *testing.T) {
 	l2.Profile.Version = 2
 	if sha3, _, _, _ := SnapshotOf(eff, l2); sha3 == sha {
 		t.Error("不同的層應該有不同的 sha256")
-	}
-}
-
-// 契約階段的 currentLayers 是 stub：回傳 501 類型的錯誤，WP-2 實作。
-func TestCurrentLayersStubIsNotImplemented(t *testing.T) {
-	_, err := (&Pipeline{}).currentLayers(context.Background(), nil, "", "", nil, nil)
-	var ni *NotImplementedError
-	if !errors.As(err, &ni) {
-		t.Errorf("currentLayers = %v，預期 *NotImplementedError", err)
 	}
 }

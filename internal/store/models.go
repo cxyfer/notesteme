@@ -27,18 +27,20 @@ const (
 
 // Item 是一部影音。
 type Item struct {
-	ID          string
-	Platform    string
-	ExternalID  string
-	Part        int
-	ChannelID   string
-	ProfileID   string
-	Overrides   json.RawMessage
-	UntilStage  string
-	Title       string
-	URL         string
-	PublishedAt *time.Time
-	DurationS   *int
+	ID         string
+	Platform   string
+	ExternalID string
+	Part       int
+	ChannelID  string
+	ProfileID  string
+	// ProfileVersion 是最近一次新增或重跑用的處理方案版本；M1 的影音是 0（沒有記錄）。
+	ProfileVersion int
+	Overrides      json.RawMessage
+	UntilStage     string
+	Title          string
+	URL            string
+	PublishedAt    *time.Time
+	DurationS      *int
 	// OriginalLang 為空代表還不知道；LangSource 是 metadata | asr | detected。
 	OriginalLang string
 	LangSource   string
@@ -72,8 +74,10 @@ type NewItem struct {
 	Part       int
 	URL        string
 	ProfileID  string
-	Overrides  json.RawMessage // 空代表 {}
-	UntilStage string
+	// ProfileVersion 是 ProfileID 的版本；0 代表沒有記錄。
+	ProfileVersion int
+	Overrides      json.RawMessage // 空代表 {}
+	UntilStage     string
 	// SourcePath、ContentSHA256 只用於本機影音；Origin 空白時視為 OriginManual。
 	SourcePath    string
 	ContentSHA256 string
@@ -102,6 +106,9 @@ type Channel struct {
 	ExternalID string
 	Title      string
 	URL        string
+	// Overrides 是頻道層的覆寫（PRF-R8）；沒有時是 {}。
+	Overrides json.RawMessage
+	UpdatedAt time.Time
 }
 
 // StageRun 是影音某個步驟的一次執行。

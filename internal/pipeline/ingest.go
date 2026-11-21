@@ -94,10 +94,6 @@ func (p *Pipeline) expandRequest(ctx context.Context, req IngestRequest) (ingest
 		// 沒有註冊的平台（還沒實作，或 Bilibili 的依賴沒有設定）。
 		return ingestExpansion{}, &NotImplementedError{What: "新增 " + t.Platform + " 的影音"}
 	}
-	if req.Profile != "" {
-		// TODO(PRF)：處理方案屬於 M2；之後在全域設定與單次覆寫之間插入處理方案這一層。
-		return ingestExpansion{}, &NotImplementedError{What: "處理方案"}
-	}
 	if err := validateSelection(t, req); err != nil {
 		return ingestExpansion{}, err
 	}
@@ -126,24 +122,32 @@ func (p *Pipeline) expandRequest(ctx context.Context, req IngestRequest) (ingest
 // ingestPlan 是新增影音時算好的設定快照與單次覆寫，整批影音共用。
 type ingestPlan struct {
 	sha, cfgJSON string
-	overrides    json.RawMessage
+	// layersJSON 是組成這份快照的各層（config_snapshots.layers_json）。
+	layersJSON string
+	// profile 是實際用到的處理方案與版本（寫進 items.profile_id、profile_version，D7）。
+	profile   ProfileLayer
+	overrides json.RawMessage
 	// eff 是生效設定；估價用它取得 language，不必再從快照解析一次。
 	eff Effective
 }
 
-// planIngest 合併全域設定與單次覆寫（驗證覆寫的內容），算出設定快照。要在任何耗時的外部呼叫之前做，
-// 覆寫不正確時才不必先呼叫 yt-dlp 或抓取 feed。
+// planIngest 合併各層（全域、處理方案、單次覆寫；頻道要到 metadata 完成才知道，D6），驗證覆寫的內容，算出設定快照。
+// 要在任何耗時的外部呼叫之前做，覆寫或處理方案不正確時才不必先呼叫 yt-dlp 或抓取 feed。
+// 處理方案沒有指定時用預設處理方案；不存在時回傳 path 為 profile 的 *InvalidError。
 func (p *Pipeline) planIngest(ctx context.Context, req IngestRequest) (ingestPlan, error) {
-	global, err := p.globalConfig(ctx)
+	if err := p.validateOverrides(ctx, req.Overrides); err != nil {
+		return ingestPlan{}, err
+	}
+	l, err := p.currentLayers(ctx, p.st.Read(), req.Profile, "", req.Overrides, nil)
 	if err != nil {
 		return ingestPlan{}, err
 	}
-	eff, err := BuildEffective(global, req.Overrides)
+	eff, err := p.Compose(ctx, l)
 	if err != nil {
 		return ingestPlan{}, err
 	}
-	plan := ingestPlan{overrides: json.RawMessage(`{}`), eff: eff}
-	if plan.sha, plan.cfgJSON, err = eff.Snapshot(); err != nil {
+	plan := ingestPlan{overrides: json.RawMessage(`{}`), eff: eff, profile: l.Profile}
+	if plan.sha, plan.cfgJSON, plan.layersJSON, err = SnapshotOf(eff, l); err != nil {
 		return ingestPlan{}, err
 	}
 	if len(req.Overrides) > 0 {
@@ -177,6 +181,7 @@ func (p *Pipeline) insertTargets(ctx context.Context, req IngestRequest, plan in
 			it, created, err := r.InsertItemIfAbsent(ctx, store.NewItem{
 				Platform: target.Platform, ExternalID: target.ExternalID, Part: target.Part, URL: target.URL,
 				Overrides: plan.overrides, UntilStage: req.Until,
+				ProfileID: plan.profile.Name, ProfileVersion: plan.profile.Version,
 			})
 			if err != nil {
 				return err
@@ -198,7 +203,7 @@ func (p *Pipeline) insertTargets(ctx context.Context, req IngestRequest, plan in
 				return err
 			}
 			if snap == "" {
-				if snap, err = r.EnsureSnapshot(ctx, plan.sha, plan.cfgJSON); err != nil {
+				if snap, err = r.EnsureSnapshotLayers(ctx, plan.sha, plan.cfgJSON, plan.layersJSON); err != nil {
 					return err
 				}
 			}
@@ -332,13 +337,18 @@ func (p *Pipeline) expandParts(ctx context.Context, t source.Target, want []int)
 }
 
 // insertStageTask 為步驟建立任務。transcriptASR 的意義見 resourceClass；不知道字幕軌時傳 false。
+// run.Executor 是 agent 時，任務的 executor 也是 agent：內建 worker 只領 builtin 的任務，不會執行它（AGT-R1、ADR-0004）。
 func insertStageTask(ctx context.Context, r *store.Repo, itemID string, run store.StageRun, priority int, transcriptASR bool) (store.Task, error) {
 	payload, err := json.Marshal(map[string]string{"item_id": itemID})
 	if err != nil {
 		return store.Task{}, err
 	}
+	executor := queue.ExecutorBuiltin
+	if run.Executor == ExecutorAgent {
+		executor = ExecutorAgent
+	}
 	return r.InsertTask(ctx, store.NewTask{
-		StageRunID: run.ID, Kind: run.Stage, Executor: queue.ExecutorBuiltin,
+		StageRunID: run.ID, Kind: run.Stage, Executor: executor,
 		ResourceClass: resourceClass(run.Stage, run.Executor, transcriptASR), Priority: priority, Payload: payload,
 		MaxAttempts: queue.DefaultMaxAttempts,
 	})

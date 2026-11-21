@@ -326,6 +326,13 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 			wake = true
 		}
 		if res.advance {
+			// metadata 完成、頻道確定之後，把頻道層併進同一批還沒開始的下游步驟（D6）。
+			// 要在 nextStage 之前（until=metadata 時也要改綁），而且會同步更新 latest：下面前進時讀的是它。
+			if run.Stage == StageMetadata {
+				if err := p.rebindChannel(ctx, r, it.ID, run, latest); err != nil {
+					return err
+				}
+			}
 			next, ok := nextStage(run.Stage, it.UntilStage)
 			if !ok {
 				return nil

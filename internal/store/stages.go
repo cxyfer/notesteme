@@ -9,8 +9,13 @@ import (
 	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
 )
 
-// EnsureSnapshot 存入生效設定的快照；相同內容（sha256）已存在時回傳既有的 ID。
+// EnsureSnapshot 存入生效設定的快照（沒有各層的記錄，layers_json 是 {}）；相同內容（sha256）已存在時回傳既有的 ID。
 func (r *Repo) EnsureSnapshot(ctx context.Context, sha256, configJSON string) (string, error) {
+	return r.EnsureSnapshotLayers(ctx, sha256, configJSON, "{}")
+}
+
+// EnsureSnapshotLayers 同 EnsureSnapshot，另外記下組成這份快照的各層（PRF-R2、D6）。
+func (r *Repo) EnsureSnapshotLayers(ctx context.Context, sha256, configJSON, layersJSON string) (string, error) {
 	id, err := r.q.GetSnapshotIDBySHA(ctx, sha256)
 	if err == nil {
 		return id, nil
@@ -19,8 +24,22 @@ func (r *Repo) EnsureSnapshot(ctx context.Context, sha256, configJSON string) (s
 		return "", err
 	}
 	id = NewID()
-	err = r.q.InsertSnapshot(ctx, sqlcdb.InsertSnapshotParams{ID: id, Sha256: sha256, ConfigJson: configJSON, CreatedAt: r.nowMs()})
+	err = r.q.InsertSnapshotWithLayers(ctx, sqlcdb.InsertSnapshotWithLayersParams{
+		ID: id, Sha256: sha256, ConfigJson: configJSON, LayersJson: layersJSON, CreatedAt: r.nowMs(),
+	})
 	return id, err
+}
+
+// SnapshotLayers 回傳快照記下的各層 JSON；M1 的舊快照是 {}。
+func (r *Repo) SnapshotLayers(ctx context.Context, id string) (string, error) {
+	layers, err := r.q.SnapshotLayers(ctx, id)
+	return layers, notFound(err)
+}
+
+// RebindPendingRuns 把影音中綁在 fromID 快照、還沒開始（pending、沒有開始時間）的下游步驟（不含 metadata）改綁到 toID，
+// 回傳被改綁的 stage run ID（D6）。
+func (r *Repo) RebindPendingRuns(ctx context.Context, itemID, fromID, toID string) ([]string, error) {
+	return r.q.RebindPendingRuns(ctx, sqlcdb.RebindPendingRunsParams{ToID: toID, ItemID: itemID, FromID: fromID})
 }
 
 // Snapshot 回傳快照的 JSON 內容。

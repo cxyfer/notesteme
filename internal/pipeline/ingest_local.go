@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -42,6 +41,8 @@ type LocalTarget struct {
 	// Overrides、Until 是手動新增與上傳時的單次覆寫與「做到哪個步驟為止」（ING-R7）。
 	Overrides map[string]any
 	Until     string
+	// Profile 是處理方案名稱；空字串代表預設處理方案（PRF）。
+	Profile string
 	// Inbox 是已解析的 inbox 目錄；只有上傳用：選鍵時要避開 inbox 頂層的同名項目（兩者共用命名空間）。空白代表不檢查。
 	Inbox string
 }
@@ -74,24 +75,11 @@ func (p *Pipeline) IngestLocal(ctx context.Context, t LocalTarget) (LocalOutcome
 	if t.Until != "" && !ValidStage(t.Until) {
 		return LocalOutcome{}, invalidf("until 必須是 %v 其中之一。", Stages)
 	}
-	global, err := p.globalConfig(ctx)
+	plan, err := p.planIngest(ctx, IngestRequest{Profile: t.Profile, Overrides: t.Overrides})
 	if err != nil {
 		return LocalOutcome{}, err
 	}
-	eff, err := BuildEffective(global, t.Overrides)
-	if err != nil {
-		return LocalOutcome{}, err
-	}
-	sha, cfgJSON, err := eff.Snapshot()
-	if err != nil {
-		return LocalOutcome{}, err
-	}
-	overrides := json.RawMessage(`{}`)
-	if len(t.Overrides) > 0 {
-		if overrides, err = json.Marshal(t.Overrides); err != nil {
-			return LocalOutcome{}, err
-		}
-	}
+	overrides := plan.overrides
 
 	var out LocalOutcome
 	err = p.st.Tx(ctx, func(r *store.Repo) error {
@@ -155,6 +143,7 @@ func (p *Pipeline) IngestLocal(ctx context.Context, t LocalTarget) (LocalOutcome
 		it, created, err := r.InsertItemIfAbsent(ctx, store.NewItem{
 			ID: t.ID, Platform: source.PlatformLocal, ExternalID: key, SourcePath: t.SourcePath, ContentSHA256: t.SHA256,
 			Origin: t.Origin, Overrides: overrides, UntilStage: t.Until,
+			ProfileID: plan.profile.Name, ProfileVersion: plan.profile.Version,
 		})
 		if err != nil {
 			return err
@@ -164,7 +153,7 @@ func (p *Pipeline) IngestLocal(ctx context.Context, t LocalTarget) (LocalOutcome
 			out = LocalOutcome{State: store.InboxAlready, Item: it}
 			return nil
 		}
-		snap, err := r.EnsureSnapshot(ctx, sha, cfgJSON)
+		snap, err := r.EnsureSnapshotLayers(ctx, plan.sha, plan.cfgJSON, plan.layersJSON)
 		if err != nil {
 			return err
 		}
@@ -256,13 +245,9 @@ func (p *Pipeline) IngestPath(ctx context.Context, path string, opts LocalOption
 	if !filepath.IsAbs(path) {
 		return IngestResult{}, invalidf("路徑必須是絕對路徑。")
 	}
-	if opts.Profile != "" {
-		// TODO(PRF)：處理方案屬於 M2，同 Ingest。
-		return IngestResult{}, &NotImplementedError{What: "處理方案"}
-	}
 	out, err := p.IngestLocal(ctx, LocalTarget{
 		Key: LocalKey(opts.Inbox, path), SourcePath: path, Origin: store.OriginManual,
-		Overrides: opts.Overrides, Until: opts.Until,
+		Overrides: opts.Overrides, Until: opts.Until, Profile: opts.Profile,
 	})
 	if err != nil {
 		return IngestResult{}, err
@@ -285,9 +270,10 @@ type UploadRequest struct {
 	TmpPath string
 	// SHA256 是內容雜湊（小寫十六進位）。
 	SHA256 string
-	// Overrides、Until 同 IngestRequest。
+	// Overrides、Until、Profile 同 IngestRequest。
 	Overrides map[string]any
 	Until     string
+	Profile   string
 	// Inbox 是已解析的 inbox 目錄（可空白）：選鍵時避開 inbox 頂層的同名項目。
 	Inbox string
 }
@@ -341,7 +327,7 @@ func (p *Pipeline) IngestUpload(ctx context.Context, req UploadRequest) (LocalOu
 	}
 	out, err := p.IngestLocal(ctx, LocalTarget{
 		ID: id, Key: req.Name, SourcePath: filepath.ToSlash(rel), SHA256: req.SHA256, Origin: store.OriginUpload, Info: info,
-		Overrides: req.Overrides, Until: req.Until, Inbox: req.Inbox,
+		Overrides: req.Overrides, Until: req.Until, Inbox: req.Inbox, Profile: req.Profile,
 	})
 	if err != nil || !out.Created {
 		// 沒有建立影音：搬走的檔案要還回去，呼叫端才能統一清理暫存檔。

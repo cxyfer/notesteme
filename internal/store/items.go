@@ -12,25 +12,26 @@ import (
 // itemFromRow 把查詢結果轉成 Item；可為空的文字欄位 NULL 視為空字串。
 func itemFromRow(row sqlcdb.Item) Item {
 	it := Item{
-		ID:           row.ID,
-		Platform:     row.Platform,
-		ExternalID:   row.ExternalID,
-		Part:         int(row.Part),
-		ChannelID:    deref(row.ChannelID),
-		ProfileID:    deref(row.ProfileID),
-		Overrides:    json.RawMessage(row.OverridesJson),
-		UntilStage:   row.UntilStage,
-		Title:        row.Title,
-		URL:          row.Url,
-		PublishedAt:  msToTime(row.PublishedAt),
-		OriginalLang: deref(row.OriginalLang),
-		LangSource:   deref(row.LangSource),
-		LangMixed:    row.LangMixed != 0,
-		Availability: deref(row.Availability),
-		MediaKind:    deref(row.MediaKind),
-		Metadata:     json.RawMessage(row.MetadataJson),
-		CreatedAt:    fromMs(row.CreatedAt),
-		DeletedAt:    msToTime(row.DeletedAt),
+		ID:             row.ID,
+		Platform:       row.Platform,
+		ExternalID:     row.ExternalID,
+		Part:           int(row.Part),
+		ChannelID:      deref(row.ChannelID),
+		ProfileID:      deref(row.ProfileID),
+		ProfileVersion: derefInt(row.ProfileVersion),
+		Overrides:      json.RawMessage(row.OverridesJson),
+		UntilStage:     row.UntilStage,
+		Title:          row.Title,
+		URL:            row.Url,
+		PublishedAt:    msToTime(row.PublishedAt),
+		OriginalLang:   deref(row.OriginalLang),
+		LangSource:     deref(row.LangSource),
+		LangMixed:      row.LangMixed != 0,
+		Availability:   deref(row.Availability),
+		MediaKind:      deref(row.MediaKind),
+		Metadata:       json.RawMessage(row.MetadataJson),
+		CreatedAt:      fromMs(row.CreatedAt),
+		DeletedAt:      msToTime(row.DeletedAt),
 
 		SourcePath:    row.SourcePath,
 		ContentSHA256: row.ContentSha256,
@@ -70,18 +71,19 @@ func (r *Repo) insertItemIfAbsent(ctx context.Context, n NewItem) (it Item, crea
 		origin = OriginManual
 	}
 	rows, err := r.q.InsertItemIfAbsent(ctx, sqlcdb.InsertItemIfAbsentParams{
-		ID:            id,
-		Platform:      n.Platform,
-		ExternalID:    n.ExternalID,
-		Part:          int64(n.Part),
-		ProfileID:     n.ProfileID,
-		OverridesJson: string(overrides),
-		UntilStage:    n.UntilStage,
-		Url:           n.URL,
-		SourcePath:    n.SourcePath,
-		ContentSha256: n.ContentSHA256,
-		Origin:        origin,
-		CreatedAt:     r.nowMs(),
+		ID:             id,
+		Platform:       n.Platform,
+		ExternalID:     n.ExternalID,
+		Part:           int64(n.Part),
+		ProfileID:      n.ProfileID,
+		ProfileVersion: int64(n.ProfileVersion),
+		OverridesJson:  string(overrides),
+		UntilStage:     n.UntilStage,
+		Url:            n.URL,
+		SourcePath:     n.SourcePath,
+		ContentSha256:  n.ContentSHA256,
+		Origin:         origin,
+		CreatedAt:      r.nowMs(),
 	})
 	if err != nil {
 		return Item{}, false, err
@@ -176,6 +178,60 @@ func (r *Repo) UpsertChannel(ctx context.Context, c Channel) (string, error) {
 		Url:        c.URL,
 		UpdatedAt:  r.nowMs(),
 	})
+}
+
+// SetItemProfile 記錄影音最近一次新增或重跑用的處理方案與版本（D7）。
+func (r *Repo) SetItemProfile(ctx context.Context, itemID, name string, version int) error {
+	v := int64(version)
+	n, err := r.q.SetItemProfile(ctx, sqlcdb.SetItemProfileParams{ProfileID: &name, ProfileVersion: &v, ID: itemID})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("更新影音 %s：%w", itemID, ErrNotFound)
+	}
+	return nil
+}
+
+// ChannelByID 以 ID 查詢頻道；不存在時回傳 ErrNotFound。
+func (r *Repo) ChannelByID(ctx context.Context, id string) (Channel, error) {
+	row, err := r.q.GetChannel(ctx, id)
+	if err != nil {
+		return Channel{}, notFound(err)
+	}
+	return channelFromRow(row), nil
+}
+
+// SetChannelOverrides 寫入頻道層的覆寫（整份取代）；頻道不存在時回傳 ErrNotFound。
+func (r *Repo) SetChannelOverrides(ctx context.Context, channelID, overridesJSON string) error {
+	n, err := r.q.SetChannelOverrides(ctx, sqlcdb.SetChannelOverridesParams{OverridesJson: overridesJSON, UpdatedAt: r.nowMs(), ID: channelID})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("更新頻道 %s：%w", channelID, ErrNotFound)
+	}
+	return nil
+}
+
+// ChannelsWithOverrides 列出有頻道層覆寫的頻道。
+func (r *Repo) ChannelsWithOverrides(ctx context.Context) ([]Channel, error) {
+	rows, err := r.q.ChannelsWithOverrides(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Channel, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, channelFromRow(row))
+	}
+	return out, nil
+}
+
+func derefInt(n *int64) int {
+	if n == nil {
+		return 0
+	}
+	return int(*n)
 }
 
 // SetItemUntil 更新影音「做到哪個步驟為止」；空字串代表做到最後（PIPE-R1）。

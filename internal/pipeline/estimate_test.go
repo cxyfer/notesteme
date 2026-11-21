@@ -369,17 +369,16 @@ func TestEstimateFlagsRequiresCookie(t *testing.T) {
 // 無法辨識、頻道、處理方案：與新增相同的錯誤，而且不呼叫 yt-dlp。
 func TestEstimateRejections(t *testing.T) {
 	r, _, _ := estimateRig(t)
-	var ni *NotImplementedError
 	if _, err := r.estimate(IngestRequest{URL: "https://www.youtube.com/@someone"}); !errors.Is(err, ErrChannel) {
 		t.Errorf("頻道：err = %v", err)
 	}
 	if _, err := r.estimate(IngestRequest{URL: "not a url"}); !errors.Is(err, ErrUnrecognizedURL) {
 		t.Errorf("無法辨識：err = %v", err)
 	}
-	if _, err := r.estimate(IngestRequest{URL: watch, Profile: "fast"}); !errors.As(err, &ni) {
-		t.Errorf("處理方案：err = %v", err)
-	}
 	var inv *InvalidError
+	if _, err := r.estimate(IngestRequest{URL: watch, Profile: "fast"}); !errors.As(err, &inv) || len(inv.Fields) != 1 || inv.Fields[0].Path != "profile" {
+		t.Errorf("處理方案不存在：err = %v", err)
+	}
 	if _, err := r.estimate(IngestRequest{URL: watch, Parts: []int{1}}); !errors.As(err, &inv) {
 		t.Errorf("YouTube 的 parts：err = %v", err)
 	}

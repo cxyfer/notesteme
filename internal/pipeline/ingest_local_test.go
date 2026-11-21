@@ -261,9 +261,9 @@ func TestIngestPath(t *testing.T) {
 	if _, err := lr.p.IngestPath(ctx, "talk.mp4", LocalOptions{}); err == nil {
 		t.Error("相對路徑應該失敗")
 	}
-	var ni *NotImplementedError
-	if _, err := lr.p.IngestPath(ctx, path+"2", LocalOptions{Profile: "fast"}); !errors.As(err, &ni) {
-		t.Errorf("profile 應是 NotImplementedError：%v", err)
+	var inv *InvalidError
+	if _, err := lr.p.IngestPath(ctx, path+"2", LocalOptions{Profile: "fast"}); !errors.As(err, &inv) || len(inv.Fields) != 1 || inv.Fields[0].Path != "profile" {
+		t.Errorf("不存在的 profile 應是 path 為 profile 的 InvalidError：%v", err)
 	}
 }
 
