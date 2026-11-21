@@ -188,7 +188,8 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 		return nil, err
 	}
 	done = true
-	removeStaleEpisodes(dir, name, committed)
+	// 這裡不清其他 episode.*：可能是仍在執行的另一個 metadata 任務已經暫存、之後要 commit 的檔案。
+	// 舊檔一律等有任務 commit 之後，由 runPodcastMetadata 的 afterCommit 刪除。
 	return &episodeAudio{
 		File: name, URL: finalURL, Bytes: n, SHA256: sum,
 		DurationS: info.DurationS, mediaKind: info.Kind(),

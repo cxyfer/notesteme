@@ -237,6 +237,27 @@ func TestPodcastMetadataReplacesStaleEpisodeFile(t *testing.T) {
 	}
 }
 
+// 另一個仍在執行的 metadata 任務已暫存的檔案，不能被這次下載刪掉（Codex P1）：
+// 那個任務若是贏家，它 commit 的快照要指向這個檔案。
+func TestDownloadEpisodeAudioKeepsOtherStagedEpisodes(t *testing.T) {
+	r := newPodRig(t)
+	it, enc := r.downloadFixture()
+	dir := r.mediaDir(it)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	staged := filepath.Join(dir, "episode.m4a")
+	if err := os.WriteFile(staged, []byte("STAGED-BY-NEWER-RUN"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.p.downloadEpisodeAudio(context.Background(), it, enc); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(r.mediaFiles(it), ","); got != "episode.m4a,episode.mp3" {
+		t.Errorf("媒體目錄 = %s，其他任務暫存的 episode.m4a 應保留", got)
+	}
+}
+
 // 重新下載後副檔名相同：新檔不能在 commit 之前蓋掉影音現在指向的 episode.mp3（Codex P2）。
 // 沒有 commit 時影音讀到的仍是舊內容；commit 之後快照指向依內容命名的新檔，舊檔被刪。
 func TestPodcastMetadataSameNameAudioWaitsForCommit(t *testing.T) {
