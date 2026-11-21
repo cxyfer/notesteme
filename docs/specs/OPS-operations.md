@@ -97,6 +97,7 @@
 
 - 備份包含上傳的原始檔（2026-11-21，LOCAL 切片審查後決定，待 owner 確認）。OPS-R1 只排除可以重建的 `/data/artifacts` 與 `/data/media`，但上傳的檔案只存在 `/data/uploads/<id>/`，沒有其他來源。
   - 備份在 manifest、DB、設定檔之後加入 `uploads/<id>/<name>`，manifest 多一個選填欄位 `uploads: [{path, size, sha256}]`（沒有上傳時省略，格式與之前完全相同）。收錄的是 DB 中上傳的影音所指向的一般檔案；`sha256` 取自 DB，寫入時再算一次，不符就讓備份失敗。檔案不見或不是一般檔案時略過並記 log。
+  - 上傳檔的清單取自備份中的 DB 快照，不是線上的 DB。從快照之前到備份寫完為止，永久刪除仍會清掉 DB，但上傳原始檔要等備份結束才刪除。程序在這段期間結束時，留下的目錄由啟動時的孤兒清理刪除。這樣快照中的每個上傳影音，原始檔都在備份裡。
   - 還原時只接受 manifest 中列出、符合 `uploads/<小寫 UUID>/<name>` 的一般檔案；大小或 `sha256` 不符、manifest 列出卻缺少，都拒絕還原。空間檢查包含這些檔案。上傳檔先解到暫存目錄，驗證通過後才整個換上，失敗時維持原狀。
   - 還原後的 `/data/uploads` 只有備份中的檔案；原本的 `/data/uploads` 不刪除，移到 `/backups/pre-restore-uploads-<時間>/`（比照 pre-restore 的 DB 快照），由使用者自行清理。`notesteme restore` 會印出這個位置。
   - manifest 的大小上限由 64 KiB 放寬為 16 MiB，讓大量上傳檔的清單放得下。

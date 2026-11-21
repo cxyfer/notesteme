@@ -53,11 +53,15 @@ func (r *Repo) UploadFiles(ctx context.Context) ([]UploadFile, error) {
 	if err != nil {
 		return nil, err
 	}
+	return toUploadFiles(rows), nil
+}
+
+func toUploadFiles(rows []sqlcdb.ListUploadFilesRow) []UploadFile {
 	out := make([]UploadFile, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, UploadFile{ItemID: row.ID, SourcePath: row.SourcePath, SHA256: row.ContentSha256})
 	}
-	return out, nil
+	return out
 }
 
 // SetItemContentSHA 寫入影音的內容雜湊；已經有雜湊時不覆蓋（只在 content_sha256 為空時寫入）。

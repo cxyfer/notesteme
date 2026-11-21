@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -191,6 +193,48 @@ func TestPurgeItemWritesSHAToTombstone(t *testing.T) {
 	}
 	if len(got) != 2 || got["local"] != shaA || got["youtube"] != "" {
 		t.Errorf("tombstones = %v", got)
+	}
+}
+
+// SnapshotUploadFiles 讀的是快照：快照之後才永久刪除或新增的上傳影音不影響結果。
+func TestSnapshotUploadFilesReadsSnapshot(t *testing.T) {
+	ctx := context.Background()
+	s, _ := openTest(t)
+	dir := t.TempDir()
+	w := s.Write()
+	up := func(id, name, sha string) {
+		t.Helper()
+		if _, _, err := w.InsertItemIfAbsent(ctx, NewItem{ID: id, Platform: "local", ExternalID: name, SourcePath: "uploads/" + id + "/" + name, ContentSHA256: sha, Origin: OriginUpload}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	up("up-1", "a.m4a", shaA)
+	if _, _, err := w.InsertItemIfAbsent(ctx, newLocal("inbox.mp4", shaB)); err != nil {
+		t.Fatal(err)
+	}
+	snap := filepath.Join(dir, "snap", "db.sqlite")
+	if err := s.SnapshotTo(ctx, snap); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := w.TrashItem(ctx, "up-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.PurgeItem(ctx, "up-1", nil); err != nil {
+		t.Fatal(err)
+	}
+	up("up-2", "b.m4a", shaB)
+
+	got, err := SnapshotUploadFiles(ctx, snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []UploadFile{{ItemID: "up-1", SourcePath: "uploads/up-1/a.m4a", SHA256: shaA}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("SnapshotUploadFiles = %+v，想要 %+v", got, want)
+	}
+	live, err := s.Read().UploadFiles(ctx)
+	if err != nil || len(live) != 1 || live[0].ItemID != "up-2" {
+		t.Errorf("UploadFiles = %+v, %v", live, err)
 	}
 }
 
