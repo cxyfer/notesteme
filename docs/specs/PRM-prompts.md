@@ -33,7 +33,7 @@
 
 ## 介面
 
-- API：`GET/POST /api/prompts`、`GET /api/prompts/:id/versions`、`POST /api/prompts/:id/versions`、`POST /api/prompts/:id/default`、`POST /api/prompts/playground`、`POST /api/prompts/:id/compare`
+- API：`GET/POST /api/prompts`、`DELETE /api/prompts/:id`（PRM-R8）、`GET /api/prompts/:id/versions`、`POST /api/prompts/:id/versions`、`POST /api/prompts/:id/default`、`POST /api/prompts/playground`、`POST /api/prompts/:id/compare`
 - MCP：prompts capability（見 MCP）
 
 ## 不在範圍內

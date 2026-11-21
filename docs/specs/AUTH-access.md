@@ -52,3 +52,4 @@
 ## 待決問題
 
 - session 閒置期限 30 天是否太長，M1 期間依實際使用調整。
+- M2 的路由 scope（2026-11-21，M2 S0 的 501 stub 決定，待 owner 確認）：讀取 profiles、prompts、ass-styles、glossaries、channel overrides、term candidates 用 `read`（MCP-R6 讓 `read` 的 token 列出 prompt，這些物件也不含 secret）；寫入用 `admin`；`POST /api/prompts/playground`、`POST /api/prompts/:id/compare`、`POST /api/items/:id/subtitles/import`、`POST /api/items|tasks/:id/switch-executor` 用 `ingest`（會花錢或觸發重新處理）；`/mcp` 只要求有效身分，scope 依 tool 判斷；`GET /api/settings/:section` 維持 `admin`。S0 的 stub 在讀取 body 之前檢查 scope，所以缺憑證回 401、缺 scope 回 403，不會被 501 遮住。需要 owner 決定的是：讀取設定物件用 `read` 是否可以接受，還是要比照 settings 用 `admin`。

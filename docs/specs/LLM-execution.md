@@ -50,3 +50,10 @@
 ## 待決問題
 
 - `max_tokens` 與重疊句數的預設值，用 M0 的樣本調整。
+- L2：token 估算（2026-11-21，M2 S0 切片設計時決定，待 owner 確認）。CJK（漢字、假名、諺文）一字算 1；其他字元每 4 個算 1，無條件進位；每句再加 1。`max_tokens` 只計算 chunk 本身新的句子，重疊的句子不計入。LLM-R1 場景的 1-200、198-400 依此成立（fixture `yt-long01xxxxx` 每句剛好 20 tokens）。「重疊句不計入」是為了讓場景成立而推得的；LLM 切片若改成計入，fixture 要改成長度不一的句子。
+- wire 契約（2026-11-21，M2 S0 切片的 fakellm 依此檢查；LLM client 實作時寫成 ADR，要修改的話 fakellm 一起改）：
+  - 強制的 tool 或 schema 名稱是 `notesteme_<stage>`（Anthropic 用 `tools[].name` 加 `tool_choice`；OpenAI 用 `response_format.json_schema.name`）。
+  - 字幕放在第一個 user message 的 `<transcript_data>` 區塊，內容是一行 JSON：`{chunk, chunks, context[], cues[]}`，`chunk` 從 1 起算。標題、說明、章節放在固定前綴的 `<video_metadata>` 區塊（細節由 LLM 切片決定）。
+  - Anthropic 請求帶 `anthropic-version: 2023-06-01`，端點 `POST /v1/messages`；OpenAI 端點 `POST /v1/chat/completions`。
+- L6：內建 provider `anthropic`、`openai` 的 API key 環境變數是 `NOTESTEME_ANTHROPIC_API_KEY`、`NOTESTEME_OPENAI_API_KEY`；其他 provider 是 `NOTESTEME_<ID 大寫，- 換成 _>_API_KEY`（2026-11-21，M2 S0 切片設計時決定）。
+- `the {s} chunks of {s} are:` 的資料來源：建議把 chunk 切分寫進來源紀錄的 `chunks[]`，由 LLM 切片決定（2026-11-21，M2 S0 切片設計時發現；S0 沒有資料來源，該步驟維持 pending）。

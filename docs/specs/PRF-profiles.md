@@ -33,7 +33,7 @@
 
 ## 介面
 
-- API：`GET/POST/PATCH/DELETE /api/profiles`、`GET /api/profiles/:id/versions`、`GET/PATCH /api/channels/:id/overrides`、`GET /api/items/:id/runs`（含生效設定）
+- API：`GET/POST/PATCH/DELETE /api/profiles`、`GET /api/profiles/:id/versions`、`POST /api/profiles/:id/default`、`GET/PATCH /api/channels/:id/overrides`、`GET /api/items/:id/runs`（含生效設定）
 
 ## 不在範圍內
 
@@ -41,4 +41,6 @@
 
 ## 待決問題
 
-- 無。
+- [O] X1：`default` 處理方案的 LLM 步驟預設值（2026-11-21，M2 S0 切片，需要 owner 同意）。S0 先依選項 C 實作：`segment`、`correct`、`translate` 預設 `executor: api`、`prompt: <stage>-default`，沒有 provider 或 model 時為 `skipped`（`not_configured`）；`outputs` 預設 `[]`，`publish` 因此 `skipped`（`no_outputs`）。需要 owner 決定：預設是這樣（沒設定就略過），還是改成預設 `off`。若改成 `off`，只要改預設值與原因（`off`），pipeline 的結構與所有場景的結論不變，因為兩者都是「全部 skipped、沒有 message」。另外，場景中 `processed up to` 對 `segment`、`correct`、`translate`、`publish` 目前一律 pending（steps.md 4.4 規則 (2c)），等這項決定後才能定義它們的語意。
+- S0 只檢查 `stages` 的步驟名稱（`segment`、`correct`、`translate`）、`executor` 的值（`batch` 回 422，屬於 M4）、`provider`、`model`、`prompt` 是字串，以及 `outputs` 是陣列；步驟專屬欄位（例如 `min_similarity`）不拒絕。PRF-R4 的完整驗證與欄位路徑屬於 PRF 切片（2026-11-21，M2 S0 切片設計時決定）。
+- X5：設定預設處理方案用 `POST /api/profiles/:id/default`（`admin`），和 PRM 的 `POST /api/prompts/:id/default` 對稱（2026-11-21，M2 S0 切片設計時決定，場景的 `the default profile is` 用到）。
