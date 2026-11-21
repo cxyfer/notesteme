@@ -151,6 +151,40 @@ func TestParseAtomXHTMLTextConstructs(t *testing.T) {
 	}
 }
 
+// 精簡的 XHTML 省略區塊之間的空白，區塊本身就是邊界：抽出的文字要有間隔，行內元素與原有的空白則不變（Codex P2）。
+func TestParseAtomXHTMLBlockBoundaries(t *testing.T) {
+	for _, tt := range []struct{ name, xhtml, want string }{
+		{"相鄰段落", `<p>First</p><p>second.</p>`, "First second."},
+		{"段落前後有文字", `Intro<p>text</p>tail`, "Intro text tail"},
+		{"換行", `line<br/>two`, "line two"},
+		{"清單", `<ul><li>a</li><li>b</li><li>c</li></ul>`, "a b c"},
+		{"標題與內文", `<h2>Notes</h2><p>Body</p>`, "Notes Body"},
+		{"行內元素不加間隔", `<b>foo</b>bar <i>baz</i>qux`, "foobar bazqux"},
+		{"原有的空白不重複", "<p>First</p>\n<p>second.</p>", "First\nsecond."},
+		{"首尾不留間隔", `<p>only</p>`, "only"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			body := `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>Show</title>
+<entry>
+  <id>tag:example.com,2025:b1</id>
+  <title>Entry</title>
+  <summary type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">` + tt.xhtml + `</div></summary>
+  <link rel="enclosure" href="https://media.example.com/b1.m4a" type="audio/mp4"/>
+</entry>
+</feed>`
+			f, err := Parse(strings.NewReader(body))
+			if err != nil || len(f.Episodes) != 1 {
+				t.Fatalf("err = %v，episodes = %d", err, len(f.Episodes))
+			}
+			if got := f.Episodes[0].Description; got != tt.want {
+				t.Errorf("description = %q，預期 %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseAtom(t *testing.T) {
 	body := `<?xml version="1.0"?>
 <feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en">

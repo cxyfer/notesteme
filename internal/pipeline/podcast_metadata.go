@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -48,8 +47,7 @@ func (p *Pipeline) runPodcastMetadata(ctx context.Context, it store.Item, lang L
 	var discard func()
 	if audio.created {
 		if dir, derr := filepath.Abs(MediaCacheDir(p.dataDir, it.ID)); derr == nil {
-			staged := filepath.Join(dir, audio.File)
-			discard = func() { _ = os.Remove(staged) }
+			discard = func() { discardStagedEpisode(dir, audio.File) }
 		}
 	}
 
@@ -106,7 +104,12 @@ func (p *Pipeline) runPodcastMetadata(ctx context.Context, it store.Item, lang L
 	}
 	// 新的快照寫入之後，舊快照所指的音檔（副檔名不同時）才可以刪。
 	if dir, err := filepath.Abs(MediaCacheDir(p.dataDir, it.ID)); err == nil {
-		res.afterCommit = func() { removeStaleEpisodes(dir, audio.File) }
+		res.afterCommit = func() {
+			if audio.created {
+				releaseStagedEpisode(dir, audio.File)
+			}
+			removeStaleEpisodes(dir, audio.File)
+		}
 	}
 	// 趁著剛取得字幕軌，決定下游 transcript 任務的資源類別（與 transcript 步驟選軌的結論一致）。
 	tracks := podcastTracks(m.Podcast.Transcripts, feed.Language)

@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
@@ -202,7 +203,8 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 // episode-<sha8><ext>，都已存在時改用隨機的 episode-<8 碼><ext>（已存在就失敗），再 rename 蓋過自己剛建立的空檔。
 // 不共用別的下載已經建立的檔案：那個檔案仍屬於另一個還沒 commit 的執行，它的結果被丟棄時會刪掉它。
 // O_EXCL 在任何檔案系統上都有效，不依賴 hard link。回傳的檔案一定是這次建立的。
-// 保留與 rename 之間若程序崩潰會留下空檔，之後由 afterCommit 的清理刪除。
+// 保留與 rename 之間若程序崩潰會留下空檔，之後由 afterCommit 的清理刪除（程序重啟後 stagedEpisodes 是空的）。
+// 建立好的檔案登記在 stagedEpisodes，直到它的結果 commit（releaseStagedEpisode）或被丟棄（discardStagedEpisode）。
 func stageEpisodeFile(part, dir, ext, sum string) (string, error) {
 	candidates := []string{"episode" + ext, "episode-" + sum[:8] + ext}
 	for range 8 {
@@ -212,6 +214,9 @@ func stageEpisodeFile(part, dir, ext, sum string) (string, error) {
 		}
 		candidates = append(candidates, "episode-"+hex.EncodeToString(b[:])+ext)
 	}
+	// 建立與登記在同一把鎖之內：清理（removeStaleEpisodes）不會在兩者之間看到一個還沒登記的新檔。
+	stagedEpisodes.Lock()
+	defer stagedEpisodes.Unlock()
 	for _, n := range candidates {
 		dst := filepath.Join(dir, n)
 		f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
@@ -225,6 +230,7 @@ func stageEpisodeFile(part, dir, ext, sum string) (string, error) {
 				_ = os.Remove(dst)
 				return "", err
 			}
+			stagedEpisodes.paths[stagedKey(dir, n)] = struct{}{}
 			return n, nil
 		case errors.Is(err, fs.ErrExist):
 			continue
@@ -256,16 +262,56 @@ func removeStaleParts(dir string, now time.Time) {
 	}
 }
 
-// removeStaleEpisodes 刪除先前下載留下的其他 episode.* 檔（副檔名可能不同），keep 中的檔名保留。
+// stagedEpisodes 記錄這個程序裡已經暫存、結果還沒 commit 也還沒被丟棄的音檔（絕對路徑）。
+// 清理不能刪它們：檔名一旦被釋放，之後的下載可能又保留到同一個名稱，而原本那個執行稍後的 afterDiscard
+// 仍會來刪這個名稱，結果刪到別人的檔案（Codex P1）。只有檔案自己的執行（commit 或丟棄）才能把它從這裡拿掉。
+// 程序重啟後這份記錄是空的，崩潰遺留的檔案就由清理刪除。
+var stagedEpisodes = struct {
+	sync.Mutex
+	paths map[string]struct{}
+}{paths: map[string]struct{}{}}
+
+// stagedKey 是 stagedEpisodes 的鍵：媒體目錄的絕對路徑加檔名。
+func stagedKey(dir, name string) string {
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	return filepath.Join(dir, name)
+}
+
+// releaseStagedEpisode 在結果 commit 之後把檔案從 stagedEpisodes 拿掉：它從此是快照指向的檔案，不再是暫存檔。
+func releaseStagedEpisode(dir, name string) {
+	stagedEpisodes.Lock()
+	defer stagedEpisodes.Unlock()
+	delete(stagedEpisodes.paths, stagedKey(dir, name))
+}
+
+// discardStagedEpisode 在結果沒有寫入時刪除這次暫存的檔案並解除登記。刪除與解除登記在同一把鎖之內，
+// 檔名要等檔案真的不在了才會被別的下載保留。
+func discardStagedEpisode(dir, name string) {
+	stagedEpisodes.Lock()
+	defer stagedEpisodes.Unlock()
+	_ = os.Remove(filepath.Join(dir, name))
+	delete(stagedEpisodes.paths, stagedKey(dir, name))
+}
+
+// removeStaleEpisodes 刪除先前下載留下的其他 episode.* 檔（副檔名可能不同），keep 中的檔名保留，
+// 其他執行已暫存、還沒 commit 的檔案（stagedEpisodes）也保留。
 func removeStaleEpisodes(dir string, keep ...string) {
+	stagedEpisodes.Lock()
+	defer stagedEpisodes.Unlock()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
 	for _, e := range entries {
-		if !slices.Contains(keep, e.Name()) && episodeFilePattern.MatchString(e.Name()) {
-			_ = os.Remove(filepath.Join(dir, e.Name()))
+		if slices.Contains(keep, e.Name()) || !episodeFilePattern.MatchString(e.Name()) {
+			continue
 		}
+		if _, inFlight := stagedEpisodes.paths[stagedKey(dir, e.Name())]; inFlight {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, e.Name()))
 	}
 }
 
