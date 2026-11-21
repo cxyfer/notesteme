@@ -64,6 +64,10 @@ func CanonicalURL(raw string) (*url.URL, error) {
 		u.Host = net.JoinHostPort(strings.Trim(host, "[]"), port)
 	}
 	u.Fragment, u.RawFragment = "", ""
+	// 主機根目錄的 feed：`https://example.com` 與 `https://example.com/` 是同一個資源，統一成有 `/` 的形式。
+	if u.Path == "" && u.RawPath == "" && u.Opaque == "" {
+		u.Path = "/"
+	}
 	return u, nil
 }
 

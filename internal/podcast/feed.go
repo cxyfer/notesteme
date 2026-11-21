@@ -415,12 +415,16 @@ func parseTime(s string) *time.Time {
 	return nil
 }
 
-// charsetReader 處理 XML 宣告的編碼：UTF-8 與 ASCII 直接使用，ISO-8859-1 轉成 UTF-8；其他編碼不支援。
+// charsetReader 處理 XML 宣告的編碼：UTF-8 直接使用；ASCII、ISO-8859-1 與 Windows-1252 以 Windows-1252 轉成 UTF-8；
+// 其他編碼不支援。
+//
+// 和 WHATWG Encoding Standard（瀏覽器）一樣，ASCII 與 ISO-8859-1 的標籤也當成 Windows-1252：
+// 宣告 ISO-8859-1、實際用 Windows-1252 的彎引號、破折號的 feed 很常見，而 0x80–0x9F 的 C1 控制字元不會出現在正常的文字中。
 func charsetReader(label string, in io.Reader) (io.Reader, error) {
 	switch strings.ToLower(strings.TrimSpace(label)) {
-	case "utf-8", "utf8", "us-ascii", "ascii":
+	case "utf-8", "utf8":
 		return in, nil
-	case "iso-8859-1", "latin1", "latin-1", "windows-1252", "cp1252":
+	case "us-ascii", "ascii", "iso-8859-1", "iso8859-1", "latin1", "latin-1", "l1", "windows-1252", "cp1252", "x-cp1252":
 		b, err := io.ReadAll(in)
 		if err != nil {
 			return nil, err
@@ -428,8 +432,19 @@ func charsetReader(label string, in io.Reader) (io.Reader, error) {
 		rs := make([]rune, len(b))
 		for i, c := range b {
 			rs[i] = rune(c)
+			if c >= 0x80 && c <= 0x9f {
+				rs[i] = cp1252High[c-0x80]
+			}
 		}
 		return strings.NewReader(string(rs)), nil
 	}
 	return nil, fmt.Errorf("podcast: 不支援的編碼 %q", label)
+}
+
+// cp1252High 是 Windows-1252 的 0x80–0x9F；沒有定義的 0x81、0x8D、0x8F、0x90、0x9D 保留為同值的 C1 字元（同 WHATWG）。
+var cp1252High = [32]rune{
+	'€', '\u0081', '‚', 'ƒ', '„', '…', '†', '‡',
+	'ˆ', '‰', 'Š', '‹', 'Œ', '\u008d', 'Ž', '\u008f',
+	'\u0090', '‘', '’', '“', '”', '•', '–', '—',
+	'˜', '™', 'š', '›', 'œ', '\u009d', 'ž', 'Ÿ',
 }

@@ -218,6 +218,17 @@ func TestParseLatin1(t *testing.T) {
 	}
 }
 
+// Windows-1252 的 0x80–0x9F 是彎引號、破折號等標點，不是 C1 控制字元；宣告 ISO-8859-1 的 feed 也同樣處理（同 WHATWG）。
+func TestParseWindows1252(t *testing.T) {
+	for _, enc := range []string{"windows-1252", "cp1252", "ISO-8859-1"} {
+		body := "<?xml version=\"1.0\" encoding=\"" + enc + "\"?><rss><channel><title>\x93Caf\xe9\x94 \x97 it\x92s \x80 5</title></channel></rss>"
+		f, err := Parse(strings.NewReader(body))
+		if want := "“Café” — it’s € 5"; err != nil || f.Title != want {
+			t.Errorf("%s：title = %q, %v，預期 %q", enc, f.Title, err, want)
+		}
+	}
+}
+
 type rtFunc func(*http.Request) (*http.Response, error)
 
 func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
