@@ -152,6 +152,27 @@ func TestScanWalkCapKeepsEntries(t *testing.T) {
 	}
 }
 
+// 走訪上限算所有項目：大量被略過的檔案與目錄也會讓清單截斷，排在後面的影音這一輪不會被走訪到。
+func TestScanWalkCapCountsIgnoredEntries(t *testing.T) {
+	r := newRig(t)
+	for _, name := range []string{"a.part", "b.srt", ".hidden.mp4", "d/x.tmp"} {
+		r.put(name, "ignored", time.Minute)
+	}
+	r.put("z.mp4", video, time.Minute)
+	oldWalk := maxWalk
+	maxWalk = 3
+	t.Cleanup(func() { maxWalk = oldWalk })
+	r.run()
+	if n := r.itemCount(); n != 0 {
+		t.Fatalf("略過的項目應該算進走訪上限：新增了 %d 個", n)
+	}
+	maxWalk = 100
+	r.run()
+	if _, ok := r.item("z.mp4"); !ok {
+		t.Fatal("放寬上限後應該新增 z.mp4")
+	}
+}
+
 // 第一次看到時修改時間已經很久以前：馬上穩定，直接新增，origin 為 inbox。
 func TestStableOnFirstSight(t *testing.T) {
 	r := newRig(t)

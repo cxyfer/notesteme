@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"runtime"
 	"strings"
 	"testing"
@@ -267,6 +268,56 @@ func TestFetch(t *testing.T) {
 	blocked := &http.Client{Transport: rtFunc(func(*http.Request) (*http.Response, error) { return nil, netguard.ErrBlockedAddress })}
 	if _, err := Fetch(ctx, blocked, "https://feeds.example.com/x"); !errors.Is(err, netguard.ErrBlockedAddress) {
 		t.Errorf("被擋：%v", err)
+	}
+}
+
+// feed 中的相對網址以實際抓到 feed 的網址（轉址之後）解析；絕對網址與 guid 不變。
+func TestFetchResolvesRelativeLinks(t *testing.T) {
+	const feedXML = `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <title>Rel</title>
+  <link href="/home"/>
+  <entry>
+    <title>One</title>
+    <link rel="enclosure" type="audio/mpeg" href="media/one.mp3"/>
+    <link rel="alternate" href="../one.html"/>
+    <podcast:transcript url="one.vtt" type="text/vtt"/>
+  </entry>
+  <entry>
+    <id>two</id>
+    <link rel="enclosure" type="audio/mpeg" href="https://cdn.example.net/two.mp3"/>
+  </entry>
+</feed>`
+	final, _ := url.Parse("https://moved.example.org/shows/rel/feed.xml")
+	c := &http.Client{Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+		// 模擬轉址：回應所屬的請求是轉址之後的網址。
+		req := r.Clone(r.Context())
+		req.URL = final
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(feedXML)), Header: http.Header{}, Request: req}, nil
+	})}
+	f, err := Fetch(context.Background(), c, "https://feeds.example.com/rel.xml")
+	if err != nil || len(f.Episodes) != 2 {
+		t.Fatalf("%+v, %v", f, err)
+	}
+	one, two := f.Episodes[0], f.Episodes[1]
+	if f.Link != "https://moved.example.org/home" {
+		t.Errorf("feed link = %q", f.Link)
+	}
+	if one.Enclosure == nil || one.Enclosure.URL != "https://moved.example.org/shows/rel/media/one.mp3" {
+		t.Errorf("enclosure = %+v", one.Enclosure)
+	}
+	if one.Link != "https://moved.example.org/shows/one.html" {
+		t.Errorf("link = %q", one.Link)
+	}
+	if len(one.Transcripts) != 1 || one.Transcripts[0].URL != "https://moved.example.org/shows/rel/one.vtt" {
+		t.Errorf("transcripts = %+v", one.Transcripts)
+	}
+	// 沒有 id 的集以音檔網址當 guid：保留 feed 中的原始字串。
+	if one.GUID != "media/one.mp3" {
+		t.Errorf("guid = %q", one.GUID)
+	}
+	if two.Enclosure == nil || two.Enclosure.URL != "https://cdn.example.net/two.mp3" {
+		t.Errorf("絕對網址不應改變：%+v", two.Enclosure)
 	}
 }
 
