@@ -80,8 +80,18 @@ func TestMigration00009UpDown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("降級：%v", err)
+	// 先降掉比 00009 新的版本（00010 之後），再降 00009。
+	for {
+		v, err := s.SchemaVersion(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v < 9 {
+			break
+		}
+		if _, err := provider.Down(ctx); err != nil {
+			t.Fatalf("降級（版本 %d）：%v", v, err)
+		}
 	}
 	if v, err := s.SchemaVersion(ctx); err != nil || v != 8 {
 		t.Fatalf("降級後的版本 = %d, %v；預期 8", v, err)

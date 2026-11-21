@@ -9,6 +9,42 @@ import (
 	"context"
 )
 
+const channelsWithOverrides = `-- name: ChannelsWithOverrides :many
+SELECT id, platform, external_id, title, url, metadata_json, updated_at, overrides_json FROM channels WHERE overrides_json <> '{}' ORDER BY platform, external_id
+`
+
+func (q *Queries) ChannelsWithOverrides(ctx context.Context) ([]Channel, error) {
+	rows, err := q.db.QueryContext(ctx, channelsWithOverrides)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Channel
+	for rows.Next() {
+		var i Channel
+		if err := rows.Scan(
+			&i.ID,
+			&i.Platform,
+			&i.ExternalID,
+			&i.Title,
+			&i.Url,
+			&i.MetadataJson,
+			&i.UpdatedAt,
+			&i.OverridesJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countItemsFiltered = `-- name: CountItemsFiltered :one
 WITH sf AS (
   SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
@@ -73,27 +109,48 @@ func (q *Queries) CountItemsFiltered(ctx context.Context, arg CountItemsFiltered
 	return count, err
 }
 
+const getChannel = `-- name: GetChannel :one
+SELECT id, platform, external_id, title, url, metadata_json, updated_at, overrides_json FROM channels WHERE id = ?1
+`
+
+func (q *Queries) GetChannel(ctx context.Context, id string) (Channel, error) {
+	row := q.db.QueryRowContext(ctx, getChannel, id)
+	var i Channel
+	err := row.Scan(
+		&i.ID,
+		&i.Platform,
+		&i.ExternalID,
+		&i.Title,
+		&i.Url,
+		&i.MetadataJson,
+		&i.UpdatedAt,
+		&i.OverridesJson,
+	)
+	return i, err
+}
+
 const insertItemIfAbsent = `-- name: InsertItemIfAbsent :execrows
-INSERT INTO items (id, platform, external_id, part, profile_id, overrides_json, until_stage, url, source_path, content_sha256, origin, created_at)
+INSERT INTO items (id, platform, external_id, part, profile_id, profile_version, overrides_json, until_stage, url, source_path, content_sha256, origin, created_at)
 VALUES (?1, ?2, ?3, ?4, NULLIF(CAST(?5 AS TEXT), ''),
-        ?6, ?7, ?8, ?9, ?10,
-        ?11, ?12)
+        NULLIF(CAST(?6 AS INTEGER), 0), ?7, ?8, ?9, ?10, ?11,
+        ?12, ?13)
 ON CONFLICT (platform, external_id, part) DO NOTHING
 `
 
 type InsertItemIfAbsentParams struct {
-	ID            string
-	Platform      string
-	ExternalID    string
-	Part          int64
-	ProfileID     string
-	OverridesJson string
-	UntilStage    string
-	Url           string
-	SourcePath    string
-	ContentSha256 string
-	Origin        string
-	CreatedAt     int64
+	ID             string
+	Platform       string
+	ExternalID     string
+	Part           int64
+	ProfileID      string
+	ProfileVersion int64
+	OverridesJson  string
+	UntilStage     string
+	Url            string
+	SourcePath     string
+	ContentSha256  string
+	Origin         string
+	CreatedAt      int64
 }
 
 func (q *Queries) InsertItemIfAbsent(ctx context.Context, arg InsertItemIfAbsentParams) (int64, error) {
@@ -103,6 +160,7 @@ func (q *Queries) InsertItemIfAbsent(ctx context.Context, arg InsertItemIfAbsent
 		arg.ExternalID,
 		arg.Part,
 		arg.ProfileID,
+		arg.ProfileVersion,
 		arg.OverridesJson,
 		arg.UntilStage,
 		arg.Url,
@@ -118,7 +176,7 @@ func (q *Queries) InsertItemIfAbsent(ctx context.Context, arg InsertItemIfAbsent
 }
 
 const itemByID = `-- name: ItemByID :one
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin FROM items WHERE id = ?1
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version FROM items WHERE id = ?1
 `
 
 func (q *Queries) ItemByID(ctx context.Context, id string) (Item, error) {
@@ -149,12 +207,13 @@ func (q *Queries) ItemByID(ctx context.Context, id string) (Item, error) {
 		&i.SourcePath,
 		&i.ContentSha256,
 		&i.Origin,
+		&i.ProfileVersion,
 	)
 	return i, err
 }
 
 const itemByKey = `-- name: ItemByKey :one
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin FROM items WHERE platform = ?1 AND external_id = ?2 AND part = ?3
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version FROM items WHERE platform = ?1 AND external_id = ?2 AND part = ?3
 `
 
 type ItemByKeyParams struct {
@@ -191,12 +250,13 @@ func (q *Queries) ItemByKey(ctx context.Context, arg ItemByKeyParams) (Item, err
 		&i.SourcePath,
 		&i.ContentSha256,
 		&i.Origin,
+		&i.ProfileVersion,
 	)
 	return i, err
 }
 
 const listItems = `-- name: ListItems :many
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin FROM items WHERE deleted_at IS NULL ORDER BY created_at, rowid
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version FROM items WHERE deleted_at IS NULL ORDER BY created_at, rowid
 `
 
 func (q *Queries) ListItems(ctx context.Context) ([]Item, error) {
@@ -233,6 +293,7 @@ func (q *Queries) ListItems(ctx context.Context) ([]Item, error) {
 			&i.SourcePath,
 			&i.ContentSha256,
 			&i.Origin,
+			&i.ProfileVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -252,7 +313,7 @@ WITH sf AS (
   SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
   FROM json_each(CAST(?11 AS TEXT)) AS j
 )
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin FROM items
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version FROM items
 WHERE deleted_at IS NULL
   AND (CAST(?1 AS TEXT) = '' OR platform = ?1)
   AND (CAST(?2 AS TEXT) = '' OR channel_id = ?2)
@@ -351,6 +412,7 @@ func (q *Queries) ListItemsPage(ctx context.Context, arg ListItemsPageParams) ([
 			&i.SourcePath,
 			&i.ContentSha256,
 			&i.Origin,
+			&i.ProfileVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -363,6 +425,43 @@ func (q *Queries) ListItemsPage(ctx context.Context, arg ListItemsPageParams) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const setChannelOverrides = `-- name: SetChannelOverrides :execrows
+UPDATE channels SET overrides_json = ?1, updated_at = ?2 WHERE id = ?3
+`
+
+type SetChannelOverridesParams struct {
+	OverridesJson string
+	UpdatedAt     int64
+	ID            string
+}
+
+func (q *Queries) SetChannelOverrides(ctx context.Context, arg SetChannelOverridesParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setChannelOverrides, arg.OverridesJson, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const setItemProfile = `-- name: SetItemProfile :execrows
+UPDATE items SET profile_id = ?1, profile_version = ?2 WHERE id = ?3
+`
+
+type SetItemProfileParams struct {
+	ProfileID      *string
+	ProfileVersion *int64
+	ID             string
+}
+
+// The profile (and its version) used by the latest ingest or rerun.
+func (q *Queries) SetItemProfile(ctx context.Context, arg SetItemProfileParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setItemProfile, arg.ProfileID, arg.ProfileVersion, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const setItemUntil = `-- name: SetItemUntil :execrows

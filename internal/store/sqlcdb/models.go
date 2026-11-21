@@ -35,13 +35,14 @@ type Artifact struct {
 }
 
 type Channel struct {
-	ID           string
-	Platform     string
-	ExternalID   string
-	Title        string
-	Url          string
-	MetadataJson string
-	UpdatedAt    int64
+	ID            string
+	Platform      string
+	ExternalID    string
+	Title         string
+	Url           string
+	MetadataJson  string
+	UpdatedAt     int64
+	OverridesJson string
 }
 
 type ConfigSnapshot struct {
@@ -49,6 +50,7 @@ type ConfigSnapshot struct {
 	Sha256     string
 	ConfigJson string
 	CreatedAt  int64
+	LayersJson string
 }
 
 type CostLedger struct {
@@ -96,30 +98,31 @@ type InboxEntry struct {
 }
 
 type Item struct {
-	ID            string
-	Platform      string
-	ExternalID    string
-	Part          int64
-	ChannelID     *string
-	ProfileID     *string
-	OverridesJson string
-	UntilStage    string
-	Title         string
-	Url           string
-	PublishedAt   *int64
-	DurationS     *int64
-	OriginalLang  *string
-	LangSource    *string
-	LangMixed     int64
-	Availability  *string
-	MediaKind     *string
-	MetadataJson  string
-	CreatedAt     int64
-	DeletedAt     *int64
-	TitleFold     string
-	SourcePath    string
-	ContentSha256 string
-	Origin        string
+	ID             string
+	Platform       string
+	ExternalID     string
+	Part           int64
+	ChannelID      *string
+	ProfileID      *string
+	OverridesJson  string
+	UntilStage     string
+	Title          string
+	Url            string
+	PublishedAt    *int64
+	DurationS      *int64
+	OriginalLang   *string
+	LangSource     *string
+	LangMixed      int64
+	Availability   *string
+	MediaKind      *string
+	MetadataJson   string
+	CreatedAt      int64
+	DeletedAt      *int64
+	TitleFold      string
+	SourcePath     string
+	ContentSha256  string
+	Origin         string
+	ProfileVersion *int64
 }
 
 type ItemTombstone struct {
@@ -128,6 +131,22 @@ type ItemTombstone struct {
 	Part       int64
 	Sha256     string
 	PurgedAt   int64
+}
+
+type Profile struct {
+	Name           string
+	CurrentVersion int64
+	Builtin        int64
+	CreatedAt      int64
+	UpdatedAt      int64
+}
+
+type ProfileVersion struct {
+	Name       string
+	Version    int64
+	ConfigJson string
+	Sha256     string
+	CreatedAt  int64
 }
 
 type Secret struct {

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -14,7 +15,10 @@ import (
 const maxFeedKeySuffix = 100
 
 func channelFromRow(row sqlcdb.Channel) Channel {
-	return Channel{ID: row.ID, Platform: row.Platform, ExternalID: row.ExternalID, Title: row.Title, URL: row.Url}
+	return Channel{
+		ID: row.ID, Platform: row.Platform, ExternalID: row.ExternalID, Title: row.Title, URL: row.Url,
+		Overrides: json.RawMessage(row.OverridesJson), UpdatedAt: fromMs(row.UpdatedAt),
+	}
 }
 
 // ChannelByKey 以 (platform, external_id) 查詢頻道；不存在時回傳 ErrNotFound。
