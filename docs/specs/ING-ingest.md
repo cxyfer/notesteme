@@ -88,7 +88,7 @@ YouTube 播放清單（ING-R4）展開時由 yt-dlp 列出清單內容：清單�
   - Bilibili 的依賴沒有設定（程式沒有接線）時，新增 Bilibili 影片仍回 501。
 - Podcast（ING-R1、R2、R6，2026-11-21，PODCAST 切片實作時決定，待 owner 確認；決策見 ADR-0017）：
   - 每一集是 `(podcast, "<feed key>/<guid>", 0)`，代號 `pod:<feed key>/<guid>`。feed key 由 feed 網址最後一段推導（去副檔名、轉小寫、非英數換成 `-`，遇到 `rss`、`feed` 等泛用名稱往前取一段），存在 `channels` 中；不同 feed 撞名時加 `-2`。`items.url` 存正規化的 feed 網址（主機根目錄的 feed 補上結尾的 `/`；http 與 https、搬家的 feed 視為不同的 feed，不合併）。
-  - guid 是去掉前後空白後的 `<guid>`，沒有 guid 時用音檔網址；同一個 feed 中重複的 guid 以第一個為準。接受 RSS 與 Atom。feed 的編碼支援 UTF-8 與 Windows-1252（宣告 ASCII、ISO-8859-1 的也以 Windows-1252 解碼，同 WHATWG），其他編碼視為無法辨識的網址（技術債：需要時引入 `golang.org/x/text`）。
+  - guid 是去掉前後空白後的 `<guid>`，沒有 guid 時用音檔網址；同一個 feed 中重複的 guid 以第一個為準。接受 RSS 與 Atom。feed 中的相對網址（音檔、逐字稿、連結）以實際抓到 feed 的網址（轉址之後）解析成絕對網址；`xml:base` 不支援；沒有 guid、改用音檔網址當 guid 時，guid 保留 feed 中的原始字串。feed 的編碼支援 UTF-8 與 Windows-1252（宣告 ASCII、ISO-8859-1 的也以 Windows-1252 解碼，同 WHATWG），其他編碼視為無法辨識的網址（技術債：需要時引入 `golang.org/x/text`）。
   - 新增時沒有 `episodes` 回 422 `invalid_input`「這是 Podcast feed，請在 episodes 指定要新增的集。」；找不到的 guid 回 422「feed 中找不到這一集：<guid>。」；沒有音檔回 422「這一集沒有音檔：<guid>。」；帶 `parts` 回 422「Podcast 沒有分P 可以選擇。」。抓 feed 失敗比照辨識回 422 `unrecognized_url`。
   - 新增時對選中各集的音檔網址做一次只解析、不連線的檢查（`netguard.CheckURL`）。全部位址都被擋時，新增就回 422 `blocked_address`；DNS 失敗只記 log，留給 metadata 處理。真正的防護仍在連線時（GRD-R2）。
   - 「沒有指定集」的場景只斷言 422，現有程式回 `unrecognized_url` 也會通過；正確的錯誤碼由單元測試把關。建議在場景補上 `the response contains`，需要 owner 同意。

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -120,7 +121,43 @@ func Fetch(ctx context.Context, c *http.Client, rawURL string) (*Feed, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Parse(bytes.NewReader(body))
+	feed, err := Parse(bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	base := req.URL
+	if resp.Request != nil && resp.Request.URL != nil {
+		base = resp.Request.URL // 轉址後實際抓到 feed 的網址
+	}
+	feed.resolveLinks(base)
+	return feed, nil
+}
+
+// resolveLinks 把 feed 中的相對網址（音檔、逐字稿、連結）以 base 解析成絕對網址；
+// 已經是絕對網址或無法解析的保持原樣（之後的檢查會拒絕無效的網址）。xml:base 不支援。
+// guid 不變：沒有 guid、改用音檔網址當 guid 的集，guid 保留 feed 中的原始字串，識別才穩定。
+func (f *Feed) resolveLinks(base *url.URL) {
+	abs := func(s string) string {
+		if s == "" {
+			return s
+		}
+		u, err := url.Parse(s)
+		if err != nil || u.IsAbs() {
+			return s
+		}
+		return base.ResolveReference(u).String()
+	}
+	f.Link = abs(f.Link)
+	for i := range f.Episodes {
+		ep := &f.Episodes[i]
+		ep.Link = abs(ep.Link)
+		if ep.Enclosure != nil {
+			ep.Enclosure.URL = abs(ep.Enclosure.URL)
+		}
+		for j := range ep.Transcripts {
+			ep.Transcripts[j].URL = abs(ep.Transcripts[j].URL)
+		}
+	}
 }
 
 // frame 是解析中尚未結束的元素。

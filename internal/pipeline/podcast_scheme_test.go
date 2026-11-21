@@ -44,9 +44,30 @@ func schemeRig(t *testing.T, transcriptURL string, g *fakeGroq) *podRig {
 
 const schemeFeedURL = "http://feeds.example.com/show.xml"
 
-// 字幕網址不是 http、https（ftp、file、相對網址）：是被防護擋下的 permanent，改用 ASR，而不是當成可重試。
+// feed 中的相對字幕網址（含省略 scheme 的）以 feed 網址解析，快照記錄解析後的絕對網址。
+func TestPodcastRelativeTranscriptURLIsResolved(t *testing.T) {
+	for u, want := range map[string]string{
+		"t.vtt":                     "http://feeds.example.com/t.vtt",
+		"//media.example.com/t.vtt": "http://media.example.com/t.vtt",
+	} {
+		t.Run(u, func(t *testing.T) {
+			r := schemeRig(t, u, &fakeGroq{lang: "en", baseURL: "u", model: "m"})
+			got, err := r.p.Ingest(context.Background(), IngestRequest{URL: schemeFeedURL, Episodes: []string{"ep-42"}, Until: StageMetadata})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.run()
+			m, ok := readPodcastMeta(r.reload(got[0].Item.ID).Metadata)
+			if !ok || len(m.Podcast.Transcripts) != 1 || m.Podcast.Transcripts[0].URL != want {
+				t.Fatalf("transcripts = %+v，預期 %s", m.Podcast.Transcripts, want)
+			}
+		})
+	}
+}
+
+// 字幕網址不是 http、https（ftp、file）：是被防護擋下的 permanent，改用 ASR，而不是當成可重試。
 func TestPodcastTranscriptUnsupportedSchemeFallsBackToASR(t *testing.T) {
-	for _, u := range []string{"ftp://media.example.com/t.vtt", "file:///etc/passwd", "t.vtt", "//media.example.com/t.vtt"} {
+	for _, u := range []string{"ftp://media.example.com/t.vtt", "file:///etc/passwd"} {
 		t.Run(u, func(t *testing.T) {
 			g := &fakeGroq{lang: "en", baseURL: "u", model: "m"}
 			r := schemeRig(t, u, g)
