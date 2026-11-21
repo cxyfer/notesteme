@@ -83,6 +83,6 @@ func (w *World) AppEnv() app.Env {
 		Net:    w.Net.Deps(),
 		Listen: w.Listen,
 		Log:    w.Log,
-		Test:   &app.TestControls{LowCostHashing: true, ManualWorker: true, SkipShutdownGrace: true, ImplVersions: impl, Migrations: migs},
+		Test:   &app.TestControls{LowCostHashing: true, ManualWorker: true, SkipShutdownGrace: true, SerialLLM: true, ImplVersions: impl, Migrations: migs},
 	}
 }

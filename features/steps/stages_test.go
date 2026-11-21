@@ -343,10 +343,13 @@ func TestYtdlpFails(t *testing.T) {
 }
 
 func TestProviderHasNoAPIKey(t *testing.T) {
-	// LLM provider：步驟本身還沒實作，pending，環境不動。
+	// LLM provider：移除環境變數與 fakellm 的 key 要求（細節見 llm_test.go）。
 	s := newTestScenario(t)
-	if err := s.providerHasNoAPIKey("anthropic"); !errors.Is(err, godog.ErrPending) {
-		t.Errorf("LLM provider 應該 pending：%v", err)
+	if err := s.providerHasNoAPIKey("anthropic"); err != nil {
+		t.Errorf("LLM provider：%v", err)
+	}
+	if _, ok := s.World.Env[harness.AnthropicAPIKeyEnv]; ok {
+		t.Error("anthropic 的環境變數應該被移除")
 	}
 	// 還沒實作的字幕來源：pending，環境不動（key 還在）。
 	if err := s.providerHasNoAPIKey("whisper-1"); !errors.Is(err, godog.ErrPending) {
