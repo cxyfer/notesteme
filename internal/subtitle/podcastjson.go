@@ -30,11 +30,19 @@ type podcastSeg struct {
 	breakAfter bool   // 原文在這個 segment 之後換行
 }
 
+// maxSegTimeS 是 segment 時間的上限（秒）：超過 24 小時視為不合法，也避免轉成毫秒時 int64 溢位。
+const maxSegTimeS = 24 * 3600
+
+// validSegTime 回報時間是不是有限、非負且不超過 maxSegTimeS。
+func validSegTime(sec float64) bool {
+	return !math.IsNaN(sec) && !math.IsInf(sec, 0) && sec >= 0 && sec <= maxSegTimeS
+}
+
 // ParsePodcastJSON 解析 Podcasting 2.0 的 JSON 字幕（{"segments":[{"startTime","endTime","body"}]}，單位為秒）。
 //
 // 每個 segment 的 body 都是單一字詞（無空白；含 CJK 時不超過 4 個字）時，視為字詞級的時間：依句末標點、換行、停頓超過 1 秒或一句超過 7 秒
 // 合併成 cue，並填入 Words（wordLevel 為 true）。否則一個 segment 一個 cue。
-// body 是空白的 segment 略過；結束時間早於開始時間時取開始時間。JSON 不合法或時間為負時回傳錯誤。
+// body 是空白的 segment 略過；結束時間早於開始時間時取開始時間。JSON 不合法，或時間為負、不是有限值、超過 24 小時時回傳錯誤。
 func ParsePodcastJSON(data []byte) (cues []Cue, wordLevel bool, err error) {
 	var doc podcastJSON
 	if err := json.Unmarshal(data, &doc); err != nil {
@@ -42,7 +50,7 @@ func ParsePodcastJSON(data []byte) (cues []Cue, wordLevel bool, err error) {
 	}
 	var segs []podcastSeg
 	for i, s := range doc.Segments {
-		if math.IsNaN(s.StartTime) || math.IsNaN(s.EndTime) || s.StartTime < 0 || s.EndTime < 0 {
+		if !validSegTime(s.StartTime) || !validSegTime(s.EndTime) {
 			return nil, false, fmt.Errorf("subtitle: JSON 字幕第 %d 段的時間不合法", i+1)
 		}
 		body := strings.TrimSpace(s.Body)

@@ -145,3 +145,22 @@ func TestParsePodcastJSONCJKWordsJoinWithoutSpaces(t *testing.T) {
 		t.Errorf("cue = %+v", cues[0])
 	}
 }
+
+// 時間超過 24 小時（含 int64 會溢位的極大值）和負值一樣回傳錯誤。
+func TestParsePodcastJSONRejectsHugeTimes(t *testing.T) {
+	for _, bad := range []string{
+		`{"segments":[{"startTime":1e300,"endTime":1e300,"body":"x"}]}`,
+		`{"segments":[{"startTime":0,"endTime":1e300,"body":"x"}]}`,
+		`{"segments":[{"startTime":86400.5,"endTime":86401,"body":"x"}]}`,
+		`{"segments":[{"startTime":0,"endTime":9.3e15,"body":"x"}]}`,
+	} {
+		if _, _, err := ParsePodcastJSON([]byte(bad)); err == nil {
+			t.Errorf("%s 應該回傳錯誤", bad)
+		}
+	}
+	// 剛好 24 小時仍可接受。
+	cues, _, err := ParsePodcastJSON([]byte(`{"segments":[{"startTime":86399,"endTime":86400,"body":"x"}]}`))
+	if err != nil || len(cues) != 1 || cues[0].EndMS != 86400000 {
+		t.Errorf("cues = %+v, err = %v", cues, err)
+	}
+}
