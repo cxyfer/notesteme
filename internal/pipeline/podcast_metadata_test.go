@@ -412,6 +412,39 @@ func TestStagedEpisodeSurvivesOtherRunsCleanup(t *testing.T) {
 	}
 }
 
+// ASR 重新下載要放回快照記錄的檔名時，那個檔名若是同時進行的 metadata 任務已暫存的，不能蓋掉它（Codex P1）：
+// 回傳可重試的錯誤；那個任務 commit 或丟棄之後才可以放回。
+func TestRecoverEpisodeFileDoesNotReplaceStagedFile(t *testing.T) {
+	dir := t.TempDir()
+	part := func(body string) string {
+		p := filepath.Join(dir, ".episode-"+body+".part")
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	name, err := stageEpisodeFile(part("META"), dir, ".mp3", sumHex("META"))
+	if err != nil || name != "episode.mp3" {
+		t.Fatalf("name = %q, %v", name, err)
+	}
+	asr := part("ASR")
+	err = recoverEpisodeFile(asr, dir, name)
+	if err == nil || classOf(t, err) != errclass.ClassRetryable {
+		t.Fatalf("err = %v，預期可重試的錯誤", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, name)); string(b) != "META" {
+		t.Errorf("暫存檔被蓋掉：%q", b)
+	}
+	// metadata 結果被丟棄之後可以放回。
+	discardStagedEpisode(dir, name)
+	if err := recoverEpisodeFile(asr, dir, name); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, name)); string(b) != "ASR" {
+		t.Errorf("放回之後內容 = %q", b)
+	}
+}
+
 // 程序崩潰遺留的暫存檔（沒有任何執行登記它）由下一次 commit 之後的清理刪除；不符合檔名格式的檔案不動。
 func TestRemoveStaleEpisodesSweepsUnregisteredOrphans(t *testing.T) {
 	dir := t.TempDir()

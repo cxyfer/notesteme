@@ -182,7 +182,7 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 	// name 非空（ASR 重新下載）時沿用快照記錄的檔名，直接覆蓋。
 	created := false
 	if name != "" {
-		if err := os.Rename(part, filepath.Join(dir, name)); err != nil {
+		if err := recoverEpisodeFile(part, dir, name); err != nil {
 			return nil, err
 		}
 	} else {
@@ -197,6 +197,19 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 		File: name, URL: finalURL, Bytes: n, SHA256: sum,
 		DurationS: info.DurationS, mediaKind: info.Kind(), created: created,
 	}, nil
+}
+
+// recoverEpisodeFile 把 ASR 重新下載的 part 放回快照記錄的檔名。這個檔名若已被同時進行的 metadata 任務暫存
+// （stagedEpisodes 有登記），不能蓋掉它：那個任務 commit 的 sha 與長度要跟檔案內容一致（Codex P1）；
+// 回傳可以重試的錯誤，等那個任務 commit 或丟棄之後再試。檢查與 rename 在同一把鎖之內，
+// 之後才開始暫存的 metadata 任務會因為 O_EXCL 發現檔案已存在而改用別的檔名。
+func recoverEpisodeFile(part, dir, name string) error {
+	stagedEpisodes.Lock()
+	defer stagedEpisodes.Unlock()
+	if _, inFlight := stagedEpisodes.paths[stagedKey(dir, name)]; inFlight {
+		return &errclass.Error{Class: errclass.ClassRetryable, Source: "podcast", Message: "音檔正由另一個 metadata 任務更新，稍後重試。"}
+	}
+	return os.Rename(part, filepath.Join(dir, name))
 }
 
 // stageEpisodeFile 把下載完成的 part 放到 dir，而且不蓋掉已存在的檔案：依序用 O_EXCL 保留 episode<ext>、
