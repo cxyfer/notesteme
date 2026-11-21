@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -535,5 +536,34 @@ func TestPodcastMetadataFeed4xxIsPermanent(t *testing.T) {
 		if want == errclass.ClassPermanent && !strings.Contains(res.state.Message, fmt.Sprint(status)) {
 			t.Errorf("HTTP %d：訊息 %q 應包含狀態碼", status, res.state.Message)
 		}
+	}
+}
+
+// 程序崩潰遺留的 .episode-*.part 在下一次下載開始前清掉；剛寫入的（可能是進行中的下載）與其他檔案不動。
+func TestDownloadEpisodeAudioRemovesStaleParts(t *testing.T) {
+	r := newPodRig(t)
+	it, enc := r.downloadFixture()
+	dir := r.mediaDir(it)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old, fresh, other := filepath.Join(dir, ".episode-111.part"), filepath.Join(dir, ".episode-222.part"), filepath.Join(dir, "notes.txt")
+	for _, f := range []string{old, fresh, other} {
+		if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	past := time.Now().Add(-time.Hour)
+	for _, f := range []string{old, other} {
+		if err := os.Chtimes(f, past, past); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := r.p.downloadEpisodeAudio(context.Background(), it, enc); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(r.mediaFiles(it), ",")
+	if got != ".episode-222.part,episode.mp3,notes.txt" {
+		t.Errorf("媒體目錄 = %s", got)
 	}
 }

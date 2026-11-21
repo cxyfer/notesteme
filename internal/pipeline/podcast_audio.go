@@ -104,6 +104,7 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return nil, err
 	}
+	removeStaleParts(dir, time.Now())
 	ctx, cancel := context.WithTimeout(ctx, audioFetchTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, enc.URL, nil)
@@ -176,6 +177,27 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 		File: name, URL: finalURL, Bytes: n, SHA256: hex.EncodeToString(h.Sum(nil)),
 		DurationS: info.DurationS, mediaKind: info.Kind(),
 	}, nil
+}
+
+// stalePartAge 是 .part 檔多久沒有寫入就視為崩潰遺留的殘檔。下載中的檔案持續在寫入；
+// 設一段寬限，避免誤刪同時進行中的另一次下載。
+const stalePartAge = 10 * time.Minute
+
+// removeStaleParts 刪除程序崩潰遺留的 .episode-*.part：修改時間早於 stalePartAge 的才刪。
+func removeStaleParts(dir string, now time.Time) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if !e.Type().IsRegular() || !strings.HasPrefix(name, ".episode-") || !strings.HasSuffix(name, ".part") {
+			continue
+		}
+		if fi, err := e.Info(); err == nil && now.Sub(fi.ModTime()) > stalePartAge {
+			_ = os.Remove(filepath.Join(dir, name))
+		}
+	}
 }
 
 // removeStaleEpisodes 刪除先前下載留下的其他 episode.* 檔（副檔名可能不同）。
