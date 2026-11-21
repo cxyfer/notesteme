@@ -206,6 +206,10 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	s.cookies = cookies.New(s.store, s.keys, cfg.Data)
 	yt := &youtube.Client{Runner: runner, Tools: tools, Cookies: s.cookies}
 	s.queue = queue.New(s.store, env.Clock, store.NewID())
+	if env.Test != nil && env.Test.SerialLLM {
+		// llm 類別一次最多執行一個任務（不論設定的上限），請求順序才有確定性；不影響 GET /api/queue 顯示的上限。
+		s.queue.Control().SetCap(queue.ResourceLLM, 1)
+	}
 	deps := pipeline.Deps{
 		Store: s.store, Clock: env.Clock, DataDir: cfg.Data, Log: log, YouTube: yt, Wake: s.queue.Wake, Version: version,
 		// 垃圾桶列表的 purge_at 與定期清理用同一個保留期限（DEL-R4）。
