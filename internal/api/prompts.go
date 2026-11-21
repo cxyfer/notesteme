@@ -137,9 +137,9 @@ func (rt *routes) listPrompts(ctx context.Context, _ *struct{}) (*promptsOutput,
 
 type createPromptInput struct {
 	Body struct {
-		ID   string `json:"id" doc:"小寫英文字母、數字、「.」與「-」，不可以和內建的相同"`
-		Kind string `json:"kind" doc:"summary、chapters、segment、correct、translate、frames.select 或 note"`
-		Body string `json:"body" doc:"內文，可用 {{title}}、{{channel}}、{{description}}、{{chapters}}、{{glossary}}、{{source_lang}}、{{target_lang}}"`
+		ID   string `json:"id,omitempty" doc:"小寫英文字母、數字、「.」與「-」，不可以和內建的相同"`
+		Kind string `json:"kind,omitempty" doc:"summary、chapters、segment、correct、translate、frames.select 或 note"`
+		Body string `json:"body,omitempty" doc:"內文，可用 {{title}}、{{channel}}、{{description}}、{{chapters}}、{{glossary}}、{{source_lang}}、{{target_lang}}"`
 	}
 }
 
@@ -223,7 +223,7 @@ func (rt *routes) listPromptVersions(ctx context.Context, in *promptIDInput) (*p
 type addPromptVersionInput struct {
 	ID   string `path:"id" doc:"提示詞 id"`
 	Body struct {
-		Body string `json:"body" doc:"新版本的內文"`
+		Body string `json:"body,omitempty" doc:"新版本的內文"`
 	}
 }
 
@@ -255,7 +255,7 @@ func (rt *routes) addPromptVersion(ctx context.Context, in *addPromptVersionInpu
 type setPromptDefaultInput struct {
 	ID   string `path:"id" doc:"提示詞 id"`
 	Body struct {
-		Version int `json:"version" doc:"要設為預設的版本；不存在回 422"`
+		Version int `json:"version,omitempty" doc:"要設為預設的版本；不存在回 422"`
 	}
 }
 

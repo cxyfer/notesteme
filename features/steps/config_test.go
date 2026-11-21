@@ -268,3 +268,12 @@ func TestFlushConfig_ChannelKeyResolvedAtFlush(t *testing.T) {
 		t.Errorf("calls = %+v", calls)
 	}
 }
+
+// 空的預期生效設定會讓子集比對空洞通過：步驟要失敗。
+func TestEffectiveConfigContainsRejectsEmpty(t *testing.T) {
+	s := newTestScenario(t)
+	err := s.effectiveConfigContains("yt:abc123xxxxx", "transcript", &godog.DocString{Content: "\n"})
+	if err == nil || errors.Is(err, godog.ErrPending) || !strings.Contains(err.Error(), "空的") {
+		t.Errorf("err = %v", err)
+	}
+}

@@ -49,6 +49,25 @@ func TestPromptsAPI_Lifecycle(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity || e.Code != CodeInvalidInput || len(e.Errors) == 0 || e.Errors[0].Path != "kind" {
 		t.Errorf("未知的類型 = %d %s", rec.Code, rec.Body)
 	}
+	// 缺少必填欄位也走逐欄位的 422（errors[].path），不是框架的 invalid_request。
+	for body, path := range map[string]string{
+		`{"id":"my-x","body":"x"}`:       "kind",
+		`{"id":"my-x","kind":"correct"}`: "body",
+		`{"kind":"correct","body":"x"}`:  "id",
+	} {
+		rec = r.owner("POST", "/api/prompts", body)
+		if e := decodeError(t, rec.Body.Bytes()); rec.Code != http.StatusUnprocessableEntity || e.Code != CodeInvalidInput || len(e.Errors) == 0 || e.Errors[0].Path != path {
+			t.Errorf("%s = %d %s，預期 path %s", body, rec.Code, rec.Body, path)
+		}
+	}
+	rec = r.owner("POST", "/api/prompts/my-correct/versions", `{}`)
+	if e := decodeError(t, rec.Body.Bytes()); rec.Code != http.StatusUnprocessableEntity || len(e.Errors) == 0 || e.Errors[0].Path != "body" {
+		t.Errorf("新版本缺 body = %d %s", rec.Code, rec.Body)
+	}
+	rec = r.owner("POST", "/api/prompts/my-correct/default", `{}`)
+	if e := decodeError(t, rec.Body.Bytes()); rec.Code != http.StatusUnprocessableEntity || len(e.Errors) == 0 || e.Errors[0].Path != "version" {
+		t.Errorf("設為預設缺 version = %d %s", rec.Code, rec.Body)
+	}
 	// 同 id 已存在、和內建同 id。
 	rec = r.owner("POST", "/api/prompts", `{"id":"my-correct","kind":"correct","body":"x"}`)
 	if e := decodeError(t, rec.Body.Bytes()); rec.Code != http.StatusConflict || e.Code != CodePromptExists {

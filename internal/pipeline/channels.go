@@ -53,6 +53,9 @@ func (p *Pipeline) ChannelOverrides(ctx context.Context, key string) (ChannelOve
 		}
 		return channelOverridesOf(ch)
 	}
+	if err := checkChannelKey(platform, externalID); err != nil {
+		return ChannelOverrides{}, err
+	}
 	ch, err := r.ChannelByKey(ctx, platform, externalID)
 	if errors.Is(err, store.ErrNotFound) {
 		return ChannelOverrides{Platform: platform, ExternalID: externalID, Overrides: map[string]any{}}, nil
@@ -68,11 +71,8 @@ func (p *Pipeline) ChannelOverrides(ctx context.Context, key string) (ChannelOve
 func (p *Pipeline) PatchChannelOverrides(ctx context.Context, key string, patch map[string]any) (ChannelOverrides, error) {
 	platform, externalID, natural := splitChannelKey(key)
 	if natural {
-		if !slices.Contains(overridablePlatforms, platform) {
-			return ChannelOverrides{}, invalidFields([]validate.FieldError{{Path: "id", Message: "platform 只能是 youtube、bilibili 或 podcast。"}})
-		}
-		if externalID == "" {
-			return ChannelOverrides{}, invalidFields([]validate.FieldError{{Path: "id", Message: "缺少頻道的 external_id。"}})
+		if err := checkChannelKey(platform, externalID); err != nil {
+			return ChannelOverrides{}, err
 		}
 	}
 	var out ChannelOverrides
@@ -122,4 +122,15 @@ func (p *Pipeline) PatchChannelOverrides(ctx context.Context, key string, patch 
 		return ChannelOverrides{}, err
 	}
 	return out, nil
+}
+
+// checkChannelKey 檢查 natural key 的 platform 與 external_id；讀取與修改用同一套規則（D14）。
+func checkChannelKey(platform, externalID string) error {
+	if !slices.Contains(overridablePlatforms, platform) {
+		return invalidFields([]validate.FieldError{{Path: "id", Message: "platform 只能是 youtube、bilibili 或 podcast。"}})
+	}
+	if externalID == "" {
+		return invalidFields([]validate.FieldError{{Path: "id", Message: "缺少頻道的 external_id。"}})
+	}
+	return nil
 }

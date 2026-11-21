@@ -152,3 +152,20 @@ func (r *Repo) CurrentProfileConfigs(ctx context.Context) (map[string]string, er
 	}
 	return out, nil
 }
+
+// Setting 在這個 Repo（可能是交易）中讀取 settings 的值；不存在時 ok 為 false。
+func (r *Repo) Setting(ctx context.Context, key string) (value string, ok bool, err error) {
+	value, err = r.q.GetSetting(ctx, key)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return value, true, nil
+}
+
+// SetSetting 在這個 Repo（可能是交易）中寫入或覆寫 settings 的值。
+func (r *Repo) SetSetting(ctx context.Context, key, value string) error {
+	return r.q.SetSetting(ctx, sqlcdb.SetSettingParams{Key: key, Value: value, UpdatedAt: r.nowMs()})
+}

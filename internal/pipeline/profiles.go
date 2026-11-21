@@ -202,9 +202,13 @@ func (p *Pipeline) DeleteProfile(ctx context.Context, name string) error {
 		if pr.Builtin {
 			return ErrBuiltinProfile
 		}
-		def, err := p.DefaultProfileName(ctx)
+		// 在同一個交易中讀預設值：和 SetDefaultProfile 互斥，不會刪掉剛被設為預設的處理方案。
+		def, ok, err := r.Setting(ctx, settingDefaultProfile)
 		if err != nil {
 			return err
+		}
+		if !ok || def == "" {
+			def = BuiltinProfileName
 		}
 		if def == name {
 			return &InUseError{Code: CodeProfileInUse, UsedBy: []string{"default_profile"}}
@@ -243,10 +247,14 @@ func (p *Pipeline) ProfileVersions(ctx context.Context, name string) ([]ProfileV
 
 // SetDefaultProfile 設定預設處理方案（D4）。
 func (p *Pipeline) SetDefaultProfile(ctx context.Context, name string) (Profile, error) {
-	if _, err := p.st.Read().Profile(ctx, name); err != nil {
-		return Profile{}, profileLookupErr(err)
-	}
-	if err := p.st.SetSetting(ctx, settingDefaultProfile, name); err != nil {
+	// 檢查與寫入在同一個交易中：不會指向同時被刪除的處理方案。
+	err := p.st.Tx(ctx, func(r *store.Repo) error {
+		if _, err := r.Profile(ctx, name); err != nil {
+			return profileLookupErr(err)
+		}
+		return r.SetSetting(ctx, settingDefaultProfile, name)
+	})
+	if err != nil {
 		return Profile{}, err
 	}
 	return p.Profile(ctx, name)

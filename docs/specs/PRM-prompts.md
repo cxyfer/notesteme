@@ -47,3 +47,5 @@
 - D13：刪除 prompt 是硬刪除（2026-11-22，M2 S1/S2 設計時決定，待 owner 確認）。`used_by` 依序列出引用它的處理方案名稱（依字母排序，只看目前版本）、`settings`（全域 stages 有引用時）、`channel:<platform>:<external_id>`。PRM-R8 只要求處理方案；多列出其他來源是為了避免懸空的引用，場景的 `used_by: ["standard"]` 是前綴比對，仍然成立。
 - [O] P1：PRM-R7 的 compare 請求 body 沒有 `provider` 與 `model`（2026-11-22，M2 S1/S2 設計時決定）。影音用的是 `default` 處理方案（沒有 provider），compare 無法從快照取得，一定失敗。建議 body 加上 `"provider": "anthropic", "model": "fixture-model"`，與 playground 一致。需要 owner 同意修改 `.feature`。
 - [O] P6：PRM-R5「處理方案引用 prompt 時記錄版本號」沒有說不帶版本號的引用（例如 `correct-default`）是建立時固定版本，還是跟隨預設（2026-11-22，M2 S1/S2 設計時決定）。依 PRM-03「until I promote」，目前實作 `<id>` 等同 `<id>@default`，跟隨預設；實際用到的版本記在快照與來源紀錄（見 D11）。需要 owner 確認。
+- P7：刪除 prompt 的 `used_by` 不涵蓋影音層的覆寫（2026-11-22，M2 S1/S2 審查時發現，待 owner 確認）。新增時帶的 `overrides`（存在 `items.overrides_json`，重跑會沿用）可以引用 prompt，刪除後重跑會在執行時以 permanent 失敗。另外 `used_by` 的檢查與刪除不在同一個交易，檢查之後才建立的引用也會懸空。目前接受（D13 的取捨）；若要處理，可以在刪除前掃描 `items.overrides_json`，並把檢查與刪除放進同一個寫入交易。
+- P8：頻道層在 `metadata` 完成時改綁快照（PRF D6），處理方案、全域各層取自新增時記下的內容，但 `<id>` 與 `<id>@default` 的 prompt 引用會以改綁當下的預設版本重新解析（2026-11-22，M2 S1/S2 審查時發現，待 owner 確認）。PRM-R5 只說「從下一次執行開始」，這些步驟還沒開始，所以不算違規，但和「各層在新增時凍結」不一致。

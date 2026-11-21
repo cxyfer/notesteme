@@ -81,6 +81,10 @@ func TestChannelOverrides_Rejections(t *testing.T) {
 		if _, err := r.p.PatchChannelOverrides(ctx, key, timingCfg("free")); !errors.As(err, &inv) {
 			t.Errorf("%q：err = %v，預期 *InvalidError", key, err)
 		}
+		// 讀取與修改用同一套規則：讀取不合法的 natural key 也是 422，不會回空的覆寫。
+		if _, err := r.p.ChannelOverrides(ctx, key); !errors.As(err, &inv) {
+			t.Errorf("讀取 %q：err = %v，預期 *InvalidError", key, err)
+		}
 	}
 	if _, err := r.p.PatchChannelOverrides(ctx, "no-such-uuid", timingCfg("free")); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("UUID 不存在 = %v，預期 store.ErrNotFound", err)

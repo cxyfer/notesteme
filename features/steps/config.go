@@ -255,6 +255,10 @@ func (s *Scenario) effectiveConfigContains(ref, stage string, doc *godog.DocStri
 	if err != nil {
 		return err
 	}
+	if len(want) == 0 {
+		// 空的預期內容是任何設定的子集，步驟會空洞通過：視為場景寫錯。
+		return fmt.Errorf("預期的生效設定是空的：至少要寫一個欄位")
+	}
 	wantJSON, err := json.Marshal(want)
 	if err != nil {
 		return err
