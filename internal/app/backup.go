@@ -13,6 +13,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/api"
 	"github.com/cxyfer/notesteme/internal/backup"
+	"github.com/cxyfer/notesteme/internal/store"
 )
 
 // maxConfigFileBytes 是備份時讀取設定檔的上限（與 backup.Extract 的設定檔上限一致）。
@@ -38,7 +39,7 @@ func (b *backupSource) Begin(ctx context.Context) (api.Backup, error) {
 	if err != nil {
 		return nil, err
 	}
-	pb := &preparedBackup{dir: dir}
+	pb := &preparedBackup{dir: dir, release: func() {}}
 	ok := false
 	defer func() {
 		if !ok {
@@ -46,9 +47,16 @@ func (b *backupSource) Begin(ctx context.Context) (api.Backup, error) {
 		}
 	}()
 
+	// 快照之前就讓永久刪除先不刪上傳原始檔，直到備份寫完（Close）：快照中的上傳影音，原始檔都還在。
+	if b.s.pipeline != nil {
+		pb.release = b.s.pipeline.HoldUploads()
+	}
 	snap := filepath.Join(dir, backup.DBName)
 	if err := b.s.store.SnapshotTo(ctx, snap); err != nil {
 		return nil, fmt.Errorf("資料庫快照失敗：%w", err)
+	}
+	if afterBackupSnapshot != nil {
+		afterBackupSnapshot()
 	}
 	schemaVersion, err := b.s.store.SchemaVersion(ctx)
 	if err != nil {
@@ -58,7 +66,7 @@ func (b *backupSource) Begin(ctx context.Context) (api.Backup, error) {
 	if err != nil {
 		return nil, err
 	}
-	uploads, err := b.collectUploads(ctx)
+	uploads, err := b.collectUploads(ctx, snap)
 	if err != nil {
 		return nil, err
 	}
@@ -73,11 +81,15 @@ func (b *backupSource) Begin(ctx context.Context) (api.Backup, error) {
 	return pb, nil
 }
 
-// collectUploads 列出要放進備份的上傳原始檔：每個上傳（origin upload）影音在 uploads/<id>/<name> 的一般檔案。
-// 上傳檔只存在資料目錄，不放進備份就無法還原。sha256 取自資料庫的 content_sha256（沒有時才讀檔計算），
-// 寫出備份時會重新計算比對。檔案不見或不是一般檔案（symlink、FIFO）的影音略過並記 log，不讓備份失敗。
+// afterBackupSnapshot 只給測試使用：Begin 做完資料庫快照之後呼叫，用來重現快照與列出上傳檔之間的永久刪除。
+var afterBackupSnapshot func()
+
+// collectUploads 列出要放進備份的上傳原始檔：快照 snap 中每個上傳（origin upload）影音在 uploads/<id>/<name> 的一般檔案。
+// 上傳檔只存在資料目錄，不放進備份就無法還原。清單取自快照而不是線上的資料庫，才會和備份中的資料庫一致。
+// sha256 取自快照的 content_sha256（沒有時才讀檔計算），寫出備份時會重新計算比對。
+// 檔案不見或不是一般檔案（symlink、FIFO）的影音略過並記 log，不讓備份失敗。
 // 沒有 uploads 目錄時不查詢資料庫，直接回傳空清單。
-func (b *backupSource) collectUploads(ctx context.Context) ([]backup.Upload, error) {
+func (b *backupSource) collectUploads(ctx context.Context, snap string) ([]backup.Upload, error) {
 	dir := filepath.Join(b.s.cfg.Data, backup.UploadsPrefix)
 	if fi, err := os.Lstat(dir); errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -87,7 +99,7 @@ func (b *backupSource) collectUploads(ctx context.Context) ([]backup.Upload, err
 		b.s.log.WarnContext(ctx, "uploads 不是目錄，備份略過上傳檔", "path", dir)
 		return nil, nil
 	}
-	files, err := b.s.store.Read().UploadFiles(ctx)
+	files, err := store.SnapshotUploadFiles(ctx, snap)
 	if err != nil {
 		return nil, fmt.Errorf("讀取上傳檔清單失敗：%w", err)
 	}
@@ -171,11 +183,16 @@ type preparedBackup struct {
 	dir     string
 	name    string
 	archive backup.Archive
+	// release 結束 Begin 對上傳原始檔的保留（見 Pipeline.HoldUploads），可以重複呼叫。
+	release func()
 }
 
 func (p *preparedBackup) Name() string { return p.name }
 
 func (p *preparedBackup) WriteTo(w io.Writer) (int64, error) { return p.archive.WriteTo(w) }
 
-// Close 刪除暫存的快照。
-func (p *preparedBackup) Close() error { return os.RemoveAll(p.dir) }
+// Close 結束對上傳原始檔的保留，並刪除暫存的快照。
+func (p *preparedBackup) Close() error {
+	p.release()
+	return os.RemoveAll(p.dir)
+}

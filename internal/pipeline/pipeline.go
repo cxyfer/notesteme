@@ -125,6 +125,9 @@ type Pipeline struct {
 
 	// trashLocks 讓同一部影音的移到垃圾桶（含 commit 之後的善後）與還原互斥（DEL-R2、R5）。
 	trashLocks itemLocks
+
+	// uploadHolds 讓備份期間的永久刪除延後刪除上傳原始檔（OPS-R1），見 HoldUploads。
+	uploadHolds uploadHolds
 }
 
 // New 建立 Pipeline。

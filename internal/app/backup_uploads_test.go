@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/backup"
+	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
@@ -293,6 +294,54 @@ func TestBackupWithoutUploadsHasNoUploadEntries(t *testing.T) {
 }
 
 // 上傳影音的檔案不見（或是 symlink）時，備份略過它而不是失敗。
+// 快照之後才被永久刪除的上傳影音仍在備份的資料庫中：它的原始檔也要在備份裡，
+// 而且備份結束（Close）之前不會被刪掉，結束之後才刪。
+func TestBackupKeepsUploadPurgedAfterSnapshot(t *testing.T) {
+	env := testEnv(t)
+	srv := startBackupServer(t, env)
+	data := env.Vars["NOTESTEME_DATA"]
+	id := addUpload(t, srv.store, data, "talk.m4a", "TALK")
+	dir := filepath.Join(data, "uploads", id)
+	afterBackupSnapshot = func() {
+		if _, err := srv.pipeline.Trash(t.Context(), id, pipeline.TrashOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := srv.pipeline.Purge(t.Context(), id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { afterBackupSnapshot = nil })
+
+	b, err := srv.backupSource(env).Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterBackupSnapshot = nil
+	if _, err := srv.store.Read().ItemByID(t.Context(), id); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("前置條件：影音應該已經被永久刪除，ItemByID = %v", err)
+	}
+	var buf bytes.Buffer
+	if _, err := b.WriteTo(&buf); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "talk.m4a")); err != nil {
+		t.Fatalf("備份結束之前，上傳原始檔不應該被刪除：%v", err)
+	}
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("備份結束之後，延後的上傳目錄應該被刪除：%v", err)
+	}
+	c, err := backup.Extract(&buf, t.TempDir(), backup.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Uploads) != 1 || c.Uploads[0].Path != "uploads/"+id+"/talk.m4a" {
+		t.Fatalf("備份中的上傳檔 = %+v", c.Uploads)
+	}
+}
+
 func TestBackupSkipsMissingAndSymlinkedUploads(t *testing.T) {
 	env := testEnv(t)
 	srv := startBackupServer(t, env)
