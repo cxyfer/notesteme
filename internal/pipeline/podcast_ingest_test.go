@@ -330,33 +330,54 @@ func TestIngestPodcastPrecheck(t *testing.T) {
 		}
 	})
 
-	t.Run("每個主機只檢查一次，任何一個被擋就整批失敗", func(t *testing.T) {
+	t.Run("每個主機只檢查一次，全部被擋才整批失敗", func(t *testing.T) {
 		feed := podFeed("The Show",
 			podEp{guid: "a", title: "A", audio: "https://one.example.com/a.mp3"},
 			podEp{guid: "b", title: "B", audio: "https://ONE.example.com/b.mp3"},
 			podEp{guid: "c", title: "C", audio: "https://two.example.com/c.mp3"},
 		)
-		r, _, checks := newPodcastRig(t, map[string]string{showURL: feed})
-		if _, err := r.ingestPodcast(showURL, "a", "b", "c"); err != nil {
-			t.Fatal(err)
-		}
-		if len(*checks) != 2 || (*checks)[0] != "https://one.example.com/a.mp3" || (*checks)[1] != "https://two.example.com/c.mp3" {
-			t.Errorf("預檢 = %v", *checks)
-		}
-
-		r2, _, _ := newPodcastRig(t, map[string]string{showURL: feed})
-		r2.p.checkFn = func(_ context.Context, u string) error {
-			if strings.Contains(u, "two.example.com") {
-				return blocked
-			}
-			return nil
+		// 全部被擋：每個主機各檢查一次，回第一個被擋的原因，不建立任何東西。
+		r, _, _ := newPodcastRig(t, map[string]string{showURL: feed})
+		var checks []string
+		r.p.checkFn = func(_ context.Context, u string) error {
+			checks = append(checks, u)
+			return blocked
 		}
 		var pe *PolicyError
-		if _, err := r2.ingestPodcast(showURL, "a", "c"); !errors.As(err, &pe) {
+		if _, err := r.ingestPodcast(showURL, "a", "b", "c"); !errors.As(err, &pe) {
 			t.Fatalf("err = %v", err)
 		}
-		if n := r2.count(`SELECT COUNT(*) FROM items`); n != 0 {
+		if len(checks) != 2 || checks[0] != "https://one.example.com/a.mp3" || checks[1] != "https://two.example.com/c.mp3" {
+			t.Errorf("預檢 = %v", checks)
+		}
+		if n := r.count(`SELECT COUNT(*) FROM items`); n != 0 {
 			t.Errorf("影音數 = %d", n)
+		}
+
+		// 只有一部分被擋（不論順序）：其他位址可以連，整批照常新增，連線時再擋（GRD-R2）。
+		for _, blockedHost := range []string{"one.example.com", "two.example.com"} {
+			r2, _, _ := newPodcastRig(t, map[string]string{showURL: feed})
+			r2.p.checkFn = func(_ context.Context, u string) error {
+				if strings.Contains(strings.ToLower(u), blockedHost) {
+					return blocked
+				}
+				return nil
+			}
+			if res, err := r2.ingestPodcast(showURL, "a", "c"); err != nil || len(res) != 2 {
+				t.Fatalf("只有 %s 被擋：%+v, %v", blockedHost, res, err)
+			}
+		}
+
+		// 被擋的之外只有預檢沒有結果的位址：不能斷定全部被擋，照常新增。
+		r3, _, _ := newPodcastRig(t, map[string]string{showURL: feed})
+		r3.p.checkFn = func(_ context.Context, u string) error {
+			if strings.Contains(u, "two.example.com") {
+				return errors.New("lookup two.example.com: no such host")
+			}
+			return blocked
+		}
+		if res, err := r3.ingestPodcast(showURL, "a", "c"); err != nil || len(res) != 2 {
+			t.Fatalf("另一個位址沒有結果：%+v, %v", res, err)
 		}
 	})
 
@@ -366,18 +387,23 @@ func TestIngestPodcastPrecheck(t *testing.T) {
 			podEp{guid: "b", title: "B", audio: "ftp://one.example.com/b.mp3"},
 			podEp{guid: "c", title: "C", audio: "https://one.example.com/c.mp3"},
 		)
-		r, _, checks := newPodcastRig(t, map[string]string{showURL: feed})
-		if _, err := r.ingestPodcast(showURL, "a", "b", "c"); err != nil {
-			t.Fatal(err)
+		r, _, _ := newPodcastRig(t, map[string]string{showURL: feed})
+		var checks []string
+		r.p.checkFn = func(_ context.Context, u string) error {
+			checks = append(checks, u)
+			return blocked
 		}
-		if len(*checks) != 2 || (*checks)[0] != "https://one.example.com/a.mp3" || (*checks)[1] != "ftp://one.example.com/b.mp3" {
-			t.Errorf("預檢 = %v", *checks)
-		}
-		// 真正的預檢（先 https 後 ftp）：https 沒有 Resolver 只是預檢沒有結果，ftp 那一個要被擋下。
 		var pe *PolicyError
+		if _, err := r.ingestPodcast(showURL, "a", "b", "c"); !errors.As(err, &pe) {
+			t.Fatalf("err = %v", err)
+		}
+		if len(checks) != 2 || checks[0] != "https://one.example.com/a.mp3" || checks[1] != "ftp://one.example.com/b.mp3" {
+			t.Errorf("預檢 = %v", checks)
+		}
+		// 真正的預檢：只選 ftp 那一集時要被擋下（https 已檢查過不能讓 ftp 略過）。
 		r2, _, _ := newPodcastRig(t, map[string]string{showURL: feed})
 		r2.p.checkFn = func(ctx context.Context, u string) error { return netguard.CheckURL(ctx, netguard.Deps{}, u) }
-		if _, err := r2.ingestPodcast(showURL, "a", "b"); !errors.As(err, &pe) || pe.Msg != "只支援 http 與 https 網址。" {
+		if _, err := r2.ingestPodcast(showURL, "b"); !errors.As(err, &pe) || pe.Msg != "只支援 http 與 https 網址。" {
 			t.Fatalf("err = %v", err)
 		}
 	})

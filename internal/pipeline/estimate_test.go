@@ -475,3 +475,31 @@ func TestEstimatePodcastDoesNotCreateChannel(t *testing.T) {
 	}
 	r.noWrites()
 }
+
+// 查詢媒體庫失敗（找不到之外的錯誤）時整份估價失敗，不能當成「不在媒體庫中」回傳 200。
+func TestEstimateLibraryLookupFailureIsAnError(t *testing.T) {
+	t.Run("YouTube", func(t *testing.T) {
+		r, _, _ := estimateRig(t)
+		r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "auto"}}
+		if _, err := r.rawDB().Exec(`ALTER TABLE items RENAME TO items_unreadable`); err != nil {
+			t.Fatal(err)
+		}
+		var le *libraryError
+		if est, err := r.estimate(IngestRequest{URL: watch}); !errors.As(err, &le) {
+			t.Fatalf("est = %+v, err = %v", est, err)
+		}
+	})
+	t.Run("Podcast", func(t *testing.T) {
+		r, _, _ := newPodcastRig(t, map[string]string{showURL: showFeed()})
+		if _, err := r.ingestPodcast(showURL, "ep-42"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.rawDB().Exec(`ALTER TABLE items RENAME TO items_unreadable`); err != nil {
+			t.Fatal(err)
+		}
+		var le *libraryError
+		if est, err := r.p.Estimate(context.Background(), IngestRequest{URL: showURL, Episodes: []string{"ep-42"}}); !errors.As(err, &le) {
+			t.Fatalf("est = %+v, err = %v", est, err)
+		}
+	})
+}
