@@ -130,7 +130,8 @@ func (a localAdapter) probe(ctx context.Context, it store.Item) (*probed, error)
 	}
 	// DEL-R11：永久刪除時 tombstone 要有 sha256，所以補算（path 新增時還沒有）。
 	// 用路徑加入的檔案（非上傳）可能在同一路徑被替換：size 或 mtime 和上次記錄的不同就重算；
-	// 還沒有記錄時（影音已有 sha256，例如 inbox 新增時算好的）不重算，由 metadata 步驟記下目前的值作為基準。
+	// 還沒有記錄 stat 時也要重算：inbox 新增時算好的 sha256 與之後才記下的 stat 之間，檔案可能已被替換，
+	// 沒有基準就無法確認 sha256 仍對應目前的內容。重算只會發生一次，之後 stat 有記錄就不再重算。
 	// 上傳的副本不可變，只在還沒有 sha256 時算一次。
 	out.ContentSHA256 = it.ContentSHA256
 	rehash := out.ContentSHA256 == ""
@@ -142,7 +143,7 @@ func (a localAdapter) probe(ctx context.Context, it store.Item) (*probed, error)
 		// 先取 stat 再雜湊：雜湊期間檔案又被改動時，下次探測會看到差異而重算。
 		cur := localStat{Size: fi.Size(), MtimeNS: fi.ModTime().UnixNano()}
 		out.LocalStat = &cur
-		if rec := recordedLocalStat(it.Metadata); rec != nil && *rec != cur {
+		if rec := recordedLocalStat(it.Metadata); rec == nil || *rec != cur {
 			rehash = true
 		}
 	}

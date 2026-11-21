@@ -74,6 +74,16 @@ func sha(s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// statMetadata 回傳 metadata_json：base 的欄位加上 path 目前的 stat 記錄（local）。
+func (l *localRig) statMetadata(path string, base json.RawMessage) json.RawMessage {
+	l.t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		l.t.Fatal(err)
+	}
+	return withLocalStat(base, localStat{Size: fi.Size(), MtimeNS: fi.ModTime().UnixNano()})
+}
+
 func trackLangs(ts []transcript.Track) []string {
 	var out []string
 	for _, t := range ts {
@@ -330,9 +340,10 @@ func TestLocalMetadataWritesContentSHA(t *testing.T) {
 		t.Errorf("meta = %+v", res.meta.item)
 	}
 
-	// 已有 sha256（inbox 新增時算好的）：不重算，也不覆蓋。
+	// 已有 sha256 而且 stat 記錄與目前的檔案相同：不重算，也不覆蓋。
 	it := l.item(media)
 	it.ContentSHA256 = "abc"
+	it.Metadata = l.statMetadata(media, nil)
 	res, err = l.p.runMetadata(ctx, it, DefaultLanguage())
 	if err != nil {
 		t.Fatal(err)
@@ -367,8 +378,8 @@ func TestLocalTranscriptUsesSidecarAndInfersLanguage(t *testing.T) {
 	media := l.file("talk.mp4", "MEDIA")
 	l.file("talk.ja.srt", srtEN)
 	it := l.item(media)
-	it.Metadata = json.RawMessage(`{"description":"keep me"}`)
-	it.ContentSHA256 = sha("MEDIA") // 已有 sha256：這次不重算，也不改 metadata_json
+	it.ContentSHA256 = sha("MEDIA") // 已有 sha256 且 stat 吻合：這次不重算，也不改 metadata_json
+	it.Metadata = l.statMetadata(media, json.RawMessage(`{"description":"keep me"}`))
 
 	res, err := l.p.runTranscript(context.Background(), it, DefaultLanguage())
 	if err != nil {
@@ -379,7 +390,7 @@ func TestLocalTranscriptUsesSidecarAndInfersLanguage(t *testing.T) {
 	}
 	// 原文語言由選中的本機字幕推斷，lang_source 為 metadata，並保留 metadata_json。
 	if res.meta == nil || res.meta.item.OriginalLang != "ja" || res.meta.item.LangSource != "metadata" ||
-		string(res.meta.item.Metadata) != `{"description":"keep me"}` {
+		string(res.meta.item.Metadata) != string(it.Metadata) {
 		t.Errorf("meta = %+v", res.meta)
 	}
 	var prov struct {

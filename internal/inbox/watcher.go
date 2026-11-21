@@ -72,6 +72,9 @@ type Watcher struct {
 	warned   map[string]string
 	lastScan time.Time
 	scanned  bool
+	// cursor 是上一輪因為走訪上限而沒有走完時，下一輪要從哪個路徑繼續（走訪順序中第一個沒走訪的項目）；
+	// 空字串代表從頭開始。只在記憶體，重啟後從頭開始。
+	cursor string
 }
 
 type seenFile struct {
@@ -141,8 +144,23 @@ func skipName(name string) bool {
 	return false
 }
 
+// walkBefore 回報 p 是否在走訪順序（fs.WalkDir：每層依名稱排序）中排在 cursor 之前，
+// 而且 p 不是 cursor 的祖先目錄；這樣的項目（目錄的話連同整棵子樹）接續掃描時可以直接略過。
+func walkBefore(p, cursor string) bool {
+	a, b := strings.Split(p, "/"), strings.Split(cursor, "/")
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if a[i] != b[i] {
+			return a[i] < b[i]
+		}
+	}
+	return false
+}
+
 // list 列出 inbox 中還沒判定（decided 回報 false）的候選檔案，依 (mtime, 名稱) 排序；
-// present 是走訪到的所有候選檔案（含已經判定的）。truncated 為 true 代表超過 maxFiles 或 maxWalk（走訪的項目數），清單不完整。
+// present 是走訪到的所有候選檔案（含已經判定的）。truncated 為 true 代表清單不完整：超過 maxFiles 或 maxWalk（走訪的項目數），
+// 或這一輪是從 w.cursor 接續的（cursor 之前的項目沒有走訪）。
+// 超過 maxWalk 時記下 w.cursor，下一輪從那裡接續，走訪完才回到開頭；否則 inbox 超過上限時，
+// 排在後面的檔案每輪都被前面（含已經判定的）項目擠掉，永遠輪不到。
 // inbox 不存在（例如還沒掛載）時回傳 ok=false。
 func (w *Watcher) list(decided func(rel string, size int64, mtime time.Time) bool) (files []file, present map[string]bool, truncated, ok bool, err error) {
 	root, err := os.OpenRoot(w.Inbox)
@@ -155,14 +173,31 @@ func (w *Watcher) list(decided func(rel string, size int64, mtime time.Time) boo
 	defer root.Close()
 	present = map[string]bool{}
 	visited := 0
+	cursor, next, passed := w.cursor, "", false
+	if cursor != "" {
+		truncated = true
+	}
 	err = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
 		if p == "." && err == nil {
 			return nil
 		}
+		if cursor != "" && !passed && p != "." {
+			// 接續上一輪：cursor 之前的項目略過、不算進走訪上限；cursor 的祖先目錄要往下走，同樣不算。
+			if walkBefore(p, cursor) {
+				if d != nil && d.IsDir() {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			if strings.HasPrefix(cursor, p+"/") {
+				return nil
+			}
+			passed = true
+		}
 		// 走訪上限算所有項目（目錄、略過的檔案、symlink、讀不到的項目），
 		// 否則大量被略過的項目會讓每輪掃描走完整棵樹。
 		if visited++; visited > maxWalk {
-			truncated = true
+			truncated, next = true, p
 			return fs.SkipAll
 		}
 		if err != nil {
@@ -193,7 +228,8 @@ func (w *Watcher) list(decided func(rel string, size int64, mtime time.Time) boo
 			return nil
 		}
 		if len(files) >= maxFiles {
-			truncated = true
+			// 處理上限：已處理的檔案下一輪就判定了，從原本的 cursor 重來即可。
+			truncated, next = true, cursor
 			return fs.SkipAll
 		}
 		files = append(files, file{rel: p, size: fi.Size(), mtime: fi.ModTime()})
@@ -202,6 +238,7 @@ func (w *Watcher) list(decided func(rel string, size int64, mtime time.Time) boo
 	if err != nil {
 		return nil, nil, false, false, err
 	}
+	w.cursor = next
 	slices.SortFunc(files, func(a, b file) int {
 		if c := a.mtime.Compare(b.mtime); c != 0 {
 			return c
