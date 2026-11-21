@@ -7,6 +7,14 @@ import (
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
+// StageContext 是解析步驟執行方式時需要的影音資訊；由呼叫端從資料庫取得，ResolveExecutor 仍是純函式。
+type StageContext struct {
+	// SourceLang 是 translate 輸入字幕的語言（見 translateInput），不是 items.original_lang：
+	// NRM-R7、OUT 的場景中兩者可能不同。還沒有字幕時退回 items.original_lang；中文沒有 script 時已用字元補上。
+	// 空字串代表不知道原文語言：每個目標都需要翻譯（TargetTranslate）。
+	SourceLang string
+}
+
 // StageResolution 是步驟在一份生效設定下的執行方式。
 // （和網址辨識的 Resolution 不同；契約原本叫 Resolution，與 resolve.go 的型別同名，所以加上 Stage 前綴。）
 type StageResolution struct {
@@ -22,10 +30,13 @@ type StageResolution struct {
 
 // ResolveExecutor 依步驟與生效設定決定執行方式。純函式：不讀 DB、不讀時鐘。
 //   - metadata、transcript、normalize：local。
-//   - segment、correct、translate：executor 為 off 時略過（off）；api（預設）而 provider 或 model 是空的時略過（not_configured，
+//   - segment、correct：executor 為 off 時略過（off）；api（預設）而 provider 或 model 是空的時略過（not_configured，
 //     Executor 仍記為 api）；其他不略過。
+//   - translate：依序判斷（TRN-R8、R10）：off 略過（off，優先於自動轉換）；每個目標都與原文相同（或只差字形而沒有轉換表）時略過
+//     （same_language）；其餘目標全是 convert 時一律用 opencc，不論設定的是 api 或 agent，也不需要 provider；
+//     明確設定 opencc 時用 opencc；其他情況比照 segment 與 correct。
 //   - publish：沒有 outputs 時略過（no_outputs），有 outputs 時不略過。
-func ResolveExecutor(eff Effective, stage string) (StageResolution, error) {
+func ResolveExecutor(eff Effective, stage string, sc StageContext) (StageResolution, error) {
 	switch {
 	case stage == StageMetadata || stage == StageTranscript || stage == StageNormalize:
 		return StageResolution{Stage: stage, Executor: ExecutorLocal}, nil
@@ -41,6 +52,21 @@ func ResolveExecutor(eff Effective, stage string) (StageResolution, error) {
 		switch {
 		case cfg.Executor == ExecutorOff:
 			res.Skip, res.Reason = true, SkipOff
+		case stage == StageTranslate:
+			lang, err := eff.Language()
+			if err != nil {
+				return StageResolution{}, err
+			}
+			plans := PlanTargets(sc.SourceLang, lang)
+			switch {
+			case !slices.ContainsFunc(plans, func(t TargetPlan) bool { return t.Kind != TargetSame }):
+				res.Skip, res.Reason = true, SkipSameLanguage
+			case allConvert(plans):
+				// 中文字形之間的轉換是確定性的本機處理：不需要 provider，也不呼叫 LLM（TRN-R8）。
+				res.Executor, res.Provider, res.Model, res.Prompt = ExecutorOpenCC, "", "", ""
+			case cfg.Executor == ExecutorAPI && (cfg.Provider == "" || cfg.Model == ""):
+				res.Skip, res.Reason = true, SkipNotConfigured
+			}
 		case cfg.Executor == ExecutorAPI && (cfg.Provider == "" || cfg.Model == ""):
 			res.Skip, res.Reason = true, SkipNotConfigured
 		}
@@ -61,7 +87,7 @@ func ResolveExecutor(eff Effective, stage string) (StageResolution, error) {
 
 // planChain 從 from 開始依序解析，直到第一個不略過的步驟（含）或 until（含，空字串代表最後一個步驟）為止。
 // 回傳的最後一個元素若 Skip 為 false，就是要建立任務的步驟；全部都略過時代表做到 until 或最後。
-func planChain(eff Effective, from, until string) ([]StageResolution, error) {
+func planChain(eff Effective, from, until string, sc StageContext) ([]StageResolution, error) {
 	i := slices.Index(Stages, from)
 	if i < 0 {
 		return nil, invalidf("不認識的步驟 %q。", from)
@@ -72,7 +98,7 @@ func planChain(eff Effective, from, until string) ([]StageResolution, error) {
 	}
 	var chain []StageResolution
 	for _, stage := range Stages[i:max(i, end+1)] {
-		res, err := ResolveExecutor(eff, stage)
+		res, err := ResolveExecutor(eff, stage, sc)
 		if err != nil {
 			return nil, err
 		}
@@ -84,13 +110,15 @@ func planChain(eff Effective, from, until string) ([]StageResolution, error) {
 	return chain, nil
 }
 
-// stageImplemented 回報 (stage, executor) 有沒有實作。目前是三個 M1 步驟的 local，以及 LLM 步驟的 agent
+// stageImplemented 回報 (stage, executor) 有沒有實作。目前是三個 M1 步驟的 local、translate 的 opencc，以及 LLM 步驟的 agent
 // （只建立任務並等 Agent 領取，AGT-R1；領取、租約與逾時屬於之後的切片）；
 // 由 Handle 的分派與 Rerun 的 501 判斷共用，之後的切片完成時在這裡登記。
 func stageImplemented(stage, executor string) bool {
 	switch {
 	case stage == StageMetadata || stage == StageTranscript || stage == StageNormalize:
 		return executor == ExecutorLocal
+	case stage == StageTranslate && executor == ExecutorOpenCC:
+		return true
 	case IsLLMStage(stage):
 		return executor == ExecutorAgent
 	}

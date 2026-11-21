@@ -90,7 +90,11 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		return Detail{}, err
 	}
 	// 在寫入任何資料之前解析執行方式：要執行的步驟還沒有實作就回 501，不留下半套的重跑。
-	chain, err := planChain(eff, req.From, req.Until)
+	sc, err := p.stageContext(ctx, r0, it)
+	if err != nil {
+		return Detail{}, err
+	}
+	chain, err := planChain(eff, req.From, req.Until, sc)
 	if err != nil {
 		return Detail{}, err
 	}
