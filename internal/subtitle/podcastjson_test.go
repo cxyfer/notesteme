@@ -104,3 +104,44 @@ func TestParsePodcastJSONEdgeCases(t *testing.T) {
 		}
 	}
 }
+
+// 沒有空白的 CJK 整句 segment 不是字詞級：一個 segment 一個 cue，文字不被合併或加空格。
+func TestParsePodcastJSONCJKSentencesAreSegments(t *testing.T) {
+	data := `{"segments":[
+		{"startTime":0,"endTime":2,"body":"大家好歡迎收聽本集節目"},
+		{"startTime":2,"endTime":4,"body":"今天我們來聊聊天氣"}]}`
+	cues, word, err := ParsePodcastJSON([]byte(data))
+	if err != nil || word {
+		t.Fatalf("err = %v，wordLevel = %v", err, word)
+	}
+	want := []Cue{
+		{Index: 1, StartMS: 0, EndMS: 2000, Text: "大家好歡迎收聽本集節目", Timing: TimingSource},
+		{Index: 2, StartMS: 2000, EndMS: 4000, Text: "今天我們來聊聊天氣", Timing: TimingSource},
+	}
+	if !reflect.DeepEqual(cues, want) {
+		t.Errorf("cues = %+v\n預期 %+v", cues, want)
+	}
+	// 日文假名、韓文也一樣。
+	for _, body := range []string{"こんにちは皆さん", "ありがとうございます", "안녕하세요여러분"} {
+		d := `{"segments":[{"startTime":0,"endTime":1,"body":"` + body + `"},{"startTime":1,"endTime":2,"body":"x"}]}`
+		if _, word, err := ParsePodcastJSON([]byte(d)); err != nil || word {
+			t.Errorf("%q：err = %v，wordLevel = %v", body, err, word)
+		}
+	}
+}
+
+// CJK 的字詞級 segment（每個不超過 4 個字）合併時，字與字之間不插入空格；與拉丁字之間仍以空格分隔。
+func TestParsePodcastJSONCJKWordsJoinWithoutSpaces(t *testing.T) {
+	data := `{"segments":[
+		{"startTime":0.0,"endTime":0.3,"body":"大家"},
+		{"startTime":0.3,"endTime":0.6,"body":"好"},
+		{"startTime":0.6,"endTime":0.9,"body":"歡迎"},
+		{"startTime":0.9,"endTime":1.2,"body":"AI。"}]}`
+	cues, word, err := ParsePodcastJSON([]byte(data))
+	if err != nil || !word || len(cues) != 1 {
+		t.Fatalf("cues = %+v，wordLevel = %v，err = %v", cues, word, err)
+	}
+	if cues[0].Text != "大家好歡迎AI。" || len(cues[0].Words) != 4 {
+		t.Errorf("cue = %+v", cues[0])
+	}
+}
