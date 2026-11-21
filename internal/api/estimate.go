@@ -14,7 +14,7 @@ type estimateInput struct {
 		Path      string         `json:"path,omitempty" doc:"本機檔案的路徑；還不支援估算，回 422"`
 		Parts     []int          `json:"parts,omitempty" doc:"Bilibili 要估算的分P；沒有指定時估算全部"`
 		Episodes  []string       `json:"episodes,omitempty" doc:"Podcast 要估算的集（guid）"`
-		Profile   string         `json:"profile,omitempty" doc:"處理方案；尚未支援，回 501"`
+		Profile   string         `json:"profile,omitempty" doc:"處理方案的名稱；沒有指定時使用預設處理方案；不存在回 422"`
 		Overrides map[string]any `json:"overrides,omitempty" doc:"單次覆寫，與新增相同"`
 		Until     string         `json:"until,omitempty" doc:"與新增相同的欄位；估算時忽略"`
 	}

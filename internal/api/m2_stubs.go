@@ -44,7 +44,7 @@ var m2Stubs = []m2Stub{
 
 // registerM2Stubs 註冊 M2 的 501 stub。
 func (rt *routes) registerM2Stubs(api huma.API) {
-	for _, s := range slices.Concat(m2Stubs, prfStubs, prmStubs) {
+	for _, s := range slices.Concat(m2Stubs, prmStubs) {
 		registerScoped(api, huma.Operation{
 			OperationID: s.ID, Method: s.Method, Path: s.Path, Summary: s.Summary,
 		}, s.Scope, notImplemented)
