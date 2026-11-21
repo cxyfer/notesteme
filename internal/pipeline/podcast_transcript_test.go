@@ -271,6 +271,47 @@ func TestPodcastTranscriptPermanentFailureFallsBackToASR(t *testing.T) {
 	}
 }
 
+// 第一條字幕軌失敗時，先試 feed 宣告的其餘字幕軌，不直接改用（要付費的）ASR（Codex P2）。
+func TestPodcastTranscriptTriesRemainingTracksBeforeASR(t *testing.T) {
+	const ep42SRT = "https://media.example.com/show/ep42.srt"
+	tags := vttTag + `<podcast:transcript url="` + ep42SRT + `" type="application/x-subrip"/>`
+	for _, tt := range []struct {
+		name    string
+		vtt     func(r *podRig)
+		srt     func(r *podRig)
+		want    []string
+		wantASR int
+	}{
+		{"404 後用下一條", func(r *podRig) { r.net.serve(ep42Transcript, 404, "") }, func(r *podRig) { r.net.serve(ep42SRT, 200, srtEN) },
+			[]string{"podcast-transcript:unavailable:permanent", "podcast-transcript:used:"}, 0},
+		{"解析失敗後用下一條", func(r *podRig) { r.net.serve(ep42Transcript, 200, "WEBVTT\n\nnot a timing line --> x\nhi\n") },
+			func(r *podRig) { r.net.serve(ep42SRT, 200, srtEN) },
+			[]string{"podcast-transcript:unavailable:permanent", "podcast-transcript:used:"}, 0},
+		{"全部失敗才用 ASR", func(r *podRig) { r.net.serve(ep42Transcript, 404, "") }, func(r *podRig) { r.net.serve(ep42SRT, 403, "") },
+			[]string{"podcast-transcript:unavailable:permanent", "podcast-transcript:unavailable:permanent", "groq:used:"}, 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			r, g := groqPodRig(t)
+			r.fm.duration = 4
+			r.serveShow(tags)
+			tt.vtt(r)
+			tt.srt(r)
+			it := r.ingestEpisode(StageMetadata)
+
+			res, err := r.transcribe(it, groqLocalLang())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := probesOf(res); !reflect.DeepEqual(got, tt.want) || g.calls() != tt.wantASR {
+				t.Fatalf("probes = %v，Groq %d 次，預期 %v 與 %d 次", got, g.calls(), tt.want, tt.wantASR)
+			}
+			if p := provOf(t, res); tt.wantASR == 0 && (p.Source != "podcast-transcript" || p.Track.Kind != "podcast") {
+				t.Errorf("provenance = %+v", p)
+			}
+		})
+	}
+}
+
 // 暫時性的錯誤（5xx、429、連線失敗）回傳錯誤讓步驟重試，不改用 ASR。
 func TestPodcastTranscriptRetryableErrorIsReturned(t *testing.T) {
 	for _, status := range []int{500, 503, 429} {

@@ -121,7 +121,7 @@
 - Podcast 的來源（SRC-R14、R15，2026-11-21，PODCAST 切片實作時決定，待 owner 確認）：
   - 音檔在 `metadata` 步驟下載到 `/data/media/<id>/episode.<ext>`（上限 2 GiB、逾時 2 小時），記錄 `sha256` 與 ffprobe 量到的長度；每次跑 `metadata` 都重新下載，因為動態插入的廣告會讓內容改變。重新下載後副檔名改變時，舊的 `episode.*` 等新的結果寫入資料庫之後才刪除；任務被取消、過期或寫回失敗時影音仍指向舊檔，留到下一次下載再清。ASR 需要音檔而快取檔不在時才補下載，不驗證 `sha256`（理由同上）。
   - `podcast-transcript` 從 `metadata` 存下的 feed 快照取軌，不重新抓 feed，所以 feed 移除這一集後仍可繼續。支援 VTT、SRT 與 Podcasting 2.0 JSON（沒有 type 時看內容判斷；這種字幕在辨識結果中也算 `has_transcript`，來源紀錄的 `timing` 依實際解析的格式記錄）；HTML 與純文字不支援。軌的語言是 `language` 屬性，沒有時用 feed 的語言。多條時依 `caption_priority` 的語言、再依格式 VTT > SRT > JSON。
-  - 字幕抓取失敗（4xx、被防護擋下、解析失敗）記為 `unavailable`／`permanent`，改用 fallback；5xx、429 與連線錯誤讓步驟重試。Supadata 對 podcast 是 `unsupported`。
+  - 字幕抓取失敗（4xx、被防護擋下、解析失敗）記為 `unavailable`／`permanent`（每條失敗的字幕軌一筆來源紀錄），先改用 feed 宣告的下一條字幕軌（把失敗的軌拿掉後重新選軌，2026-11-22，Codex 審查後決定），都不能用才改用 fallback；5xx、429 與連線錯誤讓步驟重試。Supadata 對 podcast 是 `unsupported`。
   - SRC-R15 的「實際長度」是 ffprobe 量到的音檔長度，不是 feed 的 `itunes:duration`；與最大的 cue 結束時間相差超過 2%（不含）時，`transcript` 步驟仍為 `done`，帶 message「時間可能偏移」，沒有動作，來源紀錄加上 `timing_check`。只檢查 `podcast-transcript`，ASR 的結果不檢查。done 步驟的訊息在 UI 顯示為提醒（`shows the message` 的語意已補上這種情況，需要 owner 確認）。
   - Podcasting 2.0 JSON 的 segment 只有每個 body 都沒有空白且不含 CJK 時才視為字詞級，合併成 cue 並填入 `Words`；含 CJK 的文件一律一個 segment 一個 cue。CJK 沒有空白可以分辨字詞與整句，「大家好」「歡迎收聽」這類短句靠字數判斷會被誤合併，所以不靠長度猜測；代價是逐字切分的 CJK 文件會有很多很短的 cue（2026-11-22，Codex 審查後決定，取代 2026-11-21「不超過 4 個字」的做法）。
 - SRC-R11 的 ASR 語言（2026-11-21）：原文語言未知、ASR 回報了語言時，寫回影音的原文語言，`lang_source` 為 `asr`。這個語言是 transcript 步驟自己的產出，所以重跑 transcript 時不當成輸入：快取鍵、送給 ASR 的語言提示與 `language_mismatch` 檢查都視為原文語言未知，否則重跑會因為快取鍵改變而重複付費。第三層的文字語言偵測仍未實作。
