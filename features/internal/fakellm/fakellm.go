@@ -437,6 +437,14 @@ func (d *dataBlock) validate() []string {
 	} else if d.Chunks >= 1 && d.Chunk > d.Chunks {
 		errs = append(errs, fmt.Sprintf("chunk %d 超過 chunks %d", d.Chunk, d.Chunks))
 	}
+	// 契約要求 context[] 與 cues[] 都是陣列（沒有前文時是 []）：缺少或 null 解碼後都是 nil slice，
+	// 不檢查的話漏掉字幕的 client 仍可以通過；非陣列的值在解碼時就失敗，視為沒有可解析的資料區塊。
+	if d.Context == nil {
+		errs = append(errs, "context 必須是陣列（缺少或是 null；沒有前文時要送 []）")
+	}
+	if d.Cues == nil {
+		errs = append(errs, "cues 必須是陣列（缺少或是 null）")
+	}
 	errs = append(errs, validateEntries("context", d.Context)...)
 	return append(errs, validateEntries("cues", d.Cues)...)
 }
