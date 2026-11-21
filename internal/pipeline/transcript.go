@@ -134,18 +134,20 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		fit = it
 		fit.OriginalLang = inputLang
 	}
-	// reject 把選中的字幕軌記為 rejected（reason），從可用的字幕軌移除並重新選軌：
-	// 本機字幕讀不了時依序改用下一條外掛字幕、內嵌字幕，最後才是 fallback（ASR）。
-	reject := func(reason string) {
+	// drop 把選中的字幕軌記為 state（reason），從可用的字幕軌移除並重新選軌：
+	// 本機字幕讀不了時依序改用下一條外掛字幕、內嵌字幕；Podcast 的字幕抓不到時改用下一條宣告的字幕軌；
+	// 都沒有了才是 fallback（ASR）。
+	drop := func(state, reason string) {
 		for i := range decisions {
 			if decisions[i].State == transcript.StateUsed {
-				decisions[i].State, decisions[i].Reason = transcript.StateRejected, reason
+				decisions[i].State, decisions[i].Reason = state, reason
 				rejected = append(rejected, decisions[i])
 			}
 		}
 		usable = slices.DeleteFunc(slices.Clone(usable), func(t transcript.Track) bool { return t == *chosen })
 		reselect()
 	}
+	reject := func(reason string) { drop(transcript.StateRejected, reason) }
 	reselect()
 
 	// 本機外掛字幕：在算快取鍵之前先讀取並解析，內容的 sha256 要進快取鍵（原地修改字幕後不能命中舊結果）。
@@ -228,19 +230,15 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		if !cuesLoaded {
 			if cues, err = p.fetchCues(ctx, ad, it, chosen); err != nil {
 				if isPodcast && ctx.Err() == nil && podcastFallbackable(err) {
-					// Podcast 的字幕抓不到（404 等）、被防護擋下或解析失敗：記為 unavailable／permanent，改用 fallback（ASR）。
+					// Podcast 的字幕抓不到（404 等）、被防護擋下或解析失敗：記為 unavailable／permanent，
+					// 改用 feed 宣告的下一條字幕軌；都不能用才改用 fallback（ASR）。
 					p.log.Warn("Podcast 字幕無法使用，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle, "error", err)
-					for i := range decisions {
-						if decisions[i].State == transcript.StateUsed {
-							decisions[i].State, decisions[i].Reason = transcript.StateUnavailable, string(errclass.ClassPermanent)
-						}
-					}
-					chosen = nil
-					stage.CacheKey = keyFor(true)
+					drop(transcript.StateUnavailable, string(errclass.ClassPermanent))
+					stage.CacheKey = keyFor(chosen == nil)
 					if res, ok := reuse(); ok {
 						return res, nil
 					}
-					break
+					continue
 				}
 				if !isLocal || !isPermanent(err) {
 					return result{}, err
