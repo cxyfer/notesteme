@@ -19,7 +19,7 @@ import (
 func registerItems(r *Registry, s *Scenario) {
 	r.Step(`the owner resolves {string}`, s.ownerResolves)
 	r.Step(`the owner ingests {string}`, s.ownerIngests)
-	r.Step(`the owner ingests {string} with the profile {string}`, func(string, string) error { return godog.ErrPending })
+	r.Step(`the owner ingests {string} with the profile {string}`, s.ownerIngestsWithProfile)
 	r.Step(`the owner ingests {string} with the overrides:`, s.ownerIngestsWithOverrides)
 	r.Step(`the owner uploads {string}`, s.ownerUploads)
 	r.Step(`the owner reruns {string} from {string}`, s.ownerReruns)
@@ -69,6 +69,17 @@ func (s *Scenario) ownerIngestsWithOverrides(target string, doc *godog.DocString
 		return fmt.Errorf("單次覆寫不是合法的 YAML：%w", err)
 	}
 	return s.ingest(target, overrides)
+}
+
+// ownerIngestsWithProfile 以指定的處理方案新增：body 加上 profile。
+func (s *Scenario) ownerIngestsWithProfile(target, profile string) error {
+	body := s.ingestBody(target)
+	body["profile"] = profile
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	return s.send("POST /api/items", requestOpts{who: asOwner, body: raw})
 }
 
 // ingest 送出 POST /api/items。target 是影音代號或完整網址。
