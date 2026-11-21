@@ -130,19 +130,27 @@ func TestParsePodcastJSONCJKSentencesAreSegments(t *testing.T) {
 	}
 }
 
-// CJK 的字詞級 segment（每個不超過 4 個字）合併時，字與字之間不插入空格；與拉丁字之間仍以空格分隔。
-func TestParsePodcastJSONCJKWordsJoinWithoutSpaces(t *testing.T) {
+// 很短的 CJK segment（例如「大家好」「歡迎收聽」）可能是完整的一句，不能靠字數判斷成字詞：
+// 一個 segment 一個 cue，不合併、不填 Words（Codex P1）。逐字切分的 CJK 文件同樣保留原本的切分。
+func TestParsePodcastJSONShortCJKSegmentsStayCues(t *testing.T) {
 	data := `{"segments":[
-		{"startTime":0.0,"endTime":0.3,"body":"大家"},
-		{"startTime":0.3,"endTime":0.6,"body":"好"},
-		{"startTime":0.6,"endTime":0.9,"body":"歡迎"},
-		{"startTime":0.9,"endTime":1.2,"body":"AI。"}]}`
+		{"startTime":0.0,"endTime":1.0,"body":"大家好"},
+		{"startTime":1.0,"endTime":2.0,"body":"歡迎收聽"},
+		{"startTime":2.0,"endTime":3.0,"body":"謝謝你"},
+		{"startTime":3.0,"endTime":4.0,"body":"好"}]}`
 	cues, word, err := ParsePodcastJSON([]byte(data))
-	if err != nil || !word || len(cues) != 1 {
+	if err != nil || word || len(cues) != 4 {
 		t.Fatalf("cues = %+v，wordLevel = %v，err = %v", cues, word, err)
 	}
-	if cues[0].Text != "大家好歡迎AI。" || len(cues[0].Words) != 4 {
-		t.Errorf("cue = %+v", cues[0])
+	for i, text := range []string{"大家好", "歡迎收聽", "謝謝你", "好"} {
+		if cues[i].Text != text || len(cues[i].Words) != 0 || cues[i].StartMS != int64(i)*1000 {
+			t.Errorf("cue %d = %+v", i+1, cues[i])
+		}
+	}
+	// 只要有一個 segment 含 CJK，整份文件都不是字詞級（拉丁字詞也不合併）。
+	mixed := `{"segments":[{"startTime":0,"endTime":1,"body":"Hello"},{"startTime":1,"endTime":2,"body":"好"}]}`
+	if cues, word, err := ParsePodcastJSON([]byte(mixed)); err != nil || word || len(cues) != 2 {
+		t.Errorf("混合文件：cues = %+v，wordLevel = %v，err = %v", cues, word, err)
 	}
 }
 

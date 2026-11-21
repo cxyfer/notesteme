@@ -425,22 +425,27 @@ type dataBlock struct {
 	Cues    []map[string]any `json:"cues"`
 }
 
-// validate 檢查資料區塊的欄位：cue 只能有 i 與 text，i 必須是正整數。
+// validate 檢查資料區塊的欄位：cues[] 與 context[] 的每一項只能有 i 與 text，i 必須是正整數（LLM-execution.md）。
 func (d *dataBlock) validate() []string {
+	return append(validateEntries("context", d.Context), validateEntries("cues", d.Cues)...)
+}
+
+// validateEntries 檢查一組 {i, text} 項目；name 是它在資料區塊中的欄位名（context 或 cues）。
+func validateEntries(name string, entries []map[string]any) []string {
 	var errs []string
-	for j, c := range d.Cues {
+	for j, c := range entries {
 		for k := range c {
 			if k != "i" && k != "text" {
-				errs = append(errs, fmt.Sprintf("cues[%d] 有契約以外的欄位 %q（只能有 i 與 text）", j, k))
+				errs = append(errs, fmt.Sprintf("%s[%d] 有契約以外的欄位 %q（只能有 i 與 text）", name, j, k))
 			}
 		}
 		switch v := c["i"].(type) {
 		case json.Number:
 			if n, err := v.Int64(); err != nil || n < 1 {
-				errs = append(errs, fmt.Sprintf("cues[%d].i 必須是從 1 起算的整數", j))
+				errs = append(errs, fmt.Sprintf("%s[%d].i 必須是從 1 起算的整數", name, j))
 			}
 		default:
-			errs = append(errs, fmt.Sprintf("cues[%d].i 必須是從 1 起算的整數", j))
+			errs = append(errs, fmt.Sprintf("%s[%d].i 必須是從 1 起算的整數", name, j))
 		}
 	}
 	return errs

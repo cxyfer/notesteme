@@ -173,6 +173,94 @@ func TestScanWalkCapCountsIgnoredEntries(t *testing.T) {
 	}
 }
 
+// 走訪上限不可以讓排在後面的檔案永遠輪不到：每輪從上一輪停下的地方接續（Codex P2）。
+func TestScanWalkCapRotatesThroughTheInbox(t *testing.T) {
+	r := newRig(t)
+	names := []string{"a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4"}
+	for _, name := range names {
+		r.put(name, video+name, time.Minute)
+	}
+	oldWalk := maxWalk
+	maxWalk = 2
+	t.Cleanup(func() { maxWalk = oldWalk })
+	for round, want := range []int{2, 4, 5} {
+		r.run()
+		if n := r.itemCount(); n != want {
+			t.Fatalf("第 %d 輪後新增了 %d 個，預期 %d", round+1, n, want)
+		}
+	}
+	// 走完之後回到開頭：已經判定的檔案不會重複新增，紀錄也都保留。
+	r.run()
+	if n := r.itemCount(); n != len(names) {
+		t.Errorf("回到開頭後影音數 = %d", n)
+	}
+	for _, name := range names {
+		if _, ok := r.entry(name); !ok {
+			t.Errorf("%s 的紀錄不見了", name)
+		}
+	}
+}
+
+// 接續的那一輪沒有走訪 cursor 之前的項目，視為清單不完整：不能因為它們不在 present 就刪掉紀錄。
+func TestScanResumedFromCursorKeepsEntries(t *testing.T) {
+	r := newRig(t)
+	for _, name := range []string{"a.mp4", "b.mp4", "c.mp4"} {
+		r.put(name, video+name, time.Minute)
+	}
+	r.run() // 先全部判定
+	oldWalk := maxWalk
+	maxWalk = 2
+	t.Cleanup(func() { maxWalk = oldWalk })
+	r.run() // 走訪 a、b 後停下，cursor 在 c
+	r.run() // 從 c 接續並走完
+	for _, name := range []string{"a.mp4", "b.mp4", "c.mp4"} {
+		if _, ok := r.entry(name); !ok {
+			t.Errorf("%s 的紀錄不應被刪除", name)
+		}
+	}
+}
+
+// 接續時 cursor 在子目錄裡：祖先目錄要往下走（不算走訪上限），先於 cursor 的目錄整棵略過。
+func TestScanResumeWalksIntoCursorDirectory(t *testing.T) {
+	r := newRig(t)
+	for _, name := range []string{"a.mp4", "d/x.mp4", "d/y.mp4", "d/z.mp4", "e.mp4"} {
+		r.put(name, video+name, time.Minute)
+	}
+	oldWalk := maxWalk
+	maxWalk = 3 // a、d、d/x 之後在 d/y 停下
+	t.Cleanup(func() { maxWalk = oldWalk })
+	r.run()
+	if n := r.itemCount(); n != 2 {
+		t.Fatalf("第一輪新增了 %d 個，預期 2（a.mp4、d/x.mp4）", n)
+	}
+	r.run() // 從 d/y 接續：d 不算，d/y、d/z、e
+	if n := r.itemCount(); n != 5 {
+		t.Fatalf("第二輪後新增了 %d 個，預期 5", n)
+	}
+}
+
+func TestWalkBefore(t *testing.T) {
+	for _, tt := range []struct {
+		p, cursor string
+		want      bool
+	}{
+		{"a.mp4", "b.mp4", true},
+		{"b.mp4", "b.mp4", false},
+		{"c.mp4", "b.mp4", false},
+		{"d", "d/y.mp4", false}, // 祖先目錄
+		{"d/x.mp4", "d/y.mp4", true},
+		{"d/z.mp4", "d/y.mp4", false},
+		{"a", "a.txt", true}, // 目錄 a 的內容先於 a.txt
+		{"a/x", "a.txt", true},
+		{"a.txt", "a/x", false},
+		{"b/x", "d/y.mp4", true},
+	} {
+		if got := walkBefore(tt.p, tt.cursor); got != tt.want {
+			t.Errorf("walkBefore(%q, %q) = %v，預期 %v", tt.p, tt.cursor, got, tt.want)
+		}
+	}
+}
+
 // 第一次看到時修改時間已經很久以前：馬上穩定，直接新增，origin 為 inbox。
 func TestStableOnFirstSight(t *testing.T) {
 	r := newRig(t)

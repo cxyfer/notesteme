@@ -540,6 +540,8 @@ func TestWireViolations(t *testing.T) {
 		{"openai strict schema 缺 additionalProperties", "openai", strings.Replace(openaiBody("correct", "s", user), `"additionalProperties":false,`, ``, 1), nil, "additionalProperties"},
 		{"openai strict schema 的 required 不完整", "openai", strings.Replace(openaiBody("correct", "s", user), `"required":["cues"]`, `"required":[]`, 1), nil, "required"},
 		{"資料區塊的 cue 多了欄位", "openai", openaiBody("correct", "s", "校正。\n"+DataOpen+"\n"+`{"chunk":1,"chunks":1,"context":[],"cues":[{"i":1,"text":"x","start":1000}]}`+"\n"+DataClose), nil, "契約以外的欄位"},
+		{"資料區塊的 context 多了欄位", "openai", openaiBody("correct", "s", "校正。\n"+DataOpen+"\n"+`{"chunk":2,"chunks":2,"context":[{"i":1,"text":"x","start":1000}],"cues":[{"i":2,"text":"y"}]}`+"\n"+DataClose), nil, "context[0] 有契約以外的欄位"},
+		{"資料區塊的 context.i 不是正整數", "openai", openaiBody("correct", "s", "校正。\n"+DataOpen+"\n"+`{"chunk":2,"chunks":2,"context":[{"i":0,"text":"x"}],"cues":[{"i":2,"text":"y"}]}`+"\n"+DataClose), nil, "context[0].i 必須是從 1 起算的整數"},
 		{"anthropic tool 不在 tools", "anthropic", strings.Replace(anthropicBody("correct", "s", user), `"tools":[{"description":"d","input_schema":{"type":"object"},"name":"notesteme_correct"}]`, `"tools":[]`, 1), nil, "不在 tools"},
 		{"openai 缺 response_format", "openai", `{"model":"m","messages":[{"role":"user","content":"x"}]}`, nil, "response_format"},
 		{"openai strict 不是 true", "openai", strings.Replace(openaiBody("correct", "s", user), `"strict":true`, `"strict":false`, 1), nil, "strict"},

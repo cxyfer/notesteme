@@ -28,8 +28,9 @@ import (
 // audioFetchTimeout 是下載一集音檔的逾時（大小上限是 netguard.LimitAudio，GRD-R5）。
 const audioFetchTimeout = 2 * time.Hour
 
-// episodeFilePattern 是下載後的音檔檔名：episode.<副檔名>；媒體端點只開啟符合這個格式的檔名。
-var episodeFilePattern = regexp.MustCompile(`^episode\.[a-z0-9]{1,5}$`)
+// episodeFilePattern 是下載後的音檔檔名：episode.<副檔名>，或與已寫入的快照撞名時的 episode-<sha256 前 8 碼>.<副檔名>；
+// 媒體端點只開啟符合這個格式的檔名。
+var episodeFilePattern = regexp.MustCompile(`^episode(-[0-9a-f]{8})?\.[a-z0-9]{1,5}$`)
 
 // audioExts 是音檔副檔名的白名單；其他一律 .bin。
 var audioExts = map[string]bool{
@@ -166,13 +167,7 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 	if resp.Request != nil && resp.Request.URL != nil {
 		finalURL = resp.Request.URL.String()
 	}
-	if name == "" {
-		name = "episode" + audioExt(finalURL, enc.Type)
-	}
-	if err := os.Rename(part, filepath.Join(dir, name)); err != nil {
-		return nil, err
-	}
-	done = true
+	sum := hex.EncodeToString(h.Sum(nil))
 	// 已寫入資料庫的快照所指的檔案先保留：這次的結果要等 apply 的交易 commit 才生效，
 	// 任務被取消、過期被丟棄或寫回失敗時，影音仍指向它。commit 之後才刪（runPodcastMetadata 的 afterCommit），
 	// 沒有 commit 時留到下一次下載。
@@ -180,9 +175,22 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 	if m, ok := readPodcastMeta(it.Metadata); ok {
 		committed = m.Audio.File
 	}
+	if name == "" {
+		name = "episode" + audioExt(finalURL, enc.Type)
+		if name == committed {
+			// 同名會在 commit 之前就蓋掉影音現在指向的檔案：改用依內容命名的另一個檔名，
+			// commit 之後快照指向它，舊檔由 afterCommit 刪除。
+			ext := path.Ext(name)
+			name = "episode-" + sum[:8] + ext
+		}
+	}
+	if err := os.Rename(part, filepath.Join(dir, name)); err != nil {
+		return nil, err
+	}
+	done = true
 	removeStaleEpisodes(dir, name, committed)
 	return &episodeAudio{
-		File: name, URL: finalURL, Bytes: n, SHA256: hex.EncodeToString(h.Sum(nil)),
+		File: name, URL: finalURL, Bytes: n, SHA256: sum,
 		DurationS: info.DurationS, mediaKind: info.Kind(),
 	}, nil
 }

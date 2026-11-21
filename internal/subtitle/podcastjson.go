@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 )
 
 // 單字級 segment 合併成 cue 的門檻：兩個字之間停頓超過 wordGapMS，或一句超過 maxCueMS 就斷開。
@@ -40,8 +39,10 @@ func validSegTime(sec float64) bool {
 
 // ParsePodcastJSON 解析 Podcasting 2.0 的 JSON 字幕（{"segments":[{"startTime","endTime","body"}]}，單位為秒）。
 //
-// 每個 segment 的 body 都是單一字詞（無空白；含 CJK 時不超過 4 個字）時，視為字詞級的時間：依句末標點、換行、停頓超過 1 秒或一句超過 7 秒
+// 每個 segment 的 body 都是單一字詞（無空白、不含 CJK）時，視為字詞級的時間：依句末標點、換行、停頓超過 1 秒或一句超過 7 秒
 // 合併成 cue，並填入 Words（wordLevel 為 true）。否則一個 segment 一個 cue。
+// CJK 沒有空白可以分辨字詞與整句（「大家好」可能是一個字詞，也可能是完整的一句），不靠長度猜測，
+// 含 CJK 的文件一律保留原本的切分，一個 segment 一個 cue。
 // body 是空白的 segment 略過；結束時間早於開始時間時取開始時間。JSON 不合法，或時間為負、不是有限值、超過 24 小時時回傳錯誤。
 func ParsePodcastJSON(data []byte) (cues []Cue, wordLevel bool, err error) {
 	var doc podcastJSON
@@ -121,39 +122,24 @@ func mergeWordSegs(segs []podcastSeg) []Cue {
 	return cues
 }
 
-// maxCJKWordRunes 是字詞級 segment 中，含 CJK 的 body 最多可有的字數；超過就視為整句。
-const maxCJKWordRunes = 4
-
 // isCJK 回報 r 是不是漢字、平假名、片假名或諺文。
 func isCJK(r rune) bool {
 	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul)
 }
 
-// isWordBody 回報 body 能不能當成「一個字詞」：沒有空白，且含 CJK 時不超過 maxCJKWordRunes 個字。
-// CJK 整句沒有空白可以分辨，所以只要不確定就當成整句（一個 segment 一個 cue）。
+// isWordBody 回報 body 能不能確定是「一個字詞」：沒有空白，而且不含 CJK。
+// CJK 的字詞與整句無法分辨，所以一律當成整句（一個 segment 一個 cue），不依長度猜測。
 func isWordBody(body string) bool {
-	if strings.IndexFunc(body, unicode.IsSpace) >= 0 {
-		return false
-	}
-	if strings.IndexFunc(body, isCJK) >= 0 {
-		return utf8.RuneCountInString(body) <= maxCJKWordRunes
-	}
-	return true
+	return strings.IndexFunc(body, func(r rune) bool { return unicode.IsSpace(r) || isCJK(r) }) < 0
 }
 
-// joinWords 把字詞接成 cue 的文字：以空格分隔，但相鄰的兩個字只要有一邊是 CJK 就不插入空格。
+// joinWords 把字詞以空格接成 cue 的文字。
 func joinWords(words []Word) string {
-	var b strings.Builder
-	var prev rune
+	texts := make([]string, len(words))
 	for i, w := range words {
-		first, _ := utf8.DecodeRuneInString(w.Text)
-		if i > 0 && !isCJK(prev) && !isCJK(first) {
-			b.WriteByte(' ')
-		}
-		b.WriteString(w.Text)
-		prev, _ = utf8.DecodeLastRuneInString(w.Text)
+		texts[i] = w.Text
 	}
-	return b.String()
+	return strings.Join(texts, " ")
 }
 
 // endsSentence 回報字是否以句末標點結尾（收尾的引號與括號不影響）。

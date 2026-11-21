@@ -237,6 +237,75 @@ func TestPodcastMetadataReplacesStaleEpisodeFile(t *testing.T) {
 	}
 }
 
+// 重新下載後副檔名相同：新檔不能在 commit 之前蓋掉影音現在指向的 episode.mp3（Codex P2）。
+// 沒有 commit 時影音讀到的仍是舊內容；commit 之後快照指向依內容命名的新檔，舊檔被刪。
+func TestPodcastMetadataSameNameAudioWaitsForCommit(t *testing.T) {
+	const newBody = "NEW-AUDIO-BYTES-WITH-DIFFERENT-LENGTH"
+	r := newPodRig(t)
+	r.serveShow("")
+	it := r.ingestEpisode(StageMetadata)
+	r.net.serve(audio42, 200, newBody)
+	ctx := context.Background()
+	played := func() string {
+		t.Helper()
+		f, _, _, err := r.p.MediaFile(ctx, it.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		b, err := io.ReadAll(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	// 只執行、不寫回（模擬被取消、過期或寫回失敗）：影音仍指向舊檔，播放與 ASR 讀到的還是舊內容。
+	res, err := r.p.runPodcastMetadata(ctx, r.reload(it.ID), DefaultLanguage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	staged := "episode-" + sumHex(newBody)[:8] + ".mp3"
+	if got := strings.Join(r.mediaFiles(it), ","); got != staged+",episode.mp3" {
+		t.Fatalf("commit 之前媒體目錄 = %v，預期 %s 與舊的 episode.mp3", got, staged)
+	}
+	if b, err := os.ReadFile(filepath.Join(r.mediaDir(it), "episode.mp3")); err != nil || string(b) != podAudioBody {
+		t.Fatalf("episode.mp3 不該被蓋掉：%q, %v", b, err)
+	}
+	if got := played(); got != podAudioBody {
+		t.Errorf("commit 之前播放到 %q，預期舊內容", got)
+	}
+	if res.afterCommit == nil {
+		t.Fatal("metadata 應在 commit 之後清掉舊檔")
+	}
+
+	// 經過 pipeline 重跑並寫回：快照指向新檔，舊檔刪除。
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageMetadata, Until: StageMetadata}); err != nil {
+		t.Fatal(err)
+	}
+	r.run()
+	if got := r.mediaFiles(it); len(got) != 1 || got[0] != staged {
+		t.Errorf("媒體目錄 = %v，預期只有 %s", got, staged)
+	}
+	cur := r.reload(it.ID)
+	if m, ok := readPodcastMeta(cur.Metadata); !ok || m.Audio.File != staged || m.Audio.SHA256 != sumHex(newBody) || cur.ContentSHA256 != sumHex(newBody) {
+		t.Errorf("快照 = %+v，sha = %s", m.Audio, cur.ContentSHA256)
+	}
+	if got := played(); got != newBody {
+		t.Errorf("commit 之後播放到 %q，預期新內容", got)
+	}
+
+	// 再重跑一次（內容又變）：新檔回到 episode.mp3，不與目前的檔名衝突。
+	r.net.serve(audio42, 200, podAudioBody)
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageMetadata, Until: StageMetadata}); err != nil {
+		t.Fatal(err)
+	}
+	r.run()
+	if got := r.mediaFiles(it); len(got) != 1 || got[0] != "episode.mp3" {
+		t.Errorf("第二次重跑後媒體目錄 = %v，預期只有 episode.mp3", got)
+	}
+}
+
 // downloadFixture 建立影音並取得 feed 中這一集的 enclosure，供直接測 downloadEpisodeAudio。
 func (r *podRig) downloadFixture() (store.Item, podcast.Enclosure) {
 	r.t.Helper()
