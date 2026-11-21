@@ -175,7 +175,7 @@
 | `Given the item {string} has been ingested as {word}` | 以指定的優先級新增：`manual`、`subscription`、`backfill` |
 | `Given {string} is a mixed-language item` | 把影音的原文語言標記為 `mixed` |
 | `Given the item {string} has been processed up to {string}` | 已完成到指定步驟。依序判斷：(1) 場景已準備字幕來源（寫入字幕、符合 `caption_priority` 的字幕軌、腳本化的已實作來源；`local:` 另外包含 inbox 中同名的外掛字幕檔，以及 fixture 帶有文字字幕串流）：照常執行 pipeline 到該步驟；(2) 代號是 `yt:` 或 `bili:`、假 yt-dlp 中這部影片完全沒有字幕軌、場景也沒有寫入字幕或腳本化來源，且 `features/fixtures/items/<代號>.json`（`:`、`/` 換成 `-`）存在：先建立影音並做到 metadata，用 fixture 寫入 `source`，再照常執行剩下的步驟；fixture 的 `ref` 必須與檔名一致；`local:`、`pod:` 一律不套用 fixture；(2c) 目標是 `segment`、`correct`、`translate`、`publish` 時：語意等 X1 決定（見 PRF 待決問題），目前 pending（步驟對這些目標尚未實作）；(3) 其他情況 pending。目標在 transcript 之前（如 `metadata`）不需要字幕。fixture 格式見 `features/fixtures/README.md` |
-| `Given the {string} transcript of {string} is:` | 指定變體的字幕；表格欄位：`#`、`start`、`end`、`text`，可加 `words`、`timing` |
+| `Given the {string} transcript of {string} is:` | 指定變體的字幕；表格欄位：`#`、`start`、`end`、`text`，可加 `words`、`timing`。`words` 是以空白分隔的 `text@start-end`，時間可以是時間碼（`00:00:01.000`）或秒數（`1.0`） |
 | `Given the {string} transcript of {string} in {string} is:` | 同上，指定語言 |
 | `When the worker runs until idle` | worker 持續執行，直到沒有可以執行的任務 |
 | `Then the library contains {int} items` | 影音總數，不含垃圾桶中的影音。server 已明確停下（`When the server shuts down gracefully`）時，不隱含啟動 server，改用唯讀方式查詢 DB |

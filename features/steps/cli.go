@@ -137,7 +137,7 @@ func (s *Scenario) runDocker(args []string) error {
 // hasGivenConfig 回報是否有 Given 累積、尚未送出的全域設定或佇列設定（見 prepareOwner）。
 func (s *Scenario) hasGivenConfig() bool {
 	q := s.givenQueue
-	return len(s.givenSettings) > 0 || q.limits != nil || q.pausedQueue || len(q.pausedClasses) > 0
+	return len(s.givenSettings) > 0 || q.limits != nil || q.pausedQueue || len(q.pausedClasses) > 0 || s.hasPendingConfig()
 }
 
 // needCommand 回傳最近一次的指令結果；還沒有執行過指令時失敗。
