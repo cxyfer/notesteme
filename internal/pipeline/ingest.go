@@ -339,7 +339,7 @@ func insertStageTask(ctx context.Context, r *store.Repo, itemID string, run stor
 	}
 	return r.InsertTask(ctx, store.NewTask{
 		StageRunID: run.ID, Kind: run.Stage, Executor: queue.ExecutorBuiltin,
-		ResourceClass: resourceClass(run.Stage, transcriptASR), Priority: priority, Payload: payload,
+		ResourceClass: resourceClass(run.Stage, run.Executor, transcriptASR), Priority: priority, Payload: payload,
 		MaxAttempts: queue.DefaultMaxAttempts,
 	})
 }

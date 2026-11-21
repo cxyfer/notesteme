@@ -99,13 +99,27 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		return err
 	}
 
+	// 步驟前進時已記錄解析後的 executor；沒有記錄（M1 的步驟）時依設定解析。
+	executor := run.Executor
+	if executor == "" {
+		if rs, rerr := ResolveExecutor(eff, run.Stage); rerr == nil {
+			executor = rs.Executor
+		}
+	}
 	var res result
-	switch run.Stage {
-	case StageMetadata:
+	switch {
+	case !stageImplemented(run.Stage, executor):
+		// 沒有實作的 (步驟, executor)（例如單次覆寫指定了 provider）：任務照常建立，在這裡看得見地失敗，
+		// 之後的切片在 stageImplemented 與這個分派登記它的 handler。
+		err = &errclass.Error{
+			Class: errclass.ClassPermanent, Source: "pipeline", Detail: "步驟尚未實作 " + run.Stage + "／" + executor,
+			Message: "這個步驟還沒有實作（" + run.Stage + "／" + executor + "）。",
+		}
+	case run.Stage == StageMetadata:
 		res, err = p.runMetadata(ctx, it, lang)
-	case StageTranscript:
+	case run.Stage == StageTranscript:
 		res, err = p.runTranscript(ctx, it, lang)
-	case StageNormalize:
+	case run.Stage == StageNormalize:
 		res, err = p.runNormalize(ctx, it)
 	default:
 		err = &errclass.Error{Class: errclass.ClassPermanent, Source: "pipeline", Detail: "不認識的步驟 " + run.Stage}
@@ -314,12 +328,29 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 				return nil
 			}
 			// 走到這裡時這一筆一定是最新的（上面已檢查），舊的結果不會觸發下游。
-			if nr, ok := latest[next]; ok {
-				if _, err := insertStageTask(ctx, r, it.ID, nr, t.Priority, res.transcriptASR); err != nil {
-					return err
-				}
-				wake = true
+			nr, ok := latest[next]
+			if !ok {
+				return nil
 			}
+			// 依下一步的設定快照解析執行方式：可以略過的步驟直接 skipped 並繼續往下，
+			// 直到第一個要執行的步驟或 until 為止（until 之後的步驟維持 pending）。
+			snap, err := r.Snapshot(ctx, nr.ConfigSnapshotID)
+			if err != nil {
+				return fmt.Errorf("讀取設定快照 %s：%w", nr.ConfigSnapshotID, err)
+			}
+			eff, err := ParseEffective(snap)
+			if err != nil {
+				return err
+			}
+			chain, err := planChain(eff, next, it.UntilStage)
+			if err != nil {
+				return err
+			}
+			created, err := p.applyChain(ctx, r, it.ID, chain, latest, t.Priority, res.transcriptASR)
+			if err != nil {
+				return err
+			}
+			wake = wake || created
 		}
 		return nil
 	})
@@ -364,9 +395,6 @@ func (p *Pipeline) discardArtifactFile(a *store.NewArtifact) {
 // keepArtifactVersions 是同一組 (item, kind, variant, lang) 保留的最近版本數（PIPE-R7）。
 const keepArtifactVersions = 3
 
-// reasonCancelled 是步驟因取消而 skipped 時的原因（PIPE-R15），寫在 block_reason。
-const reasonCancelled = "cancelled"
-
 // discardStale 處理已被較新重跑取代的 stage run 所領取的任務：
 // 任務完成（不重試、不放回佇列），步驟標為 skipped 而不是留在 running／pending。
 // skipped 是既有狀態值中最貼近「被取消、不再處理」的終止狀態（PIPE-R15）。
@@ -379,7 +407,7 @@ func discardStale(ctx context.Context, r *store.Repo, t store.Task, run store.St
 
 // supersededState 是被重跑取代的步驟的狀態。
 func supersededState() store.StageState {
-	return store.StageState{Status: store.StatusSkipped, BlockReason: reasonCancelled, Message: "已被較新的重跑取代。"}
+	return store.StageState{Status: store.StatusSkipped, BlockReason: SkipCancelled, Message: "已被較新的重跑取代。"}
 }
 
 // errPermanent 建立 permanent 錯誤。

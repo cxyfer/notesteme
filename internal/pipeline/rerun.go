@@ -8,9 +8,6 @@ import (
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
-// plannedStages 是 plan 第 5 節中、M1 還沒實作的步驟；重跑它們回傳 501，名稱不對則是 422。
-var plannedStages = []string{"summary", "chapters", "segment", "correct", "translate", "frames.candidates", "frames.select", "note", "publish"}
-
 // RerunRequest 是重跑的請求（POST /api/items/:id/rerun）。
 type RerunRequest struct {
 	// From 是從哪個步驟開始重新處理。
@@ -32,7 +29,11 @@ type RerunRequest struct {
 // 快取鍵相同時重用既有產出，不建立新版本（PIPE-R5）。
 // 舊步驟中還沒被領取的任務會被取消。回傳最新的影音詳情。
 //
-// 錯誤：store.ErrNotFound、*InTrashError（影音在垃圾桶中，DEL-R1）、*InvalidError（步驟名稱或設定不正確）、*NotImplementedError（M1 之後的步驟）。
+// 沒有可執行的 executor 的步驟（off、沒有 provider 的 api、沒有輸出的 publish）直接 skipped，鏈在第一個要執行的步驟或 until 停下。
+// 這個步驟還沒有實作時回 501，而且什麼都不寫（ADR-0015）。
+//
+// 錯誤：store.ErrNotFound、*InTrashError（影音在垃圾桶中，DEL-R1）、*InvalidError（步驟名稱或設定不正確）、
+// *NotImplementedError（plannedStages、Profile、Chunks，或要執行的步驟還沒有實作）。
 func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (Detail, error) {
 	switch {
 	case ValidStage(req.From):
@@ -48,6 +49,13 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 	// 讓呼叫端明確知道自己的請求互相矛盾（PIPE-R1）。
 	if req.Until != "" && slices.Index(Stages, req.From) > slices.Index(Stages, req.Until) {
 		return Detail{}, invalidf("from（%s）不能在 until（%s）之後。", req.From, req.Until)
+	}
+
+	if req.Profile != "" {
+		return Detail{}, &NotImplementedError{What: "重跑時指定處理方案"}
+	}
+	if len(req.Chunks) > 0 {
+		return Detail{}, &NotImplementedError{What: "只重跑指定的 chunk"}
 	}
 
 	it, err := p.st.Read().ItemByID(ctx, itemID)
@@ -72,6 +80,14 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 	sha, cfgJSON, err := eff.Snapshot()
 	if err != nil {
 		return Detail{}, err
+	}
+	// 在寫入任何資料之前解析執行方式：要執行的步驟還沒有實作就回 501，不留下半套的重跑。
+	chain, err := planChain(eff, req.From, req.Until)
+	if err != nil {
+		return Detail{}, err
+	}
+	if last := chain[len(chain)-1]; !last.Skip && !stageImplemented(last.Stage, last.Executor) {
+		return Detail{}, &NotImplementedError{What: "步驟 " + last.Stage + "／" + last.Executor}
 	}
 
 	if p.beforeRerunTx != nil {
@@ -117,6 +133,7 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		if err := r.SetItemUntil(ctx, itemID, req.Until); err != nil {
 			return err
 		}
+		fresh := map[string]store.StageRun{}
 		for _, s := range Stages[slices.Index(Stages, req.From):] {
 			run, err := r.InsertStageRun(ctx, store.NewStageRun{
 				ItemID: itemID, Stage: s, Status: store.StatusPending, ConfigSnapshotID: snap,
@@ -124,13 +141,11 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 			if err != nil {
 				return err
 			}
-			if s == req.From {
-				if _, err := insertStageTask(ctx, r, itemID, run, queue.PriorityManual, false); err != nil {
-					return err
-				}
-			}
+			fresh[s] = run
 		}
-		return nil
+		// 只有鏈上的步驟處理：略過的 skipped，第一個要執行的建立任務；之後的等上游完成再前進（PIPE-R1）。
+		_, err = p.applyChain(ctx, r, itemID, chain, fresh, queue.PriorityManual, false)
+		return err
 	})
 	if err != nil {
 		return Detail{}, err

@@ -14,7 +14,7 @@ var unfinishedStatuses = []string{store.StatusPending, store.StatusRunning, stor
 
 // cancelledState 是被取消的步驟的狀態（PIPE-R15）。skipped 與被重跑取代的步驟相同，原因寫在 block_reason。
 func cancelledState() store.StageState {
-	return store.StageState{Status: store.StatusSkipped, BlockReason: reasonCancelled, Message: "已取消。"}
+	return store.StageState{Status: store.StatusSkipped, BlockReason: SkipCancelled, Message: "已取消。"}
 }
 
 // CancelItem 取消影音所有未結束的處理（PIPE-R15）：在一個交易中把未結束的步驟改為 skipped（原因 cancelled），

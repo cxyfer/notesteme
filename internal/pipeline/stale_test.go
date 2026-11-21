@@ -197,7 +197,7 @@ func TestRerunMarksSupersededPendingRunsSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 	runs, err := r.st.Read().StageRunsByItem(ctx, it.ID)
-	if err != nil || len(runs) != 6 {
+	if err != nil || len(runs) != 2*len(Stages) {
 		t.Fatalf("runs = %d, %v", len(runs), err)
 	}
 	latest := latestRuns(runs)
@@ -228,7 +228,7 @@ func TestRerunRejectsFromAfterUntil(t *testing.T) {
 	}
 	// 沒有留下副作用。
 	runs, _ := r.st.Read().StageRunsByItem(ctx, it.ID)
-	if len(runs) != 3 {
+	if len(runs) != len(Stages) {
 		t.Errorf("被拒絕的重跑不應建立步驟：%d", len(runs))
 	}
 	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageTranscript, Until: StageTranscript}); err != nil {

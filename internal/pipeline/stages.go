@@ -11,15 +11,56 @@ import (
 	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
-// M1 的步驟，依執行順序（plan 第 5 節）。
+// pipeline 的步驟，依執行順序（plan 第 5 節；summary、chapters、frames、note 屬於之後的切片）。
 const (
 	StageMetadata   = "metadata"
 	StageTranscript = "transcript"
 	StageNormalize  = "normalize"
+	StageSegment    = "segment"
+	StageCorrect    = "correct"
+	StageTranslate  = "translate"
+	StagePublish    = "publish"
 )
 
 // Stages 是步驟的執行順序。
-var Stages = []string{StageMetadata, StageTranscript, StageNormalize}
+var Stages = []string{StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate, StagePublish}
+
+// plannedStages 是 plan 第 5 節中還沒排進來的步驟；重跑它們回傳 501，名稱不對則是 422。
+var plannedStages = []string{"summary", "chapters", "frames.candidates", "frames.select", "note"}
+
+// 步驟的 executor（stage_runs.executor、來源紀錄的 executor）。
+const (
+	ExecutorLocal  = "local" // 確定性步驟（M1 已經寫成 "local"）
+	ExecutorAPI    = "api"
+	ExecutorAgent  = "agent"
+	ExecutorOff    = "off"
+	ExecutorOpenCC = "opencc" // 只用於 translate
+)
+
+// skipped 的原因，寫在 stage_runs.block_reason。
+// 之後的切片會加上 same_language、manual_captions、not_applicable。
+const (
+	SkipCancelled     = "cancelled"      // 取消或被較新的重跑取代（PIPE-R15）
+	SkipOff           = "off"            // executor: off（PRF-R6）
+	SkipNotConfigured = "not_configured" // api 沒有 provider 或 model（X1 選項 C）
+	SkipNoOutputs     = "no_outputs"     // publish 沒有任何輸出目標
+)
+
+// IsLLMStage 回報步驟是不是 LLM 步驟（ADR-0002）。
+func IsLLMStage(stage string) bool {
+	return stage == StageSegment || stage == StageCorrect || stage == StageTranslate
+}
+
+// StageExecutors 回傳步驟可以設定的 executor；確定性步驟回傳 nil（不能設定）。
+func StageExecutors(stage string) []string {
+	switch stage {
+	case StageSegment, StageCorrect:
+		return []string{ExecutorAPI, ExecutorAgent, ExecutorOff}
+	case StageTranslate:
+		return []string{ExecutorAPI, ExecutorAgent, ExecutorOff, ExecutorOpenCC}
+	}
+	return nil
+}
 
 // 每個步驟宣告的版本（plan 第 5.1 節）：演算法的行為改變時遞增，舊的快取就不再命中（PIPE-R6）。
 // 這是預設值；測試可以經 Deps.ImplVersions 或 Pipeline.SetImplVersion 覆寫，模擬步驟改版。
@@ -27,6 +68,10 @@ const (
 	metadataImplVersion   = 1
 	transcriptImplVersion = 1
 	normalizeImplVersion  = 1
+	segmentImplVersion    = 1
+	correctImplVersion    = 1
+	translateImplVersion  = 1
+	publishImplVersion    = 1
 )
 
 // defaultImplVersion 是步驟宣告的 impl_version。
@@ -38,6 +83,14 @@ func defaultImplVersion(stage string) int {
 		return transcriptImplVersion
 	case StageNormalize:
 		return normalizeImplVersion
+	case StageSegment:
+		return segmentImplVersion
+	case StageCorrect:
+		return correctImplVersion
+	case StageTranslate:
+		return translateImplVersion
+	case StagePublish:
+		return publishImplVersion
 	}
 	return 0
 }
@@ -72,9 +125,15 @@ func (p *Pipeline) SetImplVersion(stage string, v int) error {
 
 // resourceClass 是步驟使用的資源類別（ADR-0004）。
 // transcriptASR 只對 transcript 有意義：true 代表這個任務很可能要走 ASR 來源（見 transcriptNeedsASR）。
-func resourceClass(stage string, transcriptASR bool) string {
+// LLM 步驟走 api 或 agent 時是 llm；opencc 與 publish 是本機的確定性處理。
+func resourceClass(stage, executor string, transcriptASR bool) string {
 	switch {
-	case stage == StageNormalize:
+	case IsLLMStage(stage):
+		if executor == ExecutorAPI || executor == ExecutorAgent {
+			return queue.ResourceLLM
+		}
+		return queue.ResourceLocal
+	case stage == StageNormalize || stage == StagePublish:
 		return queue.ResourceLocal
 	case stage == StageTranscript && transcriptASR:
 		return queue.ResourceASR
@@ -100,7 +159,7 @@ func transcriptNeedsASR(platform string, lang Language, tracks []transcript.Trac
 	return chosen == nil
 }
 
-// ValidStage 回報 name 是不是 M1 的步驟。
+// ValidStage 回報 name 是不是 pipeline 的步驟（不含 plannedStages）。
 func ValidStage(name string) bool { return slices.Contains(Stages, name) }
 
 // nextStage 回傳 stage 的下一個步驟；until 之後的步驟不建立（PIPE-R1）。
