@@ -45,6 +45,9 @@ type result struct {
 	startedAt time.Time
 	// transcriptASR 只用於 metadata：下游的 transcript 任務是否歸為 asr 資源類別。
 	transcriptASR bool
+	// afterCommit 在結果確實寫入（交易 commit，而且不是過期或租約失效）之後執行，
+	// 用來清掉只有舊記錄會用到的檔案（例如 podcast 換了副檔名的舊音檔）。
+	afterCommit func()
 }
 
 type metaUpdate struct {
@@ -342,6 +345,9 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 		// 已 commit：被清除版本的記錄不在了，檔案也一併刪除。
 		for _, a := range purged {
 			p.discardArtifactFile(&store.NewArtifact{Path: a.Path})
+		}
+		if res.afterCommit != nil {
+			res.afterCommit()
 		}
 	}
 	if wake {

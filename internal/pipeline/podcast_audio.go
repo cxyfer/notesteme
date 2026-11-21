@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -172,7 +173,14 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 		return nil, err
 	}
 	done = true
-	removeStaleEpisodes(dir, name)
+	// 已寫入資料庫的快照所指的檔案先保留：這次的結果要等 apply 的交易 commit 才生效，
+	// 任務被取消、過期被丟棄或寫回失敗時，影音仍指向它。commit 之後才刪（runPodcastMetadata 的 afterCommit），
+	// 沒有 commit 時留到下一次下載。
+	committed := ""
+	if m, ok := readPodcastMeta(it.Metadata); ok {
+		committed = m.Audio.File
+	}
+	removeStaleEpisodes(dir, name, committed)
 	return &episodeAudio{
 		File: name, URL: finalURL, Bytes: n, SHA256: hex.EncodeToString(h.Sum(nil)),
 		DurationS: info.DurationS, mediaKind: info.Kind(),
@@ -200,14 +208,14 @@ func removeStaleParts(dir string, now time.Time) {
 	}
 }
 
-// removeStaleEpisodes 刪除先前下載留下的其他 episode.* 檔（副檔名可能不同）。
-func removeStaleEpisodes(dir, keep string) {
+// removeStaleEpisodes 刪除先前下載留下的其他 episode.* 檔（副檔名可能不同），keep 中的檔名保留。
+func removeStaleEpisodes(dir string, keep ...string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
 	for _, e := range entries {
-		if e.Name() != keep && episodeFilePattern.MatchString(e.Name()) {
+		if !slices.Contains(keep, e.Name()) && episodeFilePattern.MatchString(e.Name()) {
 			_ = os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}

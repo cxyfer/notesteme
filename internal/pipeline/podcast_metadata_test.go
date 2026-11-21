@@ -199,7 +199,8 @@ func TestPodcastMetadataDownloadsAudio(t *testing.T) {
 	}
 }
 
-// 重新下載後副檔名改變：舊的 episode.* 要刪掉。
+// 重新下載後副檔名改變：舊的 episode.* 要等新的快照 commit 之後才刪。
+// 還沒 commit（任務被取消、過期被丟棄、寫回失敗）時影音仍指向舊檔，不能先刪。
 func TestPodcastMetadataReplacesStaleEpisodeFile(t *testing.T) {
 	r := newPodRig(t)
 	r.serveShow("")
@@ -211,11 +212,28 @@ func TestPodcastMetadataReplacesStaleEpisodeFile(t *testing.T) {
 		resp.Request = &http.Request{URL: final}
 		return resp, nil
 	})
-	if _, err := r.p.runPodcastMetadata(context.Background(), r.reload(it.ID), DefaultLanguage()); err != nil {
+	// 只執行、不寫回：快照仍指向 episode.mp3，它要留著。
+	res, err := r.p.runPodcastMetadata(context.Background(), r.reload(it.ID), DefaultLanguage())
+	if err != nil {
 		t.Fatal(err)
 	}
+	if got := strings.Join(r.mediaFiles(it), ","); got != "episode.m4a,episode.mp3" {
+		t.Errorf("commit 之前媒體目錄 = %v，舊檔應保留", got)
+	}
+	if res.afterCommit == nil {
+		t.Fatal("metadata 應在 commit 之後清掉舊檔")
+	}
+
+	// 經過 pipeline 重跑並寫回：commit 之後只剩新檔，影音指向它。
+	if _, err := r.p.Rerun(context.Background(), it.ID, RerunRequest{From: StageMetadata, Until: StageMetadata}); err != nil {
+		t.Fatal(err)
+	}
+	r.run()
 	if got := r.mediaFiles(it); len(got) != 1 || got[0] != "episode.m4a" {
 		t.Errorf("媒體目錄 = %v，預期只有 episode.m4a", got)
+	}
+	if m, ok := readPodcastMeta(r.reload(it.ID).Metadata); !ok || m.Audio.File != "episode.m4a" {
+		t.Errorf("快照 = %+v", m.Audio)
 	}
 }
 
