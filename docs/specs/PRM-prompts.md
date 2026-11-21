@@ -42,4 +42,8 @@
 
 ## 待決問題
 
-- 無。
+- D11：prompt 引用格式是 `<id>`、`<id>@default`、`<id>@<N>`（N ≥ 1）（2026-11-22，M2 S1/S2 設計時決定）。`<id>` 等同 `<id>@default`，跟隨「設為預設」；`@N` 固定版本。步驟與 prompt 的類型必須相符（segment、correct、translate；`localize-*` 屬於 translate）。版本在新增或重跑取快照時解析，只解析會執行的 LLM 步驟，寫進快照該步驟的 `prompt_version`、`prompt_sha256`；解析失敗時留空，不讓新增失敗，由執行該步驟時以 `permanent` 失敗。
+- D12：內建 prompt（PRM-R4 的 5 個）放在程式內（`internal/prompts/builtin/<id>/v<N>.md`，embed），不寫入資料庫（2026-11-22，M2 S1/S2 設計時決定）。使用者的 prompt 存在資料庫，id 不可以和內建的相同。內建的不能新增版本、不能設預設、不能刪除，都回 409 `builtin_prompt`。M2 發布前可以直接修改 v1 的內容，發布之後改內容要新增 v2。
+- D13：刪除 prompt 是硬刪除（2026-11-22，M2 S1/S2 設計時決定，待 owner 確認）。`used_by` 依序列出引用它的處理方案名稱（依字母排序，只看目前版本）、`settings`（全域 stages 有引用時）、`channel:<platform>:<external_id>`。PRM-R8 只要求處理方案；多列出其他來源是為了避免懸空的引用，場景的 `used_by: ["standard"]` 是前綴比對，仍然成立。
+- [O] P1：PRM-R7 的 compare 請求 body 沒有 `provider` 與 `model`（2026-11-22，M2 S1/S2 設計時決定）。影音用的是 `default` 處理方案（沒有 provider），compare 無法從快照取得，一定失敗。建議 body 加上 `"provider": "anthropic", "model": "fixture-model"`，與 playground 一致。需要 owner 同意修改 `.feature`。
+- [O] P6：PRM-R5「處理方案引用 prompt 時記錄版本號」沒有說不帶版本號的引用（例如 `correct-default`）是建立時固定版本，還是跟隨預設（2026-11-22，M2 S1/S2 設計時決定）。依 PRM-03「until I promote」，目前實作 `<id>` 等同 `<id>@default`，跟隨預設；實際用到的版本記在快照與來源紀錄（見 D11）。需要 owner 確認。
