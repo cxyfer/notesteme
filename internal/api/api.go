@@ -242,6 +242,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerProviders(api)
 	rt.registerTools(api)
 	rt.registerBackup(api)
+	rt.registerPrompts(api)
 	rt.registerM2Stubs(api)
 	registerScoped(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",

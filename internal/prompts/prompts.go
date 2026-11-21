@@ -1,14 +1,18 @@
 // Package prompts 是 prompt 庫（PRM）：使用者的 prompt 與它的版本存在資料庫，內建 prompt 隨程式發布。
 //
-// 這個檔案是 M2 S1/S2 的契約（Wave 0）：型別、錯誤與 Service 的簽名已經凍結，方法先回傳 ErrNotImplemented，
-// 由 WP-3 實作。
+// 內建 prompt（BuiltinIDs）的內文放在 builtin/<id>/v<N>.md（embed），不寫入資料庫，不能修改（ErrBuiltin）；
+// 使用者的 prompt id 不可以和內建的相同（D12）。
 package prompts
 
 import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/clock"
@@ -25,10 +29,11 @@ var Variables = []string{"title", "channel", "description", "chapters", "glossar
 // BuiltinIDs 是內建的 prompt（PRM-R4）。內容放在程式內，不寫入資料庫；使用者的 prompt id 不可以和它們相同（D12）。
 var BuiltinIDs = []string{"segment-default", "correct-default", "translate-default", "localize-zh-hant-tw", "localize-zh-hans-cn"}
 
-// 錯誤。API 層（WP-3）把它們對應成 404、409、422。
+// maxBodyBytes 是 prompt 內文的上限（64 KiB）。
+const maxBodyBytes = 64 << 10
+
+// 錯誤。API 層把它們對應成 404、409、422。
 var (
-	// ErrNotImplemented 表示功能還沒實作（API 層回 501）。
-	ErrNotImplemented = errors.New("prompts: 尚未實作")
 	// ErrNotFound：沒有這個 prompt。
 	ErrNotFound = errors.New("找不到這個 prompt。")
 	// ErrVersionNotFound：prompt 沒有這個版本。
@@ -91,6 +96,11 @@ func BodySHA256(body string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// normalizeBody 把 CRLF（與單獨的 CR）換成 LF；儲存與計算 sha256 都用正規化後的內文。
+func normalizeBody(body string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(body, "\r\n", "\n"), "\r", "\n")
+}
+
 // Deps 是 Service 的依賴。
 type Deps struct {
 	Store *store.Store
@@ -112,39 +122,226 @@ func New(d Deps) *Service {
 	return &Service{st: d.Store, clock: d.Clock, usedBy: d.UsedBy}
 }
 
+func promptFromStore(p store.Prompt) Prompt {
+	return Prompt{
+		ID: p.ID, Kind: p.Kind, DefaultVersion: p.DefaultVersion, LatestVersion: p.LatestVersion,
+		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
+	}
+}
+
+func versionFromStore(v store.PromptVersion) Version {
+	vars := []string{}
+	if err := json.Unmarshal([]byte(v.VariablesJSON), &vars); err != nil || vars == nil {
+		vars = []string{}
+	}
+	return Version{
+		PromptID: v.PromptID, Version: v.Version, Body: v.Body, SHA256: v.SHA256, Variables: vars, CreatedAt: v.CreatedAt,
+	}
+}
+
 // List 列出所有 prompt：內建的在前，依 id 排序，接著是使用者的，依 id 排序。
 func (s *Service) List(ctx context.Context) ([]Prompt, error) {
-	return nil, ErrNotImplemented
+	ids := slices.Clone(BuiltinIDs)
+	slices.Sort(ids)
+	out := make([]Prompt, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, builtins[id].prompt)
+	}
+	rows, err := s.st.Read().Prompts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out = append(out, promptFromStore(row))
+	}
+	return out, nil
+}
+
+// checkBody 正規化內文並檢查：不可以是空的、不超過上限、變數都已定義。
+// 回傳正規化後的內文、它用到的變數，以及依序排列的錯誤（路徑都是 body）與未定義的變數。
+func checkBody(body string) (norm string, used []string, fields []validate.FieldError, undefined []string) {
+	norm = normalizeBody(body)
+	switch {
+	case strings.TrimSpace(norm) == "":
+		return norm, nil, []validate.FieldError{{Path: "body", Message: "內文不可以是空的。"}}, nil
+	case len(norm) > maxBodyBytes:
+		return norm, nil, []validate.FieldError{{Path: "body", Message: fmt.Sprintf("內文不可以超過 %d KiB。", maxBodyBytes>>10)}}, nil
+	}
+	used, undefined, err := ParseVariables(norm)
+	switch {
+	case err != nil:
+		return norm, nil, []validate.FieldError{{Path: "body", Message: err.Error() + "。"}}, nil
+	case len(undefined) > 0:
+		return norm, used, []validate.FieldError{{Path: "body", Message: fmt.Sprintf(
+			"用到未定義的變數：%s；可用的變數：%s。", strings.Join(undefined, "、"), strings.Join(Variables, "、"))}}, undefined
+	}
+	return norm, used, nil, nil
+}
+
+func invalid(fields []validate.FieldError, undefined []string) *InvalidError {
+	return &InvalidError{Msg: fields[0].Path + "：" + fields[0].Message, Fields: fields, Undefined: undefined}
 }
 
 // Create 建立使用者的 prompt（版本 1，也是預設版本）。檢查順序：id → kind → body → 未定義的變數（PRM-R1 的 errors[0].path 依賴它）。
 // id 與內建的相同回傳 ErrBuiltin，已存在回傳 ErrExists。
 func (s *Service) Create(ctx context.Context, id, kind, body string) (Prompt, Version, error) {
-	return Prompt{}, Version{}, ErrNotImplemented
+	var fields []validate.FieldError
+	if !idRE.MatchString(id) {
+		fields = append(fields, validate.FieldError{Path: "id", Message: "id 要以小寫英文字母或數字開頭，只能用小寫英文字母、數字、「.」與「-」，最長 64 個字元。"})
+	}
+	if !slices.Contains(Kinds, kind) {
+		fields = append(fields, validate.FieldError{Path: "kind", Message: fmt.Sprintf("不認識的類型「%s」；可用的類型：%s。", kind, strings.Join(Kinds, "、"))})
+	}
+	norm, used, bodyFields, undefined := checkBody(body)
+	fields = append(fields, bodyFields...)
+	if len(fields) > 0 {
+		return Prompt{}, Version{}, invalid(fields, undefined)
+	}
+	if isBuiltin(id) {
+		return Prompt{}, Version{}, ErrBuiltin
+	}
+	varsJSON, _ := json.Marshal(used)
+	p, v, err := s.st.Write().CreatePrompt(ctx, id, kind, norm, BodySHA256(norm), string(varsJSON))
+	if errors.Is(err, store.ErrPromptExists) {
+		return Prompt{}, Version{}, ErrExists
+	}
+	if err != nil {
+		return Prompt{}, Version{}, err
+	}
+	return promptFromStore(p), versionFromStore(v), nil
 }
 
 // AddVersion 新增一個版本。不改變 default_version（PRM-R5）；內建 prompt 回傳 ErrBuiltin。
 func (s *Service) AddVersion(ctx context.Context, id, body string) (Version, error) {
-	return Version{}, ErrNotImplemented
+	if isBuiltin(id) {
+		return Version{}, ErrBuiltin
+	}
+	if _, err := s.st.Read().Prompt(ctx, id); err != nil {
+		return Version{}, mapNotFound(err)
+	}
+	norm, used, fields, undefined := checkBody(body)
+	if len(fields) > 0 {
+		return Version{}, invalid(fields, undefined)
+	}
+	varsJSON, _ := json.Marshal(used)
+	v, err := s.st.Write().AddPromptVersion(ctx, id, norm, BodySHA256(norm), string(varsJSON))
+	if err != nil {
+		return Version{}, mapNotFound(err)
+	}
+	return versionFromStore(v), nil
+}
+
+// mapNotFound 把 store 的 ErrNotFound 換成 prompt 庫的 ErrNotFound，其他錯誤原樣回傳。
+func mapNotFound(err error) error {
+	if errors.Is(err, store.ErrNotFound) {
+		return ErrNotFound
+	}
+	return err
 }
 
 // Versions 列出 prompt 的所有版本，依版本遞增；內建的也可以。
 func (s *Service) Versions(ctx context.Context, id string) ([]Version, error) {
-	return nil, ErrNotImplemented
+	if b, ok := builtins[id]; ok {
+		return slices.Clone(b.versions), nil
+	}
+	if _, err := s.st.Read().Prompt(ctx, id); err != nil {
+		return nil, mapNotFound(err)
+	}
+	rows, err := s.st.Read().PromptVersions(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Version, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, versionFromStore(row))
+	}
+	return out, nil
 }
 
 // SetDefault 把 default_version 設成 version。版本不存在是 *InvalidError（路徑 version）；內建 prompt 回傳 ErrBuiltin。
 func (s *Service) SetDefault(ctx context.Context, id string, version int) (Prompt, error) {
-	return Prompt{}, ErrNotImplemented
+	if isBuiltin(id) {
+		return Prompt{}, ErrBuiltin
+	}
+	p, err := s.st.Read().Prompt(ctx, id)
+	if err != nil {
+		return Prompt{}, mapNotFound(err)
+	}
+	if version < 1 || version > p.LatestVersion {
+		return Prompt{}, invalid([]validate.FieldError{{
+			Path: "version", Message: fmt.Sprintf("prompt「%s」沒有第 %d 版（目前有 1～%d 版）。", id, version, p.LatestVersion),
+		}}, nil)
+	}
+	if err := s.st.Write().SetPromptDefault(ctx, id, version); err != nil {
+		return Prompt{}, mapNotFound(err)
+	}
+	p, err = s.st.Read().Prompt(ctx, id)
+	if err != nil {
+		return Prompt{}, mapNotFound(err)
+	}
+	return promptFromStore(p), nil
 }
 
 // Delete 硬刪除 prompt 與它的所有版本（D13）。內建的回傳 ErrBuiltin；還被引用時回傳 *InUseError。
 func (s *Service) Delete(ctx context.Context, id string) error {
-	return ErrNotImplemented
+	if isBuiltin(id) {
+		return ErrBuiltin
+	}
+	if _, err := s.st.Read().Prompt(ctx, id); err != nil {
+		return mapNotFound(err)
+	}
+	if s.usedBy != nil {
+		users, err := s.usedBy(ctx, id)
+		if err != nil {
+			return err
+		}
+		if len(users) > 0 {
+			return &InUseError{UsedBy: users}
+		}
+	}
+	if ok, err := s.st.Write().DeletePrompt(ctx, id); err != nil {
+		return err
+	} else if !ok {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Resolve 解析引用（"<id>"、"<id>@default"、"<id>@<N>"）到實際的版本與內文。
 // 錯誤：*InvalidError（格式）、ErrNotFound、ErrVersionNotFound。
 func (s *Service) Resolve(ctx context.Context, ref string) (Resolved, error) {
-	return Resolved{}, ErrNotImplemented
+	r, err := ParseRef(ref)
+	if err != nil {
+		return Resolved{}, err
+	}
+	if b, ok := builtins[r.ID]; ok {
+		n := r.Version
+		if n == 0 {
+			n = b.prompt.DefaultVersion
+		}
+		if n > len(b.versions) {
+			return Resolved{}, ErrVersionNotFound
+		}
+		return resolved(b.prompt.Kind, b.versions[n-1]), nil
+	}
+	p, err := s.st.Read().Prompt(ctx, r.ID)
+	if err != nil {
+		return Resolved{}, mapNotFound(err)
+	}
+	n := r.Version
+	if n == 0 {
+		n = p.DefaultVersion
+	}
+	row, err := s.st.Read().PromptVersion(ctx, r.ID, n)
+	if errors.Is(err, store.ErrNotFound) {
+		return Resolved{}, ErrVersionNotFound
+	}
+	if err != nil {
+		return Resolved{}, err
+	}
+	return resolved(p.Kind, versionFromStore(row)), nil
+}
+
+func resolved(kind string, v Version) Resolved {
+	return Resolved{ID: v.PromptID, Kind: kind, Version: v.Version, SHA256: v.SHA256, Body: v.Body}
 }

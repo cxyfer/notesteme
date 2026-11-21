@@ -24,9 +24,6 @@ func (a promptResolver) ResolvePrompt(ctx context.Context, ref string) (pipeline
 			return pipeline.ResolvedPrompt{}, pipeline.ErrPromptVersionNotFound
 		case errors.As(err, &inv):
 			return pipeline.ResolvedPrompt{}, &pipeline.InvalidError{Msg: inv.Msg, Fields: inv.Fields}
-		case errors.Is(err, prompts.ErrNotImplemented):
-			// WP-3 完成前：prompt 庫還沒實作，維持 501 的語意。
-			return pipeline.ResolvedPrompt{}, &pipeline.NotImplementedError{What: "prompt 庫"}
 		}
 		return pipeline.ResolvedPrompt{}, err
 	}
