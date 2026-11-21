@@ -48,10 +48,25 @@ type Item struct {
 	Metadata     json.RawMessage
 	CreatedAt    time.Time
 	DeletedAt    *time.Time
+	// SourcePath 只有本機影音有值：inbox 與 media_roots 的檔案是絕對路徑，上傳檔是相對資料目錄的 uploads/<id>/<name>。
+	SourcePath string
+	// ContentSHA256 是本機檔案內容的 sha256（小寫十六進位）；還沒雜湊時為空。
+	ContentSHA256 string
+	// Origin 是新增的來源：OriginManual、OriginUpload 或 OriginInbox。
+	Origin string
 }
+
+// 影音新增的來源（items.origin）。
+const (
+	OriginManual = "manual"
+	OriginUpload = "upload"
+	OriginInbox  = "inbox"
+)
 
 // NewItem 是新增影音所需的欄位。
 type NewItem struct {
+	// ID 空白時由 store 產生；上傳檔要先知道 ID 才能決定 uploads/<id>/ 的路徑，所以由呼叫端提供。
+	ID         string
 	Platform   string
 	ExternalID string
 	Part       int
@@ -59,6 +74,10 @@ type NewItem struct {
 	ProfileID  string
 	Overrides  json.RawMessage // 空代表 {}
 	UntilStage string
+	// SourcePath、ContentSHA256 只用於本機影音；Origin 空白時視為 OriginManual。
+	SourcePath    string
+	ContentSHA256 string
+	Origin        string
 }
 
 // ItemMeta 是 metadata 步驟取得的欄位。空字串與 nil 代表平台沒有提供，不覆蓋原有的值。
@@ -71,6 +90,9 @@ type ItemMeta struct {
 	Availability string
 	ChannelID    string
 	Metadata     json.RawMessage
+	// ContentSHA256 與 MediaKind 同樣：空字串代表沒有提供，不覆蓋原有的值。
+	ContentSHA256 string
+	MediaKind     string
 }
 
 // Channel 是頻道。

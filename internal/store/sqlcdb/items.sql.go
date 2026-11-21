@@ -74,9 +74,10 @@ func (q *Queries) CountItemsFiltered(ctx context.Context, arg CountItemsFiltered
 }
 
 const insertItemIfAbsent = `-- name: InsertItemIfAbsent :execrows
-INSERT INTO items (id, platform, external_id, part, profile_id, overrides_json, until_stage, url, created_at)
+INSERT INTO items (id, platform, external_id, part, profile_id, overrides_json, until_stage, url, source_path, content_sha256, origin, created_at)
 VALUES (?1, ?2, ?3, ?4, NULLIF(CAST(?5 AS TEXT), ''),
-        ?6, ?7, ?8, ?9)
+        ?6, ?7, ?8, ?9, ?10,
+        ?11, ?12)
 ON CONFLICT (platform, external_id, part) DO NOTHING
 `
 
@@ -89,6 +90,9 @@ type InsertItemIfAbsentParams struct {
 	OverridesJson string
 	UntilStage    string
 	Url           string
+	SourcePath    string
+	ContentSha256 string
+	Origin        string
 	CreatedAt     int64
 }
 
@@ -102,6 +106,9 @@ func (q *Queries) InsertItemIfAbsent(ctx context.Context, arg InsertItemIfAbsent
 		arg.OverridesJson,
 		arg.UntilStage,
 		arg.Url,
+		arg.SourcePath,
+		arg.ContentSha256,
+		arg.Origin,
 		arg.CreatedAt,
 	)
 	if err != nil {
@@ -111,7 +118,7 @@ func (q *Queries) InsertItemIfAbsent(ctx context.Context, arg InsertItemIfAbsent
 }
 
 const itemByID = `-- name: ItemByID :one
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold FROM items WHERE id = ?1
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin FROM items WHERE id = ?1
 `
 
 func (q *Queries) ItemByID(ctx context.Context, id string) (Item, error) {
@@ -139,12 +146,15 @@ func (q *Queries) ItemByID(ctx context.Context, id string) (Item, error) {
 		&i.CreatedAt,
 		&i.DeletedAt,
 		&i.TitleFold,
+		&i.SourcePath,
+		&i.ContentSha256,
+		&i.Origin,
 	)
 	return i, err
 }
 
 const itemByKey = `-- name: ItemByKey :one
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold FROM items WHERE platform = ?1 AND external_id = ?2 AND part = ?3
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin FROM items WHERE platform = ?1 AND external_id = ?2 AND part = ?3
 `
 
 type ItemByKeyParams struct {
@@ -178,12 +188,15 @@ func (q *Queries) ItemByKey(ctx context.Context, arg ItemByKeyParams) (Item, err
 		&i.CreatedAt,
 		&i.DeletedAt,
 		&i.TitleFold,
+		&i.SourcePath,
+		&i.ContentSha256,
+		&i.Origin,
 	)
 	return i, err
 }
 
 const listItems = `-- name: ListItems :many
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold FROM items WHERE deleted_at IS NULL ORDER BY created_at, rowid
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin FROM items WHERE deleted_at IS NULL ORDER BY created_at, rowid
 `
 
 func (q *Queries) ListItems(ctx context.Context) ([]Item, error) {
@@ -217,6 +230,9 @@ func (q *Queries) ListItems(ctx context.Context) ([]Item, error) {
 			&i.CreatedAt,
 			&i.DeletedAt,
 			&i.TitleFold,
+			&i.SourcePath,
+			&i.ContentSha256,
+			&i.Origin,
 		); err != nil {
 			return nil, err
 		}
@@ -236,7 +252,7 @@ WITH sf AS (
   SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
   FROM json_each(CAST(?11 AS TEXT)) AS j
 )
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold FROM items
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin FROM items
 WHERE deleted_at IS NULL
   AND (CAST(?1 AS TEXT) = '' OR platform = ?1)
   AND (CAST(?2 AS TEXT) = '' OR channel_id = ?2)
@@ -332,6 +348,9 @@ func (q *Queries) ListItemsPage(ctx context.Context, arg ListItemsPageParams) ([
 			&i.CreatedAt,
 			&i.DeletedAt,
 			&i.TitleFold,
+			&i.SourcePath,
+			&i.ContentSha256,
+			&i.Origin,
 		); err != nil {
 			return nil, err
 		}
@@ -365,36 +384,43 @@ func (q *Queries) SetItemUntil(ctx context.Context, arg SetItemUntilParams) (int
 
 const updateItemMeta = `-- name: UpdateItemMeta :execrows
 UPDATE items SET
-  title         = COALESCE(NULLIF(CAST(?1 AS TEXT), ''), title),
-  title_fold    = COALESCE(NULLIF(CAST(?2 AS TEXT), ''), title_fold),
-  duration_s    = COALESCE(?3, duration_s),
-  published_at  = COALESCE(?4, published_at),
-  original_lang = COALESCE(NULLIF(CAST(?5 AS TEXT), ''), original_lang),
-  lang_source   = CASE WHEN CAST(?5 AS TEXT) <> '' THEN CAST(?6 AS TEXT) ELSE lang_source END,
-  availability  = COALESCE(NULLIF(CAST(?7 AS TEXT), ''), availability),
-  channel_id    = COALESCE(NULLIF(CAST(?8 AS TEXT), ''), channel_id),
-  metadata_json = ?9
-WHERE id = ?10
+  media_kind     = COALESCE(NULLIF(CAST(?1 AS TEXT), ''), media_kind),
+  content_sha256 = COALESCE(NULLIF(CAST(?2 AS TEXT), ''), content_sha256),
+  title         = COALESCE(NULLIF(CAST(?3 AS TEXT), ''), title),
+  title_fold    = COALESCE(NULLIF(CAST(?4 AS TEXT), ''), title_fold),
+  duration_s    = COALESCE(?5, duration_s),
+  published_at  = COALESCE(?6, published_at),
+  original_lang = COALESCE(NULLIF(CAST(?7 AS TEXT), ''), original_lang),
+  lang_source   = CASE WHEN CAST(?7 AS TEXT) <> '' THEN CAST(?8 AS TEXT) ELSE lang_source END,
+  availability  = COALESCE(NULLIF(CAST(?9 AS TEXT), ''), availability),
+  channel_id    = COALESCE(NULLIF(CAST(?10 AS TEXT), ''), channel_id),
+  metadata_json = ?11
+WHERE id = ?12
 `
 
 type UpdateItemMetaParams struct {
-	Title        string
-	TitleFold    string
-	DurationS    *int64
-	PublishedAt  *int64
-	OriginalLang string
-	LangSource   string
-	Availability string
-	ChannelID    string
-	MetadataJson string
-	ID           string
+	MediaKind     string
+	ContentSha256 string
+	Title         string
+	TitleFold     string
+	DurationS     *int64
+	PublishedAt   *int64
+	OriginalLang  string
+	LangSource    string
+	Availability  string
+	ChannelID     string
+	MetadataJson  string
+	ID            string
 }
 
 // Empty string and NULL mean the platform gave nothing: keep the old value.
 // title_fold is the Go-lowercased title, written together with it.
 // lang_source is only written when original_lang is non-empty.
+// media_kind and content_sha256 follow the same rule: an empty string keeps the old value.
 func (q *Queries) UpdateItemMeta(ctx context.Context, arg UpdateItemMetaParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, updateItemMeta,
+		arg.MediaKind,
+		arg.ContentSha256,
 		arg.Title,
 		arg.TitleFold,
 		arg.DurationS,

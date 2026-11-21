@@ -169,9 +169,15 @@ func (p *Pipeline) classify(t store.Task, err error) result {
 	}
 	switch class {
 	case errclass.ClassPermanent:
-		return result{task: taskFailed, state: store.StageState{
+		st := store.StageState{
 			Status: store.StatusFailed, ErrorClass: string(class), Message: "這個步驟無法完成，重試也不會成功。",
-		}}
+		}
+		// 錯誤自己帶了給使用者看的訊息時採用（例如本機影音「找不到這個檔案。」）。
+		var ce *errclass.Error
+		if errors.As(err, &ce) && ce.Message != "" {
+			st.Message = ce.Message
+		}
+		return result{task: taskFailed, state: st}
 	case errclass.ClassNeedsAction, errclass.ClassBudgetBlocked:
 		reason := "needs_action"
 		if class == errclass.ClassBudgetBlocked {

@@ -16,6 +16,8 @@ var implemented = []string{
 	transcript.SourceYouTubeAuto,
 	transcript.SourceBilibiliCC,
 	transcript.SourceBilibiliAI,
+	transcript.SourceLocalSidecar,
+	transcript.SourceLocalEmbedded,
 	supadata.ID,
 	groq.ID,
 }

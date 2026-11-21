@@ -81,6 +81,7 @@
 
 ## 待決問題
 
+- 本機媒體的串流（LIB-R6，2026-11-21，LOCAL 切片實作時決定）：`GET /api/items/:id/media` 需要 `read` scope，支援 `Range`、`If-Range`（206、416），ETag 為內容的 `sha256`。用路徑加入的檔案可能在原處被替換，只有目前的大小與修改時間和記錄雜湊時相同才送出 ETag，否則只靠 `Last-Modified` 判斷條件請求；上傳的副本不可變，有雜湊就送出。Content-Type 只依副檔名的白名單決定（mp4、m4a、mp3、mkv、webm、ogg、opus、wav、flac、mov、aac），其他一律 `application/octet-stream`，並加上 `X-Content-Type-Options: nosniff` 與 `Content-Security-Policy: sandbox; default-src 'none'`。影音在垃圾桶中回 404 `in_trash`；沒有本機媒體（例如 YouTube）回 404 `no_media`；檔案不見了回 404 `media_missing`。Podcast 的媒體在 PODCAST 切片接上。
 - 場景修改（2026-11-15，LIB 切片 DoR，owner 同意）：Background 的 `yt:agile43xxxx` 由 `has been ingested` 改成 `has been processed up to "metadata"`，R8 的 download `waiting` 由 2 改成 1。原因是新增後、取得 metadata 之前標題是空的，不能用來驗證標題搜尋（ING-R12：新增時不同步取得 metadata）。
 - 場景修改（2026-11-15，LIB 審查的 mutation testing 後，owner 同意）：
   - R1「Filter by stage status」改成同時篩選 `metadata:done` 與 `normalize:done`，驗證不同 stage 之間是 AND；只有一個 stage 時，改成 OR 也會通過。

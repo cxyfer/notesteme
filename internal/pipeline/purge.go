@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -149,13 +148,14 @@ func (p *Pipeline) stopTasks(ctx context.Context, id string, notAfter *time.Time
 	return ids, dirs, err
 }
 
-// removeDirs 刪除影音的資料目錄（包含目錄本身）；失敗只記 log。
-// os.RemoveAll 不會跟隨目錄中的符號連結，連結指向的檔案不會被刪除。
+// removeDirs 刪除影音的資料目錄（見 removeDir）。有備份進行中時，上傳原始檔的目錄等備份結束才刪（見 HoldUploads）。
 func (p *Pipeline) removeDirs(ctx context.Context, dirs []string) {
 	for _, d := range dirs {
-		if err := os.RemoveAll(d); err != nil {
-			p.log.LogAttrs(ctx, slog.LevelWarn, "永久刪除後清除檔案失敗", slog.String("dir", d), slog.String("error", err.Error()))
+		if p.isUploadDir(d) && p.uploadHolds.deferUpload(d) {
+			p.log.LogAttrs(ctx, slog.LevelInfo, "備份進行中，上傳原始檔等備份結束才刪除", slog.String("dir", d))
+			continue
 		}
+		p.removeDir(ctx, d)
 	}
 }
 

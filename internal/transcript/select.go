@@ -9,6 +9,9 @@ const (
 	KindManual             = "manual"
 	KindAuto               = "auto"
 	KindPlatformTranslated = "platform-translated"
+	// 本機影音的字幕軌種類：外掛字幕檔、容器內嵌字幕。
+	KindSidecar  = "sidecar"
+	KindEmbedded = "embedded"
 )
 
 // 字幕來源 ID（steps.md 第 3 節）。
@@ -18,12 +21,16 @@ const (
 	// Bilibili：人工上傳的 CC 字幕，與平台產生的 AI 字幕。
 	SourceBilibiliCC = "bilibili-cc"
 	SourceBilibiliAI = "bilibili-ai"
+	// 本機影音：與影音同目錄的外掛字幕檔，與容器內嵌的文字字幕（SRC-R14）。
+	SourceLocalSidecar  = "local-sidecar"
+	SourceLocalEmbedded = "local-embedded"
 )
 
 // 平台名稱（與 items.platform 相同；這裡不引用 source 套件，因為它依賴本套件）。
 const (
 	PlatformYouTube  = "youtube"
 	PlatformBilibili = "bilibili"
+	PlatformLocal    = "local"
 )
 
 // OriginalLang 在 caption_priority 中代表影音的原文語言。
@@ -36,9 +43,17 @@ type Rule struct {
 }
 
 // Track 是平台提供的字幕軌。
+//
+// Track 會被 marshal 進 transcript 的快取鍵（沒有 json tag，欄位名稱就是 key）：新增的欄位一律 omitempty，
+// 讓 YouTube 與 Bilibili 的快取鍵不變。
 type Track struct {
 	Lang string
 	Kind string
+	// Handle 是本機字幕軌的位置：外掛字幕檔的路徑，或內嵌字幕的串流 index。
+	Handle string `json:",omitempty"`
+	// Default 與 Forced 是內嵌字幕的旗標（容器的 disposition）。
+	Default bool `json:",omitempty"`
+	Forced  bool `json:",omitempty"`
 }
 
 // Probe 結果的狀態（source_probes.state）。
@@ -63,13 +78,25 @@ const (
 	ReasonOriginalLangUnknown = "original_language_unknown"
 	ReasonPlatformTranslated  = "platform_translated"
 	ReasonNotConfigured       = "not_configured"
+	// ReasonUnsupported 是來源不支援這個平台（例如 Supadata 不處理本機檔案），略過，不送出任何資料。
+	ReasonUnsupported = "unsupported"
+	// ReasonUnreadable 是選中的本機字幕（外掛或內嵌）無法使用：不在允許的目錄、不是一般檔案、超過大小上限、
+	// 解析失敗或抽取失敗。這條字幕記為 rejected，改用下一個字幕來源。
+	ReasonUnreadable = "unreadable"
 )
 
 // PlatformSource 回傳平台上字幕軌種類對應的來源 ID。
 // YouTube：機器翻譯的字幕軌由自動字幕機制產生，所以和 auto 同一個來源。
 // Bilibili：auto 是平台的 AI 字幕（bilibili-ai），其餘是人工上傳的 CC 字幕（bilibili-cc）。
+// 本機：sidecar 是 local-sidecar，embedded 是 local-embedded。
 // 沒有指定平台時視為 YouTube。
 func PlatformSource(platform, kind string) string {
+	if platform == PlatformLocal {
+		if kind == KindEmbedded {
+			return SourceLocalEmbedded
+		}
+		return SourceLocalSidecar
+	}
 	if platform == PlatformBilibili {
 		if kind == KindAuto {
 			return SourceBilibiliAI

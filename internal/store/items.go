@@ -31,6 +31,10 @@ func itemFromRow(row sqlcdb.Item) Item {
 		Metadata:     json.RawMessage(row.MetadataJson),
 		CreatedAt:    fromMs(row.CreatedAt),
 		DeletedAt:    msToTime(row.DeletedAt),
+
+		SourcePath:    row.SourcePath,
+		ContentSHA256: row.ContentSha256,
+		Origin:        row.Origin,
 	}
 	if row.DurationS != nil {
 		d := int(*row.DurationS)
@@ -57,7 +61,14 @@ func (r *Repo) insertItemIfAbsent(ctx context.Context, n NewItem) (it Item, crea
 	if len(overrides) == 0 {
 		overrides = json.RawMessage(`{}`)
 	}
-	id := NewID()
+	id := n.ID
+	if id == "" {
+		id = NewID()
+	}
+	origin := n.Origin
+	if origin == "" {
+		origin = OriginManual
+	}
 	rows, err := r.q.InsertItemIfAbsent(ctx, sqlcdb.InsertItemIfAbsentParams{
 		ID:            id,
 		Platform:      n.Platform,
@@ -67,6 +78,9 @@ func (r *Repo) insertItemIfAbsent(ctx context.Context, n NewItem) (it Item, crea
 		OverridesJson: string(overrides),
 		UntilStage:    n.UntilStage,
 		Url:           n.URL,
+		SourcePath:    n.SourcePath,
+		ContentSha256: n.ContentSHA256,
+		Origin:        origin,
 		CreatedAt:     r.nowMs(),
 	})
 	if err != nil {
@@ -130,16 +144,18 @@ func (r *Repo) UpdateItemMeta(ctx context.Context, id string, m ItemMeta) error 
 		dur = &d
 	}
 	n, err := r.q.UpdateItemMeta(ctx, sqlcdb.UpdateItemMetaParams{
-		Title:        m.Title,
-		TitleFold:    FoldTitle(m.Title),
-		DurationS:    dur,
-		PublishedAt:  msPtr(m.PublishedAt),
-		OriginalLang: m.OriginalLang,
-		LangSource:   m.LangSource,
-		Availability: m.Availability,
-		ChannelID:    m.ChannelID,
-		MetadataJson: string(metadata),
-		ID:           id,
+		Title:         m.Title,
+		TitleFold:     FoldTitle(m.Title),
+		DurationS:     dur,
+		PublishedAt:   msPtr(m.PublishedAt),
+		OriginalLang:  m.OriginalLang,
+		LangSource:    m.LangSource,
+		Availability:  m.Availability,
+		ChannelID:     m.ChannelID,
+		MetadataJson:  string(metadata),
+		MediaKind:     m.MediaKind,
+		ContentSha256: m.ContentSHA256,
+		ID:            id,
 	})
 	if err != nil {
 		return err

@@ -207,6 +207,9 @@ func (s *Scenario) substRefs(path string) (string, error) {
 	out := refPattern.ReplaceAllStringFunc(path, func(m string) string {
 		ref, channel := strings.CutPrefix(m, "channel-of:")
 		if !channel {
+			if strings.HasPrefix(m, "local:") {
+				return resolveLocalRef(m, s.itemID)
+			}
 			id, err := s.itemID(m)
 			if err != nil {
 				return m
@@ -224,6 +227,25 @@ func (s *Scenario) substRefs(path string) (string, error) {
 		return it.ChannelID
 	})
 	return out, firstErr
+}
+
+// resolveLocalRef 處理請求路徑中的 local: 代號。refPattern 的 `local:[^\s?]+` 會把後面的路徑段一起吃進去
+// （local:lecture.mp4/media），所以先整段查；不是已知的影音時，從右邊依 / 逐段縮短，找最長的已知前綴，
+// 換成影音 ID 並接回被縮掉的部分（<id>/media）。lookup 找不到任何前綴時原樣回傳，讓請求自己回報 404。
+func resolveLocalRef(m string, lookup func(ref string) (string, error)) string {
+	for cand := m; ; {
+		if id, err := lookup(cand); err == nil {
+			return id + m[len(cand):]
+		}
+		i := strings.LastIndex(cand, "/")
+		if i < 0 {
+			return m
+		}
+		cand = cand[:i]
+		if cand == "local:" || cand == "local" {
+			return m
+		}
+	}
 }
 
 // recordRefs 把新增影音的回應中的代號與 ID 記下來，影音之後進了垃圾桶也能找到原本的 ID。

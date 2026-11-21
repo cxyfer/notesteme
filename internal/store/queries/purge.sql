@@ -13,9 +13,9 @@ ORDER BY deleted_at, rowid;
 UPDATE cost_ledger SET item_title = sqlc.arg(item_title), item_id = NULL WHERE item_id = sqlc.arg(item_id);
 
 -- name: PurgeUpsertTombstone :exec
--- Platform items have no sha256, so the key ends with an empty string.
+-- Platform items have no sha256, so the key ends with an empty string. Local items pass their content hash.
 INSERT INTO item_tombstones (platform, external_id, part, sha256, purged_at)
-VALUES (sqlc.arg(platform), sqlc.arg(external_id), sqlc.arg(part), '', sqlc.arg(purged_at))
+VALUES (sqlc.arg(platform), sqlc.arg(external_id), sqlc.arg(part), sqlc.arg(sha256), sqlc.arg(purged_at))
 ON CONFLICT (platform, external_id, part, sha256) DO UPDATE SET purged_at = excluded.purged_at;
 
 -- name: PurgeDeleteEvents :execrows

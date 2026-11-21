@@ -1,0 +1,8 @@
+1
+00:00:01,000 --> 00:00:03,500
+Embedded track: welcome to the lecture.
+
+2
+00:00:04,000 --> 00:00:07,000
+Embedded track: today we talk about databases.
+

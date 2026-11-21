@@ -33,6 +33,15 @@ type probed struct {
 	Tracks []transcript.Track
 	// NeedsLogin 為 true 代表平台說明「登入後才看得到字幕」（Bilibili，SRC-R8）。
 	NeedsLogin bool
+	// MediaKind 是本機影音的種類（video 或 audio）；其他平台為空。
+	MediaKind string
+	// ContentSHA256 是本機檔案內容的 sha256（影音上已有的，或這次剛算出的）；其他平台為空。
+	ContentSHA256 string
+	// ComputedSHA256 只在這次探測才算出 sha256 時有值：metadata 步驟把它寫進影音（DEL-R11 需要它）。
+	ComputedSHA256 string
+	// LocalStat 是非上傳的本機檔案目前的 size 與 mtime；其他情況為 nil。
+	// 它記在 metadata_json 的 local，下次探測時用來判斷檔案有沒有被替換。
+	LocalStat *localStat
 }
 
 // platformAdapter 是步驟用到的平台功能；依 items.platform 分派（見 Pipeline.adapterFor）。
@@ -40,8 +49,9 @@ type platformAdapter interface {
 	probe(ctx context.Context, it store.Item) (*probed, error)
 	// fetchCues 下載一條字幕軌（暫存檔寫在 dir）並解析成 cue。
 	fetchCues(ctx context.Context, it store.Item, t transcript.Track, dir string) ([]subtitle.Cue, error)
-	// version 回傳 yt-dlp 的版本，寫進來源紀錄。
-	version(ctx context.Context) (string, error)
+	// toolVersions 回傳字幕來源用到的外部工具版本（YouTube 與 Bilibili 是 yt-dlp，本機是 ffmpeg 與 ffprobe），
+	// 寫進來源紀錄的 tool_versions。
+	toolVersions(ctx context.Context) (map[string]string, error)
 }
 
 // adapterFor 回傳平台的 adapter。沒有註冊的平台（還沒實作，或依賴沒有設定）是 permanent 錯誤：重試也不會成功。
@@ -51,6 +61,8 @@ func (p *Pipeline) adapterFor(platform string) (platformAdapter, error) {
 		return youtubeAdapter{p.yt}, nil
 	case platform == source.PlatformBilibili && p.bili != nil:
 		return bilibiliAdapter{p.bili}, nil
+	case platform == source.PlatformLocal && p.files != nil:
+		return localAdapter{files: p.files, media: p.media, dataDir: p.dataDir}, nil
 	}
 	return nil, errPermanent(fmt.Sprintf("還不支援 %s 的處理", platform))
 }
@@ -89,7 +101,13 @@ func (a youtubeAdapter) fetchCues(ctx context.Context, it store.Item, t transcri
 	return cues, nil
 }
 
-func (a youtubeAdapter) version(ctx context.Context) (string, error) { return a.yt.Version(ctx) }
+func (a youtubeAdapter) toolVersions(ctx context.Context) (map[string]string, error) {
+	v, err := a.yt.Version(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{"yt-dlp": v}, nil
+}
 
 type bilibiliAdapter struct{ b Bilibili }
 
@@ -121,7 +139,30 @@ func (a bilibiliAdapter) fetchCues(ctx context.Context, it store.Item, t transcr
 	return cues, nil
 }
 
-func (a bilibiliAdapter) version(ctx context.Context) (string, error) { return a.b.Version(ctx) }
+func (a bilibiliAdapter) toolVersions(ctx context.Context) (map[string]string, error) {
+	v, err := a.b.Version(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{"yt-dlp": v}, nil
+}
+
+// cacheProvider 是快取鍵的 provider：本機影音是 local，其餘平台透過 yt-dlp。
+func cacheProvider(platform string) string {
+	if platform == source.PlatformLocal {
+		return "local"
+	}
+	return "yt-dlp"
+}
+
+// selectTracks 依平台的規則選字幕軌：本機影音有自己的規則（SRC-R14），其餘平台用 caption_priority。
+// metadata 判斷資源類別與 transcript 選軌共用它，兩邊才會對同一部影音得到相同的結論。
+func selectTracks(platform string, tracks []transcript.Track, originalLang string, lang Language) (*transcript.Track, []transcript.Decision) {
+	if platform == source.PlatformLocal {
+		return transcript.SelectLocal(tracks, originalLang, lang.CaptionPriority)
+	}
+	return transcript.SelectFor(platform, tracks, originalLang, lang.CaptionPriority, lang.AllowPlatformTranslated)
+}
 
 // bilibiliPart 是 Bilibili 的網址辨識結果轉成的分P Target。
 func bilibiliPart(bvid string, part int) source.Target {
@@ -130,15 +171,24 @@ func bilibiliPart(bvid string, part int) source.Target {
 	}
 }
 
-// inferOriginalLang 回傳影音的原文語言：current 已有值就用它；Bilibili 沒有語言中繼資料，
-// 看得到 AI 字幕軌時用它的語言推斷（inferred 為 true）。metadata 判斷資源類別與 transcript 選軌共用這個推斷，
-// 兩邊才會對同一部影音得到相同的結論。
-func inferOriginalLang(platform, current string, tracks []transcript.Track) (lang string, inferred bool) {
-	if current != "" || platform != source.PlatformBilibili {
+// inferOriginalLang 回傳影音的原文語言：current 已有值就用它。
+//   - Bilibili 沒有語言中繼資料，看得到 AI 字幕軌時用它的語言推斷（inferred 為 true）。
+//   - 本機影音沒有語言中繼資料（容器的音訊語言標記不採用）：用選中的本機字幕的語言推斷。
+//
+// metadata 判斷資源類別與 transcript 選軌共用這個推斷，兩邊才會對同一部影音得到相同的結論。
+func inferOriginalLang(platform, current string, tracks []transcript.Track, lang Language) (string, bool) {
+	if current != "" {
 		return current, false
 	}
-	if i := slices.IndexFunc(tracks, func(t transcript.Track) bool { return t.Kind == transcript.KindAuto }); i >= 0 {
-		return tracks[i].Lang, true
+	switch platform {
+	case source.PlatformBilibili:
+		if i := slices.IndexFunc(tracks, func(t transcript.Track) bool { return t.Kind == transcript.KindAuto }); i >= 0 {
+			return tracks[i].Lang, true
+		}
+	case source.PlatformLocal:
+		if chosen, _ := transcript.SelectLocal(tracks, "", lang.CaptionPriority); chosen != nil && chosen.Lang != "" {
+			return transcript.NormalizeLang(chosen.Lang), true
+		}
 	}
 	return "", false
 }

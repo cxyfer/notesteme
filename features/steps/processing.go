@@ -297,7 +297,9 @@ func (s *Scenario) itemProcessedUpTo(ref, stage string) error {
 	}
 	switch {
 	case existing == nil:
-		raw, err := json.Marshal(map[string]string{"url": refToURL(ref), "until": stage})
+		body := s.ingestBody(ref)
+		body["until"] = stage
+		raw, err := json.Marshal(body)
 		if err != nil {
 			return err
 		}
@@ -375,6 +377,7 @@ func (s *Scenario) stopTemporaryServer() error {
 //   - 已用 `the … transcript of … is:` 寫入字幕。
 //   - 假 yt-dlp 的狀態中，有符合 caption_priority（內建預設）的平台字幕軌；原文語言用假 yt-dlp 實際回報的（steps.md 4.3）。
 //   - 腳本化了已實作的 fallback 來源（`the source … returns …`）。
+//   - 本機影音（local:）在 inbox 有對應的 sidecar 字幕檔，或標記帶有文字字幕串流（見 hasLocalTranscriptSource）。
 func (s *Scenario) hasTranscriptSource(ref string) bool {
 	if s.seeded[ref] {
 		return true
@@ -383,6 +386,9 @@ func (s *Scenario) hasTranscriptSource(ref string) bool {
 		if source.Implemented(id) {
 			return true
 		}
+	}
+	if strings.HasPrefix(ref, "local:") {
+		return s.hasLocalTranscriptSource(ref)
 	}
 	key, err := s.videoKey(ref) // yt:<id> 或 bili:<bvid>/p<n>
 	if err != nil {

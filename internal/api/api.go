@@ -48,6 +48,12 @@ type Deps struct {
 	// serve 的 TCP 與本機 socket 用 pathguard.New；獨立模式用 pathguard.Unrestricted（GRD-R8）。
 	// nil 時一律拒絕（fail closed）。
 	Paths *pathguard.Guard
+	// Inbox 是 inbox 目錄：用路徑新增 inbox 中的檔案時，識別鍵是相對它的路徑（ING-05）；空白代表沒有 inbox。
+	Inbox string
+	// DataDir 是資料目錄；上傳先寫到其下的 tmp/（POST /api/items 的 multipart）。空白時上傳回 500。
+	DataDir string
+	// UploadMaxBytes 是單一上傳檔案的大小上限（library.upload_max_bytes）；0 代表預設的 4 GiB。
+	UploadMaxBytes int64
 	// Cookies 加密存放平台 cookie（POST /api/cookies，SEC-R4）；nil 時該路由回應 501。
 	Cookies CookieStore
 	// Resumer 在 cookie 儲存後恢復等待它的 blocked 步驟（PIPE-R4）；nil 時不恢復。
@@ -113,8 +119,12 @@ func build(d Deps, authn func(http.Handler) http.Handler) http.Handler {
 		}, auth.ScopeRead, notImplemented)
 	}
 
-	// cookie 上傳的大小限制在驗證之後、Huma 之前（沒登入的請求不會被讀取本體）。
+	r.registerMedia(mux)
+
+	// cookie 上傳的大小限制在驗證之後、Huma 之前（沒登入的請求不會被讀取本體）；
+	// 影音檔上傳（multipart 的 POST /api/items）同一層，串流處理而不經過 Huma。
 	var h http.Handler = cookieBodyLimit(mux)
+	h = uploadIntercept(d)(h)
 	h = authn(h)
 	h = requestInfoMiddleware(d.Auth)(h)
 	h = logMiddleware(d.Log, d.Clock)(h)

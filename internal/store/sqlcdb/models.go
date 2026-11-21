@@ -84,6 +84,17 @@ type Event struct {
 	At          int64
 }
 
+type InboxEntry struct {
+	Path      string
+	Size      int64
+	MtimeNs   int64
+	Sha256    string
+	State     string
+	Reason    string
+	ItemID    *string
+	DecidedAt int64
+}
+
 type Item struct {
 	ID            string
 	Platform      string
@@ -106,6 +117,9 @@ type Item struct {
 	CreatedAt     int64
 	DeletedAt     *int64
 	TitleFold     string
+	SourcePath    string
+	ContentSha256 string
+	Origin        string
 }
 
 type ItemTombstone struct {

@@ -30,7 +30,7 @@ func registerAccess(r *Registry, s *Scenario) {
 	r.Step(`the client sends {string} with the token {string}`, s.clientSendsWithToken)
 	r.Step(`the client sends {string} with the token {string} and:`, s.clientSendsWithTokenAnd)
 	r.Step(`the client sends {string} with the token {string} from the origin {string}`, func(string, string, string) error { return godog.ErrPending })
-	r.Step(`the owner sends {string} with the header {string} set to {string}`, func(string, string, string) error { return godog.ErrPending })
+	r.Step(`the owner sends {string} with the header {string} set to {string}`, s.ownerSendsWithHeader)
 	r.Step(`the response status is {int}`, s.responseStatusIs)
 	r.Step(`the response contains:`, s.responseContains)
 	r.Step(`the response header {string} contains {string}`, s.responseHeaderContains)
@@ -109,6 +109,11 @@ func (s *Scenario) ownerSends(spec string) error {
 
 func (s *Scenario) ownerSendsWith(spec string, doc *godog.DocString) error {
 	return s.send(spec, requestOpts{who: asOwner, body: s.requestBody(doc)})
+}
+
+// ownerSendsWithHeader 以 owner 的 session 送出請求，並加上指定的標頭（例如 LIB-R6 的 Range）。
+func (s *Scenario) ownerSendsWithHeader(spec, name, value string) error {
+	return s.send(spec, requestOpts{who: asOwner, headers: map[string]string{name: value}})
 }
 
 func (s *Scenario) ownerSendsWithoutCSRF(spec string) error {

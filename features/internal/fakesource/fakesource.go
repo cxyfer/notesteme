@@ -8,8 +8,10 @@
 package fakesource
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -196,7 +198,9 @@ func (s *Script) maxBytes(sourceID string) int64 {
 }
 
 // respond 依腳本結果寫出回應。notFound 是「沒有結果」時的回應。
-func (s *Script) respond(w http.ResponseWriter, o outcome, item string, notFound func()) {
+//
+// chunk 非 nil 且有 offset 時（ASR 切塊上傳），只回傳完全落在 [offset, offset+duration] 內的 segments，時間減去 offset。
+func (s *Script) respond(w http.ResponseWriter, o outcome, item string, chunk *faketool.Media, notFound func()) {
 	switch {
 	case o.nothing:
 		notFound()
@@ -216,10 +220,62 @@ func (s *Script) respond(w http.ResponseWriter, o outcome, item string, notFound
 			writeJSON(w, http.StatusInternalServerError, `{"error":`+strconv.Quote(fmt.Sprintf("fakesource: fixture %q: %v", o.fixture, err))+`}`)
 			return
 		}
+		if chunk != nil && chunk.HasOffset {
+			if b, err = sliceTranscript(b, *chunk); err != nil {
+				writeJSON(w, http.StatusInternalServerError, `{"error":`+strconv.Quote(fmt.Sprintf("fakesource: fixture %q: %v", o.fixture, err))+`}`)
+				return
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(b)
 	}
 }
+
+// sliceTranscript 把整段轉錄的 verbose_json 切成 [offset, offset+duration] 這一塊：
+// 只留下完全落在區間內的 segments（start 不早於 offset、end 不晚於 offset+duration），時間減去 offset，
+// id 重新從 0 編號；duration 與 text 隨之更新，其他欄位（language 等）原樣保留。
+func sliceTranscript(b []byte, m faketool.Media) ([]byte, error) {
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(b, &doc); err != nil {
+		return nil, err
+	}
+	var segs []map[string]any
+	if raw, ok := doc["segments"]; ok {
+		if err := json.Unmarshal(raw, &segs); err != nil {
+			return nil, fmt.Errorf("segments: %w", err)
+		}
+	}
+	const eps = 1e-6
+	lo, hi := m.Offset, m.Offset+m.Duration
+	kept := []map[string]any{}
+	var texts []string
+	for _, sg := range segs {
+		start, ok1 := sg["start"].(float64)
+		end, ok2 := sg["end"].(float64)
+		if !ok1 || !ok2 {
+			return nil, fmt.Errorf("segment 缺少 start 或 end")
+		}
+		if start < lo-eps || end > hi+eps {
+			continue
+		}
+		sg["id"] = len(kept)
+		sg["start"], sg["end"] = round3(start-lo), round3(end-lo)
+		kept = append(kept, sg)
+		if t, ok := sg["text"].(string); ok {
+			texts = append(texts, strings.TrimSpace(t))
+		}
+	}
+	setRaw := func(k string, v any) {
+		enc, _ := json.Marshal(v)
+		doc[k] = enc
+	}
+	setRaw("segments", kept)
+	setRaw("duration", round3(m.Duration))
+	setRaw("text", strings.Join(texts, " "))
+	return json.Marshal(doc)
+}
+
+func round3(x float64) float64 { return math.Round(x*1000) / 1000 }
 
 func writeJSON(w http.ResponseWriter, code int, body string) {
 	w.Header().Set("Content-Type", "application/json")
@@ -274,7 +330,7 @@ func (s *Script) OpenAIHandler(sourceID string) http.Handler {
 				continue
 			}
 			haveFile = true
-			head = make([]byte, 512)
+			head = make([]byte, 4096)
 			n, _ := io.ReadFull(part, head)
 			head = head[:n]
 			rest, _ := io.Copy(io.Discard, part)
@@ -292,12 +348,13 @@ func (s *Script) OpenAIHandler(sourceID string) http.Handler {
 			writeJSON(w, http.StatusRequestEntityTooLarge, `{"error":"file too large"}`)
 			return
 		}
-		item, _, ok := faketool.ParseMediaMarker(head)
-		if !ok {
+		media, ok := faketool.ParseMedia(head)
+		item := media.Item
+		if !ok || item == "" {
 			writeJSON(w, http.StatusBadRequest, `{"error":"fakesource: upload is not a fake media file"}`)
 			return
 		}
-		s.respond(w, s.lookup(sourceID, item), item, func() {
+		s.respond(w, s.lookup(sourceID, item), item, &media, func() {
 			writeJSON(w, http.StatusOK, `{"text":"","segments":[]}`)
 		})
 	})
@@ -324,7 +381,7 @@ func (s *Script) SupadataHandler() http.Handler {
 			writeJSON(w, http.StatusBadRequest, `{"error":"invalid url"}`)
 			return
 		}
-		s.respond(w, s.lookup(sourceID, item), item, func() {
+		s.respond(w, s.lookup(sourceID, item), item, nil, func() {
 			writeJSON(w, http.StatusNotFound, `{"error":"transcript-unavailable"}`)
 		})
 	})

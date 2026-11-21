@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -134,7 +135,7 @@ func allInTrash(res []pipeline.IngestResult) bool {
 type createItemInput struct {
 	Body struct {
 		URL       string         `json:"url,omitempty" doc:"影音的網址"`
-		Path      string         `json:"path,omitempty" doc:"本機檔案的路徑（尚未實作）"`
+		Path      string         `json:"path,omitempty" doc:"本機檔案的路徑（要在 inbox 或 media_roots 之內；檔案不存在時仍建立，處理時才會失敗）"`
 		Parts     []int          `json:"parts,omitempty" doc:"Bilibili 要新增的分P；沒有指定時新增全部"`
 		Episodes  []string       `json:"episodes,omitempty" doc:"Podcast 要新增的集（guid）"`
 		Profile   string         `json:"profile,omitempty" doc:"處理方案；沒有指定時使用預設"`
@@ -155,9 +156,14 @@ func (rt *routes) createItems(ctx context.Context, in *createItemInput) (*create
 	if err := requireScope(ctx, auth.ScopeIngest); err != nil {
 		return nil, err
 	}
-	// 路徑防護（GRD-R7）：不在根目錄內的路徑，不論後面的功能做了沒有都不會被接受。
+	if in.Body.Path != "" && in.Body.URL != "" {
+		return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "url 與 path 只能擇一提供。")
+	}
+	// 路徑防護（GRD-R7）：不在根目錄內的路徑一律 403；之後都用解析過的路徑，避免檢查之後被換成 symlink 的競態。
+	var resolved string
 	if in.Body.Path != "" {
-		if err := rt.d.Paths.Check(in.Body.Path); err != nil {
+		var err error
+		if resolved, err = rt.d.Paths.Resolve(in.Body.Path); err != nil {
 			return nil, newError(http.StatusForbidden, CodePathOutsideRoots, "只能新增媒體資料夾中的檔案。")
 		}
 	}
@@ -166,10 +172,9 @@ func (rt *routes) createItems(ctx context.Context, in *createItemInput) (*create
 	}
 	switch {
 	case in.Body.Path != "":
-		// TODO(ING-05)：本機檔案的新增（檔案是否必須存在、是否經過 ffprobe）；路徑已通過 GRD-R7。
-		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "新增本機檔案尚未實作。")
+		return rt.createLocalItem(ctx, in, resolved)
 	case in.Body.URL == "":
-		return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "請提供要新增的網址（url）。")
+		return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "請提供要新增的網址（url）或本機檔案路徑（path）。")
 	}
 	res, err := rt.d.Pipeline.Ingest(ctx, pipeline.IngestRequest{
 		URL: in.Body.URL, Parts: in.Body.Parts, Episodes: in.Body.Episodes, Profile: in.Body.Profile,
@@ -190,6 +195,37 @@ func (rt *routes) createItems(ctx context.Context, in *createItemInput) (*create
 		if !r.AlreadyInLibrary && !r.InTrash {
 			out.Status = http.StatusCreated
 		}
+	}
+	return out, nil
+}
+
+// CodeNotAFile：path 指到的東西存在，但不是一般檔案（目錄、FIFO、裝置等，422）。
+const CodeNotAFile = "not_a_file"
+
+// createLocalItem 以路徑新增本機檔案（ING-05）。延遲驗證：檔案不存在仍回 201，
+// 之後 metadata 步驟以「找不到這個檔案。」失敗；存在但不是一般檔案才回 422。
+func (rt *routes) createLocalItem(ctx context.Context, in *createItemInput, resolved string) (*createItemOutput, error) {
+	if fi, err := os.Lstat(resolved); err == nil && !fi.Mode().IsRegular() {
+		return nil, newError(http.StatusUnprocessableEntity, CodeNotAFile, "這個路徑不是一般檔案。")
+	}
+	opts := pipeline.LocalOptions{Profile: in.Body.Profile, Overrides: in.Body.Overrides, Until: in.Body.Until}
+	if rt.d.Inbox != "" {
+		// 識別鍵是相對「解析後的 inbox」的路徑；inbox 解析失敗就當成沒有 inbox（鍵為絕對路徑）。
+		if inbox, err := rt.d.Paths.Resolve(rt.d.Inbox); err == nil {
+			opts.Inbox = inbox
+		}
+	}
+	res, err := rt.d.Pipeline.IngestPath(ctx, resolved, opts)
+	if err != nil {
+		return nil, rt.mapErr(ctx, err)
+	}
+	if res.InTrash {
+		return nil, inTrashError(http.StatusConflict, res.Item.ID)
+	}
+	out := &createItemOutput{Status: http.StatusOK}
+	out.Body.Items = []IngestedItem{{Item: toItem(res.Item), AlreadyInLibrary: res.AlreadyInLibrary}}
+	if !res.AlreadyInLibrary {
+		out.Status = http.StatusCreated
 	}
 	return out, nil
 }

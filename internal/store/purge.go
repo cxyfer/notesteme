@@ -20,7 +20,7 @@ type PurgedItem struct {
 
 // PurgeItem 在一個交易中永久刪除垃圾桶中的影音（DEL-R6、R7、R11）：
 //  1. cost_ledger 的 item_id 改為空，標題另存在 item_title（金額照常計入預算）。
-//  2. 留下 tombstone，鍵是 (platform, external_id, part, ”)。
+//  2. 留下 tombstone，鍵是 (platform, external_id, part, content_sha256)；平台影音的 content_sha256 為空。
 //  3. 刪除這部影音的 events，另外寫一筆 item.purged：事件的 item 是代號，帶標題，events 表的 item_id 留空。
 //  4. 刪除 items；artifacts、stage_runs、source_probes、tasks 依 ON DELETE CASCADE 一起刪除。
 //  5. 刪除沒有任何步驟引用的 config_snapshots。
@@ -45,7 +45,7 @@ func (r *Repo) PurgeItem(ctx context.Context, id string, notAfter *time.Time) (P
 			return fmt.Errorf("改寫成本帳本：%w", err)
 		}
 		if err := tx.q.PurgeUpsertTombstone(ctx, sqlcdb.PurgeUpsertTombstoneParams{
-			Platform: it.Platform, ExternalID: it.ExternalID, Part: int64(it.Part), PurgedAt: tx.nowMs(),
+			Platform: it.Platform, ExternalID: it.ExternalID, Part: int64(it.Part), Sha256: it.ContentSHA256, PurgedAt: tx.nowMs(),
 		}); err != nil {
 			return fmt.Errorf("寫入 tombstone：%w", err)
 		}

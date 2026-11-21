@@ -44,9 +44,10 @@ func TestServeChecksPathsOnSocket(t *testing.T) {
 	}{
 		{"根目錄之外", "/etc/passwd", 403},
 		{"..", media + "/../outside.mp4", 403},
-		{".. 回到 inbox 內仍然放行", media + "/../data/inbox/x.mp4", 501},
-		{"media_roots", media + "/talks/keynote.mp4", 501},
-		{"預設的 inbox", inbox + "/talk.mp4", 501},
+		// 通過檢查後延遲驗證：檔案不存在仍建立（ING-05）。
+		{".. 回到 inbox 內仍然放行", media + "/../data/inbox/x.mp4", 201},
+		{"media_roots", media + "/talks/keynote.mp4", 201},
+		{"預設的 inbox", inbox + "/talk.mp4", 201},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			code, body := statusOf(t, uc, "POST", "http://local/api/items", `{"path":"`+c.path+`"}`)
@@ -60,7 +61,7 @@ func TestServeChecksPathsOnSocket(t *testing.T) {
 	}
 }
 
-// GRD-R8：獨立模式不受 GRD-R7 限制；路徑通過檢查後仍是 ING-05 的 501，不是 403。
+// GRD-R8：獨立模式不受 GRD-R7 限制；/etc/passwd 通過檢查（延遲驗證，回 201），不是 403。
 func TestStandaloneDoesNotRestrictPaths(t *testing.T) {
 	env := testEnv(t)
 	writeMediaConfig(t, env)
@@ -70,7 +71,7 @@ func TestStandaloneDoesNotRestrictPaths(t *testing.T) {
 	}
 	defer sa.Close()
 	code, body := call(t, sa.Handler(), "POST", "/api/items", `{"path":"/etc/passwd"}`)
-	if code != 501 || !strings.Contains(string(body), "not_implemented") {
-		t.Fatalf("standalone POST path=/etc/passwd = %d %s，預期 501 not_implemented", code, body)
+	if code != 201 || !strings.Contains(string(body), `"ref":"local:/etc/passwd"`) {
+		t.Fatalf("standalone POST path=/etc/passwd = %d %s，預期 201 與 local:/etc/passwd", code, body)
 	}
 }

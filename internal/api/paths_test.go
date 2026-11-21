@@ -8,7 +8,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/pathguard"
 )
 
-// GRD-R7：path 不在根目錄內回 403 path_outside_roots；通過檢查後仍是 501（ING-05 還沒做）。
+// GRD-R7：path 不在根目錄內回 403 path_outside_roots；通過檢查後延遲驗證，檔案不存在仍回 201（ING-05）。
 func TestCreateItemPathGuard(t *testing.T) {
 	tmp, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -32,19 +32,17 @@ func TestCreateItemPathGuard(t *testing.T) {
 		{"..", media + "/../etc/passwd", 403},
 		{"symlink 指到 /", media + "/link-to-root/etc/passwd", 403},
 		{"相對路徑", "talks/keynote.mp4", 403},
-		{"根目錄之內", media + "/talks/keynote.mp4", 501},
+		{"根目錄之內", media + "/talks/keynote.mp4", 201},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			rec := r.owner("POST", "/api/items", `{"path":"`+c.path+`"}`)
 			if rec.Code != c.status {
 				t.Fatalf("status = %d，要 %d：%s", rec.Code, c.status, rec.Body)
 			}
-			e := decode[Error](t, rec)
-			if c.status == 403 && (e.Code != "path_outside_roots" || e.Message != msg) {
-				t.Errorf("error = %+v", e)
-			}
-			if c.status == 501 && e.Code != CodeNotImplemented {
-				t.Errorf("通過檢查後應是 not_implemented：%+v", e)
+			if c.status == 403 {
+				if e := decode[Error](t, rec); e.Code != "path_outside_roots" || e.Message != msg {
+					t.Errorf("error = %+v", e)
+				}
 			}
 		})
 	}
@@ -58,10 +56,10 @@ func TestCreateItemPathWithoutGuard(t *testing.T) {
 	}
 }
 
-// 獨立模式（Unrestricted）不檢查路徑，結果與沒有 GRD-R7 之前相同。
+// 獨立模式（Unrestricted）不檢查路徑：/etc/passwd 通過檢查（201）。
 func TestCreateItemPathUnrestricted(t *testing.T) {
 	r := newItemsRigAPI(t, func(d *Deps) { d.Paths = pathguard.Unrestricted() })
-	if rec := r.owner("POST", "/api/items", `{"path":"/etc/passwd"}`); rec.Code != 501 {
-		t.Fatalf("Unrestricted 應通過檢查（501）：%d %s", rec.Code, rec.Body)
+	if rec := r.owner("POST", "/api/items", `{"path":"/etc/passwd"}`); rec.Code != 201 {
+		t.Fatalf("Unrestricted 應通過檢查（201）：%d %s", rec.Code, rec.Body)
 	}
 }

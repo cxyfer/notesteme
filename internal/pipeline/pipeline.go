@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/media"
+	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/source/bilibili"
 	"github.com/cxyfer/notesteme/internal/source/groq"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
@@ -54,6 +56,8 @@ type Groq interface {
 	Configured(ctx context.Context) (bool, error)
 	// Endpoint 回傳實際使用的 base_url 與 model，它們影響結果，屬於快取鍵。
 	Endpoint() (baseURL, model string)
+	// MaxFileBytes 是單一音檔的大小上限；超過就要切塊（SRC-R12）。
+	MaxFileBytes() int64
 }
 
 // Deps 是 Pipeline 的依賴。
@@ -73,6 +77,11 @@ type Deps struct {
 	Groq Groq
 	// HTTP 是對外 HTTP 的 client（netguard 的 Transport，ADR-0014）；nil 時辨識網址不會抓取任何內容。
 	HTTP *http.Client
+	// Media 是 ffprobe 與 ffmpeg 的包裝（ING-05）；nil 代表不支援本機影音的探測與前處理。
+	Media *media.Tool
+	// Files 是程式內讀取本機檔案的守衛（serve 為 inbox、media_roots 與 <data>/uploads；standalone 不受限制）；
+	// nil 代表不支援讀取本機檔案。
+	Files *pathguard.Guard
 	// Wake 在建立了新任務時呼叫，讓 worker 醒來；可以是 nil。
 	Wake func()
 	// Version 是 notesteme 的版本，寫進來源紀錄。
@@ -95,6 +104,8 @@ type Pipeline struct {
 	// fetchers 是可以執行的 fallback 來源（SRC-R3），依來源 ID。
 	fetchers map[string]fallbackFetcher
 	http     *http.Client
+	media    *media.Tool
+	files    *pathguard.Guard
 	wake     func()
 	version  string
 	// trashRetention 是垃圾桶保留的時間（已套用預設值）。
@@ -110,6 +121,9 @@ type Pipeline struct {
 
 	// trashLocks 讓同一部影音的移到垃圾桶（含 commit 之後的善後）與還原互斥（DEL-R2、R5）。
 	trashLocks itemLocks
+
+	// uploadHolds 讓備份期間的永久刪除延後刪除上傳原始檔（OPS-R1），見 HoldUploads。
+	uploadHolds uploadHolds
 }
 
 // New 建立 Pipeline。
@@ -133,7 +147,7 @@ func New(d Deps) *Pipeline {
 	if retention <= 0 {
 		retention = DefaultTrashRetention
 	}
-	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), http: d.HTTP, wake: wake, version: d.Version}
+	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), http: d.HTTP, media: d.Media, files: d.Files, wake: wake, version: d.Version}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。

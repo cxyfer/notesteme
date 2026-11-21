@@ -1,0 +1,52 @@
+{
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "mp3",
+            "codec_long_name": "MP3 (MPEG audio layer 3)",
+            "codec_type": "audio",
+            "codec_tag_string": "[0][0][0][0]",
+            "sample_rate": "44100",
+            "channels": 2,
+            "channel_layout": "stereo",
+            "duration": "3004.123265",
+            "disposition": {
+                "default": 0,
+                "forced": 0,
+                "attached_pic": 0
+            },
+            "tags": {
+                "TITLE": "Long Talk"
+            }
+        },
+        {
+            "index": 1,
+            "codec_name": "mjpeg",
+            "codec_long_name": "Motion JPEG",
+            "codec_type": "video",
+            "codec_tag_string": "[0][0][0][0]",
+            "width": 600,
+            "height": 600,
+            "r_frame_rate": "90000/1",
+            "disposition": {
+                "default": 0,
+                "forced": 0,
+                "attached_pic": 1
+            },
+            "tags": {
+                "comment": "Cover (front)"
+            }
+        }
+    ],
+    "format": {
+        "filename": "/data/inbox/long-talk.mp3",
+        "nb_streams": 2,
+        "format_name": "mp3",
+        "format_long_name": "MP2/3 (MPEG audio layer 2/3)",
+        "start_time": "0.025057",
+        "duration": "3004.123265",
+        "size": "48066048",
+        "bit_rate": "128000",
+        "probe_score": 51
+    }
+}

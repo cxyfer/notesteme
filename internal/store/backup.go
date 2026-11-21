@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+
+	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
 )
 
 // 這個檔案放備份與還原需要的資料庫操作（OPS-R1、R2、R3）：一致的快照、schema 版本、原子寫檔。
@@ -117,6 +119,22 @@ func VerifyFile(ctx context.Context, path string) (int64, error) {
 		return 0, nil
 	}
 	return v, nil
+}
+
+// SnapshotUploadFiles 以唯讀方式開啟 path 的快照，列出其中的上傳原始檔（同 Repo.UploadFiles）。
+// 備份要放進的上傳檔必須和快照一致：快照之後才被永久刪除的影音仍在快照中，它的原始檔也要放進備份。
+func SnapshotUploadFiles(ctx context.Context, path string) ([]UploadFile, error) {
+	u := url.URL{Scheme: "file", Path: path, RawQuery: url.Values{"mode": {"ro"}, "_pragma": {"busy_timeout(5000)"}}.Encode()}
+	db, err := sql.Open("sqlite", u.String())
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	rows, err := sqlcdb.New(db).ListUploadFiles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return toUploadFiles(rows), nil
 }
 
 var migrationFile = regexp.MustCompile(`^(\d+)_.*\.sql$`)

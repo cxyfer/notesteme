@@ -57,6 +57,13 @@
 
 `When the owner ingests` 接受代號或完整網址；完整網址用於驗證網址辨識。
 
+`local:` 代號的細節（ING-05）：
+
+- inbox 中的檔案：`local:<相對 inbox 的路徑>`，以 `/` 分隔，例如 `local:lecture.mp4`。新增時送出 `{"path": "<inbox>/<路徑>"}`。
+- `media_roots` 中或 inbox 之外的檔案：`local:<解析後的絕對路徑>`。
+- 上傳的檔案：`local:<檔名>`，與既有影音或 inbox 頂層檔案撞名時，在副檔名前加 `-2`、`-3`（例如 `local:talk-2.m4a`）。
+- 請求路徑中的 `local:` 代號（例如 `GET /api/items/local:lecture.mp4/media`）取最長的已知代號，後面的 `/media` 等段落保留。
+
 其他代入規則：
 
 - 請求路徑中的代號（例如 `GET /api/items/yt:abc123xxxxx`）會換成實際的影音 ID；`channel-of:<代號>` 換成該影音所屬頻道的 ID。影音在垃圾桶中，或已永久刪除時，代號仍然換成原本的 ID；永久刪除後再新增，換成新的 ID。
@@ -89,7 +96,7 @@
 - 「任務正在執行」同時要求資料庫中的租約有效，且對應的外部工具程序仍然存活。
 - 場景中的 `/data`、`/config` 等路徑，會換成這個場景專用的暫存目錄。對應規則（虛擬路徑 → 實際路徑）：
   - `/data` → `<場景根目錄>/data`、`/config` → `<場景根目錄>/config`、`/media` → `<場景根目錄>/media`、`/backups` → `<場景根目錄>/backups`。
-  - `/tmp/<x>` → `<場景根目錄>/tmp/<x>`：場景中的 `/tmp/...`（例如上傳用的 `/tmp/fansub.ass`）不寫到真正的 `/tmp`。目前只有檔案步驟套用；之後 `the owner uploads "/tmp/..."` 等步驟實作時，也要用同一個對應。
+  - `/tmp/<x>` → `<場景根目錄>/tmp/<x>`：場景中的 `/tmp/...`（例如上傳用的 `/tmp/fansub.ass`）不寫到真正的 `/tmp`。檔案步驟與 `the owner uploads "/tmp/..."` 都套用這個對應。
 - After hook 的 secret 掃描（NFR-SEC-3）除了 log 與假工具的呼叫紀錄，也涵蓋 `/backups`：其中的 `.tar.gz` 解壓後，逐一檢查每個項目的內容不含 master key 的值（OPS-R1）。
 - `Given {string} has {word} captions in {string}` 沒有對應的 fixture 時，產生 120 句的字幕軌。
 
@@ -142,7 +149,7 @@
 | `Given a YouTube video {string} with:` | 同上，用表格（`field`、`value`）指定 `title`、`duration`、`language`、`availability`、`chapters`、`live_status` 等。`availability` 為 `subscriber_only` 時，假 yt-dlp 在下載字幕與媒體時要求含 `.youtube.com` cookie 的 `--cookies` 檔，否則回報 `ERROR: [youtube] <id>: Join this channel to get access to members-only content like this video, or contact the channel owner.`（取得資訊不失敗，辨識網址的 Probe 仍能看到 `availability`） |
 | `Given a Bilibili video {string} with {int} parts` | 建立 fake 的 Bilibili 影片（`1 part` 亦可）；參數是不帶 `bili:` 的 BV 號。各分P 沒有字幕軌、沒有原文語言，標題預設為 BV 號；之後用 `bili:<BV>/p<n>` 逐分P 設定。分P 不存在（或影片還沒建立）時，使用該代號的步驟失敗 |
 | `Given a podcast feed {string} with the episodes:` | 建立 fake 的 feed，表格欄位：`guid`、`title`、`audio`；feed 的網址為 `https://feeds.example.com/<名稱>.xml` |
-| `Given a local file {string} in the inbox` | 在 inbox 放入 fixture 檔案 |
+| `Given a local file {string} in the inbox` | 在 inbox 放入 `features/fixtures/local/` 的同名 fixture 檔案，修改時間設為 fake clock 的現在；fixture 不存在時失敗 |
 | `Given {string} has {word} captions in {string}` | 平台字幕軌；`{word}` 為 `manual`、`auto`、`platform-translated`。Bilibili 的 AI 字幕屬於 `auto`（Bilibili 沒有 `platform-translated`） |
 | `Given {string} has no caption tracks` | 平台沒有任何字幕 |
 | `Given the auto captions of {string} are not ready yet` | YouTube 自動字幕還沒生成：假 yt-dlp 不列出、也不下載自動字幕與平台翻譯字幕，人工字幕不受影響。只接受 `yt:` |
@@ -150,7 +157,7 @@
 | `Given the source {string} has nothing for {string}` | 字幕來源沒有結果 |
 | `Given the source {string} requires the cookie {string}` | 需要指定的 cookie 才能取得。平台來源（`bilibili-*`）的參數是 cookie 的平台：假 yt-dlp 沒有收到該平台的有效 cookie 檔（`--cookies` 指到 Netscape 格式、含 `.bilibili.com` 網域 `SESSDATA` 的檔案）時，不列出也不下載該來源的字幕軌，結束碼 0，並在 stderr 印出 login WARNING（有 `--no-warnings` 時不印）。平台來源還沒實作（`source.Implemented`）時 pending |
 | `Given the source {string} accepts files up to {string}` | ASR 的單檔大小上限，例如 `"25MB"` |
-| `Given the audio of {string} is {string}` | 音訊 fixture，例如長度或大小不同的檔案 |
+| `Given the audio of {string} is {string}` | 音訊 fixture（`features/fixtures/media/`），例如長度或大小不同的檔案。`local:` 把 fixture 的長度、壓縮後大小與靜音區段併進 inbox 中的檔案；`yt:`、`bili:` 寫進假 yt-dlp 中這部影片的對應屬性。檔案不在 inbox、fixture 不存在時失敗 |
 | `Given yt-dlp fails for {string} with {string}` | yt-dlp 對這個影音的所有操作（取得資訊、下載字幕、下載媒體）都以結束碼 1 失敗，stderr 為指定的錯誤輸出。只接受 `yt:` |
 
 ### 4.4 影音與產出（`steps/items.go`、`steps/trash.go`）
@@ -161,12 +168,12 @@
 | `When the owner ingests {string}` | `POST /api/items`，使用預設的處理方案 |
 | `When the owner ingests {string} with the profile {string}` | 指定處理方案 |
 | `When the owner ingests {string} with the overrides:` | 帶單次覆寫（YAML） |
-| `When the owner uploads {string}` | 透過 API 上傳本機檔案 |
+| `When the owner uploads {string}` | 透過 API 上傳本機檔案（`POST /api/items`，multipart 的 `file` 欄位）。參數是 `features/fixtures/local/` 的檔名；以 `/` 開頭時是場景中的路徑（對應規則見第 4 節） |
 | `When the owner reruns {string} from {string}` | 從指定步驟重新處理 |
 | `Given the item {string} has been ingested` | 已新增，worker 還沒執行 |
 | `Given the item {string} has been ingested as {word}` | 以指定的優先級新增：`manual`、`subscription`、`backfill` |
 | `Given {string} is a mixed-language item` | 把影音的原文語言標記為 `mixed` |
-| `Given the item {string} has been processed up to {string}` | 已完成到指定步驟。依序判斷：(1) 場景已準備字幕來源（寫入字幕、符合 `caption_priority` 的字幕軌、腳本化的已實作來源）：照常執行 pipeline 到該步驟；(2) 代號是 `yt:` 或 `bili:`、假 yt-dlp 中這部影片完全沒有字幕軌、場景也沒有寫入字幕或腳本化來源，且 `features/fixtures/items/<代號>.json`（`:`、`/` 換成 `-`）存在：先建立影音並做到 metadata，用 fixture 寫入 `source`，再照常執行剩下的步驟；fixture 的 `ref` 必須與檔名一致；`local:`、`pod:` 一律不套用 fixture；(3) 其他情況 pending。目標在 transcript 之前（如 `metadata`）不需要字幕。fixture 格式見 `features/fixtures/README.md` |
+| `Given the item {string} has been processed up to {string}` | 已完成到指定步驟。依序判斷：(1) 場景已準備字幕來源（寫入字幕、符合 `caption_priority` 的字幕軌、腳本化的已實作來源；`local:` 另外包含 inbox 中同名的外掛字幕檔，以及 fixture 帶有文字字幕串流）：照常執行 pipeline 到該步驟；(2) 代號是 `yt:` 或 `bili:`、假 yt-dlp 中這部影片完全沒有字幕軌、場景也沒有寫入字幕或腳本化來源，且 `features/fixtures/items/<代號>.json`（`:`、`/` 換成 `-`）存在：先建立影音並做到 metadata，用 fixture 寫入 `source`，再照常執行剩下的步驟；fixture 的 `ref` 必須與檔名一致；`local:`、`pod:` 一律不套用 fixture；(3) 其他情況 pending。目標在 transcript 之前（如 `metadata`）不需要字幕。fixture 格式見 `features/fixtures/README.md` |
 | `Given the {string} transcript of {string} is:` | 指定變體的字幕；表格欄位：`#`、`start`、`end`、`text`，可加 `words`、`timing` |
 | `Given the {string} transcript of {string} in {string} is:` | 同上，指定語言 |
 | `When the worker runs until idle` | worker 持續執行，直到沒有可以執行的任務 |
@@ -183,7 +190,7 @@
 | `Then the source {string} was rejected for {string} because {string}` | 品質檢查不通過的原因：影音詳情的 `sources` 中，有一筆 `source` 相符、`state` 為 `rejected`、`reason` 相符 |
 | `Then the original language of {string} is {string}` | 原文語言 |
 | `Then the original language of {string} is marked as mixed` | 標記為中英夾雜等混合語言 |
-| `Then the {string} transcript of {string} is:` | 字幕內容，表格欄位同上；只比對表格中出現的欄位 |
+| `Then the {string} transcript of {string} is:` | 字幕內容，表格欄位同上；只比對表格中出現的欄位。`#` 欄從 1 起連號時，字幕的句數必須與表格列數相同，並依序比對；`#` 不是從 1 起連號（例如只列 `41`、`42`）時，依 `#` 比對第 N 句（該句的編號也必須是 N），不檢查總句數 |
 | `Then the {string} transcript of {string} in {string} is:` | 同上，指定語言 |
 | `Then the {string} transcript of {string} has {int} cues` | cue 數 |
 | `Then the {string} transcript of {string} in {string} has {int} cues` | 同上，指定語言 |

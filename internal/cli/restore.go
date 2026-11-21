@@ -34,11 +34,18 @@ func parseRestore(args []string) (*plan, error) {
 			return exitOK, s.printJSON(map[string]any{
 				"schema_version": res.SchemaVersion, "created_at": res.CreatedAt,
 				"pre_restore": res.PreRestore, "config_dir": res.ConfigDir,
+				"uploads": res.Uploads, "pre_restore_uploads": res.PreRestoreUploads,
 			})
 		}
 		fmt.Fprintf(s.stdout, "已還原備份（schema 版本 %d，建立於 %s）。\n", res.SchemaVersion, res.CreatedAt.Format("2006-01-02 15:04:05 MST"))
 		if res.PreRestore != "" {
 			fmt.Fprintf(s.stdout, "還原前的資料庫已存到：%s\n", res.PreRestore)
+		}
+		if res.Uploads > 0 {
+			fmt.Fprintf(s.stdout, "已還原 %d 個上傳的原始檔。\n", res.Uploads)
+		}
+		if res.PreRestoreUploads != "" {
+			fmt.Fprintf(s.stdout, "還原前的上傳檔已移到：%s\n", res.PreRestoreUploads)
 		}
 		if res.ConfigDir != "" {
 			fmt.Fprintf(s.stdout, "備份中的設定檔已解到：%s\n（不會覆寫 /config，請自行比對後替換。）\n", res.ConfigDir)

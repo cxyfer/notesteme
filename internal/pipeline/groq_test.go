@@ -29,6 +29,17 @@ type fakeGroq struct {
 	audios  []string
 	hints   []string
 	existed []bool // 呼叫當下音檔是否存在
+	// maxBytes 是回報的單檔上限；0 代表 groq.MaxFileBytes。
+	maxBytes int64
+	// respond 非 nil 時決定每次 Transcribe 的回應（i 是第幾次呼叫，從 0 起）。
+	respond func(i int, audioPath, langHint string) (*groq.Result, error)
+}
+
+func (f *fakeGroq) MaxFileBytes() int64 {
+	if f.maxBytes > 0 {
+		return f.maxBytes
+	}
+	return groq.MaxFileBytes
 }
 
 func (f *fakeGroq) Configured(context.Context) (bool, error) {
@@ -44,7 +55,11 @@ func (f *fakeGroq) Transcribe(_ context.Context, audioPath, langHint string) (*g
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	_, statErr := os.Stat(audioPath)
+	call := len(f.audios)
 	f.audios, f.hints, f.existed = append(f.audios, audioPath), append(f.hints, langHint), append(f.existed, statErr == nil)
+	if f.respond != nil {
+		return f.respond(call, audioPath, langHint)
+	}
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -63,7 +78,10 @@ func (f *fakeGroq) calls() int {
 func newGroqRig(t *testing.T) (*rig, *fakeGroq) {
 	t.Helper()
 	g := &fakeGroq{lang: "en", baseURL: groq.DefaultBaseURL, model: groq.DefaultModel}
-	return newRig(t, func(d *Deps) { d.Groq = g }), g
+	fm, tool := newFakeMedia(t)
+	r := newRig(t, func(d *Deps) { d.Groq = g; d.Media = tool })
+	r.fm = fm
+	return r, g
 }
 
 func groqOnly() map[string]any { return fallbackOverride("groq") }
@@ -382,10 +400,11 @@ func TestGroqProvenanceParamsHashIncludesLangHint(t *testing.T) {
 	if hashYue != hashEmpty {
 		t.Errorf("實際語言提示同為空（不支援的三字母代碼與未指定）時 params_sha256 應相同：yue=%s, empty=%s", hashYue, hashEmpty)
 	}
-	wantEn := paramsSHA(map[string]string{
-		"base_url":  groq.DefaultBaseURL,
-		"model":     groq.DefaultModel,
-		"lang_hint": "en",
+	wantEn := paramsSHA(map[string]any{
+		"base_url":   groq.DefaultBaseURL,
+		"model":      groq.DefaultModel,
+		"lang_hint":  "en",
+		"preprocess": asrPreprocess(groq.MaxFileBytes),
 	})
 	if hashEn != wantEn {
 		t.Errorf("params_sha256 = %s，預期 %s", hashEn, wantEn)

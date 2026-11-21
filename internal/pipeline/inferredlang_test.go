@@ -84,9 +84,13 @@ func TestInferOriginalLang(t *testing.T) {
 		{"Bilibili 已有原文語言", source.PlatformBilibili, "ja", ai, "ja", false},
 		{"Bilibili 沒有 AI 軌", source.PlatformBilibili, "", []transcript.Track{{Lang: "zh", Kind: transcript.KindManual}}, "", false},
 		{"YouTube 不推斷", source.PlatformYouTube, "", ai, "", false},
+		{"本機：用選中的 sidecar 語言", source.PlatformLocal, "", []transcript.Track{{Lang: "ja", Kind: transcript.KindSidecar, Handle: "/d/a.ja.srt"}}, "ja", true},
+		{"本機：內嵌字幕沒有語言標記不推斷", source.PlatformLocal, "", []transcript.Track{{Kind: transcript.KindEmbedded, Handle: "2"}}, "", false},
+		{"本機：已有原文語言", source.PlatformLocal, "en", []transcript.Track{{Lang: "ja", Kind: transcript.KindSidecar, Handle: "/d/a.ja.srt"}}, "en", false},
+		{"本機：沒有字幕軌", source.PlatformLocal, "", nil, "", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got, inferred := inferOriginalLang(tt.platform, tt.current, tt.tracks)
+			got, inferred := inferOriginalLang(tt.platform, tt.current, tt.tracks, DefaultLanguage())
 			if got != tt.want || inferred != tt.inferred {
 				t.Errorf("inferOriginalLang = %q, %v，預期 %q, %v", got, inferred, tt.want, tt.inferred)
 			}

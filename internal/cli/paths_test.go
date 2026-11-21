@@ -29,16 +29,18 @@ func TestClientModeIngestPathOutsideRoots(t *testing.T) {
 	}
 }
 
-// 獨立模式不受路徑限制（GRD-R8）：/etc/passwd 通過檢查，之後是 ING-05 尚未實作的 501（結束碼同樣是 1，
-// 但 ErrorCode 是 not_implemented，不是 path_outside_roots）。
+// 獨立模式不受路徑限制（GRD-R8）：/etc/passwd 通過檢查並新增（ING-05），不是 path_outside_roots。
 func TestStandaloneModeIngestPathUnrestricted(t *testing.T) {
 	env, _ := testEnv(t)
-	res, _, errOut := run(t, env, "ingest", "/etc/passwd")
-	if res.Mode != ModeStandalone || res.ErrorCode != "not_implemented" {
+	res, out, errOut := run(t, env, "ingest", "/etc/passwd")
+	if res.Mode != ModeStandalone || res.Code != 0 || res.ErrorCode != "" {
 		t.Fatalf("結果 = %+v，stderr：%s", res, errOut)
 	}
 	if strings.Contains(errOut, pathRefusal) {
 		t.Errorf("獨立模式不應該回報路徑限制：%q", errOut)
+	}
+	if !strings.Contains(out, "local:/etc/passwd") {
+		t.Errorf("stdout 應包含影音代號 local:/etc/passwd：%q", out)
 	}
 }
 

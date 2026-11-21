@@ -22,7 +22,7 @@ func registerSources(r *Registry, s *Scenario) {
 	r.Step(`a YouTube video {string} with:`, s.youtubeVideoWith)
 	r.Step(`a Bilibili video {string} with {int} parts`, s.bilibiliVideo)
 	r.Step(`a podcast feed {string} with the episodes:`, func(string, *godog.Table) error { return godog.ErrPending })
-	r.Step(`a local file {string} in the inbox`, func(string) error { return godog.ErrPending })
+	r.Step(`a local file {string} in the inbox`, s.localFileInInbox)
 	r.Step(`{string} has {word} captions in {string}`, s.hasCaptions)
 	r.Step(`{string} has no caption tracks`, s.hasNoCaptions)
 	r.Step(`the auto captions of {string} are not ready yet`, s.autoCaptionsNotReady)
@@ -30,7 +30,7 @@ func registerSources(r *Registry, s *Scenario) {
 	r.Step(`the source {string} has nothing for {string}`, s.sourceHasNothing)
 	r.Step(`the source {string} requires the cookie {string}`, s.sourceRequiresCookie)
 	r.Step(`the source {string} accepts files up to {string}`, s.sourceAcceptsUpTo)
-	r.Step(`the audio of {string} is {string}`, func(string, string) error { return godog.ErrPending })
+	r.Step(`the audio of {string} is {string}`, s.audioOfIs)
 	r.Step(`yt-dlp fails for {string} with {string}`, s.ytdlpFails)
 }
 

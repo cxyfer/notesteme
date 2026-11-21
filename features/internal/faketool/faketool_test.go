@@ -256,7 +256,7 @@ func TestMediaAndFFprobeRoundTrip(t *testing.T) {
 	}
 
 	for _, flag := range []string{"-of", "-print_format"} {
-		code, out, errs := s.exec("ffprobe", "-v", "error", flag, "json", "-show_format", "-show_streams", p)
+		code, out, errs := s.exec("ffprobe", "-v", "error", "-protocol_whitelist", "file", "-format_whitelist", testFW, flag, "json", "-show_format", "-show_streams", p)
 		if code != 0 {
 			t.Fatalf("code=%d stderr=%q", code, errs)
 		}
@@ -271,7 +271,7 @@ func TestMediaAndFFprobeRoundTrip(t *testing.T) {
 	// 不是假媒體檔時失敗。
 	bad := filepath.Join(s.work, "bad.bin")
 	_ = os.WriteFile(bad, []byte("garbage"), 0o644)
-	if code, _, _ := s.exec("ffprobe", "-of", "json", bad); code != 1 {
+	if code, _, _ := s.exec("ffprobe", "-protocol_whitelist", "file", "-format_whitelist", testFW, "-of", "json", bad); code != 1 {
 		t.Fatalf("garbage code=%d", code)
 	}
 }
@@ -454,7 +454,7 @@ func TestInProcessBranches(t *testing.T) {
 		if code, _, _ := s.inproc("ffprobe", "-of", "json"); code != 2 {
 			t.Fatalf("ffprobe no input code=%d", code)
 		}
-		if code, _, _ := s.inproc("ffprobe", "-of", "json", "missing.bin"); code != 1 {
+		if code, _, _ := s.inproc("ffprobe", "-protocol_whitelist", "file", "-format_whitelist", testFW, "-of", "json", "missing.bin"); code != 1 {
 			t.Fatalf("ffprobe missing code=%d", code)
 		}
 		if code, _, _ := s.inproc("nope"); code != 2 {

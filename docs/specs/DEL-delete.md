@@ -148,4 +148,5 @@
 - `library.trash_retention_days` 暫定放在設定檔。是否改由 DB 的 settings 管理（UI 可調），之後再決定；若改到 DB，要一併更新 GRD 的「由資料庫管理的欄位」清單。
 - 播放清單或分P 展開時遇到部分項目在垃圾桶中的處理方式，規則沒有寫，暫定如介面一節。
 - 永久刪除後再從舊備份還原，DB 會指向已經不存在的產出檔（備份不含 `/data/artifacts`），這種情況的處理要記入 OPS 的待決問題。
-- M1 還沒有 `cues_fts`、`outputs`、uploads、術語候選。之後的切片接上時，永久刪除要一併清除。
+- M1 還沒有 `cues_fts`、`outputs`、術語候選。之後的切片接上時，永久刪除要一併清除。
+- 本機檔案（2026-11-21，LOCAL 切片實作時決定）：上傳的檔案存在 `/data/uploads/<id>/`，永久刪除時一併刪除；inbox 與 `media_roots` 中的原檔是 owner 的，永遠不刪（DEL-R8）。tombstone 記錄內容的 `sha256`；inbox 遇到 `sha256` 相同，或同一個路徑而 tombstone 沒有 `sha256` 的檔案時，不建立影音，也不移除 tombstone（DEL-R11）。
