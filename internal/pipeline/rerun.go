@@ -19,6 +19,10 @@ type RerunRequest struct {
 	Overrides map[string]any
 	// Until 指定做到哪個步驟為止；空字串代表做到最後。每次重跑都重新決定（會更新影音的 until）。
 	Until string
+	// Profile 是這次重跑改用的處理方案（PRF）；有值時回 *NotImplementedError，處理方案屬於 M2 的 PRF 切片。
+	Profile string
+	// Chunks 只重跑這些 chunk（LLM-R8，從 1 起算）；有值時回 *NotImplementedError，依 chunk 重跑屬於 M2 的 LLM 切片。
+	Chunks []int
 }
 
 // Rerun 從指定步驟重新建立 stage run 與任務（PIPE-R7、plan 第 5.1 節）：

@@ -57,6 +57,9 @@ type TestControls struct {
 	// Migrations 取代內建的 migration（store.Options.Migrations），用來模擬「程式內建的最新 schema 版本是 N」
 	// （OPS-R3、R4）；nil 時用內建的。
 	Migrations fs.FS
+	// SerialLLM 讓 worker 一次最多執行一個 llm 類別的任務（不論設定的上限），chunk 任務依建立順序執行，
+	// fakellm 的「依序回答」與請求編號才有確定的順序。不影響 GET /api/queue 顯示的上限（M2 S0）。
+	SerialLLM bool
 }
 
 // IO 是標準輸入輸出。
