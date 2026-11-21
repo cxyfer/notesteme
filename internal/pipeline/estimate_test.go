@@ -267,7 +267,8 @@ func TestEstimatePlaylistItemFailureIsReportedPerItem(t *testing.T) {
 			t.Errorf("item = %+v", it)
 		}
 	}
-	if est.TotalUSD != 0 || len(est.Notes) != 1 {
+	// 三部都失敗：頂層 notes 說明全部失敗，以及部分金額未知。
+	if est.TotalUSD != 0 || len(est.Notes) != 2 || !hasTopNote(est, "所有影音都無法取得資訊") {
 		t.Errorf("est = %+v", est)
 	}
 }

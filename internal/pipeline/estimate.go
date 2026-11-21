@@ -3,9 +3,12 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/errclass"
@@ -18,8 +21,44 @@ import (
 	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
-// estimateConcurrency 是同時對平台 Probe 的上限（播放清單可能有很多部）。
-const estimateConcurrency = 4
+const (
+	// estimateConcurrency 是整個程序同時為估價 Probe 的上限（跨請求共用，見 estimateLimiter）。
+	estimateConcurrency = 4
+	// maxEstimateItems 是一次估價最多 Probe 的影音數；播放清單超過時只估前面這些，其餘在 notes 說明。
+	maxEstimateItems = 100
+	// maxEstimateDurationS 是估價採用的長度上限（1000 小時）；feed 宣稱更長或不是有限值時視為不知道長度。
+	maxEstimateDurationS = 1000 * 3600
+)
+
+// estimateBudget 是一次估價所有 Probe 的總時間上限；超過時還沒估到的影音標為未知。測試會調小它。
+var estimateBudget = 3 * time.Minute
+
+// estimateLimiter 限制整個程序同時為估價進行的 Probe 數：多個估價請求同時進來時，yt-dlp 的並行數不會倍增。
+type estimateLimiter struct {
+	once  sync.Once
+	slots chan struct{}
+}
+
+func (l *estimateLimiter) sem() chan struct{} {
+	l.once.Do(func() { l.slots = make(chan struct{}, estimateConcurrency) })
+	return l.slots
+}
+
+// errEstimateBudget 是估價的總時間用完、還沒輪到 Probe 的影音。
+var errEstimateBudget = errors.New("估價逾時，沒有取得這部影音的資訊。")
+
+// acquire 取得一個 Probe 名額；ctx 已經結束或在等待時結束就回傳 false（不佔用名額）。
+func acquire(ctx context.Context, sem chan struct{}) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	select {
+	case sem <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
 
 // EstimateItem 是估價結果中的一部影音。金額欄位為 nil 代表「不知道」，與 0（確定不用錢）不同。
 type EstimateItem struct {
@@ -71,14 +110,18 @@ func (p *Pipeline) Estimate(ctx context.Context, req IngestRequest) (*Estimate, 
 		return nil, err
 	}
 	e := &estimator{p: p, lang: lang}
-	var items []EstimateItem
+	out := &Estimate{Currency: "USD", PricesAsOf: cost.PricesAsOf, Notes: []string{}}
+	targets := x.targets
+	if x.podcast == nil && len(targets) > maxEstimateItems {
+		out.Notes = append(out.Notes, fmt.Sprintf("共 %d 部影音，只估算前 %d 部。", len(targets), maxEstimateItems))
+		targets = targets[:maxEstimateItems]
+	}
 	if x.podcast != nil {
-		items = e.podcastItems(ctx, x.podcast)
-	} else if items, err = e.probeItems(ctx, x.targets); err != nil {
+		out.Items = e.podcastItems(ctx, x.podcast)
+	} else if out.Items, err = e.probeItems(ctx, targets); err != nil {
 		return nil, err
 	}
 
-	out := &Estimate{Items: items, Currency: "USD", PricesAsOf: cost.PricesAsOf, Notes: []string{}}
 	unknown := false
 	for _, it := range out.Items {
 		if it.TotalUSD != nil {
@@ -89,6 +132,9 @@ func (p *Pipeline) Estimate(ctx context.Context, req IngestRequest) (*Estimate, 
 		}
 	}
 	out.TotalUSD = roundUSD(out.TotalUSD)
+	if e.allFailed {
+		out.Notes = append(out.Notes, "所有影音都無法取得資訊，原因見各項的說明。")
+	}
 	if unknown {
 		out.Notes = append(out.Notes, "部分金額未知")
 	}
@@ -99,6 +145,10 @@ func (p *Pipeline) Estimate(ctx context.Context, req IngestRequest) (*Estimate, 
 type estimator struct {
 	p    *Pipeline
 	lang Language
+	// allFailed 為 true 代表有多部影音而且每一部的 Probe 都失敗（例如 yt-dlp 無法使用）。
+	allFailed bool
+	// groqCustomBase 為 true 代表 Groq 設定了自訂的 base_url。
+	groqCustomBase bool
 
 	groqOnce  sync.Once
 	groqReady bool
@@ -114,7 +164,10 @@ func (e *estimator) groqState(ctx context.Context) (ready bool, model, note stri
 			e.groqNote = "已略過 groq：來源沒有註冊。"
 			return
 		}
-		_, e.groqModel = g.Endpoint()
+		var base string
+		base, e.groqModel = g.Endpoint()
+		// 自訂的 base_url 可能是其他相容服務（例如自架的 Whisper），Groq 的內建單價不適用。
+		e.groqCustomBase = strings.TrimRight(base, "/") != strings.TrimRight(groq.DefaultBaseURL, "/")
 		ok, err := g.Configured(ctx)
 		switch {
 		case err != nil:
@@ -130,34 +183,52 @@ func (e *estimator) groqState(ctx context.Context) (ready bool, model, note stri
 }
 
 // probeItems 對每個 Target 做 Probe 並估價；結果的順序與 targets 相同。
+// 所有 Probe 共用 estimateBudget 的總時間：用完時還沒輪到的影音不再 Probe，標為未知。
 func (e *estimator) probeItems(ctx context.Context, targets []source.Target) ([]EstimateItem, error) {
 	items := make([]EstimateItem, len(targets))
 	errs := make([]error, len(targets))
-	sem := make(chan struct{}, estimateConcurrency)
+	bctx, cancel := context.WithTimeout(ctx, estimateBudget)
+	defer cancel()
+	sem := e.p.estimates.sem()
 	var wg sync.WaitGroup
 	for i, t := range targets {
+		if !acquire(bctx, sem) {
+			items[i] = EstimateItem{Ref: source.Ref(t.Platform, t.ExternalID, t.Part), Notes: []string{}}
+			errs[i] = errEstimateBudget
+			continue
+		}
 		wg.Add(1)
-		sem <- struct{}{}
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			items[i], errs[i] = e.probeItem(ctx, t)
+			items[i], errs[i] = e.probeItem(bctx, t)
 		}()
 	}
 	wg.Wait()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	failed := 0
 	for i, err := range errs {
 		if err == nil {
 			continue
 		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			err = errEstimateBudget
+		}
 		if len(targets) == 1 {
+			if errors.Is(err, errEstimateBudget) {
+				return nil, &UpstreamError{Msg: err.Error(), Err: err}
+			}
 			return nil, err
 		}
 		// 多部影音：一部失敗不讓整份估價失敗，在該項說明。
+		failed++
 		items[i].unknown = true
 		items[i].Notes = append(items[i].Notes, err.Error())
+	}
+	if failed == len(targets) && failed > 0 {
+		e.allFailed = true
 	}
 	return items, nil
 }
@@ -183,7 +254,10 @@ func (e *estimator) probeItem(ctx context.Context, t source.Target) (EstimateIte
 	it.Title = info.Title
 	if info.DurationS != nil {
 		d := float64(*info.DurationS)
-		it.DurationS = &d
+		it.setDuration(&d)
+	}
+	if info.Live {
+		it.Notes = append(it.Notes, "這是直播或還沒首播的影音，要等結束後才會處理；長度與費用以結束後為準。")
 	}
 	if t.Platform == source.PlatformYouTube && slices.Contains(cookieAvailabilities, info.Availability) {
 		it.RequiresCookie = true
@@ -217,18 +291,21 @@ func (e *estimator) probeItem(ctx context.Context, t source.Target) (EstimateIte
 // podcastItems 估算 Podcast 的各集：長度與字幕來自 feed，不需要 Probe。
 // 實際長度以下載的音檔為準（itunes:duration 只是 feed 的宣稱）。
 func (e *estimator) podcastItems(ctx context.Context, s *podcastSelection) []EstimateItem {
-	// feedKey 只有新增時才會建立：這裡只讀，已有頻道才能知道集在不在媒體庫中。
-	key := ""
-	if ch, err := e.p.st.Read().ChannelByKey(ctx, source.PlatformPodcast, s.slug); err == nil && ch.URL == s.canonical {
-		key = ch.ExternalID
+	// feedKey 只有新增時才會建立：這裡只讀。feed 已經新增過時用它的 key（和新增一樣以 feed 網址查），
+	// 才知道各集在不在媒體庫中；還沒新增過時用新增此刻會取得的 key 當候選。
+	key, existing, err := e.p.st.Read().PeekPodcastFeedKey(ctx, s.canonical, s.slug)
+	if err != nil {
+		e.p.log.Debug("估價時查詢 feed key 失敗，改用推導的候選", "error", err.Error())
+		key, existing = s.slug, false
 	}
 	items := make([]EstimateItem, 0, len(s.picked))
 	for _, ep := range s.picked {
-		it := EstimateItem{Ref: source.Ref(source.PlatformPodcast, podcast.ExternalID(keyOrSlug(key, s.slug), ep.GUID), 0), Title: ep.Title, Notes: []string{}}
-		if key != "" {
-			it.AlreadyInLibrary = e.inLibrary(ctx, source.Target{Platform: source.PlatformPodcast, ExternalID: podcast.ExternalID(key, ep.GUID)})
+		externalID := podcast.ExternalID(key, ep.GUID)
+		it := EstimateItem{Ref: source.Ref(source.PlatformPodcast, externalID, 0), Title: ep.Title, Notes: []string{}}
+		if existing {
+			it.AlreadyInLibrary = e.inLibrary(ctx, source.Target{Platform: source.PlatformPodcast, ExternalID: externalID})
 		}
-		it.DurationS = ep.DurationS
+		it.setDuration(ep.DurationS)
 		if e.podcastCaptions(s.feed.Language, ep) {
 			e.platformCaptions(&it, transcript.SourcePodcastTranscript)
 		} else {
@@ -255,12 +332,18 @@ func (e *estimator) podcastCaptions(feedLang string, ep podcast.Episode) bool {
 	return chosen != nil
 }
 
-// keyOrSlug 回傳 feedKey；媒體庫還沒有這個 feed 時用 slug 當候選（新增時才會決定最後的 key）。
-func keyOrSlug(key, slug string) string {
-	if key != "" {
-		return key
+// setDuration 記錄影音的長度。長度來自不可信的 feed 或平台：不是有限值、負數或超過 maxEstimateDurationS 時
+// 視為不知道長度（DurationS 為 nil），在 notes 說明，金額也不會因此變成無限大。
+func (it *EstimateItem) setDuration(d *float64) {
+	if d == nil {
+		return
 	}
-	return slug
+	if math.IsNaN(*d) || math.IsInf(*d, 0) || *d < 0 || *d > maxEstimateDurationS {
+		it.Notes = append(it.Notes, "影音宣稱的長度不合理，視為不知道長度。")
+		return
+	}
+	v := *d
+	it.DurationS = &v
 }
 
 // inLibrary 回報影音是否已在媒體庫中（垃圾桶中的不算）。
@@ -331,6 +414,9 @@ func (e *estimator) fallback(ctx context.Context, it *EstimateItem, platform str
 func (e *estimator) asrPrice(it *EstimateItem, model string) {
 	price, ok := cost.Lookup(groq.ID, model, cost.UnitAudioHour)
 	switch {
+	case e.groqCustomBase:
+		it.unknown = true
+		it.Notes = append(it.Notes, "Groq 使用自訂的 base_url，沒有內建單價，無法估算語音轉錄費用。")
 	case !ok:
 		it.unknown = true
 		it.Notes = append(it.Notes, "沒有 "+model+" 的內建單價，無法估算語音轉錄費用。")

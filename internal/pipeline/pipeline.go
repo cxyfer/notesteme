@@ -130,6 +130,9 @@ type Pipeline struct {
 
 	// uploadHolds 讓備份期間的永久刪除延後刪除上傳原始檔（OPS-R1），見 HoldUploads。
 	uploadHolds uploadHolds
+
+	// estimates 限制估價同時進行的 Probe 數（跨請求共用）。
+	estimates estimateLimiter
 }
 
 // New 建立 Pipeline。
