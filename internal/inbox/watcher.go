@@ -39,7 +39,7 @@ const (
 	maxDepth = 8
 )
 
-// maxFiles 是每輪最多處理幾個還沒判定的檔案；maxWalk 是每輪最多走訪幾個候選檔案（含已經判定過的）。
+// maxFiles 是每輪最多處理幾個還沒判定的檔案；maxWalk 是每輪最多走訪幾個項目（目錄、略過的檔案、已經判定過的檔案都算）。
 // 已經判定、內容沒變的檔案不算進 maxFiles：否則它們留在 inbox 中，每輪都佔滿名額，後面的檔案永遠輪不到。
 // 測試會調小它們。
 var (
@@ -142,7 +142,7 @@ func skipName(name string) bool {
 }
 
 // list 列出 inbox 中還沒判定（decided 回報 false）的候選檔案，依 (mtime, 名稱) 排序；
-// present 是走訪到的所有候選檔案（含已經判定的）。truncated 為 true 代表超過 maxFiles 或 maxWalk，清單不完整。
+// present 是走訪到的所有候選檔案（含已經判定的）。truncated 為 true 代表超過 maxFiles 或 maxWalk（走訪的項目數），清單不完整。
 // inbox 不存在（例如還沒掛載）時回傳 ok=false。
 func (w *Watcher) list(decided func(rel string, size int64, mtime time.Time) bool) (files []file, present map[string]bool, truncated, ok bool, err error) {
 	root, err := os.OpenRoot(w.Inbox)
@@ -154,15 +154,22 @@ func (w *Watcher) list(decided func(rel string, size int64, mtime time.Time) boo
 	}
 	defer root.Close()
 	present = map[string]bool{}
+	visited := 0
 	err = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if p == "." && err == nil {
+			return nil
+		}
+		// 走訪上限算所有項目（目錄、略過的檔案、symlink、讀不到的項目），
+		// 否則大量被略過的項目會讓每輪掃描走完整棵樹。
+		if visited++; visited > maxWalk {
+			truncated = true
+			return fs.SkipAll
+		}
 		if err != nil {
 			// 單一目錄或檔案讀不到（權限、剛好被刪除）：略過，不讓整輪失敗。
 			if d != nil && d.IsDir() {
 				return fs.SkipDir
 			}
-			return nil
-		}
-		if p == "." {
 			return nil
 		}
 		name := d.Name()
@@ -176,10 +183,6 @@ func (w *Watcher) list(decided func(rel string, size int64, mtime time.Time) boo
 		// symlink 與其他非一般檔案一律略過（不追蹤，也不會被當成影音）。
 		if !d.Type().IsRegular() || skipName(name) {
 			return nil
-		}
-		if len(present) >= maxWalk {
-			truncated = true
-			return fs.SkipAll
 		}
 		fi, err := d.Info()
 		if err != nil {
