@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
 )
 
@@ -132,6 +133,22 @@ func TestEstimateCustomGroqBaseURLHasNoPrice(t *testing.T) {
 		t.Fatalf("est = %+v, %v", est, err)
 	}
 	if it := est.Items[0]; srcOf(it) != "groq" || it.ASRUSD != nil || !hasNote(it, "自訂的 base_url") {
+		t.Errorf("item = %+v", it)
+	}
+}
+
+// serve 有服務金鑰庫時一律裝上 Supadata 的 client，但資料庫中可能沒有 key：
+// 處理時 Supadata 會記為 not_configured 並改用 Groq，估價也要略過它，估出 Groq 的費用。
+func TestEstimateSkipsSupadataWithoutStoredKey(t *testing.T) {
+	r, _, _ := estimateRig(t, func(d *Deps) {
+		d.Supadata = &supadata.Client{KeyFunc: func(context.Context) (string, error) { return "", nil }}
+	})
+	est, err := r.estimate(IngestRequest{URL: watch, Overrides: fallbackOverride("supadata", "groq")})
+	if err != nil || len(est.Items) != 1 {
+		t.Fatalf("est = %+v, %v", est, err)
+	}
+	it := est.Items[0]
+	if srcOf(it) != "groq" || !near(it.ASRUSD, roundUSD(600.0/3600*0.04)) || !hasNote(it, "已略過 supadata：沒有設定 API key。") {
 		t.Errorf("item = %+v", it)
 	}
 }

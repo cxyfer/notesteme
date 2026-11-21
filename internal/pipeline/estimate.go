@@ -150,6 +150,10 @@ type estimator struct {
 	// groqCustomBase 為 true 代表 Groq 設定了自訂的 base_url。
 	groqCustomBase bool
 
+	supadataOnce  sync.Once
+	supadataReady bool
+	supadataNote  string
+
 	groqOnce  sync.Once
 	groqReady bool
 	groqModel string
@@ -180,6 +184,33 @@ func (e *estimator) groqState(ctx context.Context) (ready bool, model, note stri
 		}
 	})
 	return e.groqReady, e.groqModel, e.groqNote
+}
+
+// supadataState 回報 Supadata 有沒有可用的 API key；整次估價只查一次。
+// serve 在有服務金鑰庫時一律裝上 Supadata 的 client，key 存在資料庫中，所以要實際查詢：
+// 沒有 key 時，處理時 Supadata 會記為 not_configured 並改用下一個來源，估價也要略過它。
+func (e *estimator) supadataState(ctx context.Context) (ready bool, note string) {
+	e.supadataOnce.Do(func() {
+		f, ok := e.p.fetchers[supadata.ID]
+		if !ok {
+			e.supadataNote = "已略過 supadata：沒有設定 API key。"
+			return
+		}
+		if f.configured == nil {
+			e.supadataReady = true
+			return
+		}
+		switch ok, err := f.configured(ctx); {
+		case err != nil:
+			e.p.log.Debug("估價時讀取 Supadata API key 失敗，視為沒有設定", "error", err.Error())
+			e.supadataNote = "已略過 supadata：無法確認 API key。"
+		case !ok:
+			e.supadataNote = "已略過 supadata：沒有設定 API key。"
+		default:
+			e.supadataReady = true
+		}
+	})
+	return e.supadataReady, e.supadataNote
 }
 
 // probeItems 對每個 Target 做 Probe 並估價；結果的順序與 targets 相同。
@@ -374,8 +405,8 @@ func (e *estimator) fallback(ctx context.Context, it *EstimateItem, platform str
 	for _, id := range e.lang.Fallback {
 		switch id {
 		case supadata.ID:
-			if _, ok := e.p.fetchers[supadata.ID]; !ok {
-				it.Notes = append(it.Notes, "已略過 supadata：沒有設定 API key。")
+			if ready, note := e.supadataState(ctx); !ready {
+				it.Notes = append(it.Notes, note)
 				continue
 			}
 			if !supadataPlatform(platform) {

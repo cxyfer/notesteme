@@ -96,7 +96,7 @@ YouTube 播放清單（ING-R4）展開時由 yt-dlp 列出清單內容：清單�
 - 估算花費（ING-R8，2026-11-21，ESTIMATE 切片實作時決定，待 owner 確認）：
   - `POST /api/estimate` 的 body 與 `POST /api/items` 相同（`url`、`parts`、`episodes`、`overrides`；`until` 忽略；`profile` 比照新增回 501）。辨識與展開共用新增的流程，錯誤碼也相同；不寫入資料庫，Podcast 也不建立 feed key 的頻道。本機檔案（`path`）還不支援，回 422 `invalid_input`。需要 `ingest` scope。
   - 回應：`items[{ref, title, duration_s, expected_source, asr_usd, source_usd, llm_usd, total_usd, requires_cookie, already_in_library, notes}]`、`total_usd`、`currency`（`USD`）、`prices_as_of`、`notes`。金額為 `null` 代表不知道，`0` 代表確定不用錢；`total_usd` 只加總已知的金額，有未知金額時 `notes` 帶「部分金額未知」。
-  - 每部影音以平台的 Probe 取得字幕軌與長度，依生效的 `language` 用與 transcript 步驟相同的規則選軌；選到平台字幕（或 Podcast 的 `<podcast:transcript>`）時 `asr_usd` 為 0。沒選到時，依 `fallback` 的順序找第一個有設定、支援這個平台的來源：Groq 以長度乘上內建單價（`whisper-large-v3-turbo` 0.04、`whisper-large-v3` 0.111 USD／音訊小時）；Supadata 以 credit 計價，`source_usd` 為 `null`。都沒有時 `expected_source` 為 `null`。
+  - 每部影音以平台的 Probe 取得字幕軌與長度，依生效的 `language` 用與 transcript 步驟相同的規則選軌；選到平台字幕（或 Podcast 的 `<podcast:transcript>`）時 `asr_usd` 為 0。沒選到時，依 `fallback` 的順序找第一個有設定（實際查詢 API key，沒有 key 的來源略過，與處理時記為 `not_configured` 一致）、支援這個平台的來源：Groq 以長度乘上內建單價（`whisper-large-v3-turbo` 0.04、`whisper-large-v3` 0.111 USD／音訊小時）；Supadata 以 credit 計價，`source_usd` 為 `null`。都沒有時 `expected_source` 為 `null`。
   - Podcast 的長度是 feed 宣稱的 `itunes:duration`，不下載音檔；實際費用以下載後量到的長度為準。`ref` 與新增一樣以 feed 網址查 feed key：已經新增過的 feed 用它的 key（可能是 `-2`），並據此標示 `already_in_library`；還沒新增過的 feed 用新增此刻會取得的候選 key（之後別的 feed 先新增時仍可能改變）。
   - 長度不是有限值、為負或超過 1000 小時時視為不知道長度（`duration_s` 為 `null`，金額未知），避免不可信的 feed 讓金額變成無限大。
   - Groq 設定了自訂的 `base_url`（可能是其他相容服務）時，內建單價不適用，`asr_usd` 為 `null`。
