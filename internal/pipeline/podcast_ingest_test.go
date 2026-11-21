@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/queue"
@@ -378,6 +379,34 @@ func TestIngestPodcastPrecheck(t *testing.T) {
 		r2.p.checkFn = func(ctx context.Context, u string) error { return netguard.CheckURL(ctx, netguard.Deps{}, u) }
 		if _, err := r2.ingestPodcast(showURL, "a", "b"); !errors.As(err, &pe) || pe.Msg != "只支援 http 與 https 網址。" {
 			t.Fatalf("err = %v", err)
+		}
+	})
+
+	t.Run("整體逾時：預檢卡住不拖住新增", func(t *testing.T) {
+		old := precheckTimeout
+		precheckTimeout = 50 * time.Millisecond
+		defer func() { precheckTimeout = old }()
+		feed := podFeed("The Show",
+			podEp{guid: "a", title: "A", audio: "https://slow.example.com/a.mp3"},
+			podEp{guid: "b", title: "B", audio: "https://other.example.com/b.mp3"},
+		)
+		r, _, _ := newPodcastRig(t, map[string]string{showURL: feed})
+		var checked []string
+		r.p.checkFn = func(ctx context.Context, u string) error {
+			checked = append(checked, u)
+			<-ctx.Done() // 模擬 DNS 一直沒有回應
+			return ctx.Err()
+		}
+		start := time.Now()
+		res, err := r.ingestPodcast(showURL, "a", "b")
+		if err != nil || len(res) != 2 {
+			t.Fatalf("預檢逾時不該讓新增失敗：%+v, %v", res, err)
+		}
+		if d := time.Since(start); d > 5*time.Second {
+			t.Errorf("新增花了 %v", d)
+		}
+		if len(checked) != 1 {
+			t.Errorf("逾時之後不再預檢：%v", checked)
 		}
 	})
 
