@@ -723,6 +723,7 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 		inv *pipeline.InvalidError
 		ni  *pipeline.NotImplementedError
 		up  *pipeline.UpstreamError
+		iu  *pipeline.InUseError
 	)
 	if pe := policyError(err); pe != nil {
 		return pe
@@ -737,7 +738,19 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 	case errors.Is(err, pipeline.ErrChannel):
 		return newError(http.StatusUnprocessableEntity, CodeChannel, err.Error())
 	case errors.As(err, &inv):
-		return newError(http.StatusUnprocessableEntity, CodeInvalidInput, inv.Error())
+		e := newError(http.StatusUnprocessableEntity, CodeInvalidInput, inv.Error())
+		e.Errors = inv.Fields
+		return e
+	case errors.As(err, &iu):
+		e := newError(http.StatusConflict, iu.Code, iu.Error())
+		e.UsedBy = iu.UsedBy
+		return e
+	case errors.Is(err, pipeline.ErrProfileNotFound), errors.Is(err, pipeline.ErrPromptNotFound), errors.Is(err, pipeline.ErrPromptVersionNotFound):
+		return newError(http.StatusNotFound, CodeNotFound, err.Error())
+	case errors.Is(err, pipeline.ErrProfileExists):
+		return newError(http.StatusConflict, CodeProfileExists, err.Error())
+	case errors.Is(err, pipeline.ErrBuiltinProfile):
+		return newError(http.StatusConflict, CodeBuiltinProfile, err.Error())
 	case errors.As(err, &ni):
 		return newError(http.StatusNotImplemented, CodeNotImplemented, ni.Error())
 	case errors.Is(err, pipeline.ErrInTrash):

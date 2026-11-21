@@ -9,9 +9,13 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 )
 
-// m2StubCases 是 M2 S0 契約第 4 節的 29 條路由；這份清單獨立於 production 的 m2Stubs，
-// 才抓得到 method、path、scope 寫錯。concrete 是帶入 path 參數後的實際路徑。
-var m2StubCases = []struct{ method, path, scope string }{
+// stubCase 是一條 501 stub 的預期：帶入 path 參數後的實際路徑與 scope。
+type stubCase struct{ method, path, scope string }
+
+// m2StubCases 是 M2 S0 契約第 4 節 29 條路由中，不屬於 PRF、PRM 的 14 條（含 playground 與 compare）；
+// 其餘 15 條在 m2_stubs_prf_test.go（9 條）與 m2_stubs_prm_test.go（6 條）。
+// 這份清單獨立於 production 的 m2Stubs，才抓得到 method、path、scope 寫錯。
+var m2StubCases = []stubCase{
 	{"POST", "/api/items/i1/subtitles/import", auth.ScopeIngest},
 	{"GET", "/api/ass-styles", auth.ScopeRead},
 	{"POST", "/api/ass-styles", auth.ScopeAdmin},
@@ -19,21 +23,6 @@ var m2StubCases = []struct{ method, path, scope string }{
 	{"PATCH", "/api/ass-styles/s1", auth.ScopeAdmin},
 	{"POST", "/api/ass-styles/preview", auth.ScopeRead},
 	{"POST", "/api/ass-styles/import", auth.ScopeAdmin},
-	{"GET", "/api/profiles", auth.ScopeRead},
-	{"POST", "/api/profiles", auth.ScopeAdmin},
-	{"GET", "/api/profiles/standard", auth.ScopeRead},
-	{"PATCH", "/api/profiles/standard", auth.ScopeAdmin},
-	{"DELETE", "/api/profiles/standard", auth.ScopeAdmin},
-	{"GET", "/api/profiles/standard/versions", auth.ScopeRead},
-	{"POST", "/api/profiles/standard/default", auth.ScopeAdmin},
-	{"GET", "/api/channels/c1/overrides", auth.ScopeRead},
-	{"PATCH", "/api/channels/c1/overrides", auth.ScopeAdmin},
-	{"GET", "/api/prompts", auth.ScopeRead},
-	{"POST", "/api/prompts", auth.ScopeAdmin},
-	{"DELETE", "/api/prompts/p1", auth.ScopeAdmin},
-	{"GET", "/api/prompts/p1/versions", auth.ScopeRead},
-	{"POST", "/api/prompts/p1/versions", auth.ScopeAdmin},
-	{"POST", "/api/prompts/p1/default", auth.ScopeAdmin},
 	{"POST", "/api/prompts/playground", auth.ScopeIngest},
 	{"POST", "/api/prompts/p1/compare", auth.ScopeIngest},
 	{"GET", "/api/glossaries/channel/c1", auth.ScopeRead},
@@ -43,13 +32,19 @@ var m2StubCases = []struct{ method, path, scope string }{
 	{"POST", "/api/tasks/t1/switch-executor", auth.ScopeIngest},
 }
 
-// TestM2StubRoutes 用同一份清單驗證每條 stub：
+// TestM2StubRoutes 驗證主清單的每條 stub，見 checkStubRoutes。
+func TestM2StubRoutes(t *testing.T) {
+	if len(m2StubCases) != 14 {
+		t.Fatalf("主清單應有 14 條路由（29 條減去 PRF 9 條、PRM 6 條），測試清單有 %d 條", len(m2StubCases))
+	}
+	checkStubRoutes(t, m2StubCases)
+}
+
+// checkStubRoutes 用同一份清單驗證每條 stub：
 // 沒有身分 401；token 缺 scope 403 並帶正確的 required_scope；scope 正確 501 not_implemented；
 // owner session（帶 CSRF）501。
-func TestM2StubRoutes(t *testing.T) {
-	if len(m2StubCases) != 29 {
-		t.Fatalf("契約第 4 節有 29 條路由，測試清單有 %d 條", len(m2StubCases))
-	}
+func checkStubRoutes(t *testing.T, cases []stubCase) {
+	t.Helper()
 	var svc *auth.Service
 	r := newItemsRigAPI(t, func(d *Deps) { svc = d.Auth })
 
@@ -76,7 +71,7 @@ func TestM2StubRoutes(t *testing.T) {
 		others[sc] = ct.Token
 	}
 
-	for _, c := range m2StubCases {
+	for _, c := range cases {
 		t.Run(c.method+" "+c.path, func(t *testing.T) {
 			// 沒有身分：401。
 			if rec := r.do(c.method, c.path, "", nil); rec.Code != http.StatusUnauthorized {
@@ -114,10 +109,16 @@ func otherScope(scope string) string {
 
 // production 的 m2Stubs 要和測試清單一一對應（method、path 樣板、scope），避免漏註冊或多註冊。
 func TestM2StubsMatchContract(t *testing.T) {
-	used := make([]int, len(m2Stubs))
-	for _, c := range m2StubCases {
+	checkStubsMatch(t, "m2Stubs", m2Stubs, m2StubCases)
+}
+
+// checkStubsMatch 檢查 stubs 與 cases 一一對應；name 只用在錯誤訊息。
+func checkStubsMatch(t *testing.T, name string, stubs []m2Stub, cases []stubCase) {
+	t.Helper()
+	used := make([]int, len(stubs))
+	for _, c := range cases {
 		n := 0
-		for i, s := range m2Stubs {
+		for i, s := range stubs {
 			if s.Method == c.method && pathMatches(s.Path, c.path) {
 				used[i]++
 				n++
@@ -130,12 +131,12 @@ func TestM2StubsMatchContract(t *testing.T) {
 			t.Errorf("%s %s 在 m2Stubs 中對應到 %d 條", c.method, c.path, n)
 		}
 	}
-	for i, s := range m2Stubs {
+	for i, s := range stubs {
 		if used[i] != 1 {
-			t.Errorf("m2Stubs 的 %s %s 沒有對應到契約的路由", s.Method, s.Path)
+			t.Errorf("%s 的 %s %s 沒有對應到契約的路由", name, s.Method, s.Path)
 		}
 		if s.ID == "" || s.Summary == "" {
-			t.Errorf("m2Stubs 項目不完整：%+v", s)
+			t.Errorf("%s 項目不完整：%+v", name, s)
 		}
 	}
 }

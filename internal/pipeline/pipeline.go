@@ -94,6 +94,10 @@ type Deps struct {
 	TrashRetention time.Duration
 	// ImplVersions 覆寫步驟的 impl_version（PIPE-R6），key 是步驟名稱；只給測試使用，nil 代表全用預設值。
 	ImplVersions map[string]int
+	// Providers 回答 LLM provider 存不存在（PRF-R4）；nil 代表不檢查 provider 是否存在。
+	Providers ProviderCatalog
+	// Prompts 解析 prompt 引用（PRM、PRF-R4）；nil 代表不檢查 prompt 是否存在，也不記錄 prompt 版本。
+	Prompts PromptResolver
 }
 
 // Pipeline 是影音處理的入口：API 呼叫 Ingest 與查詢方法，worker 呼叫 Handle。
@@ -133,6 +137,10 @@ type Pipeline struct {
 
 	// estimates 限制估價同時進行的 Probe 數（跨請求共用）。
 	estimates estimateLimiter
+
+	// providers、prompts 是驗證與 Compose 查詢外部資源用的（見 Deps）；可以是 nil。
+	providers ProviderCatalog
+	prompts   PromptResolver
 }
 
 // New 建立 Pipeline。
@@ -156,7 +164,7 @@ func New(d Deps) *Pipeline {
 	if retention <= 0 {
 		retention = DefaultTrashRetention
 	}
-	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version}
+	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, prompts: d.Prompts}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。
