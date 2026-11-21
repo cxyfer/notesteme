@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -225,15 +226,15 @@ func TestPodcastMetadataReplacesStaleEpisodeFile(t *testing.T) {
 	}
 
 	// 經過 pipeline 重跑並寫回：commit 之後只剩新檔，影音指向它。
+	// 前一次只執行、沒寫回的下載已經暫存了 episode.m4a，所以這次的檔名改用依內容命名的 episode-<sha8>.m4a。
 	if _, err := r.p.Rerun(context.Background(), it.ID, RerunRequest{From: StageMetadata, Until: StageMetadata}); err != nil {
 		t.Fatal(err)
 	}
 	r.run()
-	if got := r.mediaFiles(it); len(got) != 1 || got[0] != "episode.m4a" {
-		t.Errorf("媒體目錄 = %v，預期只有 episode.m4a", got)
-	}
-	if m, ok := readPodcastMeta(r.reload(it.ID).Metadata); !ok || m.Audio.File != "episode.m4a" {
-		t.Errorf("快照 = %+v", m.Audio)
+	got := r.mediaFiles(it)
+	m, ok := readPodcastMeta(r.reload(it.ID).Metadata)
+	if len(got) != 1 || !ok || m.Audio.File != got[0] || path.Ext(got[0]) != ".m4a" {
+		t.Errorf("媒體目錄 = %v，快照 = %+v；預期只剩快照所指的 .m4a", got, m.Audio)
 	}
 }
 
@@ -255,6 +256,34 @@ func TestDownloadEpisodeAudioKeepsOtherStagedEpisodes(t *testing.T) {
 	}
 	if got := strings.Join(r.mediaFiles(it), ","); got != "episode.m4a,episode.mp3" {
 		t.Errorf("媒體目錄 = %s，其他任務暫存的 episode.m4a 應保留", got)
+	}
+}
+
+// 另一個任務已暫存同名的 episode.mp3 時（兩個初次 metadata 任務並行），這次下載改用依內容命名的檔名，
+// 不能蓋掉對方的檔案（Codex P1）。
+func TestDownloadEpisodeAudioDoesNotOverwriteStagedSameName(t *testing.T) {
+	r := newPodRig(t)
+	it, enc := r.downloadFixture()
+	dir := r.mediaDir(it)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	staged := filepath.Join(dir, "episode.mp3")
+	if err := os.WriteFile(staged, []byte("STAGED-BY-OTHER-RUN"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.p.downloadEpisodeAudio(context.Background(), it, enc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(staged); string(b) != "STAGED-BY-OTHER-RUN" {
+		t.Errorf("episode.mp3 被蓋掉：%q", b)
+	}
+	if got.File == "episode.mp3" || !episodeFilePattern.MatchString(got.File) {
+		t.Errorf("檔名 = %q，預期依內容命名的 episode-<sha8>.mp3", got.File)
+	}
+	if files := strings.Join(r.mediaFiles(it), ","); files != "episode-"+got.SHA256[:8]+".mp3,episode.mp3" {
+		t.Errorf("媒體目錄 = %s", files)
 	}
 }
 

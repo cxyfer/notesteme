@@ -318,6 +318,41 @@ func TestPodcastTranscriptTriesRemainingTracksBeforeASR(t *testing.T) {
 	}
 }
 
+// 偏好的字幕軌無法使用、改由後面的字幕軌產生結果時，快取鍵要和偏好的字幕軌可用時不同（Codex P2）：
+// 否則後面字幕軌的成品占用偏好字幕軌的鍵，之後偏好字幕軌恢復了也會直接命中，來源紀錄卻記成偏好的字幕軌。
+func TestPodcastTranscriptCacheKeyIncludesDroppedTracks(t *testing.T) {
+	const ep42SRT = "https://media.example.com/show/ep42.srt"
+	tags := vttTag + `<podcast:transcript url="` + ep42SRT + `" type="application/x-subrip"/>`
+	r, _ := groqPodRig(t)
+	r.fm.duration = 4
+	r.serveShow(tags)
+	r.net.serve(ep42SRT, 200, srtEN)
+	it := r.ingestEpisode(StageMetadata)
+
+	r.net.serve(ep42Transcript, 404, "")
+	dropped, err := r.transcribe(it, groqLocalLang())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.net.serve(ep42Transcript, 200, vttEnding(10))
+	preferred, err := r.transcribe(it, groqLocalLang())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dropped.stage.CacheKey == preferred.stage.CacheKey {
+		t.Errorf("偏好字幕軌被放棄與可用時的快取鍵相同：%s", dropped.stage.CacheKey)
+	}
+	// 同樣被放棄的情況下鍵要穩定，重跑才命中。
+	r.net.serve(ep42Transcript, 404, "")
+	again, err := r.transcribe(it, groqLocalLang())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.stage.CacheKey != dropped.stage.CacheKey {
+		t.Errorf("相同情況的快取鍵不穩定：%s ≠ %s", again.stage.CacheKey, dropped.stage.CacheKey)
+	}
+}
+
 // 暫時性的錯誤（5xx、429、連線失敗）回傳錯誤讓步驟重試，不改用 ASR。
 func TestPodcastTranscriptRetryableErrorIsReturned(t *testing.T) {
 	for _, status := range []int{500, 503, 429} {
