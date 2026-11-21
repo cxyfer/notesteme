@@ -227,7 +227,7 @@
 
 ### 4.6 LLM（`steps/llm.go`）
 
-fixture 在 `features/fixtures/llm/<名稱>`，沒有 `.json` 時自動補上。步驟取自請求強制的 tool 或 schema 名稱 `notesteme_<stage>`，chunk 取自 `<transcript_data>` 的 `chunk`。請求數包含失敗的請求。`fails with HTTP` 優先於所有 `answers`；`for chunk` 優先於不指定 chunk 的 `answers`。`request N`（從 1 起算，依抵達順序）的「prompt」是解碼後的所有文字內容，加上 JSON 欄位名稱。「前綴」是第一個 `<transcript_data>` 之前的部分。
+fixture 在 `features/fixtures/llm/<名稱>`，沒有 `.json` 時自動補上。步驟取自請求強制的 tool 或 schema 名稱 `notesteme_<stage>`，chunk 取自 `<transcript_data>` 的 `chunk`。請求數包含失敗的請求。`fails with HTTP` 優先於所有 `answers`；`for chunk` 優先於不指定 chunk 的 `answers`。`request N`（從 1 起算，依抵達順序）的「prompt」是解碼後的所有文字內容，再加上整份請求 body（compact、不跳脫 HTML），所以 `contains` 也會比對到 schema、參數等 JSON 欄位名稱與值。「前綴」是真正的資料區塊（可解析的 `<transcript_data>`）之前的部分。
 
 | 步驟 | 意思 |
 |---|---|

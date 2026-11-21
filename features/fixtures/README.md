@@ -93,7 +93,7 @@ M2 的影音 fixture 與用途（限制由 `features/steps/processing_test.go` �
 | `yt-long01xxxxx` | en | 400 句，每 3 秒一句；文字固定 76 個 ASCII 字元，每句 20 tokens | LLM Background；LLM-R1 的 1-200、198-400 |
 | `yt-chap01xxxxx` | en | 三章 40、70、40 句的短句（約 8 tokens）；第 41 句從 05:00、第 111 句從 12:00 開始 | LLM-R1 章節切塊 |
 | `yt-long08xxxxx` | en | 1600 句，同 long01 的每句長度 | AGT Background 的 8 個 chunk |
-| `yt-talk01xxxxx` | en | 119 句，每 5 秒一句（約 10 分鐘），Kafka 主題，涵蓋 06:00–08:00 | PRF、PRM、TRN |
+| `yt-talk01xxxxx` | en | 120 句，每 5 秒一句（約 10 分鐘），Kafka 主題，涵蓋 06:00–08:00 | PRF、PRM、TRN |
 | `yt-zh001xxxxxx` | zh-Hans | 12 句簡體中文，主題是服務拆分 | COR-R4、SEG-R10 |
 | `yt-mix001xxxxx` | zh | 12 句中英夾雜 | COR-R5 |
 | `yt-tw001xxxxxx` | zh-Hant-TW | 10 句繁體中文 | TRN-R10 |

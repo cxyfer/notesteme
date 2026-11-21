@@ -76,8 +76,12 @@ func openaiBody(stage, system, user string) string {
 			map[string]any{"role": "user", "content": user},
 		},
 		"response_format": map[string]any{
-			"type":        "json_schema",
-			"json_schema": map[string]any{"name": ToolPrefix + stage, "strict": true, "schema": map[string]any{"type": "object"}},
+			"type": "json_schema",
+			"json_schema": map[string]any{"name": ToolPrefix + stage, "strict": true, "schema": map[string]any{
+				"type": "object", "additionalProperties": false,
+				"properties": map[string]any{"cues": map[string]any{"type": "array"}},
+				"required":   []string{"cues"},
+			}},
 		},
 	})
 	return string(b)
@@ -478,7 +482,7 @@ func TestTextDecodesEscapes(t *testing.T) {
 		fmt.Fprintf(&esc, `\u%04x`, r)
 	}
 	body := `{"model":"m","messages":[{"role":"user","content":"` + esc.String() + `"}],` +
-		`"response_format":{"type":"json_schema","json_schema":{"name":"notesteme_correct","strict":true,"schema":{"type":"object"}}}}`
+		`"response_format":{"type":"json_schema","json_schema":{"name":"notesteme_correct","strict":true,"schema":{"type":"object","additionalProperties":false}}}}`
 	call(t, s, "openai", "", body)
 	if txt := s.Requests("openai")[0].Text; !strings.Contains(txt, "資料區塊") {
 		t.Errorf("Text = %q", txt)
@@ -531,7 +535,11 @@ func TestWireViolations(t *testing.T) {
 		headers              map[string]string // 非 nil 時取代預設標頭
 		want                 string
 	}{
-		{"anthropic 缺 tool_choice", "anthropic", `{"model":"m","messages":[{"role":"user","content":"x"}],"tools":[{"name":"notesteme_correct"}]}`, nil, "tool_choice"},
+		{"anthropic 缺 tool_choice", "anthropic", `{"model":"m","max_tokens":100,"messages":[{"role":"user","content":"x"}],"tools":[{"name":"notesteme_correct"}]}`, nil, "tool_choice"},
+		{"anthropic 缺 max_tokens", "anthropic", strings.Replace(anthropicBody("correct", "s", user), `"max_tokens":4096,`, ``, 1), nil, "max_tokens"},
+		{"openai strict schema 缺 additionalProperties", "openai", strings.Replace(openaiBody("correct", "s", user), `"additionalProperties":false,`, ``, 1), nil, "additionalProperties"},
+		{"openai strict schema 的 required 不完整", "openai", strings.Replace(openaiBody("correct", "s", user), `"required":["cues"]`, `"required":[]`, 1), nil, "required"},
+		{"資料區塊的 cue 多了欄位", "openai", openaiBody("correct", "s", "校正。\n"+DataOpen+"\n"+`{"chunk":1,"chunks":1,"context":[],"cues":[{"i":1,"text":"x","start":1000}]}`+"\n"+DataClose), nil, "契約以外的欄位"},
 		{"anthropic tool 不在 tools", "anthropic", strings.Replace(anthropicBody("correct", "s", user), `"tools":[{"description":"d","input_schema":{"type":"object"},"name":"notesteme_correct"}]`, `"tools":[]`, 1), nil, "不在 tools"},
 		{"openai 缺 response_format", "openai", `{"model":"m","messages":[{"role":"user","content":"x"}]}`, nil, "response_format"},
 		{"openai strict 不是 true", "openai", strings.Replace(openaiBody("correct", "s", user), `"strict":true`, `"strict":false`, 1), nil, "strict"},
@@ -702,6 +710,21 @@ func TestEchoCuesGenerators(t *testing.T) {
 	if tc := out["term_candidates"].([]any); len(tc) != 1 || tc[0].(map[string]any)["term"] != "KRaft" {
 		t.Errorf("term_candidates = %v", out)
 	}
+	// 資料區塊的 cue 帶契約以外的欄位（例如 start、end）：echo 只保留 i 與 text
+	// （資料區塊本身違規，見 TestWireViolations）。
+	got, err := runEcho(GeneratorInput{HasData: true, Chunk: 1, Chunks: 1,
+		Cues: []map[string]any{{"i": json.Number("1"), "text": "kafca", "start": json.Number("1000")}}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	echoCues := got.(map[string]any)["cues"].([]map[string]any)
+	if len(echoCues) != 1 {
+		t.Fatalf("echo = %v", got)
+	}
+	if c := echoCues[0]; len(c) != 2 || c["i"] != json.Number("1") || c["text"] != "kafca" {
+		t.Errorf("echo 應只輸出 i 與 text：%v", c)
+	}
+
 	// 靜態輸出。
 	out = run("correct-ok.json", text("ignored"))
 	if n := len(out["cues"].([]any)); n != 4 {

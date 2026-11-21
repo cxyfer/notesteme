@@ -32,10 +32,10 @@ func llmPost(t *testing.T, w *World, url string, header map[string]string, body 
 }
 
 const (
-	anthropicBody = `{"model":"m","messages":[{"role":"user","content":"hi"}],` +
+	anthropicBody = `{"model":"m","max_tokens":100,"messages":[{"role":"user","content":"hi"}],` +
 		`"tools":[{"name":"notesteme_correct"}],"tool_choice":{"type":"tool","name":"notesteme_correct"}}`
 	openaiBody = `{"model":"m","messages":[{"role":"user","content":"hi"}],` +
-		`"response_format":{"type":"json_schema","json_schema":{"name":"notesteme_correct","strict":true,"schema":{"type":"object"}}}}`
+		`"response_format":{"type":"json_schema","json_schema":{"name":"notesteme_correct","strict":true,"schema":{"type":"object","additionalProperties":false}}}}`
 )
 
 // 預設有 anthropic 與 openai 的 key：環境變數帶入測試金鑰，fake 的主機要求各自的憑證，違規會讓 Check 失敗。

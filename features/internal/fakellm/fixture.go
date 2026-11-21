@@ -215,8 +215,9 @@ func checkEchoArgs(raw json.RawMessage) error {
 	return err
 }
 
-// runEcho 回傳 {"cues": <資料區塊的 cues，i 與 text 原樣>}，再依 args 處理：
+// runEcho 回傳 {"cues": <資料區塊的 cue，只保留 i 與 text>}，再依 args 處理：
 // drop_last 拿掉最後 N 句，extra 加入頂層欄位，replace 對 text 做字串取代（依 key 排序，結果才確定）。
+// 只保留契約規定的欄位：資料區塊若帶了其他欄位，產品的 schema 驗證會拒絕，echo 不該把它們帶進輸出。
 func runEcho(in GeneratorInput, raw json.RawMessage) (any, error) {
 	a, err := parseEchoArgs(raw)
 	if err != nil {
@@ -235,11 +236,8 @@ func runEcho(in GeneratorInput, raw json.RawMessage) (any, error) {
 	slices.Sort(keys)
 	cues := make([]map[string]any, 0, len(in.Cues)-a.DropLast)
 	for _, c := range in.Cues[:len(in.Cues)-a.DropLast] {
-		out := make(map[string]any, len(c))
-		for k, v := range c {
-			out[k] = v
-		}
-		if t, ok := out["text"].(string); ok {
+		out := map[string]any{"i": c["i"]}
+		if t, ok := c["text"].(string); ok {
 			for _, k := range keys {
 				t = strings.ReplaceAll(t, k, a.Replace[k])
 			}

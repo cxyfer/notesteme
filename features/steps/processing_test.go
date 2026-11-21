@@ -356,11 +356,11 @@ func TestChapterVideoFixture(t *testing.T) {
 	}
 }
 
-// talk01：約 120 句、每 5 秒一句，涵蓋 06:00–08:00（PRM-R6 的 playground）。
+// talk01：正好 120 句、每 5 秒一句，涵蓋 06:00–08:00（PRM-R6 的 playground，TRN-01 要求 120 句）。
 func TestTalkVideoFixture(t *testing.T) {
 	_, cues := loadM2Fixture(t, "yt:talk01xxxxx")
-	if len(cues) < 110 || len(cues) > 130 {
-		t.Fatalf("%d 句，預期約 120", len(cues))
+	if len(cues) != 120 {
+		t.Fatalf("%d 句，預期 120（TRN-01 的 cue 數）", len(cues))
 	}
 	inWindow := 0
 	for i, c := range cues {
@@ -457,6 +457,30 @@ func TestClientSendsWithTokenFromOrigin(t *testing.T) {
 	}
 	if s.last == nil || s.last.status != http.StatusUnauthorized {
 		t.Fatalf("無效 token 應回 401，得到 %+v", s.last)
+	}
+}
+
+// `from the origin`（access.go）帶 bearer token 打尚未實作的路由時，預期的 403 屬於 handler 的規則：
+// 路由回 501 時之後的狀態斷言是 pending（ADR-0015），不是 failed。沒有 token 時仍然失敗。
+func TestClientSendsWithTokenFromOriginPendsOnNotImplemented(t *testing.T) {
+	s := newTestScenario(t)
+	if err := s.startServer(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ownerIsSignedIn(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.aTokenWithScopes("agent", "read,agent"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.clientSendsWithTokenFromOrigin("POST /mcp", "agent", "https://evil.example.com"); err != nil {
+		t.Fatalf("clientSendsWithTokenFromOrigin：%v", err)
+	}
+	if s.last == nil || s.last.status != http.StatusNotImplemented || s.last.preRoute403 {
+		t.Fatalf("帶 token 的請求打未實作路由：status=%d preRoute403=%v，預期 501 且 preRoute403 為 false", s.last.status, s.last.preRoute403)
+	}
+	if err := s.responseStatusIs(http.StatusForbidden); !errors.Is(err, godog.ErrPending) {
+		t.Fatalf("預期 403 應該 pending，得到 %v", err)
 	}
 }
 

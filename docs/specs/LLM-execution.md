@@ -54,6 +54,10 @@
 - wire 契約（2026-11-21，M2 S0 切片的 fakellm 依此檢查；LLM client 實作時寫成 ADR，要修改的話 fakellm 一起改）：
   - 強制的 tool 或 schema 名稱是 `notesteme_<stage>`（Anthropic 用 `tools[].name` 加 `tool_choice`；OpenAI 用 `response_format.json_schema.name`）。
   - 字幕放在第一個 user message 的 `<transcript_data>` 區塊，內容是一行 JSON：`{chunk, chunks, context[], cues[]}`，`chunk` 從 1 起算。標題、說明、章節放在固定前綴的 `<video_metadata>` 區塊（細節由 LLM 切片決定）。
-  - Anthropic 請求帶 `anthropic-version: 2023-06-01`，端點 `POST /v1/messages`；OpenAI 端點 `POST /v1/chat/completions`。
+  - `cues[]` 與 `context[]` 的每一項只有 `i`（從 1 起算的句號）與 `text`；時間不給模型，由產品依 `i` 對回原本的 cue。fakellm 對多出的欄位記違規，`echo_cues` 也只輸出這兩個欄位。
+  - Anthropic 請求帶 `anthropic-version: 2023-06-01` 與 `max_tokens`（必填，大於 0），端點 `POST /v1/messages`；OpenAI 端點 `POST /v1/chat/completions`，strict 模式的 schema 最上層必須是 `type: object`、`additionalProperties: false`，`required` 列出所有屬性（真實 API 不符就回 400，fakellm 對這些記違規；更深層的 schema 不檢查）。
+  - 回應中沒有強制的 `tool_use` block（模型偶爾會直接回文字），或 OpenAI 的 `content` 不是合法 JSON 時，視為輸出驗證失敗（附「output was not valid JSON」重試，LLM-R4／R5），不是 API 錯誤。fixture `not-json` 模擬這種回應（2026-11-21，S0 審查時決定）。
+  - 資料區塊目前接受任何 user message 中的第一個（不限第一個 user message）；LLM 切片實作時一律放在第一個 user message。
 - L6：內建 provider `anthropic`、`openai` 的 API key 環境變數是 `NOTESTEME_ANTHROPIC_API_KEY`、`NOTESTEME_OPENAI_API_KEY`；其他 provider 是 `NOTESTEME_<ID 大寫，- 換成 _>_API_KEY`（2026-11-21，M2 S0 切片設計時決定）。
 - `the {s} chunks of {s} are:` 的資料來源：建議把 chunk 切分寫進來源紀錄的 `chunks[]`，由 LLM 切片決定（2026-11-21，M2 S0 切片設計時發現；S0 沒有資料來源，該步驟維持 pending）。
+- L1（需要 owner 決定，2026-11-21，M2 S0 審查時確認）：`Only the failed chunk is sent again` 的 `received 4 requests for "correct"` 應為 5。`llm.max_validation_retries: 2` 讓 chunk 2 共嘗試 3 次（`correct-wrong-count` 每次都錯），加上 chunk 1 的 1 次已是 4 次（同 `After the last retry` 場景的 `received 4 requests`）；之後只重跑 chunk 2 再多 1 次，合計 5。建議把場景改成 5；不改的話 LLM 切片實作後這個場景會失敗。

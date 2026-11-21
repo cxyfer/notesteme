@@ -121,7 +121,8 @@
       { "start": "00:09:36.000", "end": "00:09:40.000", "text": "State needs a changelog and a plan for recovery." },
       { "start": "00:09:41.000", "end": "00:09:45.000", "text": "Measure lag, plan capacity and test failures early." },
       { "start": "00:09:46.000", "end": "00:09:50.000", "text": "Thank you for listening, and enjoy the rest of the conference." },
-      { "start": "00:09:51.000", "end": "00:09:55.000", "text": "Questions are welcome at the end of the hallway." }
+      { "start": "00:09:51.000", "end": "00:09:55.000", "text": "Questions are welcome at the end of the hallway." },
+      { "start": "00:09:56.000", "end": "00:10:00.000", "text": "Slides and the sample code will be published next week." }
     ]
   }
 }

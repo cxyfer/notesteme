@@ -30,6 +30,7 @@ func llmSend(t *testing.T, s *Scenario, stage, user string) int {
 	t.Helper()
 	body, _ := json.Marshal(map[string]any{
 		"model":       "fixture-model",
+		"max_tokens":  4096,
 		"system":      "固定的系統指示 cache_control",
 		"messages":    []any{map[string]any{"role": "user", "content": user}},
 		"tools":       []any{map[string]any{"name": fakellm.ToolPrefix + stage}},
@@ -218,7 +219,7 @@ func TestProviderHasNoAPIKeyForLLM(t *testing.T) {
 	mustNil(t, s.World.LLM.Answer("anthropic", "correct", "correct-echo"))
 	mustNil(t, s.providerHasNoAPIKey("anthropic"))
 	body, _ := json.Marshal(map[string]any{
-		"model": "m", "messages": []any{map[string]any{"role": "user", "content": llmUserText(1, "x")}},
+		"model": "m", "max_tokens": 100, "messages": []any{map[string]any{"role": "user", "content": llmUserText(1, "x")}},
 		"tools":       []any{map[string]any{"name": "notesteme_correct"}},
 		"tool_choice": map[string]any{"type": "tool", "name": "notesteme_correct"},
 	})

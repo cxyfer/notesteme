@@ -415,11 +415,35 @@ func (p *provider) errorResult(status int, model string) result {
 var dataRE = regexp.MustCompile(`(?s)` + regexp.QuoteMeta(DataOpen) + `\s*(\{.*?\})\s*` + regexp.QuoteMeta(DataClose))
 
 // dataBlock 是 <transcript_data> 內的 JSON。cue 保留原樣（i 以 json.Number 保持數字）。
+// dataBlock 是 <transcript_data> 中的資料：chunk 編號、總數、重疊的前文與這一段的 cue。
+// cues 的每一項只包含 i（從 1 起算的句號）與 text（契約明定，見 LLM-execution.md）；
+// 多出的欄位記為 wire 違規，避免產品依賴沒有約定的欄位。
 type dataBlock struct {
 	Chunk   int              `json:"chunk"`
 	Chunks  int              `json:"chunks"`
 	Context []map[string]any `json:"context"`
 	Cues    []map[string]any `json:"cues"`
+}
+
+// validate 檢查資料區塊的欄位：cue 只能有 i 與 text，i 必須是正整數。
+func (d *dataBlock) validate() []string {
+	var errs []string
+	for j, c := range d.Cues {
+		for k := range c {
+			if k != "i" && k != "text" {
+				errs = append(errs, fmt.Sprintf("cues[%d] 有契約以外的欄位 %q（只能有 i 與 text）", j, k))
+			}
+		}
+		switch v := c["i"].(type) {
+		case json.Number:
+			if n, err := v.Int64(); err != nil || n < 1 {
+				errs = append(errs, fmt.Sprintf("cues[%d].i 必須是從 1 起算的整數", j))
+			}
+		default:
+			errs = append(errs, fmt.Sprintf("cues[%d].i 必須是從 1 起算的整數", j))
+		}
+	}
+	return errs
 }
 
 // parsed 是請求解析的結果；errs 是違反 wire 契約之處（空代表沒有）。
@@ -432,14 +456,46 @@ type parsed struct {
 
 type part struct{ role, text string }
 
+// checkStrictSchema 檢查 OpenAI strict 模式要求的 schema 形狀：最上層是 type object、
+// additionalProperties 為 false，而且 required 列出所有 properties 的 key。不符時回傳違規說明。
+func checkStrictSchema(raw json.RawMessage) []string {
+	var s struct {
+		Type                 string         `json:"type"`
+		Properties           map[string]any `json:"properties"`
+		Required             []string       `json:"required"`
+		AdditionalProperties *bool          `json:"additionalProperties"`
+	}
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return []string{"json_schema.schema 不是合法的 JSON：" + err.Error()}
+	}
+	var errs []string
+	if s.Type != "object" {
+		errs = append(errs, `json_schema.schema.type 必須是 "object"（strict 模式的限制）`)
+	}
+	if s.AdditionalProperties == nil || *s.AdditionalProperties {
+		errs = append(errs, "json_schema.schema.additionalProperties 必須是 false（strict 模式的限制）")
+	}
+	req := map[string]bool{}
+	for _, k := range s.Required {
+		req[k] = true
+	}
+	for k := range s.Properties {
+		if !req[k] {
+			errs = append(errs, fmt.Sprintf("json_schema.schema.required 必須列出所有屬性（缺少 %q，strict 模式的限制）", k))
+		}
+	}
+	return errs
+}
+
 // parseRequest 依 provider 的 wire format 解析請求；解析失敗的部分記在 errs，其餘欄位盡量填入。
 func parseRequest(id string, body []byte) parsed {
 	var pr parsed
 	var parts []part
 	var raw struct {
-		Model    string          `json:"model"`
-		System   json.RawMessage `json:"system"`
-		Messages []struct {
+		Model     string          `json:"model"`
+		MaxTokens int             `json:"max_tokens"`
+		System    json.RawMessage `json:"system"`
+		Messages  []struct {
 			Role    string          `json:"role"`
 			Content json.RawMessage `json:"content"`
 		} `json:"messages"`
@@ -478,6 +534,10 @@ func parseRequest(id string, body []byte) parsed {
 	var name string
 	switch id {
 	case providerAnthropic:
+		// Anthropic 的 max_tokens 是必填欄位，缺了真實 API 會回 400。
+		if raw.MaxTokens <= 0 {
+			pr.errs = append(pr.errs, "缺少 max_tokens（Anthropic 的必填欄位，必須大於 0）")
+		}
 		switch {
 		case raw.ToolChoice == nil || raw.ToolChoice.Type != "tool":
 			pr.errs = append(pr.errs, "缺少強制的 tool_choice（type 必須是 tool）")
@@ -503,6 +563,8 @@ func parseRequest(id string, body []byte) parsed {
 			}
 			if len(bytes.TrimSpace(js.Schema)) == 0 || string(bytes.TrimSpace(js.Schema)) == "null" {
 				pr.errs = append(pr.errs, "json_schema.schema 不可為空")
+			} else if js.Strict {
+				pr.errs = append(pr.errs, checkStrictSchema(js.Schema)...)
 			}
 		}
 	}
@@ -544,6 +606,7 @@ func parseRequest(id string, body []byte) parsed {
 				continue
 			}
 			pr.data, pr.chunk, dataAt = &blk, blk.Chunk, offsets[i]+m[0]
+			pr.errs = append(pr.errs, blk.validate()...)
 			break
 		}
 		if pr.data != nil {
