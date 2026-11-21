@@ -173,7 +173,7 @@ func Parse(r io.Reader) (*Feed, error) {
 	}
 	stack := []*frame{{name: root.Name, attrs: root.Attr}}
 	var (
-		cur      *Episode
+		cur      *epDraft
 		curFrame *frame
 		seen     = map[string]bool{}
 	)
@@ -191,7 +191,7 @@ func Parse(r io.Reader) (*Feed, error) {
 			stack = append(stack, f)
 			local := strings.ToLower(t.Name.Local)
 			if cur == nil && ((!atom && local == "item") || (atom && local == "entry")) {
-				cur, curFrame = &Episode{}, f
+				cur, curFrame = &epDraft{}, f
 			}
 		case xml.CharData:
 			stack[len(stack)-1].text.Write(t)
@@ -204,12 +204,10 @@ func Parse(r io.Reader) (*Feed, error) {
 			parent := stack[len(stack)-1]
 			switch {
 			case cur != nil && f == curFrame:
-				if cur.GUID == "" && cur.Enclosure != nil {
-					cur.GUID = cur.Enclosure.URL
-				}
-				if cur.GUID != "" && !seen[cur.GUID] {
-					seen[cur.GUID] = true
-					feed.Episodes = append(feed.Episodes, *cur)
+				ep := cur.finish()
+				if ep.GUID != "" && !seen[ep.GUID] {
+					seen[ep.GUID] = true
+					feed.Episodes = append(feed.Episodes, ep)
 				}
 				cur, curFrame = nil, nil
 			case cur != nil && parent == curFrame:
@@ -235,7 +233,7 @@ func applyFeedField(feed *Feed, f *frame, atom bool) {
 	text := strings.TrimSpace(f.text.String())
 	switch strings.ToLower(f.name.Local) {
 	case "title":
-		if feed.Title == "" && !isNS(f.name, nsItunes, "itunes") {
+		if feed.Title == "" && isStdNS(f.name) {
 			feed.Title = text
 		}
 	case "language":
@@ -256,7 +254,41 @@ func applyFeedField(feed *Feed, f *frame, atom bool) {
 	}
 }
 
-func applyEpisodeField(ep *Episode, f *frame, atom bool) {
+// epDraft 是解析中的一集：除了最後的 Episode，還記下需要「全部讀完再決定」的欄位。
+type epDraft struct {
+	Episode
+	itunesSummary string     // 沒有 description 時的後備
+	updated       *time.Time // Atom 的 updated，沒有 published 時的後備
+}
+
+// finish 套用後備欄位，回傳完成的 Episode。
+func (d *epDraft) finish() Episode {
+	ep := d.Episode
+	if ep.GUID == "" && ep.Enclosure != nil {
+		ep.GUID = ep.Enclosure.URL
+	}
+	if ep.Description == "" {
+		ep.Description = d.itunesSummary
+	}
+	if ep.PublishedAt == nil {
+		ep.PublishedAt = d.updated
+	}
+	return ep
+}
+
+// isStdNS 回報元素是否沒有 namespace，或屬於 RSS、Atom：標題與描述只收這些，
+// 避免 media:title、dc:title 之類排在前面時取代原本的欄位。
+func isStdNS(n xml.Name) bool {
+	space := strings.ToLower(strings.TrimSpace(n.Space))
+	switch space {
+	case "", "http://backend.userland.com/rss2", "http://purl.org/rss/1.0/": // 注意 Media RSS 的 URI 也含 "rss"，不能用子字串比對
+		return true
+	}
+	return strings.Contains(space, "atom")
+}
+
+func applyEpisodeField(d *epDraft, f *frame, atom bool) {
+	ep := &d.Episode
 	text := strings.TrimSpace(f.text.String())
 	local := strings.ToLower(f.name.Local)
 	switch {
@@ -270,8 +302,8 @@ func applyEpisodeField(ep *Episode, f *frame, atom bool) {
 				}
 			}
 		case "summary":
-			if ep.Description == "" {
-				ep.Description = text
+			if d.itunesSummary == "" {
+				d.itunesSummary = text
 			}
 		}
 		return
@@ -291,16 +323,20 @@ func applyEpisodeField(ep *Episode, f *frame, atom bool) {
 			ep.GUID = text
 		}
 	case "title":
-		if ep.Title == "" {
+		if ep.Title == "" && isStdNS(f.name) {
 			ep.Title = text
 		}
 	case "description", "summary", "content":
-		if ep.Description == "" {
+		if ep.Description == "" && isStdNS(f.name) {
 			ep.Description = text
 		}
-	case "pubdate", "published", "updated":
+	case "pubdate", "published":
 		if ep.PublishedAt == nil {
 			ep.PublishedAt = parseTime(text)
+		}
+	case "updated":
+		if d.updated == nil {
+			d.updated = parseTime(text)
 		}
 	case "link":
 		if atom {
