@@ -60,31 +60,35 @@ type audioDownloader struct {
 	media   *media.Tool
 	dataDir string
 	version string
-	// alive 在寫入最後的檔案之前確認影音還在媒體庫中（垃圾桶與永久刪除會清掉媒體目錄）；nil 代表不檢查。
-	alive func(ctx context.Context) error
+	// st 用來在寫入最後的檔案之前確認影音還在媒體庫中（垃圾桶與永久刪除會清掉媒體目錄）；nil 代表不檢查。
+	st *store.Store
 }
 
 // downloadEpisodeAudio 下載這一集的音檔到 <data>/media/<id>/（DEL-R2）；每次 metadata 都重新下載（沒有磁碟空間檢查，技術債）。
 // 失敗時錯誤只用 %w 包裝，netguard.PolicyMessage 才認得出被防護擋下的原因（classify 先判斷它）。
 func (p *Pipeline) downloadEpisodeAudio(ctx context.Context, it store.Item, enc podcast.Enclosure) (*episodeAudio, error) {
-	d := p.audioDownloader()
-	d.alive = func(ctx context.Context) error {
-		cur, err := p.st.Read().ItemByID(ctx, it.ID)
-		switch {
-		case errors.Is(err, store.ErrNotFound):
-			return errItemGone
-		case err != nil:
-			return err
-		case cur.DeletedAt != nil:
-			return errItemGone
-		}
+	return p.audioDownloader().download(ctx, it, enc, "")
+}
+
+// alive 確認影音還在媒體庫中：已不存在或在垃圾桶中回傳 errItemGone。
+func (d audioDownloader) alive(ctx context.Context, itemID string) error {
+	if d.st == nil {
 		return nil
 	}
-	return d.download(ctx, it, enc, "")
+	cur, err := d.st.Read().ItemByID(ctx, itemID)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return errItemGone
+	case err != nil:
+		return err
+	case cur.DeletedAt != nil:
+		return errItemGone
+	}
+	return nil
 }
 
 func (p *Pipeline) audioDownloader() audioDownloader {
-	return audioDownloader{http: p.http, media: p.media, dataDir: p.dataDir, version: p.version}
+	return audioDownloader{http: p.http, media: p.media, dataDir: p.dataDir, version: p.version, st: p.st}
 }
 
 // download 下載 enc 並存成 episode<ext>（name 非空時用它當檔名，ASR 重新下載時沿用快照記錄的檔名）。
@@ -152,10 +156,8 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 	if err != nil {
 		return nil, err
 	}
-	if d.alive != nil {
-		if err := d.alive(ctx); err != nil {
-			return nil, err
-		}
+	if err := d.alive(ctx, it.ID); err != nil {
+		return nil, err
 	}
 
 	finalURL := enc.URL
@@ -208,8 +210,8 @@ func audioExt(rawURL, mediaType string) string {
 	return ".bin"
 }
 
-// podcastAudioSource 是 Podcast 的 ASR 音訊來源：metadata 下載的音檔還在、大小與記錄相同就直接用，
-// 否則（被清掉或損毀）用快照記錄的 enclosure 重新下載。
+// podcastAudioSource 是 Podcast 的 ASR 音訊來源：metadata 下載的音檔還在就直接用，
+// 否則（被清掉）用快照記錄的 enclosure 重新下載。
 type podcastAudioSource struct{ dl audioDownloader }
 
 func (s podcastAudioSource) fetch(ctx context.Context, it store.Item, _ string) (string, map[string]string, error) {
@@ -226,7 +228,9 @@ func (s podcastAudioSource) fetch(ctx context.Context, it store.Item, _ string) 
 		return "", nil, podcastPermanent(msgPodcastNoSnapshot, nil)
 	}
 	cached := filepath.Join(dir, name)
-	if fi, err := os.Stat(cached); err == nil && fi.Mode().IsRegular() && fi.Size() == m.Audio.Bytes {
+	// 檔案驗證完成後才 rename 進來，所以存在且是一般檔案就可以沿用；不比對大小，
+	// 否則動態廣告讓大小改變之後，每次轉錄都會重新下載。
+	if fi, err := os.Stat(cached); err == nil && fi.Mode().IsRegular() {
 		return cached, nil, nil
 	}
 	enc := podcast.Enclosure{URL: m.Podcast.Enclosure.URL, Type: m.Podcast.Enclosure.Type, Length: m.Podcast.Enclosure.Length}

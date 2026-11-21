@@ -44,7 +44,7 @@ func audioSourceFor(d Deps, platform string) audioSource {
 	case platform == source.PlatformLocal && d.Files != nil:
 		return localAudio{localAdapter{files: d.Files, media: d.Media, dataDir: d.DataDir}}
 	case platform == source.PlatformPodcast && d.HTTP != nil:
-		return podcastAudioSource{audioDownloader{http: d.HTTP, media: d.Media, dataDir: d.DataDir, version: d.Version}}
+		return podcastAudioSource{audioDownloader{http: d.HTTP, media: d.Media, dataDir: d.DataDir, version: d.Version, st: d.Store}}
 	}
 	return nil
 }
