@@ -359,6 +359,28 @@ func TestIngestPodcastPrecheck(t *testing.T) {
 		}
 	})
 
+	t.Run("去重鍵含 scheme：同主機不同 scheme 各檢查一次", func(t *testing.T) {
+		feed := podFeed("The Show",
+			podEp{guid: "a", title: "A", audio: "https://one.example.com/a.mp3"},
+			podEp{guid: "b", title: "B", audio: "ftp://one.example.com/b.mp3"},
+			podEp{guid: "c", title: "C", audio: "https://one.example.com/c.mp3"},
+		)
+		r, _, checks := newPodcastRig(t, map[string]string{showURL: feed})
+		if _, err := r.ingestPodcast(showURL, "a", "b", "c"); err != nil {
+			t.Fatal(err)
+		}
+		if len(*checks) != 2 || (*checks)[0] != "https://one.example.com/a.mp3" || (*checks)[1] != "ftp://one.example.com/b.mp3" {
+			t.Errorf("預檢 = %v", *checks)
+		}
+		// 真正的預檢（先 https 後 ftp）：https 沒有 Resolver 只是預檢沒有結果，ftp 那一個要被擋下。
+		var pe *PolicyError
+		r2, _, _ := newPodcastRig(t, map[string]string{showURL: feed})
+		r2.p.checkFn = func(ctx context.Context, u string) error { return netguard.CheckURL(ctx, netguard.Deps{}, u) }
+		if _, err := r2.ingestPodcast(showURL, "a", "b"); !errors.As(err, &pe) || pe.Msg != "只支援 http 與 https 網址。" {
+			t.Fatalf("err = %v", err)
+		}
+	})
+
 	t.Run("沒有設定預檢", func(t *testing.T) {
 		r, _, _ := newPodcastRig(t, map[string]string{showURL: showFeed()})
 		r.p.checkFn = nil

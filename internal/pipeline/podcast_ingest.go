@@ -95,20 +95,22 @@ func (p *Pipeline) ingestPodcast(ctx context.Context, req IngestRequest) ([]Inge
 	})
 }
 
-// precheckEnclosures 對每個不同主機的音檔網址預檢一次：被防護擋下回 *PolicyError；
+// precheckEnclosures 對每個不同 scheme 與主機的音檔網址預檢一次：被防護擋下回 *PolicyError；
 // 其他錯誤（DNS 解析失敗、網址不完整等）只記 log，讓之後下載時的連線去回報。
 func (p *Pipeline) precheckEnclosures(ctx context.Context, eps []podcast.Episode) error {
 	checked := map[string]bool{}
 	for _, ep := range eps {
 		raw := ep.Enclosure.URL
-		host := raw
+		host, key := raw, raw
 		if u, err := url.Parse(raw); err == nil {
 			host = strings.ToLower(u.Hostname())
+			// 去重鍵含 scheme：同一個主機的 ftp 網址不能因為 https 已檢查過就略過。
+			key = strings.ToLower(u.Scheme) + "://" + host
 		}
-		if checked[host] {
+		if checked[key] {
 			continue
 		}
-		checked[host] = true
+		checked[key] = true
 		err := p.checkURL(ctx, raw)
 		if err == nil {
 			continue
