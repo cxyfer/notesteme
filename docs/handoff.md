@@ -83,7 +83,15 @@
     - queue：`llm` 類別上限 `Control.SetCap`；`TestControls.SerialLLM` 讓 llm 任務依序執行。
     - API：29 條 M2 路由的 501 stub（`internal/api/m2_stubs.go`，scope 檢查在讀 body 之前）；stage 回應加 `executor`；CLI `items show` 顯示 `skipped（not_configured）`、`blocked（reason）`；`--wait` 對沒有後續步驟的舊影音改看最後一個存在的步驟。
     - harness：`features/internal/fakellm`（Anthropic、OpenAI 的 wire 契約檢查、依序／依 chunk 回答、`Fail`、generator 登記與 `echo_cues`）、`features/steps/llm.go` 的 LLM 步驟、`features/fixtures/llm/` 9 個 fixture、`features/fixtures/items/` 7 個 M2 影音 fixture；`processed up to <M2 步驟>` 依規則 pending；`from the origin`；帶 bearer token 的請求視為完整憑證（預期 403 時 501 → pending）。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，187 passed、4 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
+  - M2 S1 處理方案＋S2 Prompt 庫（`feat/m2-prf`，疊在 S0 上；決策 D1～D16 記在 PRF、PRM 規格的待決問題）：
+    - 處理方案以名稱識別（`profiles`、migration 00010），內建 `default` 不能修改或刪除；`POST/GET/PATCH/DELETE /api/profiles`、`POST /api/profiles/{id}/default`。
+    - 設定分層 builtin → 全域 → 處理方案 → 頻道 → 單次覆寫 → 重跑（`internal/pipeline/layers.go`），物件依 RFC 7396 合併、陣列整個取代；快照記下各層（`layers`）。頻道層在 `metadata` 完成時才併入（D6）：頻道與快照記下的不同時重建快照，並把還沒開始的下游步驟改綁。
+    - 驗證（`internal/pipeline/schema.go`、`internal/validate`）：未知欄位、型別、列舉、provider、prompt 引用（類型要和步驟相符），422 回 `errors[{path,message}]`（D9）；完整性只檢查處理方案中寫出來的 `api` 步驟（D8）。
+    - 頻道覆寫：`PATCH /api/channels/{key}/overrides`，key 是 `<platform>:<external_id>`（D14）。
+    - Prompt 庫（`internal/prompts`、migration 00011）：版本只增不改，內建 prompt 嵌入在 `internal/prompts/builtin/<id>/v1.md`（D12）；引用寫成 `<id>`、`<id>@default`、`<id>@N`（D11）；變數在儲存時檢查；刪除時 `used_by` 依處理方案、`settings`、頻道的順序列出（D13）。
+    - harness：`features/steps/config.go` 的處理方案、prompt、頻道覆寫步驟（Given 累積，第一個請求前寫入）、`jsonmatch.go` 的子集比對（陣列完全相等）；CLI 步驟遇到尚未寫入的處理方案等設定會隱含啟動 server；`words` 欄位接受秒數（`1.5`）。
+    - 變異測試 10 個都會變紅。`DeleteProfile` 拿掉 builtin 檢查時，PRF-R7 場景仍然通過（內建的 `default` 同時是預設處理方案，「使用中」也回 409），只有單元測試 `TestProfiles_DeleteDefault409` 抓得到；`GET /api/profiles/{id}` 回傳合併了內建預設的 config 時，子集比對驗證不到。
+- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，188 passed、3 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
   |---|---|---|
@@ -91,7 +99,7 @@
   | CLI | 9 | 0 |
   | DEL | 19 | 2 |
   | GRD | 22 | 0 |
-  | ING | 23 | 1 |
+  | ING | 24 | 0 |
   | LIB | 10 | 0 |
   | NRM | 10 | 1 |
   | OPS | 14 | 0 |
@@ -100,8 +108,7 @@
   | SEC | 11 | 0 |
   | SRC | 19 | 0 |
 
-  AUTH、CLI、GRD、LIB、OPS、OUT、PIPE、SEC、SRC 的 M1 場景全部通過。剩下的 4 個 pending：
-  - **ING-R7（1 個）**：單次覆寫與處理方案。場景建立名為 `standard` 的處理方案，但 PRF 規格寫 M1 只有內建的 `default`，需要 owner 決定（建議 M1 先做處理方案的最小儲存與讀取）。
+  AUTH、CLI、GRD、ING、LIB、OPS、OUT、PIPE、SEC、SRC 的 M1 場景全部通過（ING-R7 隨 S1 通過）。剩下的 3 個 pending：
   - **NRM-R7（1 個）**：場景的影片原文語言是預設的 `en`，卻只有 `zh-Hans` 的自動字幕，預設的 `caption_priority` 不會選它，所以 `processed up to` 依規則 3 pending。場景要改（例如改成 `manual captions`，或宣告原文語言 `zh-Hans`），需要 owner 同意。
   - **DEL `@mcp`（2 個）**：需等 M2 的 MCP tool（`get_transcript`、`tools/list`）。
 
@@ -111,15 +118,18 @@
 
 ## 2. 下一步
 
-切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC（PR #1～#12，已合併）→ LOCAL（PR #13）→ PODCAST（PR #14，疊在 #13 上）→ ESTIMATE（PR #15，疊在 #14 上）→ M2 S0 骨架（疊在 #15 上）。
+切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC（PR #1～#12，已合併）→ LOCAL（PR #13）→ PODCAST（PR #14，疊在 #13 上）→ ESTIMATE（PR #15，疊在 #14 上）→ M2 S0 骨架（PR #16，疊在 #15 上）→ M2 S1 PRF＋S2 PRM（疊在 #16 上）。
 
 接下來：
 
-1. PR #13 與 PODCAST 的 PR 等 Codex 審查與 owner 合併（沒有明確授權不合併）。疊加的 PR：前一個合併後，把下一個的 base 改成 `master`，再用 `-s ours` 併入 master（見記憶中的疊加 PR 合併方式）。
-2. 剩下 M1 的 ING-R7、NRM-R7（見第 1 節，都需要 owner 決定）。
-3. M2 的切片順序（S0 之後）：並行 S1 PRF（含 ING-R7）、S2 PRM、S6a TRN 確定性（OpenCC）、S7 OUT 渲染 → S3 LLM 核心（provider client、限流、執行層）→ 並行 S4 COR、S5 SEG、S6b TRN LLM、S8 OUT publish → S9 MCP → S10 AGT → S11 收尾。S0 之後 `@M2` 是 117 個場景：115 pending、2 failed，兩個失敗都需要 owner 決定（MCP stdio 場景與 Background 衝突、OUT-R9 預覽的影音沒有字幕來源）。
-4. M2 需要 owner 決定的事（細節在各規格的待決問題）：X1 LLM 步驟預設值（S0 依建議 C：沒有 provider 就 skipped）、X7 兩個 Agent 同時領任務沒有場景、L1 LLM-R8 請求數 4 應為 5、L7 cost_ledger、G1 SEG-R2～R4 矛盾、P1 PRM-R7 body、F1 PRF-R2 Background、A1 AGT 並行上限、MCP stdio 場景搬到 CLI、O1～O4 OUT、COR-R4 斷言偏弱、SEG-R10 缺 answers、M2 路由的 scope（profiles 與 channel overrides 是否改 admin、ass-styles preview 是否改 ingest）。
-5. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
+1. PR #13～#16 與 S1/S2 的 PR 等 Codex 審查與 owner 合併（沒有明確授權不合併）。修正一律在最低的分支做，再依序 merge（不 rebase）到上面的分支。疊加的 PR：前一個合併後，把下一個的 base 改成 `master`，再用 `-s ours` 併入 master（見記憶中的疊加 PR 合併方式）。
+2. 剩下 M1 的 NRM-R7（見第 1 節，需要 owner 決定）。
+3. M2 的切片順序（S0 之後）：並行 S1 PRF（含 ING-R7）、S2 PRM、S6a TRN 確定性（OpenCC）、S7 OUT 渲染 → S3 LLM 核心（provider client、限流、執行層）→ 並行 S4 COR、S5 SEG、S6b TRN LLM、S8 OUT publish → S9 MCP → S10 AGT → S11 收尾。S0 之後 `@M2` 是 117 個場景：115 pending、2 failed，兩個失敗都需要 owner 決定（MCP stdio 場景與 Background 衝突、OUT-R9 預覽的影音沒有字幕來源）。S1/S2 之後是 15 passed、29 failed、73 pending：Background 的處理方案、prompt 步驟可以執行了，場景會停在後面的步驟。29 個失敗分類如下，除了 4 個需要 owner 決定的之外，都是之後的切片才會做的功能：
+   - 需要 owner 決定：PRF「Each layer」（F1）、PRF-R8（F5）、MCP stdio、OUT-R9 預覽。
+   - 缺 LLM fixture（S5、S6b 要補）：SEG 7 個、TRN 8 個、localize 1 個；缺 media fixture `speech-with-pause-at-6.2s.m4a`（S5）。
+   - 行為還沒做：COR glossary 傳給 ASR（S4）、SEG 手動字幕跳過 segment（S5，目前 `api` executor 回「還沒有實作」）、TRN OpenCC 3 個與沿用手動字幕軌 1 個（S6a）、OUT sidecar 對線上影音是 `skipped`（S8）。
+4. M2 需要 owner 決定的事（細節在各規格的待決問題）：X1 LLM 步驟預設值（S0 依建議 C：沒有 provider 就 skipped）、X7 兩個 Agent 同時領任務沒有場景、L1 LLM-R8 請求數 4 應為 5、L7 cost_ledger、G1 SEG-R2～R4 矛盾、P1 PRM-R7 body、P6 不帶版本號的 prompt 引用跟隨預設、F1 PRF-R2 Background、F2 PRF-R3 斷言驗證不到、F5 頻道層要等 metadata（場景加 `the worker runs until idle`）、O-4 PRF 的 M1 敘述、S1/S2 的 D1～D16 待確認（特別是 D6 頻道層在 metadata 才併入、D8 完整性只檢查處理方案、D13 硬刪除與 used_by 順序）、A1 AGT 並行上限、MCP stdio 場景搬到 CLI、O1～O4 OUT、COR-R4 斷言偏弱、SEG-R10 缺 answers、M2 路由的 scope（profiles 與 channel overrides 是否改 admin、ass-styles preview 是否改 ingest）。
+5. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。棘輪只涵蓋預設 tag（`@M1`）：M2 已通過的場景（例如 PRF、PRM 的 15 個）目前沒有棘輪保護，要靠每個切片手動跑 `-godog.tags=@M2` 比對；M2 完成、預設 tag 納入 `@M2` 時再一起進棘輪。
 6. `features/fixtures/items/` 有 `yt-pg100xxxxxx.json`、`yt-abc123xxxxx.json`（後者只在影片沒有任何字幕軌時用到，目前只有 SEC 的場景用得到）。
 7. 大切片的做法（LOCAL、PODCAST 用過）：architect 先出設計，主代理把設計凍結成契約檔（Go 介面、argv、marker 語法、資料模型），再分給檔案所有權不重疊的 builder 並行實作；harness 的工作包可以從一開始就並行。整合後主代理跑完整驗收與變異測試，另開 builder 只看 diff 與規格做審查。
 
@@ -354,7 +364,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 | OPS | 自我檢查用的已知影片 | M1 內建一部，不開放覆寫；M0 實測 |
 | OPS | 自我檢查的暫時性失敗是否回退 | 照規則回退，原因放在 `reason` |
 | LOCAL | steps.md 的語意補充（部分 `#` 表格依 `#` 比對；`processed up to` 規則 (1) 對 `local:` 也算外掛與內嵌字幕）、用路徑新增的延遲驗證、上傳上限 4 GiB、YouTube ASR 也走前處理、備份包含 uploads | 已依預設實作（PR #13），待 owner 確認 |
-| ING | ING-R7 的 `standard` 處理方案與 PRF 的「M1 只有 `default`」衝突 | 建議 M1 先做處理方案的最小儲存與讀取 |
+| PRF | O-4：PRF 開頭寫「M1 只有內建的 `default`」，但 ING-R7（M1）用了 `standard` | 處理方案已在 S1 實作，ING-R7 通過；建議修改 PRF 的敘述，需 owner 同意 |
 | NRM | NRM-R7 場景的字幕軌不會被 `caption_priority` 選中 | 建議改成 `manual captions` 或宣告原文語言 `zh-Hans`，需 owner 同意改 `.feature` |
 
 ## 8. 已確定的技術選擇
