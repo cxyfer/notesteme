@@ -405,11 +405,13 @@ func (e *estimator) fallback(ctx context.Context, it *EstimateItem, platform str
 	for _, id := range e.lang.Fallback {
 		switch id {
 		case supadata.ID:
-			if ready, note := e.supadataState(ctx); !ready {
-				it.Notes = append(it.Notes, note)
+			// 與處理時相同：先看來源支不支援這個平台，再看 API key；
+			// 不支援的來源就算設定了 key 也用不上，不該提示使用者去設定。
+			if !supadataPlatform(platform) {
 				continue
 			}
-			if !supadataPlatform(platform) {
+			if ready, note := e.supadataState(ctx); !ready {
+				it.Notes = append(it.Notes, note)
 				continue
 			}
 			src := supadata.ID

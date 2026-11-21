@@ -100,6 +100,7 @@ YouTube 播放清單（ING-R4）展開時由 yt-dlp 列出清單內容：清單�
   - Podcast 的長度是 feed 宣稱的 `itunes:duration`，不下載音檔；實際費用以下載後量到的長度為準。`ref` 與新增一樣以 feed 網址查 feed key：已經新增過的 feed 用它的 key（可能是 `-2`），並據此標示 `already_in_library`；還沒新增過的 feed 用新增此刻會取得的候選 key（之後別的 feed 先新增時仍可能改變）。
   - 長度不是有限值、為負或超過 1000 小時時視為不知道長度（`duration_s` 為 `null`，金額未知），避免不可信的 feed 讓金額變成無限大。
   - Groq 設定了自訂的 `base_url`（可能是其他相容服務）時，內建單價不適用，`asr_usd` 為 `null`。
+  - Supadata 不處理這個平台（Podcast、本機檔案）時，估價先判斷平台再看 API key，與處理時 `runFallback` 先看 `supports` 一致：不為用不上的來源在 `notes` 提示「沒有設定 API key」（2026-11-22，Codex 審查後決定）。Groq 沒有平台的 `supports` 判斷，處理時是先執行再回報沒有 key，估價維持先看 key。
   - 預計來源是預測：執行時平台字幕、feed 字幕或 Supadata 失敗，會改用下一個來源，實際費用可能不同。直播或還沒首播的影音在 `notes` 提醒要等結束後才會處理。
   - 資源上限：一次最多 Probe 100 部（播放清單更長時只估前 100 部，頂層 `notes` 說明總數）；整個程序同時最多 4 個估價 Probe（跨請求共用）；一次估價的 Probe 總時間上限 3 分鐘，用完時還沒輪到的影音標為未知（「估價逾時」）。
   - 一次估算多部影音時，單一部 Probe 失敗只在該項的 `notes` 說明；全部都失敗時，頂層 `notes` 也說明，仍回 200。只有一部時回傳錯誤。`llm_usd` 在 M2 實作 LLM 之前一律為 `null`。內建計價表在 `internal/cost`，使用者自訂單價屬於 M4（COST-03）。
