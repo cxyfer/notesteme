@@ -184,3 +184,18 @@ func TestCommandOutputJSONFirstLine(t *testing.T) {
 		t.Error("第二個物件不比對")
 	}
 }
+
+// 有尚未寫入的處理方案時，隱含啟動 server 寫入，不因為 server 沒有在執行而失敗。
+func TestOwnerRunsStartsServerForPendingConfig(t *testing.T) {
+	s := newTestScenario(t)
+	s.pendingConfig.pendingProfiles = []pendingProfile{{name: "standard", config: map[string]any{"language": map[string]any{"targets": []any{"zh-Hant-TW"}}}}}
+	if err := s.ownerRuns(`notesteme items ls --json`); err != nil {
+		t.Fatalf("ownerRuns：%v", err)
+	}
+	if s.server == nil {
+		t.Fatal("應該隱含啟動 server")
+	}
+	if s.hasPendingConfig() {
+		t.Error("處理方案應該已經寫入")
+	}
+}
