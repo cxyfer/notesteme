@@ -397,6 +397,36 @@ func TestResponseHeaderTimeoutIsRelaxedToTheRequestTimeout(t *testing.T) {
 	}
 }
 
+// relaxableTransport 模擬 netguard.NewClient 的 Transport（外層包了 scheme 檢查，自己複製內層並放寬標頭逾時）。
+type relaxableTransport struct {
+	base    http.RoundTripper
+	relaxed *time.Duration
+}
+
+func (r relaxableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return r.base.RoundTrip(req)
+}
+
+func (r relaxableTransport) WithResponseHeaderTimeout(d time.Duration) http.RoundTripper {
+	*r.relaxed = d
+	return r.base
+}
+
+// Transport 提供 WithResponseHeaderTimeout 時（netguard.NewClient），標頭逾時放寬到整個請求的逾時。
+func TestResponseHeaderTimeoutIsRelaxedForWrappedTransport(t *testing.T) {
+	srv := respond(200, okBody)
+	defer srv.Close()
+	var relaxed time.Duration
+	hc := &http.Client{Transport: relaxableTransport{base: srv.Client().Transport, relaxed: &relaxed}}
+	c := &Client{HTTP: hc, BaseURL: srv.URL, APIKey: testKey, timeout: 5 * time.Second}
+	if _, err := c.Transcribe(context.Background(), audioFile(t), ""); err != nil {
+		t.Fatalf("Transcribe = %v", err)
+	}
+	if relaxed != 5*time.Second {
+		t.Errorf("標頭逾時 = %v，應為整個請求的逾時 5s", relaxed)
+	}
+}
+
 // 不是 *http.Transport 的 Transport 原樣使用。
 func TestOtherTransportsAreKept(t *testing.T) {
 	srv := respond(200, okBody)

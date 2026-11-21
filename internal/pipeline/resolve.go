@@ -86,14 +86,15 @@ func (p *Pipeline) Resolve(ctx context.Context, raw string) (Resolution, error) 
 	return res, nil
 }
 
-// episodeInfo 把 feed 的一集轉成辨識結果中的形式。HasTranscript 只算我們讀得懂的格式（vtt、srt、json）。
+// episodeInfo 把 feed 的一集轉成辨識結果中的形式。HasTranscript 與 transcript 步驟的選軌一致（usableTranscript）：
+// vtt、srt、json，以及沒有宣告 type、要下載後看內容判斷的字幕。
 func episodeInfo(e podcast.Episode) Episode {
 	out := Episode{GUID: e.GUID, Title: e.Title, PublishedAt: e.PublishedAt, DurationS: e.DurationS}
 	if e.Enclosure != nil {
 		out.MediaType = e.Enclosure.Type
 	}
 	for _, t := range e.Transcripts {
-		if podcast.TranscriptFormat(t) != "" {
+		if usableTranscript(t) {
 			out.HasTranscript = true
 			break
 		}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -79,6 +80,25 @@ func TestPodcastTranscriptIsUsed(t *testing.T) {
 	}
 	if res.artifact.Lang != "en" || len(res.artifact.Timings) == 0 {
 		t.Errorf("artifact = %+v", res.artifact)
+	}
+}
+
+// 沒有宣告 type、網址也看不出格式的字幕：下載後看內容判斷，來源紀錄的 timing 依實際的格式記錄
+// （字詞級的 JSON 是 word，不是 cue）。
+func TestPodcastSniffedTranscriptFormatInProvenance(t *testing.T) {
+	const typeless = "https://media.example.com/show/ep42-transcript"
+	r := newPodRig(t)
+	r.fm.duration = 4
+	r.serveShow(`<podcast:transcript url="` + typeless + `"/>`)
+	r.net.serve(typeless, 200, `{"version":"1.0.0","segments":[{"startTime":0,"endTime":0.5,"body":"Hello"},{"startTime":0.5,"endTime":1,"body":"there."},{"startTime":2,"endTime":3.9,"body":"Bye."}]}`)
+	it := r.ingestEpisode(StageMetadata)
+
+	res, err := r.transcribe(it, DefaultLanguage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := provOf(t, res); p.Source != "podcast-transcript" || p.Timing != "word" {
+		t.Errorf("provenance = %+v，預期 timing 為 word", p)
 	}
 }
 
@@ -426,7 +446,7 @@ func TestPodcastAudioSource(t *testing.T) {
 	want := filepath.Join(r.mediaDir(it), "episode.mp3")
 	ctx := context.Background()
 
-	// 快取的音檔還在、大小相同：直接用，不下載。
+	// 快取的音檔還在：直接用，不下載。
 	path, _, err := src.fetch(ctx, it, t.TempDir())
 	if err != nil || path != want || r.net.count(audio42) != 1 {
 		t.Fatalf("快取：path = %q, %v，下載 %d 次", path, err, r.net.count(audio42))
@@ -442,12 +462,15 @@ func TestPodcastAudioSource(t *testing.T) {
 	if b, _ := os.ReadFile(want); string(b) != podAudioBody {
 		t.Errorf("內容 = %q", b)
 	}
-	// 大小和記錄不同（損毀）：同樣重新下載。
-	if err := os.WriteFile(want, []byte("trunc"), 0o600); err != nil {
+	// 大小和記錄不同（例如動態廣告）：檔案是驗證完才 rename 進來的，照樣沿用，不重新下載。
+	if err := os.WriteFile(want, []byte("different size"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err = src.fetch(ctx, it, t.TempDir()); err != nil || r.net.count(audio42) != 3 {
-		t.Fatalf("損毀：%v，下載 %d 次", err, r.net.count(audio42))
+	if path, _, err = src.fetch(ctx, it, t.TempDir()); err != nil || path != want || r.net.count(audio42) != 2 {
+		t.Fatalf("大小不同：path = %q, %v，下載 %d 次", path, err, r.net.count(audio42))
+	}
+	if b, _ := os.ReadFile(want); string(b) != "different size" {
+		t.Errorf("沿用的檔案被改動：%q", b)
 	}
 	// 重新下載失敗：包成 downloadError，記為 download_failed。
 	if err := os.Remove(want); err != nil {
@@ -462,6 +485,38 @@ func TestPodcastAudioSource(t *testing.T) {
 	// 沒有快照。
 	if _, _, err := src.fetch(ctx, store.Item{ID: it.ID, Metadata: json.RawMessage(`{}`)}, t.TempDir()); !isPermanent(err) {
 		t.Errorf("沒有快照：%v", err)
+	}
+}
+
+type readFunc func([]byte) (int, error)
+
+func (f readFunc) Read(p []byte) (int, error) { return f(p) }
+
+// 重新下載途中影音被移到垃圾桶：丟棄結果（errItemGone），不留下孤兒檔。
+func TestPodcastAudioSourceRedownloadChecksItemAlive(t *testing.T) {
+	r := newPodRig(t)
+	r.serveShow("")
+	it := r.ingestEpisode(StageMetadata)
+	src := podcastAudioSource{r.p.audioDownloader()}
+	if err := os.Remove(filepath.Join(r.mediaDir(it), "episode.mp3")); err != nil {
+		t.Fatal(err)
+	}
+	// 讀取音檔 body 的途中把影音丟進垃圾桶。
+	r.net.route(audio42, func(req *http.Request) (*http.Response, error) {
+		resp := stubResponse(req, 200, podAudioBody)
+		resp.Body = io.NopCloser(readFunc(func(p []byte) (int, error) {
+			if _, err := r.p.Trash(context.Background(), it.ID, TrashOptions{}); err != nil {
+				t.Error(err)
+			}
+			return copy(p, podAudioBody), io.EOF
+		}))
+		return resp, nil
+	})
+	if _, _, err := src.fetch(context.Background(), it, t.TempDir()); !errors.Is(err, errItemGone) {
+		t.Fatalf("err = %v，預期 errItemGone", err)
+	}
+	if got := r.mediaFiles(it); len(got) != 0 {
+		t.Errorf("媒體目錄 = %v，不該留下孤兒檔", got)
 	}
 }
 

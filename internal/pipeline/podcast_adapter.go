@@ -72,15 +72,29 @@ func readPodcastMeta(raw json.RawMessage) (podcastMeta, bool) {
 func podcastTracks(ts []podcastTranscript, feedLang string) []transcript.Track {
 	var out []transcript.Track
 	for _, t := range ts {
-		format := podcast.TranscriptFormat(podcast.Transcript{URL: t.URL, Type: t.Type})
-		if format == "" && strings.TrimSpace(t.Type) != "" {
+		pt := podcast.Transcript{URL: t.URL, Type: t.Type}
+		if !usableTranscript(pt) {
 			continue
 		}
+		format := podcast.TranscriptFormat(pt)
 		out = append(out, transcript.Track{
 			Lang: podcast.Lang(cmp.Or(t.Language, feedLang)), Kind: transcript.KindPodcast, Handle: t.URL, Format: format,
 		})
 	}
 	return out
+}
+
+// usableTranscript 回報 <podcast:transcript> 是不是我們可能讀得懂的字幕：宣告或副檔名是 vtt、srt、json，
+// 或沒有宣告 type、要下載後看內容判斷的。宣告了其他 type（html、plain 等）的不採用。
+// 辨識結果的 has_transcript 與 transcript 步驟的選軌共用它。
+func usableTranscript(t podcast.Transcript) bool {
+	return podcast.TranscriptFormat(t) != "" || strings.TrimSpace(t.Type) == ""
+}
+
+// formatSniffer 由下載後才判斷字幕格式的平台實作（Podcast）：回傳實際用來解析的格式，
+// 讓來源紀錄的 timing 依實際的格式記錄（沒有宣告 type 的 JSON 字幕也能記成 word 或 segment）。
+type formatSniffer interface {
+	fetchCuesWithFormat(ctx context.Context, t transcript.Track) ([]subtitle.Cue, string, error)
 }
 
 // podcastAdapter 是 Podcast 單集的平台功能：只讀 metadata 快照，字幕檔經對外 client 下載。
@@ -102,9 +116,15 @@ func (a podcastAdapter) probe(_ context.Context, it store.Item) (*probed, error)
 }
 
 func (a podcastAdapter) fetchCues(ctx context.Context, _ store.Item, t transcript.Track, _ string) ([]subtitle.Cue, error) {
+	cues, _, err := a.fetchCuesWithFormat(ctx, t)
+	return cues, err
+}
+
+// fetchCuesWithFormat 下載並解析字幕，回傳實際用來解析的格式（沒有宣告時看內容判斷）。
+func (a podcastAdapter) fetchCuesWithFormat(ctx context.Context, t transcript.Track) ([]subtitle.Cue, string, error) {
 	data, err := a.get(ctx, t.Handle)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	format := t.Format
 	if format == "" {
@@ -117,13 +137,14 @@ func (a podcastAdapter) fetchCues(ctx context.Context, _ store.Item, t transcrip
 	case "json":
 		cues, _, err = subtitle.ParsePodcastJSON(data)
 	default:
+		format = "srt"
 		cues, err = subtitle.ParseSRT(data)
 	}
 	if err != nil {
 		// 字幕檔的格式不對，重試也不會變好。
-		return nil, podcastPermanent("字幕檔無法解析。", err)
+		return nil, "", podcastPermanent("字幕檔無法解析。", err)
 	}
-	return cues, nil
+	return cues, format, nil
 }
 
 func (a podcastAdapter) toolVersions(context.Context) (map[string]string, error) { return nil, nil }

@@ -109,6 +109,49 @@ func (r *rig) itemCount() int {
 
 const video = "VIDEO-content-A"
 
+// 每輪的處理上限只算還沒判定的檔案：已經新增過、仍留在 inbox 中的檔案不佔名額，
+// 超過上限的檔案在之後的掃描輪到，不會永遠被前面的檔案擋住。
+func TestScanCapSkipsDecidedFiles(t *testing.T) {
+	oldFiles := maxFiles
+	maxFiles = 2
+	t.Cleanup(func() { maxFiles = oldFiles })
+	r := newRig(t)
+	for _, name := range []string{"a.mp4", "b.mp4", "c.mp4"} {
+		r.put(name, video+name, time.Minute)
+	}
+	r.run()
+	if n := r.itemCount(); n != 2 {
+		t.Fatalf("第一輪應該只處理 2 個：%d", n)
+	}
+	r.run()
+	if n := r.itemCount(); n != 3 {
+		t.Fatalf("第二輪應該處理剩下的檔案：%d", n)
+	}
+	// 已經判定的檔案仍在 inbox 中：紀錄保留。
+	for _, name := range []string{"a.mp4", "b.mp4", "c.mp4"} {
+		if _, ok := r.entry(name); !ok {
+			t.Errorf("%s 的紀錄不見了", name)
+		}
+	}
+}
+
+// 走訪上限：超過時清單不完整，消失檔案的紀錄不刪（避免誤刪沒走訪到的檔案）。
+func TestScanWalkCapKeepsEntries(t *testing.T) {
+	r := newRig(t)
+	r.put("a.mp4", video+"a", time.Minute)
+	r.put("b.mp4", video+"b", time.Minute)
+	r.run()
+	oldWalk := maxWalk
+	maxWalk = 1
+	t.Cleanup(func() { maxWalk = oldWalk })
+	r.run()
+	for _, name := range []string{"a.mp4", "b.mp4"} {
+		if _, ok := r.entry(name); !ok {
+			t.Errorf("%s 的紀錄不應被刪除", name)
+		}
+	}
+}
+
 // 第一次看到時修改時間已經很久以前：馬上穩定，直接新增，origin 為 inbox。
 func TestStableOnFirstSight(t *testing.T) {
 	r := newRig(t)

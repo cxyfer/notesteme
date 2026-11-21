@@ -34,6 +34,10 @@ func TestCanonicalURL(t *testing.T) {
 		"  https://feeds.example.com/show.xml  ":     "https://feeds.example.com/show.xml",
 		"https://[::1]:8443/feed":                    "https://[::1]:8443/feed",
 		"https://user:pw@feeds.example.com/Show.xml": "https://user:pw@feeds.example.com/Show.xml",
+		// 主機根目錄的 feed：有沒有結尾的 / 是同一個資源。
+		"https://feeds.example.com":      "https://feeds.example.com/",
+		"https://feeds.example.com/":     "https://feeds.example.com/",
+		"https://feeds.example.com?id=7": "https://feeds.example.com/?id=7",
 	} {
 		got, err := CanonicalURL(in)
 		if err != nil || got.String() != want {

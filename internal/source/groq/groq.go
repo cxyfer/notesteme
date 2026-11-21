@@ -218,11 +218,18 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*R
 	// Groq 要轉錄完才回標頭，長音檔會超過 Transport 預設的 ResponseHeaderTimeout（netguard 為 30 秒），
 	// 所以複製 Transport 並把標頭逾時放寬到整個請求的逾時；DialContext 等 netguard 的防護原樣保留。
 	// Transport 不是 *http.Transport 時（例如測試替身）維持原樣，無法調整標頭逾時。
-	if tr, ok := hc.Transport.(*http.Transport); ok {
+	switch tr := hc.Transport.(type) {
+	case *http.Transport:
 		tr = tr.Clone()
 		tr.ResponseHeaderTimeout = c.requestTimeout()
 		defer tr.CloseIdleConnections() // 複本只用這一次，結束時關掉閒置連線
 		hc.Transport = tr
+	case interface {
+		WithResponseHeaderTimeout(time.Duration) http.RoundTripper
+	}:
+		// netguard.NewClient 的 Transport 外層多了 scheme 檢查，由它自己複製內層並放寬逾時。
+		hc.Transport = tr.WithResponseHeaderTimeout(c.requestTimeout())
+		defer hc.CloseIdleConnections()
 	}
 	resp, err := hc.Do(req)
 	if err != nil {

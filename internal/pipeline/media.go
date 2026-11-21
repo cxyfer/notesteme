@@ -21,6 +21,24 @@ var (
 	ErrMediaMissing = errors.New("找不到這部影音的檔案，可能已被移動或刪除。")
 )
 
+// MediaETag 回傳媒體檔的 ETag（含引號）；不能確定雜湊對應目前的內容時回傳空字串，
+// 由 http.ServeContent 改用 Last-Modified 判斷條件請求。
+// 上傳的副本不可變，有雜湊就用。用路徑加入的檔案可能在同一路徑被替換，而雜湊只在探測時更新：
+// 只有目前的 size 與 mtime 和記錄雜湊時的相同才用雜湊，否則舊的 If-None-Match 會得到 304，
+// If-Range 也會把不同版本的內容拼在一起。
+func MediaETag(it store.Item, fi os.FileInfo) string {
+	if it.ContentSHA256 == "" {
+		return ""
+	}
+	if it.Origin != store.OriginUpload {
+		rec := recordedLocalStat(it.Metadata)
+		if rec == nil || fi == nil || *rec != (localStat{Size: fi.Size(), MtimeNS: fi.ModTime().UnixNano()}) {
+			return ""
+		}
+	}
+	return `"` + it.ContentSHA256 + `"`
+}
+
 // MediaFile 開啟影音的媒體檔，供 API 以 http.ServeContent 串流。呼叫端必須關閉回傳的檔案。
 //
 // 錯誤：store.ErrNotFound（沒有這部影音）、*InTrashError（在垃圾桶中，DEL-R1）、ErrNoMedia、

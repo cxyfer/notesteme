@@ -5,9 +5,11 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cxyfer/notesteme/internal/netguard"
 )
@@ -216,6 +218,17 @@ func TestParseLatin1(t *testing.T) {
 	}
 }
 
+// Windows-1252 的 0x80–0x9F 是彎引號、破折號等標點，不是 C1 控制字元；宣告 ISO-8859-1 的 feed 也同樣處理（同 WHATWG）。
+func TestParseWindows1252(t *testing.T) {
+	for _, enc := range []string{"windows-1252", "cp1252", "ISO-8859-1"} {
+		body := "<?xml version=\"1.0\" encoding=\"" + enc + "\"?><rss><channel><title>\x93Caf\xe9\x94 \x97 it\x92s \x80 5</title></channel></rss>"
+		f, err := Parse(strings.NewReader(body))
+		if want := "“Café” — it’s € 5"; err != nil || f.Title != want {
+			t.Errorf("%s：title = %q, %v，預期 %q", enc, f.Title, err, want)
+		}
+	}
+}
+
 type rtFunc func(*http.Request) (*http.Response, error)
 
 func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
@@ -254,5 +267,128 @@ func TestFetch(t *testing.T) {
 	blocked := &http.Client{Transport: rtFunc(func(*http.Request) (*http.Response, error) { return nil, netguard.ErrBlockedAddress })}
 	if _, err := Fetch(ctx, blocked, "https://feeds.example.com/x"); !errors.Is(err, netguard.ErrBlockedAddress) {
 		t.Errorf("被擋：%v", err)
+	}
+}
+
+// XML 巢狀超過 64 層：停止解析並回 ErrNotFeed，不能因為深層巢狀配置大量記憶體。
+func TestParseRejectsDeepNesting(t *testing.T) {
+	const bombSize = 4 << 20
+	bomb := "<rss><channel>" + strings.Repeat("<a>", bombSize/3)
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	_, err := Parse(strings.NewReader(bomb))
+	runtime.ReadMemStats(&after)
+	if !errors.Is(err, ErrNotFeed) {
+		t.Fatalf("err = %v，預期 ErrNotFeed", err)
+	}
+	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > 32<<20 {
+		t.Errorf("解析 %d bytes 的巢狀配置了 %d MiB", len(bomb), alloc>>20)
+	}
+
+	// 深度剛好在上限內（rss、channel 加上 62 層）仍可解析，含這之前的 item。
+	ok := `<rss><channel><item><guid>g</guid><enclosure url="https://m.example.com/a.mp3"/></item>` +
+		strings.Repeat("<a>", 62) + strings.Repeat("</a>", 62) + `</channel></rss>`
+	feed, err := Parse(strings.NewReader(ok))
+	if err != nil || len(feed.Episodes) != 1 {
+		t.Fatalf("深度 64：%+v, %v", feed, err)
+	}
+	// 超過一層就拒絕。
+	tooDeep := `<rss><channel><item><guid>g</guid></item>` + strings.Repeat("<a>", 63) + strings.Repeat("</a>", 63) + `</channel></rss>`
+	if _, err := Parse(strings.NewReader(tooDeep)); !errors.Is(err, ErrNotFeed) {
+		t.Errorf("深度 65：err = %v", err)
+	}
+}
+
+// 標題與描述只收沒有 namespace、RSS 或 Atom 的元素：media:title、dc:title 排在前面也不會取代標題。
+func TestParseTitleAndDescriptionIgnoreForeignNamespaces(t *testing.T) {
+	body := `<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+<channel>
+<media:title>Wrong Show</media:title>
+<title>The Show</title>
+<item>
+  <guid>a</guid>
+  <media:title>Wrong</media:title>
+  <dc:title>Wrong too</dc:title>
+  <media:description>Wrong description</media:description>
+  <media:content url="https://x.test/video.mp4"/>
+  <itunes:summary>Fallback summary</itunes:summary>
+  <title>Right</title>
+  <description>Right description</description>
+</item>
+<item><guid>b</guid><media:title>Only media</media:title><itunes:summary>Summary only</itunes:summary></item>
+</channel></rss>`
+	f, err := Parse(strings.NewReader(body))
+	if err != nil || len(f.Episodes) != 2 {
+		t.Fatalf("%+v, %v", f, err)
+	}
+	if f.Title != "The Show" {
+		t.Errorf("feed title = %q", f.Title)
+	}
+	if ep := f.Episodes[0]; ep.Title != "Right" || ep.Description != "Right description" {
+		t.Errorf("ep a = %+v", ep)
+	}
+	// 沒有標題時不拿 media:title 湊數；itunes:summary 只在沒有 description 時當後備。
+	if ep := f.Episodes[1]; ep.Title != "" || ep.Description != "Summary only" {
+		t.Errorf("ep b = %+v", ep)
+	}
+
+	atom := `<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+<media:title>Wrong</media:title><title>Atom Show</title>
+<entry><id>1</id><media:title>Wrong</media:title><title>Entry</title><media:content url="x"/><summary>Sum</summary></entry></feed>`
+	f, err = Parse(strings.NewReader(atom))
+	if err != nil || f.Title != "Atom Show" || len(f.Episodes) != 1 || f.Episodes[0].Title != "Entry" || f.Episodes[0].Description != "Sum" {
+		t.Fatalf("atom：%+v, %v", f, err)
+	}
+}
+
+// Atom 的 published 優先於 updated，不論順序。
+func TestParseAtomPublishedBeatsUpdated(t *testing.T) {
+	for name, order := range map[string]string{
+		"updated 在前":   `<updated>2025-12-01T00:00:00Z</updated><published>2025-10-01T00:00:00Z</published>`,
+		"published 在前": `<published>2025-10-01T00:00:00Z</published><updated>2025-12-01T00:00:00Z</updated>`,
+	} {
+		f, err := Parse(strings.NewReader(`<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>1</id>` + order + `</entry></feed>`))
+		if err != nil || len(f.Episodes) != 1 {
+			t.Fatalf("%s：%+v, %v", name, f, err)
+		}
+		if got := f.Episodes[0].PublishedAt; got == nil || !got.Equal(time.Date(2025, 10, 1, 0, 0, 0, 0, time.UTC)) {
+			t.Errorf("%s：publishedAt = %v", name, got)
+		}
+	}
+	// 只有 updated 時用它。
+	f, _ := Parse(strings.NewReader(`<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>1</id><updated>2025-12-01T00:00:00Z</updated></entry></feed>`))
+	if got := f.Episodes[0].PublishedAt; got == nil || !got.Equal(time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("只有 updated：%v", got)
+	}
+}
+
+// 不可信欄位的長度：guid 超過 1 KiB 的集略過；title 截到 1 KiB、description 截到 64 KiB（依 rune 邊界）。
+func TestParseLimitsUntrustedFieldLengths(t *testing.T) {
+	long := strings.Repeat("g", 1025)
+	body := `<rss><channel><title>` + strings.Repeat("字", 1000) + `</title>
+<item><guid>` + long + `</guid><title>skipped</title></item>
+<item><guid>` + strings.Repeat("g", 1024) + `</guid><title>` + strings.Repeat("字", 1000) + `</title><description>` + strings.Repeat("é", 40000) + `</description></item>
+<item><title>no guid</title><enclosure url="https://m.test/` + strings.Repeat("a", 1100) + `.mp3"/></item>
+</channel></rss>`
+	f, err := Parse(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Episodes) != 1 {
+		t.Fatalf("episodes = %d，guid 過長的集與用過長音檔網址當 guid 的集都要略過", len(f.Episodes))
+	}
+	ep := f.Episodes[0]
+	if len(ep.GUID) != 1024 {
+		t.Errorf("guid 長度 = %d，剛好 1 KiB 應保留", len(ep.GUID))
+	}
+	if len(ep.Title) > 1024 || len(ep.Title) < 1024-3 || !utf8.ValidString(ep.Title) {
+		t.Errorf("title %d bytes，valid = %v", len(ep.Title), utf8.ValidString(ep.Title))
+	}
+	if len(ep.Description) > 64<<10 || len(ep.Description) < 64<<10-1 || !utf8.ValidString(ep.Description) {
+		t.Errorf("description %d bytes，valid = %v", len(ep.Description), utf8.ValidString(ep.Description))
+	}
+	if len(f.Title) > 1024 || !utf8.ValidString(f.Title) {
+		t.Errorf("feed title %d bytes", len(f.Title))
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/podcast"
 	"github.com/cxyfer/notesteme/internal/source"
@@ -107,21 +108,32 @@ func (p *Pipeline) expandPodcast(ctx context.Context, req IngestRequest) (ingest
 	}}, nil
 }
 
-// precheckEnclosures 對每個不同主機的音檔網址預檢一次：被防護擋下回 *PolicyError；
+// precheckTimeout 是 precheckEnclosures 整體的逾時；變數是為了讓測試縮短。
+var precheckTimeout = 10 * time.Second
+
+// precheckEnclosures 對每個不同 scheme 與主機的音檔網址預檢一次：被防護擋下回 *PolicyError；
 // 其他錯誤（DNS 解析失敗、網址不完整等）只記 log，讓之後下載時的連線去回報。
 func (p *Pipeline) precheckEnclosures(ctx context.Context, eps []podcast.Episode) error {
+	// 整體逾時：許多主機的 DNS 都很慢時，預檢不能拖住新增；逾時之後略過剩下的，連線時仍會檢查（GRD-R2）。
+	pctx, cancel := context.WithTimeout(ctx, precheckTimeout)
+	defer cancel()
 	checked := map[string]bool{}
 	for _, ep := range eps {
+		if pctx.Err() != nil {
+			break
+		}
 		raw := ep.Enclosure.URL
-		host := raw
+		host, key := raw, raw
 		if u, err := url.Parse(raw); err == nil {
 			host = strings.ToLower(u.Hostname())
+			// 去重鍵含 scheme：同一個主機的 ftp 網址不能因為 https 已檢查過就略過。
+			key = strings.ToLower(u.Scheme) + "://" + host
 		}
-		if checked[host] {
+		if checked[key] {
 			continue
 		}
-		checked[host] = true
-		err := p.checkURL(ctx, raw)
+		checked[key] = true
+		err := p.checkURL(pctx, raw)
 		if err == nil {
 			continue
 		}
@@ -131,6 +143,10 @@ func (p *Pipeline) precheckEnclosures(ctx context.Context, eps []podcast.Episode
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		if pctx.Err() != nil {
+			p.log.Debug("音檔位址預檢逾時，略過剩下的", "host", host)
+			break
 		}
 		p.log.Debug("音檔位址預檢沒有結果，略過", "host", host, "error", err.Error())
 	}

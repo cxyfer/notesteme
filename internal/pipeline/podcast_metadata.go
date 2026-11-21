@@ -17,7 +17,7 @@ import (
 // 抓取 feed（it.URL）、找到這一集、下載音檔到 <data>/media/<id>/（記錄 sha256 與 ffprobe 的實際長度），
 // 然後把這一集的資訊與 transcript 清單寫成快照（podcastMeta），之後的步驟只讀它。
 //
-// 錯誤分類：被防護擋下的錯誤原樣傳出（classify 轉成 permanent 並說明原因）；feed 回 404／410、內容已不是 feed、
+// 錯誤分類：被防護擋下的錯誤原樣傳出（classify 轉成 permanent 並說明原因）；feed 回 4xx（408、429 除外）、內容已不是 feed、
 // feed 中已經沒有這一集、音檔 4xx 是 permanent；其餘（連線失敗、5xx、429）可以重試。
 func (p *Pipeline) runPodcastMetadata(ctx context.Context, it store.Item, lang Language) (result, error) {
 	if p.http == nil {
@@ -98,7 +98,7 @@ func (p *Pipeline) runPodcastMetadata(ctx context.Context, it store.Item, lang L
 }
 
 // podcastFeedError 把重新抓取 feed 的錯誤分類（metadata 步驟）：防護錯誤原樣傳出；
-// HTTP 404、410 與內容不再是 feed 是 permanent；其餘可以重試。
+// HTTP 4xx（408、429 除外）與內容不再是 feed 是 permanent；其餘可以重試。
 func podcastFeedError(err error) error {
 	if _, ok := netguard.PolicyMessage(err); ok {
 		return err
@@ -107,6 +107,10 @@ func podcastFeedError(err error) error {
 	switch {
 	case errors.As(err, &he) && (he.StatusCode == http.StatusNotFound || he.StatusCode == http.StatusGone):
 		return podcastPermanent(fmt.Sprintf("這個 feed 已經不存在（HTTP %d）。", he.StatusCode), err)
+	case errors.As(err, &he) && he.StatusCode >= 400 && he.StatusCode < 500 &&
+		he.StatusCode != http.StatusRequestTimeout && he.StatusCode != http.StatusTooManyRequests:
+		// 401、403 等 4xx 重試也不會成功，與音檔、字幕的分類一致。
+		return podcastPermanent(fmt.Sprintf("這個 feed 無法讀取（HTTP %d）。", he.StatusCode), err)
 	case errors.Is(err, podcast.ErrNotFeed):
 		return podcastPermanent("這個網址現在不是 Podcast feed。", err)
 	}

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -512,5 +513,57 @@ func TestPodcastMetadataRebindingBlocked(t *testing.T) {
 	}
 	if audioHits != 0 {
 		t.Errorf("內網的音檔伺服器被請求了 %d 次", audioHits)
+	}
+}
+
+// feed 回 4xx（408、429 除外）是 permanent，與音檔、字幕的分類一致；408、429、5xx 可以重試。
+func TestPodcastMetadataFeed4xxIsPermanent(t *testing.T) {
+	r := newPodRig(t)
+	it, _ := r.downloadFixture()
+	for status, want := range map[int]errclass.Class{
+		400: errclass.ClassPermanent, 401: errclass.ClassPermanent, 403: errclass.ClassPermanent, 451: errclass.ClassPermanent,
+		408: errclass.ClassRetryable, 429: errclass.ClassRetryable, 500: errclass.ClassRetryable, 503: errclass.ClassRetryable,
+	} {
+		r.net.serve(showURL, status, "")
+		_, err := r.p.runPodcastMetadata(context.Background(), it, DefaultLanguage())
+		if err == nil {
+			t.Fatalf("HTTP %d：應該失敗", status)
+		}
+		res := r.p.classify(store.Task{Attempts: 1, MaxAttempts: 5}, err)
+		if errclass.Class(res.state.ErrorClass) != want {
+			t.Errorf("HTTP %d：%s，預期 %s", status, res.state.ErrorClass, want)
+		}
+		if want == errclass.ClassPermanent && !strings.Contains(res.state.Message, fmt.Sprint(status)) {
+			t.Errorf("HTTP %d：訊息 %q 應包含狀態碼", status, res.state.Message)
+		}
+	}
+}
+
+// 程序崩潰遺留的 .episode-*.part 在下一次下載開始前清掉；剛寫入的（可能是進行中的下載）與其他檔案不動。
+func TestDownloadEpisodeAudioRemovesStaleParts(t *testing.T) {
+	r := newPodRig(t)
+	it, enc := r.downloadFixture()
+	dir := r.mediaDir(it)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old, fresh, other := filepath.Join(dir, ".episode-111.part"), filepath.Join(dir, ".episode-222.part"), filepath.Join(dir, "notes.txt")
+	for _, f := range []string{old, fresh, other} {
+		if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	past := time.Now().Add(-time.Hour)
+	for _, f := range []string{old, other} {
+		if err := os.Chtimes(f, past, past); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := r.p.downloadEpisodeAudio(context.Background(), it, enc); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(r.mediaFiles(it), ",")
+	if got != ".episode-222.part,episode.mp3,notes.txt" {
+		t.Errorf("媒體目錄 = %s", got)
 	}
 }
