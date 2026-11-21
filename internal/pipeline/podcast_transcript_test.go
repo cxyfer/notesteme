@@ -287,6 +287,12 @@ func TestPodcastTranscriptTriesRemainingTracksBeforeASR(t *testing.T) {
 		{"解析失敗後用下一條", func(r *podRig) { r.net.serve(ep42Transcript, 200, "WEBVTT\n\nnot a timing line --> x\nhi\n") },
 			func(r *podRig) { r.net.serve(ep42SRT, 200, srtEN) },
 			[]string{"podcast-transcript:unavailable:permanent", "podcast-transcript:used:"}, 0},
+		{"空的字幕軌改用下一條", func(r *podRig) { r.net.serve(ep42Transcript, 200, "WEBVTT\n\n") },
+			func(r *podRig) { r.net.serve(ep42SRT, 200, srtEN) },
+			[]string{"podcast-transcript:rejected:empty", "podcast-transcript:used:"}, 0},
+		{"全部是空的才用 ASR", func(r *podRig) { r.net.serve(ep42Transcript, 200, "WEBVTT\n\n") },
+			func(r *podRig) { r.net.serve(ep42SRT, 200, "") },
+			[]string{"podcast-transcript:rejected:empty", "podcast-transcript:rejected:empty", "groq:used:"}, 1},
 		{"全部失敗才用 ASR", func(r *podRig) { r.net.serve(ep42Transcript, 404, "") }, func(r *podRig) { r.net.serve(ep42SRT, 403, "") },
 			[]string{"podcast-transcript:unavailable:permanent", "podcast-transcript:unavailable:permanent", "groq:used:"}, 1},
 	} {

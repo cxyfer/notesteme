@@ -256,6 +256,18 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		if len(cues) > 0 {
 			break
 		}
+		if isPodcast {
+			// Podcast 宣告的字幕軌是空的：和抓不到一樣，記為 rejected（empty）後改用下一條宣告的字幕軌，
+			// 都不能用才改用 fallback（ASR）。
+			p.log.Warn("Podcast 字幕是空的，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle)
+			reject("empty")
+			cuesLoaded = false
+			stage.CacheKey = keyFor(chosen == nil)
+			if res, ok := reuse(); ok {
+				return res, nil
+			}
+			continue
+		}
 		for i := range decisions {
 			if decisions[i].State == transcript.StateUsed {
 				decisions[i].State, decisions[i].Reason = transcript.StateRejected, "empty"
