@@ -21,9 +21,6 @@ import (
 // estimateConcurrency 是同時對平台 Probe 的上限（播放清單可能有很多部）。
 const estimateConcurrency = 4
 
-// sourcePodcastTranscript 是 Podcast feed 附的字幕（steps.md 第 3 節）。
-const sourcePodcastTranscript = "podcast-transcript"
-
 // EstimateItem 是估價結果中的一部影音。金額欄位為 nil 代表「不知道」，與 0（確定不用錢）不同。
 type EstimateItem struct {
 	Ref   string
@@ -232,14 +229,30 @@ func (e *estimator) podcastItems(ctx context.Context, s *podcastSelection) []Est
 			it.AlreadyInLibrary = e.inLibrary(ctx, source.Target{Platform: source.PlatformPodcast, ExternalID: podcast.ExternalID(key, ep.GUID)})
 		}
 		it.DurationS = ep.DurationS
-		if source.Implemented(sourcePodcastTranscript) && episodeInfo(ep).HasTranscript {
-			e.platformCaptions(&it, sourcePodcastTranscript)
+		if e.podcastCaptions(s.feed.Language, ep) {
+			e.platformCaptions(&it, transcript.SourcePodcastTranscript)
 		} else {
 			e.fallback(ctx, &it, source.PlatformPodcast)
 		}
 		items = append(items, it)
 	}
 	return items
+}
+
+// podcastCaptions 回報 transcript 步驟會不會選到這一集的 <podcast:transcript>：
+// 與 transcript 步驟相同，用 feed 的語言（或字幕的語言）推斷原文語言，再依 caption_priority 選軌。
+func (e *estimator) podcastCaptions(feedLang string, ep podcast.Episode) bool {
+	if !source.Implemented(transcript.SourcePodcastTranscript) {
+		return false
+	}
+	ts := make([]podcastTranscript, 0, len(ep.Transcripts))
+	for _, t := range ep.Transcripts {
+		ts = append(ts, podcastTranscript{URL: t.URL, Type: t.Type, Language: t.Language, Rel: t.Rel})
+	}
+	tracks := podcastTracks(ts, feedLang)
+	originalLang, _ := inferOriginalLang(source.PlatformPodcast, podcast.Lang(feedLang), tracks, e.lang)
+	chosen, _ := selectTracks(source.PlatformPodcast, tracks, originalLang, e.lang)
+	return chosen != nil
 }
 
 // keyOrSlug 回傳 feedKey；媒體庫還沒有這個 feed 時用 slug 當候選（新增時才會決定最後的 key）。

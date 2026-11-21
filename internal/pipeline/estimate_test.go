@@ -424,6 +424,33 @@ func TestEstimatePodcastEpisodes(t *testing.T) {
 	}
 }
 
+// Podcast 的 feed 字幕依 transcript 步驟的選軌規則判斷：讀得懂、語言相符才不計 ASR；
+// HTML 或語言不符（feed 是 en、字幕只有 ja）的集走 fallback。
+func TestEstimatePodcastTranscriptSelection(t *testing.T) {
+	feed := podFeed("The Show",
+		podEp{guid: "vtt-en", title: "A", audio: audio41, extra: `<itunes:duration>3600</itunes:duration><podcast:transcript url="https://media.example.com/a.vtt" type="text/vtt" language="en"/>`},
+		podEp{guid: "html", title: "B", audio: audio41, extra: `<itunes:duration>3600</itunes:duration><podcast:transcript url="https://media.example.com/b.html" type="text/html"/>`},
+		podEp{guid: "vtt-ja", title: "C", audio: audio41, extra: `<itunes:duration>3600</itunes:duration><podcast:transcript url="https://media.example.com/c.vtt" type="text/vtt" language="ja"/>`},
+	)
+	r, _, _ := newPodcastRig(t, map[string]string{showURL: feed})
+	r.p.groq = &fakeGroq{model: groq.DefaultModel, baseURL: groq.DefaultBaseURL}
+	est, err := r.p.Estimate(context.Background(), IngestRequest{URL: showURL, Episodes: []string{"vtt-en", "html", "vtt-ja"}})
+	if err != nil || len(est.Items) != 3 {
+		t.Fatalf("est = %+v, %v", est, err)
+	}
+	want := []struct {
+		src string
+		asr float64
+	}{{"podcast-transcript", 0}, {"groq", 0.04}, {"groq", 0.04}}
+	for i, w := range want {
+		it := est.Items[i]
+		if srcOf(it) != w.src || it.ASRUSD == nil || math.Abs(*it.ASRUSD-w.asr) > 1e-6 {
+			t.Errorf("item %d（%s）= source %q、asr %v，想要 %q、%v", i, it.Ref, srcOf(it), it.ASRUSD, w.src, w.asr)
+		}
+	}
+	r.noWrites()
+}
+
 // 已經新增過的 Podcast 單集標示 already_in_library。
 func TestEstimatePodcastAlreadyInLibrary(t *testing.T) {
 	r, _, _ := newPodcastRig(t, map[string]string{showURL: showFeed()})
