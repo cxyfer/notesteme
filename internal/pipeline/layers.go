@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/validate"
 )
 
 // Layers 是一份生效設定的組成（PRF-R2），原樣存進 config_snapshots.layers_json。
@@ -34,22 +36,195 @@ type ChannelLayer struct {
 	Overrides map[string]any `json:"overrides"`
 }
 
-// Compose 依 D5 的順序合併各層並驗證，結果和 BuildEffective(l.Global, l.Profile.Config, l.Channel.Overrides, l.Item, l.Run) 相同。
+// Compose 依 D5 的順序合併各層並驗證（沿用 BuildEffective：內建預設 → Global → Profile → Channel → Item → Run），
+// 再依 D11 為會執行的 LLM 步驟解析 prompt 引用，把實際用到的版本寫進快照該步驟的 prompt_version、prompt_sha256。
 //
-// TODO(WP-2)：依 D11 為會執行的 LLM 步驟解析 prompt，寫入 prompt_version、prompt_sha256。
-// 契約階段只包住 BuildEffective，行為與 M2 S0 完全相同（Profile 與 Channel 層目前沒有呼叫端）。
+// p.prompts 是 nil 時不解析（快照與沒有 prompt 庫時相同）；解析失敗時留空，不讓新增失敗（執行時才讓該步驟失敗）。
 func (p *Pipeline) Compose(ctx context.Context, l Layers) (Effective, error) {
-	_ = ctx
-	return BuildEffective(l.Global, l.Profile.Config, l.Channel.Overrides, l.Item, l.Run)
+	eff, err := BuildEffective(l.Global, l.Profile.Config, l.Channel.Overrides, l.Item, l.Run)
+	if err != nil {
+		return nil, err
+	}
+	if p.prompts == nil {
+		return eff, nil
+	}
+	return p.resolveStagePrompts(ctx, eff)
+}
+
+// resolveStagePrompts 只為會執行的 LLM 步驟（executor 是 api 或 agent，而且不是 skipped）解析 prompt（D11）。
+func (p *Pipeline) resolveStagePrompts(ctx context.Context, eff Effective) (Effective, error) {
+	stages, ok := cloneValue(eff["stages"]).(map[string]any)
+	if !ok {
+		return eff, nil
+	}
+	for _, stage := range Stages {
+		if !IsLLMStage(stage) {
+			continue
+		}
+		res, err := ResolveExecutor(eff, stage)
+		if err != nil {
+			return nil, err
+		}
+		// skipped 與 opencc 都不會用到 prompt。
+		if res.Skip || res.Executor == ExecutorOpenCC || res.Prompt == "" {
+			continue
+		}
+		entry, ok := stages[stage].(map[string]any)
+		if !ok {
+			continue
+		}
+		rp, err := p.prompts.ResolvePrompt(ctx, res.Prompt)
+		if err != nil {
+			// 引用不存在或版本不存在：留空，S3 執行時再讓該步驟以 permanent 失敗。
+			p.log.Warn("解析 prompt 失敗，快照不記錄版本", "stage", stage, "prompt", res.Prompt, "error", err)
+			continue
+		}
+		entry["prompt_version"] = rp.Version
+		entry["prompt_sha256"] = rp.SHA256
+	}
+	out := make(Effective, len(eff))
+	for k, v := range eff {
+		out[k] = v
+	}
+	out["stages"] = stages
+	return out, nil
 }
 
 // currentLayers 讀取目前的各層：全域（DB）、處理方案（profile 為空時用預設處理方案）、
 // 頻道（channelID 為空時沒有頻道層）。處理方案不存在時回傳 *InvalidError，Fields 為 [{profile, …}]。
-//
-// TODO(WP-2)：實作（M2 S1/S2 設計第 4.1 節）。
+// item 與 run 是呼叫端給的影音層與重跑層（nil 視為空）。
 func (p *Pipeline) currentLayers(ctx context.Context, r *store.Repo, profile, channelID string, item, run map[string]any) (Layers, error) {
-	_, _, _, _, _, _ = ctx, r, profile, channelID, item, run
-	return Layers{}, &NotImplementedError{What: "處理方案的分層設定"}
+	global, err := p.globalConfig(ctx)
+	if err != nil {
+		return Layers{}, err
+	}
+	pl, err := p.profileLayer(ctx, r, profile)
+	if err != nil {
+		return Layers{}, err
+	}
+	l := Layers{
+		Global: global, Profile: pl, Channel: ChannelLayer{Overrides: map[string]any{}},
+		Item: orEmpty(item), Run: orEmpty(run),
+	}
+	if channelID != "" {
+		ch, err := r.ChannelByID(ctx, channelID)
+		if err != nil {
+			return Layers{}, err
+		}
+		ov, err := decodeOverrides(ch.Overrides)
+		if err != nil {
+			return Layers{}, err
+		}
+		l.Channel = ChannelLayer{ID: ch.ID, Overrides: orEmpty(ov)}
+	}
+	return l, nil
+}
+
+// profileLayer 讀出處理方案目前的版本；name 為空時用預設處理方案（D7）。不存在時回傳 path 為 profile 的 *InvalidError。
+func (p *Pipeline) profileLayer(ctx context.Context, r *store.Repo, name string) (ProfileLayer, error) {
+	if name == "" {
+		var err error
+		if name, err = p.DefaultProfileName(ctx); err != nil {
+			return ProfileLayer{}, err
+		}
+	}
+	pr, err := r.Profile(ctx, name)
+	if err == nil {
+		var pv store.ProfileVersion
+		if pv, err = r.ProfileVersion(ctx, name, pr.CurrentVersion); err == nil {
+			cfg, derr := decodeOverrides(json.RawMessage(pv.ConfigJSON))
+			if derr != nil {
+				return ProfileLayer{}, derr
+			}
+			return ProfileLayer{Name: name, Version: pv.Version, SHA256: pv.SHA256, Config: orEmpty(cfg)}, nil
+		}
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		return ProfileLayer{}, invalidFields([]validate.FieldError{{Path: "profile", Message: "找不到處理方案「" + name + "」。"}})
+	}
+	return ProfileLayer{}, err
+}
+
+func orEmpty(m map[string]any) map[string]any {
+	if m == nil {
+		return map[string]any{}
+	}
+	return m
+}
+
+// validateDeps 是驗證設定層時查詢 provider 與 prompt 用的依賴（nil 的欄位略過對應的檢查）。
+func (p *Pipeline) validateDeps() ValidateDeps {
+	return ValidateDeps{Providers: p.providers, Prompts: p.prompts}
+}
+
+// validateOverrides 驗證輸入的單次覆寫（新增、重跑、頻道覆寫），有錯誤時回傳 *InvalidError。
+func (p *Pipeline) validateOverrides(ctx context.Context, doc map[string]any) error {
+	if fs := ValidateLayer(ctx, doc, KindOverride, p.validateDeps()); len(fs) > 0 {
+		return invalidFields(fs)
+	}
+	return nil
+}
+
+// rebindChannel 在 metadata 完成、頻道確定之後，把頻道層併進同一批還沒開始的下游步驟（D6）。
+// meta 是剛完成的 metadata stage run；latest 是交易開始時載入的各步驟最新的 stage run，
+// 被改綁的那幾筆會同步更新它們的 ConfigSnapshotID：後面前進時依 latest 讀快照，漏掉就會用舊快照。
+//
+// 以下情況什麼都不做：快照沒有記錄各層（M1 的舊快照）、影音沒有頻道、頻道和快照中記的相同、
+// 重新 Compose 失敗（只記 log，保留舊快照，不讓 metadata 失敗）。在呼叫端的交易內執行。
+func (p *Pipeline) rebindChannel(ctx context.Context, r *store.Repo, itemID string, meta store.StageRun, latest map[string]store.StageRun) error {
+	raw, err := r.SnapshotLayers(ctx, meta.ConfigSnapshotID)
+	if err != nil {
+		return err
+	}
+	var l Layers
+	if raw == "" || raw == "{}" || json.Unmarshal([]byte(raw), &l) != nil || l.Profile.Name == "" {
+		return nil
+	}
+	it, err := r.ItemByID(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	if it.ChannelID == "" || it.ChannelID == l.Channel.ID {
+		return nil
+	}
+	ch, err := r.ChannelByID(ctx, it.ChannelID)
+	if err != nil {
+		return err
+	}
+	ov, err := decodeOverrides(ch.Overrides)
+	if err != nil {
+		return err
+	}
+	l.Channel = ChannelLayer{ID: ch.ID, Overrides: orEmpty(ov)}
+	eff, err := p.Compose(ctx, l)
+	if err != nil {
+		p.log.Warn("加入頻道層後的設定不正確，保留原本的快照", "item", itemID, "channel", ch.ID, "error", err)
+		return nil
+	}
+	sha, cfgJSON, layersJSON, err := SnapshotOf(eff, l)
+	if err != nil {
+		return err
+	}
+	newID, err := r.EnsureSnapshotLayers(ctx, sha, cfgJSON, layersJSON)
+	if err != nil {
+		return err
+	}
+	if newID == meta.ConfigSnapshotID {
+		return nil
+	}
+	ids, err := r.RebindPendingRuns(ctx, itemID, meta.ConfigSnapshotID, newID)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		for stage, run := range latest {
+			if run.ID == id {
+				run.ConfigSnapshotID = newID
+				latest[stage] = run
+			}
+		}
+	}
+	return nil
 }
 
 // SnapshotOf 回傳快照的 sha256、config JSON 與 layers JSON。

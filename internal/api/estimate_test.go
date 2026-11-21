@@ -71,7 +71,7 @@ func TestEstimatePlaylistAndErrors(t *testing.T) {
 		{"無法辨識", nil, `{"url":"not a url"}`, 422, CodeUnrecognizedURL},
 		{"本機檔案", nil, `{"path":"/tmp/a.mp4"}`, 422, CodeInvalidInput},
 		{"沒有網址", nil, `{}`, 422, CodeInvalidInput},
-		{"處理方案", nil, `{"url":"https://www.youtube.com/watch?v=abc123xxxxx","profile":"fast"}`, 501, CodeNotImplemented},
+		{"處理方案不存在", nil, `{"url":"https://www.youtube.com/watch?v=abc123xxxxx","profile":"fast"}`, 422, CodeInvalidInput},
 		{"yt-dlp 失敗", stubYT{playlistErr: &errclass.Error{Class: errclass.ClassRetryable, Source: "yt-dlp", Detail: "SECRET-STDERR"}},
 			playlistBody, 502, CodeUpstream},
 		{"播放清單不存在", stubYT{playlistErr: &errclass.Error{Class: errclass.ClassPermanent, Source: "yt-dlp", Err: errors.Join(youtube.ErrPlaylistGone)}},

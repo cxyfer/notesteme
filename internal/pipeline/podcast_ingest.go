@@ -51,17 +51,13 @@ func (s *podcastSelection) build(ctx context.Context) func(*store.Repo) ([]sourc
 // expandPodcast 辨識 Podcast feed 並挑出要新增的單集（ING-R6），不寫入資料庫：
 // 每個指定的集是一部影音，識別為 (podcast, "<feedKey>/<guid>", 0)，網址是正規化的 feed 網址。
 //
-// 驗證依序：until、處理方案（501）、parts（422）、網址（http(s)、有主機、不是 YouTube／Bilibili，否則無法辨識）、
-// 單次覆寫；然後抓取 feed（失敗對應同 Resolve）、episodes 不可為空、每集要在 feed 中而且有音檔；
+// 驗證依序：until、parts（422）、網址（http(s)、有主機、不是 YouTube／Bilibili，否則無法辨識）、
+// 處理方案與單次覆寫（422）；然後抓取 feed（失敗對應同 Resolve）、episodes 不可為空、每集要在 feed 中而且有音檔；
 // 最後對每個不同的音檔主機預檢（不連線）：被防護擋下回 *PolicyError，DNS 失敗只記 log，連線時再檢查一次（GRD-R2）。
 // 新增時，交易內取得 feedKey（必要時建立頻道），再建立各集；已存在的集不重新建立（ING-R2，見 podcastSelection.build）。
 func (p *Pipeline) expandPodcast(ctx context.Context, req IngestRequest) (ingestExpansion, error) {
 	if req.Until != "" && !ValidStage(req.Until) {
 		return ingestExpansion{}, invalidf("until 必須是 %v 其中之一。", Stages)
-	}
-	if req.Profile != "" {
-		// TODO(PRF)：同 Ingest。
-		return ingestExpansion{}, &NotImplementedError{What: "處理方案"}
 	}
 	if len(req.Parts) > 0 {
 		return ingestExpansion{}, invalidf("Podcast 沒有分P 可以選擇。")

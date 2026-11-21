@@ -238,11 +238,10 @@ func TestIngestPodcastRejectsOptionsAndURLs(t *testing.T) {
 	r, fs, _ := newPodcastRig(t, map[string]string{showURL: showFeed()})
 	ctx := context.Background()
 
-	var ni *NotImplementedError
-	if _, err := r.p.Ingest(ctx, IngestRequest{URL: showURL, Episodes: []string{"ep-42"}, Profile: "fast"}); !errors.As(err, &ni) {
-		t.Errorf("profile 應回 501：%v", err)
-	}
 	var inv *InvalidError
+	if _, err := r.p.Ingest(ctx, IngestRequest{URL: showURL, Episodes: []string{"ep-42"}, Profile: "fast"}); !errors.As(err, &inv) || len(inv.Fields) != 1 || inv.Fields[0].Path != "profile" {
+		t.Errorf("不存在的 profile 應回 422（path 為 profile）：%v", err)
+	}
 	if _, err := r.p.Ingest(ctx, IngestRequest{URL: showURL, Episodes: []string{"ep-42"}, Parts: []int{1}}); !errors.As(err, &inv) || inv.Msg != "Podcast 沒有分P 可以選擇。" {
 		t.Errorf("parts：%v", err)
 	}
