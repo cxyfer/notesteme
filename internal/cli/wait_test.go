@@ -47,6 +47,10 @@ func TestJudge(t *testing.T) {
 		{"最後一個步驟完成", stagesFor("done", ""), "", verdictDone, 0},
 		{"最後一個步驟 skipped", stagesFor("done", "skipped"), "", verdictDone, 0},
 		{"最後一個步驟 pending", stagesFor("done", "pending"), "", verdictWaiting, 4},
+		// M1 建立的影音沒有 segment 之後的步驟：等「最後一個步驟」時改用實際存在的最後一個。
+		{"舊資料沒有後面的步驟，最後一個完成", stagesOf("metadata", "done", "transcript", "done", "normalize", "done"), "", verdictDone, 0},
+		{"舊資料沒有後面的步驟，最後一個還沒完成", stagesOf("metadata", "done", "transcript", "pending"), "", verdictWaiting, 4},
+		{"舊資料的後面步驟 failed", stagesOf("metadata", "done", "transcript", "failed"), "", verdictFailed, 1},
 		{"skipped 算完成", stagesOf("metadata", "done", "transcript", "skipped"), "transcript", verdictDone, 0},
 		{"指定步驟 blocked", stagesOf("metadata", "done", "transcript", "blocked"), "transcript", verdictBlocked, 3},
 		{"指定步驟 failed", stagesOf("metadata", "done", "transcript", "failed"), "transcript", verdictFailed, 1},

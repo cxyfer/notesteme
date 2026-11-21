@@ -569,11 +569,8 @@ func (rt *routes) rerun(ctx context.Context, in *rerunInput) (*rerunOutput, erro
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}
-	// profile、chunks 的功能屬於 M2 之後的切片（處理方案、依 chunk 重跑）：在 API 層直接回 501（不是 422），
-	// 不動任何資料；pipeline 之後自己也會擋，這裡只是不依賴它。
-	if in.Body.Profile != "" || len(in.Body.Chunks) > 0 {
-		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
-	}
+	// profile、chunks 的功能屬於 M2 之後的切片（處理方案、依 chunk 重跑）：pipeline 回 501（不是 422），
+	// 而且是在驗證步驟名稱之後、讀取影音之前，不動任何資料。
 	d, err := rt.d.Pipeline.Rerun(ctx, in.ID, pipeline.RerunRequest{From: in.Body.From, Overrides: in.Body.Overrides, Until: in.Body.Until,
 		Profile: in.Body.Profile, Chunks: in.Body.Chunks})
 	if err != nil {

@@ -49,13 +49,23 @@ func (v verdict) exitCode() int {
 // 從第一個步驟到 until（沒有指定時是最後一個步驟），任何一個 failed 或 blocked 都會讓後面的步驟停住，
 // 所以先看它們；之後 until 這個步驟是 done 才算完成，其他狀態都繼續等。
 func judge(v itemView, until string) (verdict, *stageView) {
-	target := until
-	if target == "" {
-		target = pipeline.Stages[len(pipeline.Stages)-1]
-	}
 	status := map[string]*stageView{}
 	for i := range v.Stages {
 		status[v.Stages[i].Stage] = &v.Stages[i]
+	}
+	target := until
+	if target == "" {
+		// 沒有指定 until 時等最後一個步驟；M1 建立的影音沒有後面的步驟，
+		// 改用實際存在的最後一個步驟，否則這種影音永遠等不到（會一直回 waiting）。
+		target = pipeline.Stages[len(pipeline.Stages)-1]
+		if status[target] == nil {
+			for i := len(pipeline.Stages) - 1; i >= 0; i-- {
+				if status[pipeline.Stages[i]] != nil {
+					target = pipeline.Stages[i]
+					break
+				}
+			}
+		}
 	}
 	for _, name := range pipeline.Stages {
 		if st := status[name]; st != nil {

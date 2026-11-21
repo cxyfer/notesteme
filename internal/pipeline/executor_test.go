@@ -224,4 +224,13 @@ func TestBuildEffectiveRejectsInvalidStages(t *testing.T) {
 	if _, err := BuildEffective(nil, stagesOver("translate", map[string]any{"executor": "opencc"})); err != nil {
 		t.Errorf("translate／opencc：%v", err)
 	}
+	// Go 呼叫端以具體型別傳入 stages（不是 map[string]any）也接受，和 outputs 一致。
+	typed := map[string]any{"stages": map[string]map[string]string{"correct": {"executor": "off"}}}
+	eff, err := BuildEffective(nil, typed)
+	if err != nil {
+		t.Fatalf("具體型別的 stages：%v", err)
+	}
+	if cfg, err := eff.Stage(StageCorrect); err != nil || cfg.Executor != ExecutorOff {
+		t.Errorf("Stage(correct) = %+v, %v，預期 executor off", cfg, err)
+	}
 }

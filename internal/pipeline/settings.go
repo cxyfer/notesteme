@@ -186,13 +186,9 @@ type StageConfig struct {
 // executor 與 prompt 是空的也用預設值補上。確定性步驟沒有可設定的欄位，回傳零值。
 func (e Effective) Stage(stage string) (StageConfig, error) {
 	cfg := defaultStageConfig(stage)
-	raw, ok := e["stages"]
-	if !ok || raw == nil {
-		return cfg, nil
-	}
-	all, ok := raw.(map[string]any)
-	if !ok {
-		return cfg, invalidf("stages 必須是物件。")
+	all, err := e.stages()
+	if err != nil || all == nil {
+		return cfg, err
 	}
 	entry, ok := all[stage]
 	if !ok {
@@ -219,20 +215,13 @@ func (e Effective) Stage(stage string) (StageConfig, error) {
 
 // validateStages 檢查 stages 區段：只能設定 LLM 步驟，executor 必須是該步驟支援的，provider、model、prompt 必須是字串。
 func (e Effective) validateStages() error {
-	raw, ok := e["stages"]
-	if !ok || raw == nil {
-		return nil
+	all, err := e.stages()
+	if err != nil || all == nil {
+		return err
 	}
-	all, ok := raw.(map[string]any)
-	if !ok {
-		return invalidf("stages 必須是物件。")
-	}
-	for stage, entry := range all {
+	for stage := range all {
 		if !IsLLMStage(stage) {
 			return invalidf("stages 的步驟必須是 %s、%s 或 %s，收到 %q。", StageSegment, StageCorrect, StageTranslate, stage)
-		}
-		if _, ok := entry.(map[string]any); !ok {
-			return invalidf("stages.%s 必須是物件。", stage)
 		}
 		cfg, err := e.Stage(stage)
 		if err != nil {
@@ -243,6 +232,32 @@ func (e Effective) validateStages() error {
 		}
 	}
 	return nil
+}
+
+// stages 取出 stages 物件（每個步驟是物件）；沒有這個區段時回傳 nil。經 JSON 轉一次，
+// 覆寫是 Go 型別（map[string]any 之外的自訂 map）或解析自 JSON 都能接受。
+func (e Effective) stages() (map[string]any, error) {
+	raw, ok := e["stages"]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil, err
+	}
+	var all map[string]json.RawMessage
+	if err := json.Unmarshal(b, &all); err != nil || all == nil {
+		return nil, invalidf("stages 必須是物件。")
+	}
+	out := make(map[string]any, len(all))
+	for stage, rawEntry := range all {
+		var entry map[string]any
+		if err := json.Unmarshal(rawEntry, &entry); err != nil || entry == nil {
+			return nil, invalidf("stages.%s 必須是物件。", stage)
+		}
+		out[stage] = entry
+	}
+	return out, nil
 }
 
 // Outputs 取出 outputs（陣列）。S0 只看長度；每個目標的結構屬於輸出切片。沒有這個區段時回傳空陣列。
