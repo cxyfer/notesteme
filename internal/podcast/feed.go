@@ -247,6 +247,11 @@ func Parse(r io.Reader) (*Feed, error) {
 			f := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 			parent := stack[len(stack)-1]
+			// 巢狀標記裡的文字（Atom 的 type="xhtml" 的 title、summary、content 都把文字放在子元素 div 裡）屬於外層的欄位：
+			// 結束時把文字累積到父元素。父元素是根、channel 或整集時不累積：這些容器自己沒有文字欄位。
+			if parent != stack[0] && !(cur != nil && parent == curFrame) && (atom || len(stack) > 2) {
+				parent.text.WriteString(f.text.String())
+			}
 			switch {
 			case cur != nil && f == curFrame:
 				ep := cur.finish()

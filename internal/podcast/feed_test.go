@@ -127,6 +127,30 @@ func TestParseNamespaceMatching(t *testing.T) {
 	}
 }
 
+// Atom 的 type="xhtml" 文字建構把文字放在子元素 div 裡：標題與描述不能因此變空（Codex P2）。
+func TestParseAtomXHTMLTextConstructs(t *testing.T) {
+	body := `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:x="http://www.w3.org/1999/xhtml">
+<title type="xhtml"><x:div>Atom <x:b>XHTML</x:b> Show</x:div></title>
+<entry>
+  <id>tag:example.com,2025:x1</id>
+  <title type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">Entry <i>One</i></div></title>
+  <summary type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>First</p> <p>second.</p></div></summary>
+  <link rel="enclosure" href="https://media.example.com/x1.m4a" type="audio/mp4"/>
+</entry>
+</feed>`
+	f, err := Parse(strings.NewReader(body))
+	if err != nil || len(f.Episodes) != 1 {
+		t.Fatalf("err = %v，episodes = %d", err, len(f.Episodes))
+	}
+	if f.Title != "Atom XHTML Show" {
+		t.Errorf("feed 標題 = %q", f.Title)
+	}
+	if ep := f.Episodes[0]; ep.Title != "Entry One" || ep.Description != "First second." {
+		t.Errorf("title = %q，description = %q", ep.Title, ep.Description)
+	}
+}
+
 func TestParseAtom(t *testing.T) {
 	body := `<?xml version="1.0"?>
 <feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en">

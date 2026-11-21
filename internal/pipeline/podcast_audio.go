@@ -3,6 +3,7 @@ package pipeline
 import (
 	"cmp"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -29,7 +30,7 @@ import (
 // audioFetchTimeout 是下載一集音檔的逾時（大小上限是 netguard.LimitAudio，GRD-R5）。
 const audioFetchTimeout = 2 * time.Hour
 
-// episodeFilePattern 是下載後的音檔檔名：episode.<副檔名>，或與已寫入的快照撞名時的 episode-<sha256 前 8 碼>.<副檔名>；
+// episodeFilePattern 是下載後的音檔檔名：episode.<副檔名>，或撞名時的 episode-<8 碼 16 進位>.<副檔名>（sha256 前 8 碼或隨機）；
 // 媒體端點只開啟符合這個格式的檔名。
 var episodeFilePattern = regexp.MustCompile(`^episode(-[0-9a-f]{8})?\.[a-z0-9]{1,5}$`)
 
@@ -55,7 +56,7 @@ type episodeAudio struct {
 	DurationS float64 `json:"duration_s"`
 
 	mediaKind string // ffprobe 判斷的 audio 或 video；不進 metadata_json
-	// created 為 true 代表 File 是這次下載建立的新檔（不是沿用快照記錄的檔名，也不是和別的下載共用的同名檔）；
+	// created 為 true 代表 File 是這次下載建立的新檔（不是沿用快照記錄的檔名）；
 	// 結果被丟棄時只能刪這種檔案。不進 metadata_json。
 	created bool
 }
@@ -175,7 +176,7 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 	// 這次的結果要等 apply 的交易 commit 才生效，所以 commit 之前不能蓋掉別的檔案：
 	// 影音現在指向的快照檔（任務被取消、過期被丟棄或寫回失敗時仍要播放它），
 	// 以及同時進行的另一個 metadata 任務已經暫存、之後可能 commit 的檔案。
-	// 預設檔名 episode.<ext> 用 link 專屬建立（檔名已存在就失敗），撞名時改用依內容命名的 episode-<sha256 前 8 碼>.<ext>；
+	// 預設檔名 episode.<ext> 用 O_EXCL 保留（檔名已存在就失敗），撞名時改用 episode-<sha256 前 8 碼>.<ext>，再撞名用隨機的檔名；
 	// commit 之後快照指向最後用的檔名，其他檔由 runPodcastMetadata 的 afterCommit 刪除。
 	// name 非空（ASR 重新下載）時沿用快照記錄的檔名，直接覆蓋。
 	created := false
@@ -185,9 +186,10 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 		}
 	} else {
 		var err error
-		if name, created, err = stageEpisodeFile(part, dir, audioExt(finalURL, enc.Type), sum); err != nil {
+		if name, err = stageEpisodeFile(part, dir, audioExt(finalURL, enc.Type), sum); err != nil {
 			return nil, err
 		}
+		created = true
 	}
 	done = true
 	return &episodeAudio{
@@ -196,36 +198,41 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 	}, nil
 }
 
-// stageEpisodeFile 把下載完成的 part 放到 dir，而且不蓋掉已存在的檔案：先用 O_EXCL 保留 episode<ext>（已存在就失敗），
-// 再 rename 蓋過自己剛建立的空檔；撞名時改用 episode-<sha8><ext>（內容相同的重複下載共用同一個檔名）。
-// O_EXCL 在任何檔案系統上都有效，不依賴 hard link。created 為 true 代表這個檔案是這次建立的（捨棄結果時只能刪這種檔案）。
+// stageEpisodeFile 把下載完成的 part 放到 dir，而且不蓋掉已存在的檔案：依序用 O_EXCL 保留 episode<ext>、
+// episode-<sha8><ext>，都已存在時改用隨機的 episode-<8 碼><ext>（已存在就失敗），再 rename 蓋過自己剛建立的空檔。
+// 不共用別的下載已經建立的檔案：那個檔案仍屬於另一個還沒 commit 的執行，它的結果被丟棄時會刪掉它。
+// O_EXCL 在任何檔案系統上都有效，不依賴 hard link。回傳的檔案一定是這次建立的。
 // 保留與 rename 之間若程序崩潰會留下空檔，之後由 afterCommit 的清理刪除。
-func stageEpisodeFile(part, dir, ext, sum string) (name string, created bool, err error) {
-	for i, n := range []string{"episode" + ext, "episode-" + sum[:8] + ext} {
+func stageEpisodeFile(part, dir, ext, sum string) (string, error) {
+	candidates := []string{"episode" + ext, "episode-" + sum[:8] + ext}
+	for range 8 {
+		var b [4]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return "", err
+		}
+		candidates = append(candidates, "episode-"+hex.EncodeToString(b[:])+ext)
+	}
+	for _, n := range candidates {
 		dst := filepath.Join(dir, n)
 		f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		switch {
 		case err == nil:
 			if err := f.Close(); err != nil {
 				_ = os.Remove(dst)
-				return "", false, err
+				return "", err
 			}
 			if err := os.Rename(part, dst); err != nil {
 				_ = os.Remove(dst)
-				return "", false, err
+				return "", err
 			}
-			return n, true, nil
-		case errors.Is(err, fs.ErrExist) && i == 1:
-			// 依內容命名的檔案已存在：內容相同，直接共用。
-			_ = os.Remove(part)
-			return n, false, nil
+			return n, nil
 		case errors.Is(err, fs.ErrExist):
 			continue
 		default:
-			return "", false, err
+			return "", err
 		}
 	}
-	return "", false, errors.New("暫存音檔失敗")
+	return "", errors.New("暫存音檔失敗：找不到可用的檔名")
 }
 
 // stalePartAge 是 .part 檔多久沒有寫入就視為崩潰遺留的殘檔。下載中的檔案持續在寫入；

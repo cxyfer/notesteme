@@ -290,6 +290,16 @@ func TestDownloadEpisodeAudioDoesNotOverwriteStagedSameName(t *testing.T) {
 
 // 比新的重跑晚完成的 metadata 任務，它剛暫存的音檔要刪掉：沒有記錄會指向它（Codex P2）。
 func TestPodcastMetadataStaleRunDiscardsItsStagedAudio(t *testing.T) {
+	// 兩次重跑下載到相同內容時也一樣：贏家 commit 的檔案不能被過期任務的清理刪掉（Codex P1）。
+	for _, tt := range []struct{ name, stale string }{
+		{"內容不同", "STALE-RUN-AUDIO-BYTES-LONGER"},
+		{"內容相同", "WINNER-AUDIO-BYTES"},
+	} {
+		t.Run(tt.name, func(t *testing.T) { staleRunDiscardsStagedAudio(t, tt.stale) })
+	}
+}
+
+func staleRunDiscardsStagedAudio(t *testing.T, staleBody string) {
 	r := newPodRig(t)
 	r.serveShow("")
 	it := r.ingestEpisode(StageMetadata)
@@ -310,7 +320,7 @@ func TestPodcastMetadataStaleRunDiscardsItsStagedAudio(t *testing.T) {
 	r.net.serve(audio42, 200, "WINNER-AUDIO-BYTES")
 	r.run()
 	// 舊任務現在才完成，下載到另一份內容。
-	r.net.serve(audio42, 200, "STALE-RUN-AUDIO-BYTES-LONGER")
+	r.net.serve(audio42, 200, staleBody)
 	if err := r.p.Handle(ctx, claimed[0]); err != nil {
 		t.Fatal(err)
 	}
@@ -321,22 +331,21 @@ func TestPodcastMetadataStaleRunDiscardsItsStagedAudio(t *testing.T) {
 	}
 }
 
-// 結果被丟棄時只刪這次建立的檔案：和別的下載共用的同名檔（內容相同）不能刪。
-func TestDownloadEpisodeAudioSharedFileIsNotCreated(t *testing.T) {
+// 每次下載都建立自己的檔案，不共用別的下載已經建立的同名檔：那個檔案仍屬於另一個還沒 commit 的執行，
+// 它的結果被丟棄時會刪掉它（Codex P1）。內容相同的重複下載也一樣。
+func TestDownloadEpisodeAudioNeverSharesFiles(t *testing.T) {
 	r := newPodRig(t)
 	it, enc := r.downloadFixture()
-	first, err := r.p.downloadEpisodeAudio(context.Background(), it, enc)
-	if err != nil || !first.created {
-		t.Fatalf("第一次下載 = %+v, %v，預期 created", first, err)
+	seen := map[string]bool{}
+	for i := 0; i < 4; i++ {
+		got, err := r.p.downloadEpisodeAudio(context.Background(), it, enc)
+		if err != nil || !got.created || seen[got.File] || !episodeFilePattern.MatchString(got.File) {
+			t.Fatalf("第 %d 次下載 = %+v, %v；已用 %v", i+1, got, err, seen)
+		}
+		seen[got.File] = true
 	}
-	// 同樣內容再下載一次：episode.mp3 已存在，依內容命名的檔案是新建的；第三次則共用它。
-	second, err := r.p.downloadEpisodeAudio(context.Background(), it, enc)
-	if err != nil || !second.created || second.File == first.File {
-		t.Fatalf("第二次下載 = %+v, %v", second, err)
-	}
-	third, err := r.p.downloadEpisodeAudio(context.Background(), it, enc)
-	if err != nil || third.created || third.File != second.File {
-		t.Fatalf("第三次下載 = %+v, %v，預期共用 %s 且不算新建", third, err, second.File)
+	if n := len(r.mediaFiles(it)); n != 4 {
+		t.Errorf("媒體目錄有 %d 個檔案，預期 4 個（每次下載各一個）：%v", n, r.mediaFiles(it))
 	}
 }
 
@@ -382,17 +391,20 @@ func TestPodcastMetadataSameNameAudioWaitsForCommit(t *testing.T) {
 		t.Fatal("metadata 應在 commit 之後清掉舊檔")
 	}
 
-	// 經過 pipeline 重跑並寫回：快照指向新檔，舊檔刪除。
+	// 經過 pipeline 重跑並寫回：快照指向新檔，舊檔與沒有寫回的那次下載暫存的檔案都刪除。
+	// 內容相同也不共用那個暫存檔（它仍屬於沒有寫回的那次執行），所以這次建立自己的檔案。
 	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageMetadata, Until: StageMetadata}); err != nil {
 		t.Fatal(err)
 	}
 	r.run()
-	if got := r.mediaFiles(it); len(got) != 1 || got[0] != staged {
-		t.Errorf("媒體目錄 = %v，預期只有 %s", got, staged)
-	}
 	cur := r.reload(it.ID)
-	if m, ok := readPodcastMeta(cur.Metadata); !ok || m.Audio.File != staged || m.Audio.SHA256 != sumHex(newBody) || cur.ContentSHA256 != sumHex(newBody) {
-		t.Errorf("快照 = %+v，sha = %s", m.Audio, cur.ContentSHA256)
+	m, ok := readPodcastMeta(cur.Metadata)
+	if !ok || m.Audio.File == "episode.mp3" || m.Audio.File == staged || !episodeFilePattern.MatchString(m.Audio.File) ||
+		m.Audio.SHA256 != sumHex(newBody) || cur.ContentSHA256 != sumHex(newBody) {
+		t.Fatalf("快照 = %+v，sha = %s", m.Audio, cur.ContentSHA256)
+	}
+	if got := r.mediaFiles(it); len(got) != 1 || got[0] != m.Audio.File {
+		t.Errorf("媒體目錄 = %v，預期只有 %s", got, m.Audio.File)
 	}
 	if got := played(); got != newBody {
 		t.Errorf("commit 之後播放到 %q，預期新內容", got)
