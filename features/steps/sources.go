@@ -74,11 +74,23 @@ func (s *Scenario) editVideo(ref string, edit func(v *faketool.Video) error) err
 	if err != nil {
 		return err
 	}
-	if err := edit(s.World.Video(key)); err != nil {
+	_, existed := s.World.Tools.Videos[key]
+	v := s.World.Video(key)
+	if !existed && strings.HasPrefix(ref, "yt:") {
+		// 第一次建立的 YouTube 影片都在同一個預設頻道（X4）；之後 `with:` 的 channel、channel_id 可以覆寫。
+		v.ChannelID, v.Channel = DefaultChannelID, DefaultChannelName
+	}
+	if err := edit(v); err != nil {
 		return err
 	}
 	return s.World.SyncTools()
 }
+
+// 假 YouTube 影片的預設頻道（X4）：PRF-R8 要兩部影片同一個頻道，COR 的 channel-of 也需要有頻道。
+const (
+	DefaultChannelID   = "UCfixture000000000000000" // 24 字元，同 YouTube 的頻道 ID 長度
+	DefaultChannelName = "Fixture Channel"
+)
 
 // bilibiliVideo 建立 fake 的 Bilibili 影片：參數是不帶 bili: 的 BV 號。
 // 各分P 一開始沒有字幕軌、沒有原文語言，標題預設為 BV 號；之後用 `bili:<BV>/p<n>` 逐分P 設定。

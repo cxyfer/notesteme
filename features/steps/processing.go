@@ -197,31 +197,55 @@ func pickAttentionStage(ref string, it itemJSON) (stageJSON, error) {
 	if doneWithMessage != nil {
 		return *doneWithMessage, nil
 	}
-	return stageJSON{}, fmt.Errorf("%s 沒有任何有訊息的步驟（先找不是 done 的，再找 done 的）（%s）", ref, strings.Join(seen, "、"))
+	return stageJSON{}, &noAttentionStageError{msg: fmt.Sprintf("%s 沒有任何有訊息的步驟（先找不是 done 的，再找 done 的）（%s）", ref, strings.Join(seen, "、"))}
+}
+
+// noAttentionStageError 表示影音沒有任何有訊息的步驟。和「查詢影音失敗」分開，
+// 才能只把這種「訊息還沒出現」的結果在前一個動作是 501 時轉成 pending。
+type noAttentionStageError struct{ msg string }
+
+func (e *noAttentionStageError) Error() string { return e.msg }
+
+// pendingIfPreviousNotImplemented 在緊接在前一個步驟送出的請求回 501 not_implemented 時，把 err 轉成 pending
+// （那個動作沒有發生，所以訊息與動作不符，見 ADR-0015）；否則原樣回傳 err。
+func (s *Scenario) pendingIfPreviousNotImplemented(err error) error {
+	if s.previousRequestNotImplemented() {
+		return fmt.Errorf("最近的請求還沒有實作：%w", godog.ErrPending)
+	}
+	return err
 }
 
 // itemShowsMessage 比對影音顯示的狀態訊息（見 attentionStage），訊息必須完全相同。
+// 訊息不符、或沒有任何有訊息的步驟，而且前一個步驟的請求是 501 時為 pending；其他情況仍然失敗。
 func (s *Scenario) itemShowsMessage(ref, want string) error {
 	st, err := s.attentionStage(ref)
 	if err != nil {
+		var none *noAttentionStageError
+		if errors.As(err, &none) {
+			return s.pendingIfPreviousNotImplemented(err)
+		}
 		return err
 	}
 	if st.Message != want {
-		return fmt.Errorf("%s 的步驟 %s（%s）顯示訊息 %q，預期 %q", ref, st.Stage, st.Status, st.Message, want)
+		return s.pendingIfPreviousNotImplemented(fmt.Errorf("%s 的步驟 %s（%s）顯示訊息 %q，預期 %q", ref, st.Stage, st.Status, st.Message, want))
 	}
 	return nil
 }
 
 // itemOffersActions 比對同一個步驟（見 attentionStage）可以執行的動作：
-// 參數以逗號切開並去掉前後空白，與動作清單依序完全相等。
+// 參數以逗號切開並去掉前後空白，與動作清單依序完全相等。pending 的條件同 itemShowsMessage。
 func (s *Scenario) itemOffersActions(ref, want string) error {
 	st, err := s.attentionStage(ref)
 	if err != nil {
+		var none *noAttentionStageError
+		if errors.As(err, &none) {
+			return s.pendingIfPreviousNotImplemented(err)
+		}
 		return err
 	}
 	wantList := splitList(want)
 	if !slices.Equal(st.Actions, wantList) {
-		return fmt.Errorf("%s 的步驟 %s（%s）提供動作 %q，預期 %q", ref, st.Stage, st.Status, st.Actions, wantList)
+		return s.pendingIfPreviousNotImplemented(fmt.Errorf("%s 的步驟 %s（%s）提供動作 %q，預期 %q", ref, st.Stage, st.Status, st.Actions, wantList))
 	}
 	return nil
 }
@@ -272,11 +296,19 @@ func (s *Scenario) artifactHasVersions(name, ref string, want int) error {
 	return nil
 }
 
+// m2TargetStages 是 `processed up to` 暫時 pending 的 M2 步驟（語意等 X1，見 itemProcessedUpTo）。
+var m2TargetStages = []string{"segment", "correct", "translate", "publish"}
+
 // itemProcessedUpTo 讓影音真的處理到指定步驟（steps.md 第 4.4 節）：
 // 影音還不存在就新增（until 為該步驟）；已存在就從第一個還沒完成的步驟重跑到該步驟為止。
 // 接著執行 worker 到閒置，最後確認該步驟是 done，否則失敗。
 // 目標步驟需要字幕而場景沒有準備來源時，改由 features/fixtures/items/ 填入 source（見 itemFixtureFor）。
 func (s *Scenario) itemProcessedUpTo(ref, stage string) error {
+	// 目標是 M2 的步驟時，語意要等 X1 決定，先 pending（steps.md 4.4 規則 (2c)）。
+	// 放在 ValidStage 之前：不論 pipeline.Stages 有沒有收錄這些步驟，結果都一樣。
+	if slices.Contains(m2TargetStages, stage) {
+		return fmt.Errorf("X1 決定前，processed up to %q 尚未實作（steps.md 4.4 規則 (2c)）：%w", stage, godog.ErrPending)
+	}
 	if !pipeline.ValidStage(stage) {
 		return fmt.Errorf("步驟 %q 不正確，應是 %v 其中之一", stage, pipeline.Stages)
 	}
@@ -419,16 +451,98 @@ func (s *Scenario) hasTranscriptSource(ref string) bool {
 }
 
 // itemFixture 是 features/fixtures/items/<代號>.json 的內容：影音處理到 transcript 時 source 字幕的 cue。
+// source 用 cues（逐句寫出）或 generate（依規則產生）其中一種，不能同時有。
 type itemFixture struct {
 	Ref    string `json:"ref"`
 	Source struct {
-		Lang string `json:"lang"`
-		Cues []struct {
-			Start string `json:"start"`
-			End   string `json:"end"`
-			Text  string `json:"text"`
-		} `json:"cues"`
+		Lang     string            `json:"lang"`
+		Cues     []fixtureCue      `json:"cues"`
+		Generate []fixtureGenerate `json:"generate"`
 	} `json:"source"`
+}
+
+type fixtureCue struct {
+	Start string `json:"start"`
+	End   string `json:"end"`
+	Text  string `json:"text"`
+}
+
+// fixtureGenerate 是 generate 的一個區塊：count 句，每 step 開一句、每句長 length，文字取自 text 範本。
+// 範本的 {n} 換成從 1 起算的全域 cue 編號（補零到 4 位）。
+// 區塊接在前一個區塊的結尾（前一個區塊的開始 + count × step）之後；第一個區塊從 0 開始；start 可以明確指定。
+type fixtureGenerate struct {
+	Count  int    `json:"count"`
+	Step   string `json:"step"`
+	Length string `json:"length"`
+	Text   string `json:"text"`
+	Start  string `json:"start,omitempty"`
+}
+
+// minGeneratedCueMS 是 generate 每句的最短長度：短於它會被 NRM-R2 併入前一句。
+const minGeneratedCueMS = 300
+
+// cues 把 fixture 的 source 展開成 cue（編號從 1 起算）。cues 與 generate 必須恰好有一個。
+func (f *itemFixture) cues() ([]subtitle.Cue, error) {
+	src := f.Source
+	switch {
+	case len(src.Cues) > 0 && len(src.Generate) > 0:
+		return nil, fmt.Errorf("fixture %s 的 source 不能同時有 cues 與 generate", f.Ref)
+	case len(src.Cues) == 0 && len(src.Generate) == 0:
+		return nil, fmt.Errorf("fixture %s 的 source 必須有 cues 或 generate", f.Ref)
+	case len(src.Generate) > 0:
+		return generateCues(f.Ref, src.Generate)
+	}
+	cues := make([]subtitle.Cue, 0, len(src.Cues))
+	for i, c := range src.Cues {
+		cue := subtitle.Cue{Index: i + 1, Text: c.Text}
+		var err error
+		if cue.StartMS, err = subtitle.ParseTimecode(c.Start); err != nil {
+			return nil, fmt.Errorf("fixture %s 第 %d 個 cue 的 start：%w", f.Ref, i+1, err)
+		}
+		if cue.EndMS, err = subtitle.ParseTimecode(c.End); err != nil {
+			return nil, fmt.Errorf("fixture %s 第 %d 個 cue 的 end：%w", f.Ref, i+1, err)
+		}
+		cues = append(cues, cue)
+	}
+	return cues, nil
+}
+
+// generateCues 依 generate 的區塊產生 cue。
+func generateCues(ref string, blocks []fixtureGenerate) ([]subtitle.Cue, error) {
+	var cues []subtitle.Cue
+	var next int64 // 下一個區塊的預設開始時間（毫秒）
+	for bi, b := range blocks {
+		where := fmt.Sprintf("fixture %s 的 generate[%d]", ref, bi)
+		step, err := time.ParseDuration(b.Step)
+		if err != nil || step <= 0 {
+			return nil, fmt.Errorf("%s：step %q 必須是正的時間長度（例如 3s）", where, b.Step)
+		}
+		length, err := time.ParseDuration(b.Length)
+		if err != nil || length.Milliseconds() < minGeneratedCueMS || length > step {
+			return nil, fmt.Errorf("%s：length %q 必須在 %dms 與 step 之間", where, b.Length, minGeneratedCueMS)
+		}
+		if b.Count < 1 || strings.TrimSpace(b.Text) == "" {
+			return nil, fmt.Errorf("%s：count 至少 1，text 不能是空的", where)
+		}
+		start := next
+		if b.Start != "" {
+			if start, err = subtitle.ParseTimecode(b.Start); err != nil {
+				return nil, fmt.Errorf("%s：start：%w", where, err)
+			}
+		}
+		for i := 0; i < b.Count; i++ {
+			n := len(cues) + 1
+			s := start + int64(i)*step.Milliseconds()
+			cues = append(cues, subtitle.Cue{
+				Index:   n,
+				StartMS: s,
+				EndMS:   s + length.Milliseconds(),
+				Text:    strings.ReplaceAll(b.Text, "{n}", fmt.Sprintf("%04d", n)),
+			})
+		}
+		next = start + int64(b.Count)*step.Milliseconds()
+	}
+	return cues, nil
 }
 
 // itemFixtureName 把代號轉成 fixture 檔名：`:`、`/` 換成 `-`，例如 yt:pg100xxxxxx → yt-pg100xxxxxx.json。
@@ -463,40 +577,45 @@ func (s *Scenario) itemFixtureFor(ref, stage string) (*itemFixture, error) {
 	}
 	// 規則 2 只適用於 yt: 與 bili:（假 yt-dlp 管的平台）；local:、pod: 不套用 fixture，落到規則 3。
 	if usesItemFixture(ref) && !s.hasAnyTrack(ref) && len(s.World.Sources.ReturnedFor(ref)) == 0 {
-		name := itemFixtureName(ref)
-		raw, err := os.ReadFile(filepath.Join(s.World.FixturesDir, "items", name))
+		fx, err := readItemFixture(s.World.FixturesDir, ref)
 		if err == nil {
-			dec := json.NewDecoder(bytes.NewReader(raw))
-			dec.DisallowUnknownFields()
-			var fx itemFixture
-			if err := dec.Decode(&fx); err != nil {
-				return nil, fmt.Errorf("fixture %s 格式不正確：%w", name, err)
-			}
-			if fx.Ref != ref {
-				return nil, fmt.Errorf("fixture %s 的 ref 是 %q，必須與檔名一致（%q）", name, fx.Ref, ref)
-			}
-			return &fx, nil
+			return fx, nil
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("讀取 fixture %s：%w", name, err)
+			return nil, err
 		}
 	}
 	return nil, fmt.Errorf("場景沒有替 %s 準備字幕來源，也沒有 features/fixtures/items/ 的 fixture：%w", ref, godog.ErrPending)
 }
 
+// readItemFixture 讀取 <fixturesDir>/items/<代號>.json：不認識的欄位、ref 與檔名不一致都是錯誤。
+// 檔案不存在時回傳的錯誤符合 fs.ErrNotExist。
+func readItemFixture(fixturesDir, ref string) (*itemFixture, error) {
+	name := itemFixtureName(ref)
+	raw, err := os.ReadFile(filepath.Join(fixturesDir, "items", name))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	if err != nil {
+		return nil, fmt.Errorf("讀取 fixture %s：%w", name, err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var fx itemFixture
+	if err := dec.Decode(&fx); err != nil {
+		return nil, fmt.Errorf("fixture %s 格式不正確：%w", name, err)
+	}
+	if fx.Ref != ref {
+		return nil, fmt.Errorf("fixture %s 的 ref 是 %q，必須與檔名一致（%q）", name, fx.Ref, ref)
+	}
+	return &fx, nil
+}
+
 // seedItemFixture 建立影音（做到 metadata），再把 fixture 的 source 字幕直接寫成產出。
 func (s *Scenario) seedItemFixture(ref string, fx *itemFixture) error {
-	cues := make([]subtitle.Cue, 0, len(fx.Source.Cues))
-	for i, c := range fx.Source.Cues {
-		cue := subtitle.Cue{Index: i + 1, Text: c.Text}
-		var err error
-		if cue.StartMS, err = subtitle.ParseTimecode(c.Start); err != nil {
-			return fmt.Errorf("fixture %s 第 %d 個 cue 的 start：%w", ref, i+1, err)
-		}
-		if cue.EndMS, err = subtitle.ParseTimecode(c.End); err != nil {
-			return fmt.Errorf("fixture %s 第 %d 個 cue 的 end：%w", ref, i+1, err)
-		}
-		cues = append(cues, cue)
+	cues, err := fx.cues()
+	if err != nil {
+		return err
 	}
 	id, err := s.ensureItemForSeed(ref)
 	if err != nil {

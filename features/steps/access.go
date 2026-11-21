@@ -29,7 +29,7 @@ func registerAccess(r *Registry, s *Scenario) {
 	r.Step(`the client sends {string}`, s.clientSends)
 	r.Step(`the client sends {string} with the token {string}`, s.clientSendsWithToken)
 	r.Step(`the client sends {string} with the token {string} and:`, s.clientSendsWithTokenAnd)
-	r.Step(`the client sends {string} with the token {string} from the origin {string}`, func(string, string, string) error { return godog.ErrPending })
+	r.Step(`the client sends {string} with the token {string} from the origin {string}`, s.clientSendsWithTokenFromOrigin)
 	r.Step(`the owner sends {string} with the header {string} set to {string}`, s.ownerSendsWithHeader)
 	r.Step(`the response status is {int}`, s.responseStatusIs)
 	r.Step(`the response contains:`, s.responseContains)
@@ -142,6 +142,17 @@ func (s *Scenario) clientSendsWithToken(spec, name string) error {
 		body = []byte(`{"url":"https://www.youtube.com/watch?v=abc123xxxxx"}`)
 	}
 	return s.send(spec, requestOpts{who: asClient, body: body, headers: headers})
+}
+
+// clientSendsWithTokenFromOrigin 帶 bearer token 與 Origin 標頭送出請求（AUTH-R11 的 /mcp Origin 檢查）。
+// 憑證是完整的，所以預期的 403 屬於 handler 的規則：路由還沒實作（501）時，之後的狀態斷言是 pending。
+func (s *Scenario) clientSendsWithTokenFromOrigin(spec, name, origin string) error {
+	headers, err := s.bearerHeader(name)
+	if err != nil {
+		return err
+	}
+	headers["Origin"] = origin
+	return s.send(spec, requestOpts{who: asClient, headers: headers})
 }
 
 func (s *Scenario) clientSendsWithTokenAnd(spec, name string, doc *godog.DocString) error {
