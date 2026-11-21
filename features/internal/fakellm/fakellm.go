@@ -425,9 +425,20 @@ type dataBlock struct {
 	Cues    []map[string]any `json:"cues"`
 }
 
-// validate 檢查資料區塊的欄位：cues[] 與 context[] 的每一項只能有 i 與 text，i 必須是正整數（LLM-execution.md）。
+// validate 檢查資料區塊的欄位（LLM-execution.md）：chunk 與 chunks 從 1 起算且 chunk 不超過 chunks（沒寫就是 0，同樣違規）；
+// cues[] 與 context[] 的每一項只能有 i 與 text，i 必須是正整數。
 func (d *dataBlock) validate() []string {
-	return append(validateEntries("context", d.Context), validateEntries("cues", d.Cues)...)
+	var errs []string
+	if d.Chunks < 1 {
+		errs = append(errs, fmt.Sprintf("chunks 必須是從 1 起算的整數（得到 %d）", d.Chunks))
+	}
+	if d.Chunk < 1 {
+		errs = append(errs, fmt.Sprintf("chunk 必須是從 1 起算的整數（得到 %d）", d.Chunk))
+	} else if d.Chunks >= 1 && d.Chunk > d.Chunks {
+		errs = append(errs, fmt.Sprintf("chunk %d 超過 chunks %d", d.Chunk, d.Chunks))
+	}
+	errs = append(errs, validateEntries("context", d.Context)...)
+	return append(errs, validateEntries("cues", d.Cues)...)
 }
 
 // validateEntries 檢查一組 {i, text} 項目；name 是它在資料區塊中的欄位名（context 或 cues）。

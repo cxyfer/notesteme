@@ -107,17 +107,16 @@ func (p *Pipeline) expandPodcast(ctx context.Context, req IngestRequest) (ingest
 // precheckTimeout 是 precheckEnclosures 整體的逾時；變數是為了讓測試縮短。
 var precheckTimeout = 10 * time.Second
 
-// precheckEnclosures 對每個不同 scheme 與主機的音檔網址預檢一次：被防護擋下回 *PolicyError；
-// 其他錯誤（DNS 解析失敗、網址不完整等）只記 log，讓之後下載時的連線去回報。
+// precheckEnclosures 對每個不同 scheme 與主機的音檔網址預檢一次。
+// 只有全部的位址都被防護擋下時才回 *PolicyError（ING-R1、ADR-0017）；
+// 有任何一個位址通過、沒有結果（DNS 解析失敗、網址不完整等，只記 log），或因逾時沒有檢查到，就不擋，留給之後下載時的連線去回報。
 func (p *Pipeline) precheckEnclosures(ctx context.Context, eps []podcast.Episode) error {
 	// 整體逾時：許多主機的 DNS 都很慢時，預檢不能拖住新增；逾時之後略過剩下的，連線時仍會檢查（GRD-R2）。
 	pctx, cancel := context.WithTimeout(ctx, precheckTimeout)
 	defer cancel()
 	checked := map[string]bool{}
+	var blocked *PolicyError
 	for _, ep := range eps {
-		if pctx.Err() != nil {
-			break
-		}
 		raw := ep.Enclosure.URL
 		host, key := raw, raw
 		if u, err := url.Parse(raw); err == nil {
@@ -128,23 +127,31 @@ func (p *Pipeline) precheckEnclosures(ctx context.Context, eps []podcast.Episode
 		if checked[key] {
 			continue
 		}
+		if pctx.Err() != nil {
+			// 還有沒檢查到的位址：不能斷定全部被擋。
+			p.log.Debug("音檔位址預檢逾時，略過剩下的", "host", host)
+			return ctx.Err()
+		}
 		checked[key] = true
 		err := p.checkURL(pctx, raw)
 		if err == nil {
-			continue
+			return nil
 		}
 		if pe := asPolicyError(err); pe != nil {
 			p.log.Warn("新增 Podcast 單集時音檔位址被防護擋下", "host", host, "error", err.Error())
-			return pe
+			if blocked == nil {
+				blocked = pe
+			}
+			continue
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if pctx.Err() != nil {
-			p.log.Debug("音檔位址預檢逾時，略過剩下的", "host", host)
-			break
-		}
 		p.log.Debug("音檔位址預檢沒有結果，略過", "host", host, "error", err.Error())
+		return nil
+	}
+	if blocked != nil {
+		return blocked
 	}
 	return nil
 }
