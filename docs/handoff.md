@@ -1,6 +1,6 @@
 # 交接：開發進度（M1 與 M2）
 
-> 更新：2026-11-21。PR #1～#12 已合併。LOCAL 切片（ING-05）是 PR #13（`feat/local-media`）；PODCAST 切片（ING-04）在 `feat/podcast`，疊在 `feat/local-media` 上；ESTIMATE（ING-R8）在 `feat/estimate`（PR #15），疊在 `feat/podcast`（PR #14）上；M2 的 S0 骨架在 `feat/m2-s0`，疊在 `feat/estimate` 上。
+> 更新：2026-11-22（待決問題的 owner 決議見第 2 節第 4 點）。PR #1～#12 已合併。LOCAL 切片（ING-05）是 PR #13（`feat/local-media`）；PODCAST 切片（ING-04）在 `feat/podcast`，疊在 `feat/local-media` 上；ESTIMATE（ING-R8）在 `feat/estimate`（PR #15），疊在 `feat/podcast`（PR #14）上；M2 的 S0 骨架在 `feat/m2-s0`，疊在 `feat/estimate` 上。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -128,7 +128,32 @@
    - 需要 owner 決定：PRF「Each layer」（F1）、PRF-R8（F5）、MCP stdio、OUT-R9 預覽。
    - 缺 LLM fixture（S5、S6b 要補）：SEG 7 個、TRN 8 個、localize 1 個；缺 media fixture `speech-with-pause-at-6.2s.m4a`（S5）。
    - 行為還沒做：COR glossary 傳給 ASR（S4）、SEG 手動字幕跳過 segment（S5，目前 `api` executor 回「還沒有實作」）、TRN OpenCC 3 個與沿用手動字幕軌 1 個（S6a）、OUT sidecar 對線上影音是 `skipped`（S8）。
-4. M2 需要 owner 決定的事（細節在各規格的待決問題）：X1 LLM 步驟預設值（S0 依建議 C：沒有 provider 就 skipped）、X7 兩個 Agent 同時領任務沒有場景、L1 LLM-R8 請求數 4 應為 5、L7 cost_ledger、G1 SEG-R2～R4 矛盾、P1 PRM-R7 body、P6 不帶版本號的 prompt 引用跟隨預設、F1 PRF-R2 Background、F2 PRF-R3 斷言驗證不到、F5 頻道層要等 metadata（場景加 `the worker runs until idle`）、O-4 PRF 的 M1 敘述、S1/S2 的 D1～D16 待確認（特別是 D6 頻道層在 metadata 才併入、D8 完整性只檢查處理方案、D13 硬刪除與 used_by 順序）、A1 AGT 並行上限、MCP stdio 場景搬到 CLI、O1～O4 OUT、COR-R4 斷言偏弱、SEG-R10 缺 answers、M2 路由的 scope（profiles 與 channel overrides 是否改 admin、ass-styles preview 是否改 ingest）。
+4. **owner 決議（2026-11-22）：下列建議全部同意。** 規格與 `.feature` 的修改還沒做，依規格優先要和規格放在同一個 `📝 docs(specs)` commit 修改，做完後關閉各規格的對應待決問題。決議內容：
+   - **LLM 核心（擋 S3）**：
+     - X1：沒有 provider 就 `skipped`（`not_configured`），維持 S0 的做法。
+     - L1：LLM-R8 場景的 `received 4 requests` 改成 5。
+     - L2：token 估算採 CJK 一字 1、其他每 4 字元 1（進位）、每句加 1、重疊句不計入。
+     - L6：API key 環境變數 `NOTESTEME_ANTHROPIC_API_KEY`、`NOTESTEME_OPENAI_API_KEY`，其他 provider 用 `NOTESTEME_<ID>_API_KEY`。
+     - wire 契約：同意，S3 寫成 ADR，fakellm 一起改。
+     - P6：不帶版本號的 prompt 引用跟隨預設（`<id>` 等同 `<id>@default`）。
+   - **S1/S2 設計決策**：
+     - 同意：D6、D8、D13、X5、D10～D12、D14、D16、F4。
+     - P7、P8 先接受。P7 之後可補掃描 `items.overrides_json` 並把檢查與刪除放進同一個交易，排在 M2 收尾。
+   - **要改 `.feature` 或規格（已同意，待實作）**：
+     - F1、F2：PRF-R2「Each layer」與 PRF-R3 加 `And the default profile is "standard"`。
+     - F5：PRF-R8 與 PRF-R2 的 ingest 之後加 `And the worker runs until idle`。
+     - P1：PRM-R7 compare 的 body 加 `"provider": "anthropic", "model": "fixture-model"`。
+     - G1（PRF 版）：PRF-R1 補上 `glossary`（字串陣列），它與 COR `/api/glossaries` 的關係由 COR 切片決定。
+     - O-4：PRF 開頭改成「處理方案在 M2（PRF 切片）實作；ING-R7 隨 PRF 切片通過」，並關閉 ING-R7 的待決問題。
+     - MCP-R1：stdio 場景搬到 CLI 的 feature。
+     - OUT-R9：改 `steps.md` 4.4 規則 (1)，只有 seed `source` 才算「場景已準備來源」，其餘走 fixture；改完要確認其他場景沒有變成走 fixture。
+     - SEG-R10：補上 `the LLM provider "openai" answers "segment" with …`。
+     - COR-R4：影片標題改成不含「微服务」；fixture 要不要跟著改，改時確認。
+   - **不用現在決定**：M0 量測的各項（`max_tokens`、重疊句數、`when_needed` 門檻、相似度算法、`⟨|⟩`）、OUT sidecar 檔名（先實測 BCP-47 與 ISO 639）、PIPE 的退避與 aging、translate 多語言（TRN 切片）。
+   - **規格裡找不到原文，尚未處理**：X7、L7、A1、O1～O4、SEG-R2～R4 矛盾（handoff 的 G1）。AGT 的待決問題寫「無」。要處理時先讀相關 `.feature` 再問使用者。
+   - **還沒回覆**：M2 路由的 scope（profiles 與 channel overrides 是否改 admin、ass-styles preview 是否改 ingest）。
+
+   原本的待決清單（保留供對照）：X1 LLM 步驟預設值（S0 依建議 C：沒有 provider 就 skipped）、X7 兩個 Agent 同時領任務沒有場景、L1 LLM-R8 請求數 4 應為 5、L7 cost_ledger、G1 SEG-R2～R4 矛盾、P1 PRM-R7 body、P6 不帶版本號的 prompt 引用跟隨預設、F1 PRF-R2 Background、F2 PRF-R3 斷言驗證不到、F5 頻道層要等 metadata（場景加 `the worker runs until idle`）、O-4 PRF 的 M1 敘述、S1/S2 的 D1～D16 待確認（特別是 D6 頻道層在 metadata 才併入、D8 完整性只檢查處理方案、D13 硬刪除與 used_by 順序）、A1 AGT 並行上限、MCP stdio 場景搬到 CLI、O1～O4 OUT、COR-R4 斷言偏弱、SEG-R10 缺 answers、M2 路由的 scope（profiles 與 channel overrides 是否改 admin、ass-styles preview 是否改 ingest）。
 5. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。棘輪只涵蓋預設 tag（`@M1`）：M2 已通過的場景（例如 PRF、PRM 的 15 個）目前沒有棘輪保護，要靠每個切片手動跑 `-godog.tags=@M2` 比對；M2 完成、預設 tag 納入 `@M2` 時再一起進棘輪。
 6. `features/fixtures/items/` 有 `yt-pg100xxxxxx.json`、`yt-abc123xxxxx.json`（後者只在影片沒有任何字幕軌時用到，目前只有 SEC 的場景用得到）。
 7. 大切片的做法（LOCAL、PODCAST 用過）：architect 先出設計，主代理把設計凍結成契約檔（Go 介面、argv、marker 語法、資料模型），再分給檔案所有權不重疊的 builder 並行實作；harness 的工作包可以從一開始就並行。整合後主代理跑完整驗收與變異測試，另開 builder 只看 diff 與規格做審查。
