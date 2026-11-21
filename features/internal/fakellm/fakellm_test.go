@@ -395,9 +395,9 @@ func TestFailPriorityOnceAndForever(t *testing.T) {
 	if reqs := s.Requests("anthropic"); len(reqs) != 2 || reqs[0].Status != 429 || reqs[0].Stage != "correct" || reqs[1].Status != 200 {
 		t.Errorf("Requests = %+v", reqs)
 	}
-	// 失敗的請求沒有用掉依序回答：沒有 chunk 的請求第一個仍是 a。
-	noChunk := anthropicBody("correct", "sys", "沒有資料區塊")
-	if w := call(t, s, "anthropic", "", noChunk); outputOf(t, "anthropic", w)["v"] != "a" {
+	// 失敗的請求沒有用掉依序回答：沒有 chunk 專屬回答的請求（chunk 2）第一個仍是 a。
+	otherChunk := anthropicBody("correct", "sys", dataText(2, 2, "x"))
+	if w := call(t, s, "anthropic", "", otherChunk); outputOf(t, "anthropic", w)["v"] != "a" {
 		t.Error("依序回答被失敗的請求用掉了")
 	}
 
@@ -542,6 +542,10 @@ func TestWireViolations(t *testing.T) {
 		{"資料區塊的 cue 多了欄位", "openai", openaiBody("correct", "s", "校正。\n"+DataOpen+"\n"+`{"chunk":1,"chunks":1,"context":[],"cues":[{"i":1,"text":"x","start":1000}]}`+"\n"+DataClose), nil, "契約以外的欄位"},
 		{"資料區塊的 context 多了欄位", "openai", openaiBody("correct", "s", "校正。\n"+DataOpen+"\n"+`{"chunk":2,"chunks":2,"context":[{"i":1,"text":"x","start":1000}],"cues":[{"i":2,"text":"y"}]}`+"\n"+DataClose), nil, "context[0] 有契約以外的欄位"},
 		{"資料區塊的 context.i 不是正整數", "openai", openaiBody("correct", "s", "校正。\n"+DataOpen+"\n"+`{"chunk":2,"chunks":2,"context":[{"i":0,"text":"x"}],"cues":[{"i":2,"text":"y"}]}`+"\n"+DataClose), nil, "context[0].i 必須是從 1 起算的整數"},
+		{"沒有資料區塊", "openai", openaiBody("correct", "s", "校正。沒有字幕"), nil, "沒有可以解析的 <transcript_data>"},
+		{"資料區塊解析不了", "openai", openaiBody("correct", "s", "校正。\n"+DataOpen+"\n{\"chunk\":1,}\n"+DataClose), nil, "沒有可以解析的 <transcript_data>"},
+		{"資料區塊的 cue 沒有 text", "openai", openaiBody("correct", "s", "校正。\n"+DataOpen+"\n"+`{"chunk":1,"chunks":1,"context":[],"cues":[{"i":1}]}`+"\n"+DataClose), nil, "cues[0].text 必須是字串"},
+		{"資料區塊的 context.text 不是字串", "openai", openaiBody("correct", "s", "校正。\n"+DataOpen+"\n"+`{"chunk":1,"chunks":1,"context":[{"i":1,"text":5}],"cues":[{"i":2,"text":"y"}]}`+"\n"+DataClose), nil, "context[0].text 必須是字串"},
 		{"資料區塊的 chunk 從 0 起算", "openai", openaiBody("correct", "s", "校正。\n"+DataOpen+"\n"+`{"chunk":0,"chunks":2,"context":[],"cues":[{"i":1,"text":"y"}]}`+"\n"+DataClose), nil, "chunk 必須是從 1 起算的整數"},
 		{"資料區塊沒有 chunk", "openai", openaiBody("correct", "s", "校正。\n"+DataOpen+"\n"+`{"chunks":2,"context":[],"cues":[{"i":1,"text":"y"}]}`+"\n"+DataClose), nil, "chunk 必須是從 1 起算的整數"},
 		{"資料區塊沒有 chunks", "openai", openaiBody("correct", "s", "校正。\n"+DataOpen+"\n"+`{"chunk":1,"context":[],"cues":[{"i":1,"text":"y"}]}`+"\n"+DataClose), nil, "chunks 必須是從 1 起算的整數"},

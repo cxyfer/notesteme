@@ -441,7 +441,7 @@ func (d *dataBlock) validate() []string {
 	return append(errs, validateEntries("cues", d.Cues)...)
 }
 
-// validateEntries 檢查一組 {i, text} 項目；name 是它在資料區塊中的欄位名（context 或 cues）。
+// validateEntries 檢查一組 {i, text} 項目：只能有這兩個欄位，i 是正整數，text 是字串；name 是它在資料區塊中的欄位名（context 或 cues）。
 func validateEntries(name string, entries []map[string]any) []string {
 	var errs []string
 	for j, c := range entries {
@@ -449,6 +449,9 @@ func validateEntries(name string, entries []map[string]any) []string {
 			if k != "i" && k != "text" {
 				errs = append(errs, fmt.Sprintf("%s[%d] 有契約以外的欄位 %q（只能有 i 與 text）", name, j, k))
 			}
+		}
+		if _, ok := c["text"].(string); !ok {
+			errs = append(errs, fmt.Sprintf("%s[%d].text 必須是字串", name, j))
 		}
 		switch v := c["i"].(type) {
 		case json.Number:
@@ -628,6 +631,11 @@ func parseRequest(id string, body []byte) parsed {
 		if pr.data != nil {
 			break
 		}
+	}
+	if pr.data == nil {
+		// 契約要求每個請求都在 user message 中帶一個可以解析的資料區塊：沒有、或解析不了都是違規，
+		// 不能讓漏掉字幕的 client 靠靜態 fixture 通過場景。
+		pr.errs = append(pr.errs, "user message 中沒有可以解析的 "+DataOpen+" 資料區塊（內容要是一行 JSON 物件 {chunk, chunks, context, cues}）")
 	}
 	if dataAt < 0 {
 		dataAt = strings.Index(pr.text, DataOpen)

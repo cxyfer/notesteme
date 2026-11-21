@@ -32,9 +32,9 @@ func llmPost(t *testing.T, w *World, url string, header map[string]string, body 
 }
 
 const (
-	anthropicBody = `{"model":"m","max_tokens":100,"messages":[{"role":"user","content":"hi"}],` +
+	anthropicBody = `{"model":"m","max_tokens":100,"messages":[{"role":"user","content":"<transcript_data>{\"chunk\":1,\"chunks\":1,\"context\":[],\"cues\":[{\"i\":1,\"text\":\"hi\"}]}</transcript_data>"}],` +
 		`"tools":[{"name":"notesteme_correct"}],"tool_choice":{"type":"tool","name":"notesteme_correct"}}`
-	openaiBody = `{"model":"m","messages":[{"role":"user","content":"hi"}],` +
+	openaiBody = `{"model":"m","messages":[{"role":"user","content":"<transcript_data>{\"chunk\":1,\"chunks\":1,\"context\":[],\"cues\":[{\"i\":1,\"text\":\"hi\"}]}</transcript_data>"}],` +
 		`"response_format":{"type":"json_schema","json_schema":{"name":"notesteme_correct","strict":true,"schema":{"type":"object","additionalProperties":false}}}}`
 )
 
