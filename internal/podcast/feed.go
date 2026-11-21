@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cxyfer/notesteme/internal/netguard"
 )
@@ -32,6 +33,13 @@ const (
 // maxXMLDepth 是 XML 元素巢狀的上限；超過就停止解析。真實的 feed 只有個位數層，
 // 但 encoding/xml 每一層都會配置記憶體，惡意的深層巢狀會讓記憶體用量遠大於內容大小。
 const maxXMLDepth = 64
+
+// 不可信的 feed 欄位的長度上限（bytes）：guid 過長的集視為無效而略過，title 與 description 依 rune 邊界截斷。
+const (
+	maxGUIDBytes        = 1 << 10
+	maxTitleBytes       = 1 << 10
+	maxDescriptionBytes = 64 << 10
+)
 
 // ErrNotFeed 表示內容不是 RSS 2.0 或 Atom（含巢狀超過 maxXMLDepth 層的 XML）。
 var ErrNotFeed = errors.New("內容不是 RSS 或 Atom")
@@ -205,7 +213,8 @@ func Parse(r io.Reader) (*Feed, error) {
 			switch {
 			case cur != nil && f == curFrame:
 				ep := cur.finish()
-				if ep.GUID != "" && !seen[ep.GUID] {
+				// guid 過長（含拿音檔網址代替的情況）視為無效的集。
+				if ep.GUID != "" && len(ep.GUID) <= maxGUIDBytes && !seen[ep.GUID] {
 					seen[ep.GUID] = true
 					feed.Episodes = append(feed.Episodes, ep)
 				}
@@ -234,7 +243,7 @@ func applyFeedField(feed *Feed, f *frame, atom bool) {
 	switch strings.ToLower(f.name.Local) {
 	case "title":
 		if feed.Title == "" && isStdNS(f.name) {
-			feed.Title = text
+			feed.Title = truncateBytes(text, maxTitleBytes)
 		}
 	case "language":
 		if feed.Language == "" {
@@ -268,7 +277,7 @@ func (d *epDraft) finish() Episode {
 		ep.GUID = ep.Enclosure.URL
 	}
 	if ep.Description == "" {
-		ep.Description = d.itunesSummary
+		ep.Description = truncateBytes(d.itunesSummary, maxDescriptionBytes)
 	}
 	if ep.PublishedAt == nil {
 		ep.PublishedAt = d.updated
@@ -285,6 +294,17 @@ func isStdNS(n xml.Name) bool {
 		return true
 	}
 	return strings.Contains(space, "atom")
+}
+
+// truncateBytes 把 s 截到不超過 max bytes，並停在 rune 的邊界。
+func truncateBytes(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	for max > 0 && !utf8.RuneStart(s[max]) {
+		max--
+	}
+	return s[:max]
 }
 
 func applyEpisodeField(d *epDraft, f *frame, atom bool) {
@@ -324,11 +344,11 @@ func applyEpisodeField(d *epDraft, f *frame, atom bool) {
 		}
 	case "title":
 		if ep.Title == "" && isStdNS(f.name) {
-			ep.Title = text
+			ep.Title = truncateBytes(text, maxTitleBytes)
 		}
 	case "description", "summary", "content":
 		if ep.Description == "" && isStdNS(f.name) {
-			ep.Description = text
+			ep.Description = truncateBytes(text, maxDescriptionBytes)
 		}
 	case "pubdate", "published":
 		if ep.PublishedAt == nil {

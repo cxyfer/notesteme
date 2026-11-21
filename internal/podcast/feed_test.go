@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cxyfer/notesteme/internal/netguard"
 )
@@ -348,5 +349,35 @@ func TestParseAtomPublishedBeatsUpdated(t *testing.T) {
 	f, _ := Parse(strings.NewReader(`<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>1</id><updated>2025-12-01T00:00:00Z</updated></entry></feed>`))
 	if got := f.Episodes[0].PublishedAt; got == nil || !got.Equal(time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("只有 updated：%v", got)
+	}
+}
+
+// 不可信欄位的長度：guid 超過 1 KiB 的集略過；title 截到 1 KiB、description 截到 64 KiB（依 rune 邊界）。
+func TestParseLimitsUntrustedFieldLengths(t *testing.T) {
+	long := strings.Repeat("g", 1025)
+	body := `<rss><channel><title>` + strings.Repeat("字", 1000) + `</title>
+<item><guid>` + long + `</guid><title>skipped</title></item>
+<item><guid>` + strings.Repeat("g", 1024) + `</guid><title>` + strings.Repeat("字", 1000) + `</title><description>` + strings.Repeat("é", 40000) + `</description></item>
+<item><title>no guid</title><enclosure url="https://m.test/` + strings.Repeat("a", 1100) + `.mp3"/></item>
+</channel></rss>`
+	f, err := Parse(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Episodes) != 1 {
+		t.Fatalf("episodes = %d，guid 過長的集與用過長音檔網址當 guid 的集都要略過", len(f.Episodes))
+	}
+	ep := f.Episodes[0]
+	if len(ep.GUID) != 1024 {
+		t.Errorf("guid 長度 = %d，剛好 1 KiB 應保留", len(ep.GUID))
+	}
+	if len(ep.Title) > 1024 || len(ep.Title) < 1024-3 || !utf8.ValidString(ep.Title) {
+		t.Errorf("title %d bytes，valid = %v", len(ep.Title), utf8.ValidString(ep.Title))
+	}
+	if len(ep.Description) > 64<<10 || len(ep.Description) < 64<<10-1 || !utf8.ValidString(ep.Description) {
+		t.Errorf("description %d bytes，valid = %v", len(ep.Description), utf8.ValidString(ep.Description))
+	}
+	if len(f.Title) > 1024 || !utf8.ValidString(f.Title) {
+		t.Errorf("feed title %d bytes", len(f.Title))
 	}
 }
