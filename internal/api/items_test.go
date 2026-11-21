@@ -167,7 +167,7 @@ func TestCreateItemErrors(t *testing.T) {
 		{"無法辨識", `{"url":"https://example.com/some/page"}`, 422, CodeUnrecognizedURL, "無法辨識這個網址。目前支援 YouTube、Bilibili、Podcast RSS 與本機檔案。"},
 		{"影片 ID 不是 11 個字元", `{"url":"https://www.youtube.com/watch?v=abc123xxxx"}`, 422, CodeUnrecognizedURL, "無法辨識這個網址。目前支援 YouTube、Bilibili、Podcast RSS 與本機檔案。"},
 		{"Bilibili 影片", `{"url":"https://www.bilibili.com/video/BV1xx411c7mD"}`, 501, CodeNotImplemented, ""},
-		{"未知的 until", `{"url":"https://youtu.be/abc123xxxxx","until":"publish"}`, 422, CodeInvalidInput, ""},
+		{"未知的 until", `{"url":"https://youtu.be/abc123xxxxx","until":"nope"}`, 422, CodeInvalidInput, ""},
 		{"缺少 url", `{}`, 422, CodeInvalidInput, ""},
 		{"多餘的欄位", `{"url":"https://youtu.be/abc123xxxxx","nope":1}`, 422, CodeInvalidInput, ""},
 	}
@@ -189,7 +189,7 @@ func TestItemDetailStagesAndSources(t *testing.T) {
 	id := created.Items[0].ID
 
 	d := decode[ItemDetail](t, r.owner("GET", "/api/items/"+id, ""))
-	if len(d.Stages) != 3 || d.Stages[0].Stage != "metadata" || d.Stages[0].Status != "pending" || len(d.Sources) != 0 {
+	if len(d.Stages) != len(pipeline.Stages) || d.Stages[0].Stage != "metadata" || d.Stages[0].Status != "pending" || len(d.Sources) != 0 {
 		t.Fatalf("新增後：%+v", d)
 	}
 	if d.Until != "transcript" || d.Overrides["language"] == nil || d.Stages[0].Actions == nil {
@@ -380,7 +380,7 @@ func TestRerunEndpoint(t *testing.T) {
 		path, body string
 		status     int
 	}{
-		{"/api/items/" + id + "/rerun", `{"from":"correct"}`, 501},
+		{"/api/items/" + id + "/rerun", `{"from":"summary"}`, 501},
 		{"/api/items/" + id + "/rerun", `{"from":"nope"}`, 422},
 		{"/api/items/" + id + "/rerun", `{}`, 422},
 		{"/api/items/missing/rerun", `{"from":"normalize"}`, 404},

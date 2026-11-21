@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/pipeline"
+	"github.com/cxyfer/notesteme/internal/store"
 )
 
 // stageView 是 API 回應中步驟的欄位（只列出 CLI 會用到的）。
@@ -177,6 +178,10 @@ func (s *session) printItemText(v itemView) {
 	}
 	for _, st := range v.Stages {
 		fmt.Fprintf(s.stdout, "  %-10s %s", st.Stage, st.Status)
+		// skipped 與 blocked 有原因時一併顯示，例如 `skipped（not_configured）`。
+		if st.BlockReason != "" && (st.Status == store.StatusSkipped || st.Status == store.StatusBlocked) {
+			fmt.Fprintf(s.stdout, "（%s）", st.BlockReason)
+		}
 		if st.Message != "" {
 			fmt.Fprintf(s.stdout, "：%s", st.Message)
 		}

@@ -98,6 +98,10 @@ func TestScopeMatrix(t *testing.T) {
 				{"DELETE", "/api/tokens/missing", "", auth.ScopeAdmin, auth.ScopeRead, 404},
 				{"POST", "/api/tasks/t1/retry", "", auth.ScopeAdmin, auth.ScopeAgent, 501},
 				{"POST", "/api/tasks/t1/cancel", "", auth.ScopeAdmin, auth.ScopeAgent, 501},
+				// M2 的 501 stub（完整清單見 TestM2StubRoutes）：每種 scope 各抽一條。
+				{"GET", "/api/profiles", "", auth.ScopeRead, auth.ScopeAdmin, 501},
+				{"POST", "/api/profiles", `{"name":"x"}`, auth.ScopeAdmin, auth.ScopeRead, 501},
+				{"POST", "/api/prompts/playground", "", auth.ScopeIngest, auth.ScopeRead, 501},
 			}
 
 			for _, c := range cases {
