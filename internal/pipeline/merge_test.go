@@ -65,3 +65,33 @@ func TestMergePatch_DoesNotMutate(t *testing.T) {
 		t.Errorf("結果與輸入共用子結構：target=%v patch=%v", target, patch)
 	}
 }
+
+// PATCH 端點的實際用法：處理方案 config 與頻道覆寫的 merge patch（D5）。
+func TestMergePatch_ProfileConfigUsage(t *testing.T) {
+	cases := []struct{ name, target, patch, want string }{
+		{"改一個欄位，兄弟欄位保留",
+			`{"stages":{"correct":{"executor":"api","provider":"anthropic","model":"m1"}}}`,
+			`{"stages":{"correct":{"model":"m2"}}}`,
+			`{"stages":{"correct":{"executor":"api","provider":"anthropic","model":"m2"}}}`},
+		{"null 刪掉整個區段", `{"timing":{"split_timing":"forbid"},"language":{"targets":["en"]}}`, `{"timing":null}`, `{"language":{"targets":["en"]}}`},
+		{"null 刪掉巢狀的鍵", `{"stages":{"correct":{"provider":"openai","model":"m"}}}`, `{"stages":{"correct":{"provider":null}}}`, `{"stages":{"correct":{"model":"m"}}}`},
+		{"刪掉不存在的鍵沒有影響", `{"a":1}`, `{"b":null,"c":{"d":null}}`, `{"a":1,"c":{}}`},
+		{"陣列整個取代，不以索引合併", `{"language":{"targets":["en","ja","fr"]}}`, `{"language":{"targets":["de"]}}`, `{"language":{"targets":["de"]}}`},
+		{"陣列中的 null 原樣保留（由驗證器拒絕）", `{"a":[1]}`, `{"a":[null]}`, `{"a":[null]}`},
+		{"空 patch 等於複製", `{"a":{"b":1}}`, `{}`, `{"a":{"b":1}}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := MergePatch(mustMap(t, c.target), mustMap(t, c.patch))
+			if want := mustMap(t, c.want); !reflect.DeepEqual(got, want) {
+				t.Errorf("MergePatch = %v，預期 %v", got, want)
+			}
+		})
+	}
+	if got := MergePatch(mustMap(t, `{"a":1}`), nil); !reflect.DeepEqual(got, mustMap(t, `{"a":1}`)) {
+		t.Errorf("patch 為 nil：%v", got)
+	}
+	if got := MergePatch(nil, nil); got == nil || len(got) != 0 {
+		t.Errorf("兩邊都是 nil 應回傳空物件：%v", got)
+	}
+}

@@ -39,13 +39,6 @@ func TestInUseErrorMessages(t *testing.T) {
 	}
 }
 
-// ValidateLayer 在契約階段不檢查任何東西（WP-1 實作）。
-func TestValidateLayerStubReturnsNil(t *testing.T) {
-	if got := ValidateLayer(t.Context(), map[string]any{"colour": "red"}, KindProfile, ValidateDeps{}); got != nil {
-		t.Errorf("stub 應回傳 nil：%v", got)
-	}
-}
-
 // prompt_version、prompt_sha256 是快照才有的欄位：Stage() 讀得出來；沒有時是零值。
 func TestStageConfigReadsPromptVersion(t *testing.T) {
 	eff := Effective{"stages": map[string]any{"correct": map[string]any{"prompt": "my@2", "prompt_version": float64(2), "prompt_sha256": "abc"}}}
