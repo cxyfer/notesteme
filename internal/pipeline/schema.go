@@ -376,6 +376,17 @@ func checkLengthRatio(v *layerValidator, path string, val any) {
 		{"min", checkPositiveNumber},
 		{"max", checkPositiveNumber},
 	}, msgUnknownField)(v, path, val)
+	// 同一層同時給 min 與 max 時，範圍不能是反的（min > max 會讓每一筆翻譯都驗證失敗）。
+	// 只檢查同一個物件：分層各給一端的組合由使用它的 TRN 切片在有效設定上檢查。
+	m, ok := val.(map[string]any)
+	if !ok {
+		return
+	}
+	lo, loOK := m["min"].(float64)
+	hi, hiOK := m["max"].(float64)
+	if loOK && hiOK && lo > 0 && hi > 0 && lo > hi {
+		v.add(joinPath(path, "min"), "不可以大於 max。")
+	}
 }
 
 func (v *layerValidator) checkCaptionPriority(path string, val any) {

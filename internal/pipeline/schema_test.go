@@ -519,6 +519,7 @@ func TestValidateLayer_StrictSchema(t *testing.T) {
 		{"min_similarity 超出範圍", `{ "stages": { "correct": { "min_similarity": 1.5 } } }`, "stages.correct.min_similarity", "必須是 0 到 1 之間的數字。"},
 		{"min_similarity 不是數字", `{ "stages": { "correct": { "min_similarity": "high" } } }`, "stages.correct.min_similarity", "必須是 0 到 1 之間的數字。"},
 		{"length_ratio 負數", `{ "stages": { "translate": { "length_ratio": { "min": -1 } } } }`, "stages.translate.length_ratio.min", "必須是大於 0 的數字。"},
+		{"length_ratio 範圍顛倒", `{ "stages": { "translate": { "length_ratio": { "min": 4, "max": 1 } } } }`, "stages.translate.length_ratio.min", "不可以大於 max。"},
 		{"length_ratio 未知欄位", `{ "stages": { "translate": { "length_ratio": { "avg": 1 } } } }`, "stages.translate.length_ratio.avg", "不認識的欄位。"},
 		{"targets 是字串", `{ "language": { "targets": "en" } }`, "language.targets", "必須是字串陣列。"},
 		{"targets 空陣列", `{ "language": { "targets": [] } }`, "language.targets", "至少要有 1 個項目。"},
