@@ -55,6 +55,9 @@ type episodeAudio struct {
 	DurationS float64 `json:"duration_s"`
 
 	mediaKind string // ffprobe 判斷的 audio 或 video；不進 metadata_json
+	// created 為 true 代表 File 是這次下載建立的新檔（不是沿用快照記錄的檔名，也不是和別的下載共用的同名檔）；
+	// 結果被丟棄時只能刪這種檔案。不進 metadata_json。
+	created bool
 }
 
 // audioDownloader 下載 Podcast 單集的音檔。metadata 步驟與 ASR 的音訊來源共用它。
@@ -175,48 +178,54 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 	// 預設檔名 episode.<ext> 用 link 專屬建立（檔名已存在就失敗），撞名時改用依內容命名的 episode-<sha256 前 8 碼>.<ext>；
 	// commit 之後快照指向最後用的檔名，其他檔由 runPodcastMetadata 的 afterCommit 刪除。
 	// name 非空（ASR 重新下載）時沿用快照記錄的檔名，直接覆蓋。
+	created := false
 	if name != "" {
 		if err := os.Rename(part, filepath.Join(dir, name)); err != nil {
 			return nil, err
 		}
 	} else {
-		ext := audioExt(finalURL, enc.Type)
 		var err error
-		if name, err = stageEpisodeFile(part, dir, ext, sum); err != nil {
+		if name, created, err = stageEpisodeFile(part, dir, audioExt(finalURL, enc.Type), sum); err != nil {
 			return nil, err
 		}
 	}
 	done = true
 	return &episodeAudio{
 		File: name, URL: finalURL, Bytes: n, SHA256: sum,
-		DurationS: info.DurationS, mediaKind: info.Kind(),
+		DurationS: info.DurationS, mediaKind: info.Kind(), created: created,
 	}, nil
 }
 
-// stageEpisodeFile 把下載完成的 part 放到 dir：先試 episode<ext>（link 是專屬建立，已存在就失敗，
-// 不會蓋掉別人的檔案），撞名時改用 episode-<sha8><ext>（內容相同的重複下載會得到相同的檔名與內容，可以共用）。
-// 檔案系統不支援 link 時退回 rename，行為與先前相同。part 在成功之後移除。
-func stageEpisodeFile(part, dir, ext, sum string) (string, error) {
-	for _, name := range []string{"episode" + ext, "episode-" + sum[:8] + ext} {
-		err := os.Link(part, filepath.Join(dir, name))
+// stageEpisodeFile 把下載完成的 part 放到 dir，而且不蓋掉已存在的檔案：先用 O_EXCL 保留 episode<ext>（已存在就失敗），
+// 再 rename 蓋過自己剛建立的空檔；撞名時改用 episode-<sha8><ext>（內容相同的重複下載共用同一個檔名）。
+// O_EXCL 在任何檔案系統上都有效，不依賴 hard link。created 為 true 代表這個檔案是這次建立的（捨棄結果時只能刪這種檔案）。
+// 保留與 rename 之間若程序崩潰會留下空檔，之後由 afterCommit 的清理刪除。
+func stageEpisodeFile(part, dir, ext, sum string) (name string, created bool, err error) {
+	for i, n := range []string{"episode" + ext, "episode-" + sum[:8] + ext} {
+		dst := filepath.Join(dir, n)
+		f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		switch {
 		case err == nil:
+			if err := f.Close(); err != nil {
+				_ = os.Remove(dst)
+				return "", false, err
+			}
+			if err := os.Rename(part, dst); err != nil {
+				_ = os.Remove(dst)
+				return "", false, err
+			}
+			return n, true, nil
+		case errors.Is(err, fs.ErrExist) && i == 1:
+			// 依內容命名的檔案已存在：內容相同，直接共用。
 			_ = os.Remove(part)
-			return name, nil
+			return n, false, nil
 		case errors.Is(err, fs.ErrExist):
-			if name != "episode"+ext {
-				// 依內容命名的檔案已存在：內容相同，直接共用。
-				_ = os.Remove(part)
-				return name, nil
-			}
+			continue
 		default:
-			if rerr := os.Rename(part, filepath.Join(dir, name)); rerr != nil {
-				return "", rerr
-			}
-			return name, nil
+			return "", false, err
 		}
 	}
-	return "", errors.New("暫存音檔失敗")
+	return "", false, errors.New("暫存音檔失敗")
 }
 
 // stalePartAge 是 .part 檔多久沒有寫入就視為崩潰遺留的殘檔。下載中的檔案持續在寫入；

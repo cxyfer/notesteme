@@ -145,8 +145,17 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 				rejected = append(rejected, decisions[i])
 			}
 		}
-		dropped = append(dropped, *chosen)
-		usable = slices.DeleteFunc(slices.Clone(usable), func(t transcript.Track) bool { return t == *chosen })
+		// 下載時 chosen.Format 可能被判斷出來而改變（沒有宣告 type 的字幕軌），所以不能用整個結構比對：
+		// 用不含 Format 的識別找回 usable 中原本的字幕軌，否則移除不到、重新選軌又選到同一條而一直重試。
+		same := func(t transcript.Track) bool {
+			return t.Handle == chosen.Handle && t.Lang == chosen.Lang && t.Kind == chosen.Kind
+		}
+		if i := slices.IndexFunc(usable, same); i >= 0 {
+			dropped = append(dropped, usable[i])
+		} else {
+			dropped = append(dropped, *chosen)
+		}
+		usable = slices.DeleteFunc(slices.Clone(usable), same)
 		reselect()
 	}
 	reject := func(reason string) { drop(transcript.StateRejected, reason) }

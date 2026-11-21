@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -350,6 +351,39 @@ func TestPodcastTranscriptCacheKeyIncludesDroppedTracks(t *testing.T) {
 	}
 	if again.stage.CacheKey != dropped.stage.CacheKey {
 		t.Errorf("相同情況的快取鍵不穩定：%s ≠ %s", again.stage.CacheKey, dropped.stage.CacheKey)
+	}
+}
+
+// 沒有宣告 type 的字幕軌解析後是空的：下載時 Format 會被判斷出來，移除這條字幕軌不能因此失敗，
+// 否則重新選軌又選到它而一直重試（Codex P2）。
+func TestPodcastTranscriptTypelessEmptyTrackFallsThrough(t *testing.T) {
+	const typeless = "https://media.example.com/show/ep42-transcript"
+	r, g := groqPodRig(t)
+	r.fm.duration = 4
+	r.serveShow(`<podcast:transcript url="` + typeless + `"/>`)
+	r.net.serve(typeless, 200, "WEBVTT\n\n")
+	it := r.ingestEpisode(StageMetadata)
+
+	var (
+		res result
+		err error
+	)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		res, err = r.transcribe(it, groqLocalLang())
+	}()
+	select {
+	case <-done:
+	case <-time.After(15 * time.Second):
+		t.Fatal("空的字幕軌一直重試，沒有改用下一個來源")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"podcast-transcript:rejected:empty", "groq:used:"}
+	if got := probesOf(res); !reflect.DeepEqual(got, want) || g.calls() != 1 {
+		t.Errorf("probes = %v，Groq %d 次，預期 %v 與 1 次", got, g.calls(), want)
 	}
 }
 

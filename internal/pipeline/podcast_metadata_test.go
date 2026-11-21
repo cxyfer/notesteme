@@ -24,6 +24,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/podcast"
+	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
@@ -284,6 +285,58 @@ func TestDownloadEpisodeAudioDoesNotOverwriteStagedSameName(t *testing.T) {
 	}
 	if files := strings.Join(r.mediaFiles(it), ","); files != "episode-"+got.SHA256[:8]+".mp3,episode.mp3" {
 		t.Errorf("媒體目錄 = %s", files)
+	}
+}
+
+// 比新的重跑晚完成的 metadata 任務，它剛暫存的音檔要刪掉：沒有記錄會指向它（Codex P2）。
+func TestPodcastMetadataStaleRunDiscardsItsStagedAudio(t *testing.T) {
+	r := newPodRig(t)
+	r.serveShow("")
+	it := r.ingestEpisode(StageMetadata)
+	ctx := context.Background()
+
+	// 第一次重跑：任務被領取，先不處理。
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageMetadata, Until: StageMetadata}); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := queue.New(r.st, r.clk, "w1").Claim(ctx, 5)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim = %+v, %v", claimed, err)
+	}
+	// 第二次重跑先完成。
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageMetadata, Until: StageMetadata}); err != nil {
+		t.Fatal(err)
+	}
+	r.net.serve(audio42, 200, "WINNER-AUDIO-BYTES")
+	r.run()
+	// 舊任務現在才完成，下載到另一份內容。
+	r.net.serve(audio42, 200, "STALE-RUN-AUDIO-BYTES-LONGER")
+	if err := r.p.Handle(ctx, claimed[0]); err != nil {
+		t.Fatal(err)
+	}
+	got := r.mediaFiles(it)
+	m, ok := readPodcastMeta(r.reload(it.ID).Metadata)
+	if !ok || len(got) != 1 || got[0] != m.Audio.File {
+		t.Errorf("媒體目錄 = %v，快照 = %+v；預期只剩快照所指的檔案（過期任務暫存的音檔要刪掉）", got, m.Audio)
+	}
+}
+
+// 結果被丟棄時只刪這次建立的檔案：和別的下載共用的同名檔（內容相同）不能刪。
+func TestDownloadEpisodeAudioSharedFileIsNotCreated(t *testing.T) {
+	r := newPodRig(t)
+	it, enc := r.downloadFixture()
+	first, err := r.p.downloadEpisodeAudio(context.Background(), it, enc)
+	if err != nil || !first.created {
+		t.Fatalf("第一次下載 = %+v, %v，預期 created", first, err)
+	}
+	// 同樣內容再下載一次：episode.mp3 已存在，依內容命名的檔案是新建的；第三次則共用它。
+	second, err := r.p.downloadEpisodeAudio(context.Background(), it, enc)
+	if err != nil || !second.created || second.File == first.File {
+		t.Fatalf("第二次下載 = %+v, %v", second, err)
+	}
+	third, err := r.p.downloadEpisodeAudio(context.Background(), it, enc)
+	if err != nil || third.created || third.File != second.File {
+		t.Fatalf("第三次下載 = %+v, %v，預期共用 %s 且不算新建", third, err, second.File)
 	}
 }
 

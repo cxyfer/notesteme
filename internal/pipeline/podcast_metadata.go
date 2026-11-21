@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"os"
 	"path/filepath"
 
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -43,6 +44,14 @@ func (p *Pipeline) runPodcastMetadata(ctx context.Context, it store.Item, lang L
 	if err != nil {
 		return result{}, err
 	}
+	// 音檔已經暫存：之後任何一條沒有 commit 的路徑都要刪掉這次建立的檔案（見 afterDiscard）。
+	var discard func()
+	if audio.created {
+		if dir, derr := filepath.Abs(MediaCacheDir(p.dataDir, it.ID)); derr == nil {
+			staged := filepath.Join(dir, audio.File)
+			discard = func() { _ = os.Remove(staged) }
+		}
+	}
 
 	m := podcastMeta{
 		Description: ep.Description,
@@ -59,6 +68,9 @@ func (p *Pipeline) runPodcastMetadata(ctx context.Context, it store.Item, lang L
 	}
 	raw, err := json.Marshal(m)
 	if err != nil {
+		if discard != nil {
+			discard()
+		}
 		return result{}, err
 	}
 
@@ -89,7 +101,8 @@ func (p *Pipeline) runPodcastMetadata(ctx context.Context, it store.Item, lang L
 			}.String(),
 		},
 		task: taskDone, advance: true,
-		state: store.StageState{Status: store.StatusDone},
+		state:        store.StageState{Status: store.StatusDone},
+		afterDiscard: discard,
 	}
 	// 新的快照寫入之後，舊快照所指的音檔（副檔名不同時）才可以刪。
 	if dir, err := filepath.Abs(MediaCacheDir(p.dataDir, it.ID)); err == nil {
