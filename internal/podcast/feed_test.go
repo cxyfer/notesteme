@@ -162,6 +162,10 @@ func TestParseAtomXHTMLBlockBoundaries(t *testing.T) {
 		{"行內元素不加間隔", `<b>foo</b>bar <i>baz</i>qux`, "foobar bazqux"},
 		{"原有的空白不重複", "<p>First</p>\n<p>second.</p>", "First\nsecond."},
 		{"首尾不留間隔", `<p>only</p>`, "only"},
+		// 已經有非 ASCII 空白（&#160;、U+3000）當邊界時不再補空格（Codex P2）。
+		{"不換行空白已是邊界", `<p>First&#160;</p><p>second</p>`, "First\u00a0second"},
+		{"下一段開頭的不換行空白", `<p>First</p><p>&#160;second</p>`, "First\u00a0second"},
+		{"全形空白已是邊界", `<p>第一段　</p><p>第二段</p>`, "第一段　第二段"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			body := `<?xml version="1.0"?>

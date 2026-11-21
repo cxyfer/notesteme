@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -177,14 +178,16 @@ func (f *frame) add(s string) {
 	}
 	if f.brk {
 		f.brk = false
-		if cur := f.text.String(); cur != "" && !isXMLSpace(cur[len(cur)-1]) && !isXMLSpace(s[0]) {
+		cur := f.text.String()
+		last, _ := utf8.DecodeLastRuneInString(cur)
+		first, _ := utf8.DecodeRuneInString(s)
+		// 用 unicode.IsSpace 判斷：&#160;（U+00A0）、U+3000 等非 ASCII 空白本身就是邊界，不能再補一個。
+		if cur != "" && !unicode.IsSpace(last) && !unicode.IsSpace(first) {
 			f.text.WriteByte(' ')
 		}
 	}
 	f.text.WriteString(s)
 }
-
-func isXMLSpace(b byte) bool { return b == ' ' || b == '\t' || b == '\n' || b == '\r' }
 
 // xhtmlBlocks 是文字抽取時要當成邊界的 XHTML 區塊元素（行內元素如 b、i、a 不算）。
 var xhtmlBlocks = map[string]bool{
