@@ -80,8 +80,8 @@ func (rt *routes) serveMedia(w http.ResponseWriter, r *http.Request) {
 	// 使用者的檔案不該被瀏覽器當成頁面執行。
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Content-Security-Policy", "sandbox; default-src 'none'")
-	if it.ContentSHA256 != "" {
-		h.Set("ETag", `"`+it.ContentSHA256+`"`)
+	if etag := pipeline.MediaETag(it, fi); etag != "" {
+		h.Set("ETag", etag)
 	}
 	http.ServeContent(w, r, name, fi.ModTime(), f)
 }

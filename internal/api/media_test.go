@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -104,6 +105,34 @@ func TestMediaETagAndConditional(t *testing.T) {
 	rec = r.media(id, func(req *http.Request) { req.Header.Set("Range", "bytes=0-3"); req.Header.Set("If-Range", `"other"`) })
 	if rec.Code != 200 || rec.Body.String() != "AUDIO-uploaded" {
 		t.Errorf("If-Range 不符：%d %q", rec.Code, rec.Body)
+	}
+}
+
+// 用路徑加入的檔案：雜湊與記錄的 size、mtime 都和目前的檔案相同時才用雜湊當 ETag；
+// 同一路徑的檔案被替換之後，不再送出舊的雜湊，舊的 If-None-Match 也不會得到 304。
+func TestMediaETagForReplacedPathFile(t *testing.T) {
+	r := newLocalRig(t, nil)
+	id := r.ingestMediaFile("talk.mp4", mediaContent)
+	p := filepath.Join(r.root, "talk.mp4")
+	fi, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := sha(mediaContent)
+	meta := fmt.Sprintf(`{"local":{"size":%d,"mtime_ns":%d}}`, fi.Size(), fi.ModTime().UnixNano())
+	if err := r.st.Write().UpdateItemMeta(context.Background(), id, store.ItemMeta{Title: "talk", Metadata: []byte(meta), ContentSHA256: old}); err != nil {
+		t.Fatal(err)
+	}
+	if rec := r.media(id, nil); rec.Header().Get("ETag") != `"`+old+`"` {
+		t.Fatalf("檔案沒變時 ETag = %q", rec.Header().Get("ETag"))
+	}
+
+	if err := os.WriteFile(p, []byte("REPLACED-"+mediaContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rec := r.media(id, func(req *http.Request) { req.Header.Set("If-None-Match", `"`+old+`"`) })
+	if rec.Code != 200 || rec.Header().Get("ETag") != "" || rec.Body.String() != "REPLACED-"+mediaContent {
+		t.Errorf("替換後 status = %d、ETag = %q、body = %q", rec.Code, rec.Header().Get("ETag"), rec.Body)
 	}
 }
 

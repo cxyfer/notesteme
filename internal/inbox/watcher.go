@@ -35,9 +35,16 @@ const (
 	PollInterval = 5 * time.Second
 	// StableFor 是檔案大小與修改時間連續不變多久才算穩定（ING-R10）。
 	StableFor = 10 * time.Second
-	// maxDepth 是路徑最多幾層（含檔名）；maxFiles 是每輪最多處理幾個檔案。
+	// maxDepth 是路徑最多幾層（含檔名）。
 	maxDepth = 8
+)
+
+// maxFiles 是每輪最多處理幾個還沒判定的檔案；maxWalk 是每輪最多走訪幾個候選檔案（含已經判定過的）。
+// 已經判定、內容沒變的檔案不算進 maxFiles：否則它們留在 inbox 中，每輪都佔滿名額，後面的檔案永遠輪不到。
+// 測試會調小它們。
+var (
 	maxFiles = 10_000
+	maxWalk  = 100_000
 )
 
 // Ingester 新增本機檔案（*pipeline.Pipeline 實作它）。
@@ -134,17 +141,19 @@ func skipName(name string) bool {
 	return false
 }
 
-// list 列出 inbox 中候選的檔案，依 (mtime, 名稱) 排序。truncated 為 true 代表超過 maxFiles，清單不完整。
+// list 列出 inbox 中還沒判定（decided 回報 false）的候選檔案，依 (mtime, 名稱) 排序；
+// present 是走訪到的所有候選檔案（含已經判定的）。truncated 為 true 代表超過 maxFiles 或 maxWalk，清單不完整。
 // inbox 不存在（例如還沒掛載）時回傳 ok=false。
-func (w *Watcher) list() (files []file, truncated, ok bool, err error) {
+func (w *Watcher) list(decided func(rel string, size int64, mtime time.Time) bool) (files []file, present map[string]bool, truncated, ok bool, err error) {
 	root, err := os.OpenRoot(w.Inbox)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, false, false, nil
+			return nil, nil, false, false, nil
 		}
-		return nil, false, false, err
+		return nil, nil, false, false, err
 	}
 	defer root.Close()
+	present = map[string]bool{}
 	err = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			// 單一目錄或檔案讀不到（權限、剛好被刪除）：略過，不讓整輪失敗。
@@ -168,7 +177,7 @@ func (w *Watcher) list() (files []file, truncated, ok bool, err error) {
 		if !d.Type().IsRegular() || skipName(name) {
 			return nil
 		}
-		if len(files) >= maxFiles {
+		if len(present) >= maxWalk {
 			truncated = true
 			return fs.SkipAll
 		}
@@ -176,11 +185,19 @@ func (w *Watcher) list() (files []file, truncated, ok bool, err error) {
 		if err != nil {
 			return nil
 		}
+		present[p] = true
+		if decided(p, fi.Size(), fi.ModTime()) {
+			return nil
+		}
+		if len(files) >= maxFiles {
+			truncated = true
+			return fs.SkipAll
+		}
 		files = append(files, file{rel: p, size: fi.Size(), mtime: fi.ModTime()})
 		return nil
 	})
 	if err != nil {
-		return nil, false, false, err
+		return nil, nil, false, false, err
 	}
 	slices.SortFunc(files, func(a, b file) int {
 		if c := a.mtime.Compare(b.mtime); c != 0 {
@@ -188,12 +205,21 @@ func (w *Watcher) list() (files []file, truncated, ok bool, err error) {
 		}
 		return strings.Compare(a.rel, b.rel)
 	})
-	return files, truncated, true, nil
+	return files, present, truncated, true, nil
 }
 
 // scan 掃描一次。呼叫端持有 w.mu。
 func (w *Watcher) scan(ctx context.Context) error {
-	files, truncated, ok, err := w.list()
+	entries, err := w.Store.Read().InboxEntries(ctx)
+	if err != nil {
+		return fmt.Errorf("讀取 inbox 紀錄：%w", err)
+	}
+	// 已經判定、而且大小與修改時間都沒變的檔案不用再處理。
+	decided := func(rel string, size int64, mtime time.Time) bool {
+		e, ok := entries[rel]
+		return ok && e.Size == size && e.MtimeNS == mtime.UnixNano()
+	}
+	files, present, truncated, ok, err := w.list(decided)
 	if err != nil {
 		return fmt.Errorf("掃描 inbox：%w", err)
 	}
@@ -205,9 +231,7 @@ func (w *Watcher) scan(ctx context.Context) error {
 	}
 	now := w.Clock.Now()
 
-	present := make(map[string]bool, len(files))
 	for _, f := range files {
-		present[f.rel] = true
 		s, known := w.seen[f.rel]
 		switch {
 		case !known:
@@ -222,10 +246,6 @@ func (w *Watcher) scan(ctx context.Context) error {
 		}
 	}
 
-	entries, err := w.Store.Read().InboxEntries(ctx)
-	if err != nil {
-		return fmt.Errorf("讀取 inbox 紀錄：%w", err)
-	}
 	// 檔案消失：刪除判定紀錄與記憶體狀態。清單被截斷時不刪，避免誤刪沒掃到的檔案。
 	if !truncated {
 		for rel := range w.seen {
