@@ -55,7 +55,8 @@ jobs:
 
       # 包含 features/ 的驗收場景（godog）與規格靜態檢查。
       - name: go test
-        run: go test -race -count=1 ./...
+        # features 的驗收場景（@M1 與 @M2 共 308 個）在 -race 下約 10 分鐘，超過 go test 預設的 10m 逾時。
+        run: go test -race -count=1 -timeout 30m ./...
 
   vuln:
     name: govulncheck
