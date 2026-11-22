@@ -226,6 +226,12 @@ fixture 有三種形式（`features/internal/fakellm/fixture.go`）：靜態的 
   `keep`（每句都斷開，不合併也不切分）、`merge`（沒有斷點，整個 chunk 合併）、`inside_word`（只有一個斷點，切在第一個拉丁字詞中間，對不回輸入）。
   `segment-keep-all`、`segment-merge-all`、`segment-unalignable` 用它；其他 `segment-*` 是靜態輸出，只對場景中寫出的那一句有效
   （`breaks` 是新字幕在 `text` 中開始的字元位置，例如 `segment-split-after-kafka` 的 14 是 `It is fast.` 的開頭）。
+- `translate_by_target`（`translate-echo-target`）：`args.texts` 的 key 是目標語言、value 是每一句的譯文模板（`{i}` 換成 cue 編號）。
+  目標語言取自系統指示中的「`目標語言：<lang>。`」（`internal/llm` 的 `TranslateSpec` 寫在輸出規則中）；這句被改寫時 generator 會回 400 並記違規，
+  要一起修改。輸入的 text 含 n-1 個切分標記 `⟨|⟩` 時，輸出也有 n 段。模板的長度要讓長度比落在 0.3 到 3.0 之間（TRN-R5），
+  中文模板要用繁體專用字、日文模板要有假名（語言偵測）。
+- `translate-*`：TRN 場景的靜態譯文。`translate-group-*` 與 `translate-per-cue` 的句號對應場景中的 cue；
+  `translate-way-too-long` 的長度比超過 3.0，`translate-long-for-short-cue` 的長度比正常但每秒字數超過 9（TRN-R6）。
 
 ## 新增 fixture 的步驟
 

@@ -189,6 +189,12 @@ func TestStageImplementedOnlyForM1LocalStages(t *testing.T) {
 	if !stageImplemented(StageTranslate, ExecutorOpenCC) {
 		t.Error("translate／opencc 已實作")
 	}
+	// LLM 引擎的步驟（S3 的 correct、S6b 的 translate）。
+	for _, s := range []string{StageCorrect, StageTranslate} {
+		if !stageImplemented(s, ExecutorAPI) {
+			t.Errorf("%s／api 已實作", s)
+		}
+	}
 	// publish 的 sidecar、folder 是本機的確定性處理（OUT-R10～R12）。
 	for _, s := range []string{StageMetadata, StageTranscript, StageNormalize, StagePublish} {
 		if !stageImplemented(s, ExecutorLocal) {
@@ -201,13 +207,13 @@ func TestStageImplementedOnlyForM1LocalStages(t *testing.T) {
 			t.Errorf("%s／agent 已可前進", s)
 		}
 	}
-	// api：登記在 llmStages 的步驟（correct、segment）走 LLM 引擎。
-	for _, s := range []string{StageSegment, StageCorrect} {
+	// api：登記在 llmStages 的步驟（correct、segment、translate）走 LLM 引擎。
+	for _, s := range []string{StageSegment, StageCorrect, StageTranslate} {
 		if !stageImplemented(s, ExecutorAPI) {
 			t.Errorf("%s／api 已實作", s)
 		}
 	}
-	for _, c := range [][2]string{{StageCorrect, ExecutorOpenCC}, {StageTranslate, ExecutorAPI}, {StageNormalize, ExecutorAPI}, {StagePublish, ExecutorAgent}, {StageNormalize, ExecutorAgent}} {
+	for _, c := range [][2]string{{StageCorrect, ExecutorOpenCC}, {StageNormalize, ExecutorAPI}, {StagePublish, ExecutorAgent}, {StageNormalize, ExecutorAgent}} {
 		if stageImplemented(c[0], c[1]) {
 			t.Errorf("%s／%s 還沒實作", c[0], c[1])
 		}

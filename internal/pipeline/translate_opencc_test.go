@@ -403,11 +403,10 @@ func TestRerunTranslateOpenCCNo501(t *testing.T) {
 	if _, err := r.p.Rerun(context.Background(), it.ID, RerunRequest{From: StageTranslate, Overrides: langOver([]string{"zh-Hant-TW"}, "")}); err != nil {
 		t.Fatalf("Rerun：%v", err)
 	}
-	// localize 且 api 有 provider：LLM 翻譯屬於 S6b，仍是 501。
+	// localize 且 api 有 provider：S6b 之後走 LLM 引擎，也不再是 501。
 	over := withMap(langOver([]string{"zh-Hant-TW"}, "localize"), apiConfigured)
-	var ni *NotImplementedError
-	if _, err := r.p.Rerun(context.Background(), it.ID, RerunRequest{From: StageTranslate, Overrides: over}); !errors.As(err, &ni) {
-		t.Errorf("localize + api 應回 501：%v", err)
+	if _, err := r.p.Rerun(context.Background(), it.ID, RerunRequest{From: StageTranslate, Overrides: over}); err != nil {
+		t.Errorf("localize + api：%v", err)
 	}
 }
 
