@@ -93,3 +93,5 @@
 - 舊的 transcript 產出沒有 `timings_json`，不回填。M1 尚未發布，沒有舊資料。
 - R6（本機檔案的 Range 請求）要先有 ING-05 的本機檔案新增與 inbox watcher，留給 ING 切片。
 - Bilibili 嵌入播放器能否控制播放位置（M0）。不行時，點擊字幕句改成「在 Bilibili 開啟這個時間」。
+- **LIB-R11 的場景驗證不到規則，需要修改 `.feature`**（2026-11-22，M2 S3 實作時發現，待 owner 決定）。場景「Rerun from a stage with another model keeps the old version」的 Background 沒有指定處理方案，內建 `default` 的 `correct` 沒有 provider，依 X1 是 `skipped`（`not_configured`），所以 `Given the item "yt:pg100xxxxxx" has been processed up to "correct"` 不會用 anthropic 產生第一版 corrected，最後只有 openai 重跑的 1 個版本，斷言「has 2 versions」失敗（S3 之前因為 `processed up to` 的 M2 目標 pending 而看不出來）。建議在場景開頭加上指定 `correct: { executor: api, provider: anthropic, model: fixture-model, prompt: correct-default }` 的處理方案，並設為預設處理方案（`Given the profile … is:`、`And the default profile is …`，現有句型）。改之前場景維持 failed。
+

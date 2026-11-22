@@ -51,13 +51,17 @@
 
 - `max_tokens` 與重疊句數的預設值，用 M0 的樣本調整。
 - L2：token 估算（2026-11-21，M2 S0 切片設計時決定；2026-11-22 owner 同意）。CJK（漢字、假名、諺文）一字算 1；其他字元每 4 個算 1，無條件進位；每句再加 1。`max_tokens` 只計算 chunk 本身新的句子，重疊的句子不計入。LLM-R1 場景的 1-200、198-400 依此成立（fixture `yt-long01xxxxx` 每句剛好 20 tokens）；若之後改成計入重疊句，fixture 要改成長度不一的句子。
-- wire 契約（2026-11-21，M2 S0 切片的 fakellm 依此檢查；2026-11-22 owner 同意，S3 的 LLM client 實作時寫成 ADR，要修改的話 fakellm 一起改）：
+- wire 契約（2026-11-21，M2 S0 切片的 fakellm 依此檢查；2026-11-22 owner 同意；S3 已寫成 [ADR-0019](../adr/0019-llm-wire-contract.md)，以 ADR 為準，要修改的話 fakellm 一起改）：
   - 強制的 tool 或 schema 名稱是 `notesteme_<stage>`（Anthropic 用 `tools[].name` 加 `tool_choice`；OpenAI 用 `response_format.json_schema.name`）。
   - 字幕放在第一個 user message 的 `<transcript_data>` 區塊，內容是一行 JSON：`{chunk, chunks, context[], cues[]}`，`chunk` 從 1 起算。標題、說明、章節放在固定前綴的 `<video_metadata>` 區塊（細節由 LLM 切片決定）。
   - `cues[]` 與 `context[]` 的每一項只有 `i`（從 1 起算的句號）與 `text`；時間不給模型，由產品依 `i` 對回原本的 cue。fakellm 對多出的欄位記違規，`echo_cues` 也只輸出這兩個欄位。
   - Anthropic 請求帶 `anthropic-version: 2023-06-01` 與 `max_tokens`（必填，大於 0），端點 `POST /v1/messages`；OpenAI 端點 `POST /v1/chat/completions`，strict 模式的 schema 最上層必須是 `type: object`、`additionalProperties: false`，`required` 列出所有屬性（真實 API 不符就回 400，fakellm 對這些記違規；更深層的 schema 不檢查）。
   - 回應中沒有強制的 `tool_use` block（模型偶爾會直接回文字），或 OpenAI 的 `content` 不是合法 JSON 時，視為輸出驗證失敗（附「output was not valid JSON」重試，LLM-R4／R5），不是 API 錯誤。fixture `not-json` 模擬這種回應（2026-11-21，S0 審查時決定）。
-  - 資料區塊目前接受任何 user message 中的第一個（不限第一個 user message）；LLM 切片實作時一律放在第一個 user message。
+  - 資料區塊目前接受任何 user message 中的第一個（不限第一個 user message）；S3 的 client 一律放在第一個 user message（ADR-0019）。
 - L6：內建 provider `anthropic`、`openai` 的 API key 環境變數是 `NOTESTEME_ANTHROPIC_API_KEY`、`NOTESTEME_OPENAI_API_KEY`；其他 provider 是 `NOTESTEME_<ID 大寫，- 換成 _>_API_KEY`（2026-11-21，M2 S0 切片設計時決定；2026-11-22 owner 同意）。
-- `the {s} chunks of {s} are:` 的資料來源：建議把 chunk 切分寫進來源紀錄的 `chunks[]`，由 LLM 切片決定（2026-11-21，M2 S0 切片設計時發現；S0 沒有資料來源，該步驟維持 pending）。
+- `the {s} chunks of {s} are:` 的資料來源：chunk 切分寫在產出來源紀錄的 `chunks[]`，每項 `{chunk, cues: [from, to], context: [from, to] 或 null, usage, reused}`，步驟讀這裡（2026-11-22，S3 實作，見 ADR-0019）。
 - L1：`Only the failed chunk is sent again` 的 `received 4 requests for "correct"` 改成 5（2026-11-21 發現，2026-11-22 owner 同意，已修改）。`llm.max_validation_retries: 2` 讓 chunk 2 共嘗試 3 次（`correct-wrong-count` 每次都錯），加上 chunk 1 的 1 次已是 4 次（同 `After the last retry` 場景的 `received 4 requests`）；之後只重跑 chunk 2 再多 1 次，合計 5。
+- L8：prompt 模板中的 `{{title}}`、`{{channel}}`、`{{description}}`、`{{chapters}}`（2026-11-22，S3 實作時決定，待 owner 追認）。PRM-R3 允許這些變數，內建的 `correct-default` 也用了 `{{title}}`、`{{description}}`；但 LLM-R9 要求標題、說明放在資料區塊中。保守預設：這些變數不直接展開影片的內容，改寫成「（見 `<video_metadata>` 的 title）」，內容只出現在 `<video_metadata>`；`{{glossary}}`、`{{source_lang}}`、`{{target_lang}}` 來自設定，照常展開。影響：使用者的模板讀起來不如直接展開自然；若要改成直接展開，系統指示會含不可信的影片內容。
+- L9：限流與驗證重試（2026-11-22，S3 實作時決定，待 owner 追認）。chunk 的第一次請求在額度不夠時讓任務等待（LLM-R7）；同一個 chunk 的驗證重試立刻送出（LLM-R5），額度可以透支，由之後的請求等待補回，所以短時間內實際的請求數可能略高於 `rpm`。限流的狀態在程序內，重啟後歸零。`rpm`、`tpm` 只能在設定檔設定（`llm.providers.<id>`），設定頁還沒有對應的欄位。
+- L10：chunk 任務與步驟狀態（2026-11-22，S3 實作時決定，見 ADR-0019）。每個 stage run 是 plan → 每個 chunk 一個任務 → assemble。步驟狀態在 chunk 之間只反映最近一次的事件（例如一個 chunk 等待重試、另一個正在執行時顯示 running）。一個 chunk 讓步驟 blocked 或 failed 時，取消其他還沒領取的 chunk 任務，已完成的 chunk 結果保留，修正後重跑會重用。
+- L11：快取的分層（2026-11-22，S3 實作時決定，見 ADR-0019）。步驟層（PIPE-R5）與 chunk 層（LLM-R8）都會命中；有退回 chunk 的產出不寫入步驟層的快取鍵，所以不指定 `chunks` 的一般重跑也只會重新送出退回的 chunk；`chunks` 指定的 chunk 兩層都繞過。
