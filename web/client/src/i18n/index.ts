@@ -100,6 +100,13 @@ export function formatDateTime(d: Date | string, lang: Language = currentLanguag
   );
 }
 
+/** 只有日期（媒體庫的發布日） */
+export function formatDate(d: Date | string, lang: Language = currentLanguage()) {
+  return new Intl.DateTimeFormat(lang, { dateStyle: "medium" }).format(
+    typeof d === "string" ? new Date(d) : d,
+  );
+}
+
 /** 時間碼：MM:SS 或 H:MM:SS，不隨語言改變（docs/ui/README.md §7）。 */
 export function formatTimecode(totalSeconds: number) {
   const s = Math.max(0, Math.floor(totalSeconds));
