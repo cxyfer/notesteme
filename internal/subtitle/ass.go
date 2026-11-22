@@ -304,8 +304,10 @@ type ASSEvent struct {
 // ASSFile 是解析後的 ASS。HasStyles 為 false 代表檔案沒有 [V4+ Styles] 段落。
 type ASSFile struct {
 	HasStyles bool
-	Styles    []ASSStyleRow
-	Events    []ASSEvent
+	// PlayResY 是 [Script Info] 的 PlayResY；沒有寫（或不合法）時為 0。
+	PlayResY int
+	Styles   []ASSStyleRow
+	Events   []ASSEvent
 }
 
 // ASS 解析的上限：不可信輸入，只保護解析本身（檔案大小由呼叫端限制）。
@@ -354,6 +356,12 @@ func ParseASS(data []byte) (*ASSFile, error) {
 			continue
 		}
 		switch section {
+		case "script info":
+			if key == "playresy" {
+				if n, err := strconv.Atoi(val); err == nil && n > 0 && n <= 100000 {
+					f.PlayResY = n
+				}
+			}
 		case "v4+ styles":
 			switch key {
 			case "format":

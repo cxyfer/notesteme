@@ -34,6 +34,13 @@ type Artifact struct {
 	TimingsJson    string
 }
 
+type AssStyle struct {
+	Name      string
+	StyleJson string
+	CreatedAt int64
+	UpdatedAt int64
+}
+
 type Channel struct {
 	ID            string
 	Platform      string
