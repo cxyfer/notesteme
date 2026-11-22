@@ -279,6 +279,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerOutputs(api)
 	rt.registerAgent(api)
 	rt.registerM2Stubs(api)
+	rt.registerM3Stubs(api)
 	registerScoped(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",
 		Summary: "讀取全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）",

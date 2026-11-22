@@ -560,6 +560,8 @@ type rerunInput struct {
 		Until     string         `json:"until,omitempty" doc:"做到哪個步驟為止（含）；沒有指定時做到最後"`
 		Profile   string         `json:"profile,omitempty" doc:"這次重跑改用的處理方案；沒有指定時用影音目前的處理方案的最新版本（PRF-R3）；不存在回 422"`
 		Chunks    []int          `json:"chunks,omitempty" doc:"只重新送出這些 chunk，從 1 起算，其他 chunk 重用快取（LLM-R8）；只能用在 LLM 步驟，否則回 422"`
+		// FRM-R13：from 為 frames 時沿用現行的候選畫面，只重新選圖（frames 尚未實作，目前回 501）。
+		ReuseCandidates bool `json:"reuse_candidates,omitempty" doc:"from 為 frames 時沿用現行的候選畫面，只重新選圖（FRM-R13）；其他步驟忽略"`
 	}
 }
 
@@ -574,7 +576,7 @@ func (rt *routes) rerun(ctx context.Context, in *rerunInput) (*rerunOutput, erro
 		return nil, rt.noPipeline(ctx)
 	}
 	d, err := rt.d.Pipeline.Rerun(ctx, in.ID, pipeline.RerunRequest{From: in.Body.From, Overrides: in.Body.Overrides, Until: in.Body.Until,
-		Profile: in.Body.Profile, Chunks: in.Body.Chunks})
+		Profile: in.Body.Profile, Chunks: in.Body.Chunks, ReuseCandidates: in.Body.ReuseCandidates})
 	if err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}

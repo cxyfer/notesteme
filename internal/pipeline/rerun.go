@@ -26,6 +26,9 @@ type RerunRequest struct {
 	// Chunks 只重新送出這些 chunk（LLM-R8，從 1 起算）：其他 chunk 重用相同輸入的結果，這些 chunk 一律重新送出。
 	// 只能用在 LLM 步驟（From 是 segment、correct 或 translate），否則回 *InvalidError；編號必須是現行切分中實際存在的（translate 被沿用的目標沒有 chunk，編號會有空洞），否則 422。
 	Chunks []int
+	// ReuseCandidates 只用於 From 為 frames（FRM-R13）：沿用現行的候選畫面只重新選圖；沒有現行的候選或其他步驟時忽略。
+	// frames 尚未實作（M3-S0），從 frames 重跑一律回 501。
+	ReuseCandidates bool
 }
 
 // Rerun 從指定步驟重新建立 stage run 與任務（PIPE-R7、plan 第 5.1 節）：
