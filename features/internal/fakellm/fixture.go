@@ -50,6 +50,8 @@ type GeneratorInput struct {
 	Chunks  int
 	Context []map[string]any
 	Cues    []map[string]any
+	// Prefix 是請求中資料區塊之前的文字（系統指示與 <video_metadata>，見 Request.Prefix）。
+	Prefix string
 }
 
 // Generator 是 fixture 的 generator：Check 在 Answer 時驗證 args，Run 在請求時產生輸出（會被 json.Marshal）。

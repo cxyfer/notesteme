@@ -303,7 +303,9 @@ func (s *Server) handle(id string, r *http.Request, body []byte) result {
 		s.violate(id, req.Seq, "stage %q（chunk %d）沒有腳本：場景缺少對應的 `answers` 步驟", req.Stage, req.Chunk)
 		return finish(p.errorResult(http.StatusInternalServerError, req.Model))
 	}
-	out, err := fx.render(generatorInput(req.Stage, pr.data))
+	gin := generatorInput(req.Stage, pr.data)
+	gin.Prefix = pr.prefix
+	out, err := fx.render(gin)
 	if err != nil {
 		s.violate(id, req.Seq, "fixture %q 無法產生回答：%v", fx.name, err)
 		return finish(p.errorResult(http.StatusBadRequest, req.Model))
