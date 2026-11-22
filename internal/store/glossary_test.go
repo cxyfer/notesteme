@@ -50,8 +50,9 @@ func TestTermCandidates(t *testing.T) {
 	ch, _ := w.UpsertChannel(ctx, Channel{Platform: "youtube", ExternalID: "UC1"})
 	other, _ := w.UpsertChannel(ctx, Channel{Platform: "youtube", ExternalID: "UC2"})
 
-	for term, want := range map[string]bool{"KRaft": true, "Confluent": true} {
-		if added, err := w.AddTermCandidate(ctx, ch, "", term); err != nil || added != want {
+	// 依固定順序加入：列出時依建立順序，map 的走訪順序是隨機的。
+	for _, term := range []string{"KRaft", "Confluent"} {
+		if added, err := w.AddTermCandidate(ctx, ch, "", term); err != nil || !added {
 			t.Fatalf("AddTermCandidate(%q) = %v, %v", term, added, err)
 		}
 	}
