@@ -365,9 +365,9 @@ Feature: Hub accounts, permissions and takedowns
     Given the Hub config contains:
       """
       admins:
-        - { provider: github, subject: github-root }
+        - { provider: google, subject: google-root }
       """
-    And the hub member "root" signed in with "github"
+    And the hub member "root" signed in with "google"
     When the hub member "root" sends "GET /api/v1/admin/audit"
     Then the response status is 200
 

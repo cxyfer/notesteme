@@ -684,7 +684,7 @@ M5 的領域用語：
 - **最近一次回應**：送到 Hub 的請求（`the hub member … sends`、`the Hub client sends`、登入流程的步驟）和送到 Client 的請求共用「最近一次回應」，所以 `Then the response status is {int}`、`Then the response contains:`、`Then the response header {string} contains {string}` 都可以斷言 Hub 的回應。
 - **時間**：真 Hub 使用場景的 fake clock（`Given the clock is at`、`When the clock advances by`），帳號齡、state 的期限、PAT 的期限與限流都以它計算。
 - **網路**：真 Hub 的對外連線走場景的 fakenet；`fakeoauth` 以真的主機名稱登記（`accounts.google.com`、`oauth2.googleapis.com`、`openidconnect.googleapis.com`、`www.googleapis.com`、`github.com`、`api.github.com`、`connect.linux.do`；Google 的名稱實作時對照官方文件），所以 `Then no connection was made to {string}` 也可以驗證 Hub（HREP-R12）。
-- **登入**：`"<名稱>"` 是一個人，在每個供應商都可以有一個同名的使用者；沒有用 `the OAuth provider … has the user …` 定義時，第一次使用就以預設值建立：`subject` 為 `<供應商>-<名稱>`、`login` 為名稱、`email` 為 `<名稱>@example.com` 且 `email_verified: true`、`trust_level: 0`、沒有 `orgs`。Hub 使用者的 session 以名稱保存，最後一次成功登入的 session 生效。
+- **登入**：`"<名稱>"` 是一個人，在每個供應商都可以有一個同名的使用者；沒有用 `the OAuth provider … has the user …` 定義時，第一次使用就以預設值建立：`subject` 為 `<供應商>-<名稱>`（Google 的 `sub` 就是這個字串；GitHub 與 Linux.do 的使用者資訊跟真實 API 一樣回傳數字 `id`，由 `fakeoauth.NumericID(subject)` 推導，所以設定檔的 `admins` 要指定 GitHub、Linux.do 的身分時，寫數字形式的 `subject`）、`login` 為名稱、`email` 為 `<名稱>@example.com` 且 `email_verified: true`、`trust_level: 0`、沒有 `orgs`。Hub 使用者的 session 以名稱保存，最後一次成功登入的 session 生效。
 - Hub 的預設設定（沒有 `the Hub config contains:` 時）：`public_url: https://hub.example.org`，三個供應商都設定了測試用的 `client_id` 與 secret，`site.visibility: authenticated`，其他依各規格的預設值。
 
 | 步驟 | 意思 |
