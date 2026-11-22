@@ -60,10 +60,10 @@ type RenderInput struct {
 }
 
 // RenderInput 依 q 選出要輸出的字幕（規則同 Cues），並找出雙語時的原文：
-//   - 沒有指定語言與變體時，目標語言是最近產生的譯文的語言；沒有譯文就只輸出單語。
+//   - 沒有指定語言與變體時，目標語言是最近產生的譯文的語言；沒有譯文時照 Cues 的預設規則（OUT-R2）選字幕。
 //   - 原文是其他語言（主語言不同，zh-Hans 與 zh-Hant 算同一種語言）、非 translated 變體中處理得最完整的字幕（OUT-R2 的順序）。
-//     原文語言取自原文那一邊的產出，不看 items.original_lang：後者可能和實際的字幕不同（OUT-R5 同語言的場景）。
-//   - 目標語言就是影音的原文語言時，一律只輸出單語。
+//     原文的語言取自原文那一邊的產出，不是由 items.original_lang 決定：後者可能和實際的字幕不同（OUT-R5 同語言的場景）。
+//   - 唯一用 items.original_lang 的地方是排除：目標語言就是影音的原文語言時，一律只輸出單語（單語永遠是安全的結果）。
 //   - 找不到這樣的字幕（原文與目標語言相同，包括 convert 只差字形），Orig 為 nil，一律只輸出單語。
 func (p *Pipeline) RenderInput(ctx context.Context, itemID string, q CuesQuery) (RenderInput, error) {
 	r := p.st.Read()

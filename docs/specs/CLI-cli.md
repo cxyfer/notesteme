@@ -38,7 +38,8 @@ notesteme ingest <url|ref|path> [--profile p] [--until <stage>] [--wait [--timeo
 notesteme items ls [--status <stage>=<status>] [--channel <c>] [--json]
 notesteme items show <item> [--json]
 notesteme items rerun <item> --from <stage>
-notesteme export <item> --format srt|vtt|txt [--lang <l>] [--variant <v>] [--out <path>]
+notesteme export <item> --format srt|vtt|txt|ass [--lang <l>] [--variant <v>] [--style <name>] [--out <path>]
+notesteme import <subtitle> --item <item> [--lang <l>] [--format srt|vtt|ass]   （OUT-R13；M2）
 notesteme doctor [--json]
 notesteme backup | restore   （ADR-0007；在 OPS 實作，不屬於 M1 的 CLI 切片）
 全域參數：--server <url> --token <t> --data <dir>（可以放在子命令之前或之後）
