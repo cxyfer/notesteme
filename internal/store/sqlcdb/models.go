@@ -185,6 +185,9 @@ type Output struct {
 	Sha256    string
 	Size      int64
 	WrittenAt int64
+	Kind      string
+	Vault     *string
+	GitCommit *string
 }
 
 type Profile struct {

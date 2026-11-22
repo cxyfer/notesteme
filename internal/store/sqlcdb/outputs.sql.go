@@ -10,7 +10,7 @@ import (
 )
 
 const getOutput = `-- name: GetOutput :one
-SELECT item_id, path, target, format, lang, sha256, size, written_at FROM outputs WHERE item_id = ?1 AND path = ?2
+SELECT item_id, path, target, format, lang, sha256, size, written_at, kind, vault, git_commit FROM outputs WHERE item_id = ?1 AND path = ?2
 `
 
 type GetOutputParams struct {
@@ -30,12 +30,15 @@ func (q *Queries) GetOutput(ctx context.Context, arg GetOutputParams) (Output, e
 		&i.Sha256,
 		&i.Size,
 		&i.WrittenAt,
+		&i.Kind,
+		&i.Vault,
+		&i.GitCommit,
 	)
 	return i, err
 }
 
 const listOutputs = `-- name: ListOutputs :many
-SELECT item_id, path, target, format, lang, sha256, size, written_at FROM outputs WHERE item_id = ?1 ORDER BY written_at, path
+SELECT item_id, path, target, format, lang, sha256, size, written_at, kind, vault, git_commit FROM outputs WHERE item_id = ?1 ORDER BY written_at, path
 `
 
 func (q *Queries) ListOutputs(ctx context.Context, itemID string) ([]Output, error) {
@@ -56,6 +59,9 @@ func (q *Queries) ListOutputs(ctx context.Context, itemID string) ([]Output, err
 			&i.Sha256,
 			&i.Size,
 			&i.WrittenAt,
+			&i.Kind,
+			&i.Vault,
+			&i.GitCommit,
 		); err != nil {
 			return nil, err
 		}
@@ -71,12 +77,13 @@ func (q *Queries) ListOutputs(ctx context.Context, itemID string) ([]Output, err
 }
 
 const upsertOutput = `-- name: UpsertOutput :exec
-INSERT INTO outputs (item_id, path, target, format, lang, sha256, size, written_at)
+INSERT INTO outputs (item_id, path, target, format, lang, sha256, size, written_at, kind, vault, git_commit)
 VALUES (?1, ?2, ?3, ?4, ?5,
-        ?6, ?7, ?8)
+        ?6, ?7, ?8, ?9, ?10, ?11)
 ON CONFLICT (item_id, path) DO UPDATE SET
     target = excluded.target, format = excluded.format, lang = excluded.lang,
-    sha256 = excluded.sha256, size = excluded.size, written_at = excluded.written_at
+    sha256 = excluded.sha256, size = excluded.size, written_at = excluded.written_at,
+    kind = excluded.kind, vault = excluded.vault, git_commit = excluded.git_commit
 `
 
 type UpsertOutputParams struct {
@@ -88,9 +95,13 @@ type UpsertOutputParams struct {
 	Sha256    string
 	Size      int64
 	WrittenAt int64
+	Kind      string
+	Vault     *string
+	GitCommit *string
 }
 
 // One row per (item, path): a rewrite replaces the recorded hash with the one just written.
+// kind, vault and git_commit describe vault outputs (ADR-0020 section 8); subtitle targets pass 'subtitle' and NULLs.
 func (q *Queries) UpsertOutput(ctx context.Context, arg UpsertOutputParams) error {
 	_, err := q.db.ExecContext(ctx, upsertOutput,
 		arg.ItemID,
@@ -101,6 +112,9 @@ func (q *Queries) UpsertOutput(ctx context.Context, arg UpsertOutputParams) erro
 		arg.Sha256,
 		arg.Size,
 		arg.WrittenAt,
+		arg.Kind,
+		arg.Vault,
+		arg.GitCommit,
 	)
 	return err
 }

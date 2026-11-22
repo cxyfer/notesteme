@@ -17,12 +17,34 @@ type Output struct {
 	SHA256    string
 	Size      int64
 	WrittenAt time.Time
+	// Kind 是 subtitle、note 或 asset（ADR-0020 第 8 點）；空字串寫入時視為 subtitle。
+	Kind string
+	// Vault 是 vault id（target 為 vault 時；Path 相對於 vault 根目錄），其他目標為空字串。
+	Vault string
+	// GitCommit 是 git vault 這次寫入所在的 commit；其他情況為空字串。
+	GitCommit string
+}
+
+// 輸出檔案的種類（outputs.kind，ADR-0020 第 8 點）。
+const (
+	OutputKindSubtitle = "subtitle"
+	OutputKindNote     = "note"
+	OutputKindAsset    = "asset"
+)
+
+// nullable 把空字串轉成 NULL。
+func nullable(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 func outputFromRow(row sqlcdb.Output) Output {
 	return Output{
 		ItemID: row.ItemID, Path: row.Path, Target: row.Target, Format: row.Format, Lang: row.Lang,
 		SHA256: row.Sha256, Size: row.Size, WrittenAt: fromMs(row.WrittenAt),
+		Kind: row.Kind, Vault: deref(row.Vault), GitCommit: deref(row.GitCommit),
 	}
 }
 
@@ -33,9 +55,14 @@ func (r *Repo) RecordOutput(ctx context.Context, o Output) error {
 		if _, err := tx.q.ItemByID(ctx, o.ItemID); err != nil {
 			return notFound(err)
 		}
+		kind := o.Kind
+		if kind == "" {
+			kind = OutputKindSubtitle
+		}
 		return tx.q.UpsertOutput(ctx, sqlcdb.UpsertOutputParams{
 			ItemID: o.ItemID, Path: o.Path, Target: o.Target, Format: o.Format, Lang: o.Lang,
 			Sha256: o.SHA256, Size: o.Size, WrittenAt: tx.nowMs(),
+			Kind: kind, Vault: nullable(o.Vault), GitCommit: nullable(o.GitCommit),
 		})
 	})
 }
