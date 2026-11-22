@@ -1,9 +1,21 @@
 # 交接：開發進度（M1 與 M2）
 
-> 更新：2026-11-22。PR #1～#19 已合併（LOCAL #13、PODCAST #14、ESTIMATE #15、M2 S0 #16、M2 S1/S2 #17、規格與 `.feature` 修改 #18、M2 S6a #19）；之後依 owner 的 /goal 指示（MVP 階段，不再開 PR）改為每個切片完成後直接推送到 master，commit 在 `git log` 可查：M2 S7（OUT 渲染與匯入）、M2 S3（LLM 核心引擎）。owner 已同意的規格與 `.feature` 修改已完成（第 2 節第 4 點）。**M1 的後端已完成，但 Web UI 與真實樣本驗收還沒做，M1 尚未收尾（第 1 節「M1 尚未收尾」）。**
+> 更新：2026-11-23（M2 後端與驗收場景全部完成，見第 1 節開頭的「2026-11-23 收尾摘要」）。2026-11-22：PR #1～#19 已合併（LOCAL #13、PODCAST #14、ESTIMATE #15、M2 S0 #16、M2 S1/S2 #17、規格與 `.feature` 修改 #18、M2 S6a #19）；之後依 owner 的 /goal 指示（MVP 階段，不再開 PR）改為每個切片完成後直接推送到 master，commit 在 `git log` 可查：M2 S7（OUT 渲染與匯入）、M2 S3（LLM 核心引擎）。owner 已同意的規格與 `.feature` 修改已完成（第 2 節第 4 點）。**M1 的後端已完成，但 Web UI 與真實樣本驗收還沒做，M1 尚未收尾（第 1 節「M1 尚未收尾」）。**
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
+
+- **2026-11-23 收尾摘要（owner 的 /goal：完成 SPEC 剩餘部分、每個切片直接推送 master、不開 PR）**：
+  - **完成**：M1 與 M2 的後端與驗收場景。預設 tag（`@M1` 與 `@M2`）**308 個場景全部 passed**（191 個 M1、117 個 M2），`features/passing.txt` 308 行，CI 的 `go test -race` 逾時已調到 30 分鐘（場景在 `-race` 下約 10 分鐘）。M2 切片：S1 PRF、S2 PRM、S6a TRN OpenCC、S7 OUT 渲染與匯入、S3 LLM 核心、S8 OUT sidecar／folder、S4 COR、S5 SEG、S6b TRN LLM、PRM playground／compare＋DEL-R9、S9 MCP（stdio＋HTTP）、S10 AGT、S11（SEC config export／import、術語候選核可 API、translate 詞彙表、P7 prompt 刪除原子化、rerun `chunks` 檢查）。各切片的決策與限制在下面各 bullet 與規格的待決問題（標「待 owner 追認」的都是依 /goal 由 advisor 建議採用的保守預設）。
+  - **做不到、需要 owner（blocked）**：
+    1. **Web UI**：`web/` 完全沒有，M1（plan 第 24 節）要求的 UI 沒做；前端工具鏈（建置、測試、i18n、是否沿用 `docs/ui/mockups/`）要 owner 決定（第 7 節）。
+    2. **真實樣本驗收**：10 部真實影音要用真實的 yt-dlp、Groq、Supadata、Bilibili；`@manual` 與 `@ui` 場景（LIB 5 個、CLI 2 個、DEL 1 個）要人工驗收。
+    3. **M0 量測**與 6 個 `@pending-m0` 場景（COR 相似度算法、SEG 斷點標記與字幕規則、SRC 不可用結果與 Whisper 幻覺、TRN 切分標記）；SRC-R11 mixed（`@wip`）。
+    4. **真實 libass 預覽**（OUT-R9）與 Jellyfin／Plex 的 sidecar 語言碼實測。
+    5. **規格狀態**：沒有任何規格改成 `implemented`——Definition of Done（specs/README 6.2）要求 UI 與 `@manual` 人工驗收，那是 owner 的步驟。
+    6. **M3～M5**：只有條列式驗收標準，沒有展開成規則與場景（specs/README 第 6 節要求開發前先展開），未開始。
+  - **要 owner 優先追認的決策**：TRN S6b-Q6（`length_ratio` 下限 0.3 對英翻中太緊，可用 `stages.translate.length_ratio` 覆寫）；AGT A1（並行上限解讀成每個 Agent 各自不超過 `llm` 上限）與 A6（translate 用 agent 直接失敗）；香港、澳門繁體的 localize 沒有內建 prompt；DEL-R9 永久刪除不處理輸出檔；內建 `default` 處理方案不匯出／不可被 config import 覆蓋（與 API 可 PATCH 它的行為不一致）；P7 剩下的寫入端窗口（寫入端在自己的交易外驗證 prompt）；MCP S1～S10（stateless HTTP、本機 bearer、`allowed_hosts`）；`estimate_usd` 一律 `null`（`internal/cost` 沒有 LLM 價格）。
+  - **已知技術債**見第 6 節；`POST /api/tasks/{id}/retry`／`cancel` 仍回 501、`GET /api/queue` 不列 Agent 任務、試跑 segment／translate 回 501、`prepareLLM` 與試跑有約 25 行重複。
 
 - **Repo**：`github.com/cxyfer/notesteme`（private），base branch 是 `master`。Go module 路徑沿用 `github.com/cxyfer/notesteme`。
 - **已完成**：
