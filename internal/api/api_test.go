@@ -265,8 +265,8 @@ func TestSessionRequests(t *testing.T) {
 	if rec.Code != 501 {
 		t.Errorf("with csrf: status = %d, body = %s", rec.Code, rec.Body)
 	}
-	// MCP 尚未實作：501。
-	if rec = s.do("POST", "/mcp", "", withCookies(sess, csrf, csrf)); rec.Code != 501 {
+	// MCP：通過驗證之後才檢查 Host（AUTH-R11）。httptest 的 Host 是 example.com，不在 mcp.allowed_hosts，所以是 403。
+	if rec = s.do("POST", "/mcp", "", withCookies(sess, csrf, csrf)); rec.Code != 403 || !strings.Contains(rec.Body.String(), "Host") {
 		t.Errorf("POST /mcp = %d %s", rec.Code, rec.Body)
 	}
 	// 這個測試 server 只有驗證層、沒有注入 Pipeline：這是設定錯誤，回 500 而不是 501，

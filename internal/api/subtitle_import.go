@@ -57,6 +57,10 @@ func (rt *routes) importSubtitles(ctx context.Context, in *importSubtitlesInput)
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}
+	id, err := rt.itemID(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
 	b := in.Body
 	data, name, ierr := readImportInput(b.Path, b.Content, pipeline.MaxImportBytes, importSubtitleExts)
 	if ierr != nil {
@@ -69,7 +73,7 @@ func (rt *routes) importSubtitles(ctx context.Context, in *importSubtitlesInput)
 	if format == "" && b.Path != "" {
 		format = subtitle.ImportFormatFromName(b.Path)
 	}
-	res, err := rt.d.Pipeline.ImportSubtitle(ctx, pipeline.ImportRequest{ItemID: in.ID, Data: data, Format: format, Lang: b.Lang, Name: name})
+	res, err := rt.d.Pipeline.ImportSubtitle(ctx, pipeline.ImportRequest{ItemID: id, Data: data, Format: format, Lang: b.Lang, Name: name})
 	if err != nil {
 		var pe *subtitle.ParseError
 		if errors.As(err, &pe) {

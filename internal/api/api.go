@@ -21,6 +21,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/assstyle"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/events"
 	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/prompts"
@@ -72,6 +73,11 @@ type Deps struct {
 	Providers ProviderRegistry
 	// Services 管理外部服務商的 API key（GET／PUT /api/settings/services，SEC-R4、SEC-R6）；nil 時回應 501。
 	Services ServiceSettingsStore
+	// EventBus 是狀態變更的事件匯流排：MCP 的 get_video_context 在影音有變更時重新讀取狀態；nil 時定期重查。
+	EventBus *events.Bus
+	// MCPAllowedOrigins 與 MCPAllowedHosts 是 MCP HTTP 的 Origin 與 Host 檢查（AUTH-R11，見 config.Config）。
+	MCPAllowedOrigins []string
+	MCPAllowedHosts   []string
 	// CursorKey 是列表游標的 HMAC 金鑰（LIB-R4）；空的時候用 processCursorKey（每個 process 隨機產生一次）。
 	// 金鑰只存在記憶體，重新啟動後舊游標會回 422，用戶端從第一頁重新讀取即可。
 	CursorKey []byte
@@ -96,11 +102,12 @@ const readyTimeout = 5 * time.Second
 
 // New 建立完整的 HTTP handler：受保護的路徑要有 session 或 token（AUTH-R1）。
 func New(d Deps) http.Handler {
-	return build(d, authMiddleware(d.Auth, d.Log))
+	return build(d, authMiddleware(d.Auth, d.Log), true)
 }
 
-// build 組出路由與 middleware；authn 決定受保護路徑的驗證方式（New 與 NewLocal 的唯一差異）。
-func build(d Deps, authn func(http.Handler) http.Handler) http.Handler {
+// build 組出路由與 middleware；authn 決定受保護路徑的驗證方式。
+// remote 為 true 時（TCP listener）/mcp 另外檢查 Origin 與 Host（AUTH-R11）；這兩點是 New 與 NewLocal 的差異。
+func build(d Deps, authn func(http.Handler) http.Handler, remote bool) http.Handler {
 	if len(d.CursorKey) == 0 {
 		d.CursorKey = processCursorKey()
 	}
@@ -126,6 +133,9 @@ func build(d Deps, authn func(http.Handler) http.Handler) http.Handler {
 	}
 
 	r.registerMedia(mux)
+	// MCP Streamable HTTP（MCP-R1）：直接掛在 mux 上（JSON-RPC 不經過 Huma），所有方法都交給 SDK
+	// （stateless 模式下 GET、DELETE 回 405）。tool 在程序內呼叫同一個 mux 上的 API 路由（MCP-R3）。
+	mux.Handle("/mcp", newMCPEndpoint(d, mux, remote))
 
 	// cookie 上傳的大小限制在驗證之後、Huma 之前（沒登入的請求不會被讀取本體）；
 	// 影音檔上傳（multipart 的 POST /api/items）同一層，串流處理而不經過 Huma。
@@ -262,10 +272,6 @@ func (rt *routes) register(api huma.API) {
 		OperationID: "settings-put", Method: http.MethodPut, Path: "/api/settings/{section}",
 		Summary: "取代全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）；內容不正確回 422 與逐欄位的 errors",
 	}, auth.ScopeAdmin, rt.putSettings)
-	huma.Register(api, huma.Operation{
-		OperationID: "mcp", Method: http.MethodPost, Path: "/mcp",
-		Summary: "MCP Streamable HTTP（尚未實作）",
-	}, notImplemented)
 }
 
 func (rt *routes) healthz(context.Context, *struct{}) (*statusOutput, error) {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/cxyfer/notesteme/internal/events"
 	"github.com/cxyfer/notesteme/internal/source"
 )
 
@@ -123,7 +124,7 @@ func getVideoContext(ctx context.Context, d *Deps, a contextArgs) *mcp.CallToolR
 	ref := source.Ref(t.Platform, t.ExternalID, part)
 
 	// 先訂閱再讀狀態：讀取之後發生的變更一定收得到（與 GET /api/events 相同的順序）。
-	w := newWaiter(d)
+	w := newWaiter(d, ref)
 	defer w.stop()
 
 	it, res := fetchItem(ctx, d, ref)
@@ -142,6 +143,7 @@ func getVideoContext(ctx context.Context, d *Deps, a contextArgs) *mcp.CallToolR
 	if res != nil {
 		return res
 	}
+	w.id = it.ID
 
 	// 等待的期間不佔用 worker：只是在狀態變更時重新讀取。等待的請求太多時不等待，直接回報目前的狀態。
 	waiting := false
@@ -182,32 +184,33 @@ func getVideoContext(ctx context.Context, d *Deps, a contextArgs) *mcp.CallToolR
 	}
 }
 
-// waiter 包裝狀態變更的訂閱：訂閱被斷開（跟不上）時重新訂閱並立刻重查；無法訂閱時以 PollInterval 重查。
+// waiter 包裝狀態變更的訂閱：只在這部影音有變更時重查；訂閱被斷開（跟不上）時重新訂閱並立刻重查；
+// 無法訂閱時以 PollInterval 重查。
 type waiter struct {
-	d     *Deps
-	c     <-chan struct{}
-	done  <-chan struct{}
-	stopF func()
+	d   *Deps
+	sub *events.Subscription
+	// ref 與 id 是要等的影音（事件的 Item 與 ItemID）；id 在讀到影音之後才知道。
+	ref, id string
 }
 
-func newWaiter(d *Deps) *waiter {
-	w := &waiter{d: d}
+func newWaiter(d *Deps, ref string) *waiter {
+	w := &waiter{d: d, ref: ref}
 	w.subscribe()
 	return w
 }
 
 func (w *waiter) subscribe() {
-	if w.d.Changes == nil {
+	if w.d.Events == nil {
 		return
 	}
-	if c, done, stop, ok := w.d.Changes(); ok {
-		w.c, w.done, w.stopF = c, done, stop
+	if sub, ok := w.d.Events.Subscribe(); ok {
+		w.sub = sub
 	}
 }
 
 // wait 等到下一次應該重查狀態；ctx 取消或 deadline 到期時回傳 false。
 func (w *waiter) wait(ctx context.Context, deadline <-chan time.Time) bool {
-	if w.c == nil {
+	if w.sub == nil {
 		t := w.d.Clock.NewTimer(PollInterval)
 		defer t.Stop()
 		select {
@@ -219,25 +222,28 @@ func (w *waiter) wait(ctx context.Context, deadline <-chan time.Time) bool {
 			return true
 		}
 	}
-	select {
-	case <-ctx.Done():
-		return false
-	case <-deadline:
-		return false
-	case <-w.c:
-		return true
-	case <-w.done:
-		// 被斷開：重新訂閱，並立刻重查一次（斷開期間可能漏了事件）。
-		w.stop()
-		w.c, w.done, w.stopF = nil, nil, nil
-		w.subscribe()
-		return true
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-deadline:
+			return false
+		case ev := <-w.sub.C:
+			if ev.Item == w.ref || (w.id != "" && ev.ItemID == w.id) {
+				return true
+			}
+		case <-w.sub.Done():
+			// 被斷開：重新訂閱，並立刻重查一次（斷開期間可能漏了事件）。
+			w.sub = nil
+			w.subscribe()
+			return true
+		}
 	}
 }
 
 func (w *waiter) stop() {
-	if w.stopF != nil {
-		w.stopF()
+	if w.sub != nil {
+		w.sub.Close()
 	}
 }
 

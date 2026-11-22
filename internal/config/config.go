@@ -110,6 +110,13 @@ type Config struct {
 	// LLMProviders 是設定檔 llm.providers 解析並驗證後的內容，以 id 為 key（LLM 規格的介面）。
 	LLMProviders map[string]LLMProvider
 
+	// MCPAllowedOrigins 是 MCP HTTP 接受的 Origin（設定檔 mcp.allowed_origins，正規化成小寫的 scheme://host[:port]）。
+	// 同源（Origin 的 host 與請求的 Host 相同）一律接受；其他 Origin 不在清單中時回 403（AUTH-R11）。
+	MCPAllowedOrigins []string
+	// MCPAllowedHosts 是 MCP HTTP 接受的 Host 主機名稱（設定檔 mcp.allowed_hosts，小寫、不含 port）：
+	// 防 DNS rebinding。IP 位址與 localhost 一律接受（DNS rebinding 一定要用攻擊者的網域名稱）。
+	MCPAllowedHosts []string
+
 	// Origin 記錄每個欄位生效值的來源，key 為欄位名稱。
 	Origin map[string]Source
 }
@@ -140,6 +147,14 @@ type fileSchema struct {
 	Inbox      string        `yaml:"inbox"`
 	MediaRoots []string      `yaml:"media_roots"`
 	Library    librarySchema `yaml:"library"`
+	// MCP 的子欄位同樣用 KnownFields 檢查（AUTH-R11）。
+	MCP mcpSchema `yaml:"mcp"`
+}
+
+// mcpSchema 是設定檔 mcp 區段：MCP HTTP 的 Origin 與 Host 檢查（AUTH-R11）。
+type mcpSchema struct {
+	AllowedOrigins []string `yaml:"allowed_origins"`
+	AllowedHosts   []string `yaml:"allowed_hosts"`
 }
 
 // librarySchema 是設定檔 library 區段（DEL-R4）。
@@ -224,7 +239,7 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 	var managed, unknown []string
 	for k := range top {
 		switch k {
-		case "listen", "data", "trusted_proxies", "tools", "providers", "hooks", "asr", "llm", "network", "inbox", "media_roots", "library":
+		case "listen", "data", "trusted_proxies", "tools", "providers", "hooks", "asr", "llm", "network", "inbox", "media_roots", "library", "mcp":
 		default:
 			if dbManagedFields[k] {
 				managed = append(managed, k)
@@ -317,6 +332,9 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 			return fmt.Errorf("設定檔 %s 的欄位 library.upload_max_bytes 必須大於 0：%d", path, size)
 		}
 		cfg.UploadMaxBytes, cfg.Origin[FieldUploadMaxBytes] = size, SourceConfigFile
+	}
+	if err := parseMCP(&f.MCP, path, cfg); err != nil {
+		return err
 	}
 	for i, v := range f.MediaRoots {
 		if !filepath.IsAbs(v) {

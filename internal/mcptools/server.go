@@ -19,6 +19,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/events"
 )
 
 // Scope 名稱（與 auth 套件相同；這裡不引用 auth，避免 mcptools 依賴 DB 層）。
@@ -50,9 +51,9 @@ type Deps struct {
 	Backend Backend
 	// Allowed 回報呼叫者是否具備 scope；session 與本機的 owner 擁有全部 scope。
 	Allowed func(scope string) bool
-	// Changes 訂閱狀態變更：每次有變更時 c 收到一個值，訂閱被斷開時 done 關閉；stop 結束訂閱。
-	// ok 為 false 代表無法訂閱（server 正在關閉），get_video_context 改用 PollInterval 重查。
-	Changes func() (c <-chan struct{}, done <-chan struct{}, stop func(), ok bool)
+	// Events 是狀態變更的事件匯流排：get_video_context 在影音有變更時重新讀取狀態。
+	// nil 或無法訂閱（server 正在關閉）時改用 PollInterval 重查。
+	Events *events.Bus
 	// Clock 是 get_video_context 的等待時鐘（測試注入 fake clock）。
 	Clock clock.Clock
 	// Waits 限制同時在等待的 get_video_context；滿了的時候不等待，直接回傳目前的狀態。nil 代表不限制。

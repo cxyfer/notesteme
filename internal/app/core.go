@@ -210,7 +210,11 @@ func (s *Server) apiDeps(env Env) api.Deps {
 		Resumer: s.pipeline,
 		Queue:   s.queue,
 		Events:  s.eventsHandler(),
-		Tasks:   s.worker,
+		// MCP（MCP-R5、AUTH-R11）：get_video_context 等待狀態變更；HTTP 端的 Origin 與 Host 檢查。
+		EventBus:          s.events.bus,
+		MCPAllowedOrigins: s.cfg.MCPAllowedOrigins,
+		MCPAllowedHosts:   s.cfg.MCPAllowedHosts,
+		Tasks:             s.worker,
 		// OPS 切片的依賴；各自在 system.go、tools.go、backup.go、providers.go 實作，還沒實作時為 nil。
 		System:    s.systemInfo(env),
 		Tools:     s.toolManager(env),

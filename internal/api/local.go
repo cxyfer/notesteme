@@ -18,7 +18,7 @@ const PrincipalLocal = "local"
 // 程序內的 RoundTripper（standalone 模式），以及權限 0600 並檢查對端 uid 的 Unix socket。
 // 絕對不能交給 TCP listener。
 func NewLocal(d Deps) http.Handler {
-	return build(d, localMiddleware)
+	return build(d, localMiddleware, false)
 }
 
 // localMiddleware 把 owner 身分放進 context，取代 authMiddleware。

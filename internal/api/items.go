@@ -481,7 +481,11 @@ func (rt *routes) getItem(ctx context.Context, in *itemInput) (*itemDetailOutput
 	if rt.d.Pipeline == nil {
 		return nil, newError(http.StatusNotFound, CodeNotFound, "找不到這部影音。")
 	}
-	d, err := rt.d.Pipeline.Item(ctx, in.ID)
+	id, err := rt.itemID(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
+	d, err := rt.d.Pipeline.Item(ctx, id)
 	if err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}
@@ -632,7 +636,11 @@ func (rt *routes) getCues(ctx context.Context, in *cuesInput) (*cuesOutput, erro
 	if err != nil {
 		return nil, err
 	}
-	tr, err := rt.d.Pipeline.Cues(ctx, in.ID, q)
+	id, err := rt.itemID(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
+	tr, err := rt.d.Pipeline.Cues(ctx, id, q)
 	if err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}
@@ -767,6 +775,19 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 	}
 	rt.d.Log.LogAttrs(ctx, slog.LevelError, "處理請求時發生錯誤", slog.String("error", err.Error()))
 	return newError(http.StatusInternalServerError, CodeInternal, defaultMessages[http.StatusInternalServerError].msg)
+}
+
+// itemID 把路徑上的 {id} 換成影音 ID：影音代號（yt:…、bili:…/p1 等，MCP 的 item 參數）以 pipeline.ResolveItem 查詢，
+// 垃圾桶中的影音回 in_trash（DEL-R1）；其他字串原樣當成 ID（影音 ID 不會長得像代號）。
+func (rt *routes) itemID(ctx context.Context, idOrRef string) (string, error) {
+	if _, _, _, ok := source.SplitRef(idOrRef); !ok {
+		return idOrRef, nil
+	}
+	it, err := rt.d.Pipeline.ResolveItem(ctx, idOrRef)
+	if err != nil {
+		return "", rt.mapErr(ctx, err)
+	}
+	return it.ID, nil
 }
 
 // noPipeline 回傳沒有注入 Pipeline 時的錯誤。這是設定錯誤，回 500；

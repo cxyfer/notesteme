@@ -45,6 +45,9 @@ func (rt *routes) getSubtitles(ctx context.Context, in *subtitlesInput) (*huma.S
 	if err != nil {
 		return nil, err
 	}
+	if in.ID, err = rt.itemID(ctx, in.ID); err != nil {
+		return nil, err
+	}
 	if format == subtitle.FormatASS || format == subtitle.FormatBilingualSRT {
 		return rt.bilingualSubtitles(ctx, in, format, q)
 	}
