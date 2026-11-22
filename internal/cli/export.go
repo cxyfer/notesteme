@@ -14,13 +14,14 @@ import (
 	"slices"
 )
 
-// exportFormats 是 `export --format` 接受的格式（規格的介面）；API 另外有 cues-json，但不屬於 CLI。
-var exportFormats = []string{"srt", "vtt", "txt"}
+// exportFormats 是 `export --format` 接受的格式（規格的介面）；API 另外有 cues-json 與 bilingual-srt，但不屬於 CLI。
+var exportFormats = []string{"srt", "vtt", "txt", "ass"}
 
 func parseExport(args []string) (*plan, error) {
 	g := &globals{}
 	fs := newFlagSet("export", g)
-	format := fs.String("format", "srt", "格式：srt、vtt 或 txt")
+	format := fs.String("format", "srt", "格式：srt、vtt、txt 或 ass")
+	style := fs.String("style", "", "ASS 樣式名稱（只對 --format ass 有效），預設 default")
 	lang := fs.String("lang", "", "語言")
 	variant := fs.String("variant", "", "字幕變體")
 	out := fs.String("out", "", "輸出到檔案；沒有指定時輸出到 stdout")
@@ -32,7 +33,10 @@ func parseExport(args []string) (*plan, error) {
 		return nil, usagef("export 需要一個 <item>。")
 	}
 	if !slices.Contains(exportFormats, *format) {
-		return nil, usagef("--format 必須是 srt、vtt 或 txt，收到 %q。", *format)
+		return nil, usagef("--format 必須是 srt、vtt、txt 或 ass，收到 %q。", *format)
+	}
+	if *style != "" && *format != "ass" {
+		return nil, usagef("--style 只能搭配 --format ass。")
 	}
 	arg := pos[0]
 	q := url.Values{"format": {*format}}
@@ -41,6 +45,9 @@ func parseExport(args []string) (*plan, error) {
 	}
 	if *variant != "" {
 		q.Set("variant", *variant)
+	}
+	if *style != "" {
+		q.Set("style", *style)
 	}
 	return &plan{g: g, run: func(ctx context.Context, s *session) (int, error) {
 		id, err := s.resolveItem(ctx, arg)

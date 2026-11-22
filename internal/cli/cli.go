@@ -225,6 +225,8 @@ func parse(args []string) (*plan, error) {
 		return parseItems(args[1:])
 	case "export":
 		return parseExport(args[1:])
+	case "import":
+		return parseImport(args[1:])
 	case "doctor":
 		return parseDoctor(args[1:])
 	case "backup":
@@ -262,7 +264,8 @@ const usageText = `用法：notesteme <子命令> [旗標]
   items ls | show <item> | rerun <item> --from <stage>
   items rm <ref>... [--purge] [--delete-outputs] [--yes] | restore <ref>...
   trash ls | empty [--yes]              列出、清空垃圾桶
-  export <item> --format srt|vtt|txt    輸出字幕（--lang、--variant、--out）
+  export <item> --format srt|vtt|txt|ass  輸出字幕（--lang、--variant、--style、--out）
+  import <subtitle> --item <item>       匯入外部編輯過的字幕為 edited 版本（--lang、--format）
   tokens create|ls|revoke               管理 API token
   secrets rotate-key|reset              管理 master key 與 secrets
   doctor                                檢查外部工具與設定

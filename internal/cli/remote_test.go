@@ -288,3 +288,75 @@ func TestExportStreamsToStdoutOrFile(t *testing.T) {
 		t.Errorf("422：%+v", res)
 	}
 }
+
+func TestExportAssPassesStyle(t *testing.T) {
+	api, url := newFakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/x-ssa")
+		io.WriteString(w, "[Script Info]\n")
+	})
+	res, out, errOut := run(t, app.Env{}, "export", "i9", "--format", "ass", "--style", "large", "--lang", "zh-Hant-TW", "--server", url, "--token", "t")
+	if res.Code != 0 || out != "[Script Info]\n" {
+		t.Fatalf("結果 = %+v %q %s", res, out, errOut)
+	}
+	if got := api.requests[len(api.requests)-1]; got != "GET /api/items/i9/subtitles?format=ass&lang=zh-Hant-TW&style=large" {
+		t.Errorf("請求 = %s", got)
+	}
+	// --style 只能搭配 ass；不認得的格式與 bilingual-srt（API 才有）都是參數錯誤（2）。
+	for _, args := range [][]string{{"export", "i9", "--style", "large"}, {"export", "i9", "--format", "bilingual-srt"}, {"export", "i9", "--format", "docx"}} {
+		if res, _, _ := run(t, app.Env{}, append(args, "--server", url, "--token", "t")...); res.Code != 2 {
+			t.Errorf("%v：%+v", args, res)
+		}
+	}
+}
+
+func TestImportSendsFileContent(t *testing.T) {
+	api, url := newFakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/items":
+			writeJSON(w, 200, `{"items":[{"id":"i9","ref":"yt:abc123xxxxx"}]}`)
+		case r.Method == "POST" && r.URL.Path == "/api/items/i9/subtitles/import":
+			writeJSON(w, 201, `{"artifact":"a1","variant":"edited","lang":"en","format":"srt","cues":1,"stale_translation":true}`)
+		default:
+			writeJSON(w, 404, `{"code":"not_found","message":"找不到"}`)
+		}
+	})
+	dir := shortTempDir(t)
+	file := filepath.Join(dir, "fixed.srt")
+	const content = "1\n00:00:01,000 --> 00:00:02,000\nhi\n"
+	if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, out, errOut := run(t, app.Env{}, "import", file, "--item", "yt:abc123xxxxx", "--lang", "en", "--server", url, "--token", "t")
+	if res.Code != 0 || !strings.Contains(out, "已匯入 1 句") || !strings.Contains(out, "字幕已更新，譯文可能過時") {
+		t.Fatalf("結果 = %+v %q %s", res, out, errOut)
+	}
+	var body map[string]string
+	if err := json.Unmarshal([]byte(api.bodies[len(api.bodies)-1]), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["content"] != content || body["name"] != "fixed.srt" || body["lang"] != "en" || body["path"] != "" || body["format"] != "" {
+		t.Errorf("送出的內容 = %v", body)
+	}
+	// --json：輸出就是 API 的回應（CLI-R5）。
+	res, out, _ = run(t, app.Env{}, "import", file, "--item", "i9", "--format", "srt", "--json", "--server", url, "--token", "t")
+	if res.Code != 0 || !strings.Contains(out, `"artifact":"a1"`) {
+		t.Errorf("--json：%+v %q", res, out)
+	}
+
+	// 錯誤：缺 --item、沒有檔案參數、不認得的格式（2）；檔案不存在或是目錄（1、2）；API 的 422（2）。
+	for _, args := range [][]string{{"import", file}, {"import", "--item", "i9"}, {"import", file, "--item", "i9", "--format", "docx"}, {"import", dir, "--item", "i9"}} {
+		if res, _, _ := run(t, app.Env{}, append(args, "--server", url, "--token", "t")...); res.Code != 2 {
+			t.Errorf("%v：%+v", args, res)
+		}
+	}
+	if res, _, _ := run(t, app.Env{}, "import", filepath.Join(dir, "missing.srt"), "--item", "i9", "--server", url, "--token", "t"); res.Code != 1 {
+		t.Errorf("檔案不存在：%+v", res)
+	}
+	_, bad := newFakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 422, `{"code":"invalid_request","message":"第 2 句的結束時間早於開始時間。","line":2}`)
+	})
+	res, _, errOut = run(t, app.Env{}, "import", file, "--item", "i9", "--server", bad, "--token", "t")
+	if res.Code != 2 || !strings.Contains(errOut, "第 2 句") {
+		t.Errorf("422：%+v %s", res, errOut)
+	}
+}
