@@ -20,6 +20,7 @@ func registerHub(r *Registry, s *Scenario) {
 	r.Step(`the hub member {string} links the {string} user {string}`, func(string, string, string) error { return godog.ErrPending })
 	r.Step(`the OAuth provider {string} received a valid PKCE verifier`, func(string) error { return godog.ErrPending })
 	r.Step(`the number of Hub accounts is {int}`, func(int) error { return godog.ErrPending })
+	r.Step(`the response does not contain {string}`, func(string) error { return godog.ErrPending })
 	r.Step(`the hub member {string} sends {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`the hub member {string} sends {string} with:`, func(string, string, *godog.DocString) error { return godog.ErrPending })
 	r.Step(`the hub member {string} sends {string} without a CSRF token`, func(string, string) error { return godog.ErrPending })
