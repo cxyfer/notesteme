@@ -40,7 +40,10 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+          # 與 docker/metadata-action 的 SemVer 驗證一致：數字不得有前導零。
+          num='(0|[1-9][0-9]*)'
+          ident='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          if ! [[ "$version" =~ ^${num}\.${num}\.${num}(-${ident}(\.${ident})*)?$ ]]; then
             echo "::error::tag $GITHUB_REF_NAME 不是 vX.Y.Z 或 vX.Y.Z-rc.N 格式"
             exit 1
           fi
@@ -177,9 +180,17 @@ jobs:
               ;;
           esac
 
-          # 只認嚴格的 vX.Y.Z（由新到舊）；誤推的 v999 之類 tag 不能影響版本比較。
-          stable="$(git tag --list 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -Vr || true)"
           series="${GITHUB_REF_NAME%.*}"
+
+          # 重新取得 tag：checkout 之後才推送的更高版本也要看得到。只認嚴格的
+          # vX.Y.Z（由新到舊，不允許前導零）；誤推的 v999、v01.2.3 不能影響版本比較。
+          stable=""
+          refresh_tags() {
+            git fetch --quiet --force --tags origin
+            stable="$(git tag --list 'v[0-9]*' \
+              | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
+              | sort -Vr || true)"
+          }
 
           # 0 = 已發布，1 = 不存在；其他錯誤（網路、權限）直接中止，不猜。
           is_published() {
@@ -210,6 +221,7 @@ jobs:
 
           converged=false
           for _ in 1 2 3; do
+            refresh_tags
             latest_target="$(top)"
             minor_target="$(top "$series")"
             if [ -z "$latest_target" ] || [ -z "$minor_target" ]; then
@@ -218,6 +230,7 @@ jobs:
             fi
             docker buildx imagetools create --tag "${IMAGE}:latest" "${IMAGE}:${latest_target#v}"
             docker buildx imagetools create --tag "${IMAGE}:${series#v}" "${IMAGE}:${minor_target#v}"
+            refresh_tags
             if [ "$(top)" = "$latest_target" ] && [ "$(top "$series")" = "$minor_target" ]; then
               converged=true
               break
