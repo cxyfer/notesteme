@@ -13,8 +13,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -27,10 +25,6 @@ import (
 
 // audioFetchTimeout 是下載一集音檔的逾時（大小上限是 netguard.LimitAudio，GRD-R5）。
 const audioFetchTimeout = 2 * time.Hour
-
-// episodeFilePattern 是下載後的音檔檔名：episode.<副檔名>，或與已寫入的快照撞名時的 episode-<sha256 前 8 碼>.<副檔名>；
-// 媒體端點只開啟符合這個格式的檔名。
-var episodeFilePattern = regexp.MustCompile(`^episode(-[0-9a-f]{8})?\.[a-z0-9]{1,5}$`)
 
 // audioExts 是音檔副檔名的白名單；其他一律 .bin。
 var audioExts = map[string]bool{
@@ -54,6 +48,9 @@ type episodeAudio struct {
 	DurationS float64 `json:"duration_s"`
 
 	mediaKind string // ffprobe 判斷的 audio 或 video；不進 metadata_json
+	// created 為 true 代表 File 是這次下載建立的新檔（不是沿用快照記錄的檔名）；
+	// 結果被丟棄時只能刪這種檔案。不進 metadata_json。
+	created bool
 }
 
 // audioDownloader 下載 Podcast 單集的音檔。metadata 步驟與 ASR 的音訊來源共用它。
@@ -168,30 +165,28 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 		finalURL = resp.Request.URL.String()
 	}
 	sum := hex.EncodeToString(h.Sum(nil))
-	// 已寫入資料庫的快照所指的檔案先保留：這次的結果要等 apply 的交易 commit 才生效，
-	// 任務被取消、過期被丟棄或寫回失敗時，影音仍指向它。commit 之後才刪（runPodcastMetadata 的 afterCommit），
-	// 沒有 commit 時留到下一次下載。
-	committed := ""
-	if m, ok := readPodcastMeta(it.Metadata); ok {
-		committed = m.Audio.File
-	}
-	if name == "" {
-		name = "episode" + audioExt(finalURL, enc.Type)
-		if name == committed {
-			// 同名會在 commit 之前就蓋掉影音現在指向的檔案：改用依內容命名的另一個檔名，
-			// commit 之後快照指向它，舊檔由 afterCommit 刪除。
-			ext := path.Ext(name)
-			name = "episode-" + sum[:8] + ext
+	// 這次的結果要等 apply 的交易 commit 才生效，所以 commit 之前不能蓋掉別的檔案：
+	// 影音現在指向的快照檔（任務被取消、過期被丟棄或寫回失敗時仍要播放它），
+	// 以及同時進行的另一個 metadata 任務已經暫存、之後可能 commit 的檔案。
+	// 預設檔名 episode.<ext> 用 O_EXCL 保留（檔名已存在就失敗），撞名時改用 episode-<sha256 前 8 碼>.<ext>，再撞名用隨機的檔名；
+	// commit 之後快照指向最後用的檔名，其他檔由 runPodcastMetadata 的 afterCommit 刪除。
+	// name 非空（ASR 重新下載）時沿用快照記錄的檔名，直接覆蓋。
+	created := false
+	if name != "" {
+		if err := episodes.Recover(part, dir, name); err != nil {
+			return nil, err
 		}
-	}
-	if err := os.Rename(part, filepath.Join(dir, name)); err != nil {
-		return nil, err
+	} else {
+		var err error
+		if name, err = episodes.Stage(part, dir, audioExt(finalURL, enc.Type), sum); err != nil {
+			return nil, err
+		}
+		created = true
 	}
 	done = true
-	removeStaleEpisodes(dir, name, committed)
 	return &episodeAudio{
 		File: name, URL: finalURL, Bytes: n, SHA256: sum,
-		DurationS: info.DurationS, mediaKind: info.Kind(),
+		DurationS: info.DurationS, mediaKind: info.Kind(), created: created,
 	}, nil
 }
 
@@ -212,19 +207,6 @@ func removeStaleParts(dir string, now time.Time) {
 		}
 		if fi, err := e.Info(); err == nil && now.Sub(fi.ModTime()) > stalePartAge {
 			_ = os.Remove(filepath.Join(dir, name))
-		}
-	}
-}
-
-// removeStaleEpisodes 刪除先前下載留下的其他 episode.* 檔（副檔名可能不同），keep 中的檔名保留。
-func removeStaleEpisodes(dir string, keep ...string) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if !slices.Contains(keep, e.Name()) && episodeFilePattern.MatchString(e.Name()) {
-			_ = os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}
 }

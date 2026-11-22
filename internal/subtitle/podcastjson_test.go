@@ -121,8 +121,9 @@ func TestParsePodcastJSONCJKSentencesAreSegments(t *testing.T) {
 	if !reflect.DeepEqual(cues, want) {
 		t.Errorf("cues = %+v\n預期 %+v", cues, want)
 	}
-	// 日文假名、韓文也一樣。
-	for _, body := range []string{"こんにちは皆さん", "ありがとうございます", "안녕하세요여러분"} {
+	// 日文假名、韓文也一樣；泰文、寮文、高棉文、緬文、藏文同樣不用空白分詞（Codex P2）。
+	for _, body := range []string{"こんにちは皆さん", "ありがとうございます", "안녕하세요여러분",
+		"สวัสดีครับทุกคน", "ສະບາຍດີທຸກຄົນ", "សួស្តីអ្នកទាំងអស់គ្នា", "မင်္ဂလာပါခင်ဗျာ", "བཀྲ་ཤིས་བདེ་ལེགས"} {
 		d := `{"segments":[{"startTime":0,"endTime":1,"body":"` + body + `"},{"startTime":1,"endTime":2,"body":"x"}]}`
 		if _, word, err := ParsePodcastJSON([]byte(d)); err != nil || word {
 			t.Errorf("%q：err = %v，wordLevel = %v", body, err, word)

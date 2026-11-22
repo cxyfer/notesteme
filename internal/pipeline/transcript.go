@@ -106,6 +106,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		chosen       *transcript.Track
 		decisions    []transcript.Decision
 		rejected     []transcript.Decision // 選中但無法使用的字幕軌（本機字幕讀不了），已記為 rejected
+		dropped      []transcript.Track    // 已放棄的字幕軌：結果由後面的字幕軌或 fallback 產生，要進快取鍵
 		meta         *metaUpdate           // 推斷出原文語言時要寫回影音的欄位
 		fit          store.Item            // 交給 fallback 來源的影音（原文語言為 inputLang）
 	)
@@ -144,7 +145,17 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 				rejected = append(rejected, decisions[i])
 			}
 		}
-		usable = slices.DeleteFunc(slices.Clone(usable), func(t transcript.Track) bool { return t == *chosen })
+		// 下載時 chosen.Format 可能被判斷出來而改變（沒有宣告 type 的字幕軌），所以不能用整個結構比對：
+		// 用不含 Format 的識別找回 usable 中原本的字幕軌，否則移除不到、重新選軌又選到同一條而一直重試。
+		same := func(t transcript.Track) bool {
+			return t.Handle == chosen.Handle && t.Lang == chosen.Lang && t.Kind == chosen.Kind
+		}
+		if i := slices.IndexFunc(usable, same); i >= 0 {
+			dropped = append(dropped, usable[i])
+		} else {
+			dropped = append(dropped, *chosen)
+		}
+		usable = slices.DeleteFunc(slices.Clone(usable), same)
 		reselect()
 	}
 	reject := func(reason string) { drop(transcript.StateRejected, reason) }
@@ -191,6 +202,12 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		if isPodcast {
 			// 音檔內容改變（重跑 metadata 重新下載）時，快取不能命中：字幕的時間可能和新的音檔不符。
 			upstream["content_sha256"] = info.ContentSHA256
+		}
+		if len(dropped) > 0 {
+			// 偏好的字幕軌無法使用、由後面的字幕軌（或 fallback）產生結果時，放棄的字幕軌也是輸入：
+			// 否則後面字幕軌的成品會用和偏好字幕軌相同的鍵存起來，下次重跑時直接命中，
+			// 來源紀錄卻記成偏好的字幕軌被使用。沒有放棄任何字幕軌時不加欄位，鍵與先前相同。
+			upstream["dropped"] = sortedTracks(dropped)
 		}
 		if sidecarSHA != "" {
 			// 選中的外掛字幕的內容也是輸入。

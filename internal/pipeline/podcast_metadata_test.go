@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -23,6 +24,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/podcast"
+	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
@@ -223,17 +225,254 @@ func TestPodcastMetadataReplacesStaleEpisodeFile(t *testing.T) {
 	if res.afterCommit == nil {
 		t.Fatal("metadata 應在 commit 之後清掉舊檔")
 	}
+	// 結果被丟棄（引擎對取消、過期、租約失效與寫回失敗都會這樣做）：只刪這次暫存的檔案，舊檔仍在。
+	res.discard()
+	if got := strings.Join(r.mediaFiles(it), ","); got != "episode.mp3" {
+		t.Errorf("丟棄之後媒體目錄 = %v，預期只剩快照指向的 episode.mp3", got)
+	}
 
 	// 經過 pipeline 重跑並寫回：commit 之後只剩新檔，影音指向它。
 	if _, err := r.p.Rerun(context.Background(), it.ID, RerunRequest{From: StageMetadata, Until: StageMetadata}); err != nil {
 		t.Fatal(err)
 	}
 	r.run()
-	if got := r.mediaFiles(it); len(got) != 1 || got[0] != "episode.m4a" {
-		t.Errorf("媒體目錄 = %v，預期只有 episode.m4a", got)
+	got := r.mediaFiles(it)
+	m, ok := readPodcastMeta(r.reload(it.ID).Metadata)
+	if len(got) != 1 || !ok || m.Audio.File != got[0] || path.Ext(got[0]) != ".m4a" {
+		t.Errorf("媒體目錄 = %v，快照 = %+v；預期只剩快照所指的 .m4a", got, m.Audio)
 	}
-	if m, ok := readPodcastMeta(r.reload(it.ID).Metadata); !ok || m.Audio.File != "episode.m4a" {
-		t.Errorf("快照 = %+v", m.Audio)
+}
+
+// 另一個仍在執行的 metadata 任務已暫存的檔案，不能被這次下載刪掉（Codex P1）：
+// 那個任務若是贏家，它 commit 的快照要指向這個檔案。
+func TestDownloadEpisodeAudioKeepsOtherStagedEpisodes(t *testing.T) {
+	r := newPodRig(t)
+	it, enc := r.downloadFixture()
+	dir := r.mediaDir(it)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	staged := filepath.Join(dir, "episode.m4a")
+	if err := os.WriteFile(staged, []byte("STAGED-BY-NEWER-RUN"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.p.downloadEpisodeAudio(context.Background(), it, enc); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(r.mediaFiles(it), ","); got != "episode.m4a,episode.mp3" {
+		t.Errorf("媒體目錄 = %s，其他任務暫存的 episode.m4a 應保留", got)
+	}
+}
+
+// 另一個任務已暫存同名的 episode.mp3 時（兩個初次 metadata 任務並行），這次下載改用依內容命名的檔名，
+// 不能蓋掉對方的檔案（Codex P1）。
+func TestDownloadEpisodeAudioDoesNotOverwriteStagedSameName(t *testing.T) {
+	r := newPodRig(t)
+	it, enc := r.downloadFixture()
+	dir := r.mediaDir(it)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	staged := filepath.Join(dir, "episode.mp3")
+	if err := os.WriteFile(staged, []byte("STAGED-BY-OTHER-RUN"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.p.downloadEpisodeAudio(context.Background(), it, enc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(staged); string(b) != "STAGED-BY-OTHER-RUN" {
+		t.Errorf("episode.mp3 被蓋掉：%q", b)
+	}
+	if got.File == "episode.mp3" || !episodeFilePattern.MatchString(got.File) {
+		t.Errorf("檔名 = %q，預期依內容命名的 episode-<sha8>.mp3", got.File)
+	}
+	if files := strings.Join(r.mediaFiles(it), ","); files != "episode-"+got.SHA256[:8]+".mp3,episode.mp3" {
+		t.Errorf("媒體目錄 = %s", files)
+	}
+}
+
+// 比新的重跑晚完成的 metadata 任務，它剛暫存的音檔要刪掉：沒有記錄會指向它（Codex P2）。
+func TestPodcastMetadataStaleRunDiscardsItsStagedAudio(t *testing.T) {
+	// 兩次重跑下載到相同內容時也一樣：贏家 commit 的檔案不能被過期任務的清理刪掉（Codex P1）。
+	for _, tt := range []struct{ name, stale string }{
+		{"內容不同", "STALE-RUN-AUDIO-BYTES-LONGER"},
+		{"內容相同", "WINNER-AUDIO-BYTES"},
+	} {
+		t.Run(tt.name, func(t *testing.T) { staleRunDiscardsStagedAudio(t, tt.stale) })
+	}
+}
+
+func staleRunDiscardsStagedAudio(t *testing.T, staleBody string) {
+	r := newPodRig(t)
+	r.serveShow("")
+	it := r.ingestEpisode(StageMetadata)
+	ctx := context.Background()
+
+	// 第一次重跑：任務被領取，先不處理。
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageMetadata, Until: StageMetadata}); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := queue.New(r.st, r.clk, "w1").Claim(ctx, 5)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim = %+v, %v", claimed, err)
+	}
+	// 第二次重跑先完成。
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageMetadata, Until: StageMetadata}); err != nil {
+		t.Fatal(err)
+	}
+	r.net.serve(audio42, 200, "WINNER-AUDIO-BYTES")
+	r.run()
+	// 舊任務現在才完成，下載到另一份內容。
+	r.net.serve(audio42, 200, staleBody)
+	if err := r.p.Handle(ctx, claimed[0]); err != nil {
+		t.Fatal(err)
+	}
+	got := r.mediaFiles(it)
+	m, ok := readPodcastMeta(r.reload(it.ID).Metadata)
+	if !ok || len(got) != 1 || got[0] != m.Audio.File {
+		t.Errorf("媒體目錄 = %v，快照 = %+v；預期只剩快照所指的檔案（過期任務暫存的音檔要刪掉）", got, m.Audio)
+	}
+}
+
+// 每次下載都建立自己的檔案，不共用別的下載已經建立的同名檔：那個檔案仍屬於另一個還沒 commit 的執行，
+// 它的結果被丟棄時會刪掉它（Codex P1）。內容相同的重複下載也一樣。
+func TestDownloadEpisodeAudioNeverSharesFiles(t *testing.T) {
+	r := newPodRig(t)
+	it, enc := r.downloadFixture()
+	seen := map[string]bool{}
+	for i := 0; i < 4; i++ {
+		got, err := r.p.downloadEpisodeAudio(context.Background(), it, enc)
+		if err != nil || !got.created || seen[got.File] || !episodeFilePattern.MatchString(got.File) {
+			t.Fatalf("第 %d 次下載 = %+v, %v；已用 %v", i+1, got, err, seen)
+		}
+		seen[got.File] = true
+	}
+	if n := len(r.mediaFiles(it)); n != 4 {
+		t.Errorf("媒體目錄有 %d 個檔案，預期 4 個（每次下載各一個）：%v", n, r.mediaFiles(it))
+	}
+}
+
+// 還在執行的任務暫存的檔案，不能被贏家 commit 之後的清理刪掉（Codex P1）：檔名一旦被釋放，之後的下載可能保留到同一個名稱，
+// 原本那個任務稍後的丟棄又會刪到別人的檔案。只有檔案自己的執行（commit 或丟棄）才能放掉它。
+func TestStagedEpisodeSurvivesOtherRunsCleanup(t *testing.T) {
+	dir := t.TempDir()
+	stage := func(body string) string {
+		t.Helper()
+		part := filepath.Join(dir, ".episode-"+sumHex(body)[:6]+".part")
+		if err := os.WriteFile(part, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		name, err := episodes.Stage(part, dir, ".mp3", sumHex(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return name
+	}
+	read := func(name string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return "<" + err.Error() + ">"
+		}
+		return string(b)
+	}
+
+	// 舊任務 A 暫存了 episode.mp3，然後贏家 B 暫存自己的檔案並 commit：commit 之後的清理要保留 B 的檔案與 A 的暫存檔。
+	a := stage("A-BYTES")
+	b := stage("B-BYTES")
+	if a != "episode.mp3" || b == a {
+		t.Fatalf("a = %q，b = %q", a, b)
+	}
+	episodes.Commit(dir, b)
+	if got := read(a); got != "A-BYTES" {
+		t.Fatalf("A 的暫存檔被清理刪掉：%q", got)
+	}
+
+	// 之後的下載 C 拿不到 A 的檔名（檔案還在，名稱沒有被釋放）。
+	c := stage("C-BYTES")
+	if c == a || c == b {
+		t.Fatalf("C 拿到已被占用的檔名 %q", c)
+	}
+	// A 的結果被丟棄：只刪 A 自己的檔案，C 的檔案完好。
+	episodes.Discard(dir, a)
+	if got := read(a); got == "A-BYTES" {
+		t.Errorf("A 丟棄之後檔案還在")
+	}
+	if got := read(c); got != "C-BYTES" {
+		t.Errorf("C 的檔案 = %q，不該被 A 的丟棄刪掉", got)
+	}
+	if got := read(b); got != "B-BYTES" {
+		t.Errorf("B 的檔案 = %q", got)
+	}
+	// 解除登記、檔案也刪了：名稱可以重用。
+	if d := stage("D-BYTES"); d != a {
+		t.Errorf("D = %q，A 丟棄之後 %q 應該可以重用", d, a)
+	}
+}
+
+// ASR 重新下載要放回快照記錄的檔名時，那個檔名若是同時進行的 metadata 任務已暫存的，不能蓋掉它（Codex P1）：
+// 回傳可重試的錯誤；那個任務 commit 或丟棄之後才可以放回。
+func TestRecoverEpisodeFileDoesNotReplaceStagedFile(t *testing.T) {
+	dir := t.TempDir()
+	part := func(body string) string {
+		p := filepath.Join(dir, ".episode-"+body+".part")
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	name, err := episodes.Stage(part("META"), dir, ".mp3", sumHex("META"))
+	if err != nil || name != "episode.mp3" {
+		t.Fatalf("name = %q, %v", name, err)
+	}
+	asr := part("ASR")
+	err = episodes.Recover(asr, dir, name)
+	if err == nil || classOf(t, err) != errclass.ClassRetryable {
+		t.Fatalf("err = %v，預期可重試的錯誤", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, name)); string(b) != "META" {
+		t.Errorf("暫存檔被蓋掉：%q", b)
+	}
+	// metadata 結果被丟棄之後可以放回。
+	episodes.Discard(dir, name)
+	if err := episodes.Recover(asr, dir, name); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, name)); string(b) != "ASR" {
+		t.Errorf("放回之後內容 = %q", b)
+	}
+	// 下載期間別的任務已 commit 了同名的新檔（登記已放掉）：不蓋掉它，沿用現有的檔案，丟掉這次下載。
+	late := part("LATE-ASR")
+	if err := episodes.Recover(late, dir, name); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, name)); string(b) != "ASR" {
+		t.Errorf("已存在的檔案被蓋掉：%q", b)
+	}
+	if _, err := os.Stat(late); !os.IsNotExist(err) {
+		t.Errorf("這次下載的 part 應被刪掉：%v", err)
+	}
+}
+
+// 程序崩潰遺留的暫存檔（沒有任何執行登記它）由下一次 commit 之後的清理刪除；不符合檔名格式的檔案不動。
+func TestRemoveStaleEpisodesSweepsUnregisteredOrphans(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"episode.mp3": "CURRENT", "episode-deadbeef.m4a": "ORPHAN", "episode.m4a": "OLD", "notes.txt": "KEEP", ".episode-x.part": "PART",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	episodes.Sweep(dir, "episode.mp3")
+	var got []string
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		got = append(got, e.Name())
+	}
+	if want := ".episode-x.part,episode.mp3,notes.txt"; strings.Join(got, ",") != want {
+		t.Errorf("清理之後 = %v，預期 %s", got, want)
 	}
 }
 
@@ -278,18 +517,27 @@ func TestPodcastMetadataSameNameAudioWaitsForCommit(t *testing.T) {
 	if res.afterCommit == nil {
 		t.Fatal("metadata 應在 commit 之後清掉舊檔")
 	}
+	// 結果被丟棄：暫存檔刪掉，舊的 episode.mp3 與它的內容都還在。
+	res.discard()
+	if got := strings.Join(r.mediaFiles(it), ","); got != "episode.mp3" {
+		t.Fatalf("丟棄之後媒體目錄 = %v，預期只剩 episode.mp3", got)
+	}
+	if got := played(); got != podAudioBody {
+		t.Errorf("丟棄之後播放到 %q，預期舊內容", got)
+	}
 
-	// 經過 pipeline 重跑並寫回：快照指向新檔，舊檔刪除。
+	// 經過 pipeline 重跑並寫回：快照指向依內容命名的新檔，舊檔刪除。
 	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageMetadata, Until: StageMetadata}); err != nil {
 		t.Fatal(err)
 	}
 	r.run()
-	if got := r.mediaFiles(it); len(got) != 1 || got[0] != staged {
-		t.Errorf("媒體目錄 = %v，預期只有 %s", got, staged)
-	}
 	cur := r.reload(it.ID)
-	if m, ok := readPodcastMeta(cur.Metadata); !ok || m.Audio.File != staged || m.Audio.SHA256 != sumHex(newBody) || cur.ContentSHA256 != sumHex(newBody) {
-		t.Errorf("快照 = %+v，sha = %s", m.Audio, cur.ContentSHA256)
+	m, ok := readPodcastMeta(cur.Metadata)
+	if !ok || m.Audio.File != staged || m.Audio.SHA256 != sumHex(newBody) || cur.ContentSHA256 != sumHex(newBody) {
+		t.Fatalf("快照 = %+v，sha = %s", m.Audio, cur.ContentSHA256)
+	}
+	if got := r.mediaFiles(it); len(got) != 1 || got[0] != m.Audio.File {
+		t.Errorf("媒體目錄 = %v，預期只有 %s", got, m.Audio.File)
 	}
 	if got := played(); got != newBody {
 		t.Errorf("commit 之後播放到 %q，預期新內容", got)
