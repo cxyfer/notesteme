@@ -23,6 +23,7 @@
 | [0015](0015-acceptance-test-harness.md) | 驗收測試在程序內執行，外部依賴在注入點替換 | 已採納 |
 | [0016](0016-local-media-and-asr-preprocessing.md) | 本機影音的識別、inbox 監看與共用的 ASR 前處理 | 已採納 |
 | [0017](0017-podcast-identity-and-precheck.md) | Podcast 單集的識別、feed key 與新增時的位址預檢 | 已採納 |
+| [0018](0018-chinese-script-conversion.md) | 中文字形轉換：自寫 OpenCC 轉換器與內嵌字典 | 已採納 |
 
 ## 範本
 

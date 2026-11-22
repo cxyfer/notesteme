@@ -62,7 +62,7 @@ func (p *Pipeline) resolveStagePrompts(ctx context.Context, eff Effective) (Effe
 		if !IsLLMStage(stage) {
 			continue
 		}
-		res, err := ResolveExecutor(eff, stage)
+		res, err := ResolveExecutor(eff, stage, StageContext{})
 		if err != nil {
 			return nil, err
 		}

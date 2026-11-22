@@ -60,6 +60,9 @@ RUN python3 -m venv /opt/yt-dlp \
 
 COPY --from=deno /deno /usr/local/bin/deno
 COPY --from=build /out/notesteme /usr/local/bin/notesteme
+# 內嵌的 OpenCC 字典是 Apache-2.0：發布物要附上 LICENSE 與 NOTICE（ADR-0018）。
+COPY --from=build /src/internal/zhconv/opencc/LICENSE /usr/share/doc/notesteme/opencc/LICENSE
+COPY --from=build /src/internal/zhconv/opencc/NOTICE.md /usr/share/doc/notesteme/opencc/NOTICE.md
 
 # 以非 root 使用者執行；/data 必須是 0700（NFR-SEC-5）。
 RUN groupadd --system --gid 10001 notesteme \

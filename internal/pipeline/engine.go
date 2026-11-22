@@ -37,8 +37,14 @@ type result struct {
 
 	stage    *store.StageResult
 	artifact *store.NewArtifact
-	probes   []store.NewProbe
-	meta     *metaUpdate
+	// artifacts 是同一個步驟額外產生的產出（例如 translate 每個目標語言一份）；寫入順序在 artifact 之後。
+	// stage_runs.artifact_id 指向第一份（artifact，沒有時是 artifacts[0]）。
+	artifacts []*store.NewArtifact
+	// supersede 是這次不再產生、但目前仍是現行版本的產出組：寫入結果時標記為被這次的第一份產出取代
+	// （產出的取代以語言為單位，目標語言減少時舊語言的產出不會自己被取代）。
+	supersede *supersedeSet
+	probes    []store.NewProbe
+	meta      *metaUpdate
 	// advance 為 true 時，成功後建立下游步驟的任務（until 之前）。
 	advance bool
 	// startedAt 是這次執行開始的時間（Handle 開頭記下），apply 用它判斷 blocked 的恢復條件是否在執行中已經滿足。
@@ -58,6 +64,12 @@ func (r result) discard() {
 	if r.afterDiscard != nil {
 		r.afterDiscard()
 	}
+}
+
+// supersedeSet 是要撤下的現行產出：影音的 (kind, variant) 在這些語言的版本（Repo.WithdrawArtifacts）。
+type supersedeSet struct {
+	Kind, Variant string
+	Langs         []string
 }
 
 type metaUpdate struct {
@@ -115,7 +127,7 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	// 步驟前進時已記錄解析後的 executor；沒有記錄（M1 的步驟）時依設定解析。
 	executor := run.Executor
 	if executor == "" {
-		if rs, rerr := ResolveExecutor(eff, run.Stage); rerr == nil {
+		if rs, rerr := ResolveExecutor(eff, run.Stage, StageContext{}); rerr == nil {
 			executor = rs.Executor
 		}
 	}
@@ -134,13 +146,14 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		res, err = p.runTranscript(ctx, it, lang)
 	case run.Stage == StageNormalize:
 		res, err = p.runNormalize(ctx, it)
+	case run.Stage == StageTranslate && executor == ExecutorOpenCC:
+		res, err = p.runTranslateOpenCC(ctx, it, eff)
 	default:
 		err = &errclass.Error{Class: errclass.ClassPermanent, Source: "pipeline", Detail: "不認識的步驟 " + run.Stage}
 	}
 	if ctx.Err() != nil {
 		// 關閉或取消中：不寫回，已寫出的產出檔也不會有記錄指向它。
-		p.discardArtifactFile(res.artifact)
-		res.discard()
+		p.discardResultFiles(res)
 		return nil
 	}
 	if errors.Is(err, errItemGone) {
@@ -282,22 +295,32 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 		}
 		if res.stage != nil {
 			sr := *res.stage
-			if res.artifact != nil {
-				a, err := r.InsertArtifact(ctx, *res.artifact)
+			outs := res.allArtifacts()
+			for i, na := range outs {
+				a, err := r.InsertArtifact(ctx, *na)
 				if err != nil {
 					return err
 				}
-				sr.ArtifactID = a.ID
+				if i == 0 {
+					sr.ArtifactID = a.ID
+				}
 				// 新版本寫入後，同一組只保留最近幾版（PIPE-R7）；檔案在 commit 之後才刪。
-				if purged, err = r.PurgeOldArtifacts(ctx, a.ItemID, a.Kind, a.Variant, a.Lang, keepArtifactVersions); err != nil {
+				old, err := r.PurgeOldArtifacts(ctx, a.ItemID, a.Kind, a.Variant, a.Lang, keepArtifactVersions)
+				if err != nil {
 					return err
 				}
+				purged = append(purged, old...)
 			}
-			if res.artifact == nil && sr.ArtifactID != "" {
+			if len(outs) == 0 && sr.ArtifactID != "" {
 				// 快取命中重用既有產出（PIPE-R5）。它可能已被後來的版本取代
 				// （設定 A → B → 改回 A）：選擇「恢復」而不是重新產生，
 				// 因為快取鍵相同就是不要重複付費；恢復讓它重新成為現行版本，原本的現行版本改指向它。
 				if err := r.RestoreArtifact(ctx, sr.ArtifactID); err != nil {
+					return err
+				}
+			}
+			if g := res.supersede; g != nil && len(g.Langs) > 0 {
+				if err := r.WithdrawArtifacts(ctx, it.ID, g.Kind, g.Variant, g.Langs); err != nil {
 					return err
 				}
 			}
@@ -363,7 +386,11 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 			if err != nil {
 				return err
 			}
-			chain, err := planChain(eff, next, it.UntilStage)
+			sc, err := p.stageContext(ctx, r, it, "")
+			if err != nil {
+				return err
+			}
+			chain, err := planChain(eff, next, it.UntilStage, sc)
 			if err != nil {
 				return err
 			}
@@ -384,14 +411,12 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 	}
 	if err != nil {
 		// 交易沒有 commit（例如 ctx 取消、資料庫錯誤）：沒有記錄會指向已寫出的產出檔。
-		p.discardArtifactFile(res.artifact)
-		res.discard()
+		p.discardResultFiles(res)
 		return err
 	}
 	if stale || lost {
-		// 結果已丟棄，沒有記錄會指向這個檔案；清掉避免留下孤兒檔。
-		p.discardArtifactFile(res.artifact)
-		res.discard()
+		// 結果已丟棄，沒有記錄會指向這些檔案；清掉避免留下孤兒檔。
+		p.discardResultFiles(res)
 	} else {
 		// 已 commit：被清除版本的記錄不在了，檔案也一併刪除。
 		for _, a := range purged {
@@ -405,6 +430,23 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 		p.wake()
 	}
 	return nil
+}
+
+// allArtifacts 依寫入順序列出結果帶的所有產出。
+func (r result) allArtifacts() []*store.NewArtifact {
+	var out []*store.NewArtifact
+	if r.artifact != nil {
+		out = append(out, r.artifact)
+	}
+	return append(out, r.artifacts...)
+}
+
+// discardResultFiles 刪除結果帶的所有產出檔（沒有 commit 或結果被丟棄）。
+func (p *Pipeline) discardResultFiles(res result) {
+	for _, a := range res.allArtifacts() {
+		p.discardArtifactFile(a)
+	}
+	res.discard() // 這次暫存的其他檔案（例如 podcast 的音檔）
 }
 
 // discardArtifactFile 刪除已寫出但不會被任何記錄指向的產出檔（沒有 commit 或結果被丟棄）。a 為 nil 時不做事。

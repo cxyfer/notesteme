@@ -90,12 +90,23 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		return Detail{}, err
 	}
 	// 在寫入任何資料之前解析執行方式：要執行的步驟還沒有實作就回 501，不留下半套的重跑。
-	chain, err := planChain(eff, req.From, req.Until)
-	if err != nil {
-		return Detail{}, err
+	// 交易內會用交易的讀取再解析一次：兩次之間 normalize 可能剛完成，原文語言就不同了（Codex P2）。
+	resolve := func(repo *store.Repo, item store.Item) ([]StageResolution, error) {
+		sc, err := p.stageContext(ctx, repo, item, req.From)
+		if err != nil {
+			return nil, err
+		}
+		chain, err := planChain(eff, req.From, req.Until, sc)
+		if err != nil {
+			return nil, err
+		}
+		if last := chain[len(chain)-1]; !last.Skip && !stageImplemented(last.Stage, last.Executor) {
+			return nil, &NotImplementedError{What: "步驟 " + last.Stage + "／" + last.Executor}
+		}
+		return chain, nil
 	}
-	if last := chain[len(chain)-1]; !last.Skip && !stageImplemented(last.Stage, last.Executor) {
-		return Detail{}, &NotImplementedError{What: "步驟 " + last.Stage + "／" + last.Executor}
+	if _, err := resolve(r0, it); err != nil {
+		return Detail{}, err
 	}
 
 	if p.beforeRerunTx != nil {
@@ -109,6 +120,10 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		}
 		if cur.DeletedAt != nil {
 			return &InTrashError{ItemID: cur.ID}
+		}
+		chain, err := resolve(r, cur)
+		if err != nil {
+			return err
 		}
 		snap, err := r.EnsureSnapshotLayers(ctx, sha, cfgJSON, layersJSON)
 		if err != nil {

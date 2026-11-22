@@ -114,6 +114,29 @@ func (r *Repo) InsertArtifact(ctx context.Context, n NewArtifact) (Artifact, err
 	return r.Artifact(ctx, n.ID)
 }
 
+// WithdrawArtifacts 撤下影音在指定語言的現行 (kind, variant) 產出：標記為被自己取代，保留歷史版本與檔案。
+// 步驟不再要求某個語言時使用（例如 translate 的 language.targets 少了一個語言，或全部目標都與原文相同）：
+// 產出的取代以語言為單位，不明確撤下的話，舊的 translated 產出會一直是現行版本。
+// 指向自己而不是指向另一個語言的新版本：superseded_by 只在同一組 (item, kind, variant, lang) 內有意義，
+// 指向別的語言的列被清除時 PurgeOldArtifacts 不會修正它（Codex P3）。langs 為空代表該 (kind, variant) 的所有語言。
+func (r *Repo) WithdrawArtifacts(ctx context.Context, itemID, kind, variant string, langs []string) error {
+	cur, err := r.CurrentArtifacts(ctx, itemID, kind)
+	if err != nil {
+		return err
+	}
+	for _, a := range cur {
+		if a.Variant != variant || (len(langs) > 0 && !slices.Contains(langs, a.Lang)) {
+			continue
+		}
+		if err := r.q.SupersedeCurrentArtifacts(ctx, sqlcdb.SupersedeCurrentArtifactsParams{
+			SupersededBy: a.ID, ItemID: itemID, Kind: kind, Variant: variant, Lang: a.Lang,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // RestoreArtifact 讓一個被取代的產出重新成為現行版本：原本的現行版本改為被它取代，
 // 它自己的 superseded_by 清除。已經是現行版本時什麼都不做。
 // 快取命中重用舊產出時使用（PIPE-R5）：設定改回舊值，現行版本也要跟著回到那一版。

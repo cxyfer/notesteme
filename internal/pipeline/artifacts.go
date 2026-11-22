@@ -89,9 +89,11 @@ func readTranscript(dataDir, rel, wantSHA string) (subtitle.Transcript, error) {
 	return subtitle.DecodeCuesJSON(bytes.NewReader(b))
 }
 
-// provenance 組出來源紀錄（ADR-0005）。欄位由呼叫端填，created_at 與 notesteme 的版本在這裡統一加上。
+// provenance 組出來源紀錄（ADR-0005）。欄位由呼叫端填（executor 沒填時是 local），created_at 與 notesteme 的版本在這裡統一加上。
 func (p *Pipeline) provenance(fields map[string]any, toolVersions map[string]string) (json.RawMessage, error) {
-	fields["executor"] = "local"
+	if _, ok := fields["executor"]; !ok {
+		fields["executor"] = "local"
+	}
 	fields["created_at"] = p.clock.Now().UTC().Format(time.RFC3339)
 	tv := map[string]string{"notesteme": p.version}
 	for k, v := range toolVersions {

@@ -208,7 +208,7 @@ func TestRerunNotImplementedWritesNothing(t *testing.T) {
 		{"summary", RerunRequest{From: "summary"}},
 		{"frames.select", RerunRequest{From: "frames.select"}},
 		{"overrides 指定了 provider", RerunRequest{From: StageCorrect, Overrides: stagesOver("correct", map[string]any{"provider": "anthropic", "model": "m1"})}},
-		{"translate 用 opencc", RerunRequest{From: StageTranslate, Overrides: stagesOver("translate", map[string]any{"executor": "opencc"})}},
+		{"translate 用 api", RerunRequest{From: StageTranslate, Overrides: stagesOver("translate", map[string]any{"provider": "anthropic", "model": "m1"})}},
 		{"publish 有 outputs", RerunRequest{From: StagePublish, Overrides: map[string]any{"outputs": []any{map[string]any{"target": "sidecar", "formats": []any{"srt"}}}}}},
 		{"Chunks", RerunRequest{From: StageCorrect, Chunks: []int{2}}},
 		{"M1 步驟加 Chunks", RerunRequest{From: StageNormalize, Chunks: []int{1}}},
