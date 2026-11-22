@@ -12,7 +12,7 @@
 | `ytdlp/` | 假 yt-dlp 的輸出樣本（info JSON 的片段、錯誤輸出）；播放清單網址的 `the URL … serves "<name>"` 讀這裡，例如 `playlist-3-videos.json` | 假 yt-dlp（`--flat-playlist -J`） |
 | `http/` | fake origin 提供的 HTTP 內容（`the URL … serves "<name>"`，網址不是 YouTube／Bilibili 時），例如網頁、RSS feed | `fakenet` 上的 handler |
 | `items/` | `Given the item … has been processed up to …` 使用的影音資料 | steps |
-| `media/` | `Given the audio of … is "<name>"` 使用的音訊屬性：一行假媒體標記（沒有 item），帶 `duration`、`compressed`（ASR 前處理之後的大小）、`silences`，例如 `audio-40mb-after-compression.m4a` | steps（併進 inbox 檔或假 yt-dlp 的標記） |
+| `media/` | `Given the audio of … is "<name>"` 使用的音訊屬性：一行假媒體標記（沒有 item），帶 `duration`、`compressed`（ASR 前處理之後的大小）、`silences`，例如 `audio-40mb-after-compression.m4a`、`speech-with-pause-at-6.2s.m4a`（靜音 6.2–6.5 秒，SEG-R8） | steps（併進 inbox 檔或假 yt-dlp 的標記） |
 | `local/` | `Given a local file "<name>" in the inbox` 與 `When the owner uploads "<name>"` 使用的本機檔案：影音（標記加填充）、sidecar 字幕、不是影音的檔案，以及內嵌字幕的內容（`embedded/`） | steps（複製到 inbox 或上傳）、假 ffmpeg（抽內嵌字幕） |
 | `podcast/` | `Given a podcast feed … with the episodes:` 的音檔（假媒體檔），以及 `the source "podcast-transcript" returns "<檔名>" for …` 的字幕（`.vtt`、`.srt`、`.json`） | steps（交給 `fakepodcast`） |
 | `llm/` | fake LLM provider 的回應 | fake LLM |
@@ -216,6 +216,16 @@ NOTESTEME-FAKE-MEDIA item=<代號> duration=<秒>[ streams=<type>/<codec>[/<lang
   字幕的網址同樣是 `https://media.example.com/<名稱>/<字幕檔名>`。
 - feed、音檔與字幕都登記在 fakenet 上，連線與 DNS 解析走 fakenet 的序列，所以 `the host … resolves to … and then …` 對它們有效。
 - fixture 不存在、音檔不是假媒體檔時，步驟立即失敗。
+
+## LLM 的回應（`llm/`）
+
+fixture 有三種形式（`features/internal/fakellm/fixture.go`）：靜態的 `output`、不是 JSON 的 `text`，以及依請求的 `<transcript_data>` 產生輸出的 `generator`（可帶 `args`）。
+
+- `echo_cues`：`{"cues": [{i, text}]}`，一對一的步驟（correct）用；`args` 有 `drop_last`、`extra`、`replace`。
+- `segment_breaks`（SEG）：`{"text", "breaks"}`，`text` 是 cues 的 text 以一個空白接起來；`args.mode`：
+  `keep`（每句都斷開，不合併也不切分）、`merge`（沒有斷點，整個 chunk 合併）、`inside_word`（只有一個斷點，切在第一個拉丁字詞中間，對不回輸入）。
+  `segment-keep-all`、`segment-merge-all`、`segment-unalignable` 用它；其他 `segment-*` 是靜態輸出，只對場景中寫出的那一句有效
+  （`breaks` 是新字幕在 `text` 中開始的字元位置，例如 `segment-split-after-kafka` 的 14 是 `It is fast.` 的開頭）。
 
 ## 新增 fixture 的步驟
 

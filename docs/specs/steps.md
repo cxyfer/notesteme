@@ -42,7 +42,7 @@
 
 步驟狀態：`pending`、`running`、`waiting`、`awaiting_agent`、`blocked`、`done`、`skipped`、`failed`。
 `blocked` 的原因：`needs_action`、`budget_blocked`、`awaiting_user`。
-`skipped` 的原因：`cancelled`、`off`、`not_configured`、`no_outputs`、`same_language`、`not_applicable`（沒有任何輸出目標適用這部影音，例如 sidecar 對線上影音，OUT-R10；之後會加上 `manual_captions`）。
+`skipped` 的原因：`cancelled`、`off`、`not_configured`、`no_outputs`、`same_language`、`not_applicable`（沒有任何輸出目標適用這部影音，例如 sidecar 對線上影音，OUT-R10）、`manual_captions`（來源是人工字幕，segment 預設略過，SEG-R1）。
 錯誤類別：`retryable`、`wait`、`needs_action`、`budget_blocked`、`permanent`。
 
 ## 2. 影音的引用方式
@@ -195,7 +195,7 @@
 | `Then the {string} transcript of {string} in {string} is:` | 同上，指定語言 |
 | `Then the {string} transcript of {string} has {int} cues` | cue 數 |
 | `Then the {string} transcript of {string} in {string} has {int} cues` | 同上，指定語言 |
-| `Then every cue of the {string} transcript of {string} follows the subtitle rules for {string}` | 每個 cue 都符合指定文字系統（`cjk`、`latin`）的字幕規則（plan 第 8.5 節） |
+| `Then every cue of the {string} transcript of {string} follows the subtitle rules for {string}` | 每個 cue 都符合指定文字系統（`cjk`、`latin`）的字幕規則（plan 第 8.5 節）：顯示 0.8–7 秒；依每行字數排版（拉丁文字 42 字元、依空白換行；CJK 取範圍的寬鬆端 25 字、依字數）不超過 2 行。斷言獨立計算，不呼叫產品的規則檢查；沒有任何 cue 時失敗 |
 | `Then every cue of the {string} transcript of {string} has the timing {string}` | 所有 cue 的時間來源（`GET /api/items/:id/cues`）；沒有任何 cue 視為失敗 |
 | `Then the {string} artifact of {string} has the provenance:` | 現行產出的來源紀錄（`provenance_json`）；表格欄位：`field`、`value`。`field` 用點號表示巢狀欄位，數字的段落是陣列索引（例如 `tool_versions.yt-dlp`），值一律以字串比較（數字用原本的寫法）。`parents` 是上游產出的變體名稱清單（值以逗號分隔、依序相等，例如 `source`）。符合名稱的現行產出必須剛好一個；harness 經測試用的 hook 讀取，不新增 API |
 | `Then the {string} artifact of {string} has {int} versions` | 版本數，包含被取代的版本 |
