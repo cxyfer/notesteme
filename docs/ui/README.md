@@ -209,11 +209,12 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 設計 token 與元件：Button、TextField、Dialog／Drawer、Toast、Spinner、StatusBadge、ErrorCallout | 完成 | `web/client/src/styles`、`src/components` |
 | 頁面：`/library`、`/queue`、`/items/:id`、`/settings/:section` | 空頁（標題＋「還在製作中」） | `web/client/src/pages` |
 | CI：tsc、eslint、prettier、vitest（axe、對比、i18n）、build、bundle 預算、OpenAPI drift、npm audit | 完成 | `.github/workflows/web.yml` |
-| 新增抽屜、媒體庫、時間帶、指令面板、快捷鍵、貼上網址 | 未做 | UI-1 |
+| 新增抽屜、媒體庫（M1 基本版）、精簡版時間帶、`N`／`/` 快捷鍵、貼上網址 | 完成（UI-1，見 10.4） | `web/client/src/add`、`src/pages/library`、`web/shared` |
+| 指令面板（`Ctrl K`）、`G` 開頭的快捷鍵、`?` 快捷鍵說明 | 未做 | 之後的切片 |
 | 影音詳情、佇列 | 未做 | UI-2 |
 | 設定各分區、Prompt 庫、處理方案、字幕樣式 | 未做 | UI-3 |
 | 登入頁背景的淡化時間帶（§13） | 未做 | 等 UI-1 的時間帶元件 |
-| 768–1279px 的收合導覽（只剩圖示） | 未做：沒有圖示前維持展開 | 加入 Phosphor Icons 時（UI-1） |
+| 768–1279px 的收合導覽（只剩圖示） | 未做：沒有圖示前維持展開；UI-1 沒有引入 Phosphor Icons | 之後的切片 |
 
 ### 10.2 UI-0 的決定
 
@@ -235,3 +236,32 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 - **CSP 的 `style-src 'unsafe-inline'`**（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：NFR-SEC-1 只限制 `script-src`。React 的 `style` 屬性走 CSSOM，不受 CSP 限制；但 Radix Dialog 的捲動鎖定（react-remove-scroll）會插入 `<style>` 元素，`style-src 'self'` 會擋掉它。預設允許 `'unsafe-inline'`（只限 style）；風險是 CSS injection（例如用屬性選擇器外洩資料），前提是先有 HTML injection，而 NFR-SEC-2 已禁止原始 HTML。替代方案：用 nonce（需要伺服器端渲染 `index.html`）或換掉會插入 `<style>` 的套件。
 - **縮圖與嵌入的網域**（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`img-src` 開放 `https://*.ytimg.com`、`https://*.hdslb.com`；`frame-src` 開放 `https://www.youtube.com`、`https://www.youtube-nocookie.com`、`https://player.bilibili.com`。如果之後改成由後端代理縮圖，就可以從 `img-src` 移除。
 - **`X-Frame-Options: DENY`、`Permissions-Policy`、`Cross-Origin-Opener-Policy: same-origin`** 是 NFR-SEC-1 以外另外加的標頭（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
+
+### 10.4 UI-1：媒體庫與「新增」抽屜（2026-11-23）
+
+| 範圍 | 狀態 | 位置 |
+|---|---|---|
+| 媒體庫列表：縮圖、標題、平台、頻道、發布日、長度、精簡版時間帶、狀態欄、需要處理的列附錯誤說明與動作 | 完成 | `src/pages/LibraryPage.tsx`、`src/pages/library/LibraryRow.tsx` |
+| 篩選條件存在 URL：平台、頻道、各步驟的狀態、錯誤類別、原文語言、發布日、長度、時間來源、標題搜尋；已套用條件可個別移除或全部清除 | 完成 | `src/pages/library/filters.ts`、`FilterBar.tsx` |
+| keyset cursor 無限捲動、總數、虛擬化（10,000 列只渲染可視範圍） | 完成 | `src/components/VirtualList.tsx`、`LoadMore.tsx` |
+| 即時更新：「有 N 個新項目」、步驟狀態只更新那一列、重新連上的提示、aria-live 宣告 | 完成 | `LibraryPage.tsx`、`src/events` |
+| 空狀態與篩選結果為空（§4.3） | 完成 | `src/components/EmptyState.tsx` |
+| 「新增」抽屜：貼上網址辨識預覽（影片、播放清單、頻道、Podcast 各集、Bilibili 分P）、本機檔案上傳、處理方案、依 `code` 的錯誤與修正動作、toast | 完成 | `src/add` |
+| 導覽的「新增」按鈕、`N`、焦點不在輸入框時貼上網址 | 完成 | `src/shell/AppShell.tsx`、`keyboard.ts` |
+| 時間帶（精簡版）放進 `web/shared` | 完成 | `web/shared/src/StatusBand.tsx`、[web/shared/README](../../web/shared/README.md) |
+| 依頻道／發布日／狀態分組、「格」檢視、儲存檢視、批次操作、垃圾桶檢視 | 未做 | 分組見 10.5 第 3 點；其餘是 M4 |
+| 預估花費（`POST /api/estimate`）、「調整這次的設定」、一次貼上多個網址、把檔案拖進視窗 | 未做 | 見 10.5 第 6 點 |
+
+### 10.5 UI-1 的決定
+
+（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
+
+1. **不改後端**。列表 API 沒有步驟狀態、頻道名稱、縮圖網址，UI 用現有 API 組合：每一列另外讀 `GET /api/items/{id}`（只有渲染出來的列，虛擬列表大約 20 列）；頻道顯示 ID；縮圖只有 YouTube（由影片 ID 推得 `i.ytimg.com`），其他平台用占位。代價是捲動時的 N+1 請求（本機 SQLite，可接受）。之後在 `GET /api/items` 加 `stages` 摘要、頻道名稱與縮圖網址時，列元件改用列表的資料即可。
+2. **即時更新不重抓列表**：UI-0 的失效表中 `stage.status` 與重新連上會讓 `items.lists` 失效，重抓時新項目會插到頂端（違反 §3.4、LIB-R9）。改成只讓 detail 失效；重新連上時顯示「列表可能不是最新的」由使用者重新載入。刪除與還原仍讓列表失效（通常是使用者自己的操作）。
+3. **預設不分組**（LIB-R4 的「預設依頻道分組」沒做）：列表依建立時間的 keyset cursor 分頁，前端分組會讓同一個頻道散在不同頁；而且 API 沒有頻道名稱。等 API 有 `group_by`（LIB 規格待決問題已記錄）再做。
+4. **篩選的 URL 參數**與 API 同名，除了發布日存 `YYYY-MM-DD`（當地時區的整天）、長度存分鐘（`dur_min`／`dur_max`）。頻道沒有列表 API，改成文字輸入，並可以點列上的頻道「只看這個頻道」。
+5. **步驟狀態的對應**：`blocked` 依 `block_reason` 對應到需要你處理／超出預算／等你決定，認不得的當成需要你處理。狀態欄顯示最需要注意的步驟（失敗 > 停住 > 等待 Agent > 處理中 > 稍後檢查，否則是最後完成的步驟）。失敗的列提供「從該步驟重新處理」（`POST /api/items/{id}/rerun`），停住（非預算）的列提供「開啟帳號與 Cookie 設定」。步驟的 `message` 是後端的繁中文字，原樣顯示（沒有 code 可以查字典）。
+6. **抽屜的範圍**：一次一個網址或一個檔案（上傳 API 一次只收一個檔案）；播放清單整份新增（API 沒有範圍參數，見 LIB／ING 待決問題）；Bilibili 沒有指定分P 時可以選「全部」或輸入編號（resolve 不回分P 數，不為了列出分P 呼叫會跑 yt-dlp 的 estimate）；頻道只提示訂閱（M4）。預估花費與單次覆寫留給之後的切片。
+7. **新增相依**：`@tanstack/react-virtual` 3.14.26（2026-11-03 發佈；3.14.27／28 是 11-22 才發佈）。初始 JS 由約 137KB 增加到約 174KB（gzip），沒有另外做 lazy route。
+8. **`web/shared` 的接線**：沿用 brief 把 StatusBand 放進 `web/shared`（web/shared/README 原本寫「穩定後再搬」）；`react` 由 `web/client` 解析，lint、prettier、tsc 都涵蓋它，Dockerfile 一併複製。
+9. **測試替身**：不引入 MSW，用自寫的 `src/test/mockApi.ts`；vitest 的 `testTimeout` 提高到 15 秒（多個 child 同時跑時，整頁的互動測試在 5 秒內跑不完）。

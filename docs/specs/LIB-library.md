@@ -95,3 +95,8 @@
 - Bilibili 嵌入播放器能否控制播放位置（M0）。不行時，點擊字幕句改成「在 Bilibili 開啟這個時間」。
 - LIB-R11 場景已修改 `.feature`（2026-11-22，M2 S3 實作時發現，依 /goal 採 advisor 建議，待 owner 追認）。原場景的 Background 沒有指定處理方案，內建 `default` 的 `correct` 沒有 provider，依 X1 是 `skipped`（`not_configured`），第一版 corrected 不會產生，斷言「has 2 versions」失敗（S3 之前因為 `processed up to` 的 M2 目標 pending 而看不出來）。改成：場景內建立 `llm-lib` 處理方案（`correct` 用 anthropic）、用 `rerun` 帶 `"profile": "llm-lib"` 產生第一版（設定快照在新增當下已凍結，不能靠改預設處理方案），再用 openai 的覆寫重跑第二次，斷言兩個版本都保留。
 - 影音路由接受代號（2026-11-23，M2 S9 實作 MCP 的 `item` 參數時決定，依 /goal 採保守預設，**待 owner 追認**）：`GET /api/items/{id}`、`GET /api/items/{id}/cues`、`GET /api/items/{id}/subtitles`、`POST /api/items/{id}/subtitles/import` 的 `{id}` 也接受影音代號（`yt:…`、`bili:…/p1`，URL 編碼後放進路徑）；代號在垃圾桶中時回 404 `in_trash`，與用 ID 存取相同。其他影音路由仍只接受 ID。細節見 MCP 規格待決問題 S2。
+- UI-1 的媒體庫（2026-11-23，依 /goal 採 advisor 建議，**待 owner 追認**；細節見 [ui/README 10.5](../ui/README.md#105-ui-1-的決定)）：
+  - LIB-R4 的「預設依頻道分組」沒做，列表依建立時間排序、不分組：前端分組會讓同一頻道散在不同的 cursor 頁，而且 `GET /api/items` 沒有頻道名稱。等 API 有 `group_by` 再做。
+  - `GET /api/items` 沒有步驟狀態、頻道名稱與縮圖網址，UI 對每個渲染出來的列另外讀 `GET /api/items/{id}`（N+1，只有可視範圍）。建議之後在列表回應加 `stages` 摘要（各步驟最新的 `status`、`block_reason`、`error_class`）、頻道名稱與縮圖網址。
+  - LIB-R9：`stage.status` 與 SSE 重新連上都不讓列表失效（只更新那一列的詳情），否則重抓時新項目會插入頂端。
+- 新增抽屜的 YouTube 播放清單（2026-11-23，UI-1，**待 owner 追認**）：ING 與 API 沒有範圍參數，UI 只說明「會新增整份播放清單」，不讓使用者選範圍。要選範圍需要 `POST /api/items` 加 `entries`（或 `playlist_items`）並由 resolve 列出清單內容。
