@@ -288,3 +288,17 @@ func (p *Pipeline) renderOutput(ctx context.Context, itemID, format, lang, style
 	err = subtitle.Render(&buf, format, tr)
 	return buf.Bytes(), tr, err
 }
+
+// Outputs 列出影音已經寫出的檔案（OUT-R11），依寫入時間排列。影音不存在時回傳 store.ErrNotFound，
+// 在垃圾桶中時回傳 *InTrashError。
+func (p *Pipeline) Outputs(ctx context.Context, itemID string) ([]store.Output, error) {
+	r := p.st.Read()
+	it, err := r.ItemByID(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	if it.DeletedAt != nil {
+		return nil, &InTrashError{ItemID: it.ID}
+	}
+	return r.Outputs(ctx, it.ID)
+}

@@ -15,6 +15,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/media"
 	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/pipeline"
+	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/toolexec"
 )
 
@@ -31,6 +32,7 @@ var outRoutes = []outRoute{
 	{"POST", "/api/ass-styles/preview", auth.ScopeIngest},
 	{"POST", "/api/ass-styles/import", auth.ScopeAdmin},
 	{"POST", "/api/items/i1/subtitles/import", auth.ScopeIngest},
+	{"GET", "/api/items/i1/outputs", auth.ScopeRead},
 }
 
 func TestOutRoutesScopes(t *testing.T) {
@@ -396,5 +398,35 @@ func TestAssStylePreview(t *testing.T) {
 	rec = r.owner("POST", "/api/ass-styles/preview", `{"item":"`+id+`"}`)
 	if e := decodeError(t, rec.Body.Bytes()); rec.Code != http.StatusBadGateway || e.Code != CodeUpstream || strings.Contains(rec.Body.String(), "No such filter") {
 		t.Errorf("ffmpeg 失敗 = %d %s", rec.Code, rec.Body)
+	}
+}
+
+// OUT-R11：GET /api/items/:id/outputs 列出寫出的檔案；沒有時是空陣列（不是 null），垃圾桶中的影音回 404。
+func TestListOutputs(t *testing.T) {
+	r := newItemsRig(t)
+	id := r.ingestOne(abcURL)
+	url := "/api/items/" + id + "/outputs"
+
+	rec := r.owner("GET", url, "")
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"outputs":[]}` {
+		t.Fatalf("沒有輸出檔 = %d %s", rec.Code, rec.Body)
+	}
+	ctx := context.Background()
+	for _, o := range []store.Output{
+		{ItemID: id, Path: "/data/inbox/lecture.en.srt", Target: "sidecar", Format: "srt", Lang: "en", SHA256: "aa", Size: 12},
+		{ItemID: id, Path: "/subs/Talk.en.vtt", Target: "folder", Format: "vtt", Lang: "en", SHA256: "bb", Size: 7},
+	} {
+		if err := r.st.Tx(ctx, func(rp *store.Repo) error { return rp.RecordOutput(ctx, o) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec = r.owner("GET", url, "")
+	got := decode[struct{ Outputs []OutputFile }](t, rec).Outputs
+	if rec.Code != http.StatusOK || len(got) != 2 || got[0].Path != "/data/inbox/lecture.en.srt" || got[0].SHA256 != "aa" ||
+		got[0].Target != "sidecar" || got[1].Format != "vtt" || got[0].WrittenAt.IsZero() {
+		t.Errorf("輸出檔 = %d %s", rec.Code, rec.Body)
+	}
+	if rec = r.owner("GET", "/api/items/nope/outputs", ""); rec.Code != http.StatusNotFound {
+		t.Errorf("不存在的影音 = %d", rec.Code)
 	}
 }

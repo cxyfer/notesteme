@@ -300,8 +300,37 @@ func parseItemsShow(args []string) (*plan, error) {
 		if err != nil {
 			return 0, err
 		}
-		return s.printDetail(raw)
+		code, err := s.printDetail(raw)
+		if err != nil || s.g.json {
+			return code, err
+		}
+		s.printOutputs(ctx, id)
+		return code, nil
 	}}, nil
+}
+
+// printOutputs 在文字模式的影音詳情之後列出已寫出的輸出檔（OUT-R11）。
+// 只是補充資訊：伺服器比較舊、沒有這個路由，或讀取失敗時略過，不影響結束碼。
+func (s *session) printOutputs(ctx context.Context, id string) {
+	raw, _, err := s.be.call(ctx, http.MethodGet, "/api/items/"+url.PathEscape(id)+"/outputs", nil)
+	if err != nil {
+		return
+	}
+	var body struct {
+		Outputs []struct {
+			Path   string `json:"path"`
+			Target string `json:"target"`
+			Format string `json:"format"`
+			Lang   string `json:"lang"`
+		} `json:"outputs"`
+	}
+	if json.Unmarshal(raw, &body) != nil || len(body.Outputs) == 0 {
+		return
+	}
+	fmt.Fprintln(s.stdout, "  輸出檔：")
+	for _, o := range body.Outputs {
+		fmt.Fprintf(s.stdout, "    %s\t%s\t%s\t%s\n", o.Target, o.Format, o.Lang, o.Path)
+	}
 }
 
 // printDetail 輸出影音詳情：--json 時原樣輸出 API 的回應。

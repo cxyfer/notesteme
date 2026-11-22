@@ -232,9 +232,9 @@ func TestPublishFolderPathMustStayInsideRoots(t *testing.T) {
 		t.Skip("不能建立 symlink：", err)
 	}
 	cases := map[string]string{
-		"絕對路徑在根目錄外": outside,
-		"用 .. 跑出去":     filepath.Join(r.root, "..", filepath.Base(outside)),
-		"symlink 指到外面": filepath.Join(r.root, "link"),
+		"絕對路徑在根目錄外":      outside,
+		"用 .. 跑出去":       filepath.Join(r.root, "..", filepath.Base(outside)),
+		"symlink 指到外面":   filepath.Join(r.root, "link"),
 		"symlink 底下的子目錄": filepath.Join(r.root, "link", "sub"),
 	}
 	for name, path := range cases {
