@@ -42,7 +42,7 @@
 
 步驟狀態：`pending`、`running`、`waiting`、`awaiting_agent`、`blocked`、`done`、`skipped`、`failed`。
 `blocked` 的原因：`needs_action`、`budget_blocked`、`awaiting_user`。
-`skipped` 的原因：`cancelled`、`off`、`not_configured`、`no_outputs`、`same_language`（之後會加上 `manual_captions`、`not_applicable`）。
+`skipped` 的原因：`cancelled`、`off`、`not_configured`、`no_outputs`、`same_language`、`not_applicable`（沒有任何輸出目標適用這部影音，例如 sidecar 對線上影音，OUT-R10；之後會加上 `manual_captions`）。
 錯誤類別：`retryable`、`wait`、`needs_action`、`budget_blocked`、`permanent`。
 
 ## 2. 影音的引用方式

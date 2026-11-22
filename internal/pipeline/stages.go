@@ -38,7 +38,7 @@ const (
 )
 
 // skipped 的原因，寫在 stage_runs.block_reason。
-// 之後的切片會加上 manual_captions、not_applicable。
+// 之後的切片會加上 manual_captions；not_applicable 見 publish.go（SkipNotApplicable）。
 const (
 	SkipCancelled     = "cancelled"      // 取消或被較新的重跑取代（PIPE-R15）
 	SkipOff           = "off"            // executor: off（PRF-R6）

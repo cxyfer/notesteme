@@ -42,7 +42,7 @@
 
 ## 介面
 
-- API：`GET /api/items/:id/cues?variant=&lang=&from=&to=`、`GET /api/items/:id/subtitles?format=&variant=&lang=&style=&from=&to=`、`POST /api/items/:id/subtitles/import`（M2）
+- API：`GET /api/items/:id/cues?variant=&lang=&from=&to=`、`GET /api/items/:id/subtitles?format=&variant=&lang=&style=&from=&to=`、`POST /api/items/:id/subtitles/import`（M2）、`GET /api/items/:id/outputs`（M2，`read`，列出寫出的檔案）
 - ASS 樣式（M2）：`GET/POST/PATCH /api/ass-styles`、`POST /api/ass-styles/preview`、`POST /api/ass-styles/import`
 - CLI：`notesteme export <item> --format srt|vtt|txt|ass [--lang] [--variant]`、`notesteme import <subtitle> --item <id>`（M2）
 - MCP（M2）：`get_transcript`、`import_transcript`
@@ -54,7 +54,7 @@
 
 ## 待決問題
 
-- `sidecar` 的檔名語言代碼要用 BCP-47（`zh-Hant-TW`）還是 Jellyfin、Plex 較容易辨識的 ISO 639（`zh`、`chi`），M2 實作前用兩套播放器實測。
+- `sidecar` 的檔名語言代碼要用 BCP-47（`zh-Hant-TW`）還是 Jellyfin、Plex 較容易辨識的 ISO 639（`zh`、`chi`）：S8 保守採 BCP-47（和場景的 `lecture.en.srt` 一致，語言碼取自實際輸出的字幕）。**待實測 Jellyfin、Plex**（需要真的播放器，開發環境做不到）；要改成 ISO 639 只需改 `internal/pipeline/publish.go` 的 `outputName`。
 - OUT-R9 預覽場景：steps.md 4.4 規則 (1) 改成只有寫入 `source` 變體的字幕才算「場景已準備字幕來源」（2026-11-22，owner 同意，已修改）。Background 只 seed 了 `corrected`，預覽影音沒有任何字幕軌，改走規則 (2) 的 fixture（`features/fixtures/items/yt-abc123xxxxx.json`）。
 - OUT-R5 同語言場景（`Same-language content is never rendered as bilingual`）原本期待 `GET …/subtitles?format=bilingual-srt` 的回應內容是 JSON `{ "bilingual": false }`，但 `bilingual-srt` 的回應本體必須是 SRT 檔（OUT-R1、R4）。決定（2026-11-22，依 /goal 採 advisor 建議，待 owner 追認；已修改 `.feature`）：單語時照樣輸出單語 SRT，並用回應標頭 `X-Notesteme-Bilingual: false|true` 表示結果（ASS 也有）；場景最後一步改成 `And the response header "X-Notesteme-Bilingual" contains "false"`。`steps.md` 沒有「回應本文不含」的句型，之後要直接斷言本文時再加。
 - OUT-R8、R13～R15 的 `path` 是伺服器上的檔案路徑。決定（2026-11-22，依 /goal 採 advisor 建議，待 owner 追認）：不套用 GRD-R7 的 inbox 與 `media_roots` 限制，因為 GRD-R7 管的是「新增影音」，而場景本身就用 `/tmp/…`；只收字幕副檔名（`.srt`、`.vtt`、`.ass`、`.ssa`）的一般檔案、副檔名在解析 symlink 之後才檢查（`x.srt -> /etc/shadow` 會被拒絕）、大小有上限、解析失敗的回應不含檔案內容。代價是持有 `ingest`（字幕）或 `admin`（樣式）scope 的 token 可以讓伺服器讀取任何路徑、字幕副檔名的檔案。也可以用 `content` 直接帶檔案內容，CLI 一律這樣送。場景中的 `/tmp/…` 在請求 body 裡也要對應到場景根目錄（`steps.md` 第 4 節已補）。
@@ -64,3 +64,20 @@
 - OUT-R15 的 `line` 是第幾句字幕（從 1 起算，對應「第幾句有問題」），`file_line` 是檔案中的行號（可能沒有）。
 - 雙語輸出的原文是「影音的原文語言」以外的另一種語言時不成立：目標語言就是影音的原文語言時一律輸出單語；其他情況原文取非 `translated` 變體中處理得最完整的字幕（OUT-R2 的順序）。
 - 匯入的 `edited` 只保證被下載（OUT-R2）優先使用，並把既有的譯文標示過時。correct、translate 要不要以 `edited` 為輸入，以及筆記（M3）的過時標示，規格沒有定義，留給對應的切片。匯入不保留字詞級時間（`words`）。
+- S8 的輸出目標（2026-11-22，依 /goal 採保守預設，待 owner 追認）：
+  - **沒有紀錄的既有檔案視為使用者的檔案**。OUT-R11 說「hash 和紀錄相同才覆蓋」，沒有紀錄就不可能相同，所以只有目標檔案不存在時才直接寫入；檔案存在而沒有紀錄（從未寫過、紀錄遺失）一律走 R12。「A file edited by hand」（先 `processed up to "publish"` 再手改）與 skip 場景都需要這個語意。不是一般檔案（symlink、目錄）也視為使用者的，不跟隨 symlink。目標的內容已經和要寫的相同時不寫入，並補上紀錄。
+  - 寫入：先寫同資料夾的暫存檔再 rename；新檔用硬連結建立（目標已存在就失敗，競態中別人先建立的檔案不會被覆蓋），檔案系統不支援硬連結時退回 rename；權限 0644；寫入限制在目標資料夾內（`os.Root`）。每個檔案寫完立刻記錄（`outputs` 一個 `(item, path)` 一列，重寫時更新雜湊）；寫完後、記錄前當機時，下次沒有紀錄會被視為使用者的檔案，是安全的方向。
+  - `save_as_new`：日期用注入的時鐘，**UTC**；同一天再次另存時，另存的檔案沒被改過（雜湊與紀錄相同）就覆蓋同一個，否則換成 `<名稱> (notesteme YYYY-MM-DD 2).<ext>`、`… 3)…`。`skip`：這個檔案不寫入，同一次發布的其他檔案照常寫出，`publish` 為 `blocked`（`needs_action`），訊息列出被改過的檔案，動作「處理該檔案後重新發布」；處理完後從 `publish` 重跑。
+  - `sidecar` 只用於本機檔案；上傳的檔案是資料目錄裡的副本，也不適用。沒有任何輸出目標適用時 `publish` 為 `skipped`（原因 `not_applicable`）；混合目標時只略過不適用的那個。影片檔不見了（不知道要放哪）是 `permanent` 失敗。字幕放在影片代號指的路徑旁邊，不跟隨影片檔本身的 symlink。
+  - `folder`：`path` 必須是絕對路徑，寫入前解析 symlink 與 `..`，並套用和 GRD-R7 相同的限制（serve 模式只能在 inbox 與 `media_roots` 之內，standalone 不受限制）；不存在時建立。檔名同下載（OUT-R4，`<標題>.<lang>.<ext>`）。限制是因為持有 `ingest` scope 的 token 可以用單次覆寫帶 `outputs`，不限制就等於任意寫檔；**待 owner 追認**（也可以改成另外的 `output_roots` 設定）。
+  - `bilingual-srt` 的副檔名也是 `srt`，寫出時檔名加 `.bilingual`（`lecture.en.bilingual.srt`），不會和單語的 `srt` 互相覆蓋；`ass` 的樣式用 `style`（預設 `default`）。
+  - `lang` 沒寫時用字幕的預設選擇（OUT-R2）；指定的語言沒有字幕時其他輸出照常寫出，步驟 `done` 並以訊息說明缺哪些語言（不是失敗，因為 `translate` 可能被設成略過）。
+  - `outputs` 的每一項在處理方案與覆寫中驗證（`target`、`formats`、`lang`、`style`、`path`、`on_user_change`，錯誤回 `errors[{path,message}]`）；`target: vault` 在 M3 提供，目前回 422（執行時遇到也是 `permanent`「尚未支援」）。
+  - `outputs` 資料表和 plan 第 21 節的草稿不同：沒有 `id`、`style_id`、`artifact_ids_json`，多了 `lang`、`size`，以 `(item_id, path)` 為主鍵；之後 vault 需要時再擴充。影音永久刪除時紀錄隨之刪除（寫出的檔案本身不動，DEL-R9）。
+- **`.feature` 的缺陷（待 owner 決定，S8 沒有修改它）**：OUT-R10～R12 的 4 個場景中，「skip」場景在 S8 通過；其餘 3 個照字面執行時沒有適用的輸出目標，仍然是紅燈：
+  - 「Subtitles are written next to a local video」只定義了 profile `media-server`，沒有把它設成預設，之後的 `reruns … from "publish"` 沒有帶 profile，套用的 `outputs` 是空的，`publish` 因此是 `skipped`（`no_outputs`），檔案不會產生。建議在 profile 之後加 `And the default profile is "media-server"`（和 PRF 的 F1、F2 同類）。
+  - 「A sidecar target is skipped for online videos」對 Background 已經 seed 過的 `yt:abc123xxxxx` 做 `ingests`：影音已存在（ING-R2），不會重新處理，`publish` 維持 `pending`。建議改成和 skip 場景一樣的重跑：`When the owner sends "POST /api/items/yt:abc123xxxxx/rerun" with:` `{ "from": "publish", "profile": "media-server" }`。
+  - 「A file edited by hand is saved alongside…」完全沒有定義帶 `outputs` 的 profile，沒有第一次寫出，就沒有「改過」的檔案。建議在 Background 之後、`processed up to "publish"` 之前加上 `And the profile "media-server" is:`（內容同上）與 `And the default profile is "media-server"`。
+  - 上面三處修改後，4 個場景在 S8 的實作下都通過（用複本在 `-godog.paths` 驗證過，沒有動到 `.feature`）。
+- 輸出的 `lecture.en.srt` 正好符合 SRC-R14 的 `local-sidecar` 命名：之後從 `transcript` 重跑時，會把自己寫出的字幕當成外掛字幕來源讀回。S8 沒有處理（要在 `listSidecars` 排除「`outputs` 有紀錄、雜湊相同」的檔案，會動到 LOCAL 的程式）；**待 owner 決定**要不要排除。
+- vault 輸出目標、hook（ADR-0010 第 4 點）屬於 M3，S8 沒有實作；sidecar 的 hook 同樣沒有。
