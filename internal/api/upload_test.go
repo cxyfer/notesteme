@@ -258,6 +258,12 @@ func TestUploadUntilAndProfile(t *testing.T) {
 	if e := decode[Error](t, rec); rec.Code != 422 || e.Code != CodeInvalidInput || len(e.Errors) != 1 || e.Errors[0].Path != "profile" {
 		t.Errorf("profile：%d %s", rec.Code, rec.Body)
 	}
+	// 處理方案先於 ffprobe 驗證：不是影音的檔案配上不存在的處理方案，回 profile 的 422，不是 unsupported_media（Codex P2）。
+	body, ct = multipartBody(t, [][2]string{{"profile", "fast"}}, multipartFile{"file", "notes.pdf", "just text"})
+	rec = r.uploadBody(body, ct, nil)
+	if e := decode[Error](t, rec); rec.Code != 422 || e.Code != CodeInvalidInput || len(e.Errors) != 1 || e.Errors[0].Path != "profile" {
+		t.Errorf("不是影音 + 不存在的 profile：%d %s", rec.Code, rec.Body)
+	}
 	// 預設處理方案可以用名稱指定：multipart 的 profile 欄位送進 pipeline（Codex P2）。
 	body, ct = multipartBody(t, [][2]string{{"profile", "default"}}, multipartFile{"file", "third.m4a", "AUDIO-three"})
 	if rec := r.uploadBody(body, ct, nil); rec.Code != 201 {

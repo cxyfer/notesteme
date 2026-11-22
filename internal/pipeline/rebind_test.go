@@ -285,3 +285,53 @@ func TestRebind_UpdatesLatestBeforeAdvance(t *testing.T) {
 		t.Errorf("重複改綁 = %v、latest = %s", err, latest[StageTranscript].ConfigSnapshotID)
 	}
 }
+
+// metadata 還沒完成就從下游步驟重跑：新建的 run 綁的是另一份沒有頻道層的快照；
+// 頻道確定之後每一份有還沒開始的最新步驟綁定的快照都要併入頻道層，不只 metadata 自己的（Codex P2）。
+func TestRebind_RerunSnapshotsGetChannelLayer(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
+	it := r.ingest(watch, nil, "")
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageNormalize, Overrides: timingCfg("free")}); err != nil {
+		t.Fatal(err)
+	}
+	runs, err := r.st.Read().StageRunsByItem(ctx, it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest := latestRuns(runs)
+	meta := latest[StageMetadata]
+	if latest[StageNormalize].ConfigSnapshotID == meta.ConfigSnapshotID || latest[StageTranscript].ConfigSnapshotID != meta.ConfigSnapshotID {
+		t.Fatalf("前提：normalize 之後的步驟應綁另一份快照：%v", snapshotsOf(t, r, it.ID))
+	}
+
+	chID, err := r.st.Write().UpsertChannel(ctx, store.Channel{Platform: "youtube", ExternalID: "UCfix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.st.Write().SetChannelOverrides(ctx, chID, `{"timing":{"split_timing":"forbid"}}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.st.Write().SetItemChannel(ctx, it.ID, chID); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.st.Tx(ctx, func(tx *store.Repo) error { return r.p.rebindChannel(ctx, tx, it.ID, meta, latest) }); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range Stages[1:] {
+		if l := layersOf(t, r, it.ID, s); l.Channel.ID != chID {
+			t.Errorf("%s 的頻道層 = %+v，預期頻道 %s", s, l.Channel, chID)
+		}
+		if latest[s].ConfigSnapshotID != snapshotsOf(t, r, it.ID)[s] {
+			t.Errorf("latest[%s] 沒有同步更新", s)
+		}
+	}
+	// 重跑的覆寫仍在：normalize 之後的步驟用單次覆寫的 free，其餘用頻道的 forbid。
+	if got := splitTimingOf(t, r, it.ID, StageNormalize); got != "free" {
+		t.Errorf("normalize 的 split_timing = %v，預期單次覆寫的 free", got)
+	}
+	if got := splitTimingOf(t, r, it.ID, StageTranscript); got != "forbid" {
+		t.Errorf("transcript 的 split_timing = %v，預期頻道的 forbid", got)
+	}
+}

@@ -303,6 +303,10 @@ func (p *Pipeline) IngestUpload(ctx context.Context, req UploadRequest) (LocalOu
 	if !ValidUploadName(req.Name) {
 		return LocalOutcome{}, invalidf("檔名不正確。")
 	}
+	// 處理方案與覆寫先驗證：不存在的處理方案不該先跑 ffprobe、搬檔案才被拒絕（同 URL 與路徑新增）。
+	if _, err := p.planIngest(ctx, IngestRequest{Profile: req.Profile, Overrides: req.Overrides}); err != nil {
+		return LocalOutcome{}, err
+	}
 	if p.media == nil || p.dataDir == "" {
 		return LocalOutcome{}, &UpstreamError{Msg: "無法執行 ffprobe，請確認已安裝（可執行 notesteme doctor）。", Err: errNoMedia}
 	}

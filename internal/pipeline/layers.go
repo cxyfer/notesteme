@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/validate"
@@ -165,14 +166,46 @@ func (p *Pipeline) validateOverrides(ctx context.Context, doc map[string]any) er
 	return nil
 }
 
-// rebindChannel 在 metadata 完成、頻道確定之後，把頻道層併進同一批還沒開始的下游步驟（D6）。
+// rebindChannel 在 metadata 完成、頻道確定之後，把頻道層併進還沒開始的下游步驟（D6）。
 // meta 是剛完成的 metadata stage run；latest 是交易開始時載入的各步驟最新的 stage run，
 // 被改綁的那幾筆會同步更新它們的 ConfigSnapshotID：後面前進時依 latest 讀快照，漏掉就會用舊快照。
 //
-// 以下情況什麼都不做：快照沒有記錄各層（M1 的舊快照）、影音沒有頻道、頻道和快照中記的相同、
+// 要處理的快照不只 metadata 自己的：metadata 還沒完成時從下游步驟重跑（Rerun），新建的 run 綁的是另一份
+// 沒有頻道層的快照，每一份有還沒開始的最新步驟綁定的快照都要各自併入頻道層（Codex P2）。
+//
+// 以下情況什麼都不做：影音沒有頻道、快照沒有記錄各層（M1 的舊快照）、頻道和快照中記的相同、
 // 重新 Compose 失敗（只記 log，保留舊快照，不讓 metadata 失敗）。在呼叫端的交易內執行。
 func (p *Pipeline) rebindChannel(ctx context.Context, r *store.Repo, itemID string, meta store.StageRun, latest map[string]store.StageRun) error {
-	raw, err := r.SnapshotLayers(ctx, meta.ConfigSnapshotID)
+	it, err := r.ItemByID(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	if it.ChannelID == "" {
+		return nil
+	}
+	from := []string{meta.ConfigSnapshotID}
+	var others []string
+	for _, run := range latest {
+		if run.Stage == StageMetadata || run.Status != store.StatusPending || run.StartedAt != nil {
+			continue
+		}
+		if run.ConfigSnapshotID != meta.ConfigSnapshotID && !slices.Contains(others, run.ConfigSnapshotID) {
+			others = append(others, run.ConfigSnapshotID)
+		}
+	}
+	slices.Sort(others) // map 的走訪順序不固定；排序讓結果可重現
+	from = append(from, others...)
+	for _, fromID := range from {
+		if err := p.rebindSnapshotChannel(ctx, r, it, fromID, latest); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// rebindSnapshotChannel 把頻道層併進 fromID 這份快照，並把綁在它上面、還沒開始的下游步驟改綁到新快照。
+func (p *Pipeline) rebindSnapshotChannel(ctx context.Context, r *store.Repo, it store.Item, fromID string, latest map[string]store.StageRun) error {
+	raw, err := r.SnapshotLayers(ctx, fromID)
 	if err != nil {
 		return err
 	}
@@ -180,11 +213,7 @@ func (p *Pipeline) rebindChannel(ctx context.Context, r *store.Repo, itemID stri
 	if raw == "" || raw == "{}" || json.Unmarshal([]byte(raw), &l) != nil || l.Profile.Name == "" {
 		return nil
 	}
-	it, err := r.ItemByID(ctx, itemID)
-	if err != nil {
-		return err
-	}
-	if it.ChannelID == "" || it.ChannelID == l.Channel.ID {
+	if it.ChannelID == l.Channel.ID {
 		return nil
 	}
 	ch, err := r.ChannelByID(ctx, it.ChannelID)
@@ -198,7 +227,7 @@ func (p *Pipeline) rebindChannel(ctx context.Context, r *store.Repo, itemID stri
 	l.Channel = ChannelLayer{ID: ch.ID, Overrides: orEmpty(ov)}
 	eff, err := p.Compose(ctx, l)
 	if err != nil {
-		p.log.Warn("加入頻道層後的設定不正確，保留原本的快照", "item", itemID, "channel", ch.ID, "error", err)
+		p.log.Warn("加入頻道層後的設定不正確，保留原本的快照", "item", it.ID, "channel", ch.ID, "error", err)
 		return nil
 	}
 	sha, cfgJSON, layersJSON, err := SnapshotOf(eff, l)
@@ -209,10 +238,10 @@ func (p *Pipeline) rebindChannel(ctx context.Context, r *store.Repo, itemID stri
 	if err != nil {
 		return err
 	}
-	if newID == meta.ConfigSnapshotID {
+	if newID == fromID {
 		return nil
 	}
-	ids, err := r.RebindPendingRuns(ctx, itemID, meta.ConfigSnapshotID, newID)
+	ids, err := r.RebindPendingRuns(ctx, it.ID, fromID, newID)
 	if err != nil {
 		return err
 	}
