@@ -2,6 +2,9 @@ module github.com/cxyfer/notesteme
 
 go 1.25.0
 
+// web/client 的 npm 套件可能附帶 .go 檔；不讓 ./... 掃到它們（ADR-0008）。
+ignore ./web/client/node_modules
+
 require (
 	github.com/cucumber/gherkin/go/v42 v42.0.1
 	github.com/cucumber/godog v0.16.0

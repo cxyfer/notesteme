@@ -1,0 +1,6 @@
+# Web UI（web/client）：npm 套件與建置產物；dist/.gitkeep 要保留，go:embed 才編譯得過。
+/web/client/node_modules/
+/web/client/dist/*
+!/web/client/dist/.gitkeep
+/web/client/coverage/
+*.tsbuildinfo

@@ -18,8 +18,9 @@ import (
 )
 
 type testServer struct {
-	h   http.Handler
-	clk *clock.Fake
+	h    http.Handler
+	clk  *clock.Fake
+	deps Deps
 }
 
 func newTestServer(t *testing.T) *testServer {
@@ -34,11 +35,11 @@ func newTestServer(t *testing.T) *testServer {
 	if err := svc.EnsurePassword(context.Background(), "pw"); err != nil {
 		t.Fatal(err)
 	}
-	h := New(Deps{
+	d := Deps{
 		Store: st, Auth: svc, Clock: clk, Version: "test",
 		Log: slog.New(slog.NewJSONHandler(io.Discard, nil)),
-	})
-	return &testServer{h: h, clk: clk}
+	}
+	return &testServer{h: New(d), clk: clk, deps: d}
 }
 
 func (s *testServer) do(method, path, body string, mod func(*http.Request)) *httptest.ResponseRecorder {

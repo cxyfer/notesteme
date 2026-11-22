@@ -1,0 +1,6294 @@
+{
+  "components": {
+    "schemas": {
+      "ASSLayout": {
+        "additionalProperties": false,
+        "properties": {
+          "alignment": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "border_style": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "margin_v": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "order": {
+            "type": "string"
+          },
+          "show": {
+            "type": "string"
+          },
+          "translation_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "show",
+          "order",
+          "translation_at",
+          "alignment",
+          "margin_v",
+          "border_style"
+        ],
+        "type": "object"
+      },
+      "ASSLine": {
+        "additionalProperties": false,
+        "properties": {
+          "back_color": {
+            "type": "string"
+          },
+          "bold": {
+            "type": "boolean"
+          },
+          "color": {
+            "type": "string"
+          },
+          "font": {
+            "type": "string"
+          },
+          "outline": {
+            "format": "double",
+            "type": "number"
+          },
+          "outline_color": {
+            "type": "string"
+          },
+          "shadow": {
+            "format": "double",
+            "type": "number"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "font",
+          "size",
+          "color",
+          "outline_color",
+          "back_color",
+          "outline",
+          "shadow",
+          "bold"
+        ],
+        "type": "object"
+      },
+      "AddPromptVersionInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "description": "新版本的內文",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "AddPromptVersionOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "ChannelOverrides": {
+        "additionalProperties": false,
+        "properties": {
+          "channel_id": {
+            "description": "頻道的 UUID；頻道還不存在時是空字串",
+            "type": "string"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "overrides": {
+            "additionalProperties": {},
+            "description": "存下來的這一層設定；沒有覆寫時是 {}",
+            "type": "object"
+          },
+          "platform": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "platform",
+          "external_id",
+          "overrides"
+        ],
+        "type": "object"
+      },
+      "ClassInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "class": {
+            "description": "只作用在這個資源類別；省略時作用在整個佇列",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CompareInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "a": {
+            "description": "版本 a",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "b": {
+            "description": "版本 b",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "from": {
+            "type": "string"
+          },
+          "item": {
+            "description": "影音 ID 或短代號；指定時另外在同一段字幕上試跑兩個版本（需要 from、to、provider、model）",
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "a",
+          "b"
+        ],
+        "type": "object"
+      },
+      "CompareOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "a": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "b": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "body_diff": {
+            "description": "從 a 到 b 的行級差異，依序",
+            "items": {
+              "$ref": "#/components/schemas/PromptDiffLine"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "outputs": {
+            "$ref": "#/components/schemas/CompareOutputs",
+            "description": "指定影音與範圍時才有"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "body_diff"
+        ],
+        "type": "object"
+      },
+      "CompareOutputs": {
+        "additionalProperties": false,
+        "properties": {
+          "a": {
+            "$ref": "#/components/schemas/PlaygroundBody"
+          },
+          "b": {
+            "$ref": "#/components/schemas/PlaygroundBody"
+          }
+        },
+        "required": [
+          "a",
+          "b"
+        ],
+        "type": "object"
+      },
+      "ConfigExportOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "YAML 內容：鍵依字母排序、輸出穩定，可以直接放進版本控制，也可以原樣匯入",
+            "type": "string"
+          },
+          "default_profile": {
+            "description": "明確設定過的預設處理方案；沒有設定過就沒有這個欄位",
+            "type": "string"
+          },
+          "profiles": {
+            "description": "匯出的處理方案名稱（不含內建的 default），依名稱排序",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "content",
+          "profiles"
+        ],
+        "type": "object"
+      },
+      "ConfigImportInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "config export 輸出的 YAML 內容（上限 1 MiB）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "type": "object"
+      },
+      "ConfigImportOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "description": "新建立的處理方案，依名稱排序",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "default_changed": {
+            "description": "預設處理方案是否因為這次匯入而不同",
+            "type": "boolean"
+          },
+          "default_profile": {
+            "description": "檔案中的 default_profile；沒有這個欄位代表檔案沒有指定，預設處理方案沒有改動",
+            "type": "string"
+          },
+          "unchanged": {
+            "description": "內容與目前版本相同、沒有新增版本的處理方案，依名稱排序",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "updated": {
+            "description": "內容不同而建立了新版本的處理方案（PRF-R3），依名稱排序",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "created",
+          "updated",
+          "unchanged",
+          "default_changed"
+        ],
+        "type": "object"
+      },
+      "CookiesInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "Netscape cookie 檔，或瀏覽器標頭的 name=value; …（上限 64 KiB）",
+            "type": "string"
+          },
+          "platform": {
+            "description": "youtube 或 bilibili",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "content"
+        ],
+        "type": "object"
+      },
+      "CookiesOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "cookies": {
+            "description": "儲存的 cookie 數量；回應永遠不含 cookie 的值",
+            "format": "int64",
+            "type": "integer"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "cookies",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "CreateAssStyleInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "description": "複製哪個樣式（內建或自訂），預設 default",
+            "type": "string"
+          },
+          "layout": {
+            "$ref": "#/components/schemas/LayoutPatch",
+            "description": "版面，覆寫複製來源的欄位"
+          },
+          "name": {
+            "description": "小寫英文字母、數字、「.」「_」「-」，最長 64 個字元；不可以和內建的相同",
+            "type": "string"
+          },
+          "primary": {
+            "$ref": "#/components/schemas/LinePatch",
+            "description": "原文行，覆寫複製來源的欄位"
+          },
+          "translation": {
+            "$ref": "#/components/schemas/LinePatch",
+            "description": "譯文行，覆寫複製來源的欄位"
+          }
+        },
+        "type": "object"
+      },
+      "CreateItemInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "episodes": {
+            "description": "Podcast 要新增的集（guid）",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "overrides": {
+            "additionalProperties": {},
+            "description": "單次覆寫，只影響這次新增的影音",
+            "type": "object"
+          },
+          "parts": {
+            "description": "Bilibili 要新增的分P；沒有指定時新增全部",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "本機檔案的路徑（要在 inbox 或 media_roots 之內；檔案不存在時仍建立，處理時才會失敗）",
+            "type": "string"
+          },
+          "profile": {
+            "description": "處理方案的名稱；沒有指定時使用預設處理方案；不存在回 422",
+            "type": "string"
+          },
+          "until": {
+            "description": "做到哪個步驟為止（含）",
+            "type": "string"
+          },
+          "url": {
+            "description": "影音的網址",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CreateItemOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IngestedItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "CreateProfileInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "additionalProperties": {},
+            "description": "處理方案的設定；省略或 null 視為 {}",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "處理方案的名稱，^[a-z0-9][a-z0-9_-]{0,63}$；建立後不能改名",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CreatePromptInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "description": "內文，可用 {{title}}、{{channel}}、{{description}}、{{chapters}}、{{glossary}}、{{source_lang}}、{{target_lang}}",
+            "type": "string"
+          },
+          "id": {
+            "description": "小寫英文字母、數字、「.」與「-」，不可以和內建的相同",
+            "type": "string"
+          },
+          "kind": {
+            "description": "summary、chapters、segment、correct、translate、frames.select 或 note",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CreatePromptOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "builtin": {
+            "type": "boolean"
+          },
+          "default_version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "version",
+          "default_version",
+          "sha256",
+          "builtin"
+        ],
+        "type": "object"
+      },
+      "CreateTokenInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_in": {
+            "description": "有效期間，例如 30d、24h；省略代表永不到期",
+            "type": "string"
+          },
+          "name": {
+            "description": "token 名稱（有效的 token 中不可重複）",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "允許的 scope：read、agent、ingest、admin",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "scopes"
+        ],
+        "type": "object"
+      },
+      "CreatedToken": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_used_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "id",
+          "name",
+          "prefix",
+          "scopes",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "Cue": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "examples": [
+              "00:00:03.500"
+            ],
+            "type": "string"
+          },
+          "index": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "start": {
+            "examples": [
+              "00:00:01.000"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "timing": {
+            "description": "時間的來源：source、merged、silence、interpolated、model",
+            "type": "string"
+          },
+          "words": {
+            "description": "字詞級時間；來源沒有時省略",
+            "items": {
+              "$ref": "#/components/schemas/Word"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "index",
+          "start",
+          "end",
+          "text"
+        ],
+        "type": "object"
+      },
+      "CuesOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "cues": {
+            "items": {
+              "$ref": "#/components/schemas/Cue"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "lang": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "variant",
+          "lang",
+          "cues"
+        ],
+        "type": "object"
+      },
+      "DecideCandidateInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
+      "DeletionPreviewOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "artifacts": {
+            "description": "所有版本的產出數",
+            "format": "int64",
+            "type": "integer"
+          },
+          "bytes": {
+            "description": "產出加上 media、uploads 的大小",
+            "format": "int64",
+            "type": "integer"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewOutput"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "spent_usd": {
+            "description": "這部影音實際花費的總和",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "artifacts",
+          "bytes",
+          "spent_usd",
+          "outputs"
+        ],
+        "type": "object"
+      },
+      "Episode": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_s": {
+            "description": "feed 標示的長度（秒，itunes:duration）；實際長度以下載的音檔為準",
+            "format": "double",
+            "type": "number"
+          },
+          "guid": {
+            "type": "string"
+          },
+          "has_transcript": {
+            "description": "feed 附了可讀的字幕（vtt、srt、json）",
+            "type": "boolean"
+          },
+          "media_type": {
+            "description": "音檔的 MIME 類型（enclosure 的 type）",
+            "type": "string"
+          },
+          "published_at": {
+            "description": "發佈時間；feed 沒有或格式不認得時省略",
+            "format": "date-time",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "guid",
+          "title",
+          "has_transcript"
+        ],
+        "type": "object"
+      },
+      "Error": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "code": {
+            "description": "機器可讀的錯誤代碼",
+            "type": "string"
+          },
+          "details": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "failed": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "file_line": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "line": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "message": {
+            "description": "給人看的說明",
+            "type": "string"
+          },
+          "purged": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "required_scope": {
+            "type": "string"
+          },
+          "retry_after_s": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "undefined_variables": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "used_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "EstimateInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "episodes": {
+            "description": "Podcast 要估算的集（guid）",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "overrides": {
+            "additionalProperties": {},
+            "description": "單次覆寫，與新增相同",
+            "type": "object"
+          },
+          "parts": {
+            "description": "Bilibili 要估算的分P；沒有指定時估算全部",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "本機檔案的路徑；還不支援估算，回 422",
+            "type": "string"
+          },
+          "profile": {
+            "description": "處理方案的名稱；沒有指定時使用預設處理方案；不存在回 422",
+            "type": "string"
+          },
+          "until": {
+            "description": "與新增相同的欄位；估算時忽略",
+            "type": "string"
+          },
+          "url": {
+            "description": "影音的網址",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "EstimateItem": {
+        "additionalProperties": false,
+        "properties": {
+          "already_in_library": {
+            "description": "已經在媒體庫中；仍照樣估價",
+            "type": "boolean"
+          },
+          "asr_usd": {
+            "description": "語音轉錄費用：用平台字幕時為 0；長度或單價未知時為 null",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "duration_s": {
+            "description": "長度（秒）；平台沒有提供時為 null。Podcast 是 feed 的宣稱，以下載的音檔為準",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "expected_source": {
+            "description": "預計使用的字幕來源；沒有可用的來源時為 null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "llm_usd": {
+            "description": "LLM 費用；M2 實作之前一律為 null",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "ref": {
+            "description": "影音的 ref，與新增之後的 ref 相同（Podcast 的 feed 代號在新增時才會決定）",
+            "type": "string"
+          },
+          "requires_cookie": {
+            "description": "需要 cookie 才能取得（ING-R9）",
+            "type": "boolean"
+          },
+          "source_usd": {
+            "description": "其他付費字幕來源（Supadata，以 credit 計價）的費用；沒有內建單價，目前一律為 null",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "total_usd": {
+            "description": "已知金額的和；沒有任何已知金額時為 null",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "ref",
+          "title",
+          "duration_s",
+          "expected_source",
+          "asr_usd",
+          "source_usd",
+          "llm_usd",
+          "total_usd",
+          "requires_cookie",
+          "already_in_library",
+          "notes"
+        ],
+        "type": "object"
+      },
+      "EstimateResult": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "examples": [
+              "USD"
+            ],
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EstimateItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "prices_as_of": {
+            "description": "內建計價表最後確認的日期",
+            "type": "string"
+          },
+          "total_usd": {
+            "description": "各部影音已知金額的和",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total_usd",
+          "currency",
+          "prices_as_of",
+          "notes"
+        ],
+        "type": "object"
+      },
+      "FieldError": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "message"
+        ],
+        "type": "object"
+      },
+      "Glossary": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "global 是 default；channel 是頻道的 UUID",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "global",
+              "channel"
+            ],
+            "type": "string"
+          },
+          "terms": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "scope",
+          "id",
+          "terms",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "ImportAssStyleInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": ".ass 檔的內容；與 path 擇一",
+            "type": "string"
+          },
+          "name": {
+            "description": "自訂樣式的名稱",
+            "type": "string"
+          },
+          "path": {
+            "description": "伺服器上 .ass 或 .ssa 檔的絕對路徑；與 content 擇一",
+            "type": "string"
+          },
+          "primary_style": {
+            "description": "檔案中哪個樣式是原文行，預設是下一個樣式；只有一個樣式時由譯文行縮小產生",
+            "type": "string"
+          },
+          "translation_style": {
+            "description": "檔案中哪個樣式是譯文行，預設是 Default，沒有就用第一個",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ImportSubtitlesInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "字幕檔的內容；與 path 擇一",
+            "type": "string"
+          },
+          "format": {
+            "description": "檔案格式；沒有指定時依副檔名或內容判斷",
+            "enum": [
+              "srt",
+              "vtt",
+              "ass"
+            ],
+            "type": "string"
+          },
+          "lang": {
+            "description": "字幕的語言；沒有指定時用影音的原文語言",
+            "type": "string"
+          },
+          "name": {
+            "description": "來源檔名，只取檔名部分寫進來源紀錄；用 path 時預設是檔名",
+            "type": "string"
+          },
+          "path": {
+            "description": "伺服器上字幕檔（.srt、.vtt、.ass、.ssa）的絕對路徑；與 content 擇一",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ImportedSubtitle": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact": {
+            "description": "新的 edited 產出的 ID",
+            "type": "string"
+          },
+          "cues": {
+            "description": "匯入的字幕句數",
+            "format": "int64",
+            "type": "integer"
+          },
+          "format": {
+            "description": "判斷出的檔案格式：srt、vtt 或 ass",
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "stale_translation": {
+            "description": "既有的譯文是否已標示「字幕已更新，譯文可能過時」",
+            "type": "boolean"
+          },
+          "variant": {
+            "description": "一律是 edited",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact",
+          "variant",
+          "lang",
+          "format",
+          "cues",
+          "stale_translation"
+        ],
+        "type": "object"
+      },
+      "IngestedItem": {
+        "additionalProperties": false,
+        "properties": {
+          "already_in_library": {
+            "type": "boolean"
+          },
+          "availability": {
+            "type": "string"
+          },
+          "channel_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "duration_s": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "in_trash": {
+            "type": "boolean"
+          },
+          "lang_mixed": {
+            "type": "boolean"
+          },
+          "lang_source": {
+            "description": "原文語言的來源：metadata、asr 或 detected",
+            "type": "string"
+          },
+          "original_lang": {
+            "type": "string"
+          },
+          "overrides": {
+            "additionalProperties": {},
+            "description": "新增時的單次覆寫",
+            "type": "object"
+          },
+          "part": {
+            "description": "Bilibili 的分P，其他平台沒有",
+            "format": "int64",
+            "type": "integer"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "published_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ref": {
+            "description": "影音的短代號，例如 yt:abc123xxxxx",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "until": {
+            "description": "新增時指定做到哪個步驟為止",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "already_in_library",
+          "in_trash",
+          "id",
+          "ref",
+          "platform",
+          "external_id",
+          "url",
+          "title",
+          "duration_s",
+          "published_at",
+          "lang_mixed",
+          "overrides",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "Item": {
+        "additionalProperties": false,
+        "properties": {
+          "availability": {
+            "type": "string"
+          },
+          "channel_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "duration_s": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lang_mixed": {
+            "type": "boolean"
+          },
+          "lang_source": {
+            "description": "原文語言的來源：metadata、asr 或 detected",
+            "type": "string"
+          },
+          "original_lang": {
+            "type": "string"
+          },
+          "overrides": {
+            "additionalProperties": {},
+            "description": "新增時的單次覆寫",
+            "type": "object"
+          },
+          "part": {
+            "description": "Bilibili 的分P，其他平台沒有",
+            "format": "int64",
+            "type": "integer"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "published_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ref": {
+            "description": "影音的短代號，例如 yt:abc123xxxxx",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "until": {
+            "description": "新增時指定做到哪個步驟為止",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ref",
+          "platform",
+          "external_id",
+          "url",
+          "title",
+          "duration_s",
+          "published_at",
+          "lang_mixed",
+          "overrides",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ItemDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "availability": {
+            "type": "string"
+          },
+          "channel_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "duration_s": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lang_mixed": {
+            "type": "boolean"
+          },
+          "lang_source": {
+            "description": "原文語言的來源：metadata、asr 或 detected",
+            "type": "string"
+          },
+          "original_lang": {
+            "type": "string"
+          },
+          "overrides": {
+            "additionalProperties": {},
+            "description": "新增時的單次覆寫",
+            "type": "object"
+          },
+          "part": {
+            "description": "Bilibili 的分P，其他平台沒有",
+            "format": "int64",
+            "type": "integer"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "published_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ref": {
+            "description": "影音的短代號，例如 yt:abc123xxxxx",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/Stage"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "until": {
+            "description": "新增時指定做到哪個步驟為止",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stages",
+          "sources",
+          "id",
+          "ref",
+          "platform",
+          "external_id",
+          "url",
+          "title",
+          "duration_s",
+          "published_at",
+          "lang_mixed",
+          "overrides",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "KeptOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "description": "modified（內容改過，或不是一般檔案）、outside_roots（路徑不在允許的目錄內）或 unreadable",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "LayoutPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "alignment": {
+            "description": "位置，數字鍵盤的 1～9（2 是底部置中）",
+            "format": "int64",
+            "type": "integer"
+          },
+          "border_style": {
+            "description": "1 是描邊加陰影，3 是不透明底框",
+            "format": "int64",
+            "type": "integer"
+          },
+          "margin_v": {
+            "description": "垂直邊距，0～1080",
+            "format": "int64",
+            "type": "integer"
+          },
+          "order": {
+            "description": "堆疊時誰在上方",
+            "enum": [
+              "translation-first",
+              "primary-first"
+            ],
+            "type": "string"
+          },
+          "show": {
+            "description": "顯示哪幾行：both、translation（只有譯文）、primary（只有原文）",
+            "enum": [
+              "both",
+              "translation",
+              "primary"
+            ],
+            "type": "string"
+          },
+          "translation_at": {
+            "description": "stacked 兩行疊在一起；top 譯文放到畫面上方",
+            "enum": [
+              "stacked",
+              "top"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "LinePatch": {
+        "additionalProperties": false,
+        "properties": {
+          "back_color": {
+            "description": "陰影顏色",
+            "type": "string"
+          },
+          "bold": {
+            "type": "boolean"
+          },
+          "color": {
+            "description": "文字顏色，#RRGGBB 或 #RRGGBBAA（AA 是不透明度）",
+            "type": "string"
+          },
+          "font": {
+            "description": "字型；空字串代表依語言的文字系統自動選擇",
+            "type": "string"
+          },
+          "outline": {
+            "description": "描邊寬度，0～50",
+            "format": "double",
+            "type": "number"
+          },
+          "outline_color": {
+            "description": "描邊顏色；底框樣式（border_style 3）時是底框顏色",
+            "type": "string"
+          },
+          "shadow": {
+            "description": "陰影距離，0～50",
+            "format": "double",
+            "type": "number"
+          },
+          "size": {
+            "description": "字級（1080 高的畫布上的像素），1～400",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ListAssStylesOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "styles": {
+            "items": {
+              "$ref": "#/components/schemas/StyleBody"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "styles"
+        ],
+        "type": "object"
+      },
+      "ListItemsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "description": "下一頁的游標；最後一頁沒有這個欄位",
+            "type": "string"
+          },
+          "total": {
+            "description": "符合條件的總數，和目前在第幾頁無關",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "type": "object"
+      },
+      "ListTokensOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "tokens": {
+            "items": {
+              "$ref": "#/components/schemas/TokenInfo"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "tokens"
+        ],
+        "type": "object"
+      },
+      "LoginInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "description": "登入密碼",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "type": "object"
+      },
+      "LoginOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "description": "session 目前的到期時間",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expires_at"
+        ],
+        "type": "object"
+      },
+      "OutputFile": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "path": {
+            "description": "伺服器上的檔案路徑",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "notesteme 寫入時的內容雜湊；之後檔案的雜湊與它不同代表被改過",
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "target": {
+            "description": "輸出目標：sidecar 或 folder",
+            "type": "string"
+          },
+          "written_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "target",
+          "format",
+          "lang",
+          "sha256",
+          "size",
+          "written_at"
+        ],
+        "type": "object"
+      },
+      "OutputsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/OutputFile"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "outputs"
+        ],
+        "type": "object"
+      },
+      "Patch": {
+        "additionalProperties": false,
+        "properties": {
+          "layout": {
+            "$ref": "#/components/schemas/LayoutPatch",
+            "description": "版面"
+          },
+          "primary": {
+            "$ref": "#/components/schemas/LinePatch",
+            "description": "原文行"
+          },
+          "translation": {
+            "$ref": "#/components/schemas/LinePatch",
+            "description": "譯文行"
+          }
+        },
+        "type": "object"
+      },
+      "PatchAssStyleInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "layout": {
+            "$ref": "#/components/schemas/LayoutPatch",
+            "description": "版面"
+          },
+          "primary": {
+            "$ref": "#/components/schemas/LinePatch",
+            "description": "原文行"
+          },
+          "translation": {
+            "$ref": "#/components/schemas/LinePatch",
+            "description": "譯文行"
+          }
+        },
+        "type": "object"
+      },
+      "PatchProfileInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "additionalProperties": {},
+            "description": "RFC 7396 merge patch：null 刪除該鍵，物件遞迴合併，陣列與純量整個取代",
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "PlaygroundBody": {
+        "additionalProperties": false,
+        "properties": {
+          "cues": {
+            "description": "範圍內送出的句數",
+            "format": "int64",
+            "type": "integer"
+          },
+          "estimate_usd": {
+            "description": "內建計價表沒有這個 model 的價格時是 null",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "output": {
+            "items": {
+              "$ref": "#/components/schemas/PlaygroundCue"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "prompt": {
+            "$ref": "#/components/schemas/PlaygroundPrompt"
+          },
+          "stage": {
+            "description": "試跑的步驟（由提示詞的類型決定）",
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/PlaygroundUsage"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/PlaygroundValidation"
+          }
+        },
+        "required": [
+          "stage",
+          "prompt",
+          "cues",
+          "output",
+          "validation",
+          "usage",
+          "estimate_usd"
+        ],
+        "type": "object"
+      },
+      "PlaygroundCue": {
+        "additionalProperties": false,
+        "properties": {
+          "end_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "index": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "original": {
+            "description": "輸入的同一句（輸出與輸入一對一時才有）",
+            "type": "string"
+          },
+          "start_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "start_ms",
+          "end_ms",
+          "text"
+        ],
+        "type": "object"
+      },
+      "PlaygroundInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "description": "範圍開始，HH:MM:SS 或 MM:SS（可帶小數）",
+            "type": "string"
+          },
+          "item": {
+            "description": "影音 ID 或短代號（例如 yt:abc123xxxxx）",
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "prompt": {
+            "description": "提示詞引用：\u003cid\u003e、\u003cid\u003e@default 或 \u003cid\u003e@\u003cN\u003e；它的類型決定要試跑哪個步驟",
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "to": {
+            "description": "範圍結束（不含）；範圍內最多 200 句，超過回 422",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PlaygroundPrompt": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "PlaygroundUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "input_tokens": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "type": "object"
+      },
+      "PlaygroundValidation": {
+        "additionalProperties": false,
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "passed": {
+            "description": "false 代表至少一段驗證重試用盡，該段的輸出是步驟的退回內容",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "passed",
+          "errors"
+        ],
+        "type": "object"
+      },
+      "PreviewInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "description": "畫面的時間，HH:MM:SS(.mmm) 或秒數，預設 0；也決定預覽用哪一句字幕",
+            "type": "string"
+          },
+          "item": {
+            "description": "影音的 ID 或短代號（例如 yt:abc123xxxxx）",
+            "type": "string"
+          },
+          "lang": {
+            "description": "目標語言；沒有指定時用影音最近的譯文語言",
+            "type": "string"
+          },
+          "patch": {
+            "$ref": "#/components/schemas/Patch",
+            "description": "套用在樣式上的暫時修改（還沒儲存的調整）；不會寫入樣式"
+          },
+          "style": {
+            "description": "樣式名稱，預設 default",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PreviewOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "modified": {
+            "description": "內容與寫入時的紀錄不同（或不是一般檔案、不在允許的目錄內）：不會被刪除",
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "description": "保留的原因：modified、outside_roots 或 unreadable；會被刪除的沒有",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "modified"
+        ],
+        "type": "object"
+      },
+      "Profile": {
+        "additionalProperties": false,
+        "properties": {
+          "builtin": {
+            "description": "內建的處理方案（default）不能刪除",
+            "type": "boolean"
+          },
+          "config": {
+            "additionalProperties": {},
+            "description": "存下來的這一層設定，沒有合併內建預設",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "default": {
+            "description": "是否為預設處理方案",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "description": "目前的版本，從 1 起算；每次儲存加 1",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "config",
+          "builtin",
+          "default",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "ProfileListOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/Profile"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "profiles"
+        ],
+        "type": "object"
+      },
+      "ProfileVersion": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "sha256",
+          "config",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ProfileVersionsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileVersion"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "versions"
+        ],
+        "type": "object"
+      },
+      "PromptDiffLine": {
+        "additionalProperties": false,
+        "properties": {
+          "op": {
+            "description": "equal：兩邊都有；delete：只在 a；insert：只在 b",
+            "enum": [
+              "equal",
+              "delete",
+              "insert"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "text"
+        ],
+        "type": "object"
+      },
+      "PromptSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "builtin": {
+            "description": "內建的提示詞不能修改",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "default_version": {
+            "description": "id 與 id@default 解析到的版本",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "summary、chapters、segment、correct、translate、frames.select 或 note",
+            "type": "string"
+          },
+          "latest_version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "builtin",
+          "default_version",
+          "latest_version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "PromptVersionBody": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "內文（CRLF 換成 LF 之後）的 sha256",
+            "type": "string"
+          },
+          "variables": {
+            "description": "內文用到的 {{變數}}，依第一次出現的順序",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "sha256",
+          "body",
+          "variables",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "PromptVersionsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/PromptVersionBody"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "versions"
+        ],
+        "type": "object"
+      },
+      "PromptsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "prompts": {
+            "items": {
+              "$ref": "#/components/schemas/PromptSummary"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "prompts"
+        ],
+        "type": "object"
+      },
+      "ProviderInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "defined_in": {
+            "type": "string"
+          },
+          "editable": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "editable",
+          "defined_in"
+        ],
+        "type": "object"
+      },
+      "PurgedItemOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "被刪除的影音的內部 ID",
+            "type": "string"
+          },
+          "purged": {
+            "description": "永久刪除的影音數，一律是 1",
+            "format": "int64",
+            "type": "integer"
+          },
+          "ref": {
+            "description": "被刪除的影音的短代號，例如 yt:abc123xxxxx",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purged",
+          "id",
+          "ref"
+        ],
+        "type": "object"
+      },
+      "PurgedOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "purged": {
+            "description": "永久刪除的影音數",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "purged"
+        ],
+        "type": "object"
+      },
+      "PutGlossaryInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "terms": {
+            "description": "整份取代；去掉前後空白，不可以有空字串或控制字元，每個詞最多 100 個字元、最多 500 個詞，大小寫相同的重複只留第一個",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "terms"
+        ],
+        "type": "object"
+      },
+      "QueueClass": {
+        "additionalProperties": false,
+        "properties": {
+          "class": {
+            "description": "資源類別：download、asr、llm、frames",
+            "type": "string"
+          },
+          "limit": {
+            "description": "並行上限",
+            "format": "int64",
+            "type": "integer"
+          },
+          "paused": {
+            "description": "這個類別是否單獨暫停；整個佇列暫停時不一定是 true，看最上層的 paused",
+            "type": "boolean"
+          },
+          "running": {
+            "description": "正在執行（已被領取）的任務數",
+            "format": "int64",
+            "type": "integer"
+          },
+          "waiting": {
+            "description": "等待領取的任務數",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "class",
+          "limit",
+          "running",
+          "waiting",
+          "paused"
+        ],
+        "type": "object"
+      },
+      "QueueStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "lanes": {
+            "items": {
+              "$ref": "#/components/schemas/QueueClass"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "paused": {
+            "description": "整個佇列是否暫停",
+            "type": "boolean"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/QueueTask"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "paused",
+          "lanes",
+          "tasks"
+        ],
+        "type": "object"
+      },
+      "QueueTask": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "item": {
+            "description": "影音的短代號，例如 yt:abc123xxxxx",
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "not_before": {
+            "description": "重試或等待時，最早可以再被領取的時間",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resource_class": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "leased",
+              "pending"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "item_id",
+          "item",
+          "stage",
+          "resource_class",
+          "state",
+          "attempts",
+          "not_before"
+        ],
+        "type": "object"
+      },
+      "RerunInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "chunks": {
+            "description": "只重新送出這些 chunk，從 1 起算，其他 chunk 重用快取（LLM-R8）；只能用在 LLM 步驟，否則回 422",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "from": {
+            "description": "從哪個步驟開始重新處理",
+            "minLength": 1,
+            "type": "string"
+          },
+          "overrides": {
+            "additionalProperties": {},
+            "description": "這次重跑的單次覆寫",
+            "type": "object"
+          },
+          "profile": {
+            "description": "這次重跑改用的處理方案；沒有指定時用影音目前的處理方案的最新版本（PRF-R3）；不存在回 422",
+            "type": "string"
+          },
+          "until": {
+            "description": "做到哪個步驟為止（含）；沒有指定時做到最後",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from"
+        ],
+        "type": "object"
+      },
+      "Resolution": {
+        "additionalProperties": false,
+        "properties": {
+          "availability": {
+            "description": "YouTube 影片的公開狀態；取不到時省略",
+            "type": "string"
+          },
+          "episodes": {
+            "description": "Podcast feed 列出的各集",
+            "items": {
+              "$ref": "#/components/schemas/Episode"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "video、playlist、channel 或 feed",
+            "type": "string"
+          },
+          "part": {
+            "description": "Bilibili 網址指定的分P",
+            "format": "int64",
+            "type": "integer"
+          },
+          "platform": {
+            "description": "youtube、bilibili 或 podcast",
+            "type": "string"
+          },
+          "requires_cookie": {
+            "description": "內容需要 cookie 才能取得（ING-R9）",
+            "type": "boolean"
+          },
+          "settings_link": {
+            "description": "設定 cookie 的頁面",
+            "type": "string"
+          },
+          "subscribable": {
+            "description": "頻道與個人空間不能直接新增，要建立訂閱（ING-R5）",
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "description": "正規化的網址",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "kind",
+          "url",
+          "subscribable",
+          "requires_cookie"
+        ],
+        "type": "object"
+      },
+      "ResolveInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "description": "要辨識的網址",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "Result": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "pinned": {
+            "type": "string"
+          },
+          "previous": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "rolled_back": {
+            "type": "boolean"
+          },
+          "skipped": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "rolled_back",
+          "skipped",
+          "pinned",
+          "previous",
+          "message"
+        ],
+        "type": "object"
+      },
+      "RevokeTokenOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "revoked"
+        ],
+        "type": "object"
+      },
+      "Run": {
+        "additionalProperties": false,
+        "properties": {
+          "cache_key": {
+            "type": "string"
+          },
+          "config": {
+            "description": "該次執行的 config snapshot：四層覆寫合併後的生效設定"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "impl_version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "stage",
+          "status",
+          "started_at",
+          "finished_at",
+          "cache_key",
+          "impl_version",
+          "config"
+        ],
+        "type": "object"
+      },
+      "RunsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "type": "object"
+      },
+      "SetPromptDefaultInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "description": "要設為預設的版本；不存在回 422",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "SetPromptDefaultOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "default_version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "default_version"
+        ],
+        "type": "object"
+      },
+      "Source": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "reason": {
+            "description": "沒有採用的原因",
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "used",
+              "rejected",
+              "unavailable"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "state"
+        ],
+        "type": "object"
+      },
+      "Stage": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "artifact_id": {
+            "type": "string"
+          },
+          "attempts": {
+            "description": "最近一個任務已經嘗試的次數；重啟時放回的租約不計入（PIPE-R11）",
+            "format": "int64",
+            "type": "integer"
+          },
+          "block_reason": {
+            "type": "string"
+          },
+          "config_snapshot_id": {
+            "type": "string"
+          },
+          "error_class": {
+            "type": "string"
+          },
+          "executor": {
+            "description": "步驟實際使用的執行方式（local、api、agent、off、opencc）；還沒決定時省略",
+            "type": "string"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "not_before": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stage": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "status",
+          "not_before",
+          "actions",
+          "config_snapshot_id",
+          "started_at",
+          "finished_at",
+          "attempts"
+        ],
+        "type": "object"
+      },
+      "StatusBody": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "examples": [
+              "ok"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "StyleBody": {
+        "additionalProperties": false,
+        "properties": {
+          "builtin": {
+            "description": "內建的樣式不能修改，只能複製成自訂樣式",
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "layout": {
+            "$ref": "#/components/schemas/ASSLayout",
+            "description": "版面"
+          },
+          "name": {
+            "type": "string"
+          },
+          "primary": {
+            "$ref": "#/components/schemas/ASSLine",
+            "description": "原文行"
+          },
+          "translation": {
+            "$ref": "#/components/schemas/ASSLine",
+            "description": "譯文行"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "builtin",
+          "primary",
+          "translation",
+          "layout"
+        ],
+        "type": "object"
+      },
+      "SwitchItemInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "executor": {
+            "description": "改用的執行方式；目前只有 api",
+            "enum": [
+              "api"
+            ],
+            "type": "string"
+          },
+          "stage": {
+            "description": "要切換的步驟（correct、segment）",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "executor"
+        ],
+        "type": "object"
+      },
+      "SwitchResult": {
+        "additionalProperties": false,
+        "properties": {
+          "executor": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "tasks": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "item_id",
+          "stage",
+          "executor",
+          "tasks"
+        ],
+        "type": "object"
+      },
+      "SwitchTaskInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "executor": {
+            "description": "改用的執行方式；目前只有 api",
+            "enum": [
+              "api"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "executor"
+        ],
+        "type": "object"
+      },
+      "SystemView": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "description": "資料目錄",
+            "type": "string"
+          },
+          "data_source": {
+            "description": "default、config_file 或 env",
+            "type": "string"
+          },
+          "listen": {
+            "description": "HTTP 監聽位址",
+            "type": "string"
+          },
+          "listen_source": {
+            "description": "default、config_file 或 env",
+            "type": "string"
+          },
+          "tools": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ToolView"
+            },
+            "type": "object"
+          },
+          "yt_dlp": {
+            "$ref": "#/components/schemas/YtDlpView"
+          }
+        },
+        "required": [
+          "listen",
+          "listen_source",
+          "data",
+          "data_source",
+          "tools",
+          "yt_dlp"
+        ],
+        "type": "object"
+      },
+      "TermCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "item_id": {
+            "description": "提出這個詞的影音；影音被永久刪除之後是空字串",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected"
+            ],
+            "type": "string"
+          },
+          "term": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "term",
+          "state",
+          "item_id",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "TermCandidatesOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/TermCandidate"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "candidates"
+        ],
+        "type": "object"
+      },
+      "TokenInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_used_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "scopes",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ToolView": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "description": "路徑是否可以執行",
+            "type": "boolean"
+          },
+          "error": {
+            "description": "不能執行的原因",
+            "type": "string"
+          },
+          "path": {
+            "description": "生效的路徑；PATH 中找不到時為空字串",
+            "type": "string"
+          },
+          "source": {
+            "description": "config_file、env、managed 或 path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "source",
+          "available"
+        ],
+        "type": "object"
+      },
+      "TrashItemInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "delete_outputs": {
+            "description": "同時刪除沒被改過的輸出檔；改過的保留並列在 kept_outputs（DEL-R9）",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "TrashItemOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kept_outputs": {
+            "items": {
+              "$ref": "#/components/schemas/KeptOutput"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "purge_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ref",
+          "deleted_at",
+          "purge_at",
+          "kept_outputs"
+        ],
+        "type": "object"
+      },
+      "TrashListOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrashedItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "type": "object"
+      },
+      "TrashedItem": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "purge_at": {
+            "description": "到期後永久刪除的時間",
+            "format": "date-time",
+            "type": "string"
+          },
+          "ref": {
+            "description": "影音的短代號，例如 yt:abc123xxxxx",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ref",
+          "title",
+          "deleted_at",
+          "purge_at"
+        ],
+        "type": "object"
+      },
+      "Word": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "examples": [
+              "00:00:01.800"
+            ],
+            "type": "string"
+          },
+          "start": {
+            "examples": [
+              "00:00:01.000"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "start",
+          "end"
+        ],
+        "type": "object"
+      },
+      "YtDlpView": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "description": "狀態檔無法使用時的簡短說明",
+            "type": "string"
+          },
+          "pinned": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "pinned",
+          "previous"
+        ],
+        "type": "object"
+      },
+      "YtdlpUpdateInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "pin": {
+            "description": "固定在這個版本（YYYY.MM.DD 或 YYYY.MM.DD.N）；固定後手動與排程的更新都略過",
+            "type": "string"
+          },
+          "unpin": {
+            "description": "解除固定",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Notesteme",
+    "version": "snapshot"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/ass-styles": {
+      "get": {
+        "operationId": "ass-styles-list",
+        "parameters": [
+          {
+            "description": "目標語言：沒有指定字型的譯文行依它帶入預設字型（OUT-R7）",
+            "explode": false,
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "description": "目標語言：沒有指定字型的譯文行依它帶入預設字型（OUT-R7）",
+              "type": "string"
+            }
+          },
+          {
+            "description": "原文語言：沒有指定字型的原文行依它帶入預設字型",
+            "explode": false,
+            "in": "query",
+            "name": "source_lang",
+            "schema": {
+              "description": "原文語言：沒有指定字型的原文行依它帶入預設字型",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListAssStylesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出 ASS 樣式：內建的在前，接著是自訂的；字型依 lang 帶入預設值（OUT-R6、R7）"
+      },
+      "post": {
+        "operationId": "ass-styles-create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAssStyleInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleBody"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "建立自訂樣式，可以複製內建或自訂樣式（from）再修改；內容不正確回 422，名稱重複回 409（OUT-R6）"
+      }
+    },
+    "/api/ass-styles/import": {
+      "post": {
+        "operationId": "ass-styles-import",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportAssStyleInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleBody"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "從 .ass 檔的 [V4+ Styles] 匯入成自訂樣式；沒有這個段落回 422（OUT-R8）"
+      }
+    },
+    "/api/ass-styles/preview": {
+      "post": {
+        "operationId": "ass-styles-preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "用 ffmpeg + libass 把樣式渲染在影音指定時間的畫面上，回傳 PNG（OUT-R9）"
+      }
+    },
+    "/api/ass-styles/{id}": {
+      "get": {
+        "operationId": "ass-styles-get",
+        "parameters": [
+          {
+            "description": "樣式名稱",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "樣式名稱",
+              "type": "string"
+            }
+          },
+          {
+            "description": "目標語言：沒有指定字型的譯文行依它帶入預設字型（OUT-R7）",
+            "explode": false,
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "description": "目標語言：沒有指定字型的譯文行依它帶入預設字型（OUT-R7）",
+              "type": "string"
+            }
+          },
+          {
+            "description": "原文語言：沒有指定字型的原文行依它帶入預設字型",
+            "explode": false,
+            "in": "query",
+            "name": "source_lang",
+            "schema": {
+              "description": "原文語言：沒有指定字型的原文行依它帶入預設字型",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "讀取樣式；沒有指定字型的文字層依 lang 帶入預設字型（OUT-R7）"
+      },
+      "patch": {
+        "operationId": "ass-styles-patch",
+        "parameters": [
+          {
+            "description": "樣式名稱",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "樣式名稱",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchAssStyleInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "修改自訂樣式（沒有出現的欄位維持原值）；內建樣式回 409 builtin_style（OUT-R6）"
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "auth-login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginOutputBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "以密碼登入，設定 session 與 CSRF cookie"
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "operationId": "auth-logout",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "notesteme_session",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "登出，session 立即失效"
+      }
+    },
+    "/api/backup": {
+      "post": {
+        "operationId": "backup-create",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "備份：回傳 tar.gz 串流，包含資料庫快照與設定檔，不含 master key（OPS-R1）"
+      }
+    },
+    "/api/channels/{id}/overrides": {
+      "get": {
+        "operationId": "channels-overrides-get",
+        "parameters": [
+          {
+            "description": "頻道的 UUID，或 \u003cplatform\u003e:\u003cexternal_id\u003e，例如 youtube:UCfixture000000000000000",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "頻道的 UUID，或 \u003cplatform\u003e:\u003cexternal_id\u003e，例如 youtube:UCfixture000000000000000",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelOverrides"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "讀取頻道層的覆寫；{id} 是頻道 UUID 或 \u003cplatform\u003e:\u003cexternal_id\u003e（找不到的 natural key 回空的覆寫）"
+      },
+      "patch": {
+        "operationId": "channels-overrides-patch",
+        "parameters": [
+          {
+            "description": "頻道的 UUID，或 \u003cplatform\u003e:\u003cexternal_id\u003e",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "頻道的 UUID，或 \u003cplatform\u003e:\u003cexternal_id\u003e",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": {},
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelOverrides"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "以 merge patch（RFC 7396）修改頻道覆寫；natural key 找不到頻道時建立它，local 平台回 422"
+      }
+    },
+    "/api/channels/{id}/term-candidates": {
+      "get": {
+        "operationId": "channels-term-candidates",
+        "parameters": [
+          {
+            "description": "頻道的 UUID，或 \u003cplatform\u003e:\u003cexternal_id\u003e",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "頻道的 UUID，或 \u003cplatform\u003e:\u003cexternal_id\u003e",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TermCandidatesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "頻道的術語候選（校正時模型提出、等待核可；不會自動加入詞彙表）"
+      }
+    },
+    "/api/channels/{id}/term-candidates/{candidate}": {
+      "patch": {
+        "operationId": "channels-term-candidate-decide",
+        "parameters": [
+          {
+            "description": "頻道的 UUID，或 \u003cplatform\u003e:\u003cexternal_id\u003e",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "頻道的 UUID，或 \u003cplatform\u003e:\u003cexternal_id\u003e",
+              "type": "string"
+            }
+          },
+          {
+            "description": "術語候選的 id",
+            "in": "path",
+            "name": "candidate",
+            "required": true,
+            "schema": {
+              "description": "術語候選的 id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideCandidateInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TermCandidate"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "核可（accepted，詞加進頻道詞彙表）或拒絕（rejected）一個 pending 的術語候選；已決定成另一個結果時回 409"
+      }
+    },
+    "/api/config/export": {
+      "get": {
+        "operationId": "config-export",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigExportOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "匯出 DB 管理的設定成 YAML（處理方案與預設處理方案；內建處理方案與所有 secrets 都不包含，SEC-R10）"
+      }
+    },
+    "/api/config/import": {
+      "post": {
+        "operationId": "config-import",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigImportInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigImportOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "匯入 YAML：先驗證整份，有任何錯誤就整份不套用並回 422 與逐欄位的 errors；新增或取代同名處理方案，不刪除檔案沒有的（SEC-R10）"
+      }
+    },
+    "/api/cookies": {
+      "post": {
+        "operationId": "cookies-put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CookiesInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CookiesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "上傳平台 cookie（加密存放，每個平台一份），並恢復等待它的 blocked 步驟（SEC-R4、SRC-R8、PIPE-R4）"
+      }
+    },
+    "/api/estimate": {
+      "post": {
+        "operationId": "estimate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EstimateInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstimateResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "估算花費，不建立影音（ING-R8）"
+      }
+    },
+    "/api/glossaries/{scope}/{id}": {
+      "get": {
+        "operationId": "glossaries-get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "enum": [
+                "global",
+                "channel"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "global 是 default；channel 是頻道的 UUID 或 \u003cplatform\u003e:\u003cexternal_id\u003e",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "global 是 default；channel 是頻道的 UUID 或 \u003cplatform\u003e:\u003cexternal_id\u003e",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Glossary"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "讀取詞彙表；scope 是 global（id 固定 default）或 channel（id 是頻道 UUID 或 \u003cplatform\u003e:\u003cexternal_id\u003e）；還沒有儲存過時 terms 是空陣列"
+      },
+      "put": {
+        "operationId": "glossaries-put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "enum": [
+                "global",
+                "channel"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "global 是 default；channel 是頻道的 UUID 或 \u003cplatform\u003e:\u003cexternal_id\u003e",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "global 是 default；channel 是頻道的 UUID 或 \u003cplatform\u003e:\u003cexternal_id\u003e",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutGlossaryInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Glossary"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "整份取代詞彙表；natural key 找不到頻道時建立它"
+      }
+    },
+    "/api/items": {
+      "get": {
+        "operationId": "items-list",
+        "parameters": [
+          {
+            "description": "youtube、bilibili、podcast 或 local",
+            "explode": false,
+            "in": "query",
+            "name": "platform",
+            "schema": {
+              "description": "youtube、bilibili、podcast 或 local",
+              "type": "string"
+            }
+          },
+          {
+            "description": "頻道 ID",
+            "explode": false,
+            "in": "query",
+            "name": "channel",
+            "schema": {
+              "description": "頻道 ID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "\u003cstage\u003e:\u003c狀態\u003e，可以重複；同一個步驟的多個值是 OR，不同步驟之間是 AND",
+            "explode": true,
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "description": "\u003cstage\u003e:\u003c狀態\u003e，可以重複；同一個步驟的多個值是 OR，不同步驟之間是 AND",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "步驟最近一次執行的錯誤分類",
+            "explode": false,
+            "in": "query",
+            "name": "error_class",
+            "schema": {
+              "description": "步驟最近一次執行的錯誤分類",
+              "type": "string"
+            }
+          },
+          {
+            "description": "原文語言",
+            "explode": false,
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "description": "原文語言",
+              "type": "string"
+            }
+          },
+          {
+            "description": "發布時間下限（含），RFC 3339",
+            "explode": false,
+            "in": "query",
+            "name": "published_from",
+            "schema": {
+              "description": "發布時間下限（含），RFC 3339",
+              "type": "string"
+            }
+          },
+          {
+            "description": "發布時間上限（含），RFC 3339",
+            "explode": false,
+            "in": "query",
+            "name": "published_to",
+            "schema": {
+              "description": "發布時間上限（含），RFC 3339",
+              "type": "string"
+            }
+          },
+          {
+            "description": "長度下限（秒，含），不得小於 0",
+            "explode": false,
+            "in": "query",
+            "name": "duration_min",
+            "schema": {
+              "description": "長度下限（秒，含），不得小於 0",
+              "type": "string"
+            }
+          },
+          {
+            "description": "長度上限（秒，含），不得小於 0",
+            "explode": false,
+            "in": "query",
+            "name": "duration_max",
+            "schema": {
+              "description": "長度上限（秒，含），不得小於 0",
+              "type": "string"
+            }
+          },
+          {
+            "description": "目前的字幕中至少有一個 cue 的 timing 是這個值：source、merged、silence、interpolated、model",
+            "explode": false,
+            "in": "query",
+            "name": "timing",
+            "schema": {
+              "description": "目前的字幕中至少有一個 cue 的 timing 是這個值：source、merged、silence、interpolated、model",
+              "type": "string"
+            }
+          },
+          {
+            "description": "標題搜尋：不分大小寫的部分字串，去掉前後空白，最多 200 字元",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "標題搜尋：不分大小寫的部分字串，去掉前後空白，最多 200 字元",
+              "type": "string"
+            }
+          },
+          {
+            "description": "單頁筆數",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "單頁筆數",
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "上一頁回傳的 next_cursor",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "上一頁回傳的 next_cursor",
+              "type": "string"
+            }
+          },
+          {
+            "description": "M1 沒有資料模型；帶這個參數回 501",
+            "explode": false,
+            "in": "query",
+            "name": "read_state",
+            "schema": {
+              "description": "M1 沒有資料模型；帶這個參數回 501",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListItemsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "影音清單"
+      },
+      "post": {
+        "operationId": "items-create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateItemInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateItemOutputBody"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "新增影音：成功建立回 201，已存在回 200（ING-R2）"
+      }
+    },
+    "/api/items/{id}": {
+      "delete": {
+        "operationId": "items-delete",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrashItemInputBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashItemOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "刪除影音，移到垃圾桶（DEL-R1）；已在垃圾桶中回 404 in_trash"
+      },
+      "get": {
+        "operationId": "items-get",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "影音詳情：各步驟的狀態與各字幕來源的結果"
+      }
+    },
+    "/api/items/{id}/cancel": {
+      "post": {
+        "operationId": "items-cancel",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "取消影音所有未結束的步驟，執行中的子程序整組結束（PIPE-R15）；沒有未結束的步驟時也回 200"
+      }
+    },
+    "/api/items/{id}/cues": {
+      "get": {
+        "operationId": "items-cues",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "字幕變體；沒指定時選處理得最完整的（OUT-R2）",
+            "explode": false,
+            "in": "query",
+            "name": "variant",
+            "schema": {
+              "description": "字幕變體；沒指定時選處理得最完整的（OUT-R2）",
+              "type": "string"
+            }
+          },
+          {
+            "description": "語言；沒指定時使用影音的原文語言",
+            "explode": false,
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "description": "語言；沒指定時使用影音的原文語言",
+              "type": "string"
+            }
+          },
+          {
+            "description": "起點，HH:MM:SS(.mmm) 或秒數；只回傳和 [from, to) 有重疊的 cue（OUT-R3）",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "起點，HH:MM:SS(.mmm) 或秒數；只回傳和 [from, to) 有重疊的 cue（OUT-R3）",
+              "type": "string"
+            }
+          },
+          {
+            "description": "終點，格式同 from",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "終點，格式同 from",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CuesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "字幕內容（cues）"
+      }
+    },
+    "/api/items/{id}/deletion-preview": {
+      "get": {
+        "operationId": "items-deletion-preview",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionPreviewOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "刪除的影響範圍：產出數、可釋放的位元組、已花費的金額與輸出檔；唯讀（DEL-R3）"
+      }
+    },
+    "/api/items/{id}/outputs": {
+      "get": {
+        "operationId": "items-outputs",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutputsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "輸出目標（sidecar、folder）寫出過的檔案與寫入時的 sha256（OUT-R11）"
+      }
+    },
+    "/api/items/{id}/rerun": {
+      "post": {
+        "operationId": "items-rerun",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RerunInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDetail"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "從指定步驟重新處理，產出新版本（PIPE-R7）"
+      }
+    },
+    "/api/items/{id}/runs": {
+      "get": {
+        "operationId": "items-runs",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "步驟實際執行過的紀錄與當時生效的設定，由新到舊（PIPE-R13）"
+      }
+    },
+    "/api/items/{id}/subtitles": {
+      "get": {
+        "operationId": "items-subtitles",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "格式：srt（預設）、vtt、txt、cues-json、ass、bilingual-srt",
+            "explode": false,
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "description": "格式：srt（預設）、vtt、txt、cues-json、ass、bilingual-srt",
+              "type": "string"
+            }
+          },
+          {
+            "description": "字幕變體；沒指定時選處理得最完整的（OUT-R2）",
+            "explode": false,
+            "in": "query",
+            "name": "variant",
+            "schema": {
+              "description": "字幕變體；沒指定時選處理得最完整的（OUT-R2）",
+              "type": "string"
+            }
+          },
+          {
+            "description": "語言；沒指定時使用影音的原文語言（ass 與 bilingual-srt 沒指定時用最近產生的譯文的語言）",
+            "explode": false,
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "description": "語言；沒指定時使用影音的原文語言（ass 與 bilingual-srt 沒指定時用最近產生的譯文的語言）",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ASS 樣式名稱，只對 format=ass 有效，預設 default（OUT-R6）；找不到回 422",
+            "explode": false,
+            "in": "query",
+            "name": "style",
+            "schema": {
+              "description": "ASS 樣式名稱，只對 format=ass 有效，預設 default（OUT-R6）；找不到回 422",
+              "type": "string"
+            }
+          },
+          {
+            "description": "起點，HH:MM:SS(.mmm) 或秒數（OUT-R3）",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "起點，HH:MM:SS(.mmm) 或秒數（OUT-R3）",
+              "type": "string"
+            }
+          },
+          {
+            "description": "終點，格式同 from",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "終點，格式同 from",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "下載字幕：從 cues 即時渲染成 srt、vtt、txt 或 cues-json（OUT-R1）"
+      }
+    },
+    "/api/items/{id}/subtitles/import": {
+      "post": {
+        "description": "可以用 path（伺服器上的字幕檔）或 content（檔案內容）提供字幕。檔案無法解析、時間不單調時回 422，line 是第幾句字幕（從 1 起算），file_line 是檔案中的行號；這時不寫入任何東西。",
+        "operationId": "items-subtitles-import",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportSubtitlesInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportedSubtitle"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "把外部編輯過的 SRT、VTT 或 ASS 匯入成新的 edited 版本（executor: human）；既有的譯文標示過時，不自動重跑下游（OUT-R13、R14、R15）"
+      }
+    },
+    "/api/items/{id}/switch-executor": {
+      "post": {
+        "operationId": "items-switch-executor",
+        "parameters": [
+          {
+            "description": "影音 ID 或代號",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID 或代號",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwitchItemInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwitchResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "把影音某個步驟等待中或已被領取的 Agent 任務改用 API 執行，原本的租約立即失效（AGT-R11）"
+      }
+    },
+    "/api/profiles": {
+      "get": {
+        "operationId": "profiles-list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileListOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出處理方案，依名稱排序（PRF-R1）"
+      },
+      "post": {
+        "operationId": "profiles-create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProfileInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "建立處理方案（版本 1）；內容不正確回 422 與逐欄位的 errors（PRF-R4）"
+      }
+    },
+    "/api/profiles/{id}": {
+      "delete": {
+        "operationId": "profiles-delete",
+        "parameters": [
+          {
+            "description": "處理方案的名稱",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "處理方案的名稱",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "刪除處理方案與它的所有版本；內建的 default 回 409 builtin_profile，預設處理方案回 409 profile_in_use（PRF-R7）"
+      },
+      "get": {
+        "operationId": "profiles-get",
+        "parameters": [
+          {
+            "description": "處理方案的名稱",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "處理方案的名稱",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "讀取處理方案的目前版本"
+      },
+      "patch": {
+        "operationId": "profiles-patch",
+        "parameters": [
+          {
+            "description": "處理方案的名稱",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "處理方案的名稱",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchProfileInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "以 merge patch（RFC 7396）修改處理方案，建立新版本（PRF-R3）"
+      }
+    },
+    "/api/profiles/{id}/default": {
+      "post": {
+        "operationId": "profiles-default",
+        "parameters": [
+          {
+            "description": "處理方案的名稱",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "處理方案的名稱",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "設為預設處理方案"
+      }
+    },
+    "/api/profiles/{id}/versions": {
+      "get": {
+        "operationId": "profiles-versions",
+        "parameters": [
+          {
+            "description": "處理方案的名稱",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "處理方案的名稱",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileVersionsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "處理方案的所有版本，依版本遞增"
+      }
+    },
+    "/api/prompts": {
+      "get": {
+        "operationId": "prompts-list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出提示詞：內建的在前，依 id 排序，接著是自訂的（PRM）"
+      },
+      "post": {
+        "operationId": "prompts-create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePromptInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatePromptOutputBody"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "建立提示詞（版本 1，也是預設版本）；未知的類型或未定義的變數回 422（PRM-R1、R3）"
+      }
+    },
+    "/api/prompts/playground": {
+      "post": {
+        "operationId": "prompts-playground",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaygroundInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaygroundBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "用指定的提示詞版本與 provider／model 對影音的一段字幕試跑一個步驟；不寫入任何產出、不改變步驟狀態，會花錢（PRM-R6）"
+      }
+    },
+    "/api/prompts/{id}": {
+      "delete": {
+        "operationId": "prompts-delete",
+        "parameters": [
+          {
+            "description": "提示詞 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "提示詞 id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "刪除提示詞與它的所有版本；內建的回 409 builtin_prompt，被引用時回 409 prompt_in_use 並列出 used_by（PRM-R4、R8）"
+      }
+    },
+    "/api/prompts/{id}/compare": {
+      "post": {
+        "operationId": "prompts-compare",
+        "parameters": [
+          {
+            "description": "提示詞 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "提示詞 ID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompareInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompareOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "比較提示詞的兩個版本：內文的行級差異；指定影音與範圍時，另外回傳兩者在同一段字幕上的輸出（兩次試跑，花費是試跑的兩倍）（PRM-R7）"
+      }
+    },
+    "/api/prompts/{id}/default": {
+      "post": {
+        "operationId": "prompts-default",
+        "parameters": [
+          {
+            "description": "提示詞 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "提示詞 id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPromptDefaultInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetPromptDefaultOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "把指定版本設為預設；引用 default 的處理方案從下一次執行開始改用它（PRM-R5）"
+      }
+    },
+    "/api/prompts/{id}/versions": {
+      "get": {
+        "operationId": "prompts-versions-list",
+        "parameters": [
+          {
+            "description": "提示詞 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "提示詞 id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptVersionsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "提示詞的所有版本，依版本遞增；內建的也可以（PRM-R2）"
+      },
+      "post": {
+        "operationId": "prompts-versions-create",
+        "parameters": [
+          {
+            "description": "提示詞 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "提示詞 id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddPromptVersionInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddPromptVersionOutputBody"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "新增提示詞版本；不改變預設版本，內建的回 409 builtin_prompt（PRM-R2、R4、R5）"
+      }
+    },
+    "/api/providers": {
+      "post": {
+        "operationId": "providers-create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": {},
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "新增 provider：command 類型只能在設定檔中定義，回 403（SEC-R3）"
+      }
+    },
+    "/api/providers/{id}": {
+      "get": {
+        "operationId": "providers-get",
+        "parameters": [
+          {
+            "description": "provider 的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "provider 的 id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "讀取設定檔中定義的 provider（唯讀）"
+      }
+    },
+    "/api/queue": {
+      "get": {
+        "operationId": "queue-get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "佇列的狀態：各資源類別的上限與負載，以及還沒結束的任務"
+      }
+    },
+    "/api/queue/limits": {
+      "patch": {
+        "operationId": "queue-limits",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "調整資源類別的並行上限，只改有給的類別；下一次領取就生效（PIPE-R8）"
+      }
+    },
+    "/api/queue/pause": {
+      "post": {
+        "operationId": "queue-pause",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassInputBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "暫停整個佇列，或 body 指定的資源類別；執行中的任務會做完（PIPE-R10）"
+      }
+    },
+    "/api/queue/resume": {
+      "post": {
+        "operationId": "queue-resume",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassInputBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "恢復整個佇列，或 body 指定的資源類別"
+      }
+    },
+    "/api/resolve": {
+      "post": {
+        "operationId": "resolve",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resolution"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "辨識網址指向什麼內容，不建立影音（ING-R1、R5、R9）"
+      }
+    },
+    "/api/settings/{section}": {
+      "get": {
+        "operationId": "settings-get",
+        "parameters": [
+          {
+            "description": "設定區段：language、timing、llm、agent、subtitle_rules、stages、supadata 或 services",
+            "in": "path",
+            "name": "section",
+            "required": true,
+            "schema": {
+              "description": "設定區段：language、timing、llm、agent、subtitle_rules、stages、supadata 或 services",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "讀取全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）"
+      },
+      "put": {
+        "operationId": "settings-put",
+        "parameters": [
+          {
+            "description": "設定區段：language、timing、llm、agent、subtitle_rules、stages、supadata 或 services",
+            "in": "path",
+            "name": "section",
+            "required": true,
+            "schema": {
+              "description": "設定區段：language、timing、llm、agent、subtitle_rules、stages、supadata 或 services",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": {},
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "取代全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）；內容不正確回 422 與逐欄位的 errors"
+      }
+    },
+    "/api/system": {
+      "get": {
+        "operationId": "system-get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "生效的設定與其來源、外部工具的路徑與來源（只有 owner）"
+      }
+    },
+    "/api/tasks/{id}/cancel": {
+      "post": {
+        "operationId": "tasks-cancel",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "取消單一任務（尚未實作）"
+      }
+    },
+    "/api/tasks/{id}/retry": {
+      "post": {
+        "operationId": "tasks-retry",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "重試任務（尚未實作）"
+      }
+    },
+    "/api/tasks/{id}/switch-executor": {
+      "post": {
+        "operationId": "tasks-switch-executor",
+        "parameters": [
+          {
+            "description": "任務 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "任務 ID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwitchTaskInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwitchResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "把一個等待中或已被領取的 Agent 任務改用 API 執行，原本的租約立即失效（AGT-R11）"
+      }
+    },
+    "/api/tokens": {
+      "get": {
+        "operationId": "tokens-list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListTokensOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出所有 API token 的中繼資料（不含明文與 hash，AUTH-R7）"
+      },
+      "post": {
+        "operationId": "tokens-create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTokenInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedToken"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "建立 API token，只在建立時回傳一次明文 token（AUTH-R7）"
+      }
+    },
+    "/api/tokens/{id}": {
+      "delete": {
+        "operationId": "tokens-revoke",
+        "parameters": [
+          {
+            "description": "token ID 或有效的名稱",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "token ID 或有效的名稱",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeTokenOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "撤銷 API token（依 id 或有效的名稱，AUTH-R9）"
+      }
+    },
+    "/api/tools/yt-dlp/rollback": {
+      "post": {
+        "operationId": "tools-ytdlp-rollback",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "把 yt-dlp 回到上一個版本（只有 owner）"
+      }
+    },
+    "/api/tools/yt-dlp/update": {
+      "post": {
+        "operationId": "tools-ytdlp-update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/YtdlpUpdateInputBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "更新 yt-dlp，自我檢查失敗就回退；可以固定或解除固定版本（只有 owner）"
+      }
+    },
+    "/api/trash": {
+      "delete": {
+        "operationId": "trash-empty",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgedOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "清空垃圾桶，回傳永久刪除的數量（DEL-R4）"
+      },
+      "get": {
+        "operationId": "trash-list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashListOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出垃圾桶中的影音（DEL-R4）"
+      }
+    },
+    "/api/trash/{id}": {
+      "delete": {
+        "operationId": "trash-purge",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgedItemOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "立即永久刪除垃圾桶中的影音（DEL-R4、R6）"
+      }
+    },
+    "/api/trash/{id}/restore": {
+      "post": {
+        "operationId": "trash-restore",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashedItem"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "從垃圾桶還原（DEL-R5）；影音不在垃圾桶中回 404"
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "存活檢查（免驗證）"
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readyz",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "就緒檢查：確認資料庫可寫（免驗證）"
+      }
+    }
+  }
+}

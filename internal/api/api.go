@@ -78,6 +78,9 @@ type Deps struct {
 	// MCPAllowedOrigins 與 MCPAllowedHosts 是 MCP HTTP 的 Origin 與 Host 檢查（AUTH-R11，見 config.Config）。
 	MCPAllowedOrigins []string
 	MCPAllowedHosts   []string
+	// UI 是 Web UI 的靜態檔案 handler（internal/webui，ADR-0008）；只掛在 New（TCP），
+	// 不掛在 NewLocal（CLI 用的本機 socket）。nil 時非後端路徑交給 mux（404）。
+	UI http.Handler
 	// CursorKey 是列表游標的 HMAC 金鑰（LIB-R4）；空的時候用 processCursorKey（每個 process 隨機產生一次）。
 	// 金鑰只存在記憶體，重新啟動後舊游標會回 422，用戶端從第一頁重新讀取即可。
 	CursorKey []byte
@@ -112,26 +115,7 @@ func build(d Deps, authn func(http.Handler) http.Handler, remote bool) http.Hand
 		d.CursorKey = processCursorKey()
 	}
 	mux := http.NewServeMux()
-
-	cfg := huma.DefaultConfig("Notesteme", d.Version)
-	// OpenAPI 放在 /api 底下，隨 AUTH-R1 一起受保護；不提供公開的文件頁。
-	cfg.OpenAPIPath = "/api/openapi"
-	cfg.DocsPath = ""
-	cfg.SchemasPath = ""
-	cfg.CreateHooks = nil
-	api := humago.New(mux, cfg)
-
-	r := &routes{d: d}
-	r.register(api)
-	if d.Events != nil {
-		mux.Handle("GET /api/events", requireScopeHandler(auth.ScopeRead, d.Events))
-	} else {
-		registerScoped(api, huma.Operation{
-			OperationID: "events", Method: http.MethodGet, Path: "/api/events",
-			Summary: "狀態變更事件的 SSE 串流（尚未實作）",
-		}, auth.ScopeRead, notImplemented)
-	}
-
+	r := newHumaAPI(mux, d)
 	r.registerMedia(mux)
 	// MCP Streamable HTTP（MCP-R1）：直接掛在 mux 上（JSON-RPC 不經過 Huma），所有方法都交給 SDK
 	// （stateless 模式下 GET、DELETE 回 405）。tool 在程序內呼叫同一個 mux 上的 API 路由（MCP-R3）。
@@ -141,6 +125,9 @@ func build(d Deps, authn func(http.Handler) http.Handler, remote bool) http.Hand
 	// 影音檔上傳（multipart 的 POST /api/items）同一層，串流處理而不經過 Huma。
 	var h http.Handler = cookieBodyLimit(mux)
 	h = uploadIntercept(d)(h)
+	if remote && d.UI != nil {
+		h = uiDispatch(d.UI, h)
+	}
 	h = authn(h)
 	h = requestInfoMiddleware(d.Auth)(h)
 	h = logMiddleware(d.Log, d.Clock)(h)
@@ -148,7 +135,33 @@ func build(d Deps, authn func(http.Handler) http.Handler, remote bool) http.Hand
 	return h
 }
 
-type routes struct{ d Deps }
+// newHumaAPI 建立 Huma API 並註冊所有 Huma 路由與 SSE；OpenAPI 匯出（OpenAPISpec）共用同一段。
+func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
+	cfg := huma.DefaultConfig("Notesteme", d.Version)
+	// OpenAPI 放在 /api 底下，隨 AUTH-R1 一起受保護；不提供公開的文件頁。
+	cfg.OpenAPIPath = "/api/openapi"
+	cfg.DocsPath = ""
+	cfg.SchemasPath = ""
+	cfg.CreateHooks = nil
+	api := humago.New(mux, cfg)
+
+	r := &routes{d: d, api: api}
+	r.register(api)
+	if d.Events != nil {
+		mux.Handle("GET /api/events", requireScopeHandler(auth.ScopeRead, d.Events))
+	} else {
+		registerScoped(api, huma.Operation{
+			OperationID: "events", Method: http.MethodGet, Path: "/api/events",
+			Summary: "狀態變更事件的 SSE 串流（尚未實作）",
+		}, auth.ScopeRead, notImplemented)
+	}
+	return r
+}
+
+type routes struct {
+	d   Deps
+	api huma.API
+}
 
 type statusBody struct {
 	Status string `json:"status" example:"ok"`

@@ -29,7 +29,9 @@ import (
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/toolexec"
 	"github.com/cxyfer/notesteme/internal/tools/ytdlp"
+	"github.com/cxyfer/notesteme/internal/webui"
 	"github.com/cxyfer/notesteme/internal/worker"
+	webclient "github.com/cxyfer/notesteme/web/client"
 )
 
 // 環境變數名稱（設定檔相關的在 config 套件）。
@@ -160,6 +162,8 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 	}
 
 	deps := s.apiDeps(env)
+	// Web UI 只掛在 TCP listener（api.New 才會使用 Deps.UI）；本機 socket 只給 CLI。
+	deps.UI = webui.New(webclient.FS())
 	s.http = s.newHTTPServer(api.New(deps))
 	go func() {
 		defer close(s.done)
