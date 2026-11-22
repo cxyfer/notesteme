@@ -1,9 +1,9 @@
 # OPS：備份、健康檢查與外部工具
 
 - 狀態：draft
-- 里程碑：M1（每日排程備份與無人值守告警在 M4，見故事地圖 OPS-06、OPS-07）
-- 相關：plan 第 18、18.1 節；ADR-0007、ADR-0009
-- 驗收場景：[`features/OPS-operations.feature`](../../features/OPS-operations.feature)
+- 里程碑：M1；M4 加上每日排程備份、無人值守告警與 VPS 的 compose profile（OPS-06～08，規則 OPS-R11～R21）
+- 相關：plan 第 18、18.1 節；ADR-0007、ADR-0009、[ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md)（第 1、5 點）；[NOTIFY](NOTIFY-notifications.md)
+- 驗收場景：[`features/OPS-operations.feature`](../../features/OPS-operations.feature)（M1）、[`features/OPS-unattended.feature`](../../features/OPS-unattended.feature)（M4）
 
 ## 目的
 
@@ -18,6 +18,9 @@
 | OPS-03 | As the owner, I want health endpoints that Docker can use, so that a stuck container is restarted automatically. | M1 |
 | OPS-04 | As the owner, I want to update yt-dlp without rebuilding the image, and have a bad update rolled back automatically, so that YouTube changes do not break my instance for long. | M1 |
 | OPS-05 | As the owner, I want the default Docker setup to be reachable only from my own machine, so that I do not expose it by accident. | M1 |
+| OPS-06 | As the owner, I want a backup taken every day and the last seven kept, so that I never need to remember. | M4 |
+| OPS-07 | As the owner, I want to be alerted when something quietly stops working, so that problems do not go unnoticed for days. | M4 |
+| OPS-08 | As the owner, I want a VPS compose profile with HTTPS, so that I can expose the instance safely. | M4 |
 
 ## 規則
 
@@ -33,6 +36,17 @@
 | OPS-R8 | 外部工具的尋找順序：設定檔的路徑 → 環境變數（`NOTESTEME_FFMPEG` 等）→ `PATH`。 | M1 |
 | OPS-R9 | `deploy/docker` 的 `wsl` profile 預設只把 port 映射到 `127.0.0.1`，並設定 `HEALTHCHECK` 使用 `/readyz`。 | M1 |
 | OPS-R10 | `events` 只保留最近 90 天，每天清理一次。 | M1 |
+| OPS-R11 | 每日備份：排程工作 `backup.daily`（ADR-0021 第 1 點）每天在 `backup.daily.timezone`（預設 `UTC`）的 `backup.daily.at`（預設 `03:00`）執行一次，內容與 `notesteme backup` 相同（OPS-R1），寫到 `backup.daily.dir`（預設 `/data/backups`），並更新該目錄的 `notesteme-backup-latest.tar.gz`。`backup.daily.enabled` 預設 `true`。這些設定只能寫在設定檔（避免 API 把備份寫到任意路徑）。停機錯過時只補跑一次。 | M4 |
+| OPS-R12 | 保留：每日備份成功後，`backup.daily.dir` 中只保留名稱完全符合 `^notesteme-backup-\d{8}T\d{6}Z\.tar\.gz$` 的最新 `backup.daily.keep`（預設 7，可設 1～365）份（依名稱中的時間排序），刪除更舊的。不刪除其他任何檔案（`pre-migration-*`、`pre-restore-*`、`notesteme-backup-latest.tar.gz`、使用者自己的檔案）、不跟隨 symlink、不進子目錄。備份失敗時不刪除任何檔案、清掉暫存檔，排程依 ADR-0021 第 1 點退避重試，並送出 `alert` 事件（種類 `backup_failed`），訊息「每日備份失敗：<原因>。」；同一串連續失敗只告警一次，下一次成功時送「已恢復：每日備份成功。」。 | M4 |
+| OPS-R13 | 無人值守告警：排程工作 `alerts` 每 15 分鐘檢查 OPS-R14～R18 的條件（server 啟動後立即檢查一次）。條件成立時以 NOTIFY 的 `alert` 事件送出一次 `{kind, key, message, since, resolved: false}`，條件持續成立時不重複告警；條件解除時送一次 `resolved: true`（文字管道的標題「Notesteme 已恢復：<摘要>」），之後再成立才再告警。狀態存在 `alert_states (kind, key, active_since, notified_at, resolved_at)`。門檻都在設定檔的 `alerts.*`：`alerts.enabled: false` 停用全部，個別門檻設成 `0` 停用那一項。沒有任何 notifier 勾選 `alert` 時仍然記錄狀態，總覽照樣顯示。 | M4 |
+| OPS-R14 | 任務沒有進展（`stuck_task`）：`pending` 或 `running` 的步驟超過 `alerts.stuck_task_hours`（預設 6）小時沒有改變狀態。不包括 `waiting`、`blocked`（含 DIG-R6 的 `awaiting_user`），以及 owner 暫停的佇列或資源類別中的步驟。每部影音一則（`key` 是影音 id），訊息「「<標題>」的 <步驟> 超過 6 小時沒有進展。」。 | M4 |
+| OPS-R15 | 排程沒有成功（`job_stale`）：`scheduled_jobs` 中 `failures > 0`，而且最後一次成功（沒有成功過時用建立的時間）早於 `alerts.job_stale_hours`（預設 24）小時前。`key` 是 `<kind>:<key>`，訊息「排程 <kind> 超過 24 小時沒有成功執行：<last_error>」。`alerts` 與 `notify.deliver` 自己不在檢查範圍內（通知壞掉時告警也送不出去，由總覽顯示）。 | M4 |
+| OPS-R16 | 磁碟用量（`disk_usage`）：`/data` 所在檔案系統的用量大於或等於 `alerts.disk_usage_percent`（預設 90）%；用量低於門檻減 5 個百分點才算解除，避免在門檻附近反覆告警。訊息「/data 的磁碟用量是 93%，超過 90%。」。 | M4 |
+| OPS-R17 | cookie 太久沒有成功使用（`cookie_stale`）：已上傳的 cookie 最後一次成功使用（帶這個 cookie 的 yt-dlp 呼叫結束碼為 0；沒有成功過時用上傳的時間）早於 `alerts.cookie_stale_days`（預設 14）天前。`key` 是平台，訊息「YouTube cookie 超過 14 天沒有成功使用，可能已經失效。請重新上傳。」（Bilibili 同理）。重新上傳或成功使用後解除。 | M4 |
+| OPS-R18 | yt-dlp 失敗率升高（`ytdlp_failure_rate`）：最近 1 小時至少有 `alerts.ytdlp_min_calls`（預設 5）次 yt-dlp 呼叫，而且失敗的比例大於或等於 `alerts.ytdlp_failure_ratio`（預設 0.5）。「失敗」是結束碼不是 0，而且不是影片本身不存在或私人（SRC-R9 的 `permanent`）。訊息「最近 1 小時 yt-dlp 失敗 4/5 次。先更新 yt-dlp；如果仍然失敗，上傳 cookie 或確認 VPS 的 IP 是否被封鎖。」。呼叫統計以 5 分鐘為一格，保留 48 小時。 | M4 |
+| OPS-R19 | `deploy/docker/compose.yaml` 的 `vps` profile 加上 `vps-check` 與 `caddy` 兩個服務。`caddy` 使用固定版本的 image（`caddy:2.8.4-alpine`），把 `80`、`443`（tcp）與 `443/udp` 映射到所有介面（只有這三個 port 不綁 `127.0.0.1`），以 `deploy/docker/Caddyfile`（唯讀掛載）對 `{$NOTESTEME_DOMAIN}` 自動取得 HTTPS 憑證、反向代理到 `notesteme:8080`，並加上 `Strict-Transport-Security`；`depends_on` 是 `vps-check`（`service_completed_successfully`）與 `notesteme`（`service_healthy`）。`notesteme` 服務在所有 profile 都只映射到 `127.0.0.1`（OPS-R9 不變），並傳入 `NOTESTEME_DEPLOYMENT: ${NOTESTEME_DEPLOYMENT:-local}`。 | M4 |
+| OPS-R20 | `notesteme deploy-check vps`（`vps-check` 服務執行，資料目錄唯讀掛載）依序檢查，遇到第一個問題就以結束碼 1 結束並印出：沒有 `NOTESTEME_DOMAIN`，或它是 IP 或 `localhost`：「vps profile 需要在 .env 設定 NOTESTEME_DOMAIN（例如 notes.example.com）。」；`NOTESTEME_DEPLOYMENT` 不是 `vps`：「vps profile 需要在 .env 設定 NOTESTEME_DEPLOYMENT=vps。」；DB 中沒有密碼（資料目錄還沒有 DB 時視為沒有）、也沒有 `NOTESTEME_PASSWORD`：「vps profile 必須設定登入密碼。請在 .env 設定 NOTESTEME_PASSWORD 後重新啟動。」。全部通過時結束碼 0，印出「vps 部署檢查通過。」。檢查不通過時 Caddy 不會啟動，實例不會對外開放。 | M4 |
+| OPS-R21 | `NOTESTEME_DEPLOYMENT` 只接受 `local`（預設）與 `vps`，其他值拒絕啟動：「NOTESTEME_DEPLOYMENT 只能是 local 或 vps。」。`vps` 時 `serve` 拒絕 `--insecure-no-auth`：「vps 部署不能使用 --insecure-no-auth。請設定 NOTESTEME_PASSWORD。」（AUTH-R3 的例外不適用），session cookie 一律帶 `Secure`。 | M4 |
 
 ## 介面
 
@@ -87,10 +101,29 @@
 - `events` 表持久化 SSE 事件，與發布在同一個交易中寫入，也為之後 SSE 的 replay 預作準備。
 - 清理是 worker 的定期工作：每輪開頭依 settings 的 `events_cleanup_next_at` 判斷是否到期，到期就刪除 90 天前的事件，並排定下一次（24 小時後）；失敗時 5 分鐘後重試。閒置的 worker 也會在到期時醒來。
 
+**M4：每日備份、無人值守告警與 VPS（OPS-R11～R21）**
+
+- 設定檔（只能寫在設定檔）：
+  - `backup.daily.{enabled, at, timezone, dir, keep}`；`dir` 在容器中建議另外掛載（例如 `/backups`），備份才不會和資料放在同一個 volume。
+  - `alerts.{enabled, stuck_task_hours, job_stale_hours, disk_usage_percent, cookie_stale_days, ytdlp_min_calls, ytdlp_failure_ratio}`，預設值見 OPS-R14～R18。
+- 環境變數：`NOTESTEME_DEPLOYMENT`（`local`、`vps`）；`NOTESTEME_DOMAIN`（`vps` profile 的 Caddy 與 `deploy-check` 使用）。
+- CLI：`notesteme deploy-check vps`（不經 API、不取得資料目錄的鎖，只以唯讀方式開 DB；CLI-R2 的例外，同 restore）。
+- API：`GET /api/system` 加上 `alerts: [{kind, key, message, since}]`（目前成立的告警）與 `backup: {last_ok_at, last_error, next_run_at}`；總覽（LIB-09）讀這兩個欄位。
+- 排程：`scheduled_jobs.kind` 的 `backup.daily`（`key` 固定 `daily`）與 `alerts`（`key` 固定 `check`）。
+- 資料表：`alert_states (kind, key, active_since, notified_at, resolved_at)`，主鍵 `(kind, key)`；`tool_call_stats (tool, bucket_start, calls, failures)`；`secrets` 的 cookie 列加上 `last_ok_at`（yt-dlp 帶 cookie 成功時更新）。
+- compose：`deploy/docker/compose.yaml` 的 `vps` profile（`vps-check`、`caddy`）、`deploy/docker/Caddyfile`、`.env.example` 加上 `COMPOSE_PROFILES=vps`、`NOTESTEME_DEPLOYMENT=vps`、`NOTESTEME_DOMAIN` 的說明。
+- 資源類別：備份與告警都是排程工作，不進佇列（ADR-0021 第 6 點）。
+
 ## 不在範圍內
 
-- 每日排程備份與保留 7 份（M4，OPS-06）。
-- 無人值守告警（M4，OPS-07）。
+
+### M4
+
+- 每日排程備份與保留 7 份：已在 M4 規格化，見 OPS-R11、R12。
+- 無人值守告警：已在 M4 規格化，見 OPS-R13～R18。
+- 備份上傳到雲端儲存（S3 等）：交給 rclone、restic 等外部工具。
+- 告警的「基準線」比較（例如和上週同時段的失敗率比較）：OPS-R18 先用固定門檻。
+- Caddy 以外的反向代理（Traefik、nginx）的設定範例：文件可以補，但不在 compose 中提供。
 - 產出檔的增量備份：交給 rsync、restic 等外部工具，文件提供範例。
 
 ## 待決問題
@@ -124,3 +157,15 @@
   - R2「Restore brings the library back」斷言 `pre-restore-<時間>.db` 存在。
   - R2「備份的 schema 版本比目前的程式新時拒絕還原」沒有場景：現有步驟做不出「schema 較新的備份檔」，由 `internal/app/restore_test.go` 的單元測試守住。
 
+### M4（2026-11-23 規格展開）
+
+- O1：每日備份預設寫到 `/data/backups`（OPS-R11），和資料在同一個 volume，磁碟壞掉時備份一起不見（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。理由：預設值必須在沒有額外掛載時也能運作；文件與 `.env.example` 建議另外掛載 `/backups` 並設定 `backup.daily.dir`。
+- O2：保留只看檔名（OPS-R12），不讀 manifest：使用者手動執行 `notesteme backup --out <同一個目錄>` 產生的檔案也算在 7 份之內。這樣規則簡單、可以預測；想另外保留的備份放到別的目錄即可。
+- O3：OPS-R18「突然升高」先用固定門檻（最近 1 小時、至少 5 次、失敗 50% 以上），不和過去的基準線比較（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。真實的失敗率要等 M0 在 VPS 上量測，之後再調整預設值或加上基準線；所以 OPS-R18 的場景標 `@pending-m0`。
+- O10：`backup.daily` 預設開啟、`alerts` 在 server 啟動時就檢查，實作之後**每個**場景都會跑這兩個排程：fake clock 跨過 03:00 UTC 的既有場景（例如前進 `24h`、`25h`）會在 `/data/backups` 產生備份，`alerts` 會讀真的磁碟用量。harness 要預設 `TestControls.DiskUsage` 為 10%、沒有 `alert` notifier 時告警不會送出；OPS 的 M4 切片要確認預設 tag 的場景與 `features/passing.txt` 不退步（同 ADR-0021 第 3 點對 `summary` 的要求），有退步就停下來回報，不要改既有的 `.feature`。
+- O4：告警解除後再成立時會再告警（OPS-R13），但 NOTIFY-R10 的去重視窗（預設 24 小時，鍵 `alert:<種類>:<對象>`）會讓 24 小時內反覆成立的告警只通知第一次。這是刻意的：在門檻附近擺盪的條件不應該每 15 分鐘通知一次。
+- O5：VPS 的密碼檢查放在 `vps-check` 服務（OPS-R20），不在 compose 的變數代入中用 `${NOTESTEME_PASSWORD:?}`：compose 先代入整份檔案再依 profile 篩選服務（fakecompose 也一樣），放在 `vps` 的服務中會讓 `wsl` 與預設 profile 沒有密碼時也無法 `config`；而且密碼可能已經存在 DB 中（`NOTESTEME_PASSWORD` 只在第一次啟動時使用）。代價：`docker compose config` 本身不會失敗，要到 `up` 時才由 `vps-check` 擋下。
+- O6：`notesteme` 服務是所有 profile 共用的（compose 的 profile 以服務為單位，見上面 OPS-R9 的待決問題），所以 `vps` 的行為差異靠 `NOTESTEME_DEPLOYMENT` 傳進去；`vps-check` 會確認它是 `vps`，避免使用者只開 profile、忘了設定。
+- O7：`job_stale` 的範圍包含 `backup.daily`（OPS-R15），所以每日備份持續失敗超過 24 小時時，會在 `backup_failed` 之後再收到一則 `job_stale`。兩則的意思不同（「失敗了」與「已經一天沒有成功」），不合併。
+- O8：每部影音一則 `stuck_task`（OPS-R14），很多影音同時卡住時靠 NOTIFY-R11 的速率上限限制。之後可以改成彙總成一則。
+- O9：ADR-0021 第 7 點的 migration 清單沒有 `alert_states`、`tool_call_stats` 與 cookie 的 `last_ok_at`，要在 ADR 補上（OPS 的 M4 切片）。
