@@ -74,3 +74,4 @@
 - 會員限定影片（stderr 含 `Join this channel to get access to members-only content`）歸為 `needs_action`，訊息「這部影片需要登入才能取得。上傳 YouTube cookie 後會自動繼續。」、動作「上傳 cookie」、`resume_on` 為 `cookie:youtube`。SRC 規格的待決問題要記下這個分類（由主代理負責）；文字依 yt-dlp 的原始碼，尚未對真實的 yt-dlp 驗證。
 - cookie 上傳與執行中的步驟的競態（2026-11-14，SRC-B 審查）：步驟在沒有 cookie 時開始執行，使用者此時上傳，`ResumeBlocked` 找不到 `running` 的步驟；之後步驟回報需要 cookie 就會永遠 `blocked`。處理方式見 PIPE 介面的「執行中補上條件」，依據是 secrets 表 `(cookie, <platform>)` 的 `updated_at`。
 - 請求本體上限 512 KiB 的依據：內容上限 64 KiB，JSON 跳脫最壞展開成 6 倍（`\u00xx`）約 384 KiB。Huma 的 `MaxBodyBytes` 超過時只會回 413，所以 `POST /api/cookies` 在 Huma 之前先檢查（`cookieBodyLimit`），讓所有「cookie 太大」都是同一個 422 code；`MaxBodyBytes` 仍明確設為 512 KiB 當第二道防線。
+- 設定檔新增頂層的 `mcp`（2026-11-23，M2 S9 實作 AUTH-R11 時決定，依 /goal 採保守預設，**待 owner 追認**）：`mcp.allowed_hosts` 與 `mcp.allowed_origins` 是對外介面的基礎設定（同 listen 位址），只放在設定檔（SEC-R2），格式錯誤時啟動失敗並指出欄位。預設值見 AUTH 規格的介面。

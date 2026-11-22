@@ -94,4 +94,4 @@
 - R6（本機檔案的 Range 請求）要先有 ING-05 的本機檔案新增與 inbox watcher，留給 ING 切片。
 - Bilibili 嵌入播放器能否控制播放位置（M0）。不行時，點擊字幕句改成「在 Bilibili 開啟這個時間」。
 - LIB-R11 場景已修改 `.feature`（2026-11-22，M2 S3 實作時發現，依 /goal 採 advisor 建議，待 owner 追認）。原場景的 Background 沒有指定處理方案，內建 `default` 的 `correct` 沒有 provider，依 X1 是 `skipped`（`not_configured`），第一版 corrected 不會產生，斷言「has 2 versions」失敗（S3 之前因為 `processed up to` 的 M2 目標 pending 而看不出來）。改成：場景內建立 `llm-lib` 處理方案（`correct` 用 anthropic）、用 `rerun` 帶 `"profile": "llm-lib"` 產生第一版（設定快照在新增當下已凍結，不能靠改預設處理方案），再用 openai 的覆寫重跑第二次，斷言兩個版本都保留。
-
+- 影音路由接受代號（2026-11-23，M2 S9 實作 MCP 的 `item` 參數時決定，依 /goal 採保守預設，**待 owner 追認**）：`GET /api/items/{id}`、`GET /api/items/{id}/cues`、`GET /api/items/{id}/subtitles`、`POST /api/items/{id}/subtitles/import` 的 `{id}` 也接受影音代號（`yt:…`、`bili:…/p1`，URL 編碼後放進路徑）；代號在垃圾桶中時回 404 `in_trash`，與用 ID 存取相同。其他影音路由仍只接受 ID。細節見 MCP 規格待決問題 S2。
