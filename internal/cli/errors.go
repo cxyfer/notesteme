@@ -77,9 +77,13 @@ func snippet(b []byte) string {
 func exitFor(err error) (code int, errorCode string) {
 	var ue *usageError
 	var ae *apiError
+	var ir *importRejected
 	switch {
 	case errors.As(err, &ue):
 		return exitUsage, ""
+	case errors.As(err, &ir):
+		// config import 的內容不正確：檔案內容不是命令列參數，結束碼是 1（SEC-R10）。
+		return exitError, errCodeConfigInvalid
 	case errors.As(err, &ae):
 		if ae.Status == http.StatusBadRequest || ae.Status == http.StatusUnprocessableEntity {
 			return exitUsage, ae.Code

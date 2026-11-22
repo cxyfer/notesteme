@@ -2,6 +2,7 @@ package steps
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -197,5 +198,24 @@ func TestOwnerRunsStartsServerForPendingConfig(t *testing.T) {
 	}
 	if s.hasPendingConfig() {
 		t.Error("處理方案應該已經寫入")
+	}
+}
+
+// 指令參數中的 /tmp/<x> 對應到 `Given the file "/tmp/<x>" contains:` 寫的檔案（steps.md 第 4 節）：
+// CLI 讀得到內容，而且真正的 /tmp 不會被碰到。
+func TestOwnerRunsMapsTmpPathsInArguments(t *testing.T) {
+	s := newTestScenario(t)
+	if err := s.fileContainsDoc("/tmp/notesteme-mapcheck.yaml", &godog.DocString{Content: "profiles: {mapped: {}}\n"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat("/tmp/notesteme-mapcheck.yaml"); err == nil {
+		t.Fatal("不應該寫到真正的 /tmp")
+	}
+	// 沒有 server 時 CLI 用獨立模式，直接走到 API。
+	if err := s.ownerRuns(`notesteme config import /tmp/notesteme-mapcheck.yaml`); err != nil {
+		t.Fatalf("ownerRuns：%v", err)
+	}
+	if s.cmd.res.Code != 0 || !strings.Contains(s.cmd.out, "mapped") {
+		t.Errorf("結果 = %+v，stdout：%s，stderr：%s", s.cmd.res, s.cmd.out, s.cmd.errOut)
 	}
 }

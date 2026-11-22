@@ -244,18 +244,10 @@ func parse(args []string) (*plan, error) {
 	case "mcp":
 		return parseMCP(args[1:])
 	case "config":
-		// 屬於之後的切片（SEC M2）：不判斷模式，直接回報還沒實作。
-		return unimplemented(name), nil
+		return parseConfig(args[1:])
 	default:
 		return nil, usagef("不認得的子命令 %q。", name)
 	}
-}
-
-// unimplemented 回傳一個只回報「還沒實作」的子命令。
-func unimplemented(name string) *plan {
-	return &plan{g: &globals{}, noBackend: true, run: func(context.Context, *session) (int, error) {
-		return 0, notImplementedf("notesteme %s 尚未實作。", name)
-	}}
 }
 
 const usageText = `用法：notesteme <子命令> [旗標]
@@ -270,6 +262,8 @@ const usageText = `用法：notesteme <子命令> [旗標]
   import <subtitle> --item <item>       匯入外部編輯過的字幕為 edited 版本（--lang、--format）
   tokens create|ls|revoke               管理 API token
   secrets rotate-key|reset              管理 master key 與 secrets
+  config export [--out <file>]          輸出 DB 管理的設定（處理方案，不含 secrets）成 YAML
+  config import <file>                  匯入 YAML：先驗證整份，有錯誤就整份不套用
   mcp [--token <t>] [--list-tools]      在 stdin／stdout 上執行 MCP server
   doctor                                檢查外部工具與設定
 

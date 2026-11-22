@@ -71,7 +71,8 @@ func (s *Scenario) ownerRuns(line string) error {
 		return fmt.Errorf("指令是空的：%q", line)
 	}
 	for i, a := range argv {
-		argv[i] = s.World.Expand(s.World.Subst(a))
+		// /tmp/<x> 對應到 `Given the file "/tmp/<x>" contains:` 寫的檔案（steps.md 第 4 節），不碰真正的 /tmp。
+		argv[i] = s.World.Expand(s.World.Subst(s.mapTmpPaths(a)))
 	}
 	switch argv[0] {
 	case "notesteme":
