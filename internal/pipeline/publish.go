@@ -212,10 +212,38 @@ func (p *Pipeline) folderDir(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if p.insideDataInternals(dir) {
+		return "", &errclass.Error{
+			Class: errclass.ClassPermanent, Source: "publish", Detail: "輸出資料夾在資料目錄的內部：" + path,
+			Message: "輸出資料夾不能是資料目錄本身，或它的內部目錄（artifacts、media、uploads、tmp、bin…）。",
+		}
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("建立輸出資料夾：%w", err)
 	}
 	return dir, nil
+}
+
+// dataInternalDirs 是資料目錄裡 notesteme 自己使用的子目錄；inbox 等其他子目錄是使用者的，仍然可以當輸出資料夾。
+var dataInternalDirs = []string{"artifacts", "media", "uploads", "tmp", "bin", "yt-dlp", "backups", "config"}
+
+// insideDataInternals 回報 dir（已解析）是不是資料目錄本身或它的內部目錄：serve 的 Files 守衛包含 <data>/uploads，
+// 不排除的話 folder 目標可以寫進這些目錄。
+func (p *Pipeline) insideDataInternals(dir string) bool {
+	root, err := filepath.EvalSymlinks(p.dataDir)
+	if err != nil {
+		root = filepath.Clean(p.dataDir)
+	}
+	if dir == root {
+		return true
+	}
+	for _, name := range dataInternalDirs {
+		rel, err := filepath.Rel(filepath.Join(root, name), dir)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // outputName 是寫出的檔名：sidecar 是 <影片檔名>.<lang>.<ext>（OUT-R10），folder 是 <標題>.<lang>.<ext>（同下載，OUT-R4）。

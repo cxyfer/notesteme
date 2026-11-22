@@ -427,35 +427,43 @@ func TestChineseVideoFixtures(t *testing.T) {
 }
 
 // `processed up to` 的 M2 目標（segment、correct、translate、publish）依 X1 沒有設定時是 skipped：
-// firstUnfinished 把它們的 skipped 視為完成；M1 步驟 skipped 不算（例如被取消），其他狀態也不算。
-func TestProcessedUpToTreatsSkippedM2StagesAsDone(t *testing.T) {
-	stages := func(status map[string]string) itemJSON {
-		var it itemJSON
-		for _, name := range []string{"metadata", "transcript", "normalize", "segment", "correct", "translate", "publish"} {
-			st := "done"
-			if v, ok := status[name]; ok {
-				st = v
-			}
-			it.Stages = append(it.Stages, stageJSON{Stage: name, Status: st})
-		}
-		return it
-	}
-	cases := []struct {
-		name   string
-		status map[string]string
-		upTo   string
-		want   string
+// 目標步驟是 skipped 算已處理到（被取消的不算）；中間的 skipped 不算完成，補上設定之後要能重跑。
+func TestProcessedUpToTargetMayBeSkipped(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		st    stageJSON
+		stage string
+		want  bool
 	}{
-		{"M2 步驟 skipped 算完成", map[string]string{"segment": "skipped", "correct": "skipped", "translate": "skipped", "publish": "skipped"}, "publish", ""},
-		{"M1 步驟 skipped 不算", map[string]string{"normalize": "skipped"}, "publish", "normalize"},
-		{"M2 步驟 failed 不算", map[string]string{"correct": "failed"}, "publish", "correct"},
-		{"M2 步驟 blocked 不算", map[string]string{"publish": "blocked"}, "publish", "publish"},
-		{"只看到目標為止", map[string]string{"publish": "pending"}, "translate", ""},
-	}
-	for _, c := range cases {
-		if got := firstUnfinished(stages(c.status), c.upTo); got != c.want {
-			t.Errorf("%s：firstUnfinished = %q，預期 %q", c.name, got, c.want)
+		{"done", stageJSON{Status: "done"}, "publish", true},
+		{"M2 步驟 skipped（no_outputs）", stageJSON{Status: "skipped", BlockReason: "no_outputs"}, "publish", true},
+		{"M2 步驟 skipped（not_configured）", stageJSON{Status: "skipped", BlockReason: "not_configured"}, "correct", true},
+		{"被取消的 skipped 不算", stageJSON{Status: "skipped", BlockReason: "cancelled"}, "publish", false},
+		{"M1 步驟 skipped 不算", stageJSON{Status: "skipped"}, "normalize", false},
+		{"blocked 不算", stageJSON{Status: "blocked", BlockReason: "needs_action"}, "publish", false},
+		{"failed 不算", stageJSON{Status: "failed"}, "correct", false},
+	} {
+		if got := reached(c.st, c.stage); got != c.want {
+			t.Errorf("%s：reached = %v，預期 %v", c.name, got, c.want)
 		}
+	}
+}
+
+// 中間被略過的步驟不算完成：之後場景設定了 provider 時，它要能重跑。
+func TestFirstUnfinishedDoesNotSkipOverSkippedStages(t *testing.T) {
+	var it itemJSON
+	for _, name := range []string{"metadata", "transcript", "normalize", "segment", "correct", "translate", "publish"} {
+		st := "done"
+		if name == "correct" {
+			st = "skipped"
+		}
+		it.Stages = append(it.Stages, stageJSON{Stage: name, Status: st})
+	}
+	if got := firstUnfinished(it, "publish"); got != "correct" {
+		t.Errorf("firstUnfinished = %q，預期 correct", got)
+	}
+	if got := firstUnfinished(it, "segment"); got != "" {
+		t.Errorf("只看到 segment 為止：firstUnfinished = %q，預期空字串", got)
 	}
 }
 

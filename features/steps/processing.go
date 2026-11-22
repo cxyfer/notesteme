@@ -382,8 +382,7 @@ func (s *Scenario) itemProcessedUpTo(ref, stage string) error {
 	if err != nil {
 		return err
 	}
-	// M2 的步驟可能依設定 skipped（X1，規則 (2c)），也算處理到了。
-	if st.Status != "done" && !(st.Status == "skipped" && slices.Contains(m2TargetStages, stage)) {
+	if !reached(st, stage) {
 		return fmt.Errorf("%s 沒有處理到 %s：步驟是 %q（%s）", ref, stage, st.Status, describeStage(st))
 	}
 	if !wasRunning && s.server != nil {
@@ -629,11 +628,21 @@ func (s *Scenario) seedItemFixture(ref string, fx *itemFixture) error {
 	return nil
 }
 
-// firstUnfinished 回傳從開頭到 upTo（含）第一個還不是 done 的步驟（M2 步驟 skipped 也算完成）；都完成了回傳空字串。
+// reached 回報目標步驟算不算已經處理到：done；M2 步驟沒有設定時依 X1 是 skipped（not_configured、no_outputs…），
+// 也算（被取消的 cancelled 不算）。
+func reached(st stageJSON, stage string) bool {
+	if st.Status == "done" {
+		return true
+	}
+	return st.Status == "skipped" && st.BlockReason != "cancelled" && slices.Contains(m2TargetStages, stage)
+}
+
+// firstUnfinished 回傳從開頭到 upTo（含）第一個還不是 done 的步驟；都完成了回傳空字串。
+// skipped 不算完成：之前沒有設定而被略過的步驟，場景補上設定之後要能重跑（只有目標步驟接受 skipped，見 reached）。
 func firstUnfinished(it itemJSON, upTo string) string {
 	for _, name := range pipeline.Stages {
 		for _, st := range it.Stages {
-			if st.Stage == name && st.Status != "done" && !(st.Status == "skipped" && slices.Contains(m2TargetStages, name)) {
+			if st.Stage == name && st.Status != "done" {
 				return name
 			}
 		}

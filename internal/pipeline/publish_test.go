@@ -249,6 +249,25 @@ func TestPublishFolderPathMustStayInsideRoots(t *testing.T) {
 	if es, _ := os.ReadDir(outside); len(es) != 0 {
 		t.Errorf("根目錄外被寫入了：%v", es)
 	}
+	// 資料目錄本身與內部目錄不能當輸出資料夾（serve 的守衛包含 <data>/uploads）；inbox 這類使用者的子目錄可以。
+	data, err := filepath.EvalSymlinks(r.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]bool{
+		"": true, "uploads": true, "uploads/x/y": true, "artifacts": true, "media/z": true, "tmp": true, "backups": true,
+		"inbox": false, "inbox/subs": false, "uploadsX": false, "exports": false,
+	} {
+		if got := r.p.insideDataInternals(filepath.Join(data, name)); got != want {
+			t.Errorf("insideDataInternals(%q) = %v，預期 %v", name, got, want)
+		}
+	}
+	// 守衛允許的 <data>/uploads 底下，folder 仍然被拒絕。
+	_, err = r.p.folderDir(filepath.Join(data, "uploads", "x"))
+	var ce *errclass.Error
+	if !errors.As(err, &ce) || !strings.Contains(ce.Message, "資料目錄") {
+		t.Errorf("uploads 底下：err = %v，預期資料目錄內部的錯誤", err)
+	}
 	// 相對路徑在驗證階段就會被拒絕（schema），執行時也不接受。
 	if _, err := r.p.folderDir("rel/dir"); err == nil {
 		t.Error("相對路徑應被拒絕")

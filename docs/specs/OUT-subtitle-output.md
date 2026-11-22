@@ -69,7 +69,7 @@
   - 寫入：先寫同資料夾的暫存檔再 rename；新檔用硬連結建立（目標已存在就失敗，競態中別人先建立的檔案不會被覆蓋），檔案系統不支援硬連結時退回 rename；權限 0644；寫入限制在目標資料夾內（`os.Root`）。每個檔案寫完立刻記錄（`outputs` 一個 `(item, path)` 一列，重寫時更新雜湊）；寫完後、記錄前當機時，下次沒有紀錄會被視為使用者的檔案，是安全的方向。
   - `save_as_new`：日期用注入的時鐘，**UTC**；同一天再次另存時，另存的檔案沒被改過（雜湊與紀錄相同）就覆蓋同一個，否則換成 `<名稱> (notesteme YYYY-MM-DD 2).<ext>`、`… 3)…`。`skip`：這個檔案不寫入，同一次發布的其他檔案照常寫出，`publish` 為 `blocked`（`needs_action`），訊息列出被改過的檔案，動作「處理該檔案後重新發布」；處理完後從 `publish` 重跑。
   - `sidecar` 只用於本機檔案；上傳的檔案是資料目錄裡的副本，也不適用。沒有任何輸出目標適用時 `publish` 為 `skipped`（原因 `not_applicable`）；混合目標時只略過不適用的那個。影片檔不見了（不知道要放哪）是 `permanent` 失敗。字幕放在影片代號指的路徑旁邊，不跟隨影片檔本身的 symlink。
-  - `folder`：`path` 必須是絕對路徑，寫入前解析 symlink 與 `..`，並套用和 GRD-R7 相同的限制（serve 模式只能在 inbox 與 `media_roots` 之內，standalone 不受限制）；不存在時建立。檔名同下載（OUT-R4，`<標題>.<lang>.<ext>`）。限制是因為持有 `ingest` scope 的 token 可以用單次覆寫帶 `outputs`，不限制就等於任意寫檔；**待 owner 追認**（也可以改成另外的 `output_roots` 設定）。
+  - `folder`：`path` 必須是絕對路徑，寫入前解析 symlink 與 `..`，並套用和 GRD-R7 相同的限制（serve 模式只能在 inbox 與 `media_roots` 之內，standalone 不受限制）；另外不能是資料目錄本身或它的內部目錄（`artifacts`、`media`、`uploads`、`tmp`、`bin`、`yt-dlp`、`backups`、`config`；serve 的守衛包含 `<data>/uploads`）；不存在時建立。檔名同下載（OUT-R4，`<標題>.<lang>.<ext>`）。限制是因為持有 `ingest` scope 的 token 可以用單次覆寫帶 `outputs`，不限制就等於任意寫檔；**待 owner 追認**（也可以改成另外的 `output_roots` 設定）。
   - `bilingual-srt` 的副檔名也是 `srt`，寫出時檔名加 `.bilingual`（`lecture.en.bilingual.srt`），不會和單語的 `srt` 互相覆蓋；`ass` 的樣式用 `style`（預設 `default`）。
   - `lang` 沒寫時用字幕的預設選擇（OUT-R2）；指定的語言沒有字幕時其他輸出照常寫出，步驟 `done` 並以訊息說明缺哪些語言（不是失敗，因為 `translate` 可能被設成略過）。
   - `outputs` 的每一項在處理方案與覆寫中驗證（`target`、`formats`、`lang`、`style`、`path`、`on_user_change`，錯誤回 `errors[{path,message}]`）；`target: vault` 在 M3 提供，目前回 422（執行時遇到也是 `permanent`「尚未支援」）。
