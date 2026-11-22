@@ -13,3 +13,6 @@ DELETE FROM sessions WHERE token_hash = sqlc.arg(token_hash);
 
 -- name: DeleteExpiredSessions :execrows
 DELETE FROM sessions WHERE expires_at <= sqlc.arg(now);
+
+-- name: DeleteSessionsExcept :execrows
+DELETE FROM sessions WHERE token_hash != sqlc.arg(keep_token_hash);

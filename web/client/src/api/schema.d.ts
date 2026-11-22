@@ -108,6 +108,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/auth/password": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** 修改登入密碼：目前的密碼錯誤回 422 invalid_password（和登入共用鎖定，AUTH-R6）；成功後撤銷目前以外的所有 session */
+    post: operations["auth-password"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/backup": {
     parameters: {
       query?: never;
@@ -1147,6 +1164,15 @@ export interface components {
       sha256: string;
       /** Format: int64 */
       version: number;
+    };
+    ChangePasswordInputBody: {
+      /** @description 目前的密碼 */
+      current_password: string;
+      /** @description 新密碼（不可以是空的） */
+      new_password: string;
+    };
+    ChangePasswordOutputBody: {
+      changed: boolean;
     };
     ChannelOverrides: {
       /** @description 頻道的 UUID；頻道還不存在時是空字串 */
@@ -2502,6 +2528,41 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "auth-password": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: {
+        notesteme_session?: string;
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChangePasswordInputBody"];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ChangePasswordOutputBody"];
+        };
       };
       /** @description Error */
       default: {

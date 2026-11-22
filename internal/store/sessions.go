@@ -75,3 +75,18 @@ func (s *Store) DeleteSessionByHash(ctx context.Context, tokenHash string) error
 func (s *Store) DeleteExpiredSessions(ctx context.Context) (int64, error) {
 	return s.wq.DeleteExpiredSessions(ctx, s.nowMs())
 }
+
+// ReplacePasswordHash 在同一個交易中寫入新的密碼 hash（settings 的 key），並刪除 token hash 不是 keepTokenHash 的
+// 所有 session（修改密碼後其他裝置立即登出）；keepTokenHash 是空字串時刪除全部。回傳刪除的 session 數。
+func (s *Store) ReplacePasswordHash(ctx context.Context, key, hash, keepTokenHash string) (int64, error) {
+	var n int64
+	err := s.Tx(ctx, func(r *Repo) error {
+		if err := r.q.SetSetting(ctx, sqlcdb.SetSettingParams{Key: key, Value: hash, UpdatedAt: s.nowMs()}); err != nil {
+			return err
+		}
+		var err error
+		n, err = r.q.DeleteSessionsExcept(ctx, keepTokenHash)
+		return err
+	})
+	return n, err
+}

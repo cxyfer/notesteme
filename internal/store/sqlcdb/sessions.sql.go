@@ -56,6 +56,18 @@ func (q *Queries) DeleteSessionByHash(ctx context.Context, tokenHash string) err
 	return err
 }
 
+const deleteSessionsExcept = `-- name: DeleteSessionsExcept :execrows
+DELETE FROM sessions WHERE token_hash != ?1
+`
+
+func (q *Queries) DeleteSessionsExcept(ctx context.Context, keepTokenHash string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteSessionsExcept, keepTokenHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const extendSession = `-- name: ExtendSession :exec
 UPDATE sessions SET expires_at = ?1 WHERE id = ?2
 `

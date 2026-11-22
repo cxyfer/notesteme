@@ -210,6 +210,7 @@ func (rt *routes) register(api huma.API) {
 		OperationID: "auth-logout", Method: http.MethodPost, Path: "/api/auth/logout",
 		Summary: "登出，session 立即失效",
 	}, "登出", rt.logout)
+	rt.registerAuthPassword(api)
 
 	registerScoped(api, huma.Operation{
 		OperationID: "items-list", Method: http.MethodGet, Path: "/api/items",

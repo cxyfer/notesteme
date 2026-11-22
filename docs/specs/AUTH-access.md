@@ -94,6 +94,8 @@
 - 本機模式的 bearer token（2026-11-23，M2 S9 實作 `notesteme mcp --token` 時決定，依 /goal 採保守預設，**待 owner 追認**）：本機 socket 與獨立模式（`api.NewLocal`）原本不驗證身分、擁有全部權限；請求帶 `Authorization: Bearer` 時改用該 token 的身分（只會縮小權限），無效或過期的 token 回 401。CLI 只有 `notesteme mcp --token` 會在本機模式送出 token，一般指令不送，行為不變。細節見 MCP 規格待決問題 S4。
 - `config export`／`import` 的路由 scope（2026-11-23，依 /goal 採保守預設，待 owner 追認）：`GET /api/config/export` 用 `read`（內容只有處理方案，與 `GET /api/profiles` 相同，不含 secrets）；`POST /api/config/import` 用 `admin`（會建立與取代處理方案、改預設處理方案）。scope 在讀取本體之前檢查。
 
+- 設定頁修改密碼的 API（2026-11-23，UI-3b 依 /goal 採 advisor 建議，**待 owner 追認**）：AUTH-R2 要求「修改密碼要透過設定頁」，但介面沒有列出路由，`notesteme password set` 也還沒實作，所以新增 `POST /api/auth/password`（`{current_password, new_password}`）。只有 owner（session 或本機），token 即使有 `admin` 也回 403；session 要帶 CSRF。目前的密碼錯誤回 422 `invalid_password`「密碼不正確。」（不用 401，避免前端當成 session 失效），與登入**共用**同一套來源位址鎖定（AUTH-R6），鎖定時回 429 `login_locked` 與 `retry_after_s`；新密碼只要求非空（與 `NOTESTEME_PASSWORD` 一致），空的回 422 `invalid_request`。成功後在同一個交易中寫入新的 hash 並撤銷目前以外的所有 session（本機呼叫沒有 session，全部撤銷）。沒有 `.feature` 場景，由 `internal/auth`、`internal/api` 的單元測試守住；CLI 的 `password set` 之後可以呼叫同一個 `auth.Service.ChangePassword`。
+
 ### M4（AUTH-R12～R22）
 
 - A1：OIDC 的 callback 與 start 加進 AUTH-R1 的免驗證例外（AUTH-R16）。AUTH-R1 只列了 login、healthz、readyz；決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：只有 OIDC 啟用時才開放，沒有啟用時回 404，不改 AUTH-R1 的文字。

@@ -110,6 +110,36 @@
         ],
         "type": "object"
       },
+      "ChangePasswordInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "current_password": {
+            "description": "目前的密碼",
+            "type": "string"
+          },
+          "new_password": {
+            "description": "新密碼（不可以是空的）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "type": "object"
+      },
+      "ChangePasswordOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "type": "object"
+      },
       "ChannelOverrides": {
         "additionalProperties": false,
         "properties": {
@@ -3626,6 +3656,53 @@
           }
         },
         "summary": "登出，session 立即失效"
+      }
+    },
+    "/api/auth/password": {
+      "post": {
+        "operationId": "auth-password",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "notesteme_session",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangePasswordOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "修改登入密碼：目前的密碼錯誤回 422 invalid_password（和登入共用鎖定，AUTH-R6）；成功後撤銷目前以外的所有 session"
       }
     },
     "/api/backup": {
