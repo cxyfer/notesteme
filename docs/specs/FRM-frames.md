@@ -21,7 +21,7 @@
 
 | ID | 規則 |
 |---|---|
-| FRM-R1 | `frames` 步驟接在 `chapters` 之後（ADR-0020）。`stages.frames.executor` 是 `rules`、`api`、`agent` 或 `off`，預設 `off`（`skipped`，`off`）。沒有影像串流的影音（Podcast、只有音訊的本機檔案）為 `skipped`（`audio_only`）；`api` 沒有 provider 或 model 時為 `skipped`（`not_configured`）。 |
+| FRM-R1 | `frames` 步驟接在 `chapters` 之後（ADR-0020）。`stages.frames.executor` 是 `rules`、`api`、`agent` 或 `off`，預設 `off`（`skipped`，`off`）；`agent` 在 F6 決定之前於處理方案與覆寫中回 422「選圖還不支援交給 Agent。」。沒有影像串流的影音（Podcast、只有音訊的本機檔案）為 `skipped`（`audio_only`）；`api` 沒有 provider 或 model 時為 `skipped`（`not_configured`）。 |
 | FRM-R2 | 候選畫面：ffmpeg 場景變化偵測（`select='gt(scene,T)'`，`T` 是 `stages.frames.scene_threshold`，預設 0.3），再補上密度下限：相鄰兩個候選（含片頭 `0` 與片尾）相隔超過 `stages.frames.min_interval_s`（預設 60）秒時，從前一個候選起每隔 `min_interval_s` 秒補一張，直到距離下一個候選不到 `min_interval_s`。 |
 | FRM-R3 | 去重：每個候選縮成 32×18 的 RGB 縮圖，和最近保留的 `stages.frames.dedupe_window`（預設 5）張比較；三個色版的平均絕對差（0～1）低於 `stages.frames.dedupe_threshold`（預設 0.05）就視為重複而捨棄。只比較 RGB 差異，不用 perceptual hash，所以不同顏色的純色畫面（例如全黑與全白）不會被當成重複。 |
 | FRM-R4 | 張數：目標 `N = min(stages.frames.max_frames, ceil(stages.frames.per_minute × 分鐘數), 依片長的上限)`，`max_frames` 預設 20、`per_minute` 預設 1。依片長的範圍沿用 `Video Notes/AGENTS.md`：未滿 10 分鐘 5–8 張、10–30 分鐘 8–12 張、30–60 分鐘 12–16 張、60 分鐘以上 16–20 張。可選的候選少於範圍的下限時全部選用，步驟仍為 `done`，影音顯示提醒「只找到 N 張有意義的畫面，少於建議的 M 張。」，筆記的影片資訊註明（NOTE-R9）。 |

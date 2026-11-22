@@ -361,7 +361,7 @@ fixture 在 `features/fixtures/llm/<名稱>`，沒有 `.json` 時自動補上。
 
 M3 的句型（4.13～4.16）在 2026-11-23 規格展開時加入，目前全部註冊為 pending 的步驟樁（`godog.ErrPending`），由 M3 的實作切片換成真正的實作。假服務的設計見 `features/fixtures/README.md` 的「M3 的假服務」。
 
-每個 M3 的 `.feature` 在 Background 中、第一個會送出請求的步驟之前，都有一個 M3 的句型（假服務或 M3 產出的 seeding）。處理方案中的 M3 欄位（`stages.chapters` 等）在產品實作之前會被 PRF-R4 以 422 拒絕；這個安排讓 `@M3` 場景在實作之前一律是 pending，不是 failed。
+每個 M3 的 `.feature` 在 Background 中、第一個會送出請求的步驟之前，都有一個 M3 的句型（假服務或 M3 產出的 seeding）。處理方案中的 M3 欄位（`stages.chapters` 等）在產品實作之前會被 PRF-R4 以 422 拒絕；這個安排只保證**在第一個 M3 句型實作之前** `@M3` 場景一律是 pending。閘門句型有共用（`SponsorBlock has the segments for` 是 SPB 與 CHAP 的閘門、`the chapters of … are:` 是 NOTE 的閘門、`the note of … is:` 是 VAULT 的閘門），實作其中一個之後，其他領域的場景會往下跑到 M3 的設定而失敗。所以 M3 的第一個實作切片（M3-S0）先讓處理方案與設定檔的 schema 接受全部 M3 欄位（`stages.{sponsorblock,chapters,frames,note}`、`outputs[].target: vault`、設定檔的 `vaults`、`sponsorblock`），M3 的路由回 501 stub（同 M2 S0），之後各切片以 `@M3` 的逐場景結果（junit）和切片開始前比對，不期待「目標領域以外全部 pending」。
 
 既有句型在 M3 的語意補充（2026-11-23，不新增句型；由實作切片在對應的步驟實作）：
 
@@ -401,7 +401,7 @@ M3 的句型（4.13～4.16）在 2026-11-23 規格展開時加入，目前全部
 
 ### 4.16 Vault 與 hook（`steps/vault.go`，M3）
 
-`git` vault 的遠端由假 `git`（`features/internal/fakegit`，放在 `PATH` 中）模擬：remote URL 對應到場景目錄中的假遠端狀態，不連任何網路。hook 用 `PATH` 中的假程式 `notesteme-test-hook`（`features/internal/fakehook`）：把 argv、環境變數與工作目錄記錄下來；`--exit N` 以結束碼 N 結束、`--hang` 一直等到被結束、`--print-bytes N` 印出 N 個位元組後再印 `END-OF-HOOK-OUTPUT`。
+`git` vault 的遠端由假 `git`（`features/internal/fakegit`，放在 `PATH` 中）模擬：remote URL 對應到場景目錄中的假遠端狀態，不連任何網路。第一次 clone `https://`、`ssh://` 或 `user@host:path` 網址時，假遠端自動建立成空的 repo（分支依 `--branch`）；其他網址一律失敗。hook 用 `PATH` 中的假程式 `notesteme-test-hook`（`features/internal/fakehook`）：把 argv、環境變數與工作目錄記錄下來；`--exit N` 以結束碼 N 結束、`--hang` 一直等到被結束、`--print-bytes N` 印出 N 個位元組後再印 `END-OF-HOOK-OUTPUT`。
 
 | 步驟 | 意思 |
 |---|---|

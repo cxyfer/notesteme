@@ -253,7 +253,7 @@ M3 的步驟（`docs/specs/steps.md` 4.13～4.16）目前都是 pending 的步�
 | `features/internal/fakesponsorblock` | SponsorBlock 的 hash 前綴 API（`sponsor.ajay.app`，SPB-R2） | 由表格步驟登記片段，沒有檔案；沒有片段時回 404 | fakenet；**每個場景預設登記**（ADR-0020 第 2 點），既有的 YouTube 場景才不會撞上 trap |
 | `features/internal/fakeframes` | ffmpeg 的場景偵測（`showinfo` 的 stderr）與畫面擷取（純色 JPEG） | 由 `the video of … has the scenes:` 的表格登記，沒有檔案 | 假 ffmpeg（`faketool/ffmpeg.go` 依參數分派：`select='gt(scene,T)',showinfo` 與 `-ss <t> -frames:v 1`）；假 yt-dlp 為有場景的影片提供影像串流與格式清單（`the best video format of …`） |
 | `features/internal/fakegemini` | Gemini `generateContent`（GEM-R4） | 回答讀 `llm/` 的 fixture（`{"output": …}`，output 包成 `candidates[0].content.parts[0].text`）；片長與公開狀態取自假 yt-dlp 的影片 | fakenet（`generativelanguage.googleapis.com`）；LLM 步驟的 provider `gemini` |
-| `features/internal/fakegit` | `git` CLI 與遠端（VAULT-R7～R9） | 狀態在場景目錄的 `fake/git/`（`remote.json`、`calls.jsonl`、clone 中的 `.git/fakegit.json`） | `faketool.Dispatch` 依 argv[0] `git` 分派；以假工具自己的位置找到場景（產品會清掉 git 的環境變數） |
+| `features/internal/fakegit` | `git` CLI 與遠端（VAULT-R7～R9） | 狀態在場景目錄的 `fake/git/`（`remote.json`、`calls.jsonl`、clone 中的 `.git/fakegit.json`） | `faketool.Dispatch` 依 argv[0] `git` 分派；以假工具自己的位置找到場景（產品會清掉 git 的環境變數）；第一次 clone `https`／`ssh` 網址時自動建立空的假遠端 |
 | `features/internal/fakehook` | 使用者的 hook 程式（VAULT-R10、R11） | 紀錄在場景目錄的 `fake/hooks.jsonl` | `faketool.Dispatch` 依 argv[0] `notesteme-test-hook` 分派 |
 
 - vision 選圖（FRM-R7）用既有的 fakellm，步驟名稱 `frames`；fakellm 要接受圖片內容區塊（FRM 規格 F4）。

@@ -248,7 +248,7 @@ Feature: Notes
       """
 
   @NOTE-04 @NOTE-R7
-  Scenario: A note that fails a check is held back from the vault
+  Scenario: A note that fails a check is blocked before publishing
     Given the LLM provider "anthropic" answers "note" with "note-two-sections"
     When the owner sends "POST /api/note-templates" with:
       """

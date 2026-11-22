@@ -55,7 +55,7 @@
 - V1：vault 與 hook 只能在設定檔定義（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。UI 第 12 節原本寫「設定 › 輸出」可以編輯 vault 的路徑或 repo、分支；但 `fs` 的路徑等於寫檔權限、`git` 會依 remote URL 執行程式（`ext::`），所以和 hook 一樣只能寫在設定檔，UI 只能唯讀顯示與選用（ADR-0020 第 6 點）。`docs/ui/pages.md` 第 12 節已補修訂說明。
 - V2：push 失敗的分類（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：故事地圖寫「push 失敗時歸類為 `retryable`」，ADR-0010 寫「non-fast-forward 或認證失敗時 `blocked`」。依錯誤種類拆開（VAULT-R9）：網路類 `retryable`，需要使用者處理的 `needs_action`。
 - V3：`git` 的 remote 不經過 netguard（git 自己連線）。載入設定時只檢查 scheme；remote 的主機若解析到私有網段，git 仍然會連線。VPS 上的 vault 通常在公開的 git 服務，風險可以接受；之後要限制再加 `network.allow` 的檢查（DNS rebinding 擋不住）。
-- V4：`pull --ff-only` 會把遠端的新提交帶進 clone，但只會快轉，不產生 merge commit；這和 ADR-0010「不自動 merge」一致。clone 中使用者自己的未提交變更會讓 pull 失敗，歸類為 `needs_action`（同 non-fast-forward 的訊息）。
+- V4：`pull --ff-only` 會把遠端的新提交帶進 clone，但只會快轉，不產生 merge commit；這和 ADR-0010「不自動 merge」一致。只有會被快轉覆蓋的本機變更（遠端新提交也改了同一個檔案）會讓 pull 失敗，歸類為 `needs_action`（同 non-fast-forward 的訊息）；clone 中其他未追蹤或未提交的檔案不影響 pull，也不會被 commit（VAULT-R7）。
 - V5：`fs` vault 的 `path` 不套用 GRD-R7 的 `media_roots` 限制，因為它只能寫在設定檔（和 OUT 的 `folder` 目標不同，`folder` 可以由持有 `ingest` 的 token 指定）。
 - V6：hook 的逾時以真實時間計算（`toolexec` 的 context），場景用 1 秒的逾時與會一直等待的假 hook（`features/internal/fakehook` 的 `--hang`），不用 fake clock。
 - V7：同一部影音同時有 `vault` 與其他輸出目標時，各目標各自判斷略過與擋下；任何一個 `blocked` 時 `publish` 為 `blocked`，已寫入的檔案保留，hook 不執行。

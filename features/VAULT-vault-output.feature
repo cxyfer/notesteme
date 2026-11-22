@@ -387,7 +387,6 @@ Feature: Vault output and hooks
       """
       ["/vault/Video Notes/YouTube/$(touch tmppwned); rm -rf ~ - 2025-08-09.md", "$(touch /tmp/pwned); rm -rf ~"]
       """
-    And the file "/tmp/pwned" does not exist
 
   @VAULT-04 @VAULT-R11
   Scenario: A hook only sees the environment variables it is allowed

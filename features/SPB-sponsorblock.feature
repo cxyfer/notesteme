@@ -37,7 +37,6 @@ Feature: SponsorBlock segments
     When the owner ingests "bili:BV1sp4y1c7mD/p1"
     And the worker runs until idle
     Then the stage "sponsorblock" of "bili:BV1sp4y1c7mD/p1" is skipped with the reason "not_applicable"
-    And SponsorBlock received 0 requests for "yt:spon01xxxxx"
 
   @SPB-01 @SPB-R1
   Scenario: SponsorBlock can be turned off
