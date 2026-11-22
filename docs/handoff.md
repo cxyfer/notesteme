@@ -112,6 +112,13 @@
     - 已知限制（LLM 規格 L14）：chunk／assemble 任務重新讀 title／chapters／description、前一個 chunk fallback 時重疊區仍取前者、驗證重試途中放回佇列時用量不記、TPM 只估輸入、時間上限到時已做的驗證重試作廢（沒有續租）。自訂 provider id 不能存 DB key（services 白名單），只能用環境變數；設定頁還沒有 rpm／tpm 欄位。
     - 審查：S3 推送前有一次只看 diff 的獨立審查，沒有 key 洩漏或 SSRF；修了連線池、租約、上限、重試訊息回灌、`Retry-After` 溢位等 11 項（commit 在 `git log`）。
     - `@M2`：52 passed、32 failed、33 pending。PRM 的 compare／playground（PRM-R6／R7）還沒做（M2 剩餘項目，`estimate_usd` 沒有成本帳本時回 `null`），不是 M4。
+  - M2 S8 OUT sidecar／folder 輸出（直接推送到 master）：
+    - `internal/output`：`Config`（`outputs[]` 每一項的驗證：`target`、`formats`、`lang`、`on_user_change`、folder 的 `path`）、`Writer`（`os.Root` 限制在資料夾內、不跟隨 symlink、`O_EXCL` 暫存檔再硬連結／rename、sha256 防覆蓋）。migration 00014 `outputs` 表（主鍵 `(item_id, path)`，item 刪除時 cascade）；`GET /api/items/{id}/outputs`（`read`），`items show` 列出輸出檔。
+    - 行為：`sidecar` 只用於本機檔案（上傳的副本不寫），寫成 `<影片檔名>.<lang>.<ext>`；非本機檔案時 `publish` 是 `skipped`（`not_applicable`，新的 skipped 原因，steps.md 已同步）；`folder` 路徑走 pathguard（serve：inbox 與 `media_roots`）並排除資料目錄內部；目標檔案沒有紀錄或雜湊不同一律視為使用者的檔案：`save_as_new`（預設）另存 `<名稱> (notesteme YYYY-MM-DD).<ext>`（UTC，同日加序號）、`skip` 則 `blocked(needs_action)`；`bilingual-srt` 檔名多 `.bilingual`；`vault` 目標回「M3 才提供」。
+    - 依 /goal 由 advisor 裁決、待 owner 追認：OUT-R10～R12 三個場景修改 `.feature`（補 `default profile`／`rerun` 帶 `profile`）；沒有紀錄的既有檔案視為使用者的；`path` 同 GRD-R7 的根目錄；sidecar 語言碼用 BCP-47（**待實測 Jellyfin／Plex**）。
+    - 已知限制：`local-sidecar` 來源會把自己輸出的 `lecture.en.srt` 當外掛字幕讀回（要處理得動 `local.go` 的 `listSidecars`）；比對雜湊後、rename 前的小競態；DEL-R9 的 `delete_outputs`／`kept_outputs` 還沒做（`Restoring writes deleted output files again` 目前空洞通過，要等 DEL-R9）。
+    - 審查：獨立的 diff 審查子任務被 OOM 殺掉（機器記憶體吃緊），改由主代理自己讀了 `writer.go` 與 folder 路徑解析，沒有發現問題。
+    - `@M2`：58 passed、26 failed、33 pending。
 - **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，189 passed、2 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
