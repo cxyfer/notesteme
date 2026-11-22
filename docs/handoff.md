@@ -1,6 +1,6 @@
 # 交接：開發進度（M1 與 M2）
 
-> 更新：2026-11-22。PR #1～#19 已合併（LOCAL #13、PODCAST #14、ESTIMATE #15、M2 S0 #16、M2 S1/S2 #17、規格與 `.feature` 修改 #18、M2 S6a #19）。owner 已同意的規格與 `.feature` 修改已完成（第 2 節第 4 點）。**M1 的後端已完成，但 Web UI 與真實樣本驗收還沒做，M1 尚未收尾（第 1 節「M1 尚未收尾」）。**
+> 更新：2026-11-22。PR #1～#19 已合併（LOCAL #13、PODCAST #14、ESTIMATE #15、M2 S0 #16、M2 S1/S2 #17、規格與 `.feature` 修改 #18、M2 S6a #19）；之後依 owner 的 /goal 指示（MVP 階段，不再開 PR）改為每個切片完成後直接推送到 master，commit 在 `git log` 可查：M2 S7（OUT 渲染與匯入）。owner 已同意的規格與 `.feature` 修改已完成（第 2 節第 4 點）。**M1 的後端已完成，但 Web UI 與真實樣本驗收還沒做，M1 尚未收尾（第 1 節「M1 尚未收尾」）。**
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -95,6 +95,14 @@
     - `internal/zhconv`：自己實作的 OpenCC 轉換器（最長詞優先，內嵌 Apache-2.0 的 OpenCC 1.4.2 字典，`scripts/opencc/update.sh` 重新產生），不依賴 GPLv2 的 port；`langtag` 判斷 BCP-47 的文字與地區，決定 `s2t`、`s2twp`、`s2hk`、`t2s`、`tw2sp` 等轉換表。
     - `translate` 步驟的 `opencc` executor（`runTranslateOpenCC`）：中文文字系統轉換不經過 LLM；`zhconv.GlossaryTable` 提供 COR-R4 詞彙表的轉換表，詞彙表的組裝屬於 LLM 切片。
     - `@M2`：20 passed、23 failed、74 pending；TRN「Chinese script conversion uses OpenCC」3 個範例通過，「Localisation runs OpenCC first…」要等 S6b。
+  - M2 S7 OUT 渲染、ASS 樣式與匯入（直接推送到 master，不經 PR）：
+    - `internal/assstyle`：內建樣式 `default`、`translation-top`、`translation-only`、`large`、`boxed`、`minimal`（唯讀）與自訂樣式（migration 00012，`GET/POST/PATCH /api/ass-styles`、`/{id}`、`/import`），字型依目標語言文字系統帶入（OUT-R7）。
+    - `internal/subtitle`：ASS 解析與渲染、雙語輸出（`format=ass|bilingual-srt&style=`；同語言一律單語，回應標頭 `X-Notesteme-Bilingual`）、匯入解析（SRT／VTT／ASS，不可信輸入有 fuzz）。
+    - 匯入：`POST /api/items/{id}/subtitles/import`（`path` 或 `content`；`path` 只收字幕副檔名、解析 symlink 之後才檢查、不受 GRD-R7 限制）存成 `edited` 變體（`executor: human`），既有譯文標示過時；CLI `export --format ass`、`import <subtitle> --item`。
+    - 預覽：`POST /api/ass-styles/preview`（scope `ingest`，ffmpeg + libass，沒有影片時用 1280x720 合成畫布；同時 2 個、逾時 30 秒）。本機沒有真的 libass，只用假 ffmpeg 與單元測試驗證，**要在有 libass 的環境手動跑一次**。
+    - harness：假 ffmpeg 的預覽模式、請求 body 的 `/tmp/<x>` 對應到場景根目錄（`steps.md` 第 4 節）；順手修了 `TestFFmpegSilencedetect` 的 flaky 斷言（暫存目錄的隨機數字可能含 "100"）。
+    - **依 /goal 由 advisor 裁決、待 owner 追認**：OUT-R5 同語言場景最後一步改成斷言標頭（已改 `.feature`）；`path` 匯入不受 GRD-R7 限制；預覽 scope 改 `ingest`；M2 路由 scope（讀取 `read`、寫入 `admin`，settings 維持 `admin`）。記在 OUT、AUTH 規格的待決問題。
+    - `@M2`：31 passed、23 failed、63 pending（OUT 剩 R10～R12 的 S8 與 MCP 的 `import_transcript`）。
 - **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，188 passed、3 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
@@ -129,7 +137,7 @@
 
 ## 2. 下一步
 
-切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC → LOCAL → PODCAST → ESTIMATE → M2 S0 骨架 → M2 S1 PRF＋S2 PRM → 規格修改 → M2 S6a TRN OpenCC（PR #1～#19，全部已合併）。下一步是 S7 OUT 渲染，再到 S3 LLM 核心；Web UI 切片的排入時機待 owner 決定（第 7 節）。
+切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC → LOCAL → PODCAST → ESTIMATE → M2 S0 骨架 → M2 S1 PRF＋S2 PRM → 規格修改 → M2 S6a TRN OpenCC（PR #1～#19，全部已合併）→ M2 S7 OUT 渲染與匯入（直接推送到 master）。下一步是 S3 LLM 核心（含最小的 `correct` 步驟與 wire 契約 ADR），再到並行的 S4 COR、S5 SEG、S6b TRN LLM（有 `edited` 時以它為輸入，見 TRN 規格）、S8 OUT publish；Web UI 切片的排入時機待 owner 決定（第 7 節）。**工作方式（owner 的 /goal，2026-11-22）**：MVP 階段不再開 PR，每個切片在 `.worktrees/<slug>` 的分支完成後 rebase 到 origin/master 直接 `git push origin HEAD:master`；需要決策時問 advisor，決定記在規格的待決問題並標「待 owner 追認」；推送後確認 master 的 CI 是綠的。
 
 接下來：
 
