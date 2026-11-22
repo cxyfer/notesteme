@@ -44,6 +44,7 @@ go run ./internal/api/cmd/openapi -o internal/api/openapi.json          # 否則
 - rebase 到 origin/master 之後，如果 master 上有其他切片改了路由，要再重產一次上面兩個檔案（快照有衝突時直接重產，不要手動合併）。
 
 - **不能有任何原本 passed 的場景退步**：用 `go test -v ./features -run TestFeatures -godog.tags='@M2' -godog.format=junit > old.xml` 輸出 `@M2` 的逐場景結果（**要加 `-v`**：全部通過時沒有 `-v` 會是空的 XML；輸出前面有 `=== RUN` 行，解析時從 `<testsuites` 開始切），與切片開始前的基準逐一比對。預設 tag 已涵蓋 `@M1` 與 `@M2`，`go test ./features -run TestFeatures` 跑的就是全部 308 個。
+- **M3 的逐場景比對**（M3-S0 起，每個 M3 切片都要做）：開工前在乾淨的分支上存 `@M3` 的基準 `go test -v ./features -run TestFeatures -godog.tags='@M3' -godog.format=junit > m3-before.xml`，交付前再存一次 `m3-after.xml`，從 `<testsuites` 開始解析，逐一比對每個 `<testcase>` 的 `status`（同名場景依出現順序加序號）與第一個非 passed 步驟的訊息。報告列出：由 pending 變 passed 的場景（目標）、仍為 pending 的場景與停在哪個步驟、**任何變成 failed 或 undefined 的場景**（閘門句型共用，實作一個閘門之後其他領域的場景可能往下跑到還沒實作的 M3 設定而失敗；這不一定是退步，但每一個都要說明原因，並確認不是預設 tag 的退步）。預設 tag 的 308 個場景另外比對，一個都不能退步。
 - 變異測試：挑 5～10 個關鍵檢查暫時破壞，確認對應場景或單元測試會變紅，再還原。
 - 不可信輸入的解析器要有單元測試與 fuzz。
 
