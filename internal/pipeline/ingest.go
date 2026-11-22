@@ -339,7 +339,21 @@ func (p *Pipeline) expandParts(ctx context.Context, t source.Target, want []int)
 // insertStageTask 為步驟建立任務。transcriptASR 的意義見 resourceClass；不知道字幕軌時傳 false。
 // run.Executor 是 agent 時，任務的 executor 也是 agent：內建 worker 只領 builtin 的任務，不會執行它（AGT-R1、ADR-0004）。
 func insertStageTask(ctx context.Context, r *store.Repo, itemID string, run store.StageRun, priority int, transcriptASR bool) (store.Task, error) {
-	payload, err := json.Marshal(map[string]string{"item_id": itemID})
+	return insertStageTaskChunks(ctx, r, itemID, run, priority, transcriptASR, nil)
+}
+
+// insertStageTaskChunks 同 insertStageTask；LLM 步驟走 api 時建立的是協調（plan）任務：local 資源類別，
+// chunk 任務由它建立（見 llm.go）。chunks 是要強制重跑的 chunk（LLM-R8），只用於這種任務。
+func insertStageTaskChunks(ctx context.Context, r *store.Repo, itemID string, run store.StageRun, priority int, transcriptASR bool, chunks []int) (store.Task, error) {
+	class := resourceClass(run.Stage, run.Executor, transcriptASR)
+	var payload []byte
+	var err error
+	if usesLLMEngine(run.Stage, run.Executor) {
+		class = queue.ResourceLocal
+		payload, err = json.Marshal(llmPayload{ItemID: itemID, Phase: llmPhasePlan, Chunks: chunks})
+	} else {
+		payload, err = json.Marshal(map[string]string{"item_id": itemID})
+	}
 	if err != nil {
 		return store.Task{}, err
 	}
@@ -349,7 +363,7 @@ func insertStageTask(ctx context.Context, r *store.Repo, itemID string, run stor
 	}
 	return r.InsertTask(ctx, store.NewTask{
 		StageRunID: run.ID, Kind: run.Stage, Executor: executor,
-		ResourceClass: resourceClass(run.Stage, run.Executor, transcriptASR), Priority: priority, Payload: payload,
+		ResourceClass: class, Priority: priority, Payload: payload,
 		MaxAttempts: queue.DefaultMaxAttempts,
 	})
 }

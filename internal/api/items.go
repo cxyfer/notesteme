@@ -555,7 +555,7 @@ type rerunInput struct {
 		Overrides map[string]any `json:"overrides,omitempty" doc:"這次重跑的單次覆寫"`
 		Until     string         `json:"until,omitempty" doc:"做到哪個步驟為止（含）；沒有指定時做到最後"`
 		Profile   string         `json:"profile,omitempty" doc:"這次重跑改用的處理方案；沒有指定時用影音目前的處理方案的最新版本（PRF-R3）；不存在回 422"`
-		Chunks    []int          `json:"chunks,omitempty" doc:"只重跑這些 chunk，從 1 起算（尚未實作，回 501）"`
+		Chunks    []int          `json:"chunks,omitempty" doc:"只重新送出這些 chunk，從 1 起算，其他 chunk 重用快取（LLM-R8）；只能用在 LLM 步驟，否則回 422"`
 	}
 }
 
@@ -569,8 +569,6 @@ func (rt *routes) rerun(ctx context.Context, in *rerunInput) (*rerunOutput, erro
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}
-	// chunks 的功能屬於 M2 之後的切片（依 chunk 重跑）：pipeline 回 501（不是 422），
-	// 而且是在驗證步驟名稱之後、讀取影音之前，不動任何資料。
 	d, err := rt.d.Pipeline.Rerun(ctx, in.ID, pipeline.RerunRequest{From: in.Body.From, Overrides: in.Body.Overrides, Until: in.Body.Until,
 		Profile: in.Body.Profile, Chunks: in.Body.Chunks})
 	if err != nil {

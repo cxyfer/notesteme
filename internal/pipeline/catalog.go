@@ -37,4 +37,6 @@ type ResolvedPrompt struct {
 	Kind    string
 	Version int
 	SHA256  string
+	// Body 是版本的內文；執行 LLM 步驟時用來組 prompt（快照只記版本與 sha256）。
+	Body string
 }

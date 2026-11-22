@@ -243,7 +243,9 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 		UsedBy: func(ctx context.Context, id string) ([]string, error) { return pl.PromptUsers(ctx, id) },
 	})
 	s.assStyles = assstyle.New(s.store)
-	deps.Providers, deps.Prompts = pipeline.BuiltinProviders{}, promptResolver{s.prompts}
+	// LLM provider：內建的加上設定檔 llm.providers 的；同一個 Registry 也回答處理方案驗證的「provider 存在嗎」（PRF-R4）。
+	deps.LLM = s.llmRegistry(env, cfg, deps.HTTP)
+	deps.Providers, deps.Prompts = deps.LLM, promptResolver{s.prompts}
 	pl = pipeline.New(deps)
 	s.pipeline = pl
 	s.worker = worker.New(s.queue, s.pipeline, env.Clock, log)

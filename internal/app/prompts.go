@@ -27,5 +27,5 @@ func (a promptResolver) ResolvePrompt(ctx context.Context, ref string) (pipeline
 		}
 		return pipeline.ResolvedPrompt{}, err
 	}
-	return pipeline.ResolvedPrompt{ID: r.ID, Kind: r.Kind, Version: r.Version, SHA256: r.SHA256}, nil
+	return pipeline.ResolvedPrompt{ID: r.ID, Kind: r.Kind, Version: r.Version, SHA256: r.SHA256, Body: r.Body}, nil
 }

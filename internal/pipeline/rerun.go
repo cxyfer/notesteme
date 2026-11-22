@@ -2,10 +2,12 @@ package pipeline
 
 import (
 	"context"
+	"fmt"
 	"slices"
 
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/validate"
 )
 
 // RerunRequest 是重跑的請求（POST /api/items/:id/rerun）。
@@ -19,7 +21,8 @@ type RerunRequest struct {
 	// Profile 是這次重跑改用的處理方案（PRF-R3）；空字串代表沿用影音記錄的處理方案（最新版本）。
 	// 處理方案不存在時回 *InvalidError（path 為 profile）。
 	Profile string
-	// Chunks 只重跑這些 chunk（LLM-R8，從 1 起算）；有值時回 *NotImplementedError，依 chunk 重跑屬於 M2 的 LLM 切片。
+	// Chunks 只重新送出這些 chunk（LLM-R8，從 1 起算）：其他 chunk 重用相同輸入的結果，這些 chunk 一律重新送出。
+	// 只能用在 LLM 步驟（From 是 segment、correct 或 translate），否則回 *InvalidError；超出 chunk 數的編號不會有作用。
 	Chunks []int
 }
 
@@ -34,7 +37,8 @@ type RerunRequest struct {
 // 這個步驟還沒有實作時回 501，而且什麼都不寫（ADR-0015）。
 //
 // 錯誤：store.ErrNotFound、*InTrashError（影音在垃圾桶中，DEL-R1）、*InvalidError（步驟名稱或設定不正確）、
-// *NotImplementedError（plannedStages、Chunks，或要執行的步驟還沒有實作）。
+// *NotImplementedError（plannedStages，或要執行的步驟還沒有實作）。
+// Chunks 只能用在 LLM 步驟；步驟不是用 api executor 時不使用。
 func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (Detail, error) {
 	switch {
 	case ValidStage(req.From):
@@ -53,7 +57,14 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 	}
 
 	if len(req.Chunks) > 0 {
-		return Detail{}, &NotImplementedError{What: "只重跑指定的 chunk"}
+		if !IsLLMStage(req.From) {
+			return Detail{}, invalidFields([]validate.FieldError{{Path: "chunks", Message: "chunks 只能用在 LLM 步驟（segment、correct、translate）。"}})
+		}
+		for i, c := range req.Chunks {
+			if c < 1 {
+				return Detail{}, invalidFields([]validate.FieldError{{Path: fmt.Sprintf("chunks[%d]", i), Message: "chunk 必須是從 1 起算的整數。"}})
+			}
+		}
 	}
 	if err := p.validateOverrides(ctx, req.Overrides); err != nil {
 		return Detail{}, err
@@ -102,6 +113,9 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		}
 		if last := chain[len(chain)-1]; !last.Skip && !stageImplemented(last.Stage, last.Executor) {
 			return nil, &NotImplementedError{What: "步驟 " + last.Stage + "／" + last.Executor}
+		}
+		if len(req.Chunks) > 0 && chain[0].Stage == req.From {
+			chain[0].Chunks = slices.Clone(req.Chunks)
 		}
 		return chain, nil
 	}

@@ -57,6 +57,10 @@ type result struct {
 	// afterDiscard 在結果沒有寫入時執行（過期、租約失效、ctx 取消或寫回失敗），
 	// 用來刪掉這次執行已暫存、沒有任何記錄會指向的檔案（例如 podcast 剛下載的音檔）。
 	afterDiscard func()
+	// keepState 為 true 時不改寫步驟狀態（LLM 步驟的 plan 與 chunk 任務：步驟要等所有 chunk 完成才有結果）。
+	keepState bool
+	// inTx 在寫回的交易中、任務狀態寫入之後執行（例如寫入 chunk 的結果、建立下一個任務）；回傳 true 代表建立了任務，要喚醒 worker。
+	inTx func(ctx context.Context, r *store.Repo) (wake bool, err error)
 }
 
 // discard 執行 afterDiscard（有設定的話）。
@@ -148,6 +152,8 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		res, err = p.runNormalize(ctx, it)
 	case run.Stage == StageTranslate && executor == ExecutorOpenCC:
 		res, err = p.runTranslateOpenCC(ctx, it, eff)
+	case usesLLMEngine(run.Stage, executor):
+		res, err = p.runLLM(ctx, t, run, it, eff)
 	default:
 		err = &errclass.Error{Class: errclass.ClassPermanent, Source: "pipeline", Detail: "不認識的步驟 " + run.Stage}
 	}
@@ -238,14 +244,29 @@ func (p *Pipeline) classify(t store.Task, err error) result {
 		}
 		return result{task: taskFailed, state: st}
 	case errclass.ClassWait:
-		// wait 類的錯誤由執行者自己決定何時再檢查（見 runMetadata）；走到這裡代表沒有指定時間，稍後再試且不計入次數。
-		at := p.clock.Now().Add(queue.WaitRecheckDefault)
+		// wait 類的錯誤由執行者自己決定何時再檢查（見 runMetadata）；走到這裡時用錯誤指定的等待時間（例如 LLM 的限流，LLM-R7），
+		// 沒有指定就用預設值。稍後再試且不計入次數。
+		d, msg := queue.WaitRecheckDefault, "還沒有結果，稍後會再檢查。"
+		var ce *errclass.Error
+		if errors.As(err, &ce) {
+			if ce.RetryAfter > 0 {
+				d = ce.RetryAfter
+			}
+			if ce.Message != "" {
+				msg = ce.Message
+			}
+		}
+		at := p.clock.Now().Add(d)
 		return result{task: taskRequeue, notBefore: &at, countAttempt: false, state: store.StageState{
-			Status: store.StatusWaiting, ErrorClass: string(class), Message: "還沒有結果，稍後會再檢查。", NotBefore: &at,
+			Status: store.StatusWaiting, ErrorClass: string(class), Message: msg, NotBefore: &at,
 		}}
 	}
-	// retryable：指數退避，次數用盡後失敗（PIPE-R3）。
+	// retryable：指數退避，次數用盡後失敗（PIPE-R3）。來源指定了 Retry-After 時依它（LLM-R6）。
 	if d, ok := queue.RetryDelay(t.Attempts, t.MaxAttempts); ok {
+		var ce *errclass.Error
+		if errors.As(err, &ce) && ce.RetryAfter > 0 {
+			d = ce.RetryAfter
+		}
 		at := p.clock.Now().Add(d)
 		return result{task: taskRequeue, notBefore: &at, countAttempt: true, state: store.StageState{
 			Status: store.StatusPending, ErrorClass: string(class), Message: "暫時失敗，系統會自動重試。", NotBefore: &at,
@@ -341,8 +362,10 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 			wake = true
 			return nil
 		}
-		if err := r.SetStageState(ctx, run.ID, res.state); err != nil {
-			return err
+		if !res.keepState {
+			if err := r.SetStageState(ctx, run.ID, res.state); err != nil {
+				return err
+			}
 		}
 		switch res.task {
 		case taskDone:
@@ -353,11 +376,25 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 			if err := r.FailTask(ctx, t.ID, t.LeaseToken); err != nil {
 				return err
 			}
+			if t.ChunkIndex != nil {
+				// 一個 chunk 讓步驟停下（blocked、failed）：同一個步驟其他還沒領取的 chunk 不再執行，
+				// 否則下一次領取會把步驟改回 running，蓋掉 blocked 的訊息與動作。
+				if _, err := r.CancelPendingTasks(ctx, []string{run.ID}); err != nil {
+					return err
+				}
+			}
 		case taskRequeue:
 			if err := r.RequeueTask(ctx, t.ID, t.LeaseToken, res.notBefore, res.countAttempt); err != nil {
 				return err
 			}
 			wake = true
+		}
+		if res.inTx != nil {
+			w, err := res.inTx(ctx, r)
+			if err != nil {
+				return err
+			}
+			wake = wake || w
 		}
 		if res.advance {
 			// metadata 完成、頻道確定之後，把頻道層併進同一批還沒開始的下游步驟（D6）。

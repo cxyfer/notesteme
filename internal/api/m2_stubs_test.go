@@ -152,9 +152,8 @@ func pathMatches(tmpl, path string) bool {
 	return true
 }
 
-// rerun 帶 chunks：501 not_implemented（不是 422），而且沒有新增 stage run。
-// profile 已經由 PRF 切片實作，不再是 501。
-func TestRerunChunksNotImplemented(t *testing.T) {
+// rerun 帶 chunks（LLM-R8，S3 實作）：用在不是 LLM 的步驟時 422 invalid_request，而且影音沒有變動。
+func TestRerunChunksOnlyForLLMStages(t *testing.T) {
 	r := newItemsRig(t)
 	id := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123xxxxx"}`)).Items[0].ID
 	if err := r.worker.RunUntilIdle(context.Background()); err != nil {
@@ -166,12 +165,12 @@ func TestRerunChunksNotImplemented(t *testing.T) {
 		`{"from":"normalize","profile":"default","chunks":[1]}`,
 	} {
 		rec := r.owner("POST", "/api/items/"+id+"/rerun", body)
-		if e := decodeError(t, rec.Body.Bytes()); rec.Code != http.StatusNotImplemented || e.Code != CodeNotImplemented {
-			t.Errorf("%s = %d %s，預期 501 not_implemented", body, rec.Code, rec.Body)
+		if e := decodeError(t, rec.Body.Bytes()); rec.Code != http.StatusUnprocessableEntity || e.Code != CodeInvalidInput {
+			t.Errorf("%s = %d %s，預期 422 invalid_request", body, rec.Code, rec.Body)
 		}
 	}
 	if after := r.owner("GET", "/api/items/"+id, "").Body.String(); after != before {
-		t.Errorf("501 之後影音不應有變動：\n前 %s\n後 %s", before, after)
+		t.Errorf("422 之後影音不應有變動：\n前 %s\n後 %s", before, after)
 	}
 	// 沒帶 profile、chunks 的重跑照常。
 	if rec := r.owner("POST", "/api/items/"+id+"/rerun", `{"from":"normalize"}`); rec.Code != http.StatusAccepted {

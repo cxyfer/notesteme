@@ -207,11 +207,9 @@ func TestRerunNotImplementedWritesNothing(t *testing.T) {
 	}{
 		{"summary", RerunRequest{From: "summary"}},
 		{"frames.select", RerunRequest{From: "frames.select"}},
-		{"overrides 指定了 provider", RerunRequest{From: StageCorrect, Overrides: stagesOver("correct", map[string]any{"provider": "anthropic", "model": "m1"})}},
+		{"segment 用 api", RerunRequest{From: StageSegment, Overrides: stagesOver("segment", map[string]any{"provider": "anthropic", "model": "m1"})}},
 		{"translate 用 api", RerunRequest{From: StageTranslate, Overrides: stagesOver("translate", map[string]any{"provider": "anthropic", "model": "m1"})}},
 		{"publish 有 outputs", RerunRequest{From: StagePublish, Overrides: map[string]any{"outputs": []any{map[string]any{"target": "sidecar", "formats": []any{"srt"}}}}}},
-		{"Chunks", RerunRequest{From: StageCorrect, Chunks: []int{2}}},
-		{"M1 步驟加 Chunks", RerunRequest{From: StageNormalize, Chunks: []int{1}}},
 	}
 	for _, tt := range tests {
 		if _, err := r.p.Rerun(ctx, it.ID, tt.req); !errors.As(err, &ni) {
@@ -219,6 +217,16 @@ func TestRerunNotImplementedWritesNothing(t *testing.T) {
 		}
 		if r1, t1, e1 := count(); r1 != r0 || t1 != t0 || e1 != e0 {
 			t.Errorf("%s：501 之後 stage run %d → %d、任務 %d → %d、事件 %d → %d", tt.name, r0, r1, t0, t1, e0, e1)
+		}
+	}
+	// chunks 只能用在 LLM 步驟、從 1 起算：422，同樣什麼都不寫。
+	var inv *InvalidError
+	for _, req := range []RerunRequest{{From: StageNormalize, Chunks: []int{1}}, {From: StageCorrect, Chunks: []int{0}}} {
+		if _, err := r.p.Rerun(ctx, it.ID, req); !errors.As(err, &inv) {
+			t.Errorf("%+v：err = %v，預期 *InvalidError", req, err)
+		}
+		if r1, t1, e1 := count(); r1 != r0 || t1 != t0 || e1 != e0 {
+			t.Errorf("%+v：422 之後 stage run %d → %d、任務 %d → %d、事件 %d → %d", req, r0, r1, t0, t1, e0, e1)
 		}
 	}
 	if now, _ := r.st.Read().ItemByID(ctx, it.ID); now.UntilStage != until.UntilStage {

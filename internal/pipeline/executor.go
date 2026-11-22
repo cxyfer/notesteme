@@ -31,6 +31,8 @@ type StageResolution struct {
 	// Wanted 只在 translate 有值：這份設定要求產生譯文的目標語言（正規化後，不含與原文相同的）。
 	// translate 被略過時，不在其中的現行 translated 產出要撤下（applyChain）。
 	Wanted []string
+	// Chunks 是重跑時只重新送出的 chunk（POST /rerun 的 chunks，LLM-R8）；只用於重跑的起點步驟。
+	Chunks []int
 }
 
 // ResolveExecutor 依步驟與生效設定決定執行方式。純函式：不讀 DB、不讀時鐘。
@@ -133,7 +135,8 @@ func stageImplemented(stage, executor string) bool {
 	case stage == StageTranslate && executor == ExecutorOpenCC:
 		return true
 	case IsLLMStage(stage):
-		return executor == ExecutorAgent
+		// api：有登記在 llmStages 的步驟（S3 只有 correct）。
+		return executor == ExecutorAgent || usesLLMEngine(stage, executor)
 	}
 	return false
 }
@@ -172,7 +175,7 @@ func (p *Pipeline) applyChain(ctx context.Context, r *store.Repo, itemID string,
 			continue
 		}
 		run.Executor = res.Executor
-		if _, err := insertStageTask(ctx, r, itemID, run, priority, transcriptASR); err != nil {
+		if _, err := insertStageTaskChunks(ctx, r, itemID, run, priority, transcriptASR, res.Chunks); err != nil {
 			return created, err
 		}
 		if res.Executor == ExecutorAgent {

@@ -1,0 +1,178 @@
+package pipeline
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"regexp"
+	"strconv"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/llm"
+	"github.com/cxyfer/notesteme/internal/queue"
+	"github.com/cxyfer/notesteme/internal/source/youtube"
+	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/subtitle"
+	"github.com/cxyfer/notesteme/internal/worker"
+)
+
+// staticPrompts 是 PromptResolver 的替身：每個引用都解析成同一個第 1 版。
+type staticPrompts struct{}
+
+func (staticPrompts) ResolvePrompt(_ context.Context, ref string) (ResolvedPrompt, error) {
+	id, _ := splitPromptRef(ref)
+	return ResolvedPrompt{ID: id, Kind: StageCorrect, Version: 1, SHA256: "sha-v1", Body: "只修正錯字。{{title}}"}, nil
+}
+
+var chunkRE = regexp.MustCompile(`"chunk":(\d+)`)
+
+// chunkLLM 是依 chunk 編號回答的假 provider：behave[chunk] 是 "echo"（預設）、"drop"（少一句）或 "404"。
+type chunkLLM struct {
+	mu     sync.Mutex
+	behave map[int]string
+	calls  []int
+}
+
+func (f *chunkLLM) Complete(_ context.Context, req llm.Request) (llm.Response, error) {
+	m := chunkRE.FindStringSubmatch(req.Data)
+	n, _ := strconv.Atoi(m[1])
+	f.mu.Lock()
+	f.calls = append(f.calls, n)
+	b := f.behave[n]
+	f.mu.Unlock()
+	if b == "404" {
+		return llm.Response{}, &errclass.Error{Class: errclass.ClassNeedsAction, Source: "llm", Message: "模型 m 已停用或不存在。", Actions: []string{llm.ActionChangeModel}}
+	}
+	var data struct {
+		Cues []llm.Cue `json:"cues"`
+	}
+	raw := req.Data[len(llm.DataOpen) : len(req.Data)-len(llm.DataClose)]
+	if err := json.Unmarshal([]byte(raw), &data); err != nil {
+		return llm.Response{}, err
+	}
+	if b == "drop" {
+		data.Cues = data.Cues[:len(data.Cues)-1]
+	}
+	for i := range data.Cues {
+		data.Cues[i].Text += "!"
+	}
+	out, _ := json.Marshal(data)
+	return llm.Response{Output: out}, nil
+}
+
+func (f *chunkLLM) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
+}
+
+// newLLMRig 建立 llm 並行數為 1 的 rig（請求依 chunk 順序），影音已有 4 句的 segmented，每句一個 chunk。
+func newLLMRig(t *testing.T, fake *chunkLLM) (*rig, store.Item) {
+	t.Helper()
+	clk := clock.NewFake(time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC))
+	dir := t.TempDir()
+	st, err := store.Open(context.Background(), dir, clk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	yt := &fakeYT{cues: 4, info: youtube.Info{ID: "abc123xxxxx", Title: "T", Language: "en"}}
+	q := queue.New(st, clk, "w1")
+	q.Control().SetCap(queue.ResourceLLM, 1)
+	reg := llm.NewRegistry(nil, clk)
+	reg.Env = map[string]string{llm.KeyEnvVar("anthropic"): "k"}
+	reg.NewClient = func(llm.ProviderConfig, string) llm.Client { return fake }
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	p := New(Deps{Store: st, Clock: clk, DataDir: dir, Log: log, YouTube: yt, Wake: q.Wake, Version: "test", Prompts: staticPrompts{}, LLM: reg})
+	r := &rig{t: t, p: p, st: st, clk: clk, w: worker.New(q, p, clk, log), yt: yt, dir: dir}
+	over := map[string]any{
+		"stages": map[string]any{"correct": map[string]any{"executor": "api", "provider": "anthropic", "model": "m", "prompt": "correct-default"}},
+		"llm":    map[string]any{"chunk": map[string]any{"max_tokens": 1, "overlap_cues": 0, "context_cues": 1}, "max_validation_retries": 1},
+	}
+	it := r.ingest(watch, over, "normalize")
+	r.run()
+	seedVariant(t, r, it, subtitle.VariantSegmented, "en", "a", "b", "c", "d")
+	return r, it
+}
+
+func rerunCorrect(t *testing.T, r *rig, it store.Item, chunks ...int) {
+	t.Helper()
+	if _, err := r.p.Rerun(context.Background(), it.ID, RerunRequest{From: StageCorrect, Until: StageCorrect, Chunks: chunks}); err != nil {
+		t.Fatalf("Rerun：%v", err)
+	}
+	r.run()
+}
+
+// LLM-R5、R8：退回的 chunk 記在 fallbacks；產出不寫入步驟層的快取鍵，所以不指定 chunks 的重跑也只重新送出退回的 chunk，
+// 之後全部通過時步驟層的快取命中，不再呼叫 provider。
+func TestLLMFallbackIsRetriedOnPlainRerun(t *testing.T) {
+	fake := &chunkLLM{behave: map[int]string{2: "drop"}}
+	r, it := newLLMRig(t, fake)
+	rerunCorrect(t, r, it)
+	st := latestStage(t, r, it.ID, StageCorrect)
+	if st.Status != store.StatusDone || st.CacheKey != "" {
+		t.Fatalf("有退回時步驟 done、沒有快取鍵：%+v", st)
+	}
+	// chunk 1、3、4 各 1 次，chunk 2 是 1 + 1 次重試。
+	if n := fake.callCount(); n != 5 {
+		t.Fatalf("請求數 = %d，預期 5（%v）", n, fake.calls)
+	}
+	art, _ := r.st.Read().Artifact(context.Background(), st.ArtifactID)
+	var prov struct {
+		Fallbacks []struct {
+			Chunk  int
+			Reason string
+		}
+	}
+	_ = json.Unmarshal(art.Provenance, &prov)
+	if len(prov.Fallbacks) != 1 || prov.Fallbacks[0].Chunk != 2 || prov.Fallbacks[0].Reason != llm.ReasonCueCount {
+		t.Errorf("fallbacks = %+v", prov.Fallbacks)
+	}
+	tr, _ := readTranscript(r.dir, art.Path, art.SHA256)
+	if got := []string{tr.Cues[0].Text, tr.Cues[1].Text, tr.Cues[2].Text}; got[0] != "a!" || got[1] != "b" || got[2] != "c!" {
+		t.Errorf("退回的 chunk 用原文、其他用輸出：%v", got)
+	}
+
+	fake.mu.Lock()
+	fake.behave = map[int]string{}
+	fake.mu.Unlock()
+	rerunCorrect(t, r, it)
+	if n := fake.callCount(); n != 6 {
+		t.Fatalf("一般重跑只重新送出退回的 chunk：請求數 = %d，預期 6（%v）", n, fake.calls)
+	}
+	if st := latestStage(t, r, it.ID, StageCorrect); st.Status != store.StatusDone || st.CacheKey == "" {
+		t.Fatalf("全部通過時寫入步驟層的快取鍵：%+v", st)
+	}
+	rerunCorrect(t, r, it)
+	if n := fake.callCount(); n != 6 {
+		t.Errorf("步驟層的快取命中時不呼叫 provider：請求數 = %d", n)
+	}
+	// 指定的 chunk 兩層快取都繞過。
+	rerunCorrect(t, r, it, 3)
+	if n := fake.callCount(); n != 7 || fake.calls[6] != 3 {
+		t.Errorf("chunks: [3] 只重新送出 chunk 3：%v", fake.calls)
+	}
+}
+
+// 一個 chunk 讓步驟 blocked 時，其他還沒領取的 chunk 取消，不會把步驟改回 running 而蓋掉訊息與動作。
+func TestLLMBlockedChunkCancelsSiblings(t *testing.T) {
+	fake := &chunkLLM{behave: map[int]string{1: "404"}}
+	r, it := newLLMRig(t, fake)
+	rerunCorrect(t, r, it)
+	if n := fake.callCount(); n != 1 {
+		t.Errorf("blocked 之後不再送出其他 chunk：%v", fake.calls)
+	}
+	st := latestStage(t, r, it.ID, StageCorrect)
+	if st.Status != store.StatusBlocked || st.BlockReason != "needs_action" || st.Message != "模型 m 已停用或不存在。" ||
+		len(st.Actions) != 1 || st.Actions[0] != llm.ActionChangeModel {
+		t.Errorf("步驟 = %+v", st)
+	}
+	if n, _ := r.st.Read().CountTasks(context.Background(), store.TaskPending); n != 0 {
+		t.Errorf("還有 %d 個 pending 任務", n)
+	}
+}
