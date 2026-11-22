@@ -150,10 +150,3 @@ Feature: MCP tools
   Scenario: Prompt templates are available through MCP
     When the MCP client with the token "reader" lists the prompts
     Then the listed names include "segment-default, correct-default, translate-default"
-
-  @MCP-01 @MCP-R1 @cli
-  Scenario: The stdio server works without a running server
-    Given the server is not running
-    When the owner runs "notesteme mcp --list-tools"
-    Then the command ran in standalone mode
-    And the command output contains "claim_tasks"

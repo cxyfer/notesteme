@@ -140,7 +140,7 @@ Feature: Prompt library
     And the LLM provider "anthropic" answers "correct" with "correct-echo"
     When the owner sends "POST /api/prompts/my-correct/compare" with:
       """
-      { "a": 1, "b": 2, "item": "yt:talk01xxxxx", "from": "00:00:00", "to": "00:01:00" }
+      { "a": 1, "b": 2, "item": "yt:talk01xxxxx", "from": "00:00:00", "to": "00:01:00", "provider": "anthropic", "model": "fixture-model" }
       """
     Then the response contains:
       """
