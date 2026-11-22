@@ -14,7 +14,10 @@ Client UI（`web/client`）與之後的 Hub UI（`web/hub`，M5）共用的元�
 
 ### StatusBand（`src/StatusBand.tsx`、`src/status-band.css`）
 
-時間帶的步驟帶（design-language.md §6.1）。UI-1 只有精簡版（`variant="compact"`）：24px 底軌（還不知道說話密度時畫一條點狀基線）加上每個步驟一條 3px 帶子，用在媒體庫的列。
+時間帶的步驟帶（design-language.md §6.1）。
+
+- 精簡版（`variant="compact"`，UI-1）：24px 底軌（還不知道說話密度時畫一條點狀基線）加上每個步驟一條 3px 帶子，用在媒體庫的列，`role="img"`。
+- 完整版（`variant="full"`，UI-2）：72px 底軌、時間刻度、6px 步驟帶與右側逐列對齊的文字標籤、播放頭、處理範圍（running／failed 的 segments 淡淡標在底軌）。整條是 `role="slider"`：`aria-valuetext` 是時間碼，←／→（與 ↑／↓）移動 `stepS` 秒、PageUp／PageDown 移動 6 倍、Home／End 到頭尾；點擊跳到該時間；hover 顯示時間碼與 `describeTime` 的說明。沒有長度時 `aria-disabled`。
 
 | prop        | 型別                     | 說明                                                                                                                                                                                         |
 | ----------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -23,7 +26,21 @@ Client UI（`web/client`）與之後的 Hub UI（`web/hub`，M5）共用的元�
 | `durationS` | `number \| null`         | 影音長度（秒）；畫 `segments` 時需要，沒有時整條用 `stage.status`                                                                                                                            |
 | `segments`  | `{ from, to, status }[]` | 依時間範圍的細分（例如 LLM 的 chunk，秒）；超出範圍的部分裁掉                                                                                                                                |
 | `track`     | `ReactNode`              | 底軌上的內容（UI-2 的說話密度、章節）                                                                                                                                                        |
-| `variant`   | `"compact"`              | UI-2 加入 `"full"`（72px 底軌、刻度、播放頭、`role="slider"`）                                                                                                                               |
+| `variant`   | `"compact" \| "full"`    | 預設 `compact`                                                                                                                                                                               |
+
+完整版另外的 props（compact 忽略）：
+
+| prop           | 型別                    | 說明                                                                |
+| -------------- | ----------------------- | ------------------------------------------------------------------- |
+| `position`     | `number`                | 播放頭（秒）                                                        |
+| `onSeek`       | `(seconds) => void`     | 點擊或按鍵移動播放頭；值已限制在 `[0, durationS]`                   |
+| `formatTime`   | `(seconds) => string`   | 時間碼格式（刻度、`aria-valuetext`、hover）；web/shared 不依賴 i18n |
+| `valueText`    | `(formatted) => string` | `aria-valuetext` 的完整文字，例如「播放位置 01:05」                 |
+| `describeTime` | `(seconds) => string`   | hover 的說明（例如那個時間點的字幕句）；空字串不顯示                |
+| `describeLang` | `string`                | 說明的內容語言，設在元素的 `lang`                                   |
+| `stepS`        | `number`                | 方向鍵的秒數，預設 5                                                |
+
+還沒做（API 沒有資料）：章節線與 `Shift + ←／→` 跳章節、拖曳選取範圍、說話密度、畫面刻度。
 
 每種狀態的紋理不同（實心、虛線、長虛線、點線、斜線紋），不只靠顏色；`prefers-reduced-motion` 時「顯影」改成靜態斜線紋。
 

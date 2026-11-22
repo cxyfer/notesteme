@@ -136,3 +136,134 @@
     transition: none;
   }
 }
+
+/*
+ * 完整版（variant="full"，詳情頁頂部）：72px 底軌、時間刻度、6px 步驟帶與右側 112px 的逐列標籤、播放頭。
+ * 步驟帶每列 16px 高（帶子 6px 置中），標籤用同樣的列高才能逐列對齊。
+ */
+.sband--full {
+  --sband-track-h: 72px;
+  --sband-band-h: 6px;
+  --sband-row-h: 16px;
+  --sband-label-w: 112px;
+}
+.sband--full .sband__ticks {
+  position: relative;
+  height: 18px;
+  margin-right: var(--sband-label-w);
+  font-family: "Barlow Semi Condensed", var(--cjk), sans-serif;
+  font-size: var(--font-12);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+.sband__tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.sband__tick:first-child {
+  transform: none;
+}
+.sband__tick--end {
+  transform: translateX(-100%);
+}
+.sband__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--sband-label-w);
+}
+.sband__slider {
+  position: relative;
+  cursor: pointer;
+  border-radius: var(--radius-mark);
+  touch-action: none;
+}
+.sband__slider:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.sband__slider[aria-disabled="true"] {
+  cursor: default;
+}
+.sband--full .sband__bands {
+  gap: 0;
+  margin-top: 0;
+}
+.sband--full .sband__band {
+  height: var(--sband-row-h);
+}
+.sband--full .sband__seg {
+  top: calc((var(--sband-row-h) - var(--sband-band-h)) / 2);
+  bottom: auto;
+  height: var(--sband-band-h);
+}
+.sband__labels {
+  display: grid;
+  align-content: start;
+  padding-top: var(--sband-track-h);
+  padding-left: var(--space-2);
+  font-size: var(--font-12);
+  color: var(--text-secondary);
+}
+.sband__label {
+  height: var(--sband-row-h);
+  line-height: var(--sband-row-h);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 處理範圍：底軌上淡淡的 Ink 8%／Fault 12% 區塊 */
+.sband__range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.sband__range--running {
+  background: color-mix(in srgb, var(--state-done) 8%, transparent);
+}
+.sband__range--failed {
+  background: color-mix(in srgb, var(--state-failed) 12%, transparent);
+}
+/* 播放頭：2px Cue 直線加 1px Ink 邊 */
+.sband__playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--mark-now);
+  box-shadow:
+    1px 0 0 var(--mark-edge),
+    -1px 0 0 var(--mark-edge);
+  pointer-events: none;
+}
+.sband__hover {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  display: grid;
+  gap: 2px;
+  max-width: 24em;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-float);
+  font-size: var(--font-12);
+  pointer-events: none;
+  z-index: 2;
+}
+.sband__hover-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+.sband__hover-text {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 767px) {
+  .sband--full {
+    --sband-label-w: 72px;
+  }
+}
