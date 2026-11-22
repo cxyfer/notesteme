@@ -110,7 +110,9 @@ func TestGetVideoContextWaitsForEvents(t *testing.T) {
 	d.Events, d.Clock = bus, clk
 
 	res := make(chan *mcp.CallToolResult, 1)
-	go func() { res <- getVideoContext(context.Background(), d, contextArgs{URL: "https://youtu.be/abc123xxxxx", TimeoutS: 10}) }()
+	go func() {
+		res <- getVideoContext(context.Background(), d, contextArgs{URL: "https://youtu.be/abc123xxxxx", TimeoutS: 10})
+	}()
 	for clk.PendingTimers() == 0 {
 		time.Sleep(time.Millisecond)
 	}
@@ -137,7 +139,9 @@ func TestGetVideoContextPollAndSlots(t *testing.T) {
 	d := newDeps(fb, ScopeRead)
 	clk := d.Clock.(*clock.Fake)
 	res := make(chan *mcp.CallToolResult, 1)
-	go func() { res <- getVideoContext(context.Background(), d, contextArgs{URL: "https://youtu.be/abc123xxxxx", TimeoutS: 5}) }()
+	go func() {
+		res <- getVideoContext(context.Background(), d, contextArgs{URL: "https://youtu.be/abc123xxxxx", TimeoutS: 5})
+	}()
 	for clk.PendingTimers() < 2 { // deadline 與 poll
 		time.Sleep(time.Millisecond)
 	}
@@ -283,4 +287,3 @@ func TestCheckStrings(t *testing.T) {
 		t.Error("空白的 item 應該拒絕")
 	}
 }
-
