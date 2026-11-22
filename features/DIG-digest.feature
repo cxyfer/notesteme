@@ -420,6 +420,38 @@ Feature: Summaries and digests
     And the worker runs until idle
     Then the notification endpoint "https://ntfy.sh/" received 0 requests
 
+  @DIG-01 @DIG-R8 @DIG-R9 @SUB-01
+  Scenario: Items picked up by a subscription appear in the default digest
+    Given the YouTube feeds are served from the registered videos
+    And the notification endpoints are reachable
+    And the notifier "phone" is:
+      """
+      { "kind": "ntfy", "config": { "topic": "notesteme-owner" }, "events": ["digest"] }
+      """
+    And the digest "daily" is:
+      """
+      { "period": "daily", "at": "08:00", "timezone": "UTC", "notifiers": ["phone"] }
+      """
+    And the clock is at "2026-11-23T09:00:00Z"
+    And the subscription "kernels" for "https://www.youtube.com/channel/UCfixture000000000000000"
+    When the worker runs until idle
+    And a YouTube video "yt:dig02xxxxxx" with:
+      | field        | value                |
+      | title        | Paging in Practice   |
+      | duration     | 600                  |
+      | published_at | 2026-11-23T10:00:00Z |
+    And "yt:dig02xxxxxx" has auto captions in "en"
+    And the clock advances by "7h"
+    And the worker runs until idle
+    And the summary of "yt:dig02xxxxxx" is:
+      """
+      { "summary": "訂閱帶進來的影音。", "key_points": [], "title_translation": null }
+      """
+    And the clock advances by "17h"
+    And the worker runs until idle
+    Then the notification endpoint "https://ntfy.sh/" received a request containing "Paging in Practice"
+    And the notification endpoint "https://ntfy.sh/" received a request containing "訂閱帶進來的影音。"
+
   @DIG-01 @DIG-R10
   Scenario: Without a public URL the digest has no links
     Given the notification endpoints are reachable
