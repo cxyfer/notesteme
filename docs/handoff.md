@@ -1,6 +1,6 @@
 # 交接：開發進度（M1 與 M2）
 
-> 更新：2026-11-22。PR #1～#17 已合併（LOCAL #13、PODCAST #14、ESTIMATE #15、M2 S0 #16、M2 S1/S2 #17）。owner 已同意的規格與 `.feature` 修改已完成（第 2 節第 4 點）。
+> 更新：2026-11-22。PR #1～#19 已合併（LOCAL #13、PODCAST #14、ESTIMATE #15、M2 S0 #16、M2 S1/S2 #17、規格與 `.feature` 修改 #18、M2 S6a #19）。owner 已同意的規格與 `.feature` 修改已完成（第 2 節第 4 點）。**M1 的後端已完成，但 Web UI 與真實樣本驗收還沒做，M1 尚未收尾（第 1 節「M1 尚未收尾」）。**
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -91,7 +91,7 @@
     - Prompt 庫（`internal/prompts`、migration 00011）：版本只增不改，內建 prompt 嵌入在 `internal/prompts/builtin/<id>/v1.md`（D12）；引用寫成 `<id>`、`<id>@default`、`<id>@N`（D11）；變數在儲存時檢查；刪除時 `used_by` 依處理方案、`settings`、頻道的順序列出（D13）。
     - harness：`features/steps/config.go` 的處理方案、prompt、頻道覆寫步驟（Given 累積，第一個請求前寫入）、`jsonmatch.go` 的子集比對（陣列完全相等）；CLI 步驟遇到尚未寫入的處理方案等設定會隱含啟動 server；`words` 欄位接受秒數（`1.5`）。
     - 變異測試 10 個都會變紅。`DeleteProfile` 拿掉 builtin 檢查時，PRF-R7 場景仍然通過（內建的 `default` 同時是預設處理方案，「使用中」也回 409），只有單元測試 `TestProfiles_DeleteDefault409` 抓得到；`GET /api/profiles/{id}` 回傳合併了內建預設的 config 時，子集比對驗證不到。
-  - M2 S6a TRN 確定性轉換（`feat/m2-s6a`，ADR-0018）：
+  - M2 S6a TRN 確定性轉換（PR #19，ADR-0018）：
     - `internal/zhconv`：自己實作的 OpenCC 轉換器（最長詞優先，內嵌 Apache-2.0 的 OpenCC 1.4.2 字典，`scripts/opencc/update.sh` 重新產生），不依賴 GPLv2 的 port；`langtag` 判斷 BCP-47 的文字與地區，決定 `s2t`、`s2twp`、`s2hk`、`t2s`、`tw2sp` 等轉換表。
     - `translate` 步驟的 `opencc` executor（`runTranslateOpenCC`）：中文文字系統轉換不經過 LLM；`zhconv.GlossaryTable` 提供 COR-R4 詞彙表的轉換表，詞彙表的組裝屬於 LLM 切片。
     - `@M2`：20 passed、23 failed、74 pending；TRN「Chinese script conversion uses OpenCC」3 個範例通過，「Localisation runs OpenCC first…」要等 S6b。
@@ -119,18 +119,25 @@
   M1 的 OUT 場景全部通過，但 OUT 的 M2 部分還沒做，所以規格狀態仍是 `ready`，不是 `implemented`。
 
 - **規格狀態**：AUTH、SEC、ING、SRC、NRM、OUT、PIPE、CLI、GRD 是 `ready`，其餘都是 `draft`。還沒有任何規格達到 `implemented`，因為每份都還有 pending 的場景。
+- **M1 尚未收尾（2026-11-22 盤點）**：後端與驗收場景（上表）已完成，但 plan 第 24 節對 M1 的定義還有下列項目沒交付，容易被「場景全綠」掩蓋：
+  - **Web UI 尚未開始**：沒有 `web/`、沒有靜態檔案服務、沒有 UI 的 `go:embed`；`docs/ui/mockups/` 只有 `library.html`、`item.html` 兩份草稿。plan 要求 M1 一起交付的頁面（新增、媒體庫、影音詳情、佇列、設定、登入）和 UI 相關的 NFR（NFR-SEC-1 CSP、NFR-PERF-10、NFR-A11Y-1～3、NFR-I18N-1、NFR-CMP-2、NFR-RWD-1）都還沒做。決定與預設見第 7 節；plan 第 24、26 節已記錄。
+  - **真實樣本驗收沒做**：M1 驗收條件「四個平台共 10 部樣本都能一鍵產出 SRT」從未用真實的 yt-dlp、Groq、Supadata 驗證，驗收場景都跑在假工具上。第 6 節「還沒對真實服務驗證」的項目屬於同一類。
+  - **人工驗收**：M1 有 7 個 `@manual` 場景還沒驗收。其中 5 個同時是 `@ui`（DEL-R3、LIB-R2、LIB-R5／R6、LIB-R9、LIB-R10），要等 Web UI；另外 2 個是 CLI-03、CLI-04（`watch` skill 改成薄包裝）。M2 還有 LIB-R12（`@ui @manual`）。
+  - **CI 還缺**：`govulncheck`（NFR-SEC-4）、涵蓋率門檻（NFR-TEST-3）、goreleaser（NFR-CMP-1）。fuzz 目前只有 `internal/subtitle`，其他不可信輸入的解析器（RSS、yt-dlp JSON）沒有，CI 也沒有每晚排程（NFR-SEC-6）。
+  - **M0 結論沒有回寫紀錄**：6 個 `@pending-m0` 場景（SRC-R4、SRC-R13、COR-R2／R3、TRN-R4、SEG-R3、SEG-R10）的門檻仍是暫定值，盤點時沒有看到 M0 實測結果寫回規格或 ADR。
+  - **README 過時**：仍寫「只有 `serve` 與 `--version` 可用」，實際上 CLI 已完成。
 
 ## 2. 下一步
 
-切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC → LOCAL → PODCAST → ESTIMATE → M2 S0 骨架 → M2 S1 PRF＋S2 PRM（PR #1～#18，全部已合併）→ M2 S6a TRN OpenCC（進行中）。下一步是 S7 OUT 渲染，再到 S3 LLM 核心。
+切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC → LOCAL → PODCAST → ESTIMATE → M2 S0 骨架 → M2 S1 PRF＋S2 PRM → 規格修改 → M2 S6a TRN OpenCC（PR #1～#19，全部已合併）。下一步是 S7 OUT 渲染，再到 S3 LLM 核心；Web UI 切片的排入時機待 owner 決定（第 7 節）。
 
 接下來：
 
 1. 疊加 PR 的合併方式（已用在 #13～#17）：前一個 squash 合併後，把下一個的 base 改成 `master`，再把下層分支的修正 merge（不 rebase）進來，最後用 `-s ours` 併入 master，並確認 `git diff master...HEAD` 的 patch-id 與合併前相同。每個 PR 都要等 Codex 審查通過、CI 綠才 squash 合併（owner 已授權，不用另外詢問）；同一個 PR 最多連續重審 3 次，超過要交 owner 決定（#14 就因為這樣由 owner 再授權了幾輪）。
-2. 剩下 M1 的 NRM-R7（見第 1 節，需要 owner 決定）。
-3. M2 的切片順序（S0 之後）：並行 S1 PRF（含 ING-R7）、S2 PRM、S6a TRN 確定性（OpenCC）、S7 OUT 渲染 → S3 LLM 核心（provider client、限流、執行層）→ 並行 S4 COR、S5 SEG、S6b TRN LLM、S8 OUT publish → S9 MCP → S10 AGT → S11 收尾。S0 之後 `@M2` 是 117 個場景：115 pending、2 failed，兩個失敗都需要 owner 決定（MCP stdio 場景與 Background 衝突、OUT-R9 預覽的影音沒有字幕來源）。規格與 `.feature` 修改後（第 2 節第 4 點）是 17 passed、26 failed、74 pending：Background 的處理方案、prompt 步驟可以執行了，場景會停在後面的步驟。26 個失敗都是之後的切片才會做的功能，沒有需要 owner 決定的：
+2. 剩下 M1 的項目：NRM-R7（見第 1 節，需要 owner 決定）、Web UI、真實樣本驗收、人工驗收、CI 補強（見第 1 節「M1 尚未收尾」）。
+3. M2 的切片順序（S0 之後）：並行 S1 PRF（含 ING-R7）、S2 PRM、S6a TRN 確定性（OpenCC）、S7 OUT 渲染 → S3 LLM 核心（provider client、限流、執行層）→ 並行 S4 COR、S5 SEG、S6b TRN LLM、S8 OUT publish → S9 MCP → S10 AGT → S11 收尾。Web UI 切片不在這個順序內，預設與 S9 並行（第 7 節）。S0 之後 `@M2` 是 117 個場景：115 pending、2 failed，兩個失敗都需要 owner 決定（MCP stdio 場景與 Background 衝突、OUT-R9 預覽的影音沒有字幕來源）。規格與 `.feature` 修改後（第 2 節第 4 點）是 17 passed、26 failed、74 pending：Background 的處理方案、prompt 步驟可以執行了，場景會停在後面的步驟；S6a 之後（2026-11-22 實測）是 20 passed、23 failed、74 pending。下列 failed 都是之後的切片才會做的功能，沒有需要 owner 決定的：
    - 缺 LLM fixture（S5、S6b 要補）：SEG 7 個、TRN 8 個、localize 1 個；缺 media fixture `speech-with-pause-at-6.2s.m4a`（S5）。
-   - 行為還沒做：COR glossary 傳給 ASR（S4）、SEG 手動字幕跳過 segment（S5，目前 `api` executor 回「還沒有實作」）、TRN OpenCC 3 個與沿用手動字幕軌 1 個（S6a）、OUT sidecar 對線上影音是 `skipped`（S8）。
+   - 行為還沒做：COR glossary 傳給 ASR（S4）、SEG 手動字幕跳過 segment（S5，目前 `api` executor 回「還沒有實作」）、TRN 沿用手動字幕軌 1 個（S6a 之後仍失敗，OpenCC 的 3 個範例已通過）、OUT sidecar 對線上影音是 `skipped`（S8）。
 4. **owner 決議（2026-11-22）：下列建議全部同意，其中規格與 `.feature` 的修改已在 `📝 docs(specs)` commit 完成，各規格對應的待決問題已關閉。** 決議內容：
    - **LLM 核心（擋 S3）**：
      - X1：沒有 provider 就 `skipped`（`not_configured`），維持 S0 的做法。
@@ -393,6 +400,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 | OPS | 自我檢查的暫時性失敗是否回退 | 照規則回退，原因放在 `reason` |
 | LOCAL | steps.md 的語意補充（部分 `#` 表格依 `#` 比對；`processed up to` 規則 (1) 對 `local:` 也算外掛與內嵌字幕）、用路徑新增的延遲驗證、上傳上限 4 GiB、YouTube ASR 也走前處理、備份包含 uploads | 已依預設實作（PR #13），待 owner 確認 |
 | NRM | NRM-R7 場景的字幕軌不會被 `caption_priority` 選中 | 建議改成 `manual captions` 或宣告原文語言 `zh-Hans`，需 owner 同意改 `.feature` |
+| UI | Web UI 切片（M1 欠下的 UI）的排入時機與前端範圍 | 與 S9 MCP 並行，先做 M1 的頁面；前端工具鏈（建置、測試、i18n）與是否沿用 `docs/ui/mockups/` 的設計，開工前由 owner 決定 |
 
 ## 8. 已確定的技術選擇
 
