@@ -189,7 +189,8 @@ func TestStageImplementedOnlyForM1LocalStages(t *testing.T) {
 	if !stageImplemented(StageTranslate, ExecutorOpenCC) {
 		t.Error("translate／opencc 已實作")
 	}
-	for _, s := range []string{StageMetadata, StageTranscript, StageNormalize} {
+	// publish 的 sidecar、folder 是本機的確定性處理（OUT-R10～R12）。
+	for _, s := range []string{StageMetadata, StageTranscript, StageNormalize, StagePublish} {
 		if !stageImplemented(s, ExecutorLocal) {
 			t.Errorf("%s／local 已實作", s)
 		}
@@ -200,7 +201,7 @@ func TestStageImplementedOnlyForM1LocalStages(t *testing.T) {
 			t.Errorf("%s／agent 已可前進", s)
 		}
 	}
-	for _, c := range [][2]string{{StageSegment, ExecutorAPI}, {StageCorrect, ExecutorOpenCC}, {StageTranslate, ExecutorAPI}, {StagePublish, ExecutorLocal}, {StageNormalize, ExecutorAPI}, {StagePublish, ExecutorAgent}, {StageNormalize, ExecutorAgent}} {
+	for _, c := range [][2]string{{StageSegment, ExecutorAPI}, {StageCorrect, ExecutorOpenCC}, {StageTranslate, ExecutorAPI}, {StageNormalize, ExecutorAPI}, {StagePublish, ExecutorAgent}, {StageNormalize, ExecutorAgent}} {
 		if stageImplemented(c[0], c[1]) {
 			t.Errorf("%s／%s 還沒實作", c[0], c[1])
 		}

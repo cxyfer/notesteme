@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/output"
+	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
@@ -294,5 +296,62 @@ func TestPublishWithoutOutputsIsSkipped(t *testing.T) {
 	res, err := r.publish(r.it)
 	if err != nil || res.state.Status != store.StatusSkipped || res.state.BlockReason != SkipNoOutputs {
 		t.Errorf("runPublish = %+v，%v", res, err)
+	}
+}
+
+// 經 Rerun 與 worker 的完整流程：publish 任務寫出檔案；之後檔案被改過、政策是 skip 時步驟是 blocked（needs_action），
+// 重跑不會覆蓋，也不會留下新檔。
+func TestPublishThroughRerunAndWorker(t *testing.T) {
+	r := newLocalRig(t)
+	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
+	it := r.ingest(watch, nil, "")
+	r.run()
+	if st := r.stage(it, StagePublish); st.Status != store.StatusSkipped || st.BlockReason != SkipNoOutputs {
+		t.Fatalf("沒有 outputs 時 publish = %s（%s）", st.Status, st.BlockReason)
+	}
+
+	dir := filepath.Join(r.root, "subs")
+	outs := func(policy string) map[string]any {
+		return map[string]any{"outputs": []any{map[string]any{"target": "folder", "path": dir, "formats": []any{"srt"}, "lang": []any{"en"}, "on_user_change": policy}}}
+	}
+	rerun := func(policy string) store.StageRun {
+		t.Helper()
+		if _, err := r.p.Rerun(context.Background(), it.ID, RerunRequest{From: StagePublish, Overrides: outs(policy)}); err != nil {
+			t.Fatal(err)
+		}
+		r.run()
+		return latestStage(t, r.rig, it.ID, StagePublish)
+	}
+	if st := rerun(output.PolicySkip); st.Status != store.StatusDone {
+		t.Fatalf("第一次發布 = %s（%s）", st.Status, st.Message)
+	}
+	list, err := r.p.Outputs(context.Background(), it.ID)
+	if err != nil || len(list) != 1 || list[0].Target != "folder" || filepath.Dir(list[0].Path) != dir {
+		t.Fatalf("Outputs = %+v，%v", list, err)
+	}
+	file := list[0].Path
+	if st := rerun(output.PolicySkip); st.Status != store.StatusDone {
+		t.Fatalf("檔案沒被改過，再次發布應成功：%s（%s）", st.Status, st.Message)
+	}
+
+	if err := os.WriteFile(file, []byte("edited by hand"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st := rerun(output.PolicySkip)
+	if st.Status != store.StatusBlocked || st.BlockReason != "needs_action" || !strings.Contains(st.Message, file) {
+		t.Fatalf("被改過的檔案 + skip = %s（%s）%s", st.Status, st.BlockReason, st.Message)
+	}
+	if readText(t, file) != "edited by hand" {
+		t.Error("被改過的檔案被覆蓋了")
+	}
+	if es, _ := os.ReadDir(dir); len(es) != 1 {
+		t.Errorf("skip 不該寫出其他檔案：%v", es)
+	}
+	// 改成 save_as_new：原檔不動，另存為 (notesteme 日期)。
+	if st := rerun(output.PolicySaveAsNew); st.Status != store.StatusDone {
+		t.Fatalf("save_as_new = %s（%s）", st.Status, st.Message)
+	}
+	if es, _ := os.ReadDir(dir); len(es) != 2 || readText(t, file) != "edited by hand" {
+		t.Errorf("save_as_new 應另存一個檔案並保留原檔：%v", es)
 	}
 }

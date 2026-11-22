@@ -426,6 +426,39 @@ func TestChineseVideoFixtures(t *testing.T) {
 	})
 }
 
+// `processed up to` 的 M2 目標（segment、correct、translate、publish）依 X1 沒有設定時是 skipped：
+// firstUnfinished 把它們的 skipped 視為完成；M1 步驟 skipped 不算（例如被取消），其他狀態也不算。
+func TestProcessedUpToTreatsSkippedM2StagesAsDone(t *testing.T) {
+	stages := func(status map[string]string) itemJSON {
+		var it itemJSON
+		for _, name := range []string{"metadata", "transcript", "normalize", "segment", "correct", "translate", "publish"} {
+			st := "done"
+			if v, ok := status[name]; ok {
+				st = v
+			}
+			it.Stages = append(it.Stages, stageJSON{Stage: name, Status: st})
+		}
+		return it
+	}
+	cases := []struct {
+		name   string
+		status map[string]string
+		upTo   string
+		want   string
+	}{
+		{"M2 步驟 skipped 算完成", map[string]string{"segment": "skipped", "correct": "skipped", "translate": "skipped", "publish": "skipped"}, "publish", ""},
+		{"M1 步驟 skipped 不算", map[string]string{"normalize": "skipped"}, "publish", "normalize"},
+		{"M2 步驟 failed 不算", map[string]string{"correct": "failed"}, "publish", "correct"},
+		{"M2 步驟 blocked 不算", map[string]string{"publish": "blocked"}, "publish", "publish"},
+		{"只看到目標為止", map[string]string{"publish": "pending"}, "translate", ""},
+	}
+	for _, c := range cases {
+		if got := firstUnfinished(stages(c.status), c.upTo); got != c.want {
+			t.Errorf("%s：firstUnfinished = %q，預期 %q", c.name, got, c.want)
+		}
+	}
+}
+
 // `processed up to` 不認識的步驟一律失敗，不是 pending，也不啟動 server。
 // M2 的目標（X1 已決定，規則 (2c)）照常執行，done 或 skipped 都算完成，由 LLM、PRM 的場景把關。
 func TestProcessedUpToUnknownStageFails(t *testing.T) {

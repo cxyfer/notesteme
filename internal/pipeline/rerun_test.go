@@ -209,7 +209,6 @@ func TestRerunNotImplementedWritesNothing(t *testing.T) {
 		{"frames.select", RerunRequest{From: "frames.select"}},
 		{"segment 用 api", RerunRequest{From: StageSegment, Overrides: stagesOver("segment", map[string]any{"provider": "anthropic", "model": "m1"})}},
 		{"translate 用 api", RerunRequest{From: StageTranslate, Overrides: stagesOver("translate", map[string]any{"provider": "anthropic", "model": "m1"})}},
-		{"publish 有 outputs", RerunRequest{From: StagePublish, Overrides: map[string]any{"outputs": []any{map[string]any{"target": "sidecar", "formats": []any{"srt"}}}}}},
 	}
 	for _, tt := range tests {
 		if _, err := r.p.Rerun(ctx, it.ID, tt.req); !errors.As(err, &ni) {
