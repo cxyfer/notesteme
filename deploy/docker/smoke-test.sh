@@ -33,6 +33,12 @@ out="$(docker run --rm "$IMAGE" --version)"
 echo "$out"
 [[ "$out" == notesteme\ * ]] || fail "--version 的輸出不正確：$out"
 
+step "OpenCC 授權文件"
+run_shell 'set -e
+  test -s /usr/share/doc/notesteme/opencc/LICENSE
+  test -s /usr/share/doc/notesteme/opencc/NOTICE.md
+  grep -q "Apache License" /usr/share/doc/notesteme/opencc/LICENSE' || fail "image 缺少 OpenCC 的 LICENSE 或 NOTICE"
+
 step "以非 root 使用者執行"
 uid="$(docker run --rm --entrypoint id "$IMAGE" -u)"
 [[ "$uid" != 0 ]] || fail "容器以 root 執行"

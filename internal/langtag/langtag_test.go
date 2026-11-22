@@ -4,14 +4,18 @@ import "testing"
 
 func TestParseNormalizes(t *testing.T) {
 	cases := map[string]Tag{
-		"zh-Hant-TW":       {"zh", "Hant", "TW"},
-		"ZH_hant_tw":       {"zh", "Hant", "TW"},
-		"zh-tw":            {"zh", "", "TW"},
-		"en":               {"en", "", ""},
-		"es-419":           {"es", "", "419"},
-		"zh-Hans-CN-x-foo": {"zh", "Hans", "CN"},
-		"en-US-posix":      {"en", "", "US"},
-		"":                 {},
+		"zh-Hant-TW":        {Lang: "zh", Script: "Hant", Region: "TW"},
+		"ZH_hant_tw":        {Lang: "zh", Script: "Hant", Region: "TW"},
+		"zh-tw":             {Lang: "zh", Region: "TW"},
+		"en":                {Lang: "en"},
+		"es-419":            {Lang: "es", Region: "419"},
+		"zh-Hans-CN-x-foo":  {Lang: "zh", Script: "Hans", Region: "CN", Rest: "x-foo"},
+		"en-US-posix":       {Lang: "en", Region: "US", Rest: "posix"},
+		"sr-Latn-ekavsk":    {Lang: "sr", Script: "Latn", Rest: "ekavsk"},
+		"zh-cmn-Hans":       {Lang: "zh", Ext: "cmn", Script: "Hans"},
+		"zh-YUE-hk":         {Lang: "zh", Ext: "yue", Region: "HK"},
+		"zh-Hant-TW-u-ca-x": {Lang: "zh", Script: "Hant", Region: "TW", Rest: "u-ca-x"},
+		"":                  {},
 	}
 	for in, want := range cases {
 		if got := Parse(in); got != want {
@@ -20,6 +24,25 @@ func TestParseNormalizes(t *testing.T) {
 	}
 	if s := Parse("zh_hant_tw").String(); s != "zh-Hant-TW" {
 		t.Errorf("String() = %q", s)
+	}
+	if s := Parse("ZH_cmn_hans_cn_X-Foo").String(); s != "zh-cmn-Hans-CN-x-foo" {
+		t.Errorf("String() = %q", s)
+	}
+}
+
+// variant 與 extlang 是語言的一部分：不同的變體不能被當成相同語言（Codex P2）。
+func TestEqualKeepsVariantsAndExtlang(t *testing.T) {
+	if Equal("sr-Latn-ekavsk", "sr-Latn-ijekavsk") || !Equal("sr-Latn-ekavsk", "SR_latn_EKAVSK") {
+		t.Error("variant 要參與比較")
+	}
+	if Equal("zh-cmn-Hans", "zh-cmn-Hant") || Equal("zh-cmn-Hans", "zh-yue-Hans") {
+		t.Error("extlang 之後的 script 要能解析，也要參與比較")
+	}
+	if got := ChineseScript("zh-cmn-Hant"); got != "Hant" {
+		t.Errorf("ChineseScript(zh-cmn-Hant) = %q", got)
+	}
+	if got := ChineseScript("zh-yue-HK"); got != "Hant" {
+		t.Errorf("ChineseScript(zh-yue-HK) = %q", got)
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/langtag"
@@ -40,7 +39,7 @@ func (p *Pipeline) runTranslateOpenCC(ctx context.Context, it store.Item, eff Ef
 	if err != nil {
 		return result{}, err
 	}
-	src, ok, err := translateInputFor(ctx, p.st.Read(), it.ID)
+	src, ok, err := translateInputFor(ctx, p.st.Read(), it.ID, "")
 	if err != nil {
 		return result{}, err
 	}
@@ -87,6 +86,18 @@ func (p *Pipeline) runTranslateOpenCC(ctx context.Context, it store.Item, eff Ef
 		jobs = append(jobs, openccJob{lang: t.Lang, table: table})
 	}
 
+	// 沒有需要轉換的目標（執行時才發現全都與原文相同，例如排入之後改了 language.targets）：
+	// 與排入前就判斷出來的 same_language 一樣略過，並撤下不再要求的現行譯文（Codex P2）。
+	if len(jobs) == 0 {
+		impl := p.implVersion(StageTranslate)
+		return result{
+			task: taskDone, advance: true,
+			stage:     &store.StageResult{Executor: ExecutorOpenCC, ImplVersion: impl},
+			state:     skippedState(SkipSameLanguage),
+			supersede: translatedSupersede(removedTranslatedLangs(arts, jobs)),
+		}, nil
+	}
+
 	params := openccParams{Data: zhconv.DataVersion}
 	for _, j := range jobs {
 		params.Targets = append(params.Targets, openccTarget{Lang: j.lang, Table: j.table})
@@ -98,12 +109,12 @@ func (p *Pipeline) runTranslateOpenCC(ctx context.Context, it store.Item, eff Ef
 	stage := &store.StageResult{Executor: ExecutorOpenCC, CacheKey: key, ImplVersion: impl}
 	done := store.StageState{Status: store.StatusDone}
 
-	// 這次不再要求、但仍是現行版本的 translated 產出（language.targets 減少了語言）：隨結果一起被取代（Codex P2）。
+	// 這次不再要求、但仍是現行版本的 translated 產出（language.targets 減少了語言，或同一語言的拼法不同）：隨結果一起撤下（Codex P2）。
 	removed := removedTranslatedLangs(arts, jobs)
 
 	// 同一份上游、同一組目標與字典版本的結果已經是現行版本：重用，不建立新版本（PIPE-R5）。
 	// 只看現行版本：設定 A → B → A 時不會恢復舊版，而是重新轉換（opencc 不花錢）。
-	if first, hit := currentOpenCCOutputs(arts, jobs, key); hit && len(jobs) > 0 {
+	if first, hit := currentOpenCCOutputs(arts, jobs, key); hit {
 		stage.ArtifactID = first
 		return result{task: taskDone, advance: true, stage: stage, state: done, supersede: translatedSupersede(removed)}, nil
 	}
@@ -148,16 +159,14 @@ func (p *Pipeline) runTranslateOpenCC(ctx context.Context, it store.Item, eff Ef
 }
 
 // removedTranslatedLangs 列出現行的 translated 產出中，語言不在這次目標（jobs）裡的語言。
+// 比對的是正規化後的拼法（openccJob.lang）：拼法不同的等價標記（zh-hant-tw）也算不在其中，會被撤下並以正規化的拼法重新產生。
 func removedTranslatedLangs(arts []store.Artifact, jobs []openccJob) []string {
 	var removed []string
 	for _, a := range arts {
 		if a.Kind != "transcript" || a.Variant != string(subtitle.VariantTranslated) {
 			continue
 		}
-		keep := false
-		for _, j := range jobs {
-			keep = keep || strings.EqualFold(a.Lang, j.lang)
-		}
+		keep := slices.ContainsFunc(jobs, func(j openccJob) bool { return a.Lang == j.lang })
 		if !keep && !slices.Contains(removed, a.Lang) {
 			removed = append(removed, a.Lang)
 		}
@@ -178,7 +187,7 @@ func currentOpenCCOutputs(arts []store.Artifact, jobs []openccJob, key string) (
 	for i, j := range jobs {
 		found := false
 		for _, a := range arts {
-			if a.Kind != "transcript" || a.Variant != string(subtitle.VariantTranslated) || !strings.EqualFold(a.Lang, j.lang) {
+			if a.Kind != "transcript" || a.Variant != string(subtitle.VariantTranslated) || a.Lang != j.lang {
 				continue
 			}
 			var prov struct {

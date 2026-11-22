@@ -4,6 +4,7 @@
 package zhconv
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/cxyfer/notesteme/internal/langtag"
@@ -23,12 +24,21 @@ const (
 	HK2S  Table = "hk2s"
 	T2TW  Table = "t2tw"
 	T2HK  Table = "t2hk"
+
+	// HK2TW、TW2HK 是繁體地區之間的轉換：上游沒有對應的設定。t2tw、t2hk 的輸入是 OpenCC Standard，
+	// 直接套用會漏掉來源地區特有的字形（香港「紅綫」、台灣「屋裡」），所以先用來源地區的反向字典
+	// 轉成 Standard，再套用目標地區的字典（Codex P2）。由 composite 在程式裡組出，沒有 json 檔。
+	HK2TW Table = "hk2tw"
+	TW2HK Table = "tw2hk"
 )
 
 var allTables = []Table{S2T, S2TW, S2TWP, S2HK, T2S, TW2S, TW2SP, HK2S, T2TW, T2HK}
 
-// Tables 回傳內嵌的轉換表。
-func Tables() []Table { return append([]Table(nil), allTables...) }
+// compositeTables 是本實作自行組合的轉換表（見 HK2TW）。
+var compositeTables = []Table{HK2TW, TW2HK}
+
+// Tables 回傳內嵌的轉換表（上游設定十份，加上自行組合的兩份）。
+func Tables() []Table { return append(append([]Table(nil), allTables...), compositeTables...) }
 
 // DataVersion 是內嵌字典的 OpenCC 版本；放進 translate 的快取鍵與來源紀錄，字典更新後舊快取不再命中。
 // 必須與 opencc/VERSION 一致（TestDataVersionMatchesFile 檢查）。
@@ -44,12 +54,7 @@ const (
 
 // Valid 回報 t 是不是內嵌的轉換表。
 func Valid(t Table) bool {
-	for _, x := range allTables {
-		if x == t {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(allTables, t) || slices.Contains(compositeTables, t)
 }
 
 // TableFor 回傳 source → target 的轉換表；兩者不都是中文、字形無法判斷、或不需要轉換（同一字形且沒有對應的地區表）時 ok 為 false。
@@ -88,8 +93,12 @@ func TableFor(source, target string, s Strategy) (t Table, ok bool) {
 		return T2S, true
 	case ss == "Hant" && ts == "Hant":
 		switch {
+		case tr == "TW" && hk(sr):
+			return HK2TW, true
 		case tr == "TW" && sr != "TW":
 			return T2TW, true
+		case hk(tr) && sr == "TW":
+			return TW2HK, true
 		case hk(tr) && !hk(sr):
 			return T2HK, true
 		}

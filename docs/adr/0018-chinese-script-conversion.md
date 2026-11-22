@@ -32,4 +32,5 @@ TRN-R8 要求原文與目標都是中文時，用 OpenCC 直接轉換字形，�
 - 代價：
   - 要自己維持與上游演算法一致；分段邊界上的差異靠 `testcases.json` 把關。
   - 字典在第一次使用時解析（`STPhrases` 約 4.9 萬筆，每份字典只解析一次），常駐記憶體數 MB。
-  - Docker image 與發布物要附上 LICENSE 與 NOTICE。
+  - Docker image 與發布物要附上 LICENSE 與 NOTICE：image 內放在 `/usr/share/doc/notesteme/opencc/`，`deploy/docker/smoke-test.sh` 檢查它們存在。
+  - 繁體地區之間（台灣與香港、澳門）的轉換上游沒有設定檔，`zhconv` 自行組合 `hk2tw`、`tw2hk`（來源地區的反向字典接目標地區的字典）。

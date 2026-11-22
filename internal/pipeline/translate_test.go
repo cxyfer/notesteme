@@ -59,7 +59,7 @@ func TestTranslateInputPriority(t *testing.T) {
 	arts := []store.Artifact{
 		mk("n1", "normalized"), mk("src", "source"), mk("s1", "segmented"), mk("c1", "corrected"), mk("c2", "corrected"), mk("t1", "translated"),
 	}
-	if a, ok := translateInput(arts, nil); !ok || a.ID != "c2" {
+	if a, ok := translateInput(arts, nil, ""); !ok || a.ID != "c2" {
 		t.Errorf("corrected 優先，而且取最近產生的：%+v, %v", a, ok)
 	}
 	// 從上游重跑之後，舊的下游產出（同一種變體才會被取代）屬於被取代的脈絡，不採用（Codex P1）。
@@ -72,24 +72,24 @@ func TestTranslateInputPriority(t *testing.T) {
 		"segment 重跑後，舊的 corrected 不採用":               "s2",
 	}
 	for name, arts := range stale {
-		if a, ok := translateInput(arts, nil); !ok || a.ID != want[name] {
+		if a, ok := translateInput(arts, nil, ""); !ok || a.ID != want[name] {
 			t.Errorf("%s：%+v, %v，預期 %s", name, a, ok, want[name])
 		}
 	}
 	// correct 重跑（上游沒變）：新的 corrected 採用。
-	if a, ok := translateInput([]store.Artifact{mk("n1", "normalized"), mk("s1", "segmented"), mk("c1", "corrected"), mk("c2", "corrected")}, nil); !ok || a.ID != "c2" {
+	if a, ok := translateInput([]store.Artifact{mk("n1", "normalized"), mk("s1", "segmented"), mk("c1", "corrected"), mk("c2", "corrected")}, nil, ""); !ok || a.ID != "c2" {
 		t.Errorf("correct 重跑：%+v, %v", a, ok)
 	}
-	if a, ok := translateInput([]store.Artifact{mk("n1", "normalized"), mk("s1", "segmented"), mk("t1", "translated")}, nil); !ok || a.ID != "s1" {
+	if a, ok := translateInput([]store.Artifact{mk("n1", "normalized"), mk("s1", "segmented"), mk("t1", "translated")}, nil, ""); !ok || a.ID != "s1" {
 		t.Errorf("segmented 優先於 normalized：%+v, %v", a, ok)
 	}
-	if a, ok := translateInput([]store.Artifact{mk("n1", "normalized"), mk("n2", "normalized"), mk("src", "source")}, nil); !ok || a.ID != "n2" {
+	if a, ok := translateInput([]store.Artifact{mk("n1", "normalized"), mk("n2", "normalized"), mk("src", "source")}, nil, ""); !ok || a.ID != "n2" {
 		t.Errorf("只有 normalized：%+v, %v", a, ok)
 	}
-	if _, ok := translateInput([]store.Artifact{mk("src", "source"), mk("t1", "translated"), mk("e1", "edited")}, nil); ok {
+	if _, ok := translateInput([]store.Artifact{mk("src", "source"), mk("t1", "translated"), mk("e1", "edited")}, nil, ""); ok {
 		t.Error("source、translated、edited 都不是 translate 的輸入")
 	}
-	if _, ok := translateInput(nil, nil); ok {
+	if _, ok := translateInput(nil, nil, ""); ok {
 		t.Error("沒有產出")
 	}
 }
@@ -115,12 +115,46 @@ func TestTranslateInputFollowsStageRuns(t *testing.T) {
 		{"都 done：用 corrected（不看建立順序）", map[string]store.StageRun{StageNormalize: run("done"), StageSegment: run("done"), StageCorrect: run("done")}, "c1"},
 		{"segment skipped、correct done：用 corrected", map[string]store.StageRun{StageNormalize: run("done"), StageSegment: run("skipped"), StageCorrect: run("done")}, "c1"},
 	} {
-		if a, ok := translateInput(arts, tt.latest); !ok || a.ID != tt.want {
+		if a, ok := translateInput(arts, tt.latest, ""); !ok || a.ID != tt.want {
 			t.Errorf("%s：%+v, %v，預期 %s", tt.name, a, ok, tt.want)
 		}
 	}
 	// 沒有 normalized 之外的選擇、也沒有任何產出。
-	if _, ok := translateInput([]store.Artifact{mk("c1", "corrected")}, map[string]store.StageRun{StageCorrect: run("skipped")}); ok {
+	if _, ok := translateInput([]store.Artifact{mk("c1", "corrected")}, map[string]store.StageRun{StageCorrect: run("skipped")}, ""); ok {
 		t.Error("correct skipped 而且沒有其他產出：不該有輸入")
+	}
+}
+
+// 從 transcript 重跑到 transcript 為止之後，normalize 還是 pending：現行的 normalized 是舊來源的字幕，不採用（Codex P1）。
+// Rerun 在寫入前解析執行方式：from 之後（含）的步驟即將被重設，它們現行的產出也不採用。
+func TestTranslateInputRejectsStaleNormalizedAndRerunFrom(t *testing.T) {
+	mk := func(id, variant string) store.Artifact {
+		return store.Artifact{ID: id, Kind: "transcript", Variant: variant}
+	}
+	run := func(status string) store.StageRun { return store.StageRun{Status: status} }
+	arts := []store.Artifact{mk("n1", "normalized")}
+	if _, ok := translateInput(arts, map[string]store.StageRun{StageNormalize: run("pending")}, ""); ok {
+		t.Error("normalize 是 pending：舊的 normalized 不採用")
+	}
+	if a, ok := translateInput(arts, map[string]store.StageRun{StageNormalize: run("done")}, ""); !ok || a.ID != "n1" {
+		t.Errorf("normalize done：%+v, %v", a, ok)
+	}
+
+	all := []store.Artifact{mk("n1", "normalized"), mk("s1", "segmented"), mk("c1", "corrected")}
+	done := map[string]store.StageRun{StageNormalize: run("done"), StageSegment: run("done"), StageCorrect: run("done")}
+	for _, tt := range []struct{ from, want string }{
+		{"", "c1"},
+		{StageCorrect, "s1"}, // correct 即將重跑（可能被 off 略過）：舊的 corrected 不算
+		{StageSegment, "n1"}, // segment 起的下游都不算
+		{StageNormalize, ""}, // normalize 也即將重設：沒有可用的輸入
+	} {
+		a, ok := translateInput(all, done, tt.from)
+		if (tt.want == "") == ok || (ok && a.ID != tt.want) {
+			t.Errorf("from=%q：%+v, %v，預期 %q", tt.from, a, ok, tt.want)
+		}
+	}
+	// 沒有 stage run 資料時，from 照樣生效。
+	if a, ok := translateInput(all, nil, StageCorrect); !ok || a.ID != "s1" {
+		t.Errorf("沒有 stage run、from=correct：%+v, %v", a, ok)
 	}
 }

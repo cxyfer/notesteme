@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"slices"
 
 	"github.com/cxyfer/notesteme/internal/langtag"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -32,6 +33,8 @@ type TargetPlan struct {
 }
 
 // PlanTargets 依原文語言與 language 設定決定每個目標語言的處理方式。目標去重（語言標記正規化後相同的只留第一個），順序不變。
+// TargetPlan.Lang 是正規化後的標記（zh_hant_tw → zh-Hant-TW）：產出的 lang、快取鍵與取代都用同一個拼法，
+// 否則大小寫不同的設定會留下兩份現行譯文（Codex P2）。
 // sourceLang 為空代表不知道原文語言：每個目標都需要翻譯。
 func PlanTargets(sourceLang string, lang Language) []TargetPlan {
 	strategy := zhconv.StrategyConvert
@@ -46,7 +49,9 @@ func PlanTargets(sourceLang string, lang Language) []TargetPlan {
 			continue
 		}
 		seen[key] = true
-		plans = append(plans, planTarget(sourceLang, target, strategy))
+		plan := planTarget(sourceLang, target, strategy)
+		plan.Lang = key
+		plans = append(plans, plan)
 	}
 	return plans
 }
@@ -93,8 +98,9 @@ func allConvert(plans []TargetPlan) bool {
 //   - latest 是影音各步驟最新的 stage run：最新的 run 不是 done（skipped〔off、not_configured〕，或重跑停在 until 之前
 //     而還是 pending），代表這個變體的步驟在現行脈絡中沒有產出，留下的是舊脈絡的檔案，不採用。不比對產出的建立時間：快取命中時 RestoreArtifact 保留原本的建立時間，
 //     上游被快取還原的產出看起來比舊的下游產出更早，但它屬於現行脈絡。
+//   - from 非空（Rerun 在寫入前解析執行方式）：from 之後（含）的步驟即將被重設，它們現行的產出屬於舊脈絡，不採用。
 //   - latest 是空的（沒有 stage run 的資料，例如單元測試）：退回用建立順序判斷，比上游變體的最新產出更早的下游產出不採用。
-func translateInput(arts []store.Artifact, latest map[string]store.StageRun) (store.Artifact, bool) {
+func translateInput(arts []store.Artifact, latest map[string]store.StageRun, from string) (store.Artifact, bool) {
 	pos := map[subtitle.Variant]int{subtitle.VariantNormalized: -1, subtitle.VariantSegmented: -1, subtitle.VariantCorrected: -1}
 	for i, a := range arts {
 		if a.Kind != "transcript" {
@@ -105,10 +111,18 @@ func translateInput(arts []store.Artifact, latest map[string]store.StageRun) (st
 		}
 	}
 	n, sg, c := pos[subtitle.VariantNormalized], pos[subtitle.VariantSegmented], pos[subtitle.VariantCorrected]
-	if len(latest) > 0 {
-		// 最新的 run 不是 done（skipped、還在 pending 的下游步驟——重跑停在 until 之前——或其他）：
-		// 這個步驟在現行脈絡沒有產出，現行的 corrected、segmented 是舊脈絡留下的。
+	if len(latest) > 0 || from != "" {
+		// 最新的 run 不是 done（skipped、還在 pending 的步驟——重跑停在 until 之前——或其他）：
+		// 這個步驟在現行脈絡沒有產出，現行的產出是舊脈絡留下的。normalize 也一樣：
+		// 從 transcript 重跑到 transcript 為止之後，normalized 是舊來源的字幕（Codex P1）。
+		fromIdx := -1
+		if from != "" {
+			fromIdx = slices.Index(Stages, from)
+		}
 		stale := func(stage string) bool {
+			if fromIdx >= 0 && slices.Index(Stages, stage) >= fromIdx {
+				return true
+			}
 			run, ok := latest[stage]
 			return ok && run.Status != store.StatusDone
 		}
@@ -117,6 +131,9 @@ func translateInput(arts []store.Artifact, latest map[string]store.StageRun) (st
 		}
 		if stale(StageSegment) {
 			sg = -1
+		}
+		if stale(StageNormalize) {
+			n = -1
 		}
 		switch {
 		case c >= 0:
@@ -140,7 +157,8 @@ func translateInput(arts []store.Artifact, latest map[string]store.StageRun) (st
 }
 
 // translateInputFor 讀取影音現行的字幕產出與各步驟最新的 stage run，依 translateInput 選 translate 的輸入。
-func translateInputFor(ctx context.Context, r *store.Repo, itemID string) (store.Artifact, bool, error) {
+// from 是 Rerun 即將重設的起點步驟（空字串代表沒有）。
+func translateInputFor(ctx context.Context, r *store.Repo, itemID, from string) (store.Artifact, bool, error) {
 	arts, err := r.CurrentArtifacts(ctx, itemID, "transcript")
 	if err != nil {
 		return store.Artifact{}, false, err
@@ -149,15 +167,16 @@ func translateInputFor(ctx context.Context, r *store.Repo, itemID string) (store
 	if err != nil {
 		return store.Artifact{}, false, err
 	}
-	art, ok := translateInput(arts, latestRuns(runs))
+	art, ok := translateInput(arts, latestRuns(runs), from)
 	return art, ok, nil
 }
 
 // stageContext 讀取影音現行的字幕產出，決定 StageContext；在呼叫端的交易（或 Read）中執行。
 // 原文語言是 translate 輸入字幕的語言；沒有字幕時退回 items.original_lang。
 // 中文標記沒有 script、也推不出地區時（例如 zh），用字幕文字的字元補上 Hans 或 Hant（S6-Q3）；判斷不出來就維持原樣。
-func (p *Pipeline) stageContext(ctx context.Context, r *store.Repo, it store.Item) (StageContext, error) {
-	art, ok, err := translateInputFor(ctx, r, it.ID)
+// from 是 Rerun 即將重設的起點步驟（空字串代表沒有）：它與之後的步驟現行的產出不算在內。
+func (p *Pipeline) stageContext(ctx context.Context, r *store.Repo, it store.Item, from string) (StageContext, error) {
+	art, ok, err := translateInputFor(ctx, r, it.ID, from)
 	if err != nil {
 		return StageContext{}, err
 	}

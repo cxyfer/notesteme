@@ -1,35 +1,41 @@
-// Package langtag 解析 BCP-47 語言標記的前三個子標籤（主語言、文字系統、地區），
-// 供 TRN（中文字形轉換）與 OUT（雙語判斷）共用。不依賴其他內部套件。
+// Package langtag 解析 BCP-47 語言標記，供 TRN（中文字形轉換）與 OUT（雙語判斷）共用。不依賴其他內部套件。
 package langtag
 
 import "strings"
 
-// Tag 是 BCP-47 標記的前三個子標籤：Lang 小寫、Script 首字大寫、Region 大寫。其餘子標籤一律忽略。
-type Tag struct{ Lang, Script, Region string }
+// Tag 是 BCP-47 標記：Lang 小寫、Ext（extlang，例如 zh-yue 的 yue）小寫、Script 首字大寫、Region 大寫；
+// Rest 是 region 之後的其餘子標籤（variant、extension、私用），小寫、以 - 連接。
+type Tag struct{ Lang, Ext, Script, Region, Rest string }
 
 // Parse 解析語言標記；分隔符 _ 視同 -。空字串回傳零值。
 func Parse(s string) Tag {
 	parts := strings.Split(strings.ReplaceAll(strings.TrimSpace(s), "_", "-"), "-")
 	var t Tag
 	t.Lang = strings.ToLower(parts[0])
-	for _, p := range parts[1:] {
-		switch {
-		case t.Script == "" && t.Region == "" && len(p) == 4 && isAlpha(p):
-			t.Script = strings.ToUpper(p[:1]) + strings.ToLower(p[1:])
-		case t.Region == "" && ((len(p) == 2 && isAlpha(p)) || (len(p) == 3 && isDigit(p))):
-			t.Region = strings.ToUpper(p)
-		default:
-			// 超過 script 與 region 的子標籤（variant、extension）不參與比較。
-			return t
-		}
+	i := 1
+	// extlang：主語言之後 3 個字母的子標籤（zh-yue-HK、zh-cmn-Hans），要在 script、region 之前。
+	if i < len(parts) && len(parts[i]) == 3 && isAlpha(parts[i]) {
+		t.Ext = strings.ToLower(parts[i])
+		i++
+	}
+	if i < len(parts) && len(parts[i]) == 4 && isAlpha(parts[i]) {
+		t.Script = strings.ToUpper(parts[i][:1]) + strings.ToLower(parts[i][1:])
+		i++
+	}
+	if i < len(parts) && ((len(parts[i]) == 2 && isAlpha(parts[i])) || (len(parts[i]) == 3 && isDigit(parts[i]))) {
+		t.Region = strings.ToUpper(parts[i])
+		i++
+	}
+	if i < len(parts) {
+		t.Rest = strings.ToLower(strings.Join(parts[i:], "-"))
 	}
 	return t
 }
 
 // String 回傳正規化後的標記，例如 zh_hant_tw → zh-Hant-TW。
 func (t Tag) String() string {
-	parts := make([]string, 0, 3)
-	for _, p := range []string{t.Lang, t.Script, t.Region} {
+	parts := make([]string, 0, 5)
+	for _, p := range []string{t.Lang, t.Ext, t.Script, t.Region, t.Rest} {
 		if p != "" {
 			parts = append(parts, p)
 		}
@@ -37,7 +43,8 @@ func (t Tag) String() string {
 	return strings.Join(parts, "-")
 }
 
-// Equal 回報兩個標記正規化後是否完全相同（TRN-R10）。兩者都是空字串時為 false：沒有語言資訊不算相同。
+// Equal 回報兩個標記正規化後是否完全相同（TRN-R10）：連 variant 與 extension 都要相同
+// （sr-Latn-ekavsk 與 sr-Latn-ijekavsk 是不同的語言）。兩者都是空字串時為 false：沒有語言資訊不算相同。
 func Equal(a, b string) bool {
 	ta, tb := Parse(a), Parse(b)
 	return ta.Lang != "" && ta == tb

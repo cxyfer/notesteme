@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/subtitle"
 )
 
 // StageContext 是解析步驟執行方式時需要的影音資訊；由呼叫端從資料庫取得，ResolveExecutor 仍是純函式。
@@ -148,6 +149,13 @@ func (p *Pipeline) applyChain(ctx context.Context, r *store.Repo, itemID string,
 		if res.Skip {
 			if err := r.SetStageState(ctx, run.ID, skippedState(res.Reason)); err != nil {
 				return created, err
+			}
+			if res.Stage == StageTranslate && res.Reason == SkipSameLanguage {
+				// 沒有任何目標需要譯文：先前為已移除的目標產生的 translated 不再是現行版本，
+				// 否則預設字幕選擇仍會回傳舊譯文（Codex P2）。保留歷史版本。
+				if err := r.WithdrawArtifacts(ctx, itemID, "transcript", string(subtitle.VariantTranslated), nil); err != nil {
+					return created, err
+				}
 			}
 			continue
 		}

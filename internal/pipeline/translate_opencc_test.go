@@ -201,6 +201,8 @@ func TestRunTranslateOpenCCSupersedesRemovedTargets(t *testing.T) {
 	if got := strings.Join(currentLangs(), ","); got != "zh-Hant-TW,zh-Hant-HK" {
 		t.Fatalf("兩個目標之後現行的 translated = %s", got)
 	}
+	hkArt, _ := translated(t, r, it.ID, "zh-Hant-HK")
+	hkID := hkArt.ID
 	rerunTranslate(t, r, it, []string{"zh-Hant-TW"}, "", nil)
 	if got := strings.Join(currentLangs(), ","); got != "zh-Hant-TW" {
 		t.Errorf("目標減少之後現行的 translated = %s，預期只有 zh-Hant-TW", got)
@@ -208,6 +210,94 @@ func TestRunTranslateOpenCCSupersedesRemovedTargets(t *testing.T) {
 	// 舊版本還在（只是被取代），之後把語言加回來會產生新的版本。
 	if n, _ := r.st.Read().ArtifactVersions(ctx, it.ID, "transcript", "translated", "zh-Hant-HK"); n != 1 {
 		t.Errorf("zh-Hant-HK 的版本數 = %d，預期被取代但保留 1 版", n)
+	}
+	// 撤下的譯文指向自己，不指向另一個語言的新版本：之後那個版本被清除時不會留下懸空的 superseded_by（Codex P3）。
+	if hk, err := r.st.Read().Artifact(ctx, hkID); err != nil || hk.SupersededBy != hkID {
+		t.Errorf("撤下的 zh-Hant-HK 的 superseded_by = %q, %v，預期指向自己 %q", hk.SupersededBy, err, hkID)
+	}
+	// 台灣目標重複產生超過保留的版本數：撤下的香港版本仍然存在、參照仍有效。
+	for _, text := range []string{"设置", "质量", "软件", "视频", "网络"} {
+		seedVariant(t, r, it, subtitle.VariantCorrected, "zh-Hans", text)
+		rerunTranslate(t, r, it, []string{"zh-Hant-TW"}, "", nil)
+	}
+	hk, err := r.st.Read().Artifact(ctx, hkID)
+	if err != nil || hk.SupersededBy != hkID {
+		t.Errorf("台灣版本被清除之後，香港版本 = %+v, %v", hk, err)
+	}
+}
+
+// 全部目標都與原文相同：translate 是 skipped（same_language），先前為已移除的目標產生的譯文不再是現行版本，
+// 預設字幕選擇不會再回傳舊譯文（Codex P2）。
+func TestSameLanguageSkipWithdrawsRemovedTargets(t *testing.T) {
+	r, it := newZhRig(t)
+	ctx := context.Background()
+	seedVariant(t, r, it, subtitle.VariantCorrected, "zh-Hans", "打开软件的设置")
+	rerunTranslate(t, r, it, []string{"zh-Hant-TW"}, "", nil)
+	translated(t, r, it.ID, "zh-Hant-TW")
+
+	rerunTranslate(t, r, it, []string{"zh-Hans"}, "", nil)
+	st := latestStage(t, r, it.ID, StageTranslate)
+	if st.Status != store.StatusSkipped || st.BlockReason != SkipSameLanguage {
+		t.Fatalf("translate = %+v", st)
+	}
+	arts, err := r.st.Read().CurrentArtifacts(ctx, it.ID, "transcript")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range arts {
+		if a.Variant == "translated" {
+			t.Errorf("same_language 之後不該還有現行的 translated：%+v", a)
+		}
+	}
+	if n, _ := r.st.Read().ArtifactVersions(ctx, it.ID, "transcript", "translated", "zh-Hant-TW"); n != 1 {
+		t.Errorf("歷史版本應保留：%d", n)
+	}
+}
+
+// 排入之後目標才改成全部與原文相同：runTranslateOpenCC 回報 skipped（same_language），並撤下舊譯文，而不是沒有產出的 done。
+func TestRunTranslateOpenCCNoJobsIsSkipped(t *testing.T) {
+	r, it := newZhRig(t)
+	ctx := context.Background()
+	seedVariant(t, r, it, subtitle.VariantCorrected, "zh-Hans", "打开软件")
+	rerunTranslate(t, r, it, []string{"zh-Hant-TW"}, "", nil)
+
+	res, err := r.p.runTranslateOpenCC(ctx, it, mustEffective(t, langOver([]string{"zh-Hans"}, "")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.state.Status != store.StatusSkipped || res.state.BlockReason != SkipSameLanguage || len(res.allArtifacts()) != 0 {
+		t.Errorf("state = %+v", res.state)
+	}
+	if res.supersede == nil || len(res.supersede.Langs) != 1 || res.supersede.Langs[0] != "zh-Hant-TW" {
+		t.Errorf("supersede = %+v，預期撤下 zh-Hant-TW", res.supersede)
+	}
+}
+
+// 目標的拼法不同（大小寫、底線）而語言相同：產出、快取與取代都用正規化的拼法，不會留下兩份現行譯文（Codex P2）。
+func TestRunTranslateOpenCCCanonicalLangKey(t *testing.T) {
+	r, it := newZhRig(t)
+	ctx := context.Background()
+	seedVariant(t, r, it, subtitle.VariantCorrected, "zh-Hans", "打开软件")
+	rerunTranslate(t, r, it, []string{"zh_hant_tw"}, "", nil)
+	first, _ := translated(t, r, it.ID, "zh-Hant-TW")
+	// 換一種拼法：快取命中，沒有新版本。
+	rerunTranslate(t, r, it, []string{"ZH-hant-tw"}, "", nil)
+	if n, _ := r.st.Read().ArtifactVersions(ctx, it.ID, "transcript", "translated", "zh-Hant-TW"); n != 1 {
+		t.Errorf("拼法不同不該產生新版本：%d", n)
+	}
+	cur, _ := translated(t, r, it.ID, "zh-Hant-TW")
+	if cur.ID != first.ID {
+		t.Errorf("現行版本改變了：%s → %s", first.ID, cur.ID)
+	}
+	arts, _ := r.st.Read().CurrentArtifacts(ctx, it.ID, "transcript")
+	n := 0
+	for _, a := range arts {
+		if a.Variant == "translated" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("現行的 translated = %d 份，預期 1", n)
 	}
 }
 
@@ -326,12 +416,12 @@ func TestStageContextUsesArtifactLang(t *testing.T) {
 	r, it := newZhRig(t)
 	ctx := context.Background()
 	it.OriginalLang = "en" // 只影響 stageContext 的輸入；Rerun 讀的是資料庫中的影音
-	sc, err := r.p.stageContext(ctx, r.st.Read(), it)
+	sc, err := r.p.stageContext(ctx, r.st.Read(), it, "")
 	if err != nil || sc.SourceLang != "en" {
 		t.Fatalf("沒有字幕時退回 original_lang：%+v, %v", sc, err)
 	}
 	seedVariant(t, r, it, subtitle.VariantCorrected, "zh-Hans", "你好")
-	if sc, _ = r.p.stageContext(ctx, r.st.Read(), it); sc.SourceLang != "zh-Hans" {
+	if sc, _ = r.p.stageContext(ctx, r.st.Read(), it, ""); sc.SourceLang != "zh-Hans" {
 		t.Errorf("應使用字幕的語言：%+v", sc)
 	}
 	// 簡體原文：預設目標用 opencc 轉換，不看 original_lang（en）。
@@ -350,7 +440,7 @@ func TestStageContextDetectsScriptForBareZh(t *testing.T) {
 	} {
 		r, it := newZhRig(t)
 		seedVariant(t, r, it, subtitle.VariantNormalized, "zh", c.text)
-		sc, err := r.p.stageContext(context.Background(), r.st.Read(), it)
+		sc, err := r.p.stageContext(context.Background(), r.st.Read(), it, "")
 		if err != nil || sc.SourceLang != c.want {
 			t.Errorf("%s：%+v, %v，預期 %s", name, sc, err, c.want)
 		}
@@ -486,5 +576,43 @@ func TestApplyMultiArtifactsDiscardsAllFiles(t *testing.T) {
 	}
 	if arts, _ := r.st.Read().CurrentArtifacts(context.Background(), it.ID, "transcript"); len(arts) != 0 {
 		t.Errorf("不該寫入任何記錄：%+v", arts)
+	}
+}
+
+// Rerun 在寫入前解析執行方式：從 correct 重跑而 correct 被 off 略過時，現行的 corrected 是舊脈絡的字幕，
+// 翻譯要用上游的 normalized（zh-Hans → zh-Hant-TW 要轉換），不能把舊 corrected（已經是 zh-Hant-TW）當原文而略過（agy P2）。
+func TestRerunResolvesTranslateWithoutStaleDownstreamOutputs(t *testing.T) {
+	r, it := newZhRig(t)
+	ctx := context.Background()
+	seedVariant(t, r, it, subtitle.VariantNormalized, "zh-Hans", "打开软件的设置")
+	seedVariant(t, r, it, subtitle.VariantCorrected, "zh-Hant-TW", "舊的校正字幕")
+	// 讓最新的 correct run 是 done：舊脈絡完整跑過。
+	err := r.st.Tx(ctx, func(repo *store.Repo) error {
+		runs, err := repo.StageRunsByItem(ctx, it.ID)
+		if err != nil {
+			return err
+		}
+		for _, run := range latestRuns(runs) {
+			if run.Stage == StageNormalize || run.Stage == StageSegment || run.Stage == StageCorrect {
+				if err := repo.SetStageState(ctx, run.ID, store.StageState{Status: store.StatusDone}); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	over := withMap(langOver([]string{"zh-Hant-TW"}, ""), stagesOver("correct", map[string]any{"executor": "off"}))
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageCorrect, Overrides: over}); err != nil {
+		t.Fatal(err)
+	}
+	r.run()
+	if st := latestStage(t, r, it.ID, StageTranslate); st.Status != store.StatusDone || st.Executor != ExecutorOpenCC {
+		t.Fatalf("translate = %+v，預期用 normalized 轉換", st)
+	}
+	if _, tr := translated(t, r, it.ID, "zh-Hant-TW"); tr.Cues[0].Text != "開啟軟體的設定" {
+		t.Errorf("譯文 = %q", tr.Cues[0].Text)
 	}
 }

@@ -17,9 +17,11 @@ func TestTableForMatrix(t *testing.T) {
 		{"zh-Hant-HK", "zh-Hans", HK2S, HK2S},
 		{"zh-Hant-MO", "zh-Hans", HK2S, HK2S},
 		{"zh-Hant", "zh-Hans", T2S, T2S},
-		{"zh-Hant-HK", "zh-Hant-TW", T2TW, T2TW},
+		{"zh-Hant-HK", "zh-Hant-TW", HK2TW, HK2TW},
+		{"zh-Hant-MO", "zh-Hant-TW", HK2TW, HK2TW},
 		{"zh-Hant", "zh-Hant-TW", T2TW, T2TW},
-		{"zh-Hant-TW", "zh-Hant-HK", T2HK, T2HK},
+		{"zh-Hant-TW", "zh-Hant-HK", TW2HK, TW2HK},
+		{"zh-Hant-TW", "zh-Hant-MO", TW2HK, TW2HK},
 		{"zh-Hant", "zh-Hant-HK", T2HK, T2HK},
 		// 同一字形、沒有對應的地區表：不轉換。
 		{"zh-Hans", "zh-Hans-CN", "", ""},

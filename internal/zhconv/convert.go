@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -66,7 +67,39 @@ type converter struct {
 	chain         []matcher
 }
 
+// composite 組出繁體地區之間的轉換器：normalization、來源地區的反向字典（轉成 OpenCC Standard）、目標地區的字典。
+// 與上游 t2tw、t2hk 一樣不分段。
+func composite(t Table) (*converter, error) {
+	var steps [2][]string
+	switch t {
+	case HK2TW:
+		steps = [2][]string{{"HKVariantsRevPhrases.txt", "HKVariantsRev.txt"}, {"TWVariantsPhrases.txt", "TWVariants.txt"}}
+	case TW2HK:
+		steps = [2][]string{{"TWVariantsRevPhrases.txt", "TWVariantsRev.txt"}, {"HKVariantsPhrases.txt", "HKVariants.txt"}}
+	}
+	norm, err := loadDict("CJK_Compatibility_Ideographs.txt")
+	if err != nil {
+		return nil, err
+	}
+	c := &converter{normalization: []matcher{norm}}
+	for _, files := range steps {
+		g := &group{} // short_circuit：詞組在字之前
+		for _, f := range files {
+			d, err := loadDict(f)
+			if err != nil {
+				return nil, err
+			}
+			g.ms = append(g.ms, d)
+		}
+		c.chain = append(c.chain, g)
+	}
+	return c, nil
+}
+
 func newConverter(t Table) (*converter, error) {
+	if slices.Contains(compositeTables, t) {
+		return composite(t)
+	}
 	data, err := resources.ReadFile(resourceDir + string(t) + ".json")
 	if err != nil {
 		return nil, fmt.Errorf("%w：%s", ErrUnknownTable, t)

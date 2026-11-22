@@ -107,7 +107,7 @@ func TestUnknownTable(t *testing.T) {
 			t.Errorf("Valid(%q) 應為 false", tb)
 		}
 	}
-	if len(Tables()) != 10 {
+	if len(Tables()) != 12 {
 		t.Errorf("Tables() = %d 個", len(Tables()))
 	}
 }
@@ -182,7 +182,7 @@ func TestScenarioStrings(t *testing.T) {
 }
 
 func TestConvertEdgeCases(t *testing.T) {
-	for _, tb := range allTables {
+	for _, tb := range Tables() {
 		if got, err := Convert(tb, ""); err != nil || got != "" {
 			t.Errorf("%s 空字串 = %q, %v", tb, got, err)
 		}
@@ -210,7 +210,7 @@ func TestConvertConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			tb := allTables[i%len(allTables)]
+			tb := Tables()[i%len(Tables())]
 			for j := 0; j < 20; j++ {
 				if _, err := Convert(tb, "打开软件的设置，這是一個測試"); err != nil {
 					t.Error(err)
@@ -271,5 +271,28 @@ func BenchmarkConvertS2TWP(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = Convert(S2TWP, "打开软件的设置，这个视频的质量很好。我们在这里讨论微服务实践。")
+	}
+}
+
+// 繁體地區之間的轉換先把來源地區的字形轉成 OpenCC Standard，再套用目標地區（Codex P2）。
+func TestRegionalTraditionalComposite(t *testing.T) {
+	cases := []struct {
+		table    Table
+		in, want string
+	}{
+		{HK2TW, "紅綫", "紅線"},     // 香港字形「綫」要先轉成標準字形
+		{TW2HK, "屋裡", "屋裏"},     // 台灣字形「裡」要先轉成標準字形，再轉香港的「裏」
+		{T2TW, "紅綫", "紅綫"},      // 只套用目標地區的表（輸入要是標準字形）：不會處理來源地區的字形
+		{HK2TW, "拉麪", "拉麵"},     // 兩邊的字都要經過標準字形
+		{TW2HK, "一口喫個", "一口吃個"}, // 詞組也走反向字典
+	}
+	for _, c := range cases {
+		got, err := Convert(c.table, c.in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != c.want {
+			t.Errorf("Convert(%s, %q) = %q，預期 %q", c.table, c.in, got, c.want)
+		}
 	}
 }

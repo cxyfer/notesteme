@@ -66,7 +66,7 @@ func (r result) discard() {
 	}
 }
 
-// supersedeSet 是要被取代的現行產出：影音的 (kind, variant) 在這些語言的版本。
+// supersedeSet 是要撤下的現行產出：影音的 (kind, variant) 在這些語言的版本（Repo.WithdrawArtifacts）。
 type supersedeSet struct {
 	Kind, Variant string
 	Langs         []string
@@ -319,8 +319,8 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 					return err
 				}
 			}
-			if g := res.supersede; g != nil && sr.ArtifactID != "" && len(g.Langs) > 0 {
-				if err := r.SupersedeArtifacts(ctx, it.ID, g.Kind, g.Variant, g.Langs, sr.ArtifactID); err != nil {
+			if g := res.supersede; g != nil && len(g.Langs) > 0 {
+				if err := r.WithdrawArtifacts(ctx, it.ID, g.Kind, g.Variant, g.Langs); err != nil {
 					return err
 				}
 			}
@@ -386,7 +386,7 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 			if err != nil {
 				return err
 			}
-			sc, err := p.stageContext(ctx, r, it)
+			sc, err := p.stageContext(ctx, r, it, "")
 			if err != nil {
 				return err
 			}

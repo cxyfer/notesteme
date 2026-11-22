@@ -114,13 +114,22 @@ func (r *Repo) InsertArtifact(ctx context.Context, n NewArtifact) (Artifact, err
 	return r.Artifact(ctx, n.ID)
 }
 
-// SupersedeArtifacts 把影音在指定語言的現行 (kind, variant) 產出標記為被 byID 取代（byID 必須是已存在的產出）。
-// 步驟的目標語言減少時使用（例如 translate 的 language.targets 少了一個語言）：產出的取代以語言為單位，
-// 不再被要求的語言要明確取代，否則舊的 translated 產出會一直是現行版本。
-func (r *Repo) SupersedeArtifacts(ctx context.Context, itemID, kind, variant string, langs []string, byID string) error {
-	for _, lang := range langs {
+// WithdrawArtifacts 撤下影音在指定語言的現行 (kind, variant) 產出：標記為被自己取代，保留歷史版本與檔案。
+// 步驟不再要求某個語言時使用（例如 translate 的 language.targets 少了一個語言，或全部目標都與原文相同）：
+// 產出的取代以語言為單位，不明確撤下的話，舊的 translated 產出會一直是現行版本。
+// 指向自己而不是指向另一個語言的新版本：superseded_by 只在同一組 (item, kind, variant, lang) 內有意義，
+// 指向別的語言的列被清除時 PurgeOldArtifacts 不會修正它（Codex P3）。langs 為空代表該 (kind, variant) 的所有語言。
+func (r *Repo) WithdrawArtifacts(ctx context.Context, itemID, kind, variant string, langs []string) error {
+	cur, err := r.CurrentArtifacts(ctx, itemID, kind)
+	if err != nil {
+		return err
+	}
+	for _, a := range cur {
+		if a.Variant != variant || (len(langs) > 0 && !slices.Contains(langs, a.Lang)) {
+			continue
+		}
 		if err := r.q.SupersedeCurrentArtifacts(ctx, sqlcdb.SupersedeCurrentArtifactsParams{
-			SupersededBy: byID, ItemID: itemID, Kind: kind, Variant: variant, Lang: lang,
+			SupersededBy: a.ID, ItemID: itemID, Kind: kind, Variant: variant, Lang: a.Lang,
 		}); err != nil {
 			return err
 		}
