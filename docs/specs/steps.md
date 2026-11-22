@@ -39,10 +39,20 @@
 | trash | 垃圾桶 | 刪除後、永久刪除前的暫存區，預設保留 30 天 |
 | purge | 永久刪除 | 從垃圾桶清除，`/data` 中不留這部影音的內容 |
 | tombstone | 刪除紀錄 | 永久刪除後留下的識別資料，避免 inbox 與訂閱把影音加回來 |
+| sponsor segment | 贊助片段 | SponsorBlock 標記的業配、自我宣傳等片段（`sponsor_segments`，M3） |
+| chapter | 章節 | 平台提供或 `chapters` 步驟產生的章節（M3） |
+| candidate frame | 候選畫面 | `frames` 以場景偵測與密度下限找出、去重後的畫面（M3） |
+| key frame | 關鍵畫面 | 選中、會放進筆記的候選畫面（M3） |
+| contact sheet | 拼圖 | 送給 vision 模型、加上編號的 3×3 候選畫面（M3） |
+| note | 筆記 | `note` 步驟依模板產生的 Markdown（M3） |
+| note template | 筆記模板 | 筆記的結構（frontmatter、資訊表、章節骨架），LLM 只寫內文（M3） |
+| note check | 自動檢查 | 筆記寫出後的檢查項目（NOTE-R7，M3） |
+| vault | vault | 設定檔定義的 Obsidian vault 輸出位置：`fs` 或 `git`（M3） |
+| hook | hook | 設定檔定義、發布後執行的命令（M3） |
 
 步驟狀態：`pending`、`running`、`waiting`、`awaiting_agent`、`blocked`、`done`、`skipped`、`failed`。
 `blocked` 的原因：`needs_action`、`budget_blocked`、`awaiting_user`。
-`skipped` 的原因：`cancelled`、`off`、`not_configured`、`no_outputs`、`same_language`、`not_applicable`（沒有任何輸出目標適用這部影音，例如 sidecar 對線上影音，OUT-R10）、`manual_captions`（來源是人工字幕，segment 預設略過，SEG-R1）。
+`skipped` 的原因：`cancelled`、`off`、`not_configured`、`no_outputs`、`same_language`、`not_applicable`（沒有任何輸出目標適用這部影音，例如 sidecar 對線上影音，OUT-R10）、`manual_captions`（來源是人工字幕，segment 預設略過，SEG-R1）；M3 另有 `platform_chapters`（平台已有章節，CHAP-R1）、`audio_only`（沒有影像串流，FRM-R1）、`gemini`（筆記由 Gemini 直接生成，GEM-R2）。
 錯誤類別：`retryable`、`wait`、`needs_action`、`budget_blocked`、`permanent`。
 
 ## 2. 影音的引用方式
@@ -97,6 +107,7 @@
 - 「任務正在執行」同時要求資料庫中的租約有效，且對應的外部工具程序仍然存活。
 - 場景中的 `/data`、`/config` 等路徑，會換成這個場景專用的暫存目錄。對應規則（虛擬路徑 → 實際路徑）：
   - `/data` → `<場景根目錄>/data`、`/config` → `<場景根目錄>/config`、`/media` → `<場景根目錄>/media`、`/backups` → `<場景根目錄>/backups`。
+  - `/vault` → `<場景根目錄>/vault`（M3：`fs` vault 的路徑；設定檔、請求 body 與檔案步驟都套用。實作 VAULT 之前要先在 harness 加上這個對應，否則場景會寫到真正的 `/vault`）。
   - `/tmp/<x>` → `<場景根目錄>/tmp/<x>`：場景中的 `/tmp/...`（例如上傳用的 `/tmp/fansub.ass`）不寫到真正的 `/tmp`。檔案步驟、`the owner uploads "/tmp/..."`、`When the owner sends … with:` 的請求 body 與 `When the owner runs` 的指令參數（例如 `notesteme config import /tmp/settings.yaml`）都套用這個對應（讓 body 裡的 `path` 指到 `Given the file … contains:` 寫的檔案，例如 OUT-R8、R13～R15）。
 - After hook 的 secret 掃描（NFR-SEC-3）除了 log 與假工具的呼叫紀錄，也涵蓋 `/backups`：其中的 `.tar.gz` 解壓後，逐一檢查每個項目的內容不含 master key 的值（OPS-R1）。
 - `Given {string} has {word} captions in {string}` 沒有對應的 fixture 時，產生 120 句的字幕軌。
@@ -349,6 +360,15 @@ fixture 在 `features/fixtures/llm/<名稱>`，沒有 `.json` 時自動補上。
 ### 4.13 SponsorBlock 與章節（`steps/chapters.go`，M3）
 
 M3 的句型（4.13～4.16）在 2026-11-23 規格展開時加入，目前全部註冊為 pending 的步驟樁（`godog.ErrPending`），由 M3 的實作切片換成真正的實作。假服務的設計見 `features/fixtures/README.md` 的「M3 的假服務」。
+
+每個 M3 的 `.feature` 在 Background 中、第一個會送出請求的步驟之前，都有一個 M3 的句型（假服務或 M3 產出的 seeding）。處理方案中的 M3 欄位（`stages.chapters` 等）在產品實作之前會被 PRF-R4 以 422 拒絕；這個安排讓 `@M3` 場景在實作之前一律是 pending，不是 failed。
+
+既有句型在 M3 的語意補充（2026-11-23，不新增句型；由實作切片在對應的步驟實作）：
+
+- `Given the item … has been processed up to …`：目標也可以是 `sponsorblock`、`chapters`、`frames`、`note`。產品的 `pipeline.ValidStage` 還不認得這個步驟時 pending（與 `source.Implemented` 同類的判斷，只限這四個名稱；其他不認識的名稱仍然失敗）；認得之後依 (2c) 的規則判斷（`done` 或 `skipped` 都算處理到）。
+- `Then the {string} artifact of {string} has the provenance:`、`has {int} versions`、`the item … has no … artifact`：名稱也可以是 M3 產出的 `kind`：`sponsor_segments`、`chapters`、`frames`、`note`。
+- 4.6 的 LLM 步驟：步驟名稱也可以是 `chapters`、`frames`、`note`、`note_map`（tool 或 schema 名稱 `notesteme_<stage>`）；provider 也可以是 `gemini`，由 `features/internal/fakegemini` 回應（`Given Gemini accepts YouTube videos up to …` 登記它），fixture 一樣放在 `features/fixtures/llm/`，`output` 會被包成 Gemini 回應的 `candidates[0].content.parts[0].text`。`frames` 的請求含有圖片區塊，fakellm 要接受 anthropic 的 `image` block 與 openai 的 `image_url`（FRM 規格 F4）。
+- `Given the provider {string} has no API key`：也接受 `gemini`（移除 `NOTESTEME_GEMINI_API_KEY`）。
 
 | 步驟 | 意思 |
 |---|---|
