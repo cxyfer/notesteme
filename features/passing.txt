@@ -31,6 +31,7 @@ CLI-cli.feature: Waiting on an item that needs the owner exits with 3
 CLI-cli.feature: Waiting until the transcript is ready
 CLI-cli.feature: Doctor reports each dependency with a fix
 DEL-delete.feature: A deleted item moves to the trash and disappears from the library
+DEL-delete.feature: Agents cannot read an item in the trash
 DEL-delete.feature: Deleting stops processing and frees the media cache
 DEL-delete.feature: The deletion preview shows what will be lost without changing anything
 DEL-delete.feature: A restored item comes back with its subtitles
@@ -45,6 +46,7 @@ DEL-delete.feature: Only admin tokens can delete or restore [example 1]
 DEL-delete.feature: Only admin tokens can delete or restore [example 2]
 DEL-delete.feature: Only admin tokens can delete or restore [example 3]
 DEL-delete.feature: Only admin tokens can delete or restore [example 4]
+DEL-delete.feature: MCP offers no tool that deletes
 DEL-delete.feature: Delete from the CLI
 DEL-delete.feature: The CLI refuses to delete without confirmation outside a terminal
 DEL-delete.feature: A Bilibili reference without a part deletes every part
