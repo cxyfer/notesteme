@@ -119,6 +119,12 @@
     - 已知限制：`local-sidecar` 來源會把自己輸出的 `lecture.en.srt` 當外掛字幕讀回（要處理得動 `local.go` 的 `listSidecars`）；比對雜湊後、rename 前的小競態；DEL-R9 的 `delete_outputs`／`kept_outputs` 還沒做（`Restoring writes deleted output files again` 目前空洞通過，要等 DEL-R9）。
     - 審查：獨立的 diff 審查子任務被 OOM 殺掉（機器記憶體吃緊），改由主代理自己讀了 `writer.go` 與 folder 路徑解析，沒有發現問題。
     - `@M2`：58 passed、26 failed、33 pending。
+  - M2 S4 COR 校正完整行為（直接推送到 master）：
+    - `correct`：相似度檢查（rune 為單位、忽略大小寫的 normalized Levenshtein，取 chunk 最低值，門檻 `stages.correct.min_similarity` 預設 0.6，COR-R2／R3，演算法待 M0）、詞彙表（全域 → 頻道 → 方案層含頻道覆寫，大小寫去重；放在 `<video_metadata>` 而非系統指示，模板的 `{{glossary}}` 也改成指向它）、`mixed` 語言規則（COR-R5，目前只認 `items.lang_mixed`，沒有產品流程會標 mixed，SRC-R11 是 `@wip`）、術語候選 `term_candidates`（pending，不自動入詞彙表，已拒絕的詞不重複）。
+    - 新 API：`GET/PUT /api/glossaries/{scope}/{id}`（`global`／`channel`）、`GET /api/channels/{id}/term-candidates`；migration 00015（`glossaries`、`glossary_candidates`、`llm_chunks.detail_json`）；詞彙表傳給 Groq ASR 的 `prompt`（最多 200 字元，沒有詞彙表時快取鍵不變，來源紀錄 `asr.prompt`）。
+    - 依 /goal 由 advisor 採保守預設、待 owner 追認：COR 規格 C1～C7。
+    - **還沒做／待決**：術語候選的核可／拒絕 API（規格說 M2 能核可，但介面只列三條路由；S11 補 `PATCH /api/channels/{id}/term-candidates/{cid}`）；`@pending-m0` 的 `A rewrite that strays too far` 場景寫「相似度 0.42」，Levenshtein 算出 0.19，要等 M0 決定算法或改場景；COR-R8 場景要等 S6b 的 `translate-two-cues` fixture。
+    - `@M2`：62 passed、24 failed、31 pending。
 - **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，189 passed、2 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
