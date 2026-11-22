@@ -345,3 +345,15 @@ fixture 在 `features/fixtures/llm/<名稱>`，沒有 `.json` 時自動補上。
 | `Given an event from {string} exists` | 建立一筆指定時間的事件 |
 | `Then no event older than {int} days remains` | 事件都在保留期限內 |
 | `Then the number of events is {int}` | 持久化的事件筆數：計算整張 events 表（包括場景中用 `an event from … exists` 建立的，不只是場景自己建立的）。server 已明確停下時改用唯讀方式查詢 DB |
+
+### 4.13 SponsorBlock 與章節（`steps/chapters.go`，M3）
+
+M3 的句型（4.13～4.16）在 2026-11-23 規格展開時加入，目前全部註冊為 pending 的步驟樁（`godog.ErrPending`），由 M3 的實作切片換成真正的實作。假服務的設計見 `features/fixtures/README.md` 的「M3 的假服務」。
+
+| 步驟 | 意思 |
+|---|---|
+| `Given SponsorBlock has the segments for {string}:` | 假 SponsorBlock（`features/internal/fakesponsorblock`）登記這部影片的片段；表格欄位 `category`、`start`、`end`（時間碼），可加 `action`（預設 `skip`）。只接受 `yt:`。假服務依 SponsorBlock 的 hash 前綴 API 回應（SPB-R2）：前綴相同的其他影片也會出現在回應中，由產品挑出相符的 `videoID` |
+| `Given SponsorBlock fails for {string} with HTTP {int}` | 查詢這部影片（含相同 hash 前綴的查詢）時，假 SponsorBlock 回應指定的狀態碼 |
+| `Then SponsorBlock received {int} requests for {string}` | 假 SponsorBlock 收到、hash 前綴與這部影片相同的請求數（含失敗的請求） |
+| `Then SponsorBlock never received the video ID of {string}` | 假 SponsorBlock 收到的所有請求（路徑、query、標頭、body）都不含這部影片的 11 字元 ID；完全沒有收到請求時失敗（沒有東西可以驗證） |
+| `Given the chapters of {string} are:` | 直接寫入現行的 `chapters` 產出（同 `the … transcript of … is:` 的 seeding，影音不存在時先新增並做到 metadata）；表格欄位 `start`（時間碼）、`title`，可加 `cue`；有 `cue` 欄時 `origin` 是 `llm`，否則是 `platform` |
