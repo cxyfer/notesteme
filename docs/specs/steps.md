@@ -714,7 +714,7 @@ M5 的領域用語：
 | `When the Hub client sends {string} with the Hub token {string} from the origin {string}` | 同上，加上 `Origin` 標頭；用於 HMCP-R2（`POST /mcp` 時 body 是 MCP 的 `initialize` 請求） |
 | `Given the hub member {string} is in the group {string}` | 直接在 Hub 的 DB 以 `source: manual` 把這位使用者加入群組（`admins` 以 `source: config`）；使用者必須已經登入過 |
 | `Given the hub member {string} is suspended` | 直接在 Hub 的 DB 停用這位使用者 |
-| `When the Hub MCP client with the Hub token {string} lists the tools` | 對 Hub 的 `/mcp` 呼叫 `tools/list`；`Then the listed names include …` 等 4.7 的步驟斷言它 |
+| `When the Hub MCP client with the Hub token {string} lists the tools` | 對 Hub 的 `/mcp` 呼叫 `tools/list`（同一個 token 在場景中只 `initialize` 一次，之後每個呼叫是一個 HTTP 請求；Hub 重新啟動後重新 `initialize`）；`Then the listed names include …` 等 4.7 的步驟斷言它 |
 | `When the Hub MCP client with the Hub token {string} calls {string} with:` | 對 Hub 的 `/mcp` 呼叫 tool，參數為 JSON；`Then the tool result contains:`、`Then the tool call fails with {string}` 斷言它 |
 
 ### 4.31 Hub 的內容（`steps/hub_content.go`，M5）
