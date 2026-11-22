@@ -17,14 +17,14 @@ go run ./cmd/notesteme serve
 npm run dev        # Vite dev server，/api 與 /mcp 代理到後端；NOTESTEME_DEV_BACKEND 可以改後端位址
 ```
 
-| 指令 | 做什麼 |
-|---|---|
-| `npm run build` | 清空 `dist`（保留 `.gitkeep`）、`tsc --noEmit`、`vite build`。之後重新編譯 Go，binary 就包含 UI |
-| `npm test` | vitest（含 axe、token 對比）＋ i18n 字典檢查 |
-| `npm run lint`／`npm run format:check`／`npm run typecheck` | eslint、prettier、tsc |
-| `npm run check:bundle` | 建置後檢查初始載入的 JS（gzip）< 300KB（NFR-PERF-10），以及 `index.html` 沒有 inline script |
-| `npm run gen:api` | 由 `internal/api/openapi.json` 產生 `src/api/schema.d.ts` |
-| `npm run check:api` | `gen:api` 之後 `git diff --exit-code`（CI 的 drift 檢查） |
+| 指令                                                        | 做什麼                                                                                          |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `npm run build`                                             | 清空 `dist`（保留 `.gitkeep`）、`tsc --noEmit`、`vite build`。之後重新編譯 Go，binary 就包含 UI |
+| `npm test`                                                  | vitest（含 axe、token 對比）＋ i18n 字典檢查                                                    |
+| `npm run lint`／`npm run format:check`／`npm run typecheck` | eslint、prettier、tsc                                                                           |
+| `npm run check:bundle`                                      | 建置後檢查初始載入的 JS（gzip）< 300KB（NFR-PERF-10），以及 `index.html` 沒有 inline script     |
+| `npm run gen:api`                                           | 由 `internal/api/openapi.json` 產生 `src/api/schema.d.ts`                                       |
+| `npm run check:api`                                         | `gen:api` 之後 `git diff --exit-code`（CI 的 drift 檢查）                                       |
 
 CI：`.github/workflows/web.yml`（只在 `web/**`、`internal/api/openapi.json` 或 workflow 本身改變時執行）。
 
