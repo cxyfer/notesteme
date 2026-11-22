@@ -20,8 +20,14 @@ func TestBodySHA256(t *testing.T) {
 }
 
 func TestContractLists(t *testing.T) {
-	if len(Kinds) != 7 || len(Variables) != 7 || len(BuiltinIDs) != 5 {
-		t.Errorf("Kinds=%d Variables=%d BuiltinIDs=%d，契約是 7、7、5", len(Kinds), len(Variables), len(BuiltinIDs))
+	// M3 修訂（PRM）：kind 的 frames.select 改為 frames，另加 note_map；M3 的內建 prompt 由實作切片加入。
+	if len(Kinds) != 8 || len(Variables) != 7 || len(BuiltinIDs) != 5 {
+		t.Errorf("Kinds=%d Variables=%d BuiltinIDs=%d，契約是 8、7、5", len(Kinds), len(Variables), len(BuiltinIDs))
+	}
+	for _, k := range []string{"chapters", "frames", "note", "note_map"} {
+		if !slices.Contains(Kinds, k) {
+			t.Errorf("Kinds 缺少 M3 的 %s", k)
+		}
 	}
 }
 

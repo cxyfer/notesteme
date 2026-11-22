@@ -9,7 +9,7 @@
   - 六份規格（狀態 `ready`）與 `.feature`：[SPB](specs/SPB-sponsorblock.md)、[CHAP](specs/CHAP-chapters.md)、[FRM](specs/FRM-frames.md)、[NOTE](specs/NOTE-notes.md)、[GEM](specs/GEM-gemini.md)、[VAULT](specs/VAULT-vault-output.md)；跨規格的決定在 [ADR-0020](adr/0020-m3-stages-notes-and-vault.md)（步驟順序 `translate → sponsorblock → chapters → frames → note → publish`、預設值、資源類別、產出 kind、`note_templates`、vault 與 hook 只在設定檔、`outputs` 加欄位）。
   - `@M3` 場景：`go test ./features -run TestFeatures -godog.tags='@M3'` 全部 pending（`@pending-m0` 另計）。每個 M3 的 Background 在第一個送出請求的步驟之前都有一個 M3 句型，所以**在第一個 M3 句型實作之前**不會 failed（閘門句型有共用，見 steps.md 4.13 開頭）；預設 tag 的 308 個場景不受影響。
   - 新句型在 `steps.md` 4.13～4.16（步驟樁在 `features/steps/chapters.go`、`frames.go`、`notes.go`、`vault.go`）；既有句型的 M3 語意補充（`processed up to` 接受 M3 步驟、產出名稱接受 M3 kind、LLM 步驟的 `gemini` provider、`/vault` 路徑對應）寫在 4.13 開頭，要在實作切片中補上。
-  - 假服務骨架（只有單元測試，還沒接進 fakenet、`faketool.Dispatch`）：`features/internal/fakesponsorblock`、`fakeframes`、`fakegemini`、`fakegit`、`fakehook`；設計見 `features/fixtures/README.md`「M3 的假服務」。
+  - 假服務骨架（M3-S0 已接進 fakenet 與 `faketool.Dispatch`，見下面 M3-S0 的 bullet；fakeframes、fakegemini 的影片資訊還沒接）：`features/internal/fakesponsorblock`、`fakeframes`、`fakegemini`、`fakegit`、`fakehook`；設計見 `features/fixtures/README.md`「M3 的假服務」。
   - 要 owner 追認的決定：ADR-0020 全文；SPB B1（M2 步驟不排除片段）；CHAP H1（章節在 translate 之後）；FRM F1（單一 `frames` 步驟）、F3（預設 off）；NOTE N1（自動檢查依 `Video Notes/AGENTS.md` 轉述）、N2（「標記已閱讀」按鈕來源不足）；GEM G2（模型時間戳的例外）；VAULT V1（vault 只在設定檔，UI 第 12 節已加修訂行）、V2（push 錯誤依種類分類）。
   - **M3-S0 骨架（2026-11-23，分支 `feat/m3-s0-skeleton`；決策記在 PIPE、PRF、SPB、CHAP、FRM、NOTE、GEM、VAULT 的待決問題，ADR-0020 改為「已採納（待 owner 追認）」並加修訂行）**：
     - 數字：預設 tag 308 passed（不變）；`@M2` 117 passed；`@M3` 109 個場景切片前後**逐場景相同**，全部 pending（停在同一個閘門句型）；`features/passing.txt` 沒有變動。

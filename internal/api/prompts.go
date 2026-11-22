@@ -48,7 +48,7 @@ func (rt *routes) registerPrompts(api huma.API) {
 // PromptSummary 是提示詞的摘要。
 type PromptSummary struct {
 	ID             string    `json:"id"`
-	Kind           string    `json:"kind" doc:"summary、chapters、segment、correct、translate、frames.select 或 note"`
+	Kind           string    `json:"kind" doc:"summary、chapters、segment、correct、translate、frames、note 或 note_map"`
 	Builtin        bool      `json:"builtin" doc:"內建的提示詞不能修改"`
 	DefaultVersion int       `json:"default_version" doc:"id 與 id@default 解析到的版本"`
 	LatestVersion  int       `json:"latest_version"`
@@ -138,7 +138,7 @@ func (rt *routes) listPrompts(ctx context.Context, _ *struct{}) (*promptsOutput,
 type createPromptInput struct {
 	Body struct {
 		ID   string `json:"id,omitempty" doc:"小寫英文字母、數字、「.」與「-」，不可以和內建的相同"`
-		Kind string `json:"kind,omitempty" doc:"summary、chapters、segment、correct、translate、frames.select 或 note"`
+		Kind string `json:"kind,omitempty" doc:"summary、chapters、segment、correct、translate、frames、note 或 note_map"`
 		Body string `json:"body,omitempty" doc:"內文，可用 {{title}}、{{channel}}、{{description}}、{{chapters}}、{{glossary}}、{{source_lang}}、{{target_lang}}"`
 	}
 }

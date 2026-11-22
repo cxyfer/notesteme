@@ -21,7 +21,7 @@ import (
 )
 
 // Kinds 是 prompt 的類型（PRM-R1）。
-var Kinds = []string{"summary", "chapters", "segment", "correct", "translate", "frames.select", "note"}
+var Kinds = []string{"summary", "chapters", "segment", "correct", "translate", "frames", "note", "note_map"}
 
 // Variables 是 prompt 內文可以使用的 {{變數}}（PRM-R3）。
 var Variables = []string{"title", "channel", "description", "chapters", "glossary", "source_lang", "target_lang"}

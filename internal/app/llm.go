@@ -6,6 +6,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/llm"
+	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/secrets"
 )
 
@@ -42,3 +43,11 @@ type outputCatalog struct {
 
 func (c outputCatalog) HasVault(id string) bool { _, ok := c.vaults[id]; return ok }
 func (c outputCatalog) HasHook(id string) bool  { _, ok := c.hooks[id]; return ok }
+
+// 正式環境的目錄必須實作 pipeline 的介面：GEM-R1 的 type 檢查與 VAULT-R1、R10 的 id 檢查都靠型別斷言，
+// 方法簽名改了時要在編譯時失敗，而不是靜默略過檢查（閘門讓 @M3 的 422 場景驗證不到）。
+var (
+	_ pipeline.ProviderCatalog = (*llm.Registry)(nil)
+	_ pipeline.ProviderTypes   = (*llm.Registry)(nil)
+	_ pipeline.OutputCatalog   = outputCatalog{}
+)
