@@ -156,6 +156,17 @@ type LlmChunk struct {
 	UpdatedAt  int64
 }
 
+type Output struct {
+	ItemID    string
+	Path      string
+	Target    string
+	Format    string
+	Lang      string
+	Sha256    string
+	Size      int64
+	WrittenAt int64
+}
+
 type Profile struct {
 	Name           string
 	CurrentVersion int64
