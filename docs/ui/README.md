@@ -207,13 +207,15 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | SSE：快取失效表、重連、頁面隱藏時斷線 | 完成 | `web/client/src/events` |
 | i18n 三語與字典檢查 | 完成 | `web/client/src/i18n`、`scripts/check-i18n.mjs` |
 | 設計 token 與元件：Button、TextField、Dialog／Drawer、Toast、Spinner、StatusBadge、ErrorCallout | 完成 | `web/client/src/styles`、`src/components` |
-| 頁面：`/library`、`/queue`、`/items/:id`、`/settings/:section` | 空頁（標題＋「還在製作中」） | `web/client/src/pages` |
+| 頁面：`/library`、`/queue`、`/items/:id`、`/settings/:section` | `/library`（UI-1）、`/items/:id` 與 `/queue`（UI-2）完成；設定仍是空頁 | `web/client/src/pages` |
 | CI：tsc、eslint、prettier、vitest（axe、對比、i18n）、build、bundle 預算、OpenAPI drift、npm audit | 完成 | `.github/workflows/web.yml` |
 | 新增抽屜、媒體庫（M1 基本版）、精簡版時間帶、`N`／`/` 快捷鍵、貼上網址 | 完成（UI-1，見 10.4） | `web/client/src/add`、`src/pages/library`、`web/shared` |
 | 指令面板（`Ctrl K`）、`G` 開頭的快捷鍵、`?` 快捷鍵說明 | 未做 | 之後的切片 |
 | 影音詳情、佇列 | 未做 | UI-2 |
 | 設定各分區 | 未做 | UI-3 |
 | Prompt 庫、處理方案、字幕樣式 | 完成（UI-3a，見 10.6） | `web/client/src/pages/{prompts,profiles,styles}` |
+| 影音詳情、佇列 | 完成（UI-2，見 10.6） | `web/client/src/pages/item`、`src/pages/queue` |
+| 設定各分區、Prompt 庫、處理方案、字幕樣式 | 未做 | UI-3 |
 | 登入頁背景的淡化時間帶（§13） | 未做 | 等 UI-1 的時間帶元件 |
 | 768–1279px 的收合導覽（只剩圖示） | 未做：沒有圖示前維持展開；UI-1 沒有引入 Phosphor Icons | 之後的切片 |
 
@@ -355,3 +357,49 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 11. **token 的 Claude Code 設定片段**用 `claude mcp add --transport http notesteme <origin>/mcp --header "Authorization: Bearer <token>"`；分區上顯示占位字串，建立後的對話框可以複製含真正 token 的指令。輪替（AUTH-R21）是 M4。
 12. **匯入沒有預覽**：先跳確認框說明「同名取代、不刪除、可能改預設處理方案」，再套用；成功後讓 `profiles` 的 query 失效。匯出用 Blob 下載 `notesteme-config.yaml`（`blob:` 的下載不受 CSP 的 `connect-src` 限制）。
 13. **bundle**：設定頁沒有做 lazy route（不改 `router.tsx`），初始 JS 由約 174KB 增加到約 194KB（gzip，預算 300KB）。
+
+### 10.6 UI-2：影音詳情與佇列（2026-11-23）
+
+| 範圍 | 狀態 | 位置 |
+|---|---|---|
+| 詳情的標題列（標題帶原文 `lang`、頻道、平台連結、發布日、長度、原文語言、處理方案、字幕來源）與主要動作（重新處理、下載 SRT、停止處理、移到垃圾桶） | 完成 | `src/pages/item/ItemPage.tsx` |
+| 完整版時間帶：72px 底軌、刻度、6px 步驟帶與逐列文字標籤、播放頭、處理範圍；`role="slider"`，←／→ 5 秒、PageUp／PageDown 30 秒、Home／End、點擊跳播、hover 顯示時間與字幕句 | 完成 | `web/shared/src/StatusBand.tsx`（`variant="full"`） |
+| 播放器：YouTube 嵌入（postMessage，無回應時改成更新 `start` 重新載入）、Bilibili 嵌入（`t` 參數重新載入＋「在 Bilibili 開啟這個時間」）、本機 `<video>`／Podcast `<audio>` 指向 `/media` | 完成 | `src/pages/item/Player.tsx` |
+| 字幕句列表：虛擬化、點時間碼跳播、目前句高亮（色條＋`aria-current`）、播放時跟隨與「回到目前位置」、搜尋、時間來源標示、純文字與字幕自己的 `lang` | 完成 | `src/pages/item/CueList.tsx` |
+| 顯示模式：原始、正規化、校正、差異（逐字）、譯文、對照、已編輯；切換時捲回同一個時間；模式存在 URL | 完成 | `CueList.tsx`、`diff.ts`、`cues.ts`、`search.ts` |
+| 步驟：狀態、執行方式、provider／model／prompt 摘要、時間、嘗試次數；failed／blocked／有訊息的 skipped 顯示錯誤類別＋訊息＋動作 | 完成 | `src/pages/item/StagePanel.tsx`、`actions.ts` |
+| 紀錄分頁（`GET /runs`：狀態、時間、耗時、設定快照） | 完成 | `RunsPanel.tsx` |
+| 重新處理對話框：起始與結束步驟、處理方案、單次覆寫（provider、model、prompt 與版本）、只重跑指定 chunk、422／409 顯示 | 完成 | `RerunDialog.tsx` |
+| 改用 API 處理（`switch-executor`）、上傳 cookie、更新 yt-dlp、停止處理（`cancel`） | 完成 | `ItemPage.tsx`、`SmallDialogs.tsx` |
+| 刪除：`deletion-preview` 的產出數、空間、花費；「同時刪除未修改過的輸出檔」與改過的檔案；回到媒體庫的 toast「復原」 | 完成 | `DeleteDialog.tsx` |
+| 輸出：下載（SRT、VTT、ASS、雙語 SRT、純文字）、寫出的檔案、匯入修正過的字幕（422 指出第幾句或檔案第幾行） | 完成 | `OutputsPanel.tsx` |
+| SSE：`stage.status` 讓 detail、runs 失效；產生字幕的步驟 `done` 才讓字幕失效、`publish` `done` 才讓輸出失效；頁面層級 aria-live | 完成 | `src/events/invalidation.ts` |
+| 佇列：各資源類別的通道（方格＝上限、實心＝使用中）、上限 +／−、整個佇列與各類別的暫停／繼續、暫停橫幅、任務列表（虛擬化、篩選在 URL）、「需要你處理」依步驟計數、影音層級的停止處理 | 完成 | `src/pages/queue` |
+| 時間帶的章節線、`Shift + ←／→`、拖曳選取範圍（重新校正這段、複製這段字幕）、說話密度、畫面刻度 | 未做 | API 沒有章節、說話密度、chunk 範圍（10.7 第 8 點） |
+| 佇列的優先順序、Agent 任務、租約剩餘時間、單一任務的重試／取消、「全部重試」 | 未做 | API 缺口（10.7 第 8 點） |
+| 匯出選單的 ASS 樣式選擇、Markdown 筆記、bundle；兩個版本之間的比較（紀錄分頁） | 未做 | 之後的切片（ASS 用預設樣式） |
+
+### 10.7 UI-2 的決定
+
+（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
+
+1. **不改後端**。全部用既有 API 組合；沒有新增路由、欄位，OpenAPI 與 `schema.d.ts` 沒有變動。
+2. **路由參數可能是代號**（`/items/yt:…`）：detail 讀到之後，字幕、紀錄、輸出、媒體、重新處理等呼叫與 query key 一律用 `detail.id`，SSE 的失效表才對得上；用代號進來時頁面另外讓路由參數的 detail 失效。
+3. **字幕的快取不放在 `items.detail` 底下**（`items.cues(id, {variant, lang})`）：每個 `stage.status` 都讓 detail 失效，上千句的字幕不能跟著重抓。只在 transcript、normalize、segment、correct、translate `done` 時失效；重新讀取期間保留舊資料（`keepPreviousData`），列表不卸載，捲動位置不變。
+4. **差異的比較方式**：校正後（`corrected`）對「校正前實際存在的最近變體」（segmented → normalized → source）。兩邊依**時間重疊**分組（校正可能合併或拆句），每組以 code point 做 LCS 逐字比對（不切開 surrogate pair）；超過 400 萬格時退化成整段刪除＋新增。刪除用 `<del>`（刪除線）、新增用 `<ins>`（底線），另有 visually-hidden 的「刪除：」「新增：」文字。沒有校正結果的段落顯示原文並標「尚未校正」。**自寫元件，不用 CodeMirror merge view**：字幕是逐句的短文字，自寫的 diff 約 2KB；整個詳情頁是 lazy route（gzip 13.4KB），初始 JS 188.3KB（UI-1 是 174.2KB，增加的是佇列頁與共用的 query key／VirtualList）。
+5. **模式依步驟狀態決定**：transcript `done` 才有「原始」、normalize `done` 才有「正規化」、correct 已開始（不含 skipped）才有「校正」「差異」、translate `done` 才有「譯文」「對照」、有 `edited` 字幕才有「已編輯」。預設是校正 > 正規化 > 原始。譯文的語言用最近一次執行的設定快照 `language.targets`，多個時可以選。沒有 `convert`／`localize` 的區分（pages.md §4 的「只差字形」規則）：API 沒有提供，譯文與對照只在 translate 完成時出現。
+6. **YouTube 播放器不載入 IFrame API 的 script**：CSP 的 `script-src` 只有 `'self'`，不放寬。用嵌入網址的 `enablejsapi=1&origin=…` 加 postMessage（送 `listening`，收 `infoDelivery.currentTime`；跳播送 `seekTo`、`playVideo`）；訊息只接受 YouTube 的 origin 且 `source` 是這個 iframe。4 秒內沒有收到訊息就降級成「更新 `start` 重新載入」。協定是 YouTube 未公開文件化的部分，**需要在真實瀏覽器人工驗證**（LIB-03 是 `@manual`）。頁面的 `Referrer-Policy` 是 `same-origin`，YouTube 嵌入需要來源網域，只在 iframe 元素上設 `referrerpolicy="strict-origin-when-cross-origin"`（不改全站標頭）。Bilibili 沒有公開的控制介面，跳播用 `t` 參數重新載入，另附「在 Bilibili 開啟這個時間」。
+7. **步驟的 `actions` 是後端的繁中字串**：`src/pages/item/actions.ts` 用對照表對應到三語文案與實際動作（重試、重新翻譯、重新校正這段、處理該檔案後重新發布、更換模型、開啟 Prompt → 重新處理對話框並預選該步驟；改用 API 處理 → `switch-executor`；上傳 cookie → `POST /api/cookies`；更新 yt-dlp → `POST /api/tools/yt-dlp/update`；設定 API key、語音轉錄、額度、安裝工具 → 設定頁對應分區）。認不得的字串原樣顯示並附「開啟設定」。失敗與停住的步驟一定有「從這個步驟重新處理」，等待 Agent 一定有「改用 API 處理」。
+8. **API 缺口**（記在這裡，之後的後端切片處理）：
+   - `Stage.actions` 應改成動作代碼（現在是繁中按鈕文字，前端只能比對字串）。
+   - 沒有 log 片段（OBS-2 的「相關 log 片段」）：步驟面板改連到「紀錄」分頁，顯示 `GET /runs` 的狀態、時間與設定快照；`runs` 也沒有花費、provider 實際回應等欄位。
+   - rerun 沒有 `estimate`／`estimate_usd`：對話框顯示「無法預估」。沒有拿 `POST /api/estimate` 代替（它針對網址，可能呼叫 yt-dlp）。
+   - 沒有 provider 列表 API：provider 用文字輸入，建議值取自處理方案設定。
+   - 沒有列出影音有哪些字幕變體與語言的 API：模式依步驟狀態推得，`edited` 用一次 `variant=edited` 的查詢確認。
+   - 沒有章節、說話密度、LLM chunk 的時間範圍：時間帶只畫整條步驟狀態，沒有章節線、拖曳選取、chunk 進度。
+   - `ItemDetail` 沒有處理方案名稱：從設定快照的 `profile` 取（沒有就不顯示）。
+   - 佇列：`GET /api/queue` 只列內建 worker 的任務（沒有 Agent 任務、租約剩餘時間、優先順序欄位）；`POST /api/tasks/{id}/retry`、`cancel` 回 501；沒有調整優先順序的 API。頁面上明說，並改提供影音層級的「停止處理」。
+   - 「需要你處理」沒有彙總 API：依步驟各查一次 `GET /api/items?status=<stage>:failed&status=<stage>:blocked&limit=1` 的 `total`（7 個請求；同一部影音可能在不同步驟各算一次）。
+9. **501 不重試**：TanStack Query 的預設重試排除 501（功能還沒做），佇列沒有啟用時立即顯示說明。
+10. **axe 不進 iframe**（`iframes: false`）：嵌入的播放器是跨來源的；`routes.a11y.test.tsx` 用 `defaultRoutes()` 替身，不連網路。
+11. **新增相依**：無。`api.patch`、`VirtualListHandle.scrollToIndex`／`firstVisibleIndex`、`formatBytes`／`formatUsd` 是新增的 API，不改既有的意義。

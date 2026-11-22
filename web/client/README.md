@@ -57,6 +57,8 @@ src/
   pages/        每個路由一個元件
   add/          「新增」抽屜（AddDrawer）、AddProvider／useAddDrawer、網址解析
   pages/library 媒體庫的篩選模型（filters.ts）、篩選列、列元件、步驟狀態的對應
+  pages/item    影音詳情（lazy route）：播放器、字幕句列表、逐字 diff、步驟、紀錄、輸出、重新處理與刪除對話框
+  pages/queue   佇列：通道、暫停／繼續、上限、任務列表、篩選模型
   shell/        AppShell（導覽、skip link、SSE、401 處理、N 與貼上網址）、偏好設定、keyboard.ts
   styles/       tokens.css（設計 token）、base.css（shell 與頁面）、components.css
   theme/        淺色／深色／跟隨系統
@@ -90,6 +92,7 @@ src/
 - `AppShell` 呼叫一次 `useEventStream()`：連上 `GET /api/events`，依 `src/events/invalidation.ts` 的表讓 query 失效；每次（重新）連上時讓所有相關的 key 失效（斷線期間的事件收不到）。
 - 斷線後指數退避重連（1 秒起、上限 30 秒、±20% jitter）；重連前探測到 401 就導到登入頁；頁面隱藏超過 60 秒就關閉連線，回到前景再連上。
 - 頁面要自己處理事件時用 `useServerEvent(handler, ["item.created"])`。例如媒體庫的「有 N 個新項目」（README §3.4）：`item.created` **不**讓列表失效，由頁面計數，使用者點擊後才重新取得。
+- **字幕、執行紀錄、輸出的 key 不在 `items.detail` 底下**（UI-2）：`items.cues(id, {variant, lang})` 只在產生字幕的步驟 `done` 時失效，`items.outputs(id)` 只在 `publish` `done` 時失效，`items.runs(id)` 隨每個 `stage.status` 失效。key 一律用影音 ID（路由參數可能是 `yt:…` 代號）。
 - **列表一律不被即時更新重抓**（UI-1）：`stage.status` 只讓 `items.detail(id)` 與 `queue` 失效；重新連上時只讓 detail 失效，頁面用 `useStreamReconnect` 顯示「列表可能不是最新的」，由使用者重新載入。列表的 query 設 `staleTime: Infinity`，只在換篩選或使用者要求時 reset。
 
 ### i18n 字串
@@ -124,6 +127,14 @@ src/
 - URL 存使用者的單位：日期是 `YYYY-MM-DD`（送 API 時換成當地時區的 RFC 3339 起訖）、長度是分鐘（`dur_min`／`dur_max`，送 API 時換成秒）。陣列（`status`）用 TanStack 的預設序列化，送 API 時展開成重複的參數（`api.get` 的 `query` 接受陣列）。
 - 打字中的搜尋延遲 300ms 送出並用 `replace`，不新增瀏覽紀錄；其他條件用 push。`/` 聚焦搜尋框、Esc 清除。
 
+### 影音詳情（UI-2）
+
+- 字幕是不可信輸入：只當純文字渲染，元素設定字幕自己的 `lang`；時間碼用 `formatTimecode`。
+- 播放器一律經過 `pages/item/Player.tsx` 的 `PlayerHandle.seek()`；YouTube 用 postMessage，**不要**載入 IFrame API 的 script（CSP）。收到的訊息一定檢查 origin 與 `source`。
+- 切換字幕模式時用 `VirtualListHandle.firstVisibleIndex()` 記住時間、新資料到了再 `scrollToIndex()`；不要用 `key` 讓列表重建。
+- 後端的 `Stage.actions` 是繁中字串：新的動作加進 `pages/item/actions.ts` 的對照表與 `actions.*` 字典。
+- 差異：`pages/item/diff.ts`（逐字 LCS）＋ `cues.ts` 的 `alignCues`（依時間重疊分組）。
+
 ### 抽屜與全域快捷鍵
 
 - 「新增」抽屜由 `AddProvider` 掛在 `AppShell`，任何頁面用 `useAddDrawer().open(url?)` 打開；每次打開都是新的表單（`key`）。
@@ -137,7 +148,7 @@ src/
 - API 用 `src/test/mockApi.ts` 的替身（`mockApi({ "GET /api/items/{id}": (req) => … })`，`calls(method, path)` 查呼叫紀錄），不連網路；測試資料在 `src/test/fixtures.ts`。
 - jsdom 不排版：`setup.ts` 讓 `.vlist` 的 `clientHeight` 是 800px，並補上 `ResizeObserver`，虛擬列表才會渲染列。
 - `expectNoA11yViolations()`（`src/test/axe.ts`）：serious 與 critical 一律失敗（NFR-A11Y-1）。jsdom 不排版，`color-contrast` 規則關閉，改由 `src/styles/contrast.test.ts` 驗證 token 的對比。
-- 每個頁面的 axe 檢查集中在 `src/test/a11yRoutes.ts`，新增路由時加進去。
+- 每個頁面的 axe 檢查集中在 `src/test/a11yRoutes.ts`，新增路由時加進去（`ready` 是資料載入後才出現的文字）；API 一律用 `fixtures.ts` 的 `defaultRoutes()`。axe 不進 iframe（嵌入的播放器）。
 - 鍵盤：skip link 是第一個可聚焦的元素；換頁後焦點移到 `<main>`；焦點框用 `:focus-visible`（淺色 Ink、深色 Cue）；可點擊目標至少 24×24px。
 - `prefers-reduced-motion` 時所有動畫與轉場立即完成（`base.css`）。
 - 目前不用 Playwright（記憶體有限）；需要真實瀏覽器的檢查（LCP、捲動、手機版面）列在 NFR 的 `manual`。
@@ -159,3 +170,4 @@ src/
 ### Bundle 預算
 
 初始載入的 JS（gzip）< 300KB（NFR-PERF-10，UI-0 約 137KB，UI-1 約 174KB，UI-3a 約 198KB；CodeMirror 在 `/prompts/$id` 的 lazy chunk）。`npm run check:bundle` 計算 `index.html` 直接引用的 module script 與 modulepreload。加入大型相依（CodeMirror、TanStack Table）時放在 lazy route 裡。
+初始載入的 JS（gzip）< 300KB（NFR-PERF-10，UI-0 約 137KB，UI-1 約 174KB，UI-2 約 188KB；影音詳情是 lazy route，另外約 13KB）。`npm run check:bundle` 計算 `index.html` 直接引用的 module script 與 modulepreload。加入大型相依（CodeMirror、TanStack Table）時放在 lazy route 裡。
