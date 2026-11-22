@@ -39,13 +39,20 @@ type chunkLLM struct {
 	calls  []int
 	// before 在處理 chunk n 之前呼叫（例如等到其他 chunk 讓步驟 blocked）；可以是 nil。
 	before func(n int)
+	// deadlines 記下每個請求的 ctx 剩下的時間（沒有期限時是 0）。
+	deadlines []time.Duration
 }
 
-func (f *chunkLLM) Complete(_ context.Context, req llm.Request) (llm.Response, error) {
+func (f *chunkLLM) Complete(ctx context.Context, req llm.Request) (llm.Response, error) {
 	m := chunkRE.FindStringSubmatch(req.Data)
 	n, _ := strconv.Atoi(m[1])
+	var left time.Duration
+	if d, ok := ctx.Deadline(); ok {
+		left = time.Until(d)
+	}
 	f.mu.Lock()
 	f.calls = append(f.calls, n)
+	f.deadlines = append(f.deadlines, left)
 	b, before := f.behave[n], f.before
 	f.mu.Unlock()
 	if before != nil {
@@ -135,6 +142,12 @@ func TestLLMFallbackIsRetriedOnPlainRerun(t *testing.T) {
 	// chunk 1、3、4 各 1 次，chunk 2 是 1 + 1 次重試。
 	if n := fake.callCount(); n != 5 {
 		t.Fatalf("請求數 = %d，預期 5（%v）", n, fake.calls)
+	}
+	// 每個請求都在租約內的期限之下（租約減去安全邊際）：不讓租約失效後被重新領取而重複計費。
+	for i, d := range fake.deadlines {
+		if d <= 0 || d > queue.DefaultLease-chunkLeaseMargin {
+			t.Errorf("第 %d 個請求的期限剩 %v，預期在 0 與 %v 之間", i+1, d, queue.DefaultLease-chunkLeaseMargin)
+		}
 	}
 	art, _ := r.st.Read().Artifact(context.Background(), st.ArtifactID)
 	var prov struct {

@@ -109,8 +109,13 @@ type blocking struct{ n int }
 
 func (b *blocking) Complete(ctx context.Context, _ Request) (Response, error) {
 	b.n++
-	<-ctx.Done()
-	return Response{}, ctx.Err()
+	select {
+	case <-ctx.Done():
+		return Response{}, ctx.Err()
+	case <-time.After(2 * time.Second):
+		// 沒有時間上限時不要讓測試卡住。
+		return Response{}, errors.New("blocking：ctx 沒有期限")
+	}
 }
 
 // 整個 chunk 有時間上限（租約減去安全邊際）：到期時回 retryable，讓任務放回佇列，不等租約失效後被重新領取。
