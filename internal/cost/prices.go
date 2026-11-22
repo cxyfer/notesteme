@@ -11,6 +11,12 @@ const PricesAsOf = "2026-11-21"
 // UnitAudioHour 是以音訊長度（小時）計價的單位。
 const UnitAudioHour = "audio_hour"
 
+// UnitInputMTok、UnitOutputMTok 是以每百萬輸入、輸出 token 計價的單位（LLM）。
+const (
+	UnitInputMTok  = "input_mtok"
+	UnitOutputMTok = "output_mtok"
+)
+
 // Price 是一個 provider 的某個 model 在某種單位下的單價。
 type Price struct {
 	Provider   string
@@ -33,4 +39,15 @@ func Lookup(provider, model, unit string) (Price, bool) {
 		}
 	}
 	return Price{}, false
+}
+
+// EstimateLLM 以內建計價表估算一次 LLM 呼叫的花費（美元）：輸入與輸出 token 各自的單價。
+// 計價表沒有這個 provider／model 的輸入或輸出單價時 ok 為 false，呼叫端回報「未知」（null），不自己編價格。
+func EstimateLLM(provider, model string, inputTokens, outputTokens int) (usd float64, ok bool) {
+	in, okIn := Lookup(provider, model, UnitInputMTok)
+	out, okOut := Lookup(provider, model, UnitOutputMTok)
+	if !okIn || !okOut {
+		return 0, false
+	}
+	return (float64(inputTokens)*in.USDPerUnit + float64(outputTokens)*out.USDPerUnit) / 1e6, true
 }
