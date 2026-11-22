@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/source/bilibili"
 	"github.com/cxyfer/notesteme/internal/source/groq"
@@ -92,6 +94,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	}
 	tracks := info.Tracks
 	la, isLocal := ad.(localAdapter)
+	isPodcast := it.Platform == source.PlatformPodcast
 	// 本機檔案重新計算了 sha256（內容被替換，或第一次記錄）時，隨結果一併寫回影音。
 	refresh := refreshMeta(it, info)
 
@@ -103,6 +106,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		chosen       *transcript.Track
 		decisions    []transcript.Decision
 		rejected     []transcript.Decision // 選中但無法使用的字幕軌（本機字幕讀不了），已記為 rejected
+		dropped      []transcript.Track    // 已放棄的字幕軌：結果由後面的字幕軌或 fallback 產生，要進快取鍵
 		meta         *metaUpdate           // 推斷出原文語言時要寫回影音的欄位
 		fit          store.Item            // 交給 fallback 來源的影音（原文語言為 inputLang）
 	)
@@ -131,18 +135,30 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		fit = it
 		fit.OriginalLang = inputLang
 	}
-	// reject 把選中的字幕軌記為 rejected（reason），從可用的字幕軌移除並重新選軌：
-	// 本機字幕讀不了時依序改用下一條外掛字幕、內嵌字幕，最後才是 fallback（ASR）。
-	reject := func(reason string) {
+	// drop 把選中的字幕軌記為 state（reason），從可用的字幕軌移除並重新選軌：
+	// 本機字幕讀不了時依序改用下一條外掛字幕、內嵌字幕；Podcast 的字幕抓不到時改用下一條宣告的字幕軌；
+	// 都沒有了才是 fallback（ASR）。
+	drop := func(state, reason string) {
 		for i := range decisions {
 			if decisions[i].State == transcript.StateUsed {
-				decisions[i].State, decisions[i].Reason = transcript.StateRejected, reason
+				decisions[i].State, decisions[i].Reason = state, reason
 				rejected = append(rejected, decisions[i])
 			}
 		}
-		usable = slices.DeleteFunc(slices.Clone(usable), func(t transcript.Track) bool { return t == *chosen })
+		// 下載時 chosen.Format 可能被判斷出來而改變（沒有宣告 type 的字幕軌），所以不能用整個結構比對：
+		// 用不含 Format 的識別找回 usable 中原本的字幕軌，否則移除不到、重新選軌又選到同一條而一直重試。
+		same := func(t transcript.Track) bool {
+			return t.Handle == chosen.Handle && t.Lang == chosen.Lang && t.Kind == chosen.Kind
+		}
+		if i := slices.IndexFunc(usable, same); i >= 0 {
+			dropped = append(dropped, usable[i])
+		} else {
+			dropped = append(dropped, *chosen)
+		}
+		usable = slices.DeleteFunc(slices.Clone(usable), same)
 		reselect()
 	}
+	reject := func(reason string) { drop(transcript.StateRejected, reason) }
 	reselect()
 
 	// 本機外掛字幕：在算快取鍵之前先讀取並解析，內容的 sha256 要進快取鍵（原地修改字幕後不能命中舊結果）。
@@ -183,6 +199,16 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 			params["content_sha256"] = info.ContentSHA256
 		}
 		upstream := map[string]any{"tracks": sortedTracks(tracks), "original_lang": inputLang}
+		if isPodcast {
+			// 音檔內容改變（重跑 metadata 重新下載）時，快取不能命中：字幕的時間可能和新的音檔不符。
+			upstream["content_sha256"] = info.ContentSHA256
+		}
+		if len(dropped) > 0 {
+			// 偏好的字幕軌無法使用、由後面的字幕軌（或 fallback）產生結果時，放棄的字幕軌也是輸入：
+			// 否則後面字幕軌的成品會用和偏好字幕軌相同的鍵存起來，下次重跑時直接命中，
+			// 來源紀錄卻記成偏好的字幕軌被使用。沒有放棄任何字幕軌時不加欄位，鍵與先前相同。
+			upstream["dropped"] = sortedTracks(dropped)
+		}
 		if sidecarSHA != "" {
 			// 選中的外掛字幕的內容也是輸入。
 			upstream["sidecar_sha256"] = sidecarSHA
@@ -203,9 +229,14 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 			return result{}, false
 		}
 		stage.ArtifactID = hit.ArtifactID
+		state := store.StageState{Status: store.StatusDone}
+		if isPodcast && p.timingFlagged(ctx, hit.ArtifactID) {
+			// SRC-R15：快取命中時，訊息也要和第一次一樣（來源紀錄的 timing_check 記著當時的結論）。
+			state.Message = msgTimingDrift
+		}
 		return result{
 			task: taskDone, advance: true, stage: stage, probes: toProbes(decisions), meta: mergeMeta(meta, refresh),
-			state: store.StageState{Status: store.StatusDone},
+			state: state,
 		}, true
 	}
 	if res, ok := reuse(); ok {
@@ -214,7 +245,18 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 
 	for chosen != nil {
 		if !cuesLoaded {
-			if cues, err = p.fetchCues(ctx, ad, it, *chosen); err != nil {
+			if cues, err = p.fetchCues(ctx, ad, it, chosen); err != nil {
+				if isPodcast && ctx.Err() == nil && podcastFallbackable(err) {
+					// Podcast 的字幕抓不到（404 等）、被防護擋下或解析失敗：記為 unavailable／permanent，
+					// 改用 feed 宣告的下一條字幕軌；都不能用才改用 fallback（ASR）。
+					p.log.Warn("Podcast 字幕無法使用，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle, "error", err)
+					drop(transcript.StateUnavailable, string(errclass.ClassPermanent))
+					stage.CacheKey = keyFor(chosen == nil)
+					if res, ok := reuse(); ok {
+						return res, nil
+					}
+					continue
+				}
 				if !isLocal || !isPermanent(err) {
 					return result{}, err
 				}
@@ -230,6 +272,18 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		}
 		if len(cues) > 0 {
 			break
+		}
+		if isPodcast {
+			// Podcast 宣告的字幕軌是空的：和抓不到一樣，記為 rejected（empty）後改用下一條宣告的字幕軌，
+			// 都不能用才改用 fallback（ASR）。
+			p.log.Warn("Podcast 字幕是空的，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle)
+			reject("empty")
+			cuesLoaded = false
+			stage.CacheKey = keyFor(chosen == nil)
+			if res, ok := reuse(); ok {
+				return res, nil
+			}
+			continue
 		}
 		for i := range decisions {
 			if decisions[i].State == transcript.StateUsed {
@@ -269,12 +323,32 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	}
 	srcID := transcript.PlatformSource(it.Platform, chosen.Kind)
 	artLang := transcript.NormalizeLang(chosen.Lang)
-	prov, err := p.provenance(map[string]any{
+	timing := sourceTiming(it.Platform, chosen.Kind)
+	state := store.StageState{Status: store.StatusDone}
+	fields := map[string]any{
 		"stage": StageTranscript, "impl_version": p.implVersion(StageTranscript),
-		"source": srcID, "timing": sourceTiming(it.Platform, chosen.Kind),
+		"source":        srcID,
 		"track":         map[string]string{"lang": artLang, "kind": chosen.Kind},
 		"params_sha256": paramsSHA(map[string]any{"caption_priority": lang.CaptionPriority, "allow_platform_translated": lang.AllowPlatformTranslated}),
-	}, versions)
+	}
+	if isPodcast {
+		// 字幕沒有宣告語言、feed 也沒有時，用影音的原文語言；都不知道就標為 und。
+		artLang = cmp.Or(artLang, transcript.NormalizeLang(originalLang), "und")
+		fields["track"] = map[string]string{"lang": artLang, "kind": chosen.Kind}
+		timing = podcastTiming(chosen.Format, cues)
+		// SRC-R15：字幕的最後一句和音檔的實際長度差太多，時間可能偏移；步驟仍然完成，只附上訊息。
+		if ratio, ok := timingDrift(info.AudioDurationS, cues); ok {
+			flagged := ratio > timingDriftLimit
+			fields["timing_check"] = map[string]any{
+				"audio_duration_s": info.AudioDurationS, "last_cue_end_s": lastCueEndS(cues), "drift_ratio": ratio, "flagged": flagged,
+			}
+			if flagged {
+				state.Message = msgTimingDrift
+			}
+		}
+	}
+	fields["timing"] = timing
+	prov, err := p.provenance(fields, versions)
 	if err != nil {
 		return result{}, err
 	}
@@ -284,8 +358,67 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	}
 	return result{
 		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions), meta: mergeMeta(meta, refresh),
-		state: store.StageState{Status: store.StatusDone},
+		state: state,
 	}, nil
+}
+
+// SRC-R15：字幕最後一句的結束時間與音檔實際長度的差距超過這個比例（不含），就提醒時間可能偏移。
+const (
+	timingDriftLimit = 0.02
+	msgTimingDrift   = "時間可能偏移"
+)
+
+// lastCueEndS 回傳所有 cue 中最大的結束時間（秒）。
+func lastCueEndS(cues []subtitle.Cue) float64 {
+	var end int64
+	for _, c := range cues {
+		end = max(end, c.EndMS)
+	}
+	return float64(end) / 1000
+}
+
+// timingDrift 回傳字幕與音檔長度的差距比例：|音檔長度 − 最大的 cue 結束時間| ÷ 音檔長度。
+// 音檔長度未知（不是正數）或沒有 cue 時 ok 為 false，不做檢查。
+func timingDrift(audioS float64, cues []subtitle.Cue) (ratio float64, ok bool) {
+	if audioS <= 0 || len(cues) == 0 {
+		return 0, false
+	}
+	return math.Abs(audioS-lastCueEndS(cues)) / audioS, true
+}
+
+// timingFlagged 讀出產出的來源紀錄中，偏移檢查當時的結論（timing_check.flagged）。
+func (p *Pipeline) timingFlagged(ctx context.Context, artifactID string) bool {
+	a, err := p.st.Read().Artifact(ctx, artifactID)
+	if err != nil {
+		return false
+	}
+	var prov struct {
+		TimingCheck struct {
+			Flagged bool `json:"flagged"`
+		} `json:"timing_check"`
+	}
+	return json.Unmarshal(a.Provenance, &prov) == nil && prov.TimingCheck.Flagged
+}
+
+// podcastTiming 是 Podcast 字幕的時間粒度（來源紀錄的 timing）：VTT、SRT 是 cue；
+// JSON 有字詞時間是 word，否則一個 segment 一個 cue，是 segment。
+func podcastTiming(format string, cues []subtitle.Cue) string {
+	if format != "json" {
+		return "cue"
+	}
+	if slices.ContainsFunc(cues, func(c subtitle.Cue) bool { return len(c.Words) > 0 }) {
+		return "word"
+	}
+	return "segment"
+}
+
+// podcastFallbackable 回報 Podcast 字幕的錯誤是不是要改用下一個字幕來源：permanent（404、解析失敗）與被防護擋下的請求。
+// 其餘（連線失敗、5xx、429）可以重試，由步驟的重試機制處理。
+func podcastFallbackable(err error) bool {
+	if _, ok := netguard.PolicyMessage(err); ok {
+		return true
+	}
+	return isPermanent(err)
 }
 
 // mergeDecisions 把已拒絕的字幕軌放在重新選軌的結果之前。
@@ -440,8 +573,11 @@ type fallbackFetcher struct {
 	supports func(platform string) bool
 }
 
-// supadataSupports 回報 Supadata 是否處理這個平台：它只接受公開網址，不處理本機檔案（不送出本機路徑）。
-func supadataSupports(platform string) bool { return platform != source.PlatformLocal }
+// supadataSupports 回報 Supadata 是否處理這個平台：它只接受公開影音網址，不處理本機檔案（不送出本機路徑），
+// 也不處理 Podcast（單集的網址是 feed 網址，不是影音頁面）。
+func supadataSupports(platform string) bool {
+	return platform != source.PlatformLocal && platform != source.PlatformPodcast
+}
 
 // newFetchers 依 deps 建立可執行的 fallback 來源。
 func newFetchers(d Deps) map[string]fallbackFetcher {
@@ -717,13 +853,21 @@ func isPermanent(err error) bool {
 func sortedTracks(in []transcript.Track) []transcript.Track {
 	out := slices.Clone(in)
 	slices.SortFunc(out, func(a, b transcript.Track) int {
-		return cmp.Or(strings.Compare(a.Lang, b.Lang), strings.Compare(a.Kind, b.Kind))
+		return cmp.Or(strings.Compare(a.Lang, b.Lang), strings.Compare(a.Kind, b.Kind), strings.Compare(a.Handle, b.Handle))
 	})
 	return out
 }
 
 // fetchCues 下載一條字幕軌並解析成 cue。暫存檔放在 <data>/tmp，用完就清除（啟動時也會清空）。
-func (p *Pipeline) fetchCues(ctx context.Context, ad platformAdapter, it store.Item, t transcript.Track) ([]subtitle.Cue, error) {
+// 平台在下載後才判斷格式時（formatSniffer），把判斷出的格式寫回 t.Format，供來源紀錄使用。
+func (p *Pipeline) fetchCues(ctx context.Context, ad platformAdapter, it store.Item, t *transcript.Track) ([]subtitle.Cue, error) {
+	if fs, ok := ad.(formatSniffer); ok {
+		cues, format, err := fs.fetchCuesWithFormat(ctx, *t)
+		if err == nil && t.Format == "" {
+			t.Format = format
+		}
+		return cues, err
+	}
 	tmpRoot := filepath.Join(p.dataDir, "tmp")
 	if err := os.MkdirAll(tmpRoot, dirPerm); err != nil {
 		return nil, err
@@ -733,7 +877,7 @@ func (p *Pipeline) fetchCues(ctx context.Context, ad platformAdapter, it store.I
 		return nil, err
 	}
 	defer os.RemoveAll(dir)
-	return ad.fetchCues(ctx, it, t, dir)
+	return ad.fetchCues(ctx, it, *t, dir)
 }
 
 // newCuesArtifact 把字幕寫成產出檔，回傳要寫進資料庫的記錄。

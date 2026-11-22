@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 )
 
 var publicIP = netip.MustParseAddr("93.184.216.34")
@@ -160,4 +161,58 @@ func TestPolicyMessage(t *testing.T) {
 			t.Errorf("PolicyMessage(%v) = %q, %v；want %q, %v", tc.err, got, ok, tc.want, tc.ok)
 		}
 	}
+}
+
+// 起始網址不是 http、https（含沒有 scheme 的相對網址）時，回傳和轉址到其他 scheme 相同的 policy 錯誤，
+// 而且不連線，也不是一般的 "unsupported protocol scheme"。
+func TestNewClientRejectsInitialUnsupportedScheme(t *testing.T) {
+	c, d := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "ok")
+	}))
+	for _, u := range []string{"ftp://example.com/t.vtt", "file:///etc/passwd", "t.vtt", "//example.com/a.vtt", "gopher://example.com/"} {
+		resp, err := c.Get(u)
+		if resp != nil {
+			resp.Body.Close()
+		}
+		if !errors.Is(err, ErrUnsupportedScheme) {
+			t.Errorf("%q：err = %v，應為 ErrUnsupportedScheme", u, err)
+			continue
+		}
+		if msg, ok := PolicyMessage(err); !ok || msg != "只支援 http 與 https 網址。" {
+			t.Errorf("%q：PolicyMessage = %q, %v", u, msg, ok)
+		}
+	}
+	if len(d.targets) != 0 {
+		t.Errorf("不應連線：%+v", d.targets)
+	}
+	// http 與 https 不受影響。
+	resp, err := c.Get("http://example.com/")
+	if err != nil {
+		t.Fatalf("http 應可請求：%v", err)
+	}
+	resp.Body.Close()
+}
+
+// 加了 scheme 檢查的 Transport 仍可複製出放寬標頭逾時的版本（groq 的長音檔轉錄需要），且不改動原本的。
+func TestNewClientTransportCanRelaxHeaderTimeout(t *testing.T) {
+	c := NewClient(Deps{Resolver: stubResolver{ips: []netip.Addr{publicIP}}, Dialer: &recDialer{}})
+	relaxer, ok := c.Transport.(interface {
+		WithResponseHeaderTimeout(time.Duration) http.RoundTripper
+	})
+	if !ok {
+		t.Fatalf("Transport %T 缺少 WithResponseHeaderTimeout", c.Transport)
+	}
+	rt := relaxer.WithResponseHeaderTimeout(5 * time.Minute)
+	g, ok := rt.(*schemeTransport)
+	if !ok || g.base.ResponseHeaderTimeout != 5*time.Minute {
+		t.Fatalf("複本 = %#v", rt)
+	}
+	if orig := c.Transport.(*schemeTransport).base.ResponseHeaderTimeout; orig != responseHeaderTimeout {
+		t.Errorf("原本的 Transport 被改動：%v", orig)
+	}
+	// 複本也要檢查 scheme，且 CloseIdleConnections 不會 panic。
+	if _, err := (&http.Client{Transport: rt}).Get("ftp://example.com/"); !errors.Is(err, ErrUnsupportedScheme) {
+		t.Errorf("複本 err = %v", err)
+	}
+	c.CloseIdleConnections()
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/cucumber/godog"
 
 	"github.com/cxyfer/notesteme/features/internal/faketool"
+	"github.com/cxyfer/notesteme/internal/source"
 )
 
 // 腳本化來源的前提由 production 宣告的已實作清單決定（source.Implemented）。
@@ -21,10 +22,12 @@ func TestScriptableSource(t *testing.T) {
 		}
 	}
 	// groq 與 local-sidecar／local-embedded 由 LOCAL 切片實作（source.Implemented），不放進這份「尚未實作」的清單。
-	for _, id := range []string{"whisper-1", "podcast-transcript"} {
-		if err := scriptableSource(id); !errors.Is(err, godog.ErrPending) {
-			t.Errorf("%s 應該讓場景 pending：%v", id, err)
-		}
+	if err := scriptableSource("whisper-1"); !errors.Is(err, godog.ErrPending) {
+		t.Errorf("whisper-1 應該讓場景 pending：%v", err)
+	}
+	// podcast-transcript 由 PODCAST 切片實作：是否 pending 取決於 production 的宣告，不在這裡寫死。
+	if err := scriptableSource("podcast-transcript"); source.Implemented("podcast-transcript") == errors.Is(err, godog.ErrPending) {
+		t.Errorf("podcast-transcript 的 pending 狀態與 source.Implemented 不一致：%v", err)
 	}
 }
 

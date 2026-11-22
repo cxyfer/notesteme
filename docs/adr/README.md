@@ -22,6 +22,7 @@
 | [0014](0014-client-access-control-and-untrusted-input.md) | Client 的存取控制與不可信輸入 | 已採納 |
 | [0015](0015-acceptance-test-harness.md) | 驗收測試在程序內執行，外部依賴在注入點替換 | 已採納 |
 | [0016](0016-local-media-and-asr-preprocessing.md) | 本機影音的識別、inbox 監看與共用的 ASR 前處理 | 已採納 |
+| [0017](0017-podcast-identity-and-precheck.md) | Podcast 單集的識別、feed key 與新增時的位址預檢 | 已採納 |
 
 ## 範本
 

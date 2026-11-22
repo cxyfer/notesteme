@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path"
 	"path/filepath"
+	"syscall"
 
 	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/source"
@@ -41,7 +43,7 @@ func MediaETag(it store.Item, fi os.FileInfo) string {
 //
 // 錯誤：store.ErrNotFound（沒有這部影音）、*InTrashError（在垃圾桶中，DEL-R1）、ErrNoMedia、
 // ErrMediaMissing，以及檔案在 root 之外的 pathguard.ErrOutsideRoots（API 回 403）。
-// 非本機影音：M1 還沒有媒體快取（<data>/media 只會在之後的切片寫入），一律是 ErrNoMedia。
+// Podcast 單集：串流 metadata 步驟下載的音檔（<data>/media/<id>/episode.<ext>）；其他非本機影音沒有媒體快取，一律是 ErrNoMedia。
 func (p *Pipeline) MediaFile(ctx context.Context, id string) (*os.File, os.FileInfo, store.Item, error) {
 	it, err := p.st.Read().ItemByID(ctx, id)
 	if err != nil {
@@ -49,6 +51,9 @@ func (p *Pipeline) MediaFile(ctx context.Context, id string) (*os.File, os.FileI
 	}
 	if it.DeletedAt != nil {
 		return nil, nil, store.Item{}, &InTrashError{ItemID: it.ID}
+	}
+	if it.Platform == source.PlatformPodcast {
+		return p.podcastMediaFile(it)
 	}
 	if it.Platform != source.PlatformLocal || it.SourcePath == "" || p.files == nil {
 		return nil, nil, it, ErrNoMedia
@@ -66,4 +71,56 @@ func (p *Pipeline) MediaFile(ctx context.Context, id string) (*os.File, os.FileI
 		return nil, nil, it, ErrMediaMissing
 	}
 	return nil, nil, it, err
+}
+
+// msgPodcastNoAudio 是 Podcast 單集還沒有下載音檔（metadata 步驟還沒完成）時的訊息。
+const msgPodcastNoAudio = "這一集的音檔還沒下載。"
+
+// noAudioError 是 ErrNoMedia，但訊息是這一集特有的。
+type noAudioError struct{}
+
+func (noAudioError) Error() string        { return msgPodcastNoAudio }
+func (noAudioError) Is(target error) bool { return target == ErrNoMedia }
+
+// podcastMediaFile 開啟 Podcast 單集下載的音檔。檔名取自 metadata 快照，而且必須是 episode.<副檔名>，
+// 只在 <data>/media/<id>/ 之內以 os.OpenRoot 開啟，確認是一般檔案。
+// 回傳的影音複本把 SourcePath 設成媒體目錄內的相對路徑，API 用它的檔名決定 Content-Type。
+func (p *Pipeline) podcastMediaFile(it store.Item) (*os.File, os.FileInfo, store.Item, error) {
+	m, ok := readPodcastMeta(it.Metadata)
+	if !ok {
+		return nil, nil, it, noAudioError{}
+	}
+	if !episodeFilePattern.MatchString(m.Audio.File) {
+		return nil, nil, it, ErrMediaMissing
+	}
+	it.SourcePath = path.Join("media", it.ID, m.Audio.File)
+	dir, err := filepath.Abs(MediaCacheDir(p.dataDir, it.ID))
+	if err != nil {
+		return nil, nil, it, err
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil, it, ErrMediaMissing
+		}
+		return nil, nil, it, err
+	}
+	defer root.Close()
+	f, err := root.OpenFile(m.Audio.File, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil, it, ErrMediaMissing
+		}
+		return nil, nil, it, err
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, nil, it, err
+	}
+	if !fi.Mode().IsRegular() {
+		_ = f.Close()
+		return nil, nil, it, ErrMediaMissing
+	}
+	return f, fi, it, nil
 }

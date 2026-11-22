@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
@@ -22,7 +23,12 @@ const liveRecheckDelay = 15 * time.Minute
 // 直播中或首播尚未開始的影音，步驟為 waiting，直到有 VOD（SRC-R7）；這種等待不計入重試次數。
 //
 // metadata 的快取鍵只記錄、不用來略過：平台上的中繼資料會改變（標題、字幕軌），重新取得才是正確的。
+//
+// Podcast 單集不走 yt-dlp：抓 feed、下載音檔、記錄 sha256 與實際長度（見 runPodcastMetadata）。
 func (p *Pipeline) runMetadata(ctx context.Context, it store.Item, lang Language) (result, error) {
+	if it.Platform == source.PlatformPodcast {
+		return p.runPodcastMetadata(ctx, it, lang)
+	}
 	ad, err := p.adapterFor(it.Platform)
 	if err != nil {
 		return result{}, err

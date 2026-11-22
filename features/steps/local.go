@@ -27,11 +27,15 @@ func (s *Scenario) localRefPath(ref string) string {
 	return filepath.Join(s.World.InboxDir(), filepath.FromSlash(rel))
 }
 
-// ingestBody 回傳 POST /api/items 的 body：本機影音（local:）送 path，其他代號與網址送 url。
+// ingestBody 回傳 POST /api/items 的 body：本機影音（local:）送 path，Podcast（pod:<feed>/<guid>）送 feed 網址與 episodes，
+// 其他代號與網址送 url。
 // `local:<相對路徑>` 在 inbox 之下；`local:/abs` 的虛擬路徑換成實際路徑。回傳的 map 可以再加 until、overrides。
 func (s *Scenario) ingestBody(ref string) map[string]any {
 	if strings.HasPrefix(ref, "local:") {
 		return map[string]any{"path": s.localRefPath(ref)}
+	}
+	if strings.HasPrefix(ref, "pod:") {
+		return podcastIngestBody(ref)
 	}
 	return map[string]any{"url": refToURL(ref)}
 }

@@ -214,6 +214,8 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 		Bilibili: &bilibili.Client{Runner: runner, Tools: tools, Cookies: s.cookies, Log: log},
 		// 對外請求一律經過 netguard（ADR-0014），不使用 http.DefaultClient；逾時與大小由各呼叫端限制。
 		HTTP: netguard.NewClient(s.netw),
+		// 新增 Podcast 單集時預檢音檔的位址（不連線，GRD-R2）；用同一份 netguard 依賴，allowlist 的判斷與連線時一致。
+		CheckURL: func(ctx context.Context, rawURL string) error { return netguard.CheckURL(ctx, s.netw, rawURL) },
 		// 本機影音（ING-05）：ffprobe／ffmpeg 與 yt-dlp 共用 runner 與工具位置。
 		Media: media.New(runner, tools),
 		Files: s.fileGuard(),

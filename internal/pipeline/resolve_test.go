@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -140,12 +141,62 @@ func TestPlatformHostIgnoresTrailingDot(t *testing.T) {
 	}
 }
 
-func TestParseFeedTruncatedStillRecognised(t *testing.T) {
-	info, err := parseFeed(strings.NewReader(rssBody[:120]))
-	if err != nil {
-		t.Fatalf("被截斷的 feed 仍要能辨識：%v", err)
+// 被截斷的 feed 仍然能辨識（podcast.Parse 盡力而為）。
+func TestResolveTruncatedFeedStillRecognised(t *testing.T) {
+	var hits []string
+	r := newRig(t)
+	r.p.http = feedClient(200, rssBody[:120], &hits)
+	res, err := r.p.Resolve(context.Background(), "https://feeds.example.com/show.xml")
+	if err != nil || res.Title != "The Show" {
+		t.Fatalf("%+v, %v", res, err)
 	}
-	if info.Title != "The Show" {
-		t.Errorf("title = %q", info.Title)
+}
+
+// resolve 的單集形狀：發佈時間、feed 標示的長度、字幕、音檔類型。
+func TestResolveEpisodeShape(t *testing.T) {
+	feed := podFeed("The Show",
+		podEp{guid: "ep-42", title: "Episode 42", audio: "https://media.example.com/ep42.mp3", extra: `<pubDate>Wed, 01 Oct 2025 08:00:00 +0000</pubDate><itunes:duration>30:00</itunes:duration>` +
+			`<podcast:transcript url="https://media.example.com/ep42.vtt" type="text/vtt"/>`},
+		podEp{guid: "ep-41", title: "Episode 41", audio: "https://media.example.com/ep41.m4a", extra: `<itunes:duration>1500</itunes:duration>` +
+			`<podcast:transcript url="https://media.example.com/ep41.html" type="text/html"/>`},
+		podEp{guid: "ep-40", title: "Episode 40"},
+		// 沒有宣告 type、網址也看不出格式：transcript 步驟會下載後看內容判斷，所以算有字幕。
+		podEp{guid: "ep-39", title: "Episode 39", audio: "https://media.example.com/ep39.mp3", extra: `<podcast:transcript url="https://media.example.com/ep39-transcript"/>`},
+	)
+	r, _, _ := newPodcastRig(t, map[string]string{showURL: feed})
+	res, err := r.p.Resolve(context.Background(), "https://Feeds.Example.com:443/show.xml#x")
+	if err != nil || res.URL != showURL || len(res.Episodes) != 4 {
+		t.Fatalf("%+v, %v", res, err)
+	}
+	e := res.Episodes[0]
+	if e.GUID != "ep-42" || e.Title != "Episode 42" || e.PublishedAt == nil || e.PublishedAt.Unix() != 1759305600 ||
+		e.DurationS == nil || *e.DurationS != 1800 || !e.HasTranscript || e.MediaType != "audio/mpeg" {
+		t.Errorf("ep-42 = %+v", e)
+	}
+	// html 字幕不算（我們讀不懂）；沒有時間或音檔的欄位是零值。
+	if e := res.Episodes[1]; e.HasTranscript || e.PublishedAt != nil || e.DurationS == nil || *e.DurationS != 1500 || e.MediaType != "audio/mpeg" {
+		t.Errorf("ep-41 = %+v", e)
+	}
+	if e := res.Episodes[2]; e.HasTranscript || e.DurationS != nil || e.MediaType != "" {
+		t.Errorf("ep-40 = %+v", e)
+	}
+	if e := res.Episodes[3]; !e.HasTranscript {
+		t.Errorf("ep-39 = %+v，沒有宣告 type 的字幕應算有字幕", e)
+	}
+}
+
+// resolve 只列前 500 集；超過的仍然可以用 guid 新增。
+func TestResolveListsAtMost500Episodes(t *testing.T) {
+	var eps []podEp
+	for i := 0; i < 501; i++ {
+		eps = append(eps, podEp{guid: fmt.Sprintf("g%d", i), title: "E", audio: fmt.Sprintf("https://media.example.com/%d.mp3", i)})
+	}
+	r, _, _ := newPodcastRig(t, map[string]string{showURL: podFeed("Big", eps...)})
+	res, err := r.p.Resolve(context.Background(), showURL)
+	if err != nil || len(res.Episodes) != 500 || res.Episodes[499].GUID != "g499" {
+		t.Fatalf("%d 集, %v", len(res.Episodes), err)
+	}
+	if out, err := r.ingestPodcast(showURL, "g500"); err != nil || len(out) != 1 || out[0].Item.ExternalID != "show/g500" {
+		t.Fatalf("第 501 集：%+v, %v", out, err)
 	}
 }

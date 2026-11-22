@@ -28,7 +28,8 @@ func asrPreprocess(maxFileBytes int64) map[string]any {
 	}
 }
 
-// audioSource 取得 ASR 要轉錄的原始音訊（ADR-0016）：YouTube 用 yt-dlp 下載，本機影音直接用原檔。
+// audioSource 取得 ASR 要轉錄的原始音訊（ADR-0016）：YouTube 用 yt-dlp 下載，本機影音直接用原檔，
+// Podcast 用 metadata 下載的音檔（不在了就重新下載）。
 type audioSource interface {
 	// fetch 回傳音訊檔的絕對路徑，以及取得時用到的外部工具版本（寫進來源紀錄）。
 	// dir 是這次轉錄專用的暫存目錄，由呼叫端清除。
@@ -42,6 +43,8 @@ func audioSourceFor(d Deps, platform string) audioSource {
 		return youtubeAudio{d.YouTube}
 	case platform == source.PlatformLocal && d.Files != nil:
 		return localAudio{localAdapter{files: d.Files, media: d.Media, dataDir: d.DataDir}}
+	case platform == source.PlatformPodcast && d.HTTP != nil:
+		return podcastAudioSource{audioDownloader{http: d.HTTP, media: d.Media, dataDir: d.DataDir, version: d.Version, st: d.Store}}
 	}
 	return nil
 }

@@ -1,25 +1,18 @@
 package pipeline
 
 import (
-	"bytes"
 	"context"
-	"encoding/xml"
-	"errors"
-	"io"
-	"net/http"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/cxyfer/notesteme/internal/netguard"
+	"github.com/cxyfer/notesteme/internal/podcast"
 	"github.com/cxyfer/notesteme/internal/source"
 )
 
-// 辨識網址時的上限：抓取 feed 的逾時；內容大小用 netguard.LimitFeed（GRD-R5）。
+// 辨識網址時的上限：yt-dlp Probe 的逾時，以及 resolve 最多列出幾集（feed 的抓取逾時與大小見 podcast.Fetch）。
 const (
 	resolveProbeTimeout = 30 * time.Second
-	feedFetchTimeout    = 15 * time.Second
 	maxFeedEpisodes     = 500
 )
 
@@ -33,6 +26,12 @@ var cookieAvailabilities = []string{"needs_auth", "subscriber_only", "premium_on
 type Episode struct {
 	GUID  string
 	Title string
+	// PublishedAt、DurationS（itunes:duration，秒）、MediaType（enclosure 的 type）沒有或不認得時為零值。
+	PublishedAt *time.Time
+	DurationS   *float64
+	MediaType   string
+	// HasTranscript：feed 附了我們讀得懂格式的字幕（<podcast:transcript> 的 vtt、srt、json）。
+	HasTranscript bool
 }
 
 // Resolution 是網址辨識的結果（POST /api/resolve）。
@@ -70,20 +69,37 @@ func (p *Pipeline) Resolve(ctx context.Context, raw string) (Resolution, error) 
 		// TODO(ING-R9)：Bilibili 的 AI 字幕需要 cookie，等 Bilibili 的 Probe 實作後在這裡標示。
 		return res, nil
 	}
-	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || platformHost(u.Hostname()) {
+	u, err := podcast.CanonicalURL(raw)
+	if err != nil || platformHost(u.Hostname()) {
 		return Resolution{}, ErrUnrecognizedURL
 	}
 	feed, err := p.fetchFeed(ctx, u.String())
 	if err != nil {
-		if pe := asPolicyError(err); pe != nil {
-			p.log.Warn("辨識網址時請求被防護擋下", "error", err.Error())
-			return Resolution{}, pe
-		}
-		p.log.Debug("網址不是可辨識的 feed", "error", err.Error())
-		return Resolution{}, ErrUnrecognizedURL
+		return Resolution{}, p.feedError(err)
 	}
-	return Resolution{Platform: source.PlatformPodcast, Kind: source.KindFeed, URL: u.String(), Title: feed.Title, Episodes: feed.Episodes}, nil
+	// 只列前 maxFeedEpisodes 集；要新增更舊的集，直接以 guid 指定（ING-R6）。
+	eps := feed.Episodes[:min(len(feed.Episodes), maxFeedEpisodes)]
+	res := Resolution{Platform: source.PlatformPodcast, Kind: source.KindFeed, URL: u.String(), Title: feed.Title}
+	for _, e := range eps {
+		res.Episodes = append(res.Episodes, episodeInfo(e))
+	}
+	return res, nil
+}
+
+// episodeInfo 把 feed 的一集轉成辨識結果中的形式。HasTranscript 與 transcript 步驟的選軌一致（usableTranscript）：
+// vtt、srt、json，以及沒有宣告 type、要下載後看內容判斷的字幕。
+func episodeInfo(e podcast.Episode) Episode {
+	out := Episode{GUID: e.GUID, Title: e.Title, PublishedAt: e.PublishedAt, DurationS: e.DurationS}
+	if e.Enclosure != nil {
+		out.MediaType = e.Enclosure.Type
+	}
+	for _, t := range e.Transcripts {
+		if usableTranscript(t) {
+			out.HasTranscript = true
+			break
+		}
+	}
+	return out
 }
 
 // flagCookie 以 Probe 取得影片的 availability；需要 cookie 時標示 requires_cookie 與設定頁連結。
@@ -112,103 +128,19 @@ func platformHost(host string) bool {
 	return false
 }
 
-type feedInfo struct {
-	Title    string
-	Episodes []Episode
-}
-
-var errNotFeed = errors.New("內容不是 RSS 或 Atom")
-
-// fetchFeed 以對外 HTTP client 抓取網址並判斷內容是不是 RSS／Atom。
+// fetchFeed 以對外 HTTP client 抓取網址並判斷內容是不是 RSS／Atom（podcast.Fetch）。
 // 逾時與大小都有上限（LimitFeed）；超過上限時回傳錯誤，不截斷也不接受部分內容（GRD-R5）。
-func (p *Pipeline) fetchFeed(ctx context.Context, rawURL string) (feedInfo, error) {
-	if p.http == nil {
-		return feedInfo{}, errors.New("沒有設定對外 HTTP client")
-	}
-	ctx, cancel := context.WithTimeout(ctx, feedFetchTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return feedInfo{}, err
-	}
-	req.Header.Set("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1")
-	resp, err := p.http.Do(req)
-	if err != nil {
-		return feedInfo{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return feedInfo{}, errors.New("HTTP " + resp.Status)
-	}
-	body, err := io.ReadAll(netguard.LimitBody(resp, netguard.LimitFeed))
-	if err != nil {
-		return feedInfo{}, err
-	}
-	return parseFeed(bytes.NewReader(body))
+func (p *Pipeline) fetchFeed(ctx context.Context, rawURL string) (*podcast.Feed, error) {
+	return podcast.Fetch(ctx, p.http, rawURL)
 }
 
-// parseFeed 判斷 r 是不是 RSS 2.0 或 Atom，並盡量取出標題與各集。
-func parseFeed(r io.Reader) (feedInfo, error) {
-	dec := xml.NewDecoder(r)
-	dec.Strict = false
-	var root xml.StartElement
-	for {
-		tok, err := dec.Token()
-		if err != nil {
-			return feedInfo{}, errNotFeed
-		}
-		if se, ok := tok.(xml.StartElement); ok {
-			root = se
-			break
-		}
+// feedError 把抓取 feed 的錯誤對應成使用者看得到的錯誤：防護擋下（內部網路、轉址太多、回應太大）是
+// *PolicyError；其他（連不上、非 2xx、不是 feed）都是 ErrUnrecognizedURL，原因只記在 log。
+func (p *Pipeline) feedError(err error) error {
+	if pe := asPolicyError(err); pe != nil {
+		p.log.Warn("抓取 feed 時請求被防護擋下", "error", err.Error())
+		return pe
 	}
-	name := strings.ToLower(root.Name.Local)
-	switch {
-	case name == "rss":
-	case name == "feed" && strings.Contains(strings.ToLower(root.Name.Space), "atom"):
-	default:
-		return feedInfo{}, errNotFeed
-	}
-	// 根元素確認之後，標題與各集只是盡力而為：內容被截斷或格式不完整時回傳已經讀到的部分。
-	info := feedInfo{}
-	var path []string
-	var cur *Episode
-	for {
-		tok, err := dec.Token()
-		if err != nil {
-			break
-		}
-		switch t := tok.(type) {
-		case xml.StartElement:
-			path = append(path, strings.ToLower(t.Name.Local))
-			if t.Name.Local == "item" || t.Name.Local == "entry" {
-				cur = &Episode{}
-			}
-		case xml.EndElement:
-			if (t.Name.Local == "item" || t.Name.Local == "entry") && cur != nil {
-				if cur.GUID != "" && len(info.Episodes) < maxFeedEpisodes {
-					info.Episodes = append(info.Episodes, *cur)
-				}
-				cur = nil
-			}
-			if len(path) > 0 {
-				path = path[:len(path)-1]
-			}
-		case xml.CharData:
-			text := strings.TrimSpace(string(t))
-			if text == "" || len(path) == 0 {
-				continue
-			}
-			leaf := path[len(path)-1]
-			switch {
-			case cur != nil && (leaf == "guid" || leaf == "id") && cur.GUID == "":
-				cur.GUID = text
-			case cur != nil && leaf == "title" && cur.Title == "":
-				cur.Title = text
-			case cur == nil && leaf == "title" && info.Title == "" && len(path) <= 3:
-				info.Title = text
-			}
-		}
-	}
-	return info, nil
+	p.log.Debug("網址不是可辨識的 feed", "error", err.Error())
+	return ErrUnrecognizedURL
 }

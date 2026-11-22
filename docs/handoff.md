@@ -1,6 +1,6 @@
 # 交接：M1 開發進度
 
-> 更新：2026-11-21。PR #1～#12 已合併。LOCAL 切片（ING-05）是 PR #13（`feat/local-media`）；PODCAST 切片在 `feat/podcast`，疊在 `feat/local-media` 上。
+> 更新：2026-11-21。PR #1～#12 已合併。LOCAL 切片（ING-05）是 PR #13（`feat/local-media`）；PODCAST 切片（ING-04）在 `feat/podcast`，疊在 `feat/local-media` 上；ESTIMATE（ING-R8）在 `feat/estimate`，疊在 `feat/podcast` 上。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -67,27 +67,34 @@
     - 非上傳的本機檔案每次 probe 比對大小與修改時間，不同就重算 `sha256`；外掛字幕內容的 `sha256` 進快取鍵。
     - 備份包含 `uploads/`（manifest 記大小與 `sha256`），還原時原本的 `uploads/` 移到 `/backups/pre-restore-uploads-<時間>/`；啟動時清理孤兒的 `uploads/<id>`。
     - harness：marker v2（`streams`、`compressed`、`silences`、`offset`）、會轉碼／切塊／靜音偵測／抽字幕的假 ffmpeg、假 Groq 依 `offset` 過濾、`features/fixtures/{local,media}/`；字幕表格的 `#` 不從 1 起連號時依 `#` 比對。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，180 passed、11 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
+  - PODCAST 切片（ING-04、SRC-R14／R15、GRD-R2 rebinding，疊在 PR #13 上，決策見 ADR-0017）：
+    - `internal/podcast`：RSS／Atom 解析（itunes、podcast namespace、`<podcast:transcript>`）、`CanonicalURL`、`FeedSlug`。
+    - 單集是 `(podcast, "<feed key>/<guid>", 0)`；feed key 存在 `channels`（`PodcastFeedKey`，撞名加 `-2`），不需要 migration。
+    - 新增：`expandPodcast` 驗證 `episodes`，並用 `netguard.CheckURL` 對音檔網址做只解析、不連線的預檢；`insertTargets` 與一般新增共用同一個交易迴圈。
+    - metadata：`runPodcastMetadata` 抓 feed、存快照（`metadata_json.podcast`）、下載音檔到 `/data/media/<id>/episode.<ext>`（2 GiB、`sha256`、ffprobe 長度）。
+    - 來源 `podcast-transcript`：讀快照、支援 VTT／SRT／Podcasting 2.0 JSON；抓取失敗改走 fallback；SRC-R15 偏移超過 2% 時 transcript 為 done 帶「時間可能偏移」。
+    - podcast 的 ASR 音訊來源與媒體端點共用 LOCAL 的 `transcribeASR`、`MediaFile`。
+    - harness：`features/internal/fakepodcast`（每次依狀態產生 RSS、音檔改寫 marker 的 item、字幕呼叫計數）、`features/fixtures/podcast/`（marker 的 `listed=` 是 feed 宣告的長度）；`shows the message` 沒有非 done 的訊息時取 done 步驟的訊息。
+- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，186 passed、5 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
   |---|---|---|
   | AUTH | 23 | 0 |
   | CLI | 9 | 0 |
   | DEL | 19 | 2 |
-  | GRD | 21 | 1 |
-  | ING | 19 | 5 |
+  | GRD | 22 | 0 |
+  | ING | 22 | 2 |
   | LIB | 10 | 0 |
   | NRM | 10 | 1 |
   | OPS | 14 | 0 |
   | OUT | 8 | 0 |
   | PIPE | 19 | 0 |
   | SEC | 11 | 0 |
-  | SRC | 17 | 2 |
+  | SRC | 19 | 0 |
 
-  AUTH、CLI、LIB、OPS、OUT、PIPE、SEC 的 M1 場景全部通過。剩下的 11 個 pending：
-  - **PODCAST（6 個，`feat/podcast` 進行中）**：`ING` feed 辨識、選集、沒有選集（3 個）、`GRD` DNS rebinding（1 個）、`SRC` R14 podcast transcript、R15 時間偏移（2 個）。
+  AUTH、CLI、GRD、LIB、OPS、OUT、PIPE、SEC、SRC 的 M1 場景全部通過。剩下的 5 個 pending：
   - **ING-R7（1 個）**：單次覆寫與處理方案。場景建立名為 `standard` 的處理方案，但 PRF 規格寫 M1 只有內建的 `default`，需要 owner 決定（建議 M1 先做處理方案的最小儲存與讀取）。
-  - **ING-R8（1 個）**：`POST /api/estimate`。
+  - **ING-R8（1 個）**：`POST /api/estimate`（`feat/estimate` 進行中）。
   - **NRM-R7（1 個）**：場景的影片原文語言是預設的 `en`，卻只有 `zh-Hans` 的自動字幕，預設的 `caption_priority` 不會選它，所以 `processed up to` 依規則 3 pending。場景要改（例如改成 `manual captions`，或宣告原文語言 `zh-Hans`），需要 owner 同意。
   - **DEL `@mcp`（2 個）**：需等 M2 的 MCP tool（`get_transcript`、`tools/list`）。
 
@@ -97,12 +104,12 @@
 
 ## 2. 下一步
 
-切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC（PR #1～#12，已合併）→ LOCAL（PR #13）→ PODCAST（`feat/podcast`，進行中）。
+切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC（PR #1～#12，已合併）→ LOCAL（PR #13）→ PODCAST（疊在 #13 上）→ ESTIMATE（ING-R8，疊在 PODCAST 上）。
 
 接下來：
 
-1. PR #13 等 Codex 複審與 owner 合併（沒有明確授權不合併）。PODCAST 疊在 #13 上：#13 合併後，把 PODCAST PR 的 base 改成 `master`，再用 `-s ours` 併入 master（見記憶中的疊加 PR 合併方式）。
-2. PODCAST 完成後，剩下 M1 的 ING-R7、ING-R8、NRM-R7（見第 1 節，其中兩個需要 owner 決定），然後進入 M2（LLM、SEG、COR、TRN、PRM、PRF、AGT、MCP，以及 OUT、LIB、DEL、AUTH、SEC 的 M2 場景）。
+1. PR #13 與 PODCAST 的 PR 等 Codex 審查與 owner 合併（沒有明確授權不合併）。疊加的 PR：前一個合併後，把下一個的 base 改成 `master`，再用 `-s ours` 併入 master（見記憶中的疊加 PR 合併方式）。
+2. 剩下 M1 的 ING-R7、NRM-R7（見第 1 節，都需要 owner 決定），然後進入 M2（LLM、SEG、COR、TRN、PRM、PRF、AGT、MCP，以及 OUT、LIB、DEL、AUTH、SEC 的 M2 場景）。
 3. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
 4. `features/fixtures/items/` 有 `yt-pg100xxxxxx.json`、`yt-abc123xxxxx.json`（後者只在影片沒有任何字幕軌時用到，目前只有 SEC 的場景用得到）。
 5. 大切片的做法（LOCAL、PODCAST 用過）：architect 先出設計，主代理把設計凍結成契約檔（Go 介面、argv、marker 語法、資料模型），再分給檔案所有權不重疊的 builder 並行實作；harness 的工作包可以從一開始就並行。整合後主代理跑完整驗收與變異測試，另開 builder 只看 diff 與規格做審查。

@@ -52,7 +52,7 @@
 |---|---|---|
 | `yt:<id>` | YouTube 影片 | `https://www.youtube.com/watch?v=<id>` |
 | `bili:<bvid>/p<n>` | Bilibili 影片的第 n 個分P | `https://www.bilibili.com/video/<bvid>?p=<n>` |
-| `pod:<feed>/<guid>` | Podcast feed 中的一集 | 由 fixture 中的 feed 定義 |
+| `pod:<feed>/<guid>` | Podcast feed 中的一集。`<feed>` 是 production 從 feed 網址推導出的 key（`show.xml` → `show`），guid 可以含 `/`，以第一個 `/` 切開 | 新增時送 `{"url": "https://feeds.example.com/<feed>.xml", "episodes": ["<guid>"]}` |
 | `local:<path>` | 本機檔案，路徑相對於 inbox | — |
 
 `When the owner ingests` 接受代號或完整網址；完整網址用於驗證網址辨識。
@@ -148,12 +148,12 @@
 | `Given a YouTube video {string} titled {string}` | 建立 fake 的 YouTube 影片；沒有另外指定時，原文語言為 `en` |
 | `Given a YouTube video {string} with:` | 同上，用表格（`field`、`value`）指定 `title`、`duration`、`language`、`availability`、`chapters`、`live_status` 等。`availability` 為 `subscriber_only` 時，假 yt-dlp 在下載字幕與媒體時要求含 `.youtube.com` cookie 的 `--cookies` 檔，否則回報 `ERROR: [youtube] <id>: Join this channel to get access to members-only content like this video, or contact the channel owner.`（取得資訊不失敗，辨識網址的 Probe 仍能看到 `availability`） |
 | `Given a Bilibili video {string} with {int} parts` | 建立 fake 的 Bilibili 影片（`1 part` 亦可）；參數是不帶 `bili:` 的 BV 號。各分P 沒有字幕軌、沒有原文語言，標題預設為 BV 號；之後用 `bili:<BV>/p<n>` 逐分P 設定。分P 不存在（或影片還沒建立）時，使用該代號的步驟失敗 |
-| `Given a podcast feed {string} with the episodes:` | 建立 fake 的 feed，表格欄位：`guid`、`title`、`audio`；feed 的網址為 `https://feeds.example.com/<名稱>.xml` |
+| `Given a podcast feed {string} with the episodes:` | 建立 fake 的 feed，表格欄位依序為 `guid`、`title`、`audio`（guid 不重複、不為空）；feed 的網址為 `https://feeds.example.com/<名稱>.xml`。名稱必須符合 `^[a-z0-9]+(-[a-z0-9]+)*$`、最多 40 字元，且不是 `rss`、`feed`、`podcast` 等泛用名稱（否則 production 推導出的 feed key 會不同），不符合時步驟失敗。`audio` 是 `features/fixtures/podcast/` 的檔名時，音檔在 `https://media.example.com/<名稱>/<檔名>`；是完整網址時，取網址的檔名當 fixture，並把那個網址交給 fake origin（不改變主機的 DNS 解析序列）。fixture 不存在或不是假媒體檔時步驟失敗。每次請求都依當時的狀態產生 RSS：`<language>en</language>`、enclosure 的實際大小、`itunes:duration`（marker 有 `listed=<秒>` 時用它，否則用實際長度），腳本化字幕後才有 `<podcast:transcript>` |
 | `Given a local file {string} in the inbox` | 在 inbox 放入 `features/fixtures/local/` 的同名 fixture 檔案，修改時間設為 fake clock 的現在；fixture 不存在時失敗 |
 | `Given {string} has {word} captions in {string}` | 平台字幕軌；`{word}` 為 `manual`、`auto`、`platform-translated`。Bilibili 的 AI 字幕屬於 `auto`（Bilibili 沒有 `platform-translated`） |
 | `Given {string} has no caption tracks` | 平台沒有任何字幕 |
 | `Given the auto captions of {string} are not ready yet` | YouTube 自動字幕還沒生成：假 yt-dlp 不列出、也不下載自動字幕與平台翻譯字幕，人工字幕不受影響。只接受 `yt:` |
-| `Given the source {string} returns {string} for {string}` | 字幕來源回傳指定的 fixture。平台來源（`youtube-*`、`bilibili-*`）寫進假 yt-dlp 對應種類的字幕軌（`*-manual`、`bilibili-cc` 是 `manual`，`*-auto`、`bilibili-ai` 是 `auto`），來源與影音的平台必須相符；Bilibili 的 fixture 是字幕 JSON（`body[{from, to, content}]`） |
+| `Given the source {string} returns {string} for {string}` | 字幕來源回傳指定的 fixture。平台來源（`youtube-*`、`bilibili-*`）寫進假 yt-dlp 對應種類的字幕軌（`*-manual`、`bilibili-cc` 是 `manual`，`*-auto`、`bilibili-ai` 是 `auto`），來源與影音的平台必須相符；Bilibili 的 fixture 是字幕 JSON（`body[{from, to, content}]`）。`podcast-transcript` 在 feed 的這一集加上 `<podcast:transcript>`，fixture 放在 `features/fixtures/podcast/`，副檔名只接受 `.vtt`、`.srt`、`.json`；feed 或這一集不存在、同一個 feed 中兩集用同一個字幕檔名時失敗；`was called … times` 計算字幕網址被請求的次數 |
 | `Given the source {string} has nothing for {string}` | 字幕來源沒有結果 |
 | `Given the source {string} requires the cookie {string}` | 需要指定的 cookie 才能取得。平台來源（`bilibili-*`）的參數是 cookie 的平台：假 yt-dlp 沒有收到該平台的有效 cookie 檔（`--cookies` 指到 Netscape 格式、含 `.bilibili.com` 網域 `SESSDATA` 的檔案）時，不列出也不下載該來源的字幕軌，結束碼 0，並在 stderr 印出 login WARNING（有 `--no-warnings` 時不印）。平台來源還沒實作（`source.Implemented`）時 pending |
 | `Given the source {string} accepts files up to {string}` | ASR 的單檔大小上限，例如 `"25MB"` |
@@ -184,7 +184,7 @@
 | `Then the stage {string} of {string} failed with the error class {string}` | `failed` 及錯誤類別 |
 | `Then the stage {string} of {string} waits until {string}` | 狀態為 `waiting`，`not_before` 與指定的 RFC 3339 時間是同一個時間點（不比時區寫法） |
 | `Then the stage {string} of {string} retries at {string}` | `pending`（重試中），下一次嘗試的時間為指定時間 |
-| `Then {string} shows the message {string}` | 影音的狀態訊息（UI 與 API 共用的文案）：依 pipeline 的順序，取第一個「不是 `done` 而且有 `message`」的步驟，訊息必須完全相同；沒有這樣的步驟就失敗。最近一次送出的請求回應是這部影音的 409 `in_trash`（新增時被擋下，`item_id` 與代號對應的 ID 相同）時，比對那個 409 回應的 `message`；否則影音在垃圾桶中（`GET /api/items/:id` 回 404 `in_trash`）時，比對那個 404 回應的 `message` |
+| `Then {string} shows the message {string}` | 影音的狀態訊息（UI 與 API 共用的文案）：依 pipeline 的順序，取第一個「不是 `done` 而且有 `message`」的步驟；沒有的話，取第一個「`done` 而且有 `message`」的步驟（提醒，例如 SRC-R15 的「時間可能偏移」）。訊息必須完全相同；都沒有就失敗。最近一次送出的請求回應是這部影音的 409 `in_trash`（新增時被擋下，`item_id` 與代號對應的 ID 相同）時，比對那個 409 回應的 `message`；否則影音在垃圾桶中（`GET /api/items/:id` 回 404 `in_trash`）時，比對那個 404 回應的 `message` |
 | `Then {string} offers the actions {string}` | 可以執行的修正動作：同一個步驟（同上）的 `actions`；參數以逗號切開並去掉前後空白，與 `actions` 依序完全相等。最近一次送出的請求回應是這部影音的 409 `in_trash`（同上）時，比對那個 409 回應的 `actions`；否則影音在垃圾桶中（`GET /api/items/:id` 回 404 `in_trash`）時，比對那個 404 回應的 `actions` |
 | `Then the transcript of {string} came from {string}` | 採用的字幕來源 |
 | `Then the source {string} was rejected for {string} because {string}` | 品質檢查不通過的原因：影音詳情的 `sources` 中，有一筆 `source` 相符、`state` 為 `rejected`、`reason` 相符 |

@@ -45,6 +45,19 @@ type result struct {
 	startedAt time.Time
 	// transcriptASR 只用於 metadata：下游的 transcript 任務是否歸為 asr 資源類別。
 	transcriptASR bool
+	// afterCommit 在結果確實寫入（交易 commit，而且不是過期或租約失效）之後執行，
+	// 用來清掉只有舊記錄會用到的檔案（例如 podcast 換了副檔名的舊音檔）。
+	afterCommit func()
+	// afterDiscard 在結果沒有寫入時執行（過期、租約失效、ctx 取消或寫回失敗），
+	// 用來刪掉這次執行已暫存、沒有任何記錄會指向的檔案（例如 podcast 剛下載的音檔）。
+	afterDiscard func()
+}
+
+// discard 執行 afterDiscard（有設定的話）。
+func (r result) discard() {
+	if r.afterDiscard != nil {
+		r.afterDiscard()
+	}
 }
 
 type metaUpdate struct {
@@ -113,6 +126,7 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	if ctx.Err() != nil {
 		// 關閉或取消中：不寫回，已寫出的產出檔也不會有記錄指向它。
 		p.discardArtifactFile(res.artifact)
+		res.discard()
 		return nil
 	}
 	if errors.Is(err, errItemGone) {
@@ -333,15 +347,20 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 	if err != nil {
 		// 交易沒有 commit（例如 ctx 取消、資料庫錯誤）：沒有記錄會指向已寫出的產出檔。
 		p.discardArtifactFile(res.artifact)
+		res.discard()
 		return err
 	}
 	if stale || lost {
 		// 結果已丟棄，沒有記錄會指向這個檔案；清掉避免留下孤兒檔。
 		p.discardArtifactFile(res.artifact)
+		res.discard()
 	} else {
 		// 已 commit：被清除版本的記錄不在了，檔案也一併刪除。
 		for _, a := range purged {
 			p.discardArtifactFile(&store.NewArtifact{Path: a.Path})
+		}
+		if res.afterCommit != nil {
+			res.afterCommit()
 		}
 	}
 	if wake {

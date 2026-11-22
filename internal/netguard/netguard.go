@@ -58,6 +58,15 @@ type Deps struct {
 	Allowlist []netip.Prefix
 }
 
+// mergedAllowlist 把 AllowPrivate 與舊的 Allowlist 網段合併成一份（複製，不共用底層陣列）。
+// Transport 與 CheckURL 用同一份，兩邊的判斷才一致。
+func (d Deps) mergedAllowlist() Allowlist {
+	return Allowlist{
+		Prefixes: append(slices.Clone(d.AllowPrivate.Prefixes), d.Allowlist...),
+		Hosts:    slices.Clone(d.AllowPrivate.Hosts),
+	}
+}
+
 // ErrBlockedAddress 表示目的 IP 被 IP 政策擋下（ADR-0014）。
 // 轉址的每一跳都經過同一個 dial，所以轉址到內網位址也會得到這個錯誤；用 errors.Is 判斷。
 var ErrBlockedAddress = errors.New("netguard: 目的位址被封鎖")
@@ -181,10 +190,7 @@ func SystemDeps() Deps {
 // 每次連線嘗試有 10 秒逾時；TLS 握手 10 秒、等待回應標頭 30 秒（GRD-R5）。
 func Transport(d Deps) *http.Transport {
 	res, dialer := d.Resolver, d.Dialer
-	allow := Allowlist{
-		Prefixes: append(slices.Clone(d.AllowPrivate.Prefixes), d.Allowlist...),
-		Hosts:    slices.Clone(d.AllowPrivate.Hosts),
-	}
+	allow := d.mergedAllowlist()
 	return &http.Transport{
 		// 不使用環境變數的 proxy，避免繞過檢查。
 		Proxy: nil,

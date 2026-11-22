@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 // MaxRedirects 是對外請求最多跟隨的轉址次數（GRD-R4）。
@@ -37,11 +38,40 @@ func (e *TooLargeError) Error() string {
 // Is 讓 errors.Is(err, ErrTooLarge) 成立。
 func (e *TooLargeError) Is(target error) bool { return target == ErrTooLarge }
 
+// schemeTransport 在發出請求之前檢查 scheme：不是 http、https（含沒有 scheme 的相對網址）就回傳
+// ErrUnsupportedScheme，與轉址到其他 scheme 的錯誤相同（GRD-R1）。
+// 沒有它，http.Client 會對起始網址回一般的 "unsupported protocol scheme" 錯誤，呼叫端無法分類。
+type schemeTransport struct{ base *http.Transport }
+
+func (t *schemeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL != nil {
+		if s := req.URL.Scheme; s != "http" && s != "https" {
+			// RoundTripper 的約定：出錯時也要關閉 request body。
+			if req.Body != nil {
+				_ = req.Body.Close()
+			}
+			return nil, fmt.Errorf("%w：%q", ErrUnsupportedScheme, s)
+		}
+	}
+	return t.base.RoundTrip(req)
+}
+
+// CloseIdleConnections 讓 http.Client.CloseIdleConnections 能關閉底層的閒置連線。
+func (t *schemeTransport) CloseIdleConnections() { t.base.CloseIdleConnections() }
+
+// WithResponseHeaderTimeout 回傳複製的 Transport，等待回應標頭的逾時改為 d；其他防護（dial 檢查、scheme 檢查）不變。
+// 轉錄這類要伺服器處理完才回標頭的請求使用；用完後呼叫複本的 CloseIdleConnections。
+func (t *schemeTransport) WithResponseHeaderTimeout(d time.Duration) http.RoundTripper {
+	base := t.base.Clone()
+	base.ResponseHeaderTimeout = d
+	return &schemeTransport{base: base}
+}
+
 // NewClient 回傳對外 HTTP 的 client：連線經過 Transport（ADR-0014），
-// 轉址的每一跳都檢查 scheme，最多跟隨 MaxRedirects 次。逾時與大小由呼叫端自己限制。
+// 起始網址與轉址的每一跳都檢查 scheme，最多跟隨 MaxRedirects 次。逾時與大小由呼叫端自己限制。
 func NewClient(d Deps) *http.Client {
 	return &http.Client{
-		Transport: Transport(d),
+		Transport: &schemeTransport{base: Transport(d)},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// via 含最初的請求，所以 len(via) 是「已經跟隨的轉址次數 + 1」。
 			if len(via) > MaxRedirects {

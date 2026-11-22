@@ -18,6 +18,7 @@ var implemented = []string{
 	transcript.SourceBilibiliAI,
 	transcript.SourceLocalSidecar,
 	transcript.SourceLocalEmbedded,
+	transcript.SourcePodcastTranscript,
 	supadata.ID,
 	groq.ID,
 }

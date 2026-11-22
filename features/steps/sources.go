@@ -21,7 +21,7 @@ func registerSources(r *Registry, s *Scenario) {
 	r.Step(`a YouTube video {string} titled {string}`, s.youtubeVideoTitled)
 	r.Step(`a YouTube video {string} with:`, s.youtubeVideoWith)
 	r.Step(`a Bilibili video {string} with {int} parts`, s.bilibiliVideo)
-	r.Step(`a podcast feed {string} with the episodes:`, func(string, *godog.Table) error { return godog.ErrPending })
+	r.Step(`a podcast feed {string} with the episodes:`, s.podcastFeed)
 	r.Step(`a local file {string} in the inbox`, s.localFileInInbox)
 	r.Step(`{string} has {word} captions in {string}`, s.hasCaptions)
 	r.Step(`{string} has no caption tracks`, s.hasNoCaptions)
@@ -368,6 +368,9 @@ func (s *Scenario) sourceReturns(id, fixture, ref string) error {
 	if err := scriptableSource(id); err != nil {
 		return err
 	}
+	if id == podcastTranscriptID {
+		return s.podcastTranscriptReturns(fixture, ref)
+	}
 	if _, platform := platformSources[id]; platform {
 		return s.platformReturns(id, fixture, ref)
 	}
@@ -379,6 +382,9 @@ func (s *Scenario) sourceReturns(id, fixture, ref string) error {
 func (s *Scenario) sourceHasNothing(id, ref string) error {
 	if err := scriptableSource(id); err != nil {
 		return err
+	}
+	if id == podcastTranscriptID {
+		return s.podcastTranscriptNothing(ref)
 	}
 	if _, platform := platformSources[id]; platform {
 		return s.platformNothing(id, ref)
@@ -392,6 +398,9 @@ func (s *Scenario) sourceHasNothing(id, ref string) error {
 // 不列出也不下載這個來源的字幕軌，並印出 login WARNING（見 faketool 的 bilibili.go）。
 // youtube-* 沒有場景用到，失敗而不是 pending：場景要用就先補上假工具的行為。
 func (s *Scenario) sourceRequiresCookie(id, cookie string) error {
+	if id == podcastTranscriptID {
+		return fmt.Errorf("來源 %q 是 feed 上的公開字幕檔，沒有 cookie 需求", id)
+	}
 	if err := scriptableSource(id); err != nil {
 		return err
 	}
@@ -421,6 +430,9 @@ var sizePattern = regexp.MustCompile(`^(\d+)\s*(KB|MB|GB)$`)
 
 // sourceAcceptsUpTo 設定來源的單檔大小上限，例如 "25MB"。
 func (s *Scenario) sourceAcceptsUpTo(id, size string) error {
+	if id == podcastTranscriptID {
+		return fmt.Errorf("來源 %q 是 feed 上的字幕檔，沒有檔案大小上限可以設定", id)
+	}
 	if err := scriptableSource(id); err != nil {
 		return err
 	}
