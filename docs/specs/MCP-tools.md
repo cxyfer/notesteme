@@ -46,3 +46,4 @@
 ## 待決問題
 
 - `get_video_context` 等待時是否改用 MCP 的 progress notification 回報進度，依當時 go-sdk 的支援程度決定。
+- [O] MCP-R1 的 stdio 場景與 Background 衝突（2026-11-21，M2 S0 切片逐一檢查場景時發現，需要 owner 同意修改 `.feature`）。`MCP-tools.feature` 的 Background 先有 `Given the server is running`，stdio 場景又寫 `Given the server is not running`，兩者互相矛盾，S0 修不了，場景會一直 failed。需要 owner 決定：把 stdio 場景搬到 CLI 的 feature（建議，stdio 本來就是 CLI 子命令 `notesteme mcp`），或拆掉 Background 的啟動步驟。

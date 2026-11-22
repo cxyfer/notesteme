@@ -1,0 +1,10 @@
+{
+  "output": {
+    "cues": [
+      { "i": 1, "text": "PostgreSQL is a relational database system." },
+      { "i": 2, "text": "It has been in development for over thirty years." },
+      { "i": 3, "text": "Data lives in tables made of rows and columns." },
+      { "i": 4, "text": "You query it using the SQL language." }
+    ]
+  }
+}

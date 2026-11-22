@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/transcript"
@@ -88,7 +89,10 @@ func BuildEffective(layers ...map[string]any) (Effective, error) {
 	if err != nil {
 		return nil, err
 	}
-	eff := Effective{"language": defaults, "supadata": map[string]any{"mode": supadata.ModeAuto}}
+	eff := Effective{
+		"language": defaults, "supadata": map[string]any{"mode": supadata.ModeAuto},
+		"stages": defaultStages(), "outputs": []any{},
+	}
 	for _, l := range layers {
 		eff = Effective(merge(eff, l))
 	}
@@ -99,7 +103,34 @@ func BuildEffective(layers ...map[string]any) (Effective, error) {
 	if err := lang.Validate(); err != nil {
 		return nil, err
 	}
+	if err := eff.validateStages(); err != nil {
+		return nil, err
+	}
+	if _, err := eff.Outputs(); err != nil {
+		return nil, err
+	}
 	return eff, nil
+}
+
+// defaultStageConfig 是 LLM 步驟的內建預設（X1 選項 C）：executor 是 api、prompt 是該步驟的預設 prompt；
+// 沒有 provider 與 model 時步驟會 skipped（not_configured）。確定性步驟沒有可設定的欄位。
+func defaultStageConfig(stage string) StageConfig {
+	if !IsLLMStage(stage) {
+		return StageConfig{}
+	}
+	return StageConfig{Executor: ExecutorAPI, Prompt: stage + "-default"}
+}
+
+// defaultStages 是 stages 區段的內建預設，寫進快照讓它完整記錄當時用了什麼設定（PIPE-R13）。
+func defaultStages() map[string]any {
+	out := map[string]any{}
+	for _, s := range Stages {
+		if IsLLMStage(s) {
+			c := defaultStageConfig(s)
+			out[s] = map[string]any{"executor": c.Executor, "prompt": c.Prompt}
+		}
+	}
+	return out
 }
 
 // Language 取出 language 區段。不認識的欄位視為錯誤，避免拼錯的設定被默默忽略。
@@ -140,6 +171,119 @@ func (e Effective) supadata() (SupadataParams, error) {
 		return p, invalidf("supadata.mode 必須是 %s、%s 或 %s。", supadata.ModeNative, supadata.ModeGenerate, supadata.ModeAuto)
 	}
 	return p, nil
+}
+
+// StageConfig 是 stages.<stage> 的通用欄位（PRF-R1、LLM 介面）。步驟專屬的欄位（例如 correct 的 min_similarity）
+// 由各自的切片讀取；S0 不拒絕它們，嚴格的驗證與欄位路徑屬於 PRF 切片（PRF-R4）。
+type StageConfig struct {
+	Executor string `json:"executor,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Prompt   string `json:"prompt,omitempty"`
+}
+
+// Stage 取出 stages.<stage>。快照沒有這個區段（M1 的舊快照）或沒有這個步驟時，回傳內建預設值；
+// executor 與 prompt 是空的也用預設值補上。確定性步驟沒有可設定的欄位，回傳零值。
+func (e Effective) Stage(stage string) (StageConfig, error) {
+	cfg := defaultStageConfig(stage)
+	all, err := e.stages()
+	if err != nil || all == nil {
+		return cfg, err
+	}
+	entry, ok := all[stage]
+	if !ok {
+		return cfg, nil
+	}
+	b, err := json.Marshal(entry)
+	if err != nil {
+		return cfg, err
+	}
+	var got StageConfig
+	// 不拒絕不認識的欄位：步驟專屬的欄位由各自的切片讀取。
+	if err := json.Unmarshal(b, &got); err != nil {
+		return cfg, invalidf("stages.%s 設定不正確：%v", stage, err)
+	}
+	if got.Executor != "" {
+		cfg.Executor = got.Executor
+	}
+	if got.Prompt != "" {
+		cfg.Prompt = got.Prompt
+	}
+	cfg.Provider, cfg.Model = got.Provider, got.Model
+	return cfg, nil
+}
+
+// validateStages 檢查 stages 區段：只能設定 LLM 步驟，executor 必須是該步驟支援的，provider、model、prompt 必須是字串。
+func (e Effective) validateStages() error {
+	all, err := e.stages()
+	if err != nil || all == nil {
+		return err
+	}
+	for stage := range all {
+		if !IsLLMStage(stage) {
+			return invalidf("stages 的步驟必須是 %s、%s 或 %s，收到 %q。", StageSegment, StageCorrect, StageTranslate, stage)
+		}
+		cfg, err := e.Stage(stage)
+		if err != nil {
+			return err
+		}
+		if !slices.Contains(StageExecutors(stage), cfg.Executor) {
+			return invalidf("stages.%s.executor 必須是 %s 其中之一，收到 %q。", stage, strings.Join(StageExecutors(stage), "、"), cfg.Executor)
+		}
+	}
+	return nil
+}
+
+// stages 取出 stages 物件（每個步驟是物件）；沒有這個區段時回傳 nil。經 JSON 轉一次，
+// 覆寫是 Go 型別（map[string]any 之外的自訂 map）或解析自 JSON 都能接受。
+func (e Effective) stages() (map[string]any, error) {
+	raw, ok := e["stages"]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil, err
+	}
+	var all map[string]json.RawMessage
+	if err := json.Unmarshal(b, &all); err != nil || all == nil {
+		return nil, invalidf("stages 必須是物件。")
+	}
+	out := make(map[string]any, len(all))
+	for stage, rawEntry := range all {
+		var entry map[string]any
+		if err := json.Unmarshal(rawEntry, &entry); err != nil || entry == nil {
+			return nil, invalidf("stages.%s 必須是物件。", stage)
+		}
+		out[stage] = entry
+	}
+	return out, nil
+}
+
+// Outputs 取出 outputs（陣列）。S0 只看長度；每個目標的結構屬於輸出切片。沒有這個區段時回傳空陣列。
+func (e Effective) Outputs() ([]map[string]any, error) {
+	raw, ok := e["outputs"]
+	if !ok || raw == nil {
+		return []map[string]any{}, nil
+	}
+	// 經 JSON 轉一次，覆寫是 Go 型別（[]map[string]any）或解析自 JSON（[]any）都能接受。
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil, err
+	}
+	var list []any
+	if err := json.Unmarshal(b, &list); err != nil {
+		return nil, invalidf("outputs 必須是陣列。")
+	}
+	out := make([]map[string]any, 0, len(list))
+	for i, item := range list {
+		m, ok := item.(map[string]any)
+		if !ok {
+			return nil, invalidf("outputs 第 %d 項必須是物件。", i+1)
+		}
+		out = append(out, m)
+	}
+	return out, nil
 }
 
 // Snapshot 回傳快照的內容與它的 sha256。encoding/json 對 map 依 key 排序，所以相同的設定得到相同的結果。

@@ -72,3 +72,6 @@
 - transcript 資源類別的兩個方向都有場景：`asr` 暫停時，需要 ASR 的 transcript 會等待；有平台字幕時，transcript 照常執行（後者是 2026-11-14 經 owner 同意新增的場景）。
 - 「執行中補上條件」的限制（2026-11-14，SRC-B 審查）：secrets 的 `updated_at` 只有毫秒精度，與開始時間在同一毫秒內上傳的 cookie 判斷為「不晚於」，仍會 `blocked`，使用者要手動重試；這個視窗極小，換取開始當下已存在的 cookie 不會被誤判。其他種類的 `resume_on` 目前沒有，之後若有，要先決定各自的「何時滿足」依據。
 - Bilibili 沒有語言中繼資料：`metadata` 判斷 `transcript` 的資源類別時，與 `transcript` 步驟選軌共用同一個推斷（`inferOriginalLang`：沒有原文語言時用 AI 字幕軌的語言），否則預設的 `caption_priority`（original）會因原文語言為空而誤歸為 `asr`（2026-11-14，SRC-B 審查）。
+- 步驟的執行方式在「前進到該步驟」時，依該 stage run 的設定快照解析（`ResolveExecutor`），不是在新增時決定（2026-11-21，M2 S0 切片設計時決定）。可以略過的步驟（`executor: off`、`api` 沒有 provider 或 model、`publish` 沒有輸出目標）直接標成 `skipped`，不建任務、不帶 message，並在同一個交易中繼續解析下一步；`until` 之後的步驟維持 `pending`。skipped 的原因寫在 `block_reason`（`cancelled`、`off`、`not_configured`、`no_outputs`），事件仍是 `stage.status`，不另外帶原因。skipped 不帶 message，是為了不蓋掉 SRC-R15「時間可能偏移」這類 `done` 步驟上的提醒。
+- 重跑時，若這次要直接建任務的第一個步驟還沒有實作，就回 501，不寫入任何資料；前進時才遇到沒有實作的 executor（例如單次覆寫指定了 provider），任務會以 `permanent` 失敗，訊息是「這個步驟還沒有實作（<步驟>／<executor>）。」。M2 的步驟陸續完成後，這條規則自然失效（2026-11-21，M2 S0 切片設計時決定）。
+- `translate` 在 S0 只有一筆 stage run（`lang` 為空）。依目標語言各一筆的設計屬於 TRN 切片：`latestRuns` 目前只以步驟名稱為 key，詳情與前進要先決定怎麼處理多個語言（2026-11-21，M2 S0 切片設計時發現）。

@@ -1,0 +1,130 @@
+package pipeline
+
+import (
+	"context"
+	"slices"
+
+	"github.com/cxyfer/notesteme/internal/store"
+)
+
+// StageResolution 是步驟在一份生效設定下的執行方式。
+// （和網址辨識的 Resolution 不同；契約原本叫 Resolution，與 resolve.go 的型別同名，所以加上 Stage 前綴。）
+type StageResolution struct {
+	Stage    string
+	Executor string // ExecutorLocal、API、Agent、Off、OpenCC
+	Provider string
+	Model    string
+	Prompt   string
+	// Skip 為 true 時，這個步驟不建任務、不呼叫任何東西，前進到它時直接標成 skipped（原因是 Reason）。
+	Skip   bool
+	Reason string // Skip 時為 Skip* 常數其中之一
+}
+
+// ResolveExecutor 依步驟與生效設定決定執行方式。純函式：不讀 DB、不讀時鐘。
+//   - metadata、transcript、normalize：local。
+//   - segment、correct、translate：executor 為 off 時略過（off）；api（預設）而 provider 或 model 是空的時略過（not_configured，
+//     Executor 仍記為 api）；其他不略過。
+//   - publish：沒有 outputs 時略過（no_outputs），有 outputs 時不略過。
+func ResolveExecutor(eff Effective, stage string) (StageResolution, error) {
+	switch {
+	case stage == StageMetadata || stage == StageTranscript || stage == StageNormalize:
+		return StageResolution{Stage: stage, Executor: ExecutorLocal}, nil
+	case IsLLMStage(stage):
+		cfg, err := eff.Stage(stage)
+		if err != nil {
+			return StageResolution{}, err
+		}
+		if !slices.Contains(StageExecutors(stage), cfg.Executor) {
+			return StageResolution{}, invalidf("stages.%s.executor 不支援 %q。", stage, cfg.Executor)
+		}
+		res := StageResolution{Stage: stage, Executor: cfg.Executor, Provider: cfg.Provider, Model: cfg.Model, Prompt: cfg.Prompt}
+		switch {
+		case cfg.Executor == ExecutorOff:
+			res.Skip, res.Reason = true, SkipOff
+		case cfg.Executor == ExecutorAPI && (cfg.Provider == "" || cfg.Model == ""):
+			res.Skip, res.Reason = true, SkipNotConfigured
+		}
+		return res, nil
+	case stage == StagePublish:
+		outs, err := eff.Outputs()
+		if err != nil {
+			return StageResolution{}, err
+		}
+		res := StageResolution{Stage: stage, Executor: ExecutorLocal}
+		if len(outs) == 0 {
+			res.Skip, res.Reason = true, SkipNoOutputs
+		}
+		return res, nil
+	}
+	return StageResolution{}, invalidf("不認識的步驟 %q。", stage)
+}
+
+// planChain 從 from 開始依序解析，直到第一個不略過的步驟（含）或 until（含，空字串代表最後一個步驟）為止。
+// 回傳的最後一個元素若 Skip 為 false，就是要建立任務的步驟；全部都略過時代表做到 until 或最後。
+func planChain(eff Effective, from, until string) ([]StageResolution, error) {
+	i := slices.Index(Stages, from)
+	if i < 0 {
+		return nil, invalidf("不認識的步驟 %q。", from)
+	}
+	end := len(Stages) - 1
+	if until != "" {
+		end = slices.Index(Stages, until)
+	}
+	var chain []StageResolution
+	for _, stage := range Stages[i:max(i, end+1)] {
+		res, err := ResolveExecutor(eff, stage)
+		if err != nil {
+			return nil, err
+		}
+		chain = append(chain, res)
+		if !res.Skip {
+			break
+		}
+	}
+	return chain, nil
+}
+
+// stageImplemented 回報 (stage, executor) 有沒有實作。目前只有三個 M1 步驟的 local；
+// 由 Handle 的分派與 Rerun 的 501 判斷共用，之後的切片完成時在這裡登記。
+func stageImplemented(stage, executor string) bool {
+	switch stage {
+	case StageMetadata, StageTranscript, StageNormalize:
+		return executor == ExecutorLocal
+	}
+	return false
+}
+
+// skippedState 是前進時略過的步驟的狀態：原因寫在 block_reason，沒有 message 與 actions。
+// 不帶 message 是因為 pickAttentionStage 找第一個「不是 done 而且有 message」的步驟，
+// skipped 一帶 message 就會蓋掉 done 步驟上的提醒（SRC-R15）。
+func skippedState(reason string) store.StageState {
+	return store.StageState{Status: store.StatusSkipped, BlockReason: reason}
+}
+
+// applyChain 依 chain 處理剛建立或剛前進到的步驟：記錄解析後的 executor 與 impl_version，
+// 略過的寫成 skipped（原因在 block_reason），要執行的替它建立任務。runs 是各步驟要寫入的 stage run。
+// 回傳是否建立了任務（呼叫端要喚醒 worker）。在呼叫端的交易內執行。
+func (p *Pipeline) applyChain(ctx context.Context, r *store.Repo, itemID string, chain []StageResolution, runs map[string]store.StageRun, priority int, transcriptASR bool) (created bool, err error) {
+	for _, res := range chain {
+		run, ok := runs[res.Stage]
+		if !ok {
+			// 舊影音（只有 M1 的 3 個步驟）沒有這個步驟的記錄，沒有東西可以寫。
+			break
+		}
+		if err := r.SetStageResult(ctx, run.ID, store.StageResult{Executor: res.Executor, ImplVersion: p.implVersion(res.Stage)}); err != nil {
+			return created, err
+		}
+		if res.Skip {
+			if err := r.SetStageState(ctx, run.ID, skippedState(res.Reason)); err != nil {
+				return created, err
+			}
+			continue
+		}
+		run.Executor = res.Executor
+		if _, err := insertStageTask(ctx, r, itemID, run, priority, transcriptASR); err != nil {
+			return created, err
+		}
+		created = true
+	}
+	return created, nil
+}

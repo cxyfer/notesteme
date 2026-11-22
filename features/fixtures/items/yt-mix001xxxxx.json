@@ -1,0 +1,20 @@
+{
+  "ref": "yt:mix001xxxxx",
+  "source": {
+    "lang": "zh",
+    "cues": [
+      { "start": "00:00:01.000", "end": "00:00:05.000", "text": "今天聊 Kubernetes 的 deployment 怎么写。" },
+      { "start": "00:00:06.000", "end": "00:00:10.000", "text": "首先你要有一個 cluster，本機用 minikube 也可以。" },
+      { "start": "00:00:11.000", "end": "00:00:15.000", "text": "然後建立一個 namespace 來放自己的 workload。" },
+      { "start": "00:00:16.000", "end": "00:00:20.000", "text": "Deployment 會幫你管理 pod 的數量。" },
+      { "start": "00:00:21.000", "end": "00:00:25.000", "text": "如果某個 pod 掛掉，controller 會自動重新啟動它。" },
+      { "start": "00:00:26.000", "end": "00:00:30.000", "text": "Rolling update 可以讓服務在升級時不中斷。" },
+      { "start": "00:00:31.000", "end": "00:00:35.000", "text": "你也可以用 readiness probe 檢查服務有沒有準備好。" },
+      { "start": "00:00:36.000", "end": "00:00:40.000", "text": "Service 負責把流量導到正確的 pod。" },
+      { "start": "00:00:41.000", "end": "00:00:45.000", "text": "對外開放的話，通常會再加上一個 ingress。" },
+      { "start": "00:00:46.000", "end": "00:00:50.000", "text": "設定檔可以放在 ConfigMap，密碼就放 Secret。" },
+      { "start": "00:00:51.000", "end": "00:00:55.000", "text": "最後記得設定 resource limits，避免吃光 node 的記憶體。" },
+      { "start": "00:00:56.000", "end": "00:01:00.000", "text": "好，今天的 demo 就到這裡，謝謝大家。" }
+    ]
+  }
+}

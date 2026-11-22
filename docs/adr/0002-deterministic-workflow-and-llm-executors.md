@@ -3,6 +3,7 @@
 - 狀態：已採納
 - 日期：2026-11-11
 - 修訂：2026-11-12，`export` 改為即時渲染、新增 `summary` 與 `chapters`、`translate` 可用 `opencc` executor、新增 `batch` executor 與 Agent 逾時
+- 修訂：2026-11-21，executor 在步驟前進時依設定快照解析；`off` 與沒有設定的 `api` 不建任務，直接 `skipped`，原因記在 `block_reason`；`publish` 沒有輸出目標時同樣 `skipped`
 
 ## 背景
 

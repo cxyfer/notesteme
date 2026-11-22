@@ -42,6 +42,7 @@
 
 步驟狀態：`pending`、`running`、`waiting`、`awaiting_agent`、`blocked`、`done`、`skipped`、`failed`。
 `blocked` 的原因：`needs_action`、`budget_blocked`、`awaiting_user`。
+`skipped` 的原因：`cancelled`、`off`、`not_configured`、`no_outputs`（之後會加上 `same_language`、`manual_captions`、`not_applicable`）。
 錯誤類別：`retryable`、`wait`、`needs_action`、`budget_blocked`、`permanent`。
 
 ## 2. 影音的引用方式
@@ -111,7 +112,7 @@
 | `Given the environment variable {string} is not set` | 移除環境變數 |
 | `Given the server is running` | 以目前的設定啟動 `serve` |
 | `Given the server is not running` | 確認沒有 `serve` 持有資料目錄 |
-| `Given the provider {string} has no API key` | 移除 provider 的 API key（fake provider 預設有 key：Supadata 的 `NOTESTEME_SUPADATA_API_KEY`、Groq 的 `NOTESTEME_GROQ_API_KEY`）。參數是字幕來源 ID（第 3 節）時，同時移除環境變數與 fake 的 key 要求，所以產品沒檢查 key 就呼叫來源會拿到轉錄結果、場景失敗；來源還沒實作（`source.Implemented`）時 pending；必須放在 server 啟動之前（環境變數只在啟動時讀取）。LLM provider 的版本還沒實作，pending |
+| `Given the provider {string} has no API key` | 移除 provider 的 API key（fake provider 預設有 key：Supadata 的 `NOTESTEME_SUPADATA_API_KEY`、Groq 的 `NOTESTEME_GROQ_API_KEY`）。參數是字幕來源 ID（第 3 節）時，同時移除環境變數與 fake 的 key 要求，所以產品沒檢查 key 就呼叫來源會拿到轉錄結果、場景失敗；來源還沒實作（`source.Implemented`）時 pending；必須放在 server 啟動之前（環境變數只在啟動時讀取）。LLM provider（`anthropic`、`openai`）會移除 `NOTESTEME_<ID>_API_KEY`，並取消 fakellm 的 key 要求 |
 | `When the server starts` | 啟動 `serve`，等到 `/readyz` 回應或啟動失敗 |
 | `When the server restarts` | 模擬程序中斷後重新啟動（不經過正常關閉） |
 | `When the server shuts down gracefully` | 送出關閉訊號，等待正常關閉 |
@@ -145,7 +146,7 @@
 
 | 步驟 | 意思 |
 |---|---|
-| `Given a YouTube video {string} titled {string}` | 建立 fake 的 YouTube 影片；沒有另外指定時，原文語言為 `en` |
+| `Given a YouTube video {string} titled {string}` | 建立 fake 的 YouTube 影片；沒有另外指定時，原文語言為 `en`，頻道為 `Fixture Channel`（`UCfixture000000000000000`），所有假的 YouTube 影片都在同一個頻道。`with:` 可以用 `channel`、`channel_id` 覆寫 |
 | `Given a YouTube video {string} with:` | 同上，用表格（`field`、`value`）指定 `title`、`duration`、`language`、`availability`、`chapters`、`live_status` 等。`availability` 為 `subscriber_only` 時，假 yt-dlp 在下載字幕與媒體時要求含 `.youtube.com` cookie 的 `--cookies` 檔，否則回報 `ERROR: [youtube] <id>: Join this channel to get access to members-only content like this video, or contact the channel owner.`（取得資訊不失敗，辨識網址的 Probe 仍能看到 `availability`） |
 | `Given a Bilibili video {string} with {int} parts` | 建立 fake 的 Bilibili 影片（`1 part` 亦可）；參數是不帶 `bili:` 的 BV 號。各分P 沒有字幕軌、沒有原文語言，標題預設為 BV 號；之後用 `bili:<BV>/p<n>` 逐分P 設定。分P 不存在（或影片還沒建立）時，使用該代號的步驟失敗 |
 | `Given a podcast feed {string} with the episodes:` | 建立 fake 的 feed，表格欄位依序為 `guid`、`title`、`audio`（guid 不重複、不為空）；feed 的網址為 `https://feeds.example.com/<名稱>.xml`。名稱必須符合 `^[a-z0-9]+(-[a-z0-9]+)*$`、最多 40 字元，且不是 `rss`、`feed`、`podcast` 等泛用名稱（否則 production 推導出的 feed key 會不同），不符合時步驟失敗。`audio` 是 `features/fixtures/podcast/` 的檔名時，音檔在 `https://media.example.com/<名稱>/<檔名>`；是完整網址時，取網址的檔名當 fixture，並把那個網址交給 fake origin（不改變主機的 DNS 解析序列）。fixture 不存在或不是假媒體檔時步驟失敗。每次請求都依當時的狀態產生 RSS：`<language>en</language>`、enclosure 的實際大小、`itunes:duration`（marker 有 `listed=<秒>` 時用它，否則用實際長度），腳本化字幕後才有 `<podcast:transcript>` |
@@ -173,7 +174,7 @@
 | `Given the item {string} has been ingested` | 已新增，worker 還沒執行 |
 | `Given the item {string} has been ingested as {word}` | 以指定的優先級新增：`manual`、`subscription`、`backfill` |
 | `Given {string} is a mixed-language item` | 把影音的原文語言標記為 `mixed` |
-| `Given the item {string} has been processed up to {string}` | 已完成到指定步驟。依序判斷：(1) 場景已準備字幕來源（寫入字幕、符合 `caption_priority` 的字幕軌、腳本化的已實作來源；`local:` 另外包含 inbox 中同名的外掛字幕檔，以及 fixture 帶有文字字幕串流）：照常執行 pipeline 到該步驟；(2) 代號是 `yt:` 或 `bili:`、假 yt-dlp 中這部影片完全沒有字幕軌、場景也沒有寫入字幕或腳本化來源，且 `features/fixtures/items/<代號>.json`（`:`、`/` 換成 `-`）存在：先建立影音並做到 metadata，用 fixture 寫入 `source`，再照常執行剩下的步驟；fixture 的 `ref` 必須與檔名一致；`local:`、`pod:` 一律不套用 fixture；(3) 其他情況 pending。目標在 transcript 之前（如 `metadata`）不需要字幕。fixture 格式見 `features/fixtures/README.md` |
+| `Given the item {string} has been processed up to {string}` | 已完成到指定步驟。依序判斷：(1) 場景已準備字幕來源（寫入字幕、符合 `caption_priority` 的字幕軌、腳本化的已實作來源；`local:` 另外包含 inbox 中同名的外掛字幕檔，以及 fixture 帶有文字字幕串流）：照常執行 pipeline 到該步驟；(2) 代號是 `yt:` 或 `bili:`、假 yt-dlp 中這部影片完全沒有字幕軌、場景也沒有寫入字幕或腳本化來源，且 `features/fixtures/items/<代號>.json`（`:`、`/` 換成 `-`）存在：先建立影音並做到 metadata，用 fixture 寫入 `source`，再照常執行剩下的步驟；fixture 的 `ref` 必須與檔名一致；`local:`、`pod:` 一律不套用 fixture；(2c) 目標是 `segment`、`correct`、`translate`、`publish` 時：語意等 X1 決定（見 PRF 待決問題），目前 pending（步驟對這些目標尚未實作）；(3) 其他情況 pending。目標在 transcript 之前（如 `metadata`）不需要字幕。fixture 格式見 `features/fixtures/README.md` |
 | `Given the {string} transcript of {string} is:` | 指定變體的字幕；表格欄位：`#`、`start`、`end`、`text`，可加 `words`、`timing` |
 | `Given the {string} transcript of {string} in {string} is:` | 同上，指定語言 |
 | `When the worker runs until idle` | worker 持續執行，直到沒有可以執行的任務 |
@@ -184,8 +185,8 @@
 | `Then the stage {string} of {string} failed with the error class {string}` | `failed` 及錯誤類別 |
 | `Then the stage {string} of {string} waits until {string}` | 狀態為 `waiting`，`not_before` 與指定的 RFC 3339 時間是同一個時間點（不比時區寫法） |
 | `Then the stage {string} of {string} retries at {string}` | `pending`（重試中），下一次嘗試的時間為指定時間 |
-| `Then {string} shows the message {string}` | 影音的狀態訊息（UI 與 API 共用的文案）：依 pipeline 的順序，取第一個「不是 `done` 而且有 `message`」的步驟；沒有的話，取第一個「`done` 而且有 `message`」的步驟（提醒，例如 SRC-R15 的「時間可能偏移」）。訊息必須完全相同；都沒有就失敗。最近一次送出的請求回應是這部影音的 409 `in_trash`（新增時被擋下，`item_id` 與代號對應的 ID 相同）時，比對那個 409 回應的 `message`；否則影音在垃圾桶中（`GET /api/items/:id` 回 404 `in_trash`）時，比對那個 404 回應的 `message` |
-| `Then {string} offers the actions {string}` | 可以執行的修正動作：同一個步驟（同上）的 `actions`；參數以逗號切開並去掉前後空白，與 `actions` 依序完全相等。最近一次送出的請求回應是這部影音的 409 `in_trash`（同上）時，比對那個 409 回應的 `actions`；否則影音在垃圾桶中（`GET /api/items/:id` 回 404 `in_trash`）時，比對那個 404 回應的 `actions` |
+| `Then {string} shows the message {string}` | 影音的狀態訊息（UI 與 API 共用的文案）：依 pipeline 的順序，取第一個「不是 `done` 而且有 `message`」的步驟；沒有的話，取第一個「`done` 而且有 `message`」的步驟（提醒，例如 SRC-R15 的「時間可能偏移」）。訊息必須完全相同；都沒有就失敗。比對不符時，若緊接在前一個步驟送出的請求回 501 `not_implemented`，視為 pending（ADR-0015）。最近一次送出的請求回應是這部影音的 409 `in_trash`（新增時被擋下，`item_id` 與代號對應的 ID 相同）時，比對那個 409 回應的 `message`；否則影音在垃圾桶中（`GET /api/items/:id` 回 404 `in_trash`）時，比對那個 404 回應的 `message` |
+| `Then {string} offers the actions {string}` | 可以執行的修正動作：同一個步驟（同上）的 `actions`；參數以逗號切開並去掉前後空白，與 `actions` 依序完全相等。比對不符時，若緊接在前一個步驟送出的請求回 501 `not_implemented`，視為 pending（ADR-0015）。最近一次送出的請求回應是這部影音的 409 `in_trash`（同上）時，比對那個 409 回應的 `actions`；否則影音在垃圾桶中（`GET /api/items/:id` 回 404 `in_trash`）時，比對那個 404 回應的 `actions` |
 | `Then the transcript of {string} came from {string}` | 採用的字幕來源 |
 | `Then the source {string} was rejected for {string} because {string}` | 品質檢查不通過的原因：影音詳情的 `sources` 中，有一筆 `source` 相符、`state` 為 `rejected`、`reason` 相符 |
 | `Then the original language of {string} is {string}` | 原文語言 |
@@ -225,6 +226,8 @@
 | `Then no task is running` | 沒有執行中的任務 |
 
 ### 4.6 LLM（`steps/llm.go`）
+
+fixture 在 `features/fixtures/llm/<名稱>`，沒有 `.json` 時自動補上。步驟取自請求強制的 tool 或 schema 名稱 `notesteme_<stage>`，chunk 取自 `<transcript_data>` 的 `chunk`。請求數包含失敗的請求。`fails with HTTP` 優先於所有 `answers`；`for chunk` 優先於不指定 chunk 的 `answers`。`request N`（從 1 起算，依抵達順序）的「prompt」是解碼後的所有文字內容，再加上整份請求 body（compact、不跳脫 HTML），所以 `contains` 也會比對到 schema、參數等 JSON 欄位名稱與值。「前綴」是真正的資料區塊（可解析的 `<transcript_data>`）之前的部分。
 
 | 步驟 | 意思 |
 |---|---|

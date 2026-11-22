@@ -1,6 +1,6 @@
-# 交接：M1 開發進度
+# 交接：開發進度（M1 與 M2）
 
-> 更新：2026-11-21。PR #1～#12 已合併。LOCAL 切片（ING-05）是 PR #13（`feat/local-media`）；PODCAST 切片（ING-04）在 `feat/podcast`，疊在 `feat/local-media` 上；ESTIMATE（ING-R8）在 `feat/estimate`，疊在 `feat/podcast` 上。
+> 更新：2026-11-21。PR #1～#12 已合併。LOCAL 切片（ING-05）是 PR #13（`feat/local-media`）；PODCAST 切片（ING-04）在 `feat/podcast`，疊在 `feat/local-media` 上；ESTIMATE（ING-R8）在 `feat/estimate`（PR #15），疊在 `feat/podcast`（PR #14）上；M2 的 S0 骨架在 `feat/m2-s0`，疊在 `feat/estimate` 上。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -76,6 +76,13 @@
     - podcast 的 ASR 音訊來源與媒體端點共用 LOCAL 的 `transcribeASR`、`MediaFile`。
     - harness：`features/internal/fakepodcast`（每次依狀態產生 RSS、音檔改寫 marker 的 item、字幕呼叫計數）、`features/fixtures/podcast/`（marker 的 `listed=` 是 feed 宣告的長度）；`shows the message` 沒有非 done 的訊息時取 done 步驟的訊息。
   - ESTIMATE 切片（ING-R8，疊在 PODCAST 上）：`POST /api/estimate` 與新增共用辨識與展開（`expandRequest`），依生效的 `language` 用 transcript 步驟的規則選軌，平台字幕不計 ASR；fallback 依序估 Groq（內建計價表 `internal/cost`）或 Supadata（credit 計價，金額 `null`）。不寫入資料庫，本機檔案回 422。決定記在 ING 的待決問題。
+  - M2 S0 骨架（`feat/m2-s0`，疊在 ESTIMATE 上；決策記在 PIPE、LLM、PRF、AUTH 等規格的待決問題，ADR-0002 加修訂行）：
+    - `pipeline.Stages` 擴充為 7 步：metadata、transcript、normalize、segment、correct、translate、publish。
+    - `ResolveExecutor`／`planChain`／`applyChain`（`internal/pipeline/executor.go`）：前進到某步時才依快照解析 executor；`off`、`api` 沒有 provider／model、`publish` 沒有輸出就直接 `skipped`（`block_reason` 為 `off`、`not_configured`、`no_outputs`），不建任務；要執行而尚未實作的步驟在寫入前回 501。
+    - 設定快照的 `stages`（只限 LLM 步驟）與 `outputs`；`RerunRequest` 加 `Profile`、`Chunks`（回 501）。
+    - queue：`llm` 類別上限 `Control.SetCap`；`TestControls.SerialLLM` 讓 llm 任務依序執行。
+    - API：29 條 M2 路由的 501 stub（`internal/api/m2_stubs.go`，scope 檢查在讀 body 之前）；stage 回應加 `executor`；CLI `items show` 顯示 `skipped（not_configured）`、`blocked（reason）`；`--wait` 對沒有後續步驟的舊影音改看最後一個存在的步驟。
+    - harness：`features/internal/fakellm`（Anthropic、OpenAI 的 wire 契約檢查、依序／依 chunk 回答、`Fail`、generator 登記與 `echo_cues`）、`features/steps/llm.go` 的 LLM 步驟、`features/fixtures/llm/` 9 個 fixture、`features/fixtures/items/` 7 個 M2 影音 fixture；`processed up to <M2 步驟>` 依規則 pending；`from the origin`；帶 bearer token 的請求視為完整憑證（預期 403 時 501 → pending）。
 - **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，187 passed、4 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
@@ -104,15 +111,17 @@
 
 ## 2. 下一步
 
-切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC（PR #1～#12，已合併）→ LOCAL（PR #13）→ PODCAST（疊在 #13 上）→ ESTIMATE（ING-R8，疊在 PODCAST 上）。
+切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC（PR #1～#12，已合併）→ LOCAL（PR #13）→ PODCAST（PR #14，疊在 #13 上）→ ESTIMATE（PR #15，疊在 #14 上）→ M2 S0 骨架（疊在 #15 上）。
 
 接下來：
 
 1. PR #13 與 PODCAST 的 PR 等 Codex 審查與 owner 合併（沒有明確授權不合併）。疊加的 PR：前一個合併後，把下一個的 base 改成 `master`，再用 `-s ours` 併入 master（見記憶中的疊加 PR 合併方式）。
-2. 剩下 M1 的 ING-R7、NRM-R7（見第 1 節，都需要 owner 決定），然後進入 M2（LLM、SEG、COR、TRN、PRM、PRF、AGT、MCP，以及 OUT、LIB、DEL、AUTH、SEC 的 M2 場景）。
-3. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
-4. `features/fixtures/items/` 有 `yt-pg100xxxxxx.json`、`yt-abc123xxxxx.json`（後者只在影片沒有任何字幕軌時用到，目前只有 SEC 的場景用得到）。
-5. 大切片的做法（LOCAL、PODCAST 用過）：architect 先出設計，主代理把設計凍結成契約檔（Go 介面、argv、marker 語法、資料模型），再分給檔案所有權不重疊的 builder 並行實作；harness 的工作包可以從一開始就並行。整合後主代理跑完整驗收與變異測試，另開 builder 只看 diff 與規格做審查。
+2. 剩下 M1 的 ING-R7、NRM-R7（見第 1 節，都需要 owner 決定）。
+3. M2 的切片順序（S0 之後）：並行 S1 PRF（含 ING-R7）、S2 PRM、S6a TRN 確定性（OpenCC）、S7 OUT 渲染 → S3 LLM 核心（provider client、限流、執行層）→ 並行 S4 COR、S5 SEG、S6b TRN LLM、S8 OUT publish → S9 MCP → S10 AGT → S11 收尾。S0 之後 `@M2` 是 117 個場景：115 pending、2 failed，兩個失敗都需要 owner 決定（MCP stdio 場景與 Background 衝突、OUT-R9 預覽的影音沒有字幕來源）。
+4. M2 需要 owner 決定的事（細節在各規格的待決問題）：X1 LLM 步驟預設值（S0 依建議 C：沒有 provider 就 skipped）、X7 兩個 Agent 同時領任務沒有場景、L1 LLM-R8 請求數 4 應為 5、L7 cost_ledger、G1 SEG-R2～R4 矛盾、P1 PRM-R7 body、F1 PRF-R2 Background、A1 AGT 並行上限、MCP stdio 場景搬到 CLI、O1～O4 OUT、COR-R4 斷言偏弱、SEG-R10 缺 answers、M2 路由的 scope（profiles 與 channel overrides 是否改 admin、ass-styles preview 是否改 ingest）。
+5. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。
+6. `features/fixtures/items/` 有 `yt-pg100xxxxxx.json`、`yt-abc123xxxxx.json`（後者只在影片沒有任何字幕軌時用到，目前只有 SEC 的場景用得到）。
+7. 大切片的做法（LOCAL、PODCAST 用過）：architect 先出設計，主代理把設計凍結成契約檔（Go 介面、argv、marker 語法、資料模型），再分給檔案所有權不重疊的 builder 並行實作；harness 的工作包可以從一開始就並行。整合後主代理跑完整驗收與變異測試，另開 builder 只看 diff 與規格做審查。
 
 ## 3. 怎麼執行
 
@@ -271,7 +280,6 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
     - ffprobe 的 disposition 在假工具中固定為「每種類型的第一條是 default」。
   - Groq 上傳用 chunked（`io.Pipe`），要求 Content-Length 的 proxy 會失敗。
   - Supadata 仍是先讀完 body 再依狀態碼分類（Groq 已改成先看狀態碼）。
-  - `the provider … has no API key` 對 LLM provider 依參數回 pending（steps.md 4.1 註明 LLM 版本未實作），M2 實作 LLM 時要補。
   - 動作「現在改用語音轉錄」（SRC-R6）只顯示，點擊的處理還沒做。
 - **SRC-B**：
   - SRC-R8 是推定：Bilibili 未登入時只說「字幕需要登入」，分不出 CC 或 AI，也看不到語言；Bilibili 的錯誤字串、412 風控都依 yt-dlp 原始碼推測，等 M0 實測。

@@ -85,7 +85,17 @@ func TestRemoveAPIKey(t *testing.T) {
 	if _, ok := w.Env[config.EnvSupadataAPIKey]; ok {
 		t.Error("supadata 的環境變數應該被移除")
 	}
-	if err := w.RemoveAPIKey("anthropic"); err == nil {
+	// LLM provider：移除環境變數，fakellm 也不再要求 key。
+	if err := w.RemoveAPIKey("anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := w.Env[AnthropicAPIKeyEnv]; ok {
+		t.Error("anthropic 的環境變數應該被移除")
+	}
+	if w.Env[OpenAIAPIKeyEnv] == "" {
+		t.Error("openai 的 key 不應被動到")
+	}
+	if err := w.RemoveAPIKey("gemini"); err == nil {
 		t.Error("未知的來源應該回傳錯誤")
 	}
 }

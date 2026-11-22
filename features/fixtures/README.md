@@ -67,6 +67,40 @@
      `local:`、`pod:` 一律不套用 fixture，即使檔案存在也一樣。
   3. 其他情況（沒有 fixture、不符合上面的條件，或代號是 `local:`、`pod:`）：步驟 pending。
 - 目標步驟在 transcript 之前（例如 `metadata`）時不需要字幕，不使用 fixture。
+- 目標是 M2 的步驟（`segment`、`correct`、`translate`、`publish`）時，語意等 X1 決定，目前一律 pending，
+  不會用到 fixture（steps.md 4.4 規則 (2c)）。這些 fixture 目前只由單元測試驗證。
+
+### `generate`：用規則產生大量 cue
+
+`source` 可以用 `generate` 取代 `cues`（兩者只能有一個）。`generate` 是區塊的陣列：
+
+```json
+{"ref":"yt:long01xxxxx","source":{"lang":"en","generate":[
+  {"count":400,"step":"3s","length":"2.5s","text":"Line {n} of the long talk about slow and steady systems that scale to users"}
+]}}
+```
+
+- `count`：這個區塊的句數。`step`：相鄰兩句開始時間的間隔。`length`：每句的長度，必須在 300ms 與 `step` 之間
+  （太短會被 NRM-R2 併入前一句；超過 `step` 會被 NRM-R4 截短）。`step`、`length` 是 Go 的時間長度（`3s`、`7.5s`、`300ms`）。
+- `text`：範本，`{n}` 換成從 1 起算的全域 cue 編號（補零到 4 位，跨區塊連續）。
+- 每個區塊接在前一個區塊的結尾（前一個區塊的開始時間加上 `count × step`）；第一個區塊從 `00:00:00.000` 開始。
+  可用 `start`（`HH:MM:SS.mmm`）明確指定。
+
+M2 的影音 fixture 與用途（限制由 `features/steps/processing_test.go` 驗證）：
+
+| 檔案 | 語言 | 內容 | 用途 |
+|---|---|---|---|
+| `yt-long01xxxxx` | en | 400 句，每 3 秒一句；文字固定 76 個 ASCII 字元，每句 20 tokens | LLM Background；LLM-R1 的 1-200、198-400 |
+| `yt-chap01xxxxx` | en | 三章 40、70、40 句的短句（約 8 tokens）；第 41 句從 05:00、第 111 句從 12:00 開始 | LLM-R1 章節切塊 |
+| `yt-long08xxxxx` | en | 1600 句，同 long01 的每句長度 | AGT Background 的 8 個 chunk |
+| `yt-talk01xxxxx` | en | 120 句，每 5 秒一句（約 10 分鐘），Kafka 主題，涵蓋 06:00–08:00 | PRF、PRM、TRN |
+| `yt-zh001xxxxxx` | zh-Hans | 12 句簡體中文，主題是服務拆分 | COR-R4、SEG-R10 |
+| `yt-mix001xxxxx` | zh | 12 句中英夾雜 | COR-R5 |
+| `yt-tw001xxxxxx` | zh-Hant-TW | 10 句繁體中文 | TRN-R10 |
+
+- token 估算依 LLM-execution 待決問題 L2：漢字、假名、諺文一字算 1，其他字元每 4 個算 1（無條件進位），每句再加 1。
+- 這些 fixture 的文字不可以含有場景要驗證「由 production 加入」的字串（例如 `Apache Kafka`、`KRaft`、`<transcript_data>`、
+  `cache_control`、`数据库`、`保留原本的語言`），否則那些 `contains` 斷言會恆真；清單在 `TestVideoFixturesCommon`。
 
 ## 字幕軌
 

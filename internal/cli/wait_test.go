@@ -10,12 +10,25 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/app"
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/pipeline"
 )
 
 func stagesOf(pairs ...string) []stageView {
 	var out []stageView
 	for i := 0; i+1 < len(pairs); i += 2 {
 		out = append(out, stageView{Stage: pairs[i], Status: pairs[i+1]})
+	}
+	return out
+}
+
+// stagesFor 依 pipeline.Stages 產生所有步驟，狀態都是 status；last 不為空時，最後一個步驟改用 last。
+func stagesFor(status, last string) []stageView {
+	out := make([]stageView, 0, len(pipeline.Stages))
+	for _, name := range pipeline.Stages {
+		out = append(out, stageView{Stage: name, Status: status})
+	}
+	if last != "" {
+		out[len(out)-1].Status = last
 	}
 	return out
 }
@@ -30,7 +43,14 @@ func TestJudge(t *testing.T) {
 	}{
 		{"指定步驟完成", stagesOf("metadata", "done", "transcript", "done"), "transcript", verdictDone, 0},
 		{"沒有 until 時看最後一個步驟", stagesOf("metadata", "done", "transcript", "done", "normalize", "pending"), "", verdictWaiting, 4},
-		{"最後一個步驟完成", stagesOf("metadata", "done", "transcript", "done", "normalize", "done"), "", verdictDone, 0},
+		// 以 pipeline.Stages 產生，不論步驟有幾個都成立（最後一個步驟 skipped 也算完成）。
+		{"最後一個步驟完成", stagesFor("done", ""), "", verdictDone, 0},
+		{"最後一個步驟 skipped", stagesFor("done", "skipped"), "", verdictDone, 0},
+		{"最後一個步驟 pending", stagesFor("done", "pending"), "", verdictWaiting, 4},
+		// M1 建立的影音沒有 segment 之後的步驟：等「最後一個步驟」時改用實際存在的最後一個。
+		{"舊資料沒有後面的步驟，最後一個完成", stagesOf("metadata", "done", "transcript", "done", "normalize", "done"), "", verdictDone, 0},
+		{"舊資料沒有後面的步驟，最後一個還沒完成", stagesOf("metadata", "done", "transcript", "pending"), "", verdictWaiting, 4},
+		{"舊資料的後面步驟 failed", stagesOf("metadata", "done", "transcript", "failed"), "", verdictFailed, 1},
 		{"skipped 算完成", stagesOf("metadata", "done", "transcript", "skipped"), "transcript", verdictDone, 0},
 		{"指定步驟 blocked", stagesOf("metadata", "done", "transcript", "blocked"), "transcript", verdictBlocked, 3},
 		{"指定步驟 failed", stagesOf("metadata", "done", "transcript", "failed"), "transcript", verdictFailed, 1},

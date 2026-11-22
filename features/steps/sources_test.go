@@ -184,3 +184,66 @@ func TestBilibiliPlatformSources(t *testing.T) {
 		t.Errorf("youtube-* 應該失敗：%v", err)
 	}
 }
+
+// X4：第一次建立的 YouTube 影片都在同一個預設頻道；`with:` 的 channel、channel_id 可以覆寫，覆寫不會被之後的步驟洗掉。
+func TestYouTubeVideoDefaultChannel(t *testing.T) {
+	s := newTestScenario(t)
+	if DefaultChannelID != "UCfixture000000000000000" || len(DefaultChannelID) != 24 || DefaultChannelName != "Fixture Channel" {
+		t.Fatalf("預設頻道 = %q / %q", DefaultChannelID, DefaultChannelName)
+	}
+	for _, ref := range []string{"yt:chan01xxxxx", "yt:chan02xxxxx"} {
+		if err := s.youtubeVideoTitled(ref, "A talk"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 其他步驟第一次建立影片時也套用預設值。
+	if err := s.editVideo("yt:chan03xxxxx", func(*faketool.Video) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"chan01xxxxx", "chan02xxxxx", "chan03xxxxx"} {
+		v := s.World.Tools.Videos[id]
+		if v.ChannelID != DefaultChannelID || v.Channel != DefaultChannelName {
+			t.Errorf("%s 的頻道 = %q / %q，預期預設頻道", id, v.ChannelID, v.Channel)
+		}
+	}
+
+	// `with:` 覆寫 channel 與 channel_id；第一次建立時就覆寫，沒有指定的欄位維持預設。
+	if err := s.youtubeVideoWith("yt:chan04xxxxx", table(
+		[]string{"field", "value"}, []string{"channel", "Other Channel"}, []string{"channel_id", "UCother0000000000000000"},
+	)); err != nil {
+		t.Fatal(err)
+	}
+	if v := s.World.Tools.Videos["chan04xxxxx"]; v.ChannelID != "UCother0000000000000000" || v.Channel != "Other Channel" {
+		t.Errorf("覆寫後的頻道 = %q / %q", v.ChannelID, v.Channel)
+	}
+	if err := s.youtubeVideoWith("yt:chan05xxxxx", table([]string{"field", "value"}, []string{"channel", "Only Name"})); err != nil {
+		t.Fatal(err)
+	}
+	if v := s.World.Tools.Videos["chan05xxxxx"]; v.ChannelID != DefaultChannelID || v.Channel != "Only Name" {
+		t.Errorf("只覆寫 channel 的頻道 = %q / %q", v.ChannelID, v.Channel)
+	}
+
+	// 影片已存在：再編輯其他欄位不會把覆寫的頻道改回預設值。
+	if err := s.youtubeVideoTitled("yt:chan04xxxxx", "Renamed"); err != nil {
+		t.Fatal(err)
+	}
+	if v := s.World.Tools.Videos["chan04xxxxx"]; v.ChannelID != "UCother0000000000000000" || v.Channel != "Other Channel" {
+		t.Errorf("再編輯後的頻道 = %q / %q，不該被洗掉", v.ChannelID, v.Channel)
+	}
+}
+
+// Bilibili 影片不套用預設頻道。
+func TestBilibiliVideoHasNoDefaultChannel(t *testing.T) {
+	s := newTestScenario(t)
+	if err := s.bilibiliVideo("BV1xx411c7mD", 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.editVideo("bili:BV1xx411c7mD/p1", func(v *faketool.Video) error { v.Title = "P1"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"BV1xx411c7mD", "BV1xx411c7mD/p1", "BV1xx411c7mD/p2"} {
+		if v := s.World.Tools.Videos[key]; v.ChannelID != "" || v.Channel != "" {
+			t.Errorf("%s 的頻道 = %q / %q，Bilibili 不套用預設頻道", key, v.ChannelID, v.Channel)
+		}
+	}
+}

@@ -1,0 +1,9 @@
+{
+  "ref": "yt:long01xxxxx",
+  "source": {
+    "lang": "en",
+    "generate": [
+      { "count": 400, "step": "3s", "length": "2.5s", "text": "Line {n} of the long talk about slow and steady systems that scale to users" }
+    ]
+  }
+}

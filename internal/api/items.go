@@ -61,6 +61,7 @@ type Stage struct {
 	Stage            string     `json:"stage"`
 	Status           string     `json:"status"`
 	BlockReason      string     `json:"block_reason,omitempty"`
+	Executor         string     `json:"executor,omitempty" doc:"步驟實際使用的執行方式（local、api、agent、off、opencc）；還沒決定時省略"`
 	ErrorClass       string     `json:"error_class,omitempty"`
 	NotBefore        *time.Time `json:"not_before"`
 	Message          string     `json:"message,omitempty"`
@@ -114,7 +115,7 @@ func toStage(s store.StageRun, attempts int) Stage {
 		actions = []string{}
 	}
 	return Stage{
-		Stage: s.Stage, Status: s.Status, BlockReason: s.BlockReason, ErrorClass: s.ErrorClass, NotBefore: s.NotBefore,
+		Stage: s.Stage, Status: s.Status, BlockReason: s.BlockReason, Executor: s.Executor, ErrorClass: s.ErrorClass, NotBefore: s.NotBefore,
 		Message: s.Message, Actions: actions, ConfigSnapshotID: s.ConfigSnapshotID, ArtifactID: s.ArtifactID,
 		StartedAt: s.StartedAt, FinishedAt: s.FinishedAt, Attempts: attempts,
 	}
@@ -553,6 +554,8 @@ type rerunInput struct {
 		From      string         `json:"from" minLength:"1" doc:"從哪個步驟開始重新處理"`
 		Overrides map[string]any `json:"overrides,omitempty" doc:"這次重跑的單次覆寫"`
 		Until     string         `json:"until,omitempty" doc:"做到哪個步驟為止（含）；沒有指定時做到最後"`
+		Profile   string         `json:"profile,omitempty" doc:"這次重跑改用的處理方案（尚未實作，回 501）"`
+		Chunks    []int          `json:"chunks,omitempty" doc:"只重跑這些 chunk，從 1 起算（尚未實作，回 501）"`
 	}
 }
 
@@ -566,7 +569,10 @@ func (rt *routes) rerun(ctx context.Context, in *rerunInput) (*rerunOutput, erro
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}
-	d, err := rt.d.Pipeline.Rerun(ctx, in.ID, pipeline.RerunRequest{From: in.Body.From, Overrides: in.Body.Overrides, Until: in.Body.Until})
+	// profile、chunks 的功能屬於 M2 之後的切片（處理方案、依 chunk 重跑）：pipeline 回 501（不是 422），
+	// 而且是在驗證步驟名稱之後、讀取影音之前，不動任何資料。
+	d, err := rt.d.Pipeline.Rerun(ctx, in.ID, pipeline.RerunRequest{From: in.Body.From, Overrides: in.Body.Overrides, Until: in.Body.Until,
+		Profile: in.Body.Profile, Chunks: in.Body.Chunks})
 	if err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}

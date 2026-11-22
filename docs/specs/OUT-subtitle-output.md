@@ -55,3 +55,4 @@
 ## 待決問題
 
 - `sidecar` 的檔名語言代碼要用 BCP-47（`zh-Hant-TW`）還是 Jellyfin、Plex 較容易辨識的 ISO 639（`zh`、`chi`），M2 實作前用兩套播放器實測。
+- [O] OUT-R9 預覽場景在 S0 後仍然 failed（2026-11-21，M2 S0 切片逐一檢查場景時發現，需要 owner 決定怎麼改）。Background seed 了 `corrected` 變體，steps.md 4.4 規則 (1) 因此認為「場景已準備字幕來源」，照常跑真的 pipeline；但這部影片沒有任何字幕來源，`transcript` 會 failed。需要 owner 決定：修改場景（例如不用 seed 的 Background，或補上字幕來源），或修改規則 (1)（例如「只有 seed `source` 才算準備來源」，之後這部影片改走規則 (2) 的 fixture）。

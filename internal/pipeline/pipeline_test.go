@@ -231,7 +231,7 @@ func TestIngestRejections(t *testing.T) {
 		{"影片 ID 多於 11 個字元", IngestRequest{URL: "https://youtu.be/abc123xxxxxx"}, func(e error) bool { return errors.Is(e, ErrUnrecognizedURL) }},
 		{"Bilibili 影片", IngestRequest{URL: "https://www.bilibili.com/video/BV1xx411c7mD"}, func(e error) bool { return errors.As(e, &ni) }},
 		{"處理方案", IngestRequest{URL: watch, Profile: "standard"}, func(e error) bool { return errors.As(e, &ni) }},
-		{"未知的 until", IngestRequest{URL: watch, Until: "publish"}, func(e error) bool { return errors.As(e, &inv) }},
+		{"未知的 until", IngestRequest{URL: watch, Until: "summary"}, func(e error) bool { return errors.As(e, &inv) }},
 		{"YouTube 不能指定分P", IngestRequest{URL: watch, Parts: []int{1}}, func(e error) bool { return errors.As(e, &inv) }},
 		{"不合法的覆寫", IngestRequest{URL: watch, Overrides: map[string]any{"language": map[string]any{"targets": []any{}}}}, func(e error) bool { return errors.As(e, &inv) }},
 		{"拼錯的覆寫欄位", IngestRequest{URL: watch, Overrides: map[string]any{"language": map[string]any{"fallbck": []any{"groq"}}}}, func(e error) bool { return errors.As(e, &inv) }},
@@ -264,8 +264,14 @@ func TestFullRunProducesSourceAndNormalizedTranscripts(t *testing.T) {
 		got.OriginalLang != "en" || got.LangSource != "metadata" || got.Availability != "public" || got.ChannelID == "" {
 		t.Errorf("metadata 之後的影音 = %+v", got)
 	}
-	for _, s := range Stages {
+	for _, s := range Stages[:3] {
 		if st := r.stage(it, s); st.Status != store.StatusDone || st.CacheKey == "" || st.ImplVersion != 1 {
+			t.Errorf("步驟 %s = %+v", s, st)
+		}
+	}
+	// M2 的步驟沒有設定 provider 與 model 或輸出目標：直接 skipped，不執行也沒有快取鍵。
+	for _, s := range m2Stages {
+		if st := r.stage(it, s); st.Status != store.StatusSkipped || st.CacheKey != "" || st.ImplVersion != 1 {
 			t.Errorf("步驟 %s = %+v", s, st)
 		}
 	}
@@ -479,7 +485,7 @@ func TestLiveStreamWaitsWithoutCountingAttempts(t *testing.T) {
 	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
 	r.clk.Advance(liveRecheckDelay)
 	r.run()
-	for _, s := range Stages {
+	for _, s := range Stages[:3] {
 		if r.stage(it, s).Status != store.StatusDone {
 			t.Errorf("步驟 %s = %s", s, r.stage(it, s).Status)
 		}
@@ -791,7 +797,12 @@ func TestNextStageHonoursUntil(t *testing.T) {
 		{"metadata", "transcript", "transcript", true},
 		{"transcript", "transcript", "", false},
 		{"transcript", "normalize", "normalize", true},
-		{"normalize", "", "", false},
+		{"normalize", "", "segment", true},
+		{"normalize", "normalize", "", false},
+		{"normalize", "correct", "segment", true},
+		{"segment", "segment", "", false},
+		{"translate", "", "publish", true},
+		{"publish", "", "", false},
 	}
 	for _, tt := range tests {
 		if n, ok := nextStage(tt.stage, tt.until); n != tt.next || ok != tt.ok {

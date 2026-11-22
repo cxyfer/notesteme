@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cxyfer/notesteme/features/internal/fakellm"
 	"github.com/cxyfer/notesteme/features/internal/harness"
 	"github.com/cxyfer/notesteme/internal/app"
 	"github.com/cxyfer/notesteme/internal/auth"
@@ -156,9 +157,13 @@ func (s *Scenario) checkLogs() error {
 	logs := s.World.Log.String()
 	secrets := map[string]bool{
 		harness.TestPassword: true, harness.TestMasterKey: true, harness.TestSupadataKey: true, harness.TestGroqKey: true,
+		fakellm.TestAnthropicKey: true, fakellm.TestOpenAIKey: true,
 	}
 	// harness.GroqAPIKeyEnv 之後改用 config.EnvGroqAPIKey（見 harness.GroqAPIKeyEnv 的 TODO）。
-	for _, k := range []string{"NOTESTEME_PASSWORD", "NOTESTEME_MASTER_KEY", config.EnvSupadataAPIKey, harness.GroqAPIKeyEnv} {
+	for _, k := range []string{
+		"NOTESTEME_PASSWORD", "NOTESTEME_MASTER_KEY", config.EnvSupadataAPIKey, harness.GroqAPIKeyEnv,
+		harness.AnthropicAPIKeyEnv, harness.OpenAIAPIKeyEnv,
+	} {
 		if v := s.World.Env[k]; len(v) >= 4 {
 			secrets[v] = true
 		}
@@ -245,6 +250,20 @@ type requestOpts struct {
 	headers map[string]string
 	// from 非空時，以這個本機位址（例如 "127.0.0.2"）作為連線的來源位址。
 	from string
+}
+
+// hasCredentials 回報請求是否帶著完整的憑證：owner 的 session（cookie 加 CSRF），或 bearer token。
+// 帶著憑證的回應 403 是 handler 自己的規則，不是路由之前的身分檢查。
+func (o requestOpts) hasCredentials() bool {
+	if o.who == asOwner {
+		return true
+	}
+	for k := range o.headers {
+		if strings.EqualFold(k, "Authorization") {
+			return true
+		}
+	}
+	return false
 }
 
 // parseRequest 把 "GET /api/items" 拆成方法與路徑。
@@ -393,8 +412,10 @@ func (s *Scenario) do(method, path string, o requestOpts) (*response, error) {
 		return nil, fmt.Errorf("讀取回應：%w", err)
 	}
 	resp := &response{status: httpResp.StatusCode, header: httpResp.Header, body: raw}
-	// 沒有完整的 owner 憑證（不帶身分，或非 GET 缺 CSRF）的請求，403 由路由之前的檢查決定。
-	resp.preRoute403 = o.who == asClient || (o.noCSRF && method != http.MethodGet && method != http.MethodHead && method != http.MethodOptions)
+	// 沒有完整憑證（不帶身分，或非 GET 缺 CSRF）的請求，403 由路由之前的檢查決定；
+	// 帶了 bearer token 的請求有完整憑證，403 屬於 handler 的規則，路由還沒實作時是 pending。
+	resp.preRoute403 = !o.hasCredentials() ||
+		(o.noCSRF && method != http.MethodGet && method != http.MethodHead && method != http.MethodOptions)
 	if o.who == asOwner {
 		s.storeCookies(resp)
 	}

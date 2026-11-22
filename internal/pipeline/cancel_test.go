@@ -55,9 +55,15 @@ func TestCancelItemKeepsFinishedStages(t *testing.T) {
 	if ids, err := r.p.CancelItem(ctx, it.ID); err != nil || len(ids) != 0 {
 		t.Fatalf("全部完成後取消 = %v, %v", ids, err)
 	}
-	for _, s := range Stages {
+	for _, s := range Stages[:3] {
 		if run := r.stage(it, s); run.Status != store.StatusDone {
 			t.Errorf("已完成的步驟 %s 不應改動：%+v", s, run)
+		}
+	}
+	// 前進時已經 skipped 的 M2 步驟也不改動：不會被改成 cancelled，也不會被加上「重試」。
+	for _, s := range m2Stages {
+		if run := r.stage(it, s); run.Status != store.StatusSkipped || run.BlockReason == SkipCancelled || len(run.Actions) != 0 {
+			t.Errorf("已經略過的步驟 %s 不應改動：%+v", s, run)
 		}
 	}
 }

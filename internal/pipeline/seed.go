@@ -20,9 +20,10 @@ type SeedRequest struct {
 // SeedTranscript 把一份字幕直接寫成產出，跳過產生它的步驟。只給驗收測試的 harness 使用
 // （ADR-0015：harness 可以直接存取 Core）；沒有任何 HTTP 端點或 CLI 指令呼叫它。
 //
-// 產出帶有來源紀錄（標記 seeded）。變體對應到 M1 的步驟時（source → transcript、normalized → normalize），
-// 該步驟最新的 stage run 標為 done 並指向這份產出，還沒被領取的任務取消；
-// 其他變體（segmented、corrected…）的步驟還沒實作，只寫入產出。
+// 產出帶有來源紀錄（標記 seeded）。變體對應到步驟時（source → transcript、normalized → normalize、
+// segmented → segment、corrected → correct、translated → translate），該步驟最新的 stage run 標為 done 並指向這份產出，
+// 還沒被領取的任務取消：seed 一個變體就等於那個步驟完成，COR、TRN 的場景才能先 seed 上游變體再從下一步重跑。
+// edited 沒有對應的步驟，只寫入產出。
 func (p *Pipeline) SeedTranscript(ctx context.Context, req SeedRequest) error {
 	if !req.Variant.Valid() {
 		return invalidf("不認識的字幕變體 %q。", req.Variant)
@@ -54,6 +55,12 @@ func (p *Pipeline) SeedTranscript(ctx context.Context, req SeedRequest) error {
 		stage = StageTranscript
 	case subtitle.VariantNormalized:
 		stage = StageNormalize
+	case subtitle.VariantSegmented:
+		stage = StageSegment
+	case subtitle.VariantCorrected:
+		stage = StageCorrect
+	case subtitle.VariantTranslated:
+		stage = StageTranslate
 	}
 	prov, err := p.provenance(map[string]any{"stage": stage, "impl_version": p.implVersion(stage), "seeded": true}, nil)
 	if err != nil {

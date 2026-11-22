@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cxyfer/notesteme/features/internal/fakellm"
 	"github.com/cxyfer/notesteme/features/internal/fakenet"
 	"github.com/cxyfer/notesteme/features/internal/fakepodcast"
 	"github.com/cxyfer/notesteme/features/internal/fakesource"
@@ -44,6 +45,12 @@ const GroqHost = "api.groq.com"
 // GroqAPIKeyEnv 是 Groq API key 的環境變數。
 const GroqAPIKeyEnv = config.EnvGroqAPIKey
 
+// LLM provider 的 API key 環境變數（LLM-execution 規格 L6：NOTESTEME_<ID 大寫，- 換成 _>_API_KEY）。
+const (
+	AnthropicAPIKeyEnv = "NOTESTEME_ANTHROPIC_API_KEY"
+	OpenAIAPIKeyEnv    = "NOTESTEME_OPENAI_API_KEY"
+)
+
 // DefaultNow 是新場景的 fake clock 起始時間。
 var DefaultNow = time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
 
@@ -69,6 +76,8 @@ type World struct {
 	Sources *fakesource.Script
 	// Podcasts 是假的 Podcast feed、音檔與字幕；handler 由 steps 登記到 Net。
 	Podcasts *fakepodcast.Feeds
+	// LLM 是腳本化的 LLM provider（anthropic、openai），掛在它們的正式主機名稱上。
+	LLM *fakellm.Server
 	// Tools 是假工具的狀態；修改後呼叫 SyncTools 寫入狀態檔。
 	Tools faketool.State
 
@@ -105,6 +114,7 @@ func New() (*World, error) {
 		return nil, err
 	}
 	fx := FixturesDir()
+	clk := clock.NewFake(DefaultNow)
 	w := &World{
 		Root: root,
 		Env: map[string]string{
@@ -115,13 +125,17 @@ func New() (*World, error) {
 			// 測試環境預設有 Supadata 的 API key（steps.md 第 4.1 節：fake provider 預設有 key）。
 			config.EnvSupadataAPIKey: TestSupadataKey,
 			GroqAPIKeyEnv:            TestGroqKey,
-			"PATH":                   filepath.Join(root, "bin"),
-			"HOME":                   filepath.Join(root, "home"),
+			// LLM provider 同理：fake 預設有 key，fakellm 會檢查它。
+			AnthropicAPIKeyEnv: fakellm.TestAnthropicKey,
+			OpenAIAPIKeyEnv:    fakellm.TestOpenAIKey,
+			"PATH":             filepath.Join(root, "bin"),
+			"HOME":             filepath.Join(root, "home"),
 		},
-		Clock:       clock.NewFake(DefaultNow),
+		Clock:       clk,
 		Net:         fakenet.New(),
 		Sources:     fakesource.New(fx),
 		Podcasts:    fakepodcast.New(),
+		LLM:         fakellm.New(fx, clk),
 		Tools:       faketool.State{FixturesDir: fx, Videos: map[string]*faketool.Video{}},
 		Refs:        map[string]string{},
 		FixturesDir: fx,
@@ -133,6 +147,11 @@ func New() (*World, error) {
 	// Groq 同理：OpenAI 相容的 ASR 端點掛在正式主機名稱上，要求 Authorization: Bearer。
 	w.Sources.RequiresAPIKey("groq", TestGroqKey)
 	w.Net.Handle(GroqHost, w.Sources.OpenAIHandler("groq"))
+	// LLM provider：anthropic、openai 掛在正式主機名稱上，要求各自的憑證（fakellm 的 wire 契約見其套件說明）。
+	w.LLM.RequireKey("anthropic", fakellm.TestAnthropicKey)
+	w.LLM.RequireKey("openai", fakellm.TestOpenAIKey)
+	w.Net.Handle(fakellm.AnthropicHost, w.LLM.Handler("anthropic"))
+	w.Net.Handle(fakellm.OpenAIHost, w.LLM.Handler("openai"))
 	for _, d := range []string{w.DataDir(), w.InboxDir(), w.ConfigDir(), w.BinDir(), w.FakeDir(), w.HomeDir()} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			_ = w.Close()
@@ -231,9 +250,10 @@ func (w *World) Video(id string) *faketool.Video {
 	return v
 }
 
-// RemoveAPIKey 移除字幕來源（ASR provider、Supadata）的 API key：環境變數不再帶入，fake origin 也不再要求 key。
-// 兩邊都移除，被測程式若沒檢查 key 就直接呼叫來源，會拿到轉錄結果而不是 blocked，場景因此失敗。
-// 不是已知的來源 ID 時回傳錯誤。
+// RemoveAPIKey 移除字幕來源（ASR provider、Supadata）或 LLM provider（anthropic、openai）的 API key：
+// 環境變數不再帶入，fake origin 也不再要求 key。
+// 兩邊都移除，被測程式若沒檢查 key 就直接呼叫，會拿到轉錄結果或正常的回答而不是 blocked，場景因此失敗。
+// 不是已知的 ID 時回傳錯誤。
 func (w *World) RemoveAPIKey(sourceID string) error {
 	var env string
 	switch sourceID {
@@ -241,11 +261,19 @@ func (w *World) RemoveAPIKey(sourceID string) error {
 		env = config.EnvSupadataAPIKey
 	case "groq":
 		env = GroqAPIKeyEnv
+	case "anthropic":
+		env = AnthropicAPIKeyEnv
+	case "openai":
+		env = OpenAIAPIKeyEnv
 	default:
-		return fmt.Errorf("harness 不知道來源 %q 的 API key 要怎麼移除（只有 supadata、groq）", sourceID)
+		return fmt.Errorf("harness 不知道 %q 的 API key 要怎麼移除（只有 supadata、groq、anthropic、openai）", sourceID)
 	}
 	delete(w.Env, env)
-	w.Sources.RequiresAPIKey(sourceID, "")
+	if fakellm.IsProvider(sourceID) {
+		w.LLM.RequireKey(sourceID, "")
+	} else {
+		w.Sources.RequiresAPIKey(sourceID, "")
+	}
 	return nil
 }
 
@@ -330,7 +358,8 @@ func (w *World) waitGate(limit time.Duration, ok func(int) bool, want string) er
 // ToolCalls 讀取假工具到目前為止的呼叫紀錄。
 func (w *World) ToolCalls() ([]faketool.Call, error) { return faketool.ReadCalls(w.Root) }
 
-// Check 彙整這個場景的違規：fakenet 沒有登記的連線，以及全域 trap 記錄的繞過 netguard 的連線。
+// Check 彙整這個場景的違規：fakenet 沒有登記的連線、全域 trap 記錄的繞過 netguard 的連線，
+// 以及 fakellm 收到的不符 wire 契約或沒有腳本的請求。
 // 有違規時回傳錯誤，供 After hook 讓場景失敗。
 //
 // trap 的違規紀錄是全域的，Check 會取出並清空；場景並行執行時無法分辨違規屬於哪個場景，
@@ -342,6 +371,9 @@ func (w *World) Check() error {
 	}
 	for _, v := range fakenet.DrainTrapViolations() {
 		errs = append(errs, errors.New("trap: "+v))
+	}
+	for _, v := range w.LLM.Violations() {
+		errs = append(errs, errors.New("fakellm: "+v))
 	}
 	if len(errs) == 0 {
 		return nil

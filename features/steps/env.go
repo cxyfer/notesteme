@@ -13,6 +13,7 @@ import (
 
 	"github.com/cucumber/godog"
 
+	"github.com/cxyfer/notesteme/features/internal/fakellm"
 	"github.com/cxyfer/notesteme/internal/app"
 	"github.com/cxyfer/notesteme/internal/config"
 )
@@ -73,10 +74,18 @@ var subtitleSourceIDs = []string{
 //   - 平台字幕來源（youtube-*、bilibili-*）：沒有 API key，明確失敗。
 //   - 其他字幕來源 ID：先確認產品已實作這個來源（source.Implemented），否則 pending（允許的種類之一）；
 //     再移除環境變數與 fake origin 的 key 要求，產品若沒檢查 key 就呼叫來源，會拿到結果而讓場景失敗。
-//   - 其他（LLM provider 等）：步驟本身還沒實作，維持 pending。
+//   - LLM provider（anthropic、openai）：移除 NOTESTEME_<ID>_API_KEY，並取消 fakellm 的 key 要求；
+//     產品沒檢查 key 就呼叫 provider 會拿到正常的回答，場景因此失敗。
+//   - 其他：不認識的 provider，明確失敗。
 func (s *Scenario) providerHasNoAPIKey(provider string) error {
+	if fakellm.IsProvider(provider) {
+		if s.server != nil {
+			return errors.New("server 已經在執行，環境變數只在啟動時讀取：`the provider … has no API key` 必須放在啟動 server 的步驟之前")
+		}
+		return s.World.RemoveAPIKey(provider)
+	}
 	if !slices.Contains(subtitleSourceIDs, provider) {
-		return fmt.Errorf("LLM provider %q 的 API key 還沒有支援移除：%w", provider, godog.ErrPending)
+		return fmt.Errorf("不認識的 provider %q（字幕來源 ID 見 steps.md 第 3 節，LLM provider 只有 anthropic、openai）", provider)
 	}
 	// 平台字幕來源沒有 API key，需要的是平台的 cookie：明確失敗，不是 pending。
 	if ps, platform := platformSources[provider]; platform {

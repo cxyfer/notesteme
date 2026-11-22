@@ -1,0 +1,9 @@
+{
+  "generator": "echo_cues",
+  "args": {
+    "replace": {
+      "we use cafca streams": "We use Kafka Streams.",
+      "with craft mode enabled": "With KRaft mode enabled."
+    }
+  }
+}

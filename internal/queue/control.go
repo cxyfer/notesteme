@@ -73,6 +73,8 @@ type Control struct {
 
 	mu    sync.RWMutex
 	state controlState
+	// caps 是這個程序內的上限上界（SetCap），不存檔，只影響 Free。
+	caps map[string]int
 }
 
 func newControl(st *store.Store, wake func()) *Control {
@@ -111,6 +113,25 @@ func (c *Control) limitLocked(class string) int {
 	return DefaultLimit(class)
 }
 
+// SetCap 設定資源類別在這個程序內的上限上界（不存檔）：Free 取 min(設定的上限, cap)，
+// Limit 與 Status 仍是設定的上限，所以 GET /api/queue 的顯示不變。n < 1 代表解除。只給 TestControls 使用。
+func (c *Control) SetCap(class string, n int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if n < 1 {
+		delete(c.caps, class)
+	} else {
+		if c.caps == nil {
+			c.caps = map[string]int{}
+		}
+		c.caps[class] = n
+	}
+	// 放寬 cap 之後可能有任務可以領取了。
+	if c.wake != nil {
+		c.wake()
+	}
+}
+
 // Paused 回報整個佇列是否暫停。
 func (c *Control) Paused() bool {
 	c.mu.RLock()
@@ -138,7 +159,11 @@ func (c *Control) Free(running map[string]int) map[string]int {
 		if slices.Contains(c.state.PausedClasses, class) {
 			continue
 		}
-		if n := c.limitLocked(class) - running[class]; n > 0 {
+		limit := c.limitLocked(class)
+		if cp, ok := c.caps[class]; ok {
+			limit = min(limit, cp)
+		}
+		if n := limit - running[class]; n > 0 {
 			free[class] = n
 		}
 	}
