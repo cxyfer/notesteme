@@ -40,7 +40,7 @@
 ## 不在範圍內
 
 - MCP sampling（ADR-0002）。
-- `list_frames`、`get_frame`、`get_note`（M3）；`list_subscriptions`、`create_subscription`（M4）。
+- `list_frames`、`get_frame`、`get_note`（M3）；`list_subscriptions`、`create_subscription`（M4，[SUB 規格](SUB-subscriptions.md)）；`search` 的 `mode: fulltext`（M4，[SRCH 規格](SRCH-search.md)）。
 - 完整的 MCP OAuth 授權流程（ADR-0012 之後再評估）。
 
 ## 待決問題

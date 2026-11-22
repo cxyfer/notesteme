@@ -53,6 +53,6 @@
 
 - E1：bookmarklet 開新分頁（`window.open`），不在目前的分頁跳轉，也不用 iframe 或彈出的小視窗：在第三方頁面插入 iframe 要讀寫對方的 DOM，也會被對方的 CSP 擋住；跳轉會離開使用者正在看的影片。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
 - E2：`/add` 不自動開始處理（ENTRY-R2）。故事說「一次點擊」，實際上是點 bookmarklet 再按「開始處理」；理由是 GET 的頁面不能改變狀態（ENTRY-R7），而且會花錢的動作要讓使用者先看到估算的費用（ING-08）。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
-- E3：`POST /api/auth/login` 的 `next` 是 AUTH 介面的擴充，寫在 ENTRY 而不是 AUTH 的 M4 章節。AUTH-R17（OIDC 的 `next`）的條件與 ENTRY-R6 相同，但上限是 512 bytes；ENTRY 的 `next` 是 `/add?url=<URL 編碼的網址>`，分享的網址被編碼兩次（`/login?next=` 再編碼一次），帶追蹤參數的網址很容易超過 512 bytes，超過時登入後只會回到首頁。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：兩者共用同一個檢查函式，上限統一為 2048 bytes；AUTH-R17 的 512 要在整合時一併改成 2048（屬於 AUTH 規格的修改，由主代理處理）。
+- E3：`POST /api/auth/login` 的 `next` 是 AUTH 介面的擴充，寫在 ENTRY 而不是 AUTH 的 M4 章節。AUTH-R17（OIDC 的 `next`）的條件與 ENTRY-R6 相同，但上限是 512 bytes；ENTRY 的 `next` 是 `/add?url=<URL 編碼的網址>`，分享的網址被編碼兩次（`/login?next=` 再編碼一次），帶追蹤參數的網址很容易超過 512 bytes，超過時登入後只會回到首頁。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：兩者共用同一個檢查函式，上限統一為 2048 bytes；AUTH-R17 已在整合時改成 2048。
 - E4：URL 擷取只用簡單的 regex 與結尾標點的清單（ENTRY-R4），不處理括號配對（例如維基百科網址中的 `(…)` 會被截掉結尾的 `)`）；分享的多半是 YouTube、Bilibili 與 Podcast 的網址，不含括號。
 - E5：manifest 的 icon 用現有的品牌圖示產生（UI 切片負責）；`name` 固定是「Notesteme」，不顯示實例名稱，因為 manifest 不需要登入就能讀取。

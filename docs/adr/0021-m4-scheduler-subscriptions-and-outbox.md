@@ -18,8 +18,8 @@ M4「追蹤與部署」的驗收條件是「VPS 上訂閱 3 個頻道，無人�
 
 - 排程器是 worker 的一個 `Periodic`（和 housekeeping 並列，`internal/app/periodics.go`），不另開 goroutine。每一輪開頭以注入的 clock 取得 `now`，執行所有 `next_run_at <= now` 的排程工作，再讓 worker 領取任務。worker 的 `nextWake` 要把最早的 `next_run_at` 納入，閒置的 worker 到期時會醒來。
 - 驗收測試用既有的 `When the clock advances by …` 加上 `When the worker runs until idle` 驅動排程（steps.md 4.1 的語意：到期的排程與租約在下一次 worker 執行時處理），不新增「排程器 tick」的句型。
-- 新資料表 `scheduled_jobs (kind, key, next_run_at, last_run_at, last_ok_at, last_error, failures)`，主鍵 `(kind, key)`。`kind` 例如 `subscription.check`（`key` 是訂閱 id）、`source.reprobe`（`key` 是影音 id）、`digest`（`key` 是彙整設定 id）、`backup.daily`、`alerts`、`notify.deliver`、`batch.poll`。housekeeping 既有的兩項工作暫時維持在 `settings`，之後再搬。
-- 重啟或長時間停機後：過期的工作**只補跑一次**，下一次依「這次執行的時間＋間隔」排定，不補跑每一個錯過的時段。
+- 新資料表 `scheduled_jobs (kind, key, next_run_at, last_run_at, last_ok_at, last_error, failures)`，主鍵 `(kind, key)`。`kind` 例如 `subscription.check`（`key` 是訂閱 id）、`source.reprobe`（`key` 是影音 id）、`digest`（`key` 是彙整設定 id）、`backup.daily`、`alerts`、`notify.deliver`、`batch.poll`、`budget.month`（月初讓 `budget_blocked` 的步驟恢復，COST-R9）。housekeeping 既有的兩項工作暫時維持在 `settings`，之後再搬。
+- 重啟或長時間停機後：過期的工作**只補跑一次**，下一次依「這次執行的時間＋間隔」排定，不補跑每一個錯過的時段。例外：彙整（`digest`）、每日備份（`backup.daily`）與 `budget.month` 對齊設定時區的當地時間（例如每天 07:00），下一次排在「下一個對齊的時間點」，同樣只補跑一次、沒有隨機延遲（DIG 規格 D7、D11，OPS 規格）。
 - 工作失敗時依 `failures` 退避重試（1 分鐘、5 分鐘、30 分鐘，之後固定 6 小時），不會因為停在過去的 `next_run_at` 而每一輪都重試（同 housekeeping）。
 - 隨機延遲（SUB-06）是確定性的：`jitter = sha256(kind | key | 時段序號)` 換算成 `[0, min(間隔 × 10%, scheduler.jitter_max))`，`scheduler.jitter_max` 只能寫在設定檔，預設 `30m`；設成 `0s` 時沒有延遲，場景可以斷言精確的下次檢查時間。
 - 每一輪排程器的總執行時間上限 30 秒（以注入的 clock 判斷，測試中不會觸發）；沒執行完的工作留到下一輪，不阻塞任務領取。
@@ -48,7 +48,7 @@ M4「追蹤與部署」的驗收條件是「VPS 上訂閱 3 個頻道，無人�
 ### 5. 通知 outbox
 
 - 通知事件在產生的那個交易中寫入 `notification_outbox (id, notifier_id, event, dedupe_key, payload_json, state, attempts, next_attempt_at, last_error, created_at, sent_at)`，由排程工作 `notify.deliver` 送出。
-- 送出失敗依 1 分鐘、5 分鐘、30 分鐘、2 小時、6 小時退避，第 6 次失敗後標記 `dropped`，並寫入事件 `notify.dropped`（UI 的總覽顯示，不再以通知送出，避免迴圈）。
+- 送出失敗依 1 分鐘、5 分鐘、30 分鐘、2 小時、6 小時退避，第 6 次失敗後標記 `dropped`；端點回應屬於 `permanent` 的錯誤（例如 400、401、403、404）時第一次就 `dropped`（NOTIFY 規格 N1），並寫入事件 `notify.dropped`（UI 的總覽顯示，不再以通知送出，避免迴圈）。
 - 同一個 `dedupe_key`（例如 `budget.warning:2026-11`）在一個視窗內只送一次，數值見 NOTIFY 規格。
 - 通知端點的設定（`notifiers.config_ciphertext`）用 SEC 的信封加密存放；webhook 的請求走 netguard（GRD）。
 
@@ -70,13 +70,14 @@ M4 的 migration 接在 M3 的 migration 之後（M3 規劃 `00017`；實際編�
 |---|---|
 | `subscriptions`（plan 第 21 節的欄位，加上 `next_check_at`、`last_error`、`last_error_class`）、`subscription_entries (subscription_id, platform, external_id, part, title, published_at, duration_s, live_status, decision, reason, item_id, seen_at)`、`items.subscription_id` | SUB |
 | `scheduled_jobs` | 本 ADR 第 1 點 |
-| `digests (id, period, channels_json, notifier_ids_json, last_sent_at)`、`digest_entries` | DIG |
+| `digests (id, period, at, weekday, timezone, notifier_ids_json, scope, enabled, created_at, last_run_at)`、`digest_entries`（欄位以 DIG 規格為準） | DIG |
 | `notifiers`（plan 第 21 節）、`notification_outbox` | NOTIFY |
 | `price_overrides`（plan 第 21 節）、`settings` 中的 `budget` 區段 | COST |
 | `batches (id, provider, external_id, state, submitted_at, deadline_at, task_ids_json)`、`tasks.batch_id` | BATCH |
-| `glossary_candidates` 加 `suggestion`、`decided_term`、`decided_scope`、`decided_at` | GLOS |
-| `cues_fts`（FTS5 `trigram`，外部內容表；只含現行版本） | SRCH |
-| `oidc_identities`（`issuer`、`subject`）、`sessions` 加 `method`（`password`、`proxy`、`oidc`） | AUTH |
+| `glossary_candidates` 加 `decided_term`、`decided_scope`、`decided_at`（不加 `suggestion`，候選只有 `term`，COR 規格 C4、GLOS 規格 G2） | GLOS |
+| `search_cues`（每個語言一份現行字幕的 cue 與 `text_fold`）與 `cues_fts`（FTS5 `trigram case_sensitive 1`，以 `search_cues` 為外部內容表、trigger 同步） | SRCH |
+| `oidc_identities (issuer, subject, last_login_at)`、OIDC 登入流程的暫存狀態（state、nonce、PKCE verifier，見 AUTH 規格）、`sessions` 加 `method`（`password`、`proxy`、`oidc`） | AUTH |
+| `alert_states (kind, key, active_since, notified_at, resolved_at)`、`tool_call_stats`、cookie 的 `last_ok_at` | OPS |
 
 ### 8. 不在 M4 範圍內
 

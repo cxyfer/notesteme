@@ -58,8 +58,21 @@ Notesteme 採用規格驅動（SDD）的開發方式，驗收以行為（BDD）�
 | NOTE | 筆記與筆記模板 | M3 | [NOTE-notes.md](NOTE-notes.md) | [NOTE-notes.feature](../../features/NOTE-notes.feature) |
 | GEM | Gemini 直接生成 | M3 | [GEM-gemini.md](GEM-gemini.md) | [GEM-gemini.feature](../../features/GEM-gemini.feature) |
 | VAULT | 輸出到 Vault 與 hook | M3 | [VAULT-vault-output.md](VAULT-vault-output.md) | [VAULT-vault-output.feature](../../features/VAULT-vault-output.feature) |
+| SUB | 訂閱與排程探索 | M4 | [SUB-subscriptions.md](SUB-subscriptions.md) | [SUB-subscriptions.feature](../../features/SUB-subscriptions.feature) |
+| SRC（SRC-10） | 事後出現更好的來源 | M4 | [SRC-transcript-sources.md](SRC-transcript-sources.md) | [SRC-better-source.feature](../../features/SRC-better-source.feature) |
+| ENTRY | Bookmarklet 與 PWA 分享 | M4 | [ENTRY-entry-points.md](ENTRY-entry-points.md) | [ENTRY-entry-points.feature](../../features/ENTRY-entry-points.feature) |
+| BND | Bundle 匯出與匯入 | M4 | [BND-bundles.md](BND-bundles.md) | [BND-bundles.feature](../../features/BND-bundles.feature) |
+| DIG | 摘要與彙整 | M4 | [DIG-digest.md](DIG-digest.md) | [DIG-digest.feature](../../features/DIG-digest.feature) |
+| BATCH | Batch API | M4 | [BATCH-batch-api.md](BATCH-batch-api.md) | [BATCH-batch-api.feature](../../features/BATCH-batch-api.feature) |
+| GLOS | 術語審核 | M4 | [GLOS-glossary-review.md](GLOS-glossary-review.md) | [GLOS-glossary-review.feature](../../features/GLOS-glossary-review.feature) |
+| SRCH | 字幕全文搜尋 | M4 | [SRCH-search.md](SRCH-search.md) | [SRCH-search.feature](../../features/SRCH-search.feature) |
+| LIB（LIB-08、09） | 批次操作與總覽 | M4 | [LIB-library.md](LIB-library.md) | [LIB-bulk-overview.feature](../../features/LIB-bulk-overview.feature) |
+| NOTIFY | 通知 | M4 | [NOTIFY-notifications.md](NOTIFY-notifications.md) | [NOTIFY-notifications.feature](../../features/NOTIFY-notifications.feature) |
+| COST | 成本與預算 | M4 | [COST-cost-budget.md](COST-cost-budget.md) | [COST-cost-budget.feature](../../features/COST-cost-budget.feature) |
+| AUTH（AUTH-06～08） | 反向代理驗證、OIDC 與 token 管理 | M4 | [AUTH-access.md](AUTH-access.md) | [AUTH-proxy-oidc.feature](../../features/AUTH-proxy-oidc.feature) |
+| OPS（OPS-06～08） | 每日備份、無人值守告警與 VPS profile | M4 | [OPS-operations.md](OPS-operations.md) | [OPS-unattended.feature](../../features/OPS-unattended.feature) |
 
-M3 的能力已在 2026-11-23 展開成規格與場景（`@M3`，預設 tag 不執行，M3 的步驟目前是 pending 的步驟樁；跨規格的決定見 [ADR-0020](../adr/0020-m3-stages-notes-and-vault.md)）。M4、M5 的能力目前只在 [`story-map.md`](story-map.md) 中列出故事與條列式的驗收標準，開發前再展開成規格與場景。
+M3 的能力已在 2026-11-23 展開成規格與場景（`@M3`，預設 tag 不執行，M3 的步驟目前是 pending 的步驟樁；跨規格的決定見 [ADR-0020](../adr/0020-m3-stages-notes-and-vault.md)）。M4 的能力已在 2026-11-23 展開成規格與場景（`@M4`，預設 tag 不執行，M4 的步驟目前是 pending 的步驟樁；跨規格的決定見 [ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md)）。SRC-10、LIB-08～09、AUTH-06～08、OPS-06～08 補進既有規格的 M4 章節，場景放在另外的 `.feature` 檔。M5 的能力目前只在 [`story-map.md`](story-map.md) 中列出故事與條列式的驗收標準，開發前再展開成規格與場景。
 
 ## 4. 能力規格的格式
 

@@ -162,6 +162,7 @@ Client 必須能獨立擁有分享以外的所有功能，Hub 只是資源站，
 - 有章節（來自平台或 `chapters`）時，`segment`、`correct`、`translate` 依章節切 chunk。
 - SponsorBlock 標記的片段不送 LLM 步驟，字幕在這些片段保留原文。
 - **修訂（2026-11-23，ADR-0020，待 owner 追認）**：M3 的實際順序是 `metadata` → `transcript` → `normalize` → `segment` → `correct` → `translate` → `sponsorblock` → `chapters` → `frames` → `note` → `publish`。`chapters` 以校正後的字幕為輸入，產生的章節不參與 M2 的 chunk 切分；`frames.candidates`、`frames.select` 是 `frames` 步驟內的兩個任務；SponsorBlock 片段只排除在 `chapters`、`frames`、`note` 之外。
+- **修訂（2026-11-23，ADR-0021，待 owner 追認）**：`discover` 不是影音的步驟，是訂閱層的排程工作，不建立 `stage_runs`（SUB 規格）。`summary` 加進 `pipeline.Stages`，位置在 `normalize` 之後、`segment` 之前，預設 `off`；「摘要後暫停」讓下一個步驟 `blocked`（`awaiting_user`），見 DIG 規格。
 
 ### 5.1 冪等與快取
 
@@ -434,6 +435,7 @@ language:
 - 試跑預覽：顯示套用目前設定會抓到哪些、略過哪些，以及原因，但不實際處理。
 - 請求加入隨機延遲，並遵守 rate limit。
 - 同一個頻道只在一個實例上訂閱（[ADR-0011](adr/0011-defer-multi-instance-sync.md)）。
+- **修訂（2026-11-23，ADR-0021，待 owner 追認）**：排程是 worker 的定期工作（`scheduled_jobs`），以注入的 clock 驅動；重啟後過期的排程只補跑一次；隨機延遲以 hash 決定，`scheduler.jitter_max` 預設 30 分鐘。細節見 [SUB 規格](specs/SUB-subscriptions.md)。
 
 ## 14. 狀態、篩選與搜尋
 
@@ -454,6 +456,7 @@ language:
 - Agent 模式的金額記為 `unknown`；Agent 有回報 token 數就一併記下。這類金額不計入預算。
 - 可設月預算和單片上限，超過時任務標記為 `blocked`（原因 `budget_blocked`）。
 - 通知管道：ntfy、Discord、Telegram、webhook。通知時機：完成、失敗、需要你處理、預算將用完、訂閱彙整，以及無人值守時的告警（見第 18 節）。
+- **修訂（2026-11-23，ADR-0021，待 owner 追認）**：預算的檢查與預留在同一個寫入交易中完成；通知先寫入 `notification_outbox` 再由排程送出，失敗時退避重送。細節見 [COST](specs/COST-cost-budget.md)、[NOTIFY](specs/NOTIFY-notifications.md) 規格。
 
 ## 16. MCP 介面
 
@@ -653,6 +656,7 @@ cues_fts         (FTS5 trigram：item_id, artifact_id, start_ms, text) -- 只索
 - `outputs` 取代舊的匯出產出，也是 ADR-0010 用來偵測使用者修改的「上次寫入的 hash」。
 - 內建計價表跟著程式發布，`price_overrides` 只存使用者的覆寫。
 - cues JSON 的格式見 ADR-0005；`Cue` 預留可為空的 `speaker` 欄位。
+- **修訂（2026-11-23，ADR-0021 第 7 點，待 owner 追認）**：M4 另外新增 `subscription_entries`、`scheduled_jobs`、`digests`、`notification_outbox`、`batches`、`oidc_identities`；`subscriptions` 加 `next_check_at`、`last_error`；`glossary_candidates` 加審核欄位；`sessions` 加 `method`。Postgres＋Redis 不在 M4 範圍內。
 
 ## 22. 技術棧
 
@@ -780,3 +784,4 @@ notesteme/
 | v0.3 | 2026-11-13 | 排程改為自寫，不用 gocron v2：gocron 在自己的 goroutine 中非同步觸發，驗收測試無法確定排程已經處理完（ADR-0015） |
 | v0.4 | 2026-11-22 | Roadmap 註記 M1 的 Web UI 與真實樣本驗收尚未完成，Web UI 改以獨立的 UI 切片追蹤，排入時機列入待決問題 |
 | v0.5 | 2026-11-23 | M3 規格展開（ADR-0020，待 owner 追認）：M3 的步驟接在 `translate` 之後，順序為 `sponsorblock` → `chapters` → `frames` → `note` → `publish`；`frames.candidates`、`frames.select` 合併成 `frames` 一個步驟；SponsorBlock 片段只排除在章節、選圖與筆記之外（不影響 M2 的步驟）；vault 與 hook 只能在設定檔定義 |
+| v0.6 | 2026-11-23 | M4 規格展開（ADR-0021，待 owner 追認）：排程器是 worker 的定期工作；`discover` 是訂閱層的工作而非步驟；`summary` 放在 `normalize` 之後、預設 off；預算預留與檢查在同一交易；通知經 outbox 送出；媒體檔保留策略延到 M4 之後 |

@@ -1,7 +1,7 @@
 # COR：校正
 
 - 狀態：draft
-- 里程碑：M2（術語候選的審核 UI 在 M4，見故事地圖 GLOS-01）
+- 里程碑：M2（術語候選的審核在 M4，見 [GLOS 規格](GLOS-glossary-review.md)）
 - 相關：plan 第 8.4 節；ADR-0003
 - 驗收場景：[`features/COR-correct.feature`](../../features/COR-correct.feature)
 
@@ -38,7 +38,7 @@
 
 ## 不在範圍內
 
-- 術語候選的審核 UI（M4）。M2 只能透過 API 查看與核可。
+- 術語候選的審核 UI、修改後接受、加進全域詞彙表與批次決定（M4，[GLOS 規格](GLOS-glossary-review.md)）。M2 只能透過 API 查看與核可。
 
 ## 待決問題
 
