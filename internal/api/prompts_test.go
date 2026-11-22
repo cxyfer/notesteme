@@ -10,10 +10,11 @@ import (
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/prompts"
+	"github.com/cxyfer/notesteme/internal/store"
 )
 
 // promptsRig 是接上 prompt 庫的 rig；usedBy 決定「誰在用這個 prompt」（nil 代表沒有人用）。
-func promptsRig(t *testing.T, usedBy func(context.Context, string) ([]string, error)) *itemsRig {
+func promptsRig(t *testing.T, usedBy func(context.Context, *store.Repo, string) ([]string, error)) *itemsRig {
 	t.Helper()
 	return newItemsRigAPI(t, func(d *Deps) {
 		d.Prompts = prompts.New(prompts.Deps{Store: d.Store, Clock: d.Clock, UsedBy: usedBy})
@@ -174,7 +175,7 @@ func TestPromptsAPI_Lifecycle(t *testing.T) {
 // PRM-R8：被引用時刪除回 409 prompt_in_use，used_by 照 Deps.UsedBy 的順序列出；沒有人引用後可以刪除。
 func TestPromptsAPI_DeleteInUse(t *testing.T) {
 	users := []string{"standard", "settings", "channel:youtube:UC1"}
-	r := promptsRig(t, func(_ context.Context, id string) ([]string, error) {
+	r := promptsRig(t, func(_ context.Context, _ *store.Repo, id string) ([]string, error) {
 		if id != "my-correct" {
 			t.Errorf("UsedBy 被問到 %q", id)
 		}

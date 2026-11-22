@@ -105,16 +105,18 @@ func normalizeBody(body string) string {
 type Deps struct {
 	Store *store.Store
 	Clock clock.Clock
-	// UsedBy 回傳引用這個 prompt 的對象（刪除前檢查，D13），app 接到 Pipeline.PromptUsers。
-	// 順序：引用它的處理方案名稱（依字母排序）、"settings"、"channel:<platform>:<external_id>"。nil 代表沒有人引用。
-	UsedBy func(ctx context.Context, id string) ([]string, error)
+	// UsedBy 回傳引用這個 prompt 的對象（刪除前檢查，D13、P7），app 接到 Pipeline.PromptUsersIn。
+	// r 是刪除所在的寫入交易：檢查必須用它讀，不能另開連線，否則檢查與刪除之間仍可能有新的引用寫進來。
+	// 順序：引用它的處理方案名稱（依字母排序）、"settings"、"channel:<platform>:<external_id>"、"item:<影音代號>"。
+	// nil 代表沒有人引用。
+	UsedBy func(ctx context.Context, r *store.Repo, id string) ([]string, error)
 }
 
 // Service 是 prompt 庫。
 type Service struct {
 	st     *store.Store
 	clock  clock.Clock
-	usedBy func(ctx context.Context, id string) ([]string, error)
+	usedBy func(ctx context.Context, r *store.Repo, id string) ([]string, error)
 }
 
 // New 建立 Service。
@@ -283,28 +285,32 @@ func (s *Service) SetDefault(ctx context.Context, id string, version int) (Promp
 }
 
 // Delete 硬刪除 prompt 與它的所有版本（D13）。內建的回傳 ErrBuiltin；還被引用時回傳 *InUseError。
+// 讀取使用者清單與刪除在同一個寫入交易內（P7）：唯一的寫入連線被它佔住，其他寫入（新增引用）要等它結束，
+// 所以不會在檢查之後才冒出新的引用而留下懸空的 prompt 引用。
 func (s *Service) Delete(ctx context.Context, id string) error {
 	if isBuiltin(id) {
 		return ErrBuiltin
 	}
-	if _, err := s.st.Read().Prompt(ctx, id); err != nil {
-		return mapNotFound(err)
-	}
-	if s.usedBy != nil {
-		users, err := s.usedBy(ctx, id)
-		if err != nil {
+	return s.st.Tx(ctx, func(r *store.Repo) error {
+		if _, err := r.Prompt(ctx, id); err != nil {
+			return mapNotFound(err)
+		}
+		if s.usedBy != nil {
+			users, err := s.usedBy(ctx, r, id)
+			if err != nil {
+				return err
+			}
+			if len(users) > 0 {
+				return &InUseError{UsedBy: users}
+			}
+		}
+		if ok, err := r.DeletePrompt(ctx, id); err != nil {
 			return err
+		} else if !ok {
+			return ErrNotFound
 		}
-		if len(users) > 0 {
-			return &InUseError{UsedBy: users}
-		}
-	}
-	if ok, err := s.st.Write().DeletePrompt(ctx, id); err != nil {
-		return err
-	} else if !ok {
-		return ErrNotFound
-	}
-	return nil
+		return nil
+	})
 }
 
 // Resolve 解析引用（"<id>"、"<id>@default"、"<id>@<N>"）到實際的版本與內文。

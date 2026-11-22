@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/store"
 )
@@ -442,6 +444,123 @@ func TestPromptUsers_ProfilesSettingsChannels(t *testing.T) {
 	}
 	if none, err := r.p.PromptUsers(ctx, "nobody"); err != nil || len(none) != 0 {
 		t.Errorf("沒人引用 = %v, %v", none, err)
+	}
+}
+
+// stagePrompt 是只在 stages.<stage>.prompt 引用 prompt 的覆寫（executor 寫 agent，不需要 provider）。
+func stagePrompt(stage, ref string) json.RawMessage {
+	return json.RawMessage(`{"stages":{"` + stage + `":{"executor":"agent","prompt":"` + ref + `"}}}`)
+}
+
+// addItem 直接新增一部影音（帶影音層的覆寫）；每次新增前推進時鐘，建立順序才固定。
+func addItem(t *testing.T, r *rig, ext string, part int, overrides json.RawMessage) store.Item {
+	t.Helper()
+	r.clk.Advance(time.Second)
+	platform := "youtube"
+	if part > 0 {
+		platform = "bilibili"
+	}
+	it, _, err := r.st.Write().InsertItemIfAbsent(context.Background(), store.NewItem{
+		Platform: platform, ExternalID: ext, Part: part, URL: "https://example.test/" + ext, Overrides: overrides,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return it
+}
+
+// P7：used_by 也涵蓋影音層的覆寫（items.overrides_json），排在處理方案、settings、頻道之後，格式 item:<影音代號>。
+// 只有 stages.<s>.prompt 真的引用才算：id 只是子字串、出現在別的欄位、引用別的 prompt 都不算；垃圾桶中的影音也算。
+func TestPromptUsers_ItemOverrides(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	mustProfile(t, r, "alpha", map[string]any{"stages": map[string]any{"correct": map[string]any{"executor": "agent", "prompt": "my-correct"}}})
+	if _, err := r.p.PatchChannelOverrides(ctx, "youtube:UC1", map[string]any{"stages": map[string]any{"correct": map[string]any{"executor": "agent", "prompt": "my-correct"}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	addItem(t, r, "VID_A_000001", 0, stagePrompt("correct", "my-correct@2"))
+	addItem(t, r, "VID_B_000001", 3, stagePrompt("translate", "my-correct"))
+	addItem(t, r, "VID_C_000001", 0, stagePrompt("correct", "other"))
+	// 同樣含有 "prompt" 鍵與 id 字串，但 id 只是別的 prompt 的前綴／出現在別的欄位：SQL 篩得進來，解析後必須排除。
+	addItem(t, r, "VID_D_000001", 0, stagePrompt("correct", "my-correct-2"))
+	addItem(t, r, "VID_E_000001", 0, json.RawMessage(`{"glossary":["my-correct"],"stages":{"correct":{"executor":"agent","prompt":"other"}}}`))
+	addItem(t, r, "VID_F_000001", 0, nil)
+	trashed := addItem(t, r, "VID_G_000001", 0, stagePrompt("segment", "my-correct@default"))
+	if _, _, err := r.st.Write().TrashItem(ctx, trashed.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := r.p.PromptUsers(ctx, "my-correct")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"alpha", "channel:youtube:UC1", "item:yt:VID_A_000001", "item:bili:VID_B_000001/p3", "item:yt:VID_G_000001"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("used_by = %v，預期 %v", got, want)
+	}
+	if none, err := r.p.PromptUsers(ctx, "my-correct-3"); err != nil || len(none) != 0 {
+		t.Errorf("沒人引用 = %v, %v", none, err)
+	}
+}
+
+// 影音太多時最多列 maxPromptUserItems 個，多出的以一筆帶總數的訊息截斷，不把整個媒體庫塞進錯誤訊息。
+func TestPromptUsers_ItemsTruncated(t *testing.T) {
+	r := newRig(t)
+	for i := range maxPromptUserItems + 5 {
+		addItem(t, r, fmt.Sprintf("V%05d", i), 0, stagePrompt("correct", "my-correct"))
+	}
+	got, err := r.p.PromptUsers(context.Background(), "my-correct")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != maxPromptUserItems+1 {
+		t.Fatalf("used_by 有 %d 筆，預期 %d：%v", len(got), maxPromptUserItems+1, got)
+	}
+	if got[0] != "item:yt:V00000" || got[maxPromptUserItems-1] != fmt.Sprintf("item:yt:V%05d", maxPromptUserItems-1) {
+		t.Errorf("前 %d 筆要依建立順序：%v", maxPromptUserItems, got[:maxPromptUserItems])
+	}
+	if last := got[len(got)-1]; last != "…（另有 5 個影音）" {
+		t.Errorf("截斷訊息 = %q", last)
+	}
+}
+
+// PromptUsersIn 在給定的 Repo 上掃描：交易內尚未 commit 的引用（設定、頻道、影音）都看得到，唯讀連線看不到。
+// 這是「檢查與刪除在同一個交易」的前提：交易內讀的必須是交易自己的資料。
+func TestPromptUsersIn_SeesUncommittedWritesInTx(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	chID, err := r.st.Write().UpsertChannel(ctx, store.Channel{Platform: "youtube", ExternalID: "UC9", Title: "c"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boom := errors.New("rollback")
+	err = r.st.Tx(ctx, func(tx *store.Repo) error {
+		if err := tx.SetSetting(ctx, settingKey("stages"), `{"correct":{"executor":"agent","prompt":"my-correct"}}`); err != nil {
+			return err
+		}
+		if err := tx.SetChannelOverrides(ctx, chID, string(stagePrompt("correct", "my-correct"))); err != nil {
+			return err
+		}
+		if _, _, err := tx.InsertItemIfAbsent(ctx, store.NewItem{
+			Platform: "youtube", ExternalID: "VID_H_000001", URL: "u", Overrides: stagePrompt("correct", "my-correct"),
+		}); err != nil {
+			return err
+		}
+		in, err := r.p.PromptUsersIn(ctx, tx, "my-correct")
+		if err != nil {
+			return err
+		}
+		if want := []string{"settings", "channel:youtube:UC9", "item:yt:VID_H_000001"}; !reflect.DeepEqual(in, want) {
+			t.Errorf("交易內的 used_by = %v，預期 %v", in, want)
+		}
+		if out, err := r.p.PromptUsers(ctx, "my-correct"); err != nil || len(out) != 0 {
+			t.Errorf("交易外（唯讀連線）不該看到尚未 commit 的引用：%v, %v", out, err)
+		}
+		return boom
+	})
+	if !errors.Is(err, boom) {
+		t.Fatal(err)
 	}
 }
 

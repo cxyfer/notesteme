@@ -26,7 +26,7 @@ func TestContractLists(t *testing.T) {
 }
 
 // newService 建立接上暫存資料庫的 Service；usedBy 為 nil 代表沒有人引用。
-func newService(t *testing.T, usedBy func(context.Context, string) ([]string, error)) *Service {
+func newService(t *testing.T, usedBy func(context.Context, *store.Repo, string) ([]string, error)) *Service {
 	t.Helper()
 	clk := clock.NewFake(time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC))
 	st, err := store.Open(context.Background(), t.TempDir(), clk)
@@ -280,7 +280,7 @@ func TestAddVersion_DoesNotChangeDefault(t *testing.T) {
 
 func TestBuiltin_Immutable409(t *testing.T) {
 	ctx := t.Context()
-	s := newService(t, func(context.Context, string) ([]string, error) { return nil, nil })
+	s := newService(t, func(context.Context, *store.Repo, string) ([]string, error) { return nil, nil })
 	for _, id := range BuiltinIDs {
 		if _, err := s.AddVersion(ctx, id, "something else"); !errors.Is(err, ErrBuiltin) {
 			t.Errorf("AddVersion(%s) err = %v，預期 ErrBuiltin", id, err)
@@ -337,7 +337,7 @@ func TestDelete_InUse409UsedBy(t *testing.T) {
 	ctx := t.Context()
 	users := []string{"standard", "settings"}
 	var asked []string
-	s := newService(t, func(_ context.Context, id string) ([]string, error) {
+	s := newService(t, func(_ context.Context, _ *store.Repo, id string) ([]string, error) {
 		asked = append(asked, id)
 		return users, nil
 	})
@@ -372,11 +372,78 @@ func TestDelete_InUse409UsedBy(t *testing.T) {
 	}
 }
 
+// P7：讀取使用者清單與刪除在同一個寫入交易內。檢查通過之後、刪除之前，另一個連線想新增引用（寫入設定）
+// 必須被擋住，要等刪除結束才寫得進去；檢查若在交易外，這個寫入會立刻成功，引用就在檢查與刪除之間冒出來。
+func TestDelete_CheckAndDeleteShareOneWriteTx(t *testing.T) {
+	ctx := t.Context()
+	var s *Service
+	written := make(chan error, 1)
+	var duringCheck bool
+	s = newService(t, func(_ context.Context, _ *store.Repo, id string) ([]string, error) {
+		// 檢查回傳「沒有人用」之後，另一個連線立刻想新增引用。
+		go func() {
+			written <- s.st.Write().SetSetting(context.Background(), "settings.stages", `{"stages":{"correct":{"prompt":"`+id+`"}}}`)
+		}()
+		select {
+		case err := <-written:
+			duringCheck = true
+			written <- err
+		case <-time.After(200 * time.Millisecond):
+		}
+		return nil, nil
+	})
+	if _, _, err := s.Create(ctx, "my-correct", "correct", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(ctx, "my-correct"); err != nil {
+		t.Fatal(err)
+	}
+	if duringCheck {
+		t.Fatal("檢查與刪除之間，另一個連線的寫入沒有被擋住：檢查不在刪除的交易內")
+	}
+	select {
+	case err := <-written:
+		if err != nil {
+			t.Fatalf("交易結束後，被擋住的寫入應該完成：%v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("交易結束後，被擋住的寫入沒有完成（寫入連線沒有釋放？）")
+	}
+}
+
+// 檢查回報有人引用時整個交易回復：交易內的其他寫入也不留下，prompt 與寫入連線都完好。
+func TestDelete_InUseRollsBackTx(t *testing.T) {
+	ctx := t.Context()
+	s := newService(t, func(ctx context.Context, r *store.Repo, id string) ([]string, error) {
+		// r 是交易的 Repo：寫得進去、讀得到自己的寫入（不是唯讀連線，也不是另一條連線）。
+		if err := r.SetSetting(ctx, "probe", "in-tx"); err != nil {
+			return nil, err
+		}
+		if v, ok, err := r.Setting(ctx, "probe"); err != nil || !ok || v != "in-tx" {
+			t.Errorf("r 看不到交易內的寫入：%q, %v, %v", v, ok, err)
+		}
+		return []string{"item:yt:abc123xxxxx"}, nil
+	})
+	if _, _, err := s.Create(ctx, "p", "correct", "x"); err != nil {
+		t.Fatal(err)
+	}
+	var iu *InUseError
+	if err := s.Delete(ctx, "p"); !errors.As(err, &iu) || !slices.Equal(iu.UsedBy, []string{"item:yt:abc123xxxxx"}) {
+		t.Fatalf("Delete err = %v，預期 *InUseError", err)
+	}
+	if _, ok, err := s.st.Read().Setting(ctx, "probe"); err != nil || ok {
+		t.Errorf("回復後不該留下交易內的寫入：ok=%v err=%v", ok, err)
+	}
+	if err := s.st.Write().SetSetting(ctx, "after", "ok"); err != nil {
+		t.Errorf("回復後寫入連線應該已釋放：%v", err)
+	}
+}
+
 // UsedBy 失敗時刪除也失敗，不能當成沒有人引用。
 func TestDelete_UsedByErrorBlocks(t *testing.T) {
 	ctx := t.Context()
 	boom := errors.New("boom")
-	s := newService(t, func(context.Context, string) ([]string, error) { return nil, boom })
+	s := newService(t, func(context.Context, *store.Repo, string) ([]string, error) { return nil, boom })
 	if _, _, err := s.Create(ctx, "p", "correct", "x"); err != nil {
 		t.Fatal(err)
 	}

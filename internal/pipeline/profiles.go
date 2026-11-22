@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/validate"
 )
@@ -272,10 +274,24 @@ func (p *Pipeline) DefaultProfileName(ctx context.Context) (string, error) {
 	return v, nil
 }
 
-// PromptUsers 列出引用這個 prompt 的對象（D13）：處理方案名稱（依字母排序，只看目前版本）、
-// "settings"（全域 stages 有引用時）、"channel:<platform>:<external_id>"。給 prompts.Deps.UsedBy。
+// maxPromptUserItems 是 PromptUsers 最多列出的影音數；更多時只附上總數，不把整個媒體庫塞進錯誤訊息。
+const maxPromptUserItems = 20
+
+// PromptUsers 列出引用這個 prompt 的對象（D13、P7）：處理方案名稱（依字母排序，只看目前版本）、
+// "settings"（全域 stages 有引用時）、"channel:<platform>:<external_id>"、"item:<影音代號>"（影音層的覆寫，
+// 垃圾桶中的也算，最多 maxPromptUserItems 個，多出的以一筆「另有 N 個影音」帶總數）。
+// 用唯讀連線，給 API 顯示「使用中」；刪除前的檢查要用 PromptUsersIn，才和刪除在同一個交易。
 func (p *Pipeline) PromptUsers(ctx context.Context, promptID string) ([]string, error) {
-	r := p.st.Read()
+	return promptUsersIn(ctx, p.st.Read(), promptID)
+}
+
+// PromptUsersIn 與 PromptUsers 相同，但在給定的 Repo（唯讀或 Store.Tx 傳入的交易）上掃描。
+// 給 prompts.Deps.UsedBy：prompt 的刪除在同一個寫入交易內檢查，之後才新增的引用要等交易結束才寫得進去。
+func (p *Pipeline) PromptUsersIn(ctx context.Context, r *store.Repo, promptID string) ([]string, error) {
+	return promptUsersIn(ctx, r, promptID)
+}
+
+func promptUsersIn(ctx context.Context, r *store.Repo, promptID string) ([]string, error) {
 	users := []string{}
 
 	configs, err := r.CurrentProfileConfigs(ctx)
@@ -297,7 +313,7 @@ func (p *Pipeline) PromptUsers(ctx context.Context, promptID string) ([]string, 
 		}
 	}
 
-	global, err := p.globalConfig(ctx)
+	global, err := globalConfigIn(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -317,6 +333,29 @@ func (p *Pipeline) PromptUsers(ctx context.Context, promptID string) ([]string, 
 		if layerUsesPrompt(ov, promptID) {
 			users = append(users, "channel:"+ch.Platform+":"+ch.ExternalID)
 		}
+	}
+
+	// 影音層的覆寫（items.overrides_json）：SQL 先篩出可能的列，這裡解析 JSON 確認真的引用。
+	items, err := r.ItemsOverridingPrompt(ctx, promptID)
+	if err != nil {
+		return nil, err
+	}
+	total := 0
+	for _, it := range items {
+		ov, err := decodeOverrides(it.Overrides)
+		if err != nil {
+			return nil, err
+		}
+		if !layerUsesPrompt(ov, promptID) {
+			continue
+		}
+		total++
+		if total <= maxPromptUserItems {
+			users = append(users, "item:"+source.Ref(it.Platform, it.ExternalID, it.Part))
+		}
+	}
+	if total > maxPromptUserItems {
+		users = append(users, fmt.Sprintf("…（另有 %d 個影音）", total-maxPromptUserItems))
 	}
 	return users, nil
 }

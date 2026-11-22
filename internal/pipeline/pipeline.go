@@ -183,9 +183,14 @@ var globalSections = []string{"language", "timing", "llm", "agent", "subtitle_ru
 
 // globalConfig 讀出全域設定（資料庫），形狀與 Effective 相同：{"language": {...}}。沒有設定過的區段不在其中。
 func (p *Pipeline) globalConfig(ctx context.Context) (map[string]any, error) {
+	return globalConfigIn(ctx, p.st.Read())
+}
+
+// globalConfigIn 在給定的 Repo（唯讀或交易）上讀出全域設定；prompt 刪除前的檢查要在同一個交易內讀（P7）。
+func globalConfigIn(ctx context.Context, r *store.Repo) (map[string]any, error) {
 	out := map[string]any{}
 	for _, s := range globalSections {
-		raw, ok, err := p.st.GetSetting(ctx, settingKey(s))
+		raw, ok, err := r.Setting(ctx, settingKey(s))
 		if err != nil {
 			return nil, err
 		}

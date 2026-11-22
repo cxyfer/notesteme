@@ -240,7 +240,10 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	var pl *pipeline.Pipeline
 	s.prompts = prompts.New(prompts.Deps{
 		Store: s.store, Clock: env.Clock,
-		UsedBy: func(ctx context.Context, id string) ([]string, error) { return pl.PromptUsers(ctx, id) },
+		// 刪除在同一個寫入交易內檢查：傳進來的 Repo 是那個交易（P7）。
+		UsedBy: func(ctx context.Context, r *store.Repo, id string) ([]string, error) {
+			return pl.PromptUsersIn(ctx, r, id)
+		},
 	})
 	s.assStyles = assstyle.New(s.store)
 	// LLM provider：內建的加上設定檔 llm.providers 的；同一個 Registry 也回答處理方案驗證的「provider 存在嗎」（PRF-R4）。
