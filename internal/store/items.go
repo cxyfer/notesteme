@@ -227,6 +227,20 @@ func (r *Repo) ChannelsWithOverrides(ctx context.Context) ([]Channel, error) {
 	return out, nil
 }
 
+// ItemsOverridingPrompt 列出 overrides_json 可能引用這個 prompt 的影音（垃圾桶中的也算，還原後重跑仍會沿用覆寫），
+// 依建立順序。這只是 SQL 的預先篩選（含 "prompt" 鍵與 id 子字串），呼叫端要解析 JSON 確認 stages.<s>.prompt 真的引用它。
+func (r *Repo) ItemsOverridingPrompt(ctx context.Context, promptID string) ([]Item, error) {
+	rows, err := r.q.ItemsOverridingPrompt(ctx, promptID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Item, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, itemFromRow(row))
+	}
+	return out, nil
+}
+
 func derefInt(n *int64) int {
 	if n == nil {
 		return 0

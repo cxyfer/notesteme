@@ -55,6 +55,14 @@ UPDATE channels SET overrides_json = sqlc.arg(overrides_json), updated_at = sqlc
 -- name: ChannelsWithOverrides :many
 SELECT * FROM channels WHERE overrides_json <> '{}' ORDER BY platform, external_id;
 
+-- name: ItemsOverridingPrompt :many
+-- Items (trashed ones too: a restored item reruns with its overrides) whose overrides_json may reference the prompt.
+-- Both predicates are cheap prefilters over the raw JSON (a stage "prompt" key and the id as a substring);
+-- the caller parses the JSON to confirm the reference. Prompt ids never contain LIKE wildcards or JSON escapes.
+SELECT * FROM items
+WHERE overrides_json LIKE '%"prompt"%' AND instr(overrides_json, CAST(sqlc.arg(prompt_id) AS TEXT)) > 0
+ORDER BY created_at, id;
+
 -- name: SetItemUntil :execrows
 UPDATE items SET until_stage = sqlc.arg(until_stage) WHERE id = sqlc.arg(id);
 

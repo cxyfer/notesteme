@@ -255,6 +255,64 @@ func (q *Queries) ItemByKey(ctx context.Context, arg ItemByKeyParams) (Item, err
 	return i, err
 }
 
+const itemsOverridingPrompt = `-- name: ItemsOverridingPrompt :many
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version FROM items
+WHERE overrides_json LIKE '%"prompt"%' AND instr(overrides_json, CAST(?1 AS TEXT)) > 0
+ORDER BY created_at, id
+`
+
+// Items (trashed ones too: a restored item reruns with its overrides) whose overrides_json may reference the prompt.
+// Both predicates are cheap prefilters over the raw JSON (a stage "prompt" key and the id as a substring);
+// the caller parses the JSON to confirm the reference. Prompt ids never contain LIKE wildcards or JSON escapes.
+func (q *Queries) ItemsOverridingPrompt(ctx context.Context, promptID string) ([]Item, error) {
+	rows, err := q.db.QueryContext(ctx, itemsOverridingPrompt, promptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Item
+	for rows.Next() {
+		var i Item
+		if err := rows.Scan(
+			&i.ID,
+			&i.Platform,
+			&i.ExternalID,
+			&i.Part,
+			&i.ChannelID,
+			&i.ProfileID,
+			&i.OverridesJson,
+			&i.UntilStage,
+			&i.Title,
+			&i.Url,
+			&i.PublishedAt,
+			&i.DurationS,
+			&i.OriginalLang,
+			&i.LangSource,
+			&i.LangMixed,
+			&i.Availability,
+			&i.MediaKind,
+			&i.MetadataJson,
+			&i.CreatedAt,
+			&i.DeletedAt,
+			&i.TitleFold,
+			&i.SourcePath,
+			&i.ContentSha256,
+			&i.Origin,
+			&i.ProfileVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listItems = `-- name: ListItems :many
 SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version FROM items WHERE deleted_at IS NULL ORDER BY created_at, rowid
 `
