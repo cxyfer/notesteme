@@ -58,6 +58,9 @@ type Deps struct {
 	Clock clock.Clock
 	// Waits 限制同時在等待的 get_video_context；滿了的時候不等待，直接回傳目前的狀態。nil 代表不限制。
 	Waits chan struct{}
+	// Request 是傳輸層請求的 context（HTTP 請求）：舊版協定下 SDK 給 tool 的 ctx 不會在連線中斷時取消，
+	// get_video_context 的等待同時看它，連線中斷就停止等待並釋放名額。nil 代表只看 tool 的 ctx。
+	Request context.Context
 	// Version 是 server 的版本，放在 initialize 的 serverInfo。
 	Version string
 	// SchemaCache 在多個 server 之間共用 tool 的 schema（每個請求建立一個 server，見 NewServer）。

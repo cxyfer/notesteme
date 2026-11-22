@@ -47,6 +47,10 @@ func (s *Standalone) Handler() http.Handler { return s.h }
 // 還沒到 not_before 的任務不算可以執行。ctx 取消時，執行中的任務也會被取消。
 func (s *Standalone) RunUntilIdle(ctx context.Context) error { return s.core.RunUntilIdle(ctx) }
 
+// RunWorker 在背景持續執行任務，直到 ctx 取消（長時間執行的 `notesteme mcp` 用；一般子命令用 RunUntilIdle）。
+// 新增任務時由佇列的通知喚醒，與 serve 的 worker 相同。
+func (s *Standalone) RunWorker(ctx context.Context) { s.core.worker.Run(ctx) }
+
 // Close 停止領取、讓執行中的任務在寬限期內結束（超過則取消並放回租約，PIPE-R12），
 // 再關閉 DB 並釋放資料目錄的鎖。可重複呼叫，只有第一次生效。
 func (s *Standalone) Close() error {

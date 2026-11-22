@@ -78,6 +78,7 @@ func (e *mcpEndpoint) server(r *http.Request) *mcp.Server {
 		Events:      e.d.EventBus,
 		Clock:       e.d.Clock,
 		Waits:       e.waits,
+		Request:     r.Context(),
 		Version:     e.d.Version,
 		SchemaCache: e.cache,
 	})

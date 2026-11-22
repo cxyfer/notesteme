@@ -664,3 +664,28 @@ func TestMCPBodyLimit(t *testing.T) {
 		t.Errorf("太大的請求 = %d %s", rec.Code, rec.Body)
 	}
 }
+
+// 舊版協定（2025-06-18）下 SDK 給 tool 的 ctx 不會隨連線取消：連線中斷時仍要停止等待並釋放名額。
+func TestMCPGetVideoContextCancelOldProtocol(t *testing.T) {
+	m := newMCPRig(t, nil)
+	tok := m.token(auth.ScopeRead, auth.ScopeIngest)
+	ctx, cancel := context.WithCancel(context.Background())
+	body := `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"get_video_context","arguments":{"url":"https://youtu.be/abc123xxxxx","timeout_s":600}}}`
+	req, _ := http.NewRequestWithContext(ctx, "POST", m.srv.URL+"/mcp", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Mcp-Protocol-Version", "2025-06-18")
+	req.Header.Set("Authorization", "Bearer "+tok)
+	done := make(chan error, 1)
+	go func() {
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+		done <- err
+	}()
+	waitTimers(t, m, 1)
+	cancel()
+	<-done
+	waitTimers(t, m, 0)
+}

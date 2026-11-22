@@ -241,8 +241,10 @@ func parse(args []string) (*plan, error) {
 		return parseTokens(args[1:])
 	case "secrets":
 		return parseSecrets(args[1:])
-	case "config", "mcp":
-		// 屬於之後的切片（SEC M2、MCP）：不判斷模式，直接回報還沒實作。
+	case "mcp":
+		return parseMCP(args[1:])
+	case "config":
+		// 屬於之後的切片（SEC M2）：不判斷模式，直接回報還沒實作。
 		return unimplemented(name), nil
 	default:
 		return nil, usagef("不認得的子命令 %q。", name)
@@ -268,6 +270,7 @@ const usageText = `用法：notesteme <子命令> [旗標]
   import <subtitle> --item <item>       匯入外部編輯過的字幕為 edited 版本（--lang、--format）
   tokens create|ls|revoke               管理 API token
   secrets rotate-key|reset              管理 master key 與 secrets
+  mcp [--token <t>] [--list-tools]      在 stdin／stdout 上執行 MCP server
   doctor                                檢查外部工具與設定
 
 全域旗標：--server <url> --token <t> --data <dir> --json

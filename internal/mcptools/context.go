@@ -98,6 +98,12 @@ func addGetVideoContext(s *mcp.Server, d *Deps) {
 }
 
 func getVideoContext(ctx context.Context, d *Deps, a contextArgs) *mcp.CallToolResult {
+	if d.Request != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+		defer context.AfterFunc(d.Request, cancel)()
+	}
 	if r := checkStrings(field{"url", a.URL, maxURLLen}, field{"lang", a.Lang, maxIDLen}); r != nil {
 		return r
 	}

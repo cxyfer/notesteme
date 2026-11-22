@@ -17,6 +17,9 @@ import (
 // version 在建置時可由 -ldflags 覆寫。
 var version = "dev"
 
+// Version 回傳程式的版本（MCP 的 serverInfo 與 clientInfo 使用）。
+func Version() string { return version }
+
 // Env 是程式對外部環境的全部依賴（ADR-0015）。
 // production 程式碼只能經由它取得環境變數、時間、網路與 log 輸出；
 // 只有 cmd/notesteme/main.go 可以讀 os.Environ 與建立真實的 clock、listener。
