@@ -118,3 +118,23 @@ func TestAddRejectsPathsOutsideTheRepo(t *testing.T) {
 		t.Error("不認得的 remote 應該失敗")
 	}
 }
+
+func TestFirstCloneCreatesAnEmptyRemote(t *testing.T) {
+	root := t.TempDir()
+	f := Fake{StateDir: filepath.Join(root, "fake", "git")}
+	if code, out := run(t, f, root, "clone", "--branch", "master", remote, filepath.Join(root, "c")); code != 0 {
+		t.Fatalf("clone: %d %s", code, out)
+	}
+	if st, _ := f.Remote(); st.URL != remote || st.Branch != "master" {
+		t.Errorf("remote = %+v", st)
+	}
+	g := Fake{StateDir: filepath.Join(t.TempDir(), "git")}
+	for _, bad := range []string{"ext::sh -c id", "file:///data/config", "/srv/git/vault.git"} {
+		if code, _ := run(t, g, root, "clone", bad, filepath.Join(t.TempDir(), "d")); code == 0 {
+			t.Errorf("%q 不應該被自動建立", bad)
+		}
+	}
+	if !allowedRemote("git@github.com:me/vault.git") {
+		t.Error("scp 形式的 ssh 網址要允許")
+	}
+}

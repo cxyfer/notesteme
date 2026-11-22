@@ -230,6 +230,11 @@ func (f Fake) clone(dir string, args []string, stderr io.Writer) int {
 		return 129
 	}
 	st, err := f.Remote()
+	if err == nil && st.URL == "" && allowedRemote(rest[0]) {
+		// 第一次 clone 時自動建立空的假遠端（steps.md 4.16）；Reject 等已登記的狀態保留。
+		st.URL, st.Branch = rest[0], branch
+		err = f.SetRemote(st)
+	}
 	if err != nil || st.URL != rest[0] {
 		fmt.Fprintf(stderr, "fatal: repository '%s' not found\n", rest[0])
 		return 128
@@ -379,6 +384,18 @@ func (f Fake) push(dir string, args []string, stderr io.Writer) int {
 		}
 	}
 	return 0
+}
+
+// allowedRemote 回報網址是不是 https、ssh 或 user@host:path（VAULT-R8 允許的形式）。
+func allowedRemote(url string) bool {
+	switch {
+	case strings.HasPrefix(url, "https://"), strings.HasPrefix(url, "ssh://"):
+		return true
+	case strings.Contains(url, "::"), strings.Contains(url, "://"), strings.HasPrefix(url, "/"):
+		return false
+	}
+	at, colon := strings.Index(url, "@"), strings.Index(url, ":")
+	return at > 0 && colon > at+1 && colon < len(url)-1
 }
 
 func hostOf(url string) string {
