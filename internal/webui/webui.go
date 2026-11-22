@@ -25,10 +25,11 @@ import (
 //   - style-src 允許 'unsafe-inline'（只限 style）：Radix 的 react-remove-scroll 等套件會插入 <style> 元素。
 //     見 docs/ui/README.md「實作現況」的待決問題。
 //   - frame-src 只開放 YouTube 與 Bilibili 的嵌入播放器；img-src 開放兩者的縮圖網域。
+//   - img-src 另外允許 blob:：字幕樣式的預覽（POST /api/ass-styles/preview 回 PNG）由前端轉成 object URL 顯示。
 const CSP = "default-src 'self'; " +
 	"script-src 'self'; " +
 	"style-src 'self' 'unsafe-inline'; " +
-	"img-src 'self' https://*.ytimg.com https://*.hdslb.com; " +
+	"img-src 'self' blob: https://*.ytimg.com https://*.hdslb.com; " +
 	"font-src 'self'; " +
 	"connect-src 'self'; " +
 	"media-src 'self'; " +

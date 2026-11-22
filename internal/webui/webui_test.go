@@ -84,6 +84,14 @@ func TestCSPDirectives(t *testing.T) {
 	if strings.Contains(d["script-src"], "unsafe") {
 		t.Error("script-src 不可有 unsafe-inline／unsafe-eval")
 	}
+	// img-src：同源、blob:（樣式預覽的 PNG）與兩個縮圖網域；不允許 data: 與任意 https:
+	for _, src := range strings.Fields(d["img-src"]) {
+		switch {
+		case src == "'self'", src == "blob:", strings.HasSuffix(src, ".ytimg.com"), strings.HasSuffix(src, ".hdslb.com"):
+		default:
+			t.Errorf("img-src 不應開放 %s", src)
+		}
+	}
 	for _, host := range strings.Fields(d["frame-src"]) {
 		if !strings.Contains(host, "youtube") && !strings.Contains(host, "bilibili") {
 			t.Errorf("frame-src 只能開放 YouTube 與 Bilibili：%s", host)
