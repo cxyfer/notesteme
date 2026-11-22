@@ -1,0 +1,138 @@
+/*
+ * 步驟帶（StatusBand，design-language.md §6.1 的「步驟帶的狀態」）。
+ * 只用設計 token 的 CSS 變數，由使用端（web/client/src/styles/tokens.css）提供。
+ * 狀態不只靠顏色：每種狀態的紋理不同（實心、虛線、長虛線、點線、斜線紋），文字版本在 aria-label 與狀態欄。
+ */
+.sband {
+  --sband-track-h: 24px;
+  --sband-band-h: 3px;
+  position: relative;
+  min-width: 0;
+  user-select: none;
+}
+.sband__track {
+  position: relative;
+  height: var(--sband-track-h);
+  background: var(--surface-app);
+  border-radius: var(--radius-mark);
+  overflow: hidden;
+}
+/* 還不知道說話密度：只畫一條點狀基線 */
+.sband__baseline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4px;
+  border-bottom: 1px dotted var(--state-pending);
+  opacity: 0.6;
+}
+.sband__bands {
+  display: grid;
+  gap: 2px;
+  margin-top: 3px;
+}
+.sband__band {
+  position: relative;
+  height: var(--sband-band-h);
+}
+.sband__seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 1px;
+  transition: background-color var(--motion-panel, 200ms ease-out);
+}
+/* 完成：刻意保持安靜 */
+.sband__seg--done {
+  background: var(--state-done-quiet);
+}
+/* 未開始：Pewter 虛線 */
+.sband__seg--pending {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--state-pending) 0 3px,
+    transparent 3px 6px
+  );
+  opacity: 0.5;
+}
+/* 稍後檢查：Pewter 點線（和未開始的虛線區分） */
+.sband__seg--waiting {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--state-pending) 0 1px,
+    transparent 1px 4px
+  );
+}
+/* 等待 Agent：Ink 實色長虛線 */
+.sband__seg--awaiting_agent {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--state-done) 0 6px,
+    transparent 6px 10px
+  );
+}
+/* 需要你處理／超出預算／等你決定：Ink 實色點線 */
+.sband__seg--blocked {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--state-done) 0 2px,
+    transparent 2px 4px
+  );
+}
+/* 失敗：Fault 加白色斜線紋 */
+.sband__seg--failed {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgb(255 255 255 / 0.5) 0 1.5px,
+      transparent 1.5px 4px
+    ),
+    var(--state-failed);
+}
+/* 處理中：「顯影」動畫（唯一主動出現的動畫，§7） */
+.sband__seg--running {
+  background:
+    linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--state-done) 40%,
+        var(--state-done) 60%,
+        transparent 100%
+      )
+      no-repeat,
+    repeating-linear-gradient(
+      90deg,
+      var(--state-pending) 0 3px,
+      transparent 3px 6px
+    );
+  background-size:
+    60% 100%,
+    auto;
+  animation: sband-develop 1.6s linear infinite;
+}
+@keyframes sband-develop {
+  from {
+    background-position:
+      -150% 0,
+      0 0;
+  }
+  to {
+    background-position:
+      250% 0,
+      0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 顯影改成靜態斜線紋 */
+  .sband__seg--running {
+    animation: none;
+    background: repeating-linear-gradient(
+      135deg,
+      var(--state-done) 0 2px,
+      transparent 2px 5px
+    );
+  }
+  .sband__seg {
+    transition: none;
+  }
+}
