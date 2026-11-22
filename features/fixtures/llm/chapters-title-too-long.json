@@ -1,0 +1,8 @@
+{
+  "output": {
+    "chapters": [
+      { "cue": 2, "title": "A chapter title that goes on and on far beyond the eighty characters that a chapter title may use" },
+      { "cue": 4, "title": "The boot loader" }
+    ]
+  }
+}

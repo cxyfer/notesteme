@@ -1,0 +1,8 @@
+{
+  "output": {
+    "chapters": [
+      { "cue": 2, "title": "Setting up the toolchain" },
+      { "cue": 4, "title": "The boot loader" }
+    ]
+  }
+}

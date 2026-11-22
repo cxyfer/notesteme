@@ -1,0 +1,8 @@
+{
+  "output": {
+    "chapters": [
+      { "cue": 2, "title": "Setting up the toolchain" },
+      { "cue": 99, "title": "A chapter that does not exist" }
+    ]
+  }
+}
