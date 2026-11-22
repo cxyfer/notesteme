@@ -72,6 +72,8 @@ type Scenario struct {
 	fixtureFiles map[string][]byte
 	// mcp 是最近一次 MCP 步驟的結果（見 mcp.go）。
 	mcp mcpState
+	// agents 是場景中的 Agent 與最近一次提交（見 agent.go）。
+	agents agentsState
 }
 
 // response 是最近一次請求的回應。

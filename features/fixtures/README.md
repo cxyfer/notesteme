@@ -230,6 +230,9 @@ fixture 有三種形式（`features/internal/fakellm/fixture.go`）：靜態的 
   目標語言取自系統指示中的「`目標語言：<lang>。`」（`internal/llm` 的 `TranslateSpec` 寫在輸出規則中）；這句被改寫時 generator 會回 400 並記違規，
   要一起修改。輸入的 text 含 n-1 個切分標記 `⟨|⟩` 時，輸出也有 n 段。模板的長度要讓長度比落在 0.3 到 3.0 之間（TRN-R5），
   中文模板要用繁體專用字、日文模板要有假名（語言偵測）。
+- Agent 的提交（AGT 的 `the agent … submits …`）用同一份 fixture：harness 以 Agent 領取到的 chunk（`context`、`cues`）當成 `<transcript_data>` 產生輸出
+  （`fakellm.RenderSubmission`）。頂層可以多一個 `model`：Agent 回報的模型（`submit_task` 的 `model`，AGT-R10），fakellm 回答 API 請求時不使用。
+  `correct-echo-reported-model` 是 `echo_cues` 加上 `model: fixture-model`。
 - `translate-*`：TRN 場景的靜態譯文。`translate-group-*` 與 `translate-per-cue` 的句號對應場景中的 cue；
   `translate-way-too-long` 的長度比超過 3.0，`translate-long-for-short-cue` 的長度比正常但每秒字數超過 9（TRN-R6）。
 

@@ -17,8 +17,11 @@ import (
 //	{ "output": { "cues": [ { "i": 1, "text": "…" } ] } }
 //	{ "text": "this is not json" }
 //	{ "generator": "echo_cues", "args": { "drop_last": 1, "extra": {…}, "replace": {…} } }
+//
+// 另外可以有 "model"：回答自稱的模型。只有 Agent 的提交用到（submit_task 的 model，AGT-R10），fakellm 的回應不使用。
 type fixture struct {
-	name string
+	name  string
+	model string
 
 	output    json.RawMessage // 靜態輸出（compact）
 	text      *string         // 「不是 JSON」的回答
@@ -120,8 +123,13 @@ func parseFixture(name string, b []byte) (*fixture, error) {
 	}
 	f := &fixture{name: name}
 	for k := range top {
-		if !slices.Contains([]string{"output", "text", "generator", "args"}, k) {
-			return nil, fmt.Errorf("不認識的頂層欄位 %q（只有 output、text、generator、args）", k)
+		if !slices.Contains([]string{"output", "text", "generator", "args", "model"}, k) {
+			return nil, fmt.Errorf("不認識的頂層欄位 %q（只有 output、text、generator、args、model）", k)
+		}
+	}
+	if raw, ok := top["model"]; ok {
+		if err := json.Unmarshal(raw, &f.model); err != nil || f.model == "" {
+			return nil, errors.New("model 必須是非空字串")
 		}
 	}
 	_, hasOut := top["output"]
@@ -252,4 +260,32 @@ func runEcho(in GeneratorInput, raw json.RawMessage) (any, error) {
 		res[k] = v
 	}
 	return res, nil
+}
+
+// Submission 是一個 LLM fixture 對 Agent 任務產生的提交內容（AGT 的 `the agent … submits …`）：
+// Output 是 JSON 輸出；fixture 是「不是 JSON」的 text 時，Output 是那段文字（Agent 送出無法解析的字串）。
+// Model 是 fixture 的 model（沒有時是空字串）。
+type Submission struct {
+	Output json.RawMessage
+	Text   *string
+	Model  string
+}
+
+// RenderSubmission 讀取 <fixturesDir>/llm/<name> 並以 in（Agent 領取到的 chunk）產生提交內容，
+// 和 fakellm 回答 API executor 的請求用同一份 fixture 與 generator。
+func RenderSubmission(fixturesDir, name string, in GeneratorInput) (Submission, error) {
+	s := &Server{fixturesDir: fixturesDir}
+	f, err := s.loadFixture(name)
+	if err != nil {
+		return Submission{}, err
+	}
+	a, err := f.render(in)
+	if err != nil {
+		return Submission{}, fmt.Errorf("LLM fixture %q：%w", name, err)
+	}
+	if a.isText {
+		t := a.text
+		return Submission{Text: &t, Model: f.model}, nil
+	}
+	return Submission{Output: a.output, Model: f.model}, nil
 }

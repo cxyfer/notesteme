@@ -69,3 +69,15 @@ func (w *World) DBLeasedTasks() (map[string]int, error) {
 	})
 	return out, err
 }
+
+// DBAgentHolds 回報 Agent 任務 taskID 是否仍以 leaseToken 被 owner 持有（AGT：`the agent … holds … tasks`）。
+// 唯讀地直接查 SQLite：Agent 的持有狀態沒有對應的 API。
+func (w *World) DBAgentHolds(taskID, leaseToken, owner string) (bool, error) {
+	var n int
+	err := w.dbQuery(func(ctx context.Context, db *sql.DB) error {
+		return db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM tasks WHERE id = ? AND executor = 'agent' AND state = 'leased' AND lease_token = ? AND lease_owner = ?`,
+			taskID, leaseToken, owner).Scan(&n)
+	})
+	return n > 0, err
+}
