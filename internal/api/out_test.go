@@ -28,7 +28,7 @@ var outRoutes = []outRoute{
 	{"POST", "/api/ass-styles", auth.ScopeAdmin},
 	{"GET", "/api/ass-styles/default", auth.ScopeRead},
 	{"PATCH", "/api/ass-styles/default", auth.ScopeAdmin},
-	{"POST", "/api/ass-styles/preview", auth.ScopeRead},
+	{"POST", "/api/ass-styles/preview", auth.ScopeIngest},
 	{"POST", "/api/ass-styles/import", auth.ScopeAdmin},
 	{"POST", "/api/items/i1/subtitles/import", auth.ScopeIngest},
 }

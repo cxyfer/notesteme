@@ -39,7 +39,7 @@ func (rt *routes) registerAssStyles(api huma.API) {
 	registerScoped(api, huma.Operation{
 		OperationID: "ass-styles-preview", Method: http.MethodPost, Path: "/api/ass-styles/preview",
 		Summary: "用 ffmpeg + libass 把樣式渲染在影音指定時間的畫面上，回傳 PNG（OUT-R9）", DefaultStatus: http.StatusOK,
-	}, auth.ScopeRead, rt.previewAssStyle)
+	}, auth.ScopeIngest, rt.previewAssStyle)
 	registerScoped(api, huma.Operation{
 		OperationID: "ass-styles-import", Method: http.MethodPost, Path: "/api/ass-styles/import",
 		Summary:       "從 .ass 檔的 [V4+ Styles] 匯入成自訂樣式；沒有這個段落回 422（OUT-R8）",

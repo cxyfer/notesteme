@@ -31,6 +31,12 @@ func readImportInput(path, content string, maxBytes int, exts []string) ([]byte,
 	if !filepath.IsAbs(path) {
 		return nil, "", invalidInput("path 必須是絕對路徑。")
 	}
+	// 先解析 symlink 再檢查副檔名：x.srt -> /etc/shadow 這類連結不能繞過白名單。
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return nil, "", invalidInput("無法讀取 path 指定的檔案：找不到，或不是一般檔案。")
+	}
+	path = resolved
 	ext := strings.ToLower(filepath.Ext(path))
 	ok := false
 	for _, e := range exts {

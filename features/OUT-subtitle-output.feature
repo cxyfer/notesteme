@@ -76,10 +76,7 @@ Feature: Subtitle output and import
       | 1 | 00:00:01.000 | 00:00:03.000 | 这是一部视频 |
     When the owner sends "GET /api/items/yt:zh001xxxxxx/subtitles?format=bilingual-srt&lang=zh-Hant-TW"
     Then the response status is 200
-    And the response contains:
-      """
-      { "bilingual": false }
-      """
+    And the response header "X-Notesteme-Bilingual" contains "false"
 
   @M2 @OUT-03 @OUT-R6
   Scenario: Built-in styles cannot be modified
