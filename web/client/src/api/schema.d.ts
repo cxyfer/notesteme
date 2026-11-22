@@ -350,6 +350,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/items/{id}/frames": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** 列出影音的關鍵畫面與選圖結果（尚未實作） */
+    get: operations["items-frames"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/items/{id}/frames/{n}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** 取得一張關鍵畫面的圖片（size=full 或 thumb，尚未實作） */
+    get: operations["items-frame"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/items/{id}/note": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** 取得影音的筆記（Markdown、frontmatter、自動檢查與寫入狀態，尚未實作） */
+    get: operations["items-note"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/items/{id}/outputs": {
     parameters: {
       query?: never;
@@ -449,6 +500,58 @@ export interface paths {
     put?: never;
     /** 把影音某個步驟等待中或已被領取的 Agent 任務改用 API 執行，原本的租約立即失效（AGT-R11） */
     post: operations["items-switch-executor"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/note-templates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** 列出筆記模板（尚未實作） */
+    get: operations["note-templates-list"];
+    put?: never;
+    /** 建立筆記模板，或複製內建模板（尚未實作） */
+    post: operations["note-templates-create"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/note-templates/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** 修改筆記模板，建立新版本（尚未實作） */
+    patch: operations["note-templates-update"];
+    trace?: never;
+  };
+  "/api/note-templates/{id}/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** 用影音現行筆記的段落預覽模板，不呼叫 LLM、不寫入檔案（尚未實作） */
+    post: operations["note-templates-preview"];
     delete?: never;
     options?: never;
     head?: never;
@@ -956,6 +1059,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/vaults": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** 列出設定檔定義的 vault（id、adapter、base，尚未實作） */
+    get: operations["vaults-list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/healthz": {
     parameters: {
       query?: never;
@@ -1160,7 +1280,7 @@ export interface components {
       body?: string;
       /** @description 小寫英文字母、數字、「.」與「-」，不可以和內建的相同 */
       id?: string;
-      /** @description summary、chapters、segment、correct、translate、frames.select 或 note */
+      /** @description summary、chapters、segment、correct、translate、frames、note 或 note_map */
       kind?: string;
     };
     CreatePromptOutputBody: {
@@ -1763,7 +1883,7 @@ export interface components {
        */
       default_version: number;
       id: string;
-      /** @description summary、chapters、segment、correct、translate、frames.select 或 note */
+      /** @description summary、chapters、segment、correct、translate、frames、note 或 note_map */
       kind: string;
       /** Format: int64 */
       latest_version: number;
@@ -1871,6 +1991,8 @@ export interface components {
       };
       /** @description 這次重跑改用的處理方案；沒有指定時用影音目前的處理方案的最新版本（PRF-R3）；不存在回 422 */
       profile?: string;
+      /** @description from 為 frames 時沿用現行的候選畫面，只重新選圖（FRM-R13）；其他步驟忽略 */
+      reuse_candidates?: boolean;
       /** @description 做到哪個步驟為止（含）；沒有指定時做到最後 */
       until?: string;
     };
@@ -3021,6 +3143,87 @@ export interface operations {
       };
     };
   };
+  "items-frames": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "items-frame": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "items-note": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
   "items-outputs": {
     parameters: {
       query?: never;
@@ -3224,6 +3427,114 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["SwitchResult"];
         };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "note-templates-list": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "note-templates-create": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "note-templates-update": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "note-templates-preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Error */
       default: {
@@ -4414,6 +4725,33 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["TrashedItem"];
         };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "vaults-list": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Error */
       default: {

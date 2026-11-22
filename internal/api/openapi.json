@@ -488,7 +488,7 @@
             "type": "string"
           },
           "kind": {
-            "description": "summary、chapters、segment、correct、translate、frames.select 或 note",
+            "description": "summary、chapters、segment、correct、translate、frames、note 或 note_map",
             "type": "string"
           }
         },
@@ -2157,7 +2157,7 @@
             "type": "string"
           },
           "kind": {
-            "description": "summary、chapters、segment、correct、translate、frames.select 或 note",
+            "description": "summary、chapters、segment、correct、translate、frames、note 或 note_map",
             "type": "string"
           },
           "latest_version": {
@@ -2486,6 +2486,10 @@
           "profile": {
             "description": "這次重跑改用的處理方案；沒有指定時用影音目前的處理方案的最新版本（PRF-R3）；不存在回 422",
             "type": "string"
+          },
+          "reuse_candidates": {
+            "description": "from 為 frames 時沿用現行的候選畫面，只重新選圖（FRM-R13）；其他步驟忽略",
+            "type": "boolean"
           },
           "until": {
             "description": "做到哪個步驟為止（含）；沒有指定時做到最後",
@@ -4551,6 +4555,69 @@
         "summary": "刪除的影響範圍：產出數、可釋放的位元組、已花費的金額與輸出檔；唯讀（DEL-R3）"
       }
     },
+    "/api/items/{id}/frames": {
+      "get": {
+        "operationId": "items-frames",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出影音的關鍵畫面與選圖結果（尚未實作）"
+      }
+    },
+    "/api/items/{id}/frames/{n}": {
+      "get": {
+        "operationId": "items-frame",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "取得一張關鍵畫面的圖片（size=full 或 thumb，尚未實作）"
+      }
+    },
+    "/api/items/{id}/note": {
+      "get": {
+        "operationId": "items-note",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "取得影音的筆記（Markdown、frontmatter、自動檢查與寫入狀態，尚未實作）"
+      }
+    },
     "/api/items/{id}/outputs": {
       "get": {
         "operationId": "items-outputs",
@@ -4873,6 +4940,88 @@
           }
         },
         "summary": "把影音某個步驟等待中或已被領取的 Agent 任務改用 API 執行，原本的租約立即失效（AGT-R11）"
+      }
+    },
+    "/api/note-templates": {
+      "get": {
+        "operationId": "note-templates-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出筆記模板（尚未實作）"
+      },
+      "post": {
+        "operationId": "note-templates-create",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "建立筆記模板，或複製內建模板（尚未實作）"
+      }
+    },
+    "/api/note-templates/{id}": {
+      "patch": {
+        "operationId": "note-templates-update",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "修改筆記模板，建立新版本（尚未實作）"
+      }
+    },
+    "/api/note-templates/{id}/preview": {
+      "post": {
+        "operationId": "note-templates-preview",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "用影音現行筆記的段落預覽模板，不呼叫 LLM、不寫入檔案（尚未實作）"
       }
     },
     "/api/profiles": {
@@ -6232,6 +6381,27 @@
           }
         },
         "summary": "從垃圾桶還原（DEL-R5）；影音不在垃圾桶中回 404"
+      }
+    },
+    "/api/vaults": {
+      "get": {
+        "operationId": "vaults-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出設定檔定義的 vault（id、adapter、base，尚未實作）"
       }
     },
     "/healthz": {
