@@ -7,7 +7,8 @@
 
 - **M1、M2**：故事已經寫成完整的能力規格與 `.feature` 檔。下表只是索引，故事全文、規則與驗收場景以各份規格為準。
 - **M3**：2026-11-23 已展開成能力規格與 `.feature` 檔（第 4 節每則故事後面列出規格、規則與場景）；條列的驗收標準保留作為展開前的原始描述，以規格為準。
-- **M4、M5**：故事先用條列式的驗收標準描述。開發該里程碑前，依 [README 第 6 節](README.md#6-開發流程) 的流程展開成規格與場景；展開時可以調整 ID 以外的所有內容。
+- **M4**：2026-11-23 已展開成能力規格與 `.feature` 檔（第 5 節每則故事後面列出規格、規則與場景；跨規格的決定見 [ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md)）；條列的驗收標準保留作為展開前的原始描述，以規格為準。
+- **M5**：故事先用條列式的驗收標準描述。開發該里程碑前，依 [README 第 6 節](README.md#6-開發流程) 的流程展開成規格與場景；展開時可以調整 ID 以外的所有內容。
 
 ## 1. 角色
 
@@ -27,7 +28,7 @@
 | **M1** | [ING](ING-ingest.md) | [SRC](SRC-transcript-sources.md)、[NRM](NRM-normalize.md)、[PIPE](PIPE-pipeline-queue.md) | — | [OUT](OUT-subtitle-output.md)（SRT／VTT）、[LIB](LIB-library.md)、[DEL](DEL-delete.md)、[CLI](CLI-cli.md) | [AUTH](AUTH-access.md)、[SEC](SEC-config-secrets.md)、[GRD](GRD-guards.md)、[OPS](OPS-operations.md) |
 | **M2** | — | — | [LLM](LLM-execution.md)、[SEG](SEG-segment.md)、[COR](COR-correct.md)、[TRN](TRN-translate.md)、[PRM](PRM-prompts.md)、[PRF](PRF-profiles.md) | [OUT](OUT-subtitle-output.md)（ASS、sidecar、匯入）、[LIB](LIB-library.md)（對照檢視）、[DEL](DEL-delete.md)（輸出檔）、[MCP](MCP-tools.md)、[AGT](AGT-agent-tasks.md) | [AUTH](AUTH-access.md)（MCP Origin）、[SEC](SEC-config-secrets.md)（設定匯出入） |
 | **M3** | — | [SPB](SPB-sponsorblock.md) | [FRM](FRM-frames.md)、[CHAP](CHAP-chapters.md)、[NOTE](NOTE-notes.md)、[GEM](GEM-gemini.md) | [VAULT](VAULT-vault-output.md) | — |
-| **M4** | SUB、ENTRY、BND | SRC-10 | DIG、BATCH、GLOS | SRCH、LIB-08、LIB-09、NOTIFY | COST、AUTH-06～08、OPS-06～08 |
+| **M4** | [SUB](SUB-subscriptions.md)、[ENTRY](ENTRY-entry-points.md)、[BND](BND-bundles.md) | [SRC](SRC-transcript-sources.md)（SRC-10） | [DIG](DIG-digest.md)、[BATCH](BATCH-batch-api.md)、[GLOS](GLOS-glossary-review.md) | [SRCH](SRCH-search.md)、[LIB](LIB-library.md)（LIB-08、09）、[NOTIFY](NOTIFY-notifications.md) | [COST](COST-cost-budget.md)、[AUTH](AUTH-access.md)（AUTH-06～08）、[OPS](OPS-operations.md)（OPS-06～08） |
 | **M5** | HUB | HUB | — | HUB | HUB |
 
 ## 3. M1、M2 故事索引
@@ -253,105 +254,136 @@ M3 共 6 項能力、16 則故事，跨規格的決定（步驟順序、預設�
 
 ## 5. M4 追蹤與部署
 
-驗收條件（plan 第 24 節）：VPS 上訂閱 3 個頻道，無人值守運作一週。
+驗收條件（plan 第 24 節）：VPS 上訂閱 3 個頻道，無人值守運作一週。這是真實環境的人工驗收，自動化場景只能驗證排程、告警與通知的規則（OPS-R11～R21、SUB-R9～R12）。
+
+M4 共 13 項能力（9 份新規格，SRC、LIB、AUTH、OPS 另加 M4 章節）、29 則故事，跨規格的決定見 [ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md)。媒體檔保留策略（第 7 節）沒有排入 M4（ADR-0021 第 8 點）。
 
 ### SUB：訂閱
 
 - **SUB-01** As the owner, I want to subscribe to channels, playlists, Bilibili collections and podcast feeds, so that new content is processed without me.
+  - 規格：[SUB](SUB-subscriptions.md)：SUB-R1～R3、R5、R11～R13；場景 [SUB-subscriptions.feature](../../features/SUB-subscriptions.feature)
 - **SUB-02** As the owner, I want to choose how far back a subscription goes and what it skips, so that I only pay for what I care about.
   - 回補範圍：只抓新的、最近 N 部、或全部。
   - 過濾：片長、Shorts、直播、標題 regex。
   - 垃圾桶中與已永久刪除（有 tombstone）的影音不會被重新加入（DEL-R11）。
+  - 規格：[SUB](SUB-subscriptions.md)：SUB-R2～R5；場景 [SUB-subscriptions.feature](../../features/SUB-subscriptions.feature)
 - **SUB-03** As the owner, I want a dry run of a subscription, so that I can see what it would pick up before it costs anything.
   - 列出會處理與會略過的項目及原因；不建立任何影音。
+  - 規格：[SUB](SUB-subscriptions.md)：SUB-R6；場景 [SUB-subscriptions.feature](../../features/SUB-subscriptions.feature)
 - **SUB-04** As the owner, I want to import my subscriptions from OPML and Google Takeout, so that I do not re-enter them by hand.
   - 不需要 OAuth；重複的訂閱只建立一次。
+  - 規格：[SUB](SUB-subscriptions.md)：SUB-R7、R11；場景 [SUB-subscriptions.feature](../../features/SUB-subscriptions.feature)
 - **SUB-05** As the owner, I want live streams and premieres processed only after the recording is available, so that I do not get half a transcript.
+  - 規格：[SUB](SUB-subscriptions.md)：SUB-R8；場景 [SUB-subscriptions.feature](../../features/SUB-subscriptions.feature)
 - **SUB-06** As the owner, I want subscription checks spread out and rate-limited, so that the platforms do not block me.
   - 排程加隨機延遲；遵守各平台的 rate limit。
+  - 規格：[SUB](SUB-subscriptions.md)：SUB-R9～R10、R12；場景 [SUB-subscriptions.feature](../../features/SUB-subscriptions.feature)
 - **SUB-07** As an agent, I want to list and create subscriptions through MCP, so that I can follow a channel for the owner.
   - `list_subscriptions` 需要 `read`；`create_subscription` 需要 `admin`。
+  - 規格：[SUB](SUB-subscriptions.md)：SUB-R13；場景 [SUB-subscriptions.feature](../../features/SUB-subscriptions.feature)
 
 ### SRC-10：事後出現更好的來源
 
 - **SRC-10** As the owner, I want to be told when a better transcript source appears after I processed a video, so that I can upgrade it.
   - 發布後 7 天內，採用較低優先來源的影音會定期重新 `Probe`；同時重新查詢 SponsorBlock。
   - 預設只通知；處理方案可改成自動重跑。重跑前顯示預估的 LLM 費用。
+  - 規格：[SRC](SRC-transcript-sources.md)：SRC-R18～R23；場景 [SRC-better-source.feature](../../features/SRC-better-source.feature)
 
 ### DIG：摘要與彙整
 
 - **DIG-01** As the owner, I want new subscription items summarised and sent to me as a daily or weekly digest, so that I can decide what is worth a full run.
+  - 規格：[DIG](DIG-digest.md)：DIG-R1～R5、R8～R11；場景 [DIG-digest.feature](../../features/DIG-digest.feature)
 - **DIG-02** As the owner, I want a profile that pauses after the summary, so that only the items I pick go on to cost more.
   - 只有在彙整或 UI 中勾選的影音才繼續完整流程；沒選的不再產生費用。
+  - 規格：[DIG](DIG-digest.md)：DIG-R1、R6～R7、R10；場景 [DIG-digest.feature](../../features/DIG-digest.feature)
 
 ### COST：成本與預算
 
 - **COST-01** As the owner, I want every API call recorded with its cost, so that I know exactly where my money goes.
   - 帳本細到每次呼叫，包括重試與驗證失敗，並保存當時的單價；provider 回報金額時優先採用。
   - Agent 模式記為 `unknown`，不計入預算。
+  - 規格：[COST](COST-cost-budget.md)：COST-R1～R3、R7、R14～R16；場景 [COST-cost-budget.feature](../../features/COST-cost-budget.feature)
 - **COST-02** As the owner, I want a monthly budget and a per-item cap, so that costs never run away.
   - 開始前估算並記為 `reserved`；預算以實際加預留計算，平行任務不會一起超支。
   - 超過時步驟為 `blocked`（原因 `budget_blocked`），並通知。
+  - 規格：[COST](COST-cost-budget.md)：COST-R4～R11、R16；場景 [COST-cost-budget.feature](../../features/COST-cost-budget.feature)
 - **COST-03** As the owner, I want to override built-in prices and be reminded when they are stale, so that estimates stay accurate.
   - 計價表超過 90 天沒有確認就在 UI 提醒。
+  - 規格：[COST](COST-cost-budget.md)：COST-R12～R13、R16；場景 [COST-cost-budget.feature](../../features/COST-cost-budget.feature)
 
 ### NOTIFY：通知
 
 - **NOTIFY-01** As the owner, I want notifications through ntfy, Discord, Telegram or a webhook, so that I hear about results where I already am.
   - 時機：完成、失敗、需要你處理、預算將用完、訂閱彙整、無人值守告警；每個管道可以分別選擇。
   - webhook 走 GRD 的對外請求防護。
+  - 規格：[NOTIFY](NOTIFY-notifications.md)：NOTIFY-R1～R13；場景 [NOTIFY-notifications.feature](../../features/NOTIFY-notifications.feature)
 
 ### BATCH：Batch API
 
 - **BATCH-01** As the owner, I want non-urgent LLM work sent through provider batch APIs, so that background processing costs less.
   - 只用於背景優先序的任務；等待結果時狀態為 `waiting`，逾時後改走一般 API。
+  - 規格：[BATCH](BATCH-batch-api.md)：BATCH-R1～R11；場景 [BATCH-batch-api.feature](../../features/BATCH-batch-api.feature)
 
 ### GLOS：術語審核
 
 - **GLOS-01** As the owner, I want to review the term candidates collected during correction, so that my glossary grows without manual typing.
   - 可以接受、修改或拒絕；接受後加入頻道或全域的詞彙表，之後的校正使用新詞彙。
+  - 規格：[GLOS](GLOS-glossary-review.md)：GLOS-R1～R7；場景 [GLOS-glossary-review.feature](../../features/GLOS-glossary-review.feature)
 
 ### ENTRY：其他新增入口
 
 - **ENTRY-01** As the owner, I want a bookmarklet that sends the current page to Notesteme, so that adding a video takes one click.
+  - 規格：[ENTRY](ENTRY-entry-points.md)：ENTRY-R1～R2、R7；場景 [ENTRY-entry-points.feature](../../features/ENTRY-entry-points.feature)
 - **ENTRY-02** As the owner, I want to share a link to Notesteme from my phone, so that I can add videos while browsing on mobile.
   - PWA 的 share target；未登入時先導向登入頁，登入後繼續新增。
+  - 規格：[ENTRY](ENTRY-entry-points.md)：ENTRY-R3～R7；場景 [ENTRY-entry-points.feature](../../features/ENTRY-entry-points.feature)
 
 ### BND：Bundle 匯出與匯入
 
 - **BND-01** As the owner, I want to export an item with its transcripts, notes and provenance as a bundle, so that I can move it to another instance.
+  - 規格：[BND](BND-bundles.md)：BND-R1～R3、R8；場景 [BND-bundles.feature](../../features/BND-bundles.feature)
 - **BND-02** As the owner, I want bundles imported safely, so that a malicious bundle cannot harm my instance.
   - 拒絕絕對路徑、`..` 與 symlink；限制解壓後的總大小、檔案數與壓縮比。
   - 逐檔驗證 `sha256`，manifest 用 JSON schema 驗證；來源紀錄標記 `imported_from`。
+  - 規格：[BND](BND-bundles.md)：BND-R3～R10；場景 [BND-bundles.feature](../../features/BND-bundles.feature)
 
 ### SRCH：全文搜尋
 
 - **SRCH-01** As the owner, I want to search inside every transcript, so that I can find the video where something was said.
   - FTS5 trigram；少於 3 個字的查詢改用掃描。只索引現行版本的校正與譯文字幕。
   - 結果附時間戳，可以直接跳到那一句。MCP `search` 支援 `mode: fulltext`。
+  - 規格：[SRCH](SRCH-search.md)：SRCH-R1～R10；場景 [SRCH-search.feature](../../features/SRCH-search.feature)
 
 ### LIB-08、LIB-09：批次操作與總覽
 
 - **LIB-08** As the owner, I want to select many items and act on them at once, so that I can rerun, pause or delete in bulk.
   - 動作前顯示影響的數量與預估費用。
   - 批次刪除套用 DEL 的所有規則；確認對話框合計顯示 DEL-R3 的影響範圍。
+  - 規格：[LIB](LIB-library.md)：LIB-R13～R20、R23；場景 [LIB-bulk-overview.feature](../../features/LIB-bulk-overview.feature)
 - **LIB-09** As the owner, I want an overview page, so that I see what needs my attention first.
   - 顯示需要處理的項目、最近完成、本月花費與磁碟用量。
+  - 規格：[LIB](LIB-library.md)：LIB-R21～R23；場景 [LIB-bulk-overview.feature](../../features/LIB-bulk-overview.feature)
 
 ### AUTH-06～08：進階登入與 token 管理
 
 - **AUTH-06** As the owner, I want to sign in through my reverse proxy's authentication, so that I reuse the login I already have.
   - 只信任設定中列出的 proxy 位址送來的使用者標頭。
+  - 規格：[AUTH](AUTH-access.md)：AUTH-R12～R15；場景 [AUTH-proxy-oidc.feature](../../features/AUTH-proxy-oidc.feature)
 - **AUTH-07** As the owner, I want to sign in with OIDC, so that I can use my identity provider.
+  - 規格：[AUTH](AUTH-access.md)：AUTH-R16～R20、R22；場景 [AUTH-proxy-oidc.feature](../../features/AUTH-proxy-oidc.feature)
 - **AUTH-08** As the owner, I want to create, revoke and set expiry for tokens in the UI, so that I do not need the CLI for it.
+  - 規格：[AUTH](AUTH-access.md)：AUTH-R20～R22；場景 [AUTH-proxy-oidc.feature](../../features/AUTH-proxy-oidc.feature)
 
 ### OPS-06～08：無人值守運作
 
 - **OPS-06** As the owner, I want a backup taken every day and the last seven kept, so that I never need to remember.
+  - 規格：[OPS](OPS-operations.md)：OPS-R11～R13；場景 [OPS-unattended.feature](../../features/OPS-unattended.feature)
 - **OPS-07** As the owner, I want to be alerted when something quietly stops working, so that problems do not go unnoticed for days.
   - 排程超過 N 小時沒有成功、任務超過 N 小時沒有進展、磁碟用量超過門檻、cookie 太久沒有成功使用、yt-dlp 失敗率突然升高。
+  - 規格：[OPS](OPS-operations.md)：OPS-R12～R18；場景 [OPS-unattended.feature](../../features/OPS-unattended.feature)
 - **OPS-08** As the owner, I want a VPS compose profile with HTTPS, so that I can expose the instance safely.
   - `vps` profile 內建 Caddy；未設定密碼或 token 時拒絕啟動。
+  - 規格：[OPS](OPS-operations.md)：OPS-R19～R21；場景 [OPS-unattended.feature](../../features/OPS-unattended.feature)
 
 ## 6. M5 Hub
 
@@ -375,7 +407,7 @@ M3 共 6 項能力、16 則故事，跨規格的決定（步驟順序、預設�
 
 - 說話者辨識、語意搜尋、Telegram bot（plan 第 3.4 節）。
 - Postgres＋Redis backend（plan 第 26 節，M4 之後視需要）。
-- **媒體檔保留策略**（plan 第 14 節）：N 天後刪影片、只保留選中的畫面、UI 顯示磁碟用量。plan 沒有排入里程碑，暫定與 LIB-09 一起在 M4。只套用在可以重新下載的媒體快取，不包括上傳的原始檔。
+- **媒體檔保留策略**（plan 第 14 節）：N 天後刪影片、只保留選中的畫面、UI 顯示磁碟用量。plan 沒有排入里程碑；M4 規格展開時決定不排入 M4，LIB-09 只顯示磁碟用量（ADR-0021 第 8 點、LIB 規格待決問題）。只套用在可以重新下載的媒體快取，不包括上傳的原始檔。
 
 ## 8. M0 待驗證的問題
 
