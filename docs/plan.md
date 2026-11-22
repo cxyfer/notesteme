@@ -606,6 +606,7 @@ compose 提供兩份 profile：`wsl` 和 `vps`。選配 sidecar：PO Token provi
 - 儲存：Postgres + S3 相容物件儲存（R2 或 MinIO）。
 - 權限見 [ADR-0012](adr/0012-hub-access-control.md)。
 - UI 另外設計，和 Client 共用時間帶元件。
+- 規格（2026-11-23 展開）：部署形態、儲存與測試替身見 [ADR-0030](adr/0030-hub-deployment-and-storage.md)（獨立的 `cmd/notesteme-hub`，SQLite 為參考 backend、Postgres 為正式環境）；身分、權限、內容模型與資料表見 [ADR-0031](adr/0031-hub-identity-permissions-and-content.md)；Client 與 Hub 的協定與隱私見 [ADR-0032](adr/0032-client-hub-protocol-and-privacy.md)（ASR 前查詢只送影片 ID 雜湊的前 4 碼）。能力規格：[HACC](specs/HACC-hub-accounts.md)、[HREP](specs/HREP-hub-repository.md)、[HSHR](specs/HSHR-hub-sharing.md)、[HMCP](specs/HMCP-hub-mcp.md)。
 
 ## 21. 資料模型概要
 
@@ -755,7 +756,7 @@ notesteme/
 - 簡繁轉換用純 Go 的 OpenCC port 還是 CLI（M0 決定）。
 - 品質檢查、`when_needed`、句群翻譯的門檻（M0 量測後定初值）。
 - Bundle 格式的版本規則與授權預設值（M5 前定案）。
-- Hub 查詢的隱私做法（M5 前定案）。
+- Hub 查詢的隱私做法：2026-11-23 定案為只送影片 ID 雜湊的前綴（ADR-0032 第 3 點，待 owner 追認）。
 - Postgres＋Redis backend 的實作時機（目前排在 M4 之後，視需要）。
 - 多個實例之間的協調，等 Hub 時再處理。
 

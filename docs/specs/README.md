@@ -71,8 +71,14 @@ Notesteme 採用規格驅動（SDD）的開發方式，驗收以行為（BDD）�
 | COST | 成本與預算 | M4 | [COST-cost-budget.md](COST-cost-budget.md) | [COST-cost-budget.feature](../../features/COST-cost-budget.feature) |
 | AUTH（AUTH-06～08） | 反向代理驗證、OIDC 與 token 管理 | M4 | [AUTH-access.md](AUTH-access.md) | [AUTH-proxy-oidc.feature](../../features/AUTH-proxy-oidc.feature) |
 | OPS（OPS-06～08） | 每日備份、無人值守告警與 VPS profile | M4 | [OPS-operations.md](OPS-operations.md) | [OPS-unattended.feature](../../features/OPS-unattended.feature) |
+| HACC | Hub 帳號、權限與下架 | M5 | [HACC-hub-accounts.md](HACC-hub-accounts.md) | [HACC-hub-accounts.feature](../../features/HACC-hub-accounts.feature) |
+| HREP | Hub 內容倉庫、篩選與社群 | M5 | [HREP-hub-repository.md](HREP-hub-repository.md) | [HREP-hub-repository.feature](../../features/HREP-hub-repository.feature) |
+| HSHR | Client 的分享、重新生成與 ASR 前查詢 | M5 | [HSHR-hub-sharing.md](HSHR-hub-sharing.md) | [HSHR-hub-sharing.feature](../../features/HSHR-hub-sharing.feature) |
+| HMCP | Hub MCP server | M5 | [HMCP-hub-mcp.md](HMCP-hub-mcp.md) | [HMCP-hub-mcp.feature](../../features/HMCP-hub-mcp.feature) |
 
 M3 的能力已在 2026-11-23 展開成規格與場景（`@M3`，預設 tag 不執行，M3 的步驟目前是 pending 的步驟樁；跨規格的決定見 [ADR-0020](../adr/0020-m3-stages-notes-and-vault.md)）。M4 的能力已在 2026-11-23 展開成規格與場景（`@M4`，預設 tag 不執行，M4 的步驟目前是 pending 的步驟樁；跨規格的決定見 [ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md)）。SRC-10、LIB-08～09、AUTH-06～08、OPS-06～08 補進既有規格的 M4 章節，場景放在另外的 `.feature` 檔。M5 的能力目前只在 [`story-map.md`](story-map.md) 中列出故事與條列式的驗收標準，開發前再展開成規格與場景。
+
+M5（Hub）的能力已在 2026-11-23 展開成規格與場景（`@M5`，預設 tag 不執行，M5 的步驟目前是 pending 的步驟樁；跨規格的決定見 [ADR-0030](../adr/0030-hub-deployment-and-storage.md)～[0032](../adr/0032-client-hub-protocol-and-privacy.md)）。
 
 ## 4. 能力規格的格式
 

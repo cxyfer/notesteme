@@ -9,6 +9,7 @@
 - **M3**：2026-11-23 已展開成能力規格與 `.feature` 檔（第 4 節每則故事後面列出規格、規則與場景）；條列的驗收標準保留作為展開前的原始描述，以規格為準。
 - **M4**：2026-11-23 已展開成能力規格與 `.feature` 檔（第 5 節每則故事後面列出規格、規則與場景；跨規格的決定見 [ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md)）；條列的驗收標準保留作為展開前的原始描述，以規格為準。
 - **M5**：故事先用條列式的驗收標準描述。開發該里程碑前，依 [README 第 6 節](README.md#6-開發流程) 的流程展開成規格與場景；展開時可以調整 ID 以外的所有內容。
+- **M3 到 M5**：故事先用條列式的驗收標準描述（M5 已在 2026-11-23 展開成規格與 `.feature` 檔，見第 6 節）。開發該里程碑前，依 [README 第 6 節](README.md#6-開發流程) 的流程展開成規格與場景；展開時可以調整 ID 以外的所有內容。
 
 ## 1. 角色
 
@@ -30,6 +31,9 @@
 | **M3** | — | [SPB](SPB-sponsorblock.md) | [FRM](FRM-frames.md)、[CHAP](CHAP-chapters.md)、[NOTE](NOTE-notes.md)、[GEM](GEM-gemini.md) | [VAULT](VAULT-vault-output.md) | — |
 | **M4** | [SUB](SUB-subscriptions.md)、[ENTRY](ENTRY-entry-points.md)、[BND](BND-bundles.md) | [SRC](SRC-transcript-sources.md)（SRC-10） | [DIG](DIG-digest.md)、[BATCH](BATCH-batch-api.md)、[GLOS](GLOS-glossary-review.md) | [SRCH](SRCH-search.md)、[LIB](LIB-library.md)（LIB-08、09）、[NOTIFY](NOTIFY-notifications.md) | [COST](COST-cost-budget.md)、[AUTH](AUTH-access.md)（AUTH-06～08）、[OPS](OPS-operations.md)（OPS-06～08） |
 | **M5** | HUB | HUB | — | HUB | HUB |
+| **M3** | — | SPB | FRM、CHAP、NOTE、GEM | VAULT | — |
+| **M4** | SUB、ENTRY、BND | SRC-10 | DIG、BATCH、GLOS | SRCH、LIB-08、LIB-09、NOTIFY | COST、AUTH-06～08、OPS-06～08 |
+| **M5** | [HSHR](HSHR-hub-sharing.md) | [HSHR](HSHR-hub-sharing.md)、[HREP](HREP-hub-repository.md) | — | [HREP](HREP-hub-repository.md)、[HMCP](HMCP-hub-mcp.md) | [HACC](HACC-hub-accounts.md) |
 
 ## 3. M1、M2 故事索引
 
@@ -388,7 +392,17 @@ M4 共 13 項能力（9 份新規格，SRC、LIB、AUTH、OPS 另加 M4 章節�
 
 ## 6. M5 Hub
 
-驗收條件（plan 第 24 節）：可以分享字幕與筆記，也能用別人的字幕重新生成。
+驗收條件（plan 第 24 節）：可以分享字幕與筆記，也能用別人的字幕重新生成（HSHR 的 `@manual` 端到端場景）。
+
+2026-11-23 已展開成 4 份能力規格與 `.feature` 檔（`@M5`，預設 tag 不執行）。故事依「被測系統」分到規格：Hub 本身的行為用程序內的真 Hub，Client 的行為用假 Hub（ADR-0030）。跨規格的決定見 [ADR-0030](../adr/0030-hub-deployment-and-storage.md)（部署、儲存、測試替身）、[ADR-0031](../adr/0031-hub-identity-permissions-and-content.md)（身分、權限、內容模型與資料表）、[ADR-0032](../adr/0032-client-hub-protocol-and-privacy.md)（協定、送出的資料、隱私）。條列的驗收標準保留作為展開前的原始描述，以規格為準。
+
+| 規格 | 故事 | 被測系統 |
+|---|---|---|
+| [HACC：Hub 帳號、權限與下架](HACC-hub-accounts.md) | HUB-01、HUB-07 | 真 Hub |
+| [HREP：Hub 內容倉庫、篩選與社群](HREP-hub-repository.md) | HUB-02（Hub 端）、HUB-03、HUB-05（Hub 端）、HUB-06 | 真 Hub |
+| [HSHR：Client 的分享、重新生成與 ASR 前查詢](HSHR-hub-sharing.md) | HUB-02（Client 端）、HUB-04、HUB-05 | Client＋假 Hub |
+| [HMCP：Hub MCP server](HMCP-hub-mcp.md) | HUB-08 | 真 Hub |
+
 
 - **HUB-01** As a hub member, I want to sign in with Google, GitHub or Linux.do and link several of them to one account, so that I am not locked to one provider.
 - **HUB-02** As the owner, I want to share my corrected subtitles and notes to the Hub with their provenance, so that others can reuse my work.
@@ -403,6 +417,7 @@ M4 共 13 項能力（9 份新規格，SRC、LIB、AUTH、OPS 另加 M4 章節�
 - **HUB-06** As a hub member, I want to vote on and report shared versions, so that good versions rise and bad ones are removed.
 - **HUB-07** As a hub admin, I want to set who can see what and handle takedown requests, so that the Hub stays within the rules（ADR-0012）.
 - **HUB-08** As an agent, I want a Hub MCP server, so that I can search shared subtitles directly.
+  - 只能讀；PAT 的權限決定看得到的 tool（HMCP）。
 
 ## 7. 尚未排入里程碑
 
