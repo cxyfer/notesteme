@@ -84,6 +84,13 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # .goreleaser.yaml 的 before.hooks 會建置 Web UI（npm ci && npm run build）。
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/client/.nvmrc
+          cache: npm
+          cache-dependency-path: web/client/package-lock.json
+
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
@@ -103,6 +110,11 @@ jobs:
           out="$("$bin" --version)"
           echo "$out"
           test -n "$out"
+          # 發布的 binary 要內嵌真正的 Web UI，不是 placeholder（Vite 產生的 index.html 引用 /assets/index-*.js）。
+          if ! grep -aq 'src="/assets/index-' "$bin"; then
+            echo "::error::binary 沒有內嵌 Web UI 的建置產物（只有 placeholder）"
+            exit 1
+          fi
 
   sqlc:
     name: sqlc generated code

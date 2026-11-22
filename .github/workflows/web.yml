@@ -1,0 +1,78 @@
+name: Web UI
+
+# web/client 的檢查（ADR-0008）。私人 repo 的 Actions 額度有限：只在前端、OpenAPI 快照或這個 workflow 改變時執行。
+# OpenAPI 快照（internal/api/openapi.json）是否跟上 Go 的路由由 ci.yml 的 go test（TestOpenAPISnapshot）檢查，
+# 這裡檢查由快照產生的 TypeScript 型別是否已 commit。go job 不需要 Node。
+on:
+  push:
+    branches: [master]
+    paths:
+      - "web/**"
+      - "internal/api/openapi.json"
+      - ".github/workflows/web.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - "internal/api/openapi.json"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: web/client
+
+jobs:
+  web:
+    name: Web lint, test & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # 版本寫死在 web/client/.nvmrc（與 Dockerfile 的 NODE_VERSION 一致）。
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/client/.nvmrc
+          cache: npm
+          cache-dependency-path: web/client/package-lock.json
+
+      - name: npm ci
+        run: npm ci --no-audit
+
+      # NFR-SEC-4：前端依賴有 high 以上的已知弱點時失敗。
+      - name: npm audit
+        run: npm audit --audit-level=high
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: eslint
+        run: npm run lint
+
+      - name: prettier
+        run: npm run format:check
+
+      # 含 axe（NFR-A11Y-1）、token 對比與 i18n 字典一致性（NFR-I18N-1）。
+      - name: test
+        run: npm test
+
+      # schema.d.ts 要與 internal/api/openapi.json 一致（NFR-CMP-3）。
+      - name: OpenAPI types drift
+        run: npm run check:api
+
+      - name: build
+        run: npm run build
+
+      # NFR-PERF-10：初始載入的 JS（gzip）< 300KB；同時確認 index.html 沒有 inline script（NFR-SEC-1）。
+      - name: bundle budget
+        run: npm run check:bundle
+
+      # 建置不會改動 commit 的檔案（dist/.gitkeep 保留、其餘產物被 .gitignore 排除）。
+      - name: working tree clean
+        run: git status --porcelain --untracked-files=all -- . && test -z "$(git status --porcelain --untracked-files=all -- .)"
