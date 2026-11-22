@@ -140,7 +140,7 @@ func stageImplemented(stage, executor string) bool {
 	case stage == StageTranslate && executor == ExecutorOpenCC:
 		return true
 	case IsLLMStage(stage):
-		// api：有登記在 llmStages 的步驟（correct、segment）。
+		// api：有登記在 llmStages 的步驟（correct、segment、translate）。
 		return executor == ExecutorAgent || usesLLMEngine(stage, executor)
 	}
 	return false

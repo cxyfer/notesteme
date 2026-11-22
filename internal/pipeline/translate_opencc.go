@@ -27,7 +27,7 @@ type openccJob struct {
 // 一個 stage run 產生多份 translated 產出（每個目標語言一份，S6-Q4）；時間、index、timing、speaker 不變，
 // 字詞級時間不保留（與之後的 LLM 翻譯一致）。
 //
-// 輸入依 translateInput 選（corrected > segmented > normalized）。與原文相同的目標略過；
+// 輸入依 translateSource 選（由輸入衍生的 edited > corrected > segmented > normalized）。與原文相同的目標略過；
 // 需要翻譯的目標（非中文，或原文不是中文）以 permanent 失敗：opencc 只能轉換中文字形。
 // 明確設定 executor: opencc 時，variant_strategy: localize 的目標也只做 OpenCC 轉換（用含詞彙轉換的 convert 表）。
 func (p *Pipeline) runTranslateOpenCC(ctx context.Context, it store.Item, eff Effective) (result, error) {
@@ -39,7 +39,7 @@ func (p *Pipeline) runTranslateOpenCC(ctx context.Context, it store.Item, eff Ef
 	if err != nil {
 		return result{}, err
 	}
-	src, ok, err := translateInputFor(ctx, p.st.Read(), it.ID, "")
+	src, ok, err := translateSource(ctx, p.st.Read(), it.ID, "")
 	if err != nil {
 		return result{}, err
 	}

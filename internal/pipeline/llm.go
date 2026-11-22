@@ -97,6 +97,12 @@ var llmStages = map[string]llmStage{
 		params:   segmentParams,
 		assemble: (*Pipeline).assembleSegment,
 	},
+	// translate 的 plan、chunk、assemble 由 runTranslateLLM 處理（多個目標、句群與切分標記，TRN）；
+	// 這裡的 Spec 只供登記時檢查 schema，執行時依目標語言建立。
+	StageTranslate: {
+		spec:    func() *llm.Spec { return llm.TranslateSpec(llm.TranslateOptions{Mode: llm.ModeTranslate}) },
+		variant: subtitle.VariantTranslated,
+	},
 }
 
 // 登記時檢查每個步驟的 Spec（strict schema、步驟名稱一致）：不符是程式錯誤，啟動時就失敗，不要等到送出請求才被 provider 拒絕。
@@ -495,6 +501,9 @@ func (p *Pipeline) runLLM(ctx context.Context, t store.Task, run store.StageRun,
 		if err := json.Unmarshal(t.Payload, &pl); err != nil {
 			return result{}, errPermanent("任務的 payload 不正確：" + err.Error())
 		}
+	}
+	if run.Stage == StageTranslate {
+		return p.runTranslateLLM(ctx, t, run, it, eff, pl)
 	}
 	switch {
 	case t.ChunkIndex != nil:
