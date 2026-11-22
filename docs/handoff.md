@@ -1,6 +1,6 @@
 # 交接：開發進度（M1 與 M2）
 
-> 更新：2026-11-22。PR #1～#19 已合併（LOCAL #13、PODCAST #14、ESTIMATE #15、M2 S0 #16、M2 S1/S2 #17、規格與 `.feature` 修改 #18、M2 S6a #19）；之後依 owner 的 /goal 指示（MVP 階段，不再開 PR）改為每個切片完成後直接推送到 master，commit 在 `git log` 可查：M2 S7（OUT 渲染與匯入）。owner 已同意的規格與 `.feature` 修改已完成（第 2 節第 4 點）。**M1 的後端已完成，但 Web UI 與真實樣本驗收還沒做，M1 尚未收尾（第 1 節「M1 尚未收尾」）。**
+> 更新：2026-11-22。PR #1～#19 已合併（LOCAL #13、PODCAST #14、ESTIMATE #15、M2 S0 #16、M2 S1/S2 #17、規格與 `.feature` 修改 #18、M2 S6a #19）；之後依 owner 的 /goal 指示（MVP 階段，不再開 PR）改為每個切片完成後直接推送到 master，commit 在 `git log` 可查：M2 S7（OUT 渲染與匯入）、M2 S3（LLM 核心引擎）。owner 已同意的規格與 `.feature` 修改已完成（第 2 節第 4 點）。**M1 的後端已完成，但 Web UI 與真實樣本驗收還沒做，M1 尚未收尾（第 1 節「M1 尚未收尾」）。**
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -103,6 +103,15 @@
     - harness：假 ffmpeg 的預覽模式、請求 body 的 `/tmp/<x>` 對應到場景根目錄（`steps.md` 第 4 節）；順手修了 `TestFFmpegSilencedetect` 的 flaky 斷言（暫存目錄的隨機數字可能含 "100"）。
     - **依 /goal 由 advisor 裁決、待 owner 追認**：OUT-R5 同語言場景最後一步改成斷言標頭（已改 `.feature`）；`path` 匯入不受 GRD-R7 限制；預覽 scope 改 `ingest`；M2 路由 scope（讀取 `read`、寫入 `admin`，settings 維持 `admin`）。記在 OUT、AUTH 規格的待決問題。
     - `@M2`：31 passed、23 failed、63 pending（OUT 剩 R10～R12 的 S8 與 MCP 的 `import_transcript`）。
+  - M2 S3 LLM 核心引擎（直接推送到 master；ADR-0019）：
+    - `internal/llm`：provider client（`anthropic`、`openai`、自訂 `base_url` 的 OpenAI 相容 provider；共用一個放寬 header timeout 的 Transport，出站走 netguard）、`PlanChunks`（章節優先，否則依 token 估算 L2）、`BuildFixed`／`DataBlock`／`RetryNote`（固定前綴、`<transcript_data>`／`<video_metadata>`、JSON 跳脫）、`Spec{Stage, Schema, OutputRules, Check}` 與 `Spec.Validate`（預設拒絕額外欄位）、`RunChunk`（驗證重試、租約期限內完成）、`MergeCues`（重疊區以前一個 chunk 為準）、`Registry.Client`（key：環境變數 → DB 加密 secrets）、`Limiter`（GCRA 的 RPM／TPM，429／5xx 與 `Retry-After` 另計）。
+    - 新增一個 LLM 步驟只要在 `pipeline.llmStages` 登記 `{spec, variant, fallback, apply}`；`usesLLMEngine` 統一判斷（ingest、engine 分派、`stageImplemented`），`checkLLMStages` 在啟動時檢查 Spec。目前只登記 `correct`（最小可用：一對一 `{i, text}`、cue 數不符 → fallback `cue_count`）；`segment`、`translate` 的 `api` 路徑仍回「還沒有實作」。
+    - 每個 chunk 一個任務（migration 00013 `llm_chunks`；`plan_json`、兩層快取、`fallbacks`、每 chunk token 用量記在產出來源紀錄的 `chunks[]`）；缺 key → `blocked`（`needs_action`，「設定 API key」）；模型不存在／停用 → `blocked`（「更換模型」）；`insufficient_quota` 的 429 → `needs_action`（LLM 規格 L15）。
+    - 設定：`llm.providers.<id>.{type, base_url, rpm, tpm}`（provider id 正規化後的環境變數名稱撞名時拒絕）；`llm.max_validation_retries` ≤ 10、`context_cues`／`overlap_cues` ≤ 100、`max_tokens` ≤ 200000；rerun 的 `chunks` 超過最近一次切分的 chunk 數回 422。
+    - 依 /goal 由 advisor 裁決、待 owner 追認：LIB-R11 場景修改 `.feature`（在場景內建立 `llm-lib` 處理方案，用 rerun 帶 `profile` 產生第一版）；L8（模板變數 `title`／`channel`／`description`／`chapters` 改寫成指向 `<video_metadata>`，LLM-R9 優先於 PRM-R3）、L9（驗證重試可透支限流）、L12～L15；`steps.md` 規則 (2c)（M2 目標步驟 done 或 skipped 都算「處理到」）。
+    - 已知限制（LLM 規格 L14）：chunk／assemble 任務重新讀 title／chapters／description、前一個 chunk fallback 時重疊區仍取前者、驗證重試途中放回佇列時用量不記、TPM 只估輸入、時間上限到時已做的驗證重試作廢（沒有續租）。自訂 provider id 不能存 DB key（services 白名單），只能用環境變數；設定頁還沒有 rpm／tpm 欄位。
+    - 審查：S3 推送前有一次只看 diff 的獨立審查，沒有 key 洩漏或 SSRF；修了連線池、租約、上限、重試訊息回灌、`Retry-After` 溢位等 11 項（commit 在 `git log`）。
+    - `@M2`：52 passed、32 failed、33 pending。PRM 的 compare／playground（PRM-R6／R7）還沒做（M2 剩餘項目，`estimate_usd` 沒有成本帳本時回 `null`），不是 M4。
 - **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，189 passed、2 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
@@ -137,7 +146,7 @@
 
 ## 2. 下一步
 
-切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC → LOCAL → PODCAST → ESTIMATE → M2 S0 骨架 → M2 S1 PRF＋S2 PRM → 規格修改 → M2 S6a TRN OpenCC（PR #1～#19，全部已合併）→ M2 S7 OUT 渲染與匯入（直接推送到 master）。下一步是 S3 LLM 核心（含最小的 `correct` 步驟與 wire 契約 ADR），再到並行的 S4 COR、S5 SEG、S6b TRN LLM（有 `edited` 時以它為輸入，見 TRN 規格）、S8 OUT publish；Web UI 切片的排入時機待 owner 決定（第 7 節）。**工作方式（owner 的 /goal，2026-11-22）**：MVP 階段不再開 PR，每個切片在 `.worktrees/<slug>` 的分支完成後 rebase 到 origin/master 直接 `git push origin HEAD:master`；需要決策時問 advisor，決定記在規格的待決問題並標「待 owner 追認」；推送後確認 master 的 CI 是綠的。
+切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC → LOCAL → PODCAST → ESTIMATE → M2 S0 骨架 → M2 S1 PRF＋S2 PRM → 規格修改 → M2 S6a TRN OpenCC（PR #1～#19，全部已合併）→ M2 S7 OUT 渲染與匯入（直接推送到 master）。下一步（S3 完成後）是 S8 OUT sidecar／folder 輸出、PRM compare／playground、DEL-R9 的 `delete_outputs`，再到並行的 S4 COR、S5 SEG、S6b TRN LLM（有 `edited` 時以它為輸入，見 TRN 規格）、S8 OUT publish；Web UI 切片的排入時機待 owner 決定（第 7 節）。**工作方式（owner 的 /goal，2026-11-22）**：MVP 階段不再開 PR，每個切片在 `.worktrees/<slug>` 的分支完成後 rebase 到 origin/master 直接 `git push origin HEAD:master`；需要決策時問 advisor，決定記在規格的待決問題並標「待 owner 追認」；推送後確認 master 的 CI 是綠的。
 
 接下來：
 
