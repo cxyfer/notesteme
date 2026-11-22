@@ -1,0 +1,8 @@
+{
+  "output": {
+    "sections": [
+      { "level": 2, "title": "Page tables", "start": "01:30", "body": "<script>alert('x')</script> [click](javascript:alert(1))" }
+    ],
+    "self_check": ["Did the note keep only safe markup?"]
+  }
+}

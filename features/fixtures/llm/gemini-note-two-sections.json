@@ -1,0 +1,9 @@
+{
+  "output": {
+    "sections": [
+      { "level": 2, "title": "Page tables", "start": "01:30", "body": "Each process gets its own page table [[t:02:10]]." },
+      { "level": 3, "title": "The TLB", "start": "05:00", "body": "The TLB caches recent translations." }
+    ],
+    "self_check": ["Why does the TLB matter for paging?"]
+  }
+}
