@@ -101,7 +101,8 @@ func TestScopeMatrix(t *testing.T) {
 				// M2 的路由：PRF 已實作（沒有注入 Pipeline 時回 500，完整清單見 TestPRFRoutesScopes）；其餘是 501 stub（見 TestM2StubRoutes），每種 scope 各抽一條。
 				{"GET", "/api/profiles", "", auth.ScopeRead, auth.ScopeAdmin, 500},
 				{"POST", "/api/profiles", `{"name":"x"}`, auth.ScopeAdmin, auth.ScopeRead, 500},
-				{"POST", "/api/prompts/playground", "", auth.ScopeIngest, auth.ScopeRead, 501},
+				{"POST", "/api/prompts/playground", `{"prompt":"p","item":"i","from":"00:00:00","to":"00:00:01","provider":"anthropic","model":"m"}`, auth.ScopeIngest, auth.ScopeRead, 500},
+				{"POST", "/api/items/i1/switch-executor", "", auth.ScopeIngest, auth.ScopeRead, 501},
 			}
 
 			for _, c := range cases {

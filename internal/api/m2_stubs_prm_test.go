@@ -12,7 +12,7 @@ import (
 
 // prmRouteCases 是 PRM（prompt 庫，不含 playground 與 compare）的 6 條路由，依「能順利執行」的順序排列：
 // 後面的路由用到前面建立的 prompt。scope 是契約第 4 節的要求，want 是 scope 正確時的成功狀態。
-// playground 與 compare 還是 501，在 m2_stubs_test.go 的主清單。
+// playground 與 compare 已經實作，見 prompts_playground_test.go。
 var prmRouteCases = []struct {
 	method, path, body, scope string
 	want                      int

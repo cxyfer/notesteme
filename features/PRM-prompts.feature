@@ -113,9 +113,15 @@ Feature: Prompt library
 
   @PRM-02 @PRM-R6
   Scenario: A playground run changes nothing
-    Given a YouTube video "yt:talk01xxxxx" titled "Kafka talk"
-    And the item "yt:talk01xxxxx" has been processed up to "correct"
+    Given the profile "standard" is:
+      """
+      stages:
+        correct: { executor: api, provider: anthropic, model: fixture-model, prompt: my-correct@1 }
+      """
+    And the default profile is "standard"
+    And a YouTube video "yt:talk01xxxxx" titled "Kafka talk"
     And the LLM provider "anthropic" answers "correct" with "correct-echo"
+    And the item "yt:talk01xxxxx" has been processed up to "correct"
     When the owner sends "POST /api/prompts/playground" with:
       """
       { "prompt": "my-correct@1", "item": "yt:talk01xxxxx", "from": "00:06:00", "to": "00:08:00",
