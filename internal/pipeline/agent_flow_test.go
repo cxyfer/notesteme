@@ -401,6 +401,27 @@ func TestAgentOldTokenOfSameAgentIsRejected(t *testing.T) {
 	}
 }
 
+// 重跑取代了 Agent 步驟時，舊 stage run 中被領取的任務一併結束：舊 token 回 lease_expired，到期後也不會被放回佇列。
+func TestRerunEndsLeasedAgentTasks(t *testing.T) {
+	r, it, _ := newAgentFlowRig(t, nil, nil)
+	ctx := context.Background()
+	old := claim(t, r, "a1", 1)[0]
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageCorrect, Until: StageCorrect}); err != nil {
+		t.Fatal(err)
+	}
+	if tk := taskByID(t, r, old.TaskID); tk.State != store.TaskFailed || tk.LeaseToken != "" {
+		t.Errorf("舊任務 = %+v，預期 failed、租約清除", tk)
+	}
+	agentErr(t, r.p.SubmitAgentTask(ctx, "a1", old.TaskID, old.LeaseToken, AgentSubmission{Output: echoOutput(old, false)}), AgentCodeLeaseExpired)
+	r.clk.Advance(11 * time.Minute)
+	if err := r.p.AgentSweeper().Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if tk := taskByID(t, r, old.TaskID); tk.State != store.TaskFailed {
+		t.Errorf("sweeper 之後舊任務 = %+v，不應回到佇列", tk)
+	}
+}
+
 // PIPE-R11 與 AGT-R4：重新啟動時放回別的 worker 留下的租約，但不動 Agent 的租約（它屬於 Agent，不是 worker）。
 func TestRecoverStaleKeepsAgentLeases(t *testing.T) {
 	r, _, _ := newAgentFlowRig(t, nil, nil)

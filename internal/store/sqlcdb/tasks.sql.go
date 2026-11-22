@@ -42,9 +42,12 @@ func (q *Queries) CancelItemTasks(ctx context.Context, itemID string) ([]string,
 }
 
 const cancelPendingTasks = `-- name: CancelPendingTasks :execrows
-UPDATE tasks SET state = 'failed' WHERE stage_run_id = ?1 AND state = 'pending'
+UPDATE tasks SET state = 'failed', lease_token = NULL, lease_owner = NULL, lease_until = NULL
+WHERE stage_run_id = ?1 AND (state = 'pending' OR (state = 'leased' AND executor = 'agent'))
 `
 
+// Pending tasks stop here. Agent tasks are stopped even when leased: no worker is running them, and the
+// agent's lease must end at once so its token is rejected (AGT-R7) instead of the task coming back later.
 func (q *Queries) CancelPendingTasks(ctx context.Context, stageRunID string) (int64, error) {
 	result, err := q.db.ExecContext(ctx, cancelPendingTasks, stageRunID)
 	if err != nil {

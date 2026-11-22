@@ -336,7 +336,8 @@ func (r *Repo) CountTasks(ctx context.Context, state string) (n int, err error) 
 }
 
 // CancelPendingTasks 把指定步驟中還沒被領取的任務標記為 failed，讓它們不再執行。
-// 重跑取代了這些步驟時使用；已經被領取的任務不受影響。回傳被取消的任務數。
+// 重跑取代了這些步驟時使用；內建 worker 已經領取的任務不受影響（完成時 apply 會丟棄結果），
+// Agent 領取中的任務一併結束、租約立即失效（AGT-R7）。回傳被取消的任務數。
 func (r *Repo) CancelPendingTasks(ctx context.Context, stageRunIDs []string) (int, error) {
 	n := 0
 	for _, id := range stageRunIDs {

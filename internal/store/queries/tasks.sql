@@ -86,7 +86,10 @@ ORDER BY not_before LIMIT 1;
 SELECT COUNT(*) FROM tasks WHERE state = sqlc.arg(state);
 
 -- name: CancelPendingTasks :execrows
-UPDATE tasks SET state = 'failed' WHERE stage_run_id = sqlc.arg(stage_run_id) AND state = 'pending';
+-- Pending tasks stop here. Agent tasks are stopped even when leased: no worker is running them, and the
+-- agent's lease must end at once so its token is rejected (AGT-R7) instead of the task coming back later.
+UPDATE tasks SET state = 'failed', lease_token = NULL, lease_owner = NULL, lease_until = NULL
+WHERE stage_run_id = sqlc.arg(stage_run_id) AND (state = 'pending' OR (state = 'leased' AND executor = 'agent'));
 
 -- name: CancelItemTasks :many
 -- Cancel every unfinished (pending or leased) task of an item and drop its lease, so a late write-back
