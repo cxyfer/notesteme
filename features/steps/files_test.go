@@ -57,6 +57,24 @@ func TestFileContainsDocWritesLiterally(t *testing.T) {
 	}
 }
 
+// 請求 body 中的 /tmp/<x> 對應到 `the file "/tmp/<x>" contains:` 寫的檔案：路徑段邊界才換，實際路徑不再換第二次。
+func TestRequestBodyMapsTmpPaths(t *testing.T) {
+	s := newTestScenario(t)
+	root := s.World.Root
+	got := string(s.requestBody(&godog.DocString{Content: `{ "path": "/tmp/fixed.srt", "other": "/var/tmp/x", "again": "` + root + `/tmp/y", "data": "/data/z" }`}))
+	want := `{ "path": "` + root + `/tmp/fixed.srt", "other": "/var/tmp/x", "again": "` + root + `/tmp/y", "data": "` + s.World.DataDir() + `/z" }`
+	if got != want {
+		t.Errorf("body = %s\n預期  %s", got, want)
+	}
+	// 對應之後的路徑就是 fileContainsDoc 寫入的位置。
+	if err := s.fileContainsDoc("/tmp/fixed.srt", &godog.DocString{Content: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "tmp", "fixed.srt")); err != nil {
+		t.Error(err)
+	}
+}
+
 // makeTarGz 組出 tar.gz；每個項目是 名稱 → 內容。
 func makeTarGz(t *testing.T, entries map[string]string) []byte {
 	t.Helper()

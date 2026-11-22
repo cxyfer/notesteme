@@ -256,6 +256,38 @@ func (s *Scenario) filePath(path string) string {
 	return real
 }
 
+// mapTmpPaths 把 text 中的 /tmp/<x> 換成場景根目錄下的 tmp/<x>（規則同 filePath），讓請求 body 裡指向
+// `Given the file "/tmp/…" contains:` 所寫檔案的 path 找得到檔案。路徑段的邊界才比對（/var/tmp/x 不動），
+// 已經在場景根目錄之內的實際路徑也不動。
+func (s *Scenario) mapTmpPaths(text string) string {
+	const prefix = "/tmp/"
+	root := s.World.Root
+	var sb strings.Builder
+	i := 0
+	for {
+		j := strings.Index(text[i:], prefix)
+		if j < 0 {
+			sb.WriteString(text[i:])
+			return sb.String()
+		}
+		j += i
+		sb.WriteString(text[i:j])
+		i = j + len(prefix)
+		boundary := j == 0 || (!isPathNameByte(text[j-1]) && text[j-1] != '/')
+		if !boundary || (root != "" && strings.HasPrefix(text[j:], root+string(filepath.Separator))) {
+			sb.WriteString(prefix)
+			continue
+		}
+		sb.WriteString(filepath.Join(root, "tmp") + "/")
+	}
+}
+
+// isPathNameByte 回報 b 是否屬於路徑段中的名稱字元（同 harness 的比對規則）。
+func isPathNameByte(b byte) bool {
+	return b == '_' || b == '-' || b == '.' || b == '~' || b == '+' || b == '@' ||
+		(b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b >= 0x80
+}
+
 // fileContainsDoc 建立檔案：內容照字面寫入，上層目錄不存在時自動建立。
 func (s *Scenario) fileContainsDoc(path string, doc *godog.DocString) error {
 	real := s.filePath(path)

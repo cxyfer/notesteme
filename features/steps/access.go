@@ -163,9 +163,10 @@ func (s *Scenario) clientSendsWithTokenAnd(spec, name string, doc *godog.DocStri
 	return s.send(spec, requestOpts{who: asClient, body: s.requestBody(doc), headers: headers})
 }
 
-// requestBody 取出 doc string 作為請求 body：虛擬路徑與 {token:…} 先代入。
+// requestBody 取出 doc string 作為請求 body：/tmp/<x>（同 filePath，放到場景根目錄之下）、
+// 虛擬路徑與 {token:…} 先代入。/tmp 要最先代入：場景根目錄通常也在 /tmp 底下，晚一步會把實際路徑再換一次。
 func (s *Scenario) requestBody(doc *godog.DocString) []byte {
-	return []byte(s.World.Subst(s.World.Expand(doc.Content)))
+	return []byte(s.World.Subst(s.World.Expand(s.mapTmpPaths(doc.Content))))
 }
 
 // pendingIfNotImplemented 讓「server 明確回應 501 not_implemented」的路由在斷言時視為 pending，

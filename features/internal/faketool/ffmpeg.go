@@ -1,8 +1,11 @@
 package faketool
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"math"
 	"os"
@@ -21,7 +24,8 @@ const markerReadLimit = 64 << 10
 // runFFmpeg 支援：
 //   - -version／--version，-buildconf（可加 -hide_banner）；
 //   - ASR 前處理、切塊、靜音偵測、抽字幕四種呼叫，參數照 local-design 第 4 節的 argv 契約逐項檢查
-//     （選項不在契約內、缺少必要選項或值不同，都結束碼 2）。
+//     （選項不在契約內、缺少必要選項或值不同，都結束碼 2）；
+//   - 樣式預覽（OUT-R9）：用 libass 把工作目錄的 s.ass 疊在畫面上，輸出一張 PNG，見 ffmpegPreview。
 //
 // 輸入檔是假媒體檔（標記，見 media.go）；其他內容視為不是媒體，結束碼 1。
 func runFFmpeg(e env, args []string) int {
@@ -52,6 +56,8 @@ func runFFmpeg(e env, args []string) int {
 		return ffmpegSilence(e, fa)
 	case ffSubtitle:
 		return ffmpegSubtitle(e, fa)
+	case ffPreview:
+		return ffmpegPreview(e, fa)
 	default:
 		return ffmpegTranscode(e, fa)
 	}
@@ -73,6 +79,7 @@ const (
 	ffTranscode ffMode = iota // ASR 前處理或切塊（有 -ss／-t）
 	ffSilence                 // -af silencedetect
 	ffSubtitle                // -c:s srt
+	ffPreview                 // -vf ass=…：樣式預覽
 )
 
 // ffArgs 是解析後的 ffmpeg 參數。
@@ -88,10 +95,11 @@ var (
 	ffValueOpts = map[string]bool{
 		"-v": true, "-protocol_whitelist": true, "-format_whitelist": true, "-ss": true, "-t": true, "-i": true,
 		"-map": true, "-ac": true, "-ar": true, "-c:a": true, "-b:a": true, "-application": true, "-f": true,
-		"-af": true, "-c:s": true,
+		"-af": true, "-c:s": true, "-vf": true, "-frames:v": true, "-update": true, "-c:v": true,
 	}
 	ffBoolOpts = map[string]bool{
 		"-nostdin": true, "-hide_banner": true, "-nostats": true, "-vn": true, "-sn": true, "-dn": true, "-y": true,
+		"-an": true,
 	}
 	// 每種模式必要的選項（值固定的列在 want，只要求存在的列在 present）。
 	ffTranscodeWant = map[string]string{
@@ -152,6 +160,12 @@ func parseFFmpegArgs(args []string) (*ffArgs, error) {
 	var want map[string]string
 	var bools []string
 	switch {
+	case fa.vals["-vf"] != "":
+		fa.mode = ffPreview
+		if err := fa.checkPreview(); err != nil {
+			return nil, err
+		}
+		return fa, nil
 	case fa.vals["-af"] != "":
 		fa.mode, want, bools = ffSilence, ffSilenceWant, ffSilenceBools
 	case fa.vals["-c:s"] != "":
@@ -250,6 +264,8 @@ func (fa *ffArgs) modeName() string {
 		return "silencedetect"
 	case ffSubtitle:
 		return "subtitle extraction"
+	case ffPreview:
+		return "preview"
 	}
 	return "transcode"
 }
@@ -443,6 +459,165 @@ func ffmpegSubtitle(e env, fa *ffArgs) int {
 		return 1
 	}
 	return 0
+}
+
+// ---- 樣式預覽 ----
+
+var (
+	// 沒有影片時的合成畫布：color=c=0xRRGGBB:s=寬x高:r=1:d=1。
+	previewCanvas = regexp.MustCompile(`^color=c=0x[0-9a-fA-F]{6}:s=(\d{2,4})x(\d{2,4}):r=1:d=1$`)
+
+	ffPreviewWant  = map[string]string{"-v": "error", "-vf": "ass=s.ass", "-frames:v": "1", "-update": "1", "-c:v": "png"}
+	ffPreviewBools = []string{"-nostdin", "-hide_banner", "-an", "-sn", "-dn", "-y"}
+)
+
+// checkPreview 檢查預覽的 argv 契約。兩種輸入：
+//   - 合成畫布：-f lavfi -i color=…，不帶白名單與 -ss（lavfi 不讀任何檔案）；
+//   - 影片檔：-protocol_whitelist file、-format_whitelist、-ss 在 -i 之前、-i 是絕對路徑。
+//
+// 輸出一律是相對的 out.png，字幕檔一律是相對的 s.ass（工作目錄是預覽專用的暫存目錄）。
+func (fa *ffArgs) checkPreview() error {
+	for k, v := range ffPreviewWant {
+		if got, ok := fa.vals[k]; !ok || got != v {
+			return fmt.Errorf("preview requires %s %s (got %q)", k, v, got)
+		}
+	}
+	for _, b := range ffPreviewBools {
+		if !fa.bools[b] {
+			return fmt.Errorf("preview requires %s", b)
+		}
+	}
+	for k := range fa.bools {
+		if !slices.Contains(ffPreviewBools, k) {
+			return fmt.Errorf("option %s is not part of the preview argv contract", k)
+		}
+	}
+	if fa.output != "out.png" {
+		return fmt.Errorf("preview output must be out.png, got %q", fa.output)
+	}
+	in := fa.vals["-i"]
+	if f, ok := fa.vals["-f"]; ok {
+		if f != "lavfi" {
+			return fmt.Errorf("preview -f must be lavfi, got %q", f)
+		}
+		if !previewCanvas.MatchString(in) {
+			return fmt.Errorf("preview canvas %q is not color=c=0x…:s=WxH:r=1:d=1", in)
+		}
+		for _, k := range []string{"-protocol_whitelist", "-format_whitelist", "-ss", "-t"} {
+			if _, ok := fa.vals[k]; ok {
+				return fmt.Errorf("preview canvas does not take %s", k)
+			}
+		}
+		return nil
+	}
+	if fa.vals["-protocol_whitelist"] != "file" {
+		return fmt.Errorf("preview of a video requires -protocol_whitelist file")
+	}
+	wl, ok := fa.vals["-format_whitelist"]
+	if !ok {
+		return fmt.Errorf("preview of a video requires -format_whitelist")
+	}
+	if err := checkFormatWhitelist(wl); err != nil {
+		return err
+	}
+	if !filepath.IsAbs(in) {
+		return fmt.Errorf("preview input %q must be an absolute path", in)
+	}
+	ss, ok := fa.vals["-ss"]
+	if !ok {
+		return fmt.Errorf("preview of a video requires -ss")
+	}
+	if f, err := strconv.ParseFloat(ss, 64); err != nil || f < 0 || math.IsNaN(f) || math.IsInf(f, 0) {
+		return fmt.Errorf("-ss %q is not a non-negative number", ss)
+	}
+	if fa.pos["-ss"] > fa.pos["-i"] {
+		return fmt.Errorf("-ss must come before -i")
+	}
+	if _, ok := fa.vals["-t"]; ok {
+		return fmt.Errorf("preview does not take -t")
+	}
+	return nil
+}
+
+// ffmpegPreview 模擬 libass 預覽：讀工作目錄的 s.ass（要有 [V4+ Styles]、Style 與 Dialogue），輸出一張真正的 PNG。
+// 沒有 libass（State.FFmpegNoLibass）時和真實的 ffmpeg 一樣找不到 ass 濾鏡，結束碼 1。
+// 影片檔輸入要是有影像串流的假媒體檔，-ss 不能超過長度。
+func ffmpegPreview(e env, fa *ffArgs) int {
+	st, err := ReadState(e.root)
+	if err != nil {
+		fmt.Fprintf(e.stderr, "fake ffmpeg: %v\n", err)
+		return 2
+	}
+	if st.FFmpegNoLibass {
+		fmt.Fprintln(e.stderr, "No such filter: 'ass'")
+		return 1
+	}
+	w, h := 1280, 720
+	if m := previewCanvas.FindStringSubmatch(fa.vals["-i"]); m != nil {
+		w, _ = strconv.Atoi(m[1])
+		h, _ = strconv.Atoi(m[2])
+	} else {
+		media, ok := openInput(e, fa.vals["-i"])
+		if !ok {
+			return 1
+		}
+		hasVideo := false
+		for _, s := range media.EffectiveStreams() {
+			hasVideo = hasVideo || s.Type == StreamVideo
+		}
+		if !hasVideo {
+			fmt.Fprintln(e.stderr, "Output file does not contain any stream")
+			return 1
+		}
+		if fa.number("-ss") >= media.Duration {
+			fmt.Fprintln(e.stderr, "Output file is empty, nothing was encoded")
+			return 1
+		}
+	}
+	ass, err := os.ReadFile(absPath(e, "s.ass"))
+	if err != nil {
+		fmt.Fprintln(e.stderr, "s.ass: No such file or directory")
+		return 1
+	}
+	if err := checkPreviewASS(string(ass)); err != nil {
+		fmt.Fprintf(e.stderr, "s.ass: %v\n", err)
+		return 1
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewGray(image.Rect(0, 0, w, h))); err != nil {
+		fmt.Fprintf(e.stderr, "fake ffmpeg: %v\n", err)
+		return 1
+	}
+	if err := writeFile(e, fa.output, buf.Bytes()); err != nil {
+		fmt.Fprintf(e.stderr, "%s: %v\n", fa.output, err)
+		return 1
+	}
+	return 0
+}
+
+// checkPreviewASS 檢查字幕檔夠不夠 libass 渲染：有 [V4+ Styles]、Format 與 Style 行，以及至少一行 Dialogue。
+func checkPreviewASS(ass string) error {
+	section, styleFormat, styles, dialogues := "", false, 0, 0
+	for _, l := range strings.Split(strings.TrimPrefix(ass, "\uFEFF"), "\n") {
+		l = strings.TrimSpace(l)
+		switch {
+		case strings.HasPrefix(l, "["):
+			section = strings.ToLower(l)
+		case section == "[v4+ styles]" && strings.HasPrefix(l, "Format:"):
+			styleFormat = true
+		case section == "[v4+ styles]" && strings.HasPrefix(l, "Style:"):
+			styles++
+		case section == "[events]" && strings.HasPrefix(l, "Dialogue:"):
+			dialogues++
+		}
+	}
+	switch {
+	case !styleFormat || styles == 0:
+		return fmt.Errorf("no [V4+ Styles] with a Format line and a Style")
+	case dialogues == 0:
+		return fmt.Errorf("no Dialogue in [Events]")
+	}
+	return nil
 }
 
 // ---- ffprobe ----

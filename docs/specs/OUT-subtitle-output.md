@@ -56,3 +56,11 @@
 
 - `sidecar` 的檔名語言代碼要用 BCP-47（`zh-Hant-TW`）還是 Jellyfin、Plex 較容易辨識的 ISO 639（`zh`、`chi`），M2 實作前用兩套播放器實測。
 - OUT-R9 預覽場景：steps.md 4.4 規則 (1) 改成只有寫入 `source` 變體的字幕才算「場景已準備字幕來源」（2026-11-22，owner 同意，已修改）。Background 只 seed 了 `corrected`，預覽影音沒有任何字幕軌，改走規則 (2) 的 fixture（`features/fixtures/items/yt-abc123xxxxx.json`）。
+- OUT-R5 同語言場景（`Same-language content is never rendered as bilingual`）期待 `GET …/subtitles?format=bilingual-srt` 的回應內容是 JSON `{ "bilingual": false }`，但 `bilingual-srt` 的回應本體必須是 SRT 檔（OUT-R1、R4）。S7 的做法：單語時照樣輸出單語 SRT，並用回應標頭 `X-Notesteme-Bilingual: false|true` 表示結果（ASS 也有）；這個場景維持 failed。建議把場景最後一步改成 `And the response header "X-Notesteme-Bilingual" contains "false"`（`steps.md` 已有這個步驟），等 owner 同意再改 `.feature`。
+- OUT-R8、R13～R15 的 `path` 是伺服器上的檔案路徑。S7 的做法：不套用 GRD-R7 的 inbox 與 `media_roots` 限制，只收字幕副檔名（`.srt`、`.vtt`、`.ass`、`.ssa`）的一般檔案、大小有上限、解析失敗的回應不含檔案內容；理由是這些檔案只會被解析成字幕或樣式，不會被當成媒體處理。代價是持有 `ingest`（字幕）或 `admin`（樣式）scope 的 token 可以讓伺服器讀取任何路徑的字幕副檔名檔案。也可以用 `content` 直接帶檔案內容，CLI 一律這樣送。要不要改成受 GRD-R7 限制，由 owner 決定。場景中的 `/tmp/…` 在請求 body 裡也要對應到場景根目錄（`steps.md` 第 4 節已補）。
+- OUT-R9 預覽的 scope：沿用 S0 的 stub，是 `read`。預覽會執行 ffmpeg（CPU 與暫存檔），所以同時最多 2 個、逾時 30 秒，但持有 `read` token 的 client 仍然可以觸發。要不要改成 `ingest`，由 owner 決定。
+- OUT-R9 預覽沒有影片可以抽幀時（線上影音、只有音訊的本機檔案、影片檔找不到），改用深灰色的合成畫布（1280x720）疊上字幕；預覽的字幕是最接近指定時間的那句，沒有字幕時用範例文字。
+- 內建樣式的語意（OUT-R6）：`default` 是底部、譯文大、原文小的雙語；`translation-top` 把譯文放到畫面上方；`translation-only` 只顯示譯文；`large`、`boxed`（不透明底框）、`minimal` 是尺寸與外框的變化。字型一律留空代表「自動」，依目標語言（譯文行）與原文語言（原文行）帶入（OUT-R7）。匯入 `.ass`（OUT-R8）時，`Default`（沒有就用第一個）樣式當譯文行，下一個樣式當原文行，只有一個樣式時原文行由譯文行縮小產生。
+- OUT-R15 的 `line` 是第幾句字幕（從 1 起算，對應「第幾句有問題」），`file_line` 是檔案中的行號（可能沒有）。
+- 雙語輸出的原文是「影音的原文語言」以外的另一種語言時不成立：目標語言就是影音的原文語言時一律輸出單語；其他情況原文取非 `translated` 變體中處理得最完整的字幕（OUT-R2 的順序）。
+- 匯入的 `edited` 只保證被下載（OUT-R2）優先使用，並把既有的譯文標示過時。correct、translate 要不要以 `edited` 為輸入，以及筆記（M3）的過時標示，規格沒有定義，留給對應的切片。匯入不保留字詞級時間（`words`）。
