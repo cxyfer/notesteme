@@ -10,8 +10,36 @@ Notesteme 把影音（YouTube、Bilibili、Podcast、本機檔案）轉成字幕
 完整的目標、範圍與里程碑見 [`docs/plan.md`](docs/plan.md)。
 
 > [!NOTE]
-> 專案仍在 **M1（擷取核心）** 開發中。目前可用的只有 `notesteme serve`（HTTP API、單一密碼登入、任務佇列）與 `notesteme --version`；
-> CLI 的其他子命令、Web UI、MCP 尚未實作，未實作的 API 會回應 `501`。
+> **M1（擷取核心）後端已完成**：HTTP API、CLI、任務佇列、字幕來源（YouTube、Bilibili、Podcast、本機檔案）、輸出 SRT／VTT／ASS／TXT 與匯入編輯過的字幕。
+> **M2 進行中**：中文字形轉換（OpenCC）與輸出渲染已完成；LLM 步驟（斷句、校正、翻譯）與 MCP 仍在開發，**Web UI 尚未開始**。
+> 未實作的 API 會回應 `501`。進度與已知限制見 [`docs/handoff.md`](docs/handoff.md)。
+
+## CLI
+
+同一個 binary 提供 server 與 CLI；`ingest`、`items` 等子命令依資料目錄的鎖自動選模式：沒有 server 持有資料目錄時由 CLI 自己執行（獨立模式），否則經由 server 的本機 socket；也可用 `--server`、`--token` 連到遠端 server。
+
+```bash
+notesteme serve                          # 啟動 server
+notesteme ingest <url|ref|path> --wait   # 新增影音並等到完成
+notesteme items ls                       # 列出影音
+notesteme export <item> --format srt --out out.srt
+notesteme doctor                         # 檢查 yt-dlp、ffmpeg 等外部工具與設定
+notesteme --help                         # 完整子命令與旗標
+```
+
+| 子命令 | 說明 |
+|---|---|
+| `serve` | 啟動 server |
+| `ingest` | 新增影音（`--profile`、`--until`、`--wait`、`--timeout`） |
+| `items` | `ls`、`show`、`rerun --from <stage>`、`rm`（`--purge`、`--delete-outputs`）、`restore` |
+| `trash` | `ls`、`empty` |
+| `export` | 輸出字幕：`srt`、`vtt`、`txt`、`ass`（`--lang`、`--variant`、`--style`、`--out`） |
+| `import` | 匯入外部編輯過的字幕為 `edited` 版本 |
+| `tokens` | `create`、`ls`、`revoke`，管理 API token |
+| `secrets` | `rotate-key`、`reset` |
+| `doctor` | 檢查外部工具與設定 |
+
+結束碼：`0` 成功、`1` 執行錯誤、`2` 參數錯誤、`3` 需要使用者處理、`4` 等待中。
 
 ## 快速開始（Docker）
 
@@ -164,7 +192,14 @@ cd internal/store && sqlc generate
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 在 PR 與 push 到 `master` 時執行，不建置 image：
 
 1. **Go lint & test**：`gofmt`、`go mod tidy -diff`、`go vet`、`go test -race`。
+   同一個 job 也用 [`scripts/ci/coverage.sh`](scripts/ci/coverage.sh) 檢查 `subtitle`、`pipeline`、`queue`、`netguard` 的涵蓋率不低於 80%。
 2. **sqlc generated code**：`sqlc diff` 確認產生的程式碼沒有過期。
+3. **govulncheck**：掃描程式實際呼叫到的已知弱點。
+4. **goreleaser build**：以 [`.goreleaser.yaml`](.goreleaser.yaml) 做 snapshot 建置（linux amd64／arm64、windows amd64、darwin arm64），並對 linux/amd64 產物做 `--version` 冒煙測試；不發布。
+
+### Fuzz
+
+[`.github/workflows/fuzz.yml`](.github/workflows/fuzz.yml) 每天（UTC）執行一次，也可手動觸發；由 [`scripts/ci/fuzz.sh`](scripts/ci/fuzz.sh) 把總預算（預設 10 分鐘）平均分給所有 `Fuzz*` 目標，失敗時上傳新產生的失敗輸入。本機可用 `FUZZ_TIME=15s scripts/ci/fuzz.sh` 快速跑一輪。
 
 ### 發布 image
 
