@@ -131,9 +131,9 @@
   - **Web UI 尚未開始**：沒有 `web/`、沒有靜態檔案服務、沒有 UI 的 `go:embed`；`docs/ui/mockups/` 只有 `library.html`、`item.html` 兩份草稿。plan 要求 M1 一起交付的頁面（新增、媒體庫、影音詳情、佇列、設定、登入）和 UI 相關的 NFR（NFR-SEC-1 CSP、NFR-PERF-10、NFR-A11Y-1～3、NFR-I18N-1、NFR-CMP-2、NFR-RWD-1）都還沒做。決定與預設見第 7 節；plan 第 24、26 節已記錄。
   - **真實樣本驗收沒做**：M1 驗收條件「四個平台共 10 部樣本都能一鍵產出 SRT」從未用真實的 yt-dlp、Groq、Supadata 驗證，驗收場景都跑在假工具上。第 6 節「還沒對真實服務驗證」的項目屬於同一類。
   - **人工驗收**：M1 有 7 個 `@manual` 場景還沒驗收。其中 5 個同時是 `@ui`（DEL-R3、LIB-R2、LIB-R5／R6、LIB-R9、LIB-R10），要等 Web UI；另外 2 個是 CLI-03、CLI-04（`watch` skill 改成薄包裝）。M2 還有 LIB-R12（`@ui @manual`）。
-  - **CI 還缺**：`govulncheck`（NFR-SEC-4）、涵蓋率門檻（NFR-TEST-3）、goreleaser（NFR-CMP-1）。fuzz 目前只有 `internal/subtitle`，其他不可信輸入的解析器（RSS、yt-dlp JSON）沒有，CI 也沒有每晚排程（NFR-SEC-6）。
+  - **CI 已補（待 master 實測）**：`vuln` job（govulncheck v1.10.0，NFR-SEC-4）、`go` job 的涵蓋率門檻（`scripts/ci/coverage.sh`，NFR-TEST-3）、`release-check` job（`.goreleaser.yaml` 的 check、snapshot 建置與 linux/amd64 冒煙，NFR-CMP-1）、每晚 `fuzz.yml`（`scripts/ci/fuzz.sh`，涵蓋 subtitle、podcast RSS／Atom、yt-dlp JSON、ffmpeg silencedetect、cookie、zhconv、langtag 的解析入口，NFR-SEC-6）。本機只驗證了涵蓋率腳本、fuzz 腳本與 YAML 語法；govulncheck 與 goreleaser action 要看 master 上 CI 的實際結果，fuzz 要看第一次 nightly（或手動 `workflow_dispatch`）的結果。govulncheck 若報出可利用的弱點，要升級依賴或 Go 版本。
   - **M0 結論沒有回寫紀錄**：6 個 `@pending-m0` 場景（SRC-R4、SRC-R13、COR-R2／R3、TRN-R4、SEG-R3、SEG-R10）的門檻仍是暫定值，盤點時沒有看到 M0 實測結果寫回規格或 ADR。
-  - **README 過時**：仍寫「只有 `serve` 與 `--version` 可用」，實際上 CLI 已完成。
+  - **README 已更新**：CLI 子命令、M1／M2 進度與 CI 說明已與實際狀態對齊。
 
 ## 2. 下一步
 
