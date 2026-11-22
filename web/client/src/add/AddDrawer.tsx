@@ -128,9 +128,10 @@ export function AddDrawer({ open, onOpenChange, initialUrl = "" }: AddDrawerProp
   const submit = useMutation({
     mutationFn: async () => {
       if (file) {
+        // 文字欄位放在檔案前面：後端邊讀邊驗證，處理方案有錯時不必等檔案傳完
         const fd = new FormData();
-        fd.set("file", file);
         if (chosenProfile) fd.set("profile", chosenProfile);
+        fd.set("file", file);
         return api.post("/api/items", { body: fd });
       }
       const body: CreateBody = { url: res?.url || trimmed };

@@ -95,7 +95,10 @@ function VirtualListInner<T>(
   }, [last, items.length, endThreshold, onEndReached]);
 
   // 已載入的列變少時（換篩選），active 不能超出範圍
-  const activeIndex = Math.min(active, Math.max(items.length - 1, 0));
+  const clamped = Math.min(active, Math.max(items.length - 1, 0));
+  // active 的列被捲出渲染範圍（卸載）時，讓第一個渲染出來的列可以 Tab 進來，列表才不會被整段跳過
+  const rendered = virtualItems.some((v) => v.index === clamped);
+  const activeIndex = rendered ? clamped : (virtualItems[0]?.index ?? 0);
 
   // 移動焦點：目標列可能還沒渲染，先捲過去，渲染後再聚焦
   useEffect(() => {

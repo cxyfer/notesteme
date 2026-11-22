@@ -286,6 +286,7 @@ describe("新增抽屜", () => {
     expect(body).toBeInstanceOf(FormData);
     expect((body.get("file") as File).name).toBe("talk.mp4");
     expect(body.get("profile")).toBe("default");
+    expect([...body.keys()]).toEqual(["profile", "file"]);
     await userEvent.click(submit);
     expect(await screen.findByText("已開始處理 1 部")).toBeTruthy();
   });

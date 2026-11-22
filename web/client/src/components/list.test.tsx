@@ -118,6 +118,31 @@ describe("VirtualList", () => {
     await expectNoA11yViolations(container);
   });
 
+  it("可以 Tab 進列表的列一定在渲染範圍內（active 的列被捲走時改用第一個渲染出來的列）", () => {
+    const items = Array.from({ length: 1000 }, (_, i) => `第 ${i + 1} 列`);
+    const { container } = render(
+      <VirtualList
+        label="列表"
+        items={items}
+        getKey={(s) => s}
+        estimateSize={50}
+        renderItem={(s, { focusProps }) => (
+          <a href="#x" {...focusProps}>
+            {s}
+          </a>
+        )}
+      />,
+    );
+    const scroller = container.querySelector<HTMLElement>(".vlist")!;
+    scroller.scrollTop = 20_000;
+    fireEvent.scroll(scroller);
+    const tabbable = [...container.querySelectorAll<HTMLElement>("[data-row-focus]")].filter(
+      (a) => a.tabIndex === 0,
+    );
+    expect(tabbable).toHaveLength(1);
+    expect(tabbable[0]!.textContent).not.toBe("第 1 列");
+  });
+
   it("接近最後一列時呼叫 onEndReached", () => {
     const onEnd = vi.fn();
     render(
