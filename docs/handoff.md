@@ -369,7 +369,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - 只靠單元測試守住：`waiting` 不含執行中的任務、垃圾桶中的影音不在列表、排序、`limit` 與最後一頁沒有 `next_cursor`。
   - 字幕讀取端沒有串流（NFR-RES-3 只做到輸出端）。
   - 有 HTML 回應時要加上 CSP 等標頭（NFR-SEC-1）。
-  - CI（`.github/workflows/ci.yml`，PR #3）：gofmt、`go mod tidy -diff`、vet、`go test -race`、`sqlc diff`、Docker image 與冒煙測試；push 到 `master` 或 `v*` tag 時發布 image 到 GHCR。還沒有 Python 版規格檢查（Go 版在 `go test` 中）與 `govulncheck`。
+  - CI（`.github/workflows/ci.yml`）：gofmt、`go mod tidy -diff`、vet、`go test -race`、`sqlc diff`，不建置 image。image 由 `docker-publish.yml` 只在 `v*` tag 時建置、冒煙測試後發布到 GHCR（私人 repo，避免浪費 Actions 額度）。還沒有 Python 版規格檢查（Go 版在 `go test` 中）與 `govulncheck`。
 
 ## 7. 仍有效的待決問題
 
