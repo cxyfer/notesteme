@@ -38,8 +38,8 @@
 
 - 設定檔：`/config/notesteme.yaml`
 - 環境變數：`NOTESTEME_MASTER_KEY`、`NOTESTEME_<設定路徑>`
-- API：`GET/PUT /api/settings/:section`、`POST /api/cookies`
-- CLI：`notesteme secrets rotate-key|reset`、`notesteme config export|import`
+- API：`GET/PUT /api/settings/:section`、`POST /api/cookies`、`GET /api/config/export`、`POST /api/config/import`
+- CLI：`notesteme secrets rotate-key|reset`、`notesteme config export [--out <file>]`、`notesteme config import <file>`
 - `POST /api/cookies`：上傳平台的 cookie。
   - 請求：`{ "platform": "youtube" | "bilibili", "content": "<Netscape cookie 檔，或 name=value; … 標頭>" }`，內容上限 64 KiB；請求本體（JSON）上限 512 KiB，超過同樣回 422 `cookie_too_large`（含沒有 Content-Length 的請求，讀到上限就停止；其他路由維持 Huma 預設的 1 MiB 與 413）。
   - 正規化：一律轉成 Netscape 格式。標頭格式的 cookie 用平台網域（`.youtube.com`、`.bilibili.com`）、path `/`、secure `TRUE`、expiry `0`；Netscape 格式只保留平台網域（含子網域）的 cookie，其他網域一律丟掉。
@@ -56,6 +56,13 @@
     | `cookie_invalid_format` | 名稱或值含控制字元（包含 tab、換行）；Netscape 格式的網域、path、名稱、值也一樣，控制字元包含 `\r`、NUL、ESC（只檢查保留下來的平台 cookie） |
 
   - 權限：只有 owner（session 或本機）可以使用；session 要帶 CSRF token（AUTH-R5），沒登入回 401，缺 CSRF 回 403。token 不可使用，回 403 `forbidden`（cookie 等同登入憑證）。standalone 與本機 socket 走同一個 handler，不需要 session。
+- `config export`／`config import`（SEC-R10，M2）：
+  - 範圍：DB 管理的設定中，目前只涵蓋處理方案（不含內建的 `default`）與預設處理方案。檔案是 YAML，頂層只有兩個鍵：`profiles`（名稱 → 處理方案的內容，與 `POST /api/profiles` 的 `config` 同形）與 `default_profile`（只有明確設定過才輸出）。鍵依字母排序、縮排 2 格，輸出穩定，可以放進版本控制，也可以原樣匯入。
+  - 不含 secrets：處理方案只有設定值與 prompt、provider 的引用名稱；API key、cookie、token、密碼雜湊不在這個流程碰到的任何資料中，單元測試在資料庫放了這些值再確認輸出沒有它們。
+  - API：`GET /api/config/export`（`read`）回 `{ "content": "<YAML>", "profiles": [名稱…], "default_profile"? }`；`POST /api/config/import`（`admin`）收 `{ "content": "<YAML>" }`（請求本體上限 4 MiB，YAML 上限 1 MiB），成功回 200 `{ "created": […], "updated": […], "unchanged": […], "default_profile"?, "default_changed" }`。scope 在讀取本體之前檢查。YAML 的解析與驗證都在 server 端，所以 `--server` 模式（token 的 scope 決定能不能匯出入）與本機模式行為相同。
+  - 匯入是「新增或取代同名處理方案」，不刪除檔案裡沒有的處理方案；先驗證整份，在**同一個交易**中才寫入，任何錯誤（驗證或寫入）都整份不套用。內容不正確回 422 `config_invalid`，`errors` 逐一列出欄位路徑，處理方案內的路徑加上 `profiles.<名稱>` 前綴（例如 `profiles.broken.language.targets`）。檢查項目：檔案大小（1 MiB）、YAML 語法（只能有一份文件；不接受別名、合併鍵、重複的鍵、非字串的鍵、NaN 與無限大、不認得的型別標籤）、不認識的頂層鍵、名稱規則（同 PRF）、不得覆蓋內建處理方案、每個處理方案用與 `POST /api/profiles` 完全相同的驗證（含 PRF-R5 的完整性與合併後的語意檢查）、`default_profile` 必須是匯入後存在的處理方案（檔案中的，或已經存在的，含內建的 `default`）。
+  - 取代同名處理方案沿用 PRF-R3：建立新版本，舊版本保留；已新增的影音綁定的是當時的版本，進行中與已完成的步驟不受影響。
+  - CLI：`config export` 預設輸出到 stdout（只有 YAML，可以直接轉向到檔案），`--out <file>`（別名 `--output`）寫到檔案（先寫暫存檔再改名）；`--json` 輸出 API 的回應。`config import` 成功時結束碼 0、輸出建立／更新／未變更的處理方案數量；內容不正確時結束碼 **1**，stderr 逐行列出欄位路徑（見待決問題）。權限：本機模式是 owner；`--server` 時 export 需要 `read`、import 需要 `admin`。
 - 儲存方式：secrets 表以 `(kind, name)` 為主鍵，cookie 是 `kind=cookie`、`name=<platform>`。內容用資料金鑰以 XChaCha20-Poly1305 加密，AAD 是 `kind/name`（`cookie/youtube`），每次加密用新的隨機 nonce；密文搬到別筆 secret 後無法解開。DB、WAL、log 都不會出現明文。
 - 執行時：每次呼叫 yt-dlp 時解密，在 `<data>/tmp` 以 `O_EXCL` 建立權限 `0600` 的暫存檔 `cookies-<platform>-<隨機>.txt`，每次呼叫一個新檔名（SEC-R7），子程序結束後刪除。
 - stderr 遮蔽：yt-dlp 讀 cookie 檔遇到格式有問題的行時，會在 stderr 印出含 cookie 值的 `skipping cookie file entry …`。stderr 進入錯誤訊息（`errclass.Error.Detail`）與 log 之前，含這段文字的整行以固定字串取代（`toolexec.RedactCookieLines`，YouTube 與 Bilibili 的 client 都套用），其他行不變。
@@ -75,3 +82,12 @@
 - cookie 上傳與執行中的步驟的競態（2026-11-14，SRC-B 審查）：步驟在沒有 cookie 時開始執行，使用者此時上傳，`ResumeBlocked` 找不到 `running` 的步驟；之後步驟回報需要 cookie 就會永遠 `blocked`。處理方式見 PIPE 介面的「執行中補上條件」，依據是 secrets 表 `(cookie, <platform>)` 的 `updated_at`。
 - 請求本體上限 512 KiB 的依據：內容上限 64 KiB，JSON 跳脫最壞展開成 6 倍（`\u00xx`）約 384 KiB。Huma 的 `MaxBodyBytes` 超過時只會回 413，所以 `POST /api/cookies` 在 Huma 之前先檢查（`cookieBodyLimit`），讓所有「cookie 太大」都是同一個 422 code；`MaxBodyBytes` 仍明確設為 512 KiB 當第二道防線。
 - 設定檔新增頂層的 `mcp`（2026-11-23，M2 S9 實作 AUTH-R11 時決定，依 /goal 採保守預設，**待 owner 追認**）：`mcp.allowed_hosts` 與 `mcp.allowed_origins` 是對外介面的基礎設定（同 listen 位址），只放在設定檔（SEC-R2），格式錯誤時啟動失敗並指出欄位。預設值見 AUTH 規格的介面。
+- `config export`／`import` 的範圍與格式（2026-11-23，依 /goal 採保守預設，待 owner 追認）。以下是依保守原則做的決定，需要時再放寬：
+  - 範圍只有 `profiles` 與 `default_profile`。prompt、頻道覆寫、全域設定（`PUT /api/settings/*`）、詞彙表、ASS 樣式、訂閱、預算、通知都**不**匯出，也不接受匯入（出現就是不認識的頂層鍵）。**已知限制：** 處理方案引用的自訂 prompt 不在檔案中，搬到另一個實例時目標實例要先有同名 prompt，否則匯入會因 `profiles.<名稱>.stages.<步驟>.prompt` 找不到而整份不套用；之後若要「整個實例搬家」，要一併涵蓋 prompt。
+  - 內建的 `default` 不匯出，匯入時也不得覆蓋（回 `profiles.default` 的錯誤）。但現行的 `PATCH /api/profiles/default` 允許修改內建 default 的內容（PRF-R7 只規定不能刪除；handoff 寫「不能修改」，與程式不一致），所以使用者對 `default` 做過的自訂**不會**被匯出。若要涵蓋，需要 owner 決定格式（例如允許 `profiles.default`，或另設 `builtin_overrides`）。
+  - 內容與目前版本完全相同（sha256 相同）的處理方案不新增版本，回報為 `unchanged`，讓重複匯入同一份檔案是冪等的；這和 `PATCH`（內容相同也新增版本，PRF D2）不同，因為匯入不是使用者逐一儲存。
+  - `default_profile` 只在資料庫中明確設定過預設處理方案時才匯出；檔案沒有這個鍵時匯入不改動預設處理方案。
+  - 處理方案的值必須是物件：`name:`（null）或純量都是錯誤，要寫 `name: {}`；不像 `POST /api/profiles` 把省略或 null 的 `config` 視為 `{}`，因為 YAML 中忘了縮排內容時 `name:` 會悄悄變成空的處理方案。
+  - 結束碼：`config import` 內容不正確時是 **1**，不是 CLI-R6 對 API 422 規定的 2。理由：檔案的內容不是命令列參數，而且 `features/SEC-config-secrets.feature` 的「An invalid config import changes nothing」要求 1。只有 `config_invalid` 這個 422 走這條規則，其他 400、422 維持 2。CLI 規格有一行交叉引用。
+  - YAML 解析器比標準嚴格（輸入是不可信的）：不接受別名與合併鍵（避免展開炸彈）、重複的鍵、非字串的鍵、NaN／無限大、多份文件、不認得的型別標籤；沒有加引號的日期（`2024-01-01`）保留原文字；巢狀上限 64 層、檔案上限 1 MiB。有 fuzz，並以「讀得進來的內容輸出再讀回來必須相同」為不變條件。
+  - API 用 JSON 外層（`{ "content": "<YAML>" }`）而不是直接收 `application/yaml`，和 `POST /api/cookies`、字幕匯入的 `content` 一致，OpenAPI 與 Huma 的驗證也直接適用；代價是 `curl` 要先包成 JSON。沒有做 `--dry-run`（只驗證不套用）；需要時加在 API 與 CLI 上都很小。

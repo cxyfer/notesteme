@@ -43,6 +43,8 @@ notesteme import <subtitle> --item <item> [--lang <l>] [--format srt|vtt|ass]   
 notesteme doctor [--json]
 notesteme mcp [--token <t>] [--list-tools] [--json]   （MCP-R1；M2：stdio 的 MCP server，轉送到 API 的 /mcp）
 notesteme backup | restore   （ADR-0007；在 OPS 實作，不屬於 M1 的 CLI 切片）
+notesteme config export [--out <path>] [--json]   （SEC-R10；M2：輸出 DB 管理的設定，不含 secrets）
+notesteme config import <file> [--json]   （SEC-R10；M2：先驗證整份，有錯誤就整份不套用）
 全域參數：--server <url> --token <t> --data <dir>（可以放在子命令之前或之後）
 ```
 
@@ -58,3 +60,4 @@ notesteme backup | restore   （ADR-0007；在 OPS 實作，不屬於 M1 的 CLI
 - client 模式的本機 socket 在 Windows 原生 binary 上如何處理（named pipe 或只支援 `--server`），M1 實作時決定；預設只支援 `--server`。
 - `doctor` 的網路連線檢查要等 OPS 的「自我檢查用的已知影片」，M1 的 CLI 切片先不做（測試中真的連外會被 fakenet 記為違規）。
 - 場景修改（2026-11-13，經 owner 同意）：「JSON output matches the API」的 Given 改為處理到 `metadata`，原本只新增、不執行 worker，標題一定是空的；「A bad argument exits with 2」改為帶 `<item>` 並給不支援的 `--format`，原本缺少 `<item>` 就會回 2，驗證不到格式檢查。
+- `config import` 的結束碼（2026-11-23，依 /goal 採保守預設，待 owner 追認）：內容不正確（API 回 422 `config_invalid`）時是 **1**，不是 CLI-R6 對 API 422 規定的 2，因為檔案的內容不是命令列參數，而且 SEC-R10 的場景要求 1；`Result.ErrorCode` 是 `config_invalid`。其他 400、422 仍是 2。細節見 SEC 規格的待決問題。

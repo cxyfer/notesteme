@@ -97,7 +97,7 @@
 - 「任務正在執行」同時要求資料庫中的租約有效，且對應的外部工具程序仍然存活。
 - 場景中的 `/data`、`/config` 等路徑，會換成這個場景專用的暫存目錄。對應規則（虛擬路徑 → 實際路徑）：
   - `/data` → `<場景根目錄>/data`、`/config` → `<場景根目錄>/config`、`/media` → `<場景根目錄>/media`、`/backups` → `<場景根目錄>/backups`。
-  - `/tmp/<x>` → `<場景根目錄>/tmp/<x>`：場景中的 `/tmp/...`（例如上傳用的 `/tmp/fansub.ass`）不寫到真正的 `/tmp`。檔案步驟、`the owner uploads "/tmp/..."` 與 `When the owner sends … with:` 的請求 body 都套用這個對應（讓 body 裡的 `path` 指到 `Given the file … contains:` 寫的檔案，例如 OUT-R8、R13～R15）。
+  - `/tmp/<x>` → `<場景根目錄>/tmp/<x>`：場景中的 `/tmp/...`（例如上傳用的 `/tmp/fansub.ass`）不寫到真正的 `/tmp`。檔案步驟、`the owner uploads "/tmp/..."`、`When the owner sends … with:` 的請求 body 與 `When the owner runs` 的指令參數（例如 `notesteme config import /tmp/settings.yaml`）都套用這個對應（讓 body 裡的 `path` 指到 `Given the file … contains:` 寫的檔案，例如 OUT-R8、R13～R15）。
 - After hook 的 secret 掃描（NFR-SEC-3）除了 log 與假工具的呼叫紀錄，也涵蓋 `/backups`：其中的 `.tar.gz` 解壓後，逐一檢查每個項目的內容不含 master key 的值（OPS-R1）。
 - `Given {string} has {word} captions in {string}` 沒有對應的 fixture 時，產生 120 句的字幕軌。
 
