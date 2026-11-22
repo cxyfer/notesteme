@@ -12,6 +12,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/llm"
 	"github.com/cxyfer/notesteme/internal/media"
+	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
 
@@ -379,5 +380,17 @@ func TestSegmentLargeMergeIsFast(t *testing.T) {
 	}
 	if len(got) < n/10 || !sameSegmentKeys(cues, got) {
 		t.Fatalf("重新分組後有 %d 句", len(got))
+	}
+}
+
+// split_timing_audio: never 時不下載音訊（SEG-R9）：finder 不碰 Pipeline（nil 也不會 panic），直接回傳沒有靜音。
+func TestSilenceFinderNeverDownloads(t *testing.T) {
+	f := newSilenceFinder(nil, store.Item{}, TimingSettings{SplitTiming: SplitWhenNeeded, SplitTimingAudio: SplitAudioNever}, 12000)
+	sils, err := f.get(context.Background())
+	if err != nil || sils != nil || f.dir != "" || f.warn != "" {
+		t.Fatalf("never 時不應該下載：%v %v %q %q", sils, err, f.dir, f.warn)
+	}
+	if auto := newSilenceFinder(nil, store.Item{}, TimingSettings{SplitTimingAudio: SplitAudioAuto}, 0); !auto.enabled {
+		t.Fatal("auto 時要找停頓點")
 	}
 }

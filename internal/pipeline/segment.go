@@ -181,7 +181,7 @@ func (p *Pipeline) assembleSegment(ctx context.Context, it store.Item, job *llmJ
 	if err != nil {
 		return llmAssembled{}, err
 	}
-	finder := &silenceFinder{p: p, it: it, enabled: ts.SplitTimingAudio == SplitAudioAuto, untilMS: untilMS}
+	finder := newSilenceFinder(p, it, ts, untilMS)
 	defer finder.close()
 	b := &segBuilder{ctx: ctx, cues: job.tr.Cues, split: ts.SplitTiming, rules: rules, silences: finder.get}
 	cues, err := b.build(marks)
@@ -771,6 +771,11 @@ type silenceFinder struct {
 	dir  string
 	// warn 是不能使用 silencedetect 的原因（改用插值）；空字串代表沒有問題。
 	warn string
+}
+
+// newSilenceFinder 依 split_timing_audio 建立：never 時永遠不下載音訊，段內切分直接插值（SEG-R9）。
+func newSilenceFinder(p *Pipeline, it store.Item, ts TimingSettings, untilMS int64) *silenceFinder {
+	return &silenceFinder{p: p, it: it, enabled: ts.SplitTimingAudio == SplitAudioAuto, untilMS: untilMS}
 }
 
 func (f *silenceFinder) get(ctx context.Context) ([]media.Silence, error) {
