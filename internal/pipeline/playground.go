@@ -76,11 +76,13 @@ type PlaygroundResult struct {
 }
 
 // stageOfPrompt 依 prompt 的類型找出要跑的步驟。
-// 不是 LLM 步驟的類型（summary、chapters…）回 422；是 LLM 步驟但還沒有登記（segment、translate）回 501。
+// 不是 LLM 步驟的類型（summary、chapters…）回 422；是 LLM 步驟但還不能試跑（沒有登記，或輸出不是一對一 cue 的 segment）回 501。
 func stageOfPrompt(kind string) (string, error) {
 	switch kind {
 	case StageSegment, StageCorrect, StageTranslate:
-		if _, ok := llmStages[kind]; !ok {
+		// 一對一的步驟（apply、fallback）才能用通用的流程試跑；輸出不是一對一 cue 的步驟（assemble，例如 segment）
+		// 要自己合併與套用，試跑還沒有支援。
+		if def, ok := llmStages[kind]; !ok || def.assemble != nil || def.apply == nil || def.fallback == nil {
 			return "", &NotImplementedError{What: "試跑 " + kind + " 的提示詞"}
 		}
 		return kind, nil
