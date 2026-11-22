@@ -510,7 +510,8 @@ func TestClientSendsWithTokenFromOriginPendsOnNotImplemented(t *testing.T) {
 	if err := s.aTokenWithScopes("agent", "read,agent"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.clientSendsWithTokenFromOrigin("POST /mcp", "agent", "https://evil.example.com"); err != nil {
+	// /mcp 已經實作（S9）；改用另一條帶 read scope 就會回 501 的路由（read_state 尚未支援）。
+	if err := s.clientSendsWithTokenFromOrigin("GET /api/items?read_state=unread", "agent", "https://evil.example.com"); err != nil {
 		t.Fatalf("clientSendsWithTokenFromOrigin：%v", err)
 	}
 	if s.last == nil || s.last.status != http.StatusNotImplemented || s.last.preRoute403 {
