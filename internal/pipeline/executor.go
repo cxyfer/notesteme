@@ -130,7 +130,7 @@ func planChain(eff Effective, from, until string, sc StageContext) ([]StageResol
 // 由 Handle 的分派與 Rerun 的 501 判斷共用，之後的切片完成時在這裡登記。
 func stageImplemented(stage, executor string) bool {
 	switch {
-	case stage == StageMetadata || stage == StageTranscript || stage == StageNormalize:
+	case stage == StageMetadata || stage == StageTranscript || stage == StageNormalize || stage == StagePublish:
 		return executor == ExecutorLocal
 	case stage == StageTranslate && executor == ExecutorOpenCC:
 		return true

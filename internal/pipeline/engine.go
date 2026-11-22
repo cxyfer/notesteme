@@ -154,6 +154,8 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		res, err = p.runTranslateOpenCC(ctx, it, eff)
 	case usesLLMEngine(run.Stage, executor):
 		res, err = p.runLLM(ctx, t, run, it, eff)
+	case run.Stage == StagePublish:
+		res, err = p.runPublish(ctx, it, eff)
 	default:
 		err = &errclass.Error{Class: errclass.ClassPermanent, Source: "pipeline", Detail: "不認識的步驟 " + run.Stage}
 	}
