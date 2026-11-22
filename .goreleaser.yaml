@@ -3,6 +3,13 @@ version: 2
 
 project_name: notesteme
 
+# 先建置 Web UI，go:embed 才會包含真正的前端（否則 binary 只有 placeholder，見 internal/webui）。
+# 需要 Node（版本見 web/client/.nvmrc）；CI 的 release-check 會確認 binary 內嵌的是建置產物。
+before:
+  hooks:
+    - npm --prefix web/client ci --no-audit
+    - npm --prefix web/client run build
+
 builds:
   - id: notesteme
     main: ./cmd/notesteme

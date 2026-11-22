@@ -1,8 +1,12 @@
-# Docker build context 只需要 go.mod、go.sum、cmd/、internal/。
+# Docker build context 只需要 go.mod、go.sum、cmd/、internal/ 與 web/client（前端原始碼）。
 *
 !go.mod
 !go.sum
 !cmd/
 !internal/
+!web/client/
+web/client/node_modules/
+web/client/dist/
+web/client/coverage/
 **/*_test.go
 **/testdata/

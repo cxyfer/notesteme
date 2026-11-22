@@ -7,6 +7,18 @@
 ARG GO_VERSION=1.25
 ARG DEBIAN_VERSION=trixie
 ARG DENO_VERSION=2.9.8
+# 與 web/client/.nvmrc、.github/workflows/web.yml 一致（Node LTS）。
+ARG NODE_VERSION=24.12.0
+
+# ---- 建置 Web UI（web/client → dist，ADR-0008）----
+# 產物與平台無關：只在 build 平台上建置一次，不在 QEMU 裡跑 Node。
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-${DEBIAN_VERSION}-slim AS web
+WORKDIR /src/web/client
+COPY web/client/package.json web/client/package-lock.json web/client/.npmrc ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --no-audit
+COPY web/client ./
+RUN npm run build
 
 # ---- 建置 Go binary ----
 # 在 build 平台上交叉編譯，多架構建置時不必在 QEMU 裡跑 Go 編譯器。
@@ -19,6 +31,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 COPY cmd ./cmd
 COPY internal ./internal
+# go:embed 的 web/client（Go 檔與建置產物）；沒有這一步，binary 只會有「UI 尚未建置」的 placeholder。
+COPY web/client/*.go ./web/client/
+COPY --from=web /src/web/client/dist ./web/client/dist
 
 ARG TARGETOS
 ARG TARGETARCH
