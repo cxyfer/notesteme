@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -165,7 +166,38 @@ type frame struct {
 	name  xml.Name
 	attrs []xml.Attr
 	text  strings.Builder
+	// brk 代表剛經過一個區塊元素的邊界：下一段文字與前面的文字之間要有間隔（見 add）。
+	brk bool
 }
+
+// add 把文字加到這個元素的文字裡。剛經過區塊邊界（brk）而兩邊都沒有空白時補一個空格：
+// 精簡的 XHTML 會省略區塊之間的空白（<p>First</p><p>second.</p>），版面靠區塊本身分開，直接串接會變成 Firstsecond.。
+func (f *frame) add(s string) {
+	if s == "" {
+		return
+	}
+	if f.brk {
+		f.brk = false
+		cur := f.text.String()
+		last, _ := utf8.DecodeLastRuneInString(cur)
+		first, _ := utf8.DecodeRuneInString(s)
+		// 用 unicode.IsSpace 判斷：&#160;（U+00A0）、U+3000 等非 ASCII 空白本身就是邊界，不能再補一個。
+		if cur != "" && !unicode.IsSpace(last) && !unicode.IsSpace(first) {
+			f.text.WriteByte(' ')
+		}
+	}
+	f.text.WriteString(s)
+}
+
+// xhtmlBlocks 是文字抽取時要當成邊界的 XHTML 區塊元素（行內元素如 b、i、a 不算）。
+var xhtmlBlocks = map[string]bool{
+	"p": true, "div": true, "br": true, "hr": true, "li": true, "ul": true, "ol": true, "dl": true, "dt": true, "dd": true,
+	"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true, "blockquote": true, "pre": true,
+	"table": true, "tr": true, "td": true, "th": true, "section": true, "article": true, "header": true, "footer": true,
+	"figure": true, "figcaption": true, "address": true,
+}
+
+func isBlockElement(n xml.Name) bool { return xhtmlBlocks[strings.ToLower(n.Local)] }
 
 // isNS 回報元素是否屬於某個 namespace：Space 等於 URI，或（宣告缺漏時）等於慣用的前綴。
 func isNS(n xml.Name, uri, prefix string) bool {
@@ -233,13 +265,16 @@ func Parse(r io.Reader) (*Feed, error) {
 				return nil, ErrNotFeed
 			}
 			f := &frame{name: t.Name, attrs: t.Attr}
+			if isBlockElement(t.Name) {
+				stack[len(stack)-1].brk = true
+			}
 			stack = append(stack, f)
 			local := strings.ToLower(t.Name.Local)
 			if cur == nil && ((!atom && local == "item") || (atom && local == "entry")) {
 				cur, curFrame = &epDraft{}, f
 			}
 		case xml.CharData:
-			stack[len(stack)-1].text.Write(t)
+			stack[len(stack)-1].add(string(t))
 		case xml.EndElement:
 			if len(stack) <= 1 {
 				continue
@@ -247,6 +282,14 @@ func Parse(r io.Reader) (*Feed, error) {
 			f := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 			parent := stack[len(stack)-1]
+			// 巢狀標記裡的文字（Atom 的 type="xhtml" 的 title、summary、content 都把文字放在子元素 div 裡）屬於外層的欄位：
+			// 結束時把文字累積到父元素。父元素是根、channel 或整集時不累積：這些容器自己沒有文字欄位。
+			if parent != stack[0] && !(cur != nil && parent == curFrame) && (atom || len(stack) > 2) {
+				parent.add(f.text.String())
+			}
+			if isBlockElement(f.name) {
+				parent.brk = true
+			}
 			switch {
 			case cur != nil && f == curFrame:
 				ep := cur.finish()

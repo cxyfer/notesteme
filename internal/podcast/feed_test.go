@@ -127,6 +127,68 @@ func TestParseNamespaceMatching(t *testing.T) {
 	}
 }
 
+// Atom 的 type="xhtml" 文字建構把文字放在子元素 div 裡：標題與描述不能因此變空（Codex P2）。
+func TestParseAtomXHTMLTextConstructs(t *testing.T) {
+	body := `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:x="http://www.w3.org/1999/xhtml">
+<title type="xhtml"><x:div>Atom <x:b>XHTML</x:b> Show</x:div></title>
+<entry>
+  <id>tag:example.com,2025:x1</id>
+  <title type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">Entry <i>One</i></div></title>
+  <summary type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>First</p> <p>second.</p></div></summary>
+  <link rel="enclosure" href="https://media.example.com/x1.m4a" type="audio/mp4"/>
+</entry>
+</feed>`
+	f, err := Parse(strings.NewReader(body))
+	if err != nil || len(f.Episodes) != 1 {
+		t.Fatalf("err = %v，episodes = %d", err, len(f.Episodes))
+	}
+	if f.Title != "Atom XHTML Show" {
+		t.Errorf("feed 標題 = %q", f.Title)
+	}
+	if ep := f.Episodes[0]; ep.Title != "Entry One" || ep.Description != "First second." {
+		t.Errorf("title = %q，description = %q", ep.Title, ep.Description)
+	}
+}
+
+// 精簡的 XHTML 省略區塊之間的空白，區塊本身就是邊界：抽出的文字要有間隔，行內元素與原有的空白則不變（Codex P2）。
+func TestParseAtomXHTMLBlockBoundaries(t *testing.T) {
+	for _, tt := range []struct{ name, xhtml, want string }{
+		{"相鄰段落", `<p>First</p><p>second.</p>`, "First second."},
+		{"段落前後有文字", `Intro<p>text</p>tail`, "Intro text tail"},
+		{"換行", `line<br/>two`, "line two"},
+		{"清單", `<ul><li>a</li><li>b</li><li>c</li></ul>`, "a b c"},
+		{"標題與內文", `<h2>Notes</h2><p>Body</p>`, "Notes Body"},
+		{"行內元素不加間隔", `<b>foo</b>bar <i>baz</i>qux`, "foobar bazqux"},
+		{"原有的空白不重複", "<p>First</p>\n<p>second.</p>", "First\nsecond."},
+		{"首尾不留間隔", `<p>only</p>`, "only"},
+		// 已經有非 ASCII 空白（&#160;、U+3000）當邊界時不再補空格（Codex P2）。
+		{"不換行空白已是邊界", `<p>First&#160;</p><p>second</p>`, "First\u00a0second"},
+		{"下一段開頭的不換行空白", `<p>First</p><p>&#160;second</p>`, "First\u00a0second"},
+		{"全形空白已是邊界", `<p>第一段　</p><p>第二段</p>`, "第一段　第二段"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			body := `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>Show</title>
+<entry>
+  <id>tag:example.com,2025:b1</id>
+  <title>Entry</title>
+  <summary type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">` + tt.xhtml + `</div></summary>
+  <link rel="enclosure" href="https://media.example.com/b1.m4a" type="audio/mp4"/>
+</entry>
+</feed>`
+			f, err := Parse(strings.NewReader(body))
+			if err != nil || len(f.Episodes) != 1 {
+				t.Fatalf("err = %v，episodes = %d", err, len(f.Episodes))
+			}
+			if got := f.Episodes[0].Description; got != tt.want {
+				t.Errorf("description = %q，預期 %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseAtom(t *testing.T) {
 	body := `<?xml version="1.0"?>
 <feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en">
