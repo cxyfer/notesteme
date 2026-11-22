@@ -22,7 +22,18 @@ Feature: Translate and convert Chinese scripts
 
   @TRN-01 @TRN-R1
   Scenario: Several targets share one corrected transcript
-    Given the item "yt:talk01xxxxx" has been processed up to "correct"
+    Given the profile "trn-corrected" is:
+      """
+      stages:
+        correct: { executor: api, provider: anthropic, model: fixture-model, prompt: correct-default }
+        translate: { executor: api, provider: anthropic, model: fixture-model, prompt: translate-default }
+      language:
+        targets: [zh-Hant-TW]
+        variant_strategy: convert
+      """
+    And the default profile is "trn-corrected"
+    And the LLM provider "anthropic" answers "correct" with "correct-echo"
+    And the item "yt:talk01xxxxx" has been processed up to "correct"
     And the LLM provider "anthropic" answers "translate" with "translate-echo-target"
     When the owner sends "POST /api/items/yt:talk01xxxxx/rerun" with:
       """
