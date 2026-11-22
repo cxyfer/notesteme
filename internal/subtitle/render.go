@@ -23,7 +23,7 @@ var ErrUnsupportedFormat = errors.New("subtitle: unsupported format")
 // ContentType 回傳格式對應的 Content-Type；未知格式回傳 application/octet-stream。
 func ContentType(format string) string {
 	switch format {
-	case FormatSRT:
+	case FormatSRT, FormatBilingualSRT:
 		return "application/x-subrip; charset=utf-8"
 	case FormatVTT:
 		return "text/vtt; charset=utf-8"
@@ -31,6 +31,8 @@ func ContentType(format string) string {
 		return "text/plain; charset=utf-8"
 	case FormatCuesJSON:
 		return "application/json; charset=utf-8"
+	case FormatASS:
+		return "text/x-ssa; charset=utf-8"
 	}
 	return "application/octet-stream"
 }
@@ -38,8 +40,10 @@ func ContentType(format string) string {
 // FileExt 回傳格式對應的副檔名（不含點）；未知格式回傳空字串。
 func FileExt(format string) string {
 	switch format {
-	case FormatSRT, FormatVTT, FormatTXT:
+	case FormatSRT, FormatVTT, FormatTXT, FormatASS:
 		return format
+	case FormatBilingualSRT:
+		return "srt"
 	case FormatCuesJSON:
 		return "json"
 	}

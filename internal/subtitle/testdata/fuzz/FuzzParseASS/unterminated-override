@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("[Events]\nFormat: Start, End, Text\nDialogue: 0:00:01.00,0:00:02.00,{\\an8 broken\\N\\h\n")
