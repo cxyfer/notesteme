@@ -1,6 +1,6 @@
 # SPB：SponsorBlock
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M3
 - 相關：plan 第 5、10、12 節；ADR-0005、ADR-0014、[ADR-0020](../adr/0020-m3-stages-notes-and-vault.md)
 - 驗收場景：[`features/SPB-sponsorblock.feature`](../../features/SPB-sponsorblock.feature)

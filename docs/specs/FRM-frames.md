@@ -1,6 +1,6 @@
 # FRM：關鍵畫面
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M3
 - 相關：plan 第 5、10 節；ADR-0002、ADR-0005、ADR-0009、[ADR-0020](../adr/0020-m3-stages-notes-and-vault.md)；UI [影音詳情](../ui/pages.md#4-影音詳情)（畫面分頁）、[處理方案](../ui/pages.md#8-處理方案)（第 5 步關鍵畫面）
 - 驗收場景：[`features/FRM-frames.feature`](../../features/FRM-frames.feature)

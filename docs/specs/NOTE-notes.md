@@ -1,6 +1,6 @@
 # NOTE：筆記
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M3
 - 相關：plan 第 5、12 節；ADR-0002、ADR-0003、ADR-0005、ADR-0014、ADR-0019、[ADR-0020](../adr/0020-m3-stages-notes-and-vault.md)；UI [影音詳情](../ui/pages.md#4-影音詳情)（筆記分頁）、[筆記模板](../ui/pages.md#10-筆記模板)、[處理方案](../ui/pages.md#8-處理方案)（第 6 步筆記）
 - 驗收場景：[`features/NOTE-notes.feature`](../../features/NOTE-notes.feature)

@@ -1,6 +1,6 @@
 # GEM：Gemini 直接生成
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M3
 - 相關：plan 第 12、24 節（M0 的 Gemini 限制）；ADR-0003（例外）、ADR-0014、ADR-0019、[ADR-0020](../adr/0020-m3-stages-notes-and-vault.md) 第 7 點；UI [處理方案](../ui/pages.md#8-處理方案)（第 6 步筆記）
 - 驗收場景：[`features/GEM-gemini.feature`](../../features/GEM-gemini.feature)

@@ -1,6 +1,6 @@
 # CHAP：自動章節
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M3
 - 相關：plan 第 5、12 節；ADR-0002、ADR-0003、ADR-0019、[ADR-0020](../adr/0020-m3-stages-notes-and-vault.md)；UI [影音詳情](../ui/pages.md#4-影音詳情)（章節清單）
 - 驗收場景：[`features/CHAP-chapters.feature`](../../features/CHAP-chapters.feature)

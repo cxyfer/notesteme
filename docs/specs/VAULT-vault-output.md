@@ -1,6 +1,6 @@
 # VAULT：輸出到 Vault 與 hook
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M3
 - 相關：plan 第 11、12、19 節；ADR-0009、ADR-0010、ADR-0013、ADR-0014、[ADR-0020](../adr/0020-m3-stages-notes-and-vault.md) 第 6、8 點；OUT（OUT-R4、R11、R12 與待決問題 S8）；DEL-R9；UI [設定](../ui/pages.md#12-設定)（輸出分區）、[影音詳情](../ui/pages.md#4-影音詳情)（筆記分頁的寫入狀態）
 - 驗收場景：[`features/VAULT-vault-output.feature`](../../features/VAULT-vault-output.feature)
