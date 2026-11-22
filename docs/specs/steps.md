@@ -249,10 +249,10 @@ fixture 在 `features/fixtures/llm/<名稱>`，沒有 `.json` 時自動補上。
 | 步驟 | 意思 |
 |---|---|
 | `Given an agent {string} using the token {string}` | 建立一個 Agent 身分 |
-| `When the agent {string} claims up to {int} tasks of kind {string}` | 呼叫 `claim_tasks` |
-| `Then the agent {string} holds {int} tasks` | 目前持有的任務數 |
-| `When the agent {string} submits {string} for its task {int}` | 對第 n 個持有的任務呼叫 `submit_task`，結果用 fixture |
-| `When the agent {string} submits {string} for all its tasks` | 對所有持有的任務依序提交 |
+| `When the agent {string} claims up to {int} tasks of kind {string}` | 呼叫 `claim_tasks`（`kinds` 是這一種，`max` 是 N）；結果也是最近一次的 tool 呼叫，`the tool result contains:`、`the tool call fails with` 斷言它；tool 回錯誤時步驟本身不失敗 |
+| `Then the agent {string} holds {int} tasks` | 目前持有的任務數：領取到、還沒交出去的任務中，資料庫裡仍以領取時的 `lease_token` 被這個 Agent（token 名稱）領取的 |
+| `When the agent {string} submits {string} for its task {int}` | 對第 n 個領取到、還沒交出去的任務（依領取順序）呼叫 `submit_task`；輸出由 LLM fixture 以這個任務的 `context`、`cues` 產生（同 fake LLM），fixture 的 `model` 送成 `model` |
+| `When the agent {string} submits {string} for all its tasks` | 對所有目前持有的任務依序提交；任何一個沒有被接受時步驟失敗 |
 | `Then no task is held by both {string} and {string}` | 兩個 Agent 持有的任務沒有交集 |
 | `When the agent {string} extends the lease of its task {int}` | 呼叫 `extend_lease` |
 | `When the agent {string} releases its task {int} with the reason {string}` | 呼叫 `release_task` |

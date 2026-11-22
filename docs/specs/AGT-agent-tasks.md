@@ -49,4 +49,22 @@
 
 ## 待決問題
 
-- 無。
+S10 實作時的決定（2026-11-23，依 /goal 採保守預設，待 owner 追認）：
+
+- A1 並行上限（AGT-R2 的「`llm` 資源類別剩餘的並行數」）：解讀成「這個 Agent 已持有的 `llm` 任務加上這次領取的，不超過 `llm` 類別的並行上限」（`PATCH /api/queue/limits` 的設定值；測試用的 `SerialLLM` 不影響）。字面的「上限減去所有被領取的 `llm` 任務」不可行：AGT-R3 場景中兩個 Agent 各領 3 個，同時被領取 6 個，超過預設上限 4。整個佇列或 `llm` 類別暫停時不發出新任務（PIPE-R10）。計數與領取在同一個寫入交易中。
+- A2 介面細節：
+  - `claim_tasks(kinds, max)`：`kinds` 只能是 `correct`、`segment`（省略時兩種都領）；`max` 省略時用 `max_claims`。回傳 `{tasks: [...]}`，每項是 `task_id`、`lease_token`、`lease_until`（RFC 3339，UTC）、`kind`、`item`（代號）、`item_id`、`chunk`、`chunks`、`prompt`（`{system, user}`：和 API executor 送給 provider 的相同，`user` 是 `<video_metadata>` 加上 `<transcript_data>`）、`context`、`cues`（`[{i, text}]`）、`output_schema`。
+  - `extend_lease(task_id, lease_token)`：新的到期時間是「現在加上一個 `agent.lease`」，不是在原本的到期時間上累加；已到期（即使還沒被放回）的租約不能延長。
+  - `submit_task(task_id, lease_token, output, model?)`：`output` 是 JSON 物件，也接受內容是 JSON 的字串；`model` 是 AGT-R10 的 `model_reported`（去掉控制字元，最多 200 字）。租約已到期（即使還沒被放回）、被放回、被別人領取或改用 API 時一律回 `lease_expired`。
+  - `release_task(task_id, lease_token, reason?)`：原因去掉控制字元，最多 500 字，記在 `tasks.release_reason`。
+  - ADR-0004 的簽名只有 `lease_token`；實作多要求 `task_id`，讓錯誤能分辨「任務不存在」與「租約失效」。
+- A3 `agent.*` 的來源與預設值：`max_claims` 不屬於任何影音，讀全域設定加預設處理方案（預設 4）；`lease`（預設 10m）、`timeout`（預設 24h）、`on_timeout`（預設 `fallback_api`）、`on_validation_failure`（`requeue`｜`fallback_api`，預設 `requeue`）讀任務所屬 stage run 的設定快照（notify 場景只有那次重跑用 `agent-notify`）。
+- A4 執行方式：`executor: agent` 的 LLM 步驟和 api 共用 LLM 引擎（ADR-0019 的 plan → chunk → assemble）：plan 與 assemble 由內建 worker 執行，只有 chunk 任務的 executor 是 `agent`（資源類別 `llm`）。所以步驟建立後先是 `pending`，plan 完成、chunk 任務建立後才是 `awaiting_agent`（AGT-R1）；有任務被領取時是 `running`，沒有任務被領取、還有任務等待時回到 `awaiting_agent`。指定重跑的 `chunks`（LLM L12）只用於 api。
+- A5 驗證（AGT-R5）：Agent 的提交用同一個 `Spec.Validate`、同一份 chunk 輸入（`prepareLLM` 重建，與 `RunChunk` 相同），寫回用與 api chunk 任務相同的 `finishChunkTx`（所有 chunk 都完成才建立 assemble 任務）；correct 的一對一、相似度與 segment 的 `text_changed`、`alignment` 都在其中，沒有另外一份。
+- A6 translate：translate 的驗證與退回（TRN-R5～R7，多目標、句群與切分標記）在 `runTranslateLLM` 中，還沒有抽成 Agent 提交可以共用的形式。在那之前 `translate` 加 `executor: agent` 時步驟以 permanent 失敗，訊息「translate 還不支援 agent 執行方式，請改用 api。」，`claim_tasks` 也不接受 `translate`，不會有沒經過 TRN 檢查的 Agent 結果被採用。
+- A7 attempts：領取時 `attempts` 加 1；租約到期放回時保留（AGT-R4 的「加 1」），`release_task` 放回時減回去（AGT-R8）；同一份租約連續 3 次驗證失敗放回時保留（計入）。Agent 任務的 attempts 沒有上限（到期多少次都會放回）。重新啟動（PIPE-R11）與正常關閉（PIPE-R12）不動 Agent 的租約：租約屬於 Agent，不屬於 worker。
+- A8 逾時（AGT-R9）：「沒有被領取」從任務建立、或最近一次被放回佇列時起算（`tasks.deadline_at`）。`fallback_api` 時這個 stage run 所有等待中與被領取中的 Agent 任務一起改用 API；`notify`（或 `fallback_api` 但沒有 `provider`、`model`）時步驟 `blocked`，訊息依設定的時長（24h 寫成「24 小時」），只通知一次；這時任務仍可以被 Agent 領取，有 Agent 正在處理其他 chunk 時不打斷。sweeper 是 worker 每一輪開頭的定期工作，production 閒置時睡到最早的租約到期或領取期限。
+- A9 來源紀錄（AGT-R10）：有任何 chunk 是 Agent 提交的，產出的 `executor` 是 `agent`、`agent` 是 token 名稱（多個 Agent 時以逗號連接）、`model_reported` 只在每個 Agent chunk 都回報同一個模型時寫、`model_verified: false`；沒有任何 chunk 由 provider 產生時不寫 `provider`、`model`。`chunks[]` 中 Agent 提交的項目另有 `executor`、`agent`、`model_reported`。Agent 的結果不寫步驟層的快取鍵，chunk 層也不重用（`executor = 'api'` 的 chunk 才重用），之後同設定的 api 重跑不會把未驗證的結果當成 provider 的。
+- A10 切換執行方式（AGT-R11）：`POST /api/items/:id/switch-executor` 的 body 是 `{stage, executor}`，`POST /api/tasks/:id/switch-executor` 是 `{executor}`；`executor` 目前只能是 `api`，scope 是 `ingest`（AUTH 規格的 M2 路由 scope）。回 200 `{item_id, stage, executor, tasks}`；沒有可以切換的 Agent 任務回 409 `no_agent_tasks`，處理方案沒有為這個步驟設定 `provider` 與 `model` 回 409 `api_not_configured`。切換後原租約立即失效（舊 token 回 `lease_expired`），任務交給內建 worker，步驟回到 `pending`。
+- A11 新增的資料欄位：migration 00016 的 `tasks.agent_failures`、`tasks.release_reason`、`llm_chunks.executor`、`llm_chunks.agent`、`llm_chunks.model_reported`。
+- 已知限制：`GET /api/queue` 仍只列 builtin 的任務，Agent 任務的佇列畫面留給 UI 切片；提交沒有 token 用量（`usage` 是 0）；`claim_tasks` 組不出某個任務的上下文時（例如輸入的產出已被清除），那個任務放回佇列、不計次數，只記 log。
