@@ -65,4 +65,12 @@
 - L9：限流與驗證重試（2026-11-22，S3 實作時決定，待 owner 追認）。chunk 的第一次請求在額度不夠時讓任務等待（LLM-R7）；同一個 chunk 的驗證重試立刻送出（LLM-R5），額度可以透支，由之後的請求等待補回，所以短時間內實際的請求數可能略高於 `rpm`。限流的狀態在程序內，重啟後歸零。`rpm`、`tpm` 只能在設定檔設定（`llm.providers.<id>`），設定頁還沒有對應的欄位。
 - L10：chunk 任務與步驟狀態（2026-11-22，S3 實作時決定，見 ADR-0019）。每個 stage run 是 plan → 每個 chunk 一個任務 → assemble。步驟狀態在 chunk 之間只反映最近一次的事件（例如一個 chunk 等待重試、另一個正在執行時顯示 running）。一個 chunk 讓步驟 blocked 或 failed 時，取消其他還沒領取的 chunk 任務，已完成的 chunk 結果保留，修正後重跑會重用。
 - L11：快取的分層（2026-11-22，S3 實作時決定，見 ADR-0019）。步驟層（PIPE-R5）與 chunk 層（LLM-R8）都會命中；有退回 chunk 的產出不寫入步驟層的快取鍵，所以不指定 `chunks` 的一般重跑也只會重新送出退回的 chunk；`chunks` 指定的 chunk 兩層都繞過。
-- L12：`POST /api/items/:id/rerun` 的 `chunks`（2026-11-22，S3 實作時決定，待 owner 追認）。只能用在 LLM 步驟（`from` 是 segment、correct、translate），否則回 422（S0 時是 501）；每項必須是從 1 起算的整數，否則 422。只套用在 `from` 的那個步驟；超過 chunk 總數的編號忽略；步驟不是用 api executor 時（agent、off）不使用。影響：呼叫端不會因為編號超出而收到錯誤，要從產出來源紀錄的 `chunks[]` 得知實際的 chunk 數。
+- L12：`POST /api/items/:id/rerun` 的 `chunks`（2026-11-22，S3 實作時決定，同日 owner 決定編號的檢查）。只能用在 LLM 步驟（`from` 是 segment、correct、translate），否則回 422（S0 時是 501）；每項必須是從 1 起算的整數，否則 422。編號對照現行的切分（影音的這個步驟最近一次切分的 chunk 數）：還沒有切分過時回 422「尚無 chunk 切分」，超過 chunk 總數時回 422（path 是 `chunks[i]`）。只套用在 `from` 的那個步驟；步驟不是用 api executor 時（agent、off）不使用。重跑的覆寫改變了 `llm.chunk.*` 時，對照的仍是之前的切分。
+- L13：LLM 設定的上限（2026-11-22，S3 審查後加上）。`llm.chunk.max_tokens` 1～200000、`llm.chunk.overlap_cues` 與 `llm.chunk.context_cues` 0～100、`llm.max_validation_retries` 0～10，超過時處理方案與覆寫回 422。設定檔的 provider id 正規化（`-` 換成 `_`）後相同時載入失敗，因為會讀到同一個 API key 環境變數。
+- L15：LLM-R6 的例外（2026-11-22，S3 審查時決定）。OpenAI 額度用盡的 429（`error.type: insufficient_quota`）不是暫時性的錯誤，步驟 `blocked`（`needs_action`），訊息「LLM provider <id> 的額度不足（insufficient_quota）。」，動作「檢查 provider 額度」，不重試。其他 429 照 LLM-R6。
+- L14：S3 的已知限制（2026-11-22，S3 審查時記錄，待 owner 追認；之後的切片處理）：
+  - plan 之後，chunk 與 assemble 任務各自重新讀取影音的標題、章節與說明來組固定前綴。plan 與 chunk 之間這些資料被修改時，固定前綴的 sha256 與快取鍵會與 plan 時不一致。建議之後把固定前綴的 sha256、chunk 範圍與步驟層的快取鍵存進 `llm_chunks.plan_json`，chunk 與 assemble 直接沿用。
+  - 前一個 chunk 退回（fallback）、後一個 chunk 的重疊區修正成功時，合併仍以前一個 chunk（也就是原文）為準，符合 LLM-R1「重疊區的輸出以前一個 chunk 為準」的字面。
+  - 驗證重試途中遇到 429、5xx 或 chunk 的時間上限時，任務放回佇列，之前幾次請求的 token 用量沒有記錄。
+  - TPM 的預扣只估算輸入的 token，不含輸出。
+  - chunk 任務在租約內完成：整個 chunk（含驗證重試）的時間上限是租約剩下的時間減 1 分鐘，單次請求的逾時是 5 分鐘；到期時任務以 retryable 放回佇列，重新開始這個 chunk（之前的驗證重試不保留）。租約沒有續租。
