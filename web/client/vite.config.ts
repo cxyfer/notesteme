@@ -1,4 +1,6 @@
 /// <reference types="vitest/config" />
+import { fileURLToPath } from "node:url";
+
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -7,6 +9,12 @@ const backend = process.env.NOTESTEME_DEV_BACKEND ?? "http://127.0.0.1:8080";
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    // web/shared（Client 與 Hub 共用的元件，ADR-0008 決策 9）。它底下沒有 node_modules：
+    // dedupe 讓 shared 裡的 react 解析到這裡的 node_modules，只有一份 React。
+    alias: { "@shared": fileURLToPath(new URL("../shared/src", import.meta.url)) },
+    dedupe: ["react", "react-dom"],
+  },
   build: {
     outDir: "dist",
     // dist/.gitkeep 要保留（go:embed 需要）：清理交給 scripts/clean-dist.mjs。

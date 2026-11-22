@@ -17,6 +17,7 @@ WORKDIR /src/web/client
 COPY web/client/package.json web/client/package-lock.json web/client/.npmrc ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --no-audit
+COPY web/shared /src/web/shared
 COPY web/client ./
 RUN npm run build
 

@@ -17,7 +17,13 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["vite/client", "node"]
+    "types": ["vite/client", "node"],
+    // web/shared 沒有自己的 node_modules：型別一律從這裡解析
+    "paths": {
+      "@shared": ["../shared/src/index.ts"],
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"]
+    }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "../shared/src", "vite.config.ts"]
 }
