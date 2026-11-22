@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Lab Cast</title>
+    <language>en</language>
+    <item>
+      <guid>sub-ep-2</guid>
+      <title>Second episode</title>
+      <pubDate>Wed, 18 Nov 2026 10:00:00 GMT</pubDate>
+      <enclosure url="https://media.example.com/labcast/ep42.mp3" type="audio/mpeg" length="1000"/>
+    </item>
+    <item>
+      <guid>sub-ep-1</guid>
+      <title>First episode</title>
+      <pubDate>Tue, 17 Nov 2026 10:00:00 GMT</pubDate>
+      <enclosure url="https://media.example.com/labcast/ep41.mp3" type="audio/mpeg" length="1000"/>
+    </item>
+  </channel>
+</rss>

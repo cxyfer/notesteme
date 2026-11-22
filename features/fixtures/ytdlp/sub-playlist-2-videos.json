@@ -1,0 +1,10 @@
+{
+  "_type": "playlist",
+  "id": "PL456",
+  "title": "Second playlist fixture",
+  "playlist_count": 2,
+  "entries": [
+    {"_type": "url", "ie_key": "Youtube", "id": "pl2v01xxxxx", "url": "https://www.youtube.com/watch?v=pl2v01xxxxx", "title": "Second playlist video 1"},
+    {"_type": "url", "ie_key": "Youtube", "id": "pl2v02xxxxx", "url": "https://www.youtube.com/watch?v=pl2v02xxxxx", "title": "Second playlist video 2"}
+  ]
+}

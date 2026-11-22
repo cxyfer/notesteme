@@ -1,9 +1,9 @@
 # SRC：字幕來源與品質
 
 - 狀態：ready
-- 里程碑：M1
-- 相關：plan 第 5.2、6.1、6.3、7 節；ADR-0003、ADR-0006、ADR-0009；UI [影音詳情](../ui/pages.md#4-影音詳情)、[總覽](../ui/pages.md#1-總覽)（需要你處理）
-- 驗收場景：[`features/SRC-transcript-sources.feature`](../../features/SRC-transcript-sources.feature)
+- 里程碑：M1（SRC-10：M4，SRC-R18～R23）
+- 相關：plan 第 5.2、6.1、6.3、6.4、7 節；ADR-0003、ADR-0006、ADR-0009、[ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md)（M4）；UI [影音詳情](../ui/pages.md#4-影音詳情)、[總覽](../ui/pages.md#1-總覽)（需要你處理）
+- 驗收場景：[`features/SRC-transcript-sources.feature`](../../features/SRC-transcript-sources.feature)；SRC-10（M4）：[`features/SRC-better-source.feature`](../../features/SRC-better-source.feature)
 
 ## 目的
 
@@ -22,6 +22,9 @@
 | SRC-07 | As the owner, I want to know which source a transcript came from and how its timing was obtained, so that I can judge how far to trust it. |
 | SRC-08 | As the owner, I want the original language detected when the platform does not provide it, so that the right languages and prompts are used. |
 | SRC-09 | As the owner, I want subtitles that come with my local files or podcast feeds to be used before any transcription, so that existing work is reused. |
+| SRC-10 | As the owner, I want to be told when a better transcript source appears after I processed a video, so that I can upgrade it. |
+
+SRC-10 屬於 M4（故事地圖第 5 節），規則是 SRC-R18～R23；其餘故事屬於 M1。
 
 ## 規則
 
@@ -44,6 +47,12 @@
 | SRC-R15 | Podcast 下載音檔時記錄 `sha256` 與實際長度；和 transcript 的最後一個 cue 相差超過 2% 時，影音顯示「時間可能偏移」。 |
 | SRC-R16 | 原始字幕的來源紀錄包含：`source`、`timing`（時間粒度）、`tool_versions`（使用 yt-dlp 時包含其版本）。每個 cue 的時間來源為 `source`；Gemini 為 `model`。 |
 | SRC-R17 | 每次 `Probe` 的結果都記錄在 `source_probes`，API 的影音詳情可以列出各來源的狀態與不採用的原因。 |
+| SRC-R18 | （M4）重新 Probe 的對象與時段：`yt:` 與 `bili:` 的影音，`transcript` 為 `done`，採用的來源不是評估順序（`caption_priority` 的各條規則，再 `fallback`）中的第一條，而且 `transcript` 完成時距離發布時間（`published_at`；沒有時用影音的 `created_at`）不到 7 天，才排定排程工作 `source.reprobe`（ADR-0021 第 1 點，`key` 是影音 id）。第一次在 `transcript` 完成後 12 小時（只有 SponsorBlock 部分時，從 `sponsorblock` 完成起算，SRC-R20），之後每 12 小時一次（加 ADR-0021 的 jitter），最後一次不晚於發布時間＋7 天（`until`）；停機後補跑時已經超過 `until` 的不再執行。發現更好的來源（SRC-R21、R22）、影音移到垃圾桶或永久刪除、處理方案的 `language.better_source` 是 `off`、或從 `transcript` 以前的步驟重跑時，結束這個工作（重跑後依新的結果重新判斷）。Podcast 與本機檔案不重新 Probe。`GET /api/items/:id` 回傳 `reprobe: {next_at, until, runs, sources, sponsorblock}`，沒有排程時是 `null`。 |
+| SRC-R19 | （M4）重新 Probe 只列出平台的字幕軌（`yt-dlp -J`，不下載字幕與媒體），經過 SUB-R10 的平台 rate limiter；不呼叫 Supadata、Groq 等 `fallback` 來源，也不把結果寫進字幕。「更好的來源」是評估順序排在現行來源之前、而且符合規則的平台字幕軌（`allow_platform_translated` 照常適用，SRC-R2）。結果記錄在 `source_probes`（`trigger: reprobe`），但 `GET /api/items/:id` 的 `sources` 仍然只列現行字幕那一次 Probe 的結果（SRC-R17），直到重跑 `transcript`。 |
+| SRC-R20 | （M4）同一個 `source.reprobe` 工作也重新查詢 SponsorBlock：YouTube 影音的 `sponsorblock` 步驟完成、`stages.sponsorblock.enabled` 為 `true`、還在發布後 7 天內時（即使字幕來源已經是第一條，`reprobe.sponsorblock` 為 `true`）。查詢方式同 SPB-R2；結果與現行產出不同時建立新版本的 `sponsor_segments`，相同時不建立（SPB-R8）；查詢失敗時保留現行產出、不顯示訊息（SPB-R5 的提醒只在步驟執行時顯示）。片段有更新時，`sponsorblock` 步驟帶提醒「SponsorBlock 片段有更新，從章節重跑才會套用到章節、關鍵畫面與筆記。」，動作為「從章節重跑」；不自動重跑後續步驟。 |
+| SRC-R21 | （M4）預設只通知（`language.better_source: notify`）：發現更好的來源時，在同一個交易中寫入事件 `source.better_available {item, current: {source, lang, kind}, better: {source, lang, kind}, estimate_usd, action}`（`action` 為 `notify` 或 `rerun`）與通知 outbox（NOTIFY 規格；`dedupe_key` 為 `source.better_available:<影音 id>:<來源>:<語言>`），每部影音每個更好的來源只通知一次。`transcript` 步驟維持 `done`，帶訊息「發現更好的字幕來源：<來源名稱>（<語言>）。重跑會再花一次 LLM 費用，預估 $<金額>。」（金額取到小數點後兩位；`estimate_usd` 為 `null` 時，後半句是「重跑會再花一次 LLM 費用，目前無法估算金額。」），動作為「改用更好的字幕重跑」（`POST /api/items/:id/rerun {from: transcript}`）。來源名稱：`youtube-manual` 是「YouTube 人工字幕」、`youtube-auto` 是「YouTube 自動字幕」、`bilibili-cc` 是「Bilibili CC 字幕」、`bilibili-ai` 是「Bilibili AI 字幕」。 |
+| SRC-R22 | （M4）處理方案（與單次覆寫、頻道覆寫）的 `language.better_source` 可以是 `notify`（預設）、`rerun`、`off`，其他值回 422、`errors[].path` 為 `language.better_source`。`rerun`：發現更好的來源時照 SRC-R21 寫入事件（`action: rerun`），並以影音原本的設定快照從 `transcript` 重跑，任務用 `backfill` 優先級，花費照 COST 規格預留與檢查（超過預算時為 `blocked`，原因 `budget_blocked`）；每部影音最多自動重跑一次。影音已經有 `edited` 變體（使用者手動修改過字幕）時不自動重跑，改成只通知。`off`：不排定 `source.reprobe` 的字幕部分（SponsorBlock 的重新查詢不受影響）。 |
+| SRC-R23 | （M4）`GET /api/items/:id` 的 `better_source: {source, lang, kind, found_at, estimate_usd}`（沒有時為 `null`）。`estimate_usd` 用與 `POST /api/estimate`（ING-08）相同的估算，範圍是從 `transcript` 到最後一個步驟、影音現行的設定快照；計價表沒有價格時為 `null`（PRM 規格的 `estimate_usd`）。UI 在重跑前顯示這個金額。從 `transcript` 重跑時重新 Probe，自然採用更好的來源；重跑後 `better_source` 清除，`source.reprobe` 依新的結果重新判斷（通常是結束）。 |
 
 ## 介面
 
@@ -83,11 +92,27 @@
 
 名詞：來源紀錄（provenance）的 `timing` 是這個來源的時間粒度，值為 `word`、`segment`、`cue`、`chunk`、`model`；cue 的 `timing` 是這句時間的來源（SRC-R16）。兩者是不同的欄位，不要混用。Groq 在 M1 的來源紀錄 `timing` 是 `segment`。
 
+### M4：事後出現更好的來源（SRC-10）
+
+- API：`GET /api/items/:id` 加上 `reprobe`（SRC-R18）與 `better_source`（SRC-R23）；`POST /api/items/:id/rerun {from: transcript}`（既有）是「改用更好的字幕重跑」的動作。
+- MCP：`get_item` 回傳相同的 `reprobe`、`better_source`。
+- 處理方案：`language.better_source`（`notify`、`rerun`、`off`）。
+- 事件：`source.better_available`（SRC-R21），也是 NOTIFY 規格可以訂閱的事件。
+- 排程：`scheduled_jobs` 的 `source.reprobe`（`key` 是影音 id），間隔 12 小時；排程器內同步執行，受平台 rate limiter 限制，不占用任務的資源類別（ADR-0021 第 6 點）。
+- 資料表：`source_probes` 加 `trigger`（`stage`、`reprobe`）；`items` 加 `better_source_json`（或另立資料表，實作時決定）。
+- `pipeline.Stages`：不變。
+
 ## 不在範圍內
 
-- 發布後 7 天內重新 `Probe` 與「發現更好的來源」通知（M4，故事地圖 SRC-10）。
+- ~~發布後 7 天內重新 `Probe` 與「發現更好的來源」通知（M4，故事地圖 SRC-10）~~：M4 已排入，見 SRC-R18～R23。
 - 詞彙表傳給 ASR（M2，見 COR）。
 - Gemini 當作字幕來源（M3）。
+
+### M4
+
+- 重新 Probe 時改用其他付費來源（例如 ASR 結果不好時改用 Supadata）：只比較平台字幕軌（SRC-R19）。
+- Podcast 事後補上 `<podcast:transcript>` 的偵測（見待決問題 R5）。
+- SponsorBlock 片段更新後自動重跑 `chapters`、`frames`、`note`（SRC-R20 只提醒）。
 
 ## 待決問題
 
@@ -126,3 +151,13 @@
   - Podcasting 2.0 JSON 的 segment 只有每個 body 都沒有空白且不含 CJK 時才視為字詞級，合併成 cue 並填入 `Words`；含 CJK 的文件一律一個 segment 一個 cue。CJK 沒有空白可以分辨字詞與整句，「大家好」「歡迎收聽」這類短句靠字數判斷會被誤合併，所以不靠長度猜測；代價是逐字切分的 CJK 文件會有很多很短的 cue（2026-11-22，Codex 審查後決定，取代 2026-11-21「不超過 4 個字」的做法）。
 - SRC-R11 的 ASR 語言（2026-11-21）：原文語言未知、ASR 回報了語言時，寫回影音的原文語言，`lang_source` 為 `asr`。這個語言是 transcript 步驟自己的產出，所以重跑 transcript 時不當成輸入：快取鍵、送給 ASR 的語言提示與 `language_mismatch` 檢查都視為原文語言未知，否則重跑會因為快取鍵改變而重複付費。第三層的文字語言偵測仍未實作。
 - SRC-R11「Code-switching speech is marked as mixed」暫時標為 `@wip`（2026-11-15，owner 同意）：`the original language of … is …` 實作後，這個場景會失敗。場景沒有宣告語言，harness 預設 `en`，場景卻預期由文字偵測得到 `zh`；production 也還沒有文字語言偵測。等文字語言偵測的切片一併解決這個矛盾後，再拿掉 `@wip`。
+
+### M4（SRC-10）
+
+- R1：重新 Probe 的間隔 12 小時（SRC-R18）。7 天內最多約 14 次，每次只有一個 `yt-dlp -J`，對 rate limit 的影響很小；YouTube 的人工字幕多半在發布後一兩天內補上。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
+- R2：處理方案的欄位叫 `language.better_source`，放在 `language` 底下，和 `caption_priority`、`fallback` 同一區段（字幕來源的設定都在 `language`）；`stages.transcript.*` 目前不是處理方案接受的步驟名稱（PRF S0）。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
+- R3：「較低優先」以評估順序判斷：現行來源不是評估順序中的第一條就算（SRC-R18），所以用了 `caption_priority` 第二條規則（例如原文的自動字幕）也會重新 Probe；只有更前面的規則對到字幕軌才算「更好」（SRC-R19）。語言不同的規則（例如 `zh-Hans` 的人工字幕排在原文自動字幕之後）照順序判斷，不另外比較品質。
+- R4：SponsorBlock 的重新查詢掛在同一個 `source.reprobe` 工作（SRC-R20），即使字幕來源已經是第一條也會查，因為 plan 第 6.4 節的理由（片段常在發布幾天後才有人提交）和字幕來源無關。代價是每部新的 YouTube 影音 7 天內多約 14 次 hash 前綴查詢（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
+- R5：Podcast 不重新 Probe（SRC-R18）。Podcast 的 transcript 偶爾在發布後才補上，但 feed 每次抓取都是完整的檔案，量比 `yt-dlp -J` 大；訂閱的 Podcast 已經會定期抓 feed（SUB），之後可以從訂閱的檢查順便比對 `<podcast:transcript>`，屬於 SUB 與 SRC 之間的後續工作。
+- R6：自動重跑（`rerun`）不會覆蓋使用者手動修改過的字幕（SRC-R22）：重跑 `transcript` 會讓 `edited` 變體失去對應的上游，這和「不覆寫使用者的修改」的原則衝突（VAULT、COR）。這種影音只通知，由使用者決定。
+- R7：場景中「平台事後補上字幕」用 `the platform adds … captions in … to … at …`，由假 yt-dlp 依 fake clock 決定是否列出這條字幕軌（`.m4work/steps/sub.md`）；實作時 harness 要把 fake clock 的現在傳給假 yt-dlp（例如寫進場景目錄的狀態檔）。

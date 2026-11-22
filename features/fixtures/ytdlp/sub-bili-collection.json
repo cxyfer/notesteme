@@ -1,0 +1,10 @@
+{
+  "_type": "playlist",
+  "id": "9_77",
+  "title": "Collection fixture",
+  "playlist_count": 2,
+  "entries": [
+    {"_type": "url", "ie_key": "BiliBili", "id": "BV1co411c7mA", "url": "https://www.bilibili.com/video/BV1co411c7mA", "title": "Collection video A"},
+    {"_type": "url", "ie_key": "BiliBili", "id": "BV1co411c7mB", "url": "https://www.bilibili.com/video/BV1co411c7mB", "title": "Collection video B"}
+  ]
+}

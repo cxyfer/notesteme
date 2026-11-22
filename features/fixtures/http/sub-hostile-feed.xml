@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>&lt;b&gt;Hostile&lt;/b&gt;   Show</title>
+    <language>en</language>
+    <item>
+      <guid>ep-1</guid>
+      <title>&lt;script&gt;alert(1)&lt;/script&gt;Episode&#x202E;  1	</title>
+      <enclosure url="https://media.example.com/hostile/ep41.mp3" type="audio/mpeg" length="1000"/>
+    </item>
+    <item>
+      <guid>ep-2</guid>
+      <title>Unsafe link</title>
+      <enclosure url="javascript:alert(1)" type="audio/mpeg" length="1000"/>
+    </item>
+  </channel>
+</rss>
