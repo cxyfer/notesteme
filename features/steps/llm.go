@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -24,9 +25,70 @@ func registerLLM(r *Registry, s *Scenario) {
 	r.Step(`request {int} to {string} contains {string}`, s.llmRequestContains)
 	r.Step(`request {int} to {string} does not contain {string}`, s.llmRequestDoesNotContain)
 	r.Step(`requests {int} and {int} to {string} share the same prefix before the chunk`, s.llmSharePrefix)
-	// chunk 的切分結果要讀 production 的 chunk 資料（S3 建議寫進產出的來源紀錄 chunks[]）：S0 沒有資料來源，
-	// 屬於「步驟本身還沒實作」。
-	r.Step(`the {string} chunks of {string} are:`, func(string, string, *godog.Table) error { return godog.ErrPending })
+	r.Step(`the {string} chunks of {string} are:`, s.llmChunksAre)
+}
+
+// llmStageVariants 是 LLM 步驟產出的字幕變體（chunk 的切分記在這個產出的來源紀錄 chunks[]，LLM-R10）。
+var llmStageVariants = map[string]string{"segment": "segmented", "correct": "corrected", "translate": "translated"}
+
+// llmChunksAre 比對步驟現行產出的 chunk 切分：來源紀錄的 chunks[]，每項 {chunk, cues: [from, to], context: [from, to] 或 null}。
+// 表格欄位 chunk、cues（"1-200"）、context（"193-197"，沒有前文時是 "none"）；chunk 數要與表格列數相同，並依序比對。
+func (s *Scenario) llmChunksAre(stage, ref string, table *godog.Table) error {
+	variant, ok := llmStageVariants[stage]
+	if !ok {
+		return fmt.Errorf("不認識的 LLM 步驟 %q（只有 segment、correct、translate）", stage)
+	}
+	want, err := tableMaps(table)
+	if err != nil {
+		return err
+	}
+	if s.stopped {
+		return errServerStopped
+	}
+	id, err := s.itemID(ref)
+	if err != nil {
+		return err
+	}
+	if s.server == nil {
+		return errServerStopped
+	}
+	rec, err := s.server.ArtifactProvenance(s.ctx, id, variant)
+	if err != nil {
+		return fmt.Errorf("%s 的 %q 產出：%w", ref, variant, err)
+	}
+	var doc struct {
+		Chunks []struct {
+			Chunk   int     `json:"chunk"`
+			Cues    [2]int  `json:"cues"`
+			Context *[2]int `json:"context"`
+		} `json:"chunks"`
+	}
+	if err := json.Unmarshal(rec.Provenance, &doc); err != nil {
+		return fmt.Errorf("%s 的 %q 產出：provenance 不是預期的 JSON：%w（%s）", ref, variant, err, snippet(rec.Provenance))
+	}
+	got := make([]map[string]string, 0, len(doc.Chunks))
+	for _, c := range doc.Chunks {
+		ctx := "none"
+		if c.Context != nil {
+			ctx = fmt.Sprintf("%d-%d", c.Context[0], c.Context[1])
+		}
+		got = append(got, map[string]string{"chunk": fmt.Sprint(c.Chunk), "cues": fmt.Sprintf("%d-%d", c.Cues[0], c.Cues[1]), "context": ctx})
+	}
+	if len(got) != len(want) {
+		return fmt.Errorf("%s 的 %q 有 %d 個 chunk，預期 %d 個：%v", ref, stage, len(got), len(want), got)
+	}
+	for i, w := range want {
+		for k, v := range w {
+			g, ok := got[i][k]
+			if !ok {
+				return fmt.Errorf("不認識的欄位 %q（只有 chunk、cues、context）", k)
+			}
+			if g != v {
+				return fmt.Errorf("%s 的 %q 第 %d 個 chunk 的 %s 是 %q，預期 %q（全部：%v）", ref, stage, i+1, k, g, v, got)
+			}
+		}
+	}
+	return nil
 }
 
 // llmProvider 檢查 provider 是 fakellm 模擬的 provider（anthropic、openai）。
@@ -212,4 +274,27 @@ func describeRequests(reqs []fakellm.Request) string {
 		fmt.Fprintf(&sb, "\n  %d. %s", r.Seq, describeRequest(r))
 	}
 	return sb.String()
+}
+
+// tableMaps 把有表頭的表格轉成每列一個 map（欄位名稱 → 值，去掉前後空白）。
+func tableMaps(t *godog.Table) ([]map[string]string, error) {
+	if t == nil || len(t.Rows) < 2 {
+		return nil, fmt.Errorf("表格至少要有表頭與一列")
+	}
+	header := make([]string, len(t.Rows[0].Cells))
+	for i, c := range t.Rows[0].Cells {
+		header[i] = strings.TrimSpace(c.Value)
+	}
+	out := make([]map[string]string, 0, len(t.Rows)-1)
+	for _, row := range t.Rows[1:] {
+		if len(row.Cells) != len(header) {
+			return nil, fmt.Errorf("表格的欄數不一致")
+		}
+		m := make(map[string]string, len(header))
+		for i, c := range row.Cells {
+			m[header[i]] = strings.TrimSpace(c.Value)
+		}
+		out = append(out, m)
+	}
+	return out, nil
 }

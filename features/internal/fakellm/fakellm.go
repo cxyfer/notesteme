@@ -3,7 +3,7 @@
 // Server 同時模擬 anthropic（POST /v1/messages）與 openai（POST /v1/chat/completions）兩種 wire format，
 // handler 以 fakenet.Handle 掛在正式主機名稱上，被測程式照正常路徑連線。
 //
-// wire 契約（S0 凍結；S3 的 LLM client 必須遵守，要改的話 fakellm 一起改）：
+// wire 契約（S0 凍結，S3 寫成 ADR-0019；internal/llm 的 client 遵守它，要改的話 fakellm 一起改）：
 //   - 步驟名稱放在強制的 tool 或 schema 名稱 notesteme_<stage>。
 //   - 字幕資料放在 user message 的 <transcript_data> 區塊，內容是一行 JSON {chunk, chunks, context[], cues[]}。
 //   - 不符合契約的請求回 400，並記一筆違規（Violations），由 harness 的 After hook 讓場景失敗。

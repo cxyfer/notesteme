@@ -426,19 +426,15 @@ func TestChineseVideoFixtures(t *testing.T) {
 	})
 }
 
-// `processed up to` 的 M2 目標（語意等 X1）一律 pending，而且不需要 server；其他不正確的步驟仍然失敗。
-func TestProcessedUpToM2TargetsArePending(t *testing.T) {
+// `processed up to` 不認識的步驟一律失敗，不是 pending，也不啟動 server。
+// M2 的目標（X1 已決定，規則 (2c)）照常執行，done 或 skipped 都算完成，由 LLM、PRM 的場景把關。
+func TestProcessedUpToUnknownStageFails(t *testing.T) {
 	s := newTestScenario(t)
-	for _, stage := range []string{"segment", "correct", "translate", "publish"} {
-		if err := s.itemProcessedUpTo("yt:talk01xxxxx", stage); !errors.Is(err, godog.ErrPending) {
-			t.Errorf("processed up to %q = %v，預期 ErrPending", stage, err)
-		}
-	}
-	if s.server != nil {
-		t.Error("pending 之前不該啟動 server")
-	}
 	if err := s.itemProcessedUpTo("yt:talk01xxxxx", "nope"); err == nil || errors.Is(err, godog.ErrPending) {
 		t.Errorf("不認識的步驟應該失敗：%v", err)
+	}
+	if s.server != nil {
+		t.Error("不認識的步驟不該啟動 server")
 	}
 }
 

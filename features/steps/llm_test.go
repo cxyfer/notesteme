@@ -176,7 +176,7 @@ func TestLLMAnswerAndFailSteps(t *testing.T) {
 	}
 }
 
-// 所有 LLM 步驟的句型都已登記；只有 chunk 切分維持 pending。
+// 所有 LLM 步驟的句型都已登記，chunk 切分的步驟也已實作（S3：讀產出來源紀錄的 chunks[]）。
 func TestLLMStepRegistration(t *testing.T) {
 	var found int
 	for _, d := range Definitions() {
@@ -185,8 +185,8 @@ func TestLLMStepRegistration(t *testing.T) {
 		}
 		found++
 		if f, ok := d.handler.(func(string, string, *godog.Table) error); ok && strings.Contains(d.Template, "chunks of") {
-			if err := f("correct", "yt:x", nil); !errors.Is(err, godog.ErrPending) {
-				t.Errorf("chunks of … are: 應該維持 pending，得到 %v", err)
+			if err := f("correct", "yt:x", nil); errors.Is(err, godog.ErrPending) {
+				t.Errorf("chunks of … are: 不應再是 pending")
 			}
 		}
 	}

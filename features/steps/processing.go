@@ -296,7 +296,8 @@ func (s *Scenario) artifactHasVersions(name, ref string, want int) error {
 	return nil
 }
 
-// m2TargetStages 是 `processed up to` 暫時 pending 的 M2 步驟（語意等 X1，見 itemProcessedUpTo）。
+// m2TargetStages 是 M2 的步驟：`processed up to` 這些步驟時，目標步驟是 done 或 skipped 都算完成
+// （X1：沒有設定 provider 的 LLM 步驟、off、沒有輸出的 publish 會 skipped，steps.md 4.4 規則 (2c)）。
 var m2TargetStages = []string{"segment", "correct", "translate", "publish"}
 
 // itemProcessedUpTo 讓影音真的處理到指定步驟（steps.md 第 4.4 節）：
@@ -304,11 +305,6 @@ var m2TargetStages = []string{"segment", "correct", "translate", "publish"}
 // 接著執行 worker 到閒置，最後確認該步驟是 done，否則失敗。
 // 目標步驟需要字幕而場景沒有準備來源時，改由 features/fixtures/items/ 填入 source（見 itemFixtureFor）。
 func (s *Scenario) itemProcessedUpTo(ref, stage string) error {
-	// 目標是 M2 的步驟時，語意要等 X1 決定，先 pending（steps.md 4.4 規則 (2c)）。
-	// 放在 ValidStage 之前：不論 pipeline.Stages 有沒有收錄這些步驟，結果都一樣。
-	if slices.Contains(m2TargetStages, stage) {
-		return fmt.Errorf("X1 決定前，processed up to %q 尚未實作（steps.md 4.4 規則 (2c)）：%w", stage, godog.ErrPending)
-	}
 	if !pipeline.ValidStage(stage) {
 		return fmt.Errorf("步驟 %q 不正確，應是 %v 其中之一", stage, pipeline.Stages)
 	}
@@ -386,7 +382,8 @@ func (s *Scenario) itemProcessedUpTo(ref, stage string) error {
 	if err != nil {
 		return err
 	}
-	if st.Status != "done" {
+	// M2 的步驟可能依設定 skipped（X1，規則 (2c)），也算處理到了。
+	if st.Status != "done" && !(st.Status == "skipped" && slices.Contains(m2TargetStages, stage)) {
 		return fmt.Errorf("%s 沒有處理到 %s：步驟是 %q（%s）", ref, stage, st.Status, describeStage(st))
 	}
 	if !wasRunning && s.server != nil {
