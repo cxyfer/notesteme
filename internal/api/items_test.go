@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cxyfer/notesteme/internal/assstyle"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/pipeline"
@@ -82,7 +83,7 @@ func newItemsRigAPI(t *testing.T, apiOpt func(*Deps), opts ...func(*pipeline.Dep
 		o(&deps)
 	}
 	p := pipeline.New(deps)
-	ad := Deps{Store: st, Auth: svc, Clock: clk, Log: log, Version: "test", Pipeline: p, Queue: q}
+	ad := Deps{Store: st, Auth: svc, Clock: clk, Log: log, Version: "test", Pipeline: p, Queue: q, AssStyles: assstyle.New(st)}
 	if apiOpt != nil {
 		apiOpt(&ad)
 	}
@@ -326,6 +327,9 @@ func TestSubtitlesDownload(t *testing.T) {
 		{"format=vtt", "text/vtt", "WEBVTT"},
 		{"format=txt", "text/plain", "one\ntwo\nthree\n"},
 		{"format=cues-json", "application/json", `"variant":"normalized"`},
+		{"format=ass", "text/x-ssa", "[V4+ Styles]"},
+		{"format=ass&style=large", "text/x-ssa", "Dialogue:"},
+		{"format=bilingual-srt", "application/x-subrip", "one"},
 		{"", "application/x-subrip", "one"},
 		{"format=srt&from=2&to=4", "application/x-subrip", "two"},
 	}
@@ -342,11 +346,11 @@ func TestSubtitlesDownload(t *testing.T) {
 		t.Errorf("時間範圍要保留原始時間：%s", rec.Body)
 	}
 	// 下載不會建立 srt 之類的產出（OUT-R1）。
-	// 錯誤：M2 格式 501、未知格式 422、沒有字幕 404。
+	// 錯誤：未知格式 422、未知樣式 422、沒有字幕 404。
 	for _, c := range []struct {
 		query  string
 		status int
-	}{{"format=ass", 501}, {"format=bilingual-srt", 501}, {"format=docx", 422}, {"format=srt&from=x", 422}, {"format=srt&lang=ja", 404}} {
+	}{{"format=docx", 422}, {"format=ass&style=nope", 422}, {"format=srt&from=x", 422}, {"format=srt&lang=ja", 404}, {"format=ass&lang=ja", 404}} {
 		if rec := r.owner("GET", "/api/items/"+id+"/subtitles?"+c.query, ""); rec.Code != c.status {
 			t.Errorf("%s：%d %s", c.query, rec.Code, rec.Body)
 		}

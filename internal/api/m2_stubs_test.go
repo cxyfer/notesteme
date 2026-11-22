@@ -12,17 +12,11 @@ import (
 // stubCase 是一條 501 stub 的預期：帶入 path 參數後的實際路徑與 scope。
 type stubCase struct{ method, path, scope string }
 
-// m2StubCases 是 M2 S0 契約第 4 節 29 條路由中，不屬於 PRF、PRM 的 14 條（含 playground 與 compare）；
+// m2StubCases 是 M2 S0 契約第 4 節 29 條路由中，不屬於 PRF、PRM 的 14 條（含 playground 與 compare）扣掉 OUT 切片（S7）
+// 已實作的 7 條（字幕匯入與 ASS 樣式，見 ass_styles_test.go）之後還是 501 的 7 條；
 // 其餘 15 條在 m2_stubs_prf_test.go（9 條）與 m2_stubs_prm_test.go（6 條）。
 // 這份清單獨立於 production 的 m2Stubs，才抓得到 method、path、scope 寫錯。
 var m2StubCases = []stubCase{
-	{"POST", "/api/items/i1/subtitles/import", auth.ScopeIngest},
-	{"GET", "/api/ass-styles", auth.ScopeRead},
-	{"POST", "/api/ass-styles", auth.ScopeAdmin},
-	{"GET", "/api/ass-styles/s1", auth.ScopeRead},
-	{"PATCH", "/api/ass-styles/s1", auth.ScopeAdmin},
-	{"POST", "/api/ass-styles/preview", auth.ScopeRead},
-	{"POST", "/api/ass-styles/import", auth.ScopeAdmin},
 	{"POST", "/api/prompts/playground", auth.ScopeIngest},
 	{"POST", "/api/prompts/p1/compare", auth.ScopeIngest},
 	{"GET", "/api/glossaries/channel/c1", auth.ScopeRead},
@@ -34,8 +28,8 @@ var m2StubCases = []stubCase{
 
 // TestM2StubRoutes 驗證主清單的每條 stub，見 checkStubRoutes。
 func TestM2StubRoutes(t *testing.T) {
-	if len(m2StubCases) != 14 {
-		t.Fatalf("主清單應有 14 條路由（29 條減去 PRF 9 條、PRM 6 條），測試清單有 %d 條", len(m2StubCases))
+	if len(m2StubCases) != 7 {
+		t.Fatalf("主清單應有 7 條路由（29 條減去 PRF 9 條、PRM 6 條、OUT 7 條），測試清單有 %d 條", len(m2StubCases))
 	}
 	checkStubRoutes(t, m2StubCases)
 }

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/api"
+	"github.com/cxyfer/notesteme/internal/assstyle"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/cookies"
@@ -79,7 +80,9 @@ type Server struct {
 	pipeline *pipeline.Pipeline
 	// prompts 是 prompt 庫（PRM）；startPipeline 建立。
 	prompts *prompts.Service
-	queue   *queue.Queue
+	// assStyles 是 ASS 樣式庫（OUT-R6）；startPipeline 建立。
+	assStyles *assstyle.Service
+	queue     *queue.Queue
 	// runner 執行外部工具（yt-dlp、ffmpeg 與 yt-dlp 的安裝）；startPipeline 設定。
 	runner toolexec.Runner
 	// ytdlp 管理 yt-dlp 的更新與回退（OPS-R6、R7），見 tools.go。
@@ -239,6 +242,7 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 		Store: s.store, Clock: env.Clock,
 		UsedBy: func(ctx context.Context, id string) ([]string, error) { return pl.PromptUsers(ctx, id) },
 	})
+	s.assStyles = assstyle.New(s.store)
 	deps.Providers, deps.Prompts = pipeline.BuiltinProviders{}, promptResolver{s.prompts}
 	pl = pipeline.New(deps)
 	s.pipeline = pl

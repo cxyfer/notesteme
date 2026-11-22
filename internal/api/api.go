@@ -18,6 +18,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/cxyfer/notesteme/internal/assstyle"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/pathguard"
@@ -38,6 +39,8 @@ type Deps struct {
 	Pipeline *pipeline.Pipeline
 	// Prompts 是 prompt 庫（PRM 的 6 條路由）；nil 時相關的路由回應 501。
 	Prompts *prompts.Service
+	// AssStyles 是 ASS 樣式庫（OUT-R6～R9）；nil 時相關的路由回應 500（設定錯誤）。
+	AssStyles *assstyle.Service
 	// Queue 提供佇列的狀態與控制（上限、暫停，PIPE-R8、PIPE-R10）；nil 時相關的路由回應 501。
 	Queue *queue.Queue
 	// Tasks 結束正在執行的任務（取消影音，PIPE-R15）；nil 時只在資料庫中取消。
@@ -245,6 +248,8 @@ func (rt *routes) register(api huma.API) {
 	rt.registerPrompts(api)
 	rt.registerProfiles(api)
 	rt.registerChannels(api)
+	rt.registerAssStyles(api)
+	rt.registerSubtitleImport(api)
 	rt.registerM2Stubs(api)
 	registerScoped(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",

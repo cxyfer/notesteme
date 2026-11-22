@@ -204,6 +204,7 @@ func (s *Server) apiDeps(env Env) api.Deps {
 		ReadyChecks: toolChecks(ToolResolver(env.Vars, s.cfg)),
 		Pipeline:    s.pipeline,
 		Prompts:     s.prompts,
+		AssStyles:   s.assStyles,
 		// cookie API（POST /api/cookies）：儲存後由 pipeline 恢復等待 cookie 的 blocked 步驟（PIPE-R4）。
 		Cookies: s.cookies,
 		Resumer: s.pipeline,

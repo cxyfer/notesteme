@@ -36,6 +36,9 @@ type Error struct {
 	Errors []validate.FieldError `json:"errors,omitempty"`
 	// UsedBy 在刪除被引用的處理方案或 prompt 時列出引用它的對象（409，PRM-R8）。
 	UsedBy []string `json:"used_by,omitempty"`
+	// Line 在匯入的字幕有問題時指出是第幾句（OUT-R15，從 1 起算，不是檔案的行號）；FileLine 是檔案中的行號，不一定知道。
+	Line     *int `json:"line,omitempty"`
+	FileLine *int `json:"file_line,omitempty"`
 	// UndefinedVariables 在 prompt 內文用到未定義的變數時列出它們（422，PRM-R3）。
 	UndefinedVariables []string `json:"undefined_variables,omitempty"`
 }
@@ -79,6 +82,10 @@ const (
 	CodePromptExists   = "prompt_exists"
 	CodePromptInUse    = pipeline.CodePromptInUse
 	CodeBuiltinPrompt  = "builtin_prompt"
+
+	// ASS 樣式（OUT-R6）。找不到時用 not_found（404）。
+	CodeStyleExists  = "style_exists"
+	CodeBuiltinStyle = "builtin_style"
 
 	// 外部工具失敗（例如 yt-dlp 展開播放清單，ING-R4）；稍後重試或處理環境後可能成功。
 	CodeUpstream = "upstream_failed"

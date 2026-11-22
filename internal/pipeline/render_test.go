@@ -62,6 +62,22 @@ func TestRenderInputBilingual(t *testing.T) {
 	}
 }
 
+// 要輸出的是影音的原文語言時，匯入的外語版不會被當成原文配成雙語。
+func TestRenderInputOriginalLanguageIsMonolingual(t *testing.T) {
+	r := newRig(t)
+	it := newRenderItem(t, r)
+	seedVariant(t, r, it, subtitle.VariantCorrected, "en", "We use Kafka.")
+	seedVariant(t, r, it, subtitle.VariantEdited, "zh-Hant-TW", "我們用 Kafka。")
+	in, err := r.p.RenderInput(context.Background(), it.ID, CuesQuery{Lang: "en", ToMS: -1})
+	if err != nil || in.Orig != nil || in.Main.Lang != "en" {
+		t.Errorf("Orig 應為 nil：%+v，%v", in, err)
+	}
+	in, err = r.p.RenderInput(context.Background(), it.ID, CuesQuery{Lang: "zh-Hant-TW", ToMS: -1})
+	if err != nil || in.Orig == nil || in.Orig.Lang != "en" {
+		t.Errorf("匯入的譯文應與原文配成雙語：%+v，%v", in, err)
+	}
+}
+
 // 原文與目標語言相同（包括只差字形）時只輸出單語；原文語言取自原文那一邊的產出，不看 items.original_lang（這裡是 en）。
 func TestRenderInputSameLanguageIsMonolingual(t *testing.T) {
 	r := newRig(t)
@@ -340,15 +356,17 @@ func TestPreviewFrameFailures(t *testing.T) {
 	pr := &previewRunner{png: []byte("not a png at all")}
 	r := newPreviewRig(t, pr)
 	it := newRenderItem(t, r)
-	if _, err := r.p.PreviewFrame(ctx, PreviewRequest{Item: it.ID, Style: style}); err == nil || !strings.Contains(err.Error(), "PNG") {
+	// 外部工具的失敗都是 *UpstreamError（502）；訊息不含工具的輸出，原始錯誤留在 Err。
+	var up *UpstreamError
+	if _, err := r.p.PreviewFrame(ctx, PreviewRequest{Item: it.ID, Style: style}); !errors.As(err, &up) || !strings.Contains(up.Err.Error(), "PNG") {
 		t.Errorf("輸出不是 PNG：%v", err)
 	}
 	pr.outFile = "wrong.png"
-	if _, err := r.p.PreviewFrame(ctx, PreviewRequest{Item: it.ID, Style: style}); err == nil {
-		t.Error("ffmpeg 沒有產生 out.png 應回傳錯誤")
+	if _, err := r.p.PreviewFrame(ctx, PreviewRequest{Item: it.ID, Style: style}); !errors.As(err, &up) {
+		t.Errorf("ffmpeg 沒有產生 out.png：%v", err)
 	}
 	pr.exit = 1
-	if _, err := r.p.PreviewFrame(ctx, PreviewRequest{Item: it.ID, Style: style}); err == nil || !strings.Contains(err.Error(), "ffmpeg") {
+	if _, err := r.p.PreviewFrame(ctx, PreviewRequest{Item: it.ID, Style: style}); !errors.As(err, &up) || !strings.Contains(up.Msg, "libass") || strings.Contains(up.Msg, "No such filter") {
 		t.Errorf("ffmpeg 失敗：%v", err)
 	}
 	if _, err := r.p.PreviewFrame(ctx, PreviewRequest{Item: "yt:zzzzzzzzzzz", Style: style}); !errors.Is(err, store.ErrNotFound) {

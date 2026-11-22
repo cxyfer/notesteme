@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/cxyfer/notesteme/internal/assstyle"
+	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/langtag"
 	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -62,6 +63,7 @@ type RenderInput struct {
 //   - 沒有指定語言與變體時，目標語言是最近產生的譯文的語言；沒有譯文就只輸出單語。
 //   - 原文是其他語言（主語言不同，zh-Hans 與 zh-Hant 算同一種語言）、非 translated 變體中處理得最完整的字幕（OUT-R2 的順序）。
 //     原文語言取自原文那一邊的產出，不看 items.original_lang：後者可能和實際的字幕不同（OUT-R5 同語言的場景）。
+//   - 目標語言就是影音的原文語言時，一律只輸出單語。
 //   - 找不到這樣的字幕（原文與目標語言相同，包括 convert 只差字形），Orig 為 nil，一律只輸出單語。
 func (p *Pipeline) RenderInput(ctx context.Context, itemID string, q CuesQuery) (RenderInput, error) {
 	r := p.st.Read()
@@ -82,6 +84,10 @@ func (p *Pipeline) RenderInput(ctx context.Context, itemID string, q CuesQuery) 
 		return RenderInput{}, err
 	}
 	out := RenderInput{Item: it, Main: main}
+	// 要輸出的就是影音的原文語言：沒有東西可以配成雙語，不把別種語言（例如匯入的外語版）當成原文。
+	if it.OriginalLang != "" && langtag.SameBase(main.Lang, it.OriginalLang) {
+		return out, nil
+	}
 	arts, err := r.CurrentArtifacts(ctx, itemID, "transcript")
 	if err != nil {
 		return RenderInput{}, err
@@ -386,13 +392,26 @@ func (p *Pipeline) PreviewFrame(ctx context.Context, req PreviewRequest) ([]byte
 	}
 
 	if err := p.media.RenderSubtitleFrame(ctx, dir, p.previewVideo(ctx, it), float64(req.AtMS)/1000); err != nil {
-		return nil, err
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, &UpstreamError{Msg: previewFailureMsg(err), Err: err}
 	}
 	png, err := readPNG(filepath.Join(dir, "out.png"))
 	if err != nil {
-		return nil, err
+		return nil, &UpstreamError{Msg: "ffmpeg 沒有產生可用的預覽圖。", Err: err}
 	}
 	return png, nil
+}
+
+// previewFailureMsg 是 ffmpeg 預覽失敗時給使用者看的訊息；找不到 ffmpeg 用工具帶的訊息，
+// 其他失敗（例如沒有 libass 的 ffmpeg）不回傳 stderr，細節只寫進 log。
+func previewFailureMsg(err error) string {
+	var ce *errclass.Error
+	if errors.As(err, &ce) && ce.Class == errclass.ClassNeedsAction && ce.Message != "" {
+		return ce.Message
+	}
+	return "ffmpeg 渲染預覽失敗，請確認 ffmpeg 含 libass（可執行 notesteme doctor）。"
 }
 
 // previewVideo 回傳可以抽幀的影片檔路徑（已解析的絕對路徑）；沒有可用的影片時回傳空字串，改用合成畫布。
