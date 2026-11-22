@@ -100,6 +100,10 @@ jobs:
       contents: read
       packages: read
     steps:
+      # image reference 不允許大寫；owner 或 repo 名稱含大寫時直接傳給 docker CLI 會失敗。
+      - name: Lowercase image name
+        run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v7
 
       - name: Log in to GHCR
@@ -121,6 +125,10 @@ jobs:
       contents: read
       packages: write
     steps:
+      # image reference 不允許大寫；owner 或 repo 名稱含大寫時直接傳給 docker CLI 會失敗。
+      - name: Lowercase image name
+        run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+
       - uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
@@ -231,13 +239,18 @@ jobs:
             docker buildx imagetools create --tag "${IMAGE}:latest" "${IMAGE}:${latest_target#v}"
             docker buildx imagetools create --tag "${IMAGE}:${series#v}" "${IMAGE}:${minor_target#v}"
             refresh_tags
-            if [ "$(top)" = "$latest_target" ] && [ "$(top "$series")" = "$minor_target" ]; then
+            # 先賦值再比對：放在 [ ] 的 command substitution 裡，is_published 的 exit 1
+            # 只會結束 subshell，錯誤會被吞掉。
+            latest_check="$(top)"
+            minor_check="$(top "$series")"
+            if [ "$latest_check" = "$latest_target" ] && [ "$minor_check" = "$minor_target" ]; then
               converged=true
               break
             fi
           done
           if [ "$converged" != true ]; then
-            echo "::warning::latest 或 ${series#v} 的目標一直在變動，請確認最後的結果"
+            echo "::error::latest 或 ${series#v} 的目標一直在變動，alias 可能指向舊版，請手動確認" >&2
+            exit 1
           fi
 
           moved="latest -> ${latest_target#v}, ${series#v} -> ${minor_target#v}"
