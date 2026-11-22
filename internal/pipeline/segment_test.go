@@ -394,3 +394,48 @@ func TestSilenceFinderNeverDownloads(t *testing.T) {
 		t.Fatal("auto 時要找停頓點")
 	}
 }
+
+// 只改 timing 或 subtitle_rules 時：步驟層的快取鍵要變（產出的時間不同），chunk 層的快取鍵不變
+// （模型的斷點不受影響，已付費的 chunk 要重用，LLM-R8）。correct 沒有 step params，兩種 sha256 相同。
+func TestSegmentTimingKeepsChunkCache(t *testing.T) {
+	r, it := newLLMRig(t, &chunkLLM{})
+	ctx := context.Background()
+	stage := func(name string) map[string]any {
+		return map[string]any{"executor": "api", "provider": "anthropic", "model": "m", "prompt": name + "-default", "prompt_version": float64(1)}
+	}
+	eff := func(timing map[string]any) Effective {
+		e := Effective{"stages": map[string]any{StageSegment: stage("segment"), StageCorrect: stage("correct")}}
+		if timing != nil {
+			e["timing"] = timing
+		}
+		return e
+	}
+	arts, err := r.st.Read().CurrentArtifacts(ctx, it.ID, "transcript")
+	if err != nil || len(arts) == 0 {
+		t.Fatalf("沒有字幕產出：%v", err)
+	}
+	input := arts[len(arts)-1].ID
+	a, err := r.p.prepareLLM(ctx, it, StageSegment, eff(nil), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := r.p.prepareLLM(ctx, it, StageSegment, eff(map[string]any{"split_timing": "forbid", "split_timing_audio": "never"}), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.stageKey == b.stageKey || a.paramsSHA == b.paramsSHA {
+		t.Fatal("timing 改變時步驟層的快取鍵與 params_sha256 要變")
+	}
+	ka, _ := a.chunkKey(1, a.chunks[0])
+	kb, _ := b.chunkKey(1, b.chunks[0])
+	if ka != kb {
+		t.Fatal("只改 timing 時 chunk 層的快取鍵不能變")
+	}
+	c, err := r.p.prepareLLM(ctx, it, StageCorrect, eff(nil), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.paramsSHA != c.chunkParamsSHA {
+		t.Fatal("correct 的 params_sha256 與 chunk 層的參數不應該不同")
+	}
+}

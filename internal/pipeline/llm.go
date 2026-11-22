@@ -249,6 +249,9 @@ type llmJob struct {
 	prompt      ResolvedPrompt
 	// paramsSHA 是會影響輸出的參數（chunk 設定、詞彙表、步驟專屬欄位）的 sha256（LLM-R10）。
 	paramsSHA string
+	// chunkParamsSHA 是 chunk 層快取鍵用的參數 sha256：不含 llmStage.params 的設定（例如 segment 的 timing、subtitle_rules）。
+	// 那些設定只影響 assemble，不影響模型的輸出；只改它們的重跑要重用已付費的 chunk（LLM-R8）。
+	chunkParamsSHA string
 	// fixedSHA 是固定前綴（系統指示與 <video_metadata>）的 sha256，進快取鍵：標題或 prompt 改變時快取不命中。
 	fixedSHA string
 	stageKey string
@@ -374,6 +377,11 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 	job.fixedSHA = sha256Hex(fixedJSON)
 
 	params := map[string]any{"chunk": settings.Chunk, "glossary": glossary, "stage": extras}
+	chunkJSON, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
+	job.chunkParamsSHA = sha256Hex(chunkJSON)
 	if def.params != nil {
 		// 只有登記了 params 的步驟才加上這個鍵：其他步驟的 params_sha256 與快取鍵不變。
 		if params["step"], err = def.params(eff); err != nil {
@@ -469,7 +477,7 @@ func (j *llmJob) chunkKey(impl int, c llm.Chunk) (string, error) {
 	}
 	b, err := json.Marshal(map[string]any{
 		"stage": j.stage, "impl_version": impl, "provider": j.cfg.Provider, "model": j.cfg.Model,
-		"fixed": j.fixedSHA, "params": j.paramsSHA, "data": data,
+		"fixed": j.fixedSHA, "params": j.chunkParamsSHA, "data": data,
 	})
 	if err != nil {
 		return "", err
