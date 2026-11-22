@@ -44,7 +44,12 @@ export const PAGE_SIZE = 100;
 export function LibraryPage() {
   const { t } = useTranslation();
   usePageTitle(t("pages.library.title"));
-  const search = route.useSearch();
+  // match 的 search 也帶著上層 route 的原始參數（沒有驗證過）：這裡再驗證一次，只留認得的條件
+  const rawSearch = route.useSearch();
+  const search = useMemo(
+    () => validateLibrarySearch(rawSearch as Record<string, unknown>),
+    [rawSearch],
+  );
   const navigate = route.useNavigate();
   const qc = useQueryClient();
   const addDrawer = useAddDrawer();

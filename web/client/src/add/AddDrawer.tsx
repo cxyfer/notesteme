@@ -280,6 +280,8 @@ export function AddDrawer({ open, onOpenChange, initialUrl = "" }: AddDrawerProp
             id={`${formId}-file`}
             className="visually-hidden"
             type="file"
+            tabIndex={-1}
+            aria-label={t("add.pickFile")}
             accept="audio/*,video/*,.mkv,.webm,.opus,.flac,.m4a"
             onChange={(e) => {
               setFile(e.target.files?.[0] ?? null);
