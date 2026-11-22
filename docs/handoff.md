@@ -91,6 +91,10 @@
     - Prompt 庫（`internal/prompts`、migration 00011）：版本只增不改，內建 prompt 嵌入在 `internal/prompts/builtin/<id>/v1.md`（D12）；引用寫成 `<id>`、`<id>@default`、`<id>@N`（D11）；變數在儲存時檢查；刪除時 `used_by` 依處理方案、`settings`、頻道的順序列出（D13）。
     - harness：`features/steps/config.go` 的處理方案、prompt、頻道覆寫步驟（Given 累積，第一個請求前寫入）、`jsonmatch.go` 的子集比對（陣列完全相等）；CLI 步驟遇到尚未寫入的處理方案等設定會隱含啟動 server；`words` 欄位接受秒數（`1.5`）。
     - 變異測試 10 個都會變紅。`DeleteProfile` 拿掉 builtin 檢查時，PRF-R7 場景仍然通過（內建的 `default` 同時是預設處理方案，「使用中」也回 409），只有單元測試 `TestProfiles_DeleteDefault409` 抓得到；`GET /api/profiles/{id}` 回傳合併了內建預設的 config 時，子集比對驗證不到。
+  - M2 S6a TRN 確定性轉換（`feat/m2-s6a`，ADR-0018）：
+    - `internal/zhconv`：自己實作的 OpenCC 轉換器（最長詞優先，內嵌 Apache-2.0 的 OpenCC 1.4.2 字典，`scripts/opencc/update.sh` 重新產生），不依賴 GPLv2 的 port；`langtag` 判斷 BCP-47 的文字與地區，決定 `s2t`、`s2twp`、`s2hk`、`t2s`、`tw2sp` 等轉換表。
+    - `translate` 步驟的 `opencc` executor（`runTranslateOpenCC`）：中文文字系統轉換不經過 LLM；`zhconv.GlossaryTable` 提供 COR-R4 詞彙表的轉換表，詞彙表的組裝屬於 LLM 切片。
+    - `@M2`：20 passed、23 failed、74 pending；TRN「Chinese script conversion uses OpenCC」3 個範例通過，「Localisation runs OpenCC first…」要等 S6b。
 - **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，188 passed、3 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
@@ -118,7 +122,7 @@
 
 ## 2. 下一步
 
-切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC → LOCAL → PODCAST → ESTIMATE → M2 S0 骨架 → M2 S1 PRF＋S2 PRM（PR #1～#17，全部已合併）。下一步是 S6a TRN OpenCC、S7 OUT 渲染，再到 S3 LLM 核心。
+切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC → LOCAL → PODCAST → ESTIMATE → M2 S0 骨架 → M2 S1 PRF＋S2 PRM（PR #1～#18，全部已合併）→ M2 S6a TRN OpenCC（進行中）。下一步是 S7 OUT 渲染，再到 S3 LLM 核心。
 
 接下來：
 
