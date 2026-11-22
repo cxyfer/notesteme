@@ -1,0 +1,10 @@
+{
+  "output": {
+    "sections": [
+      { "level": 2, "title": "Part one", "cue": 1, "body": "The basics come first.", "frames": [] },
+      { "level": 2, "title": "Part two", "cue": 2, "body": "The middle part goes deeper.", "frames": [] },
+      { "level": 2, "title": "Part three", "cue": 3, "body": "The course wraps up.", "frames": [] }
+    ],
+    "self_check": ["What are the three parts of the course?"]
+  }
+}

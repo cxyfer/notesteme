@@ -1,0 +1,8 @@
+{
+  "output": {
+    "sections": [
+      { "level": 2, "title": "Overview", "cue": 1, "body": "A short overview of the video.", "frames": [] }
+    ],
+    "self_check": ["What is this video about?"]
+  }
+}

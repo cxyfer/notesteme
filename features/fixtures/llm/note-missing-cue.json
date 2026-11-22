@@ -1,0 +1,9 @@
+{
+  "output": {
+    "sections": [
+      { "level": 2, "title": "Setting up the toolchain", "cue": 2, "body": "We install a cross compiler first.", "frames": [] },
+      { "level": 2, "title": "A section that cites nothing", "cue": 999, "body": "This cue does not exist.", "frames": [] }
+    ],
+    "self_check": ["What does the boot loader do?"]
+  }
+}

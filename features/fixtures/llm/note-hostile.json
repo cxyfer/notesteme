@@ -1,0 +1,14 @@
+{
+  "output": {
+    "sections": [
+      {
+        "level": 2,
+        "title": "Setting up <b>the</b> toolchain",
+        "cue": 2,
+        "body": "Read [the docs](https://example.com/docs) or [click here](javascript:alert(1)).\n<script>alert('x')</script>\n## Injected heading\n![[../../Private/diary.md]]\n<% tp.system.command('id') %>\n```dataviewjs\ndv.paragraph(app.vault.adapter.basePath)\n```",
+        "frames": []
+      }
+    ],
+    "self_check": ["Did the note keep only safe markup?"]
+  }
+}

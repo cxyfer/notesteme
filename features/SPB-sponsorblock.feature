@@ -133,7 +133,7 @@ Feature: SponsorBlock segments
       | 1 | 00:00:20 | 00:00:25 | Today we build a tiny kernel.          |
       | 2 | 00:01:05 | 00:01:10 | This video is sponsored by NordWidget. |
       | 3 | 00:02:00 | 00:02:05 | First we set up the boot loader.       |
-    And the LLM provider "anthropic" answers "note" with "note-two-sections"
+    And the LLM provider "anthropic" answers "note" with "note-minimal"
     When the owner reruns "yt:spon01xxxxx" from "sponsorblock"
     And the worker runs until idle
     Then request 1 to "anthropic" does not contain "NordWidget"

@@ -366,3 +366,15 @@ M3 的句型（4.13～4.16）在 2026-11-23 規格展開時加入，目前全部
 | `Given the best video format of {string} is {string}` | 假 yt-dlp 的格式清單中，這部影片最高畫質的影像格式（`寬x高`，例如 `"3840x2160"`）；另外一律有 `1280x720` 以下的格式。假 ffmpeg 擷取的圖片尺寸依實際下載的格式與縮放參數計算 |
 | `Given the frames of {string} are:` | 直接寫入現行的 `frames` 產出與圖片（seeding）；表格欄位 `#`、`at`、`selected`（`yes`／`no`），可加 `caption`、`chapter`、`color`。圖片是 1280x720 的純色 JPEG |
 | `Then the tool result has an image of type {string}` | 最近一次 tool 呼叫的結果含有 MCP 的 image content，`mimeType` 相符，資料可以解碼成該格式的圖片 |
+
+### 4.15 筆記與 Gemini（`steps/notes.go`，M3）
+
+「筆記」指這部影音現行的 `note` 產出（`GET /api/items/:id/note` 的 `markdown`，語言是預設的筆記語言），不是寫到 vault 的檔案；vault 中的檔案用 4.9 的檔案步驟驗證。
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the note of {string} is:` | 直接寫入現行的 `note` 產出（seeding）：doc string 是完整的 Markdown（含 frontmatter），語言是筆記語言（NOTE-R5），來源紀錄的 `checks.passed` 為 `true`。影音不存在時先新增並做到 metadata。用於 VAULT 與 MCP 這類只需要「已經有筆記」的場景 |
+| `Then the note of {string} contains {string}` | 筆記的 Markdown 包含指定文字（逐字比對，不做 Markdown 解析） |
+| `Then the note of {string} does not contain {string}` | 筆記的 Markdown 不包含指定文字；沒有筆記時失敗（不能證明「不含」） |
+| `Then the note of {string} has the frontmatter:` | 以 YAML 解析筆記開頭的 frontmatter，表格欄位 `field`、`value`；值一律以字串比較（空白的 `value` 代表空字串，欄位必須存在） |
+| `Given Gemini accepts YouTube videos up to {string}` | 假 Gemini（`features/internal/fakegemini`）可以讀取的片長上限，例如 `"45m"`：`file_data.file_uri` 指到的影片（以假 yt-dlp 中的片長判斷）超過上限時回 400 `INVALID_ARGUMENT`；不是公開影片時回 403 `PERMISSION_DENIED`。也登記假 Gemini 為 LLM provider `gemini`（4.6 的 LLM 步驟可以用 `gemini`，步驟名稱固定是 `note`） |

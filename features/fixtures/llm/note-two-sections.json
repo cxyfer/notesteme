@@ -1,0 +1,9 @@
+{
+  "output": {
+    "sections": [
+      { "level": 2, "title": "Setting up the toolchain", "cue": 2, "body": "We install a cross compiler first, then build the tools.", "frames": [] },
+      { "level": 3, "title": "The boot loader", "cue": 4, "body": "The boot loader hands control to the kernel [[cue:5]].", "frames": [] }
+    ],
+    "self_check": ["What does the boot loader do before the kernel runs?"]
+  }
+}
