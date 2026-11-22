@@ -49,3 +49,4 @@
 - B3：查詢失敗不重試（SPB-R5）。SponsorBlock 的公開伺服器經常短暫失敗，重試會拖慢整個 pipeline；使用者可以用「重新查詢 SponsorBlock」動作重跑（`POST /api/items/:id/rerun {from: sponsorblock}`）。
 - B4：預設類別是 `sponsor`、`selfpromo`、`interaction`。`intro`、`outro` 常含有影片的重點摘要，`music_offtopic`、`filler` 的標記品質不一，預設不排除。
 - B5：harness 在每個場景預設登記沒有任何片段的假 SponsorBlock（ADR-0020 第 2 點），所以既有的 YouTube 場景在 `sponsorblock` 加入後只會多一個 `done` 的步驟，不會連到外部網路。
+- B6：M3-S0 的暫時行為（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`sponsorblock` 在 `pipeline.Stages` 中，預設開啟；在 SPB 的切片於 `stageImplemented` 登記之前，YouTube 影音的這一步是 `skipped`（`not_implemented`），其他平台照 SPB-R1 是 `not_applicable`，`enabled: false` 是 `off`。設定檔的 `sponsorblock.base_url` 已經接受（預設 `https://sponsor.ajay.app`，只接受 http／https、不含帳號密碼與查詢字串），harness 每個場景都登記了沒有片段的假 SponsorBlock（B5）。實作時：在 `stageImplemented` 登記 `(sponsorblock, local)`，YouTube 場景的 `sponsorblock` 會由 `skipped` 變成 `done`，要確認預設 tag 的場景沒有斷言這一步的狀態。

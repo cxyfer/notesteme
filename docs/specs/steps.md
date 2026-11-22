@@ -52,7 +52,7 @@
 
 步驟狀態：`pending`、`running`、`waiting`、`awaiting_agent`、`blocked`、`done`、`skipped`、`failed`。
 `blocked` 的原因：`needs_action`、`budget_blocked`、`awaiting_user`。
-`skipped` 的原因：`cancelled`、`off`、`not_configured`、`no_outputs`、`same_language`、`not_applicable`（沒有任何輸出目標適用這部影音，例如 sidecar 對線上影音，OUT-R10）、`manual_captions`（來源是人工字幕，segment 預設略過，SEG-R1）；M3 另有 `platform_chapters`（平台已有章節，CHAP-R1）、`audio_only`（沒有影像串流，FRM-R1）、`gemini`（筆記由 Gemini 直接生成，GEM-R2）。
+`skipped` 的原因：`cancelled`、`off`、`not_configured`、`no_outputs`、`same_language`、`not_applicable`（沒有任何輸出目標適用這部影音，例如 sidecar 對線上影音，OUT-R10）、`manual_captions`（來源是人工字幕，segment 預設略過，SEG-R1）；M3 另有 `platform_chapters`（平台已有章節，CHAP-R1）、`audio_only`（沒有影像串流，FRM-R1）、`gemini`（筆記由 Gemini 直接生成，GEM-R2），以及暫時的 `not_implemented`（M3-S0：設定要求執行、但這個 M3 步驟還沒有實作；各切片實作之後就不會再出現）。
 錯誤類別：`retryable`、`wait`、`needs_action`、`budget_blocked`、`permanent`。
 
 ## 2. 影音的引用方式
@@ -108,7 +108,7 @@
 - 「任務正在執行」同時要求資料庫中的租約有效，且對應的外部工具程序仍然存活。
 - 場景中的 `/data`、`/config` 等路徑，會換成這個場景專用的暫存目錄。對應規則（虛擬路徑 → 實際路徑）：
   - `/data` → `<場景根目錄>/data`、`/config` → `<場景根目錄>/config`、`/media` → `<場景根目錄>/media`、`/backups` → `<場景根目錄>/backups`。
-  - `/vault` → `<場景根目錄>/vault`（M3：`fs` vault 的路徑；設定檔、請求 body 與檔案步驟都套用。實作 VAULT 之前要先在 harness 加上這個對應，否則場景會寫到真正的 `/vault`）。
+  - `/vault` → `<場景根目錄>/vault`（M3：`fs` vault 的路徑；設定檔、請求 body 與檔案步驟都套用。M3-S0 已加上這個對應（`harness.VirtualVault`），場景建立時一併建立這個目錄）。
   - `/tmp/<x>` → `<場景根目錄>/tmp/<x>`：場景中的 `/tmp/...`（例如上傳用的 `/tmp/fansub.ass`）不寫到真正的 `/tmp`。檔案步驟、`the owner uploads "/tmp/..."`、`When the owner sends … with:` 的請求 body 與 `When the owner runs` 的指令參數（例如 `notesteme config import /tmp/settings.yaml`）都套用這個對應（讓 body 裡的 `path` 指到 `Given the file … contains:` 寫的檔案，例如 OUT-R8、R13～R15）。
 - After hook 的 secret 掃描（NFR-SEC-3）除了 log 與假工具的呼叫紀錄，也涵蓋 `/backups`：其中的 `.tar.gz` 解壓後，逐一檢查每個項目的內容不含 master key 的值（OPS-R1）。
 - `Given {string} has {word} captions in {string}` 沒有對應的 fixture 時，產生 120 句的字幕軌。
@@ -360,13 +360,13 @@ fixture 在 `features/fixtures/llm/<名稱>`，沒有 `.json` 時自動補上。
 
 ### 4.13 SponsorBlock 與章節（`steps/chapters.go`，M3）
 
-M3 的句型（4.13～4.16）在 2026-11-23 規格展開時加入，目前全部註冊為 pending 的步驟樁（`godog.ErrPending`），由 M3 的實作切片換成真正的實作。假服務的設計見 `features/fixtures/README.md` 的「M3 的假服務」。
+M3 的句型（4.13～4.16）在 2026-11-23 規格展開時加入，目前全部註冊為 pending 的步驟樁（`godog.ErrPending`），由 M3 的實作切片換成真正的實作。假服務的設計見 `features/fixtures/README.md` 的「M3 的假服務」；M3-S0 已把它們接進 harness（`World.SponsorBlock`、`World.Gemini`、`World.FakeGit()`、`World.HookRecord()`、PATH 上的 `git` 與 `notesteme-test-hook`、虛擬路徑 `/vault`），步驟樁本身仍是 pending。
 
 每個 M3 的 `.feature` 在 Background 中、第一個會送出請求的步驟之前，都有一個 M3 的句型（假服務或 M3 產出的 seeding）。處理方案中的 M3 欄位（`stages.chapters` 等）在產品實作之前會被 PRF-R4 以 422 拒絕；這個安排只保證**在第一個 M3 句型實作之前** `@M3` 場景一律是 pending。閘門句型有共用（`SponsorBlock has the segments for` 是 SPB 與 CHAP 的閘門、`the chapters of … are:` 是 NOTE 的閘門、`the note of … is:` 是 VAULT 的閘門），實作其中一個之後，其他領域的場景會往下跑到 M3 的設定而失敗。所以 M3 的第一個實作切片（M3-S0）先讓處理方案與設定檔的 schema 接受全部 M3 欄位（`stages.{sponsorblock,chapters,frames,note}`、`outputs[].target: vault`、設定檔的 `vaults`、`sponsorblock`），M3 的路由回 501 stub（同 M2 S0），之後各切片以 `@M3` 的逐場景結果（junit）和切片開始前比對，不期待「目標領域以外全部 pending」。
 
 既有句型在 M3 的語意補充（2026-11-23，不新增句型；由實作切片在對應的步驟實作）：
 
-- `Given the item … has been processed up to …`：目標也可以是 `sponsorblock`、`chapters`、`frames`、`note`。產品的 `pipeline.ValidStage` 還不認得這個步驟時 pending（與 `source.Implemented` 同類的判斷，只限這四個名稱；其他不認識的名稱仍然失敗）；認得之後依 (2c) 的規則判斷（`done` 或 `skipped` 都算處理到）。
+- `Given the item … has been processed up to …`：目標也可以是 `sponsorblock`、`chapters`、`frames`、`note`。產品的 `pipeline.StageAvailable` 回報這個步驟還沒有任何 executor 實作時 pending（M3-S0 之後四個步驟都在 `pipeline.Stages` 中，改用這個判斷；與 `source.Implemented` 同類，只限這四個名稱；其他不認識的名稱仍然失敗）；實作之後依 (2c) 的規則判斷（`done` 或 `skipped` 都算處理到）。決定重跑的起點時，跳過還沒有實作的 M3 步驟（它們一律 `skipped`（`not_implemented`），從它們重跑回 501）。
 - `Then the {string} artifact of {string} has the provenance:`、`has {int} versions`、`the item … has no … artifact`：名稱也可以是 M3 產出的 `kind`：`sponsor_segments`、`chapters`、`frames`、`note`。
 - 4.6 的 LLM 步驟：步驟名稱也可以是 `chapters`、`frames`、`note`、`note_map`（tool 或 schema 名稱 `notesteme_<stage>`）；provider 也可以是 `gemini`，由 `features/internal/fakegemini` 回應（`Given Gemini accepts YouTube videos up to …` 登記它），fixture 一樣放在 `features/fixtures/llm/`，`output` 會被包成 Gemini 回應的 `candidates[0].content.parts[0].text`。`frames` 的請求含有圖片區塊，fakellm 要接受 anthropic 的 `image` block 與 openai 的 `image_url`（FRM 規格 F4）。
 - `Given the provider {string} has no API key`：也接受 `gemini`（移除 `NOTESTEME_GEMINI_API_KEY`）。

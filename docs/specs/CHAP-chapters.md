@@ -49,3 +49,4 @@
 - H3：重試用盡時不讓步驟失敗，而是沒有章節（CHAP-R4）：章節是輔助資料，筆記沒有章節仍然可以寫；讓步驟 `failed` 會擋住 `frames`、`note`、`publish`。
 - H4：`max_chapters` 預設 20、標題上限 80 字是保守的初值，沒有 M0 數據；影片很長（例如 3 小時）時可能不夠，使用者可以調高（上限 100）。
 - H5：章節標題是不可信的 LLM 輸出。這裡只做長度與控制字元的檢查；放進筆記與 UI 時的跳脫由 NOTE-R8 與 UI 負責。
+- H6：M3-S0（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`stages.chapters` 接受 `executor`（`api`、`agent`、`off`）、`provider`、`model`、`prompt`、`max_chapters`（1～100）。預設 `api`、沒有 provider 時 `not_configured`；設定了 provider 也只會是 `not_implemented`，直到 CHAP 的切片登記。內建 prompt `chapters-default` 還不在 prompt 庫中：閘門句型實作之後，CHAP 的 Background 會因為 prompt 不存在而 422，由實作切片補上（PRM 的 kind 也要接受 `chapters`）。`platform_chapters` 的判斷需要 metadata，留給 CHAP 的切片。

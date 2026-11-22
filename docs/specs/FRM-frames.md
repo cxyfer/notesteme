@@ -60,3 +60,4 @@
 - F6：`agent` 選圖時，任務的 context 要能帶圖片；AGT 的 `claim_tasks` 目前只回傳文字。實作切片決定以 base64 欄位或另一個 `get_frame` 呼叫取得拼圖；在那之前 `agent` 回 422「選圖還不支援交給 Agent」。場景只驗證 `api`。
 - F7：`get_frame` 的預設尺寸是 `thumb`，避免 Agent 一次拿到大量 image token；要原圖時指定 `size: "full"`。
 - F8：本機影片也適用（有影像串流就擷取），影片檔不見時 `frames` 為 `permanent` 失敗（同 OUT 的 sidecar）。
+- F9：M3-S0（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`stages.frames` 接受 FRM 介面列出的欄位，範圍是 `scene_threshold`、`dedupe_threshold` 0～1，`min_interval_s` 1～3600，`dedupe_window`、`max_frames` 1～100，`per_minute` 大於 0 且不超過 60（上限是保守的初值，只擋明顯不合理的值）；`agent` 依 F6 回 422。`audio_only` 需要知道有沒有影像串流，留給 FRM 的切片。資源類別暫時一律是 `frames`；ADR-0020 第 3 點的下載、選圖分類要在 FRM 的切片依 `tasks.kind` 實作。`GET /api/items/:id/frames`、`/frames/:n`、MCP `list_frames`、`get_frame`、CLI `frames ls|get` 已經註冊，回 501／`not_implemented`。`POST /rerun` 接受 `reuse_candidates`，從 `frames` 重跑在實作前回 501。

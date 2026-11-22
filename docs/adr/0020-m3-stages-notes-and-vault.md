@@ -1,7 +1,8 @@
 # ADR-0020：M3 的步驟順序、產出、筆記模板與 vault 輸出
 
-- 狀態：提議中（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
+- 狀態：已採納（待 owner 追認）
 - 日期：2026-11-23
+- 修訂：2026-11-23 M3-S0 實作第 1、2、6、8 點的骨架：四個步驟加進 `pipeline.Stages`、`plannedStages` 只剩 `summary`；還沒有實作的 M3 步驟前進時是 `skipped`（`not_implemented`，見 PIPE 待決問題），從它們重跑回 501；`frames.candidates`、`frames.select` 改為 422。`Effective.Stage` 對 M3 步驟只讀自己的 `stages.<stage>`，沒有從其他步驟繼承 provider（第 2 點最後一項已確認，`chapters`、`note` 維持預設 `api`）。migration 00017 加上 `outputs.kind`、`vault`、`git_commit`；`note_templates` 留給 NOTE 的切片。
 
 ## 背景
 

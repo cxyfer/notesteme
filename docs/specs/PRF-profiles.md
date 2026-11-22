@@ -34,6 +34,24 @@
 ## 介面
 
 - API：`GET/POST/PATCH/DELETE /api/profiles`、`GET /api/profiles/:id/versions`、`POST /api/profiles/:id/default`、`GET/PATCH /api/channels/:id/overrides`、`GET /api/items/:id/runs`（含生效設定）
+- M3 的欄位（M3-S0 起接受，PRF-R4 的檢查與欄位路徑同 M2；語意由各規格的切片實作）：
+
+  | 欄位 | 型別與範圍 | 規格 |
+  |---|---|---|
+  | `stages.sponsorblock.enabled` | bool，預設 `true` | SPB-R1 |
+  | `stages.sponsorblock.categories` | 字串陣列，元素是 `sponsor`、`selfpromo`、`interaction`、`intro`、`outro`、`preview`、`music_offtopic`、`filler`；預設前三個 | SPB-R3 |
+  | `stages.chapters.{executor, provider, model, prompt}` | executor 是 `api`（預設）、`agent`、`off` | CHAP-R8 |
+  | `stages.chapters.max_chapters` | 整數 1～100，預設 20 | CHAP-R3、H4 |
+  | `stages.frames.{executor, provider, model, prompt}` | executor 是 `rules`、`api`、`agent`、`off`（預設）；`agent` 回 422「選圖還不支援交給 Agent。」 | FRM-R1 |
+  | `stages.frames.{scene_threshold, dedupe_threshold}` | 數字 0～1 | FRM-R2、R3 |
+  | `stages.frames.{min_interval_s, dedupe_window, max_frames}` | 整數，1～3600、1～100、1～100 | FRM-R2～R4 |
+  | `stages.frames.per_minute` | 數字，大於 0、不超過 60 | FRM-R4 |
+  | `stages.frames.hint_words` | 字串陣列 | FRM-R5 |
+  | `stages.note.{executor, provider, model, prompt}` | executor 是 `api`（預設）、`agent`、`off` | NOTE-R1 |
+  | `stages.note.engine` | `pipeline`（預設）或 `gemini`；`gemini` 時 provider 的 type 必須是 `gemini` | GEM-R1 |
+  | `stages.note.{template, lang, include_translation, map_reduce_after}` | 字串、BCP-47、bool、期間 | NOTE-R5、R6、R11 |
+  | `stages.note.gemini.max_duration` | 期間 | GEM-R3 |
+  | `outputs[].target: vault` | 欄位只有 `vault`（必填、設定檔定義的 id）、`formats`（可以是空陣列）、`lang`、`folder`（相對、不含 `..`）、`on_user_change`、`hooks`（設定檔定義的 id）；`path`、`style` 是「不認識的欄位。」 | VAULT-R1、R2、R10 |
 
 ## 不在範圍內
 
@@ -55,3 +73,7 @@
 - F5：PRF-R8 與 PRF-R2「Each layer」在 `When the owner ingests …` 之後加 `And the worker runs until idle`（2026-11-22，owner 同意，已修改）。頻道要到 `metadata` 完成才知道（D6），Then 不應該改變狀態，新增時也不探測頻道。
 - G1：PRF-R1 補上 `glossary`（字串陣列，不可以有空字串）（2026-11-22，owner 同意，已修改）。COR 的頻道覆寫用了頂層的 `glossary`；它與 COR 的 `/api/glossaries/{scope}/{id}` 的關係由 COR 切片決定。
 - O-4：本文件開頭改成「處理方案在 M2（PRF 切片）實作；ING-R7 隨 PRF 切片通過」（2026-11-22，owner 同意，已修改）；ING 的 ING-R7 待決問題已關閉。
+- M3-S0：M3 欄位的預設值（`sponsorblock.enabled: true`、`chapters`／`note` 的 `api`、`frames` 的 `off`）只在讀取時補上，不寫進快照（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。寫進快照會改變每個既有處理方案的快照 sha 與快取鍵；快照只記錄處理方案實際寫出的值。
+- M3-S0：PRF-R5 的完整性改看步驟的預設 executor（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`frames` 預設 `off`，處理方案只寫 `stages.frames.scene_threshold` 時不要求 provider；`chapters`、`note` 預設 `api`，同 M2 的 LLM 步驟。
+- M3-S0：`stages.note.template` 只檢查是非空字串（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）；`note_templates` 資料表屬於 NOTE 的切片，在那之前不檢查模板是否存在。`prompt` 照 PRM 的規則檢查是否存在與類型，所以 `chapters-default`、`note-default`、`frames-default`、`note-gemini-default` 加進 prompt 庫之前，引用它們的處理方案會回 422（CHAP、NOTE 的 Background 在閘門解除後會停在這裡，由實作切片補上內建 prompt）。
+

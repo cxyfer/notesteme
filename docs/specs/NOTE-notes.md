@@ -102,3 +102,4 @@ notesteme_status: "complete"
 - N8：`agent` executor 時，`note_map` 與 `note` 都是 Agent 任務（kind 分別為 `note_map`、`note`），reduce 要等全部的 map 提交。
 - N9：OUT-R14 的訊息是「字幕已更新，譯文可能過時」、動作「重新翻譯」，是影音層的提醒；筆記的過時標示放在筆記本身（NOTE-R10），兩者並存，影音的提醒維持 OUT-R14 不變。
 - N10：Obsidian 的 callout、wikilink 與圖片嵌入在 UI 的筆記分頁中渲染時同樣不允許原始 HTML（plan 第 19 節），屬於 UI 切片。
+- N11：M3-S0（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`stages.note` 接受 NOTE 與 GEM 介面列出的欄位；`template` 只檢查是非空字串（`note_templates` 屬於 NOTE 的切片），`lang` 只檢查 BCP-47 的形狀。`GET /api/items/:id/note`、`/api/note-templates` 的四條路由、MCP `get_note`、CLI `note show` 已經註冊，回 501／`not_implemented`（scope 依 NOTE-R11～R14）。內建 prompt `note-default`、`note-map-default` 還不在 prompt 庫中，NOTE 的 Background 在閘門解除之後會停在 422，由實作切片補上。

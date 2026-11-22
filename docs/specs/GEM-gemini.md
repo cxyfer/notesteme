@@ -49,3 +49,4 @@
 - G4：`sponsorblock` 照常執行，片段以文字的時間範圍交給 Gemini 略過；Gemini 不一定遵守，筆記不再另外過濾。
 - G5：Gemini 的 wire 與 anthropic、openai 不同（`contents`、`responseSchema`），`features/internal/fakellm` 不處理它；驗收測試用 `features/internal/fakegemini`，並讓 4.6 的 LLM 步驟接受 provider `gemini`（steps.md 4.15）。
 - G6：費用估算（ING-08）在 M3 只列「Gemini 直接生成」一項，以影片長度乘 M0 量到的每分鐘 token 數估算；在那之前 `estimate_usd` 為 `null`。
+- G7：M3-S0（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：設定檔的 `llm.providers.<id>.type` 接受 `gemini`（預設 `base_url` 為 `https://generativelanguage.googleapis.com`）；一般的 LLM client 對 `type: gemini` 回 permanent 錯誤，避免用 openai 的格式送出。**內建的 `gemini` provider 還沒有加入**：加入會改變 provider 清單（`GET /api/providers` 與 PRF 的驗證），留給 GEM 的切片；在那之前，GEM 的 Background（`provider: gemini`）在閘門解除後會回 422「找不到 LLM provider」。GEM-R1 的 type 檢查經 `pipeline.ProviderTypes`（`llm.Registry.LLMProviderType`）實作；目錄沒有 type 資訊時略過。harness 已登記假 Gemini（`harness.TestGeminiKey`、環境變數 `NOTESTEME_GEMINI_API_KEY`），影片資訊還要由 GEM 的切片從假 yt-dlp 接上。

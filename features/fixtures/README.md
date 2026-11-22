@@ -259,8 +259,10 @@ M5（Hub）的場景不使用 `features/fixtures/` 中的檔案：bundle、字�
 
 ## M3 的假服務（2026-11-23，規格展開時設計，接進 harness 由 M3 的實作切片負責）
 
-M3 的步驟（`docs/specs/steps.md` 4.13～4.16）目前都是 pending 的步驟樁。下列假服務已有可以單獨測試的骨架，
-還沒有登記到 fakenet 或 `faketool.Dispatch`；實作切片接上它們時，要確認預設 tag 的場景不退步。
+M3 的步驟（`docs/specs/steps.md` 4.13～4.16）目前都是 pending 的步驟樁。下列假服務已有可以單獨測試的骨架；
+M3-S0（2026-11-23）已把 SponsorBlock、Gemini 登記到 fakenet（`World.SponsorBlock`、`World.Gemini`，key 是 `harness.TestGeminiKey`），
+`git`、`notesteme-test-hook` 加進 `faketool.Dispatch` 與 PATH（狀態在 `fake/git/`、`fake/hooks.jsonl`，見 `World.FakeGit()`、`World.HookRecord()`）。
+假 ffmpeg 的場景偵測與假 yt-dlp 的影像串流（fakeframes）、fakegemini 的影片資訊還沒有接上，由 FRM、GEM 的切片負責；接上時要確認預設 tag 的場景不退步。
 
 | 套件 | 取代 | 狀態與 fixture | 接到哪裡 |
 |---|---|---|---|
