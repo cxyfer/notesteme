@@ -110,6 +110,11 @@ func TestExpandUnexpand(t *testing.T) {
 		{"/media-old/x", "/media-old/x"},
 		{"/mediaplayer", "/mediaplayer"},
 		{"/var/media", "/var/media"},
+		{"/vault", w.VaultDir()},
+		{"path: /vault", "path: " + w.VaultDir()},
+		{"/vault/Video Notes/a.md", w.VaultDir() + "/Video Notes/a.md"},
+		{"/vaults", "/vaults"},
+		{"/srv/vault", "/srv/vault"},
 		{"no paths here", "no paths here"},
 		{"", ""},
 	}
@@ -297,5 +302,27 @@ func TestGateArmAndOpen(t *testing.T) {
 	}
 	if _, err := os.Stat(w.GatePath()); err != nil {
 		t.Fatalf("解除後可再次啟用：%v", err)
+	}
+}
+
+// M3 的假服務（M3-S0）：SponsorBlock 與 Gemini 掛在正式主機名稱上，/vault 已建立，假 git 與 hook 的狀態在 fake/ 底下。
+func TestWorldWiresM3Fakes(t *testing.T) {
+	w := NewT(t)
+	for _, host := range []string{"sponsor.ajay.app", "generativelanguage.googleapis.com"} {
+		if _, err := w.Net.LookupNetIP(context.Background(), "ip", host); err != nil {
+			t.Errorf("%s 沒有登記：%v", host, err)
+		}
+	}
+	if w.SponsorBlock == nil || w.Gemini == nil || w.Env[GeminiAPIKeyEnv] != TestGeminiKey {
+		t.Errorf("M3 的假服務沒有建立：%+v %+v", w.SponsorBlock, w.Gemini)
+	}
+	if fi, err := os.Stat(w.VaultDir()); err != nil || !fi.IsDir() {
+		t.Errorf("/vault 沒有建立：%v", err)
+	}
+	if calls, err := w.FakeGit().Calls(); err != nil || len(calls) != 0 {
+		t.Errorf("新場景不該有 git 呼叫：%+v %v", calls, err)
+	}
+	if !strings.HasPrefix(w.HookRecord(), w.FakeDir()) {
+		t.Errorf("hook 紀錄 %s 不在 %s", w.HookRecord(), w.FakeDir())
 	}
 }

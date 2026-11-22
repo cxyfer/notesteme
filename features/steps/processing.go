@@ -312,11 +312,18 @@ func (s *Scenario) artifactHasVersions(name, ref string, want int) error {
 // （X1：沒有設定 provider 的 LLM 步驟、off、沒有輸出的 publish 會 skipped，steps.md 4.4 規則 (2c)）。
 var m2TargetStages = []string{"segment", "correct", "translate", "publish"}
 
+// m3TargetStages 是 M3 的步驟（steps.md 4.13 的語意補充）：產品還沒有實作時 `processed up to` 是 pending
+// （比照 source.Implemented 的判斷，只限這四個名稱）；實作之後同 (2c)，done 或 skipped 都算處理到。
+var m3TargetStages = []string{pipeline.StageSponsorBlock, pipeline.StageChapters, pipeline.StageFrames, pipeline.StageNote}
+
 // itemProcessedUpTo 讓影音真的處理到指定步驟（steps.md 第 4.4 節）：
 // 影音還不存在就新增（until 為該步驟）；已存在就從第一個還沒完成的步驟重跑到該步驟為止。
 // 接著執行 worker 到閒置，最後確認該步驟是 done，否則失敗。
 // 目標步驟需要字幕而場景沒有準備來源時，改由 features/fixtures/items/ 填入 source（見 itemFixtureFor）。
 func (s *Scenario) itemProcessedUpTo(ref, stage string) error {
+	if slices.Contains(m3TargetStages, stage) && !pipeline.StageAvailable(stage) {
+		return fmt.Errorf("步驟 %s 還沒有實作（M3）：%w", stage, godog.ErrPending)
+	}
 	if !pipeline.ValidStage(stage) {
 		return fmt.Errorf("步驟 %q 不正確，應是 %v 其中之一", stage, pipeline.Stages)
 	}
@@ -646,13 +653,17 @@ func reached(st stageJSON, stage string) bool {
 	if st.Status == "done" {
 		return true
 	}
-	return st.Status == "skipped" && st.BlockReason != "cancelled" && slices.Contains(m2TargetStages, stage)
+	return st.Status == "skipped" && st.BlockReason != "cancelled" && (slices.Contains(m2TargetStages, stage) || slices.Contains(m3TargetStages, stage))
 }
 
 // firstUnfinished 回傳從開頭到 upTo（含）第一個還不是 done 的步驟；都完成了回傳空字串。
 // skipped 不算完成：之前沒有設定而被略過的步驟，場景補上設定之後要能重跑（只有目標步驟接受 skipped，見 reached）。
 func firstUnfinished(it itemJSON, upTo string) string {
 	for _, name := range pipeline.Stages {
+		// 還沒有實作的 M3 步驟一律 skipped（not_implemented）：從它重跑會回 501，不能當成重跑的起點。
+		if slices.Contains(m3TargetStages, name) && !pipeline.StageAvailable(name) && name != upTo {
+			continue
+		}
 		for _, st := range it.Stages {
 			if st.Stage == name && st.Status != "done" {
 				return name

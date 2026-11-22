@@ -16,10 +16,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cxyfer/notesteme/features/internal/fakegemini"
+	"github.com/cxyfer/notesteme/features/internal/fakegit"
 	"github.com/cxyfer/notesteme/features/internal/fakellm"
 	"github.com/cxyfer/notesteme/features/internal/fakenet"
 	"github.com/cxyfer/notesteme/features/internal/fakepodcast"
 	"github.com/cxyfer/notesteme/features/internal/fakesource"
+	"github.com/cxyfer/notesteme/features/internal/fakesponsorblock"
 	"github.com/cxyfer/notesteme/features/internal/faketool"
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/config"
@@ -33,6 +36,8 @@ const (
 	TestSupadataKey = "nst-test-supadata-key-3a9c61e0f2"
 	// TestGroqKey 是測試環境提供給 Groq 的假 API key（fake origin 要求 Authorization: Bearer 帶有它）。
 	TestGroqKey = "nst-test-groq-key-8e4b17d92c"
+	// TestGeminiKey 是測試環境提供給 Gemini 的假 API key（fakegemini 要求 x-goog-api-key 帶有它，GEM-R4）。
+	TestGeminiKey = "nst-test-gemini-key-5c03e9a7d1"
 )
 
 // SupadataHost 是 Supadata API 的主機名稱；fakenet 把它導到腳本化的 fake origin。
@@ -49,6 +54,8 @@ const GroqAPIKeyEnv = config.EnvGroqAPIKey
 const (
 	AnthropicAPIKeyEnv = "NOTESTEME_ANTHROPIC_API_KEY"
 	OpenAIAPIKeyEnv    = "NOTESTEME_OPENAI_API_KEY"
+	// GeminiAPIKeyEnv 是 provider gemini 的 API key（GEM-R7）。
+	GeminiAPIKeyEnv = "NOTESTEME_GEMINI_API_KEY"
 )
 
 // DefaultNow 是新場景的 fake clock 起始時間。
@@ -62,6 +69,8 @@ const (
 	VirtualMedia = "/media"
 	// VirtualBackups 是備份檔的放置處（OPS-R1），不加 /tmp 前綴：場景根目錄本身就在 /tmp 底下。
 	VirtualBackups = "/backups"
+	// VirtualVault 是 VAULT 場景的 fs vault（vaults.main.path: /vault，steps.md 4.16）。
+	VirtualVault = "/vault"
 )
 
 // World 是一個場景的全部狀態。
@@ -78,6 +87,11 @@ type World struct {
 	Podcasts *fakepodcast.Feeds
 	// LLM 是腳本化的 LLM provider（anthropic、openai），掛在它們的正式主機名稱上。
 	LLM *fakellm.Server
+	// SponsorBlock 是假的 SponsorBlock（SPB-R2），掛在預設 base_url 的主機上；每個場景預設登記、沒有任何片段
+	// （ADR-0020 第 2 點），YouTube 影音的 sponsorblock 步驟實作之後才不會撞上 fakenet 的 trap。
+	SponsorBlock *fakesponsorblock.Server
+	// Gemini 是假的 Gemini generateContent（GEM-R4），掛在正式主機名稱上，要求 TestGeminiKey。
+	Gemini *fakegemini.Server
 	// Tools 是假工具的狀態；修改後呼叫 SyncTools 寫入狀態檔。
 	Tools faketool.State
 
@@ -128,18 +142,22 @@ func New() (*World, error) {
 			// LLM provider 同理：fake 預設有 key，fakellm 會檢查它。
 			AnthropicAPIKeyEnv: fakellm.TestAnthropicKey,
 			OpenAIAPIKeyEnv:    fakellm.TestOpenAIKey,
+			GeminiAPIKeyEnv:    TestGeminiKey,
 			"PATH":             filepath.Join(root, "bin"),
 			"HOME":             filepath.Join(root, "home"),
 		},
-		Clock:       clk,
-		Net:         fakenet.New(),
-		Sources:     fakesource.New(fx),
-		Podcasts:    fakepodcast.New(),
-		LLM:         fakellm.New(fx, clk),
-		Tools:       faketool.State{FixturesDir: fx, Videos: map[string]*faketool.Video{}},
-		Refs:        map[string]string{},
-		FixturesDir: fx,
-		Log:         &LogBuffer{},
+		Clock:    clk,
+		Net:      fakenet.New(),
+		Sources:  fakesource.New(fx),
+		Podcasts: fakepodcast.New(),
+		LLM:      fakellm.New(fx, clk),
+		// M3 的假服務（features/fixtures/README.md 的「M3 的假服務」）。
+		SponsorBlock: fakesponsorblock.New(),
+		Gemini:       fakegemini.New(filepath.Join(fx, "llm"), TestGeminiKey),
+		Tools:        faketool.State{FixturesDir: fx, Videos: map[string]*faketool.Video{}},
+		Refs:         map[string]string{},
+		FixturesDir:  fx,
+		Log:          &LogBuffer{},
 	}
 	// 腳本化的 Supadata 掛在它的正式主機名稱上，被測程式照正常路徑連線（經 netguard 與 fakenet）。
 	w.Sources.RequiresAPIKey("supadata", TestSupadataKey)
@@ -152,7 +170,9 @@ func New() (*World, error) {
 	w.LLM.RequireKey("openai", fakellm.TestOpenAIKey)
 	w.Net.Handle(fakellm.AnthropicHost, w.LLM.Handler("anthropic"))
 	w.Net.Handle(fakellm.OpenAIHost, w.LLM.Handler("openai"))
-	for _, d := range []string{w.DataDir(), w.InboxDir(), w.ConfigDir(), w.BinDir(), w.FakeDir(), w.HomeDir()} {
+	w.Net.Handle(fakesponsorblock.Host, w.SponsorBlock)
+	w.Net.Handle(fakegemini.Host, w.Gemini)
+	for _, d := range []string{w.DataDir(), w.InboxDir(), w.ConfigDir(), w.BinDir(), w.FakeDir(), w.HomeDir(), w.VaultDir()} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			_ = w.Close()
 			return nil, err
@@ -196,6 +216,15 @@ func (w *World) BinDir() string    { return filepath.Join(w.Root, "bin") }
 func (w *World) FakeDir() string   { return faketool.FakeDir(w.Root) }
 func (w *World) HomeDir() string   { return filepath.Join(w.Root, "home") }
 func (w *World) MediaDir() string  { return filepath.Join(w.Root, "media") }
+
+// VaultDir 是 /vault 的實際路徑（fs vault 的根目錄，steps.md 4.16）。
+func (w *World) VaultDir() string { return filepath.Join(w.Root, "vault") }
+
+// FakeGit 是這個場景的假 git 遠端與呼叫紀錄（features/internal/fakegit）。
+func (w *World) FakeGit() fakegit.Fake { return fakegit.Fake{StateDir: faketool.GitStateDir(w.Root)} }
+
+// HookRecord 是假 hook 的執行紀錄檔（fakehook.Runs 讀取）。
+func (w *World) HookRecord() string { return faketool.HookRecord(w.Root) }
 
 // BackupsDir 是 /backups 的實際路徑（不預先建立，由 CLI 或步驟需要時建立）。
 func (w *World) BackupsDir() string { return filepath.Join(w.Root, "backups") }
@@ -403,10 +432,11 @@ func (w *World) virtuals() [][2]string {
 		{VirtualConfig, w.ConfigDir()},
 		{VirtualMedia, w.MediaDir()},
 		{VirtualBackups, w.BackupsDir()},
+		{VirtualVault, w.VaultDir()},
 	}
 }
 
-// Expand 把字串中的虛擬路徑（/data、/config、/media、/backups）改寫成場景根目錄下的實際路徑。
+// Expand 把字串中的虛擬路徑（/data、/config、/media、/backups、/vault）改寫成場景根目錄下的實際路徑。
 // 只在路徑段的邊界比對：/data/x 與 "/data" 會被改寫，/database 與 /home/u/data 不會。
 // 用於設定檔內容、CLI 參數、請求 body、檔案路徑。
 func (w *World) Expand(s string) string {

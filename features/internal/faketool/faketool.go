@@ -21,6 +21,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
+
+	"github.com/cxyfer/notesteme/features/internal/fakegit"
+	"github.com/cxyfer/notesteme/features/internal/fakehook"
 )
 
 // 假工具的名稱。
@@ -31,10 +35,20 @@ const (
 	// Python3 是 PATH 上的 python；venv 內的 python 以 VenvPython 的名稱被執行。
 	Python3    = "python3"
 	VenvPython = "python"
+	// Git 是 vault 的 git adapter 執行的 git（VAULT-R7～R9，features/internal/fakegit）。
+	Git = "git"
+	// Hook 是 VAULT 場景的 hook 程式（VAULT-R10、R11，features/internal/fakehook）。
+	Hook = fakehook.Name
 )
 
 // toolNames 是 Install 在 bin/ 放 symlink 的假工具（PATH 上看得到的）。
-var toolNames = []string{YtDlp, FFmpeg, FFprobe, Python3}
+var toolNames = []string{YtDlp, FFmpeg, FFprobe, Python3, Git, Hook}
+
+// GitStateDir 是假 git 的狀態目錄（<root>/fake/git，fakegit 的 StateDir）。
+func GitStateDir(root string) string { return filepath.Join(FakeDir(root), "git") }
+
+// HookRecord 是假 hook 的執行紀錄（<root>/fake/hooks.jsonl）。
+func HookRecord(root string) string { return filepath.Join(FakeDir(root), "hooks.jsonl") }
 
 // dispatchNames 是 Dispatch 認得的名稱：toolNames 加上只出現在假 venv 內的 python。
 var dispatchNames = append(append([]string{}, toolNames...), VenvPython)
@@ -171,6 +185,10 @@ func run(e env) int {
 		return runFFprobe(e, args)
 	case Python3, VenvPython:
 		return runPython(e, args)
+	case Git:
+		return fakegit.Fake{StateDir: GitStateDir(e.root)}.Run(e.cwd, args, e.stdout, e.stderr)
+	case Hook:
+		return fakehook.Main(HookRecord(e.root), e.argv, os.Environ(), e.cwd, e.stdout, time.Sleep)
 	}
 	fmt.Fprintf(e.stderr, "faketool: unknown tool %q\n", e.tool)
 	return 2
