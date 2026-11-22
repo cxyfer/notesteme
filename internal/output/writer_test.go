@@ -42,7 +42,9 @@ func sha(s string) string {
 
 var day = time.Date(2026, 11, 12, 23, 30, 0, 0, time.UTC)
 
-func newWriter(m *memRecords) *Writer { return &Writer{Records: m, Now: func() time.Time { return day }} }
+func newWriter(m *memRecords) *Writer {
+	return &Writer{Records: m, Now: func() time.Time { return day }}
+}
 
 func file(dir, name, data, policy string) File {
 	return File{ItemID: "it1", Dir: dir, Name: name, Data: []byte(data), Target: TargetSidecar, Format: "srt", Lang: "en", Policy: policy}

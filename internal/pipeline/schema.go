@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/cxyfer/notesteme/internal/auth"
+	"github.com/cxyfer/notesteme/internal/output"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/validate"
 )
@@ -175,15 +177,33 @@ var subtitleRuleFields = []fieldSpec{
 	{"max_cps", checkPositiveNumber},
 }
 
-var outputFormats = []string{"srt", "vtt", "txt", "cues-json", "ass", "bilingual-srt"}
-
 var outputFields = []fieldSpec{
-	{"target", checkEnum("sidecar", "folder")},
-	{"formats", checkStringList(0, outputFormats)},
-	{"lang", checkStringList(0, nil)},
+	{"target", (*layerValidator).checkOutputTarget},
+	{"formats", checkStringList(1, output.Formats)},
+	{"lang", (*layerValidator).checkOutputLang},
 	{"style", checkString},
 	{"path", checkString},
-	{"on_user_change", checkString}, // 列舉留給 OUT 切片
+	{"on_user_change", checkEnum(output.PolicySaveAsNew, output.PolicySkip)},
+}
+
+// checkOutputTarget 檢查 outputs[].target：sidecar 或 folder；vault 屬於 M3，給清楚的訊息而不是列舉錯誤。
+func (v *layerValidator) checkOutputTarget(path string, val any) {
+	if t, _ := val.(string); t == output.TargetVault {
+		v.add(path, "vault 輸出目標在 M3 才提供，目前只支援 sidecar、folder。")
+		return
+	}
+	checkEnum(output.TargetSidecar, output.TargetFolder)(v, path, val)
+}
+
+// checkOutputLang 檢查 outputs[].lang：至少一個 BCP-47 語言標記（只看形狀）。
+func (v *layerValidator) checkOutputLang(path string, val any) {
+	checkStringList(1, nil)(v, path, val)
+	list, _ := val.([]any)
+	for i, e := range list {
+		if s, ok := e.(string); ok && s != "" && !output.ValidLang(s) {
+			v.add(joinPath(path, strconv.Itoa(i)), "不是正確的語言標記（BCP-47，例如 en、zh-Hant-TW）。")
+		}
+	}
 }
 
 func (v *layerValidator) add(path, msg string) {
@@ -476,6 +496,26 @@ func (v *layerValidator) checkOutputs(path string, val any) {
 			v.add(joinPath(p, "target"), msgRequired)
 		}
 		v.walk(p, m, outputFields, msgUnknownField)
+		v.checkOutputPath(p, m)
+	}
+}
+
+// checkOutputPath 檢查 path 與 target 的關係：folder 必須有 path，而且是絕對路徑；sidecar 寫在影片旁邊，不可以有 path。
+// target 本身有錯時略過（已經回報過）。
+func (v *layerValidator) checkOutputPath(p string, m map[string]any) {
+	target, _ := m["target"].(string)
+	path, hasPath := m["path"]
+	switch target {
+	case output.TargetFolder:
+		if !hasPath {
+			v.add(joinPath(p, "path"), "folder 目標必須指定 path。")
+		} else if s, ok := path.(string); ok && s != "" && !filepath.IsAbs(s) {
+			v.add(joinPath(p, "path"), "必須是絕對路徑。")
+		}
+	case output.TargetSidecar:
+		if hasPath {
+			v.add(joinPath(p, "path"), "sidecar 目標寫在影片旁邊，不可以指定 path。")
+		}
 	}
 }
 
