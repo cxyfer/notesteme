@@ -236,6 +236,20 @@ fixture 有三種形式（`features/internal/fakellm/fixture.go`）：靜態的 
 - `translate-*`：TRN 場景的靜態譯文。`translate-group-*` 與 `translate-per-cue` 的句號對應場景中的 cue；
   `translate-way-too-long` 的長度比超過 3.0，`translate-long-for-short-cue` 的長度比正常但每秒字數超過 9（TRN-R6）。
 
+## M5 的假服務
+
+M5（Hub）的場景不使用 `features/fixtures/` 中的檔案：bundle、字幕內容與 OAuth 使用者都由步驟在場景目錄中產生（steps.md 4.30～4.32），不 commit 二進位 fixture。測試替身依被測系統切開（ADR-0030 第 3 點）：
+
+| 套件 | 對象 | 用途 |
+|---|---|---|
+| `features/internal/fakeoauth` | 真 Hub（HACC、HREP、HMCP） | Google（OIDC，RS256 的 `id_token` 與 JWKS）、GitHub、Linux.do 的 authorize、token、使用者資訊；驗證 client 憑證、單次使用的 code、`redirect_uri` 與 PKCE（S256）；記錄 authorize 與 token 請求（`ValidPKCE`）。以 `Hosts` 中的真實主機名稱登記到 fakenet |
+| `features/internal/fakehub` | Client（HSHR） | Hub 的 Client 契約（`Routes`，ADR-0032 第 1 點）：`/api/v1/me`、分享（解開 bundle 保存 manifest 與檔案）、hash 前綴查詢、版本資訊與原始內容；記錄每個請求（`SawString` 不含分享的 bundle）；故障注入：`Fail`、`Hang`、`Tamper`。以 `fakehub.Host`（`hub.example.org`）登記到 fakenet |
+
+- 兩個套件都只有 handler 與狀態，還沒接進 fakenet 與 `features/steps`（M5 的實作切片負責，同 M3 的假服務）。
+- 惡意 bundle（絕對路徑、`..`、symlink、sha256 不符、媒體檔）由 `Given the bundle … is made unsafe with …` 在場景中產生，不放進 repo。
+- 內容名稱（`content` 欄）對應固定的 bytes：同一個名稱在 seeding（`the Hub has the version …`）與 bundle 中產生完全相同的內容，用來驗證去重與 `removed_hashes`。
+- 預設的 OAuth 使用者與 GitHub、Linux.do 的數字 `id`（`fakeoauth.NumericID`）見 steps.md 4.30。
+
 ## 新增 fixture 的步驟
 
 1. 先在場景中寫出名稱（使用 `steps.md` 已有的句型）。
