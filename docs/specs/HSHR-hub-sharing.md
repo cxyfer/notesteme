@@ -1,6 +1,6 @@
 # HSHR：Client 的分享、重新生成與 ASR 前查詢
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M5
 - 相關：plan 第 6、19、20 節；ADR-0005、ADR-0013、ADR-0014；[ADR-0030](../adr/0030-hub-deployment-and-storage.md)、[ADR-0032](../adr/0032-client-hub-protocol-and-privacy.md)；[SRC](SRC-transcript-sources.md)、[PIPE](PIPE-pipeline-queue.md)、[SEC](SEC-config-secrets.md)
 - 驗收場景：[`features/HSHR-hub-sharing.feature`](../../features/HSHR-hub-sharing.feature)（Client＋fakehub，閘門 `Given the owner's client is connected to a Hub`）

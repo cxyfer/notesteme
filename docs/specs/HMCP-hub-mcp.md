@@ -1,6 +1,6 @@
 # HMCP：Hub MCP server
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M5
 - 相關：plan 第 16、20 節；ADR-0012、ADR-0014；[ADR-0030](../adr/0030-hub-deployment-and-storage.md)、[ADR-0031](../adr/0031-hub-identity-permissions-and-content.md)；[MCP](MCP-tools.md)（Client 的 MCP）、[HREP](HREP-hub-repository.md)
 - 驗收場景：[`features/HMCP-hub-mcp.feature`](../../features/HMCP-hub-mcp.feature)（真 Hub，閘門 `Given a Hub is running`）

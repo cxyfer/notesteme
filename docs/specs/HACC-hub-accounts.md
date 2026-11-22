@@ -1,6 +1,6 @@
 # HACC：Hub 帳號、權限與下架
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M5
 - 相關：plan 第 3.2、19、20 節；ADR-0012、ADR-0013、ADR-0014；[ADR-0030](../adr/0030-hub-deployment-and-storage.md)、[ADR-0031](../adr/0031-hub-identity-permissions-and-content.md)、[ADR-0032](../adr/0032-client-hub-protocol-and-privacy.md)
 - 驗收場景：[`features/HACC-hub-accounts.feature`](../../features/HACC-hub-accounts.feature)（真 Hub，閘門 `Given a Hub is running`）

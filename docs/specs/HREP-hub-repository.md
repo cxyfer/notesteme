@@ -1,6 +1,6 @@
 # HREP：Hub 內容倉庫、篩選與社群
 
-- 狀態：draft
+- 狀態：ready
 - 里程碑：M5
 - 相關：plan 第 3.2、19、20 節；ADR-0005、ADR-0012、ADR-0014；[ADR-0030](../adr/0030-hub-deployment-and-storage.md)、[ADR-0031](../adr/0031-hub-identity-permissions-and-content.md)、[ADR-0032](../adr/0032-client-hub-protocol-and-privacy.md)；M4 的 BND 規格（bundle 驗證，分支 `docs/m4-tracking-deploy-specs`）
 - 驗收場景：[`features/HREP-hub-repository.feature`](../../features/HREP-hub-repository.feature)（真 Hub，閘門 `Given a Hub is running`）
