@@ -32,7 +32,11 @@ type LLMChunk struct {
 	// Detail 是退回的補充資料（例如 correct 退回時的相似度）；沒有時是 {}。
 	Detail json.RawMessage
 	// Reused 為 true 代表這個 chunk 重用了之前相同輸入的結果，沒有呼叫 provider（LLM-R8）。
-	Reused    bool
+	Reused bool
+	// Executor 是產生輸出的執行方式：api 或 agent（AGT-R10）；Agent 是 token 名稱，ModelReported 是 Agent 自己回報的模型。
+	Executor      string
+	Agent         string
+	ModelReported string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -42,6 +46,7 @@ func llmChunkFromRow(row sqlcdb.LlmChunk) LLMChunk {
 		StageRunID: row.StageRunID, Chunk: int(row.Chunk), ItemID: row.ItemID, Stage: row.Stage,
 		CacheKey: row.CacheKey, Status: row.Status, Reason: row.Reason, Plan: json.RawMessage(row.PlanJson),
 		Usage: json.RawMessage(row.UsageJson), Detail: json.RawMessage(row.DetailJson), Reused: row.Reused != 0,
+		Executor: row.Executor, Agent: row.Agent, ModelReported: row.ModelReported,
 		CreatedAt: fromMs(row.CreatedAt), UpdatedAt: fromMs(row.UpdatedAt),
 	}
 	if row.OutputJson != nil {
@@ -103,10 +108,30 @@ func (r *Repo) LLMChunk(ctx context.Context, stageRunID string, chunk int) (LLMC
 	return llmChunkFromRow(row), nil
 }
 
+// ChunkResult 是寫入 chunk 的結果（FinishLLMChunk）。
+type ChunkResult struct {
+	Status, Reason        string
+	Output, Usage, Detail json.RawMessage
+	// By 是產生輸出的執行者；Executor 空字串代表 api。
+	By ChunkProducer
+}
+
+// ChunkProducer 是 chunk 輸出的來源（AGT-R10）。
+type ChunkProducer struct {
+	Executor      string // api 或 agent
+	Agent         string // agent 的 token 名稱
+	ModelReported string // agent 自己回報的模型，未驗證
+}
+
 // FinishLLMChunk 寫入 chunk 的結果（done 或 fallback）。chunk 已經不是 pending 時回傳 false，不改變任何資料。
-func (r *Repo) FinishLLMChunk(ctx context.Context, stageRunID string, chunk int, status, reason string, output, usage, detail json.RawMessage) (bool, error) {
+func (r *Repo) FinishLLMChunk(ctx context.Context, stageRunID string, chunk int, res ChunkResult) (bool, error) {
+	executor := res.By.Executor
+	if executor == "" {
+		executor = "api"
+	}
 	n, err := r.q.FinishLLMChunk(ctx, sqlcdb.FinishLLMChunkParams{
-		Status: status, Reason: reason, OutputJson: rawPtr(output), UsageJson: rawOr(usage, "{}"), DetailJson: rawOr(detail, "{}"),
+		Status: res.Status, Reason: res.Reason, OutputJson: rawPtr(res.Output), UsageJson: rawOr(res.Usage, "{}"),
+		DetailJson: rawOr(res.Detail, "{}"), Executor: executor, Agent: res.By.Agent, ModelReported: res.By.ModelReported,
 		Now: r.nowMs(), StageRunID: stageRunID, Chunk: int64(chunk),
 	})
 	return n > 0, err

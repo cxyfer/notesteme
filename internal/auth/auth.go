@@ -210,8 +210,9 @@ func (s *Service) Logout(ctx context.Context, sessionToken string) error {
 type Principal struct {
 	// Kind 是 "session"、"token" 或 "local"。
 	Kind string
-	// TokenID 在 Kind == "token" 時記錄 token 的 ID。
-	TokenID string
+	// TokenID 在 Kind == "token" 時記錄 token 的 ID；TokenName 是它的名稱（Agent 的身分，AGT-R10）。
+	TokenID   string
+	TokenName string
 	// Scopes 為 nil 代表擁有全部權限（session／local）；token 列出允許的 scope。
 	Scopes []string
 }

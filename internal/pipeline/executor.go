@@ -130,8 +130,8 @@ func planChain(eff Effective, from, until string, sc StageContext) ([]StageResol
 	return chain, nil
 }
 
-// stageImplemented 回報 (stage, executor) 有沒有實作。目前是三個 M1 步驟的 local、translate 的 opencc，以及 LLM 步驟的 agent
-// （只建立任務並等 Agent 領取，AGT-R1；領取、租約與逾時屬於之後的切片）；
+// stageImplemented 回報 (stage, executor) 有沒有實作。目前是三個 M1 步驟的 local、translate 的 opencc，以及 LLM 步驟的 api 與 agent
+// （AGT；translate 的 agent 在 Handle 以 permanent 失敗並說明原因）；
 // 由 Handle 的分派與 Rerun 的 501 判斷共用，之後的切片完成時在這裡登記。
 func stageImplemented(stage, executor string) bool {
 	switch {
@@ -180,16 +180,14 @@ func (p *Pipeline) applyChain(ctx context.Context, r *store.Repo, itemID string,
 			continue
 		}
 		run.Executor = res.Executor
-		if _, err := insertStageTaskChunks(ctx, r, itemID, run, priority, transcriptASR, res.Chunks); err != nil {
+		chunks := res.Chunks
+		if res.Executor != ExecutorAPI {
+			chunks = nil // 指定重跑的 chunk 只用於 api（L12）
+		}
+		if _, err := insertStageTaskChunks(ctx, r, itemID, run, priority, transcriptASR, chunks); err != nil {
 			return created, err
 		}
-		if res.Executor == ExecutorAgent {
-			// agent：建立任務後步驟等 Agent 領取（AGT-R1）。內建 worker 不領這種任務，所以不需要喚醒它。
-			if err := r.SetStageState(ctx, run.ID, store.StageState{Status: store.StatusAwaitingAgent}); err != nil {
-				return created, err
-			}
-			continue
-		}
+		// agent 也一樣先由內建 worker 執行 plan（切 chunk），之後的 chunk 任務才等 Agent 領取（AGT-R1）。
 		created = true
 	}
 	return created, nil

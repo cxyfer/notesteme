@@ -188,7 +188,7 @@ func TestMCPScopeFiltering(t *testing.T) {
 	}
 }
 
-// AGT 的 tool 是 S10 的擴充點：名稱與 scope 要和契約一致，呼叫時回 not_implemented。
+// AGT 的 tool（S10）：名稱與 scope 要和契約一致；沒有任務時 claim_tasks 回空的清單，不是 not_implemented。
 // 這份清單獨立於 production 的 tools()，才抓得到名稱或 scope 寫錯。
 func TestMCPToolContract(t *testing.T) {
 	want := []mcptools.ToolSpec{
@@ -210,8 +210,8 @@ func TestMCPToolContract(t *testing.T) {
 	m := newMCPRig(t, nil)
 	cs := m.connect(context.Background(), m.token(auth.ScopeAgent))
 	res := callTool(t, cs, "claim_tasks", map[string]any{"kinds": []string{"correct"}, "max": 1})
-	if !res.IsError || !strings.HasPrefix(resultText(res), "not_implemented") {
-		t.Errorf("claim_tasks = %s，預期 not_implemented", resultText(res))
+	if res.IsError || resultText(res) != `{"tasks":[]}` {
+		t.Errorf("claim_tasks = %s，預期沒有任務的空清單", resultText(res))
 	}
 }
 

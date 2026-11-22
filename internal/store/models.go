@@ -196,6 +196,10 @@ type Task struct {
 	NotBefore     *time.Time
 	DeadlineAt    *time.Time
 	CreatedAt     time.Time
+	// AgentFailures 是目前這份租約下連續驗證失敗的提交次數（AGT-R6）；領取時歸零。
+	AgentFailures int
+	// ReleaseReason 是上一個持有者放回任務時給的原因（AGT-R8）。
+	ReleaseReason string
 }
 
 // NewTask 是新增任務所需的欄位。
@@ -224,6 +228,8 @@ type ClaimOptions struct {
 	Executor string
 	// ResourceClasses 限定資源類別；空代表全部。
 	ResourceClasses []string
+	// Kinds 限定任務種類（步驟名稱，AGT 的 claim_tasks）；空代表全部。
+	Kinds []string
 	// AgingInterval 是等待多久優先度提高一級（PIPE-R9）。
 	AgingInterval time.Duration
 }

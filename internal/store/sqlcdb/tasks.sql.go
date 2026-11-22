@@ -56,7 +56,7 @@ func (q *Queries) CancelPendingTasks(ctx context.Context, stageRunID string) (in
 const claimTasks = `-- name: ClaimTasks :many
 UPDATE tasks
 SET state = 'leased', lease_owner = CAST(?1 AS TEXT), lease_token = CAST(?2 AS TEXT),
-    lease_until = CAST(?3 AS INTEGER), attempts = attempts + 1
+    lease_until = CAST(?3 AS INTEGER), attempts = attempts + 1, agent_failures = 0
 WHERE id IN (
   SELECT picked.id FROM (
     SELECT t.id AS id, t.priority + (CAST(?4 AS INTEGER) - t.created_at) / CAST(?5 AS INTEGER) AS score
@@ -65,11 +65,13 @@ WHERE id IN (
       AND t.executor = ?6
       AND (json_array_length(CAST(?7 AS TEXT)) = 0
            OR t.resource_class IN (SELECT j.value FROM json_each(CAST(?7 AS TEXT)) AS j))
+      AND (json_array_length(CAST(?8 AS TEXT)) = 0
+           OR t.kind IN (SELECT k.value FROM json_each(CAST(?8 AS TEXT)) AS k))
     ORDER BY score DESC, t.created_at, t.rowid
-    LIMIT ?8
+    LIMIT ?9
   ) AS picked
 )
-RETURNING id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at
+RETURNING id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason
 `
 
 type ClaimTasksParams struct {
@@ -80,13 +82,14 @@ type ClaimTasksParams struct {
 	AgingMs         int64
 	Executor        string
 	ResourceClasses string
+	Kinds           string
 	Max             int64
 }
 
 // Atomically claim runnable tasks in one statement (ADR-0004).
 // Claimable: state is pending, executor and resource class match, not_before has passed.
 // Order: priority plus aging (one level per aging_ms of waiting, PIPE-R9), then creation order.
-// resource_classes is a JSON array of strings; an empty array means every class. (sqlc.slice is not
+// resource_classes and kinds are JSON arrays of strings; an empty array means any. (sqlc.slice is not
 // used: its sqlite output mixes numbered and plain placeholders and breaks with more than one value.)
 // The score is computed in the select list because sqlc does not rewrite parameters inside ORDER BY.
 // RETURNING has no defined order, so the caller must re-sort the result by the same key.
@@ -99,6 +102,7 @@ func (q *Queries) ClaimTasks(ctx context.Context, arg ClaimTasksParams) ([]Task,
 		arg.AgingMs,
 		arg.Executor,
 		arg.ResourceClasses,
+		arg.Kinds,
 		arg.Max,
 	)
 	if err != nil {
@@ -127,6 +131,8 @@ func (q *Queries) ClaimTasks(ctx context.Context, arg ClaimTasksParams) ([]Task,
 			&i.NotBefore,
 			&i.DeadlineAt,
 			&i.CreatedAt,
+			&i.AgentFailures,
+			&i.ReleaseReason,
 		); err != nil {
 			return nil, err
 		}
@@ -365,7 +371,8 @@ func (q *Queries) NextTaskTime(ctx context.Context, arg NextTaskTimeParams) (int
 const releaseLeases = `-- name: ReleaseLeases :many
 UPDATE tasks SET state = 'pending', lease_token = NULL, lease_owner = NULL, lease_until = NULL,
   attempts = MAX(attempts - 1, 0)
-WHERE state = 'leased' AND (lease_owner <> CAST(?1 AS TEXT) OR lease_until <= CAST(?2 AS INTEGER))
+WHERE state = 'leased' AND executor <> 'agent'
+  AND (lease_owner <> CAST(?1 AS TEXT) OR lease_until <= CAST(?2 AS INTEGER))
 RETURNING stage_run_id
 `
 
@@ -375,6 +382,8 @@ type ReleaseLeasesParams struct {
 }
 
 // Leased tasks not held by keep_owner, or already expired, go back to pending without counting an attempt.
+// Agent leases are left alone: they belong to an agent, not to a worker, and survive a restart; when they
+// expire the agent sweeper returns them and counts the attempt (AGT-R4).
 func (q *Queries) ReleaseLeases(ctx context.Context, arg ReleaseLeasesParams) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, releaseLeases, arg.KeepOwner, arg.Now)
 	if err != nil {
@@ -401,7 +410,7 @@ func (q *Queries) ReleaseLeases(ctx context.Context, arg ReleaseLeasesParams) ([
 const releaseOwnedLeases = `-- name: ReleaseOwnedLeases :many
 UPDATE tasks SET state = 'pending', lease_token = NULL, lease_owner = NULL, lease_until = NULL,
   attempts = MAX(attempts - 1, 0)
-WHERE state = 'leased' AND lease_owner = CAST(?1 AS TEXT)
+WHERE state = 'leased' AND executor <> 'agent' AND lease_owner = CAST(?1 AS TEXT)
 RETURNING stage_run_id
 `
 
@@ -471,7 +480,7 @@ func (q *Queries) SetTaskLeaseToken(ctx context.Context, arg SetTaskLeaseTokenPa
 }
 
 const taskByID = `-- name: TaskByID :one
-SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at FROM tasks WHERE id = ?1
+SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason FROM tasks WHERE id = ?1
 `
 
 func (q *Queries) TaskByID(ctx context.Context, id string) (Task, error) {
@@ -496,12 +505,14 @@ func (q *Queries) TaskByID(ctx context.Context, id string) (Task, error) {
 		&i.NotBefore,
 		&i.DeadlineAt,
 		&i.CreatedAt,
+		&i.AgentFailures,
+		&i.ReleaseReason,
 	)
 	return i, err
 }
 
 const taskByStageRun = `-- name: TaskByStageRun :one
-SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at FROM tasks WHERE stage_run_id = ?1 ORDER BY created_at DESC, rowid DESC LIMIT 1
+SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason FROM tasks WHERE stage_run_id = ?1 ORDER BY created_at DESC, rowid DESC LIMIT 1
 `
 
 func (q *Queries) TaskByStageRun(ctx context.Context, stageRunID string) (Task, error) {
@@ -526,6 +537,8 @@ func (q *Queries) TaskByStageRun(ctx context.Context, stageRunID string) (Task, 
 		&i.NotBefore,
 		&i.DeadlineAt,
 		&i.CreatedAt,
+		&i.AgentFailures,
+		&i.ReleaseReason,
 	)
 	return i, err
 }

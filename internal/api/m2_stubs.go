@@ -1,11 +1,7 @@
 package api
 
 import (
-	"net/http"
-
 	"github.com/danielgtaylor/huma/v2"
-
-	"github.com/cxyfer/notesteme/internal/auth"
 )
 
 // m2Stub 是 M2 之後的切片才會實作的路由；實作前先明確回應 501 not_implemented。
@@ -20,11 +16,8 @@ type m2Stub struct {
 // 切片實作某條路由時，從這份清單移除，改在自己的檔案註冊。
 // PRF（處理方案、頻道覆寫）的 stub 放在 m2_stubs_prf.go；PRM（prompt 庫）已經實作，路由在 prompts.go，試跑與比較在 prompts_playground.go；
 // OUT 的 ASS 樣式與字幕匯入已經實作，路由在 ass_styles.go 與 subtitle_import.go；COR 的詞彙表與術語候選已經實作，路由在 glossaries.go。
-var m2Stubs = []m2Stub{
-	// AGT：切換執行者
-	{"items-switch-executor", http.MethodPost, "/api/items/{id}/switch-executor", "切換影音步驟的執行者（尚未實作）", auth.ScopeIngest},
-	{"tasks-switch-executor", http.MethodPost, "/api/tasks/{id}/switch-executor", "切換任務的執行者（尚未實作）", auth.ScopeIngest},
-}
+// AGT 的 switch-executor 已經實作，路由在 agent.go；目前沒有剩下的 stub。
+var m2Stubs = []m2Stub{}
 
 // registerM2Stubs 註冊 M2 的 501 stub。
 func (rt *routes) registerM2Stubs(api huma.API) {

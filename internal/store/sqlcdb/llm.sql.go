@@ -21,8 +21,9 @@ func (q *Queries) CountPendingLLMChunks(ctx context.Context, stageRunID string) 
 }
 
 const doneLLMChunkByCacheKey = `-- name: DoneLLMChunkByCacheKey :one
-SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json FROM llm_chunks
+SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json, executor, agent, model_reported FROM llm_chunks
 WHERE item_id = ?1 AND stage = ?2 AND cache_key = ?3 AND status = 'done'
+  AND executor = 'api'
 ORDER BY updated_at DESC, rowid DESC LIMIT 1
 `
 
@@ -32,7 +33,9 @@ type DoneLLMChunkByCacheKeyParams struct {
 	CacheKey string
 }
 
-// The most recent validated output for the same chunk input (LLM-R8). Fallback rows are never reused.
+// The most recent validated output for the same chunk input (LLM-R8). Fallback rows are never reused,
+// and neither are agent outputs: the model an agent reports is not verified (AGT-R10), so a later run
+// must not pass them off as the configured provider's.
 func (q *Queries) DoneLLMChunkByCacheKey(ctx context.Context, arg DoneLLMChunkByCacheKeyParams) (LlmChunk, error) {
 	row := q.db.QueryRowContext(ctx, doneLLMChunkByCacheKey, arg.ItemID, arg.Stage, arg.CacheKey)
 	var i LlmChunk
@@ -51,25 +54,32 @@ func (q *Queries) DoneLLMChunkByCacheKey(ctx context.Context, arg DoneLLMChunkBy
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DetailJson,
+		&i.Executor,
+		&i.Agent,
+		&i.ModelReported,
 	)
 	return i, err
 }
 
 const finishLLMChunk = `-- name: FinishLLMChunk :execrows
 UPDATE llm_chunks SET status = ?1, reason = ?2, output_json = ?3,
-  usage_json = ?4, detail_json = ?5, updated_at = ?6
-WHERE stage_run_id = ?7 AND chunk = ?8 AND status = 'pending'
+  usage_json = ?4, detail_json = ?5, executor = ?6,
+  agent = ?7, model_reported = ?8, updated_at = ?9
+WHERE stage_run_id = ?10 AND chunk = ?11 AND status = 'pending'
 `
 
 type FinishLLMChunkParams struct {
-	Status     string
-	Reason     string
-	OutputJson *string
-	UsageJson  string
-	DetailJson string
-	Now        int64
-	StageRunID string
-	Chunk      int64
+	Status        string
+	Reason        string
+	OutputJson    *string
+	UsageJson     string
+	DetailJson    string
+	Executor      string
+	Agent         string
+	ModelReported string
+	Now           int64
+	StageRunID    string
+	Chunk         int64
 }
 
 // Only a pending row is filled in: a second write-back of the same chunk matches no row.
@@ -80,6 +90,9 @@ func (q *Queries) FinishLLMChunk(ctx context.Context, arg FinishLLMChunkParams) 
 		arg.OutputJson,
 		arg.UsageJson,
 		arg.DetailJson,
+		arg.Executor,
+		arg.Agent,
+		arg.ModelReported,
 		arg.Now,
 		arg.StageRunID,
 		arg.Chunk,
@@ -134,7 +147,7 @@ func (q *Queries) InsertLLMChunk(ctx context.Context, arg InsertLLMChunkParams) 
 }
 
 const lLMChunk = `-- name: LLMChunk :one
-SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json FROM llm_chunks WHERE stage_run_id = ?1 AND chunk = ?2
+SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json, executor, agent, model_reported FROM llm_chunks WHERE stage_run_id = ?1 AND chunk = ?2
 `
 
 type LLMChunkParams struct {
@@ -160,12 +173,15 @@ func (q *Queries) LLMChunk(ctx context.Context, arg LLMChunkParams) (LlmChunk, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DetailJson,
+		&i.Executor,
+		&i.Agent,
+		&i.ModelReported,
 	)
 	return i, err
 }
 
 const lLMChunksByRun = `-- name: LLMChunksByRun :many
-SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json FROM llm_chunks WHERE stage_run_id = ?1 ORDER BY chunk
+SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json, executor, agent, model_reported FROM llm_chunks WHERE stage_run_id = ?1 ORDER BY chunk
 `
 
 func (q *Queries) LLMChunksByRun(ctx context.Context, stageRunID string) ([]LlmChunk, error) {
@@ -192,6 +208,9 @@ func (q *Queries) LLMChunksByRun(ctx context.Context, stageRunID string) ([]LlmC
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DetailJson,
+			&i.Executor,
+			&i.Agent,
+			&i.ModelReported,
 		); err != nil {
 			return nil, err
 		}

@@ -337,7 +337,7 @@ func (p *Pipeline) expandParts(ctx context.Context, t source.Target, want []int)
 }
 
 // insertStageTask 為步驟建立任務。transcriptASR 的意義見 resourceClass；不知道字幕軌時傳 false。
-// run.Executor 是 agent 時，任務的 executor 也是 agent：內建 worker 只領 builtin 的任務，不會執行它（AGT-R1、ADR-0004）。
+// run.Executor 是 agent 的 LLM 步驟時，建立的是內建 worker 執行的 plan 任務（AGT-R1、ADR-0004）。
 func insertStageTask(ctx context.Context, r *store.Repo, itemID string, run store.StageRun, priority int, transcriptASR bool) (store.Task, error) {
 	return insertStageTaskChunks(ctx, r, itemID, run, priority, transcriptASR, nil)
 }
@@ -357,8 +357,9 @@ func insertStageTaskChunks(ctx context.Context, r *store.Repo, itemID string, ru
 	if err != nil {
 		return store.Task{}, err
 	}
+	// agent 的 LLM 步驟由內建 worker 執行 plan，chunk 任務才給 Agent（AGT-R2）；其他（沒有登記引擎的）agent 任務不會被內建 worker 執行。
 	executor := queue.ExecutorBuiltin
-	if run.Executor == ExecutorAgent {
+	if run.Executor == ExecutorAgent && !usesLLMEngine(run.Stage, run.Executor) {
 		executor = ExecutorAgent
 	}
 	return r.InsertTask(ctx, store.NewTask{

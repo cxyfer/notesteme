@@ -264,6 +264,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerAssStyles(api)
 	rt.registerSubtitleImport(api)
 	rt.registerOutputs(api)
+	rt.registerAgent(api)
 	rt.registerM2Stubs(api)
 	registerScoped(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",

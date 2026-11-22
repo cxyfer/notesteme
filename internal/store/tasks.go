@@ -29,6 +29,8 @@ func taskFromRow(row sqlcdb.Task) Task {
 		NotBefore:     msToTime(row.NotBefore),
 		DeadlineAt:    msToTime(row.DeadlineAt),
 		CreatedAt:     fromMs(row.CreatedAt),
+		AgentFailures: int(row.AgentFailures),
+		ReleaseReason: row.ReleaseReason,
 	}
 	if row.ChunkIndex != nil {
 		c := int(*row.ChunkIndex)
@@ -121,6 +123,10 @@ func (r *Repo) claimTasks(ctx context.Context, o ClaimOptions) ([]Task, error) {
 	if err != nil {
 		return nil, err
 	}
+	kinds, err := json.Marshal(nonNil(o.Kinds)) // 空陣列代表不限種類
+	if err != nil {
+		return nil, err
+	}
 
 	// 先以同一個暫時的 token 領取，之後逐一換成各任務自己的 token。
 	rows, err := r.q.ClaimTasks(ctx, sqlcdb.ClaimTasksParams{
@@ -131,6 +137,7 @@ func (r *Repo) claimTasks(ctx context.Context, o ClaimOptions) ([]Task, error) {
 		AgingMs:         aging,
 		Executor:        o.Executor,
 		ResourceClasses: string(classes),
+		Kinds:           string(kinds),
 		Max:             int64(o.Max),
 	})
 	if err != nil {

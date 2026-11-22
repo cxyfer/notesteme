@@ -128,7 +128,7 @@ func (s *Service) AuthenticateBearer(ctx context.Context, token string) (Princip
 			}
 		}
 	}
-	return Principal{Kind: "token", TokenID: tok.ID, Scopes: tok.Scopes}, nil
+	return Principal{Kind: "token", TokenID: tok.ID, TokenName: tok.Name, Scopes: tok.Scopes}, nil
 }
 
 // ListTokens 列出所有 API token 的中繼資料，由新到舊排序，不含明文或 hash。

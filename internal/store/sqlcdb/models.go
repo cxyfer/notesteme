@@ -157,20 +157,23 @@ type ItemTombstone struct {
 }
 
 type LlmChunk struct {
-	StageRunID string
-	Chunk      int64
-	ItemID     string
-	Stage      string
-	CacheKey   string
-	Status     string
-	Reason     string
-	PlanJson   string
-	OutputJson *string
-	UsageJson  string
-	Reused     int64
-	CreatedAt  int64
-	UpdatedAt  int64
-	DetailJson string
+	StageRunID    string
+	Chunk         int64
+	ItemID        string
+	Stage         string
+	CacheKey      string
+	Status        string
+	Reason        string
+	PlanJson      string
+	OutputJson    *string
+	UsageJson     string
+	Reused        int64
+	CreatedAt     int64
+	UpdatedAt     int64
+	DetailJson    string
+	Executor      string
+	Agent         string
+	ModelReported string
 }
 
 type Output struct {
@@ -298,4 +301,6 @@ type Task struct {
 	NotBefore     *int64
 	DeadlineAt    *int64
 	CreatedAt     int64
+	AgentFailures int64
+	ReleaseReason string
 }

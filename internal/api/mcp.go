@@ -81,7 +81,19 @@ func (e *mcpEndpoint) server(r *http.Request) *mcp.Server {
 		Request:     r.Context(),
 		Version:     e.d.Version,
 		SchemaCache: e.cache,
+		Agent:       e.agent(r.Context()),
+		AgentName:   agentName(p),
 	})
+}
+
+// agent 是 AGT 的任務 tool 的後端；沒有 pipeline 時是 nil（tool 回 not_implemented）。
+func (e *mcpEndpoint) agent(ctx context.Context) mcptools.AgentBackend {
+	if e.d.Pipeline == nil {
+		return nil
+	}
+	return agentBackend{p: e.d.Pipeline, log: func(msg string, err error) {
+		e.d.Log.ErrorContext(ctx, msg, "error", err)
+	}}
 }
 
 func (e *mcpEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {

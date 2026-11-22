@@ -146,6 +146,8 @@ type Pipeline struct {
 	providers ProviderCatalog
 	prompts   PromptResolver
 	llm       *llm.Registry
+	// agentLimit 回傳資源類別的並行上限，Agent 領取時用（AGT-R2）；nil 時用 queue.DefaultLimit。
+	agentLimit func(class string) int
 }
 
 // New 建立 Pipeline。

@@ -14,18 +14,15 @@ type stubCase struct{ method, path, scope string }
 
 // m2StubCases 是 M2 S0 契約第 4 節 29 條路由中，不屬於 PRF、PRM 的 14 條（含 playground 與 compare）扣掉 OUT 切片（S7）
 // 已實作的 7 條（字幕匯入與 ASS 樣式，見 ass_styles_test.go）、COR 切片（S4）已實作的 3 條（詞彙表與術語候選，見 glossaries_test.go）、
-// PRM 的 playground 與 compare 2 條（見 prompts_playground_test.go）之後還是 501 的 2 條；
-// 其餘 15 條在 m2_stubs_prf_test.go（9 條）與 m2_stubs_prm_test.go（6 條）。
+// PRM 的 playground 與 compare 2 條（見 prompts_playground_test.go）、AGT 切片（S10）已實作的 2 條 switch-executor（見 agent_test.go）
+// 之後剩下的 0 條；其餘 15 條在 m2_stubs_prf_test.go（9 條）與 m2_stubs_prm_test.go（6 條）。
 // 這份清單獨立於 production 的 m2Stubs，才抓得到 method、path、scope 寫錯。
-var m2StubCases = []stubCase{
-	{"POST", "/api/items/i1/switch-executor", auth.ScopeIngest},
-	{"POST", "/api/tasks/t1/switch-executor", auth.ScopeIngest},
-}
+var m2StubCases = []stubCase{}
 
 // TestM2StubRoutes 驗證主清單的每條 stub，見 checkStubRoutes。
 func TestM2StubRoutes(t *testing.T) {
-	if len(m2StubCases) != 2 {
-		t.Fatalf("主清單應有 2 條路由（29 條減去 PRF 9 條、PRM 8 條、OUT 7 條、COR 3 條），測試清單有 %d 條", len(m2StubCases))
+	if len(m2StubCases) != 0 {
+		t.Fatalf("主清單應有 0 條路由（29 條減去 PRF 9 條、PRM 8 條、OUT 7 條、COR 3 條、AGT 2 條），測試清單有 %d 條", len(m2StubCases))
 	}
 	checkStubRoutes(t, m2StubCases)
 }

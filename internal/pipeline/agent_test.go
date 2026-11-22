@@ -14,10 +14,17 @@ func agentCorrect() map[string]any {
 	return stagesOver("correct", map[string]any{"executor": "agent"})
 }
 
-// AGT-R1（D15）：executor: agent 的 LLM 步驟前進時，建立 executor=agent、資源類別 llm 的任務，
-// 步驟狀態是 awaiting_agent；前面可以略過的步驟照常 skipped，後面的步驟等它完成。
+// newAgentRig 是有 prompt 庫的 rig：agent 的 plan 要讀 prompt 才能切 chunk、組固定前綴。
+func newAgentRig(t *testing.T) *rig {
+	t.Helper()
+	return newRig(t, func(d *Deps) { d.Prompts = staticPrompts{} })
+}
+
+// AGT-R1（D15）：executor: agent 的 LLM 步驟前進時，內建 worker 先執行 plan（切 chunk），
+// 再為每個 chunk 建立 executor=agent、資源類別 llm 的任務，步驟狀態是 awaiting_agent；
+// 前面可以略過的步驟照常 skipped，後面的步驟等它完成。
 func TestApplyChain_AgentExecutorAwaitingAgent(t *testing.T) {
-	r := newRig(t)
+	r := newAgentRig(t)
 	ctx := context.Background()
 	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
 	got := recordEvents(r.st)
@@ -35,8 +42,9 @@ func TestApplyChain_AgentExecutorAwaitingAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tk.Executor != "agent" || tk.ResourceClass != queue.ResourceLLM || tk.Kind != StageCorrect || tk.State != store.TaskPending || tk.Attempts != 0 {
-		t.Errorf("correct 任務 = %+v，預期 executor=agent、llm、pending", tk)
+	if tk.Executor != "agent" || tk.ResourceClass != queue.ResourceLLM || tk.Kind != StageCorrect || tk.State != store.TaskPending ||
+		tk.Attempts != 0 || tk.ChunkIndex == nil || tk.DeadlineAt == nil || !tk.DeadlineAt.Equal(r.clk.Now().Add(DefaultAgentTimeout)) {
+		t.Errorf("correct 任務 = %+v，預期 executor=agent、llm、pending、chunk 任務、24 小時的領取期限", tk)
 	}
 	// 後面的步驟等它完成，沒有任務。
 	for _, s := range []string{StageTranslate, StagePublish} {
@@ -66,7 +74,7 @@ func TestApplyChain_AgentExecutorAwaitingAgent(t *testing.T) {
 // 重跑落在 agent 的步驟不再是 501（stageImplemented 視 agent 為可以前進）：建立 stage run 與 agent 任務；
 // 再重跑一次時，舊的 awaiting_agent 步驟被取代（skipped），舊任務不再被領取。
 func TestRerun_AgentExecutorIsNotNotImplemented(t *testing.T) {
-	r := newRig(t)
+	r := newAgentRig(t)
 	ctx := context.Background()
 	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
 	it := r.ingest(watch, nil, "")
@@ -76,6 +84,7 @@ func TestRerun_AgentExecutorIsNotNotImplemented(t *testing.T) {
 	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageSegment, Overrides: stagesOver("segment", map[string]any{"executor": "agent", "on_manual": "run"})}); err != nil {
 		t.Fatalf("重跑 agent 步驟：%v", err)
 	}
+	r.run()
 	first := latestStage(t, r, it.ID, StageSegment)
 	if first.Status != store.StatusAwaitingAgent || first.Executor != ExecutorAgent {
 		t.Fatalf("segment = %+v", first)
@@ -87,6 +96,7 @@ func TestRerun_AgentExecutorIsNotNotImplemented(t *testing.T) {
 	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageSegment, Overrides: stagesOver("segment", map[string]any{"executor": "agent", "on_manual": "run"})}); err != nil {
 		t.Fatal(err)
 	}
+	r.run()
 	old, err := r.st.Read().StageRun(ctx, first.ID)
 	if err != nil || old.Status != store.StatusSkipped || old.BlockReason != SkipCancelled {
 		t.Errorf("被取代的舊步驟 = %+v, %v，預期 skipped（cancelled）", old, err)
@@ -102,7 +112,7 @@ func TestRerun_AgentExecutorIsNotNotImplemented(t *testing.T) {
 // 內建 worker 只領 builtin 的任務：agent 任務一直是 pending、沒有租約，步驟維持 awaiting_agent，
 // 就算時間過了很久、worker 再跑一輪也一樣（AGT-R1：直到任務被領取）。
 func TestWorker_DoesNotClaimAgentTasks(t *testing.T) {
-	r := newRig(t)
+	r := newAgentRig(t)
 	ctx := context.Background()
 	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
 	it := r.ingest(watch, agentCorrect(), "")
@@ -122,7 +132,7 @@ func TestWorker_DoesNotClaimAgentTasks(t *testing.T) {
 		t.Errorf("leased 任務 = %d，預期 0", n)
 	}
 	if n, _ := r.st.Read().CountTasks(ctx, store.TaskPending); n != 1 {
-		t.Errorf("pending 任務 = %d，預期只有那個 agent 任務", n)
+		t.Errorf("pending 任務 = %d，預期只有那個 chunk 的 agent 任務（4 句只切成一個 chunk）", n)
 	}
 	// 前面三個確定性步驟照常完成。
 	for _, s := range Stages[:3] {

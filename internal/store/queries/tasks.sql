@@ -15,13 +15,13 @@ SELECT * FROM tasks WHERE stage_run_id = sqlc.arg(stage_run_id) ORDER BY created
 -- Atomically claim runnable tasks in one statement (ADR-0004).
 -- Claimable: state is pending, executor and resource class match, not_before has passed.
 -- Order: priority plus aging (one level per aging_ms of waiting, PIPE-R9), then creation order.
--- resource_classes is a JSON array of strings; an empty array means every class. (sqlc.slice is not
+-- resource_classes and kinds are JSON arrays of strings; an empty array means any. (sqlc.slice is not
 -- used: its sqlite output mixes numbered and plain placeholders and breaks with more than one value.)
 -- The score is computed in the select list because sqlc does not rewrite parameters inside ORDER BY.
 -- RETURNING has no defined order, so the caller must re-sort the result by the same key.
 UPDATE tasks
 SET state = 'leased', lease_owner = CAST(sqlc.arg(owner) AS TEXT), lease_token = CAST(sqlc.arg(token) AS TEXT),
-    lease_until = CAST(sqlc.arg(lease_until) AS INTEGER), attempts = attempts + 1
+    lease_until = CAST(sqlc.arg(lease_until) AS INTEGER), attempts = attempts + 1, agent_failures = 0
 WHERE id IN (
   SELECT picked.id FROM (
     SELECT t.id AS id, t.priority + (CAST(sqlc.arg(now) AS INTEGER) - t.created_at) / CAST(sqlc.arg(aging_ms) AS INTEGER) AS score
@@ -30,6 +30,8 @@ WHERE id IN (
       AND t.executor = sqlc.arg(executor)
       AND (json_array_length(CAST(sqlc.arg(resource_classes) AS TEXT)) = 0
            OR t.resource_class IN (SELECT j.value FROM json_each(CAST(sqlc.arg(resource_classes) AS TEXT)) AS j))
+      AND (json_array_length(CAST(sqlc.arg(kinds) AS TEXT)) = 0
+           OR t.kind IN (SELECT k.value FROM json_each(CAST(sqlc.arg(kinds) AS TEXT)) AS k))
     ORDER BY score DESC, t.created_at, t.rowid
     LIMIT sqlc.arg(max)
   ) AS picked
@@ -57,15 +59,18 @@ WHERE id = sqlc.arg(id) AND state = 'leased' AND lease_token = CAST(sqlc.arg(lea
 
 -- name: ReleaseLeases :many
 -- Leased tasks not held by keep_owner, or already expired, go back to pending without counting an attempt.
+-- Agent leases are left alone: they belong to an agent, not to a worker, and survive a restart; when they
+-- expire the agent sweeper returns them and counts the attempt (AGT-R4).
 UPDATE tasks SET state = 'pending', lease_token = NULL, lease_owner = NULL, lease_until = NULL,
   attempts = MAX(attempts - 1, 0)
-WHERE state = 'leased' AND (lease_owner <> CAST(sqlc.arg(keep_owner) AS TEXT) OR lease_until <= CAST(sqlc.arg(now) AS INTEGER))
+WHERE state = 'leased' AND executor <> 'agent'
+  AND (lease_owner <> CAST(sqlc.arg(keep_owner) AS TEXT) OR lease_until <= CAST(sqlc.arg(now) AS INTEGER))
 RETURNING stage_run_id;
 
 -- name: ReleaseOwnedLeases :many
 UPDATE tasks SET state = 'pending', lease_token = NULL, lease_owner = NULL, lease_until = NULL,
   attempts = MAX(attempts - 1, 0)
-WHERE state = 'leased' AND lease_owner = CAST(sqlc.arg(owner) AS TEXT)
+WHERE state = 'leased' AND executor <> 'agent' AND lease_owner = CAST(sqlc.arg(owner) AS TEXT)
 RETURNING stage_run_id;
 
 -- name: NextTaskTime :one

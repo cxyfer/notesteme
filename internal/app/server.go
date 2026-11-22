@@ -254,7 +254,17 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	// 每輪開頭清理過期事件（OPS-R10），以及永久刪除到期的垃圾桶影音（DEL-R4）。
 	hk := newHousekeeping(s.store, env.Clock, log)
 	hk.addTrashCleanup(s.pipeline, trashRetention(cfg))
-	var periodic worker.Periodic = hk
+	// Agent 領取的上限讀 llm 類別設定的上限（AGT-R2），不受測試的 SerialLLM 影響（那只限制內建 worker）；
+	// 暫停整個佇列或 llm 類別時不發出新任務（PIPE-R10）。
+	ctl := s.queue.Control()
+	s.pipeline.SetAgentLimit(func(class string) int {
+		if ctl.Paused() || ctl.ClassPaused(class) {
+			return 0
+		}
+		return ctl.Limit(class)
+	})
+	// Agent 任務的租約到期與逾時（AGT-R4、R9）：每一輪開頭檢查；production 閒置時睡到最早的到期時間。
+	var periodic worker.Periodic = periodics{hk, s.pipeline.AgentSweeper()}
 	// inbox 監看（ING-05）只在 serve 啟動：standalone 的 CLI 是短命的程序，不自動掃描。
 	var watcher *inbox.Watcher
 	if !s.unrestrictedFiles {
@@ -264,7 +274,7 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 		}
 		if manual {
 			// 手動模式：RunUntilIdle 的每一輪都掃描（測試用 fake clock 推進時間）。
-			periodic = periodics{hk, watcher}
+			periodic = periodics{hk, s.pipeline.AgentSweeper(), watcher}
 		}
 	}
 	s.worker.SetPeriodic(periodic)

@@ -620,7 +620,7 @@ func (p *Pipeline) trnChunk(ctx context.Context, t store.Task, run store.StageRu
 		}
 	}
 	return result{task: taskDone, keepState: true, inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {
-		ok, err := tx.FinishLLMChunk(ctx, run.ID, row.Chunk, status, reason, output, usageJSON, nil)
+		ok, err := tx.FinishLLMChunk(ctx, run.ID, row.Chunk, store.ChunkResult{Status: status, Reason: reason, Output: output, Usage: usageJSON})
 		if err != nil || !ok {
 			return false, err
 		}

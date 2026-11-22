@@ -72,10 +72,11 @@ type llmAssembled struct {
 }
 
 // usesLLMEngine 回報步驟的任務是否走 LLM 引擎（plan、chunk、assemble 三種任務）：
-// 只有 api executor、且登記在 llmStages 的步驟才會。
+// 登記在 llmStages、executor 是 api 或 agent 的步驟。agent 時 plan 與 assemble 仍由內建 worker 執行，
+// 只有 chunk 任務交給 Agent 領取（AGT-R2）；translate 的 agent 還不支援（見 Handle）。
 func usesLLMEngine(stage, executor string) bool {
 	_, ok := llmStages[stage]
-	return ok && executor == ExecutorAPI
+	return ok && (executor == ExecutorAPI || executor == ExecutorAgent)
 }
 
 var llmStages = map[string]llmStage{
@@ -495,7 +496,8 @@ func (j *llmJob) chunkKey(impl int, c llm.Chunk) (string, error) {
 
 // runLLM 執行 LLM 步驟（api executor）的一個任務，依 payload 的 phase 分派。
 func (p *Pipeline) runLLM(ctx context.Context, t store.Task, run store.StageRun, it store.Item, eff Effective) (result, error) {
-	if p.llm == nil {
+	// agent 的 plan 與 assemble 不呼叫 provider；chunk 任務（含 Agent 任務改用 API 之後）才需要。
+	if p.llm == nil && (run.Executor != ExecutorAgent || t.ChunkIndex != nil) {
 		return result{}, errPermanent("沒有設定 LLM provider")
 	}
 	var pl llmPayload
@@ -527,7 +529,7 @@ func (p *Pipeline) llmPlan(ctx context.Context, t store.Task, run store.StageRun
 		return result{}, &errclass.Error{Class: errclass.ClassPermanent, Source: "pipeline", Detail: "輸入字幕沒有任何句子",
 			Message: "字幕是空的，沒有可以處理的內容。"}
 	}
-	stage := &store.StageResult{Executor: ExecutorAPI, CacheKey: job.stageKey, ImplVersion: p.implVersion(run.Stage)}
+	stage := &store.StageResult{Executor: stageExecutor(run), CacheKey: job.stageKey, ImplVersion: p.implVersion(run.Stage)}
 	r := p.st.Read()
 	// 步驟層的快取（PIPE-R5）：相同輸入與設定的完整結果已經存在時直接重用。指定重跑的 chunk 時不用。
 	if len(force) == 0 {
@@ -596,18 +598,42 @@ func (p *Pipeline) llmPlan(ctx context.Context, t store.Task, run store.StageRun
 		if err != nil {
 			return false, err
 		}
+		// agent：chunk 任務等 Agent 領取（AGT-R1、R2），有領取期限（agent.timeout，AGT-R9）；內建 worker 不領它們。
+		executor, deadline := queue.ExecutorBuiltin, (*time.Time)(nil)
+		if run.Executor == ExecutorAgent {
+			as, err := eff.Agent()
+			if err != nil {
+				return false, err
+			}
+			at := p.clock.Now().Add(as.Timeout)
+			executor, deadline = ExecutorAgent, &at
+		}
 		// 依 chunk 順序建立：同一個交易中建立時間相同，領取依 rowid，請求的順序才會依 chunk 編號。
 		for _, k := range pending {
 			idx := k
 			if _, err := tx.InsertTask(ctx, store.NewTask{
-				StageRunID: run.ID, Kind: run.Stage, Executor: queue.ExecutorBuiltin, ResourceClass: queue.ResourceLLM,
+				StageRunID: run.ID, Kind: run.Stage, Executor: executor, ResourceClass: queue.ResourceLLM,
 				Priority: t.Priority, Payload: payload, ChunkIndex: &idx, MaxAttempts: queue.DefaultMaxAttempts,
+				DeadlineAt: deadline,
 			}); err != nil {
 				return false, err
 			}
 		}
+		if executor == ExecutorAgent {
+			// 領取 plan 任務時步驟被標成 running；chunk 任務建立後步驟等 Agent 領取（AGT-R1）。
+			_, err := tx.AwaitAgentStage(ctx, run.ID)
+			return false, err
+		}
 		return true, nil
 	}}, nil
+}
+
+// stageExecutor 是 stage run 記錄的 executor；沒有記錄（舊的 stage run）時是 api。
+func stageExecutor(run store.StageRun) string {
+	if run.Executor == ExecutorAgent {
+		return ExecutorAgent
+	}
+	return ExecutorAPI
 }
 
 // llmChunk 送出一個 chunk（含驗證重試），寫入 chunk 的結果；最後一個完成的 chunk 建立 assemble 任務。
@@ -697,33 +723,44 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 		}
 		p.log.Warn("chunk 驗證重試用盡，退回", "item", it.ID, "stage", run.Stage, "chunk", plan.Index, "reason", reason, "detail", out.Fallback.Message)
 	}
+	res := store.ChunkResult{Status: status, Reason: reason, Output: output, Usage: usage, Detail: detail}
 	return result{task: taskDone, keepState: true, inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {
-		ok, err := tx.FinishLLMChunk(ctx, run.ID, plan.Index, status, reason, output, usage, detail)
-		if err != nil || !ok {
-			return false, err
-		}
-		cur, err := tx.StageRun(ctx, run.ID)
-		if err != nil {
-			return false, err
-		}
-		if stageStopped(cur.Status) {
-			// 其他 chunk 已讓步驟停下（或步驟已結束）：只記下這個 chunk 的結果，之後的重跑可以重用。
-			return false, nil
-		}
-		n, err := tx.CountPendingLLMChunks(ctx, run.ID)
-		if err != nil || n > 0 {
-			return false, err
-		}
-		payload, err := json.Marshal(llmPayload{ItemID: it.ID, Phase: llmPhaseAssemble})
-		if err != nil {
-			return false, err
-		}
-		_, err = tx.InsertTask(ctx, store.NewTask{
-			StageRunID: run.ID, Kind: run.Stage, Executor: queue.ExecutorBuiltin, ResourceClass: queue.ResourceLocal,
-			Priority: t.Priority, Payload: payload, MaxAttempts: queue.DefaultMaxAttempts,
-		})
-		return err == nil, err
+		return finishChunkTx(ctx, tx, it.ID, run, t.Priority, plan.Index, res)
 	}}, nil
+}
+
+// finishChunkTx 在寫回的交易中寫入一個 chunk 的結果；所有 chunk 都有結果時建立 assemble 任務（回傳 true，要喚醒 worker）。
+// api 的 chunk 任務與 Agent 的提交（AGT-R5）共用：兩條路徑寫回的內容與之後的前進完全相同。
+func finishChunkTx(ctx context.Context, tx *store.Repo, itemID string, run store.StageRun, priority, chunk int, res store.ChunkResult) (bool, error) {
+	ok, err := tx.FinishLLMChunk(ctx, run.ID, chunk, res)
+	if err != nil || !ok {
+		return false, err
+	}
+	cur, err := tx.StageRun(ctx, run.ID)
+	if err != nil {
+		return false, err
+	}
+	if stageStopped(cur.Status) {
+		// 其他 chunk 已讓步驟停下（或步驟已結束）：只記下這個 chunk 的結果，之後的重跑可以重用。
+		return false, nil
+	}
+	n, err := tx.CountPendingLLMChunks(ctx, run.ID)
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		// 還有 chunk 沒有結果：Agent 的步驟在沒有任務被領取時回到等待 Agent（AGT-R1）。
+		return false, awaitAgentIfIdle(ctx, tx, run)
+	}
+	payload, err := json.Marshal(llmPayload{ItemID: itemID, Phase: llmPhaseAssemble})
+	if err != nil {
+		return false, err
+	}
+	_, err = tx.InsertTask(ctx, store.NewTask{
+		StageRunID: run.ID, Kind: run.Stage, Executor: queue.ExecutorBuiltin, ResourceClass: queue.ResourceLocal,
+		Priority: priority, Payload: payload, MaxAttempts: queue.DefaultMaxAttempts,
+	})
+	return err == nil, err
 }
 
 // llmAssemble 是 assemble 任務：所有 chunk 都有結果之後組出產出。
@@ -744,7 +781,7 @@ func (p *Pipeline) llmAssemble(ctx context.Context, run store.StageRun, it store
 	if err != nil {
 		return result{}, err
 	}
-	stage := &store.StageResult{Executor: ExecutorAPI, CacheKey: job.stageKey, ImplVersion: p.implVersion(run.Stage)}
+	stage := &store.StageResult{Executor: stageExecutor(run), CacheKey: job.stageKey, ImplVersion: p.implVersion(run.Stage)}
 	return p.assembleLLM(ctx, it, job, rows, stage)
 }
 
@@ -755,6 +792,10 @@ type chunkRecord struct {
 	Context *[2]int   `json:"context"`
 	Usage   llm.Usage `json:"usage"`
 	Reused  bool      `json:"reused,omitempty"`
+	// Executor、Agent、ModelReported 只在 Agent 提交的 chunk 出現（AGT-R10）。
+	Executor      string `json:"executor,omitempty"`
+	Agent         string `json:"agent,omitempty"`
+	ModelReported string `json:"model_reported,omitempty"`
 }
 
 // fallbackRecord 是來源紀錄 fallbacks[] 的一項（LLM-R5）。
@@ -776,6 +817,8 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 	records := make([]chunkRecord, 0, len(rows))
 	fallbacks := []fallbackRecord{}
 	var candidates []string
+	var agentRows []store.LLMChunk // Agent 提交的 chunk（AGT-R10）
+	apiChunks := 0                 // 這次由 provider 產生的 chunk
 	for k, row := range rows {
 		c := job.chunks[k]
 		if row.Chunk != c.Index {
@@ -818,6 +861,12 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 		if !row.Reused && len(row.Usage) > 0 {
 			_ = json.Unmarshal(row.Usage, &rec.Usage)
 		}
+		if row.Status == store.ChunkDone && row.Executor == ExecutorAgent {
+			rec.Executor, rec.Agent, rec.ModelReported = ExecutorAgent, row.Agent, row.ModelReported
+			agentRows = append(agentRows, row)
+		} else if row.Status == store.ChunkDone && !row.Reused {
+			apiChunks++
+		}
 		records = append(records, rec)
 	}
 	var out subtitle.Transcript
@@ -852,6 +901,9 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 		"fallbacks":     fallbacks,
 		"derived_from":  []map[string]string{{"artifact": job.input.ID, "variant": job.input.Variant, "sha256": job.input.SHA256}},
 	}
+	if len(agentRows) > 0 {
+		agentProvenance(fields, agentRows, apiChunks > 0)
+	}
 	for k, v := range extra {
 		if _, taken := fields[k]; !taken {
 			fields[k] = v
@@ -865,7 +917,8 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 	if err != nil {
 		return result{}, err
 	}
-	if len(fallbacks) > 0 || noCache {
+	if len(fallbacks) > 0 || noCache || len(agentRows) > 0 {
+		// Agent 回報的模型沒有驗證（AGT-R10）：之後同設定的 api 重跑不能把它當成 provider 的結果重用。
 		stage.CacheKey = ""
 	}
 	state := store.StageState{Status: store.StatusDone}

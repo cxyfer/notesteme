@@ -65,6 +65,10 @@ type Deps struct {
 	Version string
 	// SchemaCache 在多個 server 之間共用 tool 的 schema（每個請求建立一個 server，見 NewServer）。
 	SchemaCache *mcp.SchemaCache
+	// Agent 是 AGT 的任務操作（claim_tasks 等）；nil 時這些 tool 回 not_implemented。
+	Agent AgentBackend
+	// AgentName 是呼叫者作為 Agent 的名稱：token 的名稱；session 與本機的 owner 是 "owner"（AGT-R10）。
+	AgentName string
 }
 
 // PollInterval 是無法訂閱狀態變更時，get_video_context 重查狀態的間隔。
@@ -82,8 +86,7 @@ type tool struct {
 	add func(s *mcp.Server, d *Deps)
 }
 
-// tools 是全部的 tool，依 tools/list 的順序。AGT 的 tool（claim_tasks 等）在 agent.go 的 agentTools，
-// S10 實作時替換那裡的 handler 即可，名稱、scope 與註冊方式不變。
+// tools 是全部的 tool，依 tools/list 的順序。AGT 的 tool（claim_tasks 等）在 agent.go 的 agentTools。
 func tools() []tool {
 	list := []tool{
 		{ToolSpec{"ingest", ScopeIngest}, addIngest},

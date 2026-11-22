@@ -155,6 +155,13 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		res, err = p.runNormalize(ctx, it)
 	case run.Stage == StageTranslate && executor == ExecutorOpenCC:
 		res, err = p.runTranslateOpenCC(ctx, it, eff)
+	case run.Stage == StageTranslate && executor == ExecutorAgent:
+		// translate 的驗證與退回（TRN-R5～R7）在 runTranslateLLM 中逐個翻譯單位處理，還沒有抽成 Agent 提交可以共用的形式；
+		// 在那之前不讓 Agent 的結果繞過那些檢查（依 /goal 的保守預設，見 AGT 待決問題）。
+		err = &errclass.Error{
+			Class: errclass.ClassPermanent, Source: "pipeline", Detail: "translate 不支援 agent",
+			Message: "translate 還不支援 agent 執行方式，請改用 api。",
+		}
 	case usesLLMEngine(run.Stage, executor):
 		res, err = p.runLLM(ctx, t, run, it, eff)
 	case run.Stage == StagePublish:
@@ -297,6 +304,12 @@ func (p *Pipeline) classify(t store.Task, err error) result {
 // 不是的話代表較新的重跑已經取代了它，結果整份丟棄（含已寫出的產出檔），
 // 否則較晚完成的舊任務會蓋掉較新的現行版本。
 func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, it store.Item, res result) error {
+	_, err := p.applyResult(ctx, t, run, it, res)
+	return err
+}
+
+// applyResult 同 apply，另外回報租約是否已經失效（結果被丟棄）：Agent 的提交要告訴 Agent（AGT-R7）。
+func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.StageRun, it store.Item, res result) (bool, error) {
 	var wake, stale bool
 	var purged []store.Artifact
 	err := p.st.Tx(ctx, func(r *store.Repo) error {
@@ -469,7 +482,7 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 	if err != nil {
 		// 交易沒有 commit（例如 ctx 取消、資料庫錯誤）：沒有記錄會指向已寫出的產出檔。
 		p.discardResultFiles(res)
-		return err
+		return false, err
 	}
 	if stale || lost {
 		// 結果已丟棄，沒有記錄會指向這些檔案；清掉避免留下孤兒檔。
@@ -486,7 +499,7 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 	if wake {
 		p.wake()
 	}
-	return nil
+	return lost, nil
 }
 
 // allArtifacts 依寫入順序列出結果帶的所有產出。
