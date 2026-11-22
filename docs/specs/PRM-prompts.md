@@ -66,3 +66,4 @@
   - 驗證重試用盡的 chunk 以步驟的退回內容輸出（correct 是原文），`validation.passed` 為 `false` 並在 `errors` 列出 chunk 與原因。
   - `estimate_usd`：沒有 M4 的成本帳本，也不寫入帳本。內建計價表（`internal/cost`）有該 model 的輸入與輸出單價時，以 provider 回報的 token 用量計算（沒有用量時用 L2 的估算，輸出以輸入為上界）；**目前計價表沒有任何 LLM 的價格，所以一律是 `null`**（欄位存在；`"*"` 接受 `null`），不編價格。
   - `item` 接受影音 ID 與短代號（場景的 body 不會被 harness 代換成 ID）；影音在垃圾桶中回 404 `in_trash`。
+- M3 修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：prompt 的 kind 增加 `chapters`、`frames`、`note`、`note_map`，PRM-R4 的內建 prompt 增加 `chapters-default`、`frames-default`、`note-default`、`note-map-default`、`note-gemini-default`，同樣不能修改（[CHAP](CHAP-chapters.md)、[FRM](FRM-frames.md)、[NOTE](NOTE-notes.md)、[GEM](GEM-gemini.md)、ADR-0020）。既有 M2 場景不變。

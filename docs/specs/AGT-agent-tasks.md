@@ -69,3 +69,4 @@ S10 實作時的決定（2026-11-23，依 /goal 採保守預設，待 owner 追�
 - A12 重跑：重跑取代 Agent 步驟時，舊 stage run 中等待中與被領取中的 Agent 任務一起結束（`failed`，租約清除），舊 token 回 `lease_expired`；內建 worker 已領取的任務照舊由 apply 丟棄結果。
 - A11 新增的資料欄位：migration 00016 的 `tasks.agent_failures`、`tasks.release_reason`、`llm_chunks.executor`、`llm_chunks.agent`、`llm_chunks.model_reported`。
 - 已知限制：`GET /api/queue` 仍只列 builtin 的任務，Agent 任務的佇列畫面留給 UI 切片；提交沒有 token 用量（`usage` 是 0）；`claim_tasks` 組不出某個任務的上下文時（例如輸入的產出已被清除），那個任務放回佇列、不計次數，只記 log。
+- M3 修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`claim_tasks` 的 `kinds` 增加 `chapters`、`note`、`note_map`（省略時仍只領 `correct`、`segment`，避免既有 Agent 突然收到新的任務）；`frames` 選圖在 FRM 的 F6 決定圖片如何傳遞之前不交給 Agent（ADR-0020、[CHAP-R8](CHAP-chapters.md)、[NOTE](NOTE-notes.md)）。既有 M2 場景不變。
