@@ -40,7 +40,7 @@
 - 資源類別：送出占用 `llm` 一次；等待中的任務是 `waiting`，不占用並行上限（ADR-0021 第 6 點）。
 - API：`GET /api/items/:id` 的步驟在等待 batch 時帶 `batch: {provider, submitted_at, deadline_at}`。沒有新路由。
 - `pipeline.Stages`、`outputs`：不影響。
-- 測試替身：`features/internal/fakebatch`（`.m4work/steps/cost.md` 的「假服務與 fixture」）。
+- 測試替身：`features/internal/fakebatch`（`features/fixtures/README.md` 的「M4 的假服務」）。
 
 ## 與其他規格的關係
 

@@ -1,6 +1,6 @@
 # LIB：媒體庫、影音詳情與佇列頁
 
-- 狀態：draft
+- 狀態：draft（M4 章節 LIB-R13～R23：ready）
 - 里程碑：M1（列表、基本篩選、標題搜尋、字幕分頁、佇列頁）、M2（對照、差異、重新處理選單）、M4（批次操作、總覽，LIB-R13～R23）
 - 相關：plan 第 14 節；[ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md)（第 8 點）；UI [總覽](../ui/pages.md#1-總覽)、[媒體庫](../ui/pages.md#3-媒體庫)、[影音詳情](../ui/pages.md#4-影音詳情)、[佇列](../ui/pages.md#6-佇列)、[設計語言](../ui/design-language.md)
 - 驗收場景：[`features/LIB-library.feature`](../../features/LIB-library.feature)；M4：[`features/LIB-bulk-overview.feature`](../../features/LIB-bulk-overview.feature)
@@ -137,6 +137,6 @@
 - L-M3：批次的路由用 UI 第 3 節既有的 `POST /api/items/batch`，不另取 `/api/items/bulk`（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。名稱和 Batch API（BATCH 規格）相近，但路徑不同，不會混淆。
 - L-M4：`ids` 接受代號（LIB-R13），沿用 M2 S9「影音路由接受代號」的決定；驗收場景的 harness 只替換路徑中的代號，body 中的代號要由 production 解析。
 - L-M5：上限 500 部由單元測試驗證（場景寫不出 501 個代號），場景只驗證空的 `ids`。
-- L-M6：`export_bundle` 的回應、大小上限與 scope 以 BND 規格為準（BND 規格與 LIB 同時撰寫，整合時確認）；場景只驗證 `dry_run`。
+- L-M6：`export_bundle` 的回應、大小上限與 scope 以 BND 規格為準（BND-R1、BND 規格待決問題 N1）；場景只驗證 `dry_run`。
 - L-M7：`internal/api/items_list_test.go` 目前斷言 `?read_state=unread` 回 501；實作 LIB-R19 時要同時改這個單元測試（不是 `.feature`）。
 - L-M8：總覽的 `today` 用請求的 `tz`，預設是 `budget.timezone`（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。UI 從瀏覽器取得時區後帶上 `tz`；Client 沒有其他「使用者時區」的設定。

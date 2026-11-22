@@ -37,7 +37,7 @@ import (
 // Fault 是 id_token 的缺陷種類。
 type Fault string
 
-// 可以設定的缺陷；名稱與 .m4work/steps/lib.md 的 `the OIDC provider issues ID tokens with {string}` 對應。
+// 可以設定的缺陷；名稱與 steps.md 4.21 的 `the OIDC provider issues ID tokens with {string}` 對應。
 const (
 	FaultNone          Fault = ""
 	FaultBadSignature  Fault = "a bad signature"

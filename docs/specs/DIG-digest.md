@@ -68,7 +68,7 @@
 - D1：`summary` 放在 `normalize` 之後、`segment` 之前（ADR-0021 第 3 點），是 ADR-0020「新步驟接在 `translate` 之後」的例外；加入 `pipeline.Stages` 後每部影音多一筆 `skipped`（`off`）的 `stage_runs`，實作切片要先確認預設 tag 的 308 個場景與 `features/passing.txt` 不退步。
 - D2：一部影音只送一個請求，超過 2 小時或 32000 tokens 就略過（DIG-R2）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。理由：摘要是為了「決定要不要花錢」，長片用 map-reduce 會讓摘要本身就變貴；上限可以調高到 6 小時、200000 tokens，搭配長 context 的模型。
 - D3：重試用盡時步驟 `done`、沒有摘要（DIG-R4），比照 CHAP-R4：摘要是輔助資料，讓步驟 `failed` 會擋住後續步驟（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
-- D4：`scope: subscriptions` 依賴 SUB 規格的 `items.subscription_id`。DIG 的驗收場景沒有建立訂閱（訂閱的句型屬於 SUB），所以場景用 `scope: all` 驗證內容，另一個場景驗證手動新增的影音不在預設的 `subscriptions` 範圍內；「訂閱的影音出現在彙整中」的正向場景，等 SUB 的句型定案後由整合者在 SUB 或 DIG 補上。 已補上（2026-11-23，整合時）：場景「Items picked up by a subscription appear in the default digest」同時用 SUB 的句型（訂閱與假 YouTube feed）與 DIG 的句型。
+- D4：`scope: subscriptions` 依賴 SUB 規格的 `items.subscription_id`。DIG 的驗收場景沒有建立訂閱（訂閱的句型屬於 SUB），所以場景用 `scope: all` 驗證內容，另一個場景驗證手動新增的影音不在預設的 `subscriptions` 範圍內；「訂閱的影音出現在彙整中」的正向場景是「Items picked up by a subscription appear in the default digest」，同時用 SUB 的句型（訂閱與假 YouTube feed）與 DIG 的句型。
 - D5：暫停中的影音不會自動取消（DIG-R7）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。暫停不花錢，只占媒體庫的一列；之後需要的話加 `stages.summary.pause_expire_days`。
 - D6：彙整的連結只指向 UI，開啟時要登入（DIG-R10）。不使用「免登入的一次性連結」：通知內容會經過第三方（Discord、Telegram 的伺服器），連結裡的任何憑證都等於外洩。
 - D7：彙整沒有隨機延遲（DIG-R8）：彙整只寫 outbox，不打平台的 API，延遲沒有意義；場景可以斷言精確的送出時間。

@@ -247,6 +247,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - 「立即檢查」會馬上執行一次探索，結果顯示在 toast 中。
   - 新增訂閱時提醒：「同一個頻道只在一台實例上訂閱，避免重複處理。」（見 ADR-0011）
 - **API**：`GET/POST/PATCH /api/subscriptions`、`POST /api/subscriptions/:id/preview`、`POST /api/subscriptions/:id/check`
+- **修訂（2026-11-23，[SUB 規格](../specs/SUB-subscriptions.md) SUB-R6、待決問題 S9，待 owner 追認）**：回補範圍為「只抓之後的新內容」時，試跑預覽把清單中已存在的舊內容列在「略過」（原因 `before_subscription`），線框中的「會處理 8 部」只適用於「最近 N 部」與「全部」。API 另有 `DELETE /api/subscriptions/:id`、`GET /api/subscriptions/:id/entries`、`POST /api/subscriptions/preview` 與匯入路由（SUB-R13）。
 
 ## 6. 佇列
 

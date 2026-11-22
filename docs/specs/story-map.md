@@ -359,6 +359,7 @@ M4 共 13 項能力（9 份新規格，SRC、LIB、AUTH、OPS 另加 M4 章節�
 - **LIB-08** As the owner, I want to select many items and act on them at once, so that I can rerun, pause or delete in bulk.
   - 動作前顯示影響的數量與預估費用。
   - 批次刪除套用 DEL 的所有規則；確認對話框合計顯示 DEL-R3 的影響範圍。
+  - 展開時決定（2026-11-23，LIB 規格待決問題 L-M1，待 owner 追認）：M4 的批次動作不含暫停；故事中的 pause 延到 M4 之後。
   - 規格：[LIB](LIB-library.md)：LIB-R13～R20、R23；場景 [LIB-bulk-overview.feature](../../features/LIB-bulk-overview.feature)
 - **LIB-09** As the owner, I want an overview page, so that I see what needs my attention first.
   - 顯示需要處理的項目、最近完成、本月花費與磁碟用量。

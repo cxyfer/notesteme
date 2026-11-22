@@ -95,6 +95,7 @@ artifacts/<artifact-id>.<ext>
   - 限制解壓後的總大小、檔案數與壓縮比，防止 zip bomb。
   - 逐檔驗證 `sha256`，manifest 用 JSON schema 驗證。
   - 筆記的 Markdown 在 UI 渲染時不允許原始 HTML。
+- **修訂（2026-11-23，M4 規格展開，[BND 規格](../specs/BND-bundles.md) 待決問題 N2～N4，待 owner 追認）**：manifest 另有 `files`（每個檔案的路徑、`size`、`sha256`，與 zip 內容雙向一致）、`source_name`、`created_at`；上限的數值（上傳 64 MiB、解壓合計 256 MiB、2000 個項目、單檔 64 MiB、壓縮比 100 倍）與 hardlink、裝置檔的判斷方式以 BND 規格為準。
 
 ## 考慮過的選項
 

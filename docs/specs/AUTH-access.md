@@ -61,6 +61,7 @@
 
 ### M4（AUTH-R12～R22）
 
+- AUTH-R1 的免驗證例外在 M4 由 AUTH-R16 擴充（OIDC 啟用時的 `start` 與 `callback`）；ENTRY-R6 讓 `POST /api/auth/login` 多接受 `next`。
 - API：`GET /api/auth/oidc/start`、`GET /api/auth/oidc/callback`（OIDC 啟用時免驗證）；`GET /api/auth/sessions`、`DELETE /api/auth/sessions/:id`（`admin`）；`POST /api/tokens/:id/rotate`（`admin`）。
 - CLI：`notesteme tokens rotate <name> [--json]`。
 - 環境變數：`NOTESTEME_OIDC_CLIENT_SECRET`。

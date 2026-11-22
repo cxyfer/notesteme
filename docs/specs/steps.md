@@ -424,9 +424,7 @@ M4 的 `.feature` 在每個非 `@manual` 場景中、第一個會啟動 server �
 
 M4 的新句型都用 `r.Step` 註冊（不限關鍵字），因為部分 `Given` 句型出現在 `When` 之後的 `And`。
 
-註冊到 `features/steps/subscriptions.go`（新檔，`registerSubscriptions`）。全部用 `r.Step`（不限關鍵字，因為有的 Given 句型出現在 `When` 之後的 `And`）先註冊成回傳 `godog.ErrPending` 的步驟樁，由 M4 的 SUB、SRC-10、ENTRY 實作切片換成真正的實作。
-
-閘門（BRIEF 的 pending 規則）：
+各 feature 的閘門：
 
 - `features/SUB-subscriptions.feature` 的 Background 第一步是 `Given the YouTube feeds are served from the registered videos`，所以每個 SUB 場景在任何既有步驟之前就 pending。這也讓 Background 之後的 `a YouTube video … with:` 可以用新欄位 `shorts`、`the URL … serves …` 可以登記 Bilibili 合集網址（兩者在現行實作會讓步驟失敗）。
 - `features/SRC-better-source.feature` 的 Background 第一步是 `Given the platform adds manual captions in "en" to "yt:late01xxxxx" at …`，在 `the config file contains:`（含 M4 的 `scheduler`）、`the global settings are:`、`the item … has been processed up to …` 之前。
@@ -485,11 +483,9 @@ M4 的新句型都用 `r.Step` 註冊（不限關鍵字），因為部分 `Given
 
 ### 4.18 摘要、通知與無人值守（`steps/notify.go`，M4）
 
-註冊到 `features/steps/notify.go`。全部先註冊成回傳 `godog.ErrPending` 的步驟樁，由 M4 的實作切片換成真正的實作。
-
 共通語意：
 
-- 「累積」的步驟比照 steps.md 4.11 的語意補充：步驟本身不送請求，第一個送出請求的步驟才依序寫入。寫入順序接在既有順序之後：全域設定 → prompt → 處理方案 → 預設處理方案 → 頻道覆寫 → 佇列 → **notifier（依宣告順序）→ 彙整設定（依宣告順序）**。寫入回 501 時那個步驟 pending；其他非預期的狀態碼讓步驟失敗，訊息附上回應內容。這些寫入不覆寫「最近一次回應」。
+- 「累積」的步驟比照 4.11 的語意補充：步驟本身不送請求，第一個送出請求的步驟才依序寫入。寫入順序接在既有順序之後：全域設定 → prompt → 處理方案 → 預設處理方案 → 頻道覆寫 → 佇列 → **notifier（依宣告順序）→ 彙整設定（依宣告順序）**。寫入回 501 時那個步驟 pending；其他非預期的狀態碼讓步驟失敗，訊息附上回應內容。這些寫入不覆寫「最近一次回應」。
 - 「通知端點」是一個網址（`https://<host>/<path>`），比對時只看主機（不分大小寫）與路徑（完全相同），忽略 query。端點由 `features/internal/fakenotify` 扮演，只有 `the notification endpoints are reachable` 登記之後才有。
 
 既有句型在 M4 的語意補充（不新增句型；由實作切片在對應的步驟實作）：
@@ -538,13 +534,11 @@ M4 的新句型都用 `r.Step` 註冊（不限關鍵字），因為部分 `Given
 
 ### 4.19 成本、預算與 Batch API（`steps/costs.go`，M4）
 
-註冊到 `features/steps/costs.go`。全部先註冊成回傳 `godog.ErrPending` 的步驟樁，由 COST、BATCH 的實作切片換成真正的實作。
-
-閘門的共用（BRIEF 的 pending 規則）：`features/COST-cost-budget.feature` 的閘門是 `the price of … is … USD per …`；`features/BATCH-batch-api.feature` 的閘門是 `the batch API of … completes after …`；`features/LIB-bulk-overview.feature` 的閘門是 COST 的 `the cost estimate of every … task is … USD`（後面還有 `the price of …`）。所以 COST 切片實作這兩個句型之後、LIB-R13～R22 實作之前，LIB-bulk-overview 的場景會從 pending 變成 failed；COST 切片要先確認 LIB 的場景仍是 pending（例如 `POST /api/items/batch`、`GET /api/overview` 回 501），或和 LIB 切片一起合併。BATCH 的場景同時依賴 COST 的句型（價格、usage），BATCH 切片排在 COST 之後。
+閘門的共用：`features/COST-cost-budget.feature` 的閘門是 `the price of … is … USD per …`；`features/BATCH-batch-api.feature` 的閘門是 `the batch API of … completes after …`；`features/LIB-bulk-overview.feature` 的閘門是 COST 的 `the cost estimate of every … task is … USD`（後面還有 `the price of …`）。所以 COST 切片實作這兩個句型之後、LIB-R13～R22 實作之前，LIB-bulk-overview 的場景會從 pending 變成 failed；COST 切片要先確認 LIB 的場景仍是 pending（例如 `POST /api/items/batch`、`GET /api/overview` 回 501），或和 LIB 切片一起合併。BATCH 的場景同時依賴 COST 的句型（價格、usage），BATCH 切片排在 COST 之後。
 
 #### 成本與預算（COST）
 
-`Given` 的 seeding 步驟只累積，第一個送出請求的步驟才寫入（比照 steps.md 4.11 的 `the global settings are:`）；寫入順序排在全域設定、處理方案之後，佇列之前。寫入的請求回 501 時那個步驟 pending。
+`Given` 的 seeding 步驟只累積，第一個送出請求的步驟才寫入（比照 4.11 的 `the global settings are:`）；寫入順序排在全域設定、處理方案之後，佇列之前。寫入的請求回 501 時那個步驟 pending。
 
 | 步驟 | 意思 |
 |---|---|
@@ -575,9 +569,7 @@ M4 的新句型都用 `r.Step` 註冊（不限關鍵字），因為部分 `Given
 
 ### 4.20 全文搜尋、bundle 與術語審核（`steps/library.go`，M4）
 
-所有句型先註冊成回傳 `godog.ErrPending` 的步驟樁，由 M4 的實作切片換成真正的實作。參數記號同 steps.md：`{string}` 雙引號字串、`{int}` 整數、`{word}` 單字；`:` 結尾接 doc string 或表格。
-
-#### 1.1 全文搜尋（SRCH）
+#### 全文搜尋（SRCH）
 
 | 步驟 | 意思 |
 |---|---|
@@ -588,7 +580,7 @@ M4 的新句型都用 `r.Step` 註冊（不限關鍵字），因為部分 `Given
 | `Then the search index has no rows for {string}` | 以唯讀方式查詢 DB：`search_cues` 中沒有這部影音（影音 ID 取自代號對照表，永久刪除後仍是原本的 ID）的任何列，而且 `cues_fts` 的 `integrity-check` 通過（外部內容表與索引一致）。代號從未對應到影音 ID 時失敗 |
 | `Then the search index has rows for {string}` | 以唯讀方式查詢 DB：`search_cues` 中至少有一列屬於這部影音；用來確認 `has no rows` 不是因為查錯資料表而成立 |
 
-#### 1.2 Bundle（BND）
+#### Bundle（BND）
 
 bundle 一律在執行時由步驟產生（Go 的 `archive/zip`，必要時用 `CreateRaw` 自訂 header），不 commit 任何二進位 fixture。路徑參數套用 `/tmp/<x>` → `<場景根目錄>/tmp/<x>` 的對應。「合法 bundle」是固定內容（下表第一列），讓場景可以直接寫出產出的路徑與文字。
 
@@ -610,7 +602,7 @@ bundle 一律在執行時由步驟產生（Go 的 `archive/zip`，必要時用 `
 | `Then the bundle {string} contains no local paths` | bundle 中每個項目的名稱與內容（JSON 與 Markdown 都以原始 bytes 比對）都不含：場景根目錄的實際路徑、`/data/`、`/config/`、`/media/`、`/vault/`、inbox 的實際路徑、執行測試的使用者家目錄。任何一個出現就失敗，並列出項目名稱 |
 | `Then the bundle {string} does not contain {string}` | bundle 中每個項目的名稱與內容都不含這段文字；bundle 沒有任何檔案項目時失敗（沒有東西可以驗證） |
 
-#### 1.3 術語審核（GLOS）
+#### 術語審核（GLOS）
 
 | 步驟 | 意思 |
 |---|---|
@@ -625,7 +617,7 @@ bundle 一律在執行時由步驟產生（Go 的 `archive/zip`，必要時用 `
 
 「指定來源位址」的做法同 `When someone signs in from {string} with the password {string}`（127.0.0.0/8 內的位址，TCP 連線本身就從這個位址發出，不是只加 `X-Forwarded-For`），所以 AUTH-R13 驗證的是**對端位址**。
 
-#### 2.1 反向代理驗證（AUTH-06）
+#### 反向代理驗證（AUTH-06）
 
 | 步驟 | 意思 |
 |---|---|
@@ -636,7 +628,7 @@ bundle 一律在執行時由步驟產生（Go 的 `archive/zip`，必要時用 `
 | `When the reverse proxy at {string} forwards {string} with the token {string} and the header {string} set to {string}` | 同上一個步驟，但另外帶 `Authorization: Bearer <token>`（token 以名稱查 `World.Refs`），不使用 cookie jar |
 | `Then the auth log contains {string}` | server 的 log（場景開始後的所有紀錄）有一行包含這段文字 |
 
-#### 2.2 OIDC（AUTH-07）
+#### OIDC（AUTH-07）
 
 | 步驟 | 意思 |
 |---|---|
@@ -655,7 +647,7 @@ bundle 一律在執行時由步驟產生（Go 的 `archive/zip`，必要時用 `
 | `Then the OIDC token request used PKCE with {string}` | 假 IdP 收到的最近一次 token 請求：authorize 時的 `code_challenge_method` 是參數（例如 `S256`），`code_verifier` 依該方法計算後與 `code_challenge` 相同，而且以 `client_secret_basic` 帶了正確的 client secret |
 | `When the OIDC session sends {string}` | 用「OIDC 瀏覽器」的 jar 送出請求；非 GET 請求帶 jar 中的 CSRF token |
 
-#### 2.3 工作階段與 token（AUTH-08）
+#### 工作階段與 token（AUTH-08）
 
 | 步驟 | 意思 |
 |---|---|

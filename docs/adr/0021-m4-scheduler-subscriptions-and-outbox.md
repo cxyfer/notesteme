@@ -22,13 +22,14 @@ M4「追蹤與部署」的驗收條件是「VPS 上訂閱 3 個頻道，無人�
 - 重啟或長時間停機後：過期的工作**只補跑一次**，下一次依「這次執行的時間＋間隔」排定，不補跑每一個錯過的時段。例外：彙整（`digest`）、每日備份（`backup.daily`）與 `budget.month` 對齊設定時區的當地時間（例如每天 07:00），下一次排在「下一個對齊的時間點」，同樣只補跑一次、沒有隨機延遲（DIG 規格 D7、D11，OPS 規格）。
 - 工作失敗時依 `failures` 退避重試（1 分鐘、5 分鐘、30 分鐘，之後固定 6 小時），不會因為停在過去的 `next_run_at` 而每一輪都重試（同 housekeeping）。
 - 隨機延遲（SUB-06）是確定性的：`jitter = sha256(kind | key | 時段序號)` 換算成 `[0, min(間隔 × 10%, scheduler.jitter_max))`，`scheduler.jitter_max` 只能寫在設定檔，預設 `30m`；設成 `0s` 時沒有延遲，場景可以斷言精確的下次檢查時間。
+- 同時到期的工作依 `next_run_at`、再依建立順序執行（SUB-R9）。被平台 rate limit 擋下的檢查不算失敗，下一次排在額度恢復的時間；收到 429 時取退避時間與額度恢復時間中較晚的一個（SUB-R10）。
 - 每一輪排程器的總執行時間上限 30 秒（以注入的 clock 判斷，測試中不會觸發）；沒執行完的工作留到下一輪，不阻塞任務領取。
 
 ### 2. 訂閱探索（discover）不是影音的步驟
 
 - `discover` 是訂閱層的工作（`scheduled_jobs.kind = subscription.check`），不是 `pipeline.Stages` 的成員，也不建立 `stage_runs`。plan 第 5 節表格中的 `discover` 列以這裡為準。
 - 探索在排程器內同步執行（不進任務佇列），但所有對外請求都經過每個平台的 rate limiter（token bucket，以注入的 clock 計時，數值見 SUB 規格）；yt-dlp 呼叫經 `internal/toolexec`。
-- 探索建立的影音直接以既有的 ingest 服務建立：發布時間在訂閱建立之後的影音用 `PrioritySubscription`，回補的舊影音用 `PriorityBackfill`（`internal/queue` 已有這兩個優先級）。`items.subscription_id` 指向訂閱。
+- 探索建立的影音直接以既有的 ingest 服務建立：發布時間在訂閱建立之後的影音用 `PrioritySubscription`，回補的舊影音用 `PriorityBackfill`（`internal/queue` 已有這兩個優先級）。`items.subscription_id` 指向訂閱。頻道訂閱以發布時間判斷「新內容」；播放清單、Bilibili 合集與 Podcast feed 的順序與發布時間無關，改以「第一次成功檢查時的清單」為基準，之後才出現的條目算新內容（SUB 規格 S1）。
 - 每個探索到的條目都記錄在 `subscription_entries`（含被略過的條目與原因），讓試跑預覽、略過原因與「不重複加入」可以查得到。
 
 ### 3. `summary` 步驟
@@ -36,7 +37,7 @@ M4「追蹤與部署」的驗收條件是「VPS 上訂閱 3 個頻道，無人�
 - `summary` 加進 `pipeline.Stages`，位置在 `normalize` 之後、`segment` 之前（照 plan 第 5 節）。這是 ADR-0020「新步驟接在 translate 之後」的例外：「摘要後暫停」（DIG-02）的目的是在 `segment`、`correct`、`translate` 花錢之前停下來，放在後面就沒有意義。
 - 預設 `stages.summary.executor: off`，略過的原因是 `off`。內建的處理方案都不開啟。
 - 驗收要求：加入 `pipeline.Stages` 之後，預設 tag 的 308 個場景與 `features/passing.txt` 不能退步。每部影音會多一筆 `skipped`（`off`）的 `stage_runs`，實作 child 要確認沒有斷言依賴「步驟清單的長度」或「下一個步驟是 segment」。有的話停下來回報，不要改 `.feature`。
-- 「摘要後暫停」（`stages.summary.pause_after: true`）：`summary` 完成後，下一個步驟（`segment`；被略過時是再下一個）的狀態為 `blocked`，原因 `awaiting_user`。細節見 DIG 規格。
+- 「摘要後暫停」（`stages.summary.pause_after: true`）：`summary` 完成後，下一個步驟（`segment`；這次執行不包含 `segment` 時是再下一個）的狀態為 `blocked`，原因 `awaiting_user`。人工字幕的影音也停在 `segment`，繼續之後 `segment` 才依 SEG-R1 略過。細節見 DIG 規格 DIG-R6、D9。
 
 ### 4. 預算預留
 

@@ -1,6 +1,6 @@
 # OPS：備份、健康檢查與外部工具
 
-- 狀態：draft
+- 狀態：draft（M4 章節 OPS-R11～R21：ready）
 - 里程碑：M1；M4 加上每日排程備份、無人值守告警與 VPS 的 compose profile（OPS-06～08，規則 OPS-R11～R21）
 - 相關：plan 第 18、18.1 節；ADR-0007、ADR-0009、[ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md)（第 1、5 點）；[NOTIFY](NOTIFY-notifications.md)
 - 驗收場景：[`features/OPS-operations.feature`](../../features/OPS-operations.feature)（M1）、[`features/OPS-unattended.feature`](../../features/OPS-unattended.feature)（M4）

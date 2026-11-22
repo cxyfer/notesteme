@@ -84,7 +84,7 @@
 - C4：輸出 token 估為字幕資料區塊的 1.2 倍（COST-R5，2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。`segment`、`correct` 的輸出和輸入差不多長；`translate` 到 CJK 時 token 數通常比英文少，1.2 倍偏保守。實際值和預留的差異由 COST-R5 改成實際金額時吸收，不另外調整；M4 之後可以依帳本的實際比例校正。
 - C5：`budget.warning` 每月只寫一次，調高預算不會重設（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。避免反覆調整預算時重複通知；NOTIFY 的 `dedupe_key` 也是以月份為單位。
 - C6：M4 不提供成本的 MCP tool 與 CLI 子命令（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。ADR-0008 要求能力一致，但故事地圖 COST 的驗收只提到 UI；`notesteme costs` 之後再補。
-- C7：排程工作 `budget.month` 是新的 `kind`（ADR-0021 第 1 點列的是例子，沒有窮舉）。整合時把它補進 ADR-0021 第 1 點的清單。
+- C7：排程工作 `budget.month` 是新的 `kind`（ADR-0021 第 1 點列的是例子，沒有窮舉）。已補進 ADR-0021 第 1 點的清單。
 - C8：驗收場景用兩個測試控制讓金額可以預測（ADR-0015）：`the LLM usage reported by …`（fakellm 回報固定的 token 數）與 `the cost estimate of every … task is …`（取代估算的結果，只影響預留的金額，不影響 COST-R5 的估算方法本身，估算方法由單元測試驗證）。
 - C10：金額以整數 micro-USD 計算（規則表上方的說明，2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。`cost_ledger.usd` 維持 00007 的 REAL 欄位，只在寫入與加總時四捨五入；之後要改成整數欄位再另開 migration。驗收場景的金額比對（`Then the response contains:`）是浮點數完全相等，不這樣做的話 `0.10 + 0.20` 會失敗。
 - C9：provider 回報的金額只認 OpenAI 相容回應的 `usage.cost`（OpenRouter 的格式）；Anthropic 與 OpenAI 官方 API 目前不回報金額。其他格式之後再加。
