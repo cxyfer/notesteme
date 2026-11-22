@@ -114,7 +114,18 @@ func TestFullRunSkipsM3StagesWithoutTasks(t *testing.T) {
 }
 
 // M2 建立的影音只有 7 個步驟的 stage run：translate 之後跳過不存在的 M3 步驟，publish 仍然前進。
+// 另一組只有 metadata、transcript、normalize、publish：normalize 的下一步不存在，前進時要找到下一個有記錄的步驟。
 func TestAdvanceSkipsMissingM3Runs(t *testing.T) {
+	for _, stages := range [][]string{
+		{StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate, StagePublish},
+		{StageMetadata, StageTranscript, StageNormalize, StagePublish},
+	} {
+		advanceWithRuns(t, stages)
+	}
+}
+
+func advanceWithRuns(t *testing.T, m2 []string) {
+	t.Helper()
 	r := newRig(t)
 	ctx := context.Background()
 	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
@@ -126,7 +137,6 @@ func TestAdvanceSkipsMissingM3Runs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m2 := []string{StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate, StagePublish}
 	var itemID string
 	err = r.st.Tx(ctx, func(tx *store.Repo) error {
 		it, _, err := tx.InsertItemIfAbsent(ctx, store.NewItem{Platform: "youtube", ExternalID: "abc123xxxxx", URL: watch})
@@ -156,7 +166,7 @@ func TestAdvanceSkipsMissingM3Runs(t *testing.T) {
 	}
 	r.run()
 	if st := latestStage(t, r, itemID, StagePublish); st.Status != store.StatusSkipped || st.BlockReason != SkipNoOutputs {
-		t.Errorf("publish = %+v，預期 skipped（no_outputs）", st)
+		t.Errorf("%v：publish = %+v，預期 skipped（no_outputs）", m2, st)
 	}
 	runs, err := r.st.Read().StageRunsByItem(ctx, itemID)
 	if err != nil {
