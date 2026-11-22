@@ -1,9 +1,9 @@
 -- name: InsertTask :exec
 INSERT INTO tasks (id, stage_run_id, kind, executor, resource_class, state, priority, payload_json,
-                   max_attempts, not_before, deadline_at, created_at)
+                   chunk_index, max_attempts, not_before, deadline_at, created_at)
 VALUES (sqlc.arg(id), sqlc.arg(stage_run_id), sqlc.arg(kind), sqlc.arg(executor), sqlc.arg(resource_class), 'pending',
-        sqlc.arg(priority), sqlc.arg(payload_json), sqlc.arg(max_attempts), sqlc.narg(not_before), sqlc.narg(deadline_at),
-        sqlc.arg(created_at));
+        sqlc.arg(priority), sqlc.arg(payload_json), sqlc.narg(chunk_index), sqlc.arg(max_attempts), sqlc.narg(not_before),
+        sqlc.narg(deadline_at), sqlc.arg(created_at));
 
 -- name: TaskByID :one
 SELECT * FROM tasks WHERE id = sqlc.arg(id);

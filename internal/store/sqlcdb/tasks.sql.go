@@ -191,10 +191,10 @@ func (q *Queries) FailTask(ctx context.Context, arg FailTaskParams) (int64, erro
 
 const insertTask = `-- name: InsertTask :exec
 INSERT INTO tasks (id, stage_run_id, kind, executor, resource_class, state, priority, payload_json,
-                   max_attempts, not_before, deadline_at, created_at)
+                   chunk_index, max_attempts, not_before, deadline_at, created_at)
 VALUES (?1, ?2, ?3, ?4, ?5, 'pending',
         ?6, ?7, ?8, ?9, ?10,
-        ?11)
+        ?11, ?12)
 `
 
 type InsertTaskParams struct {
@@ -205,6 +205,7 @@ type InsertTaskParams struct {
 	ResourceClass string
 	Priority      int64
 	PayloadJson   string
+	ChunkIndex    *int64
 	MaxAttempts   int64
 	NotBefore     *int64
 	DeadlineAt    *int64
@@ -220,6 +221,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 		arg.ResourceClass,
 		arg.Priority,
 		arg.PayloadJson,
+		arg.ChunkIndex,
 		arg.MaxAttempts,
 		arg.NotBefore,
 		arg.DeadlineAt,

@@ -206,9 +206,11 @@ type NewTask struct {
 	ResourceClass string
 	Priority      int
 	Payload       json.RawMessage // 空代表 {}
-	MaxAttempts   int             // 0 代表 3
-	NotBefore     *time.Time
-	DeadlineAt    *time.Time
+	// ChunkIndex 是 LLM 步驟的 chunk 編號（從 1 起算）；nil 代表不是 chunk 任務（ADR-0004）。
+	ChunkIndex  *int
+	MaxAttempts int // 0 代表 3
+	NotBefore   *time.Time
+	DeadlineAt  *time.Time
 }
 
 // ClaimOptions 是領取任務的條件。

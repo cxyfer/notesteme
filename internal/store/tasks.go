@@ -56,6 +56,7 @@ func (r *Repo) InsertTask(ctx context.Context, n NewTask) (Task, error) {
 		ResourceClass: n.ResourceClass,
 		Priority:      int64(n.Priority),
 		PayloadJson:   string(payload),
+		ChunkIndex:    chunkIndex(n.ChunkIndex),
 		MaxAttempts:   int64(maxAttempts),
 		NotBefore:     msPtr(n.NotBefore),
 		DeadlineAt:    msPtr(n.DeadlineAt),
@@ -65,6 +66,14 @@ func (r *Repo) InsertTask(ctx context.Context, n NewTask) (Task, error) {
 		return Task{}, err
 	}
 	return r.Task(ctx, id)
+}
+
+func chunkIndex(c *int) *int64 {
+	if c == nil {
+		return nil
+	}
+	v := int64(*c)
+	return &v
 }
 
 // Task 以 ID 查詢任務。

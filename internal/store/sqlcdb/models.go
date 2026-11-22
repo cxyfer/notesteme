@@ -140,6 +140,22 @@ type ItemTombstone struct {
 	PurgedAt   int64
 }
 
+type LlmChunk struct {
+	StageRunID string
+	Chunk      int64
+	ItemID     string
+	Stage      string
+	CacheKey   string
+	Status     string
+	Reason     string
+	PlanJson   string
+	OutputJson *string
+	UsageJson  string
+	Reused     int64
+	CreatedAt  int64
+	UpdatedAt  int64
+}
+
 type Profile struct {
 	Name           string
 	CurrentVersion int64
