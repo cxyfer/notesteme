@@ -376,7 +376,8 @@ func TestParse_AdversarialInputsAreFast(t *testing.T) {
 			}
 			start := time.Now()
 			doc, errs := Parse([]byte(in))
-			if d := time.Since(start); d > 5*time.Second {
+			// 只擋住指數或平方級的卡死；常數倍數會被 -race 與共用的 CI 主機放大（大量元素在 -race 下約 5 秒）。
+			if d := time.Since(start); d > 30*time.Second {
 				t.Errorf("解析花了 %v", d)
 			}
 			if doc == nil && len(errs) == 0 {
