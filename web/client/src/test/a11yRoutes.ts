@@ -11,6 +11,7 @@ export interface A11yRoute {
 export const a11yRoutes: A11yRoute[] = [
   { path: "/login", heading: "notesteme", auth: false },
   { path: "/library", heading: "媒體庫", auth: true },
+  { path: "/library?platform=youtube&q=test", heading: "媒體庫", auth: true },
   { path: "/queue", heading: "佇列", auth: true },
   { path: "/items/yt:abc123", heading: "影音詳情", auth: true },
   { path: "/settings/services", heading: "設定", auth: true },

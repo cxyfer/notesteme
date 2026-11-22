@@ -36,5 +36,7 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}"],
     // 機器記憶體有限：單一 worker 依序執行。
     maxWorkers: 1,
+    // 多個 child 同時跑時機器負載很高：預設 5 秒對整頁的互動測試太緊
+    testTimeout: 15_000,
   },
 });
