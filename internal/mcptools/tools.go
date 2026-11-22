@@ -276,7 +276,8 @@ func getTranscript(ctx context.Context, d *Deps, a transcriptArgs) *mcp.CallTool
 	if resp.Status/100 != 2 {
 		return apiErrorResult(resp)
 	}
-	content := string(resp.Body)
+	// 結尾統一成一個換行：SRT 的最後一句之後不需要空行，agent 拼接多段時也不會多出空白。
+	content := strings.TrimRight(string(resp.Body), "\n") + "\n"
 	out.Content = &content
 	return jsonResult(out)
 }

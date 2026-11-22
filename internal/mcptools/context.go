@@ -26,7 +26,16 @@ const (
 const contextUntil = "normalize"
 
 // readyStages 是「字幕已備妥」要完成的步驟：全部 done 或 skipped（steps.md 規則 2c）。
+// 影音新增時指定了更早的 until（例如只做到 metadata、字幕由匯入或其他方式取得）時，只等到 until 為止。
 var readyStages = []string{"metadata", "transcript", "normalize"}
+
+// stagesToWait 回傳要等的步驟：readyStages 中不晚於影音 until 的那些。
+func stagesToWait(until string) []string {
+	if i := slices.Index(readyStages, until); i >= 0 {
+		return readyStages[:i+1]
+	}
+	return readyStages
+}
 
 type contextArgs struct {
 	URL      string `json:"url" jsonschema:"影片的網址（YouTube 或 Bilibili 的單一影片）"`
@@ -55,6 +64,7 @@ type itemView struct {
 	DurationS    *int        `json:"duration_s"`
 	PublishedAt  *string     `json:"published_at"`
 	OriginalLang string      `json:"original_lang,omitempty"`
+	Until        string      `json:"until,omitempty"`
 	Stages       []stageView `json:"stages"`
 }
 
@@ -282,7 +292,7 @@ func evaluate(it itemView) (contextResult, bool) {
 		DurationS: it.DurationS, PublishedAt: it.PublishedAt, OriginalLang: it.OriginalLang,
 	}
 	ready := true
-	for _, name := range readyStages {
+	for _, name := range stagesToWait(it.Until) {
 		i := slices.IndexFunc(it.Stages, func(s stageView) bool { return s.Stage == name })
 		if i < 0 {
 			ready = false

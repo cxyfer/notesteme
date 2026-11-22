@@ -70,6 +70,8 @@ type Scenario struct {
 	// After hook 掃 /backups 時，內容仍與寫入時相同的檔案是場景自己放的 fixture（例如故意不合法的 old.tar.gz），
 	// 照字面掃描；被 production 改過的檔案仍走嚴格解壓。
 	fixtureFiles map[string][]byte
+	// mcp 是最近一次 MCP 步驟的結果（見 mcp.go）。
+	mcp mcpState
 }
 
 // response 是最近一次請求的回應。

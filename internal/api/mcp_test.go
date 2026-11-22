@@ -296,7 +296,7 @@ func TestMCPGetTranscript(t *testing.T) {
 	api := m.owner("GET", "/api/items/yt:abc123xxxxx/subtitles?format=vtt", "").Body.String()
 	res := callTool(t, cs, "get_transcript", map[string]any{"item": "yt:abc123xxxxx", "format": "vtt"})
 	got := structured(t, res)
-	if res.IsError || got["content"] != api || got["format"] != "vtt" || got["lang"] != "en" || got["variant"] == "" {
+	if res.IsError || got["content"] != strings.TrimRight(api, "\n")+"\n" || got["format"] != "vtt" || got["lang"] != "en" || got["variant"] == "" {
 		t.Errorf("vtt = %v，API 是 %q", got, api)
 	}
 	res = callTool(t, cs, "get_transcript", map[string]any{"item": "yt:abc123xxxxx"})
