@@ -116,7 +116,7 @@
     - `internal/output`：`Config`（`outputs[]` 每一項的驗證：`target`、`formats`、`lang`、`on_user_change`、folder 的 `path`）、`Writer`（`os.Root` 限制在資料夾內、不跟隨 symlink、`O_EXCL` 暫存檔再硬連結／rename、sha256 防覆蓋）。migration 00014 `outputs` 表（主鍵 `(item_id, path)`，item 刪除時 cascade）；`GET /api/items/{id}/outputs`（`read`），`items show` 列出輸出檔。
     - 行為：`sidecar` 只用於本機檔案（上傳的副本不寫），寫成 `<影片檔名>.<lang>.<ext>`；非本機檔案時 `publish` 是 `skipped`（`not_applicable`，新的 skipped 原因，steps.md 已同步）；`folder` 路徑走 pathguard（serve：inbox 與 `media_roots`）並排除資料目錄內部；目標檔案沒有紀錄或雜湊不同一律視為使用者的檔案：`save_as_new`（預設）另存 `<名稱> (notesteme YYYY-MM-DD).<ext>`（UTC，同日加序號）、`skip` 則 `blocked(needs_action)`；`bilingual-srt` 檔名多 `.bilingual`；`vault` 目標回「M3 才提供」。
     - 依 /goal 由 advisor 裁決、待 owner 追認：OUT-R10～R12 三個場景修改 `.feature`（補 `default profile`／`rerun` 帶 `profile`）；沒有紀錄的既有檔案視為使用者的；`path` 同 GRD-R7 的根目錄；sidecar 語言碼用 BCP-47（**待實測 Jellyfin／Plex**）。
-    - 已知限制：`local-sidecar` 來源會把自己輸出的 `lecture.en.srt` 當外掛字幕讀回（要處理得動 `local.go` 的 `listSidecars`）；比對雜湊後、rename 前的小競態；DEL-R9 的 `delete_outputs`／`kept_outputs` 還沒做（`Restoring writes deleted output files again` 目前空洞通過，要等 DEL-R9）。
+    - 已知限制：`local-sidecar` 來源會把自己輸出的 `lecture.en.srt` 當外掛字幕讀回（要處理得動 `local.go` 的 `listSidecars`）；比對雜湊後、rename 前的小競態。（DEL-R9 的 `delete_outputs`／`kept_outputs` 已在 PRM／DEL-R9 切片完成。）
     - 審查：獨立的 diff 審查子任務被 OOM 殺掉（機器記憶體吃緊），改由主代理自己讀了 `writer.go` 與 folder 路徑解析，沒有發現問題。
     - `@M2`：58 passed、26 failed、33 pending。
   - M2 S4 COR 校正完整行為（直接推送到 master）：
@@ -135,6 +135,11 @@
     - 依 /goal 採保守預設、待 owner 追認（TRN 規格 S6b-Q1～Q11）：Q2 的場景修改只補了場景缺少的 `correct` 設定與 `correct-echo` 答覆，保留所有斷言；COR-R8 場景補上 fixture `translate-two-cues` 後通過。
     - **仍待決**：S6b-Q6 `length_ratio` 下限 0.3 對英翻中太緊（照規格字面實作）；香港、澳門繁體的 localize 沒有內建 prompt（會失敗，建議改用 `convert`）；`POST /rerun` 的 `chunks` 在沿用目標有空洞時上限檢查不準（S6b-Q3）。
     - `@M2`：83 passed、3 failed、31 pending（失敗的是 MCP stdio、DEL 兩個，分別等 S9 與 DEL-R9 切片）。
+  - M2 PRM 試跑與比較＋DEL-R9 輸出檔刪除（直接推送到 master）：
+    - `POST /api/prompts/playground`、`POST /api/prompts/{id}/compare`（`internal/pipeline/playground.go`、`internal/api/prompts_playground.go`、`internal/prompts/diff.go`）：同步呼叫 `internal/llm`（`PlanChunks`／`BuildFixed`／`RunChunk`），不經過 task queue 與 stage run，不寫入任何東西（單元測試比對 stage_runs、artifacts、llm_chunks、events、tasks、術語候選前後相同）。步驟由 prompt 的類型決定；`llmStages` 只讀；一對一的步驟（correct）可以用，輸出自己合併的步驟（segment，`assemble`）與還沒登記的 translate 回 501。範圍上限 200 句、同時最多 2 個、整體 3 分鐘；缺 key 409 `needs_action`、限流 429、provider 失敗 502。`estimate_usd` 目前一律 `null`（`internal/cost` 沒有任何 LLM 價格，只加了 `EstimateLLM` 與單位常數）。決定 P9、P10 記在 PRM 規格，待 owner 追認。
+    - DEL-R9：`DELETE /api/items/{id}` 帶 `delete_outputs: true` 時，刪除 `outputs` 紀錄中 sha256 與現在檔案相同的檔案（`internal/output/remove.go`，`os.Root`、不跟隨 symlink；先過 pathguard），改過的列在 `kept_outputs`（`modified`、`outside_roots`、`unreadable`）；`deletion-preview` 列出輸出檔與 `modified`；還原時有紀錄但檔案不在就從 `publish` 重跑寫回。永久刪除不動輸出檔（規格資料表）。CLI `items rm --delete-outputs` 原本就有，現在會印保留的檔案。決定記在 DEL 規格。
+    - 依 /goal 修改 `.feature`（待 owner 追認）：`A playground run changes nothing` 補 `standard` 處理方案，否則 `correct` 是 `skipped`；harness 的 `the response contains` 不再展開預期值中的虛擬路徑（回應已換回虛擬路徑，steps.md 已同步）。
+    - `@M2`：以 S5 之後的 master 為基準，passed 71 → 75（PRM 兩個、DEL 兩個）。
 - **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，189 passed、2 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
