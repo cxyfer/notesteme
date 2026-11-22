@@ -177,7 +177,7 @@ cd internal/store && sqlc generate
    - 沒有 master key 時拒絕啟動。
    - `HEALTHCHECK` 轉為 healthy，`/healthz`、`/readyz` 正常，未登入時 API 回應 `401`，登入成功與失敗的行為正確。
    - 收到 `SIGTERM` 時正常關閉，重新啟動後沿用 `/data` 中的密碼。
-4. **Promote**：測試通過後才把 release tag 指向同一個 digest，發布的 tag 不會對應到沒驗證過的建置。`latest` 與 `X.Y` 只在沒有已發布的更高版本時移動；失敗或尚未發布的更高 tag 不會擋住它們。
+4. **Promote**：測試通過後才把 release tag 指向同一個 digest，發布的 tag 不會對應到沒驗證過的建置。`latest` 與 `X.Y` 每次都重新指向已發布的最高正式版：較舊的 tag 晚完成不會讓它們倒退，失敗或尚未發布的更高 tag 也不會讓它們停在舊版。
 
 發布新版本：
 
