@@ -145,7 +145,7 @@
     - API 的 `GET /api/items/{id}`、`/cues`、`/subtitles`、`POST …/subtitles/import` 的 `{id}` 也接受影音代號；`api.NewLocal` 遇到 bearer token 改用 token 的身分（`mcp --token` 在本機模式限制 scope）。
     - 依 /goal 採保守預設、待 owner 追認：MCP 規格待決問題 S1～S10（AGT stub、本機 `--token`、`import_transcript` 只收 content、`get_video_context` 做到 normalize 與完成的判斷、`timeout_s` 上限、SRT 結尾換行、prompts 的 L8 處理、上限、Origin／Host 預設）。
     - 已知限制：沒有 progress notification；已在媒體庫但沒有字幕也沒在處理的影音，`get_video_context` 回讀取字幕的錯誤，不會自動重跑；stdio 代理回傳的結果可能帶新版協定的欄位（`resultType` 等，舊 client 會忽略）。
-    - `@M2`：86 passed、14 failed、17 pending（MCP 13 個、AUTH-R11、CLI 的 stdio 場景通過；剩下的 pending 是 AGT 14 個與其他）。M1 預設 tag：191 passed、0 pending。
+    - `@M2`：以 PRM／DEL-R9 之後的 master（d109130）為基準，87 → 102 passed、1 → 0 failed、29 → 15 pending（MCP 13 個、AUTH-R11、CLI 的 stdio 場景通過；剩下的 pending 是 AGT 14 個與 SEC 的 config import）。M1 預設 tag：191 passed、0 pending。
 - **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，191 passed、0 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內；DEL `@mcp` 兩個在 S9 通過）。
 
   | Feature | passed | pending |
