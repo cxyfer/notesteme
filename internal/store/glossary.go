@@ -103,3 +103,25 @@ func (r *Repo) CountTermCandidates(ctx context.Context, channelID string) (int, 
 	n, err := r.q.CountTermCandidates(ctx, channelID)
 	return int(n), err
 }
+
+// TermCandidate 讀取頻道的一個術語候選；找不到回傳 ErrNotFound。
+func (r *Repo) TermCandidate(ctx context.Context, channelID, id string) (TermCandidate, error) {
+	row, err := r.q.GetTermCandidate(ctx, sqlcdb.GetTermCandidateParams{ID: id, ChannelID: channelID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return TermCandidate{}, ErrNotFound
+	}
+	if err != nil {
+		return TermCandidate{}, err
+	}
+	c := TermCandidate{ID: row.ID, ChannelID: row.ChannelID, Term: row.Term, State: row.State, CreatedAt: fromMs(row.CreatedAt)}
+	if row.ItemID != nil {
+		c.ItemID = *row.ItemID
+	}
+	return c, nil
+}
+
+// DecideTermCandidate 把 pending 的術語候選改成 accepted 或 rejected；候選已不是 pending 時回傳 false。
+func (r *Repo) DecideTermCandidate(ctx context.Context, channelID, id, state string) (bool, error) {
+	n, err := r.q.DecideTermCandidate(ctx, sqlcdb.DecideTermCandidateParams{State: state, ID: id, ChannelID: channelID})
+	return n > 0, err
+}

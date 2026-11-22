@@ -14,13 +14,14 @@ import (
 )
 
 // 這個檔案是 COR 的詞彙表與術語候選（COR-R4、R6）：讀取用 read，修改用 admin（AUTH 規格的 M2 路由 scope）。
-// 術語候選的核可與拒絕（審核 UI）是 M4。
+// 術語候選的核可與拒絕是 PATCH（admin）；審核 UI 是 M4。
 
 // glossaryService 是詞彙表 handler 需要的 service。*pipeline.Pipeline 實作它。
 type glossaryService interface {
 	Glossary(ctx context.Context, scope, id string) (store.Glossary, error)
 	PutGlossary(ctx context.Context, scope, id string, terms []string) (store.Glossary, error)
 	TermCandidates(ctx context.Context, channelKey string) ([]store.TermCandidate, error)
+	DecideTermCandidate(ctx context.Context, channelKey, candidateID, state string) (store.TermCandidate, error)
 }
 
 var _ glossaryService = (*pipeline.Pipeline)(nil)
@@ -51,6 +52,10 @@ func (h *glossariesAPI) register(api huma.API) {
 		OperationID: "channels-term-candidates", Method: http.MethodGet, Path: "/api/channels/{id}/term-candidates",
 		Summary: "頻道的術語候選（校正時模型提出、等待核可；不會自動加入詞彙表）",
 	}, auth.ScopeRead, h.candidates)
+	registerScoped(api, huma.Operation{
+		OperationID: "channels-term-candidate-decide", Method: http.MethodPatch, Path: "/api/channels/{id}/term-candidates/{candidate}",
+		Summary: "核可（accepted，詞加進頻道詞彙表）或拒絕（rejected）一個 pending 的術語候選；已決定成另一個結果時回 409",
+	}, auth.ScopeAdmin, h.decide)
 }
 
 // Glossary 是一份詞彙表。
@@ -163,6 +168,36 @@ func (h *glossariesAPI) candidates(ctx context.Context, in *channelTermsInput) (
 		out.Body.Candidates = append(out.Body.Candidates, TermCandidate{ID: c.ID, Term: c.Term, State: c.State, ItemID: c.ItemID, CreatedAt: c.CreatedAt})
 	}
 	return out, nil
+}
+
+type decideCandidateInput struct {
+	ID        string `path:"id" doc:"頻道的 UUID，或 <platform>:<external_id>"`
+	Candidate string `path:"candidate" doc:"術語候選的 id"`
+	Body      struct {
+		State string `json:"state" enum:"accepted,rejected"`
+	}
+}
+
+type termCandidateOutput struct{ Body TermCandidate }
+
+func (h *glossariesAPI) decide(ctx context.Context, in *decideCandidateInput) (*termCandidateOutput, error) {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
+		return nil, err
+	}
+	svc, err := h.service(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c, err := svc.DecideTermCandidate(ctx, in.ID, in.Candidate, in.Body.State)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return nil, newError(http.StatusNotFound, CodeNotFound, "找不到這個術語候選。")
+	case errors.Is(err, pipeline.ErrTermCandidateDecided):
+		return nil, newError(http.StatusConflict, CodeCandidateDecided, "這個術語候選已經決定過了。")
+	case err != nil:
+		return nil, h.mapErr(ctx, store.GlossaryChannel, err)
+	}
+	return &termCandidateOutput{Body: TermCandidate{ID: c.ID, Term: c.Term, State: c.State, ItemID: c.ItemID, CreatedAt: c.CreatedAt}}, nil
 }
 
 // mapErr 同 routes.mapErr；找不到時，頻道詞彙表說找不到頻道，全域詞彙表說找不到詞彙表。

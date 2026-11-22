@@ -158,3 +158,75 @@ func TestTermCandidatesAPI(t *testing.T) {
 		t.Errorf("候選 = %v", c)
 	}
 }
+
+// COR-R6：核可把詞加進頻道詞彙表，拒絕不動詞彙表；結果不能被改成另一個，同一個結果重複送出是冪等的。
+func TestTermCandidateDecideAPI(t *testing.T) {
+	r, tok := glossaryRig(t)
+	ctx := context.Background()
+	rec := r.do("PUT", "/api/glossaries/channel/youtube:UC1", `{"terms":["Kafka"]}`, withBearer(tok[auth.ScopeAdmin]))
+	chID, _ := decodeBody(t, rec)["id"].(string)
+	for _, term := range []string{"KRaft", "Foo"} {
+		if err := r.st.Tx(ctx, func(w *store.Repo) error {
+			_, err := w.AddTermCandidate(ctx, chID, "", term)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids := map[string]string{}
+	rec = r.do("GET", "/api/channels/youtube:UC1/term-candidates", "", withBearer(tok[auth.ScopeRead]))
+	for _, c := range decodeBody(t, rec)["candidates"].([]any) {
+		m := c.(map[string]any)
+		ids[m["term"].(string)] = m["id"].(string)
+	}
+	patch := func(key, id, body string, scope string) *httptest.ResponseRecorder {
+		var mod func(*http.Request)
+		if scope != "" {
+			mod = withBearer(tok[scope])
+		}
+		return r.do("PATCH", "/api/channels/"+key+"/term-candidates/"+id, body, mod)
+	}
+	terms := func() []any {
+		return decodeBody(t, r.do("GET", "/api/glossaries/channel/youtube:UC1", "", withBearer(tok[auth.ScopeRead])))["terms"].([]any)
+	}
+
+	if rec := patch("youtube:UC1", ids["KRaft"], `{"state":"accepted"}`, ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("沒有身分 = %d", rec.Code)
+	}
+	if rec := patch("youtube:UC1", ids["KRaft"], `{"state":"accepted"}`, auth.ScopeRead); rec.Code != http.StatusForbidden {
+		t.Errorf("read 不能核可 = %d", rec.Code)
+	}
+	rec = patch("youtube:UC1", ids["KRaft"], `{"state":"accepted"}`, auth.ScopeAdmin)
+	if got := decodeBody(t, rec); rec.Code != http.StatusOK || got["state"] != "accepted" || got["term"] != "KRaft" {
+		t.Fatalf("核可 = %d %s", rec.Code, rec.Body)
+	}
+	if got := terms(); !reflect.DeepEqual(got, []any{"Kafka", "KRaft"}) {
+		t.Errorf("核可之後的詞彙表 = %v", got)
+	}
+	if rec := patch("youtube:UC1", ids["KRaft"], `{"state":"accepted"}`, auth.ScopeAdmin); rec.Code != http.StatusOK || len(terms()) != 2 {
+		t.Errorf("同一個結果重送應該冪等 = %d %v", rec.Code, terms())
+	}
+	rec = patch("youtube:UC1", ids["KRaft"], `{"state":"rejected"}`, auth.ScopeAdmin)
+	if got := decodeBody(t, rec); rec.Code != http.StatusConflict || got["code"] != CodeCandidateDecided {
+		t.Errorf("已核可的不能改成拒絕 = %d %s", rec.Code, rec.Body)
+	}
+	if got := terms(); len(got) != 2 {
+		t.Errorf("409 不該動詞彙表：%v", got)
+	}
+	rec = patch(chID, ids["Foo"], `{"state":"rejected"}`, auth.ScopeAdmin)
+	if got := decodeBody(t, rec); rec.Code != http.StatusOK || got["state"] != "rejected" {
+		t.Errorf("拒絕（用頻道 UUID）= %d %s", rec.Code, rec.Body)
+	}
+	if got := terms(); len(got) != 2 {
+		t.Errorf("拒絕不該動詞彙表：%v", got)
+	}
+	if rec := patch("youtube:UC1", "nope", `{"state":"accepted"}`, auth.ScopeAdmin); rec.Code != http.StatusNotFound {
+		t.Errorf("找不到候選 = %d", rec.Code)
+	}
+	if rec := patch("youtube:UCnone", ids["Foo"], `{"state":"accepted"}`, auth.ScopeAdmin); rec.Code != http.StatusNotFound {
+		t.Errorf("頻道不存在 = %d", rec.Code)
+	}
+	if rec := patch("youtube:UC1", ids["Foo"], `{"state":"pending"}`, auth.ScopeAdmin); rec.Code != http.StatusUnprocessableEntity && rec.Code != http.StatusBadRequest {
+		t.Errorf("state 只能是 accepted 或 rejected = %d %s", rec.Code, rec.Body)
+	}
+}

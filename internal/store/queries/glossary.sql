@@ -17,3 +17,11 @@ SELECT * FROM glossary_candidates WHERE channel_id = sqlc.arg(channel_id) ORDER 
 
 -- name: CountTermCandidates :one
 SELECT COUNT(*) FROM glossary_candidates WHERE channel_id = sqlc.arg(channel_id);
+
+-- name: GetTermCandidate :one
+SELECT * FROM glossary_candidates WHERE id = sqlc.arg(id) AND channel_id = sqlc.arg(channel_id);
+
+-- name: DecideTermCandidate :execrows
+-- Only a pending candidate can be decided; a decided one keeps its state.
+UPDATE glossary_candidates SET state = sqlc.arg(state)
+WHERE id = sqlc.arg(id) AND channel_id = sqlc.arg(channel_id) AND state = 'pending';

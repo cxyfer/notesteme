@@ -20,6 +20,26 @@ func (q *Queries) CountTermCandidates(ctx context.Context, channelID string) (in
 	return count, err
 }
 
+const decideTermCandidate = `-- name: DecideTermCandidate :execrows
+UPDATE glossary_candidates SET state = ?1
+WHERE id = ?2 AND channel_id = ?3 AND state = 'pending'
+`
+
+type DecideTermCandidateParams struct {
+	State     string
+	ID        string
+	ChannelID string
+}
+
+// Only a pending candidate can be decided; a decided one keeps its state.
+func (q *Queries) DecideTermCandidate(ctx context.Context, arg DecideTermCandidateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, decideTermCandidate, arg.State, arg.ID, arg.ChannelID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getGlossary = `-- name: GetGlossary :one
 SELECT scope, scope_id, terms_json, updated_at FROM glossaries WHERE scope = ?1 AND scope_id = ?2
 `
@@ -37,6 +57,29 @@ func (q *Queries) GetGlossary(ctx context.Context, arg GetGlossaryParams) (Gloss
 		&i.ScopeID,
 		&i.TermsJson,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTermCandidate = `-- name: GetTermCandidate :one
+SELECT id, channel_id, item_id, term, state, created_at FROM glossary_candidates WHERE id = ?1 AND channel_id = ?2
+`
+
+type GetTermCandidateParams struct {
+	ID        string
+	ChannelID string
+}
+
+func (q *Queries) GetTermCandidate(ctx context.Context, arg GetTermCandidateParams) (GlossaryCandidate, error) {
+	row := q.db.QueryRowContext(ctx, getTermCandidate, arg.ID, arg.ChannelID)
+	var i GlossaryCandidate
+	err := row.Scan(
+		&i.ID,
+		&i.ChannelID,
+		&i.ItemID,
+		&i.Term,
+		&i.State,
+		&i.CreatedAt,
 	)
 	return i, err
 }

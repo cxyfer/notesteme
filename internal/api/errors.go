@@ -76,12 +76,13 @@ const (
 	CodeInTrash = "in_trash"
 
 	// 處理方案與 prompt（PRF、PRM）。找不到時用 not_found（404）。
-	CodeProfileExists  = "profile_exists"
-	CodeProfileInUse   = pipeline.CodeProfileInUse
-	CodeBuiltinProfile = "builtin_profile"
-	CodePromptExists   = "prompt_exists"
-	CodePromptInUse    = pipeline.CodePromptInUse
-	CodeBuiltinPrompt  = "builtin_prompt"
+	CodeProfileExists    = "profile_exists"
+	CodeCandidateDecided = "term_candidate_decided"
+	CodeProfileInUse     = pipeline.CodeProfileInUse
+	CodeBuiltinProfile   = "builtin_profile"
+	CodePromptExists     = "prompt_exists"
+	CodePromptInUse      = pipeline.CodePromptInUse
+	CodeBuiltinPrompt    = "builtin_prompt"
 
 	// ASS 樣式（OUT-R6）。找不到時用 not_found（404）。
 	CodeStyleExists  = "style_exists"

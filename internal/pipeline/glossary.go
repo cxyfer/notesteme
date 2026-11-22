@@ -30,6 +30,9 @@ const (
 	GlossaryScopeChannel = store.GlossaryChannel
 )
 
+// ErrTermCandidateDecided 表示術語候選已經核可或拒絕過，不能改成另一個結果。
+var ErrTermCandidateDecided = errors.New("這個術語候選已經決定過了")
+
 // ErrGlossaryScope 表示詞彙表的 scope 不是 global 或 channel。
 var ErrGlossaryScope = errors.New("詞彙表的範圍只能是 global 或 channel")
 
@@ -200,4 +203,53 @@ func (p *Pipeline) TermCandidates(ctx context.Context, channelKey string) ([]sto
 		return []store.TermCandidate{}, err
 	}
 	return r.TermCandidates(ctx, id)
+}
+
+// DecideTermCandidate 核可或拒絕頻道的術語候選（COR-R6）：state 是 accepted 或 rejected。
+// 核可時，同一個交易把詞加進頻道詞彙表（大小寫相同的詞不重複）；已經是同一個結果時什麼都不做（冪等）；
+// 已經決定成另一個結果時回傳 ErrTermCandidateDecided。拒絕不動詞彙表，詞仍留在候選表中，所以不會再被提出。
+func (p *Pipeline) DecideTermCandidate(ctx context.Context, channelKey, candidateID, state string) (store.TermCandidate, error) {
+	if state != store.TermCandidateAccepted && state != store.TermCandidateRejected {
+		return store.TermCandidate{}, invalidFields([]validate.FieldError{{Path: "state", Message: "只能是 accepted 或 rejected。"}})
+	}
+	var out store.TermCandidate
+	err := p.st.Tx(ctx, func(r *store.Repo) error {
+		channelID, err := p.resolveChannelID(ctx, r, channelKey, false)
+		if err != nil {
+			return err
+		}
+		if channelID == "" {
+			return store.ErrNotFound
+		}
+		cand, err := r.TermCandidate(ctx, channelID, candidateID)
+		if err != nil {
+			return err
+		}
+		out = cand
+		switch {
+		case cand.State == state:
+			return nil
+		case cand.State != store.TermCandidatePending:
+			return ErrTermCandidateDecided
+		}
+		if state == store.TermCandidateAccepted {
+			g, err := r.Glossary(ctx, store.GlossaryChannel, channelID)
+			if err != nil {
+				return err
+			}
+			terms, err := NormalizeGlossaryTerms(mergeTerms(g.Terms, []string{cand.Term}))
+			if err != nil {
+				return err
+			}
+			if err := r.PutGlossary(ctx, store.GlossaryChannel, channelID, terms); err != nil {
+				return err
+			}
+		}
+		if _, err := r.DecideTermCandidate(ctx, channelID, candidateID, state); err != nil {
+			return err
+		}
+		out.State = state
+		return nil
+	})
+	return out, err
 }
