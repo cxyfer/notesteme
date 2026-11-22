@@ -1,9 +1,9 @@
 # LIB：媒體庫、影音詳情與佇列頁
 
 - 狀態：draft
-- 里程碑：M1（列表、基本篩選、標題搜尋、字幕分頁、佇列頁）、M2（對照、差異、重新處理選單）
-- 相關：plan 第 14 節；UI [媒體庫](../ui/pages.md#3-媒體庫)、[影音詳情](../ui/pages.md#4-影音詳情)、[佇列](../ui/pages.md#6-佇列)、[設計語言](../ui/design-language.md)
-- 驗收場景：[`features/LIB-library.feature`](../../features/LIB-library.feature)
+- 里程碑：M1（列表、基本篩選、標題搜尋、字幕分頁、佇列頁）、M2（對照、差異、重新處理選單）、M4（批次操作、總覽，LIB-R13～R23）
+- 相關：plan 第 14 節；[ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md)（第 8 點）；UI [總覽](../ui/pages.md#1-總覽)、[媒體庫](../ui/pages.md#3-媒體庫)、[影音詳情](../ui/pages.md#4-影音詳情)、[佇列](../ui/pages.md#6-佇列)、[設計語言](../ui/design-language.md)
+- 驗收場景：[`features/LIB-library.feature`](../../features/LIB-library.feature)；M4：[`features/LIB-bulk-overview.feature`](../../features/LIB-bulk-overview.feature)
 
 ## 目的
 
@@ -20,6 +20,8 @@
 | LIB-05 | As the owner, I want the library and item pages to update live while processing, so that I do not have to reload. | M1 |
 | LIB-06 | As the owner, I want to compare the original, corrected and translated subtitles and see the differences, so that I can judge what the LLM changed. | M2 |
 | LIB-07 | As the owner, I want to rerun an item from any stage or with another prompt or model, so that I can improve a result without starting over. | M2 |
+| LIB-08 | As the owner, I want to select many items and act on them at once, so that I can rerun, pause or delete in bulk. | M4 |
+| LIB-09 | As the owner, I want an overview page, so that I see what needs my attention first. | M4 |
 
 ## 規則
 
@@ -37,6 +39,17 @@
 | LIB-R10 | 空狀態與篩選結果為空時的文案見 UI README §4.3。 | M1 |
 | LIB-R11 | 「重新處理」可以選擇起始步驟，並可換 prompt 或模型；會產生新版本，舊版本保留並可比較。 | M2 |
 | LIB-R12 | 「差異」模式逐字標示校正前後的差異；`localize` 模式額外提供「譯文」與「對照」。 | M2 |
+| LIB-R13 | `POST /api/items/batch`，body `{action, ids, from?, profile?, delete_outputs?, dry_run?}`，對多部影音執行同一個動作。`action` 是 `rerun`、`change_profile`、`delete`、`mark_read`、`mark_unread`、`export_bundle`。`ids` 是影音 ID 或代號（`yt:…`、`bili:<BV>/p<n>`、`pod:…`、`local:…`）；`bili:<BV>` 不帶分P時展開成所有分P。展開、去掉重複之後必須是 1～500 部。驗證失敗時回 422 `invalid_request`，整個請求不執行：`ids` 是空的「至少要選一部影音。」；超過 500 部「一次最多選 500 部影音。」；不認識的 `action`「不支援的批次動作 <action>。」；`rerun`、`change_profile` 的 `from` 缺少或不是 pipeline 的步驟「from 必須是 pipeline 的步驟。」；`change_profile` 的 `profile` 缺少或不存在「找不到處理方案 <名稱>。」。`errors[].path` 是欄位名稱。 | M4 |
+| LIB-R14 | `dry_run: true` 不改變任何資料、不呼叫外部服務、不寫事件，只回報影響：`{action, dry_run: true, count, items[{id, ref, title, ok, code?, message?}], estimated_usd, unknown_estimates, budget{remaining_usd, exceeds}}`。`count` 是 `ok: true` 的影音數。`rerun`、`change_profile` 的 `estimated_usd` 是每部影音從 `from` 起所有付費任務依 COST-R5 估算的總和（`change_profile` 用新處理方案的生效設定）；無法估算的任務不加總，計入 `unknown_estimates`。`budget.remaining_usd` 是 COST-R4 的 `remaining_usd`；`exceeds` 為 `estimated_usd` 大於它。沒有月預算時 `remaining_usd` 為 `null`、`exceeds` 為 `false`。其他動作的 `estimated_usd` 為 0。 | M4 |
+| LIB-R15 | 實際執行時逐部處理，每部是獨立的交易：一部失敗不影響其他部，也不回復已經成功的。回應 200：`{action, dry_run: false, count, succeeded, failed, items[{id, ref, ok, code?, message?}]}`，`items` 依請求中的順序。單部的錯誤碼與訊息和單一影音的 API 相同：找不到 `not_found`「找不到這部影音。」；在垃圾桶中 `in_trash`「這部影音在垃圾桶中。」。完成後寫一筆事件 `items.batch`，欄位 `action`、`count`、`succeeded`、`failed`。 | M4 |
+| LIB-R16 | scope 依動作，在讀取影音之前對整個請求判斷一次；缺少時回 403 並帶 `required_scope`，不執行任何影音。`rerun`、`change_profile`、`mark_read`、`mark_unread` 需要 `ingest`；`delete` 需要 `admin`（DEL-R12）；`export_bundle` 和 BND 的匯出相同。`dry_run` 需要的 scope 和實際執行相同。session 擁有全部權限。MCP 不提供批次操作的 tool。 | M4 |
+| LIB-R17 | `rerun` 對每部影音等同 `POST /api/items/:id/rerun {from}`（LIB-R11）。`change_profile` 先把影音的處理方案改成 `profile`，之後的重跑也使用它，再從 `from` 重跑。建立的任務照 COST-R5～R8 預留並檢查預算，超過預算的步驟 `blocked`（`budget_blocked`）；這種情況在批次回應中仍是 `ok: true`。 | M4 |
+| LIB-R18 | `delete` 對每部影音套用 DEL 的所有規則：DEL-R1、R2；`delete_outputs` 照 DEL-R9；權限照 DEL-R12。`dry_run` 的回應另外有 `deletion{artifacts, bytes, spent_usd, outputs, modified_outputs}`，是各影音 DEL-R3 影響範圍的合計：`outputs` 是輸出檔總數，`modified_outputs` 是其中被改過的數量。垃圾桶中的影音在 `items` 中是 `in_trash`，不計入合計。 | M4 |
+| LIB-R19 | `mark_read`、`mark_unread` 設定 `items.read_state`：`unread`（新增時的預設）或 `read`。`GET /api/items/:id` 與 `GET /api/items` 的每個項目都回傳 `read_state`。M4 起，`GET /api/items` 的 `read_state` 篩選（LIB-R1）接受 `read`、`unread`，不再回 501；其他值回 422。打開影音詳情不會自動標為已讀。 | M4 |
+| LIB-R20 | `export_bundle` 把所有 `ids` 匯出成一個 bundle，回應與限制以 BND 規格的匯出為準。`dry_run` 只回 `count` 與 `items`，不建立 bundle。 | M4 |
+| LIB-R21 | `GET /api/overview?tz=`（`read`）回傳總覽：<br>（1）`now{items, total, more}`：有步驟 `running` 的影音，依最早開始的執行中步驟排序，最多 3 部，每部 `{id, ref, title, stage, progress{done, total}}`（`progress` 是那個步驟的任務完成數）；`more` 等於 `total` 減去列出的數量。<br>（2）`needs_you{items, total}`：有步驟 `blocked`（任何原因）或 `failed` 的影音，每部一列 `{id, ref, title, stage, status, reason, message, actions}`，取 pipeline 順序中第一個這樣的步驟；依該步驟的更新時間由新到舊，最多 50 部。<br>（3）`today`：`tz` 的今天 00:00 起的事件，由新到舊，最多 50 筆，每筆 `{at, type, item?, title?}`，只列給使用者看的類型（見介面）。<br>（4）`recent_done`：最近 5 部所有步驟都已結束（`done` 或 `skipped`）的影音。<br>（5）`month{month, spent_usd, reserved_usd, monthly_usd, timezone}`：COST-R4 的數字。<br>（6）`disk`（LIB-R22）與 `notices`（例如 COST-R13）。<br>垃圾桶中的影音不出現在任何區塊。`tz` 預設為 `budget.timezone`，不認識時回 422「不認識的時區 <值>，請用 IANA 時區名稱，例如 Asia/Taipei。」。 | M4 |
+| LIB-R22 | 磁碟用量 `disk{data_bytes, media_bytes, artifacts_bytes, uploads_bytes, free_bytes, measured_at}`：`/data` 及其下 `media`、`artifacts`、`uploads` 的檔案大小總和，以及 `/data` 所在檔案系統的可用空間。不跟隨 symlink；結果快取 5 分鐘（以注入的 clock 判斷），一次統計最多 30 秒，逾時時回傳上一次的結果與 `measured_at`，從來沒有統計完成時各數字為 `null`。只顯示，不刪除任何檔案（媒體檔保留策略不在 M4，ADR-0021 第 8 點）。 | M4 |
+| LIB-R23 | UI：總覽（UI 第 1 節）的「現在」最多列 3 部並顯示「還有 N 部」連到佇列，「需要你處理」每一項都有直接處理的按鈕、沒有項目時整個區塊隱藏，「今天」依時間排列，底部顯示本月花費與預算。媒體庫（UI 第 3 節）選取多列後出現批次操作列；執行之前先以 `dry_run` 取得影響範圍，確認對話框顯示數量與預估費用，刪除時另外顯示 DEL-R3 的合計；部分失敗時列出失敗的影音與原因。 | M4 |
 
 ## 介面
 
@@ -56,7 +69,7 @@
   - `q`：標題搜尋，去掉前後空白，最多 200 字元。
   - `limit`：1～200，預設 50。
   - `cursor`。
-  - `read_state`：M1 沒有資料模型，帶這個參數回 501。
+  - `read_state`：M1 沒有資料模型，帶這個參數回 501（M4 起見 LIB-R19）。
 - 多個條件之間是 AND。
 - 回應：`{items, total, next_cursor}`。
   - `total` 是符合條件的總數，和目前在第幾頁無關。
@@ -74,10 +87,26 @@
 
 **`GET /api/queue`（LIB-R8）**：`{lanes: [{class, limit, running, waiting, paused}]}`。
 
+### M4
+
+- API：`POST /api/items/batch`（scope 依動作，LIB-R16）、`GET /api/overview`（`read`）；`GET /api/items` 的 `read_state` 篩選（LIB-R19）；`GET /api/items/:id` 的 `read_state`。
+- 資料表：`items.read_state`（`TEXT NOT NULL DEFAULT 'unread'`，plan 第 21 節已列）；建議加索引 `stage_runs (status) WHERE status IN ('running', 'blocked', 'failed')` 給總覽使用。
+- 總覽的 `today` 列出的事件類型：`item.created`、`item.deleted`、`item.restored`、`item.purged`、`items.batch`、狀態變成 `done`、`failed`、`blocked` 的 `stage.status`，以及 M4 的 `budget.warning`、`notify.dropped` 與 SUB 規格定義的訂閱事件。`running`、`pending` 等過程中的 `stage.status` 不列出。
+- 處理方案、`pipeline.Stages`、`outputs`：不影響。
+- CLI：既有的 `notesteme items rm <ref>...`（DEL-R13）已經可以一次刪除多部；M4 不新增批次的 CLI 子命令。
+- UI：總覽（UI 第 1 節）、媒體庫的批次操作列（UI 第 3 節）。
+
 ## 不在範圍內
 
-- 字幕全文搜尋、儲存檢視、批次操作（M4，故事地圖 SRCH、LIB-08）。
+- 字幕全文搜尋、儲存檢視（M4，故事地圖 SRCH）。批次操作見 LIB-R13～R20。
 - 畫面與筆記分頁（M3）。
+
+### M4
+
+- 單部影音的暫停與批次暫停（L-M1）。
+- 刪除媒體檔的批次動作與媒體檔保留策略（L-M2，ADR-0021 第 8 點）。
+- 字幕全文搜尋（SRCH 規格）。
+- 總覽的自訂版面與小工具。
 
 ## 待決問題
 
@@ -100,3 +129,14 @@
   - `GET /api/items` 沒有步驟狀態、頻道名稱與縮圖網址，UI 對每個渲染出來的列另外讀 `GET /api/items/{id}`（N+1，只有可視範圍）。建議之後在列表回應加 `stages` 摘要（各步驟最新的 `status`、`block_reason`、`error_class`）、頻道名稱與縮圖網址。
   - LIB-R9：`stage.status` 與 SSE 重新連上都不讓列表失效（只更新那一列的詳情），否則重抓時新項目會插入頂端。
 - 新增抽屜的 YouTube 播放清單（2026-11-23，UI-1，**待 owner 追認**）：ING 與 API 沒有範圍參數，UI 只說明「會新增整份播放清單」，不讓使用者選範圍。要選範圍需要 `POST /api/items` 加 `entries`（或 `playlist_items`）並由 resolve 列出清單內容。
+
+### M4
+
+- L-M1：LIB-08 的故事寫「rerun, pause or delete」，但 UI 第 3 節的批次操作列與 M4 的動作清單都沒有暫停，資料模型也沒有「暫停單部影音」（PIPE-R10 只有整個佇列與資源類別）。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：M4 不做暫停；要停下時用 `delete`（可還原）或暫停資源類別。之後要做，需要另外定義單部影音的暫停狀態與恢復方式，並修改故事的文字。
+- L-M2：UI 第 3 節的批次操作列有「刪除媒體檔」，M4 的動作清單是刪除影音（DEL）。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：「刪除媒體檔」屬於媒體檔保留策略，延到 M4 之後（ADR-0021 第 8 點、故事地圖第 7 節）；LIB-09 只顯示磁碟用量（LIB-R22）。UI 第 3 節要把批次操作列改成「重新處理、改用其他處理方案、匯出 bundle、刪除、標為已讀」。
+- L-M3：批次的路由用 UI 第 3 節既有的 `POST /api/items/batch`，不另取 `/api/items/bulk`（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。名稱和 Batch API（BATCH 規格）相近，但路徑不同，不會混淆。
+- L-M4：`ids` 接受代號（LIB-R13），沿用 M2 S9「影音路由接受代號」的決定；驗收場景的 harness 只替換路徑中的代號，body 中的代號要由 production 解析。
+- L-M5：上限 500 部由單元測試驗證（場景寫不出 501 個代號），場景只驗證空的 `ids`。
+- L-M6：`export_bundle` 的回應、大小上限與 scope 以 BND 規格為準（BND 規格與 LIB 同時撰寫，整合時確認）；場景只驗證 `dry_run`。
+- L-M7：`internal/api/items_list_test.go` 目前斷言 `?read_state=unread` 回 501；實作 LIB-R19 時要同時改這個單元測試（不是 `.feature`）。
+- L-M8：總覽的 `today` 用請求的 `tz`，預設是 `budget.timezone`（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。UI 從瀏覽器取得時區後帶上 `tz`；Client 沒有其他「使用者時區」的設定。
