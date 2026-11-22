@@ -140,13 +140,19 @@
     - DEL-R9：`DELETE /api/items/{id}` 帶 `delete_outputs: true` 時，刪除 `outputs` 紀錄中 sha256 與現在檔案相同的檔案（`internal/output/remove.go`，`os.Root`、不跟隨 symlink；先過 pathguard），改過的列在 `kept_outputs`（`modified`、`outside_roots`、`unreadable`）；`deletion-preview` 列出輸出檔與 `modified`；還原時有紀錄但檔案不在就從 `publish` 重跑寫回。永久刪除不動輸出檔（規格資料表）。CLI `items rm --delete-outputs` 原本就有，現在會印保留的檔案。決定記在 DEL 規格。
     - 依 /goal 修改 `.feature`（待 owner 追認）：`A playground run changes nothing` 補 `standard` 處理方案，否則 `correct` 是 `skipped`；harness 的 `the response contains` 不再展開預期值中的虛擬路徑（回應已換回虛擬路徑，steps.md 已同步）。
     - `@M2`：以 S6b 之後的 master 為基準，83 → 87 passed、3 → 1 failed（剩 MCP stdio）、31 → 29 pending（PRM 兩個、DEL 兩個由失敗或 pending 變通過）。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，189 passed、2 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
+  - M2 S9 MCP（stdio 與 Streamable HTTP）：
+    - `internal/mcptools`：tool（`ingest`、`list_items`、`get_item`、`get_transcript`、`import_transcript`、`get_video_context`、`search`）與 prompts，全部轉成程序內的 API 呼叫（`Backend`），scope、驗證與錯誤和 API 相同（MCP-R3）；AGT 的四個 tool 在 `agent.go` 註冊成 `not_implemented`，**S10 只要替換那裡的 handler**。`internal/api/mcp.go`：`/mcp` 用官方 go-sdk v1.8.0（stateless、JSON 回應），Origin／Host 檢查（AUTH-R11，設定檔 `mcp.allowed_origins`／`allowed_hosts`，只在 TCP）、請求上限、同時處理數、讀取期限。`internal/cli/mcp.go`：`notesteme mcp [--token] [--list-tools]` 是轉送到 `/mcp` 的 stdio 代理，獨立模式在背景跑 worker。
+    - API 的 `GET /api/items/{id}`、`/cues`、`/subtitles`、`POST …/subtitles/import` 的 `{id}` 也接受影音代號；`api.NewLocal` 遇到 bearer token 改用 token 的身分（`mcp --token` 在本機模式限制 scope）。
+    - 依 /goal 採保守預設、待 owner 追認：MCP 規格待決問題 S1～S10（AGT stub、本機 `--token`、`import_transcript` 只收 content、`get_video_context` 做到 normalize 與完成的判斷、`timeout_s` 上限、SRT 結尾換行、prompts 的 L8 處理、上限、Origin／Host 預設）。
+    - 已知限制：沒有 progress notification；已在媒體庫但沒有字幕也沒在處理的影音，`get_video_context` 回讀取字幕的錯誤，不會自動重跑；stdio 代理回傳的結果可能帶新版協定的欄位（`resultType` 等，舊 client 會忽略）。
+    - `@M2`：86 passed、14 failed、17 pending（MCP 13 個、AUTH-R11、CLI 的 stdio 場景通過；剩下的 pending 是 AGT 14 個與其他）。M1 預設 tag：191 passed、0 pending。
+- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，191 passed、0 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內；DEL `@mcp` 兩個在 S9 通過）。
 
   | Feature | passed | pending |
   |---|---|---|
   | AUTH | 23 | 0 |
   | CLI | 9 | 0 |
-  | DEL | 19 | 2 |
+  | DEL | 21 | 0 |
   | GRD | 22 | 0 |
   | ING | 24 | 0 |
   | LIB | 10 | 0 |
@@ -159,7 +165,7 @@
 
   AUTH、CLI、GRD、ING、LIB、OPS、OUT、PIPE、SEC、SRC 的 M1 場景全部通過（ING-R7 隨 S1 通過）。剩下的 3 個 pending：
   - **NRM-R7**：已在 2026-11-22 修好（場景宣告原文語言 `zh-Hans`，依 /goal 採 advisor 建議，待 owner 追認），M1 預設 tag 現在是 189 passed、2 pending（只剩 DEL `@mcp`）。原來的描述：場景的影片原文語言是預設的 `en`，卻只有 `zh-Hans` 的自動字幕。
-  - **DEL `@mcp`（2 個）**：需等 M2 的 MCP tool（`get_transcript`、`tools/list`）。
+  - **DEL `@mcp`（2 個）**：M2 S9 已通過。
 
   M1 的 OUT 場景全部通過，但 OUT 的 M2 部分還沒做，所以規格狀態仍是 `ready`，不是 `implemented`。
 
