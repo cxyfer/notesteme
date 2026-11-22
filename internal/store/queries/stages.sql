@@ -5,6 +5,20 @@ SELECT id FROM config_snapshots WHERE sha256 = sqlc.arg(sha256);
 INSERT INTO config_snapshots (id, sha256, config_json, created_at)
 VALUES (sqlc.arg(id), sqlc.arg(sha256), sqlc.arg(config_json), sqlc.arg(created_at));
 
+-- name: InsertSnapshotWithLayers :exec
+INSERT INTO config_snapshots (id, sha256, config_json, layers_json, created_at)
+VALUES (sqlc.arg(id), sqlc.arg(sha256), sqlc.arg(config_json), sqlc.arg(layers_json), sqlc.arg(created_at));
+
+-- name: SnapshotLayers :one
+SELECT layers_json FROM config_snapshots WHERE id = sqlc.arg(id);
+
+-- name: RebindPendingRuns :many
+-- Re-bind the stage runs of one item that have not started (pending, never started, not metadata) from one snapshot to another.
+UPDATE stage_runs SET config_snapshot_id = sqlc.arg(to_id)
+WHERE item_id = sqlc.arg(item_id) AND config_snapshot_id = sqlc.arg(from_id)
+  AND stage <> 'metadata' AND status = 'pending' AND started_at IS NULL
+RETURNING id;
+
 -- name: SnapshotConfig :one
 SELECT config_json FROM config_snapshots WHERE id = sqlc.arg(id);
 

@@ -289,10 +289,8 @@ func (rt *routes) readUpload(mr *multipart.Reader, dir string, limit int64) (pip
 			return up, invalid("overrides 必須是 JSON 物件。")
 		}
 	}
-	if profile != "" {
-		// 處理方案屬於 M2，同 JSON 新增：回 501。
-		return up, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作：處理方案。")
-	}
+	// 處理方案由 pipeline 驗證並解析（名稱不存在回錯誤），同 JSON 新增。
+	up.Profile = profile
 	return up, nil
 }
 

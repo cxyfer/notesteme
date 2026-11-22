@@ -51,7 +51,8 @@ var cliTimeout = 30 * time.Second
 
 // ownerRuns 在程序內執行 cli.Execute（ADR-0015）。
 //
-// 這個步驟不會隱含啟動 server：CLI 自己判斷模式，沒有 server 時就是獨立模式（場景 2）。
+// 這個步驟通常不會隱含啟動 server：CLI 自己判斷模式，沒有 server 時就是獨立模式（場景 2）。
+// 例外是有尚未寫入的 prompt、處理方案或頻道覆寫（見下方）。
 // Given 累積的全域設定與佇列要靠 server 套用：
 //   - server 已在執行：先呼叫 prepareOwner 把設定與佇列送出，CLI 才看得到它們。
 //   - server 沒有在執行：無處可套，直接失敗，不默默忽略。
@@ -81,6 +82,13 @@ func (s *Scenario) ownerRuns(line string) error {
 	}
 	args := argv[1:]
 
+	// prompt、處理方案與頻道覆寫是 server 擁有的資料（存在資料庫、經 API 寫入），
+	// 不是 server 啟動時套用的設定：有尚未寫入的這類 Given 時隱含啟動 server 寫入，CLI 之後以 client 模式執行。
+	if s.server == nil && s.hasPendingConfig() {
+		if err := s.ensureServer(); err != nil {
+			return err
+		}
+	}
 	if s.hasGivenConfig() {
 		if s.server == nil {
 			return errors.New("場景用 Given 設定了全域設定或佇列，但 server 沒有在執行：這些設定要靠 server 套用，CLI 的獨立模式不會套用（需要 server 的步驟才會隱含啟動它）")
@@ -137,7 +145,7 @@ func (s *Scenario) runDocker(args []string) error {
 // hasGivenConfig 回報是否有 Given 累積、尚未送出的全域設定或佇列設定（見 prepareOwner）。
 func (s *Scenario) hasGivenConfig() bool {
 	q := s.givenQueue
-	return len(s.givenSettings) > 0 || q.limits != nil || q.pausedQueue || len(q.pausedClasses) > 0
+	return len(s.givenSettings) > 0 || q.limits != nil || q.pausedQueue || len(q.pausedClasses) > 0 || s.hasPendingConfig()
 }
 
 // needCommand 回傳最近一次的指令結果；還沒有執行過指令時失敗。

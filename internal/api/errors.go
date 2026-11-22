@@ -8,6 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/cxyfer/notesteme/internal/pipeline"
+	"github.com/cxyfer/notesteme/internal/validate"
 )
 
 // Error 是所有錯誤回應的格式：至少有 code（機器可讀）與 message（預設繁體中文，NFR-I18N-2）。
@@ -31,6 +32,12 @@ type Error struct {
 	ItemID string `json:"item_id,omitempty"`
 	// Purged 在清空垃圾桶部分失敗時指出已經永久刪除幾部（DEL-R4）；用指標，0 也要輸出。
 	Purged *int `json:"purged,omitempty"`
+	// Errors 是 422 的逐欄位錯誤，依固定順序排列（PRF-R4、PRM-R1）；只增不改，沒有它的 422 與 M1 相同。
+	Errors []validate.FieldError `json:"errors,omitempty"`
+	// UsedBy 在刪除被引用的處理方案或 prompt 時列出引用它的對象（409，PRM-R8）。
+	UsedBy []string `json:"used_by,omitempty"`
+	// UndefinedVariables 在 prompt 內文用到未定義的變數時列出它們（422，PRM-R3）。
+	UndefinedVariables []string `json:"undefined_variables,omitempty"`
 }
 
 // Error 實作 error。
@@ -64,6 +71,14 @@ const (
 
 	// 影音在垃圾桶中（DEL-R1、R10）：讀取與處理回 404，新增回 409。
 	CodeInTrash = "in_trash"
+
+	// 處理方案與 prompt（PRF、PRM）。找不到時用 not_found（404）。
+	CodeProfileExists  = "profile_exists"
+	CodeProfileInUse   = pipeline.CodeProfileInUse
+	CodeBuiltinProfile = "builtin_profile"
+	CodePromptExists   = "prompt_exists"
+	CodePromptInUse    = pipeline.CodePromptInUse
+	CodeBuiltinPrompt  = "builtin_prompt"
 
 	// 外部工具失敗（例如 yt-dlp 展開播放清單，ING-R4）；稍後重試或處理環境後可能成功。
 	CodeUpstream = "upstream_failed"

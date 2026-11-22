@@ -20,6 +20,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/media"
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/pipeline"
+	"github.com/cxyfer/notesteme/internal/prompts"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/secrets"
 	"github.com/cxyfer/notesteme/internal/source/bilibili"
@@ -76,7 +77,9 @@ type Server struct {
 	sockDone chan struct{} // sockHTTP.Serve 結束時關閉
 
 	pipeline *pipeline.Pipeline
-	queue    *queue.Queue
+	// prompts 是 prompt 庫（PRM）；startPipeline 建立。
+	prompts *prompts.Service
+	queue   *queue.Queue
 	// runner 執行外部工具（yt-dlp、ffmpeg 與 yt-dlp 的安裝）；startPipeline 設定。
 	runner toolexec.Runner
 	// ytdlp 管理 yt-dlp 的更新與回退（OPS-R6、R7），見 tools.go。
@@ -230,7 +233,15 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	if err := s.configureSources(ctx, &deps, env, cfg); err != nil {
 		return err
 	}
-	s.pipeline = pipeline.New(deps)
+	// prompts 要問 Pipeline「誰在用這個 prompt」，Pipeline 要經由 prompts 解析 prompt 引用：互相依賴，用 closure 解開。
+	var pl *pipeline.Pipeline
+	s.prompts = prompts.New(prompts.Deps{
+		Store: s.store, Clock: env.Clock,
+		UsedBy: func(ctx context.Context, id string) ([]string, error) { return pl.PromptUsers(ctx, id) },
+	})
+	deps.Providers, deps.Prompts = pipeline.BuiltinProviders{}, promptResolver{s.prompts}
+	pl = pipeline.New(deps)
+	s.pipeline = pl
 	s.worker = worker.New(s.queue, s.pipeline, env.Clock, log)
 	// 永久刪除要結束殘留的任務，所以 pipeline 需要 worker（worker 在 pipeline 之後才建立）。
 	s.pipeline.SetTaskCanceller(s.worker)

@@ -139,7 +139,7 @@ type createItemInput struct {
 		Path      string         `json:"path,omitempty" doc:"本機檔案的路徑（要在 inbox 或 media_roots 之內；檔案不存在時仍建立，處理時才會失敗）"`
 		Parts     []int          `json:"parts,omitempty" doc:"Bilibili 要新增的分P；沒有指定時新增全部"`
 		Episodes  []string       `json:"episodes,omitempty" doc:"Podcast 要新增的集（guid）"`
-		Profile   string         `json:"profile,omitempty" doc:"處理方案；沒有指定時使用預設"`
+		Profile   string         `json:"profile,omitempty" doc:"處理方案的名稱；沒有指定時使用預設處理方案；不存在回 422"`
 		Overrides map[string]any `json:"overrides,omitempty" doc:"單次覆寫，只影響這次新增的影音"`
 		Until     string         `json:"until,omitempty" doc:"做到哪個步驟為止（含）"`
 	}
@@ -554,7 +554,7 @@ type rerunInput struct {
 		From      string         `json:"from" minLength:"1" doc:"從哪個步驟開始重新處理"`
 		Overrides map[string]any `json:"overrides,omitempty" doc:"這次重跑的單次覆寫"`
 		Until     string         `json:"until,omitempty" doc:"做到哪個步驟為止（含）；沒有指定時做到最後"`
-		Profile   string         `json:"profile,omitempty" doc:"這次重跑改用的處理方案（尚未實作，回 501）"`
+		Profile   string         `json:"profile,omitempty" doc:"這次重跑改用的處理方案；沒有指定時用影音目前的處理方案的最新版本（PRF-R3）；不存在回 422"`
 		Chunks    []int          `json:"chunks,omitempty" doc:"只重跑這些 chunk，從 1 起算（尚未實作，回 501）"`
 	}
 }
@@ -569,7 +569,7 @@ func (rt *routes) rerun(ctx context.Context, in *rerunInput) (*rerunOutput, erro
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}
-	// profile、chunks 的功能屬於 M2 之後的切片（處理方案、依 chunk 重跑）：pipeline 回 501（不是 422），
+	// chunks 的功能屬於 M2 之後的切片（依 chunk 重跑）：pipeline 回 501（不是 422），
 	// 而且是在驗證步驟名稱之後、讀取影音之前，不動任何資料。
 	d, err := rt.d.Pipeline.Rerun(ctx, in.ID, pipeline.RerunRequest{From: in.Body.From, Overrides: in.Body.Overrides, Until: in.Body.Until,
 		Profile: in.Body.Profile, Chunks: in.Body.Chunks})
@@ -663,12 +663,12 @@ func parseTime(s string) (int64, error) {
 // ---- 設定 ----
 
 type settingsInput struct {
-	Section string `path:"section" doc:"設定區段；目前只有 language"`
+	Section string `path:"section" doc:"設定區段：language、timing、llm、agent、subtitle_rules、stages、supadata 或 services"`
 }
 
 type putSettingsInput struct {
-	Section string `path:"section" doc:"設定區段；目前只有 language"`
-	// Body 用指標：沒有內容時不被 Huma 擋下，還沒實作的區段不論有沒有內容都回 501。
+	Section string `path:"section" doc:"設定區段：language、timing、llm、agent、subtitle_rules、stages、supadata 或 services"`
+	// Body 用指標：沒有內容時不被 Huma 擋下，由 handler 回 422（services 區段自己處理）。
 	Body *map[string]any
 }
 
@@ -705,7 +705,8 @@ func (rt *routes) putSettings(ctx context.Context, in *putSettingsInput) (*setti
 	if in.Body != nil {
 		body = *in.Body
 	}
-	if body == nil && in.Section == "language" {
+	// 除了 services（上面已處理），所有區段的 body 都是物件；沒有內容或是 null 都回 422。
+	if body == nil {
 		return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "請提供 JSON 物件格式的設定內容。")
 	}
 	v, err := rt.d.Pipeline.SetSettings(ctx, in.Section, body)
@@ -723,6 +724,7 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 		inv *pipeline.InvalidError
 		ni  *pipeline.NotImplementedError
 		up  *pipeline.UpstreamError
+		iu  *pipeline.InUseError
 	)
 	if pe := policyError(err); pe != nil {
 		return pe
@@ -737,7 +739,19 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 	case errors.Is(err, pipeline.ErrChannel):
 		return newError(http.StatusUnprocessableEntity, CodeChannel, err.Error())
 	case errors.As(err, &inv):
-		return newError(http.StatusUnprocessableEntity, CodeInvalidInput, inv.Error())
+		e := newError(http.StatusUnprocessableEntity, CodeInvalidInput, inv.Error())
+		e.Errors = inv.Fields
+		return e
+	case errors.As(err, &iu):
+		e := newError(http.StatusConflict, iu.Code, iu.Error())
+		e.UsedBy = iu.UsedBy
+		return e
+	case errors.Is(err, pipeline.ErrProfileNotFound), errors.Is(err, pipeline.ErrPromptNotFound), errors.Is(err, pipeline.ErrPromptVersionNotFound):
+		return newError(http.StatusNotFound, CodeNotFound, err.Error())
+	case errors.Is(err, pipeline.ErrProfileExists):
+		return newError(http.StatusConflict, CodeProfileExists, err.Error())
+	case errors.Is(err, pipeline.ErrBuiltinProfile):
+		return newError(http.StatusConflict, CodeBuiltinProfile, err.Error())
 	case errors.As(err, &ni):
 		return newError(http.StatusNotImplemented, CodeNotImplemented, ni.Error())
 	case errors.Is(err, pipeline.ErrInTrash):

@@ -1,7 +1,7 @@
 -- name: InsertItemIfAbsent :execrows
-INSERT INTO items (id, platform, external_id, part, profile_id, overrides_json, until_stage, url, source_path, content_sha256, origin, created_at)
+INSERT INTO items (id, platform, external_id, part, profile_id, profile_version, overrides_json, until_stage, url, source_path, content_sha256, origin, created_at)
 VALUES (sqlc.arg(id), sqlc.arg(platform), sqlc.arg(external_id), sqlc.arg(part), NULLIF(CAST(sqlc.arg(profile_id) AS TEXT), ''),
-        sqlc.arg(overrides_json), sqlc.arg(until_stage), sqlc.arg(url), sqlc.arg(source_path), sqlc.arg(content_sha256),
+        NULLIF(CAST(sqlc.arg(profile_version) AS INTEGER), 0), sqlc.arg(overrides_json), sqlc.arg(until_stage), sqlc.arg(url), sqlc.arg(source_path), sqlc.arg(content_sha256),
         sqlc.arg(origin), sqlc.arg(created_at))
 ON CONFLICT (platform, external_id, part) DO NOTHING;
 
@@ -41,6 +41,19 @@ ON CONFLICT (platform, external_id) DO UPDATE SET
   url = COALESCE(NULLIF(excluded.url, ''), url),
   updated_at = excluded.updated_at
 RETURNING id;
+
+-- name: SetItemProfile :execrows
+-- The profile (and its version) used by the latest ingest or rerun.
+UPDATE items SET profile_id = sqlc.arg(profile_id), profile_version = sqlc.arg(profile_version) WHERE id = sqlc.arg(id);
+
+-- name: GetChannel :one
+SELECT * FROM channels WHERE id = sqlc.arg(id);
+
+-- name: SetChannelOverrides :execrows
+UPDATE channels SET overrides_json = sqlc.arg(overrides_json), updated_at = sqlc.arg(updated_at) WHERE id = sqlc.arg(id);
+
+-- name: ChannelsWithOverrides :many
+SELECT * FROM channels WHERE overrides_json <> '{}' ORDER BY platform, external_id;
 
 -- name: SetItemUntil :execrows
 UPDATE items SET until_stage = sqlc.arg(until_stage) WHERE id = sqlc.arg(id);

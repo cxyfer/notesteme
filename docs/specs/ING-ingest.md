@@ -106,3 +106,4 @@ YouTube 播放清單（ING-R4）展開時由 yt-dlp 列出清單內容：清單�
   - 資源上限：一次最多 Probe 100 部（播放清單更長時只估前 100 部，頂層 `notes` 說明總數）；整個程序同時最多 4 個估價 Probe（跨請求共用）；一次估價的 Probe 總時間上限 3 分鐘，用完時還沒輪到的影音標為未知（「估價逾時」）。
   - 一次估算多部影音時，單一部 Probe 失敗只在該項的 `notes` 說明；全部都失敗時，頂層 `notes` 也說明，仍回 200。只有一部時回傳錯誤。`llm_usd` 在 M2 實作 LLM 之前一律為 `null`。內建計價表在 `internal/cost`，使用者自訂單價屬於 M4（COST-03）。
 - ING-R9 的 Bilibili 部分在未登入時做不到：Bilibili 的 AI 字幕需要 cookie，但未登入時 yt-dlp 不列出字幕，辨識（`POST /api/resolve`）看不出這部影片有沒有 AI 字幕，無法標示 `requires_cookie`。目前只有 YouTube 的 `availability` 會標示；Bilibili 的標示記為待修的規則，等 M0 驗證後再決定（可能改成只在 transcript 步驟 `blocked` 時提示，見 SRC-R8）。
+- 估算花費支援 `profile`（2026-11-22，M2 S1/S2 設計時決定）：`POST /api/estimate` 的 `profile` 隨 PRF 切片實作，不再回 501，估價用該處理方案的生效設定。但估價沒有頻道層：頻道要到 `metadata` 完成才知道，估價又不寫入資料庫，所以頻道覆寫（PRF-R8）不影響估價，實際處理時才套用。

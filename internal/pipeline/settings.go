@@ -180,6 +180,10 @@ type StageConfig struct {
 	Provider string `json:"provider,omitempty"`
 	Model    string `json:"model,omitempty"`
 	Prompt   string `json:"prompt,omitempty"`
+	// PromptVersion、PromptSHA256 是 Compose 解析 prompt 引用之後寫進快照的結果（決策 D11）；
+	// 解析不了時留空。它們只出現在快照中，輸入的設定層帶這兩個欄位是未知欄位（422）。
+	PromptVersion int    `json:"prompt_version,omitempty"`
+	PromptSHA256  string `json:"prompt_sha256,omitempty"`
 }
 
 // Stage 取出 stages.<stage>。快照沒有這個區段（M1 的舊快照）或沒有這個步驟時，回傳內建預設值；
@@ -210,6 +214,7 @@ func (e Effective) Stage(stage string) (StageConfig, error) {
 		cfg.Prompt = got.Prompt
 	}
 	cfg.Provider, cfg.Model = got.Provider, got.Model
+	cfg.PromptVersion, cfg.PromptSHA256 = got.PromptVersion, got.PromptSHA256
 	return cfg, nil
 }
 

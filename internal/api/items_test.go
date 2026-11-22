@@ -283,12 +283,14 @@ func TestSettingsLanguageEndpoints(t *testing.T) {
 			t.Errorf("%s：%d %s", name, rec.Code, rec.Body)
 		}
 	}
-	// 其他區段維持 501，不論有沒有內容。
-	for _, body := range []string{"", `{"a":1}`} {
-		rec := r.owner("PUT", "/api/settings/budget", body)
-		if rec.Code != 501 || decode[Error](t, rec).Code != CodeNotImplemented {
-			t.Errorf("budget：%d %s", rec.Code, rec.Body)
-		}
+	// 其他區段：沒有內容回 422（所有非 services 的區段都一樣，不只 language）；有內容時沒有實作的區段維持 501。
+	rec = r.owner("PUT", "/api/settings/budget", "")
+	if rec.Code != 422 || decode[Error](t, rec).Code != CodeInvalidInput {
+		t.Errorf("budget 沒有內容：%d %s，預期 422", rec.Code, rec.Body)
+	}
+	rec = r.owner("PUT", "/api/settings/budget", `{"a":1}`)
+	if rec.Code != 501 || decode[Error](t, rec).Code != CodeNotImplemented {
+		t.Errorf("budget：%d %s", rec.Code, rec.Body)
 	}
 	if rec := r.owner("GET", "/api/settings/budget", ""); rec.Code != 501 {
 		t.Errorf("GET budget = %d", rec.Code)

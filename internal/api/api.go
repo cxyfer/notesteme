@@ -22,6 +22,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/pipeline"
+	"github.com/cxyfer/notesteme/internal/prompts"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
 )
@@ -35,6 +36,8 @@ type Deps struct {
 	Version string
 	// Pipeline 提供影音的新增與查詢；nil 時相關的路由回應 501。
 	Pipeline *pipeline.Pipeline
+	// Prompts 是 prompt 庫（PRM 的 6 條路由）；nil 時相關的路由回應 501。
+	Prompts *prompts.Service
 	// Queue 提供佇列的狀態與控制（上限、暫停，PIPE-R8、PIPE-R10）；nil 時相關的路由回應 501。
 	Queue *queue.Queue
 	// Tasks 結束正在執行的任務（取消影音，PIPE-R15）；nil 時只在資料庫中取消。
@@ -239,14 +242,17 @@ func (rt *routes) register(api huma.API) {
 	rt.registerProviders(api)
 	rt.registerTools(api)
 	rt.registerBackup(api)
+	rt.registerPrompts(api)
+	rt.registerProfiles(api)
+	rt.registerChannels(api)
 	rt.registerM2Stubs(api)
 	registerScoped(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",
-		Summary: "讀取全域設定區段（目前只有 language 與 services；其他區段尚未實作）",
+		Summary: "讀取全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）",
 	}, auth.ScopeAdmin, rt.getSettings)
 	registerScoped(api, huma.Operation{
 		OperationID: "settings-put", Method: http.MethodPut, Path: "/api/settings/{section}",
-		Summary: "取代全域設定區段（目前只有 language 與 services；其他區段尚未實作）",
+		Summary: "取代全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）；內容不正確回 422 與逐欄位的 errors",
 	}, auth.ScopeAdmin, rt.putSettings)
 	huma.Register(api, huma.Operation{
 		OperationID: "mcp", Method: http.MethodPost, Path: "/mcp",

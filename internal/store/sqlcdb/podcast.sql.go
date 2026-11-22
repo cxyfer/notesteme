@@ -10,7 +10,7 @@ import (
 )
 
 const channelByKey = `-- name: ChannelByKey :one
-SELECT id, platform, external_id, title, url, metadata_json, updated_at FROM channels WHERE platform = ?1 AND external_id = ?2
+SELECT id, platform, external_id, title, url, metadata_json, updated_at, overrides_json FROM channels WHERE platform = ?1 AND external_id = ?2
 `
 
 type ChannelByKeyParams struct {
@@ -29,12 +29,13 @@ func (q *Queries) ChannelByKey(ctx context.Context, arg ChannelByKeyParams) (Cha
 		&i.Url,
 		&i.MetadataJson,
 		&i.UpdatedAt,
+		&i.OverridesJson,
 	)
 	return i, err
 }
 
 const podcastChannelByURL = `-- name: PodcastChannelByURL :one
-SELECT id, platform, external_id, title, url, metadata_json, updated_at FROM channels
+SELECT id, platform, external_id, title, url, metadata_json, updated_at, overrides_json FROM channels
 WHERE platform = 'podcast' AND url = ?1
 ORDER BY rowid
 LIMIT 1
@@ -52,6 +53,7 @@ func (q *Queries) PodcastChannelByURL(ctx context.Context, url string) (Channel,
 		&i.Url,
 		&i.MetadataJson,
 		&i.UpdatedAt,
+		&i.OverridesJson,
 	)
 	return i, err
 }

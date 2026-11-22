@@ -241,7 +241,7 @@ func TestUploadFieldValidation(t *testing.T) {
 	}
 }
 
-// until 與 profile：until 記在影音上，profile 回 501（同 JSON 新增）。
+// until 與 profile：until 記在影音上，profile 由 pipeline 解析（不存在回 422，同 JSON 新增）。
 func TestUploadUntilAndProfile(t *testing.T) {
 	r := newLocalRig(t, nil)
 	body, ct := multipartBody(t, [][2]string{{"until", "metadata"}, {"overrides", `{}`}}, multipartFile{"file", "talk.m4a", "AUDIO-one"})
@@ -252,9 +252,22 @@ func TestUploadUntilAndProfile(t *testing.T) {
 	if u := decode[itemsBody](t, rec).Items[0].Until; u != "metadata" {
 		t.Errorf("until = %q", u)
 	}
+	// 不存在的處理方案：422，錯誤指向 profile 欄位（同 JSON 新增）。
 	body, ct = multipartBody(t, [][2]string{{"profile", "fast"}}, multipartFile{"file", "other.m4a", "AUDIO-two"})
-	if rec := r.uploadBody(body, ct, nil); rec.Code != 501 {
+	rec = r.uploadBody(body, ct, nil)
+	if e := decode[Error](t, rec); rec.Code != 422 || e.Code != CodeInvalidInput || len(e.Errors) != 1 || e.Errors[0].Path != "profile" {
 		t.Errorf("profile：%d %s", rec.Code, rec.Body)
+	}
+	// 處理方案先於 ffprobe 驗證：不是影音的檔案配上不存在的處理方案，回 profile 的 422，不是 unsupported_media（Codex P2）。
+	body, ct = multipartBody(t, [][2]string{{"profile", "fast"}}, multipartFile{"file", "notes.pdf", "just text"})
+	rec = r.uploadBody(body, ct, nil)
+	if e := decode[Error](t, rec); rec.Code != 422 || e.Code != CodeInvalidInput || len(e.Errors) != 1 || e.Errors[0].Path != "profile" {
+		t.Errorf("不是影音 + 不存在的 profile：%d %s", rec.Code, rec.Body)
+	}
+	// 預設處理方案可以用名稱指定：multipart 的 profile 欄位送進 pipeline（Codex P2）。
+	body, ct = multipartBody(t, [][2]string{{"profile", "default"}}, multipartFile{"file", "third.m4a", "AUDIO-three"})
+	if rec := r.uploadBody(body, ct, nil); rec.Code != 201 {
+		t.Errorf("profile default：%d %s", rec.Code, rec.Body)
 	}
 	if left := r.tmpEntries(); len(left) != 0 {
 		t.Errorf("暫存檔沒有清乾淨：%v", left)

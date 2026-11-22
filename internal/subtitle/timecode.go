@@ -86,6 +86,7 @@ func FormatDisplayTime(ms int64) string { return formatTime(ms, '.') }
 
 // ParseWords 解析 words 欄位，格式為以空白分隔的 `text@start-end`，
 // 例如 `hello@00:00:01.000-00:00:01.800 world@00:00:02.100-00:00:02.900`。
+// 時間也可以寫成秒數（`We@1.0-1.3`，SEG 場景的寫法）。
 func ParseWords(s string) ([]Word, error) {
 	var words []Word
 	for _, f := range strings.Fields(s) {
@@ -98,17 +99,42 @@ func ParseWords(s string) ([]Word, error) {
 		if dash <= 0 {
 			return nil, fmt.Errorf("invalid word %q", f)
 		}
-		start, err := ParseTimecode(rng[:dash])
+		start, err := parseWordTime(rng[:dash])
 		if err != nil {
 			return nil, err
 		}
-		end, err := ParseTimecode(rng[dash+1:])
+		end, err := parseWordTime(rng[dash+1:])
 		if err != nil {
 			return nil, err
 		}
 		words = append(words, Word{Text: f[:at], StartMS: start, EndMS: end})
 	}
 	return words, nil
+}
+
+// parseWordTime 解析字詞的時間：時間碼（含 `:`），或秒數（`1`、`1.5`，小數 1 到 3 位）。
+func parseWordTime(s string) (int64, error) {
+	if strings.Contains(s, ":") {
+		return ParseTimecode(s)
+	}
+	sec, frac, _ := strings.Cut(s, ".")
+	if len(sec) > 6 || !allDigits(sec) || strings.Contains(s, ".") && (len(frac) > 3 || !allDigits(frac)) {
+		return 0, fmt.Errorf("invalid timecode %q", s)
+	}
+	var n int64
+	for _, c := range sec {
+		n = n*10 + int64(c-'0')
+	}
+	ms := int64(0)
+	if frac != "" {
+		for len(frac) < 3 {
+			frac += "0"
+		}
+		for _, c := range frac {
+			ms = ms*10 + int64(c-'0')
+		}
+	}
+	return n*1000 + ms, nil
 }
 
 // FormatWords 為 ParseWords 的反向，時間以顯示格式輸出。

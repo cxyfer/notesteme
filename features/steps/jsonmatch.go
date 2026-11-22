@@ -27,7 +27,23 @@ func jsonSubset(want, got []byte) error {
 	return subset("$", w, g)
 }
 
-func subset(path string, want, got any) error {
+// configSubset 比對生效設定（steps.md 4.11）：規則與 jsonSubset 相同，但陣列必須完全相等（長度與每個元素），
+// 因為設定的陣列是整個取代，不是合併；允許 got 有多餘的元素，就驗證不到「陣列整個取代」。
+func configSubset(want, got []byte) error {
+	var w, g any
+	if err := json.Unmarshal(want, &w); err != nil {
+		return fmt.Errorf("預期內容不是合法的 JSON：%w", err)
+	}
+	if err := json.Unmarshal(got, &g); err != nil {
+		return fmt.Errorf("生效設定不是合法的 JSON：%w\n內容：%s", err, snippet(got))
+	}
+	return subsetMode("$", w, g, true)
+}
+
+func subset(path string, want, got any) error { return subsetMode(path, want, got, false) }
+
+// subsetMode 是子集比對的本體；exactArrays 為 true 時，陣列長度必須相等。
+func subsetMode(path string, want, got any, exactArrays bool) error {
 	if s, ok := want.(string); ok && s == anyValue {
 		return nil
 	}
@@ -47,7 +63,7 @@ func subset(path string, want, got any) error {
 			if !ok {
 				return fmt.Errorf("%s.%s：回應沒有這個欄位", path, k)
 			}
-			if err := subset(path+"."+k, w[k], gv); err != nil {
+			if err := subsetMode(path+"."+k, w[k], gv, exactArrays); err != nil {
 				return err
 			}
 		}
@@ -57,11 +73,14 @@ func subset(path string, want, got any) error {
 		if !ok {
 			return fmt.Errorf("%s：預期是陣列，實際是 %s", path, describe(got))
 		}
+		if exactArrays && len(g) != len(w) {
+			return fmt.Errorf("%s：預期剛好 %d 個元素，實際有 %d 個", path, len(w), len(g))
+		}
 		if len(g) < len(w) {
 			return fmt.Errorf("%s：預期至少 %d 個元素，實際只有 %d 個", path, len(w), len(g))
 		}
 		for i := range w {
-			if err := subset(fmt.Sprintf("%s[%d]", path, i), w[i], g[i]); err != nil {
+			if err := subsetMode(fmt.Sprintf("%s[%d]", path, i), w[i], g[i], exactArrays); err != nil {
 				return err
 			}
 		}

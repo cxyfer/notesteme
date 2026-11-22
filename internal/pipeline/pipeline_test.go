@@ -230,7 +230,9 @@ func TestIngestRejections(t *testing.T) {
 		{"影片 ID 少於 11 個字元", IngestRequest{URL: "https://www.youtube.com/watch?v=abc123xxxx"}, func(e error) bool { return errors.Is(e, ErrUnrecognizedURL) }},
 		{"影片 ID 多於 11 個字元", IngestRequest{URL: "https://youtu.be/abc123xxxxxx"}, func(e error) bool { return errors.Is(e, ErrUnrecognizedURL) }},
 		{"Bilibili 影片", IngestRequest{URL: "https://www.bilibili.com/video/BV1xx411c7mD"}, func(e error) bool { return errors.As(e, &ni) }},
-		{"處理方案", IngestRequest{URL: watch, Profile: "standard"}, func(e error) bool { return errors.As(e, &ni) }},
+		{"處理方案不存在", IngestRequest{URL: watch, Profile: "standard"}, func(e error) bool {
+			return errors.As(e, &inv) && len(inv.Fields) == 1 && inv.Fields[0].Path == "profile"
+		}},
 		{"未知的 until", IngestRequest{URL: watch, Until: "summary"}, func(e error) bool { return errors.As(e, &inv) }},
 		{"YouTube 不能指定分P", IngestRequest{URL: watch, Parts: []int{1}}, func(e error) bool { return errors.As(e, &inv) }},
 		{"不合法的覆寫", IngestRequest{URL: watch, Overrides: map[string]any{"language": map[string]any{"targets": []any{}}}}, func(e error) bool { return errors.As(e, &inv) }},

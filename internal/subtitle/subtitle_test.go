@@ -490,3 +490,25 @@ func TestContentDisposition(t *testing.T) {
 		t.Fatal("scenario header text missing")
 	}
 }
+
+// words 欄位的時間可以是時間碼或秒數（SEG 場景的 `We@1.0-1.3`）；格式不對的拒絕。
+func TestParseWordsAcceptsSeconds(t *testing.T) {
+	got, err := ParseWords("We@1.0-1.3 use@00:00:01.300-00:00:01.700 ok@2-2.25")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Word{{Text: "We", StartMS: 1000, EndMS: 1300}, {Text: "use", StartMS: 1300, EndMS: 1700}, {Text: "ok", StartMS: 2000, EndMS: 2250}}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("word %d = %+v，預期 %+v", i, got[i], want[i])
+		}
+	}
+	for _, bad := range []string{"a@1.-2", "a@1.2345-2", "a@x-2", "a@-1-2", "a@1e3-2"} {
+		if _, err := ParseWords(bad); err == nil {
+			t.Errorf("%q 應該失敗", bad)
+		}
+	}
+}

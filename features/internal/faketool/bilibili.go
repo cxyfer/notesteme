@@ -95,6 +95,17 @@ type biliSub struct {
 	content string
 }
 
+// UploaderIDFor 回傳 Bilibili 影片（BV 號 bvid）的 uploader_id：影片登記了 ChannelID 就用它，
+// 否則由 BV 號推導一個固定的數字 ID。v 可以是 nil（影片沒有登記）。fake yt-dlp 與 harness 共用這個規則，
+// 驗收步驟才能算出頻道的 natural key（bilibili:<uploader_id>）。
+func UploaderIDFor(v *Video, bvid string) string {
+	id := ""
+	if v != nil {
+		id = v.ChannelID
+	}
+	return orDefault(id, fmt.Sprintf("%d", 100000000+crc32.ChecksumIEEE([]byte(bvid))%900000000))
+}
+
 // biliRun 處理 Bilibili 網址的 -J、字幕下載與媒體下載。v 是 BV 這部影片（分P 數、長度、上傳者）。
 func biliRun(e env, st State, a ytArgs, op string, t videoURL, v *Video, cookies cookieJar) int {
 	part := v.partOf(st, t)
@@ -202,7 +213,7 @@ func biliInfo(e env, st State, a ytArgs, id string, t videoURL, v, p *Video, coo
 		"title":         orDefault(p.Title, t.id),
 		"duration":      v.Duration,
 		"uploader":      orDefault(v.Channel, "uploader-"+t.id),
-		"uploader_id":   orDefault(v.ChannelID, fmt.Sprintf("%d", 100000000+crc32.ChecksumIEEE([]byte(t.id))%900000000)),
+		"uploader_id":   UploaderIDFor(v, t.id),
 		"live_status":   orDefault(v.LiveStatus, "not_live"),
 		"extractor_key": "BiliBili",
 		"webpage_url":   fmt.Sprintf("https://www.bilibili.com/video/%s?p=%d", t.id, t.part),

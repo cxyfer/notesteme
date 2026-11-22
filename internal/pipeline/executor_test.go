@@ -156,7 +156,13 @@ func TestStageImplementedOnlyForM1LocalStages(t *testing.T) {
 			t.Errorf("%s／local 已實作", s)
 		}
 	}
-	for _, c := range [][2]string{{StageSegment, ExecutorAPI}, {StageCorrect, ExecutorAgent}, {StageTranslate, ExecutorOpenCC}, {StagePublish, ExecutorLocal}, {StageNormalize, ExecutorAPI}} {
+	// agent 只建立任務並等 Agent 領取（AGT-R1，D15）：LLM 步驟的 agent 視為可以前進。
+	for _, s := range []string{StageSegment, StageCorrect, StageTranslate} {
+		if !stageImplemented(s, ExecutorAgent) {
+			t.Errorf("%s／agent 已可前進", s)
+		}
+	}
+	for _, c := range [][2]string{{StageSegment, ExecutorAPI}, {StageTranslate, ExecutorOpenCC}, {StagePublish, ExecutorLocal}, {StageNormalize, ExecutorAPI}, {StagePublish, ExecutorAgent}, {StageNormalize, ExecutorAgent}} {
 		if stageImplemented(c[0], c[1]) {
 			t.Errorf("%s／%s 還沒實作", c[0], c[1])
 		}

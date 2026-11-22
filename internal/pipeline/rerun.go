@@ -16,7 +16,8 @@ type RerunRequest struct {
 	Overrides map[string]any
 	// Until 指定做到哪個步驟為止；空字串代表做到最後。每次重跑都重新決定（會更新影音的 until）。
 	Until string
-	// Profile 是這次重跑改用的處理方案（PRF）；有值時回 *NotImplementedError，處理方案屬於 M2 的 PRF 切片。
+	// Profile 是這次重跑改用的處理方案（PRF-R3）；空字串代表沿用影音記錄的處理方案（最新版本）。
+	// 處理方案不存在時回 *InvalidError（path 為 profile）。
 	Profile string
 	// Chunks 只重跑這些 chunk（LLM-R8，從 1 起算）；有值時回 *NotImplementedError，依 chunk 重跑屬於 M2 的 LLM 切片。
 	Chunks []int
@@ -33,7 +34,7 @@ type RerunRequest struct {
 // 這個步驟還沒有實作時回 501，而且什麼都不寫（ADR-0015）。
 //
 // 錯誤：store.ErrNotFound、*InTrashError（影音在垃圾桶中，DEL-R1）、*InvalidError（步驟名稱或設定不正確）、
-// *NotImplementedError（plannedStages、Profile、Chunks，或要執行的步驟還沒有實作）。
+// *NotImplementedError（plannedStages、Chunks，或要執行的步驟還沒有實作）。
 func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (Detail, error) {
 	switch {
 	case ValidStage(req.From):
@@ -51,33 +52,40 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		return Detail{}, invalidf("from（%s）不能在 until（%s）之後。", req.From, req.Until)
 	}
 
-	if req.Profile != "" {
-		return Detail{}, &NotImplementedError{What: "重跑時指定處理方案"}
-	}
 	if len(req.Chunks) > 0 {
 		return Detail{}, &NotImplementedError{What: "只重跑指定的 chunk"}
 	}
+	if err := p.validateOverrides(ctx, req.Overrides); err != nil {
+		return Detail{}, err
+	}
 
-	it, err := p.st.Read().ItemByID(ctx, itemID)
+	r0 := p.st.Read()
+	it, err := r0.ItemByID(ctx, itemID)
 	if err != nil {
 		return Detail{}, err
 	}
 	if it.DeletedAt != nil {
 		return Detail{}, &InTrashError{ItemID: it.ID}
 	}
-	global, err := p.globalConfig(ctx)
-	if err != nil {
-		return Detail{}, err
-	}
 	itemOverrides, err := decodeOverrides(it.Overrides)
 	if err != nil {
 		return Detail{}, err
 	}
-	eff, err := BuildEffective(global, itemOverrides, req.Overrides)
+	// 處理方案（D7）：body 指定的；沒有就用影音記錄的（最新版本，PRF-R3）；M1 的影音沒有記錄，用預設處理方案。
+	// 記錄的處理方案已被刪除時回 422（path 為 profile）。
+	profile := req.Profile
+	if profile == "" {
+		profile = it.ProfileID
+	}
+	layers, err := p.currentLayers(ctx, r0, profile, it.ChannelID, itemOverrides, req.Overrides)
 	if err != nil {
 		return Detail{}, err
 	}
-	sha, cfgJSON, err := eff.Snapshot()
+	eff, err := p.Compose(ctx, layers)
+	if err != nil {
+		return Detail{}, err
+	}
+	sha, cfgJSON, layersJSON, err := SnapshotOf(eff, layers)
 	if err != nil {
 		return Detail{}, err
 	}
@@ -102,8 +110,12 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		if cur.DeletedAt != nil {
 			return &InTrashError{ItemID: cur.ID}
 		}
-		snap, err := r.EnsureSnapshot(ctx, sha, cfgJSON)
+		snap, err := r.EnsureSnapshotLayers(ctx, sha, cfgJSON, layersJSON)
 		if err != nil {
+			return err
+		}
+		// 記下這次實際用到的處理方案與版本，之後不帶 profile 的重跑才會一致（D7）。
+		if err := r.SetItemProfile(ctx, itemID, layers.Profile.Name, layers.Profile.Version); err != nil {
 			return err
 		}
 		runs, err := r.StageRunsByItem(ctx, itemID)
@@ -124,7 +136,7 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		// 執行中（running）的不動，它完成時 apply 會發現自己已不是最新而丟棄結果；
 		// 已經是 done／failed／blocked 的保留原狀，那是它自己的結果。
 		for _, s := range Stages[slices.Index(Stages, req.From):] {
-			if old, ok := latest[s]; ok && (old.Status == store.StatusPending || old.Status == store.StatusWaiting) {
+			if old, ok := latest[s]; ok && (old.Status == store.StatusPending || old.Status == store.StatusWaiting || old.Status == store.StatusAwaitingAgent) {
 				if err := r.SetStageState(ctx, old.ID, supersededState()); err != nil {
 					return err
 				}

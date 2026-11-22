@@ -52,6 +52,8 @@ type Scenario struct {
 	// givenSettings 是 `Given the global settings are:` 累積的全域設定（區段名稱對應內容）。
 	// Given 步驟只累積設定，第一個送出請求的步驟才套用（ADR-0015）。
 	givenSettings map[string]any
+	// pendingConfig 是 Given 累積的 prompt、處理方案、預設處理方案與頻道覆寫，同樣延到第一個送出請求的步驟才寫入（見 flushConfig）。
+	pendingConfig
 	// givenQueue 是 Given 累積的佇列上限與暫停設定，同樣延到第一個送出請求的步驟才套用。
 	givenQueue queueConfig
 	// seeded 是已用 `the … transcript of … is:` 直接寫入字幕的影音代號（見 hasTranscriptSource）。
@@ -442,6 +444,9 @@ func (s *Scenario) prepareOwner() error {
 		return err
 	}
 	if err := s.flushSettings(); err != nil {
+		return err
+	}
+	if err := s.flushConfig(); err != nil {
 		return err
 	}
 	return s.flushQueue()

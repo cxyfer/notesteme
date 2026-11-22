@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -94,6 +95,10 @@ type Deps struct {
 	TrashRetention time.Duration
 	// ImplVersions 覆寫步驟的 impl_version（PIPE-R6），key 是步驟名稱；只給測試使用，nil 代表全用預設值。
 	ImplVersions map[string]int
+	// Providers 回答 LLM provider 存不存在（PRF-R4）；nil 代表不檢查 provider 是否存在。
+	Providers ProviderCatalog
+	// Prompts 解析 prompt 引用（PRM、PRF-R4）；nil 代表不檢查 prompt 是否存在，也不記錄 prompt 版本。
+	Prompts PromptResolver
 }
 
 // Pipeline 是影音處理的入口：API 呼叫 Ingest 與查詢方法，worker 呼叫 Handle。
@@ -133,6 +138,10 @@ type Pipeline struct {
 
 	// estimates 限制估價同時進行的 Probe 數（跨請求共用）。
 	estimates estimateLimiter
+
+	// providers、prompts 是驗證與 Compose 查詢外部資源用的（見 Deps）；可以是 nil。
+	providers ProviderCatalog
+	prompts   PromptResolver
 }
 
 // New 建立 Pipeline。
@@ -156,14 +165,15 @@ func New(d Deps) *Pipeline {
 	if retention <= 0 {
 		retention = DefaultTrashRetention
 	}
-	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version}
+	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, prompts: d.Prompts}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。
 func settingKey(section string) string { return "settings." + section }
 
-// globalSections 是目前支援的全域設定區段。
-var globalSections = []string{"language"}
+// globalSections 是可以用 PUT /api/settings/{section} 設定的全域設定區段（D16）。body 都是物件；
+// outputs、glossary 是陣列，不開放全域設定。
+var globalSections = []string{"language", "timing", "llm", "agent", "subtitle_rules", "stages", "supadata"}
 
 // globalConfig 讀出全域設定（資料庫），形狀與 Effective 相同：{"language": {...}}。沒有設定過的區段不在其中。
 func (p *Pipeline) globalConfig(ctx context.Context) (map[string]any, error) {
@@ -186,9 +196,10 @@ func (p *Pipeline) globalConfig(ctx context.Context) (map[string]any, error) {
 }
 
 // GetSettings 回傳全域設定區段的生效值（內建預設加上使用者設定）。
-// 目前只有 language；其他區段屬於之後的切片。
+// 沒有內建預設的區段（timing、llm、agent、subtitle_rules）回傳存下來的值，沒存過就是空物件；
+// 它們的預設值由使用它們的切片在 accessor 中補上。其他區段回傳 *NotImplementedError。
 func (p *Pipeline) GetSettings(ctx context.Context, section string) (map[string]any, error) {
-	if section != "language" {
+	if !slices.Contains(globalSections, section) {
 		return nil, &NotImplementedError{What: "設定區段 " + section}
 	}
 	global, err := p.globalConfig(ctx)
@@ -199,13 +210,20 @@ func (p *Pipeline) GetSettings(ctx context.Context, section string) (map[string]
 	if err != nil {
 		return nil, err
 	}
-	return eff["language"].(map[string]any), nil
+	if v, ok := eff[section].(map[string]any); ok {
+		return v, nil
+	}
+	return map[string]any{}, nil
 }
 
-// SetSettings 以 body 取代全域設定的某個區段。body 先與內建預設合併並驗證，通過才存入。
+// SetSettings 以 body 取代全域設定的某個區段。先依 schema 驗證（錯誤依固定順序列在 errors，路徑帶區段名稱，
+// 例如 timing.split_timing），再與內建預設合併做語意檢查，通過才存入。
 func (p *Pipeline) SetSettings(ctx context.Context, section string, body map[string]any) (map[string]any, error) {
-	if section != "language" {
+	if !slices.Contains(globalSections, section) {
 		return nil, &NotImplementedError{What: "設定區段 " + section}
+	}
+	if fs := ValidateLayer(ctx, map[string]any{section: body}, KindGlobal, p.validateDeps()); len(fs) > 0 {
+		return nil, invalidFields(fs)
 	}
 	if _, err := BuildEffective(map[string]any{section: body}); err != nil {
 		return nil, err

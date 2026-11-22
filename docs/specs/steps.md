@@ -175,7 +175,7 @@
 | `Given the item {string} has been ingested as {word}` | 以指定的優先級新增：`manual`、`subscription`、`backfill` |
 | `Given {string} is a mixed-language item` | 把影音的原文語言標記為 `mixed` |
 | `Given the item {string} has been processed up to {string}` | 已完成到指定步驟。依序判斷：(1) 場景已準備字幕來源（寫入字幕、符合 `caption_priority` 的字幕軌、腳本化的已實作來源；`local:` 另外包含 inbox 中同名的外掛字幕檔，以及 fixture 帶有文字字幕串流）：照常執行 pipeline 到該步驟；(2) 代號是 `yt:` 或 `bili:`、假 yt-dlp 中這部影片完全沒有字幕軌、場景也沒有寫入字幕或腳本化來源，且 `features/fixtures/items/<代號>.json`（`:`、`/` 換成 `-`）存在：先建立影音並做到 metadata，用 fixture 寫入 `source`，再照常執行剩下的步驟；fixture 的 `ref` 必須與檔名一致；`local:`、`pod:` 一律不套用 fixture；(2c) 目標是 `segment`、`correct`、`translate`、`publish` 時：語意等 X1 決定（見 PRF 待決問題），目前 pending（步驟對這些目標尚未實作）；(3) 其他情況 pending。目標在 transcript 之前（如 `metadata`）不需要字幕。fixture 格式見 `features/fixtures/README.md` |
-| `Given the {string} transcript of {string} is:` | 指定變體的字幕；表格欄位：`#`、`start`、`end`、`text`，可加 `words`、`timing` |
+| `Given the {string} transcript of {string} is:` | 指定變體的字幕；表格欄位：`#`、`start`、`end`、`text`，可加 `words`、`timing`。`words` 是以空白分隔的 `text@start-end`，時間可以是時間碼（`00:00:01.000`）或秒數（`1.0`） |
 | `Given the {string} transcript of {string} in {string} is:` | 同上，指定語言 |
 | `When the worker runs until idle` | worker 持續執行，直到沒有可以執行的任務 |
 | `Then the library contains {int} items` | 影音總數，不含垃圾桶中的影音。server 已明確停下（`When the server shuts down gracefully`）時，不隱含啟動 server，改用唯讀方式查詢 DB |
@@ -317,6 +317,17 @@ fixture 在 `features/fixtures/llm/<名稱>`，沒有 `.json` 時自動補上。
 | `Given the global settings are:` | 全域設定（YAML） |
 | `Given the channel of {string} has the overrides:` | 頻道層的覆寫（YAML） |
 | `Then the effective config of {string} for {string} contains:` | 某步驟最後生效的設定（YAML 子集比對）；第一個參數是影音，第二個是步驟 |
+
+語意補充（2026-11-22，M2 S1/S2 設計時決定；不新增句型）：
+
+- 累積與寫入：`the prompt … version … is:`、`the profile … is:`、`the default profile is …`、`the channel of … has the overrides:` 都比照 `the global settings are:`，步驟只累積，第一個送出請求的步驟才依序寫入。順序是全域設定 → prompt（依宣告順序）→ 處理方案 → 預設處理方案 → 頻道覆寫 → 佇列。寫入的請求回 501 時，那個步驟 pending；其他非預期的狀態碼讓步驟失敗，訊息附上回應內容。理由：在 Background 就送出請求會提早啟動 server，之後 `the provider … has no API key` 這類必須在 server 啟動前的步驟就來不及了。這些寫入不覆寫「最近一次回應」，所以 `previousRequestNotImplemented` 的判斷不受影響。
+- `the prompt {s} version {N} is:`：N=1 送出 `POST /api/prompts {id, kind, body}`，N>1 送出 `POST /api/prompts/{id}/versions {body}`；回應的 `version` 必須等於 N。`kind` 取自 id 以 `-`、`.` 切開後第一個已知的類型（`localize` 算 `translate`），推斷不出來時步驟失敗。
+- `the profile {s} is:`：YAML 轉成 `POST /api/profiles {name, config}`，必須回 201。
+- `the default profile is {s}`：`POST /api/profiles/{s}/default`，必須回 200。
+- `the channel of {s} has the overrides:`：從 fake 平台取得影音所屬頻道的 natural key，送出 `PATCH /api/channels/<key>/overrides`，必須回 200。`yt:` 是 `youtube:<fake 影片的 channel_id>`（預設 `UCfixture000000000000000`）；`bili:` 是 `bilibili:<uploader_id>`；`pod:` 是 `podcast:<feed>`；`local:` 沒有頻道，步驟失敗。
+- `the effective config of {s} for {s} contains:`：讀取該步驟最新一筆 stage run 綁定的快照（測試 hook `Server.StageConfig`），以 YAML 子集比對，但陣列必須完全相等（否則驗證不到「陣列整個取代」）。`metadata` 的設定不含頻道層，因為頻道在 `metadata` 完成時才知道。
+- `When the owner ingests {s} with the profile {s}`：請求的 body 加上 `profile`。
+- `Given the default prompt for {s} is {s}`：沒有任何 feature 用到，語意也不清楚，維持 pending。
 
 ### 4.12 維運（`steps/ops.go`）
 

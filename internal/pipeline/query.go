@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -73,6 +74,34 @@ func (p *Pipeline) Runs(ctx context.Context, id string) ([]store.ExecutedRun, er
 		return nil, &InTrashError{ItemID: it.ID}
 	}
 	return r.ExecutedRunsByItem(ctx, id)
+}
+
+// StageConfig 回傳影音某個步驟最新一筆 stage run 綁定的快照：config 是生效設定，layers 是組成它的各層
+// （PRF-R2；M1 的舊快照是 {}）。只給驗收測試的 harness 使用（透過 app.Server.StageConfig），沒有 API 端點。
+//
+// 影音或步驟不存在時回傳 store.ErrNotFound。
+func (p *Pipeline) StageConfig(ctx context.Context, itemID, stage string) (config, layers json.RawMessage, err error) {
+	r := p.st.Read()
+	if _, err := r.ItemByID(ctx, itemID); err != nil {
+		return nil, nil, err
+	}
+	runs, err := r.StageRunsByItem(ctx, itemID)
+	if err != nil {
+		return nil, nil, err
+	}
+	run, ok := latestRuns(runs)[stage]
+	if !ok {
+		return nil, nil, store.ErrNotFound
+	}
+	cfg, err := r.Snapshot(ctx, run.ConfigSnapshotID)
+	if err != nil {
+		return nil, nil, err
+	}
+	ls, err := r.SnapshotLayers(ctx, run.ConfigSnapshotID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return json.RawMessage(cfg), json.RawMessage(ls), nil
 }
 
 // CuesQuery 是取得字幕內容的條件。

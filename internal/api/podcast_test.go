@@ -92,8 +92,8 @@ func TestCreatePodcastEpisode(t *testing.T) {
 		t.Errorf("parts：status = %d, %+v", rec.Code, e)
 	}
 	rec = r.owner("POST", "/api/items", `{"url":"https://feeds.example.com/show.xml","episodes":["ep-41"],"profile":"fast"}`)
-	if e := decode[Error](t, rec); rec.Code != 501 || e.Code != CodeNotImplemented {
-		t.Errorf("profile：status = %d, %+v", rec.Code, e)
+	if e := decode[Error](t, rec); rec.Code != 422 || e.Code != CodeInvalidInput || len(e.Errors) != 1 || e.Errors[0].Path != "profile" {
+		t.Errorf("不存在的 profile：status = %d, %+v", rec.Code, e)
 	}
 }
 
