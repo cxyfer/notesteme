@@ -105,6 +105,18 @@ func checkBlocked(ref string, st stageJSON, reason string) error {
 	return nil
 }
 
+// stageIsSkippedWith 比對步驟為 skipped，且略過的原因（block_reason）相符。
+func (s *Scenario) stageIsSkippedWith(stage, ref, reason string) error {
+	st, err := s.liveStage(ref, stage)
+	if err != nil {
+		return err
+	}
+	if st.Status != "skipped" || st.BlockReason != reason {
+		return fmt.Errorf("%s 的步驟 %s 是 %q，預期 skipped 且原因為 %q（%s）", ref, st.Stage, st.Status, reason, describeStage(st))
+	}
+	return nil
+}
+
 // stageWaitsUntil 比對步驟為 waiting，且 not_before 等於指定時間（RFC 3339，以時間點比較，不比時區寫法）。
 func (s *Scenario) stageWaitsUntil(stage, ref, at string) error {
 	st, err := s.liveStage(ref, stage)

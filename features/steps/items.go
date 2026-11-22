@@ -40,6 +40,7 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`the library contains {string}`, s.libraryContains)
 	r.Step(`the stage {string} of {string} is {string}`, s.stageIs)
 	r.Step(`the stage {string} of {string} is blocked with the reason {string}`, s.stageIsBlockedWith)
+	r.Step(`the stage {string} of {string} is skipped with the reason {string}`, s.stageIsSkippedWith)
 	r.Step(`the stage {string} of {string} failed with the error class {string}`, s.stageFailedWith)
 	r.Step(`the stage {string} of {string} waits until {string}`, s.stageWaitsUntil)
 	r.Step(`the stage {string} of {string} retries at {string}`, s.stageRetriesAt)

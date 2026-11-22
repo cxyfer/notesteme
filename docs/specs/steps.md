@@ -182,6 +182,7 @@
 | `Then the library contains {string}` | 影音存在，且不在垃圾桶中。server 已明確停下時，同上，改用唯讀方式查詢 DB |
 | `Then the stage {string} of {string} is {string}` | 步驟狀態。影音在垃圾桶中（`GET /api/items/:id` 回 404 `in_trash`）時，改以唯讀方式查詢 DB，影音的 ID 取自新增時記下的對照表 |
 | `Then the stage {string} of {string} is blocked with the reason {string}` | 狀態為 `blocked`，且 `block_reason` 相符 |
+| `Then the stage {string} of {string} is skipped with the reason {string}` | 狀態為 `skipped`，且略過的原因（`block_reason`，例如 `same_language`、`not_configured`、`off`）相符 |
 | `Then the stage {string} of {string} failed with the error class {string}` | `failed` 及錯誤類別 |
 | `Then the stage {string} of {string} waits until {string}` | 狀態為 `waiting`，`not_before` 與指定的 RFC 3339 時間是同一個時間點（不比時區寫法） |
 | `Then the stage {string} of {string} retries at {string}` | `pending`（重試中），下一次嘗試的時間為指定時間 |

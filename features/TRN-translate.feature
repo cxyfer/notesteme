@@ -181,7 +181,7 @@ Feature: Translate and convert Chinese scripts
     And the item "yt:tw001xxxxxx" has been processed up to "correct"
     When the owner reruns "yt:tw001xxxxxx" from "translate"
     And the worker runs until idle
-    Then the stage "translate" of "yt:tw001xxxxxx" is "skipped"
+    Then the stage "translate" of "yt:tw001xxxxxx" is skipped with the reason "same_language"
 
   @TRN-05 @TRN-R11
   Scenario: A manual subtitle track in the target language is reused
