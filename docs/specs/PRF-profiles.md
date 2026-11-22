@@ -22,7 +22,7 @@
 
 | ID | 規則 |
 |---|---|
-| PRF-R1 | 處理方案包含：`stages.<stage>.{executor, provider, model, prompt, ...}`、`language.*`、`timing.*`、`llm.*`、`agent.*`、`subtitle_rules.*`、`outputs`、`glossary`（字串陣列，不可以有空字串；它與 COR 的 `/api/glossaries/{scope}/{id}` 的關係由 COR 切片決定）。 |
+| PRF-R1 | 處理方案包含：`stages.<stage>.{executor, provider, model, prompt, ...}`、`language.*`、`timing.*`、`llm.*`、`agent.*`、`subtitle_rules.*`、`outputs`、`glossary`（字串陣列，不可以有空字串；它與 COR 的 `/api/glossaries/{scope}/{id}` 的關係見 COR 規格的 C2：方案層的詞彙，與全域、頻道詞彙表合併、去重）。 |
 | PRF-R2 | 覆寫順序：全域 → 處理方案 → 頻道 → 單次執行。map 逐層深度合併；list 整個取代。 |
 | PRF-R3 | 處理方案每次儲存都建立新版本；影音記錄使用的處理方案版本。修改處理方案不影響已完成的步驟，重新處理時才使用新版本。 |
 | PRF-R4 | 儲存時驗證整份內容：未知的欄位、型別錯誤、引用不存在的 provider 或 prompt，都回傳 422 並指出欄位路徑。 |
