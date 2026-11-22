@@ -258,6 +258,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerPrompts(api)
 	rt.registerPlayground(api)
 	rt.registerProfiles(api)
+	rt.registerConfigIO(api)
 	rt.registerChannels(api)
 	rt.registerGlossaries(api)
 	rt.registerAssStyles(api)
