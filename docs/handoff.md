@@ -88,7 +88,7 @@
     - 設定分層 builtin → 全域 → 處理方案 → 頻道 → 單次覆寫 → 重跑（`internal/pipeline/layers.go`），物件依 RFC 7396 合併、陣列整個取代；快照記下各層（`layers`）。頻道層在 `metadata` 完成時才併入（D6）：頻道與快照記下的不同時重建快照，並把還沒開始的下游步驟改綁。
     - 驗證（`internal/pipeline/schema.go`、`internal/validate`）：未知欄位、型別、列舉、provider、prompt 引用（類型要和步驟相符），422 回 `errors[{path,message}]`（D9）；完整性只檢查處理方案中寫出來的 `api` 步驟（D8）。
     - 頻道覆寫：`PATCH /api/channels/{key}/overrides`，key 是 `<platform>:<external_id>`（D14）。
-    - Prompt 庫（`internal/prompts`、migration 00011）：版本只增不改，內建 prompt 嵌入在 `internal/prompts/builtin/<id>/v1.md`（D12）；引用寫成 `<id>`、`<id>@default`、`<id>@N`（D11）；變數在儲存時檢查；刪除時 `used_by` 依處理方案、`settings`、頻道的順序列出（D13）。
+    - Prompt 庫（`internal/prompts`、migration 00011）：版本只增不改，內建 prompt 嵌入在 `internal/prompts/builtin/<id>/v1.md`（D12）；引用寫成 `<id>`、`<id>@default`、`<id>@N`（D11）；變數在儲存時檢查；刪除時 `used_by` 依處理方案、`settings`、頻道、影音（`item:<代號>`，最多 20 個）的順序列出，檢查與刪除在同一個寫入交易（D13、P7）。
     - harness：`features/steps/config.go` 的處理方案、prompt、頻道覆寫步驟（Given 累積，第一個請求前寫入）、`jsonmatch.go` 的子集比對（陣列完全相等）；CLI 步驟遇到尚未寫入的處理方案等設定會隱含啟動 server；`words` 欄位接受秒數（`1.5`）。
     - 變異測試 10 個都會變紅。`DeleteProfile` 拿掉 builtin 檢查時，PRF-R7 場景仍然通過（內建的 `default` 同時是預設處理方案，「使用中」也回 409），只有單元測試 `TestProfiles_DeleteDefault409` 抓得到；`GET /api/profiles/{id}` 回傳合併了內建預設的 config 時，子集比對驗證不到。
   - M2 S6a TRN 確定性轉換（PR #19，ADR-0018）：
@@ -217,7 +217,7 @@
      - P6：不帶版本號的 prompt 引用跟隨預設（`<id>` 等同 `<id>@default`）。
    - **S1/S2 設計決策**：
      - 同意：D6、D8、D13、X5、D10～D12、D14、D16、F4。
-     - P7、P8 先接受。P7 之後可補掃描 `items.overrides_json` 並把檢查與刪除放進同一個交易，排在 M2 收尾。
+     - P7、P8 先接受。P7 已在 M2 收尾完成（2026-11-23，待 owner 追認）：刪除 prompt 的檢查掃描 `items.overrides_json`（含垃圾桶中的影音），並與刪除放在同一個寫入交易；寫入端驗證 prompt 存在時在自己的交易之外，仍有「驗證後才被刪除」的窗口（見 PRM 規格的 P7）。
    - **要改 `.feature` 或規格（已同意，已修改）**：
      - F1、F2：PRF-R2「Each layer」與 PRF-R3 加 `And the default profile is "standard"`。
      - F5：PRF-R8 與 PRF-R2 的 ingest 之後加 `And the worker runs until idle`。
