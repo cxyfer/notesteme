@@ -37,7 +37,7 @@ go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 diff -f internal/store/sqlc.yam
 go test ./features -run TestFeatures -update-passing                    # 只新增行，確認 diff 只有新增
 ```
 
-- **不能有任何原本 passed 的場景退步**：用 `-godog.format=junit` 輸出 `@M2` 的逐場景結果，與切片開始前的基準逐一比對。
+- **不能有任何原本 passed 的場景退步**：用 `go test -v ./features -run TestFeatures -godog.tags='@M2' -godog.format=junit > old.xml` 輸出 `@M2` 的逐場景結果（**要加 `-v`**：全部通過時沒有 `-v` 會是空的 XML；輸出前面有 `=== RUN` 行，解析時從 `<testsuites` 開始切），與切片開始前的基準逐一比對。預設 tag 已涵蓋 `@M1` 與 `@M2`，`go test ./features -run TestFeatures` 跑的就是全部 308 個。
 - 變異測試：挑 5～10 個關鍵檢查暫時破壞，確認對應場景或單元測試會變紅，再還原。
 - 不可信輸入的解析器要有單元測試與 fuzz。
 

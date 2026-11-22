@@ -200,11 +200,11 @@
   M1 的 OUT 場景全部通過，但 OUT 的 M2 部分還沒做，所以規格狀態仍是 `ready`，不是 `implemented`。
 
 - **規格狀態**：AUTH、SEC、ING、SRC、NRM、OUT、PIPE、CLI、GRD 是 `ready`，其餘都是 `draft`。還沒有任何規格達到 `implemented`，因為每份都還有 pending 的場景。
-- **M1 尚未收尾（2026-11-22 盤點）**：後端與驗收場景（上表）已完成，但 plan 第 24 節對 M1 的定義還有下列項目沒交付，容易被「場景全綠」掩蓋：
+- **M1 尚未收尾（2026-11-22 盤點；2026-11-23 更新：CI 補強、README 已完成，其餘見收尾摘要）**：後端與驗收場景（上表）已完成，但 plan 第 24 節對 M1 的定義還有下列項目沒交付，容易被「場景全綠」掩蓋：
   - **Web UI 尚未開始**：沒有 `web/`、沒有靜態檔案服務、沒有 UI 的 `go:embed`；`docs/ui/mockups/` 只有 `library.html`、`item.html` 兩份草稿。plan 要求 M1 一起交付的頁面（新增、媒體庫、影音詳情、佇列、設定、登入）和 UI 相關的 NFR（NFR-SEC-1 CSP、NFR-PERF-10、NFR-A11Y-1～3、NFR-I18N-1、NFR-CMP-2、NFR-RWD-1）都還沒做。決定與預設見第 7 節；plan 第 24、26 節已記錄。
   - **真實樣本驗收沒做**：M1 驗收條件「四個平台共 10 部樣本都能一鍵產出 SRT」從未用真實的 yt-dlp、Groq、Supadata 驗證，驗收場景都跑在假工具上。第 6 節「還沒對真實服務驗證」的項目屬於同一類。
   - **人工驗收**：M1 有 7 個 `@manual` 場景還沒驗收。其中 5 個同時是 `@ui`（DEL-R3、LIB-R2、LIB-R5／R6、LIB-R9、LIB-R10），要等 Web UI；另外 2 個是 CLI-03、CLI-04（`watch` skill 改成薄包裝）。M2 還有 LIB-R12（`@ui @manual`）。
-  - **CI 已補（待 master 實測）**：`vuln` job（govulncheck v1.10.0，NFR-SEC-4）、`go` job 的涵蓋率門檻（`scripts/ci/coverage.sh`，NFR-TEST-3）、`release-check` job（`.goreleaser.yaml` 的 check、snapshot 建置與 linux/amd64 冒煙，NFR-CMP-1）、每晚 `fuzz.yml`（`scripts/ci/fuzz.sh`，涵蓋 subtitle、podcast RSS／Atom、yt-dlp JSON、ffmpeg silencedetect、cookie、zhconv、langtag 的解析入口，NFR-SEC-6）。本機只驗證了涵蓋率腳本、fuzz 腳本與 YAML 語法；govulncheck 與 goreleaser action 要看 master 上 CI 的實際結果，fuzz 要看第一次 nightly（或手動 `workflow_dispatch`）的結果。govulncheck 若報出可利用的弱點，要升級依賴或 Go 版本。
+  - **CI 已補（2026-11-23 已在 master 實測，綠）**：`vuln` job（govulncheck v1.10.0，NFR-SEC-4）、`go` job 的涵蓋率門檻（`scripts/ci/coverage.sh`，NFR-TEST-3）、`release-check` job（`.goreleaser.yaml` 的 check、snapshot 建置與 linux/amd64 冒煙，NFR-CMP-1）、每晚 `fuzz.yml`（`scripts/ci/fuzz.sh`，涵蓋 subtitle、podcast RSS／Atom、yt-dlp JSON、ffmpeg silencedetect、cookie、zhconv、langtag 的解析入口，NFR-SEC-6）。本機只驗證了涵蓋率腳本、fuzz 腳本與 YAML 語法；govulncheck 與 goreleaser action 要看 master 上 CI 的實際結果，fuzz 要看第一次 nightly（或手動 `workflow_dispatch`）的結果。govulncheck 若報出可利用的弱點，要升級依賴或 Go 版本。
   - **M0 結論沒有回寫紀錄**：6 個 `@pending-m0` 場景（SRC-R4、SRC-R13、COR-R2／R3、TRN-R4、SEG-R3、SEG-R10）的門檻仍是暫定值，盤點時沒有看到 M0 實測結果寫回規格或 ADR。
   - **README 已更新**：CLI 子命令、M1／M2 進度與 CI 說明已與實際狀態對齊。
 
@@ -215,7 +215,7 @@
 接下來：
 
 1. 疊加 PR 的合併方式（已用在 #13～#17）：前一個 squash 合併後，把下一個的 base 改成 `master`，再把下層分支的修正 merge（不 rebase）進來，最後用 `-s ours` 併入 master，並確認 `git diff master...HEAD` 的 patch-id 與合併前相同。每個 PR 都要等 Codex 審查通過、CI 綠才 squash 合併（owner 已授權，不用另外詢問）；同一個 PR 最多連續重審 3 次，超過要交 owner 決定（#14 就因為這樣由 owner 再授權了幾輪）。
-2. 剩下 M1 的項目：NRM-R7（見第 1 節，需要 owner 決定）、Web UI、真實樣本驗收、人工驗收、CI 補強（見第 1 節「M1 尚未收尾」）。
+2. 剩下 M1 的項目（2026-11-23）：NRM-R7 與 CI 補強已完成；剩 Web UI、真實樣本驗收、人工驗收，見第 1 節開頭的「2026-11-23 收尾摘要」。
 3. M2 的切片順序（S0 之後）：並行 S1 PRF（含 ING-R7）、S2 PRM、S6a TRN 確定性（OpenCC）、S7 OUT 渲染 → S3 LLM 核心（provider client、限流、執行層）→ 並行 S4 COR、S5 SEG、S6b TRN LLM、S8 OUT publish → S9 MCP → S10 AGT → S11 收尾。Web UI 切片不在這個順序內，預設與 S9 並行（第 7 節）。S0 之後 `@M2` 是 117 個場景：115 pending、2 failed，兩個失敗都需要 owner 決定（MCP stdio 場景與 Background 衝突、OUT-R9 預覽的影音沒有字幕來源）。規格與 `.feature` 修改後（第 2 節第 4 點）是 17 passed、26 failed、74 pending：Background 的處理方案、prompt 步驟可以執行了，場景會停在後面的步驟；S6a 之後（2026-11-22 實測）是 20 passed、23 failed、74 pending。下列 failed 都是之後的切片才會做的功能，沒有需要 owner 決定的：
    - 缺 LLM fixture（S5、S6b 要補）：SEG 7 個、TRN 8 個、localize 1 個；缺 media fixture `speech-with-pause-at-6.2s.m4a`（S5）。
    - 行為還沒做：COR glossary 傳給 ASR（S4）、SEG 手動字幕跳過 segment（S5，目前 `api` executor 回「還沒有實作」）、TRN 沿用手動字幕軌 1 個（S6a 之後仍失敗，OpenCC 的 3 個範例已通過）、OUT sidecar 對線上影音是 `skipped`（S8）。
@@ -480,8 +480,8 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 | OPS | 自我檢查用的已知影片 | M1 內建一部，不開放覆寫；M0 實測 |
 | OPS | 自我檢查的暫時性失敗是否回退 | 照規則回退，原因放在 `reason` |
 | LOCAL | steps.md 的語意補充（部分 `#` 表格依 `#` 比對；`processed up to` 規則 (1) 對 `local:` 也算外掛與內嵌字幕）、用路徑新增的延遲驗證、上傳上限 4 GiB、YouTube ASR 也走前處理、備份包含 uploads | 已依預設實作（PR #13），待 owner 確認 |
-| NRM | NRM-R7 場景的字幕軌不會被 `caption_priority` 選中 | 建議改成 `manual captions` 或宣告原文語言 `zh-Hans`，需 owner 同意改 `.feature` |
-| UI | Web UI 切片（M1 欠下的 UI）的排入時機與前端範圍 | 與 S9 MCP 並行，先做 M1 的頁面；前端工具鏈（建置、測試、i18n）與是否沿用 `docs/ui/mockups/` 的設計，開工前由 owner 決定 |
+| NRM | NRM-R7 場景的字幕軌不會被 `caption_priority` 選中 | **已解決（2026-11-23）**：場景改成宣告原文語言 `zh-Hans`（`29825d4`） |
+| UI | Web UI 切片（M1 欠下的 UI）的排入時機與前端範圍 | （S9 已完成）先做 M1 的頁面；前端工具鏈（建置、測試、i18n）與是否沿用 `docs/ui/mockups/` 的設計，開工前由 owner 決定 |
 
 ## 8. 已確定的技術選擇
 
