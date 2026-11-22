@@ -375,6 +375,32 @@ func TestAgentLeaseExpiryAndExtend(t *testing.T) {
 	}
 }
 
+// AGT-R7：同一個 Agent 在租約到期後重新領取同一個任務，舊的 token 一樣不能提交、延長或放回。
+func TestAgentOldTokenOfSameAgentIsRejected(t *testing.T) {
+	r, _, _ := newAgentFlowRig(t, nil, nil)
+	ctx := context.Background()
+	old := claim(t, r, "a1", 1)[0]
+	r.clk.Advance(11 * time.Minute)
+	if err := r.p.AgentSweeper().Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	again := claim(t, r, "a1", 1)
+	if len(again) != 1 || again[0].TaskID != old.TaskID || again[0].LeaseToken == old.LeaseToken {
+		t.Fatalf("重新領取 = %+v", again)
+	}
+	agentErr(t, r.p.SubmitAgentTask(ctx, "a1", old.TaskID, old.LeaseToken, AgentSubmission{Output: echoOutput(old, false)}), AgentCodeLeaseExpired)
+	if _, err := r.p.ExtendAgentLease(ctx, "a1", old.TaskID, old.LeaseToken); err == nil {
+		t.Error("舊 token 不應能延長")
+	}
+	agentErr(t, r.p.ReleaseAgentTask(ctx, "a1", old.TaskID, old.LeaseToken, ""), AgentCodeLeaseExpired)
+	if tk := taskByID(t, r, old.TaskID); tk.State != store.TaskLeased || tk.LeaseToken != again[0].LeaseToken {
+		t.Errorf("任務 = %+v，預期仍以新的 token 被領取", tk)
+	}
+	if err := r.p.SubmitAgentTask(ctx, "a1", old.TaskID, again[0].LeaseToken, AgentSubmission{Output: echoOutput(old, false)}); err != nil {
+		t.Errorf("新的 token 提交：%v", err)
+	}
+}
+
 // PIPE-R11 與 AGT-R4：重新啟動時放回別的 worker 留下的租約，但不動 Agent 的租約（它屬於 Agent，不是 worker）。
 func TestRecoverStaleKeepsAgentLeases(t *testing.T) {
 	r, _, _ := newAgentFlowRig(t, nil, nil)
