@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
@@ -97,11 +98,14 @@ func (p *Pipeline) runTranslateOpenCC(ctx context.Context, it store.Item, eff Ef
 	stage := &store.StageResult{Executor: ExecutorOpenCC, CacheKey: key, ImplVersion: impl}
 	done := store.StageState{Status: store.StatusDone}
 
+	// 這次不再要求、但仍是現行版本的 translated 產出（language.targets 減少了語言）：隨結果一起被取代（Codex P2）。
+	removed := removedTranslatedLangs(arts, jobs)
+
 	// 同一份上游、同一組目標與字典版本的結果已經是現行版本：重用，不建立新版本（PIPE-R5）。
 	// 只看現行版本：設定 A → B → A 時不會恢復舊版，而是重新轉換（opencc 不花錢）。
 	if first, hit := currentOpenCCOutputs(arts, jobs, key); hit && len(jobs) > 0 {
 		stage.ArtifactID = first
-		return result{task: taskDone, advance: true, stage: stage, state: done}, nil
+		return result{task: taskDone, advance: true, stage: stage, state: done, supersede: translatedSupersede(removed)}, nil
 	}
 
 	var out []*store.NewArtifact
@@ -140,7 +144,32 @@ func (p *Pipeline) runTranslateOpenCC(ctx context.Context, it store.Item, eff Ef
 		}
 		out = append(out, art)
 	}
-	return result{task: taskDone, advance: true, stage: stage, artifacts: out, state: done}, nil
+	return result{task: taskDone, advance: true, stage: stage, artifacts: out, state: done, supersede: translatedSupersede(removed)}, nil
+}
+
+// removedTranslatedLangs 列出現行的 translated 產出中，語言不在這次目標（jobs）裡的語言。
+func removedTranslatedLangs(arts []store.Artifact, jobs []openccJob) []string {
+	var removed []string
+	for _, a := range arts {
+		if a.Kind != "transcript" || a.Variant != string(subtitle.VariantTranslated) {
+			continue
+		}
+		keep := false
+		for _, j := range jobs {
+			keep = keep || strings.EqualFold(a.Lang, j.lang)
+		}
+		if !keep && !slices.Contains(removed, a.Lang) {
+			removed = append(removed, a.Lang)
+		}
+	}
+	return removed
+}
+
+func translatedSupersede(langs []string) *supersedeSet {
+	if len(langs) == 0 {
+		return nil
+	}
+	return &supersedeSet{Kind: "transcript", Variant: string(subtitle.VariantTranslated), Langs: langs}
 }
 
 // currentOpenCCOutputs 檢查每個目標是否都已有現行的 translated 產出，而且來源紀錄的 cache_key 與這次相符。

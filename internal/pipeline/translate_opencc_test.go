@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
@@ -174,6 +175,39 @@ func TestRunTranslateOpenCCCacheHit(t *testing.T) {
 	rerunTranslate(t, r, it, []string{"zh-Hant-TW"}, "", nil)
 	if fourth := latestStage(t, r, it.ID, StageTranslate); fourth.ImplVersion != 2 || fourth.CacheKey == third.CacheKey || versions("zh-Hant-TW") != 3 {
 		t.Errorf("步驟改版應重新轉換：%+v，版本數 %d", fourth, versions("zh-Hant-TW"))
+	}
+}
+
+// language.targets 減少語言後，不再要求的語言的 translated 產出被取代，不再是現行版本（Codex P2）：
+// 產出的取代以語言為單位，不會自己被取代；舊版本仍保留（保留最近幾版）。
+func TestRunTranslateOpenCCSupersedesRemovedTargets(t *testing.T) {
+	r, it := newZhRig(t)
+	ctx := context.Background()
+	seedVariant(t, r, it, subtitle.VariantCorrected, "zh-Hans", "打开软件的设置")
+	currentLangs := func() []string {
+		arts, err := r.st.Read().CurrentArtifacts(ctx, it.ID, "transcript")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var langs []string
+		for _, a := range arts {
+			if a.Variant == "translated" {
+				langs = append(langs, a.Lang)
+			}
+		}
+		return langs
+	}
+	rerunTranslate(t, r, it, []string{"zh-Hant-TW", "zh-Hant-HK"}, "", nil)
+	if got := strings.Join(currentLangs(), ","); got != "zh-Hant-TW,zh-Hant-HK" {
+		t.Fatalf("兩個目標之後現行的 translated = %s", got)
+	}
+	rerunTranslate(t, r, it, []string{"zh-Hant-TW"}, "", nil)
+	if got := strings.Join(currentLangs(), ","); got != "zh-Hant-TW" {
+		t.Errorf("目標減少之後現行的 translated = %s，預期只有 zh-Hant-TW", got)
+	}
+	// 舊版本還在（只是被取代），之後把語言加回來會產生新的版本。
+	if n, _ := r.st.Read().ArtifactVersions(ctx, it.ID, "transcript", "translated", "zh-Hant-HK"); n != 1 {
+		t.Errorf("zh-Hant-HK 的版本數 = %d，預期被取代但保留 1 版", n)
 	}
 }
 

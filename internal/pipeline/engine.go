@@ -40,6 +40,9 @@ type result struct {
 	// artifacts 是同一個步驟額外產生的產出（例如 translate 每個目標語言一份）；寫入順序在 artifact 之後。
 	// stage_runs.artifact_id 指向第一份（artifact，沒有時是 artifacts[0]）。
 	artifacts []*store.NewArtifact
+	// supersede 是這次不再產生、但目前仍是現行版本的產出組：寫入結果時標記為被這次的第一份產出取代
+	// （產出的取代以語言為單位，目標語言減少時舊語言的產出不會自己被取代）。
+	supersede *supersedeSet
 	probes    []store.NewProbe
 	meta      *metaUpdate
 	// advance 為 true 時，成功後建立下游步驟的任務（until 之前）。
@@ -61,6 +64,12 @@ func (r result) discard() {
 	if r.afterDiscard != nil {
 		r.afterDiscard()
 	}
+}
+
+// supersedeSet 是要被取代的現行產出：影音的 (kind, variant) 在這些語言的版本。
+type supersedeSet struct {
+	Kind, Variant string
+	Langs         []string
 }
 
 type metaUpdate struct {
@@ -307,6 +316,11 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 				// （設定 A → B → 改回 A）：選擇「恢復」而不是重新產生，
 				// 因為快取鍵相同就是不要重複付費；恢復讓它重新成為現行版本，原本的現行版本改指向它。
 				if err := r.RestoreArtifact(ctx, sr.ArtifactID); err != nil {
+					return err
+				}
+			}
+			if g := res.supersede; g != nil && sr.ArtifactID != "" && len(g.Langs) > 0 {
+				if err := r.SupersedeArtifacts(ctx, it.ID, g.Kind, g.Variant, g.Langs, sr.ArtifactID); err != nil {
 					return err
 				}
 			}

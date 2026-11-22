@@ -114,6 +114,20 @@ func (r *Repo) InsertArtifact(ctx context.Context, n NewArtifact) (Artifact, err
 	return r.Artifact(ctx, n.ID)
 }
 
+// SupersedeArtifacts 把影音在指定語言的現行 (kind, variant) 產出標記為被 byID 取代（byID 必須是已存在的產出）。
+// 步驟的目標語言減少時使用（例如 translate 的 language.targets 少了一個語言）：產出的取代以語言為單位，
+// 不再被要求的語言要明確取代，否則舊的 translated 產出會一直是現行版本。
+func (r *Repo) SupersedeArtifacts(ctx context.Context, itemID, kind, variant string, langs []string, byID string) error {
+	for _, lang := range langs {
+		if err := r.q.SupersedeCurrentArtifacts(ctx, sqlcdb.SupersedeCurrentArtifactsParams{
+			SupersededBy: byID, ItemID: itemID, Kind: kind, Variant: variant, Lang: lang,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // RestoreArtifact 讓一個被取代的產出重新成為現行版本：原本的現行版本改為被它取代，
 // 它自己的 superseded_by 清除。已經是現行版本時什麼都不做。
 // 快取命中重用舊產出時使用（PIPE-R5）：設定改回舊值，現行版本也要跟著回到那一版。
