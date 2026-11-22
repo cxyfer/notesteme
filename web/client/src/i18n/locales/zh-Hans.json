@@ -1,0 +1,92 @@
+{
+  "app": {
+    "name": "notesteme"
+  },
+  "nav": {
+    "label": "主导航",
+    "skip": "跳到主要内容",
+    "work": "工作",
+    "system": "系统",
+    "library": "媒体库",
+    "queue": "队列",
+    "settings": "设置"
+  },
+  "prefs": {
+    "theme": "主题",
+    "themeSystem": "跟随系统",
+    "themeLight": "浅色",
+    "themeDark": "深色",
+    "language": "界面语言",
+    "logout": "退出登录"
+  },
+  "pages": {
+    "notImplemented": "这个页面还在制作中，之后的版本会加入。",
+    "library": {
+      "title": "媒体库"
+    },
+    "queue": {
+      "title": "队列"
+    },
+    "item": {
+      "title": "音视频详情",
+      "id": "音视频代号：{{id}}"
+    },
+    "settings": {
+      "title": "设置",
+      "sections": "设置分区",
+      "services": "服务与密钥",
+      "accounts": "账号与 Cookie",
+      "language": "语言",
+      "system": "系统",
+      "appearance": "外观",
+      "login": "登录"
+    },
+    "notFound": {
+      "title": "找不到这个页面",
+      "body": "网址可能输错了，或页面已经移除。",
+      "back": "回到媒体库"
+    }
+  },
+  "login": {
+    "title": "登录",
+    "password": "密码",
+    "submit": "登录",
+    "submitting": "登录中…",
+    "invalidPassword": "密码不正确。",
+    "locked": "连续失败次数过多，请在 {{seconds}} 秒后再试。"
+  },
+  "errors": {
+    "unauthorized": "尚未登录或登录已失效。",
+    "csrf_invalid": "登录状态已过期，请刷新页面。",
+    "network_error": "无法连接到服务器。确认 notesteme serve 正在运行后重试。",
+    "unknown": "发生意外错误（{{code}}）。",
+    "category": {
+      "retryable": "暂时无法完成",
+      "wait": "稍后会自动重试",
+      "needs_action": "需要你处理",
+      "fatal": "无法完成"
+    }
+  },
+  "status": {
+    "pending": "等待中",
+    "running": "处理中",
+    "waiting": "稍后检查",
+    "awaiting_agent": "等待 Agent",
+    "done": "完成",
+    "skipped": "已跳过",
+    "failed": "失败",
+    "needs_action": "需要你处理",
+    "budget_blocked": "超出预算",
+    "awaiting_user": "等你决定"
+  },
+  "events": {
+    "newItems_other": "有 {{count}} 个新项目"
+  },
+  "common": {
+    "close": "关闭",
+    "loading": "加载中…",
+    "retry": "重试",
+    "undo": "撤销",
+    "notifications": "通知（{{hotkey}}）"
+  }
+}

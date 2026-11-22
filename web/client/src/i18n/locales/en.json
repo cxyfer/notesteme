@@ -1,0 +1,93 @@
+{
+  "app": {
+    "name": "notesteme"
+  },
+  "nav": {
+    "label": "Main",
+    "skip": "Skip to main content",
+    "work": "Work",
+    "system": "System",
+    "library": "Library",
+    "queue": "Queue",
+    "settings": "Settings"
+  },
+  "prefs": {
+    "theme": "Theme",
+    "themeSystem": "Match system",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "language": "Interface language",
+    "logout": "Sign out"
+  },
+  "pages": {
+    "notImplemented": "This page is still being built and will arrive in a later version.",
+    "library": {
+      "title": "Library"
+    },
+    "queue": {
+      "title": "Queue"
+    },
+    "item": {
+      "title": "Media details",
+      "id": "Media ID: {{id}}"
+    },
+    "settings": {
+      "title": "Settings",
+      "sections": "Settings sections",
+      "services": "Services and keys",
+      "accounts": "Accounts and cookies",
+      "language": "Language",
+      "system": "System",
+      "appearance": "Appearance",
+      "login": "Sign-in"
+    },
+    "notFound": {
+      "title": "Page not found",
+      "body": "The address may be mistyped, or the page has been removed.",
+      "back": "Back to library"
+    }
+  },
+  "login": {
+    "title": "Sign in",
+    "password": "Password",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "invalidPassword": "The password is incorrect.",
+    "locked": "Too many failed attempts. Try again in {{seconds}} seconds."
+  },
+  "errors": {
+    "unauthorized": "You are not signed in, or your session has expired.",
+    "csrf_invalid": "Your session token is out of date. Reload the page.",
+    "network_error": "Can't reach the server. Make sure notesteme serve is running, then retry.",
+    "unknown": "Something unexpected went wrong ({{code}}).",
+    "category": {
+      "retryable": "Couldn't finish for now",
+      "wait": "Will retry automatically",
+      "needs_action": "Needs you",
+      "fatal": "Can't be completed"
+    }
+  },
+  "status": {
+    "pending": "Waiting",
+    "running": "Processing",
+    "waiting": "Checking later",
+    "awaiting_agent": "Waiting for agent",
+    "done": "Done",
+    "skipped": "Skipped",
+    "failed": "Failed",
+    "needs_action": "Needs you",
+    "budget_blocked": "Over budget",
+    "awaiting_user": "Awaiting your decision"
+  },
+  "events": {
+    "newItems_one": "{{count}} new item",
+    "newItems_other": "{{count}} new items"
+  },
+  "common": {
+    "close": "Close",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "undo": "Undo",
+    "notifications": "Notifications ({{hotkey}})"
+  }
+}
