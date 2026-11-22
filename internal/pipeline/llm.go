@@ -100,7 +100,9 @@ var llmStages = map[string]llmStage{
 	// translate 的 plan、chunk、assemble 由 runTranslateLLM 處理（多個目標、句群與切分標記，TRN）；
 	// 這裡的 Spec 只供登記時檢查 schema，執行時依目標語言建立。
 	StageTranslate: {
-		spec:    func() *llm.Spec { return llm.TranslateSpec(llm.TranslateOptions{Mode: llm.ModeTranslate}) },
+		spec: func(map[string]any) *llm.Spec {
+			return llm.TranslateSpec(llm.TranslateOptions{Mode: llm.ModeTranslate})
+		},
 		variant: subtitle.VariantTranslated,
 	},
 }

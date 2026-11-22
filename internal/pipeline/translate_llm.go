@@ -172,6 +172,7 @@ func (p *Pipeline) trnPrepare(ctx context.Context, it store.Item, eff Effective,
 	}
 	b.meta, b.chapters = llmMetadata(it)
 	b.glossary = eff.Glossary()
+	b.meta.Glossary = b.glossary // 詞彙表放在資料區塊（COR-R4），不是模板變數
 	return b, nil
 }
 
@@ -279,7 +280,7 @@ func (p *Pipeline) trnJobFor(ctx context.Context, b *trnBase, target trnTarget) 
 	job.chunks = llm.PlanChunks(planCues, b.chapters, b.settings.Chunk)
 
 	job.fixed, err = llm.BuildFixed(job.spec, job.prompt.Body,
-		llm.TemplateVars{SourceLang: b.sourceLang, TargetLang: target.Lang, Glossary: b.glossary}, b.meta)
+		llm.TemplateVars{SourceLang: b.sourceLang, TargetLang: target.Lang}, b.meta)
 	if err != nil {
 		return nil, errPermanent("prompt 無法渲染：" + err.Error())
 	}
@@ -614,7 +615,7 @@ func (p *Pipeline) trnChunk(ctx context.Context, t store.Task, run store.StageRu
 		}
 	}
 	return result{task: taskDone, keepState: true, inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {
-		ok, err := tx.FinishLLMChunk(ctx, run.ID, row.Chunk, status, reason, output, usageJSON)
+		ok, err := tx.FinishLLMChunk(ctx, run.ID, row.Chunk, status, reason, output, usageJSON, nil)
 		if err != nil || !ok {
 			return false, err
 		}
