@@ -83,3 +83,15 @@ func TestDetectScript(t *testing.T) {
 		t.Errorf("DetectScriptOf = %q", got)
 	}
 }
+
+// 簡繁同形、只是另有其他對應的字（只、回、家、了）沒有區分能力：不能被當成簡體證據（Codex P2）。
+func TestDetectScriptIgnoresSharedGlyphs(t *testing.T) {
+	const traditional = "這個人只好回家了。大家都在家，他出了門又回家了。"
+	if got := DetectScript(traditional); got != "Hant" {
+		t.Errorf("DetectScript(%q) = %q，預期 Hant", traditional, got)
+	}
+	const shared = "只好回家了，大家都在家，又回家了。"
+	if got := DetectScript(shared); got != "" {
+		t.Errorf("只有共用字：%q，預期無法判斷", got)
+	}
+}

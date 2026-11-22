@@ -6,8 +6,8 @@ import (
 	"unicode/utf8"
 )
 
-// 字形判斷用的字集：只在 TSCharacters 鍵中的字是繁體專用字，只在 STCharacters 鍵中的字是簡體專用字；
-// 兩邊都有的字（簡繁同形但各自有對應）不參與判斷。
+// 字形判斷用的字集：只在 TSCharacters 鍵中、而且會被轉成別的字的是繁體專用字，只在 STCharacters 鍵中、
+// 而且會被轉成別的字的是簡體專用字；兩邊都有的字（簡繁同形但各自有對應）不參與判斷。
 type scriptSet struct{ hant, hans map[rune]bool }
 
 var scriptSets = sync.OnceValues(func() (scriptSet, error) {
@@ -20,15 +20,16 @@ var scriptSets = sync.OnceValues(func() (scriptSet, error) {
 		return scriptSet{}, err
 	}
 	hant, hans := map[rune]bool{}, map[rune]bool{}
-	for k := range ts.m {
-		if r, n := utf8.DecodeRuneInString(k); n == len(k) {
+	// 轉換結果與自己相同的字（只、回、家、了：簡繁同形，只是另有其他對應）沒有區分能力，不參與判斷。
+	for k, v := range ts.m {
+		if r, n := utf8.DecodeRuneInString(k); n == len(k) && v != k {
 			if _, both := st.m[k]; !both {
 				hant[r] = true
 			}
 		}
 	}
-	for k := range st.m {
-		if r, n := utf8.DecodeRuneInString(k); n == len(k) {
+	for k, v := range st.m {
+		if r, n := utf8.DecodeRuneInString(k); n == len(k) && v != k {
 			if _, both := ts.m[k]; !both {
 				hans[r] = true
 			}

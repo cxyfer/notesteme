@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/subtitle"
 	"github.com/cxyfer/notesteme/internal/zhconv"
 )
 
@@ -156,5 +157,35 @@ func TestTranslateInputRejectsStaleNormalizedAndRerunFrom(t *testing.T) {
 	// 沒有 stage run 資料時，from 照樣生效。
 	if a, ok := translateInput(all, nil, StageCorrect); !ok || a.ID != "s1" {
 		t.Errorf("沒有 stage run、from=correct：%+v, %v", a, ok)
+	}
+}
+
+// 字幕語言從簡體換成英文再換回簡體：兩個語言的 normalized 都是現行版本（取代以語言為單位），
+// 要用最新成功的 normalize run 指向的產出，不是建立順序最近的（Codex P1）。
+func TestTranslateInputPrefersLatestRunArtifact(t *testing.T) {
+	arts := []store.Artifact{
+		{ID: "hans", Kind: "transcript", Variant: "normalized", Lang: "zh-Hans"},
+		{ID: "en", Kind: "transcript", Variant: "normalized", Lang: "en"},
+	}
+	latest := map[string]store.StageRun{StageNormalize: {Status: store.StatusDone, ArtifactID: "hans"}}
+	if a, ok := translateInput(arts, latest, ""); !ok || a.ID != "hans" {
+		t.Errorf("= %+v, %v，預期最新 run 指向的 hans", a, ok)
+	}
+	// run 沒有指向產出（舊資料）：退回建立順序。
+	latest = map[string]store.StageRun{StageNormalize: {Status: store.StatusDone}}
+	if a, ok := translateInput(arts, latest, ""); !ok || a.ID != "en" {
+		t.Errorf("沒有 ArtifactID = %+v, %v，預期退回 en", a, ok)
+	}
+}
+
+// 目標明確指定漢字以外的文字、或原文沒有指定 script 而是別種文字：不交給 OpenCC（Codex P2、agy P3）。
+func TestPlanTargetsNonHanScript(t *testing.T) {
+	for _, target := range []string{"zh-Latn-TW", "zh-Bopo-TW"} {
+		if got := PlanTargets("zh-Hans", Language{Targets: []string{target}})[0].Kind; got != TargetTranslate {
+			t.Errorf("zh-Hans → %s = %s，預期 translate", target, got)
+		}
+	}
+	if got := withDetectedScript("zh-Latn", []subtitle.Cue{{Text: "打开软件的设置，这个视频的质量很好"}}); got != "zh-Latn" {
+		t.Errorf("withDetectedScript 不該覆寫明確的 script：%q", got)
 	}
 }

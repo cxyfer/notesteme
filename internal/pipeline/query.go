@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/cxyfer/notesteme/internal/langtag"
 	"strings"
 
 	"github.com/cxyfer/notesteme/internal/store"
@@ -143,7 +144,7 @@ func (p *Pipeline) CuesWithItem(ctx context.Context, itemID string, q CuesQuery)
 	}
 	// 先依語言篩選，再選變體：沒指定變體時，用篩選後還有的變體中最完整的。
 	if q.Lang != "" {
-		arts = filterArtifacts(arts, func(a store.Artifact) bool { return strings.EqualFold(a.Lang, q.Lang) })
+		arts = filterArtifacts(arts, func(a store.Artifact) bool { return sameLang(a.Lang, q.Lang) })
 	}
 	variant := subtitle.Variant(q.Variant)
 	if variant == "" {
@@ -185,4 +186,9 @@ func filterArtifacts(in []store.Artifact, keep func(store.Artifact) bool) []stor
 		}
 	}
 	return out
+}
+
+// sameLang 比較兩個語言標記：忽略大小寫，也接受底線與完整標記的等價拼法（zh_hant_tw 與 zh-Hant-TW）。
+func sameLang(a, b string) bool {
+	return strings.EqualFold(a, b) || langtag.Equal(a, b)
 }

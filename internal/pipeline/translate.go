@@ -61,6 +61,8 @@ func planTarget(source, target string, strategy zhconv.Strategy) TargetPlan {
 	switch {
 	case langtag.Equal(source, target):
 		p.Kind = TargetSame
+	case langtag.IsChinese(target) && langtag.Parse(target).Script != "" && langtag.ChineseScript(target) == "":
+		// 目標明確指定漢字以外的文字（zh-Latn-TW、zh-Bopo-TW）：OpenCC 只轉換漢字，交給翻譯。
 	case langtag.IsChinese(source) && langtag.IsChinese(target) && differentChineseLanguage(source, target):
 		// 雙方明確指定不同的 extlang（zh-cmn 與 zh-yue）：是不同的語言，不只是字形，OpenCC 處理不了。
 	case langtag.IsChinese(source) && langtag.IsChinese(target) && langtag.ChineseScript(source) != "":
@@ -116,6 +118,19 @@ func translateInput(arts []store.Artifact, latest map[string]store.StageRun, fro
 		}
 		if _, ok := pos[subtitle.Variant(a.Variant)]; ok {
 			pos[subtitle.Variant(a.Variant)] = i
+		}
+	}
+	// 同一種變體可以同時有多個語言的現行產出（字幕語言從 zh-Hans 換成 en 再換回，兩個都是現行）：
+	// 最新的成功 run 指向的產出才是現行脈絡的，優先於「建立順序最近」（Codex P1）。
+	for stage, variant := range map[string]subtitle.Variant{StageNormalize: subtitle.VariantNormalized, StageSegment: subtitle.VariantSegmented, StageCorrect: subtitle.VariantCorrected} {
+		run, ok := latest[stage]
+		if !ok || run.Status != store.StatusDone || run.ArtifactID == "" {
+			continue
+		}
+		if i := slices.IndexFunc(arts, func(a store.Artifact) bool {
+			return a.ID == run.ArtifactID && a.Kind == "transcript" && subtitle.Variant(a.Variant) == variant
+		}); i >= 0 {
+			pos[variant] = i
 		}
 	}
 	n, sg, c := pos[subtitle.VariantNormalized], pos[subtitle.VariantSegmented], pos[subtitle.VariantCorrected]
@@ -212,6 +227,9 @@ func withDetectedScript(lang string, cues []subtitle.Cue) string {
 		return lang
 	}
 	t := langtag.Parse(lang)
+	if t.Script != "" {
+		return lang // 明確指定了其他文字（zh-Latn）：不用字元覆寫
+	}
 	t.Script = script
 	return t.String()
 }

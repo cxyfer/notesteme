@@ -59,7 +59,7 @@ func SameBase(a, b string) bool {
 // IsChinese 回報標記的主語言是不是中文（zh）。
 func IsChinese(s string) bool { return Parse(s).Lang == "zh" }
 
-// ChineseScript 回傳中文標記的字形：Hans 或 Hant。沒有 script 時依 region 推定：
+// ChineseScript 回傳中文標記的字形：Hans 或 Hant。省略 script 時才依 region 推定（明確指定其他 script 回傳 ""）：
 // TW、HK、MO 為 Hant，CN、SG、MY 為 Hans；都沒有、或不是中文時回傳 ""。
 func ChineseScript(s string) string {
 	t := Parse(s)
@@ -68,6 +68,9 @@ func ChineseScript(s string) string {
 	}
 	if t.Script == "Hans" || t.Script == "Hant" {
 		return t.Script
+	}
+	if t.Script != "" {
+		return "" // 明確指定其他文字（zh-Latn、zh-Bopo）：不是漢字，不依地區推定簡繁
 	}
 	switch t.Region {
 	case "TW", "HK", "MO":

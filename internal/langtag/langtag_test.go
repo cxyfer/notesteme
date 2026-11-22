@@ -69,3 +69,15 @@ func TestChineseScript(t *testing.T) {
 		t.Error("IsChinese 結果不符")
 	}
 }
+
+// 明確指定漢字以外的文字（zh-Latn、zh-Bopo）不依地區推定簡繁（Codex P2）。
+func TestChineseScriptExplicitNonHan(t *testing.T) {
+	for _, in := range []string{"zh-Latn-TW", "zh-Bopo-TW", "zh-Latn", "zh-Latn-CN"} {
+		if got := ChineseScript(in); got != "" {
+			t.Errorf("ChineseScript(%q) = %q，預期 \"\"", in, got)
+		}
+	}
+	if got := ChineseScript("zh-Hans-TW"); got != "Hans" {
+		t.Errorf("zh-Hans-TW = %q", got)
+	}
+}

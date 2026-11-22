@@ -699,3 +699,16 @@ func TestPlanTargetsDistinctChineseLanguages(t *testing.T) {
 		t.Errorf("只有一邊有 extlang = %s，預期 convert", got)
 	}
 }
+
+// 設定的目標拼法（zh_hant_tw）與產出的 lang（zh-Hant-TW）不同：用設定的值查詢字幕也要找得到（Codex P3）。
+func TestCuesQueryAcceptsEquivalentLangSpelling(t *testing.T) {
+	r, it := newZhRig(t)
+	seedVariant(t, r, it, subtitle.VariantCorrected, "zh-Hans", "打开软件")
+	rerunTranslate(t, r, it, []string{"zh_hant_tw"}, "", nil)
+	for _, lang := range []string{"zh-Hant-TW", "zh_hant_tw", "ZH-hant-tw"} {
+		tr, err := r.p.Cues(context.Background(), it.ID, CuesQuery{Variant: "translated", Lang: lang, ToMS: -1})
+		if err != nil || len(tr.Cues) != 1 || tr.Cues[0].Text != "開啟軟體" {
+			t.Errorf("lang=%q：%+v, %v", lang, tr, err)
+		}
+	}
+}
