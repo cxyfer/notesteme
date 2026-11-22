@@ -1,22 +1,24 @@
 name: CI
 
+# 只跑測試與檢查，不建置 image；image 只在 v* tag 時由 docker-publish.yml 建置，
+# 避免私人 repo 的 Actions 額度浪費在每次 PR 與合併上。
 on:
   push:
     branches: [master]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+  # 發布 image 的 workflow 會先呼叫這裡的檢查，tag 指向未驗證的 commit 時不會發布。
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # PR 有新 commit 時取消舊的執行；master 與 tag 的發布不中斷。
+  # PR 有新 commit 時取消舊的執行；master 的執行不中斷。
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
   SQLC_VERSION: "1.31.1"
 
 jobs:
@@ -63,78 +65,3 @@ jobs:
       - name: sqlc diff
         working-directory: internal/store
         run: sqlc diff
-
-  docker:
-    name: Docker image
-    needs: [go, sqlc]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Resolve version
-        id: version
-        run: |
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: docker/setup-qemu-action@v4
-
-      - uses: docker/setup-buildx-action@v4
-
-      - name: Image metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      # 先建 amd64 並載入本機 docker，跑冒煙測試；通過後才發布。
-      - name: Build (linux/amd64)
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: deploy/docker/Dockerfile
-          platforms: linux/amd64
-          load: true
-          tags: notesteme:ci
-          build-args: VERSION=${{ steps.version.outputs.value }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Smoke test
-        run: deploy/docker/smoke-test.sh notesteme:ci
-
-      - name: Log in to GHCR
-        if: github.event_name == 'push'
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # master 與 v* tag 才發布多架構 image；PR 只建置與測試。
-      - name: Build and push (linux/amd64, linux/arm64)
-        if: github.event_name == 'push'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: deploy/docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: VERSION=${{ steps.version.outputs.value }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max

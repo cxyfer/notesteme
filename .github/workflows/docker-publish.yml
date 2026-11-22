@@ -1,0 +1,275 @@
+name: Docker image
+
+# 只有推送 release tag（含 -rc.N）時才建置；PR 與合併到 master 都不建置，
+# 以節省 Actions 額度與 GHCR 儲存空間。tag 先通過與 CI 相同的 Go／sqlc 檢查，
+# 再建置一次並以 digest 推送；冒煙測試跑的就是推上去的 digest，通過後才把
+# release tag 指向它，因此發布的 tag 不會對應到與驗證過的不同的建置。
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  # tag 可能指向沒通過 CI 的 commit（或不在 master 上），發布前再驗證一次。
+  checks:
+    name: Checks
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build and push by digest
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # 版本由 tag 決定並寫進 binary；格式不符就中止，避免發布出版本號錯亂的 image。
+      - name: Resolve version
+        id: version
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          # 與 docker/metadata-action 的 SemVer 驗證一致：數字不得有前導零。
+          num='(0|[1-9][0-9]*)'
+          ident='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          if ! [[ "$version" =~ ^${num}\.${num}\.${num}(-${ident}(\.${ident})*)?$ ]]; then
+            echo "::error::tag $GITHUB_REF_NAME 不是 vX.Y.Z 或 vX.Y.Z-rc.N 格式"
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # 這裡只推每個 tag 專屬的暫存 tag；release tag 等冒煙測試通過後再依 digest 套用。
+      # 不用 sha tag：同一個 commit 先打 -rc.N 再打正式版時，兩者的 VERSION 不同，
+      # 共用 sha tag 會讓後建置的覆寫前一個。
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=staging-${{ github.ref_name }}
+          # 暫存 tag 之後只會被重新標記，不能改 image 內容；版本 label 要在建置時就是
+          # 真正的版本號，否則會變成 staging-<tag>。
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.value }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ steps.version.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+  smoke:
+    name: Smoke test digest
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      # image reference 不允許大寫；owner 或 repo 名稱含大寫時直接傳給 docker CLI 會失敗。
+      - name: Lowercase image name
+        run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # 以 digest 拉取：與下一步要重新標記的是同一個 image，不是本機重建的。
+      - name: Smoke test
+        run: deploy/docker/smoke-test.sh "${IMAGE}@${{ needs.build.outputs.digest }}"
+
+  publish:
+    name: Promote tested digest
+    needs: [build, smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # image reference 不允許大寫；owner 或 repo 名稱含大寫時直接傳給 docker CLI 會失敗。
+      - name: Lowercase image name
+        run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # 先發布這個 tag 的完整版本號（-rc.N 也一樣）；latest 與 X.Y 由下一步另外處理。
+      - name: Release tag
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+
+      - name: Retag the tested digest
+        env:
+          DIGEST: ${{ needs.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          args=()
+          while IFS= read -r tag; do
+            if [ -n "$tag" ]; then
+              args+=(--tag "$tag")
+            fi
+          done <<< "$TAGS"
+          if [ "${#args[@]}" -eq 0 ]; then
+            echo "no release tag resolved for this ref" >&2
+            exit 1
+          fi
+          docker buildx imagetools create "${args[@]}" "${IMAGE}@${DIGEST}"
+
+      # `latest` 與 X.Y 一律指向「已發布」的最高正式版（-rc.N 不動它們）。
+      # 每次執行都重新計算目標，所以較舊的 tag 晚完成不會讓 alias 倒退，失敗或尚未
+      # 發布的更高 tag 也不會讓 alias 停在舊版。寫入後再算一次，目標若在這段時間
+      # 改變（更高版本剛好發布）就重寫：任何一次寫入之後的驗證，都看得到在它之前
+      # 已發布的版本；在驗證之後才發布的版本，則由它自己的 run 在更後面寫入。
+      - name: Move latest and X.Y
+        id: aliases
+        run: |
+          set -euo pipefail
+
+          case "$GITHUB_REF_NAME" in
+            *-*)
+              echo "$GITHUB_REF_NAME 是預發布版本，不移動 latest 與 X.Y"
+              echo "moved=" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+
+          series="${GITHUB_REF_NAME%.*}"
+
+          # 重新取得 tag：checkout 之後才推送的更高版本也要看得到。只認嚴格的
+          # vX.Y.Z（由新到舊，不允許前導零）；誤推的 v999、v01.2.3 不能影響版本比較。
+          stable=""
+          refresh_tags() {
+            git fetch --quiet --force --tags origin
+            stable="$(git tag --list 'v[0-9]*' \
+              | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
+              | sort -Vr || true)"
+          }
+
+          # 0 = 已發布，1 = 不存在；其他錯誤（網路、權限）直接中止，不猜。
+          is_published() {
+            local out
+            if out="$(docker buildx imagetools inspect "${IMAGE}:${1#v}" 2>&1)"; then
+              return 0
+            fi
+            if grep -qiE 'not found|manifest unknown|no such manifest' <<<"$out"; then
+              return 1
+            fi
+            echo "::error::無法確認 ${1#v} 是否已發布：$out" >&2
+            exit 1
+          }
+
+          # 已發布的最高版本；$1 非空時只看該 minor 系列（例如 v1.2）。
+          top() {
+            local v
+            for v in $stable; do
+              if [ -n "${1:-}" ] && [ "${v%.*}" != "$1" ]; then
+                continue
+              fi
+              if is_published "$v"; then
+                echo "$v"
+                return 0
+              fi
+            done
+          }
+
+          converged=false
+          for _ in 1 2 3; do
+            refresh_tags
+            latest_target="$(top)"
+            minor_target="$(top "$series")"
+            if [ -z "$latest_target" ] || [ -z "$minor_target" ]; then
+              echo "::error::找不到已發布的正式版本（含剛發布的 $GITHUB_REF_NAME）" >&2
+              exit 1
+            fi
+            docker buildx imagetools create --tag "${IMAGE}:latest" "${IMAGE}:${latest_target#v}"
+            docker buildx imagetools create --tag "${IMAGE}:${series#v}" "${IMAGE}:${minor_target#v}"
+            refresh_tags
+            # 先賦值再比對：放在 [ ] 的 command substitution 裡，is_published 的 exit 1
+            # 只會結束 subshell，錯誤會被吞掉。
+            latest_check="$(top)"
+            minor_check="$(top "$series")"
+            if [ "$latest_check" = "$latest_target" ] && [ "$minor_check" = "$minor_target" ]; then
+              converged=true
+              break
+            fi
+          done
+          if [ "$converged" != true ]; then
+            echo "::error::latest 或 ${series#v} 的目標一直在變動，alias 可能指向舊版，請手動確認" >&2
+            exit 1
+          fi
+
+          moved="latest -> ${latest_target#v}, ${series#v} -> ${minor_target#v}"
+          echo "$moved"
+          echo "moved=$moved" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        env:
+          DIGEST: ${{ needs.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          MOVED: ${{ steps.aliases.outputs.moved }}
+        run: |
+          {
+            echo "### Published image"
+            echo
+            echo '```'
+            echo "$TAGS"
+            [ -z "$MOVED" ] || echo "$MOVED"
+            echo '```'
+            echo
+            echo "Tested digest: \`$DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"
