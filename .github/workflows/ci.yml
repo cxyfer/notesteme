@@ -20,6 +20,8 @@ concurrency:
 
 env:
   SQLC_VERSION: "1.31.1"
+  GOVULNCHECK_VERSION: "v1.10.0"
+  GORELEASER_VERSION: "v2.20.3"
 
 jobs:
   go:
@@ -47,9 +49,57 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # NFR-TEST-3：核心 package 涵蓋率 >= 80%。
+      - name: coverage gate
+        run: scripts/ci/coverage.sh
+
       # 包含 features/ 的驗收場景（godog）與規格靜態檢查。
       - name: go test
         run: go test -race -count=1 ./...
+
+  vuln:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # NFR-SEC-4：只有程式實際呼叫到的弱點才會讓指令失敗（exit 3）。
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }} ./...
+
+  release-check:
+    name: goreleaser build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VERSION }}
+          args: check
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VERSION }}
+          args: build --snapshot --clean
+
+      # NFR-CMP-1：對 linux/amd64 產物做冒煙測試。
+      - name: smoke test
+        run: |
+          bin="$(ls dist/notesteme_linux_amd64*/notesteme)"
+          out="$("$bin" --version)"
+          echo "$out"
+          test -n "$out"
 
   sqlc:
     name: sqlc generated code
