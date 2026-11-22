@@ -324,7 +324,8 @@ func TestFFmpegSilencedetect(t *testing.T) {
 	if !regexp.MustCompile(re).MatchString(errs) {
 		t.Errorf("stderr 格式不符：%q", errs)
 	}
-	if strings.Contains(errs, "100") {
+	// 只比對靜音時間；暫存目錄名稱（TestFFmpegSilencedetect<隨機數字>）可能含 "100"。
+	if strings.Contains(errs, "silence_start: 100") {
 		t.Errorf("視窗外的靜音不該出現：%q", errs)
 	}
 	// 視窗起點之前就開始的靜音：起點截在 0；超過檔尾的靜音截在檔尾。
