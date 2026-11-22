@@ -2,8 +2,8 @@ package llm
 
 import (
 	"context"
-	"net/http"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
