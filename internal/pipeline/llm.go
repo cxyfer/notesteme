@@ -68,6 +68,26 @@ var llmStages = map[string]llmStage{
 	},
 }
 
+// 登記時檢查每個步驟的 Spec（strict schema、步驟名稱一致）：不符是程式錯誤，啟動時就失敗，不要等到送出請求才被 provider 拒絕。
+func init() {
+	if err := checkLLMStages(llmStages); err != nil {
+		panic(err)
+	}
+}
+
+func checkLLMStages(stages map[string]llmStage) error {
+	for stage, d := range stages {
+		spec := d.spec()
+		if err := spec.Ready(); err != nil {
+			return err
+		}
+		if spec.Stage != stage {
+			return fmt.Errorf("llmStages[%s] 的 Spec 是 %s", stage, spec.Stage)
+		}
+	}
+	return nil
+}
+
 // replaceCueTexts 一對一套用：第 i 句的文字換成輸出的文字，時間與其他欄位不變（COR-R1）。
 func replaceCueTexts(in subtitle.Transcript, merged []llm.Cue) (subtitle.Transcript, error) {
 	if len(merged) != len(in.Cues) {
@@ -471,6 +491,23 @@ func (p *Pipeline) llmPlan(ctx context.Context, t store.Task, run store.StageRun
 }
 
 // llmChunk 送出一個 chunk（含驗證重試），寫入 chunk 的結果；最後一個完成的 chunk 建立 assemble 任務。
+// chunkLeaseMargin 是 chunk 的時間上限與租約到期之間保留的時間：結果要在租約內寫回。
+const chunkLeaseMargin = time.Minute
+
+// chunkTimeout 是 chunk 任務送出請求（含驗證重試）的時間上限：租約剩下的時間減去 chunkLeaseMargin。
+// 到期時 RunChunk 回 retryable；租約沒有續租，若讓它失效，任務會被重新領取而重複送出（重複計費）。
+// 已經不夠時回傳負數（RunChunk 不送出請求）。
+func (p *Pipeline) chunkTimeout(t store.Task) time.Duration {
+	left := queue.DefaultLease
+	if t.LeaseUntil != nil {
+		left = t.LeaseUntil.Sub(p.clock.Now())
+	}
+	if d := left - chunkLeaseMargin; d > 0 {
+		return d
+	}
+	return -1
+}
+
 func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRun, it store.Item, eff Effective) (result, error) {
 	r := p.st.Read()
 	row, err := r.LLMChunk(ctx, run.ID, *t.ChunkIndex)
@@ -505,7 +542,7 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 	limiter := p.llm.Limiter
 	out, err := llm.RunChunk(ctx, llm.RunOptions{
 		Client: client, Spec: job.spec, Model: job.cfg.Model, Fixed: job.fixed, Input: in,
-		MaxRetries: job.settings.MaxValidationRetries,
+		MaxRetries: job.settings.MaxValidationRetries, Timeout: p.chunkTimeout(t),
 		BeforeRequest: func(_ context.Context, attempt int, req llm.Request) error {
 			tokens := llm.RequestTokens(req)
 			if attempt > 0 {
@@ -544,7 +581,7 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 		if err != nil {
 			return false, err
 		}
-		if cur.Status == store.StatusBlocked || cur.Status == store.StatusFailed || cur.Status == store.StatusDone || cur.Status == store.StatusSkipped {
+		if stageStopped(cur.Status) {
 			// 其他 chunk 已讓步驟停下（或步驟已結束）：只記下這個 chunk 的結果，之後的重跑可以重用。
 			return false, nil
 		}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
 )
@@ -100,5 +101,49 @@ func TestOutputBudget(t *testing.T) {
 	}
 	if got := OutputBudget(big); got != 32000 {
 		t.Errorf("上限 = %d", got)
+	}
+}
+
+// blocking 是一直等到 ctx 結束才回應的 provider。
+type blocking struct{ n int }
+
+func (b *blocking) Complete(ctx context.Context, _ Request) (Response, error) {
+	b.n++
+	<-ctx.Done()
+	return Response{}, ctx.Err()
+}
+
+// 整個 chunk 有時間上限（租約減去安全邊際）：到期時回 retryable，讓任務放回佇列，不等租約失效後被重新領取。
+func TestRunChunkTimeoutIsRetryable(t *testing.T) {
+	b := &blocking{}
+	o := runOpts(b, 3)
+	o.Timeout = 20 * time.Millisecond
+	_, err := RunChunk(context.Background(), o)
+	var ce *errclass.Error
+	if !errors.As(err, &ce) || ce.Class != errclass.ClassRetryable || b.n != 1 {
+		t.Fatalf("err = %v，請求數 %d", err, b.n)
+	}
+	// 驗證重試用掉了時間：到期後不再送出下一次。
+	c := &scripted{answers: []Response{{Output: []byte(`{"cues":[]}`)}}}
+	o = runOpts(c, 3)
+	o.Timeout = 20 * time.Millisecond
+	o.BeforeRequest = func(context.Context, int, Request) error { time.Sleep(15 * time.Millisecond); return nil }
+	if _, err := RunChunk(context.Background(), o); !errors.As(err, &ce) || ce.Class != errclass.ClassRetryable || len(c.reqs) >= 4 {
+		t.Errorf("到期後不再重試：err = %v，請求數 %d", err, len(c.reqs))
+	}
+	// 剩下的時間已經不夠（負數）：一個請求都不送出。
+	c = &scripted{answers: []Response{{Output: []byte(okOutput)}}}
+	o = runOpts(c, 0)
+	o.Timeout = -time.Second
+	if _, err := RunChunk(context.Background(), o); !errors.As(err, &ce) || ce.Class != errclass.ClassRetryable || len(c.reqs) != 0 {
+		t.Errorf("租約已不夠：err = %v，請求數 %d", err, len(c.reqs))
+	}
+	// worker 停止（上層 ctx 取消）不是逾時：原樣回傳 ctx 的錯誤。
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	o = runOpts(&blocking{}, 0)
+	o.Timeout = time.Minute
+	if _, err := RunChunk(ctx, o); !errors.Is(err, context.Canceled) {
+		t.Errorf("上層取消：%v", err)
 	}
 }

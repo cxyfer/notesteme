@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
+
+	"github.com/cxyfer/notesteme/internal/errclass"
 )
 
 // RunOptions 是執行一個 chunk 的輸入。
@@ -17,6 +20,9 @@ type RunOptions struct {
 	MaxRetries int
 	// BeforeRequest 在每次送出請求之前呼叫（限流用）；attempt 從 0 起算，0 是第一次。回傳錯誤時不送出，RunChunk 回傳該錯誤。
 	BeforeRequest func(ctx context.Context, attempt int, req Request) error
+	// Timeout 是整個 chunk（含驗證重試）的時間上限，0 代表沒有。呼叫端設成「租約剩下的時間減去安全邊際」：
+	// 到期時回傳 retryable，任務放回佇列，而不是讓租約失效、被重新領取而重複送出（重複計費）。
+	Timeout time.Duration
 }
 
 // ChunkResult 是一個 chunk 的結果。Output 非 nil 代表通過驗證；
@@ -40,7 +46,19 @@ func RunChunk(ctx context.Context, o RunOptions) (ChunkResult, error) {
 	}
 	req := Request{Model: o.Model, MaxTokens: OutputBudget(o.Input), Spec: o.Spec, Fixed: o.Fixed, Data: data}
 	var res ChunkResult
+	parent := ctx
+	if o.Timeout != 0 {
+		if o.Timeout < 0 {
+			return res, errChunkTimeout()
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, o.Timeout)
+		defer cancel()
+	}
 	for attempt := 0; attempt <= max(o.MaxRetries, 0); attempt++ {
+		if ctx.Err() != nil && parent.Err() == nil {
+			return res, errChunkTimeout()
+		}
 		if o.BeforeRequest != nil {
 			if err := o.BeforeRequest(ctx, attempt, req); err != nil {
 				return res, err
@@ -49,6 +67,10 @@ func RunChunk(ctx context.Context, o RunOptions) (ChunkResult, error) {
 		resp, err := o.Client.Complete(ctx, req)
 		res.Requests++
 		if err != nil {
+			if ctx.Err() != nil && parent.Err() == nil {
+				// 是這個 chunk 自己的時間上限到了，不是 worker 停止。
+				return res, errChunkTimeout()
+			}
 			return res, err
 		}
 		res.Usage.Add(resp.Usage)
@@ -67,6 +89,11 @@ func RunChunk(ctx context.Context, o RunOptions) (ChunkResult, error) {
 		req.Retry = RetryNote(verr)
 	}
 	return res, nil
+}
+
+// errChunkTimeout 是 chunk 超過 RunOptions.Timeout：retryable，任務放回佇列。
+func errChunkTimeout() error {
+	return &errclass.Error{Class: errclass.ClassRetryable, Source: "llm", Detail: "chunk 超過租約內的時間上限"}
 }
 
 // OutputBudget 是請求的 max_tokens：輸出約與輸入的字幕同長，加上 JSON 的額外負擔，留兩倍再加 1024，介於 1024 與 32000 之間。

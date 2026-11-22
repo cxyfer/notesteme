@@ -7,6 +7,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/llm"
+	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
@@ -51,5 +52,38 @@ func TestReplaceCueTexts(t *testing.T) {
 	}
 	if _, err := replaceCueTexts(in, []llm.Cue{{I: 2, Text: "A"}, {I: 1, Text: "B"}}); err == nil {
 		t.Error("句號不依序時應該失敗")
+	}
+}
+
+// chunk 的時間上限在租約之內：單次請求的逾時 < 租約減去安全邊際 < 租約；租約快到期時不送出請求。
+func TestChunkTimeoutFitsInLease(t *testing.T) {
+	if !(llm.RequestTimeout < queue.DefaultLease-chunkLeaseMargin) {
+		t.Fatalf("RequestTimeout %v 必須小於租約 %v 減去 %v", llm.RequestTimeout, queue.DefaultLease, chunkLeaseMargin)
+	}
+	clk := clock.NewFake(time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC))
+	p := &Pipeline{clock: clk}
+	until := clk.Now().Add(queue.DefaultLease)
+	if got := p.chunkTimeout(store.Task{LeaseUntil: &until}); got != queue.DefaultLease-chunkLeaseMargin {
+		t.Errorf("剛領取：%v", got)
+	}
+	soon := clk.Now().Add(30 * time.Second)
+	if got := p.chunkTimeout(store.Task{LeaseUntil: &soon}); got >= 0 {
+		t.Errorf("租約剩不到安全邊際時回傳負數：%v", got)
+	}
+}
+
+// 登記的 Spec 在啟動時檢查：schema 不符合 strict 模式、步驟名稱不一致時是錯誤（init 會 panic）。
+func TestCheckLLMStages(t *testing.T) {
+	if err := checkLLMStages(llmStages); err != nil {
+		t.Fatalf("目前的登記：%v", err)
+	}
+	loose := func() *llm.Spec {
+		return &llm.Spec{Stage: StageCorrect, Schema: map[string]any{"type": "object", "properties": map[string]any{"a": map[string]any{"type": "string"}}}}
+	}
+	if err := checkLLMStages(map[string]llmStage{StageCorrect: {spec: loose}}); err == nil {
+		t.Error("schema 沒有 additionalProperties: false、required 不完整時應該拒絕")
+	}
+	if err := checkLLMStages(map[string]llmStage{StageSegment: {spec: llm.CorrectSpec}}); err == nil {
+		t.Error("步驟名稱不一致時應該拒絕")
 	}
 }

@@ -200,6 +200,15 @@ func (p *Pipeline) dropTrashedTask(ctx context.Context, itemID string) error {
 	return nil
 }
 
+// stageStopped 回報步驟是否已經停下或結束：晚到的 chunk 結果不能改變它的狀態。
+func stageStopped(status string) bool {
+	switch status {
+	case store.StatusBlocked, store.StatusFailed, store.StatusSkipped, store.StatusDone:
+		return true
+	}
+	return false
+}
+
 // classify 把步驟的錯誤依 plan 第 5.2 節的錯誤類別對應到步驟狀態與任務的處置。
 // 沒有分類的錯誤（解析失敗、檔案系統…）視為 retryable。
 func (p *Pipeline) classify(t store.Task, err error) result {
@@ -295,6 +304,12 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 		if latest[run.Stage].ID != run.ID {
 			stale = true
 			return discardStale(ctx, r, t, run)
+		}
+		if t.ChunkIndex != nil && !res.keepState && stageStopped(latest[run.Stage].Status) {
+			// 晚到的 chunk 錯誤（其他 chunk 已讓步驟 blocked 或 failed、或步驟已被取消）：不改寫步驟的狀態、訊息與動作，
+			// 也不重新排任務；只結束這個任務。修正後的重跑會重用已完成的 chunk。
+			p.log.Info("步驟已停下，忽略晚到的 chunk 錯誤", "item", it.ID, "stage", run.Stage, "chunk", *t.ChunkIndex, "status", latest[run.Stage].Status)
+			return r.FailTask(ctx, t.ID, t.LeaseToken)
 		}
 		if len(res.probes) > 0 {
 			if err := r.InsertProbes(ctx, it.ID, res.probes); err != nil {

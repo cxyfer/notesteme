@@ -36,6 +36,8 @@ type chunkLLM struct {
 	mu     sync.Mutex
 	behave map[int]string
 	calls  []int
+	// before 在處理 chunk n 之前呼叫（例如等到其他 chunk 讓步驟 blocked）；可以是 nil。
+	before func(n int)
 }
 
 func (f *chunkLLM) Complete(_ context.Context, req llm.Request) (llm.Response, error) {
@@ -43,8 +45,14 @@ func (f *chunkLLM) Complete(_ context.Context, req llm.Request) (llm.Response, e
 	n, _ := strconv.Atoi(m[1])
 	f.mu.Lock()
 	f.calls = append(f.calls, n)
-	b := f.behave[n]
+	b, before := f.behave[n], f.before
 	f.mu.Unlock()
+	if before != nil {
+		before(n)
+	}
+	if b == "429" {
+		return llm.Response{}, &errclass.Error{Class: errclass.ClassRetryable, Source: "llm", Detail: "HTTP 429", RetryAfter: time.Second}
+	}
 	if b == "404" {
 		return llm.Response{}, &errclass.Error{Class: errclass.ClassNeedsAction, Source: "llm", Message: "模型 m 已停用或不存在。", Actions: []string{llm.ActionChangeModel}}
 	}
@@ -74,6 +82,11 @@ func (f *chunkLLM) callCount() int {
 // newLLMRig 建立 llm 並行數為 1 的 rig（請求依 chunk 順序），影音已有 4 句的 segmented，每句一個 chunk。
 func newLLMRig(t *testing.T, fake *chunkLLM) (*rig, store.Item) {
 	t.Helper()
+	return newLLMRigCap(t, fake, 1)
+}
+
+func newLLMRigCap(t *testing.T, fake *chunkLLM, llmCap int) (*rig, store.Item) {
+	t.Helper()
 	clk := clock.NewFake(time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC))
 	dir := t.TempDir()
 	st, err := store.Open(context.Background(), dir, clk)
@@ -83,7 +96,7 @@ func newLLMRig(t *testing.T, fake *chunkLLM) (*rig, store.Item) {
 	t.Cleanup(func() { _ = st.Close() })
 	yt := &fakeYT{cues: 4, info: youtube.Info{ID: "abc123xxxxx", Title: "T", Language: "en"}}
 	q := queue.New(st, clk, "w1")
-	q.Control().SetCap(queue.ResourceLLM, 1)
+	q.Control().SetCap(queue.ResourceLLM, llmCap)
 	reg := llm.NewRegistry(nil, clk)
 	reg.Env = map[string]string{llm.KeyEnvVar("anthropic"): "k"}
 	reg.NewClient = func(llm.ProviderConfig, string) llm.Client { return fake }
@@ -174,5 +187,36 @@ func TestLLMBlockedChunkCancelsSiblings(t *testing.T) {
 	}
 	if n, _ := r.st.Read().CountTasks(context.Background(), store.TaskPending); n != 0 {
 		t.Errorf("還有 %d 個 pending 任務", n)
+	}
+}
+
+// 晚到的 chunk 錯誤：chunk 1 讓步驟 blocked 時 chunk 2 已經在執行，之後它的 429（retryable）不能把步驟改回 pending、重新排任務，
+// 蓋掉 blocked 的訊息與動作。
+func TestLLMLateChunkErrorKeepsBlockedStage(t *testing.T) {
+	fake := &chunkLLM{behave: map[int]string{1: "404", 2: "429"}}
+	r, it := newLLMRigCap(t, fake, 2)
+	fake.before = func(n int) {
+		if n != 2 {
+			return
+		}
+		// 等 chunk 1 讓步驟 blocked 之後才回應。
+		for range 500 {
+			if st := latestStage(t, r, it.ID, StageCorrect); st.Status == store.StatusBlocked {
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		t.Error("chunk 1 沒有讓步驟 blocked")
+	}
+	rerunCorrect(t, r, it)
+	if n := fake.callCount(); n != 2 {
+		t.Errorf("請求 = %v，預期 chunk 1、2 各一次", fake.calls)
+	}
+	st := latestStage(t, r, it.ID, StageCorrect)
+	if st.Status != store.StatusBlocked || st.Message != "模型 m 已停用或不存在。" || len(st.Actions) != 1 || st.Actions[0] != llm.ActionChangeModel {
+		t.Errorf("步驟 = %+v", st)
+	}
+	if n, _ := r.st.Read().CountTasks(context.Background(), store.TaskPending); n != 0 {
+		t.Errorf("晚到的錯誤不重新排任務：還有 %d 個 pending 任務", n)
 	}
 }
