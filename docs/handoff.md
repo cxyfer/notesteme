@@ -134,7 +134,7 @@
     - `translate` 的 LLM 路徑（`runTranslateLLM`）：多個目標共用一個 stage run、每個目標一份 `translated` 產出；句群以切分標記 `⟨|⟩` 組成翻譯單位並切回（TRN-R2～R4）、驗證重試與退回（R5～R7，空、與原文相同、語言、長度比、閱讀速度）、localize（R9，先 OpenCC 轉字形再交給 LLM 潤飾）、沿用平台人工字幕軌（R11）、有 `edited` 時以它為輸入、每個目標獨立的快取鍵。語言偵測是純 Go 的 `internal/langdetect`（只看文字系統）。
     - 依 /goal 採保守預設、待 owner 追認（TRN 規格 S6b-Q1～Q11）：Q2 的場景修改只補了場景缺少的 `correct` 設定與 `correct-echo` 答覆，保留所有斷言；COR-R8 場景補上 fixture `translate-two-cues` 後通過。
     - **仍待決**：S6b-Q6 `length_ratio` 下限 0.3 對英翻中太緊（照規格字面實作）；香港、澳門繁體的 localize 沒有內建 prompt（會失敗，建議改用 `convert`）；`POST /rerun` 的 `chunks` 在沿用目標有空洞時上限檢查不準（S6b-Q3）。
-    - `@M2`：81 passed、3 failed、31 pending（失敗的是 MCP stdio、DEL 兩個，分別等 S9 與 DEL-R9 切片）。
+    - `@M2`：83 passed、3 failed、31 pending（失敗的是 MCP stdio、DEL 兩個，分別等 S9 與 DEL-R9 切片）。
 - **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，189 passed、2 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
