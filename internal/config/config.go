@@ -107,6 +107,8 @@ type Config struct {
 
 	// ASRProviders 是設定檔 asr.providers 解析並驗證後的內容，以 id 為 key（SEC-R3：command 類型只能在這裡定義）。
 	ASRProviders map[string]ASRProvider
+	// LLMProviders 是設定檔 llm.providers 解析並驗證後的內容，以 id 為 key（LLM 規格的介面）。
+	LLMProviders map[string]LLMProvider
 
 	// Origin 記錄每個欄位生效值的來源，key 為欄位名稱。
 	Origin map[string]Source
@@ -131,6 +133,7 @@ type fileSchema struct {
 	TrustedProxies []string  `yaml:"trusted_proxies"`
 	Providers      yaml.Node `yaml:"providers"`
 	ASR            yaml.Node `yaml:"asr"`
+	LLM            yaml.Node `yaml:"llm"`
 	Hooks          yaml.Node `yaml:"hooks"`
 	// Network 的子欄位用 KnownFields 檢查，打錯字時載入失敗。
 	Network    networkSchema `yaml:"network"`
@@ -221,7 +224,7 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 	var managed, unknown []string
 	for k := range top {
 		switch k {
-		case "listen", "data", "trusted_proxies", "tools", "providers", "hooks", "asr", "network", "inbox", "media_roots", "library":
+		case "listen", "data", "trusted_proxies", "tools", "providers", "hooks", "asr", "llm", "network", "inbox", "media_roots", "library":
 		default:
 			if dbManagedFields[k] {
 				managed = append(managed, k)
@@ -259,6 +262,11 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 		return err
 	}
 	cfg.ASRProviders = providers
+	llmProviders, err := parseLLM(&f.LLM, path)
+	if err != nil {
+		return err
+	}
+	cfg.LLMProviders = llmProviders
 	for i, v := range f.TrustedProxies {
 		p, err := netip.ParsePrefix(strings.TrimSpace(v))
 		if err != nil {
