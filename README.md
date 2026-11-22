@@ -48,8 +48,8 @@ docker run -d --name notesteme \
 | Tag | 來源 |
 |---|---|
 | `X.Y.Z` | `vX.Y.Z` 或 `vX.Y.Z-rc.N` tag（完整版本號） |
-| `latest` | 最高的正式版；`-rc.N` 與較舊版本的 tag 不會移動它 |
-| `X.Y` | 該 minor 系列中最高的正式版 |
+| `latest` | 已發布的最高正式版；`-rc.N` 與較舊版本的 tag 不會移動它 |
+| `X.Y` | 該 minor 系列中已發布的最高正式版 |
 
 > [!NOTE]
 > image 只在推送 `v*` tag 時建置，合併到 `master` 不會產生 image。
@@ -177,7 +177,7 @@ cd internal/store && sqlc generate
    - 沒有 master key 時拒絕啟動。
    - `HEALTHCHECK` 轉為 healthy，`/healthz`、`/readyz` 正常，未登入時 API 回應 `401`，登入成功與失敗的行為正確。
    - 收到 `SIGTERM` 時正常關閉，重新啟動後沿用 `/data` 中的密碼。
-4. **Promote**：測試通過後才把 release tag 指向同一個 digest，發布的 tag 不會對應到沒驗證過的建置。`latest` 與 `X.Y` 只在該 tag 是當時最高版本時移動。
+4. **Promote**：測試通過後才把 release tag 指向同一個 digest，發布的 tag 不會對應到沒驗證過的建置。`latest` 與 `X.Y` 只在沒有已發布的更高版本時移動；失敗或尚未發布的更高 tag 不會擋住它們。
 
 發布新版本：
 

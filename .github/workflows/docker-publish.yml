@@ -68,6 +68,10 @@ jobs:
           flavor: latest=false
           tags: |
             type=raw,value=staging-${{ github.ref_name }}
+          # 暫存 tag 之後只會被重新標記，不能改 image 內容；版本 label 要在建置時就是
+          # 真正的版本號，否則會變成 staging-<tag>。
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.value }}
 
       - name: Build and push
         id: build
@@ -127,25 +131,46 @@ jobs:
         with:
           fetch-depth: 0
 
-      # `latest` 與移動的 X.Y tag 只跟著正式版，且只在這個 tag 是當時最高版本時移動。
-      # 兩個 tag 相近推送、promote 順序顛倒時，舊版不會蓋掉新版；tag 在 run 開始前
-      # 就已存在，所以判斷不受 run 完成順序影響。-rc.N 只得到完整版本號 tag。
+      # `latest` 與移動的 X.Y tag 只跟著正式版，且只在沒有「已發布」的更高版本時移動，
+      # 所以較舊的 tag 晚完成 promote 時不會蓋掉新版。只看已發布的版本（而不是所有
+      # git tag），失敗或還沒發布的更高 tag 不會讓 alias 停在舊版。-rc.N 只得到完整版本號 tag。
       - name: Decide moving tags
         id: moving
         run: |
           set -euo pipefail
           latest=false
           minor=false
+
+          # 0 = 已發布，1 = 不存在；其他錯誤（網路、權限）直接中止，不猜。
+          is_published() {
+            local out
+            if out="$(docker buildx imagetools inspect "${IMAGE}:${1#v}" 2>&1)"; then
+              return 0
+            fi
+            if grep -qiE 'not found|manifest unknown|no such manifest' <<<"$out"; then
+              return 1
+            fi
+            echo "::error::無法確認 ${1#v} 是否已發布：$out" >&2
+            exit 1
+          }
+
           case "$GITHUB_REF_NAME" in
             *-*) ;;
             *)
               # 只認嚴格的 vX.Y.Z；誤推的 v999 之類 tag 不能影響版本比較。
               stable="$(git tag --list 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)"
-              top="$(printf '%s\n' "$stable" | sort -V | tail -n 1)"
+              higher="$(printf '%s\n%s\n' "$stable" "$GITHUB_REF_NAME" | sort -Vu | awk -v c="$GITHUB_REF_NAME" 'f{print} $0==c{f=1}')"
               series="${GITHUB_REF_NAME%.*}"
-              top_series="$(printf '%s\n' "$stable" | grep -E "^${series//./\\.}\\." | sort -V | tail -n 1)"
-              [ "$top" = "$GITHUB_REF_NAME" ] && latest=true
-              [ "$top_series" = "$GITHUB_REF_NAME" ] && minor=true
+              latest=true
+              minor=true
+              for v in $higher; do
+                if is_published "$v"; then
+                  latest=false
+                  if [ "${v%.*}" = "$series" ]; then
+                    minor=false
+                  fi
+                fi
+              done
               ;;
           esac
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
