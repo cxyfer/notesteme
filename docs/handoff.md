@@ -146,6 +146,15 @@
     - 依 /goal 採保守預設、待 owner 追認：MCP 規格待決問題 S1～S10（AGT stub、本機 `--token`、`import_transcript` 只收 content、`get_video_context` 做到 normalize 與完成的判斷、`timeout_s` 上限、SRT 結尾換行、prompts 的 L8 處理、上限、Origin／Host 預設）。
     - 已知限制：沒有 progress notification；已在媒體庫但沒有字幕也沒在處理的影音，`get_video_context` 回讀取字幕的錯誤，不會自動重跑；stdio 代理回傳的結果可能帶新版協定的欄位（`resultType` 等，舊 client 會忽略）。
     - `@M2`：以 PRM／DEL-R9 之後的 master（d109130）為基準，87 → 102 passed、1 → 0 failed、29 → 15 pending（MCP 13 個、AUTH-R11、CLI 的 stdio 場景通過；剩下的 pending 是 AGT 14 個與 SEC 的 config import）。M1 預設 tag：191 passed、0 pending。
+  - M2 S11a SEC `config export`／`import`（`feat/config-export-import`，SEC-R10；直接推送到 master 前由主代理 rebase）：
+    - `internal/configio`：不可信 YAML 的解析與輸出，沒有資料庫相依。比標準嚴格：不接受別名與合併鍵（展開炸彈）、重複的鍵、非字串的鍵、NaN／無限大、多份文件、不認得的型別標籤；大小上限 1 MiB、巢狀 64 層；輸出自己組 `yaml.Node`（鍵依字母排序、縮排 2 格），因為 yaml.v3 對只含換行的字串會選 literal 區塊、讀回來內容不同（fuzz 找到的）。`FuzzParse` 的不變條件是「讀得進來的內容輸出再讀回來相同、輸出穩定」，另有最壞情況輸入的時間測試。
+    - `internal/pipeline/config_io.go`：`ExportConfig`（非內建處理方案＋明確設定過的預設處理方案，不含 secrets）、`ImportConfig`（在**單一交易**中先收集全部錯誤、沒有任何錯誤才寫入；與 `POST /api/profiles` 相同的驗證，錯誤路徑用 `validate.Prefix` 加 `profiles.<名稱>`；內建處理方案有驗證與寫入兩層保護；內容相同不新增版本）。
+    - API：`GET /api/config/export`（`read`）、`POST /api/config/import`（`admin`，422 `config_invalid` 附逐欄位 `errors`）；請求用 `{"content": "<YAML>"}`，CLI 本機讀檔後送出，`--server` 模式也能用。CLI：`config export [--out|--output <file>] [--json]`、`config import <file> [--json]`；內容不正確結束碼是 **1**（不是 CLI-R6 對 422 的 2，場景要求），stderr 逐行列出欄位路徑。拿掉 `internal/cli` 的 `unimplemented` 與對應的舊測試。
+    - harness：`the owner runs` 的參數套用 `/tmp/<x>` → 場景目錄的對應（steps.md 已同步），這是第一個把 `/tmp` 檔案交給 CLI 的場景；沒有新句型、沒有改 `.feature`。
+    - 依 /goal 採保守預設、待 owner 追認（SEC 規格待決問題、CLI／AUTH 各一行、ADR-0013 修訂行）：範圍只有 `profiles`＋`default_profile`；內建 `default` 不匯出也不得覆蓋（但 `PATCH /api/profiles/default` 現在允許修改它，自訂內容不會被匯出）；內容相同不新增版本；處理方案值為 null 視為錯誤；結束碼 1；API 用 JSON 外層而非 `application/yaml`；沒有 `--dry-run`。
+    - **已知限制**：處理方案引用的自訂 prompt 不在檔案中，搬到新實例要先有同名 prompt，否則整份不套用；全域設定、頻道覆寫、詞彙表、ASS 樣式等還不能匯出入。
+    - 變異測試 14 個（驗證後才寫入、交易、內建保護、secrets 不外洩、冪等、名稱規則、default_profile、路徑前綴、結束碼、scope、大小上限、別名、重複鍵、未知頂層鍵）都會變紅。
+    - `@M2`：102 → 103 passed、15 → 14 pending（剩下的 pending 全是 AGT，由 S10 處理）。M1 預設 tag 191 passed 不變。
 - **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，191 passed、0 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內；DEL `@mcp` 兩個在 S9 通過）。
 
   | Feature | passed | pending |
