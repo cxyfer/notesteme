@@ -247,6 +247,7 @@ func (s *session) removeOne(ctx context.Context, t target, purge bool, body any)
 			s.printRawLine(raw)
 		} else {
 			fmt.Fprintf(s.stdout, "已移到垃圾桶：%s\n", t.label())
+			s.printKeptOutputs(raw)
 		}
 		return nil
 	case err == nil:
@@ -256,7 +257,8 @@ func (s *session) removeOne(ctx context.Context, t target, purge bool, body any)
 	default:
 		return err
 	}
-	raw, _, err = s.be.call(ctx, http.MethodDelete, "/api/trash/"+id, nil)
+	// delete_outputs 要再帶一次：影音原本就在垃圾桶中時，這是唯一的機會；已經刪過的檔案會略過。
+	raw, _, err = s.be.call(ctx, http.MethodDelete, "/api/trash/"+id, body)
 	if err != nil {
 		return err
 	}
@@ -264,8 +266,25 @@ func (s *session) removeOne(ctx context.Context, t target, purge bool, body any)
 		s.printRawLine(raw)
 	} else {
 		fmt.Fprintf(s.stdout, "已永久刪除：%s\n", t.label())
+		s.printKeptOutputs(raw)
 	}
 	return nil
+}
+
+// printKeptOutputs 列出回應中保留下來的輸出檔（DEL-R9 的 kept_outputs）：使用者改過的檔案不會被刪除。
+func (s *session) printKeptOutputs(raw []byte) {
+	var resp struct {
+		Kept []struct {
+			Path   string `json:"path"`
+			Reason string `json:"reason"`
+		} `json:"kept_outputs"`
+	}
+	if json.Unmarshal(raw, &resp) != nil {
+		return
+	}
+	for _, k := range resp.Kept {
+		fmt.Fprintf(s.stdout, "已保留輸出檔（%s）：%s\n", k.Reason, k.Path)
+	}
 }
 
 // parseItemsRestore 解析 `items restore <ref>...`。

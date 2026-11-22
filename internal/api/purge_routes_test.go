@@ -175,3 +175,33 @@ func TestEmptyTrashRoute(t *testing.T) {
 		t.Errorf("媒體庫中的影音 GET = %d", rec.Code)
 	}
 }
+
+// DEL-R9：永久刪除與清空垃圾桶接受 delete_outputs；沒有保留任何輸出檔時回應不帶 kept_outputs（維持原本的形狀）。
+func TestPurgeRoutesAcceptDeleteOutputs(t *testing.T) {
+	r := newPurgeRoutesRig(t)
+	one := r.add("https://www.youtube.com/watch?v=abc123xxxxx")
+	two := r.add("https://www.youtube.com/watch?v=def456xxxxx")
+	r.trash(one)
+	r.trash(two)
+
+	rec := r.owner("DELETE", "/api/trash/"+one, `{"delete_outputs":true}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("永久刪除 = %d %s", rec.Code, rec.Body)
+	}
+	var one1 struct {
+		Purged int             `json:"purged"`
+		Kept   json.RawMessage `json:"kept_outputs"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &one1); err != nil || one1.Purged != 1 || one1.Kept != nil {
+		t.Errorf("回應 = %s，%v", rec.Body, err)
+	}
+
+	rec = r.owner("DELETE", "/api/trash", `{"delete_outputs":true}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("清空 = %d %s", rec.Code, rec.Body)
+	}
+	one1.Kept = nil
+	if err := json.Unmarshal(rec.Body.Bytes(), &one1); err != nil || one1.Purged != 1 || one1.Kept != nil {
+		t.Errorf("回應 = %s，%v", rec.Body, err)
+	}
+}

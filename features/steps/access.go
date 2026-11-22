@@ -216,8 +216,8 @@ func (s *Scenario) responseContains(doc *godog.DocString) error {
 	if err := s.pendingIfNotImplemented(0); err != nil {
 		return err
 	}
-	want := []byte(s.World.Subst(s.World.Expand(doc.Content)))
-	// 回應中的實際路徑換回虛擬路徑再比對。
+	// 回應中的實際路徑換回虛擬路徑再比對：預期值只代入 token，不 Expand，兩邊才對稱（同 CLI 輸出的比對）。
+	want := []byte(s.World.Subst(doc.Content))
 	got := []byte(s.World.Unexpand(string(s.last.body)))
 	return jsonSubset(want, got)
 }

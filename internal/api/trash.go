@@ -16,7 +16,7 @@ import (
 // KeptOutput 是刪除時保留下來的輸出檔（DEL-R9）。
 type KeptOutput struct {
 	Path   string `json:"path"`
-	Reason string `json:"reason" doc:"例如 modified"`
+	Reason string `json:"reason" doc:"modified（內容改過，或不是一般檔案）、outside_roots（路徑不在允許的目錄內）或 unreadable"`
 }
 
 // TrashedItem 是垃圾桶中的一部影音。
@@ -47,7 +47,7 @@ type trashItemInput struct {
 	ID string `path:"id" doc:"影音 ID"`
 	// Body 用指標：不帶內容時等同 {}。
 	Body *struct {
-		DeleteOutputs bool `json:"delete_outputs,omitempty" doc:"同時刪除沒被改過的輸出檔（M1 接受但沒有作用，DEL-R9）"`
+		DeleteOutputs bool `json:"delete_outputs,omitempty" doc:"同時刪除沒被改過的輸出檔；改過的保留並列在 kept_outputs（DEL-R9）"`
 	}
 }
 
@@ -82,10 +82,7 @@ func (rt *routes) trashItem(ctx context.Context, in *trashItemInput) (*trashItem
 	}
 	out := &trashItemOutput{}
 	out.Body.ID, out.Body.Ref, out.Body.DeletedAt, out.Body.PurgeAt = res.ID, res.Ref, res.DeletedAt, res.PurgeAt
-	out.Body.KeptOutputs = make([]KeptOutput, 0, len(res.KeptOutputs))
-	for _, k := range res.KeptOutputs {
-		out.Body.KeptOutputs = append(out.Body.KeptOutputs, KeptOutput{Path: k.Path, Reason: k.Reason})
-	}
+	out.Body.KeptOutputs = keptOutputs(res.KeptOutputs)
 	return out, nil
 }
 

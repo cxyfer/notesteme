@@ -26,13 +26,13 @@ type TaskCanceller interface {
 
 // TrashOptions 是移到垃圾桶的選項。
 type TrashOptions struct {
-	// DeleteOutputs 在 M1 接受但沒有作用，因為還沒有輸出目標（DEL-R9）。
+	// DeleteOutputs 為 true 時刪除輸出目標寫出、且沒被改過的檔案；改過的保留並列在 KeptOutputs（DEL-R9）。預設保留全部。
 	DeleteOutputs bool
 	// Canceller 結束被取消的任務中、正在執行的那些（PIPE-R15）；nil 時用 SetTaskCanceller 設定的，都沒有代表沒有 worker 在執行（例如測試）。
 	Canceller TaskCanceller
 }
 
-// KeptOutput 是刪除時保留下來的輸出檔（DEL-R9）；M2 才會有。
+// KeptOutput 是指定 delete_outputs 時保留下來的輸出檔（DEL-R9）；Reason 見 KeptModified 等。
 type KeptOutput struct {
 	Path   string
 	Reason string
@@ -130,19 +130,31 @@ func (p *Pipeline) Trash(ctx context.Context, id string, opts TrashOptions) (Tra
 	if canceller == nil {
 		canceller = p.tasks
 	}
+	cancelled := true
 	if canceller != nil && len(taskIDs) > 0 {
 		if err := canceller.Cancel(cctx, taskIDs); err != nil {
 			// 逾時仍沒結束：任務可能還在讀寫媒體快取，所以保留它，永久刪除時再一起刪除（itemDataDirs）。
 			// 刪除本身仍然成功：任務在資料庫中已經是 cancelled，晚點寫回會因租約失效被丟棄。
 			p.log.Warn("等待被取消的任務結束時失敗，保留媒體快取到永久刪除", "item", it.ID, "error", err)
-			t := p.trashedItem(it)
-			return TrashResult{ID: t.ID, Ref: t.Ref, DeletedAt: t.DeletedAt, PurgeAt: t.PurgeAt, KeptOutputs: []KeptOutput{}}, nil
+			cancelled = false
 		}
 	}
-	p.removeMediaCache(it.ID)
+	if cancelled {
+		p.removeMediaCache(it.ID)
+	}
+
+	// 輸出檔（DEL-R9）：預設保留；指定時刪除沒被改過的。已經 commit，失敗只記 log，不讓刪除變成失敗。
+	kept := []KeptOutput{}
+	if opts.DeleteOutputs {
+		if k, err := p.deleteOutputs(cctx, it.ID); err != nil {
+			p.log.Warn("刪除輸出檔失敗", "item", it.ID, "error", err)
+		} else {
+			kept = k
+		}
+	}
 
 	t := p.trashedItem(it)
-	return TrashResult{ID: t.ID, Ref: t.Ref, DeletedAt: t.DeletedAt, PurgeAt: t.PurgeAt, KeptOutputs: []KeptOutput{}}, nil
+	return TrashResult{ID: t.ID, Ref: t.Ref, DeletedAt: t.DeletedAt, PurgeAt: t.PurgeAt, KeptOutputs: kept}, nil
 }
 
 // removeMediaCache 刪除影音的媒體快取目錄（DEL-R2）。只在 itemID 是標準形式 UUID 時才組出路徑，
@@ -160,7 +172,19 @@ func (p *Pipeline) removeMediaCache(itemID string) {
 // Restore 從垃圾桶還原影音（DEL-R5）：deleted_at 改回 NULL，被取消的步驟維持 skipped 並保留「重試」，
 // 寫入 item.restored 事件。影音不在垃圾桶中（或不存在）時回傳 store.ErrNotFound。
 // 同一部影音的 Trash 還在善後（等待任務結束、刪除媒體快取）時，等它做完才還原。
+//
+// 被刪除的輸出檔（有 outputs 紀錄、檔案已不存在，DEL-R9）在還原之後從 publish 重跑寫回。
 func (p *Pipeline) Restore(ctx context.Context, id string) (TrashedItem, error) {
+	t, err := p.restore(ctx, id)
+	if err != nil {
+		return TrashedItem{}, err
+	}
+	// 在鎖之外：重跑自己會讀寫影音，不需要（也不能）和 Trash 的善後互斥。
+	p.republishMissingOutputs(ctx, id)
+	return t, nil
+}
+
+func (p *Pipeline) restore(ctx context.Context, id string) (TrashedItem, error) {
 	unlock, err := p.trashLocks.lock(ctx, id)
 	if err != nil {
 		return TrashedItem{}, err
