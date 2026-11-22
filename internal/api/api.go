@@ -248,6 +248,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerPrompts(api)
 	rt.registerProfiles(api)
 	rt.registerChannels(api)
+	rt.registerGlossaries(api)
 	rt.registerAssStyles(api)
 	rt.registerSubtitleImport(api)
 	rt.registerOutputs(api)
