@@ -59,6 +59,18 @@ func TestBuiltinStyles(t *testing.T) {
 	}
 }
 
+// 規格（OUT-R7）寫明的字型名稱：常數的值要和它一致，否則測試用常數比對時換了名稱也不會被發現。
+func TestFontNamesMatchSpec(t *testing.T) {
+	for got, want := range map[string]string{
+		FontCJKTC: "Noto Sans CJK TC", FontCJKSC: "Noto Sans CJK SC", FontLatin: "Noto Sans",
+		FontCJKJP: "Noto Sans CJK JP", FontCJKKR: "Noto Sans CJK KR",
+	} {
+		if got != want {
+			t.Errorf("字型常數 = %q，預期 %q", got, want)
+		}
+	}
+}
+
 func TestFontFor(t *testing.T) {
 	cases := map[string]string{
 		"zh-Hant-TW": FontCJKTC, "zh-Hant": FontCJKTC, "zh-TW": FontCJKTC, "zh-HK": FontCJKTC, "zh_hant_tw": FontCJKTC, "yue": FontCJKTC, "zh-yue": FontCJKTC,

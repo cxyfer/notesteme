@@ -175,6 +175,10 @@ func TestAssStyleImport(t *testing.T) {
 	if err := os.WriteFile(file, []byte(sampleASS), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// 副檔名不對的檔案即使存在、內容正確也不收。
+	if err := os.WriteFile(filepath.Join(dir, "s.txt"), []byte(sampleASS), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, b := range []string{
 		`{"name":"a","path":"` + file + `","content":"x"}`,
 		`{"name":"a"}`,
@@ -246,6 +250,9 @@ func TestSubtitleImport(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "fixed.srt")
 	if err := os.WriteFile(file, []byte(importedZH), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "fixed.exe"), []byte(importedZH), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, b := range []string{
