@@ -11,22 +11,36 @@ import (
 	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
-// pipeline 的步驟，依執行順序（plan 第 5 節；summary、chapters、frames、note 屬於之後的切片）。
+// pipeline 的步驟，依執行順序（plan 第 5 節、ADR-0020；summary 屬於 M4）。
 const (
-	StageMetadata   = "metadata"
-	StageTranscript = "transcript"
-	StageNormalize  = "normalize"
-	StageSegment    = "segment"
-	StageCorrect    = "correct"
-	StageTranslate  = "translate"
-	StagePublish    = "publish"
+	StageMetadata     = "metadata"
+	StageTranscript   = "transcript"
+	StageNormalize    = "normalize"
+	StageSegment      = "segment"
+	StageCorrect      = "correct"
+	StageTranslate    = "translate"
+	StageSponsorBlock = "sponsorblock"
+	StageChapters     = "chapters"
+	StageFrames       = "frames"
+	StageNote         = "note"
+	StagePublish      = "publish"
 )
 
-// Stages 是步驟的執行順序。
-var Stages = []string{StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate, StagePublish}
+// Stages 是步驟的執行順序（M3 的四個步驟接在 translate 之後、publish 之前，ADR-0020 第 1 點）。
+var Stages = []string{
+	StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate,
+	StageSponsorBlock, StageChapters, StageFrames, StageNote, StagePublish,
+}
 
 // plannedStages 是 plan 第 5 節中還沒排進來的步驟；重跑它們回傳 501，名稱不對則是 422。
-var plannedStages = []string{"summary", "chapters", "frames.candidates", "frames.select", "note"}
+// frames.candidates、frames.select 已合併成 frames（ADR-0020 第 1 點），現在是不認識的名稱（422）。
+var plannedStages = []string{"summary"}
+
+// IsM3Stage 回報步驟是不是 M3 的步驟（sponsorblock、chapters、frames、note，ADR-0020）。
+// 和 IsLLMStage 分開：IsLLMStage 決定 M2 的 LLM 引擎、AGT 與資源類別的路由，M3 的步驟由各自的切片接上。
+func IsM3Stage(stage string) bool {
+	return stage == StageSponsorBlock || stage == StageChapters || stage == StageFrames || stage == StageNote
+}
 
 // 步驟的 executor（stage_runs.executor、來源紀錄的 executor）。
 const (
@@ -35,6 +49,7 @@ const (
 	ExecutorAgent  = "agent"
 	ExecutorOff    = "off"
 	ExecutorOpenCC = "opencc" // 只用於 translate
+	ExecutorRules  = "rules"  // 只用於 frames 的規則選圖（FRM-R1）
 )
 
 // skipped 的原因，寫在 stage_runs.block_reason。
@@ -47,6 +62,13 @@ const (
 	SkipSameLanguage  = "same_language"  // translate 的每個目標都與原文相同（TRN-R10）
 	// SkipManualCaptions：來源是人工字幕，segment 預設略過（SEG-R1）。
 	SkipManualCaptions = "manual_captions"
+	// M3 的略過原因（ADR-0020 第 2 點）；由各自的切片判斷，S0 只登記名稱。
+	SkipPlatformChapters = "platform_chapters" // 平台已有 2 個以上的章節（CHAP-R1）
+	SkipAudioOnly        = "audio_only"        // 沒有影像串流（FRM-R1）
+	SkipGemini           = "gemini"            // stages.note.engine 為 gemini（GEM-R2）
+	// SkipNotImplemented 是暫時的原因（M3-S0）：設定要求執行、但這個 M3 步驟還沒有實作。
+	// 前進時不建任務、直接 skipped，M1、M2 的影音才能做到 publish；各切片在 stageImplemented 登記後就不會再出現。
+	SkipNotImplemented = "not_implemented"
 )
 
 // IsLLMStage 回報步驟是不是 LLM 步驟（ADR-0002）。
@@ -61,6 +83,10 @@ func StageExecutors(stage string) []string {
 		return []string{ExecutorAPI, ExecutorAgent, ExecutorOff}
 	case StageTranslate:
 		return []string{ExecutorAPI, ExecutorAgent, ExecutorOff, ExecutorOpenCC}
+	case StageChapters, StageNote:
+		return []string{ExecutorAPI, ExecutorAgent, ExecutorOff}
+	case StageFrames:
+		return []string{ExecutorRules, ExecutorAPI, ExecutorAgent, ExecutorOff}
 	}
 	return nil
 }
@@ -75,6 +101,11 @@ const (
 	correctImplVersion    = 1
 	translateImplVersion  = 1
 	publishImplVersion    = 1
+	// M3 的步驟（ADR-0020）。
+	sponsorblockImplVersion = 1
+	chaptersImplVersion     = 1
+	framesImplVersion       = 1
+	noteImplVersion         = 1
 )
 
 // defaultImplVersion 是步驟宣告的 impl_version。
@@ -94,6 +125,14 @@ func defaultImplVersion(stage string) int {
 		return translateImplVersion
 	case StagePublish:
 		return publishImplVersion
+	case StageSponsorBlock:
+		return sponsorblockImplVersion
+	case StageChapters:
+		return chaptersImplVersion
+	case StageFrames:
+		return framesImplVersion
+	case StageNote:
+		return noteImplVersion
 	}
 	return 0
 }
@@ -129,8 +168,17 @@ func (p *Pipeline) SetImplVersion(stage string, v int) error {
 // resourceClass 是步驟使用的資源類別（ADR-0004）。
 // transcriptASR 只對 transcript 有意義：true 代表這個任務很可能要走 ASR 來源（見 transcriptNeedsASR）。
 // LLM 步驟走 api 或 agent 時是 llm；opencc 與 publish 是本機的確定性處理。
+// M3 的步驟依 ADR-0020 第 3 點：sponsorblock 是 download；chapters、note 走 api 或 agent 時是 llm；
+// frames 的任務由 FRM 的切片依 tasks.kind 分類，這裡先給候選擷取的 frames 類別。
 func resourceClass(stage, executor string, transcriptASR bool) string {
 	switch {
+	case stage == StageChapters || stage == StageNote:
+		if executor == ExecutorAPI || executor == ExecutorAgent {
+			return queue.ResourceLLM
+		}
+		return queue.ResourceLocal
+	case stage == StageFrames:
+		return queue.ResourceFrames
 	case IsLLMStage(stage):
 		if executor == ExecutorAPI || executor == ExecutorAgent {
 			return queue.ResourceLLM

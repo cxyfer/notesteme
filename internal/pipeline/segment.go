@@ -144,6 +144,7 @@ func (p *Pipeline) planContext(ctx context.Context, r *store.Repo, it store.Item
 	if err != nil {
 		return sc, err
 	}
+	sc.Platform = it.Platform
 	sc.ManualCaptions, err = manualCaptions(ctx, r, it.ID)
 	return sc, err
 }

@@ -145,7 +145,7 @@ func TestPlanChain(t *testing.T) {
 	eff := mustEffective(t, nil)
 	// 預設：normalize 之後全部略過，鏈一路走到 publish。
 	c, err := planChain(eff, StageSegment, "", StageContext{})
-	if err != nil || !slices.Equal(stages(c), []string{StageSegment, StageCorrect, StageTranslate, StagePublish}) {
+	if err != nil || !slices.Equal(stages(c), []string{StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StageChapters, StageFrames, StageNote, StagePublish}) {
 		t.Fatalf("segment → 最後：%v，%v", stages(c), err)
 	}
 	for _, r := range c {
@@ -401,7 +401,7 @@ func TestPlanChainTranslateUsesStageContext(t *testing.T) {
 		t.Fatalf("簡體原文：%+v, %v", c, err)
 	}
 	c, err = planChain(eff, StageSegment, "", StageContext{SourceLang: "zh-Hant-TW"})
-	if err != nil || len(c) != 4 || c[2].Reason != SkipSameLanguage || c[3].Stage != StagePublish {
+	if err != nil || len(c) != 8 || c[2].Reason != SkipSameLanguage || c[7].Stage != StagePublish {
 		t.Fatalf("繁體原文：%+v, %v", c, err)
 	}
 }

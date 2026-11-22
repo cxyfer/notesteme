@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/cxyfer/notesteme/internal/langtag"
+	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
@@ -17,6 +18,9 @@ type StageContext struct {
 	SourceLang string
 	// ManualCaptions 為 true 時，影音採用的字幕來源是人工字幕（kind manual）：segment 預設略過（SEG-R1）。
 	ManualCaptions bool
+	// Platform 是影音的平台（items.platform）；sponsorblock 只對 YouTube 執行（SPB-R1）。
+	// 空字串代表不知道（例如 Handle 在沒有記錄 executor 時的解析），視為可以執行。
+	Platform string
 }
 
 // StageResolution 是步驟在一份生效設定下的執行方式。
@@ -46,6 +50,11 @@ type StageResolution struct {
 //     （same_language）；其餘目標全是 convert 時一律用 opencc，不論設定的是 api 或 agent，也不需要 provider；
 //     明確設定 opencc 時用 opencc；其他情況比照 segment 與 correct。
 //   - publish：沒有 outputs 時略過（no_outputs），有 outputs 時不略過。
+//   - sponsorblock：local；enabled: false 時略過（off），不是 YouTube 時略過（not_applicable，SPB-R1）。
+//   - chapters、note：同 segment 與 correct（off、not_configured）；frames 另有 rules，預設 off（FRM-R1）。
+//     platform_chapters、audio_only、gemini 需要執行期的資訊，由各自的切片判斷（ADR-0020 第 2 點）。
+//
+// 這裡不看步驟有沒有實作：還沒有實作的 M3 步驟由 planChain 改成 skipped（not_implemented）。
 func ResolveExecutor(eff Effective, stage string, sc StageContext) (StageResolution, error) {
 	switch {
 	case stage == StageMetadata || stage == StageTranscript || stage == StageNormalize:
@@ -91,6 +100,38 @@ func ResolveExecutor(eff Effective, stage string, sc StageContext) (StageResolut
 			res.Skip, res.Reason = true, SkipManualCaptions
 		}
 		return res, nil
+	case stage == StageSponsorBlock:
+		sb, err := eff.SponsorBlock()
+		if err != nil {
+			return StageResolution{}, err
+		}
+		res := StageResolution{Stage: stage, Executor: ExecutorLocal}
+		switch {
+		case !sb.Enabled:
+			res.Skip, res.Reason = true, SkipOff
+		case sc.Platform != "" && sc.Platform != source.PlatformYouTube:
+			res.Skip, res.Reason = true, SkipNotApplicable
+		}
+		return res, nil
+	case stage == StageChapters || stage == StageFrames || stage == StageNote:
+		cfg, err := eff.Stage(stage)
+		if err != nil {
+			return StageResolution{}, err
+		}
+		if !slices.Contains(StageExecutors(stage), cfg.Executor) {
+			return StageResolution{}, invalidf("stages.%s.executor 不支援 %q。", stage, cfg.Executor)
+		}
+		res := StageResolution{Stage: stage, Executor: cfg.Executor, Provider: cfg.Provider, Model: cfg.Model, Prompt: cfg.Prompt}
+		switch {
+		case cfg.Executor == ExecutorOff:
+			res.Skip, res.Reason = true, SkipOff
+		case cfg.Executor == ExecutorAPI && (cfg.Provider == "" || cfg.Model == ""):
+			res.Skip, res.Reason = true, SkipNotConfigured
+		}
+		if cfg.Executor == ExecutorRules {
+			res.Provider, res.Model, res.Prompt = "", "", ""
+		}
+		return res, nil
 	case stage == StagePublish:
 		outs, err := eff.Outputs()
 		if err != nil {
@@ -107,7 +148,15 @@ func ResolveExecutor(eff Effective, stage string, sc StageContext) (StageResolut
 
 // planChain 從 from 開始依序解析，直到第一個不略過的步驟（含）或 until（含，空字串代表最後一個步驟）為止。
 // 回傳的最後一個元素若 Skip 為 false，就是要建立任務的步驟；全部都略過時代表做到 until 或最後。
+// 要執行而還沒有實作的 M3 步驟改成 skipped（not_implemented），鏈繼續往下（M3-S0，見 SkipNotImplemented）。
 func planChain(eff Effective, from, until string, sc StageContext) ([]StageResolution, error) {
+	return planChainFor(eff, from, until, sc, nil)
+}
+
+// planChainFor 同 planChain，但只解析 has 回報為 true 的步驟（has 為 nil 時全部）：
+// 前進時用來跳過影音沒有記錄的步驟。M2 建立的影音只有 7 個步驟的 stage run，
+// translate 完成後要跳過不存在的 M3 步驟、前進到 publish，而不是停在 sponsorblock。
+func planChainFor(eff Effective, from, until string, sc StageContext, has func(stage string) bool) ([]StageResolution, error) {
 	i := slices.Index(Stages, from)
 	if i < 0 {
 		return nil, invalidf("不認識的步驟 %q。", from)
@@ -118,9 +167,15 @@ func planChain(eff Effective, from, until string, sc StageContext) ([]StageResol
 	}
 	var chain []StageResolution
 	for _, stage := range Stages[i:max(i, end+1)] {
+		if has != nil && !has(stage) {
+			continue
+		}
 		res, err := ResolveExecutor(eff, stage, sc)
 		if err != nil {
 			return nil, err
+		}
+		if IsM3Stage(stage) && !res.Skip && !stageImplemented(stage, res.Executor) {
+			res.Skip, res.Reason = true, SkipNotImplemented
 		}
 		chain = append(chain, res)
 		if !res.Skip {
@@ -143,7 +198,23 @@ func stageImplemented(stage, executor string) bool {
 		// api：有登記在 llmStages 的步驟（correct、segment、translate）。
 		return executor == ExecutorAgent || usesLLMEngine(stage, executor)
 	}
+	// M3 的步驟（sponsorblock、chapters、frames、note）：各切片完成時在這裡登記。
 	return false
+}
+
+// StageAvailable 回報步驟是否有任何 executor 已經實作（給驗收 harness 判斷 M3 的步驟該不該 pending，
+// 比照 source.Implemented；steps.md 4.13 的語意補充）。不認識的步驟回傳 false。
+func StageAvailable(stage string) bool {
+	if !ValidStage(stage) {
+		return false
+	}
+	if stage == StageSponsorBlock {
+		return stageImplemented(stage, ExecutorLocal)
+	}
+	if ex := StageExecutors(stage); ex != nil {
+		return slices.ContainsFunc(ex, func(e string) bool { return e != ExecutorOff && stageImplemented(stage, e) })
+	}
+	return stageImplemented(stage, ExecutorLocal)
 }
 
 // skippedState 是前進時略過的步驟的狀態：原因寫在 block_reason，沒有 message 與 actions。

@@ -43,6 +43,9 @@ type RerunRequest struct {
 // Chunks 只能用在 LLM 步驟；步驟不是用 api executor 時不使用。
 func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (Detail, error) {
 	switch {
+	case IsM3Stage(req.From) && !StageAvailable(req.From):
+		// M3 的步驟加進 Stages 之後、實作之前（M3-S0）：從它重跑回 501，不留下半套的重跑（ADR-0020 第 1 點）。
+		return Detail{}, &NotImplementedError{What: "重跑步驟 " + req.From}
 	case ValidStage(req.From):
 	case slices.Contains(plannedStages, req.From):
 		return Detail{}, &NotImplementedError{What: "重跑步驟 " + req.From}

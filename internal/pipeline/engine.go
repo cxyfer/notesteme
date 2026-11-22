@@ -442,9 +442,13 @@ func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.Stag
 				return nil
 			}
 			// 走到這裡時這一筆一定是最新的（上面已檢查），舊的結果不會觸發下游。
+			// 影音沒有記錄的步驟（M2 建立的影音沒有 M3 的四個步驟）跳過，前進到下一個有記錄的步驟。
 			nr, ok := latest[next]
-			if !ok {
-				return nil
+			for !ok {
+				if next, ok = nextStage(next, it.UntilStage); !ok {
+					return nil
+				}
+				nr, ok = latest[next]
 			}
 			// 依下一步的設定快照解析執行方式：可以略過的步驟直接 skipped 並繼續往下，
 			// 直到第一個要執行的步驟或 until 為止（until 之後的步驟維持 pending）。
@@ -460,7 +464,7 @@ func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.Stag
 			if err != nil {
 				return err
 			}
-			chain, err := planChain(eff, next, it.UntilStage, sc)
+			chain, err := planChainFor(eff, next, it.UntilStage, sc, func(stage string) bool { _, ok := latest[stage]; return ok })
 			if err != nil {
 				return err
 			}

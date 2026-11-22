@@ -118,11 +118,18 @@ func BuildEffective(layers ...map[string]any) (Effective, error) {
 
 // defaultStageConfig 是 LLM 步驟的內建預設（X1 選項 C）：executor 是 api、prompt 是該步驟的預設 prompt；
 // 沒有 provider 與 model 時步驟會 skipped（not_configured）。確定性步驟沒有可設定的欄位。
+//
+// M3 的 chapters、note 同樣預設 api（ADR-0020 第 2 點），frames 預設 off（FRM-R1）；這些預設只在讀取時補上，
+// 不寫進快照（defaultStages 只含 M2 的 LLM 步驟），既有處理方案的快照 sha 與快取鍵不變。
+// sponsorblock 沒有 executor，見 Effective.SponsorBlock。
 func defaultStageConfig(stage string) StageConfig {
-	if !IsLLMStage(stage) {
-		return StageConfig{}
+	switch {
+	case IsLLMStage(stage), stage == StageChapters, stage == StageNote:
+		return StageConfig{Executor: ExecutorAPI, Prompt: stage + "-default"}
+	case stage == StageFrames:
+		return StageConfig{Executor: ExecutorOff, Prompt: stage + "-default"}
 	}
-	return StageConfig{Executor: ExecutorAPI, Prompt: stage + "-default"}
+	return StageConfig{}
 }
 
 // defaultStages 是 stages 區段的內建預設，寫進快照讓它完整記錄當時用了什麼設定（PIPE-R13）。
@@ -229,8 +236,14 @@ func (e Effective) validateStages() error {
 		return err
 	}
 	for stage := range all {
-		if !IsLLMStage(stage) {
-			return invalidf("stages 的步驟必須是 %s、%s 或 %s，收到 %q。", StageSegment, StageCorrect, StageTranslate, stage)
+		if stage == StageSponsorBlock {
+			if _, err := e.SponsorBlock(); err != nil {
+				return err
+			}
+			continue
+		}
+		if !IsLLMStage(stage) && !IsM3Stage(stage) {
+			return invalidf("stages 的步驟必須是 %s 其中之一，收到 %q。", strings.Join(configurableStages, "、"), stage)
 		}
 		cfg, err := e.Stage(stage)
 		if err != nil {
@@ -241,6 +254,50 @@ func (e Effective) validateStages() error {
 		}
 	}
 	return nil
+}
+
+// configurableStages 是 stages 底下可以設定的步驟（M2 的 LLM 步驟與 M3 的步驟）。
+var configurableStages = []string{StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StageChapters, StageFrames, StageNote}
+
+// SponsorBlockSettings 是 stages.sponsorblock（SPB-R1、R3）。
+type SponsorBlockSettings struct {
+	Enabled    bool
+	Categories []string
+}
+
+// DefaultSponsorBlockCategories 是 stages.sponsorblock.categories 的預設值（SPB-R3、B4）。
+var DefaultSponsorBlockCategories = []string{"sponsor", "selfpromo", "interaction"}
+
+// SponsorBlock 取出 stages.sponsorblock；沒有設定時是預設值（enabled: true、預設類別）。
+// 預設值只在讀取時補上，不寫進快照。欄位的嚴格檢查在 ValidateLayer（PRF-R4）。
+func (e Effective) SponsorBlock() (SponsorBlockSettings, error) {
+	out := SponsorBlockSettings{Enabled: true, Categories: slices.Clone(DefaultSponsorBlockCategories)}
+	all, err := e.stages()
+	if err != nil || all == nil {
+		return out, err
+	}
+	entry, ok := all[StageSponsorBlock]
+	if !ok {
+		return out, nil
+	}
+	b, err := json.Marshal(entry)
+	if err != nil {
+		return out, err
+	}
+	var got struct {
+		Enabled    *bool    `json:"enabled"`
+		Categories []string `json:"categories"`
+	}
+	if err := json.Unmarshal(b, &got); err != nil {
+		return out, invalidf("stages.sponsorblock 設定不正確：%v", err)
+	}
+	if got.Enabled != nil {
+		out.Enabled = *got.Enabled
+	}
+	if got.Categories != nil {
+		out.Categories = got.Categories
+	}
+	return out, nil
 }
 
 // stages 取出 stages 物件（每個步驟是物件）；沒有這個區段時回傳 nil。經 JSON 轉一次，

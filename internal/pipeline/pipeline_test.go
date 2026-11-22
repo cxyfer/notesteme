@@ -803,7 +803,9 @@ func TestNextStageHonoursUntil(t *testing.T) {
 		{"normalize", "normalize", "", false},
 		{"normalize", "correct", "segment", true},
 		{"segment", "segment", "", false},
-		{"translate", "", "publish", true},
+		{"translate", "", "sponsorblock", true},
+		{"translate", "translate", "", false},
+		{"note", "", "publish", true},
 		{"publish", "", "", false},
 	}
 	for _, tt := range tests {
