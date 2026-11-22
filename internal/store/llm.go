@@ -37,8 +37,8 @@ type LLMChunk struct {
 	Executor      string
 	Agent         string
 	ModelReported string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 func llmChunkFromRow(row sqlcdb.LlmChunk) LLMChunk {
