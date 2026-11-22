@@ -7,6 +7,8 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
+  # 發布 image 的 workflow 會先呼叫這裡的檢查，tag 指向未驗證的 commit 時不會發布。
+  workflow_call:
 
 permissions:
   contents: read

@@ -1,9 +1,9 @@
 name: Docker image
 
 # 只有推送 release tag（含 -rc.N）時才建置；PR 與合併到 master 都不建置，
-# 以節省 Actions 額度與 GHCR 儲存空間。每個 tag 只建置一次並以 digest 推送，
-# 冒煙測試跑的就是推上去的 digest，通過後才把 release tag 指向它，
-# 因此發布的 tag 不會對應到與驗證過的不同的建置。
+# 以節省 Actions 額度與 GHCR 儲存空間。tag 先通過與 CI 相同的 Go／sqlc 檢查，
+# 再建置一次並以 digest 推送；冒煙測試跑的就是推上去的 digest，通過後才把
+# release tag 指向它，因此發布的 tag 不會對應到與驗證過的不同的建置。
 on:
   push:
     tags: ["v*"]
@@ -17,8 +17,14 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
+  # tag 可能指向沒通過 CI 的 commit（或不在 master 上），發布前再驗證一次。
+  checks:
+    name: Checks
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: Build and push by digest
+    needs: checks
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -51,14 +57,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      # 這裡只推不可變的 commit tag；release tag 等冒煙測試通過後再依 digest 套用。
+      # 這裡只推每個 tag 專屬的暫存 tag；release tag 等冒煙測試通過後再依 digest 套用。
+      # 不用 sha tag：同一個 commit 先打 -rc.N 再打正式版時，兩者的 VERSION 不同，
+      # 共用 sha tag 會讓後建置的覆寫前一個。
       - name: Image metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=sha,format=short,prefix=sha-
+            type=raw,value=staging-${{ github.ref_name }}
 
       - name: Build and push
         id: build
@@ -114,8 +122,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      # `latest` 與移動的 X.Y tag 只跟著正式版；-rc.N 只得到完整版本號 tag。
-      # 每個建置仍保留不可變的 sha-<短 sha> 以便回滾。
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # `latest` 與移動的 X.Y tag 只跟著正式版，且只在這個 tag 是當時最高版本時移動。
+      # 兩個 tag 相近推送、promote 順序顛倒時，舊版不會蓋掉新版；tag 在 run 開始前
+      # 就已存在，所以判斷不受 run 完成順序影響。-rc.N 只得到完整版本號 tag。
+      - name: Decide moving tags
+        id: moving
+        run: |
+          set -euo pipefail
+          latest=false
+          minor=false
+          case "$GITHUB_REF_NAME" in
+            *-*) ;;
+            *)
+              stable="$(git tag --list 'v[0-9]*' | grep -Ev -- '-' || true)"
+              top="$(printf '%s\n' "$stable" | sort -V | tail -n 1)"
+              series="${GITHUB_REF_NAME%.*}"
+              top_series="$(printf '%s\n' "$stable" | grep -E "^${series//./\\.}\\." | sort -V | tail -n 1)"
+              [ "$top" = "$GITHUB_REF_NAME" ] && latest=true
+              [ "$top_series" = "$GITHUB_REF_NAME" ] && minor=true
+              ;;
+          esac
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "minor=$minor" >> "$GITHUB_OUTPUT"
+          echo "$GITHUB_REF_NAME: latest=$latest minor=$minor"
+
       - name: Release tags
         id: meta
         uses: docker/metadata-action@v6
@@ -123,8 +157,8 @@ jobs:
           images: ${{ env.IMAGE }}
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref_name, '-') }}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.moving.outputs.minor == 'true' }}
+            type=raw,value=latest,enable=${{ steps.moving.outputs.latest == 'true' }}
 
       - name: Retag the tested digest
         env:

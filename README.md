@@ -48,8 +48,8 @@ docker run -d --name notesteme \
 | Tag | 來源 |
 |---|---|
 | `X.Y.Z` | `vX.Y.Z` 或 `vX.Y.Z-rc.N` tag（完整版本號） |
-| `latest`、`X.Y` | 最新的正式版 tag；`-rc.N` 不會移動它們 |
-| `sha-<短 sha>` | tag 指向的 commit，不可變，可用來回滾 |
+| `latest` | 最高的正式版；`-rc.N` 與較舊版本的 tag 不會移動它 |
+| `X.Y` | 該 minor 系列中最高的正式版 |
 
 > [!NOTE]
 > image 只在推送 `v*` tag 時建置，合併到 `master` 不會產生 image。
@@ -170,13 +170,14 @@ cd internal/store && sqlc generate
 
 [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) 只在推送 `v*` tag（含 `-rc.N`）時執行，PR 與合併都不會建置，以節省私人 repo 的 Actions 額度：
 
-1. **Build**：建置 `linux/amd64`、`linux/arm64`，以 digest 推到 `ghcr.io/cxyfer/notesteme`，只帶 `sha-<短 sha>` tag；版本號取自 tag。
-2. **Smoke test**：對推上去的 digest 執行 [`deploy/docker/smoke-test.sh`](deploy/docker/smoke-test.sh)，確認：
+1. **Checks**：先跑與 CI 相同的 Go 與 sqlc 檢查，tag 指向沒通過檢查的 commit 時不會發布。
+2. **Build**：建置 `linux/amd64`、`linux/arm64`，以 digest 推到 `ghcr.io/cxyfer/notesteme`，只帶這個 tag 專屬的暫存 tag `staging-<tag>`；版本號取自 tag。
+3. **Smoke test**：對推上去的 digest 執行 [`deploy/docker/smoke-test.sh`](deploy/docker/smoke-test.sh)，確認：
    - 外部工具齊全（yt-dlp、ffmpeg 含 libass、ffprobe、Deno），以非 root 執行。
    - 沒有 master key 時拒絕啟動。
    - `HEALTHCHECK` 轉為 healthy，`/healthz`、`/readyz` 正常，未登入時 API 回應 `401`，登入成功與失敗的行為正確。
    - 收到 `SIGTERM` 時正常關閉，重新啟動後沿用 `/data` 中的密碼。
-3. **Promote**：測試通過後才把 release tag 指向同一個 digest，發布的 tag 不會對應到沒驗證過的建置。
+4. **Promote**：測試通過後才把 release tag 指向同一個 digest，發布的 tag 不會對應到沒驗證過的建置。`latest` 與 `X.Y` 只在該 tag 是當時最高版本時移動。
 
 發布新版本：
 
