@@ -120,12 +120,22 @@ Feature: Library, item page and queue page
 
   @M2 @LIB-07 @LIB-R11
   Scenario: Rerun from a stage with another model keeps the old version
-    Given the LLM provider "anthropic" answers "correct" with "correct-ok.json"
+    Given the profile "llm-lib" is:
+      """
+      stages:
+        correct: { executor: api, provider: anthropic, model: fixture-model, prompt: correct-default }
+      """
+    And the LLM provider "anthropic" answers "correct" with "correct-ok.json"
     And the LLM provider "openai" answers "correct" with "correct-ok-alt.json"
     And the item "yt:pg100xxxxxx" has been processed up to "correct"
     When the owner sends "POST /api/items/yt:pg100xxxxxx/rerun" with:
       """
-      { "from": "correct", "overrides": { "stages": { "correct": { "provider": "openai", "model": "fixture-model" } } } }
+      { "from": "correct", "profile": "llm-lib" }
+      """
+    And the worker runs until idle
+    And the owner sends "POST /api/items/yt:pg100xxxxxx/rerun" with:
+      """
+      { "from": "correct", "profile": "llm-lib", "overrides": { "stages": { "correct": { "provider": "openai", "model": "fixture-model" } } } }
       """
     And the worker runs until idle
     Then the "corrected" artifact of "yt:pg100xxxxxx" has 2 versions
