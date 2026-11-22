@@ -1,0 +1,40 @@
+name: Fuzz
+
+# NFR-SEC-6：每晚對所有 Fuzz 目標各跑一段時間（總計至少 10 分鐘），不得 panic。
+on:
+  schedule:
+    - cron: "17 18 * * *" # UTC 18:17（台灣時間 02:17）
+  workflow_dispatch:
+    inputs:
+      total_seconds:
+        description: 總預算（秒），平均分給每個目標
+        default: "600"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Go fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: fuzz
+        env:
+          FUZZ_TOTAL_SECONDS: ${{ inputs.total_seconds || '600' }}
+        run: scripts/ci/fuzz.sh
+
+      # 失敗時 go 會把觸發問題的輸入寫到 testdata/fuzz/<目標>/，上傳供本機重現。
+      - name: upload failing inputs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-failing-inputs
+          path: "**/testdata/fuzz/**"
+          if-no-files-found: ignore
