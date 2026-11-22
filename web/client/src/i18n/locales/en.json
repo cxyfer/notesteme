@@ -119,6 +119,10 @@
     "segment": "Segment",
     "correct": "Correct",
     "translate": "Translate",
+    "sponsorblock": "Sponsor segments",
+    "chapters": "Chapters",
+    "frames": "Frames",
+    "note": "Note",
     "publish": "Publish"
   },
   "stageStatus": {

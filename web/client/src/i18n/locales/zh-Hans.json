@@ -118,6 +118,10 @@
     "segment": "分段",
     "correct": "校正",
     "translate": "翻译",
+    "sponsorblock": "广告片段",
+    "chapters": "章节",
+    "frames": "关键画面",
+    "note": "笔记",
     "publish": "输出"
   },
   "stageStatus": {

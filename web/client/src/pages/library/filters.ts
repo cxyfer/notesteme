@@ -17,6 +17,10 @@ export const STAGES = [
   "segment",
   "correct",
   "translate",
+  "sponsorblock",
+  "chapters",
+  "frames",
+  "note",
   "publish",
 ] as const;
 export type Stage = (typeof STAGES)[number];
