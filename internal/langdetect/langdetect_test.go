@@ -9,9 +9,9 @@ func TestMatches(t *testing.T) {
 	}{
 		{"zh-Hant-TW", "我們之所以改用 Kafka，", true},
 		{"zh-Hant-TW", "我們把事件存在日誌裡。", true},
-		{"zh-Hant-TW", "私たちはイベントをログに保存します。", false},       // 日文
-		{"zh-Hant-TW", "We store events in a log.", false},       // 沒有翻譯
-		{"zh-Hant-TW", "这是一个关于数据库与网络的视频", false},                // 簡體
+		{"zh-Hant-TW", "私たちはイベントをログに保存します。", false},        // 日文
+		{"zh-Hant-TW", "We store events in a log.", false}, // 沒有翻譯
+		{"zh-Hant-TW", "这是一个关于数据库与网络的视频", false},           // 簡體
 		{"zh-Hans", "这是一个关于数据库与网络的视频", true},
 		{"zh-Hant-TW", "Kafka Streams API 很好", true}, // 產品名稱居多，仍有中文
 		{"zh-Hant-TW", "This is English mostly 好", false},
