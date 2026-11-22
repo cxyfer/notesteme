@@ -58,9 +58,11 @@ func TestUIDoesNotShadowBackend(t *testing.T) {
 		}
 	}
 	session, csrf := s.login(t)
-	rec := s.do("GET", "/api/unknown", "", withCookies(session, csrf, ""))
-	if rec.Code != 404 || rec.Header().Get("Content-Type") == "text/html; charset=utf-8" {
-		t.Errorf("GET /api/unknown（已登入）= %d %q，預期 404 且不是 index.html", rec.Code, rec.Header().Get("Content-Type"))
+	for _, p := range []string{"/api/unknown", "/api", "/api/"} {
+		rec := s.do("GET", p, "", withCookies(session, csrf, ""))
+		if rec.Code != 404 || rec.Header().Get("Content-Security-Policy") != "" {
+			t.Errorf("GET %s（已登入）= %d CSP=%q，預期 404 且不是 UI 回應", p, rec.Code, rec.Header().Get("Content-Security-Policy"))
+		}
 	}
 	if rec := s.do("DELETE", "/healthz", "", nil); rec.Code != 405 {
 		t.Errorf("DELETE /healthz = %d，預期 405（不是 UI）", rec.Code)
