@@ -166,13 +166,13 @@ func TestPlaygroundInputErrors(t *testing.T) {
 	if _, err := stageOfPrompt("summary"); !errors.As(err, &inv) {
 		t.Errorf("summary 提示詞：err = %v，預期 422", err)
 	}
-	// LLM 步驟的提示詞類型：登記在 llmStages 而且是一對一輸出的可以試跑（correct），其餘（還沒登記的 translate、
+	// LLM 步驟的提示詞類型：登記在 llmStages 而且是一對一輸出的可以試跑（correct），其餘（自己處理多個目標的 translate、
 	// 輸出不是一對一的 segment）回 501。
 	var ni *NotImplementedError
 	for _, kind := range []string{StageSegment, StageCorrect, StageTranslate} {
 		_, err := stageOfPrompt(kind)
 		def, registered := llmStages[kind]
-		usable := registered && def.assemble == nil
+		usable := registered && def.assemble == nil && def.apply != nil && def.fallback != nil
 		if usable != (err == nil) || (!usable && !errors.As(err, &ni)) {
 			t.Errorf("提示詞類型 %s：usable = %v，err = %v", kind, usable, err)
 		}
