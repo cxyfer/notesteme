@@ -5,6 +5,7 @@ package errclass
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 // Class 是錯誤類別。
@@ -46,7 +47,10 @@ type Error struct {
 	// cookie:youtube）；使用者補上該平台的 cookie 後，系統依它找出要恢復的步驟。空字串表示沒有自動恢復的條件。
 	// 只有 needs_action 這類會停下來的錯誤才有意義。
 	ResumeOn string
-	Err      error
+	// RetryAfter 是來源指定的重試等待時間（HTTP Retry-After，LLM-R6），或 wait 類錯誤下一次檢查前的等待時間（LLM-R7 限流）；
+	// 0 代表沒有指定，由呼叫端用預設的退避。
+	RetryAfter time.Duration
+	Err        error
 }
 
 func (e *Error) Error() string {

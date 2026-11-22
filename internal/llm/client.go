@@ -1,0 +1,359 @@
+package llm
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/netguard"
+)
+
+// provider 的 wire format（llm.providers.<id>.type，ADR-0019）。
+const (
+	TypeAnthropic = "anthropic"
+	TypeOpenAI    = "openai" // OpenAI 與相容的 provider（可自訂 base_url）
+)
+
+// 內建 provider 的預設 base_url。anthropic 的端點是 <base>/v1/messages；openai 的 base_url 依慣例含 /v1，端點是 <base>/chat/completions。
+const (
+	DefaultAnthropicBaseURL = "https://api.anthropic.com"
+	DefaultOpenAIBaseURL    = "https://api.openai.com/v1"
+	// AnthropicVersion 是 anthropic-version 標頭（wire 契約）。
+	AnthropicVersion = "2023-06-01"
+)
+
+const (
+	// requestTimeout 是一個請求的逾時：模型產生完整輸出才回應，長 chunk 可能要幾分鐘。
+	requestTimeout = 10 * time.Minute
+	// maxResponseBody 是回應大小的上限；超過時不截斷，視為 permanent（GRD-R5）。
+	maxResponseBody = 16 << 20
+	// maxErrorBody 是錯誤回應最多讀取的位元組，只用於診斷摘要。
+	maxErrorBody = 4 << 10
+)
+
+// 給使用者看的動作（LLM-R11、R12）。
+const (
+	ActionChangeModel = "更換模型"
+	ActionSetAPIKey   = "設定 API key"
+)
+
+// Request 是一次 LLM 請求。固定前綴（Fixed）在同一部影音、同一步驟的所有 chunk 完全相同；
+// Data 是 <transcript_data> 區塊；Retry 是上一次驗證失敗的說明（空字串代表第一次）。
+type Request struct {
+	Model     string
+	MaxTokens int
+	Spec      *Spec
+	Fixed     Fixed
+	Data      string
+	Retry     string
+}
+
+// Usage 是 provider 回報的 token 用量（LLM-R10）。
+type Usage struct {
+	InputTokens      int `json:"input_tokens"`
+	OutputTokens     int `json:"output_tokens"`
+	CacheReadTokens  int `json:"cache_read_input_tokens,omitempty"`
+	CacheWriteTokens int `json:"cache_creation_input_tokens,omitempty"`
+}
+
+// Add 累加用量。
+func (u *Usage) Add(o Usage) {
+	u.InputTokens += o.InputTokens
+	u.OutputTokens += o.OutputTokens
+	u.CacheReadTokens += o.CacheReadTokens
+	u.CacheWriteTokens += o.CacheWriteTokens
+}
+
+// Response 是成功（HTTP 200）的回應。Output 是強制的 tool 輸入或 JSON 內容；沒有結構化輸出時是 nil，
+// 原因寫在 Problem（例如模型直接回了文字），呼叫端視為驗證失敗而不是 API 錯誤（wire 契約）。
+type Response struct {
+	Output  []byte
+	Problem string
+	Usage   Usage
+}
+
+// Client 是一個 LLM provider。
+type Client interface {
+	Complete(ctx context.Context, req Request) (Response, error)
+}
+
+// HTTPClient 依 wire format 呼叫 provider。HTTP 必須是 netguard 的 client（ADR-0014）。
+type HTTPClient struct {
+	ID      string // provider id，只用於錯誤訊息
+	Type    string
+	BaseURL string
+	APIKey  string
+	HTTP    *http.Client
+	// Now 給 Retry-After 的 HTTP 日期格式用；nil 時視為沒有指定。
+	Now func() time.Time
+}
+
+// Complete 送出請求。錯誤一律是 *errclass.Error（或 ctx 的錯誤）：
+//   - 404：模型不存在或已停用，needs_action（LLM-R11）。
+//   - 401、403：API key 被拒絕，needs_action（LLM-R12 的同一個動作）。
+//   - 429、5xx（含 anthropic 的 529）、連線失敗：retryable，帶 Retry-After（LLM-R6）。
+//   - 其他 4xx 與轉址：permanent（請求本身不對，重試也不會成功）。
+func (c *HTTPClient) Complete(ctx context.Context, req Request) (Response, error) {
+	if req.Spec == nil {
+		return Response{}, errors.New("llm: Request.Spec 不可為 nil")
+	}
+	url, body, err := c.encode(req)
+	if err != nil {
+		return Response{}, c.fail(errclass.ClassPermanent, "組出請求失敗", err)
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+	hr, err := http.NewRequestWithContext(reqCtx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return Response{}, c.fail(errclass.ClassPermanent, "組出請求失敗", err)
+	}
+	hr.Header.Set("Content-Type", "application/json")
+	hr.Header.Set("Accept", "application/json")
+	if c.Type == TypeAnthropic {
+		hr.Header.Set("x-api-key", c.APIKey)
+		hr.Header.Set("anthropic-version", AnthropicVersion)
+	} else {
+		hr.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+
+	resp, err := c.client().Do(hr)
+	if err != nil {
+		if ctx.Err() != nil {
+			return Response{}, ctx.Err()
+		}
+		// 被 netguard 擋下的錯誤原樣保留，pipeline 會把它歸為 permanent（GRD）；url.Error 只含網址，不含標頭中的 key。
+		return Response{}, c.fail(errclass.ClassRetryable, "連線失敗", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+		return Response{}, c.statusError(req.Model, resp, snippet)
+	}
+	raw, err := io.ReadAll(netguard.LimitBody(resp, maxResponseBody))
+	if err != nil {
+		if errors.Is(err, netguard.ErrTooLarge) {
+			return Response{}, c.fail(errclass.ClassPermanent, "回應超過大小上限", err)
+		}
+		if ctx.Err() != nil {
+			return Response{}, ctx.Err()
+		}
+		return Response{}, c.fail(errclass.ClassRetryable, "讀取回應失敗", err)
+	}
+	if c.Type == TypeAnthropic {
+		return decodeAnthropic(raw, req.Spec.ToolName())
+	}
+	return decodeOpenAI(raw)
+}
+
+// client 回傳不跟隨轉址（標頭帶有 API key）、回應標頭逾時放寬到整個請求的 client 複本；netguard 的連線防護原樣保留。
+func (c *HTTPClient) client() *http.Client {
+	hc := *c.HTTP
+	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	switch tr := hc.Transport.(type) {
+	case *http.Transport:
+		tr = tr.Clone()
+		tr.ResponseHeaderTimeout = requestTimeout
+		hc.Transport = tr
+	case interface {
+		WithResponseHeaderTimeout(time.Duration) http.RoundTripper
+	}:
+		hc.Transport = tr.WithResponseHeaderTimeout(requestTimeout)
+	}
+	return &hc
+}
+
+func (c *HTTPClient) fail(class errclass.Class, detail string, err error) *errclass.Error {
+	return &errclass.Error{Class: class, Source: "llm:" + c.ID, Detail: detail, Err: err}
+}
+
+// statusError 依狀態碼分類錯誤。訊息只帶狀態碼與 provider 回報的錯誤摘要，不帶請求內容與 key。
+func (c *HTTPClient) statusError(model string, resp *http.Response, body []byte) error {
+	code := resp.StatusCode
+	detail := fmt.Sprintf("HTTP %d：%s", code, errorSummary(body))
+	switch {
+	case code == http.StatusNotFound:
+		return &errclass.Error{
+			Class: errclass.ClassNeedsAction, Source: "llm:" + c.ID, Detail: detail,
+			Message: fmt.Sprintf("模型 %s 已停用或不存在。", model), Actions: []string{ActionChangeModel},
+		}
+	case code == http.StatusUnauthorized || code == http.StatusForbidden:
+		return &errclass.Error{
+			Class: errclass.ClassNeedsAction, Source: "llm:" + c.ID, Detail: detail,
+			Message: fmt.Sprintf("LLM provider %s 拒絕了 API key（HTTP %d）。", c.ID, code), Actions: []string{ActionSetAPIKey},
+		}
+	case code == http.StatusTooManyRequests || code >= 500:
+		e := c.fail(errclass.ClassRetryable, detail, nil)
+		e.RetryAfter = retryAfter(resp.Header.Get("Retry-After"), c.Now)
+		return e
+	default:
+		e := c.fail(errclass.ClassPermanent, detail, nil)
+		e.Message = fmt.Sprintf("LLM provider %s 拒絕了請求（HTTP %d），重試也不會成功。", c.ID, code)
+		return e
+	}
+}
+
+// errorSummary 取出 provider 錯誤回應中的 message（兩家都是 {"error": {"message"}}），最多 200 個字元。
+func errorSummary(body []byte) string {
+	var v struct {
+		Error struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+		} `json:"error"`
+	}
+	msg := ""
+	if json.Unmarshal(body, &v) == nil {
+		msg = strings.TrimSpace(v.Error.Type + " " + v.Error.Message)
+	}
+	if r := []rune(msg); len(r) > 200 {
+		msg = string(r[:200]) + "…"
+	}
+	return msg
+}
+
+// retryAfter 解析 Retry-After：秒數或 HTTP 日期；無法解析或是負數時回傳 0。上限 1 小時。
+func retryAfter(v string, now func() time.Time) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	var d time.Duration
+	if n, err := strconv.Atoi(v); err == nil {
+		d = time.Duration(n) * time.Second
+	} else if t, err := http.ParseTime(v); err == nil && now != nil {
+		d = t.Sub(now())
+	}
+	if d < 0 {
+		return 0
+	}
+	return min(d, time.Hour)
+}
+
+// encode 依 wire format 組出端點與 body（ADR-0019）。
+func (c *HTTPClient) encode(req Request) (url string, body []byte, err error) {
+	base := strings.TrimRight(c.BaseURL, "/")
+	userBlocks := []map[string]any{
+		// 固定前綴的結尾加 cache 標記（LLM-R3）；openai 會自動快取相同的前綴，不需要標記。
+		{"type": "text", "text": req.Fixed.Prefix, "cache_control": map[string]any{"type": "ephemeral"}},
+		{"type": "text", "text": req.Data},
+	}
+	if req.Retry != "" {
+		userBlocks = append(userBlocks, map[string]any{"type": "text", "text": req.Retry})
+	}
+	var v any
+	if c.Type == TypeAnthropic {
+		url = base + "/v1/messages"
+		v = map[string]any{
+			"model":      req.Model,
+			"max_tokens": max(req.MaxTokens, 1),
+			"system":     []map[string]any{{"type": "text", "text": req.Fixed.System}},
+			"messages":   []map[string]any{{"role": "user", "content": userBlocks}},
+			"tools": []map[string]any{{
+				"name":         req.Spec.ToolName(),
+				"description":  "輸出 " + req.Spec.Stage + " 步驟的結果。",
+				"input_schema": req.Spec.Schema,
+			}},
+			"tool_choice": map[string]any{"type": "tool", "name": req.Spec.ToolName()},
+		}
+	} else {
+		url = base + "/chat/completions"
+		parts := []string{req.Fixed.Prefix, req.Data}
+		if req.Retry != "" {
+			parts = append(parts, req.Retry)
+		}
+		v = map[string]any{
+			"model": req.Model,
+			"messages": []map[string]any{
+				{"role": "system", "content": req.Fixed.System},
+				{"role": "user", "content": strings.Join(parts, "\n")},
+			},
+			"response_format": map[string]any{
+				"type": "json_schema",
+				"json_schema": map[string]any{
+					"name": req.Spec.ToolName(), "strict": true, "schema": req.Spec.Schema,
+				},
+			},
+		}
+	}
+	body, err = json.Marshal(v)
+	return url, body, err
+}
+
+// decodeAnthropic 取出強制的 tool_use block 的 input。沒有這個 block 時（模型偶爾直接回文字）Output 是 nil。
+func decodeAnthropic(raw []byte, tool string) (Response, error) {
+	var v struct {
+		Content []struct {
+			Type  string          `json:"type"`
+			Name  string          `json:"name"`
+			Input json.RawMessage `json:"input"`
+		} `json:"content"`
+		StopReason string `json:"stop_reason"`
+		Usage      Usage  `json:"usage"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return Response{}, &errclass.Error{Class: errclass.ClassRetryable, Source: "llm", Detail: "回應不是預期的 JSON", Err: err}
+	}
+	res := Response{Usage: v.Usage}
+	if v.StopReason == "max_tokens" {
+		res.Problem = "the output was cut off by max_tokens"
+		return res, nil
+	}
+	for _, b := range v.Content {
+		if b.Type == "tool_use" && b.Name == tool {
+			if len(b.Input) == 0 {
+				res.Problem = "the " + tool + " tool_use block has no input"
+				return res, nil
+			}
+			res.Output = b.Input
+			return res, nil
+		}
+	}
+	res.Problem = "no " + tool + " tool_use block in the response"
+	return res, nil
+}
+
+// decodeOpenAI 取出第一個 choice 的 content（strict json_schema 的輸出是 JSON 字串）。
+func decodeOpenAI(raw []byte) (Response, error) {
+	var v struct {
+		Choices []struct {
+			Message struct {
+				Content *string `json:"content"`
+				Refusal *string `json:"refusal"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens        int `json:"prompt_tokens"`
+			CompletionTokens    int `json:"completion_tokens"`
+			PromptTokensDetails struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return Response{}, &errclass.Error{Class: errclass.ClassRetryable, Source: "llm", Detail: "回應不是預期的 JSON", Err: err}
+	}
+	res := Response{Usage: Usage{
+		InputTokens: v.Usage.PromptTokens, OutputTokens: v.Usage.CompletionTokens, CacheReadTokens: v.Usage.PromptTokensDetails.CachedTokens,
+	}}
+	switch {
+	case len(v.Choices) == 0:
+		res.Problem = "the response has no choices"
+	case v.Choices[0].Message.Refusal != nil && *v.Choices[0].Message.Refusal != "":
+		res.Problem = "the model refused"
+	case v.Choices[0].FinishReason == "length":
+		res.Problem = "the output was cut off by the token limit"
+	case v.Choices[0].Message.Content == nil:
+		res.Problem = "the response has no content"
+	default:
+		res.Output = []byte(*v.Choices[0].Message.Content)
+	}
+	return res, nil
+}
