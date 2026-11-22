@@ -93,6 +93,7 @@
 | `local-sidecar`、`local-embedded` | 本機的外掛字幕檔、內嵌字幕軌 |
 | `supadata` | Supadata |
 | `groq`、`whisper-1`、`voxtral` | ASR provider（依設定檔中的 ID） |
+| `hub` | 從 Hub 取得的原始字幕（M5：重新生成與 ASR 前查詢，HSHR-R9、R14） |
 
 ## 4. 步驟
 
@@ -656,3 +657,100 @@ bundle 一律在執行時由步驟產生（Go 的 `archive/zip`，必要時用 `
 | `When the session {string} is revoked by the owner` | 先用這個 session 的 jar 送出 `GET /api/auth/sessions`，取 `current: true` 那一筆的 `id`（不改寫最近一次的回應），再用 owner 的 session 送出 `DELETE /api/auth/sessions/<id>`；DELETE 的回應成為最近一次的回應 |
 | `Then the session list does not contain the secret of the session {string}` | 最近一次回應的原始 body 不含這個 session 的 `notesteme_session` 值，也不含它的 sha256（十六進位與 base64url 兩種寫法） |
 | `When the token {string} is rotated as {string}` | 用 owner 的 session 送出 `POST /api/tokens/<第一個參數>/rotate`；回應是 200 且有 `token` 時，把新的明文記為 `World.Refs["token:"+第二個參數]`（之後 `with the token {string}` 用第二個參數），原本名稱的 `Refs` 不變（所以用第一個參數送出的請求帶的是舊 secret）。回應成為最近一次的回應 |
+### 4.30 Hub 實例與帳號（`steps/hub.go`，M5）
+
+M5 的句型（4.30～4.32）在 2026-11-23 規格展開時加入，目前全部註冊為 pending 的步驟樁（`godog.ErrPending`），由 M5 的實作切片換成真正的實作。測試替身的設計見 [ADR-0030](../adr/0030-hub-deployment-and-storage.md) 第 3 點與 `features/fixtures/README.md` 的「M5 的假服務」。
+
+M5 的領域用語：
+
+| English | 繁中 | 說明 |
+|---|---|---|
+| Hub | Hub | 分享字幕與筆記的資源站（`notesteme-hub`，M5） |
+| hub member | Hub 使用者 | 登入 Hub 的人；場景中以名稱（例如 `"alice"`）指稱 |
+| hub admin | Hub 管理員 | `admins` 群組的成員 |
+| identity | 登入方式 | 一個 OAuth 供應商的帳號，以 `(provider, subject)` 識別 |
+| Hub token | Hub token | Hub 的 PAT（`nsh_…`），權限是 Hub 的 `read`、`download`、`regenerate`、`upload`、`moderate`、`admin` |
+| share | 分享 | 一次上傳到 Hub 的 bundle |
+| version | 版本 | Hub 上一部影片的一份產出內容，以 `(video, kind, variant, lang, sha256)` 識別 |
+| derivation | 衍生關係 | 版本之間的 `parent` 或 `regenerated_from` |
+| takedown request | 下架申請 | 要求移除版本的申請，不需要帳號 |
+| lookup | ASR 前查詢 | Client 以影片 ID 雜湊的前綴查詢 Hub（HSHR-R13） |
+
+規則：
+
+- **閘門**：每個 M5 的 `.feature` 在 Background 的第一步是閘門句型，二選一：`Given a Hub is running`（真 Hub，HACC、HREP、HMCP）或 `Given the owner's client is connected to a Hub`（fakehub，HSHR）。一個 `.feature` 只用其中一個（ADR-0030 第 3 點）。閘門實作之後，場景會往下跑到 Client 的設定驗證：Client 的設定檔與處理方案在產品實作之前不認得 `hub:` 區段，所以 M5 的第一個實作切片（M5-S0）先讓 Client 的設定 schema 接受 `hub.url`、`hub.precheck`，Client 的 M5 路由（`/api/settings/hub`、`/api/items/:id/hub/share`、`/api/hub/import`）回 501 stub（同 M2 S0、M3-S0），之後各切片以 `@M5` 的逐場景結果（junit）和切片開始前比對。
+- **兩邊共用的 seeding**（`Given the Hub has the version … with:`、`Given the Hub version … has the cues:`）寫進 Background 啟動的那一個 Hub；兩個都沒有或兩個都有時步驟失敗。
+- **代入**：請求路徑、請求 body 與 CLI 指令參數中的 `{version:<名稱>}` 換成該版本在 Hub 上的實際 ID（名稱來自 `the Hub has the version …` 或 `… is known as …`），同 `{token:<名稱>}`；`{user:<名稱>}` 換成這位 Hub 使用者的帳號 ID；`{takedown:last}` 換成最近一次建立的下架申請 ID，`{report:last}` 同理。預期結果的 JSON 不展開。
+- **最近一次回應**：送到 Hub 的請求（`the hub member … sends`、`the Hub client sends`、登入流程的步驟）和送到 Client 的請求共用「最近一次回應」，所以 `Then the response status is {int}`、`Then the response contains:`、`Then the response header {string} contains {string}` 都可以斷言 Hub 的回應。
+- **時間**：真 Hub 使用場景的 fake clock（`Given the clock is at`、`When the clock advances by`），帳號齡、state 的期限、PAT 的期限與限流都以它計算。
+- **網路**：真 Hub 的對外連線走場景的 fakenet；`fakeoauth` 以真的主機名稱登記（`accounts.google.com`、`oauth2.googleapis.com`、`openidconnect.googleapis.com`、`www.googleapis.com`、`github.com`、`api.github.com`、`connect.linux.do`；Google 的名稱實作時對照官方文件），所以 `Then no connection was made to {string}` 也可以驗證 Hub（HREP-R12）。
+- **登入**：`"<名稱>"` 是一個人，在每個供應商都可以有一個同名的使用者；沒有用 `the OAuth provider … has the user …` 定義時，第一次使用就以預設值建立：`subject` 為 `<供應商>-<名稱>`、`login` 為名稱、`email` 為 `<名稱>@example.com` 且 `email_verified: true`、`trust_level: 0`、沒有 `orgs`。Hub 使用者的 session 以名稱保存，最後一次成功登入的 session 生效。
+- Hub 的預設設定（沒有 `the Hub config contains:` 時）：`public_url: https://hub.example.org`，三個供應商都設定了測試用的 `client_id` 與 secret，`site.visibility: authenticated`，其他依各規格的預設值。
+
+| 步驟 | 意思 |
+|---|---|
+| `Given a Hub is running` | 閘門：以目前累積的 Hub 設定在程序內啟動真 Hub（`internal/hub`，SQLite 與 fs blob 放在場景目錄的 `hub/`），並在 fakenet 登記 `hub.example.org` 與三個 `fakeoauth` 供應商 |
+| `Given the Hub config contains:` | Hub 設定檔（`notesteme-hub.yaml`，YAML）的內容，和預設設定合併（物件逐鍵合併，陣列整個取代）；必須在第一個送到 Hub 的請求之前，之後的步驟只累積，Hub 在下一個請求時以新設定重新啟動（資料保留） |
+| `Given the OAuth provider {string} has the user {string} with:` | 假供應商（`google`、`github`、`linuxdo`）的使用者；表格欄位 `field`、`value`：`subject`、`login`、`email`、`email_verified`（`true`／`false`）、`trust_level`（Linux.do）、`orgs`（GitHub，以逗號分隔） |
+| `Given the OAuth provider {string} denies the next sign-in` | 下一次 authorize 時，假供應商以 `error=access_denied` 轉回 callback |
+| `When {string} starts signing in to the Hub with {string}` | `GET /auth/<供應商>/start`，不跟隨轉址；記下 302 回應（`Location` 是假供應商的 authorize URL）與 `notesteme_hub_oauth` cookie，等待之後的步驟完成這次登入 |
+| `When the OAuth provider {string} completes the pending sign-in` | 以這個人在該供應商的使用者完成等待中的 authorize，帶 cookie 打開供應商轉回的 callback；最近一次回應是 Hub 對 callback 的回應。成功時保存 session |
+| `When the pending sign-in returns with a different state` | 同上，但把 callback 的 `state` 換成另一個隨機值（cookie 不變） |
+| `When the last sign-in callback is replayed` | 帶同一個 cookie 再打開一次最近一次的 callback URL（同一個 `code` 與 `state`） |
+| `When {string} signs in to the Hub with {string}` | `starts signing in` 加上 `completes the pending sign-in`；失敗時步驟本身不失敗，用 `Then the response …` 斷言 |
+| `Given the hub member {string} signed in with {string}` | 同上，但登入沒有成功時步驟失敗（前提用） |
+| `When the hub member {string} links the {string} user {string}` | 用這位 Hub 使用者的 session 送出 `POST /api/v1/me/identities/<供應商>/link`，以第三個參數指稱的假供應商使用者完成 authorize 與 callback；最近一次回應是 link 請求失敗時的回應，否則是 callback 的回應 |
+| `Then the OAuth provider {string} received a valid PKCE verifier` | 假供應商最近一次 token 請求帶有 `code_verifier`，而且 `BASE64URL(SHA256(verifier))` 等於對應 authorize 請求的 `code_challenge`、`code_challenge_method` 為 `S256` |
+| `Then the number of Hub accounts is {int}` | Hub 的帳號總數（唯讀查詢 Hub 的 DB） |
+| `When the hub member {string} sends {string}` | 用這位 Hub 使用者的 session 送到 Hub 的請求；非 GET 請求自動帶 CSRF token |
+| `When the hub member {string} sends {string} with:` | 同上，帶 JSON body |
+| `When the hub member {string} sends {string} without a CSRF token` | 用 session 送出請求，但不帶 `X-CSRF-Token` |
+| `When the Hub client sends {string}` | 不帶任何身分、送到 Hub 的請求 |
+| `When the Hub client sends {string} with:` | 同上，帶 JSON body |
+| `Given a Hub token {string} for {string} with the permissions {string}` | 以這位 Hub 使用者的 session 送出 `POST /api/v1/me/tokens`（權限以逗號分隔），保存回應中的 token；請求沒有成功時步驟失敗 |
+| `When the Hub client sends {string} with the Hub token {string}` | 帶 `Authorization: Bearer <Hub token>` 的請求 |
+| `When the Hub client sends {string} with the Hub token {string} and:` | 同上，帶 JSON body |
+| `When the Hub client sends {string} with the Hub token {string} from the origin {string}` | 同上，加上 `Origin` 標頭；用於 HMCP-R2（`POST /mcp` 時 body 是 MCP 的 `initialize` 請求） |
+| `Given the hub member {string} is in the group {string}` | 直接在 Hub 的 DB 以 `source: manual` 把這位使用者加入群組（`admins` 以 `source: config`）；使用者必須已經登入過 |
+| `Given the hub member {string} is suspended` | 直接在 Hub 的 DB 停用這位使用者 |
+| `When the Hub MCP client with the Hub token {string} lists the tools` | 對 Hub 的 `/mcp` 呼叫 `tools/list`；`Then the listed names include …` 等 4.7 的步驟斷言它 |
+| `When the Hub MCP client with the Hub token {string} calls {string} with:` | 對 Hub 的 `/mcp` 呼叫 tool，參數為 JSON；`Then the tool result contains:`、`Then the tool call fails with {string}` 斷言它 |
+
+### 4.31 Hub 的內容（`steps/hub_content.go`，M5）
+
+bundle 由步驟在場景目錄中產生，不 commit 二進位 fixture：字幕內容依列的順序產生確定的 cues（每個 `content` 值對應一份固定的內容，兩列的 `content` 相同就產生完全相同的 bytes），筆記與章節同理。
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the Hub has the version {string} of {string} with:` | seeding：直接在 Hub（真 Hub 的 DB 與 blob，或 fakehub 的記憶體）建立一個 `visible` 的版本，名稱是第一個參數；第二個參數是影音代號（`yt:`、`bili:`、`pod:`）。表格欄位 `field`、`value`：`kind`（預設 `transcript`）、`variant`（預設 `source`）、`lang`（預設 `en`）、`uploader`（Hub 使用者名稱，預設 `uploader`；沒有登入過時直接在 DB 建立這位使用者與一個 `github` 身分；fakehub 只記名稱）、`transcribe_model`、`correct_model`、`translate_model`、`model_verified`（預設 `true`）、`visibility`（預設跟隨站台）、`license`（預設 `CC-BY-4.0`）、`score`（預設 0）、`channel`（頻道的 `external_id`）、`content`（同上的內容名稱） |
+| `Given the Hub version {string} has the cues:` | 指定這個版本的字幕內容；表格欄位同 4.4 的 `#`、`start`、`end`、`text`。版本的 `sha256` 依內容重新計算 |
+| `Given a bundle {string} of {string} with the artifacts:` | 在場景目錄產生一個 bundle v0（BND 規格），名稱是第一個參數，影音是第二個參數；manifest 的 `item` 預設 `title: Fixture Video`、`availability: public`、`original_lang: en`、`license: CC-BY-4.0`，`created_by` 只有 `app_version`。表格每列一個產出，欄位：`kind`、`variant`、`lang`，可加 `content`、`source`、`executor`（預設 `api`）、`provider`、`model`、`model_verified`、`cookie_required`、`parents`（同一個 bundle 中其他列的 `<variant>:<lang>`，以逗號分隔，寫成 `parents_sha256`）、`hub_origin`（Hub 版本的名稱，寫成 `hub_origin.{version_id,sha256}`） |
+| `Given the bundle {string} has the manifest fields:` | 覆寫 manifest 的欄位；表格欄位 `field`（點號路徑，例如 `item.availability`、`license`、`artifacts.0.provenance.extra`）、`value`（字串；`<absent>` 代表刪除這個欄位） |
+| `Given the bundle {string} has a note containing:` | 在 bundle 加上一個 `note` 產出（`lang: en`），內容是 doc string（Markdown） |
+| `Given the bundle {string} is made unsafe with {string}` | 讓 bundle 違反 BND 的一條規則：`an absolute path`（加入 `/etc/notesteme` 項目）、`a parent directory entry`（`artifacts/../x`）、`a symlink`（Unix mode 為 symlink 的項目）、`a sha256 mismatch`（改動一個產出檔案的內容）、`a media file`（加入 `artifacts/<id>.mp4`，內容以 MP4 的 `ftyp` 簽章開頭，並列在 manifest 中） |
+| `When the hub member {string} shares the bundle {string}` | 用 session 送出 `POST /api/v1/shares`（multipart：`bundle`、`attest=true`） |
+| `When the hub member {string} shares the bundle {string} with:` | 同上，multipart 的其他欄位由表格（`field`、`value`）指定或覆寫，例如 `attest`、`visibility`；`value` 為 `<absent>` 時不送這個欄位 |
+| `Given the Hub version of {string} for {string} is known as {string}` | 給 Hub 上的版本一個名稱：第一個參數是影音代號，第二個是 `<kind>:<variant>:<lang>`（例如 `transcript:corrected:en`；`note` 與 `chapters` 寫成 `note::en`）；這樣的版本必須剛好一個（任何狀態）。之後可以用 `{version:<名稱>}` 指稱它 |
+| `Then the Hub has {int} versions of {string}` | Hub 上這部影片的版本數（任何狀態；唯讀查詢 DB） |
+| `Then the Hub version {string} is {string}` | 版本的狀態：`visible`、`hidden`、`removed`、`withdrawn`（唯讀查詢 DB） |
+| `Then the Hub version {string} is derived from {string} as {string}` | Hub 的 `derivations` 中有一筆 child 為第一個版本、parent 為第二個版本、`relation` 相符（`parent`、`regenerated_from`）的紀錄 |
+| `Then the Hub stores the content {string} once` | Hub 的 blob 中，這個內容名稱的 sha256 剛好一個檔案，而且引用它的版本至少一個 |
+
+### 4.32 Client 與 Hub（`steps/hub_client.go`，M5）
+
+這一組只用於 fakehub（`features/internal/fakehub`）：Client 的 `hub.url` 指到 `https://hub.example.org`，fakehub 以這個主機名稱掛在 fakenet 上，實作 ADR-0032 第 1 點的 Client 契約，並記錄收到的每個請求（方法、路徑、query、標頭、body；multipart 的 bundle 會解開保存）。
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the owner's client is connected to a Hub` | 閘門：啟動 fakehub；Client 的設定檔加上 `hub.url: https://hub.example.org`（設定檔已經有 `hub.url` 時不覆寫）；server 啟動後以 `PUT /api/settings/hub` 設定 token（fakehub 接受這個 token，權限預設 `read,download,regenerate,upload`） |
+| `Given the client's Hub token has the permissions {string}` | fakehub 對 Client 的 token 只授予這些權限（以逗號分隔）；缺少的權限回 403，帶 `required_permission` |
+| `Given the client's Hub token is not set` | server 啟動後不設定 token（`GET /api/settings/hub` 的 `token_set` 為 `false`） |
+| `Given the Hub fails with HTTP {int}` | fakehub 對所有請求回應指定的狀態碼（429 時附 `retry_after_s: 30` 與 `Retry-After: 30`） |
+| `Given the Hub does not respond` | fakehub 收到請求後不回應，直到 Client 逾時（fakehub 以 fake clock 判斷，不真的等待） |
+| `Given the Hub serves tampered content for the version {string}` | `GET /api/v1/versions/:id/content` 回傳和版本 `sha256` 不符的內容（仍然是合法的 cues JSON） |
+| `Then the Hub received {int} requests` | fakehub 收到的請求總數 |
+| `Then the Hub was asked for a lookup {int} times` | fakehub 收到的 `GET /api/v1/lookup` 次數 |
+| `Then the Hub received a share of {string} with the artifacts:` | fakehub 最後收到的分享是這部影片的，bundle 中的產出（不分順序）正好是表格列出的這些；表格欄位 `kind`、`variant`、`lang`（`note`、`chapters` 的 `variant` 留空） |
+| `Then the last bundle sent to the Hub has the manifest fields:` | fakehub 最後收到的 bundle 的 manifest；表格欄位 `field`（點號路徑，數字是陣列索引）、`value`（字串比較；`<absent>` 代表欄位不存在） |
+| `Then the last bundle sent to the Hub does not contain {string}` | fakehub 最後收到的 bundle 中，manifest 與每個檔案的內容都不含這段文字；沒有收到任何 bundle 時失敗 |
+| `Then the Hub never received the video ID of {string}` | fakehub 收到的所有請求（路徑、query、標頭、body，不含分享的 bundle）都不含這部影片的平台 ID；沒有收到任何請求時失敗（沒有東西可以驗證） |
