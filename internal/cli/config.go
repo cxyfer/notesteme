@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/cxyfer/notesteme/internal/configio"
 	"github.com/cxyfer/notesteme/internal/validate"
@@ -188,19 +189,42 @@ func newImportRejected(ae *apiError, raw []byte) *importRejected {
 	return r
 }
 
+// Error 逐行列出錯誤。欄位路徑含有檔案中的鍵（不可信的輸入），輸出到終端機之前一律跳脫控制字元：
+// 否則 `"\e]52;…": 1` 這樣的鍵可以把 ANSI／OSC 序列送進使用者的終端機，含換行的鍵也能偽造出另一行錯誤。
 func (e *importRejected) Error() string {
 	var b strings.Builder
-	b.WriteString(e.Message)
+	b.WriteString(escapeControl(e.Message))
 	for _, f := range e.Fields {
 		b.WriteString("\n  ")
 		if f.Path != "" {
-			b.WriteString(f.Path)
+			b.WriteString(escapeControl(f.Path))
 			b.WriteString("：")
 		}
-		b.WriteString(f.Message)
+		b.WriteString(escapeControl(f.Message))
 	}
 	return b.String()
 }
+
+// escapeControl 把控制字元（C0、DEL、C1）與格式字元（雙向覆寫、零寬字元等）換成 \xNN、\uNNNN。
+func escapeControl(s string) string {
+	if !strings.ContainsFunc(s, isUnsafeRune) {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case !isUnsafeRune(r):
+			b.WriteRune(r)
+		case r < 0x100:
+			fmt.Fprintf(&b, `\x%02x`, r)
+		default:
+			fmt.Fprintf(&b, `\u%04x`, r)
+		}
+	}
+	return b.String()
+}
+
+func isUnsafeRune(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }
 
 // errCodeConfigInvalid 與 API 的 CodeConfigInvalid 相同。
 const errCodeConfigInvalid = "config_invalid"

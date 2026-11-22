@@ -242,3 +242,46 @@ func TestConfigExportRemote(t *testing.T) {
 		t.Errorf("403：%+v %s", res, errOut)
 	}
 }
+
+// 檔案中的鍵是不可信的輸入：錯誤訊息到終端機之前要跳脫控制字元，不能帶出 ESC、BEL 或換行。
+func TestConfigImportEscapesControlCharsInErrors(t *testing.T) {
+	env, _ := testEnv(t)
+	bad := writeYAML(t, "\"\\e]52;c;evil\\a\": 1\n"+
+		"\"fake\\nprofiles.injected\": 2\n"+
+		"profiles:\n  \"a\\e[2J\\u202e\": 5\n")
+	res, out, errOut := run(t, env, "config", "import", bad)
+	if res.Code != 1 || out != "" {
+		t.Fatalf("結果 = %+v，stdout：%q，stderr：%q", res, out, errOut)
+	}
+	for _, r := range errOut {
+		if (r < 0x20 && r != '\n') || r == 0x7f || (r >= 0x80 && r <= 0x9f) || r == 0x202e {
+			t.Errorf("stderr 含有未跳脫的控制字元 %U：%q", r, errOut)
+		}
+	}
+	// 每個錯誤各佔一行：含換行的鍵不能偽造出額外的一行。
+	for _, line := range strings.Split(strings.TrimSpace(errOut), "\n")[1:] {
+		if !strings.HasPrefix(line, "  ") {
+			t.Errorf("出現不是錯誤項目的行：%q（整段：%q）", line, errOut)
+		}
+	}
+	for _, want := range []string{`\x1b]52;c;evil\x07`, `fake\x0aprofiles.injected`, `a\x1b[2J\u202e`} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("stderr 沒有跳脫後的 %q：%q", want, errOut)
+		}
+	}
+}
+
+func TestEscapeControl(t *testing.T) {
+	cases := map[string]string{
+		"plain 中文 path.0": "plain 中文 path.0",
+		"a\x1bb":          `a\x1bb`,
+		"a\nb\tc":         `a\x0ab\x09c`,
+		"\x7f\u009b":      `\x7f\x9b`,
+		"x\u200by":        `x\u200by`,
+	}
+	for in, want := range cases {
+		if got := escapeControl(in); got != want {
+			t.Errorf("escapeControl(%q) = %q，預期 %q", in, got, want)
+		}
+	}
+}
