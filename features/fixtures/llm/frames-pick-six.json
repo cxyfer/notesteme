@@ -1,0 +1,12 @@
+{
+  "output": {
+    "picks": [
+      { "sheet": 1, "n": 1, "caption": "Title slide: Designing a Cache" },
+      { "sheet": 1, "n": 2, "caption": "The read path through the cache" },
+      { "sheet": 1, "n": 3, "caption": "Hit ratio chart" },
+      { "sheet": 1, "n": 4, "caption": "Eviction policies compared" },
+      { "sheet": 1, "n": 7, "caption": "Write-through versus write-back" },
+      { "sheet": 1, "n": 9, "caption": "Summary slide" }
+    ]
+  }
+}

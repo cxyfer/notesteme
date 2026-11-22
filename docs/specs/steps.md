@@ -357,3 +357,12 @@ M3 的句型（4.13～4.16）在 2026-11-23 規格展開時加入，目前全部
 | `Then SponsorBlock received {int} requests for {string}` | 假 SponsorBlock 收到、hash 前綴與這部影片相同的請求數（含失敗的請求） |
 | `Then SponsorBlock never received the video ID of {string}` | 假 SponsorBlock 收到的所有請求（路徑、query、標頭、body）都不含這部影片的 11 字元 ID；完全沒有收到請求時失敗（沒有東西可以驗證） |
 | `Given the chapters of {string} are:` | 直接寫入現行的 `chapters` 產出（同 `the … transcript of … is:` 的 seeding，影音不存在時先新增並做到 metadata）；表格欄位 `start`（時間碼）、`title`，可加 `cue`；有 `cue` 欄時 `origin` 是 `llm`，否則是 `platform` |
+
+### 4.14 關鍵畫面（`steps/frames.go`，M3）
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the video of {string} has the scenes:` | 假 ffmpeg（`features/internal/fakeframes`）中這部影片的畫面：表格欄位 `at`（時間碼）、`score`（場景分數 0～1）、`color`（`#rrggbb`）。場景偵測（`select='gt(scene,T)'` 加 `showinfo`）只回報分數大於 `T` 的列；任何時間點擷取的畫面都是「時間不晚於它的最後一列」的純色圖（第一列之前是黑色），所以去重與密度下限都可以預測。也會讓假 yt-dlp 為這部影片提供影像串流；沒有這個步驟的 YouTube 影片下載後沒有影像串流 |
+| `Given the best video format of {string} is {string}` | 假 yt-dlp 的格式清單中，這部影片最高畫質的影像格式（`寬x高`，例如 `"3840x2160"`）；另外一律有 `1280x720` 以下的格式。假 ffmpeg 擷取的圖片尺寸依實際下載的格式與縮放參數計算 |
+| `Given the frames of {string} are:` | 直接寫入現行的 `frames` 產出與圖片（seeding）；表格欄位 `#`、`at`、`selected`（`yes`／`no`），可加 `caption`、`chapter`、`color`。圖片是 1280x720 的純色 JPEG |
+| `Then the tool result has an image of type {string}` | 最近一次 tool 呼叫的結果含有 MCP 的 image content，`mimeType` 相符，資料可以解碼成該格式的圖片 |

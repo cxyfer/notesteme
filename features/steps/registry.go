@@ -81,6 +81,7 @@ func register(r *Registry, s *Scenario) {
 	registerConfig(r, s)
 	registerOps(r, s)
 	registerChapters(r, s)
+	registerFrames(r, s)
 }
 
 // Initialize 把全部步驟註冊到 godog 的 ScenarioContext。

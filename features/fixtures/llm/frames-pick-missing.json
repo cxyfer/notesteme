@@ -1,0 +1,7 @@
+{
+  "output": {
+    "picks": [
+      { "sheet": 1, "n": 12, "caption": "A frame that is not on the sheet" }
+    ]
+  }
+}
