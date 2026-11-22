@@ -63,9 +63,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # govulncheck 本身需要較新的 Go（v1.10.0 要求 >= 1.26），go.mod 的版本不夠；
+      # 用最新的穩定版 toolchain 執行，標準函式庫的弱點也以它的版本為準。
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: stable
 
       # NFR-SEC-4：只有程式實際呼叫到的弱點才會讓指令失敗（exit 3）。
       - name: govulncheck
