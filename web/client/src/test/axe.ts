@@ -7,6 +7,8 @@ export async function expectNoA11yViolations(node: Element = document.body) {
   const results = await axe.run(node, {
     rules: { "color-contrast": { enabled: false } },
     resultTypes: ["violations"],
+    // 嵌入的 YouTube／Bilibili 播放器是跨來源的 iframe，axe 進不去（jsdom 裡也不是真的 frame）
+    iframes: false,
   });
   const serious = results.violations.filter(
     (v) => v.impact === "serious" || v.impact === "critical",

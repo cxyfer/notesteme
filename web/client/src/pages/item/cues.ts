@@ -36,7 +36,7 @@ export function toCues(api: readonly ApiCue[] | null | undefined): Cue[] {
 }
 
 /** 在 start 已排序的句子中找 t 所在（或最後一個已開始）的句子；t 在第一句之前回傳 -1 */
-export function cueAt(cues: readonly Cue[], t: number): number {
+export function cueAt(cues: readonly { start: number }[], t: number): number {
   let lo = 0;
   let hi = cues.length - 1;
   let found = -1;

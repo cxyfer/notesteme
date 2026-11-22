@@ -32,8 +32,7 @@
       "title": "佇列"
     },
     "item": {
-      "title": "影音詳情",
-      "id": "影音代號：{{id}}"
+      "title": "影音詳情"
     },
     "settings": {
       "title": "設定",
@@ -102,7 +101,12 @@
     "builtin_style": "內建樣式不能修改。先複製成自訂樣式。",
     "prompt_exists": "已經有同名的 prompt。換一個名稱。",
     "builtin_prompt": "內建的 prompt 不能修改。另存為新的 prompt 後再修改。",
-    "builtin_profile": "內建的處理方案 default 不能刪除。"
+    "builtin_profile": "內建的處理方案 default 不能刪除。",
+    "no_agent_tasks": "這個步驟沒有等待中的 Agent 任務，不需要切換。",
+    "api_not_configured": "這個步驟沒有設定 API 的 provider，無法改用 API 處理。先到設定加上 provider。",
+    "no_media": "這部影音沒有可以播放的本機媒體。",
+    "media_missing": "本機檔案已經不在原處。",
+    "not_implemented": "這個功能還沒有做好。"
   },
   "status": {
     "pending": "等待中",
@@ -305,6 +309,285 @@
     "startedWithExisting_other": "已開始處理 {{count}} 部，另外 {{existing}} 部已在媒體庫中",
     "alreadyInLibrary_other": "已在媒體庫中（{{count}} 部），沒有重複新增。",
     "episodes_other": "要新增的集（共 {{count}} 集）"
+  },
+  "actions": {
+    "retry": "重試",
+    "retranslate": "重新翻譯",
+    "recorrectChunk": "重新校正這段",
+    "republish": "處理該檔案後重新輸出",
+    "useAsrNow": "現在改用語音轉錄",
+    "useAsr": "改用語音轉錄",
+    "switchToApi": "改用 API 處理",
+    "uploadCookie": "上傳 cookie",
+    "updateYtDlp": "更新 yt-dlp",
+    "installYtDlp": "安裝 yt-dlp（查看系統設定）",
+    "installFfmpeg": "安裝 ffmpeg（查看系統設定）",
+    "installFfprobe": "安裝 ffprobe（查看系統設定）",
+    "setApiKey": "設定 API key",
+    "setupAsr": "設定語音轉錄服務",
+    "upgradeSupadata": "升級 Supadata 方案",
+    "checkQuota": "檢查 provider 額度",
+    "changeModel": "換一個模型重新處理",
+    "openPrompt": "選擇 Prompt 重新處理"
+  },
+  "item": {
+    "loading": "正在載入影音…",
+    "notFound": "找不到這部影音。它可能已經被刪除。",
+    "breadcrumb": "位置",
+    "actions": {
+      "rerun": "重新處理…",
+      "rerunFrom": "從{{stage}}重新處理",
+      "downloadSrt": "下載字幕（SRT）",
+      "cancel": "停止處理…",
+      "delete": "移到垃圾桶…",
+      "openSettings": "開啟設定",
+      "switched": "{{stage}}已改用 API 處理。",
+      "ytdlpUpdated": "yt-dlp 已更新到 {{version}}。",
+      "ytdlpRolledBack": "新版 yt-dlp 自我檢查失敗，已回到 {{version}}。"
+    },
+    "meta": {
+      "channel": "頻道",
+      "platform": "平台",
+      "openOn": "在 {{platform}} 開啟",
+      "published": "發布",
+      "duration": "長度",
+      "lang": "原文語言",
+      "profile": "處理方案",
+      "source": "字幕來源"
+    },
+    "band": {
+      "label": "時間帶：播放位置",
+      "valueText": "播放位置 {{time}}"
+    },
+    "live": {
+      "done": "{{stage}}完成。",
+      "failed": "{{stage}}失敗。",
+      "blocked": "{{stage}}需要你處理。"
+    },
+    "tabs": {
+      "label": "影音詳情的分頁",
+      "subtitles": "字幕",
+      "stages": "步驟",
+      "stagesAttention_other": "步驟（{{count}} 個需要處理）",
+      "runs": "紀錄",
+      "outputs": "輸出"
+    },
+    "player": {
+      "frameTitle": "播放器：{{title}}",
+      "mediaLabel": "媒體：{{title}}",
+      "mediaUnavailable": "無法播放這個檔案：檔案可能已經移動，或格式瀏覽器不支援。字幕仍然可以閱讀。",
+      "reloadFallback": "播放器沒有回應，點字幕句時會重新載入到那個時間。",
+      "openBilibiliAt": "在 Bilibili 開啟 {{time}}"
+    },
+    "cues": {
+      "title": "字幕",
+      "mode": "顯示模式",
+      "modes": {
+        "source": "原始",
+        "normalized": "正規化",
+        "corrected": "校正",
+        "diff": "差異",
+        "translated": "譯文",
+        "parallel": "對照",
+        "edited": "已編輯"
+      },
+      "targetLang": "譯文語言",
+      "latestLang": "最近產生的",
+      "search": "搜尋字幕",
+      "searchPlaceholder": "搜尋字幕",
+      "count_other": "共 {{formatted}} 句",
+      "matches_other": "找到 {{formatted}} 句",
+      "langSource": "語言 {{lang}}",
+      "langTarget": "目標語言 {{lang}}",
+      "loading": "正在載入字幕…",
+      "empty": "這個版本還沒有字幕。",
+      "noMatches": "沒有符合的字幕句。",
+      "notYet": "還沒有字幕。字幕步驟完成後會出現在這裡。",
+      "listLabel": "字幕句",
+      "backToCurrent": "回到目前位置",
+      "seekTo": "跳到 {{time}}",
+      "seekCurrent": "跳到 {{time}}（目前播放的句子）",
+      "diffDeleted": "刪除的文字",
+      "diffInserted": "新增的文字",
+      "srDeleted": "刪除：",
+      "srInserted": "新增：",
+      "notCorrected": "尚未校正"
+    },
+    "stages": {
+      "title": "處理步驟",
+      "none": "還沒有任何步驟。",
+      "model": "模型",
+      "prompt": "Prompt",
+      "started": "開始",
+      "finished": "結束",
+      "nextCheck": "下次檢查",
+      "attempts": "嘗試次數",
+      "problem": "{{reason}}：{{message}}",
+      "problemNoMessage": "{{reason}}。",
+      "showRuns": "查看執行紀錄"
+    },
+    "runs": {
+      "title": "執行紀錄",
+      "loading": "正在載入執行紀錄…",
+      "empty": "還沒有執行紀錄。",
+      "took": "耗時 {{duration}}",
+      "prompt": "Prompt {{prompt}}",
+      "impl": "實作版本 {{version}}",
+      "config": "當時生效的設定"
+    },
+    "rerun": {
+      "title": "重新處理",
+      "description": "會產生新版本，舊版本保留，可以在「差異」比較。",
+      "from": "從哪個步驟開始",
+      "until": "做到哪個步驟",
+      "untilEnd": "做到最後",
+      "profile": "處理方案",
+      "profileCurrent": "目前的處理方案（最新版本）",
+      "profileVersion": "{{name}}（第 {{version}} 版）",
+      "overrides": "只有這一次：{{stage}}的設定",
+      "provider": "Provider",
+      "providerHint": "留空時用處理方案的設定。",
+      "model": "模型",
+      "prompt": "Prompt",
+      "promptProfile": "用處理方案的設定",
+      "promptVersion": "Prompt 版本",
+      "promptDefault": "預設版本（目前是第 {{version}} 版）",
+      "promptV": "第 {{version}} 版",
+      "chunks": "只重跑這些段落",
+      "chunksHint": "段落編號從 1 起算，例如 2, 5-7；留空時全部重跑，其餘段落重用快取。",
+      "chunksInvalid": "段落編號的格式不正確，請輸入像 2, 5-7 這樣的編號。",
+      "noEstimate": "費用預估：重新處理目前無法預估花費。",
+      "fieldError": "{{path}}：{{message}}",
+      "submit": "從{{stage}}重新處理",
+      "submitting": "正在送出…",
+      "queued": "已從{{stage}}重新排入佇列。"
+    },
+    "cancel": {
+      "title": "停止處理這部影音？",
+      "description": "這部影音所有還沒結束的步驟都會停止並標成「已略過」，執行中的程式會結束。已完成的產出保留，之後可以重新處理。",
+      "confirm": "停止處理",
+      "done": "已停止處理。"
+    },
+    "cookie": {
+      "title": "上傳 {{platform}} 的 cookie",
+      "description": "用瀏覽器擴充功能匯出的 Netscape cookie 檔，或貼上 name=value; … 的標頭。cookie 會加密存放，上傳後等待它的步驟會自動繼續。",
+      "file": "cookie 檔",
+      "paste": "或貼上內容",
+      "submit": "上傳 cookie",
+      "done_other": "已儲存 {{count}} 個 cookie。",
+      "tooLarge": "檔案超過 64 KiB，請只匯出這個平台的 cookie。",
+      "unsupported": "只有 YouTube 與 Bilibili 需要 cookie。"
+    },
+    "delete": {
+      "title": "移到垃圾桶？",
+      "description": "「{{title}}」會移到垃圾桶，在保留期限內可以還原。",
+      "loading": "正在計算影響範圍…",
+      "artifacts_other": "{{formatted}} 個產出（所有版本）",
+      "bytes": "可釋放 {{size}}",
+      "spent": "已花費 {{amount}}（刪除不會退費）",
+      "restoreHint": "永久刪除前，從垃圾桶還原就會回到刪除前的狀態。",
+      "deleteOutputs_other": "同時刪除未修改過的輸出檔（{{formatted}} 個）",
+      "deleteOutputsHint": "還原時，這些輸出檔會重新寫回原本的位置。",
+      "keptTitle": "這些輸出檔不會刪除：",
+      "keptReason": {
+        "modified": "已修改，不會刪除",
+        "outside_roots": "不在允許的資料夾內，不會刪除",
+        "unreadable": "無法讀取，不會刪除"
+      },
+      "confirm": "移到垃圾桶",
+      "deleting": "正在移到垃圾桶…",
+      "done": "已移到垃圾桶。",
+      "doneKept_other": "已移到垃圾桶。保留了 {{formatted}} 個改過的輸出檔。",
+      "restored": "已還原。"
+    },
+    "outputs": {
+      "download": "下載字幕",
+      "formats": {
+        "srt": "SRT",
+        "vtt": "WebVTT",
+        "ass": "ASS（預設樣式）",
+        "bilingual-srt": "雙語 SRT",
+        "txt": "純文字"
+      },
+      "written": "寫出的檔案",
+      "loading": "正在載入輸出…",
+      "none": "還沒有寫出任何檔案。處理方案設定了 sidecar 或 folder 輸出時，檔案會列在這裡。",
+      "target": "輸出目標",
+      "targets": {
+        "sidecar": "影片旁（sidecar）",
+        "folder": "資料夾"
+      },
+      "format": "格式",
+      "lang": "語言",
+      "path": "路徑",
+      "size": "大小",
+      "writtenAt": "寫入時間"
+    },
+    "import": {
+      "title": "匯入修正過的字幕",
+      "description": "在其他軟體改過的 SRT、VTT 或 ASS 會存成新的「已編輯」版本；既有的譯文會標示可能過時，不會自動重新翻譯。",
+      "file": "字幕檔",
+      "lang": "語言（選填）",
+      "langPlaceholder": "原文語言",
+      "submit": "匯入",
+      "submitting": "正在匯入…",
+      "pickFirst": "先選擇一個字幕檔。",
+      "tooLarge": "檔案太大（上限 10 MB）。",
+      "done_other": "已匯入 {{count}} 句。",
+      "doneStale_other": "已匯入 {{count}} 句。既有的譯文可能已經過時。",
+      "atCue": "第 {{line}} 句",
+      "atLine": "檔案第 {{line}} 行",
+      "errorAt": "{{where}}：{{message}}"
+    }
+  },
+  "queue": {
+    "loading": "正在載入佇列…",
+    "pauseAll": "暫停佇列",
+    "resumeAll": "繼續處理",
+    "pausedAll": "已暫停佇列。",
+    "resumedAll": "已繼續處理。",
+    "pausedClass": "已暫停{{cls}}。",
+    "resumedClass": "{{cls}}已繼續處理。",
+    "pausedBanner": "佇列已暫停，新任務不會開始。",
+    "lanes": "資源類別",
+    "class": {
+      "download": "下載",
+      "asr": "轉錄",
+      "llm": "LLM",
+      "frames": "畫面"
+    },
+    "idle": "閒置，上限 {{limit}}",
+    "usage": "使用中 {{running}}，上限 {{limit}}，等待 {{waiting}}",
+    "lanePaused": "已暫停",
+    "pausedWithQueue": "隨佇列暫停",
+    "decrease": "{{cls}}的上限減 1",
+    "increase": "{{cls}}的上限加 1",
+    "limitOf": "{{cls}}的並行上限：",
+    "minus": "−",
+    "plus": "+",
+    "pauseClass": "暫停{{cls}}",
+    "resumeClass": "繼續{{cls}}",
+    "attention": "需要你處理",
+    "attentionNone": "沒有失敗或停住的影音。",
+    "attentionUnavailable": "無法取得需要處理的數量。",
+    "attentionStage_other": "{{stage}}：{{formatted}} 部",
+    "tasks_other": "任務（{{formatted}}）",
+    "agentNote": "這裡只列出 notesteme 自己執行的任務；交給 Agent 的任務請到影音詳情的「步驟」查看。",
+    "taskActionsNote": "還不能單獨重試或取消一個任務，也不能調整優先順序；「停止處理」會停止這部影音所有未結束的步驟。",
+    "filterClass": "資源類別",
+    "filterState": "狀態",
+    "all": "全部",
+    "state": {
+      "leased": "執行中",
+      "pending": "等待中"
+    },
+    "empty": "佇列是空的。新增影音，或等訂閱的頻道有新內容。",
+    "emptyFiltered": "沒有符合條件的任務。",
+    "listLabel": "任務列表",
+    "notBefore": "{{time}} 之後重試",
+    "attempts_other": "已嘗試 {{count}} 次",
+    "stopItem": "停止處理…",
+    "stopItemDescription": "{{item}} 所有還沒結束的步驟都會停止並標成「已略過」，執行中的程式會結束；不是只停這一個任務。已完成的產出保留。"
   },
   "settings": {
     "sections": {

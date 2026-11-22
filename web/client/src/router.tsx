@@ -26,7 +26,7 @@ import {
 } from "@tanstack/react-router";
 
 import { hasSessionHint, safeRedirect } from "./auth/session";
-import { ItemPage } from "./pages/ItemPage";
+import { validateItemSearch } from "./pages/item/search";
 import { validateLibrarySearch } from "./pages/library/filters";
 import { LibraryPage } from "./pages/LibraryPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -34,7 +34,8 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 import { ProfileEditorPage } from "./pages/profiles/ProfileEditorPage";
 import { ProfilesPage } from "./pages/profiles/ProfilesPage";
 import { PromptsPage } from "./pages/prompts/PromptsPage";
-import { QueuePage } from "./pages/QueuePage";
+import { validateQueueSearch } from "./pages/queue/filters";
+import { QueuePage } from "./pages/queue/QueuePage";
 import { SETTINGS_SECTIONS, SettingsPage } from "./pages/SettingsPage";
 import { StyleEditorPage } from "./pages/styles/StyleEditorPage";
 import { StylesPage } from "./pages/styles/StylesPage";
@@ -88,12 +89,16 @@ const libraryRoute = createRoute({
 const queueRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/queue",
+  // 資源類別與任務狀態的篩選在 URL
+  validateSearch: validateQueueSearch,
   component: QueuePage,
 });
 export const itemRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/items/$id",
-  component: ItemPage,
+  // 分頁、字幕模式、起始時間在 URL；頁面本身是 lazy route（播放器、字幕列表、diff 不進初始 bundle）
+  validateSearch: validateItemSearch,
+  component: lazyRouteComponent(() => import("./pages/item/ItemPage"), "ItemPage"),
 });
 
 const settingsIndexRoute = createRoute({

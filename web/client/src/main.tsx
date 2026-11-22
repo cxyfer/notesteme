@@ -9,6 +9,7 @@ import "@shared/status-band.css";
 import "@shared/diff.css";
 import "./styles/library.css";
 import "./styles/tune.css";
+import "./styles/item.css";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

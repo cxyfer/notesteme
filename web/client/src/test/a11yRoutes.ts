@@ -6,14 +6,21 @@ export interface A11yRoute {
   heading: string;
   /** 是否需要 session（app layout 底下的頁面） */
   auth: boolean;
+  /** 資料載入完成時會出現的文字（有的話等它出現再檢查） */
+  ready?: string;
 }
 
 export const a11yRoutes: A11yRoute[] = [
   { path: "/login", heading: "notesteme", auth: false },
   { path: "/library", heading: "媒體庫", auth: true },
   { path: "/library?platform=youtube&q=test", heading: "媒體庫", auth: true },
-  { path: "/queue", heading: "佇列", auth: true },
-  { path: "/items/yt:abc123", heading: "影音詳情", auth: true },
+  { path: "/queue", heading: "佇列", auth: true, ready: "下載" },
+  { path: "/queue?class=llm&state=pending", heading: "佇列", auth: true, ready: "下載" },
+  { path: "/items/yt:abc123", heading: "影片 1", auth: true, ready: "第一句" },
+  { path: "/items/item-1?tab=stages", heading: "影片 1", auth: true, ready: "無法完成：驗證失敗" },
+  { path: "/items/item-1?tab=runs", heading: "影片 1", auth: true, ready: "當時生效的設定" },
+  { path: "/items/item-1?tab=outputs", heading: "影片 1", auth: true, ready: "匯入修正過的字幕" },
+  { path: "/items/item-1?mode=diff", heading: "影片 1", auth: true, ready: "刪除的文字" },
   // 設定的每個分區（UI-3b）；有 API 替身資料的 axe 檢查在 src/pages/settings/settings.test.tsx
   ...[
     "services",

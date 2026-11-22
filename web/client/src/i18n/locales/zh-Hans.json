@@ -32,8 +32,7 @@
       "title": "队列"
     },
     "item": {
-      "title": "音视频详情",
-      "id": "音视频代号：{{id}}"
+      "title": "音视频详情"
     },
     "settings": {
       "title": "设置",
@@ -102,7 +101,12 @@
     "builtin_style": "内置样式不能修改。先复制成自定义样式。",
     "prompt_exists": "已经有同名的 prompt。换一个名称。",
     "builtin_prompt": "内置的 prompt 不能修改。另存为新的 prompt 后再修改。",
-    "builtin_profile": "内置的处理方案 default 不能删除。"
+    "builtin_profile": "内置的处理方案 default 不能删除。",
+    "no_agent_tasks": "这个步骤没有等待中的 Agent 任务，不需要切换。",
+    "api_not_configured": "这个步骤没有设置 API 的 provider，无法改用 API 处理。先到设置添加 provider。",
+    "no_media": "这部影音没有可以播放的本地媒体。",
+    "media_missing": "本地文件已经不在原处。",
+    "not_implemented": "这个功能还没有做好。"
   },
   "status": {
     "pending": "等待中",
@@ -305,6 +309,285 @@
     "startedWithExisting_other": "已开始处理 {{count}} 部，另外 {{existing}} 部已在媒体库中",
     "alreadyInLibrary_other": "已在媒体库中（{{count}} 部），没有重复新增。",
     "episodes_other": "要新增的集（共 {{count}} 集）"
+  },
+  "actions": {
+    "retry": "重试",
+    "retranslate": "重新翻译",
+    "recorrectChunk": "重新校正这段",
+    "republish": "处理该文件后重新输出",
+    "useAsrNow": "现在改用语音转录",
+    "useAsr": "改用语音转录",
+    "switchToApi": "改用 API 处理",
+    "uploadCookie": "上传 cookie",
+    "updateYtDlp": "更新 yt-dlp",
+    "installYtDlp": "安装 yt-dlp（查看系统设置）",
+    "installFfmpeg": "安装 ffmpeg（查看系统设置）",
+    "installFfprobe": "安装 ffprobe（查看系统设置）",
+    "setApiKey": "设置 API key",
+    "setupAsr": "设置语音转录服务",
+    "upgradeSupadata": "升级 Supadata 方案",
+    "checkQuota": "检查 provider 额度",
+    "changeModel": "换一个模型重新处理",
+    "openPrompt": "选择 Prompt 重新处理"
+  },
+  "item": {
+    "loading": "正在加载影音…",
+    "notFound": "找不到这部影音。它可能已经被删除。",
+    "breadcrumb": "位置",
+    "actions": {
+      "rerun": "重新处理…",
+      "rerunFrom": "从{{stage}}重新处理",
+      "downloadSrt": "下载字幕（SRT）",
+      "cancel": "停止处理…",
+      "delete": "移到回收站…",
+      "openSettings": "打开设置",
+      "switched": "{{stage}}已改用 API 处理。",
+      "ytdlpUpdated": "yt-dlp 已更新到 {{version}}。",
+      "ytdlpRolledBack": "新版 yt-dlp 自检失败，已回到 {{version}}。"
+    },
+    "meta": {
+      "channel": "频道",
+      "platform": "平台",
+      "openOn": "在 {{platform}} 打开",
+      "published": "发布",
+      "duration": "长度",
+      "lang": "原文语言",
+      "profile": "处理方案",
+      "source": "字幕来源"
+    },
+    "band": {
+      "label": "时间带：播放位置",
+      "valueText": "播放位置 {{time}}"
+    },
+    "live": {
+      "done": "{{stage}}完成。",
+      "failed": "{{stage}}失败。",
+      "blocked": "{{stage}}需要你处理。"
+    },
+    "tabs": {
+      "label": "影音详情的分页",
+      "subtitles": "字幕",
+      "stages": "步骤",
+      "stagesAttention_other": "步骤（{{count}} 个需要处理）",
+      "runs": "记录",
+      "outputs": "输出"
+    },
+    "player": {
+      "frameTitle": "播放器：{{title}}",
+      "mediaLabel": "媒体：{{title}}",
+      "mediaUnavailable": "无法播放这个文件：文件可能已经移动，或格式浏览器不支持。字幕仍然可以阅读。",
+      "reloadFallback": "播放器没有响应，点字幕句时会重新加载到那个时间。",
+      "openBilibiliAt": "在 Bilibili 打开 {{time}}"
+    },
+    "cues": {
+      "title": "字幕",
+      "mode": "显示模式",
+      "modes": {
+        "source": "原始",
+        "normalized": "规范化",
+        "corrected": "校正",
+        "diff": "差异",
+        "translated": "译文",
+        "parallel": "对照",
+        "edited": "已编辑"
+      },
+      "targetLang": "译文语言",
+      "latestLang": "最近生成的",
+      "search": "搜索字幕",
+      "searchPlaceholder": "搜索字幕",
+      "count_other": "共 {{formatted}} 句",
+      "matches_other": "找到 {{formatted}} 句",
+      "langSource": "语言 {{lang}}",
+      "langTarget": "目标语言 {{lang}}",
+      "loading": "正在加载字幕…",
+      "empty": "这个版本还没有字幕。",
+      "noMatches": "没有符合的字幕句。",
+      "notYet": "还没有字幕。字幕步骤完成后会出现在这里。",
+      "listLabel": "字幕句",
+      "backToCurrent": "回到当前位置",
+      "seekTo": "跳到 {{time}}",
+      "seekCurrent": "跳到 {{time}}（当前播放的句子）",
+      "diffDeleted": "删除的文字",
+      "diffInserted": "新增的文字",
+      "srDeleted": "删除：",
+      "srInserted": "新增：",
+      "notCorrected": "尚未校正"
+    },
+    "stages": {
+      "title": "处理步骤",
+      "none": "还没有任何步骤。",
+      "model": "模型",
+      "prompt": "Prompt",
+      "started": "开始",
+      "finished": "结束",
+      "nextCheck": "下次检查",
+      "attempts": "尝试次数",
+      "problem": "{{reason}}：{{message}}",
+      "problemNoMessage": "{{reason}}。",
+      "showRuns": "查看执行记录"
+    },
+    "runs": {
+      "title": "执行记录",
+      "loading": "正在加载执行记录…",
+      "empty": "还没有执行记录。",
+      "took": "耗时 {{duration}}",
+      "prompt": "Prompt {{prompt}}",
+      "impl": "实现版本 {{version}}",
+      "config": "当时生效的设置"
+    },
+    "rerun": {
+      "title": "重新处理",
+      "description": "会生成新版本，旧版本保留，可以在“差异”比较。",
+      "from": "从哪个步骤开始",
+      "until": "做到哪个步骤",
+      "untilEnd": "做到最后",
+      "profile": "处理方案",
+      "profileCurrent": "当前的处理方案（最新版本）",
+      "profileVersion": "{{name}}（第 {{version}} 版）",
+      "overrides": "只有这一次：{{stage}}的设置",
+      "provider": "Provider",
+      "providerHint": "留空时用处理方案的设置。",
+      "model": "模型",
+      "prompt": "Prompt",
+      "promptProfile": "用处理方案的设置",
+      "promptVersion": "Prompt 版本",
+      "promptDefault": "默认版本（目前是第 {{version}} 版）",
+      "promptV": "第 {{version}} 版",
+      "chunks": "只重跑这些段落",
+      "chunksHint": "段落编号从 1 起算，例如 2, 5-7；留空时全部重跑，其余段落重用缓存。",
+      "chunksInvalid": "段落编号的格式不正确，请输入像 2, 5-7 这样的编号。",
+      "noEstimate": "费用预估：重新处理目前无法预估花费。",
+      "fieldError": "{{path}}：{{message}}",
+      "submit": "从{{stage}}重新处理",
+      "submitting": "正在提交…",
+      "queued": "已从{{stage}}重新排入队列。"
+    },
+    "cancel": {
+      "title": "停止处理这部影音？",
+      "description": "这部影音所有还没结束的步骤都会停止并标成“已略过”，执行中的程序会结束。已完成的产出保留，之后可以重新处理。",
+      "confirm": "停止处理",
+      "done": "已停止处理。"
+    },
+    "cookie": {
+      "title": "上传 {{platform}} 的 cookie",
+      "description": "用浏览器扩展导出的 Netscape cookie 文件，或粘贴 name=value; … 的标头。cookie 会加密存放，上传后等待它的步骤会自动继续。",
+      "file": "cookie 文件",
+      "paste": "或粘贴内容",
+      "submit": "上传 cookie",
+      "done_other": "已保存 {{count}} 个 cookie。",
+      "tooLarge": "文件超过 64 KiB，请只导出这个平台的 cookie。",
+      "unsupported": "只有 YouTube 与 Bilibili 需要 cookie。"
+    },
+    "delete": {
+      "title": "移到回收站？",
+      "description": "“{{title}}”会移到回收站，在保留期限内可以还原。",
+      "loading": "正在计算影响范围…",
+      "artifacts_other": "{{formatted}} 个产出（所有版本）",
+      "bytes": "可释放 {{size}}",
+      "spent": "已花费 {{amount}}（删除不会退费）",
+      "restoreHint": "永久删除前，从回收站还原就会回到删除前的状态。",
+      "deleteOutputs_other": "同时删除未修改过的输出文件（{{formatted}} 个）",
+      "deleteOutputsHint": "还原时，这些输出文件会重新写回原来的位置。",
+      "keptTitle": "这些输出文件不会删除：",
+      "keptReason": {
+        "modified": "已修改，不会删除",
+        "outside_roots": "不在允许的文件夹内，不会删除",
+        "unreadable": "无法读取，不会删除"
+      },
+      "confirm": "移到回收站",
+      "deleting": "正在移到回收站…",
+      "done": "已移到回收站。",
+      "doneKept_other": "已移到回收站。保留了 {{formatted}} 个改过的输出文件。",
+      "restored": "已还原。"
+    },
+    "outputs": {
+      "download": "下载字幕",
+      "formats": {
+        "srt": "SRT",
+        "vtt": "WebVTT",
+        "ass": "ASS（默认样式）",
+        "bilingual-srt": "双语 SRT",
+        "txt": "纯文本"
+      },
+      "written": "写出的文件",
+      "loading": "正在加载输出…",
+      "none": "还没有写出任何文件。处理方案设置了 sidecar 或 folder 输出时，文件会列在这里。",
+      "target": "输出目标",
+      "targets": {
+        "sidecar": "视频旁（sidecar）",
+        "folder": "文件夹"
+      },
+      "format": "格式",
+      "lang": "语言",
+      "path": "路径",
+      "size": "大小",
+      "writtenAt": "写入时间"
+    },
+    "import": {
+      "title": "导入修正过的字幕",
+      "description": "在其他软件改过的 SRT、VTT 或 ASS 会存成新的“已编辑”版本；已有的译文会标示可能过时，不会自动重新翻译。",
+      "file": "字幕文件",
+      "lang": "语言（选填）",
+      "langPlaceholder": "原文语言",
+      "submit": "导入",
+      "submitting": "正在导入…",
+      "pickFirst": "先选择一个字幕文件。",
+      "tooLarge": "文件太大（上限 10 MB）。",
+      "done_other": "已导入 {{count}} 句。",
+      "doneStale_other": "已导入 {{count}} 句。已有的译文可能已经过时。",
+      "atCue": "第 {{line}} 句",
+      "atLine": "文件第 {{line}} 行",
+      "errorAt": "{{where}}：{{message}}"
+    }
+  },
+  "queue": {
+    "loading": "正在加载队列…",
+    "pauseAll": "暂停队列",
+    "resumeAll": "继续处理",
+    "pausedAll": "已暂停队列。",
+    "resumedAll": "已继续处理。",
+    "pausedClass": "已暂停{{cls}}。",
+    "resumedClass": "{{cls}}已继续处理。",
+    "pausedBanner": "队列已暂停，新任务不会开始。",
+    "lanes": "资源类别",
+    "class": {
+      "download": "下载",
+      "asr": "转录",
+      "llm": "LLM",
+      "frames": "画面"
+    },
+    "idle": "空闲，上限 {{limit}}",
+    "usage": "使用中 {{running}}，上限 {{limit}}，等待 {{waiting}}",
+    "lanePaused": "已暂停",
+    "pausedWithQueue": "随队列暂停",
+    "decrease": "{{cls}}的上限减 1",
+    "increase": "{{cls}}的上限加 1",
+    "limitOf": "{{cls}}的并行上限：",
+    "minus": "−",
+    "plus": "+",
+    "pauseClass": "暂停{{cls}}",
+    "resumeClass": "继续{{cls}}",
+    "attention": "需要你处理",
+    "attentionNone": "没有失败或停住的影音。",
+    "attentionUnavailable": "无法获取需要处理的数量。",
+    "attentionStage_other": "{{stage}}：{{formatted}} 部",
+    "tasks_other": "任务（{{formatted}}）",
+    "agentNote": "这里只列出 notesteme 自己执行的任务；交给 Agent 的任务请到影音详情的“步骤”查看。",
+    "taskActionsNote": "还不能单独重试或取消一个任务，也不能调整优先顺序；“停止处理”会停止这部影音所有未结束的步骤。",
+    "filterClass": "资源类别",
+    "filterState": "状态",
+    "all": "全部",
+    "state": {
+      "leased": "执行中",
+      "pending": "等待中"
+    },
+    "empty": "队列是空的。新增影音，或等订阅的频道有新内容。",
+    "emptyFiltered": "没有符合条件的任务。",
+    "listLabel": "任务列表",
+    "notBefore": "{{time}} 之后重试",
+    "attempts_other": "已尝试 {{count}} 次",
+    "stopItem": "停止处理…",
+    "stopItemDescription": "{{item}} 所有还没结束的步骤都会停止并标成“已略过”，执行中的程序会结束；不是只停这一个任务。已完成的产出保留。"
   },
   "settings": {
     "sections": {
