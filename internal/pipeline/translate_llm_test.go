@@ -32,6 +32,7 @@ func (trnPrompts) ResolvePrompt(_ context.Context, ref string) (ResolvedPrompt, 
 
 // trnReq 是假 provider 收到的一個請求。
 type trnReq struct {
+	prefix string // 固定前綴（<video_metadata> 在這裡）
 	target string
 	chunk  int
 	cues   []llm.Cue
@@ -56,7 +57,7 @@ func (f *trnLLM) Complete(_ context.Context, req llm.Request) (llm.Response, err
 	if err := json.Unmarshal([]byte(raw), &data); err != nil {
 		return llm.Response{}, err
 	}
-	r := trnReq{chunk: data.Chunk, cues: data.Cues, retry: req.Retry}
+	r := trnReq{chunk: data.Chunk, cues: data.Cues, retry: req.Retry, prefix: req.Fixed.Prefix}
 	if m := targetRE.FindStringSubmatch(req.Fixed.System); m != nil {
 		r.target = m[1]
 	}
@@ -108,7 +109,7 @@ func newTrnRig(t *testing.T, fake *trnLLM, chunk map[string]any, texts ...string
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	yt := &fakeYT{cues: 4, info: youtube.Info{ID: "abc123xxxxx", Title: "T", Language: "en"}}
+	yt := &fakeYT{cues: 4, info: youtube.Info{ID: "abc123xxxxx", Title: "T", Language: "en", ChannelID: "UC1", Channel: "ch"}}
 	q := queue.New(st, clk, "w1")
 	q.Control().SetCap(queue.ResourceLLM, 1)
 	reg := llm.NewRegistry(nil, clk)
@@ -367,4 +368,26 @@ func FuzzAlignByOverlap(f *testing.F) {
 			t.Fatalf("對齊出 %d 句，平台字幕只有 %d 句", total, len(tgt))
 		}
 	})
+}
+
+// COR-R4 同樣適用於 translate：詞彙表合併全域與頻道的詞（不只處理方案），放進固定前綴的 <video_metadata>。
+func TestTranslateGlossaryMergesGlobalAndChannel(t *testing.T) {
+	fake := &trnLLM{}
+	r, it := newTrnRig(t, fake, nil, "We use Kafka with KRaft.")
+	ctx := context.Background()
+	it, _ = r.st.Read().ItemByID(ctx, it.ID) // metadata 完成之後才有頻道
+	if _, err := r.p.PutGlossary(ctx, "global", "default", []string{"Kafka"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.p.PutGlossary(ctx, "channel", it.ChannelID, []string{"KRaft"}); err != nil {
+		t.Fatal(err)
+	}
+	rerunTrn(t, r, it, "zh-Hant-TW")
+	reqs := fake.requests()
+	if len(reqs) == 0 {
+		t.Fatal("沒有請求")
+	}
+	if !strings.Contains(reqs[0].prefix, `"glossary":["Kafka","KRaft"]`) {
+		t.Errorf("<video_metadata> 的詞彙表：%s", reqs[0].prefix)
+	}
 }

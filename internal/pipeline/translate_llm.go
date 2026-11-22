@@ -171,8 +171,13 @@ func (p *Pipeline) trnPrepare(ctx context.Context, it store.Item, eff Effective,
 		b.sourceLang = withDetectedScript(b.sourceLang, b.tr.Cues)
 	}
 	b.meta, b.chapters = llmMetadata(it)
-	b.glossary = eff.Glossary()
-	b.meta.Glossary = b.glossary // 詞彙表放在資料區塊（COR-R4），不是模板變數
+	// 詞彙表（COR-R4）：與 correct 相同，全域、頻道、處理方案與頻道覆寫合併，再轉成原文字形；放在資料區塊，不是模板變數。
+	terms, err := p.glossaryTerms(ctx, it, eff)
+	if err != nil {
+		return nil, err
+	}
+	b.glossary = glossaryForSource(terms, b.sourceLang, b.tr.Cues)
+	b.meta.Glossary = b.glossary
 	return b, nil
 }
 
