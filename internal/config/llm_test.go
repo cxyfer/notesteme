@@ -26,7 +26,7 @@ func TestLoadLLMProviders(t *testing.T) {
 func TestLoadLLMProvidersRejectsInvalid(t *testing.T) {
 	cases := map[string]string{
 		"llm:\n  chunk: { max_tokens: 10 }\n":                                                "llm.chunk",
-		"llm:\n  providers:\n    x: { type: gemini }\n":                                      "llm.providers.x.type",
+		"llm:\n  providers:\n    x: { type: vertex }\n":                                      "llm.providers.x.type",
 		"llm:\n  providers:\n    x: { base_url: \"https://a\" }\n":                           "llm.providers.x.type",
 		"llm:\n  providers:\n    x: { type: openai, base_url: \"ftp://a\" }\n":               "llm.providers.x.base_url",
 		"llm:\n  providers:\n    x: { type: openai, base_url: \"https://u:p@a\" }\n":         "llm.providers.x.base_url",

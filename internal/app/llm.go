@@ -33,3 +33,12 @@ func (s *Server) llmRegistry(env Env, cfg *config.Config, hc *http.Client) *llm.
 	}
 	return reg
 }
+
+// outputCatalog 回答設定檔定義的 vault 與 hook 存不存在（pipeline.OutputCatalog，VAULT-R1、R10）。
+type outputCatalog struct {
+	vaults map[string]config.Vault
+	hooks  map[string]config.Hook
+}
+
+func (c outputCatalog) HasVault(id string) bool { _, ok := c.vaults[id]; return ok }
+func (c outputCatalog) HasHook(id string) bool  { _, ok := c.hooks[id]; return ok }

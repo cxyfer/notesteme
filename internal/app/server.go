@@ -253,6 +253,8 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	// LLM provider：內建的加上設定檔 llm.providers 的；同一個 Registry 也回答處理方案驗證的「provider 存在嗎」（PRF-R4）。
 	deps.LLM = s.llmRegistry(env, cfg, deps.HTTP)
 	deps.Providers, deps.Prompts = deps.LLM, promptResolver{s.prompts}
+	// vault 與 hook 只能在設定檔定義（VAULT-R1、R10）：處理方案只能引用這些 id。
+	deps.Outputs = outputCatalog{vaults: cfg.Vaults, hooks: cfg.Hooks}
 	pl = pipeline.New(deps)
 	s.pipeline = pl
 	s.worker = worker.New(s.queue, s.pipeline, env.Clock, log)

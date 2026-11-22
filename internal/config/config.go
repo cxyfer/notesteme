@@ -117,6 +117,13 @@ type Config struct {
 	// 防 DNS rebinding。IP 位址與 localhost 一律接受（DNS rebinding 一定要用攻擊者的網域名稱）。
 	MCPAllowedHosts []string
 
+	// Vaults 是設定檔 vaults 解析並驗證後的內容，以 id 為 key（VAULT-R1、R8；只能在設定檔定義）。
+	Vaults map[string]Vault
+	// Hooks 是設定檔 hooks 解析並驗證後的內容，以 id 為 key（VAULT-R10、R11；只能在設定檔定義）。
+	Hooks map[string]Hook
+	// SponsorBlockBaseURL 是設定檔 sponsorblock.base_url（SPB-R2），預設公開伺服器，結尾不含 /。
+	SponsorBlockBaseURL string
+
 	// Origin 記錄每個欄位生效值的來源，key 為欄位名稱。
 	Origin map[string]Source
 }
@@ -130,7 +137,7 @@ func (c *Config) SourceOf(field string) Source {
 }
 
 // fileSchema 是設定檔允許的欄位。
-// tools、providers、asr、hooks 的內容由之後的切片定義，這裡只確認欄位名稱合法。
+// tools、providers 的內容由之後的切片定義，這裡只確認欄位名稱合法；hooks、vaults 由 M3 定義（ADR-0020 第 6 點）。
 // asr.providers 放會執行命令的 provider，只能寫在設定檔（ADR-0013）。
 type fileSchema struct {
 	Listen string            `yaml:"listen"`
@@ -142,6 +149,10 @@ type fileSchema struct {
 	ASR            yaml.Node `yaml:"asr"`
 	LLM            yaml.Node `yaml:"llm"`
 	Hooks          yaml.Node `yaml:"hooks"`
+	// Vaults 與 Hooks 的子欄位由 parseVaults、parseHooks 以 KnownFields 檢查（VAULT-R1、R10）。
+	Vaults yaml.Node `yaml:"vaults"`
+	// SponsorBlock 的子欄位用 KnownFields 檢查（SPB-R2）。
+	SponsorBlock sponsorBlockSchema `yaml:"sponsorblock"`
 	// Network 的子欄位用 KnownFields 檢查，打錯字時載入失敗。
 	Network    networkSchema `yaml:"network"`
 	Inbox      string        `yaml:"inbox"`
@@ -239,7 +250,8 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 	var managed, unknown []string
 	for k := range top {
 		switch k {
-		case "listen", "data", "trusted_proxies", "tools", "providers", "hooks", "asr", "llm", "network", "inbox", "media_roots", "library", "mcp":
+		case "listen", "data", "trusted_proxies", "tools", "providers", "hooks", "asr", "llm", "network", "inbox", "media_roots", "library", "mcp",
+			"vaults", "sponsorblock":
 		default:
 			if dbManagedFields[k] {
 				managed = append(managed, k)
@@ -334,6 +346,15 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 		cfg.UploadMaxBytes, cfg.Origin[FieldUploadMaxBytes] = size, SourceConfigFile
 	}
 	if err := parseMCP(&f.MCP, path, cfg); err != nil {
+		return err
+	}
+	if cfg.Vaults, err = parseVaults(&f.Vaults, path); err != nil {
+		return err
+	}
+	if cfg.Hooks, err = parseHooks(&f.Hooks, path); err != nil {
+		return err
+	}
+	if cfg.SponsorBlockBaseURL, err = parseSponsorBlock(f.SponsorBlock, path); err != nil {
 		return err
 	}
 	for i, v := range f.MediaRoots {

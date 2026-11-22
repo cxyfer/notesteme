@@ -14,6 +14,7 @@ import (
 const (
 	LLMTypeAnthropic = "anthropic"
 	LLMTypeOpenAI    = "openai" // OpenAI 與相容的 provider
+	LLMTypeGemini    = "gemini" // Gemini generateContent（GEM 介面；只用於 stages.note.engine: gemini）
 )
 
 // llmProviderID 是 LLM provider id 允許的字元：id 會變成環境變數名稱 NOTESTEME_<ID>_API_KEY 的一部分（L6）。
@@ -85,11 +86,11 @@ func parseLLM(node *yaml.Node, path string) (map[string]LLMProvider, error) {
 		}
 		p := LLMProvider{ID: id, Type: strings.TrimSpace(s.Type), BaseURL: strings.TrimSpace(s.BaseURL)}
 		switch p.Type {
-		case LLMTypeAnthropic, LLMTypeOpenAI:
+		case LLMTypeAnthropic, LLMTypeOpenAI, LLMTypeGemini:
 		case "":
-			return nil, bad("type", "必須指定（%s 或 %s）。", LLMTypeAnthropic, LLMTypeOpenAI)
+			return nil, bad("type", "必須指定（%s、%s 或 %s）。", LLMTypeAnthropic, LLMTypeOpenAI, LLMTypeGemini)
 		default:
-			return nil, bad("type", "不認得：%q（可用 %s、%s）。", p.Type, LLMTypeAnthropic, LLMTypeOpenAI)
+			return nil, bad("type", "不認得：%q（可用 %s、%s、%s）。", p.Type, LLMTypeAnthropic, LLMTypeOpenAI, LLMTypeGemini)
 		}
 		if p.BaseURL != "" {
 			u, err := url.Parse(p.BaseURL)
