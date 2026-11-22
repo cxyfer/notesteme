@@ -118,7 +118,7 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 	// 在寫入任何資料之前解析執行方式：要執行的步驟還沒有實作就回 501，不留下半套的重跑。
 	// 交易內會用交易的讀取再解析一次：兩次之間 normalize 可能剛完成，原文語言就不同了（Codex P2）。
 	resolve := func(repo *store.Repo, item store.Item) ([]StageResolution, error) {
-		sc, err := p.stageContext(ctx, repo, item, req.From)
+		sc, err := p.planContext(ctx, repo, item, req.From)
 		if err != nil {
 			return nil, err
 		}

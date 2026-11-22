@@ -443,7 +443,7 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 			if err != nil {
 				return err
 			}
-			sc, err := p.stageContext(ctx, r, it, "")
+			sc, err := p.planContext(ctx, r, it, "")
 			if err != nil {
 				return err
 			}

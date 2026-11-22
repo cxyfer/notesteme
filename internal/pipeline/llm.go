@@ -55,6 +55,20 @@ type llmStage struct {
 	notes func(fallbacks []fallbackRecord) (message string, actions []string)
 	// terms 取出已通過驗證的 chunk 輸出中的術語候選（COR-R6）；nil 代表這個步驟不收集術語候選。
 	terms func(out json.RawMessage) ([]string, error)
+	// params（選用）回傳 stages.<stage> 以外、會影響這個步驟輸出的設定（例如 segment 的 timing 與 subtitle_rules），
+	// 併進 params_sha256 與快取鍵：換了設定的重跑不能命中舊的結果。
+	params func(eff Effective) (any, error)
+	// assemble（選用）取代一對一的 DecodeCues → MergeCues → apply：輸出不是一對一 cue 的步驟（segment）自己合併與套用。
+	// outputs[k] 是第 k 個 chunk 通過驗證的輸出，退回的 chunk 是 nil。
+	assemble func(p *Pipeline, ctx context.Context, it store.Item, job *llmJob, outputs []json.RawMessage) (llmAssembled, error)
+}
+
+// llmAssembled 是 llmStage.assemble 的結果：產出的字幕、要併進來源紀錄的欄位（例如 warnings），
+// 以及是否不寫入步驟層的快取鍵（例如時間的來源退而求其次時，下一次重跑要重新計算）。
+type llmAssembled struct {
+	tr      subtitle.Transcript
+	prov    map[string]any
+	noCache bool
 }
 
 // usesLLMEngine 回報步驟的任務是否走 LLM 引擎（plan、chunk、assemble 三種任務）：
@@ -75,6 +89,13 @@ var llmStages = map[string]llmStage{
 		apply:    replaceCueTexts,
 		notes:    correctNotes,
 		terms:    llm.DecodeTermCandidates,
+	},
+	StageSegment: {
+		spec:    func(map[string]any) *llm.Spec { return llm.SegmentSpec() },
+		variant: subtitle.VariantSegmented,
+		// SEG-R3：重試用盡就保留正規化字幕的切法（assembleSegment 對 nil 的輸出用 llm.KeepMarks）。
+		params:   segmentParams,
+		assemble: (*Pipeline).assembleSegment,
 	},
 }
 
@@ -214,6 +235,7 @@ type llmJob struct {
 	stage    string
 	def      llmStage
 	spec     *llm.Spec
+	eff      Effective
 	cfg      StageConfig
 	settings LLMSettings
 	input    store.Artifact
@@ -273,7 +295,7 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 	if err != nil {
 		return nil, err
 	}
-	job := &llmJob{stage: stage, def: def, spec: def.spec(extras), cfg: cfg, settings: settings}
+	job := &llmJob{stage: stage, def: def, spec: def.spec(extras), eff: eff, cfg: cfg, settings: settings}
 
 	r := p.st.Read()
 	if inputID != "" {
@@ -351,7 +373,14 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 	fixedJSON, _ := json.Marshal(job.fixed)
 	job.fixedSHA = sha256Hex(fixedJSON)
 
-	paramsJSON, err := json.Marshal(map[string]any{"chunk": settings.Chunk, "glossary": glossary, "stage": extras})
+	params := map[string]any{"chunk": settings.Chunk, "glossary": glossary, "stage": extras}
+	if def.params != nil {
+		// 只有登記了 params 的步驟才加上這個鍵：其他步驟的 params_sha256 與快取鍵不變。
+		if params["step"], err = def.params(eff); err != nil {
+			return nil, err
+		}
+	}
+	paramsJSON, err := json.Marshal(params)
 	if err != nil {
 		return nil, err
 	}
@@ -724,6 +753,7 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 		return result{}, errPermanent(fmt.Sprintf("chunk 記錄有 %d 個，切分結果有 %d 個", len(rows), len(job.chunks)))
 	}
 	outputs := make([][]llm.Cue, len(rows))
+	raw := make([]json.RawMessage, len(rows)) // 給 def.assemble：通過驗證的原始輸出，退回的 chunk 是 nil
 	records := make([]chunkRecord, 0, len(rows))
 	fallbacks := []fallbackRecord{}
 	var candidates []string
@@ -735,6 +765,10 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 		in := job.chunkInput(c)
 		switch row.Status {
 		case store.ChunkDone:
+			if job.def.assemble != nil {
+				raw[k] = row.Output
+				break
+			}
 			cues, err := llm.DecodeCues(row.Output)
 			if err != nil {
 				return result{}, errPermanent(fmt.Sprintf("chunk %d 的輸出不正確：%v", c.Index, err))
@@ -747,7 +781,9 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 				}
 			}
 		case store.ChunkFallback:
-			outputs[k] = job.def.fallback(in)
+			if job.def.fallback != nil {
+				outputs[k] = job.def.fallback(in)
+			}
 			fb := fallbackRecord{Chunk: c.Index, Reason: row.Reason}
 			if len(row.Detail) > 2 { // 不是 {}
 				_ = json.Unmarshal(row.Detail, &fb.Detail)
@@ -765,17 +801,30 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 		}
 		records = append(records, rec)
 	}
-	merged, err := llm.MergeCues(job.chunks, outputs)
-	if err != nil {
-		return result{}, errPermanent("合併 chunk 的輸出失敗：" + err.Error())
-	}
-	out, err := job.def.apply(job.tr, merged)
-	if err != nil {
-		return result{}, errPermanent("套用輸出失敗：" + err.Error())
+	var out subtitle.Transcript
+	extra := map[string]any{}
+	noCache := false
+	if job.def.assemble != nil {
+		res, err := job.def.assemble(p, ctx, it, job, raw)
+		if err != nil {
+			return result{}, err
+		}
+		out, noCache = res.tr, res.noCache
+		for k, v := range res.prov {
+			extra[k] = v
+		}
+	} else {
+		merged, err := llm.MergeCues(job.chunks, outputs)
+		if err != nil {
+			return result{}, errPermanent("合併 chunk 的輸出失敗：" + err.Error())
+		}
+		if out, err = job.def.apply(job.tr, merged); err != nil {
+			return result{}, errPermanent("套用輸出失敗：" + err.Error())
+		}
 	}
 	out.Variant = job.def.variant
 
-	prov, err := p.provenance(map[string]any{
+	fields := map[string]any{
 		"stage": job.stage, "impl_version": p.implVersion(job.stage),
 		"executor": ExecutorAPI, "provider": job.cfg.Provider, "model": job.cfg.Model,
 		"prompt":        map[string]any{"id": job.prompt.ID, "version": job.prompt.Version, "sha256": job.prompt.SHA256},
@@ -783,7 +832,13 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 		"chunks":        records,
 		"fallbacks":     fallbacks,
 		"derived_from":  []map[string]string{{"artifact": job.input.ID, "variant": job.input.Variant, "sha256": job.input.SHA256}},
-	}, nil)
+	}
+	for k, v := range extra {
+		if _, taken := fields[k]; !taken {
+			fields[k] = v
+		}
+	}
+	prov, err := p.provenance(fields, nil)
 	if err != nil {
 		return result{}, err
 	}
@@ -791,7 +846,7 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 	if err != nil {
 		return result{}, err
 	}
-	if len(fallbacks) > 0 {
+	if len(fallbacks) > 0 || noCache {
 		stage.CacheKey = ""
 	}
 	state := store.StageState{Status: store.StatusDone}

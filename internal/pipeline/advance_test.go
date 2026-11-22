@@ -120,29 +120,29 @@ func TestAdvanceStopsAtUntil(t *testing.T) {
 	}
 }
 
-// 步驟可以執行（overrides 指定了 provider 與 model）但還沒有 api 實作（segment 不在 llmStages）時建立 llm 任務；
-// 任務以 permanent 失敗，訊息告訴使用者步驟還沒有實作。
+// 步驟可以執行（overrides 指定了 provider 與 model）但還沒有 api 實作（translate 不在 llmStages）時建立 llm 任務；
+// 任務以 permanent 失敗，訊息告訴使用者步驟還沒有實作。（segment 在 S5 登記了 api，改用 translate。）
 func TestRunnableLLMStageCreatesLLMTaskThatFailsPermanently(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
-	over := stagesOver("segment", map[string]any{"provider": "anthropic", "model": "m1"})
+	over := stagesOver("translate", map[string]any{"provider": "anthropic", "model": "m1"})
 	it := r.ingest(watch, over, "")
 	r.run()
 
-	st := latestStage(t, r, it.ID, StageSegment)
-	if st.Status != store.StatusFailed || st.ErrorClass != string(errclass.ClassPermanent) || st.Message != "這個步驟還沒有實作（segment／api）。" {
-		t.Fatalf("segment = %+v", st)
+	st := latestStage(t, r, it.ID, StageTranslate)
+	if st.Status != store.StatusFailed || st.ErrorClass != string(errclass.ClassPermanent) || st.Message != "這個步驟還沒有實作（translate／api）。" {
+		t.Fatalf("translate = %+v", st)
 	}
 	if st.Executor != ExecutorAPI {
 		t.Errorf("executor = %q", st.Executor)
 	}
 	tk, err := r.st.Read().TaskByStageRun(ctx, st.ID)
 	if err != nil || tk.ResourceClass != queue.ResourceLLM || tk.State != store.TaskFailed {
-		t.Fatalf("segment 任務 = %+v, %v", tk, err)
+		t.Fatalf("translate 任務 = %+v, %v", tk, err)
 	}
 	// 失敗之後不再往下前進。
-	for _, s := range []string{StageCorrect, StageTranslate, StagePublish} {
+	for _, s := range []string{StagePublish} {
 		if st := latestStage(t, r, it.ID, s); st.Status != store.StatusPending || hasTask(t, r, it.ID, s) {
 			t.Errorf("%s = %+v", s, st)
 		}

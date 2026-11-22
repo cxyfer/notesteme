@@ -201,7 +201,13 @@ func TestStageImplementedOnlyForM1LocalStages(t *testing.T) {
 			t.Errorf("%s／agent 已可前進", s)
 		}
 	}
-	for _, c := range [][2]string{{StageSegment, ExecutorAPI}, {StageCorrect, ExecutorOpenCC}, {StageTranslate, ExecutorAPI}, {StageNormalize, ExecutorAPI}, {StagePublish, ExecutorAgent}, {StageNormalize, ExecutorAgent}} {
+	// api：登記在 llmStages 的步驟（correct、segment）走 LLM 引擎。
+	for _, s := range []string{StageSegment, StageCorrect} {
+		if !stageImplemented(s, ExecutorAPI) {
+			t.Errorf("%s／api 已實作", s)
+		}
+	}
+	for _, c := range [][2]string{{StageCorrect, ExecutorOpenCC}, {StageTranslate, ExecutorAPI}, {StageNormalize, ExecutorAPI}, {StagePublish, ExecutorAgent}, {StageNormalize, ExecutorAgent}} {
 		if stageImplemented(c[0], c[1]) {
 			t.Errorf("%s／%s 還沒實作", c[0], c[1])
 		}

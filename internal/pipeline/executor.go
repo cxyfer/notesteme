@@ -15,6 +15,8 @@ type StageContext struct {
 	// NRM-R7、OUT 的場景中兩者可能不同。還沒有字幕時退回 items.original_lang；中文沒有 script 時已用字元補上。
 	// 空字串代表不知道原文語言：每個目標都需要翻譯（TargetTranslate）。
 	SourceLang string
+	// ManualCaptions 為 true 時，影音採用的字幕來源是人工字幕（kind manual）：segment 預設略過（SEG-R1）。
+	ManualCaptions bool
 }
 
 // StageResolution 是步驟在一份生效設定下的執行方式。
@@ -38,7 +40,8 @@ type StageResolution struct {
 // ResolveExecutor 依步驟與生效設定決定執行方式。純函式：不讀 DB、不讀時鐘。
 //   - metadata、transcript、normalize：local。
 //   - segment、correct：executor 為 off 時略過（off）；api（預設）而 provider 或 model 是空的時略過（not_configured，
-//     Executor 仍記為 api）；其他不略過。
+//     Executor 仍記為 api）；segment 的來源是人工字幕、而 stages.segment.on_manual 不是 run 時略過（manual_captions，SEG-R1）；
+//     其他不略過。
 //   - translate：依序判斷（TRN-R8、R10）：off 略過（off，優先於自動轉換）；每個目標都與原文相同（或只差字形而沒有轉換表）時略過
 //     （same_language）；其餘目標全是 convert 時一律用 opencc，不論設定的是 api 或 agent，也不需要 provider；
 //     明確設定 opencc 時用 opencc；其他情況比照 segment 與 correct。
@@ -84,6 +87,8 @@ func ResolveExecutor(eff Effective, stage string, sc StageContext) (StageResolut
 			}
 		case cfg.Executor == ExecutorAPI && (cfg.Provider == "" || cfg.Model == ""):
 			res.Skip, res.Reason = true, SkipNotConfigured
+		case stage == StageSegment && sc.ManualCaptions && eff.segmentOnManual() != OnManualRun:
+			res.Skip, res.Reason = true, SkipManualCaptions
 		}
 		return res, nil
 	case stage == StagePublish:
@@ -135,7 +140,7 @@ func stageImplemented(stage, executor string) bool {
 	case stage == StageTranslate && executor == ExecutorOpenCC:
 		return true
 	case IsLLMStage(stage):
-		// api：有登記在 llmStages 的步驟（S3 只有 correct）。
+		// api：有登記在 llmStages 的步驟（correct、segment）。
 		return executor == ExecutorAgent || usesLLMEngine(stage, executor)
 	}
 	return false

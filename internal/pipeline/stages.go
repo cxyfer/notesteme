@@ -38,13 +38,15 @@ const (
 )
 
 // skipped 的原因，寫在 stage_runs.block_reason。
-// 之後的切片會加上 manual_captions；not_applicable 見 publish.go（SkipNotApplicable）。
+// not_applicable 見 publish.go（SkipNotApplicable）。
 const (
 	SkipCancelled     = "cancelled"      // 取消或被較新的重跑取代（PIPE-R15）
 	SkipOff           = "off"            // executor: off（PRF-R6）
 	SkipNotConfigured = "not_configured" // api 沒有 provider 或 model（X1 選項 C）
 	SkipNoOutputs     = "no_outputs"     // publish 沒有任何輸出目標
 	SkipSameLanguage  = "same_language"  // translate 的每個目標都與原文相同（TRN-R10）
+	// SkipManualCaptions：來源是人工字幕，segment 預設略過（SEG-R1）。
+	SkipManualCaptions = "manual_captions"
 )
 
 // IsLLMStage 回報步驟是不是 LLM 步驟（ADR-0002）。

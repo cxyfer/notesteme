@@ -63,6 +63,9 @@ var stageCommonFields = []string{"executor", "provider", "model", "prompt"}
 
 // stageFields 登記步驟專屬的欄位；之後的切片在同一張表中加上自己的欄位。
 var stageFields = map[string][]fieldSpec{
+	StageSegment: {
+		{"on_manual", checkEnum(OnManualSkip, OnManualRun)},
+	},
 	StageCorrect: {
 		{"min_similarity", checkNumberRange(0, 1)},
 	},

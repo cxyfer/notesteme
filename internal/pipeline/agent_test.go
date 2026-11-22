@@ -72,7 +72,8 @@ func TestRerun_AgentExecutorIsNotNotImplemented(t *testing.T) {
 	it := r.ingest(watch, nil, "")
 	r.run()
 
-	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageSegment, Overrides: stagesOver("segment", map[string]any{"executor": "agent"})}); err != nil {
+	// 來源是人工字幕：segment 預設略過（SEG-R1），on_manual: run 才會執行。
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageSegment, Overrides: stagesOver("segment", map[string]any{"executor": "agent", "on_manual": "run"})}); err != nil {
 		t.Fatalf("重跑 agent 步驟：%v", err)
 	}
 	first := latestStage(t, r, it.ID, StageSegment)
@@ -83,7 +84,7 @@ func TestRerun_AgentExecutorIsNotNotImplemented(t *testing.T) {
 		t.Fatalf("segment 任務 = %+v, %v", tk, err)
 	}
 
-	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageSegment, Overrides: stagesOver("segment", map[string]any{"executor": "agent"})}); err != nil {
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageSegment, Overrides: stagesOver("segment", map[string]any{"executor": "agent", "on_manual": "run"})}); err != nil {
 		t.Fatal(err)
 	}
 	old, err := r.st.Read().StageRun(ctx, first.ID)
