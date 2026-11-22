@@ -1,0 +1,41 @@
+# NFR-CMP-1：跨平台建置與冒煙測試。只建置，不發布（CI 用 `goreleaser build --snapshot`）。
+version: 2
+
+project_name: notesteme
+
+builds:
+  - id: notesteme
+    main: ./cmd/notesteme
+    binary: notesteme
+    env:
+      - CGO_ENABLED=0 # 使用 pure-Go 的 modernc sqlite
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/cxyfer/notesteme/internal/app.version={{ .Version }}
+    goos: [linux, windows, darwin]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+      - goos: darwin
+        goarch: amd64
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+# 不發布 GitHub release；image 由 docker-publish.yml 處理。
+release:
+  disable: true
+
+changelog:
+  disable: true
