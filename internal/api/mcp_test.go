@@ -199,6 +199,9 @@ func TestMCPToolContract(t *testing.T) {
 		{Name: "import_transcript", Scope: "ingest"},
 		{Name: "get_video_context", Scope: "read"},
 		{Name: "search", Scope: "read"},
+		{Name: "get_note", Scope: "read"},
+		{Name: "list_frames", Scope: "read"},
+		{Name: "get_frame", Scope: "read"},
 		{Name: "claim_tasks", Scope: "agent"},
 		{Name: "extend_lease", Scope: "agent"},
 		{Name: "submit_task", Scope: "agent"},
@@ -688,4 +691,35 @@ func TestMCPGetVideoContextCancelOldProtocol(t *testing.T) {
 	cancel()
 	<-done
 	waitTimers(t, m, 0)
+}
+
+// M3 的 tool（M3-S0）：轉呼叫的路由還是 501 stub，結果是 not_implemented；缺 read scope 時先被擋下。
+func TestMCPM3ToolsNotImplemented(t *testing.T) {
+	m := newMCPRig(t, nil)
+	reader := m.connect(context.Background(), m.token(auth.ScopeRead))
+	calls := []struct {
+		name string
+		args map[string]any
+	}{
+		{"get_note", map[string]any{"item": "yt:abc123xxxxx"}},
+		{"list_frames", map[string]any{"item": "yt:abc123xxxxx"}},
+		{"get_frame", map[string]any{"item": "yt:abc123xxxxx", "n": 1}},
+	}
+	for _, c := range calls {
+		res := callTool(t, reader, c.name, c.args)
+		if !res.IsError || structured(t, res)["code"] != "not_implemented" {
+			t.Errorf("%s = %s，預期 not_implemented", c.name, resultText(res))
+		}
+	}
+	ingest := m.connect(context.Background(), m.token(auth.ScopeIngest))
+	for _, c := range calls {
+		res := callTool(t, ingest, c.name, c.args)
+		if !res.IsError || structured(t, res)["required_scope"] != "read" {
+			t.Errorf("%s 沒有 read scope = %s，預期 403", c.name, resultText(res))
+		}
+	}
+	if res := callTool(t, reader, "get_frame", map[string]any{"item": "x", "n": 1, "size": "huge"}); !res.IsError ||
+		!strings.Contains(resultText(res), "size") {
+		t.Errorf("size 不合法 = %s", resultText(res))
+	}
 }

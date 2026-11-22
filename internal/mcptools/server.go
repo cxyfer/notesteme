@@ -97,6 +97,7 @@ func tools() []tool {
 		{ToolSpec{"get_video_context", ScopeRead}, addGetVideoContext},
 		{ToolSpec{"search", ScopeRead}, addSearch},
 	}
+	list = append(list, m3Tools()...)
 	return append(list, agentTools()...)
 }
 
