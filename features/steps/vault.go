@@ -11,7 +11,6 @@ func registerVault(r *Registry, s *Scenario) {
 	r.Step(`the vault remote fails the next push with a network error`, func() error { return godog.ErrPending })
 	r.Step(`the vault remote received a commit with the files:`, func(*godog.Table) error { return godog.ErrPending })
 	r.Step(`the vault remote received a single new commit`, func() error { return godog.ErrPending })
-	r.Step(`the vault remote received no push`, func() error { return godog.ErrPending })
 	r.Step(`every git command for the vault ran with {string}`, func(string) error { return godog.ErrPending })
 	r.Step(`no git command for the vault contained {string}`, func(string) error { return godog.ErrPending })
 	r.Step(`the hook {string} ran with the arguments:`, func(string, *godog.DocString) error { return godog.ErrPending })

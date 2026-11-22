@@ -409,7 +409,6 @@ M3 的句型（4.13～4.16）在 2026-11-23 規格展開時加入，目前全部
 | `Given the vault remote fails the next push with a network error` | 下一次 push 以 `fatal: unable to access '<remote>': Could not resolve host` 失敗（結束碼 128），之後恢復正常 |
 | `Then the vault remote received a commit with the files:` | 假遠端最後一次被推送的 commit 中，相對於上一個 commit 有變動的檔案正好是表格（欄位 `path`，相對於 repo 根目錄）列出的這些 |
 | `Then the vault remote received a single new commit` | 場景開始後，假遠端的分支總共只多了一個 commit |
-| `Then the vault remote received no push` | 場景開始後，假遠端沒有收到任何 push |
 | `Then every git command for the vault ran with {string}` | 假 git 記錄的每一次呼叫，argv 都含有這個元素（例如 `core.hooksPath=/dev/null`，`-c` 後面的值）；沒有任何呼叫時失敗 |
 | `Then no git command for the vault contained {string}` | 假 git 記錄的每一次呼叫，argv 的任何元素都不含這段文字；沒有任何呼叫時失敗 |
 | `Then the hook {string} ran with the arguments:` | 設定檔中這個 hook 最近一次執行的 argv（不含第一個元素）與 doc string 的 JSON 字串陣列完全相同；實際路徑先換回虛擬路徑（`/vault/…`）再比對 |
