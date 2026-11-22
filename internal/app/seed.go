@@ -36,3 +36,8 @@ func (s *Server) IngestAs(ctx context.Context, url, priority string) error {
 func (s *Server) SetImplVersion(stage string, v int) error {
 	return s.pipeline.SetImplVersion(stage, v)
 }
+
+// SeedLangMixed 把影音的原文語言標記為 mixed。只供驗收測試的 harness 使用（同 SeedTranscript）。
+func (s *Server) SeedLangMixed(ctx context.Context, itemID string) error {
+	return s.pipeline.SeedLangMixed(ctx, itemID)
+}

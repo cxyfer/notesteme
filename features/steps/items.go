@@ -25,7 +25,7 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`the owner reruns {string} from {string}`, s.ownerReruns)
 	r.Step(`the item {string} has been ingested`, s.itemHasBeenIngested)
 	r.Step(`the item {string} has been ingested as {word}`, s.itemHasBeenIngestedAs)
-	r.Step(`{string} is a mixed-language item`, func(string) error { return godog.ErrPending })
+	r.Step(`{string} is a mixed-language item`, s.itemIsMixedLanguage)
 	r.Step(`the item {string} has been processed up to {string}`, s.itemProcessedUpTo)
 	r.Given(`the {string} transcript of {string} is:`, func(variant, ref string, t *godog.Table) error {
 		return s.seedTranscript(variant, ref, "", t)
@@ -619,4 +619,17 @@ func (s *Scenario) originalLanguageIs(ref, want string) error {
 		return fmt.Errorf("%s 的原文語言是 %q，預期 %q", ref, it.OriginalLang, want)
 	}
 	return nil
+}
+
+// itemIsMixedLanguage 把影音的原文語言標記為 mixed（steps.md：Given {string} is a mixed-language item）。
+// 判斷 mixed 的流程（SRC-R11）還沒有實作，所以直接寫入（harness 可以存取 Core，ADR-0015）。
+func (s *Scenario) itemIsMixedLanguage(ref string) error {
+	if err := s.prepareOwner(); err != nil {
+		return err
+	}
+	id, err := s.itemID(ref)
+	if err != nil {
+		return err
+	}
+	return s.server.SeedLangMixed(s.ctx, id)
 }

@@ -124,3 +124,7 @@ WHERE deleted_at IS NULL
         WHERE COALESCE(instr(sf.statuses,
                 '|' || COALESCE((SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
                                  ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1), 'pending') || '|'), 0) = 0));
+
+-- name: SetItemLangMixed :execrows
+-- The original language is marked mixed (several languages in one transcript).
+UPDATE items SET lang_mixed = sqlc.arg(lang_mixed) WHERE id = sqlc.arg(id);

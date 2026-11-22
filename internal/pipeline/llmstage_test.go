@@ -41,6 +41,8 @@ type chunkLLM struct {
 	before func(n int)
 	// deadlines 記下每個請求的 ctx 剩下的時間（沒有期限時是 0）。
 	deadlines []time.Duration
+	// fixed 記下每個請求的固定前綴。
+	fixed []llm.Fixed
 }
 
 func (f *chunkLLM) Complete(ctx context.Context, req llm.Request) (llm.Response, error) {
@@ -52,6 +54,7 @@ func (f *chunkLLM) Complete(ctx context.Context, req llm.Request) (llm.Response,
 	}
 	f.mu.Lock()
 	f.calls = append(f.calls, n)
+	f.fixed = append(f.fixed, req.Fixed)
 	f.deadlines = append(f.deadlines, left)
 	b, before := f.behave[n], f.before
 	f.mu.Unlock()
@@ -75,9 +78,19 @@ func (f *chunkLLM) Complete(ctx context.Context, req llm.Request) (llm.Response,
 		data.Cues = data.Cues[:len(data.Cues)-1]
 	}
 	for i := range data.Cues {
+		if b == "rewrite" {
+			data.Cues[i].Text = "zzzz yyyy xxxx wwww vvvv" // 和原文完全不像（COR-R2）
+			continue
+		}
 		data.Cues[i].Text += "!"
 	}
-	out, _ := json.Marshal(data)
+	terms := []map[string]string{}
+	if b == "terms" {
+		for _, t := range []string{"KRaft", "Apache Kafka", "\x1b[31mred\n", "kraft"} {
+			terms = append(terms, map[string]string{"term": t})
+		}
+	}
+	out, _ := json.Marshal(map[string]any{"cues": data.Cues, "term_candidates": terms})
 	return llm.Response{Output: out}, nil
 }
 
@@ -102,7 +115,7 @@ func newLLMRigCap(t *testing.T, fake *chunkLLM, llmCap int) (*rig, store.Item) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	yt := &fakeYT{cues: 4, info: youtube.Info{ID: "abc123xxxxx", Title: "T", Language: "en"}}
+	yt := &fakeYT{cues: 4, info: youtube.Info{ID: "abc123xxxxx", Title: "T", Language: "en", ChannelID: "UC1", Channel: "ch"}}
 	q := queue.New(st, clk, "w1")
 	q.Control().SetCap(queue.ResourceLLM, llmCap)
 	reg := llm.NewRegistry(nil, clk)
@@ -117,7 +130,7 @@ func newLLMRigCap(t *testing.T, fake *chunkLLM, llmCap int) (*rig, store.Item) {
 	}
 	it := r.ingest(watch, over, "normalize")
 	r.run()
-	seedVariant(t, r, it, subtitle.VariantSegmented, "en", "a", "b", "c", "d")
+	seedVariant(t, r, it, subtitle.VariantSegmented, "en", "alpha", "bravo", "charlie", "delta")
 	return r, it
 }
 
@@ -161,7 +174,7 @@ func TestLLMFallbackIsRetriedOnPlainRerun(t *testing.T) {
 		t.Errorf("fallbacks = %+v", prov.Fallbacks)
 	}
 	tr, _ := readTranscript(r.dir, art.Path, art.SHA256)
-	if got := []string{tr.Cues[0].Text, tr.Cues[1].Text, tr.Cues[2].Text}; got[0] != "a!" || got[1] != "b" || got[2] != "c!" {
+	if got := []string{tr.Cues[0].Text, tr.Cues[1].Text, tr.Cues[2].Text}; got[0] != "alpha!" || got[1] != "bravo" || got[2] != "charlie!" {
 		t.Errorf("退回的 chunk 用原文、其他用輸出：%v", got)
 	}
 

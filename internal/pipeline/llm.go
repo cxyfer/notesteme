@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
@@ -43,12 +44,17 @@ type llmPayload struct {
 // llmStage 是一個 LLM 步驟在 pipeline 這一側的部分：Spec（schema 與驗證）、產出的變體、退回與套用。
 // 之後的切片（segment、translate、correct 的 COR 規則）在 llmStages 登記自己的步驟。
 type llmStage struct {
-	spec    func() *llm.Spec
+	// spec 依 stages.<stage> 的步驟專屬欄位（例如 correct 的 min_similarity，stageExtras）建立 Spec；extras 可以是 nil。
+	spec    func(extras map[string]any) *llm.Spec
 	variant subtitle.Variant
 	// fallback 回傳驗證重試用盡時這個 chunk 的輸出（LLM-R5 的步驟退回規則）。
 	fallback func(in llm.ChunkInput) []llm.Cue
 	// apply 把合併後的輸出套用到輸入字幕，產生這個步驟的產出（時間沿用輸入）。
 	apply func(in subtitle.Transcript, merged []llm.Cue) (subtitle.Transcript, error)
+	// notes 回傳步驟完成時要附上的訊息與修正動作（例如 correct 有 chunk 因相似度退回，COR-R3）；沒有時為 nil。
+	notes func(fallbacks []fallbackRecord) (message string, actions []string)
+	// terms 取出已通過驗證的 chunk 輸出中的術語候選（COR-R6）；nil 代表這個步驟不收集術語候選。
+	terms func(out json.RawMessage) ([]string, error)
 }
 
 // usesLLMEngine 回報步驟的任務是否走 LLM 引擎（plan、chunk、assemble 三種任務）：
@@ -60,11 +66,15 @@ func usesLLMEngine(stage, executor string) bool {
 
 var llmStages = map[string]llmStage{
 	StageCorrect: {
-		spec:    llm.CorrectSpec,
+		spec: func(extras map[string]any) *llm.Spec {
+			return llm.CorrectSpecWith(extraFloat(extras, "min_similarity", llm.DefaultMinSimilarity))
+		},
 		variant: subtitle.VariantCorrected,
 		// COR-R3：重試用盡就退回這段的原文。
 		fallback: func(in llm.ChunkInput) []llm.Cue { return slices.Clone(in.Cues) },
 		apply:    replaceCueTexts,
+		notes:    correctNotes,
+		terms:    llm.DecodeTermCandidates,
 	},
 }
 
@@ -77,7 +87,7 @@ func init() {
 
 func checkLLMStages(stages map[string]llmStage) error {
 	for stage, d := range stages {
-		spec := d.spec()
+		spec := d.spec(nil)
 		if err := spec.Ready(); err != nil {
 			return err
 		}
@@ -102,6 +112,44 @@ func replaceCueTexts(in subtitle.Transcript, merged []llm.Cue) (subtitle.Transcr
 		out.Cues[k].Text = c.Text
 	}
 	return out, nil
+}
+
+// extraFloat 讀取步驟專屬欄位中的數字；沒有或型別不符時用預設值。
+func extraFloat(extras map[string]any, key string, def float64) float64 {
+	if v, ok := extras[key].(float64); ok {
+		return v
+	}
+	return def
+}
+
+// 動作文字（COR-R3）。
+const (
+	actionRecorrectChunk = "重新校正這段"
+	actionOpenPrompt     = "開啟 Prompt"
+)
+
+// correctNotes 是 correct 完成時附上的訊息（COR-R3）：有 chunk 因為相似度低於門檻而退回原文時，
+// 指出第一個這樣的 chunk 與它最低的相似度；動作是重新校正這段、開啟 Prompt。
+func correctNotes(fallbacks []fallbackRecord) (string, []string) {
+	var first *fallbackRecord
+	n := 0
+	for i := range fallbacks {
+		if fallbacks[i].Reason == llm.ReasonSimilarity {
+			if first == nil {
+				first = &fallbacks[i]
+			}
+			n++
+		}
+	}
+	if first == nil {
+		return "", nil
+	}
+	sim, _ := first.Detail["similarity"].(float64)
+	msg := fmt.Sprintf("第 %d 段的校正結果和原文差異過大（相似度 %.2f），已退回原文。", first.Chunk, sim)
+	if n > 1 {
+		msg += fmt.Sprintf("另有 %d 段也退回原文。", n-1)
+	}
+	return msg, []string{actionRecorrectChunk, actionOpenPrompt}
 }
 
 // LLMSettings 是 llm 區段中處理方案可以設定的部分（llm.chunk、llm.max_validation_retries）。
@@ -173,7 +221,10 @@ type llmJob struct {
 	cues     []llm.Cue
 	chunks   []llm.Chunk
 	fixed    llm.Fixed
-	prompt   ResolvedPrompt
+	// glossary 是送給模型的詞彙表（已轉成原文字形）；glossarySet 含轉換前後的寫法，術語候選用它排除已在詞彙表中的詞。
+	glossary    []string
+	glossarySet map[string]bool
+	prompt      ResolvedPrompt
 	// paramsSHA 是會影響輸出的參數（chunk 設定、詞彙表、步驟專屬欄位）的 sha256（LLM-R10）。
 	paramsSHA string
 	// fixedSHA 是固定前綴（系統指示與 <video_metadata>）的 sha256，進快取鍵：標題或 prompt 改變時快取不命中。
@@ -218,7 +269,11 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 	if err != nil {
 		return nil, err
 	}
-	job := &llmJob{stage: stage, def: def, spec: def.spec(), cfg: cfg, settings: settings}
+	extras, err := stageExtras(eff, stage)
+	if err != nil {
+		return nil, err
+	}
+	job := &llmJob{stage: stage, def: def, spec: def.spec(extras), cfg: cfg, settings: settings}
 
 	r := p.st.Read()
 	if inputID != "" {
@@ -272,22 +327,30 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 	if err != nil {
 		return nil, err
 	}
-	glossary := eff.Glossary()
 	srcLang := job.tr.Lang
 	if srcLang == "" {
 		srcLang = it.OriginalLang
 	}
-	job.fixed, err = llm.BuildFixed(job.spec, job.prompt.Body, llm.TemplateVars{SourceLang: srcLang, Glossary: glossary}, meta)
+	// 詞彙表（COR-R4）：全域、頻道、處理方案與頻道覆寫合併，再轉成原文字形；放在 <video_metadata>（不可信資料）中。
+	terms, err := p.glossaryTerms(ctx, it, eff)
+	if err != nil {
+		return nil, err
+	}
+	glossary := glossaryForSource(terms, srcLang, job.tr.Cues)
+	job.glossary = glossary
+	job.glossarySet = map[string]bool{}
+	for _, t := range slices.Concat(terms, glossary) {
+		job.glossarySet[strings.ToLower(t)] = true
+	}
+	meta.Glossary = glossary
+	// COR-R5：原文語言標記為 mixed 時，步驟的 MixedRule 加進系統指示。
+	job.fixed, err = llm.BuildFixed(job.spec, job.prompt.Body, llm.TemplateVars{SourceLang: srcLang, Mixed: it.LangMixed}, meta)
 	if err != nil {
 		return nil, errPermanent("prompt 無法渲染：" + err.Error())
 	}
 	fixedJSON, _ := json.Marshal(job.fixed)
 	job.fixedSHA = sha256Hex(fixedJSON)
 
-	extras, err := stageExtras(eff, stage)
-	if err != nil {
-		return nil, err
-	}
 	paramsJSON, err := json.Marshal(map[string]any{"chunk": settings.Chunk, "glossary": glossary, "stage": extras})
 	if err != nil {
 		return nil, err
@@ -465,7 +528,16 @@ func (p *Pipeline) llmPlan(ctx context.Context, t store.Task, run store.StageRun
 		if err != nil {
 			return result{}, err
 		}
-		res.inTx = func(ctx context.Context, tx *store.Repo) (bool, error) { return false, insertRows(ctx, tx) }
+		assembleTx := res.inTx
+		res.inTx = func(ctx context.Context, tx *store.Repo) (bool, error) {
+			if err := insertRows(ctx, tx); err != nil {
+				return false, err
+			}
+			if assembleTx != nil {
+				return assembleTx(ctx, tx)
+			}
+			return false, nil
+		}
 		return res, nil
 	}
 	return result{task: taskDone, keepState: true, inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {
@@ -567,13 +639,18 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 	if err != nil {
 		return result{}, err
 	}
-	status, reason, output := store.ChunkDone, "", json.RawMessage(out.Output)
+	status, reason, output, detail := store.ChunkDone, "", json.RawMessage(out.Output), json.RawMessage(nil)
 	if out.Output == nil {
 		status, reason, output = store.ChunkFallback, out.Fallback.Reason, nil
+		if len(out.Fallback.Detail) > 0 {
+			if detail, err = json.Marshal(out.Fallback.Detail); err != nil {
+				return result{}, err
+			}
+		}
 		p.log.Warn("chunk 驗證重試用盡，退回", "item", it.ID, "stage", run.Stage, "chunk", plan.Index, "reason", reason, "detail", out.Fallback.Message)
 	}
 	return result{task: taskDone, keepState: true, inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {
-		ok, err := tx.FinishLLMChunk(ctx, run.ID, plan.Index, status, reason, output, usage)
+		ok, err := tx.FinishLLMChunk(ctx, run.ID, plan.Index, status, reason, output, usage, detail)
 		if err != nil || !ok {
 			return false, err
 		}
@@ -636,6 +713,8 @@ type chunkRecord struct {
 type fallbackRecord struct {
 	Chunk  int    `json:"chunk"`
 	Reason string `json:"reason"`
+	// Detail 是步驟記錄的補充資料（例如 correct 的 similarity）；沒有時省略。
+	Detail map[string]any `json:"detail,omitempty"`
 }
 
 // assembleLLM 依 chunk 順序合併輸出、套用到輸入字幕、寫出產出（LLM-R1、R5、R10）。有退回的 chunk 時不寫入步驟層的快取鍵：
@@ -647,6 +726,7 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 	outputs := make([][]llm.Cue, len(rows))
 	records := make([]chunkRecord, 0, len(rows))
 	fallbacks := []fallbackRecord{}
+	var candidates []string
 	for k, row := range rows {
 		c := job.chunks[k]
 		if row.Chunk != c.Index {
@@ -660,9 +740,19 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 				return result{}, errPermanent(fmt.Sprintf("chunk %d 的輸出不正確：%v", c.Index, err))
 			}
 			outputs[k] = cues
+			if job.def.terms != nil {
+				// 輸出已通過 schema 驗證；解不出來就當成沒有候選，不讓它影響字幕的產出。
+				if ts, err := job.def.terms(row.Output); err == nil {
+					candidates = append(candidates, ts...)
+				}
+			}
 		case store.ChunkFallback:
 			outputs[k] = job.def.fallback(in)
-			fallbacks = append(fallbacks, fallbackRecord{Chunk: c.Index, Reason: row.Reason})
+			fb := fallbackRecord{Chunk: c.Index, Reason: row.Reason}
+			if len(row.Detail) > 2 { // 不是 {}
+				_ = json.Unmarshal(row.Detail, &fb.Detail)
+			}
+			fallbacks = append(fallbacks, fb)
 		default:
 			return result{}, errPermanent(fmt.Sprintf("chunk %d 還沒有結果", c.Index))
 		}
@@ -704,5 +794,41 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 	if len(fallbacks) > 0 {
 		stage.CacheKey = ""
 	}
-	return result{task: taskDone, advance: true, stage: stage, artifact: art, state: store.StageState{Status: store.StatusDone}}, nil
+	state := store.StageState{Status: store.StatusDone}
+	if job.def.notes != nil {
+		state.Message, state.Actions = job.def.notes(fallbacks)
+	}
+	res := result{task: taskDone, advance: true, stage: stage, artifact: art, state: state}
+	if len(candidates) > 0 && it.ChannelID != "" {
+		res.inTx = func(ctx context.Context, tx *store.Repo) (bool, error) {
+			return false, addTermCandidates(ctx, tx, it, job, candidates)
+		}
+	}
+	return res, nil
+}
+
+// addTermCandidates 把模型提出的術語候選寫入頻道（COR-R6）：狀態是 pending，不會自動加入詞彙表。
+// 清理（控制字元、長度、數量）之後，已經在詞彙表中的詞略過；頻道已有的詞（任何狀態，包含已被拒絕的）也不重複；
+// 一個頻道累積的候選有上限。
+func addTermCandidates(ctx context.Context, tx *store.Repo, it store.Item, job *llmJob, raw []string) error {
+	n, err := tx.CountTermCandidates(ctx, it.ChannelID)
+	if err != nil {
+		return err
+	}
+	for _, term := range llm.SanitizeTermCandidates(raw, llm.MaxTermCandidatesPerChunk*len(job.chunks)) {
+		if n >= maxTermCandidatesPerChannel {
+			return nil
+		}
+		if job.glossarySet[strings.ToLower(term)] {
+			continue
+		}
+		added, err := tx.AddTermCandidate(ctx, it.ChannelID, it.ID, term)
+		if err != nil {
+			return err
+		}
+		if added {
+			n++
+		}
+	}
+	return nil
 }

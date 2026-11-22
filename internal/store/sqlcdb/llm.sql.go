@@ -21,7 +21,7 @@ func (q *Queries) CountPendingLLMChunks(ctx context.Context, stageRunID string) 
 }
 
 const doneLLMChunkByCacheKey = `-- name: DoneLLMChunkByCacheKey :one
-SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at FROM llm_chunks
+SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json FROM llm_chunks
 WHERE item_id = ?1 AND stage = ?2 AND cache_key = ?3 AND status = 'done'
 ORDER BY updated_at DESC, rowid DESC LIMIT 1
 `
@@ -50,14 +50,15 @@ func (q *Queries) DoneLLMChunkByCacheKey(ctx context.Context, arg DoneLLMChunkBy
 		&i.Reused,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DetailJson,
 	)
 	return i, err
 }
 
 const finishLLMChunk = `-- name: FinishLLMChunk :execrows
 UPDATE llm_chunks SET status = ?1, reason = ?2, output_json = ?3,
-  usage_json = ?4, updated_at = ?5
-WHERE stage_run_id = ?6 AND chunk = ?7 AND status = 'pending'
+  usage_json = ?4, detail_json = ?5, updated_at = ?6
+WHERE stage_run_id = ?7 AND chunk = ?8 AND status = 'pending'
 `
 
 type FinishLLMChunkParams struct {
@@ -65,6 +66,7 @@ type FinishLLMChunkParams struct {
 	Reason     string
 	OutputJson *string
 	UsageJson  string
+	DetailJson string
 	Now        int64
 	StageRunID string
 	Chunk      int64
@@ -77,6 +79,7 @@ func (q *Queries) FinishLLMChunk(ctx context.Context, arg FinishLLMChunkParams) 
 		arg.Reason,
 		arg.OutputJson,
 		arg.UsageJson,
+		arg.DetailJson,
 		arg.Now,
 		arg.StageRunID,
 		arg.Chunk,
@@ -89,10 +92,10 @@ func (q *Queries) FinishLLMChunk(ctx context.Context, arg FinishLLMChunkParams) 
 
 const insertLLMChunk = `-- name: InsertLLMChunk :exec
 INSERT INTO llm_chunks (stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json,
-                        output_json, usage_json, reused, created_at, updated_at)
+                        output_json, usage_json, detail_json, reused, created_at, updated_at)
 VALUES (?1, ?2, ?3, ?4, ?5,
         ?6, ?7, ?8, ?9, ?10,
-        ?11, ?12, ?12)
+        ?11, ?12, ?13, ?13)
 `
 
 type InsertLLMChunkParams struct {
@@ -106,6 +109,7 @@ type InsertLLMChunkParams struct {
 	PlanJson   string
 	OutputJson *string
 	UsageJson  string
+	DetailJson string
 	Reused     int64
 	Now        int64
 }
@@ -122,6 +126,7 @@ func (q *Queries) InsertLLMChunk(ctx context.Context, arg InsertLLMChunkParams) 
 		arg.PlanJson,
 		arg.OutputJson,
 		arg.UsageJson,
+		arg.DetailJson,
 		arg.Reused,
 		arg.Now,
 	)
@@ -129,7 +134,7 @@ func (q *Queries) InsertLLMChunk(ctx context.Context, arg InsertLLMChunkParams) 
 }
 
 const lLMChunk = `-- name: LLMChunk :one
-SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at FROM llm_chunks WHERE stage_run_id = ?1 AND chunk = ?2
+SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json FROM llm_chunks WHERE stage_run_id = ?1 AND chunk = ?2
 `
 
 type LLMChunkParams struct {
@@ -154,12 +159,13 @@ func (q *Queries) LLMChunk(ctx context.Context, arg LLMChunkParams) (LlmChunk, e
 		&i.Reused,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DetailJson,
 	)
 	return i, err
 }
 
 const lLMChunksByRun = `-- name: LLMChunksByRun :many
-SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at FROM llm_chunks WHERE stage_run_id = ?1 ORDER BY chunk
+SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json FROM llm_chunks WHERE stage_run_id = ?1 ORDER BY chunk
 `
 
 func (q *Queries) LLMChunksByRun(ctx context.Context, stageRunID string) ([]LlmChunk, error) {
@@ -185,6 +191,7 @@ func (q *Queries) LLMChunksByRun(ctx context.Context, stageRunID string) ([]LlmC
 			&i.Reused,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DetailJson,
 		); err != nil {
 			return nil, err
 		}

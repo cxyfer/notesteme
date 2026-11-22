@@ -93,6 +93,22 @@ type Event struct {
 	At          int64
 }
 
+type Glossary struct {
+	Scope     string
+	ScopeID   string
+	TermsJson string
+	UpdatedAt int64
+}
+
+type GlossaryCandidate struct {
+	ID        string
+	ChannelID string
+	ItemID    *string
+	Term      string
+	State     string
+	CreatedAt int64
+}
+
 type InboxEntry struct {
 	Path      string
 	Size      int64
@@ -154,6 +170,7 @@ type LlmChunk struct {
 	Reused     int64
 	CreatedAt  int64
 	UpdatedAt  int64
+	DetailJson string
 }
 
 type Output struct {

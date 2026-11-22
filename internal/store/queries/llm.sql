@@ -1,9 +1,9 @@
 -- name: InsertLLMChunk :exec
 INSERT INTO llm_chunks (stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json,
-                        output_json, usage_json, reused, created_at, updated_at)
+                        output_json, usage_json, detail_json, reused, created_at, updated_at)
 VALUES (sqlc.arg(stage_run_id), sqlc.arg(chunk), sqlc.arg(item_id), sqlc.arg(stage), sqlc.arg(cache_key),
         sqlc.arg(status), sqlc.arg(reason), sqlc.arg(plan_json), sqlc.narg(output_json), sqlc.arg(usage_json),
-        sqlc.arg(reused), sqlc.arg(now), sqlc.arg(now));
+        sqlc.arg(detail_json), sqlc.arg(reused), sqlc.arg(now), sqlc.arg(now));
 
 -- name: LLMChunksByRun :many
 SELECT * FROM llm_chunks WHERE stage_run_id = sqlc.arg(stage_run_id) ORDER BY chunk;
@@ -14,7 +14,7 @@ SELECT * FROM llm_chunks WHERE stage_run_id = sqlc.arg(stage_run_id) AND chunk =
 -- name: FinishLLMChunk :execrows
 -- Only a pending row is filled in: a second write-back of the same chunk matches no row.
 UPDATE llm_chunks SET status = sqlc.arg(status), reason = sqlc.arg(reason), output_json = sqlc.narg(output_json),
-  usage_json = sqlc.arg(usage_json), updated_at = sqlc.arg(now)
+  usage_json = sqlc.arg(usage_json), detail_json = sqlc.arg(detail_json), updated_at = sqlc.arg(now)
 WHERE stage_run_id = sqlc.arg(stage_run_id) AND chunk = sqlc.arg(chunk) AND status = 'pending';
 
 -- name: CountPendingLLMChunks :one

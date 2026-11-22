@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -20,6 +21,8 @@ const (
 type ValidationError struct {
 	Reason  string
 	Message string
+	// Detail 是退回時一併記錄的補充資料（例如 correct 的相似度）；沒有時是 nil。
+	Detail map[string]any
 }
 
 func (e *ValidationError) Error() string { return e.Reason + ": " + e.Message }
@@ -42,6 +45,11 @@ type Spec struct {
 	Schema map[string]any
 	// OutputRules 是附在系統指示中的輸出規則（一行）。
 	OutputRules string
+	// Optional 是 schema 的 required 中、但產品視為選填的最上層欄位：strict 模式要求 required 列出所有屬性，
+	// 所以 schema 照列；驗證時輸出缺少這些欄位仍然通過。
+	Optional []string
+	// MixedRule 是原文語言為 mixed 時加進系統指示的規則（例如 correct 的「不要翻譯」）；空字串代表這個步驟沒有。
+	MixedRule string
 	// Check 在輸出符合 schema 之後，對照 chunk 的輸入做步驟自己的驗證（例如 correct 的句數）；nil 代表沒有。
 	Check func(in ChunkInput, out json.RawMessage) *ValidationError
 }
@@ -71,7 +79,7 @@ func (s *Spec) Validate(in ChunkInput, out []byte) (json.RawMessage, *Validation
 	if _, ok := v.(map[string]any); !ok {
 		return nil, &ValidationError{Reason: ReasonInvalidJSON, Message: "output was not valid JSON: the top level must be an object"}
 	}
-	if err := checkSchema(s.Schema, v, "$"); err != nil {
+	if err := checkSchema(s.validationSchema(), v, "$"); err != nil {
 		return nil, &ValidationError{Reason: ReasonSchema, Message: "output does not match the schema: " + err.Error()}
 	}
 	var buf bytes.Buffer
@@ -84,6 +92,25 @@ func (s *Spec) Validate(in ChunkInput, out []byte) (json.RawMessage, *Validation
 		}
 	}
 	return buf.Bytes(), nil
+}
+
+// validationSchema 是驗證輸出用的 schema：Optional 的欄位從最上層的 required 拿掉。
+func (s *Spec) validationSchema() map[string]any {
+	if len(s.Optional) == 0 {
+		return s.Schema
+	}
+	out := make(map[string]any, len(s.Schema))
+	for k, v := range s.Schema {
+		out[k] = v
+	}
+	var req []any
+	for _, r := range stringList(s.Schema["required"]) {
+		if !slices.Contains(s.Optional, r) {
+			req = append(req, r)
+		}
+	}
+	out["required"] = req
+	return out
 }
 
 // decodeJSON 解出一個 JSON 值（數字保留為 json.Number）；之後還有其他內容時視為錯誤。

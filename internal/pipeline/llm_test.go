@@ -77,13 +77,13 @@ func TestCheckLLMStages(t *testing.T) {
 	if err := checkLLMStages(llmStages); err != nil {
 		t.Fatalf("目前的登記：%v", err)
 	}
-	loose := func() *llm.Spec {
+	loose := func(map[string]any) *llm.Spec {
 		return &llm.Spec{Stage: StageCorrect, Schema: map[string]any{"type": "object", "properties": map[string]any{"a": map[string]any{"type": "string"}}}}
 	}
 	if err := checkLLMStages(map[string]llmStage{StageCorrect: {spec: loose}}); err == nil {
 		t.Error("schema 沒有 additionalProperties: false、required 不完整時應該拒絕")
 	}
-	if err := checkLLMStages(map[string]llmStage{StageSegment: {spec: llm.CorrectSpec}}); err == nil {
+	if err := checkLLMStages(map[string]llmStage{StageSegment: {spec: func(map[string]any) *llm.Spec { return llm.CorrectSpec() }}}); err == nil {
 		t.Error("步驟名稱不一致時應該拒絕")
 	}
 }

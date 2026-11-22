@@ -95,3 +95,9 @@ func (p *Pipeline) SeedTranscript(ctx context.Context, req SeedRequest) error {
 		return r.SetStageState(ctx, run.ID, store.StageState{Status: store.StatusDone})
 	})
 }
+
+// SeedLangMixed 把影音的原文語言標記為 mixed（夾雜多種語言）。只給驗收測試的 harness 使用（同 SeedTranscript）：
+// 產品中判斷 mixed 的流程（SRC-R11）還沒有實作。
+func (p *Pipeline) SeedLangMixed(ctx context.Context, itemID string) error {
+	return p.st.Tx(ctx, func(r *store.Repo) error { return r.SetItemLangMixed(ctx, itemID, true) })
+}

@@ -245,3 +245,19 @@ func (r *Repo) SetItemUntil(ctx context.Context, id, until string) error {
 	}
 	return nil
 }
+
+// SetItemLangMixed 標記影音的原文語言是否為 mixed（夾雜多種語言，COR-R5）；影音不存在時回傳 ErrNotFound。
+func (r *Repo) SetItemLangMixed(ctx context.Context, id string, mixed bool) error {
+	v := int64(0)
+	if mixed {
+		v = 1
+	}
+	n, err := r.q.SetItemLangMixed(ctx, sqlcdb.SetItemLangMixedParams{LangMixed: v, ID: id})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

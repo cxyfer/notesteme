@@ -8,7 +8,7 @@ import (
 func correctInput(n int) ChunkInput {
 	in := ChunkInput{Chunk: Chunk{Index: 1, From: 1, To: n}, Chunks: 1}
 	for i := 1; i <= n; i++ {
-		in.Cues = append(in.Cues, Cue{I: i, Text: "x"})
+		in.Cues = append(in.Cues, Cue{I: i, Text: string(rune('a' + i - 1))}) // a、b、c…
 	}
 	return in
 }
@@ -124,4 +124,94 @@ func TestSpecReady(t *testing.T) {
 	if err := (&Spec{Stage: "x", Schema: map[string]any{"type": "object", "properties": map[string]any{}}}).Ready(); err == nil {
 		t.Error("schema 沒有 additionalProperties: false")
 	}
+}
+
+// COR-R2：每句的相似度不得低於門檻；失敗時 Detail 記下最低的相似度與句號（COR-R3 的訊息用）。
+func TestCorrectSpecSimilarity(t *testing.T) {
+	in := ChunkInput{Chunk: Chunk{Index: 1, From: 1, To: 2}, Chunks: 1, Cues: []Cue{
+		{I: 1, Text: "we use cafca streams"}, {I: 2, Text: "with craft mode enabled"},
+	}}
+	good := `{"cues":[{"i":1,"text":"We use Kafka Streams."},{"i":2,"text":"With KRaft mode enabled."}]}`
+	if _, verr := CorrectSpec().Validate(in, []byte(good)); verr != nil {
+		t.Fatalf("合理的校正不該失敗：%v", verr)
+	}
+	bad := `{"cues":[{"i":1,"text":"We use Kafka Streams."},{"i":2,"text":"Craft beer is brewed in small batches"}]}`
+	_, verr := CorrectSpec().Validate(in, []byte(bad))
+	if verr == nil || verr.Reason != ReasonSimilarity || !strings.Contains(verr.Message, "i=2") {
+		t.Fatalf("改寫要被拒絕，並指出句號：%v", verr)
+	}
+	if sim, _ := verr.Detail["similarity"].(float64); sim != 0.24 || verr.Detail["cue"] != 2 {
+		t.Errorf("Detail = %v，預期 similarity 0.24、cue 2", verr.Detail)
+	}
+	// 門檻可以調：0 代表什麼都接受，1 代表一個字都不能改。
+	if _, verr := CorrectSpecWith(0).Validate(in, []byte(bad)); verr != nil {
+		t.Errorf("門檻 0 不該拒絕：%v", verr)
+	}
+	if _, verr := CorrectSpecWith(1).Validate(in, []byte(good)); verr == nil {
+		t.Error("門檻 1 時任何修改都要被拒絕")
+	}
+}
+
+// COR-R6：term_candidates 選填，但有的話要符合 schema；strict schema 仍然列在 required。
+func TestCorrectSpecTermCandidates(t *testing.T) {
+	spec := CorrectSpec()
+	in := correctInput(1)
+	if err := ValidateStrictSchema(spec.Schema); err != nil {
+		t.Fatal(err)
+	}
+	withTerms := `{"cues":[{"i":1,"text":"a"}],"term_candidates":[{"term":"KRaft"}]}`
+	out, verr := spec.Validate(in, []byte(withTerms))
+	if verr != nil {
+		t.Fatal(verr)
+	}
+	terms, err := DecodeTermCandidates(out)
+	if err != nil || len(terms) != 1 || terms[0] != "KRaft" {
+		t.Errorf("DecodeTermCandidates = %v, %v", terms, err)
+	}
+	if _, verr := spec.Validate(in, []byte(`{"cues":[{"i":1,"text":"a"}]}`)); verr != nil {
+		t.Errorf("沒有 term_candidates 不該失敗：%v", verr)
+	}
+	for _, bad := range []string{
+		`{"cues":[{"i":1,"text":"a"}],"term_candidates":"KRaft"}`,
+		`{"cues":[{"i":1,"text":"a"}],"term_candidates":[{"term":"K","note":"x"}]}`,
+		`{"cues":[{"i":1,"text":"a"}],"term_candidates":[{}]}`,
+	} {
+		if _, verr := spec.Validate(in, []byte(bad)); verr == nil || verr.Reason != ReasonSchema {
+			t.Errorf("%s 應該違反 schema：%v", bad, verr)
+		}
+	}
+	// 其他 required 欄位仍然必填。
+	if _, verr := spec.Validate(in, []byte(`{"term_candidates":[]}`)); verr == nil {
+		t.Error("缺少 cues 要失敗")
+	}
+}
+
+func TestSanitizeTermCandidates(t *testing.T) {
+	got := SanitizeTermCandidates([]string{
+		" KRaft ", "kraft", "Apache\nKafka\t Streams", "", "   ", strings.Repeat("字", MaxTermRunes+1),
+		"a‮b", "\x00\x1b[31mred", strings.Repeat("字", MaxTermRunes),
+	}, 5)
+	want := []string{"KRaft", "Apache Kafka Streams", "a b", "[31mred", strings.Repeat("字", MaxTermRunes)}
+	if len(got) != len(want) {
+		t.Fatalf("got %q", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("[%d] = %q，預期 %q", i, got[i], want[i])
+		}
+	}
+	if n := len(SanitizeTermCandidates([]string{"a", "b", "c"}, 2)); n != 2 {
+		t.Errorf("上限 2 但回傳 %d 個", n)
+	}
+}
+
+func FuzzSanitizeTermCandidates(f *testing.F) {
+	f.Add("KRaft", "\n\x00 x")
+	f.Fuzz(func(t *testing.T, a, b string) {
+		for _, s := range SanitizeTermCandidates([]string{a, b}, MaxTermCandidatesPerChunk) {
+			if s == "" || strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f }) || len([]rune(s)) > MaxTermRunes {
+				t.Fatalf("清理後仍不合法：%q", s)
+			}
+		}
+	})
 }

@@ -445,6 +445,24 @@ func (q *Queries) SetChannelOverrides(ctx context.Context, arg SetChannelOverrid
 	return result.RowsAffected()
 }
 
+const setItemLangMixed = `-- name: SetItemLangMixed :execrows
+UPDATE items SET lang_mixed = ?1 WHERE id = ?2
+`
+
+type SetItemLangMixedParams struct {
+	LangMixed int64
+	ID        string
+}
+
+// The original language is marked mixed (several languages in one transcript).
+func (q *Queries) SetItemLangMixed(ctx context.Context, arg SetItemLangMixedParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setItemLangMixed, arg.LangMixed, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const setItemProfile = `-- name: SetItemProfile :execrows
 UPDATE items SET profile_id = ?1, profile_version = ?2 WHERE id = ?3
 `

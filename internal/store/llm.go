@@ -29,6 +29,8 @@ type LLMChunk struct {
 	Plan       json.RawMessage
 	Output     json.RawMessage // pending 與 fallback 時是 nil
 	Usage      json.RawMessage
+	// Detail 是退回的補充資料（例如 correct 退回時的相似度）；沒有時是 {}。
+	Detail json.RawMessage
 	// Reused 為 true 代表這個 chunk 重用了之前相同輸入的結果，沒有呼叫 provider（LLM-R8）。
 	Reused    bool
 	CreatedAt time.Time
@@ -39,7 +41,7 @@ func llmChunkFromRow(row sqlcdb.LlmChunk) LLMChunk {
 	c := LLMChunk{
 		StageRunID: row.StageRunID, Chunk: int(row.Chunk), ItemID: row.ItemID, Stage: row.Stage,
 		CacheKey: row.CacheKey, Status: row.Status, Reason: row.Reason, Plan: json.RawMessage(row.PlanJson),
-		Usage: json.RawMessage(row.UsageJson), Reused: row.Reused != 0,
+		Usage: json.RawMessage(row.UsageJson), Detail: json.RawMessage(row.DetailJson), Reused: row.Reused != 0,
 		CreatedAt: fromMs(row.CreatedAt), UpdatedAt: fromMs(row.UpdatedAt),
 	}
 	if row.OutputJson != nil {
@@ -72,7 +74,7 @@ func (r *Repo) InsertLLMChunk(ctx context.Context, c LLMChunk) error {
 	return r.q.InsertLLMChunk(ctx, sqlcdb.InsertLLMChunkParams{
 		StageRunID: c.StageRunID, Chunk: int64(c.Chunk), ItemID: c.ItemID, Stage: c.Stage, CacheKey: c.CacheKey,
 		Status: c.Status, Reason: c.Reason, PlanJson: rawOr(c.Plan, "{}"), OutputJson: rawPtr(c.Output),
-		UsageJson: rawOr(c.Usage, "{}"), Reused: reused, Now: r.nowMs(),
+		UsageJson: rawOr(c.Usage, "{}"), DetailJson: rawOr(c.Detail, "{}"), Reused: reused, Now: r.nowMs(),
 	})
 }
 
@@ -102,9 +104,9 @@ func (r *Repo) LLMChunk(ctx context.Context, stageRunID string, chunk int) (LLMC
 }
 
 // FinishLLMChunk 寫入 chunk 的結果（done 或 fallback）。chunk 已經不是 pending 時回傳 false，不改變任何資料。
-func (r *Repo) FinishLLMChunk(ctx context.Context, stageRunID string, chunk int, status, reason string, output, usage json.RawMessage) (bool, error) {
+func (r *Repo) FinishLLMChunk(ctx context.Context, stageRunID string, chunk int, status, reason string, output, usage, detail json.RawMessage) (bool, error) {
 	n, err := r.q.FinishLLMChunk(ctx, sqlcdb.FinishLLMChunkParams{
-		Status: status, Reason: reason, OutputJson: rawPtr(output), UsageJson: rawOr(usage, "{}"),
+		Status: status, Reason: reason, OutputJson: rawPtr(output), UsageJson: rawOr(usage, "{}"), DetailJson: rawOr(detail, "{}"),
 		Now: r.nowMs(), StageRunID: stageRunID, Chunk: int64(chunk),
 	})
 	return n > 0, err
