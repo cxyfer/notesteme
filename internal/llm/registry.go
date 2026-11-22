@@ -75,6 +75,8 @@ func NewRegistry(configured map[string]ProviderConfig, clk clock.Clock) *Registr
 				c.BaseURL = b.BaseURL
 			} else if c.Type == TypeAnthropic {
 				c.BaseURL = DefaultAnthropicBaseURL
+			} else if c.Type == TypeGemini {
+				c.BaseURL = DefaultGeminiBaseURL
 			} else {
 				c.BaseURL = DefaultOpenAIBaseURL
 			}
@@ -88,6 +90,12 @@ func NewRegistry(configured map[string]ProviderConfig, clk clock.Clock) *Registr
 func (r *Registry) HasLLMProvider(id string) bool {
 	_, ok := r.providers[id]
 	return ok
+}
+
+// LLMProviderType 回傳 provider 的 type（pipeline.ProviderTypes，GEM-R1）。
+func (r *Registry) LLMProviderType(id string) (string, bool) {
+	c, ok := r.providers[id]
+	return c.Type, ok
 }
 
 // IDs 依字母順序列出 provider id。
@@ -114,6 +122,13 @@ func (r *Registry) Client(ctx context.Context, id string) (Client, error) {
 		return nil, &errclass.Error{
 			Class: errclass.ClassPermanent, Source: "llm", Detail: "找不到 LLM provider " + id,
 			Message: fmt.Sprintf("找不到 LLM provider「%s」。", id),
+		}
+	}
+	if cfg.Type == TypeGemini {
+		// Gemini 的 wire 與 anthropic、openai 不同（GEM-R4）；client 由 GEM 的切片實作，在那之前不要誤用 openai 的格式。
+		return nil, &errclass.Error{
+			Class: errclass.ClassPermanent, Source: "llm:" + id, Detail: "gemini client 尚未實作",
+			Message: "type 為 gemini 的 provider 還沒有實作，只能用於 stages.note.engine: gemini（M3 的 GEM 切片）。",
 		}
 	}
 	key := strings.TrimSpace(r.Env[KeyEnvVar(id)])

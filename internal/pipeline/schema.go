@@ -36,6 +36,20 @@ type ValidateDeps struct {
 	Providers ProviderCatalog
 	// Prompts 為 nil 時不檢查 prompt 是否存在。
 	Prompts PromptResolver
+	// Outputs 為 nil 時不檢查 vault 與 hook 是否存在（VAULT-R1、R10）。
+	Outputs OutputCatalog
+}
+
+// OutputCatalog 回答設定檔定義的 vault 與 hook 存不存在（VAULT-R1、R10）：兩者只能寫在設定檔，處理方案只能引用 id。
+type OutputCatalog interface {
+	HasVault(id string) bool
+	HasHook(id string) bool
+}
+
+// ProviderTypes 是 ProviderCatalog 可以額外實作的介面：回傳 provider 的 type（anthropic、openai、gemini）。
+// 用於 GEM-R1（engine: gemini 需要 type 為 gemini 的 provider）；沒有實作時略過這項檢查。
+type ProviderTypes interface {
+	LLMProviderType(id string) (string, bool)
 }
 
 // 驗證訊息（固定的句子，測試與 API 回應都依賴它們）。
@@ -55,8 +69,27 @@ const (
 	msgRequired      = "必填。"
 )
 
-// stageOrder 是 stages 底下已知步驟的檢查順序。
-var stageOrder = []string{StageSegment, StageCorrect, StageTranslate}
+// stageOrder 是 stages 底下已知步驟的檢查順序（M2 的 LLM 步驟，接著是 M3 的步驟，同 Stages 的順序）。
+var stageOrder = []string{StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StageChapters, StageFrames, StageNote}
+
+// SponsorBlock 的類別（SPB-R3）。
+var sponsorBlockCategories = []string{"sponsor", "selfpromo", "interaction", "intro", "outro", "preview", "music_offtopic", "filler"}
+
+// sponsorBlockFields 是 stages.sponsorblock 的欄位：它是確定性步驟，沒有 executor、provider 這些通用欄位（SPB-R1、R3）。
+var sponsorBlockFields = []fieldSpec{
+	{"enabled", checkBool},
+	{"categories", checkStringList(0, sponsorBlockCategories)},
+}
+
+// M3 欄位的上限：規格的預設值是暫定的（CHAP H4、FRM F2），上限只擋明顯不合理的值。
+const (
+	maxChapters      = 100 // CHAP H4
+	maxFrames        = 100
+	maxFrameInterval = 3600 // 秒
+	maxDedupeWindow  = 100
+	maxFramesPerMin  = 60
+	maxNoteTitleLang = 64
+)
 
 // stageCommonFields 是每個 LLM 步驟都有的欄位，依檢查順序；步驟專屬欄位接在後面（stageFields）。
 var stageCommonFields = []string{"executor", "provider", "model", "prompt"}
@@ -72,6 +105,57 @@ var stageFields = map[string][]fieldSpec{
 	StageTranslate: {
 		{"length_ratio", checkLengthRatio},
 	},
+	// M3（CHAP、FRM、NOTE、GEM 的「介面」）；S0 只做型別與範圍檢查，語意由各自的切片使用。
+	StageChapters: {
+		{"max_chapters", checkIntRange(1, maxChapters)},
+	},
+	StageFrames: {
+		{"scene_threshold", checkNumberRange(0, 1)},
+		{"min_interval_s", checkIntRange(1, maxFrameInterval)},
+		{"dedupe_window", checkIntRange(1, maxDedupeWindow)},
+		{"dedupe_threshold", checkNumberRange(0, 1)},
+		{"max_frames", checkIntRange(1, maxFrames)},
+		{"per_minute", checkNumberRangeOpen(0, maxFramesPerMin)},
+		{"hint_words", checkStringList(0, nil)},
+	},
+	StageNote: {
+		{"engine", checkEnum(NoteEnginePipeline, NoteEngineGemini)},
+		{"template", checkString},
+		{"lang", checkLangTag},
+		{"include_translation", checkBool},
+		{"map_reduce_after", checkDuration},
+		{"gemini", checkObject([]fieldSpec{{"max_duration", checkDuration}}, msgUnknownField)},
+	},
+}
+
+// stages.note.engine 的值（GEM-R1）。
+const (
+	NoteEnginePipeline = "pipeline"
+	NoteEngineGemini   = "gemini"
+)
+
+// checkLangTag 檢查單一的 BCP-47 語言標記（只看形狀）。
+func checkLangTag(v *layerValidator, path string, val any) {
+	if s, ok := v.asString(path, val); ok && (len(s) > maxNoteTitleLang || !output.ValidLang(s)) {
+		v.add(path, "不是正確的語言標記（BCP-47，例如 en、zh-Hant-TW）。")
+	}
+}
+
+// checkNumberRangeOpen 檢查 (lo, hi] 之間的數字。
+func checkNumberRangeOpen(lo, hi float64) func(*layerValidator, string, any) {
+	msg := fmt.Sprintf("必須是大於 %g、不超過 %g 的數字。", lo, hi)
+	return func(v *layerValidator, path string, val any) {
+		switch t := val.(type) {
+		case nil:
+			v.add(path, msgNull)
+		case float64:
+			if math.IsNaN(t) || t <= lo || t > hi {
+				v.add(path, msg)
+			}
+		default:
+			v.add(path, msg)
+		}
+	}
 }
 
 // ValidateLayer 依固定順序檢查 doc，回傳全部錯誤（沒有錯誤時回傳 nil）。
@@ -189,13 +273,65 @@ var outputFields = []fieldSpec{
 	{"on_user_change", checkEnum(output.PolicySaveAsNew, output.PolicySkip)},
 }
 
-// checkOutputTarget 檢查 outputs[].target：sidecar 或 folder；vault 屬於 M3，給清楚的訊息而不是列舉錯誤。
+// vaultOutputFields 是 target: vault 的欄位（VAULT-R1）：path、remote 等 vault 的定義只能寫在設定檔，
+// 寫在處理方案中是「不認識的欄位」；formats 可以是空陣列（只寫筆記與圖片，VAULT-R5）。
+var vaultOutputFields = []fieldSpec{
+	{"target", (*layerValidator).checkOutputTarget},
+	{"vault", (*layerValidator).checkOutputVault},
+	{"formats", checkStringList(0, output.Formats)},
+	{"lang", (*layerValidator).checkOutputLang},
+	{"folder", checkVaultFolder},
+	{"on_user_change", checkEnum(output.PolicySaveAsNew, output.PolicySkip)},
+	{"hooks", (*layerValidator).checkOutputHooks},
+}
+
+// checkOutputTarget 檢查 outputs[].target：sidecar、folder 或 vault（M3，VAULT-R1）。
 func (v *layerValidator) checkOutputTarget(path string, val any) {
-	if t, _ := val.(string); t == output.TargetVault {
-		v.add(path, "vault 輸出目標在 M3 才提供，目前只支援 sidecar、folder。")
+	checkEnum(output.TargetSidecar, output.TargetFolder, output.TargetVault)(v, path, val)
+}
+
+// checkOutputVault 檢查 outputs[].vault 是設定檔定義的 vault id（VAULT-R1）。
+func (v *layerValidator) checkOutputVault(path string, val any) {
+	id, ok := v.asString(path, val)
+	if ok && v.deps.Outputs != nil && !v.deps.Outputs.HasVault(id) {
+		v.add(path, fmt.Sprintf("沒有這個 vault：%s。vault 只能在設定檔定義。", id))
+	}
+}
+
+// checkOutputHooks 檢查 outputs[].hooks：只能列設定檔定義的 hook id（VAULT-R10）。
+func (v *layerValidator) checkOutputHooks(path string, val any) {
+	switch val.(type) {
+	case nil:
+		v.add(path, msgNull)
+		return
+	case []any:
+	default:
+		v.add(path, msgNotStringList)
 		return
 	}
-	checkEnum(output.TargetSidecar, output.TargetFolder)(v, path, val)
+	for i, e := range val.([]any) {
+		p := joinPath(path, strconv.Itoa(i))
+		if id, ok := v.asString(p, e); ok && v.deps.Outputs != nil && !v.deps.Outputs.HasHook(id) {
+			v.add(p, fmt.Sprintf("沒有這個 hook：%s。hook 只能在設定檔定義。", id))
+		}
+	}
+}
+
+// checkVaultFolder 檢查 outputs[].folder：vault 內的相對資料夾，不能是絕對路徑、不能含 ..（VAULT-R2）。
+func checkVaultFolder(v *layerValidator, path string, val any) {
+	s, ok := v.asString(path, val)
+	if !ok {
+		return
+	}
+	bad := strings.HasPrefix(s, "/") || strings.HasPrefix(s, `\`) || filepath.IsAbs(s) || (len(s) >= 2 && s[1] == ':')
+	for _, seg := range strings.FieldsFunc(s, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if seg == ".." {
+			bad = true
+		}
+	}
+	if bad {
+		v.add(path, "folder 不能是絕對路徑或包含 ..。")
+	}
 }
 
 // checkOutputLang 檢查 outputs[].lang：至少一個 BCP-47 語言標記（只看形狀）。
@@ -498,6 +634,13 @@ func (v *layerValidator) checkOutputs(path string, val any) {
 		if _, has := m["target"]; !has {
 			v.add(joinPath(p, "target"), msgRequired)
 		}
+		if t, _ := m["target"].(string); t == output.TargetVault {
+			if _, has := m["vault"]; !has {
+				v.add(joinPath(p, "vault"), msgRequired)
+			}
+			v.walk(p, m, vaultOutputFields, msgUnknownField)
+			continue
+		}
 		v.walk(p, m, outputFields, msgUnknownField)
 		v.checkOutputPath(p, m)
 	}
@@ -522,14 +665,19 @@ func (v *layerValidator) checkOutputPath(p string, m map[string]any) {
 	}
 }
 
-// checkStages 檢查 stages：只能有 segment、correct、translate。
+// checkStages 檢查 stages：M2 的 segment、correct、translate 與 M3 的 sponsorblock、chapters、frames、note。
 func (v *layerValidator) checkStages(path string, val any) {
 	m, ok := v.asObject(path, val)
 	if !ok {
 		return
 	}
 	for _, name := range stageOrder {
-		if sv, has := m[name]; has {
+		sv, has := m[name]
+		switch {
+		case !has:
+		case name == StageSponsorBlock:
+			checkObject(sponsorBlockFields, msgUnknownField)(v, joinPath(path, name), sv)
+		default:
 			v.checkStage(joinPath(path, name), name, sv)
 		}
 	}
@@ -543,16 +691,23 @@ func (v *layerValidator) checkStage(path, stage string, val any) {
 	if !ok {
 		return
 	}
-	// executor 有問題時，這個 stage 的完整性檢查略過。
-	needComplete := v.kind == KindProfile
+	// executor 有問題時，這個 stage 的完整性檢查略過。沒寫 executor 時看步驟的預設（frames 預設 off，不需要 provider）。
+	needComplete := v.kind == KindProfile && defaultStageConfig(stage).Executor == ExecutorAPI
 	if raw, has := m["executor"]; has {
 		exec, ok := v.checkExecutor(joinPath(path, "executor"), stage, raw)
-		needComplete = needComplete && ok && exec == ExecutorAPI
+		needComplete = v.kind == KindProfile && ok && exec == ExecutorAPI
 	}
 
 	if raw, has := m["provider"]; has {
 		if id, ok := v.asString(joinPath(path, "provider"), raw); ok && v.deps.Providers != nil && !v.deps.Providers.HasLLMProvider(id) {
 			v.add(joinPath(path, "provider"), fmt.Sprintf("找不到 LLM provider「%s」。", id))
+		} else if ok && stage == StageNote && m["engine"] == NoteEngineGemini {
+			// GEM-R1：engine: gemini 需要 type 為 gemini 的 provider。目錄不提供 type 時略過。
+			if pt, can := v.deps.Providers.(ProviderTypes); can {
+				if typ, found := pt.LLMProviderType(id); found && typ != NoteEngineGemini {
+					v.add(joinPath(path, "provider"), "engine: gemini 需要 type 為 gemini 的 provider。")
+				}
+			}
 		}
 	} else if needComplete {
 		v.add(joinPath(path, "provider"), "executor 為 api 時必須指定 provider。")
@@ -593,6 +748,11 @@ func (v *layerValidator) checkExecutor(path, stage string, val any) (string, boo
 	}
 	if allowed := StageExecutors(stage); !slices.Contains(allowed, exec) {
 		v.add(path, fmt.Sprintf("%s 不支援 %s；可用 %s。", stage, exec, strings.Join(allowed, "、")))
+		return exec, false
+	}
+	if stage == StageFrames && exec == ExecutorAgent {
+		// FRM-R1、F6：Agent 任務還不能帶圖片。
+		v.add(path, "選圖還不支援交給 Agent。")
 		return exec, false
 	}
 	return exec, true

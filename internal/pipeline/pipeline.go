@@ -98,6 +98,8 @@ type Deps struct {
 	ImplVersions map[string]int
 	// Providers 回答 LLM provider 存不存在（PRF-R4）；nil 代表不檢查 provider 是否存在。
 	Providers ProviderCatalog
+	// Outputs 回答設定檔的 vault 與 hook 存不存在（VAULT-R1、R10）；nil 代表不檢查。
+	Outputs OutputCatalog
 	// Prompts 解析 prompt 引用（PRM、PRF-R4）；nil 代表不檢查 prompt 是否存在，也不記錄 prompt 版本。
 	Prompts PromptResolver
 	// LLM 是 LLM provider 的 client、API key 與限流（LLM 規格）；nil 代表 api executor 的 LLM 步驟以 permanent 失敗。
@@ -144,6 +146,7 @@ type Pipeline struct {
 
 	// providers、prompts 是驗證與 Compose 查詢外部資源用的（見 Deps）；可以是 nil。
 	providers ProviderCatalog
+	outputs   OutputCatalog
 	prompts   PromptResolver
 	llm       *llm.Registry
 	// agentLimit 回傳資源類別的並行上限，Agent 領取時用（AGT-R2）；nil 時用 queue.DefaultLimit。
@@ -171,7 +174,7 @@ func New(d Deps) *Pipeline {
 	if retention <= 0 {
 		retention = DefaultTrashRetention
 	}
-	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, prompts: d.Prompts, llm: d.LLM}
+	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, outputs: d.Outputs, prompts: d.Prompts, llm: d.LLM}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。

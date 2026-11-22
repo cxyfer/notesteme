@@ -6,6 +6,7 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -43,7 +44,14 @@ type Config struct {
 	Path string `json:"path,omitempty"`
 	// OnUserChange 是目標檔案被改過時的處理方式，預設 save_as_new。
 	OnUserChange string `json:"on_user_change,omitempty"`
+	// Vault、Folder、Hooks 只用於 vault 目標（VAULT-R1、R2、R10）；寫出由 VAULT 的切片實作。
+	Vault  string   `json:"vault,omitempty"`
+	Folder string   `json:"folder,omitempty"`
+	Hooks  []string `json:"hooks,omitempty"`
 }
+
+// ErrVaultNotImplemented 是 vault 目標在 VAULT 的切片實作之前的錯誤（M3-S0）：設定可以儲存，發布時才失敗。
+var ErrVaultNotImplemented = errors.New("vault 輸出目標還沒有實作（M3 的 VAULT 切片）。")
 
 // Parse 嚴格解析設定中 outputs 的一項：不認識的欄位是錯誤，避免拼錯的設定被默默忽略。
 // 只檢查結構與列舉；folder 的路徑是否允許由寫出時檢查。
@@ -70,9 +78,9 @@ func (c Config) validate() error {
 	switch c.Target {
 	case TargetSidecar, TargetFolder:
 	case TargetVault:
-		return fmt.Errorf("vault 輸出目標在 M3 才提供，目前只支援 sidecar 與 folder。")
+		return ErrVaultNotImplemented
 	default:
-		return fmt.Errorf("輸出目標 %q 不認識，必須是 sidecar 或 folder。", c.Target)
+		return fmt.Errorf("輸出目標 %q 不認識，必須是 sidecar、folder 或 vault。", c.Target)
 	}
 	for _, f := range c.Formats {
 		if !slices.Contains(Formats, f) {

@@ -21,12 +21,16 @@ import (
 const (
 	TypeAnthropic = "anthropic"
 	TypeOpenAI    = "openai" // OpenAI 與相容的 provider（可自訂 base_url）
+	// TypeGemini 是 Gemini 的 generateContent（GEM-R4）；M3-S0 只登記設定，client 由 GEM 的切片實作。
+	TypeGemini = "gemini"
 )
 
 // 內建 provider 的預設 base_url。anthropic 的端點是 <base>/v1/messages；openai 的 base_url 依慣例含 /v1，端點是 <base>/chat/completions。
 const (
 	DefaultAnthropicBaseURL = "https://api.anthropic.com"
-	DefaultOpenAIBaseURL    = "https://api.openai.com/v1"
+	// DefaultGeminiBaseURL 是 Gemini 的預設 base_url（GEM-R4）。
+	DefaultGeminiBaseURL = "https://generativelanguage.googleapis.com"
+	DefaultOpenAIBaseURL = "https://api.openai.com/v1"
 	// AnthropicVersion 是 anthropic-version 標頭（wire 契約）。
 	AnthropicVersion = "2023-06-01"
 )

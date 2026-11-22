@@ -153,9 +153,10 @@ func orEmpty(m map[string]any) map[string]any {
 	return m
 }
 
-// validateDeps 是驗證設定層時查詢 provider 與 prompt 用的依賴（nil 的欄位略過對應的檢查）。
+// validateDeps 是驗證設定層時查詢 provider、prompt、vault 與 hook 用的依賴（nil 的欄位略過對應的檢查）。
+// 處理方案、新增與重跑的覆寫、頻道覆寫、全域區段與 config import 都經過這裡，行為一致。
 func (p *Pipeline) validateDeps() ValidateDeps {
-	return ValidateDeps{Providers: p.providers, Prompts: p.prompts}
+	return ValidateDeps{Providers: p.providers, Prompts: p.prompts, Outputs: p.outputs}
 }
 
 // validateOverrides 驗證輸入的單次覆寫（新增、重跑、頻道覆寫），有錯誤時回傳 *InvalidError。
