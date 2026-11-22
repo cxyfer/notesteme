@@ -51,7 +51,7 @@ func (f *fakeGroq) Configured(context.Context) (bool, error) {
 
 func (f *fakeGroq) Endpoint() (string, string) { return f.baseURL, f.model }
 
-func (f *fakeGroq) Transcribe(_ context.Context, audioPath, langHint string) (*groq.Result, error) {
+func (f *fakeGroq) Transcribe(_ context.Context, audioPath, langHint string, _ ...groq.Option) (*groq.Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	_, statErr := os.Stat(audioPath)

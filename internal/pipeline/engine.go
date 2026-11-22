@@ -147,7 +147,10 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	case run.Stage == StageMetadata:
 		res, err = p.runMetadata(ctx, it, lang)
 	case run.Stage == StageTranscript:
-		res, err = p.runTranscript(ctx, it, lang)
+		// COR-R7：詞彙表也提供給支援詞彙提示的 ASR 來源。
+		if lang.Glossary, err = p.glossaryTerms(ctx, it, eff); err == nil {
+			res, err = p.runTranscript(ctx, it, lang)
+		}
 	case run.Stage == StageNormalize:
 		res, err = p.runNormalize(ctx, it)
 	case run.Stage == StageTranslate && executor == ExecutorOpenCC:

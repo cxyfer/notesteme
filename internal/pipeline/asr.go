@@ -79,7 +79,7 @@ func (l localAudio) fetch(_ context.Context, it store.Item, _ string) (string, m
 
 // transcriber 是 transcribeASR 用到的轉錄服務（Groq 實作它）。
 type transcriber interface {
-	Transcribe(ctx context.Context, audioPath, langHint string) (*groq.Result, error)
+	Transcribe(ctx context.Context, audioPath, langHint string, opts ...groq.Option) (*groq.Result, error)
 	// MaxFileBytes 是單一音檔的大小上限。
 	MaxFileBytes() int64
 }
@@ -96,7 +96,7 @@ var errChunkTooLarge = errors.New("切出的音訊塊超過單檔上限")
 //
 // in 與 dir 必須是絕對路徑；dir 的內容由呼叫端清除。langHint 為空代表讓 Whisper 自行偵測。
 // 切塊時不做語言不符的重試：整份轉錄結果的語言由呼叫端檢查。
-func transcribeASR(ctx context.Context, m *media.Tool, tr transcriber, in, dir, langHint string) (*groq.Result, error) {
+func transcribeASR(ctx context.Context, m *media.Tool, tr transcriber, in, dir, langHint string, opts ...groq.Option) (*groq.Result, error) {
 	if m == nil {
 		return nil, &errclass.Error{Class: errclass.ClassNeedsAction, Source: "ffmpeg", Message: msgNoFFmpeg, Actions: []string{"安裝 ffmpeg"}}
 	}
@@ -110,13 +110,13 @@ func transcribeASR(ctx context.Context, m *media.Tool, tr transcriber, in, dir, 
 	}
 	limit := tr.MaxFileBytes()
 	if fi.Size() <= limit {
-		return tr.Transcribe(ctx, prepared, langHint)
+		return tr.Transcribe(ctx, prepared, langHint, opts...)
 	}
-	return transcribeChunks(ctx, m, tr, in, prepared, fi.Size(), limit, langHint)
+	return transcribeChunks(ctx, m, tr, in, prepared, fi.Size(), limit, langHint, opts...)
 }
 
 // transcribeChunks 是 transcribeASR 的切塊路徑；size 是前處理後的大小，已確認超過 limit。
-func transcribeChunks(ctx context.Context, m *media.Tool, tr transcriber, in, prepared string, size, limit int64, langHint string) (*groq.Result, error) {
+func transcribeChunks(ctx context.Context, m *media.Tool, tr transcriber, in, prepared string, size, limit int64, langHint string, opts ...groq.Option) (*groq.Result, error) {
 	info, err := m.Probe(ctx, prepared)
 	if err != nil {
 		return nil, err
@@ -151,7 +151,7 @@ func transcribeChunks(ctx context.Context, m *media.Tool, tr transcriber, in, pr
 	var lang string
 	hint := langHint
 	for i, f := range files {
-		res, err := tr.Transcribe(ctx, f, hint)
+		res, err := tr.Transcribe(ctx, f, hint, opts...)
 		_ = os.Remove(f) // 傳完就刪，減少暫存用量
 		switch {
 		case err == nil:

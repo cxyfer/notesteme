@@ -24,6 +24,10 @@ type Language struct {
 	// Supadata 是 supadata 區段的生效值。它不屬於 language 區段（所以不序列化），
 	// 由 Effective.Language 一併讀出，讓只拿到 Language 的步驟也能取得來源的參數。
 	Supadata SupadataParams `json:"-"`
+
+	// Glossary 是合併後的詞彙表（COR-R4）。它不屬於 language 區段（所以不序列化）：runTranscript 的呼叫端在執行時補上，
+	// 供支援詞彙提示的 ASR 來源使用（COR-R7）。
+	Glossary []string `json:"-"`
 }
 
 // SupadataParams 是 supadata 設定區段：影響結果的參數，所以也是快取鍵的一部分。

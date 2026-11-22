@@ -53,7 +53,7 @@ type Supadata interface {
 
 // Groq 是 Groq 的語音轉錄來源（*groq.Client 實作它）；測試可以替換。
 type Groq interface {
-	Transcribe(ctx context.Context, audioPath, langHint string) (*groq.Result, error)
+	Transcribe(ctx context.Context, audioPath, langHint string, opts ...groq.Option) (*groq.Result, error)
 	// Configured 回報有沒有 API key；沒有時不下載音訊。讀取 key 失敗時回傳錯誤。
 	Configured(ctx context.Context) (bool, error)
 	// Endpoint 回傳實際使用的 base_url 與 model，它們影響結果，屬於快取鍵。

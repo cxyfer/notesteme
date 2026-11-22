@@ -559,6 +559,8 @@ type fetchResult struct {
 	Timing string
 	// ToolVersions 是這次結果用到的外部工具版本（例如 ffmpeg），寫進來源紀錄的 tool_versions；可以是 nil。
 	ToolVersions map[string]string
+	// ASR 是語音轉錄用到的提示（例如詞彙表組成的 prompt，COR-R7），寫進來源紀錄的 asr；nil 代表沒有。
+	ASR map[string]any
 }
 
 // fallbackFetcher 是一個可以執行的 fallback 來源；沒有設定（缺 API key）的來源不在 Pipeline.fetchers 中。
@@ -568,6 +570,8 @@ type fallbackFetcher struct {
 	// params 是會影響結果的設定與輸入（寫進來源紀錄與快取鍵）。
 	params func(store.Item, Language) any
 	fetch  func(ctx context.Context, it store.Item, lang Language) (*fetchResult, error)
+	// supportsGlossary 回報來源是否接受詞彙提示（ADR-0006 的 Caps.SupportsGlossary，COR-R7）。
+	supportsGlossary bool
 	// supports 回報來源是否支援這個平台；nil 代表支援所有平台。
 	// 不支援的來源記為 unavailable（unsupported）並略過：不算已執行，也不送出任何資料。
 	supports func(platform string) bool
@@ -616,16 +620,19 @@ func newFetchers(d Deps) map[string]fallbackFetcher {
 func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 	return fallbackFetcher{
 		timing: groq.Timing,
-		params: func(it store.Item, _ Language) any {
+		// COR-R7：Groq 的 Whisper 接受 prompt，詞彙表組成的提示會影響結果，所以進快取鍵。
+		supportsGlossary: true,
+		params: func(it store.Item, lang Language) any {
 			baseURL, model := gc.Endpoint()
 			return map[string]any{
 				"base_url":   baseURL,
 				"model":      model,
 				"lang_hint":  groq.LangHint(it.OriginalLang),
 				"preprocess": asrPreprocess(gc.MaxFileBytes()),
+				"prompt":     groq.GlossaryPrompt(lang.Glossary),
 			}
 		},
-		fetch: func(ctx context.Context, it store.Item, _ Language) (*fetchResult, error) {
+		fetch: func(ctx context.Context, it store.Item, lang Language) (*fetchResult, error) {
 			// 沒有 API key 時不取得音訊，直接回報沒有設定（SRC-R10）。
 			if err := ctx.Err(); err != nil {
 				return nil, err
@@ -675,11 +682,16 @@ func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 				}
 			}
 			// 有原文語言才送提示；未知時讓 Whisper 自行偵測。
-			got, err := transcribeASR(ctx, d.Media, gc, path, dir, groq.LangHint(it.OriginalLang))
+			var opts []groq.Option
+			var asr map[string]any
+			if prompt := groq.GlossaryPrompt(lang.Glossary); prompt != "" {
+				opts, asr = append(opts, groq.WithPrompt(prompt)), map[string]any{"prompt": prompt}
+			}
+			got, err := transcribeASR(ctx, d.Media, gc, path, dir, groq.LangHint(it.OriginalLang), opts...)
 			if err != nil {
 				return nil, err
 			}
-			return &fetchResult{Lang: got.Lang, Cues: got.Cues, Timing: groq.Timing, ToolVersions: tv}, nil
+			return &fetchResult{Lang: got.Lang, Cues: got.Cues, Timing: groq.Timing, ToolVersions: tv, ASR: asr}, nil
 		},
 	}
 }
@@ -739,7 +751,11 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: transcript.ReasonUnsupported})
 			continue
 		}
-		got, err := f.fetch(ctx, it, lang)
+		srcLang := lang
+		if !f.supportsGlossary {
+			srcLang.Glossary = nil // 不支援詞彙提示的來源不會收到詞彙表（COR-R7）
+		}
+		got, err := f.fetch(ctx, it, srcLang)
 		if !errors.Is(err, errclass.ErrNotConfigured) {
 			executed = true
 		}
@@ -814,11 +830,15 @@ func (p *Pipeline) fallbackResult(ctx context.Context, id string, f fallbackFetc
 	}
 	decisions = append(decisions, transcript.Decision{Source: id, Lang: artLang, State: transcript.StateUsed})
 	timing := cmp.Or(got.Timing, f.timing)
-	prov, err := p.provenance(map[string]any{
+	fields := map[string]any{
 		"stage": StageTranscript, "impl_version": p.implVersion(StageTranscript),
 		"source": id, "timing": timing,
 		"params_sha256": paramsSHA(f.params(it, lang)),
-	}, got.ToolVersions)
+	}
+	if got.ASR != nil {
+		fields["asr"] = got.ASR
+	}
+	prov, err := p.provenance(fields, got.ToolVersions)
 	if err != nil {
 		return result{}, err
 	}

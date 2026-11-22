@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -160,7 +161,11 @@ type transcriptionResponse struct {
 //   - 429、5xx、網路錯誤、無法解析的回應：retryable。
 //   - segments 為空：ErrNoTranscript，這個來源沒有結果。
 //   - ctx 被取消時回傳 ctx.Err()，不是來源的錯。
-func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*Result, error) {
+func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string, opts ...Option) (*Result, error) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
 	key, err := c.resolveKey(ctx)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -198,7 +203,7 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*R
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
 	go func() {
-		pw.CloseWithError(writeForm(mw, f, filepath.Base(audioPath), model, langHint))
+		pw.CloseWithError(writeForm(mw, f, filepath.Base(audioPath), model, langHint, o.prompt))
 	}()
 
 	reqCtx, cancel := context.WithTimeout(ctx, c.requestTimeout())
@@ -303,7 +308,7 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string) (*R
 }
 
 // writeForm 寫出 multipart 欄位；file 放最後，避免 provider 在讀完設定前就開始處理。
-func writeForm(mw *multipart.Writer, file io.Reader, name, model, langHint string) error {
+func writeForm(mw *multipart.Writer, file io.Reader, name, model, langHint, prompt string) error {
 	if err := mw.WriteField("model", model); err != nil {
 		return err
 	}
@@ -312,6 +317,12 @@ func writeForm(mw *multipart.Writer, file io.Reader, name, model, langHint strin
 	}
 	if langHint != "" {
 		if err := mw.WriteField("language", langHint); err != nil {
+			return err
+		}
+	}
+	if prompt != "" {
+		// 詞彙提示（COR-R7）：Whisper 的 prompt 會引導模型採用這些詞的寫法。
+		if err := mw.WriteField("prompt", prompt); err != nil {
 			return err
 		}
 	}
@@ -335,4 +346,42 @@ func ms(sec float64) int64 {
 
 func fail(class errclass.Class, detail string, err error) error {
 	return &errclass.Error{Class: class, Source: ID, Detail: detail, Err: err}
+}
+
+// Option 是 Transcribe 的選用參數。
+type Option func(*options)
+
+type options struct{ prompt string }
+
+// WithPrompt 帶上 Whisper 的 prompt（詞彙提示，COR-R7）；空字串代表不帶。
+func WithPrompt(prompt string) Option { return func(o *options) { o.prompt = prompt } }
+
+// MaxPromptRunes 是詞彙提示的字元數上限：Whisper 只讀 prompt 的最後約 224 個 token，
+// 取 200 個字元（CJK 一字約一個 token）在兩種文字下都不會超過。
+const MaxPromptRunes = 200
+
+// GlossaryPrompt 把詞彙表組成 Whisper 的 prompt：詞彙用「, 」連接，依序加入，放不下的詞（與其後的詞）整個丟棄，
+// 不從詞的中間截斷。詞彙表是空的時回傳空字串。
+func GlossaryPrompt(terms []string) string {
+	var b strings.Builder
+	n := 0
+	for _, t := range terms {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		add := utf8.RuneCountInString(t)
+		if n > 0 {
+			add += 2
+		}
+		if n+add > MaxPromptRunes {
+			break
+		}
+		if n > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(t)
+		n += add
+	}
+	return b.String()
 }
