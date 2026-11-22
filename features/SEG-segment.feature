@@ -157,11 +157,15 @@ Feature: Segment into readable sentences
 
   @SEG-01 @SEG-R10 @pending-m0
   Scenario Outline: Subtitle rules are enforced per script
-    Given the LLM provider "openai" answers "segment" with "segment-keep-all"
+    Given a YouTube video "<ref>" with:
+      | field    | value      |
+      | title    | <title>    |
+      | language | <language> |
+    And the LLM provider "openai" answers "segment" with "segment-keep-all"
     And the item "<ref>" has been processed up to "segment"
     Then every cue of the "segmented" transcript of "<ref>" follows the subtitle rules for "<script>"
 
     Examples:
-      | ref            | script |
-      | yt:talk01xxxxx | latin  |
-      | yt:zh001xxxxxx | cjk    |
+      | ref            | title      | language | script |
+      | yt:talk01xxxxx | Kafka talk | en       | latin  |
+      | yt:zh001xxxxxx | 服务拆分实践   | zh-Hans  | cjk    |

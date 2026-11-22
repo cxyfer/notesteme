@@ -125,6 +125,11 @@
     - 依 /goal 由 advisor 採保守預設、待 owner 追認：COR 規格 C1～C7。
     - **還沒做／待決**：術語候選的核可／拒絕 API（規格說 M2 能核可，但介面只列三條路由；S11 補 `PATCH /api/channels/{id}/term-candidates/{cid}`）；`@pending-m0` 的 `A rewrite that strays too far` 場景寫「相似度 0.42」，Levenshtein 算出 0.19，要等 M0 決定算法或改場景；COR-R8 場景要等 S6b 的 `translate-two-cues` fixture。
     - `@M2`：62 passed、24 failed、31 pending。
+  - M2 S5 SEG 斷句（直接推送到 master）：
+    - `segment` 登記在 `llmStages`：LLM 輸出 `{text, breaks}`（`breaks` 是新字幕在 `text` 中開始的 code point 位置，**不含時間**；時間欄位視為驗證失敗）；對回來源時忽略空白、標點與格式字元、大小寫要相同（`text_changed`），斷點切在字中間或產生空字幕是 `alignment`（fallback 保留原切法）；產出文字一律從來源切出。時間規則：`merged`／`source`（word 時間）／`silence`（`silencedetect`，停頓點取離字數比例估計值最近者）／`interpolated`；`timing.split_timing`（`forbid`／`when_needed`／`free`）、`timing.split_timing_audio`（`never` 不下載、`auto` 只下載音訊）；`stages.segment.on_manual: skip|run`，新的 skipped 原因 `manual_captions`（steps.md 已同步）；`internal/subtitle` 的 per-script 字幕規則（CJK 每行暫取 22 字）與 `warnings[]`。`timing`／`subtitle_rules` 只進步驟層快取鍵，不進 chunk 層，所以只改時間設定的重跑會重用已付費的 chunk。
+    - 依 /goal 由 advisor 採保守預設、待 owner 追認（SEG 規格待決問題）：G1 輸出格式與「SEG-R2～R4」的解讀；SEG-R8 場景表格補第 2 列（獨立 commit，可單獨 revert）；R9／R10 衝突（R10 強制切分只作用在 LLM 沒有段內切開的句子，超過上限的只記 `warnings`）；R10 CJK 範例補宣告影片。
+    - 已知限制：assemble 是 local 任務，會在租約內下載整份音訊並跑 `silencedetect`（逾時 10 分鐘），長片可能超過租約；`max_cps` 沒有使用；真實 ffmpeg 對下載原檔跑 `silencedetect` 的路徑沒有在本機驗證；`TestRunnableLLMStageCreatesLLMTaskThatFailsPermanently` 目前用 translate/api，S6b 登記 translate 後要一起改。
+    - `@M2`：71 passed、15 failed、31 pending。
 - **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，189 passed、2 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
