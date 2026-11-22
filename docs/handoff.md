@@ -75,7 +75,8 @@
     - 來源 `podcast-transcript`：讀快照、支援 VTT／SRT／Podcasting 2.0 JSON；抓取失敗改走 fallback；SRC-R15 偏移超過 2% 時 transcript 為 done 帶「時間可能偏移」。
     - podcast 的 ASR 音訊來源與媒體端點共用 LOCAL 的 `transcribeASR`、`MediaFile`。
     - harness：`features/internal/fakepodcast`（每次依狀態產生 RSS、音檔改寫 marker 的 item、字幕呼叫計數）、`features/fixtures/podcast/`（marker 的 `listed=` 是 feed 宣告的長度）；`shows the message` 沒有非 done 的訊息時取 done 步驟的訊息。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，186 passed、5 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
+  - ESTIMATE 切片（ING-R8，疊在 PODCAST 上）：`POST /api/estimate` 與新增共用辨識與展開（`expandRequest`），依生效的 `language` 用 transcript 步驟的規則選軌，平台字幕不計 ASR；fallback 依序估 Groq（內建計價表 `internal/cost`）或 Supadata（credit 計價，金額 `null`）。不寫入資料庫，本機檔案回 422。決定記在 ING 的待決問題。
+- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，187 passed、4 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
   |---|---|---|
@@ -83,7 +84,7 @@
   | CLI | 9 | 0 |
   | DEL | 19 | 2 |
   | GRD | 22 | 0 |
-  | ING | 22 | 2 |
+  | ING | 23 | 1 |
   | LIB | 10 | 0 |
   | NRM | 10 | 1 |
   | OPS | 14 | 0 |
@@ -92,9 +93,8 @@
   | SEC | 11 | 0 |
   | SRC | 19 | 0 |
 
-  AUTH、CLI、GRD、LIB、OPS、OUT、PIPE、SEC、SRC 的 M1 場景全部通過。剩下的 5 個 pending：
+  AUTH、CLI、GRD、LIB、OPS、OUT、PIPE、SEC、SRC 的 M1 場景全部通過。剩下的 4 個 pending：
   - **ING-R7（1 個）**：單次覆寫與處理方案。場景建立名為 `standard` 的處理方案，但 PRF 規格寫 M1 只有內建的 `default`，需要 owner 決定（建議 M1 先做處理方案的最小儲存與讀取）。
-  - **ING-R8（1 個）**：`POST /api/estimate`（`feat/estimate` 進行中）。
   - **NRM-R7（1 個）**：場景的影片原文語言是預設的 `en`，卻只有 `zh-Hans` 的自動字幕，預設的 `caption_priority` 不會選它，所以 `processed up to` 依規則 3 pending。場景要改（例如改成 `manual captions`，或宣告原文語言 `zh-Hans`），需要 owner 同意。
   - **DEL `@mcp`（2 個）**：需等 M2 的 MCP tool（`get_transcript`、`tools/list`）。
 

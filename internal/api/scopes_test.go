@@ -81,7 +81,7 @@ func TestScopeMatrix(t *testing.T) {
 				{"POST", "/api/resolve", `{"url":"https://example.com"}`, auth.ScopeIngest, auth.ScopeRead, 500},
 				{"POST", "/api/items/x/rerun", `{"from":"normalize"}`, auth.ScopeIngest, auth.ScopeRead, 500},
 				{"POST", "/api/items/x/cancel", "", auth.ScopeIngest, auth.ScopeRead, 500},
-				{"POST", "/api/estimate", "", auth.ScopeIngest, auth.ScopeRead, 501},
+				{"POST", "/api/estimate", `{"url":"https://example.com"}`, auth.ScopeIngest, auth.ScopeRead, 500},
 				// admin
 				{"GET", "/api/settings/services", "", auth.ScopeAdmin, auth.ScopeRead, 501},
 				{"PUT", "/api/settings/services", "", auth.ScopeAdmin, auth.ScopeIngest, 501},

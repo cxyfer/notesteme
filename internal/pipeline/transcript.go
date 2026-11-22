@@ -571,6 +571,9 @@ type fallbackFetcher struct {
 	// supports 回報來源是否支援這個平台；nil 代表支援所有平台。
 	// 不支援的來源記為 unavailable（unsupported）並略過：不算已執行，也不送出任何資料。
 	supports func(platform string) bool
+	// configured 回報來源目前有沒有可用的 API key（key 可能存在資料庫中，執行期才知道）；nil 代表一律視為有設定。
+	// 估價用它判斷 fallback 實際會不會選到這個來源。
+	configured func(ctx context.Context) (bool, error)
 }
 
 // supadataSupports 回報 Supadata 是否處理這個平台：它只接受公開影音網址，不處理本機檔案（不送出本機路徑），
@@ -583,7 +586,7 @@ func supadataSupports(platform string) bool {
 func newFetchers(d Deps) map[string]fallbackFetcher {
 	out := map[string]fallbackFetcher{}
 	if sd := d.Supadata; sd != nil {
-		out[supadata.ID] = fallbackFetcher{
+		f := fallbackFetcher{
 			timing:   supadataTiming,
 			supports: supadataSupports,
 			params:   func(_ store.Item, l Language) any { return l.Supadata },
@@ -595,6 +598,12 @@ func newFetchers(d Deps) map[string]fallbackFetcher {
 				return &fetchResult{Lang: got.Lang, Cues: got.Cues}, nil
 			},
 		}
+		if c, ok := sd.(interface {
+			Configured(ctx context.Context) (bool, error)
+		}); ok {
+			f.configured = c.Configured
+		}
+		out[supadata.ID] = f
 	}
 	if gc := d.Groq; gc != nil {
 		out[groq.ID] = groqFetcher(d, gc)

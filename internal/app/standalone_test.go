@@ -107,8 +107,8 @@ func TestStandaloneHandlerIsLocal(t *testing.T) {
 	if code, body := call(t, sa.Handler(), "GET", "/api/items", ""); code != 200 {
 		t.Errorf("GET /api/items = %d %s", code, body)
 	}
-	if code, _ := call(t, sa.Handler(), "POST", "/api/estimate", ""); code != 501 {
-		t.Errorf("POST /api/estimate = %d，預期 501", code)
+	if code, _ := call(t, sa.Handler(), "POST", "/api/tasks/t1/retry", ""); code != 501 {
+		t.Errorf("POST /api/tasks/t1/retry = %d，預期 501", code)
 	}
 }
 

@@ -70,6 +70,15 @@ type Client struct {
 	KeyFunc func(ctx context.Context) (string, error)
 }
 
+// Configured 回報目前有沒有可用的 API key（環境變數或資料庫）；不發出請求。
+func (c *Client) Configured(ctx context.Context) (bool, error) {
+	key, err := c.resolveKey(ctx)
+	if err != nil {
+		return false, err
+	}
+	return key != "", nil
+}
+
 func (c *Client) resolveKey(ctx context.Context) (string, error) {
 	if c.APIKey != "" {
 		return c.APIKey, nil

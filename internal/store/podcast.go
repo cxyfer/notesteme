@@ -31,11 +31,24 @@ func (r *Repo) ChannelByKey(ctx context.Context, platform, externalID string) (C
 // 否則依序試 slug、slug-2 … slug-100，第一個還沒被別的 feed 佔用的建立成頻道（標題為 title）。
 // 在 Store.Tx 的 callback 中用傳進來的 Repo 呼叫，和建立影音在同一個交易裡。
 func (r *Repo) PodcastFeedKey(ctx context.Context, feedURL, slug, title string) (string, error) {
+	key, existing, err := r.PeekPodcastFeedKey(ctx, feedURL, slug)
+	if err != nil || existing {
+		return key, err
+	}
+	if _, err := r.UpsertChannel(ctx, Channel{Platform: source.PlatformPodcast, ExternalID: key, Title: title, URL: feedURL}); err != nil {
+		return "", err
+	}
+	return key, nil
+}
+
+// PeekPodcastFeedKey 回傳 feed 的 feedKey 而不建立頻道（估價用）：已有頻道時 existing 為 true；
+// 否則回傳 PodcastFeedKey 此刻會建立的 key（之後別的 feed 先新增時仍可能改變）。規則同 PodcastFeedKey。
+func (r *Repo) PeekPodcastFeedKey(ctx context.Context, feedURL, slug string) (key string, existing bool, err error) {
 	switch row, err := r.q.PodcastChannelByURL(ctx, feedURL); {
 	case err == nil:
-		return row.ExternalID, nil
+		return row.ExternalID, true, nil
 	case !errors.Is(err, sql.ErrNoRows):
-		return "", err
+		return "", false, err
 	}
 	if slug == "" {
 		slug = "feed"
@@ -49,14 +62,11 @@ func (r *Repo) PodcastFeedKey(ctx context.Context, feedURL, slug, title string) 
 		case err == nil:
 			continue // 被另一個 feed 佔用
 		case !errors.Is(err, sql.ErrNoRows):
-			return "", err
+			return "", false, err
 		}
-		if _, err := r.UpsertChannel(ctx, Channel{Platform: source.PlatformPodcast, ExternalID: key, Title: title, URL: feedURL}); err != nil {
-			return "", err
-		}
-		return key, nil
+		return key, false, nil
 	}
-	return "", fmt.Errorf("store: 找不到可用的 feed 代號（%s-2 … %s-%d 都已被使用）", slug, slug, maxFeedKeySuffix)
+	return "", false, fmt.Errorf("store: 找不到可用的 feed 代號（%s-2 … %s-%d 都已被使用）", slug, slug, maxFeedKeySuffix)
 }
 
 // SetItemChannel 讓影音指向頻道。

@@ -45,42 +45,66 @@ type IngestResult struct {
 // 錯誤：ErrUnrecognizedURL、ErrChannel、*InvalidError（422）、*UpstreamError（502，yt-dlp 失敗）、
 // *NotImplementedError（501，例如沒有設定 Bilibili 依賴、處理方案）、*PolicyError（422，抓取 feed 或預檢音檔被防護擋下）。
 //
-// 網址只看網址認不出來時，當成 Podcast feed 處理（ingestPodcast）：episodes 指定要新增的集，每集一部影音。
+// 網址只看網址認不出來時，當成 Podcast feed 處理（expandPodcast）：episodes 指定要新增的集，每集一部影音。
 //
 // 影音在垃圾桶中時不重新建立：結果的 InTrash 為 true（DEL-R10）。單一目標在垃圾桶中時，
 // 是否回 409 由呼叫端決定（API 見 createItems）。
 //
 // Bilibili 每個分P 是一個影音（ING-R3）：網址沒有 p 時展開全部分P（或 parts 指定的），有 p=N 時只建立那一個。
 func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResult, error) {
+	x, err := p.expandRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if x.podcast != nil {
+		return p.insertTargets(ctx, req, x.plan, x.podcast.build(ctx))
+	}
+	return p.insertTargets(ctx, req, x.plan, func(*store.Repo) ([]source.Target, string, error) {
+		return x.targets, "", nil
+	})
+}
+
+// ingestExpansion 是辨識與展開的結果：要建立（或估價）的 Target，以及設定快照。
+// 它不含任何寫入；新增（Ingest）與估價（Estimate）共用同一份辨識與展開。
+type ingestExpansion struct {
+	plan ingestPlan
+	// targets 是 YouTube 與 Bilibili 展開後的影音；Podcast 為 nil，改看 podcast。
+	targets []source.Target
+	podcast *podcastSelection
+}
+
+// expandRequest 辨識網址並展開成要處理的影音（播放清單、Bilibili 分P、Podcast 的單集），不寫入資料庫。
+// 驗證與錯誤見 Ingest。
+func (p *Pipeline) expandRequest(ctx context.Context, req IngestRequest) (ingestExpansion, error) {
 	t, ok := source.Recognize(req.URL)
 	switch {
 	case !ok:
 		// 只看網址認不出來的，可能是 Podcast feed（要抓內容才知道，ING-R1）。
-		return p.ingestPodcast(ctx, req)
+		return p.expandPodcast(ctx, req)
 	case t.Kind == source.KindChannel:
-		return nil, ErrChannel
+		return ingestExpansion{}, ErrChannel
 	}
 	if req.Until != "" && !ValidStage(req.Until) {
-		return nil, invalidf("until 必須是 %v 其中之一。", Stages)
+		return ingestExpansion{}, invalidf("until 必須是 %v 其中之一。", Stages)
 	}
 	switch {
 	case t.Platform == source.PlatformYouTube:
 	case t.Platform == source.PlatformBilibili && p.bili != nil:
 	default:
 		// 沒有註冊的平台（還沒實作，或 Bilibili 的依賴沒有設定）。
-		return nil, &NotImplementedError{What: "新增 " + t.Platform + " 的影音"}
+		return ingestExpansion{}, &NotImplementedError{What: "新增 " + t.Platform + " 的影音"}
 	}
 	if req.Profile != "" {
 		// TODO(PRF)：處理方案屬於 M2；之後在全域設定與單次覆寫之間插入處理方案這一層。
-		return nil, &NotImplementedError{What: "處理方案"}
+		return ingestExpansion{}, &NotImplementedError{What: "處理方案"}
 	}
 	if err := validateSelection(t, req); err != nil {
-		return nil, err
+		return ingestExpansion{}, err
 	}
 
 	plan, err := p.planIngest(ctx, req)
 	if err != nil {
-		return nil, err
+		return ingestExpansion{}, err
 	}
 
 	// 播放清單在這裡才展開：前面的驗證都通過了，才花時間呼叫 yt-dlp。
@@ -88,23 +112,23 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) ([]IngestResul
 	switch {
 	case t.Kind == source.KindPlaylist:
 		if targets, err = p.expandPlaylist(ctx, t); err != nil {
-			return nil, err
+			return ingestExpansion{}, err
 		}
 	case t.Platform == source.PlatformBilibili && t.Part == 0:
 		// 網址沒有 p：展開分P（ING-R3）；有 p 時只建立那一個，不呼叫 yt-dlp。
 		if targets, err = p.expandParts(ctx, t, req.Parts); err != nil {
-			return nil, err
+			return ingestExpansion{}, err
 		}
 	}
-	return p.insertTargets(ctx, req, plan, func(*store.Repo) ([]source.Target, string, error) {
-		return targets, "", nil
-	})
+	return ingestExpansion{plan: plan, targets: targets}, nil
 }
 
 // ingestPlan 是新增影音時算好的設定快照與單次覆寫，整批影音共用。
 type ingestPlan struct {
 	sha, cfgJSON string
 	overrides    json.RawMessage
+	// eff 是生效設定；估價用它取得 language，不必再從快照解析一次。
+	eff Effective
 }
 
 // planIngest 合併全域設定與單次覆寫（驗證覆寫的內容），算出設定快照。要在任何耗時的外部呼叫之前做，
@@ -118,7 +142,7 @@ func (p *Pipeline) planIngest(ctx context.Context, req IngestRequest) (ingestPla
 	if err != nil {
 		return ingestPlan{}, err
 	}
-	plan := ingestPlan{overrides: json.RawMessage(`{}`)}
+	plan := ingestPlan{overrides: json.RawMessage(`{}`), eff: eff}
 	if plan.sha, plan.cfgJSON, err = eff.Snapshot(); err != nil {
 		return ingestPlan{}, err
 	}
