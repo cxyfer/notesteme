@@ -722,10 +722,11 @@ notesteme/
 | **M4 追蹤與部署** | 訂閱（含播放清單、合集、OPML 與 Takeout 匯入）、排程、摘要與彙整通知、成本與預算、Batch API、通知與無人值守告警、每日備份、反向代理驗證與 OIDC、token 管理、術語候選審核、Bookmarklet 與 PWA、compose 的 wsl／vps profile | 總覽、訂閱、成本、批次操作、全文搜尋、詞彙表審核 | VPS 上訂閱 3 個頻道，無人值守運作一週 |
 | **M5 Hub** | OAuth、權限、bundle 倉庫、Hub MCP | Hub UI | 可以分享字幕與筆記，也能用別人的字幕重新生成 |
 
-**實作進度備註（2026-11-22）**：M1 的後端（API、CLI、pipeline、Docker）與驗收場景已完成，但上表「同時完成的 UI」還沒有交付，M1 因此尚未收尾：
+**實作進度備註（2026-11-22）**：M1 的後端（API、CLI、pipeline、Docker）已完成，自動化驗收場景在預設 tag 下 188 個通過、3 個 pending（NRM-R7 待 owner 決定，2 個 DEL `@mcp` 等 M2 的 MCP）。但 M1 尚未收尾，缺口如下：
 
 - **Web UI 尚未開始。** M1 的頁面（新增、媒體庫、影音詳情、佇列、設定、登入）與 UI 相關的 NFR（CSP、bundle 大小、A11y、I18N、瀏覽器相容性）都還沒做。這項工作改以獨立的「UI 切片」追蹤，不再附屬於後端切片；M2 的頁面（Prompt 庫、處理方案、字幕樣式、字幕對照）接在它後面。排入的時機見第 26 節。
 - **M1 的驗收條件「四個平台共 10 部樣本都能一鍵產出 SRT」還沒用真實樣本驗證。** 驗收場景都跑在假的 yt-dlp 與 ASR 上，不能代替這項實測。
+- **其他缺口**：7 個 `@manual` 場景還沒人工驗收、6 個 `@pending-m0` 場景的門檻仍是暫定值、M1 的 NFR 在 CI 上還缺 `govulncheck`、涵蓋率門檻與 goreleaser。完整清單見 [handoff 第 1 節「M1 尚未收尾」](handoff.md#1-現況)。
 
 ## 25. 風險與對策
 
