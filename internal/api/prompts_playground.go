@@ -32,14 +32,15 @@ func (rt *routes) registerPlayground(api huma.API) {
 	}, auth.ScopeIngest, rt.comparePrompts)
 }
 
+// 欄位都標成可省略：缺少時由 handler 回逐欄位的 422（errors[].path），和其他 M2 路由一致。
 type playgroundInput struct {
 	Body struct {
-		Prompt   string `json:"prompt" doc:"提示詞引用：<id>、<id>@default 或 <id>@<N>；它的類型決定要試跑哪個步驟"`
-		Item     string `json:"item" doc:"影音 ID 或短代號（例如 yt:abc123xxxxx）"`
-		From     string `json:"from" doc:"範圍開始，HH:MM:SS 或 MM:SS（可帶小數）"`
-		To       string `json:"to" doc:"範圍結束（不含）；範圍內最多 200 句，超過回 422"`
-		Provider string `json:"provider"`
-		Model    string `json:"model"`
+		Prompt   string `json:"prompt,omitempty" doc:"提示詞引用：<id>、<id>@default 或 <id>@<N>；它的類型決定要試跑哪個步驟"`
+		Item     string `json:"item,omitempty" doc:"影音 ID 或短代號（例如 yt:abc123xxxxx）"`
+		From     string `json:"from,omitempty" doc:"範圍開始，HH:MM:SS 或 MM:SS（可帶小數）"`
+		To       string `json:"to,omitempty" doc:"範圍結束（不含）；範圍內最多 200 句，超過回 422"`
+		Provider string `json:"provider,omitempty"`
+		Model    string `json:"model,omitempty"`
 	}
 }
 
