@@ -23,6 +23,9 @@ type ValidationError struct {
 	Message string
 	// Detail 是退回時一併記錄的補充資料（例如 correct 的相似度）；沒有時是 nil。
 	Detail map[string]any
+	// Output 是符合 schema、但沒有通過步驟 Check 的輸出（compact）；JSON 或 schema 錯誤時是 nil。
+	// 退回時步驟可以保留其中通過驗證的部分（例如 translate 只把沒有通過的句子退回原文，TRN-R7）。
+	Output json.RawMessage
 }
 
 func (e *ValidationError) Error() string { return e.Reason + ": " + e.Message }
@@ -88,6 +91,9 @@ func (s *Spec) Validate(in ChunkInput, out []byte) (json.RawMessage, *Validation
 	}
 	if s.Check != nil {
 		if verr := s.Check(in, buf.Bytes()); verr != nil {
+			if verr.Output == nil {
+				verr.Output = bytes.Clone(buf.Bytes())
+			}
 			return nil, verr
 		}
 	}
