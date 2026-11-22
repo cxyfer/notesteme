@@ -81,3 +81,4 @@
   - 上面三處修改後，4 個場景在 S8 的實作下都通過（用複本在 `-godog.paths` 驗證過，沒有動到 `.feature`）。
 - 輸出的 `lecture.en.srt` 正好符合 SRC-R14 的 `local-sidecar` 命名：之後從 `transcript` 重跑時，會把自己寫出的字幕當成外掛字幕來源讀回。S8 沒有處理（要在 `listSidecars` 排除「`outputs` 有紀錄、雜湊相同」的檔案，會動到 LOCAL 的程式）；**待 owner 決定**要不要排除。
 - vault 輸出目標、hook（ADR-0010 第 4 點）屬於 M3，S8 沒有實作；sidecar 的 hook 同樣沒有。
+- OUT-R10～R12 三個場景的 `.feature` 修改（2026-11-22，M2 S8 實作時發現，依 /goal 採 advisor 建議，待 owner 追認）：`Subtitles are written next to a local video` 加 `And the default profile is "media-server"`（否則 rerun 時 `outputs` 是空的，publish 會 `skipped`）；`A sidecar target is skipped for online videos` 的 `ingests … with the profile` 改成 `POST …/rerun` 帶 `{ "from": "publish", "profile": "media-server" }`（原寫法對 Background 已新增的影音是 ING-R2 的 no-op）；`A file edited by hand…` 在 `processed up to "publish"` 之前補上 `media-server` 處理方案並設為預設。

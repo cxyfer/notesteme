@@ -136,6 +136,7 @@ Feature: Subtitle output and import
       outputs:
         - { target: sidecar, formats: [srt], lang: [en] }
       """
+    And the default profile is "media-server"
     And the item "local:lecture.mp4" has been processed up to "correct"
     When the owner reruns "local:lecture.mp4" from "publish"
     And the worker runs until idle
@@ -148,13 +149,22 @@ Feature: Subtitle output and import
       outputs:
         - { target: sidecar, formats: [srt], lang: [en] }
       """
-    When the owner ingests "yt:abc123xxxxx" with the profile "media-server"
+    When the owner sends "POST /api/items/yt:abc123xxxxx/rerun" with:
+      """
+      { "from": "publish", "profile": "media-server" }
+      """
     And the worker runs until idle
     Then the stage "publish" of "yt:abc123xxxxx" is "skipped"
 
   @M2 @OUT-05 @OUT-R11 @OUT-R12
   Scenario: A file edited by hand is saved alongside instead of overwritten
     Given the clock is at "2026-11-12T10:00:00Z"
+    And the profile "media-server" is:
+      """
+      outputs:
+        - { target: sidecar, formats: [srt], lang: [en] }
+      """
+    And the default profile is "media-server"
     And a local file "lecture.mp4" in the inbox
     And the item "local:lecture.mp4" has been processed up to "publish"
     And the file "/data/inbox/lecture.en.srt" contains:
