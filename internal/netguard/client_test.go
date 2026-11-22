@@ -216,3 +216,19 @@ func TestNewClientTransportCanRelaxHeaderTimeout(t *testing.T) {
 	}
 	c.CloseIdleConnections()
 }
+
+// LLM 共用的連線池：WithTimeouts 同時設定標頭逾時與閒置連線逾時，dial 與 scheme 的防護不變。
+func TestNewClientTransportWithTimeouts(t *testing.T) {
+	c := NewClient(Deps{Resolver: stubResolver{ips: []netip.Addr{publicIP}}, Dialer: &recDialer{}})
+	rt := c.Transport.(*schemeTransport).WithTimeouts(5*time.Minute, 90*time.Second)
+	g, ok := rt.(*schemeTransport)
+	if !ok || g.base.ResponseHeaderTimeout != 5*time.Minute || g.base.IdleConnTimeout != 90*time.Second || g.base.DialContext == nil {
+		t.Fatalf("複本 = %#v", rt)
+	}
+	if orig := c.Transport.(*schemeTransport).base; orig.IdleConnTimeout != 0 || orig.ResponseHeaderTimeout != responseHeaderTimeout {
+		t.Errorf("原本的 Transport 被改動：%v %v", orig.IdleConnTimeout, orig.ResponseHeaderTimeout)
+	}
+	if _, err := (&http.Client{Transport: rt}).Get("ftp://example.com/"); !errors.Is(err, ErrUnsupportedScheme) {
+		t.Errorf("複本 err = %v", err)
+	}
+}

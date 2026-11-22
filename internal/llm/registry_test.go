@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"net/http"
 	"errors"
 	"testing"
 
@@ -61,5 +62,35 @@ func TestRegistryKeys(t *testing.T) {
 	}
 	if _, err := r.Client(context.Background(), "nope"); !errors.As(err, &ce) || ce.Class != errclass.ClassPermanent {
 		t.Errorf("不存在的 provider：%v", err)
+	}
+}
+
+// 所有 chunk 共用一個連線池：Transport 只在第一次複製（放寬標頭逾時、閒置連線逾時），HTTPClient 依 provider 與 key 重用。
+func TestRegistrySharesHTTPClient(t *testing.T) {
+	r := NewRegistry(nil, nil)
+	r.HTTP = &http.Client{Transport: &http.Transport{}}
+	r.Env = map[string]string{KeyEnvVar("anthropic"): "k1", KeyEnvVar("openai"): "k2"}
+	get := func(id string) *HTTPClient {
+		t.Helper()
+		c, err := r.Client(context.Background(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c.(*HTTPClient)
+	}
+	a1, a2, o := get("anthropic"), get("anthropic"), get("openai")
+	if a1 != a2 {
+		t.Error("同一個 provider、同一個 key 應重用 HTTPClient")
+	}
+	if a1.HTTP != o.HTTP || a1.HTTP == r.HTTP {
+		t.Error("所有 provider 共用 NewHTTP 建立的 client，不直接用 Registry.HTTP")
+	}
+	tr, ok := a1.HTTP.Transport.(*http.Transport)
+	if !ok || tr.IdleConnTimeout <= 0 || tr.ResponseHeaderTimeout != RequestTimeout || tr == r.HTTP.Transport {
+		t.Errorf("Transport = %#v", a1.HTTP.Transport)
+	}
+	r.Env[KeyEnvVar("anthropic")] = "k3"
+	if a3 := get("anthropic"); a3 == a1 || a3.APIKey != "k3" || a3.HTTP != a1.HTTP {
+		t.Error("key 改變時換新的 HTTPClient，連線池仍共用")
 	}
 }

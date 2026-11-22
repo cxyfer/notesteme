@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/errclass"
@@ -52,6 +53,13 @@ type Registry struct {
 	Limiter *Limiter
 	// NewClient 讓單元測試替換 provider 的 client；nil 時用 HTTPClient。
 	NewClient func(cfg ProviderConfig, key string) Client
+
+	// shared 是第一次 Client 時由 HTTP 建立的 LLM 用 client（NewHTTP）：所有 provider、所有 chunk 共用一個連線池。
+	httpOnce sync.Once
+	shared   *http.Client
+	// clients 依 provider 快取 HTTPClient；API key 改變時換新的。
+	mu      sync.Mutex
+	clients map[string]*HTTPClient
 }
 
 // NewRegistry 建立 Registry；configured 是設定檔的 provider（可以是 nil）。
@@ -128,5 +136,21 @@ func (r *Registry) Client(ctx context.Context, id string) (Client, error) {
 	if r.NewClient != nil {
 		return r.NewClient(cfg, key), nil
 	}
-	return &HTTPClient{ID: id, Type: cfg.Type, BaseURL: cfg.BaseURL, APIKey: key, HTTP: r.HTTP, Now: r.Clock.Now}, nil
+	return r.httpClient(cfg, key), nil
+}
+
+// httpClient 回傳 provider 的 HTTPClient：設定與 key 都沒變時重用，連線池一律共用 shared。
+func (r *Registry) httpClient(cfg ProviderConfig, key string) *HTTPClient {
+	r.httpOnce.Do(func() { r.shared = NewHTTP(r.HTTP) })
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if c, ok := r.clients[cfg.ID]; ok && c.APIKey == key {
+		return c
+	}
+	if r.clients == nil {
+		r.clients = map[string]*HTTPClient{}
+	}
+	c := &HTTPClient{ID: cfg.ID, Type: cfg.Type, BaseURL: cfg.BaseURL, APIKey: key, HTTP: r.shared, Now: r.Clock.Now}
+	r.clients[cfg.ID] = c
+	return c
 }

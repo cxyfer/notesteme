@@ -67,6 +67,15 @@ func (t *schemeTransport) WithResponseHeaderTimeout(d time.Duration) http.RoundT
 	return &schemeTransport{base: base}
 }
 
+// WithTimeouts 回傳複製的 Transport，等待回應標頭的逾時改為 header、閒置連線 idle 之後關閉；其他防護不變。
+// 給長期共用一個連線池的呼叫端（LLM provider）：只在建立時呼叫一次。
+func (t *schemeTransport) WithTimeouts(header, idle time.Duration) http.RoundTripper {
+	base := t.base.Clone()
+	base.ResponseHeaderTimeout = header
+	base.IdleConnTimeout = idle
+	return &schemeTransport{base: base}
+}
+
 // NewClient 回傳對外 HTTP 的 client：連線經過 Transport（ADR-0014），
 // 起始網址與轉址的每一跳都檢查 scheme，最多跟隨 MaxRedirects 次。逾時與大小由呼叫端自己限制。
 func NewClient(d Deps) *http.Client {

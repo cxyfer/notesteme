@@ -186,20 +186,38 @@ func TestStatusErrors(t *testing.T) {
 		message    string
 		actions    []string
 		retryAfter time.Duration
+		body       string
+		detail     string
 	}{
-		{404, nil, errclass.ClassNeedsAction, "模型 m1 已停用或不存在。", []string{ActionChangeModel}, 0},
-		{401, nil, errclass.ClassNeedsAction, "LLM provider anthropic 拒絕了 API key（HTTP 401）。", []string{ActionSetAPIKey}, 0},
-		{403, nil, errclass.ClassNeedsAction, "LLM provider anthropic 拒絕了 API key（HTTP 403）。", []string{ActionSetAPIKey}, 0},
-		{429, map[string]string{"Retry-After": "30"}, errclass.ClassRetryable, "", nil, 30 * time.Second},
-		{429, map[string]string{"Retry-After": now.Add(90 * time.Second).Format(http.TimeFormat)}, errclass.ClassRetryable, "", nil, 90 * time.Second},
-		{429, map[string]string{"Retry-After": "-5"}, errclass.ClassRetryable, "", nil, 0},
-		{500, nil, errclass.ClassRetryable, "", nil, 0},
-		{529, map[string]string{"Retry-After": "99999"}, errclass.ClassRetryable, "", nil, time.Hour},
-		{400, nil, errclass.ClassPermanent, "LLM provider anthropic 拒絕了請求（HTTP 400），重試也不會成功。", nil, 0},
-		{302, map[string]string{"Location": "http://example.invalid/"}, errclass.ClassPermanent, "LLM provider anthropic 拒絕了請求（HTTP 302），重試也不會成功。", nil, 0},
+		{404, nil, errclass.ClassNeedsAction, "模型 m1 已停用或不存在。", []string{ActionChangeModel}, 0, "", "HTTP 404 x"},
+		{401, nil, errclass.ClassNeedsAction, "LLM provider anthropic 拒絕了 API key（HTTP 401）。", []string{ActionSetAPIKey}, 0, "", ""},
+		{403, nil, errclass.ClassNeedsAction, "LLM provider anthropic 拒絕了 API key（HTTP 403）。", []string{ActionSetAPIKey}, 0, "", ""},
+		{429, map[string]string{"Retry-After": "30"}, errclass.ClassRetryable, "", nil, 30 * time.Second, "", ""},
+		{429, map[string]string{"Retry-After": now.Add(90 * time.Second).Format(http.TimeFormat)}, errclass.ClassRetryable, "", nil, 90 * time.Second, "", ""},
+		{429, map[string]string{"Retry-After": "-5"}, errclass.ClassRetryable, "", nil, 0, "", ""},
+		{500, nil, errclass.ClassRetryable, "", nil, 0, "", ""},
+		{529, map[string]string{"Retry-After": "99999"}, errclass.ClassRetryable, "", nil, time.Hour, "", ""},
+		// 大數先夾上限再轉 Duration，不能溢位成負數而變成 0。
+		{429, map[string]string{"Retry-After": "10000000000"}, errclass.ClassRetryable, "", nil, time.Hour, "", ""},
+		{429, map[string]string{"Retry-After": "99999999999999999999999"}, errclass.ClassRetryable, "", nil, time.Hour, "", ""},
+		{429, map[string]string{"Retry-After": "-99999999999999999999999"}, errclass.ClassRetryable, "", nil, 0, "", ""},
+		{429, map[string]string{"Retry-After": now.Add(-time.Minute).Format(http.TimeFormat)}, errclass.ClassRetryable, "", nil, 0, "", ""},
+		{429, map[string]string{"Retry-After": now.Add(48 * time.Hour).Format(http.TimeFormat)}, errclass.ClassRetryable, "", nil, time.Hour, "", ""},
+		// OpenAI 的額度用盡不是暫時性的錯誤。
+		{429, map[string]string{"Retry-After": "30"}, errclass.ClassNeedsAction, "LLM provider anthropic 的額度不足（insufficient_quota）。", []string{ActionCheckQuota}, 0,
+			`{"error":{"type":"insufficient_quota","message":"You exceeded your current quota"}}`, "HTTP 429 insufficient_quota"},
+		// error.type 不是單純的代碼時不記錄。
+		{500, nil, errclass.ClassRetryable, "", nil, 0, `{"error":{"type":"sk-secret-key leaked here","message":"x"}}`, "HTTP 500"},
+		{400, nil, errclass.ClassPermanent, "LLM provider anthropic 拒絕了請求（HTTP 400），重試也不會成功。", nil, 0, "", ""},
+		{302, map[string]string{"Location": "http://example.invalid/"}, errclass.ClassPermanent, "LLM provider anthropic 拒絕了請求（HTTP 302），重試也不會成功。", nil, 0, "", ""},
 	}
 	for _, tc := range cases {
-		rc := &recorder{status: tc.status, header: tc.header, body: `{"type":"error","error":{"type":"x","message":"model: m1"}}`}
+		body := tc.body
+		if body == "" {
+			// 第三方相容服務可能把 key 或 prompt 回顯在 message 中：Detail 只留狀態碼與 error.type。
+			body = `{"type":"error","error":{"type":"x","message":"model: m1, key sk-secret-key, prompt SYSTEM"}}`
+		}
+		rc := &recorder{status: tc.status, header: tc.header, body: body}
 		srv := rc.server(t)
 		c := &HTTPClient{ID: "anthropic", Type: TypeAnthropic, BaseURL: srv.URL, APIKey: "sk-secret-key", HTTP: srv.Client(), Now: func() time.Time { return now }}
 		_, err := c.Complete(context.Background(), testRequest())
@@ -210,8 +228,11 @@ func TestStatusErrors(t *testing.T) {
 		if ce.Class != tc.class || ce.Message != tc.message || strings.Join(ce.Actions, ",") != strings.Join(tc.actions, ",") || ce.RetryAfter != tc.retryAfter {
 			t.Errorf("HTTP %d：%+v", tc.status, ce)
 		}
-		if strings.Contains(err.Error(), "sk-secret-key") {
-			t.Errorf("HTTP %d：錯誤訊息含 API key：%v", tc.status, err)
+		if strings.Contains(err.Error(), "sk-secret-key") || strings.Contains(ce.Detail, "SYSTEM") || strings.Contains(ce.Detail, "quota") && tc.status != 429 {
+			t.Errorf("HTTP %d：錯誤訊息含 API key 或回應的 message：%v", tc.status, err)
+		}
+		if tc.detail != "" && ce.Detail != tc.detail {
+			t.Errorf("HTTP %d：Detail = %q，預期 %q", tc.status, ce.Detail, tc.detail)
 		}
 	}
 }
@@ -231,6 +252,6 @@ func FuzzDecode(f *testing.F) {
 		if r, err := decodeOpenAI(b); err == nil && r.Output == nil && r.Problem == "" {
 			t.Fatalf("openai：沒有輸出也沒有原因：%s", b)
 		}
-		_ = errorSummary(b)
+		_ = errorType(b)
 	})
 }

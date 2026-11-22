@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -31,8 +32,11 @@ const (
 )
 
 const (
-	// requestTimeout 是一個請求的逾時：模型產生完整輸出才回應，長 chunk 可能要幾分鐘。
-	requestTimeout = 10 * time.Minute
+	// RequestTimeout 是一個請求的逾時：模型產生完整輸出才回應，長 chunk 可能要幾分鐘。
+	// 必須小於任務的租約（queue.DefaultLease），否則租約失效後任務會被重新領取而重複計費（RunOptions.Timeout）。
+	RequestTimeout = 5 * time.Minute
+	// idleConnTimeout 是閒置連線保留的時間；所有 chunk 共用同一個連線池。
+	idleConnTimeout = 90 * time.Second
 	// maxResponseBody 是回應大小的上限；超過時不截斷，視為 permanent（GRD-R5）。
 	maxResponseBody = 16 << 20
 	// maxErrorBody 是錯誤回應最多讀取的位元組，只用於診斷摘要。
@@ -43,6 +47,7 @@ const (
 const (
 	ActionChangeModel = "更換模型"
 	ActionSetAPIKey   = "設定 API key"
+	ActionCheckQuota  = "檢查 provider 額度"
 )
 
 // Request 是一次 LLM 請求。固定前綴（Fixed）在同一部影音、同一步驟的所有 chunk 完全相同；
@@ -85,7 +90,8 @@ type Client interface {
 	Complete(ctx context.Context, req Request) (Response, error)
 }
 
-// HTTPClient 依 wire format 呼叫 provider。HTTP 必須是 netguard 的 client（ADR-0014）。
+// HTTPClient 依 wire format 呼叫 provider。HTTP 必須是 NewHTTP 由 netguard 的 client 建立的（ADR-0014）；
+// HTTPClient 本身很輕，可以每個 chunk 建立，連線池在 HTTP 中共用。
 type HTTPClient struct {
 	ID      string // provider id，只用於錯誤訊息
 	Type    string
@@ -109,7 +115,10 @@ func (c *HTTPClient) Complete(ctx context.Context, req Request) (Response, error
 	if err != nil {
 		return Response{}, c.fail(errclass.ClassPermanent, "組出請求失敗", err)
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+	if c.HTTP == nil {
+		return Response{}, c.fail(errclass.ClassPermanent, "沒有 HTTP client", nil)
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, RequestTimeout)
 	defer cancel()
 	hr, err := http.NewRequestWithContext(reqCtx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
@@ -124,7 +133,10 @@ func (c *HTTPClient) Complete(ctx context.Context, req Request) (Response, error
 		hr.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
 
-	resp, err := c.client().Do(hr)
+	// 不跟隨轉址（標頭帶有 API key）；淺複製 http.Client，Transport 與連線池共用。
+	hc := *c.HTTP
+	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := hc.Do(hr)
 	if err != nil {
 		if ctx.Err() != nil {
 			return Response{}, ctx.Err()
@@ -153,19 +165,24 @@ func (c *HTTPClient) Complete(ctx context.Context, req Request) (Response, error
 	return decodeOpenAI(raw)
 }
 
-// client 回傳不跟隨轉址（標頭帶有 API key）、回應標頭逾時放寬到整個請求的 client 複本；netguard 的連線防護原樣保留。
-func (c *HTTPClient) client() *http.Client {
-	hc := *c.HTTP
-	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+// NewHTTP 由 netguard 的 client 建立 LLM 共用的 client：等待回應標頭的逾時放寬到 RequestTimeout（模型產生完整輸出才回應），
+// 閒置連線 idleConnTimeout 後關閉；netguard 的連線防護原樣保留。Transport 只複製這一次，所有請求共用連線池。
+// base 是 nil 時回傳 nil。
+func NewHTTP(base *http.Client) *http.Client {
+	if base == nil {
+		return nil
+	}
+	hc := *base
 	switch tr := hc.Transport.(type) {
 	case *http.Transport:
 		tr = tr.Clone()
-		tr.ResponseHeaderTimeout = requestTimeout
+		tr.ResponseHeaderTimeout = RequestTimeout
+		tr.IdleConnTimeout = idleConnTimeout
 		hc.Transport = tr
 	case interface {
-		WithResponseHeaderTimeout(time.Duration) http.RoundTripper
+		WithTimeouts(header, idle time.Duration) http.RoundTripper
 	}:
-		hc.Transport = tr.WithResponseHeaderTimeout(requestTimeout)
+		hc.Transport = tr.WithTimeouts(RequestTimeout, idleConnTimeout)
 	}
 	return &hc
 }
@@ -177,8 +194,18 @@ func (c *HTTPClient) fail(class errclass.Class, detail string, err error) *errcl
 // statusError 依狀態碼分類錯誤。訊息只帶狀態碼與 provider 回報的錯誤摘要，不帶請求內容與 key。
 func (c *HTTPClient) statusError(model string, resp *http.Response, body []byte) error {
 	code := resp.StatusCode
-	detail := fmt.Sprintf("HTTP %d：%s", code, errorSummary(body))
+	typ := errorType(body)
+	detail := fmt.Sprintf("HTTP %d", code)
+	if typ != "" {
+		detail += " " + typ
+	}
 	switch {
+	case code == http.StatusTooManyRequests && typ == "insufficient_quota":
+		// OpenAI 的額度用盡：不是暫時性的，重試也不會成功，要使用者處理。
+		return &errclass.Error{
+			Class: errclass.ClassNeedsAction, Source: "llm:" + c.ID, Detail: detail,
+			Message: fmt.Sprintf("LLM provider %s 的額度不足（insufficient_quota）。", c.ID), Actions: []string{ActionCheckQuota},
+		}
 	case code == http.StatusNotFound:
 		return &errclass.Error{
 			Class: errclass.ClassNeedsAction, Source: "llm:" + c.ID, Detail: detail,
@@ -200,23 +227,29 @@ func (c *HTTPClient) statusError(model string, resp *http.Response, body []byte)
 	}
 }
 
-// errorSummary 取出 provider 錯誤回應中的 message（兩家都是 {"error": {"message"}}），最多 200 個字元。
-func errorSummary(body []byte) string {
+// errorTypePattern 是 error.type 允許的字元；不符時不記錄（第三方相容服務的欄位可能回顯 key 或 prompt 片段）。
+var errorTypePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
+
+// errorType 取出 provider 錯誤回應中的 error.type（兩家都是 {"error": {"type"}}）。
+// 錯誤訊息（error.message）一律不記錄：第三方相容服務可能把 key 或 prompt 的片段回顯在裡面。
+func errorType(body []byte) string {
 	var v struct {
 		Error struct {
-			Message string `json:"message"`
-			Type    string `json:"type"`
+			Type any `json:"type"`
 		} `json:"error"`
 	}
-	msg := ""
-	if json.Unmarshal(body, &v) == nil {
-		msg = strings.TrimSpace(v.Error.Type + " " + v.Error.Message)
+	if json.Unmarshal(body, &v) != nil {
+		return ""
 	}
-	if r := []rune(msg); len(r) > 200 {
-		msg = string(r[:200]) + "…"
+	t, _ := v.Error.Type.(string)
+	if !errorTypePattern.MatchString(t) {
+		return ""
 	}
-	return msg
+	return t
 }
+
+// maxRetryAfterSeconds 是 Retry-After 的上限（1 小時）。
+const maxRetryAfterSeconds = 3600
 
 // retryAfter 解析 Retry-After：秒數或 HTTP 日期；無法解析或是負數時回傳 0。上限 1 小時。
 func retryAfter(v string, now func() time.Time) time.Duration {
@@ -225,15 +258,22 @@ func retryAfter(v string, now func() time.Time) time.Duration {
 		return 0
 	}
 	var d time.Duration
-	if n, err := strconv.Atoi(v); err == nil {
-		d = time.Duration(n) * time.Second
+	if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+		// 先夾在 [0, 3600] 再轉成 Duration：大數乘上 time.Second 會溢位成負數。
+		d = time.Duration(min(max(n, 0), maxRetryAfterSeconds)) * time.Second
+	} else if _, err := strconv.ParseFloat(v, 64); err == nil {
+		// 超出 int64 的秒數（或小數）不是合法的 delta-seconds，但仍是「很久」：取上限。
+		if strings.HasPrefix(v, "-") {
+			return 0
+		}
+		d = time.Duration(maxRetryAfterSeconds) * time.Second
 	} else if t, err := http.ParseTime(v); err == nil && now != nil {
 		d = t.Sub(now())
 	}
 	if d < 0 {
 		return 0
 	}
-	return min(d, time.Hour)
+	return min(d, maxRetryAfterSeconds*time.Second)
 }
 
 // encode 依 wire format 組出端點與 body（ADR-0019）。
