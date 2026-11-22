@@ -90,8 +90,8 @@ func allConvert(plans []TargetPlan) bool {
 //
 // 產出被取代的範圍是同一種變體，所以從上游步驟重跑（例如 correct 已經 off 或沒有設定，從 normalize 重跑）之後，
 // 舊的 corrected、segmented 仍然是現行產出，要靠現行的 stage run 判斷它們還算不算數（Codex P1）：
-//   - latest 是影音各步驟最新的 stage run：最新的 run 是 skipped（off、not_configured），代表這個變體的步驟在現行
-//     脈絡中沒有產出，留下的是舊脈絡的檔案，不採用。不比對產出的建立時間：快取命中時 RestoreArtifact 保留原本的建立時間，
+//   - latest 是影音各步驟最新的 stage run：最新的 run 不是 done（skipped〔off、not_configured〕，或重跑停在 until 之前
+//     而還是 pending），代表這個變體的步驟在現行脈絡中沒有產出，留下的是舊脈絡的檔案，不採用。不比對產出的建立時間：快取命中時 RestoreArtifact 保留原本的建立時間，
 //     上游被快取還原的產出看起來比舊的下游產出更早，但它屬於現行脈絡。
 //   - latest 是空的（沒有 stage run 的資料，例如單元測試）：退回用建立順序判斷，比上游變體的最新產出更早的下游產出不採用。
 func translateInput(arts []store.Artifact, latest map[string]store.StageRun) (store.Artifact, bool) {
@@ -106,14 +106,16 @@ func translateInput(arts []store.Artifact, latest map[string]store.StageRun) (st
 	}
 	n, sg, c := pos[subtitle.VariantNormalized], pos[subtitle.VariantSegmented], pos[subtitle.VariantCorrected]
 	if len(latest) > 0 {
-		skipped := func(stage string) bool {
+		// 最新的 run 不是 done（skipped、還在 pending 的下游步驟——重跑停在 until 之前——或其他）：
+		// 這個步驟在現行脈絡沒有產出，現行的 corrected、segmented 是舊脈絡留下的。
+		stale := func(stage string) bool {
 			run, ok := latest[stage]
-			return ok && run.Status == store.StatusSkipped
+			return ok && run.Status != store.StatusDone
 		}
-		if skipped(StageCorrect) {
+		if stale(StageCorrect) {
 			c = -1
 		}
-		if skipped(StageSegment) {
+		if stale(StageSegment) {
 			sg = -1
 		}
 		switch {

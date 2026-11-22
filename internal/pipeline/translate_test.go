@@ -110,6 +110,8 @@ func TestTranslateInputFollowsStageRuns(t *testing.T) {
 	}{
 		{"correct 與 segment 都 skipped：用還原的 normalized", map[string]store.StageRun{StageNormalize: run("done"), StageSegment: run("skipped"), StageCorrect: run("skipped")}, "n1"},
 		{"只有 correct skipped：用 segmented", map[string]store.StageRun{StageNormalize: run("done"), StageSegment: run("done"), StageCorrect: run("skipped")}, "s1"},
+		{"重跑停在 normalize：下游還是 pending，舊的 corrected 不採用", map[string]store.StageRun{StageNormalize: run("done"), StageSegment: run("pending"), StageCorrect: run("pending")}, "n1"},
+		{"correct 正在 running：舊的 corrected 不採用", map[string]store.StageRun{StageNormalize: run("done"), StageSegment: run("done"), StageCorrect: run("running")}, "s1"},
 		{"都 done：用 corrected（不看建立順序）", map[string]store.StageRun{StageNormalize: run("done"), StageSegment: run("done"), StageCorrect: run("done")}, "c1"},
 		{"segment skipped、correct done：用 corrected", map[string]store.StageRun{StageNormalize: run("done"), StageSegment: run("skipped"), StageCorrect: run("done")}, "c1"},
 	} {
