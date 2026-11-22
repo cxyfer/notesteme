@@ -39,7 +39,10 @@ func (p *Pipeline) runTranslateOpenCC(ctx context.Context, it store.Item, eff Ef
 	if err != nil {
 		return result{}, err
 	}
-	src, ok := translateInput(arts)
+	src, ok, err := translateInputFor(ctx, p.st.Read(), it.ID)
+	if err != nil {
+		return result{}, err
+	}
 	if !ok {
 		return result{}, errPermanent(errNoSource.Error())
 	}

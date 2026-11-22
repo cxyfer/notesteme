@@ -89,19 +89,43 @@ func allConvert(plans []TargetPlan) bool {
 // （arts 依建立順序排列，見 store.CurrentArtifacts）。
 //
 // 產出被取代的範圍是同一種變體，所以從上游步驟重跑（例如 correct 已經 off 或沒有設定，從 normalize 重跑）之後，
-// 舊的 corrected、segmented 仍然是現行產出。它們屬於被取代的重跑脈絡：比同一影音的上游變體更早建立的下游產出
-// （corrected 早於最新的 segmented 或 normalized，segmented 早於最新的 normalized）不採用（Codex P1）。
-func translateInput(arts []store.Artifact) (store.Artifact, bool) {
-	latest := map[subtitle.Variant]int{subtitle.VariantNormalized: -1, subtitle.VariantSegmented: -1, subtitle.VariantCorrected: -1}
+// 舊的 corrected、segmented 仍然是現行產出，要靠現行的 stage run 判斷它們還算不算數（Codex P1）：
+//   - latest 是影音各步驟最新的 stage run：最新的 run 是 skipped（off、not_configured），代表這個變體的步驟在現行
+//     脈絡中沒有產出，留下的是舊脈絡的檔案，不採用。不比對產出的建立時間：快取命中時 RestoreArtifact 保留原本的建立時間，
+//     上游被快取還原的產出看起來比舊的下游產出更早，但它屬於現行脈絡。
+//   - latest 是空的（沒有 stage run 的資料，例如單元測試）：退回用建立順序判斷，比上游變體的最新產出更早的下游產出不採用。
+func translateInput(arts []store.Artifact, latest map[string]store.StageRun) (store.Artifact, bool) {
+	pos := map[subtitle.Variant]int{subtitle.VariantNormalized: -1, subtitle.VariantSegmented: -1, subtitle.VariantCorrected: -1}
 	for i, a := range arts {
 		if a.Kind != "transcript" {
 			continue
 		}
-		if _, ok := latest[subtitle.Variant(a.Variant)]; ok {
-			latest[subtitle.Variant(a.Variant)] = i
+		if _, ok := pos[subtitle.Variant(a.Variant)]; ok {
+			pos[subtitle.Variant(a.Variant)] = i
 		}
 	}
-	n, sg, c := latest[subtitle.VariantNormalized], latest[subtitle.VariantSegmented], latest[subtitle.VariantCorrected]
+	n, sg, c := pos[subtitle.VariantNormalized], pos[subtitle.VariantSegmented], pos[subtitle.VariantCorrected]
+	if len(latest) > 0 {
+		skipped := func(stage string) bool {
+			run, ok := latest[stage]
+			return ok && run.Status == store.StatusSkipped
+		}
+		if skipped(StageCorrect) {
+			c = -1
+		}
+		if skipped(StageSegment) {
+			sg = -1
+		}
+		switch {
+		case c >= 0:
+			return arts[c], true
+		case sg >= 0:
+			return arts[sg], true
+		case n >= 0:
+			return arts[n], true
+		}
+		return store.Artifact{}, false
+	}
 	switch {
 	case c >= 0 && c > sg && c > n:
 		return arts[c], true
@@ -113,15 +137,28 @@ func translateInput(arts []store.Artifact) (store.Artifact, bool) {
 	return store.Artifact{}, false
 }
 
+// translateInputFor 讀取影音現行的字幕產出與各步驟最新的 stage run，依 translateInput 選 translate 的輸入。
+func translateInputFor(ctx context.Context, r *store.Repo, itemID string) (store.Artifact, bool, error) {
+	arts, err := r.CurrentArtifacts(ctx, itemID, "transcript")
+	if err != nil {
+		return store.Artifact{}, false, err
+	}
+	runs, err := r.StageRunsByItem(ctx, itemID)
+	if err != nil {
+		return store.Artifact{}, false, err
+	}
+	art, ok := translateInput(arts, latestRuns(runs))
+	return art, ok, nil
+}
+
 // stageContext 讀取影音現行的字幕產出，決定 StageContext；在呼叫端的交易（或 Read）中執行。
 // 原文語言是 translate 輸入字幕的語言；沒有字幕時退回 items.original_lang。
 // 中文標記沒有 script、也推不出地區時（例如 zh），用字幕文字的字元補上 Hans 或 Hant（S6-Q3）；判斷不出來就維持原樣。
 func (p *Pipeline) stageContext(ctx context.Context, r *store.Repo, it store.Item) (StageContext, error) {
-	arts, err := r.CurrentArtifacts(ctx, it.ID, "transcript")
+	art, ok, err := translateInputFor(ctx, r, it.ID)
 	if err != nil {
 		return StageContext{}, err
 	}
-	art, ok := translateInput(arts)
 	lang := it.OriginalLang
 	if ok && art.Lang != "" {
 		lang = art.Lang
