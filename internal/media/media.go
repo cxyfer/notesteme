@@ -27,6 +27,7 @@ const (
 	encodeTimeout   = 30 * time.Minute
 	silenceTimeout  = 10 * time.Minute
 	versionTimeout  = 30 * time.Second
+	previewTimeout  = 2 * time.Minute
 )
 
 // formatWhitelist 是 -format_whitelist 的清單：排除 hls、concat、image2、tee、data、lavfi 等
@@ -104,6 +105,11 @@ func New(r toolexec.Runner, tools toolexec.Resolver) *Tool { return &Tool{Runner
 // run 解析並執行工具。找不到工具為 needs_action；執行失敗為 retryable；被取消回傳 ctx 的錯誤。
 // 非 0 的結束碼不是錯誤，由呼叫端依用途分類。
 func (t *Tool) run(ctx context.Context, spec toolexec.Spec, timeout time.Duration, args []string) (toolexec.Result, error) {
+	return t.runIn(ctx, spec, timeout, "", args)
+}
+
+// runIn 同 run，另外指定工作目錄（空字串是呼叫者目前的目錄）。
+func (t *Tool) runIn(ctx context.Context, spec toolexec.Spec, timeout time.Duration, dir string, args []string) (toolexec.Result, error) {
 	bin, err := t.Tools.Resolve(spec)
 	if err != nil {
 		msg, action := msgNoFFmpeg, "安裝 ffmpeg"
@@ -114,7 +120,7 @@ func (t *Tool) run(ctx context.Context, spec toolexec.Spec, timeout time.Duratio
 			Class: errclass.ClassNeedsAction, Source: spec.Name, Err: err, Message: msg, Actions: []string{action},
 		}
 	}
-	res, err := t.Runner.Run(ctx, toolexec.Cmd{Path: bin, Args: args, Timeout: timeout})
+	res, err := t.Runner.Run(ctx, toolexec.Cmd{Path: bin, Args: args, Dir: dir, Timeout: timeout})
 	if err != nil {
 		if ctx.Err() != nil {
 			return res, ctx.Err()
@@ -363,4 +369,47 @@ func lastLine(b []byte) string {
 		}
 	}
 	return ""
+}
+
+// 樣式預覽（OUT-R9）的檔名與畫布。檔名固定，ffmpeg 的工作目錄是預覽專用的暫存目錄，
+// 所以濾鏡參數不含任何需要跳脫的路徑。
+const (
+	PreviewASSName = "s.ass"
+	PreviewPNGName = "out.png"
+	// previewCanvas 是沒有影片可用時的合成畫布：深灰色、1280x720、1 幀。
+	previewCanvas = "color=c=0x202020:s=1280x720:r=1:d=1"
+)
+
+// previewOutArgs 是預覽的輸出參數：用 libass 把 s.ass 疊在畫面上，輸出一張 PNG。
+func previewOutArgs() []string {
+	return []string{"-vf", "ass=" + PreviewASSName, "-frames:v", "1", "-an", "-sn", "-dn", "-update", "1", "-c:v", "png", "-y", PreviewPNGName}
+}
+
+// RenderSubtitleFrame 用 ffmpeg + libass 把 dir/s.ass 渲染到一個畫面，寫成 dir/out.png（OUT-R9）。
+// in 是要抽幀的影片（絕對路徑），atS 是抽幀的時間（秒）；in 為空字串時改用合成的深灰色畫布。
+// dir 必須是呼叫端建立的專用目錄（絕對路徑）：ffmpeg 以它為工作目錄，s.ass 與 out.png 都用相對路徑。
+func (t *Tool) RenderSubtitleFrame(ctx context.Context, dir, in string, atS float64) error {
+	if err := requireAbs(dir); err != nil {
+		return err
+	}
+	var args []string
+	if in == "" {
+		args = append([]string{"-nostdin", "-hide_banner", "-v", "error", "-f", "lavfi", "-i", previewCanvas}, previewOutArgs()...)
+	} else {
+		if err := requireAbs(in); err != nil {
+			return err
+		}
+		args = append(append(ffmpegInputArgs(), "-ss", secs(atS), "-i", in), previewOutArgs()...)
+	}
+	res, err := t.runIn(ctx, toolexec.FFmpeg, previewTimeout, dir, args)
+	if err != nil {
+		return err
+	}
+	if res.ExitCode != 0 {
+		return &errclass.Error{
+			Class: errclass.ClassPermanent, Source: "ffmpeg", ExitCode: res.ExitCode, Detail: lastLine(res.Stderr),
+			Err: errors.New("ffmpeg 渲染預覽失敗"),
+		}
+	}
+	return nil
 }

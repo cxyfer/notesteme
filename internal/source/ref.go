@@ -3,6 +3,7 @@ package source
 import (
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cxyfer/notesteme/internal/source/youtube"
@@ -30,4 +31,33 @@ func ParseRef(ref string) (string, bool) {
 		return "", false
 	}
 	return t.URL, true
+}
+
+// SplitRef 是 Ref 的反向：把短代號拆成平台、external_id 與分P（Bilibili 從 1 起算，其他平台是 0）。
+// 不是短代號（例如影音 ID）時 ok 為 false。
+func SplitRef(ref string) (platform, externalID string, part int, ok bool) {
+	switch {
+	case strings.HasPrefix(ref, "yt:"):
+		platform, externalID = PlatformYouTube, strings.TrimPrefix(ref, "yt:")
+	case strings.HasPrefix(ref, "bili:"):
+		m := biliRef.FindStringSubmatch(ref)
+		if m == nil {
+			return "", "", 0, false
+		}
+		n, err := strconv.Atoi(m[2])
+		if err != nil || n < 1 {
+			return "", "", 0, false
+		}
+		return PlatformBilibili, m[1], n, true
+	case strings.HasPrefix(ref, "pod:"):
+		platform, externalID = PlatformPodcast, strings.TrimPrefix(ref, "pod:")
+	case strings.HasPrefix(ref, "local:"):
+		platform, externalID = PlatformLocal, strings.TrimPrefix(ref, "local:")
+	default:
+		return "", "", 0, false
+	}
+	if externalID == "" {
+		return "", "", 0, false
+	}
+	return platform, externalID, 0, true
 }

@@ -423,3 +423,45 @@ func TestInfoKind(t *testing.T) {
 		t.Fatal("封面圖不算影片")
 	}
 }
+
+// 預覽的 argv 是固定的：影片版本與合成畫布版本，濾鏡的檔名都是相對於專用工作目錄的固定名稱（OUT-R9）。
+func TestRenderSubtitleFrameArgv(t *testing.T) {
+	ctx := context.Background()
+	out := []string{"-vf", "ass=s.ass", "-frames:v", "1", "-an", "-sn", "-dn", "-update", "1", "-c:v", "png", "-y", "out.png"}
+
+	fr := &fakeRunner{}
+	tl := newTool(t, fr)
+	if err := tl.RenderSubtitleFrame(ctx, "/d/tmp/preview-1", "/d/in.mp4", 2.5); err != nil {
+		t.Fatal(err)
+	}
+	want := append([]string{"-nostdin", "-hide_banner", "-v", "error", "-protocol_whitelist", "file", "-format_whitelist", fw,
+		"-ss", "2.500", "-i", "/d/in.mp4"}, out...)
+	if got := fr.calls[0]; got.Path != binOf(tl, toolexec.FFmpeg) || got.Dir != "/d/tmp/preview-1" || !reflect.DeepEqual(got.Args, want) {
+		t.Errorf("影片版本：%+v\n預期 %v", got, want)
+	}
+
+	fr = &fakeRunner{}
+	tl = newTool(t, fr)
+	if err := tl.RenderSubtitleFrame(ctx, "/d/tmp/preview-2", "", 0); err != nil {
+		t.Fatal(err)
+	}
+	want = append([]string{"-nostdin", "-hide_banner", "-v", "error", "-f", "lavfi", "-i", "color=c=0x202020:s=1280x720:r=1:d=1"}, out...)
+	if got := fr.calls[0]; got.Dir != "/d/tmp/preview-2" || !reflect.DeepEqual(got.Args, want) {
+		t.Errorf("合成畫布版本：%+v\n預期 %v", got, want)
+	}
+
+	// 路徑必須是絕對路徑：相對路徑或以 - 開頭的值會被 ffmpeg 當成選項。
+	for _, c := range [][2]string{{"tmp/x", ""}, {"/d/tmp/x", "-i"}, {"/d/tmp/x", "rel.mp4"}} {
+		if err := tl.RenderSubtitleFrame(ctx, c[0], c[1], 0); err == nil {
+			t.Errorf("dir=%q in=%q 應被拒絕", c[0], c[1])
+		}
+	}
+
+	// 結束碼非 0 是 permanent，並帶 stderr 的最後一行（例如缺少 libass）。
+	fr = &fakeRunner{res: toolexec.Result{ExitCode: 1, Stderr: []byte("No such filter: 'ass'\n")}}
+	err := newTool(t, fr).RenderSubtitleFrame(ctx, "/d/tmp/x", "", 0)
+	var ce *errclass.Error
+	if !errors.As(err, &ce) || ce.Class != errclass.ClassPermanent || !strings.Contains(ce.Detail, "No such filter") {
+		t.Errorf("ffmpeg 失敗 err = %v", err)
+	}
+}

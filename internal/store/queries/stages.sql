@@ -49,6 +49,15 @@ UPDATE stage_runs SET
 WHERE id = sqlc.arg(id)
 RETURNING item_id, stage, status;
 
+-- name: SetStageNote :one
+-- Only the descriptive message and actions change; status, timestamps, results and the resume
+-- condition stay as they are (used to flag a finished stage whose input changed later).
+UPDATE stage_runs SET
+  error_message = sqlc.arg(error_message),
+  actions_json  = sqlc.arg(actions_json)
+WHERE id = sqlc.arg(id)
+RETURNING item_id, stage, status;
+
 -- name: SetStageResult :exec
 UPDATE stage_runs SET
   executor       = sqlc.arg(executor),

@@ -196,6 +196,23 @@ func (r *Repo) setStageState(ctx context.Context, id string, st StageState) erro
 	return r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
 }
 
+// SetStageNote 只改寫步驟的說明與動作，狀態、時間與產出都不動，並發布一次狀態事件（讓畫面更新）。
+// 用在已完成的步驟因為上游的字幕改變而過時（OUT-R14）。沒有這個步驟時什麼都不做。
+func (r *Repo) SetStageNote(ctx context.Context, id, message string, actions []string) error {
+	acts, err := json.Marshal(nonNil(actions))
+	if err != nil {
+		return err
+	}
+	row, err := r.q.SetStageNote(ctx, sqlcdb.SetStageNoteParams{ErrorMessage: message, ActionsJson: string(acts), ID: id})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return r.emitStage(ctx, row.ItemID, row.Stage, row.Status)
+}
+
 // SetStageResult 記錄步驟的快取鍵、版本與產出。
 func (r *Repo) SetStageResult(ctx context.Context, id string, res StageResult) error {
 	return r.q.SetStageResult(ctx, sqlcdb.SetStageResultParams{

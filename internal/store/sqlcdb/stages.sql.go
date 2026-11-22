@@ -327,6 +327,35 @@ func (q *Queries) ResetRunningStage(ctx context.Context, id string) (ResetRunnin
 	return i, err
 }
 
+const setStageNote = `-- name: SetStageNote :one
+UPDATE stage_runs SET
+  error_message = ?1,
+  actions_json  = ?2
+WHERE id = ?3
+RETURNING item_id, stage, status
+`
+
+type SetStageNoteParams struct {
+	ErrorMessage string
+	ActionsJson  string
+	ID           string
+}
+
+type SetStageNoteRow struct {
+	ItemID string
+	Stage  string
+	Status string
+}
+
+// Only the descriptive message and actions change; status, timestamps, results and the resume
+// condition stay as they are (used to flag a finished stage whose input changed later).
+func (q *Queries) SetStageNote(ctx context.Context, arg SetStageNoteParams) (SetStageNoteRow, error) {
+	row := q.db.QueryRowContext(ctx, setStageNote, arg.ErrorMessage, arg.ActionsJson, arg.ID)
+	var i SetStageNoteRow
+	err := row.Scan(&i.ItemID, &i.Stage, &i.Status)
+	return i, err
+}
+
 const setStageResult = `-- name: SetStageResult :exec
 UPDATE stage_runs SET
   executor       = ?1,
