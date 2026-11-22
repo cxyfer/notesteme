@@ -69,7 +69,7 @@ func inspect(dir, name, wantSHA string, remove bool) (FileState, error) {
 		return "", err
 	}
 	if !os.SameFile(lst, opened) {
-		return StateModified, false, nil // 檢查與開啟之間被換掉了
+		return StateModified, nil // 檢查與開啟之間被換掉了
 	}
 	h := sha256.New()
 	if _, err := io.Copy(h, io.LimitReader(f, maxHashBytes+1)); err != nil {
