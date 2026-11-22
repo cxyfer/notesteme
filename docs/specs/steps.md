@@ -752,6 +752,6 @@ bundle 由步驟在場景目錄中產生，不 commit 二進位 fixture：字幕
 | `Then the Hub received {int} requests` | fakehub 收到的請求總數 |
 | `Then the Hub was asked for a lookup {int} times` | fakehub 收到的 `GET /api/v1/lookup` 次數 |
 | `Then the Hub received a share of {string} with the artifacts:` | fakehub 最後收到的分享是這部影片的，bundle 中的產出（不分順序）正好是表格列出的這些；表格欄位 `kind`、`variant`、`lang`（`note`、`chapters` 的 `variant` 留空） |
-| `Then the last bundle sent to the Hub has the manifest fields:` | fakehub 最後收到的 bundle 的 manifest；表格欄位 `field`（點號路徑，數字是陣列索引）、`value`（字串比較；`<absent>` 代表欄位不存在） |
+| `Then the last bundle sent to the Hub has the manifest fields:` | fakehub 最後收到的 bundle 的 manifest；表格欄位 `field`（點號路徑，數字是陣列索引）、`value`（字串比較；`<absent>` 代表欄位不存在；`*` 代表欄位存在即可，值可以是空陣列或空字串） |
 | `Then the last bundle sent to the Hub does not contain {string}` | fakehub 最後收到的 bundle 中，manifest 與每個檔案的內容都不含這段文字；沒有收到任何 bundle 時失敗 |
 | `Then the Hub never received the video ID of {string}` | fakehub 收到的所有請求（路徑、query、標頭、body，不含分享的 bundle）都不含這部影片的平台 ID；沒有收到任何請求時失敗（沒有東西可以驗證） |
