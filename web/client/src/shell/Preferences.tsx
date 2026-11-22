@@ -1,9 +1,9 @@
-// 主題與介面語言（暫時放在導覽底部；UI-3 的「外觀」「語言」設定分區完成後可以移過去）。
-import { useState } from "react";
+// 主題與介面語言的快速切換（導覽底部）。設定頁的「外觀」「語言」分區有同樣的選項，兩邊共用同一個值（UI-3b 決定保留這裡的入口）。
 import { useTranslation } from "react-i18next";
 
 import { currentLanguage, LANGUAGE_NAMES, LANGUAGES, setLanguage, type Language } from "../i18n";
-import { readTheme, saveTheme, THEMES, type Theme } from "../theme/theme";
+import { saveTheme, THEMES, type Theme } from "../theme/theme";
+import { useTheme } from "../theme/useTheme";
 
 const THEME_LABELS: Record<Theme, string> = {
   system: "prefs.themeSystem",
@@ -13,7 +13,7 @@ const THEME_LABELS: Record<Theme, string> = {
 
 export function Preferences() {
   const { t, i18n } = useTranslation();
-  const [theme, setTheme] = useState<Theme>(readTheme);
+  const theme = useTheme();
   const lang = currentLanguage();
   void i18n.language; // 語言改變時重新渲染
 
@@ -24,9 +24,7 @@ export function Preferences() {
         <select
           value={theme}
           onChange={(e) => {
-            const v = e.target.value as Theme;
-            setTheme(v);
-            saveTheme(v);
+            saveTheme(e.target.value as Theme);
           }}
         >
           {THEMES.map((th) => (

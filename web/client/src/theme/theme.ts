@@ -20,6 +20,18 @@ export function applyTheme(theme: Theme, root: HTMLElement = document.documentEl
   else root.dataset.theme = theme;
 }
 
+// 只在 saveTheme 時更新；localStorage 讀不到（隱私模式）時仍保留這次工作階段的選擇。
+let current: Theme | undefined;
+
+// 主題的訂閱者：導覽底部的快速切換與設定頁的「外觀」分區共用同一個值（useTheme）。
+const listeners = new Set<() => void>();
+
+/** 給 useSyncExternalStore 用：主題改變時通知。 */
+export function subscribeTheme(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
 export function saveTheme(theme: Theme) {
   try {
     if (theme === "system") localStorage.removeItem(STORAGE_KEY);
@@ -28,4 +40,11 @@ export function saveTheme(theme: Theme) {
     // 隱私模式：只在這次工作階段生效
   }
   applyTheme(theme);
+  current = theme;
+  for (const fn of listeners) fn();
+}
+
+/** 目前的主題（useSyncExternalStore 的 getSnapshot）。 */
+export function currentTheme(): Theme {
+  return current ?? readTheme();
 }
