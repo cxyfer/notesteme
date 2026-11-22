@@ -415,3 +415,252 @@ M3 的句型（4.13～4.16）在 2026-11-23 規格展開時加入，目前全部
 | `Then the hook {string} did not run` | 場景中這個 hook 沒有執行過 |
 | `Then the hook {string} saw the environment variable {string}` | hook 最近一次執行時的環境中有這個變數 |
 | `Then the hook {string} did not see the environment variable {string}` | hook 最近一次執行時的環境中沒有這個變數；hook 沒有執行過時失敗 |
+
+### 4.17 訂閱、事後的更好來源與新增入口（`steps/subscriptions.go`，M4）
+
+M4 的句型（4.17～4.21）在 2026-11-23 規格展開時加入，目前全部註冊為 pending 的步驟樁（`godog.ErrPending`），由 M4 的實作切片換成真正的實作。跨規格的決定見 [ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md)，假服務的設計見 `features/fixtures/README.md` 的「M4 的假服務」。
+
+M4 的 `.feature` 在每個非 `@manual` 場景中、第一個會啟動 server 或送出請求的既有步驟之前，都有一個 M4 的句型（閘門），所以**在閘門句型實作之前** `@M4` 場景一律是 pending。M4 的路由不存在時回 404 而不是 501，設定檔含 M4 的鍵時 server 會啟動失敗，所以 M4 的第一個實作切片（M4-S0）比照 M2 S0、M3-S0：先讓處理方案與設定檔的 schema 接受全部 M4 欄位（`stages.summary`、`stages.<stage>.batch`、`language.better_source`、`scheduler`、`notify`、`backup.daily`、`alerts`、`budget`、`auth.proxy`、`auth.oidc`、`server.public_url` 等），M4 的路由回 501 stub，之後各切片以 `@M4` 的逐場景結果（junit）和切片開始前比對。閘門句型有共用（`the notification endpoints are reachable` 是 NOTIFY、DIG 彙整與 OPS 告警的閘門；COST 的 `the cost estimate of every … task is …` 是 LIB-08、09 的閘門；BATCH 依賴 COST 的句型），實作其中一個之後，其他領域的場景會往下跑而失敗，要在同一個切片確認或一起合併。
+
+M4 的新句型都用 `r.Step` 註冊（不限關鍵字），因為部分 `Given` 句型出現在 `When` 之後的 `And`。
+
+註冊到 `features/steps/subscriptions.go`（新檔，`registerSubscriptions`）。全部用 `r.Step`（不限關鍵字，因為有的 Given 句型出現在 `When` 之後的 `And`）先註冊成回傳 `godog.ErrPending` 的步驟樁，由 M4 的 SUB、SRC-10、ENTRY 實作切片換成真正的實作。
+
+閘門（BRIEF 的 pending 規則）：
+
+- `features/SUB-subscriptions.feature` 的 Background 第一步是 `Given the YouTube feeds are served from the registered videos`，所以每個 SUB 場景在任何既有步驟之前就 pending。這也讓 Background 之後的 `a YouTube video … with:` 可以用新欄位 `shorts`、`the URL … serves …` 可以登記 Bilibili 合集網址（兩者在現行實作會讓步驟失敗）。
+- `features/SRC-better-source.feature` 的 Background 第一步是 `Given the platform adds manual captions in "en" to "yt:late01xxxxx" at …`，在 `the config file contains:`（含 M4 的 `scheduler`）、`the global settings are:`、`the item … has been processed up to …` 之前。
+- `features/ENTRY-entry-points.feature` 的每個非 `@manual` 場景，第一個送出請求的步驟都是本檔的新句型（`the browser opens …`、`someone signs in with the password … to continue to …`），本身就是 pending。
+
+#### SUB：訂閱（`steps/subscriptions.go`，M4）
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the YouTube feeds are served from the registered videos` | 把 `features/internal/fakefeed` 登記到 fakenet 的 `www.youtube.com`，只處理 `/feeds/videos.xml?channel_id=<ID>`：依當下登記的假 YouTube 影片（`a YouTube video …`，同一個 `channel_id` 的）產生 YouTube 的 Atom feed，依 `published_at` 由新到舊、最多 15 筆；每筆有 `yt:videoId`、`yt:channelId`、`title`、`published`、`link`（`shorts` 為 `yes` 的影片是 `https://www.youtube.com/shorts/<ID>`，其他是 `/watch?v=<ID>`），沒有片長與直播狀態（同真實的 RSS）。沒有 `published_at` 的影片視為 `2026-01-01T00:00:00Z` 發布。頻道沒有任何影片時回只有 `<feed>` 標頭的 Atom（真實的 YouTube 對存在但沒有影片的頻道也是如此）。同時讓假 yt-dlp 支援頻道的 `--flat-playlist -J https://www.youtube.com/channel/<ID>/videos`（依同樣的排序列出所有非 Shorts 的影片，entry 帶 `id`、`url`、`title`、`duration`、`live_status`，遵守 `--playlist-end`）與 `-J https://www.youtube.com/@<handle>`（handle 是頻道名稱轉小寫並去掉空白，例如 `Fixture Channel` → `@fixturechannel`；回傳 `channel_id`）。每個 SUB 場景的 Background 第一步（閘門）。 |
+| `Given the YouTube feed of the channel {string} fails with HTTP {int}` | 之後 fakefeed 對這個頻道 ID 的 feed 請求都回應指定的狀態碼（body 是一行純文字），直到 `recovers`。可以在場景中途使用；不需要先有影片 |
+| `Given the YouTube feed of the channel {string} recovers` | 取消 `fails with HTTP`，恢復依登記的影片回應 |
+| `Then the YouTube feed of the channel {string} was requested {int} times` | fakefeed 收到、`channel_id` 等於這個 ID 的請求數（含失敗的回應）。`1 time` 亦可 |
+| `Given the subscription {string} for {string}` | 以預設設定建立訂閱，第一個參數是場景內的別名（`^[a-z0-9-]+$`），第二個是網址。比照 4.11 的語意補充：只累積，server 啟動時（或已在執行時立即）依宣告順序送出 `POST /api/subscriptions {url}`，順序排在處理方案與預設處理方案之後；必須回 201，否則步驟失敗並附上回應（回 404 或 501 時 pending）。記下回應的 `id` 作為別名的對照。這個寫入不覆寫「最近一次回應」。訂閱的 `created_at` 是寫入時的 fake clock |
+| `Given the subscription {string} for {string} with:` | 同上，doc string 是 YAML，轉成 JSON 後與 `url` 合併成 `POST /api/subscriptions` 的 body（可含 `backfill`、`filters`、`schedule`、`profile`、`overrides`、`enabled`） |
+| `Then the subscription {string} has the entries:` | `GET /api/subscriptions/<id>/entries` 的條目與表格完全相同（不看順序）：欄位 `video`（影音的短代號，比對條目的 `ref`）、`decision`、`reason`（空白代表沒有原因或空字串）。條目數必須等於表格列數；別名不存在時失敗 |
+| `Then the subscription {string} has no entries` | 同上，條目數為 0 |
+| `Then the next check of the subscription {string} is at {string}` | `GET /api/subscriptions/<id>` 的 `next_check_at` 與指定的 RFC 3339 時間是同一個時間點（不比時區寫法） |
+| `Then the next check of the subscription {string} is between {string} and {string}` | `next_check_at` 不早於第一個時間、早於第二個時間（左閉右開） |
+| `Then the number of subscriptions is {int}` | `GET /api/subscriptions` 的 `subscriptions` 長度；server 已明確停下時改用唯讀方式查詢 DB |
+| `Given the podcast feed {string} adds the episode {string} titled {string} with the audio {string}` | 在既有的假 feed（`a podcast feed … with the episodes:` 建立的）最前面加上一集：guid、標題、音檔的規則同 4.3 的 `a podcast feed`（fixture 不存在、guid 重複、feed 不存在時失敗）；`pubDate` 是步驟執行時的 fake clock。可以在場景中途使用 |
+| `When the owner imports the subscriptions from {string}` | 用 owner 的 session 送出 `POST /api/subscriptions/import`（multipart 的 `file` 欄位，自動帶 CSRF token）。參數以 `/` 開頭時是場景中的路徑（第 4 節的對應規則，通常由 `the file … contains:` 寫入）；否則是 `features/fixtures/subscriptions/` 的檔名。回應成為「最近一次回應」 |
+| `When the owner imports a generated OPML file with {int} feeds` | 以 `fakefeed.OPML` 產生含 N 個 `outline`（`https://feeds.example.com/gen-<n>.xml`，每個 `text` 約 100 個字元）的 OPML，照上一個步驟送出。9000 個 outline 約 1.2 MB，用來驗證大小上限；501 個約 70 KB，用來驗證筆數上限 |
+
+既有句型的語意補充（SUB，2026-11-23，不新增句型；由 SUB 實作切片在對應的步驟實作）：
+
+- **別名替換**：`{subscription:<別名>}` 在 `When the owner sends …`、`When the client sends …`（含 `with:` 的 body）的路徑與 body、`When the owner runs …` 的參數，以及 `Then the response contains:`、`Then the tool result contains:`、`Then the command output is JSON containing:`、`Then an event is received:` 的**預期值**中，都換成該別名的訂閱 id（比照 CLI 的 `{token:<名稱>}`）。別名不存在時步驟失敗。這是「預期值不展開」的唯一例外：訂閱 id 是產品產生的，場景無法寫死。
+- `Given a YouTube video {string} with:`：
+  - `published_at`（RFC 3339）已在 `features/steps/sources.go` 支援，steps.md 4.3 的欄位清單沒有列出，補上。fakefeed 的 Atom、頻道 `/videos` 的 flat-playlist 都用它排序。
+  - 新欄位 `shorts`（`yes`／`no`，預設 `no`）：`yes` 的影片在 fakefeed 的 Atom 中 `link` 是 `/shorts/<ID>`，不出現在頻道 `/videos` 的 flat-playlist；`yt-dlp -J` 的 `webpage_url` 也是 `/shorts/<ID>`。現行的 `setVideoField` 遇到它會失敗，所以只在 SUB 的閘門之後使用。
+  - `live_status` 也接受 `is_upcoming`、`post_live`、`was_live`（yt-dlp 的值），假 yt-dlp 的 `-J` 照樣輸出；fakefeed 不輸出直播狀態（同真實的 RSS）。
+- `Given the URL {string} serves {string}`：除了 YouTube 播放清單，也接受 Bilibili 合集網址（`space.bilibili.com/<mid>/lists/<sid>?type=season`、`/channel/collectiondetail?sid=<sid>`）與 YouTube 頻道的 `/videos` 網址，同樣把 `features/fixtures/ytdlp/` 的 fixture 登記為假 yt-dlp `--flat-playlist -J` 的輸出（頻道的 fixture 優先於 `the YouTube feeds are served from the registered videos` 的自動清單）。`www.youtube.com/feeds/videos.xml` 不支援這個步驟（由 fakefeed 處理）。
+- `When the worker runs until idle`：ADR-0021 第 1 點的排程器是 worker 的 `Periodic`，所以「直到沒有可以執行的任務」也包含「沒有到期的排程工作」；排程工作建立的影音、影音建立的任務都會在同一次執行中處理完。被 rate limit 延後（SUB-R10）的檢查不算到期。
+- `When the server starts`、`When the server restarts`：在 server 停止期間 `the clock advances by …` 之後啟動時，過期的排程工作要等到 `the worker runs until idle` 才執行（啟動本身不執行排程），讓場景可以在中間斷言。
+
+#### SRC-10：事後出現更好的來源（`steps/subscriptions.go`，M4）
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the platform adds {word} captions in {string} to {string} at {string}` | 假 yt-dlp 在 fake clock 到達指定的 RFC 3339 時間之後，才為這部影音列出（並能下載）這條字幕軌；`{word}` 是 `manual` 或 `auto`，語言與影音代號的規則同 `{string} has {word} captions in {string}`（只接受 `yt:`、`bili:`）。影音可以在這個步驟之後才宣告（步驟只記錄，假 yt-dlp 每次呼叫時依當下的 fake clock 判斷），所以它可以放在 Background 第一步當閘門。字幕內容與 `has … captions in …` 產生的相同（120 句）。實作時 harness 要讓假 yt-dlp 讀得到 fake clock（例如在每次 `the clock is at`、`the clock advances by` 時寫進場景目錄的狀態檔）。到期後被列出的字幕軌，在 `GET /api/items/:id` 的 `sources` 中只有重跑 `transcript` 之後才會出現（SRC-R19） |
+
+既有句型的語意補充（SRC-10，2026-11-23，不新增句型）：
+
+- `Given the item {string} has been processed up to {string}`：處理完成時，fake clock 不前進，所以 `transcript` 的完成時間就是步驟執行時的 fake clock；SRC-R18 的第一次重新 Probe 從這個時間起算 12 小時。
+- `Then {string} shows the message {string}`、`Then {string} offers the actions {string}`：SRC-R21 的訊息在 `done` 的 `transcript` 步驟上，SRC-R20 的提醒在 `done` 的 `sponsorblock` 步驟上，依既有的「沒有未完成步驟的訊息時，取第一個 `done` 而且有 `message` 的步驟」規則比對。
+- `Then an event is received:`：`source.better_available` 事件的 `item` 是影音的短代號（同 `item.created`）。
+
+#### ENTRY：其他新增入口（`steps/subscriptions.go`，M4）
+
+| 步驟 | 意思 |
+|---|---|
+| `When the browser opens {string}` | 不帶任何身分（沒有 session cookie、沒有 bearer token），以瀏覽器的方式送出 `GET <路徑>`：`Accept: text/html,application/xhtml+xml,*/*`、不跟隨轉址。路徑照字面送出（query 已經是 URL 編碼的形式，不再編碼）。回應成為「最近一次回應」，`the response status is`、`the response header … contains …`、`the response contains:` 都斷言它 |
+| `When the browser opens {string} signed in as the owner` | 同上，但帶 `Given the owner is signed in` 建立的 session cookie（沒有這個前提時步驟失敗）；不帶 CSRF token（GET 不需要） |
+| `Then the browser is sent to {string}` | 最近一次回應是 3xx，`Location` 標頭與指定的值完全相同（相對路徑，不展開成絕對網址；`Location` 是絕對網址時失敗，因為 ENTRY-R2、R4、R5 規定是相對路徑） |
+| `When someone signs in with the password {string} to continue to {string}` | `POST /api/auth/login {password, next}`，不帶 session（同 `someone signs in with the password {string}`，但 body 多了 `next`，照字面送出）；回應成為「最近一次回應」 |
+
+### 4.18 摘要、通知與無人值守（`steps/notify.go`，M4）
+
+註冊到 `features/steps/notify.go`。全部先註冊成回傳 `godog.ErrPending` 的步驟樁，由 M4 的實作切片換成真正的實作。
+
+共通語意：
+
+- 「累積」的步驟比照 steps.md 4.11 的語意補充：步驟本身不送請求，第一個送出請求的步驟才依序寫入。寫入順序接在既有順序之後：全域設定 → prompt → 處理方案 → 預設處理方案 → 頻道覆寫 → 佇列 → **notifier（依宣告順序）→ 彙整設定（依宣告順序）**。寫入回 501 時那個步驟 pending；其他非預期的狀態碼讓步驟失敗，訊息附上回應內容。這些寫入不覆寫「最近一次回應」。
+- 「通知端點」是一個網址（`https://<host>/<path>`），比對時只看主機（不分大小寫）與路徑（完全相同），忽略 query。端點由 `features/internal/fakenotify` 扮演，只有 `the notification endpoints are reachable` 登記之後才有。
+
+既有句型在 M4 的語意補充（不新增句型；由實作切片在對應的步驟實作）：
+
+- `Given the item … has been processed up to …`：目標也可以是 `summary`。產品的 `pipeline.ValidStage("summary")` 為 false 時 pending（同 M3 的四個步驟）；認得之後依 (2c) 判斷（`done` 或 `skipped` 都算處理到）。處理到 `summary` 時不套用 `pause_after`（`until` 在 `summary` 結束，DIG-R6 的暫停只發生在接著要執行下一個步驟時）。
+- `Then the {string} artifact of {string} has the provenance:`、`the item … has no … artifact`：名稱也可以是 `summary`。
+- 4.6 的 LLM 步驟：步驟名稱也可以是 `summary`（tool 或 schema 名稱 `notesteme_summary`）；`summary` 的請求沒有 `<transcript_data>` 的 `chunk`（DIG-R2 只送一個請求），`for chunk` 的句型不適用。
+- `Then the stage {string} of {string} …`：步驟名稱也可以是 `summary`；`summary` 還不是 `pipeline.Stages` 的成員時 pending。
+- `Then the command output is JSON containing:`：`docker compose … config` 的變數代入使用 `the compose .env file contains:` 的值（加在 `features/steps/cli.go` 的 `composeEnv` 之上）。
+
+#### DIG
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the summary profile is:` | 累積一個處理方案 `summary-test`（doc string 是 YAML，寫入方式同 `the profile … is:`），並設為預設處理方案（同 `the default profile is …`）。YAML 必須含 `stages.summary`，否則步驟失敗。產品的 `pipeline.ValidStage("summary")` 為 false 時 pending（DIG 的閘門） |
+| `Given the summary of {string} is:` | 直接寫入現行的 `summary` 產出（seeding，同 `the note of … is:`）：doc string 是 JSON `{summary, key_points, title_translation, language}`（`language` 省略時是 `zh-Hant`），`summary` 步驟為 `done`，結束時間是 fake clock 的現在，來源紀錄的 `checks.passed` 為 `true`。影音不存在時先新增並做到 metadata。用於彙整這類只需要「已經有摘要」的場景 |
+| `Given the digest {string} is:` | 累積一個彙整設定：doc string 是 `POST /api/digests` 的 JSON body（不含 `id`，`id` 是參數），必須回 201 |
+
+#### NOTIFY
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the notification endpoints are reachable` | 啟動假通知服務（`features/internal/fakenotify`），登記到 fakenet：`ntfy.sh`、`discord.com`、`api.telegram.org`、`hooks.example.com` 依序解析到公開的測試 IP `93.184.216.60`、`.61`、`.62`、`.63`，由同一個 fake 回應（場景可以用 `the host … resolves to …` 改寫解析結果，例如 DNS rebinding；連到這四個 IP 的請求一律交給 fakenotify）；每個請求預設回 ntfy `200 {"id":…}`、Discord `204`、Telegram `200 {"ok":true,…}`、一般 webhook `204`。其他主機不登記（照 fakenet 既有的 trap）。也是 NOTIFY、OPS-06～08 場景的閘門 |
+| `Given the notifier {string} is:` | 累積一個 notifier：doc string 是 `POST /api/notifiers` 的 JSON body（不含 `id`，`id` 是參數），必須回 201 |
+| `Given the notification endpoint {string} answers HTTP {int} for the next {int} requests` | fakenotify 對這個端點接下來 N 個請求回指定狀態碼（body 是空 JSON 物件；429 時加 `Retry-After: 120`），之後恢復預設回應 |
+| `Given the notification endpoint {string} answers HTTP {int}` | fakenotify 對這個端點的所有請求都回指定狀態碼（同上），優先於 `for the next … requests` |
+| `Then the notification endpoint {string} received {int} requests` | fakenotify 收到這個端點的請求數（含回錯誤的請求） |
+| `Then the last request to the notification endpoint {string} contains:` | 這個端點最近一次收到的請求，body 解析成 JSON 後包含 doc string 的欄位與值（子集比對，同 `the response contains:`）；沒有收到請求或 body 不是 JSON 時失敗 |
+| `Then the last request to the notification endpoint {string} has the header {string} containing {string}` | 最近一次請求的標頭值（多個值以 `,` 連接）包含指定文字；標頭不存在時失敗 |
+| `Then the last request to the notification endpoint {string} is signed with {string}` | 最近一次請求有 `X-Notesteme-Timestamp`（Unix 秒，等於送出時 fake clock 的時間）與 `X-Notesteme-Signature`，後者等於 `sha256=` 加上 `hex(HMAC-SHA256(key=參數, msg=<timestamp> + "." + <原始 body>))`；由 fakenotify 獨立計算，不呼叫產品的程式 |
+| `Then the notification endpoint {string} received a request containing {string}` | 這個端點收到的任何一個請求，原始 body 或 JSON 解碼後的任何字串值包含指定文字 |
+| `Then no request to a notification endpoint contains {string}` | fakenotify 收到的所有請求（路徑、query、標頭、原始 body、JSON 解碼後的字串值）都不含這段文字；完全沒有收到請求時失敗（沒有東西可以驗證） |
+
+#### OPS-06～08
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the backup directory {string} contains:` | 在場景的目錄（路徑對應見 steps.md 第 4 節）建立表格（欄位 `file`）列出的一般檔案，內容是固定的假資料（不是有效的備份）；上層目錄不存在時自動建立。建立的檔案登記到 After hook 的 secret 掃描的例外（它們不是 tar.gz） |
+| `Then the backup directory {string} contains exactly:` | 該目錄中的項目（一般檔案與 symlink，不含子目錄）名稱正好是表格（欄位 `file`）列出的這些，不比順序 |
+| `Given the data volume is {int} percent full` | 測試 hook（`TestControls.DiskUsage`）讓產品讀到的 `/data` 所在檔案系統用量是指定百分比；不寫入真的檔案。沒有這個步驟的場景，harness 預設 10%（OPS 待決問題 O10），CI 機器的真實磁碟用量不會觸發告警。可以在 server 啟動後再次使用，下一次 `alerts` 檢查時生效 |
+| `Given the cookie for {string} was last used successfully at {string}` | 累積：第一個送出請求的步驟先以 `POST /api/cookies` 上傳該平台（`youtube`、`bilibili`）的測試 cookie，再經測試 hook 把它的「最後一次成功使用」設為指定的 RFC 3339 時間（上傳時間也設為同一時間） |
+| `Given yt-dlp recorded {int} failures out of {int} calls in the last hour` | 測試 hook 寫入 yt-dlp 呼叫統計：在 fake clock 的現在之前 1 小時內，共 N 次呼叫、其中 M 次失敗（平均分布在這 1 小時內）；之前 24 小時沒有紀錄。第一個參數大於第二個時步驟失敗 |
+| `Given the instance is deployed with the {string} profile` | 把參數原樣設為環境變數 `NOTESTEME_DEPLOYMENT`（不檢查值，場景也用不合法的值驗證 OPS-R21），必須在 server 啟動之前；CLI 的 `When the owner runs` 也帶這個環境變數。OPS-08 的閘門 |
+| `When the server starts with the flag {string}` | 同 `When the server starts`，但在 `serve` 後面加上指定的旗標（例如 `--insecure-no-auth`） |
+| `Given the compose .env file contains:` | 表格（欄位 `field`、`value`）模擬 `deploy/docker/.env`：之後的 `docker compose … config --format json`（fakecompose）以這些變數代入，優先於場景的環境變數；`value` 空白代表空字串。不寫入真的 `.env` |
+
+### 4.19 成本、預算與 Batch API（`steps/costs.go`，M4）
+
+註冊到 `features/steps/costs.go`。全部先註冊成回傳 `godog.ErrPending` 的步驟樁，由 COST、BATCH 的實作切片換成真正的實作。
+
+閘門的共用（BRIEF 的 pending 規則）：`features/COST-cost-budget.feature` 的閘門是 `the price of … is … USD per …`；`features/BATCH-batch-api.feature` 的閘門是 `the batch API of … completes after …`；`features/LIB-bulk-overview.feature` 的閘門是 COST 的 `the cost estimate of every … task is … USD`（後面還有 `the price of …`）。所以 COST 切片實作這兩個句型之後、LIB-R13～R22 實作之前，LIB-bulk-overview 的場景會從 pending 變成 failed；COST 切片要先確認 LIB 的場景仍是 pending（例如 `POST /api/items/batch`、`GET /api/overview` 回 501），或和 LIB 切片一起合併。BATCH 的場景同時依賴 COST 的句型（價格、usage），BATCH 切片排在 COST 之後。
+
+#### 成本與預算（COST）
+
+`Given` 的 seeding 步驟只累積，第一個送出請求的步驟才寫入（比照 steps.md 4.11 的 `the global settings are:`）；寫入順序排在全域設定、處理方案之後，佇列之前。寫入的請求回 501 時那個步驟 pending。
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the price of {string} for {string} is {string} USD per {string}` | 計價覆寫：provider、model、金額、`unit_type`（`input_mtok`、`output_mtok`、`audio_hour`、`credit`）。寫入時送 `PUT /api/prices {provider, model, unit_type, usd_per_unit}`（`checked_at` 為 fake clock 的現在），必須回 200。同一組 `(provider, model, unit_type)` 寫兩次時，後面的取代前面的 |
+| `Given the budget is:` | 預算設定；表格欄位 `field`、`value`（`monthly_usd`、`per_item_usd`、`warn_at_percent`、`timezone`），值是 JSON 的寫法（`0.10`、`null`、`"Asia/Taipei"` 可以不加引號）。寫入時送 `PUT /api/settings/budget`，必須回 200 |
+| `Given the built-in prices were checked on {string}` | 測試控制：內建計價表的確認日期（`cost.PricesAsOf`）改為指定的 `YYYY-MM-DD`；必須在 server 啟動之前 |
+| `Given the cost estimate of every {string} task is {string} USD` | 測試控制（ADR-0015）：這個步驟（例如 `correct`）每個任務的估算固定為指定值（視為可以估算），取代 COST-R5 的估算結果，預留與 LIB-R14 的 `dry_run` 都使用它；單價是否存在（COST-R7）仍照常判斷。這是一般 API 的金額：batch 的預留再乘以 batch 折扣（BATCH-R6、R7）。必須在 server 啟動之前 |
+| `Given the cost ledger has an entry of {string} USD for {string} at {string}` | 同 4.4 的 `the cost ledger has an entry of … USD for …`（實際金額），但 `at` 是指定的 RFC 3339 時間。影音必須已經存在 |
+| `Given the cost ledger has a reservation of {string} USD for {string}` | 成本帳本中有一筆這部影音的預留（`state: reserved`），沒有對應的任務（模擬程序中斷留下的預留，COST-R5）。影音必須已經存在 |
+| `Given the LLM usage reported by {string} is {int} input and {int} output tokens` | fakellm 對這個 provider（`anthropic`、`openai`）的每個回應，`usage` 固定回報這些 token 數（取代依長度的估算）。batch 的結果（fakebatch）也使用 |
+| `Given the LLM cost reported by {string} is {string} USD` | fakellm 對這個 provider 的每個成功回應在 `usage.cost` 帶這個金額（OpenRouter 的格式，COST-R2）。只接受 `openai`（OpenAI 相容），其他 provider 步驟失敗 |
+| `Then the cost ledger entries of {string} are:` | 這部影音的成本紀錄依 `at`、`rowid` 排序後與表格依序比對，筆數必須相同。欄位可以是 `stage`、`provider`、`model`、`attempt`、`outcome`、`state`、`usd`、`unit_type`、`price_source`（`unit_price_json.source`）、`batch`（`unit_price_json.batch`，`true`／`false`）；只比對表格中出現的欄位。`usd` 以數值比較（誤差 1e-9），其他以字串比較。經測試 hook 讀取 DB（同 `Server.CostEntries`），不新增 API |
+| `Then the cost export has a row with {string} set to {string}` | 最近一次回應的 body 依 RFC 4180 解析成 CSV（第一列是欄位名稱）；至少一列的這個欄位（解析後、未去掉 `'` 的值）與指定值完全相等。body 不是 CSV、沒有這個欄位時失敗 |
+
+#### Batch API（BATCH）
+
+假服務是 `features/internal/fakebatch`（見最後一節）。批次中的每個請求由 fakellm 依 4.6 的 `answers`、`for chunk`、`fails with HTTP` 回答，但**不計入** `the LLM provider … received …`（那只算一般 API 的請求）。
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the batch API of {string} completes after {string}` | 登記 fakebatch 為這個 provider（`anthropic`、`openai`）的 batch 端點：每個 batch 在建立後經過指定時間（fake clock，例如 `"10m"`）變成已完成，結果在那之後才查得到。完成之前收到取消時，batch 結束、所有請求為 `canceled`（不計費）；完成之後收到取消時不改變任何東西（結果照常可以取回） |
+| `Given the batch API of {string} never completes` | 同上，但 batch 永遠停在處理中（模擬逾時，BATCH-R5）；被取消時才結束。同一個 provider 的 `completes after`、`never completes` 以最後一個為準（場景可以覆寫 Background） |
+| `Given the batch API of {string} fails the requests for chunk {int}` | 這個 provider 的 batch 中，chunk 編號（同 4.6 的 `for chunk`）相符的請求結果是 `errored`（Anthropic）或 `error`（OpenAI 的 error file），其他請求照常 |
+| `Given the batch API of {string} points its results to {string}` | 只接受 `anthropic`：batch 的 `results_url` 指向指定的網址（用來驗證產品不會連到其他主機，BATCH-R11）|
+| `Then the batch count of {string} is {int}` | fakebatch 為這個 provider 建立的 batch 數（`batches` 不在 vocab 的 `countNouns` 中，所以數字放在句尾） |
+| `Then the batch request count of {string} is {int}` | 這個 provider 所有 batch 中的請求總數 |
+| `Then the cancelled batch count of {string} is {int}` | 收到取消請求的 batch 數（同一個 batch 取消多次只算一次） |
+
+### 4.20 全文搜尋、bundle 與術語審核（`steps/library.go`，M4）
+
+所有句型先註冊成回傳 `godog.ErrPending` 的步驟樁，由 M4 的實作切片換成真正的實作。參數記號同 steps.md：`{string}` 雙引號字串、`{int}` 整數、`{word}` 單字；`:` 結尾接 doc string 或表格。
+
+#### 1.1 全文搜尋（SRCH）
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the search library has {string} titled {string} with the {string} transcript:` | seeding：建立假的 YouTube 影片（只接受 `yt:`，標題為第二個參數，原文語言 `en`），做到 `metadata`（同 `Given the item … has been processed up to "metadata"`），再以表格寫入第三個參數指定變體的現行字幕（表格欄位與寫入方式同 `Given the {string} transcript of {string} is:`）。變體必須是 `source`、`normalized`、`segmented`、`corrected`、`edited` 之一，否則步驟失敗。同一個代號已經存在時不重建影片，只寫入字幕（標題必須相同，否則失敗）。寫入走產品的 artifact store，所以會觸發 SRCH-R2 的索引更新。同一個場景中依步驟順序建立的影音，`created_at` 嚴格遞增（fake clock 的現在加上序號毫秒；不靠 UUIDv7 的單調性），讓 SRCH-R7 的「新的在前」可以斷言 |
+| `Given the search library has {string} titled {string} with the {string} transcript in {string}:` | 同上，第四個參數是原文語言（例如 `zh-Hant`）：影片的原文語言設為這個值，字幕也寫成這個語言 |
+| `When the search runs for {string}` | 用 owner 的 session 送出 `GET /api/search?mode=fulltext&q=<參數>`，`q` 以 `url.QueryEscape` 編碼；回應成為最近一次的回應（`Then the response status is`、`Then the response contains:` 斷言它） |
+| `When the search runs for the query:` | 同上，查詢是 doc string 的內容（照字面，只去掉結尾的一個換行），用於含 `"` 或很長的查詢；Scenario Outline 的 `<query>` 可以放在 doc string 中 |
+| `Then the search index has no rows for {string}` | 以唯讀方式查詢 DB：`search_cues` 中沒有這部影音（影音 ID 取自代號對照表，永久刪除後仍是原本的 ID）的任何列，而且 `cues_fts` 的 `integrity-check` 通過（外部內容表與索引一致）。代號從未對應到影音 ID 時失敗 |
+| `Then the search index has rows for {string}` | 以唯讀方式查詢 DB：`search_cues` 中至少有一列屬於這部影音；用來確認 `has no rows` 不是因為查錯資料表而成立 |
+
+#### 1.2 Bundle（BND）
+
+bundle 一律在執行時由步驟產生（Go 的 `archive/zip`，必要時用 `CreateRaw` 自訂 header），不 commit 任何二進位 fixture。路徑參數套用 `/tmp/<x>` → `<場景根目錄>/tmp/<x>` 的對應。「合法 bundle」是固定內容（下表第一列），讓場景可以直接寫出產出的路徑與文字。
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the bundle {string} contains the item {string} titled {string}` | 產生一個合法的 bundle v0（BND-R6 的 manifest）：`item` 為代號對應的平台與 `external_id`（只接受 `yt:`，`part: null`，`original_lang: en`，`availability: public`），`created_by` 為 `{instance_id: "0190a1b2-0000-7000-8000-000000000001", app_version: "0.4.0"}`；兩個產出：`transcript`／`corrected`／`en`，id `0190a1b2-0000-7000-8000-0000000000a1`，`artifacts/0190a1b2-0000-7000-8000-0000000000a1.json`，兩句 cue（`00:00:01`–`00:00:03` `Bundled cue one.`、`00:00:03`–`00:00:06` `Bundled cue two.`），來源紀錄 `{executor: api, provider: anthropic, model: fixture-model}`；`note`，id `…0000000000a2`，`artifacts/0190a1b2-0000-7000-8000-0000000000a2.md`，內容 `# Bundled note\n\nNotes from another instance.\n`。`files` 依序列出這兩個檔案的 `path`、`sha256`、`size`。項目以 `deflate` 寫入，mode `0644` 的一般檔案。檔案先在記憶體中組成，後面的 `also has`、`has the manifest field`、`has the content of`、`has the file … replaced` 都改這份內容；第一個送出請求或執行指令的步驟之前才寫到磁碟 |
+| `Given the bundle {string} also has the entries:` | 在 bundle 的最後加上項目。表格欄位：`path`（必填，照字面當作項目名稱，不做任何正規化）、`type`（預設 `file`）、`size`（預設 `16B`，可以用 `B`、`KiB`、`MiB`）、`fill`（`text`〔預設，重複的 `x`〕、`zeros`、`random`〔以 path 為種子的確定性亂數〕）、`target`、`declared_size`、`listed`（`yes`〔預設〕或 `no`）。`type`：`file`（一般檔案）、`dir`（目錄項目，名稱補上結尾的 `/`）、`symlink`（Unix mode `0120777`，內容是 `target`）、`char-device`（`0020644`）、`fifo`（`0010644`）、`socket`（`0140644`）、`hardlink`（另寫一個 central directory 項目，名稱為 `path`，local header offset 指向名稱為 `target` 的項目，不另寫資料）、`encrypted-file`（設定 general purpose flag 的加密位元，內容照寫）。`declared_size` 有值時，local header 與 central directory 宣告的解壓大小改成這個值（實際寫入的仍是 `size`）。`listed: yes` 的一般檔案同時加進 manifest 的 `files`（正確的 `sha256` 與實際 `size`），其他種類一律不加。`target` 指到不存在的項目、`type` 不認得時步驟失敗 |
+| `Given the bundle {string} has the manifest field {string} set to:` | 把 manifest 中點號路徑（數字段落是陣列索引；索引等於陣列長度時附加一項；中間的物件不存在時建立）的值換成 doc string 解析出的 JSON；doc string 不是合法 JSON 時步驟失敗。不重新計算任何 `sha256` |
+| `Given the bundle {string} has the content of {string} changed` | 把這個項目內容的最後一個 byte 加 1（mod 256），manifest 不變；項目不存在時步驟失敗 |
+| `Given the bundle {string} has the file {string} replaced with:` | 這個項目的內容換成 doc string，manifest 的 `files` 中對應的 `sha256`、`size` 同時更新（所以只有內容格式的檢查會失敗）；項目不存在時步驟失敗 |
+| `Given the bundle {string} is the text:` | 在路徑寫入 doc string 的內容（不是 zip） |
+| `Given the bundle instance ID is {string}` | 這個實例的 `instance_id`（匯出 manifest 的 `created_by.instance_id`）設為指定的 UUID：在第一次啟動 server 之前寫入設定（測試用的 hook，實作切片決定存放位置），不送出請求 |
+| `When the bundle {string} is imported` | 用 owner 的 session 送出 `POST /api/bundles/import`（multipart，欄位 `file`，檔名取路徑的最後一段，帶 CSRF token）；回應成為最近一次的回應 |
+| `When the bundle {string} is imported with {string}` | 同上，第二個參數是 query string（例如 `"on_existing=add_versions"`），接在路徑的 `?` 後面 |
+| `When the bundle {string} is imported with the token {string}` | 同上，但不帶 session，改用 bearer token（`Authorization: Bearer`） |
+| `Then the bundle {string} passes its own checks` | 讀取磁碟上的 bundle，以和產品相同的規則（BND-R4～R7）驗證：所有項目名稱與種類合法、manifest 通過 schema、`files` 與 zip 雙向一致、每個檔案的 `sha256` 與 `size` 相符。驗證程式在 `features/steps` 中獨立實作，不呼叫產品的 `internal/bundle`（避免同一個錯誤兩邊都通過）。檔案不存在或不是 zip 時失敗 |
+| `Then the bundle {string} lists the artifacts:` | manifest 的 `artifacts` 中，表格（欄位 `kind`、`variant`、`lang`）的每一列都有一個對應的產出；空白的 `variant` 代表產出沒有 `variant` 欄位，`*` 代表任何值。實際可以多出其他產出（seeding 可能另外建立上游變體）；被取代的版本不在 bundle 中由單元測試守住 |
+| `Then the bundle {string} has the manifest values:` | 以點號路徑讀取 manifest（表格欄位 `field`、`value`），值一律以字串比較（數字用 JSON 的寫法，`null` 為 `null`） |
+| `Then the bundle {string} contains no local paths` | bundle 中每個項目的名稱與內容（JSON 與 Markdown 都以原始 bytes 比對）都不含：場景根目錄的實際路徑、`/data/`、`/config/`、`/media/`、`/vault/`、inbox 的實際路徑、執行測試的使用者家目錄。任何一個出現就失敗，並列出項目名稱 |
+| `Then the bundle {string} does not contain {string}` | bundle 中每個項目的名稱與內容都不含這段文字；bundle 沒有任何檔案項目時失敗（沒有東西可以驗證） |
+
+#### 1.3 術語審核（GLOS）
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the term candidates {string} are pending for the channel of {string}` | seeding：第一個參數以逗號切開、去掉前後空白，每個詞在這部影音所屬頻道（natural key 的推導同 `the channel of … has the overrides:`）寫入一筆 `pending` 的術語候選，`item_id` 是這部影音；影音還沒新增時先新增並做到 `metadata`（同 `the note of … is:` 的 seeding）。比照 4.11 的語意，步驟只累積，第一個送出請求的步驟才寫入（在處理方案之後、影音的 seeding 之後）；`created_at` 依登記順序遞增（fake clock 的現在加上序號毫秒），讓 GLOS-R5 的排序可以斷言。寫入走產品的 store（與 C4 的 assemble 相同的清理與 UNIQUE），詞被清理掉或重複時步驟失敗 |
+| `When the term candidate {string} of the channel of {string} is decided with:` | 以 owner 的 session 送出 `GET /api/channels/<頻道 ID>/term-candidates` 找到 `term` 完全相同的候選（找不到時步驟失敗），再送出 `PATCH /api/channels/<頻道 ID>/term-candidates/<候選 id>`，body 是 doc string 的 JSON；PATCH 的回應成為最近一次的回應 |
+| `When the term candidates are decided in one batch:` | 表格欄位 `item`（代號，用來找頻道）、`term`（候選原本的詞）、`state`，可加 `decided_term`、`scope`（空白代表省略該欄位）。依序以 GET 找出每個候選的 id（同上），組成 `{decisions: [{candidate, state, term?, scope?}]}`，送出 `POST /api/term-candidates/decide`；回應成為最近一次的回應 |
+| `Then the glossary {string} has exactly the terms {string}` | 參數是 `global` 或 `channel-of:<代號>`：送出 `GET /api/glossaries/global/default` 或 `GET /api/glossaries/channel/<頻道 ID>`，`terms` 必須與第二個參數（以逗號切開、去掉前後空白；空字串代表沒有任何詞）依序完全相等。不改寫最近一次的回應 |
+
+### 4.21 進階登入與工作階段（`steps/signin.go`，M4）
+
+設定類的步驟（`the reverse proxy … signs users in`、`allows the users`、`the OIDC provider … signs in`、`allows the subjects`）只累積，和 `Given the config file contains:` 的內容合併後寫成 `/config/notesteme.yaml`（同一個鍵兩邊都寫時步驟失敗）；server 在第一個送出請求的步驟或 `When the server starts` 時以合併後的設定啟動。
+
+「指定來源位址」的做法同 `When someone signs in from {string} with the password {string}`（127.0.0.0/8 內的位址，TCP 連線本身就從這個位址發出，不是只加 `X-Forwarded-For`），所以 AUTH-R13 驗證的是**對端位址**。
+
+#### 2.1 反向代理驗證（AUTH-06）
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the reverse proxy at {string} signs users in with the header {string}` | 設定：`trusted_proxies` 加上 `<IP>/32`，`auth.proxy.user_header` 設為第二個參數 |
+| `Given the reverse proxy allows the users {string}` | 設定：`auth.proxy.allowed_users`（以逗號切開、去掉前後空白） |
+| `When the reverse proxy at {string} forwards {string} with the header {string} set to {string}` | 從指定的來源位址送出請求（例如 `"GET /api/items"`），不帶 session 與 bearer token，加上指定的標頭；使用「proxy 瀏覽器」專用的 cookie jar（場景內共用，與 owner 的 session 分開），所以第一次請求設定的 cookie 會帶到之後的請求。非 GET 請求**不**帶 CSRF token。回應成為最近一次的回應 |
+| `When the reverse proxy at {string} forwards {string} with the header {string} set to {string} and the CSRF token` | 同上，另外把 jar 中 `notesteme_csrf` 的值放進 `X-CSRF-Token`；jar 中沒有 `notesteme_csrf` 時步驟失敗 |
+| `When the reverse proxy at {string} forwards {string} with the token {string} and the header {string} set to {string}` | 同上一個步驟，但另外帶 `Authorization: Bearer <token>`（token 以名稱查 `World.Refs`），不使用 cookie jar |
+| `Then the auth log contains {string}` | server 的 log（場景開始後的所有紀錄）有一行包含這段文字 |
+
+#### 2.2 OIDC（AUTH-07）
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the OIDC provider {string} signs in the subject {string}` | 啟動假 IdP（`features/internal/fakeoidc`），以 fakenet 把參數中 URL 的主機（例如 `id.example.com`）導到它，discovery 的 `issuer` 就是這個字串；authorize endpoint 不顯示畫面，直接以這個 `sub` 同意登入。設定：`auth.oidc.issuer` 為這個字串、`client_id: notesteme`、`redirect_url: <測試 server 的 base URL>/api/auth/oidc/callback`；環境變數 `NOTESTEME_OIDC_CLIENT_SECRET` 設為 `fake-oidc-client-secret-7c1e`，假 IdP 只接受這個 secret（`client_secret_basic`）。假 IdP 的時間取自場景的 fake clock |
+| `Given the OIDC provider allows the subjects {string}` | 設定：`auth.oidc.allowed_subjects`（以逗號切開） |
+| `Given the OIDC provider issues ID tokens with {string}` | 假 IdP 之後簽發的 id_token 帶有指定的缺陷：`a bad signature`（簽章的最後一個 byte 被改）、`an unknown key`（用不在 JWKS 中的金鑰與 `kid` 簽章）、`no signature`（`alg: none`、簽章為空）、`an HMAC signature`（`HS256`，以 client secret 為金鑰）、`the wrong issuer`、`the wrong audience`、`the wrong nonce`、`an expiry 120s ago`、`an expiry 30s ago`、`an issue time 120s ahead`、`an issue time 30s ahead`（相對於 fake clock）。其他值時步驟失敗 |
+| `Given the OIDC provider denies the sign-in with {string}` | authorize endpoint 改為以 `error=<參數>&state=<原本的 state>` 轉回 `redirect_uri` |
+| `When the OIDC sign-in starts` | 用新的「OIDC 瀏覽器」cookie jar（不帶任何身分）送出 `GET /api/auth/oidc/start`，不跟隨轉址；回應成為最近一次的回應 |
+| `When the OIDC sign-in starts with the next page {string}` | 同上，帶 `?next=<參數>`（`url.QueryEscape` 編碼） |
+| `When the OIDC sign-in is completed` | 取最近一次 start 回應的 `Location`，在程序內呼叫假 IdP 的 authorize endpoint（不經過產品），再把它轉回的 callback URL 用同一個 jar 送給產品（不跟隨之後的轉址）；callback 的回應成為最近一次的回應。最近一次 start 不是 302 或 `Location` 不是假 IdP 的 authorize endpoint 時步驟失敗 |
+| `When the OIDC sign-in is completed with the state {string}` | 同上，但送給產品之前把 callback URL 的 `state` 換成參數 |
+| `When the OIDC callback is replayed` | 用同一個 jar 再送一次最近一次的 callback URL |
+| `Then the OIDC authorization request has the parameter {string} set to {string}` | 最近一次 start 回應的 `Location` 中，這個 query 參數只出現一次且值完全相同；值為 `"*"` 時只要求存在且不是空字串 |
+| `Then the OIDC sign-in redirects to {string}` | 最近一次回應是 302，`Location` 與參數完全相同 |
+| `Then the OIDC callback set no session cookie` | 最近一次回應的 `Set-Cookie` 中沒有 `notesteme_session`（或只有清除用的空值），jar 中也沒有有效的 `notesteme_session` |
+| `Then the OIDC token request used PKCE with {string}` | 假 IdP 收到的最近一次 token 請求：authorize 時的 `code_challenge_method` 是參數（例如 `S256`），`code_verifier` 依該方法計算後與 `code_challenge` 相同，而且以 `client_secret_basic` 帶了正確的 client secret |
+| `When the OIDC session sends {string}` | 用「OIDC 瀏覽器」的 jar 送出請求；非 GET 請求帶 jar 中的 CSRF token |
+
+#### 2.3 工作階段與 token（AUTH-08）
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the session {string} is signed in from {string}` | 以場景的登入密碼（`NOTESTEME_PASSWORD` 的測試值），從指定的來源位址送出 `POST /api/auth/login`，回應必須是 200；cookie 存在以名稱區分的 jar（與 owner 的 session 分開），也記下 `notesteme_session` 的值供 `the session list does not contain …` 使用 |
+| `When the session {string} sends {string}` | 用這個名稱的 jar 從同一個來源位址送出請求；非 GET 請求帶 jar 中的 CSRF token；回應成為最近一次的回應 |
+| `When the session {string} is revoked by the owner` | 先用這個 session 的 jar 送出 `GET /api/auth/sessions`，取 `current: true` 那一筆的 `id`（不改寫最近一次的回應），再用 owner 的 session 送出 `DELETE /api/auth/sessions/<id>`；DELETE 的回應成為最近一次的回應 |
+| `Then the session list does not contain the secret of the session {string}` | 最近一次回應的原始 body 不含這個 session 的 `notesteme_session` 值，也不含它的 sha256（十六進位與 base64url 兩種寫法） |
+| `When the token {string} is rotated as {string}` | 用 owner 的 session 送出 `POST /api/tokens/<第一個參數>/rotate`；回應是 200 且有 `token` 時，把新的明文記為 `World.Refs["token:"+第二個參數]`（之後 `with the token {string}` 用第二個參數），原本名稱的 `Refs` 不變（所以用第一個參數送出的請求帶的是舊 secret）。回應成為最近一次的回應 |

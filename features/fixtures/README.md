@@ -272,3 +272,46 @@ M3 的步驟（`docs/specs/steps.md` 4.13～4.16）目前都是 pending 的步�
 | `gemini-note-two-sections`、`gemini-note-past-end`、`gemini-note-hostile` | GEM：以時間（`start`）代替 cue 的輸出 |
 
 這些 fixture 的文字不含場景要驗證「由 production 加入」的字串（時間連結、`&lt;script&gt;`、`**Injected heading**` 的粗體），否則斷言會恆真。
+
+## M4 的假服務（2026-11-23，規格展開時設計，接進 harness 由 M4 的實作切片負責）
+
+M4 的步驟（`docs/specs/steps.md` 4.17～4.21）目前都是 pending 的步驟樁。下列假服務已有可以單獨測試的骨架（`features/internal/fakefeed`、`fakenotify`、`fakebatch`、`fakeoidc`），還沒有登記到 fakenet 或 `faketool.Dispatch`；實作切片接上它們時，要確認預設 tag 的場景不退步。
+
+### 訂閱、SRC-10、ENTRY
+
+| 套件 | 取代 | 狀態與 fixture | 接到哪裡 |
+|---|---|---|---|
+| `features/internal/fakefeed` | YouTube 頻道的 RSS（`www.youtube.com/feeds/videos.xml?channel_id=`，Atom）；另外提供產生 RSS 2.0、OPML、超大回應、畸形 XML、含 `<!DOCTYPE` 的 XML 的函式 | `Server`：影片清單（`SetVideos`，由 harness 在每次請求時從假 yt-dlp 的影片同步，或直接 `Add`）、每個頻道的失敗狀態碼（`Fail`／`Recover`）、請求紀錄（`Requests(channelID)`）；`SetRaw(path, contentType, body)` 讓任意路徑回應固定內容。產生器：`Atom`、`RSS`、`OPML`、`Oversized`、`Malformed`、`WithDoctype` | fakenet 的 `www.youtube.com`（只限 `/feeds/videos.xml`；其他 YouTube 網址仍由假 yt-dlp 處理、不經 HTTP）；由 `the YouTube feeds are served from the registered videos` 登記，**不**預設登記（只有 SUB 場景需要） |
+| 假 yt-dlp（`features/internal/faketool`，既有） | 頻道 `/videos` 的 flat-playlist、`@handle` 的解析、Bilibili 合集的 flat-playlist | 頻道清單從已登記的影片產生；Bilibili 合集用 `features/fixtures/ytdlp/` 的 fixture | 既有的 `faketool.Dispatch`；SUB 切片擴充 `ytdlp.go` 的網址判斷 |
+| `features/fixtures/ytdlp/sub-bili-collection.json` | Bilibili 合集 `9:77` 的 flat-playlist 輸出 | 兩個 BV 號：`BV1co411c7mA`、`BV1co411c7mB` | `the URL "https://space.bilibili.com/9/lists/77?type=season" serves …` |
+| `features/fixtures/ytdlp/sub-playlist-2-videos.json` | 第二個播放清單 `PL456` | 兩部影片：`pl2v01xxxxx`、`pl2v02xxxxx` | SUB-R10 的 rate limit 場景 |
+| `features/fixtures/http/sub-feed-two-episodes.xml` | 兩集的 Podcast RSS（guid `sub-ep-1`、`sub-ep-2`） | 靜態檔 | DNS rebinding 與 allowlist 的場景（只建立基準清單，不下載音檔） |
+| `features/fixtures/http/sub-hostile-feed.xml` | 含 HTML、`<script>`、雙向控制字元、`javascript:` enclosure 的 feed | 靜態檔；清理後的標題是 `Hostile Show`、`Episode 1` | SUB-R11 |
+| `features/fixtures/http/sub-malformed.xml`、`sub-doctype.xml` | 沒有關閉標籤的 XML、含 entity 定義的 `<!DOCTYPE` | 靜態檔；分別含標記字串 `SUB-MALFORMED-MARK`、`SUB-ENTITY-EXPANDED`；log 中出現它們代表產品把 feed 的內容寫進 log（SUB-R12） | SUB-R11、SUB-R12 |
+
+### 摘要、通知與無人值守
+
+| 套件 | 取代 | 狀態與 fixture | 接到哪裡 |
+|---|---|---|---|
+| `features/internal/fakenotify` | ntfy 的 JSON 發布 API（`POST <server>/`）、Discord webhook（`POST /api/webhooks/<id>/<token>`）、Telegram Bot API（`POST /bot<token>/sendMessage`）、一般 webhook 的接收端 | 狀態在記憶體：每個請求記錄 method、host、path、query、標頭、原始 body 與收到時間；可以設定某個端點「接下來 N 次」或「一律」回指定狀態碼（429 加 `Retry-After`）；`VerifySignature` 獨立計算 HMAC。沒有檔案 fixture | fakenet：`ntfy.sh`、`discord.com`、`api.telegram.org`、`hooks.example.com`（`the notification endpoints are reachable` 才登記，不是每個場景預設，所以既有場景不受影響） |
+| `features/fixtures/llm/summary-*.json` | `summary` 步驟的 LLM 回答（步驟名稱 `summary`，tool／schema `notesteme_summary`） | `summary-kernel`（正常）、`summary-too-many-points`（8 個重點，DIG-R3、R4 的驗證失敗） | 既有的 fakellm |
+
+- 假 yt-dlp 的呼叫統計、磁碟用量與 cookie 的最後成功時間都經 `TestControls` 的 hook 寫入，不新增假工具。
+- 每日備份用既有的備份程式碼與真的檔案系統；失敗用「目錄其實是一般檔案」製造（`Given the file … contains:`），不需要假服務。
+
+### 成本與 Batch API
+
+| 套件 | 取代 | 狀態與 fixture | 接到哪裡 |
+|---|---|---|---|
+| `features/internal/fakebatch` | Anthropic Message Batches（`POST /v1/messages/batches`、`GET /v1/messages/batches/{id}`、`GET …/{id}/results`、`POST …/{id}/cancel`）與 OpenAI Batch API（`POST /v1/files`、`POST /v1/batches`、`GET /v1/batches/{id}`、`POST /v1/batches/{id}/cancel`、`GET /v1/files/{id}/content`） | 狀態在記憶體；完成時間以注入的 clock 判斷。每個請求的回答由 `Answerer` 產生：harness 接 fakellm（共用 4.6 的 answers，不記入一般請求數）；套件內建的 `FixtureAnswerer` 直接讀 `features/fixtures/llm/<名稱>.json` 的 `{"output": …}`，依 tool／schema 名稱 `notesteme_<stage>` 選 fixture，給單元測試用 | fakenet：和 fakellm 同一個主機（`api.anthropic.com`、`api.openai.com`），依路徑分派：`/v1/messages/batches*`、`/v1/batches*`、`/v1/files*` 給 fakebatch，其他給 fakellm。沒有 `the batch API of …` 步驟的場景，batch 路徑回 404 並記一筆違規（產品不應該在 `batch: off` 時呼叫） |
+
+- 不需要新的 fixture 檔：答案沿用 `features/fixtures/llm/`（`correct-echo`、`correct-kafka-kraft`）。
+- fakellm 要加兩個測試控制（COST）：固定的 `usage`（`the LLM usage reported by …`）與 `usage.cost`（`the LLM cost reported by …`），也提供給 fakebatch 的結果使用。
+
+### 搜尋、bundle、術語審核與進階登入
+
+| 套件 | 取代 | 狀態與 fixture | 接到哪裡 |
+|---|---|---|---|
+| `features/internal/fakeoidc` | OpenID Connect provider（AUTH-07） | `Server`（`New(Config{Issuer, ClientID, ClientSecret, Subject, Now})`）：discovery（`issuer` 是設定的字串，不是 httptest 的 URL）、`/jwks`（一把 RS256 公鑰，`kid: fake-key-1`）、`/authorize`（不顯示畫面，以 `Subject` 同意；`Deny(code)` 改回傳 `error`）、`/token`（`authorization_code`、`client_secret_basic`、PKCE 只接受 `S256`、code 只能用一次）。`SetFault` 讓之後的 id_token 帶缺陷（`Faults` 列出全部：壞簽章、不在 JWKS 的 key、`alg: none`、以 client secret 簽的 `HS256`、錯的 `iss`／`aud`／`nonce`、`exp` 早 30／120 秒、`iat` 晚 30／120 秒）；`TokenRequests()` 記錄每個 token 請求的 client 驗證與 PKCE 結果。時間取自注入的 `Now`。單元測試內有一個最小的 verifier，證明每種缺陷真的驗證失敗（30 秒的兩種在 60 秒偏差內通過）。只用標準函式庫 | 實作切片在 `features/steps/signin.go` 的 `the OIDC provider … signs in the subject …` 建立它，以 fakenet 把 issuer 的主機導到 `httptest` server（TLS；harness 的 CA 要被產品信任，同其他 https 假服務），`Now` 接場景的 fake clock |
+| （不需要新套件）bundle 產生器 | 惡意與合法的 `.notesteme.zip` | 在 `features/steps/library.go` 內以 `archive/zip` 於執行時產生（BND 的步驟），不 commit 二進位 fixture；`hardlink`、`declared_size`、Unix mode 用 `CreateRaw` 與 `FileHeader.ExternalAttrs`／`CreatorVersion`（Unix）設定。大檔一律由場景調低設定檔的上限後用小檔觸發；最大的項目是 2 MiB 的全零檔（壓縮比）與 1.5 MiB 的亂數檔（上傳上限） | 只在步驟中使用 |
+| （不需要新 fixture）SRCH、GLOS | — | SRCH 與 GLOS 的字幕以 seeding 句型寫入；LLM 沿用既有的 `correct-kafka-kraft`、`correct-echo` fixture | — |
