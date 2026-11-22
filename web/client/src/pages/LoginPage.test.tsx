@@ -90,7 +90,10 @@ describe("登入頁", () => {
 
   it("登出後回到登入頁", async () => {
     document.cookie = "notesteme_csrf=t; path=/";
-    fetchMock.mockImplementation(async () => {
+    fetchMock.mockImplementation(async (input) => {
+      if (input !== "/api/auth/logout") {
+        return new Response(JSON.stringify({ items: [], total: 0 }), { status: 200 });
+      }
       document.cookie = "notesteme_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
       return new Response(null, { status: 204 });
     });
@@ -98,8 +101,10 @@ describe("登入頁", () => {
     await userEvent.click(await screen.findByRole("button", { name: "登出" }));
     await screen.findByLabelText("密碼");
     expect(router.state.location.pathname).toBe("/login");
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe("/api/auth/logout");
+    // 媒體庫一打開就會讀列表：找出登出的那一次呼叫
+    const call = fetchMock.mock.calls.find(([u]) => u === "/api/auth/logout");
+    expect(call).toBeDefined();
+    const [, init] = call!;
     expect((init!.headers as Record<string, string>)["X-CSRF-Token"]).toBe("t");
   });
 });

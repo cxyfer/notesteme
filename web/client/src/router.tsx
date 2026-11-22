@@ -23,6 +23,7 @@ import {
 
 import { hasSessionHint, safeRedirect } from "./auth/session";
 import { ItemPage } from "./pages/ItemPage";
+import { validateLibrarySearch } from "./pages/library/filters";
 import { LibraryPage } from "./pages/LibraryPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -71,6 +72,8 @@ const indexRoute = createRoute({
 const libraryRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/library",
+  // 篩選條件在 URL（LIB-R2）：不合法的值丟掉，見 pages/library/filters.ts
+  validateSearch: validateLibrarySearch,
   component: LibraryPage,
 });
 const queueRoute = createRoute({
