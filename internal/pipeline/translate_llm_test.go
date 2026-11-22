@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -145,6 +146,17 @@ func rerunTrn(t *testing.T, r *rig, it store.Item, targets ...string) {
 	r.run()
 }
 
+// rerunTrnChunks 同 rerunTrn，但只重新送出指定的 chunk（全域編號）。
+func rerunTrnChunks(t *testing.T, r *rig, it store.Item, chunks []int, targets ...string) {
+	t.Helper()
+	over := withMap(langOver(targets, ""), trnOver(nil))
+	delete(over, "llm")
+	if _, err := r.p.Rerun(context.Background(), it.ID, RerunRequest{From: StageTranslate, Overrides: over, Chunks: chunks}); err != nil {
+		t.Fatalf("Rerun：%v", err)
+	}
+	r.run()
+}
+
 func cueTexts(tr subtitle.Transcript) []string {
 	out := make([]string, len(tr.Cues))
 	for i, c := range tr.Cues {
@@ -268,6 +280,61 @@ func TestTranslateTargetsShareChunkNumbering(t *testing.T) {
 	}
 	if v, _ := r.st.Read().ArtifactVersions(context.Background(), it.ID, "transcript", "translated", "ja"); v != 1 {
 		t.Errorf("沿用現行譯文，不建立新版本：ja 有 %d 版", v)
+	}
+}
+
+// S6b-Q3：translate 的 chunk 是各目標的全域編號，被沿用的目標不產生 chunk，編號有空洞。
+// POST /rerun 的 chunks 要以實際存在的編號檢查：較大的合法編號不被「列數」擋下，空洞的與超出的編號 422。
+func TestTranslateRerunChunksWithHoles(t *testing.T) {
+	fake := &trnLLM{}
+	r, it := newTrnRig(t, fake, map[string]any{"max_tokens": 1, "overlap_cues": 1, "context_cues": 0}, "This is the first sentence.", "This is the second sentence.", "This is the third sentence.")
+	ctx := context.Background()
+	rerunTrn(t, r, it, "zh-Hant-TW")
+	first := latestStage(t, r, it.ID, StageTranslate)
+	zhRows, err := r.st.Read().LLMChunks(ctx, first.ID)
+	if err != nil || len(zhRows) < 2 {
+		t.Fatalf("zh 要切成多個 chunk：%d 列，%v", len(zhRows), err)
+	}
+	n := len(zhRows)
+	// zh 被沿用（現行譯文的快取鍵相同）、ja 是新目標：ja 的編號接在 zh 之後（n+1..2n），這次的 stage run 只有 ja 的列。
+	rerunTrn(t, r, it, "zh-Hant-TW", "ja")
+	run := latestStage(t, r, it.ID, StageTranslate)
+	existing, err := r.st.Read().LatestLLMChunkNumbers(ctx, it.ID, StageTranslate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []int
+	for g := n + 1; g <= 2*n; g++ {
+		want = append(want, g)
+	}
+	if !slices.Equal(existing, want) {
+		t.Fatalf("沿用 zh 之後現有的 chunk 編號 = %v，預期 %v（列數 %d 小於最大編號 %d）", existing, want, len(existing), 2*n)
+	}
+	reqs := len(fake.requests())
+	rowsBefore, _ := r.st.Read().LLMChunks(ctx, run.ID)
+
+	// 空洞的編號（zh 的 1..n）與超出的編號：422，指出是哪個編號，什麼都不寫、不送請求。
+	for _, bad := range []int{1, n, 2*n + 1} {
+		var inv *InvalidError
+		_, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageTranslate, Chunks: []int{2 * n, bad}})
+		if !errors.As(err, &inv) || len(inv.Fields) != 1 || inv.Fields[0].Path != "chunks[1]" ||
+			!strings.HasPrefix(inv.Fields[0].Message, fmt.Sprintf("chunk %d 不存在於現行的切分", bad)) {
+			t.Errorf("chunks [%d, %d]：err = %v，預期只有 chunks[1] 不存在", 2*n, bad, err)
+		}
+	}
+	if latest := latestStage(t, r, it.ID, StageTranslate); latest.ID != run.ID || len(fake.requests()) != reqs {
+		t.Errorf("422 之後不該有新的 stage run 或請求：run %s → %s、請求 %d → %d", run.ID, latest.ID, reqs, len(fake.requests()))
+	}
+
+	// 最大編號是合法的（舊的檢查以列數 n 為上限，會把它擋下）；只重新送出這一個 chunk。
+	rerunTrnChunks(t, r, it, []int{2 * n}, "zh-Hant-TW", "ja")
+	sent := fake.requests()[reqs:]
+	if len(sent) != 1 || sent[0].target != "ja" || sent[0].chunk != n {
+		t.Errorf("chunks [%d] 只重新送出 ja 的第 %d 個 chunk：%+v", 2*n, n, sent)
+	}
+	rowsAfter, _ := r.st.Read().LLMChunks(ctx, latestStage(t, r, it.ID, StageTranslate).ID)
+	if len(rowsAfter) <= len(rowsBefore) {
+		t.Errorf("指定 chunks 的重跑不沿用目標，列數應增加：%d → %d", len(rowsBefore), len(rowsAfter))
 	}
 }
 

@@ -225,24 +225,43 @@ func (q *Queries) LLMChunksByRun(ctx context.Context, stageRunID string) ([]LlmC
 	return items, nil
 }
 
-const latestLLMChunkCount = `-- name: LatestLLMChunkCount :one
-SELECT COUNT(*) FROM llm_chunks
+const latestLLMChunkNumbers = `-- name: LatestLLMChunkNumbers :many
+SELECT chunk FROM llm_chunks
 WHERE stage_run_id = (
   SELECT c.stage_run_id FROM llm_chunks c
   WHERE c.item_id = ?1 AND c.stage = ?2
   ORDER BY c.created_at DESC, c.rowid DESC LIMIT 1
 )
+ORDER BY chunk
 `
 
-type LatestLLMChunkCountParams struct {
+type LatestLLMChunkNumbersParams struct {
 	ItemID string
 	Stage  string
 }
 
-// The number of chunks in the most recent split of the stage for the item (0 when it was never split).
-func (q *Queries) LatestLLMChunkCount(ctx context.Context, arg LatestLLMChunkCountParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, latestLLMChunkCount, arg.ItemID, arg.Stage)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+// The chunk numbers present in the most recent split of the stage for the item (none when it was never split).
+// Numbers are not always 1..COUNT: translate numbers its chunks globally across targets, and a reused target
+// produces no chunk rows, which leaves holes.
+func (q *Queries) LatestLLMChunkNumbers(ctx context.Context, arg LatestLLMChunkNumbersParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, latestLLMChunkNumbers, arg.ItemID, arg.Stage)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var chunk int64
+		if err := rows.Scan(&chunk); err != nil {
+			return nil, err
+		}
+		items = append(items, chunk)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

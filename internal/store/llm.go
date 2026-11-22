@@ -143,10 +143,18 @@ func (r *Repo) CountPendingLLMChunks(ctx context.Context, stageRunID string) (in
 	return int(n), err
 }
 
-// LatestLLMChunkCount 回傳影音的這個步驟最近一次切分的 chunk 數；從來沒有切分過時是 0（POST /rerun 的 chunks，L12）。
-func (r *Repo) LatestLLMChunkCount(ctx context.Context, itemID, stage string) (int, error) {
-	n, err := r.q.LatestLLMChunkCount(ctx, sqlcdb.LatestLLMChunkCountParams{ItemID: itemID, Stage: stage})
-	return int(n), err
+// LatestLLMChunkNumbers 回傳影音的這個步驟最近一次切分實際存在的 chunk 編號，由小到大；從來沒有切分過時是空的
+// （POST /rerun 的 chunks，L12）。編號不一定是 1..n：translate 的編號是各目標的全域編號，被沿用的目標不產生 chunk，會有空洞。
+func (r *Repo) LatestLLMChunkNumbers(ctx context.Context, itemID, stage string) ([]int, error) {
+	rows, err := r.q.LatestLLMChunkNumbers(ctx, sqlcdb.LatestLLMChunkNumbersParams{ItemID: itemID, Stage: stage})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]int, 0, len(rows))
+	for _, c := range rows {
+		out = append(out, int(c))
+	}
+	return out, nil
 }
 
 // DoneLLMChunkByCacheKey 回傳同一部影音、同一步驟中，快取鍵相同而且通過驗證的最近一個 chunk（LLM-R8）；沒有時回傳 ErrNotFound。

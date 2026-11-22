@@ -197,10 +197,10 @@ func TestLLMFallbackIsRetriedOnPlainRerun(t *testing.T) {
 	if n := fake.callCount(); n != 7 || fake.calls[6] != 3 {
 		t.Errorf("chunks: [3] 只重新送出 chunk 3：%v", fake.calls)
 	}
-	// 超過現行切分的 chunk 總數（4）：422，什麼都不送出（L12）。
+	// 不在現行切分中的編號（現有 1～4）：422，什麼都不送出（L12）。
 	var inv *InvalidError
 	if _, err := r.p.Rerun(context.Background(), it.ID, RerunRequest{From: StageCorrect, Until: StageCorrect, Chunks: []int{2, 5}}); !errors.As(err, &inv) ||
-		len(inv.Fields) != 1 || inv.Fields[0].Path != "chunks[1]" || inv.Fields[0].Message != "chunk 5 超過現行切分的 chunk 總數 4。" {
+		len(inv.Fields) != 1 || inv.Fields[0].Path != "chunks[1]" || inv.Fields[0].Message != "chunk 5 不存在於現行的切分；現有的 chunk 編號：1～4。" {
 		t.Errorf("chunks: [2, 5]：%v", err)
 	}
 }

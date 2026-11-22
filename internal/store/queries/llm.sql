@@ -30,11 +30,14 @@ WHERE item_id = sqlc.arg(item_id) AND stage = sqlc.arg(stage) AND cache_key = sq
   AND executor = 'api'
 ORDER BY updated_at DESC, rowid DESC LIMIT 1;
 
--- name: LatestLLMChunkCount :one
--- The number of chunks in the most recent split of the stage for the item (0 when it was never split).
-SELECT COUNT(*) FROM llm_chunks
+-- name: LatestLLMChunkNumbers :many
+-- The chunk numbers present in the most recent split of the stage for the item (none when it was never split).
+-- Numbers are not always 1..COUNT: translate numbers its chunks globally across targets, and a reused target
+-- produces no chunk rows, which leaves holes.
+SELECT chunk FROM llm_chunks
 WHERE stage_run_id = (
   SELECT c.stage_run_id FROM llm_chunks c
   WHERE c.item_id = sqlc.arg(item_id) AND c.stage = sqlc.arg(stage)
   ORDER BY c.created_at DESC, c.rowid DESC LIMIT 1
-);
+)
+ORDER BY chunk;

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -22,7 +24,7 @@ type RerunRequest struct {
 	// 處理方案不存在時回 *InvalidError（path 為 profile）。
 	Profile string
 	// Chunks 只重新送出這些 chunk（LLM-R8，從 1 起算）：其他 chunk 重用相同輸入的結果，這些 chunk 一律重新送出。
-	// 只能用在 LLM 步驟（From 是 segment、correct 或 translate），否則回 *InvalidError；超出 chunk 數的編號不會有作用。
+	// 只能用在 LLM 步驟（From 是 segment、correct 或 translate），否則回 *InvalidError；編號必須是現行切分中實際存在的（translate 被沿用的目標沒有 chunk，編號會有空洞），否則 422。
 	Chunks []int
 }
 
@@ -79,18 +81,14 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		return Detail{}, &InTrashError{ItemID: it.ID}
 	}
 	if len(req.Chunks) > 0 {
-		// chunk 編號對照現行的切分（最近一次切分的 chunk 數，L12）：沒有切分過、或編號超出時 422。
-		n, err := r0.LatestLLMChunkCount(ctx, it.ID, req.From)
+		// chunk 編號對照現行切分實際存在的編號（L12）：沒有切分過、或編號不存在時 422。
+		// 不能用列數當上限：translate 的編號是各目標的全域編號，被沿用的目標不產生 chunk，編號會有空洞（S6b-Q3）。
+		existing, err := r0.LatestLLMChunkNumbers(ctx, it.ID, req.From)
 		if err != nil {
 			return Detail{}, err
 		}
-		if n == 0 {
-			return Detail{}, invalidFields([]validate.FieldError{{Path: "chunks", Message: "尚無 chunk 切分：" + req.From + " 還沒有用 LLM 處理過，請先不指定 chunks 重跑。"}})
-		}
-		for i, c := range req.Chunks {
-			if c > n {
-				return Detail{}, invalidFields([]validate.FieldError{{Path: fmt.Sprintf("chunks[%d]", i), Message: fmt.Sprintf("chunk %d 超過現行切分的 chunk 總數 %d。", c, n)}})
-			}
+		if fs := checkRerunChunks(req.From, req.Chunks, existing); len(fs) > 0 {
+			return Detail{}, invalidFields(fs)
 		}
 	}
 	itemOverrides, err := decodeOverrides(it.Overrides)
@@ -208,6 +206,49 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 	}
 	p.wake()
 	return p.Item(ctx, itemID)
+}
+
+// checkRerunChunks 比對重跑要求的 chunk 編號與現行切分實際存在的編號（existing，由小到大）：
+// 還沒有切分過是一筆 path 為 chunks 的錯誤；編號不存在於切分中，每一個回一筆 path 為 chunks[i] 的錯誤，訊息帶現有的編號。
+func checkRerunChunks(stage string, requested, existing []int) []validate.FieldError {
+	if len(existing) == 0 {
+		return []validate.FieldError{{Path: "chunks", Message: "尚無 chunk 切分：" + stage + " 還沒有用 LLM 處理過，請先不指定 chunks 重跑。"}}
+	}
+	var fs []validate.FieldError
+	for i, c := range requested {
+		if _, found := slices.BinarySearch(existing, c); !found {
+			fs = append(fs, validate.FieldError{
+				Path:    fmt.Sprintf("chunks[%d]", i),
+				Message: fmt.Sprintf("chunk %d 不存在於現行的切分；現有的 chunk 編號：%s。", c, formatChunkRanges(existing)),
+			})
+		}
+	}
+	return fs
+}
+
+// maxChunkRanges 是 formatChunkRanges 最多列出的區間數；超過時以「…」收尾，不讓錯誤訊息隨 chunk 數無限變長。
+const maxChunkRanges = 20
+
+// formatChunkRanges 把由小到大的編號寫成區間：[1 2 3 7 9 10] → "1～3、7、9～10"。
+func formatChunkRanges(nums []int) string {
+	var parts []string
+	for i := 0; i < len(nums); {
+		j := i
+		for j+1 < len(nums) && nums[j+1] == nums[j]+1 {
+			j++
+		}
+		if len(parts) == maxChunkRanges {
+			parts = append(parts, "…")
+			break
+		}
+		if j == i {
+			parts = append(parts, strconv.Itoa(nums[i]))
+		} else {
+			parts = append(parts, fmt.Sprintf("%d～%d", nums[i], nums[j]))
+		}
+		i = j + 1
+	}
+	return strings.Join(parts, "、")
 }
 
 // latestRuns 回傳每個步驟最近建立的 stage run（重跑會讓同一個步驟有多筆）。

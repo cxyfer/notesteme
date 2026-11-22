@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/source/youtube"
@@ -282,6 +283,58 @@ func TestSeedMarksM2StagesDone(t *testing.T) {
 	for _, s := range m2Stages {
 		if latestStage(t, r, it.ID, s).Status != store.StatusPending {
 			t.Errorf("edited 不該動到 %s", s)
+		}
+	}
+}
+
+// checkRerunChunks：編號必須是現行切分實際存在的；有空洞時合法的較大編號可以通過，空洞的編號被拒。
+func TestCheckRerunChunks(t *testing.T) {
+	tests := []struct {
+		name      string
+		requested []int
+		existing  []int
+		want      []string // 每筆錯誤的「path: message」
+	}{
+		{"連續編號全部存在", []int{1, 4, 2}, []int{1, 2, 3, 4}, nil},
+		{"連續編號超出上限", []int{2, 5}, []int{1, 2, 3, 4}, []string{"chunks[1]: chunk 5 不存在於現行的切分；現有的 chunk 編號：1～4。"}},
+		{"連續編號的 0 之前由呼叫端擋下，這裡視為不存在", []int{0}, []int{1, 2}, []string{"chunks[0]: chunk 0 不存在於現行的切分；現有的 chunk 編號：1～2。"}},
+		// zh 被沿用、ja 是第 4 到 6 個（只有 3 列）：5 合法，不能被「列數 3」擋下；1 是空洞，不存在。
+		{"空洞：較大的合法編號通過", []int{5}, []int{4, 5, 6}, nil},
+		{"空洞：空洞的編號被拒", []int{1}, []int{4, 5, 6}, []string{"chunks[0]: chunk 1 不存在於現行的切分；現有的 chunk 編號：4～6。"}},
+		{"空洞：中間的空洞與超出上限各一筆錯誤", []int{3, 4, 7}, []int{1, 2, 4, 5, 6}, []string{
+			"chunks[0]: chunk 3 不存在於現行的切分；現有的 chunk 編號：1～2、4～6。",
+			"chunks[2]: chunk 7 不存在於現行的切分；現有的 chunk 編號：1～2、4～6。",
+		}},
+		{"沒有切分過", []int{1}, nil, []string{"chunks: 尚無 chunk 切分：translate 還沒有用 LLM 處理過，請先不指定 chunks 重跑。"}},
+	}
+	for _, tt := range tests {
+		var got []string
+		for _, f := range checkRerunChunks(StageTranslate, tt.requested, tt.existing) {
+			got = append(got, f.Path+": "+f.Message)
+		}
+		if !slices.Equal(got, tt.want) {
+			t.Errorf("%s：\n got  %q\n want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestFormatChunkRanges(t *testing.T) {
+	long := make([]int, 0, 2*(maxChunkRanges+3))
+	for i := range maxChunkRanges + 3 {
+		long = append(long, 3*i+1) // 1、4、7…：每個都是獨立的區間
+	}
+	for _, tt := range []struct {
+		in   []int
+		want string
+	}{
+		{[]int{1}, "1"},
+		{[]int{1, 2, 3}, "1～3"},
+		{[]int{1, 2, 3, 7, 9, 10}, "1～3、7、9～10"},
+		{[]int{4, 5, 6}, "4～6"},
+		{long, "1、4、7、10、13、16、19、22、25、28、31、34、37、40、43、46、49、52、55、58、…"},
+	} {
+		if got := formatChunkRanges(tt.in); got != tt.want {
+			t.Errorf("formatChunkRanges(%v) = %q，預期 %q", tt.in, got, tt.want)
 		}
 	}
 }
