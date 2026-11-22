@@ -280,3 +280,29 @@ func TestAlternateName(t *testing.T) {
 		t.Error("檔名不可含目錄分隔")
 	}
 }
+
+// createNew 絕不覆蓋已存在的檔案：競態中別人先建立了目標時，回傳 created=false，內容不變，也不留下暫存檔。
+func TestCreateNewNeverClobbers(t *testing.T) {
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := os.WriteFile(filepath.Join(dir, "a.srt"), []byte("theirs"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	created, err := createNew(root, "a.srt", []byte("ours"))
+	if err != nil || created {
+		t.Fatalf("createNew = %v，%v，預期 false", created, err)
+	}
+	if read(t, filepath.Join(dir, "a.srt")) != "theirs" {
+		t.Error("既有的檔案被覆蓋了")
+	}
+	if names := entries(t, dir); len(names) != 1 {
+		t.Errorf("暫存檔殘留：%v", names)
+	}
+	if created, err := createNew(root, "b.srt", []byte("ours")); err != nil || !created || read(t, filepath.Join(dir, "b.srt")) != "ours" {
+		t.Errorf("新檔案應建立：%v，%v", created, err)
+	}
+}
