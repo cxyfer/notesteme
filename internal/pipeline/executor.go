@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 
+	"github.com/cxyfer/notesteme/internal/langtag"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
@@ -27,6 +28,9 @@ type StageResolution struct {
 	// Skip 為 true 時，這個步驟不建任務、不呼叫任何東西，前進到它時直接標成 skipped（原因是 Reason）。
 	Skip   bool
 	Reason string // Skip 時為 Skip* 常數其中之一
+	// Wanted 只在 translate 有值：這份設定要求產生譯文的目標語言（正規化後，不含與原文相同的）。
+	// translate 被略過時，不在其中的現行 translated 產出要撤下（applyChain）。
+	Wanted []string
 }
 
 // ResolveExecutor 依步驟與生效設定決定執行方式。純函式：不讀 DB、不讀時鐘。
@@ -50,17 +54,25 @@ func ResolveExecutor(eff Effective, stage string, sc StageContext) (StageResolut
 			return StageResolution{}, invalidf("stages.%s.executor 不支援 %q。", stage, cfg.Executor)
 		}
 		res := StageResolution{Stage: stage, Executor: cfg.Executor, Provider: cfg.Provider, Model: cfg.Model, Prompt: cfg.Prompt}
-		switch {
-		case cfg.Executor == ExecutorOff:
-			res.Skip, res.Reason = true, SkipOff
-		case stage == StageTranslate:
+		var plans []TargetPlan
+		if stage == StageTranslate {
 			lang, err := eff.Language()
 			if err != nil {
 				return StageResolution{}, err
 			}
-			plans := PlanTargets(sc.SourceLang, lang)
+			plans = PlanTargets(sc.SourceLang, lang)
+			for _, t := range plans {
+				if t.Kind != TargetSame {
+					res.Wanted = append(res.Wanted, t.Lang)
+				}
+			}
+		}
+		switch {
+		case cfg.Executor == ExecutorOff:
+			res.Skip, res.Reason = true, SkipOff
+		case stage == StageTranslate:
 			switch {
-			case !slices.ContainsFunc(plans, func(t TargetPlan) bool { return t.Kind != TargetSame }):
+			case len(res.Wanted) == 0:
 				res.Skip, res.Reason = true, SkipSameLanguage
 			case allConvert(plans):
 				// 中文字形之間的轉換是確定性的本機處理：不需要 provider，也不呼叫 LLM（TRN-R8）。
@@ -150,10 +162,10 @@ func (p *Pipeline) applyChain(ctx context.Context, r *store.Repo, itemID string,
 			if err := r.SetStageState(ctx, run.ID, skippedState(res.Reason)); err != nil {
 				return created, err
 			}
-			if res.Stage == StageTranslate && res.Reason == SkipSameLanguage {
-				// 沒有任何目標需要譯文：先前為已移除的目標產生的 translated 不再是現行版本，
-				// 否則預設字幕選擇仍會回傳舊譯文（Codex P2）。保留歷史版本。
-				if err := r.WithdrawArtifacts(ctx, itemID, "transcript", string(subtitle.VariantTranslated), nil); err != nil {
+			if res.Stage == StageTranslate {
+				// 略過（沒有目標需要譯文、沒有設定 LLM、或 off）：為已不再要求的目標產生的 translated
+				// 不再是現行版本，否則預設字幕選擇仍會回傳舊譯文（Codex P2）。保留歷史版本。
+				if err := withdrawUnwanted(ctx, r, itemID, res.Wanted); err != nil {
 					return created, err
 				}
 			}
@@ -173,4 +185,22 @@ func (p *Pipeline) applyChain(ctx context.Context, r *store.Repo, itemID string,
 		created = true
 	}
 	return created, nil
+}
+
+// withdrawUnwanted 撤下現行的 translated 產出中，語言（正規化後）不在 wanted 裡的。
+func withdrawUnwanted(ctx context.Context, r *store.Repo, itemID string, wanted []string) error {
+	cur, err := r.CurrentArtifacts(ctx, itemID, "transcript")
+	if err != nil {
+		return err
+	}
+	var langs []string
+	for _, a := range cur {
+		if a.Variant == string(subtitle.VariantTranslated) && !slices.Contains(wanted, langtag.Parse(a.Lang).String()) && !slices.Contains(langs, a.Lang) {
+			langs = append(langs, a.Lang)
+		}
+	}
+	if len(langs) == 0 {
+		return nil // 空的 langs 在 WithdrawArtifacts 代表全部語言
+	}
+	return r.WithdrawArtifacts(ctx, itemID, "transcript", string(subtitle.VariantTranslated), langs)
 }

@@ -114,7 +114,7 @@ func (p *Pipeline) runTranslateOpenCC(ctx context.Context, it store.Item, eff Ef
 
 	// 同一份上游、同一組目標與字典版本的結果已經是現行版本：重用，不建立新版本（PIPE-R5）。
 	// 只看現行版本：設定 A → B → A 時不會恢復舊版，而是重新轉換（opencc 不花錢）。
-	if first, hit := currentOpenCCOutputs(arts, jobs, key); hit {
+	if first, hit := p.currentOpenCCOutputs(arts, jobs, key); hit {
 		stage.ArtifactID = first
 		return result{task: taskDone, advance: true, stage: stage, state: done, supersede: translatedSupersede(removed)}, nil
 	}
@@ -181,9 +181,10 @@ func translatedSupersede(langs []string) *supersedeSet {
 	return &supersedeSet{Kind: "transcript", Variant: string(subtitle.VariantTranslated), Langs: langs}
 }
 
-// currentOpenCCOutputs 檢查每個目標是否都已有現行的 translated 產出，而且來源紀錄的 cache_key 與這次相符。
+// currentOpenCCOutputs 檢查每個目標是否都已有現行的 translated 產出，來源紀錄的 cache_key 與這次相符，
+// 而且產出檔還在、sha256 相符（NFR-REL-2：損毀或遺失的檔案視為快取未命中，重新轉換）。
 // 都有時回傳第一個目標的產出 ID（stage run 指向它）。
-func currentOpenCCOutputs(arts []store.Artifact, jobs []openccJob, key string) (firstID string, ok bool) {
+func (p *Pipeline) currentOpenCCOutputs(arts []store.Artifact, jobs []openccJob, key string) (firstID string, ok bool) {
 	for i, j := range jobs {
 		found := false
 		for _, a := range arts {
@@ -194,6 +195,9 @@ func currentOpenCCOutputs(arts []store.Artifact, jobs []openccJob, key string) (
 				CacheKey string `json:"cache_key"`
 			}
 			if json.Unmarshal(a.Provenance, &prov) == nil && prov.CacheKey == key+"/"+j.lang {
+				if _, err := readTranscript(p.dataDir, a.Path, a.SHA256); err != nil {
+					break // 檔案損毀或遺失：這個目標未命中
+				}
 				found = true
 				if i == 0 {
 					firstID = a.ID

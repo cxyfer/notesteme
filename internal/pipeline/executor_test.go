@@ -3,7 +3,9 @@ package pipeline
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -79,9 +81,41 @@ func TestResolveExecutorTable(t *testing.T) {
 			t.Errorf("%s：%v", tt.name, err)
 			continue
 		}
-		if got != tt.want {
+		got.Wanted = nil // Wanted 另有測試（TestResolveExecutorWanted）
+		if !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("%s：\n got %+v\nwant %+v", tt.name, got, tt.want)
 		}
+	}
+}
+
+// Wanted 是這份設定要求產生譯文的目標（正規化後、不含與原文相同的）：translate 被略過時，
+// 不在其中的現行譯文要撤下（Codex P2）。
+func TestResolveExecutorWanted(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		src     string
+		targets []string
+		want    []string
+		skip    string
+	}{
+		{"同語言", "zh-Hans", []string{"zh-Hans", "zh_cn"}, nil, SkipSameLanguage},
+		{"混合沒有 provider", "zh-Hans", []string{"zh_hant_tw", "en"}, []string{"zh-Hant-TW", "en"}, SkipNotConfigured},
+		{"只剩非中文", "zh-Hans", []string{"en"}, []string{"en"}, SkipNotConfigured},
+		{"只轉換", "zh-Hans", []string{"zh-Hant-TW", "zh-Hans"}, []string{"zh-Hant-TW"}, ""},
+		{"extlang 不同", "zh-cmn-Hans", []string{"zh-yue-Hant-HK"}, []string{"zh-yue-Hant-HK"}, SkipNotConfigured},
+	} {
+		got, err := ResolveExecutor(mustEffective(t, langOver(tt.targets, "")), StageTranslate, StageContext{SourceLang: tt.src})
+		if err != nil {
+			t.Fatalf("%s：%v", tt.name, err)
+		}
+		if strings.Join(got.Wanted, ",") != strings.Join(tt.want, ",") || got.Reason != tt.skip {
+			t.Errorf("%s：Wanted = %v、Reason = %q，預期 %v、%q", tt.name, got.Wanted, got.Reason, tt.want, tt.skip)
+		}
+	}
+	// off 也要帶出 Wanted：略過時照樣撤下已移除的目標。
+	off := withMap(langOver([]string{"zh-Hant-TW"}, ""), stagesOver("translate", map[string]any{"executor": "off"}))
+	if got, _ := ResolveExecutor(mustEffective(t, off), StageTranslate, StageContext{SourceLang: "zh-Hans"}); !got.Skip || got.Reason != SkipOff || len(got.Wanted) != 1 {
+		t.Errorf("off：%+v", got)
 	}
 }
 

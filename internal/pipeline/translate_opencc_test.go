@@ -616,3 +616,86 @@ func TestRerunResolvesTranslateWithoutStaleDownstreamOutputs(t *testing.T) {
 		t.Errorf("譯文 = %q", tr.Cues[0].Text)
 	}
 }
+
+// 略過翻譯（沒有設定 LLM、或 off）時，不再要求的目標的現行譯文也要撤下，保留歷史版本（Codex P2）。
+func TestSkippedTranslateWithdrawsUnwantedTargets(t *testing.T) {
+	for name, extra := range map[string]map[string]any{
+		"not_configured": nil,
+		"off":            stagesOver("translate", map[string]any{"executor": "off"}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, it := newZhRig(t)
+			ctx := context.Background()
+			seedVariant(t, r, it, subtitle.VariantCorrected, "zh-Hans", "打开软件")
+			rerunTranslate(t, r, it, []string{"zh-Hant-TW", "zh-Hant-HK"}, "", nil)
+			// 目標改成只有 en：LLM 沒有設定（或 off），translate 被略過。
+			rerunTranslate(t, r, it, []string{"en"}, "", extra)
+			if st := latestStage(t, r, it.ID, StageTranslate); st.Status != store.StatusSkipped {
+				t.Fatalf("translate = %+v", st)
+			}
+			arts, _ := r.st.Read().CurrentArtifacts(ctx, it.ID, "transcript")
+			for _, a := range arts {
+				if a.Variant == "translated" {
+					t.Errorf("已移除目標的譯文不該還是現行版本：%s", a.Lang)
+				}
+			}
+			if n, _ := r.st.Read().ArtifactVersions(ctx, it.ID, "transcript", "translated", "zh-Hant-TW"); n != 1 {
+				t.Errorf("歷史版本應保留：%d", n)
+			}
+		})
+	}
+}
+
+// 現行譯文的檔案損毀時，同一設定重跑不會把損毀的檔案當成快取命中，而是重新轉換（NFR-REL-2）。
+func TestRunTranslateOpenCCRebuildsCorruptCachedOutput(t *testing.T) {
+	r, it := newZhRig(t)
+	ctx := context.Background()
+	seedVariant(t, r, it, subtitle.VariantCorrected, "zh-Hans", "打开软件")
+	rerunTranslate(t, r, it, []string{"zh-Hant-TW"}, "", nil)
+	bad, _ := translated(t, r, it.ID, "zh-Hant-TW")
+	if err := os.WriteFile(filepath.Join(r.dir, bad.Path), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rerunTranslate(t, r, it, []string{"zh-Hant-TW"}, "", nil)
+	good, tr := translated(t, r, it.ID, "zh-Hant-TW")
+	if good.ID == bad.ID || tr.Cues[0].Text != "開啟軟體" {
+		t.Errorf("損毀的快取應重新轉換：%s → %s，%+v", bad.ID, good.ID, tr.Cues)
+	}
+	if n, _ := r.st.Read().ArtifactVersions(ctx, it.ID, "transcript", "translated", "zh-Hant-TW"); n != 2 {
+		t.Errorf("版本數 = %d，預期 2", n)
+	}
+}
+
+// 讀取原文語言之後、寫入交易之前 normalize 剛好完成：交易內重新解析，不用過時的判斷（Codex P2）。
+func TestRerunResolvesAgainInsideTransaction(t *testing.T) {
+	r, it := newZhRig(t)
+	ctx := context.Background()
+	r.p.beforeRerunTx = func() {
+		r.p.beforeRerunTx = nil
+		seedVariant(t, r, it, subtitle.VariantNormalized, "zh-Hans", "打开软件")
+	}
+	over := langOver([]string{"zh-Hant-TW"}, "")
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageTranslate, Overrides: over}); err != nil {
+		t.Fatal(err)
+	}
+	r.run()
+	if st := latestStage(t, r, it.ID, StageTranslate); st.Status != store.StatusDone || st.Executor != ExecutorOpenCC {
+		t.Fatalf("translate = %+v，預期交易內依剛完成的 normalized 用 opencc 轉換", st)
+	}
+}
+
+// extlang 明確不同（zh-cmn 與 zh-yue）是不同的語言：不能只轉字形（Codex P2）。
+func TestPlanTargetsDistinctChineseLanguages(t *testing.T) {
+	kind := func(src, target string) TargetKind {
+		return PlanTargets(src, Language{Targets: []string{target}})[0].Kind
+	}
+	if got := kind("zh-cmn-Hans", "zh-yue-Hant-HK"); got != TargetTranslate {
+		t.Errorf("cmn → yue = %s，預期 translate", got)
+	}
+	if got := kind("zh-cmn-Hans", "zh-cmn-Hant-TW"); got != TargetConvert {
+		t.Errorf("相同 extlang = %s，預期 convert", got)
+	}
+	if got := kind("zh-cmn-Hans", "zh-Hant-TW"); got != TargetConvert {
+		t.Errorf("只有一邊有 extlang = %s，預期 convert", got)
+	}
+}

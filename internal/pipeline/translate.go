@@ -61,6 +61,8 @@ func planTarget(source, target string, strategy zhconv.Strategy) TargetPlan {
 	switch {
 	case langtag.Equal(source, target):
 		p.Kind = TargetSame
+	case langtag.IsChinese(source) && langtag.IsChinese(target) && differentChineseLanguage(source, target):
+		// 雙方明確指定不同的 extlang（zh-cmn 與 zh-yue）：是不同的語言，不只是字形，OpenCC 處理不了。
 	case langtag.IsChinese(source) && langtag.IsChinese(target) && langtag.ChineseScript(source) != "":
 		// 原文的字形已知：有轉換表就轉換；沒有（同一字形，或目標沒有指定字形）就視為相同語言（S6-Q3）。
 		if t, ok := zhconv.TableFor(source, target, strategy); ok {
@@ -73,6 +75,12 @@ func planTarget(source, target string, strategy zhconv.Strategy) TargetPlan {
 		}
 	}
 	return p
+}
+
+// differentChineseLanguage 回報兩個中文標記是否都明確指定了 extlang、而且不同。
+func differentChineseLanguage(a, b string) bool {
+	ea, eb := langtag.Parse(a).Ext, langtag.Parse(b).Ext
+	return ea != "" && eb != "" && ea != eb
 }
 
 // allConvert 回報不是 same 的目標是否全部都是 convert（而且至少有一個）。
