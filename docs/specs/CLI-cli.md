@@ -41,6 +41,7 @@ notesteme items rerun <item> --from <stage>
 notesteme export <item> --format srt|vtt|txt|ass [--lang <l>] [--variant <v>] [--style <name>] [--out <path>]
 notesteme import <subtitle> --item <item> [--lang <l>] [--format srt|vtt|ass]   （OUT-R13；M2）
 notesteme doctor [--json]
+notesteme mcp [--token <t>] [--list-tools] [--json]   （MCP-R1；M2：stdio 的 MCP server，轉送到 API 的 /mcp）
 notesteme backup | restore   （ADR-0007；在 OPS 實作，不屬於 M1 的 CLI 切片）
 全域參數：--server <url> --token <t> --data <dir>（可以放在子命令之前或之後）
 ```
