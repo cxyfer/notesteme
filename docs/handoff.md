@@ -163,7 +163,8 @@
     - 重跑取代 Agent 步驟時，`CancelPendingTasks` 也結束舊 stage run 中被 Agent 領取的任務（清掉租約，舊 token 回 `lease_expired`，不會到期後又被放回）。
     - 變異測試（11 項，全部變紅；第 11 項是上面這條）：每個 Agent 的上限、舊 token（heldTask 與 `CompleteTask` 的 SQL 兩層都拿掉才會變紅，單拿掉一層由另一層擋下）、3 次失敗、release 不計 attempts、逾時分支、來源紀錄、共用驗證、重新啟動保留 Agent 租約、Agent 結果不寫步驟層快取、sweeper 放回到期租約。
     - `@M2`：以 S9 之後的 master（472e948）為基準，102 → 116 passed、15 → 1 pending（AGT 14 個全部通過；剩下 SEC 的 config import，與 S11a 合併後是 117 passed、0 pending、0 failed）、0 failed。M1 預設 tag：191 passed、0 pending。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，191 passed、0 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內；DEL `@mcp` 兩個在 S9 通過）。
+- **預設 tag 與棘輪（2026-11-23 起）**：M2 的場景全部通過後，預設 tag 納入 `@M2`（`features/features_test.go` 的 `defaultTags`，ADR-0015）：308 個場景（191 個 M1、117 個 M2）全部 passed，`features/passing.txt` 308 行（只新增 117 行）。下面的表與數字是 M1 收尾時的紀錄。
+- **驗收結果**（M1 收尾時，預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，191 passed、0 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內；DEL `@mcp` 兩個在 S9 通過）。
 
   | Feature | passed | pending |
   |---|---|---|
@@ -232,7 +233,7 @@
    - **還沒回覆**：M2 路由的 scope（profiles 與 channel overrides 是否改 admin、ass-styles preview 是否改 ingest）。
 
    原本的待決清單（保留供對照）：X1 LLM 步驟預設值（S0 依建議 C：沒有 provider 就 skipped）、X7 兩個 Agent 同時領任務沒有場景、L1 LLM-R8 請求數 4 應為 5、L7 cost_ledger、G1 SEG-R2～R4 矛盾、P1 PRM-R7 body、P6 不帶版本號的 prompt 引用跟隨預設、F1 PRF-R2 Background、F2 PRF-R3 斷言驗證不到、F5 頻道層要等 metadata（場景加 `the worker runs until idle`）、O-4 PRF 的 M1 敘述、S1/S2 的 D1～D16 待確認（特別是 D6 頻道層在 metadata 才併入、D8 完整性只檢查處理方案、D13 硬刪除與 used_by 順序）、A1 AGT 並行上限、MCP stdio 場景搬到 CLI、O1～O4 OUT、COR-R4 斷言偏弱、SEG-R10 缺 answers、M2 路由的 scope（profiles 與 channel overrides 是否改 admin、ass-styles preview 是否改 ingest）。
-5. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。棘輪只涵蓋預設 tag（`@M1`）：M2 已通過的場景（例如 PRF、PRM 的 15 個）目前沒有棘輪保護，要靠每個切片手動跑 `-godog.tags=@M2` 比對；M2 完成、預設 tag 納入 `@M2` 時再一起進棘輪。
+5. 每個切片完成後執行 `go test ./features -run TestFeatures -update-passing` 更新棘輪清單，並檢查新增的通過場景。棘輪涵蓋預設 tag（`@M1` 與 `@M2`，2026-11-23 起；M2 全部通過後納入）。
 6. `features/fixtures/items/` 有 `yt-pg100xxxxxx.json`、`yt-abc123xxxxx.json`（後者只在影片沒有任何字幕軌時用到，目前只有 SEC 的場景用得到）。
 7. 大切片的做法（LOCAL、PODCAST 用過）：architect 先出設計，主代理把設計凍結成契約檔（Go 介面、argv、marker 語法、資料模型），再分給檔案所有權不重疊的 builder 並行實作；harness 的工作包可以從一開始就並行。整合後主代理跑完整驗收與變異測試，另開 builder 只看 diff 與規格做審查。
 

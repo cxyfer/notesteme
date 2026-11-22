@@ -62,7 +62,7 @@
 ### godog 的設定
 
 - `features/features_test.go` 的 `TestFeatures` 執行全部 `.feature` 檔。
-- 預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`。用 `-godog.tags` 指定時，排除條件會自動併入每一個 OR 項，除非指定的 tag 本身就是被排除的 tag。godog 的 tag 表達式只支援 `&&`、`,`（OR）與 `~`，不支援括號。
+- 預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui,@M2 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`（M2 場景全部通過之後 2026-11-23 起納入 `@M2`；原本只有 `@M1`）。用 `-godog.tags` 指定時，排除條件會自動併入每一個 OR 項，除非指定的 tag 本身就是被排除的 tag。godog 的 tag 表達式只支援 `&&`、`,`（OR）與 `~`，不支援括號。
 - M1 期間使用非 strict 模式，pending 不算失敗。
   - 還沒實作的 API 路由先回傳 `501`（`code: not_implemented`）。斷言回應的步驟遇到這種回應時回傳 pending，而不是失敗，讓「步驟已實作、功能還沒做」的場景維持 pending；404 等其他狀態仍然算失敗。改成 strict 前要拿掉這個約定。
   - After hook 發現的違規（未攔截的連線、secret 外洩）另外記在收集器中，`TestFeatures` 結束後逐筆讓測試失敗。godog 會把 hook 的錯誤和 pending 合併，非 strict 模式下不算失敗，所以不能只靠 hook 的回傳值。改由 `features/speccheck_test.go` 靜態檢查，確保沒有 undefined 與 ambiguous 的步驟：

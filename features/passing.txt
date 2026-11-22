@@ -1,3 +1,17 @@
+AGT-agent-tasks.feature: An agent claims several tasks with their full context
+AGT-agent-tasks.feature: Two agents never receive the same task
+AGT-agent-tasks.feature: A valid submission completes the task
+AGT-agent-tasks.feature: An invalid submission is explained and the lease is kept
+AGT-agent-tasks.feature: Three failed submissions return the task to the queue
+AGT-agent-tasks.feature: An expired lease returns the task to the queue
+AGT-agent-tasks.feature: Extending the lease keeps the task
+AGT-agent-tasks.feature: A stale lease token cannot submit
+AGT-agent-tasks.feature: Releasing a task puts it back immediately
+AGT-agent-tasks.feature: Unclaimed tasks fall back to the API after the timeout
+AGT-agent-tasks.feature: With the notify policy unclaimed tasks ask the owner
+AGT-agent-tasks.feature: Agent results are marked as agent-reported
+AGT-agent-tasks.feature: The owner switches a waiting task to the API
+AGT-agent-tasks.feature: A token without the agent scope cannot claim
 AUTH-access.feature: Unauthenticated requests are refused [example 1]
 AUTH-access.feature: Unauthenticated requests are refused [example 2]
 AUTH-access.feature: Unauthenticated requests are refused [example 3]
@@ -21,6 +35,7 @@ AUTH-access.feature: Each scope only opens its own doors [example 6]
 AUTH-access.feature: A missing scope is named in the error
 AUTH-access.feature: A revoked token stops working immediately
 AUTH-access.feature: An expired token stops working
+AUTH-access.feature: MCP requests from an unexpected origin are refused
 CLI-cli.feature: A second server on the same data directory refuses to start
 CLI-cli.feature: Without a running server the CLI opens the database itself
 CLI-cli.feature: With a running server the CLI goes through it
@@ -30,6 +45,15 @@ CLI-cli.feature: A bad argument exits with 2
 CLI-cli.feature: Waiting on an item that needs the owner exits with 3
 CLI-cli.feature: Waiting until the transcript is ready
 CLI-cli.feature: Doctor reports each dependency with a fix
+CLI-cli.feature: The MCP stdio server works without a running server
+COR-correct.feature: Corrections keep the cue count and timings
+COR-correct.feature: A correction that changes the number of cues is rejected
+COR-correct.feature: Channel glossary and video metadata reach the prompt
+COR-correct.feature: A Traditional Chinese glossary is converted for a Simplified source
+COR-correct.feature: Mixed-language speech is not translated during correction
+COR-correct.feature: New terms become pending candidates, not glossary entries
+COR-correct.feature: The glossary is passed to ASR sources that accept hints
+COR-correct.feature: Turning correction off feeds translation directly
 DEL-delete.feature: A deleted item moves to the trash and disappears from the library
 DEL-delete.feature: Agents cannot read an item in the trash
 DEL-delete.feature: Deleting stops processing and frees the media cache
@@ -42,6 +66,10 @@ DEL-delete.feature: Spending records survive a permanent delete
 DEL-delete.feature: Adding an item that is in the trash offers to restore it
 DEL-delete.feature: An item added again after a permanent delete starts fresh
 DEL-delete.feature: The inbox does not bring back a permanently deleted file
+DEL-delete.feature: Output files are kept by default
+DEL-delete.feature: Unedited output files are deleted when the owner asks
+DEL-delete.feature: An output file edited by hand is never deleted
+DEL-delete.feature: Restoring writes deleted output files again
 DEL-delete.feature: Only admin tokens can delete or restore [example 1]
 DEL-delete.feature: Only admin tokens can delete or restore [example 2]
 DEL-delete.feature: Only admin tokens can delete or restore [example 3]
@@ -107,6 +135,33 @@ LIB-library.feature: Pages are limited and use a cursor
 LIB-library.feature: Items with estimated timings can be filtered
 LIB-library.feature: Local media supports range requests for seeking
 LIB-library.feature: The queue shows each lane with its limit
+LIB-library.feature: Rerun from a stage with another model keeps the old version
+LLM-execution.feature: Chapters decide the chunks when they exist
+LLM-execution.feature: Without chapters chunks are cut by tokens with overlap and context
+LLM-execution.feature: Chunks share the same prompt prefix
+LLM-execution.feature: Invalid output is retried with the error attached
+LLM-execution.feature: After the last retry the chunk falls back and the fallback is recorded
+LLM-execution.feature: Only the failed chunk is sent again
+LLM-execution.feature: A rate-limit response is retried without using up validation retries
+LLM-execution.feature: The provider request rate is capped
+LLM-execution.feature: Transcript text is sent as fenced data
+LLM-execution.feature: Output with fields outside the schema is rejected
+LLM-execution.feature: LLM output records its full provenance
+LLM-execution.feature: A retired model asks for a replacement
+LLM-execution.feature: A provider without an API key asks for one
+MCP-tools.feature: A read-only token only sees read tools
+MCP-tools.feature: Calling a tool outside the scope names the missing scope
+MCP-tools.feature: Get part of a transcript as SRT
+MCP-tools.feature: Ingest through MCP behaves like the API
+MCP-tools.feature: Errors carry the same message as the API
+MCP-tools.feature: Import a fixed subtitle through MCP
+MCP-tools.feature: Video context for a processed item comes back at once
+MCP-tools.feature: Video context for a new item processes it up to the transcript
+MCP-tools.feature: Video context reports what blocks it
+MCP-tools.feature: Video context for a new item needs the ingest scope
+MCP-tools.feature: Search by title and refuse modes that do not exist yet
+MCP-tools.feature: Transcript tools warn that subtitles are untrusted
+MCP-tools.feature: Prompt templates are available through MCP
 NRM-normalize.feature: Rolling auto captions are de-duplicated
 NRM-normalize.feature: Rolling Chinese captions are de-duplicated without spaces
 NRM-normalize.feature: A cue that only shares the first letters of a word is not merged
@@ -140,6 +195,21 @@ OUT-subtitle-output.feature: Every M1 format is available [example 4]
 OUT-subtitle-output.feature: The most processed variant is used by default
 OUT-subtitle-output.feature: A time range keeps the original timestamps
 OUT-subtitle-output.feature: The download file name is safe on Windows
+OUT-subtitle-output.feature: Bilingual ASS puts both languages in each cue
+OUT-subtitle-output.feature: Same-language content is never rendered as bilingual
+OUT-subtitle-output.feature: Built-in styles cannot be modified
+OUT-subtitle-output.feature: The default font follows the target script [example 1]
+OUT-subtitle-output.feature: The default font follows the target script [example 2]
+OUT-subtitle-output.feature: The default font follows the target script [example 3]
+OUT-subtitle-output.feature: Import styles from an existing ASS file
+OUT-subtitle-output.feature: Preview a style on a real frame
+OUT-subtitle-output.feature: Subtitles are written next to a local video
+OUT-subtitle-output.feature: A sidecar target is skipped for online videos
+OUT-subtitle-output.feature: A file edited by hand is saved alongside instead of overwritten
+OUT-subtitle-output.feature: With the skip policy an edited file blocks publishing
+OUT-subtitle-output.feature: Import a subtitle fixed in an external editor
+OUT-subtitle-output.feature: Existing translations are flagged after an import
+OUT-subtitle-output.feature: An import with broken timings points at the bad line
 PIPE-pipeline-queue.feature: Processing stops after the requested stage
 PIPE-pipeline-queue.feature: A temporary failure is retried with backoff
 PIPE-pipeline-queue.feature: A temporary failure becomes a failure after three attempts
@@ -159,6 +229,28 @@ PIPE-pipeline-queue.feature: A graceful shutdown releases what it cannot finish
 PIPE-pipeline-queue.feature: Each run records the settings it used
 PIPE-pipeline-queue.feature: Status changes are pushed as events
 PIPE-pipeline-queue.feature: Cancelling an item stops its running work
+PRF-profiles.feature: Each layer overrides the one before it
+PRF-profiles.feature: Lists are replaced, not merged
+PRF-profiles.feature: Editing a profile does not touch finished work
+PRF-profiles.feature: A complete profile is accepted
+PRF-profiles.feature: Invalid profiles are rejected with the field path [example 1]
+PRF-profiles.feature: Invalid profiles are rejected with the field path [example 2]
+PRF-profiles.feature: Invalid profiles are rejected with the field path [example 3]
+PRF-profiles.feature: Invalid profiles are rejected with the field path [example 4]
+PRF-profiles.feature: Invalid profiles are rejected with the field path [example 5]
+PRF-profiles.feature: Invalid profiles are rejected with the field path [example 6]
+PRF-profiles.feature: Executors can be mixed per stage
+PRF-profiles.feature: The built-in default profile cannot be deleted
+PRF-profiles.feature: Channel overrides apply to later items of that channel
+PRM-prompts.feature: A prompt must have a known kind
+PRM-prompts.feature: Saving a change creates a new version
+PRM-prompts.feature: An undefined variable is rejected on save
+PRM-prompts.feature: A built-in prompt cannot be changed in place
+PRM-prompts.feature: A profile keeps its pinned version after a new one is saved
+PRM-prompts.feature: Promoting a version changes profiles that follow the default
+PRM-prompts.feature: A playground run changes nothing
+PRM-prompts.feature: Compare two versions on the same lines
+PRM-prompts.feature: A prompt in use cannot be deleted
 SEC-config-secrets.feature: Environment variables override the config file
 SEC-config-secrets.feature: The config file is used when no environment variable is set
 SEC-config-secrets.feature: Database-managed settings are not accepted in the config file
@@ -170,6 +262,16 @@ SEC-config-secrets.feature: The server refuses to start without a master key
 SEC-config-secrets.feature: A wrong master key is reported with the way out
 SEC-config-secrets.feature: Rotating the master key keeps every secret readable
 SEC-config-secrets.feature: Resetting secrets keeps the library
+SEC-config-secrets.feature: An invalid config import changes nothing
+SEG-segment.feature: Manual captions skip segmentation
+SEG-segment.feature: Merging fragments keeps the outer timestamps
+SEG-segment.feature: A split inside a cue uses the word timings
+SEG-segment.feature: Output that contains timestamps is rejected
+SEG-segment.feature: A chunk whose markers cannot be aligned keeps its original split
+SEG-segment.feature: Output that changes the words is rejected
+SEG-segment.feature: Forbid ignores splits inside a source segment
+SEG-segment.feature: Without word timings a long cue is split at a silence
+SEG-segment.feature: With audio downloads disabled the split is interpolated
 SRC-transcript-sources.feature: Manual captions in the original language win over auto captions
 SRC-transcript-sources.feature: A lower entry in the priority list is used when the first ones are missing
 SRC-transcript-sources.feature: Platform machine translations are not used by default
@@ -189,3 +291,18 @@ SRC-transcript-sources.feature: A podcast transcript tag is used before ASR
 SRC-transcript-sources.feature: A podcast transcript that does not match the audio length is flagged
 SRC-transcript-sources.feature: The source transcript records where it came from
 SRC-transcript-sources.feature: The item lists every source that was probed and why it was not used
+TRN-translate.feature: Several targets share one corrected transcript
+TRN-translate.feature: A sentence spanning two cues is translated as one and split back
+TRN-translate.feature: Unacceptable translations are retried [example 1]
+TRN-translate.feature: Unacceptable translations are retried [example 2]
+TRN-translate.feature: Unacceptable translations are retried [example 3]
+TRN-translate.feature: Unacceptable translations are retried [example 4]
+TRN-translate.feature: A proper noun may stay as it is
+TRN-translate.feature: A translation that reads too fast is kept with a warning
+TRN-translate.feature: A cue that never validates keeps the original text
+TRN-translate.feature: Chinese script conversion uses OpenCC without the LLM [example 1]
+TRN-translate.feature: Chinese script conversion uses OpenCC without the LLM [example 2]
+TRN-translate.feature: Chinese script conversion uses OpenCC without the LLM [example 3]
+TRN-translate.feature: Localisation runs OpenCC first and lets the LLM fix wording
+TRN-translate.feature: Same source and target language skips translation
+TRN-translate.feature: A manual subtitle track in the target language is reused

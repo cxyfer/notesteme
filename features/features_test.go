@@ -16,7 +16,9 @@ import (
 )
 
 // defaultTags 是沒有指定 -godog.tags 時的過濾條件（ADR-0015）。
-const defaultTags = "@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui"
+//
+// M2 的場景全部通過之後，預設 tag 也涵蓋 @M2（OR 項各自附加排除條件，見 tagExpr）。
+const defaultTags = "@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui,@M2 && ~@manual && ~@pending-m0 && ~@wip && ~@ui"
 
 // excludedTags 是預設排除的 tag；指定 -godog.tags 時會併入每一個 OR 項。
 var excludedTags = []string{"manual", "pending-m0", "wip", "ui"}
