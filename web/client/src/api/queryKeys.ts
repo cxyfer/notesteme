@@ -9,6 +9,18 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.items.details(), id] as const,
     // 選影音用的清單（ItemPicker）：不放在 lists() 底下，避免和媒體庫的 infinite query 共用前綴
     picker: (q: string) => [...queryKeys.items.all, "picker", q] as const,
+    // 字幕、執行紀錄、輸出不放在 detail 底下：每個 stage.status 都讓 detail 失效，上千句的字幕不能跟著重抓
+    allCues: () => [...queryKeys.items.all, "cues"] as const,
+    cuesOf: (id: string) => [...queryKeys.items.allCues(), id] as const,
+    cues: (id: string, q: { variant?: string; lang?: string }) =>
+      [...queryKeys.items.cuesOf(id), q] as const,
+    allRuns: () => [...queryKeys.items.all, "runs"] as const,
+    runs: (id: string) => [...queryKeys.items.allRuns(), id] as const,
+    allOutputs: () => [...queryKeys.items.all, "outputs"] as const,
+    outputs: (id: string) => [...queryKeys.items.allOutputs(), id] as const,
+    deletionPreview: (id: string) => [...queryKeys.items.all, "deletion-preview", id] as const,
+    /** 佇列頁「需要你處理」的計數（GET /api/items?status=…&limit=1 的 total） */
+    attention: (stage: string) => [...queryKeys.items.all, "attention", stage] as const,
   },
   profiles: ["profiles"] as const,
   // 處理方案的單筆與版本（前綴是 profiles，列表失效時一起失效）

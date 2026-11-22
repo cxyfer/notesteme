@@ -175,6 +175,25 @@ describe("invalidationTable", () => {
     expect(qc2.getQueryState(queryKeys.items.list({ q: "" }))?.isInvalidated).toBe(false);
   });
 
+  it("字幕只在產生字幕的步驟完成時失效；輸出只在 publish 完成時失效（UI-2）", async () => {
+    const keys = [
+      queryKeys.items.cues("1", { variant: "corrected" }),
+      queryKeys.items.outputs("1"),
+      queryKeys.items.runs("1"),
+      queryKeys.items.cues("2", {}),
+    ];
+    const run = async (stage: string, status: string) => {
+      const qc = new QueryClient();
+      for (const k of keys) qc.setQueryData(k, 1);
+      for (const k of invalidationTable["stage.status"]({ ...ev("stage.status"), stage, status }))
+        await qc.invalidateQueries({ queryKey: k });
+      return keys.map((k) => qc.getQueryState(k)?.isInvalidated);
+    };
+    expect(await run("correct", "running")).toEqual([false, false, true, false]);
+    expect(await run("correct", "done")).toEqual([true, false, true, false]);
+    expect(await run("publish", "done")).toEqual([false, true, true, false]);
+  });
+
   it("重新連上時只讓詳情失效，列表保留", async () => {
     const qc = new QueryClient();
     const keys = [queryKeys.items.detail("1"), queryKeys.items.list({ q: "" })];

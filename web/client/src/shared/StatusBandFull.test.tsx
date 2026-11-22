@@ -109,7 +109,9 @@ describe("StatusBand variant=full", () => {
 
   it("沒有長度時停用 slider", async () => {
     const onSeek = vi.fn();
-    render(<StatusBand variant="full" stages={stages} label="x" durationS={null} onSeek={onSeek} />);
+    render(
+      <StatusBand variant="full" stages={stages} label="x" durationS={null} onSeek={onSeek} />,
+    );
     const slider = screen.getByRole("slider");
     expect(slider.getAttribute("aria-disabled")).toBe("true");
     slider.focus();

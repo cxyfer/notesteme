@@ -119,7 +119,7 @@ export async function request<T>(
   }
 }
 
-/** 有型別的捷徑：api.get("/api/queue")、api.post("/api/auth/login", { body })。 */
+/** 有型別的捷徑：api.get("/api/queue")、api.post("/api/auth/login", { body })、api.patch(…)。 */
 export const api = {
   get<P extends keyof paths>(path: P | string, opts?: RequestOptions) {
     return request<ResponseOf<P, "get">>("GET", path, opts);
@@ -135,6 +135,12 @@ export const api = {
     opts?: RequestOptions & { body?: BodyOf<P, "put"> },
   ) {
     return request<ResponseOf<P, "put">>("PUT", path, opts);
+  },
+  patch<P extends keyof paths>(
+    path: P | string,
+    opts?: RequestOptions & { body?: BodyOf<P, "patch"> },
+  ) {
+    return request<ResponseOf<P, "patch">>("PATCH", path, opts);
   },
   delete<P extends keyof paths>(path: P | string, opts?: RequestOptions) {
     return request<ResponseOf<P, "delete">>("DELETE", path, opts);

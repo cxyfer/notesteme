@@ -117,3 +117,29 @@ export function formatTimecode(totalSeconds: number) {
     ? `${h}:${String(m).padStart(2, "0")}:${sec}`
     : `${String(m).padStart(2, "0")}:${sec}`;
 }
+
+/** 位元組：依 UI 語言的 KB／MB／GB（1024 進位） */
+export function formatBytes(n: number, lang: Language = currentLanguage()) {
+  const units = ["byte", "kilobyte", "megabyte", "gigabyte", "terabyte"] as const;
+  let v = Math.max(0, n);
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return new Intl.NumberFormat(lang, {
+    style: "unit",
+    unit: units[i],
+    unitDisplay: "short",
+    maximumFractionDigits: i === 0 ? 0 : 1,
+  }).format(v);
+}
+
+/** 美元金額（成本一律以 USD 記錄） */
+export function formatUsd(n: number, lang: Language = currentLanguage()) {
+  return new Intl.NumberFormat(lang, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: n !== 0 && Math.abs(n) < 0.01 ? 4 : 2,
+  }).format(n);
+}

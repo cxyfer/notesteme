@@ -25,6 +25,10 @@ export interface RowFocusProps {
 
 export interface VirtualListHandle {
   scrollToTop: () => void;
+  /** 捲到第 i 列（不移動焦點）；用在切換顯示模式後回到同一個位置、播放時跟著目前句 */
+  scrollToIndex: (i: number, align?: "start" | "center" | "auto") => void;
+  /** 目前可視範圍的第一列（不含 overscan）；沒有列時是 -1 */
+  firstVisibleIndex: () => number;
 }
 
 export interface VirtualListProps<T> {
@@ -85,6 +89,15 @@ function VirtualListInner<T>(
     scrollToTop: () => {
       virtualizer.scrollToOffset(0);
       setActive(0);
+    },
+    scrollToIndex: (i, align = "auto") => {
+      if (items.length === 0) return;
+      virtualizer.scrollToIndex(Math.max(0, Math.min(items.length - 1, i)), { align });
+    },
+    firstVisibleIndex: () => {
+      const offset = virtualizer.scrollOffset ?? 0;
+      const first = virtualizer.getVirtualItems().find((v) => v.end > offset);
+      return first?.index ?? -1;
     },
   }));
 
