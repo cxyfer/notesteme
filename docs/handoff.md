@@ -103,7 +103,7 @@
     - harness：假 ffmpeg 的預覽模式、請求 body 的 `/tmp/<x>` 對應到場景根目錄（`steps.md` 第 4 節）；順手修了 `TestFFmpegSilencedetect` 的 flaky 斷言（暫存目錄的隨機數字可能含 "100"）。
     - **依 /goal 由 advisor 裁決、待 owner 追認**：OUT-R5 同語言場景最後一步改成斷言標頭（已改 `.feature`）；`path` 匯入不受 GRD-R7 限制；預覽 scope 改 `ingest`；M2 路由 scope（讀取 `read`、寫入 `admin`，settings 維持 `admin`）。記在 OUT、AUTH 規格的待決問題。
     - `@M2`：31 passed、23 failed、63 pending（OUT 剩 R10～R12 的 S8 與 MCP 的 `import_transcript`）。
-- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，188 passed、3 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
+- **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，189 passed、2 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
   |---|---|---|
@@ -113,7 +113,7 @@
   | GRD | 22 | 0 |
   | ING | 24 | 0 |
   | LIB | 10 | 0 |
-  | NRM | 10 | 1 |
+  | NRM | 11 | 0 |
   | OPS | 14 | 0 |
   | OUT | 8 | 0 |
   | PIPE | 19 | 0 |
@@ -121,7 +121,7 @@
   | SRC | 19 | 0 |
 
   AUTH、CLI、GRD、ING、LIB、OPS、OUT、PIPE、SEC、SRC 的 M1 場景全部通過（ING-R7 隨 S1 通過）。剩下的 3 個 pending：
-  - **NRM-R7（1 個）**：場景的影片原文語言是預設的 `en`，卻只有 `zh-Hans` 的自動字幕，預設的 `caption_priority` 不會選它，所以 `processed up to` 依規則 3 pending。場景要改（例如改成 `manual captions`，或宣告原文語言 `zh-Hans`），需要 owner 同意。
+  - **NRM-R7**：已在 2026-11-22 修好（場景宣告原文語言 `zh-Hans`，依 /goal 採 advisor 建議，待 owner 追認），M1 預設 tag 現在是 189 passed、2 pending（只剩 DEL `@mcp`）。原來的描述：場景的影片原文語言是預設的 `en`，卻只有 `zh-Hans` 的自動字幕。
   - **DEL `@mcp`（2 個）**：需等 M2 的 MCP tool（`get_transcript`、`tools/list`）。
 
   M1 的 OUT 場景全部通過，但 OUT 的 M2 部分還沒做，所以規格狀態仍是 `ready`，不是 `implemented`。

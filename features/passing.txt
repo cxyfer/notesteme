@@ -114,6 +114,7 @@ NRM-normalize.feature: Formatting tags and empty cues are removed but music mark
 NRM-normalize.feature: Overlapping cues are trimmed so timings always move forward
 NRM-normalize.feature: Out-of-order cues are sorted by start time
 NRM-normalize.feature: Word timings survive a merge
+NRM-normalize.feature: Changing the target language does not re-run normalization
 NRM-normalize.feature: The normalized transcript points back to its source
 OPS-operations.feature: Back up while the server is running
 OPS-operations.feature: Restore brings the library back

@@ -44,3 +44,4 @@
 - 300ms、40ms 的門檻是否要依來源調整，M0 量測 segment 長度分佈後再決定。
 - yt-dlp 下載的 YouTube 自動字幕（VTT）是「後一句的開頭重複前一句的結尾」，不是「後一句以前一句開頭」，NRM-R1 不會去重（2026-11-12，切片 1 審查時發現）。做 SRC 的 `youtube-auto` 切片前評估改用 yt-dlp 的 `json3` 格式，直接取得不滾動的原始資料；不適合時再擴充 NRM-R1。M1 的人工字幕路徑不受影響。
 - NRM-R1 的時間條件「1 秒」與其他門檻一樣是暫定值，M0 量測後再調整。
+- NRM-R7 場景（2026-11-22，依 /goal 採 advisor 建議，待 owner 追認；已修改 `.feature`）：場景原本只有 `zh-Hans` 的自動字幕，而影片的原文語言預設是 `en`，預設的 `caption_priority` 不會選它，`processed up to` 依規則 3 變成 pending。改成先用 `a YouTube video … with:` 宣告 `language: zh-Hans`，場景才真的驗證「改目標語言不重跑 normalize」。

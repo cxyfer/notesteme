@@ -124,7 +124,10 @@ Feature: Normalize transcripts
 
   @NRM-03 @NRM-R7
   Scenario: Changing the target language does not re-run normalization
-    Given "yt:abc123xxxxx" has auto captions in "zh-Hans"
+    Given a YouTube video "yt:abc123xxxxx" with:
+      | field    | value   |
+      | language | zh-Hans |
+    And "yt:abc123xxxxx" has auto captions in "zh-Hans"
     And the item "yt:abc123xxxxx" has been processed up to "normalize"
     When the owner sends "POST /api/items/yt:abc123xxxxx/rerun" with:
       """
