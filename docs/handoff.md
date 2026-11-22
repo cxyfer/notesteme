@@ -139,7 +139,7 @@
     - `POST /api/prompts/playground`、`POST /api/prompts/{id}/compare`（`internal/pipeline/playground.go`、`internal/api/prompts_playground.go`、`internal/prompts/diff.go`）：同步呼叫 `internal/llm`（`PlanChunks`／`BuildFixed`／`RunChunk`），不經過 task queue 與 stage run，不寫入任何東西（單元測試比對 stage_runs、artifacts、llm_chunks、events、tasks、術語候選前後相同）。步驟由 prompt 的類型決定；`llmStages` 只讀；一對一的步驟（correct）可以用，自己合併輸出的 segment（`assemble`）與自己處理多個目標的 translate（沒有 `apply`／`fallback`）回 501，要各自的切片補上。範圍上限 200 句、同時最多 2 個、整體 3 分鐘；缺 key 409 `needs_action`、限流 429、provider 失敗 502。`estimate_usd` 目前一律 `null`（`internal/cost` 沒有任何 LLM 價格，只加了 `EstimateLLM` 與單位常數）。決定 P9、P10 記在 PRM 規格，待 owner 追認。
     - DEL-R9：`DELETE /api/items/{id}` 帶 `delete_outputs: true` 時，刪除 `outputs` 紀錄中 sha256 與現在檔案相同的檔案（`internal/output/remove.go`，`os.Root`、不跟隨 symlink；先過 pathguard），改過的列在 `kept_outputs`（`modified`、`outside_roots`、`unreadable`）；`deletion-preview` 列出輸出檔與 `modified`；還原時有紀錄但檔案不在就從 `publish` 重跑寫回。永久刪除不動輸出檔（規格資料表）。CLI `items rm --delete-outputs` 原本就有，現在會印保留的檔案。決定記在 DEL 規格。
     - 依 /goal 修改 `.feature`（待 owner 追認）：`A playground run changes nothing` 補 `standard` 處理方案，否則 `correct` 是 `skipped`；harness 的 `the response contains` 不再展開預期值中的虛擬路徑（回應已換回虛擬路徑，steps.md 已同步）。
-    - `@M2`：以 S5 之後的 master 為基準，passed 71 → 75（PRM 兩個、DEL 兩個）。
+    - `@M2`：以 S6b 之後的 master 為基準，83 → 87 passed、3 → 1 failed（剩 MCP stdio）、31 → 29 pending（PRM 兩個、DEL 兩個由失敗或 pending 變通過）。
 - **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，189 passed、2 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內）。
 
   | Feature | passed | pending |
