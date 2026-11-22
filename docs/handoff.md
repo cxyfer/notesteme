@@ -160,7 +160,8 @@
     - migration 00016：`tasks.agent_failures`、`tasks.release_reason`、`llm_chunks.executor`／`agent`／`model_reported`；`ReleaseLeases`／`ReleaseOwnedLeases` 不再動 Agent 的租約；chunk 層快取只重用 `executor = 'api'` 的 chunk，有 Agent chunk 的產出不寫步驟層快取鍵。
     - 依 /goal 採保守預設、待 owner 追認：AGT 規格 A1～A11（**A1 並行上限解讀成「每個 Agent 持有的不超過 llm 上限」**，字面讀法與 AGT-R3 場景衝突；**A6 translate 加 agent 以 permanent 失敗**，TRN-R5～R7 的檢查還沒抽成 Agent 可以共用的形式；A3 `max_claims` 讀全域加預設處理方案、其他 `agent.*` 讀 stage run 的快照）、MCP 規格 S3 的補充（AGT tool 是 MCP-R3 的例外）、PIPE 待決問題（重新啟動不動 Agent 的租約）。沒有修改 `.feature`；steps.md 只補了 Agent 步驟的語意說明，沒有新句型。新 fixture：`llm/correct-echo-reported-model`（LLM fixture 多了選填的 `model`，`fakellm.RenderSubmission` 給 Agent 的提交用）。
     - 已知限制：translate 不支援 agent；`GET /api/queue` 仍不列 Agent 任務；提交沒有 token 用量；Agent 任務到期放回沒有次數上限；內建 worker 的任務在執行期間到期仍只在啟動時回收。
-    - 變異測試（10 項，全部變紅）：每個 Agent 的上限、舊 token（heldTask 與 `CompleteTask` 的 SQL 兩層都拿掉才會變紅，單拿掉一層由另一層擋下）、3 次失敗、release 不計 attempts、逾時分支、來源紀錄、共用驗證、重新啟動保留 Agent 租約、Agent 結果不寫步驟層快取、sweeper 放回到期租約。
+    - 重跑取代 Agent 步驟時，`CancelPendingTasks` 也結束舊 stage run 中被 Agent 領取的任務（清掉租約，舊 token 回 `lease_expired`，不會到期後又被放回）。
+    - 變異測試（11 項，全部變紅；第 11 項是上面這條）：每個 Agent 的上限、舊 token（heldTask 與 `CompleteTask` 的 SQL 兩層都拿掉才會變紅，單拿掉一層由另一層擋下）、3 次失敗、release 不計 attempts、逾時分支、來源紀錄、共用驗證、重新啟動保留 Agent 租約、Agent 結果不寫步驟層快取、sweeper 放回到期租約。
     - `@M2`：以 S9 之後的 master（472e948）為基準，102 → 116 passed、15 → 1 pending（AGT 14 個全部通過；剩下 SEC 的 config import，與 S11a 合併後是 117 passed、0 pending、0 failed）、0 failed。M1 預設 tag：191 passed、0 pending。
 - **驗收結果**（預設 tag：`@M1 && ~@manual && ~@pending-m0 && ~@wip && ~@ui`）：191 個場景，191 passed、0 pending、0 failed、0 undefined（SRC-R11 mixed 標為 `@wip`，不在預設 tag 內；DEL `@mcp` 兩個在 S9 通過）。
 
