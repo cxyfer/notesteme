@@ -2,7 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { queryKeys } from "../api/queryKeys";
-import { invalidationTable } from "./invalidation";
+import { invalidationTable, reconnectInvalidations } from "./invalidation";
 import { backoffDelay, connectEventStream } from "./stream";
 import { EVENT_TYPES, type ServerEvent } from "./types";
 
@@ -160,18 +160,26 @@ describe("invalidationTable", () => {
     for (const t of EVENT_TYPES) expect(invalidationTable[t]).toBeTypeOf("function");
   });
 
-  it("stage.status 讓詳情、列表與佇列失效；item.created 不讓列表失效（只顯示「有 N 個新項目」）", async () => {
+  it("stage.status 讓詳情與佇列失效、不讓列表失效（只更新受影響的列）；item.created 也不讓列表失效", async () => {
     const qc = new QueryClient();
     const keys = [queryKeys.items.detail("1"), queryKeys.items.list({ q: "" }), queryKeys.queue];
     for (const k of keys) qc.setQueryData(k, 1);
     for (const k of invalidationTable["stage.status"](ev("stage.status")))
       await qc.invalidateQueries({ queryKey: k });
-    expect(keys.map((k) => qc.getQueryState(k)?.isInvalidated)).toEqual([true, true, true]);
+    expect(keys.map((k) => qc.getQueryState(k)?.isInvalidated)).toEqual([true, false, true]);
 
     const qc2 = new QueryClient();
     for (const k of keys) qc2.setQueryData(k, 1);
     for (const k of invalidationTable["item.created"](ev("item.created")))
       await qc2.invalidateQueries({ queryKey: k });
     expect(qc2.getQueryState(queryKeys.items.list({ q: "" }))?.isInvalidated).toBe(false);
+  });
+
+  it("重新連上時只讓詳情失效，列表保留", async () => {
+    const qc = new QueryClient();
+    const keys = [queryKeys.items.detail("1"), queryKeys.items.list({ q: "" })];
+    for (const k of keys) qc.setQueryData(k, 1);
+    for (const k of reconnectInvalidations) await qc.invalidateQueries({ queryKey: k });
+    expect(keys.map((k) => qc.getQueryState(k)?.isInvalidated)).toEqual([true, false]);
   });
 });

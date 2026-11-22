@@ -41,7 +41,8 @@ export function setUnauthorizedHandler(fn: Unauthorized | undefined) {
 
 export interface RequestOptions {
   body?: unknown;
-  query?: Record<string, string | number | boolean | undefined>;
+  /** 陣列會展開成重複的參數（例如 status=a&status=b） */
+  query?: Record<string, string | number | boolean | readonly string[] | undefined>;
   signal?: AbortSignal;
   headers?: Record<string, string>;
 }
@@ -71,14 +72,21 @@ export async function request<T>(
     if (token) headers[CSRF_HEADER] = token;
   }
   let body: BodyInit | undefined;
-  if (opts.body !== undefined) {
+  if (opts.body instanceof FormData) {
+    // multipart：Content-Type（含 boundary）交給瀏覽器產生
+    body = opts.body;
+  } else if (opts.body !== undefined) {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(opts.body);
   }
   let url = path;
   if (opts.query) {
     const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(opts.query)) if (v !== undefined) q.set(k, String(v));
+    for (const [k, v] of Object.entries(opts.query)) {
+      if (v === undefined) continue;
+      if (Array.isArray(v)) for (const x of v as readonly string[]) q.append(k, x);
+      else q.set(k, String(v));
+    }
     const s = q.toString();
     if (s) url += `?${s}`;
   }
@@ -116,7 +124,10 @@ export const api = {
   get<P extends keyof paths>(path: P | string, opts?: RequestOptions) {
     return request<ResponseOf<P, "get">>("GET", path, opts);
   },
-  post<P extends keyof paths>(path: P, opts?: RequestOptions & { body?: BodyOf<P, "post"> }) {
+  post<P extends keyof paths>(
+    path: P | string,
+    opts?: RequestOptions & { body?: BodyOf<P, "post"> | FormData },
+  ) {
     return request<ResponseOf<P, "post">>("POST", path, opts);
   },
   put<P extends keyof paths>(

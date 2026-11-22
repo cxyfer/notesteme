@@ -21,6 +21,11 @@ export interface ErrorCalloutProps {
   /** 覆寫顯示的訊息（例如頁面自己有更具體的說明） */
   message?: string;
   actions?: ErrorAction[];
+  /**
+   * 預設 true：role="alert"，出現時立刻宣告。放在列表的列裡時設 false
+   * （虛擬列表捲動時列會重新掛載，不能每次都宣告；改由頁面層級的 aria-live 宣告狀態變化）。
+   */
+  live?: boolean;
 }
 
 function guessCategory(err: unknown): ErrorCategory {
@@ -28,11 +33,17 @@ function guessCategory(err: unknown): ErrorCategory {
   return "needs_action";
 }
 
-export function ErrorCallout({ error, category, message, actions = [] }: ErrorCalloutProps) {
+export function ErrorCallout({
+  error,
+  category,
+  message,
+  actions = [],
+  live = true,
+}: ErrorCalloutProps) {
   const { t } = useTranslation();
   const cat = category ?? guessCategory(error);
   return (
-    <div className="callout" role="alert" data-category={cat}>
+    <div className="callout" role={live ? "alert" : undefined} data-category={cat}>
       <svg className="callout__icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
         <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
         <path

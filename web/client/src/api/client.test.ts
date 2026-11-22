@@ -99,6 +99,25 @@ describe("request", () => {
     ).resolves.toBeUndefined();
     expect(lastInit().url).toBe("/api/x?a=1&c=x+y");
   });
+
+  it("陣列的 query 參數展開成重複的參數", async () => {
+    fetchMock.mockResolvedValue(json(200, {}));
+    await api.get("/api/items", {
+      query: { status: ["metadata:done", "normalize:failed"], q: "a" },
+    });
+    expect(lastInit().url).toBe("/api/items?status=metadata%3Adone&status=normalize%3Afailed&q=a");
+  });
+
+  it("FormData 本體不設 Content-Type、不轉成 JSON，仍帶 CSRF", async () => {
+    fetchMock.mockResolvedValue(json(201, { items: [] }));
+    const fd = new FormData();
+    fd.set("profile", "p");
+    await api.post("/api/items", { body: fd });
+    const { init, headers } = lastInit();
+    expect(init.body).toBe(fd);
+    expect(headers["Content-Type"]).toBeUndefined();
+    expect(headers["X-CSRF-Token"]).toBe("tok=1");
+  });
 });
 
 describe("apiPath", () => {

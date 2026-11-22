@@ -9,10 +9,16 @@ import type { EventType, ServerEvent } from "./types";
 
 type Listener = (ev: ServerEvent) => void;
 const listeners = new Set<Listener>();
+const reconnectListeners = new Set<() => void>();
 
 /** 把事件送給所有 useServerEvent 的訂閱者（測試也用它模擬事件）。 */
 export function dispatchServerEvent(ev: ServerEvent) {
   for (const l of listeners) l(ev);
+}
+
+/** 通知 useStreamReconnect 的訂閱者「重新連上了」（測試也用它模擬）。 */
+export function dispatchStreamReconnect() {
+  for (const l of reconnectListeners) l();
 }
 
 export function useEventStream(
@@ -24,10 +30,14 @@ export function useEventStream(
     optsRef.current = opts;
   });
   useEffect(() => {
+    let opened = false;
     return connectEventStream({
       ...optsRef.current,
       onOpen: () => {
         for (const key of reconnectInvalidations) void qc.invalidateQueries({ queryKey: key });
+        // 第一次連上不算：之前沒有漏掉事件
+        if (opened) dispatchStreamReconnect();
+        opened = true;
       },
       onEvent: (ev) => {
         for (const key of invalidationTable[ev.type](ev))
@@ -56,4 +66,19 @@ export function useServerEvent(handler: Listener, types?: readonly EventType[]) 
       listeners.delete(l);
     };
   }, [key]);
+}
+
+/** 斷線後重新連上時呼叫（第一次連上不呼叫）：斷線期間的事件收不到，頁面可以提示重新載入。 */
+export function useStreamReconnect(handler: () => void) {
+  const ref = useRef(handler);
+  useEffect(() => {
+    ref.current = handler;
+  });
+  useEffect(() => {
+    const l = () => ref.current();
+    reconnectListeners.add(l);
+    return () => {
+      reconnectListeners.delete(l);
+    };
+  }, []);
 }
