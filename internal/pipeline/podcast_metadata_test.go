@@ -363,7 +363,7 @@ func TestStagedEpisodeSurvivesOtherRunsCleanup(t *testing.T) {
 		if err := os.WriteFile(part, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		name, err := stageEpisodeFile(part, dir, ".mp3", sumHex(body))
+		name, err := episodes.Stage(part, dir, ".mp3", sumHex(body))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -384,8 +384,7 @@ func TestStagedEpisodeSurvivesOtherRunsCleanup(t *testing.T) {
 	if a != "episode.mp3" || b == a {
 		t.Fatalf("a = %q，b = %q", a, b)
 	}
-	releaseStagedEpisode(dir, b)
-	removeStaleEpisodes(dir, b)
+	episodes.Commit(dir, b)
 	if got := read(a); got != "A-BYTES" {
 		t.Fatalf("A 的暫存檔被清理刪掉：%q", got)
 	}
@@ -396,7 +395,7 @@ func TestStagedEpisodeSurvivesOtherRunsCleanup(t *testing.T) {
 		t.Fatalf("C 拿到已被占用的檔名 %q", c)
 	}
 	// A 的結果被丟棄：只刪 A 自己的檔案，C 的檔案完好。
-	discardStagedEpisode(dir, a)
+	episodes.Discard(dir, a)
 	if got := read(a); got == "A-BYTES" {
 		t.Errorf("A 丟棄之後檔案還在")
 	}
@@ -423,12 +422,12 @@ func TestRecoverEpisodeFileDoesNotReplaceStagedFile(t *testing.T) {
 		}
 		return p
 	}
-	name, err := stageEpisodeFile(part("META"), dir, ".mp3", sumHex("META"))
+	name, err := episodes.Stage(part("META"), dir, ".mp3", sumHex("META"))
 	if err != nil || name != "episode.mp3" {
 		t.Fatalf("name = %q, %v", name, err)
 	}
 	asr := part("ASR")
-	err = recoverEpisodeFile(asr, dir, name)
+	err = episodes.Recover(asr, dir, name)
 	if err == nil || classOf(t, err) != errclass.ClassRetryable {
 		t.Fatalf("err = %v，預期可重試的錯誤", err)
 	}
@@ -436,8 +435,8 @@ func TestRecoverEpisodeFileDoesNotReplaceStagedFile(t *testing.T) {
 		t.Errorf("暫存檔被蓋掉：%q", b)
 	}
 	// metadata 結果被丟棄之後可以放回。
-	discardStagedEpisode(dir, name)
-	if err := recoverEpisodeFile(asr, dir, name); err != nil {
+	episodes.Discard(dir, name)
+	if err := episodes.Recover(asr, dir, name); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(dir, name)); string(b) != "ASR" {
@@ -445,7 +444,7 @@ func TestRecoverEpisodeFileDoesNotReplaceStagedFile(t *testing.T) {
 	}
 	// 下載期間別的任務已 commit 了同名的新檔（登記已放掉）：不蓋掉它，沿用現有的檔案，丟掉這次下載。
 	late := part("LATE-ASR")
-	if err := recoverEpisodeFile(late, dir, name); err != nil {
+	if err := episodes.Recover(late, dir, name); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(dir, name)); string(b) != "ASR" {
@@ -466,7 +465,7 @@ func TestRemoveStaleEpisodesSweepsUnregisteredOrphans(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	removeStaleEpisodes(dir, "episode.mp3")
+	episodes.Sweep(dir, "episode.mp3")
 	var got []string
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {

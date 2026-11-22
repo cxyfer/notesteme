@@ -47,7 +47,7 @@ func (p *Pipeline) runPodcastMetadata(ctx context.Context, it store.Item, lang L
 	var discard func()
 	if audio.created {
 		if dir, derr := filepath.Abs(MediaCacheDir(p.dataDir, it.ID)); derr == nil {
-			discard = func() { discardStagedEpisode(dir, audio.File) }
+			discard = func() { episodes.Discard(dir, audio.File) }
 		}
 	}
 
@@ -105,10 +105,7 @@ func (p *Pipeline) runPodcastMetadata(ctx context.Context, it store.Item, lang L
 	// 新的快照寫入之後，舊快照所指的音檔（副檔名不同時）才可以刪。
 	if dir, err := filepath.Abs(MediaCacheDir(p.dataDir, it.ID)); err == nil {
 		res.afterCommit = func() {
-			if audio.created {
-				releaseStagedEpisode(dir, audio.File)
-			}
-			removeStaleEpisodes(dir, audio.File)
+			episodes.Commit(dir, audio.File)
 		}
 	}
 	// 趁著剛取得字幕軌，決定下游 transcript 任務的資源類別（與 transcript 步驟選軌的結論一致）。

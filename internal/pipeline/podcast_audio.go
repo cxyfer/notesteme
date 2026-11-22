@@ -3,22 +3,17 @@ package pipeline
 import (
 	"cmp"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
-	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
@@ -30,10 +25,6 @@ import (
 
 // audioFetchTimeout 是下載一集音檔的逾時（大小上限是 netguard.LimitAudio，GRD-R5）。
 const audioFetchTimeout = 2 * time.Hour
-
-// episodeFilePattern 是下載後的音檔檔名：episode.<副檔名>，或撞名時的 episode-<8 碼 16 進位>.<副檔名>（sha256 前 8 碼或隨機）；
-// 媒體端點只開啟符合這個格式的檔名。
-var episodeFilePattern = regexp.MustCompile(`^episode(-[0-9a-f]{8})?\.[a-z0-9]{1,5}$`)
 
 // audioExts 是音檔副檔名的白名單；其他一律 .bin。
 var audioExts = map[string]bool{
@@ -182,12 +173,12 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 	// name 非空（ASR 重新下載）時沿用快照記錄的檔名，直接覆蓋。
 	created := false
 	if name != "" {
-		if err := recoverEpisodeFile(part, dir, name); err != nil {
+		if err := episodes.Recover(part, dir, name); err != nil {
 			return nil, err
 		}
 	} else {
 		var err error
-		if name, err = stageEpisodeFile(part, dir, audioExt(finalURL, enc.Type), sum); err != nil {
+		if name, err = episodes.Stage(part, dir, audioExt(finalURL, enc.Type), sum); err != nil {
 			return nil, err
 		}
 		created = true
@@ -197,69 +188,6 @@ func (d audioDownloader) download(ctx context.Context, it store.Item, enc podcas
 		File: name, URL: finalURL, Bytes: n, SHA256: sum,
 		DurationS: info.DurationS, mediaKind: info.Kind(), created: created,
 	}, nil
-}
-
-// recoverEpisodeFile 把 ASR 重新下載的 part 放回快照記錄的檔名。這個檔名若已被同時進行的 metadata 任務暫存
-// （stagedEpisodes 有登記），不能蓋掉它：那個任務 commit 的 sha 與長度要跟檔案內容一致（Codex P1）；
-// 回傳可以重試的錯誤，等那個任務 commit 或丟棄之後再試。檢查與 rename 在同一把鎖之內，
-// 之後才開始暫存的 metadata 任務會因為 O_EXCL 發現檔案已存在而改用別的檔名。
-// 目的檔已存在時一律不蓋掉，沿用現有的檔案。
-func recoverEpisodeFile(part, dir, name string) error {
-	stagedEpisodes.Lock()
-	defer stagedEpisodes.Unlock()
-	if _, inFlight := stagedEpisodes.paths[stagedKey(dir, name)]; inFlight {
-		return &errclass.Error{Class: errclass.ClassRetryable, Source: "podcast", Message: "音檔正由另一個 metadata 任務更新，稍後重試。"}
-	}
-	dst := filepath.Join(dir, name)
-	// 檔案現在已經存在（例如下載期間另一個 metadata 任務 commit 了同名的新檔，登記已經放掉）：
-	// 不能蓋掉它，沿用現有的檔案，丟掉這次下載（Codex P1）。
-	if _, err := os.Lstat(dst); err == nil {
-		_ = os.Remove(part)
-		return nil
-	}
-	return os.Rename(part, dst)
-}
-
-// stageEpisodeFile 把下載完成的 part 放到 dir，而且不蓋掉已存在的檔案：依序用 O_EXCL 保留 episode<ext>、
-// episode-<sha8><ext>，都已存在時改用隨機的 episode-<8 碼><ext>（已存在就失敗），再 rename 蓋過自己剛建立的空檔。
-// 不共用別的下載已經建立的檔案：那個檔案仍屬於另一個還沒 commit 的執行，它的結果被丟棄時會刪掉它。
-// O_EXCL 在任何檔案系統上都有效，不依賴 hard link。回傳的檔案一定是這次建立的。
-// 保留與 rename 之間若程序崩潰會留下空檔，之後由 afterCommit 的清理刪除（程序重啟後 stagedEpisodes 是空的）。
-// 建立好的檔案登記在 stagedEpisodes，直到它的結果 commit（releaseStagedEpisode）或被丟棄（discardStagedEpisode）。
-func stageEpisodeFile(part, dir, ext, sum string) (string, error) {
-	candidates := []string{"episode" + ext, "episode-" + sum[:8] + ext}
-	for range 8 {
-		var b [4]byte
-		if _, err := rand.Read(b[:]); err != nil {
-			return "", err
-		}
-		candidates = append(candidates, "episode-"+hex.EncodeToString(b[:])+ext)
-	}
-	// 建立與登記在同一把鎖之內：清理（removeStaleEpisodes）不會在兩者之間看到一個還沒登記的新檔。
-	stagedEpisodes.Lock()
-	defer stagedEpisodes.Unlock()
-	for _, n := range candidates {
-		dst := filepath.Join(dir, n)
-		f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-		switch {
-		case err == nil:
-			if err := f.Close(); err != nil {
-				_ = os.Remove(dst)
-				return "", err
-			}
-			if err := os.Rename(part, dst); err != nil {
-				_ = os.Remove(dst)
-				return "", err
-			}
-			stagedEpisodes.paths[stagedKey(dir, n)] = struct{}{}
-			return n, nil
-		case errors.Is(err, fs.ErrExist):
-			continue
-		default:
-			return "", err
-		}
-	}
-	return "", errors.New("暫存音檔失敗：找不到可用的檔名")
 }
 
 // stalePartAge 是 .part 檔多久沒有寫入就視為崩潰遺留的殘檔。下載中的檔案持續在寫入；
@@ -280,59 +208,6 @@ func removeStaleParts(dir string, now time.Time) {
 		if fi, err := e.Info(); err == nil && now.Sub(fi.ModTime()) > stalePartAge {
 			_ = os.Remove(filepath.Join(dir, name))
 		}
-	}
-}
-
-// stagedEpisodes 記錄這個程序裡已經暫存、結果還沒 commit 也還沒被丟棄的音檔（絕對路徑）。
-// 清理不能刪它們：檔名一旦被釋放，之後的下載可能又保留到同一個名稱，而原本那個執行稍後的 afterDiscard
-// 仍會來刪這個名稱，結果刪到別人的檔案（Codex P1）。只有檔案自己的執行（commit 或丟棄）才能把它從這裡拿掉。
-// 程序重啟後這份記錄是空的，崩潰遺留的檔案就由清理刪除。
-var stagedEpisodes = struct {
-	sync.Mutex
-	paths map[string]struct{}
-}{paths: map[string]struct{}{}}
-
-// stagedKey 是 stagedEpisodes 的鍵：媒體目錄的絕對路徑加檔名。
-func stagedKey(dir, name string) string {
-	if abs, err := filepath.Abs(dir); err == nil {
-		dir = abs
-	}
-	return filepath.Join(dir, name)
-}
-
-// releaseStagedEpisode 在結果 commit 之後把檔案從 stagedEpisodes 拿掉：它從此是快照指向的檔案，不再是暫存檔。
-func releaseStagedEpisode(dir, name string) {
-	stagedEpisodes.Lock()
-	defer stagedEpisodes.Unlock()
-	delete(stagedEpisodes.paths, stagedKey(dir, name))
-}
-
-// discardStagedEpisode 在結果沒有寫入時刪除這次暫存的檔案並解除登記。刪除與解除登記在同一把鎖之內，
-// 檔名要等檔案真的不在了才會被別的下載保留。
-func discardStagedEpisode(dir, name string) {
-	stagedEpisodes.Lock()
-	defer stagedEpisodes.Unlock()
-	_ = os.Remove(filepath.Join(dir, name))
-	delete(stagedEpisodes.paths, stagedKey(dir, name))
-}
-
-// removeStaleEpisodes 刪除先前下載留下的其他 episode.* 檔（副檔名可能不同），keep 中的檔名保留，
-// 其他執行已暫存、還沒 commit 的檔案（stagedEpisodes）也保留。
-func removeStaleEpisodes(dir string, keep ...string) {
-	stagedEpisodes.Lock()
-	defer stagedEpisodes.Unlock()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if slices.Contains(keep, e.Name()) || !episodeFilePattern.MatchString(e.Name()) {
-			continue
-		}
-		if _, inFlight := stagedEpisodes.paths[stagedKey(dir, e.Name())]; inFlight {
-			continue
-		}
-		_ = os.Remove(filepath.Join(dir, e.Name()))
 	}
 }
 
