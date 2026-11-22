@@ -77,7 +77,8 @@
 - commit 之後，先依 PIPE-R15 取消並等待執行中的任務，再刪除媒體快取目錄 `<資料目錄>/media/<item-id>/`。等待的範圍包含已經被「取消」改成 cancelled、但還在執行的任務；等不到任務結束（逾時）時保留媒體快取，到永久刪除時再一起刪除。
 - 回應 200：`{id, ref, deleted_at, purge_at, kept_outputs: []}`。
 - 已經在垃圾桶中時回 404 `in_trash`。
-- `delete_outputs` 在 M1 接受但沒有作用，因為還沒有輸出目標。
+- `delete_outputs: true`（M2，DEL-R9）：commit 之後、取消任務之後，刪除 `outputs` 紀錄中「目前內容的 sha256 與紀錄相同」的檔案；改過的檔案（含 symlink、目錄這類不是一般檔案的）保留並列在 `kept_outputs`，每項 `{path, reason}`，原因是 `modified`。已經不存在的檔案略過。刪檔只在紀錄的路徑上，以 `os.Root` 限制在該資料夾內、不跟隨 symlink。`outputs` 紀錄在移到垃圾桶時保留。
+- 永久刪除（`DELETE /api/trash/:id`、`DELETE /api/trash`）不動輸出檔，也沒有 `delete_outputs`（資料表：永久刪除時「不動」）；要刪除輸出檔，在移到垃圾桶時指定。CLI 的 `items rm --purge --delete-outputs` 先移到垃圾桶（帶 `delete_outputs`）再永久刪除，所以有效；影音原本就在垃圾桶中時不會刪輸出檔。
 
 **垃圾桶中的影音**
 - `GET /api/items/:id` 與其下的端點（cues、subtitles、runs、rerun、cancel、deletion-preview）回 404。
@@ -88,6 +89,7 @@
 
 **還原**（`POST /api/trash/:id/restore`）
 - `deleted_at` 改回 NULL，步驟維持 `skipped` 並提供「重試」，寫入 `item.restored` 事件。
+- 還原之後，`outputs` 紀錄中有檔案已經不存在時，從 `publish` 重跑把它們寫回（DEL-R9；不呼叫 LLM）。重跑失敗只記 log，不影響還原。
 - 影音不在垃圾桶中時回 404。
 
 **永久刪除**（`DELETE /api/trash/:id`、`DELETE /api/trash`）
@@ -106,10 +108,11 @@
 - 取消任務前，先在同一個交易中確認影音仍在垃圾桶中，並列出它所有的任務。等不到任務結束時，什麼都不刪。
 
 **刪除預覽**（`GET /api/items/:id/deletion-preview`）
-- 回應：`{artifacts, bytes, spent_usd, outputs: []}`。
+- 回應：`{artifacts, bytes, spent_usd, outputs: [{path, modified, reason?}]}`。
   - `artifacts`：所有版本的產出數。
   - `bytes`：產出加上 media、uploads 的大小。
   - `spent_usd`：這部影音實際花費的總和。
+  - `outputs`：`outputs` 紀錄中仍存在的檔案；`modified: false` 表示指定 `delete_outputs` 時會被刪除，`true` 表示會保留（`reason` 是原因）。已經不存在的檔案不列。唯讀。
 - 唯讀，不改變任何資料。
 
 **定期清理**
@@ -150,3 +153,7 @@
 - 永久刪除後再從舊備份還原，DB 會指向已經不存在的產出檔（備份不含 `/data/artifacts`），這種情況的處理要記入 OPS 的待決問題。
 - M1 還沒有 `cues_fts`、`outputs`、術語候選。之後的切片接上時，永久刪除要一併清除。
 - 本機檔案（2026-11-21，LOCAL 切片實作時決定）：上傳的檔案存在 `/data/uploads/<id>/`，永久刪除時一併刪除；inbox 與 `media_roots` 中的原檔是 owner 的，永遠不刪（DEL-R8）。tombstone 記錄內容的 `sha256`；inbox 遇到 `sha256` 相同，或同一個路徑而 tombstone 沒有 `sha256` 的檔案時，不建立影音，也不移除 tombstone（DEL-R11）。
+- DEL-R9 的實作決定（2026-11-23，M2 PRM／DEL-R9 切片，依 /goal 採保守預設，待 owner 追認）：
+  - `kept_outputs` 的原因除了 `modified`，另有 `outside_roots`（紀錄的路徑現在不在 inbox／`media_roots` 內，不碰）與 `unreadable`（檢查或刪除失敗）。deletion-preview 的輸出檔項目多一個 `reason`（保留時才有）。
+  - 還原時的「被刪除」以「有紀錄、檔案已不存在」判斷，不另外記旗標（避免 migration）。代價：使用者自己在垃圾桶期間刪掉的輸出檔，還原時也會被重新寫回。
+  - 永久刪除不動輸出檔（資料表）。`DELETE /api/trash/:id` 沒有 `delete_outputs`。

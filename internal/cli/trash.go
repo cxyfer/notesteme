@@ -251,14 +251,16 @@ func (s *session) removeOne(ctx context.Context, t target, purge bool, body any)
 		}
 		return nil
 	case err == nil:
-		// purge：接著永久刪除。
+		// purge：接著永久刪除（輸出檔在移到垃圾桶時已經處理；永久刪除本身不動輸出檔，DEL 規格的資料表）。
+		if !s.g.json {
+			s.printKeptOutputs(raw)
+		}
 	case purge && errors.As(err, &ae) && ae.Status == http.StatusNotFound && ae.Code == "in_trash":
 		// 已經在垃圾桶中：直接永久刪除。
 	default:
 		return err
 	}
-	// delete_outputs 要再帶一次：影音原本就在垃圾桶中時，這是唯一的機會；已經刪過的檔案會略過。
-	raw, _, err = s.be.call(ctx, http.MethodDelete, "/api/trash/"+id, body)
+	raw, _, err = s.be.call(ctx, http.MethodDelete, "/api/trash/"+id, nil)
 	if err != nil {
 		return err
 	}
@@ -266,7 +268,6 @@ func (s *session) removeOne(ctx context.Context, t target, purge bool, body any)
 		s.printRawLine(raw)
 	} else {
 		fmt.Fprintf(s.stdout, "已永久刪除：%s\n", t.label())
-		s.printKeptOutputs(raw)
 	}
 	return nil
 }

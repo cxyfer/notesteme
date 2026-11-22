@@ -193,7 +193,7 @@ func TestPurgeItemReturnsIdentity(t *testing.T) {
 	if got.ID != it.ID || got.Ref != "yt:abc123xxxxx" || got.Title != "T" {
 		t.Errorf("PurgeItem = %+v", got)
 	}
-	if got, err := r.p.PurgeItem(ctx, it.ID); !errors.Is(err, store.ErrNotFound) || got.ID != "" || got.Ref != "" || got.Title != "" || len(got.KeptOutputs) != 0 {
+	if got, err := r.p.PurgeItem(ctx, it.ID); !errors.Is(err, store.ErrNotFound) || got != (PurgedItem{}) {
 		t.Errorf("已經刪除：%+v, %v，預期空結果與 ErrNotFound", got, err)
 	}
 }

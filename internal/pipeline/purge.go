@@ -88,29 +88,15 @@ type PurgedItem struct {
 	ID    string
 	Ref   string
 	Title string
-	// KeptOutputs 是指定 DeleteOutputs 時保留下來的輸出檔（DEL-R9）；沒有指定時是空的。
-	KeptOutputs []KeptOutput
-}
-
-// PurgeOptions 是永久刪除的選項。
-type PurgeOptions struct {
-	// DeleteOutputs 為 true 時，在清除資料庫之前刪除輸出目標寫出、且沒被改過的檔案（DEL-R9）：
-	// outputs 紀錄隨影音 cascade 刪除，之後就無法再比對雜湊了。
-	DeleteOutputs bool
 }
 
 // PurgeItem 同 Purge，另外回傳被刪除的影音的 ID、代號與標題。
 func (p *Pipeline) PurgeItem(ctx context.Context, id string) (PurgedItem, error) {
-	return p.PurgeItemWith(ctx, id, PurgeOptions{})
-}
-
-// PurgeItemWith 同 PurgeItem，可以指定選項。
-func (p *Pipeline) PurgeItemWith(ctx context.Context, id string, opts PurgeOptions) (PurgedItem, error) {
-	return p.purge(ctx, id, nil, opts)
+	return p.purge(ctx, id, nil)
 }
 
 // purge 是 Purge 的實作；notAfter 不為 nil 時，影音必須在那個時間或之前刪除（到期清理用）。
-func (p *Pipeline) purge(ctx context.Context, id string, notAfter *time.Time, opts PurgeOptions) (PurgedItem, error) {
+func (p *Pipeline) purge(ctx context.Context, id string, notAfter *time.Time) (PurgedItem, error) {
 	ids, dirs, err := p.stopTasks(ctx, id, notAfter)
 	if err != nil {
 		return PurgedItem{}, err
@@ -127,19 +113,12 @@ func (p *Pipeline) purge(ctx context.Context, id string, notAfter *time.Time, op
 	}
 	dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), purgeWriteTimeout)
 	defer cancel()
-	kept := []KeptOutput{}
-	if opts.DeleteOutputs {
-		// 要在清除資料庫之前：outputs 紀錄會 cascade 刪除。讀不到紀錄就不繼續，免得留下無法辨識的檔案。
-		if kept, err = p.deleteOutputs(dctx, id); err != nil {
-			return PurgedItem{}, fmt.Errorf("刪除輸出檔：%w", err)
-		}
-	}
 	done, err := p.st.Write().PurgeItem(dctx, id, notAfter)
 	if err != nil {
 		return PurgedItem{}, err
 	}
 	p.removeDirs(dctx, dirs)
-	return PurgedItem{ID: done.ID, Ref: done.Ref, Title: done.Title, KeptOutputs: kept}, nil
+	return PurgedItem(done), nil
 }
 
 // stopTasks 在一個交易中確認影音仍在垃圾桶中（而且符合 notAfter），再取消它殘留的任務，回傳這部影音
@@ -185,17 +164,11 @@ func (p *Pipeline) removeDirs(ctx context.Context, dirs []string) {
 // PurgeAll 清空垃圾桶，回傳永久刪除的影音數（DEL-R4）。每部影音各用一個交易；
 // 其中一部失敗時繼續處理其他的，最後回傳已經刪除的數量與所有錯誤。
 func (p *Pipeline) PurgeAll(ctx context.Context) (int, error) {
-	n, _, err := p.PurgeAllWith(ctx, PurgeOptions{})
-	return n, err
-}
-
-// PurgeAllWith 同 PurgeAll，可以指定選項；另外回傳所有影音保留下來的輸出檔（DEL-R9）。
-func (p *Pipeline) PurgeAllWith(ctx context.Context, opts PurgeOptions) (int, []KeptOutput, error) {
 	ids, err := p.st.Read().TrashIDs(ctx)
 	if err != nil {
-		return 0, nil, err
+		return 0, err
 	}
-	return p.purgeEach(ctx, ids, nil, opts)
+	return p.purgeEach(ctx, ids, nil)
 }
 
 // PurgeExpired 永久刪除 deleted_at 不晚於 now 減去 retention 的影音，回傳永久刪除的影音數（DEL-R4）。
@@ -206,30 +179,27 @@ func (p *Pipeline) PurgeExpired(ctx context.Context, now time.Time, retention ti
 	if err != nil {
 		return 0, err
 	}
-	n, _, err := p.purgeEach(ctx, ids, &cutoff, PurgeOptions{})
-	return n, err
+	return p.purgeEach(ctx, ids, &cutoff)
 }
 
 // purgeEach 依序永久刪除 ids。名單產生之後才被還原或已經被別人刪除的影音（store.ErrNotFound）略過，不算失敗。
-func (p *Pipeline) purgeEach(ctx context.Context, ids []string, notAfter *time.Time, opts PurgeOptions) (int, []KeptOutput, error) {
+func (p *Pipeline) purgeEach(ctx context.Context, ids []string, notAfter *time.Time) (int, error) {
 	var errs []error
-	kept := []KeptOutput{}
 	n := 0
 	for _, id := range ids {
 		if err := ctx.Err(); err != nil {
 			errs = append(errs, err)
 			break
 		}
-		switch done, err := p.purge(ctx, id, notAfter, opts); {
+		switch _, err := p.purge(ctx, id, notAfter); {
 		case err == nil:
 			n++
-			kept = append(kept, done.KeptOutputs...)
 		case errors.Is(err, store.ErrNotFound):
 		default:
 			errs = append(errs, fmt.Errorf("永久刪除 %s：%w", id, err))
 		}
 	}
-	return n, kept, errors.Join(errs...)
+	return n, errors.Join(errs...)
 }
 
 // DeletionPreview 回傳刪除影音的影響範圍，唯讀：不寫入任何資料，也不產生事件（DEL-R3）。

@@ -139,7 +139,7 @@
 | `Given the owner is listening to events` | 以 owner 的 session 訂閱 `GET /api/events`（SSE） |
 | `Then an event is received:` | 訂閱中收到符合 JSON 子集的事件 |
 | `Then the response status is {int}` | HTTP 狀態碼 |
-| `Then the response contains:` | 回應的 JSON 包含指定的欄位與值（子集比對） |
+| `Then the response contains:` | 回應的 JSON 包含指定的欄位與值（子集比對）。回應中的實際路徑先換回虛擬路徑（`/data/…`）再比對，預期值不展開 |
 | `Then the response header {string} contains {string}` | 回應標頭 |
 
 ### 4.3 平台與來源的 fixture（`steps/sources.go`）

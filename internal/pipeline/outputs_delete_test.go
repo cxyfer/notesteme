@@ -2,13 +2,11 @@ package pipeline
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/pathguard"
-	"github.com/cxyfer/notesteme/internal/store"
 )
 
 // publishTwo 發布 SRT 與 VTT 兩個檔案，回傳它們的路徑（srt、vtt）。
@@ -140,40 +138,5 @@ func TestDeletionPreviewListsOutputs(t *testing.T) {
 	}
 	if pv, _ = r.p.DeletionPreview(context.Background(), r.it.ID); len(pv.Outputs) != 1 {
 		t.Errorf("不存在的檔案不列：%+v", pv.Outputs)
-	}
-}
-
-// 永久刪除：指定 DeleteOutputs 時在紀錄 cascade 之前刪檔；沒指定就保留。
-func TestPurgeDeleteOutputs(t *testing.T) {
-	for _, del := range []bool{false, true} {
-		r := newPublishRig(t)
-		en, zh := publishTwo(t, r)
-		if err := os.WriteFile(zh, []byte("edited by hand"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		ctx := context.Background()
-		if _, err := r.p.Trash(ctx, r.it.ID, TrashOptions{}); err != nil {
-			t.Fatal(err)
-		}
-		done, err := r.p.PurgeItemWith(ctx, r.it.ID, PurgeOptions{DeleteOutputs: del})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if exists(en) == del {
-			t.Errorf("delete=%v：en 存在 = %v", del, exists(en))
-		}
-		if !exists(zh) {
-			t.Errorf("delete=%v：改過的檔案不能刪除", del)
-		}
-		wantKept := 0
-		if del {
-			wantKept = 1
-		}
-		if len(done.KeptOutputs) != wantKept {
-			t.Errorf("delete=%v：KeptOutputs = %+v", del, done.KeptOutputs)
-		}
-		if _, err := r.st.Read().Output(ctx, r.it.ID, en); !errors.Is(err, store.ErrNotFound) {
-			t.Errorf("永久刪除後 outputs 紀錄要 cascade 清除：%v", err)
-		}
 	}
 }

@@ -82,7 +82,10 @@ func (rt *routes) trashItem(ctx context.Context, in *trashItemInput) (*trashItem
 	}
 	out := &trashItemOutput{}
 	out.Body.ID, out.Body.Ref, out.Body.DeletedAt, out.Body.PurgeAt = res.ID, res.Ref, res.DeletedAt, res.PurgeAt
-	out.Body.KeptOutputs = keptOutputs(res.KeptOutputs)
+	out.Body.KeptOutputs = make([]KeptOutput, 0, len(res.KeptOutputs))
+	for _, k := range res.KeptOutputs {
+		out.Body.KeptOutputs = append(out.Body.KeptOutputs, KeptOutput{Path: k.Path, Reason: k.Reason})
+	}
 	return out, nil
 }
 
