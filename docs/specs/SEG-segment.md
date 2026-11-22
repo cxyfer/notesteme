@@ -44,4 +44,4 @@
 ## 待決問題
 
 - `when_needed` 的長度與時長門檻，依 M0 量測的 segment 長度分佈調整；斷點對齊的成功率也在 M0 量測。相關場景標記 `@pending-m0`。
-- SEG-R10 場景的 Background 把 `segment` 設成 `openai`，但場景沒有 `the LLM provider "openai" answers "segment" with …`：`processed up to "segment"` 真的執行 segment 時，fakellm 沒有腳本會回 500 並記違規，場景失敗而不是 pending（2026-11-21，M2 S0 審查時發現）。SEG 切片實作時需要 owner 同意補上這一步，或讓 `processed up to` 對設定了 LLM 的步驟改用 fixture 的結果。
+- SEG-R10 場景補上 `And the LLM provider "openai" answers "segment" with "segment-keep-all"`（2026-11-21 發現，2026-11-22 owner 同意，已修改）。Background 把 `segment` 設成 `openai`，`processed up to "segment"` 真的執行 segment 時，fakellm 沒有腳本會回 500 並記違規。fixture `segment-keep-all` 不合併也不切分，每句原樣輸出；它在 SEG 切片（S5）建立。

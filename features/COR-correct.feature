@@ -67,7 +67,7 @@ Feature: Correct subtitles line by line
   Scenario: A Traditional Chinese glossary is converted for a Simplified source
     Given a YouTube video "yt:zh001xxxxxx" with:
       | field    | value   |
-      | title    | 微服务实践 |
+      | title    | 服务拆分实践 |
       | language | zh-Hans |
     And the channel of "yt:zh001xxxxxx" has the overrides:
       """

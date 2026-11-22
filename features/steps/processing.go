@@ -414,7 +414,7 @@ func (s *Scenario) stopTemporaryServer() error {
 }
 
 // hasTranscriptSource 回報場景有沒有替影音準備任何字幕來源。只看場景自己累積的狀態，不看執行結果：
-//   - 已用 `the … transcript of … is:` 寫入字幕。
+//   - 已用 `the "source" transcript of … is:` 寫入 source 字幕（其他變體不算來源）。
 //   - 假 yt-dlp 的狀態中，有符合 caption_priority（內建預設）的平台字幕軌；原文語言用假 yt-dlp 實際回報的（steps.md 4.3）。
 //   - 腳本化了已實作的 fallback 來源（`the source … returns …`）。
 //   - 本機影音（local:）在 inbox 有對應的 sidecar 字幕檔，或標記帶有文字字幕串流（見 hasLocalTranscriptSource）。

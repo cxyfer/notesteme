@@ -84,7 +84,7 @@ Feature: LLM execution, chunking and validation
       { "from": "correct", "chunks": [2] }
       """
     And the worker runs until idle
-    Then the LLM provider "anthropic" received 4 requests for "correct"
+    Then the LLM provider "anthropic" received 5 requests for "correct"
 
   @LLM-05 @LLM-R6
   Scenario: A rate-limit response is retried without using up validation retries

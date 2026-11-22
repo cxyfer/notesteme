@@ -431,10 +431,14 @@ func (s *Scenario) seedTranscript(variant, ref, lang string, table *godog.Table)
 	if err := s.server.SeedTranscript(s.ctx, pipeline.SeedRequest{ItemID: id, Variant: subtitle.Variant(variant), Lang: lang, Cues: cues}); err != nil {
 		return err
 	}
-	if s.seeded == nil {
-		s.seeded = map[string]bool{}
+	// 只有 source 變體才算「場景已準備字幕來源」（steps.md 4.4 規則 (1)）：corrected 等後面的變體不是來源，
+	// 之後的 `processed up to` 仍要走 fixture（OUT-R9 的預覽影音沒有任何字幕軌，只在 Background 寫了 corrected）。
+	if subtitle.Variant(variant) == subtitle.VariantSource {
+		if s.seeded == nil {
+			s.seeded = map[string]bool{}
+		}
+		s.seeded[ref] = true
 	}
-	s.seeded[ref] = true
 	return nil
 }
 

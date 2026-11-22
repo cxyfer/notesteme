@@ -1,6 +1,6 @@
 # 交接：開發進度（M1 與 M2）
 
-> 更新：2026-11-22（待決問題的 owner 決議見第 2 節第 4 點）。PR #1～#12 已合併。LOCAL 切片（ING-05）是 PR #13（`feat/local-media`）；PODCAST 切片（ING-04）在 `feat/podcast`，疊在 `feat/local-media` 上；ESTIMATE（ING-R8）在 `feat/estimate`（PR #15），疊在 `feat/podcast`（PR #14）上；M2 的 S0 骨架在 `feat/m2-s0`，疊在 `feat/estimate` 上。
+> 更新：2026-11-22。PR #1～#17 已合併（LOCAL #13、PODCAST #14、ESTIMATE #15、M2 S0 #16、M2 S1/S2 #17）。owner 已同意的規格與 `.feature` 修改已完成（第 2 節第 4 點）。
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -118,17 +118,16 @@
 
 ## 2. 下一步
 
-切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC（PR #1～#12，已合併）→ LOCAL（PR #13）→ PODCAST（PR #14，疊在 #13 上）→ ESTIMATE（PR #15，疊在 #14 上）→ M2 S0 骨架（PR #16，疊在 #15 上）→ M2 S1 PRF＋S2 PRM（疊在 #16 上）。
+切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC → LOCAL → PODCAST → ESTIMATE → M2 S0 骨架 → M2 S1 PRF＋S2 PRM（PR #1～#17，全部已合併）。下一步是 S6a TRN OpenCC、S7 OUT 渲染，再到 S3 LLM 核心。
 
 接下來：
 
-1. PR #13～#16 與 S1/S2 的 PR 等 Codex 審查與 owner 合併（沒有明確授權不合併）。修正一律在最低的分支做，再依序 merge（不 rebase）到上面的分支。疊加的 PR：前一個合併後，把下一個的 base 改成 `master`，再用 `-s ours` 併入 master（見記憶中的疊加 PR 合併方式）。
+1. 疊加 PR 的合併方式（已用在 #13～#17）：前一個 squash 合併後，把下一個的 base 改成 `master`，再把下層分支的修正 merge（不 rebase）進來，最後用 `-s ours` 併入 master，並確認 `git diff master...HEAD` 的 patch-id 與合併前相同。每個 PR 都要等 Codex 審查通過、CI 綠才 squash 合併（owner 已授權，不用另外詢問）；同一個 PR 最多連續重審 3 次，超過要交 owner 決定（#14 就因為這樣由 owner 再授權了幾輪）。
 2. 剩下 M1 的 NRM-R7（見第 1 節，需要 owner 決定）。
-3. M2 的切片順序（S0 之後）：並行 S1 PRF（含 ING-R7）、S2 PRM、S6a TRN 確定性（OpenCC）、S7 OUT 渲染 → S3 LLM 核心（provider client、限流、執行層）→ 並行 S4 COR、S5 SEG、S6b TRN LLM、S8 OUT publish → S9 MCP → S10 AGT → S11 收尾。S0 之後 `@M2` 是 117 個場景：115 pending、2 failed，兩個失敗都需要 owner 決定（MCP stdio 場景與 Background 衝突、OUT-R9 預覽的影音沒有字幕來源）。S1/S2 之後是 15 passed、29 failed、73 pending：Background 的處理方案、prompt 步驟可以執行了，場景會停在後面的步驟。29 個失敗分類如下，除了 4 個需要 owner 決定的之外，都是之後的切片才會做的功能：
-   - 需要 owner 決定：PRF「Each layer」（F1）、PRF-R8（F5）、MCP stdio、OUT-R9 預覽。
+3. M2 的切片順序（S0 之後）：並行 S1 PRF（含 ING-R7）、S2 PRM、S6a TRN 確定性（OpenCC）、S7 OUT 渲染 → S3 LLM 核心（provider client、限流、執行層）→ 並行 S4 COR、S5 SEG、S6b TRN LLM、S8 OUT publish → S9 MCP → S10 AGT → S11 收尾。S0 之後 `@M2` 是 117 個場景：115 pending、2 failed，兩個失敗都需要 owner 決定（MCP stdio 場景與 Background 衝突、OUT-R9 預覽的影音沒有字幕來源）。規格與 `.feature` 修改後（第 2 節第 4 點）是 17 passed、26 failed、74 pending：Background 的處理方案、prompt 步驟可以執行了，場景會停在後面的步驟。26 個失敗都是之後的切片才會做的功能，沒有需要 owner 決定的：
    - 缺 LLM fixture（S5、S6b 要補）：SEG 7 個、TRN 8 個、localize 1 個；缺 media fixture `speech-with-pause-at-6.2s.m4a`（S5）。
    - 行為還沒做：COR glossary 傳給 ASR（S4）、SEG 手動字幕跳過 segment（S5，目前 `api` executor 回「還沒有實作」）、TRN OpenCC 3 個與沿用手動字幕軌 1 個（S6a）、OUT sidecar 對線上影音是 `skipped`（S8）。
-4. **owner 決議（2026-11-22）：下列建議全部同意。** 規格與 `.feature` 的修改還沒做，依規格優先要和規格放在同一個 `📝 docs(specs)` commit 修改，做完後關閉各規格的對應待決問題。決議內容：
+4. **owner 決議（2026-11-22）：下列建議全部同意，其中規格與 `.feature` 的修改已在 `📝 docs(specs)` commit 完成，各規格對應的待決問題已關閉。** 決議內容：
    - **LLM 核心（擋 S3）**：
      - X1：沒有 provider 就 `skipped`（`not_configured`），維持 S0 的做法。
      - L1：LLM-R8 場景的 `received 4 requests` 改成 5。
@@ -139,16 +138,16 @@
    - **S1/S2 設計決策**：
      - 同意：D6、D8、D13、X5、D10～D12、D14、D16、F4。
      - P7、P8 先接受。P7 之後可補掃描 `items.overrides_json` 並把檢查與刪除放進同一個交易，排在 M2 收尾。
-   - **要改 `.feature` 或規格（已同意，待實作）**：
+   - **要改 `.feature` 或規格（已同意，已修改）**：
      - F1、F2：PRF-R2「Each layer」與 PRF-R3 加 `And the default profile is "standard"`。
      - F5：PRF-R8 與 PRF-R2 的 ingest 之後加 `And the worker runs until idle`。
      - P1：PRM-R7 compare 的 body 加 `"provider": "anthropic", "model": "fixture-model"`。
      - G1（PRF 版）：PRF-R1 補上 `glossary`（字串陣列），它與 COR `/api/glossaries` 的關係由 COR 切片決定。
      - O-4：PRF 開頭改成「處理方案在 M2（PRF 切片）實作；ING-R7 隨 PRF 切片通過」，並關閉 ING-R7 的待決問題。
-     - MCP-R1：stdio 場景搬到 CLI 的 feature。
-     - OUT-R9：改 `steps.md` 4.4 規則 (1)，只有 seed `source` 才算「場景已準備來源」，其餘走 fixture；改完要確認其他場景沒有變成走 fixture。
-     - SEG-R10：補上 `the LLM provider "openai" answers "segment" with …`。
-     - COR-R4：影片標題改成不含「微服务」；fixture 要不要跟著改，改時確認。
+     - MCP-R1：stdio 場景搬到 CLI 的 feature（`CLI-cli.feature` 的 `@M1` 改標在各個 M1 場景上，這個場景標 `@M2`）。
+     - OUT-R9：`steps.md` 4.4 規則 (1) 改成只有 seed `source` 才算「場景已準備來源」，其餘走 fixture；改完 `@M2` 只有預覽場景由 failed 變 pending，沒有其他場景改變。
+     - SEG-R10：補上 `the LLM provider "openai" answers "segment" with "segment-keep-all"`；fixture `segment-keep-all`（不合併也不切分、每句原樣輸出）要在 S5 建立。
+     - COR-R4：影片標題改成 `服务拆分实践`；fixture `yt-zh001xxxxxx` 不含「微服务」、「数据库」，不用改。
    - **不用現在決定**：M0 量測的各項（`max_tokens`、重疊句數、`when_needed` 門檻、相似度算法、`⟨|⟩`）、OUT sidecar 檔名（先實測 BCP-47 與 ISO 639）、PIPE 的退避與 aging、translate 多語言（TRN 切片）。
    - **規格裡找不到原文，尚未處理**：X7、L7、A1、O1～O4、SEG-R2～R4 矛盾（handoff 的 G1）。AGT 的待決問題寫「無」。要處理時先讀相關 `.feature` 再問使用者。
    - **還沒回覆**：M2 路由的 scope（profiles 與 channel overrides 是否改 admin、ass-styles preview 是否改 ingest）。
@@ -389,7 +388,6 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 | OPS | 自我檢查用的已知影片 | M1 內建一部，不開放覆寫；M0 實測 |
 | OPS | 自我檢查的暫時性失敗是否回退 | 照規則回退，原因放在 `reason` |
 | LOCAL | steps.md 的語意補充（部分 `#` 表格依 `#` 比對；`processed up to` 規則 (1) 對 `local:` 也算外掛與內嵌字幕）、用路徑新增的延遲驗證、上傳上限 4 GiB、YouTube ASR 也走前處理、備份包含 uploads | 已依預設實作（PR #13），待 owner 確認 |
-| PRF | O-4：PRF 開頭寫「M1 只有內建的 `default`」，但 ING-R7（M1）用了 `standard` | 處理方案已在 S1 實作，ING-R7 通過；建議修改 PRF 的敘述，需 owner 同意 |
 | NRM | NRM-R7 場景的字幕軌不會被 `caption_priority` 選中 | 建議改成 `manual captions` 或宣告原文語言 `zh-Hans`，需 owner 同意改 `.feature` |
 
 ## 8. 已確定的技術選擇

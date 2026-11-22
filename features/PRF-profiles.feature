@@ -18,6 +18,7 @@ Feature: Profiles and layered settings
       """
       timing: { split_timing: forbid }
       """
+    And the default profile is "standard"
     And the channel of "yt:talk01xxxxx" has the overrides:
       """
       language: { targets: [ja] }
@@ -26,6 +27,7 @@ Feature: Profiles and layered settings
       """
       language: { fallback: [groq] }
       """
+    And the worker runs until idle
     Then the effective config of "yt:talk01xxxxx" for "transcript" contains:
       """
       language: { targets: [ja], fallback: [groq] }
@@ -54,6 +56,7 @@ Feature: Profiles and layered settings
       stages:
         correct: { executor: api, provider: anthropic, model: fixture-model, prompt: correct-default }
       """
+    And the default profile is "standard"
     And the LLM provider "anthropic" answers "correct" with "correct-echo"
     And the item "yt:talk01xxxxx" has been processed up to "correct"
     When the owner sends "PATCH /api/profiles/standard" with:
@@ -140,6 +143,7 @@ Feature: Profiles and layered settings
       language: { targets: [ja] }
       """
     When the owner ingests "yt:talk02xxxxx"
+    And the worker runs until idle
     Then the effective config of "yt:talk02xxxxx" for "translate" contains:
       """
       language: { targets: [ja] }

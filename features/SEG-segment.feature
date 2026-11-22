@@ -156,7 +156,8 @@ Feature: Segment into readable sentences
 
   @SEG-01 @SEG-R10 @pending-m0
   Scenario Outline: Subtitle rules are enforced per script
-    Given the item "<ref>" has been processed up to "segment"
+    Given the LLM provider "openai" answers "segment" with "segment-keep-all"
+    And the item "<ref>" has been processed up to "segment"
     Then every cue of the "segmented" transcript of "<ref>" follows the subtitle rules for "<script>"
 
     Examples:
