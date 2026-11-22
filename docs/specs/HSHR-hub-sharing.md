@@ -21,7 +21,7 @@
 
 | ID | 規則 |
 |---|---|
-| HSHR-R1 | 連線設定：`hub.url` 只能寫在設定檔，必須是 `https` 網址，否則 `serve` 啟動失敗，訊息「設定 hub.url 必須是 https 網址。」。Hub token 用 `PUT /api/settings/hub {token}`（`admin`）設定，存成 secret（SEC-R4），`GET /api/settings/hub`（`admin`）只回 `{url, token_set, precheck}`，不含 token。對 Hub 的請求走 netguard（ADR-0014），一律帶 `Authorization: Bearer <token>`。沒有 `hub.url` 或沒有 token 時，分享與重新生成回 409 `hub_not_configured`「尚未設定 Hub。請在設定檔加入 hub.url，並在設定頁填入 Hub token。」，`actions: ["設定 Hub"]`。 |
+| HSHR-R1 | 連線設定：`hub.url` 只能寫在設定檔，必須是 `https` 網址，否則 `serve` 啟動失敗，訊息「設定 hub.url 必須是 https 網址。」。Hub token 用 `PUT /api/settings/hub {token}`（`admin`）設定，存成 secret（SEC-R4）；`PUT` 是部分更新（同 `PUT /api/settings/services`）：省略的欄位不變，`token: ""` 刪除 token。設定 token 不會連線到 Hub，測試連線只在 `notesteme hub status` 時進行。`GET /api/settings/hub`（`admin`）只回 `{url, token_set, precheck}`，不含 token。對 Hub 的請求走 netguard（ADR-0014），一律帶 `Authorization: Bearer <token>`。沒有 `hub.url` 或沒有 token 時，分享與重新生成回 409 `hub_not_configured`「尚未設定 Hub。請在設定檔加入 hub.url，並在設定頁填入 Hub token。」，`actions: ["設定 Hub"]`。 |
 | HSHR-R2 | 分享：`POST /api/items/:id/hub/share {license, attest, artifacts?, include_frames?, visibility?}`（`admin`）產生 bundle 並送到 Hub 的 `POST /api/v1/shares`，成功回 201 `{share_id, versions: [{kind, variant, lang, version_id, deduplicated}]}`，並記入 `hub_shares`；之後 `GET /api/items/:id` 的 `hub_shares` 列出 `{share_id, hub_url, created_at}`。CLI：`notesteme hub share <item> --license <SPDX> --yes [--artifact <variant>[:<lang>]]… [--include-frames]`，`--yes` 等同 `attest: true`。MCP 沒有分享的 tool。 |
 | HSHR-R3 | 送出之前在 Client 檢查，不通過時不連線到 Hub：`attest` 不是 `true` 時 422 `attest_required`「分享前要確認你有權分享這些內容。」；沒有 `license` 時 422，`errors[].path` 為 `license`，訊息「請選擇授權方式。」；`license` 不是 `CC-BY-4.0`、`CC-BY-SA-4.0`、`CC-BY-NC-4.0`、`CC-BY-NC-SA-4.0`、`CC0-1.0` 時 422 `license_invalid`「不支援的授權：<值>。」。 |
 | HSHR-R4 | 不能分享的內容（Client 檢查，不連線到 Hub；Hub 也會再檢查，HREP-R3），回 422 `not_shareable`：本機檔案「本機檔案不能分享到 Hub。」；`availability` 不是 `public`「非公開影音不能分享到 Hub。」；要分享的任何產出，其衍生鏈上的 `source` 來源紀錄是 `cookie_required: true`「需要登入才能取得的字幕不能分享到 Hub。」。影音在垃圾桶中時回 404 `in_trash`（同 DEL-R1）。 |
@@ -35,7 +35,7 @@
 | HSHR-R12 | ASR 前查詢的設定：`hub.precheck.enabled` 預設 `false`。`PUT /api/settings/hub {precheck: {enabled: true, acknowledge}}` 時，`acknowledge` 必須等於目前的 `disclosure_version`（`hub-precheck-v1`），否則回 422 `acknowledgement_required`，回應帶 `disclosure` 與 `disclosure_version`。`GET /api/settings/hub` 的 `precheck` 是 `{enabled, disclosure, disclosure_version}`；`disclosure` 為「開啟後，Notesteme 在付費轉錄（Supadata、ASR）之前，會把平台名稱與影片 ID 的 SHA-256 前 4 個十六進位字元送到 <hub.url>，並用你的 Hub token 驗證身分。Hub 會知道你的帳號在什麼時候查詢了哪個前綴，但無法從前綴得知是哪一部影片。本機檔案與非公開影音不會查詢。」。 |
 | HSHR-R13 | 查詢的時機：開啟時，`transcript` 步驟在**即將呼叫第一個付費來源**（`supadata` 與 ASR provider；平台字幕、`podcast-transcript`、本機字幕都沒有可用的結果之後）時，查詢一次 `GET /api/v1/lookup?platform=<platform>&prefix=<sha256(video_key) 的前 4 個十六進位字元>`（ADR-0032 第 3 點）。本機檔案、`availability` 不是 `public` 的影音、沒有設定 Hub 時不查。請求的路徑、query、標頭與 body 都不含影片 ID、標題與網址。 |
 | HSHR-R14 | 命中與挑選：Client 用完整的 `video_key_sha256` 找出自己的影片；候選是語言與影音原文語言相同（原文語言不明時不限）的版本，依序偏好 `variant: source`、`model_verified: true`、`score` 高、`sha256` 字典序小的一個。取得內容與驗證同 HSHR-R10；通過時 `transcript` 步驟 `done`、來源 `hub`，來源紀錄同 HSHR-R9，不呼叫付費來源，成本帳本沒有這一步的紀錄。沒有候選時照常呼叫付費來源。 |
-| HSHR-R15 | 查詢失敗不擋 pipeline：逾時（5 秒）、連線錯誤、5xx、429、401、403、內容驗證失敗時，照常呼叫付費來源，`transcript` 完成後顯示提醒：「無法查詢 Hub（<原因>），這次改用付費來源。」（`<原因>` 為「HTTP 503」、「連線逾時」、「token 無效或權限不足」、「內容驗證失敗」之一）。每次執行 `transcript` 最多查詢一次。 |
+| HSHR-R15 | 查詢失敗不擋 pipeline：逾時（5 秒，以注入的 clock 計算，見待決問題 S7）、連線錯誤、5xx、429、401、403、內容驗證失敗時，照常呼叫付費來源，`transcript` 完成後顯示提醒：「無法查詢 Hub（<原因>），這次改用付費來源。」（`<原因>` 為「HTTP 503」、「連線逾時」、「token 無效或權限不足」、「內容驗證失敗」之一）。每次執行 `transcript` 最多查詢一次。 |
 
 ## 介面
 
@@ -68,4 +68,5 @@
 - S3：分享用 `admin` scope（HSHR-R2）：分享把資料送到公開服務、用的是 owner 的 Hub 身分，比 `ingest`（花錢）更需要 owner 本人。Agent 不能分享。
 - S4：重新生成只接受原始字幕（HSHR-R9）。用別人校正過的字幕直接翻譯也有價值，但那等於信任別人的 LLM 輸出，先不做。
 - S5：Hub 回來的字幕在 Client 的 LLM 步驟中照 LLM-06 當作資料處理；Hub 的字幕可能刻意夾帶指示，不另外加規則，靠既有的 LLM-R 系列。
+- S7：Client 對 Hub 的逾時（HSHR-R15 的 5 秒、一般請求的 30 秒）要以注入的 clock 判斷（ADR-0015），`Given the Hub does not respond` 才能用 fake clock 驗證而不真的等待；`fakehub.Hang` 目前阻塞到請求的 context 結束，實作切片接線時改成「在 fake clock 前進到逾時之後結束」或由 Client 的 deadline 取消請求。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
 - S6：Client 的 migration 編號（`hub_shares`）在實作時依 M3（規劃 00017）、M4 的合併順序取下一個號碼。

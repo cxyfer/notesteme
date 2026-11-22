@@ -103,6 +103,7 @@ Feature: Sharing to the Hub and reusing subtitles from it
     Given the "corrected" transcript of "yt:hshr01xxxxx" is:
       | # | start        | end          | text             |
       | 1 | 00:00:01.000 | 00:00:03.000 | Hello, everyone. |
+    And the server is running
     When the owner runs "notesteme hub share yt:hshr01xxxxx --license CC-BY-4.0 --yes --json"
     Then the command exits with 0
     And the command output is JSON containing:
@@ -551,7 +552,7 @@ Feature: Sharing to the Hub and reusing subtitles from it
     When the owner sends "GET /api/settings/hub"
     Then the response contains:
       """
-      { "precheck": { "enabled": true, "disclosure_version": "hub-precheck-v1" } }
+      { "token_set": true, "precheck": { "enabled": true, "disclosure_version": "hub-precheck-v1" } }
       """
 
   @HUB-05 @HSHR-R12

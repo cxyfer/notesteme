@@ -747,9 +747,9 @@ bundle 由步驟在場景目錄中產生，不 commit 二進位 fixture：字幕
 | `Given the client's Hub token has the permissions {string}` | fakehub 對 Client 的 token 只授予這些權限（以逗號分隔）；缺少的權限回 403，帶 `required_permission` |
 | `Given the client's Hub token is not set` | server 啟動後不設定 token（`GET /api/settings/hub` 的 `token_set` 為 `false`） |
 | `Given the Hub fails with HTTP {int}` | fakehub 對所有請求回應指定的狀態碼（429 時附 `retry_after_s: 30` 與 `Retry-After: 30`） |
-| `Given the Hub does not respond` | fakehub 收到請求後不回應，直到 Client 逾時（fakehub 以 fake clock 判斷，不真的等待） |
+| `Given the Hub does not respond` | fakehub 收到請求後不回應，直到 Client 逾時；Client 的逾時以 fake clock 判斷（HSHR 待決問題 S7），場景不真的等待 |
 | `Given the Hub serves tampered content for the version {string}` | `GET /api/v1/versions/:id/content` 回傳和版本 `sha256` 不符的內容（仍然是合法的 cues JSON） |
-| `Then the Hub received {int} requests` | fakehub 收到的請求總數 |
+| `Then the Hub received {int} requests` | fakehub 收到的請求總數（設定 token 不會連線到 Hub，HSHR-R1，所以閘門不產生請求） |
 | `Then the Hub was asked for a lookup {int} times` | fakehub 收到的 `GET /api/v1/lookup` 次數 |
 | `Then the Hub received a share of {string} with the artifacts:` | fakehub 最後收到的分享是這部影片的，bundle 中的產出（不分順序）正好是表格列出的這些；表格欄位 `kind`、`variant`、`lang`（`note`、`chapters` 的 `variant` 留空） |
 | `Then the last bundle sent to the Hub has the manifest fields:` | fakehub 最後收到的 bundle 的 manifest；表格欄位 `field`（點號路徑，數字是陣列索引）、`value`（字串比較；`<absent>` 代表欄位不存在；`*` 代表欄位存在即可，值可以是空陣列或空字串） |

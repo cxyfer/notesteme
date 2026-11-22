@@ -5,7 +5,7 @@
 
 ## 背景
 
-plan 第 20 節：Client 用 PAT 連到 Hub；可以選擇在付費 ASR 之前先查 Hub，開啟時要說明送出哪些影片 ID，「之後評估改成只送 ID hash 的前綴」。plan 第 26 節把「Hub 查詢的隱私做法」列為 M5 前定案。ADR-0005 的 bundle v0 是給實例之間搬移用的（M4 的 [BND 規格](../specs/BND-bundles.md) 定了驗證規則），manifest 含 `created_by.instance_id` 與完整的來源紀錄，直接送到公開的 Hub 會洩漏本機資訊。
+plan 第 20 節：Client 用 PAT 連到 Hub；可以選擇在付費 ASR 之前先查 Hub，開啟時要說明送出哪些影片 ID，「之後評估改成只送 ID hash 的前綴」。plan 第 26 節把「Hub 查詢的隱私做法」列為 M5 前定案。ADR-0005 的 bundle v0 是給實例之間搬移用的（M4 的 BND 規格（`docs/specs/BND-bundles.md`，在分支 `docs/m4-tracking-deploy-specs`，M4 合併後才有）定了驗證規則），manifest 含 `created_by.instance_id` 與完整的來源紀錄，直接送到公開的 Hub 會洩漏本機資訊。
 
 ## 決策
 
