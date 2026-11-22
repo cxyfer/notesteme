@@ -198,3 +198,25 @@ func (q *Queries) LLMChunksByRun(ctx context.Context, stageRunID string) ([]LlmC
 	}
 	return items, nil
 }
+
+const latestLLMChunkCount = `-- name: LatestLLMChunkCount :one
+SELECT COUNT(*) FROM llm_chunks
+WHERE stage_run_id = (
+  SELECT c.stage_run_id FROM llm_chunks c
+  WHERE c.item_id = ?1 AND c.stage = ?2
+  ORDER BY c.created_at DESC, c.rowid DESC LIMIT 1
+)
+`
+
+type LatestLLMChunkCountParams struct {
+	ItemID string
+	Stage  string
+}
+
+// The number of chunks in the most recent split of the stage for the item (0 when it was never split).
+func (q *Queries) LatestLLMChunkCount(ctx context.Context, arg LatestLLMChunkCountParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, latestLLMChunkCount, arg.ItemID, arg.Stage)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}

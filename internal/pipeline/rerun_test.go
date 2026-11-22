@@ -221,7 +221,8 @@ func TestRerunNotImplementedWritesNothing(t *testing.T) {
 	}
 	// chunks 只能用在 LLM 步驟、從 1 起算：422，同樣什麼都不寫。
 	var inv *InvalidError
-	for _, req := range []RerunRequest{{From: StageNormalize, Chunks: []int{1}}, {From: StageCorrect, Chunks: []int{0}}} {
+	// correct 還沒有切分過：「尚無 chunk 切分」。
+	for _, req := range []RerunRequest{{From: StageNormalize, Chunks: []int{1}}, {From: StageCorrect, Chunks: []int{0}}, {From: StageCorrect, Chunks: []int{1}}} {
 		if _, err := r.p.Rerun(ctx, it.ID, req); !errors.As(err, &inv) {
 			t.Errorf("%+v：err = %v，預期 *InvalidError", req, err)
 		}

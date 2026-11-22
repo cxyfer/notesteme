@@ -78,6 +78,21 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 	if it.DeletedAt != nil {
 		return Detail{}, &InTrashError{ItemID: it.ID}
 	}
+	if len(req.Chunks) > 0 {
+		// chunk 編號對照現行的切分（最近一次切分的 chunk 數，L12）：沒有切分過、或編號超出時 422。
+		n, err := r0.LatestLLMChunkCount(ctx, it.ID, req.From)
+		if err != nil {
+			return Detail{}, err
+		}
+		if n == 0 {
+			return Detail{}, invalidFields([]validate.FieldError{{Path: "chunks", Message: "尚無 chunk 切分：" + req.From + " 還沒有用 LLM 處理過，請先不指定 chunks 重跑。"}})
+		}
+		for i, c := range req.Chunks {
+			if c > n {
+				return Detail{}, invalidFields([]validate.FieldError{{Path: fmt.Sprintf("chunks[%d]", i), Message: fmt.Sprintf("chunk %d 超過現行切分的 chunk 總數 %d。", c, n)}})
+			}
+		}
+	}
 	itemOverrides, err := decodeOverrides(it.Overrides)
 	if err != nil {
 		return Detail{}, err

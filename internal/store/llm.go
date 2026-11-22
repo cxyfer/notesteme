@@ -116,6 +116,12 @@ func (r *Repo) CountPendingLLMChunks(ctx context.Context, stageRunID string) (in
 	return int(n), err
 }
 
+// LatestLLMChunkCount 回傳影音的這個步驟最近一次切分的 chunk 數；從來沒有切分過時是 0（POST /rerun 的 chunks，L12）。
+func (r *Repo) LatestLLMChunkCount(ctx context.Context, itemID, stage string) (int, error) {
+	n, err := r.q.LatestLLMChunkCount(ctx, sqlcdb.LatestLLMChunkCountParams{ItemID: itemID, Stage: stage})
+	return int(n), err
+}
+
 // DoneLLMChunkByCacheKey 回傳同一部影音、同一步驟中，快取鍵相同而且通過驗證的最近一個 chunk（LLM-R8）；沒有時回傳 ErrNotFound。
 func (r *Repo) DoneLLMChunkByCacheKey(ctx context.Context, itemID, stage, key string) (LLMChunk, error) {
 	row, err := r.q.DoneLLMChunkByCacheKey(ctx, sqlcdb.DoneLLMChunkByCacheKeyParams{ItemID: itemID, Stage: stage, CacheKey: key})

@@ -25,3 +25,12 @@ SELECT COUNT(*) FROM llm_chunks WHERE stage_run_id = sqlc.arg(stage_run_id) AND 
 SELECT * FROM llm_chunks
 WHERE item_id = sqlc.arg(item_id) AND stage = sqlc.arg(stage) AND cache_key = sqlc.arg(cache_key) AND status = 'done'
 ORDER BY updated_at DESC, rowid DESC LIMIT 1;
+
+-- name: LatestLLMChunkCount :one
+-- The number of chunks in the most recent split of the stage for the item (0 when it was never split).
+SELECT COUNT(*) FROM llm_chunks
+WHERE stage_run_id = (
+  SELECT c.stage_run_id FROM llm_chunks c
+  WHERE c.item_id = sqlc.arg(item_id) AND c.stage = sqlc.arg(stage)
+  ORDER BY c.created_at DESC, c.rowid DESC LIMIT 1
+);
