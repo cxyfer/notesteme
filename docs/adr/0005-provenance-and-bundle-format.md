@@ -1,6 +1,6 @@
 # ADR-0005：產出記錄完整來源，並以 bundle 格式匯出
 
-- 狀態：提議中（格式細節在 M5 前定案）
+- 狀態：已採納（Hub 相關的細節由 [ADR-0031](0031-hub-identity-permissions-and-content.md)、[ADR-0032](0032-client-hub-protocol-and-privacy.md) 定案，2026-11-23，待 owner 追認）
 - 日期：2026-11-11
 - 修訂：2026-11-12，衍生圖移除 ASS、加入摘要與章節；新增 Agent 自述模型、`imported_from`、`speakers`、`availability` 與匯入規則
 

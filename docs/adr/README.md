@@ -10,14 +10,14 @@
 | [0002](0002-deterministic-workflow-and-llm-executors.md) | 確定性 workflow 與 LLM 步驟分離，LLM 步驟可分別指定 executor | 已採納 |
 | [0003](0003-timestamps-from-source.md) | 時間戳只取自來源，LLM 不輸出時間 | 已採納 |
 | [0004](0004-task-queue-with-leases.md) | 用租約制任務佇列，Agent 可以一次領多個任務 | 已採納 |
-| [0005](0005-provenance-and-bundle-format.md) | 產出記錄完整來源，並以 bundle 格式匯出 | 提議中 |
+| [0005](0005-provenance-and-bundle-format.md) | 產出記錄完整來源，並以 bundle 格式匯出 | 已採納（Hub 細節見 0031、0032） |
 | [0006](0006-pluggable-transcript-sources.md) | 字幕來源做成插件，依能力選用 | 已採納 |
 | [0007](0007-storage.md) | Client 預設用 SQLite 加檔案，Hub 用 Postgres 加 S3 | 已採納 |
 | [0008](0008-web-ui-architecture.md) | API-first，React SPA 嵌入 Go binary | 已採納 |
 | [0009](0009-external-tools-runtime.md) | yt-dlp、ffmpeg、Deno 以子程序執行，yt-dlp 可在執行期更新 | 已採納 |
 | [0010](0010-vault-output-adapters.md) | 輸出目標用統一介面，vault 用 fs 與 git adapter，不覆蓋使用者修改 | 已採納 |
 | [0011](0011-defer-multi-instance-sync.md) | 多實例同步延到 Hub 階段 | 已採納 |
-| [0012](0012-hub-access-control.md) | Hub 權限：可見度、群組與自動規則 | 提議中 |
+| [0012](0012-hub-access-control.md) | Hub 權限：可見度、群組與自動規則 | 已採納（細節見 0031） |
 | [0013](0013-config-sources-and-secrets.md) | 設定來源分層，secrets 用信封加密 | 已採納 |
 | [0014](0014-client-access-control-and-untrusted-input.md) | Client 的存取控制與不可信輸入 | 已採納 |
 | [0015](0015-acceptance-test-harness.md) | 驗收測試在程序內執行，外部依賴在注入點替換 | 已採納 |
@@ -27,6 +27,9 @@
 | [0019](0019-llm-wire-contract.md) | LLM 步驟的 wire 契約、chunk 任務與限流 | 已採納 |
 | [0020](0020-m3-stages-notes-and-vault.md) | M3 的步驟順序、產出、筆記模板與 vault 輸出 | 提議中 |
 | [0021](0021-m4-scheduler-subscriptions-and-outbox.md) | M4 的排程器、訂閱探索、摘要步驟、預算預留與通知 outbox | 提議中 |
+| [0030](0030-hub-deployment-and-storage.md) | Hub 的部署形態、儲存與測試替身 | 提議中 |
+| [0031](0031-hub-identity-permissions-and-content.md) | Hub 的身分、權限與內容模型 | 提議中 |
+| [0032](0032-client-hub-protocol-and-privacy.md) | Client 與 Hub 的協定、送出的資料與隱私 | 提議中 |
 
 ## 範本
 
