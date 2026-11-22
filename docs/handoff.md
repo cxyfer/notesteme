@@ -1,6 +1,6 @@
 # 交接：開發進度（M1 與 M2）
 
-> 更新：2026-11-23（M2 後端與驗收場景全部完成，見第 1 節開頭的「2026-11-23 收尾摘要」）。2026-11-22：PR #1～#19 已合併（LOCAL #13、PODCAST #14、ESTIMATE #15、M2 S0 #16、M2 S1/S2 #17、規格與 `.feature` 修改 #18、M2 S6a #19）；之後依 owner 的 /goal 指示（MVP 階段，不再開 PR）改為每個切片完成後直接推送到 master，commit 在 `git log` 可查：M2 S7（OUT 渲染與匯入）、M2 S3（LLM 核心引擎）。owner 已同意的規格與 `.feature` 修改已完成（第 2 節第 4 點）。**M1 的後端已完成，但 Web UI 與真實樣本驗收還沒做，M1 尚未收尾（第 1 節「M1 尚未收尾」）。**
+> 更新：2026-11-23（M2 後端與驗收場景全部完成，見第 1 節開頭的「2026-11-23 收尾摘要」）。2026-11-22：PR #1～#19 已合併（LOCAL #13、PODCAST #14、ESTIMATE #15、M2 S0 #16、M2 S1/S2 #17、規格與 `.feature` 修改 #18、M2 S6a #19）；之後依 owner 的 /goal 指示（MVP 階段，不再開 PR）改為每個切片完成後直接推送到 master，commit 在 `git log` 可查：M2 S7（OUT 渲染與匯入）、M2 S3（LLM 核心引擎）。owner 已同意的規格與 `.feature` 修改已完成（第 2 節第 4 點）。**M1 的後端已完成；Web UI 只有 UI-0 骨架（2026-11-23），頁面（UI-1～UI-3）與真實樣本驗收還沒做，M1 尚未收尾（第 1 節「M1 尚未收尾」）。**
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -15,7 +15,7 @@
 - **2026-11-23 收尾摘要（owner 的 /goal：完成 SPEC 剩餘部分、每個切片直接推送 master、不開 PR）**：
   - **完成**：M1 與 M2 的後端與驗收場景。預設 tag（`@M1` 與 `@M2`）**308 個場景全部 passed**（191 個 M1、117 個 M2），`features/passing.txt` 308 行，CI 的 `go test -race` 逾時已調到 30 分鐘（場景在 `-race` 下約 10 分鐘）。M2 切片：S1 PRF、S2 PRM、S6a TRN OpenCC、S7 OUT 渲染與匯入、S3 LLM 核心、S8 OUT sidecar／folder、S4 COR、S5 SEG、S6b TRN LLM、PRM playground／compare＋DEL-R9、S9 MCP（stdio＋HTTP）、S10 AGT、S11（SEC config export／import、術語候選核可 API、translate 詞彙表、P7 prompt 刪除原子化、rerun `chunks` 檢查）。各切片的決策與限制在下面各 bullet 與規格的待決問題（標「待 owner 追認」的都是依 /goal 由 advisor 建議採用的保守預設）。
   - **做不到、需要 owner（blocked）**：
-    1. **Web UI**：`web/` 完全沒有，M1（plan 第 24 節）要求的 UI 沒做；前端工具鏈（建置、測試、i18n、是否沿用 `docs/ui/mockups/`）要 owner 決定（第 7 節）。
+    1. **Web UI**：UI-0 骨架完成（2026-11-23，見下方 UI-0 bullet），UI-1～UI-3 待做（媒體庫與新增抽屜；影音詳情與佇列；設定、Prompt 庫、處理方案、字幕樣式）。前端技術已由 ADR-0008 決定，ADR 沒有規定的細節記在 [ui/README 第 10 節](ui/README.md#10-實作現況)，待 owner 追認。
     2. **真實樣本驗收**：10 部真實影音要用真實的 yt-dlp、Groq、Supadata、Bilibili；`@manual` 與 `@ui` 場景（LIB 5 個、CLI 2 個、DEL 1 個）要人工驗收。
     3. **M0 量測**與 6 個 `@pending-m0` 場景（COR 相似度算法、SEG 斷點標記與字幕規則、SRC 不可用結果與 Whisper 幻覺、TRN 切分標記）；SRC-R11 mixed（`@wip`）。
     4. **真實 libass 預覽**（OUT-R9）與 Jellyfin／Plex 的 sidecar 語言碼實測。
@@ -24,6 +24,7 @@
   - **要 owner 優先追認的決策**：TRN S6b-Q6（`length_ratio` 下限 0.3 對英翻中太緊，可用 `stages.translate.length_ratio` 覆寫）；AGT A1（並行上限解讀成每個 Agent 各自不超過 `llm` 上限）與 A6（translate 用 agent 直接失敗）；香港、澳門繁體的 localize 沒有內建 prompt；DEL-R9 永久刪除不處理輸出檔；內建 `default` 處理方案不匯出／不可被 config import 覆蓋（與 API 可 PATCH 它的行為不一致）；P7 剩下的寫入端窗口（寫入端在自己的交易外驗證 prompt）；MCP S1～S10（stateless HTTP、本機 bearer、`allowed_hosts`）；`estimate_usd` 一律 `null`（`internal/cost` 沒有 LLM 價格）。
   - **已知技術債**見第 6 節；`POST /api/tasks/{id}/retry`／`cancel` 仍回 501、`GET /api/queue` 不列 Agent 任務、試跑 segment／translate 回 501、`prepareLLM` 與試跑有約 25 行重複。
 
+- **UI-0（Web UI 骨架，2026-11-23）**：`web/client`（React + Vite + TypeScript，npm、Node 24.12.0）用 `go:embed all:dist` 嵌入；`dist/` 只 commit `.gitkeep`，沒有 Node 時 Go 的建置與測試照常通過，UI 回 placeholder。`internal/webui` 提供 SPA fallback（`/assets/*` 與有副檔名的路徑找不到回 404）、長期快取、只接受 GET／HEAD、路徑正規化與 NFR-SEC-1 的 CSP 等標頭；`internal/api/ui.go` 在 authn 之前分派，`/api`、`/mcp`、`/healthz`、`/readyz` 不受影響，本機 socket 不提供 UI。OpenAPI 快照 `internal/api/openapi.json`（`go run ./internal/api/cmd/openapi -o internal/api/openapi.json`，`TestOpenAPISnapshot` 檢查）產生 `src/api/schema.d.ts`。前端：程式碼式路由、API client（CSRF、`Accept-Language`、`ApiError`、401 導回登入）、登入頁（鎖定倒數、導回原路徑）、App shell（M1 導覽、skip link、主題、介面語言）、SSE 失效表與重連、i18n 三語、設計 token 與 7 個基礎元件、axe 測試；頁面都是空頁。CI：`.github/workflows/web.yml`（`paths` 過濾）、`release-check` 確認 binary 內嵌建置產物；Dockerfile 加 node 階段、goreleaser 的 `before.hooks` 先建前端。慣例見 `web/client/README.md`，決定與待決問題見 `docs/ui/README.md` 第 10 節。
 - **Repo**：`github.com/cxyfer/notesteme`（private），base branch 是 `master`。Go module 路徑沿用 `github.com/cxyfer/notesteme`。
 - **已完成**：
   - 切片 0：可執行的驗收骨架。
@@ -208,7 +209,7 @@
 
 - **規格狀態**：AUTH、SEC、ING、SRC、NRM、OUT、PIPE、CLI、GRD 是 `ready`，其餘都是 `draft`。還沒有任何規格達到 `implemented`，因為每份都還有 pending 的場景。
 - **M1 尚未收尾（2026-11-22 盤點；2026-11-23 更新：CI 補強、README 已完成，其餘見收尾摘要）**：後端與驗收場景（上表）已完成，但 plan 第 24 節對 M1 的定義還有下列項目沒交付，容易被「場景全綠」掩蓋：
-  - **Web UI 尚未開始**：沒有 `web/`、沒有靜態檔案服務、沒有 UI 的 `go:embed`；`docs/ui/mockups/` 只有 `library.html`、`item.html` 兩份草稿。plan 要求 M1 一起交付的頁面（新增、媒體庫、影音詳情、佇列、設定、登入）和 UI 相關的 NFR（NFR-SEC-1 CSP、NFR-PERF-10、NFR-A11Y-1～3、NFR-I18N-1、NFR-CMP-2、NFR-RWD-1）都還沒做。決定與預設見第 7 節；plan 第 24、26 節已記錄。
+  - **Web UI 只有骨架**（2026-11-23 UI-0；原本的描述：「尚未開始：沒有 `web/`、沒有靜態檔案服務、沒有 UI 的 `go:embed`」）；頁面內容由 UI-1～UI-3 交付，`docs/ui/mockups/` 只有 `library.html`、`item.html` 兩份草稿。plan 要求 M1 一起交付的頁面（新增、媒體庫、影音詳情、佇列、設定、登入）還沒做；UI 相關 NFR 的自動檢查（NFR-SEC-1 CSP、NFR-PERF-10 bundle、NFR-A11Y-1 axe、NFR-I18N-1）已在 UI-0 落地（[nfr.md 第 11 節](specs/nfr.md#11-實作位置web-ui)），NFR-A11Y-2～3、NFR-CMP-2、NFR-RWD-1 的人工檢查要等頁面完成。決定與預設見第 7 節；plan 第 24、26 節已記錄。
   - **真實樣本驗收沒做**：M1 驗收條件「四個平台共 10 部樣本都能一鍵產出 SRT」從未用真實的 yt-dlp、Groq、Supadata 驗證，驗收場景都跑在假工具上。第 6 節「還沒對真實服務驗證」的項目屬於同一類。
   - **人工驗收**：M1 有 7 個 `@manual` 場景還沒驗收。其中 5 個同時是 `@ui`（DEL-R3、LIB-R2、LIB-R5／R6、LIB-R9、LIB-R10），要等 Web UI；另外 2 個是 CLI-03、CLI-04（`watch` skill 改成薄包裝）。M2 還有 LIB-R12（`@ui @manual`）。
   - **CI 已補（2026-11-23 已在 master 實測，綠）**：`vuln` job（govulncheck v1.10.0，NFR-SEC-4）、`go` job 的涵蓋率門檻（`scripts/ci/coverage.sh`，NFR-TEST-3）、`release-check` job（`.goreleaser.yaml` 的 check、snapshot 建置與 linux/amd64 冒煙，NFR-CMP-1）、每晚 `fuzz.yml`（`scripts/ci/fuzz.sh`，涵蓋 subtitle、podcast RSS／Atom、yt-dlp JSON、ffmpeg silencedetect、cookie、zhconv、langtag 的解析入口，NFR-SEC-6）。本機只驗證了涵蓋率腳本、fuzz 腳本與 YAML 語法；govulncheck 與 goreleaser action 要看 master 上 CI 的實際結果，fuzz 要看第一次 nightly（或手動 `workflow_dispatch`）的結果。govulncheck 若報出可利用的弱點，要升級依賴或 Go 版本。
@@ -463,7 +464,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - CLI 的 `resolveItem` 每次逐頁找，API 沒有依代號篩選的參數。
   - 只靠單元測試守住：`waiting` 不含執行中的任務、垃圾桶中的影音不在列表、排序、`limit` 與最後一頁沒有 `next_cursor`。
   - 字幕讀取端沒有串流（NFR-RES-3 只做到輸出端）。
-  - 有 HTML 回應時要加上 CSP 等標頭（NFR-SEC-1）。
+  - ~~有 HTML 回應時要加上 CSP 等標頭（NFR-SEC-1）~~：**已處理（UI-0，`internal/webui`）**。`style-src` 允許 `'unsafe-inline'`（只限 style），見 ui/README 10.3 的待決問題。
   - **CI 時間（2026-11-23）**：master 的 CI 約 23 分鐘（`go test -race` 那一步最久：features 的 308 個場景在 `-race` 下約 10～12 分鐘，`-timeout 30m` 是每個測試程式的上限）。場景再增加時要考慮並行化或把 features 拆成獨立的 job；有牆鐘門檻的測試（例如 `internal/configio` 的 adversarial 測試，門檻 30 秒）在 `-race` 與共用主機上會被放大。
   - CI（`.github/workflows/ci.yml`）：gofmt、`go mod tidy -diff`、vet、`go test -race`、`sqlc diff`，不建置 image。image 由 `docker-publish.yml` 只在 `v*` tag 時建置、冒煙測試後發布到 GHCR（私人 repo，避免浪費 Actions 額度）。還沒有 Python 版規格檢查（Go 版在 `go test` 中）與 `govulncheck`。
 
@@ -489,7 +490,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 | OPS | 自我檢查的暫時性失敗是否回退 | 照規則回退，原因放在 `reason` |
 | LOCAL | steps.md 的語意補充（部分 `#` 表格依 `#` 比對；`processed up to` 規則 (1) 對 `local:` 也算外掛與內嵌字幕）、用路徑新增的延遲驗證、上傳上限 4 GiB、YouTube ASR 也走前處理、備份包含 uploads | 已依預設實作（PR #13），待 owner 確認 |
 | NRM | NRM-R7 場景的字幕軌不會被 `caption_priority` 選中 | **已解決（2026-11-23）**：場景改成宣告原文語言 `zh-Hans`（`29825d4`） |
-| UI | Web UI 切片（M1 欠下的 UI）的排入時機與前端範圍 | （S9 已完成）先做 M1 的頁面；前端工具鏈（建置、測試、i18n）與是否沿用 `docs/ui/mockups/` 的設計，開工前由 owner 決定 |
+| UI | Web UI 的細節決定（npm、Node 24.12、程式碼式路由、session 判斷、主題防閃爍、CSP `style-src 'unsafe-inline'`、縮圖網域） | UI-0 已依 advisor 建議實作，見 [ui/README 10.2、10.3](ui/README.md#102-ui-0-的決定)，待 owner 追認；mockups 只沿用 token，HTML 不照搬 |
 
 ## 8. 已確定的技術選擇
 

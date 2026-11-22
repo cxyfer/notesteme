@@ -52,3 +52,8 @@
 - 代價：
   - 需要 Node 工具鏈來建置前端。Docker 多階段建置可以處理。
   - 自訂設計語言要多花一些工夫，不能直接用預設樣式。
+
+## 實作現況
+
+- 2026-11-23：UI-0（骨架）完成，見 [UI 規格總覽第 10 節](../ui/README.md#10-實作現況)。依本 ADR 實作；ADR 沒有規定的細節（npm、Node 24.12、程式碼式路由、axe-core、session 判斷、主題防閃爍、OpenAPI 快照、CSP 的 `style-src`）記在該節，待 owner 追認。
+- 本 ADR 決策 8 的「後端用 `air` 熱重載」沒有導入；開發時直接重新執行 `go run ./cmd/notesteme serve`。

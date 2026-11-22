@@ -131,3 +131,24 @@
 | 日期 | 版本 | 內容 |
 |---|---|---|
 | 2026-11-12 | v0.1 | 初版，所有數值為暫定值。 |
+| 2026-11-23 | v0.1 | 新增第 11 節：Web UI 相關 NFR 的實作位置（UI-0）。數值未改。 |
+
+## 11. 實作位置（Web UI）
+
+UI-0（2026-11-23）之後各項 UI 相關需求的自動檢查放在哪裡；`manual` 的部分仍要在里程碑結束前人工檢查。
+
+| ID | 實作與自動檢查 | 尚未涵蓋 |
+|---|---|---|
+| NFR-PERF-10 | `web/client/scripts/check-bundle.mjs`（web.yml 的 bundle budget，UI-0 約 137KB／300KB） | LCP、10,000 列捲動（`manual`，UI-1 的虛擬化列表） |
+| NFR-SEC-1 | `internal/webui`（CSP 與其他標頭）；`internal/webui/webui_test.go` 斷言標頭與 `index.html` 沒有 inline script；`check-bundle.mjs` 再檢查一次建置產物 | — |
+| NFR-SEC-2 | eslint 禁止 `dangerouslySetInnerHTML`（`web/client/eslint.config.js`） | Markdown 渲染與 XSS 測試字串（有 Markdown 的頁面再做） |
+| NFR-SEC-4 | web.yml 的 `npm audit --audit-level=high` | — |
+| NFR-A11Y-1 | `web/client/src/test/axe.ts`、`src/test/a11yRoutes.ts`（每頁）、元件測試；對比由 `src/styles/contrast.test.ts` 計算 | — |
+| NFR-A11Y-2 | skip link、換頁後焦點移到 `<main>`、`:focus-visible` 焦點框、Dialog 焦點鎖定與歸還（`src/router.test.tsx`、`src/components/components.test.tsx`） | 完整的鍵盤操作（`manual`） |
+| NFR-A11Y-3 | `StatusBadge`（形狀＋文字）、`prefers-reduced-motion`（`src/styles/base.css`） | 時間帶的文字版本（UI-1） |
+| NFR-I18N-1 | `web/client/scripts/check-i18n.mjs`（key、空字串、參數）、eslint `i18next/no-literal-string` | — |
+| NFR-I18N-2 | API client 送 `Accept-Language`、只依 `code` 判斷（`src/api/client.ts`、`src/api/describeError.ts`） | — |
+| NFR-I18N-3 | `formatDateTime`、`formatNumber`、`formatTimecode`（`src/i18n/index.ts`） | 字幕元素的 `lang`（UI-2） |
+| NFR-CMP-2 | `light-dark()` 等 CSS 功能都在支援範圍內 | 實機檢查（`manual`） |
+| NFR-CMP-3 | `internal/api/openapi.json` 快照（`TestOpenAPISnapshot`）與 web.yml 的型別 drift 檢查 | 與上一個發布版本的 OpenAPI diff |
+| NFR-RWD-1 | 767px 以下的底部分頁列（`src/styles/base.css`） | 三件主要的事要等 UI-1、UI-2 的頁面 |

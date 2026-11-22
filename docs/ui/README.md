@@ -189,3 +189,49 @@
 ## 9. Hub UI（M5）
 
 Hub 是公開的資源站，會另外設計一套風格，以和 Client 區隔。兩者共用時間帶與字幕句列表元件，但 Hub 的重點是瀏覽、比較版本與下載。規格在 M5 前補上。
+
+## 10. 實作現況
+
+### 10.1 UI-0：骨架（2026-11-23）
+
+UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路由、API 呼叫、i18n、元件、測試、CSP 限制、bundle 預算）見 [web/client/README.md](../../web/client/README.md)。
+
+| 範圍 | 狀態 | 位置 |
+|---|---|---|
+| 靜態檔案服務、SPA fallback、快取、安全標頭（NFR-SEC-1） | 完成 | `internal/webui`、`internal/api/ui.go` |
+| `go:embed`；沒有 Node 也能建置（placeholder） | 完成 | `web/client/embed.go`、`web/client/dist/.gitkeep` |
+| Docker 多階段建置、goreleaser 先建前端、release-check 檢查內嵌產物 | 完成 | `deploy/docker/Dockerfile`、`.goreleaser.yaml`、`.github/workflows/ci.yml` |
+| OpenAPI 快照與 TypeScript 型別 | 完成 | `internal/api/openapi.json`、`internal/api/cmd/openapi`、`web/client/src/api/schema.d.ts` |
+| 路由、API client、401 → 登入、登入頁、登出 | 完成 | `web/client/src/router.tsx`、`src/api`、`src/pages/LoginPage.tsx` |
+| App shell：導覽（M1：媒體庫、佇列、設定）、skip link、主題、介面語言 | 完成 | `web/client/src/shell` |
+| SSE：快取失效表、重連、頁面隱藏時斷線 | 完成 | `web/client/src/events` |
+| i18n 三語與字典檢查 | 完成 | `web/client/src/i18n`、`scripts/check-i18n.mjs` |
+| 設計 token 與元件：Button、TextField、Dialog／Drawer、Toast、Spinner、StatusBadge、ErrorCallout | 完成 | `web/client/src/styles`、`src/components` |
+| 頁面：`/library`、`/queue`、`/items/:id`、`/settings/:section` | 空頁（標題＋「還在製作中」） | `web/client/src/pages` |
+| CI：tsc、eslint、prettier、vitest（axe、對比、i18n）、build、bundle 預算、OpenAPI drift、npm audit | 完成 | `.github/workflows/web.yml` |
+| 新增抽屜、媒體庫、時間帶、指令面板、快捷鍵、貼上網址 | 未做 | UI-1 |
+| 影音詳情、佇列 | 未做 | UI-2 |
+| 設定各分區、Prompt 庫、處理方案、字幕樣式 | 未做 | UI-3 |
+| 登入頁背景的淡化時間帶（§13） | 未做 | 等 UI-1 的時間帶元件 |
+| 768–1279px 的收合導覽（只剩圖示） | 未做：沒有圖示前維持展開 | 加入 Phosphor Icons 時（UI-1） |
+
+### 10.2 UI-0 的決定
+
+以下細節 ADR-0008 沒有規定，依 /goal 採 advisor 建議（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+
+1. **工具鏈**：npm（`package-lock.json` commit、CI 用 `npm ci`）；Node 24.12.0（`.nvmrc`、`engines`、Dockerfile、CI 一致）；套件版本寫死，挑發佈至少 2 週的版本。TypeScript 用 5.9（typescript-eslint 與 openapi-typescript 還不支援 7.x）；i18next 26／react-i18next 17（27／18 是 2026-11-07 才發佈的新 major）；jsdom 29（30 以上要求 Node 24.15）。
+2. **測試**：vitest + Testing Library + axe-core（直接用 axe-core，不用已停止維護的 vitest-axe）；不引入 Playwright。jsdom 無法檢查對比，改成從 `tokens.css` 計算 §3.3 的對比表。
+3. **路由**：TanStack Router 的程式碼式路由，集中在 `src/router.tsx`。
+4. **session 判斷**：後端沒有「目前 session」的路由，不新增；以 CSRF cookie（非 HttpOnly）當作「可能已登入」的提示，任何 401 `unauthorized` 再導到登入頁。
+5. **主題防閃爍**：CSP 不允許 inline script，改用 `light-dark()` 與 `color-scheme`：JS 載入前跟隨系統；手動選擇與系統不同時可能短暫閃一下。
+6. **主題與介面語言的切換**暫時放在導覽底部；UI-3 的「外觀」「語言」分區完成後再決定是否移過去。
+7. **OpenAPI 取得方式**：`internal/api.OpenAPISpec()` 只註冊路由、不需要資料庫；快照 commit 在 `internal/api/openapi.json`，Go 測試檢查它與路由一致（go job 不需要 Node），web.yml 檢查由它產生的型別已 commit。
+8. **非後端路徑的分派**：在 api 層 authn 之前包一層，`/api`、`/mcp`、`/healthz`、`/readyz` 照舊進入 mux；不在 mux 上註冊 `/` catch-all（會改變 405 與未知 `/api/*` 的語意）。UI 只掛在 TCP listener，不掛在 CLI 用的本機 socket。
+9. **字型**：Barlow 與 Barlow Semi Condensed 用 Fontsource 的 latin 子集自架（400／500／600 與 Semi Condensed 600）；閱讀區的 Source Serif 4 等到 UI-2 需要時再加。
+10. **錯誤類別**：`ErrorCallout` 的類別先依狀態碼推測（網路錯誤與 5xx 是「暫時無法完成」，其餘是「需要你處理」），頁面可以覆寫；後端的 `Error` 還沒有類別欄位（`internal/api/errors.go` 的 TODO）。
+
+### 10.3 待決問題
+
+- **CSP 的 `style-src 'unsafe-inline'`**（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：NFR-SEC-1 只限制 `script-src`。React 的 `style` 屬性走 CSSOM，不受 CSP 限制；但 Radix Dialog 的捲動鎖定（react-remove-scroll）會插入 `<style>` 元素，`style-src 'self'` 會擋掉它。預設允許 `'unsafe-inline'`（只限 style）；風險是 CSS injection（例如用屬性選擇器外洩資料），前提是先有 HTML injection，而 NFR-SEC-2 已禁止原始 HTML。替代方案：用 nonce（需要伺服器端渲染 `index.html`）或換掉會插入 `<style>` 的套件。
+- **縮圖與嵌入的網域**（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`img-src` 開放 `https://*.ytimg.com`、`https://*.hdslb.com`；`frame-src` 開放 `https://www.youtube.com`、`https://www.youtube-nocookie.com`、`https://player.bilibili.com`。如果之後改成由後端代理縮圖，就可以從 `img-src` 移除。
+- **`X-Frame-Options: DENY`、`Permissions-Policy`、`Cross-Origin-Opener-Policy: same-origin`** 是 NFR-SEC-1 以外另外加的標頭（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
