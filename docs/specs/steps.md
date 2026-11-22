@@ -378,3 +378,21 @@ M3 的句型（4.13～4.16）在 2026-11-23 規格展開時加入，目前全部
 | `Then the note of {string} does not contain {string}` | 筆記的 Markdown 不包含指定文字；沒有筆記時失敗（不能證明「不含」） |
 | `Then the note of {string} has the frontmatter:` | 以 YAML 解析筆記開頭的 frontmatter，表格欄位 `field`、`value`；值一律以字串比較（空白的 `value` 代表空字串，欄位必須存在） |
 | `Given Gemini accepts YouTube videos up to {string}` | 假 Gemini（`features/internal/fakegemini`）可以讀取的片長上限，例如 `"45m"`：`file_data.file_uri` 指到的影片（以假 yt-dlp 中的片長判斷）超過上限時回 400 `INVALID_ARGUMENT`；不是公開影片時回 403 `PERMISSION_DENIED`。也登記假 Gemini 為 LLM provider `gemini`（4.6 的 LLM 步驟可以用 `gemini`，步驟名稱固定是 `note`） |
+
+### 4.16 Vault 與 hook（`steps/vault.go`，M3）
+
+`git` vault 的遠端由假 `git`（`features/internal/fakegit`，放在 `PATH` 中）模擬：remote URL 對應到場景目錄中的假遠端狀態，不連任何網路。hook 用 `PATH` 中的假程式 `notesteme-test-hook`（`features/internal/fakehook`）：把 argv、環境變數與工作目錄記錄下來；`--exit N` 以結束碼 N 結束、`--hang` 一直等到被結束、`--print-bytes N` 印出 N 個位元組後再印 `END-OF-HOOK-OUTPUT`。
+
+| 步驟 | 意思 |
+|---|---|
+| `Given the vault remote rejects pushes as {string}` | 假 git 遠端拒絕所有 push：`non-fast-forward`（stderr 為 git 的 `! [rejected] … (non-fast-forward)`，結束碼 1）或 `bad credentials`（`fatal: Authentication failed for '<remote>'`，結束碼 128） |
+| `Given the vault remote fails the next push with a network error` | 下一次 push 以 `fatal: unable to access '<remote>': Could not resolve host` 失敗（結束碼 128），之後恢復正常 |
+| `Then the vault remote received a commit with the files:` | 假遠端最後一次被推送的 commit 中，相對於上一個 commit 有變動的檔案正好是表格（欄位 `path`，相對於 repo 根目錄）列出的這些 |
+| `Then the vault remote received a single new commit` | 場景開始後，假遠端的分支總共只多了一個 commit |
+| `Then the vault remote received no push` | 場景開始後，假遠端沒有收到任何 push |
+| `Then every git command for the vault ran with {string}` | 假 git 記錄的每一次呼叫，argv 都含有這個元素（例如 `core.hooksPath=/dev/null`，`-c` 後面的值）；沒有任何呼叫時失敗 |
+| `Then no git command for the vault contained {string}` | 假 git 記錄的每一次呼叫，argv 的任何元素都不含這段文字；沒有任何呼叫時失敗 |
+| `Then the hook {string} ran with the arguments:` | 設定檔中這個 hook 最近一次執行的 argv（不含第一個元素）與 doc string 的 JSON 字串陣列完全相同；實際路徑先換回虛擬路徑（`/vault/…`）再比對 |
+| `Then the hook {string} did not run` | 場景中這個 hook 沒有執行過 |
+| `Then the hook {string} saw the environment variable {string}` | hook 最近一次執行時的環境中有這個變數 |
+| `Then the hook {string} did not see the environment variable {string}` | hook 最近一次執行時的環境中沒有這個變數；hook 沒有執行過時失敗 |
