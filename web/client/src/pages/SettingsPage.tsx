@@ -1,37 +1,78 @@
-import { getRouteApi, Link } from "@tanstack/react-router";
+// 設定（docs/ui/pages.md §12）：左側分區清單、右側表單，每個分區各自儲存。
+// 窄螢幕（< 768px）時清單收成頂部的下拉選單。未知的分區導到第一個分區（UI-3b 決定）。
+import { getRouteApi, Link, Navigate, useNavigate } from "@tanstack/react-router";
+import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 
+import "../styles/settings.css";
 import { usePageTitle } from "../shell/usePageTitle";
-import { NotFoundContent } from "./NotFoundPage";
+import { AccountsSection } from "./settings/AccountsSection";
+import { AgentSection } from "./settings/AgentSection";
+import { AppearanceSection } from "./settings/AppearanceSection";
+import { ConfigSection } from "./settings/ConfigSection";
+import { GlossarySection } from "./settings/GlossarySection";
+import { LanguageSection } from "./settings/LanguageSection";
+import { LoginSection } from "./settings/LoginSection";
+import { OutputsSection } from "./settings/OutputsSection";
+import { PlannedSection } from "./settings/PlannedSection";
+import { ServicesSection } from "./settings/ServicesSection";
+import { SystemSection } from "./settings/SystemSection";
 
-// M1 的設定分區（docs/ui/pages.md §12）；UI-3 實作各分區的表單，M2 之後的分區再加進來。
+// 分區的順序依 pages.md §12；「匯出與匯入」是 UI-3b 加的獨立分區（SEC-R10）。
 export const SETTINGS_SECTIONS = [
   "services",
   "accounts",
   "language",
+  "outputs",
+  "agent",
+  "notifications",
+  "budget",
+  "glossary",
   "system",
+  "config",
   "appearance",
   "login",
 ] as const;
-type Section = (typeof SETTINGS_SECTIONS)[number];
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
+const SECTION_COMPONENTS: Record<SettingsSection, ComponentType> = {
+  services: ServicesSection,
+  accounts: AccountsSection,
+  language: LanguageSection,
+  outputs: OutputsSection,
+  agent: AgentSection,
+  notifications: () => <PlannedSection milestone="M4" />,
+  budget: () => <PlannedSection milestone="M4" />,
+  glossary: GlossarySection,
+  system: SystemSection,
+  config: ConfigSection,
+  appearance: AppearanceSection,
+  login: LoginSection,
+};
 
 const route = getRouteApi("/app/settings/$section");
+
+function isSection(s: string): s is SettingsSection {
+  return (SETTINGS_SECTIONS as readonly string[]).includes(s);
+}
 
 export function SettingsPage() {
   const { t } = useTranslation();
   const { section } = route.useParams();
-  const known = (SETTINGS_SECTIONS as readonly string[]).includes(section);
+  const navigate = useNavigate();
+  const known = isSection(section);
   usePageTitle(
-    known
-      ? `${t(`pages.settings.${section as Section}`)} · ${t("pages.settings.title")}`
-      : undefined,
+    known ? `${t(`settings.sections.${section}`)} · ${t("pages.settings.title")}` : undefined,
   );
-  if (!known) return <NotFoundContent />;
+  if (!known) {
+    return <Navigate to="/settings/$section" params={{ section: SETTINGS_SECTIONS[0] }} replace />;
+  }
+  const Body = SECTION_COMPONENTS[section];
   return (
     <>
       <h1 className="page__title">{t("pages.settings.title")}</h1>
       <div className="settings">
-        <nav aria-label={t("pages.settings.sections")}>
+        <nav className="settings__nav" aria-label={t("pages.settings.sections")}>
           <ul className="nav__list">
             {SETTINGS_SECTIONS.map((s) => (
               <li key={s}>
@@ -41,15 +82,31 @@ export function SettingsPage() {
                   params={{ section: s }}
                   aria-current={s === section ? "page" : undefined}
                 >
-                  {t(`pages.settings.${s}`)}
+                  {t(`settings.sections.${s}`)}
                 </Link>
               </li>
             ))}
           </ul>
         </nav>
-        <section aria-labelledby="settings-section-title">
-          <h2 id="settings-section-title">{t(`pages.settings.${section as Section}`)}</h2>
-          <p className="page__empty">{t("pages.notImplemented")}</p>
+        <label className="settings__menu">
+          <span>{t("pages.settings.sections")}</span>
+          <select
+            value={section}
+            onChange={(e) =>
+              void navigate({ to: "/settings/$section", params: { section: e.target.value } })
+            }
+          >
+            {SETTINGS_SECTIONS.map((s) => (
+              <option key={s} value={s}>
+                {t(`settings.sections.${s}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <section className="settings__body" aria-labelledby="settings-section-title">
+          <h2 id="settings-section-title">{t(`settings.sections.${section}`)}</h2>
+          {/* key：換分區時重設表單的本地狀態（未儲存的輸入、剛建立的 token） */}
+          <Body key={section} />
         </section>
       </div>
     </>

@@ -45,10 +45,11 @@ describe("路由", () => {
     expect(skip.getAttribute("href")).toBe("#main");
   });
 
-  it("未知的設定分區顯示找不到", async () => {
+  it("未知的設定分區導到第一個分區", async () => {
     signIn();
-    renderRoute("/settings/nope");
-    await screen.findByRole("heading", { level: 1, name: "找不到這個頁面" });
+    const { router } = renderRoute("/settings/nope");
+    await screen.findByRole("heading", { level: 2, name: "服務與金鑰" });
+    expect(router.state.location.pathname).toBe("/settings/services");
   });
 
   it("切換介面語言時更新 <html lang>", async () => {

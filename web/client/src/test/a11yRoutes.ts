@@ -14,7 +14,20 @@ export const a11yRoutes: A11yRoute[] = [
   { path: "/library?platform=youtube&q=test", heading: "媒體庫", auth: true },
   { path: "/queue", heading: "佇列", auth: true },
   { path: "/items/yt:abc123", heading: "影音詳情", auth: true },
-  { path: "/settings/services", heading: "設定", auth: true },
-  { path: "/settings/appearance", heading: "設定", auth: true },
+  // 設定的每個分區（UI-3b）；有 API 替身資料的 axe 檢查在 src/pages/settings/settings.test.tsx
+  ...[
+    "services",
+    "accounts",
+    "language",
+    "outputs",
+    "agent",
+    "notifications",
+    "budget",
+    "glossary",
+    "system",
+    "config",
+    "appearance",
+    "login",
+  ].map((s) => ({ path: `/settings/${s}`, heading: "設定", auth: true })),
   { path: "/no-such-page", heading: "找不到這個頁面", auth: false },
 ];

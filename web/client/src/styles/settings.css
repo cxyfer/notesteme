@@ -1,0 +1,228 @@
+/* 設定頁（docs/ui/pages.md §12）：左側分區清單、右側表單；窄螢幕時清單收成頂部的下拉選單。 */
+
+.settings__menu {
+  display: none;
+}
+@media (max-width: 767px) {
+  .settings__nav {
+    display: none;
+  }
+  .settings__menu {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-size: var(--font-14);
+    color: var(--text-secondary);
+  }
+}
+
+.settings__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.settings-panel {
+  background: var(--surface-panel);
+  border-radius: var(--radius-container);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.settings-panel__title {
+  margin: 0;
+  font-size: var(--font-16);
+}
+.settings-panel__description,
+.settings-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-14);
+}
+.settings-note[data-kind="unavailable"] {
+  border-left: 2px dashed var(--rule);
+  padding-left: var(--space-2);
+}
+.settings-note[data-kind="ok"] {
+  color: var(--state-ok-text);
+}
+.settings-subtitle {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-14);
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.settings-form--narrow {
+  max-width: 420px;
+}
+.settings-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  width: 100%;
+}
+.settings-inline-form .field {
+  flex: 1 1 240px;
+}
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.settings-field select,
+.settings__menu select {
+  min-height: 32px;
+  max-width: 320px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--surface-panel);
+  padding: 0 var(--space-2);
+  font-size: var(--font-14);
+  color: var(--text-primary);
+}
+.settings-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 24px;
+  font-size: var(--font-14);
+}
+.settings-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+.settings-textarea {
+  font-family: inherit;
+  font-size: var(--font-14);
+  resize: vertical;
+  min-height: 96px;
+}
+
+.settings-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--rule);
+}
+.settings-row:first-child {
+  border-top: 0;
+}
+.settings-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.settings-row__name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.settings-row__meta {
+  color: var(--text-secondary);
+  font-size: var(--font-14);
+}
+.settings-row__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.settings-rules {
+  margin: 0;
+  padding-left: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.settings-rule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
+}
+
+.settings-table-wrap {
+  overflow-x: auto;
+}
+.settings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-14);
+}
+.settings-table th,
+.settings-table td {
+  text-align: left;
+  padding: var(--space-2);
+  border-top: 1px solid var(--rule);
+  vertical-align: middle;
+}
+.settings-table thead th {
+  border-top: 0;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.settings-dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  font-size: var(--font-14);
+}
+.settings-dl dt {
+  color: var(--text-secondary);
+}
+.settings-dl dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-code {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--surface-app);
+  overflow-x: auto;
+  font-size: var(--font-12);
+}
+.settings-errors {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--font-14);
+}
+.settings-details summary {
+  cursor: pointer;
+  font-size: var(--font-14);
+  color: var(--text-secondary);
+  min-height: 24px;
+}
