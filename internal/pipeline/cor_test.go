@@ -132,3 +132,20 @@ func TestCorrectTermCandidates(t *testing.T) {
 		t.Errorf("重跑後候選 %d 個，預期 %d 個", len(got2), len(got))
 	}
 }
+
+// COR-R7：詞彙表進 Groq 的快取參數；沒有詞彙表時參數與先前相同（已付費的轉錄不因此失效）。
+func TestGroqParamsIncludeGlossaryPromptOnlyWhenPresent(t *testing.T) {
+	f := groqFetcher(Deps{}, &fakeGroq{baseURL: "u", model: "m"})
+	it := store.Item{OriginalLang: "en"}
+	plain, _ := f.params(it, Language{}).(map[string]any)
+	if _, ok := plain["prompt"]; ok {
+		t.Errorf("沒有詞彙表不該有 prompt：%v", plain)
+	}
+	with, _ := f.params(it, Language{Glossary: []string{"KRaft", "Confluent"}}).(map[string]any)
+	if with["prompt"] != "KRaft, Confluent" {
+		t.Errorf("params = %v", with)
+	}
+	if !f.supportsGlossary {
+		t.Error("Groq 支援詞彙提示")
+	}
+}

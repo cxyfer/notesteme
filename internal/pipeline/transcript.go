@@ -624,13 +624,17 @@ func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 		supportsGlossary: true,
 		params: func(it store.Item, lang Language) any {
 			baseURL, model := gc.Endpoint()
-			return map[string]any{
+			params := map[string]any{
 				"base_url":   baseURL,
 				"model":      model,
 				"lang_hint":  groq.LangHint(it.OriginalLang),
 				"preprocess": asrPreprocess(gc.MaxFileBytes()),
-				"prompt":     groq.GlossaryPrompt(lang.Glossary),
 			}
+			// 沒有詞彙表時不加欄位：快取鍵與沒有這個功能之前相同，已付費的轉錄不會因此失效。
+			if prompt := groq.GlossaryPrompt(lang.Glossary); prompt != "" {
+				params["prompt"] = prompt
+			}
+			return params
 		},
 		fetch: func(ctx context.Context, it store.Item, lang Language) (*fetchResult, error) {
 			// 沒有 API key 時不取得音訊，直接回報沒有設定（SRC-R10）。
