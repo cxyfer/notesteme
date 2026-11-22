@@ -128,6 +128,7 @@ Feature: Segment into readable sentences
     Then the "segmented" transcript of "yt:talk01xxxxx" is:
       | # | end          | timing  |
       | 1 | 00:00:06.200 | silence |
+      | 2 | 00:00:12.000 | silence |
 
   @SEG-03 @SEG-R8 @SEG-R9
   Scenario: With audio downloads disabled the split is interpolated
