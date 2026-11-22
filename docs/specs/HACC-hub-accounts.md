@@ -1,0 +1,80 @@
+# HACC：Hub 帳號、權限與下架
+
+- 狀態：draft
+- 里程碑：M5
+- 相關：plan 第 3.2、19、20 節；ADR-0012、ADR-0013、ADR-0014；[ADR-0030](../adr/0030-hub-deployment-and-storage.md)、[ADR-0031](../adr/0031-hub-identity-permissions-and-content.md)、[ADR-0032](../adr/0032-client-hub-protocol-and-privacy.md)
+- 驗收場景：[`features/HACC-hub-accounts.feature`](../../features/HACC-hub-accounts.feature)（真 Hub，閘門 `Given a Hub is running`）
+
+## 目的
+
+Hub 是多使用者的公開服務：使用者用 Google、GitHub 或 Linux.do 登入，一個帳號可以連結多個登入方式；管理員依群組與自動規則決定誰能看、誰能下載、誰能上傳，並處理下架申請。帳號連結、權限與下架是 Hub 被濫用時的第一道防線，規則都要能被驗證。
+
+## User stories
+
+| ID | Story |
+|---|---|
+| HUB-01 | As a hub member, I want to sign in with Google, GitHub or Linux.do and link several of them to one account, so that I am not locked to one provider. |
+| HUB-07 | As a hub admin, I want to set who can see what and handle takedown requests, so that the Hub stays within the rules. |
+
+## 規則
+
+| ID | 規則 |
+|---|---|
+| HACC-R1 | 登入方式：`google`（OIDC 授權碼流程）、`github`（OAuth2）、`linuxdo`（OAuth2，endpoint 見 ADR-0012）。endpoint 寫死在程式中、不能設定；設定檔只有 `oauth.<provider>.client_id`，client secret 只能來自環境變數 `NOTESTEME_HUB_OAUTH_<PROVIDER>_CLIENT_SECRET`。沒有設定 `client_id` 或 secret 的登入方式不出現在 `GET /api/v1/auth/providers`，`GET /auth/<provider>/start` 回 404 `provider_not_configured`「這個登入方式尚未啟用。」。 |
+| HACC-R2 | `GET /auth/<provider>/start` 回 302，轉到供應商的 authorize URL，帶 `response_type=code`、`client_id`、`redirect_uri=<public_url>/auth/<provider>/callback`、`state`（32 bytes 隨機值，base64url）、`code_challenge`（S256，verifier 為 64 個字元）與 `code_challenge_method=S256`；Google 另外帶 `nonce`（32 bytes）與 `scope=openid email profile`；GitHub 只有設定檔的自動規則用到 `org_member` 時才多要 `read:org`。同時設定 cookie `notesteme_hub_oauth`（`HttpOnly`、`Secure`、`SameSite=Lax`、`Path=/auth`、`Max-Age=600`），state 的 hash、verifier（以 session 金鑰加密）與 nonce 存在 `oauth_states`，10 分鐘後失效。 |
+| HACC-R3 | callback：`state` 必須與 cookie 及 `oauth_states` 中一筆未使用、未過期、同一個供應商的紀錄相符，否則回 400 `oauth_state_invalid`「登入請求已過期或無效，請重新登入。」；每個 state 只能使用一次，重送同一個 callback 也是這個錯誤。供應商回傳 `error=access_denied` 時回 400 `oauth_denied`「你取消了登入。」。換 token 時送出 `code_verifier`。Google 的 `id_token` 驗證簽章（JWKS）、`iss`、`aud`、`exp` 與 `nonce`；任何一項不符，或供應商的 token、使用者資訊 endpoint 失敗、逾時（10 秒）時，回 502 `oauth_provider_error`「無法向 <供應商名稱> 完成登入，請稍後再試。」，不建立帳號。 |
+| HACC-R4 | 身分以 `(provider, subject)` 識別：Google 的 `sub`、GitHub 的數字 `id`、Linux.do 的 `id`；使用者名稱與 email 改變不影響識別。第一次以某個身分登入時建立新帳號，加入 `members` 群組；`display_name` 取自供應商的使用者名稱，去掉控制字元後最多 40 個字元。登入成功回 302 到 `/`，設定 session cookie `notesteme_hub_session` 與 `notesteme_hub_csrf`。 |
+| HACC-R5 | 不依 email 合併帳號：以新的登入方式第一次登入時一律建立新帳號，就算 email 與既有帳號相同（ADR-0031 第 1 點）。 |
+| HACC-R6 | 連結登入方式：已登入時 `POST /api/v1/me/identities/<provider>/link` 回 200 `{authorize_url}`，流程同 HACC-R2、R3，state 綁定這個帳號（`intent: link`）。session 最近一次登入超過 10 分鐘時回 403 `reauth_required`「請重新登入後再連結新的登入方式。」。身分已經屬於另一個帳號時，callback 回 409 `identity_in_use`「這個 <供應商名稱> 帳號已連結到另一個 Hub 帳號。」，兩個帳號都不變。連結成功後 `GET /api/v1/me` 的 `identities` 多一筆 `{id, provider, login}`，之後用任何一個身分登入都進入同一個帳號。 |
+| HACC-R7 | 移除登入方式：`DELETE /api/v1/me/identities/:id` 回 204；帳號只剩這一個登入方式時回 409 `last_identity`「這是你唯一的登入方式，不能移除。」。連結與移除都寫入稽核紀錄（HACC-R17）。 |
+| HACC-R8 | session：cookie `HttpOnly`、`Secure`、`SameSite=Lax`，閒置 30 天失效，`POST /api/v1/auth/logout` 立即失效。非 GET 的 session 請求必須在 `X-CSRF-Token` 帶 `notesteme_hub_csrf` 的值，否則 403 `csrf_invalid`（同 AUTH-R5）。 |
+| HACC-R9 | PAT：`POST /api/v1/me/tokens {name, permissions, expires_in_days}` 回 201，`token` 只顯示這一次（格式 `nsh_` 加 40 個 base62 字元），DB 只存 hash；`expires_in_days` 為 1～365，預設 90。`permissions` 不在帳號當下的有效權限中時回 422 `permission_not_held`，`errors[].path` 指到該項。每個請求的有效權限是「PAT 的權限 ∩ 帳號當下的有效權限」（ADR-0031 第 2 點）。撤銷（`DELETE /api/v1/me/tokens/:id`）或過期的 PAT 回 401 `unauthorized`。 |
+| HACC-R10 | 群組：內建 `members`（每個登入的帳號，預設 `[read, download]`）、`contributors`（預設 `[read, download, regenerate, upload]`）、`moderators`（預設 `[read, download, moderate]`）、`admins`（`[admin]`，包含全部權限）；內建群組的權限與自訂群組只能在設定檔的 `groups` 定義。有效權限是所屬群組的聯集。 |
+| HACC-R11 | 自動規則（ADR-0012 的形狀）：`provider: linuxdo` 的 `trust_level_gte`、`provider: github` 的 `org_member`、`provider: google` 的 `email_domain`（只在 `email_verified: true` 時成立）。每次以該供應商登入時重新評估：成立就以 `source: rule` 加入，不再成立就移除 `source: rule` 的成員資格；手動指派（`source: manual`）不受影響。 |
+| HACC-R12 | 手動指派：`PUT /api/v1/admin/users/:id/groups/:group`、`DELETE …`（`admin`）。`admins` 群組不能用 API 指派或移除，回 403 `admin_by_config`「管理員只能在設定檔或用 notesteme-hub admin grant 指定。」；設定檔的 `admins: [{provider, subject}]` 在該身分登入時以 `source: config` 加入。 |
+| HACC-R13 | 權限矩陣：每個路由宣告需要的權限（見「介面」的表），缺少時回 403 `forbidden`，回應帶 `required_permission`。站台可見度 `site.visibility` 為 `authenticated`（預設）時，未登入的請求除了 `/auth/*`、`GET /api/v1/auth/providers`、`POST /api/v1/takedowns`、`/healthz`、`/readyz` 之外一律 401 `unauthorized`；為 `public` 時，未登入的請求只有 `public` 內容的 `read`。 |
+| HACC-R14 | 單一內容的可見度：`public`、`authenticated`、`group:<name>`、`private`（只有上傳者與 `moderate`）；有效可見度不能超過站台上限，`site.visibility: authenticated` 時 `public` 的版本視為 `authenticated`。看不到的版本與不存在的版本一律回 404 `not_found`「找不到這個版本。」，列表中也不出現。各種產出的預設可見度在 `content_defaults`：`frames` 預設 `private`，其他預設跟隨站台。 |
+| HACC-R15 | 下架申請：`POST /api/v1/takedowns {version_id, reason, statement, contact_email, good_faith}` 不需要登入；`reason` 為 `copyright`、`privacy`、`other`；`statement` 20～5,000 字元；`good_faith` 必須是 `true`；不符合時 422 並以 `errors[].path` 指出欄位。成功回 201 `{id, state: "open", message: "已收到下架申請，編號 <id>。管理員處理後會在這裡更新狀態。"}`。`contact_email` 以信封加密存放，只有 `moderate` 看得到。同一個 IP 每小時最多 5 筆（`rate_limits.takedowns_per_hour`），超過回 429 `rate_limited`。 |
+| HACC-R16 | 下架決定：`POST /api/v1/admin/takedowns/:id/decision {decision, note}`（`moderate`）。`decision: remove` 時版本變成 `removed`：`GET /api/v1/versions/:id` 與下載回 410 `removed`「這個版本已依下架申請移除。」，沒有其他版本引用的 blob 刪除，`(video, sha256)` 記入 `removed_hashes`（HREP-R9）；上傳者在 `GET /api/v1/me/shares` 看到該版本 `state: removed` 與原因。`decision: reject` 時申請變成 `rejected`，版本不變。已經決定的申請再決定回 409 `takedown_decided`。 |
+| HACC-R17 | 停用帳號：`POST /api/v1/admin/users/:id/suspend {reason}`（`admin`）後，這個帳號的 session 與 PAT 一律回 403 `account_suspended`「這個帳號已被停用。」，投票不再計入分數（HREP-R13）；`…/unsuspend` 恢復。所有 `admin`、`moderate` 動作與登入方式的連結、移除都寫入稽核紀錄，`GET /api/v1/admin/audit`（`admin`）依時間倒序列出 `{actor, action, target_kind, target_id, at}`。 |
+| HACC-R18 | 一般限流：每個帳號（session 與 PAT 合計）每分鐘 600 個請求，未登入的請求每個 IP 每分鐘 60 個（`rate_limits.requests_per_minute`、`anonymous_requests_per_minute`）；超過回 429 `rate_limited`，附 `retry_after_s` 與 `Retry-After` 標頭，訊息「請求太頻繁，請在 <n> 秒後再試。」。 |
+
+## 介面
+
+- 設定檔 `/config/notesteme-hub.yaml`（只能寫在設定檔）：`public_url`、`oauth.<provider>.client_id`、`site.visibility`、`content_defaults`、`groups`（權限與自動規則）、`admins`、`rate_limits`。環境變數：`NOTESTEME_HUB_OAUTH_<PROVIDER>_CLIENT_SECRET`、`NOTESTEME_HUB_MASTER_KEY`（信封加密，同 SEC-R4）。
+- 瀏覽器流程：`GET /auth/<provider>/start`、`GET /auth/<provider>/callback`。
+- API：
+
+  | 路由 | 權限 |
+  |---|---|
+  | `GET /api/v1/auth/providers` | 不需要登入 |
+  | `POST /api/v1/auth/logout` | session |
+  | `GET /api/v1/me`（`{id, display_name, identities, groups, permissions}`） | 已登入或 PAT |
+  | `POST /api/v1/me/identities/<provider>/link`、`DELETE /api/v1/me/identities/:id` | session（PAT 不能連結登入方式） |
+  | `GET/POST/DELETE /api/v1/me/tokens` | session |
+  | `GET /api/v1/me/shares` | `upload` |
+  | `POST /api/v1/takedowns`、`GET /api/v1/takedowns/:id`（只回 `{id, state}`） | 不需要登入 |
+  | `GET /api/v1/admin/takedowns`、`POST /api/v1/admin/takedowns/:id/decision` | `moderate` |
+  | `GET /api/v1/admin/reports`、`POST /api/v1/admin/reports/:id/decision`、`POST /api/v1/admin/versions/:id/hide` | `moderate` |
+  | `GET /api/v1/admin/users`、`PUT/DELETE /api/v1/admin/users/:id/groups/:group`、`POST /api/v1/admin/users/:id/suspend`、`…/unsuspend`、`GET /api/v1/admin/audit` | `admin` |
+  | 內容的路由 | 見 [HREP](HREP-hub-repository.md) 與 [HMCP](HMCP-hub-mcp.md) |
+
+- CLI：`notesteme-hub admin grant|revoke --provider <p> --subject <s>`、`notesteme-hub admin suspend <user-id>`（直接操作 DB，給第一位管理員與救援）。
+- Hub UI（`web/hub`，`@ui @manual`）：登入頁（列出已啟用的登入方式）、帳號頁（登入方式的連結與移除、PAT 的建立與撤銷、我的分享）、管理頁（使用者與群組、檢舉、下架申請、稽核紀錄）、下架申請表單（不需要登入）。頁面清單與文案在 `docs/ui/README.md` 第 9 節補上之前，以本規格為準。
+- 資料表：`users`、`identities`、`oauth_states`、`sessions`、`pats`、`groups`、`group_members`、`takedowns`、`removed_hashes`、`audit_log`（ADR-0031 第 5 點）。
+
+## 不在範圍內
+
+- 合併兩個已經存在的帳號、刪除帳號（之後另立規格）。
+- MCP 的 OAuth 授權流程（ADR-0012：之後再評估，M5 只用 PAT）。
+- 寄送 email 通知（下架與檢舉的結果只在 Hub 上顯示）。
+- 多個 Hub 程序共用限流（ADR-0031 第 5 點）。
+
+## 待決問題
+
+- A1：GitHub 與 Linux.do 是否真的接受 PKCE。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：Hub 一律送 S256 challenge 與 verifier（HACC-R2、R3），假供應商驗證 verifier；供應商忽略 PKCE 時 state 與 client secret 仍然有效，實作 child 對照官方文件後在這裡記錄實際支援的程度。Google 的 endpoint 主機名稱寫在 `fakeoauth` 的常數中，實作時對照官方文件。
+- A2：不依 email 合併（HACC-R5）。代價是使用者用兩個登入方式各登入一次會得到兩個帳號；合併與刪除帳號延到 M5 之後。決定同上，待 owner 追認。
+- A3：連結登入方式要在 10 分鐘內登入過（HACC-R6）。數字依常見的「重新驗證」做法暫定；場景用 fake clock 驗證。
+- A4：內建群組的預設權限（HACC-R10）：`members` 沒有 `regenerate` 與 `upload`，新帳號要靠自動規則（例如 Linux.do trust level ≥ 2）或手動指派才能上傳與讓 Client 取用原始字幕。保守預設，降低剛建立的帳號灌入垃圾內容的風險。
+- A5：下架申請不需要登入（HACC-R15）。版權人不一定有帳號；用 IP 限流與 `good_faith` 聲明擋濫用。沒有 email 通知，申請人要記下編號回來看（`GET /api/v1/takedowns/:id` 只回 `{id, state}`，不需要登入）。
+- A6：限流數字（HACC-R18、HREP-R11、R13、R14）都是暫定值，寫在設定檔可以調整；場景用調低的值觸發。
