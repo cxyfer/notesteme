@@ -65,6 +65,7 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
+          flavor: latest=false
           tags: |
             type=raw,value=staging-${{ github.ref_name }}
 
@@ -138,7 +139,8 @@ jobs:
           case "$GITHUB_REF_NAME" in
             *-*) ;;
             *)
-              stable="$(git tag --list 'v[0-9]*' | grep -Ev -- '-' || true)"
+              # 只認嚴格的 vX.Y.Z；誤推的 v999 之類 tag 不能影響版本比較。
+              stable="$(git tag --list 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)"
               top="$(printf '%s\n' "$stable" | sort -V | tail -n 1)"
               series="${GITHUB_REF_NAME%.*}"
               top_series="$(printf '%s\n' "$stable" | grep -E "^${series//./\\.}\\." | sort -V | tail -n 1)"
@@ -155,6 +157,8 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
+          # metadata-action 預設會替 semver 規則自動加 latest，關掉後 latest 只由下面的 raw 規則決定。
+          flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}},enable=${{ steps.moving.outputs.minor == 'true' }}
