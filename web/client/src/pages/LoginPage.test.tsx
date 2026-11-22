@@ -65,6 +65,18 @@ describe("登入頁", () => {
     expect(router.state.location.pathname).toBe("/queue");
   });
 
+  it("導回帶 query 的路徑", async () => {
+    fetchMock.mockImplementation(async () => {
+      document.cookie = "notesteme_csrf=t; path=/";
+      return json(200, { expires_at: "2026-12-01T00:00:00Z" });
+    });
+    const { router } = renderRoute("/login?redirect=%2Fqueue%3Fx%3D1");
+    await submit("pw");
+    await screen.findByRole("heading", { level: 1, name: "佇列" });
+    expect(router.state.location.pathname).toBe("/queue");
+    expect(router.state.location.searchStr).toBe("?x=1");
+  });
+
   it("不安全的 redirect（//evil.example）改成 /library", async () => {
     fetchMock.mockImplementation(async () => {
       document.cookie = "notesteme_csrf=t; path=/";

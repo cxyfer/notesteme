@@ -218,13 +218,13 @@
 
 ## 2. 下一步
 
-切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC → LOCAL → PODCAST → ESTIMATE → M2 S0 骨架 → M2 S1 PRF＋S2 PRM → 規格修改 → M2 S6a TRN OpenCC（PR #1～#19，全部已合併）→ M2 S7 OUT 渲染與匯入（直接推送到 master）。下一步（S3 完成後）是 S8 OUT sidecar／folder 輸出、PRM compare／playground、DEL-R9 的 `delete_outputs`，再到並行的 S4 COR、S5 SEG、S6b TRN LLM（有 `edited` 時以它為輸入，見 TRN 規格）、S8 OUT publish；Web UI 切片的排入時機待 owner 決定（第 7 節）。**工作方式（owner 的 /goal，2026-11-22）**：MVP 階段不再開 PR，每個切片在 `.worktrees/<slug>` 的分支完成後 rebase 到 origin/master 直接 `git push origin HEAD:master`；需要決策時問 advisor，決定記在規格的待決問題並標「待 owner 追認」；推送後確認 master 的 CI 是綠的。
+切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC → LOCAL → PODCAST → ESTIMATE → M2 S0 骨架 → M2 S1 PRF＋S2 PRM → 規格修改 → M2 S6a TRN OpenCC（PR #1～#19，全部已合併）→ M2 S7 OUT 渲染與匯入（直接推送到 master）。下一步（S3 完成後）是 S8 OUT sidecar／folder 輸出、PRM compare／playground、DEL-R9 的 `delete_outputs`，再到並行的 S4 COR、S5 SEG、S6b TRN LLM（有 `edited` 時以它為輸入，見 TRN 規格）、S8 OUT publish；Web UI 已開始（2026-11-23 UI-0 骨架，接著 UI-1～UI-3）。**工作方式（owner 的 /goal，2026-11-22）**：MVP 階段不再開 PR，每個切片在 `.worktrees/<slug>` 的分支完成後 rebase 到 origin/master 直接 `git push origin HEAD:master`；需要決策時問 advisor，決定記在規格的待決問題並標「待 owner 追認」；推送後確認 master 的 CI 是綠的。
 
 接下來：
 
 1. 疊加 PR 的合併方式（已用在 #13～#17）：前一個 squash 合併後，把下一個的 base 改成 `master`，再把下層分支的修正 merge（不 rebase）進來，最後用 `-s ours` 併入 master，並確認 `git diff master...HEAD` 的 patch-id 與合併前相同。每個 PR 都要等 Codex 審查通過、CI 綠才 squash 合併（owner 已授權，不用另外詢問）；同一個 PR 最多連續重審 3 次，超過要交 owner 決定（#14 就因為這樣由 owner 再授權了幾輪）。
 2. 剩下 M1 的項目（2026-11-23）：NRM-R7 與 CI 補強已完成；剩 Web UI、真實樣本驗收、人工驗收，見第 1 節開頭的「2026-11-23 收尾摘要」。
-3. M2 的切片順序（S0 之後）：並行 S1 PRF（含 ING-R7）、S2 PRM、S6a TRN 確定性（OpenCC）、S7 OUT 渲染 → S3 LLM 核心（provider client、限流、執行層）→ 並行 S4 COR、S5 SEG、S6b TRN LLM、S8 OUT publish → S9 MCP → S10 AGT → S11 收尾。Web UI 切片不在這個順序內，預設與 S9 並行（第 7 節）。S0 之後 `@M2` 是 117 個場景：115 pending、2 failed，兩個失敗都需要 owner 決定（MCP stdio 場景與 Background 衝突、OUT-R9 預覽的影音沒有字幕來源）。規格與 `.feature` 修改後（第 2 節第 4 點）是 17 passed、26 failed、74 pending：Background 的處理方案、prompt 步驟可以執行了，場景會停在後面的步驟；S6a 之後（2026-11-22 實測）是 20 passed、23 failed、74 pending。下列 failed 都是之後的切片才會做的功能，沒有需要 owner 決定的：
+3. M2 的切片順序（S0 之後）：並行 S1 PRF（含 ING-R7）、S2 PRM、S6a TRN 確定性（OpenCC）、S7 OUT 渲染 → S3 LLM 核心（provider client、限流、執行層）→ 並行 S4 COR、S5 SEG、S6b TRN LLM、S8 OUT publish → S9 MCP → S10 AGT → S11 收尾。Web UI 切片不在這個順序內（2026-11-23：M2 後端完成後開始，UI-0 骨架已完成）。S0 之後 `@M2` 是 117 個場景：115 pending、2 failed，兩個失敗都需要 owner 決定（MCP stdio 場景與 Background 衝突、OUT-R9 預覽的影音沒有字幕來源）。規格與 `.feature` 修改後（第 2 節第 4 點）是 17 passed、26 failed、74 pending：Background 的處理方案、prompt 步驟可以執行了，場景會停在後面的步驟；S6a 之後（2026-11-22 實測）是 20 passed、23 failed、74 pending。下列 failed 都是之後的切片才會做的功能，沒有需要 owner 決定的：
    - 缺 LLM fixture（S5、S6b 要補）：SEG 7 個、TRN 8 個、localize 1 個；缺 media fixture `speech-with-pause-at-6.2s.m4a`（S5）。
    - 行為還沒做：COR glossary 傳給 ASR（S4）、SEG 手動字幕跳過 segment（S5，目前 `api` executor 回「還沒有實作」）、TRN 沿用手動字幕軌 1 個（S6a 之後仍失敗，OpenCC 的 3 個範例已通過）、OUT sidecar 對線上影音是 `skipped`（S8）。
 4. **owner 決議（2026-11-22）：下列建議全部同意，其中規格與 `.feature` 的修改已在 `📝 docs(specs)` commit 完成，各規格對應的待決問題已關閉。** 決議內容：
