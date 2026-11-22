@@ -120,9 +120,12 @@ func TestAdvanceStopsAtUntil(t *testing.T) {
 	}
 }
 
-// 步驟可以執行（overrides 指定了 provider 與 model）但還沒有 api 實作（translate 不在 llmStages）時建立 llm 任務；
-// 任務以 permanent 失敗，訊息告訴使用者步驟還沒有實作。（segment 在 S5 登記了 api，改用 translate。）
+// 步驟可以執行（overrides 指定了 provider 與 model）但還沒有 api 實作（不在 llmStages）時建立 llm 任務；
+// 任務以 permanent 失敗，訊息告訴使用者步驟還沒有實作。（所有 LLM 步驟都已登記，所以暫時移除 translate 來走這條路徑。）
 func TestRunnableLLMStageCreatesLLMTaskThatFailsPermanently(t *testing.T) {
+	saved := llmStages[StageTranslate]
+	delete(llmStages, StageTranslate)
+	t.Cleanup(func() { llmStages[StageTranslate] = saved })
 	r := newRig(t)
 	ctx := context.Background()
 	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
