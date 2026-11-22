@@ -62,11 +62,19 @@ func parseLLM(node *yaml.Node, path string) (map[string]LLMProvider, error) {
 	}
 	sort.Strings(ids)
 	out := make(map[string]LLMProvider, len(ids))
+	// envKey 是 id 對應的環境變數名稱部分（- 換成 _）：foo-bar 與 foo_bar 會讀到同一個 NOTESTEME_FOO_BAR_API_KEY。
+	byEnvKey := map[string]string{}
 	for _, id := range ids {
 		field := "llm.providers." + id
 		if !llmProviderID.MatchString(id) {
 			return nil, fmt.Errorf("設定檔 %s 的欄位 llm.providers 有不合法的 id %q：只能用小寫英數字、底線與連字號，並以英數字開頭。", path, id)
 		}
+		envKey := strings.ReplaceAll(id, "-", "_")
+		if other, ok := byEnvKey[envKey]; ok {
+			return nil, fmt.Errorf("設定檔 %s 的欄位 llm.providers 的 id %q 與 %q 會使用同一個 API key 環境變數 NOTESTEME_%s_API_KEY，請改用不同的 id。",
+				path, other, id, strings.ToUpper(envKey))
+		}
+		byEnvKey[envKey] = id
 		n := llm.Providers[id]
 		var s llmProviderSchema
 		if err := decodeKnownYAML(&n, &s); err != nil {

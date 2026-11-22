@@ -25,15 +25,16 @@ func TestLoadLLMProviders(t *testing.T) {
 
 func TestLoadLLMProvidersRejectsInvalid(t *testing.T) {
 	cases := map[string]string{
-		"llm:\n  chunk: { max_tokens: 10 }\n":                                        "llm.chunk",
-		"llm:\n  providers:\n    x: { type: gemini }\n":                              "llm.providers.x.type",
-		"llm:\n  providers:\n    x: { base_url: \"https://a\" }\n":                   "llm.providers.x.type",
-		"llm:\n  providers:\n    x: { type: openai, base_url: \"ftp://a\" }\n":       "llm.providers.x.base_url",
-		"llm:\n  providers:\n    x: { type: openai, base_url: \"https://u:p@a\" }\n": "llm.providers.x.base_url",
-		"llm:\n  providers:\n    x: { type: openai, rpm: -1 }\n":                     "llm.providers.x.rpm",
-		"llm:\n  providers:\n    x: { type: openai, tpm: 1.5 }\n":                    "llm.providers.x.tpm",
-		"llm:\n  providers:\n    x: { type: openai, api_key: sk }\n":                 "llm.providers.x",
-		"llm:\n  providers:\n    Bad_ID: { type: openai }\n":                         "不合法的 id",
+		"llm:\n  chunk: { max_tokens: 10 }\n":                                                "llm.chunk",
+		"llm:\n  providers:\n    x: { type: gemini }\n":                                      "llm.providers.x.type",
+		"llm:\n  providers:\n    x: { base_url: \"https://a\" }\n":                           "llm.providers.x.type",
+		"llm:\n  providers:\n    x: { type: openai, base_url: \"ftp://a\" }\n":               "llm.providers.x.base_url",
+		"llm:\n  providers:\n    x: { type: openai, base_url: \"https://u:p@a\" }\n":         "llm.providers.x.base_url",
+		"llm:\n  providers:\n    x: { type: openai, rpm: -1 }\n":                             "llm.providers.x.rpm",
+		"llm:\n  providers:\n    x: { type: openai, tpm: 1.5 }\n":                            "llm.providers.x.tpm",
+		"llm:\n  providers:\n    x: { type: openai, api_key: sk }\n":                         "llm.providers.x",
+		"llm:\n  providers:\n    Bad_ID: { type: openai }\n":                                 "不合法的 id",
+		"llm:\n  providers:\n    foo-bar: { type: openai }\n    foo_bar: { type: openai }\n": `"foo-bar" 與 "foo_bar" 會使用同一個 API key 環境變數 NOTESTEME_FOO_BAR_API_KEY`,
 	}
 	for doc, want := range cases {
 		_, err := loadASR(t, doc)

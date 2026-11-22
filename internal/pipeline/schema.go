@@ -140,13 +140,22 @@ var timingFields = []fieldSpec{
 	{"split_timing_audio", checkEnum("auto", "never")},
 }
 
+// LLM 設定的上限：重試次數決定一個 chunk 任務最多送出幾次請求（要在租約內完成，ADR-0019），
+// 前文與重疊句會放進每個請求，max_tokens 是一個 chunk 的輸入估計。
+const (
+	maxLLMChunkTokens       = 200000
+	maxLLMOverlapCues       = 100
+	maxLLMContextCues       = 100
+	maxLLMValidationRetries = 10
+)
+
 var llmFields = []fieldSpec{
 	{"chunk", checkObject([]fieldSpec{
-		{"max_tokens", checkInt(1, msgNotPosInt)},
-		{"overlap_cues", checkInt(0, msgNotNonNegInt)},
-		{"context_cues", checkInt(0, msgNotNonNegInt)},
+		{"max_tokens", checkIntRange(1, maxLLMChunkTokens)},
+		{"overlap_cues", checkIntRange(0, maxLLMOverlapCues)},
+		{"context_cues", checkIntRange(0, maxLLMContextCues)},
 	}, msgUnknownField)},
-	{"max_validation_retries", checkInt(0, msgNotNonNegInt)},
+	{"max_validation_retries", checkIntRange(0, maxLLMValidationRetries)},
 }
 
 var agentFields = []fieldSpec{
@@ -320,6 +329,23 @@ func checkInt(min float64, msg string) func(*layerValidator, string, any) {
 			v.add(path, msgNull)
 		case float64:
 			if !isInteger(t) || t < min {
+				v.add(path, msg)
+			}
+		default:
+			v.add(path, msg)
+		}
+	}
+}
+
+// checkIntRange 檢查值是 [lo, hi] 之間的整數。
+func checkIntRange(lo, hi float64) func(*layerValidator, string, any) {
+	msg := fmt.Sprintf("必須是 %g 到 %g 的整數。", lo, hi)
+	return func(v *layerValidator, path string, val any) {
+		switch t := val.(type) {
+		case nil:
+			v.add(path, msgNull)
+		case float64:
+			if !isInteger(t) || t < lo || t > hi {
 				v.add(path, msg)
 			}
 		default:
