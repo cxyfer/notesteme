@@ -629,11 +629,11 @@ func (s *Scenario) seedItemFixture(ref string, fx *itemFixture) error {
 	return nil
 }
 
-// firstUnfinished 回傳從開頭到 upTo（含）第一個還不是 done 的步驟；都完成了回傳空字串。
+// firstUnfinished 回傳從開頭到 upTo（含）第一個還不是 done 的步驟（M2 步驟 skipped 也算完成）；都完成了回傳空字串。
 func firstUnfinished(it itemJSON, upTo string) string {
 	for _, name := range pipeline.Stages {
 		for _, st := range it.Stages {
-			if st.Stage == name && st.Status != "done" {
+			if st.Stage == name && st.Status != "done" && !(st.Status == "skipped" && slices.Contains(m2TargetStages, name)) {
 				return name
 			}
 		}
