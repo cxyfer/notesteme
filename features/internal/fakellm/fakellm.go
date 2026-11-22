@@ -548,6 +548,10 @@ func parseRequest(id string, body []byte) parsed {
 		return pr
 	}
 	pr.model = raw.Model
+	// 兩家 API 的 model 都是必填欄位，缺了或是空字串真實 API 會回 400。
+	if strings.TrimSpace(raw.Model) == "" {
+		pr.errs = append(pr.errs, "缺少 model（兩家 API 的必填欄位，不可以是空字串）")
+	}
 	if id == providerAnthropic {
 		if t := contentText(raw.System); t != "" {
 			parts = append(parts, part{"system", t})

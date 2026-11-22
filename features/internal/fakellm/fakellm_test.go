@@ -536,6 +536,10 @@ func TestWireViolations(t *testing.T) {
 		want                 string
 	}{
 		{"anthropic 缺 tool_choice", "anthropic", `{"model":"m","max_tokens":100,"messages":[{"role":"user","content":"x"}],"tools":[{"name":"notesteme_correct"}]}`, nil, "tool_choice"},
+		{"anthropic 缺 model", "anthropic", strings.Replace(anthropicBody("correct", "s", user), `"model":"fixture-model",`, ``, 1), nil, "缺少 model"},
+		{"anthropic model 是空字串", "anthropic", strings.Replace(anthropicBody("correct", "s", user), `"model":"fixture-model"`, `"model":""`, 1), nil, "缺少 model"},
+		{"openai 缺 model", "openai", strings.Replace(openaiBody("correct", "s", user), `"model":"fixture-model",`, ``, 1), nil, "缺少 model"},
+		{"openai model 是空字串", "openai", strings.Replace(openaiBody("correct", "s", user), `"model":"fixture-model"`, `"model":""`, 1), nil, "缺少 model"},
 		{"anthropic 缺 max_tokens", "anthropic", strings.Replace(anthropicBody("correct", "s", user), `"max_tokens":4096,`, ``, 1), nil, "max_tokens"},
 		{"openai strict schema 缺 additionalProperties", "openai", strings.Replace(openaiBody("correct", "s", user), `"additionalProperties":false,`, ``, 1), nil, "additionalProperties"},
 		{"openai strict schema 的 required 不完整", "openai", strings.Replace(openaiBody("correct", "s", user), `"required":["cues"]`, `"required":[]`, 1), nil, "required"},
