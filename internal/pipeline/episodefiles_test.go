@@ -85,6 +85,31 @@ func TestEpisodeFilesRules(t *testing.T) {
 			t.Errorf("c = %q，%q 釋放之後應可重用", c, a)
 		}
 	})
+	t.Run("Discard 刪不掉檔案時保留擁有權（Codex P2）", func(t *testing.T) {
+		e, dir := newEpisodeFiles(), t.TempDir()
+		a, _ := e.Stage(writePart(t, dir, "a", "A"), dir, ".mp3", sumHex("A"))
+		// 把檔案換成非空目錄，os.Remove 會失敗（模擬暫時性的檔案系統錯誤）。
+		p := filepath.Join(dir, a)
+		if err := os.Remove(p); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(p, "x"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		e.Discard(dir, a)
+		err := e.Recover(writePart(t, dir, "r", "R"), dir, a)
+		if c, ok := errclass.ClassOf(err); !ok || c != errclass.ClassRetryable {
+			t.Fatalf("刪除失敗之後 Recover err = %v，預期仍被擁有（可重試的錯誤）", err)
+		}
+		// 障礙排除之後再丟棄一次：釋放擁有權。檔案已經不在也算成功。
+		if err := os.RemoveAll(p); err != nil {
+			t.Fatal(err)
+		}
+		e.Discard(dir, a)
+		if err := e.Recover(writePart(t, dir, "r2", "R2"), dir, a); err != nil || readFile(dir, a) != "R2" {
+			t.Errorf("err = %v，檔案 = %q", err, readFile(dir, a))
+		}
+	})
 	t.Run("Recover 不蓋掉擁有中或已存在的檔案", func(t *testing.T) {
 		e, dir := newEpisodeFiles(), t.TempDir()
 		a, _ := e.Stage(writePart(t, dir, "a", "A"), dir, ".mp3", sumHex("A"))

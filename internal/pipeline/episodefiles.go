@@ -94,10 +94,14 @@ func (e *episodeFiles) Commit(dir, name string) {
 }
 
 // Discard 在擁有 name 的執行沒有寫入結果時呼叫：刪除這個檔案並釋放檔名（同一把鎖內）。
+// 刪除失敗（不是「檔案已經不在」）時保留擁有權：丟棄的位元組還在，檔名不能算釋放，
+// 清理與復原也不會把它當成沒有擁有者的檔案處理；程序重啟後由 Sweep 清掉。
 func (e *episodeFiles) Discard(dir, name string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	_ = os.Remove(filepath.Join(dir, name))
+	if err := os.Remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return
+	}
 	delete(e.owned, e.key(dir, name))
 }
 
