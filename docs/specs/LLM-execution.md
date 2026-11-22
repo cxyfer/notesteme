@@ -65,3 +65,4 @@
 - L9：限流與驗證重試（2026-11-22，S3 實作時決定，待 owner 追認）。chunk 的第一次請求在額度不夠時讓任務等待（LLM-R7）；同一個 chunk 的驗證重試立刻送出（LLM-R5），額度可以透支，由之後的請求等待補回，所以短時間內實際的請求數可能略高於 `rpm`。限流的狀態在程序內，重啟後歸零。`rpm`、`tpm` 只能在設定檔設定（`llm.providers.<id>`），設定頁還沒有對應的欄位。
 - L10：chunk 任務與步驟狀態（2026-11-22，S3 實作時決定，見 ADR-0019）。每個 stage run 是 plan → 每個 chunk 一個任務 → assemble。步驟狀態在 chunk 之間只反映最近一次的事件（例如一個 chunk 等待重試、另一個正在執行時顯示 running）。一個 chunk 讓步驟 blocked 或 failed 時，取消其他還沒領取的 chunk 任務，已完成的 chunk 結果保留，修正後重跑會重用。
 - L11：快取的分層（2026-11-22，S3 實作時決定，見 ADR-0019）。步驟層（PIPE-R5）與 chunk 層（LLM-R8）都會命中；有退回 chunk 的產出不寫入步驟層的快取鍵，所以不指定 `chunks` 的一般重跑也只會重新送出退回的 chunk；`chunks` 指定的 chunk 兩層都繞過。
+- L12：`POST /api/items/:id/rerun` 的 `chunks`（2026-11-22，S3 實作時決定，待 owner 追認）。只能用在 LLM 步驟（`from` 是 segment、correct、translate），否則回 422（S0 時是 501）；每項必須是從 1 起算的整數，否則 422。只套用在 `from` 的那個步驟；超過 chunk 總數的編號忽略；步驟不是用 api executor 時（agent、off）不使用。影響：呼叫端不會因為編號超出而收到錯誤，要從產出來源紀錄的 `chunks[]` 得知實際的 chunk 數。
