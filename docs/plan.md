@@ -161,6 +161,7 @@ Client 必須能獨立擁有分享以外的所有功能，Hub 只是資源站，
 - `summary` 設為「摘要後暫停」時，後續步驟要等使用者決定。
 - 有章節（來自平台或 `chapters`）時，`segment`、`correct`、`translate` 依章節切 chunk。
 - SponsorBlock 標記的片段不送 LLM 步驟，字幕在這些片段保留原文。
+- **修訂（2026-11-23，ADR-0020，待 owner 追認）**：M3 的實際順序是 `metadata` → `transcript` → `normalize` → `segment` → `correct` → `translate` → `sponsorblock` → `chapters` → `frames` → `note` → `publish`。`chapters` 以校正後的字幕為輸入，產生的章節不參與 M2 的 chunk 切分；`frames.candidates`、`frames.select` 是 `frames` 步驟內的兩個任務；SponsorBlock 片段只排除在 `chapters`、`frames`、`note` 之外。
 
 ### 5.1 冪等與快取
 
@@ -778,3 +779,4 @@ notesteme/
 | v0.2 | 2026-11-12 | 依審查修訂：簡繁轉換移到 `translate`、句群翻譯、步驟狀態加上 `waiting` 與 `blocked`、字幕格式改為即時渲染、登入提前到 M1、設定來源分層、安全與維運規則、資料模型調整、選配 Postgres＋Redis；新增摘要、自動章節、SponsorBlock、外部字幕匯入、sidecar 輸出、訂閱匯入、Batch API 等功能 |
 | v0.3 | 2026-11-13 | 排程改為自寫，不用 gocron v2：gocron 在自己的 goroutine 中非同步觸發，驗收測試無法確定排程已經處理完（ADR-0015） |
 | v0.4 | 2026-11-22 | Roadmap 註記 M1 的 Web UI 與真實樣本驗收尚未完成，Web UI 改以獨立的 UI 切片追蹤，排入時機列入待決問題 |
+| v0.5 | 2026-11-23 | M3 規格展開（ADR-0020，待 owner 追認）：M3 的步驟接在 `translate` 之後，順序為 `sponsorblock` → `chapters` → `frames` → `note` → `publish`；`frames.candidates`、`frames.select` 合併成 `frames` 一個步驟；SponsorBlock 片段只排除在章節、選圖與筆記之外（不影響 M2 的步驟）；vault 與 hook 只能在設定檔定義 |

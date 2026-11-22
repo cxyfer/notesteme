@@ -52,8 +52,14 @@ Notesteme 採用規格驅動（SDD）的開發方式，驗收以行為（BDD）�
 | PRF | 處理方案與設定覆寫 | M2 | [PRF-profiles.md](PRF-profiles.md) | [PRF-profiles.feature](../../features/PRF-profiles.feature) |
 | AGT | Agent 任務 | M2 | [AGT-agent-tasks.md](AGT-agent-tasks.md) | [AGT-agent-tasks.feature](../../features/AGT-agent-tasks.feature) |
 | MCP | MCP 工具 | M2 | [MCP-tools.md](MCP-tools.md) | [MCP-tools.feature](../../features/MCP-tools.feature) |
+| SPB | SponsorBlock | M3 | [SPB-sponsorblock.md](SPB-sponsorblock.md) | [SPB-sponsorblock.feature](../../features/SPB-sponsorblock.feature) |
+| CHAP | 自動章節 | M3 | [CHAP-chapters.md](CHAP-chapters.md) | [CHAP-chapters.feature](../../features/CHAP-chapters.feature) |
+| FRM | 關鍵畫面 | M3 | [FRM-frames.md](FRM-frames.md) | [FRM-frames.feature](../../features/FRM-frames.feature) |
+| NOTE | 筆記與筆記模板 | M3 | [NOTE-notes.md](NOTE-notes.md) | [NOTE-notes.feature](../../features/NOTE-notes.feature) |
+| GEM | Gemini 直接生成 | M3 | [GEM-gemini.md](GEM-gemini.md) | [GEM-gemini.feature](../../features/GEM-gemini.feature) |
+| VAULT | 輸出到 Vault 與 hook | M3 | [VAULT-vault-output.md](VAULT-vault-output.md) | [VAULT-vault-output.feature](../../features/VAULT-vault-output.feature) |
 
-M3 到 M5 的能力目前只在 [`story-map.md`](story-map.md) 中列出故事與條列式的驗收標準，開發前再展開成規格與場景。
+M3 的能力已在 2026-11-23 展開成規格與場景（`@M3`，預設 tag 不執行，M3 的步驟目前是 pending 的步驟樁；跨規格的決定見 [ADR-0020](../adr/0020-m3-stages-notes-and-vault.md)）。M4、M5 的能力目前只在 [`story-map.md`](story-map.md) 中列出故事與條列式的驗收標準，開發前再展開成規格與場景。
 
 ## 4. 能力規格的格式
 

@@ -412,6 +412,7 @@ Prompt 庫 › 校正 › correct-default
 | 登入 | 修改密碼（M1）；目前的登入工作階段、反向代理驗證與 OIDC（M4） | M1 起逐步補齊 |
 
 - **安全**：API key 儲存後只顯示末四碼，不能再次查看完整內容，只能更換。
+- **修訂（2026-11-23，ADR-0020、VAULT 規格待決問題 V1，待 owner 追認）**：「輸出」分區的 vault（路徑、git repo、分支）與 hook 只能在設定檔定義，這裡唯讀顯示，處理方案只能選用已定義的 id；字幕的本機影片旁與資料夾目標維持可以在處理方案中設定。
 - **API**：`GET/PUT /api/settings/:section`、`POST /api/providers/:id/test`、`POST /api/cookies`、`GET /api/system`、`POST /api/tools/yt-dlp/update`、`GET/POST/DELETE /api/tokens`
 
 ## 13. 登入

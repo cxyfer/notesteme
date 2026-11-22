@@ -242,3 +242,33 @@ fixture 有三種形式（`features/internal/fakellm/fixture.go`）：靜態的 
 2. 在對應的目錄建立同名檔案，內容盡量小。
 3. 執行 `go test ./features/...`，確認場景讀得到檔案；找不到檔案時，假工具與假來源會明確回報
    檔名，而不是靜默回傳空內容。
+
+## M3 的假服務（2026-11-23，規格展開時設計，接進 harness 由 M3 的實作切片負責）
+
+M3 的步驟（`docs/specs/steps.md` 4.13～4.16）目前都是 pending 的步驟樁。下列假服務已有可以單獨測試的骨架，
+還沒有登記到 fakenet 或 `faketool.Dispatch`；實作切片接上它們時，要確認預設 tag 的場景不退步。
+
+| 套件 | 取代 | 狀態與 fixture | 接到哪裡 |
+|---|---|---|---|
+| `features/internal/fakesponsorblock` | SponsorBlock 的 hash 前綴 API（`sponsor.ajay.app`，SPB-R2） | 由表格步驟登記片段，沒有檔案；沒有片段時回 404 | fakenet；**每個場景預設登記**（ADR-0020 第 2 點），既有的 YouTube 場景才不會撞上 trap |
+| `features/internal/fakeframes` | ffmpeg 的場景偵測（`showinfo` 的 stderr）與畫面擷取（純色 JPEG） | 由 `the video of … has the scenes:` 的表格登記，沒有檔案 | 假 ffmpeg（`faketool/ffmpeg.go` 依參數分派：`select='gt(scene,T)',showinfo` 與 `-ss <t> -frames:v 1`）；假 yt-dlp 為有場景的影片提供影像串流與格式清單（`the best video format of …`） |
+| `features/internal/fakegemini` | Gemini `generateContent`（GEM-R4） | 回答讀 `llm/` 的 fixture（`{"output": …}`，output 包成 `candidates[0].content.parts[0].text`）；片長與公開狀態取自假 yt-dlp 的影片 | fakenet（`generativelanguage.googleapis.com`）；LLM 步驟的 provider `gemini` |
+| `features/internal/fakegit` | `git` CLI 與遠端（VAULT-R7～R9） | 狀態在場景目錄的 `fake/git/`（`remote.json`、`calls.jsonl`、clone 中的 `.git/fakegit.json`） | `faketool.Dispatch` 依 argv[0] `git` 分派；以假工具自己的位置找到場景（產品會清掉 git 的環境變數） |
+| `features/internal/fakehook` | 使用者的 hook 程式（VAULT-R10、R11） | 紀錄在場景目錄的 `fake/hooks.jsonl` | `faketool.Dispatch` 依 argv[0] `notesteme-test-hook` 分派 |
+
+- vision 選圖（FRM-R7）用既有的 fakellm，步驟名稱 `frames`；fakellm 要接受圖片內容區塊（FRM 規格 F4）。
+- `fs` vault 寫到場景的 `/vault`（`<場景根目錄>/vault`，steps.md 第 4 節的路徑對應）。
+
+### M3 的 LLM fixture（`llm/`）
+
+| fixture | 用途 |
+|---|---|
+| `chapters-two`、`chapters-missing-cue`、`chapters-out-of-order`、`chapters-title-too-long`、`chapters-in-sponsor` | CHAP：兩個章節（cue 2、4）與四種驗證失敗 |
+| `frames-pick-six`、`frames-pick-missing` | FRM-R7：第 1 張拼圖的 6 個編號、不存在的編號 12 |
+| `note-minimal`、`note-two-sections`、`note-with-frames` | NOTE：一節（cue 1）、兩節（cue 2、4，內文引用 cue 5）、引用畫面 1 與 3 |
+| `note-missing-cue`、`note-unselected-frame`、`note-starts-with-level-3` | NOTE-R3 的驗證失敗 |
+| `note-hostile` | NOTE-R8：HTML、`javascript:` 連結、內文標題、`![[…]]`、Templater 與 `dataviewjs` |
+| `note-map-part-1`～`3`、`note-reduce` | NOTE-R6 的 map-reduce |
+| `gemini-note-two-sections`、`gemini-note-past-end`、`gemini-note-hostile` | GEM：以時間（`start`）代替 cue 的輸出 |
+
+這些 fixture 的文字不含場景要驗證「由 production 加入」的字串（時間連結、`&lt;script&gt;`、`**Injected heading**` 的粗體），否則斷言會恆真。

@@ -5,6 +5,13 @@
 
 ## 1. 現況
 
+- **M3 規格展開（2026-11-23，分支 `docs/m3-specs-notes-frames`，只有文件、場景、步驟樁與假服務骨架，沒有產品程式）**：
+  - 六份規格（狀態 `ready`）與 `.feature`：[SPB](specs/SPB-sponsorblock.md)、[CHAP](specs/CHAP-chapters.md)、[FRM](specs/FRM-frames.md)、[NOTE](specs/NOTE-notes.md)、[GEM](specs/GEM-gemini.md)、[VAULT](specs/VAULT-vault-output.md)；跨規格的決定在 [ADR-0020](adr/0020-m3-stages-notes-and-vault.md)（步驟順序 `translate → sponsorblock → chapters → frames → note → publish`、預設值、資源類別、產出 kind、`note_templates`、vault 與 hook 只在設定檔、`outputs` 加欄位）。
+  - `@M3` 場景：`go test ./features -run TestFeatures -godog.tags='@M3'` 全部 pending（`@pending-m0` 另計）。每個 M3 的 Background 在第一個送出請求的步驟之前都有一個 M3 句型，所以實作前不會 failed；預設 tag 的 308 個場景不受影響。
+  - 新句型在 `steps.md` 4.13～4.16（步驟樁在 `features/steps/chapters.go`、`frames.go`、`notes.go`、`vault.go`）；既有句型的 M3 語意補充（`processed up to` 接受 M3 步驟、產出名稱接受 M3 kind、LLM 步驟的 `gemini` provider、`/vault` 路徑對應）寫在 4.13 開頭，要在實作切片中補上。
+  - 假服務骨架（只有單元測試，還沒接進 fakenet、`faketool.Dispatch`）：`features/internal/fakesponsorblock`、`fakeframes`、`fakegemini`、`fakegit`、`fakehook`；設計見 `features/fixtures/README.md`「M3 的假服務」。
+  - 要 owner 追認的決定：ADR-0020 全文；SPB B1（M2 步驟不排除片段）；CHAP H1（章節在 translate 之後）；FRM F1（單一 `frames` 步驟）、F3（預設 off）；NOTE N1（自動檢查依 `Video Notes/AGENTS.md` 轉述）、N2（「標記已閱讀」按鈕來源不足）；GEM G2（模型時間戳的例外）；VAULT V1（vault 只在設定檔，UI 第 12 節已加修訂行）、V2（push 錯誤依種類分類）。
+  - 建議的實作切法：M3-S0 harness（假服務接線、`/vault` 對應、`processed up to` 的 M3 規則、預設的假 SponsorBlock）→ S1 SPB → S2 CHAP → S3 FRM（候選與規則選圖，再 vision）→ S4 NOTE（模板、渲染、檢查、跳脫，再 map-reduce 與模板 API）→ S5 VAULT fs → S6 VAULT git＋hook → S7 GEM；每個步驟加進 `pipeline.Stages` 時同步移除 `plannedStages` 並確認 308 個場景不退步。
 - **2026-11-23 收尾摘要（owner 的 /goal：完成 SPEC 剩餘部分、每個切片直接推送 master、不開 PR）**：
   - **完成**：M1 與 M2 的後端與驗收場景。預設 tag（`@M1` 與 `@M2`）**308 個場景全部 passed**（191 個 M1、117 個 M2），`features/passing.txt` 308 行，CI 的 `go test -race` 逾時已調到 30 分鐘（場景在 `-race` 下約 10 分鐘）。M2 切片：S1 PRF、S2 PRM、S6a TRN OpenCC、S7 OUT 渲染與匯入、S3 LLM 核心、S8 OUT sidecar／folder、S4 COR、S5 SEG、S6b TRN LLM、PRM playground／compare＋DEL-R9、S9 MCP（stdio＋HTTP）、S10 AGT、S11（SEC config export／import、術語候選核可 API、translate 詞彙表、P7 prompt 刪除原子化、rerun `chunks` 檢查）。各切片的決策與限制在下面各 bullet 與規格的待決問題（標「待 owner 追認」的都是依 /goal 由 advisor 建議採用的保守預設）。
   - **做不到、需要 owner（blocked）**：

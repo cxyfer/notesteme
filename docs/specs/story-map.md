@@ -6,7 +6,8 @@
 故事地圖列出使用者能用 Notesteme 做到的事，以及各自排在哪個里程碑：
 
 - **M1、M2**：故事已經寫成完整的能力規格與 `.feature` 檔。下表只是索引，故事全文、規則與驗收場景以各份規格為準。
-- **M3 到 M5**：故事先用條列式的驗收標準描述。開發該里程碑前，依 [README 第 6 節](README.md#6-開發流程) 的流程展開成規格與場景；展開時可以調整 ID 以外的所有內容。
+- **M3**：2026-11-23 已展開成能力規格與 `.feature` 檔（第 4 節每則故事後面列出規格、規則與場景）；條列的驗收標準保留作為展開前的原始描述，以規格為準。
+- **M4、M5**：故事先用條列式的驗收標準描述。開發該里程碑前，依 [README 第 6 節](README.md#6-開發流程) 的流程展開成規格與場景；展開時可以調整 ID 以外的所有內容。
 
 ## 1. 角色
 
@@ -25,7 +26,7 @@
 |---|---|---|---|---|---|
 | **M1** | [ING](ING-ingest.md) | [SRC](SRC-transcript-sources.md)、[NRM](NRM-normalize.md)、[PIPE](PIPE-pipeline-queue.md) | — | [OUT](OUT-subtitle-output.md)（SRT／VTT）、[LIB](LIB-library.md)、[DEL](DEL-delete.md)、[CLI](CLI-cli.md) | [AUTH](AUTH-access.md)、[SEC](SEC-config-secrets.md)、[GRD](GRD-guards.md)、[OPS](OPS-operations.md) |
 | **M2** | — | — | [LLM](LLM-execution.md)、[SEG](SEG-segment.md)、[COR](COR-correct.md)、[TRN](TRN-translate.md)、[PRM](PRM-prompts.md)、[PRF](PRF-profiles.md) | [OUT](OUT-subtitle-output.md)（ASS、sidecar、匯入）、[LIB](LIB-library.md)（對照檢視）、[DEL](DEL-delete.md)（輸出檔）、[MCP](MCP-tools.md)、[AGT](AGT-agent-tasks.md) | [AUTH](AUTH-access.md)（MCP Origin）、[SEC](SEC-config-secrets.md)（設定匯出入） |
-| **M3** | — | SPB | FRM、CHAP、NOTE、GEM | VAULT | — |
+| **M3** | — | [SPB](SPB-sponsorblock.md) | [FRM](FRM-frames.md)、[CHAP](CHAP-chapters.md)、[NOTE](NOTE-notes.md)、[GEM](GEM-gemini.md) | [VAULT](VAULT-vault-output.md) | — |
 | **M4** | SUB、ENTRY、BND | SRC-10 | DIG、BATCH、GLOS | SRCH、LIB-08、LIB-09、NOTIFY | COST、AUTH-06～08、OPS-06～08 |
 | **M5** | HUB | HUB | — | HUB | HUB |
 
@@ -168,7 +169,9 @@ M1、M2 共 20 項能力、108 則故事。故事的角色、目的與理由見�
 
 ## 4. M3 畫面與筆記
 
-驗收條件（plan 第 24 節）：產出的筆記通過依 `Video Notes/AGENTS.md` 寫成的自動檢查。
+驗收條件（plan 第 24 節）：產出的筆記通過依 `Video Notes/AGENTS.md` 寫成的自動檢查（NOTE-R7；檢查項目的來源見 NOTE 規格待決問題 N1）。
+
+M3 共 6 項能力、16 則故事，跨規格的決定（步驟順序、預設值、資源類別、產出、vault 與 hook 的設定位置）見 [ADR-0020](../adr/0020-m3-stages-notes-and-vault.md)。下列每則故事後的「規格」行是追溯：規則 ID 與驗證它的場景檔。
 
 ### FRM：關鍵畫面
 
@@ -177,12 +180,15 @@ M1、M2 共 20 項能力、108 則故事。故事的角色、目的與理由見�
   - 張數為 `min(Y, ceil(X × 分鐘數), 依片長的上限)`；有意義的畫面不夠時可以少於下限，筆記中註明。
   - 擷取畫質為來源最高畫質，最高 1080p、寬 1920px，不放大。
   - 只有音訊的內容（Podcast）略過這個步驟，狀態為 `skipped`。
+  - 規格：[FRM](FRM-frames.md)：FRM-R1～R4、R8、R9、R11；場景 [FRM-frames.feature](../../features/FRM-frames.feature)
 - **FRM-02** As the owner, I want frames chosen either by rules or by a vision model, so that I can trade cost for quality.
   - 規則模式依場景分數與字幕提示詞（例如「看這裡」「如圖」）的距離加權。
   - vision LLM 模式送出加上編號的 3×3 拼圖，模型只回傳編號；回傳不存在的編號視為驗證失敗。
   - SponsorBlock 標記的片段內不選圖。
+  - 規格：[FRM](FRM-frames.md)：FRM-R5～R7、R13；場景同上
 - **FRM-03** As an agent, I want to list and fetch an item's frames through MCP, so that I can answer questions about what the video shows.
   - `list_frames` 回傳時間與編號；`get_frame` 以圖片內容回傳。需要 `read` scope。
+  - 規格：[FRM](FRM-frames.md)：FRM-R10、R12；場景同上
 
 ### CHAP：自動章節
 
@@ -190,6 +196,7 @@ M1、M2 共 20 項能力、108 則故事。故事的角色、目的與理由見�
   - 平台提供章節時直接採用，`chapters` 步驟為 `skipped`。
   - 沒有章節時由 LLM 產生；每個章節的起點是存在的 cue 編號，時間由程式換算。
   - 章節存成產出（`kind: chapters`），`get_item` 會一併回傳。
+  - 規格：[CHAP](CHAP-chapters.md)：CHAP-R1～R8；場景 [CHAP-chapters.feature](../../features/CHAP-chapters.feature)
 
 ### SPB：SponsorBlock
 
@@ -197,6 +204,7 @@ M1、M2 共 20 項能力、108 則故事。故事的角色、目的與理由見�
   - 依 SponsorBlock 取得片段並存成產出（`kind: sponsor_segments`）。
   - 片段內的 cue 不放進筆記的輸入，片段內不選圖；字幕檔本身不刪除這些 cue。
   - SponsorBlock 查詢失敗時視為沒有片段並記錄警告，不阻擋後續步驟。
+  - 規格：[SPB](SPB-sponsorblock.md)：SPB-R1～R8；場景 [SPB-sponsorblock.feature](../../features/SPB-sponsorblock.feature)
 
 ### NOTE：筆記
 
@@ -204,33 +212,44 @@ M1、M2 共 20 項能力、108 則故事。故事的角色、目的與理由見�
   - frontmatter、影片資訊表、SRT 連結、檔名與資料夾規則都由模板產生。
   - frontmatter 含 `notesteme_id` 與處理狀態。
   - 預設模板依 `Video Notes/AGENTS.md`；規則寫成可調整的設定。
+  - 規格：[NOTE](NOTE-notes.md)：NOTE-R1、R2、R8、R9、R13；場景 [NOTE-notes.feature](../../features/NOTE-notes.feature)
 - **NOTE-02** As the owner, I want every heading in a note to link to the right moment, so that I can jump back to the source.
   - LLM 以 cue 編號引用時間，程式換成時間戳連結；引用不存在的編號視為驗證失敗。
+  - 規格：[NOTE](NOTE-notes.md)：NOTE-R3、R4；場景同上
 - **NOTE-03** As the owner, I want notes written from the corrected original transcript in the language I choose, so that translation errors do not pile up.
   - 輸入以校正後的原文為主，譯文為選配；輸出語言由 `note.lang` 決定，預設是第一個目標語言。
   - 超過 1 小時的影片用 map-reduce 產生。
+  - 規格：[NOTE](NOTE-notes.md)：NOTE-R5、R6、R10；場景同上
 - **NOTE-04** As the owner, I want each note checked automatically after it is written, so that broken notes are caught before I open them.
   - 檢查標題都有時間戳、引用的圖片檔都存在、frontmatter 欄位齊全；不通過時顯示哪一項失敗。
+  - 規格：[NOTE](NOTE-notes.md)：NOTE-R7；場景同上（含 `@ui @manual` 的筆記分頁）
 - **NOTE-05** As the owner, I want to edit note templates and preview them on a real item, so that I can change the layout without code.
+  - 規格：[NOTE](NOTE-notes.md)：NOTE-R11、R12；UI [筆記模板](../ui/pages.md#10-筆記模板)；場景同上
 - **NOTE-06** As an agent, I want to fetch a note through MCP, so that I can reuse it in my answers.
   - `get_note` 需要 `read` scope。
+  - 規格：[NOTE](NOTE-notes.md)：NOTE-R14；場景同上
 
 ### GEM：Gemini 直接生成
 
 - **GEM-01** As the owner, I want Gemini to write a note straight from a YouTube URL, so that I can skip downloading and transcription when that is good enough.
   - 不下載媒體；產出套用同一份筆記模板與自動檢查。
   - 超出 Gemini 限制（片長、非公開影片）時顯示原因，並建議改用一般流程。限制內容依 M0 結果。
+  - 規格：[GEM](GEM-gemini.md)：GEM-R1～R7；場景 [GEM-gemini.feature](../../features/GEM-gemini.feature)
 
 ### VAULT：輸出到 Vault 與 hook
 
 - **VAULT-01** As the owner, I want notes written into my Obsidian vault folder, so that they appear where I already keep my notes.
   - `fs` adapter：處理 NTFS 不允許的字元；圖片依命名規則放在筆記旁。
+  - 規格：[VAULT](VAULT-vault-output.md)：VAULT-R1～R5、R12；UI [設定](../ui/pages.md#12-設定)；場景 [VAULT-vault-output.feature](../../features/VAULT-vault-output.feature)
 - **VAULT-02** As the owner running on a VPS, I want notes pushed to my vault's git repository, so that I get them on every device.
-  - `git` adapter 只 commit 這次產出的檔案再 push；push 失敗時歸類為 `retryable`。
+  - `git` adapter 只 commit 這次產出的檔案再 push；push 失敗時歸類為 `retryable`（展開時依錯誤種類拆開：網路類 `retryable`、non-fast-forward 與認證失敗 `needs_action`，見 VAULT 待決問題 V2）。
+  - 規格：[VAULT](VAULT-vault-output.md)：VAULT-R7～R9；場景同上
 - **VAULT-03** As the owner, I want notes I have edited never to be overwritten, so that my own changes are safe.
   - 依 `outputs` 記錄的 hash 判斷；檔案被改過時改寫成新檔名或略過，並在 UI 提示（ADR-0010）。
+  - 規格：[VAULT](VAULT-vault-output.md)：VAULT-R6；場景同上
 - **VAULT-04** As the owner, I want to run my own command after publishing, so that I can trigger other tools.
   - hook 只能在設定檔定義，以 argv 陣列執行並套用逾時、輸出上限與 `env_allowlist`（ADR-0014）。
+  - 規格：[VAULT](VAULT-vault-output.md)：VAULT-R10、R11；場景同上
 
 ## 5. M4 追蹤與部署
 
@@ -370,6 +389,8 @@ M1、M2 共 20 項能力、108 則故事。故事的角色、目的與理由見�
 | 斷點標記能否可靠對回文字 | 模糊比對，容許標點與空白差異 | SEG-R3 |
 | `when_needed` 的長度與時長門檻 | 依 plan 第 8.5 節的字幕規則 | SEG-R10 |
 | 句群翻譯的切分標記會不會被模型改寫 | 使用 `⟨|⟩`；不可靠時改用 JSON 陣列 | TRN-R4 |
+| 關鍵畫面的場景門檻、密度下限、去重門檻與提示詞加權（M3） | 0.3、60 秒、0.05（視窗 5 張）、+0.5（±10 秒），以 `frames.py` 的參數校正 | FRM-R2、FRM-R3、FRM-R5 |
+| Gemini 直接讀 URL 的限制（M3） | 只讀 `public`、片長上限 1 小時 | GEM-R3、GEM-R7 |
 
 另外幾項 M0 結果會影響規格，但沒有對應的 `@pending-m0` 場景：
 
