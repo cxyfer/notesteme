@@ -46,6 +46,18 @@ type Spec struct {
 	Check func(in ChunkInput, out json.RawMessage) *ValidationError
 }
 
+// Ready 檢查 Spec 可以使用：有步驟名稱，schema 符合 OpenAI strict 模式（ValidateStrictSchema）。
+// 登記步驟時呼叫（pipeline.llmStages），不符時是程式錯誤。
+func (s *Spec) Ready() error {
+	if s == nil || s.Stage == "" {
+		return errors.New("llm: Spec 沒有步驟名稱")
+	}
+	if err := ValidateStrictSchema(s.Schema); err != nil {
+		return fmt.Errorf("llm: %s 的 schema 不符合 strict 模式：%w", s.Stage, err)
+	}
+	return nil
+}
+
 // ToolName 回傳強制的 tool 或 schema 名稱。
 func (s *Spec) ToolName() string { return ToolPrefix + s.Stage }
 
@@ -102,17 +114,15 @@ func checkSchema(schema map[string]any, v any, path string) error {
 			return fmt.Errorf("%s must be an object", path)
 		}
 		props, _ := schema["properties"].(map[string]any)
-		if ap, ok := schema["additionalProperties"].(bool); ok && !ap {
-			var extra []string
-			for k := range obj {
-				if _, known := props[k]; !known {
-					extra = append(extra, k)
-				}
+		// schema 以外的欄位一律拒絕（LLM-R9），不依賴 schema 明寫 additionalProperties: false。
+		var extra []string
+		for k := range obj {
+			if _, known := props[k]; !known {
+				extra = append(extra, k)
 			}
-			if len(extra) > 0 {
-				sort.Strings(extra)
-				return fmt.Errorf("%s has fields outside the schema: %s", path, strings.Join(extra, ", "))
-			}
+		}
+		if len(extra) > 0 {
+			return fmt.Errorf("%s has fields outside the schema: %s", path, quoteKeys(extra))
 		}
 		for _, r := range stringList(schema["required"]) {
 			if _, ok := obj[r]; !ok {
@@ -177,6 +187,29 @@ func checkSchema(schema map[string]any, v any, path string) error {
 		return fmt.Errorf("%s must be one of %v", path, enum)
 	}
 	return nil
+}
+
+// 欄位名稱來自模型的輸出（不可信）：錯誤說明會附在重試的請求中、也會寫進 log，所以加上引號、限制數量與長度。
+const (
+	maxQuotedKeys   = 5
+	maxQuotedKeyLen = 40
+)
+
+// quoteKeys 把模型輸出的欄位名稱寫成 "a", "b"：依字母順序最多 maxQuotedKeys 個，每個最多 maxQuotedKeyLen 個字元（%q 跳脫控制字元與引號）。
+func quoteKeys(keys []string) string {
+	sort.Strings(keys)
+	n := min(len(keys), maxQuotedKeys)
+	parts := make([]string, 0, n+1)
+	for _, k := range keys[:n] {
+		if r := []rune(k); len(r) > maxQuotedKeyLen {
+			k = string(r[:maxQuotedKeyLen]) + "…"
+		}
+		parts = append(parts, fmt.Sprintf("%q", k))
+	}
+	if more := len(keys) - n; more > 0 {
+		parts = append(parts, fmt.Sprintf("and %d more", more))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func stringList(v any) []string {

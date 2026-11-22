@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/cxyfer/notesteme/internal/prompts"
@@ -65,6 +66,17 @@ var metadataVars = map[string]string{
 	"chapters":    "chapters",
 }
 
+// langCodePattern 是可以直接展開到系統指示的語言代碼（BCP 47 的字元集）。
+var langCodePattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,35}$`)
+
+// langCode 回傳可以直接展開的語言代碼；不符 langCodePattern 時是空字串，不讓任意文字進入系統指示。
+func langCode(s string) string {
+	if !langCodePattern.MatchString(s) {
+		return ""
+	}
+	return s
+}
+
 // BuildFixed 組出固定前綴。template 是 prompt 版本的內文；模板中的 title、channel、description、chapters
 // 不直接展開影片的內容，而是寫成「見 <video_metadata> 的 …」，影片內容只出現在資料區塊中（LLM-R9）。
 // 模板沒有用到 {{glossary}} 而詞彙表不是空的時，詞彙表接在系統指示之後（COR-R4：詞彙表在固定前綴中）。
@@ -74,8 +86,8 @@ func BuildFixed(spec *Spec, template string, vars TemplateVars, meta Metadata) (
 		return Fixed{}, err
 	}
 	values := map[string]string{
-		"source_lang": vars.SourceLang,
-		"target_lang": vars.TargetLang,
+		"source_lang": langCode(vars.SourceLang),
+		"target_lang": langCode(vars.TargetLang),
 		"glossary":    glossaryText(vars.Glossary),
 	}
 	for name, field := range metadataVars {

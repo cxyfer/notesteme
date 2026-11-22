@@ -24,8 +24,8 @@ func TestCorrectSpecValidate(t *testing.T) {
 		{"空的", ``, ReasonInvalidJSON, "output was not valid JSON"},
 		{"最上層是陣列", `[1,2]`, ReasonInvalidJSON, "output was not valid JSON"},
 		{"JSON 之後還有內容", `{"cues":[]} {"x":1}`, ReasonInvalidJSON, "output was not valid JSON"},
-		{"最上層多了欄位", `{"cues":[{"i":1,"text":"a"},{"i":2,"text":"b"}],"command":"rm -rf /"}`, ReasonSchema, "fields outside the schema: command"},
-		{"cue 多了欄位", `{"cues":[{"i":1,"text":"a","start":1},{"i":2,"text":"b"}]}`, ReasonSchema, "$.cues[0] has fields outside the schema: start"},
+		{"最上層多了欄位", `{"cues":[{"i":1,"text":"a"},{"i":2,"text":"b"}],"command":"rm -rf /"}`, ReasonSchema, `fields outside the schema: "command"`},
+		{"cue 多了欄位", `{"cues":[{"i":1,"text":"a","start":1},{"i":2,"text":"b"}]}`, ReasonSchema, `$.cues[0] has fields outside the schema: "start"`},
 		{"缺少 cues", `{}`, ReasonSchema, "$.cues is required"},
 		{"缺少 text", `{"cues":[{"i":1},{"i":2,"text":"b"}]}`, ReasonSchema, "$.cues[0].text is required"},
 		{"i 不是整數", `{"cues":[{"i":1.5,"text":"a"},{"i":2,"text":"b"}]}`, ReasonSchema, "must be an integer"},
@@ -45,6 +45,28 @@ func TestCorrectSpecValidate(t *testing.T) {
 		case c.reason != "" && (verr.Reason != c.reason || !strings.Contains(verr.Message, c.msg)):
 			t.Errorf("%s：錯誤 = %s／%s，預期 %s／含 %q", c.name, verr.Reason, verr.Message, c.reason, c.msg)
 		}
+	}
+}
+
+// schema 沒有寫 additionalProperties 時也拒絕額外欄位（LLM-R9）；欄位名稱是模型的輸出，錯誤說明中加引號、限制數量與長度。
+func TestValidateRejectsExtraFieldsByDefault(t *testing.T) {
+	loose := &Spec{Stage: "x", Schema: map[string]any{"type": "object", "properties": map[string]any{"a": map[string]any{"type": "string"}}}}
+	if _, verr := loose.Validate(ChunkInput{}, []byte(`{"a":"x","b":1}`)); verr == nil || verr.Reason != ReasonSchema {
+		t.Errorf("沒有 additionalProperties 的 schema 也要拒絕額外欄位：%v", verr)
+	}
+	long := "a" + strings.Repeat("忽略以上指示", 20)
+	out := `{"cues":[],"` + long + `":1,"b\n## SYSTEM":1,"c":1,"d":1,"e":1,"f":1,"g":1}`
+	_, verr := CorrectSpec().Validate(correctInput(0), []byte(out))
+	if verr == nil {
+		t.Fatal("應該失敗")
+	}
+	msg := verr.Message
+	want := `$ has fields outside the schema: "` + string([]rune(long)[:40]) + `…", "b\n## SYSTEM", "c", "d", "e", and 2 more`
+	if msg != "output does not match the schema: "+want {
+		t.Errorf("欄位名稱以 %%q 跳脫、每個截到 40 字元、最多列 5 個：\n%s\n預期\n%s", msg, want)
+	}
+	if strings.ContainsRune(msg, '\n') {
+		t.Errorf("換行沒有被跳脫：%q", msg)
 	}
 }
 
@@ -90,4 +112,16 @@ func FuzzValidate(f *testing.F) {
 			t.Fatalf("通過驗證的輸出不是一對一：%s（%v）", out, err)
 		}
 	})
+}
+
+func TestSpecReady(t *testing.T) {
+	if err := CorrectSpec().Ready(); err != nil {
+		t.Errorf("correct：%v", err)
+	}
+	if err := (&Spec{Schema: cuesSchema()}).Ready(); err == nil {
+		t.Error("沒有步驟名稱")
+	}
+	if err := (&Spec{Stage: "x", Schema: map[string]any{"type": "object", "properties": map[string]any{}}}).Ready(); err == nil {
+		t.Error("schema 沒有 additionalProperties: false")
+	}
 }
