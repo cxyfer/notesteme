@@ -57,10 +57,28 @@ func TestTranslateInputPriority(t *testing.T) {
 		return store.Artifact{ID: id, Kind: "transcript", Variant: variant}
 	}
 	arts := []store.Artifact{
-		mk("n1", "normalized"), mk("src", "source"), mk("c1", "corrected"), mk("s1", "segmented"), mk("c2", "corrected"), mk("t1", "translated"), mk("n2", "normalized"),
+		mk("n1", "normalized"), mk("src", "source"), mk("s1", "segmented"), mk("c1", "corrected"), mk("c2", "corrected"), mk("t1", "translated"),
 	}
 	if a, ok := translateInput(arts); !ok || a.ID != "c2" {
 		t.Errorf("corrected 優先，而且取最近產生的：%+v, %v", a, ok)
+	}
+	// 從上游重跑之後，舊的下游產出（同一種變體才會被取代）屬於被取代的脈絡，不採用（Codex P1）。
+	stale := map[string][]store.Artifact{
+		"normalize 重跑後，舊的 corrected 與 segmented 不採用": {mk("n1", "normalized"), mk("s1", "segmented"), mk("c1", "corrected"), mk("n2", "normalized")},
+		"segment 重跑後，舊的 corrected 不採用":               {mk("n1", "normalized"), mk("s1", "segmented"), mk("c1", "corrected"), mk("s2", "segmented")},
+	}
+	want := map[string]string{
+		"normalize 重跑後，舊的 corrected 與 segmented 不採用": "n2",
+		"segment 重跑後，舊的 corrected 不採用":               "s2",
+	}
+	for name, arts := range stale {
+		if a, ok := translateInput(arts); !ok || a.ID != want[name] {
+			t.Errorf("%s：%+v, %v，預期 %s", name, a, ok, want[name])
+		}
+	}
+	// correct 重跑（上游沒變）：新的 corrected 採用。
+	if a, ok := translateInput([]store.Artifact{mk("n1", "normalized"), mk("s1", "segmented"), mk("c1", "corrected"), mk("c2", "corrected")}); !ok || a.ID != "c2" {
+		t.Errorf("correct 重跑：%+v, %v", a, ok)
 	}
 	if a, ok := translateInput([]store.Artifact{mk("n1", "normalized"), mk("s1", "segmented"), mk("t1", "translated")}); !ok || a.ID != "s1" {
 		t.Errorf("segmented 優先於 normalized：%+v, %v", a, ok)

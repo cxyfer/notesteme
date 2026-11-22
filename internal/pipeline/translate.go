@@ -87,13 +87,28 @@ func allConvert(plans []TargetPlan) bool {
 
 // translateInput 選 translate 的輸入：現行產出中 corrected > segmented > normalized（COR-R8），同一種變體取最近產生的
 // （arts 依建立順序排列，見 store.CurrentArtifacts）。
+//
+// 產出被取代的範圍是同一種變體，所以從上游步驟重跑（例如 correct 已經 off 或沒有設定，從 normalize 重跑）之後，
+// 舊的 corrected、segmented 仍然是現行產出。它們屬於被取代的重跑脈絡：比同一影音的上游變體更早建立的下游產出
+// （corrected 早於最新的 segmented 或 normalized，segmented 早於最新的 normalized）不採用（Codex P1）。
 func translateInput(arts []store.Artifact) (store.Artifact, bool) {
-	for _, v := range []subtitle.Variant{subtitle.VariantCorrected, subtitle.VariantSegmented, subtitle.VariantNormalized} {
-		for i := len(arts) - 1; i >= 0; i-- {
-			if arts[i].Kind == "transcript" && arts[i].Variant == string(v) {
-				return arts[i], true
-			}
+	latest := map[subtitle.Variant]int{subtitle.VariantNormalized: -1, subtitle.VariantSegmented: -1, subtitle.VariantCorrected: -1}
+	for i, a := range arts {
+		if a.Kind != "transcript" {
+			continue
 		}
+		if _, ok := latest[subtitle.Variant(a.Variant)]; ok {
+			latest[subtitle.Variant(a.Variant)] = i
+		}
+	}
+	n, sg, c := latest[subtitle.VariantNormalized], latest[subtitle.VariantSegmented], latest[subtitle.VariantCorrected]
+	switch {
+	case c >= 0 && c > sg && c > n:
+		return arts[c], true
+	case sg >= 0 && sg > n:
+		return arts[sg], true
+	case n >= 0:
+		return arts[n], true
 	}
 	return store.Artifact{}, false
 }
