@@ -51,7 +51,7 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`the original language of {string} is marked as mixed`, func(string) error { return godog.ErrPending })
 	r.Step(`the {string} transcript of {string} has {int} cues`, s.transcriptHasCues)
 	r.Step(`the {string} transcript of {string} in {string} has {int} cues`, s.transcriptInLangHasCues)
-	r.Step(`every cue of the {string} transcript of {string} follows the subtitle rules for {string}`, func(string, string, string) error { return godog.ErrPending })
+	r.Step(`every cue of the {string} transcript of {string} follows the subtitle rules for {string}`, s.everyCueFollowsRules)
 	r.Step(`every cue of the {string} transcript of {string} has the timing {string}`, s.everyCueHasTiming)
 	r.Step(`the {string} artifact of {string} has the provenance:`, s.artifactHasProvenance)
 	r.Step(`the {string} artifact of {string} has {int} versions`, s.artifactHasVersions)

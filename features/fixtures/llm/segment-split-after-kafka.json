@@ -1,0 +1,8 @@
+{
+  "output": {
+    "text": "We use Kafka. It is fast.",
+    "breaks": [
+      14
+    ]
+  }
+}
