@@ -122,15 +122,17 @@ func mergeWordSegs(segs []podcastSeg) []Cue {
 	return cues
 }
 
-// isCJK 回報 r 是不是漢字、平假名、片假名或諺文。
-func isCJK(r rune) bool {
-	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul)
+// isNoSpaceScript 回報 r 是不是通常不用空白分詞的文字：漢字、平假名、片假名、諺文，
+// 以及泰文、寮文、高棉文、緬文、藏文。
+func isNoSpaceScript(r rune) bool {
+	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul,
+		unicode.Thai, unicode.Lao, unicode.Khmer, unicode.Myanmar, unicode.Tibetan)
 }
 
-// isWordBody 回報 body 能不能確定是「一個字詞」：沒有空白，而且不含 CJK。
-// CJK 的字詞與整句無法分辨，所以一律當成整句（一個 segment 一個 cue），不依長度猜測。
+// isWordBody 回報 body 能不能確定是「一個字詞」：沒有空白，而且不含上述不分詞的文字。
+// 這些文字的字詞與整句無法分辨，所以一律當成整句（一個 segment 一個 cue），不依長度猜測。
 func isWordBody(body string) bool {
-	return strings.IndexFunc(body, func(r rune) bool { return unicode.IsSpace(r) || isCJK(r) }) < 0
+	return strings.IndexFunc(body, func(r rune) bool { return unicode.IsSpace(r) || isNoSpaceScript(r) }) < 0
 }
 
 // joinWords 把字詞以空格接成 cue 的文字。

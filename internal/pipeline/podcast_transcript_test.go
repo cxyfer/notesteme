@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -315,6 +316,74 @@ func TestPodcastTranscriptTriesRemainingTracksBeforeASR(t *testing.T) {
 				t.Errorf("provenance = %+v", p)
 			}
 		})
+	}
+}
+
+// 偏好的字幕軌無法使用、改由後面的字幕軌產生結果時，快取鍵要和偏好的字幕軌可用時不同（Codex P2）：
+// 否則後面字幕軌的成品占用偏好字幕軌的鍵，之後偏好字幕軌恢復了也會直接命中，來源紀錄卻記成偏好的字幕軌。
+func TestPodcastTranscriptCacheKeyIncludesDroppedTracks(t *testing.T) {
+	const ep42SRT = "https://media.example.com/show/ep42.srt"
+	tags := vttTag + `<podcast:transcript url="` + ep42SRT + `" type="application/x-subrip"/>`
+	r, _ := groqPodRig(t)
+	r.fm.duration = 4
+	r.serveShow(tags)
+	r.net.serve(ep42SRT, 200, srtEN)
+	it := r.ingestEpisode(StageMetadata)
+
+	r.net.serve(ep42Transcript, 404, "")
+	dropped, err := r.transcribe(it, groqLocalLang())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.net.serve(ep42Transcript, 200, vttEnding(10))
+	preferred, err := r.transcribe(it, groqLocalLang())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dropped.stage.CacheKey == preferred.stage.CacheKey {
+		t.Errorf("偏好字幕軌被放棄與可用時的快取鍵相同：%s", dropped.stage.CacheKey)
+	}
+	// 同樣被放棄的情況下鍵要穩定，重跑才命中。
+	r.net.serve(ep42Transcript, 404, "")
+	again, err := r.transcribe(it, groqLocalLang())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.stage.CacheKey != dropped.stage.CacheKey {
+		t.Errorf("相同情況的快取鍵不穩定：%s ≠ %s", again.stage.CacheKey, dropped.stage.CacheKey)
+	}
+}
+
+// 沒有宣告 type 的字幕軌解析後是空的：下載時 Format 會被判斷出來，移除這條字幕軌不能因此失敗，
+// 否則重新選軌又選到它而一直重試（Codex P2）。
+func TestPodcastTranscriptTypelessEmptyTrackFallsThrough(t *testing.T) {
+	const typeless = "https://media.example.com/show/ep42-transcript"
+	r, g := groqPodRig(t)
+	r.fm.duration = 4
+	r.serveShow(`<podcast:transcript url="` + typeless + `"/>`)
+	r.net.serve(typeless, 200, "WEBVTT\n\n")
+	it := r.ingestEpisode(StageMetadata)
+
+	var (
+		res result
+		err error
+	)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		res, err = r.transcribe(it, groqLocalLang())
+	}()
+	select {
+	case <-done:
+	case <-time.After(15 * time.Second):
+		t.Fatal("空的字幕軌一直重試，沒有改用下一個來源")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"podcast-transcript:rejected:empty", "groq:used:"}
+	if got := probesOf(res); !reflect.DeepEqual(got, want) || g.calls() != 1 {
+		t.Errorf("probes = %v，Groq %d 次，預期 %v 與 1 次", got, g.calls(), want)
 	}
 }
 
