@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/pressly/goose/v3"
+
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore/storetest"
@@ -107,4 +109,68 @@ func TestIdentityConstraints(t *testing.T) {
 		t.Errorf("CountUsers = %d, %v", n, err)
 	}
 	var _ *sql.DB = s.r
+}
+
+// migration 00005 重建 group_members 與 audit_log：既有的資料與 index 都要保留，新的 CHECK 生效（M5-S5）。
+func TestCommunityMigrationKeepsData(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	path := filepath.Join(dir, DBFileName)
+	db, err := sqlitedb.Open(path, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := goose.NewProvider(goose.DialectSQLite3, db, MigrationsFS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.UpTo(ctx, 4); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO users (id, display_name, created_at) VALUES ('u1', 'root', 1)`,
+		`INSERT INTO group_members (user_id, group_name, source, rule_provider, added_at) VALUES
+			('u1', 'admins', 'config', '', 1), ('u1', 'moderators', 'manual', '', 2), ('u1', 'contributors', 'rule', 'linuxdo', 3)`,
+		`INSERT INTO audit_log (id, actor_user_id, action, target_kind, target_id, at) VALUES ('a1', 'u1', 'group.add', 'user', 'u1', 5)`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = db.Close()
+	s := openTemp(t, dir)
+	ms, err := s.GroupMemberships(ctx, "u1")
+	if err != nil || len(ms) != 3 {
+		t.Fatalf("migration 後的成員資格 = %+v, %v", ms, err)
+	}
+	es, err := s.AuditEntries(ctx, 10)
+	if err != nil || len(es) != 1 || es[0].Actor != "root" || es[0].ActorUserID != "u1" {
+		t.Fatalf("migration 後的稽核紀錄 = %+v, %v", es, err)
+	}
+	for _, idx := range []string{"group_members_group", "audit_log_at"} {
+		var n int
+		if err := s.r.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?`, idx).Scan(&n); err != nil || n != 1 {
+			t.Errorf("index %s = %d, %v", idx, n, err)
+		}
+	}
+	if _, err := s.w.Exec(`INSERT INTO group_members (user_id, group_name, source, added_at) VALUES ('u1', 'admins', 'cli', 1)`); err != nil {
+		t.Errorf("source cli：%v", err)
+	}
+	if _, err := s.w.Exec(`INSERT INTO group_members (user_id, group_name, source, added_at) VALUES ('u1', 'admins', 'nope', 1)`); err == nil {
+		t.Error("不認得的 source 要被 CHECK 擋下")
+	}
+	// Down 也要能還原（命令列的資料會被刪掉）。
+	db2, err := sqlitedb.Open(path, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db2.Close() }()
+	p2, _ := goose.NewProvider(goose.DialectSQLite3, db2, MigrationsFS())
+	if _, err := p2.DownTo(ctx, 4); err != nil {
+		t.Fatalf("Down：%v", err)
+	}
+	var n int
+	if err := db2.QueryRow(`SELECT COUNT(*) FROM group_members`).Scan(&n); err != nil || n != 3 {
+		t.Errorf("Down 後的成員資格 = %d, %v", n, err)
+	}
 }
