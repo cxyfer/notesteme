@@ -364,6 +364,8 @@ M3 的句型（4.13～4.16）在 2026-11-23 規格展開時加入，目前全部
 
 每個 M3 的 `.feature` 在 Background 中、第一個會送出請求的步驟之前，都有一個 M3 的句型（假服務或 M3 產出的 seeding）。處理方案中的 M3 欄位（`stages.chapters` 等）在 M3-S0 之前會被 PRF-R4 以 422 拒絕（M3-S0 之後已經接受，見 PRF 的介面）；這個安排只保證**在第一個 M3 句型實作之前** `@M3` 場景一律是 pending。閘門句型有共用（`SponsorBlock has the segments for` 是 SPB 與 CHAP 的閘門、`the chapters of … are:` 是 NOTE 的閘門、`the note of … is:` 是 VAULT 的閘門），實作其中一個之後，其他領域的場景會往下跑到 M3 的設定而失敗。所以 M3 的第一個實作切片（M3-S0）先讓處理方案與設定檔的 schema 接受全部 M3 欄位（`stages.{sponsorblock,chapters,frames,note}`、`outputs[].target: vault`、設定檔的 `vaults`、`sponsorblock`），M3 的路由回 501 stub（同 M2 S0），之後各切片以 `@M3` 的逐場景結果（junit）和切片開始前比對，不期待「目標領域以外全部 pending」。
 
+M3-S1（2026-11-23）實作了 SponsorBlock 的四個句型，並讓它們只對 SPB 的場景放行（harness 依場景的 tag 判斷：有 `@SPB-` 開頭的 tag 才執行，`@SPB-R7` 另外要等 `note` 步驟實作）；其他領域（CHAP、FRM、NOTE、M4 的 SRC-10）的場景在這些句型上維持 pending，等各自的切片實作時再放寬（SPB 待決問題 B12）。這不是新句型。
+
 既有句型在 M3 的語意補充（2026-11-23，不新增句型；由實作切片在對應的步驟實作）：
 
 - `Given the item … has been processed up to …`：目標也可以是 `sponsorblock`、`chapters`、`frames`、`note`。產品的 `pipeline.StageAvailable` 回報這個步驟還沒有任何 executor 實作時 pending（M3-S0 之後四個步驟都在 `pipeline.Stages` 中，改用這個判斷；與 `source.Implemented` 同類，只限這四個名稱；其他不認識的名稱仍然失敗）；實作之後依 (2c) 的規則判斷（`done` 或 `skipped` 都算處理到）。決定重跑的起點時，跳過還沒有實作的 M3 步驟（它們一律 `skipped`（`not_implemented`），從它們重跑回 501）。
