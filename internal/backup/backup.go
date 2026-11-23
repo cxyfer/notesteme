@@ -17,6 +17,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -571,16 +572,83 @@ func updateLatest(dir, name, goos string) error {
 		defer f.Close()
 		return store.WriteFileAtomic(latest, f)
 	}
-	tmp := filepath.Join(dir, "."+LatestName+".tmp")
-	if err := os.Remove(tmp); err != nil && !errors.Is(err, os.ErrNotExist) {
+	// 暫存名稱每次不同：手動備份與每日備份同時寫入同一個目錄時不會互相刪掉或蓋掉對方的暫存 symlink。
+	for range 5 {
+		tmp := filepath.Join(dir, "."+LatestName+"."+randomSuffix()+".tmp")
+		err := os.Symlink(name, tmp)
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := os.Rename(tmp, latest); err != nil {
+			_ = os.Remove(tmp)
+			return err
+		}
+		return nil
+	}
+	return errors.New("無法建立不重複的暫存名稱")
+}
+
+// randomSuffix 回傳暫存檔名用的隨機字串。
+func randomSuffix() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// SaveWith 同 SaveTo，但內容由 write 直接寫進暫存檔（serve 自己的每日備份用，不經過 HTTP 串流）。
+// write 失敗、寫入或 rename 失敗時刪除暫存檔，不留下看似完整的檔案，也不更新 latest。
+func SaveWith(dir, name string, write func(io.Writer) error) (path string, err error) {
+	if !ValidFileName(name) {
+		return "", fmt.Errorf("備份檔名 %q 不正確", name)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	path = filepath.Join(dir, name)
+	if err := writeAtomic(path, write); err != nil {
+		return "", err
+	}
+	if err := updateLatest(dir, name, runtime.GOOS); err != nil {
+		return path, fmt.Errorf("備份已存成 %s，但更新 %s 失敗：%w", path, LatestName, err)
+	}
+	return path, nil
+}
+
+// writeAtomic 以 0600 的暫存檔寫入 dst 所在的目錄，sync 後 rename 成 dst；任何失敗都刪除暫存檔。
+func writeAtomic(dst string, write func(io.Writer) error) error {
+	f, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".*.tmp")
+	if err != nil {
 		return err
 	}
-	if err := os.Symlink(name, tmp); err != nil {
+	tmp := f.Name()
+	ok := false
+	defer func() {
+		if !ok {
+			_ = f.Close()
+			_ = os.Remove(tmp)
+		}
+	}()
+	if err := f.Chmod(0o600); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, latest); err != nil {
-		_ = os.Remove(tmp)
+	if err := write(f); err != nil {
 		return err
 	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		return err
+	}
+	ok = true
 	return nil
 }
+
+// FreeSpace 回傳 dir 所在檔案系統一般使用者可用的剩餘位元組數；無法得知時回傳 ErrSpaceUnknown。
+func FreeSpace(dir string) (uint64, error) { return freeSpace(dir) }
