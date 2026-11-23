@@ -370,6 +370,8 @@ M3-S2（2026-11-23）實作 `chapters` 之後，SponsorBlock 的四個句型也�
 
 M3-S3（2026-11-23）實作了 4.14 的 `the video of … has the scenes:`、`the best video format of … is …`、`the tool result has an image of type …`，只對 FRM 的場景放行（有 `@FRM-` 開頭的 tag）；SponsorBlock 的句型也對 FRM 的場景放行（FRM-R6）。`the frames of … are:` 仍是步驟樁（NOTE、VAULT 的切片）。這些都不是新句型。
 
+M3-S7（2026-11-23）實作了 4.15 的 `Given Gemini accepts YouTube videos up to …`（只對有 `@GEM-` 開頭 tag 的場景放行），以及 4.6 的 LLM 步驟與 `the provider … has no API key` 對 provider `gemini` 的語意（見下面的補充）。筆記的四個句型仍是步驟樁（NOTE 的切片）。NOTE 實作之前：`Then the stage "note" of … is "done"` 遇到 Gemini 筆記等待模板的訊息（`pipeline.GeminiNoteRendererMissing`）時 pending；anthropic、openai 的 `answers "note"` 在 `pipeline.StageAvailable("note")` 之前 pending（GEM 待決問題 G9）。這些都不是新句型。
+
 既有句型在 M3 的語意補充（2026-11-23，不新增句型；由實作切片在對應的步驟實作）：
 
 - `Given the item … has been processed up to …`：目標也可以是 `sponsorblock`、`chapters`、`frames`、`note`。產品的 `pipeline.StageAvailable` 回報這個步驟還沒有任何 executor 實作時 pending（M3-S0 之後四個步驟都在 `pipeline.Stages` 中，改用這個判斷；與 `source.Implemented` 同類，只限這四個名稱；其他不認識的名稱仍然失敗）；實作之後依 (2c) 的規則判斷（`done` 或 `skipped` 都算處理到）。決定重跑的起點時，跳過還沒有實作的 M3 步驟（它們一律 `skipped`（`not_implemented`），從它們重跑回 501）。
