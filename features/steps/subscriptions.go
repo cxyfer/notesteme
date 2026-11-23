@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -14,14 +16,15 @@ import (
 
 	"github.com/cucumber/godog"
 
+	"github.com/cxyfer/notesteme/features/internal/fakefeed"
 	"github.com/cxyfer/notesteme/features/internal/fakepodcast"
 	"github.com/cxyfer/notesteme/features/internal/faketool"
 )
 
 // registerSubscriptions 註冊「訂閱、事後的更好來源與新增入口」的步驟（steps.md 4.17，M4）。
 //
-// M4-S2 實作了訂閱核心的句型（SUB 的閘門只對核心範圍的場景放行，見 subGate）；
-// 匯入（SUB-R7，M4-S3）、SRC-10 與 ENTRY 的句型仍是步驟樁（godog.ErrPending）。
+// M4-S2 實作了訂閱核心的句型，M4-S3 實作了匯入（SUB-R7）；SUB 的閘門只對 SUB 範圍的場景放行（見 subGate）。
+// SRC-10 與 ENTRY 的句型仍是步驟樁（godog.ErrPending）。
 func registerSubscriptions(r *Registry, s *Scenario) {
 	r.Step(`the YouTube feeds are served from the registered videos`, s.youtubeFeedsServed)
 	r.Step(`the YouTube feed of the channel {string} fails with HTTP {int}`, s.youtubeFeedFails)
@@ -35,8 +38,8 @@ func registerSubscriptions(r *Registry, s *Scenario) {
 	r.Step(`the next check of the subscription {string} is between {string} and {string}`, s.nextCheckBetween)
 	r.Step(`the number of subscriptions is {int}`, s.numberOfSubscriptions)
 	r.Step(`the podcast feed {string} adds the episode {string} titled {string} with the audio {string}`, s.podcastFeedAdds)
-	r.Step(`the owner imports the subscriptions from {string}`, func(string) error { return godog.ErrPending })
-	r.Step(`the owner imports a generated OPML file with {int} feeds`, func(int) error { return godog.ErrPending })
+	r.Step(`the owner imports the subscriptions from {string}`, s.ownerImportsSubscriptions)
+	r.Step(`the owner imports a generated OPML file with {int} feeds`, s.ownerImportsGeneratedOPML)
 	r.Step(`the platform adds {word} captions in {string} to {string} at {string}`, func(string, string, string, string) error { return godog.ErrPending })
 	r.Step(`the browser opens {string}`, func(string) error { return godog.ErrPending })
 	r.Step(`the browser opens {string} signed in as the owner`, func(string) error { return godog.ErrPending })
@@ -44,16 +47,12 @@ func registerSubscriptions(r *Registry, s *Scenario) {
 	r.Step(`someone signs in with the password {string} to continue to {string}`, func(string, string) error { return godog.ErrPending })
 }
 
-// subCoreRules 是 M4-S2 實作的 SUB 規則（訂閱核心）。R6 試跑預覽、R7 匯入，以及 R13 的 MCP 與 CLI 留給 M4-S3。
-var subCoreRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true}
+// subRules 是已實作的 SUB 規則：M4-S2 的訂閱核心，加上 M4-S3 的 R6 試跑預覽、R7 匯入與 R13 的 MCP、CLI（SUB 全部的規則）。
+var subRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true}
 
-// subGate 讓 SUB 的閘門只對核心範圍的場景放行：至少一個 @SUB-R*，所有 @SUB-R* 都在 subCoreRules，而且不是 @mcp、@cli。
-// 其他場景（M4-S3 的預覽、匯入、MCP、CLI，以及 DIG 等只有 @SUB-01 的場景）停在同一個閘門，
-// 回傳裸的 godog.ErrPending，junit 的訊息與切片之前相同（同 hubGate）。
+// subGate 讓 SUB 的閘門只對 SUB 範圍的場景放行：至少一個 @SUB-R*，而且所有 @SUB-R* 都在 subRules。
+// 其他場景（DIG 等只有 @SUB-01 的場景）停在同一個閘門，回傳裸的 godog.ErrPending，junit 的訊息與切片之前相同（同 hubGate）。
 func (s *Scenario) subGate() error {
-	if slices.Contains(s.tags, "@mcp") || slices.Contains(s.tags, "@cli") {
-		return godog.ErrPending
-	}
 	core := false
 	for _, t := range s.tags {
 		v, ok := strings.CutPrefix(t, "@SUB-R")
@@ -61,7 +60,7 @@ func (s *Scenario) subGate() error {
 			continue
 		}
 		n, err := strconv.Atoi(v)
-		if err != nil || !subCoreRules[n] {
+		if err != nil || !subRules[n] {
 			return godog.ErrPending
 		}
 		core = true
@@ -323,4 +322,37 @@ func (s *Scenario) podcastFeedAdds(name, guid, title, audio string) error {
 		return err
 	}
 	return s.World.Net.Route(audioURL, s.World.Podcasts.AudioHandler(fakepodcast.Ref(name, guid)))
+}
+
+// ownerImportsSubscriptions 以 multipart 的 file 欄位送出 POST /api/subscriptions/import（steps.md 4.17）：
+// 以 / 開頭的是場景中的路徑（/tmp 的對應見 filePath），否則是 features/fixtures/subscriptions/ 的檔名。
+func (s *Scenario) ownerImportsSubscriptions(name string) error {
+	var (
+		content []byte
+		err     error
+	)
+	if strings.HasPrefix(name, "/") {
+		if content, err = os.ReadFile(s.filePath(name)); err != nil {
+			return fmt.Errorf("讀取要匯入的檔案 %s：%w", name, err)
+		}
+	} else if content, err = s.fixtureFile("subscriptions", name); err != nil {
+		return err
+	}
+	return s.importSubscriptions(filepath.Base(name), content)
+}
+
+// ownerImportsGeneratedOPML 以 fakefeed.GeneratedOPML 產生含 n 個 outline 的 OPML 並匯入。
+func (s *Scenario) ownerImportsGeneratedOPML(n int) error {
+	if n < 0 || n > 100000 {
+		return fmt.Errorf("outline 數 %d 不合理", n)
+	}
+	return s.importSubscriptions("generated.opml", fakefeed.GeneratedOPML(n))
+}
+
+func (s *Scenario) importSubscriptions(filename string, content []byte) error {
+	body, contentType, err := multipartFile("file", filename, content)
+	if err != nil {
+		return err
+	}
+	return s.send("POST /api/subscriptions/import", requestOpts{who: asOwner, body: body, contentType: contentType})
 }
