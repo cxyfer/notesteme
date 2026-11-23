@@ -441,16 +441,12 @@ func TestShareBilibiliTreatsEmptyAvailabilityAsPublic(t *testing.T) {
 	if errors.As(err, &he) {
 		t.Fatalf("空的 availability 應該視為公開：%v", err)
 	}
-	if err != nil && strings.Contains(err.Error(), "availability") {
-		// 已知的產品問題：bundle 驗證器不接受空的 item.availability，而 Bilibili 的 availability 是空值。
-		t.Skipf("產品 bug（回報給主代理）：Bilibili 影音的 bundle 沒有通過驗證：%v", err)
-	}
 	if err != nil {
 		t.Fatalf("Bilibili CC：%v", err)
 	}
 	m, _ := bundleOf(t, stub.lastShare())
 	item := m["item"].(map[string]any)
-	if item["platform"] != "bilibili" || item["external_id"] != "BV1xx411c7mD" || item["part"] != float64(1) {
+	if item["platform"] != "bilibili" || item["external_id"] != "BV1xx411c7mD" || item["part"] != float64(1) || item["availability"] != "public" {
 		t.Errorf("item = %v", item)
 	}
 }

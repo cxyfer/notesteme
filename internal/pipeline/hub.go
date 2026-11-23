@@ -356,6 +356,8 @@ func (p *Pipeline) ImportFromHub(ctx context.Context, req HubImportRequest) (Hub
 	if got.AlreadyInLibrary {
 		// 在查詢與新增之間被別人新增：同既有影音。
 		if _, err := p.Rerun(ctx, got.Item.ID, RerunRequest{From: StageTranscript, Profile: req.Profile, Overrides: req.Overrides}); err != nil {
+			// 重跑沒有排進去：不留下等待取用的字幕，免得之後的 transcript 悄悄套用。
+			_ = p.st.Write().DeleteHubImport(context.WithoutCancel(ctx), got.Item.ID, v.SHA256)
 			return HubImportResult{}, err
 		}
 	}
@@ -456,9 +458,10 @@ func (p *Pipeline) ShareToHub(ctx context.Context, itemID string, req HubShareRe
 	if err != nil {
 		return HubShareResult{}, err
 	}
+	// 能走到這裡的都是 publicForHub：沒有回報 availability 的平台（Bilibili、Podcast）也寫 public（HSHR 待決問題 S10）。
 	raw, err := hubshare.Build(hubshare.Item{
 		Platform: it.Platform, ExternalID: it.ExternalID, Part: it.Part, Title: cmpOr(it.Title, it.ExternalID),
-		PublishedAt: it.PublishedAt, DurationS: it.DurationS, OriginalLang: validLang(it.OriginalLang), Availability: it.Availability,
+		PublishedAt: it.PublishedAt, DurationS: it.DurationS, OriginalLang: validLang(it.OriginalLang), Availability: "public",
 	}, arts, hubshare.Options{License: req.License, AppVersion: p.version, Now: p.clock.Now()})
 	if err != nil {
 		return HubShareResult{}, err
