@@ -2,7 +2,7 @@
 -- Cost ledger, price overrides and the budget (COST, ADR-0021 sections 4 and 7). Times are unix milliseconds.
 --
 -- cost_ledger already exists (00007). This adds stage: the stage run a row points to is deleted with its item
--- (DEL-R7), but grouping by stage and the CSV export still need it. Rows written before 00022 have stage ''.
+-- (DEL-R7), but grouping by stage and the CSV export still need it. Rows written before 00023 have stage ''.
 ALTER TABLE cost_ledger ADD COLUMN stage TEXT NOT NULL DEFAULT '';
 
 -- Month and range queries filter on at; the budget check sums the reservations (COST-R6).
