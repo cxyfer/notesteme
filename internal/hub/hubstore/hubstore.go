@@ -95,6 +95,8 @@ type Store interface {
 	PATs(ctx context.Context, userID string) ([]PAT, error)
 	// RevokePAT 撤銷帳號自己的 token；不存在或屬於別的帳號時回 ErrNotFound。撤銷兩次不算錯誤。
 	RevokePAT(ctx context.Context, userID, id string) error
+
+	ContentStore
 }
 
 // 群組成員資格的來源（HACC-R11、R12）。

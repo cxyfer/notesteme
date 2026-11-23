@@ -14,6 +14,19 @@ type AuditLog struct {
 	At          int64
 }
 
+type Blob struct {
+	Sha256    string
+	Size      int64
+	MediaType string
+	CreatedAt int64
+}
+
+type Derivation struct {
+	ChildVersionID  string
+	ParentVersionID string
+	Relation        string
+}
+
 type GroupMember struct {
 	UserID       string
 	GroupName    string
@@ -59,6 +72,13 @@ type Pat struct {
 	RevokedAt   *int64
 }
 
+type RemovedHash struct {
+	VideoID    string
+	Sha256     string
+	TakedownID string
+	RemovedAt  int64
+}
+
 type Session struct {
 	ID              string
 	UserID          string
@@ -68,10 +88,71 @@ type Session struct {
 	ExpiresAt       int64
 }
 
+type Share struct {
+	ID           string
+	UserID       string
+	VideoID      string
+	License      string
+	AttestedAt   int64
+	BundleSha256 string
+	BundleSize   int64
+	CreatedAt    int64
+	WithdrawnAt  *int64
+}
+
+type ShareVersion struct {
+	ShareID      string
+	VersionID    string
+	Position     int64
+	Deduplicated int64
+}
+
 type User struct {
 	ID              string
 	DisplayName     string
 	CreatedAt       int64
 	SuspendedAt     *int64
 	SuspendedReason string
+}
+
+type Version struct {
+	ID              string
+	VideoID         string
+	Kind            string
+	Variant         string
+	Lang            string
+	Format          string
+	Sha256          string
+	Size            int64
+	ProvenanceJson  string
+	TranscribeModel string
+	CorrectModel    string
+	TranslateModel  string
+	ModelVerified   int64
+	Visibility      string
+	License         string
+	State           string
+	Score           int64
+	CreatedAt       int64
+}
+
+type VersionBlob struct {
+	VersionID string
+	Sha256    string
+	Role      string
+}
+
+type Video struct {
+	ID                string
+	Platform          string
+	ExternalID        string
+	Part              int64
+	Title             string
+	ChannelExternalID string
+	ChannelTitle      string
+	DurationS         *float64
+	OriginalLang      string
+	PublishedAt       string
+	KeySha256         string
+	FirstSharedAt     int64
 }
