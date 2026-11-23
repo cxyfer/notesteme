@@ -419,6 +419,9 @@ func (s *Scenario) bundleNote(name string, doc *godog.DocString) error {
 	return nil
 }
 
+// symlinkTarget 是 `a symlink` 項目的內容（symlink 指向的路徑）。
+const symlinkTarget = "/etc/passwd"
+
 var unsafeKinds = []string{"an absolute path", "a parent directory entry", "a symlink", "a sha256 mismatch", "a media file"}
 
 func (s *Scenario) bundleUnsafe(name, problem string) error {
@@ -558,6 +561,10 @@ func (s *Scenario) buildBundle(b *hubBundle) ([]byte, error) {
 	for _, f := range files {
 		list = append(list, map[string]any{"path": f.path, "sha256": shaHex(f.data), "size": len(f.data)})
 	}
+	// symlink 項目以正確的 sha256 列在 files 中：只剩 Unix mode 的檢查能擋下它（BND-R4）。
+	if slices.Contains(b.unsafe, "a symlink") {
+		list = append(list, map[string]any{"path": "artifacts/link", "sha256": shaHex([]byte(symlinkTarget)), "size": len(symlinkTarget)})
+	}
 	manifest := map[string]any{"bundle_version": 0, "item": item, "artifacts": artifacts, "files": list,
 		"created_by": map[string]any{"app_version": "0.5.0"}, "created_at": "2026-12-01T00:00:00Z", "license": "CC-BY-4.0"}
 	if artifacts == nil {
@@ -603,7 +610,7 @@ func (s *Scenario) buildBundle(b *hubBundle) ([]byte, error) {
 	extra := map[string]func() error{
 		"an absolute path":         func() error { return put("/etc/notesteme", []byte("x"), 0o644) },
 		"a parent directory entry": func() error { return put("artifacts/../x", []byte("x"), 0o644) },
-		"a symlink":                func() error { return put("artifacts/link", []byte("/etc/passwd"), fs.ModeSymlink|0o777) },
+		"a symlink":                func() error { return put("artifacts/link", []byte(symlinkTarget), fs.ModeSymlink|0o777) },
 	}
 	for _, u := range b.unsafe {
 		if fn, ok := extra[u]; ok {

@@ -509,3 +509,17 @@ func TestReadVersionAnonymouslyOnAPublicSite(t *testing.T) {
 	expect(t, "public", e.do("GET", "/api/v1/versions/"+pub["id"].(string)), 200, "")
 	expect(t, "authenticated", e.do("GET", "/api/v1/versions/"+auth["id"].(string)), 404, "not_found")
 }
+
+// 超過 Huma 預設 1 MiB 的分享：multipart 要在 Huma 讀取本體之前由 rawOperations 接手。
+func TestShareLargerThanHumaDefaultLimit(t *testing.T) {
+	e := newRepoEnv(t, func(c *hubconfig.Config) { c.Bundles.MaxUploadBytes = 8 << 20 })
+	var text strings.Builder
+	for seed := sha256.Sum256([]byte("seed")); text.Len() < 3<<20; seed = sha256.Sum256(seed[:]) {
+		text.WriteString(hex.EncodeToString(seed[:]))
+	}
+	b := makeBundle(t, bundleOpts{}, src(text.String()))
+	if len(b) < 3<<19 { // 1.5 MiB
+		t.Fatalf("bundle 只有 %d bytes", len(b))
+	}
+	e.mustShare("alice", b, nil)
+}
