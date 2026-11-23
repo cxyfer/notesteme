@@ -39,6 +39,10 @@ func builtinKind(id string) string {
 		return "chapters"
 	case strings.HasPrefix(id, "frames-"):
 		return "frames"
+	case strings.HasPrefix(id, "note-map-"):
+		return "note_map"
+	case strings.HasPrefix(id, "note-"):
+		return "note"
 	}
 	return ""
 }

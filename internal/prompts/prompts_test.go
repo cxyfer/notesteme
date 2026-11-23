@@ -21,9 +21,9 @@ func TestBodySHA256(t *testing.T) {
 
 func TestContractLists(t *testing.T) {
 	// M3 修訂（PRM）：kind 的 frames.select 改為 frames，另加 note_map；M3 的內建 prompt 由實作切片加入。
-	// M3-S2 加入 chapters-default（CHAP H6），M3-S3 加入 frames-default。
-	if len(Kinds) != 8 || len(Variables) != 7 || len(BuiltinIDs) != 7 {
-		t.Errorf("Kinds=%d Variables=%d BuiltinIDs=%d，契約是 8、7、7", len(Kinds), len(Variables), len(BuiltinIDs))
+	// M3-S2 加入 chapters-default（CHAP H6），M3-S3 加入 frames-default，M3-S7 加入 note-gemini-default（GEM-R1）。
+	if len(Kinds) != 8 || len(Variables) != 7 || len(BuiltinIDs) != 8 {
+		t.Errorf("Kinds=%d Variables=%d BuiltinIDs=%d，契約是 8、7、8", len(Kinds), len(Variables), len(BuiltinIDs))
 	}
 	for _, k := range []string{"chapters", "frames", "note", "note_map"} {
 		if !slices.Contains(Kinds, k) {
@@ -49,6 +49,7 @@ func TestBuiltinsLoad(t *testing.T) {
 	wantKind := map[string]string{
 		"segment-default": "segment", "correct-default": "correct", "translate-default": "translate",
 		"localize-zh-hant-tw": "translate", "localize-zh-hans-cn": "translate", "chapters-default": "chapters", "frames-default": "frames",
+		"note-gemini-default": "note",
 	}
 	for _, id := range BuiltinIDs {
 		b, ok := builtins[id]
@@ -227,7 +228,7 @@ func TestList_BuiltinsFirst(t *testing.T) {
 	for _, p := range ps {
 		ids = append(ids, p.ID)
 	}
-	want := []string{"chapters-default", "correct-default", "frames-default", "localize-zh-hans-cn", "localize-zh-hant-tw", "segment-default", "translate-default", "alpha", "zeta"}
+	want := []string{"chapters-default", "correct-default", "frames-default", "localize-zh-hans-cn", "localize-zh-hant-tw", "note-gemini-default", "segment-default", "translate-default", "alpha", "zeta"}
 	if !slices.Equal(ids, want) {
 		t.Errorf("List = %v，預期 %v", ids, want)
 	}

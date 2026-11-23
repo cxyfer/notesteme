@@ -29,7 +29,9 @@ var Variables = []string{"title", "channel", "description", "chapters", "glossar
 // BuiltinIDs 是內建的 prompt（PRM-R4）。內容放在程式內，不寫入資料庫；使用者的 prompt id 不可以和它們相同（D12）。
 var BuiltinIDs = []string{"segment-default", "correct-default", "translate-default", "localize-zh-hant-tw", "localize-zh-hans-cn", "chapters-default",
 	// M3：FRM 的選圖（PRM 的 M3 修訂）。
-	"frames-default"}
+	"frames-default",
+	// M3：GEM 的 Gemini 直接生成（GEM-R1）。
+	"note-gemini-default"}
 
 // maxBodyBytes 是 prompt 內文的上限（64 KiB）。
 const maxBodyBytes = 64 << 10
