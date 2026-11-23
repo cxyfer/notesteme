@@ -90,3 +90,4 @@
 - N7：匯入後不自動執行 pipeline（BND-R8）。自動執行會下載媒體、呼叫付費的 provider，違反「匯入只搬資料」的預期；而且 bundle 可能只有部分步驟的產出。UI 在影音詳情顯示「從 bundle 匯入」與 `imported_from` 的資訊。
 - N8：`local:` 影音匯入到另一個實例時沒有媒體檔，影音詳情的播放器顯示「這部影音是從 bundle 匯入的，沒有媒體檔。」；之後放入相同 `sha256` 的檔案時是否自動連結，M4 不做。
 - M4-S0：`bundles.import.*` 已解析與驗證（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：大小接受整數或 `B`、`KiB`、`MiB`、`GiB` 的寫法，`max_files`、`max_ratio` 是正整數；不是大於 0 的值時啟動失敗，訊息「設定 bundles.import.<鍵> 必須是大於 0 的值。」（前面加上設定檔路徑）。預設值照 N4：64 MiB、256 MiB、2000、64 MiB、100。`GET /api/items/:id/bundle`（`read`）與 `POST /api/bundles/import`（`admin`）是 501 stub。
+- M5-S3（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：BND-R4～R7 的解析與驗證已實作在共用套件 `internal/bundle`（`Read` 做結構、項目數、解壓上限、manifest schema 與雜湊，`ValidateContents` 另外做內容格式），先由 Hub 的分享使用；BND 匯入切片直接使用，並決定 HREP 待決問題 R8 列出的兩點：`provenance` 是 schema 中唯一自由的物件（BND-R6 的「任何一層」對它不適用）、`Options.InstanceIDOptional` 只給 Hub；以及 BND-R10 沒有列出的兩種訊息（沒有 `manifest.json`、內容格式不正確）。

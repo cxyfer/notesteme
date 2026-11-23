@@ -749,6 +749,8 @@ bundle 由步驟在場景目錄中產生，不 commit 二進位 fixture：字幕
 | `Then the Hub version {string} is derived from {string} as {string}` | Hub 的 `derivations` 中有一筆 child 為第一個版本、parent 為第二個版本、`relation` 相符（`parent`、`regenerated_from`）的紀錄 |
 | `Then the Hub stores the content {string} once` | Hub 的 blob 中，這個內容名稱的 sha256 剛好一個檔案，而且引用它的版本至少一個 |
 
+M5-S3（2026-11-23）以真 Hub 實作了本節全部的句型（fakehub 的 seeding 仍是 pending，由 HSHR 的切片實作）；閘門改成依 tag 放行（HACC-R1～R14、R18 與 HREP-R1～R6、R8～R12），不再依「用到 4.31 句型」擋場景（HREP 待決問題 R8）。實作細節：內容名稱產生 3 句確定的 cues（相同的名稱、變體與語言產生相同的 bytes，seeding 與 bundle 共用，所以 `removed` 的 seeding 會擋下相同內容的分享）；seeding 的 `uploader` 沒有登入過時以 fakeoauth 的預設 GitHub 使用者建立帳號（之後以同一個名稱登入是同一個帳號）；bundle 的項目一律以 `store` 寫入（不壓縮），`executor: agent` 的 `model` 寫成 `model_reported`；產生的 bundle 存在場景目錄的 `bundles/`；分享成功時以回應的 `share_id` 記下 `{share:last}`。
+
 ### 4.32 Client 與 Hub（`steps/hub_client.go`，M5）
 
 這一組只用於 fakehub（`features/internal/fakehub`）：Client 的 `hub.url` 指到 `https://hub.example.org`，fakehub 以這個主機名稱掛在 fakenet 上，實作 ADR-0032 第 1 點的 Client 契約，並記錄收到的每個請求（方法、路徑、query、標頭、body；multipart 的 bundle 會解開保存）。
