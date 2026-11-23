@@ -530,6 +530,23 @@ func TestIngestFromSubscriptionKeepsTombstones(t *testing.T) {
 	}
 }
 
+// CheckIngestPlan 和 Ingest 一樣檢查處理方案：不存在時是 path 為 profile 的 422，不寫入任何影音。
+func TestCheckIngestPlan(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	if err := r.p.CheckIngestPlan(ctx, "", nil); err != nil {
+		t.Fatalf("預設處理方案：%v", err)
+	}
+	err := r.p.CheckIngestPlan(ctx, "no-such-profile", nil)
+	var ie *InvalidError
+	if !errors.As(err, &ie) || len(ie.Fields) == 0 || ie.Fields[0].Path != "profile" {
+		t.Fatalf("不存在的處理方案 = %v，預期 path 為 profile 的 InvalidError", err)
+	}
+	if n, _ := r.st.Read().CountTasks(ctx, store.TaskPending); n != 0 {
+		t.Errorf("不應建立任務：%d", n)
+	}
+}
+
 // 引擎在寫出產出檔之前確認影音還在媒體庫中；不在時丟棄，不寫檔也不寫回狀態（DEL-R2）。
 func TestWriteCuesArtifactDiscardsWhenItemGone(t *testing.T) {
 	r := newRig(t)

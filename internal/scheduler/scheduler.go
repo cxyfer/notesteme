@@ -75,6 +75,16 @@ type Result struct {
 	Deferred bool
 }
 
+// RetryAfter 是「失敗，但下一次不早於 NotBefore」的錯誤（SUB-R10：平台回 429 時，下一次取退避時間與
+// rate limit 恢復時間中較晚的一個）。仍然算一次失敗：failures 加一、寫入 last_error。
+type RetryAfter struct {
+	Err       error
+	NotBefore time.Time
+}
+
+func (e *RetryAfter) Error() string { return e.Err.Error() }
+func (e *RetryAfter) Unwrap() error { return e.Err }
+
 // Handler 執行一個到期的工作；now 是這一輪開頭的時間，job.NextRunAt 是排定的時間。
 // 回傳錯誤代表失敗，依退避重試。
 type Handler func(ctx context.Context, job Job, now time.Time) (Result, error)
@@ -192,6 +202,9 @@ func (s *Scheduler) runJob(ctx context.Context, k Kind, job Job, now time.Time) 
 		rec.Failures++
 		rec.LastError = truncate(runErr.Error())
 		rec.NextRunAt = now.Add(Backoff(rec.Failures))
+		if ra := (*RetryAfter)(nil); errors.As(runErr, &ra) && ra.NotBefore.After(rec.NextRunAt) {
+			rec.NextRunAt = ra.NotBefore
+		}
 		s.log.WarnContext(ctx, "排程工作失敗，稍後重試", "kind", job.Kind, "key", job.Key, "failures", rec.Failures, "error", rec.LastError)
 	case res.Deferred:
 		if res.Next.IsZero() {
@@ -228,13 +241,22 @@ func (s *Scheduler) call(ctx context.Context, k Kind, job Job, now time.Time) (r
 
 // defaultNext 是成功之後的預設下一次：這次執行的時間＋間隔，加上 Kind.Jitter 的確定性延遲。
 func (s *Scheduler) defaultNext(k Kind, key string, now time.Time) time.Time {
-	base := now.Add(k.Interval)
 	if !k.Jitter {
-		return base
+		return now.Add(k.Interval)
 	}
-	slot := base.UnixMilli() / max(k.Interval.Milliseconds(), 1)
-	return base.Add(Jitter(k.Name, key, slot, k.Interval, s.jitterMax))
+	return NextWithJitter(k.Name, key, now, k.Interval, s.jitterMax)
 }
+
+// NextWithJitter 是「now＋interval＋確定性的隨機延遲」：Kind.Interval 不固定的工作（例如每個訂閱各自的檢查頻率，
+// SUB-R9）自己算下一次時使用，結果與 Kind.Jitter 的預設相同。
+func NextWithJitter(kind, key string, now time.Time, interval, jitterMax time.Duration) time.Time {
+	base := now.Add(interval)
+	slot := base.UnixMilli() / max(interval.Milliseconds(), 1)
+	return base.Add(Jitter(kind, key, slot, interval, jitterMax))
+}
+
+// JitterMax 回傳設定檔的 scheduler.jitter_max。
+func (s *Scheduler) JitterMax() time.Duration { return s.jitterMax }
 
 // NextAt 回傳已登記的 kind 中最早的 next_run_at（worker.Periodic）；註冊表是空的或沒有工作時 ok 為 false。
 func (s *Scheduler) NextAt(ctx context.Context) (time.Time, bool, error) {

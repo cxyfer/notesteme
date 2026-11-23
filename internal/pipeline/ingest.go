@@ -122,6 +122,13 @@ func (p *Pipeline) expandRequest(ctx context.Context, req IngestRequest) (ingest
 	return ingestExpansion{plan: plan, targets: targets}, nil
 }
 
+// CheckIngestPlan 檢查處理方案與單次覆寫能不能用來新增影音（同 Ingest 的前段，不寫入、不連外）。
+// 訂閱在建立與修改時用它驗證 profile、overrides（SUB-R1）：錯誤是 path 為 profile 或 overrides 的 *InvalidError。
+func (p *Pipeline) CheckIngestPlan(ctx context.Context, profile string, overrides map[string]any) error {
+	_, err := p.planIngest(ctx, IngestRequest{Profile: profile, Overrides: overrides})
+	return err
+}
+
 // ingestPlan 是新增影音時算好的設定快照與單次覆寫，整批影音共用。
 type ingestPlan struct {
 	sha, cfgJSON string

@@ -323,3 +323,59 @@ func TestJitter(t *testing.T) {
 		}
 	}
 }
+
+// RetryAfter：仍然算失敗（failures 加一、寫入 last_error），下一次取退避與 NotBefore 中較晚的一個（SUB-R10）。
+func TestRetryAfter(t *testing.T) {
+	ctx := context.Background()
+	s, clk := openStore(t)
+	notBefore := t0.Add(15 * time.Minute)
+	early := false
+	rec := &recorder{results: map[string]func(Job, time.Time) (Result, error){
+		"a": func(Job, time.Time) (Result, error) {
+			at := notBefore
+			if early {
+				at = clk.Now().Add(time.Second) // 比退避早：用退避
+			}
+			return Result{}, &RetryAfter{Err: errors.New("限流"), NotBefore: at}
+		},
+	}}
+	sc := New(s, clk, nil, 0)
+	_ = sc.Register(Kind{Name: "test.kind", Interval: time.Hour, Run: rec.run})
+	_ = s.Write().ScheduleJob(ctx, "test.kind", "a", t0)
+	if err := sc.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	j := job(t, s, "test.kind", "a")
+	if j.Failures != 1 || j.LastError != "限流" || !j.NextRunAt.Equal(notBefore) {
+		t.Fatalf("第一次：%+v，預期 15 分鐘後", j)
+	}
+	clk.Set(j.NextRunAt)
+	early = true
+	if err := sc.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if j := job(t, s, "test.kind", "a"); j.Failures != 2 || !j.NextRunAt.Equal(notBefore.Add(5*time.Minute)) {
+		t.Errorf("NotBefore 比退避早時用退避：%+v", j)
+	}
+	if (&RetryAfter{Err: errors.New("x")}).Unwrap().Error() != "x" {
+		t.Error("Unwrap")
+	}
+}
+
+// NextWithJitter 與 Kind.Jitter 的預設一致；JitterMax 回傳設定值。
+func TestNextWithJitter(t *testing.T) {
+	s, clk := openStore(t)
+	sc := New(s, clk, nil, 30*time.Minute)
+	if sc.JitterMax() != 30*time.Minute {
+		t.Error("JitterMax")
+	}
+	iv := 6 * time.Hour
+	base := t0.Add(iv)
+	want := base.Add(Jitter("k", "a", base.UnixMilli()/iv.Milliseconds(), iv, 30*time.Minute))
+	if got := NextWithJitter("k", "a", t0, iv, 30*time.Minute); !got.Equal(want) {
+		t.Errorf("NextWithJitter = %v，預期 %v", got, want)
+	}
+	if got := NextWithJitter("k", "a", t0, iv, 0); !got.Equal(base) {
+		t.Errorf("沒有延遲：%v", got)
+	}
+}
