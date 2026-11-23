@@ -143,11 +143,11 @@ func TestPromptsAPI_Lifecycle(t *testing.T) {
 	for _, p := range list.Prompts {
 		ids = append(ids, p.ID)
 	}
-	want := []string{"correct-default", "localize-zh-hans-cn", "localize-zh-hant-tw", "segment-default", "translate-default", "my-correct"}
+	want := []string{"chapters-default", "correct-default", "localize-zh-hans-cn", "localize-zh-hant-tw", "segment-default", "translate-default", "my-correct"}
 	if rec.Code != 200 || !slices.Equal(ids, want) {
 		t.Fatalf("列表 = %d %v，預期 %v", rec.Code, ids, want)
 	}
-	if mine := list.Prompts[5]; mine.Builtin || mine.DefaultVersion != 2 || mine.LatestVersion != 2 || mine.Kind != "correct" {
+	if mine := list.Prompts[len(list.Prompts)-1]; mine.Builtin || mine.DefaultVersion != 2 || mine.LatestVersion != 2 || mine.Kind != "correct" {
 		t.Errorf("my-correct = %+v", mine)
 	}
 	if !list.Prompts[0].Builtin {

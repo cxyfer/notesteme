@@ -21,8 +21,9 @@ func TestBodySHA256(t *testing.T) {
 
 func TestContractLists(t *testing.T) {
 	// M3 修訂（PRM）：kind 的 frames.select 改為 frames，另加 note_map；M3 的內建 prompt 由實作切片加入。
-	if len(Kinds) != 8 || len(Variables) != 7 || len(BuiltinIDs) != 5 {
-		t.Errorf("Kinds=%d Variables=%d BuiltinIDs=%d，契約是 8、7、5", len(Kinds), len(Variables), len(BuiltinIDs))
+	// M3-S2 加入 chapters-default（CHAP H6）。
+	if len(Kinds) != 8 || len(Variables) != 7 || len(BuiltinIDs) != 6 {
+		t.Errorf("Kinds=%d Variables=%d BuiltinIDs=%d，契約是 8、7、6", len(Kinds), len(Variables), len(BuiltinIDs))
 	}
 	for _, k := range []string{"chapters", "frames", "note", "note_map"} {
 		if !slices.Contains(Kinds, k) {
@@ -47,7 +48,7 @@ func newService(t *testing.T, usedBy func(context.Context, *store.Repo, string) 
 func TestBuiltinsLoad(t *testing.T) {
 	wantKind := map[string]string{
 		"segment-default": "segment", "correct-default": "correct", "translate-default": "translate",
-		"localize-zh-hant-tw": "translate", "localize-zh-hans-cn": "translate",
+		"localize-zh-hant-tw": "translate", "localize-zh-hans-cn": "translate", "chapters-default": "chapters",
 	}
 	for _, id := range BuiltinIDs {
 		b, ok := builtins[id]
@@ -226,7 +227,7 @@ func TestList_BuiltinsFirst(t *testing.T) {
 	for _, p := range ps {
 		ids = append(ids, p.ID)
 	}
-	want := []string{"correct-default", "localize-zh-hans-cn", "localize-zh-hant-tw", "segment-default", "translate-default", "alpha", "zeta"}
+	want := []string{"chapters-default", "correct-default", "localize-zh-hans-cn", "localize-zh-hant-tw", "segment-default", "translate-default", "alpha", "zeta"}
 	if !slices.Equal(ids, want) {
 		t.Errorf("List = %v，預期 %v", ids, want)
 	}
