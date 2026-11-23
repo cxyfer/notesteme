@@ -36,7 +36,7 @@ func (q *Queries) DeleteSecret(ctx context.Context, arg DeleteSecretParams) (int
 }
 
 const getSecret = `-- name: GetSecret :one
-SELECT kind, name, nonce, ciphertext, created_at, updated_at FROM secrets WHERE kind = ?1 AND name = ?2
+SELECT kind, name, nonce, ciphertext, created_at, updated_at, last_ok_at FROM secrets WHERE kind = ?1 AND name = ?2
 `
 
 type GetSecretParams struct {
@@ -54,6 +54,7 @@ func (q *Queries) GetSecret(ctx context.Context, arg GetSecretParams) (Secret, e
 		&i.Ciphertext,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LastOkAt,
 	)
 	return i, err
 }

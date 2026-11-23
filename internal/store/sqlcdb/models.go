@@ -4,6 +4,15 @@
 
 package sqlcdb
 
+type AlertState struct {
+	Kind        string
+	Key         string
+	Message     string
+	ActiveSince int64
+	NotifiedAt  *int64
+	ResolvedAt  *int64
+}
+
 type ApiToken struct {
 	ID         string
 	Name       string
@@ -365,6 +374,7 @@ type Secret struct {
 	Ciphertext []byte
 	CreatedAt  int64
 	UpdatedAt  int64
+	LastOkAt   *int64
 }
 
 type Session struct {
@@ -493,4 +503,11 @@ type Task struct {
 	AgentFailures int64
 	ReleaseReason string
 	BatchID       *string
+}
+
+type ToolCallStat struct {
+	Tool        string
+	BucketStart int64
+	Calls       int64
+	Failures    int64
 }
