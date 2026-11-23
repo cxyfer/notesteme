@@ -122,7 +122,11 @@
     "unsupported_url": "无法识别这个网址。订阅支持 YouTube 频道与播放列表、Bilibili 合集与 Podcast RSS。",
     "not_a_collection": "这是单个视频，请直接添加，不需要订阅。",
     "duplicate_subscription": "已经订阅了这个来源。",
-    "invalid_format": "无法识别导入文件的格式。支持 OPML 与 Google Takeout 的 subscriptions.csv。"
+    "invalid_format": "无法识别导入文件的格式。支持 OPML 与 Google Takeout 的 subscriptions.csv。",
+    "builtin_template": "内置模板不能修改，请先复制一份。",
+    "template_exists": "已经有这个 id 的模板。",
+    "no_note": "这部音视频还没有笔记。",
+    "no_frames": "这部音视频还没有截取画面。"
   },
   "status": {
     "pending": "等待中",
@@ -1483,5 +1487,54 @@
       "overrideWarning": "这会取代当前的{{source}}单价：{{old}} → {{new}}。再按一次「确认覆盖」应用。",
       "saved": "已保存单价"
     }
+  },
+  "noteTemplates": {
+    "lead": "模板决定笔记的结构（frontmatter、信息表与章节骨架），LLM 只负责填入正文。内置模板不能修改，复制后再调整。",
+    "new": "新增模板",
+    "empty": "还没有任何模板。",
+    "builtinTag": "内置",
+    "version": "v{{version}}",
+    "checksCount_other": "{{count}} 项自动检查",
+    "createdAt": "这个版本创建于 {{at}}",
+    "copy": "复制",
+    "created": "已创建模板 {{id}}",
+    "idRule": "id 只能用小写英文数字与 -，1 到 64 个字符。",
+    "newTitle": "新增笔记模板",
+    "newDescription": "新的模板从既有的模板复制正文，创建后再修改。",
+    "create": "创建模板",
+    "from": "复制自",
+    "id": "id",
+    "name": "名称",
+    "breadcrumb": "笔记模板的位置",
+    "notFound": "找不到这个模板。",
+    "savedAs": "已存为 v{{version}}",
+    "builtinReadOnly": "内置模板是只读的。要调整时先按「复制」。",
+    "templateTitle": "模板",
+    "body": "模板正文",
+    "vars": "可用的变量",
+    "readButton": "「阅读」按钮",
+    "readButtonHint": "放在笔记开头的 Markdown；留空表示不加。",
+    "checks": "自动检查",
+    "checksHint": "没有通过时笔记标示「需要你处理」，不会写进 vault。",
+    "check": {
+      "frontmatter": "必要的 frontmatter 字段",
+      "heading_timestamps": "每个内容标题都有时间戳",
+      "images_exist": "引用的图片都存在",
+      "image_names": "图片文件名符合规则",
+      "self_check": "有「自我检验」段落"
+    },
+    "saveVersion": "另存新版本",
+    "layoutNote": "文件名、文件夹布局与附件位置由配置文件的 vault 决定，这里不能修改。",
+    "promptTitle": "笔记 prompt",
+    "promptNote": "正文的写法由 Prompt 库中的笔记 prompt 决定；处理方案选用哪一个 prompt，与模板分开设置。",
+    "previewTitle": "预览",
+    "previewNote": "选一部已有笔记的音视频，用它的笔记内容套用模板；不调用 LLM，也不写入任何文件。",
+    "previewSaved": "预览的是已保存的 v{{version}}，还没包含未保存的修改。",
+    "noNote": "这部音视频还没有笔记，换一部已经写好笔记的音视频。",
+    "noChecks": "这个模板没有勾选自动检查。",
+    "checksResult": "自动检查的结果",
+    "checkOk": "通过：{{name}}",
+    "checkFailed": "没有通过：{{name}}",
+    "previewResult": "预览结果"
   }
 }

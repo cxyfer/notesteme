@@ -14,7 +14,8 @@
 //      ├─ /profiles、/profiles/$id   處理方案
 //      ├─ /styles、/styles/$id       字幕樣式
 //      ├─ /subscriptions、/subscriptions/$id   訂閱（UI-4，lazy）
-//      └─ /costs                     成本（UI-4，lazy；篩選在 URL）
+//      ├─ /costs                     成本（UI-4，lazy；篩選在 URL）
+//      └─ /note-templates、/note-templates/$id 筆記模板（UI-4，lazy）
 //
 // 新增頁面：在這裡加一個 createRoute、加進 routeTree，並把路徑加進 src/test/a11yRoutes.ts。
 import type { QueryClient } from "@tanstack/react-query";
@@ -196,6 +197,23 @@ const costsRoute = createRoute({
   component: lazyRouteComponent(() => import("./pages/costs/CostsPage"), "CostsPage"),
 });
 
+const noteTemplatesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/note-templates",
+  component: lazyRouteComponent(
+    () => import("./pages/noteTemplates/NoteTemplatesPage"),
+    "NoteTemplatesPage",
+  ),
+});
+export const noteTemplateRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/note-templates/$id",
+  component: lazyRouteComponent(
+    () => import("./pages/noteTemplates/NoteTemplateEditorPage"),
+    "NoteTemplateEditorPage",
+  ),
+});
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute.addChildren([
@@ -215,6 +233,8 @@ export const routeTree = rootRoute.addChildren([
     subscriptionsRoute,
     subscriptionRoute,
     costsRoute,
+    noteTemplatesRoute,
+    noteTemplateRoute,
   ]),
 ]);
 

@@ -122,7 +122,11 @@
     "unsupported_url": "This URL isn't recognized. Subscriptions support YouTube channels and playlists, Bilibili collections and podcast RSS feeds.",
     "not_a_collection": "This is a single video. Add it directly instead of subscribing.",
     "duplicate_subscription": "You're already subscribed to this source.",
-    "invalid_format": "The import file's format isn't recognized. OPML and Google Takeout's subscriptions.csv are supported."
+    "invalid_format": "The import file's format isn't recognized. OPML and Google Takeout's subscriptions.csv are supported.",
+    "builtin_template": "Built-in templates can't be changed. Make a copy first.",
+    "template_exists": "A template with this id already exists.",
+    "no_note": "This media has no note yet.",
+    "no_frames": "No frames have been captured for this media yet."
   },
   "status": {
     "pending": "Waiting",
@@ -1519,5 +1523,55 @@
       "overrideWarning": "This replaces the current {{source}} price: {{old}} → {{new}}. Press “Confirm override” to apply.",
       "saved": "Price saved"
     }
+  },
+  "noteTemplates": {
+    "lead": "A template sets the note's structure (frontmatter, info table and section skeleton); the LLM only fills in the text. Built-in templates are read-only; copy one to adjust it.",
+    "new": "New template",
+    "empty": "No templates yet.",
+    "builtinTag": "Built-in",
+    "version": "v{{version}}",
+    "checksCount_one": "1 automatic check",
+    "checksCount_other": "{{count}} automatic checks",
+    "createdAt": "This version created {{at}}",
+    "copy": "Copy",
+    "created": "Created template {{id}}",
+    "idRule": "Use 1–64 lowercase letters, digits or hyphens.",
+    "newTitle": "New note template",
+    "newDescription": "A new template starts as a copy of an existing one; edit it afterwards.",
+    "create": "Create template",
+    "from": "Copy from",
+    "id": "id",
+    "name": "Name",
+    "breadcrumb": "Breadcrumb",
+    "notFound": "This template doesn't exist.",
+    "savedAs": "Saved as v{{version}}",
+    "builtinReadOnly": "Built-in templates are read-only. Copy it to make changes.",
+    "templateTitle": "Template",
+    "body": "Template body",
+    "vars": "Available variables",
+    "readButton": "“Read” button",
+    "readButtonHint": "Markdown placed at the top of the note. Leave blank for none.",
+    "checks": "Automatic checks",
+    "checksHint": "If a check fails, the note needs you and isn't written to the vault.",
+    "check": {
+      "frontmatter": "Required frontmatter fields",
+      "heading_timestamps": "Every heading has a timestamp",
+      "images_exist": "Embedded images exist",
+      "image_names": "Image file names follow the rule",
+      "self_check": "Has a self-check section"
+    },
+    "saveVersion": "Save new version",
+    "layoutNote": "File names, folder layout and attachments are set by the vault in the config file and can't be changed here.",
+    "promptTitle": "Note prompt",
+    "promptNote": "How the text is written comes from the note prompts in the Prompt library; presets pick the prompt separately from the template.",
+    "previewTitle": "Preview",
+    "previewNote": "Pick media that already has a note to apply this template to its content. No LLM calls, nothing is written.",
+    "previewSaved": "The preview uses saved v{{version}}, without your unsaved changes.",
+    "noNote": "This media has no note yet. Pick one that does.",
+    "noChecks": "No automatic checks are selected.",
+    "checksResult": "Check results",
+    "checkOk": "Passed: {{name}}",
+    "checkFailed": "Failed: {{name}}",
+    "previewResult": "Preview result"
   }
 }

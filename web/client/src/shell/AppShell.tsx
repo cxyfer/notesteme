@@ -31,6 +31,7 @@ const NAV_GROUPS = [
       { to: "/prompts", label: "nav.prompts" },
       { to: "/profiles", label: "nav.profiles" },
       { to: "/styles", label: "nav.styles" },
+      { to: "/note-templates", label: "nav.noteTemplates" },
     ],
   },
   {

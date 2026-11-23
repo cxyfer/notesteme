@@ -122,7 +122,11 @@
     "unsupported_url": "無法辨識這個網址。訂閱支援 YouTube 頻道與播放清單、Bilibili 合集與 Podcast RSS。",
     "not_a_collection": "這是單一影片，請直接新增，不需要訂閱。",
     "duplicate_subscription": "已經訂閱了這個來源。",
-    "invalid_format": "無法辨識匯入檔的格式。支援 OPML 與 Google Takeout 的 subscriptions.csv。"
+    "invalid_format": "無法辨識匯入檔的格式。支援 OPML 與 Google Takeout 的 subscriptions.csv。",
+    "builtin_template": "內建模板不能修改，請先複製一份。",
+    "template_exists": "已經有這個 id 的模板。",
+    "no_note": "這部影音還沒有筆記。",
+    "no_frames": "這部影音還沒有擷取畫面。"
   },
   "status": {
     "pending": "等待中",
@@ -1483,5 +1487,54 @@
       "overrideWarning": "這會取代目前的{{source}}單價：{{old}} → {{new}}。再按一次「確認覆寫」套用。",
       "saved": "已儲存單價"
     }
+  },
+  "noteTemplates": {
+    "lead": "模板決定筆記的結構（frontmatter、資訊表與章節骨架），LLM 只負責填入內文。內建模板不能修改，複製後再調整。",
+    "new": "新增模板",
+    "empty": "還沒有任何模板。",
+    "builtinTag": "內建",
+    "version": "v{{version}}",
+    "checksCount_other": "{{count}} 項自動檢查",
+    "createdAt": "這個版本建立於 {{at}}",
+    "copy": "複製",
+    "created": "已建立模板 {{id}}",
+    "idRule": "id 只能用小寫英數字與 -，1 到 64 個字元。",
+    "newTitle": "新增筆記模板",
+    "newDescription": "新的模板從既有的模板複製內文，建立後再修改。",
+    "create": "建立模板",
+    "from": "複製自",
+    "id": "id",
+    "name": "名稱",
+    "breadcrumb": "筆記模板的位置",
+    "notFound": "找不到這個模板。",
+    "savedAs": "已存為 v{{version}}",
+    "builtinReadOnly": "內建模板是唯讀的。要調整時先按「複製」。",
+    "templateTitle": "模板",
+    "body": "模板內文",
+    "vars": "可用的變數",
+    "readButton": "「閱讀」按鈕",
+    "readButtonHint": "放在筆記開頭的 Markdown；留白表示不加。",
+    "checks": "自動檢查",
+    "checksHint": "沒有通過時筆記標示「需要你處理」，不會寫進 vault。",
+    "check": {
+      "frontmatter": "必要的 frontmatter 欄位",
+      "heading_timestamps": "每個內容標題都有時間戳",
+      "images_exist": "引用的圖片都存在",
+      "image_names": "圖片檔名符合規則",
+      "self_check": "有「自我檢驗」段落"
+    },
+    "saveVersion": "另存新版本",
+    "layoutNote": "檔名、資料夾版面與附件位置由設定檔的 vault 決定，這裡不能修改。",
+    "promptTitle": "筆記 prompt",
+    "promptNote": "內文的寫法由 Prompt 庫中的筆記 prompt 決定；處理方案選用哪一個 prompt，與模板分開設定。",
+    "previewTitle": "預覽",
+    "previewNote": "選一部已有筆記的影音，用它的筆記內容套用模板；不呼叫 LLM，也不寫入任何檔案。",
+    "previewSaved": "預覽的是已儲存的 v{{version}}，還沒包含未儲存的修改。",
+    "noNote": "這部影音還沒有筆記，換一部已經寫好筆記的影音。",
+    "noChecks": "這個模板沒有勾選自動檢查。",
+    "checksResult": "自動檢查的結果",
+    "checkOk": "通過：{{name}}",
+    "checkFailed": "沒有通過：{{name}}",
+    "previewResult": "預覽結果"
   }
 }

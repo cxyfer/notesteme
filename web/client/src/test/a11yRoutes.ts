@@ -50,5 +50,7 @@ export const a11yRoutes: A11yRoute[] = [
   { path: "/subscriptions/s1", heading: "码农高天", auth: true, ready: "新影片" },
   { path: "/costs", heading: "成本", auth: true, ready: "影片 1" },
   { path: "/costs?group_by=stage", heading: "成本", auth: true, ready: "計價表" },
+  { path: "/note-templates", heading: "筆記模板", auth: true, ready: "Video Notes 預設" },
+  { path: "/note-templates/video-notes", heading: "Video Notes 預設", auth: true },
   { path: "/no-such-page", heading: "找不到這個頁面", auth: false },
 ];

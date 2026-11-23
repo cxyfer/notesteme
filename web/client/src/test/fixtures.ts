@@ -1,6 +1,13 @@
 // 測試資料：GET /api/items 的列與 GET /api/items/{id} 的詳情。
 import type { components } from "../api/schema";
-import { costEntry, costSummary, priceList, subscription, subscriptionEntries } from "./m4Fixtures";
+import {
+  costEntry,
+  costSummary,
+  noteTemplate,
+  priceList,
+  subscription,
+  subscriptionEntries,
+} from "./m4Fixtures";
 
 type Item = components["schemas"]["Item"];
 type Detail = components["schemas"]["ItemDetail"];
@@ -157,5 +164,6 @@ export function defaultRoutes() {
     "GET /api/costs": () => costSummary(),
     "GET /api/costs/entries": () => ({ entries: [costEntry(1)] }),
     "GET /api/prices": () => priceList(),
+    "GET /api/note-templates": () => ({ templates: [noteTemplate("video-notes")] }),
   };
 }
