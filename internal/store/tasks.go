@@ -151,7 +151,7 @@ func (r *Repo) claimTasks(ctx context.Context, o ClaimOptions) ([]Task, error) {
 		claimed = nil
 	}
 
-	// RETURNING 不保證順序：依領取時的排序（優先度加 aging、建立時間、ID）重新排列。
+	// RETURNING 不保證順序：依領取時的排序（優先度加 aging、建立時間、stage run、ID）重新排列。
 	sort.SliceStable(claimed, func(i, j int) bool {
 		ki := int64(claimed[i].Priority) + (now-claimed[i].CreatedAt.UnixMilli())/aging
 		kj := int64(claimed[j].Priority) + (now-claimed[j].CreatedAt.UnixMilli())/aging
@@ -161,7 +161,11 @@ func (r *Repo) claimTasks(ctx context.Context, o ClaimOptions) ([]Task, error) {
 		if !claimed[i].CreatedAt.Equal(claimed[j].CreatedAt) {
 			return claimed[i].CreatedAt.Before(claimed[j].CreatedAt)
 		}
-		return claimed[i].ID < claimed[j].ID // UUIDv7 依產生順序遞增
+		// 同一時間建立的任務：較早的 stage run 優先（同 SQL 的排序），再依任務 ID。UUIDv7 依產生順序遞增。
+		if claimed[i].StageRunID != claimed[j].StageRunID {
+			return claimed[i].StageRunID < claimed[j].StageRunID
+		}
+		return claimed[i].ID < claimed[j].ID
 	})
 
 	for i := range claimed {

@@ -18,6 +18,8 @@ SELECT * FROM tasks WHERE stage_run_id = sqlc.arg(stage_run_id) ORDER BY created
 -- resource_classes and kinds are JSON arrays of strings; an empty array means any. (sqlc.slice is not
 -- used: its sqlite output mixes numbered and plain placeholders and breaks with more than one value.)
 -- The score is computed in the select list because sqlc does not rewrite parameters inside ORDER BY.
+-- Ties at the same created_at go to the older stage run (UUIDv7 ids grow with creation): tasks created
+-- by concurrently finishing tasks keep the order their items were queued in (PIPE-R9).
 -- RETURNING has no defined order, so the caller must re-sort the result by the same key.
 UPDATE tasks
 SET state = 'leased', lease_owner = CAST(sqlc.arg(owner) AS TEXT), lease_token = CAST(sqlc.arg(token) AS TEXT),
@@ -32,7 +34,7 @@ WHERE id IN (
            OR t.resource_class IN (SELECT j.value FROM json_each(CAST(sqlc.arg(resource_classes) AS TEXT)) AS j))
       AND (json_array_length(CAST(sqlc.arg(kinds) AS TEXT)) = 0
            OR t.kind IN (SELECT k.value FROM json_each(CAST(sqlc.arg(kinds) AS TEXT)) AS k))
-    ORDER BY score DESC, t.created_at, t.rowid
+    ORDER BY score DESC, t.created_at, t.stage_run_id, t.rowid
     LIMIT sqlc.arg(max)
   ) AS picked
 )
@@ -123,4 +125,4 @@ FROM tasks AS t
 JOIN stage_runs AS sr ON sr.id = t.stage_run_id
 JOIN items AS i ON i.id = sr.item_id
 WHERE t.state IN ('leased', 'pending') AND t.executor = sqlc.arg(executor) AND i.deleted_at IS NULL
-ORDER BY bucket, score DESC, t.created_at, t.rowid;
+ORDER BY bucket, score DESC, t.created_at, t.stage_run_id, t.rowid;
