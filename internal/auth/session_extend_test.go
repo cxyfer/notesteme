@@ -24,7 +24,7 @@ func TestExtendSessionFailureDoesNotFailAuthentication(t *testing.T) {
 		t.Fatal(err)
 	}
 	called := false
-	svc.extend = func(context.Context, string, time.Time) error {
+	svc.touch = func(context.Context, string, time.Time, time.Time) error {
 		called = true
 		return errors.New("database is locked")
 	}
