@@ -15,8 +15,7 @@ import (
 // 不在這份清單的 M4 介面：
 //   - GET/PUT /api/settings/budget：沿用既有的 settings-get／settings-put（M4-S4 COST 已實作 budget 區段）；
 //     不另外註冊字面路徑，以免蓋過 {section}。COST 的其他路由在 costs.go。
-//   - GET /api/auth/oidc/start、callback：AUTH-R16 規定 OIDC 沒有啟用時回 404，S0 不啟用 OIDC，所以不註冊
-//     （沒有身分的請求在 S0 先被驗證擋下，回 401）。
+//   - AUTH 的路由（sessions、tokens rotate、OIDC 的 start／callback、auth/methods）在 AUTH 切片實作（auth_sessions.go、oidc.go）。
 //   - ENTRY 的頁面路由（/add、/share、/login、/manifest.webmanifest、/sw.js）不在 /api 底下，已由 internal/entry 實作（掛在 ui.go 的 entryPages）；
 //     POST /api/auth/login 的 next（ENTRY-R6）也已實作。
 //   - DIG 的路由（continue、digests）在 M4-S6 實作（digests.go）。
@@ -37,13 +36,6 @@ var m4Stubs = []m2Stub{
 		Summary: "一次決定多個術語候選（尚未實作）", Scope: auth.ScopeAdmin},
 	{ID: "term-candidates-list", Method: http.MethodGet, Path: "/api/term-candidates",
 		Summary: "列出所有頻道待確認的術語候選（尚未實作）", Scope: auth.ScopeRead},
-	// AUTH-R20、R21（S11 AUTH）
-	{ID: "auth-sessions-list", Method: http.MethodGet, Path: "/api/auth/sessions",
-		Summary: "列出登入的工作階段（尚未實作）", Scope: auth.ScopeAdmin},
-	{ID: "auth-sessions-revoke", Method: http.MethodDelete, Path: "/api/auth/sessions/{id}",
-		Summary: "撤銷一個工作階段（id 為 current 時等同登出，尚未實作）", Scope: auth.ScopeAdmin},
-	{ID: "tokens-rotate", Method: http.MethodPost, Path: "/api/tokens/{id}/rotate",
-		Summary: "輪替 token 的 secret，名稱、scope 與到期時間不變（尚未實作）", Scope: auth.ScopeAdmin},
 }
 
 // registerM4Stubs 註冊 M4 的 501 stub。

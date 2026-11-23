@@ -15,17 +15,23 @@ type Error = apierr.Error
 
 // 錯誤代碼。
 const (
-	CodeUnauthorized   = "unauthorized"
-	CodeInvalidPass    = "invalid_password"
-	CodeLoginLocked    = "login_locked"
-	CodeCSRF           = "csrf_invalid"
-	CodeForbidden      = "forbidden"
-	CodeTokenExists    = "token_exists"
-	CodeNotFound       = apierr.CodeNotFound
-	CodeInvalidInput   = apierr.CodeInvalidInput
-	CodeNotReady       = "not_ready"
-	CodeNotImplemented = apierr.CodeNotImplemented
-	CodeInternal       = apierr.CodeInternal
+	CodeUnauthorized = "unauthorized"
+	CodeInvalidPass  = "invalid_password"
+	CodeLoginLocked  = "login_locked"
+	CodeCSRF         = "csrf_invalid"
+	// AUTH-R14、R18、R19、R21（M4）
+	CodeProxyUserNotAllowed = "proxy_user_not_allowed"
+	CodeOIDCStateInvalid    = "oidc_state_invalid"
+	CodeOIDCFailed          = "oidc_failed"
+	CodeOIDCNotAllowed      = "oidc_not_allowed"
+	CodeTokenInactive       = "token_inactive"
+	CodeForbidden           = "forbidden"
+	CodeTokenExists         = "token_exists"
+	CodeNotFound            = apierr.CodeNotFound
+	CodeInvalidInput        = apierr.CodeInvalidInput
+	CodeNotReady            = "not_ready"
+	CodeNotImplemented      = apierr.CodeNotImplemented
+	CodeInternal            = apierr.CodeInternal
 
 	// 對外請求被防護擋下（GRD 介面）。
 	CodeBlockedAddress    = "blocked_address"

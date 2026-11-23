@@ -59,23 +59,65 @@ func requestInfoMiddleware(svc *auth.Service) func(http.Handler) http.Handler {
 	}
 }
 
-// needsAuth 回報路徑是否受 AUTH-R1 保護：/api/* 與 /mcp，例外只有 POST /api/auth/login。
+// 免驗證的 OIDC 與登入方式路由（AUTH-R16；登入頁的 OIDC 按鈕）。只開放 GET 與這幾條精確的路徑：
+// OIDC 沒有啟用時路由不存在，回 404。
+const (
+	pathOIDCStart    = "/api/auth/oidc/start"
+	pathOIDCCallback = "/api/auth/oidc/callback"
+	pathAuthMethods  = "/api/auth/methods"
+)
+
+// needsAuth 回報路徑是否受 AUTH-R1 保護：/api/* 與 /mcp，例外只有 POST /api/auth/login、
+// GET /api/auth/oidc/start、GET /api/auth/oidc/callback（AUTH-R16）與 GET /api/auth/methods。
 // /healthz、/readyz 不在 /api 底下，不受保護。
 func needsAuth(r *http.Request) bool {
 	p := r.URL.Path
 	if p == "/api/auth/login" {
 		return false
 	}
-	return p == "/api" || strings.HasPrefix(p, "/api/") || p == "/mcp" || strings.HasPrefix(p, "/mcp/")
+	if r.Method == http.MethodGet && (p == pathOIDCStart || p == pathOIDCCallback || p == pathAuthMethods) {
+		return false
+	}
+	return p == "/api" || strings.HasPrefix(p, "/api/") || isMCPPath(p)
 }
+
+func isMCPPath(p string) bool { return p == "/mcp" || strings.HasPrefix(p, "/mcp/") }
 
 // safeMethod 回報方法是否不會改變狀態（不需要 CSRF token）。
 func safeMethod(m string) bool {
 	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
 }
 
+// proxyMiddleware 判斷反向代理驗證的標頭（AUTH-R13），把結果放進 context（auth.WithProxyUser），
+// 並從請求中移除這個標頭，之後的 handler 都看不到原始值。
+//   - 只信任 TCP 對端位址（r.RemoteAddr）在 trusted_proxies 中的請求；其他來源的標頭忽略並記 log（在 auth.ProxyUser）。
+//   - 帶 bearer token 的請求完全不看這個標頭（AUTH-R15），也不撤銷任何 session。
+//   - /mcp 不接受 proxy 身分（AUTH-R15、待決問題 A6）：不判斷標頭，所以 proxy session 在 /mcp 只會被拒絕、不會被撤銷。
+func proxyMiddleware(svc *auth.Service) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		if svc == nil || !svc.ProxyEnabled() {
+			return next
+		}
+		header := svc.ProxyHeader()
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			values := r.Header.Values(header)
+			r.Header.Del(header)
+			if r.Header.Get("Authorization") != "" || isMCPPath(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			user := svc.ProxyUser(r.Context(), r.RemoteAddr, values)
+			next.ServeHTTP(w, r.WithContext(auth.WithProxyUser(r.Context(), user)))
+		})
+	}
+}
+
 // authMiddleware 對受保護的路徑要求 bearer token 或 session（AUTH-R1）。
 // 順序：先驗證（失敗 401），session 的非 GET 請求再檢查 CSRF（失敗 403，AUTH-R5）。
+//
+// 反向代理驗證（AUTH-R14）：受信任的 proxy 帶來的值不在 allowed_users 中時回 403；
+// 在清單中而沒有有效的 session 時建立 proxy session 並設定 cookie，這個請求就以它驗證（CSRF 照常檢查）。
+// proxy 與 OIDC 的 session 不能存取 /mcp（AUTH-R15、待決問題 A6）。
 func authMiddleware(svc *auth.Service, log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,24 +141,54 @@ func authMiddleware(svc *auth.Service, log *slog.Logger) func(http.Handler) http
 				}
 				principal = p
 			} else {
-				c, err := r.Cookie(auth.SessionCookie)
-				if err != nil {
+				var sessionToken string
+				if c, err := r.Cookie(auth.SessionCookie); err == nil && c.Value != "" {
+					p, err := svc.AuthenticateSession(r.Context(), c.Value)
+					switch {
+					case err == nil:
+						principal, sessionToken = p, c.Value
+					case !errors.Is(err, auth.ErrUnauthenticated):
+						failAuth(w, r, log, err, unauthorized)
+						return
+					}
+				}
+				freshSession := false
+				if proxyUser, _ := auth.ProxyUserFrom(r.Context()); proxyUser != "" {
+					if !svc.ProxyUserAllowed(proxyUser) {
+						writeError(w, newError(http.StatusForbidden, CodeProxyUserNotAllowed,
+							"這個帳號（"+auth.ProxyUserShown(proxyUser)+"）不能使用 Notesteme。"))
+						return
+					}
+					if sessionToken == "" {
+						info := infoFrom(r.Context())
+						cred, err := svc.ProxyLogin(r.Context(), proxyUser, info.IP, info.UserAgent)
+						if err != nil {
+							failAuth(w, r, log, err, unauthorized)
+							return
+						}
+						now := svc.Now()
+						w.Header().Add("Set-Cookie", sessionCookie(cred.Token, info.Secure, cred.ExpiresAt, now).String())
+						w.Header().Add("Set-Cookie", csrfCookie(cred.CSRF, info.Secure, cred.ExpiresAt, now).String())
+						sessionToken = cred.Token
+						principal = auth.Principal{Kind: "session", SessionID: cred.SessionID, Method: "proxy"}
+						// 新的 session：這個請求不可能帶著它的 CSRF token，非 GET 請求一律 403（AUTH-R15）。
+						freshSession = true
+					}
+				}
+				if sessionToken == "" {
 					writeError(w, unauthorized)
 					return
 				}
-				p, err := svc.AuthenticateSession(r.Context(), c.Value)
-				if err != nil {
-					failAuth(w, r, log, err, unauthorized)
+				if isMCPPath(r.URL.Path) && principal.Method != "" && principal.Method != "password" {
+					writeError(w, unauthorized)
 					return
 				}
-				principal = p
 				if !safeMethod(r.Method) {
-					csrfCookie, _ := r.Cookie(auth.CSRFCookie)
 					var cv string
-					if csrfCookie != nil {
+					if csrfCookie, _ := r.Cookie(auth.CSRFCookie); csrfCookie != nil {
 						cv = csrfCookie.Value
 					}
-					if err := auth.CheckCSRF(c.Value, cv, r.Header.Get(auth.CSRFHeader)); err != nil {
+					if err := auth.CheckCSRF(sessionToken, cv, r.Header.Get(auth.CSRFHeader)); freshSession || err != nil {
 						writeError(w, newError(http.StatusForbidden, CodeCSRF, "CSRF token 缺少或不正確。"))
 						return
 					}

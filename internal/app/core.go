@@ -141,8 +141,14 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 	}
 	s.services = secrets.NewServices(s.store, s.keys)
 
+	oidcCfg, err := oidcConfig(cfg, s.netw, env.Clock)
+	if err != nil {
+		return nil, err
+	}
 	s.auth = auth.New(auth.Config{Store: s.store, Clock: env.Clock, Params: hashParams, Log: log,
-		TrustedProxies: cfg.TrustedProxies})
+		TrustedProxies: cfg.TrustedProxies,
+		Proxy:          auth.ProxyConfig{UserHeader: cfg.M4.Proxy.UserHeader, AllowedUsers: cfg.M4.Proxy.AllowedUsers},
+		OIDC:           oidcCfg})
 	if opts.check != nil {
 		if err := opts.check(ctx, s); err != nil {
 			return nil, err

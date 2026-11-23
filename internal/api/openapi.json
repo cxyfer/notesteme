@@ -110,6 +110,18 @@
         ],
         "type": "object"
       },
+      "AuthMethodsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "oidc": {
+            "$ref": "#/components/schemas/OIDCStruct"
+          }
+        },
+        "required": [
+          "oidc"
+        ],
+        "type": "object"
+      },
       "Backfill": {
         "additionalProperties": false,
         "properties": {
@@ -2810,6 +2822,24 @@
         ],
         "type": "object"
       },
+      "ListSessionsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionInfo"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "type": "object"
+      },
       "ListTokensOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -3228,6 +3258,22 @@
         },
         "required": [
           "notifiers"
+        ],
+        "type": "object"
+      },
+      "OIDCStruct": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "host": {
+            "description": "issuer 的主機名稱（按鈕文字「用 \u003c主機名稱\u003e 登入」）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled"
         ],
         "type": "object"
       },
@@ -4680,6 +4726,49 @@
         ],
         "type": "object"
       },
+      "SessionInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "password",
+              "proxy",
+              "oidc"
+            ],
+            "type": "string"
+          },
+          "user_agent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "method",
+          "created_at",
+          "last_seen_at",
+          "ip",
+          "user_agent",
+          "current"
+        ],
+        "type": "object"
+      },
       "SetPromptDefaultInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -6024,6 +6113,235 @@
         "summary": "登出，session 立即失效"
       }
     },
+    "/api/auth/methods": {
+      "get": {
+        "operationId": "auth-methods",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthMethodsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "登入頁可用的登入方式：OIDC 是否啟用與 issuer 的主機名稱（免驗證）"
+      }
+    },
+    "/api/auth/oidc/callback": {
+      "get": {
+        "operationId": "auth-oidc-callback",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "error",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "notesteme_oidc",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "OIDC 的 callback：驗證 state、換 token、驗證 id_token 與 sub，建立 session 後 302 到 next（AUTH-R18、R19）"
+      }
+    },
+    "/api/auth/oidc/start": {
+      "get": {
+        "operationId": "auth-oidc-start",
+        "parameters": [
+          {
+            "description": "登入後要前往的站內路徑；不安全或超過 2048 bytes 時換成 /（AUTH-R17）",
+            "explode": false,
+            "in": "query",
+            "name": "next",
+            "schema": {
+              "description": "登入後要前往的站內路徑；不安全或超過 2048 bytes 時換成 /（AUTH-R17）",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          }
+        },
+        "summary": "開始 OIDC 登入：302 到身分提供者（PKCE S256），設定 notesteme_oidc cookie；沒有啟用 OIDC 時 404（AUTH-R16、R17）"
+      }
+    },
     "/api/auth/password": {
       "post": {
         "operationId": "auth-password",
@@ -6075,8 +6393,15 @@
       "get": {
         "operationId": "auth-sessions-list",
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSessionsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -6089,15 +6414,35 @@
             "description": "Error"
           }
         },
-        "summary": "列出登入的工作階段（尚未實作）"
+        "summary": "列出登入的工作階段，依最後使用時間由新到舊；不含 session 的 secret（AUTH-R20）"
       }
     },
     "/api/auth/sessions/{id}": {
       "delete": {
         "operationId": "auth-sessions-revoke",
+        "parameters": [
+          {
+            "description": "session ID；current 代表送出請求的這個 session",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "session ID；current 代表送出請求的這個 session",
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
-            "description": "No Content"
+            "description": "No Content",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "default": {
             "content": {
@@ -6110,7 +6455,7 @@
             "description": "Error"
           }
         },
-        "summary": "撤銷一個工作階段（id 為 current 時等同登出，尚未實作）"
+        "summary": "撤銷一個工作階段；id 為 current 時撤銷目前的 session 並清除 cookie（等同登出，AUTH-R20）"
       }
     },
     "/api/backup": {
@@ -10407,9 +10752,28 @@
     "/api/tokens/{id}/rotate": {
       "post": {
         "operationId": "tokens-rotate",
+        "parameters": [
+          {
+            "description": "token ID 或有效的名稱",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "token ID 或有效的名稱",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedToken"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -10422,7 +10786,7 @@
             "description": "Error"
           }
         },
-        "summary": "輪替 token 的 secret，名稱、scope 與到期時間不變（尚未實作）"
+        "summary": "輪替 token 的 secret：名稱、scope 與到期時間不變，舊的 secret 立即失效；新 token 只回傳這一次（AUTH-R21）"
       }
     },
     "/api/tools/yt-dlp/rollback": {

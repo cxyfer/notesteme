@@ -147,6 +147,10 @@ func build(d Deps, authn func(http.Handler) http.Handler, remote bool) http.Hand
 		h = uiDispatch(entryPages(d), h)
 	}
 	h = authn(h)
+	if remote {
+		// 反向代理驗證只在 TCP listener（AUTH-R13）；本機 socket 沒有 proxy。
+		h = proxyMiddleware(d.Auth)(h)
+	}
 	h = requestInfoMiddleware(d.Auth)(h)
 	h = logMiddleware(d.Log, d.Clock)(h)
 	h = recoverMiddleware(d.Log)(h)
@@ -233,6 +237,8 @@ func (rt *routes) register(api huma.API) {
 		Summary: "登出，session 立即失效",
 	}, "登出", rt.logout)
 	rt.registerAuthPassword(api)
+	rt.registerAuthSessions(api)
+	rt.registerOIDC(api)
 
 	registerScoped(api, huma.Operation{
 		OperationID: "items-list", Method: http.MethodGet, Path: "/api/items",
