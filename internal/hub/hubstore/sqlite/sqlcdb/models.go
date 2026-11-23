@@ -14,6 +14,14 @@ type AuditLog struct {
 	At          int64
 }
 
+type GroupMember struct {
+	UserID       string
+	GroupName    string
+	Source       string
+	RuleProvider string
+	AddedAt      int64
+}
+
 type Identity struct {
 	ID            string
 	UserID        string
@@ -38,6 +46,17 @@ type OauthState struct {
 	CreatedAt      int64
 	ExpiresAt      int64
 	UsedAt         *int64
+}
+
+type Pat struct {
+	ID          string
+	UserID      string
+	Name        string
+	TokenHash   string
+	Permissions string
+	CreatedAt   int64
+	ExpiresAt   int64
+	RevokedAt   *int64
 }
 
 type Session struct {

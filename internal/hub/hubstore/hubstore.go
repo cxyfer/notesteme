@@ -70,7 +70,63 @@ type Store interface {
 
 	// AuditEntries 依時間倒序回傳最多 limit 筆稽核紀錄（HACC-R17）。
 	AuditEntries(ctx context.Context, limit int) ([]AuditEntry, error)
+
+	// IdentityBySubject 以 (provider, subject) 查身分；不存在時回 ErrNotFound（設定檔的 admins、驗收步驟）。
+	IdentityBySubject(ctx context.Context, provider, subject string) (Identity, error)
+
+	// GroupMemberships 回傳帳號在資料庫中的群組成員資格（不含隱含的 members，HACC-R10）。
+	GroupMemberships(ctx context.Context, userID string) ([]GroupMembership, error)
+	// SetManualGroup 以 source: manual 加入（member 為 true）或移出群組，有改變時寫入稽核紀錄（group.add、group.remove，
+	// actor 是執行的管理員，HACC-R12、R17；actorUserID 為空字串時不寫稽核紀錄，只給驗收步驟直接寫 DB 用）。
+	// 帳號不存在時回 ErrNotFound；changed 表示資料有沒有改變。
+	SetManualGroup(ctx context.Context, actorUserID, userID, group string, member bool) (changed bool, err error)
+	// SyncRuleGroups 把 provider 的規則給出的成員資格換成 groups（HACC-R11）：不再成立的移除，其他來源不受影響。
+	SyncRuleGroups(ctx context.Context, userID, provider string, groups []string) error
+	// SetConfigGroup 以 source: config 加入或移出群組（設定檔的 admins，HACC-R12）。
+	SetConfigGroup(ctx context.Context, userID, group string, member bool) error
+	// ReplaceConfigGroup 把群組 source: config 的成員換成 userIDs（Hub 啟動時依設定檔同步，HACC-R12）。
+	ReplaceConfigGroup(ctx context.Context, group string, userIDs []string) error
+
+	// CreatePAT 建立 Hub token（只存 hash，HACC-R9）。
+	CreatePAT(ctx context.Context, p PAT) error
+	// PATByHash 回傳 token；不存在時回 ErrNotFound。撤銷與過期由呼叫端判斷。
+	PATByHash(ctx context.Context, tokenHash string) (PAT, error)
+	// PATs 依建立時間倒序回傳帳號未撤銷的 token（含已過期的）。
+	PATs(ctx context.Context, userID string) ([]PAT, error)
+	// RevokePAT 撤銷帳號自己的 token；不存在或屬於別的帳號時回 ErrNotFound。撤銷兩次不算錯誤。
+	RevokePAT(ctx context.Context, userID, id string) error
 }
+
+// 群組成員資格的來源（HACC-R11、R12）。
+const (
+	SourceManual = "manual"
+	SourceRule   = "rule"
+	SourceConfig = "config"
+)
+
+// GroupMembership 是一筆群組成員資格；RuleProvider 只在 Source 為 SourceRule 時有值。
+type GroupMembership struct {
+	Group        string
+	Source       string
+	RuleProvider string
+	AddedAt      time.Time
+}
+
+// PAT 是 Hub token（HACC-R9）。
+type PAT struct {
+	ID          string
+	UserID      string
+	Name        string
+	TokenHash   string
+	Permissions []string
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+	// RevokedAt 非 nil 代表已撤銷。
+	RevokedAt *time.Time
+}
+
+// ValidAt 回報 token 在 now 是否仍可使用：未撤銷，而且 now 早於 ExpiresAt（到期的那一刻起失效）。
+func (p PAT) ValidAt(now time.Time) bool { return p.RevokedAt == nil && now.Before(p.ExpiresAt) }
 
 // User 是 Hub 帳號。
 type User struct {
@@ -157,4 +213,6 @@ type AuditEntry struct {
 const (
 	AuditIdentityLink   = "identity.link"
 	AuditIdentityUnlink = "identity.unlink"
+	AuditGroupAdd       = "group.add"
+	AuditGroupRemove    = "group.remove"
 )

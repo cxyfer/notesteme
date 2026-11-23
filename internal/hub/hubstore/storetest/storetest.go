@@ -5,6 +5,7 @@ package storetest
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -39,7 +40,7 @@ func Run(t *testing.T, open Open) {
 			t.Fatalf("CountUsers = %d, %v，預期 0", n, err)
 		}
 		v, err := s.SchemaVersion(ctx)
-		if err != nil || v < 2 {
+		if err != nil || v < 3 {
 			t.Fatalf("SchemaVersion = %d, %v，預期已套用 migration", v, err)
 		}
 	})
@@ -197,6 +198,140 @@ func Run(t *testing.T, open Open) {
 		}
 		if err := s.DeleteSession(ctx, "missing"); err != nil {
 			t.Fatalf("刪除不存在的 session = %v，預期不算錯誤", err)
+		}
+	})
+
+	t.Run("GroupMemberships", func(t *testing.T) {
+		s, _ := fresh(t, open)
+		u, _, _ := s.SignIn(ctx, ident("github", "1", "alice"), "alice")
+		admin, _, _ := s.SignIn(ctx, ident("github", "2", "root"), "root")
+		list := func() []string {
+			t.Helper()
+			ms, err := s.GroupMemberships(ctx, u.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out []string
+			for _, m := range ms {
+				out = append(out, m.Group+"/"+m.Source+"/"+m.RuleProvider)
+			}
+			return out
+		}
+		changed, err := s.SetManualGroup(ctx, admin.ID, u.ID, "moderators", true)
+		if err != nil || !changed {
+			t.Fatalf("SetManualGroup = %v, %v", changed, err)
+		}
+		if changed, err := s.SetManualGroup(ctx, admin.ID, u.ID, "moderators", true); err != nil || changed {
+			t.Fatalf("重複加入 = %v, %v，預期沒有改變", changed, err)
+		}
+		if _, err := s.SetManualGroup(ctx, admin.ID, "missing", "moderators", true); !errors.Is(err, hubstore.ErrNotFound) {
+			t.Fatalf("不存在的帳號 = %v", err)
+		}
+		if err := s.SyncRuleGroups(ctx, u.ID, "linuxdo", []string{"contributors", "moderators"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SyncRuleGroups(ctx, u.ID, "github", []string{"contributors"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SetConfigGroup(ctx, u.ID, "admins", true); err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"admins/config/", "contributors/rule/github", "contributors/rule/linuxdo", "moderators/manual/", "moderators/rule/linuxdo"}
+		if got := list(); !slices.Equal(got, want) {
+			t.Fatalf("成員資格 = %v，預期 %v", got, want)
+		}
+		// linuxdo 的規則不再成立：只移除 linuxdo 給的，manual 與 github 的不動。
+		if err := s.SyncRuleGroups(ctx, u.ID, "linuxdo", nil); err != nil {
+			t.Fatal(err)
+		}
+		if changed, err := s.SetManualGroup(ctx, admin.ID, u.ID, "moderators", false); err != nil || !changed {
+			t.Fatalf("移出 = %v, %v", changed, err)
+		}
+		if err := s.SetConfigGroup(ctx, u.ID, "admins", false); err != nil {
+			t.Fatal(err)
+		}
+		if got := list(); !slices.Equal(got, []string{"contributors/rule/github"}) {
+			t.Fatalf("移除後 = %v", got)
+		}
+		// 啟動時的同步：config 成員換成指定的帳號。
+		if err := s.SetConfigGroup(ctx, u.ID, "admins", true); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.ReplaceConfigGroup(ctx, "admins", []string{admin.ID}); err != nil {
+			t.Fatal(err)
+		}
+		if got := list(); !slices.Equal(got, []string{"contributors/rule/github"}) {
+			t.Fatalf("同步後 alice = %v", got)
+		}
+		if ms, _ := s.GroupMemberships(ctx, admin.ID); len(ms) != 1 || ms[0].Group != "admins" || ms[0].Source != hubstore.SourceConfig {
+			t.Fatalf("同步後 root = %+v", ms)
+		}
+		// 稽核紀錄只記手動的改變（倒序）。
+		es, err := s.AuditEntries(ctx, 10)
+		if err != nil || len(es) != 2 || es[0].Action != hubstore.AuditGroupRemove || es[1].Action != hubstore.AuditGroupAdd ||
+			es[0].Actor != "root" || es[0].TargetKind != "user" || es[0].TargetID != u.ID {
+			t.Fatalf("稽核紀錄 = %+v, %v", es, err)
+		}
+		id, err := s.IdentityBySubject(ctx, "github", "1")
+		if err != nil || id.UserID != u.ID {
+			t.Fatalf("IdentityBySubject = %+v, %v", id, err)
+		}
+		if _, err := s.IdentityBySubject(ctx, "google", "1"); !errors.Is(err, hubstore.ErrNotFound) {
+			t.Fatalf("不存在的身分 = %v", err)
+		}
+	})
+
+	t.Run("PATs", func(t *testing.T) {
+		s, clk := fresh(t, open)
+		u, _, _ := s.SignIn(ctx, ident("github", "1", "alice"), "alice")
+		other, _, _ := s.SignIn(ctx, ident("github", "2", "bob"), "bob")
+		p := hubstore.PAT{ID: "p1", UserID: u.ID, Name: "reader", TokenHash: "h1", Permissions: []string{"read", "download"},
+			CreatedAt: clk.Now(), ExpiresAt: clk.Now().Add(time.Hour)}
+		if err := s.CreatePAT(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+		dup := p
+		dup.ID = "p2"
+		if err := s.CreatePAT(ctx, dup); err == nil {
+			t.Fatal("相同的 hash 應該失敗")
+		}
+		got, err := s.PATByHash(ctx, "h1")
+		if err != nil || got.UserID != u.ID || !slices.Equal(got.Permissions, p.Permissions) || !got.ValidAt(clk.Now()) {
+			t.Fatalf("PATByHash = %+v, %v", got, err)
+		}
+		if got.ValidAt(clk.Now().Add(time.Hour)) {
+			t.Fatal("到期的那一刻應該失效")
+		}
+		if _, err := s.PATByHash(ctx, "missing"); !errors.Is(err, hubstore.ErrNotFound) {
+			t.Fatalf("不存在 = %v", err)
+		}
+		clk.Advance(time.Second)
+		p2 := p
+		p2.ID, p2.TokenHash, p2.CreatedAt = "p3", "h3", clk.Now()
+		if err := s.CreatePAT(ctx, p2); err != nil {
+			t.Fatal(err)
+		}
+		ls, err := s.PATs(ctx, u.ID)
+		if err != nil || len(ls) != 2 || ls[0].ID != "p3" {
+			t.Fatalf("PATs = %+v, %v", ls, err)
+		}
+		if err := s.RevokePAT(ctx, other.ID, "p1"); !errors.Is(err, hubstore.ErrNotFound) {
+			t.Fatalf("撤銷別人的 = %v", err)
+		}
+		if err := s.RevokePAT(ctx, u.ID, "p1"); err != nil {
+			t.Fatal(err)
+		}
+		first, _ := s.PATByHash(ctx, "h1")
+		clk.Advance(time.Second)
+		if err := s.RevokePAT(ctx, u.ID, "p1"); err != nil {
+			t.Fatalf("撤銷兩次 = %v", err)
+		}
+		again, _ := s.PATByHash(ctx, "h1")
+		if again.RevokedAt == nil || !again.RevokedAt.Equal(*first.RevokedAt) || again.ValidAt(clk.Now()) {
+			t.Fatalf("撤銷後 = %+v", again)
+		}
+		if ls, _ := s.PATs(ctx, u.ID); len(ls) != 1 || ls[0].ID != "p3" {
+			t.Fatalf("撤銷後的列表 = %+v", ls)
 		}
 	})
 }

@@ -51,7 +51,7 @@ func TestUsageAndVersion(t *testing.T) {
 
 func TestMigrateAndDoctor(t *testing.T) {
 	e, out, errb := env(t, cfg, secret)
-	if c := Run(context.Background(), []string{"migrate"}, e); c != ExitOK || !strings.Contains(out.String(), "schema 版本：2") {
+	if c := Run(context.Background(), []string{"migrate"}, e); c != ExitOK || !strings.Contains(out.String(), "schema 版本：3") {
 		t.Fatalf("migrate = %d %s %s", c, out, errb)
 	}
 	out.Reset()
