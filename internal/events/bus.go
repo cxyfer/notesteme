@@ -25,6 +25,8 @@ const (
 	TypeSubscriptionDeleted     = "subscription.deleted"
 	// TypeBudgetWarning 是本月花費（含預留）第一次達到提醒門檻（COST-R10）。
 	TypeBudgetWarning = "budget.warning"
+	// TypeItemsBatch 是一次批次操作執行完（LIB-R15）；dry_run 不寫。
+	TypeItemsBatch = "items.batch"
 )
 
 // Event 是推送給訂閱者的事件；JSON 欄位就是 SSE 的 data。
@@ -58,6 +60,10 @@ type Event struct {
 	Better      *SourceRef `json:"better,omitempty"`
 	Action      string     `json:"action,omitempty"`
 	EstimateUSD *float64   `json:"estimate_usd,omitempty"`
+	// Count、Succeeded、Failed 只有 items.batch 才有（LIB-R15），Action 是批次的動作。用指標：0 也要寫出來。
+	Count     *int `json:"count,omitempty"`
+	Succeeded *int `json:"succeeded,omitempty"`
+	Failed    *int `json:"failed,omitempty"`
 }
 
 // SourceRef 是一個字幕來源（source.better_available 的 current、better）。

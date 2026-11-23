@@ -56,6 +56,8 @@ type Item struct {
 	CreatedAt    time.Time      `json:"created_at"`
 	// SubscriptionID 是建立這部影音的訂閱（SUB-R13）；手動新增或訂閱已刪除時是 null。
 	SubscriptionID *string `json:"subscription_id" nullable:"true" doc:"建立這部影音的訂閱；手動新增或訂閱已刪除時是 null"`
+	// ReadState 是已讀狀態（LIB-R19）；打開影音詳情不會自動標為已讀。
+	ReadState string `json:"read_state" enum:"unread,read" doc:"已讀狀態：unread（新增時的預設）或 read；用批次的 mark_read、mark_unread 改變"`
 }
 
 // Stage 是影音某個步驟的狀態（plan 第 5.3 節）。
@@ -166,7 +168,10 @@ func toItem(it store.Item) Item {
 		Part: it.Part, URL: it.URL, Title: it.Title, ChannelID: it.ChannelID, DurationS: it.DurationS,
 		PublishedAt: it.PublishedAt, OriginalLang: it.OriginalLang, LangSource: it.LangSource, LangMixed: it.LangMixed,
 		Availability: it.Availability, Until: it.UntilStage, CreatedAt: it.CreatedAt,
-		Overrides: map[string]any{},
+		Overrides: map[string]any{}, ReadState: it.ReadState,
+	}
+	if out.ReadState == "" {
+		out.ReadState = store.ReadUnread
 	}
 	_ = json.Unmarshal(it.Overrides, &out.Overrides)
 	if it.SubscriptionID != "" {
@@ -315,7 +320,7 @@ type listItemsInput struct {
 	Q             string   `query:"q" doc:"標題搜尋：不分大小寫的部分字串，去掉前後空白，最多 200 字元"`
 	Limit         int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"單頁筆數"`
 	Cursor        string   `query:"cursor" doc:"上一頁回傳的 next_cursor"`
-	ReadState     string   `query:"read_state" doc:"M1 沒有資料模型；帶這個參數回 501"`
+	ReadState     string   `query:"read_state" doc:"read 或 unread（LIB-R19）；其他值回 422"`
 }
 
 type listItemsOutput struct {
@@ -380,9 +385,6 @@ func (rt *routes) listItems(ctx context.Context, in *listItemsInput) (*listItems
 	if err := requireScope(ctx, auth.ScopeRead); err != nil {
 		return nil, err
 	}
-	if in.ReadState != "" {
-		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "read_state 尚未支援。")
-	}
 	status, err := parseStatus(in.Status)
 	if err != nil {
 		return nil, err
@@ -406,7 +408,7 @@ func (rt *routes) listItems(ctx context.Context, in *listItemsInput) (*listItems
 	q := pipeline.ItemQuery{
 		Platform: in.Platform, Channel: in.Channel, ErrorClass: in.ErrorClass, Lang: in.Lang, Timing: in.Timing,
 		Q: strings.TrimSpace(in.Q), Status: status, PublishedFrom: from, PublishedTo: to,
-		DurationMin: durMin, DurationMax: durMax, Limit: in.Limit,
+		DurationMin: durMin, DurationMax: durMax, ReadState: in.ReadState, Limit: in.Limit,
 	}
 	// 不論有沒有 Pipeline，都先驗證參數與游標，不合法回 422。
 	if err := q.Validate(); err != nil {
@@ -476,7 +478,8 @@ func filterFingerprint(q pipeline.ItemQuery) string {
 		Status                                         []stageStatus
 		From, To                                       *int64
 		DurMin, DurMax                                 *int
-	}{q.Platform, q.Channel, q.ErrorClass, q.Lang, q.Timing, q.Q, status, ms(q.PublishedFrom), ms(q.PublishedTo), q.DurationMin, q.DurationMax})
+		ReadState                                      string `json:",omitempty"`
+	}{q.Platform, q.Channel, q.ErrorClass, q.Lang, q.Timing, q.Q, status, ms(q.PublishedFrom), ms(q.PublishedTo), q.DurationMin, q.DurationMax, q.ReadState})
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:8])
 }

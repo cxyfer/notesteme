@@ -533,7 +533,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 對多部影音執行同一個動作（重跑、換處理方案、標記已讀、刪除、匯出 bundle，尚未實作） */
+    /** 對多部影音執行同一個動作（rerun、change_profile、delete、mark_read、mark_unread、export_bundle，LIB-R13）；dry_run 只回報影響範圍；scope 依動作：delete 要 admin，export_bundle 要 read，其他要 ingest（LIB-R16） */
     post: operations["items-batch"];
     delete?: never;
     options?: never;
@@ -950,7 +950,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 總覽：處理中、等你決定、失敗、本月花費、磁碟用量與今天的動態（尚未實作） */
+    /** 總覽：處理中、需要你處理、今天的動態、最近完成、本月花費、磁碟用量與提醒（LIB-R21）；垃圾桶中的影音不出現 */
     get: operations["overview-get"];
     put?: never;
     post?: never;
@@ -1848,6 +1848,84 @@ export interface components {
        */
       next_run_at: string | null;
     };
+    BatchBudget: {
+      /** @description estimated_usd 是否大於 remaining_usd */
+      exceeds: boolean;
+      /**
+       * Format: double
+       * @description COST-R4 的 remaining_usd；沒有月預算時是 null
+       */
+      remaining_usd: number | null;
+    };
+    BatchDeletion: {
+      /** Format: int64 */
+      artifacts: number;
+      /** Format: int64 */
+      bytes: number;
+      /**
+       * Format: int64
+       * @description 其中被改過（不會被 delete_outputs 刪除）的數量
+       */
+      modified_outputs: number;
+      /**
+       * Format: int64
+       * @description 輸出檔總數
+       */
+      outputs: number;
+      /** Format: double */
+      spent_usd: number;
+    };
+    BatchInputBody: {
+      /** @description rerun、change_profile、delete、mark_read、mark_unread 或 export_bundle */
+      action?: string;
+      /** @description delete：同時刪除沒被改過的輸出檔（DEL-R9） */
+      delete_outputs?: boolean;
+      /** @description 只回報影響範圍，不改變任何資料（LIB-R14） */
+      dry_run?: boolean;
+      /** @description rerun、change_profile：從哪個步驟重跑 */
+      from?: string;
+      /** @description 影音的 ID 或代號；不帶分P的 bili:<BV> 展開成所有分P；展開、去掉重複之後 1～500 部 */
+      ids?: string[] | null;
+      /** @description change_profile：改用的處理方案 */
+      profile?: string;
+    };
+    BatchItem: {
+      /** @description export_bundle：這部影音的 bundle 下載路徑（GET /api/items/{id}/bundle） */
+      bundle_url?: string;
+      /** @description 失敗時的錯誤碼，和單一影音的 API 相同（not_found、in_trash 等） */
+      code?: string;
+      /** @description 影音 ID；找不到時省略 */
+      id?: string;
+      message?: string;
+      ok: boolean;
+      /** @description 影音的代號；找不到時是請求中 ids 的寫法 */
+      ref: string;
+      /** @description 影音標題（只有 dry_run） */
+      title?: string;
+    };
+    BatchResult: {
+      action: string;
+      budget?: components["schemas"]["BatchBudget"];
+      /**
+       * Format: int64
+       * @description dry_run：ok 的影音數；實際執行：去掉重複之後的影音數
+       */
+      count: number;
+      deletion?: components["schemas"]["BatchDeletion"];
+      dry_run: boolean;
+      /** Format: double */
+      estimated_usd?: number;
+      /** Format: int64 */
+      failed?: number;
+      items: components["schemas"]["BatchItem"][] | null;
+      /** Format: int64 */
+      succeeded?: number;
+      /**
+       * Format: int64
+       * @description 無法估算、沒有加總的付費任務數
+       */
+      unknown_estimates?: number;
+    };
     BundleImportItem: {
       id: string;
       /** @description 影音的短代號 */
@@ -2674,6 +2752,11 @@ export interface components {
       platform: string;
       /** Format: date-time */
       published_at: string | null;
+      /**
+       * @description 已讀狀態：unread（新增時的預設）或 read；用批次的 mark_read、mark_unread 改變
+       * @enum {string}
+       */
+      read_state: "unread" | "read";
       /** @description 影音的短代號，例如 yt:abc123xxxxx */
       ref: string;
       /** @description 建立這部影音的訂閱；手動新增或訂閱已刪除時是 null */
@@ -2708,6 +2791,11 @@ export interface components {
       platform: string;
       /** Format: date-time */
       published_at: string | null;
+      /**
+       * @description 已讀狀態：unread（新增時的預設）或 read；用批次的 mark_read、mark_unread 改變
+       * @enum {string}
+       */
+      read_state: "unread" | "read";
       /** @description 影音的短代號，例如 yt:abc123xxxxx */
       ref: string;
       /** @description 建立這部影音的訂閱；手動新增或訂閱已刪除時是 null */
@@ -2760,6 +2848,11 @@ export interface components {
       platform: string;
       /** Format: date-time */
       published_at: string | null;
+      /**
+       * @description 已讀狀態：unread（新增時的預設）或 read；用批次的 mark_read、mark_unread 改變
+       * @enum {string}
+       */
+      read_state: "unread" | "read";
       /** @description 影音的短代號，例如 yt:abc123xxxxx */
       ref: string;
       /** @description 排定的重新 Probe（SRC-R18）；沒有排程時是 null */
@@ -3048,6 +3141,100 @@ export interface components {
     };
     OutputsOutputBody: {
       outputs: components["schemas"]["OutputFile"][] | null;
+    };
+    OverviewDisk: {
+      /** Format: int64 */
+      artifacts_bytes: number | null;
+      /** Format: int64 */
+      data_bytes: number | null;
+      /** Format: int64 */
+      free_bytes: number | null;
+      /** Format: date-time */
+      measured_at: string | null;
+      /** Format: int64 */
+      media_bytes: number | null;
+      /** Format: int64 */
+      uploads_bytes: number | null;
+    };
+    OverviewDoneItem: {
+      /** Format: date-time */
+      done_at: string;
+      id: string;
+      ref: string;
+      title: string;
+    };
+    OverviewEvent: {
+      /** Format: date-time */
+      at: string;
+      /** @description 影音的代號 */
+      item?: string;
+      title?: string;
+      type: string;
+    };
+    OverviewMonth: {
+      month: string;
+      /**
+       * Format: double
+       * @description 沒有月預算時是 null
+       */
+      monthly_usd: number | null;
+      /** Format: double */
+      reserved_usd: number;
+      /** Format: double */
+      spent_usd: number;
+      timezone: string;
+    };
+    OverviewNeedItem: {
+      actions: string[] | null;
+      id: string;
+      message: string;
+      /** @description blocked 的原因（block_reason），或 failed 的錯誤分類（error_class） */
+      reason: string;
+      ref: string;
+      /** @description pipeline 順序中第一個 blocked 或 failed 的步驟 */
+      stage: string;
+      /** @enum {string} */
+      status: "blocked" | "failed";
+      title: string;
+    };
+    OverviewNeeds: {
+      items: components["schemas"]["OverviewNeedItem"][] | null;
+      /** Format: int64 */
+      total: number;
+    };
+    OverviewNow: {
+      items: components["schemas"]["OverviewNowItem"][] | null;
+      /**
+       * Format: int64
+       * @description total 減去列出的數量
+       */
+      more: number;
+      /** Format: int64 */
+      total: number;
+    };
+    OverviewNowItem: {
+      id: string;
+      /** @description 那個步驟的任務完成數 */
+      progress: components["schemas"]["OverviewProgress"];
+      ref: string;
+      /** @description 最早開始的執行中步驟 */
+      stage: string;
+      title: string;
+    };
+    OverviewProgress: {
+      /** Format: int64 */
+      done: number;
+      /** Format: int64 */
+      total: number;
+    };
+    OverviewResult: {
+      disk: components["schemas"]["OverviewDisk"];
+      month: components["schemas"]["OverviewMonth"];
+      needs_you: components["schemas"]["OverviewNeeds"];
+      notices: components["schemas"]["Notice"][] | null;
+      now: components["schemas"]["OverviewNow"];
+      recent_done: components["schemas"]["OverviewDoneItem"][] | null;
+      today: components["schemas"]["OverviewEvent"][] | null;
     };
     Patch: {
       /** @description 版面 */
@@ -5180,7 +5367,7 @@ export interface operations {
         limit?: number;
         /** @description 上一頁回傳的 next_cursor */
         cursor?: string;
-        /** @description M1 沒有資料模型；帶這個參數回 501 */
+        /** @description read 或 unread（LIB-R19）；其他值回 422 */
         read_state?: string;
       };
       header?: never;
@@ -5249,14 +5436,20 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BatchInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["BatchResult"];
+        };
       };
       /** @description Error */
       default: {
@@ -6218,19 +6411,24 @@ export interface operations {
   };
   "overview-get": {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description 「今天」用的 IANA 時區；預設是預算的時區（budget.timezone） */
+        tz?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["OverviewResult"];
+        };
       };
       /** @description Error */
       default: {

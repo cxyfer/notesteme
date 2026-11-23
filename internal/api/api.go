@@ -25,6 +25,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/digest"
+	"github.com/cxyfer/notesteme/internal/diskusage"
 	"github.com/cxyfer/notesteme/internal/events"
 	"github.com/cxyfer/notesteme/internal/hubsettings"
 	"github.com/cxyfer/notesteme/internal/notify"
@@ -86,6 +87,8 @@ type Deps struct {
 	Notify *notify.Service
 	// Cost 是成本帳本、計價表與預算（/api/prices、/api/costs、settings 的 budget 區段，COST）；nil 時回應 501。
 	Cost *cost.Service
+	// Disk 統計資料目錄的磁碟用量（GET /api/overview 的 disk，LIB-R22）；nil 時各數字是 null。
+	Disk *diskusage.Meter
 	// Digests 管理彙整設定（/api/digests，DIG-R8、R11）；nil 時回應 501。
 	Digests *digest.Service
 	// EventBus 是狀態變更的事件匯流排：MCP 的 get_video_context 在影音有變更時重新讀取狀態；nil 時定期重查。
@@ -319,6 +322,8 @@ func (rt *routes) register(api huma.API) {
 	rt.registerSubscriptions(api)
 	rt.registerVaults(api)
 	rt.registerM4Stubs(api)
+	rt.registerBatch(api)
+	rt.registerOverview(api)
 	rt.registerBundles(api)
 	rt.registerDigests(api)
 	rt.registerSearch(api)

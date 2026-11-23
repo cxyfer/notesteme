@@ -68,15 +68,7 @@ func (rt *routes) trashItem(ctx context.Context, in *trashItemInput) (*trashItem
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}
-	// 執行中的任務由 worker 結束並等它們結束（PIPE-R15）；沒有 worker 時（nil）只改資料庫。
-	opts := pipeline.TrashOptions{}
-	if rt.d.Tasks != nil {
-		opts.Canceller = rt.d.Tasks
-	}
-	if in.Body != nil {
-		opts.DeleteOutputs = in.Body.DeleteOutputs
-	}
-	res, err := rt.d.Pipeline.Trash(ctx, in.ID, opts)
+	res, err := rt.trashOne(ctx, in.ID, in.Body != nil && in.Body.DeleteOutputs)
 	if err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}
@@ -87,6 +79,16 @@ func (rt *routes) trashItem(ctx context.Context, in *trashItemInput) (*trashItem
 		out.Body.KeptOutputs = append(out.Body.KeptOutputs, KeptOutput{Path: k.Path, Reason: k.Reason})
 	}
 	return out, nil
+}
+
+// trashOne 把一部影音移到垃圾桶；單一影音的 DELETE 與批次的 delete（LIB-R18）共用。
+// 執行中的任務由 worker 結束並等它們結束（PIPE-R15）；沒有 worker 時（nil）只改資料庫。
+func (rt *routes) trashOne(ctx context.Context, id string, deleteOutputs bool) (pipeline.TrashResult, error) {
+	opts := pipeline.TrashOptions{DeleteOutputs: deleteOutputs}
+	if rt.d.Tasks != nil {
+		opts.Canceller = rt.d.Tasks
+	}
+	return rt.d.Pipeline.Trash(ctx, id, opts)
 }
 
 type trashListOutput struct {

@@ -158,7 +158,9 @@ func TestListItemsInvalidParams(t *testing.T) {
 		{"?published_to=2026-01-01", 422},
 		{"?q=" + strings.Repeat("a", 201), 422},
 		{"?q=" + strings.Repeat(url.QueryEscape("字"), 201), 422},
-		{"?read_state=unread", 501},
+		// LIB-R19：M4 起接受 read、unread，其他值 422（L-M7）。
+		{"?read_state=bogus", 422},
+		{"?read_state=READ", 422},
 	}
 	for _, tt := range tests {
 		rec := r.owner("GET", "/api/items"+tt.query, "")
@@ -166,7 +168,7 @@ func TestListItemsInvalidParams(t *testing.T) {
 			t.Errorf("%s：%d，預期 %d\n%s", tt.query, rec.Code, tt.code, rec.Body)
 		}
 	}
-	for _, ok := range []string{"?limit=1", "?limit=200", "?q=" + strings.Repeat("a", 200), "?q=" + strings.Repeat(url.QueryEscape("字"), 200)} {
+	for _, ok := range []string{"?read_state=read", "?read_state=unread", "?limit=1", "?limit=200", "?q=" + strings.Repeat("a", 200), "?q=" + strings.Repeat(url.QueryEscape("字"), 200)} {
 		if rec := r.owner("GET", "/api/items"+ok, ""); rec.Code != 200 {
 			t.Errorf("%s 應該可以：%d %s", ok[:min(len(ok), 30)], rec.Code, rec.Body)
 		}

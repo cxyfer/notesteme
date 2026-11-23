@@ -200,6 +200,190 @@
         ],
         "type": "object"
       },
+      "BatchBudget": {
+        "additionalProperties": false,
+        "properties": {
+          "exceeds": {
+            "description": "estimated_usd 是否大於 remaining_usd",
+            "type": "boolean"
+          },
+          "remaining_usd": {
+            "description": "COST-R4 的 remaining_usd；沒有月預算時是 null",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "remaining_usd",
+          "exceeds"
+        ],
+        "type": "object"
+      },
+      "BatchDeletion": {
+        "additionalProperties": false,
+        "properties": {
+          "artifacts": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "modified_outputs": {
+            "description": "其中被改過（不會被 delete_outputs 刪除）的數量",
+            "format": "int64",
+            "type": "integer"
+          },
+          "outputs": {
+            "description": "輸出檔總數",
+            "format": "int64",
+            "type": "integer"
+          },
+          "spent_usd": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "artifacts",
+          "bytes",
+          "spent_usd",
+          "outputs",
+          "modified_outputs"
+        ],
+        "type": "object"
+      },
+      "BatchInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "description": "rerun、change_profile、delete、mark_read、mark_unread 或 export_bundle",
+            "type": "string"
+          },
+          "delete_outputs": {
+            "description": "delete：同時刪除沒被改過的輸出檔（DEL-R9）",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "只回報影響範圍，不改變任何資料（LIB-R14）",
+            "type": "boolean"
+          },
+          "from": {
+            "description": "rerun、change_profile：從哪個步驟重跑",
+            "type": "string"
+          },
+          "ids": {
+            "description": "影音的 ID 或代號；不帶分P的 bili:\u003cBV\u003e 展開成所有分P；展開、去掉重複之後 1～500 部",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "profile": {
+            "description": "change_profile：改用的處理方案",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "BatchItem": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_url": {
+            "description": "export_bundle：這部影音的 bundle 下載路徑（GET /api/items/{id}/bundle）",
+            "type": "string"
+          },
+          "code": {
+            "description": "失敗時的錯誤碼，和單一影音的 API 相同（not_found、in_trash 等）",
+            "type": "string"
+          },
+          "id": {
+            "description": "影音 ID；找不到時省略",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "ref": {
+            "description": "影音的代號；找不到時是請求中 ids 的寫法",
+            "type": "string"
+          },
+          "title": {
+            "description": "影音標題（只有 dry_run）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "ok"
+        ],
+        "type": "object"
+      },
+      "BatchResult": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "budget": {
+            "$ref": "#/components/schemas/BatchBudget"
+          },
+          "count": {
+            "description": "dry_run：ok 的影音數；實際執行：去掉重複之後的影音數",
+            "format": "int64",
+            "type": "integer"
+          },
+          "deletion": {
+            "$ref": "#/components/schemas/BatchDeletion"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "estimated_usd": {
+            "format": "double",
+            "type": "number"
+          },
+          "failed": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BatchItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "succeeded": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "unknown_estimates": {
+            "description": "無法估算、沒有加總的付費任務數",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action",
+          "dry_run",
+          "count",
+          "items"
+        ],
+        "type": "object"
+      },
       "BundleImportItem": {
         "additionalProperties": false,
         "properties": {
@@ -2653,6 +2837,14 @@
               "null"
             ]
           },
+          "read_state": {
+            "description": "已讀狀態：unread（新增時的預設）或 read；用批次的 mark_read、mark_unread 改變",
+            "enum": [
+              "unread",
+              "read"
+            ],
+            "type": "string"
+          },
           "ref": {
             "description": "影音的短代號，例如 yt:abc123xxxxx",
             "type": "string"
@@ -2689,7 +2881,8 @@
           "lang_mixed",
           "overrides",
           "created_at",
-          "subscription_id"
+          "subscription_id",
+          "read_state"
         ],
         "type": "object"
       },
@@ -2749,6 +2942,14 @@
               "null"
             ]
           },
+          "read_state": {
+            "description": "已讀狀態：unread（新增時的預設）或 read；用批次的 mark_read、mark_unread 改變",
+            "enum": [
+              "unread",
+              "read"
+            ],
+            "type": "string"
+          },
           "ref": {
             "description": "影音的短代號，例如 yt:abc123xxxxx",
             "type": "string"
@@ -2783,7 +2984,8 @@
           "lang_mixed",
           "overrides",
           "created_at",
-          "subscription_id"
+          "subscription_id",
+          "read_state"
         ],
         "type": "object"
       },
@@ -2905,6 +3107,14 @@
               "null"
             ]
           },
+          "read_state": {
+            "description": "已讀狀態：unread（新增時的預設）或 read；用批次的 mark_read、mark_unread 改變",
+            "enum": [
+              "unread",
+              "read"
+            ],
+            "type": "string"
+          },
           "ref": {
             "description": "影音的短代號，例如 yt:abc123xxxxx",
             "type": "string"
@@ -2983,7 +3193,8 @@
           "lang_mixed",
           "overrides",
           "created_at",
-          "subscription_id"
+          "subscription_id",
+          "read_state"
         ],
         "type": "object"
       },
@@ -3750,6 +3961,352 @@
         },
         "required": [
           "outputs"
+        ],
+        "type": "object"
+      },
+      "OverviewDisk": {
+        "additionalProperties": false,
+        "properties": {
+          "artifacts_bytes": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "data_bytes": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "free_bytes": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "measured_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "media_bytes": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "uploads_bytes": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data_bytes",
+          "media_bytes",
+          "artifacts_bytes",
+          "uploads_bytes",
+          "free_bytes",
+          "measured_at"
+        ],
+        "type": "object"
+      },
+      "OverviewDoneItem": {
+        "additionalProperties": false,
+        "properties": {
+          "done_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ref",
+          "title",
+          "done_at"
+        ],
+        "type": "object"
+      },
+      "OverviewEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "item": {
+            "description": "影音的代號",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "type"
+        ],
+        "type": "object"
+      },
+      "OverviewMonth": {
+        "additionalProperties": false,
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "monthly_usd": {
+            "description": "沒有月預算時是 null",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "reserved_usd": {
+            "format": "double",
+            "type": "number"
+          },
+          "spent_usd": {
+            "format": "double",
+            "type": "number"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "month",
+          "spent_usd",
+          "reserved_usd",
+          "monthly_usd",
+          "timezone"
+        ],
+        "type": "object"
+      },
+      "OverviewNeedItem": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "reason": {
+            "description": "blocked 的原因（block_reason），或 failed 的錯誤分類（error_class）",
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "stage": {
+            "description": "pipeline 順序中第一個 blocked 或 failed 的步驟",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "blocked",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ref",
+          "title",
+          "stage",
+          "status",
+          "reason",
+          "message",
+          "actions"
+        ],
+        "type": "object"
+      },
+      "OverviewNeeds": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewNeedItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "type": "object"
+      },
+      "OverviewNow": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewNowItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "more": {
+            "description": "total 減去列出的數量",
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "more"
+        ],
+        "type": "object"
+      },
+      "OverviewNowItem": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/OverviewProgress",
+            "description": "那個步驟的任務完成數"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "stage": {
+            "description": "最早開始的執行中步驟",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ref",
+          "title",
+          "stage",
+          "progress"
+        ],
+        "type": "object"
+      },
+      "OverviewProgress": {
+        "additionalProperties": false,
+        "properties": {
+          "done": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "done",
+          "total"
+        ],
+        "type": "object"
+      },
+      "OverviewResult": {
+        "additionalProperties": false,
+        "properties": {
+          "disk": {
+            "$ref": "#/components/schemas/OverviewDisk"
+          },
+          "month": {
+            "$ref": "#/components/schemas/OverviewMonth"
+          },
+          "needs_you": {
+            "$ref": "#/components/schemas/OverviewNeeds"
+          },
+          "notices": {
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "now": {
+            "$ref": "#/components/schemas/OverviewNow"
+          },
+          "recent_done": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewDoneItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "today": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewEvent"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "now",
+          "needs_you",
+          "today",
+          "recent_done",
+          "month",
+          "disk",
+          "notices"
         ],
         "type": "object"
       },
@@ -8124,12 +8681,12 @@
             }
           },
           {
-            "description": "M1 沒有資料模型；帶這個參數回 501",
+            "description": "read 或 unread（LIB-R19）；其他值回 422",
             "explode": false,
             "in": "query",
             "name": "read_state",
             "schema": {
-              "description": "M1 沒有資料模型；帶這個參數回 501",
+              "description": "read 或 unread（LIB-R19）；其他值回 422",
               "type": "string"
             }
           }
@@ -8198,9 +8755,26 @@
     "/api/items/batch": {
       "post": {
         "operationId": "items-batch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -8213,7 +8787,7 @@
             "description": "Error"
           }
         },
-        "summary": "對多部影音執行同一個動作（重跑、換處理方案、標記已讀、刪除、匯出 bundle，尚未實作）"
+        "summary": "對多部影音執行同一個動作（rerun、change_profile、delete、mark_read、mark_unread、export_bundle，LIB-R13）；dry_run 只回報影響範圍；scope 依動作：delete 要 admin，export_bundle 要 read，其他要 ingest（LIB-R16）"
       }
     },
     "/api/items/continue": {
@@ -9489,9 +10063,28 @@
     "/api/overview": {
       "get": {
         "operationId": "overview-get",
+        "parameters": [
+          {
+            "description": "「今天」用的 IANA 時區；預設是預算的時區（budget.timezone）",
+            "explode": false,
+            "in": "query",
+            "name": "tz",
+            "schema": {
+              "description": "「今天」用的 IANA 時區；預設是預算的時區（budget.timezone）",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewResult"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -9504,7 +10097,7 @@
             "description": "Error"
           }
         },
-        "summary": "總覽：處理中、等你決定、失敗、本月花費、磁碟用量與今天的動態（尚未實作）"
+        "summary": "總覽：處理中、需要你處理、今天的動態、最近完成、本月花費、磁碟用量與提醒（LIB-R21）；垃圾桶中的影音不出現"
       }
     },
     "/api/prices": {
