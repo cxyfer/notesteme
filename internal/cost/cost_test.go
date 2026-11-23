@@ -713,9 +713,18 @@ func TestExportCSVInjection(t *testing.T) {
 
 func TestScheduleMonthFollowsTimezone(t *testing.T) {
 	r := newRig(t, Options{})
-	if err := r.st.Tx(r.ctx, func(tx *store.Repo) error { return r.svc.ScheduleMonth(r.ctx, tx) }); err != nil {
-		t.Fatal(err)
+	schedule := func() {
+		t.Helper()
+		if err := r.st.Tx(r.ctx, func(tx *store.Repo) error { return r.svc.ScheduleMonth(r.ctx, tx) }); err != nil {
+			t.Fatal(err)
+		}
 	}
+	// 沒有存過預算時不排定。
+	schedule()
+	if _, err := r.st.Read().ScheduledJob(r.ctx, MonthKind, MonthKey); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("沒有預算時不應排定：%v", err)
+	}
+	r.budget(map[string]any{})
 	job, err := r.st.Read().ScheduledJob(r.ctx, MonthKind, MonthKey)
 	if err != nil || !job.NextRunAt.Equal(time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("UTC 的月初 = %+v %v", job, err)
@@ -727,7 +736,7 @@ func TestScheduleMonthFollowsTimezone(t *testing.T) {
 	}
 	// 已經排定的不動（停機時錯過的月初在啟動後補跑一次）。
 	r.clk.Set(time.Date(2027, 1, 5, 0, 0, 0, 0, time.UTC))
-	_ = r.st.Tx(r.ctx, func(tx *store.Repo) error { return r.svc.ScheduleMonth(r.ctx, tx) })
+	schedule()
 	job, _ = r.st.Read().ScheduledJob(r.ctx, MonthKind, MonthKey)
 	if !job.NextRunAt.Equal(time.Date(2026, 11, 30, 16, 0, 0, 0, time.UTC)) {
 		t.Errorf("已排定的工作被改了：%s", job.NextRunAt)

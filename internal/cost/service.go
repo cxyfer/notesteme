@@ -117,7 +117,11 @@ func (s *Service) SetBudget(ctx context.Context, r *store.Repo, b Budget) error 
 
 // ScheduleMonth 在 budget.month 還沒有排定時排在下一個月初（啟動時呼叫）；已經排定的不動，
 // 停機時錯過的月初會在啟動後補跑一次（ADR-0021 第 1 點）。
+// 沒有存過預算時不排：只有設定了預算才會有 budget_blocked 的步驟，SetBudget 會排定（沒有預算的安裝不多一列排程）。
 func (s *Service) ScheduleMonth(ctx context.Context, r *store.Repo) error {
+	if _, ok, err := r.Setting(ctx, settingBudget); err != nil || !ok {
+		return err
+	}
 	b, err := s.Budget(ctx, r)
 	if err != nil {
 		return err

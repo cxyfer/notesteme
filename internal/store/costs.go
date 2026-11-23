@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/events"
@@ -131,8 +132,12 @@ func (r *Repo) DeleteCostReservation(ctx context.Context, id string) (bool, erro
 }
 
 // DeleteOrphanReservations 刪除沒有對應執行中任務的預留（程序中斷留下的，COST-R5、PIPE-R11）。
+// 還沒有 cost_ledger 的舊 schema（只有測試以 TestControls.Migrations 模擬）沒有預留可清，回傳 0。
 func (r *Repo) DeleteOrphanReservations(ctx context.Context) (int, error) {
 	n, err := r.q.DeleteOrphanReservations(ctx)
+	if err != nil && strings.Contains(err.Error(), "no such table: cost_ledger") {
+		return 0, nil
+	}
 	return int(n), err
 }
 

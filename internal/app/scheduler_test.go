@@ -10,7 +10,7 @@ import (
 )
 
 // 排程器接在 worker 的 periodics 上（ADR-0021 第 1 點）：登記的 kind 到期時，RunUntilIdle 會執行它；
-// 沒有排定的工作時不影響 worker 的喚醒時間（M4-S1 起登記了 notify.deliver、M4-S2 起登記了 subscription.check，但沒有通知與訂閱時不會有那一列）。
+// 沒有排定的工作時不影響 worker 的喚醒時間（M4-S1 起登記了 notify.deliver、M4-S2 起登記了 subscription.check、M4-S4 起登記了 budget.month，但沒有通知、訂閱與預算時不會有那一列）。
 func TestSchedulerRunsInWorkerRounds(t *testing.T) {
 	env := testEnv(t)
 	env.Test.ManualWorker = true
@@ -20,8 +20,8 @@ func TestSchedulerRunsInWorkerRounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer srv.Kill()
-	if got := srv.scheduler.Kinds(); len(got) != 2 || got[0] != "notify.deliver" || got[1] != "subscription.check" {
-		t.Fatalf("登記的 kind 應該是 notify.deliver、subscription.check：%v", got)
+	if got := srv.scheduler.Kinds(); len(got) != 3 || got[0] != "notify.deliver" || got[1] != "subscription.check" || got[2] != "budget.month" {
+		t.Fatalf("登記的 kind 應該是 notify.deliver、subscription.check、budget.month：%v", got)
 	}
 	if err := srv.RunUntilIdle(t.Context()); err != nil {
 		t.Fatal(err)
