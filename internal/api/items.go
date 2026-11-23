@@ -95,6 +95,15 @@ type ItemDetail struct {
 	Item
 	Stages  []Stage  `json:"stages"`
 	Sources []Source `json:"sources"`
+	// SponsorSegments 是現行的 SponsorBlock 片段（SPB-R4）：沒有片段時是空陣列，sponsorblock 步驟沒有執行過時沒有這個欄位。
+	SponsorSegments *[]SponsorSegment `json:"sponsor_segments,omitempty" doc:"SponsorBlock 的片段，依開始時間排序；沒有片段時是空陣列，步驟沒有執行過時沒有這個欄位"`
+}
+
+// SponsorSegment 是一個 SponsorBlock 片段；時間是 HH:MM:SS.mmm。
+type SponsorSegment struct {
+	Category string `json:"category" doc:"SponsorBlock 的類別，例如 sponsor"`
+	Start    string `json:"start" doc:"開始時間（HH:MM:SS.mmm）"`
+	End      string `json:"end" doc:"結束時間（HH:MM:SS.mmm）"`
 }
 
 func toItem(it store.Item) Item {
@@ -499,6 +508,13 @@ func toDetail(d pipeline.Detail) ItemDetail {
 	}
 	for _, p := range d.Sources {
 		out.Sources = append(out.Sources, Source{Source: p.SourceID, Lang: p.Lang, Kind: p.Kind, State: p.State, Reason: p.Reason})
+	}
+	if d.SponsorSegments != nil {
+		segs := make([]SponsorSegment, 0, len(d.SponsorSegments))
+		for _, s := range d.SponsorSegments {
+			segs = append(segs, SponsorSegment{Category: s.Category, Start: subtitle.FormatDisplayTime(s.StartMS), End: subtitle.FormatDisplayTime(s.EndMS)})
+		}
+		out.SponsorSegments = &segs
 	}
 	return out
 }

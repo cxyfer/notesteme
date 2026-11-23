@@ -1472,6 +1472,13 @@
               "null"
             ]
           },
+          "sponsor_segments": {
+            "description": "SponsorBlock 的片段，依開始時間排序；沒有片段時是空陣列，步驟沒有執行過時沒有這個欄位",
+            "items": {
+              "$ref": "#/components/schemas/SponsorSegment"
+            },
+            "type": "array"
+          },
           "stages": {
             "items": {
               "$ref": "#/components/schemas/Stage"
@@ -2774,6 +2781,29 @@
         "required": [
           "source",
           "state"
+        ],
+        "type": "object"
+      },
+      "SponsorSegment": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "description": "SponsorBlock 的類別，例如 sponsor",
+            "type": "string"
+          },
+          "end": {
+            "description": "結束時間（HH:MM:SS.mmm）",
+            "type": "string"
+          },
+          "start": {
+            "description": "開始時間（HH:MM:SS.mmm）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "start",
+          "end"
         ],
         "type": "object"
       },

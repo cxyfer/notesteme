@@ -1640,6 +1640,8 @@ export interface components {
       /** @description 影音的短代號，例如 yt:abc123xxxxx */
       ref: string;
       sources: components["schemas"]["Source"][] | null;
+      /** @description SponsorBlock 的片段，依開始時間排序；沒有片段時是空陣列，步驟沒有執行過時沒有這個欄位 */
+      sponsor_segments?: components["schemas"]["SponsorSegment"][];
       stages: components["schemas"]["Stage"][] | null;
       title: string;
       /** @description 新增時指定做到哪個步驟為止 */
@@ -2100,6 +2102,14 @@ export interface components {
       source: string;
       /** @enum {string} */
       state: "used" | "rejected" | "unavailable";
+    };
+    SponsorSegment: {
+      /** @description SponsorBlock 的類別，例如 sponsor */
+      category: string;
+      /** @description 結束時間（HH:MM:SS.mmm） */
+      end: string;
+      /** @description 開始時間（HH:MM:SS.mmm） */
+      start: string;
     };
     Stage: {
       actions: string[] | null;
