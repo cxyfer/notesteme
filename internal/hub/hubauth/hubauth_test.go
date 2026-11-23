@@ -705,3 +705,19 @@ func TestSuspendedAccounts(t *testing.T) {
 		t.Errorf("停用帳號登入 = %+v, %v", res, err)
 	}
 }
+
+// 授權碼注入：A 的 code 配上 B 的 state 與 cookie，PKCE verifier 不符，供應商拒絕換 token，不建立帳號。
+func TestAuthorizationCodeInjection(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	uA, _, _ := e.svc.Begin(ctx, "github", hubstore.IntentLogin, "")
+	_, stateB, _ := e.svc.Begin(ctx, "github", hubstore.IntentLogin, "")
+	qA := e.idp.authorize(t, uA, "")
+	injected := url.Values{"code": qA["code"], "state": {stateB}}
+	if _, err := e.svc.Complete(ctx, "github", injected, stateB, nil); code(err) != CodeProviderError {
+		t.Fatalf("授權碼注入 = %v，預期 oauth_provider_error", err)
+	}
+	if n := e.accounts(t); n != 0 {
+		t.Fatalf("建立了 %d 個帳號", n)
+	}
+}
