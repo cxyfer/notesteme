@@ -42,10 +42,15 @@ func (s *Server) registerOps(ctx context.Context, env Env, cfg *config.Config, l
 	if err := alerts.Register(s.scheduler); err != nil {
 		return err
 	}
+	// 排定失敗（例如測試以較舊的 schema 啟動、沒有 scheduled_jobs）只記 log，不擋 serve 啟動：
+	// 備份與告警是附加的維運功能，不該讓服務本身起不來。
 	if err := daily.Schedule(ctx); err != nil {
-		return err
+		log.Error("無法排定每日備份", "err", err)
 	}
-	return alerts.Schedule(ctx)
+	if err := alerts.Schedule(ctx); err != nil {
+		log.Error("無法排定系統告警檢查", "err", err)
+	}
+	return nil
 }
 
 // SetCookieUsedAt 把平台 cookie 的上傳時間與最近一次成功使用都設為 at（OPS-R17）。只供驗收測試的 harness 使用。

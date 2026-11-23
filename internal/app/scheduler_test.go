@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -15,13 +16,18 @@ func TestSchedulerRunsInWorkerRounds(t *testing.T) {
 	env := testEnv(t)
 	env.Test.ManualWorker = true
 	clk := env.Clock.(*clock.Fake)
+	// M4 OPS 起 serve 預設會排定 backup.daily 與 alerts；這裡關掉，只看排程器本身。
+	noOps := []byte("backup: { daily: { enabled: false } }\nalerts: { enabled: false }\n")
+	if err := os.WriteFile(env.Vars["NOTESTEME_CONFIG"], noOps, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	srv, err := StartServer(t.Context(), env)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer srv.Kill()
-	if got := srv.scheduler.Kinds(); len(got) != 6 || got[0] != "notify.deliver" || got[1] != "subscription.check" || got[2] != "budget.month" || got[3] != "batch.poll" || got[4] != "digest" || got[5] != "source.reprobe" {
-		t.Fatalf("登記的 kind 應該是 notify.deliver、subscription.check、budget.month、batch.poll、digest、source.reprobe：%v", got)
+	if got := srv.scheduler.Kinds(); len(got) != 8 || got[0] != "notify.deliver" || got[1] != "subscription.check" || got[2] != "budget.month" || got[3] != "batch.poll" || got[4] != "digest" || got[5] != "source.reprobe" || got[6] != "backup.daily" || got[7] != "alerts" {
+		t.Fatalf("登記的 kind 應該是 notify.deliver、subscription.check、budget.month、batch.poll、digest、source.reprobe、backup.daily、alerts：%v", got)
 	}
 	if err := srv.RunUntilIdle(t.Context()); err != nil {
 		t.Fatal(err)
@@ -34,6 +40,9 @@ func TestSchedulerRunsInWorkerRounds(t *testing.T) {
 	env = testEnv(t)
 	env.Test.ManualWorker = true
 	clk = env.Clock.(*clock.Fake)
+	if err := os.WriteFile(env.Vars["NOTESTEME_CONFIG"], noOps, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	srv, err = StartServer(t.Context(), env)
 	if err != nil {
 		t.Fatal(err)
