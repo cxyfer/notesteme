@@ -67,6 +67,8 @@ type Scenario struct {
 	givenQueue queueConfig
 	// notifiers 是 `the notifier … is:` 累積的 notifier，接在佇列之後寫入（見 flushNotifiers，steps.md 4.18）。
 	notifiers []pendingNotifier
+	// digests 是 `the digest … is:` 累積的彙整設定，接在 notifier 之後寫入（見 flushDigests，steps.md 4.18）。
+	digests []pendingDigest
 	// costs 是 COST 的 Given 累積的計價覆寫與預算（見 flushCosts，steps.md 4.19）。
 	costs costSeeds
 	// seeded 是已用 `the … transcript of … is:` 直接寫入字幕的影音代號（見 hasTranscriptSource）。
@@ -486,7 +488,10 @@ func (s *Scenario) prepareOwner() error {
 	if err := s.flushQueue(); err != nil {
 		return err
 	}
-	return s.flushNotifiers()
+	if err := s.flushNotifiers(); err != nil {
+		return err
+	}
+	return s.flushDigests()
 }
 
 // requestPath 代入請求路徑：{token:…} 與 M5 的參照（SubstRequest），再把影音代號換成實際 ID。

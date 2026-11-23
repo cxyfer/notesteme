@@ -50,6 +50,10 @@ var subCoreRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: 
 // subGate 讓 SUB 的閘門只對 SUB 範圍的場景放行：至少一個 @SUB-R*，而且所有 @SUB-R* 都在 subCoreRules。
 // 其他場景（DIG 等只有 @SUB-01 的場景）停在同一個閘門，回傳裸的 godog.ErrPending，junit 的訊息與切片之前相同（同 hubGate）。
 func (s *Scenario) subGate() error {
+	if s.digGate() {
+		// M4-S6：DIG 的訂閱場景（只有 @SUB-01、沒有 @SUB-R）放行。
+		return nil
+	}
 	core := false
 	for _, t := range s.tags {
 		v, ok := strings.CutPrefix(t, "@SUB-R")
