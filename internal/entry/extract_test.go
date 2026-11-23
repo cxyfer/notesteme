@@ -46,6 +46,11 @@ func TestShareURL(t *testing.T) {
 }
 
 func TestValidURL(t *testing.T) {
+	// 上限以字元計，不是 bytes：2048 個字元的非 ASCII 網址可以接受。
+	base := "https://a.example.com/"
+	if multi := base + strings.Repeat("字", MaxURLChars-len(base)); !ValidURL(multi) {
+		t.Errorf("剛好 %d 個字元（%d bytes）的網址應該可以接受", MaxURLChars, len(multi))
+	}
 	for s, want := range map[string]bool{
 		"https://youtu.be/abc":       true,
 		"http://a.example.com":       true,
