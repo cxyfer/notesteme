@@ -238,7 +238,7 @@ func validVersionID(s string) bool {
 func (rt *routes) createTakedown(ctx context.Context, in *createTakedownInput) (*takedownCreatedOutput, error) {
 	release, wait, ok := rt.takedownLimiter.reserve(ipKey(remoteAddrFrom(ctx)), rt.rateLimits().TakedownsPerHour)
 	if !ok {
-		return nil, errRateLimited(wait)
+		return nil, handlerRateLimited(wait)
 	}
 	out, err := rt.takedown(ctx, in)
 	if err != nil {

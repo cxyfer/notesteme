@@ -139,7 +139,7 @@ func (rt *routes) limitByUsage(u hubstore.Usage, limit int, window time.Duration
 	if limit <= 0 || u.Count < limit {
 		return nil
 	}
-	return errRateLimited(max(u.Oldest.Add(window).Sub(rt.d.Clock.Now()), time.Second))
+	return handlerRateLimited(max(u.Oldest.Add(window).Sub(rt.d.Clock.Now()), time.Second))
 }
 
 // castVote 投票（value 為 0 時收回）：自己的版本、帳號齡、每小時的次數，之後寫入並回傳新的分數。

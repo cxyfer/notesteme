@@ -1,10 +1,12 @@
 package hubapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -64,6 +66,27 @@ func errRateLimited(wait time.Duration) *apierr.Error {
 	e.RetryAfterS = &secs
 	return e
 }
+
+// retryAfterError 讓 Huma handler 回傳的 429 也帶 Retry-After 標頭（Huma 依 HeadersError 設定標頭）；
+// 狀態碼與本體同 *apierr.Error。
+type retryAfterError struct{ e *apierr.Error }
+
+func (r retryAfterError) Error() string                { return r.e.Error() }
+func (r retryAfterError) GetStatus() int               { return r.e.GetStatus() }
+func (r retryAfterError) Unwrap() error                { return r.e }
+func (r retryAfterError) MarshalJSON() ([]byte, error) { return json.Marshal(r.e) }
+
+// GetHeaders 實作 huma.HeadersError。
+func (r retryAfterError) GetHeaders() http.Header {
+	h := http.Header{}
+	if r.e.RetryAfterS != nil {
+		h.Set("Retry-After", strconv.Itoa(*r.e.RetryAfterS))
+	}
+	return h
+}
+
+// handlerRateLimited 是 handler 內的限流錯誤（429，附 retry_after_s 與 Retry-After）。
+func handlerRateLimited(wait time.Duration) error { return retryAfterError{errRateLimited(wait)} }
 
 // clientIP 回傳連線的來源位址（不含連接埠）。
 func clientIP(remoteAddr string) string {
