@@ -1,7 +1,7 @@
 // 設定（docs/ui/pages.md §12）：左側分區清單、右側表單，每個分區各自儲存。
 // 窄螢幕（< 768px）時清單收成頂部的下拉選單。未知的分區導到第一個分區（UI-3b 決定）。
 import { getRouteApi, Link, Navigate, useNavigate } from "@tanstack/react-router";
-import type { ComponentType } from "react";
+import { lazy, Suspense, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 
 import "../styles/settings.css";
@@ -19,6 +19,19 @@ import { NotificationsSection } from "./settings/NotificationsSection";
 import { OutputsSection } from "./settings/OutputsSection";
 import { ServicesSection } from "./settings/ServicesSection";
 import { SystemSection } from "./settings/SystemSection";
+import { Loading } from "./settings/shared";
+
+// M5-S9：Hub 分區（HSHR）lazy 載入，不算進初始 bundle
+const HubSectionLazy = lazy(() =>
+  import("./hub/HubSection").then((m) => ({ default: m.HubSection })),
+);
+function HubSection() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <HubSectionLazy />
+    </Suspense>
+  );
+}
 
 // 分區的順序依 pages.md §12；「匯出與匯入」是 UI-3b 加的獨立分區（SEC-R10），「書籤小工具」是 ENTRY-R1 的區塊。
 export const SETTINGS_SECTIONS = [
@@ -31,6 +44,7 @@ export const SETTINGS_SECTIONS = [
   "budget",
   "glossary",
   "system",
+  "hub",
   "config",
   "appearance",
   "bookmarklet",
@@ -48,6 +62,7 @@ const SECTION_COMPONENTS: Record<SettingsSection, ComponentType> = {
   budget: BudgetSection,
   glossary: GlossarySection,
   system: SystemSection,
+  hub: HubSection,
   config: ConfigSection,
   appearance: AppearanceSection,
   bookmarklet: BookmarkletSection,

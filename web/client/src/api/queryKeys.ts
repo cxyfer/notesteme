@@ -77,4 +77,6 @@ export const queryKeys = {
   digests: ["digests"] as const,
   termReview: (state: string, channel: string) =>
     ["termCandidates", "review", state, channel] as const,
+  // M5-S9：Hub 的連線設定（HSHR-R1）
+  hubSettings: ["hubSettings"] as const,
 };

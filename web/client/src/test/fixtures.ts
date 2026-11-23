@@ -176,5 +176,21 @@ export function defaultRoutes() {
     "GET /api/settings/budget": () => ({ monthly_usd: 20, warn_at_percent: 80, timezone: "UTC" }),
     // UI-5
     "GET /api/search": () => ({ results: [searchResult(1)], total: 1 }),
+    // M5-S9：Hub 的連線設定
+    "GET /api/settings/hub": () => hubSettings(),
+  };
+}
+
+/** GET /api/settings/hub（HSHR-R1、R12） */
+export function hubSettings(over: { token_set?: boolean; enabled?: boolean; url?: string } = {}) {
+  return {
+    url: over.url ?? "https://hub.example.org",
+    token_set: over.token_set ?? true,
+    precheck: {
+      enabled: over.enabled ?? false,
+      disclosure:
+        "開啟後，Notesteme 在付費轉錄（Supadata、ASR）之前，會把平台名稱與影片 ID 的 SHA-256 前 4 個十六進位字元送到 https://hub.example.org。",
+      disclosure_version: "hub-precheck-v1",
+    },
   };
 }

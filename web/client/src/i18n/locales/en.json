@@ -730,7 +730,8 @@
       "config": "Export & import",
       "appearance": "Appearance",
       "bookmarklet": "Bookmarklet",
-      "login": "Sign-in"
+      "login": "Sign-in",
+      "hub": "Hub"
     },
     "common": {
       "save": "Save changes",
@@ -1904,5 +1905,66 @@
     "total_other": "{{formatted}} matching lines",
     "fromLibrary": "Search transcripts",
     "fromLibraryQ": "Search transcripts for “{{q}}”"
+  },
+  "hub": {
+    "connection": "Connection",
+    "connectionHint": "The Hub URL is set in the config file (hub.url). Create a token on the Hub's Account page.",
+    "url": "URL",
+    "noUrl": "Not set",
+    "token": "Hub token",
+    "tokenSet": "Set",
+    "tokenUnset": "Not set",
+    "replaceToken": "Replace token",
+    "saveToken": "Save token",
+    "removeToken": "Remove token",
+    "tokenSaved": "Hub token saved",
+    "tokenRemoved": "Hub token removed",
+    "test": "Test connection",
+    "testOk": "Connected as {{name}} ({{permissions}})",
+    "precheck": "Check the Hub before paid transcription",
+    "precheckOn": "On",
+    "precheckDisable": "Turn off",
+    "precheckAck": "I understand what is sent",
+    "precheckEnable": "Turn on",
+    "regen": "Regenerate from Hub raw subtitles",
+    "regenHint": "Paste a Hub version page URL or version ID (raw or normalized subtitles only). Processing starts at normalization and may cost LLM fees.",
+    "versionRef": "Version URL or ID",
+    "badRef": "Not a Hub version ID or version page URL.",
+    "regenStart": "Start processing",
+    "regenStarted": "Processing started.",
+    "openItem": "Open item",
+    "fromHub": "Raw subtitles from the Hub",
+    "shared": "Shared to the Hub",
+    "manageOnHub": "Manage or withdraw on the Hub",
+    "share": {
+      "open": "Share to Hub",
+      "title": "Share to Hub",
+      "intro": "Other Hub members can browse and download what you share. Only the fields below and allow-listed source records are sent—no channel, local paths, cookies or tokens.",
+      "what": "Outputs to share",
+      "all": "All: current subtitles, chapters and note",
+      "some": "Only the ones I tick",
+      "frames": "Also share selected frames (always private on the Hub)",
+      "license": "Licence",
+      "pick": "Choose a licence",
+      "visibility": "Visibility",
+      "vis": {
+        "default": "Hub default",
+        "public": "Public",
+        "authenticated": "Signed-in members",
+        "private": "Private"
+      },
+      "preview": "Preview the item fields that are sent",
+      "previewNote": "Also sent: availability (public) and each output's content, licence, models and prompt versions.",
+      "f": {
+        "platform": "Platform",
+        "id": "Video ID",
+        "title": "Title"
+      },
+      "attest": "I confirm I have the right to share this",
+      "submit": "Share to Hub",
+      "done": "Shared to the Hub:",
+      "dedup": "(already on the Hub)",
+      "configure": "Set up Hub"
+    }
   }
 }

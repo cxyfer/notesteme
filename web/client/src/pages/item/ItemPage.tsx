@@ -8,7 +8,7 @@
 // 這個頁面用 lazy route 載入（router.tsx），不算進初始 bundle。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
-import { useCallback, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { lazy, Suspense, useCallback, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { StatusBand, type StatusBandStage } from "@shared";
@@ -51,8 +51,14 @@ import {
 } from "./search";
 import { CancelDialog, CookieDialog } from "./SmallDialogs";
 import { StagePanel, orderedStages } from "./StagePanel";
+import { HubShares } from "../hub/HubShares";
 import { BetterSource } from "./BetterSource";
 import { SummaryBlock } from "./SummaryBlock";
+
+// M5-S9：「分享到 Hub」的對話框只在打開時載入
+const HubShareDialog = lazy(() =>
+  import("../hub/HubShareDialog").then((m) => ({ default: m.HubShareDialog })),
+);
 import "../../styles/ui5.css";
 
 const route = getRouteApi("/app/items/$id");
@@ -251,6 +257,7 @@ function ItemView({
   const [rerunFrom, setRerunFrom] = useState<string | null>(null);
   const [cookieOpen, setCookieOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [hubOpen, setHubOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const switchExecutor = useMutation({
     mutationFn: (stage: string) =>
@@ -352,6 +359,8 @@ function ItemView({
           >
             {t("item.actions.exportBundle")}
           </a>
+          {/* HSHR-R2：本機檔案不能分享，不顯示按鈕 */}
+          {external && <Button onClick={() => setHubOpen(true)}>{t("hub.share.open")}</Button>}
           {active && (
             <Button onClick={() => setCancelOpen(true)}>{t("item.actions.cancel")}</Button>
           )}
@@ -406,10 +415,15 @@ function ItemView({
         {(d.sources ?? []).find((s) => s.state === "used") && (
           <div>
             <dt>{t("item.meta.source")}</dt>
-            <dd>{(d.sources ?? []).find((s) => s.state === "used")!.source}</dd>
+            <dd>
+              {(d.sources ?? []).find((s) => s.state === "used")!.source === "hub"
+                ? t("hub.fromHub")
+                : (d.sources ?? []).find((s) => s.state === "used")!.source}
+            </dd>
           </div>
         )}
       </dl>
+      <HubShares shares={d.hub_shares} />
 
       <BetterSource
         better={d.better_source}
@@ -546,6 +560,17 @@ function ItemView({
       />
       <CancelDialog open={cancelOpen} onOpenChange={setCancelOpen} itemId={id} />
       <DeleteDialog open={deleteOpen} onOpenChange={setDeleteOpen} itemId={id} title={title} />
+      {hubOpen && (
+        <Suspense fallback={null}>
+          <HubShareDialog
+            item={d}
+            targets={targets}
+            hasEdited={hasEdited}
+            open={hubOpen}
+            onOpenChange={setHubOpen}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

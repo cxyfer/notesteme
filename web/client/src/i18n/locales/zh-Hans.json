@@ -707,7 +707,8 @@
       "config": "导出与导入",
       "appearance": "外观",
       "bookmarklet": "书签小工具",
-      "login": "登录"
+      "login": "登录",
+      "hub": "Hub"
     },
     "common": {
       "save": "保存更改",
@@ -1861,5 +1862,66 @@
     "total_other": "{{formatted}} 句符合",
     "fromLibrary": "搜索字幕内容",
     "fromLibraryQ": "在字幕内容中搜索“{{q}}”"
+  },
+  "hub": {
+    "connection": "连接",
+    "connectionHint": "Hub 网址只能写在配置文件（hub.url）。token 在 Hub 网页的「账号」页创建。",
+    "url": "网址",
+    "noUrl": "尚未设置",
+    "token": "Hub token",
+    "tokenSet": "已设置",
+    "tokenUnset": "尚未设置",
+    "replaceToken": "换成新的 token",
+    "saveToken": "保存 token",
+    "removeToken": "移除 token",
+    "tokenSaved": "已保存 Hub token",
+    "tokenRemoved": "已移除 Hub token",
+    "test": "测试连接",
+    "testOk": "已连接：{{name}}（{{permissions}}）",
+    "precheck": "付费转录前先查 Hub",
+    "precheckOn": "已开启",
+    "precheckDisable": "关闭查询",
+    "precheckAck": "我了解上面发送的内容",
+    "precheckEnable": "开启查询",
+    "regen": "用 Hub 的原始字幕重新生成",
+    "regenHint": "粘贴 Hub 版本页的网址或版本 ID（只接受原始或规范化的字幕）。会从规范化开始处理，可能产生 LLM 费用。",
+    "versionRef": "版本网址或 ID",
+    "badRef": "不是 Hub 的版本 ID 或版本页网址。",
+    "regenStart": "开始处理",
+    "regenStarted": "已开始处理。",
+    "openItem": "打开音视频",
+    "fromHub": "来自 Hub 的原始字幕",
+    "shared": "已分享到 Hub",
+    "manageOnHub": "在 Hub 管理或撤回",
+    "share": {
+      "open": "分享到 Hub",
+      "title": "分享到 Hub",
+      "intro": "分享后其他 Hub 成员可以浏览与下载。只发送下面的字段与产出的来源记录（白名单），不含频道、本机路径、cookie 与 token。",
+      "what": "要分享的产出",
+      "all": "全部：每个字幕的现行版本、章节与笔记",
+      "some": "只分享勾选的",
+      "frames": "也分享选中的画面（在 Hub 上一律私人）",
+      "license": "授权",
+      "pick": "请选择授权",
+      "visibility": "可见度",
+      "vis": {
+        "default": "依 Hub 的默认",
+        "public": "公开",
+        "authenticated": "登录的成员",
+        "private": "私人"
+      },
+      "preview": "预览会发送的音视频字段",
+      "previewNote": "另外发送发布状态（公开）与每个产出的内容、授权、模型与 prompt 版本。",
+      "f": {
+        "platform": "平台",
+        "id": "视频 ID",
+        "title": "标题"
+      },
+      "attest": "我确认有权分享这些内容",
+      "submit": "分享到 Hub",
+      "done": "已分享到 Hub：",
+      "dedup": "（Hub 上已有相同内容）",
+      "configure": "设置 Hub"
+    }
   }
 }

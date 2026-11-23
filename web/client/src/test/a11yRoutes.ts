@@ -34,6 +34,7 @@ export const a11yRoutes: A11yRoute[] = [
     "budget",
     "glossary",
     "system",
+    "hub",
     "config",
     "appearance",
     "bookmarklet",
