@@ -44,6 +44,8 @@ type ItemQuery struct {
 	PublishedTo   *time.Time
 	DurationMin   *int
 	DurationMax   *int
+	// ReadState 是 read 或 unread（LIB-R19）；空字串代表不篩選，其他值 422。
+	ReadState string
 	// Limit 小於 1 時用 DefaultItemLimit，超過 MaxItemLimit 時用 MaxItemLimit。
 	Limit int
 	// After 不為 nil 時，只回傳排在它之後的影音。
@@ -70,6 +72,9 @@ func ValidStatus(s string) bool { return slices.Contains(itemStatuses, s) }
 
 // Validate 檢查條件；不合法時回傳 *InvalidError。
 func (q ItemQuery) Validate() error {
+	if q.ReadState != "" && q.ReadState != store.ReadRead && q.ReadState != store.ReadUnread {
+		return invalidf("read_state 必須是 read 或 unread。")
+	}
 	switch q.Platform {
 	case "", source.PlatformYouTube, source.PlatformBilibili, source.PlatformPodcast, source.PlatformLocal:
 	default:
@@ -101,7 +106,7 @@ func (q ItemQuery) filter() store.ItemFilter {
 	return store.ItemFilter{
 		Platform: q.Platform, Channel: q.Channel, ErrorClass: q.ErrorClass, Lang: q.Lang, Timing: q.Timing, Q: q.Q,
 		Status: q.Status, PublishedFrom: q.PublishedFrom, PublishedTo: q.PublishedTo,
-		DurationMin: q.DurationMin, DurationMax: q.DurationMax,
+		DurationMin: q.DurationMin, DurationMax: q.DurationMax, ReadState: q.ReadState,
 	}
 }
 

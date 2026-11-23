@@ -46,113 +46,11 @@ type RerunRequest struct {
 // *NotImplementedError（plannedStages，或要執行的步驟還沒有實作）。
 // Chunks 只能用在 LLM 步驟；步驟不是用 api executor 時不使用。
 func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (Detail, error) {
-	switch {
-	case gatedStage(req.From) && req.From != StageNote && !StageAvailable(req.From):
-		// M3 的步驟與 M4 的 summary 加進 Stages 之後、實作之前（M3-S0、M4-S0）：從它重跑回 501，
-		// 不留下半套的重跑（ADR-0020 第 1 點、ADR-0021 第 3 點）。note 在 Compose 之後判斷（GEM 可以重新產生）。
-		return Detail{}, &NotImplementedError{What: "重跑步驟 " + req.From}
-	case ValidStage(req.From):
-	case slices.Contains(plannedStages, req.From):
-		return Detail{}, &NotImplementedError{What: "重跑步驟 " + req.From}
-	default:
-		return Detail{}, invalidf("from 必須是 %v 其中之一。", Stages)
-	}
-	if req.Until != "" && !ValidStage(req.Until) {
-		return Detail{}, invalidf("until 必須是 %v 其中之一。", Stages)
-	}
-	// from 在 until 之後時，這次重跑一個步驟都不會執行；回傳 422 而不是悄悄放寬 until，
-	// 讓呼叫端明確知道自己的請求互相矛盾（PIPE-R1）。
-	if req.Until != "" && slices.Index(Stages, req.From) > slices.Index(Stages, req.Until) {
-		return Detail{}, invalidf("from（%s）不能在 until（%s）之後。", req.From, req.Until)
-	}
-
-	if len(req.Chunks) > 0 {
-		if !IsLLMStage(req.From) {
-			return Detail{}, invalidFields([]validate.FieldError{{Path: "chunks", Message: "chunks 只能用在 LLM 步驟（segment、correct、translate）。"}})
-		}
-		for i, c := range req.Chunks {
-			if c < 1 {
-				return Detail{}, invalidFields([]validate.FieldError{{Path: fmt.Sprintf("chunks[%d]", i), Message: "chunk 必須是從 1 起算的整數。"}})
-			}
-		}
-	}
-	if err := p.validateOverrides(ctx, req.Overrides); err != nil {
-		return Detail{}, err
-	}
-
-	r0 := p.st.Read()
-	it, err := r0.ItemByID(ctx, itemID)
+	prep, err := p.prepareRerun(ctx, itemID, req)
 	if err != nil {
 		return Detail{}, err
 	}
-	if it.DeletedAt != nil {
-		return Detail{}, &InTrashError{ItemID: it.ID}
-	}
-	if req.From, err = p.rerunStart(ctx, r0, it.ID, req.From); err != nil {
-		return Detail{}, err
-	}
-	if len(req.Chunks) > 0 {
-		// chunk 編號對照現行切分實際存在的編號（L12）：沒有切分過、或編號不存在時 422。
-		// 不能用列數當上限：translate 的編號是各目標的全域編號，被沿用的目標不產生 chunk，編號會有空洞（S6b-Q3）。
-		existing, err := r0.LatestLLMChunkNumbers(ctx, it.ID, req.From)
-		if err != nil {
-			return Detail{}, err
-		}
-		if fs := checkRerunChunks(req.From, req.Chunks, existing); len(fs) > 0 {
-			return Detail{}, invalidFields(fs)
-		}
-	}
-	itemOverrides, err := decodeOverrides(it.Overrides)
-	if err != nil {
-		return Detail{}, err
-	}
-	// 處理方案（D7）：body 指定的；沒有就用影音記錄的（最新版本，PRF-R3）；M1 的影音沒有記錄，用預設處理方案。
-	// 記錄的處理方案已被刪除時回 422（path 為 profile）。
-	profile := req.Profile
-	if profile == "" {
-		profile = it.ProfileID
-	}
-	layers, err := p.currentLayers(ctx, r0, profile, it.ChannelID, itemOverrides, req.Overrides)
-	if err != nil {
-		return Detail{}, err
-	}
-	eff, err := p.Compose(ctx, layers)
-	if err != nil {
-		return Detail{}, err
-	}
-	if req.From == StageNote && !StageAvailable(StageNote) && !geminiEngine(eff) {
-		// 同上：note 的一般流程還沒有實作（M3-S4）；engine: gemini 已經可以重新產生（GEM）。
-		return Detail{}, &NotImplementedError{What: "重跑步驟 " + req.From}
-	}
-	sha, cfgJSON, layersJSON, err := SnapshotOf(eff, layers)
-	if err != nil {
-		return Detail{}, err
-	}
-	// 在寫入任何資料之前解析執行方式：要執行的步驟還沒有實作就回 501，不留下半套的重跑。
-	// 交易內會用交易的讀取再解析一次：兩次之間 normalize 可能剛完成，原文語言就不同了（Codex P2）。
-	resolve := func(repo *store.Repo, item store.Item) ([]StageResolution, error) {
-		sc, err := p.planContext(ctx, repo, item, req.From)
-		if err != nil {
-			return nil, err
-		}
-		chain, err := planChain(eff, req.From, req.Until, sc)
-		if err != nil {
-			return nil, err
-		}
-		if last := chain[len(chain)-1]; !last.Skip && !stageImplemented(last.Stage, last.Executor) && !geminiNoteRes(eff, last.Stage, last.Executor) {
-			return nil, &NotImplementedError{What: "步驟 " + last.Stage + "／" + last.Executor}
-		}
-		if len(req.Chunks) > 0 && chain[0].Stage == req.From {
-			chain[0].Chunks = slices.Clone(req.Chunks)
-		}
-		if req.ReuseCandidates && chain[0].Stage == StageFrames {
-			chain[0].ReuseCandidates = true
-		}
-		return chain, nil
-	}
-	if _, err := resolve(r0, it); err != nil {
-		return Detail{}, err
-	}
+	req, layers, sha, cfgJSON, layersJSON, resolve := prep.req, prep.layers, prep.sha, prep.cfgJSON, prep.layersJSON, prep.resolve
 
 	if p.beforeRerunTx != nil {
 		p.beforeRerunTx()
@@ -236,6 +134,129 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 	}
 	p.wake()
 	return p.Item(ctx, itemID)
+}
+
+// rerunPrep 是 prepareRerun 在寫入之前算好的內容：Rerun 與批次重跑的 dry_run（LIB-R14）共用，
+// 兩者對同一部影音的驗證與生效設定才會相同。
+type rerunPrep struct {
+	req                      RerunRequest // From 已換成實際的起點（rerunStart）
+	it                       store.Item
+	layers                   Layers
+	eff                      Effective
+	sha, cfgJSON, layersJSON string
+	resolve                  func(repo *store.Repo, item store.Item) ([]StageResolution, error)
+}
+
+// prepareRerun 做 Rerun 寫入之前的全部檢查與計算，不寫入任何資料；錯誤同 Rerun。
+func (p *Pipeline) prepareRerun(ctx context.Context, itemID string, req RerunRequest) (*rerunPrep, error) {
+	switch {
+	case gatedStage(req.From) && req.From != StageNote && !StageAvailable(req.From):
+		// M3 的步驟與 M4 的 summary 加進 Stages 之後、實作之前（M3-S0、M4-S0）：從它重跑回 501，
+		// 不留下半套的重跑（ADR-0020 第 1 點、ADR-0021 第 3 點）。note 在 Compose 之後判斷（GEM 可以重新產生）。
+		return nil, &NotImplementedError{What: "重跑步驟 " + req.From}
+	case ValidStage(req.From):
+	case slices.Contains(plannedStages, req.From):
+		return nil, &NotImplementedError{What: "重跑步驟 " + req.From}
+	default:
+		return nil, invalidf("from 必須是 %v 其中之一。", Stages)
+	}
+	if req.Until != "" && !ValidStage(req.Until) {
+		return nil, invalidf("until 必須是 %v 其中之一。", Stages)
+	}
+	// from 在 until 之後時，這次重跑一個步驟都不會執行；回傳 422 而不是悄悄放寬 until，
+	// 讓呼叫端明確知道自己的請求互相矛盾（PIPE-R1）。
+	if req.Until != "" && slices.Index(Stages, req.From) > slices.Index(Stages, req.Until) {
+		return nil, invalidf("from（%s）不能在 until（%s）之後。", req.From, req.Until)
+	}
+
+	if len(req.Chunks) > 0 {
+		if !IsLLMStage(req.From) {
+			return nil, invalidFields([]validate.FieldError{{Path: "chunks", Message: "chunks 只能用在 LLM 步驟（segment、correct、translate）。"}})
+		}
+		for i, c := range req.Chunks {
+			if c < 1 {
+				return nil, invalidFields([]validate.FieldError{{Path: fmt.Sprintf("chunks[%d]", i), Message: "chunk 必須是從 1 起算的整數。"}})
+			}
+		}
+	}
+	if err := p.validateOverrides(ctx, req.Overrides); err != nil {
+		return nil, err
+	}
+
+	r0 := p.st.Read()
+	it, err := r0.ItemByID(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	if it.DeletedAt != nil {
+		return nil, &InTrashError{ItemID: it.ID}
+	}
+	if req.From, err = p.rerunStart(ctx, r0, it.ID, req.From); err != nil {
+		return nil, err
+	}
+	if len(req.Chunks) > 0 {
+		// chunk 編號對照現行切分實際存在的編號（L12）：沒有切分過、或編號不存在時 422。
+		// 不能用列數當上限：translate 的編號是各目標的全域編號，被沿用的目標不產生 chunk，編號會有空洞（S6b-Q3）。
+		existing, err := r0.LatestLLMChunkNumbers(ctx, it.ID, req.From)
+		if err != nil {
+			return nil, err
+		}
+		if fs := checkRerunChunks(req.From, req.Chunks, existing); len(fs) > 0 {
+			return nil, invalidFields(fs)
+		}
+	}
+	itemOverrides, err := decodeOverrides(it.Overrides)
+	if err != nil {
+		return nil, err
+	}
+	// 處理方案（D7）：body 指定的；沒有就用影音記錄的（最新版本，PRF-R3）；M1 的影音沒有記錄，用預設處理方案。
+	// 記錄的處理方案已被刪除時回 422（path 為 profile）。
+	profile := req.Profile
+	if profile == "" {
+		profile = it.ProfileID
+	}
+	layers, err := p.currentLayers(ctx, r0, profile, it.ChannelID, itemOverrides, req.Overrides)
+	if err != nil {
+		return nil, err
+	}
+	eff, err := p.Compose(ctx, layers)
+	if err != nil {
+		return nil, err
+	}
+	if req.From == StageNote && !StageAvailable(StageNote) && !geminiEngine(eff) {
+		// 同上：note 的一般流程還沒有實作（M3-S4）；engine: gemini 已經可以重新產生（GEM）。
+		return nil, &NotImplementedError{What: "重跑步驟 " + req.From}
+	}
+	sha, cfgJSON, layersJSON, err := SnapshotOf(eff, layers)
+	if err != nil {
+		return nil, err
+	}
+	// 在寫入任何資料之前解析執行方式：要執行的步驟還沒有實作就回 501，不留下半套的重跑。
+	// 交易內會用交易的讀取再解析一次：兩次之間 normalize 可能剛完成，原文語言就不同了（Codex P2）。
+	resolve := func(repo *store.Repo, item store.Item) ([]StageResolution, error) {
+		sc, err := p.planContext(ctx, repo, item, req.From)
+		if err != nil {
+			return nil, err
+		}
+		chain, err := planChain(eff, req.From, req.Until, sc)
+		if err != nil {
+			return nil, err
+		}
+		if last := chain[len(chain)-1]; !last.Skip && !stageImplemented(last.Stage, last.Executor) && !geminiNoteRes(eff, last.Stage, last.Executor) {
+			return nil, &NotImplementedError{What: "步驟 " + last.Stage + "／" + last.Executor}
+		}
+		if len(req.Chunks) > 0 && chain[0].Stage == req.From {
+			chain[0].Chunks = slices.Clone(req.Chunks)
+		}
+		if req.ReuseCandidates && chain[0].Stage == StageFrames {
+			chain[0].ReuseCandidates = true
+		}
+		return chain, nil
+	}
+	if _, err := resolve(r0, it); err != nil {
+		return nil, err
+	}
+	return &rerunPrep{req: req, it: it, layers: layers, eff: eff, sha: sha, cfgJSON: cfgJSON, layersJSON: layersJSON, resolve: resolve}, nil
 }
 
 // rerunStart 回傳重跑實際的起點。從 chapters、frames、note 重跑、而 sponsorblock 從來沒有執行過

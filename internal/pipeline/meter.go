@@ -29,15 +29,9 @@ func (p *Pipeline) newMeter(t store.Task, run store.StageRun, it store.Item, pro
 	if p.cost == nil {
 		return nil
 	}
-	custom := true
-	if prov, ok := p.llm.Provider(providerID); ok {
-		if b, isBuiltin := llm.Builtin()[providerID]; isBuiltin && prov.BaseURL == b.BaseURL {
-			custom = false
-		}
-	}
 	return &meter{svc: p.cost, st: p.st, call: cost.Call{
 		ItemID: it.ID, ItemTitle: it.Title, StageRunID: run.ID, TaskID: t.ID, Stage: run.Stage,
-		Provider: providerID, Model: model, CustomBase: custom,
+		Provider: providerID, Model: model, CustomBase: p.customBase(providerID),
 	}}
 }
 
