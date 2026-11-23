@@ -130,3 +130,12 @@ jobs:
       - name: sqlc diff
         working-directory: internal/store
         run: sqlc diff
+
+      # Hub 的 SQLite backend 有自己的 sqlc.yaml（ADR-0030 第 2 點）；Postgres 的查詢檔還沒有。
+      - name: sqlc diff (hub)
+        working-directory: internal/hub/hubstore/sqlite
+        run: sqlc diff
+
+      - name: sqlc vet (hub)
+        working-directory: internal/hub/hubstore/sqlite
+        run: sqlc vet
