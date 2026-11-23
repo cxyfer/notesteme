@@ -126,6 +126,51 @@
         ],
         "type": "object"
       },
+      "BundleImportItem": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ref": {
+            "description": "影音的短代號",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ref",
+          "title"
+        ],
+        "type": "object"
+      },
+      "BundleImportResult": {
+        "additionalProperties": false,
+        "properties": {
+          "imported": {
+            "description": "匯入的產出數",
+            "format": "int64",
+            "type": "integer"
+          },
+          "item": {
+            "$ref": "#/components/schemas/BundleImportItem"
+          },
+          "skipped": {
+            "description": "內容與既有版本相同而略過的產出數（on_existing=add_versions）",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item",
+          "imported",
+          "skipped"
+        ],
+        "type": "object"
+      },
       "ChangePasswordInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -1450,6 +1495,12 @@
               "array",
               "null"
             ]
+          },
+          "entry": {
+            "type": "string"
+          },
+          "error_class": {
+            "type": "string"
           },
           "errors": {
             "items": {
@@ -6086,9 +6137,54 @@
     "/api/bundles/import": {
       "post": {
         "operationId": "bundles-import",
+        "parameters": [
+          {
+            "description": "影音已經存在時：add_versions 把 bundle 的產出加成新版本；省略時回 409",
+            "explode": false,
+            "in": "query",
+            "name": "on_existing",
+            "schema": {
+              "description": "影音已經存在時：add_versions 把 bundle 的產出加成新版本；省略時回 409",
+              "enum": [
+                "add_versions"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "encoding": {
+                "file": {
+                  "contentType": "application/octet-stream"
+                }
+              },
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentEncoding": "binary",
+                    "contentMediaType": "application/octet-stream",
+                    "description": "bundle（.notesteme.zip）",
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleImportResult"
+                }
+              }
+            },
+            "description": "Created"
           },
           "default": {
             "content": {
@@ -6101,7 +6197,7 @@
             "description": "Error"
           }
         },
-        "summary": "匯入 bundle（multipart 的 file，尚未實作）"
+        "summary": "匯入 bundle（multipart 的 file，BND-R3）：全部驗證通過才寫入；成功回 201 {item, imported, skipped}，不通過回 422 bundle_invalid／bundle_unsupported_version，已存在或在垃圾桶中回 409，超過上傳上限回 413 bundle_too_large"
       }
     },
     "/api/channels/{id}/overrides": {
@@ -7298,9 +7394,21 @@
     "/api/items/{id}/bundle": {
       "get": {
         "operationId": "items-bundle",
+        "parameters": [
+          {
+            "description": "影音的 ID 或短代號",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音的 ID 或短代號",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -7313,7 +7421,7 @@
             "description": "Error"
           }
         },
-        "summary": "匯出影音的 bundle（.notesteme.zip，尚未實作）"
+        "summary": "匯出影音的 bundle（.notesteme.zip，BND-R1）：現行版本的字幕、筆記、章節、贊助片段與選中的畫面，不含媒體檔與 secrets"
       }
     },
     "/api/items/{id}/cancel": {

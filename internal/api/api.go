@@ -22,6 +22,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/assstyle"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/digest"
 	"github.com/cxyfer/notesteme/internal/events"
@@ -96,6 +97,8 @@ type Deps struct {
 	CursorKey []byte
 	// Subscriptions 是訂閱（SUB）；nil 時訂閱的路由回應 501。
 	Subscriptions SubscriptionService
+	// BundleImport 是 bundle 匯入的上限（設定檔 bundles.import，BND-R3、R5）；零值用預設值。
+	BundleImport config.BundleImport
 }
 
 // processCursorKey 是沒有指定 CursorKey 時用的金鑰：每個 process 只產生一次，
@@ -138,6 +141,7 @@ func build(d Deps, authn func(http.Handler) http.Handler, remote bool) http.Hand
 	// 影音檔上傳（multipart 的 POST /api/items）同一層，串流處理而不經過 Huma。
 	var h http.Handler = cookieBodyLimit(mux)
 	h = subscriptionImportLimit(h)
+	h = bundleImportIntercept(r, d)(h)
 	h = uploadIntercept(d)(h)
 	if remote && d.UI != nil {
 		h = uiDispatch(entryPages(d), h)
@@ -303,6 +307,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerSubscriptions(api)
 	rt.registerVaults(api)
 	rt.registerM4Stubs(api)
+	rt.registerBundles(api)
 	rt.registerDigests(api)
 	rt.registerSearch(api)
 	rt.registerCosts(api)

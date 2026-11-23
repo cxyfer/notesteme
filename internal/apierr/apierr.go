@@ -46,6 +46,10 @@ type Error struct {
 	UndefinedVariables []string `json:"undefined_variables,omitempty"`
 	// SubscriptionID 在重複訂閱時指出既有的訂閱（409，SUB-R1）。
 	SubscriptionID string `json:"subscription_id,omitempty"`
+	// Entry 在 bundle 不通過驗證時指出出錯的項目名稱（422，BND-R10）。
+	Entry string `json:"entry,omitempty"`
+	// ErrorClass 是錯誤類別（ADR-0006），例如 bundle 不通過驗證時是 permanent（BND-R10）；沒有分類的錯誤省略。
+	ErrorClass string `json:"error_class,omitempty"`
 }
 
 // Error 實作 error。

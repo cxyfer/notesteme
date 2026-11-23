@@ -224,6 +224,8 @@ func (s *Server) apiDeps(env Env) api.Deps {
 		Notify:    s.notify,
 		Cost:      s.cost,
 		Digests:   s.digests,
+		// bundle 匯入的上限（BND-R3、R5）。
+		BundleImport: s.cfg.M4.BundleImport,
 	}
 	if s.subscriptions != nil {
 		d.Subscriptions = s.subscriptions

@@ -22,6 +22,7 @@ import (
 //   - DIG 的路由（continue、digests）在 M4-S6 實作（digests.go）。
 //   - GET /api/search 在 S8 SRCH 實作（search.go）。
 //   - GET /api/items/:id 的 reprobe、better_source 在 SRC-10 實作（items.go）。
+//   - BND 的路由（GET /api/items/{id}/bundle、POST /api/bundles/import）已實作（bundles.go）。
 //   - 既有路由的欄位擴充（GET /api/items/:id 的 read_state，
 //     PATCH /api/channels/:id/term-candidates/:candidate 的 term、scope，GET /api/system 的 alerts、backup）由各切片加上。
 var m4Stubs = []m2Stub{
@@ -31,11 +32,6 @@ var m4Stubs = []m2Stub{
 		Summary: "對多部影音執行同一個動作（重跑、換處理方案、標記已讀、刪除、匯出 bundle，尚未實作）", Scope: auth.ScopeIngest},
 	{ID: "overview-get", Method: http.MethodGet, Path: "/api/overview",
 		Summary: "總覽：處理中、等你決定、失敗、本月花費、磁碟用量與今天的動態（尚未實作）", Scope: auth.ScopeRead},
-	// BND 的介面（S10 BND）
-	{ID: "items-bundle", Method: http.MethodGet, Path: "/api/items/{id}/bundle",
-		Summary: "匯出影音的 bundle（.notesteme.zip，尚未實作）", Scope: auth.ScopeRead},
-	{ID: "bundles-import", Method: http.MethodPost, Path: "/api/bundles/import",
-		Summary: "匯入 bundle（multipart 的 file，尚未實作）", Scope: auth.ScopeAdmin},
 	// GLOS-R4、R5（S9 GLOS）
 	{ID: "term-candidates-decide", Method: http.MethodPost, Path: "/api/term-candidates/decide",
 		Summary: "一次決定多個術語候選（尚未實作）", Scope: auth.ScopeAdmin},

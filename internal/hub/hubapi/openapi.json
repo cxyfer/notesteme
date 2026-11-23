@@ -254,6 +254,12 @@
               "null"
             ]
           },
+          "entry": {
+            "type": "string"
+          },
+          "error_class": {
+            "type": "string"
+          },
           "errors": {
             "items": {
               "$ref": "#/components/schemas/FieldError"
