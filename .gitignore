@@ -3,4 +3,9 @@
 /web/client/dist/*
 !/web/client/dist/.gitkeep
 /web/client/coverage/
+# Hub UI（web/hub，M5-S9）：同上
+/web/hub/node_modules/
+/web/hub/dist/*
+!/web/hub/dist/.gitkeep
+/web/hub/coverage/
 *.tsbuildinfo

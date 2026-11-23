@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -24,6 +25,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/hub/hubstore/postgres"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore/sqlite"
 	"github.com/cxyfer/notesteme/internal/netguard"
+	webhub "github.com/cxyfer/notesteme/web/hub"
 )
 
 // version 由 -ldflags "-X github.com/cxyfer/notesteme/internal/hub.version=…" 設定（goreleaser、Dockerfile）。
@@ -45,6 +47,8 @@ type Options struct {
 	Net *netguard.Deps
 	// Version 覆寫回報的版本（測試用）；空字串時用 Version()。
 	Version string
+	// UI 是 Hub 網頁的建置產物；nil 時用嵌入的 web/hub/dist（M5-S9）。
+	UI fs.FS
 }
 
 // Server 是一個 Hub 實例：開著的儲存與 HTTP handler。
@@ -96,7 +100,12 @@ func Open(ctx context.Context, o Options) (*Server, error) {
 		_ = st.Close()
 		return nil, fmt.Errorf("同步設定檔的 admins：%w", err)
 	}
-	s.handler = hubapi.New(hubapi.Deps{Config: cfg, Store: st, Blobs: blobs, Clock: o.Clock, Log: o.Log, Version: o.Version, Auth: auth})
+	api := hubapi.New(hubapi.Deps{Config: cfg, Store: st, Blobs: blobs, Clock: o.Clock, Log: o.Log, Version: o.Version, Auth: auth})
+	ui := o.UI
+	if ui == nil {
+		ui = webhub.FS()
+	}
+	s.handler = withUI(NewUI(ui), api)
 	return s, nil
 }
 

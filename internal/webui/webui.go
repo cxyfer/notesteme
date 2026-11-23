@@ -79,13 +79,30 @@ const Placeholder = `<!doctype html>
 
 // Handler 是 UI 的 http.Handler。
 type Handler struct {
-	fsys  fs.FS
-	index []byte // nil 代表沒有建置產物，回應 Placeholder
+	fsys        fs.FS
+	index       []byte // nil 代表沒有建置產物，回應 Placeholder
+	csp         string
+	placeholder string
+}
+
+// Options 讓另一個 UI（Hub 的 web/hub）用自己的 CSP 與 placeholder；零值的欄位沿用 Client 的預設。
+type Options struct {
+	CSP         string
+	Placeholder string
 }
 
 // New 建立 handler；fsys 的根目錄就是 Vite 的 dist（含 index.html 與 assets/）。
-func New(fsys fs.FS) *Handler {
-	h := &Handler{fsys: fsys}
+func New(fsys fs.FS) *Handler { return NewWithOptions(fsys, Options{}) }
+
+// NewWithOptions 同 New，但可以覆寫 CSP 與 placeholder（M5-S9：Hub UI）。
+func NewWithOptions(fsys fs.FS, o Options) *Handler {
+	h := &Handler{fsys: fsys, csp: o.CSP, placeholder: o.Placeholder}
+	if h.csp == "" {
+		h.csp = CSP
+	}
+	if h.placeholder == "" {
+		h.placeholder = Placeholder
+	}
 	if b, err := fs.ReadFile(fsys, "index.html"); err == nil {
 		h.index = b
 	}
@@ -100,11 +117,12 @@ func (h *Handler) IndexHTML() []byte {
 	if h.index != nil {
 		return h.index
 	}
-	return []byte(Placeholder)
+	return []byte(h.placeholder)
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	SetSecurityHeaders(w.Header())
+	w.Header().Set("Content-Security-Policy", h.csp)
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
