@@ -657,6 +657,8 @@ BND 切片（2026-11-23）實作了上表全部的句型（`features/steps/bundl
 
 設定類的步驟（`the reverse proxy … signs users in`、`allows the users`、`the OIDC provider … signs in`、`allows the subjects`）只累積，和 `Given the config file contains:` 的內容合併後寫成 `/config/notesteme.yaml`（同一個鍵兩邊都寫時步驟失敗）；server 在第一個送出請求的步驟或 `When the server starts` 時以合併後的設定啟動。
 
+AUTH 切片的補充（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`redirect_url` 的 base URL 用設定的 listen 位址（`NOTESTEME_LISTEN`，沒有時是預設的 `127.0.0.1:8080`），因為實際的 port 在啟動後才知道；`the OIDC sign-in is completed` 只取 IdP 轉回網址的 path 與 query 送到實際的位址，所以結果不受影響。`the OIDC provider … signs in` 當下就把 `NOTESTEME_OIDC_CLIENT_SECRET` 設成 `fake-oidc-client-secret-7c1e`，之後的 `the environment variable … is not set` 才能移除它。
+
 「指定來源位址」的做法同 `When someone signs in from {string} with the password {string}`（127.0.0.0/8 內的位址，TCP 連線本身就從這個位址發出，不是只加 `X-Forwarded-For`），所以 AUTH-R13 驗證的是**對端位址**。
 
 #### 反向代理驗證（AUTH-06）

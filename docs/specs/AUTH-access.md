@@ -63,6 +63,7 @@
 
 - AUTH-R1 的免驗證例外在 M4 由 AUTH-R16 擴充（OIDC 啟用時的 `start` 與 `callback`）；ENTRY-R6 讓 `POST /api/auth/login` 多接受 `next`。ENTRY 的頁面路由不在 `/api` 底下：`/login`、`/manifest.webmanifest`、`/sw.js` 不需要登入，`/add`、`/share` 只認 session cookie（沒有時 303 到 `/login?next=`），見 ENTRY 規格。`next` 的檢查是 `auth.SafeNext`（ENTRY 待決問題 E8），AUTH-R17 的 OIDC 與反向代理驗證登入後也要用它。
 - API：`GET /api/auth/oidc/start`、`GET /api/auth/oidc/callback`（OIDC 啟用時免驗證）；`GET /api/auth/sessions`、`DELETE /api/auth/sessions/:id`（`admin`）；`POST /api/tokens/:id/rotate`（`admin`）。
+- API（AUTH 切片新增，見待決問題 A9）：`GET /api/auth/methods`（免驗證）回 `{oidc: {enabled, host?}}`，給登入頁決定要不要顯示 OIDC 按鈕。
 - CLI：`notesteme tokens rotate <name> [--json]`。
 - 環境變數：`NOTESTEME_OIDC_CLIENT_SECRET`。
 - 設定檔（只能寫在設定檔，不開放 API 修改）：
@@ -107,3 +108,23 @@
 - A7：token 輪替保留原本的 `expires_at`（AUTH-R21），不重新起算。重新起算等於用輪替延長期限，違反「到期就失效」的預期；需要更長的期限時建立新的 token。
 - A8：AUTH-R10 的「M2 起也可以在設定頁建立」在 M2 沒有 UI（UI 切片另外排程）；AUTH-R22 是 token 管理 UI 的完整規格，API 沿用 AUTH-R7～R10 的 `GET/POST/DELETE /api/tokens`。
 - M4-S0：`auth.proxy.*`、`auth.oidc.*` 與 `NOTESTEME_OIDC_CLIENT_SECRET` 已解析與驗證，AUTH-R12、R16 的啟動失敗訊息照規則（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）；功能本身沒有啟用（設定了也只是被接受）。另外補了規則沒有寫的檢查：`allowed_users`、`allowed_subjects` 不能有空字串，只寫了 `auth.oidc` 的其他鍵而沒有 `issuer` 時回「auth.oidc 缺少 issuer。」，`redirect_url` 必須是 http 或 https 的網址。`GET /api/auth/oidc/start`、`callback` 不註冊 stub：AUTH-R16 規定沒有啟用時回 404，S0 不啟用 OIDC；但 AUTH-R1 的免驗證例外還沒加，沒有身分的請求在 S0 先回 401。`GET /api/auth/sessions`、`DELETE /api/auth/sessions/:id`、`POST /api/tokens/:id/rotate` 是 501 stub（`admin`）。
+
+#### AUTH 切片的實作決定（M4，AUTH-R12～R22）
+
+以下皆為 （2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
+
+- A9：登入頁要知道 OIDC 是否啟用與 issuer 的主機名稱，新增免驗證的 `GET /api/auth/methods`（只回 `oidc.enabled` 與 `oidc.host`，與登入頁本來就會顯示的按鈕文字相同）。這擴大了 AUTH-R1 的免驗證例外；免驗證的路徑只有 GET 與三條精確的路徑（`/api/auth/oidc/start`、`/api/auth/oidc/callback`、`/api/auth/methods`），`/api/auth/oidc/` 底下的其他路徑與非 GET 仍要驗證。OIDC 沒有啟用時 start、callback 仍是註冊的路由，回 404 `not_found`（OpenAPI 才有文件）。
+- A10：`/mcp` 也不接受 OIDC 的 session（A6 的延伸，「不在範圍內」寫了 `/mcp` 不以 proxy 或 OIDC 身分存取）；密碼登入的 session 維持 AUTH-R1 的行為。proxy session 送到 `/mcp` 回 401，但**不撤銷**（`/mcp` 不判斷標頭，不能把「沒有判斷」當成「標頭消失」）。
+- A11：受信任的 proxy 帶來的值不在 `allowed_users` 中時一律 403，即使請求同時帶著有效的密碼或 OIDC session（proxy 斷言的是另一個人）；值在清單中而請求已經帶著有效的 session（任何方式）時沿用那個 session，不另外建立 proxy session。設定檔關掉反向代理驗證之後，既有的 proxy session 在下一次使用時撤銷。
+- A12：標頭出現多次、超過 256 bytes、含 C0／C1 控制字元或不是合法 UTF-8 時，log 為「忽略來自 <IP> 的 <標頭> 標頭：標頭出現多次、過長或含控制字元。」（不記錄值，同一個位址每分鐘最多一筆，節流表最多 1024 個位址）。判斷之後從請求中移除這個標頭，之後的 handler 看不到原始值；本機 socket 不做反向代理驗證。
+- A13：OIDC 的 start 是免驗證又會寫入 DB 的端點：寫入前先刪除過期的登入，未完成的登入超過 1000 筆時回 429 `oidc_failed`；discovery 失敗回 502 `oidc_failed`「無法連線到身分提供者，請稍後再試。」。對 IdP 的 HTTP client 走 netguard 的 Transport，只把 issuer 的主機名稱加進私有網段的允許清單（A3）：雲端 metadata 位址仍然被擋下，discovery 中其他主機的 endpoint 照 GRD 的一般規則。
+- A14：callback 先原子地取出並刪除 state（`DELETE … RETURNING`），之後才比對 cookie、到期時間、IdP 的 `error`，最後換 token；所以 cookie 不符、IdP 拒絕、換 token 失敗之後，同一個 state 都不能再用。`notesteme_oidc` 只在成功時清除，失敗時 10 分鐘後自然失效。
+- A15：id_token 的細節：`kid`、`exp`、`iat`、`sub` 必填；`exp` 必須嚴格晚於「現在減 60 秒」、`iat` 必須嚴格早於「現在加 60 秒」；只有一個 `aud` 但帶了 `azp` 時，`azp` 也必須是 `client_id`；JWK 有 `alg` 時必須與 header 相同，沒有時以金鑰種類判斷（RS256 只配 RSA ≥ 2048 bits、ES256 只配 P-256 且點在曲線上）；同一個 `kid` 出現多次時不採用；`exp`、`iat` 只接受 JSON 數字（字串不算）。實作在新的 `internal/oidc`，Hub 的 `internal/idtoken`（只接受 RS256）不變。
+- A16：`client_secret_basic` 依 RFC 6749 §2.3.1，client_id 與 secret 先以 form-urlencoded 編碼再做 Basic。
+- A17：token 輪替是原地更新（同一個 `id`，`last_used_at` 清空）；`:id` 先比對 ID（任何狀態），再比對有效的名稱；只有已撤銷或已過期的同名 token 時回 409 `token_inactive`（不是 404），完全找不到才是 404。
+- A18：`DELETE /api/auth/sessions/<自己的 id>` 與 `current` 一樣清除 cookie；token 與本機呼叫沒有 session，`current` 回 404。
+- A19：`last_seen_at` 每分鐘最多更新一次，與 AUTH-R4 的閒置期限延長合併成同一次寫入（活躍的 session 每分鐘最多一次寫入）。
+- A20（**安全預設，請 owner 特別確認**）：`X-Forwarded-Proto: https` 仍然接受任何來源（AUTH-R4 的 `Secure`），不限 `trusted_proxies`。偽造它只會讓 cookie 多一個 `Secure`（更嚴格，不是漏洞）；改成只信任 `trusted_proxies` 的話，沒有設定 `trusted_proxies` 的反向代理部署就會失去 `Secure`。反向代理驗證的標頭（AUTH-R13）與來源位址（AUTH-R6）都只信任 TCP 對端在 `trusted_proxies` 中的請求。
+- A21：稽核紀錄沒有另外建表：建立 proxy／OIDC session、撤銷 session、輪替 token、OIDC 登入失敗的原因都寫 log（只記 session／token 的 ID、來源位址與失敗原因，不記標頭值、code、token、client secret）。
+- A22：驗收步驟的 `redirect_url` 用設定的 listen 位址當 base URL（實際的 port 在啟動後才知道）；callback 的步驟只取 IdP 轉回網址的 path 與 query，送到實際的位址（steps.md 4.21 的補充）。
+
