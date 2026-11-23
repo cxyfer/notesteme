@@ -58,6 +58,8 @@ type Stream struct {
 	Default     bool
 	Forced      bool
 	AttachedPic bool
+	// Width、Height 是影像串流的尺寸（ffprobe 沒有回報時為 0），FRM-R8 依它決定擷取尺寸。
+	Width, Height int
 }
 
 // Info 是 ffprobe 的結果。
@@ -85,6 +87,16 @@ func (i *Info) Kind() string {
 		}
 	}
 	return "audio"
+}
+
+// VideoSize 回傳第一條非封面圖影像串流的尺寸；沒有影像串流或沒有尺寸時 ok 為 false。
+func (i *Info) VideoSize() (w, h int, ok bool) {
+	for _, s := range i.Streams {
+		if s.Type == "video" && !s.AttachedPic {
+			return s.Width, s.Height, s.Width > 0 && s.Height > 0
+		}
+	}
+	return 0, 0, false
 }
 
 // Silence 是一段靜音，時間為絕對秒數（Silences 已加上視窗起點）。
@@ -171,6 +183,8 @@ type probeJSON struct {
 		CodecName   string            `json:"codec_name"`
 		Tags        map[string]string `json:"tags"`
 		Disposition map[string]int    `json:"disposition"`
+		Width       int               `json:"width"`
+		Height      int               `json:"height"`
 	} `json:"streams"`
 	Format struct {
 		Duration   string `json:"duration"`
@@ -221,6 +235,8 @@ func (t *Tool) Probe(ctx context.Context, path string) (*Info, error) {
 			Default:     s.Disposition["default"] == 1,
 			Forced:      s.Disposition["forced"] == 1,
 			AttachedPic: s.Disposition["attached_pic"] == 1,
+			Width:       max(s.Width, 0),
+			Height:      max(s.Height, 0),
 		})
 	}
 	if !info.HasAV() {
@@ -412,4 +428,41 @@ func (t *Tool) RenderSubtitleFrame(ctx context.Context, dir, in string, atS floa
 		}
 	}
 	return nil
+}
+
+// 關鍵畫面（FRM）的逾時：場景偵測要讀完整部影片。
+const (
+	sceneTimeout = 30 * time.Minute
+	frameTimeout = 2 * time.Minute
+)
+
+// DetectScenes 執行 ffmpeg 的場景偵測（FRM-R2），回傳 stderr（showinfo 與 lavfi.scene_score，由 frames.ParseShowinfo 解析）。
+// threshold 只會是 0～1 的數字（處理方案的驗證），在這裡再夾一次，避免任意文字進入濾鏡字串。
+func (t *Tool) DetectScenes(ctx context.Context, in string, threshold float64) (string, error) {
+	if err := requireAbs(in); err != nil {
+		return "", err
+	}
+	threshold = min(max(threshold, 0), 1)
+	filter := "select='gt(scene," + strconv.FormatFloat(threshold, 'f', 4, 64) + ")',showinfo,metadata=print"
+	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info", "-protocol_whitelist", "file", "-format_whitelist", formatWhitelist,
+		"-i", in, "-an", "-sn", "-dn", "-vf", filter, "-f", "null", "-"}
+	res, err := t.runFFmpeg(ctx, sceneTimeout, args)
+	if err != nil {
+		return "", err
+	}
+	return string(res.Stderr), nil
+}
+
+// ExtractFrame 擷取 in 在 atS 秒的一個畫面，縮放成 w×h 的 JPEG 寫到 out（固定 -q:v 2，FRM-R8）。
+func (t *Tool) ExtractFrame(ctx context.Context, in string, atS float64, w, h int, out string) error {
+	if err := requireAbs(in, out); err != nil {
+		return err
+	}
+	if w <= 0 || h <= 0 || w > 4096 || h > 4096 {
+		return fmt.Errorf("media: 擷取尺寸 %dx%d 不正確", w, h)
+	}
+	args := append(ffmpegInputArgs(), "-ss", secs(atS), "-i", in,
+		"-an", "-sn", "-dn", "-frames:v", "1", "-vf", fmt.Sprintf("scale=%d:%d", w, h), "-q:v", "2", "-f", "mjpeg", "-y", out)
+	_, err := t.runFFmpeg(ctx, frameTimeout, args)
+	return err
 }

@@ -57,8 +57,13 @@ func (c *Client) DownloadAudio(ctx context.Context, videoID, dir string) (string
 	return files[0], nil
 }
 
-// audioFiles 列出 dir 中的 audio.* 檔案（依檔名排序）；includePartial 為 false 時略過 yt-dlp 的暫存檔。
+// audioFiles 列出 dir 中的 audio.* 檔案。
 func audioFiles(dir string, includePartial bool) []string {
+	return mediaFiles(dir, audioBase, includePartial)
+}
+
+// mediaFiles 列出 dir 中的 <base>.* 檔案（依檔名排序）；includePartial 為 false 時略過 yt-dlp 的暫存檔。
+func mediaFiles(dir, base string, includePartial bool) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
@@ -66,7 +71,7 @@ func audioFiles(dir string, includePartial bool) []string {
 	var out []string
 	for _, e := range entries {
 		name := e.Name()
-		if e.IsDir() || !strings.HasPrefix(name, audioBase+".") {
+		if e.IsDir() || !strings.HasPrefix(name, base+".") {
 			continue
 		}
 		if !includePartial && (strings.HasSuffix(name, ".part") || strings.HasSuffix(name, ".ytdl") || strings.HasSuffix(name, ".temp")) {
@@ -75,4 +80,36 @@ func audioFiles(dir string, includePartial bool) []string {
 		out = append(out, filepath.Join(dir, name))
 	}
 	return out
+}
+
+// videoBase 是下載的影片檔在 dir 中的固定檔名（不含副檔名）。
+const videoBase = "video"
+
+// VideoFormat 是關鍵畫面下載的格式：不超過 1920×1080 的最佳影像串流（FRM-R8），只要影像，不要音訊。
+const VideoFormat = "bv*[height<=1080][width<=1920]/b[height<=1080][width<=1920]"
+
+// ErrNoVideoFile 表示 yt-dlp 結束碼為 0，卻沒有寫出影片檔。
+var ErrNoVideoFile = errors.New("yt-dlp 沒有寫出影片檔")
+
+// DownloadVideo 下載不超過 1080p 的最佳影像到 dir（FRM-R8），回傳實際寫出的檔案路徑（video.<ext>）。
+// 上限沿用 GRD-R5 的音檔上限（netguard.LimitAudio）：yt-dlp 的下載不經過 netguard。
+func (c *Client) DownloadVideo(ctx context.Context, videoID, dir string) (string, error) {
+	for _, p := range mediaFiles(dir, videoBase, true) {
+		_ = os.Remove(p)
+	}
+	args := append(baseArgs(), "-f", VideoFormat, "--max-filesize", strconv.FormatInt(netguard.LimitAudio, 10),
+		"-o", filepath.Join(strings.ReplaceAll(dir, "%", "%%"), videoBase+".%(ext)s"), "--", WatchURL(videoID))
+	res, err := c.run(ctx, audioTimeout, args)
+	if err != nil {
+		return "", err
+	}
+	files := mediaFiles(dir, videoBase, false)
+	if len(files) == 0 {
+		if tooLargeLine.Match(res.Stdout) || tooLargeLine.Match(res.Stderr) {
+			return "", &errclass.Error{Class: errclass.ClassPermanent, Source: "yt-dlp", Err: ErrAudioTooLarge,
+				Message: "影片超過大小上限，無法擷取關鍵畫面。"}
+		}
+		return "", &errclass.Error{Class: errclass.ClassRetryable, Source: "yt-dlp", Err: ErrNoVideoFile}
+	}
+	return files[0], nil
 }

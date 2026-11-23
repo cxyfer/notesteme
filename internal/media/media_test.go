@@ -189,7 +189,7 @@ func TestProbeVideo(t *testing.T) {
 		t.Fatalf("info = %+v", info)
 	}
 	want := []Stream{
-		{Index: 0, Type: "video", Codec: "h264", Default: true},
+		{Index: 0, Type: "video", Codec: "h264", Default: true, Width: 1920, Height: 1080},
 		{Index: 1, Type: "audio", Codec: "aac", Lang: "en", Default: true},
 		{Index: 2, Type: "subtitle", Codec: "mov_text", Lang: "en", Default: true},
 		{Index: 3, Type: "subtitle", Codec: "mov_text", Lang: "ja", Title: "日本語 (forced)", Forced: true},
@@ -463,5 +463,33 @@ func TestRenderSubtitleFrameArgv(t *testing.T) {
 	var ce *errclass.Error
 	if !errors.As(err, &ce) || ce.Class != errclass.ClassPermanent || !strings.Contains(ce.Detail, "No such filter") {
 		t.Errorf("ffmpeg 失敗 err = %v", err)
+	}
+}
+
+func TestFrameArgsAreFixed(t *testing.T) {
+	r := &fakeRunner{}
+	tool := newTool(t, r)
+	if _, err := tool.DetectScenes(t.Context(), "relative.mp4", 0.3); err == nil {
+		t.Error("相對路徑要拒絕")
+	}
+	if err := tool.ExtractFrame(t.Context(), "/in.mp4", 1, 0, 10, "/out.jpg"); err == nil {
+		t.Error("不正確的尺寸要拒絕")
+	}
+	if _, err := tool.DetectScenes(t.Context(), "/in.mp4", 7); err != nil {
+		t.Fatal(err)
+	}
+	if err := tool.ExtractFrame(t.Context(), "/in.mp4", 75, 1920, 1080, "/out.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.calls) != 2 {
+		t.Fatalf("calls = %d", len(r.calls))
+	}
+	scene := strings.Join(r.calls[0].Args, " ")
+	if !strings.Contains(scene, "select='gt(scene,1.0000)',showinfo,metadata=print") || !strings.Contains(scene, "-protocol_whitelist file") {
+		t.Errorf("場景偵測 argv = %s", scene)
+	}
+	frame := strings.Join(r.calls[1].Args, " ")
+	if !strings.Contains(frame, "-ss 75.000 -i /in.mp4") || !strings.Contains(frame, "scale=1920:1080 -q:v 2") {
+		t.Errorf("擷取 argv = %s", frame)
 	}
 }

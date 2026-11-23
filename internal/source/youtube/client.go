@@ -87,6 +87,8 @@ type Info struct {
 	Description       string
 	Chapters          []Chapter
 	Tracks            []Track
+	// MaxVideoW、MaxVideoH 是格式清單中最高畫質的影像格式（FRM-R11 的 source_resolution）；沒有影像格式時為 0。
+	MaxVideoW, MaxVideoH int
 }
 
 // Live 回報影片是否還在直播或尚未首播（SRC-R7）。
@@ -287,6 +289,14 @@ type rawInfo struct {
 	Chapters          []rawChapter           `json:"chapters"`
 	Subtitles         map[string][]rawFormat `json:"subtitles"`
 	AutomaticCaptions map[string][]rawFormat `json:"automatic_captions"`
+	Formats           []rawMediaFormat       `json:"formats"`
+}
+
+// rawMediaFormat 是 formats[] 中用得到的欄位；vcodec 為 none 的是只有音訊的格式。
+type rawMediaFormat struct {
+	VCodec string `json:"vcodec"`
+	Width  *int   `json:"width"`
+	Height *int   `json:"height"`
 }
 
 type rawChapter struct {
@@ -326,6 +336,14 @@ func parseInfo(b []byte) (*Info, error) {
 		if t, err := time.Parse("20060102", *r.UploadDate); err == nil {
 			// 只有日期：當天 00:00 UTC，實際時間不確定。
 			info.PublishedAt, info.PublishedAtApprox = &t, true
+		}
+	}
+	for _, f := range r.Formats {
+		if f.VCodec == "none" || f.Width == nil || f.Height == nil || *f.Width <= 0 || *f.Height <= 0 || *f.Width > 16384 || *f.Height > 16384 {
+			continue
+		}
+		if *f.Width**f.Height > info.MaxVideoW*info.MaxVideoH {
+			info.MaxVideoW, info.MaxVideoH = *f.Width, *f.Height
 		}
 	}
 	for _, c := range r.Chapters {
