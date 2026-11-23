@@ -1293,10 +1293,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 列出訂閱（尚未實作） */
+    /** 列出訂閱（依建立順序） */
     get: operations["subscriptions-list"];
     put?: never;
-    /** 建立訂閱（頻道、播放清單、Bilibili 合集或 Podcast feed，尚未實作） */
+    /** 建立訂閱（YouTube 頻道或播放清單、Bilibili 合集、Podcast feed）；只依網址的格式辨識，不連外 */
     post: operations["subscriptions-create"];
     delete?: never;
     options?: never;
@@ -1345,15 +1345,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 取得一個訂閱（尚未實作） */
+    /** 取得一個訂閱，含上次與下次檢查的時間、最近一次的錯誤 */
     get: operations["subscriptions-get"];
     put?: never;
     post?: never;
-    /** 刪除訂閱（尚未實作） */
+    /** 刪除訂閱與它的條目；已建立的影音保留 */
     delete: operations["subscriptions-delete"];
     options?: never;
     head?: never;
-    /** 修改訂閱（尚未實作） */
+    /** 修改訂閱的處理方案、檢查頻率、回補範圍、過濾條件或啟用狀態 */
     patch: operations["subscriptions-patch"];
     trace?: never;
   };
@@ -1366,7 +1366,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 立即檢查訂閱的新內容（尚未實作） */
+    /** 把下一次檢查改成現在（下一輪排程器執行，不在請求中探索） */
     post: operations["subscriptions-check"];
     delete?: never;
     options?: never;
@@ -1381,7 +1381,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 列出訂閱探索到的條目與略過原因（尚未實作） */
+    /** 列出訂閱探索到的條目與略過原因（新的在前） */
     get: operations["subscriptions-entries"];
     put?: never;
     post?: never;
@@ -1737,6 +1737,11 @@ export interface components {
       /** Format: int64 */
       version: number;
     };
+    Backfill: {
+      /** Format: int64 */
+      count?: number;
+      mode: string;
+    };
     ChangePasswordInputBody: {
       /** @description 目前的密碼 */
       current_password: string;
@@ -1932,6 +1937,22 @@ export interface components {
       /** Format: int64 */
       version: number;
     };
+    CreateSubscriptionInputBody: {
+      backfill?: components["schemas"]["SubscriptionBackfill"];
+      /** @description 預設 true */
+      enabled?: boolean;
+      filters?: components["schemas"]["SubscriptionFilters"];
+      /** @description 建立影音時的單次覆寫（同 POST /api/items） */
+      overrides?: {
+        [key: string]: unknown;
+      };
+      /** @description 處理方案；省略時用預設處理方案 */
+      profile?: string;
+      /** @description 檢查頻率（Go duration，1h～168h，預設 6h） */
+      schedule?: string;
+      /** @description 頻道、播放清單、Bilibili 合集或 Podcast feed 的網址 */
+      url?: string;
+    };
     CreateTokenInputBody: {
       /** @description 有效期間，例如 30d、24h；省略代表永不到期 */
       expires_in?: string;
@@ -1995,6 +2016,26 @@ export interface components {
        */
       spent_usd: number;
     };
+    EntryView: {
+      /** @enum {string} */
+      decision: "created" | "skipped" | "deferred";
+      /** Format: int64 */
+      duration_s: number | null;
+      external_id: string;
+      item_id: string | null;
+      live_status: string | null;
+      /** Format: int64 */
+      part: number;
+      platform: string;
+      /** Format: date-time */
+      published_at: string | null;
+      reason: string | null;
+      /** @description 影音的短代號，例如 yt:abc123xxxxx */
+      ref: string;
+      /** Format: date-time */
+      seen_at: string;
+      title: string;
+    };
     Episode: {
       /**
        * Format: double
@@ -2033,6 +2074,7 @@ export interface components {
       required_scope?: string;
       /** Format: int64 */
       retry_after_s?: number;
+      subscription_id?: string;
       undefined_variables?: string[] | null;
       used_by?: string[] | null;
     };
@@ -2107,6 +2149,16 @@ export interface components {
     FieldError: {
       message: string;
       path: string;
+    };
+    Filters: {
+      exclude_shorts: boolean;
+      live: string;
+      /** Format: int64 */
+      max_duration_s?: number;
+      /** Format: int64 */
+      min_duration_s?: number;
+      title_exclude?: string;
+      title_include?: string;
     };
     Frame: {
       /** @description 畫面的時間（HH:MM:SS.mmm） */
@@ -2269,6 +2321,8 @@ export interface components {
       published_at: string | null;
       /** @description 影音的短代號，例如 yt:abc123xxxxx */
       ref: string;
+      /** @description 建立這部影音的訂閱；手動新增或訂閱已刪除時是 null */
+      subscription_id: string | null;
       title: string;
       /** @description 新增時指定做到哪個步驟為止 */
       until?: string;
@@ -2301,6 +2355,8 @@ export interface components {
       published_at: string | null;
       /** @description 影音的短代號，例如 yt:abc123xxxxx */
       ref: string;
+      /** @description 建立這部影音的訂閱；手動新增或訂閱已刪除時是 null */
+      subscription_id: string | null;
       title: string;
       /** @description 新增時指定做到哪個步驟為止 */
       until?: string;
@@ -2339,6 +2395,8 @@ export interface components {
       /** @description SponsorBlock 的片段，依開始時間排序；沒有片段時是空陣列，步驟沒有執行過時沒有這個欄位 */
       sponsor_segments?: components["schemas"]["SponsorSegment"][];
       stages: components["schemas"]["Stage"][] | null;
+      /** @description 建立這部影音的訂閱；手動新增或訂閱已刪除時是 null */
+      subscription_id: string | null;
       title: string;
       /** @description 新增時指定做到哪個步驟為止 */
       until?: string;
@@ -2577,6 +2635,20 @@ export interface components {
       config?: {
         [key: string]: unknown;
       } | null;
+    };
+    PatchSubscriptionInputBody: {
+      /** @description 修改時，下一次檢查重新評估因回補範圍略過的條目（只評估一次） */
+      backfill?: components["schemas"]["SubscriptionBackfill"];
+      enabled?: boolean;
+      /** @description 只影響之後的條目，不重新評估已略過的 */
+      filters?: components["schemas"]["SubscriptionFilters"];
+      /** @description 整個取代單次覆寫 */
+      overrides?: {
+        [key: string]: unknown;
+      };
+      /** @description 處理方案；空字串改回預設處理方案 */
+      profile?: string;
+      schedule?: string;
     };
     PlaygroundBody: {
       /**
@@ -2957,6 +3029,45 @@ export interface components {
       /** @description 譯文行 */
       translation: components["schemas"]["ASSLine"];
     };
+    SubscriptionBackfill: {
+      /**
+       * Format: int64
+       * @description recent 的部數，1～200
+       */
+      count?: number;
+      /** @description none（只抓之後的新內容）、recent（最近幾部）或 all（全部，有上限） */
+      mode: string;
+    };
+    SubscriptionCheckOutputBody: {
+      /** Format: date-time */
+      next_check_at: string;
+    };
+    SubscriptionEntriesOutputBody: {
+      entries: components["schemas"]["EntryView"][] | null;
+    };
+    SubscriptionFilters: {
+      /** @description 排除 Shorts（預設 true） */
+      exclude_shorts?: boolean;
+      /** @description wait（預設，等到有錄影）或 skip */
+      live?: string;
+      /**
+       * Format: int64
+       * @description 最長片長（秒），必須大於最短片長
+       */
+      max_duration_s?: number;
+      /**
+       * Format: int64
+       * @description 最短片長（秒）
+       */
+      min_duration_s?: number;
+      /** @description 標題符合就略過的 RE2 正規表示式，最長 200 個字元 */
+      title_exclude?: string;
+      /** @description 標題必須符合的 RE2 正規表示式，最長 200 個字元 */
+      title_include?: string;
+    };
+    SubscriptionsListOutputBody: {
+      subscriptions: components["schemas"]["View"][] | null;
+    };
     SwitchItemInputBody: {
       /**
        * @description 改用的執行方式；目前只有 api
@@ -3067,6 +3178,39 @@ export interface components {
       /** @description 影音的短代號，例如 yt:abc123xxxxx */
       ref: string;
       title: string;
+    };
+    View: {
+      backfill: components["schemas"]["Backfill"];
+      /** Format: date-time */
+      created_at: string;
+      enabled: boolean;
+      external_id: string;
+      filters: components["schemas"]["Filters"];
+      id: string;
+      /** @enum {string} */
+      kind: "channel" | "playlist" | "collection" | "feed";
+      /** Format: date-time */
+      last_checked_at: string | null;
+      last_error: string | null;
+      /** @enum {string|null} */
+      last_error_class: "retryable" | "permanent" | "needs_action" | null;
+      /**
+       * Format: date-time
+       * @description 下一次檢查；停用時是 null
+       */
+      next_check_at: string | null;
+      overrides: {
+        [key: string]: unknown;
+      };
+      /** @enum {string} */
+      platform: "youtube" | "bilibili" | "podcast";
+      /** @description 處理方案；null 代表預設處理方案 */
+      profile: string | null;
+      /** @description 檢查頻率（Go duration） */
+      schedule: string;
+      /** @description 第一次檢查時從來源取得；還沒檢查時是空字串 */
+      title: string;
+      url: string;
     };
     Word: {
       /** @example 00:00:01.800 */
@@ -6148,12 +6292,14 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["SubscriptionsListOutputBody"];
+        };
       };
       /** @description Error */
       default: {
@@ -6173,14 +6319,20 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["CreateSubscriptionInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description Created */
+      201: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["View"];
+        };
       };
       /** @description Error */
       default: {
@@ -6251,17 +6403,22 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 訂閱的 id */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["View"];
+        };
       };
       /** @description Error */
       default: {
@@ -6278,7 +6435,10 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 訂閱的 id */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
@@ -6305,17 +6465,26 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 訂閱的 id */
+        id: string;
+      };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["PatchSubscriptionInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["View"];
+        };
       };
       /** @description Error */
       default: {
@@ -6332,17 +6501,22 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 訂閱的 id */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description Accepted */
+      202: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["SubscriptionCheckOutputBody"];
+        };
       };
       /** @description Error */
       default: {
@@ -6357,19 +6531,29 @@ export interface operations {
   };
   "subscriptions-entries": {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description 只列這一種決定 */
+        decision?: "created" | "skipped" | "deferred" | "";
+        /** @description 最多幾筆；0 代表上限 5000 */
+        limit?: number;
+      };
       header?: never;
-      path?: never;
+      path: {
+        /** @description 訂閱的 id */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["SubscriptionEntriesOutputBody"];
+        };
       };
       /** @description Error */
       default: {

@@ -19,6 +19,7 @@ export function item(n: number, over: Partial<Item> = {}): Item {
     overrides: {},
     created_at: "2026-11-20T00:00:00Z",
     channel_id: "UCchan",
+    subscription_id: null,
     ...over,
   };
 }
