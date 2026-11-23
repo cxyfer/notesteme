@@ -30,8 +30,8 @@ const (
 	defaultMapReduceAfter = 60 * time.Minute
 	noteMapWindow         = 20 * time.Minute
 	// 動作（NOTE-R3、R7、R10）。
-	ActionRegenerateNote = "重新產生筆記"
-	actionOpenTemplate   = "開啟筆記模板"
+	// ActionRegenerateNote（「重新產生筆記」）定義在 gemini.go，兩種引擎共用。
+	actionOpenTemplate = "開啟筆記模板"
 	// NoteStaleReason 是字幕在筆記之後更新時的說明（NOTE-R10）。
 	NoteStaleReason = "字幕已更新，筆記可能過時。"
 )
@@ -270,15 +270,10 @@ func (p *Pipeline) prepareNote(ctx context.Context, it store.Item, job *llmJob, 
 	}
 
 	// 降級的結果（NOTE-R2）：章節產生失敗或 SponsorBlock 查詢失敗時 partial。
-	runs, err := r.StageRunsByItem(ctx, it.ID)
-	if err != nil {
+	if degraded, err := p.noteDegraded(ctx, r, it.ID); err != nil {
 		return err
-	}
-	latest := latestRuns(runs)
-	for _, s := range []string{StageSponsorBlock, StageChapters} {
-		if run, ok := latest[s]; ok && run.Status == store.StatusDone && run.Message != "" {
-			nj.status = notes.StatusPartial
-		}
+	} else if degraded {
+		nj.status = notes.StatusPartial
 	}
 
 	// 譯文（NOTE-R5、N5）：只在設定要求時附上筆記語言的譯文。
@@ -336,6 +331,21 @@ func (p *Pipeline) prepareNote(ctx context.Context, it store.Item, job *llmJob, 
 	}
 	job.extraKey = sha256Hex(key)
 	return nil
+}
+
+// noteDegraded 回報筆記的輸入是不是降級的結果（NOTE-R2）：sponsorblock 或 chapters 最新一次是 done 但帶有訊息。
+func (p *Pipeline) noteDegraded(ctx context.Context, r *store.Repo, itemID string) (bool, error) {
+	runs, err := r.StageRunsByItem(ctx, itemID)
+	if err != nil {
+		return false, err
+	}
+	latest := latestRuns(runs)
+	for _, s := range []string{StageSponsorBlock, StageChapters} {
+		if run, ok := latest[s]; ok && run.Status == store.StatusDone && run.Message != "" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func selectedSet(frames map[int]notes.Frame) map[int]bool {

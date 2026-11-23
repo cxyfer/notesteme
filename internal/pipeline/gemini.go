@@ -247,15 +247,6 @@ func (p *Pipeline) geminiMetadata(ctx context.Context, it store.Item) (llm.Gemin
 	return meta, parents, nil
 }
 
-// errNoteRendererMissing：筆記的模板、跳脫與自動檢查（NOTE-R2、R7、R8，GEM-R6）由 NOTE 的切片（M3-S4）實作。
-// 合併時把 writeGeminiNote 接到 NOTE 的渲染：sections 的 StartMS 取代 cue 的時間，內文的 [[t:MM:SS]]（llm.GeminiTimeRefs）
-// 換成時間連結，frontmatter 加 notesteme_engine: gemini、notesteme_timing: model，來源紀錄見 GEM-R6。
-func (p *Pipeline) writeGeminiNote(_ context.Context, it store.Item, _ Effective, n geminiNote) (result, error) {
-	p.log.Info("Gemini 的筆記通過驗證，等待筆記模板（M3-S4）", "item", it.ID, "sections", len(n.Output.Sections), "requests", n.Requests)
-	return result{}, &errclass.Error{
-		Class: errclass.ClassPermanent, Source: "gemini", Detail: "筆記模板尚未實作", Message: GeminiNoteRendererMissing,
-	}
-}
-
-// GeminiNoteRendererMissing 是筆記模板還沒有實作時 note 的訊息；驗收 harness 依它把「note 是 done」的斷言算成 pending（GEM G9）。
+// GeminiNoteRendererMissing 是 NOTE（M3-S4）合併之前 Gemini 筆記的訊息（GEM G9）。M3-S4 之後 writeGeminiNote
+// （gemini_note.go）用 NOTE 的渲染寫出筆記，不再出現這個訊息；保留常數讓驗收 harness 的判斷仍可編譯。
 const GeminiNoteRendererMissing = "Gemini 的筆記通過驗證，但筆記模板還沒有實作（M3-S4）。"

@@ -499,7 +499,7 @@ func (p *Pipeline) SeedFrames(ctx context.Context, itemID string, list []SeedFra
 	}
 	for i, f := range list {
 		n := i + 1
-		img, err := solidJPEG(w, h, f.Color)
+		img, err := seedJPEG(w, h, f.Color)
 		if err != nil {
 			return err
 		}
@@ -540,8 +540,8 @@ func (p *Pipeline) SeedFrames(ctx context.Context, itemID string, list []SeedFra
 	})
 }
 
-// solidJPEG 產生一張純色的 JPEG；hex 是 #rrggbb，空字串是灰色。
-func solidJPEG(w, h int, hex string) ([]byte, error) {
+// seedJPEG 產生一張純色的 JPEG；hex 是 #rrggbb，空字串是灰色。
+func seedJPEG(w, h int, hex string) ([]byte, error) {
 	c := color.RGBA{R: 0x80, G: 0x80, B: 0x80, A: 0xff}
 	if hex != "" {
 		v, err := strconv.ParseUint(strings.TrimPrefix(hex, "#"), 16, 32)

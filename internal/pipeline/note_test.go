@@ -657,13 +657,13 @@ func TestNoteHelpers(t *testing.T) {
 	if in.Front.Source != "local:abcd" || in.CueStart[1] != 61_000 || len(in.CueStart) != 1 || in.Channel != "" {
 		t.Errorf("input = %+v", in)
 	}
-	if _, err := solidJPEG(4, 4, "#12345"); err == nil {
+	if _, err := seedJPEG(4, 4, "#12345"); err == nil {
 		t.Error("顏色長度不對應該失敗")
 	}
-	if _, err := solidJPEG(4, 4, "#zzzzzz"); err == nil {
+	if _, err := seedJPEG(4, 4, "#zzzzzz"); err == nil {
 		t.Error("顏色不是十六進位應該失敗")
 	}
-	if b, err := solidJPEG(4, 4, ""); err != nil || len(b) == 0 {
+	if b, err := seedJPEG(4, 4, ""); err != nil || len(b) == 0 {
 		t.Errorf("灰色：%v", err)
 	}
 	// noteSponsor 只在實際排除句子時才算 parent。

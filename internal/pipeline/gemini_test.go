@@ -54,9 +54,9 @@ func TestResolveExecutorGeminiSkips(t *testing.T) {
 			t.Errorf("%s：transcript = %+v", name, res)
 		}
 	}
-	// note 的一般流程還沒有實作（M3-S4）：維持 not_implemented。
+	// M3-S4 之後 note 的一般流程已實作：engine: pipeline 走 api，不再是 not_implemented。
 	c, _ = planChain(mustEffective(t, geminiOver(map[string]any{"engine": "pipeline", "provider": "anthropic"})), StageNote, StageNote, yt)
-	if len(c) != 1 || !c[0].Skip || c[0].Reason != SkipNotImplemented {
+	if len(c) != 1 || c[0].Skip || c[0].Executor != ExecutorAPI {
 		t.Errorf("engine: pipeline 的 note = %+v", c)
 	}
 }
