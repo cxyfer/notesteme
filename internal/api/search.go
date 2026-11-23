@@ -138,8 +138,8 @@ func (rt *routes) search(ctx context.Context, in *searchInput) (*searchOutput, e
 	}
 	for _, h := range page.Hits {
 		out.Body.Results = append(out.Body.Results, SearchResult{
-			Item:    SearchItem{ID: h.ItemID, Ref: source.Ref(h.Platform, h.ExternalID, h.Part), Title: h.Title},
-			Lang:    h.Lang, Variant: h.Variant, Cue: h.Cue,
+			Item: SearchItem{ID: h.ItemID, Ref: source.Ref(h.Platform, h.ExternalID, h.Part), Title: h.Title},
+			Lang: h.Lang, Variant: h.Variant, Cue: h.Cue,
 			Start: subtitle.FormatDisplayTime(h.StartMS), End: subtitle.FormatDisplayTime(h.EndMS),
 			Text: h.Text, Highlights: search.Highlights(h.Text, folded), Before: h.Before, After: h.After,
 		})
