@@ -283,6 +283,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerAgent(api)
 	rt.registerM2Stubs(api)
 	rt.registerM3Stubs(api)
+	rt.registerM4Stubs(api)
 	rt.registerM5Stubs(api)
 	rt.registerFrames(api)
 	registerScoped(api, huma.Operation{

@@ -3904,6 +3904,48 @@
         "summary": "修改登入密碼：目前的密碼錯誤回 422 invalid_password（和登入共用鎖定，AUTH-R6）；成功後撤銷目前以外的所有 session"
       }
     },
+    "/api/auth/sessions": {
+      "get": {
+        "operationId": "auth-sessions-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出登入的工作階段（尚未實作）"
+      }
+    },
+    "/api/auth/sessions/{id}": {
+      "delete": {
+        "operationId": "auth-sessions-revoke",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "撤銷一個工作階段（id 為 current 時等同登出，尚未實作）"
+      }
+    },
     "/api/backup": {
       "post": {
         "operationId": "backup-create",
@@ -3923,6 +3965,27 @@
           }
         },
         "summary": "備份：回傳 tar.gz 串流，包含資料庫快照與設定檔，不含 master key（OPS-R1）"
+      }
+    },
+    "/api/bundles/import": {
+      "post": {
+        "operationId": "bundles-import",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "匯入 bundle（multipart 的 file，尚未實作）"
       }
     },
     "/api/channels/{id}/overrides": {
@@ -4216,6 +4279,170 @@
           }
         },
         "summary": "上傳平台 cookie（加密存放，每個平台一份），並恢復等待它的 blocked 步驟（SEC-R4、SRC-R8、PIPE-R4）"
+      }
+    },
+    "/api/costs": {
+      "get": {
+        "operationId": "costs-summary",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "依日期、provider、模型、步驟、頻道或影音彙總花費（尚未實作）"
+      }
+    },
+    "/api/costs/entries": {
+      "get": {
+        "operationId": "costs-entries",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出成本帳本的紀錄（尚未實作）"
+      }
+    },
+    "/api/costs/export.csv": {
+      "get": {
+        "operationId": "costs-export",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "匯出成本帳本為 CSV（尚未實作）"
+      }
+    },
+    "/api/digests": {
+      "get": {
+        "operationId": "digests-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出彙整設定（尚未實作）"
+      },
+      "post": {
+        "operationId": "digests-create",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "建立彙整設定（尚未實作）"
+      }
+    },
+    "/api/digests/{id}": {
+      "delete": {
+        "operationId": "digests-delete",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "刪除彙整設定（尚未實作）"
+      },
+      "patch": {
+        "operationId": "digests-patch",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "修改彙整設定（尚未實作）"
+      }
+    },
+    "/api/digests/{id}/preview": {
+      "post": {
+        "operationId": "digests-preview",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "預覽彙整的內容，不送出、不改變下次執行時間（尚未實作）"
       }
     },
     "/api/estimate": {
@@ -4605,6 +4832,48 @@
         "summary": "新增影音：成功建立回 201，已存在回 200（ING-R2）"
       }
     },
+    "/api/items/batch": {
+      "post": {
+        "operationId": "items-batch",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "對多部影音執行同一個動作（重跑、換處理方案、標記已讀、刪除、匯出 bundle，尚未實作）"
+      }
+    },
+    "/api/items/continue": {
+      "post": {
+        "operationId": "items-continue-batch",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "一次繼續處理多部摘要後暫停的影音（尚未實作）"
+      }
+    },
     "/api/items/{id}": {
       "delete": {
         "operationId": "items-delete",
@@ -4692,6 +4961,27 @@
         "summary": "影音詳情：各步驟的狀態與各字幕來源的結果"
       }
     },
+    "/api/items/{id}/bundle": {
+      "get": {
+        "operationId": "items-bundle",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "匯出影音的 bundle（.notesteme.zip，尚未實作）"
+      }
+    },
     "/api/items/{id}/cancel": {
       "post": {
         "operationId": "items-cancel",
@@ -4730,6 +5020,27 @@
           }
         },
         "summary": "取消影音所有未結束的步驟，執行中的子程序整組結束（PIPE-R15）；沒有未結束的步驟時也回 200"
+      }
+    },
+    "/api/items/{id}/continue": {
+      "post": {
+        "operationId": "items-continue",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "繼續處理摘要後暫停的影音（尚未實作）"
       }
     },
     "/api/items/{id}/cues": {
@@ -5338,6 +5649,248 @@
           }
         },
         "summary": "用影音現行筆記的段落預覽模板，不呼叫 LLM、不寫入檔案（尚未實作）"
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "operationId": "notifications-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出通知 outbox 的項目（state=pending、sent 或 dropped，尚未實作）"
+      }
+    },
+    "/api/notifiers": {
+      "get": {
+        "operationId": "notifiers-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出通知端點（尚未實作）"
+      },
+      "post": {
+        "operationId": "notifiers-create",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "建立通知端點（ntfy、Discord、Telegram 或 webhook，尚未實作）"
+      }
+    },
+    "/api/notifiers/{id}": {
+      "delete": {
+        "operationId": "notifiers-delete",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "刪除通知端點（尚未實作）"
+      },
+      "get": {
+        "operationId": "notifiers-get",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "取得一個通知端點（尚未實作）"
+      },
+      "patch": {
+        "operationId": "notifiers-patch",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "修改通知端點（尚未實作）"
+      }
+    },
+    "/api/notifiers/{id}/test": {
+      "post": {
+        "operationId": "notifiers-test",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "傳送測試通知（尚未實作）"
+      }
+    },
+    "/api/overview": {
+      "get": {
+        "operationId": "overview-get",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "總覽：處理中、等你決定、失敗、本月花費、磁碟用量與今天的動態（尚未實作）"
+      }
+    },
+    "/api/prices": {
+      "delete": {
+        "operationId": "prices-delete",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "刪除單價覆寫（尚未實作）"
+      },
+      "get": {
+        "operationId": "prices-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出計價表（內建與覆寫，尚未實作）"
+      },
+      "put": {
+        "operationId": "prices-put",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "設定單價覆寫（尚未實作）"
+      }
+    },
+    "/api/prices/confirm": {
+      "post": {
+        "operationId": "prices-confirm",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "確認內建計價表仍然正確（尚未實作）"
       }
     },
     "/api/profiles": {
@@ -6186,6 +6739,27 @@
         "summary": "辨識網址指向什麼內容，不建立影音（ING-R1、R5、R9）"
       }
     },
+    "/api/search": {
+      "get": {
+        "operationId": "search",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "字幕全文搜尋（尚未實作）"
+      }
+    },
     "/api/settings/hub": {
       "get": {
         "operationId": "settings-hub-get",
@@ -6316,6 +6890,210 @@
         "summary": "取代全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）；內容不正確回 422 與逐欄位的 errors"
       }
     },
+    "/api/subscriptions": {
+      "get": {
+        "operationId": "subscriptions-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出訂閱（尚未實作）"
+      },
+      "post": {
+        "operationId": "subscriptions-create",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "建立訂閱（頻道、播放清單、Bilibili 合集或 Podcast feed，尚未實作）"
+      }
+    },
+    "/api/subscriptions/import": {
+      "post": {
+        "operationId": "subscriptions-import",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "從 OPML 匯入訂閱（尚未實作）"
+      }
+    },
+    "/api/subscriptions/preview": {
+      "post": {
+        "operationId": "subscriptions-preview-new",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "建立訂閱之前試跑篩選與回補，不建立影音（尚未實作）"
+      }
+    },
+    "/api/subscriptions/{id}": {
+      "delete": {
+        "operationId": "subscriptions-delete",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "刪除訂閱（尚未實作）"
+      },
+      "get": {
+        "operationId": "subscriptions-get",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "取得一個訂閱（尚未實作）"
+      },
+      "patch": {
+        "operationId": "subscriptions-patch",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "修改訂閱（尚未實作）"
+      }
+    },
+    "/api/subscriptions/{id}/check": {
+      "post": {
+        "operationId": "subscriptions-check",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "立即檢查訂閱的新內容（尚未實作）"
+      }
+    },
+    "/api/subscriptions/{id}/entries": {
+      "get": {
+        "operationId": "subscriptions-entries",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出訂閱探索到的條目與略過原因（尚未實作）"
+      }
+    },
+    "/api/subscriptions/{id}/preview": {
+      "post": {
+        "operationId": "subscriptions-preview",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "試跑既有訂閱的篩選與回補，不建立影音（尚未實作）"
+      }
+    },
     "/api/system": {
       "get": {
         "operationId": "system-get",
@@ -6436,6 +7214,48 @@
         "summary": "把一個等待中或已被領取的 Agent 任務改用 API 執行，原本的租約立即失效（AGT-R11）"
       }
     },
+    "/api/term-candidates": {
+      "get": {
+        "operationId": "term-candidates-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出所有頻道待確認的術語候選（尚未實作）"
+      }
+    },
+    "/api/term-candidates/decide": {
+      "post": {
+        "operationId": "term-candidates-decide",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "一次決定多個術語候選（尚未實作）"
+      }
+    },
     "/api/tokens": {
       "get": {
         "operationId": "tokens-list",
@@ -6538,6 +7358,27 @@
           }
         },
         "summary": "撤銷 API token（依 id 或有效的名稱，AUTH-R9）"
+      }
+    },
+    "/api/tokens/{id}/rotate": {
+      "post": {
+        "operationId": "tokens-rotate",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "輪替 token 的 secret，名稱、scope 與到期時間不變（尚未實作）"
       }
     },
     "/api/tools/yt-dlp/rollback": {
