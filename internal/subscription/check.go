@@ -108,15 +108,23 @@ type check struct {
 	skipped        int
 	complete       bool
 	throttledUntil time.Time
+	// dry 是試跑預覽（SUB-R6）：照常探索與過濾，但不建立影音、不寫入任何東西；決定記在 preview。
+	dry     bool
+	preview previewRows
 }
 
 // run 探索、決定並建立影音。回傳的錯誤是 *deferredError、*checkError、errDuplicateHandle 或資料庫錯誤。
 func (c *check) run(ctx context.Context) (struct{}, error) {
 	s, sub := c.s, c.sub
 	c.title, c.externalID = sub.Title, sub.ExternalID
-	existing, err := s.d.Store.Read().SubscriptionEntries(ctx, sub.ID, maxEntriesList)
-	if err != nil {
-		return struct{}{}, err
+	var err error
+	var existing []store.SubscriptionEntry
+	if !c.dry {
+		// 預覽視同剛建立的訂閱：不讀既有的條目（SUB-R6）。
+		existing, err = s.d.Store.Read().SubscriptionEntries(ctx, sub.ID, maxEntriesList)
+		if err != nil {
+			return struct{}{}, err
+		}
 	}
 	known := map[string]store.SubscriptionEntry{}
 	for _, e := range existing {
@@ -139,7 +147,7 @@ func (c *check) run(ctx context.Context) (struct{}, error) {
 		}
 		return struct{}{}, err
 	}
-	if c.externalID != sub.ExternalID {
+	if c.externalID != sub.ExternalID && !c.dry {
 		if dup, err := c.handleDuplicate(ctx); err != nil || dup {
 			if dup {
 				return struct{}{}, errDuplicateHandle
@@ -198,6 +206,9 @@ func (c *check) run(ctx context.Context) (struct{}, error) {
 		}
 	}
 	c.complete = true
+	if c.dry {
+		return struct{}{}, nil
+	}
 	return struct{}{}, c.persist(ctx, true)
 }
 
@@ -342,6 +353,10 @@ func (c *check) sortOld(cands []candidate) {
 // create 以 ingest 建立影音並套用訂閱的處理方案（快照在新增當下凍結）。已在媒體庫或垃圾桶中的照實記錄；
 // 新增失敗時記為 deferred（ingest_failed），下一次檢查再試，不影響其他條目。
 func (c *check) create(ctx context.Context, cand candidate, priority int) error {
+	if c.dry {
+		c.decide(cand, store.EntryCreated, "", "")
+		return nil
+	}
 	var ov map[string]any
 	if len(c.sub.Overrides) > 0 {
 		_ = json.Unmarshal(c.sub.Overrides, &ov)
@@ -380,6 +395,10 @@ func (c *check) create(ctx context.Context, cand candidate, priority int) error 
 // decide 記下一個條目的決定。
 func (c *check) decide(cand candidate, decision, reason, itemID string) {
 	if reason == "-" {
+		return
+	}
+	if c.dry {
+		c.preview.add(cand, decision, reason)
 		return
 	}
 	switch decision {

@@ -197,7 +197,14 @@ type CreateInput struct {
 	Backfill  *BackfillInput
 	Filters   *FiltersInput
 	Enabled   *bool
+	// title 是暫定的標題，只有匯入使用（SUB-R7）；POST /api/subscriptions 沒有 title（SUB-R1）。
+	title string
 }
+
+// MaxURLLen 是訂閱網址的長度上限。
+const MaxURLLen = 2048
+
+const msgURLTooLong = "網址最長 2048 個字元。"
 
 // settings 驗證排程、回補與過濾，錯誤依欄位的固定順序（backfill、filters、schedule）。
 func settings(schedule *string, bf *BackfillInput, fi *FiltersInput, base store.Subscription, hasBase bool) (time.Duration, Backfill, Filters, []validate.FieldError) {
@@ -230,6 +237,9 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (View, error) {
 	if in.URL == "" {
 		return View{}, &FieldsError{Fields: []validate.FieldError{{Path: "url", Message: msgURLRequired}}}
 	}
+	if len(in.URL) > MaxURLLen {
+		return View{}, &FieldsError{Fields: []validate.FieldError{{Path: "url", Message: msgURLTooLong}}}
+	}
 	src, err := Recognize(in.URL)
 	if err != nil {
 		return View{}, err
@@ -243,7 +253,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (View, error) {
 	}
 	enabled := in.Enabled == nil || *in.Enabled
 	sub := store.Subscription{
-		Kind: src.Kind, Platform: src.Platform, ExternalID: src.ExternalID, URL: src.URL, ProfileID: in.Profile,
+		Kind: src.Kind, Platform: src.Platform, ExternalID: src.ExternalID, URL: src.URL, Title: in.title, ProfileID: in.Profile,
 		Schedule: sched, Enabled: enabled,
 	}
 	if sub.Overrides, err = json.Marshal(orEmpty(in.Overrides)); err != nil {
