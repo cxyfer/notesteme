@@ -23,6 +23,8 @@ const (
 	TypeSubscriptionChecked     = "subscription.checked"
 	TypeSubscriptionCheckFailed = "subscription.check_failed"
 	TypeSubscriptionDeleted     = "subscription.deleted"
+	// TypeBudgetWarning 是本月花費（含預留）第一次達到提醒門檻（COST-R10）。
+	TypeBudgetWarning = "budget.warning"
 )
 
 // Event 是推送給訂閱者的事件；JSON 欄位就是 SSE 的 data。
@@ -43,6 +45,13 @@ type Event struct {
 	Message      string `json:"message,omitempty"`
 	Created      *int   `json:"created,omitempty"`
 	Skipped      *int   `json:"skipped,omitempty"`
+	// Month、Percent、SpentUSD、ReservedUSD、MonthlyUSD 只有 budget.warning 才有（COST-R10，放在事件的頂層）。
+	// 金額用指標：0 也要寫出來，其他事件則完全沒有這些欄位。
+	Month       string   `json:"month,omitempty"`
+	Percent     *int     `json:"percent,omitempty"`
+	SpentUSD    *float64 `json:"spent_usd,omitempty"`
+	ReservedUSD *float64 `json:"reserved_usd,omitempty"`
+	MonthlyUSD  *float64 `json:"monthly_usd,omitempty"`
 }
 
 // DefaultBuffer 是每個訂閱者的 buffer 大小。

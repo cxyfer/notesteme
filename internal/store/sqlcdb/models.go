@@ -76,6 +76,7 @@ type CostLedger struct {
 	Outcome       string
 	UnitPriceJson string
 	At            int64
+	Stage         string
 }
 
 type EncryptionKey struct {
@@ -228,6 +229,14 @@ type Output struct {
 	Vault     *string
 	GitCommit *string
 	State     string
+}
+
+type PriceOverride struct {
+	Provider   string
+	Model      string
+	UnitType   string
+	UsdPerUnit float64
+	CheckedAt  int64
 }
 
 type Profile struct {

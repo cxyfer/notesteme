@@ -45,7 +45,7 @@ func (q *Queries) InsertCostEntry(ctx context.Context, arg InsertCostEntryParams
 }
 
 const listCostEntries = `-- name: ListCostEntries :many
-SELECT id, item_id, item_title, stage_run_id, task_id, provider, model, units, unit_type, usd, state, attempt, outcome, unit_price_json, at FROM cost_ledger ORDER BY at, rowid
+SELECT id, item_id, item_title, stage_run_id, task_id, provider, model, units, unit_type, usd, state, attempt, outcome, unit_price_json, at, stage FROM cost_ledger ORDER BY at, rowid
 `
 
 func (q *Queries) ListCostEntries(ctx context.Context) ([]CostLedger, error) {
@@ -73,6 +73,7 @@ func (q *Queries) ListCostEntries(ctx context.Context) ([]CostLedger, error) {
 			&i.Outcome,
 			&i.UnitPriceJson,
 			&i.At,
+			&i.Stage,
 		); err != nil {
 			return nil, err
 		}
