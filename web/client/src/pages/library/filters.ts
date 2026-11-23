@@ -14,6 +14,7 @@ export const STAGES = [
   "metadata",
   "transcript",
   "normalize",
+  "summary",
   "segment",
   "correct",
   "translate",
