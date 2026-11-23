@@ -71,6 +71,8 @@ type hubState struct {
 	content *hubContent
 	// client 是 Client 與 Hub 的狀態（hub_client.go，M5-S7）。
 	client hubClientState
+	// mcp 是 Hub MCP 的連線（token 名稱 → 連線，hub_mcp.go，M5-S6）。
+	mcp map[string]*hubMCPConn
 }
 
 // pendingSignIn 是 `starts signing in` 或連結之後、還沒完成的登入。

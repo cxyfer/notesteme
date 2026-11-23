@@ -176,6 +176,7 @@ func (s *Scenario) close() error {
 	if gateErr := s.World.OpenGate(); gateErr != nil {
 		err = errors.Join(err, fmt.Errorf("解除 gate：%w", gateErr))
 	}
+	s.closeHubMCP()
 	if s.cancel != nil {
 		s.cancel()
 	}
