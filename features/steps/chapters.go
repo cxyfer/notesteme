@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/cucumber/godog"
@@ -16,7 +17,7 @@ import (
 
 // registerChapters 註冊「SponsorBlock 與章節」的步驟（steps.md 4.13，M3）。
 //
-// SponsorBlock 的四個句型由 M3-S1 實作；`the chapters of … are:` 仍是步驟樁（CHAP 的切片）。
+// SponsorBlock 的四個句型由 M3-S1 實作；`the chapters of … are:` 由 M3-S4 實作（NOTE 的閘門，也用於 FRM-R9）。
 // SponsorBlock 的句型也是 CHAP、FRM、NOTE 場景的閘門：只對 SPB 的場景放行（見 spbGate），
 // 其他領域的場景在它們的切片實作之前維持 pending，停在同一個閘門。
 func registerChapters(r *Registry, s *Scenario) {
@@ -24,7 +25,7 @@ func registerChapters(r *Registry, s *Scenario) {
 	r.Step(`SponsorBlock fails for {string} with HTTP {int}`, s.sponsorBlockFails)
 	r.Step(`SponsorBlock received {int} requests for {string}`, s.sponsorBlockReceived)
 	r.Step(`SponsorBlock never received the video ID of {string}`, s.sponsorBlockNeverSawID)
-	r.Step(`the chapters of {string} are:`, func(string, *godog.Table) error { return godog.ErrPending })
+	r.Step(`the chapters of {string} are:`, s.chaptersAre)
 }
 
 // spbGate 讓 SponsorBlock 的句型只在 SPB 的場景（有 @SPB- 開頭的 tag）執行；其他領域的場景是 pending，
@@ -36,6 +37,10 @@ func (s *Scenario) spbGate() error {
 	}
 	// M3-S3：FRM 的場景也放行（FRM-R6 用 SponsorBlock 登記片段）。
 	if slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@FRM-") }) {
+		return nil
+	}
+	// M3-S4：NOTE 的場景也放行（NOTE-R2 用 SponsorBlock 的失敗）；SPB-R7 在 note 步驟實作之後通過下面的檢查。
+	if pipeline.StageAvailable(pipeline.StageNote) && slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@NOTE-") }) {
 		return nil
 	}
 	if !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@SPB-") }) {
@@ -158,4 +163,58 @@ func (s *Scenario) sponsorBlockNeverSawID(ref string) error {
 		return fmt.Errorf("SponsorBlock 收到的請求含有 %s 的影片 ID", ref)
 	}
 	return nil
+}
+
+// chaptersAre 直接寫入現行的 chapters 產出（steps.md 4.13）：表格欄位 start（時間碼）、title，可加 cue；
+// 有 cue 欄時 origin 是 llm，否則是 platform。影音不存在時先新增並做到 metadata。
+func (s *Scenario) chaptersAre(ref string, table *godog.Table) error {
+	if table == nil || len(table.Rows) < 2 {
+		return errors.New("章節表格至少要有表頭與一列")
+	}
+	var head []string
+	for _, c := range table.Rows[0].Cells {
+		head = append(head, c.Value)
+	}
+	for _, h := range head {
+		if h != "start" && h != "title" && h != "cue" {
+			return fmt.Errorf("章節表格只支援 start、title、cue 欄位，收到 %q", h)
+		}
+	}
+	if !slices.Contains(head, "start") || !slices.Contains(head, "title") {
+		return fmt.Errorf("章節表格缺少 start 或 title（表頭 %v）", head)
+	}
+	var list []pipeline.SeedChapter
+	for i, r := range table.Rows[1:] {
+		if len(r.Cells) != len(head) {
+			return fmt.Errorf("章節表格第 %d 列的欄數與表頭不同", i+1)
+		}
+		var ch pipeline.SeedChapter
+		for j, c := range r.Cells {
+			switch head[j] {
+			case "start":
+				ms, err := subtitle.ParseTimecode(c.Value)
+				if err != nil {
+					return fmt.Errorf("章節表格第 %d 列的 start：%w", i+1, err)
+				}
+				ch.StartMS = ms
+			case "title":
+				ch.Title = c.Value
+			case "cue":
+				n, err := strconv.Atoi(c.Value)
+				if err != nil || n < 1 {
+					return fmt.Errorf("章節表格第 %d 列的 cue 應是從 1 起算的整數：%q", i+1, c.Value)
+				}
+				ch.Cue = n
+			}
+		}
+		list = append(list, ch)
+	}
+	if err := s.prepareOwner(); err != nil {
+		return err
+	}
+	id, err := s.ensureItemForSeed(ref)
+	if err != nil {
+		return err
+	}
+	return s.server.SeedChapters(s.ctx, id, list)
 }

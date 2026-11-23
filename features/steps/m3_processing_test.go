@@ -5,12 +5,14 @@ import (
 	"testing"
 
 	"github.com/cucumber/godog"
+
+	"github.com/cxyfer/notesteme/internal/pipeline"
 )
 
 // steps.md 4.13、4.18：`processed up to` M3 的步驟與 M4 的 summary 在產品實作之前是 pending，而且不啟動 server。
-// sponsorblock、chapters、frames 已在 M3-S1～S3 實作（pipeline.StageAvailable 為 true），不在其中。
+// M3-S1～S4 之後 sponsorblock、chapters、frames、note 都已實作（pipeline.StageAvailable 為 true）；summary 仍是 pending。
 func TestProcessedUpToM3StagePending(t *testing.T) {
-	for _, stage := range []string{"summary", "note"} {
+	for _, stage := range []string{"summary"} {
 		s := newTestScenario(t)
 		if err := s.itemProcessedUpTo("yt:talk01xxxxx", stage); !errors.Is(err, godog.ErrPending) {
 			t.Errorf("%s：err = %v，預期 pending", stage, err)
@@ -19,14 +21,19 @@ func TestProcessedUpToM3StagePending(t *testing.T) {
 			t.Errorf("%s：不該啟動 server", stage)
 		}
 	}
-	// 其他不認識的名稱仍然失敗（frames.select 已合併成 frames）。
+	for _, stage := range []string{pipeline.StageSponsorBlock, pipeline.StageChapters, pipeline.StageFrames, pipeline.StageNote} {
+		if !pipeline.StageAvailable(stage) {
+			t.Errorf("%s 應該已經實作", stage)
+		}
+	}
+	// 不認識的名稱仍然失敗（frames.select 已合併成 frames），而且不是 pending。
 	s := newTestScenario(t)
 	if err := s.itemProcessedUpTo("yt:talk01xxxxx", "frames.select"); err == nil || errors.Is(err, godog.ErrPending) {
 		t.Errorf("frames.select 應該失敗：%v", err)
 	}
 }
 
-// 還沒有實作的 M3 步驟一律 skipped（not_implemented）：重跑不能從它開始（會回 501）。sponsorblock 已實作，這裡是 done。
+// 還沒有實作的步驟（summary）一律 skipped，不能當成重跑的起點；note 已實作，它的 skipped 是重跑的起點。
 func TestFirstUnfinishedSkipsUnimplementedM3Stages(t *testing.T) {
 	var it itemJSON
 	for _, name := range []string{"metadata", "transcript", "normalize", "summary", "segment", "correct", "translate",
@@ -43,8 +50,8 @@ func TestFirstUnfinishedSkipsUnimplementedM3Stages(t *testing.T) {
 		}
 		it.Stages = append(it.Stages, st)
 	}
-	if got := firstUnfinished(it, "publish"); got != "publish" {
-		t.Errorf("firstUnfinished = %q，預期 publish", got)
+	if got := firstUnfinished(it, "publish"); got != "note" {
+		t.Errorf("firstUnfinished = %q，預期 note", got)
 	}
 	if got := firstUnfinished(it, "segment"); got != "" {
 		t.Errorf("做到 segment：firstUnfinished = %q，預期沒有", got)

@@ -14,17 +14,18 @@ import (
 
 	"github.com/cxyfer/notesteme/features/internal/fakeframes"
 	"github.com/cxyfer/notesteme/features/internal/faketool"
+	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
 
 // registerFrames 註冊「關鍵畫面」的步驟（steps.md 4.14，M3）。
 //
-// M3-S3 實作了假影片的畫面、最高畫質與 MCP 的圖片結果；`the frames of … are:`（直接寫入 frames 產出）
-// 只有 NOTE、VAULT 的場景使用，留給它們的切片，仍是步驟樁。
+// M3-S3 實作了假影片的畫面、最高畫質與 MCP 的圖片結果；`the frames of … are:`（直接寫入 frames 產出，
+// NOTE、VAULT 的場景使用）由 M3-S4 實作，不經過 frmGate（VAULT 的場景在它自己的閘門之前就停下）。
 func registerFrames(r *Registry, s *Scenario) {
 	r.Step(`the video of {string} has the scenes:`, s.videoHasScenes)
 	r.Step(`the best video format of {string} is {string}`, s.bestVideoFormat)
-	r.Step(`the frames of {string} are:`, func(string, *godog.Table) error { return godog.ErrPending })
+	r.Step(`the frames of {string} are:`, s.framesAre)
 	r.Step(`the tool result has an image of type {string}`, s.toolResultHasImage)
 }
 
@@ -126,4 +127,68 @@ func (s *Scenario) toolResultHasImage(mime string) error {
 		return nil
 	}
 	return fmt.Errorf("tool 結果沒有 %s 的 image content", mime)
+}
+
+// framesAre 直接寫入現行的 frames 產出與 1280x720 的純色圖片（steps.md 4.14）：表格欄位 #、at、selected（yes／no），
+// 可加 caption、chapter、color。# 必須從 1 起依序編號。影音不存在時先新增並做到 metadata。
+func (s *Scenario) framesAre(ref string, table *godog.Table) error {
+	if table == nil || len(table.Rows) < 2 {
+		return errors.New("畫面表格至少要有表頭與一列")
+	}
+	var head []string
+	for _, c := range table.Rows[0].Cells {
+		head = append(head, c.Value)
+	}
+	for _, need := range []string{"#", "at", "selected"} {
+		if !slices.Contains(head, need) {
+			return fmt.Errorf("畫面表格缺少欄位 %q（表頭 %v）", need, head)
+		}
+	}
+	var list []pipeline.SeedFrame
+	for i, r := range table.Rows[1:] {
+		if len(r.Cells) != len(head) {
+			return fmt.Errorf("畫面表格第 %d 列的欄數與表頭不同", i+1)
+		}
+		var f pipeline.SeedFrame
+		for j, c := range r.Cells {
+			v := c.Value
+			switch head[j] {
+			case "#":
+				if n, err := strconv.Atoi(v); err != nil || n != i+1 {
+					return fmt.Errorf("畫面表格第 %d 列的 # 應是 %d，收到 %q", i+1, i+1, v)
+				}
+			case "at":
+				ms, err := subtitle.ParseTimecode(v)
+				if err != nil {
+					return fmt.Errorf("畫面表格第 %d 列的 at：%w", i+1, err)
+				}
+				f.AtMS = ms
+			case "selected":
+				switch v {
+				case "yes":
+					f.Selected = true
+				case "no":
+				default:
+					return fmt.Errorf("畫面表格第 %d 列的 selected 應是 yes 或 no，收到 %q", i+1, v)
+				}
+			case "caption":
+				f.Caption = v
+			case "chapter":
+				f.Chapter = v
+			case "color":
+				f.Color = v
+			default:
+				return fmt.Errorf("畫面表格不支援欄位 %q", head[j])
+			}
+		}
+		list = append(list, f)
+	}
+	if err := s.prepareOwner(); err != nil {
+		return err
+	}
+	id, err := s.ensureItemForSeed(ref)
+	if err != nil {
+		return err
+	}
+	return s.server.SeedFrames(s.ctx, id, list)
 }
