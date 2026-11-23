@@ -1,0 +1,310 @@
+/* 「調整」三頁：Prompt 庫、處理方案、字幕樣式（docs/ui/pages.md §7–§9）。顏色、間距只用 tokens.css 的變數。 */
+
+.page__lead {
+  margin: 0 0 var(--space-6);
+  max-width: 72ch;
+}
+.page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-mark);
+  border: 1px solid var(--rule);
+  font-size: var(--font-12);
+  color: var(--text-secondary);
+}
+.tag--strong {
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.crumbs {
+  font-size: var(--font-12);
+  color: var(--text-secondary);
+}
+
+/* ---------- 列表 ---------- */
+.tune-section {
+  margin-bottom: var(--space-8);
+}
+.tune-section__title {
+  font-size: var(--font-16);
+  margin: 0 0 var(--space-3);
+}
+.tune-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+.tune-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--rule);
+}
+.tune-row__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.tune-row__title {
+  font-weight: 600;
+  text-decoration: none;
+}
+.tune-row__title:hover {
+  text-decoration: underline;
+}
+.tune-row__meta {
+  grid-column: 1;
+  margin: 0;
+  font-size: var(--font-12);
+}
+.tune-row__actions {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+/* ---------- 表單 ---------- */
+.form-stack {
+  display: grid;
+  gap: var(--space-3);
+}
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.form-row > * {
+  flex: 1 1 140px;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3) var(--space-4);
+  align-items: start;
+}
+.plain-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.plain-fieldset > legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+.check-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+.field-errors {
+  margin: var(--space-2) 0;
+  padding-left: var(--space-6);
+  color: var(--state-failed);
+  font-size: var(--font-12);
+}
+.color-field {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.color-field > .field {
+  flex: 1;
+}
+.color-field__swatch {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-top: 26px;
+  border-radius: var(--radius-mark);
+  border: 1px solid var(--rule);
+}
+
+/* ---------- 分頁（字幕樣式） ---------- */
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: var(--space-4);
+}
+.tabs__tab {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.tabs__tab[aria-selected="true"] {
+  border-bottom-color: var(--text-primary);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ---------- 處理方案：流程列與步驟 ---------- */
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0 0 var(--space-6);
+  padding: 0;
+  font-size: var(--font-12);
+}
+.flow__step {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-mark);
+  border: 1px solid var(--text-primary);
+  font-weight: 600;
+}
+.flow__step + .flow__step::before {
+  content: "›";
+  margin: 0 var(--space-2) 0 calc(-1 * var(--space-1));
+  color: var(--text-secondary);
+}
+.flow__step--off {
+  border-style: dashed;
+  border-color: var(--rule);
+  color: var(--text-secondary);
+  font-weight: 400;
+  text-decoration: line-through;
+}
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+.step {
+  background: var(--surface-panel);
+  border-radius: var(--radius-container);
+  padding: var(--space-4);
+}
+.step--off .step__body {
+  opacity: 0.6;
+}
+.step__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-16);
+}
+.step__num {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--text-primary);
+  font-size: var(--font-12);
+}
+.step__body {
+  display: grid;
+  gap: var(--space-3);
+}
+.step__note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--font-12);
+}
+.caption-list {
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+}
+.caption-list__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.output-card {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-container);
+  padding: var(--space-3);
+  margin: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+.output-card__title {
+  font-weight: 600;
+  padding: 0 var(--space-1);
+}
+
+/* ---------- 字幕樣式編輯 ---------- */
+.style-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+.style-editor__form {
+  background: var(--surface-panel);
+  border-radius: var(--radius-container);
+  padding: var(--space-4);
+}
+.style-editor__langs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.style-preview__frame {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  background: var(--color-booth);
+  color: var(--color-paper);
+  border-radius: var(--radius-container);
+  overflow: hidden;
+  padding: var(--space-4);
+}
+.style-preview__frame .secondary {
+  color: var(--color-pewter-dim);
+}
+.style-preview__img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+.style-preview__empty {
+  text-align: center;
+  max-width: 40ch;
+}
+.style-preview__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.item-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.item-picker > * {
+  flex: 1 1 180px;
+}
+
+@media (max-width: 1279px) {
+  .style-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

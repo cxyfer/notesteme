@@ -9,7 +9,11 @@
     "system": "系统",
     "library": "媒体库",
     "queue": "队列",
-    "settings": "设置"
+    "settings": "设置",
+    "tune": "调整",
+    "prompts": "Prompt 库",
+    "profiles": "处理方案",
+    "styles": "字幕样式"
   },
   "prefs": {
     "theme": "主题",
@@ -45,6 +49,15 @@
       "title": "找不到这个页面",
       "body": "网址可能输错了，或页面已经移除。",
       "back": "回到媒体库"
+    },
+    "prompts": {
+      "title": "Prompt 库"
+    },
+    "profiles": {
+      "title": "处理方案"
+    },
+    "styles": {
+      "title": "字幕样式"
     }
   },
   "login": {
@@ -84,7 +97,12 @@
     "cookie_no_match": "找不到这个平台域名的 cookie。确认导出的是 youtube.com 或 bilibili.com 的 cookie，格式是 Netscape 或 name=value。",
     "cookie_missing_sessdata": "Bilibili cookie 缺少 SESSDATA。登录 Bilibili 后重新导出 cookie。",
     "cookie_invalid_format": "cookie 的名称或值含有控制字符（例如换行或 tab）。重新导出 cookie 后再试一次。",
-    "token_exists": "已经有同名的有效 token。换一个名称，或先撤销旧的。"
+    "token_exists": "已经有同名的有效 token。换一个名称，或先撤销旧的。",
+    "style_exists": "已经有同名的样式。换一个名称。",
+    "builtin_style": "内置样式不能修改。先复制成自定义样式。",
+    "prompt_exists": "已经有同名的 prompt。换一个名称。",
+    "builtin_prompt": "内置的 prompt 不能修改。另存为新的 prompt 后再修改。",
+    "builtin_profile": "内置的处理方案 default 不能删除。"
   },
   "status": {
     "pending": "等待中",
@@ -110,7 +128,13 @@
     "listSeparator": "，",
     "loadedOf": "已加载 {{loaded}}／共 {{total}} 部",
     "loadMore": "加载更多",
-    "loadingMore": "正在加载更多…"
+    "loadingMore": "正在加载更多…",
+    "discard": "放弃修改",
+    "saveChanges": "保存更改",
+    "saved": "已保存",
+    "saving": "保存中…",
+    "setAsDefault": "设为默认",
+    "setAsDefaultDone": "已设为默认"
   },
   "platform": {
     "youtube": "YouTube",
@@ -578,5 +602,336 @@
       "wrongCurrent": "当前密码不正确。确认后再试一次；连续错误 5 次会锁定 1 分钟。",
       "sessionsTitle": "登录会话、反向代理验证与 OIDC"
     }
+  },
+  "diff": {
+    "deleted": "删除：",
+    "inserted": "新增："
+  },
+  "itemPicker": {
+    "search": "搜索音视频标题",
+    "item": "音视频",
+    "choose": "选一个音视频",
+    "none": "没有符合的音视频。换个关键词，或先到媒体库新增。"
+  },
+  "prompts": {
+    "lead": "校对只靠 LLM，prompt 是改善结果最主要的地方。另存新版本不会影响正在使用的处理方案，要按「设为默认」才会改用。",
+    "new": "新增 prompt",
+    "empty": "还没有任何 prompt。",
+    "group": {
+      "segment": "分段",
+      "correct": "校正",
+      "translate": "翻译",
+      "frames": "选图",
+      "note": "笔记",
+      "other": "其他"
+    },
+    "kind": {
+      "segment": "分段",
+      "correct": "校正",
+      "translate": "翻译",
+      "frames.select": "选图",
+      "note": "笔记",
+      "summary": "摘要",
+      "chapters": "章节"
+    },
+    "kindLabel": "类型",
+    "builtinTag": "内置",
+    "currentVersion": "使用中 v{{version}}",
+    "latestVersion": "（最新 v{{version}}）",
+    "usedBy": "使用中的处理方案：",
+    "unused": "没有处理方案使用",
+    "updatedAt": "最后修改 {{at}}",
+    "newTitle": "新增 prompt",
+    "newDescription": "先决定名称与类型，创建后在编辑页撰写内容。",
+    "saveAsNewTitle": "把 {{id}} 另存为新的 prompt",
+    "saveAsNewDescription": "用当前编辑器中的内容创建新的 prompt，类型相同。原本的 prompt 不会改变。",
+    "saveAsNew": "另存为新的 prompt",
+    "saveAsNewShort": "另存为新的 prompt",
+    "create": "创建",
+    "created": "已创建 {{id}}",
+    "id": "名称（ID）",
+    "idRule": "小写英文字母、数字、「.」与「-」，最长 64 个字符；不可以和内置的相同。",
+    "newBodyPlaceholder": "在这里写下给模型的指示。可以用 {{example}} 等变量。",
+    "breadcrumb": "位置",
+    "versions": "版本",
+    "versionN": "v{{version}}",
+    "versionInUse": "v{{version}}（使用中）",
+    "compare": "比较版本",
+    "saveVersion": "另存新版本",
+    "savedAs": "已存为 v{{version}}",
+    "delete": "删除 prompt",
+    "builtinReadOnly": "内置的 prompt 不能修改。要调整时，另存为新的 prompt。",
+    "unsavedHint": "有未保存的修改（从 v{{version}} 开始）。另存新版本后才能设为默认或试跑新内容。",
+    "notDefaultHint": "正在查看 v{{version}}；处理方案目前使用 v{{current}}。按「设为默认」改用这一版。",
+    "versionHint": "修改后按「另存新版本」。正在使用的处理方案不会自动改用新版。",
+    "undefinedOnSave": "用到未定义的变量：{{names}}。改成可用的变量后再保存。",
+    "editorLabel": "内容（v{{version}}）",
+    "availableVars": "可用变量：",
+    "issue": {
+      "undefined": "未定义的变量「{{name}}」。可用的变量：{{vars}}。",
+      "invalid": "「{{text}}」不是有效的变量写法；变量名称只能用英文字母、数字与下划线。",
+      "unclosed": "有未关闭的「{{open}}」：补上对应的「{{close}}」。"
+    },
+    "discardTitle": "放弃未保存的修改？",
+    "discardBody": "切换到 v{{version}} 会放弃编辑器中还没另存的修改。",
+    "deleteTitle": "删除 {{id}}？",
+    "deleteBody_other": "会永久删除这个 prompt 与它的 {{count}} 个版本，无法恢复。已经产生的字幕与来源记录会保留。",
+    "deleteConfirm": "永久删除",
+    "deleted": "已删除 {{id}}",
+    "inUse": "这个 prompt 仍被使用，所以没有删除：",
+    "inUseNext": "先把它们改用其他 prompt，再回来删除。",
+    "usedByProfile": "处理方案 {{name}}",
+    "usedBySettings": "全局设置（步骤）",
+    "usedByChannel": "频道覆写 {{channel}}",
+    "usedByItem": "音视频覆写 {{item}}",
+    "compareTitle": "比较 {{id}} 的版本",
+    "compareA": "版本 A",
+    "compareB": "版本 B",
+    "compareSame": "选两个不同的版本。",
+    "compareWithOutputs": "也用同一段字幕试跑两个版本",
+    "compareCost": "会试跑两次，花费是一次试跑的两倍。",
+    "compareRun": "比较",
+    "comparing": "比较中…",
+    "compareDiff": "v{{a}} → v{{b}} 的差异",
+    "compareDiffLabel": "内容的逐行差异",
+    "diffOp": {
+      "insert": "新增：",
+      "delete": "删除："
+    },
+    "compareOutputs": "同一段字幕的输出",
+    "compareTime": "时间",
+    "run": {
+      "title": "试跑",
+      "from": "范围开始",
+      "to": "范围结束",
+      "rangeHint": "MM:SS 或 HH:MM:SS；送出开始时间在范围内的句子，最多 200 句。",
+      "provider": "Provider",
+      "model": "模型",
+      "usesVersion": "试跑 v{{version}}。",
+      "usesSaved": "试跑已保存的 v{{version}}，不含编辑器中未保存的修改。",
+      "noWrite": "试跑不会写入任何产出，也不会改变步骤状态。",
+      "estimateBefore": "试跑前无法预估花费；完成后显示这次的用量。",
+      "start": "试跑",
+      "running": "试跑中…",
+      "fillAll": "选择音视频并填入范围、provider 与模型后才能试跑。",
+      "validationPassed_other": "验证通过：{{count}} 句",
+      "validationFailed": "验证没有通过：部分段落的重试用尽，那些段落显示的是退回的内容。",
+      "usage": "v{{version}}：输入 {{input}} tokens、输出 {{output}} tokens。",
+      "estimate": "花费约 {{amount}}。",
+      "noEstimate": "无法预估花费：计价表没有这个模型的价格。",
+      "notSupported": "这个类型的 prompt 还不能试跑（{{reason}}）。",
+      "rateLimited": "超过模型的速率限制。{{seconds}} 秒后再试。",
+      "actions": "可以这样处理：{{actions}}。"
+    }
+  },
+  "profiles": {
+    "lead": "把一套处理设置存成可以重复套用的处理方案。没填的字段沿用全局设置。",
+    "new": "新增处理方案",
+    "empty": "还没有处理方案。",
+    "defaultTag": "默认",
+    "builtinTag": "内置",
+    "version": "v{{version}}",
+    "updatedAt": "最后修改 {{at}}",
+    "inherit": "沿用全局设置",
+    "newTitle": "新增处理方案",
+    "newDescription": "新的处理方案没有任何设置，全部沿用全局设置；创建后再调整。",
+    "copyTitle": "复制 {{name}}",
+    "copyDescription": "用已保存的设置创建新的处理方案（不含未保存的修改）。",
+    "copy": "复制",
+    "create": "创建",
+    "created": "已创建 {{name}}",
+    "copied": "已复制成 {{name}}",
+    "name": "名称",
+    "nameRule": "小写英文字母、数字、「_」与「-」，最长 64 个字符；创建后不能改名。",
+    "editorLead": "没填的字段沿用全局设置。修改不影响已完成的步骤，重新处理时才会使用新版本。",
+    "saveBeforeDefault": "有未保存的修改：先保存更改，再设为默认。",
+    "saved": "已保存（v{{version}}）",
+    "savedConcurrent": "已保存，但同时有其他修改写入；目前是 v{{version}}。确认内容是否符合预期。",
+    "invalid_other": "有 {{count}} 个字段不正确，没有保存。修正标示的字段后再保存。",
+    "conflictTitle": "处理方案已被其他人修改",
+    "conflictBody": "你开始编辑 {{name}} 时是 v{{mine}}，现在已经是 v{{theirs}}。重新载入会放弃你的修改；仍要保存会把你改过的字段写在 v{{theirs}} 上，其他字段保留对方的内容。",
+    "conflictReload": "重新载入",
+    "conflictOverwrite": "仍要保存",
+    "flow": "处理流程",
+    "flowOff": "（不执行）",
+    "step": {
+      "source": "字幕来源"
+    },
+    "stageInheritNote": "这个步骤沿用全局设置。选择执行方式后才会写进处理方案。",
+    "field": {
+      "executor": "执行方式",
+      "provider": "Provider",
+      "model": "模型",
+      "prompt": "Prompt",
+      "promptVersion": "Prompt 版本",
+      "promptVersionHint": "跟随默认：prompt 设为默认的新版本后，从下一次执行开始改用。",
+      "splitTiming": "段内切分的时间",
+      "onManual": "有人工字幕时",
+      "minSimilarity": "最低相似度",
+      "minSimilarityHint": "0 到 1；校正结果和原文的相似度低于它时退回原文。空白代表沿用全局设置。",
+      "targets": "目标语言",
+      "targetsHint": "BCP-47 语言标记，用逗号分隔，例如 zh-Hant-TW, en。空白代表沿用全局设置。",
+      "variantStrategy": "中文只差字形时",
+      "captionPriority": "字幕来源顺序",
+      "captionLang": "第 {{n}} 顺位的语言",
+      "captionKind": "第 {{n}} 顺位的种类",
+      "allowPlatformTranslated": "平台机器翻译字幕",
+      "target": "输出目标",
+      "path": "文件夹路径",
+      "pathHint": "服务器上的绝对路径。",
+      "style": "字幕样式（ASS）",
+      "formats": "字幕文件格式"
+    },
+    "promptInherit": "沿用全局设置（默认 {{id}}）",
+    "versionFollow": "跟随默认（目前 v{{version}}）",
+    "versionFollowUnknown": "跟随默认",
+    "versionPinned": "固定 v{{version}}",
+    "splitTiming": {
+      "forbid": "不切分",
+      "when_needed": "需要时才切，先找停顿点",
+      "free": "自由切分"
+    },
+    "onManual": {
+      "skip": "略过分段",
+      "run": "仍然分段"
+    },
+    "variantStrategy": {
+      "convert": "字形转换（OpenCC）",
+      "localize": "本地化翻译（localize）"
+    },
+    "captionInherit": "沿用全局设置。",
+    "captionCustomize": "自定义顺序",
+    "captionAdd": "新增来源",
+    "captionKind": {
+      "manual": "人工字幕",
+      "auto": "自动字幕"
+    },
+    "up": "上移",
+    "moveUp": "把第 {{n}} 顺位上移",
+    "removeShort": "移除",
+    "remove": "移除第 {{n}} 顺位",
+    "use": "使用",
+    "notUse": "不使用",
+    "outputsEmpty": "没有设置输出：处理完不会写出字幕文件。",
+    "outputN": "输出 {{n}}",
+    "outputAdd": "新增输出",
+    "outputRemove": "移除输出 {{n}}",
+    "target": {
+      "sidecar": "视频旁边（sidecar）",
+      "folder": "指定文件夹"
+    },
+    "styleDefault": "default",
+    "format": {
+      "srt": "SRT",
+      "vtt": "WebVTT",
+      "txt": "纯文本",
+      "cues-json": "JSON",
+      "ass": "ASS",
+      "bilingual-srt": "双语 SRT"
+    }
+  },
+  "styles": {
+    "lead": "选择或自定义 ASS 样式。内置样式不能修改，复制成自定义样式后再调整。",
+    "builtin": "内置样式",
+    "custom": "自定义样式",
+    "builtinTag": "内置",
+    "customTag": "自定义",
+    "emptyCustom": "还没有自定义样式。复制内置样式，或导入 .ass 文件。",
+    "summary": "{{show}}；原文 {{primary}}，译文 {{translation}}",
+    "copyToCustom": "复制成自定义样式",
+    "duplicate": "复制",
+    "copyTitle": "复制 {{name}}",
+    "copyDescription": "用这个样式的设置创建新的自定义样式。",
+    "copy": "创建自定义样式",
+    "copied": "已创建 {{name}}",
+    "newName": "名称",
+    "nameRule": "小写英文字母、数字、「.」「_」「-」，最长 64 个字符；不可以和内置的相同。",
+    "importOpen": "导入 .ass 样式",
+    "importTitle": "导入 .ass 样式",
+    "importDescription": "从 .ass 或 .ssa 文件读出样式，创建新的自定义样式。只读取样式，不读取字幕内容。",
+    "importFile": ".ass／.ssa 文件",
+    "importNeedFile": "选择要导入的文件。",
+    "importPrimary": "原文行用的样式名称（选填）",
+    "importPrimaryHint": "默认是文件中的下一个样式；只有一个样式时由译文行缩小产生。",
+    "importTranslation": "译文行用的样式名称（选填）",
+    "importTranslationHint": "默认是 Default，没有就用第一个。",
+    "import": "导入",
+    "imported": "已导入 {{name}}",
+    "builtinReadOnly": "内置样式不能修改。复制成自定义样式后再调整。",
+    "targetLang": "目标语言",
+    "targetLangHint": "没有指定字体时，依语言带入默认字体；预览也用这个语言的译文。",
+    "sourceLang": "原文语言",
+    "lang": {
+      "none": "不指定",
+      "zh-Hant": "繁体中文",
+      "zh-Hans": "简体中文",
+      "ja": "日语",
+      "ko": "韩语",
+      "en": "英语"
+    },
+    "tabs": "样式分页",
+    "tab": {
+      "primary": "原文行",
+      "translation": "译文行",
+      "layout": "版面"
+    },
+    "field": {
+      "font": "字体",
+      "fontHint": "留空代表依语言自动选择。",
+      "size": "大小",
+      "color": "文字",
+      "colorHint": "#RRGGBB，或 #RRGGBBAA（AA 是不透明度）。",
+      "outlineColor": "描边",
+      "outline": "描边宽度",
+      "backColor": "阴影颜色",
+      "shadow": "阴影",
+      "bold": "粗体",
+      "show": "显示",
+      "order": "谁在上方",
+      "translationAt": "译文位置",
+      "alignment": "位置",
+      "marginV": "垂直边距",
+      "borderStyle": "外框"
+    },
+    "fieldError": {
+      "color": "格式是 #RRGGBB 或 #RRGGBBAA。",
+      "range": "超出允许的范围。"
+    },
+    "show": {
+      "both": "原文与译文",
+      "translation": "只有译文",
+      "primary": "只有原文"
+    },
+    "order": {
+      "translation-first": "译文在上",
+      "primary-first": "原文在上"
+    },
+    "translationAt": {
+      "stacked": "两行叠在一起",
+      "top": "译文放到画面上方"
+    },
+    "alignment": {
+      "1": "底部靠左",
+      "2": "底部居中",
+      "3": "底部靠右",
+      "4": "中间靠左",
+      "5": "正中央",
+      "6": "中间靠右",
+      "7": "顶部靠左",
+      "8": "顶部居中",
+      "9": "顶部靠右"
+    },
+    "borderStyle": {
+      "1": "描边加阴影",
+      "3": "不透明底框"
+    },
+    "preview": "预览（用 libass 实际渲染）",
+    "previewChooseItem": "选一个音视频与时间，就能看到样式套在画面上的样子。",
+    "previewFixFields": "先修正标示的字段，才能更新预览。",
+    "previewLoading": "正在渲染预览…",
+    "previewUnavailable": "预览尚未可用：{{reason}}",
+    "previewAlt": "样式 {{name}} 在 {{at}} 的预览画面",
+    "previewAt": "画面时间",
+    "previewAtHint": "MM:SS 或 HH:MM:SS；也决定预览用哪一句字幕。"
   }
 }

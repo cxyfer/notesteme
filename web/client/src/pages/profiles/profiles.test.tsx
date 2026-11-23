@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -132,7 +132,7 @@ describe("處理方案：編輯", () => {
   });
 
   it("儲存前發現版本已改變：提示衝突，可以重新載入或仍要儲存", async () => {
-    let latest = 7;
+    const latest = 7;
     const api = profilesApi({
       "PATCH /api/profiles/{id}": () => ({ ...standard, version: 8 }),
     });
@@ -162,7 +162,6 @@ describe("處理方案：編輯", () => {
     // 回應的版本不是開始時 + 1：明確告知
     expect(await screen.findByText(/同時有其他修改寫入；目前是 v8/)).toBeTruthy();
     expect(api.calls("PATCH", "/api/profiles/standard")).toHaveLength(1);
-    latest = 8;
   });
 
   it("422 的欄位錯誤顯示在對應欄位旁", async () => {

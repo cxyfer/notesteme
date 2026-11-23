@@ -26,12 +26,12 @@ describe("路由", () => {
     expect(router.state.location.pathname).toBe("/settings/services");
   });
 
-  it("導覽只列出 M1 的頁面，目前頁面標成 aria-current", async () => {
+  it("導覽列出已完成的頁面（M1 加上 UI-3a 的調整三頁），目前頁面標成 aria-current", async () => {
     signIn();
     renderRoute("/queue");
     const nav = await screen.findByRole("navigation", { name: "主要導覽" });
     const links = [...nav.querySelectorAll("a.nav__item")].map((a) => a.textContent);
-    expect(links).toEqual(["媒體庫", "佇列", "設定"]);
+    expect(links).toEqual(["媒體庫", "佇列", "Prompt 庫", "處理方案", "字幕樣式", "設定"]);
     expect(screen.getByRole("link", { name: "佇列" }).getAttribute("aria-current")).toBe("page");
   });
 

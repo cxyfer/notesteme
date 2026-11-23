@@ -9,7 +9,11 @@
     "system": "System",
     "library": "Library",
     "queue": "Queue",
-    "settings": "Settings"
+    "settings": "Settings",
+    "tune": "Tune",
+    "prompts": "Prompts",
+    "profiles": "Presets",
+    "styles": "Subtitle styles"
   },
   "prefs": {
     "theme": "Theme",
@@ -45,6 +49,15 @@
       "title": "Page not found",
       "body": "The address may be mistyped, or the page has been removed.",
       "back": "Back to library"
+    },
+    "prompts": {
+      "title": "Prompts"
+    },
+    "profiles": {
+      "title": "Presets"
+    },
+    "styles": {
+      "title": "Subtitle styles"
     }
   },
   "login": {
@@ -84,7 +97,12 @@
     "cookie_no_match": "No cookies for this platform's domain were found. Make sure you exported youtube.com or bilibili.com cookies in Netscape or name=value format.",
     "cookie_missing_sessdata": "The Bilibili cookie is missing SESSDATA. Sign in to Bilibili and export the cookies again.",
     "cookie_invalid_format": "A cookie name or value contains control characters (such as a newline or tab). Export the cookies again and try once more.",
-    "token_exists": "An active token with this name already exists. Choose another name or revoke the old one first."
+    "token_exists": "An active token with this name already exists. Choose another name or revoke the old one first.",
+    "style_exists": "A style with this name already exists. Choose another name.",
+    "builtin_style": "Built-in styles can't be changed. Copy it to a custom style first.",
+    "prompt_exists": "A prompt with this ID already exists. Choose another ID.",
+    "builtin_prompt": "Built-in prompts can't be changed. Save it as a new prompt first.",
+    "builtin_profile": "The built-in default preset can't be deleted."
   },
   "status": {
     "pending": "Waiting",
@@ -111,7 +129,13 @@
     "listSeparator": ", ",
     "loadedOf": "Showing {{loaded}} of {{total}}",
     "loadMore": "Load more",
-    "loadingMore": "Loading more…"
+    "loadingMore": "Loading more…",
+    "discard": "Discard changes",
+    "saveChanges": "Save changes",
+    "saved": "Saved",
+    "saving": "Saving…",
+    "setAsDefault": "Set as default",
+    "setAsDefaultDone": "Set as default"
   },
   "platform": {
     "youtube": "YouTube",
@@ -593,5 +617,339 @@
       "wrongCurrent": "The current password is incorrect. Check it and try again; 5 wrong attempts in a row lock sign-in for 1 minute.",
       "sessionsTitle": "Sign-in sessions, reverse proxy authentication and OIDC"
     }
+  },
+  "diff": {
+    "deleted": "Deleted: ",
+    "inserted": "Inserted: "
+  },
+  "itemPicker": {
+    "search": "Search media titles",
+    "item": "Media",
+    "choose": "Choose media",
+    "none": "No matching media. Try another keyword, or add media in the library first."
+  },
+  "prompts": {
+    "lead": "Proofreading relies only on the LLM, so prompts are where results improve. Saving a new version doesn't change presets that use it until you set it as default.",
+    "new": "New prompt",
+    "empty": "No prompts yet.",
+    "group": {
+      "segment": "Segment",
+      "correct": "Correct",
+      "translate": "Translate",
+      "frames": "Keyframes",
+      "note": "Notes",
+      "other": "Other"
+    },
+    "kind": {
+      "segment": "Segment",
+      "correct": "Correct",
+      "translate": "Translate",
+      "frames.select": "Keyframes",
+      "note": "Notes",
+      "summary": "Summary",
+      "chapters": "Chapters"
+    },
+    "kindLabel": "Type",
+    "builtinTag": "Built-in",
+    "currentVersion": "In use: v{{version}}",
+    "latestVersion": "(latest v{{version}})",
+    "usedBy": "Used by presets:",
+    "unused": "Not used by any preset",
+    "updatedAt": "Last changed {{at}}",
+    "newTitle": "New prompt",
+    "newDescription": "Choose an ID and type, then write the text on the edit page.",
+    "saveAsNewTitle": "Save {{id}} as a new prompt",
+    "saveAsNewDescription": "Creates a new prompt of the same type from the text in the editor. The original prompt stays unchanged.",
+    "saveAsNew": "Save as new prompt",
+    "saveAsNewShort": "Save as new prompt",
+    "create": "Create",
+    "created": "Created {{id}}",
+    "id": "ID",
+    "idRule": "Lowercase letters, digits, “.” and “-”, up to 64 characters; can't match a built-in ID.",
+    "newBodyPlaceholder": "Write the instructions for the model here. You can use variables such as {{example}}.",
+    "breadcrumb": "Breadcrumb",
+    "versions": "Versions",
+    "versionN": "v{{version}}",
+    "versionInUse": "v{{version}} (in use)",
+    "compare": "Compare versions",
+    "saveVersion": "Save as new version",
+    "savedAs": "Saved as v{{version}}",
+    "delete": "Delete prompt",
+    "builtinReadOnly": "Built-in prompts can't be changed. To adjust it, save it as a new prompt.",
+    "unsavedHint": "Unsaved changes (based on v{{version}}). Save a new version before setting it as default or trying it.",
+    "notDefaultHint": "Viewing v{{version}}; presets currently use v{{current}}. Set as default to switch to this version.",
+    "versionHint": "After editing, save a new version. Presets using this prompt won't switch automatically.",
+    "undefinedOnSave": "Undefined variables: {{names}}. Use the available variables, then save again.",
+    "editorLabel": "Text (v{{version}})",
+    "availableVars": "Available variables:",
+    "issue": {
+      "undefined": "Undefined variable “{{name}}”. Available: {{vars}}.",
+      "invalid": "“{{text}}” isn't a valid variable; names can only use letters, digits and underscores.",
+      "unclosed": "Unclosed “{{open}}”: add the matching “{{close}}”."
+    },
+    "discardTitle": "Discard unsaved changes?",
+    "discardBody": "Switching to v{{version}} discards the changes you haven't saved.",
+    "deleteTitle": "Delete {{id}}?",
+    "deleteBody_one": "This permanently deletes the prompt and its {{count}} version. It can't be undone. Subtitles already produced and their source records are kept.",
+    "deleteBody_other": "This permanently deletes the prompt and its {{count}} versions. It can't be undone. Subtitles already produced and their source records are kept.",
+    "deleteConfirm": "Delete forever",
+    "deleted": "Deleted {{id}}",
+    "inUse": "This prompt is still in use, so it wasn't deleted:",
+    "inUseNext": "Switch them to another prompt first, then delete it.",
+    "usedByProfile": "Preset {{name}}",
+    "usedBySettings": "Global settings (steps)",
+    "usedByChannel": "Channel override {{channel}}",
+    "usedByItem": "Media override {{item}}",
+    "compareTitle": "Compare versions of {{id}}",
+    "compareA": "Version A",
+    "compareB": "Version B",
+    "compareSame": "Choose two different versions.",
+    "compareWithOutputs": "Also try both versions on the same lines",
+    "compareCost": "Runs twice, so it costs twice as much as one try.",
+    "compareRun": "Compare",
+    "comparing": "Comparing…",
+    "compareDiff": "Changes from v{{a}} to v{{b}}",
+    "compareDiffLabel": "Line-by-line changes",
+    "diffOp": {
+      "insert": "Added: ",
+      "delete": "Removed: "
+    },
+    "compareOutputs": "Output on the same lines",
+    "compareTime": "Time",
+    "run": {
+      "title": "Try it",
+      "from": "From",
+      "to": "To",
+      "rangeHint": "MM:SS or HH:MM:SS; sends lines that start in the range, up to 200 lines.",
+      "provider": "Provider",
+      "model": "Model",
+      "usesVersion": "Tries v{{version}}.",
+      "usesSaved": "Tries the saved v{{version}}, without your unsaved changes.",
+      "noWrite": "Trying doesn't write any output or change step status.",
+      "estimateBefore": "Cost can't be estimated beforehand; usage is shown after the run.",
+      "start": "Try it",
+      "running": "Running…",
+      "fillAll": "Choose media and fill in the range, provider and model to try it.",
+      "validationPassed_one": "Validation passed: {{count}} line",
+      "validationPassed_other": "Validation passed: {{count}} lines",
+      "validationFailed": "Validation failed: some chunks ran out of retries and show the fallback text.",
+      "usage": "v{{version}}: {{input}} input tokens, {{output}} output tokens.",
+      "estimate": "About {{amount}}.",
+      "noEstimate": "Cost unknown: the price table has no price for this model.",
+      "notSupported": "This type of prompt can't be tried yet ({{reason}}).",
+      "rateLimited": "Over the model's rate limit. Try again in {{seconds}} seconds.",
+      "actions": "To fix it: {{actions}}."
+    }
+  },
+  "profiles": {
+    "lead": "Save a set of processing settings as a reusable preset. Empty fields use the global settings.",
+    "new": "New preset",
+    "empty": "No presets yet.",
+    "defaultTag": "Default",
+    "builtinTag": "Built-in",
+    "version": "v{{version}}",
+    "updatedAt": "Last changed {{at}}",
+    "inherit": "Use global setting",
+    "newTitle": "New preset",
+    "newDescription": "A new preset starts empty and uses the global settings; adjust it after creating.",
+    "copyTitle": "Copy {{name}}",
+    "copyDescription": "Creates a new preset from the saved settings (unsaved changes aren't included).",
+    "copy": "Copy",
+    "create": "Create",
+    "created": "Created {{name}}",
+    "copied": "Copied to {{name}}",
+    "name": "Name",
+    "nameRule": "Lowercase letters, digits, “_” and “-”, up to 64 characters; can't be renamed later.",
+    "editorLead": "Empty fields use the global settings. Changes don't affect finished steps; reprocessing uses the new version.",
+    "saveBeforeDefault": "Unsaved changes: save them before setting this preset as default.",
+    "saved": "Saved (v{{version}})",
+    "savedConcurrent": "Saved, but another change was written at the same time; it's now v{{version}}. Check that the settings are what you expect.",
+    "invalid_one": "{{count}} field is invalid, so nothing was saved. Fix the marked field and save again.",
+    "invalid_other": "{{count}} fields are invalid, so nothing was saved. Fix the marked fields and save again.",
+    "conflictTitle": "The preset was changed elsewhere",
+    "conflictBody": "You started editing {{name}} at v{{mine}}, but it's now v{{theirs}}. Reloading discards your changes; saving anyway writes the fields you changed on top of v{{theirs}} and keeps the rest.",
+    "conflictReload": "Reload",
+    "conflictOverwrite": "Save anyway",
+    "flow": "Processing flow",
+    "flowOff": "(skipped)",
+    "step": {
+      "source": "Transcript source"
+    },
+    "stageInheritNote": "This step uses the global settings. Choose how it runs to save it in the preset.",
+    "field": {
+      "executor": "How it runs",
+      "provider": "Provider",
+      "model": "Model",
+      "prompt": "Prompt",
+      "promptVersion": "Prompt version",
+      "promptVersionHint": "Follow default: when a new version is set as default, the next run uses it.",
+      "splitTiming": "Splitting inside a segment",
+      "onManual": "With manual captions",
+      "minSimilarity": "Minimum similarity",
+      "minSimilarityHint": "0 to 1; corrections less similar than this fall back to the original. Leave empty to use the global setting.",
+      "targets": "Target languages",
+      "targetsHint": "BCP-47 tags separated by commas, e.g. zh-Hant-TW, en. Leave empty to use the global setting.",
+      "variantStrategy": "When Chinese differs only in script",
+      "captionPriority": "Caption order",
+      "captionLang": "Language #{{n}}",
+      "captionKind": "Kind #{{n}}",
+      "allowPlatformTranslated": "Platform machine-translated captions",
+      "target": "Output target",
+      "path": "Folder path",
+      "pathHint": "An absolute path on the server.",
+      "style": "Subtitle style (ASS)",
+      "formats": "File formats"
+    },
+    "promptInherit": "Use global setting (default {{id}})",
+    "versionFollow": "Follow default (now v{{version}})",
+    "versionFollowUnknown": "Follow default",
+    "versionPinned": "Pin v{{version}}",
+    "splitTiming": {
+      "forbid": "Never split",
+      "when_needed": "Only when needed, at pauses first",
+      "free": "Split freely"
+    },
+    "onManual": {
+      "skip": "Skip segmenting",
+      "run": "Segment anyway"
+    },
+    "variantStrategy": {
+      "convert": "Convert script (OpenCC)",
+      "localize": "Localize (translate)"
+    },
+    "captionInherit": "Uses the global setting.",
+    "captionCustomize": "Customize order",
+    "captionAdd": "Add source",
+    "captionKind": {
+      "manual": "Manual captions",
+      "auto": "Automatic captions"
+    },
+    "up": "Move up",
+    "moveUp": "Move #{{n}} up",
+    "removeShort": "Remove",
+    "remove": "Remove #{{n}}",
+    "use": "Use",
+    "notUse": "Don't use",
+    "outputsEmpty": "No outputs: subtitle files won't be written after processing.",
+    "outputN": "Output {{n}}",
+    "outputAdd": "Add output",
+    "outputRemove": "Remove output {{n}}",
+    "target": {
+      "sidecar": "Next to the video (sidecar)",
+      "folder": "Folder"
+    },
+    "styleDefault": "default",
+    "format": {
+      "srt": "SRT",
+      "vtt": "WebVTT",
+      "txt": "Plain text",
+      "cues-json": "JSON",
+      "ass": "ASS",
+      "bilingual-srt": "Bilingual SRT"
+    }
+  },
+  "styles": {
+    "lead": "Choose or customize ASS styles. Built-in styles can't be changed; copy one to a custom style to adjust it.",
+    "builtin": "Built-in styles",
+    "custom": "Custom styles",
+    "builtinTag": "Built-in",
+    "customTag": "Custom",
+    "emptyCustom": "No custom styles yet. Copy a built-in style, or import an .ass file.",
+    "summary": "{{show}}; original {{primary}}, translation {{translation}}",
+    "copyToCustom": "Copy to custom style",
+    "duplicate": "Copy",
+    "copyTitle": "Copy {{name}}",
+    "copyDescription": "Creates a new custom style from this style's settings.",
+    "copy": "Create custom style",
+    "copied": "Created {{name}}",
+    "newName": "Name",
+    "nameRule": "Lowercase letters, digits, “.”, “_” and “-”, up to 64 characters; can't match a built-in name.",
+    "importOpen": "Import .ass style",
+    "importTitle": "Import .ass style",
+    "importDescription": "Reads the styles from an .ass or .ssa file and creates a custom style. Only styles are read, not the subtitle lines.",
+    "importFile": ".ass/.ssa file",
+    "importNeedFile": "Choose a file to import.",
+    "importPrimary": "Style for the original line (optional)",
+    "importPrimaryHint": "Defaults to the next style in the file; with only one style, it's a smaller copy of the translation line.",
+    "importTranslation": "Style for the translation line (optional)",
+    "importTranslationHint": "Defaults to Default, or the first style.",
+    "import": "Import",
+    "imported": "Imported {{name}}",
+    "builtinReadOnly": "Built-in styles can't be changed. Copy it to a custom style to adjust it.",
+    "targetLang": "Target language",
+    "targetLangHint": "Without a set font, a default font is used for the language; the preview uses this translation.",
+    "sourceLang": "Original language",
+    "lang": {
+      "none": "Not set",
+      "zh-Hant": "Traditional Chinese",
+      "zh-Hans": "Simplified Chinese",
+      "ja": "Japanese",
+      "ko": "Korean",
+      "en": "English"
+    },
+    "tabs": "Style sections",
+    "tab": {
+      "primary": "Original line",
+      "translation": "Translation line",
+      "layout": "Layout"
+    },
+    "field": {
+      "font": "Font",
+      "fontHint": "Leave empty to choose automatically by language.",
+      "size": "Size",
+      "color": "Text",
+      "colorHint": "#RRGGBB, or #RRGGBBAA (AA is opacity).",
+      "outlineColor": "Outline",
+      "outline": "Outline width",
+      "backColor": "Shadow color",
+      "shadow": "Shadow",
+      "bold": "Bold",
+      "show": "Show",
+      "order": "Which is on top",
+      "translationAt": "Translation position",
+      "alignment": "Position",
+      "marginV": "Vertical margin",
+      "borderStyle": "Border"
+    },
+    "fieldError": {
+      "color": "Use #RRGGBB or #RRGGBBAA.",
+      "range": "Out of the allowed range."
+    },
+    "show": {
+      "both": "Original and translation",
+      "translation": "Translation only",
+      "primary": "Original only"
+    },
+    "order": {
+      "translation-first": "Translation on top",
+      "primary-first": "Original on top"
+    },
+    "translationAt": {
+      "stacked": "Stacked together",
+      "top": "Translation at the top of the screen"
+    },
+    "alignment": {
+      "1": "Bottom left",
+      "2": "Bottom center",
+      "3": "Bottom right",
+      "4": "Middle left",
+      "5": "Center",
+      "6": "Middle right",
+      "7": "Top left",
+      "8": "Top center",
+      "9": "Top right"
+    },
+    "borderStyle": {
+      "1": "Outline and shadow",
+      "3": "Opaque box"
+    },
+    "preview": "Preview (rendered with libass)",
+    "previewChooseItem": "Choose media and a time to see the style on a real frame.",
+    "previewFixFields": "Fix the marked fields to update the preview.",
+    "previewLoading": "Rendering preview…",
+    "previewUnavailable": "Preview isn't available: {{reason}}",
+    "previewAlt": "Preview of style {{name}} at {{at}}",
+    "previewAt": "Frame time",
+    "previewAtHint": "MM:SS or HH:MM:SS; also picks the line shown."
   }
 }

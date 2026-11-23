@@ -23,6 +23,15 @@ const NAV_GROUPS = [
       { to: "/queue", label: "nav.queue" },
     ],
   },
+  // M2（UI-3a）：調整（design-language.md §5.1 的三組：工作、調整、系統）
+  {
+    label: "nav.tune",
+    items: [
+      { to: "/prompts", label: "nav.prompts" },
+      { to: "/profiles", label: "nav.profiles" },
+      { to: "/styles", label: "nav.styles" },
+    ],
+  },
   { label: "nav.system", items: [{ to: "/settings", label: "nav.settings" }] },
 ] as const;
 

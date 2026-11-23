@@ -29,5 +29,11 @@ export const a11yRoutes: A11yRoute[] = [
     "appearance",
     "login",
   ].map((s) => ({ path: `/settings/${s}`, heading: "設定", auth: true })),
+  { path: "/prompts", heading: "Prompt 庫", auth: true },
+  { path: "/prompts/correct-default", heading: "correct-default", auth: true },
+  { path: "/profiles", heading: "處理方案", auth: true },
+  { path: "/profiles/default", heading: "default", auth: true },
+  { path: "/styles", heading: "字幕樣式", auth: true },
+  { path: "/styles/default", heading: "default", auth: true },
   { path: "/no-such-page", heading: "找不到這個頁面", auth: false },
 ];

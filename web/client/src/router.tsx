@@ -8,7 +8,10 @@
 //      ├─ /queue
 //      ├─ /items/$id
 //      ├─ /settings           導到第一個分區
-//      └─ /settings/$section
+//      ├─ /settings/$section
+//      ├─ /prompts、/prompts/$id     Prompt 庫（編輯頁含 CodeMirror，lazy 載入）
+//      ├─ /profiles、/profiles/$id   處理方案
+//      └─ /styles、/styles/$id       字幕樣式
 //
 // 新增頁面：在這裡加一個 createRoute、加進 routeTree，並把路徑加進 src/test/a11yRoutes.ts。
 import type { QueryClient } from "@tanstack/react-query";
@@ -16,6 +19,7 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   Outlet,
   redirect,
   type RouterHistory,
@@ -27,8 +31,13 @@ import { validateLibrarySearch } from "./pages/library/filters";
 import { LibraryPage } from "./pages/LibraryPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { ProfileEditorPage } from "./pages/profiles/ProfileEditorPage";
+import { ProfilesPage } from "./pages/profiles/ProfilesPage";
+import { PromptsPage } from "./pages/prompts/PromptsPage";
 import { QueuePage } from "./pages/QueuePage";
 import { SETTINGS_SECTIONS, SettingsPage } from "./pages/SettingsPage";
+import { StyleEditorPage } from "./pages/styles/StyleEditorPage";
+import { StylesPage } from "./pages/styles/StylesPage";
 import { AppShell } from "./shell/AppShell";
 
 export interface RouterContext {
@@ -105,6 +114,42 @@ export const settingsRoute = createRoute({
   component: SettingsPage,
 });
 
+// ---- UI-3a：Prompt 庫、處理方案、字幕樣式 ----
+const promptsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/prompts",
+  component: PromptsPage,
+});
+export const promptRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/prompts/$id",
+  // CodeMirror 很大：編輯頁只在進入時才載入，不算進初始 bundle（NFR-PERF-10）
+  component: lazyRouteComponent(
+    () => import("./pages/prompts/PromptEditorPage"),
+    "PromptEditorPage",
+  ),
+});
+const profilesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/profiles",
+  component: ProfilesPage,
+});
+export const profileRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/profiles/$id",
+  component: ProfileEditorPage,
+});
+const stylesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/styles",
+  component: StylesPage,
+});
+export const styleRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/styles/$id",
+  component: StyleEditorPage,
+});
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute.addChildren([
@@ -114,6 +159,12 @@ export const routeTree = rootRoute.addChildren([
     itemRoute,
     settingsIndexRoute,
     settingsRoute,
+    promptsRoute,
+    promptRoute,
+    profilesRoute,
+    profileRoute,
+    stylesRoute,
+    styleRoute,
   ]),
 ]);
 
