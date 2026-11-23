@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 
 	"github.com/pressly/goose/v3"
@@ -74,6 +75,9 @@ func Open(ctx context.Context, dir string, clk clock.Clock, opts ...Options) (*S
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
+	}
+	if err := os.MkdirAll(abs, 0o700); err != nil {
+		return nil, fmt.Errorf("建立 Hub 資料目錄失敗：%w", err)
 	}
 	path := filepath.Join(abs, DBFileName)
 	if err := sqlitedb.EnsurePrivateFiles(path, true); err != nil {
