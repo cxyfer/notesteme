@@ -215,6 +215,8 @@ type webhookBody struct {
 	Digest     json.RawMessage `json:"digest,omitempty"`
 	Items      json.RawMessage `json:"items,omitempty"`
 	Alert      *Alert          `json:"alert,omitempty"`
+	// Budget 是 budget.warning 的數字（COST-R10；NOTIFY-R4 沒有列，COST 待決問題記錄）。
+	Budget json.RawMessage `json:"budget,omitempty"`
 }
 
 type webhookItem struct {
@@ -262,6 +264,7 @@ func render(kind string, cfg Config, ev Event, id string, created time.Time, pub
 	wb := webhookBody{
 		ID: id, Event: ev.Name, CreatedAt: created.UTC(), Stage: ev.Stage, ErrorClass: ev.ErrorClass,
 		Message: cleanText(ev.Message), Summary: cleanText(ev.Summary), Digest: ev.Digest, Items: ev.Items, Alert: ev.Alert,
+		Budget: ev.Budget,
 	}
 	if ev.Name == "test" {
 		wb.Message = TestTitle

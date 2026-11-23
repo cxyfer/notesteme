@@ -138,3 +138,30 @@ func FuzzCleanTitle(f *testing.F) {
 		}
 	})
 }
+
+// budget.warning 的 webhook 帶 summary 與原樣的 budget 數字；文字管道的標題是預算提醒加上摘要（COST-R10）。
+func TestRenderBudgetWarning(t *testing.T) {
+	ev := Event{
+		Name: EventBudgetWarning, DedupeKey: DedupeBudgetWarning("2026-11"),
+		Summary: "本月已用 $16.00（含預留），達到預算 $20.00 的 80%。",
+		Budget:  json.RawMessage(`{"month":"2026-11","percent":80,"spent_usd":15,"reserved_usd":1,"monthly_usd":20}`),
+	}
+	b, err := render(KindWebhook, Config{}, ev, "o1", time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Event   string         `json:"event"`
+		Summary string         `json:"summary"`
+		Budget  map[string]any `json:"budget"`
+	}
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Event != EventBudgetWarning || got.Summary != ev.Summary || got.Budget["percent"] != 80.0 || got.Budget["month"] != "2026-11" {
+		t.Errorf("webhook = %s", b)
+	}
+	if title := Title(ev); title != "Notesteme 預算提醒："+ev.Summary {
+		t.Errorf("標題 = %q", title)
+	}
+}
