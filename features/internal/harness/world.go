@@ -16,10 +16,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cxyfer/notesteme/features/internal/fakebatch"
+	"github.com/cxyfer/notesteme/features/internal/fakefeed"
 	"github.com/cxyfer/notesteme/features/internal/fakegemini"
 	"github.com/cxyfer/notesteme/features/internal/fakegit"
 	"github.com/cxyfer/notesteme/features/internal/fakellm"
 	"github.com/cxyfer/notesteme/features/internal/fakenet"
+	"github.com/cxyfer/notesteme/features/internal/fakenotify"
 	"github.com/cxyfer/notesteme/features/internal/fakepodcast"
 	"github.com/cxyfer/notesteme/features/internal/fakesource"
 	"github.com/cxyfer/notesteme/features/internal/fakesponsorblock"
@@ -92,6 +95,12 @@ type World struct {
 	SponsorBlock *fakesponsorblock.Server
 	// Gemini 是假的 Gemini generateContent（GEM-R4），掛在正式主機名稱上，要求 TestGeminiKey。
 	Gemini *fakegemini.Server
+	// Feed 是假的 YouTube RSS（SUB，M4）；ServeFeeds 之後才登記到 www.youtube.com。
+	Feed *fakefeed.Server
+	// Notify 是假的通知端點（NOTIFY，M4）；ReachNotifyEndpoints 之後才登記。
+	Notify *fakenotify.Server
+	// m4 是其他 M4 假服務的狀態（fakebatch、fakeoidc 與它們的違規，見 m4.go）。
+	m4 *m4Fakes
 	// Tools 是假工具的狀態；修改後呼叫 SyncTools 寫入狀態檔。
 	Tools faketool.State
 
@@ -146,8 +155,10 @@ func New() (*World, error) {
 			AnthropicAPIKeyEnv: fakellm.TestAnthropicKey,
 			OpenAIAPIKeyEnv:    fakellm.TestOpenAIKey,
 			GeminiAPIKeyEnv:    TestGeminiKey,
-			"PATH":             filepath.Join(root, "bin"),
-			"HOME":             filepath.Join(root, "home"),
+			// M4：只有設定了 auth.oidc 時產品才讀它（AUTH-R16）。
+			OIDCClientSecretEnv: TestOIDCClientSecret,
+			"PATH":              filepath.Join(root, "bin"),
+			"HOME":              filepath.Join(root, "home"),
 		},
 		Clock:    clk,
 		Net:      fakenet.New(),
@@ -157,10 +168,14 @@ func New() (*World, error) {
 		// M3 的假服務（features/fixtures/README.md 的「M3 的假服務」）。
 		SponsorBlock: fakesponsorblock.New(),
 		Gemini:       fakegemini.New(filepath.Join(fx, "llm"), TestGeminiKey),
-		Tools:        faketool.State{FixturesDir: fx, Videos: map[string]*faketool.Video{}},
-		Refs:         map[string]string{},
-		FixturesDir:  fx,
-		Log:          &LogBuffer{},
+		// M4 的假服務（features/fixtures/README.md 的「M4 的假服務」）。
+		Feed:        fakefeed.New(),
+		Notify:      fakenotify.New(),
+		m4:          newM4Fakes(),
+		Tools:       faketool.State{FixturesDir: fx, Videos: map[string]*faketool.Video{}},
+		Refs:        map[string]string{},
+		FixturesDir: fx,
+		Log:         &LogBuffer{},
 	}
 	// 腳本化的 Supadata 掛在它的正式主機名稱上，被測程式照正常路徑連線（經 netguard 與 fakenet）。
 	w.Sources.RequiresAPIKey("supadata", TestSupadataKey)
@@ -171,8 +186,9 @@ func New() (*World, error) {
 	// LLM provider：anthropic、openai 掛在正式主機名稱上，要求各自的憑證（fakellm 的 wire 契約見其套件說明）。
 	w.LLM.RequireKey("anthropic", fakellm.TestAnthropicKey)
 	w.LLM.RequireKey("openai", fakellm.TestOpenAIKey)
-	w.Net.Handle(fakellm.AnthropicHost, w.LLM.Handler("anthropic"))
-	w.Net.Handle(fakellm.OpenAIHost, w.LLM.Handler("openai"))
+	// batch 的路徑（M4）在同一個主機上分給 fakebatch，其他原封不動交給 fakellm（見 llmHandler）。
+	w.Net.Handle(fakellm.AnthropicHost, w.llmHandler(fakebatch.Anthropic, w.LLM.Handler("anthropic")))
+	w.Net.Handle(fakellm.OpenAIHost, w.llmHandler(fakebatch.OpenAI, w.LLM.Handler("openai")))
 	w.Net.Handle(fakesponsorblock.Host, w.SponsorBlock)
 	w.Net.Handle(fakegemini.Host, w.Gemini)
 	for _, d := range []string{w.DataDir(), w.InboxDir(), w.ConfigDir(), w.BinDir(), w.FakeDir(), w.HomeDir(), w.VaultDir()} {
@@ -406,6 +422,9 @@ func (w *World) Check() error {
 	}
 	for _, v := range w.LLM.Violations() {
 		errs = append(errs, errors.New("fakellm: "+v))
+	}
+	for _, v := range w.m4Violations() {
+		errs = append(errs, errors.New("fakebatch: "+v))
 	}
 	if len(errs) == 0 {
 		return nil

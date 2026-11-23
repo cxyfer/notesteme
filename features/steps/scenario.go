@@ -167,11 +167,12 @@ func (s *Scenario) checkLogs() error {
 	secrets := map[string]bool{
 		harness.TestPassword: true, harness.TestMasterKey: true, harness.TestSupadataKey: true, harness.TestGroqKey: true,
 		fakellm.TestAnthropicKey: true, fakellm.TestOpenAIKey: true, harness.TestGeminiKey: true,
+		harness.TestOIDCClientSecret: true,
 	}
 	// harness.GroqAPIKeyEnv 之後改用 config.EnvGroqAPIKey（見 harness.GroqAPIKeyEnv 的 TODO）。
 	for _, k := range []string{
 		"NOTESTEME_PASSWORD", "NOTESTEME_MASTER_KEY", config.EnvSupadataAPIKey, harness.GroqAPIKeyEnv,
-		harness.AnthropicAPIKeyEnv, harness.OpenAIAPIKeyEnv, harness.GeminiAPIKeyEnv,
+		harness.AnthropicAPIKeyEnv, harness.OpenAIAPIKeyEnv, harness.GeminiAPIKeyEnv, harness.OIDCClientSecretEnv,
 	} {
 		if v := s.World.Env[k]; len(v) >= 4 {
 			secrets[v] = true
