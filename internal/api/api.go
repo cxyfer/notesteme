@@ -18,6 +18,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/assstyle"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
@@ -281,6 +282,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerAgent(api)
 	rt.registerM2Stubs(api)
 	rt.registerM3Stubs(api)
+	rt.registerM5Stubs(api)
 	registerScoped(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",
 		Summary: "讀取全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）",
@@ -361,7 +363,7 @@ func (rt *routes) logout(ctx context.Context, in *logoutInput) (*logoutOutput, e
 
 // notImplemented 是尚未實作的路由；驗證與 CSRF 已先由 middleware 處理。
 func notImplemented(context.Context, *struct{}) (*emptyOutput, error) {
-	return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
+	return nil, apierr.NotImplemented()
 }
 
 func sessionCookie(token string, secure bool, expires, now time.Time) *http.Cookie {

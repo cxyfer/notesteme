@@ -280,6 +280,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/hub/import": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** 以 Hub 上的原始字幕重新生成影音（尚未實作） */
+    post: operations["hub-import"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/items": {
     parameters: {
       query?: never;
@@ -395,6 +412,23 @@ export interface paths {
     get: operations["items-frame"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/items/{id}/hub/share": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** 把影音的產出分享到 Hub（尚未實作） */
+    post: operations["items-hub-share"];
     delete?: never;
     options?: never;
     head?: never;
@@ -863,6 +897,24 @@ export interface paths {
     put?: never;
     /** 辨識網址指向什麼內容，不建立影音（ING-R1、R5、R9） */
     post: operations["resolve"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/settings/hub": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Hub 的連線設定：url、token_set 與 ASR 前查詢（不含 token，尚未實作） */
+    get: operations["settings-hub-get"];
+    /** 設定 Hub token 與 ASR 前查詢（部分更新，尚未實作） */
+    put: operations["settings-hub-put"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1429,6 +1481,7 @@ export interface components {
       message: string;
       /** Format: int64 */
       purged?: number;
+      required_permission?: string;
       required_scope?: string;
       /** Format: int64 */
       retry_after_s?: number;
@@ -2965,6 +3018,33 @@ export interface operations {
       };
     };
   };
+  "hub-import": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
   "items-list": {
     parameters: {
       query?: {
@@ -3257,6 +3337,33 @@ export interface operations {
     };
   };
   "items-frame": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "items-hub-share": {
     parameters: {
       query?: never;
       header?: never;
@@ -4340,6 +4447,60 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["Resolution"];
         };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "settings-hub-get": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "settings-hub-put": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Error */
       default: {

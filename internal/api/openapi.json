@@ -889,6 +889,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "required_permission": {
+            "type": "string"
+          },
           "required_scope": {
             "type": "string"
           },
@@ -4238,6 +4241,27 @@
         "summary": "整份取代詞彙表；natural key 找不到頻道時建立它"
       }
     },
+    "/api/hub/import": {
+      "post": {
+        "operationId": "hub-import",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "以 Hub 上的原始字幕重新生成影音（尚未實作）"
+      }
+    },
     "/api/items": {
       "get": {
         "operationId": "items-list",
@@ -4741,6 +4765,27 @@
           }
         },
         "summary": "取得一張關鍵畫面的圖片（size=full 或 thumb，尚未實作）"
+      }
+    },
+    "/api/items/{id}/hub/share": {
+      "post": {
+        "operationId": "items-hub-share",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "把影音的產出分享到 Hub（尚未實作）"
       }
     },
     "/api/items/{id}/note": {
@@ -6014,6 +6059,46 @@
           }
         },
         "summary": "辨識網址指向什麼內容，不建立影音（ING-R1、R5、R9）"
+      }
+    },
+    "/api/settings/hub": {
+      "get": {
+        "operationId": "settings-hub-get",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Hub 的連線設定：url、token_set 與 ASR 前查詢（不含 token，尚未實作）"
+      },
+      "put": {
+        "operationId": "settings-hub-put",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "設定 Hub token 與 ASR 前查詢（部分更新，尚未實作）"
       }
     },
     "/api/settings/{section}": {
