@@ -162,6 +162,10 @@ func TestExportBundleRoundTrip(t *testing.T) {
 	if n, err := dst.st.Read().CountTasks(ctx, store.TaskPending); err != nil || n != 0 {
 		t.Errorf("匯入不建立任務：%d", n)
 	}
+	// 匯入的字幕進全文搜尋的索引（SRCH-R2：InsertArtifact 的 hook）。
+	if n, err := dst.st.SearchIndexCheck(ctx, res.Item.ID); err != nil || n == 0 {
+		t.Errorf("索引 = %d %v", n, err)
+	}
 	// 影音詳情、筆記、frames、字幕都讀得到。
 	if _, err := dst.p.Item(ctx, res.Item.ID); err != nil {
 		t.Fatalf("Item：%v", err)
