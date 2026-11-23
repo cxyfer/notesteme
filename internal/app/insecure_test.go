@@ -177,7 +177,7 @@ func TestInsecureNoAuthRefusedWithStoredPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 	delete(env.Vars, "NOTESTEME_PASSWORD")
-	if _, err := StartServerWith(t.Context(), env, ServeOptions{InsecureNoAuth: true}); !errors.Is(err, ErrInsecureWithPassword) {
+	if _, err := StartServerWith(t.Context(), env, ServeOptions{InsecureNoAuth: true}); !errors.Is(err, ErrInsecureWithStoredPassword) {
 		t.Fatalf("DB 有密碼：%v", err)
 	}
 	// 不帶旗標照常啟動，且要求登入。

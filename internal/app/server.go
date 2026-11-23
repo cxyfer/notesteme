@@ -160,7 +160,7 @@ func StartServerWith(ctx context.Context, env Env, opts ServeOptions) (*Server, 
 				if has, err := s.auth.HasPassword(ctx); err != nil {
 					return err
 				} else if has {
-					return ErrInsecureWithPassword
+					return ErrInsecureWithStoredPassword
 				}
 			} else if err := s.auth.EnsurePassword(ctx, env.Vars[envPassword]); err != nil {
 				return err

@@ -26,8 +26,10 @@ var ErrVPSInsecure = errors.New("vps 部署不能使用 --insecure-no-auth。請
 var (
 	// ErrInsecureWithProxy：反向代理或 OIDC 的設定代表實例會經由其他主機存取，不能關掉驗證。
 	ErrInsecureWithProxy = errors.New("--insecure-no-auth 不能與 trusted_proxies、auth.proxy 或 auth.oidc 一起使用。")
-	// ErrInsecureWithPassword：已經有密碼（DB 或 NOTESTEME_PASSWORD）時不默默停用驗證。
-	ErrInsecureWithPassword = errors.New("已經設定了登入密碼，不能使用 --insecure-no-auth。請移除這個旗標，或移除 NOTESTEME_PASSWORD。")
+	// ErrInsecureWithPassword：設定了 NOTESTEME_PASSWORD 時不默默停用驗證。
+	ErrInsecureWithPassword = errors.New("設定了 NOTESTEME_PASSWORD，不能同時使用 --insecure-no-auth。請移除其中一個。")
+	// ErrInsecureWithStoredPassword：DB 已經有登入密碼時不默默停用 owner 設好的驗證。
+	ErrInsecureWithStoredPassword = errors.New("已經設定了登入密碼，不能使用 --insecure-no-auth。請移除這個旗標，用密碼登入。")
 )
 
 // insecureListenError 是無驗證模式的 listen 不是 loopback 時的錯誤。
