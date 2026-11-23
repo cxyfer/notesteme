@@ -2,6 +2,7 @@
 
 - 狀態：提議中（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
 - 日期：2026-11-23
+- 修訂（M5-S0，2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：骨架照本 ADR 建立——`cmd/notesteme-hub`（`serve`、`migrate`、`doctor`、`version`，`admin` 只檢查參數）、`internal/hub`（組裝）、`hubconfig`、`hubapi`、`hubstore`（介面與 `storetest`；`sqlite` 有自己的 goose migration 與 `sqlc.yaml`，CI 的 sqlc job 加了 diff 與 vet；`postgres` 是回 `尚未實作` 的佔位）、`hubblob`（`fs`；`s3` 是佔位）、`hubcli`。共用套件另外抽出 `internal/apierr`（錯誤格式與 `huma.NewError` 的全域設定，Client 與 Hub 在同一個程序內只能有一份）與 `internal/sqlitedb`（SQLite 連線設定；`internal/store` 會帶進 source 與 toolexec，Hub 不能 import）。`internal/hub` 的測試以 `go list -deps` 確認 Hub 不 import pipeline、queue、worker、api、app、store 等套件。版本號的 `-X` 目標是 `internal/hub.version`。Dockerfile 的 `notesteme-hub` target 放在 Client 的 stage 之前（預設 target 仍是 Client），goreleaser 加了 linux 的 `notesteme-hub` build；compose 的 `hub` profile 與 Postgres 的 CI service container 等 Postgres、S3 backend 實作時再加。Hub 的 OpenAPI 快照在 `internal/hub/hubapi/openapi.json`（`go run ./internal/hub/hubapi/cmd/openapi -o internal/hub/hubapi/openapi.json`），`fakehub.Routes` 的 contract test 目前只確認路由存在。
 
 ## 背景
 

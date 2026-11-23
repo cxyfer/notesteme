@@ -78,3 +78,4 @@ Hub 保存使用者分享的字幕、章節與筆記，每份都帶著來源紀�
 - R4：自動隱藏的門檻（3 個帳號、帳號齡 7 天，HREP-R15）可以在設定檔調整；場景用調低的值與 fake clock 驗證。
 - R5：lookup 的前綴長度固定 4 碼（HREP-R19、ADR-0032 第 3 點）。影片數多到每個桶的回應太大時，再評估改成 5 碼並讓 Client 依 Hub 回報的長度送出。
 - R6：Hub 上的版本內容（字幕、筆記）在 Hub UI 中只渲染、不執行；Hub 沒有 LLM，所以「字幕中的指示」只影響取用它的 Client 與 Agent（Client 端的處理見 HSHR、HMCP）。
+- R7：M5-S0（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：Hub 設定的 `bundles` 是扁平的 `max_upload_bytes`（預設 32 MiB）、`max_total_bytes`（256 MiB）、`max_files`（2000）、`max_file_bytes`（64 MiB）、`max_ratio`（100），不沿用 BND 的 `bundles.import.*` 巢狀（Hub 只有上傳一種用途）；值不正確時「設定檔 … 的欄位 bundles.<鍵> 必須是大於 0 的值。」。`hubblob` 以 sha256 為鍵（`<data>/blobs/<前 2 碼>/<sha256>`，0600，寫入時自己計算雜湊，鍵不是 64 個小寫十六進位字元時一律當作不存在）；S3 只有佔位。

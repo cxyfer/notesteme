@@ -55,3 +55,4 @@
 
 - M1：`get_transcript` 需要 `download` 而不是 `read`（HMCP-R4）：讀到完整字幕等同下載。只有 `read` 的 PAT 可以搜尋與看來源紀錄。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
 - M2：256 KiB 的上限（HMCP-R7）比照常見 MCP client 對單次結果的限制暫定；實作時依 go-sdk 與主流 client 的實際限制調整。
+- M3：M5-S0（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：Hub 設定接受 `mcp.allowed_origins`、`mcp.allowed_hosts`、`mcp.max_result_bytes`（預設 256 KiB，可以寫 `120` 或 `"256KiB"`）；`/mcp` 目前是 501 stub，S6 換成 go-sdk 的 Streamable HTTP。

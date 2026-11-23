@@ -45,6 +45,10 @@ go run ./internal/api/cmd/openapi -o internal/api/openapi.json          # 否則
 
 - **不能有任何原本 passed 的場景退步**：用 `go test -v ./features -run TestFeatures -godog.tags='@M2' -godog.format=junit > old.xml` 輸出 `@M2` 的逐場景結果（**要加 `-v`**：全部通過時沒有 `-v` 會是空的 XML；輸出前面有 `=== RUN` 行，解析時從 `<testsuites` 開始切），與切片開始前的基準逐一比對。預設 tag 已涵蓋 `@M1` 與 `@M2`，`go test ./features -run TestFeatures` 跑的就是全部 308 個。
 - **M3 的逐場景比對**（M3-S0 起，每個 M3 切片都要做）：開工前在乾淨的分支上存 `@M3` 的基準 `go test -v ./features -run TestFeatures -godog.tags='@M3' -godog.format=junit > m3-before.xml`，交付前再存一次 `m3-after.xml`，從 `<testsuites` 開始解析，逐一比對每個 `<testcase>` 的 `status`（同名場景依出現順序加序號）與第一個非 passed 步驟的訊息。報告列出：由 pending 變 passed 的場景（目標）、仍為 pending 的場景與停在哪個步驟、**任何變成 failed 或 undefined 的場景**（閘門句型共用，實作一個閘門之後其他領域的場景可能往下跑到還沒實作的 M3 設定而失敗；這不一定是退步，但每一個都要說明原因，並確認不是預設 tag 的退步）。預設 tag 的 308 個場景另外比對，一個都不能退步。
+- **M5 的逐場景比對**（M5-S0 起，每個 M5 切片都要做，作法同上面的 M3）：開工前存 `m5-before.xml`（`-godog.tags='@M5'`），交付前存 `m5-after.xml`，逐一比對 `status` 與第一個非 passed 步驟。M5-S0 的基準是 148 個場景全部 pending，106 個停在 `Given a Hub is running`、42 個停在 `Given the owner's client is connected to a Hub`。實作閘門之後：
+  - 真 Hub 的閘門（S1）解除後，HACC、HREP、HMCP 的場景會往下跑到還沒有實作的 Hub 路由；Hub 的 stub 回 501 `not_implemented`，`pendingIfNotImplemented` 會把它們算成 pending，但預期 401／403 的場景會變成 failed（同 Client 的規則），每一個都要說明原因。
+  - fakehub 的閘門（S7）解除後，HSHR 的場景會跑到 Client 的 M5 stub（501 → pending）與 Client 設定的驗證；`@M3`、`@M4` 也要比對，因為代入（`SubstRequest`）與 log 的 secret 掃描是共用的。
+  - 動過 Hub 的路由時重產 `internal/hub/hubapi/openapi.json`（`go run ./internal/hub/hubapi/cmd/openapi -o internal/hub/hubapi/openapi.json`）；動過 Hub 的 SQL 時跑 `go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 diff -f internal/hub/hubstore/sqlite/sqlc.yaml` 與 `vet`。
 - 變異測試：挑 5～10 個關鍵檢查暫時破壞，確認對應場景或單元測試會變紅，再還原。
 - 不可信輸入的解析器要有單元測試與 fuzz。
 
