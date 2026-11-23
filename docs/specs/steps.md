@@ -598,6 +598,13 @@ M4-S4 的實作說明（2026-11-23，依 /goal 採 advisor 建議，待 owner �
 | `Then the batch request count of {string} is {int}` | 這個 provider 所有 batch 中的請求總數 |
 | `Then the cancelled batch count of {string} is {int}` | 收到取消請求的 batch 數（同一個 batch 取消多次只算一次） |
 
+M4-S5 的實作說明（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+
+- BATCH 的句型只對 BATCH 的場景（有 `@BATCH-` 開頭的 tag）放行（`batchGate`）；`costGate` 也放行 `@BATCH-`（BATCH 的 Background 用 COST 的價格與 usage 句型）。LIB-bulk-overview 仍停在 COST 的閘門。
+- `the batch API of …` 第一次出現時呼叫 `World.EnableBatch(harness.LLMBatchAnswerer{…})`：batch 的每個請求由 fakellm 的 `AnswerBatch` 回答（4.6 的 answers、`for chunk` 腳本與 wire 契約檢查都相同，`the LLM usage reported by …` 也適用），不記入 `the LLM provider … received …`，也不套用 `fails with HTTP`（batch 的個別失敗用 `fails the requests for chunk`）。
+- `the batch count`、`the batch request count`、`the cancelled batch count`：沒有 `the batch API of …` 的場景（fakebatch 沒有啟用）時是 0。
+- `Then the {string} artifact of {string} has the provenance:`（4.4）的值寫 `*` 時，代表這個欄位存在而且不是空值或 `null`（例如 provider 的 batch ID 每次不同，`chunks.0.batch_id`）；其他值照原本的規則以字串比較。只增加語意，既有場景沒有寫 `*` 的值。
+
 ### 4.20 全文搜尋、bundle 與術語審核（`steps/library.go`，M4）
 
 #### 全文搜尋（SRCH）

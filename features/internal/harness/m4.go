@@ -102,6 +102,14 @@ func (w *World) EnableBatch(answerer fakebatch.Answerer) *fakebatch.Server {
 	return w.m4.batch
 }
 
+// LLMBatchAnswerer 讓 fakebatch 的每個請求由 fakellm 回答（共用 steps.md 4.6 的 answers，不記入一般請求數）。
+type LLMBatchAnswerer struct{ LLM *fakellm.Server }
+
+// Answer 實作 fakebatch.Answerer。
+func (a LLMBatchAnswerer) Answer(provider string, body []byte) (int, []byte) {
+	return a.LLM.AnswerBatch(provider, body)
+}
+
 // Batch 回傳 EnableBatch 建立的 fakebatch；還沒有啟用時是 nil。
 func (w *World) Batch() *fakebatch.Server {
 	w.m4.mu.Lock()

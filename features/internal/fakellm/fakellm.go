@@ -341,6 +341,42 @@ func (s *Server) handle(id string, r *http.Request, body []byte) result {
 	return finish(p.successResult(req, out))
 }
 
+// AnswerBatch 回答 Batch API 中的一個請求（fakebatch 的 Answerer，steps.md 4.19）：wire 契約的檢查與腳本和一般 API 相同，
+// 但不記入 Requests（`the LLM provider … received …` 只算一般 API），也不套用 Fail（batch 的失敗由 fakebatch 決定）。
+// 回傳 HTTP 狀態碼與一般 API 格式的回應本體。
+func (s *Server) AnswerBatch(id string, body []byte) (int, []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.providers[id]
+	if p == nil {
+		s.violate(id, 0, "batch：不認識的 provider")
+		return http.StatusInternalServerError, []byte(`{"error":"fakellm: unknown provider"}`)
+	}
+	pr := parseRequest(id, body)
+	req := Request{Stage: pr.stage, Chunk: pr.chunk, Model: pr.model, Text: pr.text, Prefix: pr.prefix, At: s.clk.Now()}
+	if len(pr.errs) > 0 {
+		s.violate(id, 0, "batch 的請求違反 wire 契約：%s", strings.Join(pr.errs, "；"))
+		res := p.errorResult(http.StatusBadRequest, req.Model)
+		return res.status, res.body
+	}
+	fx := p.pick(req.Stage, req.Chunk)
+	if fx == nil {
+		s.violate(id, 0, "batch：stage %q（chunk %d）沒有腳本：場景缺少對應的 `answers` 步驟", req.Stage, req.Chunk)
+		res := p.errorResult(http.StatusInternalServerError, req.Model)
+		return res.status, res.body
+	}
+	gin := generatorInput(req.Stage, pr.data)
+	gin.Prefix = pr.prefix
+	out, err := fx.render(gin)
+	if err != nil {
+		s.violate(id, 0, "batch：fixture %q 無法產生回答：%v", fx.name, err)
+		res := p.errorResult(http.StatusBadRequest, req.Model)
+		return res.status, res.body
+	}
+	res := p.successResult(req, out)
+	return res.status, res.body
+}
+
 // pick 選出這個請求的回答：chunk 腳本優先於依序回答；依序回答只在被選中時前進。沒有腳本時回傳 nil。
 func (p *provider) pick(stage string, chunk int) *fixture {
 	if chunk > 0 {

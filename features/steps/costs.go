@@ -15,14 +15,16 @@ import (
 
 	"github.com/cucumber/godog"
 
+	"github.com/cxyfer/notesteme/features/internal/fakebatch"
+	"github.com/cxyfer/notesteme/features/internal/harness"
 	"github.com/cxyfer/notesteme/internal/app"
 )
 
 // registerCosts 註冊「成本、預算與 Batch API」的步驟（steps.md 4.19，M4）。
 //
-// M4 規格展開時（2026-11-23）只註冊步驟樁；M4-S4 實作 COST 的句型。COST 的句型也是 LIB-08、09（LIB-bulk-overview）
-// 與 BATCH 的閘門，所以只對 COST 的場景放行（見 costGate），其他領域維持 pending、停在同一個閘門。
-// BATCH 自己的句型仍是步驟樁，由 BATCH 切片實作。
+// M4 規格展開時（2026-11-23）只註冊步驟樁；M4-S4 實作 COST 的句型，M4-S5 實作 BATCH 的句型（fakebatch）。
+// COST 的句型也是 LIB-08、09（LIB-bulk-overview）的閘門，所以只對 COST 與 BATCH 的場景放行（見 costGate），
+// LIB 維持 pending、停在同一個閘門。
 func registerCosts(r *Registry, s *Scenario) {
 	r.Step(`the price of {string} for {string} is {string} USD per {string}`, s.priceIs)
 	r.Step(`the budget is:`, s.budgetIs)
@@ -34,20 +36,21 @@ func registerCosts(r *Registry, s *Scenario) {
 	r.Step(`the LLM cost reported by {string} is {string} USD`, s.llmCostIs)
 	r.Step(`the cost ledger entries of {string} are:`, s.costLedgerEntriesAre)
 	r.Step(`the cost export has a row with {string} set to {string}`, s.costExportHasRow)
-	r.Step(`the batch API of {string} completes after {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the batch API of {string} never completes`, func(string) error { return godog.ErrPending })
-	r.Step(`the batch API of {string} fails the requests for chunk {int}`, func(string, int) error { return godog.ErrPending })
-	r.Step(`the batch API of {string} points its results to {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the batch count of {string} is {int}`, func(string, int) error { return godog.ErrPending })
-	r.Step(`the batch request count of {string} is {int}`, func(string, int) error { return godog.ErrPending })
-	r.Step(`the cancelled batch count of {string} is {int}`, func(string, int) error { return godog.ErrPending })
+	r.Step(`the batch API of {string} completes after {string}`, s.batchCompletesAfter)
+	r.Step(`the batch API of {string} never completes`, s.batchNeverCompletes)
+	r.Step(`the batch API of {string} fails the requests for chunk {int}`, s.batchFailsChunk)
+	r.Step(`the batch API of {string} points its results to {string}`, s.batchPointsResultsTo)
+	r.Step(`the batch count of {string} is {int}`, s.batchCountIs)
+	r.Step(`the batch request count of {string} is {int}`, s.batchRequestCountIs)
+	r.Step(`the cancelled batch count of {string} is {int}`, s.cancelledBatchCountIs)
 }
 
 // costGate 讓 COST 的句型只對 COST 的場景（有 @COST- 開頭的 tag）放行（M4-S4）。
 // LIB-bulk-overview（LIB-08、09）的閘門是 `the cost estimate of every …`，BATCH 也用 COST 的價格與 usage 句型；
 // 它們的切片實作之前維持 pending，回傳裸的 godog.ErrPending，junit 的訊息與切片之前相同（同 notifyGate）。
+// M4-S5：BATCH 的場景（@BATCH-）也放行，它們用 COST 的價格、usage、預算與成本紀錄的句型。
 func (s *Scenario) costGate() error {
-	if !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@COST-") }) {
+	if !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@COST-") || strings.HasPrefix(t, "@BATCH-") }) {
 		return godog.ErrPending
 	}
 	return nil
@@ -328,4 +331,101 @@ func (s *Scenario) costExportHasRow(field, value string) error {
 		}
 	}
 	return fmt.Errorf("CSV 沒有 %s 為 %q 的列（實際：%q）", field, value, seen)
+}
+
+// ---- Batch API（BATCH，M4-S5）----
+
+// batchGate 讓 BATCH 的句型只對 BATCH 的場景放行（同 costGate）。
+func (s *Scenario) batchGate() error {
+	if !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@BATCH-") }) {
+		return godog.ErrPending
+	}
+	return nil
+}
+
+// batchServer 啟用 fakebatch（第一次時），每個請求由 fakellm 依 4.6 的 answers 回答、不記入一般請求數。
+func (s *Scenario) batchServer(provider string) (*fakebatch.Server, error) {
+	if err := s.batchGate(); err != nil {
+		return nil, err
+	}
+	if provider != fakebatch.Anthropic && provider != fakebatch.OpenAI {
+		return nil, fmt.Errorf("batch API 只有 %s、%s，收到 %q", fakebatch.Anthropic, fakebatch.OpenAI, provider)
+	}
+	return s.World.EnableBatch(harness.LLMBatchAnswerer{LLM: s.World.LLM}), nil
+}
+
+func (s *Scenario) batchCompletesAfter(provider, after string) error {
+	b, err := s.batchServer(provider)
+	if err != nil {
+		return err
+	}
+	d, err := time.ParseDuration(after)
+	if err != nil || d < 0 {
+		return fmt.Errorf("時間長度 %q 不正確", after)
+	}
+	b.CompleteAfter(provider, d)
+	return nil
+}
+
+func (s *Scenario) batchNeverCompletes(provider string) error {
+	b, err := s.batchServer(provider)
+	if err != nil {
+		return err
+	}
+	b.Never(provider)
+	return nil
+}
+
+func (s *Scenario) batchFailsChunk(provider string, chunk int) error {
+	b, err := s.batchServer(provider)
+	if err != nil {
+		return err
+	}
+	if chunk < 1 {
+		return fmt.Errorf("chunk 從 1 起算，收到 %d", chunk)
+	}
+	b.FailChunk(provider, chunk)
+	return nil
+}
+
+func (s *Scenario) batchPointsResultsTo(provider, url string) error {
+	if provider != fakebatch.Anthropic {
+		return fmt.Errorf("只有 %s 的 batch 有 results_url，收到 %q", fakebatch.Anthropic, provider)
+	}
+	b, err := s.batchServer(provider)
+	if err != nil {
+		return err
+	}
+	b.PointResultsTo(url)
+	return nil
+}
+
+// batchCount 讀 fakebatch 的計數；還沒有啟用時是 0。
+func (s *Scenario) batchCount(provider, what string, want int, f func(*fakebatch.Server, string) int) error {
+	if err := s.batchGate(); err != nil {
+		return err
+	}
+	if provider != fakebatch.Anthropic && provider != fakebatch.OpenAI {
+		return fmt.Errorf("batch API 只有 %s、%s，收到 %q", fakebatch.Anthropic, fakebatch.OpenAI, provider)
+	}
+	got := 0
+	if b := s.World.Batch(); b != nil {
+		got = f(b, provider)
+	}
+	if got != want {
+		return fmt.Errorf("%s 的 %s 是 %d，預期 %d", provider, what, got, want)
+	}
+	return nil
+}
+
+func (s *Scenario) batchCountIs(provider string, want int) error {
+	return s.batchCount(provider, "batch 數", want, (*fakebatch.Server).Batches)
+}
+
+func (s *Scenario) batchRequestCountIs(provider string, want int) error {
+	return s.batchCount(provider, "batch 請求數", want, (*fakebatch.Server).Requests)
+}
+
+func (s *Scenario) cancelledBatchCountIs(provider string, want int) error {
+	return s.batchCount(provider, "取消的 batch 數", want, (*fakebatch.Server).Cancelled)
 }

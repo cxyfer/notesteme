@@ -62,6 +62,13 @@ func (s *Scenario) artifactHasProvenance(name, ref string, table *godog.Table) e
 			}
 			continue
 		}
+		if row.value == "*" {
+			// `*` 代表欄位存在而且不是空值（例如 provider 的 batch ID，BATCH-R8；steps.md 4.4）。
+			if got == "" || got == "null" {
+				return fmt.Errorf("%s 的 %q 產出：%s 是空的，預期有值", ref, name, row.field)
+			}
+			continue
+		}
 		if got != row.value {
 			return fmt.Errorf("%s 的 %q 產出：%s 是 %q，預期 %q", ref, name, row.field, got, row.value)
 		}
