@@ -61,3 +61,15 @@
 - F7：`get_frame` 的預設尺寸是 `thumb`，避免 Agent 一次拿到大量 image token；要原圖時指定 `size: "full"`。
 - F8：本機影片也適用（有影像串流就擷取），影片檔不見時 `frames` 為 `permanent` 失敗（同 OUT 的 sidecar）。
 - F9：M3-S0（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`stages.frames` 接受 FRM 介面列出的欄位，範圍是 `scene_threshold`、`dedupe_threshold` 0～1，`min_interval_s` 1～3600，`dedupe_window`、`max_frames` 1～100，`per_minute` 大於 0 且不超過 60（上限是保守的初值，只擋明顯不合理的值）；`agent` 依 F6 回 422。`audio_only` 需要知道有沒有影像串流，留給 FRM 的切片。資源類別暫時一律是 `frames`；ADR-0020 第 3 點的下載、選圖分類要在 FRM 的切片依 `tasks.kind` 實作。`GET /api/items/:id/frames`、`/frames/:n`、MCP `list_frames`、`get_frame`、CLI `frames ls|get` 已經註冊，回 501／`not_implemented`。`POST /rerun` 接受 `reuse_candidates`，從 `frames` 重跑在實作前回 501。
+- F10：M3-S3 的實作決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 任務：步驟前進時建立 `frames.candidates`（`frames` 資源類別），完成後在同一個交易建立 `frames.select`（`rules` 為 `local`、`api` 為 `llm`），同 F1。影片下載在候選任務中執行（`frames` 類別），和 ADR-0020 第 3 點「下載是 `download`」不同：拆成第三個任務要多一份中間狀態，先保守合併，量測後再決定。
+  - 候選全部以 FRM-R8 的尺寸（不超過 1920×1080、不放大）擷取並另存寬 320 的縮圖，放在 `<data>/artifacts/<item>/frames/<版本>/`；FRM-R13 沿用候選時以 hard link（不支援時複製）連到新版本，不需要重新下載影片。去重的 32×18 縮圖、拼圖（每格 320×180，左上角畫編號）都在程式內處理，ffmpeg 只做場景偵測與擷取。
+  - FRM-R2 的密度下限：片頭 `0` 只當作邊界、本身不是候選；從前一個候選起每隔 `min_interval_s` 補一張，直到補上的時間到達下一個候選（R2 的例子：1、61、121、181、241）。補上的候選場景分數為 0。`candidate_count` 與 `frames` 都是去重之後的候選；沒有排除原因時 `excluded` 是 `null`。
+  - FRM-R4：可選的候選（不在 SponsorBlock 片段內的）少於範圍下限時全部選用，不呼叫模型；提醒中的 N 是選中的張數、M 是範圍下限。
+  - FRM-R7：所有拼圖放在同一個請求；資料區塊沿用 `<transcript_data>` 的契約，每張候選一項，文字是「[拼圖 s 編號 n] 前後 10 秒內的字幕（最多 300 字）」。schema 不限制 `sheet`、`n` 的範圍，由驗證給出「picks[0]：第 1 張拼圖沒有編號 12」這類說明；重試次數沿用 `llm.max_validation_retries`。用量寫在來源紀錄的 `usage`，還沒有寫入成本紀錄（COST，M4）。
+  - `agent` 依 F6 維持 422，`claim_tasks` 不變。
+  - 影片來源：YouTube 以 yt-dlp 的 `bv*[height<=1080][width<=1920]/b[height<=1080][width<=1920]` 下載到媒體快取 `<data>/media/<id>/video.<ext>`（大小上限沿用 GRD-R5 的音檔上限，隨影音永久刪除一起清除）；`source_resolution` 取自 `-J` 格式清單中最高畫質的影像格式。本機影片直接讀原檔（F8）。Bilibili 先以 permanent 失敗（「目前只有 YouTube 與本機影片可以擷取關鍵畫面。」），之後再評估。`audio_only` 在規劃時依平台（Podcast）與本機檔案的 `media_kind` 判斷；YouTube 下載後沒有影像串流時，候選任務把步驟改成 `skipped`（`audio_only`）。
+  - 沒有快取鍵：每次執行都重新擷取與選圖。只保留現行版本（被取代的版本連同圖片目錄在新版本 commit 後刪除，`pinned` 的除外）；選圖任務被較新的重跑取消時，它的版本目錄不會被清掉（已知限制）。
+  - FRM-R9 的章節：現行的 `chapters` 產出（CHAP），沒有時用平台章節；`rules` 的圖說是涵蓋該時間的 cue，沒有時取 10 秒內最接近的 cue。
+  - FRM-R10：`GET /api/items/:id/frames/:n` 和 `/media` 一樣直接掛在 mux 上（不在 OpenAPI 中），以 `http.ServeContent` 回應（Range、`ETag`、`Cache-Control: private, max-age=0, must-revalidate`、`X-Content-Type-Options: nosniff`、`Content-Security-Policy: sandbox`）；檔名只由驗證過的 `n` 產生，在版本目錄內以 `os.OpenRoot` 開啟；`size` 不是 `full`／`thumb` 時 422，`n` 超出範圍時 404 `frame_not_found`。MCP `list_frames` 的 `selected_only` 與 CLI `frames ls --all` 在 client 端過濾。
+  - 驗收的假服務：登記了畫面或最高畫質的影片才有影像格式（最高畫質預設 `1920x1080`，另有不超過它的 1920x1080、1280x720、854x480、640x360），下載後才有影像串流。`@FRM-R9` 的 `the chapters of … are:` 是 CHAP 的句型，等 M3-S2；`the frames of … are:` 只有 NOTE、VAULT 使用，留給它們的切片。

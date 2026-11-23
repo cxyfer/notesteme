@@ -368,6 +368,8 @@ M3-S1（2026-11-23）實作了 SponsorBlock 的四個句型，並讓它們只對
 
 M3-S2（2026-11-23）實作 `chapters` 之後，SponsorBlock 的四個句型也對有 `@CHAP-` 開頭 tag 的場景放行（`pipeline.StageAvailable("chapters")`，CHAP 待決問題 H11）；FRM、NOTE、`@SPB-R7`、M4 的 SRC-10 不變。`Given the chapters of … are:` 仍是步驟樁（NOTE 的閘門）。
 
+M3-S3（2026-11-23）實作了 4.14 的 `the video of … has the scenes:`、`the best video format of … is …`、`the tool result has an image of type …`，只對 FRM 的場景放行（有 `@FRM-` 開頭的 tag）；SponsorBlock 的句型也對 FRM 的場景放行（FRM-R6）。`the frames of … are:` 仍是步驟樁（NOTE、VAULT 的切片）。這些都不是新句型。
+
 既有句型在 M3 的語意補充（2026-11-23，不新增句型；由實作切片在對應的步驟實作）：
 
 - `Given the item … has been processed up to …`：目標也可以是 `sponsorblock`、`chapters`、`frames`、`note`。產品的 `pipeline.StageAvailable` 回報這個步驟還沒有任何 executor 實作時 pending（M3-S0 之後四個步驟都在 `pipeline.Stages` 中，改用這個判斷；與 `source.Implemented` 同類，只限這四個名稱；其他不認識的名稱仍然失敗）；實作之後依 (2c) 的規則判斷（`done` 或 `skipped` 都算處理到）。決定重跑的起點時，跳過還沒有實作的 M3 步驟（它們一律 `skipped`（`not_implemented`），從它們重跑回 501）。
