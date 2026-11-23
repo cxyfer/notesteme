@@ -31,7 +31,9 @@ type idpError struct{ step, reason string }
 
 func (e *idpError) Error() string { return e.step + "：" + e.reason }
 
-func fail(step, format string, a ...any) error { return &idpError{step: step, reason: fmt.Sprintf(format, a...)} }
+func fail(step, format string, a ...any) error {
+	return &idpError{step: step, reason: fmt.Sprintf(format, a...)}
+}
 
 // noRedirectClient 複製 base，不跟隨轉址（3xx 視為失敗）。
 func noRedirectClient(base *http.Client) *http.Client {
