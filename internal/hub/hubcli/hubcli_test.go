@@ -72,13 +72,13 @@ func TestConfigError(t *testing.T) {
 func TestAdminArgs(t *testing.T) {
 	e, _, errb := env(t, cfg, nil)
 	cases := map[string]int{
-		"admin":                                     ExitUsage,
-		"admin grant":                               ExitUsage,
+		"admin":       ExitUsage,
+		"admin grant": ExitUsage,
 		"admin grant --provider gitlab --subject 1": ExitUsage,
 		"admin grant --provider github --subject 1": ExitError, // 尚未實作
-		"admin suspend":                             ExitUsage,
-		"admin suspend u1":                          ExitError,
-		"admin delete u1":                           ExitUsage,
+		"admin suspend":    ExitUsage,
+		"admin suspend u1": ExitError,
+		"admin delete u1":  ExitUsage,
 	}
 	for line, want := range cases {
 		errb.Reset()
