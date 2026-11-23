@@ -74,11 +74,11 @@ var subtitleSourceIDs = []string{
 //   - 平台字幕來源（youtube-*、bilibili-*）：沒有 API key，明確失敗。
 //   - 其他字幕來源 ID：先確認產品已實作這個來源（source.Implemented），否則 pending（允許的種類之一）；
 //     再移除環境變數與 fake origin 的 key 要求，產品若沒檢查 key 就呼叫來源，會拿到結果而讓場景失敗。
-//   - LLM provider（anthropic、openai）：移除 NOTESTEME_<ID>_API_KEY，並取消 fakellm 的 key 要求；
+//   - LLM provider（anthropic、openai，M3 另有 gemini）：移除 NOTESTEME_<ID>_API_KEY，並取消 fakellm（或 fakegemini）的 key 要求；
 //     產品沒檢查 key 就呼叫 provider 會拿到正常的回答，場景因此失敗。
 //   - 其他：不認識的 provider，明確失敗。
 func (s *Scenario) providerHasNoAPIKey(provider string) error {
-	if fakellm.IsProvider(provider) {
+	if fakellm.IsProvider(provider) || provider == geminiProvider {
 		if s.server != nil {
 			return errors.New("server 已經在執行，環境變數只在啟動時讀取：`the provider … has no API key` 必須放在啟動 server 的步驟之前")
 		}

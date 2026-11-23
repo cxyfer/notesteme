@@ -227,6 +227,10 @@ func (s *Scenario) stageIs(stage, ref, want string) error {
 				if s.previousRequestNotImplemented() {
 					return fmt.Errorf("最近的請求還沒有實作：%w", godog.ErrPending)
 				}
+				// GEM：Gemini 的筆記通過驗證，但 NOTE 的模板還沒有實作（M3-S4）；不是 GEM 的退步（GEM G9）。
+				if stage == pipeline.StageNote && st.Message == pipeline.GeminiNoteRendererMissing {
+					return fmt.Errorf("note 的筆記模板還沒有實作（M3-S4）：%w", godog.ErrPending)
+				}
 				return fmt.Errorf("%s 的步驟 %s 是 %q，預期 %q（%s）", ref, stage, st.Status, want, describeStage(st))
 			}
 			return nil

@@ -262,7 +262,7 @@ M5（Hub）的場景不使用 `features/fixtures/` 中的檔案：bundle、字�
 M3 的步驟（`docs/specs/steps.md` 4.13～4.16）目前都是 pending 的步驟樁。下列假服務已有可以單獨測試的骨架；
 M3-S0（2026-11-23）已把 SponsorBlock、Gemini 登記到 fakenet（`World.SponsorBlock`、`World.Gemini`，key 是 `harness.TestGeminiKey`），
 `git`、`notesteme-test-hook` 加進 `faketool.Dispatch` 與 PATH（狀態在 `fake/git/`、`fake/hooks.jsonl`，見 `World.FakeGit()`、`World.HookRecord()`）。
-假 ffmpeg 的場景偵測、擷取與假 yt-dlp 的影像串流（fakeframes）已在 M3-S3 接上：只有登記了畫面或最高畫質的影片有影像格式與影像串流，預設 tag 的場景不受影響。fakegemini 的影片資訊還沒有接上，由 GEM 的切片負責。
+假 ffmpeg 的場景偵測、擷取與假 yt-dlp 的影像串流（fakeframes）已在 M3-S3 接上：只有登記了畫面或最高畫質的影片有影像格式與影像串流，預設 tag 的場景不受影響。fakegemini 的影片資訊在 M3-S7 接上：`World.SyncTools` 把假 yt-dlp 每部影片的片長與公開狀態同步進假 Gemini。
 
 | 套件 | 取代 | 狀態與 fixture | 接到哪裡 |
 |---|---|---|---|

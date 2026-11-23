@@ -8,6 +8,7 @@ import (
 	"github.com/cucumber/godog"
 
 	"github.com/cxyfer/notesteme/features/internal/fakellm"
+	"github.com/cxyfer/notesteme/internal/pipeline"
 )
 
 // registerLLM 註冊「LLM」的步驟，句型見 docs/specs/steps.md。
@@ -91,6 +92,25 @@ func (s *Scenario) llmChunksAre(stage, ref string, table *godog.Table) error {
 	return nil
 }
 
+// geminiProvider 是由 fakegemini 回應的 LLM provider（steps.md 4.13 的 M3 語意補充）：步驟名稱固定是 note。
+const geminiProvider = "gemini"
+
+// llmNoteGate：note 的一般流程（NOTE，M3-S4）還沒有實作時，anthropic、openai 的 note 回答是 pending（GEM G9）。
+func llmNoteGate(provider, stage string) error {
+	if provider != geminiProvider && stage == pipeline.StageNote && !pipeline.StageAvailable(pipeline.StageNote) {
+		return fmt.Errorf("note 的一般流程還沒有實作（M3-S4）：%w", godog.ErrPending)
+	}
+	return nil
+}
+
+// geminiStage 檢查 gemini 的步驟名稱：只有 note（GEM-R4）。
+func geminiStage(stage string) error {
+	if stage != pipeline.StageNote {
+		return fmt.Errorf("LLM provider gemini 只回答 note（GEM），不是 %q", stage)
+	}
+	return nil
+}
+
 // llmProvider 檢查 provider 是 fakellm 模擬的 provider（anthropic、openai）。
 func llmProvider(id string) error {
 	if !fakellm.IsProvider(id) {
@@ -100,17 +120,28 @@ func llmProvider(id string) error {
 }
 
 func (s *Scenario) llmAnswers(provider, stage, fixture string) error {
-	if err := llmProvider(provider); err != nil {
-		return err
-	}
-	return s.World.LLM.Answer(provider, stage, fixture)
+	return s.llmAnswersAll(provider, stage, fixture)
 }
 
 func (s *Scenario) llmAnswersThen(provider, stage, first, second string) error {
+	return s.llmAnswersAll(provider, stage, first, second)
+}
+
+func (s *Scenario) llmAnswersAll(provider, stage string, fixtures ...string) error {
+	if err := llmNoteGate(provider, stage); err != nil {
+		return err
+	}
+	if provider == geminiProvider {
+		if err := geminiStage(stage); err != nil {
+			return err
+		}
+		s.World.Gemini.Answer(fixtures...)
+		return nil
+	}
 	if err := llmProvider(provider); err != nil {
 		return err
 	}
-	return s.World.LLM.Answer(provider, stage, first, second)
+	return s.World.LLM.Answer(provider, stage, fixtures...)
 }
 
 func (s *Scenario) llmAnswersChunk(provider, stage string, chunk int, fixture string) error {
@@ -122,6 +153,13 @@ func (s *Scenario) llmAnswersChunk(provider, stage string, chunk int, fixture st
 
 // llmFail 讓 provider 的請求回傳 HTTP 錯誤；times 為 0 代表一直失敗。
 func (s *Scenario) llmFail(provider string, status, times int) error {
+	if provider == geminiProvider {
+		if status < 400 || status > 599 {
+			return fmt.Errorf("HTTP %d 不是錯誤狀態碼（400-599）", status)
+		}
+		s.World.Gemini.Fail(status, times == 1)
+		return nil
+	}
 	if err := llmProvider(provider); err != nil {
 		return err
 	}
@@ -142,6 +180,12 @@ func (s *Scenario) llmFailsOnce(provider string, status int) error {
 
 // llmReceived 比對 provider 收到的請求總數（失敗的請求也算）。
 func (s *Scenario) llmReceived(provider string, want int) error {
+	if provider == geminiProvider {
+		if n := len(s.World.Gemini.Requests()); n != want {
+			return fmt.Errorf("LLM provider gemini 收到 %d 個請求，預期 %d 個", n, want)
+		}
+		return nil
+	}
 	if err := llmProvider(provider); err != nil {
 		return err
 	}
@@ -182,7 +226,49 @@ func (s *Scenario) llmRequest(provider string, n int) (fakellm.Request, error) {
 	return reqs[n-1], nil
 }
 
+// geminiRequest 取出 gemini 的第 n 個請求（從 1 起算）：原始 body 與解出的文字（所有 text 與 file_uri 串起來，
+// 不受 JSON 跳脫影響）。
+func (s *Scenario) geminiRequest(n int) (raw, text string, err error) {
+	reqs := s.World.Gemini.Requests()
+	if n < 1 || n > len(reqs) {
+		return "", "", fmt.Errorf("LLM provider gemini 沒有第 %d 個請求（只收到 %d 個）", n, len(reqs))
+	}
+	var body struct {
+		Contents []struct {
+			Parts []struct {
+				Text     string `json:"text"`
+				FileData *struct {
+					FileURI string `json:"file_uri"`
+				} `json:"file_data"`
+			} `json:"parts"`
+		} `json:"contents"`
+	}
+	raw = string(reqs[n-1])
+	var b strings.Builder
+	if json.Unmarshal(reqs[n-1], &body) == nil {
+		for _, c := range body.Contents {
+			for _, p := range c.Parts {
+				if p.FileData != nil {
+					b.WriteString(p.FileData.FileURI + "\n")
+				}
+				b.WriteString(p.Text + "\n")
+			}
+		}
+	}
+	return raw, b.String(), nil
+}
+
 func (s *Scenario) llmRequestContains(n int, provider, text string) error {
+	if provider == geminiProvider {
+		raw, decoded, err := s.geminiRequest(n)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(raw, text) && !strings.Contains(decoded, text) {
+			return fmt.Errorf("對 gemini 的第 %d 個請求不含 %q\n開頭：%s", n, text, excerpt(decoded))
+		}
+		return nil
+	}
 	r, err := s.llmRequest(provider, n)
 	if err != nil {
 		return err
@@ -195,6 +281,16 @@ func (s *Scenario) llmRequestContains(n int, provider, text string) error {
 
 // llmRequestDoesNotContain 要求請求存在：請求不存在時失敗，不能讓「不包含」恆真。
 func (s *Scenario) llmRequestDoesNotContain(n int, provider, text string) error {
+	if provider == geminiProvider {
+		raw, decoded, err := s.geminiRequest(n)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(raw, text) || strings.Contains(decoded, text) {
+			return fmt.Errorf("對 gemini 的第 %d 個請求不該含 %q", n, text)
+		}
+		return nil
+	}
 	r, err := s.llmRequest(provider, n)
 	if err != nil {
 		return err

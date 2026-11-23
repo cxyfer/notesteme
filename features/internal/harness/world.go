@@ -282,6 +282,14 @@ func (w *World) SyncTools() error {
 	if w.Tools.FixturesDir == "" {
 		w.Tools.FixturesDir = w.FixturesDir
 	}
+	// 假 Gemini 以假 yt-dlp 的片長與公開狀態判斷能不能讀（steps.md 4.15）。
+	for id, v := range w.Tools.Videos {
+		if v != nil {
+			w.Gemini.SetVideo(id, fakegemini.Video{
+				Duration: time.Duration(v.Duration) * time.Second, Public: v.Availability == "" || v.Availability == "public",
+			})
+		}
+	}
 	return faketool.WriteState(w.Root, w.Tools)
 }
 
@@ -313,8 +321,12 @@ func (w *World) RemoveAPIKey(sourceID string) error {
 		env = AnthropicAPIKeyEnv
 	case "openai":
 		env = OpenAIAPIKeyEnv
+	case "gemini":
+		delete(w.Env, GeminiAPIKeyEnv)
+		w.Gemini.RequireKey("")
+		return nil
 	default:
-		return fmt.Errorf("harness 不知道 %q 的 API key 要怎麼移除（只有 supadata、groq、anthropic、openai）", sourceID)
+		return fmt.Errorf("harness 不知道 %q 的 API key 要怎麼移除（只有 supadata、groq、anthropic、openai、gemini）", sourceID)
 	}
 	delete(w.Env, env)
 	if fakellm.IsProvider(sourceID) {

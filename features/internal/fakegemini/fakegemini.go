@@ -7,7 +7,8 @@
 //     `candidates[0].content.parts[0].text`，和真實的 Gemini structured output 相同。
 //   - Fail 讓接下來的請求回應指定的 HTTP 狀態（once 時只有一次）。
 //
-// 這個套件只提供 handler 與狀態，登記到 fakenet 與接到 LLM 步驟由 features/steps 負責（M3 的實作切片）。
+// 這個套件只提供 handler 與狀態；harness 登記到 fakenet，並在 SyncTools 時把假 yt-dlp 的影片同步進來（SetVideo），
+// LLM 步驟的 provider `gemini` 接到這裡（features/steps）。
 package fakegemini
 
 import (
@@ -50,6 +51,9 @@ type Server struct {
 func New(fixtures, key string) *Server {
 	return &Server{fixtures: fixtures, key: key, videos: map[string]Video{}}
 }
+
+// RequireKey 設定要求的 API key；空字串代表不檢查（`the provider "gemini" has no API key`）。
+func (s *Server) RequireKey(key string) { s.mu.Lock(); s.key = key; s.mu.Unlock() }
 
 // SetMaxDuration 設定可以讀取的片長上限（0 代表不限制）。
 func (s *Server) SetMaxDuration(d time.Duration) { s.mu.Lock(); s.maxDuration = d; s.mu.Unlock() }
@@ -123,7 +127,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		googleError(w, http.StatusNotFound, "NOT_FOUND", "unknown endpoint")
 		return
 	}
-	if s.key != "" && r.Header.Get("x-goog-api-key") != s.key {
+	s.mu.Lock()
+	key := s.key
+	s.mu.Unlock()
+	if key != "" && r.Header.Get("x-goog-api-key") != key {
 		googleError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "API key not valid")
 		return
 	}
