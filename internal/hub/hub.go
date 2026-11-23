@@ -122,7 +122,7 @@ func openStore(ctx context.Context, cfg *hubconfig.Config, clk clock.Clock) (hub
 	case hubconfig.StoreSQLite:
 		return sqlite.Open(ctx, cfg.Data, clk)
 	case hubconfig.StorePostgres:
-		return postgres.Open(ctx, cfg.StoreDSN)
+		return postgres.Open(ctx, cfg.StoreDSN, clk)
 	}
 	return nil, fmt.Errorf("不支援的 store.driver：%q", cfg.StoreDriver)
 }

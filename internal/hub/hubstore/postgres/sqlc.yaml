@@ -1,0 +1,23 @@
+version: "2"
+sql:
+  - engine: postgresql
+    # 直接讀 goose 的 migration；sqlc 會略過 "-- +goose Down" 之後的內容。
+    schema: migrations
+    queries: queries
+    gen:
+      go:
+        package: sqlcdb
+        out: sqlcdb
+        sql_package: pgx/v5
+        # 可為 NULL 的欄位用指標表示。
+        emit_pointers_for_null_types: true
+        overrides:
+          # 時間一律用 time.Time（寫入前由呼叫端截到毫秒，讀回時轉成 UTC）。
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
