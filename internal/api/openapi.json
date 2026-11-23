@@ -6413,7 +6413,14 @@
             "type": "string"
           },
           "item": {
-            "$ref": "#/components/schemas/TermCandidateItem"
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TermCandidateItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "state": {
             "enum": [

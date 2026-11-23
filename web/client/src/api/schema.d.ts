@@ -3937,7 +3937,7 @@ export interface components {
       /** @description 接受時實際加進詞彙表的寫法；pending 與 rejected 是 null */
       decided_term: string | null;
       id: string;
-      item: components["schemas"]["TermCandidateItem"];
+      item: components["schemas"]["TermCandidateItem"] | null;
       /** @enum {string} */
       state: "pending" | "accepted" | "rejected";
       /** @description 模型提出的原詞 */

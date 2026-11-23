@@ -179,6 +179,8 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 	r := &routes{d: d, api: api}
 	r.register(api)
 	nullableRefs(api, "ItemDetail", "reprobe", "better_source")
+	// 來源影音已永久刪除時 item 是 null（GLOS-R5）。
+	nullableRefs(api, "TermCandidateReview", "item")
 	if d.Events != nil {
 		mux.Handle("GET /api/events", requireScopeHandler(auth.ScopeRead, d.Events))
 	} else {

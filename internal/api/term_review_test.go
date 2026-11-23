@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -209,5 +211,38 @@ func TestTermCandidatesDecideBatchAPI(t *testing.T) {
 	status, got = post(`{"decisions":[` + d("Alpha", "") + `,` + d("Beta", "") + `]}`)
 	if status != http.StatusConflict || got["code"] != CodeCandidateDecided || firstPath(t, got) != "decisions.1" {
 		t.Errorf("已拒絕的改成接受 = %d %v", status, got)
+	}
+}
+
+// GLOS-R5：OpenAPI 的 TermCandidateReview.item 必須允許 null（來源影音已永久刪除），欄位仍然必有。
+func TestTermCandidateReviewItemNullableSchema(t *testing.T) {
+	b, err := OpenAPISpec()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Components struct {
+			Schemas map[string]struct {
+				Required   []string                  `json:"required"`
+				Properties map[string]map[string]any `json:"properties"`
+			} `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	s := doc.Components.Schemas["TermCandidateReview"]
+	if !slices.Contains(s.Required, "item") {
+		t.Errorf("item 應該必有：%v", s.Required)
+	}
+	one, _ := s.Properties["item"]["oneOf"].([]any)
+	var hasRef, hasNull bool
+	for _, o := range one {
+		m, _ := o.(map[string]any)
+		hasRef = hasRef || m["$ref"] == "#/components/schemas/TermCandidateItem"
+		hasNull = hasNull || m["type"] == "null"
+	}
+	if !hasRef || !hasNull || len(one) != 2 {
+		t.Errorf("item 的 schema = %v", s.Properties["item"])
 	}
 }
