@@ -78,3 +78,8 @@ func (s *Server) SeedItemCreatedAt(ctx context.Context, itemID string, at time.T
 func (s *Server) SearchIndexCheck(ctx context.Context, itemID string) (int, error) {
 	return s.store.SearchIndexCheck(ctx, itemID)
 }
+
+// SetInstanceID 設定實例 ID（bundle 的 created_by.instance_id，BND-R1）。只供驗收測試的 harness 使用。
+func (s *Server) SetInstanceID(ctx context.Context, id string) error {
+	return s.pipeline.SetInstanceID(ctx, id)
+}
