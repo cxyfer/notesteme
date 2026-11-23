@@ -18,6 +18,11 @@ const (
 	TypeItemRestored = "item.restored"
 	// TypeItemPurged 是影音永久刪除（DEL-R6）；事件只記錄代號與標題。
 	TypeItemPurged = "item.purged"
+	// 訂閱的事件（SUB 的介面）：Item 與 ItemID 是空字串，改看 Subscription。
+	TypeSubscriptionCreated     = "subscription.created"
+	TypeSubscriptionChecked     = "subscription.checked"
+	TypeSubscriptionCheckFailed = "subscription.check_failed"
+	TypeSubscriptionDeleted     = "subscription.deleted"
 )
 
 // Event 是推送給訂閱者的事件；JSON 欄位就是 SSE 的 data。
@@ -31,6 +36,13 @@ type Event struct {
 	Status string `json:"status,omitempty"`
 	// Title 只有 item.deleted 與 item.purged 事件才有：事件帶著當時的標題（永久刪除之後影音已不存在）。
 	Title string `json:"title,omitempty"`
+	// Subscription 是訂閱 id，只有 subscription.* 事件才有；Class、Message 是 check_failed 的錯誤分類與訊息，
+	// Created、Skipped 是 checked 這次建立與略過的條目數（SUB-R12）。
+	Subscription string `json:"subscription,omitempty"`
+	Class        string `json:"class,omitempty"`
+	Message      string `json:"message,omitempty"`
+	Created      *int   `json:"created,omitempty"`
+	Skipped      *int   `json:"skipped,omitempty"`
 }
 
 // DefaultBuffer 是每個訂閱者的 buffer 大小。

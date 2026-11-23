@@ -56,6 +56,8 @@ type Item struct {
 	ContentSHA256 string
 	// Origin 是新增的來源：OriginManual、OriginUpload 或 OriginInbox。
 	Origin string
+	// SubscriptionID 是建立這部影音的訂閱（SUB-R13）；手動新增或訂閱已刪除時是空字串。
+	SubscriptionID string
 }
 
 // 影音新增的來源（items.origin）。

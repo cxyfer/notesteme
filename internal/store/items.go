@@ -36,6 +36,8 @@ func itemFromRow(row sqlcdb.Item) Item {
 		SourcePath:    row.SourcePath,
 		ContentSHA256: row.ContentSha256,
 		Origin:        row.Origin,
+
+		SubscriptionID: deref(row.SubscriptionID),
 	}
 	if row.DurationS != nil {
 		d := int(*row.DurationS)

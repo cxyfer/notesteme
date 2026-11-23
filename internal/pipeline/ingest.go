@@ -26,6 +26,9 @@ type IngestRequest struct {
 	// Priority 是任務的優先順序（queue.PriorityXxx，PIPE-R9）；0 代表手動新增。
 	// API 不開放指定：訂閱與回補來自內部的排程（之後的切片），測試也透過測試專用介面使用。
 	Priority int
+	// SubscriptionID 非空時，影音由這個訂閱建立（SUB-R13）：新建立的影音記下它，
+	// 而且不移除永久刪除留下的 tombstone（訂閱不是「想要這部影音」，SUB-R5 在建立之前就略過有 tombstone 的條目）。
+	SubscriptionID string
 }
 
 // IngestResult 是新增的結果：新建立的影音，或已經存在的影音（ING-R2）。
@@ -197,10 +200,18 @@ func (p *Pipeline) insertTargets(ctx context.Context, req IngestRequest, plan in
 				}
 				it.ChannelID = channelID
 			}
+			if req.SubscriptionID != "" {
+				if err := r.SetItemSubscription(ctx, it.ID, req.SubscriptionID); err != nil {
+					return err
+				}
+				it.SubscriptionID = req.SubscriptionID
+			}
 			results = append(results, IngestResult{Item: it})
-			// 手動新增視為「想要這部影音」：同一個交易中移除永久刪除留下的 tombstone（DEL-R11）。
-			if _, err := r.DeleteTombstones(ctx, target.Platform, target.ExternalID, target.Part); err != nil {
-				return err
+			// 手動新增視為「想要這部影音」：同一個交易中移除永久刪除留下的 tombstone（DEL-R11）。訂閱建立的不移除（SUB-R5）。
+			if req.SubscriptionID == "" {
+				if _, err := r.DeleteTombstones(ctx, target.Platform, target.ExternalID, target.Part); err != nil {
+					return err
+				}
 			}
 			if snap == "" {
 				if snap, err = r.EnsureSnapshotLayers(ctx, plan.sha, plan.cfgJSON, plan.layersJSON); err != nil {

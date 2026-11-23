@@ -176,7 +176,7 @@ func (q *Queries) InsertItemIfAbsent(ctx context.Context, arg InsertItemIfAbsent
 }
 
 const itemByID = `-- name: ItemByID :one
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version FROM items WHERE id = ?1
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id FROM items WHERE id = ?1
 `
 
 func (q *Queries) ItemByID(ctx context.Context, id string) (Item, error) {
@@ -208,12 +208,13 @@ func (q *Queries) ItemByID(ctx context.Context, id string) (Item, error) {
 		&i.ContentSha256,
 		&i.Origin,
 		&i.ProfileVersion,
+		&i.SubscriptionID,
 	)
 	return i, err
 }
 
 const itemByKey = `-- name: ItemByKey :one
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version FROM items WHERE platform = ?1 AND external_id = ?2 AND part = ?3
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id FROM items WHERE platform = ?1 AND external_id = ?2 AND part = ?3
 `
 
 type ItemByKeyParams struct {
@@ -251,12 +252,13 @@ func (q *Queries) ItemByKey(ctx context.Context, arg ItemByKeyParams) (Item, err
 		&i.ContentSha256,
 		&i.Origin,
 		&i.ProfileVersion,
+		&i.SubscriptionID,
 	)
 	return i, err
 }
 
 const itemsOverridingPrompt = `-- name: ItemsOverridingPrompt :many
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version FROM items
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id FROM items
 WHERE overrides_json LIKE '%"prompt"%' AND instr(overrides_json, CAST(?1 AS TEXT)) > 0
 ORDER BY created_at, id
 `
@@ -299,6 +301,7 @@ func (q *Queries) ItemsOverridingPrompt(ctx context.Context, promptID string) ([
 			&i.ContentSha256,
 			&i.Origin,
 			&i.ProfileVersion,
+			&i.SubscriptionID,
 		); err != nil {
 			return nil, err
 		}
@@ -314,7 +317,7 @@ func (q *Queries) ItemsOverridingPrompt(ctx context.Context, promptID string) ([
 }
 
 const listItems = `-- name: ListItems :many
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version FROM items WHERE deleted_at IS NULL ORDER BY created_at, rowid
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id FROM items WHERE deleted_at IS NULL ORDER BY created_at, rowid
 `
 
 func (q *Queries) ListItems(ctx context.Context) ([]Item, error) {
@@ -352,6 +355,7 @@ func (q *Queries) ListItems(ctx context.Context) ([]Item, error) {
 			&i.ContentSha256,
 			&i.Origin,
 			&i.ProfileVersion,
+			&i.SubscriptionID,
 		); err != nil {
 			return nil, err
 		}
@@ -371,7 +375,7 @@ WITH sf AS (
   SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
   FROM json_each(CAST(?11 AS TEXT)) AS j
 )
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version FROM items
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id FROM items
 WHERE deleted_at IS NULL
   AND (CAST(?1 AS TEXT) = '' OR platform = ?1)
   AND (CAST(?2 AS TEXT) = '' OR channel_id = ?2)
@@ -471,6 +475,7 @@ func (q *Queries) ListItemsPage(ctx context.Context, arg ListItemsPageParams) ([
 			&i.ContentSha256,
 			&i.Origin,
 			&i.ProfileVersion,
+			&i.SubscriptionID,
 		); err != nil {
 			return nil, err
 		}

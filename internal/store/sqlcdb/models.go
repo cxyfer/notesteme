@@ -146,6 +146,7 @@ type Item struct {
 	ContentSha256  string
 	Origin         string
 	ProfileVersion *int64
+	SubscriptionID *string
 }
 
 type ItemTombstone struct {
@@ -332,6 +333,43 @@ type StageRun struct {
 	FinishedAt       *int64
 	CreatedAt        int64
 	ResumeOn         string
+}
+
+type Subscription struct {
+	ID             string
+	Kind           string
+	Platform       string
+	ExternalID     string
+	Url            string
+	Title          string
+	ProfileID      *string
+	OverridesJson  string
+	ScheduleS      int64
+	BackfillJson   string
+	FiltersJson    string
+	Enabled        int64
+	CreatedAt      int64
+	BaselineAt     *int64
+	LastCheckedAt  *int64
+	LastError      *string
+	LastErrorClass *string
+	Reevaluate     int64
+}
+
+type SubscriptionEntry struct {
+	SubscriptionID string
+	Platform       string
+	ExternalID     string
+	Part           int64
+	Title          string
+	PublishedAt    *int64
+	DurationS      *int64
+	LiveStatus     *string
+	Position       int64
+	Decision       string
+	Reason         string
+	ItemID         *string
+	SeenAt         int64
 }
 
 type Task struct {

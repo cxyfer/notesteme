@@ -499,6 +499,37 @@ func TestIngestRemovesTombstoneOfNewItem(t *testing.T) {
 	}
 }
 
+// 訂閱建立的影音記下 subscription_id，而且不移除 tombstone（SUB-R5、R13）。
+func TestIngestFromSubscriptionKeepsTombstones(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(r.dir, store.DBFileName)+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.ExecContext(ctx, `INSERT INTO item_tombstones (platform, external_id, part, sha256, purged_at) VALUES ('youtube', 'abc123xxxxx', 0, '', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO subscriptions (id, kind, platform, external_id, url, schedule_s, backfill_json, filters_json, created_at) VALUES ('sub-1', 'channel', 'youtube', 'UCx', 'u', 21600, '{}', '{}', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	res, err := r.p.Ingest(ctx, IngestRequest{URL: watch, SubscriptionID: "sub-1"})
+	if err != nil || len(res) != 1 {
+		t.Fatalf("Ingest = %+v, %v", res, err)
+	}
+	if res[0].Item.SubscriptionID != "sub-1" {
+		t.Errorf("結果的 SubscriptionID = %q，預期 sub-1", res[0].Item.SubscriptionID)
+	}
+	if it, err := r.st.Read().ItemByID(ctx, res[0].Item.ID); err != nil || it.SubscriptionID != "sub-1" {
+		t.Errorf("資料庫的 subscription_id = %q（%v），預期 sub-1", it.SubscriptionID, err)
+	}
+	var n int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM item_tombstones`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("tombstone 剩 %d 筆（%v），訂閱建立的影音不應移除它", n, err)
+	}
+}
+
 // 引擎在寫出產出檔之前確認影音還在媒體庫中；不在時丟棄，不寫檔也不寫回狀態（DEL-R2）。
 func TestWriteCuesArtifactDiscardsWhenItemGone(t *testing.T) {
 	r := newRig(t)
