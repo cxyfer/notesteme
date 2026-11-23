@@ -64,3 +64,16 @@
 - H4：送出時只收集同一輪可以領取的任務，不等其他影音（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。等湊滿會讓第一部影音多等，也讓 fake clock 的場景更難預測；batch 的折扣與 batch 大小無關。
 - H5：驗收場景用 `the batch API of … completes after …` 在 fake clock 上指定完成時間。排程補跑只執行一次（ADR-0021 第 1 點），所以 `When the clock advances by "15m"` 只會輪詢一次；場景的時間都依這點設計（完成時間 10 分鐘、逾時用 25 小時）。
 - M4-S0：`stages.<stage>.batch` 在 `executor` 之後、`provider`／`model` 的完整性檢查之前檢查，所以 BATCH-R1 的「batch 只能是 auto 或 off。」是 `errors[0]`（場景的陣列子集比對依索引）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。`sponsorblock`、`frames` 與 pipeline 的其他步驟（例如 `transcript`）寫了 `batch` 時，在 `stages.<stage>.batch` 回「這個步驟不支援 batch。」；`transcript` 這類不能設定的步驟只有 `batch` 一個欄位時，只回這一個錯誤（不再另外回「這個步驟沒有可設定的欄位。」）。`executor: batch` 原本的訊息「batch 屬於 M4，尚未支援。」改成「batch 不是 executor；請改用 stages.<步驟>.batch: auto。」（PRF 的 S0 決定中提到的 422 仍然成立）。
+- M4-S5 的實作決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 接上 batch 的步驟：經 LLM chunk engine 的 `segment`、`correct`、`chapters`、`note`。`translate` 的 chunk 走自己的路徑（`runTranslateLLM`，含 TRN-R5～R7 的逐單位驗證），`summary` 不經 chunk engine；這兩個步驟設定 `batch: auto` 仍然通過驗證，但照一般 API 執行，待後續切片接上。
+  - 「同一輪」的收集：被領取的 chunk 任務送出時，在同一個寫入交易中把還沒被領取（`pending`、到期、builtin、`llm` 類別、同 provider 與 model、優先序不高於 `subscription`）的任務一起放進 batch，最多 100 個；同一輪已經被其他 worker 槽位領取的任務會各自送出另一個 batch（不跨租約搶任務）。
+  - `batches.task_ids_json` 存物件陣列 `[{task, run, chunk, reservation}]`（不是單純的任務 ID），讓結果回來時不必再查任務就能對應 stage run、chunk 與預留；另外記 `model` 與 `notice`（BATCH-R11 的提醒）。資料表在 migration `00024_batches.sql`；`llm_chunks` 加上 `batch_json` 記 BATCH-R8 的紀錄。
+  - 送出時先在交易中寫入 `batches`（`external_id` 空白）、把任務設為 `waiting`、排好 `batch.poll`，交易之後才呼叫 provider；成功時寫入 `external_id`。程序在兩者之間中斷時，第一次輪詢看到空白的 `external_id` 就把任務改走一般 API（`submit_failed`）；provider 端可能已經建立的 batch 不會被取回或取消（無法得知它的 ID），可能重複計費一次。
+  - 個別請求的結果：`errored` 與無法解碼的成功結果記一筆 `outcome: http_error`、$0 的實際紀錄（provider 不對失敗的請求收費），改走一般 API（`request_failed`）；`expired`、`canceled` 與沒有出現在結果檔中的請求刪除預留、不記帳。結果檔中沒有對應任務的 `custom_id` 忽略。
+  - 驗證失敗（`invalid_output`）照樣以 batch 單價記帳；還有驗證重試額度時改走一般 API，第一次一般請求就附上驗證錯誤的說明並計入 LLM-R5 的次數；額度已經是 0 時直接照 LLM-R5 退回（不再送一般 API），這個 chunk 記 `mode: batch` 並出現在 `fallbacks`。
+  - 輪詢失敗（查詢狀態、取回結果、沒有 client）時回傳錯誤，由排程器退避重試；已經超過 `deadline_at` 仍然失敗時不再等待：還沒有結果的任務改走一般 API（`batch_failed`），batch 的預留全部刪除，`batches.state` 標為 `failed` 並停止輪詢。之後 provider 端才產生的費用不會被記帳（無法取回結果）。
+  - 逾時或全部移除時送出取消；取消後 provider 回報仍在處理時 `batches.state` 是 `cancelling`，繼續輪詢、不重送取消。開著（`submitted`、`cancelling`）的 batch 的預留不算 PIPE-R11 的孤兒預留，即使任務已經取消；batch 結束之後才清掉。
+  - `stages.<stage>.batch` 不列入 LLM 產出的 params sha（同樣的輸入經 batch 或一般 API 是同一份產出，快取照樣命中；改 `batch` 不會讓現行產出變成過期）。BATCH-R11 的提醒在步驟完成且沒有其他訊息時成為步驟的訊息。
+  - `GET /api/items/:id` 的步驟欄位 `batch` 只在步驟是 `waiting` 且有等待中的 batch 時出現（`omitempty`）；MCP 與 CLI 沒有新增欄位。
+  - 驗收場景的 `provenance` 斷言中，值 `*` 代表「存在、不是空字串也不是 null」（`submitted_at`、`ended_at` 的時間由 fake clock 決定），見 steps.md 的 M4-S5 說明。
+  - Batch API 的 client 只用在內建 `base_url` 的 `anthropic`、`openai`（`llm.BatchSupported`），不跟隨重新導向；Anthropic 的 `results_url` 要求與 `base_url` 同 scheme 與主機（含連接埠），OpenAI 的結果檔與錯誤檔一律以檔案 ID 從 `base_url` 下載。provider 回傳的 batch ID 與檔案 ID 只接受 `[A-Za-z0-9_-]`（最多 128 字）：送出時不合格視為送出失敗（`submit_failed`），之後不合格時輪詢回錯誤、依排程退避重試，直到逾時。
