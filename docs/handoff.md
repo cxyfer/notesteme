@@ -148,7 +148,7 @@
     - app：`internal/app/reprobe.go` 登記 `source.reprobe`，平台額度用 `subscription.Service.TakePlatform`（與訂閱共用 SUB-R10 的 bucket）。
     - API：`GET /api/items/{id}` 的 `reprobe`、`better_source`（一律有這兩個欄位，沒有時是 `null`；OpenAPI 以 `oneOf [ref, null]` 表示，見 `internal/api/nullable.go`）；MCP `get_item` 經同一條路由自動帶上；OpenAPI 與 `schema.d.ts` 已重產。
     - steps／harness：`the platform adds … captions in … to … at …` 實作（`features/steps/better_source.go`）；假 yt-dlp 讀 `fake/now`（`faketool.WriteNow`，`the clock is at`／`advances by` 與這個步驟寫入），`Video.Later` 的字幕軌到時間才列出與下載；`spbGate` 對 `@SRC-R20` 放行。
-    - 數字（基準 origin/master a64d511）：預設 tag 308 passed、`@M3` 109 passed、`@M5` 91／57，逐場景相同；`@M4` 371 個：201／170 → 213 passed、156 pending、2 failed，改變的只有 14 個 SRC-10 場景（12 個 pending → passed）。`features/passing.txt` 不變。
+    - 數字（基準 rebase 後的 origin/master 99ca595，SRCH 已合併）：預設 tag 308 passed、`@M3` 109 passed、`@M5` 91／57，逐場景相同；`@M4` 371 個：231／140 → 243 passed、126 pending、2 failed，改變的只有 14 個 SRC-10 場景（12 個 pending → passed，2 個 failed 見下）。`go test -race ./...` 通過。`features/passing.txt` 不變。
     - **需要 owner 決定**：兩個 SRC-10 場景與規則衝突而 failed（SRC 待決問題 R16，`.feature` 沒有修改）：asr001 撞上 SRC-R6 的等待（建議改 `published_at`）；手動重跑後 SRC-R20 的 SponsorBlock 部分仍在（建議預期改成 `"reprobe": { "sources": false }`）。
     - 沒做：UI 的提醒與重跑前顯示金額（`@ui @manual`）；`estimate_usd` 的 LLM 估算（ING-08 的 LLM 費用還沒有）；Podcast 的 `<podcast:transcript>` 事後補上（規格不在範圍內）；CLI `items show` 的文字模式沒有另外列出 `better_source`（`--json` 有）；真實 YouTube／Bilibili 的驗收（owner）。
     - 給之後的切片：(1) 讀 `source_probes` 時注意 `probe_trigger`；(2) 其他會改變 transcript 或 sponsorblock 的路徑（例如 BND 匯入、LIB 的批次重跑）若不經 `Rerun`，要自己呼叫 `endReprobeOnRerun` 或讓步驟重新完成；(3) UI 的「改用更好的字幕重跑」就是 `POST /api/items/{id}/rerun {from: transcript}`。
