@@ -34,7 +34,7 @@ func newAuthEnv(t *testing.T, visibility string) *authEnv {
 	t.Cleanup(func() { _ = st.Close() })
 	cfg := &hubconfig.Config{
 		PublicURL: "https://hub.example.org", SiteVisibility: visibility, SessionKey: strings.Repeat("k", 32),
-		OAuth: map[hubconfig.Provider]hubconfig.OAuthClient{hubconfig.GitHub: {ClientID: "id", ClientSecret: "secret"}},
+		OAuth:  map[hubconfig.Provider]hubconfig.OAuthClient{hubconfig.GitHub: {ClientID: "id", ClientSecret: "secret"}},
 		Groups: map[string]hubconfig.Group{hubconfig.GroupMembers: {Permissions: []string{"read", "download"}}},
 	}
 	auth, err := hubauth.New(hubauth.Deps{Config: cfg, Store: st, Clock: clk})
