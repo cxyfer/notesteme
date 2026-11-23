@@ -338,4 +338,6 @@ func Run(t *testing.T, open Open) {
 	runContent(t, open)
 	runListing(t, open)
 	runCommunity(t, open)
+	runConcurrency(t, open)
+	runParity(t, open)
 }
