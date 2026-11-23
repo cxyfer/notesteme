@@ -1,7 +1,7 @@
 // Package hubconfig 載入 Hub 的設定：環境變數 > 設定檔 > 內建預設值（ADR-0030 第 1 點，比照 ADR-0013 的分層）。
 //
 // 設定檔 /config/notesteme-hub.yaml 的欄位見 HACC、HREP、HMCP 規格的「介面」與 ADR-0030 第 2 點。
-// OAuth client secret、主金鑰與資料庫 DSN 這類祕密只來自環境變數；群組規則、站台可見度與管理員清單只能寫在設定檔，
+// OAuth client secret、主金鑰、資料庫密碼與 S3 的 secret 這類祕密只來自環境變數（store.dsn 可以寫在設定檔，但不能含密碼）；群組規則、站台可見度與管理員清單只能寫在設定檔，
 // 沒有 API 可以修改（HACC 規格）。未知欄位一律讓載入失敗，錯誤訊息指出欄位。
 package hubconfig
 
@@ -33,11 +33,17 @@ const (
 
 // 環境變數名稱。
 const (
-	EnvConfig    = "NOTESTEME_HUB_CONFIG"
-	EnvListen    = "NOTESTEME_HUB_LISTEN"
-	EnvData      = "NOTESTEME_HUB_DATA"
-	EnvStoreDSN  = "NOTESTEME_HUB_STORE_DSN"
-	EnvMasterKey = "NOTESTEME_HUB_MASTER_KEY"
+	EnvConfig   = "NOTESTEME_HUB_CONFIG"
+	EnvListen   = "NOTESTEME_HUB_LISTEN"
+	EnvData     = "NOTESTEME_HUB_DATA"
+	EnvStoreDSN = "NOTESTEME_HUB_STORE_DSN"
+	// S3 相容儲存（blobs.driver: s3）：環境變數優先於設定檔的 blobs.s3；secret 只能來自環境變數。
+	EnvS3Endpoint        = "NOTESTEME_HUB_S3_ENDPOINT"
+	EnvS3Region          = "NOTESTEME_HUB_S3_REGION"
+	EnvS3Bucket          = "NOTESTEME_HUB_S3_BUCKET"
+	EnvS3AccessKeyID     = "NOTESTEME_HUB_S3_ACCESS_KEY_ID"
+	EnvS3SecretAccessKey = "NOTESTEME_HUB_S3_SECRET_ACCESS_KEY"
+	EnvMasterKey         = "NOTESTEME_HUB_MASTER_KEY"
 	// EnvSessionKey 是 session 金鑰（HACC-R2：加密等待中登入的 PKCE verifier；HACC A10）。
 	EnvSessionKey = "NOTESTEME_HUB_SESSION_KEY"
 	// envOAuthSecret 是 OAuth client secret 的環境變數（HACC-R1）：NOTESTEME_HUB_OAUTH_<PROVIDER>_CLIENT_SECRET。
@@ -185,9 +191,12 @@ type Config struct {
 	PublicURL string
 
 	StoreDriver string
-	// StoreDSN 是 postgres 的連線字串（只來自環境變數，含密碼）；sqlite 不使用（檔案在 Data 之下）。
+	// StoreDSN 是 postgres 的連線字串：環境變數 NOTESTEME_HUB_STORE_DSN（可含密碼）優先，其次是設定檔的 store.dsn
+	// （不能含密碼；密碼用 PGPASSWORD 或 ~/.pgpass）。sqlite 不使用（檔案在 Data 之下）。
 	StoreDSN    string
 	BlobsDriver string
+	// S3 是 blobs.driver: s3 的設定。
+	S3 S3Config
 
 	OAuth map[Provider]OAuthClient
 	// SiteVisibility 是站台可見度：authenticated（預設）或 public（HACC-R13）。
@@ -249,10 +258,22 @@ type fileSchema struct {
 
 type storeSchema struct {
 	Driver string `yaml:"driver"`
+	DSN    string `yaml:"dsn"`
 }
 
 type blobsSchema struct {
-	Driver string `yaml:"driver"`
+	Driver string    `yaml:"driver"`
+	S3     *s3Schema `yaml:"s3"`
+}
+
+type s3Schema struct {
+	Endpoint    string `yaml:"endpoint"`
+	Region      string `yaml:"region"`
+	Bucket      string `yaml:"bucket"`
+	Prefix      string `yaml:"prefix"`
+	PathStyle   *bool  `yaml:"path_style"`
+	AccessKeyID string `yaml:"access_key_id"`
+	Timeout     string `yaml:"timeout"`
 }
 
 type oauthSchema struct {
@@ -345,7 +366,10 @@ func Load(src Sources) (*Config, error) {
 		return nil, fmt.Errorf("無法取得資料目錄 %q 的絕對路徑：%w", cfg.Data, err)
 	}
 	cfg.Data = abs
-	cfg.StoreDSN = src.Env[EnvStoreDSN]
+	if v := src.Env[EnvStoreDSN]; v != "" {
+		cfg.StoreDSN = v
+	}
+	applyS3Env(&cfg.S3, src.Env)
 	cfg.MasterKey = src.Env[EnvMasterKey]
 	if cfg.MasterKey != "" && len(cfg.MasterKey) < MinMasterKeyLen {
 		return nil, ErrMasterKey
@@ -365,7 +389,12 @@ func Load(src Sources) (*Config, error) {
 		return nil, fmt.Errorf("設定檔 %s 沒有 public_url：%w", path, ErrPublicURL)
 	}
 	if cfg.StoreDriver == StorePostgres && cfg.StoreDSN == "" {
-		return nil, fmt.Errorf("store.driver 是 postgres 時要設定環境變數 %s。", EnvStoreDSN)
+		return nil, fmt.Errorf("store.driver 是 postgres 時要設定環境變數 %s 或設定檔的 store.dsn。", EnvStoreDSN)
+	}
+	if cfg.BlobsDriver == BlobsS3 {
+		if err := cfg.S3.validate(); err != nil {
+			return nil, err
+		}
 	}
 	return cfg, nil
 }
@@ -425,11 +454,23 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 		}
 		cfg.StoreDriver = d
 	}
+	if d := strings.TrimSpace(f.Store.DSN); d != "" {
+		// 設定檔不放密碼（錯誤訊息也不回顯 DSN）。
+		if dsnHasPassword(d) {
+			return bad("store.dsn", "不能含密碼；請改用環境變數 %s（完整的 DSN）或 PGPASSWORD。", EnvStoreDSN)
+		}
+		cfg.StoreDSN = d
+	}
 	if d := f.Blobs.Driver; d != "" {
 		if d != BlobsFS && d != BlobsS3 {
 			return bad("blobs.driver", "必須是 fs 或 s3：%q", d)
 		}
 		cfg.BlobsDriver = d
+	}
+	if f.Blobs.S3 != nil {
+		if err := applyS3File(&cfg.S3, f.Blobs.S3); err != nil {
+			return bad("blobs.s3."+err.field, "%s", err.msg)
+		}
 	}
 	for name, o := range f.OAuth {
 		p := Provider(name)
