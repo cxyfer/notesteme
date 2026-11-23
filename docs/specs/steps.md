@@ -771,6 +771,8 @@ M5-S3（2026-11-23）以真 Hub 實作了本節全部的句型（fakehub 的 see
 
 M5-S4（2026-11-23）閘門再放行 HREP-R7、R16～R19（列表、影片頁、取用與 lookup），沒有新句型（HREP 待決問題 R9）。
 
+M5-S5（2026-11-23）閘門再放行 HACC-R15～R17 與 HREP-R13～R15（下架、停用、稽核、投票、檢舉與自動隱藏），沒有新句型：4.30 的 `the hub member … is suspended` 直接在 Hub 的 DB 停用（不寫稽核紀錄，分數照樣重算）；送到 Hub 的 `POST /api/v1/takedowns`、`POST /api/v1/versions/<id>/reports` 回 201 時，以回應的 `id` 記下 `{takedown:last}`、`{report:last}`（HACC 待決問題 A13、HREP R10）。
+
 ### 4.32 Client 與 Hub（`steps/hub_client.go`，M5）
 
 這一組只用於 fakehub（`features/internal/fakehub`）：Client 的 `hub.url` 指到 `https://hub.example.org`，fakehub 以這個主機名稱掛在 fakenet 上，實作 ADR-0032 第 1 點的 Client 契約，並記錄收到的每個請求（方法、路徑、query、標頭、body；multipart 的 bundle 會解開保存）。
