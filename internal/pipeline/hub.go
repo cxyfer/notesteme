@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/cxyfer/notesteme/internal/hubclient"
@@ -45,7 +45,9 @@ type HubError struct {
 
 func (e *HubError) Error() string { return e.Msg }
 
-func hubErr(status int, code, msg string) *HubError { return &HubError{Status: status, Code: code, Msg: msg} }
+func hubErr(status int, code, msg string) *HubError {
+	return &HubError{Status: status, Code: code, Msg: msg}
+}
 
 func notShareable(msg string) *HubError {
 	return hubErr(http.StatusUnprocessableEntity, "not_shareable", msg)

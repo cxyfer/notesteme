@@ -333,11 +333,11 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	state := store.StageState{Status: store.StatusDone}
 	fields := map[string]any{
 		"stage": StageTranscript, "impl_version": p.implVersion(StageTranscript),
-		"source":        srcID,
-		"track":         map[string]string{"lang": artLang, "kind": chosen.Kind},
+		"source": srcID,
+		"track":  map[string]string{"lang": artLang, "kind": chosen.Kind},
 		// HSHR-R7：來源需要登入才拿得到時為 true（不進快取鍵）。
 		"cookie_required": cookieRequired(it, srcID),
-		"params_sha256": paramsSHA(map[string]any{"caption_priority": lang.CaptionPriority, "allow_platform_translated": lang.AllowPlatformTranslated}),
+		"params_sha256":   paramsSHA(map[string]any{"caption_priority": lang.CaptionPriority, "allow_platform_translated": lang.AllowPlatformTranslated}),
 	}
 	if isPodcast {
 		// 字幕沒有宣告語言、feed 也沒有時，用影音的原文語言；都不知道就標為 und。
