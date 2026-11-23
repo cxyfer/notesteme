@@ -1,0 +1,153 @@
+// 處理方案的表單模型（PRF-R1、internal/pipeline/schema.go）。
+// config 是「存下來的這一層」：沒寫的欄位沿用全域設定。表單直接編輯 config 的副本（未知欄位原樣保留），
+// 儲存時用 mergePatch(原本, 草稿) 算出 RFC 7396 merge patch（F4）：刪掉的鍵送 null，物件遞迴，陣列與純量整個取代。
+import type { components } from "../../api/schema";
+
+export type Profile = components["schemas"]["Profile"];
+export type Config = Record<string, unknown>;
+
+/** schema 接受的 LLM 步驟（stageOrder）；M3／M4 的步驟還不在 schema 裡，所以不顯示。 */
+export const LLM_STAGES = ["segment", "correct", "translate"] as const;
+export type LlmStage = (typeof LLM_STAGES)[number];
+
+/** StageExecutors：translate 另外可以用 opencc。batch 屬於 M4（schema 回 422），不列出。 */
+export function stageExecutors(stage: LlmStage): string[] {
+  return stage === "translate" ? ["api", "agent", "off", "opencc"] : ["api", "agent", "off"];
+}
+
+/** 內建的 provider（D10）；設定檔 llm.providers 登記的沒有列表 API，可以直接輸入。 */
+export const KNOWN_PROVIDERS = ["anthropic", "openai"] as const;
+
+export const SPLIT_TIMING = ["forbid", "when_needed", "free"] as const;
+export const ON_MANUAL = ["skip", "run"] as const;
+export const VARIANT_STRATEGY = ["convert", "localize"] as const;
+export const CAPTION_KINDS = ["manual", "auto"] as const;
+/** output.Formats */
+export const OUTPUT_FORMATS = ["srt", "vtt", "txt", "cues-json", "ass", "bilingual-srt"] as const;
+/** vault 在 M3 才提供（schema 回 422） */
+export const OUTPUT_TARGETS = ["sidecar", "folder"] as const;
+
+export function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+export function clone<T>(v: T): T {
+  return structuredClone(v);
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * 從 before 變成 after 的 RFC 7396 merge patch；沒有差異時回傳 undefined。
+ * 兩者都不含 null（存好的各層不含 null，F4）。
+ */
+export function mergePatch(before: Config, after: Config): Config | undefined {
+  const out: Config = {};
+  for (const k of Object.keys(before)) {
+    if (!(k in after)) out[k] = null;
+  }
+  for (const [k, v] of Object.entries(after)) {
+    const prev = before[k];
+    if (isObject(v) && isObject(prev)) {
+      const sub = mergePatch(prev, v);
+      if (sub) out[k] = sub;
+    } else if (!deepEqual(prev, v)) {
+      out[k] = v;
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** 讀取點號路徑的值（stages.correct.provider）。 */
+export function getPath(doc: Config, path: string): unknown {
+  let cur: unknown = doc;
+  for (const k of path.split(".")) {
+    if (!isObject(cur)) return undefined;
+    cur = cur[k];
+  }
+  return cur;
+}
+
+/**
+ * 回傳設好 path 的新文件；value 是 undefined 時刪掉該鍵，並把因此變空的物件一起刪掉
+ * （空的 stages.correct 會讓 schema 把它當成「寫出來的步驟」檢查完整性，D8）。
+ */
+export function setPath(doc: Config, path: string, value: unknown): Config {
+  const keys = path.split(".");
+  const next = clone(doc);
+  const parents: Record<string, unknown>[] = [next];
+  let cur: Record<string, unknown> = next;
+  for (const k of keys.slice(0, -1)) {
+    if (!isObject(cur[k])) cur[k] = {};
+    cur = cur[k] as Record<string, unknown>;
+    parents.push(cur);
+  }
+  const last = keys[keys.length - 1]!;
+  if (value === undefined) delete cur[last];
+  else cur[last] = value;
+  // 由內往外刪掉空物件
+  for (let i = parents.length - 1; i > 0; i--) {
+    if (Object.keys(parents[i]!).length === 0) delete parents[i - 1]![keys[i - 1]!];
+    else break;
+  }
+  return next;
+}
+
+/** POST 完整文件時不能有 null（F4）。 */
+export function stripNulls(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(stripNulls);
+  if (isObject(v)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v)) if (x !== null) out[k] = stripNulls(x);
+    return out;
+  }
+  return v;
+}
+
+/** 步驟生效的 executor：寫出來的步驟沒填 executor 時是 api；整個步驟沒寫時沿用全域（undefined）。 */
+export function stageExecutor(doc: Config, stage: LlmStage): string | undefined {
+  const s = getPath(doc, `stages.${stage}`);
+  if (!isObject(s)) return undefined;
+  return typeof s.executor === "string" ? s.executor : "api";
+}
+
+/** prompt 引用 <id>、<id>@default、<id>@N（D11）→ id 與版本（undefined＝跟隨預設）。 */
+export function parsePromptRef(ref: string): { id: string; version?: number } {
+  const [id, ver] = ref.split("@") as [string, string | undefined];
+  if (!ver || ver === "default") return { id };
+  const n = Number(ver);
+  return Number.isInteger(n) && n >= 1 ? { id, version: n } : { id };
+}
+
+/** 名稱規則（CreateProfileInputBody）。 */
+export function validProfileName(name: string) {
+  return /^[a-z0-9][a-z0-9_-]{0,63}$/.test(name);
+}
+
+/** 字串陣列 ↔ 以逗號或空白分隔的文字（目標語言、輸出語言）。 */
+export function splitList(s: string): string[] {
+  return s
+    .split(/[\s,，、]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+/**
+ * prompt id → 引用它的處理方案名稱（依字母排序）。只看處理方案目前的版本與 stages.*.prompt；
+ * 全域設定、頻道與影音層的引用看不到（刪除時後端的 409 used_by 會列出全部）。
+ */
+export function promptUsers(profiles: readonly Profile[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const p of profiles) {
+    const stages = isObject(p.config.stages) ? p.config.stages : {};
+    const ids = new Set<string>();
+    for (const s of Object.values(stages)) {
+      if (isObject(s) && typeof s.prompt === "string") ids.add(parsePromptRef(s.prompt).id);
+    }
+    for (const id of ids) out.set(id, [...(out.get(id) ?? []), p.name]);
+  }
+  for (const names of out.values()) names.sort();
+  return out;
+}
