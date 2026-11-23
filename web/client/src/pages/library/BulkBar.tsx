@@ -61,6 +61,8 @@ export function BulkBar({
   const [selecting, setSelecting] = useState(false);
   const [busy, setBusy] = useState(false);
   const n = ids.length;
+  // 走 dry_run 的動作一次最多 500 部（LIB-R13）；已讀／未讀分批送，不受限
+  const over = n > MAX_IDS;
 
   async function selectMatching() {
     setSelecting(true);
@@ -122,17 +124,20 @@ export function BulkBar({
         ) : (
           <span className="secondary">{t("library.bulk.tooMany", { max: MAX_IDS })}</span>
         ))}
+      {over && <span className="secondary">{t("library.bulk.overMax", { max: MAX_IDS })}</span>}
       <Button variant="text" onClick={onClear}>
         {t("library.bulk.clear")}
       </Button>
       <div className="bulk__actions">
         {awaiting && (
-          <Button variant="primary" onClick={() => setAction("continue")}>
+          <Button variant="primary" disabled={over} onClick={() => setAction("continue")}>
             {t("library.awaiting.confirm")}
           </Button>
         )}
-        <Button onClick={() => setAction("rerun")}>{t("library.bulk.rerun")}</Button>
-        <Button onClick={() => setAction("change_profile")}>
+        <Button disabled={over} onClick={() => setAction("rerun")}>
+          {t("library.bulk.rerun")}
+        </Button>
+        <Button disabled={over} onClick={() => setAction("change_profile")}>
           {t("library.bulk.change_profile")}
         </Button>
         <Button disabled={busy} onClick={() => void mark("mark_read", ids, false)}>
@@ -141,10 +146,10 @@ export function BulkBar({
         <Button disabled={busy} onClick={() => void mark("mark_unread", ids, false)}>
           {t("library.bulk.mark_unread")}
         </Button>
-        <Button onClick={() => setAction("export_bundle")}>
+        <Button disabled={over} onClick={() => setAction("export_bundle")}>
           {t("library.bulk.export_bundle")}
         </Button>
-        <Button variant="danger" onClick={() => setAction("delete")}>
+        <Button variant="danger" disabled={over} onClick={() => setAction("delete")}>
           {t("library.bulk.delete")}
         </Button>
       </div>

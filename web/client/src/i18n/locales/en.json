@@ -367,7 +367,8 @@
         "not_awaiting_user": "Not awaiting your decision; skipped.",
         "not_found": "This item was not found.",
         "in_trash": "This item is in the trash."
-      }
+      },
+      "overMax": "Other than read status, up to {{max}} at once"
     }
   },
   "add": {

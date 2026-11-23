@@ -222,6 +222,22 @@ describe("媒體庫：批次操作（LIB-08）", () => {
     expect(bodies[0]).toMatchObject({ action: "rerun", from: "segment", dry_run: true });
   });
 
+  it("選取超過 500 部時停用走 dry_run 的動作，已讀／未讀仍可用", async () => {
+    const many = Array.from({ length: 501 }, (_, i) => item(i + 1));
+    bulkApi(() => ({}), { "GET /api/items": () => ({ items: many, total: many.length }) });
+    signIn();
+    renderRoute("/library");
+    await userEvent.click(await screen.findByRole("checkbox", { name: "選取已載入的 501 部" }));
+    const bar = await screen.findByRole("region", { name: "批次操作" });
+    expect(within(bar).getByText("已讀以外的動作一次最多 500 部")).toBeTruthy();
+    expect((within(bar).getByRole("button", { name: "刪除" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(
+      (within(bar).getByRole("button", { name: "標為已讀" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
   it("已讀狀態的篩選在 URL 並送給 API（LIB-R19）", () => {
     expect(validateLibrarySearch({ read_state: "unread" }).read_state).toBe("unread");
     expect(validateLibrarySearch({ read_state: "x" }).read_state).toBeUndefined();
