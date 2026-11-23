@@ -99,7 +99,10 @@ Feature: Vault output and hooks
       """
     And the default profile is "vault-note"
     And the LLM provider "anthropic" answers "note" with "note-minimal"
-    When the owner reruns "yt:vlt001xxxxx" from "note"
+    When the owner sends "POST /api/items/yt:vlt001xxxxx/rerun" with:
+      """
+      { "from": "note", "profile": "vault-note" }
+      """
     And the worker runs until idle
     Then the file "/vault/Video Notes/YouTube/Designing a Cache - 2025-08-09.md" contains "[[Video Notes/YouTube/_Assets/Designing a Cache/Designing a Cache.srt]]"
 
@@ -253,9 +256,15 @@ Feature: Vault output and hooks
         - { target: vault, vault: remote, formats: [srt] }
       """
     And the default profile is "vault-git"
-    When the owner reruns "yt:vlt001xxxxx" from "publish"
+    When the owner sends "POST /api/items/yt:vlt001xxxxx/rerun" with:
+      """
+      { "from": "publish", "profile": "vault-git" }
+      """
     And the worker runs until idle
-    And the owner reruns "yt:vlt001xxxxx" from "publish"
+    And the owner sends "POST /api/items/yt:vlt001xxxxx/rerun" with:
+      """
+      { "from": "publish", "profile": "vault-git" }
+      """
     And the worker runs until idle
     Then the vault remote received a single new commit
 
@@ -291,7 +300,10 @@ Feature: Vault output and hooks
       """
     And the default profile is "vault-git"
     And the vault remote rejects pushes as "non-fast-forward"
-    When the owner reruns "yt:vlt001xxxxx" from "publish"
+    When the owner sends "POST /api/items/yt:vlt001xxxxx/rerun" with:
+      """
+      { "from": "publish", "profile": "vault-git" }
+      """
     And the worker runs until idle
     Then the stage "publish" of "yt:vlt001xxxxx" is blocked with the reason "needs_action"
     And "yt:vlt001xxxxx" shows the message "vault 的遠端分支 master 有本機沒有的提交，Notesteme 不會自動合併。請先同步 vault repo 再重新發布。"
@@ -312,7 +324,10 @@ Feature: Vault output and hooks
       """
     And the default profile is "vault-git"
     And the vault remote rejects pushes as "bad credentials"
-    When the owner reruns "yt:vlt001xxxxx" from "publish"
+    When the owner sends "POST /api/items/yt:vlt001xxxxx/rerun" with:
+      """
+      { "from": "publish", "profile": "vault-git" }
+      """
     And the worker runs until idle
     Then the stage "publish" of "yt:vlt001xxxxx" is blocked with the reason "needs_action"
     And "yt:vlt001xxxxx" shows the message "無法登入 vault 的遠端（認證失敗）。請更新 vault remote 的憑證。"
@@ -333,7 +348,10 @@ Feature: Vault output and hooks
       """
     And the default profile is "vault-git"
     And the vault remote fails the next push with a network error
-    When the owner reruns "yt:vlt001xxxxx" from "publish"
+    When the owner sends "POST /api/items/yt:vlt001xxxxx/rerun" with:
+      """
+      { "from": "publish", "profile": "vault-git" }
+      """
     And the worker runs until idle
     Then the stage "publish" of "yt:vlt001xxxxx" is "pending"
     When the clock advances by "1m"
