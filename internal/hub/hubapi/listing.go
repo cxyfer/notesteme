@@ -187,7 +187,9 @@ func registerListing(api huma.API, rt *routes) {
 
 type fieldErrs []validate.FieldError
 
-func (f *fieldErrs) add(path, msg string) { *f = append(*f, validate.FieldError{Path: path, Message: msg}) }
+func (f *fieldErrs) add(path, msg string) {
+	*f = append(*f, validate.FieldError{Path: path, Message: msg})
+}
 
 // err 把逐欄位錯誤轉成 422（訊息是第一個錯誤，同 hubrepo 的欄位錯誤）。
 func (f fieldErrs) err() error {
