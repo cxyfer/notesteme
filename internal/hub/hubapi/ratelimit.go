@@ -1,0 +1,105 @@
+package hubapi
+
+import (
+	"fmt"
+	"math"
+	"net"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/cxyfer/notesteme/internal/apierr"
+	"github.com/cxyfer/notesteme/internal/clock"
+)
+
+// 一般限流（HACC-R18）：每個帳號（session 與 PAT 合計）與每個未登入的 IP 各自一個固定的一分鐘視窗。
+// 計數只在這個程序的記憶體中（多個 Hub 程序共用不在範圍內，ADR-0031 第 5 點），時間取自注入的 clock。
+// IP 取自連線的 RemoteAddr，不信任 X-Forwarded-For（HACC 待決問題 A12）。
+
+// CodeRateLimited 是超過限流的代碼。
+const CodeRateLimited = "rate_limited"
+
+const rateWindow = time.Minute
+
+// rateLimiter 是固定視窗的計數器。
+type rateLimiter struct {
+	clock clock.Clock
+	mu    sync.Mutex
+	// start 是目前視窗的開始；視窗改變時清空 counts（不會無限累積）。
+	start  time.Time
+	counts map[string]int
+}
+
+func newRateLimiter(clk clock.Clock) *rateLimiter {
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	return &rateLimiter{clock: clk, counts: map[string]int{}}
+}
+
+// allow 為 key 計入一個請求；超過 limit 時回傳要等待的時間（至少 1 秒）。limit <= 0 代表不限。
+func (l *rateLimiter) allow(key string, limit int) (time.Duration, bool) {
+	if limit <= 0 {
+		return 0, true
+	}
+	now := l.clock.Now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	start := now.Truncate(rateWindow)
+	if !start.Equal(l.start) {
+		l.start = start
+		clear(l.counts)
+	}
+	l.counts[key]++
+	if l.counts[key] <= limit {
+		return 0, true
+	}
+	return max(start.Add(rateWindow).Sub(now), time.Second), false
+}
+
+// errRateLimited 是 429，附 retry_after_s（寫出時另外設定 Retry-After 標頭）。
+func errRateLimited(wait time.Duration) *apierr.Error {
+	secs := int(math.Ceil(wait.Seconds()))
+	e := apierr.New(http.StatusTooManyRequests, CodeRateLimited, fmt.Sprintf("請求太頻繁，請在 %d 秒後再試。", secs))
+	e.RetryAfterS = &secs
+	return e
+}
+
+// clientIP 回傳連線的來源位址（不含連接埠）。
+func clientIP(remoteAddr string) string {
+	if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		return host
+	}
+	return remoteAddr
+}
+
+func accountKey(userID string) string { return "user:" + userID }
+
+func ipKey(remoteAddr string) string { return "ip:" + clientIP(remoteAddr) }
+
+// limitAnonymous 以 IP 計入一個未登入的請求。
+func (rt *routes) limitAnonymous(remoteAddr string) *apierr.Error {
+	if wait, ok := rt.limiter.allow(ipKey(remoteAddr), rt.rateLimits().AnonymousRequestsPerMinute); !ok {
+		return errRateLimited(wait)
+	}
+	return nil
+}
+
+// limitAccount 以帳號計入一個請求。
+func (rt *routes) limitAccount(userID string) *apierr.Error {
+	if wait, ok := rt.limiter.allow(accountKey(userID), rt.rateLimits().RequestsPerMinute); !ok {
+		return errRateLimited(wait)
+	}
+	return nil
+}
+
+// limitRaw 讓不經過 Huma 的瀏覽器流程（/auth/<provider>/start|callback）也受 IP 限流。
+func (rt *routes) limitRaw(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if e := rt.limitAnonymous(r.RemoteAddr); e != nil {
+			writeRawErr(w, e)
+			return
+		}
+		next(w, r)
+	}
+}

@@ -15,21 +15,24 @@ type routeCase struct {
 	access       Access
 }
 
-// implementedCases 是 M5-S1 實作的 /api/v1 路由與存取層級（auth.go）；OpenAPI 的 x-notesteme-access 要相同。
+// implementedCases 是 M5-S1（auth.go）與 M5-S2（tokens.go）實作的 /api/v1 路由與存取層級；OpenAPI 的 x-notesteme-access 要相同。
 var implementedCases = []routeCase{
 	{"GET", "/api/v1/auth/providers", AccessPublic},
 	{"POST", "/api/v1/auth/logout", AccessSession},
 	{"GET", "/api/v1/me", AccessAuthenticated},
 	{"POST", "/api/v1/me/identities/github/link", AccessSession},
 	{"DELETE", "/api/v1/me/identities/github", AccessSession},
-}
-
-// stubCases 是 HACC、HREP、HMCP 規格「介面」章節中還沒有實作的路由與存取層級（M5-S0 起，S1 移走登入的路由）。
-// 這份清單獨立於 production 的 Stubs，才抓得到 method、path、權限寫錯。
-var stubCases = []routeCase{
 	{"GET", "/api/v1/me/tokens", AccessSession},
 	{"POST", "/api/v1/me/tokens", AccessSession},
 	{"DELETE", "/api/v1/me/tokens/t1", AccessSession},
+	{"PUT", "/api/v1/admin/users/u1/groups/contributors", "admin"},
+	{"DELETE", "/api/v1/admin/users/u1/groups/contributors", "admin"},
+	{"GET", "/api/v1/admin/audit", "admin"},
+}
+
+// stubCases 是 HACC、HREP、HMCP 規格「介面」章節中還沒有實作的路由與存取層級（M5-S0 起，S1 移走登入、S2 移走 token、群組與稽核的路由）。
+// 這份清單獨立於 production 的 Stubs，才抓得到 method、path、權限寫錯。
+var stubCases = []routeCase{
 	{"GET", "/api/v1/me/shares", "upload"},
 	{"POST", "/api/v1/takedowns", AccessPublic},
 	{"GET", "/api/v1/takedowns/t1", AccessPublic},
@@ -39,11 +42,8 @@ var stubCases = []routeCase{
 	{"POST", "/api/v1/admin/reports/r1/decision", "moderate"},
 	{"POST", "/api/v1/admin/versions/v1/hide", "moderate"},
 	{"GET", "/api/v1/admin/users", "admin"},
-	{"PUT", "/api/v1/admin/users/u1/groups/contributors", "admin"},
-	{"DELETE", "/api/v1/admin/users/u1/groups/contributors", "admin"},
 	{"POST", "/api/v1/admin/users/u1/suspend", "admin"},
 	{"POST", "/api/v1/admin/users/u1/unsuspend", "admin"},
-	{"GET", "/api/v1/admin/audit", "admin"},
 	{"POST", "/api/v1/shares", "upload"},
 	{"DELETE", "/api/v1/shares/s1", "upload"},
 	{"GET", "/api/v1/versions", "read"},

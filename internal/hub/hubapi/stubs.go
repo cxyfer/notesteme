@@ -26,7 +26,7 @@ const (
 func perm(p string) Access { return Access(p) }
 
 // Stub 是還沒有實作的路由：回 501 not_implemented。
-// 這張表就是 Hub 的權限矩陣（HACC-R13）：S2 的 middleware 依 Access 在讀取 body 與查詢資源之前檢查，
+// 這張表與已實作路由的 Access 就是 Hub 的權限矩陣（HACC-R13）：middleware 依 Access 在讀取 body 與查詢資源之前檢查，
 // 所以實作某條路由時，從這裡移到自己的檔案，Access 一併帶走（stubs_test.go 的清單一併更新）。
 type Stub struct {
 	ID, Method, Path, Summary string
@@ -37,13 +37,7 @@ type Stub struct {
 
 // Stubs 是 HACC、HREP 規格「介面」章節的 /api/v1 路由（M5-S0）。
 var Stubs = []Stub{
-	// HACC：PAT（S2）。登入、登出、/me 與登入方式的連結、移除由 M5-S1 實作（auth.go）。
-	{ID: "me-tokens-list", Method: http.MethodGet, Path: "/api/v1/me/tokens", Access: AccessSession, Spec: "HACC-R9",
-		Summary: "列出 Hub token（尚未實作）"},
-	{ID: "me-tokens-create", Method: http.MethodPost, Path: "/api/v1/me/tokens", Access: AccessSession, Spec: "HACC-R9",
-		Summary: "建立 Hub token，token 只顯示這一次（尚未實作）"},
-	{ID: "me-tokens-revoke", Method: http.MethodDelete, Path: "/api/v1/me/tokens/{id}", Access: AccessSession, Spec: "HACC-R9",
-		Summary: "撤銷 Hub token（尚未實作）"},
+	// HACC：登入、登出、/me 與登入方式的連結、移除由 M5-S1 實作（auth.go）；Hub token、群組指派與稽核紀錄由 M5-S2 實作（tokens.go）。
 	{ID: "me-shares", Method: http.MethodGet, Path: "/api/v1/me/shares", Access: perm(hubconfig.PermUpload), Spec: "HACC-R16",
 		Summary: "我的分享與版本狀態（尚未實作）"},
 	// HACC：下架申請（S5）
@@ -64,16 +58,10 @@ var Stubs = []Stub{
 		Summary: "隱藏版本（尚未實作）"},
 	{ID: "admin-users-list", Method: http.MethodGet, Path: "/api/v1/admin/users", Access: perm(hubconfig.PermAdmin), Spec: "HACC-R12",
 		Summary: "列出使用者（尚未實作）"},
-	{ID: "admin-users-group-add", Method: http.MethodPut, Path: "/api/v1/admin/users/{id}/groups/{group}", Access: perm(hubconfig.PermAdmin), Spec: "HACC-R12",
-		Summary: "把使用者加入群組（尚未實作）"},
-	{ID: "admin-users-group-remove", Method: http.MethodDelete, Path: "/api/v1/admin/users/{id}/groups/{group}", Access: perm(hubconfig.PermAdmin), Spec: "HACC-R12",
-		Summary: "把使用者移出群組（尚未實作）"},
 	{ID: "admin-users-suspend", Method: http.MethodPost, Path: "/api/v1/admin/users/{id}/suspend", Access: perm(hubconfig.PermAdmin), Spec: "HACC-R17",
 		Summary: "停用帳號（尚未實作）"},
 	{ID: "admin-users-unsuspend", Method: http.MethodPost, Path: "/api/v1/admin/users/{id}/unsuspend", Access: perm(hubconfig.PermAdmin), Spec: "HACC-R17",
 		Summary: "恢復帳號（尚未實作）"},
-	{ID: "admin-audit", Method: http.MethodGet, Path: "/api/v1/admin/audit", Access: perm(hubconfig.PermAdmin), Spec: "HACC-R17",
-		Summary: "稽核紀錄（尚未實作）"},
 	// HREP：分享、篩選、取用、社群（S3～S5）
 	{ID: "shares-create", Method: http.MethodPost, Path: "/api/v1/shares", Access: perm(hubconfig.PermUpload), Spec: "HREP-R1",
 		Summary: "分享 bundle（multipart：bundle、attest、visibility，尚未實作）"},

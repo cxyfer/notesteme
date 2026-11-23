@@ -103,7 +103,7 @@ func TestAuthMiddleware(t *testing.T) {
 	if m := decode(t, rec); m["display_name"] != "alice" || len(m["identities"].([]any)) != 1 {
 		t.Errorf("/me = %v", m)
 	}
-	expect(t, "bearer（PAT 是 S2）", e.do("GET", "/api/v1/me", withHeader("Authorization", "Bearer nsh_x")), 401, "unauthorized")
+	expect(t, "格式不符的 bearer", e.do("GET", "/api/v1/me", withHeader("Authorization", "Bearer nsh_x")), 401, "unauthorized")
 	expect(t, "壞掉的 session cookie", e.do("GET", "/api/v1/me", func(r *http.Request) {
 		r.AddCookie(&http.Cookie{Name: hubauth.SessionCookie, Value: "forged"})
 	}), 401, "unauthorized")
@@ -113,10 +113,12 @@ func TestAuthMiddleware(t *testing.T) {
 		expect(t, p, e.do("GET", p), 200, "")
 	}
 
-	// CSRF：非 GET 的 session 請求，在 stub 之前檢查。
-	expect(t, "沒有 CSRF 的 stub", e.do("POST", "/api/v1/me/tokens", s), 403, "csrf_invalid")
+	// CSRF：非 GET 的 session 請求，在讀取 body 之前檢查。
+	expect(t, "沒有 CSRF 的建立 token", e.do("POST", "/api/v1/me/tokens", s), 403, "csrf_invalid")
 	expect(t, "錯的 CSRF", e.do("POST", "/api/v1/me/tokens", s, withHeader(hubauth.CSRFHeader, "nope")), 403, "csrf_invalid")
-	expect(t, "有 CSRF 的 stub", e.do("POST", "/api/v1/me/tokens", s, csrf), 501, "not_implemented")
+	expect(t, "有 CSRF 的建立 token（body 不正確）", e.do("POST", "/api/v1/me/tokens", s, csrf), 422, "invalid_request")
+	// 權限在讀取 body 之前檢查：members 沒有 upload。
+	expect(t, "缺少權限的 stub", e.do("POST", "/api/v1/shares", s, csrf), 403, "forbidden")
 	expect(t, "沒有 CSRF 的登出", e.do("POST", "/api/v1/auth/logout", s), 403, "csrf_invalid")
 	expect(t, "移除唯一的登入方式", e.do("DELETE", "/api/v1/me/identities/github", s, csrf), 409, "last_identity")
 	expect(t, "連結已有的供應商", e.do("POST", "/api/v1/me/identities/github/link", s, csrf), 409, "provider_already_linked")

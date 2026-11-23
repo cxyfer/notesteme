@@ -4,8 +4,9 @@
 // 流程；/mcp 是 Hub MCP（HMCP）；/healthz、/readyz 同 Client。錯誤格式與 Client 相同（internal/apierr）。
 //
 // M5-S0 的骨架：/healthz、/readyz 與 OpenAPI；M5-S1 加入登入、session 與帳號連結（auth.go）與身分驗證的 middleware。
+// M5-S2 加入權限、Hub token 與限流（auth.go 的 middleware、tokens.go、admin.go、ratelimit.go）。
 // 其他路由仍是 501 not_implemented 的 stub（stubs.go），每條路由（含已實作的）都以 Access 宣告需要的存取層級，
-// 權限（403 forbidden）的檢查由 S2 依這張表加入。
+// middleware 依它在讀取 body 之前檢查。
 package hubapi
 
 import (
@@ -74,7 +75,7 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 	cfg.SchemasPath = ""
 	cfg.CreateHooks = nil
 	api := humago.New(mux, cfg)
-	rt := &routes{d: d, api: api}
+	rt := &routes{d: d, api: api, limiter: newRateLimiter(d.Clock)}
 	api.UseMiddleware(rt.accessMiddleware)
 	public := map[string]any{AccessExtension: string(AccessPublic)}
 	huma.Register(api, huma.Operation{
@@ -86,6 +87,7 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 		Summary: "就緒檢查：確認資料庫可寫（免驗證）", Extensions: public,
 	}, rt.readyz)
 	registerAuth(api, rt)
+	registerAccounts(api, rt)
 	registerStubs(api)
 	return rt
 }
@@ -101,8 +103,9 @@ func OpenAPISpec() ([]byte, error) {
 }
 
 type routes struct {
-	d   Deps
-	api huma.API
+	d       Deps
+	api     huma.API
+	limiter *rateLimiter
 }
 
 type statusOutput struct {

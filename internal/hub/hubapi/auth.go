@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,18 +19,22 @@ import (
 	"github.com/cxyfer/notesteme/internal/websession"
 )
 
-// 登入、session 與帳號連結的路由（M5-S1，HACC-R1～R8），以及依 Access 的身分驗證 middleware。
+// 登入、session 與帳號連結的路由（M5-S1，HACC-R1～R8），以及依 Access 的身分驗證、限流與權限 middleware（M5-S2）。
 //
-// middleware 在讀取 body 之前執行（HACC-R13）：
-//   - AccessPublic 直接放行。
-//   - 其他層級要有有效的 session；沒有時回 401 unauthorized。site.visibility 為 public 時，
-//     未登入的請求可以進到需要 read 的路由（內容的可見度由路由自己處理，HACC-R14）。
-//   - 帳號停用時回 403 account_suspended；非 GET 的 session 請求要帶 CSRF token，否則 403 csrf_invalid。
-//   - PAT（Authorization 標頭）由 S2 實作；在那之前一律 401。缺少權限時的 403 forbidden 也是 S2。
+// middleware 在讀取 body 與查詢資源之前執行（HACC-R13），順序：
+//  1. AccessPublic 只受 IP 限流（/healthz、/readyz 不限）。
+//  2. 有 Authorization 標頭時只看 Hub token（不退回 cookie）：格式不符、不存在、撤銷、過期都回 401；沒有標頭時看 session cookie。
+//     沒有有效身分時以 IP 限流，之後回 401 unauthorized；site.visibility 為 public 時，未登入的請求可以進到需要 read 的路由
+//     （內容的可見度由路由自己處理，HACC-R14）。
+//  3. 帳號停用時回 403 account_suspended（session 與 PAT 都是）。
+//  4. Hub token 打到只接受 session 的路由回 403 session_required（HACC 待決問題 A12）。
+//  5. session 的非 GET 請求要帶 CSRF token，否則 403 csrf_invalid（PAT 不需要）。
+//  6. 以帳號限流（HACC-R18）。
+//  7. 路由需要權限時，有效權限（PAT ∩ 帳號當下的權限）沒有它就回 403 forbidden，帶 required_permission。
 
 type principalKey struct{}
 
-// principalFrom 回傳 middleware 驗證過的 session；沒有時是 nil（公開路由或未登入的公開站台）。
+// principalFrom 回傳 middleware 驗證過的身分；沒有時是 nil（公開路由或未登入的公開站台）。
 func principalFrom(ctx context.Context) *hubauth.Principal {
 	p, _ := ctx.Value(principalKey{}).(*hubauth.Principal)
 	return p
@@ -44,8 +50,16 @@ func accessOf(op *huma.Operation) Access {
 	return AccessAuthenticated
 }
 
+// setRetryAfter 在 429 的回應設定 Retry-After 標頭（HACC-R18）。
+func setRetryAfter(set func(string, string), e *apierr.Error) {
+	if e.RetryAfterS != nil {
+		set("Retry-After", strconv.Itoa(*e.RetryAfterS))
+	}
+}
+
 func writeHumaErr(ctx huma.Context, e *apierr.Error) {
 	ctx.SetHeader("Content-Type", "application/json")
+	setRetryAfter(ctx.SetHeader, e)
 	ctx.SetStatus(e.Status)
 	_ = json.NewEncoder(ctx.BodyWriter()).Encode(e)
 }
@@ -54,39 +68,82 @@ func safeMethod(m string) bool {
 	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
 }
 
+// isPermission 回報 Access 是不是一個權限名稱（而不是 public、session、authenticated）。
+func isPermission(a Access) bool { return slices.Contains(hubconfig.Permissions, string(a)) }
+
+// unlimitedOps 是不受限流的公開路由（健康檢查）。
+var unlimitedOps = map[string]bool{"healthz": true, "readyz": true}
+
+func (rt *routes) rateLimits() hubconfig.RateLimits {
+	if rt.d.Config == nil {
+		return hubconfig.RateLimits{}
+	}
+	return rt.d.Config.RateLimits
+}
+
+// authenticate 依 Authorization 標頭或 session cookie 取得身分；沒有有效身分時回 (nil, nil)。
+func (rt *routes) authenticate(ctx huma.Context) (*hubauth.Principal, error) {
+	if rt.d.Auth == nil {
+		return nil, nil
+	}
+	if h := strings.TrimSpace(ctx.Header("Authorization")); h != "" {
+		scheme, tok, ok := strings.Cut(h, " ")
+		if !ok || !strings.EqualFold(scheme, "Bearer") {
+			return nil, nil
+		}
+		p, err := rt.d.Auth.AuthenticateToken(ctx.Context(), strings.TrimSpace(tok))
+		if hubauth.IsNoSession(err) {
+			return nil, nil
+		}
+		return p, err
+	}
+	c, err := huma.ReadCookie(ctx, hubauth.SessionCookie)
+	if err != nil || c.Value == "" {
+		return nil, nil
+	}
+	p, err := rt.d.Auth.Authenticate(ctx.Context(), c.Value)
+	if hubauth.IsNoSession(err) {
+		return nil, nil
+	}
+	return p, err
+}
+
 func (rt *routes) accessMiddleware(ctx huma.Context, next func(huma.Context)) {
-	access := accessOf(ctx.Operation())
+	op := ctx.Operation()
+	access := accessOf(op)
 	if access == AccessPublic {
+		if op == nil || !unlimitedOps[op.OperationID] {
+			if e := rt.limitAnonymous(ctx.RemoteAddr()); e != nil {
+				writeHumaErr(ctx, e)
+				return
+			}
+		}
 		next(ctx)
 		return
 	}
-	anonymous := func() {
+	p, err := rt.authenticate(ctx)
+	if err != nil {
+		writeHumaErr(ctx, rt.apiError(ctx.Context(), err))
+		return
+	}
+	if p == nil {
+		// 無效的憑證也計入 IP 的額度：猜 token 的請求同樣受限。
+		if e := rt.limitAnonymous(ctx.RemoteAddr()); e != nil {
+			writeHumaErr(ctx, e)
+			return
+		}
 		if access == Access(hubconfig.PermRead) && rt.d.Config != nil && rt.d.Config.SiteVisibility == hubconfig.VisibilityPublic {
 			next(ctx)
 			return
 		}
 		writeHumaErr(ctx, hubauth.ErrUnauthorized())
-	}
-	if strings.TrimSpace(ctx.Header("Authorization")) != "" {
-		// PAT 是 S2；在那之前任何 bearer 都不是有效身分。
-		writeHumaErr(ctx, hubauth.ErrUnauthorized())
 		return
 	}
-	c, err := huma.ReadCookie(ctx, hubauth.SessionCookie)
-	if err != nil || c.Value == "" || rt.d.Auth == nil {
-		anonymous()
+	if access == AccessSession && !p.IsSession() {
+		writeHumaErr(ctx, hubauth.ErrSessionRequired())
 		return
 	}
-	p, err := rt.d.Auth.Authenticate(ctx.Context(), c.Value)
-	switch {
-	case hubauth.IsNoSession(err):
-		anonymous()
-		return
-	case err != nil:
-		writeHumaErr(ctx, rt.apiError(ctx.Context(), err))
-		return
-	}
-	if !safeMethod(ctx.Method()) {
+	if p.IsSession() && !safeMethod(ctx.Method()) {
 		csrf, _ := huma.ReadCookie(ctx, hubauth.CSRFCookie)
 		cv := ""
 		if csrf != nil {
@@ -94,6 +151,21 @@ func (rt *routes) accessMiddleware(ctx huma.Context, next func(huma.Context)) {
 		}
 		if websession.CheckCSRF(p.Token, cv, ctx.Header(hubauth.CSRFHeader)) != nil {
 			writeHumaErr(ctx, hubauth.ErrCSRF())
+			return
+		}
+	}
+	if e := rt.limitAccount(p.User.ID); e != nil {
+		writeHumaErr(ctx, e)
+		return
+	}
+	if isPermission(access) {
+		ok, err := rt.d.Auth.HasPermission(ctx.Context(), p, string(access))
+		if err != nil {
+			writeHumaErr(ctx, rt.apiError(ctx.Context(), err))
+			return
+		}
+		if !ok {
+			writeHumaErr(ctx, hubauth.ErrForbidden(string(access)))
 			return
 		}
 	}
@@ -140,6 +212,7 @@ func clearSessionCookies() []*http.Cookie {
 
 func writeRawErr(w http.ResponseWriter, e *apierr.Error) {
 	w.Header().Set("Cache-Control", "no-store")
+	setRetryAfter(w.Header().Set, e)
 	apierr.Write(w, e)
 }
 
@@ -225,7 +298,7 @@ func cookieValues(cs []*http.Cookie) []http.Cookie {
 	return out
 }
 
-// mustPrincipal 回傳 session；middleware 保證 session 路由一定有（沒有時是程式錯誤）。
+// mustPrincipal 回傳身分；middleware 保證非公開的路由一定有（公開站台的匿名 read 除外）。
 func mustPrincipal(ctx context.Context) (*hubauth.Principal, error) {
 	if p := principalFrom(ctx); p != nil {
 		return p, nil
@@ -327,6 +400,6 @@ func registerAuth(api huma.API, rt *routes) {
 }
 
 func registerOAuth(mux *http.ServeMux, rt *routes) {
-	mux.HandleFunc("GET /auth/{provider}/start", rt.oauthStart)
-	mux.HandleFunc("GET /auth/{provider}/callback", rt.oauthCallback)
+	mux.HandleFunc("GET /auth/{provider}/start", rt.limitRaw(rt.oauthStart))
+	mux.HandleFunc("GET /auth/{provider}/callback", rt.limitRaw(rt.oauthCallback))
 }
