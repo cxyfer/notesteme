@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 	"strings"
+
+	"github.com/cxyfer/notesteme/internal/entry"
 )
 
 // uiDispatch 把非後端路徑交給 Web UI（ADR-0008）；後端路徑照常進入 mux。
@@ -27,4 +29,14 @@ func isBackendPath(p string) bool {
 		}
 	}
 	return p == "/healthz" || p == "/readyz"
+}
+
+// entryPages 在 Web UI 之前掛上 ENTRY 的頁面路由（/add、/share、/login、manifest、service worker）。
+// UI handler 沒有 IndexHTML（測試替身）或沒有驗證服務時，照舊只交給 UI。
+func entryPages(d Deps) http.Handler {
+	ix, ok := d.UI.(interface{ IndexHTML() []byte })
+	if !ok || d.Auth == nil {
+		return d.UI
+	}
+	return entry.NewPages(d.Auth, ix.IndexHTML, d.UI, d.Log)
 }
