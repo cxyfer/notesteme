@@ -202,6 +202,8 @@ func TestMCPToolContract(t *testing.T) {
 		{Name: "get_note", Scope: "read"},
 		{Name: "list_frames", Scope: "read"},
 		{Name: "get_frame", Scope: "read"},
+		{Name: "list_subscriptions", Scope: "read"},
+		{Name: "create_subscription", Scope: "admin"},
 		{Name: "claim_tasks", Scope: "agent"},
 		{Name: "extend_lease", Scope: "agent"},
 		{Name: "submit_task", Scope: "agent"},

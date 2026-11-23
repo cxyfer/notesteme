@@ -98,6 +98,7 @@ func tools() []tool {
 		{ToolSpec{"search", ScopeRead}, addSearch},
 	}
 	list = append(list, m3Tools()...)
+	list = append(list, m4Tools()...)
 	return append(list, agentTools()...)
 }
 
