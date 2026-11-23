@@ -1,10 +1,11 @@
 // 詞彙表（pages.md §12、GLOS、COR-R5）：全域與各頻道的詞彙表；頻道的術語候選（接受、拒絕）。
 //
 // 後端沒有頻道列表 API，頻道用 UUID 或 <platform>:<external_id>（例如 youtube:UCxxxx）輸入；
-// 選擇只放在元件的 state，不加 route 的 search 參數。「修改後接受」「批次決定」沒有 API（GLOS 是 M4），不做。
+// 選擇只放在元件的 state，不加 route 的 search 參數。
+// UI-5：最上面加上跨頻道的術語審核（GLOS-R7：改寫後接受、加到頻道或全域、多選），lazy 載入（TermReview.tsx）。
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { lazy, Suspense, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { api, apiPath } from "../../api/client";
@@ -17,6 +18,8 @@ import { Loading, Panel, SaveError } from "./shared";
 
 type Glossary = components["schemas"]["Glossary"];
 type Candidate = components["schemas"]["TermCandidate"];
+
+const TermReview = lazy(() => import("./TermReview").then((m) => ({ default: m.TermReview })));
 
 const GLOBAL = "global";
 const GLOBAL_ID = "default";
@@ -37,6 +40,14 @@ export function GlossarySection() {
 
   return (
     <>
+      <Panel
+        title={t("settings.glossary.review.title")}
+        description={t("settings.glossary.review.hint")}
+      >
+        <Suspense fallback={<Loading />}>
+          <TermReview />
+        </Suspense>
+      </Panel>
       <Panel
         title={t("settings.glossary.globalTitle")}
         description={t("settings.glossary.globalHint")}

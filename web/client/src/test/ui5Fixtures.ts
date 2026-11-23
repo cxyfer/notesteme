@@ -18,3 +18,23 @@ export function searchResult(n: number, over: Partial<S["SearchResult"]> = {}): 
     ...over,
   };
 }
+
+export function termReview(
+  id: string,
+  term: string,
+  channel = "c1",
+  over: Partial<S["TermCandidateReview"]> = {},
+): S["TermCandidateReview"] {
+  return {
+    id,
+    term,
+    state: "pending",
+    decided_term: null,
+    decided_scope: null,
+    decided_at: null,
+    channel: { id: channel, key: `youtube:UC${channel}`, title: `頻道 ${channel}` },
+    item: { id: "item-1", ref: "yt:item1", title: "影片 1" },
+    created_at: "2026-11-20T00:00:00Z",
+    ...over,
+  };
+}
