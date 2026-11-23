@@ -68,6 +68,8 @@ type Event struct {
 	Digest json.RawMessage `json:"digest,omitempty"`
 	Items  json.RawMessage `json:"items,omitempty"`
 	Alert  *Alert          `json:"alert,omitempty"`
+	// Budget 是 budget.warning 的數字（month、percent、spent_usd、reserved_usd、monthly_usd，COST-R10），原樣放進 webhook 的 body。
+	Budget json.RawMessage `json:"budget,omitempty"`
 }
 
 // dedupe 鍵（NOTIFY-R10）。
