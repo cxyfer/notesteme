@@ -617,7 +617,7 @@ M4-S5 的實作說明（2026-11-23，依 /goal 採 advisor 建議，待 owner �
 | `Given the search library has {string} titled {string} with the {string} transcript in {string}:` | 同上，第四個參數是原文語言（例如 `zh-Hant`）：影片的原文語言設為這個值，字幕也寫成這個語言 |
 | `When the search runs for {string}` | 用 owner 的 session 送出 `GET /api/search?mode=fulltext&q=<參數>`，`q` 以 `url.QueryEscape` 編碼；回應成為最近一次的回應（`Then the response status is`、`Then the response contains:` 斷言它） |
 | `When the search runs for the query:` | 同上，查詢是 doc string 的內容（照字面，只去掉結尾的一個換行），用於含 `"` 或很長的查詢；Scenario Outline 的 `<query>` 可以放在 doc string 中 |
-| `Then the search index has no rows for {string}` | 以唯讀方式查詢 DB：`search_cues` 中沒有這部影音（影音 ID 取自代號對照表，永久刪除後仍是原本的 ID）的任何列，而且 `cues_fts` 的 `integrity-check` 通過（外部內容表與索引一致）。代號從未對應到影音 ID 時失敗 |
+| `Then the search index has no rows for {string}` | 以唯讀方式查詢 DB：`search_cues` 中沒有這部影音（影音 ID 取自代號對照表，永久刪除後仍是原本的 ID）的任何列，而且 `cues_fts` 的 `integrity-check` 通過（外部內容表與索引一致）。代號從未對應到影音 ID 時失敗。實作註記（M4-S8）：`integrity-check` 是寫入陳述句，唯讀連線不能執行，harness 經測試專用的 `Server.SearchIndexCheck` 在寫入連線上執行，不改變資料 |
 | `Then the search index has rows for {string}` | 以唯讀方式查詢 DB：`search_cues` 中至少有一列屬於這部影音；用來確認 `has no rows` 不是因為查錯資料表而成立 |
 
 #### Bundle（BND）

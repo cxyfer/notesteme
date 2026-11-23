@@ -46,6 +46,7 @@
 ## 待決問題
 
 - `get_video_context` 等待時是否改用 MCP 的 progress notification 回報進度，依當時 go-sdk 的支援程度決定。
+- MCP-R6 的 `mode: fulltext` 在 M4-S8 實作，行為以 [SRCH 規格](SRCH-search.md) SRCH-R10 為準（參數 `query`、`lang`、`limit`、`cursor`；結果同 `GET /api/search`）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
 - S9 實作決定（2026-11-23，依 /goal 採保守預設，**待 owner 追認**）：
   - S1 傳輸：`/mcp` 用官方 go-sdk（v1.8.0）的 Streamable HTTP，stateless 加 JSON 回應：每個請求只用自己的憑證，沒有可以被別的 token 接手的 session；代價是沒有 progress notification（上一點的待決問題維持現狀）與 server→client 的請求。`notesteme mcp` 是代理：stdio 端是 SDK 的 server，tools 與 prompts 的請求轉給 `/mcp`，三種模式行為與 HTTP 相同；獨立模式在背景執行 worker；stdin 結束時等已讀到的請求都回應才結束。
   - S2 一致性（MCP-R3）：每個 tool 在程序內以同一個身分呼叫同一組 API 路由，scope、參數驗證、錯誤 code 與訊息都來自 API。tool 的錯誤結果是 `isError`，文字是「`<code>`: `<message>`」，結構化內容是完整的 API 錯誤。scope 在 SDK 驗證參數之前檢查（和 API 先檢查 scope 再讀 body 相同）。為了讓 `item` 參數接受代號，`GET /api/items/{id}`、`/cues`、`/subtitles`、`POST /api/items/{id}/subtitles/import` 的 `{id}` 也接受影音代號（`yt:…`、`bili:…/p1`；垃圾桶中的回 `in_trash`）。

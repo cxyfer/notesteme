@@ -68,3 +68,12 @@
 - S5：結果以字幕句為單位，一部影音命中很多句時會佔滿第一頁。M4 不做「每部影音最多 N 句」的折疊，UI 可以在前端依影音分組顯示；之後視使用情況加 `group_by=item`。
 - S6：簡繁不互通（SRCH-R9）。對 zh-Hant 與 zh-Hans 混用的使用者不方便，但同時索引兩種字形會讓 `highlights` 與原文對不上。之後評估時與 LIB 的標題搜尋一起決定。
 - S7：查詢上限 200 個 code point（SRCH-R5）與標題搜尋相同；trigram 的查詢成本隨片語長度線性增加，200 字不會造成問題。
+- S8 實作時的決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 回填：產出檔在資料目錄中，SQL 讀不到，所以 migration `00026_search` 只建立資料表、trigger 與 `search_index_state(built = 0)`；migration 之後第一次開啟 DB 時，Go 在**一個交易**中以全部現行字幕建立索引並設 `built = 1`（`store.buildSearchIndexIfNeeded`）。與「同一支 migration 內完成」的差別是回填在 migration 的交易之外；失敗時拒絕啟動，下次開啟會重做。
+  - 變體選擇不看原文語言：原文語言可能在字幕寫入之後才由語言偵測決定，所以每個語言一律依 `edited` > `corrected` > `segmented` > `normalized` > `translated` > `source` 選一份。正常情況下（原文語言沒有 `translated`、譯文語言沒有 `corrected` 等）結果與 SRCH-R1 的兩條順序相同。
+  - 觸發點：store 的 `InsertArtifact`、`RestoreArtifact`（快取命中恢復舊版本）、`WithdrawArtifacts`（撤下譯文）在 kind 為 `transcript` 時重建該影音該語言的索引列，所以 seed、重跑、匯入 `edited`、快取恢復都經過同一個 hook；BND 匯入只要走 `InsertArtifact` 就會觸發。永久刪除在同一個交易中明確刪除索引列（外鍵 cascade 也會刪，trigger 會同步 `cues_fts`）。
+  - 產出檔讀不到、sha256 不符或無法解析時，該語言不建立索引列，但**不讓寫入失敗**：索引是衍生資料，字幕本身的錯誤由讀取字幕的路徑回報。
+  - 排序：同一個 `created_at` 依影音 `id` 升冪；「原文語言」以查詢當下的 `items.original_lang` 判斷（原文語言之後改變也不必重建索引）。游標是 keyset（`created_at`、`id`、原文／譯文、語言、`cue`），HMAC 涵蓋這些欄位與「摺疊後的查詢＋`lang`」的指紋，金鑰同 LIB 的游標（server 重啟後失效）。
+  - 驗證細節：`limit` 自行解析，非整數也回 `errors[].path` 為 `limit`；查詢不合法時 `errors[].path` 為 `q`；不是合法 UTF-8 的查詢視為含無法使用的字元；`lang` 上限 256 位元組；`unsupported_mode` 的訊息回顯 `mode` 時最多 32 個字（超過截斷加「…」）。
+  - MCP 的 `fulltext` 把查詢驗證交給 API（訊息相同）；MCP 對 `semantic` 等值的訊息改為「只支援 mode: title 與 fulltext。」（code 仍是 `unsupported_mode`）。CLI 只讀一頁（`--limit` 控制筆數），非 JSON 輸出時字幕中的控制字元換成空白，一句只佔一行。
+  - 不做：重建索引的指令（規格沒有列；`store.RebuildSearchIndex` 已存在，之後 doctor 或 CLI 需要時可以直接用）、Web UI 的搜尋頁（屬 UI 切片）。
