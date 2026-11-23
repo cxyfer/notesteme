@@ -20,8 +20,8 @@ import (
 const (
 	listTimeout   = 5 * time.Minute
 	maxToolOutput = netguard.LimitFeed // yt-dlp 的輸出上限 10 MiB（SUB-R11）
-	// extractor 名稱依 yt-dlp 的原始碼（youtube:tab、youtube:playlist、BilibiliCollectionList），
-	// 沒有在此環境對真實的 yt-dlp 驗證（測試不連外網）。
+	// extractor 名稱（youtube:tab、youtube:playlist、BilibiliCollectionList）在 M4-S3 以 yt-dlp 2026.10.26 實測過：
+	// 頻道的 /videos、播放清單、@handle（取 channel_id）與合集的舊格式網址都能以這組參數列出（單元測試不連外網）。
 	extractorsYouTube  = "youtube:tab,youtube:playlist"
 	extractorsBilibili = "BilibiliCollectionList"
 )
