@@ -188,6 +188,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
     - 依步驟列出狀態、開始與結束時間、耗時、花費、provider、model、prompt 版本、log。
     - 每個產出都有版本，可以比較兩個版本的差異。
 - **實作狀態（UI-4，2026-11-23）**：畫面與筆記分頁已完成，見 [README 10.12](README.md#1012-ui-4訂閱成本筆記模板通知與預算影音詳情的畫面與筆記2026-11-23)；匯出選單的 Markdown 筆記改放在筆記分頁的「下載 Markdown」。
+- **實作狀態（UI-6，2026-11-24）**：動作列加上「分享到 Hub」（本機檔案不顯示）與已分享清單，字幕來源是 `hub` 時顯示「來自 Hub 的原始字幕」（沒有上傳者名稱，API 沒有），見 [README 10.16、10.17](README.md#1017-ui-6-的決定與待決問題)。
 - **實作狀態（UI-5，2026-11-24）**：摘要區塊與「繼續處理」（DIG）、「有更好的字幕來源」提示與「改用更好的字幕重跑」（SRC-10）、動作列的「匯出 bundle」已完成；匯出不能選產出種類（API 沒有參數），見 [README 10.14、10.15](README.md#1015-ui-5-的決定與待決問題)。
 - **重新處理**選單：
   - 從某個步驟開始重新處理。
@@ -427,6 +428,7 @@ Prompt 庫 › 校正 › correct-default
 - **修訂（2026-11-23，ADR-0020、VAULT 規格待決問題 V1，待 owner 追認）**：「輸出」分區的 vault（路徑、git repo、分支）與 hook 只能在設定檔定義，這裡唯讀顯示，處理方案只能選用已定義的 id；字幕的本機影片旁與資料夾目標維持可以在處理方案中設定。
 - **API**：`GET/PUT /api/settings/:section`、`POST /api/providers/:id/test`、`POST /api/cookies`、`GET /api/system`、`POST /api/tools/yt-dlp/update`、`GET/POST/DELETE /api/tokens`
 - **修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）**：「書籤小工具」是 ENTRY-R1 的區塊，獨立成一個分區（`/settings/bookmarklet`，排在「外觀」之後），見 ENTRY 待決問題 E7。
+- **實作狀態（UI-6，2026-11-24）**：新增「Hub」分區（`/settings/hub`，在「系統」之後）：URL 唯讀、Hub token、測試連線、ASR 前查詢的開關與說明、用 Hub 的版本重新生成（HSHR），見 [README 10.16、10.17](README.md#1017-ui-6-的決定與待決問題)。
 - **實作狀態（UI-5，2026-11-24）**：「詞彙表」加上跨頻道的術語審核（GLOS-R7）；「通知」加上彙整設定（DIG）；「系統」加上系統告警、每日備份狀態與「匯入 bundle」（OPS、BND），見 [README 10.14、10.15](README.md#1015-ui-5-的決定與待決問題)。
 - **實作狀態（UI-4，2026-11-23）**：「通知」與「預算」分區完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)；其他分區見 README 10.10。
 
@@ -440,3 +442,26 @@ Prompt 庫 › 校正 › correct-default
 - **錯誤**：「密碼不正確。」連續失敗 5 次後鎖定 1 分鐘，並顯示剩餘時間。
 - **API**：`POST /api/auth/login`、`POST /api/auth/logout`
 - **修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）**：登入頁接受 `?next=`（`/add`、`/share` 在沒有 session 時帶來，ENTRY-R5）與舊的 `?redirect=`，交給 `POST /api/auth/login` 的 `next` 檢查，登入後只前往回應中的 `next`（ENTRY-R6、待決問題 E11）。
+
+## 14. Hub UI（M5）
+
+> 狀態：M5-S9／UI-6 依 HACC、HREP 規格的「Hub UI」段落與 `@ui` 場景整理（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）。實作見 [README 10.16、10.17](README.md#1016-ui-6hub-ui-與-client-的分享頁面m5-s92026-11-24)。
+
+Hub 是 `notesteme-hub` 提供的獨立網站（`web/hub`），頂端列有站名、導覽（瀏覽、帳號、審核、使用者、下架申請；只列出有權限的）、登入者與登出、介面語言與主題。使用者上傳的一切都當作文字顯示。
+
+| 頁面 | 路由 | 需要 | 內容 | 規格 |
+|---|---|---|---|---|
+| 登入 | `/login?redirect=` | — | 依 google、github、linuxdo 的順序列出已啟用的登入方式（連到 `/auth/<provider>/start`）；說明不依 email 合併帳號 | HACC-R1、R2、R5 |
+| 瀏覽 | `/?platform=&channel=&video=&lang=&kind=&variant=&transcribe_model=&correct_model=&translate_model=&exclude_unverified=&sort=` | `read`（站台公開時不用登入） | 篩選列、結果列表（分數、授權、上傳者、模型與「模型未經記錄」）、載入更多 | HREP-R16 |
+| 影片 | `/videos/:platform/:external_id?part=&compare=a,b` | `read`；比較要 `download` | 依種類、變體、語言分組的版本；勾選兩個字幕版本並排比較（時間帶、字幕句列表、目前時間點的逐字差異） | HREP-R17 |
+| 版本 | `/versions/:id` | `read`；下載與預覽要 `download` | 資訊（分數、授權、上傳者、可見度、SHA-256、模型）、衍生關係、下載各格式、內容預覽、投票、檢舉、下架申請的連結、版主的隱藏、來源紀錄（收合）、原始字幕的版本 ID | HREP-R6、R7、R13～R15、R17、R18 |
+| 下架申請 | `/takedown?version=` | — | 版本 ID、原因、說明（20～5,000 字）、聯絡 email、善意聲明；成功後顯示申請編號；下方可以輸入編號查詢 | HACC-R15 |
+| 下架申請的狀態 | `/takedowns/:id` | — | 處理中、已移除版本、已駁回 | HACC-R15 |
+| 帳號 | `/account` | 登入 | 帳號資料（顯示名稱、群組、權限）、登入方式（連結、移除）、Hub token（建立、撤銷）、我的分享（有 `upload` 時；移除原因、撤回） | HACC-R6、R7、R9、R16，HREP-R10 |
+| 審核：檢舉 | `/admin/reports` | `moderate` | 依狀態列出；駁回（恢復隱藏的版本）或移除版本，可附說明 | HREP-R14、R15 |
+| 審核：下架申請 | `/admin/takedowns` | `moderate` | 依狀態列出；說明、聯絡 email；移除版本或駁回 | HACC-R16 |
+| 使用者 | `/admin/users` | `admin` | 帳號、登入方式、群組（指派、移除手動的成員資格）、停用（附原因）與恢復 | HACC-R12、R17 |
+| 稽核紀錄 | `/admin/audit` | `admin` | 時間、執行者、動作、對象 | HACC-R17 |
+
+- 沒有的頁面（規格不在範圍內或沒有 API）：帳號的合併與刪除、取消隱藏、字幕全文搜尋、線上編輯與留言。
+- OAuth callback 的錯誤目前是 JSON（見 README 10.17 第 5 點，待 owner 決定）。

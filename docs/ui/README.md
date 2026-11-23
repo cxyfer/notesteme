@@ -190,6 +190,8 @@
 
 Hub 是公開的資源站，會另外設計一套風格，以和 Client 區隔。兩者共用時間帶與字幕句列表元件，但 Hub 的重點是瀏覽、比較版本與下載。規格在 M5 前補上。
 
+- **修訂（2026-11-24，M5-S9／UI-6，依 /goal 採 advisor 建議，待 owner 追認）**：Hub UI 的頁面清單與路由見 [pages.md §14](pages.md#14-hub-uim5)，實作與決定見 10.16、10.17。配色是淺色「文庫」（米白紙底、深綠墨色、黃銅色記號）與深色「閱覽室」，token 名稱與 Client 相同（`web/hub/src/styles/tokens.css`）；版面是頂端列，不是 Client 的左側導覽。
+
 ## 10. 實作現況
 
 ### 10.1 UI-0：骨架（2026-11-23）
@@ -220,6 +222,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 訂閱、成本、筆記模板、設定的通知與預算、影音詳情的畫面與筆記 | 完成（UI-4，見 10.12） | `src/pages/{subscriptions,costs,noteTemplates}`、`src/pages/settings`、`src/pages/item/NotePanels.tsx` |
 | 字幕全文搜尋、術語審核、bundle 匯出與匯入、系統告警與備份、摘要與彙整、更好的字幕來源 | 完成（UI-5，見 10.14） | `src/pages/search`、`src/pages/settings`、`src/pages/item`、`src/pages/library` |
 | 總覽、批次操作、Hub UI | 未做：總覽依賴 LIB-09 `/api/overview`、批次依賴 LIB-08 `POST /api/items/batch`（兩者仍是 501 stub）；Hub UI 屬 M5 | 之後的切片 |
+| Hub UI（`web/hub`）、Client 的「分享到 Hub」與設定「Hub」分區 | 完成（UI-6／M5-S9，見 10.16） | `web/hub`、`internal/hub/ui.go`、`web/client/src/pages/hub` |
 
 ### 10.2 UI-0 的決定
 
@@ -500,3 +503,45 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 13. **匯出 bundle 用 `<a download>`**：沿用 UI-4 決定 10（CSV 匯出）的做法；出錯時瀏覽器會下載到 JSON 錯誤。影音詳情只會顯示不在垃圾桶中的影音，所以 404 `in_trash` 不會從這裡發生；bundle 只含字幕、筆記與選中的畫面，大小通常在幾十 MiB 以內（BND N4），不另做進度顯示。
 14. **跳轉後的字幕定位**：影音詳情的字幕列表在掛載時就跟隨 `?t=` 的目前句捲動（UI-2 的行為），測試確認 `?t=2` 時目前句是第 2 句。
 15. **共用檔案只增不改**：`router.tsx`（`/search`）、`queryKeys.ts`（`search`、`termCandidatesAll`、`termReview`、`digests`）、locale JSON（新增 key；移除不再使用的 `settings.notify.notYetEmitted`）、`SettingsPage.tsx` 沒有改；`GlossarySection`、`SystemSection`、`NotificationsSection` 各只加一個 lazy 掛載點。步驟動作的對照表（`actions.ts`）加了六個後端字串，`ActionKind` 的 `rerun` 多了選填的 `from`，另加 `continue`、`cancel`。新的樣式在 `src/styles/ui5.css`（由 lazy 模組載入），媒體庫的兩個小樣式加在 `library.css`。
+
+### 10.16 UI-6：Hub UI 與 Client 的分享頁面（M5-S9，2026-11-24）
+
+| 範圍 | 狀態 | 位置 |
+|---|---|---|
+| Hub UI 的獨立 Vite 專案（React 19、TanStack Router／Query、i18next 三語、vitest＋axe、token 對比測試、i18n 字典檢查、bundle 預算、OpenAPI 型別），`go:embed` 由 `notesteme-hub` 提供；CSP、`no-cache`、SPA fallback；`/api`、`/auth`、`/mcp`、`/healthz`、`/readyz` 交給 API | 完成 | `web/hub`、`web/hub/embed.go`、`internal/hub/ui.go`、`internal/webui`（`NewWithOptions`） |
+| 登入頁（依序列出已啟用的登入方式，HACC-R1）、登入前的頁面在登入後回來 | 完成 | `web/hub/src/pages/LoginPage.tsx` |
+| 首頁的瀏覽與篩選（平台、頻道、影片、語言、種類、變體、三個模型、排除未記錄的模型、排序；在 URL；cursor 分頁；422 的欄位錯誤）、結果的分數、授權、上傳者與「模型未經記錄」標示（HREP-R16） | 完成 | `src/pages/browse` |
+| 影片頁（依種類、變體、語言分組，HREP-R17）、兩個字幕版本並排比較（`web/shared` 的 StatusBand 與 DiffText） | 完成 | `src/pages/video` |
+| 版本頁：來源紀錄、衍生關係（「以 @alice 的原始字幕重新生成」）、下載、內容預覽（字幕、筆記用 `web/shared` 的 NoteMarkdown、章節）、投票、檢舉、下架申請的連結、版主的隱藏、「在你的 Client 重新生成」的版本 ID（HREP-R6、R13～R15、R17、R18） | 完成 | `src/pages/version` |
+| 下架申請表單與狀態查詢（不需要登入，HACC-R15） | 完成 | `src/pages/takedown` |
+| 帳號頁：登入方式的連結與移除（`reauth_required`、`last_identity`）、Hub token 的建立（只顯示一次）與撤銷、我的分享（移除原因、撤回） | 完成 | `src/pages/account` |
+| 管理頁：檢舉（駁回、移除、狀態篩選）、下架申請（移除、駁回、聯絡 email）、使用者（指派與移除群組、停用與恢復）、稽核紀錄 | 完成 | `src/pages/admin` |
+| Client：影音詳情的「分享到 Hub」對話框（產出、授權、可見度、畫面、聲明、預覽會送出的欄位、成功後連到 Hub 的版本頁、`hub_not_configured` 的「設定 Hub」）、已分享清單、`hub` 字幕來源的標示 | 完成（lazy） | `web/client/src/pages/hub/{HubShareDialog,HubShares}.tsx`、`src/pages/item/ItemPage.tsx` |
+| Client：設定「Hub」分區（URL 唯讀、token 的設定與移除、測試連線、ASR 前查詢的開關與說明確認、用 Hub 的版本重新生成） | 完成（lazy） | `web/client/src/pages/hub/HubSection.tsx`、`src/pages/SettingsPage.tsx` |
+| CI：`web.yml` 的 `hub` job、goreleaser 先建 `web/hub`、release-check 確認 `notesteme-hub` 內嵌真正的 UI、Dockerfile 的 `web-hub` stage | 完成（只改設定檔，沒有在 CI 上跑過） | `.github/workflows`、`.goreleaser.yaml`、`deploy/docker/Dockerfile` |
+| 真實瀏覽器的視覺、鍵盤與螢幕閱讀器驗收（`@ui @manual`：HACC、HREP、HSHR） | owner 手動驗收 | — |
+
+驗證：Hub UI vitest 6 個檔案 60 個測試（每頁 axe，`src/test/routes.a11y.test.tsx` 13 條路徑）、i18n 三語各 335 個 key、初始 JS 163.0KB gzip；Client vitest 43 個檔案 424 個測試、i18n 三語各 1591 個 key、初始 JS 274.0KB gzip（UI-5 之後 271.2KB，增加的是三語字串；分享對話框與 Hub 分區都在 lazy chunk）。後端只改了 Hub 的靜態檔案服務（`internal/hub/ui.go`、`internal/webui`），API 與兩份 OpenAPI 快照不變。
+
+### 10.17 UI-6 的決定與待決問題
+
+（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）
+
+1. **Hub UI 是獨立的 Vite 專案 `web/hub`**，不是 Client 的第二個 entry，也沒有改成 npm workspace。理由：Hub 是獨立部署的 binary（ADR-0030），UI 的 CSP、bundle 預算、相依套件的升級節奏與 Client 無關；workspace 要改 Client 的 lockfile、CI 與 Dockerfile 的建置順序，也會和平行的切片衝突。代價：相依套件安裝兩份、幾個基礎元件（Button、Dialog、TextField、SelectField、ErrorCallout、EmptyState、Spinner、Toast）與 API client 的寫法是從 Client 複製的。之後若要收斂，把這些移到 `web/shared`（需要 i18n 由呼叫端注入）。
+2. **只把筆記的 Markdown 解析與渲染搬到 `web/shared/src/notes`**（Hub 的筆記預覽要用同一份「不允許原始 HTML」的實作，HREP-R18）；Client 的 `src/notes/{markdown.ts,NoteMarkdown.tsx}` 改成轉接檔，以 `@shared/notes/…` 的檔案路徑匯入（經過 `@shared` 的 index 會被打包進 Client 的初始 chunk，多 2KB）。Client 與 Hub 的 `tsconfig.json` 都加了 `@shared/*`。
+3. **Hub 的靜態檔案服務**：`internal/hub/ui.go` 在 API 之前分派（`/api`、`/auth`、`/mcp` 與其下、`/healthz`、`/readyz` 交給 API，其他交給 UI；同 Client 不在 mux 上註冊 `/` catch-all）。`internal/webui` 加了 `NewWithOptions`（CSP 與 placeholder 可以覆寫，`New` 的行為不變）。Hub 的 CSP 比 Client 嚴：`img-src 'self'`、`media-src 'none'`、`frame-src 'none'`（Hub 不嵌入播放器、不載入外部縮圖，HREP-R12）。驗收 harness 透過 `Server.Handler()` 用到同一個分派，`@M5` 場景不受影響。
+4. **登入狀態**：以 `GET /api/v1/me` 為準（401 是未登入，不導頁），所以 `site.visibility: public` 時未登入也能瀏覽；其他 API 回 401 `unauthorized` 時導到 `/login?redirect=`。OAuth callback 一律轉到 `/`（HACC A11，不做 open redirect），登入前的頁面存在 sessionStorage，登入回到首頁後再導過去（只接受站內路徑）。
+5. **待決（HACC A11）**：OAuth callback 的錯誤（`oauth_state_invalid`、`oauth_denied`、`oauth_provider_error`、`account_suspended`、連結時的 `identity_in_use`）仍回 JSON，瀏覽器會直接看到 JSON。建議 Hub 對瀏覽器的 callback 改成轉到 `/login?error=<code>`（UI 再顯示訊息），但這會改變 HACC-R3 等場景檢查的狀態碼，需要 owner 決定；這個切片沒有改。
+6. **首頁的「搜尋」只有 metadata 篩選**（HREP 不做全文搜尋）：篩選存在 URL，按「套用篩選」才查詢；伺服器的 422 `errors[].path`（`query.<參數>`）顯示在對應欄位旁。
+7. **並排比較用 `GET /versions/:id/download?format=cues-json`**：`/content` 要 `regenerate`，一般成員（`members`）沒有；`download` 的回應雖然有 `Content-Disposition: attachment`，`fetch` 仍可讀取。只比較字幕；勾選兩個之後才寫進 URL（`?compare=a,b`，可以分享）。時間帶是 `StatusBand` 的完整版（兩條帶子是兩個版本有字幕的時間範圍），點一句或移動播放頭時兩邊一起跳，下方用 `DiffText` 顯示這個時間點兩句的差異。沒有 `download` 權限時不提供比較與預覽，只顯示說明。
+8. **待決（API）**：版本沒有「我投的票」，按鈕的按下狀態只反映這個頁面上剛投的票，重新整理後不保留；建議 `GET /api/v1/versions/:id` 加 `my_vote`。
+9. **隱藏沒有對應的「取消隱藏」**（HREP R10 的待決）：版本頁的隱藏確認框寫明「要恢復時需等新的檢舉被駁回」，不另加入口。
+10. **在 Client 重新生成**：版本頁對 `source`／`normalized` 的字幕顯示版本 ID 與「複製」，說明貼到 Client 的「設定 → Hub」。Client 的 Hub 分區接受版本 ID 或 Hub 版本頁的網址（只取 `/versions/<id>`）。
+11. **使用者管理的群組名稱是輸入框**（附 `contributors`、`moderators` 的建議）：API 沒有列出設定檔群組的路由；`admins`（403 `admin_by_config`）與 `members` 不提供移除按鈕，自己的帳號不提供停用。**待決**：需要的話 API 加「群組清單」。
+12. **錯誤訊息的語言**：Hub 的錯誤訊息與欄位錯誤目前只有繁中；UI 對常見的 code（`errors.<code>`，例如 `own_version`、`already_reported`、`last_identity`）用自己的三語字典，其他顯示伺服器的訊息。**待決**：Hub 是否依 `Accept-Language` 產生訊息（同 Client 的 NFR-I18N-2）。
+13. **Client 的「分享到 Hub」**：可選的產出由步驟狀態推測（API 沒有「這部影音有哪些產出」的清單），預設是「全部」（不送 `artifacts`，伺服器決定，HSHR-R5）；改成「只分享勾選的」時才送清單，不存在的產出由伺服器回 422 `artifact_not_found`。授權沒有預設值（HSHR-R3 要求明確選擇）。「預覽會送出的欄位」列出影音的欄位，產出的內容與來源紀錄只用文字說明。**待決**：要逐欄預覽來源紀錄，需要「試做 bundle」的 API。本機檔案不顯示按鈕。
+14. **待決（API）**：HSHR 的 `@ui` 場景要求「來自 Hub：@alice 的原始字幕」，但 `GET /api/items/:id` 沒有 `hub_origin`（上傳者），目前只顯示「來自 Hub 的原始字幕」（字幕來源是 `hub` 時）。建議 `sources` 或 `ItemDetail` 加 `hub_origin.uploader`。
+15. **已分享清單**連到 Hub 的「帳號」頁（Hub 沒有單一分享的頁面）；撤回只在 Hub 進行（HSHR S12）。`hub_url` 不是 https 時不產生連結。
+16. **設定「Hub」分區**加在「系統」之後（`SETTINGS_SECTIONS` 只加一項），lazy 載入。ASR 前查詢的說明一律顯示，開啟前要勾「我了解」，送出 `acknowledge: <disclosure_version>`。
+17. **commit 的切法**：Hub UI 的頁面共用 router、字典與樣式，拆成每頁一個 commit 時中間的 commit 無法單獨建置，所以 Hub UI 是一個 commit；Go 端、`web/shared` 的搬移、CI 與 Client 各自一個。
+
