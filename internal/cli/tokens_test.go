@@ -65,6 +65,9 @@ func TestTokensUsageErrors(t *testing.T) {
 		"revoke 缺少目標":       {"tokens", "revoke"},
 		"revoke 空白目標":       {"tokens", "revoke", "  "},
 		"revoke 太多參數":       {"tokens", "revoke", "a", "b"},
+		"rotate 缺少目標":       {"tokens", "rotate"},
+		"rotate 空白目標":       {"tokens", "rotate", " "},
+		"rotate 太多參數":       {"tokens", "rotate", "a", "b"},
 	}
 	for name, args := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -177,5 +180,35 @@ func TestTokensLsAndRevokeClientMode(t *testing.T) {
 	res, _, _ = run(t, env, "tokens", "revoke", "missing", "--server", url, "--token", "t")
 	if res.Code != 1 || res.ErrorCode != "not_found" {
 		t.Errorf("找不到時應回傳 1 / not_found：%+v", res)
+	}
+}
+
+func TestTokensRotateClientMode(t *testing.T) {
+	api, url := newFakeAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/tokens/agent/rotate":
+			writeJSON(w, 200, `{"id":"t1","name":"agent","prefix":"nst_abcd","scopes":["read","agent"],`+
+				`"expires_at":"2027-01-01T00:00:00Z","created_at":"2026-11-12T09:00:00Z","token":"nst_abcdNEW"}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api/tokens/old/rotate":
+			writeJSON(w, 409, `{"code":"token_inactive","message":"這個 token 已撤銷或過期，請建立新的 token。"}`)
+		default:
+			writeJSON(w, 404, `{"code":"not_found","message":"no"}`)
+		}
+	})
+	env, _ := testEnv(t)
+	res, out, errOut := run(t, env, "tokens", "rotate", "agent", "--json", "--server", url, "--token", "t")
+	if res.Code != 0 || !strings.Contains(out, `"token":"nst_abcdNEW"`) {
+		t.Fatalf("rotate --json：%+v %q %s", res, out, errOut)
+	}
+	res, out, errOut = run(t, env, "tokens", "rotate", "agent", "--server", url, "--token", "t")
+	if res.Code != 0 || !strings.Contains(out, "nst_abcdNEW") || !strings.Contains(out, "已輪替") || !strings.Contains(out, "2027-01-01") {
+		t.Fatalf("rotate 文字：%+v %q %s", res, out, errOut)
+	}
+	if api.count("POST /api/tokens/agent/rotate") != 2 {
+		t.Errorf("請求紀錄 = %v", api.requests)
+	}
+	res, _, _ = run(t, env, "tokens", "rotate", "old", "--server", url, "--token", "t")
+	if res.Code != 1 || res.ErrorCode != "token_inactive" {
+		t.Errorf("已撤銷時應回傳 1 / token_inactive：%+v", res)
 	}
 }

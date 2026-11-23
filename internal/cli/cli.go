@@ -273,7 +273,7 @@ const usageText = `用法：notesteme <子命令> [旗標]
   export <item> --format bundle [--out <path>]  匯出 bundle（.notesteme.zip，M4）
   import <subtitle> --item <item>       匯入外部編輯過的字幕為 edited 版本（--lang、--format）
   import <bundle> [--add-versions]      匯入 bundle（.notesteme.zip，M4）
-  tokens create|ls|revoke               管理 API token
+  tokens create|ls|revoke|rotate        管理 API token
   notifiers ls | test <id>              列出通知端點、傳送測試通知（M4）
   subs ls | add <url> | show <id> | preview <id|url> | check <id> | rm <id> | import <file>
                                         訂閱（add：--profile、--schedule、--backfill none|recent:<N>|all；M4）

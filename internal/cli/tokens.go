@@ -12,10 +12,10 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 )
 
-// parseTokens 解析 `notesteme tokens create | ls | revoke`（AUTH-R10）。
+// parseTokens 解析 `notesteme tokens create | ls | revoke | rotate`（AUTH-R10、AUTH-R21）。
 func parseTokens(args []string) (*plan, error) {
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
-		return nil, usagef("tokens 需要子命令：create、ls 或 revoke。")
+		return nil, usagef("tokens 需要子命令：create、ls、revoke 或 rotate。")
 	}
 	switch sub, rest := args[0], args[1:]; sub {
 	case "create":
@@ -24,6 +24,8 @@ func parseTokens(args []string) (*plan, error) {
 		return parseTokensLs(rest)
 	case "revoke":
 		return parseTokensRevoke(rest)
+	case "rotate":
+		return parseTokensRotate(rest)
 	default:
 		return nil, usagef("不認得的子命令 tokens %s。", sub)
 	}
@@ -152,6 +154,41 @@ func parseTokensRevoke(args []string) (*plan, error) {
 			return exitOK, nil
 		}
 		fmt.Fprintf(s.stdout, "已撤銷 token：%s\n", target)
+		return exitOK, nil
+	}}, nil
+}
+
+// parseTokensRotate 解析 `notesteme tokens rotate <name> [--json]`（AUTH-R21）：產生新的 secret，舊的立即失效；
+// 名稱、scope、到期時間不變。新 token 只顯示這一次。
+func parseTokensRotate(args []string) (*plan, error) {
+	g := &globals{}
+	fs := newFlagSet("tokens rotate", g)
+	pos, err := parseFlags(fs, args)
+	if err != nil {
+		return nil, err
+	}
+	if len(pos) != 1 || strings.TrimSpace(pos[0]) == "" {
+		return nil, usagef("tokens rotate 需要一個 <name|id>。")
+	}
+	target := pos[0]
+	return &plan{g: g, run: func(ctx context.Context, s *session) (int, error) {
+		raw, _, err := s.be.call(ctx, http.MethodPost, "/api/tokens/"+url.PathEscape(target)+"/rotate", nil)
+		if err != nil {
+			return 0, err
+		}
+		if g.json {
+			s.printRaw(raw)
+			return exitOK, nil
+		}
+		var tok auth.CreatedToken
+		if err := json.Unmarshal(raw, &tok); err != nil {
+			return 0, fmt.Errorf("回應不是預期的 JSON：%w", err)
+		}
+		fmt.Fprintf(s.stdout, "已輪替 token：%s（%s，權限：%s），舊的 token 已經失效\n", tok.Name, tok.ID, strings.Join(tok.Scopes, ","))
+		if tok.ExpiresAt != nil {
+			fmt.Fprintf(s.stdout, "到期時間：%s\n", tok.ExpiresAt.Format(time.RFC3339))
+		}
+		fmt.Fprintf(s.stdout, "Token（只會顯示這一次，請妥善保存）：%s\n", tok.Token)
 		return exitOK, nil
 	}}, nil
 }
