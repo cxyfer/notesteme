@@ -267,6 +267,8 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	// vault 與 hook 只能在設定檔定義（VAULT-R1、R10）：處理方案只能引用這些 id。
 	deps.Outputs = outputCatalog{vaults: cfg.Vaults, hooks: cfg.Hooks}
 	deps.Vaults, deps.Hooks = vaultDefs(cfg)
+	// git 與 hook 經同一個 runner（process group、逾時、輸出上限）；環境變數由 vault 套件依規則挑選（VAULT-R8、R11）。
+	deps.Runner, deps.Env = runner, env.Vars
 	// SponsorBlock 經同一個 netguard client（SPB-R2）；base_url 只能寫在設定檔。
 	// 沒有經過設定檔載入的 Config（測試、standalone 的預設值）沒有 base_url，用公開伺服器。
 	sbBase := cfg.SponsorBlockBaseURL

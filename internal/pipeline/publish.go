@@ -133,6 +133,16 @@ func (p *Pipeline) runPublish(ctx context.Context, it store.Item, eff Effective)
 	}
 	done := store.StageState{Status: store.StatusDone}
 	var msgs []string
+	// hook 在所有目標都寫完、沒有任何目標被擋下之後才執行（VAULT-R11、V7）；失敗只提醒，步驟仍是 done。
+	hookFailed := false
+	for _, vo := range vaults {
+		hm, err := p.runVaultHooks(ctx, it, vo.cfg, vo)
+		if err != nil {
+			return result{}, err
+		}
+		hookFailed = hookFailed || len(hm) > 0
+		msgs = append(msgs, hm...)
+	}
 	if len(missing) > 0 {
 		msgs = append(msgs, msgPublishNoLang+strings.Join(missing, "、")+"。")
 	}
@@ -144,6 +154,9 @@ func (p *Pipeline) runPublish(ctx context.Context, it store.Item, eff Effective)
 		}
 	}
 	done.Message = strings.Join(msgs, "")
+	if hookFailed {
+		done.Actions = []string{actionRepublishVault}
+	}
 	return result{task: taskDone, stage: stage, state: done}, nil
 }
 

@@ -23,6 +23,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/toolexec"
 	"github.com/cxyfer/notesteme/internal/vault"
 )
 
@@ -105,6 +106,9 @@ type Deps struct {
 	// Vaults、Hooks 是設定檔定義的 vault 與 hook（VAULT-R1、R10），以 id 為鍵；nil 代表沒有定義。
 	Vaults map[string]vault.Def
 	Hooks  map[string]vault.Hook
+	// Runner 執行 git 與 hook（VAULT-R7、R11）；Env 是 notesteme 的環境變數（PATH、vault 的憑證、hook 的 env_allowlist）。
+	Runner toolexec.Runner
+	Env    map[string]string
 	// Prompts 解析 prompt 引用（PRM、PRF-R4）；nil 代表不檢查 prompt 是否存在，也不記錄 prompt 版本。
 	Prompts PromptResolver
 	// LLM 是 LLM provider 的 client、API key 與限流（LLM 規格）；nil 代表 api executor 的 LLM 步驟以 permanent 失敗。
@@ -162,7 +166,11 @@ type Pipeline struct {
 	// vaults、hooks 見 Deps.Vaults、Deps.Hooks。
 	vaults map[string]vault.Def
 	hooks  map[string]vault.Hook
-	llm    *llm.Registry
+	runner toolexec.Runner
+	env    map[string]string
+	// vaultLocks 讓同一個 vault 的發布互斥。
+	vaultLocks itemLocks
+	llm        *llm.Registry
 	// sponsor、sponsorBase 見 Deps.SponsorBlock、Deps.SponsorBlockBaseURL。
 	sponsor     SponsorBlockLookup
 	sponsorBase string
@@ -193,7 +201,7 @@ func New(d Deps) *Pipeline {
 	if retention <= 0 {
 		retention = DefaultTrashRetention
 	}
-	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, outputs: d.Outputs, prompts: d.Prompts, llm: d.LLM, sponsor: d.SponsorBlock, sponsorBase: d.SponsorBlockBaseURL, notify: d.Notify, vaults: d.Vaults, hooks: d.Hooks}
+	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, outputs: d.Outputs, prompts: d.Prompts, llm: d.LLM, sponsor: d.SponsorBlock, sponsorBase: d.SponsorBlockBaseURL, notify: d.Notify, vaults: d.Vaults, hooks: d.Hooks, runner: d.Runner, env: d.Env}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。

@@ -129,3 +129,31 @@ func TestRunStartFailure(t *testing.T) {
 		t.Error("沒有路徑應回傳錯誤")
 	}
 }
+
+// Cmd.Env 取代 allowlist：只有呼叫端列出的變數，不含 vars 中的其他變數。
+func TestRunExplicitEnv(t *testing.T) {
+	vars := map[string]string{"PATH": "/usr/bin:/bin", "NOTESTEME_MASTER_KEY": "secret-master-key"}
+	res, err := New(vars).Run(context.Background(), Cmd{Path: sh(t), Args: []string{"-c", "env"}, Env: []string{"ONLY=1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out := strings.TrimSpace(string(res.Stdout)); !strings.Contains(out, "ONLY=1") || strings.Contains(out, "secret") || strings.Contains(out, "/usr/bin:/bin") {
+		t.Errorf("環境 = %q", out)
+	}
+}
+
+// KeepOutput：stdout 與 stderr 合計只保留前 N 位元組，程式照常結束，不回 ErrOutputTooLarge。
+func TestRunKeepOutputTruncatesWithoutKilling(t *testing.T) {
+	r := New(map[string]string{}).WithLimits(64, 64)
+	res, err := r.Run(context.Background(), Cmd{Path: sh(t), Args: []string{"-c", "echo ab >&2; yes | head -c 100000; echo END; exit 4"}, KeepOutput: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Stdout) != 10 || !res.Truncated || res.ExitCode != 4 || len(res.Stderr) != 0 || strings.Contains(string(res.Stdout), "END") {
+		t.Errorf("result = %+v（%q）", res, res.Stdout)
+	}
+	res, err = r.Run(context.Background(), Cmd{Path: sh(t), Args: []string{"-c", "printf 12345"}, KeepOutput: 10})
+	if err != nil || string(res.Stdout) != "12345" || res.Truncated {
+		t.Errorf("沒超過時不截斷：%+v，%v", res, err)
+	}
+}

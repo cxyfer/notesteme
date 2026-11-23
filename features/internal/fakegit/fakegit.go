@@ -52,6 +52,8 @@ type cloneState struct {
 	Staged   []string `json:"staged"`
 	Unpushed []Commit `json:"unpushed"`
 	Head     string   `json:"head"`
+	// Origin 是 refs/remotes/origin/<branch>：最近一次 clone、pull 或 push 時遠端的最後一個 commit。
+	Origin string `json:"origin,omitempty"`
 }
 
 // Call 是一次呼叫的紀錄。
@@ -178,7 +180,15 @@ func (f Fake) run(dir string, args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, "fatal: not a git repository")
 			return 128
 		}
-		fmt.Fprintln(stdout, cs.Head)
+		// refs/remotes/origin/<branch> 是遠端追蹤分支；其他（HEAD）是本機的 HEAD。不存在時同 --verify 失敗。
+		ref := cs.Head
+		if slices.ContainsFunc(args[1:], func(a string) bool { return strings.HasPrefix(a, "refs/remotes/origin/") }) {
+			ref = cs.Origin
+		}
+		if ref == "" {
+			return 1
+		}
+		fmt.Fprintln(stdout, ref)
 		return 0
 	}
 	fmt.Fprintf(stderr, "fake git: %q is not supported\n", args[0])
@@ -220,7 +230,7 @@ func (f Fake) clone(dir string, args []string, stderr io.Writer) int {
 				branch = args[i+1]
 				i++
 			}
-		case "--single-branch", "--quiet", "-q":
+		case "--single-branch", "--quiet", "-q", "--":
 		default:
 			rest = append(rest, args[i])
 		}
@@ -256,7 +266,7 @@ func (f Fake) clone(dir string, args []string, stderr io.Writer) int {
 	if n := len(st.Commits); n > 0 {
 		head = st.Commits[n-1].ID
 	}
-	if err := saveClone(dest, cloneState{Remote: rest[0], Branch: branch, Head: head}); err != nil {
+	if err := saveClone(dest, cloneState{Remote: rest[0], Branch: branch, Head: head, Origin: head}); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 128
 	}
@@ -268,7 +278,8 @@ func (f Fake) pull(dir string, args []string, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "fake git: pull without --ff-only is not supported")
 		return 1
 	}
-	if _, err := loadClone(dir); err != nil {
+	cs, err := loadClone(dir)
+	if err != nil {
 		fmt.Fprintln(stderr, "fatal: not a git repository")
 		return 128
 	}
@@ -280,6 +291,14 @@ func (f Fake) pull(dir string, args []string, stderr io.Writer) int {
 	case RejectBadCredentials:
 		fmt.Fprintf(stderr, "fatal: Authentication failed for '%s'\n", st.URL)
 		return 128
+	}
+	// 快轉：沒有本機的新 commit 時，HEAD 與追蹤分支都移到遠端的最後一個 commit。
+	if n := len(st.Commits); n > 0 && len(cs.Unpushed) == 0 {
+		cs.Head, cs.Origin = st.Commits[n-1].ID, st.Commits[n-1].ID
+		if err := saveClone(dir, cs); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 128
+		}
 	}
 	return 0
 }
@@ -373,7 +392,7 @@ func (f Fake) push(dir string, args []string, stderr io.Writer) int {
 	if len(cs.Unpushed) > 0 {
 		st.Commits = append(st.Commits, cs.Unpushed...)
 		st.Pushes++
-		cs.Unpushed = nil
+		cs.Unpushed, cs.Origin = nil, cs.Head
 		if err := f.SetRemote(st); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 128

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os/exec"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -42,6 +43,11 @@ type Cmd struct {
 	Dir string
 	// Timeout 大於 0 時，超過就結束子程序。
 	Timeout time.Duration
+	// Env 不是 nil 時取代 allowlist 組出的環境變數（呼叫端自己決定完整的環境，例如 git 與 hook，VAULT-R8、R11）。
+	Env []string
+	// KeepOutput 大於 0 時，stdout 與 stderr 合併到 Result.Stdout，只保留前 KeepOutput 位元組，其餘丟棄：
+	// 輸出再多也不結束子程序（hook 的 max_output，VAULT-R11）。Result.Truncated 回報是否丟棄過。
+	KeepOutput int64
 }
 
 // Result 是子程序結束後的輸出。非 0 的結束碼不是錯誤：由呼叫端依工具與 stderr 分類。
@@ -49,6 +55,8 @@ type Result struct {
 	Stdout   []byte
 	Stderr   []byte
 	ExitCode int
+	// Truncated 是 KeepOutput 模式下有輸出被丟棄。
+	Truncated bool
 }
 
 // Runner 執行外部工具。測試可以注入替身。
@@ -115,6 +123,9 @@ func (e *Exec) Run(ctx context.Context, c Cmd) (Result, error) {
 	cmd := exec.CommandContext(ctx, c.Path, c.Args...)
 	cmd.Dir = c.Dir
 	cmd.Env = e.env() // 即使是空的也要明確設定，否則會繼承程序的環境
+	if c.Env != nil {
+		cmd.Env = append([]string{}, c.Env...)
+	}
 	if cmd.Env == nil {
 		cmd.Env = []string{}
 	}
@@ -128,11 +139,20 @@ func (e *Exec) Run(ctx context.Context, c Cmd) (Result, error) {
 		_ = killProcessGroup(cmd)
 	}
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &limitWriter{buf: &stdout, max: e.maxStdout, onExceed: kill}
-	cmd.Stderr = &limitWriter{buf: &stderr, max: e.maxStderr, onExceed: kill}
+	var keep *keepWriter
+	if c.KeepOutput > 0 {
+		keep = &keepWriter{buf: &stdout, max: c.KeepOutput}
+		cmd.Stdout, cmd.Stderr = keep, keep
+	} else {
+		cmd.Stdout = &limitWriter{buf: &stdout, max: e.maxStdout, onExceed: kill}
+		cmd.Stderr = &limitWriter{buf: &stderr, max: e.maxStderr, onExceed: kill}
+	}
 
 	err := cmd.Run()
 	res := Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}
+	if keep != nil {
+		res.Truncated = keep.dropped
+	}
 	if exceeded.Load() {
 		return res, ErrOutputTooLarge
 	}
@@ -164,4 +184,28 @@ func (w *limitWriter) Write(p []byte) (int, error) {
 		return 0, ErrOutputTooLarge
 	}
 	return w.buf.Write(p)
+}
+
+// keepWriter 保留前 max 位元組，其餘丟棄但回報寫入成功（子程序不會因為管線關閉而失敗）。stdout 與 stderr 共用，所以加鎖。
+type keepWriter struct {
+	mu      sync.Mutex
+	buf     *bytes.Buffer
+	max     int64
+	dropped bool
+}
+
+func (w *keepWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	room := w.max - int64(w.buf.Len())
+	switch {
+	case room <= 0:
+		w.dropped = w.dropped || len(p) > 0
+	case int64(len(p)) > room:
+		w.buf.Write(p[:room])
+		w.dropped = true
+	default:
+		w.buf.Write(p)
+	}
+	return len(p), nil
 }

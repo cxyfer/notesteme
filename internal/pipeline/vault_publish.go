@@ -16,6 +16,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/output"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
+	"github.com/cxyfer/notesteme/internal/toolexec"
 	"github.com/cxyfer/notesteme/internal/vault"
 )
 
@@ -47,6 +48,9 @@ type vaultOutcome struct {
 	missing []string
 	// messages 是要顯示在步驟上的提醒（沒有筆記、沒有字幕、連結可能過時）。
 	messages []string
+	// cfg 是這個輸出目標的設定（hook 用）；commit 是 git vault 的 HEAD（hook 的 {{commit}}）。
+	cfg    output.Config
+	commit string
 }
 
 // vaultItem 是決定版面用的影音資訊；日期（VAULT-R2）：平台的發布日，沒有時是影音的新增日（UTC）。
@@ -172,7 +176,7 @@ func noteChecksPassed(art store.Artifact, doc noteDoc) bool {
 
 // publishVault 把一個 vault 目標寫進 root（fs vault 的 path，或 git vault 的 clone）。
 func (p *Pipeline) publishVault(ctx context.Context, it store.Item, cfg output.Config, def vault.Def, rootDir string, w *output.Writer) (*vaultOutcome, error) {
-	out := &vaultOutcome{def: def, root: rootDir}
+	out := &vaultOutcome{def: def, root: rootDir, cfg: cfg}
 	art, doc, err := p.currentNote(ctx, it.ID, "")
 	hasNote := err == nil
 	switch {
@@ -306,20 +310,164 @@ func (p *Pipeline) writeVaultImages(ctx context.Context, vw *vaultWriter, layout
 	})
 }
 
-// publishVaultTarget 寫出一個 vault 目標（VAULT-R1、R5）：依設定檔的定義決定根目錄。
+// vault 的 git 與 hook 的訊息與動作（VAULT-R9、R11）。
+const (
+	actionRepublishVault  = "重新發布"
+	actionUpdateVaultCred = "更新憑證"
+)
+
+// publishVaultTarget 寫出一個 vault 目標（VAULT-R1、R5、R7）：fs 直接寫進設定的 path；git 先同步 clone，
+// 寫入後只 add 這次寫入或另存的檔案、有變更才 commit，本機有還沒推送的 commit 時 push。
+// 同一個 vault 的發布互斥（同一個 clone 不能同時有兩個 git 操作）。
 func (p *Pipeline) publishVaultTarget(ctx context.Context, it store.Item, cfg output.Config, w *output.Writer) (*vaultOutcome, error) {
 	def, ok := p.vaults[cfg.Vault]
 	if !ok {
 		return nil, &errclass.Error{Class: errclass.ClassPermanent, Source: "publish", Detail: "沒有這個 vault " + cfg.Vault,
 			Message: fmt.Sprintf("沒有這個 vault：%s。vault 只能在設定檔定義。", cfg.Vault)}
 	}
-	if len(cfg.Hooks) > 0 {
-		return nil, errPermanent("hook 還沒有實作（VAULT 的 S6 切片）。")
+	unlock, err := p.vaultLocks.lock(ctx, def.ID)
+	if err != nil {
+		return nil, err
 	}
-	if def.Adapter != vault.AdapterFS {
-		return nil, errPermanent("git vault 還沒有實作（VAULT 的 S6 切片）。")
+	defer unlock()
+	if def.Adapter != vault.AdapterGit {
+		return p.publishVault(ctx, it, cfg, def, def.Path, w)
 	}
-	return p.publishVault(ctx, it, cfg, def, def.Path, w)
+
+	g, cleanup, err := p.newGit(def)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	dir := p.vaultRoot(def)
+	if err := g.Sync(ctx, def, dir); err != nil {
+		return nil, gitError(def, err)
+	}
+	out, err := p.publishVault(ctx, it, cfg, def, dir, w)
+	if err != nil {
+		return nil, err
+	}
+	// 被擋下的檔案以外，這次寫入或另存的檔案照樣提交（VAULT V7：已寫入的檔案保留）。
+	commit, err := g.Commit(ctx, dir, out.changed, "notesteme: "+it.Title, def.Author)
+	if err != nil {
+		return nil, gitError(def, err)
+	}
+	if commit != "" {
+		if err := p.st.Tx(ctx, func(r *store.Repo) error {
+			for _, path := range out.changed {
+				if err := r.SetOutputCommit(ctx, it.ID, path, commit); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	}
+	// 重試時沿用上一次已經建立的本機 commit，不重複 commit（VAULT-R9）：只要本機領先遠端就推送。
+	ahead, err := g.Ahead(ctx, dir, def.Branch)
+	if err != nil {
+		return nil, gitError(def, err)
+	}
+	if ahead {
+		if err := g.Push(ctx, dir, def.Branch); err != nil {
+			return nil, gitError(def, err)
+		}
+	}
+	if out.commit, err = g.Head(ctx, dir); err != nil {
+		return nil, gitError(def, err)
+	}
+	return out, nil
+}
+
+// newGit 準備一次 git 操作：git 的位置、任務的暫存目錄（HOME 與 askpass）與憑證（NOTESTEME_VAULT_<ID>_TOKEN）。
+func (p *Pipeline) newGit(def vault.Def) (*vault.Git, func(), error) {
+	if p.runner == nil {
+		return nil, nil, errPermanent("沒有可以執行 git 的環境。")
+	}
+	path, err := toolexec.LookPath("git", p.env["PATH"])
+	if err != nil {
+		return nil, nil, &errclass.Error{Class: errclass.ClassPermanent, Source: "publish", Detail: err.Error(),
+			Message: "找不到 git，無法使用 git vault。請在執行環境安裝 git。"}
+	}
+	home, cleanup, err := p.taskTempDir("vault-git-")
+	if err != nil {
+		return nil, nil, err
+	}
+	return &vault.Git{Runner: p.runner, Path: path, Vars: p.env, Home: home, Token: p.env[vault.TokenEnvVar(def.ID)]}, cleanup, nil
+}
+
+// taskTempDir 在 <data>/tmp 建立一個任務專用的暫存目錄（權限 0700），回傳刪除它的函式。
+func (p *Pipeline) taskTempDir(prefix string) (string, func(), error) {
+	base := filepath.Join(p.dataDir, "tmp")
+	if err := os.MkdirAll(base, 0o700); err != nil {
+		return "", nil, err
+	}
+	dir, err := os.MkdirTemp(base, prefix)
+	if err != nil {
+		return "", nil, err
+	}
+	return dir, func() { _ = os.RemoveAll(dir) }, nil
+}
+
+// gitError 把 git 的失敗分類成 publish 的錯誤（VAULT-R9）。
+func gitError(def vault.Def, err error) error {
+	var ge *vault.GitError
+	if !errors.As(err, &ge) {
+		return &errclass.Error{Class: errclass.ClassPermanent, Source: "publish", Detail: err.Error(),
+			Message: fmt.Sprintf("vault %s 的 git repo 無法使用：%v", def.ID, err)}
+	}
+	switch ge.Kind {
+	case vault.KindNetwork:
+		return &errclass.Error{Class: errclass.ClassRetryable, Source: "publish", Detail: ge.Error(),
+			Message: fmt.Sprintf("無法連線到 vault %s 的遠端，稍後會重試。", def.ID)}
+	case vault.KindRejected:
+		return &errclass.Error{Class: errclass.ClassNeedsAction, Source: "publish", Detail: ge.Error(),
+			Message: fmt.Sprintf("vault 的遠端分支 %s 有本機沒有的提交，Notesteme 不會自動合併。請先同步 vault repo 再重新發布。", def.Branch),
+			Actions: []string{actionRepublishVault}}
+	case vault.KindAuth:
+		return &errclass.Error{Class: errclass.ClassNeedsAction, Source: "publish", Detail: ge.Error(),
+			Message: fmt.Sprintf("無法登入 vault 的遠端（認證失敗）。請更新 vault %s 的憑證。", def.ID),
+			Actions: []string{actionUpdateVaultCred, actionRepublishVault}}
+	}
+	return &errclass.Error{Class: errclass.ClassPermanent, Source: "publish", Detail: ge.Error(),
+		Message: fmt.Sprintf("vault %s 的 git %s 失敗。", def.ID, ge.Op)}
+}
+
+// runVaultHooks 在所有檔案寫入（與 push）成功之後執行每個列出的 hook 一次（VAULT-R11）。
+// hook 失敗或逾時不影響已寫入的檔案，回傳要顯示的提醒。
+func (p *Pipeline) runVaultHooks(ctx context.Context, it store.Item, cfg output.Config, out *vaultOutcome) ([]string, error) {
+	var msgs []string
+	for _, id := range cfg.Hooks {
+		h, ok := p.hooks[id]
+		if !ok {
+			return nil, &errclass.Error{Class: errclass.ClassPermanent, Source: "publish", Detail: "沒有這個 hook " + id,
+				Message: fmt.Sprintf("沒有這個 hook：%s。hook 只能在設定檔定義。", id)}
+		}
+		if p.runner == nil {
+			return nil, errPermanent("沒有可以執行 hook 的環境。")
+		}
+		dir, cleanup, err := p.taskTempDir("hook-")
+		if err != nil {
+			return nil, err
+		}
+		res := vault.RunHook(ctx, p.runner, h, vault.HookValues{
+			NotePath: out.note, VaultRoot: out.root, ItemID: it.ID, Title: it.Title, Commit: out.commit,
+		}, p.env, dir)
+		cleanup()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		p.log.InfoContext(ctx, "hook 執行結束", "hook", id, "item", it.ID, "exit", res.ExitCode, "timed_out", res.TimedOut,
+			"truncated", res.Truncated, "output", string(res.Output))
+		if res.Err != nil {
+			p.log.WarnContext(ctx, "hook 無法執行", "hook", id, "error", res.Err)
+		}
+		if m := res.Message(h); m != "" {
+			msgs = append(msgs, m)
+		}
+	}
+	return msgs, nil
 }
 
 // vaultRoot 是 vault 的根目錄：fs 是設定的 path，git 是 <data>/vault-repo/<id> 的 clone（VAULT-R1）。

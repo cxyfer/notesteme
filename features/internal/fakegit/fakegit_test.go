@@ -138,3 +138,35 @@ func TestFirstCloneCreatesAnEmptyRemote(t *testing.T) {
 		t.Error("scp 形式的 ssh 網址要允許")
 	}
 }
+
+// M3-S6 的擴充：clone 接受 --；rev-parse 的遠端追蹤分支在 clone、push 後更新，空的 repo 時失敗；pull 快轉。
+func TestTrackingRefAndFastForward(t *testing.T) {
+	f, root := newFake(t)
+	dir := filepath.Join(root, "clone")
+	if code, out := run(t, f, root, "-c", "core.hooksPath=/dev/null", "clone", "--branch", "master", "--single-branch", "--", remote, "clone"); code != 0 {
+		t.Fatalf("clone：%d %s", code, out)
+	}
+	if code, _ := run(t, f, dir, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/master"); code != 1 {
+		t.Errorf("空的 repo 的追蹤分支應不存在：%d", code)
+	}
+	write(t, filepath.Join(dir, "a.md"), "a")
+	run(t, f, dir, "add", "--", "a.md")
+	run(t, f, dir, "commit", "-m", "m")
+	if code, out := run(t, f, dir, "rev-parse", "HEAD"); code != 0 || strings.TrimSpace(out) != "c1" {
+		t.Errorf("HEAD = %q", out)
+	}
+	run(t, f, dir, "push", "origin", "HEAD:refs/heads/master")
+	if code, out := run(t, f, dir, "rev-parse", "--verify", "refs/remotes/origin/master"); code != 0 || strings.TrimSpace(out) != "c1" {
+		t.Errorf("push 後的追蹤分支 = %d %q", code, out)
+	}
+	// 另一個 clone 推了新的 commit：pull --ff-only 快轉 HEAD 與追蹤分支。
+	st, _ := f.Remote()
+	st.Commits = append(st.Commits, Commit{ID: "c9", Files: []string{"b.md"}})
+	_ = f.SetRemote(st)
+	if code, _ := run(t, f, dir, "pull", "--ff-only", "origin", "master"); code != 0 {
+		t.Fatal("pull 失敗")
+	}
+	if _, out := run(t, f, dir, "rev-parse", "HEAD"); strings.TrimSpace(out) != "c9" {
+		t.Errorf("快轉後的 HEAD = %q", out)
+	}
+}

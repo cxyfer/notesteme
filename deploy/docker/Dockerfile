@@ -91,12 +91,14 @@ FROM debian:${DEBIAN_VERSION}-slim
 ARG YTDLP_VERSION=
 
 # tini 當 PID 1：轉送訊號，並回收 yt-dlp 等子程序留下的孤兒程序。
-# curl 只給 HEALTHCHECK 使用。
+# curl 只給 HEALTHCHECK 使用。git 與 openssh-client 給 git vault 使用（VAULT-R7）。
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
       ffmpeg \
+      git \
+      openssh-client \
       python3 \
       python3-venv \
       tini \
