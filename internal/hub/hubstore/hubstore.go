@@ -97,6 +97,7 @@ type Store interface {
 	RevokePAT(ctx context.Context, userID, id string) error
 
 	ContentStore
+	ListingStore
 }
 
 // 群組成員資格的來源（HACC-R11、R12）。

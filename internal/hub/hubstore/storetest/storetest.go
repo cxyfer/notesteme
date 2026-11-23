@@ -336,4 +336,5 @@ func Run(t *testing.T, open Open) {
 	})
 
 	runContent(t, open)
+	runListing(t, open)
 }
