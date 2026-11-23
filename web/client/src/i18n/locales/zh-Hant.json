@@ -538,7 +538,8 @@
       "atCue": "第 {{line}} 句",
       "atLine": "檔案第 {{line}} 行",
       "errorAt": "{{where}}：{{message}}"
-    }
+    },
+    "restore": "從垃圾桶還原"
   },
   "queue": {
     "loading": "正在載入佇列…",

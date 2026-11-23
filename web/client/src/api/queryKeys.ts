@@ -20,7 +20,8 @@ export const queryKeys = {
     outputs: (id: string) => [...queryKeys.items.allOutputs(), id] as const,
     deletionPreview: (id: string) => [...queryKeys.items.all, "deletion-preview", id] as const,
     /** 佇列頁「需要你處理」的計數（GET /api/items?status=…&limit=1 的 total） */
-    attention: (stage: string) => [...queryKeys.items.all, "attention", stage] as const,
+    allAttention: () => [...queryKeys.items.all, "attention"] as const,
+    attention: (stage: string) => [...queryKeys.items.allAttention(), stage] as const,
   },
   profiles: ["profiles"] as const,
   // 處理方案的單筆與版本（前綴是 profiles，列表失效時一起失效）

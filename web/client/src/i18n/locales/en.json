@@ -556,7 +556,8 @@
       "atCue": "line {{line}}",
       "atLine": "file line {{line}}",
       "errorAt": "{{where}}: {{message}}"
-    }
+    },
+    "restore": "Restore from trash"
   },
   "queue": {
     "loading": "Loading the queue…",

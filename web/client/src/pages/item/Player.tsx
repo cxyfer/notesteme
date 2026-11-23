@@ -39,6 +39,7 @@ export interface PlayerProps {
 export const YT_ORIGINS = ["https://www.youtube-nocookie.com", "https://www.youtube.com"] as const;
 const YT_EMBED = YT_ORIGINS[0];
 const FALLBACK_MS = 4000;
+const HANDSHAKE_MS = 250;
 
 export function youtubeEmbedUrl(videoId: string, start: number, autoplay: boolean, origin: string) {
   const q = new URLSearchParams({
@@ -120,9 +121,8 @@ function YouTubePlayer(
   });
 
   const post = useCallback((msg: object) => {
-    const w = frame.current?.contentWindow;
-    if (!w) return;
-    for (const origin of YT_ORIGINS) w.postMessage(JSON.stringify(msg), origin);
+    // 只送到實際嵌入的 origin（nocookie），送到其他 origin 會在 console 產生 target origin 不符的錯誤
+    frame.current?.contentWindow?.postMessage(JSON.stringify(msg), YT_EMBED);
   }, []);
 
   useEffect(() => {
@@ -140,12 +140,27 @@ function YouTubePlayer(
   }, []);
 
   const timer = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const handshake = useRef<number | undefined>(undefined);
+  useEffect(
+    () => () => {
+      window.clearTimeout(timer.current);
+      window.clearInterval(handshake.current);
+    },
+    [],
+  );
   const onLoad = useCallback(() => {
-    // 「listening」讓播放器開始送 infoDelivery（含 currentTime）
-    post({ event: "listening", id: 1, channel: "widget" });
+    // 「listening」讓播放器開始送 infoDelivery（含 currentTime）。iframe 的 load 可能早於播放器初始化，
+    // 所以每 250ms 重送，直到收到第一則訊息或逾時（之後降級成重新載入）
+    const hello = () => post({ event: "listening", id: 1, channel: "widget" });
+    hello();
+    window.clearInterval(handshake.current);
+    handshake.current = window.setInterval(() => {
+      if (live.current) window.clearInterval(handshake.current);
+      else hello();
+    }, HANDSHAKE_MS);
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
+      window.clearInterval(handshake.current);
       if (!live.current) setFallback(true);
     }, FALLBACK_MS);
   }, [post]);

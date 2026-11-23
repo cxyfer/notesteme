@@ -82,10 +82,18 @@ export function CookieDialog({
     }
     setContent(await f.text());
   }
+  // cookie 是敏感內容：關閉對話框時一律清掉
+  const close = (o: boolean) => {
+    if (!o) {
+      setContent("");
+      upload.reset();
+    }
+    onOpenChange(o);
+  };
   return (
     <Dialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={close}
       title={t("item.cookie.title", {
         platform: t(`platform.${platform}`, { defaultValue: platform }),
       })}

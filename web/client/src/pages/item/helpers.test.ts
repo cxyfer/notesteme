@@ -81,13 +81,15 @@ describe("validateItemSearch", () => {
 });
 
 describe("詳情頁的資料推導", () => {
-  it("可用的模式依步驟狀態；預設是校正", () => {
+  it("可用的模式依步驟狀態；校正完成才預設選校正", () => {
     const modes = availableModes(
       [stage("transcript", "done"), stage("normalize", "done"), stage("correct", "running")],
       false,
     );
     expect(modes).toEqual(["source", "normalized", "corrected", "diff"]);
-    expect(defaultMode(modes)).toBe("corrected");
+    // 校正處理中：corrected 可能還不存在，預設用正規化
+    expect(defaultMode(modes, [stage("correct", "running")])).toBe("normalized");
+    expect(defaultMode(modes, [stage("correct", "done")])).toBe("corrected");
     expect(availableModes([stage("correct", "skipped")], true)).toEqual(["edited"]);
   });
 

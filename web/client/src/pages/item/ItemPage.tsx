@@ -54,6 +54,10 @@ const route = getRouteApi("/app/items/$id");
 
 const ACTIVE = new Set(["pending", "running", "waiting", "awaiting_agent"]);
 
+function byStageStatus(stages: readonly { stage: string; status: string }[], stage: string) {
+  return stages.find((s) => s.stage === stage)?.status;
+}
+
 export function ItemPage() {
   const { t } = useTranslation();
   const { id: param } = route.useParams();
@@ -64,6 +68,7 @@ export function ItemPage() {
   );
   const navigate = route.useNavigate();
   const qc = useQueryClient();
+  const toast = useToast();
 
   const detail = useQuery({
     queryKey: queryKeys.items.detail(param),
@@ -85,6 +90,16 @@ export function ItemPage() {
   );
 
   const backToLibrary = () => void navigate({ to: "/library" });
+  const restore = async (itemId: string) => {
+    try {
+      await api.post(apiPath("/api/trash/{id}/restore", { id: itemId }));
+      void qc.invalidateQueries({ queryKey: queryKeys.items.lists() });
+      void qc.invalidateQueries({ queryKey: queryKeys.trash });
+      await detail.refetch();
+    } catch (err) {
+      toast.show({ title: describeError(t, err) });
+    }
+  };
   if (detail.isPending) {
     return (
       <>
@@ -111,7 +126,17 @@ export function ItemPage() {
         ) : (
           <ErrorCallout
             error={err}
-            actions={[{ label: t("common.retry"), onClick: () => void detail.refetch() }]}
+            actions={
+              inTrash
+                ? [
+                    {
+                      label: t("item.restore"),
+                      primary: true,
+                      onClick: () => void restore(err.body.item_id || param),
+                    },
+                  ]
+                : [{ label: t("common.retry"), onClick: () => void detail.refetch() }]
+            }
           />
         )}
       </>
@@ -152,8 +177,17 @@ function ItemView({
   const edited = useCues(id, "edited");
   const hasEdited = !!edited.data?.cues.length;
   const modes = useMemo(() => availableModes(stages, hasEdited), [stages, hasEdited]);
+  // 沒有指定模式時，第一次決定的預設就固定下來：之後步驟狀態改變（SSE）不會換掉使用者正在看的模式
+  const computed = defaultMode(modes, stages);
+  const [initialMode, setInitialMode] = useState<CueMode | undefined>(computed);
+  if (initialMode === undefined && computed) setInitialMode(computed);
   const mode: CueMode | undefined =
-    search.mode && modes.includes(search.mode) ? search.mode : defaultMode(modes);
+    search.mode && modes.includes(search.mode)
+      ? search.mode
+      : initialMode && modes.includes(initialMode)
+        ? initialMode
+        : computed;
+  const correctDone = byStageStatus(stages, "correct") === "done";
   const tab: ItemTab = search.tab ?? "subtitles";
   const targets = targetLangs(runs.data?.runs ?? undefined);
   const originalVariant = modes.includes("corrected")
@@ -398,6 +432,7 @@ function ItemView({
                   onModeChange={(m) => setSearch({ mode: m }, true)}
                   originalVariant={originalVariant}
                   targetLangs={targets}
+                  correctDone={correctDone}
                   currentTime={time}
                   onSeek={seek}
                 />

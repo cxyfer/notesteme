@@ -117,10 +117,19 @@ export function availableModes(stages: readonly ApiStage[], hasEdited: boolean):
   return out;
 }
 
-/** 預設模式：校正 > 正規化 > 原始 */
-export function defaultMode(modes: readonly CueMode[]): CueMode | undefined {
-  for (const m of ["corrected", "normalized", "source", "edited", "translated"] as const)
+/**
+ * 預設模式：校正（只在校正完成時）> 正規化 > 原始。校正處理中或失敗時 corrected 可能還不存在，
+ * 預設選它會讓字幕分頁是空的。
+ */
+export function defaultMode(
+  modes: readonly CueMode[],
+  stages: readonly ApiStage[] = [],
+): CueMode | undefined {
+  const correctDone = stages.some((s) => s.stage === "correct" && s.status === "done");
+  for (const m of ["corrected", "normalized", "source", "edited", "translated"] as const) {
+    if (m === "corrected" && !correctDone) continue;
     if (modes.includes(m)) return m;
+  }
   return modes[0];
 }
 

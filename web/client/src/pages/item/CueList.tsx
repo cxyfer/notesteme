@@ -31,11 +31,21 @@ import { diffChars, hasChanges, type DiffPart } from "./diff";
 import type { CueMode } from "./search";
 
 const CENTER = "center";
+const START = "start";
 /** 時間不是來源提供的句子，時間碼旁的空心小圓點（design-language.md §6.2） */
 const TIMING_MARK = "◦";
 
 export type CueRow =
-  | { kind: "single"; key: string; start: number; end: number; cue: Cue; lang: string }
+  | {
+      kind: "single";
+      key: string;
+      start: number;
+      end: number;
+      cue: Cue;
+      lang: string;
+      /** 「校正」模式還沒有校正結果時，顯示校正前的句子並標「尚未校正」 */
+      pending?: boolean;
+    }
   | {
       kind: "diff";
       key: string;
@@ -59,7 +69,7 @@ export type CueRow =
       targetLang: string;
     };
 
-export function singleRows(set: CueSet): CueRow[] {
+export function singleRows(set: CueSet, pending = false): CueRow[] {
   return set.cues.map((cue) => ({
     kind: "single",
     key: `${cue.index}-${cue.start}`,
@@ -67,15 +77,20 @@ export function singleRows(set: CueSet): CueRow[] {
     end: cue.end,
     cue,
     lang: set.lang,
+    ...(pending ? { pending } : {}),
   }));
 }
 
-export function diffRows(base: CueSet, corrected: CueSet | null): CueRow[] {
+/**
+ * 差異的列。correctDone 為 false（校正處理中）時，沒有校正結果的段落是「尚未校正」；
+ * 校正已完成時，沒有對應的段落代表 LLM 刪掉了整句，整段顯示成刪除。
+ */
+export function diffRows(base: CueSet, corrected: CueSet | null, correctDone: boolean): CueRow[] {
   const groups = alignCues(base.cues, corrected?.cues ?? []);
   return groups.map((g, i) => {
     const before = joinText(g.a, base.lang);
     const after = joinText(g.b, corrected?.lang ?? base.lang);
-    const pending = g.b.length === 0;
+    const pending = g.b.length === 0 && !correctDone;
     const parts = pending ? [{ type: "eq" as const, text: before }] : diffChars(before, after);
     return {
       kind: "diff",
@@ -124,6 +139,8 @@ export interface CueListProps {
   originalVariant: string;
   /** 翻譯的目標語言（多個時可以選） */
   targetLangs: readonly string[];
+  /** 校正是否已完成（差異模式判斷「尚未校正」與「整句刪除」） */
+  correctDone: boolean;
   currentTime: number;
   onSeek: (seconds: number) => void;
 }
@@ -135,6 +152,7 @@ export function CueList({
   onModeChange,
   originalVariant,
   targetLangs,
+  correctDone,
   currentTime,
   onSeek,
 }: CueListProps) {
@@ -144,25 +162,34 @@ export function CueList({
   const needsTarget = mode === "translated" || mode === "parallel";
 
   const primary = useCues(itemId, modeVariant(mode), needsTarget ? translatedLang : undefined);
-  const base = useDiffBase(itemId, mode === "diff");
-  const original = useCues(itemId, mode === "parallel" ? originalVariant : undefined);
+  // 校正前的句子：差異模式一定要；「校正」模式在還沒有校正結果（404）時拿來顯示「尚未校正」
+  const correctedMissing = mode === "corrected" && primary.isSuccess && primary.data === null;
+  const useBase = mode === "diff" || correctedMissing;
+  const base = useDiffBase(itemId, useBase);
+  const useOriginal = mode === "parallel";
+  const original = useCues(itemId, useOriginal ? originalVariant : undefined);
 
   const rows = useMemo<CueRow[] | undefined>(() => {
+    if (primary.isPending) return undefined;
     if (mode === "diff") {
-      if (!base.data && base.isPending) return undefined;
+      if (base.isPending) return undefined;
       if (!base.data) return primary.data ? singleRows(primary.data) : [];
-      if (primary.isPending) return undefined;
-      return diffRows(base.data, primary.data ?? null);
+      return diffRows(base.data, primary.data ?? null, correctDone);
+    }
+    if (correctedMissing) {
+      if (base.isPending) return undefined;
+      return base.data ? singleRows(base.data, true) : [];
     }
     if (mode === "parallel") {
-      if (primary.isPending || original.isPending) return undefined;
+      if (original.isPending) return undefined;
       if (!primary.data || !original.data) return primary.data ? singleRows(primary.data) : [];
       return parallelRows(original.data, primary.data);
     }
-    if (primary.isPending) return undefined;
     return primary.data ? singleRows(primary.data) : [];
   }, [
     mode,
+    correctDone,
+    correctedMissing,
     primary.data,
     primary.isPending,
     base.data,
@@ -171,8 +198,13 @@ export function CueList({
     original.isPending,
   ]);
 
-  const loading = primary.isPlaceholderData || base.isPlaceholderData || original.isPlaceholderData;
-  const error = primary.error ?? base.error ?? original.error;
+  // 只看這個模式實際用到的 query：停用的 query 也可能帶著 placeholder（keepPreviousData）
+  const loading =
+    primary.isPlaceholderData ||
+    (useBase && base.isPlaceholderData) ||
+    (useOriginal && original.isPlaceholderData);
+  const error =
+    primary.error ?? (useBase ? base.error : null) ?? (useOriginal ? original.error : null);
 
   // ---- 搜尋 ----
   const [query, setQuery] = useState("");
@@ -187,13 +219,23 @@ export function CueList({
   const active = shown ? cueAt(shown, currentTime) : -1;
   const activeRow = shown && active >= 0 && currentTime < shown[active]!.end + 1 ? active : -1;
   const [follow, setFollow] = useState(true);
+  // 程式捲動（跟隨播放、切換模式）的時間：之後短時間內的 scroll 事件不算使用者捲動
+  const programmatic = useRef(0);
+  const scrollTo = useCallback((i: number, align: "start" | "center") => {
+    programmatic.current = performance.now();
+    listRef.current?.scrollToIndex(i, align);
+  }, []);
   useEffect(() => {
-    if (follow && activeRow >= 0) listRef.current?.scrollToIndex(activeRow, "center");
-  }, [follow, activeRow]);
+    if (follow && activeRow >= 0) scrollTo(activeRow, CENTER);
+  }, [follow, activeRow, scrollTo]);
   const stopFollow = useCallback(() => setFollow(false), []);
+  const onUserScroll = useCallback(() => {
+    // 拖曳捲軸沒有 wheel／touch 事件：程式捲動之外的 scroll 都當成使用者捲動
+    if (performance.now() - programmatic.current > 500) setFollow(false);
+  }, []);
   const backToCurrent = () => {
     setFollow(true);
-    listRef.current?.scrollToIndex(activeRow, CENTER);
+    scrollTo(activeRow, CENTER);
   };
 
   // ---- 切換模式時保留捲動位置：記住第一句的時間，新的字幕到了再捲回去 ----
@@ -208,8 +250,8 @@ export function CueList({
     if (anchor.current === null || !shown || loading) return;
     const i = Math.max(0, cueAt(shown, anchor.current));
     anchor.current = null;
-    listRef.current?.scrollToIndex(i, "start");
-  }, [shown, loading]);
+    scrollTo(i, START);
+  }, [shown, loading, scrollTo]);
 
   return (
     <section className="cues" aria-labelledby="cues-title">
@@ -302,6 +344,7 @@ export function CueList({
           className="cues__wrap"
           onWheel={stopFollow}
           onTouchMove={stopFollow}
+          onScrollCapture={onUserScroll}
           onKeyDown={(e) => {
             if (["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End"].includes(e.key))
               stopFollow();
@@ -376,6 +419,7 @@ function CueLine({
       body = (
         <p className="cue__text" lang={row.lang || undefined}>
           {row.cue.text}
+          {row.pending && <small className="cue__tag">{t("item.cues.notCorrected")}</small>}
         </p>
       );
       break;

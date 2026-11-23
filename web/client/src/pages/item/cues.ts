@@ -59,9 +59,19 @@ export interface CueGroup {
   b: Cue[];
 }
 
+/** 重疊超過這個秒數，或超過句子自己長度的一半，才算同一組（相鄰句子常常重疊幾毫秒） */
+const MIN_OVERLAP_S = 0.1;
+
+function joins(groupEnd: number, c: Cue): boolean {
+  const overlap = Math.min(groupEnd, c.end) - c.start;
+  if (overlap <= 0) return false;
+  const dur = c.end - c.start;
+  return overlap > MIN_OVERLAP_S || (dur > 0 && overlap >= dur / 2);
+}
+
 /**
  * 依時間重疊把兩組句子分組。兩邊都依 start 排序後掃過去：
- * 一組從最早的句子開始，之後開始時間早於這組結束時間的句子（任一邊）都併進來。
+ * 一組從最早的句子開始，之後和這組有足夠重疊（見 joins）的句子（任一邊）都併進來。
  */
 export function alignCues(a: readonly Cue[], b: readonly Cue[]): CueGroup[] {
   const xs = [...a].sort((p, q) => p.start - q.start);
@@ -75,8 +85,8 @@ export function alignCues(a: readonly Cue[], b: readonly Cue[]): CueGroup[] {
     const g: CueGroup = { start: first.start, end: first.end, a: [], b: [] };
     (takeA ? g.a : g.b).push(first);
     for (;;) {
-      const nextA = i < xs.length && xs[i]!.start < g.end ? xs[i] : undefined;
-      const nextB = j < ys.length && ys[j]!.start < g.end ? ys[j] : undefined;
+      const nextA = i < xs.length && joins(g.end, xs[i]!) ? xs[i] : undefined;
+      const nextB = j < ys.length && joins(g.end, ys[j]!) ? ys[j] : undefined;
       const next = nextA && (!nextB || nextA.start <= nextB.start) ? nextA : nextB;
       if (!next) break;
       if (next === nextA) {

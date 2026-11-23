@@ -165,6 +165,29 @@ describe("影音詳情：標題與時間帶", () => {
     expect(api.calls("GET", "/api/items/yt:abcdEFGhijk/cues")).toHaveLength(0);
   });
 
+  it("影音在垃圾桶中時提供還原", async () => {
+    let trashed = true;
+    const api = itemApi({
+      routes: {
+        "GET /api/items/{id}": () =>
+          trashed
+            ? apiError(404, "in_trash", "x", { item_id: "item-1" })
+            : detail(item(1, { title: "我们都只是在假装着做Agile" }), DONE_ALL),
+        "POST /api/trash/{id}/restore": () => {
+          trashed = false;
+          return {};
+        },
+      },
+    });
+    signIn();
+    renderRoute("/items/item-1");
+    await userEvent.click(await screen.findByRole("button", { name: "從垃圾桶還原" }));
+    expect(api.calls("POST", "/api/trash/item-1/restore")).toHaveLength(1);
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "我们都只是在假装着做Agile" }),
+    ).toBeTruthy();
+  });
+
   it("找不到影音時顯示說明與回到媒體庫", async () => {
     itemApi();
     signIn();
@@ -204,6 +227,10 @@ describe("影音詳情：播放器", () => {
     });
     expect(screen.getByRole("slider").getAttribute("aria-valuetext")).toBe("播放位置 00:03");
     await userEvent.click(await screen.findByRole("button", { name: "跳到 01:05" }));
+    // 只送到嵌入的 origin
+    expect(new Set(post.mock.calls.map((c) => c[1]))).toEqual(
+      new Set(["https://www.youtube-nocookie.com"]),
+    );
     const sent = post.mock.calls.map(
       (c) => JSON.parse(c[0] as string) as { func?: string; args?: unknown[] },
     );
@@ -266,7 +293,7 @@ describe("影音詳情：字幕句列表", () => {
     expect(screen.getByTitle("依停頓推算")).toBeTruthy();
   });
 
-  it("差異模式逐字標出 LLM 改了什麼（合併的句子也對得上）；沒有校正結果的段落標「尚未校正」", async () => {
+  it("差異模式逐字標出 LLM 改了什麼（合併的句子也對得上）", async () => {
     itemApi();
     const { container } = await openItem("/items/item-1?mode=diff");
     await screen.findByText("刪除的文字");
@@ -280,8 +307,89 @@ describe("影音詳情：字幕句列表", () => {
       "刪除：团队",
       "刪除：信息",
     ]);
-    expect(within(rows[3] as HTMLElement).getByText("尚未校正")).toBeTruthy();
+    // 校正已完成：沒有對應的句子是 LLM 刪掉的，整段顯示成刪除
+    expect([...rows[3]!.querySelectorAll("del")].map((e) => e.textContent)).toEqual([
+      "刪除：还没校正的句子",
+    ]);
     await expectNoA11yViolations(container);
+  });
+
+  it("校正完成後 LLM 刪掉的整句顯示成刪除，不是「尚未校正」", async () => {
+    itemApi({
+      variants: {
+        segmented: { lang: "zh-Hans", cues: [cue(1, 0, 2, "嗯"), cue(2, 2, 4, "你好")] },
+        corrected: { lang: "zh-Hant", cues: [cue(1, 2, 4, "你好")] },
+      },
+    });
+    const { container } = await openItem("/items/item-1?mode=diff");
+    await screen.findByText("刪除的文字");
+    expect([...container.querySelectorAll(".cue del")].map((e) => e.textContent)).toEqual([
+      "刪除：嗯",
+    ]);
+    expect(screen.queryByText("尚未校正")).toBeNull();
+  });
+
+  it("校正還沒有結果時預設顯示正規化；選「校正」顯示校正前的句子並標「尚未校正」；SSE 不換模式", async () => {
+    itemApi({
+      stages: [...DONE_ALL.slice(0, 4), stage("correct", "running")],
+      variants: {
+        normalized: { lang: "zh-Hans", cues: SOURCE },
+        segmented: { lang: "zh-Hans", cues: SOURCE },
+      },
+    });
+    const { queryClient } = await openItem();
+    await screen.findByText("比如说daily stand-up");
+    expect(screen.getByRole("radio", { name: "正規化" }).getAttribute("aria-checked")).toBe("true");
+    await act(async () => {
+      for (const k of invalidationTable["stage.status"]({
+        type: "stage.status",
+        item: "yt:x",
+        item_id: "item-1",
+        stage: "correct",
+        status: "done",
+      }))
+        await queryClient.invalidateQueries({ queryKey: k });
+    });
+    expect(screen.getByRole("radio", { name: "正規化" }).getAttribute("aria-checked")).toBe("true");
+    await userEvent.click(screen.getByRole("radio", { name: "校正" }));
+    expect((await screen.findAllByText("尚未校正")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("這個版本還沒有字幕。")).toBeNull();
+  });
+
+  it("切換模式時捲回同一個時間（對照 → 校正也一樣），不會一直顯示載入中", async () => {
+    const scrollTo = vi.fn();
+    HTMLElement.prototype.scrollTo = scrollTo as unknown as typeof HTMLElement.prototype.scrollTo;
+    // jsdom 的 scrollHeight 是 0，虛擬列表會把每個捲動目標都限制在 0
+    const sh = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(100_000);
+    const many = Array.from({ length: 200 }, (_, i) =>
+      cue(i + 1, i * 3, i * 3 + 2, `句子 ${i + 1}`),
+    );
+    itemApi({
+      variants: {
+        normalized: { lang: "zh-Hans", cues: many },
+        corrected: { lang: "zh-Hant", cues: many },
+        translated: { lang: "en", cues: many },
+        segmented: { lang: "zh-Hans", cues: many },
+      },
+    });
+    const { container } = await openItem();
+    await screen.findByText("句子 1");
+    const list = container.querySelector<HTMLElement>(".cues__list")!;
+    await userEvent.click(screen.getByRole("radio", { name: "對照" }));
+    await waitFor(() => expect(container.querySelector(".cue__translated")).toBeTruthy());
+    // 在對照模式捲到中間，再切回校正
+    list.scrollTop = 64 * 50;
+    fireEvent.scroll(list);
+    await waitFor(() => expect(screen.queryByText("句子 1")).toBeNull());
+    scrollTo.mockClear();
+    await userEvent.click(screen.getByRole("radio", { name: "校正" }));
+    await waitFor(() => expect(container.querySelector(".cue__translated")).toBeNull());
+    // 捲回對照模式第一句（第 51 句）的時間，不是回到頂端
+    await waitFor(() =>
+      expect(scrollTo.mock.calls.some((c) => (c[0] as { top: number }).top > 0)).toBe(true),
+    );
+    expect(screen.queryByText("正在載入字幕…")).toBeNull();
+    sh.mockRestore();
   });
 
   it("切換模式寫進網址；對照模式原文與譯文各自設定 lang", async () => {

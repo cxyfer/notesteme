@@ -94,6 +94,16 @@ describe("cues", () => {
     ]);
   });
 
+  it("alignCues：相鄰句子只重疊幾毫秒時不串成一組", () => {
+    const before = [c(1, 0, 2.005), c(2, 2, 4.003), c(3, 4, 6)];
+    const after = [c(1, 0, 2.004), c(2, 2.001, 4), c(3, 3.998, 6)];
+    expect(alignCues(before, after).map((g) => [g.a.length, g.b.length])).toEqual([
+      [1, 1],
+      [1, 1],
+      [1, 1],
+    ]);
+  });
+
   it("joinText：中日韓直接相接，其他語言用空白", () => {
     expect(joinText([c(1, 0, 1, "你好"), c(2, 1, 2, "世界")], "zh-Hans")).toBe("你好世界");
     expect(joinText([c(1, 0, 1, "hello"), c(2, 1, 2, "world")], "en")).toBe("hello world");

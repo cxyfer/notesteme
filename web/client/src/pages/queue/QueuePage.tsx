@@ -8,7 +8,7 @@
 //   - SSE：stage.status 讓 queue 失效；列表以任務 ID 為 key，重新讀取只更新受影響的列，不重排捲動位置。
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { api, apiPath } from "../../api/client";
@@ -27,6 +27,7 @@ import {
   type RowFocusProps,
 } from "../../components";
 import { useAddDrawer } from "../../add/AddContext";
+import { useServerEvent, useStreamReconnect } from "../../events/useEventStream";
 import { formatDateTime, formatNumber } from "../../i18n";
 import { usePageTitle } from "../../shell/usePageTitle";
 import { STAGES } from "../library/filters";
@@ -49,6 +50,9 @@ type ControlOp =
 const PAUSE = "pause";
 const RESUME = "resume";
 const LIMIT = "limit";
+const ATTENTION_DEBOUNCE_MS = 2000;
+/** 會讓「需要你處理」的數字改變的步驟狀態（重新處理時離開 failed 會先變成 pending） */
+const ATTENTION_EVENTS = new Set(["failed", "blocked", "pending", "done", "skipped"]);
 
 type QueueStatus = NonNullable<Awaited<ReturnType<typeof fetchQueue>>>;
 
@@ -328,6 +332,24 @@ function Lanes({
 /** 需要你處理：每個步驟 failed 或 blocked 的影音數（同一部影音可能在不同步驟各算一次） */
 function Attention() {
   const { t } = useTranslation();
+  const qc = useQueryClient();
+  // 失敗、停住或重新開始的事件讓計數重新讀取；處理中會有一連串事件，2 秒內只讀一次
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const refresh = useCallback(() => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(
+      () => void qc.invalidateQueries({ queryKey: queryKeys.items.allAttention() }),
+      ATTENTION_DEBOUNCE_MS,
+    );
+  }, [qc]);
+  useServerEvent(
+    (ev) => {
+      if (ev.status && ATTENTION_EVENTS.has(ev.status)) refresh();
+    },
+    ["stage.status", "item.deleted", "item.restored"],
+  );
+  useStreamReconnect(refresh);
   const results = useQueries({
     queries: STAGES.map((stage) => ({
       queryKey: queryKeys.items.attention(stage),
