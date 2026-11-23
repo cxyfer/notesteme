@@ -211,11 +211,9 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | CI：tsc、eslint、prettier、vitest（axe、對比、i18n）、build、bundle 預算、OpenAPI drift、npm audit | 完成 | `.github/workflows/web.yml` |
 | 新增抽屜、媒體庫（M1 基本版）、精簡版時間帶、`N`／`/` 快捷鍵、貼上網址 | 完成（UI-1，見 10.4） | `web/client/src/add`、`src/pages/library`、`web/shared` |
 | 指令面板（`Ctrl K`）、`G` 開頭的快捷鍵、`?` 快捷鍵說明 | 未做 | 之後的切片 |
-| 影音詳情、佇列 | 未做 | UI-2 |
-| 設定各分區 | 未做 | UI-3 |
-| Prompt 庫、處理方案、字幕樣式 | 完成（UI-3a，見 10.6） | `web/client/src/pages/{prompts,profiles,styles}` |
+| Prompt 庫、處理方案、字幕樣式 | 完成（UI-3a，見 10.8） | `web/client/src/pages/{prompts,profiles,styles}` |
+| 設定各分區、詞彙表與術語候選、設定匯出與匯入 | 完成（UI-3b，見 10.10；後端沒有的部分見 10.10 的「未做」） | `web/client/src/pages/settings` |
 | 影音詳情、佇列 | 完成（UI-2，見 10.6） | `web/client/src/pages/item`、`src/pages/queue` |
-| 設定各分區、Prompt 庫、處理方案、字幕樣式 | 未做 | UI-3 |
 | 登入頁背景的淡化時間帶（§13） | 未做 | 等 UI-1 的時間帶元件 |
 | 768–1279px 的收合導覽（只剩圖示） | 未做：沒有圖示前維持展開；UI-1 沒有引入 Phosphor Icons | 之後的切片 |
 
@@ -268,96 +266,6 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 7. **新增相依**：`@tanstack/react-virtual` 3.14.26（2026-11-03 發佈；3.14.27／28 是 11-22 才發佈）。初始 JS 由約 137KB 增加到約 174KB（gzip），沒有另外做 lazy route。
 8. **`web/shared` 的接線**：沿用 brief 把 StatusBand 放進 `web/shared`（web/shared/README 原本寫「穩定後再搬」）；`react` 由 `web/client` 解析，lint、prettier、tsc 都涵蓋它，Dockerfile 一併複製。
 9. **測試替身**：不引入 MSW，用自寫的 `src/test/mockApi.ts`；vitest 的 `testTimeout` 提高到 15 秒（多個 child 同時跑時，整頁的互動測試在 5 秒內跑不完）。
-### 10.6 UI-3a：Prompt 庫、處理方案、字幕樣式（2026-11-23）
-
-| 範圍 | 狀態 | 位置 |
-|---|---|---|
-| 導覽的「調整」組（Prompt 庫、處理方案、字幕樣式）、六條路由；`/prompts/$id` 是 lazy route | 完成 | `src/shell/AppShell.tsx`、`src/router.tsx` |
-| Prompt 列表：依用途分組（分段、校正、翻譯、選圖、筆記、其他）、目前版本與最新版本、使用中的處理方案、最後修改時間；新增 prompt | 完成 | `src/pages/prompts/PromptsPage.tsx`、`NewPromptDialog.tsx` |
-| Prompt 編輯：版本列（切換、未儲存時確認放棄）、CodeMirror 6（`{{變數}}` 高亮、未定義／無法解析的變數 lint 成錯誤，另附文字清單）、可用變數、另存新版本（422 `undefined_variables`）、設為預設、內建唯讀＋另存為新的 prompt | 完成 | `PromptEditorPage.tsx`、`PromptCodeEditor.tsx`、`promptModel.ts` |
-| 試跑面板：影音（搜尋＋選擇）、範圍、provider、model；結果用逐字差異＋驗證結果、用量與花費；501／429／409 `needs_action` 各有說明 | 完成 | `playground.tsx` |
-| 比較版本：逐行差異；可選「同一段字幕試跑兩個版本」（寫明花費兩倍）並排顯示輸出 | 完成 | `PromptEditorPage.tsx` 的 `CompareDialog` |
-| 刪除 prompt：不可復原，先確認（寫明版本數）；409 `prompt_in_use` 列出 `used_by`（處理方案連到編輯頁，影音覆寫連到影音詳情，其他純文字） | 完成 | `DeleteDialog` |
-| 處理方案列表與新增、複製（POST，剝掉 null）、設為預設 | 完成 | `src/pages/profiles` |
-| 處理方案編輯：流程列（不執行的步驟變淡、刪除線）、編號步驟：1 字幕來源（順序、平台機器翻譯字幕）、2 分段（執行方式、provider／model、prompt＋版本、段內切分、有人工字幕時）、3 校正（＋最低相似度）、4 翻譯（＋OpenCC、目標語言、中文只差字形時）、5 輸出（目標、路徑、格式、ASS 樣式） | 完成 | `ProfileEditorPage.tsx`、`profileModel.ts` |
-| 儲存：RFC 7396 merge patch（只送改過的鍵）、422 `errors[].path` 顯示在欄位旁、版本衝突提示 | 完成 | 同上 |
-| 字幕樣式列表（內建在前、自訂在後）、複製成自訂樣式、匯入 .ass（讀檔內容送 `content`） | 完成 | `src/pages/styles` |
-| 字幕樣式編輯：原文行／譯文行／版面三個分頁（鍵盤可切換）、目標語言與原文語言（帶入預設字型）、前端先檢查顏色與範圍、PATCH 只送改過的欄位；內建唯讀 | 完成 | `StyleEditorPage.tsx`、`styleModel.ts` |
-| 預覽：`POST /api/ass-styles/preview` 回 PNG，debounce 300ms、新請求取消舊的；沒選影音、欄位有錯、失敗（「預覽尚未可用：原因」）各有狀態，不假造圖片 | 完成 | `StylePreview.tsx` |
-| 逐字差異元件（`diffChars`、`DiffText`） | 完成 | `web/shared/src/diff.ts`、`DiffText.tsx` |
-| 被頻道訂閱使用的處理方案，修改前提示受影響的訂閱 | 未做：M4 才有訂閱 API | — |
-| 處理方案刪除、版本紀錄（`GET /api/profiles/{id}/versions`）的檢視與還原 | 未做：pages.md §8 沒有要求，留給之後 | — |
-| 處理方案的 `llm`、`agent`、`subtitle_rules`、`glossary`、`supadata`、`translate.length_ratio`、`outputs[].lang`、`on_user_change` | 未做：表單不顯示，但原樣保留（儲存只送改過的鍵） | — |
-| M3／M4 的步驟（sponsorblock、chapters、frames、note） | 不顯示：schema（`internal/pipeline/schema.go`）還不接受 | — |
-| 內建樣式用同一張畫面渲染成縮圖並排比較 | 未做：預覽需要指定影音，每個縮圖都要跑一次 ffmpeg | — |
-| libass 真實渲染的視覺驗收、CodeMirror 在真實瀏覽器的鍵盤與螢幕閱讀器操作 | owner 手動驗收 | — |
-
-### 10.7 UI-3a 的決定
-
-（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
-
-1. **唯一的後端改動：CSP 的 `img-src` 加 `blob:`**（`internal/webui/webui.go`，測試檢查 `img-src` 只有 `'self'`、`blob:` 與兩個縮圖網域）。預覽 API 回 PNG，前端以 object URL 顯示；jsdom 不執行 CSP，沒有這項時測試全綠、真實瀏覽器卻是破圖。替代方案（改成 GET 圖片網址、data URI）都要改 API 或放寬更多。風險：`blob:` 只能由同源的 JS 產生，前提是已經有 script 執行。
-2. **「被哪些處理方案使用」在前端組合**：`GET /api/prompts` 沒有這項資料，列表另外讀 `GET /api/profiles`，解析 `config.stages.*.prompt`（`<id>`、`<id>@default`、`<id>@N`）。代價：多一次請求；只看處理方案目前的版本，看不到全域設定、頻道與影音層的引用（刪除時後端的 409 `used_by` 會列出全部）。
-3. **可用變數寫在前端**（`promptModel.ts` 的 `PROMPT_VARIABLES`，規則與 `internal/prompts/vars.go` 一致）：後端所有類型共用 7 個變數、沒有清單 API。後端改了要同步；依類型區分時改 `promptModel.ts`。
-4. **試跑只能用已儲存的版本**（API 只接受 `<id>@N`）：有未儲存的修改時提示「試跑已儲存的 vN」。試跑前沒有預估 API，只在完成後顯示用量；`estimate_usd` 是 null 時寫明「計價表沒有這個模型的價格」，不自己算。
-5. **刪除 prompt 用確認框**（§3.5 不可復原的操作）：後端是硬刪除，沒有可以還原的方式。
-6. **處理方案的樂觀鎖在前端補**：PATCH 沒有 If-Match。儲存前先讀一次，版本和開始編輯時不同就跳出衝突（重新載入／仍要儲存：只寫改過的鍵）；儲存後回應的版本不是「開始時 + 1」時也明確告知。兩次請求之間仍有很小的窗口；要完全關閉需要後端支援 `If-Match` 或 `expected_version`。
-7. **處理方案表單編輯 config 的副本**，儲存時算 merge patch；選「沿用全域設定」就刪掉該鍵（送 null），讓步驟的 executor 回到「沿用全域設定」時整個 `stages.<步驟>` 一起刪掉（寫出來的步驟會被檢查完整性，D8）。「複製」用已儲存的設定，不含未儲存的修改。
-8. **provider 沒有列表 API**：文字欄位加 `datalist`（內建的 anthropic、openai），model 自由輸入；試跑面板同樣。
-9. **用語**：步驟 `segment` 沿用既有字典的「分段」（`stage.segment`），pages.md 的「斷句」沒有改既有字串；Prompt 庫的分組也用「分段」。英文的處理方案沿用用語表的 Preset。
-10. **字型**：API 依 `lang` 帶入預設字型後，分不出原本是不是空字串（自動）。表單只送改過的欄位，所以打開表單不會把自動字型寫死；把字型欄位清空就送 `""`（依語言自動）。顏色用文字欄位（`<input type="color">` 會丟掉不透明度）加色塊。
-11. **共用元件**：`SelectField`、`ItemPicker`（試跑與樣式預覽都要選影音；只列 `GET /api/items` 的前 50 部，用標題搜尋縮小）放進 `components/`（ItemPicker 用獨立的 `queryKeys.items.picker(q)`，不放在媒體庫 infinite query 的 `items.lists()` 前綴下）；逐字差異放 `web/shared`，與 UI-2 分支的 `pages/item/diff.ts` 形狀相同，合併時改成都從 `@shared` 匯入、刪掉重複的一份。
-12. **新增相依**：`@codemirror/state` 6.7.6、`view` 6.43.15、`commands` 6.11.1、`lint` 6.9.7（都發佈超過 2 週）；transitive 的 `@lezer/common`、`style-mod` 用 npm `overrides` 鎖在 1.5.5、4.1.4（最新版未滿 2 週）。CodeMirror 只在 lazy chunk（約 104KB gzip），初始 JS 由約 174KB 增加到約 198KB（三個頁面與共用元件）。CodeMirror 透過 style-mod 插入 `<style>`，依賴 10.3 的 `style-src 'unsafe-inline'`。
-13. **eslint**：`i18next/no-literal-string` 的屬性排除清單加上事件處理器（`on[A-Z].*`）與 `form`、`accept`、`list`、`stage`、`path`：這些屬性裡的字串是欄位路徑與列舉值，不是顯示的文字。
-14. **測試**：`src/test/setup.ts` 補上 `Range.getClientRects`／`getBoundingClientRect`（CodeMirror 在 jsdom 需要）；預覽的 debounce 用真實計時器驗證（連續改三次只送一次、內容是最後一次）。
-
-
-頁面清單（2026-11-23，M5 規格展開時暫定，視覺與文案待 Hub UI 切片補上）：登入、帳號（登入方式、Hub token、我的分享）、管理（使用者與群組、檢舉、下架申請、稽核紀錄）、下架申請表單見 [HACC](../specs/HACC-hub-accounts.md) 的介面；首頁與搜尋、影片頁（版本比較）、版本頁見 [HREP](../specs/HREP-hub-repository.md) 的介面；Client 端的「分享到 Hub」對話框與設定頁的 Hub 區段見 [HSHR](../specs/HSHR-hub-sharing.md) 的介面。
-
-### 10.6 UI-3b：設定、詞彙表與術語候選、設定匯出與匯入（2026-11-23）
-
-| 範圍 | 狀態 | 位置 |
-|---|---|---|
-| 設定頁版面：左側分區清單、右側表單、每個分區各自儲存；窄螢幕（< 768px）清單收成頂部的下拉選單；未知分區導到第一個分區 | 完成 | `src/pages/SettingsPage.tsx`、`src/styles/settings.css` |
-| 服務與金鑰：7 個 provider 的 API key（只顯示末四碼，只能設定、更換或清除，清除先確認）、Supadata 取得字幕的方式、`command` provider 的唯讀說明 | 完成 | `src/pages/settings/ServicesSection.tsx` |
-| 服務與金鑰：「測試連線」、模型停用公告、列出設定檔中的 `command` provider | 未做：後端沒有對應的路由（只有 `GET /api/providers/{id}`，沒有列表） | — |
-| 帳號與 Cookie：上傳 YouTube／Bilibili cookie（貼上或選擇檔案）、這次上傳的數量與時間、`cookie_*` 錯誤的說明 | 完成 | `AccountsSection.tsx` |
-| 帳號與 Cookie：最後一次成功使用的時間、是否失效 | 未做：後端沒有讀取 cookie 狀態的 API | — |
-| 語言：預設目標語言、中文變體、原文字幕的語言優先順序（新增、移除、上下移）、平台翻譯字幕、fallback；介面語言 | 完成 | `LanguageSection.tsx` |
-| 輸出：本機影片旁與資料夾的說明（在處理方案中設定）；vault 與 hook 唯讀說明「尚未啟用（M3 起提供）」 | 完成 | `OutputsSection.tsx` |
-| MCP 與 Agent：token 列表（名稱、前綴、scope、建立、最後使用、到期、狀態）、建立（scope、到期 7 天／30 天／90 天〔預設〕／1 年／不設到期）、只顯示一次並可複製、撤銷先確認；Claude Code 指令；Agent 的 `max_claims`、`lease`、`timeout`、`on_timeout`、`on_validation_failure` | 完成 | `AgentSection.tsx` |
-| token 輪替（AUTH-R21） | 未做：M4 | — |
-| 詞彙表：全域與頻道詞彙表的檢視與整份取代；頻道的術語候選（接受、拒絕、409 `term_candidate_decided` 顯示「已被處理」並重新整理；已處理的收在 `<details>`） | 完成 | `GlossarySection.tsx` |
-| 詞彙表：修改後接受、批次決定、頻道選單 | 未做：沒有 API（GLOS 是 M4；沒有頻道列表 API） | — |
-| 系統：外部工具的路徑、來源與能否使用；更新 yt-dlp、回到上一個版本；資料目錄與監聽位址 | 完成 | `SystemSection.tsx` |
-| 系統：工具的版本號、磁碟用量、媒體檔保留天數 | 未做：`GET /api/system` 沒有這些欄位（版本只在更新的結果中顯示） | — |
-| 匯出與匯入：下載 YAML、匯入前先確認、422 逐項顯示 `errors[]`、成功時列出新建立／新版本／沒有變更／預設處理方案 | 完成 | `ConfigSection.tsx` |
-| 匯入前的 dry-run 差異預覽 | 未做：後端沒有 dry-run（SEC 規格的待決問題） | — |
-| 外觀：淺色／深色／跟隨系統（和導覽底部共用同一個值） | 完成 | `AppearanceSection.tsx`、`src/theme/useTheme.ts` |
-| 外觀：介面密度 | 未做：design-language.md 沒有定義密度 | — |
-| 登入：修改密碼（目前的密碼、新密碼、再輸入一次；錯誤與鎖定倒數） | 完成（新增後端路由，見決定 1） | `LoginSection.tsx`、`internal/api/auth_password.go` |
-| 登入：工作階段列表、反向代理驗證、OIDC | 未做：M4 | — |
-| 通知、預算 | 分區列出，內容是「M4 起提供。」，沒有表單 | `PlannedSection.tsx` |
-| 測試：每個分區一個 axe 測試（有 API 替身資料）、key 只顯示末四碼且不留在畫面上、token 只顯示一次、cookie 上傳與錯誤、改密碼錯誤與不一致、候選 409、匯入逐項錯誤、匯出、更新 yt-dlp、語言整段送出、主題同步 | 完成 | `src/pages/settings/settings.test.tsx` |
-
-### 10.7 UI-3b 的決定
-
-（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
-
-1. **唯一的後端改動：`POST /api/auth/password`**。AUTH-R2 要求「修改密碼要透過設定頁」，但沒有路由，`notesteme password set` 也還沒實作，沒有替代方案。只有 owner（token 即使有 `admin` 也 403）、與登入共用鎖定（AUTH-R6）、目前的密碼錯誤回 422 `invalid_password`（不用 401，避免被當成 session 失效而導到登入頁）、新密碼只要求非空、成功後在同一個交易中撤銷目前以外的所有 session。細節記在 AUTH 規格的待決問題。其他缺口（測試連線、cookie 狀態、工具版本、磁碟用量、匯入 dry-run、頻道列表）都**不補後端**，UI 明確寫「後端還沒有提供」；有排程的寫「M3／M4 起提供」，沒有排程的不捏造里程碑。
-2. **分區**：依 pages.md §12 的順序，另外加一個「匯出與匯入」分區（`config`），不併進「系統」：兩者的權限與風險不同（匯入會取代處理方案）。詞彙表放在設定頁的「詞彙表」分區（pages.md §12 已列），不另開 `/channels/:id/glossary`。
-3. **未知分區**導到第一個分區（`<Navigate replace>`，不改 `router.tsx`）；原本 UI-0 的「顯示找不到」測試一併改掉。
-4. **窄螢幕**：分區清單在 767px 以下隱藏，改成頂部的 `<select>`（切換時導到該分區）。
-5. **主題與介面語言的快速切換保留在導覽底部**（UI-0 決定 6 的後續），設定頁的「外觀」「語言」分區有同樣的選項；主題改由 `theme.ts` 的 `subscribeTheme`／`useTheme` 共用，兩邊不會不同步。介面語言本來就由 i18next 共用。
-6. **secrets 的處理**：API key、cookie、token 明文、密碼只放在元件的 `useState`，送出時立即清空（失敗也要重新輸入）；不用 TanStack Query 的 `useMutation`（`variables`、`data` 會留在 MutationCache），不放進 URL、localStorage、toast、錯誤訊息。API key 欄位 `type="password"`、`autocomplete="new-password"`；cookie 的 textarea `autocomplete="off"`，選擇檔案時內容不顯示；token 對話框關閉時清掉。
-7. **服務與金鑰的 provider 清單**照抄後端白名單（`internal/secrets/services.go` 的 `allowedServiceProviders`）：後端沒有列表 API。後端增減 provider 時要同步改 `SERVICE_PROVIDERS`。PUT services 是部分更新，每次只送正在改的那一個 provider（`api_key: ""` 是清除）。
-8. **整段取代的區段**（`language`、`agent`、`supadata`）：GET 後在本地修改、整段 PUT；沒有填的欄位直接省略（不送 `""` 或 `null`，後端不接受）。`language` 的 GET 已合併預設值；`agent` 沒有存過時是 `{}`，表單顯示預設值的提示（AGT 待決問題 A3 的預設）。422 的 `errors[]` 逐項顯示 path 與訊息。
-9. **輸出**：全域設定沒有 `outputs` 區段（`/api/settings/outputs` 不存在），所以「輸出」分區只說明在處理方案中設定；沒有連到 `/profiles`（UI-3a 同時在做，避免互相依賴的路由型別）。
-10. **詞彙表的頻道**用文字輸入（UUID 或 `平台:頻道 ID`），選擇只在元件 state，不加 search 參數（不改 `router.tsx`）。接受候選後同時讓頻道詞彙表重新讀取；409 `term_candidate_decided` 顯示「已被處理」並重新讀取候選。
-11. **token 的 Claude Code 設定片段**用 `claude mcp add --transport http notesteme <origin>/mcp --header "Authorization: Bearer <token>"`；分區上顯示占位字串，建立後的對話框可以複製含真正 token 的指令。輪替（AUTH-R21）是 M4。
-12. **匯入沒有預覽**：先跳確認框說明「同名取代、不刪除、可能改預設處理方案」，再套用；成功後讓 `profiles` 的 query 失效。匯出用 Blob 下載 `notesteme-config.yaml`（`blob:` 的下載不受 CSP 的 `connect-src` 限制）。
-13. **bundle**：設定頁沒有做 lazy route（不改 `router.tsx`），初始 JS 由約 174KB 增加到約 194KB（gzip，預算 300KB）。
-
 ### 10.6 UI-2：影音詳情與佇列（2026-11-23）
 
 | 範圍 | 狀態 | 位置 |
@@ -404,3 +312,93 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 10. **501 不重試**：TanStack Query 的預設重試排除 501（功能還沒做），佇列沒有啟用時立即顯示說明。
 11. **axe 不進 iframe**（`iframes: false`）：嵌入的播放器是跨來源的；`routes.a11y.test.tsx` 用 `defaultRoutes()` 替身，不連網路。
 12. **新增相依**：無。`api.patch`、`VirtualListHandle.scrollToIndex`／`firstVisibleIndex`、`formatBytes`／`formatUsd` 是新增的 API，不改既有的意義。
+### 10.8 UI-3a：Prompt 庫、處理方案、字幕樣式（2026-11-23）
+
+| 範圍 | 狀態 | 位置 |
+|---|---|---|
+| 導覽的「調整」組（Prompt 庫、處理方案、字幕樣式）、六條路由；`/prompts/$id` 是 lazy route | 完成 | `src/shell/AppShell.tsx`、`src/router.tsx` |
+| Prompt 列表：依用途分組（分段、校正、翻譯、選圖、筆記、其他）、目前版本與最新版本、使用中的處理方案、最後修改時間；新增 prompt | 完成 | `src/pages/prompts/PromptsPage.tsx`、`NewPromptDialog.tsx` |
+| Prompt 編輯：版本列（切換、未儲存時確認放棄）、CodeMirror 6（`{{變數}}` 高亮、未定義／無法解析的變數 lint 成錯誤，另附文字清單）、可用變數、另存新版本（422 `undefined_variables`）、設為預設、內建唯讀＋另存為新的 prompt | 完成 | `PromptEditorPage.tsx`、`PromptCodeEditor.tsx`、`promptModel.ts` |
+| 試跑面板：影音（搜尋＋選擇）、範圍、provider、model；結果用逐字差異＋驗證結果、用量與花費；501／429／409 `needs_action` 各有說明 | 完成 | `playground.tsx` |
+| 比較版本：逐行差異；可選「同一段字幕試跑兩個版本」（寫明花費兩倍）並排顯示輸出 | 完成 | `PromptEditorPage.tsx` 的 `CompareDialog` |
+| 刪除 prompt：不可復原，先確認（寫明版本數）；409 `prompt_in_use` 列出 `used_by`（處理方案連到編輯頁，影音覆寫連到影音詳情，其他純文字） | 完成 | `DeleteDialog` |
+| 處理方案列表與新增、複製（POST，剝掉 null）、設為預設 | 完成 | `src/pages/profiles` |
+| 處理方案編輯：流程列（不執行的步驟變淡、刪除線）、編號步驟：1 字幕來源（順序、平台機器翻譯字幕）、2 分段（執行方式、provider／model、prompt＋版本、段內切分、有人工字幕時）、3 校正（＋最低相似度）、4 翻譯（＋OpenCC、目標語言、中文只差字形時）、5 輸出（目標、路徑、格式、ASS 樣式） | 完成 | `ProfileEditorPage.tsx`、`profileModel.ts` |
+| 儲存：RFC 7396 merge patch（只送改過的鍵）、422 `errors[].path` 顯示在欄位旁、版本衝突提示 | 完成 | 同上 |
+| 字幕樣式列表（內建在前、自訂在後）、複製成自訂樣式、匯入 .ass（讀檔內容送 `content`） | 完成 | `src/pages/styles` |
+| 字幕樣式編輯：原文行／譯文行／版面三個分頁（鍵盤可切換）、目標語言與原文語言（帶入預設字型）、前端先檢查顏色與範圍、PATCH 只送改過的欄位；內建唯讀 | 完成 | `StyleEditorPage.tsx`、`styleModel.ts` |
+| 預覽：`POST /api/ass-styles/preview` 回 PNG，debounce 300ms、新請求取消舊的；沒選影音、欄位有錯、失敗（「預覽尚未可用：原因」）各有狀態，不假造圖片 | 完成 | `StylePreview.tsx` |
+| 逐字差異元件（`diffChars`、`DiffText`） | 完成 | `web/shared/src/diff.ts`、`DiffText.tsx` |
+| 被頻道訂閱使用的處理方案，修改前提示受影響的訂閱 | 未做：M4 才有訂閱 API | — |
+| 處理方案刪除、版本紀錄（`GET /api/profiles/{id}/versions`）的檢視與還原 | 未做：pages.md §8 沒有要求，留給之後 | — |
+| 處理方案的 `llm`、`agent`、`subtitle_rules`、`glossary`、`supadata`、`translate.length_ratio`、`outputs[].lang`、`on_user_change` | 未做：表單不顯示，但原樣保留（儲存只送改過的鍵） | — |
+| M3／M4 的步驟（sponsorblock、chapters、frames、note） | 不顯示：schema（`internal/pipeline/schema.go`）還不接受 | — |
+| 內建樣式用同一張畫面渲染成縮圖並排比較 | 未做：預覽需要指定影音，每個縮圖都要跑一次 ffmpeg | — |
+| libass 真實渲染的視覺驗收、CodeMirror 在真實瀏覽器的鍵盤與螢幕閱讀器操作 | owner 手動驗收 | — |
+
+### 10.9 UI-3a 的決定
+
+（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
+
+1. **唯一的後端改動：CSP 的 `img-src` 加 `blob:`**（`internal/webui/webui.go`，測試檢查 `img-src` 只有 `'self'`、`blob:` 與兩個縮圖網域）。預覽 API 回 PNG，前端以 object URL 顯示；jsdom 不執行 CSP，沒有這項時測試全綠、真實瀏覽器卻是破圖。替代方案（改成 GET 圖片網址、data URI）都要改 API 或放寬更多。風險：`blob:` 只能由同源的 JS 產生，前提是已經有 script 執行。
+2. **「被哪些處理方案使用」在前端組合**：`GET /api/prompts` 沒有這項資料，列表另外讀 `GET /api/profiles`，解析 `config.stages.*.prompt`（`<id>`、`<id>@default`、`<id>@N`）。代價：多一次請求；只看處理方案目前的版本，看不到全域設定、頻道與影音層的引用（刪除時後端的 409 `used_by` 會列出全部）。
+3. **可用變數寫在前端**（`promptModel.ts` 的 `PROMPT_VARIABLES`，規則與 `internal/prompts/vars.go` 一致）：後端所有類型共用 7 個變數、沒有清單 API。後端改了要同步；依類型區分時改 `promptModel.ts`。
+4. **試跑只能用已儲存的版本**（API 只接受 `<id>@N`）：有未儲存的修改時提示「試跑已儲存的 vN」。試跑前沒有預估 API，只在完成後顯示用量；`estimate_usd` 是 null 時寫明「計價表沒有這個模型的價格」，不自己算。
+5. **刪除 prompt 用確認框**（§3.5 不可復原的操作）：後端是硬刪除，沒有可以還原的方式。
+6. **處理方案的樂觀鎖在前端補**：PATCH 沒有 If-Match。儲存前先讀一次，版本和開始編輯時不同就跳出衝突（重新載入／仍要儲存：只寫改過的鍵）；儲存後回應的版本不是「開始時 + 1」時也明確告知。兩次請求之間仍有很小的窗口；要完全關閉需要後端支援 `If-Match` 或 `expected_version`。
+7. **處理方案表單編輯 config 的副本**，儲存時算 merge patch；選「沿用全域設定」就刪掉該鍵（送 null），讓步驟的 executor 回到「沿用全域設定」時整個 `stages.<步驟>` 一起刪掉（寫出來的步驟會被檢查完整性，D8）。「複製」用已儲存的設定，不含未儲存的修改。
+8. **provider 沒有列表 API**：文字欄位加 `datalist`（內建的 anthropic、openai），model 自由輸入；試跑面板同樣。
+9. **用語**：步驟 `segment` 沿用既有字典的「分段」（`stage.segment`），pages.md 的「斷句」沒有改既有字串；Prompt 庫的分組也用「分段」。英文的處理方案沿用用語表的 Preset。
+10. **字型**：API 依 `lang` 帶入預設字型後，分不出原本是不是空字串（自動）。表單只送改過的欄位，所以打開表單不會把自動字型寫死；把字型欄位清空就送 `""`（依語言自動）。顏色用文字欄位（`<input type="color">` 會丟掉不透明度）加色塊。
+11. **共用元件**：`SelectField`、`ItemPicker`（試跑與樣式預覽都要選影音；只列 `GET /api/items` 的前 50 部，用標題搜尋縮小）放進 `components/`（ItemPicker 用獨立的 `queryKeys.items.picker(q)`，不放在媒體庫 infinite query 的 `items.lists()` 前綴下）；逐字差異放 `web/shared`，與 UI-2 分支的 `pages/item/diff.ts` 形狀相同，合併時改成都從 `@shared` 匯入、刪掉重複的一份。
+12. **新增相依**：`@codemirror/state` 6.7.6、`view` 6.43.15、`commands` 6.11.1、`lint` 6.9.7（都發佈超過 2 週）；transitive 的 `@lezer/common`、`style-mod` 用 npm `overrides` 鎖在 1.5.5、4.1.4（最新版未滿 2 週）。CodeMirror 只在 lazy chunk（約 104KB gzip），初始 JS 由約 174KB 增加到約 198KB（三個頁面與共用元件）。CodeMirror 透過 style-mod 插入 `<style>`，依賴 10.3 的 `style-src 'unsafe-inline'`。
+13. **eslint**：`i18next/no-literal-string` 的屬性排除清單加上事件處理器（`on[A-Z].*`）與 `form`、`accept`、`list`、`stage`、`path`：這些屬性裡的字串是欄位路徑與列舉值，不是顯示的文字。
+14. **測試**：`src/test/setup.ts` 補上 `Range.getClientRects`／`getBoundingClientRect`（CodeMirror 在 jsdom 需要）；預覽的 debounce 用真實計時器驗證（連續改三次只送一次、內容是最後一次）。
+
+
+頁面清單（2026-11-23，M5 規格展開時暫定，視覺與文案待 Hub UI 切片補上）：登入、帳號（登入方式、Hub token、我的分享）、管理（使用者與群組、檢舉、下架申請、稽核紀錄）、下架申請表單見 [HACC](../specs/HACC-hub-accounts.md) 的介面；首頁與搜尋、影片頁（版本比較）、版本頁見 [HREP](../specs/HREP-hub-repository.md) 的介面；Client 端的「分享到 Hub」對話框與設定頁的 Hub 區段見 [HSHR](../specs/HSHR-hub-sharing.md) 的介面。
+
+### 10.10 UI-3b：設定、詞彙表與術語候選、設定匯出與匯入（2026-11-23）
+
+| 範圍 | 狀態 | 位置 |
+|---|---|---|
+| 設定頁版面：左側分區清單、右側表單、每個分區各自儲存；窄螢幕（< 768px）清單收成頂部的下拉選單；未知分區導到第一個分區 | 完成 | `src/pages/SettingsPage.tsx`、`src/styles/settings.css` |
+| 服務與金鑰：7 個 provider 的 API key（只顯示末四碼，只能設定、更換或清除，清除先確認）、Supadata 取得字幕的方式、`command` provider 的唯讀說明 | 完成 | `src/pages/settings/ServicesSection.tsx` |
+| 服務與金鑰：「測試連線」、模型停用公告、列出設定檔中的 `command` provider | 未做：後端沒有對應的路由（只有 `GET /api/providers/{id}`，沒有列表） | — |
+| 帳號與 Cookie：上傳 YouTube／Bilibili cookie（貼上或選擇檔案）、這次上傳的數量與時間、`cookie_*` 錯誤的說明 | 完成 | `AccountsSection.tsx` |
+| 帳號與 Cookie：最後一次成功使用的時間、是否失效 | 未做：後端沒有讀取 cookie 狀態的 API | — |
+| 語言：預設目標語言、中文變體、原文字幕的語言優先順序（新增、移除、上下移）、平台翻譯字幕、fallback；介面語言 | 完成 | `LanguageSection.tsx` |
+| 輸出：本機影片旁與資料夾的說明（在處理方案中設定）；vault 與 hook 唯讀說明「尚未啟用（M3 起提供）」 | 完成 | `OutputsSection.tsx` |
+| MCP 與 Agent：token 列表（名稱、前綴、scope、建立、最後使用、到期、狀態）、建立（scope、到期 7 天／30 天／90 天〔預設〕／1 年／不設到期）、只顯示一次並可複製、撤銷先確認；Claude Code 指令；Agent 的 `max_claims`、`lease`、`timeout`、`on_timeout`、`on_validation_failure` | 完成 | `AgentSection.tsx` |
+| token 輪替（AUTH-R21） | 未做：M4 | — |
+| 詞彙表：全域與頻道詞彙表的檢視與整份取代；頻道的術語候選（接受、拒絕、409 `term_candidate_decided` 顯示「已被處理」並重新整理；已處理的收在 `<details>`） | 完成 | `GlossarySection.tsx` |
+| 詞彙表：修改後接受、批次決定、頻道選單 | 未做：沒有 API（GLOS 是 M4；沒有頻道列表 API） | — |
+| 系統：外部工具的路徑、來源與能否使用；更新 yt-dlp、回到上一個版本；資料目錄與監聽位址 | 完成 | `SystemSection.tsx` |
+| 系統：工具的版本號、磁碟用量、媒體檔保留天數 | 未做：`GET /api/system` 沒有這些欄位（版本只在更新的結果中顯示） | — |
+| 匯出與匯入：下載 YAML、匯入前先確認、422 逐項顯示 `errors[]`、成功時列出新建立／新版本／沒有變更／預設處理方案 | 完成 | `ConfigSection.tsx` |
+| 匯入前的 dry-run 差異預覽 | 未做：後端沒有 dry-run（SEC 規格的待決問題） | — |
+| 外觀：淺色／深色／跟隨系統（和導覽底部共用同一個值） | 完成 | `AppearanceSection.tsx`、`src/theme/useTheme.ts` |
+| 外觀：介面密度 | 未做：design-language.md 沒有定義密度 | — |
+| 登入：修改密碼（目前的密碼、新密碼、再輸入一次；錯誤與鎖定倒數） | 完成（新增後端路由，見決定 1） | `LoginSection.tsx`、`internal/api/auth_password.go` |
+| 登入：工作階段列表、反向代理驗證、OIDC | 未做：M4 | — |
+| 通知、預算 | 分區列出，內容是「M4 起提供。」，沒有表單 | `PlannedSection.tsx` |
+| 測試：每個分區一個 axe 測試（有 API 替身資料）、key 只顯示末四碼且不留在畫面上、token 只顯示一次、cookie 上傳與錯誤、改密碼錯誤與不一致、候選 409、匯入逐項錯誤、匯出、更新 yt-dlp、語言整段送出、主題同步 | 完成 | `src/pages/settings/settings.test.tsx` |
+
+### 10.11 UI-3b 的決定
+
+（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
+
+1. **唯一的後端改動：`POST /api/auth/password`**。AUTH-R2 要求「修改密碼要透過設定頁」，但沒有路由，`notesteme password set` 也還沒實作，沒有替代方案。只有 owner（token 即使有 `admin` 也 403）、與登入共用鎖定（AUTH-R6）、目前的密碼錯誤回 422 `invalid_password`（不用 401，避免被當成 session 失效而導到登入頁）、新密碼只要求非空、成功後在同一個交易中撤銷目前以外的所有 session。細節記在 AUTH 規格的待決問題。其他缺口（測試連線、cookie 狀態、工具版本、磁碟用量、匯入 dry-run、頻道列表）都**不補後端**，UI 明確寫「後端還沒有提供」；有排程的寫「M3／M4 起提供」，沒有排程的不捏造里程碑。
+2. **分區**：依 pages.md §12 的順序，另外加一個「匯出與匯入」分區（`config`），不併進「系統」：兩者的權限與風險不同（匯入會取代處理方案）。詞彙表放在設定頁的「詞彙表」分區（pages.md §12 已列），不另開 `/channels/:id/glossary`。
+3. **未知分區**導到第一個分區（`<Navigate replace>`，不改 `router.tsx`）；原本 UI-0 的「顯示找不到」測試一併改掉。
+4. **窄螢幕**：分區清單在 767px 以下隱藏，改成頂部的 `<select>`（切換時導到該分區）。
+5. **主題與介面語言的快速切換保留在導覽底部**（UI-0 決定 6 的後續），設定頁的「外觀」「語言」分區有同樣的選項；主題改由 `theme.ts` 的 `subscribeTheme`／`useTheme` 共用，兩邊不會不同步。介面語言本來就由 i18next 共用。
+6. **secrets 的處理**：API key、cookie、token 明文、密碼只放在元件的 `useState`，送出時立即清空（失敗也要重新輸入）；不用 TanStack Query 的 `useMutation`（`variables`、`data` 會留在 MutationCache），不放進 URL、localStorage、toast、錯誤訊息。API key 欄位 `type="password"`、`autocomplete="new-password"`；cookie 的 textarea `autocomplete="off"`，選擇檔案時內容不顯示；token 對話框關閉時清掉。
+7. **服務與金鑰的 provider 清單**照抄後端白名單（`internal/secrets/services.go` 的 `allowedServiceProviders`）：後端沒有列表 API。後端增減 provider 時要同步改 `SERVICE_PROVIDERS`。PUT services 是部分更新，每次只送正在改的那一個 provider（`api_key: ""` 是清除）。
+8. **整段取代的區段**（`language`、`agent`、`supadata`）：GET 後在本地修改、整段 PUT；沒有填的欄位直接省略（不送 `""` 或 `null`，後端不接受）。`language` 的 GET 已合併預設值；`agent` 沒有存過時是 `{}`，表單顯示預設值的提示（AGT 待決問題 A3 的預設）。422 的 `errors[]` 逐項顯示 path 與訊息。
+9. **輸出**：全域設定沒有 `outputs` 區段（`/api/settings/outputs` 不存在），所以「輸出」分區只說明在處理方案中設定；沒有連到 `/profiles`（UI-3a 同時在做，避免互相依賴的路由型別）。
+10. **詞彙表的頻道**用文字輸入（UUID 或 `平台:頻道 ID`），選擇只在元件 state，不加 search 參數（不改 `router.tsx`）。接受候選後同時讓頻道詞彙表重新讀取；409 `term_candidate_decided` 顯示「已被處理」並重新讀取候選。
+11. **token 的 Claude Code 設定片段**用 `claude mcp add --transport http notesteme <origin>/mcp --header "Authorization: Bearer <token>"`；分區上顯示占位字串，建立後的對話框可以複製含真正 token 的指令。輪替（AUTH-R21）是 M4。
+12. **匯入沒有預覽**：先跳確認框說明「同名取代、不刪除、可能改預設處理方案」，再套用；成功後讓 `profiles` 的 query 失效。匯出用 Blob 下載 `notesteme-config.yaml`（`blob:` 的下載不受 CSP 的 `connect-src` 限制）。
+13. **bundle**：設定頁沒有做 lazy route（不改 `router.tsx`），初始 JS 由約 174KB 增加到約 194KB（gzip，預算 300KB）。
+

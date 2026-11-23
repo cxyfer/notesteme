@@ -46,7 +46,7 @@ export const PROMPT_KINDS = [
 
 /**
  * 可用的變數（PRM-R3、internal/prompts.Variables）。後端目前所有類型共用同一份清單，
- * 沒有提供清單的 API，所以前端寫一份；後端改了要同步（見 docs/ui/README.md 10.6）。
+ * 沒有提供清單的 API，所以前端寫一份；後端改了要同步（見 docs/ui/README.md 10.9）。
  * 之後後端依類型區分時，在這裡改成依 kind 回傳。
  */
 export const PROMPT_VARIABLES = [
