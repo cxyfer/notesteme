@@ -10,7 +10,7 @@ import (
 )
 
 // 排程器接在 worker 的 periodics 上（ADR-0021 第 1 點）：登記的 kind 到期時，RunUntilIdle 會執行它；
-// 註冊表是空的時候（M4-S0 的預設）不影響 worker 的喚醒時間。
+// 沒有排定的工作時不影響 worker 的喚醒時間（M4-S1 起登記了 notify.deliver，但沒有通知時不會有那一列）。
 func TestSchedulerRunsInWorkerRounds(t *testing.T) {
 	env := testEnv(t)
 	env.Test.ManualWorker = true
@@ -20,14 +20,14 @@ func TestSchedulerRunsInWorkerRounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer srv.Kill()
-	if got := srv.scheduler.Kinds(); len(got) != 0 {
-		t.Fatalf("M4-S0 的註冊表應該是空的：%v", got)
+	if got := srv.scheduler.Kinds(); len(got) != 1 || got[0] != "notify.deliver" {
+		t.Fatalf("登記的 kind 應該只有 notify.deliver：%v", got)
 	}
 	if err := srv.RunUntilIdle(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok, err := srv.scheduler.NextAt(t.Context()); ok || err != nil {
-		t.Fatalf("空的註冊表不應排定喚醒：%v %v", ok, err)
+		t.Fatalf("沒有排定的工作時不應排定喚醒：%v %v", ok, err)
 	}
 
 	// 另一個 server：在第一輪之前登記一個測試用的 kind。

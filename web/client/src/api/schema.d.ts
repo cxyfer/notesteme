@@ -822,7 +822,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 列出通知 outbox 的項目（state=pending、sent 或 dropped，尚未實作） */
+    /** 列出最近 100 筆通知 outbox 的項目（state=pending、sent 或 dropped，NOTIFY-R8） */
     get: operations["notifications-list"];
     put?: never;
     post?: never;
@@ -839,10 +839,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 列出通知端點（尚未實作） */
+    /** 列出通知端點（密鑰只顯示末四碼，NOTIFY-R6） */
     get: operations["notifiers-list"];
     put?: never;
-    /** 建立通知端點（ntfy、Discord、Telegram 或 webhook，尚未實作） */
+    /** 建立通知端點（ntfy、Discord、Telegram 或 webhook，NOTIFY-R1～R3） */
     post: operations["notifiers-create"];
     delete?: never;
     options?: never;
@@ -857,15 +857,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 取得一個通知端點（尚未實作） */
+    /** 取得一個通知端點 */
     get: operations["notifiers-get"];
     put?: never;
     post?: never;
-    /** 刪除通知端點（尚未實作） */
+    /** 刪除通知端點與它還沒送出的通知 */
     delete: operations["notifiers-delete"];
     options?: never;
     head?: never;
-    /** 修改通知端點（尚未實作） */
+    /** 修改通知端點：只更新給定的欄位，沒給的密鑰保留原值（NOTIFY-R6） */
     patch: operations["notifiers-patch"];
     trace?: never;
   };
@@ -878,7 +878,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 傳送測試通知（尚未實作） */
+    /** 立即傳送一則測試通知（不經 outbox、不重試，NOTIFY-R12） */
     post: operations["notifiers-test"];
     delete?: never;
     options?: never;
@@ -1892,6 +1892,20 @@ export interface components {
       /** @description 「閱讀」按鈕的 Markdown */
       read_button?: string;
     };
+    CreateNotifierInputBody: {
+      /** @description 各種類的設定（NOTIFY-R2） */
+      config: {
+        [key: string]: unknown;
+      };
+      /** @description 預設 true */
+      enabled?: boolean;
+      /** @description 要通知的事件（1～7 個，NOTIFY-R3） */
+      events: string[] | null;
+      /** @description notifier 的 id（小寫英文字母、數字與 -，最多 40 字元） */
+      id: string;
+      /** @description ntfy、discord、telegram 或 webhook */
+      kind: string;
+    };
     CreateProfileInputBody: {
       /** @description 處理方案的設定；省略或 null 視為 {} */
       config?: {
@@ -2213,6 +2227,19 @@ export interface components {
       /** @description 一律是 edited */
       variant: string;
     };
+    Info: {
+      config: {
+        [key: string]: unknown;
+      };
+      /** Format: date-time */
+      created_at: string;
+      enabled: boolean;
+      events: string[] | null;
+      id: string;
+      kind: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
     IngestedItem: {
       already_in_library: boolean;
       availability?: string;
@@ -2475,6 +2502,25 @@ export interface components {
       /** @description 內建模板在前，其他依 id 排序，每個只列最新版本 */
       templates: components["schemas"]["NoteTemplateBody"][] | null;
     };
+    Notification: {
+      /** Format: int64 */
+      attempts: number;
+      /** Format: date-time */
+      created_at: string;
+      event: string;
+      id: string;
+      last_error: string | null;
+      notifier: string;
+      /** Format: date-time */
+      sent_at: string | null;
+      state: string;
+    };
+    NotificationsOutputBody: {
+      notifications: components["schemas"]["Notification"][] | null;
+    };
+    NotifierListOutputBody: {
+      notifiers: components["schemas"]["Info"][] | null;
+    };
     OutputFile: {
       format: string;
       lang: string;
@@ -2517,6 +2563,14 @@ export interface components {
       name?: string;
       /** @description 「閱讀」按鈕的 Markdown */
       read_button?: string;
+    };
+    PatchNotifierInputBody: {
+      /** @description 只覆寫給定的欄位；null 刪除選填欄位 */
+      config?: {
+        [key: string]: unknown;
+      };
+      enabled?: boolean;
+      events?: string[] | null;
     };
     PatchProfileInputBody: {
       /** @description RFC 7396 merge patch：null 刪除該鍵，物件遞迴合併，陣列與純量整個取代 */
@@ -2951,6 +3005,13 @@ export interface components {
     };
     TermCandidatesOutputBody: {
       candidates: components["schemas"]["TermCandidate"][] | null;
+    };
+    TestResult: {
+      error_class?: string;
+      message?: string;
+      ok: boolean;
+      /** Format: int64 */
+      status?: number;
     };
     TokenInfo: {
       /** Format: date-time */
@@ -4847,19 +4908,24 @@ export interface operations {
   };
   "notifications-list": {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description 只列出這個狀態 */
+        state?: "pending" | "sent" | "dropped";
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["NotificationsOutputBody"];
+        };
       };
       /** @description Error */
       default: {
@@ -4881,12 +4947,14 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["NotifierListOutputBody"];
+        };
       };
       /** @description Error */
       default: {
@@ -4906,14 +4974,20 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateNotifierInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description Created */
+      201: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["Info"];
+        };
       };
       /** @description Error */
       default: {
@@ -4930,17 +5004,22 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description notifier 的 id */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["Info"];
+        };
       };
       /** @description Error */
       default: {
@@ -4957,7 +5036,10 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description notifier 的 id */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
@@ -4984,17 +5066,26 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description notifier 的 id */
+        id: string;
+      };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PatchNotifierInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["Info"];
+        };
       };
       /** @description Error */
       default: {
@@ -5011,17 +5102,22 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description notifier 的 id */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["TestResult"];
+        };
       };
       /** @description Error */
       default: {

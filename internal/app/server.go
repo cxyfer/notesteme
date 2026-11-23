@@ -20,6 +20,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/inbox"
 	"github.com/cxyfer/notesteme/internal/media"
 	"github.com/cxyfer/notesteme/internal/netguard"
+	"github.com/cxyfer/notesteme/internal/notify"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/prompts"
 	"github.com/cxyfer/notesteme/internal/queue"
@@ -95,6 +96,8 @@ type Server struct {
 	// scheduler 是 M4 的排程器（ADR-0021 第 1 點）：worker 的一個 Periodic。各切片在 worker 開始之前
 	// 以 scheduler.Register 登記自己的 kind；M4-S0 的註冊表是空的，不查資料庫、不改變 worker 的喚醒時間。
 	scheduler *scheduler.Scheduler
+	// notify 管理 notifier 與送出通知 outbox（NOTIFY）；startPipeline 建立。
+	notify *notify.Service
 	// workerDone 在 production 的 worker 迴圈結束時關閉；手動模式（測試）沒有迴圈，為 nil。
 	workerDone chan struct{}
 	// watchCancel、watchDone 是 inbox 監看迴圈（production 的 serve 才有，ING-05）；沒有時為 nil。
@@ -268,6 +271,10 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	}
 	deps.SponsorBlock = &sponsorblock.Client{HTTP: deps.HTTP, BaseURL: sbBase}
 	deps.SponsorBlockBaseURL = sbBase
+	// 通知（NOTIFY）：pipeline 在步驟狀態的交易中寫入 outbox，排程工作 notify.deliver 送出。
+	var outbox *notify.Outbox
+	s.notify, outbox = s.newNotify(env.Clock, cfg, log)
+	deps.Notify = outbox
 	pl = pipeline.New(deps)
 	s.pipeline = pl
 	s.worker = worker.New(s.queue, s.pipeline, env.Clock, log)
@@ -287,6 +294,9 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	})
 	// Agent 任務的租約到期與逾時（AGT-R4、R9）：每一輪開頭檢查；production 閒置時睡到最早的到期時間。
 	s.scheduler = scheduler.New(s.store, env.Clock, log, cfg.M4.JitterMax)
+	if err := s.notify.Register(s.scheduler); err != nil {
+		return err
+	}
 	var periodic worker.Periodic = periodics{hk, s.pipeline.AgentSweeper(), s.scheduler}
 	// inbox 監看（ING-05）只在 serve 啟動：standalone 的 CLI 是短命的程序，不自動掃描。
 	var watcher *inbox.Watcher

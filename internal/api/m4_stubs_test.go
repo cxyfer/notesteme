@@ -6,7 +6,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 )
 
-// m4StubCases 是 M4 規格「介面」章節中尚未實作的 41 條路由（M4-S0）。
+// m4StubCases 是 M4 規格「介面」章節中尚未實作的路由（M4-S0 的 41 條；M4-S1 移除 NOTIFY 的 7 條）。
 // 這份清單獨立於 production 的 m4Stubs，才抓得到 method、path、scope 寫錯。
 var m4StubCases = []stubCase{
 	// SUB
@@ -28,14 +28,6 @@ var m4StubCases = []stubCase{
 	{"PATCH", "/api/digests/daily", auth.ScopeAdmin},
 	{"DELETE", "/api/digests/daily", auth.ScopeAdmin},
 	{"POST", "/api/digests/daily/preview", auth.ScopeAdmin},
-	// NOTIFY
-	{"GET", "/api/notifiers", auth.ScopeAdmin},
-	{"POST", "/api/notifiers", auth.ScopeAdmin},
-	{"GET", "/api/notifiers/n1", auth.ScopeAdmin},
-	{"PATCH", "/api/notifiers/n1", auth.ScopeAdmin},
-	{"DELETE", "/api/notifiers/n1", auth.ScopeAdmin},
-	{"POST", "/api/notifiers/n1/test", auth.ScopeAdmin},
-	{"GET", "/api/notifications", auth.ScopeAdmin},
 	// COST
 	{"GET", "/api/prices", auth.ScopeRead},
 	{"PUT", "/api/prices", auth.ScopeAdmin},

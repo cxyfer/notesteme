@@ -221,6 +221,7 @@ func (s *Server) apiDeps(env Env) api.Deps {
 		Backup:    s.backupSource(env),
 		Providers: s.providerRegistry(env),
 		Services:  s.services,
+		Notify:    s.notify,
 	}
 }
 

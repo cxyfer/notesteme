@@ -556,6 +556,45 @@
         ],
         "type": "object"
       },
+      "CreateNotifierInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "additionalProperties": {},
+            "description": "各種類的設定（NOTIFY-R2）",
+            "type": "object"
+          },
+          "enabled": {
+            "description": "預設 true",
+            "type": "boolean"
+          },
+          "events": {
+            "description": "要通知的事件（1～7 個，NOTIFY-R3）",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "notifier 的 id（小寫英文字母、數字與 -，最多 40 字元）",
+            "type": "string"
+          },
+          "kind": {
+            "description": "ntfy、discord、telegram 或 webhook",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "config",
+          "events"
+        ],
+        "type": "object"
+      },
       "CreateProfileInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -1421,6 +1460,51 @@
         ],
         "type": "object"
       },
+      "Info": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "config",
+          "events",
+          "enabled",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
       "IngestedItem": {
         "additionalProperties": false,
         "properties": {
@@ -2117,6 +2201,91 @@
         ],
         "type": "object"
       },
+      "Notification": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notifier": {
+            "type": "string"
+          },
+          "sent_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "notifier",
+          "event",
+          "state",
+          "attempts",
+          "last_error",
+          "created_at",
+          "sent_at"
+        ],
+        "type": "object"
+      },
+      "NotificationsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "notifications": {
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "notifications"
+        ],
+        "type": "object"
+      },
+      "NotifierListOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "notifiers": {
+            "items": {
+              "$ref": "#/components/schemas/Info"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "notifiers"
+        ],
+        "type": "object"
+      },
       "OutputFile": {
         "additionalProperties": false,
         "properties": {
@@ -2233,6 +2402,29 @@
           "read_button": {
             "description": "「閱讀」按鈕的 Markdown",
             "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PatchNotifierInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "additionalProperties": {},
+            "description": "只覆寫給定的欄位；null 刪除選填欄位",
+            "type": "object"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -3540,6 +3732,28 @@
         },
         "required": [
           "candidates"
+        ],
+        "type": "object"
+      },
+      "TestResult": {
+        "additionalProperties": false,
+        "properties": {
+          "error_class": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok"
         ],
         "type": "object"
       },
@@ -6060,9 +6274,33 @@
     "/api/notifications": {
       "get": {
         "operationId": "notifications-list",
+        "parameters": [
+          {
+            "description": "只列出這個狀態",
+            "explode": false,
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "description": "只列出這個狀態",
+              "enum": [
+                "pending",
+                "sent",
+                "dropped"
+              ],
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -6075,15 +6313,22 @@
             "description": "Error"
           }
         },
-        "summary": "列出通知 outbox 的項目（state=pending、sent 或 dropped，尚未實作）"
+        "summary": "列出最近 100 筆通知 outbox 的項目（state=pending、sent 或 dropped，NOTIFY-R8）"
       }
     },
     "/api/notifiers": {
       "get": {
         "operationId": "notifiers-list",
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifierListOutputBody"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -6096,13 +6341,30 @@
             "description": "Error"
           }
         },
-        "summary": "列出通知端點（尚未實作）"
+        "summary": "列出通知端點（密鑰只顯示末四碼，NOTIFY-R6）"
       },
       "post": {
         "operationId": "notifiers-create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateNotifierInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Info"
+                }
+              }
+            },
+            "description": "Created"
           },
           "default": {
             "content": {
@@ -6115,12 +6377,24 @@
             "description": "Error"
           }
         },
-        "summary": "建立通知端點（ntfy、Discord、Telegram 或 webhook，尚未實作）"
+        "summary": "建立通知端點（ntfy、Discord、Telegram 或 webhook，NOTIFY-R1～R3）"
       }
     },
     "/api/notifiers/{id}": {
       "delete": {
         "operationId": "notifiers-delete",
+        "parameters": [
+          {
+            "description": "notifier 的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "notifier 的 id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No Content"
@@ -6136,13 +6410,32 @@
             "description": "Error"
           }
         },
-        "summary": "刪除通知端點（尚未實作）"
+        "summary": "刪除通知端點與它還沒送出的通知"
       },
       "get": {
         "operationId": "notifiers-get",
+        "parameters": [
+          {
+            "description": "notifier 的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "notifier 的 id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Info"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -6155,13 +6448,42 @@
             "description": "Error"
           }
         },
-        "summary": "取得一個通知端點（尚未實作）"
+        "summary": "取得一個通知端點"
       },
       "patch": {
         "operationId": "notifiers-patch",
+        "parameters": [
+          {
+            "description": "notifier 的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "notifier 的 id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchNotifierInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Info"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -6174,15 +6496,34 @@
             "description": "Error"
           }
         },
-        "summary": "修改通知端點（尚未實作）"
+        "summary": "修改通知端點：只更新給定的欄位，沒給的密鑰保留原值（NOTIFY-R6）"
       }
     },
     "/api/notifiers/{id}/test": {
       "post": {
         "operationId": "notifiers-test",
+        "parameters": [
+          {
+            "description": "notifier 的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "notifier 的 id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResult"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -6195,7 +6536,7 @@
             "description": "Error"
           }
         },
-        "summary": "傳送測試通知（尚未實作）"
+        "summary": "立即傳送一則測試通知（不經 outbox、不重試，NOTIFY-R12）"
       }
     },
     "/api/overview": {

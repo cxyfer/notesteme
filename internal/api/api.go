@@ -23,6 +23,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/events"
+	"github.com/cxyfer/notesteme/internal/notify"
 	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/prompts"
@@ -74,6 +75,8 @@ type Deps struct {
 	Providers ProviderRegistry
 	// Services 管理外部服務商的 API key（GET／PUT /api/settings/services，SEC-R4、SEC-R6）；nil 時回應 501。
 	Services ServiceSettingsStore
+	// Notify 管理 notifier 與通知 outbox（/api/notifiers、/api/notifications，NOTIFY）；nil 時回應 501。
+	Notify *notify.Service
 	// EventBus 是狀態變更的事件匯流排：MCP 的 get_video_context 在影音有變更時重新讀取狀態；nil 時定期重查。
 	EventBus *events.Bus
 	// MCPAllowedOrigins 與 MCPAllowedHosts 是 MCP HTTP 的 Origin 與 Host 檢查（AUTH-R11，見 config.Config）。
@@ -283,6 +286,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerAgent(api)
 	rt.registerM2Stubs(api)
 	rt.registerM3Stubs(api)
+	rt.registerNotifiers(api)
 	rt.registerM4Stubs(api)
 	rt.registerM5Stubs(api)
 	rt.registerFrames(api)
