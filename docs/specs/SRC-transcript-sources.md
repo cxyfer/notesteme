@@ -171,6 +171,6 @@ SRC-10 屬於 M4（故事地圖第 5 節），規則是 SRC-R18～R23；其餘�
   - R13：「每部影音每個更好的來源只通知一次」：發現後字幕部分就結束，事件只寫一次；使用者重跑 transcript、之後又發現同一個來源時，只靠 outbox 的 `dedupe_key`（`source.better_available:<影音>:<來源>:<語言>`）在去重視窗內擋下。移到垃圾桶後還原不會重新排程（要重跑 transcript 才會重新判斷）。
   - R14：平台回報的語言（不可信）正規化後只接受 BCP-47 形狀的短代碼（`^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8}){0,3}$`）才算更好的來源，才會寫進訊息、事件與通知。
   - R15：從 `sponsorblock` 以前重跑時結束 SponsorBlock 部分，從 `transcript` 以前重跑時另外結束字幕部分並清除 `better_source`；步驟重新完成後依新的結果重新判斷（SRC-R18）。自動重跑的次數不清除（每部影音最多一次）。重新 Probe 寫回時以交易中最新的狀態為準，不蓋掉期間重跑所做的重設。
-  - R16：場景與規則的衝突（**需要 owner 決定，`.feature` 沒有修改**，兩個場景目前是 failed）：
+  - R16：場景與規則的衝突（已依建議修改這兩個場景的 `.feature`（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）；原本兩個場景是 failed）：
     - 「Re-probing only lists the platform captions and never calls a paid source」：`yt:asr001xxxxx` 的 `published_at` 是處理前 2 小時、沒有任何字幕軌、`caption_priority` 有 `auto` 規則，依 SRC-R6 `transcript` 會等待自動字幕（`waiting`），`the item … has been processed up to "transcript"` 失敗。建議把這個場景的 `published_at` 改成 `2026-11-19T06:00:00Z`（處理時已超過 SRC-R6 的 24 小時，`until` 為 11-26T06，字幕 11-21T00 補上，推進 24h 後找得到）。
     - 「The better source carries the estimated cost and a manual rerun uses it」：`the owner reruns … from "transcript"` 不帶 `until`，重跑一路做到 `sponsorblock`；依 SRC-R20，YouTube 影音的 SponsorBlock 部分在 7 天內仍要重新查詢，實際回應是 `"reprobe": {"sources": false, "sponsorblock": true, …}`，場景預期 `"reprobe": null`。建議把最後的預期改成 `{ "better_source": null, "reprobe": { "sources": false } }`（這個場景要驗的是重跑後字幕部分結束，SRC-R23），不寫死 `sponsorblock`。

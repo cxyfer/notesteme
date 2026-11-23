@@ -113,7 +113,7 @@ Feature: A better transcript source after processing
     And a YouTube video "yt:asr001xxxxx" with:
       | field        | value                |
       | language     | en                   |
-      | published_at | 2026-11-20T06:00:00Z |
+      | published_at | 2026-11-19T06:00:00Z |
     And "yt:asr001xxxxx" has no caption tracks
     And the source "groq" returns "groq-en.json" for "yt:asr001xxxxx"
     And the item "yt:asr001xxxxx" has been processed up to "transcript"
@@ -250,7 +250,7 @@ Feature: A better transcript source after processing
     When the owner sends "GET /api/items/yt:late01xxxxx"
     Then the response contains:
       """
-      { "better_source": null, "reprobe": null }
+      { "better_source": null, "reprobe": { "sources": false } }
       """
 
   @ui @manual @SRC-10 @SRC-R21 @SRC-R23
