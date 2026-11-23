@@ -130,3 +130,22 @@ func CanSee(s Subject, viewer Viewer, site string) bool {
 	}
 	return false
 }
+
+// Listable 回傳列表與查詢在 SQL 預先過濾時，viewer 不靠「自己是上傳者」就看得到的 visibility 值（M5-S4，HREP-R16、R19）。
+// all 為 true 時（moderate）不過濾。它和 CanSee 對 visible 狀態的判斷一致（單元測試鎖住），呼叫端之後仍逐筆呼叫 CanSee。
+func Listable(viewer Viewer, site string) (vis []string, all bool) {
+	if viewer.Anonymous {
+		if Effective(VisibilityPublic, site) == VisibilityPublic {
+			return []string{VisibilityPublic}, false
+		}
+		return []string{}, false
+	}
+	if viewer.Moderator {
+		return nil, true
+	}
+	vis = []string{VisibilityPublic, VisibilityAuthenticated}
+	for _, g := range viewer.Groups {
+		vis = append(vis, groupPrefix+g)
+	}
+	return vis, false
+}

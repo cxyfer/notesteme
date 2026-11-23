@@ -192,7 +192,7 @@ func TestTokenAuthentication(t *testing.T) {
 		t.Errorf("PAT 的 /me permissions = %v，預期只有 read", m["permissions"])
 	}
 	// 權限：read 有、download 沒有（帳號有也不行）。
-	expect(t, "read", e.bearer(tok, "GET", "/api/v1/versions", "", ""), 501, "not_implemented")
+	expect(t, "read", e.bearer(tok, "GET", "/api/v1/versions", "", ""), 200, "")
 	rec = e.bearer(tok, "GET", "/api/v1/versions/v1/download", "", "")
 	expect(t, "download", rec, 403, "forbidden")
 	if decode(t, rec)["required_permission"] != "download" {

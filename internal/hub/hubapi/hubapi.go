@@ -89,6 +89,7 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 	registerAuth(api, rt)
 	registerAccounts(api, rt)
 	registerRepository(api, rt)
+	registerListing(api, rt)
 	registerStubs(api)
 	return rt
 }

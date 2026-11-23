@@ -15,7 +15,7 @@ type routeCase struct {
 	access       Access
 }
 
-// implementedCases 是 M5-S1（auth.go）、M5-S2（tokens.go）與 M5-S3（repository.go）實作的 /api/v1 路由與存取層級；OpenAPI 的 x-notesteme-access 要相同。
+// implementedCases 是 M5-S1（auth.go）、M5-S2（tokens.go）、M5-S3（repository.go）與 M5-S4（listing.go、download.go）實作的 /api/v1 路由與存取層級；OpenAPI 的 x-notesteme-access 要相同。
 var implementedCases = []routeCase{
 	{"GET", "/api/v1/auth/providers", AccessPublic},
 	{"POST", "/api/v1/auth/logout", AccessSession},
@@ -31,6 +31,11 @@ var implementedCases = []routeCase{
 	{"POST", "/api/v1/shares", "upload"},
 	{"DELETE", "/api/v1/shares/s1", "upload"},
 	{"GET", "/api/v1/versions/v1", "read"},
+	{"GET", "/api/v1/versions", "read"},
+	{"GET", "/api/v1/videos/youtube/abc", "read"},
+	{"GET", "/api/v1/versions/v1/download", "download"},
+	{"GET", "/api/v1/versions/v1/content", "regenerate"},
+	{"GET", "/api/v1/lookup", "regenerate"},
 }
 
 // stubCases 是 HACC、HREP、HMCP 規格「介面」章節中還沒有實作的路由與存取層級（M5-S0 起，S1 移走登入、S2 移走 token、群組與稽核的路由）。
@@ -47,11 +52,6 @@ var stubCases = []routeCase{
 	{"GET", "/api/v1/admin/users", "admin"},
 	{"POST", "/api/v1/admin/users/u1/suspend", "admin"},
 	{"POST", "/api/v1/admin/users/u1/unsuspend", "admin"},
-	{"GET", "/api/v1/versions", "read"},
-	{"GET", "/api/v1/videos/youtube/abc", "read"},
-	{"GET", "/api/v1/versions/v1/download", "download"},
-	{"GET", "/api/v1/versions/v1/content", "regenerate"},
-	{"GET", "/api/v1/lookup", "regenerate"},
 	{"PUT", "/api/v1/versions/v1/vote", "read"},
 	{"DELETE", "/api/v1/versions/v1/vote", "read"},
 	{"POST", "/api/v1/versions/v1/reports", "read"},

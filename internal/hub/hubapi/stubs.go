@@ -62,17 +62,7 @@ var Stubs = []Stub{
 		Summary: "停用帳號（尚未實作）"},
 	{ID: "admin-users-unsuspend", Method: http.MethodPost, Path: "/api/v1/admin/users/{id}/unsuspend", Access: perm(hubconfig.PermAdmin), Spec: "HACC-R17",
 		Summary: "恢復帳號（尚未實作）"},
-	// HREP：分享、撤回與版本詳情由 M5-S3 實作（repository.go）；篩選、取用、社群（S4、S5）
-	{ID: "versions-list", Method: http.MethodGet, Path: "/api/v1/versions", Access: perm(hubconfig.PermRead), Spec: "HREP-R16",
-		Summary: "篩選版本（尚未實作）"},
-	{ID: "videos-get", Method: http.MethodGet, Path: "/api/v1/videos/{platform}/{external_id}", Access: perm(hubconfig.PermRead), Spec: "HREP-R17",
-		Summary: "影片的所有版本，依種類、變體與語言分組（尚未實作）"},
-	{ID: "versions-download", Method: http.MethodGet, Path: "/api/v1/versions/{id}/download", Access: perm(hubconfig.PermDownload), Spec: "HREP-R18",
-		Summary: "下載渲染後的字幕、筆記或章節（尚未實作）"},
-	{ID: "versions-content", Method: http.MethodGet, Path: "/api/v1/versions/{id}/content", Access: perm(hubconfig.PermRegenerate), Spec: "HREP-R18",
-		Summary: "原始的 cues JSON（Client 重新生成用，尚未實作）"},
-	{ID: "lookup", Method: http.MethodGet, Path: "/api/v1/lookup", Access: perm(hubconfig.PermRegenerate), Spec: "HREP-R19",
-		Summary: "ASR 前查詢：以影片 ID 雜湊的前綴查詢（尚未實作）"},
+	// HREP：分享、撤回與版本詳情由 M5-S3 實作（repository.go）；篩選、影片頁、取用與 lookup 由 M5-S4 實作（listing.go、download.go）；社群（S5）
 	{ID: "versions-vote-put", Method: http.MethodPut, Path: "/api/v1/versions/{id}/vote", Access: perm(hubconfig.PermRead), Spec: "HREP-R13",
 		Summary: "投票（尚未實作）"},
 	{ID: "versions-vote-delete", Method: http.MethodDelete, Path: "/api/v1/versions/{id}/vote", Access: perm(hubconfig.PermRead), Spec: "HREP-R13",

@@ -266,6 +266,79 @@
         ],
         "type": "object"
       },
+      "LookupVersionView": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "model_verified": {
+            "type": "boolean"
+          },
+          "score": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "variant",
+          "lang",
+          "sha256",
+          "score",
+          "model_verified"
+        ],
+        "type": "object"
+      },
+      "LookupVideoView": {
+        "additionalProperties": false,
+        "properties": {
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/LookupVersionView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "video_key_sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "video_key_sha256",
+          "versions"
+        ],
+        "type": "object"
+      },
+      "LookupView": {
+        "additionalProperties": false,
+        "properties": {
+          "videos": {
+            "items": {
+              "$ref": "#/components/schemas/LookupVideoView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "videos"
+        ],
+        "type": "object"
+      },
       "Me": {
         "additionalProperties": false,
         "properties": {
@@ -541,6 +614,141 @@
         ],
         "type": "object"
       },
+      "VersionGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/VersionItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "variant",
+          "lang",
+          "versions"
+        ],
+        "type": "object"
+      },
+      "VersionItem": {
+        "additionalProperties": false,
+        "properties": {
+          "badges": {
+            "description": "model_verified 為 false 時有 unverified_model",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "correct_model": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "license": {
+            "type": "string"
+          },
+          "model_verified": {
+            "description": "true 只代表由 Client 的 api executor 記錄，Hub 無法驗證模型",
+            "type": "boolean"
+          },
+          "score": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "transcribe_model": {
+            "type": "string"
+          },
+          "translate_model": {
+            "type": "string"
+          },
+          "uploaders": {
+            "items": {
+              "$ref": "#/components/schemas/UploaderView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "variant": {
+            "type": "string"
+          },
+          "video": {
+            "$ref": "#/components/schemas/VideoRef"
+          }
+        },
+        "required": [
+          "id",
+          "video",
+          "kind",
+          "variant",
+          "lang",
+          "transcribe_model",
+          "correct_model",
+          "translate_model",
+          "model_verified",
+          "license",
+          "score",
+          "uploaders",
+          "created_at",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "VersionListView": {
+        "additionalProperties": false,
+        "properties": {
+          "next_cursor": {
+            "description": "下一頁的 cursor；沒有下一頁時省略",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/VersionItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "versions"
+        ],
+        "type": "object"
+      },
       "VersionView": {
         "additionalProperties": false,
         "properties": {
@@ -657,6 +865,28 @@
         ],
         "type": "object"
       },
+      "VideoPageView": {
+        "additionalProperties": false,
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/VersionGroup"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "video": {
+            "$ref": "#/components/schemas/VideoView"
+          }
+        },
+        "required": [
+          "video",
+          "groups"
+        ],
+        "type": "object"
+      },
       "VideoRef": {
         "additionalProperties": false,
         "properties": {
@@ -678,6 +908,42 @@
           "platform",
           "external_id",
           "part"
+        ],
+        "type": "object"
+      },
+      "VideoView": {
+        "additionalProperties": false,
+        "properties": {
+          "channel_external_id": {
+            "type": "string"
+          },
+          "channel_title": {
+            "type": "string"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "part": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "platform": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "external_id",
+          "part",
+          "title",
+          "channel_external_id",
+          "channel_title"
         ],
         "type": "object"
       }
@@ -1388,9 +1654,85 @@
       "get": {
         "description": "規則：HREP-R19。",
         "operationId": "lookup",
+        "parameters": [
+          {
+            "description": "youtube、bilibili 或 podcast",
+            "explode": false,
+            "in": "query",
+            "name": "platform",
+            "schema": {
+              "description": "youtube、bilibili 或 podcast",
+              "type": "string"
+            }
+          },
+          {
+            "description": "sha256(\u003cplatform\u003e:\u003cexternal_id\u003e:\u003cpart\u003e) 的前 4 個小寫十六進位字元",
+            "explode": false,
+            "in": "query",
+            "name": "prefix",
+            "schema": {
+              "description": "sha256(\u003cplatform\u003e:\u003cexternal_id\u003e:\u003cpart\u003e) 的前 4 個小寫十六進位字元",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LookupView"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -1401,19 +1743,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "ASR 前查詢：以影片 ID 雜湊的前綴查詢（尚未實作）",
+        "summary": "ASR 前查詢：以影片雜湊的前 4 碼查詢原始字幕",
         "x-notesteme-access": "regenerate"
       }
     },
@@ -2274,11 +2606,184 @@
     },
     "/api/v1/versions": {
       "get": {
-        "description": "規則：HREP-R16。",
+        "description": "規則：HREP-R7、R16。",
         "operationId": "versions-list",
+        "parameters": [
+          {
+            "description": "youtube、bilibili 或 podcast",
+            "explode": false,
+            "in": "query",
+            "name": "platform",
+            "schema": {
+              "description": "youtube、bilibili 或 podcast",
+              "type": "string"
+            }
+          },
+          {
+            "description": "頻道的 external_id",
+            "explode": false,
+            "in": "query",
+            "name": "channel",
+            "schema": {
+              "description": "頻道的 external_id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "\u003cplatform\u003e:\u003cexternal_id\u003e，Bilibili 的分P加 /p\u003cn\u003e",
+            "explode": false,
+            "in": "query",
+            "name": "video",
+            "schema": {
+              "description": "\u003cplatform\u003e:\u003cexternal_id\u003e，Bilibili 的分P加 /p\u003cn\u003e",
+              "type": "string"
+            }
+          },
+          {
+            "description": "語言（BCP 47）",
+            "explode": false,
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "description": "語言（BCP 47）",
+              "type": "string"
+            }
+          },
+          {
+            "description": "transcript、chapters、note 或 frames",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "transcript、chapters、note 或 frames",
+              "type": "string"
+            }
+          },
+          {
+            "description": "source、normalized、segmented、corrected、translated 或 edited",
+            "explode": false,
+            "in": "query",
+            "name": "variant",
+            "schema": {
+              "description": "source、normalized、segmented、corrected、translated 或 edited",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "transcribe_model",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "correct_model",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "translate_model",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "true 時排除 model_verified 為 false 的版本",
+            "explode": false,
+            "in": "query",
+            "name": "exclude_unverified",
+            "schema": {
+              "description": "true 時排除 model_verified 為 false 的版本",
+              "type": "string"
+            }
+          },
+          {
+            "description": "score（預設）或 new",
+            "explode": false,
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "description": "score（預設）或 new",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1～200，預設 50",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "1～200，預設 50",
+              "type": "string"
+            }
+          },
+          {
+            "description": "上一頁回應的 next_cursor",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "上一頁回應的 next_cursor",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionListView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -2289,19 +2794,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "篩選版本（尚未實作）",
+        "summary": "篩選版本（只列看得到的 visible 版本）",
         "x-notesteme-access": "read"
       }
     },
@@ -2411,9 +2906,126 @@
       "get": {
         "description": "規則：HREP-R18。",
         "operationId": "versions-content",
+        "parameters": [
+          {
+            "description": "版本 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "版本 ID",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "contentEncoding": "base64",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Type": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Notesteme-License": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Notesteme-SHA256": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -2424,19 +3036,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "原始的 cues JSON（Client 重新生成用，尚未實作）",
+        "summary": "原始的 cues JSON（Client 重新生成用，只限字幕）",
         "x-notesteme-access": "regenerate"
       }
     },
@@ -2444,9 +3046,136 @@
       "get": {
         "description": "規則：HREP-R18。",
         "operationId": "versions-download",
+        "parameters": [
+          {
+            "description": "版本 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "版本 ID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "字幕 srt（預設）、vtt、txt、cues-json；筆記 md；章節 json",
+            "explode": false,
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "description": "字幕 srt（預設）、vtt、txt、cues-json；筆記 md；章節 json",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "contentEncoding": "base64",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Type": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Notesteme-License": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Notesteme-SHA256": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -2457,19 +3186,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "下載渲染後的字幕、筆記或章節（尚未實作）",
+        "summary": "下載渲染後的字幕、筆記或章節（附件）",
         "x-notesteme-access": "download"
       }
     },
@@ -2574,9 +3293,96 @@
       "get": {
         "description": "規則：HREP-R17。",
         "operationId": "videos-get",
+        "parameters": [
+          {
+            "description": "youtube、bilibili 或 podcast",
+            "in": "path",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "description": "youtube、bilibili 或 podcast",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "external_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bilibili 的分P（1 起算）；省略時是沒有分P的影片",
+            "explode": false,
+            "in": "query",
+            "name": "part",
+            "schema": {
+              "description": "Bilibili 的分P（1 起算）；省略時是沒有分P的影片",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoPageView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -2587,19 +3393,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "影片的所有版本，依種類、變體與語言分組（尚未實作）",
+        "summary": "影片的所有版本，依種類、變體與語言分組",
         "x-notesteme-access": "read"
       }
     },

@@ -2,6 +2,7 @@ package hubrepo
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -208,5 +209,30 @@ func TestCanSee(t *testing.T) {
 	}
 	if Effective("public", "authenticated") != "authenticated" || Effective("private", "public") != "private" {
 		t.Error("Effective")
+	}
+}
+
+// Listable 要和 CanSee 對 visible 版本的判斷完全一致（上傳者另外由 SQL 的 EXISTS 處理）：
+// SQL 預先過濾多放行或少放行都會造成洩漏或漏列。
+func TestListableAgreesWithCanSee(t *testing.T) {
+	viewers := []Viewer{
+		{Anonymous: true},
+		{UserID: "u1"},
+		{UserID: "u1", Groups: []string{"members", "team"}},
+		{UserID: "u1", Moderator: true},
+		{Anonymous: true, Moderator: true}, // 匿名不可能是 moderate：要當作匿名
+	}
+	visibilities := []string{"public", "authenticated", "private", "group:team", "group:other", "group:", "bogus", ""}
+	for _, site := range []string{"public", "authenticated"} {
+		for _, vw := range viewers {
+			vis, all := Listable(vw, site)
+			for _, v := range visibilities {
+				want := CanSee(Subject{Visibility: v, State: StateVisible, Uploaders: []string{"someone-else"}}, vw, site)
+				got := all || slices.Contains(vis, v)
+				if got != want {
+					t.Errorf("site=%s viewer=%+v visibility=%q：Listable=%v，CanSee=%v", site, vw, v, got, want)
+				}
+			}
+		}
 	}
 }
