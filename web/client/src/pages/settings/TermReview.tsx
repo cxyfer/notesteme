@@ -308,8 +308,8 @@ function Row({
     s === SCOPES[1]
       ? t("settings.glossary.review.scopeGlobal")
       : t("settings.glossary.review.scopeChannel");
-  // GLOS-R5：影音已永久刪除時 item 是 null（schema 沒有標 nullable，見 UI README 待決問題）
-  const item = r.item as Review["item"] | null;
+  // GLOS-R5：影音已永久刪除時 item 是 null
+  const item = r.item;
   return (
     <li className="settings-row term-review__row" data-error={error ? true : undefined}>
       <div className="term-review__pick">
