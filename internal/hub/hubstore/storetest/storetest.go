@@ -334,4 +334,6 @@ func Run(t *testing.T, open Open) {
 			t.Fatalf("撤銷後的列表 = %+v", ls)
 		}
 	})
+
+	runContent(t, open)
 }
