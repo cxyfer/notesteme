@@ -217,6 +217,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 影音詳情、佇列 | 完成（UI-2，見 10.6） | `web/client/src/pages/item`、`src/pages/queue` |
 | 登入頁背景的淡化時間帶（§13） | 未做 | 等 UI-1 的時間帶元件 |
 | 768–1279px 的收合導覽（只剩圖示） | 未做：沒有圖示前維持展開；UI-1 沒有引入 Phosphor Icons | 之後的切片 |
+| 訂閱、成本、筆記模板、設定的通知與預算、影音詳情的畫面與筆記 | 完成（UI-4，見 10.12） | `src/pages/{subscriptions,costs,noteTemplates}`、`src/pages/settings`、`src/pages/item/NotePanels.tsx` |
+| 總覽、批次操作、搜尋、Hub UI | 未做：後端還沒有（LIB-09、LIB-08、SRCH、HREP） | 之後的切片 |
 
 ### 10.2 UI-0 的決定
 
@@ -382,7 +384,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 外觀：介面密度 | 未做：design-language.md 沒有定義密度 | — |
 | 登入：修改密碼（目前的密碼、新密碼、再輸入一次；錯誤與鎖定倒數） | 完成（新增後端路由，見決定 1） | `LoginSection.tsx`、`internal/api/auth_password.go` |
 | 登入：工作階段列表、反向代理驗證、OIDC | 未做：M4 | — |
-| 通知、預算 | 分區列出，內容是「M4 起提供。」，沒有表單 | `PlannedSection.tsx` |
+| 通知、預算 | 分區列出，內容是「M4 起提供。」，沒有表單（UI-4 已補上，見 10.12） | `PlannedSection.tsx` |
 | 測試：每個分區一個 axe 測試（有 API 替身資料）、key 只顯示末四碼且不留在畫面上、token 只顯示一次、cookie 上傳與錯誤、改密碼錯誤與不一致、候選 409、匯入逐項錯誤、匯出、更新 yt-dlp、語言整段送出、主題同步 | 完成 | `src/pages/settings/settings.test.tsx` |
 
 ### 10.11 UI-3b 的決定
@@ -403,3 +405,55 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 12. **匯入沒有預覽**：先跳確認框說明「同名取代、不刪除、可能改預設處理方案」，再套用；成功後讓 `profiles` 的 query 失效。匯出用 Blob 下載 `notesteme-config.yaml`（`blob:` 的下載不受 CSP 的 `connect-src` 限制）。
 13. **bundle**：設定頁沒有做 lazy route（不改 `router.tsx`），初始 JS 由約 174KB 增加到約 194KB（gzip，預算 300KB）。
 
+
+### 10.12 UI-4：訂閱、成本、筆記模板、通知與預算、影音詳情的畫面與筆記（2026-11-23）
+
+| 範圍 | 狀態 | 位置 |
+|---|---|---|
+| 導覽：工作組加「訂閱」、調整組加「筆記模板」、系統組加「成本」；五條新路由都是 lazy route | 完成 | `src/router.tsx`、`src/shell/AppShell.tsx` |
+| 訂閱列表（頻道或網址、平台、檢查頻率、上次與下次檢查、處理方案、最近的錯誤）、空狀態 | 完成 | `src/pages/subscriptions/SubscriptionsPage.tsx` |
+| 新增訂閱抽屜：網址、處理方案、檢查頻率、回補範圍、過濾條件（片長、Shorts、直播、標題 regex）、「同一個頻道只在一台實例上訂閱」提醒、422 逐欄、重複訂閱連到已有的訂閱 | 完成 | `SubscriptionForm.tsx`、`subModel.ts` |
+| 試跑預覽（`POST /api/subscriptions/preview`、`/{id}/preview`）：會連外與消耗 rate limit 的提示、第一次要按「試跑預覽」、之後 800ms debounce 並取消舊請求、429 顯示 `retry_after_s`、`none` 模式的說明、略過原因的三語對照 | 完成 | `SubscriptionForm.tsx` |
+| 訂閱詳情：PATCH 只送改過的欄位、立即檢查、停用（確認）、啟用、刪除（確認，寫明影音保留）、探索到的條目（依決定篩選、limit 每次加 200，上限 5000） | 完成 | `SubscriptionPage.tsx` |
+| OPML／Takeout 匯入（multipart）與結果（新增數、重複、逐列失敗） | 完成 | `SubscriptionsPage.tsx` |
+| SSE：`subscription.checked`／`check_failed` 讓訂閱的 query 失效 | 完成 | `src/events/{types,invalidation}.ts` |
+| 成本頁：本月花費／預算／預計月底（2 位小數）與「調整預算」、`notices`（`prices_stale` 依 code 提供「確認計價表」）、找不到單價的次數、日期範圍與分組在 URL、依分組的長條圖（附同資料的表格）、明細（cursor 分頁，未知單價顯示「未知單價」、預留顯示「預留」）、CSV 匯出（範圍超過 366 天時停用） | 完成 | `src/pages/costs` |
+| 計價表：內建與覆寫、確認日期與過期、確認內建計價表、新增或覆寫單價（已有單價時先確認舊價 → 新價）、移除覆寫（確認） | 完成 | `src/pages/costs/PricesPanel.tsx` |
+| 筆記模板列表（內建在前、版本、檢查數）、新增與複製（`from`） | 完成 | `src/pages/noteTemplates/NoteTemplatesPage.tsx` |
+| 筆記模板編輯（三欄）：模板內文、名稱、「閱讀」按鈕、可用變數、五項自動檢查（全部取消時送 `checks: []`）、另存新版本（422 顯示在內文旁）；內建唯讀只能複製；中欄連到 `note-default`、`note-map-default`；右欄用一部影音的筆記預覽已儲存的版本（`<id>@<版本>`），`409 no_note` 顯示說明 | 完成 | `NoteTemplateEditorPage.tsx` |
+| 設定的「通知」分區：端點列表（種類、主機／末四碼、事件、啟用狀態）、新增與編輯（四種 notifier 的欄位、密鑰只寫不讀、七個事件）、傳送測試通知與結果、停用與刪除（確認）、最近的通知（outbox） | 完成 | `src/pages/settings/NotificationsSection.tsx` |
+| 設定的「預算」分區：月預算、單部上限、提醒門檻、預算時區；本月花費、預留與剩餘 | 完成 | `src/pages/settings/BudgetSection.tsx` |
+| 影音詳情的「畫面」分頁：印樣（只看選中的／全部候選）、時間（點擊跳播）、章節、圖說、排除原因、張數摘要與不足提示 | 完成 | `src/pages/item/NotePanels.tsx` |
+| 影音詳情的「筆記」分頁：閱讀字體渲染（標題、段落、清單、callout、表格、程式碼、連結只留 http／https／mailto、wikilink 轉文字）、同一部影音的時間連結點擊跳播、`![[…frame_NNNN.jpg]]` 對應到畫面圖片、自動檢查、寫入 vault 的路徑與 commit、過時提示與「重新產生筆記」、下載 Markdown | 完成 | `NotePanels.tsx`、`src/notes` |
+| 總覽（`/`，依賴 LIB-09 `/api/overview`）、媒體庫的批次操作（LIB-08 `POST /api/items/batch`）、搜尋、Hub | 未做：後端還沒有（不放會 501 的入口） | — |
+| 訂閱列表的「新內容」欄、處理方案被訂閱使用時的提示 | 未做：API 沒有每個訂閱的新內容數，也沒有「哪些訂閱用這個處理方案」的查詢（可以從列表的 `profile` 組合，留給之後） | — |
+| 筆記模板的檔名與資料夾版面規則 | 不提供：vault 只在設定檔定義（ADR-0020、VAULT V1），頁面只說明 | — |
+| `G` 然後 `S` 的快捷鍵、`1`–`4` 切換詳情分頁 | 未做：快捷鍵仍是之後的切片（10.1） | — |
+| 真實瀏覽器的視覺、鍵盤與螢幕閱讀器驗收（`@ui @manual`） | owner 手動驗收 | — |
+
+驗證：vitest 34 個檔案 375 個測試（每個新頁面與分區都有 axe 測試，`a11yRoutes` 加了 10 條路徑）、i18n 三語各 1384 個 key、初始 JS 260.4KB gzip（UI-3b 後約 241.5KB；增加的主要是三語字串與設定頁的兩個分區，頁面本身都在 lazy chunk）。
+
+### 10.13 UI-4 的決定
+
+（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
+
+1. **不改後端**：沒有新增路由或欄位，OpenAPI 與 `schema.d.ts` 沒有變動。
+2. **介面語言**：brief 寫的 zh-TW／ja 與 repo 不符；照 repo 的 `zh-Hant`、`zh-Hans`、`en`。
+3. **scope**：沒有查詢目前身分與 scope 的 API（`/api/auth` 只有 login、logout、password，`/api/auth/sessions` 尚未實作）。Web UI 以 owner 的 session 登入，有全部權限，所以不依 scope 隱藏按鈕；token 才有 scope 限制，萬一收到 403 由 `ErrorCallout` 顯示。之後有 `GET /api/auth/me` 之類的路由時再依 scope 停用按鈕。
+4. **金額**：API 回傳的是浮點數美元（micro-USD ÷ 1e6），前端不自己加總，只顯示伺服器算好的總額、預留與預計。頂部一行與預算分區依 COST 規格用 2 位小數；明細的單筆金額常小於 1 美分，沿用 `formatUsd`（小於 $0.01 時最多 4 位，**偏離規格「四捨五入到兩位」**）；單價最多 6 位。幣別符號用 `Intl`（繁中、簡中是 `US$`），與 UI-2 的 `formatUsd` 一致，不硬寫 `$`。`state: unknown` 顯示「未知單價」，不顯示 `$0.00`；`unknown_calls` 在頂部說明並連到計價表。
+5. **訂閱的試跑預覽不在開頁時自動執行**：預覽會連外並消耗 rate limit（SUB-R10、handoff 給 UI 的提醒），開啟頁面或抽屜時不送；按過一次「試跑預覽」之後，修改設定才以 800ms debounce 即時更新（pages.md 的「即時更新」），新請求取消舊的，429 不自動重試。新增時網址要先像 http(s) 網址才能預覽。
+6. **訂閱詳情是頁面，不是抽屜**：pages.md §5 畫的是抽屜，§2 的路由表有 `/subscriptions/:id`；做成獨立頁面（可加書籤，條目列表也放得下）。
+7. **訂閱 PATCH 只送改過的欄位**：`backfill` 一送就會在下一次檢查重新評估（SUB-R3），沒改就不送；`overrides` 是整個取代，表單沒有它，永遠不送；處理方案改回預設送 `profile: ""`。片長在表單用分鐘（API 是秒）。
+8. **條目列表沒有 cursor**：`GET /entries` 只有 `limit`，「載入更多」改成每次把 limit 加 200（上限 5000），不另做虛擬化。
+9. **成本的長條圖**：用表格的列畫水平長條（`aria-hidden`），金額與次數以文字放在同一列，所以不另外需要文字替代；不加圖表套件。依日期分組時每列是一天（不是直立的長條）。
+10. **CSV 匯出**是 `<a download>` 的 GET；錯誤時瀏覽器會下載到 JSON，所以前端先檢查範圍（1～366 天）不合法時不顯示連結。匯出用回應中的 `from`、`to`（伺服器依預算時區決定的預設值），不用瀏覽器的時區計算本月。
+11. **計價表放在成本頁**（`#prices`），`prices_stale` 的「調整單價」捲到那裡；pages.md §11 沒有畫計價表，COST-03 與 COST-R13 的動作需要它。覆寫已有的單價時先在對話框內顯示「舊價 → 新價」，再按一次「確認覆寫」。
+12. **通知的密鑰**比照 UI-3b 決定 6：只放在元件 state，送出時立即清空（失敗也要重新輸入），不用 `useMutation`；編輯時沒有重新輸入就不送（後端保留原值，NOTIFY-R6），清空選填的非機密欄位送 `null`。ntfy 的 token 目前沒有「移除」的操作（PATCH 的 `null` 可以刪，UI 沒有做）。
+13. **還沒有產生端的事件**（`digest`、`alert`、`source.better_available`：DIG、OPS 告警、SRC-10 尚未實作）仍可勾選，旁邊標示「尚未會發出」。
+14. **預算分區** PUT 只送 `monthly_usd`、`per_item_usd`、`warn_at_percent`、`timezone` 四個欄位（GET 另外回傳的 `month`、`spent_usd` 等送回去會 422）；空白送 `null`（不限）。時區用文字輸入，驗證交給後端。
+15. **筆記模板**：沒有單筆 GET，編輯頁從列表找；預覽只能用已儲存的版本（API 吃 `<id>@<版本>`），有未儲存的修改時提示。三欄的中欄只連到 Prompt 庫：沒有 API 把模板和 prompt 綁在一起（處理方案分別選）。可用變數與五項檢查寫在前端（`NOTE_CHECKS`、`TEMPLATE_VARS`，與 NOTE-R7、R11 一致；後端改了要同步）。
+16. **Markdown renderer 自寫**（`src/notes/markdown.ts`、`NoteMarkdown.tsx`）：輸出 React element，不用 `dangerouslySetInnerHTML`，不加相依；原始 HTML 一律是文字，連結只留 http／https／mailto，`![](…)` 外部圖片只顯示替代文字，wikilink 只留文字，標題層級往下移一層（頁面已有 h1）。只支援筆記會用到的語法（巢狀清單攤平成一層）。
+17. **筆記中的畫面嵌入**以檔名的 `frame_NNNN` 對應到 `GET /api/items/{id}/frames/{n}?size=thumb`（`internal/notes/render.go` 的 `%04d` 就是畫面編號）。待決：frames 重跑後版本會換，筆記若還沒重新產生，NNNN 可能指到新版本的另一張畫面（vault 內的檔案是 pin 住的舊版本，不受影響）；需要的話 API 要讓筆記帶畫面版本。
+18. **時間連結跳播**只在連結指向同一部影音時（比對主機、路徑與 YouTube 的 `v`；`t=` 或 `#t=`）攔截，其他連結開新分頁。
+19. **畫面與筆記只在切到該分頁時讀取**，404 `no_frames`／`no_note` 是「還沒有」，顯示說明不當成錯誤；SSE 的 `stage.status` 在 frames、note、publish `done` 時讓兩者失效。詳情頁的分頁順序是字幕、畫面、筆記、步驟、紀錄、輸出（README §3.6 的 1–4 是字幕、畫面、筆記、紀錄）。
+20. **共用檔案只增不改**：`router.tsx`、`queryKeys.ts`、locale JSON、`SettingsPage.tsx`（通知、預算改接新的元件，`PlannedSection` 保留但目前沒有分區使用）、`a11yRoutes.ts`、`fixtures.ts`；`router.test.tsx` 的導覽清單與 `settings.test.tsx` 的「通知與預算只說明 M4 起提供」測試依新行為修改。新的樣式在 `src/styles/m4.css`（由 `main.tsx` 載入）。

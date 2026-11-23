@@ -186,6 +186,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - **紀錄**：
     - 依步驟列出狀態、開始與結束時間、耗時、花費、provider、model、prompt 版本、log。
     - 每個產出都有版本，可以比較兩個版本的差異。
+- **實作狀態（UI-4，2026-11-23）**：畫面與筆記分頁已完成，見 [README 10.12](README.md#1012-ui-4訂閱成本筆記模板通知與預算影音詳情的畫面與筆記2026-11-23)；匯出選單的 Markdown 筆記改放在筆記分頁的「下載 Markdown」。
 - **重新處理**選單：
   - 從某個步驟開始重新處理。
   - 換 prompt 或模型重新生成，會產生新版本，舊版本保留。
@@ -249,6 +250,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - 新增訂閱時提醒：「同一個頻道只在一台實例上訂閱，避免重複處理。」（見 ADR-0011）
 - **API**：`GET/POST/PATCH /api/subscriptions`、`POST /api/subscriptions/:id/preview`、`POST /api/subscriptions/:id/check`
 - **修訂（2026-11-23，[SUB 規格](../specs/SUB-subscriptions.md) SUB-R6、待決問題 S9，待 owner 追認）**：回補範圍為「只抓之後的新內容」時，試跑預覽把清單中已存在的舊內容列在「略過」（原因 `before_subscription`），線框中的「會處理 8 部」只適用於「最近 N 部」與「全部」。API 另有 `DELETE /api/subscriptions/:id`、`GET /api/subscriptions/:id/entries`、`POST /api/subscriptions/preview` 與匯入路由（SUB-R13）。
+- **實作狀態（UI-4，2026-11-23）**：完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)。偏離：詳情與編輯做成 `/subscriptions/:id` 頁面而不是抽屜；試跑預覽要先按一次「試跑預覽」才會連外；列表沒有「新內容」欄（API 沒有這個數字）。
 
 ## 6. 佇列
 
@@ -384,6 +386,7 @@ Prompt 庫 › 校正 › correct-default
   - 可以勾選要檢查的項目，例如：必要的 frontmatter 欄位、每個內容標題都有時間戳、圖片都存在、有「自我檢驗」段落。
   - 檢查失敗時，任務會標示「需要你處理」，不會寫入 vault。
 - **API**：`GET/POST/PATCH /api/note-templates`、`POST /api/note-templates/:id/preview`
+- **實作狀態（UI-4，2026-11-23）**：完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)。版面規則（檔名、資料夾）由設定檔的 vault 決定，頁面只說明；中欄只連到 Prompt 庫的筆記 prompt。
 
 ## 11. 成本
 
@@ -396,6 +399,7 @@ Prompt 庫 › 校正 › correct-default
 - 不使用大數字統計卡。
 - **API**：`GET /api/costs?group_by=&from=&to=`、`PATCH /api/settings/budget`
 - **修訂（2026-11-23，COST 規格待決問題 C1，待 owner 追認）**：預算沿用既有的 `PUT /api/settings/budget`（整個區段取代），不用 `PATCH`。
+- **實作狀態（UI-4，2026-11-23）**：完成，另有計價表（覆寫、確認），見 [README 10.12、10.13](README.md#1013-ui-4-的決定)。長條圖是表格列中的水平長條。
 
 ## 12. 設定
 
@@ -421,6 +425,7 @@ Prompt 庫 › 校正 › correct-default
 - **修訂（2026-11-23，ADR-0020、VAULT 規格待決問題 V1，待 owner 追認）**：「輸出」分區的 vault（路徑、git repo、分支）與 hook 只能在設定檔定義，這裡唯讀顯示，處理方案只能選用已定義的 id；字幕的本機影片旁與資料夾目標維持可以在處理方案中設定。
 - **API**：`GET/PUT /api/settings/:section`、`POST /api/providers/:id/test`、`POST /api/cookies`、`GET /api/system`、`POST /api/tools/yt-dlp/update`、`GET/POST/DELETE /api/tokens`
 - **修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）**：「書籤小工具」是 ENTRY-R1 的區塊，獨立成一個分區（`/settings/bookmarklet`，排在「外觀」之後），見 ENTRY 待決問題 E7。
+- **實作狀態（UI-4，2026-11-23）**：「通知」與「預算」分區完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)；其他分區見 README 10.10。
 
 ## 13. 登入
 
