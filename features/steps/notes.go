@@ -39,10 +39,10 @@ func (s *Scenario) geminiAcceptsUpTo(limit string) error {
 	return nil
 }
 
-// noteIs 直接寫入影音現行的筆記（steps.md 4.15 的 seeding）。只對 VAULT 的場景（有 @VAULT- 開頭的 tag）放行；
+// noteIs 直接寫入影音現行的筆記（steps.md 4.15 的 seeding）。只對 VAULT 與 BND 的場景（有 @VAULT-、@BND- 開頭的 tag）放行；
 // 其他領域（M4 的 BND 等）維持 pending，等各自的切片放寬（同 spbGate 的做法）。
 func (s *Scenario) noteIs(ref string, doc *godog.DocString) error {
-	if !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@VAULT-") }) {
+	if !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@VAULT-") || strings.HasPrefix(t, "@BND-") }) {
 		return fmt.Errorf("筆記的 seeding 只對 VAULT 的場景實作：%w", godog.ErrPending)
 	}
 	if err := s.prepareOwner(); err != nil {

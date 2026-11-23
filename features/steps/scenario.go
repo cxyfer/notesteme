@@ -28,6 +28,8 @@ type Scenario struct {
 	stepTexts []string
 	// sub 是訂閱的狀態（SUB，M4；見 subscriptions.go）。
 	sub subState
+	// bnd 是 bundle 的狀態（BND，M4；見 bundles.go）。
+	bnd bndState
 
 	// ctx 是 server 的 root context，場景結束時取消。
 	ctx    context.Context
@@ -243,7 +245,8 @@ func (s *Scenario) startServer() error {
 		return err
 	}
 	s.server, s.startErr = srv, nil
-	return nil
+	// BND：場景指定的實例 ID 在 server 啟動後、第一個請求之前寫入。
+	return s.applyBundleInstance()
 }
 
 // ensureServer 在 server 尚未啟動時以當時的設定隱含啟動（ADR-0015）。

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -73,6 +75,10 @@ func (s *Scenario) ownerRuns(line string) error {
 	for i, a := range argv {
 		// /tmp/<x> 對應到 `Given the file "/tmp/<x>" contains:` 寫的檔案（steps.md 第 4 節），不碰真正的 /tmp。
 		argv[i] = s.expandArg(a)
+	}
+	// 對應的 <場景根目錄>/tmp 先建立，指令才能把輸出寫到 /tmp/<x>（例如 BND 的 export --out）。
+	if err := os.MkdirAll(filepath.Join(s.World.Root, "tmp"), 0o700); err != nil {
+		return err
 	}
 	switch argv[0] {
 	case "notesteme":

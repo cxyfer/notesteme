@@ -14,7 +14,7 @@ import (
 
 // registerLibrary 註冊「全文搜尋、bundle 與術語審核」的步驟（steps.md 4.20，M4）。
 //
-// SRCH 的句型由 S8 實作（searchLibraryHas 等）；其餘的句型在 M4 規格展開時（2026-11-23）只註冊步驟樁：handler 一律回傳 godog.ErrPending，
+// SRCH 的句型由 S8 實作（searchLibraryHas 等），BND 的由 bundles.go 實作；其餘的句型在 M4 規格展開時（2026-11-23）只註冊步驟樁：handler 一律回傳 godog.ErrPending，
 // 由 M4 的實作切片換成真正的實作（假服務見 features/fixtures/README.md 的「M4 的假服務」）。
 func registerLibrary(r *Registry, s *Scenario) {
 	r.Step(`the search library has {string} titled {string} with the {string} transcript:`, func(ref, title, variant string, t *godog.Table) error {
@@ -27,21 +27,8 @@ func registerLibrary(r *Registry, s *Scenario) {
 	})
 	r.Step(`the search index has no rows for {string}`, func(ref string) error { return s.searchIndexRows(ref, false) })
 	r.Step(`the search index has rows for {string}`, func(ref string) error { return s.searchIndexRows(ref, true) })
-	r.Step(`the bundle {string} contains the item {string} titled {string}`, func(string, string, string) error { return godog.ErrPending })
-	r.Step(`the bundle {string} also has the entries:`, func(string, *godog.Table) error { return godog.ErrPending })
-	r.Step(`the bundle {string} has the manifest field {string} set to:`, func(string, string, *godog.DocString) error { return godog.ErrPending })
-	r.Step(`the bundle {string} has the content of {string} changed`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the bundle {string} has the file {string} replaced with:`, func(string, string, *godog.DocString) error { return godog.ErrPending })
-	r.Step(`the bundle {string} is the text:`, func(string, *godog.DocString) error { return godog.ErrPending })
-	r.Step(`the bundle instance ID is {string}`, func(string) error { return godog.ErrPending })
-	r.Step(`the bundle {string} is imported`, func(string) error { return godog.ErrPending })
-	r.Step(`the bundle {string} is imported with {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the bundle {string} is imported with the token {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the bundle {string} passes its own checks`, func(string) error { return godog.ErrPending })
-	r.Step(`the bundle {string} lists the artifacts:`, func(string, *godog.Table) error { return godog.ErrPending })
-	r.Step(`the bundle {string} has the manifest values:`, func(string, *godog.Table) error { return godog.ErrPending })
-	r.Step(`the bundle {string} contains no local paths`, func(string) error { return godog.ErrPending })
-	r.Step(`the bundle {string} does not contain {string}`, func(string, string) error { return godog.ErrPending })
+	// BND 的句型由 bundles.go 實作。
+	registerBundles(r, s)
 	r.Step(`the term candidates {string} are pending for the channel of {string}`, func(string, string) error { return godog.ErrPending })
 	r.Step(`the term candidate {string} of the channel of {string} is decided with:`, func(string, string, *godog.DocString) error { return godog.ErrPending })
 	r.Step(`the term candidates are decided in one batch:`, func(*godog.Table) error { return godog.ErrPending })
