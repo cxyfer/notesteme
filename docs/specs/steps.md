@@ -764,6 +764,8 @@ M5 的領域用語：
 | `When the Hub MCP client with the Hub token {string} lists the tools` | 對 Hub 的 `/mcp` 呼叫 `tools/list`（同一個 token 在場景中只 `initialize` 一次，之後每個呼叫是一個 HTTP 請求；Hub 重新啟動後重新 `initialize`）；`Then the listed names include …` 等 4.7 的步驟斷言它 |
 | `When the Hub MCP client with the Hub token {string} calls {string} with:` | 對 Hub 的 `/mcp` 呼叫 tool，參數為 JSON；`Then the tool result contains:`、`Then the tool call fails with {string}` 斷言它 |
 
+M5-S6（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）實作了 `from the origin` 與兩個 Hub MCP 句型（`features/steps/hub_mcp.go`），不是新句型；閘門再放行 HMCP-R1～R8（`hmcpRules`）。語意補充：Hub MCP 的連線以 token 名稱快取，Hub 的 store 換了（重新啟動）就重新連線；`calls … with:` 的連線（`initialize`）失敗時不讓步驟失敗，而是記成這次 tool 呼叫的錯誤（被限流的 `initialize` 回的是含訊息的 JSON-RPC 錯誤，HMCP 待決問題 M6），`Then the tool call fails with` 斷言它的訊息；`lists the tools` 的連線失敗仍是步驟失敗。
+
 ### 4.31 Hub 的內容（`steps/hub_content.go`，M5）
 
 bundle 由步驟在場景目錄中產生，不 commit 二進位 fixture：字幕內容依列的順序產生確定的 cues（每個 `content` 值對應一份固定的內容，兩列的 `content` 相同就產生完全相同的 bytes），筆記與章節同理。
