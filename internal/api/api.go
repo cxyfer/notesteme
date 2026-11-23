@@ -70,6 +70,9 @@ type Deps struct {
 	Cookies CookieStore
 	// Resumer 在 cookie 儲存後恢復等待它的 blocked 步驟（PIPE-R4）；nil 時不恢復。
 	Resumer Resumer
+	// SecureCookies 為 true 時 session 與 CSRF cookie 一律帶 Secure（vps 部署，OPS-R21）；
+	// 否則只在請求經由 HTTPS 到達時才帶。
+	SecureCookies bool
 	// System、Tools、Backup、Providers 是 OPS 切片的依賴；nil 時對應的路由回應 501。
 	// 介面只定最小骨架：System 與 Tools 由 OPS-B、Backup 由 OPS-A、Providers 由 OPS-C 擴充。
 	System    SystemInfo
@@ -151,7 +154,7 @@ func build(d Deps, authn func(http.Handler) http.Handler, remote bool) http.Hand
 		// 反向代理驗證只在 TCP listener（AUTH-R13）；本機 socket 沒有 proxy。
 		h = proxyMiddleware(d.Auth)(h)
 	}
-	h = requestInfoMiddleware(d.Auth)(h)
+	h = requestInfoMiddleware(d.Auth, d.SecureCookies)(h)
 	h = logMiddleware(d.Log, d.Clock)(h)
 	h = recoverMiddleware(d.Log)(h)
 	return h

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -21,6 +22,24 @@ type SystemView struct {
 	// Tools 的 key 是工具名稱（yt-dlp、ffmpeg、ffprobe、deno）。
 	Tools map[string]ToolView `json:"tools"`
 	YtDlp YtDlpView           `json:"yt_dlp"`
+	// Alerts 是目前成立的告警（OPS-R13）；Backup 是每日備份的狀態（OPS-R11）。總覽（LIB-09）讀這兩個欄位。
+	Alerts []AlertView `json:"alerts" doc:"目前成立的告警，依開始的時間排序"`
+	Backup BackupView  `json:"backup"`
+}
+
+// AlertView 是一則成立中的告警（OPS-R13～R18）。
+type AlertView struct {
+	Kind    string    `json:"kind" doc:"backup_failed、stuck_task、job_stale、disk_usage、cookie_stale 或 ytdlp_failure_rate"`
+	Key     string    `json:"key" doc:"告警的對象，例如影音 id、<kind>:<key>、/data、平台"`
+	Message string    `json:"message"`
+	Since   time.Time `json:"since" doc:"條件開始成立的時間"`
+}
+
+// BackupView 是每日備份（backup.daily）的狀態；沒有時為 null（例如停用時 next_run_at 為 null）。
+type BackupView struct {
+	LastOKAt  *time.Time `json:"last_ok_at" doc:"最近一次成功的時間"`
+	LastError *string    `json:"last_error" doc:"最近一次失敗的原因；成功後為 null"`
+	NextRunAt *time.Time `json:"next_run_at" doc:"下一次執行的時間；停用時為 null"`
 }
 
 // ToolView 是一個外部工具生效的路徑與來源（OPS-R8）。

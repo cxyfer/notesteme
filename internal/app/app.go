@@ -66,6 +66,8 @@ type TestControls struct {
 	// CostEstimates 取代這些步驟每個任務的估算金額（美元，COST 待決問題 C8）；PricesAsOf 取代內建計價表的確認日期。
 	CostEstimates map[string]float64
 	PricesAsOf    string
+	// DiskUsage 取代讀取資料目錄所在檔案系統用量的函式（OPS-R16 的告警）；每次檢查都呼叫，可以在 server 啟動後改變結果。
+	DiskUsage func(dir string) (int, error)
 }
 
 // IO 是標準輸入輸出。
@@ -103,13 +105,13 @@ func Run(ctx context.Context, args []string, stdio IO, env Env) int {
 
 // runServe 啟動 server，直到 ctx 被取消（main.go 在收到 SIGINT／SIGTERM 時取消）後正常關閉。
 func runServe(ctx context.Context, args []string, stdio IO, env Env) int {
-	// TODO(AUTH-R3)：--insecure-no-auth 才允許在沒有密碼時啟動。
-	if len(args) > 0 {
-		fmt.Fprintf(stdio.Stderr, "notesteme serve: unknown argument %q\n", args[0])
+	opts, err := parseServeArgs(args)
+	if err != nil {
+		fmt.Fprintf(stdio.Stderr, "notesteme serve: %v\n", err)
 		return 2
 	}
 
-	srv, err := StartServer(ctx, env)
+	srv, err := StartServerWith(ctx, env, opts)
 	if err != nil {
 		fmt.Fprintf(stdio.Stderr, "notesteme: %v\n", err)
 		return 1

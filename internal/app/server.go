@@ -132,6 +132,11 @@ type Server struct {
 // 開啟並 migrate DB、組 pipeline 與 worker），再建立 listener 與本機 Unix socket 後開始服務。
 // 回傳時 listener 已經在接受連線。檢查順序與錯誤訊息見 openCore。
 func StartServer(ctx context.Context, env Env) (*Server, error) {
+	return StartServerWith(ctx, env, ServeOptions{})
+}
+
+// StartServerWith 同 StartServer，帶 serve 的旗標（ServeOptions）。
+func StartServerWith(ctx context.Context, env Env, opts ServeOptions) (*Server, error) {
 	if env.Listen == nil {
 		return nil, errors.New("app: Env.Listen 不可為 nil")
 	}
@@ -140,6 +145,10 @@ func StartServer(ctx context.Context, env Env) (*Server, error) {
 		explainLock:  true,
 		manualWorker: env.Test != nil && env.Test.ManualWorker,
 		check: func(ctx context.Context, s *Server) error {
+			// 旗標的檢查在密碼之前：vps 部署拒絕 --insecure-no-auth 時，訊息要說明原因（OPS-R21）。
+			if err := opts.check(s.cfg); err != nil {
+				return err
+			}
 			if err := s.auth.EnsurePassword(ctx, env.Vars[envPassword]); err != nil {
 				return err
 			}
@@ -231,7 +240,9 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	tools := ToolResolver(env.Vars, cfg)
 	// cookie 存放在 secrets 表（資料金鑰加密）；每次呼叫 yt-dlp 時寫成 <data>/tmp 下的暫存檔（SEC-R7）。
 	s.cookies = cookies.New(s.store, s.keys, cfg.Data)
-	yt := &youtube.Client{Runner: runner, Tools: tools, Cookies: s.cookies}
+	// yt-dlp 的呼叫結果與 cookie 的成功使用記進統計（OPS-R17、R18）。
+	calls := s.opsCalls(env, log)
+	yt := &youtube.Client{Runner: runner, Tools: tools, Cookies: s.cookies, Calls: calls}
 	s.queue = queue.New(s.store, env.Clock, store.NewID())
 	if env.Test != nil && env.Test.SerialLLM {
 		// llm 類別一次最多執行一個任務（不論設定的上限），請求順序才有確定性；不影響 GET /api/queue 顯示的上限。
@@ -242,7 +253,7 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 		// 垃圾桶列表的 purge_at 與定期清理用同一個保留期限（DEL-R4）。
 		TrashRetention: trashRetention(cfg),
 		// Bilibili 與 YouTube 共用 runner、工具解析與 cookie 存放；Probe 不帶 --no-warnings，才看得到需要登入的警告（SRC-R8）。
-		Bilibili: &bilibili.Client{Runner: runner, Tools: tools, Cookies: s.cookies, Log: log},
+		Bilibili: &bilibili.Client{Runner: runner, Tools: tools, Cookies: s.cookies, Log: log, Calls: calls},
 		// 對外請求一律經過 netguard（ADR-0014），不使用 http.DefaultClient；逾時與大小由各呼叫端限制。
 		HTTP: netguard.NewClient(s.netw),
 		// 新增 Podcast 單集時預檢音檔的位址（不連線，GRD-R2）；用同一份 netguard 依賴，allowlist 的判斷與連線時一致。
@@ -334,6 +345,12 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	// SRC-10：重新 Probe（SRC-R18～R22）。
 	if err := s.registerReprobe(); err != nil {
 		return err
+	}
+	// OPS-R11～R18：每日備份與無人值守告警（只有 serve）。
+	if !s.unrestrictedFiles {
+		if err := s.registerOps(ctx, env, cfg, log, outbox); err != nil {
+			return err
+		}
 	}
 	var periodic worker.Periodic = periodics{hk, s.pipeline.AgentSweeper(), s.scheduler}
 	// inbox 監看（ING-05）只在 serve 啟動：standalone 的 CLI 是短命的程序，不自動掃描。

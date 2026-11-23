@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/api"
 	"github.com/cxyfer/notesteme/internal/backup"
@@ -30,6 +31,16 @@ type backupSource struct {
 // Begin 產生一致的資料庫快照（serve 執行中也可以做）並讀入設定檔；備份的內容在 WriteTo 時才以串流寫出。
 // 暫存的快照放在資料目錄的 tmp/（與資料庫同一個磁碟，不佔用 /tmp），Close 時刪除。
 func (b *backupSource) Begin(ctx context.Context) (api.Backup, error) {
+	pb, err := b.s.beginBackup(ctx, b.env.Clock.Now())
+	if err != nil {
+		return nil, err
+	}
+	return pb, nil
+}
+
+// beginBackup 準備一份備份（POST /api/backup 與每日備份共用，OPS-R1、R11）；檔名的時間是 now。
+func (s *Server) beginBackup(ctx context.Context, now time.Time) (*preparedBackup, error) {
+	b := &backupSource{s: s}
 	cfg := b.s.cfg
 	tmpRoot := filepath.Join(cfg.Data, "tmp")
 	if err := os.MkdirAll(tmpRoot, dataDirPerm); err != nil {
@@ -70,7 +81,7 @@ func (b *backupSource) Begin(ctx context.Context) (api.Backup, error) {
 	if err != nil {
 		return nil, err
 	}
-	now := b.env.Clock.Now().UTC()
+	now = now.UTC()
 	pb.name = backup.FileName(now)
 	pb.archive = backup.Archive{
 		Manifest: backup.Manifest{SchemaVersion: schemaVersion, CreatedAt: now, NotestemeVersion: version},
@@ -188,6 +199,18 @@ type preparedBackup struct {
 }
 
 func (p *preparedBackup) Name() string { return p.name }
+
+// Size 是備份大約的大小：資料庫快照、設定檔與上傳檔的總和（gzip 之前；每日備份用來檢查剩餘空間）。
+func (p *preparedBackup) Size() int64 {
+	n := int64(len(p.archive.Config))
+	if fi, err := os.Stat(p.archive.DBPath); err == nil {
+		n += fi.Size()
+	}
+	for _, u := range p.archive.Uploads {
+		n += u.Size
+	}
+	return n
+}
 
 func (p *preparedBackup) WriteTo(w io.Writer) (int64, error) { return p.archive.WriteTo(w) }
 

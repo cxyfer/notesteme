@@ -110,6 +110,34 @@
         ],
         "type": "object"
       },
+      "AlertView": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "description": "告警的對象，例如影音 id、\u003ckind\u003e:\u003ckey\u003e、/data、平台",
+            "type": "string"
+          },
+          "kind": {
+            "description": "backup_failed、stuck_task、job_stale、disk_usage、cookie_stale 或 ytdlp_failure_rate",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "since": {
+            "description": "條件開始成立的時間",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "key",
+          "message",
+          "since"
+        ],
+        "type": "object"
+      },
       "AuthMethodsOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -135,6 +163,40 @@
         },
         "required": [
           "mode"
+        ],
+        "type": "object"
+      },
+      "BackupView": {
+        "additionalProperties": false,
+        "properties": {
+          "last_error": {
+            "description": "最近一次失敗的原因；成功後為 null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_ok_at": {
+            "description": "最近一次成功的時間",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_run_at": {
+            "description": "下一次執行的時間；停用時為 null",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "last_ok_at",
+          "last_error",
+          "next_run_at"
         ],
         "type": "object"
       },
@@ -5326,6 +5388,19 @@
       "SystemView": {
         "additionalProperties": false,
         "properties": {
+          "alerts": {
+            "description": "目前成立的告警，依開始的時間排序",
+            "items": {
+              "$ref": "#/components/schemas/AlertView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "backup": {
+            "$ref": "#/components/schemas/BackupView"
+          },
           "data": {
             "description": "資料目錄",
             "type": "string"
@@ -5358,7 +5433,9 @@
           "data",
           "data_source",
           "tools",
-          "yt_dlp"
+          "yt_dlp",
+          "alerts",
+          "backup"
         ],
         "type": "object"
       },

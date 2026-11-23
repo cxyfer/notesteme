@@ -207,10 +207,12 @@ func (s *Server) apiDeps(env Env) api.Deps {
 		// 本機影音（ING-05）：inbox 決定識別鍵，資料目錄放上傳的暫存與檔案。
 		Inbox: s.cfg.Inbox, DataDir: s.cfg.Data, UploadMaxBytes: s.cfg.UploadMaxBytes,
 		Store: s.store, Auth: s.auth, Clock: env.Clock, Log: s.log, Version: version,
-		ReadyChecks: toolChecks(ToolResolver(env.Vars, s.cfg)),
-		Pipeline:    s.pipeline,
-		Prompts:     s.prompts,
-		AssStyles:   s.assStyles,
+		// vps 部署：TLS 在 Caddy 終止，session cookie 一律帶 Secure（OPS-R21）。
+		SecureCookies: s.cfg.M4.Deployment == config.DeploymentVPS,
+		ReadyChecks:   toolChecks(ToolResolver(env.Vars, s.cfg)),
+		Pipeline:      s.pipeline,
+		Prompts:       s.prompts,
+		AssStyles:     s.assStyles,
 		// cookie API（POST /api/cookies）：儲存後由 pipeline 恢復等待 cookie 的 blocked 步驟（PIPE-R4）。
 		Cookies: s.cookies,
 		Resumer: s.pipeline,

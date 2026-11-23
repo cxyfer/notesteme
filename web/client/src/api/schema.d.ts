@@ -1788,6 +1788,18 @@ export interface components {
       /** Format: int64 */
       version: number;
     };
+    AlertView: {
+      /** @description 告警的對象，例如影音 id、<kind>:<key>、/data、平台 */
+      key: string;
+      /** @description backup_failed、stuck_task、job_stale、disk_usage、cookie_stale 或 ytdlp_failure_rate */
+      kind: string;
+      message: string;
+      /**
+       * Format: date-time
+       * @description 條件開始成立的時間
+       */
+      since: string;
+    };
     AuthMethodsOutputBody: {
       oidc: components["schemas"]["OIDCStruct"];
     };
@@ -1795,6 +1807,20 @@ export interface components {
       /** Format: int64 */
       count?: number;
       mode: string;
+    };
+    BackupView: {
+      /** @description 最近一次失敗的原因；成功後為 null */
+      last_error: string | null;
+      /**
+       * Format: date-time
+       * @description 最近一次成功的時間
+       */
+      last_ok_at: string | null;
+      /**
+       * Format: date-time
+       * @description 下一次執行的時間；停用時為 null
+       */
+      next_run_at: string | null;
     };
     BundleImportItem: {
       id: string;
@@ -3556,6 +3582,9 @@ export interface components {
       executor: "api";
     };
     SystemView: {
+      /** @description 目前成立的告警，依開始的時間排序 */
+      alerts: components["schemas"]["AlertView"][] | null;
+      backup: components["schemas"]["BackupView"];
       /** @description 資料目錄 */
       data: string;
       /** @description default、config_file 或 env */

@@ -40,7 +40,8 @@ func principalFrom(ctx context.Context) (auth.Principal, bool) {
 // requestInfoMiddleware 把來源位址、User-Agent 與是否為 HTTPS 放進 context。
 // 來源位址取自連線；連線來自 trusted_proxies 時改用 X-Forwarded-For（AUTH-R6，見 auth.SourceAddr）。
 // svc 為 nil 時（沒有設定 trusted proxies）只用連線位址。
-func requestInfoMiddleware(svc *auth.Service) func(http.Handler) http.Handler {
+// forceSecure 為 true 時（vps 部署）一律視為 HTTPS：TLS 由前面的 Caddy 終止，cookie 一律帶 Secure（OPS-R21）。
+func requestInfoMiddleware(svc *auth.Service, forceSecure bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var ip string
@@ -52,7 +53,7 @@ func requestInfoMiddleware(svc *auth.Service) func(http.Handler) http.Handler {
 			info := requestInfo{
 				IP:        ip,
 				UserAgent: r.UserAgent(),
-				Secure:    r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"),
+				Secure:    forceSecure || r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"),
 			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), keyRequestInfo, info)))
 		})
