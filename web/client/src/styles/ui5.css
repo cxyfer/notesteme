@@ -1,0 +1,68 @@
+/* UI-5：字幕全文搜尋、術語審核、bundle、系統告警與備份、摘要與彙整、更好的字幕來源。顏色、間距只用 tokens.css 的變數。 */
+
+/* ---------- 搜尋 ---------- */
+.search-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.search-form__q {
+  flex: 1 1 20rem;
+}
+.search-form__lang {
+  flex: 0 1 10rem;
+}
+.search-form > .button {
+  margin-top: calc(var(--font-14) * 1.5 + var(--space-1));
+}
+.search-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: var(--space-3) 0;
+}
+.search-group__title {
+  font-size: var(--font-16);
+  margin: 0 0 var(--space-2);
+}
+.search-group__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+.search-group__list > li {
+  border-bottom: 1px solid var(--rule);
+}
+.search-hit {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-1);
+  color: inherit;
+  text-decoration: none;
+}
+.search-hit:hover .search-hit__text {
+  text-decoration: underline;
+}
+.search-hit__time {
+  color: var(--text-secondary);
+}
+.search-hit__body {
+  overflow-wrap: anywhere;
+}
+.search-hit__context {
+  color: var(--text-secondary);
+}
+.search-hit__meta {
+  grid-column: 2;
+  font-size: var(--font-12);
+}
+.search-hit mark {
+  /* Cue 底配 Ink 字，淺色與深色主題都夠對比 */
+  background: var(--mark-now);
+  color: var(--color-ink);
+  font-weight: 600;
+}

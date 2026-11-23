@@ -69,6 +69,9 @@
     },
     "noteTemplates": {
       "title": "Note templates"
+    },
+    "search": {
+      "title": "Search transcripts"
     }
   },
   "login": {
@@ -1735,5 +1738,22 @@
     "checkOk": "Passed: {{name}}",
     "checkFailed": "Failed: {{name}}",
     "previewResult": "Preview result"
+  },
+  "search": {
+    "intro": "Find the line where something was said, across every transcript.",
+    "label": "Text to find",
+    "hint": "Matched literally and case-insensitively. Simplified and Traditional Chinese don't match each other.",
+    "lang": "Language (optional)",
+    "submit": "Search",
+    "problem": {
+      "empty": "Enter the text to search for.",
+      "tooLong": "Search text can be at most 200 characters."
+    },
+    "loading": "Searching…",
+    "none": "No transcript contains “{{q}}”.",
+    "total_one": "{{formatted}} matching line",
+    "total_other": "{{formatted}} matching lines",
+    "fromLibrary": "Search transcripts",
+    "fromLibraryQ": "Search transcripts for “{{q}}”"
   }
 }

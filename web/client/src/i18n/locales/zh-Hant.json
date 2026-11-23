@@ -69,6 +69,9 @@
     },
     "noteTemplates": {
       "title": "筆記模板"
+    },
+    "search": {
+      "title": "搜尋字幕"
     }
   },
   "login": {
@@ -1697,5 +1700,21 @@
     "checkOk": "通過：{{name}}",
     "checkFailed": "沒有通過：{{name}}",
     "previewResult": "預覽結果"
+  },
+  "search": {
+    "intro": "在所有影音的字幕中找出說到某段話的那一句。",
+    "label": "要搜尋的文字",
+    "hint": "照字面比對，不分大小寫；簡體與繁體不互通。",
+    "lang": "語言（選填）",
+    "submit": "搜尋",
+    "problem": {
+      "empty": "請輸入要搜尋的文字。",
+      "tooLong": "搜尋文字最多 200 個字。"
+    },
+    "loading": "搜尋中…",
+    "none": "沒有字幕含有「{{q}}」。",
+    "total_other": "{{formatted}} 句符合",
+    "fromLibrary": "搜尋字幕內容",
+    "fromLibraryQ": "在字幕內容中搜尋「{{q}}」"
   }
 }

@@ -5,7 +5,7 @@
 //   - 即時更新不打亂列表：item.created 只累計「有 N 個新項目」，點擊後才回到頂部重新載入；
 //     步驟狀態只更新那一列（每列的 detail query，見 LibraryRow）。
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { getRouteApi } from "@tanstack/react-router";
+import { getRouteApi, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -166,6 +166,12 @@ export function LibraryPage() {
         value={search.q}
         onCommit={(q) => setSearch({ q }, { replace: true })}
       />
+      {/* 字幕全文搜尋（SRCH）：搜尋欄的另一個選擇，結果在 /search */}
+      <p className="library__fulltext">
+        <Link to="/search" search={search.q ? { q: search.q } : {}}>
+          {search.q ? t("search.fromLibraryQ", { q: search.q }) : t("search.fromLibrary")}
+        </Link>
+      </p>
       <FilterBar search={search} onChange={setSearch} onClear={clearFilters} />
 
       <p className="visually-hidden" aria-live="polite">

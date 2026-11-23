@@ -11,6 +11,7 @@ import {
   subscription,
   subscriptionEntries,
 } from "./m4Fixtures";
+import { searchResult } from "./ui5Fixtures";
 
 type Item = components["schemas"]["Item"];
 type Detail = components["schemas"]["ItemDetail"];
@@ -173,5 +174,7 @@ export function defaultRoutes() {
     "GET /api/notifiers": () => ({ notifiers: [notifier("ops")] }),
     "GET /api/notifications": () => ({ notifications: [] }),
     "GET /api/settings/budget": () => ({ monthly_usd: 20, warn_at_percent: 80, timezone: "UTC" }),
+    // UI-5
+    "GET /api/search": () => ({ results: [searchResult(1)], total: 1 }),
   };
 }

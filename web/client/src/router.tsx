@@ -15,7 +15,8 @@
 //      ├─ /styles、/styles/$id       字幕樣式
 //      ├─ /subscriptions、/subscriptions/$id   訂閱（UI-4，lazy）
 //      ├─ /costs                     成本（UI-4，lazy；篩選在 URL）
-//      └─ /note-templates、/note-templates/$id 筆記模板（UI-4，lazy）
+//      ├─ /note-templates、/note-templates/$id 筆記模板（UI-4，lazy）
+//      └─ /search                    字幕全文搜尋（UI-5，lazy；查詢在 URL）
 //
 // 新增頁面：在這裡加一個 createRoute、加進 routeTree，並把路徑加進 src/test/a11yRoutes.ts。
 import type { QueryClient } from "@tanstack/react-query";
@@ -41,6 +42,7 @@ import { ProfileEditorPage } from "./pages/profiles/ProfileEditorPage";
 import { ProfilesPage } from "./pages/profiles/ProfilesPage";
 import { PromptsPage } from "./pages/prompts/PromptsPage";
 import { validateQueueSearch } from "./pages/queue/filters";
+import { validateSearchParams } from "./pages/search/model";
 import { QueuePage } from "./pages/queue/QueuePage";
 import { SETTINGS_SECTIONS, SettingsPage } from "./pages/SettingsPage";
 import { StyleEditorPage } from "./pages/styles/StyleEditorPage";
@@ -214,6 +216,14 @@ export const noteTemplateRoute = createRoute({
   ),
 });
 
+// ---- UI-5：字幕全文搜尋（lazy）----
+const searchRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/search",
+  validateSearch: validateSearchParams,
+  component: lazyRouteComponent(() => import("./pages/search/SearchPage"), "SearchPage"),
+});
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute.addChildren([
@@ -235,6 +245,7 @@ export const routeTree = rootRoute.addChildren([
     costsRoute,
     noteTemplatesRoute,
     noteTemplateRoute,
+    searchRoute,
   ]),
 ]);
 

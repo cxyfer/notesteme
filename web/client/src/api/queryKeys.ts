@@ -69,4 +69,6 @@ export const queryKeys = {
   noteTemplates: ["note-templates"] as const,
   notifiers: ["notifiers"] as const,
   notifications: ["notifications"] as const,
+  // ---- UI-5：字幕全文搜尋 ----
+  search: (q: string, lang: string) => ["search", q, lang] as const,
 };

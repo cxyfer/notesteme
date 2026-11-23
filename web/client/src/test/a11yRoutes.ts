@@ -54,5 +54,8 @@ export const a11yRoutes: A11yRoute[] = [
   { path: "/costs?group_by=stage", heading: "成本", auth: true, ready: "計價表" },
   { path: "/note-templates", heading: "筆記模板", auth: true, ready: "Video Notes 預設" },
   { path: "/note-templates/video-notes", heading: "Video Notes 預設", auth: true },
+  // UI-5
+  { path: "/search", heading: "搜尋字幕", auth: true },
+  { path: "/search?q=ordered%20log", heading: "搜尋字幕", auth: true, ready: "ordered log" },
   { path: "/no-such-page", heading: "找不到這個頁面", auth: false },
 ];

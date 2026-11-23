@@ -69,6 +69,9 @@
     },
     "noteTemplates": {
       "title": "笔记模板"
+    },
+    "search": {
+      "title": "搜索字幕"
     }
   },
   "login": {
@@ -1697,5 +1700,21 @@
     "checkOk": "通过：{{name}}",
     "checkFailed": "没有通过：{{name}}",
     "previewResult": "预览结果"
+  },
+  "search": {
+    "intro": "在所有音视频的字幕中找出说到某段话的那一句。",
+    "label": "要搜索的文字",
+    "hint": "按字面匹配，不区分大小写；简体与繁体不互通。",
+    "lang": "语言（选填）",
+    "submit": "搜索",
+    "problem": {
+      "empty": "请输入要搜索的文字。",
+      "tooLong": "搜索文字最多 200 个字。"
+    },
+    "loading": "搜索中…",
+    "none": "没有字幕含有“{{q}}”。",
+    "total_other": "{{formatted}} 句符合",
+    "fromLibrary": "搜索字幕内容",
+    "fromLibraryQ": "在字幕内容中搜索“{{q}}”"
   }
 }
