@@ -75,6 +75,8 @@ type Scenario struct {
 	costs costSeeds
 	// seeded 是已用 `the … transcript of … is:` 直接寫入字幕的影音代號（見 hasTranscriptSource）。
 	seeded map[string]bool
+	// termCandidates 是 `the term candidates … are pending` 累積的術語候選，接在彙整之後寫入（見 flushTermCandidates）。
+	termCandidates []pendingTermCandidate
 	// searchSeq 是 search library 句型建立影音的序號（created_at 遞增，見 searchLibraryHas）。
 	searchSeq int
 	// lastCreatedToken 是最近一次 `a token … with scopes …` 建立的 token 明文，
@@ -510,7 +512,10 @@ func (s *Scenario) prepareOwner() error {
 	if err := s.flushNotifiers(); err != nil {
 		return err
 	}
-	return s.flushDigests()
+	if err := s.flushDigests(); err != nil {
+		return err
+	}
+	return s.flushTermCandidates()
 }
 
 // requestPath 代入請求路徑：{token:…} 與 M5 的參照（SubstRequest），再把影音代號換成實際 ID。

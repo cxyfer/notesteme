@@ -83,3 +83,9 @@ func (s *Server) SearchIndexCheck(ctx context.Context, itemID string) (int, erro
 func (s *Server) SetInstanceID(ctx context.Context, id string) error {
 	return s.pipeline.SetInstanceID(ctx, id)
 }
+
+// SeedTermCandidate 在影音所屬的頻道寫入一個 pending 的術語候選，created_at 是 at（steps.md 4.20 的 GLOS seeding）。
+// 只供驗收測試的 harness 使用（同 SeedTranscript）。
+func (s *Server) SeedTermCandidate(ctx context.Context, itemID, term string, at time.Time) error {
+	return s.pipeline.SeedTermCandidate(ctx, itemID, term, at)
+}

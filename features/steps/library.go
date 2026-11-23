@@ -14,7 +14,7 @@ import (
 
 // registerLibrary 註冊「全文搜尋、bundle 與術語審核」的步驟（steps.md 4.20，M4）。
 //
-// SRCH 的句型由 S8 實作（searchLibraryHas 等），BND 的由 bundles.go 實作；其餘的句型在 M4 規格展開時（2026-11-23）只註冊步驟樁：handler 一律回傳 godog.ErrPending，
+// SRCH 的句型由 S8 實作（searchLibraryHas 等），BND 的由 bundles.go 實作，GLOS 的由 glossary_review.go 實作；其餘的句型在 M4 規格展開時（2026-11-23）只註冊步驟樁：handler 一律回傳 godog.ErrPending，
 // 由 M4 的實作切片換成真正的實作（假服務見 features/fixtures/README.md 的「M4 的假服務」）。
 func registerLibrary(r *Registry, s *Scenario) {
 	r.Step(`the search library has {string} titled {string} with the {string} transcript:`, func(ref, title, variant string, t *godog.Table) error {
@@ -29,10 +29,8 @@ func registerLibrary(r *Registry, s *Scenario) {
 	r.Step(`the search index has rows for {string}`, func(ref string) error { return s.searchIndexRows(ref, true) })
 	// BND 的句型由 bundles.go 實作。
 	registerBundles(r, s)
-	r.Step(`the term candidates {string} are pending for the channel of {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the term candidate {string} of the channel of {string} is decided with:`, func(string, string, *godog.DocString) error { return godog.ErrPending })
-	r.Step(`the term candidates are decided in one batch:`, func(*godog.Table) error { return godog.ErrPending })
-	r.Step(`the glossary {string} has exactly the terms {string}`, func(string, string) error { return godog.ErrPending })
+	// GLOS 的句型由 glossary_review.go 實作。
+	registerGlossaryReview(r, s)
 }
 
 // searchVariants 是 search library 句型接受的字幕變體（steps.md 4.20）。
