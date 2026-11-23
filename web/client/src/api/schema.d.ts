@@ -391,25 +391,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 列出影音的關鍵畫面與選圖結果（尚未實作） */
+    /** 列出影音的關鍵畫面與選圖結果（FRM-R10）；frames 步驟沒有執行過時回 404 no_frames */
     get: operations["items-frames"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/items/{id}/frames/{n}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** 取得一張關鍵畫面的圖片（size=full 或 thumb，尚未實作） */
-    get: operations["items-frame"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1559,6 +1542,73 @@ export interface components {
     FieldError: {
       message: string;
       path: string;
+    };
+    Frame: {
+      /** @description 畫面的時間（HH:MM:SS.mmm） */
+      at: string;
+      /** @description 圖說（只有選中的畫面有）；是不可信的資料 */
+      caption: string;
+      /** @description 所屬章節（只有選中的畫面有）；沒有章節時是空字串 */
+      chapter: string;
+      /** @description 不參與選圖的原因（sponsor：在 SponsorBlock 片段內）；沒有時是 null */
+      excluded: string | null;
+      /**
+       * Format: int64
+       * @description 圖片高度
+       */
+      height: number;
+      /**
+       * Format: int64
+       * @description 編號，依時間排序，從 1 起算
+       */
+      n: number;
+      /**
+       * Format: double
+       * @description 場景分數（0～1）
+       */
+      score: number;
+      /** @description 是否被選中 */
+      selected: boolean;
+      /**
+       * Format: int64
+       * @description 圖片寬度
+       */
+      width: number;
+    };
+    FrameRange: {
+      /**
+       * Format: int64
+       * @description 建議的最多張數
+       */
+      max: number;
+      /**
+       * Format: int64
+       * @description 建議的最少張數
+       */
+      min: number;
+    };
+    FramesList: {
+      /**
+       * Format: int64
+       * @description 去重後的候選數
+       */
+      candidate_count: number;
+      /** @description 全部候選，依時間排序 */
+      frames: components["schemas"]["Frame"][] | null;
+      /** @description 依片長建議的張數範圍 */
+      range: components["schemas"]["FrameRange"];
+      /**
+       * Format: int64
+       * @description 選中的張數
+       */
+      selected_count: number;
+      /** @description 可選的候選少於範圍的下限 */
+      shortfall: boolean;
+      /**
+       * Format: int64
+       * @description 目標張數 N
+       */
+      target: number;
     };
     Glossary: {
       /** @description global 是 default；channel 是頻道的 UUID */
@@ -3313,44 +3363,22 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 影音 ID */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Error */
-      default: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["Error"];
+          "application/json": components["schemas"]["FramesList"];
         };
-      };
-    };
-  };
-  "items-frame": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description No Content */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
       };
       /** @description Error */
       default: {

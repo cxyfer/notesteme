@@ -118,6 +118,7 @@ func build(d Deps, authn func(http.Handler) http.Handler, remote bool) http.Hand
 	mux := http.NewServeMux()
 	r := newHumaAPI(mux, d)
 	r.registerMedia(mux)
+	r.registerFrameImage(mux)
 	// MCP Streamable HTTP（MCP-R1）：直接掛在 mux 上（JSON-RPC 不經過 Huma），所有方法都交給 SDK
 	// （stateless 模式下 GET、DELETE 回 405）。tool 在程序內呼叫同一個 mux 上的 API 路由（MCP-R3）。
 	mux.Handle("/mcp", newMCPEndpoint(d, mux, remote))
@@ -283,6 +284,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerM2Stubs(api)
 	rt.registerM3Stubs(api)
 	rt.registerM5Stubs(api)
+	rt.registerFrames(api)
 	registerScoped(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",
 		Summary: "讀取全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）",

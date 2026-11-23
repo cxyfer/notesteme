@@ -12,11 +12,6 @@ import (
 // 先回 501 not_implemented，scope 在讀取請求本體之前檢查（registerScoped）。
 // 切片實作某條路由時，從這份清單移除，改在自己的檔案註冊（m3_stubs_test.go 的清單一併更新）。
 var m3Stubs = []m2Stub{
-	// FRM-R10（S3 FRM）
-	{ID: "items-frames", Method: http.MethodGet, Path: "/api/items/{id}/frames",
-		Summary: "列出影音的關鍵畫面與選圖結果（尚未實作）", Scope: auth.ScopeRead},
-	{ID: "items-frame", Method: http.MethodGet, Path: "/api/items/{id}/frames/{n}",
-		Summary: "取得一張關鍵畫面的圖片（size=full 或 thumb，尚未實作）", Scope: auth.ScopeRead},
 	// NOTE-R13（S4 NOTE）
 	{ID: "items-note", Method: http.MethodGet, Path: "/api/items/{id}/note",
 		Summary: "取得影音的筆記（Markdown、frontmatter、自動檢查與寫入狀態，尚未實作）", Scope: auth.ScopeRead},

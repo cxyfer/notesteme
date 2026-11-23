@@ -1124,6 +1124,133 @@
         ],
         "type": "object"
       },
+      "Frame": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "description": "畫面的時間（HH:MM:SS.mmm）",
+            "type": "string"
+          },
+          "caption": {
+            "description": "圖說（只有選中的畫面有）；是不可信的資料",
+            "type": "string"
+          },
+          "chapter": {
+            "description": "所屬章節（只有選中的畫面有）；沒有章節時是空字串",
+            "type": "string"
+          },
+          "excluded": {
+            "description": "不參與選圖的原因（sponsor：在 SponsorBlock 片段內）；沒有時是 null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "height": {
+            "description": "圖片高度",
+            "format": "int64",
+            "type": "integer"
+          },
+          "n": {
+            "description": "編號，依時間排序，從 1 起算",
+            "format": "int64",
+            "type": "integer"
+          },
+          "score": {
+            "description": "場景分數（0～1）",
+            "format": "double",
+            "type": "number"
+          },
+          "selected": {
+            "description": "是否被選中",
+            "type": "boolean"
+          },
+          "width": {
+            "description": "圖片寬度",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "n",
+          "at",
+          "score",
+          "selected",
+          "excluded",
+          "caption",
+          "chapter",
+          "width",
+          "height"
+        ],
+        "type": "object"
+      },
+      "FrameRange": {
+        "additionalProperties": false,
+        "properties": {
+          "max": {
+            "description": "建議的最多張數",
+            "format": "int64",
+            "type": "integer"
+          },
+          "min": {
+            "description": "建議的最少張數",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "min",
+          "max"
+        ],
+        "type": "object"
+      },
+      "FramesList": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_count": {
+            "description": "去重後的候選數",
+            "format": "int64",
+            "type": "integer"
+          },
+          "frames": {
+            "description": "全部候選，依時間排序",
+            "items": {
+              "$ref": "#/components/schemas/Frame"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "range": {
+            "$ref": "#/components/schemas/FrameRange",
+            "description": "依片長建議的張數範圍"
+          },
+          "selected_count": {
+            "description": "選中的張數",
+            "format": "int64",
+            "type": "integer"
+          },
+          "shortfall": {
+            "description": "可選的候選少於範圍的下限",
+            "type": "boolean"
+          },
+          "target": {
+            "description": "目標張數 N",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "target",
+          "range",
+          "candidate_count",
+          "selected_count",
+          "shortfall",
+          "frames"
+        ],
+        "type": "object"
+      },
       "Glossary": {
         "additionalProperties": false,
         "properties": {
@@ -4728,9 +4855,28 @@
     "/api/items/{id}/frames": {
       "get": {
         "operationId": "items-frames",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FramesList"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -4743,28 +4889,7 @@
             "description": "Error"
           }
         },
-        "summary": "列出影音的關鍵畫面與選圖結果（尚未實作）"
-      }
-    },
-    "/api/items/{id}/frames/{n}": {
-      "get": {
-        "operationId": "items-frame",
-        "responses": {
-          "204": {
-            "description": "No Content"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "取得一張關鍵畫面的圖片（size=full 或 thumb，尚未實作）"
+        "summary": "列出影音的關鍵畫面與選圖結果（FRM-R10）；frames 步驟沒有執行過時回 404 no_frames"
       }
     },
     "/api/items/{id}/hub/share": {
