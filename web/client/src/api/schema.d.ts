@@ -1313,7 +1313,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 從 OPML 匯入訂閱（尚未實作） */
+    /** 從 OPML 或 Google Takeout 的 subscriptions.csv 匯入訂閱（multipart 的 file，上限 1 MiB、500 個）；一律 backfill: none、預設處理方案與過濾 */
     post: operations["subscriptions-import"];
     delete?: never;
     options?: never;
@@ -1330,7 +1330,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 建立訂閱之前試跑篩選與回補，不建立影音（尚未實作） */
+    /** 建立訂閱之前試跑過濾與回補；不建立訂閱與影音 */
     post: operations["subscriptions-preview-new"];
     delete?: never;
     options?: never;
@@ -1400,7 +1400,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 試跑既有訂閱的篩選與回補，不建立影音（尚未實作） */
+    /** 試跑既有訂閱的過濾與回補（body 的設定覆蓋已存的設定），列出會處理與會略過的條目；不建立影音、不寫入條目、不改變排程 */
     post: operations["subscriptions-preview"];
     delete?: never;
     options?: never;
@@ -2248,6 +2248,26 @@ export interface components {
       /** @description 檔案中哪個樣式是譯文行，預設是 Default，沒有就用第一個 */
       translation_style?: string;
     };
+    ImportFailure: {
+      /**
+       * Format: int64
+       * @description 檔案中的行號（從 1 起算）
+       */
+      line: number;
+      message: string;
+      /** @description 檔案中的網址（原文） */
+      url: string;
+    };
+    ImportResult: {
+      /**
+       * Format: int64
+       * @description 建立的訂閱數
+       */
+      created: number;
+      /** @description 檔案內重複或已經訂閱的網址（原文，依檔案順序） */
+      duplicates: string[] | null;
+      failed: components["schemas"]["ImportFailure"][] | null;
+    };
     ImportSubtitlesInputBody: {
       /** @description 字幕檔的內容；與 path 擇一 */
       content?: string;
@@ -2724,6 +2744,12 @@ export interface components {
       /** @description false 代表至少一段驗證重試用盡，該段的輸出是步驟的退回內容 */
       passed: boolean;
     };
+    Preview: {
+      /** @description 任一個清單超過 200 列而被截斷 */
+      truncated: boolean;
+      would_process: components["schemas"]["PreviewRow"][] | null;
+      would_skip: components["schemas"]["PreviewSkip"][] | null;
+    };
     PreviewInputBody: {
       /** @description 畫面的時間，HH:MM:SS(.mmm) 或秒數，預設 0；也決定預覽用哪一句字幕 */
       at?: string;
@@ -2735,6 +2761,12 @@ export interface components {
       patch?: components["schemas"]["Patch"];
       /** @description 樣式名稱，預設 default */
       style?: string;
+    };
+    PreviewNewInputBody: {
+      backfill?: components["schemas"]["SubscriptionBackfill"];
+      filters?: components["schemas"]["SubscriptionFilters"];
+      /** @description 頻道、播放清單、Bilibili 合集或 Podcast feed 的網址 */
+      url?: string;
     };
     PreviewNoteTemplateInputBody: {
       /** @description 影音 ID 或代號 */
@@ -2748,6 +2780,32 @@ export interface components {
       path: string;
       /** @description 保留的原因：modified、outside_roots 或 unreadable；會被刪除的沒有 */
       reason?: string;
+    };
+    PreviewRow: {
+      /** Format: int64 */
+      duration_s: number | null;
+      /** Format: date-time */
+      published_at: string | null;
+      /** @description 影音的短代號，例如 yt:abc123xxxxx */
+      ref: string;
+      title: string;
+    };
+    PreviewSettings: {
+      /** @description 尚未儲存的回補範圍；省略時用已存的設定 */
+      backfill?: components["schemas"]["SubscriptionBackfill"];
+      /** @description 尚未儲存的過濾條件，蓋在已存的設定上 */
+      filters?: components["schemas"]["SubscriptionFilters"];
+    };
+    PreviewSkip: {
+      /** Format: int64 */
+      duration_s: number | null;
+      /** Format: date-time */
+      published_at: string | null;
+      /** @description 略過的原因（同 GET /entries 的 reason） */
+      reason: string;
+      /** @description 影音的短代號，例如 yt:abc123xxxxx */
+      ref: string;
+      title: string;
     };
     Profile: {
       /** @description 內建的處理方案（default）不能刪除 */
@@ -6379,14 +6437,26 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody?: {
+      content: {
+        "multipart/form-data": {
+          /**
+           * Format: binary
+           * @description OPML 或 Google Takeout 的 subscriptions.csv（上限 1 MiB）
+           */
+          file?: string;
+        };
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ImportResult"];
+        };
       };
       /** @description Error */
       default: {
@@ -6406,14 +6476,20 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["PreviewNewInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["Preview"];
+        };
       };
       /** @description Error */
       default: {
@@ -6597,17 +6673,26 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 訂閱的 id */
+        id: string;
+      };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["PreviewSettings"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["Preview"];
+        };
       };
       /** @description Error */
       default: {
