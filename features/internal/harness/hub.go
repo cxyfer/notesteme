@@ -158,7 +158,7 @@ func (w *World) FakeHub() *fakehub.Server { return w.hub.fake }
 // HubServer 回傳執行中的真 Hub；沒有啟動時是 nil。
 func (w *World) HubServer() *hub.Server { return w.hub.server }
 
-// HubStore 回傳真 Hub 的儲存，供步驟唯讀查詢（帳號數、版本狀態，steps.md 4.30、4.31）。
+// HubStore 回傳真 Hub 的儲存，供步驟查詢與直接寫入前提（帳號數、版本狀態、群組，steps.md 4.30、4.31）。
 func (w *World) HubStore() (hubstore.Store, error) {
 	if w.hub.server == nil {
 		return nil, errors.New("真 Hub 沒有在執行（Background 要有 `Given a Hub is running`）")

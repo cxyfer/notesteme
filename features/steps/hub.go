@@ -285,6 +285,18 @@ func (s *Scenario) hubDo(r hubRequest) (*response, error) {
 	}
 	out := &response{status: resp.StatusCode, header: resp.Header, body: b, step: s.step, preRoute403: r.preRoute403}
 	s.last = out
+	// 任何方式建立的 Hub token 都加進 log 的 secret 掃描（不只 `a Hub token …` 步驟）。
+	if r.method == http.MethodPost && strings.HasSuffix(r.target, "/api/v1/me/tokens") && resp.StatusCode == http.StatusCreated {
+		var created struct {
+			Token string `json:"token"`
+		}
+		if json.Unmarshal(b, &created) == nil && created.Token != "" {
+			if s.hub.tokens == nil {
+				s.hub.tokens = map[string]string{}
+			}
+			s.hub.tokens["\x00created:"+created.Token[len(created.Token)-6:]] = created.Token
+		}
+	}
 	return out, nil
 }
 
