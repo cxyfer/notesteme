@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
@@ -20,6 +21,8 @@ type RunOptions struct {
 	MaxRetries int
 	// BeforeRequest 在每次送出請求之前呼叫（限流用）；attempt 從 0 起算，0 是第一次。回傳錯誤時不送出，RunChunk 回傳該錯誤。
 	BeforeRequest func(ctx context.Context, attempt int, req Request) error
+	// AfterRequest 在每次請求有了結果之後呼叫（記帳，COST-R1）；nil 時不呼叫。見 AfterRequestFunc。
+	AfterRequest AfterRequestFunc
 	// Timeout 是整個 chunk（含驗證重試）的時間上限，0 代表沒有。呼叫端設成「租約剩下的時間減去安全邊際」：
 	// 到期時回傳 retryable，任務放回佇列，而不是讓租約失效、被重新領取而重複送出（重複計費）。
 	Timeout time.Duration
@@ -69,6 +72,9 @@ func RunChunk(ctx context.Context, o RunOptions) (ChunkResult, error) {
 		resp, err := o.Client.Complete(ctx, req)
 		res.Requests++
 		if err != nil {
+			if aerr := o.AfterRequest.call(ctx, attempt, req, Response{}, err, false); aerr != nil {
+				return res, aerr
+			}
 			if ctx.Err() != nil && parent.Err() == nil {
 				// 是這個 chunk 自己的時間上限到了，不是 worker 停止。
 				return res, errChunkTimeout()
@@ -77,20 +83,53 @@ func RunChunk(ctx context.Context, o RunOptions) (ChunkResult, error) {
 		}
 		res.Usage.Add(resp.Usage)
 		var verr *ValidationError
+		var out json.RawMessage
 		if resp.Output == nil {
 			verr = &ValidationError{Reason: ReasonInvalidJSON, Message: "output was not valid JSON: " + resp.Problem}
 		} else {
-			var out json.RawMessage
 			out, verr = o.Spec.Validate(o.Input, resp.Output)
-			if verr == nil {
-				res.Output, res.Fallback = out, nil
-				return res, nil
-			}
+		}
+		if aerr := o.AfterRequest.call(ctx, attempt, req, resp, nil, verr == nil); aerr != nil {
+			return res, aerr
+		}
+		if verr == nil {
+			res.Output, res.Fallback = out, nil
+			return res, nil
 		}
 		res.Fallback = verr
 		req.Retry = RetryNote(verr)
 	}
 	return res, nil
+}
+
+// AfterRequestFunc 在每次請求有了結果之後呼叫（記帳，COST-R1）：err 非 nil 時是 provider 或連線的錯誤（resp 是零值），
+// 否則 valid 是回應是否通過驗證。回傳錯誤時（例如寫入帳本失敗）RunChunk 不再重試，回傳該錯誤。
+type AfterRequestFunc func(ctx context.Context, attempt int, req Request, resp Response, err error, valid bool) error
+
+func (f AfterRequestFunc) call(ctx context.Context, attempt int, req Request, resp Response, err error, valid bool) error {
+	if f == nil {
+		return nil
+	}
+	return f(ctx, attempt, req, resp, err, valid)
+}
+
+// 一次請求的結果種類（COST-R1 的 outcome）。
+const (
+	OutcomeHTTPError    = "http_error"
+	OutcomeNetworkError = "network_error"
+)
+
+// ErrorOutcome 把 Complete 的錯誤分成 http_error（provider 有回應：非 200、回應太大或不是預期的 JSON）
+// 與 network_error（連線失敗、讀取中斷、逾時，或請求根本沒有送出）。
+func ErrorOutcome(err error) string {
+	var ce *errclass.Error
+	if errors.As(err, &ce) {
+		switch {
+		case strings.HasPrefix(ce.Detail, "HTTP "), ce.Detail == detailBadJSON, ce.Detail == detailTooLarge:
+			return OutcomeHTTPError
+		}
+	}
+	return OutcomeNetworkError
 }
 
 // errChunkTimeout 是 chunk 超過 RunOptions.Timeout：retryable，任務放回佇列。

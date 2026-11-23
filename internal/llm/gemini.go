@@ -129,7 +129,7 @@ func (c *HTTPClient) completeGemini(ctx context.Context, req Request) (Response,
 	raw, err := io.ReadAll(netguard.LimitBody(resp, maxResponseBody))
 	if err != nil {
 		if errors.Is(err, netguard.ErrTooLarge) {
-			return Response{}, c.fail(errclass.ClassPermanent, "回應超過大小上限", err)
+			return Response{}, c.fail(errclass.ClassPermanent, detailTooLarge, err)
 		}
 		if ctx.Err() != nil {
 			return Response{}, ctx.Err()
@@ -236,7 +236,7 @@ func (c *HTTPClient) decodeGemini(raw []byte) (Response, error) {
 		} `json:"usageMetadata"`
 	}
 	if err := json.Unmarshal(raw, &v); err != nil {
-		return Response{}, &errclass.Error{Class: errclass.ClassRetryable, Source: "llm:" + c.ID, Detail: "回應不是預期的 JSON", Err: err}
+		return Response{}, &errclass.Error{Class: errclass.ClassRetryable, Source: "llm:" + c.ID, Detail: detailBadJSON, Err: err}
 	}
 	u := v.UsageMetadata
 	// 思考的 token 與輸出同價計費，算在輸出（LLM-R10）；快取讀取包含在 promptTokenCount 中（同 openai 的對應）。

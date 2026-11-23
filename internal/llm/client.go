@@ -98,12 +98,21 @@ type Response struct {
 	Output  []byte
 	Problem string
 	Usage   Usage
+	// CostUSD 是 provider 在回應中回報的金額（OpenAI 相容服務的 usage.cost，例如 OpenRouter，COST-R2、C9）；
+	// 沒有回報時是 nil。不放在 Usage：Usage 會序列化進 chunk 的紀錄。
+	CostUSD *float64
 }
 
 // Client 是一個 LLM provider。
 type Client interface {
 	Complete(ctx context.Context, req Request) (Response, error)
 }
+
+// 有回應但不能用的錯誤說明（ErrorOutcome 歸為 http_error）。
+const (
+	detailBadJSON  = "回應不是預期的 JSON"
+	detailTooLarge = "回應超過大小上限"
+)
 
 // HTTPClient 依 wire format 呼叫 provider。HTTP 必須是 NewHTTP 由 netguard 的 client 建立的（ADR-0014）；
 // HTTPClient 本身很輕，可以每個 chunk 建立，連線池在 HTTP 中共用。
@@ -173,7 +182,7 @@ func (c *HTTPClient) Complete(ctx context.Context, req Request) (Response, error
 	raw, err := io.ReadAll(netguard.LimitBody(resp, maxResponseBody))
 	if err != nil {
 		if errors.Is(err, netguard.ErrTooLarge) {
-			return Response{}, c.fail(errclass.ClassPermanent, "回應超過大小上限", err)
+			return Response{}, c.fail(errclass.ClassPermanent, detailTooLarge, err)
 		}
 		if ctx.Err() != nil {
 			return Response{}, ctx.Err()
@@ -380,7 +389,7 @@ func decodeAnthropic(raw []byte, tool string) (Response, error) {
 		Usage      Usage  `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &v); err != nil {
-		return Response{}, &errclass.Error{Class: errclass.ClassRetryable, Source: "llm", Detail: "回應不是預期的 JSON", Err: err}
+		return Response{}, &errclass.Error{Class: errclass.ClassRetryable, Source: "llm", Detail: detailBadJSON, Err: err}
 	}
 	res := Response{Usage: v.Usage}
 	if v.StopReason == "max_tokens" {
@@ -417,14 +426,15 @@ func decodeOpenAI(raw []byte) (Response, error) {
 			PromptTokensDetails struct {
 				CachedTokens int `json:"cached_tokens"`
 			} `json:"prompt_tokens_details"`
+			Cost *float64 `json:"cost"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &v); err != nil {
-		return Response{}, &errclass.Error{Class: errclass.ClassRetryable, Source: "llm", Detail: "回應不是預期的 JSON", Err: err}
+		return Response{}, &errclass.Error{Class: errclass.ClassRetryable, Source: "llm", Detail: detailBadJSON, Err: err}
 	}
 	res := Response{Usage: Usage{
 		InputTokens: v.Usage.PromptTokens, OutputTokens: v.Usage.CompletionTokens, CacheReadTokens: v.Usage.PromptTokensDetails.CachedTokens,
-	}}
+	}, CostUSD: v.Usage.Cost}
 	switch {
 	case len(v.Choices) == 0:
 		res.Problem = "the response has no choices"

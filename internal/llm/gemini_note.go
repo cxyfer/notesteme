@@ -271,6 +271,7 @@ type GeminiOptions struct {
 	// MaxRetries、BeforeRequest、Timeout 同 RunOptions。
 	MaxRetries    int
 	BeforeRequest func(ctx context.Context, attempt int, req Request) error
+	AfterRequest  AfterRequestFunc
 	Timeout       time.Duration
 }
 
@@ -304,21 +305,27 @@ func RunGemini(ctx context.Context, o GeminiOptions) (ChunkResult, error) {
 		res.Requests++
 		res.Usage.Add(resp.Usage)
 		if err != nil {
+			if aerr := o.AfterRequest.call(ctx, attempt, req, Response{}, err, false); aerr != nil {
+				return res, aerr
+			}
 			if ctx.Err() != nil && parent.Err() == nil {
 				return res, errChunkTimeout()
 			}
 			return res, err
 		}
 		var verr *ValidationError
+		var out json.RawMessage
 		if resp.Output == nil {
 			verr = &ValidationError{Reason: ReasonInvalidJSON, Message: "output was not valid JSON: " + resp.Problem}
 		} else {
-			var out json.RawMessage
 			out, verr = o.Spec.Validate(ChunkInput{}, resp.Output)
-			if verr == nil {
-				res.Output, res.Fallback = out, nil
-				return res, nil
-			}
+		}
+		if aerr := o.AfterRequest.call(ctx, attempt, req, resp, nil, verr == nil); aerr != nil {
+			return res, aerr
+		}
+		if verr == nil {
+			res.Output, res.Fallback = out, nil
+			return res, nil
 		}
 		res.Fallback = verr
 		req.Retry = RetryNote(verr)
