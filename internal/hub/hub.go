@@ -91,6 +91,11 @@ func Open(ctx context.Context, o Options) (*Server, error) {
 		_ = st.Close()
 		return nil, err
 	}
+	// 設定檔的 admins 只在啟動時載入：同步一次，讓設定檔移除的管理員在重新啟動後立即失去權限（HACC-R12）。
+	if err := auth.SyncConfigAdmins(ctx); err != nil {
+		_ = st.Close()
+		return nil, fmt.Errorf("同步設定檔的 admins：%w", err)
+	}
 	s.handler = hubapi.New(hubapi.Deps{Config: cfg, Store: st, Blobs: blobs, Clock: o.Clock, Log: o.Log, Version: o.Version, Auth: auth})
 	return s, nil
 }

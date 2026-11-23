@@ -266,13 +266,18 @@ func challengeS256(verifier string) string {
 	return encodeB64(sum[:])
 }
 
-// Principal 是通過驗證的瀏覽器 session。
+// Principal 是通過驗證的身分：瀏覽器 session（PAT 為 nil）或 Hub token（PAT 非 nil，Session 與 Token 是零值）。
 type Principal struct {
 	User    hubstore.User
 	Session hubstore.Session
 	// Token 是 session token 的明文（只在記憶體中，登出與 CSRF 檢查用）。
 	Token string
+	// PAT 是用來驗證的 Hub token（HACC-R9）。
+	PAT *hubstore.PAT
 }
+
+// IsSession 回報這是不是瀏覽器 session。
+func (p *Principal) IsSession() bool { return p != nil && p.PAT == nil }
 
 // NewSession 是登入成功時建立的 session；Token 與 CSRF 放進 cookie。
 type NewSession struct {
@@ -352,6 +357,10 @@ func (s *Service) Complete(ctx context.Context, provider string, q url.Values, c
 	if user.Suspended() {
 		return Result{}, ErrSuspended()
 	}
+	// 每次登入重新評估自動規則與設定檔的 admins（HACC-R11、R12），之後才建立 session。
+	if err := s.applySignIn(ctx, user.ID, ext); err != nil {
+		return Result{}, err
+	}
 	// 登入一律建立新的 session；這個瀏覽器原本的 session 作廢（session 輪替）。
 	if current != nil {
 		if err := s.store.DeleteSession(ctx, websession.HashToken(current.Token)); err != nil {
@@ -377,6 +386,10 @@ func (s *Service) completeLink(ctx context.Context, spec Spec, userID string, ex
 	}
 	user, err := s.store.User(ctx, userID)
 	if err != nil {
+		return Result{}, err
+	}
+	// 連結也是以這個供應商完成驗證：同樣評估它的規則（HACC 待決問題 A12）。
+	if err := s.applySignIn(ctx, userID, ext); err != nil {
 		return Result{}, err
 	}
 	return Result{Intent: hubstore.IntentLink, User: user, Redirect: LinkRedirect}, nil
