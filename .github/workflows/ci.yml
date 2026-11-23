@@ -57,6 +57,10 @@ jobs:
       - name: go test
         # features 的驗收場景（@M1 與 @M2 共 308 個）在 -race 下約 10 分鐘，超過 go test 預設的 10m 逾時。
         run: go test -race -count=1 -timeout 30m ./...
+      # @M3、@M4、@M5 的場景（共 628 個）全部通過；不放進 -race 的預設執行，以免逾時。
+      # 預設 tag 之外的執行不套用 ratchet，這一步擋的是「任何場景 failed 或 undefined」。
+      - name: go test (M3–M5 scenarios)
+        run: go test -count=1 -timeout 20m ./features -run TestFeatures -godog.tags='@M3,@M4,@M5'
 
   vuln:
     name: govulncheck
