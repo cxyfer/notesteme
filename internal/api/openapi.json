@@ -2371,6 +2371,28 @@
         ],
         "type": "object"
       },
+      "HubTestView": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "display_name",
+          "permissions"
+        ],
+        "type": "object"
+      },
       "ImportAssStyleInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -10602,6 +10624,34 @@
           }
         },
         "summary": "設定 Hub token 與 ASR 前查詢（部分更新；token 為空字串時刪除；不會連線到 Hub）"
+      }
+    },
+    "/api/settings/hub/test": {
+      "post": {
+        "operationId": "settings-hub-test",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubTestView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "測試 Hub 連線：以設定的 token 呼叫 Hub 的 GET /api/v1/me（HSHR 待決問題 S9）"
       }
     },
     "/api/settings/{section}": {

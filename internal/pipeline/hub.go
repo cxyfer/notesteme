@@ -697,3 +697,13 @@ func configuredOK(ctx context.Context, f fallbackFetcher) bool {
 	ok, err := f.configured(ctx)
 	return err != nil || ok
 }
+
+// HubMe 以設定的 token 呼叫 Hub 的 GET /api/v1/me（測試連線）。
+func (p *Pipeline) HubMe(ctx context.Context) (hubclient.Me, error) {
+	if ok, err := p.hub.Configured(ctx); err != nil {
+		return hubclient.Me{}, err
+	} else if !ok {
+		return hubclient.Me{}, hubclient.ErrNotConfigured
+	}
+	return p.hub.Me(ctx)
+}

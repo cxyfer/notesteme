@@ -1328,6 +1328,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/settings/hub/test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** 測試 Hub 連線：以設定的 token 呼叫 Hub 的 GET /api/v1/me（HSHR 待決問題 S9） */
+    post: operations["settings-hub-test"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/settings/{section}": {
     parameters: {
       query?: never;
@@ -2549,6 +2566,10 @@ export interface components {
       lang: string;
       variant: string;
       version_id: string;
+    };
+    HubTestView: {
+      display_name: string;
+      permissions: string[] | null;
     };
     ImportAssStyleInputBody: {
       /** @description .ass 檔的內容；與 path 擇一 */
@@ -7158,6 +7179,35 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HubSettings"];
+        };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "settings-hub-test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HubTestView"];
         };
       };
       /** @description Error */

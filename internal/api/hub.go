@@ -39,6 +39,10 @@ func (rt *routes) registerHub(api huma.API) {
 			"回應帶 disclosure 與 disclosure_version（HSHR-R12）。",
 	}, auth.ScopeAdmin, rt.putHubSettings)
 	registerScoped(api, huma.Operation{
+		OperationID: "settings-hub-test", Method: http.MethodPost, Path: "/api/settings/hub/test",
+		Summary: "測試 Hub 連線：以設定的 token 呼叫 Hub 的 GET /api/v1/me（HSHR 待決問題 S9）",
+	}, auth.ScopeAdmin, rt.testHub)
+	registerScoped(api, huma.Operation{
 		OperationID: "items-hub-share", Method: http.MethodPost, Path: "/api/items/{id}/hub/share",
 		Summary: "把影音的產出分享到 Hub（HSHR-R2～R8）", DefaultStatus: http.StatusCreated,
 		Description: "產生只含白名單欄位的 bundle 送到 Hub 的 POST /api/v1/shares。attest 必須是 true、license 必須是支援的授權；" +
@@ -109,6 +113,25 @@ func (rt *routes) putHubSettings(ctx context.Context, in *hubSettingsInput) (*hu
 		return nil, asError(err)
 	}
 	return &hubSettingsOutput{Body: v}, nil
+}
+
+// HubTestView 是測試連線的結果：Hub 上的帳號與 token 的有效權限。
+type HubTestView struct {
+	DisplayName string   `json:"display_name"`
+	Permissions []string `json:"permissions"`
+}
+
+type hubTestOutput struct{ Body HubTestView }
+
+func (rt *routes) testHub(ctx context.Context, _ *struct{}) (*hubTestOutput, error) {
+	if rt.d.Pipeline == nil {
+		return nil, rt.noPipeline(ctx)
+	}
+	me, err := rt.d.Pipeline.HubMe(ctx)
+	if err != nil {
+		return nil, rt.hubErr(ctx, err, http.StatusNotFound)
+	}
+	return &hubTestOutput{Body: HubTestView{DisplayName: me.DisplayName, Permissions: me.Permissions}}, nil
 }
 
 type hubShareInput struct {
