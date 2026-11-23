@@ -21,6 +21,8 @@ type StageContext struct {
 	// Platform 是影音的平台（items.platform）；sponsorblock 只對 YouTube 執行（SPB-R1）。
 	// 空字串代表不知道（例如 Handle 在沒有記錄 executor 時的解析），視為可以執行。
 	Platform string
+	// PlatformChapters 是 metadata 取得的平台章節數；2 個以上時 chapters 直接採用（CHAP-R1）。
+	PlatformChapters int
 }
 
 // StageResolution 是步驟在一份生效設定下的執行方式。
@@ -52,7 +54,8 @@ type StageResolution struct {
 //   - publish：沒有 outputs 時略過（no_outputs），有 outputs 時不略過。
 //   - sponsorblock：local；enabled: false 時略過（off），不是 YouTube 時略過（not_applicable，SPB-R1）。
 //   - chapters、note：同 segment 與 correct（off、not_configured）；frames 另有 rules，預設 off（FRM-R1）。
-//     platform_chapters、audio_only、gemini 需要執行期的資訊，由各自的切片判斷（ADR-0020 第 2 點）。
+//     chapters 有 2 個以上的平台章節（sc.PlatformChapters）而且不是 off 時是 local（CHAP-R1，執行後 skipped（platform_chapters））。
+//     audio_only、gemini 需要執行期的資訊，由各自的切片判斷（ADR-0020 第 2 點）。
 //
 // 這裡不看步驟有沒有實作：還沒有實作的 M3 步驟由 planChain 改成 skipped（not_implemented）。
 func ResolveExecutor(eff Effective, stage string, sc StageContext) (StageResolution, error) {
@@ -113,6 +116,20 @@ func ResolveExecutor(eff Effective, stage string, sc StageContext) (StageResolut
 			res.Skip, res.Reason = true, SkipNotApplicable
 		}
 		return res, nil
+	case stage == StageChapters && sc.PlatformChapters >= minPlatformChapters:
+		cfg, err := eff.Stage(stage)
+		if err != nil {
+			return StageResolution{}, err
+		}
+		if !slices.Contains(StageExecutors(stage), cfg.Executor) {
+			return StageResolution{}, invalidf("stages.%s.executor 不支援 %q。", stage, cfg.Executor)
+		}
+		if cfg.Executor == ExecutorOff {
+			// off 優先於平台章節：使用者明確關掉章節（CHAP-R8，見 CHAP 待決問題）。
+			return StageResolution{Stage: stage, Executor: ExecutorOff, Skip: true, Reason: SkipOff}, nil
+		}
+		// 平台章節（CHAP-R1）：本機任務寫入 origin platform 的產出，步驟結束時是 skipped（platform_chapters），不需要 provider。
+		return StageResolution{Stage: stage, Executor: ExecutorLocal}, nil
 	case stage == StageChapters || stage == StageFrames || stage == StageNote:
 		cfg, err := eff.Stage(stage)
 		if err != nil {
@@ -200,6 +217,9 @@ func stageImplemented(stage, executor string) bool {
 	case stage == StageSponsorBlock:
 		// M3-S1：確定性的 HTTP 查詢（SPB）。
 		return executor == ExecutorLocal
+	case stage == StageChapters:
+		// M3-S2：local 是平台章節（CHAP-R1），api 與 agent 走 LLM 引擎（CHAP-R2～R8）。
+		return executor == ExecutorLocal || usesLLMEngine(stage, executor)
 	}
 	// 其他 M3 的步驟（chapters、frames、note）：各切片完成時在這裡登記。
 	return false

@@ -14,6 +14,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/llm"
 	"github.com/cxyfer/notesteme/internal/queue"
+	"github.com/cxyfer/notesteme/internal/sponsorblock"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
@@ -61,6 +62,9 @@ type llmStage struct {
 	// assemble（選用）取代一對一的 DecodeCues → MergeCues → apply：輸出不是一對一 cue 的步驟（segment）自己合併與套用。
 	// outputs[k] 是第 k 個 chunk 通過驗證的輸出，退回的 chunk 是 nil。
 	assemble func(p *Pipeline, ctx context.Context, it store.Item, job *llmJob, outputs []json.RawMessage) (llmAssembled, error)
+	// write（選用）用於輸出不是字幕的步驟（chapters）：取代 assemble 與 writeCuesArtifact，自己寫出產出與步驟狀態。
+	// outputs 同 assemble；fields 是來源紀錄的共用欄位，write 可以補上自己的欄位後呼叫 p.provenance。
+	write func(p *Pipeline, ctx context.Context, it store.Item, job *llmJob, outputs []json.RawMessage, fallbacks []fallbackRecord, fields map[string]any) (*store.NewArtifact, store.StageState, error)
 }
 
 // llmAssembled 是 llmStage.assemble 的結果：產出的字幕、要併進來源紀錄的欄位（例如 warnings），
@@ -106,6 +110,8 @@ var llmStages = map[string]llmStage{
 		},
 		variant: subtitle.VariantTranslated,
 	},
+	// M3-S2：chapters 的輸出是章節，不是字幕（見 chapters.go）。
+	StageChapters: chaptersStage,
 }
 
 // 登記時檢查每個步驟的 Spec（strict schema、步驟名稱一致）：不符是程式錯誤，啟動時就失敗，不要等到送出請求才被 provider 拒絕。
@@ -264,6 +270,8 @@ type llmJob struct {
 	// fixedSHA 是固定前綴（系統指示與 <video_metadata>）的 sha256，進快取鍵：標題或 prompt 改變時快取不命中。
 	fixedSHA string
 	stageKey string
+	// sponsor 是 chapters 排除片段內的 cue 時用的 sponsor_segments 產出（SPB-R7）；沒有時是 nil。
+	sponsor *store.Artifact
 }
 
 // chunkPlan 是 llm_chunks.plan_json：chunk 的範圍與這次 stage run 的輸入產出。
@@ -319,7 +327,12 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 			return nil, err
 		}
 	} else {
-		art, found, err := translateInputFor(ctx, r, it.ID, stage)
+		pick := translateInputFor
+		if stage == StageChapters {
+			// CHAP-R2：edited > corrected > segmented > normalized，不用譯文。
+			pick = translateSource
+		}
+		art, found, err := pick(ctx, r, it.ID, stage)
 		if err != nil {
 			return nil, err
 		}
@@ -336,11 +349,21 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 		}
 		return nil, err
 	}
-	planCues := make([]llm.PlanCue, len(job.tr.Cues))
-	job.cues = make([]llm.Cue, len(job.tr.Cues))
+	var segs []sponsorblock.Segment
+	if stage == StageChapters {
+		// CHAP-R6：片段內的 cue 不放進輸入；句號維持原本的編號，章節才能對回原本的 cue。
+		if job.sponsor, segs, err = p.chaptersSponsor(ctx, it.ID); err != nil {
+			return nil, err
+		}
+	}
+	planCues := make([]llm.PlanCue, 0, len(job.tr.Cues))
+	job.cues = make([]llm.Cue, 0, len(job.tr.Cues))
 	for k, c := range job.tr.Cues {
-		job.cues[k] = llm.Cue{I: k + 1, Text: c.Text}
-		planCues[k] = llm.PlanCue{Start: time.Duration(c.StartMS) * time.Millisecond, Text: c.Text}
+		if len(segs) > 0 && cueInSponsor(c, segs) {
+			continue
+		}
+		job.cues = append(job.cues, llm.Cue{I: k + 1, Text: c.Text})
+		planCues = append(planCues, llm.PlanCue{Start: time.Duration(c.StartMS) * time.Millisecond, Text: c.Text})
 	}
 
 	var md itemMetadata
@@ -402,8 +425,13 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 		return nil, err
 	}
 	job.paramsSHA = sha256Hex(paramsJSON)
+	upstream := job.input.SHA256 + "+" + job.fixedSHA
+	if job.sponsor != nil {
+		// 片段改變時輸入的 cue 也改變：步驟層的快取不能命中舊的結果（CHAP-R6）。
+		upstream += "+" + job.sponsor.SHA256
+	}
 	job.stageKey = cacheKey{
-		Item: it.ID, Stage: stage, Impl: p.implVersion(stage), Upstream: job.input.SHA256 + "+" + job.fixedSHA,
+		Item: it.ID, Stage: stage, Impl: p.implVersion(stage), Upstream: upstream,
 		Provider: cfg.Provider, Model: cfg.Model, Prompt: job.prompt.SHA256, Params: job.paramsSHA,
 	}.String()
 	return job, nil
@@ -827,7 +855,7 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 		in := job.chunkInput(c)
 		switch row.Status {
 		case store.ChunkDone:
-			if job.def.assemble != nil {
+			if job.def.assemble != nil || job.def.write != nil {
 				raw[k] = row.Output
 				break
 			}
@@ -872,7 +900,10 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 	var out subtitle.Transcript
 	extra := map[string]any{}
 	noCache := false
-	if job.def.assemble != nil {
+	switch {
+	case job.def.write != nil:
+		// 輸出不是字幕：由 write 寫出產出（下面）。
+	case job.def.assemble != nil:
 		res, err := job.def.assemble(p, ctx, it, job, raw)
 		if err != nil {
 			return result{}, err
@@ -881,7 +912,7 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 		for k, v := range res.prov {
 			extra[k] = v
 		}
-	} else {
+	default:
 		merged, err := llm.MergeCues(job.chunks, outputs)
 		if err != nil {
 			return result{}, errPermanent("合併 chunk 的輸出失敗：" + err.Error())
@@ -909,21 +940,28 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 			fields[k] = v
 		}
 	}
-	prov, err := p.provenance(fields, nil)
-	if err != nil {
-		return result{}, err
-	}
-	art, err := p.writeCuesArtifact(ctx, it.ID, out, []string{job.input.ID}, prov)
-	if err != nil {
-		return result{}, err
+	var art *store.NewArtifact
+	state := store.StageState{Status: store.StatusDone}
+	if job.def.write != nil {
+		var err error
+		if art, state, err = job.def.write(p, ctx, it, job, raw, fallbacks, fields); err != nil {
+			return result{}, err
+		}
+	} else {
+		prov, err := p.provenance(fields, nil)
+		if err != nil {
+			return result{}, err
+		}
+		if art, err = p.writeCuesArtifact(ctx, it.ID, out, []string{job.input.ID}, prov); err != nil {
+			return result{}, err
+		}
+		if job.def.notes != nil {
+			state.Message, state.Actions = job.def.notes(fallbacks)
+		}
 	}
 	if len(fallbacks) > 0 || noCache || len(agentRows) > 0 {
 		// Agent 回報的模型沒有驗證（AGT-R10）：之後同設定的 api 重跑不能把它當成 provider 的結果重用。
 		stage.CacheKey = ""
-	}
-	state := store.StageState{Status: store.StatusDone}
-	if job.def.notes != nil {
-		state.Message, state.Actions = job.def.notes(fallbacks)
 	}
 	res := result{task: taskDone, advance: true, stage: stage, artifact: art, state: state}
 	if len(candidates) > 0 && it.ChannelID != "" {

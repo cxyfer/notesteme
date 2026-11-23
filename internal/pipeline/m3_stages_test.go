@@ -56,17 +56,20 @@ func TestPlanChainSkipsUnimplementedM3Stages(t *testing.T) {
 		StageChapters: map[string]any{"provider": "anthropic", "model": "m"},
 		StageFrames:   map[string]any{"executor": "rules"},
 	}}
-	// sponsorblock 已在 M3-S1 實作，鏈從 chapters 開始看其他還沒有實作的步驟。
-	c, err := planChain(mustEffective(t, over), StageChapters, "", StageContext{Platform: "youtube"})
+	// sponsorblock 已在 M3-S1、chapters 已在 M3-S2 實作，鏈從 frames 開始看其他還沒有實作的步驟。
+	c, err := planChain(mustEffective(t, over), StageFrames, "", StageContext{Platform: "youtube"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if sb, _ := planChain(mustEffective(t, over), StageSponsorBlock, "", StageContext{Platform: "youtube"}); len(sb) != 1 || sb[0].Skip {
 		t.Errorf("sponsorblock 已實作，應建立任務：%+v", sb)
 	}
+	if ch, _ := planChain(mustEffective(t, over), StageChapters, "", StageContext{Platform: "youtube"}); len(ch) != 1 || ch[0].Skip {
+		t.Errorf("chapters 已實作，應建立任務：%+v", ch)
+	}
 	want := map[string]string{
-		StageChapters: SkipNotImplemented, StageFrames: SkipNotImplemented,
-		StageNote: SkipNotConfigured, StagePublish: SkipNoOutputs,
+		StageFrames: SkipNotImplemented,
+		StageNote:   SkipNotConfigured, StagePublish: SkipNoOutputs,
 	}
 	if len(c) != len(want) {
 		t.Fatalf("鏈 = %+v", c)
@@ -84,12 +87,12 @@ func TestPlanChainSkipsUnimplementedM3Stages(t *testing.T) {
 }
 
 func TestStageAvailable(t *testing.T) {
-	for _, s := range []string{StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StagePublish} {
+	for _, s := range []string{StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StageChapters, StagePublish} {
 		if !StageAvailable(s) {
 			t.Errorf("%s 應該已經實作", s)
 		}
 	}
-	for _, s := range []string{StageChapters, StageFrames, StageNote, "summary", "frames.select", ""} {
+	for _, s := range []string{StageFrames, StageNote, "summary", "frames.select", ""} {
 		if StageAvailable(s) {
 			t.Errorf("%s 不應該回報已實作", s)
 		}

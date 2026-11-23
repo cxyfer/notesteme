@@ -86,6 +86,9 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 	if it.DeletedAt != nil {
 		return Detail{}, &InTrashError{ItemID: it.ID}
 	}
+	if req.From, err = p.rerunStart(ctx, r0, it.ID, req.From); err != nil {
+		return Detail{}, err
+	}
 	if len(req.Chunks) > 0 {
 		// chunk 編號對照現行切分實際存在的編號（L12）：沒有切分過、或編號不存在時 422。
 		// 不能用列數當上限：translate 的編號是各目標的全域編號，被沿用的目標不產生 chunk，編號會有空洞（S6b-Q3）。
@@ -212,6 +215,29 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 	}
 	p.wake()
 	return p.Item(ctx, itemID)
+}
+
+// rerunStart 回傳重跑實際的起點。從 chapters、frames、note 重跑、而 sponsorblock 從來沒有執行過
+// （最新的 stage run 還是 pending，也沒有現行的 sponsor_segments 產出）時，改從 sponsorblock 開始：
+// 這三個步驟的輸入要排除片段內的 cue（SPB-R7），沒有查過就不知道片段。已經查過時不重新查詢（SPB-R8）。
+// 例如影音只做到 metadata、再寫入校正後的字幕（seeding）就從 chapters 重跑（見 CHAP 待決問題 H8）。
+func (p *Pipeline) rerunStart(ctx context.Context, r *store.Repo, itemID, from string) (string, error) {
+	if from != StageChapters && from != StageFrames && from != StageNote {
+		return from, nil
+	}
+	runs, err := r.StageRunsByItem(ctx, itemID)
+	if err != nil {
+		return "", err
+	}
+	sb, ok := latestRuns(runs)[StageSponsorBlock]
+	if !ok || sb.Status != store.StatusPending {
+		return from, nil
+	}
+	arts, err := r.CurrentArtifacts(ctx, itemID, KindSponsorSegments)
+	if err != nil || len(arts) > 0 {
+		return from, err
+	}
+	return StageSponsorBlock, nil
 }
 
 // checkRerunChunks 比對重跑要求的 chunk 編號與現行切分實際存在的編號（existing，由小到大）：

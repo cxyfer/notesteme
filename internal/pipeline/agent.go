@@ -129,8 +129,12 @@ func agentInvalid(format string, a ...any) *AgentError {
 	return &AgentError{Status: 422, Code: AgentCodeInvalid, Message: fmt.Sprintf(format, a...)}
 }
 
-// AgentKinds 是 Agent 可以領取的任務種類（步驟）。translate 的 agent 還不支援（見 Handle）。
+// AgentKinds 是 Agent 省略 kinds 時領取的任務種類（步驟）。translate 的 agent 還不支援（見 Handle）。
 var AgentKinds = []string{StageSegment, StageCorrect}
+
+// agentClaimableKinds 是 kinds 可以指定的任務種類：AgentKinds 加上 M3 的 chapters（AGT 的 M3 修訂）。
+// 省略 kinds 時仍只領 AgentKinds，既有的 Agent 不會突然收到新的任務。
+var agentClaimableKinds = append(slices.Clone(AgentKinds), StageChapters)
 
 // AgentTask 是領取到的一個任務與完成它需要的全部上下文（AGT-R2）。
 type AgentTask struct {
@@ -203,8 +207,8 @@ func (p *Pipeline) ClaimAgentTasks(ctx context.Context, agent string, kinds []st
 		return nil, agentInvalid("缺少 Agent 的名稱。")
 	}
 	for _, k := range kinds {
-		if !slices.Contains(AgentKinds, k) {
-			return nil, agentInvalid("不支援的任務種類 %q（可以領取：%s）。", k, strings.Join(AgentKinds, "、"))
+		if !slices.Contains(agentClaimableKinds, k) {
+			return nil, agentInvalid("不支援的任務種類 %q（可以領取：%s）。", k, strings.Join(agentClaimableKinds, "、"))
 		}
 	}
 	if max < 0 {
@@ -720,7 +724,7 @@ func (p *Pipeline) SwitchStageExecutor(ctx context.Context, itemRef, stage, exec
 	if executor != ExecutorAPI {
 		return SwitchResult{}, invalidf("executor 只能是 api。")
 	}
-	if !slices.Contains(AgentKinds, stage) && stage != StageTranslate {
+	if !slices.Contains(agentClaimableKinds, stage) && stage != StageTranslate {
 		return SwitchResult{}, invalidf("步驟 %q 不是 LLM 步驟。", stage)
 	}
 	it, err := p.itemByIDOrRef(ctx, itemRef)

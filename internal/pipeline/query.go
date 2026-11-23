@@ -26,6 +26,8 @@ type Detail struct {
 	Attempts map[string]int
 	// SponsorSegments 是現行的 SponsorBlock 片段（SPB-R4）；步驟沒有執行過（沒有產出）時是 nil，沒有片段時是空切片。
 	SponsorSegments []sponsorblock.Segment
+	// Chapters 是現行的章節（CHAP-R7）；chapters 步驟沒有產生過產出時是 nil。
+	Chapters *Chapters
 }
 
 // Item 回傳影音詳情；不存在時回傳 store.ErrNotFound，在垃圾桶中時回傳 *InTrashError（DEL-R1）。
@@ -70,6 +72,12 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 		p.log.Warn("讀取 SponsorBlock 片段失敗", "item", id, "error", err)
 	case ok:
 		d.SponsorSegments = segs
+	}
+	switch ch, ok, err := p.ItemChapters(ctx, id); {
+	case err != nil:
+		p.log.Warn("讀取章節失敗", "item", id, "error", err)
+	case ok:
+		d.Chapters = &ch
 	}
 	return d, nil
 }

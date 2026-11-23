@@ -166,6 +166,8 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		res, err = p.runLLM(ctx, t, run, it, eff)
 	case run.Stage == StageSponsorBlock:
 		res, err = p.runSponsorBlock(ctx, it, eff)
+	case run.Stage == StageChapters && executor == ExecutorLocal:
+		res, err = p.runPlatformChapters(ctx, it)
 	case run.Stage == StagePublish:
 		res, err = p.runPublish(ctx, it, eff)
 	default:
