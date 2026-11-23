@@ -265,6 +265,7 @@ const usageText = `用法：notesteme <子命令> [旗標]
   ingest <url|ref|path>                 新增影音（--profile、--until、--wait、--timeout）
   items ls | show <item> | rerun <item> --from <stage>
   items rm <ref>... [--purge] [--delete-outputs] [--yes] | restore <ref>...
+  items continue <ref>...               繼續摘要後等你決定的影音（M4）
   trash ls | empty [--yes]              列出、清空垃圾桶
   export <item> --format srt|vtt|txt|ass  輸出字幕（--lang、--variant、--style、--out）
   import <subtitle> --item <item>       匯入外部編輯過的字幕為 edited 版本（--lang、--format）

@@ -194,7 +194,7 @@ func (s *session) printItemText(v itemView) {
 // parseItems 解析 `items ls | show | rerun`。
 func parseItems(args []string) (*plan, error) {
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
-		return nil, usagef("items 需要子命令：ls、show 或 rerun。")
+		return nil, usagef("items 需要子命令：ls、show、rerun、rm、restore 或 continue。")
 	}
 	sub, rest := args[0], args[1:]
 	switch sub {
@@ -208,6 +208,8 @@ func parseItems(args []string) (*plan, error) {
 		return parseItemsRm(rest)
 	case "restore":
 		return parseItemsRestore(rest)
+	case "continue":
+		return parseItemsContinue(rest)
 	}
 	return nil, usagef("不認得的子命令 items %s。", sub)
 }
