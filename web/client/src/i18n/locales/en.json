@@ -1142,6 +1142,28 @@
       "warnRule": "Use a whole number from 1 to 100.",
       "timezone": "Budget time zone",
       "timezoneHint": "An IANA time zone such as Asia/Taipei; it decides when a month starts."
+    },
+    "ops": {
+      "alertsTitle": "System alerts",
+      "alertsHint": "Checked every 15 minutes. When a condition clears, its alert disappears from here and a resolved notification is sent per your notification settings.",
+      "noAlerts": "No alerts right now.",
+      "since": "Since {{time}}, for {{elapsed}}",
+      "kind": {
+        "backup_failed": "Backup failed",
+        "stuck_task": "Task not progressing",
+        "job_stale": "Scheduled job not running",
+        "disk_usage": "Low disk space",
+        "cookie_stale": "Cookie may have expired",
+        "ytdlp_failure_rate": "High yt-dlp failure rate"
+      },
+      "backupTitle": "Daily backup",
+      "backupHint": "A database snapshot and the config file, without the master key. Location and retention are set in the config file.",
+      "lastOk": "Last success",
+      "never": "Never succeeded yet",
+      "nextRun": "Next run",
+      "disabled": "Disabled",
+      "lastFailed": "The last backup failed",
+      "backupOk": "The last backup succeeded."
     }
   },
   "diff": {

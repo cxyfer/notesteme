@@ -21,6 +21,8 @@ const SYSTEM = {
     ffmpeg: { path: "", source: "path", available: false, error: "找不到 ffmpeg" },
   },
   yt_dlp: { pinned: null, previous: "2026.10.01" },
+  alerts: [],
+  backup: { last_ok_at: null, last_error: null, next_run_at: null },
 };
 
 const SESSIONS = {

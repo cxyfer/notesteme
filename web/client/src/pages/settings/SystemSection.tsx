@@ -1,7 +1,8 @@
 // 系統（pages.md §12、OPS）：外部工具的路徑與狀態、更新 yt-dlp 與回到上一個版本、資料目錄。
 // GET /api/system 沒有工具的版本號、磁碟用量與媒體檔保留天數；版本號只能從更新的結果得知，其他標示尚未提供。
+// UI-5：最上面加上告警與備份（OPS，OpsStatus.tsx），lazy 載入。
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { api } from "../../api/client";
@@ -11,6 +12,8 @@ import { Button, ErrorCallout, useToast } from "../../components";
 import { Loading, NotAvailable, Panel } from "./shared";
 
 type Result = components["schemas"]["Result"];
+
+const OpsStatus = lazy(() => import("./OpsStatus").then((m) => ({ default: m.OpsStatus })));
 
 export function SystemSection() {
   const { t } = useTranslation();
@@ -27,6 +30,9 @@ export function SystemSection() {
   const tools = Object.entries(sys.tools).sort(([a], [b]) => a.localeCompare(b));
   return (
     <>
+      <Suspense fallback={<Loading />}>
+        <OpsStatus alerts={sys.alerts} backup={sys.backup} />
+      </Suspense>
       <Panel title={t("settings.system.toolsTitle")}>
         <div className="settings-table-wrap">
           <table className="settings-table">

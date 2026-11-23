@@ -1113,6 +1113,28 @@
       "warnRule": "提醒門檻必須是 1 到 100 的整數。",
       "timezone": "預算時區",
       "timezoneHint": "IANA 時區名稱，例如 Asia/Taipei；決定「本月」的起訖。"
+    },
+    "ops": {
+      "alertsTitle": "系統告警",
+      "alertsHint": "每 15 分鐘檢查一次。條件解除後告警會從這裡消失，並依通知設定送出解除通知。",
+      "noAlerts": "目前沒有告警。",
+      "since": "從 {{time}} 起，已持續 {{elapsed}}",
+      "kind": {
+        "backup_failed": "備份失敗",
+        "stuck_task": "任務沒有進展",
+        "job_stale": "排程工作沒有執行",
+        "disk_usage": "磁碟空間不足",
+        "cookie_stale": "Cookie 可能已失效",
+        "ytdlp_failure_rate": "yt-dlp 失敗率偏高"
+      },
+      "backupTitle": "每日備份",
+      "backupHint": "資料庫快照與設定檔，不含 master key。位置與保留份數在設定檔設定。",
+      "lastOk": "最近一次成功",
+      "never": "還沒有成功過",
+      "nextRun": "下一次執行",
+      "disabled": "已停用",
+      "lastFailed": "最近一次備份失敗",
+      "backupOk": "最近一次備份成功。"
     }
   },
   "diff": {
