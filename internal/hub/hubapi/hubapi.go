@@ -62,6 +62,8 @@ func New(d Deps) http.Handler {
 	rt := newHumaAPI(mux, d)
 	registerOAuth(mux, rt)
 	registerRawStubs(mux)
+	// /mcp 的 loopback 呼叫同一個 mux（只限 /api/v1/ 的 GET）。
+	mux.Handle("/mcp", newMCPEndpoint(rt, mux))
 	return recoverMiddleware(d.Log, mux)
 }
 

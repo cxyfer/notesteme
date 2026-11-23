@@ -120,6 +120,10 @@ func (rt *routes) authenticate(ctx huma.Context) (*hubauth.Principal, error) {
 func (rt *routes) accessMiddleware(ctx huma.Context, next func(huma.Context)) {
 	op := ctx.Operation()
 	access := accessOf(op)
+	if p := loopbackPrincipal(ctx.Context()); p != nil {
+		rt.loopbackAccess(ctx, next, p, access)
+		return
+	}
 	if access == AccessPublic {
 		if op == nil || !unlimitedOps[op.OperationID] {
 			if e := rt.limitAnonymous(ctx.RemoteAddr()); e != nil {
@@ -165,6 +169,27 @@ func (rt *routes) accessMiddleware(ctx huma.Context, next func(huma.Context)) {
 	}
 	if e := rt.limitAccount(p.User.ID); e != nil {
 		writeHumaErr(ctx, e)
+		return
+	}
+	if isPermission(access) {
+		ok, err := rt.d.Auth.HasPermission(ctx.Context(), p, string(access))
+		if err != nil {
+			writeHumaErr(ctx, rt.apiError(ctx.Context(), err))
+			return
+		}
+		if !ok {
+			writeHumaErr(ctx, hubauth.ErrForbidden(string(access)))
+			return
+		}
+	}
+	next(huma.WithValue(ctx, principalKey{}, p))
+}
+
+// loopbackAccess 是 Hub MCP 的 tool 在程序內呼叫的路由（mcp.go）：身分已在 /mcp 驗證、限流已計入，
+// 這裡只做唯讀與權限的檢查（與 hubmcp 的檢查構成雙重檢查，HMCP-R4）。
+func (rt *routes) loopbackAccess(ctx huma.Context, next func(huma.Context), p *hubauth.Principal, access Access) {
+	if ctx.Method() != http.MethodGet || access == AccessSession {
+		writeHumaErr(ctx, mcpForbidden("Hub MCP 只能讀取。"))
 		return
 	}
 	if isPermission(access) {

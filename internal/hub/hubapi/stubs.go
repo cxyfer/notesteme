@@ -41,11 +41,9 @@ var Stubs = []Stub{
 	// 投票與檢舉（M5-S5，community.go）、下架申請（takedowns.go）、管理與我的分享（moderation.go）。
 }
 
-// RawStubs 是不經過 Huma 的路由（MCP 的 JSON-RPC），同樣先回 501。瀏覽器的 OAuth 流程（/auth/<provider>/start|callback）由 M5-S1 實作（auth.go）。
-var RawStubs = []Stub{
-	// HMCP-R1：只接受 PAT，所有方法都交給 MCP SDK（S6）。
-	{ID: "mcp", Method: "", Path: "/mcp", Access: AccessAuthenticated, Spec: "HMCP-R1"},
-}
+// RawStubs 是不經過 Huma、還沒有實作的路由（目前沒有）。瀏覽器的 OAuth 流程（/auth/<provider>/start|callback）在 auth.go，
+// Hub MCP 的 /mcp（HMCP，只接受 Hub token）在 mcp.go。
+var RawStubs = []Stub{}
 
 // AccessExtension 是 OpenAPI operation 上記錄 Access 的擴充欄位，讓 Hub 的用戶端與 contract test 看得到權限。
 const AccessExtension = "x-notesteme-access"

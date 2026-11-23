@@ -77,8 +77,8 @@ func TestStubRoutes(t *testing.T) {
 			t.Errorf("%s %s 的存取層級 = %q，預期 %q", c.method, c.path, got, c.access)
 		}
 	}
-	// MCP（S6）。
-	if rec := do(h, "POST", "/mcp"); rec.Code != http.StatusNotImplemented {
+	// MCP（S6）已實作：沒有 Hub token 時是 401，不再是 501。
+	if rec := do(h, "POST", "/mcp"); rec.Code != http.StatusUnauthorized {
 		t.Errorf("POST /mcp = %d", rec.Code)
 	}
 	// 沒有登記的路徑仍然是 404（stub 沒有吃掉其他路徑）。
