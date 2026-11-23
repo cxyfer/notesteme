@@ -34,8 +34,11 @@ export const a11yRoutes: A11yRoute[] = [
     "system",
     "config",
     "appearance",
+    "bookmarklet",
     "login",
   ].map((s) => ({ path: `/settings/${s}`, heading: "設定", auth: true })),
+  // ENTRY-R2：/add 打開「新增」抽屜後換成媒體庫（無效的網址不會呼叫辨識）
+  { path: "/add?url=javascript%3Aalert(1)", heading: "媒體庫", auth: true },
   { path: "/prompts", heading: "Prompt 庫", auth: true },
   { path: "/prompts/correct-default", heading: "correct-default", auth: true },
   { path: "/profiles", heading: "處理方案", auth: true },

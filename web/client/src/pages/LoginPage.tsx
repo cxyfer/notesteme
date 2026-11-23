@@ -1,5 +1,7 @@
 // 登入（docs/ui/pages.md §13）：單一密碼；密碼錯誤顯示「密碼不正確。」，
 // 連續失敗被鎖定（429 login_locked）時顯示剩餘秒數並停用按鈕；登入後導回原本的路徑。
+// 登入頁網址的 next（伺服器的頁面路由帶來，ENTRY-R5）與 redirect（UI 自己帶的）都交給後端檢查，
+// 只前往登入回應中的 next（ENTRY-R6），不直接使用網址中的值。
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
@@ -16,7 +18,7 @@ const route = getRouteApi("/login");
 export function LoginPage() {
   const { t } = useTranslation();
   usePageTitle(t("login.title"));
-  const { redirect } = route.useSearch();
+  const { redirect, next } = route.useSearch();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [password, setPassword] = useState("");
@@ -45,9 +47,13 @@ export function LoginPage() {
     setPending(true);
     setError(undefined);
     try {
-      await api.post("/api/auth/login", { body: { password } });
+      const requested = next ?? redirect;
+      const res = await api.post("/api/auth/login", {
+        body: requested ? { password, next: requested } : { password },
+      });
       qc.clear();
-      await navigate({ to: safeRedirect(redirect), replace: true });
+      // 後端已檢查過；這裡再過一次 safeRedirect（例如 "/" 與 /login 換成媒體庫）。用 href：next 可能帶 query。
+      await navigate({ href: safeRedirect(res.next), replace: true });
     } catch (err) {
       setError(err);
       if (isApiError(err) && err.code === "login_locked") {

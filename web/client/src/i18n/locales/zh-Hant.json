@@ -309,7 +309,11 @@
     "started_other": "已開始處理 {{count}} 部",
     "startedWithExisting_other": "已開始處理 {{count}} 部，另外 {{existing}} 部已在媒體庫中",
     "alreadyInLibrary_other": "已在媒體庫中（{{count}} 部），沒有重複新增。",
-    "episodes_other": "要新增的集（共 {{count}} 集）"
+    "episodes_other": "要新增的集（共 {{count}} 集）",
+    "entry": {
+      "invalidUrl": "書籤或分享的網址無效，已忽略。",
+      "noUrl": "分享的內容中沒有網址。"
+    }
   },
   "actions": {
     "retry": "重試",
@@ -604,6 +608,7 @@
       "system": "系統",
       "config": "匯出與匯入",
       "appearance": "外觀",
+      "bookmarklet": "書籤小工具",
       "login": "登入"
     },
     "common": {
@@ -886,6 +891,15 @@
       "changed": "已修改密碼，其他裝置已登出",
       "wrongCurrent": "目前的密碼不正確。確認後再試一次；連續錯誤 5 次會鎖定 1 分鐘。",
       "sessionsTitle": "登入工作階段、反向代理驗證與 OIDC"
+    },
+    "bookmarklet": {
+      "title": "書籤小工具",
+      "description": "把下面的連結拖到瀏覽器的書籤列。看影片時點一下，Notesteme 會在新分頁開啟「新增」並帶入目前頁面的網址；按「開始處理」之前不會處理。",
+      "link": "加到 Notesteme",
+      "code": "書籤的程式碼",
+      "codeHint": "只讀取目前頁面的網址並開啟新分頁，不含任何登入憑證，也不讀取頁面內容。",
+      "mobileTitle": "手機",
+      "mobile": "Android：把 Notesteme 安裝成 App（瀏覽器選單的「安裝」或「加到主畫面」）後，就能從其他 App 的「分享」傳送網址。iOS：用捷徑 App 開啟下面的網址，並把 {url} 換成要新增的網址。"
     }
   },
   "diff": {

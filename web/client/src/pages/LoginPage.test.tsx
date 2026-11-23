@@ -14,11 +14,31 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+// 後端的登入：回應中的 next 是請求的 next 通過檢查後的值（ENTRY-R6）；這裡只模擬「以 / 開頭、第二個字元不是 /」。
+async function echoNext(_input: unknown, init?: RequestInit) {
+  document.cookie = "notesteme_csrf=t; path=/";
+  const body = JSON.parse(String(init?.body ?? "{}")) as { next?: string };
+  const n = body.next ?? "/";
+  const next = n.startsWith("/") && !n.startsWith("//") ? n : "/";
+  return json(200, { expires_at: "2026-12-01T00:00:00Z", next });
+}
+
 async function submit(password: string) {
   const input = await screen.findByLabelText("密碼");
   await userEvent.clear(input);
   await userEvent.type(input, password);
   await userEvent.click(screen.getByRole("button", { name: "登入" }));
+}
+
+// /add 之後的媒體庫與「新增」抽屜會讀的 API
+function mockAddRoutes() {
+  const login = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (input, init) => {
+    if (input === "/api/auth/login") return login(input, init);
+    if (input === "/api/resolve") return json(422, { code: "unrecognized_url", message: "x" });
+    if (String(input).startsWith("/api/profiles")) return json(200, { profiles: [] });
+    return json(200, { items: [], total: 0 });
+  });
 }
 
 describe("登入頁", () => {
@@ -55,10 +75,7 @@ describe("登入頁", () => {
   });
 
   it("登入後導回原本的路徑", async () => {
-    fetchMock.mockImplementation(async () => {
-      document.cookie = "notesteme_csrf=t; path=/";
-      return json(200, { expires_at: "2026-12-01T00:00:00Z" });
-    });
+    fetchMock.mockImplementation(echoNext);
     const { router } = renderRoute("/login?redirect=%2Fqueue");
     await submit("pw");
     await screen.findByRole("heading", { level: 1, name: "佇列" });
@@ -66,10 +83,7 @@ describe("登入頁", () => {
   });
 
   it("導回帶 query 的路徑", async () => {
-    fetchMock.mockImplementation(async () => {
-      document.cookie = "notesteme_csrf=t; path=/";
-      return json(200, { expires_at: "2026-12-01T00:00:00Z" });
-    });
+    fetchMock.mockImplementation(echoNext);
     const { router } = renderRoute("/login?redirect=%2Fqueue%3Fx%3D1");
     await submit("pw");
     await screen.findByRole("heading", { level: 1, name: "佇列" });
@@ -78,11 +92,36 @@ describe("登入頁", () => {
   });
 
   it("不安全的 redirect（//evil.example）改成 /library", async () => {
+    fetchMock.mockImplementation(echoNext);
+    const { router } = renderRoute("/login?redirect=%2F%2Fevil.example");
+    await submit("pw");
+    await screen.findByRole("heading", { level: 1, name: "媒體庫" });
+    expect(router.state.location.pathname).toBe("/library");
+  });
+
+  it("登入後前往回應中的 next（分享帶來的網址，ENTRY-R5、R6）", async () => {
+    fetchMock.mockImplementation(echoNext);
+    mockAddRoutes();
+    const { router } = renderRoute(
+      "/login?next=%2Fadd%3Furl%3Dhttps%253A%252F%252Fyoutu.be%252Fabc123xxxxx",
+    );
+    await submit("pw");
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect(JSON.parse(String(init!.body))).toEqual({
+      password: "pw",
+      next: "/add?url=https%3A%2F%2Fyoutu.be%2Fabc123xxxxx",
+    });
+    // /add 打開「新增」抽屜並帶入網址，再換成媒體庫
+    expect(await screen.findByDisplayValue("https://youtu.be/abc123xxxxx")).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/library");
+  });
+
+  it("不使用登入頁網址中的 next，只用回應中的 next", async () => {
     fetchMock.mockImplementation(async () => {
       document.cookie = "notesteme_csrf=t; path=/";
-      return json(200, { expires_at: "2026-12-01T00:00:00Z" });
+      return json(200, { expires_at: "2026-12-01T00:00:00Z", next: "/" });
     });
-    const { router } = renderRoute("/login?redirect=%2F%2Fevil.example");
+    const { router } = renderRoute("/login?next=%2Fqueue");
     await submit("pw");
     await screen.findByRole("heading", { level: 1, name: "媒體庫" });
     expect(router.state.location.pathname).toBe("/library");

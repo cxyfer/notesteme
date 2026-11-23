@@ -226,3 +226,15 @@
   color: var(--text-secondary);
   min-height: 24px;
 }
+
+/* 書籤小工具（ENTRY-R1）：拖到書籤列的連結與程式碼 */
+.bookmarklet {
+  cursor: grab;
+  text-decoration: none;
+}
+.bookmarklet__code {
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 0.85em;
+}

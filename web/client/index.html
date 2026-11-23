@@ -6,6 +6,9 @@
     <!-- 主題在 JS 載入前跟隨系統（CSS 的 color-scheme）；CSP 不允許 inline script，不在這裡防閃爍。 -->
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- PWA（ENTRY-R3）：manifest 與 service worker 由 Go 的頁面路由提供 -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <title>Notesteme</title>
   </head>
   <body>

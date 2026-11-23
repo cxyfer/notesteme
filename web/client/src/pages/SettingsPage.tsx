@@ -9,6 +9,7 @@ import { usePageTitle } from "../shell/usePageTitle";
 import { AccountsSection } from "./settings/AccountsSection";
 import { AgentSection } from "./settings/AgentSection";
 import { AppearanceSection } from "./settings/AppearanceSection";
+import { BookmarkletSection } from "./settings/BookmarkletSection";
 import { ConfigSection } from "./settings/ConfigSection";
 import { GlossarySection } from "./settings/GlossarySection";
 import { LanguageSection } from "./settings/LanguageSection";
@@ -18,7 +19,7 @@ import { PlannedSection } from "./settings/PlannedSection";
 import { ServicesSection } from "./settings/ServicesSection";
 import { SystemSection } from "./settings/SystemSection";
 
-// 分區的順序依 pages.md §12；「匯出與匯入」是 UI-3b 加的獨立分區（SEC-R10）。
+// 分區的順序依 pages.md §12；「匯出與匯入」是 UI-3b 加的獨立分區（SEC-R10），「書籤小工具」是 ENTRY-R1 的區塊。
 export const SETTINGS_SECTIONS = [
   "services",
   "accounts",
@@ -31,6 +32,7 @@ export const SETTINGS_SECTIONS = [
   "system",
   "config",
   "appearance",
+  "bookmarklet",
   "login",
 ] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
@@ -47,6 +49,7 @@ const SECTION_COMPONENTS: Record<SettingsSection, ComponentType> = {
   system: SystemSection,
   config: ConfigSection,
   appearance: AppearanceSection,
+  bookmarklet: BookmarkletSection,
   login: LoginSection,
 };
 

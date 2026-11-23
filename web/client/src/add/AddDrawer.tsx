@@ -38,6 +38,8 @@ export interface AddDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialUrl?: string;
+  /** 抽屜上方的提示（例如書籤或分享帶進來的網址無效，ENTRY-R2、R4） */
+  notice?: string;
 }
 
 function useDebouncedValue(value: string, ms: number) {
@@ -61,7 +63,7 @@ const URL_CODES = new Set([
 /** 檔案錯誤（要換檔案）的 code */
 const FILE_CODES = new Set(["upload_too_large", "unsupported_media"]);
 
-export function AddDrawer({ open, onOpenChange, initialUrl = "" }: AddDrawerProps) {
+export function AddDrawer({ open, onOpenChange, initialUrl = "", notice }: AddDrawerProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const toast = useToast();
@@ -248,6 +250,11 @@ export function AddDrawer({ open, onOpenChange, initialUrl = "" }: AddDrawerProp
       }
     >
       <form id={formId} className="add" onSubmit={onSubmit} noValidate>
+        {notice && (
+          <p className="callout add__notice" role="status" data-category="needs_action">
+            {notice}
+          </p>
+        )}
         <div className="field">
           <label className="field__label" htmlFor={`${formId}-url`}>
             {t("add.url")}

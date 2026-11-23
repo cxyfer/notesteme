@@ -318,7 +318,11 @@
     "alreadyInLibrary_other": "Already in your library ({{count}} items), so nothing was added.",
     "alreadyInLibrary_one": "Already in your library, so nothing was added.",
     "episodes_other": "Episodes to add ({{count}} episodes)",
-    "episodes_one": "Episodes to add ({{count}} episode)"
+    "episodes_one": "Episodes to add ({{count}} episode)",
+    "entry": {
+      "invalidUrl": "The address from the bookmarklet or share was not valid and was ignored.",
+      "noUrl": "The shared content has no web address."
+    }
   },
   "actions": {
     "retry": "Retry",
@@ -625,6 +629,7 @@
       "system": "System",
       "config": "Export & import",
       "appearance": "Appearance",
+      "bookmarklet": "Bookmarklet",
       "login": "Sign-in"
     },
     "common": {
@@ -913,6 +918,15 @@
       "changed": "Password changed. Other devices were signed out",
       "wrongCurrent": "The current password is incorrect. Check it and try again; 5 wrong attempts in a row lock sign-in for 1 minute.",
       "sessionsTitle": "Sign-in sessions, reverse proxy authentication and OIDC"
+    },
+    "bookmarklet": {
+      "title": "Bookmarklet",
+      "description": "Drag the link below to your browser's bookmarks bar. Click it while watching a video and Notesteme opens Add in a new tab with the page's address filled in; nothing is processed until you press Start.",
+      "link": "Add to Notesteme",
+      "code": "Bookmarklet code",
+      "codeHint": "It only reads the current page's address and opens a new tab. It contains no credentials and does not read the page.",
+      "mobileTitle": "Phone",
+      "mobile": "Android: install Notesteme as an app (Install or Add to Home screen in the browser menu), then send links to it from any app's Share menu. iOS: use the Shortcuts app to open the address below, replacing {url} with the link to add."
     }
   },
   "diff": {

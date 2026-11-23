@@ -520,3 +520,20 @@ describe("語言與外觀", () => {
     expect(document.documentElement.dataset.theme).toBeUndefined();
   });
 });
+
+describe("書籤小工具（ENTRY-R1）", () => {
+  it("連結是依目前 origin 產生的 bookmarklet，在這個頁面點擊不執行", async () => {
+    settingsApi();
+    await openSection("bookmarklet");
+    const link = await screen.findByRole("link", { name: "加到 Notesteme" });
+    await waitFor(() =>
+      expect(link.getAttribute("href")).toBe(
+        `javascript:(()=>{window.open('${window.location.origin}/add?url='+encodeURIComponent(location.href),'_blank','noopener')})()`,
+      ),
+    );
+    const ev = new MouseEvent("click", { bubbles: true, cancelable: true });
+    link.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(screen.getByText(`${window.location.origin}/add?url={url}`)).toBeTruthy();
+  });
+});

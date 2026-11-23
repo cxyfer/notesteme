@@ -7,6 +7,7 @@
 //      ├─ /library
 //      ├─ /queue
 //      ├─ /items/$id
+//      ├─ /add                書籤小工具與分享的落地頁：打開「新增」抽屜後換成 /library（ENTRY-R2，lazy）
 //      ├─ /settings           導到第一個分區
 //      ├─ /settings/$section
 //      ├─ /prompts、/prompts/$id     Prompt 庫（編輯頁含 CodeMirror，lazy 載入）
@@ -25,6 +26,7 @@ import {
   type RouterHistory,
 } from "@tanstack/react-router";
 
+import { validateAddEntrySearch } from "./add/entry";
 import { hasSessionHint, safeRedirect } from "./auth/session";
 import { validateItemSearch } from "./pages/item/search";
 import { validateLibrarySearch } from "./pages/library/filters";
@@ -53,9 +55,13 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
 export const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
-  validateSearch: (search: Record<string, unknown>): { redirect?: string } => {
+  // next 由伺服器的頁面路由帶來（ENTRY-R2、R5），原樣交給 POST /api/auth/login 檢查，UI 只用回應中的 next（ENTRY-R6）
+  validateSearch: (search: Record<string, unknown>): { redirect?: string; next?: string } => {
+    const out: { redirect?: string; next?: string } = {};
     const r = safeRedirect(search.redirect, "");
-    return r ? { redirect: r } : {};
+    if (r) out.redirect = r;
+    if (typeof search.next === "string" && search.next !== "") out.next = search.next;
+    return out;
   },
   component: LoginPage,
 });
@@ -99,6 +105,13 @@ export const itemRoute = createRoute({
   // 分頁、字幕模式、起始時間在 URL；頁面本身是 lazy route（播放器、字幕列表、diff 不進初始 bundle）
   validateSearch: validateItemSearch,
   component: lazyRouteComponent(() => import("./pages/item/ItemPage"), "ItemPage"),
+});
+
+const addEntryRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/add",
+  validateSearch: validateAddEntrySearch,
+  component: lazyRouteComponent(() => import("./add/AddEntryPage"), "AddEntryPage"),
 });
 
 const settingsIndexRoute = createRoute({
@@ -162,6 +175,7 @@ export const routeTree = rootRoute.addChildren([
     libraryRoute,
     queueRoute,
     itemRoute,
+    addEntryRoute,
     settingsIndexRoute,
     settingsRoute,
     promptsRoute,

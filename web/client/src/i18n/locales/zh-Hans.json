@@ -309,7 +309,11 @@
     "started_other": "已开始处理 {{count}} 部",
     "startedWithExisting_other": "已开始处理 {{count}} 部，另外 {{existing}} 部已在媒体库中",
     "alreadyInLibrary_other": "已在媒体库中（{{count}} 部），没有重复新增。",
-    "episodes_other": "要新增的集（共 {{count}} 集）"
+    "episodes_other": "要新增的集（共 {{count}} 集）",
+    "entry": {
+      "invalidUrl": "书签或分享的网址无效，已忽略。",
+      "noUrl": "分享的内容中没有网址。"
+    }
   },
   "actions": {
     "retry": "重试",
@@ -604,6 +608,7 @@
       "system": "系统",
       "config": "导出与导入",
       "appearance": "外观",
+      "bookmarklet": "书签小工具",
       "login": "登录"
     },
     "common": {
@@ -886,6 +891,15 @@
       "changed": "已修改密码，其他设备已退出登录",
       "wrongCurrent": "当前密码不正确。确认后再试一次；连续错误 5 次会锁定 1 分钟。",
       "sessionsTitle": "登录会话、反向代理验证与 OIDC"
+    },
+    "bookmarklet": {
+      "title": "书签小工具",
+      "description": "把下面的链接拖到浏览器的书签栏。看视频时点一下，Notesteme 会在新标签页打开“新增”并带入当前页面的网址；按“开始处理”之前不会处理。",
+      "link": "加到 Notesteme",
+      "code": "书签的代码",
+      "codeHint": "只读取当前页面的网址并打开新标签页，不含任何登录凭证，也不读取页面内容。",
+      "mobileTitle": "手机",
+      "mobile": "Android：把 Notesteme 安装成 App（浏览器菜单的“安装”或“添加到主屏幕”）后，就能从其他 App 的“分享”发送网址。iOS：用快捷指令 App 打开下面的网址，并把 {url} 换成要新增的网址。"
     }
   },
   "diff": {

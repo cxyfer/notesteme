@@ -2536,6 +2536,8 @@ export interface components {
       tokens: components["schemas"]["TokenInfo"][] | null;
     };
     LoginInputBody: {
+      /** @description 登入後要前往的站內路徑（ENTRY-R6）；不安全或超過 2048 bytes 時回應的 next 為 / */
+      next?: string;
       /** @description 登入密碼 */
       password: string;
     };
@@ -2545,6 +2547,8 @@ export interface components {
        * @description session 目前的到期時間
        */
       expires_at: string;
+      /** @description 登入後要前往的站內路徑：請求的 next 通過開放轉址檢查時原樣回傳，否則為 /（ENTRY-R6） */
+      next: string;
     };
     MonthBudget: {
       month: string;
