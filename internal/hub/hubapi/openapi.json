@@ -1,0 +1,1281 @@
+{
+  "components": {
+    "schemas": {
+      "Error": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "code": {
+            "description": "機器可讀的錯誤代碼",
+            "type": "string"
+          },
+          "details": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "failed": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "file_line": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "line": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "message": {
+            "description": "給人看的說明",
+            "type": "string"
+          },
+          "purged": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "required_permission": {
+            "type": "string"
+          },
+          "required_scope": {
+            "type": "string"
+          },
+          "retry_after_s": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "undefined_variables": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "used_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "FieldError": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "message"
+        ],
+        "type": "object"
+      },
+      "StatusOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "examples": [
+              "ok"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Notesteme Hub 的 API（/api/v1）。Client 契約見 ADR-0032 第 1 點。",
+    "title": "Notesteme Hub",
+    "version": "snapshot"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/admin/audit": {
+      "get": {
+        "description": "規則：HACC-R17。",
+        "operationId": "admin-audit",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "稽核紀錄（尚未實作）",
+        "x-notesteme-access": "admin"
+      }
+    },
+    "/api/v1/admin/reports": {
+      "get": {
+        "description": "規則：HREP-R14。",
+        "operationId": "admin-reports-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "列出檢舉（尚未實作）",
+        "x-notesteme-access": "moderate"
+      }
+    },
+    "/api/v1/admin/reports/{id}/decision": {
+      "post": {
+        "description": "規則：HREP-R15。",
+        "operationId": "admin-reports-decide",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "處理檢舉（尚未實作）",
+        "x-notesteme-access": "moderate"
+      }
+    },
+    "/api/v1/admin/takedowns": {
+      "get": {
+        "description": "規則：HACC-R16。",
+        "operationId": "admin-takedowns-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "列出下架申請（尚未實作）",
+        "x-notesteme-access": "moderate"
+      }
+    },
+    "/api/v1/admin/takedowns/{id}/decision": {
+      "post": {
+        "description": "規則：HACC-R16。",
+        "operationId": "admin-takedowns-decide",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "決定下架申請（尚未實作）",
+        "x-notesteme-access": "moderate"
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "description": "規則：HACC-R12。",
+        "operationId": "admin-users-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "列出使用者（尚未實作）",
+        "x-notesteme-access": "admin"
+      }
+    },
+    "/api/v1/admin/users/{id}/groups/{group}": {
+      "delete": {
+        "description": "規則：HACC-R12。",
+        "operationId": "admin-users-group-remove",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "把使用者移出群組（尚未實作）",
+        "x-notesteme-access": "admin"
+      },
+      "put": {
+        "description": "規則：HACC-R12。",
+        "operationId": "admin-users-group-add",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "把使用者加入群組（尚未實作）",
+        "x-notesteme-access": "admin"
+      }
+    },
+    "/api/v1/admin/users/{id}/suspend": {
+      "post": {
+        "description": "規則：HACC-R17。",
+        "operationId": "admin-users-suspend",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "停用帳號（尚未實作）",
+        "x-notesteme-access": "admin"
+      }
+    },
+    "/api/v1/admin/users/{id}/unsuspend": {
+      "post": {
+        "description": "規則：HACC-R17。",
+        "operationId": "admin-users-unsuspend",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "恢復帳號（尚未實作）",
+        "x-notesteme-access": "admin"
+      }
+    },
+    "/api/v1/admin/versions/{id}/hide": {
+      "post": {
+        "description": "規則：HREP-R15。",
+        "operationId": "admin-versions-hide",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "隱藏版本（尚未實作）",
+        "x-notesteme-access": "moderate"
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "description": "規則：HACC-R8。",
+        "operationId": "auth-logout",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "登出，session 立即失效（尚未實作）",
+        "x-notesteme-access": "session"
+      }
+    },
+    "/api/v1/auth/providers": {
+      "get": {
+        "description": "規則：HACC-R1。",
+        "operationId": "auth-providers",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "列出已啟用的登入方式（尚未實作）",
+        "x-notesteme-access": "public"
+      }
+    },
+    "/api/v1/lookup": {
+      "get": {
+        "description": "規則：HREP-R19。",
+        "operationId": "lookup",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "ASR 前查詢：以影片 ID 雜湊的前綴查詢（尚未實作）",
+        "x-notesteme-access": "regenerate"
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "description": "規則：HACC-R6、ADR-0032。",
+        "operationId": "me",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "目前的帳號、登入方式、群組與有效權限（尚未實作）",
+        "x-notesteme-access": "authenticated"
+      }
+    },
+    "/api/v1/me/identities/{provider}": {
+      "delete": {
+        "description": "規則：HACC-R7。",
+        "operationId": "me-identities-unlink",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "移除登入方式（尚未實作）",
+        "x-notesteme-access": "session"
+      }
+    },
+    "/api/v1/me/identities/{provider}/link": {
+      "post": {
+        "description": "規則：HACC-R6。",
+        "operationId": "me-identities-link",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "連結新的登入方式（尚未實作）",
+        "x-notesteme-access": "session"
+      }
+    },
+    "/api/v1/me/shares": {
+      "get": {
+        "description": "規則：HACC-R16。",
+        "operationId": "me-shares",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "我的分享與版本狀態（尚未實作）",
+        "x-notesteme-access": "upload"
+      }
+    },
+    "/api/v1/me/tokens": {
+      "get": {
+        "description": "規則：HACC-R9。",
+        "operationId": "me-tokens-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "列出 Hub token（尚未實作）",
+        "x-notesteme-access": "session"
+      },
+      "post": {
+        "description": "規則：HACC-R9。",
+        "operationId": "me-tokens-create",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "建立 Hub token，token 只顯示這一次（尚未實作）",
+        "x-notesteme-access": "session"
+      }
+    },
+    "/api/v1/me/tokens/{id}": {
+      "delete": {
+        "description": "規則：HACC-R9。",
+        "operationId": "me-tokens-revoke",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "撤銷 Hub token（尚未實作）",
+        "x-notesteme-access": "session"
+      }
+    },
+    "/api/v1/shares": {
+      "post": {
+        "description": "規則：HREP-R1。",
+        "operationId": "shares-create",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "分享 bundle（multipart：bundle、attest、visibility，尚未實作）",
+        "x-notesteme-access": "upload"
+      }
+    },
+    "/api/v1/shares/{id}": {
+      "delete": {
+        "description": "規則：HREP-R10。",
+        "operationId": "shares-withdraw",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "撤回自己的分享（尚未實作）",
+        "x-notesteme-access": "upload"
+      }
+    },
+    "/api/v1/takedowns": {
+      "post": {
+        "description": "規則：HACC-R15。",
+        "operationId": "takedowns-create",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "提出下架申請，不需要登入（尚未實作）",
+        "x-notesteme-access": "public"
+      }
+    },
+    "/api/v1/takedowns/{id}": {
+      "get": {
+        "description": "規則：HACC-R15。",
+        "operationId": "takedowns-get",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "查詢下架申請的狀態（尚未實作）",
+        "x-notesteme-access": "public"
+      }
+    },
+    "/api/v1/versions": {
+      "get": {
+        "description": "規則：HREP-R16。",
+        "operationId": "versions-list",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "篩選版本（尚未實作）",
+        "x-notesteme-access": "read"
+      }
+    },
+    "/api/v1/versions/{id}": {
+      "get": {
+        "description": "規則：HREP-R17。",
+        "operationId": "versions-get",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "版本詳情、來源紀錄與衍生關係（尚未實作）",
+        "x-notesteme-access": "read"
+      }
+    },
+    "/api/v1/versions/{id}/content": {
+      "get": {
+        "description": "規則：HREP-R18。",
+        "operationId": "versions-content",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "原始的 cues JSON（Client 重新生成用，尚未實作）",
+        "x-notesteme-access": "regenerate"
+      }
+    },
+    "/api/v1/versions/{id}/download": {
+      "get": {
+        "description": "規則：HREP-R18。",
+        "operationId": "versions-download",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "下載渲染後的字幕、筆記或章節（尚未實作）",
+        "x-notesteme-access": "download"
+      }
+    },
+    "/api/v1/versions/{id}/reports": {
+      "post": {
+        "description": "規則：HREP-R14。",
+        "operationId": "versions-reports-create",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "檢舉版本（尚未實作）",
+        "x-notesteme-access": "read"
+      }
+    },
+    "/api/v1/versions/{id}/vote": {
+      "delete": {
+        "description": "規則：HREP-R13。",
+        "operationId": "versions-vote-delete",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "收回投票（尚未實作）",
+        "x-notesteme-access": "read"
+      },
+      "put": {
+        "description": "規則：HREP-R13。",
+        "operationId": "versions-vote-put",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "投票（尚未實作）",
+        "x-notesteme-access": "read"
+      }
+    },
+    "/api/v1/videos/{platform}/{external_id}": {
+      "get": {
+        "description": "規則：HREP-R17。",
+        "operationId": "videos-get",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          }
+        },
+        "summary": "影片的所有版本，依種類、變體與語言分組（尚未實作）",
+        "x-notesteme-access": "read"
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "存活檢查（免驗證）"
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readyz",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "就緒檢查：確認資料庫可寫（免驗證）"
+      }
+    }
+  }
+}
