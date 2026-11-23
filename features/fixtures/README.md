@@ -298,7 +298,7 @@ M4 的步驟（`docs/specs/steps.md` 4.17～4.21）目前都是 pending 的步�
 - `World.Feed`、`World.Notify` 在每個場景建立，但只有閘門句型呼叫 `w.ServeFeeds()`、`w.ReachNotifyEndpoints()` 時才登記到 fakenet（`www.youtube.com` 以 `Handle` 登記，`the URL … serves …` 的 `Route` 仍然優先）。
 - fakebatch 的路徑分派是每個場景預設的：LLM 主機的 handler 把 `fakebatch.Owns` 的路徑交給 `w.Batch()`；`w.EnableBatch(answerer)` 之前回 404 並記一筆違規（`World.Check` 回報）。BATCH 切片在 `the batch API of …` 呼叫 `EnableBatch`，answerer 接 fakellm 的 answers。
 - `w.StartOIDC(fakeoidc.Config{Issuer: …})` 把 issuer 的主機導到 fakeoidc，client secret 預設 `harness.TestOIDCClientSecret`（也設成產品的 `NOTESTEME_OIDC_CLIENT_SECRET`，並在 NFR-SEC-3 的掃描清單中），`Now` 預設是場景的 fake clock。
-- 預設 tag 的 308 個場景、`@M3` 109 個、`@M4` 371 個的逐場景結果在接線前後相同。
+- 預設 tag 的 308 個場景、`@M3` 109 個（M3-S3 之後 42 passed、67 pending）、`@M4` 371 個的逐場景結果在接線前後相同。
 
 ### 訂閱、SRC-10、ENTRY
 

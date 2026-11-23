@@ -54,7 +54,7 @@
     - 路由：`internal/api/m4_stubs.go` 41 個 501 stub（scope 在讀 body 之前檢查），OpenAPI 快照與 `schema.d.ts` 已重產；budget 沿用既有 `settings/{section}`、OIDC start/callback 不註冊（AUTH-R16 要求未啟用時 404，S0 實際回 401）。
     - store／排程器：migration `00018_scheduled_jobs`、`internal/store/scheduled_jobs.go`；`internal/scheduler`（註冊制、注入 clock、30 秒單輪上限、退避 1m/5m/30m/6h、毫秒 jitter、`Deferred`），接進 `internal/app` 的 `periodics`；註冊表空時不查資料庫。ADR-0021 已加修訂段。
     - harness：`features/internal/harness/m4.go`（`ServeFeeds`、`ReachNotifyEndpoints`、`EnableBatch`／`Batch`、`StartOIDC`、batch 路徑預設 404 並記違規）；`processed up to "summary"` 改以 `StageAvailable` 判斷 pending。web：`STAGES` 與三個語系加上 summary。
-    - 驗證：預設 tag 308 passed、`@M3` 109 pending、`@M4` 371 pending，三組逐場景（含停下的步驟）與開工前相同；`features/passing.txt` 不變。
+    - 驗證：預設 tag 308 passed、`@M3` 42 passed、67 pending（M3-S3 之後，origin/master c6ed67a）、`@M4` 371 pending，三組逐場景（含停下的步驟）與 rebase 後的 origin/master 相同；`features/passing.txt` 不變。
     - 決定寫在 DIG、BATCH、COST、NOTIFY、SUB、BND、AUTH、OPS、SRC、LIB 的待決問題（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
     - 給後續切片：(1) 排程工作在 worker 開始之前用 `s.scheduler.Register` 登記 kind（之後 `ErrFrozen`），再用 store 的 `ScheduleJob` 排定；(2) S1 NOTIFY 的閘門句型要呼叫 `w.ReachNotifyEndpoints()`，SUB 呼叫 `w.ServeFeeds()`，BATCH 呼叫 `w.EnableBatch(…)`，AUTH 呼叫 `w.StartOIDC(…)`；(3) 閘門共用（4.17、4.18 的說明）：實作一個之後要用 `@M4` junit 逐場景比對其他領域；(4) COST 要改 `internal/api/items_test.go` 的 budget 501，LIB-R19 要改 `items_list_test.go` 的 `read_state` 501；(5) S6 DIG 要在 `stageImplemented` 登記 summary、補內建 prompt `summary-default`，並確認 harness 的 `firstUnfinished` 與 308 個場景；(6) 實作某個 stub 時從 `m4_stubs.go` 與 `m4_stubs_test.go` 一起移除，重產 OpenAPI。
 - **M5 規格展開（2026-11-23，分支 `docs/m5-hub-specs`，只有文件、場景、步驟樁與假服務骨架，沒有產品程式）**：
