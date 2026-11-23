@@ -62,15 +62,9 @@ var Stubs = []Stub{
 		Summary: "停用帳號（尚未實作）"},
 	{ID: "admin-users-unsuspend", Method: http.MethodPost, Path: "/api/v1/admin/users/{id}/unsuspend", Access: perm(hubconfig.PermAdmin), Spec: "HACC-R17",
 		Summary: "恢復帳號（尚未實作）"},
-	// HREP：分享、篩選、取用、社群（S3～S5）
-	{ID: "shares-create", Method: http.MethodPost, Path: "/api/v1/shares", Access: perm(hubconfig.PermUpload), Spec: "HREP-R1",
-		Summary: "分享 bundle（multipart：bundle、attest、visibility，尚未實作）"},
-	{ID: "shares-withdraw", Method: http.MethodDelete, Path: "/api/v1/shares/{id}", Access: perm(hubconfig.PermUpload), Spec: "HREP-R10",
-		Summary: "撤回自己的分享（尚未實作）"},
+	// HREP：分享、撤回與版本詳情由 M5-S3 實作（repository.go）；篩選、取用、社群（S4、S5）
 	{ID: "versions-list", Method: http.MethodGet, Path: "/api/v1/versions", Access: perm(hubconfig.PermRead), Spec: "HREP-R16",
 		Summary: "篩選版本（尚未實作）"},
-	{ID: "versions-get", Method: http.MethodGet, Path: "/api/v1/versions/{id}", Access: perm(hubconfig.PermRead), Spec: "HREP-R17",
-		Summary: "版本詳情、來源紀錄與衍生關係（尚未實作）"},
 	{ID: "videos-get", Method: http.MethodGet, Path: "/api/v1/videos/{platform}/{external_id}", Access: perm(hubconfig.PermRead), Spec: "HREP-R17",
 		Summary: "影片的所有版本，依種類、變體與語言分組（尚未實作）"},
 	{ID: "versions-download", Method: http.MethodGet, Path: "/api/v1/versions/{id}/download", Access: perm(hubconfig.PermDownload), Spec: "HREP-R18",

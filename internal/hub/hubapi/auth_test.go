@@ -134,7 +134,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 func TestPublicSiteLetsAnonymousReachReadRoutes(t *testing.T) {
 	e := newAuthEnv(t, hubconfig.VisibilityPublic)
-	expect(t, "read 的 stub", e.do("GET", "/api/v1/versions/v1"), 501, "not_implemented")
+	expect(t, "read 的 stub", e.do("GET", "/api/v1/versions"), 501, "not_implemented")
 	expect(t, "download 的 stub", e.do("GET", "/api/v1/versions/v1/download"), 401, "unauthorized")
 	expect(t, "/me", e.do("GET", "/api/v1/me"), 401, "unauthorized")
 }

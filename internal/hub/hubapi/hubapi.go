@@ -76,7 +76,7 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 	cfg.CreateHooks = nil
 	api := humago.New(mux, cfg)
 	rt := &routes{d: d, api: api, limiter: newRateLimiter(d.Clock)}
-	api.UseMiddleware(rt.accessMiddleware)
+	api.UseMiddleware(rt.accessMiddleware, rt.rawOperations)
 	public := map[string]any{AccessExtension: string(AccessPublic)}
 	huma.Register(api, huma.Operation{
 		OperationID: "healthz", Method: http.MethodGet, Path: "/healthz",
@@ -88,6 +88,7 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 	}, rt.readyz)
 	registerAuth(api, rt)
 	registerAccounts(api, rt)
+	registerRepository(api, rt)
 	registerStubs(api)
 	return rt
 }

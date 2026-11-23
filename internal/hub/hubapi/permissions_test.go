@@ -192,7 +192,7 @@ func TestTokenAuthentication(t *testing.T) {
 		t.Errorf("PAT 的 /me permissions = %v，預期只有 read", m["permissions"])
 	}
 	// 權限：read 有、download 沒有（帳號有也不行）。
-	expect(t, "read", e.bearer(tok, "GET", "/api/v1/versions/v1", "", ""), 501, "not_implemented")
+	expect(t, "read", e.bearer(tok, "GET", "/api/v1/versions", "", ""), 501, "not_implemented")
 	rec = e.bearer(tok, "GET", "/api/v1/versions/v1/download", "", "")
 	expect(t, "download", rec, 403, "forbidden")
 	if decode(t, rec)["required_permission"] != "download" {
@@ -264,10 +264,10 @@ func TestTokenFollowsAccountPermissions(t *testing.T) {
 	e.grant("alice", hubconfig.GroupContributors)
 	_, tok := e.createToken("alice", `{"name":"up","permissions":["upload"]}`)
 	// upload 有，但 read 沒有（PAT 只有 upload）。
-	expect(t, "upload", e.bearer(tok, "POST", "/api/v1/shares", "", ""), 501, "not_implemented")
+	expect(t, "upload", e.bearer(tok, "GET", "/api/v1/me/shares", "", ""), 501, "not_implemented")
 	expect(t, "PAT 沒有 read", e.bearer(tok, "GET", "/api/v1/versions", "", ""), 403, "forbidden")
 	e.revokeGroup("alice", hubconfig.GroupContributors)
-	rec := e.bearer(tok, "POST", "/api/v1/shares", "", "")
+	rec := e.bearer(tok, "GET", "/api/v1/me/shares", "", "")
 	expect(t, "帳號失去 upload 之後", rec, 403, "forbidden")
 	if decode(t, rec)["required_permission"] != "upload" {
 		t.Errorf("required_permission = %v", decode(t, rec)["required_permission"])

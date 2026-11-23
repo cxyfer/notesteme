@@ -352,6 +352,114 @@
         ],
         "type": "object"
       },
+      "RelatedView": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "parent",
+              "regenerated_from"
+            ],
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "summary": {
+            "description": "regenerated_from 時是「以 @\u003c上傳者\u003e 的原始字幕重新生成」",
+            "type": "string"
+          },
+          "uploader": {
+            "description": "第一位上傳者的顯示名稱",
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "relation",
+          "kind",
+          "variant",
+          "lang",
+          "uploader",
+          "state"
+        ],
+        "type": "object"
+      },
+      "ShareView": {
+        "additionalProperties": false,
+        "properties": {
+          "share_id": {
+            "type": "string"
+          },
+          "versions": {
+            "description": "依 manifest 中產出的順序",
+            "items": {
+              "$ref": "#/components/schemas/SharedVersionView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "video": {
+            "$ref": "#/components/schemas/VideoRef"
+          }
+        },
+        "required": [
+          "share_id",
+          "video",
+          "versions"
+        ],
+        "type": "object"
+      },
+      "SharedVersionView": {
+        "additionalProperties": false,
+        "properties": {
+          "deduplicated": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          },
+          "visibility": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "variant",
+          "lang",
+          "sha256",
+          "deduplicated",
+          "visibility"
+        ],
+        "type": "object"
+      },
       "StatusOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -418,6 +526,158 @@
         },
         "required": [
           "tokens"
+        ],
+        "type": "object"
+      },
+      "UploaderView": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "type": "object"
+      },
+      "VersionView": {
+        "additionalProperties": false,
+        "properties": {
+          "badges": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "correct_model": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "license": {
+            "type": "string"
+          },
+          "model_verified": {
+            "description": "true 只代表由 Client 的 api executor 記錄，Hub 無法驗證模型",
+            "type": "boolean"
+          },
+          "parents": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "provenance": {
+            "additionalProperties": {},
+            "description": "白名單中的來源紀錄欄位（ADR-0032 第 2 點）",
+            "type": "object"
+          },
+          "score": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "transcribe_model": {
+            "type": "string"
+          },
+          "translate_model": {
+            "type": "string"
+          },
+          "uploaders": {
+            "items": {
+              "$ref": "#/components/schemas/UploaderView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "variant": {
+            "type": "string"
+          },
+          "video": {
+            "$ref": "#/components/schemas/VideoRef"
+          },
+          "visibility": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "video",
+          "kind",
+          "variant",
+          "lang",
+          "transcribe_model",
+          "correct_model",
+          "translate_model",
+          "model_verified",
+          "license",
+          "score",
+          "uploaders",
+          "created_at",
+          "sha256",
+          "provenance",
+          "parents",
+          "children",
+          "visibility",
+          "state"
+        ],
+        "type": "object"
+      },
+      "VideoRef": {
+        "additionalProperties": false,
+        "properties": {
+          "external_id": {
+            "type": "string"
+          },
+          "part": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "platform": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "external_id",
+          "part"
         ],
         "type": "object"
       }
@@ -1732,11 +1992,119 @@
     },
     "/api/v1/shares": {
       "post": {
-        "description": "規則：HREP-R1。",
+        "description": "規則：HREP-R1～R5、R8、R9、R11。",
         "operationId": "shares-create",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "encoding": {
+                "attest": {
+                  "contentType": "text/plain"
+                },
+                "bundle": {
+                  "contentType": "application/zip"
+                },
+                "visibility": {
+                  "contentType": "text/plain"
+                }
+              },
+              "schema": {
+                "properties": {
+                  "attest": {
+                    "description": "必須是 true：確認有權分享這些內容",
+                    "type": "string"
+                  },
+                  "bundle": {
+                    "contentEncoding": "binary",
+                    "contentMediaType": "application/octet-stream",
+                    "description": ".notesteme.zip（bundle v0）",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "visibility": {
+                    "description": "public、authenticated、private 或 group:\u003c群組\u003e；省略時依 content_defaults",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "bundle",
+                  "attest"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -1747,19 +2115,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "分享 bundle（multipart：bundle、attest、visibility，尚未實作）",
+        "summary": "分享 bundle（multipart：bundle、attest、visibility）",
         "x-notesteme-access": "upload"
       }
     },
@@ -1767,9 +2125,71 @@
       "delete": {
         "description": "規則：HREP-R10。",
         "operationId": "shares-withdraw",
+        "parameters": [
+          {
+            "description": "分享 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "分享 ID",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -1780,19 +2200,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "撤回自己的分享（尚未實作）",
+        "summary": "撤回自己的分享",
         "x-notesteme-access": "upload"
       }
     },
@@ -1897,11 +2307,90 @@
     },
     "/api/v1/versions/{id}": {
       "get": {
-        "description": "規則：HREP-R17。",
+        "description": "規則：HREP-R6、R17、HACC-R14。",
         "operationId": "versions-get",
+        "parameters": [
+          {
+            "description": "版本 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "版本 ID",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -1912,19 +2401,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "版本詳情、來源紀錄與衍生關係（尚未實作）",
+        "summary": "版本詳情、來源紀錄與衍生關係",
         "x-notesteme-access": "read"
       }
     },
