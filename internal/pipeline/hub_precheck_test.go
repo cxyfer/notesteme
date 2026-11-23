@@ -387,7 +387,7 @@ func TestPrecheckHubCancellationIsNotAHubFailure(t *testing.T) {
 	}
 	done := make(chan out, 1)
 	go func() {
-		o, err := r.p.precheckHub(ctx, it, nil, &store.StageResult{})
+		o, err := r.p.precheckHub(ctx, it, nil)
 		done <- out{o, err}
 	}()
 	<-arrived
@@ -407,7 +407,7 @@ func TestPrecheckHitKeepsEarlierDecisions(t *testing.T) {
 	r.run()
 	it = r.item(it.ID)
 	prior := []transcript.Decision{{Source: "youtube-manual", State: transcript.StateUnavailable, Reason: "no_track"}}
-	out, err := r.p.precheckHub(context.Background(), it, prior, &store.StageResult{})
+	out, err := r.p.precheckHub(context.Background(), it, prior)
 	if err != nil || out.hit == nil || out.note != "" {
 		t.Fatalf("outcome = %+v, %v", out, err)
 	}
@@ -461,5 +461,32 @@ func TestPrecheckFollowsPaidSourceConfiguredCheck(t *testing.T) {
 		if n := stub.count("/api/v1/lookup"); n != tt.lookups {
 			t.Errorf("%s：lookup 次數 = %d，預期 %d", tt.name, n, tt.lookups)
 		}
+	}
+}
+
+// 命中 Hub 的結果有自己的 cache key：關閉查詢後重跑，不會拿到快取的 Hub 字幕，而是照常呼叫付費來源。
+func TestPrecheckHitIsNotReusedAfterTurningItOff(t *testing.T) {
+	stub := newHubStub(t)
+	stub.add(ytVer("v1"))
+	var on atomic.Bool
+	on.Store(true)
+	sd := &fakeSupadata{lang: "en", cues: 3}
+	r := newHubRigOpts(t, stub, hubRigOpts{token: hubTestToken, sd: sd,
+		precheck: func(context.Context) (bool, error) { return on.Load(), nil }})
+	it, st := r.runTranscript()
+	if st.Status != store.StatusDone || !r.isHub(it) || sd.calls() != 0 {
+		t.Fatalf("第一次應該用 Hub：%+v", st)
+	}
+	run := r.stage(it, StageTranscript)
+	if run.Executor != SourceHub {
+		t.Errorf("executor = %q，預期 hub", run.Executor)
+	}
+	on.Store(false)
+	if _, err := r.p.Rerun(context.Background(), it.ID, RerunRequest{From: StageTranscript, Until: StageTranscript}); err != nil {
+		t.Fatal(err)
+	}
+	r.run()
+	if r.isHub(it) || sd.calls() != 1 {
+		t.Errorf("關閉查詢後重跑應該呼叫付費來源：hub=%v supadata=%d", r.isHub(it), sd.calls())
 	}
 }

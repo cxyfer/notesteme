@@ -135,9 +135,7 @@ func (p *Pipeline) runHubImport(ctx context.Context, it store.Item, imp store.Hu
 	if err != nil {
 		return result{}, errPermanent(err.Error())
 	}
-	stage := &store.StageResult{Executor: SourceHub, ImplVersion: p.implVersion(StageTranscript),
-		CacheKey: cacheKey{Item: it.ID, Stage: StageTranscript, Impl: p.implVersion(StageTranscript), Provider: SourceHub,
-			Upstream: paramsSHA(map[string]any{"hub_sha256": imp.SHA256}), Params: paramsSHA(map[string]any{"version": imp.VersionID})}.String()}
+	stage := p.hubStage(it, imp.VersionID, imp.SHA256)
 	art, lang, err := p.hubArtifact(ctx, it, tr, o)
 	if err != nil {
 		return result{}, err
@@ -177,7 +175,7 @@ type hubPrecheckOutcome struct {
 
 // precheckHub 在即將呼叫第一個付費來源時查詢 Hub 一次（HSHR-R13、R14）。不查詢（關閉、沒有設定、
 // 本機檔案或非公開影音）時回傳零值；失敗時照常繼續（R15），回傳提醒。
-func (p *Pipeline) precheckHub(ctx context.Context, it store.Item, decisions []transcript.Decision, stage *store.StageResult) (hubPrecheckOutcome, error) {
+func (p *Pipeline) precheckHub(ctx context.Context, it store.Item, decisions []transcript.Decision) (hubPrecheckOutcome, error) {
 	if p.hubPrecheck == nil || !publicForHub(it) {
 		return hubPrecheckOutcome{}, nil
 	}
@@ -230,9 +228,17 @@ func (p *Pipeline) precheckHub(ctx context.Context, it store.Item, decisions []t
 	}
 	ds := append(slices.Clone(decisions), transcript.Decision{Source: SourceHub, Lang: lang, State: transcript.StateUsed})
 	return hubPrecheckOutcome{hit: &result{
-		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(ds),
+		task: taskDone, advance: true, stage: p.hubStage(it, v.ID, v.SHA256), artifact: art, probes: toProbes(ds),
 		state: store.StageState{Status: store.StatusDone},
 	}}, nil
+}
+
+// hubStage 是採用 Hub 字幕時的步驟結果：executor 是 hub，cache key 含版本與內容雜湊，
+// 不會和平台字幕、付費來源的 key 相同（關閉查詢後重跑不會拿到快取的 Hub 字幕）。
+func (p *Pipeline) hubStage(it store.Item, versionID, sha string) *store.StageResult {
+	return &store.StageResult{Executor: SourceHub, ImplVersion: p.implVersion(StageTranscript),
+		CacheKey: cacheKey{Item: it.ID, Stage: StageTranscript, Impl: p.implVersion(StageTranscript), Provider: SourceHub,
+			Upstream: paramsSHA(map[string]any{"hub_sha256": sha}), Params: paramsSHA(map[string]any{"version": versionID})}.String()}
 }
 
 // sameVideo 回報 Hub 版本的影片是否就是這部影音。

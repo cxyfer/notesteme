@@ -767,7 +767,7 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 		}
 		if !prechecked && paidSource(id) && (f.configured == nil || configuredOK(ctx, f)) {
 			prechecked = true
-			out, err := p.precheckHub(ctx, it, decisions, stage)
+			out, err := p.precheckHub(ctx, it, decisions)
 			if err != nil {
 				return result{}, err
 			}
