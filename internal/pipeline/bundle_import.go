@@ -255,10 +255,14 @@ func (p *Pipeline) ImportBundle(ctx context.Context, req BundleImportRequest) (B
 			}
 		}
 		// 有匯入產出的步驟記為 done（executor import）；不建立任務、不喚醒 worker（BND-R8）。
+		first := ""
 		for _, st := range Stages {
 			artID, ok := stageArt[st]
 			if !ok {
 				continue
+			}
+			if first == "" {
+				first = st
 			}
 			run, err := r.InsertStageRun(ctx, store.NewStageRun{ItemID: cur.ID, Stage: st, Status: store.StatusPending, ConfigSnapshotID: snap})
 			if err != nil {
@@ -270,6 +274,10 @@ func (p *Pipeline) ImportBundle(ctx context.Context, req BundleImportRequest) (B
 			if err := r.SetStageState(ctx, run.ID, store.StageState{Status: store.StatusDone}); err != nil {
 				return err
 			}
+		}
+		// 匯入的 transcript／sponsorblock 取代了現行版本，等同從該步驟重跑：結束既有的重新 Probe（SRC-R18）。
+		if first != "" {
+			return p.endReprobeOnRerun(ctx, r, cur.ID, first)
 		}
 		return nil
 	})

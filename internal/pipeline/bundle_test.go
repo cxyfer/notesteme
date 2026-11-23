@@ -658,3 +658,62 @@ func TestBundleItemMetadataRoundTrip(t *testing.T) {
 		t.Error("truncateRunes")
 	}
 }
+
+// add_versions 匯入 transcript 等同從 transcript 重跑：結束既有的重新 Probe 並清除更好的來源（SRC-R18）；
+// 只匯入較後面的步驟（筆記）時不動重新 Probe。
+func TestImportBundleEndsReprobe(t *testing.T) {
+	src, _ := bundleRig(t)
+	ctx := context.Background()
+	ex, err := src.p.ExportBundle(ctx, "yt:abc123xxxxx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := newRig(t)
+	res, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: ex.Data})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Item.ID
+	arm := func() {
+		t.Helper()
+		if err := dst.st.Tx(ctx, func(r *store.Repo) error {
+			if err := r.SaveReprobe(ctx, store.Reprobe{ItemID: id, Until: time.Now().Add(time.Hour), Sources: true, SponsorBlock: true,
+				Better: &store.BetterSource{Source: "youtube_manual", Lang: "en", Kind: "manual", FoundAt: time.Now().UTC()}}); err != nil {
+				return err
+			}
+			return r.ScheduleJob(ctx, store.ReprobeKind, id, time.Now().Add(time.Hour))
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	edit := func(kind, from, to string) []byte {
+		return rezip(t, ex.Data, func(m *bundle.OutManifest, files map[string][]byte) {
+			for _, a := range m.Artifacts {
+				if a.Kind != kind {
+					continue
+				}
+				files[a.Path] = bytes.ReplaceAll(files[a.Path], []byte(from), []byte(to))
+			}
+		})
+	}
+	arm()
+	// 只有筆記不同：重新 Probe 維持原狀。
+	if r2, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: edit("note", "Body", "Other body"), AddVersions: true}); err != nil || r2.Imported != 1 {
+		t.Fatalf("匯入筆記 = %+v %v", r2, err)
+	}
+	rp, err := dst.st.Read().Reprobe(ctx, id)
+	if err != nil || !rp.Sources || !rp.SponsorBlock || rp.Better == nil {
+		t.Fatalf("只匯入筆記時 reprobe = %+v %v", rp, err)
+	}
+	// transcript 不同：字幕與 SponsorBlock 的部分都結束，排程刪除。
+	if r3, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: edit("transcript", "Hello one.", "Hello uno."), AddVersions: true}); err != nil || r3.Imported == 0 {
+		t.Fatalf("匯入字幕 = %+v %v", r3, err)
+	}
+	rp, err = dst.st.Read().Reprobe(ctx, id)
+	if err != nil || rp.Sources || rp.SponsorBlock || rp.Better != nil {
+		t.Fatalf("匯入字幕後 reprobe = %+v %v", rp, err)
+	}
+	if _, err := dst.st.Read().ScheduledJob(ctx, store.ReprobeKind, id); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("排程仍在：%v", err)
+	}
+}
