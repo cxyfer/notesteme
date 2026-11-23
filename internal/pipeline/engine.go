@@ -468,6 +468,16 @@ func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.Stag
 				}
 				nr, ok = latest[next]
 			}
+			if run.Stage == StageSummary {
+				// DIG-R6：摘要後暫停。下一個步驟 blocked（awaiting_user），不建任務，等使用者繼續。
+				paused, err := pauseAfterSummary(ctx, r, run, nr)
+				if err != nil {
+					return err
+				}
+				if paused {
+					return p.emitRunEvent(ctx, r, it, run.Stage)
+				}
+			}
 			// 依下一步的設定快照解析執行方式：可以略過的步驟直接 skipped 並繼續往下，
 			// 直到第一個要執行的步驟或 until 為止（until 之後的步驟維持 pending）。
 			snap, err := r.Snapshot(ctx, nr.ConfigSnapshotID)

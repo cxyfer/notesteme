@@ -133,9 +133,9 @@ func agentInvalid(format string, a ...any) *AgentError {
 // AgentKinds 是 Agent 省略 kinds 時領取的任務種類（步驟）。translate 的 agent 還不支援（見 Handle）。
 var AgentKinds = []string{StageSegment, StageCorrect}
 
-// agentClaimableKinds 是 kinds 可以指定的任務種類：AgentKinds 加上 M3 的 chapters（AGT 的 M3 修訂）。
+// agentClaimableKinds 是 kinds 可以指定的任務種類：AgentKinds 加上 M3 的 chapters、note 與 M4 的 summary（DIG-R1）。
 // 省略 kinds 時仍只領 AgentKinds，既有的 Agent 不會突然收到新的任務。
-var agentClaimableKinds = append(slices.Clone(AgentKinds), StageChapters, StageNote, TaskNoteMap)
+var agentClaimableKinds = append(slices.Clone(AgentKinds), StageChapters, StageNote, TaskNoteMap, StageSummary)
 
 // AgentTask 是領取到的一個任務與完成它需要的全部上下文（AGT-R2）。
 type AgentTask struct {

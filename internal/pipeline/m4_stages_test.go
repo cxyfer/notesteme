@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"context"
-	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -30,8 +29,8 @@ func TestSummaryStageOrder(t *testing.T) {
 	if IsLLMStage(StageSummary) || !IsM4Stage(StageSummary) || IsM4Stage(StageSegment) {
 		t.Error("summary 是 M4 的步驟，不是 M2 的 LLM 步驟")
 	}
-	if StageAvailable(StageSummary) {
-		t.Error("M4-S0 的 summary 還沒有實作")
+	if !StageAvailable(StageSummary) || !stageImplemented(StageSummary, ExecutorAPI) || !stageImplemented(StageSummary, ExecutorAgent) {
+		t.Error("M4-S6 起 summary 的 api 與 agent 已實作")
 	}
 	if c := resourceClass(StageSummary, ExecutorAPI, false); c != queue.ResourceLLM {
 		t.Errorf("summary（api）的資源類別 = %s，預期 llm", c)
@@ -103,15 +102,15 @@ func TestResolveExecutorSummary(t *testing.T) {
 	}
 }
 
-// 要執行而還沒有實作的 summary 在鏈上改成 skipped（not_implemented），鏈繼續往下（不在 summary 停下）。
-func TestPlanChainSkipsUnimplementedSummary(t *testing.T) {
+// 設定要執行的 summary（M4-S6）：鏈停在 summary，替它建立任務。
+func TestPlanChainStopsAtSummary(t *testing.T) {
 	for _, exec := range []string{ExecutorAPI, ExecutorAgent} {
 		over := stagesOver(StageSummary, map[string]any{"executor": exec, "provider": "anthropic", "model": "m"})
 		c, err := planChain(mustEffective(t, over), StageSummary, StageSegment, StageContext{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(c) != 2 || c[0].Stage != StageSummary || !c[0].Skip || c[0].Reason != SkipNotImplemented || c[1].Stage != StageSegment {
+		if len(c) != 1 || c[0].Stage != StageSummary || c[0].Skip {
 			t.Errorf("%s：鏈 = %+v", exec, c)
 		}
 	}
@@ -133,40 +132,28 @@ func TestFullRunSkipsSummaryWithoutTasks(t *testing.T) {
 	if st := latestStage(t, r, it.ID, StagePublish); st.Status != store.StatusSkipped || st.BlockReason != SkipNoOutputs {
 		t.Errorf("publish = %+v", st)
 	}
-	// 設定了 provider 的 summary：not_implemented，同樣不建任務。
+	// 設定了 provider 的 summary（M4-S6）：建立任務（rig 沒有 LLM provider，任務以 permanent 失敗）。
 	r2 := newRig(t)
 	r2.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
 	it2 := r2.ingest(watch, stagesOver(StageSummary, map[string]any{"executor": "api", "provider": "anthropic", "model": "m"}), "")
 	r2.run()
-	if st := latestStage(t, r2, it2.ID, StageSummary); st.Status != store.StatusSkipped || st.BlockReason != SkipNotImplemented {
-		t.Errorf("summary（api）= %+v，預期 skipped（not_implemented）", st)
-	}
-	if hasTask(t, r2, it2.ID, StageSummary) {
-		t.Error("還沒有實作的 summary 不該有任務")
+	if !hasTask(t, r2, it2.ID, StageSummary) {
+		t.Error("要執行的 summary 應該有任務")
 	}
 }
 
-// 從還沒有實作的 summary 重跑回 501，而且什麼都不寫；until 可以是 summary。
-func TestRerunFromSummaryNotImplemented(t *testing.T) {
+// 從 summary 重跑（M4-S6）：預設 off 的 summary 直接 skipped（off）、鏈往下；until 可以是 summary。
+func TestRerunFromSummary(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
 	it := r.ingest(watch, nil, "")
 	r.run()
-	before, err := r.st.Read().StageRunsByItem(ctx, it.ID)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageSummary}); err != nil {
+		t.Fatalf("從 summary 重跑：%v", err)
 	}
-	var ni *NotImplementedError
-	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageSummary}); !errors.As(err, &ni) {
-		t.Fatalf("err = %v，預期 *NotImplementedError", err)
-	}
-	after, err := r.st.Read().StageRunsByItem(ctx, it.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(after) != len(before) {
-		t.Errorf("501 不該寫入 stage run：%d → %d", len(before), len(after))
+	if st := latestStage(t, r, it.ID, StageSummary); st.Status != store.StatusSkipped || st.BlockReason != SkipOff {
+		t.Errorf("summary = %+v，預期 skipped（off）", st)
 	}
 	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: StageTranscript, Until: StageSummary}); err != nil {
 		t.Errorf("until=summary 應該可以：%v", err)

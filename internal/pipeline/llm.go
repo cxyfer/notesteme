@@ -119,6 +119,8 @@ var llmStages = map[string]llmStage{
 	StageChapters: chaptersStage,
 	// M3-S4：note 的輸出是筆記（見 note.go）。
 	StageNote: noteStage,
+	// M4-S6：summary 的輸出是摘要，一部影音一個請求（見 summary.go）。
+	StageSummary: summaryStage,
 }
 
 // 登記時檢查每個步驟的 Spec（strict schema、步驟名稱一致）：不符是程式錯誤，啟動時就失敗，不要等到送出請求才被 provider 拒絕。
@@ -344,6 +346,9 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 		if stage == StageChapters || stage == StageNote {
 			// CHAP-R2、NOTE-R5：edited > corrected > segmented > normalized，不用譯文。
 			pick = translateSource
+		}
+		if stage == StageSummary {
+			pick = summaryInput // DIG-R2：只用 normalized
 		}
 		art, found, err := pick(ctx, r, it.ID, stage)
 		if err != nil {
@@ -578,6 +583,10 @@ func (p *Pipeline) runLLM(ctx context.Context, t store.Task, run store.StageRun,
 // llmPlan 是協調任務：切 chunk、查快取，建立 chunk 任務；全部命中快取時直接組出產出。
 func (p *Pipeline) llmPlan(ctx context.Context, t store.Task, run store.StageRun, it store.Item, eff Effective, force []int) (result, error) {
 	job, err := p.prepareLLM(ctx, it, run.Stage, eff, "")
+	if tl := (*summaryTooLongError)(nil); errors.As(err, &tl) {
+		// DIG-R2：超過片長或 token 上限時不呼叫 LLM。
+		return p.summarySkipTooLong(run, tl.message), nil
+	}
 	if err != nil {
 		return result{}, err
 	}
@@ -1087,6 +1096,9 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 		var err error
 		if art, state, err = job.def.write(p, ctx, it, job, raw, fallbacks, fields); err != nil {
 			return result{}, err
+		}
+		if id, ok := fields[reuseArtifactField].(string); ok {
+			stage.ArtifactID = id // 內容與現行產出相同：沿用，不建立新版本（DIG-R5）
 		}
 	} else {
 		prov, err := p.provenance(fields, nil)

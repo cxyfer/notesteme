@@ -30,6 +30,8 @@ type Detail struct {
 	Chapters *Chapters
 	// Batches 是等待 Batch API 結果的步驟（以 stage run ID 為 key）正在等的 batch（BATCH 的介面）。
 	Batches map[string]*BatchView
+	// Summary 是現行的摘要（DIG-R5）；沒有摘要產出時是 nil。
+	Summary *Summary
 }
 
 // Item 回傳影音詳情；不存在時回傳 store.ErrNotFound，在垃圾桶中時回傳 *InTrashError（DEL-R1）。
@@ -91,6 +93,12 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 		p.log.Warn("讀取章節失敗", "item", id, "error", err)
 	case ok:
 		d.Chapters = &ch
+	}
+	switch sm, ok, err := p.ItemSummary(ctx, id); {
+	case err != nil:
+		p.log.Warn("讀取摘要失敗", "item", id, "error", err)
+	case ok:
+		d.Summary = &sm
 	}
 	return d, nil
 }

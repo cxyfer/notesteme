@@ -244,8 +244,10 @@ func stageImplemented(stage, executor string) bool {
 	case stage == StageNote:
 		// M3-S4：api 與 agent 走 LLM 引擎（NOTE-R1～R13，note.go）。
 		return usesLLMEngine(stage, executor)
+	case stage == StageSummary:
+		// M4-S6：api 與 agent 走 LLM 引擎（DIG-R1～R5，summary.go）。
+		return usesLLMEngine(stage, executor)
 	}
-	// note 與 M4 的 summary：各切片完成時在這裡登記。
 	return false
 }
 

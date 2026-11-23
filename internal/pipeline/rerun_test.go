@@ -128,10 +128,6 @@ func TestRerunErrors(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
 	it := r.ingest(watch, nil, "metadata")
-	var ni *NotImplementedError
-	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: "summary"}); !errors.As(err, &ni) {
-		t.Errorf("summary：%v", err)
-	}
 	var inv *InvalidError
 	if _, err := r.p.Rerun(ctx, it.ID, RerunRequest{From: "nope"}); !errors.As(err, &inv) {
 		t.Errorf("nope：%v", err)
@@ -208,8 +204,7 @@ func TestRerunNotImplementedWritesNothing(t *testing.T) {
 		name string
 		req  RerunRequest
 	}{
-		{"summary", RerunRequest{From: "summary"}},
-		// M3 的步驟在實作之前回 501（M3-S0，ADR-0020 第 1 點）；四個 M3 步驟已在 M3-S1～S4 實作。
+		// M3 的步驟與 M4 的 summary 在實作之前回 501（M3-S0、M4-S0）；已在 M3-S1～S4、M4-S6 實作，清單目前是空的。
 	}
 	for _, tt := range tests {
 		if _, err := r.p.Rerun(ctx, it.ID, tt.req); !errors.As(err, &ni) {
