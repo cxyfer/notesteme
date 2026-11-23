@@ -147,6 +147,14 @@ func loadZone(name string) (*time.Location, error) {
 	return time.LoadLocation(name)
 }
 
+// LoadZone 同 loadZone，給其他套件用（總覽的 tz，LIB-R21）；不接受時回傳的 error 只供判斷，訊息用 ZoneMessage。
+func LoadZone(name string) (*time.Location, error) { return loadZone(name) }
+
+// ZoneMessage 是不認識的時區的訊息（COST-R4、LIB-R21）；值先截短並去掉控制字元。
+func ZoneMessage(name string) string {
+	return "不認識的時區 " + cleanValue(name) + "，請用 IANA 時區名稱，例如 Asia/Taipei。"
+}
+
 // cleanValue 截短並去掉控制字元，讓使用者的值可以放進錯誤訊息。
 func cleanValue(s string) string {
 	var b strings.Builder

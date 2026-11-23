@@ -310,18 +310,10 @@ func (s *Service) Reserve(ctx context.Context, r *store.Repo, c Call) (Reservati
 		}
 		attempt = n + 1
 	}
-	in, out, priced, err := s.llmPrices(ctx, r, c.Provider, c.Model, c.CustomBase)
+	est, priced, err := s.Estimate(ctx, r, c)
 	if err != nil {
 		return Reservation{}, err
 	}
-	var est Micro
-	if v, ok := s.estimates[c.Stage]; ok {
-		est = v
-	} else if priced {
-		est = llmMicro(c.InputTokens, c.Output, in.USDPerUnit, out.USDPerUnit)
-	}
-	// 測試控制的估算也是一般 API 的金額（steps.md 4.19）：batch 一樣乘以折扣（BATCH-R7）。
-	est = discounted(est, c.Batch)
 	b, err := s.Budget(ctx, r)
 	if err != nil {
 		return Reservation{}, err
@@ -346,6 +338,30 @@ func (s *Service) Reserve(ctx context.Context, r *store.Repo, c Call) (Reservati
 		return Reservation{}, err
 	}
 	return Reservation{ID: id, Attempt: attempt, Estimate: est, Priced: priced}, nil
+}
+
+// Estimate 依 COST-R5 估算一次付費 LLM 呼叫的金額，不寫入任何東西：測試控制的估算（Options.Estimates）優先，
+// 否則依單價與 c 的 token 數計算；batch 乘以折扣（BATCH-R7）。priced 為 false 代表找不到單價（沒有測試控制時金額是 0）。
+// Reserve 與批次重跑的 dry_run（LIB-R14）共用它，兩者的估算方法才不會分歧。
+func (s *Service) Estimate(ctx context.Context, r *store.Repo, c Call) (est Micro, priced bool, err error) {
+	in, out, priced, err := s.llmPrices(ctx, r, c.Provider, c.Model, c.CustomBase)
+	if err != nil {
+		return 0, false, err
+	}
+	if v, ok := s.estimates[c.Stage]; ok {
+		est = v
+	} else if priced {
+		est = llmMicro(c.InputTokens, c.Output, in.USDPerUnit, out.USDPerUnit)
+	}
+	// 測試控制的估算也是一般 API 的金額（steps.md 4.19）：batch 一樣乘以折扣（BATCH-R7）。
+	return discounted(est, c.Batch), priced, nil
+}
+
+// Estimated 回報 stage 是否有測試控制的估算金額（`the cost estimate of every … task is …`）：
+// 有的話，即使找不到單價也能估算（LIB-R14 的 unknown_estimates 不計入）。
+func (s *Service) Estimated(stage string) bool {
+	_, ok := s.estimates[stage]
+	return ok
 }
 
 // Exceeds 是預算檢查的結果（LIB-R14 的 dry_run 也用它）。
