@@ -243,20 +243,28 @@ func openRemote(g *globals, env app.Env) (*backend, error) {
 
 // open 送出請求並回傳回應（不論狀態碼）；呼叫端負責關閉 Body。body 非 nil 時以 JSON 送出。
 func (b *backend) open(ctx context.Context, method, path string, body any) (*http.Response, error) {
+	if body == nil {
+		return b.openRaw(ctx, method, path, "", nil)
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	return b.openRaw(ctx, method, path, "application/json", raw)
+}
+
+// openRaw 同 open，但 body 照原樣送出（例如 multipart）；contentType 非空時設為 Content-Type。
+func (b *backend) openRaw(ctx context.Context, method, path, contentType string, body []byte) (*http.Response, error) {
 	var r io.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
-		if err != nil {
-			return nil, err
-		}
-		r = bytes.NewReader(raw)
+		r = bytes.NewReader(body)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, b.base+path, r)
 	if err != nil {
 		return nil, err
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	if b.token != "" {
 		req.Header.Set("Authorization", "Bearer "+b.token)
@@ -280,6 +288,20 @@ func (b *backend) call(ctx context.Context, method, path string, body any) (raw 
 	if err != nil {
 		return nil, 0, err
 	}
+	return readResponse(resp)
+}
+
+// callRaw 同 call，但 body 照原樣送出（見 openRaw）。
+func (b *backend) callRaw(ctx context.Context, method, path, contentType string, body []byte) (raw []byte, status int, err error) {
+	resp, err := b.openRaw(ctx, method, path, contentType, body)
+	if err != nil {
+		return nil, 0, err
+	}
+	return readResponse(resp)
+}
+
+// readResponse 讀完回應並關閉；非 2xx 回傳 *apiError。
+func readResponse(resp *http.Response) (raw []byte, status int, err error) {
 	defer resp.Body.Close()
 	raw, err = io.ReadAll(resp.Body)
 	if err != nil {

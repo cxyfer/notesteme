@@ -241,6 +241,8 @@ func parse(args []string) (*plan, error) {
 		return parseTokens(args[1:])
 	case "notifiers":
 		return parseNotifiers(args[1:])
+	case "subs":
+		return parseSubs(args[1:])
 	case "secrets":
 		return parseSecrets(args[1:])
 	case "mcp":
@@ -268,6 +270,8 @@ const usageText = `用法：notesteme <子命令> [旗標]
   import <subtitle> --item <item>       匯入外部編輯過的字幕為 edited 版本（--lang、--format）
   tokens create|ls|revoke               管理 API token
   notifiers ls | test <id>              列出通知端點、傳送測試通知（M4）
+  subs ls | add <url> | show <id> | preview <id|url> | check <id> | rm <id> | import <file>
+                                        訂閱（add：--profile、--schedule、--backfill none|recent:<N>|all；M4）
   secrets rotate-key|reset              管理 master key 與 secrets
   frames ls <item> [--all] | get <item> <n> -o <file>  關鍵畫面（M3）
   note show <item> [--lang] [--format md|json]         筆記（預設輸出 Markdown）
