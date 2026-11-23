@@ -45,9 +45,9 @@ type RerunRequest struct {
 // Chunks 只能用在 LLM 步驟；步驟不是用 api executor 時不使用。
 func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (Detail, error) {
 	switch {
-	case gatedStage(req.From) && !StageAvailable(req.From):
+	case gatedStage(req.From) && req.From != StageNote && !StageAvailable(req.From):
 		// M3 的步驟與 M4 的 summary 加進 Stages 之後、實作之前（M3-S0、M4-S0）：從它重跑回 501，
-		// 不留下半套的重跑（ADR-0020 第 1 點、ADR-0021 第 3 點）。
+		// 不留下半套的重跑（ADR-0020 第 1 點、ADR-0021 第 3 點）。note 在 Compose 之後判斷（GEM 可以重新產生）。
 		return Detail{}, &NotImplementedError{What: "重跑步驟 " + req.From}
 	case ValidStage(req.From):
 	case slices.Contains(plannedStages, req.From):
@@ -118,6 +118,10 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 	if err != nil {
 		return Detail{}, err
 	}
+	if req.From == StageNote && !StageAvailable(StageNote) && !geminiEngine(eff) {
+		// 同上：note 的一般流程還沒有實作（M3-S4）；engine: gemini 已經可以重新產生（GEM）。
+		return Detail{}, &NotImplementedError{What: "重跑步驟 " + req.From}
+	}
 	sha, cfgJSON, layersJSON, err := SnapshotOf(eff, layers)
 	if err != nil {
 		return Detail{}, err
@@ -133,7 +137,7 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		if err != nil {
 			return nil, err
 		}
-		if last := chain[len(chain)-1]; !last.Skip && !stageImplemented(last.Stage, last.Executor) {
+		if last := chain[len(chain)-1]; !last.Skip && !stageImplemented(last.Stage, last.Executor) && !geminiNoteRes(eff, last.Stage, last.Executor) {
 			return nil, &NotImplementedError{What: "步驟 " + last.Stage + "／" + last.Executor}
 		}
 		if len(req.Chunks) > 0 && chain[0].Stage == req.From {

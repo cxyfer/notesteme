@@ -59,7 +59,7 @@ func (p *Pipeline) resolveStagePrompts(ctx context.Context, eff Effective) (Effe
 		return eff, nil
 	}
 	for _, stage := range Stages {
-		if !IsLLMStage(stage) && stage != StageChapters && stage != StageFrames {
+		if !IsLLMStage(stage) && stage != StageChapters && stage != StageFrames && stage != StageNote {
 			continue
 		}
 		res, err := ResolveExecutor(eff, stage, StageContext{})

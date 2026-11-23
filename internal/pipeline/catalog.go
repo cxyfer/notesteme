@@ -11,10 +11,10 @@ type ProviderCatalog interface {
 	HasLLMProvider(id string) bool
 }
 
-// builtinProviderIDs 是內建的 LLM provider（LLM 待決問題 L6）。
-var builtinProviderIDs = []string{"anthropic", "openai"}
+// builtinProviderIDs 是內建的 LLM provider（LLM 待決問題 L6；gemini 是 M3 的 GEM-R1）。
+var builtinProviderIDs = []string{"anthropic", "openai", "gemini"}
 
-// BuiltinProviders 是只含內建 provider 的目錄：anthropic、openai。
+// BuiltinProviders 是只含內建 provider 的目錄：anthropic、openai、gemini。
 type BuiltinProviders struct{}
 
 // HasLLMProvider 實作 ProviderCatalog。

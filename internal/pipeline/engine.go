@@ -137,6 +137,9 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	}
 	var res result
 	switch {
+	case geminiNoteRes(eff, run.Stage, executor):
+		// GEM：note 由 Gemini 直接生成（stages.note.engine: gemini）。
+		res, err = p.runGeminiNote(ctx, t, it, eff)
 	case !stageImplemented(run.Stage, executor):
 		// 沒有實作的 (步驟, executor)（例如單次覆寫指定了 provider）：任務照常建立，在這裡看得見地失敗，
 		// 之後的切片在 stageImplemented 與這個分派登記它的 handler。
@@ -246,10 +249,10 @@ func (p *Pipeline) classify(t store.Task, err error) result {
 		st := store.StageState{
 			Status: store.StatusFailed, ErrorClass: string(class), Message: "這個步驟無法完成，重試也不會成功。",
 		}
-		// 錯誤自己帶了給使用者看的訊息時採用（例如本機影音「找不到這個檔案。」）。
+		// 錯誤自己帶了給使用者看的訊息時採用（例如本機影音「找不到這個檔案。」）；帶了動作時一併採用（GEM-R5 的「改用一般流程」）。
 		var ce *errclass.Error
 		if errors.As(err, &ce) && ce.Message != "" {
-			st.Message = ce.Message
+			st.Message, st.Actions = ce.Message, ce.Actions
 		}
 		return result{task: taskFailed, state: st}
 	case errclass.ClassNeedsAction, errclass.ClassBudgetBlocked:

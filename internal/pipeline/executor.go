@@ -63,7 +63,18 @@ type StageResolution struct {
 //   - summary：同 chapters（DIG-R1），但預設 off；too_long 需要執行期的資訊，由 DIG 的切片判斷。
 //
 // 這裡不看步驟有沒有實作：還沒有實作的 M3 步驟由 planChain 改成 skipped（not_implemented）。
+//
+// stages.note.engine 為 gemini（geminiEngine）時，transcript 到 frames 一律略過（gemini，GEM-R2），優先於其他略過原因；
+// 解析出的 executor 與 Wanted 照常記錄。
 func ResolveExecutor(eff Effective, stage string, sc StageContext) (StageResolution, error) {
+	res, err := resolveExecutor(eff, stage, sc)
+	if err == nil && geminiSkippedStages[stage] && geminiEngine(eff) {
+		res.Skip, res.Reason = true, SkipGemini
+	}
+	return res, err
+}
+
+func resolveExecutor(eff Effective, stage string, sc StageContext) (StageResolution, error) {
 	switch {
 	case stage == StageMetadata || stage == StageTranscript || stage == StageNormalize:
 		return StageResolution{Stage: stage, Executor: ExecutorLocal}, nil
@@ -198,7 +209,7 @@ func planChainFor(eff Effective, from, until string, sc StageContext, has func(s
 		if err != nil {
 			return nil, err
 		}
-		if gatedStage(stage) && !res.Skip && !stageImplemented(stage, res.Executor) {
+		if gatedStage(stage) && !res.Skip && !stageImplemented(stage, res.Executor) && !geminiNoteRes(eff, stage, res.Executor) {
 			res.Skip, res.Reason = true, SkipNotImplemented
 		}
 		chain = append(chain, res)
