@@ -687,7 +687,7 @@ bundle 一律在執行時由步驟產生（Go 的 `archive/zip`，必要時用 `
 | `When the token {string} is rotated as {string}` | 用 owner 的 session 送出 `POST /api/tokens/<第一個參數>/rotate`；回應是 200 且有 `token` 時，把新的明文記為 `World.Refs["token:"+第二個參數]`（之後 `with the token {string}` 用第二個參數），原本名稱的 `Refs` 不變（所以用第一個參數送出的請求帶的是舊 secret）。回應成為最近一次的回應 |
 ### 4.30 Hub 實例與帳號（`steps/hub.go`，M5）
 
-M5 的句型（4.30～4.32）在 2026-11-23 規格展開時加入，目前全部註冊為 pending 的步驟樁（`godog.ErrPending`），由 M5 的實作切片換成真正的實作。M5-S1（2026-11-23）實作了 4.30 的閘門、Hub 設定、假供應商、登入流程、帳號數、`the response does not contain` 與送到 Hub 的 session／匿名請求；閘門只對登入範圍的 HACC 場景放行（HACC 待決問題 A11）。M5-S2（2026-11-23）實作了 Hub token（`a Hub token … for … with the permissions …`、`the Hub client sends … with the Hub token …`，含 `and:`）與 `the hub member … is in the group …`；登入成功時從 Hub 的 DB 記下 `{user:<名稱>}`（不送 API 請求）；閘門再放行 HACC-R9～R13、R18，但用到 4.31 句型的場景仍停在閘門（HACC 待決問題 A12）。停用、`from the origin`、MCP 的句型，以及 4.31、4.32 仍是步驟樁。測試替身的設計見 [ADR-0030](../adr/0030-hub-deployment-and-storage.md) 第 3 點與 `features/fixtures/README.md` 的「M5 的假服務」。
+M5 的句型（4.30～4.32）在 2026-11-23 規格展開時加入，目前全部註冊為 pending 的步驟樁（`godog.ErrPending`），由 M5 的實作切片換成真正的實作。M5-S1（2026-11-23）實作了 4.30 的閘門、Hub 設定、假供應商、登入流程、帳號數、`the response does not contain` 與送到 Hub 的 session／匿名請求；閘門只對登入範圍的 HACC 場景放行（HACC 待決問題 A11）。M5-S2（2026-11-23）實作了 Hub token（`a Hub token … for … with the permissions …`、`the Hub client sends … with the Hub token …`，含 `and:`）與 `the hub member … is in the group …`；登入成功時從 Hub 的 DB 記下 `{user:<名稱>}`（不送 API 請求）；閘門再放行 HACC-R9～R13、R18，但用到 4.31 句型的場景仍停在閘門（HACC 待決問題 A12）。停用、`from the origin`、MCP 的句型與 4.32 仍是步驟樁（4.31 見該節）。測試替身的設計見 [ADR-0030](../adr/0030-hub-deployment-and-storage.md) 第 3 點與 `features/fixtures/README.md` 的「M5 的假服務」。
 
 M5 的領域用語：
 
@@ -766,6 +766,8 @@ bundle 由步驟在場景目錄中產生，不 commit 二進位 fixture：字幕
 | `Then the Hub stores the content {string} once` | Hub 的 blob 中，這個內容名稱的 sha256 剛好一個檔案，而且引用它的版本至少一個 |
 
 M5-S3（2026-11-23）以真 Hub 實作了本節全部的句型（fakehub 的 seeding 仍是 pending，由 HSHR 的切片實作）；閘門改成依 tag 放行（HACC-R1～R14、R18 與 HREP-R1～R6、R8～R12），不再依「用到 4.31 句型」擋場景（HREP 待決問題 R8）。實作細節：內容名稱產生 3 句確定的 cues（相同的名稱、變體與語言產生相同的 bytes，seeding 與 bundle 共用，所以 `removed` 的 seeding 會擋下相同內容的分享）；seeding 的 `uploader` 沒有登入過時以 fakeoauth 的預設 GitHub 使用者建立帳號（之後以同一個名稱登入是同一個帳號）；bundle 的項目一律以 `store` 寫入（不壓縮），`executor: agent` 的 `model` 寫成 `model_reported`；產生的 bundle 存在場景目錄的 `bundles/`；分享成功時以回應的 `share_id` 記下 `{share:last}`。
+
+M5-S4（2026-11-23）閘門再放行 HREP-R7、R16～R19（列表、影片頁、取用與 lookup），沒有新句型（HREP 待決問題 R9）。
 
 ### 4.32 Client 與 Hub（`steps/hub_client.go`，M5）
 
