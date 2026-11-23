@@ -153,7 +153,7 @@ func parseNote(args []string) (*plan, error) {
 func parseNoteShow(args []string) (*plan, error) {
 	g := &globals{}
 	fs := newFlagSet("note show", g)
-	lang := fs.String("lang", "", "筆記的語言；沒有指定時用預設的筆記語言")
+	lang := fs.String("lang", "", "筆記的語言；沒有指定時用最近寫出的一份（NOTE N19）")
 	format := fs.String("format", "md", "輸出格式：md 或 json")
 	pos, err := parseFlags(fs, args)
 	if err != nil {

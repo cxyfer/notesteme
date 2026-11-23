@@ -22,7 +22,7 @@ func m3Tools() []tool {
 
 type getNoteArgs struct {
 	Item string `json:"item" jsonschema:"影音的 ID 或代號，例如 yt:abc123xxxxx"`
-	Lang string `json:"lang,omitempty" jsonschema:"筆記的語言；沒有指定時用預設的筆記語言"`
+	Lang string `json:"lang,omitempty" jsonschema:"筆記的語言；沒有指定時用最近寫出的一份（NOTE N19）"`
 }
 
 func addGetNote(s *mcp.Server, d *Deps) {
