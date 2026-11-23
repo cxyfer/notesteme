@@ -118,3 +118,34 @@ func TestClaimAndRecoverAfterRestart(t *testing.T) {
 		t.Errorf("NextDue = %v, %v", at, ok)
 	}
 }
+
+// COST-R5：啟動時在同一個交易刪除程序中斷留下的成本預留；仍在執行中的任務的預留與已結算的紀錄不動。
+func TestRecoverStaleDeletesOrphanReservations(t *testing.T) {
+	ctx := context.Background()
+	s, clk := setup(t)
+	a, b := seedTask(t, s, "a"), seedTask(t, s, "b")
+	if got, err := New(s, clk, "worker-1").Claim(ctx, 1); err != nil || len(got) != 1 || got[0].ID != a.ID {
+		t.Fatalf("worker-1 Claim = %v, %v", got, err)
+	}
+	next := New(s, clk, "worker-2")
+	if got, err := next.Claim(ctx, 1); err != nil || len(got) != 1 || got[0].ID != b.ID {
+		t.Fatalf("worker-2 Claim = %v, %v", got, err)
+	}
+	for _, row := range []store.CostRow{
+		{ID: "res-a", TaskID: a.ID, USD: 0.5, State: store.CostReserved},
+		{ID: "res-b", TaskID: b.ID, USD: 0.25, State: store.CostReserved},
+		{ID: "act-a", TaskID: a.ID, USD: 0.125, State: store.CostActual},
+		{ID: "res-none", USD: 1, State: store.CostReserved},
+	} {
+		if _, err := s.Write().InsertCostRow(ctx, row); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := next.RecoverStale(ctx); err != nil || n != 1 {
+		t.Fatalf("RecoverStale = %d, %v", n, err)
+	}
+	actual, reserved, err := s.Read().SumCostMicrosBetween(ctx, clk.Now().Add(-time.Hour), clk.Now().Add(time.Hour))
+	if err != nil || actual != 125000 || reserved != 250000 {
+		t.Errorf("清理後 actual = %d、reserved = %d，預期 125000 與 250000（%v）", actual, reserved, err)
+	}
+}
