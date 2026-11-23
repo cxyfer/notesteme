@@ -270,7 +270,9 @@ const usageText = `用法：notesteme <子命令> [旗標]
   items continue <ref>...               繼續摘要後等你決定的影音（M4）
   trash ls | empty [--yes]              列出、清空垃圾桶
   export <item> --format srt|vtt|txt|ass  輸出字幕（--lang、--variant、--style、--out）
+  export <item> --format bundle [--out <path>]  匯出 bundle（.notesteme.zip，M4）
   import <subtitle> --item <item>       匯入外部編輯過的字幕為 edited 版本（--lang、--format）
+  import <bundle> [--add-versions]      匯入 bundle（.notesteme.zip，M4）
   tokens create|ls|revoke               管理 API token
   notifiers ls | test <id>              列出通知端點、傳送測試通知（M4）
   subs ls | add <url> | show <id> | preview <id|url> | check <id> | rm <id> | import <file>

@@ -78,9 +78,13 @@ func exitFor(err error) (code int, errorCode string) {
 	var ue *usageError
 	var ae *apiError
 	var ir *importRejected
+	var br *bundleRejected
 	switch {
 	case errors.As(err, &ue):
 		return exitUsage, ""
+	case errors.As(err, &br):
+		// bundle 的內容不正確（BND-R10）：結束碼 1。
+		return exitError, br.ae.Code
 	case errors.As(err, &ir):
 		// config import 的內容不正確：檔案內容不是命令列參數，結束碼是 1（SEC-R10）。
 		return exitError, errCodeConfigInvalid

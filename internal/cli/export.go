@@ -20,7 +20,7 @@ var exportFormats = []string{"srt", "vtt", "txt", "ass"}
 func parseExport(args []string) (*plan, error) {
 	g := &globals{}
 	fs := newFlagSet("export", g)
-	format := fs.String("format", "srt", "格式：srt、vtt、txt 或 ass")
+	format := fs.String("format", "srt", "格式：srt、vtt、txt、ass 或 bundle")
 	style := fs.String("style", "", "ASS 樣式名稱（只對 --format ass 有效），預設 default")
 	lang := fs.String("lang", "", "語言")
 	variant := fs.String("variant", "", "字幕變體")
@@ -31,6 +31,14 @@ func parseExport(args []string) (*plan, error) {
 	}
 	if len(pos) != 1 {
 		return nil, usagef("export 需要一個 <item>。")
+	}
+	if *format == "bundle" {
+		// bundle（BND-R1）：沒有語言、變體與樣式。
+		if *lang != "" || *variant != "" || *style != "" {
+			return nil, usagef("--format bundle 不能搭配 --lang、--variant 或 --style。")
+		}
+		arg, dst := pos[0], *out
+		return &plan{g: g, run: func(ctx context.Context, s *session) (int, error) { return runExportBundle(ctx, s, arg, dst) }}, nil
 	}
 	if !slices.Contains(exportFormats, *format) {
 		return nil, usagef("--format 必須是 srt、vtt、txt 或 ass，收到 %q。", *format)

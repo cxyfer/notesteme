@@ -25,12 +25,27 @@ func parseImport(args []string) (*plan, error) {
 	item := fs.String("item", "", "要匯入到哪部影音（ID 或短代號）")
 	lang := fs.String("lang", "", "字幕的語言；沒有指定時用影音的原文語言")
 	format := fs.String("format", "", "格式：srt、vtt 或 ass；沒有指定時依副檔名與內容判斷")
+	addVersions := fs.Bool("add-versions", false, "bundle 的影音已經存在時，把產出加成新版本（BND-R9）")
 	pos, err := parseFlags(fs, args)
 	if err != nil {
 		return nil, err
 	}
 	if len(pos) != 1 {
-		return nil, usagef("import 需要一個 <subtitle> 檔案。")
+		return nil, usagef("import 需要一個 <subtitle> 或 <bundle> 檔案。")
+	}
+	if isBundleFile(pos[0]) {
+		// bundle（BND-R3）：以檔名或內容判斷；不能指定影音與字幕的選項。
+		if *item != "" {
+			return nil, usagef("匯入 bundle 不能指定 --item。")
+		}
+		if *lang != "" || *format != "" {
+			return nil, usagef("匯入 bundle 不能指定 --lang 或 --format。")
+		}
+		path, add := pos[0], *addVersions
+		return &plan{g: g, run: func(ctx context.Context, s *session) (int, error) { return runImportBundle(ctx, s, path, add) }}, nil
+	}
+	if *addVersions {
+		return nil, usagef("--add-versions 只能用在匯入 bundle。")
 	}
 	if *item == "" {
 		return nil, usagef("import 需要 --item <item>。")
