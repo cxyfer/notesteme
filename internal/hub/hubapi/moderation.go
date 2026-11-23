@@ -18,7 +18,7 @@ import (
 
 // 版主與管理員的處理（M5-S5）：下架申請的列表與決定（HACC-R16）、檢舉的列表與決定、手動隱藏（HREP-R15）、
 // 使用者列表、停用與恢復（HACC-R12、R17），以及上傳者的「我的分享」（HACC-R16）。
-// 權限都在 middleware 檢查；決定以 store 中條件式的 UPDATE 判斷是否已處理（並發的第二個決定得到 409）。
+// 權限在 middleware 檢查，handler 再以 requirePermission 確認一次；決定以 store 中條件式的 UPDATE 判斷是否已處理（並發的第二個決定得到 409）。
 // 移除版本後，沒有其他未移除的版本引用的 blob 在交易提交之後刪除。
 
 const (
@@ -31,6 +31,23 @@ const (
 	defaultAdminLimit = 100
 	maxAdminLimit     = 500
 )
+
+// requirePermission 在 handler 內再確認一次權限（middleware 之外的第二層，任務要求雙重檢查）：
+// 有效權限（PAT ∩ 帳號當下的權限）沒有 perm 時回與 middleware 相同的 403 forbidden。
+func (rt *routes) requirePermission(ctx context.Context, perm string) (*hubauth.Principal, error) {
+	p, err := mustPrincipal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ok, err := rt.d.Auth.HasPermission(ctx, p, perm)
+	if err != nil {
+		return nil, rt.apiError(ctx, err)
+	}
+	if !ok {
+		return nil, hubauth.ErrForbidden(perm)
+	}
+	return p, nil
+}
 
 // ---- 下架申請 ----
 
@@ -110,6 +127,9 @@ func checkDecision(in *decisionInput, allowed []string) (string, error) {
 }
 
 func (rt *routes) listTakedowns(ctx context.Context, in *adminListInput) (*takedownsOutput, error) {
+	if _, err := rt.requirePermission(ctx, hubconfig.PermModerate); err != nil {
+		return nil, err
+	}
 	state, limit, err := parseAdminList(in, []string{hubstore.TakedownOpen, hubstore.TakedownRemoved, hubstore.TakedownRejected})
 	if err != nil {
 		return nil, err
@@ -143,7 +163,7 @@ func (rt *routes) deleteBlobs(ctx context.Context, rm hubstore.Removal) {
 }
 
 func (rt *routes) decideTakedown(ctx context.Context, in *decisionInput) (*takedownStateOutput, error) {
-	p, err := mustPrincipal(ctx)
+	p, err := rt.requirePermission(ctx, hubconfig.PermModerate)
 	if err != nil {
 		return nil, err
 	}
@@ -210,6 +230,9 @@ type ReportDecisionView struct {
 type reportDecisionOutput struct{ Body ReportDecisionView }
 
 func (rt *routes) listReports(ctx context.Context, in *adminListInput) (*reportsOutput, error) {
+	if _, err := rt.requirePermission(ctx, hubconfig.PermModerate); err != nil {
+		return nil, err
+	}
 	state, limit, err := parseAdminList(in, []string{hubstore.ReportOpen, hubstore.ReportDismissed, hubstore.ReportActioned})
 	if err != nil {
 		return nil, err
@@ -236,7 +259,7 @@ func (rt *routes) listReports(ctx context.Context, in *adminListInput) (*reports
 }
 
 func (rt *routes) decideReport(ctx context.Context, in *decisionInput) (*reportDecisionOutput, error) {
-	p, err := mustPrincipal(ctx)
+	p, err := rt.requirePermission(ctx, hubconfig.PermModerate)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +300,7 @@ type VersionStateView struct {
 type versionStateOutput struct{ Body VersionStateView }
 
 func (rt *routes) hideVersion(ctx context.Context, in *versionIDPath) (*versionStateOutput, error) {
-	p, err := mustPrincipal(ctx)
+	p, err := rt.requirePermission(ctx, hubconfig.PermModerate)
 	if err != nil {
 		return nil, err
 	}
@@ -317,6 +340,9 @@ type adminUsersOutput struct {
 }
 
 func (rt *routes) listUsers(ctx context.Context, in *adminUsersInput) (*adminUsersOutput, error) {
+	if _, err := rt.requirePermission(ctx, hubconfig.PermAdmin); err != nil {
+		return nil, err
+	}
 	_, limit, err := parseAdminList(&adminListInput{Limit: in.Limit}, nil)
 	if err != nil {
 		return nil, err
@@ -366,7 +392,7 @@ type SuspensionView struct {
 type suspensionOutput struct{ Body SuspensionView }
 
 func (rt *routes) suspendUser(ctx context.Context, in *suspendInput) (*suspensionOutput, error) {
-	p, err := mustPrincipal(ctx)
+	p, err := rt.requirePermission(ctx, hubconfig.PermAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +417,7 @@ func (rt *routes) suspendUser(ctx context.Context, in *suspendInput) (*suspensio
 }
 
 func (rt *routes) unsuspendUser(ctx context.Context, in *userIDPath) (*suspensionOutput, error) {
-	p, err := mustPrincipal(ctx)
+	p, err := rt.requirePermission(ctx, hubconfig.PermAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -436,7 +462,7 @@ type mySharesOutput struct {
 }
 
 func (rt *routes) myShares(ctx context.Context, in *adminUsersInput) (*mySharesOutput, error) {
-	p, err := mustPrincipal(ctx)
+	p, err := rt.requirePermission(ctx, hubconfig.PermUpload)
 	if err != nil {
 		return nil, err
 	}

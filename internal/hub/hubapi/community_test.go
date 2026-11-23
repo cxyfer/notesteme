@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -500,4 +502,52 @@ func TestHourlyLimiterRelease(t *testing.T) {
 	if _, _, ok := l.reserve("ip:a", 1); !ok || len(l.hits) != 1 {
 		t.Fatalf("過期的紀錄要清掉：%v %d", ok, len(l.hits))
 	}
+}
+
+// 第二層的權限檢查：就算 middleware 沒有擋下（例如之後註冊時寫錯 Access），handler 也回 403。
+func TestHandlersRecheckPermissions(t *testing.T) {
+	e := newCommunityEnv(t, nil)
+	rt := newHumaAPI(http.NewServeMux(), Deps{Config: e.cfg, Store: e.store, Blobs: e.blobs, Clock: e.clk, Auth: mustAuth(t, e)})
+	u, err := e.store.User(context.Background(), e.users["bob"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(context.Background(), principalKey{}, &hubauth.Principal{User: u})
+	check := func(name string, err error, perm string) {
+		t.Helper()
+		var ae interface{ GetStatus() int }
+		if err == nil || !errors.As(err, &ae) || ae.GetStatus() != 403 || !strings.Contains(err.Error(), perm) {
+			t.Errorf("%s = %v，預期 403 %s", name, err, perm)
+		}
+	}
+	_, err = rt.listTakedowns(ctx, &adminListInput{})
+	check("listTakedowns", err, "moderate")
+	_, err = rt.decideTakedown(ctx, &decisionInput{ID: "x"})
+	check("decideTakedown", err, "moderate")
+	_, err = rt.listReports(ctx, &adminListInput{})
+	check("listReports", err, "moderate")
+	_, err = rt.decideReport(ctx, &decisionInput{ID: "x"})
+	check("decideReport", err, "moderate")
+	_, err = rt.hideVersion(ctx, &versionIDPath{ID: "x"})
+	check("hideVersion", err, "moderate")
+	_, err = rt.listUsers(ctx, &adminUsersInput{})
+	check("listUsers", err, "admin")
+	_, err = rt.suspendUser(ctx, &suspendInput{ID: "x"})
+	check("suspendUser", err, "admin")
+	_, err = rt.unsuspendUser(ctx, &userIDPath{ID: "x"})
+	check("unsuspendUser", err, "admin")
+	_, err = rt.myShares(ctx, &adminUsersInput{})
+	check("myShares", err, "upload")
+	if _, err := rt.listTakedowns(context.Background(), &adminListInput{}); err == nil {
+		t.Error("沒有身分時要失敗")
+	}
+}
+
+func mustAuth(t *testing.T, e *repoEnv) *hubauth.Service {
+	t.Helper()
+	a, err := hubauth.New(hubauth.Deps{Config: e.cfg, Store: e.store, Clock: e.clk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
 }
