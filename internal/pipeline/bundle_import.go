@@ -41,6 +41,8 @@ const (
 type BundleConflictError struct {
 	Code    string
 	Message string
+	// ItemID 是已存在的影音（只有 bundle_item_exists 才有；垃圾桶中的影音不回傳 ID）。
+	ItemID string
 }
 
 func (e *BundleConflictError) Error() string { return e.Message }
@@ -208,7 +210,7 @@ func (p *Pipeline) ImportBundle(ctx context.Context, req BundleImportRequest) (B
 		}
 		if ok != found || (ok && cur.ID != itemID) {
 			// 檢查之後有人新增了同一部影音：依現在的狀態回報，請使用者重新匯入。
-			return &BundleConflictError{Code: CodeBundleItemExists, Message: existsMessage(source.Ref(cur.Platform, cur.ExternalID, cur.Part))}
+			return existsConflict(cur)
 		}
 		snap, err := r.EnsureSnapshotLayers(ctx, plan.sha, plan.cfgJSON, plan.layersJSON)
 		if err != nil {
@@ -292,16 +294,29 @@ func existsMessage(ref string) string {
 	return fmt.Sprintf("這部影音已在媒體庫中（%s）。要把 bundle 的產出加成新版本，請加上 on_existing=add_versions。", ref)
 }
 
+// existsConflict 是 bundle_item_exists：帶已存在的影音 ID，client 可以連到它。
+// it 在垃圾桶中時改回 bundle_item_in_trash（不帶 ID）；ID 是空的（競態下讀不到）時省略。
+func existsConflict(it store.Item) *BundleConflictError {
+	if it.DeletedAt != nil {
+		return trashConflict()
+	}
+	return &BundleConflictError{Code: CodeBundleItemExists, Message: existsMessage(source.Ref(it.Platform, it.ExternalID, it.Part)), ItemID: it.ID}
+}
+
+func trashConflict() *BundleConflictError {
+	return &BundleConflictError{Code: CodeBundleItemInTrash, Message: "這部影音在垃圾桶中。請先還原或永久刪除後再匯入。"}
+}
+
 // bundleConflict 依 BND-R9 判斷能不能匯入到既有的影音。
 func bundleConflict(it store.Item, found, addVersions bool) error {
 	if !found {
 		return nil
 	}
 	if it.DeletedAt != nil {
-		return &BundleConflictError{Code: CodeBundleItemInTrash, Message: "這部影音在垃圾桶中。請先還原或永久刪除後再匯入。"}
+		return trashConflict()
 	}
 	if !addVersions {
-		return &BundleConflictError{Code: CodeBundleItemExists, Message: existsMessage(source.Ref(it.Platform, it.ExternalID, it.Part))}
+		return existsConflict(it)
 	}
 	return nil
 }
@@ -356,7 +371,7 @@ func (p *Pipeline) createBundleItem(ctx context.Context, r *store.Repo, id strin
 		return store.Item{}, err
 	}
 	if !created {
-		return store.Item{}, &BundleConflictError{Code: CodeBundleItemExists, Message: existsMessage(source.Ref(it.Platform, it.ExternalID, it.Part))}
+		return store.Item{}, existsConflict(it)
 	}
 	meta := store.ItemMeta{Title: mi.Title, Availability: mi.Availability, OriginalLang: mi.OriginalLang}
 	if mi.OriginalLang != "" {

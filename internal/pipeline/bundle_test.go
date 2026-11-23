@@ -717,3 +717,33 @@ func TestImportBundleEndsReprobe(t *testing.T) {
 		t.Errorf("排程仍在：%v", err)
 	}
 }
+
+// BND-R9：409 的 item_id 只在 bundle_item_exists 時帶；垃圾桶中的影音一律是 in_trash 且不帶 ID。
+func TestBundleConflictItemID(t *testing.T) {
+	now := time.Now()
+	live := store.Item{ID: "id-live", Platform: "youtube", ExternalID: "abc123xxxxx"}
+	trashed := store.Item{ID: "id-trash", Platform: "youtube", ExternalID: "abc123xxxxx", DeletedAt: &now}
+	if err := bundleConflict(live, false, false); err != nil {
+		t.Errorf("沒有找到 = %v", err)
+	}
+	if err := bundleConflict(live, true, true); err != nil {
+		t.Errorf("add_versions = %v", err)
+	}
+	var ce *BundleConflictError
+	if err := bundleConflict(live, true, false); !errors.As(err, &ce) || ce.Code != CodeBundleItemExists || ce.ItemID != "id-live" ||
+		!strings.Contains(ce.Message, "yt:abc123xxxxx") {
+		t.Errorf("已存在 = %#v", err)
+	}
+	for _, add := range []bool{false, true} {
+		if err := bundleConflict(trashed, true, add); !errors.As(err, &ce) || ce.Code != CodeBundleItemInTrash || ce.ItemID != "" {
+			t.Errorf("垃圾桶（add=%v）= %#v", add, err)
+		}
+	}
+	// 競態與 InsertItemIfAbsent 的分支：垃圾桶中的影音同樣不帶 ID；讀不到影音時 ID 省略。
+	if ce := existsConflict(trashed); ce.Code != CodeBundleItemInTrash || ce.ItemID != "" {
+		t.Errorf("existsConflict(垃圾桶) = %#v", ce)
+	}
+	if ce := existsConflict(store.Item{}); ce.Code != CodeBundleItemExists || ce.ItemID != "" {
+		t.Errorf("existsConflict(零值) = %#v", ce)
+	}
+}

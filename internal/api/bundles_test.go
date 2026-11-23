@@ -35,7 +35,7 @@ func TestBundleExportImport(t *testing.T) {
 	}
 
 	resp, body := bundleReq(r, "/api/bundles/import", data, "file")
-	if e := decodeError(t, body); resp.StatusCode != 409 || e.Code != "bundle_item_exists" {
+	if e := decodeError(t, body); resp.StatusCode != 409 || e.Code != "bundle_item_exists" || e.ItemID != id {
 		t.Errorf("重複 = %d %s", resp.StatusCode, body)
 	}
 	resp, body = bundleReq(r, "/api/bundles/import?on_existing=add_versions", data, "file")
@@ -104,6 +104,13 @@ func TestBundleExportImport(t *testing.T) {
 	resp, body = bundleReq(r, "/api/bundles/import", data, "file")
 	if e := decodeError(t, body); resp.StatusCode != 409 || e.Code != "bundle_item_in_trash" || !strings.Contains(e.Message, "垃圾桶") {
 		t.Errorf("垃圾桶匯入 = %d %s", resp.StatusCode, body)
+	}
+	// 垃圾桶中的影音不回傳 ID（回應中完全沒有 item_id，也沒有影音的 ID），帶 add_versions 也一樣。
+	for _, path := range []string{"/api/bundles/import", "/api/bundles/import?on_existing=add_versions"} {
+		resp, body = bundleReq(r, path, data, "file")
+		if resp.StatusCode != 409 || bytes.Contains(body, []byte("item_id")) || bytes.Contains(body, []byte(id)) {
+			t.Errorf("垃圾桶匯入洩漏 ID：%s = %d %s", path, resp.StatusCode, body)
+		}
 	}
 	rec = r.owner("GET", "/api/items/nope/bundle", "")
 	if rec.Code != 404 {

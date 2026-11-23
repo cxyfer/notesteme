@@ -238,7 +238,12 @@ func (rt *routes) mapBundleErr(ctx context.Context, err error) *Error {
 		}
 		return e
 	case errors.As(err, &ce):
-		return newError(http.StatusConflict, ce.Code, ce.Message)
+		e := newError(http.StatusConflict, ce.Code, ce.Message)
+		// bundle_item_exists 帶已存在的影音 ID（垃圾桶中的影音在 pipeline 就不帶）。
+		if ce.Code == pipeline.CodeBundleItemExists {
+			e.ItemID = ce.ItemID
+		}
+		return e
 	case errors.Is(err, context.Canceled):
 		return newError(http.StatusServiceUnavailable, CodeInternal, "請求已取消。")
 	}
