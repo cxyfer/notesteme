@@ -39,7 +39,7 @@ type AgentFailure interface {
 }
 
 type claimArgs struct {
-	Kinds []string `json:"kinds,omitempty" jsonschema:"任務種類：correct、segment；省略時兩種都領"`
+	Kinds []string `json:"kinds,omitempty" jsonschema:"任務種類：correct、segment、chapters；省略時只領 correct 與 segment"`
 	Max   int      `json:"max,omitempty" jsonschema:"最多領取幾個；省略時用處理方案的 agent.max_claims"`
 }
 

@@ -167,6 +167,38 @@
         ],
         "type": "object"
       },
+      "Chapter": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "description": "結束時間（HH:MM:SS.mmm）",
+            "type": "string"
+          },
+          "origin": {
+            "description": "章節的來源：platform 是平台提供的章節，llm 是模型依字幕提出的章節",
+            "enum": [
+              "platform",
+              "llm"
+            ],
+            "type": "string"
+          },
+          "start": {
+            "description": "開始時間（HH:MM:SS.mmm）",
+            "type": "string"
+          },
+          "title": {
+            "description": "章節標題（不可信的文字，顯示時要跳脫）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "start",
+          "end",
+          "origin"
+        ],
+        "type": "object"
+      },
       "ClassInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -1411,6 +1443,13 @@
           },
           "channel_id": {
             "type": "string"
+          },
+          "chapters": {
+            "description": "章節，依開始時間排序；沒有章節時是空陣列，chapters 步驟沒有產生過產出時沒有這個欄位",
+            "items": {
+              "$ref": "#/components/schemas/Chapter"
+            },
+            "type": "array"
           },
           "created_at": {
             "format": "date-time",

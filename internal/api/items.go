@@ -97,6 +97,16 @@ type ItemDetail struct {
 	Sources []Source `json:"sources"`
 	// SponsorSegments 是現行的 SponsorBlock 片段（SPB-R4）：沒有片段時是空陣列，sponsorblock 步驟沒有執行過時沒有這個欄位。
 	SponsorSegments *[]SponsorSegment `json:"sponsor_segments,omitempty" doc:"SponsorBlock 的片段，依開始時間排序；沒有片段時是空陣列，步驟沒有執行過時沒有這個欄位"`
+	// Chapters 是現行的章節（CHAP-R7）：沒有章節時是空陣列，chapters 步驟沒有產生過產出時沒有這個欄位。
+	Chapters *[]Chapter `json:"chapters,omitempty" doc:"章節，依開始時間排序；沒有章節時是空陣列，chapters 步驟沒有產生過產出時沒有這個欄位"`
+}
+
+// Chapter 是一個章節；時間是 HH:MM:SS.mmm。
+type Chapter struct {
+	Title  string `json:"title" doc:"章節標題（不可信的文字，顯示時要跳脫）"`
+	Start  string `json:"start" doc:"開始時間（HH:MM:SS.mmm）"`
+	End    string `json:"end" doc:"結束時間（HH:MM:SS.mmm）"`
+	Origin string `json:"origin" enum:"platform,llm" doc:"章節的來源：platform 是平台提供的章節，llm 是模型依字幕提出的章節"`
 }
 
 // SponsorSegment 是一個 SponsorBlock 片段；時間是 HH:MM:SS.mmm。
@@ -515,6 +525,13 @@ func toDetail(d pipeline.Detail) ItemDetail {
 			segs = append(segs, SponsorSegment{Category: s.Category, Start: subtitle.FormatDisplayTime(s.StartMS), End: subtitle.FormatDisplayTime(s.EndMS)})
 		}
 		out.SponsorSegments = &segs
+	}
+	if d.Chapters != nil {
+		chs := make([]Chapter, 0, len(d.Chapters.Chapters))
+		for _, c := range d.Chapters.Chapters {
+			chs = append(chs, Chapter{Title: c.Title, Start: subtitle.FormatDisplayTime(c.StartMS), End: subtitle.FormatDisplayTime(c.EndMS), Origin: d.Chapters.Origin})
+		}
+		out.Chapters = &chs
 	}
 	return out
 }

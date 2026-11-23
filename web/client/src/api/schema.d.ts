@@ -1184,6 +1184,19 @@ export interface components {
       };
       platform: string;
     };
+    Chapter: {
+      /** @description 結束時間（HH:MM:SS.mmm） */
+      end: string;
+      /**
+       * @description 章節的來源：platform 是平台提供的章節，llm 是模型依字幕提出的章節
+       * @enum {string}
+       */
+      origin: "platform" | "llm";
+      /** @description 開始時間（HH:MM:SS.mmm） */
+      start: string;
+      /** @description 章節標題（不可信的文字，顯示時要跳脫） */
+      title: string;
+    };
     ClassInputBody: {
       /** @description 只作用在這個資源類別；省略時作用在整個佇列 */
       class?: string;
@@ -1615,6 +1628,8 @@ export interface components {
     ItemDetail: {
       availability?: string;
       channel_id?: string;
+      /** @description 章節，依開始時間排序；沒有章節時是空陣列，chapters 步驟沒有產生過產出時沒有這個欄位 */
+      chapters?: components["schemas"]["Chapter"][];
       /** Format: date-time */
       created_at: string;
       /** Format: int64 */
