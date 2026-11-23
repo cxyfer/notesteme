@@ -29,6 +29,19 @@ type Cue struct {
 	Text string `json:"text"`
 }
 
+// NoteChapter 是筆記輸入的一個章節（NOTE-R5）：以起點的句號表示，不給時間。
+type NoteChapter struct {
+	Cue   int    `json:"cue"`
+	Title string `json:"title"`
+}
+
+// NoteFrame 是筆記輸入的一張選中的畫面（NOTE-R5）：編號、最接近的句號與圖說，不含圖片與時間。
+type NoteFrame struct {
+	N       int    `json:"n"`
+	Cue     int    `json:"cue"`
+	Caption string `json:"caption,omitempty"`
+}
+
 // ChapterInfo 是 <video_metadata> 中的一個章節。
 type ChapterInfo struct {
 	Start string `json:"start"` // HH:MM:SS
@@ -43,12 +56,19 @@ type Metadata struct {
 	Chapters    []ChapterInfo `json:"chapters,omitempty"`
 	// Glossary 是合併後的詞彙表（COR-R4）：使用者與頻道提供、模型提出後核可的詞，也當成不可信的資料放在資料區塊中。
 	Glossary []string `json:"glossary,omitempty"`
+	// NoteChapters、Frames 只有筆記的輸入會有（NOTE-R5）：章節與選中的畫面，都是不可信的資料。
+	NoteChapters []NoteChapter `json:"note_chapters,omitempty"`
+	Frames       []NoteFrame   `json:"frames,omitempty"`
+	// Translations 是筆記語言的譯文（stages.note.include_translation，NOTE-R5）：句號與譯文，對應 cues 的 i。
+	Translations []Cue `json:"translations,omitempty"`
 }
 
 // TemplateVars 是 prompt 模板中可以直接展開的變數（PRM-R3）：都來自設定，不是影片的內容。
 type TemplateVars struct {
 	SourceLang string
 	TargetLang string
+	// NoteLang 是筆記的語言（{{note_lang}}，NOTE-R5）。
+	NoteLang string
 	// Mixed 為 true 代表原文語言標記為 mixed（夾雜多種語言）：步驟的 MixedRule 會加進系統指示（COR-R5）。
 	Mixed bool
 }
@@ -88,6 +108,7 @@ func BuildFixed(spec *Spec, template string, vars TemplateVars, meta Metadata) (
 	values := map[string]string{
 		"source_lang": langCode(vars.SourceLang),
 		"target_lang": langCode(vars.TargetLang),
+		"note_lang":   langCode(vars.NoteLang),
 	}
 	for name, field := range metadataVars {
 		values[name] = fmt.Sprintf("（見 %s 的 %s）", MetadataOpen, field)
