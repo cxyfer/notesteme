@@ -3,6 +3,7 @@ package llm
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,6 +64,14 @@ type Request struct {
 	Fixed     Fixed
 	Data      string
 	Retry     string
+	// Images 是附在資料區塊之後的圖片（FRM-R7 的拼圖）；anthropic 送 image block，openai 送 image_url 的 data URL（FRM F4）。
+	Images []Image
+}
+
+// Image 是送給 vision 模型的一張圖片。
+type Image struct {
+	MediaType string // 目前只有 image/jpeg
+	Data      []byte
 }
 
 // Usage 是 provider 回報的 token 用量（LLM-R10）。
@@ -288,6 +297,11 @@ func (c *HTTPClient) encode(req Request) (url string, body []byte, err error) {
 		{"type": "text", "text": req.Fixed.Prefix, "cache_control": map[string]any{"type": "ephemeral"}},
 		{"type": "text", "text": req.Data},
 	}
+	for _, img := range req.Images {
+		userBlocks = append(userBlocks, map[string]any{"type": "image", "source": map[string]any{
+			"type": "base64", "media_type": img.MediaType, "data": base64.StdEncoding.EncodeToString(img.Data),
+		}})
+	}
 	if req.Retry != "" {
 		userBlocks = append(userBlocks, map[string]any{"type": "text", "text": req.Retry})
 	}
@@ -312,11 +326,22 @@ func (c *HTTPClient) encode(req Request) (url string, body []byte, err error) {
 		if req.Retry != "" {
 			parts = append(parts, req.Retry)
 		}
+		var user any = strings.Join(parts, "\n")
+		if len(req.Images) > 0 {
+			// 有圖片時 content 改成區塊陣列：文字在前、圖片在後（openai 的 image_url 以 data URL 傳送）。
+			blocks := []map[string]any{{"type": "text", "text": strings.Join(parts, "\n")}}
+			for _, img := range req.Images {
+				blocks = append(blocks, map[string]any{"type": "image_url", "image_url": map[string]any{
+					"url": "data:" + img.MediaType + ";base64," + base64.StdEncoding.EncodeToString(img.Data),
+				}})
+			}
+			user = blocks
+		}
 		v = map[string]any{
 			"model": req.Model,
 			"messages": []map[string]any{
 				{"role": "system", "content": req.Fixed.System},
-				{"role": "user", "content": strings.Join(parts, "\n")},
+				{"role": "user", "content": user},
 			},
 			"response_format": map[string]any{
 				"type": "json_schema",

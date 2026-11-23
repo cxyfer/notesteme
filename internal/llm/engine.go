@@ -23,6 +23,8 @@ type RunOptions struct {
 	// Timeout 是整個 chunk（含驗證重試）的時間上限，0 代表沒有。呼叫端設成「租約剩下的時間減去安全邊際」：
 	// 到期時回傳 retryable，任務放回佇列，而不是讓租約失效、被重新領取而重複送出（重複計費）。
 	Timeout time.Duration
+	// Images 是每次請求都附上的圖片（FRM-R7）；沒有時為 nil。
+	Images []Image
 }
 
 // ChunkResult 是一個 chunk 的結果。Output 非 nil 代表通過驗證；
@@ -44,7 +46,7 @@ func RunChunk(ctx context.Context, o RunOptions) (ChunkResult, error) {
 	if err != nil {
 		return ChunkResult{}, err
 	}
-	req := Request{Model: o.Model, MaxTokens: OutputBudget(o.Input), Spec: o.Spec, Fixed: o.Fixed, Data: data}
+	req := Request{Model: o.Model, MaxTokens: OutputBudget(o.Input), Spec: o.Spec, Fixed: o.Fixed, Data: data, Images: o.Images}
 	var res ChunkResult
 	parent := ctx
 	if o.Timeout != 0 {
