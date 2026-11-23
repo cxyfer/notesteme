@@ -1554,6 +1554,64 @@
         },
         "type": "object"
       },
+      "ImportFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "line": {
+            "description": "檔案中的行號（從 1 起算）",
+            "format": "int64",
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "url": {
+            "description": "檔案中的網址（原文）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "url",
+          "message"
+        ],
+        "type": "object"
+      },
+      "ImportResult": {
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "description": "建立的訂閱數",
+            "format": "int64",
+            "type": "integer"
+          },
+          "duplicates": {
+            "description": "檔案內重複或已經訂閱的網址（原文，依檔案順序）",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "failed": {
+            "items": {
+              "$ref": "#/components/schemas/ImportFailure"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "created",
+          "duplicates",
+          "failed"
+        ],
+        "type": "object"
+      },
       "ImportSubtitlesInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -2867,6 +2925,39 @@
         ],
         "type": "object"
       },
+      "Preview": {
+        "additionalProperties": false,
+        "properties": {
+          "truncated": {
+            "description": "任一個清單超過 200 列而被截斷",
+            "type": "boolean"
+          },
+          "would_process": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewRow"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "would_skip": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewSkip"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "would_process",
+          "would_skip",
+          "truncated"
+        ],
+        "type": "object"
+      },
       "PreviewInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -2888,6 +2979,22 @@
           },
           "style": {
             "description": "樣式名稱，預設 default",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PreviewNewInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "backfill": {
+            "$ref": "#/components/schemas/SubscriptionBackfill"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/SubscriptionFilters"
+          },
+          "url": {
+            "description": "頻道、播放清單、Bilibili 合集或 Podcast feed 的網址",
             "type": "string"
           }
         },
@@ -2929,6 +3036,91 @@
         "required": [
           "path",
           "modified"
+        ],
+        "type": "object"
+      },
+      "PreviewRow": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_s": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "published_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ref": {
+            "description": "影音的短代號，例如 yt:abc123xxxxx",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "title",
+          "published_at",
+          "duration_s"
+        ],
+        "type": "object"
+      },
+      "PreviewSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "backfill": {
+            "$ref": "#/components/schemas/SubscriptionBackfill",
+            "description": "尚未儲存的回補範圍；省略時用已存的設定"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/SubscriptionFilters",
+            "description": "尚未儲存的過濾條件，蓋在已存的設定上"
+          }
+        },
+        "type": "object"
+      },
+      "PreviewSkip": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_s": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "published_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "description": "略過的原因（同 GET /entries 的 reason）",
+            "type": "string"
+          },
+          "ref": {
+            "description": "影音的短代號，例如 yt:abc123xxxxx",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "ref",
+          "title",
+          "published_at",
+          "duration_s"
         ],
         "type": "object"
       },
@@ -8211,9 +8403,39 @@
     "/api/subscriptions/import": {
       "post": {
         "operationId": "subscriptions-import",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "encoding": {
+                "file": {
+                  "contentType": "application/octet-stream"
+                }
+              },
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentEncoding": "binary",
+                    "contentMediaType": "application/octet-stream",
+                    "description": "OPML 或 Google Takeout 的 subscriptions.csv（上限 1 MiB）",
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -8226,15 +8448,31 @@
             "description": "Error"
           }
         },
-        "summary": "從 OPML 匯入訂閱（尚未實作）"
+        "summary": "從 OPML 或 Google Takeout 的 subscriptions.csv 匯入訂閱（multipart 的 file，上限 1 MiB、500 個）；一律 backfill: none、預設處理方案與過濾"
       }
     },
     "/api/subscriptions/preview": {
       "post": {
         "operationId": "subscriptions-preview-new",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewNewInputBody"
+              }
+            }
+          }
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preview"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -8247,7 +8485,7 @@
             "description": "Error"
           }
         },
-        "summary": "建立訂閱之前試跑篩選與回補，不建立影音（尚未實作）"
+        "summary": "建立訂閱之前試跑過濾與回補；不建立訂閱與影音"
       }
     },
     "/api/subscriptions/{id}": {
@@ -8480,9 +8718,37 @@
     "/api/subscriptions/{id}/preview": {
       "post": {
         "operationId": "subscriptions-preview",
+        "parameters": [
+          {
+            "description": "訂閱的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "訂閱的 id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewSettings"
+              }
+            }
+          }
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preview"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -8495,7 +8761,7 @@
             "description": "Error"
           }
         },
-        "summary": "試跑既有訂閱的篩選與回補，不建立影音（尚未實作）"
+        "summary": "試跑既有訂閱的過濾與回補（body 的設定覆蓋已存的設定），列出會處理與會略過的條目；不建立影音、不寫入條目、不改變排程"
       }
     },
     "/api/system": {

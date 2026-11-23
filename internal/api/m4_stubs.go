@@ -21,13 +21,6 @@ import (
 //   - 既有路由的欄位擴充（GET /api/items/:id 的 summary、reprobe、better_source、read_state，POST /api/auth/login 的 next，
 //     PATCH /api/channels/:id/term-candidates/:candidate 的 term、scope，GET /api/system 的 alerts、backup）由各切片加上。
 var m4Stubs = []m2Stub{
-	// SUB-R6、R7（S3 SUB；其他訂閱的路由在 subscriptions.go，M4-S2）
-	{ID: "subscriptions-preview", Method: http.MethodPost, Path: "/api/subscriptions/{id}/preview",
-		Summary: "試跑既有訂閱的篩選與回補，不建立影音（尚未實作）", Scope: auth.ScopeAdmin},
-	{ID: "subscriptions-preview-new", Method: http.MethodPost, Path: "/api/subscriptions/preview",
-		Summary: "建立訂閱之前試跑篩選與回補，不建立影音（尚未實作）", Scope: auth.ScopeAdmin},
-	{ID: "subscriptions-import", Method: http.MethodPost, Path: "/api/subscriptions/import",
-		Summary: "從 OPML 匯入訂閱（尚未實作）", Scope: auth.ScopeAdmin},
 	// DIG-R7、R8、R11（S6 DIG）
 	{ID: "items-continue", Method: http.MethodPost, Path: "/api/items/{id}/continue",
 		Summary: "繼續處理摘要後暫停的影音（尚未實作）", Scope: auth.ScopeIngest},

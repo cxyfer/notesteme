@@ -131,6 +131,7 @@ func build(d Deps, authn func(http.Handler) http.Handler, remote bool) http.Hand
 	// cookie 上傳的大小限制在驗證之後、Huma 之前（沒登入的請求不會被讀取本體）；
 	// 影音檔上傳（multipart 的 POST /api/items）同一層，串流處理而不經過 Huma。
 	var h http.Handler = cookieBodyLimit(mux)
+	h = subscriptionImportLimit(h)
 	h = uploadIntercept(d)(h)
 	if remote && d.UI != nil {
 		h = uiDispatch(d.UI, h)

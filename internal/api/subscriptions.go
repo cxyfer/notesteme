@@ -14,7 +14,7 @@ import (
 )
 
 // 這個檔案是訂閱的 REST 介面（SUB-R13，M4-S2）：讀取用 read；建立、修改、刪除與立即檢查用 admin
-// （owner 的 session 有全部 scope）。試跑預覽與匯入（SUB-R6、R7）仍是 m4_stubs.go 的 501，由 M4-S3 實作。
+// （owner 的 session 有全部 scope）。試跑預覽與匯入（SUB-R6、R7，M4-S3）在 subscriptions_preview.go。
 
 // SubscriptionService 是訂閱 handler 需要的 service；*subscription.Service 實作它。
 type SubscriptionService interface {
@@ -72,6 +72,7 @@ func (rt *routes) registerSubscriptions(api huma.API) {
 		OperationID: "subscriptions-check", Method: http.MethodPost, Path: "/api/subscriptions/{id}/check",
 		Summary: "把下一次檢查改成現在（下一輪排程器執行，不在請求中探索）", DefaultStatus: http.StatusAccepted,
 	}, auth.ScopeAdmin, h.check)
+	h.registerPreviewImport(api)
 }
 
 func (h *subscriptionsAPI) service() (SubscriptionService, error) {
