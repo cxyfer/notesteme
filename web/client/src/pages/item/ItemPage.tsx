@@ -315,6 +315,14 @@ function ItemView({
           <a className="button button--outline" href={downloadUrl(id, "srt")} download>
             {t("item.actions.downloadSrt")}
           </a>
+          {/* BND-R1：現行版本的字幕、筆記、章節、贊助片段與選中的畫面（API 沒有選擇產出種類的參數） */}
+          <a
+            className="button button--outline"
+            href={apiPath("/api/items/{id}/bundle", { id })}
+            download
+          >
+            {t("item.actions.exportBundle")}
+          </a>
           {active && (
             <Button onClick={() => setCancelOpen(true)}>{t("item.actions.cancel")}</Button>
           )}

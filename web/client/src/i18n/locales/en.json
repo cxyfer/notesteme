@@ -383,7 +383,8 @@
       "openSettings": "Open settings",
       "switched": "{{stage}} now runs with the API.",
       "ytdlpUpdated": "yt-dlp is now {{version}}.",
-      "ytdlpRolledBack": "The new yt-dlp failed its self-check and was rolled back to {{version}}."
+      "ytdlpRolledBack": "The new yt-dlp failed its self-check and was rolled back to {{version}}.",
+      "exportBundle": "Export bundle"
     },
     "meta": {
       "channel": "Channel",
@@ -1164,6 +1165,19 @@
       "disabled": "Disabled",
       "lastFailed": "The last backup failed",
       "backupOk": "The last backup succeeded."
+    },
+    "bundle": {
+      "title": "Import bundle",
+      "hint": "Bring in a .notesteme.zip exported from another instance. Nothing is written unless every check passes, and nothing is processed after import.",
+      "file": "Bundle file",
+      "limit": "The upload limit is 64 MiB by default; the server's config decides the actual value.",
+      "selected": "{{name}} ({{size}})",
+      "addVersions": "If the media already exists, add the outputs as new versions",
+      "import": "Import",
+      "importing": "Importing…",
+      "done": "Imported {{imported}} outputs and skipped {{skipped}} identical versions:",
+      "exists": "This media is already in the library. Check “If the media already exists, add the outputs as new versions” and import again.",
+      "entry": "Entry with the problem:"
     }
   },
   "diff": {

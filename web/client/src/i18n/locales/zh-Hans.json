@@ -374,7 +374,8 @@
       "openSettings": "打开设置",
       "switched": "{{stage}}已改用 API 处理。",
       "ytdlpUpdated": "yt-dlp 已更新到 {{version}}。",
-      "ytdlpRolledBack": "新版 yt-dlp 自检失败，已回到 {{version}}。"
+      "ytdlpRolledBack": "新版 yt-dlp 自检失败，已回到 {{version}}。",
+      "exportBundle": "导出 bundle"
     },
     "meta": {
       "channel": "频道",
@@ -1135,6 +1136,19 @@
       "disabled": "已停用",
       "lastFailed": "最近一次备份失败",
       "backupOk": "最近一次备份成功。"
+    },
+    "bundle": {
+      "title": "导入 bundle",
+      "hint": "把另一个实例导出的 .notesteme.zip 搬进来。全部验证通过才写入；导入后不会自动处理。",
+      "file": "bundle 文件",
+      "limit": "上传上限默认 64 MiB，实际的值取决于服务器设置。",
+      "selected": "{{name}}（{{size}}）",
+      "addVersions": "音视频已存在时，把产出加为新版本",
+      "import": "导入",
+      "importing": "导入中…",
+      "done": "已导入 {{imported}} 个产出，跳过 {{skipped}} 个相同的版本：",
+      "exists": "这个音视频已在媒体库中。勾选“音视频已存在时，把产出加为新版本”后再导入。",
+      "entry": "出错的项目："
     }
   },
   "diff": {

@@ -24,13 +24,7 @@ export function formatElapsed(ms: number, lang: string = currentLanguage()): str
   return new Intl.NumberFormat(lang, { style: "unit", unit, unitDisplay: "long" }).format(value);
 }
 
-export function OpsStatus({
-  alerts,
-  backup,
-}: {
-  alerts: Alert[] | null;
-  backup: Backup;
-}) {
+export function OpsStatus({ alerts, backup }: { alerts: Alert[] | null; backup: Backup }) {
   const { t } = useTranslation();
   // 持續時間以掛載（讀到資料）的時間計算；資料重新讀取時 SystemSection 會重新渲染
   const [now] = useState(() => Date.now());

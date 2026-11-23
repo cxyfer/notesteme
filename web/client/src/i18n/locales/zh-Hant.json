@@ -374,7 +374,8 @@
       "openSettings": "開啟設定",
       "switched": "{{stage}}已改用 API 處理。",
       "ytdlpUpdated": "yt-dlp 已更新到 {{version}}。",
-      "ytdlpRolledBack": "新版 yt-dlp 自我檢查失敗，已回到 {{version}}。"
+      "ytdlpRolledBack": "新版 yt-dlp 自我檢查失敗，已回到 {{version}}。",
+      "exportBundle": "匯出 bundle"
     },
     "meta": {
       "channel": "頻道",
@@ -1135,6 +1136,19 @@
       "disabled": "已停用",
       "lastFailed": "最近一次備份失敗",
       "backupOk": "最近一次備份成功。"
+    },
+    "bundle": {
+      "title": "匯入 bundle",
+      "hint": "把另一個實例匯出的 .notesteme.zip 搬進來。全部驗證通過才寫入；匯入後不會自動處理。",
+      "file": "bundle 檔案",
+      "limit": "上傳上限預設 64 MiB，實際的值依伺服器設定。",
+      "selected": "{{name}}（{{size}}）",
+      "addVersions": "影音已存在時，把產出加成新版本",
+      "import": "匯入",
+      "importing": "匯入中…",
+      "done": "已匯入 {{imported}} 個產出，略過 {{skipped}} 個相同的版本：",
+      "exists": "這部影音已在媒體庫中。勾選「影音已存在時，把產出加成新版本」後再匯入。",
+      "entry": "出錯的項目："
     }
   },
   "diff": {
