@@ -44,7 +44,8 @@ function ExportPanel() {
       document.body.append(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      // 部分瀏覽器在 click() 之後才開始讀 blob，立即 revoke 會讓下載失敗
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       setProfiles(out.profiles ?? []);
       toast.show({ title: t("settings.config.exported", { count: out.profiles?.length ?? 0 }) });
     } catch (err) {

@@ -457,7 +457,7 @@ describe("匯出與匯入", () => {
     await userEvent.click(screen.getByRole("button", { name: "匯出 YAML" }));
     expect(await screen.findByText("已匯出：notes")).toBeTruthy();
     expect(click).toHaveBeenCalled();
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:x");
+    await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith("blob:x"), { timeout: 3000 });
     click.mockRestore();
   });
 });
