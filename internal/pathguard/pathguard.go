@@ -154,3 +154,11 @@ func resolveDepth(p string, depth int) (string, error) {
 		}
 	}
 }
+
+// Roots 回傳設定的根目錄（複本）；不限制的 Guard 與 nil 回傳空的清單。
+func (g *Guard) Roots() []string {
+	if g == nil {
+		return nil
+	}
+	return slices.Clone(g.roots)
+}

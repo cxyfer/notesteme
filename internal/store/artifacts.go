@@ -340,3 +340,16 @@ func (r *Repo) LatestProbes(ctx context.Context, itemID string) ([]Probe, error)
 func (r *Repo) PinArtifact(ctx context.Context, id string) error {
 	return r.q.PinArtifact(ctx, id)
 }
+
+// ItemArtifactSHAs 回傳影音所有產出（含被取代的版本）的內容 sha256（BND-R9 略過相同內容的產出）。
+func (r *Repo) ItemArtifactSHAs(ctx context.Context, itemID string) (map[string]bool, error) {
+	rows, err := r.q.ItemArtifactSHAs(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(rows))
+	for _, s := range rows {
+		out[s] = true
+	}
+	return out, nil
+}

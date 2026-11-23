@@ -74,3 +74,7 @@ WHERE artifacts.item_id = sqlc.arg(item_id) AND artifacts.kind = sqlc.arg(kind) 
 -- name: PinArtifact :exec
 -- A version a vault output references is kept when older versions are purged (ADR-0020 section 4).
 UPDATE artifacts SET pinned = 1 WHERE id = sqlc.arg(id);
+
+-- name: ItemArtifactSHAs :many
+-- Content hashes of every version of every artifact of an item (bundle import skips identical content, BND-R9).
+SELECT DISTINCT sha256 FROM artifacts WHERE item_id = sqlc.arg(item_id);

@@ -312,6 +312,34 @@ func (q *Queries) InsertProbe(ctx context.Context, arg InsertProbeParams) error 
 	return err
 }
 
+const itemArtifactSHAs = `-- name: ItemArtifactSHAs :many
+SELECT DISTINCT sha256 FROM artifacts WHERE item_id = ?1
+`
+
+// Content hashes of every version of every artifact of an item (bundle import skips identical content, BND-R9).
+func (q *Queries) ItemArtifactSHAs(ctx context.Context, itemID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, itemArtifactSHAs, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var sha256 string
+		if err := rows.Scan(&sha256); err != nil {
+			return nil, err
+		}
+		items = append(items, sha256)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const latestProbes = `-- name: LatestProbes :many
 SELECT id, item_id, run_id, source_id, lang, kind, available, est_cost, state, rejected_reason, probed_at, probe_trigger FROM source_probes AS sp
 WHERE sp.item_id = ?1
