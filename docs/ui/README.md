@@ -213,7 +213,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | CI：tsc、eslint、prettier、vitest（axe、對比、i18n）、build、bundle 預算、OpenAPI drift、npm audit | 完成 | `.github/workflows/web.yml` |
 | 新增抽屜、媒體庫（M1 基本版）、精簡版時間帶、`N`／`/` 快捷鍵、貼上網址 | 完成（UI-1，見 10.4） | `web/client/src/add`、`src/pages/library`、`web/shared` |
 | 書籤小工具分區、`/add` 落地頁、登入的 `next`、PWA（manifest 引用、service worker 註冊、icon） | 完成（M4 ENTRY，見 ENTRY 規格待決問題 E7、E9、E11） | `web/client/src/add/{entry.ts,AddEntryPage.tsx}`、`src/pages/settings/BookmarkletSection.tsx`、`public/icons`；manifest 與 `sw.js` 由 `internal/entry` 提供 |
-| 指令面板（`Ctrl K`）、`G` 開頭的快捷鍵、`?` 快捷鍵說明 | 未做 | 之後的切片 |
+| 指令面板（`Ctrl K`） | 未做 | 之後的切片 |
+| `G` 開頭的快捷鍵、`?` 快捷鍵說明、影音詳情的 `1`–`4` | 完成（UI-7，見 10.18） | `src/shell/{AppShell,ShortcutsDialog}.tsx`、`src/pages/item/ItemPage.tsx` |
 | Prompt 庫、處理方案、字幕樣式 | 完成（UI-3a，見 10.8） | `web/client/src/pages/{prompts,profiles,styles}` |
 | 設定各分區、詞彙表與術語候選、設定匯出與匯入 | 完成（UI-3b，見 10.10；後端沒有的部分見 10.10 的「未做」） | `web/client/src/pages/settings` |
 | 影音詳情、佇列 | 完成（UI-2，見 10.6） | `web/client/src/pages/item`、`src/pages/queue` |
@@ -221,7 +222,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 768–1279px 的收合導覽（只剩圖示） | 未做：沒有圖示前維持展開；UI-1 沒有引入 Phosphor Icons | 之後的切片 |
 | 訂閱、成本、筆記模板、設定的通知與預算、影音詳情的畫面與筆記 | 完成（UI-4，見 10.12） | `src/pages/{subscriptions,costs,noteTemplates}`、`src/pages/settings`、`src/pages/item/NotePanels.tsx` |
 | 字幕全文搜尋、術語審核、bundle 匯出與匯入、系統告警與備份、摘要與彙整、更好的字幕來源 | 完成（UI-5，見 10.14） | `src/pages/search`、`src/pages/settings`、`src/pages/item`、`src/pages/library` |
-| 總覽、批次操作、Hub UI | 未做：總覽依賴 LIB-09 `/api/overview`、批次依賴 LIB-08 `POST /api/items/batch`（兩者仍是 501 stub）；Hub UI 屬 M5 | 之後的切片 |
+| 總覽、批次操作、垃圾桶 | 完成（UI-7，見 10.18） | `src/pages/{overview,trash}`、`src/pages/library` |
 | Hub UI（`web/hub`）、Client 的「分享到 Hub」與設定「Hub」分區 | 完成（UI-6／M5-S9，見 10.16） | `web/hub`、`internal/hub/ui.go`、`web/client/src/pages/hub` |
 
 ### 10.2 UI-0 的決定
@@ -257,7 +258,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 「新增」抽屜：貼上網址辨識預覽（影片、播放清單、頻道、Podcast 各集、Bilibili 分P）、本機檔案上傳、處理方案、依 `code` 的錯誤與修正動作、toast | 完成 | `src/add` |
 | 導覽的「新增」按鈕、`N`、焦點不在輸入框時貼上網址 | 完成 | `src/shell/AppShell.tsx`、`keyboard.ts` |
 | 時間帶（精簡版）放進 `web/shared` | 完成 | `web/shared/src/StatusBand.tsx`、[web/shared/README](../../web/shared/README.md) |
-| 依頻道／發布日／狀態分組、「格」檢視、儲存檢視、批次操作、垃圾桶檢視 | 未做 | 分組見 10.5 第 3 點；其餘是 M4 |
+| 依頻道／發布日／狀態分組、「格」檢視、儲存檢視 | 未做 | 分組見 10.5 第 3 點；儲存檢視不在 M4 範圍 |
+| 批次操作、垃圾桶檢視 | 完成（UI-7，見 10.18） | `src/pages/library/BulkBar.tsx`、`src/pages/trash` |
 | 預估花費（`POST /api/estimate`）、「調整這次的設定」、一次貼上多個網址、把檔案拖進視窗 | 未做 | 見 10.5 第 6 點 |
 
 ### 10.5 UI-1 的決定
@@ -545,3 +547,41 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 16. **設定「Hub」分區**加在「系統」之後（`SETTINGS_SECTIONS` 只加一項），lazy 載入。ASR 前查詢的說明一律顯示，開啟前要勾「我了解」，送出 `acknowledge: <disclosure_version>`。
 17. **commit 的切法**：Hub UI 的頁面共用 router、字典與樣式，拆成每頁一個 commit 時中間的 commit 無法單獨建置，所以 Hub UI 是一個 commit；Go 端、`web/shared` 的搬移、CI 與 Client 各自一個。
 
+
+### 10.18 UI-7：總覽、媒體庫的批次操作、已讀狀態、垃圾桶、快捷鍵（2026-11-24）
+
+| 範圍 | 狀態 | 位置 |
+|---|---|---|
+| 總覽 `/`（lazy，取代導到媒體庫）：現在（最多 3 部，步驟與任務進度、精簡版時間帶、「還有 N 部」連到佇列）、需要你處理（沒有項目時整個區塊隱藏，每項有直接處理的按鈕與「查看」）、提醒（`terms_pending` 去審核、`prices_stale` 到成本頁）、今天（依時間由新到舊）、近期完成、本月花費與預算、磁碟用量；空媒體庫的空狀態；SSE 節流重讀與每分鐘重讀；導覽第一項「總覽」，標誌連到 `/` | 完成 | `src/pages/overview` |
+| 媒體庫的多選：每列的勾選框（可及名稱含標題，Shift 點擊選一段）、「選取已載入的 N 部」、「選取符合條件的全部 N 部」（最多 500 部）、換篩選時清除選取 | 完成 | `src/pages/LibraryPage.tsx`、`src/pages/library/LibraryRow.tsx` |
+| 批次操作列（lazy）：重新處理（選起始步驟）、改用其他處理方案（選方案與起始步驟）、匯出 bundle、刪除先 `dry_run`，確認框顯示數量、預估費用、無法預估的任務數、預算剩餘與 `exceeds` 警告、刪除的合計與「同時刪除未修改過的輸出檔（N 個）」、不能處理的影音與原因；分批執行、進度、停止、逐項結果（成功／失敗／cancelled 與原因）、bundle 的下載連結；標為已讀／未讀直接執行並可復原 | 完成 | `src/pages/library/{BulkBar.tsx,bulk.ts}` |
+| 「等你決定」的檢視：有選取時批次操作列多一個「繼續處理」（只送勾選的，確認框顯示數量與預估費用）；沒有選取時保留 UI-5 的「繼續處理已載入的 N 部」 | 完成（列表仍是近似篩選，見 10.19 第 9 點） | `src/pages/library/BulkBar.tsx` |
+| 已讀狀態（LIB-R19）：列上的「未讀」標示（圓點加文字）、篩選（URL 的 `read_state`）、影音詳情的「標為已讀／未讀」 | 完成 | `src/pages/library`、`src/pages/item/ReadStateButton.tsx` |
+| 垃圾桶 `/trash`（lazy）：刪除時間、幾天後永久刪除、還原（不確認）、永久刪除與清空（先確認）；媒體庫搜尋欄下方的入口 | 完成 | `src/pages/trash` |
+| `G` 然後 `L`／`Q`／`S`、`?` 快捷鍵說明、影音詳情的 `1`–`4` | 完成 | `src/shell`、`src/pages/item/ItemPage.tsx` |
+| 匯入 409 連到既有影音、影音詳情的「從 bundle 匯入」、術語審核 `item` 的型別、「等你決定」改用 `blocked=` 篩選 | 未做：後端補洞切片在交付時還沒有合併到 master（見 10.19 第 9 點） | — |
+| 指令面板、影音詳情的 `Space`／`←`／`→`／`[`／`]`、依頻道分組、「格」檢視、儲存檢視 | 未做：之後的切片（儲存檢視不在 M4） | — |
+| 真實瀏覽器的視覺、鍵盤與螢幕閱讀器驗收（`@ui @manual`：LIB-08、LIB-09、DIG 的「從媒體庫挑選暫停的影音」） | owner 手動驗收 | — |
+
+驗證：見 handoff 的 UI-7 段落（vitest 檔案數、i18n key 數、初始 JS）。**沒有改後端**（OpenAPI 與 `schema.d.ts` 不變）。
+
+### 10.19 UI-7 的決定與待決問題
+
+（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）
+
+1. **總覽取代 `/` 的導頁**：`/` 是 lazy 的總覽頁，導覽加「總覽」為第一項（工作組）。伺服器登入後的 `next` 預設是 `/`，所以登入後落在總覽；`safeRedirect` 的備用值仍是 `/library`（只在 `next` 不安全時用到）。手機的底部分頁列仍沿用左側導覽的項目（README §8 的「總覽、媒體庫、新增、佇列、更多」版面沒有另外做）。
+2. **總覽的時區**帶瀏覽器的 IANA 時區（L-M8）；伺服器回 422（不認識的時區）時不帶 `tz` 再讀一次，改用預算時區。
+3. **總覽的更新**：`stage.status`、`item.*` 事件以 1 秒節流讓總覽失效，重新連上時也是；`today`、`month`、`disk` 有些變化沒有事件（例如預算、磁碟），另外每分鐘重讀。
+4. **「需要你處理」的按鈕**：`actions` 是後端的繁中文字。成本的「調整預算」（到設定的預算分區）與「查看成本」在總覽對應；其他沿用影音詳情的對照表（`item/actions.ts`）：重跑類直接 `POST /rerun`（從那個步驟或對照表指定的步驟），「繼續處理」送 `/api/items/continue`，設定類打開對應分區；取消、改用 API、更新 yt-dlp 等需要更多說明的動作改為打開影音詳情的步驟分頁。每項另有「查看」。只列 API 回傳的最多 50 項，超過時提示到媒體庫。
+5. **總覽的「今天」**：**待決（API）**：`OverviewEvent` 只有 `{at, type, item, title}`，`stage.status` 沒有步驟與狀態，`items.batch` 沒有動作與數量，所以只能寫「「…」的步驟有新狀態」「執行了一次批次操作」。建議 API 加 `stage`、`status`（與 `items.batch` 的 `action`、`succeeded`、`failed`）。事件的影音只有代號（不是 ID），「今天」的列不連到影音詳情。不認識的類型顯示類型名稱與標題。
+6. **空狀態**：各區塊都沒有東西時再讀 `GET /api/items?limit=1`，總數是 0 才顯示媒體庫的空狀態（只有等待中的影音時各區塊也是空的，不能當成空媒體庫）。「現在」沒有影音時顯示「目前沒有正在處理的影音。」而不隱藏（pages.md 只要求「需要你處理」隱藏）。
+7. **批次的執行方式**：`dry_run` 一次送全部選取（≤500）；實際執行分批（刪除每批 10 部，其他 50 部），以便顯示進度與「停止（目前這批完成後）」，沒有送出的影音標成 `cancelled`。不在請求中途 abort：中途斷線時伺服器會把剩下的標成 cancelled（L-M15），但瀏覽器拿不到逐項結果。代價是每批各寫一筆 `items.batch` 事件，`dry_run` 與實際執行之間的資料可能已經改變（以實際執行的逐項結果為準）。實際執行只送 `dry_run` 中 `ok: true` 的影音；不能處理的影音在確認框列出原因。
+8. **確認方式依動作**：重新處理、改用處理方案、匯出 bundle、刪除、繼續處理都先 `dry_run` 再確認（LIB-R23）；`budget.exceeds` 只顯示警告、不擋確認（LIB-R17：超過預算的步驟是 `budget_blocked`，回應仍是 `ok: true`）；`unknown_estimates > 0` 時寫「另有 N 個任務無法預估費用」。**偏離 LIB-R23 的字面**：標為已讀／未讀可以復原，依 README §3.5 不跳確認框，直接執行並在 toast 提供「復原」（送相反的動作）。匯出 bundle 依 L-M11 在結果中列出每部的下載連結（瀏覽器會擋連續的程式化下載），只接受 `/api/` 開頭的路徑。刪除的結果另提醒可以從垃圾桶還原。
+9. **後端補洞切片（`blocked=` 篩選、匯入 409 的 `item_id`、`imported_from`、`TermCandidateReview.item` nullable）在交付時還沒有合併到 master**：「等你決定」維持 UI-5 的近似篩選（10.15 第 4 點）與「繼續處理已載入的 N 部」，另外可以逐列勾選後「繼續處理」（DIG 的 `@ui @manual` 場景）；匯入 409、「從 bundle 匯入」、術語審核維持 UI-5 的行為（10.15 第 7、8 點）。後端合併後，`toApiQuery` 是唯一要改的地方（`blocked` 換成 API 的篩選）。
+10. **「繼續處理」的預估**：`/api/items/continue` 沒有 `dry_run`，確認框用 `POST /api/items/batch {action: rerun, from: segment, dry_run: true}` 的 `estimated_usd` 當近似值（DIG-R6 的下一步是 segment），文字標明「以從分段重新處理估算」。送出時送全部勾選的影音，由伺服器略過不是等你決定的（`not_awaiting_user`，結果列出原因）。**待決**：建議 `/api/items/continue` 加 `dry_run`。
+11. **選取的範圍**：選取記在當下的篩選條件上，換篩選（含標題搜尋）時清除，避免畫面外、條件外的影音被一起處理；執行完後列表重新載入，關閉結果對話框時才清除選取（結果持續顯示）。「選取符合條件的全部」用同一組條件分頁讀出 ID（每頁 200），是當下的快照；符合的超過 500 部時不提供，改提示上限。
+12. **已讀狀態的顯示**：每部影音預設是未讀（LIB-R19），列上「未讀」以圓點加文字放在標題下的資訊列，不放進標題連結（連結的名稱維持標題）。打開詳情不會自動標為已讀；詳情頁的按鈕用批次 API 送單一影音（沒有單一影音的已讀路由）。
+13. **垃圾桶是獨立的 lazy route `/trash`**，入口是媒體庫搜尋欄下方的「垃圾桶」連結，**偏離 pages.md** 的「檢視切換中的『垃圾桶（N）』」：媒體庫沒有檢視切換，而且顯示 N 要在每次打開媒體庫時多讀一次 `GET /api/trash`（沒有分頁，會列出全部）。剩餘天數以 `purge_at` 無條件進位；空狀態寫「預設 30 天」（保留天數在設定檔，API 沒有提供）。
+14. **快捷鍵**：`G` 之後 1.5 秒內按 `L`／`Q`／`S`；`?` 打開的說明只列出已經做好的快捷鍵（`Ctrl K`、影音詳情的播放控制還沒做，不列）。影音詳情的 `1`–`4` 依 README §3.6 是字幕、畫面、筆記、紀錄。焦點在輸入框或有對話框時不作用。
+15. **bundle 預算**：所有新頁面、批次操作列、快捷鍵說明都是 lazy；主 chunk 只多了選取狀態、勾選框、已讀篩選、快捷鍵的處理與三語字串。總覽 lazy chunk 引用主 chunk 的模組（`useItemDetail`、`stageView`、`@shared` 的時間帶、`AddContext`）使 Rollup 多切出幾個小 chunk，初始 JS 也算進去。沒有調整預算。
+16. **共用檔案只增不改**：`router.tsx`（`/` 改成總覽、加 `/trash`）、`queryKeys.ts`（`overviewAll`、`overview`）、locale JSON（只新增 key）、`LibraryPage.tsx`（選取狀態、批次操作列與垃圾桶入口）、`LibraryRow.tsx`（選填的勾選框與未讀標示）、`filters.ts`／`FilterBar.tsx`（`read_state`）、`AppShell.tsx`（導覽項目與快捷鍵）。`router.test.tsx` 的「`/` 導到媒體庫」與 `LoginPage.test.tsx` 的兩個登入後落點依新行為修改。新的樣式在 `src/styles/ui7.css`（由 lazy 模組載入），列的勾選框與未讀標示加在 `library.css`。
