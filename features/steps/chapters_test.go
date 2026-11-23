@@ -7,14 +7,14 @@ import (
 	"github.com/cucumber/godog"
 )
 
-// SponsorBlock 的句型只對 SPB 的場景放行；SPB-R7 在 note 步驟實作之前也是 pending。
+// SponsorBlock 的句型只對 SPB 與 CHAP（M3-S2）的場景放行；SPB-R7 在 note 步驟實作之前也是 pending。
 func TestSPBGate(t *testing.T) {
 	cases := []struct {
 		tags    []string
 		pending bool
 	}{
 		{[]string{"@M3", "@SPB-01", "@SPB-R1"}, false},
-		{[]string{"@M3", "@CHAP-01", "@CHAP-R5"}, true},
+		{[]string{"@M3", "@CHAP-01", "@CHAP-R5"}, false}, // M3-S2：chapters 已實作
 		{[]string{"@M3", "@FRM-01"}, true},
 		{[]string{"@M4", "@SRC-10", "@SRC-R20"}, true},
 		{[]string{"@M3", "@SPB-01", "@SPB-R7"}, true},
