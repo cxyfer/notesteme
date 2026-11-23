@@ -73,6 +73,15 @@ type Stage struct {
 	StartedAt        *time.Time `json:"started_at"`
 	FinishedAt       *time.Time `json:"finished_at"`
 	Attempts         int        `json:"attempts" doc:"最近一個任務已經嘗試的次數；重啟時放回的租約不計入（PIPE-R11）"`
+	// Batch 只在步驟等待 Batch API 的結果時出現（BATCH 的介面）。
+	Batch *StageBatch `json:"batch,omitempty" doc:"步驟等待 Batch API 的結果時才有"`
+}
+
+// StageBatch 是步驟正在等待的 Batch API（BATCH-R3）。
+type StageBatch struct {
+	Provider    string    `json:"provider"`
+	SubmittedAt time.Time `json:"submitted_at"`
+	DeadlineAt  time.Time `json:"deadline_at" doc:"等待的期限；超過時改走一般 API（BATCH-R5）"`
 }
 
 // Source 是一個字幕來源在最近一次 Probe 中的結果（SRC-R17）。
@@ -520,7 +529,11 @@ func (rt *routes) getItem(ctx context.Context, in *itemInput) (*itemDetailOutput
 func toDetail(d pipeline.Detail) ItemDetail {
 	out := ItemDetail{Item: toItem(d.Item), Stages: []Stage{}, Sources: []Source{}}
 	for _, s := range d.Stages {
-		out.Stages = append(out.Stages, toStage(s, d.Attempts[s.ID]))
+		st := toStage(s, d.Attempts[s.ID])
+		if b := d.Batches[s.ID]; b != nil {
+			st.Batch = &StageBatch{Provider: b.Provider, SubmittedAt: b.SubmittedAt, DeadlineAt: b.DeadlineAt}
+		}
+		out.Stages = append(out.Stages, st)
 	}
 	for _, p := range d.Sources {
 		out.Sources = append(out.Sources, Source{Source: p.SourceID, Lang: p.Lang, Kind: p.Kind, State: p.State, Reason: p.Reason})

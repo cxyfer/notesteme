@@ -4179,6 +4179,10 @@
             "format": "int64",
             "type": "integer"
           },
+          "batch": {
+            "$ref": "#/components/schemas/StageBatch",
+            "description": "步驟等待 Batch API 的結果時才有"
+          },
           "block_reason": {
             "type": "string"
           },
@@ -4232,6 +4236,29 @@
           "started_at",
           "finished_at",
           "attempts"
+        ],
+        "type": "object"
+      },
+      "StageBatch": {
+        "additionalProperties": false,
+        "properties": {
+          "deadline_at": {
+            "description": "等待的期限；超過時改走一般 API（BATCH-R5）",
+            "format": "date-time",
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "submitted_at",
+          "deadline_at"
         ],
         "type": "object"
       },

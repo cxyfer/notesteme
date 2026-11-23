@@ -3144,6 +3144,8 @@ export interface components {
        * @description 最近一個任務已經嘗試的次數；重啟時放回的租約不計入（PIPE-R11）
        */
       attempts: number;
+      /** @description 步驟等待 Batch API 的結果時才有 */
+      batch?: components["schemas"]["StageBatch"];
       block_reason?: string;
       config_snapshot_id: string;
       error_class?: string;
@@ -3158,6 +3160,16 @@ export interface components {
       /** Format: date-time */
       started_at: string | null;
       status: string;
+    };
+    StageBatch: {
+      /**
+       * Format: date-time
+       * @description 等待的期限；超過時改走一般 API（BATCH-R5）
+       */
+      deadline_at: string;
+      provider: string;
+      /** Format: date-time */
+      submitted_at: string;
     };
     StatusBody: {
       /** @example ok */
