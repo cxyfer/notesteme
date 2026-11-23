@@ -216,7 +216,9 @@ func TestDailyRunWritesPrunesAndRecovers(t *testing.T) {
 
 	// 失敗：不刪除任何檔案、只告警一次；成功後送恢復。
 	before := dirNames(t, dir)
-	d.Begin = func(context.Context, time.Time) (Archive, error) { return nil, errors.New("disk I/O error at /secret/path") }
+	d.Begin = func(context.Context, time.Time) (Archive, error) {
+		return nil, errors.New("disk I/O error at /secret/path")
+	}
 	for i := range 3 {
 		_, err := d.run(ctx, scheduler.Job{}, now.Add(time.Duration(i+1)*time.Hour))
 		if err == nil || strings.Contains(err.Error(), "/secret/path") {
@@ -320,8 +322,8 @@ func TestDailyFailureReasons(t *testing.T) {
 
 func TestFailureReason(t *testing.T) {
 	cases := map[error]string{
-		&os.PathError{Op: "open", Path: "/p", Err: syscall.EACCES}: "沒有寫入備份目錄的權限",
-		&os.PathError{Op: "open", Path: "/p", Err: syscall.EROFS}:  "備份目錄所在的檔案系統是唯讀的",
+		&os.PathError{Op: "open", Path: "/p", Err: syscall.EACCES}:  "沒有寫入備份目錄的權限",
+		&os.PathError{Op: "open", Path: "/p", Err: syscall.EROFS}:   "備份目錄所在的檔案系統是唯讀的",
 		&os.PathError{Op: "mkdir", Path: "/p", Err: syscall.EEXIST}: "備份目錄的路徑中有不是目錄的項目",
 		errors.New("something else"):                                "寫入備份時發生錯誤（詳見 server log）",
 	}
