@@ -127,7 +127,17 @@ func (s *Scenario) youtubeVideoTitled(ref, title string) error {
 
 // youtubeVideoWith 依表格（field、value）設定影片的欄位。不認識的欄位讓步驟失敗，避免場景被默默忽略。
 func (s *Scenario) youtubeVideoWith(ref string, table *godog.Table) error {
+	key, err := s.videoKey(ref)
+	if err != nil {
+		return err
+	}
+	_, existed := s.World.Tools.Videos[key]
 	return s.editVideo(ref, func(v *faketool.Video) error {
+		// 同 titled（steps.md 4.3「同上」）：新建的 YouTube 影片沒有指定 language 時原文語言是 en。
+		// 只在表格沒有 language 欄位時補上；已經存在的影片不動。
+		if !existed && strings.HasPrefix(ref, "yt:") && v.Language == "" && !tableHasField(table, "language") {
+			v.Language = "en"
+		}
 		for i, row := range table.Rows {
 			if len(row.Cells) != 2 {
 				return fmt.Errorf("表格第 %d 列應有 field 與 value 兩欄", i+1)
@@ -456,4 +466,14 @@ func (s *Scenario) sourceAcceptsUpTo(id, size string) error {
 	unit := map[string]int64{"KB": 1 << 10, "MB": 1 << 20, "GB": 1 << 30}[m[2]]
 	s.World.Sources.AcceptsUpTo(id, n*unit)
 	return nil
+}
+
+// tableHasField 回報 field／value 表格中有沒有這個欄位。
+func tableHasField(table *godog.Table, field string) bool {
+	for _, row := range table.Rows {
+		if len(row.Cells) == 2 && row.Cells[0].Value == field {
+			return true
+		}
+	}
+	return false
 }

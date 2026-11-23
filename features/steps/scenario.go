@@ -22,6 +22,9 @@ import (
 type Scenario struct {
 	World *harness.World
 
+	// tags 是場景的 tag（含 Feature 的，例如 @M3、@SPB-R1）；給只對特定領域放行的閘門句型使用（見 spbGate）。
+	tags []string
+
 	// ctx 是 server 的 root context，場景結束時取消。
 	ctx    context.Context
 	cancel context.CancelFunc

@@ -40,12 +40,15 @@ func recordHarnessFailure(scenario string, err error) {
 
 // installHooks 在 sc 上掛 Before 與 After hook，管理 s 的 World 與清理。
 func installHooks(sc *godog.ScenarioContext, s *Scenario) {
-	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
+	sc.Before(func(ctx context.Context, sn *godog.Scenario) (context.Context, error) {
 		w, err := harness.New()
 		if err != nil {
 			return ctx, fmt.Errorf("建立場景環境：%w", err)
 		}
 		s.reset(w)
+		for _, t := range sn.Tags {
+			s.tags = append(s.tags, t.Name)
+		}
 		return ctx, nil
 	})
 	// 每個步驟開始時遞增序號，讓斷言能分辨「緊接在前一個步驟送出的請求」（見 lastFromPreviousStep）。
