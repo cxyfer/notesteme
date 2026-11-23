@@ -68,6 +68,8 @@ type hubState struct {
 	tokens       map[string]string
 	// content 是 bundle 與 seeding 的版本（hub_content.go，M5-S3）。
 	content *hubContent
+	// client 是 Client 與 Hub 的狀態（hub_client.go，M5-S7）。
+	client hubClientState
 }
 
 // pendingSignIn 是 `starts signing in` 或連結之後、還沒完成的登入。

@@ -461,7 +461,14 @@ func (s *Scenario) hasTranscriptSource(ref string) bool {
 	for _, t := range v.Tracks {
 		tracks = append(tracks, transcript.Track{Lang: t.Lang, Kind: t.Kind})
 	}
-	chosen, _ := transcript.Select(tracks, v.Language, pipeline.DefaultLanguage().CaptionPriority, false)
+	orig := v.Language
+	if orig == "" && strings.HasPrefix(ref, "bili:") {
+		// 同 pipeline 的 inferOriginalLang：Bilibili 沒有語言中繼資料時，用 AI 字幕軌的語言推斷（HSHR-R7）。
+		if i := slices.IndexFunc(tracks, func(t transcript.Track) bool { return t.Kind == transcript.KindAuto }); i >= 0 {
+			orig = tracks[i].Lang
+		}
+	}
+	chosen, _ := transcript.Select(tracks, orig, pipeline.DefaultLanguage().CaptionPriority, false)
 	return chosen != nil
 }
 

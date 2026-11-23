@@ -254,6 +254,10 @@ func (s *Scenario) startServerWith(opts app.ServeOptions) error {
 		s.server, s.startErr = nil, err
 		return err
 	}
+	if err := s.World.EnsureClientHubURL(); err != nil { // fakehub 時補上 hub.url（steps.md 4.32）
+		s.server, s.startErr = nil, err
+		return err
+	}
 	srv, err := app.StartServerWith(s.ctx, s.World.AppEnv(), opts)
 	if err != nil {
 		s.server, s.startErr = nil, err
@@ -261,7 +265,10 @@ func (s *Scenario) startServerWith(opts app.ServeOptions) error {
 	}
 	s.server, s.startErr = srv, nil
 	// BND：場景指定的實例 ID 在 server 啟動後、第一個請求之前寫入。
-	return s.applyBundleInstance()
+	if err := s.applyBundleInstance(); err != nil {
+		return err
+	}
+	return s.afterServerStart()
 }
 
 // ensureServer 在 server 尚未啟動時以當時的設定隱含啟動（ADR-0015）。

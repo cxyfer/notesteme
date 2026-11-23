@@ -131,7 +131,7 @@ func hubVideo(ref string) (platform, externalID string, part int, err error) {
 // hubStore 在需要時重新啟動 Hub（設定改變過），回傳它的儲存。
 func (s *Scenario) hubStore() (hubstore.Store, error) {
 	if s.World.HubKind() != harness.HubReal {
-		// fakehub 的 seeding（HSHR）由 S7 實作。
+		// fakehub 的 seeding 見 hub_client.go；其他步驟不支援 fakehub。
 		return nil, godog.ErrPending
 	}
 	if err := s.World.RestartHubIfNeeded(s.ctx); err != nil {
@@ -159,6 +159,9 @@ func (s *Scenario) ensureHubUser(st hubstore.Store, name string) (string, error)
 // ---- seeding ----
 
 func (s *Scenario) hubHasVersion(name, ref string, table *godog.Table) error {
+	if s.World.HubKind() == harness.HubFake {
+		return s.fakeHubHasVersion(name, ref, table)
+	}
 	st, err := s.hubStore()
 	if err != nil {
 		return err
@@ -249,6 +252,9 @@ func formatOf(kind string) string {
 }
 
 func (s *Scenario) hubVersionHasCues(name string, table *godog.Table) error {
+	if s.World.HubKind() == harness.HubFake {
+		return s.fakeHubVersionHasCues(name, table)
+	}
 	st, err := s.hubStore()
 	if err != nil {
 		return err
