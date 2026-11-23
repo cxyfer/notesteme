@@ -1,6 +1,6 @@
 // 測試資料：GET /api/items 的列與 GET /api/items/{id} 的詳情。
 import type { components } from "../api/schema";
-import { overview } from "./ui7Fixtures";
+import { overview, trashed } from "./ui7Fixtures";
 import {
   costEntry,
   costSummary,
@@ -182,6 +182,7 @@ export function defaultRoutes() {
     "GET /api/settings/hub": () => hubSettings(),
     // UI-7
     "GET /api/overview": () => overview(),
+    "GET /api/trash": () => ({ items: [trashed(1)], total: 1 }),
   };
 }
 

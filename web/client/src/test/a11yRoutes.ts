@@ -60,5 +60,6 @@ export const a11yRoutes: A11yRoute[] = [
   { path: "/search?q=ordered%20log", heading: "搜尋字幕", auth: true, ready: "ordered log" },
   // UI-7
   { path: "/", heading: "總覽", auth: true, ready: "超出預算的影片" },
+  { path: "/trash", heading: "垃圾桶", auth: true, ready: "刪掉的影片 1" },
   { path: "/no-such-page", heading: "找不到這個頁面", auth: false },
 ];

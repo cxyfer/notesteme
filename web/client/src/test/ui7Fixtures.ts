@@ -69,3 +69,14 @@ export function emptyOverview(): S["OverviewResult"] {
     notices: [],
   });
 }
+
+export function trashed(n: number, over: Partial<S["TrashedItem"]> = {}): S["TrashedItem"] {
+  return {
+    id: `item-${n}`,
+    ref: `yt:trash${n}`,
+    title: `刪掉的影片 ${n}`,
+    deleted_at: "2026-11-20T00:00:00Z",
+    purge_at: new Date(Date.now() + 5 * 86_400_000 - 1000).toISOString(),
+    ...over,
+  };
+}

@@ -2016,5 +2016,19 @@
       "subscription.check_failed": "订阅检查失败",
       "other": "{{type}} {{title}}"
     }
+  },
+  "trash": {
+    "title": "回收站",
+    "empty": "清空回收站",
+    "none": "回收站是空的。删除的音视频会在这里保留一段时间（默认 30 天）。",
+    "deletedAt": "{{at}} 删除",
+    "purgeIn_other": "{{count}} 天后永久删除",
+    "restore": "还原",
+    "purge": "永久删除",
+    "purgeTitle": "永久删除“{{title}}”？",
+    "emptyTitle_other": "清空回收站中的 {{count}} 部音视频？",
+    "purgeBody": "永久删除后无法恢复，已花费的金额仍会保留在成本记录中。",
+    "purged": "已永久删除",
+    "emptied": "已清空回收站"
   }
 }

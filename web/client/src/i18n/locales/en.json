@@ -2073,5 +2073,21 @@
       "subscription.check_failed": "A subscription check failed",
       "other": "{{type}} {{title}}"
     }
+  },
+  "trash": {
+    "title": "Trash",
+    "empty": "Empty trash",
+    "none": "The trash is empty. Deleted media stay here for a while (30 days by default).",
+    "deletedAt": "Deleted {{at}}",
+    "purgeIn_one": "Deleted forever in {{count}} day",
+    "purgeIn_other": "Deleted forever in {{count}} days",
+    "restore": "Restore",
+    "purge": "Delete forever",
+    "purgeTitle": "Delete “{{title}}” forever?",
+    "emptyTitle_one": "Empty the {{count}} item in the trash?",
+    "emptyTitle_other": "Empty the {{count}} items in the trash?",
+    "purgeBody": "This can't be undone. The amount already spent stays in the cost records.",
+    "purged": "Deleted forever",
+    "emptied": "Trash emptied"
   }
 }

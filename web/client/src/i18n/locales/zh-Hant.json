@@ -2016,5 +2016,19 @@
       "subscription.check_failed": "訂閱檢查失敗",
       "other": "{{type}} {{title}}"
     }
+  },
+  "trash": {
+    "title": "垃圾桶",
+    "empty": "清空垃圾桶",
+    "none": "垃圾桶是空的。刪除的影音會在這裡保留一段時間（預設 30 天）。",
+    "deletedAt": "{{at}} 刪除",
+    "purgeIn_other": "{{count}} 天後永久刪除",
+    "restore": "還原",
+    "purge": "永久刪除",
+    "purgeTitle": "永久刪除「{{title}}」？",
+    "emptyTitle_other": "清空垃圾桶中的 {{count}} 部影音？",
+    "purgeBody": "永久刪除後無法復原，已花費的金額仍會保留在成本紀錄中。",
+    "purged": "已永久刪除",
+    "emptied": "已清空垃圾桶"
   }
 }

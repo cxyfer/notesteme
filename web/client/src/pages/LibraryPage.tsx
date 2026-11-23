@@ -212,6 +212,10 @@ export function LibraryPage() {
         <Link to="/search" search={search.q ? { q: search.q } : {}}>
           {search.q ? t("search.fromLibraryQ", { q: search.q }) : t("search.fromLibrary")}
         </Link>
+        {/* UI-7：垃圾桶（pages.md §3） */}
+        <Link to="/trash" className="library__trash">
+          {t("trash.title")}
+        </Link>
       </p>
       <FilterBar search={search} onChange={setSearch} onClear={clearFilters} />
 

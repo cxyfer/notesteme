@@ -16,7 +16,8 @@
 //      ├─ /subscriptions、/subscriptions/$id   訂閱（UI-4，lazy）
 //      ├─ /costs                     成本（UI-4，lazy；篩選在 URL）
 //      ├─ /note-templates、/note-templates/$id 筆記模板（UI-4，lazy）
-//      └─ /search                    字幕全文搜尋（UI-5，lazy；查詢在 URL）
+//      ├─ /search                    字幕全文搜尋（UI-5，lazy；查詢在 URL）
+//      └─ /trash                     垃圾桶（UI-7，lazy）
 //
 // 新增頁面：在這裡加一個 createRoute、加進 routeTree，並把路徑加進 src/test/a11yRoutes.ts。
 import type { QueryClient } from "@tanstack/react-query";
@@ -223,6 +224,13 @@ const searchRoute = createRoute({
   component: lazyRouteComponent(() => import("./pages/search/SearchPage"), "SearchPage"),
 });
 
+// ---- UI-7：垃圾桶（lazy）----
+const trashRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/trash",
+  component: lazyRouteComponent(() => import("./pages/trash/TrashPage"), "TrashPage"),
+});
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute.addChildren([
@@ -245,6 +253,7 @@ export const routeTree = rootRoute.addChildren([
     noteTemplatesRoute,
     noteTemplateRoute,
     searchRoute,
+    trashRoute,
   ]),
 ]);
 
