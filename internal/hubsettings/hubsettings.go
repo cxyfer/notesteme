@@ -39,8 +39,8 @@ type HubPrecheck struct {
 
 // HubSettings 是 GET／PUT /api/settings/hub 的回應：不含 token。
 type HubSettings struct {
-	URL      string       `json:"url"`
-	TokenSet bool         `json:"token_set"`
+	URL      string      `json:"url"`
+	TokenSet bool        `json:"token_set"`
 	Precheck HubPrecheck `json:"precheck"`
 }
 

@@ -85,7 +85,7 @@ type HubShareArtifact struct {
 
 type hubSettingsInput struct {
 	Body struct {
-		Token    *string `json:"token,omitempty" doc:"Hub token（nsh_…）；空字串刪除，省略時不變"`
+		Token    *string            `json:"token,omitempty" doc:"Hub token（nsh_…）；空字串刪除，省略時不變"`
 		Precheck *HubPrecheckUpdate `json:"precheck,omitempty"`
 	}
 }
@@ -137,11 +137,11 @@ func (rt *routes) testHub(ctx context.Context, _ *struct{}) (*hubTestOutput, err
 type hubShareInput struct {
 	ID   string `path:"id" doc:"影音 ID 或代號"`
 	Body struct {
-		License   string `json:"license,omitempty" doc:"授權（SPDX）：CC-BY-4.0、CC-BY-SA-4.0、CC-BY-NC-4.0、CC-BY-NC-SA-4.0 或 CC0-1.0"`
-		Attest    bool   `json:"attest,omitempty" doc:"必須是 true：確認有權分享這些內容"`
-		Artifacts []HubShareArtifact `json:"artifacts,omitempty" doc:"只分享列出的產出；省略時分享每個字幕變體與語言的現行版本、chapters 與 note"`
-		IncludeFrames bool   `json:"include_frames,omitempty" doc:"也分享選中的畫面（Hub 端一律 private）"`
-		Visibility    string `json:"visibility,omitempty" doc:"public、authenticated、private 或 group:<群組>；省略時依 Hub 的預設"`
+		License       string             `json:"license,omitempty" doc:"授權（SPDX）：CC-BY-4.0、CC-BY-SA-4.0、CC-BY-NC-4.0、CC-BY-NC-SA-4.0 或 CC0-1.0"`
+		Attest        bool               `json:"attest,omitempty" doc:"必須是 true：確認有權分享這些內容"`
+		Artifacts     []HubShareArtifact `json:"artifacts,omitempty" doc:"只分享列出的產出；省略時分享每個字幕變體與語言的現行版本、chapters 與 note"`
+		IncludeFrames bool               `json:"include_frames,omitempty" doc:"也分享選中的畫面（Hub 端一律 private）"`
+		Visibility    string             `json:"visibility,omitempty" doc:"public、authenticated、private 或 group:<群組>；省略時依 Hub 的預設"`
 	}
 }
 
