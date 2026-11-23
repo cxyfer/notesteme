@@ -665,7 +665,7 @@ bundle 一律在執行時由步驟產生（Go 的 `archive/zip`，必要時用 `
 | `When the token {string} is rotated as {string}` | 用 owner 的 session 送出 `POST /api/tokens/<第一個參數>/rotate`；回應是 200 且有 `token` 時，把新的明文記為 `World.Refs["token:"+第二個參數]`（之後 `with the token {string}` 用第二個參數），原本名稱的 `Refs` 不變（所以用第一個參數送出的請求帶的是舊 secret）。回應成為最近一次的回應 |
 ### 4.30 Hub 實例與帳號（`steps/hub.go`，M5）
 
-M5 的句型（4.30～4.32）在 2026-11-23 規格展開時加入，目前全部註冊為 pending 的步驟樁（`godog.ErrPending`），由 M5 的實作切片換成真正的實作。測試替身的設計見 [ADR-0030](../adr/0030-hub-deployment-and-storage.md) 第 3 點與 `features/fixtures/README.md` 的「M5 的假服務」。
+M5 的句型（4.30～4.32）在 2026-11-23 規格展開時加入，目前全部註冊為 pending 的步驟樁（`godog.ErrPending`），由 M5 的實作切片換成真正的實作。M5-S1（2026-11-23）實作了 4.30 的閘門、Hub 設定、假供應商、登入流程、帳號數、`the response does not contain` 與送到 Hub 的 session／匿名請求；閘門只對登入範圍的 HACC 場景放行（HACC 待決問題 A11）。Hub token、群組、停用與 MCP 的句型，以及 4.31、4.32 仍是步驟樁。測試替身的設計見 [ADR-0030](../adr/0030-hub-deployment-and-storage.md) 第 3 點與 `features/fixtures/README.md` 的「M5 的假服務」。
 
 M5 的領域用語：
 
