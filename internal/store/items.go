@@ -38,6 +38,7 @@ func itemFromRow(row sqlcdb.Item) Item {
 		Origin:        row.Origin,
 
 		SubscriptionID: deref(row.SubscriptionID),
+		ReadState:      row.ReadState,
 	}
 	if row.DurationS != nil {
 		d := int(*row.DurationS)

@@ -29,7 +29,7 @@ func (q *Queries) DeleteTombstones(ctx context.Context, arg DeleteTombstonesPara
 }
 
 const listTrash = `-- name: ListTrash :many
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id FROM items WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC, rowid DESC
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id, read_state FROM items WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC, rowid DESC
 `
 
 // The trash view: newest deletion first.
@@ -69,6 +69,7 @@ func (q *Queries) ListTrash(ctx context.Context) ([]Item, error) {
 			&i.Origin,
 			&i.ProfileVersion,
 			&i.SubscriptionID,
+			&i.ReadState,
 		); err != nil {
 			return nil, err
 		}

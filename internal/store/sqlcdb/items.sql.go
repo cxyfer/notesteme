@@ -48,7 +48,7 @@ func (q *Queries) ChannelsWithOverrides(ctx context.Context) ([]Channel, error) 
 const countItemsFiltered = `-- name: CountItemsFiltered :one
 WITH sf AS (
   SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
-  FROM json_each(CAST(?11 AS TEXT)) AS j
+  FROM json_each(CAST(?12 AS TEXT)) AS j
 )
 SELECT COUNT(*) FROM items
 WHERE deleted_at IS NULL
@@ -60,15 +60,16 @@ WHERE deleted_at IS NULL
   AND (CAST(?6 AS INTEGER) IS NULL OR duration_s >= CAST(?6 AS INTEGER))
   AND (CAST(?7 AS INTEGER) IS NULL OR duration_s <= CAST(?7 AS INTEGER))
   AND (CAST(?8 AS TEXT) = '' OR instr(title_fold, ?8) > 0)
-  AND (CAST(?9 AS TEXT) = '' OR EXISTS (
+  AND (CAST(?9 AS TEXT) = '' OR read_state = ?9)
+  AND (CAST(?10 AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM stage_runs AS sr
-        WHERE sr.item_id = items.id AND sr.error_class = ?9
+        WHERE sr.item_id = items.id AND sr.error_class = ?10
           AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
                        ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)))
-  AND (CAST(?10 AS TEXT) = '' OR EXISTS (
+  AND (CAST(?11 AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
-        WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = ?10))
-  AND (json_array_length(CAST(?11 AS TEXT)) = 0 OR NOT EXISTS (
+        WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = ?11))
+  AND (json_array_length(CAST(?12 AS TEXT)) = 0 OR NOT EXISTS (
         SELECT 1 FROM sf
         WHERE COALESCE(instr(sf.statuses,
                 '|' || COALESCE((SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
@@ -84,6 +85,7 @@ type CountItemsFilteredParams struct {
 	DurationMin   *int64
 	DurationMax   *int64
 	QFold         string
+	ReadState     string
 	ErrorClass    string
 	Timing        string
 	StatusFilters string
@@ -100,6 +102,7 @@ func (q *Queries) CountItemsFiltered(ctx context.Context, arg CountItemsFiltered
 		arg.DurationMin,
 		arg.DurationMax,
 		arg.QFold,
+		arg.ReadState,
 		arg.ErrorClass,
 		arg.Timing,
 		arg.StatusFilters,
@@ -176,7 +179,7 @@ func (q *Queries) InsertItemIfAbsent(ctx context.Context, arg InsertItemIfAbsent
 }
 
 const itemByID = `-- name: ItemByID :one
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id FROM items WHERE id = ?1
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id, read_state FROM items WHERE id = ?1
 `
 
 func (q *Queries) ItemByID(ctx context.Context, id string) (Item, error) {
@@ -209,12 +212,13 @@ func (q *Queries) ItemByID(ctx context.Context, id string) (Item, error) {
 		&i.Origin,
 		&i.ProfileVersion,
 		&i.SubscriptionID,
+		&i.ReadState,
 	)
 	return i, err
 }
 
 const itemByKey = `-- name: ItemByKey :one
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id FROM items WHERE platform = ?1 AND external_id = ?2 AND part = ?3
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id, read_state FROM items WHERE platform = ?1 AND external_id = ?2 AND part = ?3
 `
 
 type ItemByKeyParams struct {
@@ -253,12 +257,74 @@ func (q *Queries) ItemByKey(ctx context.Context, arg ItemByKeyParams) (Item, err
 		&i.Origin,
 		&i.ProfileVersion,
 		&i.SubscriptionID,
+		&i.ReadState,
 	)
 	return i, err
 }
 
+const itemsByExternalID = `-- name: ItemsByExternalID :many
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id, read_state FROM items WHERE platform = ?1 AND external_id = ?2 ORDER BY part
+`
+
+type ItemsByExternalIDParams struct {
+	Platform   string
+	ExternalID string
+}
+
+// Every part of one external ID (a bare bili:<BV> in a bulk request expands to all its parts, LIB-R13).
+func (q *Queries) ItemsByExternalID(ctx context.Context, arg ItemsByExternalIDParams) ([]Item, error) {
+	rows, err := q.db.QueryContext(ctx, itemsByExternalID, arg.Platform, arg.ExternalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Item
+	for rows.Next() {
+		var i Item
+		if err := rows.Scan(
+			&i.ID,
+			&i.Platform,
+			&i.ExternalID,
+			&i.Part,
+			&i.ChannelID,
+			&i.ProfileID,
+			&i.OverridesJson,
+			&i.UntilStage,
+			&i.Title,
+			&i.Url,
+			&i.PublishedAt,
+			&i.DurationS,
+			&i.OriginalLang,
+			&i.LangSource,
+			&i.LangMixed,
+			&i.Availability,
+			&i.MediaKind,
+			&i.MetadataJson,
+			&i.CreatedAt,
+			&i.DeletedAt,
+			&i.TitleFold,
+			&i.SourcePath,
+			&i.ContentSha256,
+			&i.Origin,
+			&i.ProfileVersion,
+			&i.SubscriptionID,
+			&i.ReadState,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const itemsOverridingPrompt = `-- name: ItemsOverridingPrompt :many
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id FROM items
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id, read_state FROM items
 WHERE overrides_json LIKE '%"prompt"%' AND instr(overrides_json, CAST(?1 AS TEXT)) > 0
 ORDER BY created_at, id
 `
@@ -302,6 +368,7 @@ func (q *Queries) ItemsOverridingPrompt(ctx context.Context, promptID string) ([
 			&i.Origin,
 			&i.ProfileVersion,
 			&i.SubscriptionID,
+			&i.ReadState,
 		); err != nil {
 			return nil, err
 		}
@@ -317,7 +384,7 @@ func (q *Queries) ItemsOverridingPrompt(ctx context.Context, promptID string) ([
 }
 
 const listItems = `-- name: ListItems :many
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id FROM items WHERE deleted_at IS NULL ORDER BY created_at, rowid
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id, read_state FROM items WHERE deleted_at IS NULL ORDER BY created_at, rowid
 `
 
 func (q *Queries) ListItems(ctx context.Context) ([]Item, error) {
@@ -356,6 +423,7 @@ func (q *Queries) ListItems(ctx context.Context) ([]Item, error) {
 			&i.Origin,
 			&i.ProfileVersion,
 			&i.SubscriptionID,
+			&i.ReadState,
 		); err != nil {
 			return nil, err
 		}
@@ -373,9 +441,9 @@ func (q *Queries) ListItems(ctx context.Context) ([]Item, error) {
 const listItemsPage = `-- name: ListItemsPage :many
 WITH sf AS (
   SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
-  FROM json_each(CAST(?11 AS TEXT)) AS j
+  FROM json_each(CAST(?12 AS TEXT)) AS j
 )
-SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id FROM items
+SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id, read_state FROM items
 WHERE deleted_at IS NULL
   AND (CAST(?1 AS TEXT) = '' OR platform = ?1)
   AND (CAST(?2 AS TEXT) = '' OR channel_id = ?2)
@@ -385,23 +453,24 @@ WHERE deleted_at IS NULL
   AND (CAST(?6 AS INTEGER) IS NULL OR duration_s >= CAST(?6 AS INTEGER))
   AND (CAST(?7 AS INTEGER) IS NULL OR duration_s <= CAST(?7 AS INTEGER))
   AND (CAST(?8 AS TEXT) = '' OR instr(title_fold, ?8) > 0)
-  AND (CAST(?9 AS TEXT) = '' OR EXISTS (
+  AND (CAST(?9 AS TEXT) = '' OR read_state = ?9)
+  AND (CAST(?10 AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM stage_runs AS sr
-        WHERE sr.item_id = items.id AND sr.error_class = ?9
+        WHERE sr.item_id = items.id AND sr.error_class = ?10
           AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
                        ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)))
-  AND (CAST(?10 AS TEXT) = '' OR EXISTS (
+  AND (CAST(?11 AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
-        WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = ?10))
-  AND (json_array_length(CAST(?11 AS TEXT)) = 0 OR NOT EXISTS (
+        WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = ?11))
+  AND (json_array_length(CAST(?12 AS TEXT)) = 0 OR NOT EXISTS (
         SELECT 1 FROM sf
         WHERE COALESCE(instr(sf.statuses,
                 '|' || COALESCE((SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
                                  ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1), 'pending') || '|'), 0) = 0))
-  AND created_at <= CAST(?12 AS INTEGER)
-  AND (created_at < CAST(?12 AS INTEGER) OR id < CAST(?13 AS TEXT))
+  AND created_at <= CAST(?13 AS INTEGER)
+  AND (created_at < CAST(?13 AS INTEGER) OR id < CAST(?14 AS TEXT))
 ORDER BY created_at DESC, id DESC
-LIMIT ?14
+LIMIT ?15
 `
 
 type ListItemsPageParams struct {
@@ -413,6 +482,7 @@ type ListItemsPageParams struct {
 	DurationMin    *int64
 	DurationMax    *int64
 	QFold          string
+	ReadState      string
 	ErrorClass     string
 	Timing         string
 	StatusFilters  string
@@ -435,6 +505,7 @@ func (q *Queries) ListItemsPage(ctx context.Context, arg ListItemsPageParams) ([
 		arg.DurationMin,
 		arg.DurationMax,
 		arg.QFold,
+		arg.ReadState,
 		arg.ErrorClass,
 		arg.Timing,
 		arg.StatusFilters,
@@ -476,6 +547,7 @@ func (q *Queries) ListItemsPage(ctx context.Context, arg ListItemsPageParams) ([
 			&i.Origin,
 			&i.ProfileVersion,
 			&i.SubscriptionID,
+			&i.ReadState,
 		); err != nil {
 			return nil, err
 		}
@@ -539,6 +611,24 @@ type SetItemProfileParams struct {
 // The profile (and its version) used by the latest ingest or rerun.
 func (q *Queries) SetItemProfile(ctx context.Context, arg SetItemProfileParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, setItemProfile, arg.ProfileID, arg.ProfileVersion, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const setItemReadState = `-- name: SetItemReadState :execrows
+UPDATE items SET read_state = ?1 WHERE id = ?2 AND deleted_at IS NULL
+`
+
+type SetItemReadStateParams struct {
+	ReadState string
+	ID        string
+}
+
+// mark_read / mark_unread (LIB-R19). Items in the trash are not changed.
+func (q *Queries) SetItemReadState(ctx context.Context, arg SetItemReadStateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setItemReadState, arg.ReadState, arg.ID)
 	if err != nil {
 		return 0, err
 	}

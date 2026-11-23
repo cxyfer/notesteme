@@ -58,7 +58,15 @@ type Item struct {
 	Origin string
 	// SubscriptionID 是建立這部影音的訂閱（SUB-R13）；手動新增或訂閱已刪除時是空字串。
 	SubscriptionID string
+	// ReadState 是 ReadUnread（新增時的預設）或 ReadRead（LIB-R19）。
+	ReadState string
 }
+
+// 影音的已讀狀態（items.read_state，LIB-R19）。
+const (
+	ReadUnread = "unread"
+	ReadRead   = "read"
+)
 
 // 影音新增的來源（items.origin）。
 const (

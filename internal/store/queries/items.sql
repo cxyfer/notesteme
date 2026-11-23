@@ -85,6 +85,7 @@ WHERE deleted_at IS NULL
   AND (CAST(sqlc.narg(duration_min) AS INTEGER) IS NULL OR duration_s >= CAST(sqlc.narg(duration_min) AS INTEGER))
   AND (CAST(sqlc.narg(duration_max) AS INTEGER) IS NULL OR duration_s <= CAST(sqlc.narg(duration_max) AS INTEGER))
   AND (CAST(sqlc.arg(q_fold) AS TEXT) = '' OR instr(title_fold, sqlc.arg(q_fold)) > 0)
+  AND (CAST(sqlc.arg(read_state) AS TEXT) = '' OR read_state = sqlc.arg(read_state))
   AND (CAST(sqlc.arg(error_class) AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM stage_runs AS sr
         WHERE sr.item_id = items.id AND sr.error_class = sqlc.arg(error_class)
@@ -119,6 +120,7 @@ WHERE deleted_at IS NULL
   AND (CAST(sqlc.narg(duration_min) AS INTEGER) IS NULL OR duration_s >= CAST(sqlc.narg(duration_min) AS INTEGER))
   AND (CAST(sqlc.narg(duration_max) AS INTEGER) IS NULL OR duration_s <= CAST(sqlc.narg(duration_max) AS INTEGER))
   AND (CAST(sqlc.arg(q_fold) AS TEXT) = '' OR instr(title_fold, sqlc.arg(q_fold)) > 0)
+  AND (CAST(sqlc.arg(read_state) AS TEXT) = '' OR read_state = sqlc.arg(read_state))
   AND (CAST(sqlc.arg(error_class) AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM stage_runs AS sr
         WHERE sr.item_id = items.id AND sr.error_class = sqlc.arg(error_class)
@@ -136,3 +138,11 @@ WHERE deleted_at IS NULL
 -- name: SetItemLangMixed :execrows
 -- The original language is marked mixed (several languages in one transcript).
 UPDATE items SET lang_mixed = sqlc.arg(lang_mixed) WHERE id = sqlc.arg(id);
+
+-- name: SetItemReadState :execrows
+-- mark_read / mark_unread (LIB-R19). Items in the trash are not changed.
+UPDATE items SET read_state = sqlc.arg(read_state) WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
+
+-- name: ItemsByExternalID :many
+-- Every part of one external ID (a bare bili:<BV> in a bulk request expands to all its parts, LIB-R13).
+SELECT * FROM items WHERE platform = sqlc.arg(platform) AND external_id = sqlc.arg(external_id) ORDER BY part;

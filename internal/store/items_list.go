@@ -28,6 +28,8 @@ type ItemFilter struct {
 	PublishedTo   *time.Time
 	DurationMin   *int
 	DurationMax   *int
+	// ReadState 是 ReadRead 或 ReadUnread（LIB-R19）；空字串代表不篩選。
+	ReadState string
 }
 
 // ItemPos 是列表中的位置：排序是 (created_at, id) 由大到小，游標是最後一筆的位置。
@@ -77,7 +79,7 @@ func (r *Repo) ListItemsPage(ctx context.Context, f ItemFilter, after *ItemPos, 
 		Platform: f.Platform, ChannelID: f.Channel, Lang: f.Lang,
 		PublishedFrom: msPtr(f.PublishedFrom), PublishedTo: msPtr(f.PublishedTo),
 		DurationMin: intPtr64(f.DurationMin), DurationMax: intPtr64(f.DurationMax),
-		QFold: FoldTitle(f.Q), ErrorClass: f.ErrorClass, Timing: f.Timing, StatusFilters: status,
+		QFold: FoldTitle(f.Q), ErrorClass: f.ErrorClass, Timing: f.Timing, StatusFilters: status, ReadState: f.ReadState,
 		AfterCreatedAt: afterMs, AfterID: afterID, PageSize: int64(limit),
 	})
 	if err != nil {
@@ -100,7 +102,7 @@ func (r *Repo) CountItems(ctx context.Context, f ItemFilter) (int, error) {
 		Platform: f.Platform, ChannelID: f.Channel, Lang: f.Lang,
 		PublishedFrom: msPtr(f.PublishedFrom), PublishedTo: msPtr(f.PublishedTo),
 		DurationMin: intPtr64(f.DurationMin), DurationMax: intPtr64(f.DurationMax),
-		QFold: FoldTitle(f.Q), ErrorClass: f.ErrorClass, Timing: f.Timing, StatusFilters: status,
+		QFold: FoldTitle(f.Q), ErrorClass: f.ErrorClass, Timing: f.Timing, StatusFilters: status, ReadState: f.ReadState,
 	})
 	return int(n), err
 }

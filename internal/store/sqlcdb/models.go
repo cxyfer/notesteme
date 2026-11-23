@@ -214,6 +214,7 @@ type Item struct {
 	Origin         string
 	ProfileVersion *int64
 	SubscriptionID *string
+	ReadState      string
 }
 
 type ItemTombstone struct {
