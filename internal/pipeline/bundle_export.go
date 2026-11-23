@@ -403,6 +403,10 @@ func sanitizeOne(v any) (any, bool) {
 }
 
 func sanitizeString(s string) (string, bool) {
+	// 磁碟代號（C:/、C:\）先當成路徑：單一字母的 scheme 不是網址。
+	if windowsPath.MatchString(s) {
+		return baseName(s), false
+	}
 	if strings.Contains(s, "://") {
 		u, err := url.Parse(s)
 		if err != nil || u.Host == "" {
@@ -414,7 +418,7 @@ func sanitizeString(s string) (string, bool) {
 		u.User, u.RawQuery, u.Fragment = nil, "", ""
 		return u.String(), false
 	}
-	if strings.HasPrefix(s, "/") || strings.HasPrefix(s, "~/") || strings.HasPrefix(s, `\\`) || windowsPath.MatchString(s) {
+	if strings.HasPrefix(s, "/") || strings.HasPrefix(s, "~/") || strings.HasPrefix(s, `\\`) {
 		return baseName(s), false
 	}
 	return s, false
