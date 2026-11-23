@@ -314,7 +314,10 @@ func TestShareSendsMultipart(t *testing.T) {
 	if r.ShareID != "s1" || len(r.Versions) != 1 || !r.Versions[0].Deduplicated {
 		t.Errorf("r = %+v", r)
 	}
-	c, _ = newTest(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(201); _, _ = io.WriteString(w, `{"share_id":""}`) })
+	c, _ = newTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(201)
+		_, _ = io.WriteString(w, `{"share_id":""}`)
+	})
 	if _, err := c.Share(context.Background(), nil, ""); err == nil {
 		t.Error("沒有 share_id 要失敗")
 	}

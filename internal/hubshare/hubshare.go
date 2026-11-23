@@ -7,8 +7,8 @@ package hubshare
 
 import (
 	"archive/zip"
-	"crypto/sha256"
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
