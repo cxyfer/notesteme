@@ -49,6 +49,9 @@ func installHooks(sc *godog.ScenarioContext, s *Scenario) {
 		for _, t := range sn.Tags {
 			s.tags = append(s.tags, t.Name)
 		}
+		for _, st := range sn.Steps {
+			s.stepTexts = append(s.stepTexts, st.Text)
+		}
 		return ctx, nil
 	})
 	// 每個步驟開始時遞增序號，讓斷言能分辨「緊接在前一個步驟送出的請求」（見 lastFromPreviousStep）。

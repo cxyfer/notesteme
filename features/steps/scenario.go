@@ -24,6 +24,8 @@ type Scenario struct {
 
 	// tags 是場景的 tag（含 Feature 的，例如 @M3、@SPB-R1）；給只對特定領域放行的閘門句型使用（見 spbGate）。
 	tags []string
+	// stepTexts 是場景全部步驟的文字（不含關鍵字）；給依「用到哪些句型」放行的閘門使用（見 hubGate）。
+	stepTexts []string
 
 	// ctx 是 server 的 root context，場景結束時取消。
 	ctx    context.Context
@@ -190,6 +192,10 @@ func (s *Scenario) checkLogs() error {
 	}
 	for n := range s.apiKeySecrets {
 		secrets[n] = true
+	}
+	// 場景建立的 Hub token（M5-S2）。
+	for _, v := range s.hub.tokens {
+		secrets[v] = true
 	}
 	var errs []error
 	for v := range secrets {

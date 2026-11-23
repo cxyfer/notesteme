@@ -17,12 +17,14 @@ import (
 	"github.com/cxyfer/notesteme/features/internal/fakeoauth"
 	"github.com/cxyfer/notesteme/features/internal/harness"
 	"github.com/cxyfer/notesteme/internal/hub/hubauth"
+	"github.com/cxyfer/notesteme/internal/hub/hubconfig"
 )
 
 // registerHub 註冊「Hub 實例與帳號」的步驟（steps.md 4.30，M5）。
 //
 // M5-S1 實作閘門、Hub 設定、假供應商、登入流程、帳號數與送到 Hub 的請求（session 與匿名）；
-// Hub token、群組、停用與 MCP 的句型仍是步驟樁（S2、S5、S6）。閘門只對登入範圍的 HACC 場景放行（見 hubGate）。
+// M5-S2 實作 Hub token 與群組的句型。停用、`from the origin` 與 MCP 的句型仍是步驟樁（S5、S6）。
+// 閘門只對 S1、S2 範圍的 HACC 場景放行（見 hubGate）。
 func registerHub(r *Registry, s *Scenario) {
 	r.Step(`a Hub is running`, s.hubIsRunning)
 	r.Step(`the Hub config contains:`, s.hubConfigContains)
@@ -45,21 +47,25 @@ func registerHub(r *Registry, s *Scenario) {
 	r.Step(`the hub member {string} sends {string} without a CSRF token`, func(who, spec string) error { return s.hubMemberSends(who, spec, nil, true) })
 	r.Step(`the Hub client sends {string}`, func(spec string) error { return s.hubClientSends(spec, nil) })
 	r.Step(`the Hub client sends {string} with:`, func(spec string, doc *godog.DocString) error { return s.hubClientSends(spec, s.requestBody(doc)) })
-	r.Step(`a Hub token {string} for {string} with the permissions {string}`, func(string, string, string) error { return godog.ErrPending })
-	r.Step(`the Hub client sends {string} with the Hub token {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`the Hub client sends {string} with the Hub token {string} and:`, func(string, string, *godog.DocString) error { return godog.ErrPending })
+	r.Step(`a Hub token {string} for {string} with the permissions {string}`, s.hubTokenFor)
+	r.Step(`the Hub client sends {string} with the Hub token {string}`, func(spec, tok string) error { return s.hubTokenSends(spec, tok, nil) })
+	r.Step(`the Hub client sends {string} with the Hub token {string} and:`, func(spec, tok string, doc *godog.DocString) error {
+		return s.hubTokenSends(spec, tok, s.requestBody(doc))
+	})
 	r.Step(`the Hub client sends {string} with the Hub token {string} from the origin {string}`, func(string, string, string) error { return godog.ErrPending })
-	r.Step(`the hub member {string} is in the group {string}`, func(string, string) error { return godog.ErrPending })
+	r.Step(`the hub member {string} is in the group {string}`, s.hubMemberInGroup)
 	r.Step(`the hub member {string} is suspended`, func(string) error { return godog.ErrPending })
 	r.Step(`the Hub MCP client with the Hub token {string} lists the tools`, func(string) error { return godog.ErrPending })
 	r.Step(`the Hub MCP client with the Hub token {string} calls {string} with:`, func(string, string, *godog.DocString) error { return godog.ErrPending })
 }
 
-// hubState 是場景中 Hub 的瀏覽器狀態：每個人一份 cookie（以名稱保存，最後一次成功登入的 session 生效）、等待中的登入與最近一次 callback。
+// hubState 是場景中 Hub 的瀏覽器狀態：每個人一份 cookie（以名稱保存，最後一次成功登入的 session 生效）、等待中的登入與最近一次 callback，
+// 以及場景建立的 Hub token（名稱 → 明文；也加進 log 的 secret 掃描）。
 type hubState struct {
 	cookies      map[string]map[string]string
 	pending      *pendingSignIn
 	lastCallback *hubCallback
+	tokens       map[string]string
 }
 
 // pendingSignIn 是 `starts signing in` 或連結之後、還沒完成的登入。
@@ -75,33 +81,44 @@ type hubCallback struct {
 	person, url, oauth string
 }
 
-// hubLoginRules 是 M5-S1 實作的 HACC 規則：登入、連結、移除與 session（R1～R8）。
-// R10 只出現在「第一次登入建立 members 帳號」，和 R4 一起放行。
-var hubLoginRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true}
+// hubRules 是已實作的 HACC 規則：M5-S1 的登入、連結、移除與 session（R1～R8），M5-S2 的 Hub token、群組、自動規則、
+// 權限矩陣與一般限流（R9～R13、R18）。
+var hubRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true,
+	9: true, 10: true, 11: true, 12: true, 13: true, 18: true}
 
-// hubGate 讓真 Hub 的閘門只對登入範圍的 HACC 場景放行：至少一個 @HACC-R1～R8，而且沒有 R1～R8、R10 以外的 HACC 規則。
-// 權限、PAT、群組、可見度、下架、限流（HACC 的其他規則）、HREP 與 HMCP 的場景在它們的切片實作之前維持 pending，
-// 停在同一個閘門（同 M3-S1 的 spbGate）。回傳裸的 godog.ErrPending，junit 的訊息與切片之前相同。
+// hubContentSteps 是 Hub 內容的句型（steps.md 4.31，HREP 的切片實作）的開頭；用到它們的場景還不能放行。
+var hubContentSteps = []string{"the Hub has the version ", "the Hub version ", "the Hub has ", "the Hub stores the content ",
+	"a bundle ", "the bundle ", "shares the bundle "}
+
+// hubGate 讓真 Hub 的閘門只對已實作範圍的 HACC 場景放行：至少一個 hubRules 的 @HACC-R，沒有其他 HACC 規則、
+// 沒有其他領域（HREP、HMCP）的 tag，而且沒有用到 Hub 內容的句型（例如 HACC-R13 的「Nothing but sign-in…」要先建立版本）。
+// 其他場景在它們的切片實作之前維持 pending，停在同一個閘門（同 M3-S1 的 spbGate）。回傳裸的 godog.ErrPending，
+// junit 的訊息與切片之前相同。
 func (s *Scenario) hubGate() error {
-	login := false
+	ok := false
 	for _, t := range s.tags {
-		v, ok := strings.CutPrefix(t, "@HACC-R")
-		if !ok {
+		if strings.HasPrefix(t, "@HREP-") || strings.HasPrefix(t, "@HMCP-") || strings.HasPrefix(t, "@HSHR-") {
+			return godog.ErrPending
+		}
+		v, found := strings.CutPrefix(t, "@HACC-R")
+		if !found {
 			continue
 		}
 		n, err := strconv.Atoi(v)
-		if err != nil {
-			continue
-		}
-		switch {
-		case hubLoginRules[n]:
-			login = true
-		case n != 10:
+		if err != nil || !hubRules[n] {
 			return godog.ErrPending
 		}
+		ok = true
 	}
-	if !login {
+	if !ok {
 		return godog.ErrPending
+	}
+	for _, text := range s.stepTexts {
+		for _, p := range hubContentSteps {
+			if strings.HasPrefix(text, p) || strings.Contains(text, " "+p) {
+				return godog.ErrPending
+			}
+		}
 	}
 	return nil
 }
@@ -217,6 +234,8 @@ type hubRequest struct {
 	body           []byte
 	cookies        map[string]string
 	csrf           bool
+	// bearer 非空時以 Authorization: Bearer 送出（Hub token）。
+	bearer string
 	// preRoute403 表示這個請求缺少完整憑證（沒有身分或缺 CSRF），見 pendingIfNotImplemented。
 	preRoute403 bool
 }
@@ -251,6 +270,9 @@ func (s *Scenario) hubDo(r hubRequest) (*response, error) {
 		if v := r.cookies[hubauth.CSRFCookie]; v != "" {
 			req.Header.Set(hubauth.CSRFHeader, v)
 		}
+	}
+	if r.bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+r.bearer)
 	}
 	resp, err := s.World.HubHTTPClient().Do(req)
 	if err != nil {
@@ -434,7 +456,104 @@ func (s *Scenario) signInToHub(who, provider string, must bool) error {
 	if must && (s.last.status != http.StatusFound || setCookie(s.last, hubauth.SessionCookie) == "") {
 		return fmt.Errorf("%q 以 %s 登入 Hub 失敗：HTTP %d %s", who, provider, s.last.status, snippet(s.last.body))
 	}
+	if s.last.status == http.StatusFound && setCookie(s.last, hubauth.SessionCookie) != "" {
+		return s.recordHubUser(who, provider)
+	}
 	return nil
+}
+
+// recordHubUser 從 Hub 的 DB 查出這個人以 provider 登入的帳號，記成 {user:<名稱>}（不送 API 請求：不改變最近一次回應，也不吃限流額度）。
+func (s *Scenario) recordHubUser(who, provider string) error {
+	p, k, err := s.oauthProvider(provider)
+	if err != nil {
+		return err
+	}
+	u, ok := p.User(who)
+	if !ok {
+		u = fakeoauth.DefaultUser(k, who)
+	}
+	subject := u.Subject
+	if k != fakeoauth.Google {
+		subject = strconv.FormatInt(fakeoauth.NumericID(u.Subject), 10)
+	}
+	st, err := s.World.HubStore()
+	if err != nil {
+		return err
+	}
+	id, err := st.IdentityBySubject(s.ctx, provider, subject)
+	if err != nil {
+		return fmt.Errorf("找不到 %q 的 %s 身分：%w", who, provider, err)
+	}
+	s.World.SetHubRef("user", who, id.UserID)
+	return nil
+}
+
+// ---- Hub token 與群組（M5-S2）----
+
+// hubTokenFor 以 session 建立 Hub token 並保存明文；沒有成功時步驟失敗（steps.md 4.30）。
+func (s *Scenario) hubTokenFor(name, who, perms string) error {
+	list := []string{}
+	for _, p := range strings.Split(perms, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			list = append(list, p)
+		}
+	}
+	body, err := json.Marshal(map[string]any{"name": name, "permissions": list})
+	if err != nil {
+		return err
+	}
+	if err := s.hubMemberSends(who, "POST /api/v1/me/tokens", body, false); err != nil {
+		return err
+	}
+	if s.last.status != http.StatusCreated {
+		return fmt.Errorf("建立 Hub token %q 失敗：HTTP %d %s", name, s.last.status, snippet(s.last.body))
+	}
+	var out struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(s.last.body, &out); err != nil || !hubauth.ValidPATFormat(out.Token) {
+		return fmt.Errorf("建立 Hub token 的回應沒有 token：%s", snippet(s.last.body))
+	}
+	if s.hub.tokens == nil {
+		s.hub.tokens = map[string]string{}
+	}
+	s.hub.tokens[name] = out.Token
+	return nil
+}
+
+// hubTokenSends 送出帶 Authorization: Bearer 的請求；token 是完整的憑證，所以不是 preRoute403。
+func (s *Scenario) hubTokenSends(spec, name string, body []byte) error {
+	tok, ok := s.hub.tokens[name]
+	if !ok {
+		return fmt.Errorf("沒有名為 %q 的 Hub token（先用 `Given a Hub token … for … with the permissions …`）", name)
+	}
+	method, path, err := parseRequest(spec)
+	if err != nil {
+		return err
+	}
+	_, err = s.hubDo(hubRequest{method: method, target: s.World.SubstRequest(path), body: body, bearer: tok})
+	return err
+}
+
+// hubMemberInGroup 直接在 Hub 的 DB 把使用者加入群組：admins 以 source: config，其他以 source: manual（steps.md 4.30）。
+func (s *Scenario) hubMemberInGroup(who, group string) error {
+	uid, ok := s.World.Refs["user:"+who]
+	if !ok {
+		return fmt.Errorf("Hub 使用者 %q 還沒有登入過", who)
+	}
+	if err := s.World.RestartHubIfNeeded(s.ctx); err != nil {
+		return err
+	}
+	st, err := s.World.HubStore()
+	if err != nil {
+		return err
+	}
+	if group == hubconfig.GroupAdmins {
+		return st.SetConfigGroup(s.ctx, uid, group, true)
+	}
+	// 直接寫 DB 的前提不是管理員的動作：不寫稽核紀錄。
+	_, err = st.SetManualGroup(s.ctx, "", uid, group, true)
+	return err
 }
 
 // hubMemberLinks 送出 POST /api/v1/me/identities/<供應商>/link，以 user 在供應商完成 authorize 與 callback。
