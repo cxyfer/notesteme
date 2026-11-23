@@ -338,7 +338,7 @@ fixture 在 `features/fixtures/llm/<名稱>`，沒有 `.json` 時自動補上。
 - `the profile {s} is:`：YAML 轉成 `POST /api/profiles {name, config}`，必須回 201。
 - `the default profile is {s}`：`POST /api/profiles/{s}/default`，必須回 200。
 - `the channel of {s} has the overrides:`：從 fake 平台取得影音所屬頻道的 natural key，送出 `PATCH /api/channels/<key>/overrides`，必須回 200。`yt:` 是 `youtube:<fake 影片的 channel_id>`（預設 `UCfixture000000000000000`）；`bili:` 是 `bilibili:<uploader_id>`；`pod:` 是 `podcast:<feed>`；`local:` 沒有頻道，步驟失敗。
-- `the effective config of {s} for {s} contains:`：讀取該步驟最新一筆 stage run 綁定的快照（測試 hook `Server.StageConfig`），以 YAML 子集比對，但陣列必須完全相等（否則驗證不到「陣列整個取代」）。`metadata` 的設定不含頻道層，因為頻道在 `metadata` 完成時才知道。
+- `the effective config of {s} for {s} contains:`：讀取該步驟最新一筆 stage run 綁定的快照（測試 hook `Server.StageConfig`），以 YAML 子集比對，但陣列必須完全相等（否則驗證不到「陣列整個取代」）。`metadata` 的設定不含頻道層，因為頻道在 `metadata` 完成時才知道。M4-S13（LIB）補充：預期內容的頂層鍵都不是快照的頂層區段時（例如 `provider: openai`），改與快照的 `stages.<步驟>` 比對，規則相同（LIB 待決問題 L-M12；2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）。
 - `When the owner ingests {s} with the profile {s}`：請求的 body 加上 `profile`。
 - `Given the default prompt for {s} is {s}`：沒有任何 feature 用到，語意也不清楚，維持 pending。
 

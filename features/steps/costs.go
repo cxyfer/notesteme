@@ -49,8 +49,11 @@ func registerCosts(r *Registry, s *Scenario) {
 // LIB-bulk-overview（LIB-08、09）的閘門是 `the cost estimate of every …`，BATCH 也用 COST 的價格與 usage 句型；
 // 它們的切片實作之前維持 pending，回傳裸的 godog.ErrPending，junit 的訊息與切片之前相同（同 notifyGate）。
 // M4-S5：BATCH 的場景（@BATCH-）也放行，它們用 COST 的價格、usage、預算與成本紀錄的句型。
+// M4-S13：LIB-bulk-overview 的場景（@LIB-08、@LIB-09）也放行：批次操作與總覽已實作。
 func (s *Scenario) costGate() error {
-	if !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@COST-") || strings.HasPrefix(t, "@BATCH-") }) {
+	if !slices.ContainsFunc(s.tags, func(t string) bool {
+		return strings.HasPrefix(t, "@COST-") || strings.HasPrefix(t, "@BATCH-") || t == "@LIB-08" || t == "@LIB-09"
+	}) {
 		return godog.ErrPending
 	}
 	return nil

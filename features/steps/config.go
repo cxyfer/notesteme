@@ -277,10 +277,33 @@ func (s *Scenario) effectiveConfigContains(ref, stage string, doc *godog.DocStri
 	if err != nil {
 		return pendingIfNotImplemented(fmt.Errorf("%s 的 %q 步驟生效設定：%w", ref, stage, err))
 	}
+	if stageCfg, ok := stageLevelConfig(want, cfg, stage); ok {
+		// 預期內容的頂層鍵都不是快照的區段：與 stages.<步驟> 比對（steps.md 4.11 的 M4-S13 補充）。
+		cfg = stageCfg
+	}
 	if err := configSubset(wantJSON, cfg); err != nil {
 		return fmt.Errorf("%s 的 %q 步驟生效設定不符：%w\n生效設定：%s", ref, stage, err, snippet(cfg))
 	}
 	return nil
+}
+
+// stageLevelConfig 在 want 的頂層鍵都不在快照的頂層時，回傳快照的 stages.<stage>；否則 ok 為 false。
+func stageLevelConfig(want map[string]any, cfg []byte, stage string) ([]byte, bool) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(cfg, &top); err != nil {
+		return nil, false
+	}
+	for k := range want {
+		if _, ok := top[k]; ok {
+			return nil, false
+		}
+	}
+	var stages map[string]json.RawMessage
+	if err := json.Unmarshal(top["stages"], &stages); err != nil {
+		return nil, false
+	}
+	sc, ok := stages[stage]
+	return sc, ok
 }
 
 // globalSettingsAre 累積全域設定（YAML，頂層是區段名稱）；第一個送出請求的步驟才寫入（見 flushSettings）。
