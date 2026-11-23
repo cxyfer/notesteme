@@ -183,6 +183,8 @@ type Pipeline struct {
 	notify *notify.Outbox
 	// cost 見 Deps.Cost。
 	cost *cost.Service
+	// batchAPIFor 替換 Batch API 的 client（只給測試，SetBatchAPI）；nil 時用 provider 的 HTTP client。
+	batchAPIFor func(ctx context.Context, provider string) (BatchAPI, error)
 }
 
 // New 建立 Pipeline。

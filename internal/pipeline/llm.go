@@ -40,6 +40,8 @@ type llmPayload struct {
 	Phase  string `json:"phase,omitempty"` // 空字串代表 plan（resume 重建的任務沒有 phase）
 	// Chunks 是這次要強制重跑的 chunk（POST /rerun 的 chunks，LLM-R8）：繞過步驟層與 chunk 層的快取。
 	Chunks []int `json:"chunks,omitempty"`
+	// Batch 是這個 chunk 任務從 Batch API 改走一般 API 的原因（BATCH-R4、R5、R8）；沒有經過 batch 時是 nil。
+	Batch *batchFallback `json:"batch,omitempty"`
 }
 
 // llmStage 是一個 LLM 步驟在 pipeline 這一側的部分：Spec（schema 與驗證）、產出的變體、退回與套用。
@@ -472,7 +474,8 @@ func stageExtras(eff Effective, stage string) (map[string]any, error) {
 	entry, _ := all[stage].(map[string]any)
 	out := map[string]any{}
 	for k, v := range entry {
-		if !slices.Contains(stageCommonFields, k) && k != "prompt_version" && k != "prompt_sha256" {
+		// batch 只改變送出與取回的方式，不影響輸出（BATCH 的「與其他規格的關係」）：不進 params_sha256 與快取鍵。
+		if !slices.Contains(stageCommonFields, k) && k != "prompt_version" && k != "prompt_sha256" && k != "batch" {
 			out[k] = v
 		}
 	}
@@ -564,7 +567,7 @@ func (p *Pipeline) runLLM(ctx context.Context, t store.Task, run store.StageRun,
 	}
 	switch {
 	case t.ChunkIndex != nil:
-		return p.llmChunk(ctx, t, run, it, eff)
+		return p.llmChunk(ctx, t, run, it, eff, pl)
 	case pl.Phase == llmPhaseAssemble:
 		return p.llmAssemble(ctx, run, it, eff)
 	default:
@@ -742,33 +745,76 @@ func (p *Pipeline) chunkTimeout(t store.Task) time.Duration {
 	return -1
 }
 
-func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRun, it store.Item, eff Effective) (result, error) {
-	r := p.st.Read()
+// chunkWork 是一個 chunk 任務送出之前算好的內容；一般 API（llmChunk）與 Batch API（submitBatch）共用。
+type chunkWork struct {
+	row  store.LLMChunk
+	plan chunkPlan
+	job  *llmJob
+	in   llm.ChunkInput
+	// opts 是 RunChunk 的輸入（不含 Client 與記帳、限流的 hook）。
+	opts llm.RunOptions
+}
+
+// prepareChunk 讀出 chunk 的記錄並組出送出的內容。chunk 已經有結果時 done 為 true（不再送出）。
+func (p *Pipeline) prepareChunk(ctx context.Context, r *store.Repo, t store.Task, run store.StageRun, it store.Item, eff Effective) (*chunkWork, bool, error) {
 	row, err := r.LLMChunk(ctx, run.ID, *t.ChunkIndex)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return result{}, errPermanent(fmt.Sprintf("找不到 chunk %d 的記錄", *t.ChunkIndex))
+			return nil, false, errPermanent(fmt.Sprintf("找不到 chunk %d 的記錄", *t.ChunkIndex))
 		}
-		return result{}, err
+		return nil, false, err
 	}
 	if row.Status != store.ChunkPending {
-		// 已經有結果（例如租約失效後重新領取）：不再送出，也不改變步驟狀態。
-		return result{task: taskDone, keepState: true}, nil
+		return nil, true, nil
 	}
 	var plan chunkPlan
 	if err := json.Unmarshal(row.Plan, &plan); err != nil {
-		return result{}, errPermanent("chunk 的記錄不正確：" + err.Error())
+		return nil, false, errPermanent("chunk 的記錄不正確：" + err.Error())
 	}
 	job, err := p.prepareLLM(ctx, it, run.Stage, eff, plan.Input)
 	if err != nil {
-		return result{}, err
+		return nil, false, err
 	}
 	if plan.To > len(job.cues) || plan.From < 1 || plan.Chunks != len(job.chunks) {
-		return result{}, errPermanent(fmt.Sprintf("chunk %d 的範圍與輸入字幕不符", plan.Index))
+		return nil, false, errPermanent(fmt.Sprintf("chunk %d 的範圍與輸入字幕不符", plan.Index))
 	}
 	in, err := p.chunkInputFor(ctx, r, run.ID, job, plan.Chunk)
 	if err != nil {
+		return nil, false, err
+	}
+	w := &chunkWork{row: row, plan: plan, job: job, in: in}
+	w.opts = llm.RunOptions{
+		Spec: job.specFor(plan.Chunk), Model: job.cfg.Model, Fixed: job.fixedFor(plan.Chunk), Input: in,
+		MaxRetries: job.settings.MaxValidationRetries,
+	}
+	return w, false, nil
+}
+
+func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRun, it store.Item, eff Effective, pl llmPayload) (result, error) {
+	r := p.st.Read()
+	w, done, err := p.prepareChunk(ctx, r, t, run, it, eff)
+	if err != nil {
 		return result{}, err
+	}
+	if done {
+		// 已經有結果（例如租約失效後重新領取）：不再送出，也不改變步驟狀態。
+		return result{task: taskDone, keepState: true}, nil
+	}
+	job, plan := w.job, w.plan
+	// BATCH-R1、R2：背景的工作改用 Batch API；送出之後任務等待結果（BATCH-R3）。
+	if p.batchEligible(t, run, job.cfg, eff, pl) {
+		if handled, err := p.submitBatch(ctx, t, run, it, w); handled || err != nil {
+			return result{parked: err == nil}, err
+		}
+	}
+	opts := w.opts
+	var fb *batchFallback
+	if pl.Batch != nil {
+		// 改走一般 API 的 batch 請求（BATCH-R4、R5）：結果沒有通過驗證時，那一次計入驗證重試（LLM-R5）。
+		fb = pl.Batch
+		if fb.Retry != "" {
+			opts.Retry, opts.MaxRetries = fb.Retry, max(opts.MaxRetries-1, 0)
+		}
 	}
 
 	client, err := p.llm.Client(ctx, job.cfg.Provider)
@@ -778,26 +824,24 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 	prov, _ := p.llm.Provider(job.cfg.Provider)
 	limiter := p.llm.Limiter
 	m := p.newMeter(t, run, it, job.cfg.Provider, job.cfg.Model)
-	out, err := llm.RunChunk(ctx, llm.RunOptions{
-		Client: client, Spec: job.specFor(plan.Chunk), Model: job.cfg.Model, Fixed: job.fixedFor(plan.Chunk), Input: in,
-		MaxRetries: job.settings.MaxValidationRetries, Timeout: p.chunkTimeout(t), AfterRequest: m.afterFunc(),
-		BeforeRequest: m.then(func(_ context.Context, attempt int, req llm.Request) error {
-			tokens := llm.RequestTokens(req)
-			if attempt > 0 {
-				// 驗證重試立刻送出（LLM-R5），額度可以透支，由之後的請求等待補回。
-				limiter.Charge(prov.ID, prov.Limits, tokens)
-				return nil
-			}
-			if wait := limiter.Reserve(prov.ID, prov.Limits, tokens); wait > 0 {
-				// 超過 RPM／TPM：任務等待，不算錯誤（LLM-R7）。
-				return &errclass.Error{
-					Class: errclass.ClassWait, Source: "llm:" + prov.ID, Detail: "速率限制", RetryAfter: wait,
-					Message: fmt.Sprintf("等待 LLM provider %s 的速率限制，稍後會繼續。", prov.ID),
-				}
-			}
+	opts.Client, opts.Timeout, opts.AfterRequest = client, p.chunkTimeout(t), m.afterFunc()
+	opts.BeforeRequest = m.then(func(_ context.Context, attempt int, req llm.Request) error {
+		tokens := llm.RequestTokens(req)
+		if attempt > 0 {
+			// 驗證重試立刻送出（LLM-R5），額度可以透支，由之後的請求等待補回。
+			limiter.Charge(prov.ID, prov.Limits, tokens)
 			return nil
-		}),
+		}
+		if wait := limiter.Reserve(prov.ID, prov.Limits, tokens); wait > 0 {
+			// 超過 RPM／TPM：任務等待，不算錯誤（LLM-R7）。
+			return &errclass.Error{
+				Class: errclass.ClassWait, Source: "llm:" + prov.ID, Detail: "速率限制", RetryAfter: wait,
+				Message: fmt.Sprintf("等待 LLM provider %s 的速率限制，稍後會繼續。", prov.ID),
+			}
+		}
+		return nil
 	})
+	out, err := llm.RunChunk(ctx, opts)
 	if err != nil {
 		return result{}, err
 	}
@@ -817,6 +861,12 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 	}
 	res := store.ChunkResult{Status: status, Reason: reason, Output: output, Usage: usage, Detail: detail}
 	return result{task: taskDone, keepState: true, inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {
+		if fb != nil {
+			// 來源紀錄的 mode: api 與 fallback_reason（BATCH-R8）。
+			if err := tx.SetLLMChunkBatch(ctx, run.ID, plan.Index, fb.record()); err != nil {
+				return false, err
+			}
+		}
 		return finishChunkTx(ctx, tx, it.ID, run, t.Priority, plan.Index, res)
 	}}, nil
 }
@@ -894,6 +944,12 @@ type chunkRecord struct {
 	Executor      string `json:"executor,omitempty"`
 	Agent         string `json:"agent,omitempty"`
 	ModelReported string `json:"model_reported,omitempty"`
+	// Mode、BatchID、SubmittedAt、EndedAt、FallbackReason 只在經過 Batch API 的 chunk 出現（BATCH-R8）。
+	Mode           string     `json:"mode,omitempty"`
+	BatchID        string     `json:"batch_id,omitempty"`
+	SubmittedAt    *time.Time `json:"submitted_at,omitempty"`
+	EndedAt        *time.Time `json:"ended_at,omitempty"`
+	FallbackReason string     `json:"fallback_reason,omitempty"`
 }
 
 // fallbackRecord 是來源紀錄 fallbacks[] 的一項（LLM-R5）。
@@ -917,6 +973,8 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 	var candidates []string
 	var agentRows []store.LLMChunk // Agent 提交的 chunk（AGT-R10）
 	apiChunks := 0                 // 這次由 provider 產生的 chunk
+	viaBatch := false              // 有 chunk 經過 Batch API（BATCH-R8）
+	batchNotice := ""              // BATCH-R11 的提醒
 	for k, row := range rows {
 		c := job.chunks[k]
 		if row.Chunk != c.Index {
@@ -958,6 +1016,16 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 		}
 		if !row.Reused && len(row.Usage) > 0 {
 			_ = json.Unmarshal(row.Usage, &rec.Usage)
+		}
+		if len(row.Batch) > 2 && !row.Reused { // 不是 {}
+			var br batchRecord
+			if json.Unmarshal(row.Batch, &br) == nil && br.Mode != "" {
+				rec.Mode, rec.BatchID, rec.SubmittedAt, rec.EndedAt, rec.FallbackReason = br.Mode, br.BatchID, br.SubmittedAt, br.EndedAt, br.FallbackReason
+				viaBatch = viaBatch || br.Mode == batchModeBatch
+				if batchNotice == "" {
+					batchNotice = br.Notice
+				}
+			}
 		}
 		if row.Status == store.ChunkDone && row.Executor == ExecutorAgent {
 			rec.Executor, rec.Agent, rec.ModelReported = ExecutorAgent, row.Agent, row.ModelReported
@@ -1005,6 +1073,9 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 	if len(agentRows) > 0 {
 		agentProvenance(fields, agentRows, apiChunks > 0)
 	}
+	if viaBatch {
+		fields["batch"] = true
+	}
 	for k, v := range extra {
 		if _, taken := fields[k]; !taken {
 			fields[k] = v
@@ -1028,6 +1099,10 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 		if job.def.notes != nil {
 			state.Message, state.Actions = job.def.notes(fallbacks)
 		}
+	}
+	if state.Message == "" && batchNotice != "" {
+		// BATCH-R11 的提醒（例如 results_url 在其他主機）。
+		state.Message = batchNotice
 	}
 	if len(fallbacks) > 0 || noCache || len(agentRows) > 0 {
 		// Agent 回報的模型沒有驗證（AGT-R10）：之後同設定的 api 重跑不能把它當成 provider 的結果重用。

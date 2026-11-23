@@ -320,6 +320,9 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	if err := s.registerBudgetMonth(ctx); err != nil {
 		return err
 	}
+	if err := s.registerBatchPoll(); err != nil {
+		return err
+	}
 	var periodic worker.Periodic = periodics{hk, s.pipeline.AgentSweeper(), s.scheduler}
 	// inbox 監看（ING-05）只在 serve 啟動：standalone 的 CLI 是短命的程序，不自動掃描。
 	var watcher *inbox.Watcher

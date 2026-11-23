@@ -28,6 +28,8 @@ type Detail struct {
 	SponsorSegments []sponsorblock.Segment
 	// Chapters 是現行的章節（CHAP-R7）；chapters 步驟沒有產生過產出時是 nil。
 	Chapters *Chapters
+	// Batches 是等待 Batch API 結果的步驟（以 stage run ID 為 key）正在等的 batch（BATCH 的介面）。
+	Batches map[string]*BatchView
 }
 
 // Item 回傳影音詳情；不存在時回傳 store.ErrNotFound，在垃圾桶中時回傳 *InTrashError（DEL-R1）。
@@ -48,12 +50,23 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 	latest := latestRuns(all)
 	var stages []store.StageRun
 	attempts := map[string]int{}
+	var batches map[string]*BatchView
 	for _, s := range Stages {
 		run, ok := latest[s]
 		if !ok {
 			continue
 		}
 		stages = append(stages, run)
+		bv, err := waitingBatch(ctx, r, run)
+		if err != nil {
+			return Detail{}, err
+		}
+		if bv != nil {
+			if batches == nil {
+				batches = map[string]*BatchView{}
+			}
+			batches[run.ID] = bv
+		}
 		switch t, err := r.TaskByStageRun(ctx, run.ID); {
 		case err == nil:
 			attempts[run.ID] = t.Attempts
@@ -65,7 +78,7 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 	if err != nil {
 		return Detail{}, err
 	}
-	d := Detail{Item: it, Stages: stages, Sources: probes, Attempts: attempts}
+	d := Detail{Item: it, Stages: stages, Sources: probes, Attempts: attempts, Batches: batches}
 	// 產出檔讀不到時只略過這個欄位，不讓整個詳情失敗。
 	switch segs, ok, err := p.SponsorSegments(ctx, id); {
 	case err != nil:

@@ -61,6 +61,8 @@ type result struct {
 	keepState bool
 	// inTx 在寫回的交易中、任務狀態寫入之後執行（例如寫入 chunk 的結果、建立下一個任務）；回傳 true 代表建立了任務，要喚醒 worker。
 	inTx func(ctx context.Context, r *store.Repo) (wake bool, err error)
+	// parked 為 true 時任務已經放下租約、等待 Batch API 的結果（BATCH-R3）：任務與步驟的狀態已在送出時寫入，不再寫回。
+	parked bool
 }
 
 // discard 執行 afterDiscard（有設定的話）。
@@ -192,6 +194,9 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	if err != nil {
 		p.log.Warn("步驟失敗", "item", it.ID, "stage", run.Stage, "attempt", t.Attempts, "error", err)
 		res = p.classify(t, err)
+	}
+	if res.parked {
+		return nil
 	}
 	res.startedAt = started
 	if err := p.apply(ctx, t, run, it, res); err != nil {
