@@ -22,6 +22,9 @@ var (
 // CLIActor 是命令列（notesteme-hub admin）動作在稽核紀錄中的執行者名稱。
 const CLIActor = "notesteme-hub admin"
 
+// CLIActorID 是傳給寫入方法的執行者 ID，代表命令列（稽核紀錄的 actor_user_id 存 NULL）；帳號 ID 是 UUID，不會相同。
+const CLIActorID = "cli"
+
 // SourceCLI 是 notesteme-hub admin grant 的成員資格來源（啟動時依設定檔的同步不會清掉它）。
 const SourceCLI = "cli"
 
@@ -154,7 +157,8 @@ type CommunityStore interface {
 	// 版本不存在回 ErrVersionState（什麼都不改）。
 	RemoveByTakedown(ctx context.Context, actorUserID, id, note string) (Takedown, Removal, error)
 
-	// SuspendUser 停用帳號並重算這個帳號投過票的版本的分數（HACC-R17、HREP-R13）；actorUserID 非空字串時寫入稽核紀錄。
+	// SuspendUser 停用帳號並重算這個帳號投過票的版本的分數（HACC-R17、HREP-R13）；actorUserID 非空字串時寫入稽核紀錄
+	// （CLIActorID 代表命令列）。
 	// 帳號不存在回 ErrNotFound；已經停用時 changed 為 false。session 與 Hub token 保留（middleware 對它們回 403）。
 	SuspendUser(ctx context.Context, actorUserID, userID, reason string) (changed bool, err error)
 	// UnsuspendUser 恢復帳號：重算分數，並讓停用前的 session 與 Hub token 失效（要重新登入、重新建立 token）。
@@ -162,7 +166,7 @@ type CommunityStore interface {
 	UnsuspendUser(ctx context.Context, actorUserID, userID string) (changed bool, err error)
 	// Users 依建立順序列出帳號，最多 limit 個。
 	Users(ctx context.Context, limit int) ([]User, error)
-	// SetCLIGroup 以 source: cli 加入或移出群組並寫入稽核紀錄（執行者是命令列）；帳號不存在回 ErrNotFound。
+	// SetCLIGroup 以 source: cli 加入或移出群組，有改變時寫入稽核紀錄（執行者是命令列）；帳號不存在回 ErrNotFound。
 	SetCLIGroup(ctx context.Context, userID, group string, member bool) (changed bool, err error)
 
 	// MyShares 依建立時間倒序回傳帳號的分享（含已撤回的），最多 limit 個。

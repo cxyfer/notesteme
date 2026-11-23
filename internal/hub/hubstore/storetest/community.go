@@ -342,7 +342,7 @@ func runCommunity(t *testing.T, open Open) {
 		if _, err := s.SuspendUser(ctx, root, bob, "spam"); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.UnsuspendUser(ctx, root, bob); err != nil {
+		if _, err := s.UnsuspendUser(ctx, hubstore.CLIActorID, bob); err != nil {
 			t.Fatal(err)
 		}
 		if changed, err := s.SetCLIGroup(ctx, bob, "admins", true); err != nil || !changed {
@@ -373,7 +373,7 @@ func runCommunity(t *testing.T, open Open) {
 		for _, e := range entries {
 			got = append(got, e.Actor+" "+e.Action)
 		}
-		want := fmt.Sprint([]string{hubstore.CLIActor + " group.remove", hubstore.CLIActor + " group.add", "m1 user.unsuspend", "m1 user.suspend", "m1 version.hide"})
+		want := fmt.Sprint([]string{hubstore.CLIActor + " group.remove", hubstore.CLIActor + " group.add", hubstore.CLIActor + " user.unsuspend", "m1 user.suspend", "m1 version.hide"})
 		if fmt.Sprint(got) != want {
 			t.Fatalf("稽核紀錄 = %v，預期 %v", got, want)
 		}

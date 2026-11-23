@@ -141,4 +141,3 @@ func TestOpenSyncsConfigAdmins(t *testing.T) {
 		}
 	}
 }
-

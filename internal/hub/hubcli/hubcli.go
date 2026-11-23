@@ -4,6 +4,7 @@ package hubcli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/hub"
 	"github.com/cxyfer/notesteme/internal/hub/hubconfig"
+	"github.com/cxyfer/notesteme/internal/hub/hubstore"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore/sqlite"
 	"github.com/cxyfer/notesteme/internal/netguard"
 )
@@ -43,6 +45,7 @@ const usage = `用法：notesteme-hub <子命令> [參數]
   migrate                                   套用資料庫 migration 後結束
   admin grant|revoke --provider <p> --subject <s>   指定或移除管理員（直接操作 DB，給第一位管理員與救援用）
   admin suspend <user-id>                   停用帳號
+  admin unsuspend <user-id>                 恢復帳號（救援用）
   doctor                                    檢查設定、資料庫版本與登入方式
   version                                   顯示版本
 `
@@ -62,7 +65,7 @@ func Run(ctx context.Context, args []string, env Env) int {
 	case "migrate":
 		return migrate(ctx, env)
 	case "admin":
-		return admin(args[1:], env)
+		return admin(ctx, args[1:], env)
 	case "doctor":
 		return doctor(ctx, env)
 	case "version", "--version", "-v":
@@ -139,36 +142,92 @@ func migrate(ctx context.Context, env Env) int {
 	return ExitOK
 }
 
-// admin 是 HACC 介面的救援命令；M5-S0 只檢查參數，實作留給 HACC 的切片（S2）。
-func admin(args []string, env Env) int {
+// admin 是 HACC 介面的救援命令（直接操作 DB，不經過 API；稽核紀錄的執行者是「notesteme-hub admin」）：
+//   - grant、revoke 以 source: cli 把 (provider, subject) 的帳號加入或移出 admins（設定檔的 admins 不受影響，
+//     啟動時依設定檔的同步也不會清掉它）。身分要先登入過 Hub 一次；還沒登入過的請寫在設定檔的 admins。
+//   - suspend、unsuspend 停用或恢復帳號（unsuspend 是規格之外的救援命令：所有管理員都被停用時用它恢復）。
+func admin(ctx context.Context, args []string, env Env) int {
+	const use = "用法：notesteme-hub admin grant|revoke --provider <p> --subject <s>，或 admin suspend|unsuspend <user-id>\n"
 	if len(args) == 0 {
-		fmt.Fprint(env.Stderr, "用法：notesteme-hub admin grant|revoke --provider <p> --subject <s>，或 admin suspend <user-id>\n")
+		fmt.Fprint(env.Stderr, use)
 		return ExitUsage
 	}
+	var provider, subject, userID string
 	switch args[0] {
 	case "grant", "revoke":
 		fs := flag.NewFlagSet("admin "+args[0], flag.ContinueOnError)
 		fs.SetOutput(env.Stderr)
-		provider := fs.String("provider", "", "登入方式（google、github、linuxdo）")
-		subject := fs.String("subject", "", "供應商的使用者 ID（GitHub、Linux.do 是數字）")
+		p := fs.String("provider", "", "登入方式（google、github、linuxdo）")
+		sub := fs.String("subject", "", "供應商的使用者 ID（GitHub、Linux.do 是數字）")
 		if err := fs.Parse(args[1:]); err != nil {
 			return ExitUsage
 		}
-		if !slices.Contains(hubconfig.Providers, hubconfig.Provider(*provider)) || strings.TrimSpace(*subject) == "" || fs.NArg() > 0 {
+		provider, subject = *p, strings.TrimSpace(*sub)
+		if !slices.Contains(hubconfig.Providers, hubconfig.Provider(provider)) || subject == "" || fs.NArg() > 0 {
 			fmt.Fprintln(env.Stderr, "admin "+args[0]+" 要指定 --provider（google、github、linuxdo）與 --subject。")
 			return ExitUsage
 		}
-	case "suspend":
+	case "suspend", "unsuspend":
 		if len(args) != 2 || strings.TrimSpace(args[1]) == "" {
-			fmt.Fprintln(env.Stderr, "用法：notesteme-hub admin suspend <user-id>")
+			fmt.Fprintln(env.Stderr, "用法：notesteme-hub admin "+args[0]+" <user-id>")
 			return ExitUsage
 		}
+		userID = strings.TrimSpace(args[1])
 	default:
-		fmt.Fprintf(env.Stderr, "不認得的 admin 子命令「%s」（grant、revoke、suspend）。\n", args[0])
+		fmt.Fprintf(env.Stderr, "不認得的 admin 子命令「%s」（grant、revoke、suspend、unsuspend）。\n", args[0])
 		return ExitUsage
 	}
-	fmt.Fprintln(env.Stderr, "notesteme-hub admin "+args[0]+" 尚未實作。")
-	return ExitError
+	cfg, ok := loadConfig(env)
+	if !ok {
+		return ExitError
+	}
+	st, err := hub.OpenStore(ctx, cfg, env.Clock)
+	if err != nil {
+		fmt.Fprintln(env.Stderr, "開啟 Hub 資料庫失敗：", err)
+		return ExitError
+	}
+	defer func() { _ = st.Close() }()
+	if userID == "" {
+		id, err := st.IdentityBySubject(ctx, provider, subject)
+		if errors.Is(err, hubstore.ErrNotFound) {
+			fmt.Fprintf(env.Stderr, "找不到 %s 的身分 %s：請先用它登入 Hub 一次，或改寫在設定檔的 admins。\n", provider, subject)
+			return ExitError
+		}
+		if err != nil {
+			fmt.Fprintln(env.Stderr, "查詢身分失敗：", err)
+			return ExitError
+		}
+		userID = id.UserID
+	}
+	var changed bool
+	switch args[0] {
+	case "grant", "revoke":
+		changed, err = st.SetCLIGroup(ctx, userID, hubconfig.GroupAdmins, args[0] == "grant")
+	case "suspend":
+		changed, err = st.SuspendUser(ctx, hubstore.CLIActorID, userID, "由 notesteme-hub admin 停用")
+	case "unsuspend":
+		changed, err = st.UnsuspendUser(ctx, hubstore.CLIActorID, userID)
+	}
+	if errors.Is(err, hubstore.ErrNotFound) {
+		fmt.Fprintf(env.Stderr, "找不到帳號 %s。\n", userID)
+		return ExitError
+	}
+	if err != nil {
+		fmt.Fprintln(env.Stderr, "admin "+args[0]+" 失敗：", err)
+		return ExitError
+	}
+	msg := map[string][2]string{
+		"grant":     {"已把帳號 %s 加入 admins。", "帳號 %s 已經由命令列加入 admins，沒有變更。"},
+		"revoke":    {"已把帳號 %s 移出 admins（只移除命令列加入的資格；設定檔的 admins 要改設定檔）。", "帳號 %s 沒有由命令列加入的 admins 資格，沒有變更。"},
+		"suspend":   {"已停用帳號 %s。", "帳號 %s 已經是停用的，沒有變更。"},
+		"unsuspend": {"已恢復帳號 %s（停用前的 session 與 Hub token 已失效）。", "帳號 %s 沒有停用，沒有變更。"},
+	}[args[0]]
+	if changed {
+		fmt.Fprintf(env.Stdout, msg[0]+"\n", userID)
+	} else {
+		fmt.Fprintf(env.Stdout, msg[1]+"\n", userID)
+	}
+	return ExitOK
 }
 
 // doctor 檢查設定與資料庫，不套用 migration、不修改任何東西；有問題時結束碼 1。

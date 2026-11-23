@@ -215,14 +215,14 @@ func (s *Store) UnlinkIdentity(ctx context.Context, userID, provider string) err
 	})
 }
 
-// audit 寫入一筆稽核紀錄；actor 為空字串時是命令列（notesteme-hub admin）的動作，actor_user_id 存 NULL。
+// audit 寫入一筆稽核紀錄；actor 為 hubstore.CLIActorID 時是命令列（notesteme-hub admin）的動作，actor_user_id 存 NULL。
 func audit(ctx context.Context, q *sqlcdb.Queries, actor, action, kind, target string, detail any, now int64) error {
 	b, err := json.Marshal(detail)
 	if err != nil {
 		return err
 	}
 	var actorID *string
-	if actor != "" {
+	if actor != hubstore.CLIActorID {
 		actorID = &actor
 	}
 	return q.CreateAuditEntry(ctx, sqlcdb.CreateAuditEntryParams{

@@ -15,8 +15,9 @@ import (
 // voteEventRetention 是投票次數紀錄保留的時間（只用來算每小時的次數）。
 const voteEventRetention = 2 * time.Hour
 
+// optStr 是決定者的帳號 ID：空字串與命令列存 NULL。
 func optStr(s string) *string {
-	if s == "" {
+	if s == "" || s == hubstore.CLIActorID {
 		return nil
 	}
 	return &s
@@ -479,7 +480,7 @@ func (s *Store) SetCLIGroup(ctx context.Context, userID, group string, member bo
 			return err
 		}
 		changed = true
-		return audit(ctx, q, "", action, "user", userID, map[string]string{"group": group}, now)
+		return audit(ctx, q, hubstore.CLIActorID, action, "user", userID, map[string]string{"group": group}, now)
 	})
 	return changed, err
 }

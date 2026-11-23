@@ -100,6 +100,14 @@ func Open(ctx context.Context, o Options) (*Server, error) {
 	return s, nil
 }
 
+// OpenStore 只開啟儲存並套用 migration，不建立 handler，也不需要 session 金鑰與主金鑰（notesteme-hub admin 直接操作 DB 用）。
+func OpenStore(ctx context.Context, cfg *hubconfig.Config, clk clock.Clock) (hubstore.Store, error) {
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	return openStore(ctx, cfg, clk)
+}
+
 func openStore(ctx context.Context, cfg *hubconfig.Config, clk clock.Clock) (hubstore.Store, error) {
 	switch cfg.StoreDriver {
 	case hubconfig.StoreSQLite:
