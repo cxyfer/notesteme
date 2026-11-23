@@ -162,3 +162,15 @@ SRC-10 屬於 M4（故事地圖第 5 節），規則是 SRC-R18～R23；其餘�
 - R6：自動重跑（`rerun`）不會覆蓋使用者手動修改過的字幕（SRC-R22）：重跑 `transcript` 會讓 `edited` 變體失去對應的上游，這和「不覆寫使用者的修改」的原則衝突（VAULT、COR）。這種影音只通知，由使用者決定。
 - R7：場景中「平台事後補上字幕」用 `the platform adds … captions in … to … at …`，由假 yt-dlp 依 fake clock 決定是否列出這條字幕軌（steps.md 4.17）；實作時 harness 要把 fake clock 的現在傳給假 yt-dlp（例如寫進場景目錄的狀態檔）。
 - M4-S0：`language.better_source`（`notify`、`rerun`、`off`）已加進處理方案的 schema 與 `pipeline.Language`（`omitempty`：沒有設定時不寫進快照，既有快照 sha 不變；`transcript` 的快取鍵只取用到的欄位，不含它）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。沒有設定時視為 `notify`，由 S7 讀取。
+- SRC-10 實作的決定（M4-S7，2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+  - R8：`source_probes` 加的欄位叫 `probe_trigger`（`stage`、`reprobe`），不是規格寫的 `trigger`（SQL 關鍵字）；`LatestProbes` 只取 `stage` 的最近一次，所以 `sources` 照 SRC-R19 只列現行字幕那一次 Probe。重新 Probe 的狀態另立資料表 `source_reprobes`（`until_at`、`runs`、`sources`、`sponsorblock`、`better_json`、`auto_reruns`），下一次的時間只在 `scheduled_jobs`；`better_json` 損壞時視為沒有更好的來源，不讓影音詳情失敗。
+  - R9：`until` 是 `min(published_at, created_at)＋7 天`：發布時間來自平台（不可信），比新增時間晚時改用新增時間，否則未來的發布時間會讓影音每 12 小時被探測好幾年。第一次排在完成後 12 小時、不加 jitter（規格只對「之後每 12 小時」要求 jitter），之後是 `NextWithJitter`，最後一次截在 `until`。
+  - R10：`estimate_usd` 目前一律是 `null`：SRC-R23 要求與 `POST /api/estimate`（ING-08）相同的估算，而它的 LLM 費用（`EstimateItem.LLMUSD`）還沒有實作；訊息因此是「目前無法估算金額」。事件 `source.better_available` 在 `null` 時不帶 `estimate_usd`（共用的事件結構用 `omitempty`，其他事件才不會多出 `null`）。
+  - R11：自動重跑（`rerun`）用 `POST /api/items/:id/rerun` 同一條路徑：影音記錄的處理方案（最新版本）重新組合設定，不是 SRC-R22 字面的「影音原本的設定快照」，`until` 沿用影音原本的值，任務是 `backfill` 優先級（`RerunRequest.Priority`）。場景分不出兩者的差別；要嚴格沿用原本的快照需要 `Rerun` 新增「沿用 transcript 那一筆快照」的選項。
+  - R12：重新 Probe 只受 SUB-R10 的平台 rate limiter 限制（與訂閱共用 bucket，沒有額度時延後到下一顆額度的時間，不算失敗），沒有另外的每日額度：每部影音 7 天內最多約 14 次 `yt-dlp -J`。
+  - R13：「每部影音每個更好的來源只通知一次」：發現後字幕部分就結束，事件只寫一次；使用者重跑 transcript、之後又發現同一個來源時，只靠 outbox 的 `dedupe_key`（`source.better_available:<影音>:<來源>:<語言>`）在去重視窗內擋下。移到垃圾桶後還原不會重新排程（要重跑 transcript 才會重新判斷）。
+  - R14：平台回報的語言（不可信）正規化後只接受 BCP-47 形狀的短代碼（`^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8}){0,3}$`）才算更好的來源，才會寫進訊息、事件與通知。
+  - R15：從 `sponsorblock` 以前重跑時結束 SponsorBlock 部分，從 `transcript` 以前重跑時另外結束字幕部分並清除 `better_source`；步驟重新完成後依新的結果重新判斷（SRC-R18）。自動重跑的次數不清除（每部影音最多一次）。重新 Probe 寫回時以交易中最新的狀態為準，不蓋掉期間重跑所做的重設。
+  - R16：場景與規則的衝突（**需要 owner 決定，`.feature` 沒有修改**，兩個場景目前是 failed）：
+    - 「Re-probing only lists the platform captions and never calls a paid source」：`yt:asr001xxxxx` 的 `published_at` 是處理前 2 小時、沒有任何字幕軌、`caption_priority` 有 `auto` 規則，依 SRC-R6 `transcript` 會等待自動字幕（`waiting`），`the item … has been processed up to "transcript"` 失敗。建議把這個場景的 `published_at` 改成 `2026-11-19T06:00:00Z`（處理時已超過 SRC-R6 的 24 小時，`until` 為 11-26T06，字幕 11-21T00 補上，推進 24h 後找得到）。
+    - 「The better source carries the estimated cost and a manual rerun uses it」：`the owner reruns … from "transcript"` 不帶 `until`，重跑一路做到 `sponsorblock`；依 SRC-R20，YouTube 影音的 SponsorBlock 部分在 7 天內仍要重新查詢，實際回應是 `"reprobe": {"sources": false, "sponsorblock": true, …}`，場景預期 `"reprobe": null`。建議把最後的預期改成 `{ "better_source": null, "reprobe": { "sources": false } }`（這個場景要驗的是重跑後字幕部分結束，SRC-R23），不寫死 `sponsorblock`。
