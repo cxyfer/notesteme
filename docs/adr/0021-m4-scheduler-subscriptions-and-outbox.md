@@ -117,3 +117,5 @@ M4 的 migration 接在 M3 的 migration 之後（M3 規劃 `00017`；實際編�
   - 新增 `scheduler.NextWithJitter(kind, key, now, interval, jitterMax)`，讓 handler 自己傳回 `Next` 時與預設的「間隔＋jitter」算法一致；`subscription.check` 的 `Kind.Interval` 是 0，每個訂閱的間隔不同，由 handler 傳回。
   - 第 2 點「探索在排程器內同步執行」：`pipeline.Ingest` 在 `store.Tx` 之外呼叫（store 只有一個寫入連線，在交易內呼叫會卡住）。
 
+- 2026-11-24，M4-S9 GLOS 實作（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 第 7 點：migration `00029_glossary_review`，`glossary_candidates` 加 `decided_term`、`decided_scope`、`decided_at`（拒絕時只有 `decided_at`，GLOS G6），索引是 `(state, created_at, id)`（GLOS-R5 的排序含 id）；沒有 `suggestion`（GLOS G2）。
