@@ -143,6 +143,9 @@ func TestListingNeverLeaksVersionsTheViewerCannotSee(t *testing.T) {
 	if !strings.Contains(ids, private.ID) || !strings.Contains(ids, onlyPrivate.ID) || strings.Contains(ids, hidden.ID) {
 		t.Errorf("上傳者的列表 = %s", ids)
 	}
+	if rec := e.as("alice", "GET", "/api/v1/videos/youtube/vid00000001", ""); rec.Code != 200 || strings.Contains(body(rec), hidden.ID) {
+		t.Errorf("上傳者的影片頁列出了 hidden：%d %s", rec.Code, rec.Body)
+	}
 	// moderate 看得到全部（hidden 仍不列）。
 	e.grant("bob", hubconfig.GroupModerators)
 	ids = strings.Join(listIDs(t, e.as("bob", "GET", "/api/v1/versions?limit=200", "")), ",")
@@ -403,7 +406,10 @@ func TestDownloadRendersAndProtects(t *testing.T) {
 
 	// 內容 blob 被換掉（與雜湊不符）時是 500，不送出內容。
 	p := filepath.Join(e.dir, "blobs", v.SHA256[:2], v.SHA256)
-	if err := os.WriteFile(p, []byte(`{"tampered":true}`), 0o600); err != nil {
+	var tampered bytes.Buffer
+	_ = subtitle.RenderCuesJSON(&tampered, subtitle.Transcript{Lang: "en", Variant: subtitle.VariantSource, Cues: []subtitle.Cue{
+		{Index: 1, StartMS: 0, EndMS: 1000, Text: "tampered", Timing: subtitle.TimingSource}}})
+	if err := os.WriteFile(p, tampered.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	rec = e.as("bob", "GET", "/api/v1/versions/"+v.ID+"/download", "")
