@@ -165,3 +165,7 @@
 .item-notice > p {
   margin: 0 0 var(--space-2);
 }
+.item-reprobe {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-14);
+}

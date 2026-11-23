@@ -630,6 +630,18 @@
       "none": "没有摘要。",
       "paused": "摘要完成，等你决定要不要继续处理。",
       "continued": "已继续处理，从{{stage}}开始"
+    },
+    "better": {
+      "title": "有更好的字幕来源",
+      "found": "{{time}} 发现了 {{lang}} 的{{kind}}（{{source}}）。",
+      "estimate": "改用它要从字幕步骤重新处理，预估花费 {{usd}}。",
+      "noEstimate": "改用它要从字幕步骤重新处理，无法预估费用。",
+      "reprobe": "之后会再检查{{what}}：下次在 {{next}}，最晚到 {{until}}。",
+      "what": {
+        "both": "字幕来源与 SponsorBlock",
+        "sources": "字幕来源",
+        "sponsorblock": "SponsorBlock"
+      }
     }
   },
   "queue": {

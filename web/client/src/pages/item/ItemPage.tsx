@@ -51,6 +51,7 @@ import {
 } from "./search";
 import { CancelDialog, CookieDialog } from "./SmallDialogs";
 import { StagePanel, orderedStages } from "./StagePanel";
+import { BetterSource } from "./BetterSource";
 import { SummaryBlock } from "./SummaryBlock";
 import "../../styles/ui5.css";
 
@@ -409,6 +410,12 @@ function ItemView({
           </div>
         )}
       </dl>
+
+      <BetterSource
+        better={d.better_source}
+        reprobe={d.reprobe}
+        onRerun={() => setRerunFrom("transcript")}
+      />
 
       <SummaryBlock
         summary={d.summary}

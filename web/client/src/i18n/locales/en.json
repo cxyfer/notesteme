@@ -650,6 +650,18 @@
       "none": "No summary.",
       "paused": "The summary is ready. Decide whether to continue processing.",
       "continued": "Continuing from {{stage}}"
+    },
+    "better": {
+      "title": "A better transcript is available",
+      "found": "Found {{kind}} in {{lang}} ({{source}}) at {{time}}.",
+      "estimate": "Using it reprocesses from the transcript step, estimated at {{usd}}.",
+      "noEstimate": "Using it reprocesses from the transcript step; the cost can't be estimated.",
+      "reprobe": "Will check {{what}} again: next at {{next}}, until {{until}} at the latest.",
+      "what": {
+        "both": "transcript sources and SponsorBlock",
+        "sources": "transcript sources",
+        "sponsorblock": "SponsorBlock"
+      }
     }
   },
   "queue": {
