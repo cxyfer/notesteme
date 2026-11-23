@@ -97,7 +97,7 @@ export function OverviewPage() {
         <Spinner label={t("common.loading")} showLabel />
       ) : !o ? (
         <ErrorCallout
-          error={q.error ?? new Error("bad overview")}
+          error={q.error ?? null}
           actions={[{ label: t("common.retry"), onClick: () => void q.refetch() }]}
         />
       ) : (
