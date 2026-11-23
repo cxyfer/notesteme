@@ -109,3 +109,32 @@ func TestImportBoundary(t *testing.T) {
 		}
 	}
 }
+
+// 設定檔的 admins 在啟動時同步：從設定檔移除的管理員重新啟動後失去 admins，已經登入過的新管理員立即加入（HACC-R12、A12）。
+func TestOpenSyncsConfigAdmins(t *testing.T) {
+	ctx := context.Background()
+	cfg := testConfig(t, "admins:\n  - { provider: github, subject: \"1\" }\n")
+	s, err := Open(ctx, Options{Config: cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := s.Store()
+	old, _, _ := st.SignIn(ctx, hubstore.ExternalIdentity{Provider: "github", Subject: "1"}, "old")
+	next, _, _ := st.SignIn(ctx, hubstore.ExternalIdentity{Provider: "github", Subject: "2"}, "next")
+	if err := st.SetConfigGroup(ctx, old.ID, hubconfig.GroupAdmins, true); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+	cfg.Admins = []hubconfig.Identity{{Provider: hubconfig.GitHub, Subject: "2"}}
+	s, err = Open(ctx, Options{Config: cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for id, want := range map[string]int{old.ID: 0, next.ID: 1} {
+		ms, err := s.Store().GroupMemberships(ctx, id)
+		if err != nil || len(ms) != want {
+			t.Errorf("%s 的成員資格 = %+v %v，預期 %d 筆", id, ms, err, want)
+		}
+	}
+}
