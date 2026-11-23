@@ -37,6 +37,8 @@ func builtinKind(id string) string {
 		return "translate"
 	case strings.HasPrefix(id, "chapters-"):
 		return "chapters"
+	case strings.HasPrefix(id, "frames-"):
+		return "frames"
 	}
 	return ""
 }

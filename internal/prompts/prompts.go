@@ -27,7 +27,9 @@ var Kinds = []string{"summary", "chapters", "segment", "correct", "translate", "
 var Variables = []string{"title", "channel", "description", "chapters", "glossary", "source_lang", "target_lang"}
 
 // BuiltinIDs 是內建的 prompt（PRM-R4）。內容放在程式內，不寫入資料庫；使用者的 prompt id 不可以和它們相同（D12）。
-var BuiltinIDs = []string{"segment-default", "correct-default", "translate-default", "localize-zh-hant-tw", "localize-zh-hans-cn", "chapters-default"}
+var BuiltinIDs = []string{"segment-default", "correct-default", "translate-default", "localize-zh-hant-tw", "localize-zh-hans-cn", "chapters-default",
+	// M3：FRM 的選圖（PRM 的 M3 修訂）。
+	"frames-default"}
 
 // maxBodyBytes 是 prompt 內文的上限（64 KiB）。
 const maxBodyBytes = 64 << 10

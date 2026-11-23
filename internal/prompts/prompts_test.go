@@ -48,7 +48,7 @@ func newService(t *testing.T, usedBy func(context.Context, *store.Repo, string) 
 func TestBuiltinsLoad(t *testing.T) {
 	wantKind := map[string]string{
 		"segment-default": "segment", "correct-default": "correct", "translate-default": "translate",
-		"localize-zh-hant-tw": "translate", "localize-zh-hans-cn": "translate", "chapters-default": "chapters",
+		"localize-zh-hant-tw": "translate", "localize-zh-hans-cn": "translate", "chapters-default": "chapters", "frames-default": "frames",
 	}
 	for _, id := range BuiltinIDs {
 		b, ok := builtins[id]
@@ -227,7 +227,7 @@ func TestList_BuiltinsFirst(t *testing.T) {
 	for _, p := range ps {
 		ids = append(ids, p.ID)
 	}
-	want := []string{"chapters-default", "correct-default", "localize-zh-hans-cn", "localize-zh-hant-tw", "segment-default", "translate-default", "alpha", "zeta"}
+	want := []string{"chapters-default", "correct-default", "frames-default", "localize-zh-hans-cn", "localize-zh-hant-tw", "segment-default", "translate-default", "alpha", "zeta"}
 	if !slices.Equal(ids, want) {
 		t.Errorf("List = %v，預期 %v", ids, want)
 	}
