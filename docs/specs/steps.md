@@ -808,3 +808,5 @@ M5-S5（2026-11-23）閘門再放行 HACC-R15～R17 與 HREP-R13～R15（下架�
 | `Then the last bundle sent to the Hub has the manifest fields:` | fakehub 最後收到的 bundle 的 manifest；表格欄位 `field`（點號路徑，數字是陣列索引）、`value`（字串比較；`<absent>` 代表欄位不存在；`*` 代表欄位存在即可，值可以是空陣列或空字串） |
 | `Then the last bundle sent to the Hub does not contain {string}` | fakehub 最後收到的 bundle 中，manifest 與每個檔案的內容都不含這段文字；沒有收到任何 bundle 時失敗 |
 | `Then the Hub never received the video ID of {string}` | fakehub 收到的所有請求（路徑、query、標頭、body，不含分享的 bundle）都不含這部影片的平台 ID；沒有收到任何請求時失敗（沒有東西可以驗證） |
+
+M5-S7／S8（2026-11-24）實作了這一節的全部句型（`steps/hub_client.go`）：閘門依 `@HSHR-R` 放行（`hshrRules`，HMCP 仍停在 `Given a Hub is running`）；`Given the Hub has the version …` 與 `Given the Hub version … has the cues:` 在 fakehub 上直接寫進 fakehub（`state` 只接受 `visible`）；`Given the Hub does not respond` 由 fakehub 呼叫 harness 推進 fake clock（HSHR 待決問題 S16）；token 在 server 每次啟動後設定，`the client's Hub token is not set` 在 server 已啟動時改成清除 token。
