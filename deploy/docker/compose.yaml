@@ -1,6 +1,8 @@
 # 單機部署（WSL Docker 或 VPS）。在這個目錄執行：
 #   cp .env.example .env   # 填入 NOTESTEME_MASTER_KEY 與 NOTESTEME_PASSWORD
 #   docker compose up -d
+# VPS（HTTPS，OPS-R19～R21）：在 .env 另外設定 COMPOSE_PROFILES=vps、NOTESTEME_DEPLOYMENT=vps 與 NOTESTEME_DOMAIN，
+# 再執行同一個指令；vps-check 檢查不通過時 caddy 不會啟動，實例不會對外開放。
 name: notesteme
 
 services:
@@ -15,13 +17,54 @@ services:
       NOTESTEME_MASTER_KEY: ${NOTESTEME_MASTER_KEY:?請在 .env 設定 NOTESTEME_MASTER_KEY}
       # 只在第一次啟動（DB 還沒有密碼）時使用，之後可以從 .env 移除。
       NOTESTEME_PASSWORD: ${NOTESTEME_PASSWORD:-}
+      # local 或 vps（OPS-R21）；vps 時拒絕 --insecure-no-auth，session cookie 一律帶 Secure。
+      NOTESTEME_DEPLOYMENT: ${NOTESTEME_DEPLOYMENT:-local}
     ports:
-      # 預設只映射到 loopback；VPS 請放在提供 HTTPS 的反向代理後面（plan 第 18 節）。
+      # 所有 profile 都只映射到 loopback（OPS-R9）；VPS 由 vps profile 的 caddy 對外提供 HTTPS。
       - "127.0.0.1:${NOTESTEME_PORT:-8080}:8080"
     volumes:
       - notesteme-data:/data
       # 需要設定檔時取消註解，並建立 ./config/notesteme.yaml。
       # - ./config:/config:ro
+      # 每日備份建議放在另一個 volume（設定檔的 backup.daily.dir: /backups，見 OPS 規格 O1）。
+      # - ./backups:/backups
+
+  # vps profile：啟動前檢查網域、部署方式與登入密碼（OPS-R20）。資料目錄唯讀掛載；
+  # 不設 restart，跑完就結束，caddy 等它成功結束才啟動。
+  vps-check:
+    profiles: ["vps"]
+    image: ${NOTESTEME_IMAGE:-ghcr.io/cxyfer/notesteme:latest}
+    command: ["deploy-check", "vps"]
+    environment:
+      NOTESTEME_DOMAIN: ${NOTESTEME_DOMAIN:-}
+      NOTESTEME_DEPLOYMENT: ${NOTESTEME_DEPLOYMENT:-local}
+      NOTESTEME_PASSWORD: ${NOTESTEME_PASSWORD:-}
+    volumes:
+      - notesteme-data:/data:ro
+
+  # vps profile：Caddy 自動取得 HTTPS 憑證並反向代理到 notesteme（OPS-R19）。只有這三個 port 不綁 127.0.0.1。
+  caddy:
+    profiles: ["vps"]
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      NOTESTEME_DOMAIN: ${NOTESTEME_DOMAIN:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # 憑證與 ACME 帳號要保存下來，否則每次重建都重新申請，可能碰到 Let's Encrypt 的頻率限制。
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      vps-check:
+        condition: service_completed_successfully
+      notesteme:
+        condition: service_healthy
 
 volumes:
   notesteme-data:
+  caddy-data:
+  caddy-config:

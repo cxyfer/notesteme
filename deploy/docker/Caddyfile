@@ -1,0 +1,7 @@
+# vps profile 的反向代理（OPS-R19）。網域來自 .env 的 NOTESTEME_DOMAIN，Caddy 自動取得與更新 HTTPS 憑證。
+{$NOTESTEME_DOMAIN} {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	# notesteme 只看 X-Forwarded-For 時要把 caddy 設成 trusted_proxies（AUTH-R6）。
+	reverse_proxy notesteme:8080
+}
