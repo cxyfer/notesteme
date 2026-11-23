@@ -329,6 +329,9 @@ func (s *Scenario) lastBundleDoesNotContain(text string) error {
 			return fmt.Errorf("bundle 的 %s 含有 %q", name, text)
 		}
 	}
+	if b, _ := json.Marshal(sh.Manifest); bytes.Contains(b, []byte(text)) {
+		return fmt.Errorf("bundle 的 manifest 含有 %q", text)
+	}
 	return nil
 }
 
@@ -336,6 +339,9 @@ func (s *Scenario) fakeHubNeverReceivedVideoID(ref string) error {
 	h, err := s.fakeHub()
 	if err != nil {
 		return err
+	}
+	if len(h.Requests()) == 0 {
+		return errors.New("fakehub 沒有收到任何請求，沒有東西可以驗證")
 	}
 	_, extID, _, err := hubVideo(ref)
 	if err != nil {
