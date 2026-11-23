@@ -30,8 +30,6 @@ export const NOTIFY_EVENTS = [
   "alert",
   "source.better_available",
 ] as const;
-/** 後端還沒有任何地方發出的事件（DIG、OPS 告警、SRC-10 尚未實作）：可以勾選，但標示「尚未會發出」 */
-const NOT_YET_EMITTED = new Set(["digest", "alert", "source.better_available"]);
 
 interface FieldDef {
   key: string;
@@ -424,9 +422,6 @@ function NotifierDialog({ current, onClose }: { current?: Notifier; onClose: () 
                 }
               />
               {t(`settings.notify.event.${ev}`)}
-              {NOT_YET_EMITTED.has(ev) && (
-                <span className="secondary">{t("settings.notify.notYetEmitted")}</span>
-              )}
             </label>
           ))}
           {events.length === 0 && <p className="field__error">{t("settings.notify.needEvent")}</p>}

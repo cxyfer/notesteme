@@ -106,6 +106,11 @@ describe("設定：通知", () => {
     await user.click(within(row).getByRole("button", { name: "編輯" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/已設定（末四碼 abcd）/)).toBeTruthy();
+    // DIG、OPS、SRC-10 已會發出這三個事件：不再標示「尚未會發出」
+    expect(within(dialog).getByLabelText("彙整")).toBeTruthy();
+    expect(within(dialog).getByLabelText("系統告警")).toBeTruthy();
+    expect(within(dialog).getByLabelText("有更好的字幕來源")).toBeTruthy();
+    expect(within(dialog).queryByText(/尚未會發出/)).toBeNull();
     await user.click(within(dialog).getByLabelText(/處理完成/));
     await user.click(within(dialog).getByRole("button", { name: "儲存變更" }));
     await waitFor(() => expect(api.calls("PATCH", "/api/notifiers/ops")).toHaveLength(1));

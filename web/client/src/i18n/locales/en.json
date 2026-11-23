@@ -1056,7 +1056,6 @@
         "alert": "System alerts",
         "source.better_available": "Better captions available"
       },
-      "notYetEmitted": "(not sent yet)",
       "needEvent": "Pick at least one event.",
       "events": "Events: {{list}}",
       "endsWith": "Ends in {{last4}}",

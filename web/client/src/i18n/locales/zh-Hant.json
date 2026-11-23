@@ -1029,7 +1029,6 @@
         "alert": "系統告警",
         "source.better_available": "有更好的字幕來源"
       },
-      "notYetEmitted": "（尚未會發出）",
       "needEvent": "至少勾選一個事件。",
       "events": "事件：{{list}}",
       "endsWith": "末四碼 {{last4}}",
