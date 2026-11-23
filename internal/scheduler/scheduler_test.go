@@ -289,8 +289,17 @@ func TestJitter(t *testing.T) {
 	if Jitter("k", "a", 1, interval, 0) != 0 || Jitter("k", "a", 1, 0, time.Hour) != 0 {
 		t.Error("max 或間隔為 0 時沒有延遲")
 	}
-	if d := Jitter("k", "a", 1, time.Hour, time.Hour); d >= 6*time.Minute {
-		t.Errorf("間隔 1 小時的上限是 6 分鐘：%v", d)
+	// 間隔的 10% 比 max 小時以 10% 為上限：取多個時段，最大值要接近 6 分鐘但不能到。
+	var top time.Duration
+	for slot := range int64(200) {
+		d := Jitter("k", "a", slot, time.Hour, time.Hour)
+		if d >= 6*time.Minute {
+			t.Errorf("間隔 1 小時的上限是 6 分鐘：%v", d)
+		}
+		top = max(top, d)
+	}
+	if top < 5*time.Minute {
+		t.Errorf("200 個時段的最大延遲只有 %v，上限算錯了", top)
 	}
 	if Jitter("k", "a", 1, interval, time.Hour) == Jitter("k", "b", 1, interval, time.Hour) &&
 		Jitter("k", "a", 2, interval, time.Hour) == Jitter("k", "b", 2, interval, time.Hour) {
