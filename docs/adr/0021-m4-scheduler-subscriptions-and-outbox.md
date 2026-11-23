@@ -108,3 +108,7 @@ M4 的 migration 接在 M3 的 migration 之後（M3 規劃 `00017`；實際編�
   - jitter 以毫秒為單位（資料庫的時間精度），時段序號是「預設的下一次 ÷ 間隔」的毫秒數；範圍 `[0, min(間隔 × 10%, scheduler.jitter_max))`。
   - 退避 1 分鐘、5 分鐘、30 分鐘，之後固定 6 小時；Handler panic 視為失敗；`last_error` 保留 500 個字元。
   - `summary` 已加進 `pipeline.Stages`，`plannedStages` 已清空（第 3 點與「影響」的提醒）；預設 `executor: off` 的快照 sha 不變，執行器要等 S6 DIG。
+- 2026-11-23，M4-S1 實作（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 第 5 點：端點回應 `permanent` 的錯誤（netguard 封鎖、3xx、408／429 以外的 4xx）第一次就 `dropped`（NOTIFY N1）；`notify.dropped` 只寫進 `events` 表。
+  - `notify.deliver` 不刪除排程列，下一次是「最早的 pending 項目」與「一分鐘之後」取較早的；有新的 outbox 項目時提前到現在。端點的失敗記在 outbox，不回傳給排程器。
+  - 第 7 點：migration `00019_notify`；`notifiers` 加 `config_nonce`，`notification_outbox` 加 `last_attempt_at`、不加外鍵（見 NOTIFY 待決問題「M4-S1 實作的決定」）。

@@ -79,6 +79,8 @@
   - 停用的 notifier（`enabled: false`）還沒送出的項目在下一次 `notify.deliver` 時標記 `dropped`（`last_error`「notifier 已停用。」），不再送出。
   - `notify.deliver` 不刪除排程列：下一次是「最早的 pending 項目」與「一分鐘之後」取較早的（並行寫入的事件被覆寫時最多慢一分鐘），所以送過一次通知之後，production 的 worker 每分鐘醒來一次。端點的失敗記在 outbox，不回傳給排程器（排程器的 `last_error` 與 log 不會出現網址）。
   - 速率上限計算視窗 `(now - per, now]` 內的**嘗試次數**（成功或失敗），不只是成功送出的則數，避免失敗的端點被大量重試；`Retry-After`（秒數或 HTTP 日期）與 Telegram 的 `parameters.retry_after` 上限 6 小時。
+  - 資料表與「介面」的差異：`notifiers` 多了 `config_nonce`；`notification_outbox` 多了 `last_attempt_at`（速率上限用）與索引 `(notifier_id, last_attempt_at)`；`notifier_id` 刻意不加外鍵，刪除 notifier 時只刪 pending，`sent` 與 `dropped` 保留到 30 天的清理。migration 是 `00019_notify`。
+  - CLI `notesteme notifiers test <id>` 送達失敗（`ok: false`）時結束碼 1；`notifiers ls` 以 tab 分隔輸出 id、kind、啟用狀態與事件（`--json` 原樣輸出 API 回應）。
   - `notify.dropped` 只寫進 `events` 表（`item_id` 空白，payload `{outbox, notifier, event, message}`），不送到 SSE。
   - 欄位驗證的補充：`config` 中不認得的鍵 422「不認得的欄位。」；值要是字串（`priority`、`chat_id` 也接受整數）；`chat_id` 是數字或 `@` 開頭的頻道名稱；ntfy 的 `server` 規則同 webhook 的 `url`（https，http 只在 `network.allow_private`），不含 query；Discord 的官方網址要 https、沒有 port；webhook 的 `url` 可以有 query。`events` 重複時 422「重複的事件：<值>。」。
   - 文字管道的內文：`item.done` 是「所有步驟都已完成。」；`budget.warning`、`digest` 的標題暫定「Notesteme 預算提醒：<摘要>」「Notesteme 彙整：<摘要>」（規格沒有列，由 COST、DIG 切片確認）。webhook 的 `created_at` 是 outbox 項目建立的時間（重送時不變）。
