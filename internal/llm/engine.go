@@ -28,6 +28,26 @@ type RunOptions struct {
 	Timeout time.Duration
 	// Images 是每次請求都附上的圖片（FRM-R7）；沒有時為 nil。
 	Images []Image
+	// Retry 是第一次請求就附上的驗證錯誤說明（batch 的結果沒有通過驗證、改走一般 API 時，BATCH-R4）；空字串代表沒有。
+	// 呼叫端同時把 MaxRetries 減去已經用掉的次數。
+	Retry string
+}
+
+// ChunkRequest 組出 RunChunk 第一次送出的請求。Batch API 的每個請求用同一個內容（BATCH-R2）。
+func ChunkRequest(o RunOptions) (Request, error) {
+	data, err := DataBlock(o.Input.Chunk.Index, o.Input.Chunks, o.Input.Context, o.Input.Cues)
+	if err != nil {
+		return Request{}, err
+	}
+	return Request{Model: o.Model, MaxTokens: OutputBudget(o.Input), Spec: o.Spec, Fixed: o.Fixed, Data: data, Images: o.Images, Retry: o.Retry}, nil
+}
+
+// ValidateResponse 依 Spec 驗證一個成功的回應（LLM-R4、R9），與 RunChunk 的判斷相同；batch 的結果也用它（BATCH-R4）。
+func ValidateResponse(spec *Spec, in ChunkInput, resp Response) (json.RawMessage, *ValidationError) {
+	if resp.Output == nil {
+		return nil, &ValidationError{Reason: ReasonInvalidJSON, Message: "output was not valid JSON: " + resp.Problem}
+	}
+	return spec.Validate(in, resp.Output)
 }
 
 // ChunkResult 是一個 chunk 的結果。Output 非 nil 代表通過驗證；
@@ -45,11 +65,10 @@ func RunChunk(ctx context.Context, o RunOptions) (ChunkResult, error) {
 	if o.Client == nil || o.Spec == nil {
 		return ChunkResult{}, errors.New("llm: RunChunk 需要 Client 與 Spec")
 	}
-	data, err := DataBlock(o.Input.Chunk.Index, o.Input.Chunks, o.Input.Context, o.Input.Cues)
+	req, err := ChunkRequest(o)
 	if err != nil {
 		return ChunkResult{}, err
 	}
-	req := Request{Model: o.Model, MaxTokens: OutputBudget(o.Input), Spec: o.Spec, Fixed: o.Fixed, Data: data, Images: o.Images}
 	var res ChunkResult
 	parent := ctx
 	if o.Timeout != 0 {
@@ -82,13 +101,7 @@ func RunChunk(ctx context.Context, o RunOptions) (ChunkResult, error) {
 			return res, err
 		}
 		res.Usage.Add(resp.Usage)
-		var verr *ValidationError
-		var out json.RawMessage
-		if resp.Output == nil {
-			verr = &ValidationError{Reason: ReasonInvalidJSON, Message: "output was not valid JSON: " + resp.Problem}
-		} else {
-			out, verr = o.Spec.Validate(o.Input, resp.Output)
-		}
+		out, verr := ValidateResponse(o.Spec, o.Input, resp)
 		if aerr := o.AfterRequest.call(ctx, attempt, req, resp, nil, verr == nil); aerr != nil {
 			return res, aerr
 		}
