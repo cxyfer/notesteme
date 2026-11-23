@@ -104,7 +104,11 @@ func Title(ev Event) string {
 	case EventBudgetWarning:
 		return "Notesteme 預算提醒：" + CleanTitle(ev.Summary)
 	case EventDigest:
-		return "Notesteme 彙整：" + CleanTitle(ev.Summary)
+		// DIG-R10：Summary 已是完整的標題（「Notesteme 每日彙整：2026-11-24（3 部）」）。
+		if t := CleanTitle(ev.Summary); t != "" {
+			return t
+		}
+		return "Notesteme 彙整"
 	case "test":
 		return TestTitle
 	}
@@ -157,7 +161,8 @@ func eventLink(publicURL string, ev Event) string {
 	if u := ItemURL(publicURL, ev.Item); u != "" {
 		return u
 	}
-	if publicURL != "" && ev.Name != "test" {
+	// 彙整的內文已附上每部影音的連結（DIG-R10），不再加 UI 首頁。
+	if publicURL != "" && ev.Name != "test" && ev.Name != EventDigest {
 		return publicURL + "/"
 	}
 	return ""

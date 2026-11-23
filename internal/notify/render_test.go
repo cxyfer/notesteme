@@ -34,7 +34,8 @@ func TestTitlesPerEvent(t *testing.T) {
 		Title(Event{Name: EventItemDone, Item: &Item{Ref: "yt:x"}}):                            "完成：yt:x",
 		Title(Event{Name: "test"}):                                                             TestTitle,
 		Title(Event{Name: EventBudgetWarning, Summary: "本月已用 80%"}):                            "Notesteme 預算提醒：本月已用 80%",
-		Title(Event{Name: EventDigest, Summary: "每日彙整"}):                                       "Notesteme 彙整：每日彙整",
+		Title(Event{Name: EventDigest, Summary: "Notesteme 每日彙整：2026-11-24（1 部）"}):             "Notesteme 每日彙整：2026-11-24（1 部）",
+		Title(Event{Name: EventDigest}):                                                        "Notesteme 彙整",
 	}
 	for got, want := range cases {
 		if got != want {

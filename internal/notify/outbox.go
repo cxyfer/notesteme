@@ -106,6 +106,19 @@ type Outbox struct {
 // 去重視窗內已有同一個 dedupe_key 的不再寫入。有寫入時把 notify.deliver 提前到現在。回傳寫入的筆數。
 // 沒有符合的 notifier 時不寫入任何東西（既有的流程不受影響）。
 func (o *Outbox) Emit(ctx context.Context, r *store.Repo, ev Event) (int, error) {
+	return o.emit(ctx, r, ev, nil)
+}
+
+// EmitTo 同 Emit，但只寫給 only 之中、啟用中而且訂閱了這個事件的 notifier（DIG-R8：彙整只送到它設定的 notifier）。
+// only 是空的時候不寫入任何東西。
+func (o *Outbox) EmitTo(ctx context.Context, r *store.Repo, ev Event, only []string) (int, error) {
+	if len(only) == 0 {
+		return 0, nil
+	}
+	return o.emit(ctx, r, ev, only)
+}
+
+func (o *Outbox) emit(ctx context.Context, r *store.Repo, ev Event, only []string) (int, error) {
 	if o == nil {
 		return 0, nil
 	}
@@ -115,6 +128,17 @@ func (o *Outbox) Emit(ctx context.Context, r *store.Repo, ev Event) (int, error)
 	ids, err := r.NotifierIDsForEvent(ctx, ev.Name)
 	if err != nil || len(ids) == 0 {
 		return 0, err
+	}
+	if only != nil {
+		kept := ids[:0:0]
+		for _, id := range ids {
+			if contains(only, id) {
+				kept = append(kept, id)
+			}
+		}
+		if ids = kept; len(ids) == 0 {
+			return 0, nil
+		}
 	}
 	payload, err := json.Marshal(ev)
 	if err != nil {

@@ -6,6 +6,7 @@
 //
 // 規則：
 //   - 一輪內每個到期的工作最多執行一次；同時到期的依 next_run_at、再依建立順序（SUB-R9）。
+//     例外：這一輪執行的工作把其他工作提前到這一輪開頭以前時（例如寫入 outbox 後的 notify.deliver），同一輪再執行一趟。
 //   - 成功：下一次是 Result.Next，沒有指定時是「這次執行的時間＋間隔＋jitter」，所以停機很久之後只補跑一次。
 //   - 失敗：依連續失敗次數退避（1 分鐘、5 分鐘、30 分鐘，之後固定 6 小時），不會停在過去而每一輪重試。
 //   - Result.Deferred：不是失敗也不是成功（例如被 rate limit 擋下，SUB-R10），只改下一次的時間。
@@ -166,20 +167,28 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		return nil
 	}
 	start := s.clock.Now()
-	due, err := s.store.Read().DueScheduledJobs(ctx, order, start, maxDuePerRound)
-	if err != nil {
-		return err
-	}
-	for _, job := range due {
-		if err := ctx.Err(); err != nil {
+	// 第二趟：這一輪執行的工作把其他工作提前到這一輪開頭以前（例如彙整寫入 outbox 後的 notify.deliver）時，
+	// 在同一輪再執行一次，不必等下一輪。執行過的工作的下一次已排在開頭之後，第二趟只會取到被提前的工作；
+	// 最多兩趟，不會無限循環。
+	for pass := 0; pass < 2; pass++ {
+		due, err := s.store.Read().DueScheduledJobs(ctx, order, start, maxDuePerRound)
+		if err != nil {
 			return err
 		}
-		if s.clock.Now().Sub(start) >= RoundBudget {
-			s.log.WarnContext(ctx, "排程器這一輪的執行時間用完，其餘的工作留到下一輪", "remaining", len(due))
+		if pass > 0 && len(due) == 0 {
 			return nil
 		}
-		if err := s.runJob(ctx, kinds[job.Kind], job, start); err != nil {
-			return err
+		for _, job := range due {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if s.clock.Now().Sub(start) >= RoundBudget {
+				s.log.WarnContext(ctx, "排程器這一輪的執行時間用完，其餘的工作留到下一輪", "remaining", len(due))
+				return nil
+			}
+			if err := s.runJob(ctx, kinds[job.Kind], job, start); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
