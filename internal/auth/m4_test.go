@@ -356,7 +356,7 @@ func TestOIDCHappyPathAndSingleUse(t *testing.T) {
 	if len(r.State) < 43 || len(r.Nonce) < 43 || len(r.Verifier) < 43 || r.State == r.Nonce || st.Cookie == r.State {
 		t.Fatalf("weak or reused random values: %+v cookie=%q", r, st.Cookie)
 	}
-	cb := OIDCCallback{State: r.State, Cookie: st.Cookie, Code: "c1", IP: "1.2.3.4"}
+	cb := OIDCCallback{State: r.State, Cookie: st.Cookie, Code: "authz-code-q8w3", IP: "1.2.3.4"}
 	cred, next, err := svc.FinishOIDC(ctx, cb)
 	if err != nil || next != "/items/x?t=1" || cred.Token == "" {
 		t.Fatalf("FinishOIDC = %+v %q %v", cred, next, err)
@@ -371,7 +371,7 @@ func TestOIDCHappyPathAndSingleUse(t *testing.T) {
 	if _, _, err := svc.FinishOIDC(ctx, cb); !errors.Is(err, ErrOIDCState) {
 		t.Fatalf("replay: %v", err)
 	}
-	for _, secret := range []string{r.State, r.Nonce, r.Verifier, st.Cookie, "c1", cred.Token} {
+	for _, secret := range []string{r.State, r.Nonce, r.Verifier, st.Cookie, "authz-code-q8w3", cred.Token} {
 		if strings.Contains(logs.String(), secret) {
 			t.Fatalf("log leaks a secret value: %s", logs)
 		}
