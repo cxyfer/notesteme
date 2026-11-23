@@ -9,6 +9,24 @@ import (
 	"context"
 )
 
+const countReviewTermCandidates = `-- name: CountReviewTermCandidates :one
+SELECT COUNT(*) FROM glossary_candidates c
+WHERE (CAST(?1 AS TEXT) = 'all' OR c.state = ?1)
+  AND (CAST(?2 AS TEXT) = '' OR c.channel_id = ?2)
+`
+
+type CountReviewTermCandidatesParams struct {
+	State     string
+	ChannelID string
+}
+
+func (q *Queries) CountReviewTermCandidates(ctx context.Context, arg CountReviewTermCandidatesParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countReviewTermCandidates, arg.State, arg.ChannelID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countTermCandidates = `-- name: CountTermCandidates :one
 SELECT COUNT(*) FROM glossary_candidates WHERE channel_id = ?1
 `
@@ -21,19 +39,31 @@ func (q *Queries) CountTermCandidates(ctx context.Context, channelID string) (in
 }
 
 const decideTermCandidate = `-- name: DecideTermCandidate :execrows
-UPDATE glossary_candidates SET state = ?1
-WHERE id = ?2 AND channel_id = ?3 AND state = 'pending'
+UPDATE glossary_candidates
+SET state = ?1, decided_term = ?2, decided_scope = ?3,
+    decided_at = ?4
+WHERE id = ?5 AND channel_id = ?6 AND state = 'pending'
 `
 
 type DecideTermCandidateParams struct {
-	State     string
-	ID        string
-	ChannelID string
+	State        string
+	DecidedTerm  *string
+	DecidedScope *string
+	Now          *int64
+	ID           string
+	ChannelID    string
 }
 
-// Only a pending candidate can be decided; a decided one keeps its state.
+// Only a pending candidate can be decided; a decided one keeps its state and its first decision (GLOS-R1).
 func (q *Queries) DecideTermCandidate(ctx context.Context, arg DecideTermCandidateParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, decideTermCandidate, arg.State, arg.ID, arg.ChannelID)
+	result, err := q.db.ExecContext(ctx, decideTermCandidate,
+		arg.State,
+		arg.DecidedTerm,
+		arg.DecidedScope,
+		arg.Now,
+		arg.ID,
+		arg.ChannelID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -62,7 +92,7 @@ func (q *Queries) GetGlossary(ctx context.Context, arg GetGlossaryParams) (Gloss
 }
 
 const getTermCandidate = `-- name: GetTermCandidate :one
-SELECT id, channel_id, item_id, term, state, created_at FROM glossary_candidates WHERE id = ?1 AND channel_id = ?2
+SELECT id, channel_id, item_id, term, state, created_at, decided_term, decided_scope, decided_at FROM glossary_candidates WHERE id = ?1 AND channel_id = ?2
 `
 
 type GetTermCandidateParams struct {
@@ -80,6 +110,30 @@ func (q *Queries) GetTermCandidate(ctx context.Context, arg GetTermCandidatePara
 		&i.Term,
 		&i.State,
 		&i.CreatedAt,
+		&i.DecidedTerm,
+		&i.DecidedScope,
+		&i.DecidedAt,
+	)
+	return i, err
+}
+
+const getTermCandidateByID = `-- name: GetTermCandidateByID :one
+SELECT id, channel_id, item_id, term, state, created_at, decided_term, decided_scope, decided_at FROM glossary_candidates WHERE id = ?1
+`
+
+func (q *Queries) GetTermCandidateByID(ctx context.Context, id string) (GlossaryCandidate, error) {
+	row := q.db.QueryRowContext(ctx, getTermCandidateByID, id)
+	var i GlossaryCandidate
+	err := row.Scan(
+		&i.ID,
+		&i.ChannelID,
+		&i.ItemID,
+		&i.Term,
+		&i.State,
+		&i.CreatedAt,
+		&i.DecidedTerm,
+		&i.DecidedScope,
+		&i.DecidedAt,
 	)
 	return i, err
 }
@@ -113,6 +167,35 @@ func (q *Queries) InsertTermCandidate(ctx context.Context, arg InsertTermCandida
 	return result.RowsAffected()
 }
 
+const insertTermCandidateAt = `-- name: InsertTermCandidateAt :execrows
+INSERT INTO glossary_candidates (id, channel_id, item_id, term, state, created_at)
+VALUES (?1, ?2, ?3, ?4, 'pending', ?5)
+ON CONFLICT (channel_id, term) DO NOTHING
+`
+
+type InsertTermCandidateAtParams struct {
+	ID        string
+	ChannelID string
+	ItemID    *string
+	Term      string
+	CreatedAt int64
+}
+
+// Same as InsertTermCandidate with an explicit created_at (test seeding, GLOS steps).
+func (q *Queries) InsertTermCandidateAt(ctx context.Context, arg InsertTermCandidateAtParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertTermCandidateAt,
+		arg.ID,
+		arg.ChannelID,
+		arg.ItemID,
+		arg.Term,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const putGlossary = `-- name: PutGlossary :exec
 INSERT INTO glossaries (scope, scope_id, terms_json, updated_at)
 VALUES (?1, ?2, ?3, ?4)
@@ -136,8 +219,96 @@ func (q *Queries) PutGlossary(ctx context.Context, arg PutGlossaryParams) error 
 	return err
 }
 
+const reviewTermCandidates = `-- name: ReviewTermCandidates :many
+SELECT c.id, c.channel_id, c.item_id, c.term, c.state, c.created_at, c.decided_term, c.decided_scope, c.decided_at,
+       ch.platform AS channel_platform, ch.external_id AS channel_external_id, ch.title AS channel_title,
+       i.platform AS item_platform, i.external_id AS item_external_id, i.part AS item_part, i.title AS item_title
+FROM glossary_candidates c
+JOIN channels ch ON ch.id = c.channel_id
+LEFT JOIN items i ON i.id = c.item_id
+WHERE (CAST(?1 AS TEXT) = 'all' OR c.state = ?1)
+  AND (CAST(?2 AS TEXT) = '' OR c.channel_id = ?2)
+  AND (CAST(?3 AS INTEGER) < 0 OR c.created_at > ?3 OR (c.created_at = ?3 AND c.id > ?4))
+ORDER BY c.created_at, c.id
+LIMIT ?5
+`
+
+type ReviewTermCandidatesParams struct {
+	State     string
+	ChannelID string
+	AfterMs   int64
+	AfterID   string
+	Lim       int64
+}
+
+type ReviewTermCandidatesRow struct {
+	ID                string
+	ChannelID         string
+	ItemID            *string
+	Term              string
+	State             string
+	CreatedAt         int64
+	DecidedTerm       *string
+	DecidedScope      *string
+	DecidedAt         *int64
+	ChannelPlatform   string
+	ChannelExternalID string
+	ChannelTitle      string
+	ItemPlatform      *string
+	ItemExternalID    *string
+	ItemPart          *int64
+	ItemTitle         *string
+}
+
+// The review list across channels (GLOS-R5): oldest first, then by id; after_ms/after_id is the cursor position.
+func (q *Queries) ReviewTermCandidates(ctx context.Context, arg ReviewTermCandidatesParams) ([]ReviewTermCandidatesRow, error) {
+	rows, err := q.db.QueryContext(ctx, reviewTermCandidates,
+		arg.State,
+		arg.ChannelID,
+		arg.AfterMs,
+		arg.AfterID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReviewTermCandidatesRow
+	for rows.Next() {
+		var i ReviewTermCandidatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ChannelID,
+			&i.ItemID,
+			&i.Term,
+			&i.State,
+			&i.CreatedAt,
+			&i.DecidedTerm,
+			&i.DecidedScope,
+			&i.DecidedAt,
+			&i.ChannelPlatform,
+			&i.ChannelExternalID,
+			&i.ChannelTitle,
+			&i.ItemPlatform,
+			&i.ItemExternalID,
+			&i.ItemPart,
+			&i.ItemTitle,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const termCandidatesByChannel = `-- name: TermCandidatesByChannel :many
-SELECT id, channel_id, item_id, term, state, created_at FROM glossary_candidates WHERE channel_id = ?1 ORDER BY created_at, rowid
+SELECT id, channel_id, item_id, term, state, created_at, decided_term, decided_scope, decided_at FROM glossary_candidates WHERE channel_id = ?1 ORDER BY created_at, rowid
 `
 
 func (q *Queries) TermCandidatesByChannel(ctx context.Context, channelID string) ([]GlossaryCandidate, error) {
@@ -156,6 +327,9 @@ func (q *Queries) TermCandidatesByChannel(ctx context.Context, channelID string)
 			&i.Term,
 			&i.State,
 			&i.CreatedAt,
+			&i.DecidedTerm,
+			&i.DecidedScope,
+			&i.DecidedAt,
 		); err != nil {
 			return nil, err
 		}

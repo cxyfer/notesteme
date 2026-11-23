@@ -138,12 +138,15 @@ type Glossary struct {
 }
 
 type GlossaryCandidate struct {
-	ID        string
-	ChannelID string
-	ItemID    *string
-	Term      string
-	State     string
-	CreatedAt int64
+	ID           string
+	ChannelID    string
+	ItemID       *string
+	Term         string
+	State        string
+	CreatedAt    int64
+	DecidedTerm  *string
+	DecidedScope *string
+	DecidedAt    *int64
 }
 
 type InboxEntry struct {
