@@ -380,3 +380,53 @@ func TestEvalRankAndHelpers(t *testing.T) {
 		t.Error("reprobePlatform")
 	}
 }
+
+func TestReprobeAutoRerunOnlyOnce(t *testing.T) {
+	ctx := context.Background()
+	over := map[string]any{"language": map[string]any{"better_source": "rerun"}}
+	r, it := reprobeRig(t, over)
+	rp, err := r.st.Read().Reprobe(ctx, it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rp.AutoReruns = 1
+	if err := r.st.Write().SaveReprobe(ctx, rp); err != nil {
+		t.Fatal(err)
+	}
+	addManual(r)
+	r.clk.Advance(ReprobeInterval)
+	if res := reprobeAt(r, it.ID, ReprobeOptions{}); !res.Done {
+		t.Fatalf("res = %+v", res)
+	}
+	tr := latestStage(t, r, it.ID, StageTranscript)
+	if tr.Status != store.StatusDone || tr.Message == "" {
+		t.Fatalf("已自動重跑過一次，只通知：%+v", tr)
+	}
+	if d := detailOf(t, r, it.ID); d.BetterSource == nil {
+		t.Fatal("應記錄更好的來源")
+	}
+}
+
+func TestReprobeSponsorBlockOnlyForYouTube(t *testing.T) {
+	ctx := context.Background()
+	r := newRig(t)
+	var it store.Item
+	err := r.st.Tx(ctx, func(tx *store.Repo) error {
+		var err error
+		it, _, err = tx.InsertItemIfAbsent(ctx, store.NewItem{Platform: "bilibili", ExternalID: "BV1xx411c7mD", Part: 1, URL: "https://www.bilibili.com/video/BV1xx411c7mD"})
+		if err != nil {
+			return err
+		}
+		return r.p.reprobeAfterSponsorBlock(ctx, tx, it.ID, Effective{})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rp, err := r.st.Read().Reprobe(ctx, it.ID)
+	if err != nil || rp.SponsorBlock {
+		t.Fatalf("rp = %+v %v", rp, err)
+	}
+	if _, err := r.st.Read().ScheduledJob(ctx, store.ReprobeKind, it.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("不排程：%v", err)
+	}
+}
