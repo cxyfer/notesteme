@@ -61,6 +61,8 @@ type Scenario struct {
 	pendingConfig
 	// givenQueue 是 Given 累積的佇列上限與暫停設定，同樣延到第一個送出請求的步驟才套用。
 	givenQueue queueConfig
+	// notifiers 是 `the notifier … is:` 累積的 notifier，接在佇列之後寫入（見 flushNotifiers，steps.md 4.18）。
+	notifiers []pendingNotifier
 	// seeded 是已用 `the … transcript of … is:` 直接寫入字幕的影音代號（見 hasTranscriptSource）。
 	seeded map[string]bool
 	// lastCreatedToken 是最近一次 `a token … with scopes …` 建立的 token 明文，
@@ -469,7 +471,10 @@ func (s *Scenario) prepareOwner() error {
 	if err := s.flushConfig(); err != nil {
 		return err
 	}
-	return s.flushQueue()
+	if err := s.flushQueue(); err != nil {
+		return err
+	}
+	return s.flushNotifiers()
 }
 
 // requestPath 代入請求路徑：{token:…} 與 M5 的參照（SubstRequest），再把影音代號換成實際 ID。

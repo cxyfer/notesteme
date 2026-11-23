@@ -36,13 +36,19 @@ func TestM4FakesAreOptIn(t *testing.T) {
 	if w.ServeFeeds() != w.Feed || !registered(w, fakefeed.Host) {
 		t.Error("ServeFeeds 之後 www.youtube.com 應該有 fake origin")
 	}
-	if w.ReachNotifyEndpoints() != w.Notify {
-		t.Error("ReachNotifyEndpoints 應回傳 World.Notify")
+	if n, err := w.ReachNotifyEndpoints(); err != nil || n != w.Notify {
+		t.Errorf("ReachNotifyEndpoints 應回傳 World.Notify：%v", err)
 	}
-	for _, h := range fakenotify.Hosts {
+	for i, h := range fakenotify.Hosts {
 		if !registered(w, h) {
 			t.Errorf("%s 沒有登記", h)
 		}
+		if ips, err := w.Net.LookupNetIP(t.Context(), "ip", h); err != nil || len(ips) != 1 || ips[0].String() != NotifyIPs[i] {
+			t.Errorf("%s 應解析到 %s：%v %v", h, NotifyIPs[i], ips, err)
+		}
+	}
+	if _, ok := w.NotifyReceivedAt(0); ok {
+		t.Error("還沒有請求")
 	}
 }
 

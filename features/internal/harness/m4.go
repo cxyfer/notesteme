@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cxyfer/notesteme/features/internal/fakebatch"
 	"github.com/cxyfer/notesteme/features/internal/fakefeed"
@@ -38,6 +39,8 @@ type m4Fakes struct {
 	// oidc 是 StartOIDC 建立的假 IdP，以 issuer 的主機名稱為 key。
 	oidc       map[string]*fakeoidc.Server
 	violations []string
+	// notifyAt 是 fakenotify 每個請求抵達時的 fake clock 時間（ReachNotifyEndpoints）。
+	notifyAt []time.Time
 }
 
 func newM4Fakes() *m4Fakes { return &m4Fakes{oidc: map[string]*fakeoidc.Server{}} }
@@ -51,11 +54,35 @@ func (w *World) ServeFeeds() *fakefeed.Server {
 
 // ReachNotifyEndpoints 把 fakenotify 登記到 ntfy、Discord、Telegram 與一般 webhook 的主機
 // （`the notification endpoints are reachable`，NOTIFY、DIG 彙整與 OPS 告警的閘門）。
-func (w *World) ReachNotifyEndpoints() *fakenotify.Server {
-	for _, h := range fakenotify.Hosts {
-		w.Net.Handle(h, w.Notify)
+// 四個主機依序解析到公開的測試 IP（steps.md 4.18）；場景之後可以用 `the host … resolves to …` 改寫。
+// 每個請求抵達時記下 fake clock 的時間（NotifyReceivedAt），`is signed with` 用它比對簽章的時間。
+func (w *World) ReachNotifyEndpoints() (*fakenotify.Server, error) {
+	h := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		w.m4.mu.Lock()
+		w.m4.notifyAt = append(w.m4.notifyAt, w.Clock.Now())
+		w.m4.mu.Unlock()
+		w.Notify.ServeHTTP(rw, r)
+	})
+	for i, host := range fakenotify.Hosts {
+		if err := w.Net.Resolves(host, NotifyIPs[i]); err != nil {
+			return nil, err
+		}
+		w.Net.Handle(host, h)
 	}
-	return w.Notify
+	return w.Notify, nil
+}
+
+// NotifyIPs 是 fakenotify.Hosts 依序解析到的公開測試 IP（steps.md 4.18）。
+var NotifyIPs = []string{"93.184.216.60", "93.184.216.61", "93.184.216.62", "93.184.216.63"}
+
+// NotifyReceivedAt 回傳 fakenotify 收到的第 i 個請求（從 0 起算，同 Notify.Requests 的順序）抵達時的 fake clock 時間。
+func (w *World) NotifyReceivedAt(i int) (time.Time, bool) {
+	w.m4.mu.Lock()
+	defer w.m4.mu.Unlock()
+	if i < 0 || i >= len(w.m4.notifyAt) {
+		return time.Time{}, false
+	}
+	return w.m4.notifyAt[i], true
 }
 
 // EnableBatch 建立 fakebatch（第一次呼叫時），讓 LLM 主機上的 batch 路徑交給它（`the batch API of …`，BATCH）。
