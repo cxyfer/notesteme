@@ -165,6 +165,27 @@ describe("影音詳情：標題與時間帶", () => {
     expect(api.calls("GET", "/api/items/yt:abcdEFGhijk/cues")).toHaveLength(0);
   });
 
+  it("標為已讀用批次 API 送這一部（LIB-R19；打開詳情不會自動標為已讀）", async () => {
+    const bodies: unknown[] = [];
+    itemApi({
+      routes: {
+        "POST /api/items/batch": (req) => {
+          bodies.push(req.body);
+          return {
+            action: "mark_read",
+            dry_run: false,
+            count: 1,
+            items: [{ id: "item-1", ref: "x", ok: true }],
+          };
+        },
+      },
+    });
+    await openItem();
+    await userEvent.click(screen.getByRole("button", { name: "標為已讀" }));
+    expect(await screen.findByText("已將 1 部標為已讀")).toBeTruthy();
+    expect(bodies).toEqual([{ action: "mark_read", ids: ["item-1"] }]);
+  });
+
   it("影音在垃圾桶中時提供還原", async () => {
     let trashed = true;
     const api = itemApi({

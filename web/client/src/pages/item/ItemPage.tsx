@@ -37,6 +37,7 @@ import {
   useRuns,
 } from "./data";
 import { DeleteDialog } from "./DeleteDialog";
+import { ReadStateButton } from "./ReadStateButton";
 import { FramesPanel, NotePanel } from "./NotePanels";
 import { OutputsPanel, downloadUrl } from "./OutputsPanel";
 import { Player, type PlayerHandle } from "./Player";
@@ -364,6 +365,7 @@ function ItemView({
           {active && (
             <Button onClick={() => setCancelOpen(true)}>{t("item.actions.cancel")}</Button>
           )}
+          <ReadStateButton id={id} state={d.read_state} />
           <Button variant="danger" onClick={() => setDeleteOpen(true)}>
             {t("item.actions.delete")}
           </Button>
