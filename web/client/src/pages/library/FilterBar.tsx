@@ -8,6 +8,7 @@ import {
   ERROR_CLASSES,
   hasFilters,
   PLATFORMS,
+  READ_STATES,
   STAGE_STATUSES,
   STAGES,
   TIMINGS,
@@ -199,6 +200,8 @@ function useAppliedChips(search: LibrarySearch, onChange: FilterBarProps["onChan
     );
   if (search.lang)
     add("lang", t("library.chips.lang", { value: search.lang }), { lang: undefined });
+  if (search.read_state)
+    add("read_state", t(`library.readState.${search.read_state}`), { read_state: undefined });
   if (search.timing)
     add("timing", t("library.chips.timing", { value: t(`timing.${search.timing}`) }), {
       timing: undefined,
@@ -250,6 +253,13 @@ export function FilterBar({ search, onChange, onClear }: FilterBarProps) {
           options={ERROR_CLASSES}
           optionLabel={(v) => t(`errorClass.${v}`)}
           onChange={(v) => onChange({ error_class: v })}
+        />
+        <SelectFilter
+          label={t("library.readState.label")}
+          value={search.read_state}
+          options={READ_STATES}
+          optionLabel={(v) => t(`library.readState.${v}`)}
+          onChange={(v) => onChange({ read_state: v })}
         />
         <Button
           aria-pressed={search.blocked === "awaiting_user"}

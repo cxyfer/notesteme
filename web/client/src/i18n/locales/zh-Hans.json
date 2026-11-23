@@ -293,6 +293,63 @@
       "confirmBody": "之后的步骤会开始处理并计入预算；不是等你决定的音视频会跳过。",
       "confirm": "继续处理",
       "done": "已继续处理 {{continued}} 个，跳过 {{skipped}} 个"
+    },
+    "unread": "未读",
+    "readState": {
+      "label": "已读状态",
+      "unread": "未读",
+      "read": "已读"
+    },
+    "bulk": {
+      "label": "批量操作",
+      "pick": "选择“{{title}}”",
+      "pickLoaded_other": "选择已加载的 {{count}} 部",
+      "selected_other": "已选择 {{formatted}} 部",
+      "selectMatching_other": "选择符合条件的全部 {{formatted}} 部",
+      "tooMany": "符合条件的超过 {{max}} 部，一次最多处理 {{max}} 部",
+      "clear": "取消选择",
+      "rerun": "重新处理",
+      "change_profile": "改用其他处理方案",
+      "mark_read": "标为已读",
+      "mark_unread": "标为未读",
+      "export_bundle": "导出 bundle",
+      "delete": "删除",
+      "continue": "继续处理",
+      "mark_readDone_other": "已将 {{count}} 部标为已读",
+      "mark_unreadDone_other": "已将 {{count}} 部标为未读",
+      "title_other": "{{verb}}：已选择 {{count}} 部",
+      "desc": {
+        "rerun": "从选择的步骤重新处理，会产生新版本，旧版本保留。",
+        "change_profile": "把处理方案改成选择的方案，再从选择的步骤重新处理。",
+        "delete": "选择的音视频会移到回收站，在保留期限内可以还原。",
+        "export_bundle": "每部音视频各导出一个 bundle，完成后逐一下载。",
+        "continue": "摘要后暂停的音视频会继续处理，不是等你决定的会跳过。"
+      },
+      "profile": "处理方案",
+      "from": "从哪个步骤开始",
+      "preview": "查看影响范围",
+      "previewing": "正在计算影响范围…",
+      "count_other": "{{count}} 部音视频",
+      "estimate": "预估花费 {{amount}}",
+      "estimateApprox": "预估花费约 {{amount}}（以从分段重新处理估算）",
+      "unknown_other": "另有 {{count}} 个任务无法预估费用",
+      "remaining": "本月预算剩余 {{amount}}",
+      "exceeds": "预估花费超过本月剩余的预算。超过的步骤会暂停（超出预算），调整预算后才会继续。",
+      "modifiedKept_other": "{{count}} 个改过的输出文件不会删除。",
+      "skipped_other": "{{count}} 部不能处理，不会发送：",
+      "confirm_other": "{{verb}} {{count}} 部",
+      "progress": "已处理 {{done}}／{{total}} 部",
+      "progressLabel": "批量处理进度",
+      "stop": "停止（当前这批完成后）",
+      "cancelledItem": "已停止，这部音视频没有处理。",
+      "result": "成功 {{ok}} 部，失败 {{failed}} 部",
+      "failedList": "没有完成的音视频：",
+      "bundles": "下载 bundle：",
+      "skip": {
+        "not_awaiting_user": "不是等你决定的音视频，已跳过。",
+        "not_found": "找不到这部音视频。",
+        "in_trash": "这部音视频在回收站中。"
+      }
     }
   },
   "add": {

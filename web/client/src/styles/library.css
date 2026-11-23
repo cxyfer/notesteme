@@ -415,3 +415,42 @@
 .library__awaiting > p {
   margin: 0;
 }
+
+/* UI-7：批次操作的勾選框與未讀標示 */
+.lrow {
+  position: relative;
+}
+.lrow[data-selectable] {
+  padding-left: 40px;
+}
+.lrow[data-selected] {
+  background: var(--surface-hover);
+}
+.lrow__pick {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0;
+}
+.lrow__unread {
+  font-weight: 600;
+}
+.lrow__unread::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 0.1em;
+}
+.library__select {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-2);
+}

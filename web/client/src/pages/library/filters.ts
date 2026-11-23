@@ -75,7 +75,12 @@ export interface LibrarySearch {
    * 送最接近的條件：summary 完成或略過、segment 停住（見 UI README 10.15）。
    */
   blocked?: "awaiting_user";
+  /** 已讀狀態（LIB-R19，UI-7） */
+  read_state?: ReadState;
 }
+
+export const READ_STATES = ["unread", "read"] as const;
+export type ReadState = (typeof READ_STATES)[number];
 
 export const FILTER_KEYS = [
   "q",
@@ -90,6 +95,7 @@ export const FILTER_KEYS = [
   "dur_max",
   "timing",
   "blocked",
+  "read_state",
 ] as const satisfies readonly (keyof LibrarySearch)[];
 
 /** API 的上限：標題搜尋最多 200 字元 */
@@ -170,6 +176,7 @@ export function validateLibrarySearch(raw: Record<string, unknown>): LibrarySear
     dur_max: minutes(raw.dur_max),
     timing: oneOf(TIMINGS, raw.timing),
     blocked: oneOf(["awaiting_user"] as const, raw.blocked),
+    read_state: oneOf(READ_STATES, raw.read_state),
   };
   // 拿掉 undefined，讓網址只帶有值的參數
   for (const k of FILTER_KEYS) if (out[k] === undefined) delete out[k];
@@ -208,6 +215,7 @@ export function toApiQuery(s: LibrarySearch): ItemsQuery {
     // 上限（含）就是那一分鐘整：「10 分鐘以內」是 600 秒以下
     duration_max: s.dur_max !== undefined ? String(s.dur_max * 60) : undefined,
     timing: s.timing,
+    read_state: s.read_state,
   };
 }
 

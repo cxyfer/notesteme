@@ -6,7 +6,7 @@
 //     步驟狀態只更新那一列（每列的 detail query，見 LibraryRow）。
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAddDrawer } from "../add/AddContext";
@@ -36,6 +36,10 @@ import {
 import { ContinueBar } from "./library/ContinueBar";
 import { LibraryRow } from "./library/LibraryRow";
 import type { ApiItem } from "./library/stageView";
+import type { BulkBarProps } from "./library/BulkBar";
+
+// 批次操作列只有選取時才需要：lazy 載入，不進初始 bundle（UI-7）
+const BulkBar = lazy(() => import("./library/BulkBar").then((m) => ({ default: m.BulkBar })));
 
 const route = getRouteApi("/app/library");
 
@@ -106,6 +110,42 @@ export function LibraryPage() {
     void qc.resetQueries({ queryKey: listKey, exact: true });
   }, [keyHash, listKey, qc]);
 
+  // ---- 批次操作的選取（UI-7）：換篩選時清空，避免畫面外、條件外的影音被一起處理 ----
+  const [picked, setPicked] = useState({ key: keyHash, ids: new Set<string>(), last: -1 });
+  const sel = picked.key === keyHash ? picked : { key: keyHash, ids: new Set<string>(), last: -1 };
+  const clearSelection = useCallback(
+    () => setPicked({ key: keyHash, ids: new Set(), last: -1 }),
+    [keyHash],
+  );
+  const toggle = (index: number, on: boolean, shift: boolean) => {
+    const ids = new Set(sel.ids);
+    // Shift 點擊：從上一次點的列到這一列都設成同一個狀態
+    const from = shift && sel.last >= 0 ? Math.min(sel.last, index) : index;
+    const to = shift && sel.last >= 0 ? Math.max(sel.last, index) : index;
+    for (let i = from; i <= to; i++) {
+      const id = rows[i]?.id;
+      if (id) {
+        if (on) ids.add(id);
+        else ids.delete(id);
+      }
+    }
+    setPicked({ key: keyHash, ids, last: index });
+  };
+  const allLoaded = rows.length > 0 && rows.every((r) => sel.ids.has(r.id));
+  const onBulkDone: BulkBarProps["onDone"] = (action, outcome) => {
+    for (const x of outcome.items) {
+      if (!x.id) continue;
+      if (action === "delete" && x.ok) qc.removeQueries({ queryKey: queryKeys.items.detail(x.id) });
+      else void qc.invalidateQueries({ queryKey: queryKeys.items.detail(x.id) });
+    }
+    // 已讀／未讀不改變列表的組成（除非用已讀狀態篩選），只更新那幾列
+    if (action === "mark_read" || action === "mark_unread") {
+      if (search.read_state) reload();
+      return;
+    }
+    reload();
+  };
+
   // 游標失效（server 重新啟動後回 422）：從第一頁重新讀取
   const cursorExpired =
     list.isFetchNextPageError && isApiError(list.error) && list.error.status === 422;
@@ -175,8 +215,39 @@ export function LibraryPage() {
       </p>
       <FilterBar search={search} onChange={setSearch} onClear={clearFilters} />
 
-      {search.blocked === "awaiting_user" && rows.length > 0 && (
+      {search.blocked === "awaiting_user" && rows.length > 0 && sel.ids.size === 0 && (
         <ContinueBar ids={rows.map((r) => r.id)} onDone={reload} />
+      )}
+      {rows.length > 0 && (
+        <div className="library__select">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={allLoaded}
+              onChange={(e) =>
+                setPicked({
+                  key: keyHash,
+                  ids: e.target.checked ? new Set(rows.map((r) => r.id)) : new Set(),
+                  last: -1,
+                })
+              }
+            />
+            <span>{t("library.bulk.pickLoaded", { count: rows.length })}</span>
+          </label>
+        </div>
+      )}
+      {sel.ids.size > 0 && (
+        <Suspense fallback={<Spinner label={t("common.loading")} />}>
+          <BulkBar
+            ids={[...sel.ids]}
+            total={total}
+            apiQuery={apiQuery}
+            awaiting={search.blocked === "awaiting_user"}
+            onSelect={(ids) => setPicked({ key: keyHash, ids: new Set(ids), last: -1 })}
+            onClear={clearSelection}
+            onDone={onBulkDone}
+          />
+        </Suspense>
       )}
 
       <p className="visually-hidden" aria-live="polite">
@@ -221,11 +292,13 @@ export function LibraryPage() {
           getKey={(it) => it.id}
           estimateSize={88}
           onEndReached={onEndReached}
-          renderItem={(item, { focusProps }) => (
+          renderItem={(item, { index, focusProps }) => (
             <LibraryRow
               item={item}
               focusProps={focusProps}
               onFilterChannel={(channel) => setSearch({ channel })}
+              selected={sel.ids.has(item.id)}
+              onSelect={(on, shift) => toggle(index, on, shift)}
             />
           )}
           footer={

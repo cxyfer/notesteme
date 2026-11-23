@@ -48,9 +48,18 @@ export interface LibraryRowProps {
   item: ApiItem;
   focusProps: RowFocusProps;
   onFilterChannel: (channel: string) => void;
+  /** UI-7 批次操作：有 onSelect 時列的左側有勾選框；shift 是按住 Shift 點擊（選取一段範圍） */
+  selected?: boolean;
+  onSelect?: (on: boolean, shift: boolean) => void;
 }
 
-export function LibraryRow({ item, focusProps, onFilterChannel }: LibraryRowProps) {
+export function LibraryRow({
+  item,
+  focusProps,
+  onFilterChannel,
+  selected,
+  onSelect,
+}: LibraryRowProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const detail = useItemDetail(item.id);
@@ -81,7 +90,24 @@ export function LibraryRow({ item, focusProps, onFilterChannel }: LibraryRowProp
   }
 
   return (
-    <div className="lrow" data-attention={attention || undefined} onClick={onRowClick}>
+    <div
+      className="lrow"
+      data-attention={attention || undefined}
+      data-selectable={onSelect ? true : undefined}
+      data-selected={selected || undefined}
+      onClick={onRowClick}
+    >
+      {onSelect && (
+        <input
+          type="checkbox"
+          className="lrow__pick"
+          checked={!!selected}
+          tabIndex={focusProps.tabIndex}
+          aria-label={t("library.bulk.pick", { title })}
+          onClick={(e) => onSelect(e.currentTarget.checked, e.shiftKey)}
+          onChange={() => undefined}
+        />
+      )}
       <Thumbnail
         className="lrow__thumb"
         platform={it.platform}
@@ -99,6 +125,10 @@ export function LibraryRow({ item, focusProps, onFilterChannel }: LibraryRowProp
           {title}
         </Link>
         <p className="lrow__meta">
+          {/* LIB-R19：未讀的影音（打開詳情不會自動標為已讀） */}
+          {it.read_state === "unread" && (
+            <span className="lrow__unread">{t("library.unread")}</span>
+          )}
           <span>{t(`platform.${it.platform}`, { defaultValue: it.platform })}</span>
           {it.channel_id && (
             <button

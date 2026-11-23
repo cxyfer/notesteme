@@ -293,6 +293,63 @@
       "confirmBody": "之後的步驟會開始處理並計入預算；不是等你決定的影音會略過。",
       "confirm": "繼續處理",
       "done": "已繼續處理 {{continued}} 部，略過 {{skipped}} 部"
+    },
+    "unread": "未讀",
+    "readState": {
+      "label": "已讀狀態",
+      "unread": "未讀",
+      "read": "已讀"
+    },
+    "bulk": {
+      "label": "批次操作",
+      "pick": "選取「{{title}}」",
+      "pickLoaded_other": "選取已載入的 {{count}} 部",
+      "selected_other": "已選取 {{formatted}} 部",
+      "selectMatching_other": "選取符合條件的全部 {{formatted}} 部",
+      "tooMany": "符合條件的超過 {{max}} 部，一次最多處理 {{max}} 部",
+      "clear": "取消選取",
+      "rerun": "重新處理",
+      "change_profile": "改用其他處理方案",
+      "mark_read": "標為已讀",
+      "mark_unread": "標為未讀",
+      "export_bundle": "匯出 bundle",
+      "delete": "刪除",
+      "continue": "繼續處理",
+      "mark_readDone_other": "已將 {{count}} 部標為已讀",
+      "mark_unreadDone_other": "已將 {{count}} 部標為未讀",
+      "title_other": "{{verb}}：已選取 {{count}} 部",
+      "desc": {
+        "rerun": "從選擇的步驟重新處理，會產生新版本，舊版本保留。",
+        "change_profile": "把處理方案改成選擇的方案，再從選擇的步驟重新處理。",
+        "delete": "選取的影音會移到垃圾桶，在保留期限內可以還原。",
+        "export_bundle": "每部影音各匯出一個 bundle，完成後逐一下載。",
+        "continue": "摘要後暫停的影音會繼續處理，不是等你決定的會略過。"
+      },
+      "profile": "處理方案",
+      "from": "從哪個步驟開始",
+      "preview": "查看影響範圍",
+      "previewing": "正在計算影響範圍…",
+      "count_other": "{{count}} 部影音",
+      "estimate": "預估花費 {{amount}}",
+      "estimateApprox": "預估花費約 {{amount}}（以從分段重新處理估算）",
+      "unknown_other": "另有 {{count}} 個任務無法預估費用",
+      "remaining": "本月預算剩餘 {{amount}}",
+      "exceeds": "預估花費超過本月剩餘的預算。超過的步驟會暫停（超出預算），調整預算後才會繼續。",
+      "modifiedKept_other": "{{count}} 個改過的輸出檔不會刪除。",
+      "skipped_other": "{{count}} 部不能處理，不會送出：",
+      "confirm_other": "{{verb}} {{count}} 部",
+      "progress": "已處理 {{done}}／{{total}} 部",
+      "progressLabel": "批次處理進度",
+      "stop": "停止（目前這批完成後）",
+      "cancelledItem": "已停止，這部影音沒有處理。",
+      "result": "成功 {{ok}} 部，失敗 {{failed}} 部",
+      "failedList": "沒有完成的影音：",
+      "bundles": "下載 bundle：",
+      "skip": {
+        "not_awaiting_user": "不是等你決定的影音，已略過。",
+        "not_found": "找不到這部影音。",
+        "in_trash": "這部影音在垃圾桶中。"
+      }
     }
   },
   "add": {
