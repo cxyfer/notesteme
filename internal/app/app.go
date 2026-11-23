@@ -63,6 +63,9 @@ type TestControls struct {
 	// SerialLLM 讓 worker 一次最多執行一個 llm 類別的任務（不論設定的上限），chunk 任務依建立順序執行，
 	// fakellm 的「依序回答」與請求編號才有確定的順序。不影響 GET /api/queue 顯示的上限（M2 S0）。
 	SerialLLM bool
+	// CostEstimates 取代這些步驟每個任務的估算金額（美元，COST 待決問題 C8）；PricesAsOf 取代內建計價表的確認日期。
+	CostEstimates map[string]float64
+	PricesAsOf    string
 }
 
 // IO 是標準輸入輸出。

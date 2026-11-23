@@ -13,8 +13,8 @@ import (
 // 切片實作某條路由時，從這份清單移除，改在自己的檔案註冊（m4_stubs_test.go 的清單一併更新）。
 //
 // 不在這份清單的 M4 介面：
-//   - GET/PUT /api/settings/budget：沿用既有的 settings-get／settings-put（budget 區段目前回 501，由 COST 切片實作）；
-//     不另外註冊字面路徑，以免蓋過 {section}。
+//   - GET/PUT /api/settings/budget：沿用既有的 settings-get／settings-put（M4-S4 COST 已實作 budget 區段）；
+//     不另外註冊字面路徑，以免蓋過 {section}。COST 的其他路由在 costs.go。
 //   - GET /api/auth/oidc/start、callback：AUTH-R16 規定 OIDC 沒有啟用時回 404，S0 不啟用 OIDC，所以不註冊
 //     （沒有身分的請求在 S0 先被驗證擋下，回 401）。
 //   - ENTRY 的頁面路由（/add、/share、/manifest.webmanifest、/sw.js）不在 /api 底下，由 ENTRY 切片在 UI 的 handler 加上。
@@ -36,21 +36,6 @@ var m4Stubs = []m2Stub{
 		Summary: "刪除彙整設定（尚未實作）", Scope: auth.ScopeAdmin},
 	{ID: "digests-preview", Method: http.MethodPost, Path: "/api/digests/{id}/preview",
 		Summary: "預覽彙整的內容，不送出、不改變下次執行時間（尚未實作）", Scope: auth.ScopeAdmin},
-	// COST 的介面（S4 COST）
-	{ID: "prices-list", Method: http.MethodGet, Path: "/api/prices",
-		Summary: "列出計價表（內建與覆寫，尚未實作）", Scope: auth.ScopeRead},
-	{ID: "prices-put", Method: http.MethodPut, Path: "/api/prices",
-		Summary: "設定單價覆寫（尚未實作）", Scope: auth.ScopeAdmin},
-	{ID: "prices-delete", Method: http.MethodDelete, Path: "/api/prices",
-		Summary: "刪除單價覆寫（尚未實作）", Scope: auth.ScopeAdmin},
-	{ID: "prices-confirm", Method: http.MethodPost, Path: "/api/prices/confirm",
-		Summary: "確認內建計價表仍然正確（尚未實作）", Scope: auth.ScopeAdmin},
-	{ID: "costs-summary", Method: http.MethodGet, Path: "/api/costs",
-		Summary: "依日期、provider、模型、步驟、頻道或影音彙總花費（尚未實作）", Scope: auth.ScopeRead},
-	{ID: "costs-entries", Method: http.MethodGet, Path: "/api/costs/entries",
-		Summary: "列出成本帳本的紀錄（尚未實作）", Scope: auth.ScopeRead},
-	{ID: "costs-export", Method: http.MethodGet, Path: "/api/costs/export.csv",
-		Summary: "匯出成本帳本為 CSV（尚未實作）", Scope: auth.ScopeRead},
 	// LIB-R16～R21（S13 LIB）。批次的 scope 依動作（LIB-R16），stub 不讀 body，先要求多數動作需要的 ingest；
 	// 實作時改成在讀取影音之前依動作判斷（delete 要 admin、export_bundle 同 BND 的匯出）。
 	{ID: "items-batch", Method: http.MethodPost, Path: "/api/items/batch",

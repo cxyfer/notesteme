@@ -17,14 +17,6 @@ var m4StubCases = []stubCase{
 	{"PATCH", "/api/digests/daily", auth.ScopeAdmin},
 	{"DELETE", "/api/digests/daily", auth.ScopeAdmin},
 	{"POST", "/api/digests/daily/preview", auth.ScopeAdmin},
-	// COST
-	{"GET", "/api/prices", auth.ScopeRead},
-	{"PUT", "/api/prices", auth.ScopeAdmin},
-	{"DELETE", "/api/prices", auth.ScopeAdmin},
-	{"POST", "/api/prices/confirm", auth.ScopeAdmin},
-	{"GET", "/api/costs", auth.ScopeRead},
-	{"GET", "/api/costs/entries", auth.ScopeRead},
-	{"GET", "/api/costs/export.csv", auth.ScopeRead},
 	// LIB
 	{"POST", "/api/items/batch", auth.ScopeIngest},
 	{"GET", "/api/overview", auth.ScopeRead},

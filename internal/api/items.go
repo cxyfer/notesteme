@@ -728,6 +728,9 @@ func (rt *routes) getSettings(ctx context.Context, in *settingsInput) (*settings
 	if in.Section == "services" {
 		return rt.getServicesSettings(ctx)
 	}
+	if in.Section == "budget" {
+		return rt.getBudget(ctx)
+	}
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}
@@ -755,6 +758,9 @@ func (rt *routes) putSettings(ctx context.Context, in *putSettingsInput) (*setti
 	// 除了 services（上面已處理），所有區段的 body 都是物件；沒有內容或是 null 都回 422。
 	if body == nil {
 		return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "請提供 JSON 物件格式的設定內容。")
+	}
+	if in.Section == "budget" {
+		return rt.putBudget(ctx, body)
 	}
 	v, err := rt.d.Pipeline.SetSettings(ctx, in.Section, body)
 	if err != nil {

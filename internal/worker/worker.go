@@ -134,6 +134,13 @@ func (w *Worker) RunRound(ctx context.Context) (int, error) {
 	return len(tasks), nil
 }
 
+// ActiveCount 回傳執行中（已開始、還沒結束）的任務數。
+func (w *Worker) ActiveCount() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.active)
+}
+
 // isDraining 回傳是否已停止領取。
 func (w *Worker) isDraining() bool {
 	w.roundMu.Lock()

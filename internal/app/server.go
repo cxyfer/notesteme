@@ -17,6 +17,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/cookies"
+	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/inbox"
 	"github.com/cxyfer/notesteme/internal/media"
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -101,6 +102,8 @@ type Server struct {
 	notify *notify.Service
 	// subscriptions 是訂閱（SUB，M4-S2）；startPipeline 建立，並在排程器登記 subscription.check。
 	subscriptions *subscription.Service
+	// cost 是成本帳本、計價表與預算（COST）；startPipeline 建立。
+	cost *cost.Service
 	// workerDone 在 production 的 worker 迴圈結束時關閉；手動模式（測試）沒有迴圈，為 nil。
 	workerDone chan struct{}
 	// watchCancel、watchDone 是 inbox 監看迴圈（production 的 serve 才有，ING-05）；沒有時為 nil。
@@ -281,6 +284,13 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	var outbox *notify.Outbox
 	s.notify, outbox = s.newNotify(env.Clock, cfg, log)
 	deps.Notify = outbox
+	// 成本與預算（COST）：pipeline 在送出付費請求前後記帳，預算的提醒經同一個 outbox。
+	var costOpts cost.Options
+	if env.Test != nil {
+		costOpts = cost.Options{Estimates: env.Test.CostEstimates, PricesAsOf: env.Test.PricesAsOf}
+	}
+	s.cost = cost.New(env.Clock, outbox, costOpts)
+	deps.Cost = s.cost
 	pl = pipeline.New(deps)
 	s.pipeline = pl
 	s.worker = worker.New(s.queue, s.pipeline, env.Clock, log)
@@ -305,6 +315,9 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	}
 	bc, _ := deps.Bilibili.(*bilibili.Client)
 	if err := s.startSubscriptions(env.Clock, cfg, log, deps.HTTP, runner, tools, yt, bc); err != nil {
+		return err
+	}
+	if err := s.registerBudgetMonth(ctx); err != nil {
 		return err
 	}
 	var periodic worker.Periodic = periodics{hk, s.pipeline.AgentSweeper(), s.scheduler}
@@ -376,6 +389,9 @@ func (s *Server) RunUntilIdle(ctx context.Context) error {
 	defer stop()
 	return s.worker.RunUntilIdle(ctx)
 }
+
+// ActiveTasks 回傳 worker 執行中的任務數。只供手動模式（測試）使用。
+func (s *Server) ActiveTasks() int { return s.worker.ActiveCount() }
 
 // WaitWorker 等到 worker 執行中的任務都結束。只供手動模式（測試）使用。
 func (s *Server) WaitWorker() error { return s.worker.Wait() }

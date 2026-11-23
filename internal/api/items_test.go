@@ -15,6 +15,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/assstyle"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
@@ -83,7 +84,8 @@ func newItemsRigAPI(t *testing.T, apiOpt func(*Deps), opts ...func(*pipeline.Dep
 		o(&deps)
 	}
 	p := pipeline.New(deps)
-	ad := Deps{Store: st, Auth: svc, Clock: clk, Log: log, Version: "test", Pipeline: p, Queue: q, AssStyles: assstyle.New(st)}
+	ad := Deps{Store: st, Auth: svc, Clock: clk, Log: log, Version: "test", Pipeline: p, Queue: q, AssStyles: assstyle.New(st),
+		Cost: cost.New(clk, nil, cost.Options{})}
 	if apiOpt != nil {
 		apiOpt(&ad)
 	}
@@ -284,17 +286,24 @@ func TestSettingsLanguageEndpoints(t *testing.T) {
 			t.Errorf("%s：%d %s", name, rec.Code, rec.Body)
 		}
 	}
-	// 其他區段：沒有內容回 422（所有非 services 的區段都一樣，不只 language）；有內容時沒有實作的區段維持 501。
+	// 其他區段：沒有內容回 422（所有非 services 的區段都一樣，不只 language）。
 	rec = r.owner("PUT", "/api/settings/budget", "")
 	if rec.Code != 422 || decode[Error](t, rec).Code != CodeInvalidInput {
 		t.Errorf("budget 沒有內容：%d %s，預期 422", rec.Code, rec.Body)
 	}
+	// budget 區段由 COST 實作（COST-R4，C1a）：不認識的欄位回 422，路徑是欄位名稱本身。
 	rec = r.owner("PUT", "/api/settings/budget", `{"a":1}`)
-	if rec.Code != 501 || decode[Error](t, rec).Code != CodeNotImplemented {
-		t.Errorf("budget：%d %s", rec.Code, rec.Body)
+	if e := decode[Error](t, rec); rec.Code != 422 || e.Code != CodeInvalidInput || len(e.Errors) != 1 ||
+		e.Errors[0].Path != "a" || e.Errors[0].Message != "不認識的欄位。" {
+		t.Errorf("budget 不認識的欄位：%d %s", rec.Code, rec.Body)
 	}
-	if rec := r.owner("GET", "/api/settings/budget", ""); rec.Code != 501 {
-		t.Errorf("GET budget = %d", rec.Code)
+	rec = r.owner("PUT", "/api/settings/budget", `{"monthly_usd":20}`)
+	if rec.Code != 200 {
+		t.Fatalf("PUT budget = %d %s", rec.Code, rec.Body)
+	}
+	got = decode[map[string]any](t, r.owner("GET", "/api/settings/budget", ""))
+	if got["monthly_usd"] != 20.0 || got["per_item_usd"] != nil || got["warn_at_percent"] != 80.0 || got["timezone"] != "UTC" || got["remaining_usd"] != 20.0 {
+		t.Errorf("GET budget = %v", got)
 	}
 }
 

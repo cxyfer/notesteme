@@ -22,6 +22,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/assstyle"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/events"
 	"github.com/cxyfer/notesteme/internal/notify"
 	"github.com/cxyfer/notesteme/internal/pathguard"
@@ -77,6 +78,8 @@ type Deps struct {
 	Services ServiceSettingsStore
 	// Notify 管理 notifier 與通知 outbox（/api/notifiers、/api/notifications，NOTIFY）；nil 時回應 501。
 	Notify *notify.Service
+	// Cost 是成本帳本、計價表與預算（/api/prices、/api/costs、settings 的 budget 區段，COST）；nil 時回應 501。
+	Cost *cost.Service
 	// EventBus 是狀態變更的事件匯流排：MCP 的 get_video_context 在影音有變更時重新讀取狀態；nil 時定期重查。
 	EventBus *events.Bus
 	// MCPAllowedOrigins 與 MCPAllowedHosts 是 MCP HTTP 的 Origin 與 Host 檢查（AUTH-R11，見 config.Config）。
@@ -293,16 +296,17 @@ func (rt *routes) register(api huma.API) {
 	rt.registerSubscriptions(api)
 	rt.registerVaults(api)
 	rt.registerM4Stubs(api)
+	rt.registerCosts(api)
 	rt.registerM5Stubs(api)
 	rt.registerFrames(api)
 	rt.registerNotes(api)
 	registerScoped(api, huma.Operation{
 		OperationID: "settings-get", Method: http.MethodGet, Path: "/api/settings/{section}",
-		Summary: "讀取全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）",
+		Summary: "讀取全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata、services 與 budget）",
 	}, auth.ScopeAdmin, rt.getSettings)
 	registerScoped(api, huma.Operation{
 		OperationID: "settings-put", Method: http.MethodPut, Path: "/api/settings/{section}",
-		Summary: "取代全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）；內容不正確回 422 與逐欄位的 errors",
+		Summary: "取代全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata、services 與 budget）；內容不正確回 422 與逐欄位的 errors",
 	}, auth.ScopeAdmin, rt.putSettings)
 }
 

@@ -222,6 +222,7 @@ func (s *Server) apiDeps(env Env) api.Deps {
 		Providers: s.providerRegistry(env),
 		Services:  s.services,
 		Notify:    s.notify,
+		Cost:      s.cost,
 	}
 	if s.subscriptions != nil {
 		d.Subscriptions = s.subscriptions

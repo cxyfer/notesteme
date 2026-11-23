@@ -916,6 +916,96 @@
         ],
         "type": "object"
       },
+      "Entries": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/Entry"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "type": "object"
+      },
+      "Entry": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "attempt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "item_title": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "unit_price": {},
+          "unit_type": {
+            "type": "string"
+          },
+          "units": {
+            "format": "double",
+            "type": "number"
+          },
+          "usd": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "at",
+          "item_id",
+          "ref",
+          "item_title",
+          "channel",
+          "stage",
+          "provider",
+          "model",
+          "units",
+          "unit_type",
+          "usd",
+          "state",
+          "attempt",
+          "outcome",
+          "unit_price"
+        ],
+        "type": "object"
+      },
       "EntryView": {
         "additionalProperties": false,
         "properties": {
@@ -1525,6 +1615,37 @@
           "id",
           "terms",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "Group": {
+        "additionalProperties": false,
+        "properties": {
+          "calls": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "reserved_usd": {
+            "format": "double",
+            "type": "number"
+          },
+          "usd": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "usd",
+          "reserved_usd",
+          "calls"
         ],
         "type": "object"
       },
@@ -2245,6 +2366,41 @@
         ],
         "type": "object"
       },
+      "MonthBudget": {
+        "additionalProperties": false,
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "monthly_usd": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "projected_usd": {
+            "format": "double",
+            "type": "number"
+          },
+          "reserved_usd": {
+            "format": "double",
+            "type": "number"
+          },
+          "spent_usd": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "month",
+          "monthly_usd",
+          "spent_usd",
+          "reserved_usd",
+          "projected_usd"
+        ],
+        "type": "object"
+      },
       "NoteBody": {
         "additionalProperties": false,
         "properties": {
@@ -2465,6 +2621,32 @@
         ],
         "type": "object"
       },
+      "Notice": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "actions"
+        ],
+        "type": "object"
+      },
       "Notification": {
         "additionalProperties": false,
         "properties": {
@@ -2547,6 +2729,18 @@
         },
         "required": [
           "notifiers"
+        ],
+        "type": "object"
+      },
+      "OkOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
         ],
         "type": "object"
       },
@@ -3121,6 +3315,69 @@
           "title",
           "published_at",
           "duration_s"
+        ],
+        "type": "object"
+      },
+      "PriceEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "checked_at": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "unit_type": {
+            "type": "string"
+          },
+          "usd_per_unit": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "usd_per_unit",
+          "source",
+          "checked_at",
+          "stale",
+          "provider",
+          "model",
+          "unit_type"
+        ],
+        "type": "object"
+      },
+      "PriceList": {
+        "additionalProperties": false,
+        "properties": {
+          "builtin_checked_at": {
+            "type": "string"
+          },
+          "builtin_stale": {
+            "type": "boolean"
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/PriceEntry"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "prices",
+          "builtin_checked_at",
+          "builtin_stale"
         ],
         "type": "object"
       },
@@ -4116,6 +4373,65 @@
         },
         "required": [
           "subscriptions"
+        ],
+        "type": "object"
+      },
+      "Summary": {
+        "additionalProperties": false,
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/MonthBudget"
+          },
+          "from": {
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/Group"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "notices": {
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "reserved_usd": {
+            "format": "double",
+            "type": "number"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "total_usd": {
+            "format": "double",
+            "type": "number"
+          },
+          "unknown_calls": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "timezone",
+          "total_usd",
+          "reserved_usd",
+          "unknown_calls",
+          "groups",
+          "budget",
+          "notices"
         ],
         "type": "object"
       },
@@ -5478,9 +5794,48 @@
     "/api/costs": {
       "get": {
         "operationId": "costs-summary",
+        "parameters": [
+          {
+            "description": "預算時區中的開始日期 YYYY-MM-DD（含），預設本月 1 日",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "預算時區中的開始日期 YYYY-MM-DD（含），預設本月 1 日",
+              "type": "string"
+            }
+          },
+          {
+            "description": "預算時區中的結束日期 YYYY-MM-DD（含），預設今天",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "預算時區中的結束日期 YYYY-MM-DD（含），預設今天",
+              "type": "string"
+            }
+          },
+          {
+            "description": "day（預設）、provider、model、stage、channel 或 item",
+            "explode": false,
+            "in": "query",
+            "name": "group_by",
+            "schema": {
+              "description": "day（預設）、provider、model、stage、channel 或 item",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Summary"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -5493,15 +5848,64 @@
             "description": "Error"
           }
         },
-        "summary": "依日期、provider、模型、步驟、頻道或影音彙總花費（尚未實作）"
+        "summary": "依日期、provider、模型、步驟、頻道或影音彙總花費，附本月預算與提醒（COST-R14）"
       }
     },
     "/api/costs/entries": {
       "get": {
         "operationId": "costs-entries",
+        "parameters": [
+          {
+            "description": "預算時區中的開始日期 YYYY-MM-DD（含），預設本月 1 日",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "預算時區中的開始日期 YYYY-MM-DD（含），預設本月 1 日",
+              "type": "string"
+            }
+          },
+          {
+            "description": "預算時區中的結束日期 YYYY-MM-DD（含），預設今天",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "預算時區中的結束日期 YYYY-MM-DD（含），預設今天",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1～500，預設 100",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "1～500，預設 100",
+              "type": "string"
+            }
+          },
+          {
+            "description": "上一頁回應的 next_cursor",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "上一頁回應的 next_cursor",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Entries"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -5514,15 +5918,44 @@
             "description": "Error"
           }
         },
-        "summary": "列出成本帳本的紀錄（尚未實作）"
+        "summary": "列出成本帳本的紀錄，由新到舊（COST-R14）"
       }
     },
     "/api/costs/export.csv": {
       "get": {
         "operationId": "costs-export",
+        "parameters": [
+          {
+            "description": "預算時區中的開始日期 YYYY-MM-DD（含），預設本月 1 日",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "預算時區中的開始日期 YYYY-MM-DD（含），預設本月 1 日",
+              "type": "string"
+            }
+          },
+          {
+            "description": "預算時區中的結束日期 YYYY-MM-DD（含），預設今天",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "預算時區中的結束日期 YYYY-MM-DD（含），預設今天",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "CSV"
           },
           "default": {
             "content": {
@@ -5535,7 +5968,7 @@
             "description": "Error"
           }
         },
-        "summary": "匯出成本帳本為 CSV（尚未實作）"
+        "summary": "匯出成本帳本為 CSV（COST-R15，文字欄位防範 CSV injection）"
       }
     },
     "/api/digests": {
@@ -7263,9 +7696,26 @@
     "/api/prices": {
       "delete": {
         "operationId": "prices-delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": {},
+                "type": "object"
+              }
+            }
+          }
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkOutputBody"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -7278,13 +7728,20 @@
             "description": "Error"
           }
         },
-        "summary": "刪除單價覆寫（尚未實作）"
+        "summary": "移除一筆單價覆寫 {provider, model, unit_type}；不存在時回 404（COST-R12）"
       },
       "get": {
         "operationId": "prices-list",
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceList"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -7297,13 +7754,30 @@
             "description": "Error"
           }
         },
-        "summary": "列出計價表（內建與覆寫，尚未實作）"
+        "summary": "列出計價表：內建與覆寫的單價、確認日期與是否過期（COST-R12、R13）"
       },
       "put": {
         "operationId": "prices-put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": {},
+                "type": "object"
+              }
+            }
+          }
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceEntry"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -7316,15 +7790,22 @@
             "description": "Error"
           }
         },
-        "summary": "設定單價覆寫（尚未實作）"
+        "summary": "新增或取代一筆單價覆寫 {provider, model, unit_type, usd_per_unit, checked_at?}（COST-R12）"
       }
     },
     "/api/prices/confirm": {
       "post": {
         "operationId": "prices-confirm",
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceList"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -7337,7 +7818,7 @@
             "description": "Error"
           }
         },
-        "summary": "確認內建計價表仍然正確（尚未實作）"
+        "summary": "把內建計價表的確認日期設為今天（COST-R13）"
       }
     },
     "/api/profiles": {
@@ -8285,7 +8766,7 @@
             "description": "Error"
           }
         },
-        "summary": "讀取全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）"
+        "summary": "讀取全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata、services 與 budget）"
       },
       "put": {
         "operationId": "settings-put",
@@ -8334,7 +8815,7 @@
             "description": "Error"
           }
         },
-        "summary": "取代全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）；內容不正確回 422 與逐欄位的 errors"
+        "summary": "取代全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata、services 與 budget）；內容不正確回 422 與逐欄位的 errors"
       }
     },
     "/api/subscriptions": {

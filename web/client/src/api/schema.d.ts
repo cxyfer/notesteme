@@ -303,7 +303,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 依日期、provider、模型、步驟、頻道或影音彙總花費（尚未實作） */
+    /** 依日期、provider、模型、步驟、頻道或影音彙總花費，附本月預算與提醒（COST-R14） */
     get: operations["costs-summary"];
     put?: never;
     post?: never;
@@ -320,7 +320,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 列出成本帳本的紀錄（尚未實作） */
+    /** 列出成本帳本的紀錄，由新到舊（COST-R14） */
     get: operations["costs-entries"];
     put?: never;
     post?: never;
@@ -337,7 +337,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 匯出成本帳本為 CSV（尚未實作） */
+    /** 匯出成本帳本為 CSV（COST-R15，文字欄位防範 CSV injection） */
     get: operations["costs-export"];
     put?: never;
     post?: never;
@@ -910,12 +910,12 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 列出計價表（內建與覆寫，尚未實作） */
+    /** 列出計價表：內建與覆寫的單價、確認日期與是否過期（COST-R12、R13） */
     get: operations["prices-list"];
-    /** 設定單價覆寫（尚未實作） */
+    /** 新增或取代一筆單價覆寫 {provider, model, unit_type, usd_per_unit, checked_at?}（COST-R12） */
     put: operations["prices-put"];
     post?: never;
-    /** 刪除單價覆寫（尚未實作） */
+    /** 移除一筆單價覆寫 {provider, model, unit_type}；不存在時回 404（COST-R12） */
     delete: operations["prices-delete"];
     options?: never;
     head?: never;
@@ -931,7 +931,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 確認內建計價表仍然正確（尚未實作） */
+    /** 把內建計價表的確認日期設為今天（COST-R13） */
     post: operations["prices-confirm"];
     delete?: never;
     options?: never;
@@ -1275,9 +1275,9 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 讀取全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services） */
+    /** 讀取全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata、services 與 budget） */
     get: operations["settings-get"];
-    /** 取代全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata 與 services）；內容不正確回 422 與逐欄位的 errors */
+    /** 取代全域設定區段（language、timing、llm、agent、subtitle_rules、stages、supadata、services 與 budget）；內容不正確回 422 與逐欄位的 errors */
     put: operations["settings-put"];
     post?: never;
     delete?: never;
@@ -2016,6 +2016,30 @@ export interface components {
        */
       spent_usd: number;
     };
+    Entries: {
+      entries: components["schemas"]["Entry"][] | null;
+      next_cursor?: string;
+    };
+    Entry: {
+      at: string;
+      /** Format: int64 */
+      attempt: number;
+      channel: string;
+      item_id: string;
+      item_title: string;
+      model: string;
+      outcome: string;
+      provider: string;
+      ref: string;
+      stage: string;
+      state: string;
+      unit_price: unknown;
+      unit_type: string;
+      /** Format: double */
+      units: number;
+      /** Format: double */
+      usd: number;
+    };
     EntryView: {
       /** @enum {string} */
       decision: "created" | "skipped" | "deferred";
@@ -2235,6 +2259,16 @@ export interface components {
       terms: string[] | null;
       /** Format: date-time */
       updated_at: string | null;
+    };
+    Group: {
+      /** Format: int64 */
+      calls: number;
+      key: string;
+      label: string;
+      /** Format: double */
+      reserved_usd: number;
+      /** Format: double */
+      usd: number;
     };
     ImportAssStyleInputBody: {
       /** @description .ass 檔的內容；與 path 擇一 */
@@ -2512,6 +2546,17 @@ export interface components {
        */
       expires_at: string;
     };
+    MonthBudget: {
+      month: string;
+      /** Format: double */
+      monthly_usd: number | null;
+      /** Format: double */
+      projected_usd: number;
+      /** Format: double */
+      reserved_usd: number;
+      /** Format: double */
+      spent_usd: number;
+    };
     NoteBody: {
       /** @description 自動檢查的結果，依檢查的順序 */
       checks: components["schemas"]["NoteCheck"][] | null;
@@ -2588,6 +2633,11 @@ export interface components {
       /** @description 內建模板在前，其他依 id 排序，每個只列最新版本 */
       templates: components["schemas"]["NoteTemplateBody"][] | null;
     };
+    Notice: {
+      actions: string[] | null;
+      code: string;
+      message: string;
+    };
     Notification: {
       /** Format: int64 */
       attempts: number;
@@ -2606,6 +2656,9 @@ export interface components {
     };
     NotifierListOutputBody: {
       notifiers: components["schemas"]["Info"][] | null;
+    };
+    OkOutputBody: {
+      ok: boolean;
     };
     OutputFile: {
       /** @description git vault 中這個檔案所在的 commit */
@@ -2806,6 +2859,21 @@ export interface components {
       /** @description 影音的短代號，例如 yt:abc123xxxxx */
       ref: string;
       title: string;
+    };
+    PriceEntry: {
+      checked_at: string;
+      model: string;
+      provider: string;
+      source: string;
+      stale: boolean;
+      unit_type: string;
+      /** Format: double */
+      usd_per_unit: number;
+    };
+    PriceList: {
+      builtin_checked_at: string;
+      builtin_stale: boolean;
+      prices: components["schemas"]["PriceEntry"][] | null;
     };
     Profile: {
       /** @description 內建的處理方案（default）不能刪除 */
@@ -3141,6 +3209,20 @@ export interface components {
     };
     SubscriptionsListOutputBody: {
       subscriptions: components["schemas"]["View"][] | null;
+    };
+    Summary: {
+      budget: components["schemas"]["MonthBudget"];
+      from: string;
+      groups: components["schemas"]["Group"][] | null;
+      notices: components["schemas"]["Notice"][] | null;
+      /** Format: double */
+      reserved_usd: number;
+      timezone: string;
+      to: string;
+      /** Format: double */
+      total_usd: number;
+      /** Format: int64 */
+      unknown_calls: number;
     };
     SwitchItemInputBody: {
       /**
@@ -3973,19 +4055,28 @@ export interface operations {
   };
   "costs-summary": {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description 預算時區中的開始日期 YYYY-MM-DD（含），預設本月 1 日 */
+        from?: string;
+        /** @description 預算時區中的結束日期 YYYY-MM-DD（含），預設今天 */
+        to?: string;
+        /** @description day（預設）、provider、model、stage、channel 或 item */
+        group_by?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["Summary"];
+        };
       };
       /** @description Error */
       default: {
@@ -4000,19 +4091,30 @@ export interface operations {
   };
   "costs-entries": {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description 預算時區中的開始日期 YYYY-MM-DD（含），預設本月 1 日 */
+        from?: string;
+        /** @description 預算時區中的結束日期 YYYY-MM-DD（含），預設今天 */
+        to?: string;
+        /** @description 1～500，預設 100 */
+        limit?: string;
+        /** @description 上一頁回應的 next_cursor */
+        cursor?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["Entries"];
+        };
       };
       /** @description Error */
       default: {
@@ -4027,19 +4129,26 @@ export interface operations {
   };
   "costs-export": {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description 預算時區中的開始日期 YYYY-MM-DD（含），預設本月 1 日 */
+        from?: string;
+        /** @description 預算時區中的結束日期 YYYY-MM-DD（含），預設今天 */
+        to?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description CSV */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "text/csv": string;
+        };
       };
       /** @description Error */
       default: {
@@ -5395,12 +5504,14 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["PriceList"];
+        };
       };
       /** @description Error */
       default: {
@@ -5420,14 +5531,22 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody?: {
+      content: {
+        "application/json": {
+          [key: string]: unknown;
+        };
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["PriceEntry"];
+        };
       };
       /** @description Error */
       default: {
@@ -5447,14 +5566,22 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody?: {
+      content: {
+        "application/json": {
+          [key: string]: unknown;
+        };
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["OkOutputBody"];
+        };
       };
       /** @description Error */
       default: {
@@ -5476,12 +5603,14 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["PriceList"];
+        };
       };
       /** @description Error */
       default: {

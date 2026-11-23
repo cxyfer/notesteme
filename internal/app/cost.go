@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/store"
 )
@@ -35,4 +36,18 @@ func (s *Server) CostEntries(ctx context.Context) ([]CostEntry, error) {
 		out = append(out, CostEntry{ItemID: e.ItemID, ItemTitle: e.ItemTitle, USD: e.USD, State: e.State})
 	}
 	return out, nil
+}
+
+// CostRow 是成本帳本的一筆完整紀錄（COST 的驗收句型 `the cost ledger entries of … are:` 用）。
+type CostRow = store.CostRow
+
+// CostRowsOf 回傳這部影音的成本紀錄，依時間與寫入順序。只供驗收測試的 harness 使用（steps.md 4.19，不新增 API）。
+func (s *Server) CostRowsOf(ctx context.Context, itemID string) ([]CostRow, error) {
+	return s.store.Read().ItemCostRows(ctx, itemID)
+}
+
+// SeedCostAt 在成本帳本寫入一筆這部影音在指定時間的紀錄（state 同 SeedCost）。只供驗收測試的 harness 使用。
+func (s *Server) SeedCostAt(ctx context.Context, itemID string, usd float64, state string, at time.Time) error {
+	_, err := s.store.Write().InsertCostRow(ctx, store.CostRow{ItemID: itemID, USD: usd, State: state, At: at})
+	return err
 }
