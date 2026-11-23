@@ -124,6 +124,15 @@ func TestLoadM3FeatureConfigs(t *testing.T) {
 // loadFeatureConfigs 把檔名以 prefixes 之一開頭的 .feature 中，每個 `the config file contains:` 載入一次，回傳檢查的份數。
 func loadFeatureConfigs(t *testing.T, prefixes ...string) int {
 	t.Helper()
+	return checkFeatureConfigs(t, func(base, _ string) bool {
+		return slices.ContainsFunc(prefixes, func(p string) bool { return strings.HasPrefix(base, p) })
+	})
+}
+
+// checkFeatureConfigs 載入 include 選出的 .feature 中每個 `the config file contains:` 的內容（Scenario Outline 逐列代入），
+// 回傳檢查的份數。
+func checkFeatureConfigs(t *testing.T, include func(base, content string) bool) int {
+	t.Helper()
 	files, err := filepath.Glob("../../features/*.feature")
 	if err != nil {
 		t.Fatal(err)
@@ -132,12 +141,12 @@ func loadFeatureConfigs(t *testing.T, prefixes ...string) int {
 	checked := 0
 	for _, f := range files {
 		base := filepath.Base(f)
-		if !slices.ContainsFunc(prefixes, func(p string) bool { return strings.HasPrefix(base, p) }) {
-			continue
-		}
 		raw, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if !include(base, string(raw)) {
+			continue
 		}
 		lines := strings.Split(string(raw), "\n")
 		examples := outlineExamples(lines)

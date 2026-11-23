@@ -129,6 +129,9 @@ type Config struct {
 	// HubPrecheckEnabled 是設定檔 hub.precheck.enabled（HSHR-R12，預設 false）。
 	HubPrecheckEnabled bool
 
+	// M4 是 M4 的設定檔區段與環境變數（internal/config/m4.go）。
+	M4 M4
+
 	// Origin 記錄每個欄位生效值的來源，key 為欄位名稱。
 	Origin map[string]Source
 }
@@ -167,6 +170,8 @@ type fileSchema struct {
 	MCP mcpSchema `yaml:"mcp"`
 	// Hub 的子欄位同樣用 KnownFields 檢查（HSHR-R1、R12）。
 	Hub hubSchema `yaml:"hub"`
+	// M4 的區段（server、scheduler、subscriptions、notify、bundles、backup、alerts、auth）。
+	M4 m4Schema `yaml:",inline"`
 }
 
 // mcpSchema 是設定檔 mcp 區段：MCP HTTP 的 Origin 與 Host 檢查（AUTH-R11）。
@@ -193,7 +198,7 @@ type networkSchema struct {
 // 只列出已知的名稱：不在這裡也不在設定檔欄位中的名稱，會回報為「未知欄位」。
 var dbManagedFields = map[string]bool{
 	"profiles": true, "prompts": true, "budget": true, "budgets": true, "settings": true,
-	"subscriptions": true, "tokens": true, "secrets": true, "cookies": true, "language": true,
+	"tokens": true, "secrets": true, "cookies": true, "language": true,
 	"notifications": true,
 }
 
@@ -205,6 +210,7 @@ func Load(src Sources) (*Config, error) {
 		TrashRetentionDays: DefaultTrashRetentionDays,
 		UploadMaxBytes:     DefaultUploadMaxBytes,
 		Origin:             map[string]Source{FieldListen: SourceDefault, FieldData: SourceDefault},
+		M4:                 defaultM4(),
 	}
 
 	path := src.File
@@ -244,6 +250,9 @@ func Load(src Sources) (*Config, error) {
 	if cfg.Inbox == "" {
 		cfg.Inbox = filepath.Join(cfg.Data, "inbox")
 	}
+	if err := finishM4(cfg, src.Env); err != nil {
+		return nil, err
+	}
 	return cfg, nil
 }
 
@@ -259,6 +268,7 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 		switch k {
 		case "listen", "data", "trusted_proxies", "tools", "providers", "hooks", "asr", "llm", "network", "inbox", "media_roots", "library", "mcp",
 			"vaults", "sponsorblock", "hub":
+		case "server", "scheduler", "subscriptions", "notify", "bundles", "backup", "alerts", "auth": // M4（m4Schema）
 		default:
 			if dbManagedFields[k] {
 				managed = append(managed, k)
@@ -368,6 +378,9 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 		return fmt.Errorf("設定檔 %s 的欄位 hub.url 不正確：%w", path, err)
 	}
 	cfg.HubPrecheckEnabled = f.Hub.Precheck.Enabled
+	if err := parseM4(&f.M4, path, cfg); err != nil {
+		return err
+	}
 	for i, v := range f.MediaRoots {
 		if !filepath.IsAbs(v) {
 			return fmt.Errorf("設定檔 %s 的欄位 media_roots[%d] 必須是絕對路徑：%q", path, i, v)
