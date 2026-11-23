@@ -3,8 +3,9 @@
 // 路由前綴 /api/v1/（OpenAPI 公開在 GET /api/v1/openapi.json）；/auth/<provider>/start|callback 是瀏覽器的 OAuth
 // 流程；/mcp 是 Hub MCP（HMCP）；/healthz、/readyz 同 Client。錯誤格式與 Client 相同（internal/apierr）。
 //
-// M5-S0 只有骨架：/healthz、/readyz 與 OpenAPI 已實作，其他路由都是 501 not_implemented 的 stub（stubs.go），
-// 每條 stub 記錄它需要的存取層級（Access），身分驗證與權限的 middleware 由 S1、S2 依這張表加入。
+// M5-S0 的骨架：/healthz、/readyz 與 OpenAPI；M5-S1 加入登入、session 與帳號連結（auth.go）與身分驗證的 middleware。
+// 其他路由仍是 501 not_implemented 的 stub（stubs.go），每條路由（含已實作的）都以 Access 宣告需要的存取層級，
+// 權限（403 forbidden）的檢查由 S2 依這張表加入。
 package hubapi
 
 import (
@@ -20,6 +21,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/hub/hubauth"
 	"github.com/cxyfer/notesteme/internal/hub/hubblob"
 	"github.com/cxyfer/notesteme/internal/hub/hubconfig"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore"
@@ -33,6 +35,8 @@ type Deps struct {
 	Clock   clock.Clock
 	Log     *slog.Logger
 	Version string
+	// Auth 是登入與 session（M5-S1）；匯出 OpenAPI 時是 nil。
+	Auth *hubauth.Service
 }
 
 // PublicDocPaths 是 Huma 在 cfg.OpenAPIPath 底下提供的 OpenAPI 文件，一律不需要登入（ADR-0032 第 1 點）。
@@ -54,13 +58,15 @@ func New(d Deps) http.Handler {
 		d.Log = slog.New(slog.DiscardHandler)
 	}
 	mux := http.NewServeMux()
-	newHumaAPI(mux, d)
+	rt := newHumaAPI(mux, d)
+	registerOAuth(mux, rt)
 	registerRawStubs(mux)
 	return recoverMiddleware(d.Log, mux)
 }
 
 // newHumaAPI 建立 Huma API 並註冊所有 Huma 路由；OpenAPISpec 共用同一段。
-func newHumaAPI(mux *http.ServeMux, d Deps) huma.API {
+// 身分驗證的 middleware 要在註冊任何路由之前加入（Huma 在註冊時套用 middleware）。
+func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 	cfg := huma.DefaultConfig("Notesteme Hub", d.Version)
 	cfg.Info.Description = "Notesteme Hub 的 API（/api/v1）。Client 契約見 ADR-0032 第 1 點。"
 	cfg.OpenAPIPath = "/api/v1/openapi"
@@ -68,30 +74,36 @@ func newHumaAPI(mux *http.ServeMux, d Deps) huma.API {
 	cfg.SchemasPath = ""
 	cfg.CreateHooks = nil
 	api := humago.New(mux, cfg)
-	rt := &routes{d: d}
+	rt := &routes{d: d, api: api}
+	api.UseMiddleware(rt.accessMiddleware)
+	public := map[string]any{AccessExtension: string(AccessPublic)}
 	huma.Register(api, huma.Operation{
 		OperationID: "healthz", Method: http.MethodGet, Path: "/healthz",
-		Summary: "存活檢查（免驗證）",
+		Summary: "存活檢查（免驗證）", Extensions: public,
 	}, rt.healthz)
 	huma.Register(api, huma.Operation{
 		OperationID: "readyz", Method: http.MethodGet, Path: "/readyz",
-		Summary: "就緒檢查：確認資料庫可寫（免驗證）",
+		Summary: "就緒檢查：確認資料庫可寫（免驗證）", Extensions: public,
 	}, rt.readyz)
+	registerAuth(api, rt)
 	registerStubs(api)
-	return api
+	return rt
 }
 
 // OpenAPISpec 回傳與 GET /api/v1/openapi.json 相同內容的 OpenAPI 3.1 文件（縮排的 JSON，結尾換行）；不需要資料庫。
 func OpenAPISpec() ([]byte, error) {
-	api := newHumaAPI(http.NewServeMux(), Deps{Version: OpenAPISnapshotVersion})
-	b, err := json.MarshalIndent(api.OpenAPI(), "", "  ")
+	rt := newHumaAPI(http.NewServeMux(), Deps{Version: OpenAPISnapshotVersion})
+	b, err := json.MarshalIndent(rt.api.OpenAPI(), "", "  ")
 	if err != nil {
 		return nil, err
 	}
 	return append(b, '\n'), nil
 }
 
-type routes struct{ d Deps }
+type routes struct {
+	d   Deps
+	api huma.API
+}
 
 type statusOutput struct {
 	Body struct {

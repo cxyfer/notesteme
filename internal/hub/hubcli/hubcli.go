@@ -196,6 +196,10 @@ func doctor(ctx context.Context, env Env) int {
 		problems++
 	} else {
 		fmt.Fprintf(out, "登入方式：%s\n", strings.Join(enabled, "、"))
+		if cfg.SessionKey == "" {
+			fmt.Fprintf(out, "  ✗ 沒有環境變數 %s（session 金鑰）\n", hubconfig.EnvSessionKey)
+			problems++
+		}
 	}
 	if cfg.StoreDriver == hubconfig.StoreSQLite {
 		st, err := sqlite.Open(ctx, cfg.Data, env.Clock, sqlite.Options{NoMigrate: true})

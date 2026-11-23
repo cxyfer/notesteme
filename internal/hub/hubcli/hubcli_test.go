@@ -31,7 +31,10 @@ func env(t *testing.T, yml string, extra map[string]string) (Env, *bytes.Buffer,
 
 const cfg = "public_url: https://hub.example.org\noauth:\n  github: { client_id: gh }\n"
 
-var secret = map[string]string{"NOTESTEME_HUB_OAUTH_GITHUB_CLIENT_SECRET": "s"}
+var secret = map[string]string{
+	"NOTESTEME_HUB_OAUTH_GITHUB_CLIENT_SECRET": "s",
+	"NOTESTEME_HUB_SESSION_KEY":                "0123456789abcdef0123456789abcdef",
+}
 
 func TestUsageAndVersion(t *testing.T) {
 	e, out, errb := env(t, cfg, nil)
@@ -59,6 +62,11 @@ func TestMigrateAndDoctor(t *testing.T) {
 	e2, out2, _ := env(t, cfg, nil)
 	if c := Run(context.Background(), []string{"doctor"}, e2); c != ExitError || !strings.Contains(out2.String(), "NOTESTEME_HUB_OAUTH_GITHUB_CLIENT_SECRET") {
 		t.Errorf("doctor（缺 secret）= %d %s", c, out2)
+	}
+	// 沒有 session 金鑰：doctor 指出缺少的環境變數。
+	e3, out3, _ := env(t, cfg, map[string]string{"NOTESTEME_HUB_OAUTH_GITHUB_CLIENT_SECRET": "s"})
+	if c := Run(context.Background(), []string{"doctor"}, e3); c != ExitError || !strings.Contains(out3.String(), "NOTESTEME_HUB_SESSION_KEY") {
+		t.Errorf("doctor（缺 session 金鑰）= %d %s", c, out3)
 	}
 }
 
@@ -114,8 +122,8 @@ func TestServe(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusNotImplemented {
-		t.Errorf("/api/v1/me = %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("/api/v1/me（沒有登入）= %d，預期 401", resp.StatusCode)
 	}
 	cancel()
 	if c := <-done; c != ExitOK {

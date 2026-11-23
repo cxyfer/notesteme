@@ -114,6 +114,127 @@
         ],
         "type": "object"
       },
+      "IdentityView": {
+        "additionalProperties": false,
+        "properties": {
+          "login": {
+            "examples": [
+              "alice"
+            ],
+            "type": "string"
+          },
+          "provider": {
+            "examples": [
+              "github"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "login"
+        ],
+        "type": "object"
+      },
+      "LinkOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "authorize_url": {
+            "description": "供應商的授權網址；瀏覽器前往這裡完成連結",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorize_url"
+        ],
+        "type": "object"
+      },
+      "Me": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "identities": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "identities",
+          "groups",
+          "permissions"
+        ],
+        "type": "object"
+      },
+      "Provider": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "examples": [
+              "github"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "GitHub"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ProvidersOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/Provider"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "type": "object"
+      },
       "StatusOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -505,7 +626,106 @@
         "operationId": "auth-logout",
         "responses": {
           "204": {
-            "description": "No Content"
+            "description": "No Content",
+            "headers": {
+              "Domain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Expires": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "HttpOnly": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "MaxAge": {
+                "schema": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "Name": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Partitioned": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "Path": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Quoted": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "Raw": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "RawExpires": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "SameSite": {
+                "schema": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "Secure": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Unparsed": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Value": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "500": {
             "content": {
@@ -516,19 +736,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "登出，session 立即失效（尚未實作）",
+        "summary": "登出，session 立即失效",
         "x-notesteme-access": "session"
       }
     },
@@ -537,10 +747,17 @@
         "description": "規則：HACC-R1。",
         "operationId": "auth-providers",
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvidersOutputBody"
+                }
+              }
+            },
+            "description": "OK"
           },
-          "500": {
+          "default": {
             "content": {
               "application/json": {
                 "schema": {
@@ -548,20 +765,10 @@
                 }
               }
             },
-            "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
+            "description": "Error"
           }
         },
-        "summary": "列出已啟用的登入方式（尚未實作）",
+        "summary": "列出已啟用的登入方式（依 google、github、linuxdo 的順序）",
         "x-notesteme-access": "public"
       }
     },
@@ -603,8 +810,35 @@
         "description": "規則：HACC-R6、ADR-0032。",
         "operationId": "me",
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "500": {
             "content": {
@@ -615,19 +849,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "目前的帳號、登入方式、群組與有效權限（尚未實作）",
+        "summary": "目前的帳號、登入方式、群組與有效權限",
         "x-notesteme-access": "authenticated"
       }
     },
@@ -635,9 +859,76 @@
       "delete": {
         "description": "規則：HACC-R7。",
         "operationId": "me-identities-unlink",
+        "parameters": [
+          {
+            "description": "登入方式",
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "description": "登入方式",
+              "enum": [
+                "google",
+                "github",
+                "linuxdo"
+              ],
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
           },
           "500": {
             "content": {
@@ -648,19 +939,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "移除登入方式（尚未實作）",
+        "summary": "移除登入方式",
         "x-notesteme-access": "session"
       }
     },
@@ -668,9 +949,162 @@
       "post": {
         "description": "規則：HACC-R6。",
         "operationId": "me-identities-link",
+        "parameters": [
+          {
+            "description": "登入方式",
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "description": "登入方式",
+              "enum": [
+                "google",
+                "github",
+                "linuxdo"
+              ],
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkOutputBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Domain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Expires": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "HttpOnly": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "MaxAge": {
+                "schema": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "Name": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Partitioned": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "Path": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Quoted": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "Raw": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "RawExpires": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "SameSite": {
+                "schema": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "Secure": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Unparsed": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Value": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
           },
           "500": {
             "content": {
@@ -681,19 +1115,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "連結新的登入方式（尚未實作）",
+        "summary": "連結新的登入方式：回傳供應商的授權網址",
         "x-notesteme-access": "session"
       }
     },
@@ -1246,7 +1670,8 @@
             "description": "Error"
           }
         },
-        "summary": "存活檢查（免驗證）"
+        "summary": "存活檢查（免驗證）",
+        "x-notesteme-access": "public"
       }
     },
     "/readyz": {
@@ -1274,7 +1699,8 @@
             "description": "Error"
           }
         },
-        "summary": "就緒檢查：確認資料庫可寫（免驗證）"
+        "summary": "就緒檢查：確認資料庫可寫（免驗證）",
+        "x-notesteme-access": "public"
       }
     }
   }

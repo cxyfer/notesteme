@@ -37,17 +37,7 @@ type Stub struct {
 
 // Stubs 是 HACC、HREP 規格「介面」章節的 /api/v1 路由（M5-S0）。
 var Stubs = []Stub{
-	// HACC：登入、帳號、PAT（S1、S2）
-	{ID: "auth-providers", Method: http.MethodGet, Path: "/api/v1/auth/providers", Access: AccessPublic, Spec: "HACC-R1",
-		Summary: "列出已啟用的登入方式（尚未實作）"},
-	{ID: "auth-logout", Method: http.MethodPost, Path: "/api/v1/auth/logout", Access: AccessSession, Spec: "HACC-R8",
-		Summary: "登出，session 立即失效（尚未實作）"},
-	{ID: "me", Method: http.MethodGet, Path: "/api/v1/me", Access: AccessAuthenticated, Spec: "HACC-R6、ADR-0032",
-		Summary: "目前的帳號、登入方式、群組與有效權限（尚未實作）"},
-	{ID: "me-identities-link", Method: http.MethodPost, Path: "/api/v1/me/identities/{provider}/link", Access: AccessSession, Spec: "HACC-R6",
-		Summary: "連結新的登入方式（尚未實作）"},
-	{ID: "me-identities-unlink", Method: http.MethodDelete, Path: "/api/v1/me/identities/{provider}", Access: AccessSession, Spec: "HACC-R7",
-		Summary: "移除登入方式（尚未實作）"},
+	// HACC：PAT（S2）。登入、登出、/me 與登入方式的連結、移除由 M5-S1 實作（auth.go）。
 	{ID: "me-tokens-list", Method: http.MethodGet, Path: "/api/v1/me/tokens", Access: AccessSession, Spec: "HACC-R9",
 		Summary: "列出 Hub token（尚未實作）"},
 	{ID: "me-tokens-create", Method: http.MethodPost, Path: "/api/v1/me/tokens", Access: AccessSession, Spec: "HACC-R9",
@@ -109,10 +99,8 @@ var Stubs = []Stub{
 		Summary: "檢舉版本（尚未實作）"},
 }
 
-// RawStubs 是不經過 Huma 的路由（瀏覽器的 OAuth 流程與 MCP 的 JSON-RPC），同樣先回 501。
+// RawStubs 是不經過 Huma 的路由（MCP 的 JSON-RPC），同樣先回 501。瀏覽器的 OAuth 流程（/auth/<provider>/start|callback）由 M5-S1 實作（auth.go）。
 var RawStubs = []Stub{
-	{ID: "oauth-start", Method: http.MethodGet, Path: "/auth/{provider}/start", Access: AccessPublic, Spec: "HACC-R2"},
-	{ID: "oauth-callback", Method: http.MethodGet, Path: "/auth/{provider}/callback", Access: AccessPublic, Spec: "HACC-R3"},
 	// HMCP-R1：只接受 PAT，所有方法都交給 MCP SDK（S6）。
 	{ID: "mcp", Method: "", Path: "/mcp", Access: AccessAuthenticated, Spec: "HMCP-R1"},
 }

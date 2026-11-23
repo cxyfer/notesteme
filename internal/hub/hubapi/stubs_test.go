@@ -10,17 +10,23 @@ import (
 
 func nilLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
-// stubCases 是 HACC、HREP、HMCP 規格「介面」章節的路由與存取層級（M5-S0）。
-// 這份清單獨立於 production 的 Stubs，才抓得到 method、path、權限寫錯。
-var stubCases = []struct {
+type routeCase struct {
 	method, path string
 	access       Access
-}{
+}
+
+// implementedCases 是 M5-S1 實作的 /api/v1 路由與存取層級（auth.go）；OpenAPI 的 x-notesteme-access 要相同。
+var implementedCases = []routeCase{
 	{"GET", "/api/v1/auth/providers", AccessPublic},
 	{"POST", "/api/v1/auth/logout", AccessSession},
 	{"GET", "/api/v1/me", AccessAuthenticated},
 	{"POST", "/api/v1/me/identities/github/link", AccessSession},
 	{"DELETE", "/api/v1/me/identities/github", AccessSession},
+}
+
+// stubCases 是 HACC、HREP、HMCP 規格「介面」章節中還沒有實作的路由與存取層級（M5-S0 起，S1 移走登入的路由）。
+// 這份清單獨立於 production 的 Stubs，才抓得到 method、path、權限寫錯。
+var stubCases = []routeCase{
 	{"GET", "/api/v1/me/tokens", AccessSession},
 	{"POST", "/api/v1/me/tokens", AccessSession},
 	{"DELETE", "/api/v1/me/tokens/t1", AccessSession},
@@ -51,7 +57,8 @@ var stubCases = []struct {
 	{"POST", "/api/v1/versions/v1/reports", "read"},
 }
 
-// 每條 stub 都回 501 not_implemented（不讀 body，不是 404 或 405），而且宣告的存取層級與規格相同。
+// 每條 stub 都宣告與規格相同的存取層級；公開的 stub 回 501 not_implemented（不讀 body，不是 404 或 405），
+// 其他的 stub 在沒有登入時先被 middleware 擋下，回 401 unauthorized（HACC-R13：身分在讀取 body 之前檢查）。
 func TestStubRoutes(t *testing.T) {
 	if len(Stubs) != len(stubCases) {
 		t.Fatalf("production 有 %d 條 stub，測試清單有 %d 條", len(Stubs), len(stubCases))
@@ -59,22 +66,20 @@ func TestStubRoutes(t *testing.T) {
 	h := New(Deps{Store: &fakeStore{}})
 	for _, c := range stubCases {
 		rec := do(h, c.method, c.path)
-		if rec.Code != http.StatusNotImplemented || decode(t, rec)["code"] != "not_implemented" {
-			t.Errorf("%s %s = %d %s，預期 501 not_implemented", c.method, c.path, rec.Code, rec.Body)
+		want, code := http.StatusUnauthorized, "unauthorized"
+		if c.access == AccessPublic {
+			want, code = http.StatusNotImplemented, "not_implemented"
+		}
+		if rec.Code != want || decode(t, rec)["code"] != code {
+			t.Errorf("%s %s = %d %s，預期 %d %s", c.method, c.path, rec.Code, rec.Body, want, code)
 		}
 		if got := accessFor(c.method, c.path); got != c.access {
 			t.Errorf("%s %s 的存取層級 = %q，預期 %q", c.method, c.path, got, c.access)
 		}
 	}
-	// 瀏覽器流程與 MCP。
-	for _, p := range []string{"/auth/google/start", "/auth/github/callback?code=x&state=y", "/mcp"} {
-		m := "GET"
-		if p == "/mcp" {
-			m = "POST"
-		}
-		if rec := do(h, m, p); rec.Code != http.StatusNotImplemented {
-			t.Errorf("%s %s = %d", m, p, rec.Code)
-		}
+	// MCP（S6）。
+	if rec := do(h, "POST", "/mcp"); rec.Code != http.StatusNotImplemented {
+		t.Errorf("POST /mcp = %d", rec.Code)
 	}
 	// 沒有登記的路徑仍然是 404（stub 沒有吃掉其他路徑）。
 	if rec := do(h, "GET", "/api/v1/nope"); rec.Code != http.StatusNotFound {
@@ -114,12 +119,32 @@ func TestStubAccessValues(t *testing.T) {
 			t.Errorf("%s 的 Access %q 不是已知的值", s.ID, s.Access)
 		}
 	}
-	api := newHumaAPI(http.NewServeMux(), Deps{})
-	for path, item := range api.OpenAPI().Paths {
+	rt := newHumaAPI(http.NewServeMux(), Deps{})
+	ops := map[string]*huma.Operation{}
+	for path, item := range rt.api.OpenAPI().Paths {
 		for _, op := range []*huma.Operation{item.Get, item.Post, item.Put, item.Patch, item.Delete} {
-			if op != nil && strings.HasPrefix(path, "/api/v1/") && op.Extensions[AccessExtension] == nil {
-				t.Errorf("%s 沒有 %s", path, AccessExtension)
+			if op == nil {
+				continue
 			}
+			ops[op.Method+" "+path] = op
+			// 每個 operation（含 /healthz、/readyz）都宣告存取層級；沒有宣告的 middleware 當作要登入。
+			if v, _ := op.Extensions[AccessExtension].(string); !known[Access(v)] {
+				t.Errorf("%s %s 的 %s = %v", op.Method, path, AccessExtension, op.Extensions[AccessExtension])
+			}
+		}
+	}
+	for _, c := range implementedCases {
+		found := false
+		for k, op := range ops {
+			if strings.HasPrefix(k, c.method+" ") && matchPattern(op.Path, c.path) {
+				found = true
+				if got := accessOf(op); got != c.access {
+					t.Errorf("%s %s 的存取層級 = %q，預期 %q", c.method, c.path, got, c.access)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s %s 沒有註冊", c.method, c.path)
 		}
 	}
 }

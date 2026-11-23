@@ -17,6 +17,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/hub/hubapi"
+	"github.com/cxyfer/notesteme/internal/hub/hubauth"
 	"github.com/cxyfer/notesteme/internal/hub/hubblob"
 	"github.com/cxyfer/notesteme/internal/hub/hubconfig"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore"
@@ -52,7 +53,7 @@ type Server struct {
 	store   hubstore.Store
 	blobs   hubblob.Store
 	handler http.Handler
-	// HTTPClient 是 Hub 對外連線用的 client（經 netguard）；S1 的 OAuth 從這裡取用。
+	// HTTPClient 是 Hub 對外連線用的 client（經 netguard）；OAuth（hubauth）從這裡取用。
 	HTTPClient *http.Client
 }
 
@@ -85,7 +86,12 @@ func Open(ctx context.Context, o Options) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{cfg: cfg, store: st, blobs: blobs, HTTPClient: netguard.NewClient(netDeps)}
-	s.handler = hubapi.New(hubapi.Deps{Config: cfg, Store: st, Blobs: blobs, Clock: o.Clock, Log: o.Log, Version: o.Version})
+	auth, err := hubauth.New(hubauth.Deps{Config: cfg, Store: st, Clock: o.Clock, Log: o.Log, HTTP: s.HTTPClient})
+	if err != nil {
+		_ = st.Close()
+		return nil, err
+	}
+	s.handler = hubapi.New(hubapi.Deps{Config: cfg, Store: st, Blobs: blobs, Clock: o.Clock, Log: o.Log, Version: o.Version, Auth: auth})
 	return s, nil
 }
 
