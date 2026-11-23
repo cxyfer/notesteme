@@ -1,0 +1,426 @@
+{
+  "app": {
+    "name": "Notesteme Hub",
+    "short": "Notesteme",
+    "hub": "Hub"
+  },
+  "shell": {
+    "skip": "跳到主要内容",
+    "nav": "主要导航",
+    "signedInAs": "{{name}}",
+    "signIn": "登录",
+    "signOut": "退出登录",
+    "language": "界面语言",
+    "theme": "主题",
+    "themes": {
+      "system": "跟随系统",
+      "light": "浅色",
+      "dark": "深色"
+    },
+    "footer": "Hub 上的字幕与笔记由用户分享，各自标示授权。版权或隐私问题请提交下架申请。"
+  },
+  "nav": {
+    "browse": "浏览",
+    "account": "账号",
+    "moderation": "审核",
+    "users": "用户",
+    "takedown": "下架申请"
+  },
+  "common": {
+    "loading": "加载中…",
+    "loadMore": "加载更多",
+    "close": "关闭",
+    "cancel": "取消",
+    "copy": "复制",
+    "copied": "已复制",
+    "copyFailed": "无法复制，请自行选取文字",
+    "listSep": "、",
+    "none": "（无）",
+    "actions": "操作",
+    "notifications": "通知",
+    "undo": "撤销"
+  },
+  "errors": {
+    "category": {
+      "retryable": "暂时无法完成",
+      "wait": "请稍候",
+      "needs_action": "需要你处理",
+      "fatal": "无法完成"
+    },
+    "unknown": "发生错误（{{code}}）",
+    "network_error": "连不上 Hub。检查网络后再试一次。",
+    "unauthorized": "请先登录 Hub。",
+    "forbidden": "你没有这个操作需要的权限。",
+    "not_found": "找不到这个项目，或你没有权限查看。",
+    "removed": "这个版本已依下架申请移除。",
+    "rate_limited": "请求太频繁，请稍后再试。",
+    "account_suspended": "这个账号已被停用。",
+    "own_version": "不能对自己上传的版本投票。",
+    "account_too_new": "账号创建未满 24 小时，还不能投票或举报。",
+    "already_reported": "你已经举报过这个版本，管理员处理前不能重复举报。",
+    "version_hidden": "这个版本目前被隐藏，不能投票或举报。",
+    "last_identity": "这是你唯一的登录方式，不能移除。",
+    "provider_already_linked": "这个账号已经关联了这个登录方式。",
+    "admin_by_config": "管理员只能在配置文件或用 notesteme-hub admin grant 指定。",
+    "takedown_decided": "这个下架申请已经处理过了。",
+    "report_decided": "这条举报已经处理过了。",
+    "csrf_invalid": "安全验证失败，请刷新页面后再试。",
+    "session_required": "这个操作只能在 Hub 网页登录后进行。"
+  },
+  "notFound": {
+    "title": "找不到这个页面",
+    "body": "网址可能输错了，或页面已经移除。",
+    "back": "回到浏览"
+  },
+  "login": {
+    "title": "登录 Hub",
+    "intro": "用下面任何一个账号登录。第一次登录会创建 Hub 账号。",
+    "with": "用 {{provider}} 登录",
+    "none": "这个 Hub 还没有启用任何登录方式。请联系管理员。",
+    "already": "你已经以 {{name}} 登录。",
+    "noEmailMerge": "用不同的登录方式第一次登录会创建另一个账号。要用多个登录方式，先登录后在「账号」页关联。",
+    "takedown": "无需登录：提交下架申请"
+  },
+  "browse": {
+    "title": "浏览分享的字幕与笔记",
+    "intro": "依平台、频道、语言与模型筛选，找一个你信任的版本。",
+    "filters": "筛选条件",
+    "any": "全部",
+    "platform": "平台",
+    "kind": "种类",
+    "variant": "版本阶段",
+    "channel": "频道 ID",
+    "video": "视频",
+    "videoHint": "例如 youtube:dQw4w9WgXcQ，分P加 /p2",
+    "lang": "语言",
+    "langHint": "例如 zh-Hans、en",
+    "transcribe_model": "转录模型",
+    "correct_model": "校正模型",
+    "translate_model": "翻译模型",
+    "sort": "排序",
+    "sortScore": "分数",
+    "sortNew": "最新",
+    "excludeUnverified": "排除模型未经 Client 记录的版本",
+    "apply": "应用筛选",
+    "clear": "清除筛选条件",
+    "count_other": "已加载 {{count}} 个版本",
+    "count_one": "已加载 {{count}} 个版本",
+    "empty": "还没有任何分享。从 Notesteme Client 的音视频详情点「分享到 Hub」。",
+    "emptyFiltered": "没有符合条件的版本。"
+  },
+  "kind": {
+    "transcript": "字幕",
+    "chapters": "章节",
+    "note": "笔记",
+    "frames": "画面"
+  },
+  "variant": {
+    "source": "原始",
+    "normalized": "规范化",
+    "segmented": "分句",
+    "corrected": "校正",
+    "translated": "翻译",
+    "edited": "编修"
+  },
+  "platform": {
+    "youtube": "YouTube",
+    "bilibili": "Bilibili",
+    "podcast": "Podcast"
+  },
+  "model": {
+    "transcribe": "转录",
+    "correct": "校正",
+    "translate": "翻译",
+    "status": "模型的来源",
+    "recorded": "由 Client 记录的模型",
+    "unverified": "模型未经记录"
+  },
+  "version": {
+    "title": "版本",
+    "scoreLabel": "分数 {{score}}",
+    "license": "授权 {{license}}",
+    "uploaders": "上传者：{{names}}",
+    "backToVideo": "← 视频 {{video}} 的所有版本",
+    "hiddenNotice": "这个版本目前被隐藏（举报待处理），只有上传者与版主看得到。",
+    "score": "分数",
+    "licenseLabel": "授权",
+    "uploadersLabel": "上传者",
+    "visibility": "可见度",
+    "created": "创建时间",
+    "sha256": "SHA-256",
+    "parents": "衍生自",
+    "children": "衍生出的版本",
+    "regeneratedFrom": "以 @{{name}} 的原始字幕重新生成",
+    "derivedBy": "@{{name}} 上传",
+    "actions": "版本的操作",
+    "download": "下载",
+    "downloadAs": "下载 {{format}}",
+    "noDownload": "画面没有可下载的格式。",
+    "needDownload": "登录并有下载权限后才能下载与预览内容。",
+    "regenerateTitle": "在你的 Client 重新生成",
+    "regenerateHint": "在 Notesteme Client 的「设置 → Hub」粘贴这个版本 ID，Client 会用这份原始字幕重新跑校正、翻译与笔记，不用付转录费。",
+    "copyId": "复制版本 ID",
+    "preview": "内容",
+    "noPreview": "画面不提供预览。",
+    "badContent": "内容的格式不正确，无法显示。",
+    "showMore_other": "再显示 300 句（还有 {{count}} 句）",
+    "showMore_one": "再显示（还有 {{count}} 句）",
+    "provenance": "来源记录",
+    "noProvenance": "没有来源记录。"
+  },
+  "visibility": {
+    "public": "公开",
+    "authenticated": "登录的成员",
+    "group": "群组 {{group}}",
+    "private": "私人"
+  },
+  "state": {
+    "visible": "可见",
+    "hidden": "已隐藏",
+    "removed": "已移除",
+    "withdrawn": "已撤回"
+  },
+  "community": {
+    "vote": "投票",
+    "score": "分数：{{score}}",
+    "up": "有帮助 +1",
+    "down": "不好 −1",
+    "clear": "收回投票",
+    "signInToVote": "登录后可以投票与举报。",
+    "notVisible": "这个版本目前不能投票或举报。",
+    "problems": "有问题？",
+    "report": "举报",
+    "takedown": "提交下架申请",
+    "hide": "隐藏这个版本",
+    "hideTitle": "隐藏这个版本？",
+    "hideHint": "隐藏后不出现在列表与查询中，只有上传者与版主看得到。目前没有取消隐藏的操作，要恢复时需等新的举报被驳回。",
+    "hidden": "已隐藏这个版本",
+    "reportTitle": "举报这个版本",
+    "reportHint": "版主会看到你的账号名称，上传者与其他人看不到。版权与隐私问题请改用下架申请。",
+    "reason": "原因",
+    "note": "补充说明（选填，最多 1,000 字）",
+    "reportSubmit": "提交举报",
+    "reported": "已提交举报",
+    "useTakedown": "版权与隐私问题请改用下架申请。"
+  },
+  "reportReason": {
+    "wrong_language": "语言错误",
+    "bad_quality": "质量不佳",
+    "spam": "垃圾内容",
+    "offensive": "冒犯性内容",
+    "other": "其他"
+  },
+  "video": {
+    "compare": "比较",
+    "compareHint": "勾选两个字幕版本，在共同的时间带上并排比较。",
+    "compareNeedsDownload": "登录并有下载权限后可以并排比较字幕。"
+  },
+  "compare": {
+    "title": "并排比较",
+    "close": "结束比较",
+    "loading": "加载两个版本的字幕…",
+    "left": "左：{{name}}",
+    "right": "右：{{name}}",
+    "band": "两个版本有字幕的时间范围",
+    "position": "比较位置 {{time}}",
+    "diffAt": "{{time}} 的两句差异",
+    "onlyLeft": "只在左边：",
+    "onlyRight": "只在右边：",
+    "jumpTo": "跳到 {{time}}"
+  },
+  "takedown": {
+    "title": "下架申请",
+    "intro": "版权人或当事人可以申请移除 Hub 上的版本，无需登录。管理员处理后，用申请编号查询结果（不会发送 email）。",
+    "version": "版本 ID",
+    "versionHint": "版本页网址的最后一段",
+    "reason": "原因",
+    "statement": "说明",
+    "statementHint_other": "20～5,000 字，目前 {{count}} 字",
+    "statementHint_one": "20～5,000 字，目前 {{count}} 字",
+    "email": "联系 email",
+    "emailHint": "只有管理员看得到，加密保存。",
+    "goodFaith": "我声明这是基于善意的申请，内容属实。",
+    "submit": "提交下架申请",
+    "sent": "已收到下架申请",
+    "sentBody": "申请编号 {{id}}。请记下编号，之后用它查询处理结果。",
+    "copyId": "复制申请编号",
+    "checkStatus": "查询处理状态",
+    "lookup": "已经申请过？输入申请编号"
+  },
+  "takedownReason": {
+    "copyright": "版权",
+    "privacy": "隐私",
+    "other": "其他"
+  },
+  "takedownState": {
+    "open": "处理中",
+    "removed": "已移除版本",
+    "rejected": "已驳回"
+  },
+  "takedownStatus": {
+    "title": "下架申请的状态",
+    "id": "申请编号",
+    "check": "查询"
+  },
+  "account": {
+    "title": "账号",
+    "profile": "账号资料",
+    "name": "显示名称",
+    "groups": "群组",
+    "permissions": "权限"
+  },
+  "permission": {
+    "read": "浏览",
+    "download": "下载",
+    "regenerate": "取用原始字幕",
+    "upload": "分享",
+    "moderate": "审核",
+    "admin": "管理"
+  },
+  "identities": {
+    "title": "登录方式",
+    "link": "关联 {{provider}}",
+    "remove": "移除 {{provider}}",
+    "hint": "关联后，用任何一个登录方式都会进入同一个账号。关联需要在 10 分钟内登录过。",
+    "reauth": "请重新登录后再关联新的登录方式。",
+    "signInAgain": "重新登录",
+    "removeTitle": "移除 {{provider}}？",
+    "removeHint": "之后不能再用它登录这个账号，可以随时重新关联。",
+    "removeConfirm": "移除登录方式",
+    "removed": "已移除登录方式"
+  },
+  "tokens": {
+    "title": "Hub token",
+    "intro": "给 Notesteme Client 与 MCP 用。每个 token 的权限不会超过你的账号；账号被停用时 token 也一起失效。",
+    "empty": "还没有 Hub token。",
+    "name": "名称",
+    "permissions": "权限",
+    "created": "创建时间",
+    "expires": "到期",
+    "expired": "已过期",
+    "revoke": "撤销 {{name}}",
+    "revokeTitle": "撤销「{{name}}」？",
+    "revokeHint": "用这个 token 的 Client 或 MCP 会立即无法连接，无法撤销。",
+    "revokeConfirm": "撤销 token",
+    "revoked": "已撤销 token",
+    "new": "创建 Hub token",
+    "days": "有效天数",
+    "daysHint": "1～365 天",
+    "create": "创建 token",
+    "createdTitle": "已创建 Hub token",
+    "createdHint": "这是唯一一次显示这个 token。复制后粘贴到 Client 的「设置 → Hub」。"
+  },
+  "shares": {
+    "title": "我的分享",
+    "empty": "你还没有分享任何内容。",
+    "withdraw": "撤回分享",
+    "withdrawTitle": "撤回这次分享？",
+    "withdrawHint": "没有其他人分享同样内容的版本会从 Hub 消失；别人由它衍生出的版本不受影响。",
+    "withdrawn": "已撤回分享",
+    "withdrawnAt": "已于 {{at}} 撤回",
+    "removal": "（{{source}}：{{reason}}）"
+  },
+  "removalSource": {
+    "takedown": "依下架申请移除",
+    "report": "依举报移除"
+  },
+  "admin": {
+    "nav": "管理分页",
+    "tabs": {
+      "reports": "举报",
+      "takedowns": "下架申请",
+      "users": "用户",
+      "audit": "审计记录"
+    },
+    "forbidden": "这一页需要「{{permission}}」权限。",
+    "state": "状态",
+    "note": "说明（选填）"
+  },
+  "reportState": {
+    "open": "待处理",
+    "dismissed": "已驳回",
+    "actioned": "已移除版本"
+  },
+  "reports": {
+    "empty": "没有这个状态的举报。",
+    "version": "版本 {{id}}",
+    "reporter": "举报者：{{name}}",
+    "dismiss": "驳回并恢复版本",
+    "remove": "移除版本",
+    "dismissTitle": "驳回这个版本的举报？",
+    "dismissHint": "这个版本所有未处理的举报都会结案，被隐藏的版本恢复可见。",
+    "removeTitle": "移除这个版本？",
+    "removeHint": "版本会被移除且不能再上传相同内容，上传者会看到移除的原因。无法撤销。",
+    "dismissed": "已驳回举报",
+    "removed": "已移除版本"
+  },
+  "takedowns": {
+    "empty": "没有这个状态的下架申请。",
+    "contact": "联系 email：{{email}}",
+    "contactUnavailable": "（无法解密）",
+    "decisionNote": "处理说明：{{note}}",
+    "reject": "驳回申请",
+    "remove": "移除版本",
+    "rejectTitle": "驳回这个下架申请？",
+    "rejectHint": "版本不变，申请人查询时会看到「已驳回」。",
+    "removeTitle": "依申请移除这个版本？",
+    "removeHint": "版本与只被它使用的文件会删除，相同内容不能再上传。无法撤销。",
+    "removed": "已移除版本",
+    "rejected": "已驳回申请"
+  },
+  "users": {
+    "empty": "还没有任何账号。",
+    "suspended": "已停用",
+    "since": "{{date}} 加入",
+    "suspendedAt": "{{at}} 停用：{{reason}}",
+    "groups": "群组",
+    "removeGroup": "把 {{name}} 移出 {{group}}",
+    "addGroup": "加入群组",
+    "suspend": "停用账号",
+    "unsuspend": "恢复账号",
+    "groupName": "群组名称",
+    "groupHint": "配置文件中的群组；admins 只能在配置文件指定。",
+    "title": {
+      "add": "把 {{name}} 加入群组",
+      "remove": "把 {{name}} 移出 {{group}}？",
+      "suspend": "停用 {{name}}？",
+      "unsuspend": "恢复 {{name}}？"
+    },
+    "hint": {
+      "add": "手动指派的成员资格不受自动规则影响。",
+      "remove": "只移除手动指派的成员资格；配置文件与自动规则给的不变。",
+      "suspend": "停用期间这个账号不能登录或用 token，投票不计分。请写下原因（1～500 字）。",
+      "unsuspend": "恢复后原本的登录与 token 都会失效，用户要重新登录、重新创建 token。"
+    },
+    "confirm": {
+      "add": "加入群组",
+      "remove": "移出群组",
+      "suspend": "停用账号",
+      "unsuspend": "恢复账号"
+    },
+    "done": {
+      "add": "已把 {{name}} 加入群组",
+      "remove": "已把 {{name}} 移出群组",
+      "suspend": "已停用 {{name}}",
+      "unsuspend": "已恢复 {{name}}"
+    }
+  },
+  "audit": {
+    "empty": "还没有审计记录。",
+    "at": "时间",
+    "actor": "执行者",
+    "action": "操作",
+    "target": "对象"
+  },
+  "auditAction": {
+    "identity_link": "关联登录方式",
+    "identity_unlink": "移除登录方式",
+    "group_add": "加入群组",
+    "group_remove": "移出群组",
+    "user_suspend": "停用账号",
+    "user_unsuspend": "恢复账号",
+    "takedown_decide": "处理下架申请",
+    "report_decide": "处理举报",
+    "version_hide": "隐藏版本"
+  }
+}

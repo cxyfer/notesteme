@@ -6,7 +6,7 @@ Client UI（`web/client`）與之後的 Hub UI（`web/hub`，M5）共用的元�
 
 - 只依賴 React：不依賴 `web/client` 的 API client、router 或 i18n 實例，**所有文字由呼叫端用 props 傳入**。
 - 設計 token 用 CSS 變數（`web/client/src/styles/tokens.css` 的名稱），由使用端提供。元件的 CSS 放在元件旁邊，由使用端匯入（Client 在 `src/main.tsx`）。
-- 這裡沒有 `node_modules`：Client 以 `@shared` 匯入（`vite.config.ts` 的 alias 與 `resolve.dedupe`、`tsconfig.json` 的 `paths`）。
+- 這裡沒有 `node_modules`：Client 與 Hub（web/hub）以 `@shared` 匯入（`vite.config.ts` 的 alias 與 `resolve.dedupe`、`tsconfig.json` 的 `paths`）。
   lint 與 prettier 由 `web/client` 的 `npm run lint`、`npm run format:check` 一起檢查；測試放在 `web/client/src/shared/`。
 - 擴充元件時加新的選用 props，不改變既有 props 的意義。
 

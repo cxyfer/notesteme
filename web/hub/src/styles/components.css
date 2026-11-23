@@ -1,0 +1,271 @@
+/* 共用元件（src/components）。只放元件自己的樣式；頁面樣式放在各頁面。 */
+
+/* ---------- Button（§6.5） ---------- */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  min-width: 24px;
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  background: transparent;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--motion-fast);
+}
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.button--primary {
+  background: var(--text-primary);
+  color: var(--text-on-primary);
+}
+.button--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text-primary) 88%, var(--surface-app));
+}
+.button--outline {
+  border-color: var(--rule);
+  background: var(--surface-panel);
+}
+.button--outline:hover:not(:disabled) {
+  border-color: var(--text-secondary);
+}
+.button--text {
+  padding: 0 6px;
+}
+.button--text:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.button--danger {
+  padding: 0 6px;
+  color: var(--state-failed);
+}
+.button--danger:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------- TextField ---------- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 640px;
+}
+.field__label {
+  font-weight: 500;
+}
+.field__input {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--rule);
+  background: var(--surface-panel);
+}
+.field__input:hover {
+  border-color: var(--text-secondary);
+}
+.field__input[aria-invalid="true"] {
+  border-color: var(--state-failed);
+}
+.field__hint {
+  font-size: var(--font-12);
+  color: var(--text-secondary);
+}
+.field__error {
+  font-size: var(--font-12);
+  color: var(--state-failed);
+}
+
+/* ---------- Dialog／Drawer（Radix） ---------- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(19 26 36 / 0.32);
+  z-index: 40;
+}
+.dialog,
+.drawer {
+  position: fixed;
+  z-index: 41;
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-float);
+  border-radius: var(--radius-container);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6);
+}
+.dialog {
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+}
+.drawer {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(560px, 100vw);
+  border-radius: var(--radius-container) 0 0 var(--radius-container);
+  overflow: auto;
+}
+.drawer[data-state="open"] {
+  animation: drawer-in var(--motion-panel);
+}
+@keyframes drawer-in {
+  from {
+    translate: 16px 0;
+    opacity: 0;
+  }
+}
+.dialog__title {
+  margin: 0;
+  font-size: var(--font-21);
+}
+.dialog__description {
+  margin: 0;
+  color: var(--text-secondary);
+}
+.dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: auto;
+}
+
+/* ---------- Toast（左下，Ink 底，§6.5） ---------- */
+.toast-viewport {
+  position: fixed;
+  left: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: min(420px, calc(100vw - 32px));
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--text-primary);
+  color: var(--text-on-primary);
+  box-shadow: var(--shadow-float);
+}
+.toast__title {
+  flex: 1;
+  margin: 0;
+}
+.toast .button--text {
+  color: inherit;
+}
+
+/* ---------- Spinner ---------- */
+.spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+}
+.spinner__ring {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--rule);
+  border-top-color: var(--text-primary);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    rotate: 360deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 不轉動：改成靜態的四分之一實心環 */
+  .spinner__ring {
+    animation: none;
+  }
+}
+
+/* ---------- StatusBadge（§6.4：圖示形狀＋文字，不只靠顏色） ---------- */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.status__icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.status--done {
+  color: var(--text-secondary);
+}
+.status--done .status__icon {
+  color: var(--state-ok-text);
+}
+.status--failed {
+  color: var(--state-failed);
+}
+.status--needs_action,
+.status--budget_blocked,
+.status--awaiting_user,
+.status--running,
+.status--awaiting_agent {
+  color: var(--text-primary);
+}
+.status--pending,
+.status--waiting,
+.status--skipped {
+  color: var(--text-secondary);
+}
+
+/* ---------- ErrorCallout（UI 原則 3：原因＋可以直接處理的按鈕） ---------- */
+.callout {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-container);
+  background: var(--surface-panel);
+  border-left: 3px solid var(--state-failed);
+  max-width: 640px;
+}
+.callout__icon {
+  color: var(--state-failed);
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+}
+.callout__category {
+  margin: 0;
+  font-weight: 600;
+}
+.callout__message {
+  grid-column: 2;
+  margin: 0;
+}
+.callout__actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}

@@ -1,0 +1,102 @@
+/*
+ * Hub UI 的設計 token（M5-S9／UI-6）。docs/ui/README.md §9：Hub 是公開的資源站，用另一套配色和 Client 區隔，
+ * 但 token 的名稱與 Client（web/client/src/styles/tokens.css）相同，web/shared 的元件才能共用。
+ *
+ * 淺色「文庫」：米白紙底、深綠墨色、黃銅色記號；深色「閱覽室」：深綠黑底。
+ * 主題用 light-dark() 搭配 color-scheme（同 Client）。
+ */
+:root {
+  color-scheme: light dark;
+
+  /* 原色（淺色「文庫」與深色「閱覽室」；名稱沿用 Client 以共用元件） */
+  --color-opal: #f1ede3;
+  --color-sheet: #fdfbf6;
+  --color-ink: #23332c;
+  --color-pewter: #5a615b;
+  --color-cue: #d9a93b;
+  --color-signal: #1d6c60;
+  --color-fault: #b03a25;
+  --color-booth: #141b18;
+  --color-panel: #1c2521;
+  --color-paper: #e6e9e3;
+  --color-pewter-dim: #9ba59d;
+  --color-signal-lit: #5bb5a6;
+  --color-fault-lit: #e27a66;
+
+  /* 語意 token */
+  --surface-app: light-dark(var(--color-opal), var(--color-booth));
+  --surface-panel: light-dark(var(--color-sheet), var(--color-panel));
+  --surface-hover: light-dark(rgb(35 51 44 / 0.05), rgb(230 233 227 / 0.05));
+  --text-primary: light-dark(var(--color-ink), var(--color-paper));
+  --text-secondary: light-dark(var(--color-pewter), var(--color-pewter-dim));
+  --text-on-primary: light-dark(var(--color-sheet), var(--color-booth));
+  --mark-now: var(--color-cue);
+  --mark-edge: light-dark(var(--color-ink), transparent);
+  --state-done: light-dark(var(--color-ink), var(--color-paper));
+  --state-done-quiet: light-dark(rgb(35 51 44 / 0.34), rgb(230 233 227 / 0.34));
+  --state-pending: light-dark(var(--color-pewter), var(--color-pewter-dim));
+  --state-failed: light-dark(var(--color-fault), var(--color-fault-lit));
+  --state-ok-text: light-dark(var(--color-signal), var(--color-signal-lit));
+  --rule: light-dark(rgb(90 97 91 / 0.24), rgb(155 165 157 / 0.22));
+  --density-fill: light-dark(rgb(35 51 44 / 0.14), rgb(230 233 227 / 0.12));
+  --density-line: light-dark(rgb(35 51 44 / 0.55), rgb(230 233 227 / 0.55));
+  --chapter: light-dark(rgb(35 51 44 / 0.4), rgb(230 233 227 / 0.38));
+  --shadow-float: light-dark(0 8px 24px rgb(35 51 44 / 0.16), 0 8px 24px rgb(0 0 0 / 0.4));
+  /* 焦點框：淺色用 Ink，深色用 Cue（docs/ui/README.md §6） */
+  --focus: light-dark(var(--color-ink), var(--color-cue));
+
+  /* 圓角（§5.3） */
+  --radius-mark: 2px;
+  --radius-control: 4px;
+  --radius-container: 8px;
+
+  /* 間距（§5.2，4px 基準） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  /* 字級（§4.3） */
+  --font-12: 12px;
+  --font-14: 14px;
+  --font-16: 16px;
+  --font-18: 18px;
+  --font-21: 21px;
+  --font-24: 24px;
+  --font-36: 36px;
+
+  /* 動態（§7） */
+  --motion-fast: 120ms ease-out;
+  --motion-panel: 200ms ease-out;
+
+  /* 字型：每個元素依自己的 lang 重新解析（§4.2） */
+  --family: "Barlow";
+  --cjk: "PingFang TC", "Microsoft JhengHei UI", "Noto Sans CJK TC", "Noto Sans TC";
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:lang(zh-Hant) {
+  --cjk: "PingFang TC", "Microsoft JhengHei UI", "Noto Sans CJK TC", "Noto Sans TC";
+}
+:lang(zh-Hans) {
+  --cjk: "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", "Noto Sans SC";
+}
+:lang(en) {
+  --cjk: "PingFang TC", "Microsoft JhengHei UI", "Noto Sans CJK TC", "Noto Sans TC";
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0s;
+    --motion-panel: 0s;
+  }
+}

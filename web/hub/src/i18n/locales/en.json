@@ -1,0 +1,426 @@
+{
+  "app": {
+    "name": "Notesteme Hub",
+    "short": "Notesteme",
+    "hub": "Hub"
+  },
+  "shell": {
+    "skip": "Skip to main content",
+    "nav": "Main navigation",
+    "signedInAs": "{{name}}",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "language": "Interface language",
+    "theme": "Theme",
+    "themes": {
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "footer": "Subtitles and notes on the Hub are shared by members, each under its own licence. For copyright or privacy issues, file a takedown request."
+  },
+  "nav": {
+    "browse": "Browse",
+    "account": "Account",
+    "moderation": "Moderation",
+    "users": "Users",
+    "takedown": "Takedown request"
+  },
+  "common": {
+    "loading": "Loading…",
+    "loadMore": "Load more",
+    "close": "Close",
+    "cancel": "Cancel",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Couldn't copy; select the text instead",
+    "listSep": ", ",
+    "none": "(none)",
+    "actions": "Actions",
+    "notifications": "Notifications",
+    "undo": "Undo"
+  },
+  "errors": {
+    "category": {
+      "retryable": "Temporarily unavailable",
+      "wait": "Please wait",
+      "needs_action": "Needs you",
+      "fatal": "Can't be done"
+    },
+    "unknown": "Something went wrong ({{code}})",
+    "network_error": "Can't reach the Hub. Check your connection and try again.",
+    "unauthorized": "Sign in to the Hub first.",
+    "forbidden": "You don't have the permission this needs.",
+    "not_found": "Not found, or you can't see it.",
+    "removed": "This version was removed after a takedown request.",
+    "rate_limited": "Too many requests. Try again later.",
+    "account_suspended": "This account is suspended.",
+    "own_version": "You can't vote on a version you uploaded.",
+    "account_too_new": "Accounts younger than 24 hours can't vote or report yet.",
+    "already_reported": "You already reported this version; wait until a moderator handles it.",
+    "version_hidden": "This version is hidden; you can't vote on or report it.",
+    "last_identity": "This is your only sign-in method, so it can't be removed.",
+    "provider_already_linked": "This account already has that sign-in method.",
+    "admin_by_config": "Admins can only be set in the config file or with notesteme-hub admin grant.",
+    "takedown_decided": "This takedown request was already decided.",
+    "report_decided": "This report was already handled.",
+    "csrf_invalid": "Security check failed. Reload the page and try again.",
+    "session_required": "This can only be done while signed in to the Hub website."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "body": "The address may be wrong, or the page was removed.",
+    "back": "Back to browsing"
+  },
+  "login": {
+    "title": "Sign in to the Hub",
+    "intro": "Sign in with any of these accounts. Your first sign-in creates a Hub account.",
+    "with": "Sign in with {{provider}}",
+    "none": "This Hub has no sign-in method enabled yet. Contact the admin.",
+    "already": "You're signed in as {{name}}.",
+    "noEmailMerge": "Signing in with a different method for the first time creates a separate account. To use several, sign in and link them on the Account page.",
+    "takedown": "No account needed: file a takedown request"
+  },
+  "browse": {
+    "title": "Browse shared subtitles and notes",
+    "intro": "Filter by platform, channel, language and models to find a version you trust.",
+    "filters": "Filters",
+    "any": "Any",
+    "platform": "Platform",
+    "kind": "Kind",
+    "variant": "Stage",
+    "channel": "Channel ID",
+    "video": "Video",
+    "videoHint": "e.g. youtube:dQw4w9WgXcQ; add /p2 for a part",
+    "lang": "Language",
+    "langHint": "e.g. en, zh-Hant",
+    "transcribe_model": "Transcription model",
+    "correct_model": "Correction model",
+    "translate_model": "Translation model",
+    "sort": "Sort",
+    "sortScore": "Score",
+    "sortNew": "Newest",
+    "excludeUnverified": "Hide versions whose models weren't recorded by a client",
+    "apply": "Apply filters",
+    "clear": "Clear filters",
+    "count_other": "{{count}} versions loaded",
+    "count_one": "{{count}} version loaded",
+    "empty": "Nothing has been shared yet. Use “Share to Hub” on an item in your Notesteme client.",
+    "emptyFiltered": "No versions match these filters."
+  },
+  "kind": {
+    "transcript": "Subtitles",
+    "chapters": "Chapters",
+    "note": "Note",
+    "frames": "Frames"
+  },
+  "variant": {
+    "source": "Raw",
+    "normalized": "Normalized",
+    "segmented": "Segmented",
+    "corrected": "Corrected",
+    "translated": "Translated",
+    "edited": "Edited"
+  },
+  "platform": {
+    "youtube": "YouTube",
+    "bilibili": "Bilibili",
+    "podcast": "Podcast"
+  },
+  "model": {
+    "transcribe": "Transcription",
+    "correct": "Correction",
+    "translate": "Translation",
+    "status": "Model source",
+    "recorded": "Models recorded by the client",
+    "unverified": "Unrecorded model"
+  },
+  "version": {
+    "title": "Version",
+    "scoreLabel": "Score {{score}}",
+    "license": "Licence {{license}}",
+    "uploaders": "Uploaded by {{names}}",
+    "backToVideo": "← All versions of {{video}}",
+    "hiddenNotice": "This version is hidden while reports are pending; only its uploaders and moderators can see it.",
+    "score": "Score",
+    "licenseLabel": "Licence",
+    "uploadersLabel": "Uploaders",
+    "visibility": "Visibility",
+    "created": "Created",
+    "sha256": "SHA-256",
+    "parents": "Derived from",
+    "children": "Derived versions",
+    "regeneratedFrom": "Regenerated from @{{name}}'s raw subtitles",
+    "derivedBy": "Uploaded by @{{name}}",
+    "actions": "Version actions",
+    "download": "Download",
+    "downloadAs": "Download {{format}}",
+    "noDownload": "Frames have no downloadable format.",
+    "needDownload": "Sign in with download permission to download and preview the content.",
+    "regenerateTitle": "Regenerate in your client",
+    "regenerateHint": "Paste this version ID in your Notesteme client under Settings → Hub to rerun correction, translation and notes from these raw subtitles without paying for transcription.",
+    "copyId": "Copy version ID",
+    "preview": "Content",
+    "noPreview": "Frames have no preview.",
+    "badContent": "The content isn't in a valid format and can't be shown.",
+    "showMore_other": "Show 300 more ({{count}} left)",
+    "showMore_one": "Show 1 more",
+    "provenance": "Source record",
+    "noProvenance": "No source record."
+  },
+  "visibility": {
+    "public": "Public",
+    "authenticated": "Signed-in members",
+    "group": "Group {{group}}",
+    "private": "Private"
+  },
+  "state": {
+    "visible": "Visible",
+    "hidden": "Hidden",
+    "removed": "Removed",
+    "withdrawn": "Withdrawn"
+  },
+  "community": {
+    "vote": "Vote",
+    "score": "Score: {{score}}",
+    "up": "Helpful +1",
+    "down": "Not good −1",
+    "clear": "Remove my vote",
+    "signInToVote": "Sign in to vote and report.",
+    "notVisible": "This version can't be voted on or reported right now.",
+    "problems": "Something wrong?",
+    "report": "Report",
+    "takedown": "File a takedown request",
+    "hide": "Hide this version",
+    "hideTitle": "Hide this version?",
+    "hideHint": "Hidden versions leave lists and lookups; only uploaders and moderators can see them. There's no unhide action yet: it comes back only when a later report is dismissed.",
+    "hidden": "Version hidden",
+    "reportTitle": "Report this version",
+    "reportHint": "Moderators see your name; uploaders and others don't. For copyright or privacy, file a takedown request instead.",
+    "reason": "Reason",
+    "note": "Details (optional, up to 1,000 characters)",
+    "reportSubmit": "Send report",
+    "reported": "Report sent",
+    "useTakedown": "Use a takedown request for copyright and privacy issues."
+  },
+  "reportReason": {
+    "wrong_language": "Wrong language",
+    "bad_quality": "Poor quality",
+    "spam": "Spam",
+    "offensive": "Offensive",
+    "other": "Other"
+  },
+  "video": {
+    "compare": "Compare",
+    "compareHint": "Tick two subtitle versions to compare them side by side on a shared timeline.",
+    "compareNeedsDownload": "Sign in with download permission to compare subtitles side by side."
+  },
+  "compare": {
+    "title": "Side-by-side comparison",
+    "close": "Stop comparing",
+    "loading": "Loading both versions…",
+    "left": "Left: {{name}}",
+    "right": "Right: {{name}}",
+    "band": "Where each version has subtitles",
+    "position": "Comparison position {{time}}",
+    "diffAt": "Difference at {{time}}",
+    "onlyLeft": "Only left: ",
+    "onlyRight": "Only right: ",
+    "jumpTo": "Jump to {{time}}"
+  },
+  "takedown": {
+    "title": "Takedown request",
+    "intro": "Rights holders or affected people can ask for a version to be removed, without an account. Check the result with your request number; no email is sent.",
+    "version": "Version ID",
+    "versionHint": "The last part of the version page's address",
+    "reason": "Reason",
+    "statement": "Statement",
+    "statementHint_other": "20–5,000 characters; {{count}} so far",
+    "statementHint_one": "20–5,000 characters; {{count}} so far",
+    "email": "Contact email",
+    "emailHint": "Only moderators can see it; stored encrypted.",
+    "goodFaith": "I state in good faith that this request is accurate.",
+    "submit": "Send takedown request",
+    "sent": "Takedown request received",
+    "sentBody": "Request number {{id}}. Keep it to check the result later.",
+    "copyId": "Copy request number",
+    "checkStatus": "Check its status",
+    "lookup": "Already filed? Enter your request number"
+  },
+  "takedownReason": {
+    "copyright": "Copyright",
+    "privacy": "Privacy",
+    "other": "Other"
+  },
+  "takedownState": {
+    "open": "Pending",
+    "removed": "Version removed",
+    "rejected": "Rejected"
+  },
+  "takedownStatus": {
+    "title": "Takedown request status",
+    "id": "Request number",
+    "check": "Check"
+  },
+  "account": {
+    "title": "Account",
+    "profile": "Profile",
+    "name": "Display name",
+    "groups": "Groups",
+    "permissions": "Permissions"
+  },
+  "permission": {
+    "read": "Read",
+    "download": "Download",
+    "regenerate": "Regenerate",
+    "upload": "Upload",
+    "moderate": "Moderate",
+    "admin": "Admin"
+  },
+  "identities": {
+    "title": "Sign-in methods",
+    "link": "Link {{provider}}",
+    "remove": "Remove {{provider}}",
+    "hint": "Once linked, any of them signs you in to this account. Linking needs a sign-in within the last 10 minutes.",
+    "reauth": "Sign in again before linking a new method.",
+    "signInAgain": "Sign in again",
+    "removeTitle": "Remove {{provider}}?",
+    "removeHint": "You won't be able to sign in with it until you link it again.",
+    "removeConfirm": "Remove sign-in method",
+    "removed": "Sign-in method removed"
+  },
+  "tokens": {
+    "title": "Hub tokens",
+    "intro": "For your Notesteme client and MCP. A token never has more than your account; it stops working if the account is suspended.",
+    "empty": "No Hub tokens yet.",
+    "name": "Name",
+    "permissions": "Permissions",
+    "created": "Created",
+    "expires": "Expires",
+    "expired": "Expired",
+    "revoke": "Revoke {{name}}",
+    "revokeTitle": "Revoke “{{name}}”?",
+    "revokeHint": "Clients and MCP using it lose access right away. This can't be undone.",
+    "revokeConfirm": "Revoke token",
+    "revoked": "Token revoked",
+    "new": "Create a Hub token",
+    "days": "Valid for (days)",
+    "daysHint": "1–365 days",
+    "create": "Create token",
+    "createdTitle": "Hub token created",
+    "createdHint": "This is the only time the token is shown. Copy it into your client under Settings → Hub."
+  },
+  "shares": {
+    "title": "My shares",
+    "empty": "You haven't shared anything yet.",
+    "withdraw": "Withdraw share",
+    "withdrawTitle": "Withdraw this share?",
+    "withdrawHint": "Versions nobody else shared disappear from the Hub; versions others derived from them stay.",
+    "withdrawn": "Share withdrawn",
+    "withdrawnAt": "Withdrawn {{at}}",
+    "removal": "({{source}}: {{reason}})"
+  },
+  "removalSource": {
+    "takedown": "Removed after a takedown request",
+    "report": "Removed after a report"
+  },
+  "admin": {
+    "nav": "Admin sections",
+    "tabs": {
+      "reports": "Reports",
+      "takedowns": "Takedown requests",
+      "users": "Users",
+      "audit": "Audit log"
+    },
+    "forbidden": "This page needs the “{{permission}}” permission.",
+    "state": "State",
+    "note": "Note (optional)"
+  },
+  "reportState": {
+    "open": "Open",
+    "dismissed": "Dismissed",
+    "actioned": "Actioned"
+  },
+  "reports": {
+    "empty": "No reports in this state.",
+    "version": "Version {{id}}",
+    "reporter": "Reported by {{name}}",
+    "dismiss": "Dismiss and restore",
+    "remove": "Remove version",
+    "dismissTitle": "Dismiss the reports on this version?",
+    "dismissHint": "All open reports on this version close, and a hidden version becomes visible again.",
+    "removeTitle": "Remove this version?",
+    "removeHint": "The version is removed and the same content can't be uploaded again; uploaders see the reason. This can't be undone.",
+    "dismissed": "Reports dismissed",
+    "removed": "Version removed"
+  },
+  "takedowns": {
+    "empty": "No takedown requests in this state.",
+    "contact": "Contact: {{email}}",
+    "contactUnavailable": "(can't be decrypted)",
+    "decisionNote": "Decision note: {{note}}",
+    "reject": "Reject request",
+    "remove": "Remove version",
+    "rejectTitle": "Reject this takedown request?",
+    "rejectHint": "The version stays; the requester will see “Rejected”.",
+    "removeTitle": "Remove this version as requested?",
+    "removeHint": "The version and files only it uses are deleted, and the same content can't be uploaded again. This can't be undone.",
+    "removed": "Version removed",
+    "rejected": "Request rejected"
+  },
+  "users": {
+    "empty": "No accounts yet.",
+    "suspended": "Suspended",
+    "since": "Joined {{date}}",
+    "suspendedAt": "Suspended {{at}}: {{reason}}",
+    "groups": "Groups",
+    "removeGroup": "Remove {{name}} from {{group}}",
+    "addGroup": "Add to group",
+    "suspend": "Suspend account",
+    "unsuspend": "Unsuspend account",
+    "groupName": "Group name",
+    "groupHint": "A group from the config file; admins can only be set there.",
+    "title": {
+      "add": "Add {{name}} to a group",
+      "remove": "Remove {{name}} from {{group}}?",
+      "suspend": "Suspend {{name}}?",
+      "unsuspend": "Unsuspend {{name}}?"
+    },
+    "hint": {
+      "add": "Manual memberships aren't affected by automatic rules.",
+      "remove": "Only the manual membership is removed; config and rule memberships stay.",
+      "suspend": "While suspended, the account can't sign in or use tokens and its votes don't count. Give a reason (1–500 characters).",
+      "unsuspend": "Existing sessions and tokens are revoked; the person signs in again and creates new tokens."
+    },
+    "confirm": {
+      "add": "Add to group",
+      "remove": "Remove from group",
+      "suspend": "Suspend account",
+      "unsuspend": "Unsuspend account"
+    },
+    "done": {
+      "add": "Added {{name}} to the group",
+      "remove": "Removed {{name}} from the group",
+      "suspend": "Suspended {{name}}",
+      "unsuspend": "Unsuspended {{name}}"
+    }
+  },
+  "audit": {
+    "empty": "No audit entries yet.",
+    "at": "Time",
+    "actor": "Actor",
+    "action": "Action",
+    "target": "Target"
+  },
+  "auditAction": {
+    "identity_link": "Linked sign-in",
+    "identity_unlink": "Removed sign-in",
+    "group_add": "Added to group",
+    "group_remove": "Removed from group",
+    "user_suspend": "Suspended account",
+    "user_unsuspend": "Unsuspended account",
+    "takedown_decide": "Decided takedown",
+    "report_decide": "Decided report",
+    "version_hide": "Hid version"
+  }
+}
