@@ -17,7 +17,8 @@ import (
 //     不另外註冊字面路徑，以免蓋過 {section}。COST 的其他路由在 costs.go。
 //   - GET /api/auth/oidc/start、callback：AUTH-R16 規定 OIDC 沒有啟用時回 404，S0 不啟用 OIDC，所以不註冊
 //     （沒有身分的請求在 S0 先被驗證擋下，回 401）。
-//   - ENTRY 的頁面路由（/add、/share、/manifest.webmanifest、/sw.js）不在 /api 底下，由 ENTRY 切片在 UI 的 handler 加上。
+//   - ENTRY 的頁面路由（/add、/share、/login、/manifest.webmanifest、/sw.js）不在 /api 底下，已由 internal/entry 實作（掛在 ui.go 的 entryPages）；
+//     POST /api/auth/login 的 next（ENTRY-R6）也已實作。
 //   - 既有路由的欄位擴充（GET /api/items/:id 的 summary、reprobe、better_source、read_state，POST /api/auth/login 的 next，
 //     PATCH /api/channels/:id/term-candidates/:candidate 的 term、scope，GET /api/system 的 alerts、backup）由各切片加上。
 var m4Stubs = []m2Stub{

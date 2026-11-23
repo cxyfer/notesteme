@@ -210,6 +210,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 頁面：`/library`、`/queue`、`/items/:id`、`/settings/:section` | `/library`（UI-1）、`/items/:id` 與 `/queue`（UI-2）完成；設定仍是空頁 | `web/client/src/pages` |
 | CI：tsc、eslint、prettier、vitest（axe、對比、i18n）、build、bundle 預算、OpenAPI drift、npm audit | 完成 | `.github/workflows/web.yml` |
 | 新增抽屜、媒體庫（M1 基本版）、精簡版時間帶、`N`／`/` 快捷鍵、貼上網址 | 完成（UI-1，見 10.4） | `web/client/src/add`、`src/pages/library`、`web/shared` |
+| 書籤小工具分區、`/add` 落地頁、登入的 `next`、PWA（manifest 引用、service worker 註冊、icon） | 完成（M4 ENTRY，見 ENTRY 規格待決問題 E7、E9、E11） | `web/client/src/add/{entry.ts,AddEntryPage.tsx}`、`src/pages/settings/BookmarkletSection.tsx`、`public/icons`；manifest 與 `sw.js` 由 `internal/entry` 提供 |
 | 指令面板（`Ctrl K`）、`G` 開頭的快捷鍵、`?` 快捷鍵說明 | 未做 | 之後的切片 |
 | Prompt 庫、處理方案、字幕樣式 | 完成（UI-3a，見 10.8） | `web/client/src/pages/{prompts,profiles,styles}` |
 | 設定各分區、詞彙表與術語候選、設定匯出與匯入 | 完成（UI-3b，見 10.10；後端沒有的部分見 10.10 的「未做」） | `web/client/src/pages/settings` |

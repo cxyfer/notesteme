@@ -62,4 +62,4 @@
 - E9：`/add` 的 UI 打開「新增」抽屜並帶入網址後，以 replace 換成媒體庫（`/library`）：重新整理或返回不會再開一次抽屜，網址也不留在瀏覽紀錄的目前項目。提示文字（ENTRY-R2 的「已忽略」、ENTRY-R4 的「沒有網址」）顯示在抽屜上方。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
 - E10：頁面路由（`/add`、`/share`、`/login`、manifest、service worker）只掛在 TCP listener 的 Web UI 之前（`internal/api/ui.go` 的 `entryPages`），本機 socket（CLI 用）沒有。session 驗證失敗以外的錯誤（例如 DB 錯誤）回 500，log 只記路徑、不記 query。manifest 另外帶 `short_name`、`background_color`、`theme_color` 與 icon 的 `purpose: "any"`；manifest 與 service worker 的 `Cache-Control` 是 `no-cache`。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
 - E11：登入頁同時接受舊的 `?redirect=`（UI 自己在 session 失效時帶的）與 `?next=`（頁面路由帶的），兩者都交給 `POST /api/auth/login` 的 `next` 檢查（`next` 優先），UI 只前往回應中的 `next`；回應是 `/` 時前往媒體庫。決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
-- 實作狀態（M4，2026-11-23）：`features/ENTRY-entry-points.feature` 的 22 個非 `@manual` 場景（含 Outline 展開）全部通過；6 個 `@ui @manual` 場景（真實瀏覽器的書籤列、在其他網站點書籤、Android 的分享選單）屬於 owner 的人工驗收。iOS 捷徑沒有自動化驗收。
+- 實作狀態（M4，2026-11-23）：`features/ENTRY-entry-points.feature` 的 22 個非 `@manual` 場景（含 Outline 展開）全部通過；4 個 `@ui @manual` 場景（檢查書籤的程式碼、在影片頁點書籤、非 http 網址被忽略、Android 的分享）屬於 owner 的人工驗收。iOS 捷徑沒有自動化驗收。

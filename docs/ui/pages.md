@@ -83,6 +83,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - 辨識失敗：「無法辨識這個網址。目前支援 YouTube、Bilibili、Podcast RSS 與本機檔案。」
   - 需要 cookie 的內容：在送出前提示，並附上設定連結。
 - **API**：`POST /api/resolve`（辨識網址）、`POST /api/estimate`、`POST /api/items`
+- **修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）**：書籤小工具與 PWA 的分享開啟 `/add?url=<網址>`（ENTRY-R2、R4）：打開本抽屜並帶入網址、照常辨識，不自動開始處理；網址不是 http／https 或超過 2048 個字元時輸入框留空，抽屜上方顯示「書籤或分享的網址無效，已忽略。」；分享沒有網址（`/add?share_error=no_url`）時顯示「分享的內容中沒有網址。」。之後頁面換成媒體庫（ENTRY 待決問題 E9）。
 
 ## 3. 媒體庫
 
@@ -413,11 +414,13 @@ Prompt 庫 › 校正 › correct-default
 | 詞彙表 | 全域與各頻道的詞彙表；待審的術語候選（接受、修改後接受、拒絕、批次決定），見 GLOS 規格 | M4 |
 | 系統 | yt-dlp、ffmpeg、Deno 的版本；「更新 yt-dlp」與「回到上一個版本」；磁碟用量；媒體檔保留天數 | M1 |
 | 外觀 | 淺色、深色或跟隨系統；介面密度 | M1 |
+| 書籤小工具 | 可以拖到書籤列的 bookmarklet（ENTRY-R1）；手機的入口：Android 安裝成 App 後用「分享」，iOS 用捷徑開啟 `/add?url=` | M4 |
 | 登入 | 修改密碼（M1）；目前的登入工作階段、反向代理驗證與 OIDC（M4） | M1 起逐步補齊 |
 
 - **安全**：API key 儲存後只顯示末四碼，不能再次查看完整內容，只能更換。
 - **修訂（2026-11-23，ADR-0020、VAULT 規格待決問題 V1，待 owner 追認）**：「輸出」分區的 vault（路徑、git repo、分支）與 hook 只能在設定檔定義，這裡唯讀顯示，處理方案只能選用已定義的 id；字幕的本機影片旁與資料夾目標維持可以在處理方案中設定。
 - **API**：`GET/PUT /api/settings/:section`、`POST /api/providers/:id/test`、`POST /api/cookies`、`GET /api/system`、`POST /api/tools/yt-dlp/update`、`GET/POST/DELETE /api/tokens`
+- **修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）**：「書籤小工具」是 ENTRY-R1 的區塊，獨立成一個分區（`/settings/bookmarklet`，排在「外觀」之後），見 ENTRY 待決問題 E7。
 
 ## 13. 登入
 
@@ -428,3 +431,4 @@ Prompt 庫 › 校正 › correct-default
   - 背景是一條淡化的時間帶，畫的是固定的示意資料。登入前不能露出任何實際內容，所以不使用真實影片的資料。登入頁只有這一個裝飾元素。
 - **錯誤**：「密碼不正確。」連續失敗 5 次後鎖定 1 分鐘，並顯示剩餘時間。
 - **API**：`POST /api/auth/login`、`POST /api/auth/logout`
+- **修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）**：登入頁接受 `?next=`（`/add`、`/share` 在沒有 session 時帶來，ENTRY-R5）與舊的 `?redirect=`，交給 `POST /api/auth/login` 的 `next` 檢查，登入後只前往回應中的 `next`（ENTRY-R6、待決問題 E11）。
