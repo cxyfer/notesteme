@@ -68,6 +68,11 @@ services:
   hub-migrate:
     profiles: ["hub"]
     image: ${NOTESTEME_HUB_IMAGE:-notesteme-hub:local}
+    # 與 hub 同一個 build（有 cache）：hub 依賴 migrate，compose 不能先拉一個還沒建置的本機 image。
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      target: notesteme-hub
     command: ["migrate"]
     environment:
       NOTESTEME_HUB_MASTER_KEY: ${NOTESTEME_HUB_MASTER_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_MASTER_KEY}
