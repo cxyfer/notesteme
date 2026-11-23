@@ -21,6 +21,16 @@ COPY web/shared /src/web/shared
 COPY web/client ./
 RUN npm run build
 
+# ---- 建置 Hub 的 Web UI（web/hub → dist，M5-S9）----
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-${DEBIAN_VERSION}-slim AS web-hub
+WORKDIR /src/web/hub
+COPY web/hub/package.json web/hub/package-lock.json web/hub/.npmrc ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --no-audit
+COPY web/shared /src/web/shared
+COPY web/hub ./
+RUN npm run build
+
 # ---- 建置 Go binary ----
 # 在 build 平台上交叉編譯，多架構建置時不必在 QEMU 裡跑 Go 編譯器。
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-${DEBIAN_VERSION} AS build
@@ -35,6 +45,9 @@ COPY internal ./internal
 # go:embed 的 web/client（Go 檔與建置產物）；沒有這一步，binary 只會有「UI 尚未建置」的 placeholder。
 COPY web/client/*.go ./web/client/
 COPY --from=web /src/web/client/dist ./web/client/dist
+# Hub 的 go:embed（web/hub）；同上，沒有這一步 notesteme-hub 只有 placeholder。
+COPY web/hub/*.go ./web/hub/
+COPY --from=web-hub /src/web/hub/dist ./web/hub/dist
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -46,7 +59,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go build -trimpath \
       -ldflags "-s -w -X github.com/cxyfer/notesteme/internal/app.version=${VERSION}" \
       -o /out/notesteme ./cmd/notesteme
-# Hub 是獨立的 binary（ADR-0030 第 1 點），不內嵌 Client 的 UI；版本號的 -X 目標是 internal/hub。
+# Hub 是獨立的 binary（ADR-0030 第 1 點），內嵌自己的 UI（web/hub），不內嵌 Client 的；版本號的 -X 目標是 internal/hub。
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \

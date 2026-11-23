@@ -89,7 +89,9 @@ jobs:
         with:
           node-version-file: web/client/.nvmrc
           cache: npm
-          cache-dependency-path: web/client/package-lock.json
+          cache-dependency-path: |
+            web/client/package-lock.json
+            web/hub/package-lock.json
 
       - uses: goreleaser/goreleaser-action@v7
         with:
@@ -115,9 +117,13 @@ jobs:
             echo "::error::binary 沒有內嵌 Web UI 的建置產物（只有 placeholder）"
             exit 1
           fi
-          # Hub 是另一個 binary（ADR-0030），只確認可以執行。
+          # Hub 是另一個 binary（ADR-0030），內嵌自己的 UI（web/hub），同樣不能是 placeholder。
           hub="$(ls dist/notesteme-hub_linux_amd64*/notesteme-hub)"
           "$hub" --version
+          if ! grep -aq 'src="/assets/index-' "$hub"; then
+            echo "::error::notesteme-hub 沒有內嵌 Hub UI 的建置產物（只有 placeholder）"
+            exit 1
+          fi
 
   sqlc:
     name: sqlc generated code

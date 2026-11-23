@@ -9,6 +9,9 @@ before:
   hooks:
     - npm --prefix web/client ci --no-audit
     - npm --prefix web/client run build
+    # Hub 的 UI（web/hub，M5-S9）由 notesteme-hub 內嵌
+    - npm --prefix web/hub ci --no-audit
+    - npm --prefix web/hub run build
 
 builds:
   - id: notesteme

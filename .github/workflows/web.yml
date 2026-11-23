@@ -9,11 +9,13 @@ on:
     paths:
       - "web/**"
       - "internal/api/openapi.json"
+      - "internal/hub/hubapi/openapi.json"
       - ".github/workflows/web.yml"
   pull_request:
     paths:
       - "web/**"
       - "internal/api/openapi.json"
+      - "internal/hub/hubapi/openapi.json"
       - ".github/workflows/web.yml"
   workflow_dispatch:
 
@@ -74,5 +76,51 @@ jobs:
         run: npm run check:bundle
 
       # 建置不會改動 commit 的檔案（dist/.gitkeep 保留、其餘產物被 .gitignore 排除）。
+      - name: working tree clean
+        run: git status --porcelain --untracked-files=all -- . && test -z "$(git status --porcelain --untracked-files=all -- .)"
+
+  # Hub 的 Web UI（web/hub，M5-S9）：獨立的 Vite 專案，同一組檢查；型別由 internal/hub/hubapi/openapi.json 產生。
+  hub:
+    name: Hub web lint, test & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/hub
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/hub/.nvmrc
+          cache: npm
+          cache-dependency-path: web/hub/package-lock.json
+
+      - name: npm ci
+        run: npm ci --no-audit
+
+      - name: npm audit
+        run: npm audit --audit-level=high
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: eslint
+        run: npm run lint
+
+      - name: prettier
+        run: npm run format:check
+
+      - name: test
+        run: npm test
+
+      - name: OpenAPI types drift
+        run: npm run check:api
+
+      - name: build
+        run: npm run build
+
+      - name: bundle budget
+        run: npm run check:bundle
+
       - name: working tree clean
         run: git status --porcelain --untracked-files=all -- . && test -z "$(git status --porcelain --untracked-files=all -- .)"
