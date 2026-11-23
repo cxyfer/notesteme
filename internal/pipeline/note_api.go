@@ -47,7 +47,7 @@ var templateIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 
 // noteRules 是模板規則（rules_json）：「標記已閱讀」按鈕（N2）與要執行的自動檢查（nil 代表全部，NOTE-R7）。
 type noteRules struct {
-	ReadButton string   `json:"read_button,omitempty"`
+	ReadButton string `json:"read_button,omitempty"`
 	// Checks 不加 omitempty：空清單（全部關閉）與 nil（全部）要能區分。
 	Checks []string `json:"checks"`
 }

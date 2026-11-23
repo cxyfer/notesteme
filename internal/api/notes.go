@@ -131,7 +131,7 @@ func (rt *routes) registerNotes(api huma.API) {
 	}, auth.ScopeRead, rt.listNoteTemplates)
 	registerScoped(api, huma.Operation{
 		OperationID: "note-templates-create", Method: http.MethodPost, Path: "/api/note-templates",
-		Summary: "建立筆記模板或複製內建模板（NOTE-R11）；未知的變數或語法錯誤回 422，內建 id 回 409 builtin_template，已存在回 409 template_exists",
+		Summary:       "建立筆記模板或複製內建模板（NOTE-R11）；未知的變數或語法錯誤回 422，內建 id 回 409 builtin_template，已存在回 409 template_exists",
 		DefaultStatus: http.StatusCreated,
 	}, auth.ScopeAdmin, rt.createNoteTemplate)
 	registerScoped(api, huma.Operation{
