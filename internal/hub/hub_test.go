@@ -93,9 +93,12 @@ func TestServe(t *testing.T) {
 
 // ADR-0030 第 1 點：Hub 不 import Client 的 pipeline、queue、worker，也不 import api、app（會間接帶進它們）。
 func TestImportBoundary(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("找不到 go 執行檔")
+	}
 	out, err := exec.Command("go", "list", "-deps", "github.com/cxyfer/notesteme/internal/hub/...", "github.com/cxyfer/notesteme/cmd/notesteme-hub").CombinedOutput()
 	if err != nil {
-		t.Skipf("go list 失敗（沒有 go 工具鏈？）：%v\n%s", err, out)
+		t.Fatalf("go list 失敗：%v\n%s", err, out)
 	}
 	forbidden := []string{"pipeline", "queue", "worker", "api", "app", "store", "toolexec", "tools", "source", "cli"}
 	for _, line := range strings.Split(string(out), "\n") {

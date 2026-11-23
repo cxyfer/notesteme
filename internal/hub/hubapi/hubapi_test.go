@@ -110,3 +110,16 @@ func TestRecover(t *testing.T) {
 		t.Errorf("panic = %d %s", rec.Code, rec.Body)
 	}
 }
+
+// Huma 在 /api/v1/openapi 底下提供的文件都不需要登入（ADR-0032）；它們不在 Stubs 表中，S2 的 middleware 要放行（HACC A9）。
+func TestOpenAPIPublicPaths(t *testing.T) {
+	h := New(Deps{Store: &fakeStore{}, Version: "test"})
+	for _, p := range PublicDocPaths {
+		if rec := do(h, "GET", p); rec.Code != 200 {
+			t.Errorf("GET %s = %d", p, rec.Code)
+		}
+	}
+	if rec := do(h, "GET", "/api/v1/openapi.xml"); rec.Code == 200 {
+		t.Error("沒有列在 PublicDocPaths 的變體不應該存在")
+	}
+}

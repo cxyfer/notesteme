@@ -203,9 +203,23 @@ func doctor(ctx context.Context, env Env) int {
 			fmt.Fprintf(out, "  ✗ 資料庫：%v\n", err)
 			problems++
 		} else {
-			v, _ := st.SchemaVersion(ctx)
-			n, _ := st.CountUsers(ctx)
-			fmt.Fprintf(out, "資料庫：schema 版本 %d、%d 個帳號\n", v, n)
+			v, err := st.SchemaVersion(ctx)
+			switch latest := sqlite.LatestVersion(); {
+			case err != nil:
+				fmt.Fprintf(out, "  ✗ 讀取資料庫的 schema 版本失敗：%v\n", err)
+				problems++
+			case v < latest:
+				fmt.Fprintf(out, "  ✗ 資料庫的 schema 版本 %d 落後程式的 %d，請先執行 notesteme-hub migrate。\n", v, latest)
+				problems++
+			default:
+				n, err := st.CountUsers(ctx)
+				if err != nil {
+					fmt.Fprintf(out, "  ✗ 讀取帳號數失敗：%v\n", err)
+					problems++
+				} else {
+					fmt.Fprintf(out, "資料庫：schema 版本 %d、%d 個帳號\n", v, n)
+				}
+			}
 			_ = st.Close()
 		}
 	}

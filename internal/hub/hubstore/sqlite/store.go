@@ -44,6 +44,22 @@ func MigrationsFS() fs.FS {
 	return sub
 }
 
+// ErrNoDatabase 表示資料庫還不存在（NoMigrate 時）。
+var ErrNoDatabase = errors.New("Hub 資料庫還不存在，請先執行 notesteme-hub migrate。")
+
+// LatestVersion 回傳內建 migration 的最新版本。
+func LatestVersion() int64 {
+	var latest int64
+	entries, _ := fs.Glob(MigrationsFS(), "*.sql")
+	for _, e := range entries {
+		var v int64
+		if _, err := fmt.Sscanf(e, "%d_", &v); err == nil {
+			latest = max(latest, v)
+		}
+	}
+	return latest
+}
+
 // SchemaTooNewError 表示資料庫的 schema 比程式新（降版執行），拒絕啟動。
 type SchemaTooNewError struct{ DB, Program int64 }
 
@@ -62,7 +78,8 @@ var _ hubstore.Store = (*Store)(nil)
 
 // Options 是 Open 的選項。
 type Options struct {
-	// NoMigrate 為 true 時不套用 migration，只確認資料庫不比程式新（notesteme-hub doctor 用）。
+	// NoMigrate 為 true 時不套用 migration、不建立任何檔案，只確認資料庫存在且不比程式新（notesteme-hub doctor 用）；
+	// 資料庫不存在時回 ErrNoDatabase。
 	NoMigrate bool
 }
 
@@ -75,6 +92,11 @@ func Open(ctx context.Context, dir string, clk clock.Clock, opts ...Options) (*S
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
+	}
+	if o.NoMigrate {
+		if _, err := os.Stat(filepath.Join(abs, DBFileName)); err != nil {
+			return nil, ErrNoDatabase
+		}
 	}
 	if err := os.MkdirAll(abs, 0o700); err != nil {
 		return nil, fmt.Errorf("建立 Hub 資料目錄失敗：%w", err)

@@ -122,3 +122,14 @@ func TestServe(t *testing.T) {
 		t.Errorf("serve 結束碼 = %d %s", c, errb)
 	}
 }
+
+// doctor 不修改任何東西：還沒有 migrate 時回報問題，也不建立資料庫。
+func TestDoctorBeforeMigrate(t *testing.T) {
+	e, out, _ := env(t, cfg, secret)
+	if c := Run(context.Background(), []string{"doctor"}, e); c != ExitError || !strings.Contains(out.String(), "notesteme-hub migrate") {
+		t.Errorf("doctor（沒有 migrate）= %d %s", c, out)
+	}
+	if _, err := os.Stat(filepath.Join(e.Vars[hubconfig.EnvData], "notesteme-hub.db")); err == nil {
+		t.Error("doctor 不應建立資料庫")
+	}
+}

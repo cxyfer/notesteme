@@ -35,6 +35,10 @@ type Deps struct {
 	Version string
 }
 
+// PublicDocPaths 是 Huma 在 cfg.OpenAPIPath 底下提供的 OpenAPI 文件，一律不需要登入（ADR-0032 第 1 點）。
+// 它們不是 Huma operation，不在 Stubs 表中：S2 的權限 middleware 要放行這些路徑（HACC A9）。
+var PublicDocPaths = []string{"/api/v1/openapi.json", "/api/v1/openapi.yaml", "/api/v1/openapi-3.0.json", "/api/v1/openapi-3.0.yaml"}
+
 // OpenAPISnapshotVersion 是匯出 OpenAPI 快照時的版本號：固定的值讓快照不隨 binary 版本改變。
 const OpenAPISnapshotVersion = "snapshot"
 
