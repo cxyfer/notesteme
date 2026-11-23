@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -167,4 +168,51 @@ func apiTokenFromFields(id, name, prefix, scopesJSON string, expiresAt *int64, c
 func isUniqueConstraint(err error) bool {
 	var se *sqlite.Error
 	return errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
+}
+
+// ErrTokenInactive 表示要輪替的 token 已撤銷或已到期（AUTH-R21）。
+var ErrTokenInactive = errors.New("token is revoked or expired")
+
+// RotateAPIToken 在同一個交易中把 token 的 hash 與前綴換成新的值（AUTH-R21）；名稱、scope、到期時間不變。
+// idOrName 先比對 id（任何狀態），再比對有效的名稱；找到的 token 已撤銷或到期時回傳 ErrTokenInactive，
+// 只有已失效的同名 token 時也回傳 ErrTokenInactive，完全找不到時回傳 ErrNotFound。
+func (s *Store) RotateAPIToken(ctx context.Context, idOrName, newHash, newPrefix string) (APIToken, error) {
+	var out APIToken
+	err := s.Tx(ctx, func(tx *Repo) error {
+		now := ptr(tx.nowMs())
+		var id string
+		if row, err := tx.q.APITokenForRotate(ctx, idOrName); err == nil {
+			if row.RevokedAt != nil || (row.ExpiresAt != nil && *row.ExpiresAt <= *now) {
+				return ErrTokenInactive
+			}
+			id = row.ID
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		} else if row, err := tx.q.ValidAPITokenByName(ctx, sqlcdb.ValidAPITokenByNameParams{Name: idOrName, Now: now}); err == nil {
+			id = row.ID
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		} else if _, err := tx.q.LatestAPITokenByName(ctx, idOrName); err == nil {
+			return ErrTokenInactive
+		} else {
+			return notFound(err)
+		}
+		n, err := tx.q.RotateAPIToken(ctx, sqlcdb.RotateAPITokenParams{TokenHash: newHash, Prefix: newPrefix, ID: id, Now: now})
+		if err != nil {
+			if isUniqueConstraint(err) {
+				return fmt.Errorf("%w: %w", ErrConflict, err)
+			}
+			return err
+		}
+		if n != 1 {
+			return ErrTokenInactive
+		}
+		row, err := tx.q.APITokenForRotate(ctx, id)
+		if err != nil {
+			return err
+		}
+		out, err = apiTokenFromFields(row.ID, row.Name, row.Prefix, row.Scopes, row.ExpiresAt, row.CreatedAt, row.LastUsedAt, row.RevokedAt)
+		return err
+	})
+	return out, err
 }

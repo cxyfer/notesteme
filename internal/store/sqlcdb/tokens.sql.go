@@ -50,6 +50,40 @@ func (q *Queries) APITokenByHash(ctx context.Context, arg APITokenByHashParams) 
 	return i, err
 }
 
+const aPITokenForRotate = `-- name: APITokenForRotate :one
+SELECT id, name, prefix, scopes, expires_at, created_at, last_used_at, revoked_at
+FROM api_tokens
+WHERE id = ?1
+`
+
+type APITokenForRotateRow struct {
+	ID         string
+	Name       string
+	Prefix     string
+	Scopes     string
+	ExpiresAt  *int64
+	CreatedAt  int64
+	LastUsedAt *int64
+	RevokedAt  *int64
+}
+
+// Looks a token up by id (any state) for POST /api/tokens/:id/rotate. Never returns token_hash.
+func (q *Queries) APITokenForRotate(ctx context.Context, id string) (APITokenForRotateRow, error) {
+	row := q.db.QueryRowContext(ctx, aPITokenForRotate, id)
+	var i APITokenForRotateRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Prefix,
+		&i.Scopes,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
 const countValidAPITokensByName = `-- name: CountValidAPITokensByName :one
 SELECT COUNT(*) FROM api_tokens
 WHERE name = ?1
@@ -118,6 +152,42 @@ func (q *Queries) ExpireAPITokenByName(ctx context.Context, arg ExpireAPITokenBy
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const latestAPITokenByName = `-- name: LatestAPITokenByName :one
+SELECT id, name, prefix, scopes, expires_at, created_at, last_used_at, revoked_at
+FROM api_tokens
+WHERE name = ?1
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+type LatestAPITokenByNameRow struct {
+	ID         string
+	Name       string
+	Prefix     string
+	Scopes     string
+	ExpiresAt  *int64
+	CreatedAt  int64
+	LastUsedAt *int64
+	RevokedAt  *int64
+}
+
+// The most recent token with this name in any state.
+func (q *Queries) LatestAPITokenByName(ctx context.Context, name string) (LatestAPITokenByNameRow, error) {
+	row := q.db.QueryRowContext(ctx, latestAPITokenByName, name)
+	var i LatestAPITokenByNameRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Prefix,
+		&i.Scopes,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.RevokedAt,
+	)
+	return i, err
 }
 
 const listAPITokens = `-- name: ListAPITokens :many
@@ -210,6 +280,34 @@ func (q *Queries) RevokeAPITokenByName(ctx context.Context, arg RevokeAPITokenBy
 	return result.RowsAffected()
 }
 
+const rotateAPIToken = `-- name: RotateAPIToken :execrows
+UPDATE api_tokens
+SET token_hash = ?1, prefix = ?2, last_used_at = NULL
+WHERE id = ?3 AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > ?4)
+`
+
+type RotateAPITokenParams struct {
+	TokenHash string
+	Prefix    string
+	ID        string
+	Now       *int64
+}
+
+// Replaces the secret of a valid token in place; the old hash stops matching at once (AUTH-R21).
+func (q *Queries) RotateAPIToken(ctx context.Context, arg RotateAPITokenParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, rotateAPIToken,
+		arg.TokenHash,
+		arg.Prefix,
+		arg.ID,
+		arg.Now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const touchAPIToken = `-- name: TouchAPIToken :exec
 UPDATE api_tokens
 SET last_used_at = CAST(?1 AS INTEGER)
@@ -224,4 +322,44 @@ type TouchAPITokenParams struct {
 func (q *Queries) TouchAPIToken(ctx context.Context, arg TouchAPITokenParams) error {
 	_, err := q.db.ExecContext(ctx, touchAPIToken, arg.LastUsedAt, arg.ID)
 	return err
+}
+
+const validAPITokenByName = `-- name: ValidAPITokenByName :one
+SELECT id, name, prefix, scopes, expires_at, created_at, last_used_at, revoked_at
+FROM api_tokens
+WHERE name = ?1 AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > ?2)
+`
+
+type ValidAPITokenByNameParams struct {
+	Name string
+	Now  *int64
+}
+
+type ValidAPITokenByNameRow struct {
+	ID         string
+	Name       string
+	Prefix     string
+	Scopes     string
+	ExpiresAt  *int64
+	CreatedAt  int64
+	LastUsedAt *int64
+	RevokedAt  *int64
+}
+
+// The valid (not revoked, not expired) token with this name; CreateAPIToken keeps valid names unique.
+func (q *Queries) ValidAPITokenByName(ctx context.Context, arg ValidAPITokenByNameParams) (ValidAPITokenByNameRow, error) {
+	row := q.db.QueryRowContext(ctx, validAPITokenByName, arg.Name, arg.Now)
+	var i ValidAPITokenByNameRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Prefix,
+		&i.Scopes,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.RevokedAt,
+	)
+	return i, err
 }

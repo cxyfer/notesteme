@@ -253,6 +253,22 @@ type Notifier struct {
 	UpdatedAt        int64
 }
 
+type OidcIdentity struct {
+	Issuer      string
+	Subject     string
+	LastLoginAt int64
+}
+
+type OidcLogin struct {
+	StateHash    string
+	CookieHash   string
+	Nonce        string
+	CodeVerifier string
+	Next         string
+	CreatedAt    int64
+	ExpiresAt    int64
+}
+
 type Output struct {
 	ItemID    string
 	Path      string
@@ -349,12 +365,15 @@ type Secret struct {
 }
 
 type Session struct {
-	ID        string
-	TokenHash string
-	CreatedAt int64
-	ExpiresAt int64
-	Ip        string
-	UserAgent string
+	ID         string
+	TokenHash  string
+	CreatedAt  int64
+	ExpiresAt  int64
+	Ip         string
+	UserAgent  string
+	Method     string
+	LastSeenAt int64
+	ProxyUser  string
 }
 
 type Setting struct {

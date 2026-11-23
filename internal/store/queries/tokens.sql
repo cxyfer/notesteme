@@ -46,3 +46,31 @@ UPDATE api_tokens
 SET expires_at = CAST(sqlc.arg(expires_at) AS INTEGER)
 WHERE revoked_at IS NULL AND name = sqlc.arg(name)
   AND (expires_at IS NULL OR expires_at > sqlc.arg(now));
+
+-- name: APITokenForRotate :one
+-- Looks a token up by id (any state) for POST /api/tokens/:id/rotate. Never returns token_hash.
+SELECT id, name, prefix, scopes, expires_at, created_at, last_used_at, revoked_at
+FROM api_tokens
+WHERE id = sqlc.arg(id);
+
+-- name: ValidAPITokenByName :one
+-- The valid (not revoked, not expired) token with this name; CreateAPIToken keeps valid names unique.
+SELECT id, name, prefix, scopes, expires_at, created_at, last_used_at, revoked_at
+FROM api_tokens
+WHERE name = sqlc.arg(name) AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > sqlc.arg(now));
+
+-- name: LatestAPITokenByName :one
+-- The most recent token with this name in any state.
+SELECT id, name, prefix, scopes, expires_at, created_at, last_used_at, revoked_at
+FROM api_tokens
+WHERE name = sqlc.arg(name)
+ORDER BY created_at DESC, id DESC
+LIMIT 1;
+
+-- name: RotateAPIToken :execrows
+-- Replaces the secret of a valid token in place; the old hash stops matching at once (AUTH-R21).
+UPDATE api_tokens
+SET token_hash = sqlc.arg(token_hash), prefix = sqlc.arg(prefix), last_used_at = NULL
+WHERE id = sqlc.arg(id) AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > sqlc.arg(now));

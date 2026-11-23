@@ -9,9 +9,50 @@ import (
 	"context"
 )
 
+const countOIDCLogins = `-- name: CountOIDCLogins :one
+SELECT COUNT(*) FROM oidc_logins
+`
+
+func (q *Queries) CountOIDCLogins(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countOIDCLogins)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const createOIDCLogin = `-- name: CreateOIDCLogin :exec
+INSERT INTO oidc_logins (state_hash, cookie_hash, nonce, code_verifier, next, created_at, expires_at)
+VALUES (?1, ?2, ?3, ?4, ?5,
+        ?6, ?7)
+`
+
+type CreateOIDCLoginParams struct {
+	StateHash    string
+	CookieHash   string
+	Nonce        string
+	CodeVerifier string
+	Next         string
+	CreatedAt    int64
+	ExpiresAt    int64
+}
+
+func (q *Queries) CreateOIDCLogin(ctx context.Context, arg CreateOIDCLoginParams) error {
+	_, err := q.db.ExecContext(ctx, createOIDCLogin,
+		arg.StateHash,
+		arg.CookieHash,
+		arg.Nonce,
+		arg.CodeVerifier,
+		arg.Next,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
 const createSession = `-- name: CreateSession :exec
-INSERT INTO sessions (id, token_hash, created_at, expires_at, ip, user_agent)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+INSERT INTO sessions (id, token_hash, created_at, expires_at, ip, user_agent, method, last_seen_at, proxy_user)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6,
+        ?7, ?3, ?8)
 `
 
 type CreateSessionParams struct {
@@ -21,6 +62,8 @@ type CreateSessionParams struct {
 	ExpiresAt int64
 	Ip        string
 	UserAgent string
+	Method    string
+	ProxyUser string
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
@@ -31,8 +74,22 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) er
 		arg.ExpiresAt,
 		arg.Ip,
 		arg.UserAgent,
+		arg.Method,
+		arg.ProxyUser,
 	)
 	return err
+}
+
+const deleteExpiredOIDCLogins = `-- name: DeleteExpiredOIDCLogins :execrows
+DELETE FROM oidc_logins WHERE expires_at <= ?1
+`
+
+func (q *Queries) DeleteExpiredOIDCLogins(ctx context.Context, now int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteExpiredOIDCLogins, now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deleteExpiredSessions = `-- name: DeleteExpiredSessions :execrows
@@ -54,6 +111,18 @@ DELETE FROM sessions WHERE token_hash = ?1
 func (q *Queries) DeleteSessionByHash(ctx context.Context, tokenHash string) error {
 	_, err := q.db.ExecContext(ctx, deleteSessionByHash, tokenHash)
 	return err
+}
+
+const deleteSessionByID = `-- name: DeleteSessionByID :execrows
+DELETE FROM sessions WHERE id = ?1
+`
+
+func (q *Queries) DeleteSessionByID(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteSessionByID, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deleteSessionsExcept = `-- name: DeleteSessionsExcept :execrows
@@ -82,8 +151,55 @@ func (q *Queries) ExtendSession(ctx context.Context, arg ExtendSessionParams) er
 	return err
 }
 
+const listSessions = `-- name: ListSessions :many
+SELECT id, method, created_at, last_seen_at, ip, user_agent
+FROM sessions
+WHERE expires_at > ?1
+ORDER BY last_seen_at DESC, id DESC
+`
+
+type ListSessionsRow struct {
+	ID         string
+	Method     string
+	CreatedAt  int64
+	LastSeenAt int64
+	Ip         string
+	UserAgent  string
+}
+
+// Never returns token_hash. Only sessions that have not expired at the injected clock now.
+func (q *Queries) ListSessions(ctx context.Context, now int64) ([]ListSessionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSessions, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSessionsRow
+	for rows.Next() {
+		var i ListSessionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Method,
+			&i.CreatedAt,
+			&i.LastSeenAt,
+			&i.Ip,
+			&i.UserAgent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const sessionByHash = `-- name: SessionByHash :one
-SELECT id, token_hash, created_at, expires_at, ip, user_agent FROM sessions WHERE token_hash = ?1 AND expires_at > ?2
+SELECT id, token_hash, created_at, expires_at, ip, user_agent, method, last_seen_at, proxy_user FROM sessions WHERE token_hash = ?1 AND expires_at > ?2
 `
 
 type SessionByHashParams struct {
@@ -101,6 +217,63 @@ func (q *Queries) SessionByHash(ctx context.Context, arg SessionByHashParams) (S
 		&i.ExpiresAt,
 		&i.Ip,
 		&i.UserAgent,
+		&i.Method,
+		&i.LastSeenAt,
+		&i.ProxyUser,
 	)
 	return i, err
+}
+
+const takeOIDCLogin = `-- name: TakeOIDCLogin :one
+DELETE FROM oidc_logins WHERE state_hash = ?1
+RETURNING state_hash, cookie_hash, nonce, code_verifier, next, created_at, expires_at
+`
+
+// Single use: the row is deleted whether or not the caller accepts it (AUTH-R17, R18).
+func (q *Queries) TakeOIDCLogin(ctx context.Context, stateHash string) (OidcLogin, error) {
+	row := q.db.QueryRowContext(ctx, takeOIDCLogin, stateHash)
+	var i OidcLogin
+	err := row.Scan(
+		&i.StateHash,
+		&i.CookieHash,
+		&i.Nonce,
+		&i.CodeVerifier,
+		&i.Next,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const touchSession = `-- name: TouchSession :exec
+UPDATE sessions SET last_seen_at = ?1, expires_at = ?2 WHERE id = ?3
+`
+
+type TouchSessionParams struct {
+	LastSeenAt int64
+	ExpiresAt  int64
+	ID         string
+}
+
+// Updates last_seen_at and the idle expiry together (AUTH-R4, R20); the caller throttles it.
+func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) error {
+	_, err := q.db.ExecContext(ctx, touchSession, arg.LastSeenAt, arg.ExpiresAt, arg.ID)
+	return err
+}
+
+const upsertOIDCIdentity = `-- name: UpsertOIDCIdentity :exec
+INSERT INTO oidc_identities (issuer, subject, last_login_at)
+VALUES (?1, ?2, ?3)
+ON CONFLICT (issuer, subject) DO UPDATE SET last_login_at = excluded.last_login_at
+`
+
+type UpsertOIDCIdentityParams struct {
+	Issuer      string
+	Subject     string
+	LastLoginAt int64
+}
+
+func (q *Queries) UpsertOIDCIdentity(ctx context.Context, arg UpsertOIDCIdentityParams) error {
+	_, err := q.db.ExecContext(ctx, upsertOIDCIdentity, arg.Issuer, arg.Subject, arg.LastLoginAt)
+	return err
 }
