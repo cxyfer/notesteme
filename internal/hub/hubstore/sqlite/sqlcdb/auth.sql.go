@@ -57,7 +57,7 @@ INSERT INTO audit_log (id, actor_user_id, action, target_kind, target_id, detail
 
 type CreateAuditEntryParams struct {
 	ID          string
-	ActorUserID string
+	ActorUserID *string
 	Action      string
 	TargetKind  string
 	TargetID    string
@@ -284,20 +284,21 @@ func (q *Queries) IdentityOfUser(ctx context.Context, arg IdentityOfUserParams) 
 
 const listAuditEntries = `-- name: ListAuditEntries :many
 SELECT a.id, a.actor_user_id, u.display_name AS actor, a.action, a.target_kind, a.target_id, a.at
-FROM audit_log a JOIN users u ON u.id = a.actor_user_id
+FROM audit_log a LEFT JOIN users u ON u.id = a.actor_user_id
 ORDER BY a.at DESC, a.rowid DESC LIMIT ?
 `
 
 type ListAuditEntriesRow struct {
 	ID          string
-	ActorUserID string
-	Actor       string
+	ActorUserID *string
+	Actor       *string
 	Action      string
 	TargetKind  string
 	TargetID    string
 	At          int64
 }
 
+// Command-line actions (notesteme-hub admin) have no actor account.
 func (q *Queries) ListAuditEntries(ctx context.Context, limit int64) ([]ListAuditEntriesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listAuditEntries, limit)
 	if err != nil {

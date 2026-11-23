@@ -6,7 +6,7 @@ package sqlcdb
 
 type AuditLog struct {
 	ID          string
-	ActorUserID string
+	ActorUserID *string
 	Action      string
 	TargetKind  string
 	TargetID    string
@@ -79,6 +79,18 @@ type RemovedHash struct {
 	RemovedAt  int64
 }
 
+type Report struct {
+	ID         string
+	VersionID  string
+	ReporterID string
+	Reason     string
+	Note       string
+	State      string
+	CreatedAt  int64
+	DecidedAt  *int64
+	DecidedBy  *string
+}
+
 type Session struct {
 	ID              string
 	UserID          string
@@ -105,6 +117,22 @@ type ShareVersion struct {
 	VersionID    string
 	Position     int64
 	Deduplicated int64
+}
+
+type Takedown struct {
+	ID            string
+	VersionID     string
+	Reason        string
+	Statement     string
+	DekNonce      []byte
+	DekSealed     []byte
+	ContactNonce  []byte
+	ContactSealed []byte
+	State         string
+	Note          string
+	CreatedAt     int64
+	DecidedAt     *int64
+	DecidedBy     *string
 }
 
 type User struct {
@@ -134,6 +162,8 @@ type Version struct {
 	State           string
 	Score           int64
 	CreatedAt       int64
+	RemovalSource   string
+	RemovalReason   string
 }
 
 type VersionBlob struct {
@@ -155,4 +185,17 @@ type Video struct {
 	PublishedAt       string
 	KeySha256         string
 	FirstSharedAt     int64
+}
+
+type Vote struct {
+	VersionID string
+	UserID    string
+	Value     int64
+	CreatedAt int64
+	UpdatedAt int64
+}
+
+type VoteEvent struct {
+	UserID string
+	At     int64
 }

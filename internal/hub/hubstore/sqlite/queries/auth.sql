@@ -57,6 +57,7 @@ DELETE FROM sessions WHERE token_hash = ?;
 INSERT INTO audit_log (id, actor_user_id, action, target_kind, target_id, detail_json, at) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListAuditEntries :many
+-- Command-line actions (notesteme-hub admin) have no actor account.
 SELECT a.id, a.actor_user_id, u.display_name AS actor, a.action, a.target_kind, a.target_id, a.at
-FROM audit_log a JOIN users u ON u.id = a.actor_user_id
+FROM audit_log a LEFT JOIN users u ON u.id = a.actor_user_id
 ORDER BY a.at DESC, a.rowid DESC LIMIT ?;

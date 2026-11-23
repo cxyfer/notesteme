@@ -60,7 +60,7 @@ func notFound(err error) error {
 }
 
 func toUser(u sqlcdb.User) hubstore.User {
-	out := hubstore.User{ID: u.ID, DisplayName: u.DisplayName, CreatedAt: fromMS(u.CreatedAt)}
+	out := hubstore.User{ID: u.ID, DisplayName: u.DisplayName, CreatedAt: fromMS(u.CreatedAt), SuspendedReason: u.SuspendedReason}
 	if u.SuspendedAt != nil {
 		t := fromMS(*u.SuspendedAt)
 		out.SuspendedAt = &t
@@ -215,13 +215,18 @@ func (s *Store) UnlinkIdentity(ctx context.Context, userID, provider string) err
 	})
 }
 
+// audit 寫入一筆稽核紀錄；actor 為空字串時是命令列（notesteme-hub admin）的動作，actor_user_id 存 NULL。
 func audit(ctx context.Context, q *sqlcdb.Queries, actor, action, kind, target string, detail any, now int64) error {
 	b, err := json.Marshal(detail)
 	if err != nil {
 		return err
 	}
+	var actorID *string
+	if actor != "" {
+		actorID = &actor
+	}
 	return q.CreateAuditEntry(ctx, sqlcdb.CreateAuditEntryParams{
-		ID: newID(), ActorUserID: actor, Action: action, TargetKind: kind, TargetID: target, DetailJson: string(b), At: now,
+		ID: newID(), ActorUserID: actorID, Action: action, TargetKind: kind, TargetID: target, DetailJson: string(b), At: now,
 	})
 }
 
@@ -321,8 +326,16 @@ func (s *Store) AuditEntries(ctx context.Context, limit int) ([]hubstore.AuditEn
 	}
 	out := make([]hubstore.AuditEntry, 0, len(rows))
 	for _, r := range rows {
+		e := hubstore.AuditEntry{Actor: hubstore.CLIActor}
+		if r.ActorUserID != nil {
+			e.ActorUserID = *r.ActorUserID
+			e.Actor = ""
+			if r.Actor != nil {
+				e.Actor = *r.Actor
+			}
+		}
 		out = append(out, hubstore.AuditEntry{
-			ID: r.ID, ActorUserID: r.ActorUserID, Actor: r.Actor, Action: r.Action,
+			ID: r.ID, ActorUserID: e.ActorUserID, Actor: e.Actor, Action: r.Action,
 			TargetKind: r.TargetKind, TargetID: r.TargetID, At: fromMS(r.At),
 		})
 	}

@@ -98,6 +98,7 @@ type Store interface {
 
 	ContentStore
 	ListingStore
+	CommunityStore
 }
 
 // 群組成員資格的來源（HACC-R11、R12）。
@@ -138,6 +139,8 @@ type User struct {
 	CreatedAt   time.Time
 	// SuspendedAt 非 nil 代表帳號已停用（HACC-R17）。
 	SuspendedAt *time.Time
+	// SuspendedReason 是停用的原因（只給管理員看）。
+	SuspendedReason string
 }
 
 // Suspended 回報帳號是否已停用。

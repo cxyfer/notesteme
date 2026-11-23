@@ -382,7 +382,7 @@ func (q *Queries) ShareUsage(ctx context.Context, arg ShareUsageParams) (ShareUs
 }
 
 const shareVersions = `-- name: ShareVersions :many
-SELECT v.id, v.video_id, v.kind, v.variant, v.lang, v.format, v.sha256, v.size, v.provenance_json, v.transcribe_model, v.correct_model, v.translate_model, v.model_verified, v.visibility, v.license, v.state, v.score, v.created_at, sv.deduplicated FROM share_versions sv JOIN versions v ON v.id = sv.version_id
+SELECT v.id, v.video_id, v.kind, v.variant, v.lang, v.format, v.sha256, v.size, v.provenance_json, v.transcribe_model, v.correct_model, v.translate_model, v.model_verified, v.visibility, v.license, v.state, v.score, v.created_at, v.removal_source, v.removal_reason, sv.deduplicated FROM share_versions sv JOIN versions v ON v.id = sv.version_id
 WHERE sv.share_id = ? ORDER BY sv.position
 `
 
@@ -419,6 +419,8 @@ func (q *Queries) ShareVersions(ctx context.Context, shareID string) ([]ShareVer
 			&i.Version.State,
 			&i.Version.Score,
 			&i.Version.CreatedAt,
+			&i.Version.RemovalSource,
+			&i.Version.RemovalReason,
 			&i.Deduplicated,
 		); err != nil {
 			return nil, err
@@ -435,7 +437,7 @@ func (q *Queries) ShareVersions(ctx context.Context, shareID string) ([]ShareVer
 }
 
 const versionByID = `-- name: VersionByID :one
-SELECT id, video_id, kind, variant, lang, format, sha256, size, provenance_json, transcribe_model, correct_model, translate_model, model_verified, visibility, license, state, score, created_at FROM versions WHERE id = ?
+SELECT id, video_id, kind, variant, lang, format, sha256, size, provenance_json, transcribe_model, correct_model, translate_model, model_verified, visibility, license, state, score, created_at, removal_source, removal_reason FROM versions WHERE id = ?
 `
 
 func (q *Queries) VersionByID(ctx context.Context, id string) (Version, error) {
@@ -460,12 +462,14 @@ func (q *Queries) VersionByID(ctx context.Context, id string) (Version, error) {
 		&i.State,
 		&i.Score,
 		&i.CreatedAt,
+		&i.RemovalSource,
+		&i.RemovalReason,
 	)
 	return i, err
 }
 
 const versionByKey = `-- name: VersionByKey :one
-SELECT id, video_id, kind, variant, lang, format, sha256, size, provenance_json, transcribe_model, correct_model, translate_model, model_verified, visibility, license, state, score, created_at FROM versions WHERE video_id = ? AND kind = ? AND variant = ? AND lang = ? AND sha256 = ?
+SELECT id, video_id, kind, variant, lang, format, sha256, size, provenance_json, transcribe_model, correct_model, translate_model, model_verified, visibility, license, state, score, created_at, removal_source, removal_reason FROM versions WHERE video_id = ? AND kind = ? AND variant = ? AND lang = ? AND sha256 = ?
 `
 
 type VersionByKeyParams struct {
@@ -504,12 +508,14 @@ func (q *Queries) VersionByKey(ctx context.Context, arg VersionByKeyParams) (Ver
 		&i.State,
 		&i.Score,
 		&i.CreatedAt,
+		&i.RemovalSource,
+		&i.RemovalReason,
 	)
 	return i, err
 }
 
 const versionChildren = `-- name: VersionChildren :many
-SELECT v.id, v.video_id, v.kind, v.variant, v.lang, v.format, v.sha256, v.size, v.provenance_json, v.transcribe_model, v.correct_model, v.translate_model, v.model_verified, v.visibility, v.license, v.state, v.score, v.created_at, d.relation FROM derivations d JOIN versions v ON v.id = d.child_version_id
+SELECT v.id, v.video_id, v.kind, v.variant, v.lang, v.format, v.sha256, v.size, v.provenance_json, v.transcribe_model, v.correct_model, v.translate_model, v.model_verified, v.visibility, v.license, v.state, v.score, v.created_at, v.removal_source, v.removal_reason, d.relation FROM derivations d JOIN versions v ON v.id = d.child_version_id
 WHERE d.parent_version_id = ? ORDER BY v.created_at, v.id, d.relation
 `
 
@@ -546,6 +552,8 @@ func (q *Queries) VersionChildren(ctx context.Context, parentVersionID string) (
 			&i.Version.State,
 			&i.Version.Score,
 			&i.Version.CreatedAt,
+			&i.Version.RemovalSource,
+			&i.Version.RemovalReason,
 			&i.Relation,
 		); err != nil {
 			return nil, err
@@ -562,7 +570,7 @@ func (q *Queries) VersionChildren(ctx context.Context, parentVersionID string) (
 }
 
 const versionParents = `-- name: VersionParents :many
-SELECT v.id, v.video_id, v.kind, v.variant, v.lang, v.format, v.sha256, v.size, v.provenance_json, v.transcribe_model, v.correct_model, v.translate_model, v.model_verified, v.visibility, v.license, v.state, v.score, v.created_at, d.relation FROM derivations d JOIN versions v ON v.id = d.parent_version_id
+SELECT v.id, v.video_id, v.kind, v.variant, v.lang, v.format, v.sha256, v.size, v.provenance_json, v.transcribe_model, v.correct_model, v.translate_model, v.model_verified, v.visibility, v.license, v.state, v.score, v.created_at, v.removal_source, v.removal_reason, d.relation FROM derivations d JOIN versions v ON v.id = d.parent_version_id
 WHERE d.child_version_id = ? ORDER BY v.created_at, v.id, d.relation
 `
 
@@ -599,6 +607,8 @@ func (q *Queries) VersionParents(ctx context.Context, childVersionID string) ([]
 			&i.Version.State,
 			&i.Version.Score,
 			&i.Version.CreatedAt,
+			&i.Version.RemovalSource,
+			&i.Version.RemovalReason,
 			&i.Relation,
 		); err != nil {
 			return nil, err
@@ -652,7 +662,7 @@ func (q *Queries) VersionUploaders(ctx context.Context, versionID string) ([]Ver
 }
 
 const versionsBySHA = `-- name: VersionsBySHA :many
-SELECT id, video_id, kind, variant, lang, format, sha256, size, provenance_json, transcribe_model, correct_model, translate_model, model_verified, visibility, license, state, score, created_at FROM versions WHERE video_id = ? AND sha256 = ? ORDER BY created_at, id
+SELECT id, video_id, kind, variant, lang, format, sha256, size, provenance_json, transcribe_model, correct_model, translate_model, model_verified, visibility, license, state, score, created_at, removal_source, removal_reason FROM versions WHERE video_id = ? AND sha256 = ? ORDER BY created_at, id
 `
 
 type VersionsBySHAParams struct {
@@ -688,6 +698,8 @@ func (q *Queries) VersionsBySHA(ctx context.Context, arg VersionsBySHAParams) ([
 			&i.State,
 			&i.Score,
 			&i.CreatedAt,
+			&i.RemovalSource,
+			&i.RemovalReason,
 		); err != nil {
 			return nil, err
 		}
@@ -757,7 +769,7 @@ func (q *Queries) VideoByKey(ctx context.Context, arg VideoByKeyParams) (Video, 
 }
 
 const videoVersions = `-- name: VideoVersions :many
-SELECT id, video_id, kind, variant, lang, format, sha256, size, provenance_json, transcribe_model, correct_model, translate_model, model_verified, visibility, license, state, score, created_at FROM versions WHERE video_id = ? ORDER BY created_at, id
+SELECT id, video_id, kind, variant, lang, format, sha256, size, provenance_json, transcribe_model, correct_model, translate_model, model_verified, visibility, license, state, score, created_at, removal_source, removal_reason FROM versions WHERE video_id = ? ORDER BY created_at, id
 `
 
 func (q *Queries) VideoVersions(ctx context.Context, videoID string) ([]Version, error) {
@@ -788,6 +800,8 @@ func (q *Queries) VideoVersions(ctx context.Context, videoID string) ([]Version,
 			&i.State,
 			&i.Score,
 			&i.CreatedAt,
+			&i.RemovalSource,
+			&i.RemovalReason,
 		); err != nil {
 			return nil, err
 		}

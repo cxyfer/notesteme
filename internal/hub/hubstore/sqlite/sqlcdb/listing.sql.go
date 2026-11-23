@@ -10,7 +10,7 @@ import (
 )
 
 const listVersions = `-- name: ListVersions :many
-SELECT v.id, v.video_id, v.kind, v.variant, v.lang, v.format, v.sha256, v.size, v.provenance_json, v.transcribe_model, v.correct_model, v.translate_model, v.model_verified, v.visibility, v.license, v.state, v.score, v.created_at, vd.id, vd.platform, vd.external_id, vd.part, vd.title, vd.channel_external_id, vd.channel_title, vd.duration_s, vd.original_lang, vd.published_at, vd.key_sha256, vd.first_shared_at, CAST(v.score * CAST(?1 AS INTEGER) AS INTEGER) AS sort_score
+SELECT v.id, v.video_id, v.kind, v.variant, v.lang, v.format, v.sha256, v.size, v.provenance_json, v.transcribe_model, v.correct_model, v.translate_model, v.model_verified, v.visibility, v.license, v.state, v.score, v.created_at, v.removal_source, v.removal_reason, vd.id, vd.platform, vd.external_id, vd.part, vd.title, vd.channel_external_id, vd.channel_title, vd.duration_s, vd.original_lang, vd.published_at, vd.key_sha256, vd.first_shared_at, CAST(v.score * CAST(?1 AS INTEGER) AS INTEGER) AS sort_score
 FROM versions v JOIN videos vd ON vd.id = v.video_id
 WHERE v.state = 'visible'
   AND (CAST(?2 AS TEXT) = '' OR vd.platform = ?2)
@@ -124,6 +124,8 @@ func (q *Queries) ListVersions(ctx context.Context, arg ListVersionsParams) ([]L
 			&i.Version.State,
 			&i.Version.Score,
 			&i.Version.CreatedAt,
+			&i.Version.RemovalSource,
+			&i.Version.RemovalReason,
 			&i.Video.ID,
 			&i.Video.Platform,
 			&i.Video.ExternalID,
@@ -152,7 +154,7 @@ func (q *Queries) ListVersions(ctx context.Context, arg ListVersionsParams) ([]L
 }
 
 const lookupVersions = `-- name: LookupVersions :many
-SELECT v.id, v.video_id, v.kind, v.variant, v.lang, v.format, v.sha256, v.size, v.provenance_json, v.transcribe_model, v.correct_model, v.translate_model, v.model_verified, v.visibility, v.license, v.state, v.score, v.created_at, vd.key_sha256
+SELECT v.id, v.video_id, v.kind, v.variant, v.lang, v.format, v.sha256, v.size, v.provenance_json, v.transcribe_model, v.correct_model, v.translate_model, v.model_verified, v.visibility, v.license, v.state, v.score, v.created_at, v.removal_source, v.removal_reason, vd.key_sha256
 FROM versions v JOIN videos vd ON vd.id = v.video_id
 WHERE vd.platform = ?1
   AND vd.key_sha256 >= CAST(?2 AS TEXT) AND vd.key_sha256 < CAST(?3 AS TEXT)
@@ -215,6 +217,8 @@ func (q *Queries) LookupVersions(ctx context.Context, arg LookupVersionsParams) 
 			&i.Version.State,
 			&i.Version.Score,
 			&i.Version.CreatedAt,
+			&i.Version.RemovalSource,
+			&i.Version.RemovalReason,
 			&i.KeySha256,
 		); err != nil {
 			return nil, err
