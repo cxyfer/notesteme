@@ -78,6 +78,15 @@ func TestBundleExportImport(t *testing.T) {
 	if rec.Code != 413 {
 		t.Errorf("Content-Length = %d %s", rec.Code, rec.Body)
 	}
+	// 有 session 但沒有 CSRF 標頭：跨站上傳被擋下（驗證 middleware 在 intercept 之前）。
+	csrfBody, csrfCT := multipartImport(t, "file", data)
+	rec = r.do("POST", "/api/bundles/import", csrfBody, func(req *http.Request) {
+		withCookies(r.sess, r.csrf, "")(req)
+		req.Header.Set("Content-Type", csrfCT)
+	})
+	if e := errBody(t, rec); rec.Code != 403 || e.Code != CodeCSRF {
+		t.Errorf("沒有 CSRF = %d %s", rec.Code, rec.Body)
+	}
 	// 沒有登入：不讀本體，回 401。
 	rec = r.do("POST", "/api/bundles/import", "x", nil)
 	if rec.Code != 401 {
