@@ -653,6 +653,8 @@ BND 切片（2026-11-23）實作了上表全部的句型（`features/steps/bundl
 | `When the term candidates are decided in one batch:` | 表格欄位 `item`（代號，用來找頻道）、`term`（候選原本的詞）、`state`，可加 `decided_term`、`scope`（空白代表省略該欄位）。依序以 GET 找出每個候選的 id（同上），組成 `{decisions: [{candidate, state, term?, scope?}]}`，送出 `POST /api/term-candidates/decide`；回應成為最近一次的回應 |
 | `Then the glossary {string} has exactly the terms {string}` | 參數是 `global` 或 `channel-of:<代號>`：送出 `GET /api/glossaries/global/default` 或 `GET /api/glossaries/channel/<頻道 ID>`，`terms` 必須與第二個參數（以逗號切開、去掉前後空白；空字串代表沒有任何詞）依序完全相等。不改寫最近一次的回應 |
 
+GLOS 切片（2026-11-24）實作了上表全部的句型（`features/steps/glossary_review.go`），沒有新句型；四個句型只有 GLOS 的場景使用，不需要閘門。補充（依 /goal 採 advisor 建議，待 owner 追認）：候選的 seeding 接在彙整（`flushDigests`）之後寫入，經 `app.Server.SeedTermCandidate`；`is decided with:` 與 `decided in one batch:` 用頻道的 natural key 送出請求（API 同時接受 UUID 與 natural key）。
+
 ### 4.21 進階登入與工作階段（`steps/signin.go`，M4）
 
 設定類的步驟（`the reverse proxy … signs users in`、`allows the users`、`the OIDC provider … signs in`、`allows the subjects`）只累積，和 `Given the config file contains:` 的內容合併後寫成 `/config/notesteme.yaml`（同一個鍵兩邊都寫時步驟失敗）；server 在第一個送出請求的步驟或 `When the server starts` 時以合併後的設定啟動。

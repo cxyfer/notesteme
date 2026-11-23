@@ -65,3 +65,19 @@
 - G3：修改後的詞最多 100 個字元（GLOS-R2），比候選本身的 64 個字元（C4）寬，因為它會直接進詞彙表，上限應該跟詞彙表的詞（C2）一致。
 - G4：批次決定一律整批交易（GLOS-R4）。部分成功比較寬容，但 UI 很難說清楚哪些成功了；整批失敗時回應會指出第一個出錯的項目，使用者修正後重送。
 - G5：GLOS-R5 由舊到新排序，讓最早提出、累積最久的候選先被處理；UI 可以切換由新到舊（`order=desc`，之後需要時再加）。
+
+### GLOS 切片實作時的決定
+
+以下皆為（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）。實作在 `internal/pipeline/glossary_review.go`、`internal/api/term_review.go`，migration `00029_glossary_review`。
+
+- G6：拒絕時 `decided_term`、`decided_scope` 是 `null`，只有 `decided_at` 有值；pending 時三個都是 `null`。`GET /api/channels/:id/term-candidates`、PATCH 與批次決定的回應都帶這三個欄位。
+- G7：`decisions` 是空陣列時回 422，`errors[].path` 為 `decisions`（「至少要有一項。」）；規格只寫了上限。
+- G8：批次的錯誤 path：整批層級的錯誤（項目數、重複的 `candidate`）先檢查；之後**依序逐項**「檢查 → 套用」，回報的就是第一個出錯的項目（G4）。欄位錯誤是 `decisions.<n>.<欄位>`（`state`、`term`、`scope`），找不到候選（404）是 `decisions.<n>.candidate`，409（`term_candidate_decided`、`glossary_full`）是 `decisions.<n>`。批次中每一項的 `state` 也不用 schema 的 enum，才能指到 `decisions.<n>.state`。
+- G9：`GET /api/term-candidates?channel=` 找不到頻道時（natural key 或 UUID）回 200 的空清單（`total: 0`），不回 404；篩選條件沒有符合的資料不是錯誤。C4 的 `GET /api/channels/:id/term-candidates` 對找不到的 UUID 仍回 404（不變）。natural key 的平台不合法時回 422（同 C2）。
+- G10：M2 的 PATCH（只有 `state`）在頻道詞彙表已有 500 個詞時，原本回 422（C2 的上限檢查），現在依 GLOS-R2 回 409 `glossary_full`，候選維持 `pending`。詞彙表已滿但已有大小寫相同的詞時照樣接受（不需要新的位置）。
+- G11：詞彙表已有大小寫相同的詞時，詞彙表保留原本的寫法，`decided_term` 記錄這次送出的寫法（例如詞彙表有 `Kafka`、候選是 `kafka`，`decided_term` 是 `kafka`）。同一批中兩個候選加入大小寫相同的詞時只加一次。
+- G12：稽核：決定的內容與時間記在候選的 `decided_*` 欄位，另寫一行 info log（候選 id、頻道 id、state、scope；不寫詞的內容，避免把不可信的文字寫進 log）；沒有另外建稽核表（同 AUTH A21）。
+- G13：`scope: global` 不需要額外的權限：PATCH 與批次決定都已要求 `admin`，與 `PUT /api/glossaries/global/default` 相同。
+- G14：審核清單的游標沿用 `GET /api/items` 的格式（HMAC、版本、`created_at` 毫秒與 id）；篩選指紋加上 `term-candidates` 前綴並涵蓋 `state` 與 `channel`，影音列表的游標不能拿來這裡用，換了篩選條件的游標回 422。
+- G15：改寫的術語與模型提出的候選用同一套清理（`llm.CleanTerm`：`\p{Cc}`、`\p{Cf}` 與空白換成空白、合併連續空白、去掉前後空白），長度以清理後的 code point 計算。像指令的文字（例如 `</video_metadata>`）在長度內仍會接受：詞彙表依 C3 放在 `<video_metadata>` 的 JSON 中，系統指示說明它是參考資料，這裡不另外過濾。
+- G16：驗收測試的 seeding（`the term candidates … are pending`）經 `app.Server.SeedTermCandidate` 寫入產品的 store，清理與 UNIQUE 同 C4 的收集；`created_at` 是 fake clock 的現在加上登記序號毫秒，接在彙整（`flushDigests`）之後寫入。
