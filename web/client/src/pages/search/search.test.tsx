@@ -141,6 +141,16 @@ describe("搜尋頁", () => {
     expect(api.calls("GET", "/api/search")[1]!.url.searchParams.get("cursor")).toBe("c2");
   });
 
+  it("跳轉後影音詳情以 ?t= 標出那一句（字幕列表跟隨目前句捲動）", async () => {
+    mockApi(defaultRoutes());
+    signIn();
+    const { container } = renderRoute("/items/item-1?t=2");
+    await screen.findByText("第二句");
+    await waitFor(() =>
+      expect(container.querySelector(".cue[data-current]")?.textContent).toContain("第二句"),
+    );
+  });
+
   it("媒體庫的搜尋欄可以改搜字幕內容", async () => {
     mockApi(defaultRoutes());
     signIn();

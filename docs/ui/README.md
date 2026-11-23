@@ -479,7 +479,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 匯出時選擇產出種類 | 未做：`GET /api/items/{id}/bundle` 沒有參數（見 10.15 第 6 點） | — |
 | 真實瀏覽器的視覺、鍵盤與螢幕閱讀器驗收（`@ui @manual`：SRCH、GLOS、BND、OPS、DIG、SRC-10） | owner 手動驗收 | — |
 
-驗證：vitest 42 個檔案 413 個測試（新頁面與新區塊都有 axe 測試，`a11yRoutes` 加了 `/search` 兩條路徑）、i18n 三語各 1537 個 key、初始 JS 271.2KB gzip（UI-4 之後約 261.6KB；增加的主要是三語字串，設定的四個新區塊與搜尋頁都在 lazy chunk）。**沒有改後端**（OpenAPI 與 `schema.d.ts` 不變）。
+驗證：vitest 42 個檔案 414 個測試（新頁面與新區塊都有 axe 測試，`a11yRoutes` 加了 `/search` 兩條路徑）、i18n 三語各 1537 個 key、初始 JS 271.2KB gzip（UI-4 之後約 261.6KB；增加的主要是三語字串，設定的四個新區塊與搜尋頁都在 lazy chunk）。**沒有改後端**（OpenAPI 與 `schema.d.ts` 不變）。
 
 ### 10.15 UI-5 的決定與待決問題
 
@@ -496,4 +496,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 9. **彙整放在「通知」分區**（DIG 介面）：時區預設為瀏覽器的時區；端點只列出勾了 `digest` 事件的 notifier（編輯時已選但取消勾選事件的端點也列出，方便移除）；沒有這樣的端點時「新增彙整」停用並說明。預覽把伺服器組好的文字原樣放在 `<pre>`。
 10. **系統告警只顯示目前成立的告警**：`GET /api/system` 沒有已解除的告警或歷史，「恢復狀態」以「目前沒有告警」與說明（解除時會送出解除通知）表示。持續時間以讀到資料的時間計算，用 `Intl` 的單位格式（分鐘／小時／天），不另加字串。沒有放「立即備份」（`/api/backup` 是下載備份檔，不在 brief 範圍）。
 11. **摘要與「有更好的字幕來源」放在標題資訊與時間帶之間**；摘要是 LLM 輸出，一律當純文字（保留換行），帶 `summary.language`。「改用更好的字幕重跑」打開既有的重新處理對話框並帶 `from: transcript`（handoff 的 SRC-10 說明），金額由對話框照 UI-2 的方式處理；提示中的預估為 null 時寫「無法預估費用」，不顯示 $0.00。沒有 SSE 事件告知 `better_source` 出現，詳情在步驟狀態改變或重新開啟時才會更新。
-12. **共用檔案只增不改**：`router.tsx`（`/search`）、`queryKeys.ts`（`search`、`termCandidatesAll`、`termReview`、`digests`）、locale JSON（新增 key；移除不再使用的 `settings.notify.notYetEmitted`）、`SettingsPage.tsx` 沒有改；`GlossarySection`、`SystemSection`、`NotificationsSection` 各只加一個 lazy 掛載點。步驟動作的對照表（`actions.ts`）加了六個後端字串，`ActionKind` 的 `rerun` 多了選填的 `from`，另加 `continue`、`cancel`。新的樣式在 `src/styles/ui5.css`（由 lazy 模組載入），媒體庫的兩個小樣式加在 `library.css`。
+12. **術語的拒絕（單筆與多選批次）不跳確認框**：和 UI-3b 的單筆拒絕一致，GLOS 的 `@ui @manual` 場景（「選取其餘兩個並一起拒絕」）也沒有確認步驟；拒絕只改候選的狀態，不刪除任何詞彙表內容（被拒絕的詞之後仍可能再被提出）。代價是一次最多 100 項、UI 上不能撤回；需要的話之後加 toast 的「復原」（API 要能把候選改回 pending）。
+13. **匯出 bundle 用 `<a download>`**：沿用 UI-4 決定 10（CSV 匯出）的做法；出錯時瀏覽器會下載到 JSON 錯誤。影音詳情只會顯示不在垃圾桶中的影音，所以 404 `in_trash` 不會從這裡發生；bundle 只含字幕、筆記與選中的畫面，大小通常在幾十 MiB 以內（BND N4），不另做進度顯示。
+14. **跳轉後的字幕定位**：影音詳情的字幕列表在掛載時就跟隨 `?t=` 的目前句捲動（UI-2 的行為），測試確認 `?t=2` 時目前句是第 2 句。
+15. **共用檔案只增不改**：`router.tsx`（`/search`）、`queryKeys.ts`（`search`、`termCandidatesAll`、`termReview`、`digests`）、locale JSON（新增 key；移除不再使用的 `settings.notify.notYetEmitted`）、`SettingsPage.tsx` 沒有改；`GlossarySection`、`SystemSection`、`NotificationsSection` 各只加一個 lazy 掛載點。步驟動作的對照表（`actions.ts`）加了六個後端字串，`ActionKind` 的 `rerun` 多了選填的 `from`，另加 `continue`、`cancel`。新的樣式在 `src/styles/ui5.css`（由 lazy 模組載入），媒體庫的兩個小樣式加在 `library.css`。
