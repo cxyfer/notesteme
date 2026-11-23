@@ -185,7 +185,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 匯入 bundle（multipart 的 file，尚未實作） */
+    /** 匯入 bundle（multipart 的 file，BND-R3）：全部驗證通過才寫入；成功回 201 {item, imported, skipped}，不通過回 422 bundle_invalid／bundle_unsupported_version，已存在或在垃圾桶中回 409，超過上傳上限回 413 bundle_too_large */
     post: operations["bundles-import"];
     delete?: never;
     options?: never;
@@ -529,7 +529,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 匯出影音的 bundle（.notesteme.zip，尚未實作） */
+    /** 匯出影音的 bundle（.notesteme.zip，BND-R1）：現行版本的字幕、筆記、章節、贊助片段與選中的畫面，不含媒體檔與 secrets */
     get: operations["items-bundle"];
     put?: never;
     post?: never;
@@ -1742,6 +1742,25 @@ export interface components {
       count?: number;
       mode: string;
     };
+    BundleImportItem: {
+      id: string;
+      /** @description 影音的短代號 */
+      ref: string;
+      title: string;
+    };
+    BundleImportResult: {
+      /**
+       * Format: int64
+       * @description 匯入的產出數
+       */
+      imported: number;
+      item: components["schemas"]["BundleImportItem"];
+      /**
+       * Format: int64
+       * @description 內容與既有版本相同而略過的產出數（on_existing=add_versions）
+       */
+      skipped: number;
+    };
     ChangePasswordInputBody: {
       /** @description 目前的密碼 */
       current_password: string;
@@ -2166,6 +2185,8 @@ export interface components {
       /** @description 機器可讀的錯誤代碼 */
       code: string;
       details?: string[] | null;
+      entry?: string;
+      error_class?: string;
       errors?: components["schemas"]["FieldError"][] | null;
       failed?: string[] | null;
       /** Format: int64 */
@@ -3985,19 +4006,34 @@ export interface operations {
   };
   "bundles-import": {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description 影音已經存在時：add_versions 把 bundle 的產出加成新版本；省略時回 409 */
+        on_existing?: "add_versions";
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody?: {
+      content: {
+        "multipart/form-data": {
+          /**
+           * Format: binary
+           * @description bundle（.notesteme.zip）
+           */
+          file?: string;
+        };
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description Created */
+      201: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["BundleImportResult"];
+        };
       };
       /** @description Error */
       default: {
@@ -4866,13 +4902,16 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 影音的 ID 或短代號 */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
