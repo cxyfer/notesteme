@@ -83,7 +83,10 @@ func (s *Scenario) ownerPasswordIs(password string) error {
 
 // ownerIsSignedIn 只表示意圖：session 在 owner 第一次送出請求時才建立（ADR-0015）。
 // owner 的請求本來就會在尚未登入時先登入，所以這裡不需要動作。
-func (s *Scenario) ownerIsSignedIn() error { return nil }
+func (s *Scenario) ownerIsSignedIn() error {
+	s.ownerSignInDeclared = true
+	return nil
+}
 
 // someoneSignsIn 不帶身分地 POST /api/auth/login，回應的 cookie 不會變成 owner 的 session。
 func (s *Scenario) someoneSignsIn(password string) error {

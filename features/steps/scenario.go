@@ -44,6 +44,8 @@ type Scenario struct {
 	// owner 是 owner 的 cookie（名稱對應值）；ownerLoggedIn 表示已經登入過。
 	owner         map[string]string
 	ownerLoggedIn bool
+	// ownerSignInDeclared 表示場景有 Given the owner is signed in（ENTRY 的 the browser opens … signed in as the owner 要求它）。
+	ownerSignInDeclared bool
 
 	// stopped 表示場景明確讓 server 停下（graceful shutdown）而尚未重新啟動：
 	// 讀取狀態的步驟改由 harness 唯讀地直接查 SQLite，不隱含啟動新的 server（見 stageStatusOf）。
