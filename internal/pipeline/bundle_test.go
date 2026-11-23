@@ -559,3 +559,56 @@ func FuzzImportBundle(f *testing.F) {
 		}
 	})
 }
+
+// 影音的 metadata（頻道、發布日期、片長、原文語言）匯入後寫進影音，再匯出時原樣出現在 manifest。
+func TestBundleItemMetadataRoundTrip(t *testing.T) {
+	src, _ := bundleRig(t)
+	ctx := context.Background()
+	ex, err := src.p.ExportBundle(ctx, "yt:abc123xxxxx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := rezip(t, ex.Data, func(m *bundle.OutManifest, _ map[string][]byte) {
+		title, pub, lang, dur := "頻道", "2026-11-01", "zh-Hant", 1935.0
+		m.Item.Channel = &bundle.OutChannel{ExternalID: "UCxyz", Title: &title}
+		m.Item.PublishedAt, m.Item.OriginalLang, m.Item.DurationS = &pub, &lang, &dur
+		m.Item.Title = strings.Repeat("長", 500)
+	})
+	dst := newRig(t)
+	res, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: data})
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := res.Item
+	if it.ChannelID == "" || it.PublishedAt == nil || it.PublishedAt.Format("2006-01-02") != "2026-11-01" ||
+		it.DurationS == nil || *it.DurationS != 1935 || it.OriginalLang != "zh-Hant" || it.Availability != "unknown" {
+		t.Fatalf("item = %+v", it)
+	}
+	ex2, err := dst.p.ExportBundle(ctx, it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := bundle.Read(ex2.Data, bundle.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mi := b.Manifest.Item
+	if mi.Channel.ExternalID != "UCxyz" || mi.Channel.Title != "頻道" || mi.PublishedAt != "2026-11-01" || mi.DurationS == nil ||
+		*mi.DurationS != 1935 || mi.OriginalLang != "zh-Hant" || len([]rune(mi.Title)) != 500 {
+		t.Errorf("manifest item = %+v", mi)
+	}
+	if _, ok := parseBundleDate("2026-11-01T10:00:00Z"); !ok {
+		t.Error("RFC 3339 的時間應該接受")
+	}
+	if _, ok := parseBundleDate("yesterday"); ok {
+		t.Error("不正確的日期應該略過")
+	}
+	for s, want := range map[string]bool{"a.mp4": true, "": false, "..": false, "a/b": false, "a\x01": false} {
+		if validLocalName(s) != want {
+			t.Errorf("validLocalName(%q) != %v", s, want)
+		}
+	}
+	if truncateRunes("ab\xffc", 2) != "ab" {
+		t.Error("truncateRunes")
+	}
+}
