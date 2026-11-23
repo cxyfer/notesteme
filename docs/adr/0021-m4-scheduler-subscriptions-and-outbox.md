@@ -111,4 +111,4 @@ M4 的 migration 接在 M3 的 migration 之後（M3 規劃 `00017`；實際編�
 - 2026-11-23，M4-S1 實作（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
   - 第 5 點：端點回應 `permanent` 的錯誤（netguard 封鎖、3xx、408／429 以外的 4xx）第一次就 `dropped`（NOTIFY N1）；`notify.dropped` 只寫進 `events` 表。
   - `notify.deliver` 不刪除排程列，下一次是「最早的 pending 項目」與「一分鐘之後」取較早的；有新的 outbox 項目時提前到現在。端點的失敗記在 outbox，不回傳給排程器。
-  - 第 7 點：migration `00019_notify`；`notifiers` 加 `config_nonce`，`notification_outbox` 加 `last_attempt_at`、不加外鍵（見 NOTIFY 待決問題「M4-S1 實作的決定」）。
+  - 第 7 點：migration `00020_notify`；`notifiers` 加 `config_nonce`，`notification_outbox` 加 `last_attempt_at`、不加外鍵（見 NOTIFY 待決問題「M4-S1 實作的決定」）。
