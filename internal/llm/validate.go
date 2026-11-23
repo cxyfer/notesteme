@@ -142,7 +142,10 @@ func decodeJSON(b []byte) (any, error) {
 // checkSchema 檢查 v 符合 schema。只支援步驟會用到的子集：type（object、array、string、integer、number、boolean）、
 // properties、required、additionalProperties: false、items、enum。schema 本身不合法時也回傳錯誤（程式錯誤，由單元測試把關）。
 func checkSchema(schema map[string]any, v any, path string) error {
-	typ, _ := schema["type"].(string)
+	typ, nullable := schemaType(schema)
+	if nullable && v == nil {
+		return nil
+	}
 	switch typ {
 	case "object":
 		obj, ok := v.(map[string]any)
@@ -271,7 +274,11 @@ func ValidateStrictSchema(schema map[string]any) error {
 }
 
 func strictAt(schema map[string]any, path string) error {
-	switch schema["type"] {
+	typ, nullable := schemaType(schema)
+	if nullable && (typ == "object" || typ == "array") {
+		return fmt.Errorf("%s: 只有純量可以是 null", path)
+	}
+	switch typ {
 	case "object":
 		if ap, ok := schema["additionalProperties"].(bool); !ok || ap {
 			return fmt.Errorf("%s: additionalProperties 必須是 false", path)
@@ -309,4 +316,26 @@ func strictAt(schema map[string]any, path string) error {
 		return fmt.Errorf("%s: 不支援的 type %v", path, schema["type"])
 	}
 	return nil
+}
+
+// schemaType 回傳 schema 的 type：字串，或 [<type>, "null"]（可以是 null 的純量，OpenAI strict 支援的寫法）。
+// 其他形狀回傳空字串（不支援的 type）。
+func schemaType(schema map[string]any) (typ string, nullable bool) {
+	switch t := schema["type"].(type) {
+	case string:
+		return t, false
+	case []any:
+		if len(t) != 2 {
+			return "", false
+		}
+		a, _ := t[0].(string)
+		b, _ := t[1].(string)
+		switch {
+		case b == "null" && a != "null":
+			return a, true
+		case a == "null" && b != "null":
+			return b, true
+		}
+	}
+	return "", false
 }

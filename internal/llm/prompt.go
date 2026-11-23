@@ -69,6 +69,8 @@ type TemplateVars struct {
 	TargetLang string
 	// NoteLang 是筆記的語言（{{note_lang}}，NOTE-R5）。
 	NoteLang string
+	// SummaryLang 是摘要的語言（{{summary_lang}}，DIG-R3）。
+	SummaryLang string
 	// Mixed 為 true 代表原文語言標記為 mixed（夾雜多種語言）：步驟的 MixedRule 會加進系統指示（COR-R5）。
 	Mixed bool
 }
@@ -106,9 +108,10 @@ func langCode(s string) string {
 // 詞彙表（COR-R4）也放在 <video_metadata>（固定前綴）中；模板沒有用到 {{glossary}} 時，引擎的規則仍會說明它的用途。
 func BuildFixed(spec *Spec, template string, vars TemplateVars, meta Metadata) (Fixed, error) {
 	values := map[string]string{
-		"source_lang": langCode(vars.SourceLang),
-		"target_lang": langCode(vars.TargetLang),
-		"note_lang":   langCode(vars.NoteLang),
+		"source_lang":  langCode(vars.SourceLang),
+		"target_lang":  langCode(vars.TargetLang),
+		"note_lang":    langCode(vars.NoteLang),
+		"summary_lang": langCode(vars.SummaryLang),
 	}
 	for name, field := range metadataVars {
 		values[name] = fmt.Sprintf("（見 %s 的 %s）", MetadataOpen, field)
