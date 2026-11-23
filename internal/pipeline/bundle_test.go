@@ -514,3 +514,48 @@ func FuzzSanitizeProvenance(f *testing.F) {
 		walk(m)
 	})
 }
+
+// FuzzImportBundle：任何輸入都不能 panic；失敗時一律是 *bundle.Error 或 *BundleConflictError，而且不留下暫存目錄與產出檔。
+func FuzzImportBundle(f *testing.F) {
+	var cues bytes.Buffer
+	if err := subtitle.RenderCuesJSON(&cues, subtitle.Transcript{Lang: "en", Variant: subtitle.VariantCorrected,
+		Cues: []subtitle.Cue{{Index: 1, StartMS: 0, EndMS: 1000, Text: "hi", Timing: subtitle.TimingSource}}}); err != nil {
+		f.Fatal(err)
+	}
+	lang := "en"
+	id := "0190a1b2-0000-7000-8000-0000000000a1"
+	chap := []byte(`{"origin":"platform","chapters":[{"title":"a","start_ms":0,"end_ms":5}]}`)
+	seed, err := bundle.Write(bundle.OutManifest{
+		Item: bundle.OutItem{Platform: "youtube", ExternalID: "abc123xxxxx", Title: "T", Availability: "public"},
+		Artifacts: []bundle.OutArtifact{
+			{ID: id, Kind: "transcript", Variant: "corrected", Lang: &lang, Format: bundle.CuesFormat, Path: "artifacts/" + id + ".json", Provenance: json.RawMessage(`{"executor":"agent"}`)},
+			{ID: "0190a1b2-0000-7000-8000-0000000000a2", Kind: "chapters", Format: chaptersFmt, Path: "artifacts/c.json", Parents: []string{id}, Provenance: json.RawMessage(`{"a":1}`)},
+		},
+		CreatedBy: bundle.OutCreatedBy{InstanceID: "0190a1b2-0000-7000-8000-000000000001", AppVersion: "0.4.0"},
+	}, []bundle.OutEntry{{Path: "artifacts/" + id + ".json", Data: cues.Bytes()}, {Path: "artifacts/c.json", Data: chap}})
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(seed)
+	f.Add([]byte("PK\x03\x04"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		dst := newRig(t)
+		_, err := dst.p.ImportBundle(context.Background(), BundleImportRequest{Data: data})
+		var be *bundle.Error
+		var ce *BundleConflictError
+		if err != nil && !errors.As(err, &be) && !errors.As(err, &ce) {
+			t.Fatalf("非預期的錯誤：%v", err)
+		}
+		if bytes.Equal(data, seed) && err != nil {
+			t.Fatalf("合法的種子被拒絕：%v", err)
+		}
+		if ents, _ := os.ReadDir(filepath.Join(dst.dir, "tmp")); len(ents) != 0 {
+			t.Fatalf("tmp 留下 %d 個項目", len(ents))
+		}
+		if err != nil {
+			if ents, _ := os.ReadDir(filepath.Join(dst.dir, "artifacts")); len(ents) != 0 {
+				t.Fatalf("失敗時留下 %d 個產出目錄", len(ents))
+			}
+		}
+	})
+}
