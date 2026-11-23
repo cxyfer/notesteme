@@ -31,7 +31,16 @@ describe("路由", () => {
     renderRoute("/queue");
     const nav = await screen.findByRole("navigation", { name: "主要導覽" });
     const links = [...nav.querySelectorAll("a.nav__item")].map((a) => a.textContent);
-    expect(links).toEqual(["媒體庫", "佇列", "訂閱", "Prompt 庫", "處理方案", "字幕樣式", "設定"]);
+    expect(links).toEqual([
+      "媒體庫",
+      "佇列",
+      "訂閱",
+      "Prompt 庫",
+      "處理方案",
+      "字幕樣式",
+      "成本",
+      "設定",
+    ]);
     expect(screen.getByRole("link", { name: "佇列" }).getAttribute("aria-current")).toBe("page");
   });
 

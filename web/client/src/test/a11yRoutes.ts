@@ -48,5 +48,7 @@ export const a11yRoutes: A11yRoute[] = [
   // UI-4
   { path: "/subscriptions", heading: "訂閱", auth: true, ready: "码农高天" },
   { path: "/subscriptions/s1", heading: "码农高天", auth: true, ready: "新影片" },
+  { path: "/costs", heading: "成本", auth: true, ready: "影片 1" },
+  { path: "/costs?group_by=stage", heading: "成本", auth: true, ready: "計價表" },
   { path: "/no-such-page", heading: "找不到這個頁面", auth: false },
 ];

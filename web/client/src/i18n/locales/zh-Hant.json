@@ -1390,5 +1390,98 @@
       "skipped": "略過",
       "deferred": "延後"
     }
+  },
+  "costs": {
+    "headline": "本月花費 {{spent}}，預算 {{budget}}，預計月底約 {{projected}}。",
+    "headlineNoBudget": "本月花費 {{spent}}，沒有設定月預算，預計月底約 {{projected}}。",
+    "adjustBudget": "調整預算",
+    "reserved": "另有 {{amount}} 預留給還在執行的任務。",
+    "unknownCalls_other": "這段期間有 {{count}} 次呼叫找不到單價，沒有計入金額。",
+    "from": "開始日期",
+    "to": "結束日期",
+    "apply": "套用",
+    "rangeInvalid": "結束日期不能早於開始日期。",
+    "rangeTooLong": "查詢範圍最多 {{days}} 天。",
+    "exportDisabled": "修正日期範圍後才能匯出。",
+    "groupBy": "分組",
+    "group": {
+      "day": "日期",
+      "provider": "Provider",
+      "model": "模型",
+      "stage": "步驟",
+      "channel": "頻道",
+      "item": "影音"
+    },
+    "export": "匯出 CSV",
+    "chartTitle": "{{from}}～{{to}}（{{timezone}}）共 {{total}}",
+    "chartCaption": "依{{group}}的花費",
+    "bar": "長條",
+    "amount": "金額",
+    "calls": "呼叫次數",
+    "plusReserved": "（＋預留 {{amount}}）",
+    "emptyRange": "這段期間沒有花費。",
+    "none": "（無）",
+    "entries": {
+      "title": "明細",
+      "at": "時間",
+      "item": "影音",
+      "stage": "步驟",
+      "provider": "Provider",
+      "model": "模型",
+      "units": "用量"
+    },
+    "units": {
+      "tokens": "{{n}} token",
+      "audio_hour": "{{n}} 小時音訊",
+      "credit": "{{n}} credit"
+    },
+    "unknownPrice": "未知單價",
+    "reservedAmount": "預留 {{amount}}",
+    "outcome": {
+      "invalid_output": "（驗證失敗）",
+      "http_error": "（HTTP 錯誤）",
+      "network_error": "（連線錯誤）",
+      "discarded": "（已捨棄）"
+    },
+    "unitType": {
+      "input_mtok": "每百萬輸入 token",
+      "output_mtok": "每百萬輸出 token",
+      "audio_hour": "每小時音訊",
+      "credit": "每 credit"
+    },
+    "prices": {
+      "title": "計價表",
+      "builtinChecked": "內建計價表最後確認於 {{date}}。",
+      "builtinStale": "內建計價表最後確認於 {{date}}，已超過 90 天，估價可能不準確。",
+      "confirm": "確認計價表",
+      "confirmed": "已確認計價表",
+      "adjust": "調整單價",
+      "add": "新增單價",
+      "provider": "Provider",
+      "model": "模型",
+      "unit": "單位",
+      "price": "單價",
+      "priceUsd": "單價（美元）",
+      "priceRule": "單價必須介於 0 到 10000 美元之間。",
+      "source": "來源",
+      "sourceName": {
+        "builtin": "內建",
+        "override": "覆寫"
+      },
+      "checked": "確認日期",
+      "stale": "（超過 90 天）",
+      "actions": "動作",
+      "override": "覆寫單價",
+      "remove": "移除覆寫",
+      "removed": "已移除覆寫，改用內建單價",
+      "removeTitle": "移除單價覆寫？",
+      "removeDescription": "{{name}} 的{{unit}}單價會回到內建計價表（沒有內建單價時就變成未知）。已記錄的花費不會改變。",
+      "dialogTitle": "設定單價",
+      "dialogDescription": "覆寫只影響之後的估價與記帳，已記錄的花費不會改變。",
+      "save": "儲存單價",
+      "confirmOverride": "確認覆寫",
+      "overrideWarning": "這會取代目前的{{source}}單價：{{old}} → {{new}}。再按一次「確認覆寫」套用。",
+      "saved": "已儲存單價"
+    }
   }
 }

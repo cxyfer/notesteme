@@ -1425,5 +1425,99 @@
       "skipped": "Skipped",
       "deferred": "Deferred"
     }
+  },
+  "costs": {
+    "headline": "Spent {{spent}} this month of a {{budget}} budget; on track for about {{projected}}.",
+    "headlineNoBudget": "Spent {{spent}} this month with no monthly budget; on track for about {{projected}}.",
+    "adjustBudget": "Adjust budget",
+    "reserved": "Another {{amount}} is reserved for tasks still running.",
+    "unknownCalls_one": "1 call has no known price and isn't counted.",
+    "unknownCalls_other": "{{count}} calls in this range have no known price and aren't counted.",
+    "from": "From",
+    "to": "To",
+    "apply": "Apply",
+    "rangeInvalid": "The end date can't be before the start date.",
+    "rangeTooLong": "The range can be at most {{days}} days.",
+    "exportDisabled": "Fix the date range to export.",
+    "groupBy": "Group by",
+    "group": {
+      "day": "Date",
+      "provider": "Provider",
+      "model": "Model",
+      "stage": "Step",
+      "channel": "Channel",
+      "item": "Media"
+    },
+    "export": "Export CSV",
+    "chartTitle": "{{from}} to {{to}} ({{timezone}}): {{total}}",
+    "chartCaption": "Spending by {{group}}",
+    "bar": "Bar",
+    "amount": "Amount",
+    "calls": "Calls",
+    "plusReserved": " (+{{amount}} reserved)",
+    "emptyRange": "Nothing was spent in this range.",
+    "none": "(none)",
+    "entries": {
+      "title": "Details",
+      "at": "Time",
+      "item": "Media",
+      "stage": "Step",
+      "provider": "Provider",
+      "model": "Model",
+      "units": "Usage"
+    },
+    "units": {
+      "tokens": "{{n}} tokens",
+      "audio_hour": "{{n}} audio hours",
+      "credit": "{{n}} credits"
+    },
+    "unknownPrice": "Unknown price",
+    "reservedAmount": "{{amount}} reserved",
+    "outcome": {
+      "invalid_output": "(failed validation)",
+      "http_error": "(HTTP error)",
+      "network_error": "(network error)",
+      "discarded": "(discarded)"
+    },
+    "unitType": {
+      "input_mtok": "per million input tokens",
+      "output_mtok": "per million output tokens",
+      "audio_hour": "per audio hour",
+      "credit": "per credit"
+    },
+    "prices": {
+      "title": "Prices",
+      "builtinChecked": "Built-in prices last confirmed on {{date}}.",
+      "builtinStale": "Built-in prices were last confirmed on {{date}}, over 90 days ago; estimates may be off.",
+      "confirm": "Confirm prices",
+      "confirmed": "Prices confirmed",
+      "adjust": "Adjust prices",
+      "add": "Add a price",
+      "provider": "Provider",
+      "model": "Model",
+      "unit": "Unit",
+      "price": "Price",
+      "priceUsd": "Price (USD)",
+      "priceRule": "The price must be between $0 and $10,000.",
+      "source": "Source",
+      "sourceName": {
+        "builtin": "Built-in",
+        "override": "Override"
+      },
+      "checked": "Confirmed",
+      "stale": "(over 90 days)",
+      "actions": "Actions",
+      "override": "Override",
+      "remove": "Remove override",
+      "removed": "Override removed; the built-in price applies",
+      "removeTitle": "Remove the price override?",
+      "removeDescription": "{{name}} ({{unit}}) goes back to the built-in price, or to unknown if there isn't one. Recorded costs don't change.",
+      "dialogTitle": "Set a price",
+      "dialogDescription": "Overrides only affect future estimates and records; recorded costs don't change.",
+      "save": "Save price",
+      "confirmOverride": "Confirm override",
+      "overrideWarning": "This replaces the current {{source}} price: {{old}} → {{new}}. Press “Confirm override” to apply.",
+      "saved": "Price saved"
+    }
   }
 }

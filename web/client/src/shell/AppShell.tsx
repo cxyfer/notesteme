@@ -33,7 +33,13 @@ const NAV_GROUPS = [
       { to: "/styles", label: "nav.styles" },
     ],
   },
-  { label: "nav.system", items: [{ to: "/settings", label: "nav.settings" }] },
+  {
+    label: "nav.system",
+    items: [
+      { to: "/costs", label: "nav.costs" },
+      { to: "/settings", label: "nav.settings" },
+    ],
+  },
 ] as const;
 
 export function AppShell() {

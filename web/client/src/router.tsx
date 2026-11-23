@@ -13,7 +13,8 @@
 //      ├─ /prompts、/prompts/$id     Prompt 庫（編輯頁含 CodeMirror，lazy 載入）
 //      ├─ /profiles、/profiles/$id   處理方案
 //      ├─ /styles、/styles/$id       字幕樣式
-//      └─ /subscriptions、/subscriptions/$id   訂閱（UI-4，lazy）
+//      ├─ /subscriptions、/subscriptions/$id   訂閱（UI-4，lazy）
+//      └─ /costs                     成本（UI-4，lazy；篩選在 URL）
 //
 // 新增頁面：在這裡加一個 createRoute、加進 routeTree，並把路徑加進 src/test/a11yRoutes.ts。
 import type { QueryClient } from "@tanstack/react-query";
@@ -28,6 +29,7 @@ import {
 } from "@tanstack/react-router";
 
 import { validateAddEntrySearch } from "./add/entry";
+import { validateCostsSearch } from "./pages/costs/search";
 import { hasSessionHint, safeRedirect } from "./auth/session";
 import { validateItemSearch } from "./pages/item/search";
 import { validateLibrarySearch } from "./pages/library/filters";
@@ -186,6 +188,14 @@ export const subscriptionRoute = createRoute({
     "SubscriptionPage",
   ),
 });
+const costsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/costs",
+  // 分組與日期範圍在 URL（README §3.3）
+  validateSearch: validateCostsSearch,
+  component: lazyRouteComponent(() => import("./pages/costs/CostsPage"), "CostsPage"),
+});
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute.addChildren([
@@ -204,6 +214,7 @@ export const routeTree = rootRoute.addChildren([
     styleRoute,
     subscriptionsRoute,
     subscriptionRoute,
+    costsRoute,
   ]),
 ]);
 

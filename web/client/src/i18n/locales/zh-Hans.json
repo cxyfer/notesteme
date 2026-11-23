@@ -1390,5 +1390,98 @@
       "skipped": "跳过",
       "deferred": "延后"
     }
+  },
+  "costs": {
+    "headline": "本月花费 {{spent}}，预算 {{budget}}，预计月底约 {{projected}}。",
+    "headlineNoBudget": "本月花费 {{spent}}，没有设置月预算，预计月底约 {{projected}}。",
+    "adjustBudget": "调整预算",
+    "reserved": "另有 {{amount}} 预留给还在执行的任务。",
+    "unknownCalls_other": "这段期间有 {{count}} 次调用找不到单价，没有计入金额。",
+    "from": "开始日期",
+    "to": "结束日期",
+    "apply": "应用",
+    "rangeInvalid": "结束日期不能早于开始日期。",
+    "rangeTooLong": "查询范围最多 {{days}} 天。",
+    "exportDisabled": "修正日期范围后才能导出。",
+    "groupBy": "分组",
+    "group": {
+      "day": "日期",
+      "provider": "Provider",
+      "model": "模型",
+      "stage": "步骤",
+      "channel": "频道",
+      "item": "音视频"
+    },
+    "export": "导出 CSV",
+    "chartTitle": "{{from}}～{{to}}（{{timezone}}）共 {{total}}",
+    "chartCaption": "按{{group}}的花费",
+    "bar": "长条",
+    "amount": "金额",
+    "calls": "调用次数",
+    "plusReserved": "（＋预留 {{amount}}）",
+    "emptyRange": "这段期间没有花费。",
+    "none": "（无）",
+    "entries": {
+      "title": "明细",
+      "at": "时间",
+      "item": "音视频",
+      "stage": "步骤",
+      "provider": "Provider",
+      "model": "模型",
+      "units": "用量"
+    },
+    "units": {
+      "tokens": "{{n}} token",
+      "audio_hour": "{{n}} 小时音频",
+      "credit": "{{n}} credit"
+    },
+    "unknownPrice": "未知单价",
+    "reservedAmount": "预留 {{amount}}",
+    "outcome": {
+      "invalid_output": "（验证失败）",
+      "http_error": "（HTTP 错误）",
+      "network_error": "（连接错误）",
+      "discarded": "（已舍弃）"
+    },
+    "unitType": {
+      "input_mtok": "每百万输入 token",
+      "output_mtok": "每百万输出 token",
+      "audio_hour": "每小时音频",
+      "credit": "每 credit"
+    },
+    "prices": {
+      "title": "计价表",
+      "builtinChecked": "内置计价表最后确认于 {{date}}。",
+      "builtinStale": "内置计价表最后确认于 {{date}}，已超过 90 天，估价可能不准确。",
+      "confirm": "确认计价表",
+      "confirmed": "已确认计价表",
+      "adjust": "调整单价",
+      "add": "新增单价",
+      "provider": "Provider",
+      "model": "模型",
+      "unit": "单位",
+      "price": "单价",
+      "priceUsd": "单价（美元）",
+      "priceRule": "单价必须介于 0 到 10000 美元之间。",
+      "source": "来源",
+      "sourceName": {
+        "builtin": "内置",
+        "override": "覆盖"
+      },
+      "checked": "确认日期",
+      "stale": "（超过 90 天）",
+      "actions": "操作",
+      "override": "覆盖单价",
+      "remove": "移除覆盖",
+      "removed": "已移除覆盖，改用内置单价",
+      "removeTitle": "移除单价覆盖？",
+      "removeDescription": "{{name}} 的{{unit}}单价会回到内置计价表（没有内置单价时就变成未知）。已记录的花费不会改变。",
+      "dialogTitle": "设置单价",
+      "dialogDescription": "覆盖只影响之后的估价与记账，已记录的花费不会改变。",
+      "save": "保存单价",
+      "confirmOverride": "确认覆盖",
+      "overrideWarning": "这会取代当前的{{source}}单价：{{old}} → {{new}}。再按一次「确认覆盖」应用。",
+      "saved": "已保存单价"
+    }
   }
 }
