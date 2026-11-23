@@ -403,6 +403,85 @@
         ],
         "type": "object"
       },
+      "ContinueBatchInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "description": "影音的 ID 或代號（1～100 個）",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "ContinueBatchOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "continued": {
+            "description": "已繼續的影音（請求中 ids 的原始寫法）",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/ContinueSkipped"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "continued",
+          "skipped"
+        ],
+        "type": "object"
+      },
+      "ContinueOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "continued": {
+            "description": "改回 pending 的步驟",
+            "type": "string"
+          }
+        },
+        "required": [
+          "continued"
+        ],
+        "type": "object"
+      },
+      "ContinueSkipped": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "not_found、in_trash 或 not_awaiting_user",
+            "type": "string"
+          },
+          "id": {
+            "description": "請求中 ids 的原始寫法",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code"
+        ],
+        "type": "object"
+      },
       "CookiesInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -468,6 +547,50 @@
             "description": "譯文行，覆寫複製來源的欄位"
           }
         },
+        "type": "object"
+      },
+      "CreateDigestInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "description": "HH:MM（預設 08:00）",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "預設 true",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "彙整的 id（小寫英文字母、數字與 -，最多 40 字元）",
+            "type": "string"
+          },
+          "notifiers": {
+            "description": "1～5 個勾選了 digest 事件的 notifier id",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "period": {
+            "description": "daily 或 weekly",
+            "type": "string"
+          },
+          "scope": {
+            "description": "subscriptions（預設，只有訂閱建立的影音）或 all",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "IANA 時區名稱（預設 UTC）",
+            "type": "string"
+          },
+          "weekday": {
+            "description": "mon～sun，只在 weekly 時需要",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
         "type": "object"
       },
       "CreateItemInputBody": {
@@ -913,6 +1036,187 @@
           "bytes",
           "spent_usd",
           "outputs"
+        ],
+        "type": "object"
+      },
+      "DigestBody": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "description": "HH:MM（預設 08:00）",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "預設 true",
+            "type": "boolean"
+          },
+          "notifiers": {
+            "description": "1～5 個勾選了 digest 事件的 notifier id",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "period": {
+            "description": "daily 或 weekly",
+            "type": "string"
+          },
+          "scope": {
+            "description": "subscriptions（預設，只有訂閱建立的影音）或 all",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "IANA 時區名稱（預設 UTC）",
+            "type": "string"
+          },
+          "weekday": {
+            "description": "mon～sun，只在 weekly 時需要",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DigestInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_run_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_run_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notifiers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "period": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "weekday": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "period",
+          "at",
+          "weekday",
+          "timezone",
+          "notifiers",
+          "scope",
+          "enabled",
+          "created_at",
+          "last_run_at",
+          "next_run_at"
+        ],
+        "type": "object"
+      },
+      "DigestListOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "digests": {
+            "items": {
+              "$ref": "#/components/schemas/DigestInfo"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "digests"
+        ],
+        "type": "object"
+      },
+      "DigestPreview": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DigestPreviewItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "text"
+        ],
+        "type": "object"
+      },
+      "DigestPreviewItem": {
+        "additionalProperties": false,
+        "properties": {
+          "awaiting_user": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "title_translation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "title_translation",
+          "summary",
+          "awaiting_user"
         ],
         "type": "object"
       },
@@ -2142,6 +2446,10 @@
               "null"
             ]
           },
+          "summary": {
+            "$ref": "#/components/schemas/ItemSummary",
+            "description": "摘要（DIG-R5）；沒有摘要產出時沒有這個欄位"
+          },
           "title": {
             "type": "string"
           },
@@ -2168,6 +2476,43 @@
           "overrides",
           "created_at",
           "subscription_id"
+        ],
+        "type": "object"
+      },
+      "ItemSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "key_points": {
+            "description": "0～7 個重點",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "language": {
+            "description": "摘要的語言",
+            "type": "string"
+          },
+          "text": {
+            "description": "摘要（可以有換行）",
+            "type": "string"
+          },
+          "title_translation": {
+            "description": "標題譯文；原文與摘要同語言時是 null",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "text",
+          "key_points",
+          "title_translation",
+          "language"
         ],
         "type": "object"
       },
@@ -6011,8 +6356,15 @@
       "get": {
         "operationId": "digests-list",
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestListOutputBody"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -6025,13 +6377,30 @@
             "description": "Error"
           }
         },
-        "summary": "列出彙整設定（尚未實作）"
+        "summary": "列出彙整設定（DIG-R8）"
       },
       "post": {
         "operationId": "digests-create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDigestInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestInfo"
+                }
+              }
+            },
+            "description": "Created"
           },
           "default": {
             "content": {
@@ -6044,12 +6413,24 @@
             "description": "Error"
           }
         },
-        "summary": "建立彙整設定（尚未實作）"
+        "summary": "建立彙整設定並排定第一次執行（DIG-R8）"
       }
     },
     "/api/digests/{id}": {
       "delete": {
         "operationId": "digests-delete",
+        "parameters": [
+          {
+            "description": "彙整的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "彙整的 id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No Content"
@@ -6065,13 +6446,42 @@
             "description": "Error"
           }
         },
-        "summary": "刪除彙整設定（尚未實作）"
+        "summary": "刪除彙整設定"
       },
       "patch": {
         "operationId": "digests-patch",
+        "parameters": [
+          {
+            "description": "彙整的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "彙整的 id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DigestBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestInfo"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -6084,15 +6494,34 @@
             "description": "Error"
           }
         },
-        "summary": "修改彙整設定（尚未實作）"
+        "summary": "修改彙整設定：只更新給定的欄位（DIG-R8）"
       }
     },
     "/api/digests/{id}/preview": {
       "post": {
         "operationId": "digests-preview",
+        "parameters": [
+          {
+            "description": "彙整的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "彙整的 id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestPreview"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -6105,7 +6534,7 @@
             "description": "Error"
           }
         },
-        "summary": "預覽彙整的內容，不送出、不改變下次執行時間（尚未實作）"
+        "summary": "預覽彙整的內容：與現在執行相同，但不送出、不寫入紀錄、不改變下次執行時間（DIG-R11）"
       }
     },
     "/api/estimate": {
@@ -6519,9 +6948,26 @@
     "/api/items/continue": {
       "post": {
         "operationId": "items-continue-batch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContinueBatchInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContinueBatchOutputBody"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -6534,7 +6980,7 @@
             "description": "Error"
           }
         },
-        "summary": "一次繼續處理多部摘要後暫停的影音（尚未實作）"
+        "summary": "一次繼續處理多部摘要後暫停的影音（1～100 部，個別失敗不影響其他影音，DIG-R7）"
       }
     },
     "/api/items/{id}": {
@@ -6688,9 +7134,28 @@
     "/api/items/{id}/continue": {
       "post": {
         "operationId": "items-continue",
+        "parameters": [
+          {
+            "description": "影音 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContinueOutputBody"
+                }
+              }
+            },
+            "description": "Accepted"
           },
           "default": {
             "content": {
@@ -6703,7 +7168,7 @@
             "description": "Error"
           }
         },
-        "summary": "繼續處理摘要後暫停的影音（尚未實作）"
+        "summary": "繼續處理摘要後暫停的影音：awaiting_user 的步驟改回 pending 並建立任務（DIG-R7）"
       }
     },
     "/api/items/{id}/cues": {

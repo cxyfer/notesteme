@@ -395,7 +395,7 @@ func TestRerunEndpoint(t *testing.T) {
 		path, body string
 		status     int
 	}{
-		{"/api/items/" + id + "/rerun", `{"from":"summary"}`, 501},
+		{"/api/items/" + id + "/rerun", `{"from":"summary"}`, 202}, // M4-S6 起 summary 已實作
 		{"/api/items/" + id + "/rerun", `{"from":"nope"}`, 422},
 		{"/api/items/" + id + "/rerun", `{}`, 422},
 		{"/api/items/missing/rerun", `{"from":"normalize"}`, 404},

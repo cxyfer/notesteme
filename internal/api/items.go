@@ -110,6 +110,16 @@ type ItemDetail struct {
 	SponsorSegments *[]SponsorSegment `json:"sponsor_segments,omitempty" doc:"SponsorBlock 的片段，依開始時間排序；沒有片段時是空陣列，步驟沒有執行過時沒有這個欄位"`
 	// Chapters 是現行的章節（CHAP-R7）：沒有章節時是空陣列，chapters 步驟沒有產生過產出時沒有這個欄位。
 	Chapters *[]Chapter `json:"chapters,omitempty" doc:"章節，依開始時間排序；沒有章節時是空陣列，chapters 步驟沒有產生過產出時沒有這個欄位"`
+	// Summary 是現行的摘要（DIG-R5）；沒有摘要產出時沒有這個欄位。
+	Summary *ItemSummary `json:"summary,omitempty" doc:"摘要（DIG-R5）；沒有摘要產出時沒有這個欄位"`
+}
+
+// ItemSummary 是影音的摘要（DIG-R5）。內容來自模型，是不可信的文字，顯示時要跳脫。
+type ItemSummary struct {
+	Text             string   `json:"text" doc:"摘要（可以有換行）"`
+	KeyPoints        []string `json:"key_points" doc:"0～7 個重點"`
+	TitleTranslation *string  `json:"title_translation" doc:"標題譯文；原文與摘要同語言時是 null"`
+	Language         string   `json:"language" doc:"摘要的語言"`
 }
 
 // Chapter 是一個章節；時間是 HH:MM:SS.mmm。
@@ -551,6 +561,9 @@ func toDetail(d pipeline.Detail) ItemDetail {
 			chs = append(chs, Chapter{Title: c.Title, Start: subtitle.FormatDisplayTime(c.StartMS), End: subtitle.FormatDisplayTime(c.EndMS), Origin: d.Chapters.Origin})
 		}
 		out.Chapters = &chs
+	}
+	if sm := d.Summary; sm != nil {
+		out.Summary = &ItemSummary{Text: sm.Text, KeyPoints: sm.KeyPoints, TitleTranslation: sm.TitleTranslation, Language: sm.Language}
 	}
 	return out
 }

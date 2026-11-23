@@ -354,10 +354,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 列出彙整設定（尚未實作） */
+    /** 列出彙整設定（DIG-R8） */
     get: operations["digests-list"];
     put?: never;
-    /** 建立彙整設定（尚未實作） */
+    /** 建立彙整設定並排定第一次執行（DIG-R8） */
     post: operations["digests-create"];
     delete?: never;
     options?: never;
@@ -375,11 +375,11 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** 刪除彙整設定（尚未實作） */
+    /** 刪除彙整設定 */
     delete: operations["digests-delete"];
     options?: never;
     head?: never;
-    /** 修改彙整設定（尚未實作） */
+    /** 修改彙整設定：只更新給定的欄位（DIG-R8） */
     patch: operations["digests-patch"];
     trace?: never;
   };
@@ -392,7 +392,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 預覽彙整的內容，不送出、不改變下次執行時間（尚未實作） */
+    /** 預覽彙整的內容：與現在執行相同，但不送出、不寫入紀錄、不改變下次執行時間（DIG-R11） */
     post: operations["digests-preview"];
     delete?: never;
     options?: never;
@@ -496,7 +496,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 一次繼續處理多部摘要後暫停的影音（尚未實作） */
+    /** 一次繼續處理多部摘要後暫停的影音（1～100 部，個別失敗不影響其他影音，DIG-R7） */
     post: operations["items-continue-batch"];
     delete?: never;
     options?: never;
@@ -565,7 +565,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 繼續處理摘要後暫停的影音（尚未實作） */
+    /** 繼續處理摘要後暫停的影音：awaiting_user 的步驟改回 pending 並建立任務（DIG-R7） */
     post: operations["items-continue"];
     delete?: never;
     options?: never;
@@ -1834,6 +1834,25 @@ export interface components {
       /** @description 內容不同而建立了新版本的處理方案（PRF-R3），依名稱排序 */
       updated: string[] | null;
     };
+    ContinueBatchInputBody: {
+      /** @description 影音的 ID 或代號（1～100 個） */
+      ids: string[] | null;
+    };
+    ContinueBatchOutputBody: {
+      /** @description 已繼續的影音（請求中 ids 的原始寫法） */
+      continued: string[] | null;
+      skipped: components["schemas"]["ContinueSkipped"][] | null;
+    };
+    ContinueOutputBody: {
+      /** @description 改回 pending 的步驟 */
+      continued: string;
+    };
+    ContinueSkipped: {
+      /** @description not_found、in_trash 或 not_awaiting_user */
+      code: string;
+      /** @description 請求中 ids 的原始寫法 */
+      id: string;
+    };
     CookiesInputBody: {
       /** @description Netscape cookie 檔，或瀏覽器標頭的 name=value; …（上限 64 KiB） */
       content: string;
@@ -1861,6 +1880,24 @@ export interface components {
       primary?: components["schemas"]["LinePatch"];
       /** @description 譯文行，覆寫複製來源的欄位 */
       translation?: components["schemas"]["LinePatch"];
+    };
+    CreateDigestInputBody: {
+      /** @description HH:MM（預設 08:00） */
+      at?: string;
+      /** @description 預設 true */
+      enabled?: boolean;
+      /** @description 彙整的 id（小寫英文字母、數字與 -，最多 40 字元） */
+      id: string;
+      /** @description 1～5 個勾選了 digest 事件的 notifier id */
+      notifiers?: string[];
+      /** @description daily 或 weekly */
+      period?: string;
+      /** @description subscriptions（預設，只有訂閱建立的影音）或 all */
+      scope?: string;
+      /** @description IANA 時區名稱（預設 UTC） */
+      timezone?: string;
+      /** @description mon～sun，只在 weekly 時需要 */
+      weekday?: string;
     };
     CreateItemInputBody: {
       /** @description Podcast 要新增的集（guid） */
@@ -2015,6 +2052,52 @@ export interface components {
        * @description 這部影音實際花費的總和
        */
       spent_usd: number;
+    };
+    DigestBody: {
+      /** @description HH:MM（預設 08:00） */
+      at?: string;
+      /** @description 預設 true */
+      enabled?: boolean;
+      /** @description 1～5 個勾選了 digest 事件的 notifier id */
+      notifiers?: string[];
+      /** @description daily 或 weekly */
+      period?: string;
+      /** @description subscriptions（預設，只有訂閱建立的影音）或 all */
+      scope?: string;
+      /** @description IANA 時區名稱（預設 UTC） */
+      timezone?: string;
+      /** @description mon～sun，只在 weekly 時需要 */
+      weekday?: string;
+    };
+    DigestInfo: {
+      at: string;
+      /** Format: date-time */
+      created_at: string;
+      enabled: boolean;
+      id: string;
+      /** Format: date-time */
+      last_run_at: string | null;
+      /** Format: date-time */
+      next_run_at: string | null;
+      notifiers: string[] | null;
+      period: string;
+      scope: string;
+      timezone: string;
+      weekday: string | null;
+    };
+    DigestListOutputBody: {
+      digests: components["schemas"]["DigestInfo"][] | null;
+    };
+    DigestPreview: {
+      items: components["schemas"]["DigestPreviewItem"][] | null;
+      text: string;
+    };
+    DigestPreviewItem: {
+      awaiting_user: boolean;
+      id: string;
+      summary: string | null;
+      title: string;
+      title_translation: string | null;
     };
     Entries: {
       entries: components["schemas"]["Entry"][] | null;
@@ -2451,10 +2534,22 @@ export interface components {
       stages: components["schemas"]["Stage"][] | null;
       /** @description 建立這部影音的訂閱；手動新增或訂閱已刪除時是 null */
       subscription_id: string | null;
+      /** @description 摘要（DIG-R5）；沒有摘要產出時沒有這個欄位 */
+      summary?: components["schemas"]["ItemSummary"];
       title: string;
       /** @description 新增時指定做到哪個步驟為止 */
       until?: string;
       url: string;
+    };
+    ItemSummary: {
+      /** @description 0～7 個重點 */
+      key_points: string[] | null;
+      /** @description 摘要的語言 */
+      language: string;
+      /** @description 摘要（可以有換行） */
+      text: string;
+      /** @description 標題譯文；原文與摘要同語言時是 null */
+      title_translation: string | null;
     };
     KeptOutput: {
       path: string;
@@ -4186,12 +4281,14 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["DigestListOutputBody"];
+        };
       };
       /** @description Error */
       default: {
@@ -4211,14 +4308,20 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateDigestInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description Created */
+      201: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["DigestInfo"];
+        };
       };
       /** @description Error */
       default: {
@@ -4235,7 +4338,10 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 彙整的 id */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
@@ -4262,17 +4368,26 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 彙整的 id */
+        id: string;
+      };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DigestBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["DigestInfo"];
+        };
       };
       /** @description Error */
       default: {
@@ -4289,17 +4404,22 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 彙整的 id */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["DigestPreview"];
+        };
       };
       /** @description Error */
       default: {
@@ -4567,14 +4687,20 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ContinueBatchInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ContinueBatchOutputBody"];
+        };
       };
       /** @description Error */
       default: {
@@ -4718,17 +4844,22 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 影音 ID */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description Accepted */
+      202: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ContinueOutputBody"];
+        };
       };
       /** @description Error */
       default: {

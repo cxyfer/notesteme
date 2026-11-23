@@ -19,24 +19,10 @@ import (
 //     （沒有身分的請求在 S0 先被驗證擋下，回 401）。
 //   - ENTRY 的頁面路由（/add、/share、/login、/manifest.webmanifest、/sw.js）不在 /api 底下，已由 internal/entry 實作（掛在 ui.go 的 entryPages）；
 //     POST /api/auth/login 的 next（ENTRY-R6）也已實作。
-//   - 既有路由的欄位擴充（GET /api/items/:id 的 summary、reprobe、better_source、read_state，POST /api/auth/login 的 next，
+//   - DIG 的路由（continue、digests）在 M4-S6 實作（digests.go）。
+//   - 既有路由的欄位擴充（GET /api/items/:id 的 reprobe、better_source、read_state，
 //     PATCH /api/channels/:id/term-candidates/:candidate 的 term、scope，GET /api/system 的 alerts、backup）由各切片加上。
 var m4Stubs = []m2Stub{
-	// DIG-R7、R8、R11（S6 DIG）
-	{ID: "items-continue", Method: http.MethodPost, Path: "/api/items/{id}/continue",
-		Summary: "繼續處理摘要後暫停的影音（尚未實作）", Scope: auth.ScopeIngest},
-	{ID: "items-continue-batch", Method: http.MethodPost, Path: "/api/items/continue",
-		Summary: "一次繼續處理多部摘要後暫停的影音（尚未實作）", Scope: auth.ScopeIngest},
-	{ID: "digests-list", Method: http.MethodGet, Path: "/api/digests",
-		Summary: "列出彙整設定（尚未實作）", Scope: auth.ScopeAdmin},
-	{ID: "digests-create", Method: http.MethodPost, Path: "/api/digests",
-		Summary: "建立彙整設定（尚未實作）", Scope: auth.ScopeAdmin},
-	{ID: "digests-patch", Method: http.MethodPatch, Path: "/api/digests/{id}",
-		Summary: "修改彙整設定（尚未實作）", Scope: auth.ScopeAdmin},
-	{ID: "digests-delete", Method: http.MethodDelete, Path: "/api/digests/{id}",
-		Summary: "刪除彙整設定（尚未實作）", Scope: auth.ScopeAdmin},
-	{ID: "digests-preview", Method: http.MethodPost, Path: "/api/digests/{id}/preview",
-		Summary: "預覽彙整的內容，不送出、不改變下次執行時間（尚未實作）", Scope: auth.ScopeAdmin},
 	// LIB-R16～R21（S13 LIB）。批次的 scope 依動作（LIB-R16），stub 不讀 body，先要求多數動作需要的 ingest；
 	// 實作時改成在讀取影音之前依動作判斷（delete 要 admin、export_bundle 同 BND 的匯出）。
 	{ID: "items-batch", Method: http.MethodPost, Path: "/api/items/batch",

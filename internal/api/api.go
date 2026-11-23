@@ -23,6 +23,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/cost"
+	"github.com/cxyfer/notesteme/internal/digest"
 	"github.com/cxyfer/notesteme/internal/events"
 	"github.com/cxyfer/notesteme/internal/notify"
 	"github.com/cxyfer/notesteme/internal/pathguard"
@@ -80,6 +81,8 @@ type Deps struct {
 	Notify *notify.Service
 	// Cost 是成本帳本、計價表與預算（/api/prices、/api/costs、settings 的 budget 區段，COST）；nil 時回應 501。
 	Cost *cost.Service
+	// Digests 管理彙整設定（/api/digests，DIG-R8、R11）；nil 時回應 501。
+	Digests *digest.Service
 	// EventBus 是狀態變更的事件匯流排：MCP 的 get_video_context 在影音有變更時重新讀取狀態；nil 時定期重查。
 	EventBus *events.Bus
 	// MCPAllowedOrigins 與 MCPAllowedHosts 是 MCP HTTP 的 Origin 與 Host 檢查（AUTH-R11，見 config.Config）。
@@ -299,6 +302,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerSubscriptions(api)
 	rt.registerVaults(api)
 	rt.registerM4Stubs(api)
+	rt.registerDigests(api)
 	rt.registerCosts(api)
 	rt.registerM5Stubs(api)
 	rt.registerFrames(api)

@@ -20,8 +20,8 @@ func TestSchedulerRunsInWorkerRounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer srv.Kill()
-	if got := srv.scheduler.Kinds(); len(got) != 4 || got[0] != "notify.deliver" || got[1] != "subscription.check" || got[2] != "budget.month" || got[3] != "batch.poll" {
-		t.Fatalf("登記的 kind 應該是 notify.deliver、subscription.check、budget.month、batch.poll：%v", got)
+	if got := srv.scheduler.Kinds(); len(got) != 5 || got[0] != "notify.deliver" || got[1] != "subscription.check" || got[2] != "budget.month" || got[3] != "batch.poll" || got[4] != "digest" {
+		t.Fatalf("登記的 kind 應該是 notify.deliver、subscription.check、budget.month、batch.poll、digest：%v", got)
 	}
 	if err := srv.RunUntilIdle(t.Context()); err != nil {
 		t.Fatal(err)

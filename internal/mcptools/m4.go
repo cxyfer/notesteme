@@ -7,13 +7,28 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// M4 的 tool（SUB-R13，M4-S3）：list_subscriptions、create_subscription，行為與 HTTP API 相同（MCP-R3）。
+// M4 的 tool（SUB-R13，M4-S3；DIG-R7，M4-S6）：list_subscriptions、create_subscription、continue_item，行為與 HTTP API 相同（MCP-R3）。
 // MCP 不提供修改與刪除訂閱。
 func m4Tools() []tool {
 	return []tool{
 		{ToolSpec{"list_subscriptions", ScopeRead}, addListSubscriptions},
 		{ToolSpec{"create_subscription", ScopeAdmin}, addCreateSubscription},
+		{ToolSpec{"continue_item", ScopeIngest}, addContinueItem},
 	}
+}
+
+// addContinueItem 是 DIG-R7 的 continue_item：繼續處理摘要後暫停的影音，回應與 POST /api/items/{id}/continue 相同。
+func addContinueItem(s *mcp.Server, d *Deps) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "continue_item",
+		Description: "繼續處理摘要後暫停（等你決定）的影音，行為與 POST /api/items/{id}/continue 相同：回傳 {continued: <步驟>}；" +
+			"影音沒有在等待時回傳 not_awaiting_user。之後的步驟會產生 LLM 費用。需要 ingest scope。",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a itemArgs) (*mcp.CallToolResult, any, error) {
+		if r := checkItem(a.Item); r != nil {
+			return r, nil, nil
+		}
+		return call(ctx, d, http.MethodPost, itemPath(a.Item, "/continue"), nil, nil), nil, nil
+	})
 }
 
 func addListSubscriptions(s *mcp.Server, d *Deps) {

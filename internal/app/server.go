@@ -18,6 +18,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/cookies"
 	"github.com/cxyfer/notesteme/internal/cost"
+	"github.com/cxyfer/notesteme/internal/digest"
 	"github.com/cxyfer/notesteme/internal/inbox"
 	"github.com/cxyfer/notesteme/internal/media"
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -104,6 +105,8 @@ type Server struct {
 	subscriptions *subscription.Service
 	// cost 是成本帳本、計價表與預算（COST）；startPipeline 建立。
 	cost *cost.Service
+	// digests 是訂閱彙整（DIG，M4-S6）；startPipeline 建立，並在排程器登記 digest。
+	digests *digest.Service
 	// workerDone 在 production 的 worker 迴圈結束時關閉；手動模式（測試）沒有迴圈，為 nil。
 	workerDone chan struct{}
 	// watchCancel、watchDone 是 inbox 監看迴圈（production 的 serve 才有，ING-05）；沒有時為 nil。
@@ -321,6 +324,11 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 		return err
 	}
 	if err := s.registerBatchPoll(); err != nil {
+		return err
+	}
+	// 彙整（DIG-R8～R11）：排程工作 digest 經同一個 outbox 送出。
+	s.digests = digest.New(digest.Deps{Store: s.store, Clock: env.Clock, Outbox: outbox, Summaries: pl, PublicURL: cfg.M4.PublicURL, Log: log})
+	if err := s.digests.Register(s.scheduler); err != nil {
 		return err
 	}
 	var periodic worker.Periodic = periodics{hk, s.pipeline.AgentSweeper(), s.scheduler}
