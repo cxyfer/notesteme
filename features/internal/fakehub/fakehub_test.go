@@ -239,3 +239,37 @@ func TestRoutesAreServed(t *testing.T) {
 		}
 	}
 }
+
+func TestOnHangAndReplaceContent(t *testing.T) {
+	h := New(token)
+	id := h.AddVersion(Version{Platform: "bilibili", ExternalID: "BV1hs4y1c7mD", Part: "1", Kind: "transcript", Variant: "source", Content: []byte(`{}`)})
+	if err := h.ReplaceContent(id, []byte(`{"a":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ReplaceContent("missing", nil); err == nil {
+		t.Fatal("不存在的版本要失敗")
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	code, body, _ := do(t, srv, "GET", "/api/v1/versions/"+id, nil, "", token)
+	if code != http.StatusOK || !strings.Contains(string(body), `"part":1`) || !strings.Contains(string(body), VideoKeySHA256("x", "", "")[:0]) {
+		t.Fatalf("got %d %s", code, body)
+	}
+	v, _ := h.version(id)
+	if string(v.Content) != `{"a":1}` || !strings.Contains(string(body), v.SHA256) {
+		t.Fatalf("sha256 要依新內容重算：%s", body)
+	}
+	called := make(chan struct{}, 1)
+	h.OnHang(func(ctx context.Context) { called <- struct{}{} })
+	h.Hang()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", srv.URL+"/api/v1/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	_, _ = srv.Client().Do(req)
+	select {
+	case <-called:
+	case <-time.After(time.Second):
+		t.Fatal("OnHang 要被呼叫")
+	}
+}

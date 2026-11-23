@@ -12,6 +12,7 @@ package fakehub
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -96,6 +97,7 @@ type Server struct {
 	tampered map[string]bool
 	fail     int
 	hang     bool
+	onHang   func(ctx context.Context)
 	requests []Request
 	shares   []Share
 	seq      int
@@ -154,6 +156,28 @@ func (s *Server) Hang() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.hang = true
+}
+
+// OnHang 設定 Hang 時收到請求後呼叫的函式（harness 用它推進 fake clock，讓 Client 以注入的 clock 逾時，
+// HSHR 待決問題 S7）；函式回傳之後仍等到請求的 context 結束。
+func (s *Server) OnHang(f func(ctx context.Context)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onHang = f
+}
+
+// ReplaceContent 取代版本的內容並重算 sha256（`the Hub version … has the cues:`）。
+func (s *Server) ReplaceContent(id string, content []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.versions[id]
+	if !ok {
+		return fmt.Errorf("fakehub 沒有版本 %q", id)
+	}
+	v.Content = slices.Clone(content)
+	sum := sha256.Sum256(content)
+	v.SHA256 = hex.EncodeToString(sum[:])
+	return nil
 }
 
 // Tamper 讓這個版本的 content 與 sha256 不符（仍是合法的 JSON）。
@@ -248,10 +272,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	s.requests = append(s.requests, rec)
-	fail, hang := s.fail, s.hang
+	fail, hang, onHang := s.fail, s.hang, s.onHang
 	s.mu.Unlock()
 
 	if hang {
+		if onHang != nil {
+			onHang(r.Context())
+		}
 		<-r.Context().Done()
 		return
 	}
@@ -380,12 +407,37 @@ func (s *Server) serveShare(w http.ResponseWriter, r *http.Request, body []byte)
 	for i, a := range arts {
 		m, _ := a.(map[string]any)
 		sha, _ := m["sha256"].(string)
+		if p, _ := m["path"].(string); sha == "" && p != "" {
+			// bundle v0 的雜湊在 files（artifacts[].sha256 是 ADR-0005 的舊欄位）。
+			sha = fileSHA(manifest, p)
+		}
+		// 與真 Hub 的 ShareView 相同的形狀（id、sha256；variant 只有字幕有）。
+		variant, _ := m["variant"].(string)
 		out = append(out, map[string]any{
-			"kind": m["kind"], "variant": m["variant"], "lang": m["lang"],
-			"version_id": fmt.Sprintf("%s-v%d", share.ID, i+1), "deduplicated": known[sha],
+			"id": fmt.Sprintf("%s-v%d", share.ID, i+1), "kind": m["kind"], "variant": variant, "lang": m["lang"],
+			"sha256": sha, "deduplicated": known[sha],
 		})
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"share_id": share.ID, "versions": out})
+	writeJSON(w, http.StatusCreated, map[string]any{"share_id": share.ID, "video": videoOf(manifest), "versions": out})
+}
+
+// fileSHA 回傳 manifest 的 files 中這個路徑的 sha256。
+func fileSHA(manifest map[string]any, path string) string {
+	files, _ := manifest["files"].([]any)
+	for _, f := range files {
+		m, _ := f.(map[string]any)
+		if m["path"] == path {
+			s, _ := m["sha256"].(string)
+			return s
+		}
+	}
+	return ""
+}
+
+// videoOf 回傳 manifest 的影片（與真 Hub 的 VideoRef 相同的形狀）。
+func videoOf(manifest map[string]any) map[string]any {
+	it, _ := manifest["item"].(map[string]any)
+	return map[string]any{"platform": it["platform"], "external_id": it["external_id"], "part": it["part"]}
 }
 
 // readBundle 解開 bundle 並讀出 manifest；只做 fakehub 需要的最小檢查（真正的驗證在 Hub 與 BND）。
@@ -482,9 +534,9 @@ func (s *Server) serveVersion(w http.ResponseWriter, id string) {
 		writeError(w, http.StatusNotFound, apiError{Code: "not_found", Message: "找不到這個版本。"})
 		return
 	}
-	video := map[string]any{"platform": v.Platform, "external_id": v.ExternalID}
-	if v.Part != "" {
-		video["part"] = v.Part
+	video := map[string]any{"platform": v.Platform, "external_id": v.ExternalID, "part": nil}
+	if n, err := strconv.Atoi(v.Part); err == nil && n > 0 {
+		video["part"] = n
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": v.ID, "video": video, "kind": v.Kind, "variant": v.Variant, "lang": v.Lang,

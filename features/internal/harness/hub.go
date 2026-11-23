@@ -9,14 +9,17 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/cxyfer/notesteme/features/internal/fakehub"
 	"github.com/cxyfer/notesteme/features/internal/fakeoauth"
+	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/hub"
 	"github.com/cxyfer/notesteme/internal/hub/hubconfig"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore"
+	"github.com/cxyfer/notesteme/internal/hubclient"
 	"github.com/cxyfer/notesteme/internal/netguard"
 )
 
@@ -243,9 +246,71 @@ func (w *World) StartFakeHub() error {
 		return ErrHubKindConflict
 	}
 	w.hub.fake = fakehub.New(TestHubToken)
+	w.hub.fake.OnHang(w.advancePastHubTimeouts)
 	w.hub.kind = HubFake
 	w.Net.Handle(HubHost, w.hub.fake)
 	return nil
+}
+
+// advancePastHubTimeouts 是 fakehub 不回應時的動作（HSHR 待決問題 S7）：Client 的逾時以 fake clock 計算，
+// 依序把 fake clock 推進到 ASR 前查詢與一般請求的逾時，直到 Client 取消請求；場景不真的等待逾時。
+// 每推進一次最多等 2 秒（真實時間）讓 Client 取消。
+func (w *World) advancePastHubTimeouts(ctx context.Context) {
+	for _, d := range []time.Duration{hubclient.LookupTimeout, hubclient.DefaultTimeout} {
+		if ctx.Err() != nil {
+			return
+		}
+		w.Clock.Advance(d)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
+// EnsureClientHubURL 在 Client 的設定檔加上 hub.url（fakehub 的位址），設定檔已經有 hub.url 時不覆寫
+// （steps.md 4.32 的閘門；HSHR-R1 的場景自己寫 http 網址）。server 啟動之前呼叫。
+func (w *World) EnsureClientHubURL() error {
+	if w.hub.kind != HubFake {
+		return nil
+	}
+	path := w.Expand(w.Env[config.EnvConfig])
+	if path == "" {
+		return errors.New("Env 沒有設定 NOTESTEME_CONFIG，無法寫入 hub.url")
+	}
+	doc := map[string]any{}
+	raw, err := os.ReadFile(path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+	case err != nil:
+		return err
+	default:
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			// 場景刻意寫壞的設定檔：不動它，讓 server 照常回報錯誤。
+			return nil
+		}
+		if doc == nil {
+			doc = map[string]any{}
+		}
+	}
+	hub, _ := doc["hub"].(map[string]any)
+	if hub == nil {
+		hub = map[string]any{}
+	}
+	if _, ok := hub["url"]; ok {
+		return nil
+	}
+	hub["url"] = HubPublicURL
+	doc["hub"] = hub
+	out, err := yaml.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o600)
 }
 
 // HubHTTPClient 回傳送到 Hub 的請求用的 client：經 fakenet（信任測試 CA），不跟隨轉址（登入流程要看 302 與 Location）。
