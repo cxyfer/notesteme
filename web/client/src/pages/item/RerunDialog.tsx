@@ -111,7 +111,7 @@ function RerunForm({
     staleTime: 60_000,
   });
   const prompts = useQuery({
-    queryKey: queryKeys.prompts,
+    queryKey: queryKeys.prompts.list(),
     queryFn: ({ signal }) => api.get("/api/prompts", { signal }),
     staleTime: 60_000,
     enabled: isLlm,

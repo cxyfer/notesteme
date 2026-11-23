@@ -145,12 +145,6 @@ export const api = {
   delete<P extends keyof paths>(path: P | string, opts?: RequestOptions) {
     return request<ResponseOf<P, "delete">>("DELETE", path, opts);
   },
-  patch<P extends keyof paths>(
-    path: P | string,
-    opts?: RequestOptions & { body?: BodyOf<P, "patch"> },
-  ) {
-    return request<ResponseOf<P, "patch">>("PATCH", path, opts);
-  },
 };
 
 /**
