@@ -340,6 +340,39 @@ func (q *Queries) ItemArtifactSHAs(ctx context.Context, itemID string) ([]string
 	return items, nil
 }
 
+const latestBundleImport = `-- name: LatestBundleImport :one
+SELECT CAST(COALESCE(json_extract(provenance_json, '$.imported_from.instance_id'), '') AS TEXT) AS instance_id,
+       CAST(COALESCE(json_extract(provenance_json, '$.imported_from.app_version'), '') AS TEXT) AS app_version,
+       CAST(json_extract(provenance_json, '$.imported_from.bundle_sha256') AS TEXT) AS bundle_sha256,
+       CAST(COALESCE(json_extract(provenance_json, '$.imported_from.imported_at'), '') AS TEXT) AS imported_at
+FROM artifacts
+WHERE item_id = ?1
+  AND json_type(provenance_json, '$.imported_from.bundle_sha256') = 'text'
+ORDER BY created_at DESC, rowid DESC
+LIMIT 1
+`
+
+type LatestBundleImportRow struct {
+	InstanceID   string
+	AppVersion   string
+	BundleSha256 string
+	ImportedAt   string
+}
+
+// The newest artifact of an item (any version) imported from a bundle (BND-R8): only the bundle shape of imported_from
+// (with bundle_sha256), not subtitle file imports, whose imported_from has a file name instead.
+func (q *Queries) LatestBundleImport(ctx context.Context, itemID string) (LatestBundleImportRow, error) {
+	row := q.db.QueryRowContext(ctx, latestBundleImport, itemID)
+	var i LatestBundleImportRow
+	err := row.Scan(
+		&i.InstanceID,
+		&i.AppVersion,
+		&i.BundleSha256,
+		&i.ImportedAt,
+	)
+	return i, err
+}
+
 const latestProbes = `-- name: LatestProbes :many
 SELECT id, item_id, run_id, source_id, lang, kind, available, est_cost, state, rejected_reason, probed_at, probe_trigger FROM source_probes AS sp
 WHERE sp.item_id = ?1

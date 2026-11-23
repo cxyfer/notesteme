@@ -3077,6 +3077,17 @@
           "id": {
             "type": "string"
           },
+          "imported_from": {
+            "description": "最近一次從 bundle 匯入的來源（BND-R8）；沒有從 bundle 匯入過時是 null",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemImportedFrom"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "lang_mixed": {
             "type": "boolean"
           },
@@ -3182,6 +3193,7 @@
           "sources",
           "reprobe",
           "better_source",
+          "imported_from",
           "id",
           "ref",
           "platform",
@@ -3195,6 +3207,35 @@
           "created_at",
           "subscription_id",
           "read_state"
+        ],
+        "type": "object"
+      },
+      "ItemImportedFrom": {
+        "additionalProperties": false,
+        "properties": {
+          "app_version": {
+            "description": "產生 bundle 的 Notesteme 版本",
+            "type": "string"
+          },
+          "bundle_sha256": {
+            "description": "bundle 檔案的 sha256",
+            "type": "string"
+          },
+          "imported_at": {
+            "description": "匯入的時間",
+            "format": "date-time",
+            "type": "string"
+          },
+          "instance_id": {
+            "description": "產生 bundle 的實例 ID（UUID）；bundle 沒有寫時是空字串",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance_id",
+          "app_version",
+          "bundle_sha256",
+          "imported_at"
         ],
         "type": "object"
       },

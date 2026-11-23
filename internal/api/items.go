@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -119,6 +121,38 @@ type ItemDetail struct {
 	// Reprobe 是排定的重新 Probe（SRC-R18），BetterSource 是事後發現的更好字幕來源（SRC-R23）；沒有時都是 null。
 	Reprobe      *ItemReprobe      `json:"reprobe" doc:"排定的重新 Probe（SRC-R18）；沒有排程時是 null"`
 	BetterSource *ItemBetterSource `json:"better_source" doc:"事後發現的更好字幕來源（SRC-R23）；沒有時是 null"`
+	// ImportedFrom 是最近一次從 bundle 匯入的來源（BND-R8、N7）；沒有時是 null。
+	ImportedFrom *ItemImportedFrom `json:"imported_from" doc:"最近一次從 bundle 匯入的來源（BND-R8）；沒有從 bundle 匯入過時是 null"`
+}
+
+// ItemImportedFrom 是影音的產出從哪個實例的 bundle 匯入（BND-R8）。值取自 bundle 的 manifest，是不可信的文字。
+type ItemImportedFrom struct {
+	InstanceID   string    `json:"instance_id" doc:"產生 bundle 的實例 ID（UUID）；bundle 沒有寫時是空字串"`
+	AppVersion   string    `json:"app_version" doc:"產生 bundle 的 Notesteme 版本"`
+	BundleSHA256 string    `json:"bundle_sha256" doc:"bundle 檔案的 sha256"`
+	ImportedAt   time.Time `json:"imported_at" doc:"匯入的時間"`
+}
+
+// importedFromView 轉成 API 的形狀；manifest 的字串在輸出前去掉控制與格式字元並限制長度（不可信的輸入）。
+func importedFromView(b *store.BundleImport) *ItemImportedFrom {
+	if b == nil {
+		return nil
+	}
+	clean := func(s string, n int) string {
+		s = strings.Map(func(r rune) rune {
+			// 控制字元、格式字元（例如 U+202E 雙向覆寫）與不合法的 UTF-8 一律去掉。
+			if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == utf8.RuneError {
+				return -1
+			}
+			return r
+		}, s)
+		if rs := []rune(s); len(rs) > n {
+			s = string(rs[:n])
+		}
+		return s
+	}
+	return &ItemImportedFrom{InstanceID: clean(b.InstanceID, 64), AppVersion: clean(b.AppVersion, 64),
+		BundleSHA256: clean(b.BundleSHA256, 64), ImportedAt: b.ImportedAt}
 }
 
 // ItemReprobe 是影音排定的重新 Probe（SRC-R18）。
@@ -601,6 +635,7 @@ func toDetail(d pipeline.Detail) ItemDetail {
 	if b := d.BetterSource; b != nil {
 		out.BetterSource = &ItemBetterSource{Source: b.Source, Lang: b.Lang, Kind: b.Kind, FoundAt: b.FoundAt.UTC(), EstimateUSD: b.EstimateUSD}
 	}
+	out.ImportedFrom = importedFromView(d.ImportedFrom)
 	return out
 }
 

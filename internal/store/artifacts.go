@@ -2,10 +2,12 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
 )
@@ -352,4 +354,30 @@ func (r *Repo) ItemArtifactSHAs(ctx context.Context, itemID string) (map[string]
 		out[s] = true
 	}
 	return out, nil
+}
+
+// BundleImport 是影音最近一次從 bundle 匯入的來源（BND-R8 的 imported_from）。
+type BundleImport struct {
+	InstanceID   string
+	AppVersion   string
+	BundleSHA256 string
+	// ImportedAt 是 RFC 3339 的匯入時間；解析失敗時是零值。
+	ImportedAt time.Time
+}
+
+// LatestBundleImport 回傳影音（任何版本的產出）最近一次從 bundle 匯入的來源；沒有時 ok 為 false。
+// 只認 bundle 的形狀（有 bundle_sha256），字幕檔匯入的 imported_from 不算。
+func (r *Repo) LatestBundleImport(ctx context.Context, itemID string) (BundleImport, bool, error) {
+	row, err := r.q.LatestBundleImport(ctx, itemID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return BundleImport{}, false, nil
+	}
+	if err != nil {
+		return BundleImport{}, false, err
+	}
+	b := BundleImport{InstanceID: row.InstanceID, AppVersion: row.AppVersion, BundleSHA256: row.BundleSha256}
+	if t, err := time.Parse(time.RFC3339, row.ImportedAt); err == nil {
+		b.ImportedAt = t.UTC()
+	}
+	return b, true, nil
 }

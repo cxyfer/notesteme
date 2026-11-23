@@ -78,3 +78,16 @@ UPDATE artifacts SET pinned = 1 WHERE id = sqlc.arg(id);
 -- name: ItemArtifactSHAs :many
 -- Content hashes of every version of every artifact of an item (bundle import skips identical content, BND-R9).
 SELECT DISTINCT sha256 FROM artifacts WHERE item_id = sqlc.arg(item_id);
+
+-- name: LatestBundleImport :one
+-- The newest artifact of an item (any version) imported from a bundle (BND-R8): only the bundle shape of imported_from
+-- (with bundle_sha256), not subtitle file imports, whose imported_from has a file name instead.
+SELECT CAST(COALESCE(json_extract(provenance_json, '$.imported_from.instance_id'), '') AS TEXT) AS instance_id,
+       CAST(COALESCE(json_extract(provenance_json, '$.imported_from.app_version'), '') AS TEXT) AS app_version,
+       CAST(json_extract(provenance_json, '$.imported_from.bundle_sha256') AS TEXT) AS bundle_sha256,
+       CAST(COALESCE(json_extract(provenance_json, '$.imported_from.imported_at'), '') AS TEXT) AS imported_at
+FROM artifacts
+WHERE item_id = sqlc.arg(item_id)
+  AND json_type(provenance_json, '$.imported_from.bundle_sha256') = 'text'
+ORDER BY created_at DESC, rowid DESC
+LIMIT 1;

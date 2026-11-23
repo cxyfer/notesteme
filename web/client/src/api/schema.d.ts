@@ -2832,6 +2832,8 @@ export interface components {
       /** @description 分享到 Hub 的紀錄，依時間排序；沒有分享過時沒有這個欄位 */
       hub_shares?: components["schemas"]["HubShareRef"][] | null;
       id: string;
+      /** @description 最近一次從 bundle 匯入的來源（BND-R8）；沒有從 bundle 匯入過時是 null */
+      imported_from: components["schemas"]["ItemImportedFrom"] | null;
       lang_mixed: boolean;
       /** @description 原文語言的來源：metadata、asr 或 detected */
       lang_source?: string;
@@ -2869,6 +2871,19 @@ export interface components {
       /** @description 新增時指定做到哪個步驟為止 */
       until?: string;
       url: string;
+    };
+    ItemImportedFrom: {
+      /** @description 產生 bundle 的 Notesteme 版本 */
+      app_version: string;
+      /** @description bundle 檔案的 sha256 */
+      bundle_sha256: string;
+      /**
+       * Format: date-time
+       * @description 匯入的時間
+       */
+      imported_at: string;
+      /** @description 產生 bundle 的實例 ID（UUID）；bundle 沒有寫時是空字串 */
+      instance_id: string;
     };
     ItemReprobe: {
       /**

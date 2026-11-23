@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -745,5 +747,66 @@ func TestBundleConflictItemID(t *testing.T) {
 	}
 	if ce := existsConflict(store.Item{}); ce.Code != CodeBundleItemExists || ce.ItemID != "" {
 		t.Errorf("existsConflict(零值) = %#v", ce)
+	}
+}
+
+// BND-R8、N7：影音詳情的 ImportedFrom 取最近一次 bundle 匯入（任何版本）；字幕檔匯入的 imported_from 不算。
+func TestItemDetailImportedFrom(t *testing.T) {
+	src, srcItem := bundleRig(t)
+	ctx := context.Background()
+	if d := detailOf(t, src, srcItem.ID); d.ImportedFrom != nil {
+		t.Fatalf("沒有匯入過 = %+v", d.ImportedFrom)
+	}
+	// 字幕檔匯入：imported_from 是 {format, sha256, name}，不是 bundle。
+	srt := "1\n00:00:01,000 --> 00:00:02,000\nHi.\n"
+	if _, err := src.p.ImportSubtitle(ctx, ImportRequest{ItemID: srcItem.ID, Data: []byte(srt), Format: "srt", Lang: "en", Name: "/home/u/secret/a.srt"}); err != nil {
+		t.Fatal(err)
+	}
+	if d := detailOf(t, src, srcItem.ID); d.ImportedFrom != nil {
+		t.Fatalf("字幕檔匯入不算 bundle = %+v", d.ImportedFrom)
+	}
+
+	ex, err := src.p.ExportBundle(ctx, "yt:abc123xxxxx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const inst = "0190a1b2-0000-7000-8000-000000000001"
+	data := rezip(t, ex.Data, func(m *bundle.OutManifest, _ map[string][]byte) {
+		m.CreatedBy = bundle.OutCreatedBy{InstanceID: inst, AppVersion: "0.4.0"}
+	})
+	dst := newRig(t)
+	res, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: data})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(data)
+	d := detailOf(t, dst, res.Item.ID)
+	if f := d.ImportedFrom; f == nil || f.InstanceID != inst || f.AppVersion != "0.4.0" || f.BundleSHA256 != hex.EncodeToString(sum[:]) || f.ImportedAt.IsZero() {
+		t.Fatalf("匯入後 = %+v", d.ImportedFrom)
+	}
+	// 之後產生的新版本（例如重跑）不會讓標示消失：看的是所有版本。
+	if err := dst.p.SeedTranscript(ctx, SeedRequest{ItemID: res.Item.ID, Variant: subtitle.VariantCorrected, Lang: "en",
+		Cues: []subtitle.Cue{{StartMS: 0, EndMS: 1000, Text: "Rerun."}}}); err != nil {
+		t.Fatal(err)
+	}
+	if d := detailOf(t, dst, res.Item.ID); d.ImportedFrom == nil || d.ImportedFrom.InstanceID != inst {
+		t.Fatalf("重跑後 = %+v", d.ImportedFrom)
+	}
+	// 之後再用 add_versions 匯入另一個實例的 bundle：顯示最近的那一次。
+	const inst2 = "0190a1b2-0000-7000-8000-000000000002"
+	data2 := rezip(t, ex.Data, func(m *bundle.OutManifest, files map[string][]byte) {
+		m.CreatedBy = bundle.OutCreatedBy{InstanceID: inst2, AppVersion: "0.5.0"}
+		for name, b := range files {
+			if strings.HasSuffix(name, ".md") {
+				files[name] = append(b, []byte("\nmore\n")...)
+			}
+		}
+	})
+	dst.clk.Advance(time.Minute)
+	if res2, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: data2, AddVersions: true}); err != nil || res2.Imported == 0 {
+		t.Fatalf("add_versions = %+v %v", res2, err)
+	}
+	if d := detailOf(t, dst, res.Item.ID); d.ImportedFrom == nil || d.ImportedFrom.InstanceID != inst2 || d.ImportedFrom.AppVersion != "0.5.0" {
+		t.Fatalf("第二次匯入後 = %+v", d.ImportedFrom)
 	}
 }

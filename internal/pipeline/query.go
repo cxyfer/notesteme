@@ -35,6 +35,8 @@ type Detail struct {
 	// Reprobe 是排定的重新 Probe（SRC-R18），沒有排程時是 nil；BetterSource 是發現的更好來源（SRC-R23），沒有時是 nil。
 	Reprobe      *ReprobeView
 	BetterSource *store.BetterSource
+	// ImportedFrom 是最近一次從 bundle 匯入的來源（BND-R8、N7）；沒有從 bundle 匯入過時是 nil。
+	ImportedFrom *store.BundleImport
 }
 
 // Item 回傳影音詳情；不存在時回傳 store.ErrNotFound，在垃圾桶中時回傳 *InTrashError（DEL-R1）。
@@ -86,6 +88,12 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 	d := Detail{Item: it, Stages: stages, Sources: probes, Attempts: attempts, Batches: batches}
 	if d.Reprobe, d.BetterSource, err = reprobeDetail(ctx, r, id); err != nil {
 		return Detail{}, err
+	}
+	switch b, ok, err := r.LatestBundleImport(ctx, id); {
+	case err != nil:
+		return Detail{}, err
+	case ok:
+		d.ImportedFrom = &b
 	}
 	// 產出檔讀不到時只略過這個欄位，不讓整個詳情失敗。
 	switch segs, ok, err := p.SponsorSegments(ctx, id); {

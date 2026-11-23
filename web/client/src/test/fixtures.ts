@@ -53,7 +53,7 @@ export function stage(name: string, status: string, over: Partial<Stage> = {}): 
 }
 
 export function detail(it: Item, stages: Stage[] = []): Detail {
-  return { ...it, stages, sources: [], reprobe: null, better_source: null };
+  return { ...it, stages, sources: [], reprobe: null, better_source: null, imported_from: null };
 }
 
 type Cue = components["schemas"]["Cue"];

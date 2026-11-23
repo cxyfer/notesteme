@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/config"
+	"github.com/cxyfer/notesteme/internal/store"
 )
 
 func bundleReq(r *itemsRig, path string, data []byte, field string) (*http.Response, []byte) {
@@ -42,6 +44,12 @@ func TestBundleExportImport(t *testing.T) {
 	var res BundleImportResult
 	if resp.StatusCode != 201 || json.Unmarshal(body, &res) != nil || res.Item.ID != id || res.Item.Ref != "yt:abc123xxxxx" || res.Imported != 0 {
 		t.Errorf("add_versions = %d %s", resp.StatusCode, body)
+	}
+	// 內容全部相同而略過：沒有從 bundle 匯入任何產出，imported_from 仍是 null（欄位必有）。
+	if got := decodeBody(t, r.owner("GET", "/api/items/"+id, "")); got["imported_from"] != nil {
+		t.Errorf("imported_from = %v", got["imported_from"])
+	} else if _, ok := got["imported_from"]; !ok {
+		t.Error("imported_from 欄位應該必有")
 	}
 	resp, body = bundleReq(r, "/api/bundles/import?on_existing=merge", data, "file")
 	if e := decodeError(t, body); resp.StatusCode != 422 || e.Code != CodeInvalidInput || len(e.Errors) != 1 || e.Errors[0].Path != "on_existing" {
@@ -115,5 +123,19 @@ func TestBundleExportImport(t *testing.T) {
 	rec = r.owner("GET", "/api/items/nope/bundle", "")
 	if rec.Code != 404 {
 		t.Errorf("不存在 = %d", rec.Code)
+	}
+}
+
+// importedFromView：manifest 的字串是不可信的輸入，去掉控制字元與不合法的 UTF-8，並限制長度。
+func TestImportedFromView(t *testing.T) {
+	if importedFromView(nil) != nil {
+		t.Error("nil 應該是 nil")
+	}
+	at := time.Date(2026, 11, 24, 1, 2, 3, 0, time.UTC)
+	v := importedFromView(&store.BundleImport{InstanceID: "0190a1b2-0000-7000-8000-000000000001",
+		AppVersion: "0.4.0\x1b[31m\n\u202e\xff" + strings.Repeat("v", 100), BundleSHA256: strings.Repeat("a", 64), ImportedAt: at})
+	if strings.ContainsAny(v.AppVersion, "\x1b\n\ufffd\u202e") || !strings.HasPrefix(v.AppVersion, "0.4.0[31m") || len([]rune(v.AppVersion)) != 64 ||
+		v.InstanceID != "0190a1b2-0000-7000-8000-000000000001" || v.BundleSHA256 != strings.Repeat("a", 64) || !v.ImportedAt.Equal(at) {
+		t.Errorf("view = %+v", v)
 	}
 }
