@@ -76,6 +76,13 @@ func (w *World) AppEnv() app.Env {
 		}
 	}
 	// migration 的覆寫（OPS-R3、R4）；組合不合理的步驟在設定當下就會失敗，這裡不會有錯誤。
+	var est map[string]float64
+	if len(w.CostEstimates) > 0 {
+		est = make(map[string]float64, len(w.CostEstimates))
+		for k, v := range w.CostEstimates {
+			est[k] = v
+		}
+	}
 	migs, _ := w.Migrations()
 	return app.Env{
 		Vars:   vars,
@@ -83,6 +90,7 @@ func (w *World) AppEnv() app.Env {
 		Net:    w.Net.Deps(),
 		Listen: w.Listen,
 		Log:    w.Log,
-		Test:   &app.TestControls{LowCostHashing: true, ManualWorker: true, SkipShutdownGrace: true, SerialLLM: true, ImplVersions: impl, Migrations: migs},
+		Test: &app.TestControls{LowCostHashing: true, ManualWorker: true, SkipShutdownGrace: true, SerialLLM: true, ImplVersions: impl, Migrations: migs,
+			CostEstimates: est, PricesAsOf: w.PricesAsOf},
 	}
 }

@@ -65,6 +65,8 @@ type Scenario struct {
 	givenQueue queueConfig
 	// notifiers 是 `the notifier … is:` 累積的 notifier，接在佇列之後寫入（見 flushNotifiers，steps.md 4.18）。
 	notifiers []pendingNotifier
+	// costs 是 COST 的 Given 累積的計價覆寫與預算（見 flushCosts，steps.md 4.19）。
+	costs costSeeds
 	// seeded 是已用 `the … transcript of … is:` 直接寫入字幕的影音代號（見 hasTranscriptSource）。
 	seeded map[string]bool
 	// lastCreatedToken 是最近一次 `a token … with scopes …` 建立的 token 明文，
@@ -471,6 +473,9 @@ func (s *Scenario) prepareOwner() error {
 		return err
 	}
 	if err := s.flushConfig(); err != nil {
+		return err
+	}
+	if err := s.flushCosts(); err != nil {
 		return err
 	}
 	if err := s.flushSubscriptions(); err != nil {

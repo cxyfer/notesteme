@@ -117,6 +117,10 @@ type World struct {
 
 	// ImplVersions 是步驟 impl_version 的覆寫（PIPE-R6），見 AppEnv。server 已啟動時也會寫入，重啟後覆寫仍然存在。
 	ImplVersions map[string]int
+	// CostEstimates 是 `the cost estimate of every … task is …` 的估算覆寫（美元，steps.md 4.19）；PricesAsOf 是
+	// `the built-in prices were checked on …` 的內建計價表確認日期。兩者都在 server 啟動時交給 app（見 AppEnv）。
+	CostEstimates map[string]float64
+	PricesAsOf    string
 
 	listenMu sync.Mutex
 	listens  []ListenRecord
@@ -392,6 +396,11 @@ func (w *World) GateWaiting() (int, error) {
 // 結果由標記檔與程序是否存活決定，不靠睡一段固定時間。
 func (w *World) WaitGateWaiting(n int, limit time.Duration) error {
 	return w.waitGate(limit, func(got int) bool { return got >= n }, fmt.Sprintf("至少 %d", n))
+}
+
+// WaitGateWaitingOr 同 WaitGateWaiting，但 done 回報 true 時也結束等待（例如領到的任務都不啟動外部程序、已經跑完）。
+func (w *World) WaitGateWaitingOr(n int, limit time.Duration, done func(got int) bool) error {
+	return w.waitGate(limit, func(got int) bool { return got >= n || done(got) }, fmt.Sprintf("至少 %d", n))
 }
 
 // WaitGateCount 等到恰好 n 個存活的程序停在 gate 前，用來確認工作確實被停止（或確實在執行）。

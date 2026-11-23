@@ -92,6 +92,10 @@ type provider struct {
 	answers  map[string]*sequence        // stage → 依序回答
 	chunks   map[string]map[int]*fixture // stage → chunk → 回答
 	requests []Request
+	// usage 非 nil 時，每個成功回應的 usage 固定回報這些 token 數（COST，steps.md 4.19）。
+	usage *[2]int
+	// cost 非 nil 時，每個成功回應在 usage.cost 帶這個金額（OpenRouter 的格式，只有 openai）。
+	cost *float64
 }
 
 type failSpec struct {
@@ -208,6 +212,29 @@ func (s *Server) Fail(id string, status, times int) {
 		times = -1
 	}
 	p.fail = &failSpec{status: status, remaining: times}
+}
+
+// SetUsage 讓這個 provider 之後每個成功回應的 usage 固定回報 in 個輸入與 out 個輸出 token（COST，steps.md 4.19）。
+func (s *Server) SetUsage(id string, in, out int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.providers[id]
+	if !ok {
+		return fmt.Errorf("fakellm: 不認識的 provider %q", id)
+	}
+	p.usage = &[2]int{in, out}
+	return nil
+}
+
+// SetCost 讓 openai 之後每個成功回應在 usage.cost 回報 usd（OpenRouter 的格式，COST-R2）；其他 provider 回傳錯誤。
+func (s *Server) SetCost(id string, usd float64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if id != providerOpenAI {
+		return fmt.Errorf("fakellm: 只有 %s 能回報 usage.cost，收到 %q", providerOpenAI, id)
+	}
+	s.providers[id].cost = &usd
+	return nil
 }
 
 // Requests 回傳 provider 收到的全部請求（依抵達順序，複本）。
@@ -344,6 +371,9 @@ func estimateTokens(n int) int { return (n + 3) / 4 }
 // successResult 依 provider 的 wire format 組出成功的回應。
 func (p *provider) successResult(req Request, out answer) result {
 	inTok, outTok := estimateTokens(len(req.Text)), estimateTokens(len(out.raw()))
+	if p.usage != nil {
+		inTok, outTok = p.usage[0], p.usage[1]
+	}
 	var v any
 	if p.id == providerAnthropic {
 		block := map[string]any{"type": "text", "text": out.text}
@@ -372,6 +402,9 @@ func (p *provider) successResult(req Request, out answer) result {
 				"finish_reason": "stop",
 			}},
 			"usage": map[string]any{"prompt_tokens": inTok, "completion_tokens": outTok, "total_tokens": inTok + outTok},
+		}
+		if p.cost != nil {
+			v.(map[string]any)["usage"].(map[string]any)["cost"] = *p.cost
 		}
 	}
 	b, _ := json.Marshal(v)

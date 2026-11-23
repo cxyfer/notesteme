@@ -158,7 +158,8 @@ func (s *Scenario) startRound() (int, error) {
 	if n == 0 {
 		return 0, nil
 	}
-	return n, s.World.WaitGateWaiting(before+n, gateWaitLimit)
+	// 領到的任務不一定會啟動外部程序（例如 LLM 步驟的 plan 與 chunk）：這時等它們全部結束。
+	return n, s.World.WaitGateWaitingOr(before+n, gateWaitLimit, func(int) bool { return s.server.ActiveTasks() == 0 })
 }
 
 // 佇列 API 回應的形狀（只列出步驟會用到的欄位）。
