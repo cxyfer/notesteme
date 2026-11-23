@@ -463,3 +463,101 @@ func TestListItemsCursorWorksAcrossListeners(t *testing.T) {
 		t.Errorf("本機 socket 拒絕了 TCP 發出的游標：%d %s", rec.Code, rec.Body)
 	}
 }
+
+// blocked 篩選（DIG-R6 的「等你決定」等）：只看各步驟最新的一次執行；status 必須是 blocked；垃圾桶不列出；
+// 可以與 status 篩選組合；游標換了 blocked 的值就失效；格式不對回 422。
+func TestListItemsBlockedFilter(t *testing.T) {
+	r := newItemsRig(t)
+	ctx := context.Background()
+	w := r.st.Write()
+	snap, err := w.EnsureSnapshot(ctx, "sha", "{}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	type run struct{ stage, status, reason string }
+	mk := func(ext string, runs ...run) string {
+		t.Helper()
+		it, _, err := w.InsertItemIfAbsent(ctx, store.NewItem{Platform: "youtube", ExternalID: ext, URL: "https://example.test/" + ext})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, rr := range runs {
+			sr, err := w.InsertStageRun(ctx, store.NewStageRun{ItemID: it.ID, Stage: rr.stage, Status: store.StatusPending, ConfigSnapshotID: snap})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rr.status != store.StatusPending {
+				if err := w.SetStageState(ctx, sr.ID, store.StageState{Status: rr.status, BlockReason: rr.reason}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			r.clk.Advance(time.Millisecond)
+		}
+		r.clk.Advance(time.Second)
+		return toItem(it).Ref
+	}
+	seg, norm := pipeline.StageSegment, pipeline.StageNormalize
+	awaiting := mk("await00001x", run{seg, store.StatusBlocked, "awaiting_user"})
+	budget := mk("budget0001x", run{seg, store.StatusBlocked, "budget_blocked"})
+	// 之前停住、之後重跑：最新的一次不是 blocked，不算。
+	mk("rerun00001x", run{seg, store.StatusBlocked, "awaiting_user"}, run{seg, store.StatusPending, ""})
+	// 原因相同但狀態不是 blocked（例如 skipped 留下的原因）不算。
+	mk("skipped001x", run{seg, store.StatusSkipped, "awaiting_user"})
+	// 兩個步驟各自停在不同原因：兩種篩選都列出。
+	both := mk("both000001x", run{norm, store.StatusBlocked, "needs_action"}, run{seg, store.StatusBlocked, "awaiting_user"})
+	trashed := mk("trash00001x", run{seg, store.StatusBlocked, "awaiting_user"})
+	tr, err := r.st.Read().ItemByKey(ctx, "youtube", "trash00001x", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := r.owner("DELETE", "/api/items/"+tr.ID, ""); rec.Code/100 != 2 {
+		t.Fatalf("刪除 %s = %d %s", trashed, rec.Code, rec.Body)
+	}
+
+	for _, tt := range []struct {
+		query string
+		want  []string
+	}{
+		{"?blocked=awaiting_user", []string{both, awaiting}},
+		{"?blocked=budget_blocked", []string{budget}},
+		{"?blocked=needs_action", []string{both}},
+		{"?blocked=needs_action&status=segment:blocked", []string{both}},
+		{"?blocked=awaiting_user&status=normalize:pending", []string{awaiting}},
+		{"?blocked=no_such_reason", nil},
+	} {
+		rec, b := r.list(tt.query)
+		if rec.Code != 200 {
+			t.Errorf("%s：%d %s", tt.query, rec.Code, rec.Body)
+			continue
+		}
+		if got := refsOf(b); !slices.Equal(got, nonNilStr(tt.want)) || b.Total != len(tt.want) {
+			t.Errorf("%s：items=%v total=%d，預期 %v", tt.query, got, b.Total, tt.want)
+		}
+	}
+
+	// 游標：同一個篩選可以接著讀；換成別的 blocked 值或拿掉 blocked 都回 422。
+	rec := r.owner("GET", "/api/items?blocked=awaiting_user&limit=1", "")
+	cur, _ := decodeBody(t, rec)["next_cursor"].(string)
+	if cur == "" {
+		t.Fatalf("第一頁 = %s", rec.Body)
+	}
+	if rec, b := r.list("?blocked=awaiting_user&limit=1&cursor=" + url.QueryEscape(cur)); rec.Code != 200 || !slices.Equal(refsOf(b), []string{awaiting}) {
+		t.Errorf("第二頁 = %d %s", rec.Code, rec.Body)
+	}
+	for _, q := range []string{"?blocked=budget_blocked&cursor=", "?cursor="} {
+		if rec := r.owner("GET", "/api/items"+q+url.QueryEscape(cur), ""); rec.Code != 422 {
+			t.Errorf("%s：%d，預期 422", q, rec.Code)
+		}
+	}
+
+	// 不合格式的值（含 SQL 與萬用字元）一律 422，不會變成不篩選。
+	for _, v := range []string{"AWAITING_USER", "awaiting-user", "awaiting_user,needs_action", "%", "_%", "' OR 1=1 --",
+		" awaiting_user", "awaiting_user\x00", strings.Repeat("a", 65), "等你決定"} {
+		if rec := r.owner("GET", "/api/items?blocked="+url.QueryEscape(v), ""); rec.Code != 422 {
+			t.Errorf("blocked=%q：%d，預期 422", v, rec.Code)
+		}
+	}
+	if rec := r.owner("GET", "/api/items?blocked="+strings.Repeat("a", 64), ""); rec.Code != 200 {
+		t.Errorf("64 個字元應該可以：%d", rec.Code)
+	}
+}

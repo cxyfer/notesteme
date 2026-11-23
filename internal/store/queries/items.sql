@@ -94,6 +94,11 @@ WHERE deleted_at IS NULL
   AND (CAST(sqlc.arg(timing) AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
         WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = sqlc.arg(timing)))
+  AND (CAST(sqlc.arg(blocked) AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM stage_runs AS sr
+        WHERE sr.item_id = items.id AND sr.status = 'blocked' AND sr.block_reason = sqlc.arg(blocked)
+          AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                       ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)))
   AND (json_array_length(CAST(sqlc.arg(status_filters) AS TEXT)) = 0 OR NOT EXISTS (
         SELECT 1 FROM sf
         WHERE COALESCE(instr(sf.statuses,
@@ -129,6 +134,11 @@ WHERE deleted_at IS NULL
   AND (CAST(sqlc.arg(timing) AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
         WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = sqlc.arg(timing)))
+  AND (CAST(sqlc.arg(blocked) AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM stage_runs AS sr
+        WHERE sr.item_id = items.id AND sr.status = 'blocked' AND sr.block_reason = sqlc.arg(blocked)
+          AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                       ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)))
   AND (json_array_length(CAST(sqlc.arg(status_filters) AS TEXT)) = 0 OR NOT EXISTS (
         SELECT 1 FROM sf
         WHERE COALESCE(instr(sf.statuses,

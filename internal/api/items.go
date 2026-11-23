@@ -352,6 +352,7 @@ type listItemsInput struct {
 	DurationMax   string   `query:"duration_max" doc:"長度上限（秒，含），不得小於 0"`
 	Timing        string   `query:"timing" doc:"目前的字幕中至少有一個 cue 的 timing 是這個值：source、merged、silence、interpolated、model"`
 	Q             string   `query:"q" doc:"標題搜尋：不分大小寫的部分字串，去掉前後空白，最多 200 字元"`
+	Blocked       string   `query:"blocked" doc:"停住的原因，例如 awaiting_user（摘要後等你決定，DIG-R6）、budget_blocked、needs_action：至少有一個步驟的最新執行是 blocked 且原因是這個值"`
 	Limit         int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"單頁筆數"`
 	Cursor        string   `query:"cursor" doc:"上一頁回傳的 next_cursor"`
 	ReadState     string   `query:"read_state" doc:"read 或 unread（LIB-R19）；其他值回 422"`
@@ -441,7 +442,7 @@ func (rt *routes) listItems(ctx context.Context, in *listItemsInput) (*listItems
 	}
 	q := pipeline.ItemQuery{
 		Platform: in.Platform, Channel: in.Channel, ErrorClass: in.ErrorClass, Lang: in.Lang, Timing: in.Timing,
-		Q: strings.TrimSpace(in.Q), Status: status, PublishedFrom: from, PublishedTo: to,
+		Q: strings.TrimSpace(in.Q), Blocked: in.Blocked, Status: status, PublishedFrom: from, PublishedTo: to,
 		DurationMin: durMin, DurationMax: durMax, ReadState: in.ReadState, Limit: in.Limit,
 	}
 	// 不論有沒有 Pipeline，都先驗證參數與游標，不合法回 422。
@@ -513,7 +514,9 @@ func filterFingerprint(q pipeline.ItemQuery) string {
 		From, To                                       *int64
 		DurMin, DurMax                                 *int
 		ReadState                                      string `json:",omitempty"`
-	}{q.Platform, q.Channel, q.ErrorClass, q.Lang, q.Timing, q.Q, status, ms(q.PublishedFrom), ms(q.PublishedTo), q.DurationMin, q.DurationMax, q.ReadState})
+		// Blocked 省略空值：沒有用這個篩選時指紋與之前相同。
+		Blocked string `json:",omitempty"`
+	}{q.Platform, q.Channel, q.ErrorClass, q.Lang, q.Timing, q.Q, status, ms(q.PublishedFrom), ms(q.PublishedTo), q.DurationMin, q.DurationMax, q.ReadState, q.Blocked})
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:8])
 }

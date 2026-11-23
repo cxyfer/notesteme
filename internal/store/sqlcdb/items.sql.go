@@ -48,7 +48,7 @@ func (q *Queries) ChannelsWithOverrides(ctx context.Context) ([]Channel, error) 
 const countItemsFiltered = `-- name: CountItemsFiltered :one
 WITH sf AS (
   SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
-  FROM json_each(CAST(?12 AS TEXT)) AS j
+  FROM json_each(CAST(?13 AS TEXT)) AS j
 )
 SELECT COUNT(*) FROM items
 WHERE deleted_at IS NULL
@@ -69,7 +69,12 @@ WHERE deleted_at IS NULL
   AND (CAST(?11 AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
         WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = ?11))
-  AND (json_array_length(CAST(?12 AS TEXT)) = 0 OR NOT EXISTS (
+  AND (CAST(?12 AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM stage_runs AS sr
+        WHERE sr.item_id = items.id AND sr.status = 'blocked' AND sr.block_reason = ?12
+          AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                       ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)))
+  AND (json_array_length(CAST(?13 AS TEXT)) = 0 OR NOT EXISTS (
         SELECT 1 FROM sf
         WHERE COALESCE(instr(sf.statuses,
                 '|' || COALESCE((SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
@@ -88,6 +93,7 @@ type CountItemsFilteredParams struct {
 	ReadState     string
 	ErrorClass    string
 	Timing        string
+	Blocked       string
 	StatusFilters string
 }
 
@@ -105,6 +111,7 @@ func (q *Queries) CountItemsFiltered(ctx context.Context, arg CountItemsFiltered
 		arg.ReadState,
 		arg.ErrorClass,
 		arg.Timing,
+		arg.Blocked,
 		arg.StatusFilters,
 	)
 	var count int64
@@ -441,7 +448,7 @@ func (q *Queries) ListItems(ctx context.Context) ([]Item, error) {
 const listItemsPage = `-- name: ListItemsPage :many
 WITH sf AS (
   SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
-  FROM json_each(CAST(?12 AS TEXT)) AS j
+  FROM json_each(CAST(?13 AS TEXT)) AS j
 )
 SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id, read_state FROM items
 WHERE deleted_at IS NULL
@@ -462,15 +469,20 @@ WHERE deleted_at IS NULL
   AND (CAST(?11 AS TEXT) = '' OR EXISTS (
         SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
         WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = ?11))
-  AND (json_array_length(CAST(?12 AS TEXT)) = 0 OR NOT EXISTS (
+  AND (CAST(?12 AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM stage_runs AS sr
+        WHERE sr.item_id = items.id AND sr.status = 'blocked' AND sr.block_reason = ?12
+          AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                       ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)))
+  AND (json_array_length(CAST(?13 AS TEXT)) = 0 OR NOT EXISTS (
         SELECT 1 FROM sf
         WHERE COALESCE(instr(sf.statuses,
                 '|' || COALESCE((SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
                                  ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1), 'pending') || '|'), 0) = 0))
-  AND created_at <= CAST(?13 AS INTEGER)
-  AND (created_at < CAST(?13 AS INTEGER) OR id < CAST(?14 AS TEXT))
+  AND created_at <= CAST(?14 AS INTEGER)
+  AND (created_at < CAST(?14 AS INTEGER) OR id < CAST(?15 AS TEXT))
 ORDER BY created_at DESC, id DESC
-LIMIT ?15
+LIMIT ?16
 `
 
 type ListItemsPageParams struct {
@@ -485,6 +497,7 @@ type ListItemsPageParams struct {
 	ReadState      string
 	ErrorClass     string
 	Timing         string
+	Blocked        string
 	StatusFilters  string
 	AfterCreatedAt int64
 	AfterID        string
@@ -508,6 +521,7 @@ func (q *Queries) ListItemsPage(ctx context.Context, arg ListItemsPageParams) ([
 		arg.ReadState,
 		arg.ErrorClass,
 		arg.Timing,
+		arg.Blocked,
 		arg.StatusFilters,
 		arg.AfterCreatedAt,
 		arg.AfterID,

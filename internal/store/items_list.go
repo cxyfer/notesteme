@@ -22,6 +22,8 @@ type ItemFilter struct {
 	Timing string
 	// Q 是標題的部分字串，不分大小寫（LIB-R3）。
 	Q string
+	// Blocked 要求至少有一個步驟的最新執行是 blocked 且原因是這個值（例如 awaiting_user，DIG-R6）。
+	Blocked string
 	// Status 的 key 是步驟，值是可接受的狀態：同一個步驟的多個值是 OR，不同步驟之間是 AND；步驟的狀態取最新的一次執行。
 	Status        map[string][]string
 	PublishedFrom *time.Time
@@ -79,7 +81,7 @@ func (r *Repo) ListItemsPage(ctx context.Context, f ItemFilter, after *ItemPos, 
 		Platform: f.Platform, ChannelID: f.Channel, Lang: f.Lang,
 		PublishedFrom: msPtr(f.PublishedFrom), PublishedTo: msPtr(f.PublishedTo),
 		DurationMin: intPtr64(f.DurationMin), DurationMax: intPtr64(f.DurationMax),
-		QFold: FoldTitle(f.Q), ErrorClass: f.ErrorClass, Timing: f.Timing, StatusFilters: status, ReadState: f.ReadState,
+		QFold: FoldTitle(f.Q), ErrorClass: f.ErrorClass, Timing: f.Timing, Blocked: f.Blocked, StatusFilters: status, ReadState: f.ReadState,
 		AfterCreatedAt: afterMs, AfterID: afterID, PageSize: int64(limit),
 	})
 	if err != nil {
@@ -102,7 +104,7 @@ func (r *Repo) CountItems(ctx context.Context, f ItemFilter) (int, error) {
 		Platform: f.Platform, ChannelID: f.Channel, Lang: f.Lang,
 		PublishedFrom: msPtr(f.PublishedFrom), PublishedTo: msPtr(f.PublishedTo),
 		DurationMin: intPtr64(f.DurationMin), DurationMax: intPtr64(f.DurationMax),
-		QFold: FoldTitle(f.Q), ErrorClass: f.ErrorClass, Timing: f.Timing, StatusFilters: status, ReadState: f.ReadState,
+		QFold: FoldTitle(f.Q), ErrorClass: f.ErrorClass, Timing: f.Timing, Blocked: f.Blocked, StatusFilters: status, ReadState: f.ReadState,
 	})
 	return int(n), err
 }

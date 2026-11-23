@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -26,6 +27,9 @@ type ItemCursor struct {
 	ID          string
 }
 
+// blockedPattern 是 blocked 篩選接受的格式：停住的原因是程式內的代碼（block_reason）。
+var blockedPattern = regexp.MustCompile(`^[a-z_]{1,64}$`)
+
 // ItemQuery 是影音列表的條件（LIB-R1、R3、R4、R7）。空字串與 nil 代表不篩選；多個條件之間是 AND。
 type ItemQuery struct {
 	Platform   string
@@ -37,6 +41,9 @@ type ItemQuery struct {
 	Timing string
 	// Q 是標題的部分字串，不分大小寫；呼叫端先去掉前後空白。
 	Q string
+	// Blocked 是停住的原因（例如 awaiting_user、budget_blocked、needs_action）：至少有一個步驟的最新執行是 blocked
+	// 且原因是這個值。只檢查格式（blockedPattern），不列舉原因。
+	Blocked string
 	// Status 的 key 是步驟，值是可接受的狀態：同一個步驟的多個值是 OR，不同步驟之間是 AND。
 	// 步驟取最新的一次執行；沒有任何執行紀錄的步驟視為 pending。
 	Status        map[string][]string
@@ -93,6 +100,9 @@ func (q ItemQuery) Validate() error {
 	if q.Timing != "" && !subtitle.TimingOrigin(q.Timing).Valid() {
 		return invalidf("timing 必須是 source、merged、silence、interpolated 或 model。")
 	}
+	if q.Blocked != "" && !blockedPattern.MatchString(q.Blocked) {
+		return invalidf("blocked 必須是停住的原因代碼（小寫英文字母與底線，最多 64 個字元），例如 awaiting_user。")
+	}
 	if q.DurationMin != nil && *q.DurationMin < 0 || q.DurationMax != nil && *q.DurationMax < 0 {
 		return invalidf("duration_min、duration_max 不得小於 0。")
 	}
@@ -104,7 +114,7 @@ func (q ItemQuery) Validate() error {
 
 func (q ItemQuery) filter() store.ItemFilter {
 	return store.ItemFilter{
-		Platform: q.Platform, Channel: q.Channel, ErrorClass: q.ErrorClass, Lang: q.Lang, Timing: q.Timing, Q: q.Q,
+		Platform: q.Platform, Channel: q.Channel, ErrorClass: q.ErrorClass, Lang: q.Lang, Timing: q.Timing, Q: q.Q, Blocked: q.Blocked,
 		Status: q.Status, PublishedFrom: q.PublishedFrom, PublishedTo: q.PublishedTo,
 		DurationMin: q.DurationMin, DurationMax: q.DurationMax, ReadState: q.ReadState,
 	}

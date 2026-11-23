@@ -5378,6 +5378,8 @@ export interface operations {
         timing?: string;
         /** @description 標題搜尋：不分大小寫的部分字串，去掉前後空白，最多 200 字元 */
         q?: string;
+        /** @description 停住的原因，例如 awaiting_user（摘要後等你決定，DIG-R6）、budget_blocked、needs_action：至少有一個步驟的最新執行是 blocked 且原因是這個值 */
+        blocked?: string;
         /** @description 單頁筆數 */
         limit?: number;
         /** @description 上一頁回傳的 next_cursor */

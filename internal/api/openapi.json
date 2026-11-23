@@ -8705,6 +8705,16 @@
             }
           },
           {
+            "description": "停住的原因，例如 awaiting_user（摘要後等你決定，DIG-R6）、budget_blocked、needs_action：至少有一個步驟的最新執行是 blocked 且原因是這個值",
+            "explode": false,
+            "in": "query",
+            "name": "blocked",
+            "schema": {
+              "description": "停住的原因，例如 awaiting_user（摘要後等你決定，DIG-R6）、budget_blocked、needs_action：至少有一個步驟的最新執行是 blocked 且原因是這個值",
+              "type": "string"
+            }
+          },
+          {
             "description": "單頁筆數",
             "explode": false,
             "in": "query",
