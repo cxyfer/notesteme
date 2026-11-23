@@ -19,7 +19,8 @@ func TestSPBGate(t *testing.T) {
 		{[]string{"@M3", "@NOTE-01"}, false}, // M3-S4：note 已實作
 		{[]string{"@M3", "@GEM-01"}, true},
 		{[]string{"@M3", "@VAULT-01"}, true},
-		{[]string{"@M4", "@SRC-10", "@SRC-R20"}, true},
+		{[]string{"@M4", "@SRC-10", "@SRC-R20"}, false}, // SRC-10：SponsorBlock 的重新查詢
+		{[]string{"@M4", "@SRC-10", "@SRC-R18"}, true},
 		{[]string{"@M3", "@SPB-01", "@SPB-R7"}, false}, // M3-S4：note 已實作
 		{nil, true},
 	}
