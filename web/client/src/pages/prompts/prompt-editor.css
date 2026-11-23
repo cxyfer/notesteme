@@ -1,0 +1,186 @@
+/* Prompt 編輯頁（lazy chunk）：版本列、CodeMirror、試跑面板、比較。 */
+.version-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+}
+.version-bar__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.version-bar__item {
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--rule);
+  background: var(--surface-panel);
+  cursor: pointer;
+}
+.version-bar__item[aria-pressed="true"] {
+  border-color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--text-primary);
+}
+.prompt-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+@media (max-width: 1279px) {
+  .prompt-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.prompt-editor__cm {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--surface-panel);
+  min-height: 320px;
+}
+.prompt-editor__cm .cm-editor {
+  min-height: 320px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: var(--font-14);
+}
+.prompt-editor__cm .cm-editor.cm-focused {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.prompt-editor__cm .cm-gutters {
+  background: transparent;
+  border-right: 1px solid var(--rule);
+  color: var(--text-secondary);
+}
+.prompt-editor__cm .cm-content {
+  caret-color: var(--text-primary);
+}
+.cm-var {
+  border-radius: var(--radius-mark);
+  background: color-mix(in srgb, var(--state-ok-text) 16%, transparent);
+  color: var(--state-ok-text);
+  font-weight: 600;
+}
+.cm-var--unknown {
+  background: color-mix(in srgb, var(--state-failed) 14%, transparent);
+  color: var(--state-failed);
+  text-decoration: wavy underline;
+}
+.prompt-editor__vars code {
+  font-size: var(--font-12);
+}
+.playground {
+  background: var(--surface-panel);
+  border-radius: var(--radius-container);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+.playground__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--font-12);
+}
+.run-result {
+  display: grid;
+  gap: var(--space-2);
+}
+.run-result__ok,
+.run-result__fail {
+  margin: 0;
+  font-weight: 600;
+}
+.run-result__ok {
+  color: var(--state-ok-text);
+}
+.run-result__ok::before {
+  content: "✓ ";
+}
+.run-result__fail {
+  color: var(--state-failed);
+}
+.run-result__fail::before {
+  content: "! ";
+}
+.run-result__errors {
+  margin: 0;
+  padding-left: var(--space-6);
+  font-size: var(--font-12);
+}
+.run-cues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 480px;
+  overflow: auto;
+  border-top: 1px solid var(--rule);
+}
+.run-cues__row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--rule);
+}
+.run-cues__time {
+  color: var(--text-secondary);
+  font-size: var(--font-12);
+}
+.compare {
+  display: grid;
+  gap: var(--space-3);
+  max-height: 70vh;
+  overflow: auto;
+}
+.compare__title {
+  font-size: var(--font-14);
+  margin: var(--space-2) 0 0;
+}
+.compare__summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+.compare__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-12);
+}
+.compare__table th,
+.compare__table td {
+  text-align: left;
+  vertical-align: top;
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--rule);
+}
+.line-diff {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: var(--font-12);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+}
+.line-diff__line {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  white-space: pre-wrap;
+  padding: 0 var(--space-2);
+}
+.line-diff__line--insert {
+  background: color-mix(in srgb, var(--state-ok-text) 14%, transparent);
+}
+.line-diff__line--delete {
+  background: color-mix(in srgb, var(--state-failed) 12%, transparent);
+  text-decoration: line-through;
+}
+.delete-blocked ul {
+  padding-left: var(--space-6);
+}

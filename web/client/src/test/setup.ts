@@ -13,6 +13,12 @@ window.scrollTo = () => {};
 Element.prototype.hasPointerCapture ??= () => false;
 Element.prototype.releasePointerCapture ??= () => {};
 
+// jsdom 的 Range 沒有排版相關的方法（CodeMirror 量測游標位置時會呼叫）。
+const emptyRects = () => Object.assign([], { item: () => null }) as unknown as DOMRectList;
+const emptyRect = () => new DOMRect(0, 0, 0, 0);
+Range.prototype.getClientRects ??= emptyRects;
+Range.prototype.getBoundingClientRect ??= emptyRect;
+
 // jsdom 沒有 ResizeObserver（虛擬列表用它量捲動容器）。
 class NoopResizeObserver {
   observe() {}
