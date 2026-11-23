@@ -158,6 +158,24 @@ type GlossaryCandidate struct {
 	DecidedAt    *int64
 }
 
+type HubImport struct {
+	ItemID     string
+	VersionID  string
+	Sha256     string
+	OriginJson string
+	Content    []byte
+	CreatedAt  int64
+}
+
+type HubShare struct {
+	ID           string
+	ItemID       string
+	HubUrl       string
+	ShareID      string
+	VersionsJson string
+	CreatedAt    int64
+}
+
 type InboxEntry struct {
 	Path      string
 	Size      int64
