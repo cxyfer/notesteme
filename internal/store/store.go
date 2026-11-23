@@ -24,16 +24,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net/url"
-	"os"
 	"path/filepath"
 	"sync/atomic"
 	"time"
 
-	_ "modernc.org/sqlite" // 註冊 "sqlite" driver
-
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/events"
+	"github.com/cxyfer/notesteme/internal/sqlitedb"
 	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
 )
 
@@ -135,39 +132,10 @@ func Open(ctx context.Context, dir string, clk clock.Clock, opts ...Options) (*S
 // ensurePrivateFiles 把 DB 與 -wal、-shm 的權限設為 0600。create 為 true 時 DB 不存在會先以 0600 建立；
 // -wal、-shm 只在存在時處理。
 func ensurePrivateFiles(path string, create bool) error {
-	if create {
-		f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
-		if err != nil {
-			return fmt.Errorf("建立資料庫檔失敗：%w", err)
-		}
-		if err := f.Close(); err != nil {
-			return err
-		}
-	}
-	for _, p := range []string{path, path + "-wal", path + "-shm"} {
-		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("設定 %s 的權限失敗：%w", p, err)
-		}
-	}
-	return nil
+	return sqlitedb.EnsurePrivateFiles(path, create)
 }
 
-func openDB(path string, readOnly bool) (*sql.DB, error) {
-	q := url.Values{}
-	q.Add("_pragma", "busy_timeout(5000)")
-	q.Add("_pragma", "journal_mode(WAL)")
-	q.Add("_pragma", "synchronous(NORMAL)")
-	q.Add("_pragma", "foreign_keys(1)")
-	if readOnly {
-		q.Add("_pragma", "query_only(1)")
-	}
-	u := url.URL{Scheme: "file", Path: path, RawQuery: q.Encode()}
-	db, err := sql.Open("sqlite", u.String())
-	if err != nil {
-		return nil, fmt.Errorf("開啟資料庫失敗：%w", err)
-	}
-	return db, nil
-}
+func openDB(path string, readOnly bool) (*sql.DB, error) { return sqlitedb.Open(path, readOnly) }
 
 // Close 關閉所有連線（SQLite 會在最後一個連線關閉時做 WAL checkpoint）。
 func (s *Store) Close() error {
@@ -175,18 +143,7 @@ func (s *Store) Close() error {
 }
 
 // CheckWritable 確認寫入連線可以取得寫入鎖（供 /readyz 使用）；不會寫入任何資料。
-func (s *Store) CheckWritable(ctx context.Context) error {
-	conn, err := s.w.Conn(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
-		return err
-	}
-	_, err = conn.ExecContext(ctx, "ROLLBACK")
-	return err
-}
+func (s *Store) CheckWritable(ctx context.Context) error { return sqlitedb.CheckWritable(ctx, s.w) }
 
 // nowMs 回傳注入 clock 的目前時間（Unix 毫秒）。
 func (s *Store) nowMs() int64 { return s.clock.Now().UnixMilli() }
