@@ -24,7 +24,7 @@ import (
 //
 // M5-S1 實作閘門、Hub 設定、假供應商、登入流程、帳號數與送到 Hub 的請求（session 與匿名）；
 // M5-S2 實作 Hub token 與群組的句型。停用、`from the origin` 與 MCP 的句型仍是步驟樁（S5、S6）。
-// 閘門只對 S1、S2 範圍的 HACC 場景放行（見 hubGate）。
+// 閘門只對 S1～S3 範圍的 HACC、HREP 場景放行（見 hubGate）。
 func registerHub(r *Registry, s *Scenario) {
 	r.Step(`a Hub is running`, s.hubIsRunning)
 	r.Step(`the Hub config contains:`, s.hubConfigContains)
@@ -66,6 +66,8 @@ type hubState struct {
 	pending      *pendingSignIn
 	lastCallback *hubCallback
 	tokens       map[string]string
+	// content 是 bundle 與 seeding 的版本（hub_content.go，M5-S3）。
+	content *hubContent
 }
 
 // pendingSignIn 是 `starts signing in` 或連結之後、還沒完成的登入。
@@ -82,43 +84,47 @@ type hubCallback struct {
 }
 
 // hubRules 是已實作的 HACC 規則：M5-S1 的登入、連結、移除與 session（R1～R8），M5-S2 的 Hub token、群組、自動規則、
-// 權限矩陣與一般限流（R9～R13、R18）。
+// 權限矩陣與一般限流（R9～R13、R18），M5-S3 的單一內容可見度（R14）。
 var hubRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true,
-	9: true, 10: true, 11: true, 12: true, 13: true, 18: true}
+	9: true, 10: true, 11: true, 12: true, 13: true, 14: true, 18: true}
 
-// hubContentSteps 是 Hub 內容的句型（steps.md 4.31，HREP 的切片實作）的開頭；用到它們的場景還不能放行。
-var hubContentSteps = []string{"the Hub has the version ", "the Hub version ", "the Hub has ", "the Hub stores the content ",
-	"a bundle ", "the bundle ", "shares the bundle "}
+// hrepRules 是已實作的 HREP 規則：M5-S3 的分享、bundle 驗證、白名單、去重、衍生關係、可見度、下架後的內容、撤回、
+// 分享的限流與不抓取網址（R1～R6、R8～R12）。R7（場景以列表驗證）與 R16～R19 是 S4，R13～R15 是 S5。
+var hrepRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 8: true, 9: true, 10: true, 11: true, 12: true}
 
-// hubGate 讓真 Hub 的閘門只對已實作範圍的 HACC 場景放行：至少一個 hubRules 的 @HACC-R，沒有其他 HACC 規則、
-// 沒有其他領域（HREP、HMCP）的 tag，而且沒有用到 Hub 內容的句型（例如 HACC-R13 的「Nothing but sign-in…」要先建立版本）。
+// ruleOf 解析 @<prefix>R<n> 的規則編號。
+func ruleOf(tag, prefix string) (int, bool, bool) {
+	v, found := strings.CutPrefix(tag, prefix)
+	if !found {
+		return 0, false, false
+	}
+	n, err := strconv.Atoi(v)
+	return n, true, err == nil
+}
+
+// hubGate 讓真 Hub 的閘門只對已實作範圍的場景放行：至少一個已實作的 @HACC-R 或 @HREP-R，沒有還沒實作的 HACC、HREP 規則，
+// 也沒有其他領域（HMCP、HSHR）的 tag。Hub 內容的句型（steps.md 4.31）在 M5-S3 實作，不再擋場景。
 // 其他場景在它們的切片實作之前維持 pending，停在同一個閘門（同 M3-S1 的 spbGate）。回傳裸的 godog.ErrPending，
 // junit 的訊息與切片之前相同。
 func (s *Scenario) hubGate() error {
 	ok := false
 	for _, t := range s.tags {
-		if strings.HasPrefix(t, "@HREP-") || strings.HasPrefix(t, "@HMCP-") || strings.HasPrefix(t, "@HSHR-") {
+		if strings.HasPrefix(t, "@HMCP-") || strings.HasPrefix(t, "@HSHR-") {
 			return godog.ErrPending
 		}
-		v, found := strings.CutPrefix(t, "@HACC-R")
-		if !found {
-			continue
+		for prefix, rules := range map[string]map[int]bool{"@HACC-R": hubRules, "@HREP-R": hrepRules} {
+			n, found, valid := ruleOf(t, prefix)
+			if !found {
+				continue
+			}
+			if !valid || !rules[n] {
+				return godog.ErrPending
+			}
+			ok = true
 		}
-		n, err := strconv.Atoi(v)
-		if err != nil || !hubRules[n] {
-			return godog.ErrPending
-		}
-		ok = true
 	}
 	if !ok {
 		return godog.ErrPending
-	}
-	for _, text := range s.stepTexts {
-		for _, p := range hubContentSteps {
-			if strings.HasPrefix(text, p) || strings.Contains(text, " "+p) {
-				return godog.ErrPending
-			}
-		}
 	}
 	return nil
 }
@@ -232,8 +238,10 @@ func (s *Scenario) oauthProviderDeniesNext(provider string) error {
 type hubRequest struct {
 	method, target string // target 是 /path 或完整的 https://hub.example.org/… 網址
 	body           []byte
-	cookies        map[string]string
-	csrf           bool
+	// contentType 是 body 的 Content-Type；空字串時是 application/json。
+	contentType string
+	cookies     map[string]string
+	csrf        bool
 	// bearer 非空時以 Authorization: Bearer 送出（Hub token）。
 	bearer string
 	// preRoute403 表示這個請求缺少完整憑證（沒有身分或缺 CSRF），見 pendingIfNotImplemented。
@@ -261,7 +269,11 @@ func (s *Scenario) hubDo(r hubRequest) (*response, error) {
 		return nil, err
 	}
 	if r.body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		ct := r.contentType
+		if ct == "" {
+			ct = "application/json"
+		}
+		req.Header.Set("Content-Type", ct)
 	}
 	for name, v := range r.cookies {
 		req.AddCookie(&http.Cookie{Name: name, Value: v})
