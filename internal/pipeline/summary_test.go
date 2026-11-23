@@ -287,3 +287,42 @@ func TestSummaryHelpers(t *testing.T) {
 		t.Errorf("只有 reason：%q", got)
 	}
 }
+
+// DIG 介面的 Agent 任務 kind: summary：Agent 的輸出同樣經過 CheckSummary（不可信輸入），通過時寫入摘要並套用 pause_after。
+func TestSummaryThroughAgent(t *testing.T) {
+	ctx := context.Background()
+	r := newRig(t, func(d *Deps) { d.Prompts = summaryPrompts{} })
+	dur := 600
+	r.yt.info.DurationS = &dur
+	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
+	it := r.ingest(watch, stagesOver(StageSummary, map[string]any{"executor": "agent", "language": "zh-Hant", "pause_after": true}), "")
+	r.run()
+	if st := latestStage(t, r, it.ID, StageSummary); st.Status != store.StatusAwaitingAgent {
+		t.Fatalf("summary = %+v，預期 awaiting_agent", st)
+	}
+	got, err := r.p.ClaimAgentTasks(ctx, "a1", []string{StageSummary}, 1)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("領取 = %+v %v", got, err)
+	}
+	at := got[0]
+	bad := json.RawMessage(`{"summary":"a","key_points":["1","2","3","4","5","6","7","8"],"title_translation":null}`)
+	err = r.p.SubmitAgentTask(ctx, "a1", at.TaskID, at.LeaseToken, AgentSubmission{Output: bad})
+	var ae *AgentError
+	if !errors.As(err, &ae) || ae.Code != AgentCodeValidationFailed || !strings.Contains(ae.Message, "key_points 有 8 項") {
+		t.Fatalf("不合格的輸出要退回：%v", err)
+	}
+	if _, ok, _ := r.p.ItemSummary(ctx, it.ID); ok {
+		t.Fatal("退回的輸出不能寫入")
+	}
+	if err := r.p.SubmitAgentTask(ctx, "a1", at.TaskID, at.LeaseToken, AgentSubmission{Output: json.RawMessage(goodSummary)}); err != nil {
+		t.Fatalf("提交：%v", err)
+	}
+	r.run()
+	sum, ok, err := r.p.ItemSummary(ctx, it.ID)
+	if err != nil || !ok || sum.TitleTranslation == nil || sum.Language != "zh-Hant" {
+		t.Fatalf("ItemSummary = %+v %v %v", sum, ok, err)
+	}
+	if seg := latestStage(t, r, it.ID, StageSegment); seg.BlockReason != BlockAwaitingUser {
+		t.Errorf("Agent 完成後也暫停：%+v", seg)
+	}
+}
