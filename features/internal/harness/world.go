@@ -117,6 +117,9 @@ type World struct {
 	// FailMigration 是 `migration N fails` 指定會失敗的 migration 版本；0 代表沒有。
 	FailMigration int
 
+	// hub 是 M5 的 Hub 狀態（真 Hub 或 fakehub，見 hub.go）。
+	hub hubState
+
 	closed bool
 }
 
@@ -416,13 +419,14 @@ func (w *World) Close() error {
 		return nil
 	}
 	w.closed = true
+	hubErr := w.closeHub()
 	if w.Net != nil {
 		w.Net.Close()
 	}
 	if w.Root == "" {
-		return nil
+		return hubErr
 	}
-	return removeRoot(w.Root)
+	return errors.Join(hubErr, removeRoot(w.Root))
 }
 
 // virtuals 回傳虛擬路徑與實際路徑的對照。

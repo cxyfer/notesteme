@@ -177,6 +177,10 @@ func (s *Scenario) checkLogs() error {
 			secrets[v] = true
 		}
 	}
+	// M5：OAuth client secret 與 fakehub 的 token（真 Hub 的 log 也寫在同一個 buffer）。
+	for _, v := range harness.HubSecrets() {
+		secrets[v] = true
+	}
 	// 場景送出的 cookie 與 API key 值也要掃（見 noteRequest）。
 	for n := range s.cookieSecrets {
 		secrets[n] = true
@@ -305,7 +309,7 @@ func (s *Scenario) send(spec string, o requestOpts) error {
 			return err
 		}
 	}
-	path, err = s.substRefs(s.World.Subst(path))
+	path, err = s.substRefs(s.World.SubstRequest(path))
 	if err != nil {
 		return err
 	}
