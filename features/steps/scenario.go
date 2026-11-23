@@ -95,6 +95,8 @@ type Scenario struct {
 	agents agentsState
 	// hub 是真 Hub 的瀏覽器狀態（M5，見 hub.go）。
 	hub hubState
+	// signin 是反向代理、OIDC 與具名 session 的狀態（M4 AUTH，見 signin.go）。
+	signin signinState
 }
 
 // response 是最近一次請求的回應。
@@ -239,6 +241,10 @@ func (s *Scenario) checkLogs() error {
 func (s *Scenario) startServer() error {
 	s.started = true
 	s.stopped = false
+	if err := s.writeSigninConfig(); err != nil {
+		s.server, s.startErr = nil, err
+		return err
+	}
 	srv, err := app.StartServer(s.ctx, s.World.AppEnv())
 	if err != nil {
 		s.server, s.startErr = nil, err
@@ -287,6 +293,8 @@ type requestOpts struct {
 	headers map[string]string
 	// from 非空時，以這個本機位址（例如 "127.0.0.2"）作為連線的來源位址。
 	from string
+	// jar 非 nil 時，請求帶上其中的 cookie，回應的 Set-Cookie 寫回 jar（清除指令會刪除，見 signin.go）。
+	jar map[string]string
 }
 
 // hasCredentials 回報請求是否帶著完整的憑證：owner 的 session（cookie 加 CSRF），或 bearer token。
@@ -420,6 +428,9 @@ func (s *Scenario) do(method, path string, o requestOpts) (*response, error) {
 	for k, v := range o.headers {
 		req.Header.Set(k, v)
 	}
+	for name, v := range o.jar {
+		req.AddCookie(&http.Cookie{Name: name, Value: v})
+	}
 	if o.who == asOwner {
 		for name, v := range s.owner {
 			req.AddCookie(&http.Cookie{Name: name, Value: v})
@@ -455,6 +466,9 @@ func (s *Scenario) do(method, path string, o requestOpts) (*response, error) {
 		(o.noCSRF && method != http.MethodGet && method != http.MethodHead && method != http.MethodOptions)
 	if o.who == asOwner {
 		s.storeCookies(resp)
+	}
+	if o.jar != nil {
+		updateJar(o.jar, resp.header)
 	}
 	return resp, nil
 }
