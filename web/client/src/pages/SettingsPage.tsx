@@ -10,12 +10,13 @@ import { AccountsSection } from "./settings/AccountsSection";
 import { AgentSection } from "./settings/AgentSection";
 import { AppearanceSection } from "./settings/AppearanceSection";
 import { BookmarkletSection } from "./settings/BookmarkletSection";
+import { BudgetSection } from "./settings/BudgetSection";
 import { ConfigSection } from "./settings/ConfigSection";
 import { GlossarySection } from "./settings/GlossarySection";
 import { LanguageSection } from "./settings/LanguageSection";
 import { LoginSection } from "./settings/LoginSection";
+import { NotificationsSection } from "./settings/NotificationsSection";
 import { OutputsSection } from "./settings/OutputsSection";
-import { PlannedSection } from "./settings/PlannedSection";
 import { ServicesSection } from "./settings/ServicesSection";
 import { SystemSection } from "./settings/SystemSection";
 
@@ -43,8 +44,8 @@ const SECTION_COMPONENTS: Record<SettingsSection, ComponentType> = {
   language: LanguageSection,
   outputs: OutputsSection,
   agent: AgentSection,
-  notifications: () => <PlannedSection milestone="M4" />,
-  budget: () => <PlannedSection milestone="M4" />,
+  notifications: NotificationsSection,
+  budget: BudgetSection,
   glossary: GlossarySection,
   system: SystemSection,
   config: ConfigSection,

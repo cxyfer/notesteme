@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { expectNoA11yViolations } from "../../test/axe";
+import { notifier } from "../../test/m4Fixtures";
 import { apiError, mockApi, type MockHandler } from "../../test/mockApi";
 import { renderRoute, signIn } from "../../test/render";
 import { SETTINGS_SECTIONS } from "../SettingsPage";
@@ -85,6 +86,10 @@ function settingsApi(routes: Record<string, MockHandler> = {}) {
         },
       ],
     }),
+    // UI-4：通知與預算（行為測試在 notifications.test.tsx）
+    "GET /api/notifiers": () => ({ notifiers: [notifier("ops")] }),
+    "GET /api/notifications": () => ({ notifications: [] }),
+    "GET /api/settings/budget": () => ({ monthly_usd: 20, warn_at_percent: 80, timezone: "UTC" }),
     ...routes,
   });
 }
@@ -108,13 +113,6 @@ describe("設定頁的版面", () => {
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "設定分區" }), "system");
     await waitFor(() => expect(router.state.location.pathname).toBe("/settings/system"));
     expect(await screen.findByText("外部工具")).toBeTruthy();
-  });
-
-  it("通知與預算只說明 M4 起提供，沒有表單", async () => {
-    settingsApi();
-    await openSection("notifications");
-    expect(await screen.findByText("M4 起提供。")).toBeTruthy();
-    expect(screen.queryByRole("textbox")).toBeNull();
   });
 });
 

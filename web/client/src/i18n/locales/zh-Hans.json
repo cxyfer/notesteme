@@ -126,7 +126,9 @@
     "builtin_template": "内置模板不能修改，请先复制一份。",
     "template_exists": "已经有这个 id 的模板。",
     "no_note": "这部音视频还没有笔记。",
-    "no_frames": "这部音视频还没有截取画面。"
+    "no_frames": "这部音视频还没有截取画面。",
+    "notifier_exists": "已经有这个 id 的通知端点。",
+    "too_many_notifiers": "最多只能有 20 个通知端点。"
   },
   "status": {
     "pending": "等待中",
@@ -920,6 +922,105 @@
       "codeHint": "只读取当前页面的网址并打开新标签页，不含任何登录凭证，也不读取页面内容。",
       "mobileTitle": "手机",
       "mobile": "Android：把 Notesteme 安装成 App（浏览器菜单的“安装”或“添加到主屏幕”）后，就能从其他 App 的“分享”发送网址。iOS：用快捷指令 App 打开下面的网址，并把 {url} 换成要新增的网址。"
+    },
+    "notify": {
+      "title": "通知端点",
+      "hint": "处理完成、失败或需要你处理时，发送到 ntfy、Discord、Telegram 或 webhook。网址与 token 保存后只显示末四码。",
+      "empty": "还没有通知端点。",
+      "add": "新增通知端点",
+      "addTitle": "新增通知端点",
+      "editTitle": "编辑通知端点 {{id}}",
+      "secretHint": "密钥字段只能设置或更换，不会再显示完整内容；编辑时留空表示不变。",
+      "secretKept": "已设置（末四码 {{last4}}），留空表示不变",
+      "optional": "选填",
+      "id": "id",
+      "idRule": "小写英文字母、数字与 -，最多 40 个字符。",
+      "kindLabel": "种类",
+      "kind": {
+        "ntfy": "ntfy",
+        "discord": "Discord",
+        "telegram": "Telegram",
+        "webhook": "webhook"
+      },
+      "field": {
+        "server": "服务器",
+        "topic": "主题",
+        "token": "访问 token",
+        "priority": "优先级（1～5）",
+        "webhook_url": "Discord webhook 网址",
+        "bot_token": "Bot token",
+        "chat_id": "Chat ID",
+        "api_base": "API 地址",
+        "url": "网址",
+        "secret": "签名用的 secret"
+      },
+      "fieldHint": {
+        "server": "留空用 https://ntfy.sh。",
+        "api_base": "留空用 api.telegram.org；其他主机要列在配置文件的 notify.allow_hosts。"
+      },
+      "eventsLegend": "要通知的事件",
+      "event": {
+        "item.done": "处理完成",
+        "item.failed": "处理失败",
+        "item.blocked": "需要你处理或超出预算",
+        "budget.warning": "预算将用完",
+        "digest": "汇总",
+        "alert": "系统告警",
+        "source.better_available": "有更好的字幕来源"
+      },
+      "notYetEmitted": "（尚未会发出）",
+      "needEvent": "至少勾选一个事件。",
+      "events": "事件：{{list}}",
+      "endsWith": "末四码 {{last4}}",
+      "telegramSummary": "Chat {{chat}}，bot token 末四码 {{last4}}",
+      "webhookSummary": "{{host}}，末四码 {{last4}}",
+      "disabled": "已停用",
+      "test": "发送测试通知",
+      "testOk": "已发送测试通知（HTTP {{status}}）",
+      "testFailed": "测试通知没有送达：{{message}}",
+      "edit": "编辑",
+      "disable": "停用",
+      "enable": "启用",
+      "delete": "删除",
+      "enabledDone": "已启用 {{id}}",
+      "disabledDone": "已停用 {{id}}",
+      "deleted": "已删除 {{id}}",
+      "saved": "已保存 {{id}}",
+      "deleteTitle": "删除通知端点 {{id}}？",
+      "deleteDescription": "会一并删除它还没发送的通知，无法恢复。",
+      "disableTitle": "停用通知端点 {{id}}？",
+      "disableDescription": "停用期间发生的事件不会通知，重新启用后也不会补发。",
+      "recentTitle": "最近的通知",
+      "recentEmpty": "还没有发送任何通知。",
+      "col": {
+        "at": "时间",
+        "notifier": "端点",
+        "event": "事件",
+        "state": "状态"
+      },
+      "state": {
+        "pending": "等待发送",
+        "sent": "已发送",
+        "dropped": "已放弃"
+      },
+      "attempts_other": "尝试 {{count}} 次"
+    },
+    "budget": {
+      "thisMonth": "本月（{{month}}）",
+      "spent": "本月已花费 {{spent}}，另有 {{reserved}} 预留中。",
+      "remaining": "剩余 {{remaining}}。",
+      "openCosts": "查看成本",
+      "title": "预算",
+      "hint": "超过预算的任务会暂停（超出预算），等到下个月或提高预算后再继续。Agent 处理的任务不计入。",
+      "monthly": "月预算（美元）",
+      "perItem": "单部上限（美元）",
+      "blankUnlimited": "留空表示不限。",
+      "usdRule": "必须介于 0 到 100000 美元之间。",
+      "warnAt": "提醒门槛（%）",
+      "warnHint": "本月花费达到预算的这个比例时通知一次（要在「通知」勾选「预算将用完」）。",
+      "warnRule": "提醒门槛必须是 1 到 100 的整数。",
+      "timezone": "预算时区",
+      "timezoneHint": "IANA 时区名称，例如 Asia/Taipei；决定「本月」的起止。"
     }
   },
   "diff": {

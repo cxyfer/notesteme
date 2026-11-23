@@ -126,7 +126,9 @@
     "builtin_template": "Built-in templates can't be changed. Make a copy first.",
     "template_exists": "A template with this id already exists.",
     "no_note": "This media has no note yet.",
-    "no_frames": "No frames have been captured for this media yet."
+    "no_frames": "No frames have been captured for this media yet.",
+    "notifier_exists": "A notification endpoint with this id already exists.",
+    "too_many_notifiers": "You can have at most 20 notification endpoints."
   },
   "status": {
     "pending": "Waiting",
@@ -947,6 +949,106 @@
       "codeHint": "It only reads the current page's address and opens a new tab. It contains no credentials and does not read the page.",
       "mobileTitle": "Phone",
       "mobile": "Android: install Notesteme as an app (Install or Add to Home screen in the browser menu), then send links to it from any app's Share menu. iOS: use the Shortcuts app to open the address below, replacing {url} with the link to add."
+    },
+    "notify": {
+      "title": "Notification endpoints",
+      "hint": "Get notified on ntfy, Discord, Telegram or a webhook when something finishes, fails or needs you. URLs and tokens only show their last four characters after saving.",
+      "empty": "No notification endpoints yet.",
+      "add": "Add notification endpoint",
+      "addTitle": "Add notification endpoint",
+      "editTitle": "Edit {{id}}",
+      "secretHint": "Secret fields can only be set or replaced and are never shown again. Leave them blank when editing to keep them.",
+      "secretKept": "Set (ends in {{last4}}); leave blank to keep",
+      "optional": "Optional",
+      "id": "id",
+      "idRule": "Lowercase letters, digits and hyphens, up to 40 characters.",
+      "kindLabel": "Type",
+      "kind": {
+        "ntfy": "ntfy",
+        "discord": "Discord",
+        "telegram": "Telegram",
+        "webhook": "Webhook"
+      },
+      "field": {
+        "server": "Server",
+        "topic": "Topic",
+        "token": "Access token",
+        "priority": "Priority (1–5)",
+        "webhook_url": "Discord webhook URL",
+        "bot_token": "Bot token",
+        "chat_id": "Chat ID",
+        "api_base": "API base",
+        "url": "URL",
+        "secret": "Signing secret"
+      },
+      "fieldHint": {
+        "server": "Leave blank for https://ntfy.sh.",
+        "api_base": "Leave blank for api.telegram.org; other hosts must be listed in notify.allow_hosts in the config file."
+      },
+      "eventsLegend": "Notify me about",
+      "event": {
+        "item.done": "Finished",
+        "item.failed": "Failed",
+        "item.blocked": "Needs you or over budget",
+        "budget.warning": "Budget running out",
+        "digest": "Digest",
+        "alert": "System alerts",
+        "source.better_available": "Better captions available"
+      },
+      "notYetEmitted": "(not sent yet)",
+      "needEvent": "Pick at least one event.",
+      "events": "Events: {{list}}",
+      "endsWith": "Ends in {{last4}}",
+      "telegramSummary": "Chat {{chat}}, bot token ends in {{last4}}",
+      "webhookSummary": "{{host}}, ends in {{last4}}",
+      "disabled": "Turned off",
+      "test": "Send test notification",
+      "testOk": "Test notification sent (HTTP {{status}})",
+      "testFailed": "Test notification failed: {{message}}",
+      "edit": "Edit",
+      "disable": "Turn off",
+      "enable": "Turn on",
+      "delete": "Delete",
+      "enabledDone": "Turned on {{id}}",
+      "disabledDone": "Turned off {{id}}",
+      "deleted": "Deleted {{id}}",
+      "saved": "Saved {{id}}",
+      "deleteTitle": "Delete the endpoint {{id}}?",
+      "deleteDescription": "Its unsent notifications are deleted too. This can't be undone.",
+      "disableTitle": "Turn off the endpoint {{id}}?",
+      "disableDescription": "Events while it's off aren't sent, even after you turn it back on.",
+      "recentTitle": "Recent notifications",
+      "recentEmpty": "No notifications yet.",
+      "col": {
+        "at": "Time",
+        "notifier": "Endpoint",
+        "event": "Event",
+        "state": "Status"
+      },
+      "state": {
+        "pending": "Pending",
+        "sent": "Sent",
+        "dropped": "Dropped"
+      },
+      "attempts_one": "1 attempt",
+      "attempts_other": "{{count}} attempts"
+    },
+    "budget": {
+      "thisMonth": "This month ({{month}})",
+      "spent": "Spent {{spent}} this month, with {{reserved}} reserved.",
+      "remaining": "{{remaining}} left.",
+      "openCosts": "View costs",
+      "title": "Budget",
+      "hint": "Tasks that would go over budget pause until next month or until you raise the budget. Agent tasks don't count.",
+      "monthly": "Monthly budget (USD)",
+      "perItem": "Per-item cap (USD)",
+      "blankUnlimited": "Leave blank for no limit.",
+      "usdRule": "Must be between $0 and $100,000.",
+      "warnAt": "Warn at (%)",
+      "warnHint": "Notify once when this month's spending reaches this share of the budget (turn on “Budget running out” under Notifications).",
+      "warnRule": "Use a whole number from 1 to 100.",
+      "timezone": "Budget time zone",
+      "timezoneHint": "An IANA time zone such as Asia/Taipei; it decides when a month starts."
     }
   },
   "diff": {

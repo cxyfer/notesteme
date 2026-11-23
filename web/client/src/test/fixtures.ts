@@ -4,6 +4,7 @@ import {
   costEntry,
   costSummary,
   noteTemplate,
+  notifier,
   priceList,
   subscription,
   subscriptionEntries,
@@ -165,5 +166,8 @@ export function defaultRoutes() {
     "GET /api/costs/entries": () => ({ entries: [costEntry(1)] }),
     "GET /api/prices": () => priceList(),
     "GET /api/note-templates": () => ({ templates: [noteTemplate("video-notes")] }),
+    "GET /api/notifiers": () => ({ notifiers: [notifier("ops")] }),
+    "GET /api/notifications": () => ({ notifications: [] }),
+    "GET /api/settings/budget": () => ({ monthly_usd: 20, warn_at_percent: 80, timezone: "UTC" }),
   };
 }
