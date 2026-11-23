@@ -212,6 +212,9 @@ func SanitizeTermCandidates(terms []string, limit int) []string {
 	return out
 }
 
+// CleanTerm 同 cleanTerm；審核時改寫的術語用同一套清理（GLOS-R2）。
+func CleanTerm(s string) string { return cleanTerm(s) }
+
 // cleanTerm 把控制字元與格式字元（例如 RTL 標記）換成空白，再合併連續空白。
 func cleanTerm(s string) string {
 	b := strings.Map(func(r rune) rune {

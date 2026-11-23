@@ -205,51 +205,8 @@ func (p *Pipeline) TermCandidates(ctx context.Context, channelKey string) ([]sto
 	return r.TermCandidates(ctx, id)
 }
 
-// DecideTermCandidate 核可或拒絕頻道的術語候選（COR-R6）：state 是 accepted 或 rejected。
-// 核可時，同一個交易把詞加進頻道詞彙表（大小寫相同的詞不重複）；已經是同一個結果時什麼都不做（冪等）；
-// 已經決定成另一個結果時回傳 ErrTermCandidateDecided。拒絕不動詞彙表，詞仍留在候選表中，所以不會再被提出。
+// DecideTermCandidate 核可或拒絕頻道的術語候選（COR-R6）：state 是 accepted 或 rejected，詞加進頻道詞彙表。
+// 這是 M2 的呼叫方式（只有 state），等同 DecideTermCandidateWith 省略 term 與 scope。
 func (p *Pipeline) DecideTermCandidate(ctx context.Context, channelKey, candidateID, state string) (store.TermCandidate, error) {
-	if state != store.TermCandidateAccepted && state != store.TermCandidateRejected {
-		return store.TermCandidate{}, invalidFields([]validate.FieldError{{Path: "state", Message: "只能是 accepted 或 rejected。"}})
-	}
-	var out store.TermCandidate
-	err := p.st.Tx(ctx, func(r *store.Repo) error {
-		channelID, err := p.resolveChannelID(ctx, r, channelKey, false)
-		if err != nil {
-			return err
-		}
-		if channelID == "" {
-			return store.ErrNotFound
-		}
-		cand, err := r.TermCandidate(ctx, channelID, candidateID)
-		if err != nil {
-			return err
-		}
-		out = cand
-		switch {
-		case cand.State == state:
-			return nil
-		case cand.State != store.TermCandidatePending:
-			return ErrTermCandidateDecided
-		}
-		if state == store.TermCandidateAccepted {
-			g, err := r.Glossary(ctx, store.GlossaryChannel, channelID)
-			if err != nil {
-				return err
-			}
-			terms, err := NormalizeGlossaryTerms(mergeTerms(g.Terms, []string{cand.Term}))
-			if err != nil {
-				return err
-			}
-			if err := r.PutGlossary(ctx, store.GlossaryChannel, channelID, terms); err != nil {
-				return err
-			}
-		}
-		if _, err := r.DecideTermCandidate(ctx, channelID, candidateID, state); err != nil {
-			return err
-		}
-		out.State = state
-		return nil
-	})
-	return out, err
+	return p.DecideTermCandidateWith(ctx, channelKey, candidateID, TermDecisionInput{State: state})
 }
