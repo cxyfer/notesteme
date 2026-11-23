@@ -65,6 +65,9 @@ type llmStage struct {
 	// write（選用）用於輸出不是字幕的步驟（chapters）：取代 assemble 與 writeCuesArtifact，自己寫出產出與步驟狀態。
 	// outputs 同 assemble；fields 是來源紀錄的共用欄位，write 可以補上自己的欄位後呼叫 p.provenance。
 	write func(p *Pipeline, ctx context.Context, it store.Item, job *llmJob, outputs []json.RawMessage, fallbacks []fallbackRecord, fields map[string]any) (*store.NewArtifact, store.StageState, error)
+	// prepare（選用）在 prepareLLM 組出固定前綴之前執行：可以補上 <video_metadata> 與模板變數、改變切 chunk 的方式與 Spec
+	// （note 用它附上章節與畫面，並在長影片改用 map-reduce，見 note.go）。
+	prepare func(p *Pipeline, ctx context.Context, it store.Item, job *llmJob, meta *llm.Metadata, vars *llm.TemplateVars) error
 }
 
 // llmAssembled 是 llmStage.assemble 的結果：產出的字幕、要併進來源紀錄的欄位（例如 warnings），
@@ -112,6 +115,8 @@ var llmStages = map[string]llmStage{
 	},
 	// M3-S2：chapters 的輸出是章節，不是字幕（見 chapters.go）。
 	StageChapters: chaptersStage,
+	// M3-S4：note 的輸出是筆記（見 note.go）。
+	StageNote: noteStage,
 }
 
 // 登記時檢查每個步驟的 Spec（strict schema、步驟名稱一致）：不符是程式錯誤，啟動時就失敗，不要等到送出請求才被 provider 拒絕。
@@ -272,6 +277,10 @@ type llmJob struct {
 	stageKey string
 	// sponsor 是 chapters 排除片段內的 cue 時用的 sponsor_segments 產出（SPB-R7）；沒有時是 nil。
 	sponsor *store.Artifact
+	// note 是筆記步驟的資料（章節、畫面、模板與 map-reduce，note.go）；其他步驟是 nil。
+	note *noteJob
+	// extraKey 是 prepare 補上、會影響輸出但不在固定前綴中的資料（例如筆記模板的 sha256），併進步驟層的快取鍵。
+	extraKey string
 }
 
 // chunkPlan 是 llm_chunks.plan_json：chunk 的範圍與這次 stage run 的輸入產出。
@@ -279,6 +288,8 @@ type chunkPlan struct {
 	llm.Chunk
 	Chunks int    `json:"chunks"`
 	Input  string `json:"input"` // 輸入產出的 ID
+	// Maps 是 note 的 map-reduce 中 map 的 chunk 數（NOTE-R6）：前 Maps 個 chunk 是 note_map，最後一個是 reduce；其他情況是 0。
+	Maps int `json:"maps,omitempty"`
 }
 
 func sha256Hex(b []byte) string {
@@ -328,8 +339,8 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 		}
 	} else {
 		pick := translateInputFor
-		if stage == StageChapters {
-			// CHAP-R2：edited > corrected > segmented > normalized，不用譯文。
+		if stage == StageChapters || stage == StageNote {
+			// CHAP-R2、NOTE-R5：edited > corrected > segmented > normalized，不用譯文。
 			pick = translateSource
 		}
 		art, found, err := pick(ctx, r, it.ID, stage)
@@ -350,8 +361,8 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 		return nil, err
 	}
 	var segs []sponsorblock.Segment
-	if stage == StageChapters {
-		// CHAP-R6：片段內的 cue 不放進輸入；句號維持原本的編號，章節才能對回原本的 cue。
+	if stage == StageChapters || stage == StageNote {
+		// CHAP-R6、SPB-R7：片段內的 cue 不放進輸入；句號維持原本的編號，章節與筆記才能對回原本的 cue。
 		if job.sponsor, segs, err = p.chaptersSponsor(ctx, it.ID); err != nil {
 			return nil, err
 		}
@@ -400,8 +411,14 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 		job.glossarySet[strings.ToLower(t)] = true
 	}
 	meta.Glossary = glossary
+	vars := llm.TemplateVars{SourceLang: srcLang, Mixed: it.LangMixed}
+	if def.prepare != nil {
+		if err := def.prepare(p, ctx, it, job, &meta, &vars); err != nil {
+			return nil, err
+		}
+	}
 	// COR-R5：原文語言標記為 mixed 時，步驟的 MixedRule 加進系統指示。
-	job.fixed, err = llm.BuildFixed(job.spec, job.prompt.Body, llm.TemplateVars{SourceLang: srcLang, Mixed: it.LangMixed}, meta)
+	job.fixed, err = llm.BuildFixed(job.spec, job.prompt.Body, vars, meta)
 	if err != nil {
 		return nil, errPermanent("prompt 無法渲染：" + err.Error())
 	}
@@ -429,6 +446,9 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 	if job.sponsor != nil {
 		// 片段改變時輸入的 cue 也改變：步驟層的快取不能命中舊的結果（CHAP-R6）。
 		upstream += "+" + job.sponsor.SHA256
+	}
+	if job.extraKey != "" {
+		upstream += "+" + job.extraKey
 	}
 	job.stageKey = cacheKey{
 		Item: it.ID, Stage: stage, Impl: p.implVersion(stage), Upstream: upstream,
@@ -575,13 +595,14 @@ func (p *Pipeline) llmPlan(ctx context.Context, t store.Task, run store.StageRun
 		if err != nil {
 			return result{}, err
 		}
-		plan, err := json.Marshal(chunkPlan{Chunk: c, Chunks: len(job.chunks), Input: job.input.ID})
+		plan, err := json.Marshal(chunkPlan{Chunk: c, Chunks: len(job.chunks), Input: job.input.ID, Maps: job.noteMaps()})
 		if err != nil {
 			return result{}, err
 		}
 		row := store.LLMChunk{StageRunID: run.ID, Chunk: c.Index, ItemID: it.ID, Stage: run.Stage, CacheKey: key, Status: store.ChunkPending, Plan: plan}
 		// chunk 層的快取（LLM-R8）：只重用通過驗證的結果；退回的 chunk 與指定重跑的 chunk 一律重新送出。
-		if !slices.Contains(force, c.Index) {
+		// note 的 reduce 的輸入是各段的要點（這時還不知道），不重用（NOTE-R6）。
+		if !slices.Contains(force, c.Index) && !job.isNoteReduce(c) {
 			if hit, err := r.DoneLLMChunkByCacheKey(ctx, it.ID, run.Stage, key); err == nil {
 				row.Status, row.Output, row.Reused = store.ChunkDone, hit.Output, true
 			} else if !errors.Is(err, store.ErrNotFound) {
@@ -640,8 +661,12 @@ func (p *Pipeline) llmPlan(ctx context.Context, t store.Task, run store.StageRun
 		// 依 chunk 順序建立：同一個交易中建立時間相同，領取依 rowid，請求的順序才會依 chunk 編號。
 		for _, k := range pending {
 			idx := k
+			if job.isNoteReduce(job.chunks[len(job.chunks)-1]) && k == job.chunks[len(job.chunks)-1].Index && len(pending) > 1 {
+				// note 的 reduce 等所有 map 都有結果才建立（finishNoteMapsTx，NOTE-R6）。
+				continue
+			}
 			if _, err := tx.InsertTask(ctx, store.NewTask{
-				StageRunID: run.ID, Kind: run.Stage, Executor: executor, ResourceClass: queue.ResourceLLM,
+				StageRunID: run.ID, Kind: job.taskKind(k), Executor: executor, ResourceClass: queue.ResourceLLM,
 				Priority: t.Priority, Payload: payload, ChunkIndex: &idx, MaxAttempts: queue.DefaultMaxAttempts,
 				DeadlineAt: deadline,
 			}); err != nil {
@@ -707,7 +732,10 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 	if plan.To > len(job.cues) || plan.From < 1 || plan.Chunks != len(job.chunks) {
 		return result{}, errPermanent(fmt.Sprintf("chunk %d 的範圍與輸入字幕不符", plan.Index))
 	}
-	in := job.chunkInput(plan.Chunk)
+	in, err := p.chunkInputFor(ctx, r, run.ID, job, plan.Chunk)
+	if err != nil {
+		return result{}, err
+	}
 
 	client, err := p.llm.Client(ctx, job.cfg.Provider)
 	if err != nil {
@@ -716,7 +744,7 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 	prov, _ := p.llm.Provider(job.cfg.Provider)
 	limiter := p.llm.Limiter
 	out, err := llm.RunChunk(ctx, llm.RunOptions{
-		Client: client, Spec: job.spec, Model: job.cfg.Model, Fixed: job.fixed, Input: in,
+		Client: client, Spec: job.specFor(plan.Chunk), Model: job.cfg.Model, Fixed: job.fixedFor(plan.Chunk), Input: in,
 		MaxRetries: job.settings.MaxValidationRetries, Timeout: p.chunkTimeout(t),
 		BeforeRequest: func(_ context.Context, attempt int, req llm.Request) error {
 			tokens := llm.RequestTokens(req)
@@ -778,6 +806,12 @@ func finishChunkTx(ctx context.Context, tx *store.Repo, itemID string, run store
 		return false, err
 	}
 	if n > 0 {
+		if run.Stage == StageNote {
+			// note 的 map 都有結果時建立 reduce（NOTE-R6）。
+			if wake, handled, err := finishNoteMapsTx(ctx, tx, itemID, run, priority, n); handled || err != nil {
+				return wake, err
+			}
+		}
 		// 還有 chunk 沒有結果：Agent 的步驟在沒有任務被領取時回到等待 Agent（AGT-R1）。
 		return false, awaitAgentIfIdle(ctx, tx, run)
 	}
@@ -965,6 +999,13 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 		stage.CacheKey = ""
 	}
 	res := result{task: taskDone, advance: true, stage: stage, artifact: art, state: state}
+	if state.Status != store.StatusDone {
+		// write 讓步驟停下（筆記沒有通過驗證或自動檢查，NOTE-R3、R7）：不前進到下一步，也不寫入步驟層的快取鍵。
+		res.advance, stage.CacheKey = false, ""
+		if state.Status == store.StatusFailed {
+			res.task = taskFailed
+		}
+	}
 	if len(candidates) > 0 && it.ChannelID != "" {
 		res.inTx = func(ctx context.Context, tx *store.Repo) (bool, error) {
 			return false, addTermCandidates(ctx, tx, it, job, candidates)

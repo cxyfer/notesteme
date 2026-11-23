@@ -209,8 +209,7 @@ func TestRerunNotImplementedWritesNothing(t *testing.T) {
 		req  RerunRequest
 	}{
 		{"summary", RerunRequest{From: "summary"}},
-		// M3 的步驟在實作之前回 501（M3-S0，ADR-0020 第 1 點）；chapters 已在 M3-S2 實作。
-		{"note", RerunRequest{From: StageNote}},
+		// M3 的步驟在實作之前回 501（M3-S0，ADR-0020 第 1 點）；四個 M3 步驟已在 M3-S1～S4 實作。
 	}
 	for _, tt := range tests {
 		if _, err := r.p.Rerun(ctx, it.ID, tt.req); !errors.As(err, &ni) {

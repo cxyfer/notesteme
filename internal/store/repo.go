@@ -147,6 +147,9 @@ func NewID() string {
 
 func (r *Repo) nowMs() int64 { return r.clock.Now().UnixMilli() }
 
+// Now 是 store 的時鐘的現在時間（交易中需要時間、手上沒有 clock 的呼叫端用，例如 Agent 任務的領取期限）。
+func (r *Repo) Now() time.Time { return r.clock.Now() }
+
 // msPtr 把可為空的時間轉成資料庫的值（Unix 毫秒）。
 func msPtr(t *time.Time) *int64 {
 	if t == nil {

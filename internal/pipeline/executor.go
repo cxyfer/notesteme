@@ -241,6 +241,9 @@ func stageImplemented(stage, executor string) bool {
 	case stage == StageFrames:
 		// M3-S3：規則與 vision 選圖（FRM）；agent 依 F6 在處理方案中回 422。
 		return executor == ExecutorRules || executor == ExecutorAPI
+	case stage == StageNote:
+		// M3-S4：api 與 agent 走 LLM 引擎（NOTE-R1～R13，note.go）。
+		return usesLLMEngine(stage, executor)
 	}
 	// note 與 M4 的 summary：各切片完成時在這裡登記。
 	return false

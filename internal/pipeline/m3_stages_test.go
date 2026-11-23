@@ -89,12 +89,12 @@ func TestPlanChainSkipsUnimplementedM3Stages(t *testing.T) {
 }
 
 func TestStageAvailable(t *testing.T) {
-	for _, s := range []string{StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StageChapters, StageFrames, StagePublish} {
+	for _, s := range []string{StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StageChapters, StageFrames, StageNote, StagePublish} {
 		if !StageAvailable(s) {
 			t.Errorf("%s 應該已經實作", s)
 		}
 	}
-	for _, s := range []string{StageNote, "summary", "frames.select", ""} {
+	for _, s := range []string{"summary", "frames.select", ""} {
 		if StageAvailable(s) {
 			t.Errorf("%s 不應該回報已實作", s)
 		}

@@ -134,7 +134,7 @@ var AgentKinds = []string{StageSegment, StageCorrect}
 
 // agentClaimableKinds 是 kinds 可以指定的任務種類：AgentKinds 加上 M3 的 chapters（AGT 的 M3 修訂）。
 // 省略 kinds 時仍只領 AgentKinds，既有的 Agent 不會突然收到新的任務。
-var agentClaimableKinds = append(slices.Clone(AgentKinds), StageChapters)
+var agentClaimableKinds = append(slices.Clone(AgentKinds), StageChapters, StageNote, TaskNoteMap)
 
 // AgentTask 是領取到的一個任務與完成它需要的全部上下文（AGT-R2）。
 type AgentTask struct {
@@ -329,7 +329,11 @@ func (p *Pipeline) loadAgentChunk(ctx context.Context, t store.Task) (*agentChun
 	if plan.To > len(job.cues) || plan.From < 1 || plan.Chunks != len(job.chunks) {
 		return nil, errPermanent(fmt.Sprintf("chunk %d 的範圍與輸入字幕不符", plan.Index))
 	}
-	return &agentChunk{run: run, item: it, eff: eff, job: job, plan: plan, in: job.chunkInput(plan.Chunk)}, nil
+	in, err := p.chunkInputFor(ctx, r, run.ID, job, plan.Chunk)
+	if err != nil {
+		return nil, err
+	}
+	return &agentChunk{run: run, item: it, eff: eff, job: job, plan: plan, in: in}, nil
 }
 
 func (p *Pipeline) agentTaskContext(ctx context.Context, t store.Task) (AgentTask, error) {
@@ -337,16 +341,16 @@ func (p *Pipeline) agentTaskContext(ctx context.Context, t store.Task) (AgentTas
 	if err != nil {
 		return AgentTask{}, err
 	}
-	data, err := llm.DataBlock(c.plan.Index, len(c.job.chunks), c.in.Context, c.in.Cues)
+	data, err := llm.DataBlock(c.in.Chunk.Index, c.in.Chunks, c.in.Context, c.in.Cues)
 	if err != nil {
 		return AgentTask{}, err
 	}
 	at := AgentTask{
-		TaskID: t.ID, LeaseToken: t.LeaseToken, Kind: c.run.Stage,
+		TaskID: t.ID, LeaseToken: t.LeaseToken, Kind: c.job.taskKind(c.plan.Index),
 		Item: source.Ref(c.item.Platform, c.item.ExternalID, c.item.Part), ItemID: c.item.ID,
 		Chunk: c.plan.Index, Chunks: len(c.job.chunks),
-		Prompt:  AgentPrompt{System: c.job.fixed.System, User: c.job.fixed.Prefix + "\n\n" + data},
-		Context: c.in.Context, Cues: c.in.Cues, OutputSchema: c.job.spec.Schema,
+		Prompt:  AgentPrompt{System: c.job.fixedFor(c.plan.Chunk).System, User: c.job.fixedFor(c.plan.Chunk).Prefix + "\n\n" + data},
+		Context: c.in.Context, Cues: c.in.Cues, OutputSchema: c.job.specFor(c.plan.Chunk).Schema,
 	}
 	if t.LeaseUntil != nil {
 		at.LeaseUntil = t.LeaseUntil.UTC()
@@ -474,7 +478,7 @@ func (p *Pipeline) SubmitAgentTask(ctx context.Context, agent, taskID, token str
 	if err != nil {
 		return err
 	}
-	out, verr := c.job.spec.Validate(c.in, sub.Output)
+	out, verr := c.job.specFor(c.plan.Chunk).Validate(c.in, sub.Output)
 	if verr != nil {
 		return p.rejectSubmission(ctx, agent, t, verr)
 	}

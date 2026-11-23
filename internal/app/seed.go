@@ -41,3 +41,18 @@ func (s *Server) SetImplVersion(stage string, v int) error {
 func (s *Server) SeedLangMixed(ctx context.Context, itemID string) error {
 	return s.pipeline.SeedLangMixed(ctx, itemID)
 }
+
+// SeedChapters 直接寫入影音現行的 chapters 產出（steps.md 4.13）。只供驗收測試的 harness 使用（同 SeedTranscript）。
+func (s *Server) SeedChapters(ctx context.Context, itemID string, list []pipeline.SeedChapter) error {
+	return s.pipeline.SeedChapters(ctx, itemID, list)
+}
+
+// SeedFrames 直接寫入影音現行的 frames 產出與圖片（steps.md 4.14）。只供驗收測試的 harness 使用（同 SeedTranscript）。
+func (s *Server) SeedFrames(ctx context.Context, itemID string, list []pipeline.SeedFrame) error {
+	return s.pipeline.SeedFrames(ctx, itemID, list)
+}
+
+// ItemNote 回傳影音現行的筆記（同 GET /api/items/:id/note）。只供驗收測試的 harness 讀取筆記而不改變「最近一次回應」（steps.md 4.15）。
+func (s *Server) ItemNote(ctx context.Context, itemID string) (pipeline.NoteView, error) {
+	return s.pipeline.ItemNote(ctx, itemID, "")
+}
