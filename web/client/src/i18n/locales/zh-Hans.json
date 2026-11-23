@@ -397,7 +397,9 @@
       "stages": "步骤",
       "stagesAttention_other": "步骤（{{count}} 个需要处理）",
       "runs": "记录",
-      "outputs": "输出"
+      "outputs": "输出",
+      "frames": "画面",
+      "note": "笔记"
     },
     "player": {
       "frameTitle": "播放器：{{title}}",
@@ -566,7 +568,42 @@
       "atLine": "文件第 {{line}} 行",
       "errorAt": "{{where}}：{{message}}"
     },
-    "restore": "从回收站还原"
+    "restore": "从回收站还原",
+    "frames": {
+      "none": "这部音视频还没有截取画面。在处理方案中开启「画面」步骤后重新处理。",
+      "summary": "选中 {{selected}} 张（目标 {{target}}，建议 {{min}}～{{max}} 张），共 {{candidates}} 张候选。",
+      "shortfall": "有意义的候选画面少于建议的张数。",
+      "show": "显示的画面",
+      "selectedOnly": "只看选中的",
+      "allCandidates": "全部候选",
+      "noneSelected": "没有选中的画面。",
+      "sheet": "印样",
+      "alt": "画面 {{n}}（{{time}}）",
+      "altShort": "画面 {{n}}",
+      "jump": "跳到 {{time}}",
+      "selected": "选中",
+      "excluded": {
+        "sponsor": "在 SponsorBlock 片段内"
+      }
+    },
+    "note": {
+      "none": "这部音视频还没有笔记。在处理方案中开启「笔记」步骤后重新处理。",
+      "stale": "字幕已更新，笔记可能过时。",
+      "regenerate": "重新生成笔记",
+      "checks": "自动检查",
+      "written": "写入状态",
+      "notWritten": "还没有写入 vault。",
+      "output": "vault {{vault}}（{{state}}）：",
+      "state": {
+        "written": "已写入",
+        "unchanged": "没有变更",
+        "saved_as_new": "另存新文件",
+        "skipped_user_changed": "你改过，没有覆盖"
+      },
+      "commit": "commit {{commit}}",
+      "download": "下载 Markdown",
+      "content": "笔记内容"
+    }
   },
   "queue": {
     "loading": "正在加载队列…",

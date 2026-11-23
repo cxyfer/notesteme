@@ -1,7 +1,8 @@
 // 影音詳情的 search params：分頁、字幕顯示模式、起始時間（可以加書籤或分享，docs/ui/README.md §3.3）。
 // 不合法的值直接丟掉（web/client/README.md「篩選 ↔ URL」）。
 
-export const ITEM_TABS = ["subtitles", "stages", "runs", "outputs"] as const;
+// frames、note 是 M3（UI-4 加入），排在字幕之後（README §3.6 的 1–4：字幕、畫面、筆記、紀錄）
+export const ITEM_TABS = ["subtitles", "frames", "note", "stages", "runs", "outputs"] as const;
 export type ItemTab = (typeof ITEM_TABS)[number];
 
 /** 字幕的顯示模式（LIB-R5、R12） */

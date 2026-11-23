@@ -20,6 +20,8 @@ export const a11yRoutes: A11yRoute[] = [
   { path: "/items/item-1?tab=stages", heading: "影片 1", auth: true, ready: "無法完成：驗證失敗" },
   { path: "/items/item-1?tab=runs", heading: "影片 1", auth: true, ready: "當時生效的設定" },
   { path: "/items/item-1?tab=outputs", heading: "影片 1", auth: true, ready: "匯入修正過的字幕" },
+  { path: "/items/item-1?tab=frames", heading: "影片 1", auth: true, ready: "架構圖" },
+  { path: "/items/item-1?tab=note", heading: "影片 1", auth: true, ready: "Video Notes/影片 1.md" },
   { path: "/items/item-1?mode=diff", heading: "影片 1", auth: true, ready: "刪除的文字" },
   // 設定的每個分區（UI-3b）；有 API 替身資料的 axe 檢查在 src/pages/settings/settings.test.tsx
   ...[

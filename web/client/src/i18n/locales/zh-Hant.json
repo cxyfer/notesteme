@@ -397,7 +397,9 @@
       "stages": "步驟",
       "stagesAttention_other": "步驟（{{count}} 個需要處理）",
       "runs": "紀錄",
-      "outputs": "輸出"
+      "outputs": "輸出",
+      "frames": "畫面",
+      "note": "筆記"
     },
     "player": {
       "frameTitle": "播放器：{{title}}",
@@ -566,7 +568,42 @@
       "atLine": "檔案第 {{line}} 行",
       "errorAt": "{{where}}：{{message}}"
     },
-    "restore": "從垃圾桶還原"
+    "restore": "從垃圾桶還原",
+    "frames": {
+      "none": "這部影音還沒有擷取畫面。在處理方案中開啟「畫面」步驟後重新處理。",
+      "summary": "選中 {{selected}} 張（目標 {{target}}，建議 {{min}}～{{max}} 張），共 {{candidates}} 張候選。",
+      "shortfall": "有意義的候選畫面少於建議的張數。",
+      "show": "顯示的畫面",
+      "selectedOnly": "只看選中的",
+      "allCandidates": "全部候選",
+      "noneSelected": "沒有選中的畫面。",
+      "sheet": "印樣",
+      "alt": "畫面 {{n}}（{{time}}）",
+      "altShort": "畫面 {{n}}",
+      "jump": "跳到 {{time}}",
+      "selected": "選中",
+      "excluded": {
+        "sponsor": "在 SponsorBlock 片段內"
+      }
+    },
+    "note": {
+      "none": "這部影音還沒有筆記。在處理方案中開啟「筆記」步驟後重新處理。",
+      "stale": "字幕已更新，筆記可能過時。",
+      "regenerate": "重新產生筆記",
+      "checks": "自動檢查",
+      "written": "寫入狀態",
+      "notWritten": "還沒有寫入 vault。",
+      "output": "vault {{vault}}（{{state}}）：",
+      "state": {
+        "written": "已寫入",
+        "unchanged": "沒有變更",
+        "saved_as_new": "另存新檔",
+        "skipped_user_changed": "你改過，沒有覆寫"
+      },
+      "commit": "commit {{commit}}",
+      "download": "下載 Markdown",
+      "content": "筆記內容"
+    }
   },
   "queue": {
     "loading": "正在載入佇列…",

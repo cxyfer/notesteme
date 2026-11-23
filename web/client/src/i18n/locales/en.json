@@ -407,7 +407,9 @@
       "stagesAttention_one": "Steps ({{count}} needs action)",
       "stagesAttention_other": "Steps ({{count}} need action)",
       "runs": "History",
-      "outputs": "Outputs"
+      "outputs": "Outputs",
+      "frames": "Frames",
+      "note": "Note"
     },
     "player": {
       "frameTitle": "Player: {{title}}",
@@ -584,7 +586,42 @@
       "atLine": "file line {{line}}",
       "errorAt": "{{where}}: {{message}}"
     },
-    "restore": "Restore from trash"
+    "restore": "Restore from trash",
+    "frames": {
+      "none": "No frames yet. Turn on the frames step in the preset and reprocess.",
+      "summary": "{{selected}} selected (target {{target}}, suggested {{min}}–{{max}}) from {{candidates}} candidates.",
+      "shortfall": "There are fewer meaningful candidates than suggested.",
+      "show": "Frames to show",
+      "selectedOnly": "Selected only",
+      "allCandidates": "All candidates",
+      "noneSelected": "No frames were selected.",
+      "sheet": "Contact sheet",
+      "alt": "Frame {{n}} ({{time}})",
+      "altShort": "Frame {{n}}",
+      "jump": "Jump to {{time}}",
+      "selected": "Selected",
+      "excluded": {
+        "sponsor": "Inside a SponsorBlock segment"
+      }
+    },
+    "note": {
+      "none": "No note yet. Turn on the note step in the preset and reprocess.",
+      "stale": "The subtitles changed; the note may be out of date.",
+      "regenerate": "Regenerate note",
+      "checks": "Automatic checks",
+      "written": "Where it's written",
+      "notWritten": "Not written to a vault yet.",
+      "output": "Vault {{vault}} ({{state}}):",
+      "state": {
+        "written": "written",
+        "unchanged": "unchanged",
+        "saved_as_new": "saved as a new file",
+        "skipped_user_changed": "you changed it; not overwritten"
+      },
+      "commit": "commit {{commit}}",
+      "download": "Download Markdown",
+      "content": "Note"
+    }
   },
   "queue": {
     "loading": "Loading the queue…",

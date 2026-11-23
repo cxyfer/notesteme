@@ -3,6 +3,8 @@ import type { components } from "../api/schema";
 import {
   costEntry,
   costSummary,
+  framesList,
+  noteBody,
   noteTemplate,
   notifier,
   priceList,
@@ -157,6 +159,8 @@ export function defaultRoutes() {
     }),
     "GET /api/items/{id}/outputs": () => ({ outputs: [] }),
     "GET /api/queue": () => queueStatus(),
+    "GET /api/items/{id}/frames": () => framesList(),
+    "GET /api/items/{id}/note": () => noteBody(),
     "GET /api/profiles": () => ({ profiles: [] }),
     // UI-4
     "GET /api/subscriptions": () => ({ subscriptions: [subscription("s1")] }),

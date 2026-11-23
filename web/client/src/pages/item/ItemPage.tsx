@@ -36,6 +36,7 @@ import {
   useRuns,
 } from "./data";
 import { DeleteDialog } from "./DeleteDialog";
+import { FramesPanel, NotePanel } from "./NotePanels";
 import { OutputsPanel, downloadUrl } from "./OutputsPanel";
 import { Player, type PlayerHandle } from "./Player";
 import { RerunDialog } from "./RerunDialog";
@@ -410,6 +411,8 @@ function ItemView({
             onChange={(next) => setSearch({ tab: next }, true)}
             labels={{
               subtitles: t("item.tabs.subtitles"),
+              frames: t("item.tabs.frames"),
+              note: t("item.tabs.note"),
               stages: attention
                 ? t("item.tabs.stagesAttention", { count: attention })
                 : t("item.tabs.stages"),
@@ -439,6 +442,15 @@ function ItemView({
               ) : (
                 <p className="secondary">{t("item.cues.notYet")}</p>
               ))}
+            {tab === "frames" && <FramesPanel itemId={id} onSeek={seek} />}
+            {tab === "note" && (
+              <NotePanel
+                itemId={id}
+                itemUrl={d.url || undefined}
+                onSeek={seek}
+                onRegenerate={() => setRerunFrom("note")}
+              />
+            )}
             {tab === "stages" && (
               <StagePanel
                 stages={stages}
