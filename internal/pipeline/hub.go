@@ -66,6 +66,19 @@ func cookieRequired(it store.Item, sourceID string) bool {
 	return it.Availability != "public"
 }
 
+// publicForHub 回報影音能不能分享或查詢 Hub（HSHR-R4、R13 的「availability 是 public」）。
+// availability 只有 YouTube 會回報；其他平台（Bilibili、Podcast）沒有這個資訊，空值視為公開
+// （HSHR 待決問題 S10）。本機檔案一律不是。
+func publicForHub(it store.Item) bool {
+	switch {
+	case it.Platform == source.PlatformLocal:
+		return false
+	case it.Availability == "public":
+		return true
+	}
+	return it.Availability == "" && it.Platform != source.PlatformYouTube
+}
+
 // hubOrigin 是 hub_imports.origin_json 與來源紀錄的 hub_origin（HSHR-R9）。
 type hubOrigin struct {
 	URL       string `json:"url"`
@@ -165,7 +178,7 @@ type hubPrecheckOutcome struct {
 // precheckHub 在即將呼叫第一個付費來源時查詢 Hub 一次（HSHR-R13、R14）。不查詢（關閉、沒有設定、
 // 本機檔案或非公開影音）時回傳零值；失敗時照常繼續（R15），回傳提醒。
 func (p *Pipeline) precheckHub(ctx context.Context, it store.Item, decisions []transcript.Decision, stage *store.StageResult) (hubPrecheckOutcome, error) {
-	if p.hubPrecheck == nil || it.Platform == source.PlatformLocal || it.Availability != "public" {
+	if p.hubPrecheck == nil || !publicForHub(it) {
 		return hubPrecheckOutcome{}, nil
 	}
 	if ok, err := p.hub.Configured(ctx); err != nil || !ok {
@@ -436,7 +449,7 @@ func (p *Pipeline) ShareToHub(ctx context.Context, itemID string, req HubShareRe
 	if it.Platform == source.PlatformLocal {
 		return HubShareResult{}, notShareable("本機檔案不能分享到 Hub。")
 	}
-	if it.Availability != "public" {
+	if !publicForHub(it) {
 		return HubShareResult{}, notShareable("非公開影音不能分享到 Hub。")
 	}
 	arts, err := p.shareArtifacts(ctx, it, req)
