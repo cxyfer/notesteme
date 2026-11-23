@@ -8,7 +8,16 @@
 // 這個頁面用 lazy route 載入（router.tsx），不算進初始 bundle。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
-import { lazy, Suspense, useCallback, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { StatusBand, type StatusBandStage } from "@shared";
@@ -36,6 +45,7 @@ import {
   useOutputs,
   useRuns,
 } from "./data";
+import { isEditableTarget, modalOpen } from "../../shell/keyboard";
 import { DeleteDialog } from "./DeleteDialog";
 import { ReadStateButton } from "./ReadStateButton";
 import { FramesPanel, NotePanel } from "./NotePanels";
@@ -331,6 +341,28 @@ function ItemView({
   };
 
   const showRuns = () => setSearch({ tab: "runs" }, true);
+  // README §3.6：1–4 切換字幕、畫面、筆記、紀錄分頁（UI-7）
+  const tabKeys = useRef(setSearch);
+  useEffect(() => {
+    tabKeys.current = setSearch;
+  });
+  useEffect(() => {
+    const map: Record<string, ItemTab> = {
+      "1": "subtitles",
+      "2": "frames",
+      "3": "note",
+      "4": "runs",
+    };
+    function onKey(e: globalThis.KeyboardEvent) {
+      const tab = map[e.key];
+      if (!tab || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      if (isEditableTarget(e.target) || modalOpen()) return;
+      e.preventDefault();
+      tabKeys.current({ tab }, true);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
   const active = stages.some((s) => ACTIVE.has(s.status));
   const attention = stages.filter((s) => s.status === "failed" || s.status === "blocked").length;
   const profileName = latestConfig(runs.data?.runs ?? undefined)?.profile;

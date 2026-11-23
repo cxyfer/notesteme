@@ -165,6 +165,13 @@ describe("影音詳情：標題與時間帶", () => {
     expect(api.calls("GET", "/api/items/yt:abcdEFGhijk/cues")).toHaveLength(0);
   });
 
+  it("數字鍵 4 切到紀錄分頁（README §3.6）", async () => {
+    itemApi();
+    const { router } = await openItem();
+    await userEvent.keyboard("4");
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ tab: "runs" }));
+  });
+
   it("標為已讀用批次 API 送這一部（LIB-R19；打開詳情不會自動標為已讀）", async () => {
     const bodies: unknown[] = [];
     itemApi({

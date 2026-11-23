@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
+import { expectNoA11yViolations } from "./test/axe";
 import { renderRoute, signIn } from "./test/render";
 
 describe("路由", () => {
@@ -82,5 +83,17 @@ describe("路由", () => {
     expect(localStorage.getItem("notesteme.theme")).toBe("dark");
     await userEvent.selectOptions(screen.getByLabelText("主題"), "system");
     expect(document.documentElement.dataset.theme).toBeUndefined();
+  });
+
+  it("G 然後 Q 前往佇列；? 顯示所有快捷鍵（UI-7，axe 無違規）", async () => {
+    signIn();
+    const { router, container } = renderRoute("/library");
+    await screen.findByRole("heading", { level: 1, name: "媒體庫" });
+    await userEvent.keyboard("gq");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/queue"));
+    await userEvent.keyboard("?");
+    const dialog = await screen.findByRole("dialog", { name: "鍵盤快捷鍵" });
+    expect(dialog.textContent).toMatch(/前往訂閱/);
+    await expectNoA11yViolations(container.ownerDocument.body);
   });
 });

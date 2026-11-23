@@ -3,7 +3,7 @@
 // 導覽的「新增」按鈕、N 快捷鍵、焦點不在輸入框時貼上網址（docs/ui/README.md §3.2、§3.6）。
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AddProvider, useAddDrawer } from "../add/AddContext";
@@ -13,6 +13,14 @@ import { Button } from "../components";
 import { useEventStream } from "../events/useEventStream";
 import { isEditableTarget, modalOpen } from "./keyboard";
 import { Preferences } from "./Preferences";
+
+const ShortcutsDialog = lazy(() =>
+  import("./ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })),
+);
+
+/** G 之後接的鍵（README §3.6）；G 之後 1.5 秒內沒有按第二個鍵就取消 */
+const GO_TO = { l: "/library", q: "/queue", s: "/subscriptions" } as const;
+const GO_TIMEOUT = 1500;
 
 // M1 的導覽項目（docs/ui/README.md §2）。M2 之後的頁面（Prompt 庫、處理方案…）由各切片加進來。
 const NAV_GROUPS = [
@@ -53,14 +61,35 @@ export function AppShell() {
   );
 }
 
-/** N 打開新增抽屜；焦點不在輸入框時貼上 http(s) 網址，打開抽屜並帶入網址。 */
+/**
+ * N 打開新增抽屜；焦點不在輸入框時貼上 http(s) 網址，打開抽屜並帶入網址。
+ * UI-7：G 然後 L／Q／S 前往媒體庫、佇列、訂閱；? 顯示所有快捷鍵。
+ */
 function GlobalShortcuts() {
   const add = useAddDrawer();
+  const navigate = useNavigate();
+  const [help, setHelp] = useState(false);
   useEffect(() => {
+    let goAt = 0;
     function onKey(e: KeyboardEvent) {
-      if (e.key !== "n" && e.key !== "N") return;
-      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
       if (isEditableTarget(e.target) || modalOpen()) return;
+      // ? 在多數鍵盤配置要按 Shift
+      if (e.key === "?") {
+        e.preventDefault();
+        setHelp(true);
+        return;
+      }
+      if (e.shiftKey) return;
+      const key = e.key.toLowerCase();
+      if (goAt && Date.now() - goAt < GO_TIMEOUT && key in GO_TO) {
+        goAt = 0;
+        e.preventDefault();
+        void navigate({ to: GO_TO[key as keyof typeof GO_TO] });
+        return;
+      }
+      goAt = key === "g" ? Date.now() : 0;
+      if (key !== "n") return;
       e.preventDefault();
       add.open();
     }
@@ -77,8 +106,12 @@ function GlobalShortcuts() {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("paste", onPaste);
     };
-  }, [add]);
-  return null;
+  }, [add, navigate]);
+  return help ? (
+    <Suspense fallback={null}>
+      <ShortcutsDialog onClose={() => setHelp(false)} />
+    </Suspense>
+  ) : null;
 }
 
 function ShellLayout() {
