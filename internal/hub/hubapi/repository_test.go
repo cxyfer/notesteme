@@ -151,7 +151,9 @@ func makeBundle(t *testing.T, o bundleOpts, arts ...*art) []byte {
 	return buf.Bytes()
 }
 
-func src(content string) *art { return &art{kind: "transcript", variant: "source", lang: "en", content: content} }
+func src(content string) *art {
+	return &art{kind: "transcript", variant: "source", lang: "en", content: content}
+}
 
 // share 以 session 送出 multipart；fields 的值為 "<absent>" 時不送。
 func (e *repoEnv) share(who string, bundle []byte, fields map[string]string) *httptest.ResponseRecorder {

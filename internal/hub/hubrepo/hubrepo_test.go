@@ -173,7 +173,9 @@ func TestCanSee(t *testing.T) {
 	carol := Viewer{UserID: "carol", Groups: []string{"members", "translators"}}
 	mod := Viewer{UserID: "mod", Moderator: true}
 	alice := Viewer{UserID: "alice"}
-	sub := func(vis, state string) Subject { return Subject{Visibility: vis, State: state, Uploaders: []string{"alice"}} }
+	sub := func(vis, state string) Subject {
+		return Subject{Visibility: vis, State: state, Uploaders: []string{"alice"}}
+	}
 	cases := []struct {
 		s      Subject
 		v      Viewer
