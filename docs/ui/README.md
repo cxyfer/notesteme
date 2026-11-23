@@ -386,9 +386,9 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 1. **不改後端**。全部用既有 API 組合；沒有新增路由、欄位，OpenAPI 與 `schema.d.ts` 沒有變動。
 2. **路由參數可能是代號**（`/items/yt:…`）：detail 讀到之後，字幕、紀錄、輸出、媒體、重新處理等呼叫與 query key 一律用 `detail.id`，SSE 的失效表才對得上；用代號進來時頁面另外讓路由參數的 detail 失效。
 3. **字幕的快取不放在 `items.detail` 底下**（`items.cues(id, {variant, lang})`）：每個 `stage.status` 都讓 detail 失效，上千句的字幕不能跟著重抓。只在 transcript、normalize、segment、correct、translate `done` 時失效；重新讀取期間保留舊資料（`keepPreviousData`），列表不卸載，捲動位置不變。
-4. **差異的比較方式**：校正後（`corrected`）對「校正前實際存在的最近變體」（segmented → normalized → source）。兩邊依**時間重疊**分組（校正可能合併或拆句），每組以 code point 做 LCS 逐字比對（不切開 surrogate pair）；超過 400 萬格時退化成整段刪除＋新增。刪除用 `<del>`（刪除線）、新增用 `<ins>`（底線），另有 visually-hidden 的「刪除：」「新增：」文字。沒有校正結果的段落顯示原文並標「尚未校正」。**自寫元件，不用 CodeMirror merge view**：字幕是逐句的短文字，自寫的 diff 約 2KB；整個詳情頁是 lazy route（gzip 13.4KB），初始 JS 188.3KB（UI-1 是 174.2KB，增加的是佇列頁與共用的 query key／VirtualList）。
-5. **模式依步驟狀態決定**：transcript `done` 才有「原始」、normalize `done` 才有「正規化」、correct 已開始（不含 skipped）才有「校正」「差異」、translate `done` 才有「譯文」「對照」、有 `edited` 字幕才有「已編輯」。預設是校正 > 正規化 > 原始。譯文的語言用最近一次執行的設定快照 `language.targets`，多個時可以選。沒有 `convert`／`localize` 的區分（pages.md §4 的「只差字形」規則）：API 沒有提供，譯文與對照只在 translate 完成時出現。
-6. **YouTube 播放器不載入 IFrame API 的 script**：CSP 的 `script-src` 只有 `'self'`，不放寬。用嵌入網址的 `enablejsapi=1&origin=…` 加 postMessage（送 `listening`，收 `infoDelivery.currentTime`；跳播送 `seekTo`、`playVideo`）；訊息只接受 YouTube 的 origin 且 `source` 是這個 iframe。4 秒內沒有收到訊息就降級成「更新 `start` 重新載入」。協定是 YouTube 未公開文件化的部分，**需要在真實瀏覽器人工驗證**（LIB-03 是 `@manual`）。頁面的 `Referrer-Policy` 是 `same-origin`，YouTube 嵌入需要來源網域，只在 iframe 元素上設 `referrerpolicy="strict-origin-when-cross-origin"`（不改全站標頭）。Bilibili 沒有公開的控制介面，跳播用 `t` 參數重新載入，另附「在 Bilibili 開啟這個時間」。
+4. **差異的比較方式**：校正後（`corrected`）對「校正前實際存在的最近變體」（segmented → normalized → source）。兩邊依**時間重疊**分組（校正可能合併或拆句），每組以 code point 做 LCS 逐字比對（不切開 surrogate pair）；超過 400 萬格時退化成整段刪除＋新增。刪除用 `<del>`（刪除線）、新增用 `<ins>`（底線），另有 visually-hidden 的「刪除：」「新增：」文字。沒有校正結果的段落顯示原文並標「尚未校正」。**自寫元件，不用 CodeMirror merge view**：字幕是逐句的短文字，自寫的 diff 約 2KB；整個詳情頁是 lazy route（gzip 13.8KB），初始 JS 188.5KB（UI-1 是 174.2KB，增加的是佇列頁與共用的 query key／VirtualList）。
+5. **模式依步驟狀態決定**（預設模式在第一次決定後固定，SSE 改變步驟狀態不會換掉正在看的模式；「校正」在 corrected 還不存在時顯示校正前的句子並標「尚未校正」；差異模式在校正完成後，沒有對應的句子代表 LLM 刪掉了整句，整段顯示成刪除；分組要求重疊超過 0.1 秒或句子長度的一半，相鄰句子重疊幾毫秒不會串成一組）：transcript `done` 才有「原始」、normalize `done` 才有「正規化」、correct 已開始（不含 skipped）才有「校正」「差異」、translate `done` 才有「譯文」「對照」、有 `edited` 字幕才有「已編輯」。預設是校正（只在校正完成時）> 正規化 > 原始。譯文的語言用最近一次執行的設定快照 `language.targets`，多個時可以選。沒有 `convert`／`localize` 的區分（pages.md §4 的「只差字形」規則）：API 沒有提供，譯文與對照只在 translate 完成時出現。
+6. **YouTube 播放器不載入 IFrame API 的 script**：CSP 的 `script-src` 只有 `'self'`，不放寬。用嵌入網址的 `enablejsapi=1&origin=…` 加 postMessage（送 `listening`，收 `infoDelivery.currentTime`；跳播送 `seekTo`、`playVideo`）；訊息只接受 YouTube 的 origin 且 `source` 是這個 iframe。`listening` 每 250ms 重送直到收到第一則訊息，4 秒內沒有收到就降級成「更新 `start` 重新載入」；訊息只送到嵌入的 origin（nocookie）。協定是 YouTube 未公開文件化的部分，**需要在真實瀏覽器人工驗證**（LIB-03 是 `@manual`）。頁面的 `Referrer-Policy` 是 `same-origin`，YouTube 嵌入需要來源網域，只在 iframe 元素上設 `referrerpolicy="strict-origin-when-cross-origin"`（不改全站標頭）。Bilibili 沒有公開的控制介面，跳播用 `t` 參數重新載入，另附「在 Bilibili 開啟這個時間」。
 7. **步驟的 `actions` 是後端的繁中字串**：`src/pages/item/actions.ts` 用對照表對應到三語文案與實際動作（重試、重新翻譯、重新校正這段、處理該檔案後重新發布、更換模型、開啟 Prompt → 重新處理對話框並預選該步驟；改用 API 處理 → `switch-executor`；上傳 cookie → `POST /api/cookies`；更新 yt-dlp → `POST /api/tools/yt-dlp/update`；設定 API key、語音轉錄、額度、安裝工具 → 設定頁對應分區）。認不得的字串原樣顯示並附「開啟設定」。失敗與停住的步驟一定有「從這個步驟重新處理」，等待 Agent 一定有「改用 API 處理」。
 8. **API 缺口**（記在這裡，之後的後端切片處理）：
    - `Stage.actions` 應改成動作代碼（現在是繁中按鈕文字，前端只能比對字串）。
@@ -399,7 +399,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
    - 沒有章節、說話密度、LLM chunk 的時間範圍：時間帶只畫整條步驟狀態，沒有章節線、拖曳選取、chunk 進度。
    - `ItemDetail` 沒有處理方案名稱：從設定快照的 `profile` 取（沒有就不顯示）。
    - 佇列：`GET /api/queue` 只列內建 worker 的任務（沒有 Agent 任務、租約剩餘時間、優先順序欄位）；`POST /api/tasks/{id}/retry`、`cancel` 回 501；沒有調整優先順序的 API。頁面上明說，並改提供影音層級的「停止處理」。
-   - 「需要你處理」沒有彙總 API：依步驟各查一次 `GET /api/items?status=<stage>:failed&status=<stage>:blocked&limit=1` 的 `total`（7 個請求；同一部影音可能在不同步驟各算一次）。
-9. **501 不重試**：TanStack Query 的預設重試排除 501（功能還沒做），佇列沒有啟用時立即顯示說明。
-10. **axe 不進 iframe**（`iframes: false`）：嵌入的播放器是跨來源的；`routes.a11y.test.tsx` 用 `defaultRoutes()` 替身，不連網路。
-11. **新增相依**：無。`api.patch`、`VirtualListHandle.scrollToIndex`／`firstVisibleIndex`、`formatBytes`／`formatUsd` 是新增的 API，不改既有的意義。
+   - 「需要你處理」沒有彙總 API：依步驟各查一次 `GET /api/items?status=<stage>:failed&status=<stage>:blocked&limit=1` 的 `total`（7 個請求；同一部影音可能在不同步驟各算一次）。佇列頁收到 failed／blocked／pending／done／skipped 的 `stage.status`、刪除、還原或重新連上時，2 秒 debounce 後重新讀取。
+9. **其他**：用垃圾桶中的影音連結進入詳情時提供「從垃圾桶還原」；cookie 對話框關閉時清掉貼上的內容；拖曳捲軸（不只 wheel／touch／按鍵）也會停止跟隨播放。
+10. **501 不重試**：TanStack Query 的預設重試排除 501（功能還沒做），佇列沒有啟用時立即顯示說明。
+11. **axe 不進 iframe**（`iframes: false`）：嵌入的播放器是跨來源的；`routes.a11y.test.tsx` 用 `defaultRoutes()` 替身，不連網路。
+12. **新增相依**：無。`api.patch`、`VirtualListHandle.scrollToIndex`／`firstVisibleIndex`、`formatBytes`／`formatUsd` 是新增的 API，不改既有的意義。
