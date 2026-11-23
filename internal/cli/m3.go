@@ -4,8 +4,8 @@ package cli
 // frames 在 M3-S3 實作；note show 的路由仍是 501 stub（NOTE 的切片補上文字輸出）。
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
