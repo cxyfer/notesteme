@@ -103,3 +103,13 @@ notesteme_status: "complete"
 - N9：OUT-R14 的訊息是「字幕已更新，譯文可能過時」、動作「重新翻譯」，是影音層的提醒；筆記的過時標示放在筆記本身（NOTE-R10），兩者並存，影音的提醒維持 OUT-R14 不變。
 - N10：Obsidian 的 callout、wikilink 與圖片嵌入在 UI 的筆記分頁中渲染時同樣不允許原始 HTML（plan 第 19 節），屬於 UI 切片。
 - N11：M3-S0（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`stages.note` 接受 NOTE 與 GEM 介面列出的欄位；`template` 只檢查是非空字串（`note_templates` 屬於 NOTE 的切片），`lang` 只檢查 BCP-47 的形狀。`GET /api/items/:id/note`、`/api/note-templates` 的四條路由、MCP `get_note`、CLI `note show` 已經註冊，回 501／`not_implemented`（scope 依 NOTE-R11～R14）。內建 prompt `note-default`、`note-map-default` 還不在 prompt 庫中，NOTE 的 Background 在閘門解除之後會停在 422，由實作切片補上。
+- N12：M3-S4（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：內建 prompt `note-default`（類型 `note`）與 `note-map-default`（類型 `note_map`）加入 prompt 庫，新增 prompt 變數 `note_lang`（筆記語言）。map 一律用內建的 `note-map-default`；`stages.note.prompt` 只換單一請求與 reduce 的 prompt。map 的 prompt 進 map chunk 的快取鍵與步驟層的快取鍵。
+- N13：M3-S4（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：本機檔案沒有網址，frontmatter 的 `source` 用影音代號（例如 `local:…`），時間是純文字；`channel`、`video_published`、`read_at` 可以是空字串，`frontmatter` 檢查不要求它們有值。
+- N14：M3-S4（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：模型的輸入中，選中的畫面只給編號 `n`、最接近的句號（`cue`）與圖說，不給時間與圖片；章節以起點的句號表示（平台章節沒有句號時用起點所在的句子）。輸出是單一 JSON `{sections, self_check}`，上限：標題 120 字、100 節、每節 20000 字、自我檢驗 30 項。
+- N15：M3-S4（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`parents` 中的 `sponsor_segments` 只在實際有句子因為在片段內而沒有放進輸入時才列（「只列實際用到的」）；`chapters`、`frames` 只在有章節、有選中的畫面時才列。
+- N16：M3-S4（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：map-reduce 中有 map 驗證重試用盡時不送出 reduce，步驟 `failed`（同 N7），訊息取第一個退回的原因，動作是「重新產生筆記」「開啟 Prompt」。
+- N17：M3-S4（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：模板是 text/template 的受限子集：除了 NOTE-R11 的變數，只允許 `if`／`else`；`range`、`with`、`define`／`block`、`template`、`call`、變數宣告與直接輸出 `.` 都回 422（`body`）。模板最多 64 KiB。模板規則的 `checks` 是空清單時不執行任何檢查，沒有指定時執行全部。
+- N18：M3-S4（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：NOTE-R8 的中和另外處理 Obsidian 的行內 Dataview（`` `= `` 與 `` `$= `` 加上反斜線）；`dataviewjs`、Templater 等會執行的 fence 語言改成 `text`，沒有結尾的 fence 補上結尾。
+- N19：M3-S4（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`GET /api/items/:id/note` 沒有筆記時回 `404 no_note`（預覽是 `409 no_note`，NOTE-R12）；沒有指定 `lang` 時取最近寫出的一份。`outputs` 在 VAULT 實作之前一律是空清單。`stale` 的判斷是「現在會選的輸入字幕」不是筆記的 `parents[0]`。
+- N20：M3-S4（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：資訊表中「字幕」那一列（SRT 的 vault 路徑 wikilink）需要 vault 的路徑，留給 VAULT 的切片；畫面不足（FRM 的 shortfall）與畫質低於 1080p 時資訊表多一列說明，畫面不足時筆記也是 `partial`。`partial` 的另一個來源是 sponsorblock 或 chapters 最新一次的結果是 `done` 但帶有訊息（降級）。
+- N21：M3-S4（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：自動檢查不通過時仍寫出 note 產出（來源紀錄的 `checks.passed` 為 `false`），步驟 `blocked`（`needs_action`），不會前進到 publish；VAULT 的切片要依 `checks.passed` 決定是否寫入。
