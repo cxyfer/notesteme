@@ -489,3 +489,36 @@ func TestWants(t *testing.T) {
 		t.Error("有訂閱的 notifier")
 	}
 }
+
+// EmitTo（DIG-R8）：只寫給指定、而且訂閱了這個事件的 notifier；沒有指定時不寫入。
+func TestEmitToOnlyListedSubscribers(t *testing.T) {
+	g := newRig(t)
+	g.webhook(t, "a", EventDigest)
+	g.webhook(t, "b", EventDigest)
+	g.webhook(t, "c", "alert")
+	emitTo := func(key string, only []string) int {
+		t.Helper()
+		var n int
+		if err := g.st.Tx(context.Background(), func(r *store.Repo) error {
+			var err error
+			n, err = g.ob.EmitTo(context.Background(), r, Event{Name: EventDigest, DedupeKey: key, Summary: "s"}, only)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if n := emitTo("k1", []string{"b", "c", "ghost"}); n != 1 {
+		t.Errorf("只寫給 b：%d", n)
+	}
+	list, _ := g.st.Read().ListOutbox(context.Background(), "", 10)
+	if len(list) != 1 || list[0].NotifierID != "b" {
+		t.Errorf("outbox = %+v", list)
+	}
+	if n := emitTo("k2", nil); n != 0 {
+		t.Errorf("沒有指定不寫入：%d", n)
+	}
+	if n := emitTo("k3", []string{"c"}); n != 0 {
+		t.Errorf("沒有訂閱的不寫入：%d", n)
+	}
+}

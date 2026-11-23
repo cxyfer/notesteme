@@ -379,3 +379,41 @@ func TestNextWithJitter(t *testing.T) {
 		t.Errorf("沒有延遲：%v", got)
 	}
 }
+
+// 第二趟：這一輪執行的工作把另一個工作提前到現在（例如彙整寫入 outbox 後的 notify.deliver）時，同一輪就執行它；
+// 最多兩趟，一直把自己排回現在的工作不會無限循環。
+func TestSecondPassRunsJobsBroughtForward(t *testing.T) {
+	ctx := context.Background()
+	s, clk := openStore(t)
+	rec := &recorder{results: map[string]func(Job, time.Time) (Result, error){
+		"digest": func(_ Job, now time.Time) (Result, error) {
+			return Result{Next: now.Add(24 * time.Hour)}, s.Write().ScheduleJob(ctx, "test.kind", "deliver", now)
+		},
+		"loop": func(_ Job, now time.Time) (Result, error) { return Result{Next: now}, nil },
+	}}
+	sc := New(s, clk, nil, 0)
+	_ = sc.Register(Kind{Name: "test.kind", Interval: time.Hour, Run: rec.run})
+	w := s.Write()
+	if err := w.ScheduleJob(ctx, "test.kind", "digest", t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.ScheduleJob(ctx, "test.kind", "deliver", t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := sc.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(rec.ran, []string{"digest", "deliver"}) {
+		t.Errorf("同一輪要執行被提前的工作：%v", rec.ran)
+	}
+	rec.ran = nil
+	if err := w.ScheduleJob(ctx, "test.kind", "loop", t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := sc.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(rec.ran, []string{"loop", "loop"}) {
+		t.Errorf("最多兩趟：%v", rec.ran)
+	}
+}
