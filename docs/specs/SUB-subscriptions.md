@@ -102,3 +102,18 @@
   - 網址正規化之後必須能再辨識成同一個網址才接受（fuzz 找到 `http://0::0` 會被正規化成無法解析的主機）。
 - 場景修改（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：SUB-R4「Invalid filters are rejected with the field and the reason」第 4 個範例的 `title_include` 原本只有 195 個 `a`，達不到規則的「超過 200 個字元」，改成 201 個 `a`；斷言不變。
 
+- M4-S3（試跑預覽、匯入、MCP 與 CLI）的實作決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 預覽以檢查的同一段程式（`check.run` 的 dry-run）執行，探索、過濾的順序與原因和檢查相同；視同「現在」建立的訂閱：`created_at` 以現在代替、沒有基準清單、**不讀已記錄的條目**，所以既有訂閱的預覽也是整份清單依目前（或 body 覆蓋後）的設定評估一次，已建立的影音列為 `already_in_library`。預覽不寫入條目、不建立影音、不改變訂閱（`@handle` 解析出的頻道 ID 不寫回）與排程。
+  - 因 `backfill_per_check` 延後的條目列在 `would_process`（之後的檢查會建立）；補齊查不到（內部的 `details_unavailable`）列在 `would_skip`，原因照實顯示。過濾需要片長或直播狀態時，預覽一樣逐部以 yt-dlp `-J` 補齊（受 rate limit 限制），但結果不存，重複預覽會再查一次。
+  - 預覽的錯誤：額度用完回 429 `rate_limited`（`retry_after_s` 無條件進位，至少 1）；平台回 429／412 時和檢查一樣清空並暫停 bucket，預覽也回 429 `rate_limited`；其他探索失敗回 502 `upstream_failed`，訊息沿用 SUB-R12 已遮蔽的訊息（例如「訂閱來源已不存在（HTTP 404）…」）。
+  - 匯入依內容判斷格式：去掉 UTF-8 BOM 之後第一個非空白字元是 `<` 就當 OPML，否則當 CSV。OPML 只接受 UTF-8（不是 UTF-8、或宣告其他編碼都是 `invalid_format`）；任何 directive（`<!DOCTYPE`、`<!ENTITY`，不分大小寫）整份拒絕、不展開 entity；根元素必須是唯一的 `opml`；巢狀深度上限 64；分類 outline 底下的 outline 一樣收集；`xmlUrl` 空白的 outline 不算訂閱。空檔案是 `invalid_format`；沒有任何 outline 的 OPML 回 200、`created: 0`。
+  - `too_many` 的 n 是檔案中全部的訂閱列（OPML 有 `xmlUrl` 的 outline、CSV 的資料列），**含**重複與無法辨識的列；整份的錯誤（大小、格式、數量）都在建立第一個訂閱之前判定。
+  - Google Takeout 的網址以 `Channel Id` 組成 `https://www.youtube.com/channel/<id>`（檔案中的是 `http://`），`Channel Id` 空白時改用 `Channel Url`；`duplicates`、`failed` 的 `url` 是檔案中的原文（`Channel Url`）。欄位數不是 3、或沒有任何網址的列放進 `failed`（「這一列的欄位數不正確。」、「這一列沒有網址。」），不影響其他列；`line` 是檔案中的行號（表頭是第 1 行）。
+  - OPML 中 YouTube 的 feed 網址（`youtube.com/feeds/videos.xml?channel_id=`）依 SUB-R1 是 `unsupported_url`，列在 `failed`，不自動轉成頻道訂閱（要轉的話需要修改 SUB-R1／R7）。
+  - 內部網路的 `xmlUrl`（例如 `http://10.0.0.5/feed.xml`）匯入時不擋：判斷要解析 DNS，違反「匯入時不連外」，也會和 `network.allow_private` 的 allowlist 衝突；第一次檢查時由 netguard 擋下（SUB-R11、GRD-R2）。`file://`、`ftp://` 等非 `http`／`https` 依 SUB-R1 列在 `failed`。
+  - 訂閱網址的長度上限 2048 個字元（同 MCP 的 `url`）：`POST /api/subscriptions` 與 MCP 回 422（`errors[].path` 為 `url`、訊息「網址最長 2048 個字元。」），匯入時列在 `failed`。標題只能由匯入帶入（SUB-R1 的 `POST` 沒有 `title`），經 SUB-R11 的清理並截到 300 個字元。
+  - 匯入的大小限制在進入 Huma 之前檢查（Huma 的 `MaxBodyBytes` 只會回通用的 413）：先檢查 `admin`（沒有時不讀本體、回 403），本體上限是 1 MiB 加 64 KiB 的 multipart 餘裕，handler 再檢查檔案本身是否超過 1 MiB，兩者都回 413 `too_large`。回 413 之前最多丟棄 8 MiB 的剩餘本體，避免 client 還在送出時連線被重設而看不到 413。缺少 `file` 欄位回 422（`errors[].path` 為 `file`、訊息「請上傳匯入檔。」）。
+  - 部分失敗不回滾：單列的辨識錯誤與重複照規格列出；建立中遇到無法歸類的錯誤（資料庫錯誤、處理方案錯誤）時整個請求回錯誤，但已經建立的訂閱保留。
+  - MCP：`create_subscription` 的參數與 `POST /api/subscriptions` 相同（`url`、`profile`、`overrides`、`schedule`、`backfill`、`filters`、`enabled`），經程序內的 API 呼叫，所以 scope、code 與訊息相同；`list_subscriptions` 不帶參數。MCP 不提供預覽與匯入（SUB-R13 只列這兩個 tool）。
+  - CLI：`subs preview <id|url>` 的參數含 `://` 時當網址（`POST /api/subscriptions/preview`），否則是訂閱 id；`--backfill` 的格式（`none`、`all`、`recent:<N>`）錯誤是參數錯誤（結束碼 2），`N` 的範圍交給 server（422 → 結束碼 2）；`subs import` 最多讀「上限＋1」個位元組再上傳，超過上限由 server 回 413（訊息相同，結束碼 1）；`subs rm` 在終端機上詢問確認。
+  - yt-dlp 的 extractor 名稱（`youtube:tab,youtube:playlist`、`BilibiliCollectionList`）以 yt-dlp 2026.10.26 實測：`--list-extractors` 有這三個名稱；頻道的 `/videos`、播放清單、`@handle`（`--playlist-end 1` 取得 `channel_id`）與 Bilibili 合集的舊格式網址都能以 `--use-extractors … --flat-playlist -J` 列出。真實頻道一週的無人值守運作仍屬 owner 的驗收。
