@@ -54,7 +54,8 @@ func TestResolveExecutorM3Stages(t *testing.T) {
 func TestPlanChainSkipsUnimplementedM3Stages(t *testing.T) {
 	over := map[string]any{"stages": map[string]any{
 		StageChapters: map[string]any{"provider": "anthropic", "model": "m"},
-		StageFrames:   map[string]any{"executor": "rules"},
+		// frames 的 rules、api 已在 M3-S3 實作；agent 依 F6 還沒有實作。
+		StageFrames: map[string]any{"executor": "agent"},
 	}}
 	// sponsorblock 已在 M3-S1、chapters 已在 M3-S2 實作，鏈從 frames 開始看其他還沒有實作的步驟。
 	c, err := planChain(mustEffective(t, over), StageFrames, "", StageContext{Platform: "youtube"})
@@ -87,12 +88,12 @@ func TestPlanChainSkipsUnimplementedM3Stages(t *testing.T) {
 }
 
 func TestStageAvailable(t *testing.T) {
-	for _, s := range []string{StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StageChapters, StagePublish} {
+	for _, s := range []string{StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StageChapters, StageFrames, StagePublish} {
 		if !StageAvailable(s) {
 			t.Errorf("%s 應該已經實作", s)
 		}
 	}
-	for _, s := range []string{StageFrames, StageNote, "summary", "frames.select", ""} {
+	for _, s := range []string{StageNote, "summary", "frames.select", ""} {
 		if StageAvailable(s) {
 			t.Errorf("%s 不應該回報已實作", s)
 		}

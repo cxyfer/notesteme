@@ -23,6 +23,8 @@ type StageContext struct {
 	Platform string
 	// PlatformChapters 是 metadata 取得的平台章節數；2 個以上時 chapters 直接採用（CHAP-R1）。
 	PlatformChapters int
+	// AudioOnly 為 true 時影音沒有影像串流（Podcast、只有音訊的本機檔案）：frames 略過（audio_only，FRM-R1）。
+	AudioOnly bool
 }
 
 // StageResolution 是步驟在一份生效設定下的執行方式。
@@ -41,6 +43,8 @@ type StageResolution struct {
 	Wanted []string
 	// Chunks 是重跑時只重新送出的 chunk（POST /rerun 的 chunks，LLM-R8）；只用於重跑的起點步驟。
 	Chunks []int
+	// ReuseCandidates 是重跑 frames 時的 reuse_candidates（FRM-R13）；只用於重跑的起點步驟。
+	ReuseCandidates bool
 }
 
 // ResolveExecutor 依步驟與生效設定決定執行方式。純函式：不讀 DB、不讀時鐘。
@@ -142,6 +146,8 @@ func ResolveExecutor(eff Effective, stage string, sc StageContext) (StageResolut
 		switch {
 		case cfg.Executor == ExecutorOff:
 			res.Skip, res.Reason = true, SkipOff
+		case stage == StageFrames && sc.AudioOnly:
+			res.Skip, res.Reason = true, SkipAudioOnly
 		case cfg.Executor == ExecutorAPI && (cfg.Provider == "" || cfg.Model == ""):
 			res.Skip, res.Reason = true, SkipNotConfigured
 		}
@@ -220,6 +226,9 @@ func stageImplemented(stage, executor string) bool {
 	case stage == StageChapters:
 		// M3-S2：local 是平台章節（CHAP-R1），api 與 agent 走 LLM 引擎（CHAP-R2～R8）。
 		return executor == ExecutorLocal || usesLLMEngine(stage, executor)
+	case stage == StageFrames:
+		// M3-S3：規則與 vision 選圖（FRM）；agent 依 F6 在處理方案中回 422。
+		return executor == ExecutorRules || executor == ExecutorAPI
 	}
 	// 其他 M3 的步驟（chapters、frames、note）：各切片完成時在這裡登記。
 	return false
@@ -274,6 +283,14 @@ func (p *Pipeline) applyChain(ctx context.Context, r *store.Repo, itemID string,
 			continue
 		}
 		run.Executor = res.Executor
+		if res.Stage == StageFrames {
+			// frames 的候選任務（FRM F1）：選圖任務由它建立。
+			if err := insertFramesTask(ctx, r, itemID, run, priority, res.ReuseCandidates); err != nil {
+				return created, err
+			}
+			created = true
+			continue
+		}
 		chunks := res.Chunks
 		if res.Executor != ExecutorAPI {
 			chunks = nil // 指定重跑的 chunk 只用於 api（L12）

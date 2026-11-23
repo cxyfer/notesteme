@@ -15,6 +15,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/llm"
 	"github.com/cxyfer/notesteme/internal/media"
+	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 	"github.com/cxyfer/notesteme/internal/transcript"
@@ -146,6 +147,7 @@ func (p *Pipeline) planContext(ctx context.Context, r *store.Repo, it store.Item
 	}
 	sc.Platform = it.Platform
 	sc.PlatformChapters = platformChapterCount(it)
+	sc.AudioOnly = it.Platform == source.PlatformPodcast || (it.Platform == source.PlatformLocal && it.MediaKind == "audio")
 	sc.ManualCaptions, err = manualCaptions(ctx, r, it.ID)
 	return sc, err
 }

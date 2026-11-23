@@ -168,6 +168,8 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		res, err = p.runSponsorBlock(ctx, it, eff)
 	case run.Stage == StageChapters && executor == ExecutorLocal:
 		res, err = p.runPlatformChapters(ctx, it)
+	case run.Stage == StageFrames:
+		res, err = p.runFrames(ctx, t, run, it, eff)
 	case run.Stage == StagePublish:
 		res, err = p.runPublish(ctx, it, eff)
 	default:
@@ -363,7 +365,11 @@ func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.Stag
 					sr.ArtifactID = a.ID
 				}
 				// 新版本寫入後，同一組只保留最近幾版（PIPE-R7）；檔案在 commit 之後才刪。
-				old, err := r.PurgeOldArtifacts(ctx, a.ItemID, a.Kind, a.Variant, a.Lang, keepArtifactVersions)
+				keep := keepArtifactVersions
+				if a.Kind == KindFrames {
+					keep = 1 // frames 只保留現行版本（FRM-R11）
+				}
+				old, err := r.PurgeOldArtifacts(ctx, a.ItemID, a.Kind, a.Variant, a.Lang, keep)
 				if err != nil {
 					return err
 				}
@@ -498,7 +504,7 @@ func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.Stag
 	} else {
 		// 已 commit：被清除版本的記錄不在了，檔案也一併刪除。
 		for _, a := range purged {
-			p.discardArtifactFile(&store.NewArtifact{Path: a.Path})
+			p.discardArtifactFile(&store.NewArtifact{ID: a.ID, ItemID: a.ItemID, Kind: a.Kind, Path: a.Path})
 		}
 		if res.afterCommit != nil {
 			res.afterCommit()
@@ -535,6 +541,12 @@ func (p *Pipeline) discardArtifactFile(a *store.NewArtifact) {
 	}
 	if err := os.Remove(filepath.Join(p.dataDir, filepath.FromSlash(a.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
 		p.log.Warn("清除被丟棄的產出檔失敗", "path", a.Path, "error", err)
+	}
+	if a.Kind == KindFrames && a.ItemID != "" && versionPattern.MatchString(a.ID) {
+		// frames 的圖片放在版本目錄中（FRM-R11）。
+		if err := os.RemoveAll(framesDir(p.dataDir, a.ItemID, a.ID)); err != nil {
+			p.log.Warn("清除被丟棄的畫面目錄失敗", "item", a.ItemID, "version", a.ID, "error", err)
+		}
 	}
 }
 

@@ -59,7 +59,7 @@ func (p *Pipeline) resolveStagePrompts(ctx context.Context, eff Effective) (Effe
 		return eff, nil
 	}
 	for _, stage := range Stages {
-		if !IsLLMStage(stage) && stage != StageChapters {
+		if !IsLLMStage(stage) && stage != StageChapters && stage != StageFrames {
 			continue
 		}
 		res, err := ResolveExecutor(eff, stage, StageContext{})
@@ -67,7 +67,7 @@ func (p *Pipeline) resolveStagePrompts(ctx context.Context, eff Effective) (Effe
 			return nil, err
 		}
 		// skipped 與 opencc 都不會用到 prompt。
-		if res.Skip || res.Executor == ExecutorOpenCC || res.Prompt == "" {
+		if res.Skip || res.Executor == ExecutorOpenCC || res.Executor == ExecutorRules || res.Prompt == "" {
 			continue
 		}
 		entry, ok := stages[stage].(map[string]any)

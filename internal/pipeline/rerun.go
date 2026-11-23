@@ -27,7 +27,6 @@ type RerunRequest struct {
 	// 只能用在 LLM 步驟（From 是 segment、correct 或 translate），否則回 *InvalidError；編號必須是現行切分中實際存在的（translate 被沿用的目標沒有 chunk，編號會有空洞），否則 422。
 	Chunks []int
 	// ReuseCandidates 只用於 From 為 frames（FRM-R13）：沿用現行的候選畫面只重新選圖；沒有現行的候選或其他步驟時忽略。
-	// frames 尚未實作（M3-S0），從 frames 重跑一律回 501。
 	ReuseCandidates bool
 }
 
@@ -138,6 +137,9 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 		}
 		if len(req.Chunks) > 0 && chain[0].Stage == req.From {
 			chain[0].Chunks = slices.Clone(req.Chunks)
+		}
+		if req.ReuseCandidates && chain[0].Stage == StageFrames {
+			chain[0].ReuseCandidates = true
 		}
 		return chain, nil
 	}
