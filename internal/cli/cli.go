@@ -253,6 +253,8 @@ func parse(args []string) (*plan, error) {
 		return parseFrames(args[1:])
 	case "note":
 		return parseNote(args[1:])
+	case "search":
+		return parseSearch(args[1:])
 	default:
 		return nil, usagef("不認得的子命令 %q。", name)
 	}
@@ -276,6 +278,7 @@ const usageText = `用法：notesteme <子命令> [旗標]
   secrets rotate-key|reset              管理 master key 與 secrets
   frames ls <item> [--all] | get <item> <n> -o <file>  關鍵畫面（M3）
   note show <item> [--lang] [--format md|json]         筆記（預設輸出 Markdown）
+  search <query> [--lang <l>] [--limit <n>]            字幕全文搜尋（M4）
   config export [--out <file>]          輸出 DB 管理的設定（處理方案，不含 secrets）成 YAML
   config import <file>                  匯入 YAML：先驗證整份，有錯誤就整份不套用
   mcp [--token <t>] [--list-tools]      在 stdin／stdout 上執行 MCP server
