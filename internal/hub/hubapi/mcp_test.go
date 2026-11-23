@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -124,6 +125,13 @@ func TestMCPNeedsAHubToken(t *testing.T) {
 	if strings.Contains(rawMCP(e.h, "POST", initBody, map[string]string{"Authorization": "Bearer " + tok}).Body.String(), "prompts") {
 		t.Error("Hub MCP 不提供 prompts capability")
 	}
+	// 過期的 token：401。
+	_, short := e.createToken("bob", `{"name":"s","permissions":["read"],"expires_in_days":1}`)
+	if rec := rawMCP(e.h, "POST", initBody, map[string]string{"Authorization": "Bearer " + short}); rec.Code != 200 {
+		t.Fatalf("到期前 = %d %s", rec.Code, rec.Body)
+	}
+	e.clk.Advance(25 * time.Hour)
+	expect(t, "過期的 token", rawMCP(e.h, "POST", initBody, map[string]string{"Authorization": "Bearer " + short}), http.StatusUnauthorized, "unauthorized")
 	// 停用的帳號：403 account_suspended。
 	if _, err := e.store.SuspendUser(context.Background(), "", e.users["bob"], "spam"); err != nil {
 		t.Fatal(err)
@@ -188,6 +196,20 @@ func TestMCPToolsAgainstTheRealAPI(t *testing.T) {
 	}
 	_, reader := e.createToken("bob", `{"name":"r","permissions":["read"]}`)
 	_, downloader := e.createToken("bob", `{"name":"d","permissions":["read","download"]}`)
+	// withdrawn 對任何人（含上傳者本人）都是不存在（HMCP-R5、hubrepo.CanSee）。
+	withdrawn := e.seed("alice", seedOpt{content: "withdrawn-text", variant: "segmented"})
+	if err := e.store.SetVersionState(ctx, withdrawn.ID, "withdrawn"); err != nil {
+		t.Fatal(err)
+	}
+	_, aliceTok := e.createToken("alice", `{"name":"a","permissions":["read","download"]}`)
+	for who, tok := range map[string]string{"bob": downloader, "alice": aliceTok} {
+		acs := mustConnect(t, e.h, tok)
+		for tool, args := range map[string]map[string]any{"get_version": {"id": withdrawn.ID}, "get_transcript": {"version": withdrawn.ID}} {
+			if res := callTool(t, acs, tool, args); toolText(res) != "not_found: 找不到這個版本。" {
+				t.Errorf("%s 的 %s withdrawn = %s", who, tool, toolText(res))
+			}
+		}
+	}
 
 	cs := mustConnect(t, e.h, reader)
 	res := callTool(t, cs, "get_version", map[string]any{"id": pub.ID})
