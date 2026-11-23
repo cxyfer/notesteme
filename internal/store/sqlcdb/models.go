@@ -224,6 +224,17 @@ type PromptVersion struct {
 	CreatedAt     int64
 }
 
+type ScheduledJob struct {
+	Kind      string
+	Key       string
+	NextRunAt int64
+	LastRunAt *int64
+	LastOkAt  *int64
+	LastError *string
+	Failures  int64
+	CreatedAt int64
+}
+
 type Secret struct {
 	Kind       string
 	Name       string
