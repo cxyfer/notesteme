@@ -161,3 +161,4 @@ SRC-10 屬於 M4（故事地圖第 5 節），規則是 SRC-R18～R23；其餘�
 - R5：Podcast 不重新 Probe（SRC-R18）。Podcast 的 transcript 偶爾在發布後才補上，但 feed 每次抓取都是完整的檔案，量比 `yt-dlp -J` 大；訂閱的 Podcast 已經會定期抓 feed（SUB），之後可以從訂閱的檢查順便比對 `<podcast:transcript>`，屬於 SUB 與 SRC 之間的後續工作。
 - R6：自動重跑（`rerun`）不會覆蓋使用者手動修改過的字幕（SRC-R22）：重跑 `transcript` 會讓 `edited` 變體失去對應的上游，這和「不覆寫使用者的修改」的原則衝突（VAULT、COR）。這種影音只通知，由使用者決定。
 - R7：場景中「平台事後補上字幕」用 `the platform adds … captions in … to … at …`，由假 yt-dlp 依 fake clock 決定是否列出這條字幕軌（steps.md 4.17）；實作時 harness 要把 fake clock 的現在傳給假 yt-dlp（例如寫進場景目錄的狀態檔）。
+- M4-S0：`language.better_source`（`notify`、`rerun`、`off`）已加進處理方案的 schema 與 `pipeline.Language`（`omitempty`：沒有設定時不寫進快照，既有快照 sha 不變；`transcript` 的快取鍵只取用到的欄位，不含它）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。沒有設定時視為 `notify`，由 S7 讀取。

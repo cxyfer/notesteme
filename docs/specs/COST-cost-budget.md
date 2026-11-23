@@ -88,3 +88,4 @@
 - C8：驗收場景用兩個測試控制讓金額可以預測（ADR-0015）：`the LLM usage reported by …`（fakellm 回報固定的 token 數）與 `the cost estimate of every … task is …`（取代估算的結果，只影響預留的金額，不影響 COST-R5 的估算方法本身，估算方法由單元測試驗證）。
 - C10：金額以整數 micro-USD 計算（規則表上方的說明，2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。`cost_ledger.usd` 維持 00007 的 REAL 欄位，只在寫入與加總時四捨五入；之後要改成整數欄位再另開 migration。驗收場景的金額比對（`Then the response contains:`）是浮點數完全相等，不這樣做的話 `0.10 + 0.20` 會失敗。
 - C9：provider 回報的金額只認 OpenAI 相容回應的 `usage.cost`（OpenRouter 的格式）；Anthropic 與 OpenAI 官方 API 目前不回報金額。其他格式之後再加。
+- M4-S0：`budget` 仍是 SEC-R2 的「由資料庫管理」的頂層欄位，設定檔寫了會啟動失敗（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。COST 的介面以 `PUT /api/settings/budget` 設定預算（C1），M4 的 `.feature` 的設定檔也沒有 `budget`；steps.md 4.17 開頭把 `budget` 列在「設定檔的 schema 要接受」的清單中，是筆誤，以本規格為準。`GET`／`PUT /api/settings/budget` 沿用既有的 `settings-get`／`settings-put` 路由（目前回 501，`internal/api/items_test.go` 斷言這個行為），S0 不另外註冊字面路徑；其他 COST 路由（`/api/prices*`、`/api/costs*`）是 501 stub。

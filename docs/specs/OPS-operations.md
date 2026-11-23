@@ -169,3 +169,4 @@
 - O7：`job_stale` 的範圍包含 `backup.daily`（OPS-R15），所以每日備份持續失敗超過 24 小時時，會在 `backup_failed` 之後再收到一則 `job_stale`。兩則的意思不同（「失敗了」與「已經一天沒有成功」），不合併。
 - O8：每部影音一則 `stuck_task`（OPS-R14），很多影音同時卡住時靠 NOTIFY-R11 的速率上限限制。之後可以改成彙總成一則。
 - O9：ADR-0021 第 7 點的 migration 清單沒有 `alert_states`、`tool_call_stats` 與 cookie 的 `last_ok_at`，要在 ADR 補上（OPS 的 M4 切片）。
+- M4-S0：`backup.daily.*`、`alerts.*` 與 `NOTESTEME_DEPLOYMENT` 已解析與驗證（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`at` 是 `HH:MM`、`timezone` 用 `time.LoadLocation` 驗證（binary 內嵌 `time/tzdata`，容器沒有時區資料也能啟動；`Local` 不接受）、`dir` 是絕對路徑（預設 `<資料目錄>/backups`）、`keep` 為 1～365；`alerts` 的門檻是 0 以上的整數（`disk_usage_percent` 0～100、`ytdlp_failure_ratio` 0～1），上限是 S0 暫定的。`NOTESTEME_DEPLOYMENT` 只接受 `local`、`vps`（OPS-R21 的第一句）；`vps` 的其他行為（拒絕 `--insecure-no-auth`、cookie 一律 `Secure`）屬於 S12。排程工作 `backup.daily`、`alerts` 要等 S12 在 `internal/scheduler` 登記。

@@ -98,3 +98,13 @@ M4 的 migration 接在 M3 的 migration 之後（M3 規劃 `00017`；實際編�
 - 好處：所有定時工作只有一個入口，fake clock 可以完整驅動；重啟只補跑一次，不會在停機一週後一口氣打出幾百個請求。
 - 代價：探索在排程器內同步執行，一個很慢的 feed 會延後同一輪的其他工作（有 30 秒的單輪上限與每個請求的逾時）；`summary` 加在中間，要重新確認既有場景。
 - 之後要注意：`nextWake` 要納入 `scheduled_jobs`；`summary` 加入 `pipeline.Stages` 時同步移除 `plannedStages`；`Effective.Stage` 對 `summary` 不繼承其他步驟的 provider。
+
+## 修訂
+
+- 2026-11-23，M4-S0 實作（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 排程器在 `internal/scheduler`（不是 `internal/app/periodics.go`），以 `worker.Periodic` 接進 `internal/app` 的 `periodics`（一般模式與 MCP 模式都有）；註冊制，每個切片在 worker 開始之前以 `Scheduler.Register` 登記 kind，第一次 `Run` 或 `NextAt` 之後不能再登記（`ErrFrozen`）。註冊表是空的時候不查資料庫，所以 S0 的 worker 行為不變。
+  - `scheduled_jobs` 是 migration `00018`，除了第 1 點的欄位另有 `created_at`（同時到期時依 `next_run_at`、再依 rowid 執行）。
+  - Handler 的結果有 `Next`（對齊當地時間的工作自己算）、`Done`（刪除那一列）與 `Deferred`（例如 rate limit：只改下一次的時間，不算成功也不算失敗）。
+  - jitter 以毫秒為單位（資料庫的時間精度），時段序號是「預設的下一次 ÷ 間隔」的毫秒數；範圍 `[0, min(間隔 × 10%, scheduler.jitter_max))`。
+  - 退避 1 分鐘、5 分鐘、30 分鐘，之後固定 6 小時；Handler panic 視為失敗；`last_error` 保留 500 個字元。
+  - `summary` 已加進 `pipeline.Stages`，`plannedStages` 已清空（第 3 點與「影響」的提醒）；預設 `executor: off` 的快照 sha 不變，執行器要等 S6 DIG。

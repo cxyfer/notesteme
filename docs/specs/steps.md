@@ -427,7 +427,7 @@ M3-S3（2026-11-23）實作了 4.14 的 `the video of … has the scenes:`、`th
 
 M4 的句型（4.17～4.21）在 2026-11-23 規格展開時加入，目前全部註冊為 pending 的步驟樁（`godog.ErrPending`），由 M4 的實作切片換成真正的實作。跨規格的決定見 [ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md)，假服務的設計見 `features/fixtures/README.md` 的「M4 的假服務」。
 
-M4 的 `.feature` 在每個非 `@manual` 場景中、第一個會啟動 server 或送出請求的既有步驟之前，都有一個 M4 的句型（閘門），所以**在閘門句型實作之前** `@M4` 場景一律是 pending。M4 的路由不存在時回 404 而不是 501，設定檔含 M4 的鍵時 server 會啟動失敗，所以 M4 的第一個實作切片（M4-S0）比照 M2 S0、M3-S0：先讓處理方案與設定檔的 schema 接受全部 M4 欄位（`stages.summary`、`stages.<stage>.batch`、`language.better_source`、`scheduler`、`notify`、`backup.daily`、`alerts`、`budget`、`auth.proxy`、`auth.oidc`、`server.public_url` 等），M4 的路由回 501 stub，之後各切片以 `@M4` 的逐場景結果（junit）和切片開始前比對。閘門句型有共用（`the notification endpoints are reachable` 是 NOTIFY、DIG 彙整與 OPS 告警的閘門；COST 的 `the cost estimate of every … task is …` 是 LIB-08、09 的閘門；BATCH 依賴 COST 的句型），實作其中一個之後，其他領域的場景會往下跑而失敗，要在同一個切片確認或一起合併。
+M4 的 `.feature` 在每個非 `@manual` 場景中、第一個會啟動 server 或送出請求的既有步驟之前，都有一個 M4 的句型（閘門），所以**在閘門句型實作之前** `@M4` 場景一律是 pending。M4 的路由不存在時回 404 而不是 501，設定檔含 M4 的鍵時 server 會啟動失敗，所以 M4 的第一個實作切片（M4-S0）比照 M2 S0、M3-S0：先讓處理方案與設定檔的 schema 接受全部 M4 欄位（`stages.summary`、`stages.<stage>.batch`、`language.better_source`、`scheduler`、`notify`、`backup.daily`、`alerts`、`budget`、`auth.proxy`、`auth.oidc`、`server.public_url` 等），M4 的路由回 501 stub，之後各切片以 `@M4` 的逐場景結果（junit）和切片開始前比對。M4-S0 已完成這一步（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）；清單中的 `budget` 是筆誤：`budget` 仍是 SEC-R2 的「由資料庫管理」的欄位（以 `PUT /api/settings/budget` 設定，見 COST 規格的待決問題），設定檔寫了仍會啟動失敗。閘門句型有共用（`the notification endpoints are reachable` 是 NOTIFY、DIG 彙整與 OPS 告警的閘門；COST 的 `the cost estimate of every … task is …` 是 LIB-08、09 的閘門；BATCH 依賴 COST 的句型），實作其中一個之後，其他領域的場景會往下跑而失敗，要在同一個切片確認或一起合併。
 
 M4 的新句型都用 `r.Step` 註冊（不限關鍵字），因為部分 `Given` 句型出現在 `When` 之後的 `And`。
 
@@ -497,17 +497,17 @@ M4 的新句型都用 `r.Step` 註冊（不限關鍵字），因為部分 `Given
 
 既有句型在 M4 的語意補充（不新增句型；由實作切片在對應的步驟實作）：
 
-- `Given the item … has been processed up to …`：目標也可以是 `summary`。產品的 `pipeline.ValidStage("summary")` 為 false 時 pending（同 M3 的四個步驟）；認得之後依 (2c) 判斷（`done` 或 `skipped` 都算處理到）。處理到 `summary` 時不套用 `pause_after`（`until` 在 `summary` 結束，DIG-R6 的暫停只發生在接著要執行下一個步驟時）。
+- `Given the item … has been processed up to …`：目標也可以是 `summary`。`summary` 的執行器還沒有實作（`pipeline.StageAvailable("summary")` 為 false）時 pending（同 M3 的四個步驟；M4-S0 已把 `summary` 加進 `pipeline.Stages`，所以不能再用 `ValidStage` 判斷（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認））；實作之後依 (2c) 判斷（`done` 或 `skipped` 都算處理到）。處理到 `summary` 時不套用 `pause_after`（`until` 在 `summary` 結束，DIG-R6 的暫停只發生在接著要執行下一個步驟時）。
 - `Then the {string} artifact of {string} has the provenance:`、`the item … has no … artifact`：名稱也可以是 `summary`。
 - 4.6 的 LLM 步驟：步驟名稱也可以是 `summary`（tool 或 schema 名稱 `notesteme_summary`）；`summary` 的請求沒有 `<transcript_data>` 的 `chunk`（DIG-R2 只送一個請求），`for chunk` 的句型不適用。
-- `Then the stage {string} of {string} …`：步驟名稱也可以是 `summary`；`summary` 還不是 `pipeline.Stages` 的成員時 pending。
+- `Then the stage {string} of {string} …`：步驟名稱也可以是 `summary`（M4-S0 起是 `pipeline.Stages` 的成員，預設 `skipped`、原因 `off`）。
 - `Then the command output is JSON containing:`：`docker compose … config` 的變數代入使用 `the compose .env file contains:` 的值（加在 `features/steps/cli.go` 的 `composeEnv` 之上）。
 
 #### DIG
 
 | 步驟 | 意思 |
 |---|---|
-| `Given the summary profile is:` | 累積一個處理方案 `summary-test`（doc string 是 YAML，寫入方式同 `the profile … is:`），並設為預設處理方案（同 `the default profile is …`）。YAML 必須含 `stages.summary`，否則步驟失敗。產品的 `pipeline.ValidStage("summary")` 為 false 時 pending（DIG 的閘門） |
+| `Given the summary profile is:` | 累積一個處理方案 `summary-test`（doc string 是 YAML，寫入方式同 `the profile … is:`），並設為預設處理方案（同 `the default profile is …`）。YAML 必須含 `stages.summary`，否則步驟失敗。`pipeline.StageAvailable("summary")` 為 false 時 pending（DIG 的閘門；M4-S0 起 `ValidStage` 已是 true，改以 `StageAvailable` 判斷（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）） |
 | `Given the summary of {string} is:` | 直接寫入現行的 `summary` 產出（seeding，同 `the note of … is:`）：doc string 是 JSON `{summary, key_points, title_translation, language}`（`language` 省略時是 `zh-Hant`），`summary` 步驟為 `done`，結束時間是 fake clock 的現在，來源紀錄的 `checks.passed` 為 `true`。影音不存在時先新增並做到 metadata。用於彙整這類只需要「已經有摘要」的場景 |
 | `Given the digest {string} is:` | 累積一個彙整設定：doc string 是 `POST /api/digests` 的 JSON body（不含 `id`，`id` 是參數），必須回 201 |
 

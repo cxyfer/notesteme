@@ -71,3 +71,4 @@
 - N6：outbox 寫入與事件在同一個交易（ADR-0021 第 5 點），所以 notifier 的設定在事件發生時決定；之後才勾選的事件不會補送。
 - N8：`notifiers` 的欄位比 plan 第 21 節多了 `config_public_json`、`created_at`、`updated_at`，`id` 改成 owner 取的 slug（和處理方案以名稱識別相同，路由與彙整設定才能直接引用）；ADR-0021 第 7 點要同步。
 - N7：`item.done` 的「一次執行」以 `POST /api/items`、`rerun`、`continue` 的批次為單位；重跑一次就通知一次（dedupe 鍵含執行 id）。只想知道失敗的 owner 可以不勾 `item.done`。
+- M4-S0：設定檔的 `notify.*` 已解析與驗證（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`allow_hosts` 是小寫的主機名稱（不含 scheme、port、萬用字元）；`dedupe_window` 接受 `24h`、`30d` 的寫法，範圍 `1m`～`30d`；`rate_limit.count` 為 1～10000、`rate_limit.per` 為 `1s`～`24h`（規格沒有寫上限，S0 只擋明顯不合理的值）。`server.public_url` 必須是 http 或 https、不含帳號密碼、query 與 fragment，結尾的 `/` 會去掉。通知的路由是 501 stub（scope `admin`）。

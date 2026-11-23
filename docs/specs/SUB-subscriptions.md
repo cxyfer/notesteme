@@ -85,3 +85,4 @@
 - S8：修改 `filters` 不重新評估已略過的條目（SUB-R4）。想要「放寬過濾後補抓」時，改 `backfill`（SUB-R3 的 `PATCH` 會重新評估回補範圍的條目，但不會重新評估被過濾略過的條目）。之後有需要再加「重新評估全部」的動作。
 - S9：UI 第 5 節的線框在「只抓之後的新內容」時仍顯示「會處理 8 部」。依 SUB-R6，預覽在 `none` 模式下會把列表中的舊內容列為 `before_subscription`；線框要在 UI 切片時改成「之後的新內容才會處理；目前列表中的 12 部都不會處理」之類的說明，並讓使用者切換回補範圍時即時更新。
 - S10：jitter 的確定性（同一個訂閱、同一個時段一定得到同一個延遲）與 30 秒的單輪上限由 `internal/app` 的單元測試把關；驗收場景只驗證延遲落在範圍內，以及 `scheduler.jitter_max: 0s` 時的精確時間。
+- M4-S0：`subscriptions` 原本列在 SEC-R2 的「由資料庫管理」的頂層欄位，現在是設定檔區段（`backfill_max`、`backfill_per_check`、`rate_limits`；訂閱本身仍由 API 管理）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。`backfill_max`、`backfill_per_check` 必須是正整數（S0 不檢查兩者的大小關係）；`rate_limits.<平台>` 的格式 `<n>/m`、n 為 1～600（SUB-R10）。`scheduler.jitter_max` 用 Go 的期間寫法，可以是 `0s`。排程器的接點在 `internal/scheduler`（不是 S10 寫的 `internal/app`）：jitter 的確定性與 30 秒的單輪上限由 `internal/scheduler` 的單元測試把關。

@@ -63,3 +63,4 @@
 - H3：等 batch 的影音沒有「改用一般 API」的動作（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。要立刻處理時，使用者可以從那個步驟重跑（重跑是 `manual` 優先序，走一般 API，原本的 batch 任務依 BATCH-R9 移除）。
 - H4：送出時只收集同一輪可以領取的任務，不等其他影音（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。等湊滿會讓第一部影音多等，也讓 fake clock 的場景更難預測；batch 的折扣與 batch 大小無關。
 - H5：驗收場景用 `the batch API of … completes after …` 在 fake clock 上指定完成時間。排程補跑只執行一次（ADR-0021 第 1 點），所以 `When the clock advances by "15m"` 只會輪詢一次；場景的時間都依這點設計（完成時間 10 分鐘、逾時用 25 小時）。
+- M4-S0：`stages.<stage>.batch` 在 `executor` 之後、`provider`／`model` 的完整性檢查之前檢查，所以 BATCH-R1 的「batch 只能是 auto 或 off。」是 `errors[0]`（場景的陣列子集比對依索引）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。`sponsorblock`、`frames` 與 pipeline 的其他步驟（例如 `transcript`）寫了 `batch` 時，在 `stages.<stage>.batch` 回「這個步驟不支援 batch。」；`transcript` 這類不能設定的步驟只有 `batch` 一個欄位時，只回這一個錯誤（不再另外回「這個步驟沒有可設定的欄位。」）。`executor: batch` 原本的訊息「batch 屬於 M4，尚未支援。」改成「batch 不是 executor；請改用 stages.<步驟>.batch: auto。」（PRF 的 S0 決定中提到的 422 仍然成立）。

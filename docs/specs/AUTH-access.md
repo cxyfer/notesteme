@@ -106,3 +106,4 @@
 - A6：`/mcp` 不接受 proxy 身分（AUTH-R15）。MCP client 不是瀏覽器，不會經過 proxy 的登入；接受的話，任何能經過 proxy 的瀏覽器分頁都能驅動 MCP，等於繞過 AUTH-R11 的 Origin 檢查。
 - A7：token 輪替保留原本的 `expires_at`（AUTH-R21），不重新起算。重新起算等於用輪替延長期限，違反「到期就失效」的預期；需要更長的期限時建立新的 token。
 - A8：AUTH-R10 的「M2 起也可以在設定頁建立」在 M2 沒有 UI（UI 切片另外排程）；AUTH-R22 是 token 管理 UI 的完整規格，API 沿用 AUTH-R7～R10 的 `GET/POST/DELETE /api/tokens`。
+- M4-S0：`auth.proxy.*`、`auth.oidc.*` 與 `NOTESTEME_OIDC_CLIENT_SECRET` 已解析與驗證，AUTH-R12、R16 的啟動失敗訊息照規則（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）；功能本身沒有啟用（設定了也只是被接受）。另外補了規則沒有寫的檢查：`allowed_users`、`allowed_subjects` 不能有空字串，只寫了 `auth.oidc` 的其他鍵而沒有 `issuer` 時回「auth.oidc 缺少 issuer。」，`redirect_url` 必須是 http 或 https 的網址。`GET /api/auth/oidc/start`、`callback` 不註冊 stub：AUTH-R16 規定沒有啟用時回 404，S0 不啟用 OIDC；但 AUTH-R1 的免驗證例外還沒加，沒有身分的請求在 S0 先回 401。`GET /api/auth/sessions`、`DELETE /api/auth/sessions/:id`、`POST /api/tokens/:id/rotate` 是 501 stub（`admin`）。

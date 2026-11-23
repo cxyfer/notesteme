@@ -140,6 +140,7 @@
 - L-M6：`export_bundle` 的回應、大小上限與 scope 以 BND 規格為準（BND-R1、BND 規格待決問題 N1）；場景只驗證 `dry_run`。
 - L-M7：`internal/api/items_list_test.go` 目前斷言 `?read_state=unread` 回 501；實作 LIB-R19 時要同時改這個單元測試（不是 `.feature`）。
 - L-M8：總覽的 `today` 用請求的 `tz`，預設是 `budget.timezone`（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。UI 從瀏覽器取得時區後帶上 `tz`；Client 沒有其他「使用者時區」的設定。
+- L-M9：`POST /api/items/batch` 的 501 stub 先要求 `ingest`（多數動作需要的 scope），因為 stub 不讀 body、判斷不了動作（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。S13 實作時改成在讀取影音之前依動作判斷（LIB-R16：`delete` 要 `admin`、`export_bundle` 同 BND 的匯出）。`GET /api/overview`（`read`）也是 501 stub。`items_list_test.go` 的 `read_state` 501（L-M7）維持不變。
 - UI-2 的影音詳情與佇列（2026-11-23，依 /goal 採 advisor 建議，**待 owner 追認**；細節見 [ui/README 10.7](../ui/README.md#107-ui-2-的決定)）：
   - LIB-R12 的「差異」：比較 `corrected` 與校正前實際存在的最近變體（segmented → normalized → source），兩邊依時間重疊分組後逐字比對（code point 的 LCS）。`localize` 與 `convert` 的區分 API 沒有提供，「譯文」「對照」只在 translate 完成時出現。
   - LIB-R6：YouTube 不載入 IFrame API 的 script（CSP `script-src 'self'`），改用嵌入網址的 `enablejsapi` 加 postMessage；播放器 4 秒沒有回應時改成更新 `start` 參數重新載入。Bilibili 沒有公開的控制介面，用 `t` 參數重新載入並附「在 Bilibili 開啟這個時間」。postMessage 協定沒有正式文件，LIB-03（`@manual`）驗收時要在真實瀏覽器確認。
