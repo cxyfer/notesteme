@@ -612,18 +612,18 @@ Feature: Sharing to the Hub and reusing subtitles from it
 
   @HUB-05 @HSHR-R13
   Scenario: Local files are never looked up
-    Given a local file "lecture.mp4" in the inbox
-    And the source "groq" returns "groq-en.json" for "local:lecture.mp4"
+    Given a local file "meetup.mp4" in the inbox
+    And the source "groq" returns "groq-en.json" for "local:meetup.mp4"
     And the owner sends "PUT /api/settings/hub" with:
       """
       { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v1" } }
       """
-    When the owner ingests "local:lecture.mp4" with the overrides:
+    When the owner ingests "local:meetup.mp4" with the overrides:
       """
       until: transcript
       """
     And the worker runs until idle
-    Then the transcript of "local:lecture.mp4" came from "groq"
+    Then the transcript of "local:meetup.mp4" came from "groq"
     And the Hub was asked for a lookup 0 times
 
   @HUB-05 @HSHR-R14
