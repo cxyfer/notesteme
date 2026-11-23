@@ -185,7 +185,7 @@ func localName(data []byte, dataOff int64, wantLen int) (string, bool) {
 		}
 		n := int64(binary.LittleEndian.Uint16(data[p+26:]))
 		m := int64(binary.LittleEndian.Uint16(data[p+28:]))
-		if p+30+n+m != dataOff {
+		if p+30+n+m != dataOff || p+30+n > int64(len(data)) {
 			continue
 		}
 		return string(data[p+30 : p+30+n]), true
