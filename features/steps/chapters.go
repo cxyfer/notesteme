@@ -30,12 +30,15 @@ func registerChapters(r *Registry, s *Scenario) {
 // spbGate 讓 SponsorBlock 的句型只在 SPB 的場景（有 @SPB- 開頭的 tag）執行；其他領域的場景是 pending，
 // 等它們的切片實作（steps.md 4.13 開頭）。@SPB-R7 另外需要 note 步驟（NOTE 的切片），在那之前也是 pending。
 func (s *Scenario) spbGate() error {
-	// M3-S3：FRM-R6 的場景也用 SponsorBlock 登記片段。
 	// M3-S2：CHAP 的場景在 chapters 步驟實作之後也放行（CHAP 的 Background 用 SponsorBlock 的片段）。
 	if pipeline.StageAvailable(pipeline.StageChapters) && slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@CHAP-") }) {
 		return nil
 	}
-	if !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@SPB-") || strings.HasPrefix(t, "@FRM-") }) {
+	// M3-S3：FRM 的場景也放行（FRM-R6 用 SponsorBlock 登記片段）。
+	if slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@FRM-") }) {
+		return nil
+	}
+	if !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@SPB-") }) {
 		return fmt.Errorf("SponsorBlock 的句型只對 SPB 的場景實作（其他 M3 領域還沒有實作）：%w", godog.ErrPending)
 	}
 	if slices.Contains(s.tags, "@SPB-R7") && !pipeline.StageAvailable(pipeline.StageNote) {
