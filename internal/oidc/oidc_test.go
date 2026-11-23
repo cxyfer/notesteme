@@ -341,7 +341,14 @@ func TestVerify(t *testing.T) {
 		{"exp 59s ago", sign(t, rs, with(func(c map[string]any) { c["exp"] = now.Add(-59 * time.Second).Unix() }), rsaKey), nil},
 		{"iat 59s ahead", sign(t, rs, with(func(c map[string]any) { c["iat"] = now.Add(59 * time.Second).Unix() }), rsaKey), nil},
 
-		{"bad signature", func() string { s := sign(t, rs, goodClaims(iss, now), rsaKey); return s[:len(s)-2] + "AA" }(), ErrSignature},
+		// 翻轉簽章的一個 bit（直接換掉結尾字元的話，約 1/256 的機率與原本相同）
+		{"bad signature", func() string {
+			s := sign(t, rs, goodClaims(iss, now), rsaKey)
+			i := strings.LastIndexByte(s, '.')
+			sig, _ := base64.RawURLEncoding.DecodeString(s[i+1:])
+			sig[0] ^= 0x01
+			return s[:i+1] + b64(sig)
+		}(), ErrSignature},
 		{"other key same kid", sign(t, rs, goodClaims(iss, now), rsaOther), ErrSignature},
 		{"unknown kid", sign(t, map[string]any{"alg": "RS256", "kid": "nope"}, goodClaims(iss, now), rsaOther), ErrUnknownKey},
 		{"missing kid", sign(t, map[string]any{"alg": "RS256"}, goodClaims(iss, now), rsaKey), ErrUnknownKey},
