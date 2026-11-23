@@ -16,7 +16,7 @@ import (
 // ProviderConfig 是一個 LLM provider 的設定（設定檔 llm.providers.<id>，LLM 規格的介面）。
 type ProviderConfig struct {
 	ID      string
-	Type    string // TypeAnthropic 或 TypeOpenAI
+	Type    string // TypeAnthropic、TypeOpenAI 或 TypeGemini
 	BaseURL string
 	Limits  Limits
 }
@@ -24,11 +24,12 @@ type ProviderConfig struct {
 // ProviderIDPattern 是 provider id 允許的字元：id 會變成環境變數名稱的一部分。
 var ProviderIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
-// Builtin 回傳內建的 provider：anthropic、openai（L6）。
+// Builtin 回傳內建的 provider：anthropic、openai（L6），以及 M3 的 gemini（GEM-R1，只用於 stages.note.engine: gemini）。
 func Builtin() map[string]ProviderConfig {
 	return map[string]ProviderConfig{
 		"anthropic": {ID: "anthropic", Type: TypeAnthropic, BaseURL: DefaultAnthropicBaseURL},
 		"openai":    {ID: "openai", Type: TypeOpenAI, BaseURL: DefaultOpenAIBaseURL},
+		"gemini":    {ID: "gemini", Type: TypeGemini, BaseURL: DefaultGeminiBaseURL},
 	}
 }
 
@@ -57,6 +58,8 @@ type Registry struct {
 	// shared 是第一次 Client 時由 HTTP 建立的 LLM 用 client（NewHTTP）：所有 provider、所有 chunk 共用一個連線池。
 	httpOnce sync.Once
 	shared   *http.Client
+	// sharedGemini 同 shared，但等待回應標頭的逾時是 GeminiRequestTimeout（GEM-R4）。
+	sharedGemini *http.Client
 	// clients 依 provider 快取 HTTPClient；API key 改變時換新的。
 	mu      sync.Mutex
 	clients map[string]*HTTPClient
@@ -124,13 +127,6 @@ func (r *Registry) Client(ctx context.Context, id string) (Client, error) {
 			Message: fmt.Sprintf("找不到 LLM provider「%s」。", id),
 		}
 	}
-	if cfg.Type == TypeGemini {
-		// Gemini 的 wire 與 anthropic、openai 不同（GEM-R4）；client 由 GEM 的切片實作，在那之前不要誤用 openai 的格式。
-		return nil, &errclass.Error{
-			Class: errclass.ClassPermanent, Source: "llm:" + id, Detail: "gemini client 尚未實作",
-			Message: "type 為 gemini 的 provider 還沒有實作，只能用於 stages.note.engine: gemini（M3 的 GEM 切片）。",
-		}
-	}
 	key := strings.TrimSpace(r.Env[KeyEnvVar(id)])
 	if key == "" && r.StoredKey != nil {
 		k, ok, err := r.StoredKey(ctx, id)
@@ -156,7 +152,10 @@ func (r *Registry) Client(ctx context.Context, id string) (Client, error) {
 
 // httpClient 回傳 provider 的 HTTPClient：設定與 key 都沒變時重用，連線池一律共用 shared。
 func (r *Registry) httpClient(cfg ProviderConfig, key string) *HTTPClient {
-	r.httpOnce.Do(func() { r.shared = NewHTTP(r.HTTP) })
+	r.httpOnce.Do(func() {
+		r.shared = NewHTTP(r.HTTP)
+		r.sharedGemini = newHTTPWithTimeout(r.HTTP, GeminiRequestTimeout)
+	})
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if c, ok := r.clients[cfg.ID]; ok && c.APIKey == key {
@@ -165,7 +164,11 @@ func (r *Registry) httpClient(cfg ProviderConfig, key string) *HTTPClient {
 	if r.clients == nil {
 		r.clients = map[string]*HTTPClient{}
 	}
-	c := &HTTPClient{ID: cfg.ID, Type: cfg.Type, BaseURL: cfg.BaseURL, APIKey: key, HTTP: r.shared, Now: r.Clock.Now}
+	hc := r.shared
+	if cfg.Type == TypeGemini {
+		hc = r.sharedGemini
+	}
+	c := &HTTPClient{ID: cfg.ID, Type: cfg.Type, BaseURL: cfg.BaseURL, APIKey: key, HTTP: hc, Now: r.Clock.Now}
 	r.clients[cfg.ID] = c
 	return c
 }

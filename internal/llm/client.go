@@ -22,7 +22,7 @@ import (
 const (
 	TypeAnthropic = "anthropic"
 	TypeOpenAI    = "openai" // OpenAI 與相容的 provider（可自訂 base_url）
-	// TypeGemini 是 Gemini 的 generateContent（GEM-R4）；M3-S0 只登記設定，client 由 GEM 的切片實作。
+	// TypeGemini 是 Gemini 的 generateContent（GEM-R4）；只用於 stages.note.engine: gemini（請求要有 FileURI）。
 	TypeGemini = "gemini"
 )
 
@@ -66,6 +66,8 @@ type Request struct {
 	Retry     string
 	// Images 是附在資料區塊之後的圖片（FRM-R7 的拼圖）；anthropic 送 image block，openai 送 image_url 的 data URL（FRM F4）。
 	Images []Image
+	// FileURI 是 Gemini 直接讀取的影片網址（GEM-R4 的 file_data）；只有 type 為 gemini 的 provider 使用，其他 provider 忽略。
+	FileURI string
 }
 
 // Image 是送給 vision 模型的一張圖片。
@@ -123,6 +125,12 @@ type HTTPClient struct {
 func (c *HTTPClient) Complete(ctx context.Context, req Request) (Response, error) {
 	if req.Spec == nil {
 		return Response{}, errors.New("llm: Request.Spec 不可為 nil")
+	}
+	if c.Type == TypeGemini {
+		if c.HTTP == nil {
+			return Response{}, c.fail(errclass.ClassPermanent, "沒有 HTTP client", nil)
+		}
+		return c.completeGemini(ctx, req)
 	}
 	url, body, err := c.encode(req)
 	if err != nil {
@@ -182,6 +190,11 @@ func (c *HTTPClient) Complete(ctx context.Context, req Request) (Response, error
 // 閒置連線 idleConnTimeout 後關閉；netguard 的連線防護原樣保留。Transport 只複製這一次，所有請求共用連線池。
 // base 是 nil 時回傳 nil。
 func NewHTTP(base *http.Client) *http.Client {
+	return newHTTPWithTimeout(base, RequestTimeout)
+}
+
+// newHTTPWithTimeout 同 NewHTTP，等待回應標頭的逾時是 header（Gemini 讀影片要比較久，GEM-R4）。
+func newHTTPWithTimeout(base *http.Client, header time.Duration) *http.Client {
 	if base == nil {
 		return nil
 	}
@@ -189,13 +202,13 @@ func NewHTTP(base *http.Client) *http.Client {
 	switch tr := hc.Transport.(type) {
 	case *http.Transport:
 		tr = tr.Clone()
-		tr.ResponseHeaderTimeout = RequestTimeout
+		tr.ResponseHeaderTimeout = header
 		tr.IdleConnTimeout = idleConnTimeout
 		hc.Transport = tr
 	case interface {
 		WithTimeouts(header, idle time.Duration) http.RoundTripper
 	}:
-		hc.Transport = tr.WithTimeouts(RequestTimeout, idleConnTimeout)
+		hc.Transport = tr.WithTimeouts(header, idleConnTimeout)
 	}
 	return &hc
 }

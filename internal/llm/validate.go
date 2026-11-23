@@ -55,6 +55,9 @@ type Spec struct {
 	MixedRule string
 	// Check 在輸出符合 schema 之後，對照 chunk 的輸入做步驟自己的驗證（例如 correct 的句數）；nil 代表沒有。
 	Check func(in ChunkInput, out json.RawMessage) *ValidationError
+	// GeminiSchema 是送給 Gemini 的 responseSchema（OpenAPI 的子集：沒有 additionalProperties，型別用大寫，GEM-R4）；
+	// 只有可以由 type 為 gemini 的 provider 執行的步驟才有，驗證仍用 Schema。
+	GeminiSchema map[string]any
 }
 
 // Ready 檢查 Spec 可以使用：有步驟名稱，schema 符合 OpenAI strict 模式（ValidateStrictSchema）。
