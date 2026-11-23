@@ -61,7 +61,7 @@
 
 ### M4（AUTH-R12～R22）
 
-- AUTH-R1 的免驗證例外在 M4 由 AUTH-R16 擴充（OIDC 啟用時的 `start` 與 `callback`）；ENTRY-R6 讓 `POST /api/auth/login` 多接受 `next`。
+- AUTH-R1 的免驗證例外在 M4 由 AUTH-R16 擴充（OIDC 啟用時的 `start` 與 `callback`）；ENTRY-R6 讓 `POST /api/auth/login` 多接受 `next`。ENTRY 的頁面路由不在 `/api` 底下：`/login`、`/manifest.webmanifest`、`/sw.js` 不需要登入，`/add`、`/share` 只認 session cookie（沒有時 303 到 `/login?next=`），見 ENTRY 規格。`next` 的檢查是 `auth.SafeNext`（ENTRY 待決問題 E8），AUTH-R17 的 OIDC 與反向代理驗證登入後也要用它。
 - API：`GET /api/auth/oidc/start`、`GET /api/auth/oidc/callback`（OIDC 啟用時免驗證）；`GET /api/auth/sessions`、`DELETE /api/auth/sessions/:id`（`admin`）；`POST /api/tokens/:id/rotate`（`admin`）。
 - CLI：`notesteme tokens rotate <name> [--json]`。
 - 環境變數：`NOTESTEME_OIDC_CLIENT_SECRET`。

@@ -503,6 +503,8 @@ M4 的新句型都用 `r.Step` 註冊（不限關鍵字），因為部分 `Given
 | `Then the browser is sent to {string}` | 最近一次回應是 3xx，`Location` 標頭與指定的值完全相同（相對路徑，不展開成絕對網址；`Location` 是絕對網址時失敗，因為 ENTRY-R2、R4、R5 規定是相對路徑） |
 | `When someone signs in with the password {string} to continue to {string}` | `POST /api/auth/login {password, next}`，不帶 session（同 `someone signs in with the password {string}`，但 body 多了 `next`，照字面送出）；回應成為「最近一次回應」 |
 
+- 實作狀態（M4 ENTRY（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認））：上表四個句型都已實作，在 `features/steps/entry.go`。只有 ENTRY 的 `.feature` 用到它們，所以沒有閘門。`signed in as the owner` 以 `Given the owner is signed in` 設定的旗標判斷前提（`ownerSignInDeclared`），之後照 `ensureOwner` 登入並帶 cookie。
+
 ### 4.18 摘要、通知與無人值守（`steps/notify.go`，M4）
 
 共通語意：
