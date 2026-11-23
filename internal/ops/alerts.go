@@ -199,8 +199,9 @@ func (a *Alerter) stuckTasks(ctx context.Context, r *store.Repo, now time.Time) 
 	return c, nil
 }
 
-// StageSince 推算步驟最後一次改變狀態的時間：running 是最後一次領取（started_at）；排隊中是最新的任務建立的時間，
-// 或最晚的重試時間（退避中的任務在那之前本來就不會動）。stage_runs 沒有「狀態改變的時間」欄位，見 OPS 待決問題。
+// StageSince 推算步驟最後一次改變狀態的時間：running 是最後一次領取（started_at）；排隊中（pending、awaiting_agent）
+// 取最新的任務建立的時間、最晚的重試時間（退避中的任務在那之前本來就不會動）與最後一次領取（Agent 的租約到期、
+// 放回佇列時 started_at 保留）中最晚的一個。stage_runs 沒有「狀態改變的時間」欄位，見 OPS 待決問題 O11。
 func StageSince(run store.ActiveStageRun) time.Time {
 	if run.Status == store.StatusRunning {
 		if run.StartedAt != nil {
@@ -209,8 +210,10 @@ func StageSince(run store.ActiveStageRun) time.Time {
 		return run.CreatedAt
 	}
 	since := run.TaskCreatedAt
-	if run.TaskNotBefore != nil && run.TaskNotBefore.After(since) {
-		since = *run.TaskNotBefore
+	for _, t := range []*time.Time{run.TaskNotBefore, run.StartedAt} {
+		if t != nil && t.After(since) {
+			since = *t
+		}
 	}
 	return since
 }

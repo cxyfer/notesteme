@@ -252,6 +252,8 @@ func TestStageSince(t *testing.T) {
 		{store.ActiveStageRun{Status: store.StatusPending, TaskCreatedAt: started}, started},
 		{store.ActiveStageRun{Status: store.StatusAwaitingAgent, TaskCreatedAt: started, TaskNotBefore: &later}, later},
 		{store.ActiveStageRun{Status: store.StatusPending, TaskCreatedAt: later, TaskNotBefore: &started}, later},
+		// Agent 的租約到期、放回佇列：從最後一次領取算起。
+		{store.ActiveStageRun{Status: store.StatusAwaitingAgent, TaskCreatedAt: created, StartedAt: &later}, later},
 	}
 	for i, c := range cases {
 		if got := StageSince(c.run); !got.Equal(c.want) {
