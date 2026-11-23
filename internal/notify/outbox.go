@@ -43,12 +43,16 @@ type Item struct {
 	Channel string `json:"channel"`
 }
 
-// Alert 是 alert 事件的內容（OPS-R13～R18 決定種類與摘要）。
+// Alert 是 alert 事件的內容 {kind, key, message, since, resolved}（OPS-R13～R18 決定種類、對象與訊息）。
 type Alert struct {
-	Kind     string `json:"kind"`
-	Target   string `json:"target,omitempty"`
-	Summary  string `json:"summary"`
-	Resolved bool   `json:"resolved"`
+	Kind    string `json:"kind"`
+	Key     string `json:"key"`
+	Message string `json:"message"`
+	// Since 是條件開始成立的時間。
+	Since    time.Time `json:"since"`
+	Resolved bool      `json:"resolved"`
+	// Summary 是文字管道標題的摘要（「Notesteme 告警：<摘要>」、「Notesteme 已恢復：<摘要>」）；空白時用 Message。
+	Summary string `json:"summary,omitempty"`
 }
 
 // Event 是一個要通知的事件。DedupeKey 依 NOTIFY-R10（用 DedupeKey 系列函式產生）。

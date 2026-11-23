@@ -94,8 +94,12 @@ func Title(ev Event) string {
 		return "有更好的字幕來源：" + itemTitle(ev.Item)
 	case EventAlert:
 		summary := ev.Summary
-		if ev.Alert != nil && ev.Alert.Summary != "" {
-			summary = ev.Alert.Summary
+		if ev.Alert != nil {
+			if ev.Alert.Summary != "" {
+				summary = ev.Alert.Summary
+			} else if ev.Alert.Message != "" {
+				summary = ev.Alert.Message
+			}
 		}
 		if ev.Alert != nil && ev.Alert.Resolved {
 			return "Notesteme 已恢復：" + CleanTitle(summary)
@@ -268,7 +272,7 @@ func render(kind string, cfg Config, ev Event, id string, created time.Time, pub
 	// webhook
 	wb := webhookBody{
 		ID: id, Event: ev.Name, CreatedAt: created.UTC(), Stage: ev.Stage, ErrorClass: ev.ErrorClass,
-		Message: cleanText(ev.Message), Summary: cleanText(ev.Summary), Digest: ev.Digest, Items: ev.Items, Alert: ev.Alert,
+		Message: cleanText(ev.Message), Summary: cleanText(ev.Summary), Digest: ev.Digest, Items: ev.Items, Alert: cleanAlert(ev.Alert),
 		Budget: ev.Budget,
 	}
 	if ev.Name == "test" {
@@ -313,4 +317,14 @@ func atoiOr(s string, def int) int {
 		return def
 	}
 	return n
+}
+
+// cleanAlert 回傳清理過文字欄位的 alert 複本（同 message、summary 的處理）；nil 維持 nil。
+func cleanAlert(a *Alert) *Alert {
+	if a == nil {
+		return nil
+	}
+	c := *a
+	c.Kind, c.Key, c.Message, c.Summary = cleanText(c.Kind), cleanText(c.Key), cleanText(c.Message), cleanText(c.Summary)
+	return &c
 }

@@ -166,3 +166,33 @@ func TestRenderBudgetWarning(t *testing.T) {
 		t.Errorf("標題 = %q", title)
 	}
 }
+
+func TestRenderAlertWebhookAndTitle(t *testing.T) {
+	since := time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)
+	ev := Event{Name: EventAlert, Message: "/data 的磁碟用量是 93%，超過 90%。", Alert: &Alert{
+		Kind: "disk_usage", Key: "/data", Message: "/data 的磁碟用量是 93%，\x1b超過 90%。", Since: since,
+	}}
+	if got := Title(ev); got != "Notesteme 告警：/data 的磁碟用量是 93%，超過 90%。" {
+		t.Errorf("沒有 Summary 時標題用 Message：%q", got)
+	}
+	b, err := render(KindWebhook, Config{}, ev, "o1", since, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Alert map[string]any `json:"alert"`
+	}
+	if err := json.Unmarshal(b, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Alert["kind"] != "disk_usage" || body.Alert["key"] != "/data" || body.Alert["resolved"] != false ||
+		body.Alert["message"] != "/data 的磁碟用量是 93%，超過 90%。" || body.Alert["since"] != "2026-11-23T10:00:00Z" {
+		t.Errorf("webhook 的 alert = %v", body.Alert)
+	}
+	if ev.Alert.Message == body.Alert["message"] {
+		t.Error("render 不能改動原本的事件")
+	}
+	if Title(Event{Name: EventAlert, Summary: "s"}) != "Notesteme 告警：s" {
+		t.Error("沒有 alert 時用事件的 Summary")
+	}
+}
