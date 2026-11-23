@@ -176,6 +176,17 @@ type LlmChunk struct {
 	ModelReported string
 }
 
+type NoteTemplate struct {
+	ID        string
+	Version   int64
+	Name      string
+	Builtin   int64
+	Body      string
+	RulesJson string
+	Sha256    string
+	CreatedAt int64
+}
+
 type Output struct {
 	ItemID    string
 	Path      string
