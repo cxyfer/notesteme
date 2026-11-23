@@ -56,6 +56,8 @@ type Media struct {
 	Compressed int64 // 0 代表沒有指定
 	Silences   []MediaSilence
 	Offset     float64
+	// Width、Height 是影像串流的尺寸（size=WxH）；0 代表沒有指定。
+	Width, Height int
 	// HasOffset 區分「offset=0」（第一塊）與沒有 offset。
 	HasOffset bool
 }
@@ -118,6 +120,9 @@ func FormatMedia(m Media) string {
 	}
 	if m.HasOffset {
 		fields = append(fields, "offset="+formatSeconds(m.Offset))
+	}
+	if m.Width > 0 && m.Height > 0 {
+		fields = append(fields, fmt.Sprintf("size=%dx%d", m.Width, m.Height))
 	}
 	sb.WriteString(strings.Join(fields, " "))
 	sb.WriteByte('\n')
@@ -184,6 +189,12 @@ func ParseMedia(b []byte) (m Media, ok bool) {
 				}
 				m.Silences = append(m.Silences, MediaSilence{Start: start, End: end})
 			}
+		case "size":
+			w, h, ok := ParseSize(v)
+			if !ok {
+				return Media{}, false
+			}
+			m.Width, m.Height = w, h
 		case "offset":
 			o, err := strconv.ParseFloat(v, 64)
 			if err != nil || o < 0 || math.IsNaN(o) || math.IsInf(o, 0) {
@@ -207,4 +218,18 @@ func ParseMediaMarker(b []byte) (item string, durationSec int, ok bool) {
 		return "", 0, false
 	}
 	return m.Item, int(m.Duration), true
+}
+
+// ParseSize 解析 `寬x高`（兩者都是 1～16384 的整數）。
+func ParseSize(s string) (w, h int, ok bool) {
+	a, b, found := strings.Cut(s, "x")
+	if !found {
+		return 0, 0, false
+	}
+	w, err1 := strconv.Atoi(a)
+	h, err2 := strconv.Atoi(b)
+	if err1 != nil || err2 != nil || w < 1 || h < 1 || w > 16384 || h > 16384 {
+		return 0, 0, false
+	}
+	return w, h, true
 }

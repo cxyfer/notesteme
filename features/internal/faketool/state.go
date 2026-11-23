@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/cxyfer/notesteme/features/internal/fakeframes"
 )
 
 // 預設值。
@@ -90,6 +92,34 @@ type Video struct {
 	// `Given the audio of … is …` 設定，0 與空代表不寫入。
 	Compressed int64          `json:"compressed,omitempty"`
 	Silences   []MediaSilence `json:"silences,omitempty"`
+	// Scenes 是影片的畫面（FRM，`Given the video of … has the scenes:`）：有值時 -J 列出影像格式、
+	// 下載的影片有影像串流，假 ffmpeg 的場景偵測與擷取依它回應（features/internal/fakeframes）。
+	Scenes []fakeframes.Scene `json:"scenes,omitempty"`
+	// BestFormat 是最高畫質的影像格式（`寬x高`，`Given the best video format of … is …`）；空字串代表 DefaultBestFormat。
+	BestFormat string `json:"best_format,omitempty"`
+}
+
+// DefaultBestFormat 是有畫面的影片沒有指定最高畫質時的格式。
+const DefaultBestFormat = "1920x1080"
+
+// HasVideo 回報這部影片有沒有影像串流（登記了畫面或最高畫質）。
+func (v *Video) HasVideo() bool { return len(v.Scenes) > 0 || v.BestFormat != "" }
+
+// VideoFormats 回傳影像格式（寬、高），由高到低：最高畫質，再加上不超過它的 1920x1080、1280x720、854x480、640x360。
+func (v *Video) VideoFormats() [][2]int {
+	best := [2]int{1920, 1080}
+	if v.BestFormat != "" {
+		if w, h, ok := ParseSize(v.BestFormat); ok {
+			best = [2]int{w, h}
+		}
+	}
+	out := [][2]int{best}
+	for _, f := range [][2]int{{1920, 1080}, {1280, 720}, {854, 480}, {640, 360}} {
+		if f[0]*f[1] < best[0]*best[1] {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // Chapter 是章節。

@@ -13,6 +13,7 @@ package fakellm
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -561,6 +562,7 @@ func parseRequest(id string, body []byte) parsed {
 	}
 	for _, m := range raw.Messages {
 		parts = append(parts, part{m.Role, contentText(m.Content)})
+		pr.errs = append(pr.errs, checkImageBlocks(id, m.Content)...)
 	}
 
 	// 步驟名稱：強制的 tool 或 schema 名稱 notesteme_<stage>。
@@ -700,4 +702,58 @@ func contentText(raw json.RawMessage) string {
 		}
 	}
 	return strings.Join(texts, "\n")
+}
+
+// checkImageBlocks 檢查 message 中的圖片區塊（FRM 規格 F4）：anthropic 是
+// {type: image, source: {type: base64, media_type, data}}，openai 是 {type: image_url, image_url: {url: data:<type>;base64,…}}。
+// 只接受 image/jpeg，資料要能解碼成 JPEG（開頭是 FF D8）。content 是字串或沒有圖片時沒有違規。
+func checkImageBlocks(id string, raw json.RawMessage) []string {
+	var blocks []struct {
+		Type   string `json:"type"`
+		Source *struct {
+			Type      string `json:"type"`
+			MediaType string `json:"media_type"`
+			Data      string `json:"data"`
+		} `json:"source"`
+		ImageURL *struct {
+			URL string `json:"url"`
+		} `json:"image_url"`
+	}
+	if json.Unmarshal(bytes.TrimSpace(raw), &blocks) != nil {
+		return nil
+	}
+	var errs []string
+	for i, b := range blocks {
+		var mediaType, data string
+		switch {
+		case b.Type == "text":
+			continue
+		case id == providerAnthropic && b.Type == "image" && b.Source != nil:
+			if b.Source.Type != "base64" {
+				errs = append(errs, fmt.Sprintf("content[%d] 的 image.source.type 必須是 base64", i))
+				continue
+			}
+			mediaType, data = b.Source.MediaType, b.Source.Data
+		case id == providerOpenAI && b.Type == "image_url" && b.ImageURL != nil:
+			rest, ok := strings.CutPrefix(b.ImageURL.URL, "data:")
+			mt, d, ok2 := strings.Cut(rest, ";base64,")
+			if !ok || !ok2 {
+				errs = append(errs, fmt.Sprintf("content[%d] 的 image_url 必須是 data:<type>;base64, 網址", i))
+				continue
+			}
+			mediaType, data = mt, d
+		default:
+			errs = append(errs, fmt.Sprintf("content[%d] 是 %s 不接受的區塊類型 %q", i, id, b.Type))
+			continue
+		}
+		if mediaType != "image/jpeg" {
+			errs = append(errs, fmt.Sprintf("content[%d] 的圖片類型是 %q，只接受 image/jpeg", i, mediaType))
+			continue
+		}
+		img, err := base64.StdEncoding.DecodeString(data)
+		if err != nil || len(img) < 2 || img[0] != 0xFF || img[1] != 0xD8 {
+			errs = append(errs, fmt.Sprintf("content[%d] 的圖片資料不是 base64 的 JPEG", i))
+		}
+	}
+	return errs
 }

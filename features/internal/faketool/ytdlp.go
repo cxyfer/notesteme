@@ -583,6 +583,15 @@ func ytInfo(e env, id, platform string, part int, v *Video) int {
 	if v.Description != "" {
 		info["description"] = v.Description
 	}
+	if v.HasVideo() {
+		// 與真實的 yt-dlp 相同：formats 依畫質由低到高，另有一個只有音訊的格式。
+		fmts := []map[string]any{{"format_id": "140", "vcodec": "none", "acodec": "mp4a.40.2", "width": nil, "height": nil}}
+		vf := v.VideoFormats()
+		for i := len(vf) - 1; i >= 0; i-- {
+			fmts = append(fmts, map[string]any{"format_id": fmt.Sprintf("v%d", vf[i][1]), "vcodec": "avc1", "acodec": "none", "width": vf[i][0], "height": vf[i][1]})
+		}
+		info["formats"] = fmts
+	}
 	if v.PublishedAt != "" {
 		if t, err := time.Parse(time.RFC3339, v.PublishedAt); err == nil {
 			info["timestamp"] = t.Unix()
@@ -730,13 +739,32 @@ func vttTime(sec int) string {
 	return fmt.Sprintf("%02d:%02d:%02d.000", sec/3600, sec%3600/60, sec%60)
 }
 
+// videoFormatContract 是產品下載影片時的格式選擇（internal/source/youtube.VideoFormat）。
+const videoFormatContract = "bv*[height<=1080][width<=1920]/b[height<=1080][width<=1920]"
+
 func ytMedia(e env, a ytArgs, id string, part int, v *Video) int {
 	ext := "mp4"
 	if strings.Contains(a.format, "audio") {
 		ext = "m4a"
 	}
+	m := Media{Item: itemKey(id, part), Duration: float64(v.Duration), Compressed: v.Compressed, Silences: v.Silences}
+	if strings.HasPrefix(a.format, "bv") {
+		if a.format != videoFormatContract {
+			return usageError(e, "unsupported video format selector %q (want %q)", a.format, videoFormatContract)
+		}
+		// 關鍵畫面的下載（FRM-R8）：不超過 1920x1080 的最佳影像格式；沒有登記畫面的影片沒有影像串流。
+		if v.HasVideo() {
+			for _, f := range v.VideoFormats() {
+				if f[0] <= 1920 && f[1] <= 1080 {
+					m.Width, m.Height = f[0], f[1]
+					break
+				}
+			}
+			m.Streams = []MediaStream{{Type: StreamVideo, Codec: "h264"}}
+		}
+	}
 	path := expandTemplate(a.output, map[string]string{"id": id, "title": v.Title, "ext": ext})
-	if err := writeFile(e, path, []byte(FormatMedia(Media{Item: itemKey(id, part), Duration: float64(v.Duration), Compressed: v.Compressed, Silences: v.Silences}))); err != nil {
+	if err := writeFile(e, path, []byte(FormatMedia(m))); err != nil {
 		fmt.Fprintln(e.stderr, "ERROR:", err)
 		return 1
 	}

@@ -14,6 +14,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/cxyfer/notesteme/features/internal/fakeframes"
 )
 
 const fakeFFVersion = "7.1-notesteme-fake"
@@ -58,6 +60,10 @@ func runFFmpeg(e env, args []string) int {
 		return ffmpegSubtitle(e, fa)
 	case ffPreview:
 		return ffmpegPreview(e, fa)
+	case ffScenes:
+		return ffmpegScenes(e, fa)
+	case ffFrame:
+		return ffmpegFrame(e, fa)
 	default:
 		return ffmpegTranscode(e, fa)
 	}
@@ -80,6 +86,8 @@ const (
 	ffSilence                 // -af silencedetect
 	ffSubtitle                // -c:s srt
 	ffPreview                 // -vf ass=…：樣式預覽
+	ffScenes                  // -vf select='gt(scene,T)',…：場景偵測（FRM-R2）
+	ffFrame                   // -vf scale=W:H -q:v 2：擷取一個畫面（FRM-R8）
 )
 
 // ffArgs 是解析後的 ffmpeg 參數。
@@ -96,6 +104,7 @@ var (
 		"-v": true, "-protocol_whitelist": true, "-format_whitelist": true, "-ss": true, "-t": true, "-i": true,
 		"-map": true, "-ac": true, "-ar": true, "-c:a": true, "-b:a": true, "-application": true, "-f": true,
 		"-af": true, "-c:s": true, "-vf": true, "-frames:v": true, "-update": true, "-c:v": true,
+		"-q:v": true,
 	}
 	ffBoolOpts = map[string]bool{
 		"-nostdin": true, "-hide_banner": true, "-nostats": true, "-vn": true, "-sn": true, "-dn": true, "-y": true,
@@ -160,6 +169,18 @@ func parseFFmpegArgs(args []string) (*ffArgs, error) {
 	var want map[string]string
 	var bools []string
 	switch {
+	case strings.HasPrefix(fa.vals["-vf"], "select="):
+		fa.mode = ffScenes
+		if err := fa.checkFrames(); err != nil {
+			return nil, err
+		}
+		return fa, nil
+	case strings.HasPrefix(fa.vals["-vf"], "scale="):
+		fa.mode = ffFrame
+		if err := fa.checkFrames(); err != nil {
+			return nil, err
+		}
+		return fa, nil
 	case fa.vals["-vf"] != "":
 		fa.mode = ffPreview
 		if err := fa.checkPreview(); err != nil {
@@ -266,6 +287,10 @@ func (fa *ffArgs) modeName() string {
 		return "subtitle extraction"
 	case ffPreview:
 		return "preview"
+	case ffScenes:
+		return "scene detection"
+	case ffFrame:
+		return "frame extraction"
 	}
 	return "transcode"
 }
@@ -740,11 +765,161 @@ func runFFprobe(e env, args []string) int {
 			if s.Lang != "" {
 				st["tags"] = map[string]string{"language": s.Lang}
 			}
+			if s.Type == StreamVideo && m.Width > 0 {
+				st["width"], st["height"] = m.Width, m.Height
+			}
 			list = append(list, st)
 		}
 		out["streams"] = list
 	}
 	enc, _ := json.MarshalIndent(out, "", "    ")
 	fmt.Fprintln(e.stdout, string(enc))
+	return 0
+}
+
+// ---- 關鍵畫面（FRM） ----
+
+var (
+	scenesFilter = regexp.MustCompile(`^select='gt\(scene,([0-9]+(?:\.[0-9]+)?)\)',showinfo,metadata=print$`)
+	scaleFilter  = regexp.MustCompile(`^scale=(\d{1,4}):(\d{1,4})$`)
+
+	ffScenesWant  = map[string]string{"-v": "info", "-protocol_whitelist": "file", "-f": "null"}
+	ffScenesBools = []string{"-nostdin", "-hide_banner", "-nostats", "-an", "-sn", "-dn"}
+	ffFrameWant   = map[string]string{"-v": "error", "-protocol_whitelist": "file", "-frames:v": "1", "-q:v": "2", "-f": "mjpeg"}
+	ffFrameBools  = []string{"-nostdin", "-hide_banner", "-an", "-sn", "-dn", "-y"}
+)
+
+// checkFrames 檢查場景偵測與擷取的 argv 契約（internal/media 的 DetectScenes、ExtractFrame）：
+// 必要選項與值固定、沒有契約以外的選項、白名單、輸入是絕對路徑；擷取的 -ss 在 -i 之前，輸出是絕對路徑的 .jpg。
+func (fa *ffArgs) checkFrames() error {
+	want, bools := ffScenesWant, ffScenesBools
+	if fa.mode == ffFrame {
+		want, bools = ffFrameWant, ffFrameBools
+	}
+	allowed := map[string]bool{"-i": true, "-format_whitelist": true, "-vf": true}
+	if fa.mode == ffFrame {
+		allowed["-ss"] = true
+	}
+	for k := range want {
+		allowed[k] = true
+	}
+	for k := range fa.vals {
+		if !allowed[k] {
+			return fmt.Errorf("option %s is not part of the %s argv contract", k, fa.modeName())
+		}
+	}
+	for k := range fa.bools {
+		if !slices.Contains(bools, k) {
+			return fmt.Errorf("option %s is not part of the %s argv contract", k, fa.modeName())
+		}
+	}
+	for k, v := range want {
+		if fa.vals[k] != v {
+			return fmt.Errorf("%s requires %s %s (got %q)", fa.modeName(), k, v, fa.vals[k])
+		}
+	}
+	for _, b := range bools {
+		if !fa.bools[b] {
+			return fmt.Errorf("%s requires %s", fa.modeName(), b)
+		}
+	}
+	wl, ok := fa.vals["-format_whitelist"]
+	if !ok {
+		return fmt.Errorf("%s requires -format_whitelist", fa.modeName())
+	}
+	if err := checkFormatWhitelist(wl); err != nil {
+		return err
+	}
+	if !filepath.IsAbs(fa.vals["-i"]) {
+		return fmt.Errorf("%s input %q must be an absolute path", fa.modeName(), fa.vals["-i"])
+	}
+	if fa.mode == ffScenes {
+		if !scenesFilter.MatchString(fa.vals["-vf"]) {
+			return fmt.Errorf("scene detection filter %q is not select='gt(scene,T)',showinfo,metadata=print", fa.vals["-vf"])
+		}
+		if fa.output != "-" {
+			return fmt.Errorf("scene detection output must be -")
+		}
+		return nil
+	}
+	if !scaleFilter.MatchString(fa.vals["-vf"]) {
+		return fmt.Errorf("frame filter %q is not scale=W:H", fa.vals["-vf"])
+	}
+	ss, ok := fa.vals["-ss"]
+	if !ok {
+		return fmt.Errorf("frame extraction requires -ss")
+	}
+	if f, err := strconv.ParseFloat(ss, 64); err != nil || f < 0 || math.IsNaN(f) || math.IsInf(f, 0) {
+		return fmt.Errorf("-ss %q is not a non-negative number", ss)
+	}
+	if fa.pos["-ss"] > fa.pos["-i"] {
+		return fmt.Errorf("-ss must come before -i")
+	}
+	if !filepath.IsAbs(fa.output) || !strings.HasSuffix(fa.output, ".jpg") {
+		return fmt.Errorf("frame output %q must be an absolute .jpg path", fa.output)
+	}
+	return nil
+}
+
+// videoInput 讀取有影像串流的輸入，以及這部影片在狀態中登記的畫面。失敗時已輸出錯誤訊息。
+func videoInput(e env, in string) (Media, fakeframes.Video, bool) {
+	m, ok := openInput(e, in)
+	if !ok {
+		return Media{}, fakeframes.Video{}, false
+	}
+	hasVideo := false
+	for _, s := range m.EffectiveStreams() {
+		hasVideo = hasVideo || s.Type == StreamVideo
+	}
+	if !hasVideo {
+		fmt.Fprintln(e.stderr, "Output file does not contain any stream")
+		return Media{}, fakeframes.Video{}, false
+	}
+	st, err := ReadState(e.root)
+	if err != nil {
+		fmt.Fprintf(e.stderr, "fake ffmpeg: %v\n", err)
+		return Media{}, fakeframes.Video{}, false
+	}
+	var scenes []fakeframes.Scene
+	if v := st.Videos[m.Item]; v != nil {
+		scenes = v.Scenes
+	}
+	return m, fakeframes.NewVideo(scenes), true
+}
+
+// ffmpegScenes 模擬場景偵測：把分數大於門檻的畫面以 showinfo 的格式寫到 stderr（fakeframes.ShowinfoLog）。
+func ffmpegScenes(e env, fa *ffArgs) int {
+	_, v, ok := videoInput(e, fa.vals["-i"])
+	if !ok {
+		return 1
+	}
+	t, _ := strconv.ParseFloat(scenesFilter.FindStringSubmatch(fa.vals["-vf"])[1], 64)
+	fmt.Fprintf(e.stderr, "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '%s':\n", fa.vals["-i"])
+	fmt.Fprint(e.stderr, v.ShowinfoLog(t))
+	return 0
+}
+
+// ffmpegFrame 模擬擷取：-ss 時間的畫面是純色 JPEG（fakeframes.WriteFrame），尺寸照 scale。-ss 超過片長時失敗。
+func ffmpegFrame(e env, fa *ffArgs) int {
+	m, v, ok := videoInput(e, fa.vals["-i"])
+	if !ok {
+		return 1
+	}
+	at := fa.number("-ss")
+	if at >= m.Duration {
+		fmt.Fprintln(e.stderr, "Output file is empty, nothing was encoded")
+		return 1
+	}
+	sm := scaleFilter.FindStringSubmatch(fa.vals["-vf"])
+	w, _ := strconv.Atoi(sm[1])
+	h, _ := strconv.Atoi(sm[2])
+	if w < 1 || h < 1 {
+		fmt.Fprintln(e.stderr, "Invalid scale size")
+		return 1
+	}
+	if err := v.WriteFrame(fa.output, at, w, h); err != nil {
+		fmt.Fprintf(e.stderr, "%s: %v\n", fa.output, err)
+		return 1
+	}
 	return 0
 }
