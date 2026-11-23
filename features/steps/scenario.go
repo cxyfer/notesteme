@@ -73,6 +73,8 @@ type Scenario struct {
 	costs costSeeds
 	// seeded 是已用 `the … transcript of … is:` 直接寫入字幕的影音代號（見 hasTranscriptSource）。
 	seeded map[string]bool
+	// searchSeq 是 search library 句型建立影音的序號（created_at 遞增，見 searchLibraryHas）。
+	searchSeq int
 	// lastCreatedToken 是最近一次 `a token … with scopes …` 建立的 token 明文，
 	// lastCreatedTokenStep 是該步驟的序號，供 `the data directory does not contain the created token` 使用。
 	lastCreatedToken     string
