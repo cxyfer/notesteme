@@ -25,7 +25,14 @@ func openTemp(t *testing.T, dir string) *Store {
 }
 
 func TestStore(t *testing.T) {
-	storetest.Run(t, func(t *testing.T) hubstore.Store { return openTemp(t, t.TempDir()) })
+	storetest.Run(t, func(t *testing.T, clk clock.Clock) hubstore.Store {
+		s, err := Open(context.Background(), t.TempDir(), clk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = s.Close() })
+		return s
+	})
 }
 
 // DB 檔一律 0600（NFR-SEC-5），資料目錄不存在時建立。

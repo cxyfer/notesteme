@@ -4,6 +4,16 @@
 
 package sqlcdb
 
+type AuditLog struct {
+	ID          string
+	ActorUserID string
+	Action      string
+	TargetKind  string
+	TargetID    string
+	DetailJson  string
+	At          int64
+}
+
 type Identity struct {
 	ID            string
 	UserID        string
@@ -15,6 +25,28 @@ type Identity struct {
 	AttrsJson     string
 	LinkedAt      int64
 	LastLoginAt   int64
+}
+
+type OauthState struct {
+	StateHash      string
+	Provider       string
+	Intent         string
+	UserID         *string
+	VerifierNonce  []byte
+	VerifierSealed []byte
+	Nonce          string
+	CreatedAt      int64
+	ExpiresAt      int64
+	UsedAt         *int64
+}
+
+type Session struct {
+	ID              string
+	UserID          string
+	TokenHash       string
+	CreatedAt       int64
+	AuthenticatedAt int64
+	ExpiresAt       int64
 }
 
 type User struct {

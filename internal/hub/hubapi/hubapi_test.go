@@ -40,8 +40,11 @@ func TestOpenAPISnapshot(t *testing.T) {
 	}
 }
 
-// fakeStore 是只有骨架方法的 hubstore.Store。
-type fakeStore struct{ writableErr error }
+// fakeStore 是只有骨架方法的 hubstore.Store（其他方法沒有實作，呼叫時 panic）。
+type fakeStore struct {
+	hubstore.Store
+	writableErr error
+}
 
 func (f *fakeStore) CheckWritable(context.Context) error          { return f.writableErr }
 func (f *fakeStore) CountUsers(context.Context) (int64, error)    { return 0, nil }
