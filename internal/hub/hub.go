@@ -143,6 +143,18 @@ func openBlobs(cfg *hubconfig.Config) (hubblob.Store, error) {
 	return nil, fmt.Errorf("不支援的 blobs.driver：%q", cfg.BlobsDriver)
 }
 
+// CheckBlobs 確認 blob 儲存可以使用（doctor）：s3 檢查 bucket 與憑證，fs 不需要檢查。
+func CheckBlobs(ctx context.Context, cfg *hubconfig.Config) error {
+	b, err := openBlobs(cfg)
+	if err != nil {
+		return err
+	}
+	if p, ok := b.(interface{ Ping(context.Context) error }); ok {
+		return p.Ping(ctx)
+	}
+	return nil
+}
+
 // Handler 回傳 Hub 的 HTTP handler（驗收 harness 把它掛到 fakenet 的 hub.example.org）。
 func (s *Server) Handler() http.Handler { return s.handler }
 

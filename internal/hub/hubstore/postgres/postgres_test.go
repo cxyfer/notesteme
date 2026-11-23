@@ -4,12 +4,15 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore"
@@ -134,5 +137,154 @@ func TestPoolConfigDefaults(t *testing.T) {
 	rp = cfg.ConnConfig.RuntimeParams
 	if cfg.MaxConns != 3 || cfg.ConnConfig.ConnectTimeout.Seconds() != 2 || rp["statement_timeout"] != "5s" || rp["application_name"] != "x" {
 		t.Errorf("DSN 的值 = %d %v %v", cfg.MaxConns, cfg.ConnConfig.ConnectTimeout, rp)
+	}
+}
+
+// doctor 用的 NoMigrate：還沒有 schema 時回 ErrNoDatabase 且不建立任何資料表；schema 比程式新時拒絕。
+func TestNoMigrateAndSchemaTooNew(t *testing.T) {
+	ctx := context.Background()
+	dsn := freshSchema(t)
+	if _, err := Open(ctx, dsn, nil, Options{NoMigrate: true}); !errors.Is(err, ErrNoDatabase) {
+		t.Fatalf("沒有 schema 時 = %v，預期 ErrNoDatabase", err)
+	}
+	s, err := Open(ctx, dsn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, err := s.SchemaVersion(ctx); err != nil || v != LatestVersion() {
+		t.Fatalf("SchemaVersion = %d, %v，預期 %d", v, err, LatestVersion())
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO goose_db_version (version_id, is_applied) VALUES (999, true)`); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+	_, err = Open(ctx, dsn, nil, Options{NoMigrate: true})
+	var tn *SchemaTooNewError
+	if !errors.As(err, &tn) || tn.DB != 999 || !strings.Contains(err.Error(), "999") {
+		t.Fatalf("err = %v，預期 SchemaTooNewError", err)
+	}
+	if _, err := Open(ctx, dsn, nil); !errors.As(err, &tn) {
+		t.Fatalf("套用 migration 時 err = %v，預期 SchemaTooNewError", err)
+	}
+}
+
+// 唯讀的連線（replica 或 default_transaction_read_only）不能當成可寫入。
+func TestCheckWritableRejectsReadOnly(t *testing.T) {
+	ctx := context.Background()
+	dsn := freshSchema(t)
+	s, err := Open(ctx, dsn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CheckWritable(ctx); err != nil {
+		t.Fatalf("CheckWritable：%v", err)
+	}
+	_ = s.Close()
+	ro, err := Open(ctx, withParam(t, dsn, "default_transaction_read_only", "on"), nil, Options{NoMigrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ro.Close()
+	if err := ro.CheckWritable(ctx); err == nil {
+		t.Fatal("唯讀的連線 CheckWritable 應該失敗")
+	}
+}
+
+// migration 00005 在 Postgres 以 ALTER 修改 group_members 與 audit_log：既有資料保留、新的 CHECK 生效、Down 可以還原。
+func TestCommunityMigrationKeepsData(t *testing.T) {
+	ctx := context.Background()
+	dsn := freshSchema(t)
+	cfg, err := poolConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	db := stdlib.OpenDBFromPool(pool)
+	defer db.Close()
+	p, err := newProvider(db, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.UpTo(ctx, 4); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO users (id, display_name, created_at) VALUES ('u1', 'root', now())`,
+		`INSERT INTO group_members (user_id, group_name, source, rule_provider, added_at) VALUES
+			('u1', 'admins', 'config', '', now()), ('u1', 'moderators', 'manual', '', now()), ('u1', 'contributors', 'rule', 'linuxdo', now())`,
+		`INSERT INTO audit_log (id, actor_user_id, action, target_kind, target_id, at) VALUES ('a1', 'u1', 'group.add', 'user', 'u1', now())`,
+	} {
+		if _, err := pool.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO group_members (user_id, group_name, source, added_at) VALUES ('u1', 'admins', 'cli', now())`); err == nil {
+		t.Fatal("00004 時 source cli 應該被 CHECK 擋下")
+	}
+	s, err := Open(ctx, dsn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if ms, err := s.GroupMemberships(ctx, "u1"); err != nil || len(ms) != 3 {
+		t.Fatalf("migration 後的成員資格 = %+v, %v", ms, err)
+	}
+	if es, err := s.AuditEntries(ctx, 10); err != nil || len(es) != 1 || es[0].Actor != "root" {
+		t.Fatalf("migration 後的稽核紀錄 = %+v, %v", es, err)
+	}
+	if changed, err := s.SetCLIGroup(ctx, "u1", "admins", true); err != nil || !changed {
+		t.Fatalf("source cli：%v %v", changed, err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO group_members (user_id, group_name, source, added_at) VALUES ('u1', 'admins', 'nope', now())`); err == nil {
+		t.Error("不認得的 source 要被 CHECK 擋下")
+	}
+	if _, err := p.DownTo(ctx, 4); err != nil {
+		t.Fatalf("Down：%v", err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM group_members`).Scan(&n); err != nil || n != 3 {
+		t.Errorf("Down 後的成員資格 = %d, %v，預期 3（cli 的被刪除）", n, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM audit_log`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("Down 後的稽核紀錄 = %d, %v，預期 1（命令列的被刪除）", n, err)
+	}
+	if _, err := p.DownTo(ctx, 0); err != nil {
+		t.Fatalf("Down 到 0：%v", err)
+	}
+}
+
+// SQL 注入：使用者可控的字串一律是參數，不會被當成 SQL。
+func TestUserInputIsNotSQL(t *testing.T) {
+	ctx := context.Background()
+	s := openFresh(t, nil)
+	evil := []string{`'; DROP TABLE users; --`, `x' OR '1'='1`, `\'; SELECT pg_sleep(5); --`, `%`, `_`}
+	for i, e := range evil {
+		u, _, err := s.SignIn(ctx, hubstore.ExternalIdentity{Provider: "github", Subject: e, Login: e}, e)
+		if err != nil {
+			t.Fatalf("SignIn(%q)：%v", e, err)
+		}
+		if got, err := s.User(ctx, u.ID); err != nil || got.DisplayName != e {
+			t.Fatalf("display_name = %q, %v", got.DisplayName, err)
+		}
+		if _, err := s.SetManualGroup(ctx, "", u.ID, e, true); err != nil {
+			t.Fatal(err)
+		}
+		if n, _ := s.CountUsers(ctx); n != int64(i+1) {
+			t.Fatalf("CountUsers = %d", n)
+		}
+	}
+	if _, err := s.User(ctx, `' OR '1'='1`); !errors.Is(err, hubstore.ErrNotFound) {
+		t.Errorf("User(注入字串) = %v", err)
+	}
+	// LIKE 的萬用字元不會被當成萬用字元：前綴查詢用範圍比較。
+	if got, err := s.LookupVersions(ctx, "youtube", "%", hubstore.SeenBy{SeeAll: true}); err != nil || len(got) != 0 {
+		t.Errorf("LookupVersions(%%) = %d, %v", len(got), err)
+	}
+	if got, err := s.ListVersions(ctx, hubstore.VersionFilter{Platform: `' OR 1=1 --`, Limit: 10, Seen: hubstore.SeenBy{Visibilities: []string{`') OR true --`}}}); err != nil || len(got) != 0 {
+		t.Errorf("ListVersions(注入字串) = %d, %v", len(got), err)
 	}
 }

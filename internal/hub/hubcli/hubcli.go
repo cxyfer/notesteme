@@ -17,6 +17,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/hub"
 	"github.com/cxyfer/notesteme/internal/hub/hubconfig"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore"
+	"github.com/cxyfer/notesteme/internal/hub/hubstore/postgres"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore/sqlite"
 	"github.com/cxyfer/notesteme/internal/netguard"
 )
@@ -142,6 +143,24 @@ func migrate(ctx context.Context, env Env) int {
 	return ExitOK
 }
 
+// openStoreNoMigrate 開啟儲存但不套用 migration（doctor 用），回傳程式支援的最新 schema 版本。
+func openStoreNoMigrate(ctx context.Context, cfg *hubconfig.Config, clk clock.Clock) (hubstore.Store, int64, error) {
+	switch cfg.StoreDriver {
+	case hubconfig.StorePostgres:
+		st, err := postgres.Open(ctx, cfg.StoreDSN, clk, postgres.Options{NoMigrate: true})
+		if err != nil {
+			return nil, 0, err
+		}
+		return st, postgres.LatestVersion(), nil
+	default:
+		st, err := sqlite.Open(ctx, cfg.Data, clk, sqlite.Options{NoMigrate: true})
+		if err != nil {
+			return nil, 0, err
+		}
+		return st, sqlite.LatestVersion(), nil
+	}
+}
+
 // admin 是 HACC 介面的救援命令（直接操作 DB，不經過 API；稽核紀錄的執行者是「notesteme-hub admin」）：
 //   - grant、revoke 以 source: cli 把 (provider, subject) 的帳號加入或移出 admins（設定檔的 admins 不受影響，
 //     啟動時依設定檔的同步也不會清掉它）。身分要先登入過 Hub 一次；還沒登入過的請寫在設定檔的 admins。
@@ -240,10 +259,6 @@ func doctor(ctx context.Context, env Env) int {
 	problems := 0
 	fmt.Fprintf(out, "設定檔：%s\npublic_url：%s\n資料目錄：%s\n", cfg.ConfigFile, cfg.PublicURL, cfg.Data)
 	fmt.Fprintf(out, "儲存：store.driver=%s、blobs.driver=%s\n", cfg.StoreDriver, cfg.BlobsDriver)
-	if cfg.StoreDriver != hubconfig.StoreSQLite || cfg.BlobsDriver != hubconfig.BlobsFS {
-		fmt.Fprintln(out, "  ✗ 目前只支援 sqlite 與 fs（postgres、s3 尚未實作）")
-		problems++
-	}
 	var enabled []string
 	for _, p := range hubconfig.Providers {
 		c := cfg.OAuth[p]
@@ -269,30 +284,35 @@ func doctor(ctx context.Context, env Env) int {
 		fmt.Fprintf(out, "  ✗ 沒有環境變數 %s（主金鑰，加密下架申請的聯絡 email）\n", hubconfig.EnvMasterKey)
 		problems++
 	}
-	if cfg.StoreDriver == hubconfig.StoreSQLite {
-		st, err := sqlite.Open(ctx, cfg.Data, env.Clock, sqlite.Options{NoMigrate: true})
-		if err != nil {
-			fmt.Fprintf(out, "  ✗ 資料庫：%v\n", err)
+	if st, latest, err := openStoreNoMigrate(ctx, cfg, env.Clock); err != nil {
+		fmt.Fprintf(out, "  ✗ 資料庫：%v\n", err)
+		problems++
+	} else {
+		v, err := st.SchemaVersion(ctx)
+		switch {
+		case err != nil:
+			fmt.Fprintf(out, "  ✗ 讀取資料庫的 schema 版本失敗：%v\n", err)
+			problems++
+		case v < latest:
+			fmt.Fprintf(out, "  ✗ 資料庫的 schema 版本 %d 落後程式的 %d，請先執行 notesteme-hub migrate。\n", v, latest)
+			problems++
+		default:
+			n, err := st.CountUsers(ctx)
+			if err != nil {
+				fmt.Fprintf(out, "  ✗ 讀取帳號數失敗：%v\n", err)
+				problems++
+			} else {
+				fmt.Fprintf(out, "資料庫：schema 版本 %d、%d 個帳號\n", v, n)
+			}
+		}
+		_ = st.Close()
+	}
+	if cfg.BlobsDriver == hubconfig.BlobsS3 {
+		if err := hub.CheckBlobs(ctx, cfg); err != nil {
+			fmt.Fprintf(out, "  ✗ 檔案儲存：%v\n", err)
 			problems++
 		} else {
-			v, err := st.SchemaVersion(ctx)
-			switch latest := sqlite.LatestVersion(); {
-			case err != nil:
-				fmt.Fprintf(out, "  ✗ 讀取資料庫的 schema 版本失敗：%v\n", err)
-				problems++
-			case v < latest:
-				fmt.Fprintf(out, "  ✗ 資料庫的 schema 版本 %d 落後程式的 %d，請先執行 notesteme-hub migrate。\n", v, latest)
-				problems++
-			default:
-				n, err := st.CountUsers(ctx)
-				if err != nil {
-					fmt.Fprintf(out, "  ✗ 讀取帳號數失敗：%v\n", err)
-					problems++
-				} else {
-					fmt.Fprintf(out, "資料庫：schema 版本 %d、%d 個帳號\n", v, n)
-				}
-			}
-			_ = st.Close()
+			fmt.Fprintf(out, "檔案儲存：S3 bucket %s 可以使用\n", cfg.S3.Bucket)
 		}
 	}
 	if problems > 0 {
