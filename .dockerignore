@@ -1,4 +1,4 @@
-# Docker build context 只需要 go.mod、go.sum、cmd/、internal/ 、web/client（前端原始碼）與 web/shared（共用元件）。
+# Docker build context 只需要 go.mod、go.sum、cmd/、internal/ 、web/client 與 web/hub（前端原始碼）與 web/shared（共用元件）。
 *
 !go.mod
 !go.sum
@@ -6,8 +6,13 @@
 !internal/
 !web/client/
 !web/shared/
+# Hub 的 Web UI（Dockerfile 的 web-hub stage 與 go:embed，M5-S9）；沒有這一行 docker build 找不到 web/hub。
+!web/hub/
 web/client/node_modules/
 web/client/dist/
 web/client/coverage/
+web/hub/node_modules/
+web/hub/dist/
+web/hub/coverage/
 **/*_test.go
 **/testdata/

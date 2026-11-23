@@ -1,0 +1,136 @@
+# Hub 的正式部署（ADR-0030 第 1、2 點）：Hub、Postgres、MinIO。與 Client 的 compose.yaml（wsl／vps profile）分開：
+# 獨立的檔案與 project name，所有服務都在 hub profile。在這個目錄執行：
+#   cp .env.hub.example .env.hub   # 填入密鑰
+#   mkdir -p hub-config && cp hub-config.example.yaml hub-config/notesteme-hub.yaml   # 填入 public_url、OAuth client_id
+#   docker compose -f compose.hub.yaml --env-file .env.hub --profile hub up -d --build
+# 啟動順序：postgres、minio healthy → hub-minio-init 建立 bucket → hub-migrate 套用 migration → hub。
+# Postgres 與 MinIO 只在 hub-internal（internal network，不對外、不映射 port）；Hub 另接 hub-egress 才能連 OAuth 供應商。
+# Hub 只映射到 127.0.0.1，對外的 HTTPS 由前面的反向代理（Caddy、nginx、Cloudflare Tunnel）負責。
+# 詳細步驟、備份與還原見 docs/hub-deployment.md。
+name: notesteme-hub
+
+services:
+  hub-postgres:
+    profiles: ["hub"]
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: notesteme_hub
+      POSTGRES_USER: notesteme_hub
+      POSTGRES_PASSWORD: ${NOTESTEME_HUB_POSTGRES_PASSWORD:?請在 .env.hub 設定 NOTESTEME_HUB_POSTGRES_PASSWORD}
+    volumes:
+      - hub-postgres-data:/var/lib/postgresql/data
+    networks:
+      - hub-internal
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "notesteme_hub", "-d", "notesteme_hub"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  hub-minio:
+    profiles: ["hub"]
+    # MinIO 社群版已停止發布新的 image；固定在最後一個版本。也可以改用 R2 或 AWS S3（移除這兩個 minio 服務並改 NOTESTEME_HUB_S3_*）。
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: unless-stopped
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${NOTESTEME_HUB_S3_ACCESS_KEY_ID:?請在 .env.hub 設定 NOTESTEME_HUB_S3_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${NOTESTEME_HUB_S3_SECRET_ACCESS_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_S3_SECRET_ACCESS_KEY}
+    volumes:
+      - hub-minio-data:/data
+    networks:
+      - hub-internal
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # 一次性：建立 bucket（已存在時不動）。用同一個 image 內附的 mc。
+  hub-minio-init:
+    profiles: ["hub"]
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - mc alias set hub http://hub-minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null && mc mb --ignore-existing "hub/$$BUCKET"
+    environment:
+      MINIO_ROOT_USER: ${NOTESTEME_HUB_S3_ACCESS_KEY_ID:?請在 .env.hub 設定 NOTESTEME_HUB_S3_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${NOTESTEME_HUB_S3_SECRET_ACCESS_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_S3_SECRET_ACCESS_KEY}
+      BUCKET: ${NOTESTEME_HUB_S3_BUCKET:-notesteme-hub}
+    networks:
+      - hub-internal
+    depends_on:
+      hub-minio:
+        condition: service_healthy
+
+  # 一次性：套用資料庫 migration（多個實例同時執行時以 advisory lock 排隊）。
+  hub-migrate:
+    profiles: ["hub"]
+    image: ${NOTESTEME_HUB_IMAGE:-notesteme-hub:local}
+    command: ["migrate"]
+    environment:
+      NOTESTEME_HUB_MASTER_KEY: ${NOTESTEME_HUB_MASTER_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_MASTER_KEY}
+      NOTESTEME_HUB_SESSION_KEY: ${NOTESTEME_HUB_SESSION_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_SESSION_KEY}
+      NOTESTEME_HUB_STORE_DSN: postgres://notesteme_hub:${NOTESTEME_HUB_POSTGRES_PASSWORD:?請在 .env.hub 設定 NOTESTEME_HUB_POSTGRES_PASSWORD}@hub-postgres:5432/notesteme_hub?sslmode=disable
+      NOTESTEME_HUB_S3_ENDPOINT: http://hub-minio:9000
+      NOTESTEME_HUB_S3_BUCKET: ${NOTESTEME_HUB_S3_BUCKET:-notesteme-hub}
+      NOTESTEME_HUB_S3_PATH_STYLE: "true"
+      NOTESTEME_HUB_S3_ACCESS_KEY_ID: ${NOTESTEME_HUB_S3_ACCESS_KEY_ID:?請在 .env.hub 設定 NOTESTEME_HUB_S3_ACCESS_KEY_ID}
+      NOTESTEME_HUB_S3_SECRET_ACCESS_KEY: ${NOTESTEME_HUB_S3_SECRET_ACCESS_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_S3_SECRET_ACCESS_KEY}
+    volumes:
+      - ./hub-config:/config:ro
+    networks:
+      - hub-internal
+    depends_on:
+      hub-postgres:
+        condition: service_healthy
+      hub-minio-init:
+        condition: service_completed_successfully
+
+  hub:
+    profiles: ["hub"]
+    image: ${NOTESTEME_HUB_IMAGE:-notesteme-hub:local}
+    # docker compose build 時從原始碼建置 Hub 的 target（內嵌 web/hub）。
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      target: notesteme-hub
+    restart: unless-stopped
+    environment:
+      # 兩把金鑰都至少 32 個字元（openssl rand -base64 32）；主金鑰加密下架申請的聯絡 email，遺失後無法解密，要另外保存。
+      NOTESTEME_HUB_MASTER_KEY: ${NOTESTEME_HUB_MASTER_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_MASTER_KEY}
+      NOTESTEME_HUB_SESSION_KEY: ${NOTESTEME_HUB_SESSION_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_SESSION_KEY}
+      NOTESTEME_HUB_STORE_DSN: postgres://notesteme_hub:${NOTESTEME_HUB_POSTGRES_PASSWORD:?請在 .env.hub 設定 NOTESTEME_HUB_POSTGRES_PASSWORD}@hub-postgres:5432/notesteme_hub?sslmode=disable
+      NOTESTEME_HUB_S3_ENDPOINT: http://hub-minio:9000
+      NOTESTEME_HUB_S3_BUCKET: ${NOTESTEME_HUB_S3_BUCKET:-notesteme-hub}
+      NOTESTEME_HUB_S3_PATH_STYLE: "true"
+      NOTESTEME_HUB_S3_ACCESS_KEY_ID: ${NOTESTEME_HUB_S3_ACCESS_KEY_ID:?請在 .env.hub 設定 NOTESTEME_HUB_S3_ACCESS_KEY_ID}
+      NOTESTEME_HUB_S3_SECRET_ACCESS_KEY: ${NOTESTEME_HUB_S3_SECRET_ACCESS_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_S3_SECRET_ACCESS_KEY}
+      # 有設定 client_id 的登入方式才需要（HACC-R1）。
+      NOTESTEME_HUB_OAUTH_GITHUB_CLIENT_SECRET: ${NOTESTEME_HUB_OAUTH_GITHUB_CLIENT_SECRET:-}
+      NOTESTEME_HUB_OAUTH_GOOGLE_CLIENT_SECRET: ${NOTESTEME_HUB_OAUTH_GOOGLE_CLIENT_SECRET:-}
+      NOTESTEME_HUB_OAUTH_LINUXDO_CLIENT_SECRET: ${NOTESTEME_HUB_OAUTH_LINUXDO_CLIENT_SECRET:-}
+    ports:
+      - "127.0.0.1:${NOTESTEME_HUB_PORT:-8090}:8090"
+    volumes:
+      # 設定檔（public_url、oauth.*.client_id、groups、admins…）；store.driver: postgres 與 blobs.driver: s3 要寫在這裡。
+      - ./hub-config:/config:ro
+      - hub-data:/data
+    networks:
+      - hub-internal
+      - hub-egress
+    depends_on:
+      hub-migrate:
+        condition: service_completed_successfully
+
+networks:
+  # 資料庫與物件儲存只在這個 network：internal 代表沒有對外的路由，主機上也沒有映射的 port。
+  hub-internal:
+    internal: true
+  hub-egress: {}
+
+volumes:
+  hub-postgres-data:
+  hub-minio-data:
+  hub-data:

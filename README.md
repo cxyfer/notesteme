@@ -89,6 +89,8 @@ docker build -f deploy/docker/Dockerfile -t notesteme .
 deploy/docker/smoke-test.sh notesteme   # 冒煙測試
 ```
 
+Hub（`notesteme-hub`，Postgres＋S3 相容儲存）的部署是另一份 compose（`deploy/docker/compose.hub.yaml`，`hub` profile），步驟、備份與還原見 [docs/hub-deployment.md](docs/hub-deployment.md)。
+
 可用的 build arg：
 
 | Build arg | 預設 | 說明 |

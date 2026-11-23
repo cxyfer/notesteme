@@ -101,3 +101,18 @@ func TestS3ConfigErrors(t *testing.T) {
 		t.Errorf("fs 時不檢查 s3：%v", err)
 	}
 }
+
+// deploy/docker/hub-config.example.yaml 加上 compose.hub.yaml 提供的環境變數可以載入（postgres＋s3）。
+func TestDeployExampleConfig(t *testing.T) {
+	cfg, err := Load(Sources{File: "../../../deploy/docker/hub-config.example.yaml", Env: map[string]string{
+		EnvStoreDSN:   "postgres://notesteme_hub:pw@hub-postgres:5432/notesteme_hub?sslmode=disable",
+		EnvS3Endpoint: "http://hub-minio:9000", EnvS3Bucket: "notesteme-hub", EnvS3PathStyle: "true",
+		EnvS3AccessKeyID: "notesteme-hub", EnvS3SecretAccessKey: "x",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.StoreDriver != StorePostgres || cfg.BlobsDriver != BlobsS3 || !cfg.S3.PathStyle || cfg.S3.Endpoint != "http://hub-minio:9000" {
+		t.Errorf("cfg = %s %s %v", cfg.StoreDriver, cfg.BlobsDriver, cfg.S3)
+	}
+}

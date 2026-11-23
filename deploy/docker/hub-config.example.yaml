@@ -1,0 +1,22 @@
+# Hub 的設定檔範例（compose.hub.yaml 掛載 ./hub-config 到 /config）。複製成 hub-config/notesteme-hub.yaml 後修改。
+# 欄位見 HACC、HREP、HMCP 規格的「介面」；祕密（client secret、金鑰、密碼）一律放在 .env.hub，不要寫在這裡。
+public_url: https://hub.example.org
+
+store:
+  driver: postgres   # DSN 由 compose 以環境變數 NOTESTEME_HUB_STORE_DSN 提供
+blobs:
+  driver: s3         # endpoint、bucket、憑證由 compose 以 NOTESTEME_HUB_S3_* 提供
+  # 改用 Cloudflare R2 或 AWS S3 時（並移除 compose 的 hub-minio 服務與環境變數 NOTESTEME_HUB_S3_ENDPOINT）：
+  # s3:
+  #   endpoint: https://<account-id>.r2.cloudflarestorage.com
+  #   region: auto
+  #   bucket: notesteme-hub
+  #   path_style: false
+  #   timeout: 60s
+
+oauth:
+  github: { client_id: "" }   # 留空代表停用
+
+# 第一位管理員（登入過一次之後也可以用 notesteme-hub admin grant）。
+# admins:
+#   - { provider: github, subject: "12345" }
