@@ -23,7 +23,7 @@ import (
 // registerHub 註冊「Hub 實例與帳號」的步驟（steps.md 4.30，M5）。
 //
 // M5-S1 實作閘門、Hub 設定、假供應商、登入流程、帳號數與送到 Hub 的請求（session 與匿名）；
-// M5-S2 實作 Hub token 與群組的句型。停用、`from the origin` 與 MCP 的句型仍是步驟樁（S5、S6）。
+// M5-S2 實作 Hub token 與群組的句型；M5-S5 實作停用與 {takedown:last}、{report:last}。`from the origin` 與 MCP 的句型仍是步驟樁（S6）。
 // 閘門只對 S1～S3 範圍的 HACC、HREP 場景放行（見 hubGate）。
 func registerHub(r *Registry, s *Scenario) {
 	r.Step(`a Hub is running`, s.hubIsRunning)
@@ -54,7 +54,7 @@ func registerHub(r *Registry, s *Scenario) {
 	})
 	r.Step(`the Hub client sends {string} with the Hub token {string} from the origin {string}`, func(string, string, string) error { return godog.ErrPending })
 	r.Step(`the hub member {string} is in the group {string}`, s.hubMemberInGroup)
-	r.Step(`the hub member {string} is suspended`, func(string) error { return godog.ErrPending })
+	r.Step(`the hub member {string} is suspended`, s.hubMemberSuspended)
 	r.Step(`the Hub MCP client with the Hub token {string} lists the tools`, func(string) error { return godog.ErrPending })
 	r.Step(`the Hub MCP client with the Hub token {string} calls {string} with:`, func(string, string, *godog.DocString) error { return godog.ErrPending })
 }
@@ -86,13 +86,17 @@ type hubCallback struct {
 // hubRules 是已實作的 HACC 規則：M5-S1 的登入、連結、移除與 session（R1～R8），M5-S2 的 Hub token、群組、自動規則、
 // 權限矩陣與一般限流（R9～R13、R18），M5-S3 的單一內容可見度（R14）。
 var hubRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true,
-	9: true, 10: true, 11: true, 12: true, 13: true, 14: true, 18: true}
+	9: true, 10: true, 11: true, 12: true, 13: true, 14: true, 18: true,
+	// M5-S5：下架申請與決定、停用與稽核（R15～R17）。
+	15: true, 16: true, 17: true}
 
 // hrepRules 是已實作的 HREP 規則：M5-S3 的分享、bundle 驗證、白名單、去重、衍生關係、可見度、下架後的內容、撤回、
 // 分享的限流與不抓取網址（R1～R6、R8～R12）；M5-S4 的模型欄位（R7，以列表驗證）、篩選、詳情與影片頁、取用與 lookup（R16～R19）。
 // R13～R15 是 S5。
 var hrepRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true,
-	16: true, 17: true, 18: true, 19: true}
+	16: true, 17: true, 18: true, 19: true,
+	// M5-S5：投票、檢舉與自動隱藏（R13～R15）。
+	13: true, 14: true, 15: true}
 
 // ruleOf 解析 @<prefix>R<n> 的規則編號。
 func ruleOf(tag, prefix string) (int, bool, bool) {
@@ -299,6 +303,7 @@ func (s *Scenario) hubDo(r hubRequest) (*response, error) {
 	}
 	out := &response{status: resp.StatusCode, header: resp.Header, body: b, step: s.step, preRoute403: r.preRoute403}
 	s.last = out
+	s.recordCreatedRef(r, resp.StatusCode, b)
 	// 任何方式建立的 Hub token 都加進 log 的 secret 掃描（不只 `a Hub token …` 步驟）。
 	if r.method == http.MethodPost && strings.HasSuffix(r.target, "/api/v1/me/tokens") && resp.StatusCode == http.StatusCreated {
 		var created struct {
@@ -645,4 +650,46 @@ func (s *Scenario) responseDoesNotContain(text string) error {
 		return fmt.Errorf("回應含有 %q：%s", text, snippet(s.last.body))
 	}
 	return nil
+}
+
+// ---- 下架申請、檢舉與停用（M5-S5）----
+
+// recordCreatedRef 在建立下架申請或檢舉成功（201）時，以回應的 id 記下 {takedown:last}、{report:last}（steps.md 4.30）。
+func (s *Scenario) recordCreatedRef(r hubRequest, status int, body []byte) {
+	if r.method != http.MethodPost || status != http.StatusCreated {
+		return
+	}
+	path, _, _ := strings.Cut(r.target, "?")
+	kind := ""
+	switch {
+	case strings.HasSuffix(path, "/api/v1/takedowns"):
+		kind = "takedown"
+	case strings.HasPrefix(path, "/api/v1/versions/") && strings.HasSuffix(path, "/reports"):
+		kind = "report"
+	default:
+		return
+	}
+	var out struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(body, &out) == nil && out.ID != "" {
+		s.World.SetHubRef(kind, "last", out.ID)
+	}
+}
+
+// hubMemberSuspended 直接在 Hub 的 DB 停用這位使用者（steps.md 4.30）：不寫稽核紀錄，分數與 API 的停用一樣重算。
+func (s *Scenario) hubMemberSuspended(who string) error {
+	uid, ok := s.World.Refs["user:"+who]
+	if !ok {
+		return fmt.Errorf("Hub 使用者 %q 還沒有登入過", who)
+	}
+	if err := s.World.RestartHubIfNeeded(s.ctx); err != nil {
+		return err
+	}
+	st, err := s.World.HubStore()
+	if err != nil {
+		return err
+	}
+	_, err = st.SuspendUser(s.ctx, "", uid, "suspended by the scenario")
+	return err
 }

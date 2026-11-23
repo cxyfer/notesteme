@@ -38,6 +38,9 @@ const TestHubToken = "nsh_TestHubToken0123456789abcdefghijABCDEFGH"
 // 固定值讓 Hub 依新設定重新啟動之後，等待中的登入仍然有效。
 const TestHubSessionKey = "nst-test-hub-session-key-4b9e2f7a1c08d6e3"
 
+// TestHubMasterKey 是真 Hub 的主金鑰（NOTESTEME_HUB_MASTER_KEY，加密下架申請的聯絡 email，HACC-R15）；也加進 log 的 secret 掃描。
+const TestHubMasterKey = "nst-test-hub-master-key-9d3a6c1e7f20b84d"
+
 // OAuth 供應商的測試憑證：client_id 寫在 Hub 的預設設定，secret 只經環境變數交給 Hub（HACC-R1）。
 func testOAuthClientID(k fakeoauth.Kind) string { return "nst-test-" + string(k) + "-client" }
 
@@ -142,6 +145,7 @@ func (w *World) hubEnv() map[string]string {
 		hubconfig.EnvConfig:     w.HubConfigFile(),
 		hubconfig.EnvData:       w.HubDir(),
 		hubconfig.EnvSessionKey: TestHubSessionKey,
+		hubconfig.EnvMasterKey:  TestHubMasterKey,
 	}
 	for _, k := range OAuthKinds {
 		env[hubconfig.OAuthSecretEnv(hubconfig.Provider(k))] = TestOAuthClientSecret(k)
@@ -254,7 +258,7 @@ func (w *World) HubHTTPClient() *http.Client {
 
 // HubSecrets 回傳 M5 的測試秘密（OAuth client secret 與 fakehub 的 token），加進 log 的 secret 掃描。
 func HubSecrets() []string {
-	out := []string{TestHubToken, TestHubSessionKey}
+	out := []string{TestHubToken, TestHubSessionKey, TestHubMasterKey}
 	for _, k := range OAuthKinds {
 		out = append(out, TestOAuthClientSecret(k))
 	}
