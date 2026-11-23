@@ -2341,6 +2341,10 @@
       "LoginInputBody": {
         "additionalProperties": false,
         "properties": {
+          "next": {
+            "description": "登入後要前往的站內路徑（ENTRY-R6）；不安全或超過 2048 bytes 時回應的 next 為 /",
+            "type": "string"
+          },
           "password": {
             "description": "登入密碼",
             "minLength": 1,
@@ -2359,10 +2363,15 @@
             "description": "session 目前的到期時間",
             "format": "date-time",
             "type": "string"
+          },
+          "next": {
+            "description": "登入後要前往的站內路徑：請求的 next 通過開放轉址檢查時原樣回傳，否則為 /（ENTRY-R6）",
+            "type": "string"
           }
         },
         "required": [
-          "expires_at"
+          "expires_at",
+          "next"
         ],
         "type": "object"
       },

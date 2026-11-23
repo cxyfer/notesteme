@@ -137,7 +137,7 @@ func build(d Deps, authn func(http.Handler) http.Handler, remote bool) http.Hand
 	h = subscriptionImportLimit(h)
 	h = uploadIntercept(d)(h)
 	if remote && d.UI != nil {
-		h = uiDispatch(d.UI, h)
+		h = uiDispatch(entryPages(d), h)
 	}
 	h = authn(h)
 	h = requestInfoMiddleware(d.Auth)(h)
@@ -183,6 +183,8 @@ type statusOutput struct{ Body statusBody }
 type loginInput struct {
 	Body struct {
 		Password string `json:"password" minLength:"1" doc:"登入密碼"`
+		// Next 是登入後要前往的站內路徑（ENTRY-R6）；不合格的值不報錯，回應的 next 改成 "/"，所以不加 schema 限制。
+		Next string `json:"next,omitempty" doc:"登入後要前往的站內路徑（ENTRY-R6）；不安全或超過 2048 bytes 時回應的 next 為 /"`
 	}
 }
 
@@ -190,6 +192,7 @@ type loginOutput struct {
 	SetCookie []string `header:"Set-Cookie"`
 	Body      struct {
 		ExpiresAt time.Time `json:"expires_at" doc:"session 目前的到期時間"`
+		Next      string    `json:"next" doc:"登入後要前往的站內路徑：請求的 next 通過開放轉址檢查時原樣回傳，否則為 /（ENTRY-R6）"`
 	}
 }
 
@@ -356,6 +359,7 @@ func (rt *routes) login(ctx context.Context, in *loginInput) (*loginOutput, erro
 	}
 	out := &loginOutput{}
 	out.Body.ExpiresAt = cred.ExpiresAt
+	out.Body.Next = auth.SafeNext(in.Body.Next)
 	out.SetCookie = []string{
 		sessionCookie(cred.Token, info.Secure, cred.ExpiresAt, rt.d.Clock.Now()).String(),
 		csrfCookie(cred.CSRF, info.Secure, cred.ExpiresAt, rt.d.Clock.Now()).String(),
