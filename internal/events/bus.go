@@ -52,6 +52,19 @@ type Event struct {
 	SpentUSD    *float64 `json:"spent_usd,omitempty"`
 	ReservedUSD *float64 `json:"reserved_usd,omitempty"`
 	MonthlyUSD  *float64 `json:"monthly_usd,omitempty"`
+	// Current、Better、Action、EstimateUSD 只有 source.better_available 才有（SRC-R21）：現行與更好的字幕來源，
+	// action 是 notify 或 rerun。estimate_usd 無法估算（null）時不帶這個欄位，其他事件才不會多出 null。
+	Current     *SourceRef `json:"current,omitempty"`
+	Better      *SourceRef `json:"better,omitempty"`
+	Action      string     `json:"action,omitempty"`
+	EstimateUSD *float64   `json:"estimate_usd,omitempty"`
+}
+
+// SourceRef 是一個字幕來源（source.better_available 的 current、better）。
+type SourceRef struct {
+	Source string `json:"source"`
+	Lang   string `json:"lang,omitempty"`
+	Kind   string `json:"kind,omitempty"`
 }
 
 // DefaultBuffer 是每個訂閱者的 buffer 大小。

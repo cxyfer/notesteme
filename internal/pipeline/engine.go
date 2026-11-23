@@ -180,6 +180,10 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	default:
 		err = &errclass.Error{Class: errclass.ClassPermanent, Source: "pipeline", Detail: "不認識的步驟 " + run.Stage}
 	}
+	if err == nil {
+		// SRC-10：transcript、sponsorblock 完成時在寫回的交易中判斷重新 Probe 的排程（SRC-R18、R20）。
+		res = p.withReprobe(res, run, eff, lang)
+	}
 	if ctx.Err() != nil {
 		// 關閉或取消中：不寫回，已寫出的產出檔也不會有記錄指向它。
 		p.discardResultFiles(res)

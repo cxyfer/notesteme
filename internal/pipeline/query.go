@@ -32,6 +32,9 @@ type Detail struct {
 	Batches map[string]*BatchView
 	// Summary 是現行的摘要（DIG-R5）；沒有摘要產出時是 nil。
 	Summary *Summary
+	// Reprobe 是排定的重新 Probe（SRC-R18），沒有排程時是 nil；BetterSource 是發現的更好來源（SRC-R23），沒有時是 nil。
+	Reprobe      *ReprobeView
+	BetterSource *store.BetterSource
 }
 
 // Item 回傳影音詳情；不存在時回傳 store.ErrNotFound，在垃圾桶中時回傳 *InTrashError（DEL-R1）。
@@ -81,6 +84,9 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 		return Detail{}, err
 	}
 	d := Detail{Item: it, Stages: stages, Sources: probes, Attempts: attempts, Batches: batches}
+	if d.Reprobe, d.BetterSource, err = reprobeDetail(ctx, r, id); err != nil {
+		return Detail{}, err
+	}
 	// 產出檔讀不到時只略過這個欄位，不讓整個詳情失敗。
 	switch segs, ok, err := p.SponsorSegments(ctx, id); {
 	case err != nil:

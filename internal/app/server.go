@@ -326,6 +326,9 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	if err := s.registerBatchPoll(); err != nil {
 		return err
 	}
+	if err := s.registerReprobe(); err != nil {
+		return err
+	}
 	// 彙整（DIG-R8～R11）：排程工作 digest 經同一個 outbox 送出。
 	s.digests = digest.New(digest.Deps{Store: s.store, Clock: env.Clock, Outbox: outbox, Summaries: pl, PublicURL: cfg.M4.PublicURL, Log: log})
 	if err := s.digests.Register(s.scheduler); err != nil {

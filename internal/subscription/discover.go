@@ -323,3 +323,10 @@ func durationOf(f *float64) *int {
 func entryRef(platform, externalID string, part int) string {
 	return source.Ref(platform, externalID, part)
 }
+
+// TakePlatform 取平台（youtube、bilibili）的 rate limit 額度（SUB-R10）；重新 Probe 字幕軌（SRC-R19）與訂閱的探索共用同一個 bucket。
+// 沒有額度時 ok 為 false，retryAt 是下一顆額度出現的時間。
+func (s *Service) TakePlatform(platform string) (ok bool, retryAt time.Time) {
+	key, n := s.rateKey(platform, "")
+	return s.rate.Take(key, n)
+}

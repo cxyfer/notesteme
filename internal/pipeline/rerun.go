@@ -28,6 +28,8 @@ type RerunRequest struct {
 	Chunks []int
 	// ReuseCandidates 只用於 From 為 frames（FRM-R13）：沿用現行的候選畫面只重新選圖；沒有現行的候選或其他步驟時忽略。
 	ReuseCandidates bool
+	// Priority 是任務的優先級；0 代表手動重跑（queue.PriorityManual）。改用更好的字幕自動重跑用 backfill（SRC-R22）。
+	Priority int
 }
 
 // Rerun 從指定步驟重新建立 stage run 與任務（PIPE-R7、plan 第 5.1 節）：
@@ -213,8 +215,16 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 			}
 			fresh[s] = run
 		}
+		// SRC-R18：從 transcript（sponsorblock）以前重跑時結束重新 Probe 的對應部分，完成後依新的結果重新判斷。
+		if err := p.endReprobeOnRerun(ctx, r, itemID, req.From); err != nil {
+			return err
+		}
+		prio := queue.PriorityManual
+		if req.Priority != 0 {
+			prio = req.Priority
+		}
 		// 只有鏈上的步驟處理：略過的 skipped，第一個要執行的建立任務；之後的等上游完成再前進（PIPE-R1）。
-		if _, err = p.applyChain(ctx, r, itemID, chain, fresh, queue.PriorityManual, false); err != nil {
+		if _, err = p.applyChain(ctx, r, itemID, chain, fresh, prio, false); err != nil {
 			return err
 		}
 		// 鏈上的步驟全部直接略過時（例如從沒有輸出的 publish 重跑）沒有任務會寫回結果：在這裡判斷通知（NOTIFY-R3）。
