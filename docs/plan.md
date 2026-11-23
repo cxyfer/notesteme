@@ -646,6 +646,7 @@ sessions         (id, token_hash, created_at, expires_at, ip, user_agent)
 notifiers        (id, kind, config_ciphertext, events_json, enabled)
 events           (id, item_id, type, payload_json, at)              -- SSE 與稽核；保留 90 天
 cues_fts         (FTS5 trigram：item_id, artifact_id, start_ms, text) -- 只索引現行版本
+                 -- 修訂（2026-11-23，M4-S8，待 owner 追認）：實作為 search_cues（一列一句）加外部內容的 cues_fts，見 SRCH 規格的介面
 ```
 
 - 所有 ID 都用 UUIDv7。每台實例有自己的 `instance_id`（[ADR-0011](adr/0011-defer-multi-instance-sync.md)）。
