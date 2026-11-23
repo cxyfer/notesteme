@@ -126,7 +126,14 @@ func Open(ctx context.Context, dir string, clk clock.Clock, opts ...Options) (*S
 		_ = w.Close()
 		return nil, err
 	}
-	return &Store{path: path, w: w, r: r, wq: sqlcdb.New(w), rq: sqlcdb.New(r), clock: clk}, nil
+	st := &Store{path: path, w: w, r: r, wq: sqlcdb.New(w), rq: sqlcdb.New(r), clock: clk}
+	// SRCH S8：migration 建立索引之後的第一次開啟，以現有的現行字幕建立索引。
+	if err := st.buildSearchIndexIfNeeded(ctx); err != nil {
+		_ = r.Close()
+		_ = w.Close()
+		return nil, fmt.Errorf("建立全文搜尋索引失敗：%w", err)
+	}
+	return st, nil
 }
 
 // ensurePrivateFiles 把 DB 與 -wal、-shm 的權限設為 0600。create 為 true 時 DB 不存在會先以 0600 建立；

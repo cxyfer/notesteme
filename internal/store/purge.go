@@ -52,6 +52,10 @@ func (r *Repo) PurgeItem(ctx context.Context, id string, notAfter *time.Time) (P
 		if _, err := tx.q.PurgeDeleteEvents(ctx, it.ID); err != nil {
 			return fmt.Errorf("刪除事件：%w", err)
 		}
+		// SRCH-R8：索引列在同一個交易中刪除（外鍵的 cascade 也會刪，這裡明確寫出）。
+		if err := tx.q.DeleteSearchCuesForItem(ctx, it.ID); err != nil {
+			return fmt.Errorf("刪除全文搜尋索引：%w", err)
+		}
 		if n, err := tx.q.PurgeDeleteItem(ctx, it.ID); err != nil {
 			return fmt.Errorf("刪除影音：%w", err)
 		} else if n == 0 {

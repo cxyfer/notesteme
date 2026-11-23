@@ -92,6 +92,10 @@ type CostLedger struct {
 	Stage         string
 }
 
+type CuesFt struct {
+	TextFold string
+}
+
 type Digest struct {
 	ID              string
 	Period          string
@@ -315,6 +319,24 @@ type ScheduledJob struct {
 	LastError *string
 	Failures  int64
 	CreatedAt int64
+}
+
+type SearchCue struct {
+	ID         int64
+	ItemID     string
+	ArtifactID string
+	Lang       string
+	Variant    string
+	Cue        int64
+	StartMs    int64
+	EndMs      int64
+	Text       string
+	TextFold   string
+}
+
+type SearchIndexState struct {
+	ID    int64
+	Built int64
 }
 
 type Secret struct {

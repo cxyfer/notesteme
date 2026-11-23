@@ -111,6 +111,12 @@ func (r *Repo) InsertArtifact(ctx context.Context, n NewArtifact) (Artifact, err
 	}); err != nil {
 		return Artifact{}, err
 	}
+	if n.Kind == kindTranscript {
+		// SRCH-R2：索引在寫入產出的同一個交易中更新。
+		if err := r.reindexSearch(ctx, n.ItemID, n.Lang); err != nil {
+			return Artifact{}, err
+		}
+	}
 	return r.Artifact(ctx, n.ID)
 }
 
@@ -133,6 +139,11 @@ func (r *Repo) WithdrawArtifacts(ctx context.Context, itemID, kind, variant stri
 		}); err != nil {
 			return err
 		}
+		if kind == kindTranscript {
+			if err := r.reindexSearch(ctx, itemID, a.Lang); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -153,7 +164,13 @@ func (r *Repo) RestoreArtifact(ctx context.Context, id string) error {
 	}); err != nil {
 		return err
 	}
-	return r.q.ClearArtifactSuperseded(ctx, a.ID)
+	if err := r.q.ClearArtifactSuperseded(ctx, a.ID); err != nil {
+		return err
+	}
+	if a.Kind == kindTranscript {
+		return r.reindexSearch(ctx, a.ItemID, a.Lang)
+	}
+	return nil
 }
 
 // PurgeOldArtifacts 清除同一組 (item, kind, variant, lang) 中比最近 keep 版更舊的版本（PIPE-R7）。
