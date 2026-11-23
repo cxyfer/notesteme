@@ -292,7 +292,7 @@ export interface paths {
     delete?: never;
     options?: never;
     head?: never;
-    /** 核可（accepted，詞加進頻道詞彙表）或拒絕（rejected）一個 pending 的術語候選；已決定成另一個結果時回 409 */
+    /** 核可（accepted，詞加進頻道或全域詞彙表）或拒絕（rejected）一個 pending 的術語候選；接受時可以改寫 term、選擇 scope；已決定成另一個結果時回 409 */
     patch: operations["channels-term-candidate-decide"];
     trace?: never;
   };
@@ -1534,7 +1534,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 列出所有頻道待確認的術語候選（尚未實作） */
+    /** 跨頻道的術語候選審核清單，依提出時間由舊到新 */
     get: operations["term-candidates-list"];
     put?: never;
     post?: never;
@@ -1553,7 +1553,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 一次決定多個術語候選（尚未實作） */
+    /** 一次決定多個術語候選；整批是一個交易，任何一項失敗時整批都不套用 */
     post: operations["term-candidates-decide"];
     delete?: never;
     options?: never;
@@ -2104,9 +2104,21 @@ export interface components {
       lang: string;
       variant: string;
     };
+    DecideBatchInputBody: {
+      /** @description 最多 100 項，同一個 candidate 只能出現一次 */
+      decisions: components["schemas"]["TermDecisionBody"][] | null;
+    };
+    DecideBatchOutputBody: {
+      /** @description 順序與 decisions 相同 */
+      candidates: components["schemas"]["TermCandidate"][] | null;
+    };
     DecideCandidateInputBody: {
+      /** @description channel（預設）或 global；拒絕時不能帶 */
+      scope?: string;
       /** @enum {string} */
       state: "accepted" | "rejected";
+      /** @description 接受時實際加進詞彙表的寫法（省略時是候選原本的詞）；控制字元換成空白、合併連續空白，最多 100 個字元；拒絕時不能帶 */
+      term?: string;
     };
     DeletionPreviewOutputBody: {
       /**
@@ -3302,6 +3314,16 @@ export interface components {
       skipped: boolean;
       version: string;
     };
+    ReviewOutputBody: {
+      candidates: components["schemas"]["TermCandidateReview"][] | null;
+      /** @description 下一頁的游標；最後一頁沒有這個欄位 */
+      next_cursor?: string;
+      /**
+       * Format: int64
+       * @description 符合條件的總數，和目前在第幾頁無關
+       */
+      total: number;
+    };
     RevokeTokenOutputBody: {
       revoked: boolean;
     };
@@ -3550,6 +3572,15 @@ export interface components {
     TermCandidate: {
       /** Format: date-time */
       created_at: string;
+      /**
+       * Format: date-time
+       * @description 決定的時間；pending 是 null
+       */
+      decided_at: string | null;
+      /** @description channel 或 global；pending 與 rejected 是 null */
+      decided_scope: string | null;
+      /** @description 接受時實際加進詞彙表的寫法；pending 與 rejected 是 null */
+      decided_term: string | null;
       id: string;
       /** @description 提出這個詞的影音；影音被永久刪除之後是空字串 */
       item_id: string;
@@ -3557,8 +3588,50 @@ export interface components {
       state: "pending" | "accepted" | "rejected";
       term: string;
     };
+    TermCandidateChannel: {
+      id: string;
+      /** @description <platform>:<external_id> */
+      key: string;
+      title: string;
+    };
+    TermCandidateItem: {
+      id: string;
+      /** @description 影音代號，例如 yt:<id> */
+      ref: string;
+      title: string;
+    };
+    TermCandidateReview: {
+      channel: components["schemas"]["TermCandidateChannel"];
+      /** Format: date-time */
+      created_at: string;
+      /**
+       * Format: date-time
+       * @description 決定的時間；pending 是 null
+       */
+      decided_at: string | null;
+      /** @description channel 或 global；pending 與 rejected 是 null */
+      decided_scope: string | null;
+      /** @description 接受時實際加進詞彙表的寫法；pending 與 rejected 是 null */
+      decided_term: string | null;
+      id: string;
+      item: components["schemas"]["TermCandidateItem"];
+      /** @enum {string} */
+      state: "pending" | "accepted" | "rejected";
+      /** @description 模型提出的原詞 */
+      term: string;
+    };
     TermCandidatesOutputBody: {
       candidates: components["schemas"]["TermCandidate"][] | null;
+    };
+    TermDecisionBody: {
+      /** @description 術語候選的 id */
+      candidate: string;
+      /** @description 同 PATCH 的 scope */
+      scope?: string;
+      /** @description accepted 或 rejected */
+      state: string;
+      /** @description 同 PATCH 的 term */
+      term?: string;
     };
     TestResult: {
       error_class?: string;
@@ -7492,19 +7565,30 @@ export interface operations {
   };
   "term-candidates-list": {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description pending（預設）、accepted、rejected 或 all */
+        state?: string;
+        /** @description 頻道的 UUID 或 <platform>:<external_id>；省略時是全部頻道 */
+        channel?: string;
+        /** @description 單頁筆數 */
+        limit?: number;
+        /** @description 上一頁回傳的 next_cursor */
+        cursor?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ReviewOutputBody"];
+        };
       };
       /** @description Error */
       default: {
@@ -7524,14 +7608,20 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DecideBatchInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["DecideBatchOutputBody"];
+        };
       };
       /** @description Error */
       default: {

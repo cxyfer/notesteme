@@ -14,14 +14,16 @@ import (
 )
 
 // 這個檔案是 COR 的詞彙表與術語候選（COR-R4、R6）：讀取用 read，修改用 admin（AUTH 規格的 M2 路由 scope）。
-// 術語候選的核可與拒絕是 PATCH（admin）；審核 UI 是 M4。
+// 術語候選的核可與拒絕是 PATCH（admin）；GLOS 的跨頻道審核清單與批次決定在 term_review.go。
 
 // glossaryService 是詞彙表 handler 需要的 service。*pipeline.Pipeline 實作它。
 type glossaryService interface {
 	Glossary(ctx context.Context, scope, id string) (store.Glossary, error)
 	PutGlossary(ctx context.Context, scope, id string, terms []string) (store.Glossary, error)
 	TermCandidates(ctx context.Context, channelKey string) ([]store.TermCandidate, error)
-	DecideTermCandidate(ctx context.Context, channelKey, candidateID, state string) (store.TermCandidate, error)
+	DecideTermCandidateWith(ctx context.Context, channelKey, candidateID string, in pipeline.TermDecisionInput) (store.TermCandidate, error)
+	DecideTermCandidates(ctx context.Context, decisions []pipeline.TermBatchDecision) ([]store.TermCandidate, error)
+	ListTermCandidates(ctx context.Context, q pipeline.TermCandidateQuery) (pipeline.TermCandidatePage, error)
 }
 
 var _ glossaryService = (*pipeline.Pipeline)(nil)
@@ -54,8 +56,9 @@ func (h *glossariesAPI) register(api huma.API) {
 	}, auth.ScopeRead, h.candidates)
 	registerScoped(api, huma.Operation{
 		OperationID: "channels-term-candidate-decide", Method: http.MethodPatch, Path: "/api/channels/{id}/term-candidates/{candidate}",
-		Summary: "核可（accepted，詞加進頻道詞彙表）或拒絕（rejected）一個 pending 的術語候選；已決定成另一個結果時回 409",
+		Summary: "核可（accepted，詞加進頻道或全域詞彙表）或拒絕（rejected）一個 pending 的術語候選；接受時可以改寫 term、選擇 scope；已決定成另一個結果時回 409",
 	}, auth.ScopeAdmin, h.decide)
+	h.registerReview(api)
 }
 
 // Glossary 是一份詞彙表。
@@ -138,6 +141,33 @@ type TermCandidate struct {
 	State     string    `json:"state" enum:"pending,accepted,rejected"`
 	ItemID    string    `json:"item_id" doc:"提出這個詞的影音；影音被永久刪除之後是空字串"`
 	CreatedAt time.Time `json:"created_at"`
+	// 決定的內容（GLOS-R1）：pending 時都是 null；rejected 只有 decided_at。
+	DecidedTerm  *string    `json:"decided_term" doc:"接受時實際加進詞彙表的寫法；pending 與 rejected 是 null"`
+	DecidedScope *string    `json:"decided_scope" doc:"channel 或 global；pending 與 rejected 是 null"`
+	DecidedAt    *time.Time `json:"decided_at" doc:"決定的時間；pending 是 null"`
+}
+
+// decided 回傳候選決定的三個欄位（GLOS-R1）；零值換成 null。
+func decided(c store.TermCandidate) (term, scope *string, at *time.Time) {
+	if c.DecidedTerm != "" {
+		v := c.DecidedTerm
+		term = &v
+	}
+	if c.DecidedScope != "" {
+		v := c.DecidedScope
+		scope = &v
+	}
+	if !c.DecidedAt.IsZero() {
+		v := c.DecidedAt
+		at = &v
+	}
+	return term, scope, at
+}
+
+func toTermCandidate(c store.TermCandidate) TermCandidate {
+	out := TermCandidate{ID: c.ID, Term: c.Term, State: c.State, ItemID: c.ItemID, CreatedAt: c.CreatedAt}
+	out.DecidedTerm, out.DecidedScope, out.DecidedAt = decided(c)
+	return out
 }
 
 type termCandidatesOutput struct {
@@ -165,7 +195,7 @@ func (h *glossariesAPI) candidates(ctx context.Context, in *channelTermsInput) (
 	out := &termCandidatesOutput{}
 	out.Body.Candidates = make([]TermCandidate, 0, len(list))
 	for _, c := range list {
-		out.Body.Candidates = append(out.Body.Candidates, TermCandidate{ID: c.ID, Term: c.Term, State: c.State, ItemID: c.ItemID, CreatedAt: c.CreatedAt})
+		out.Body.Candidates = append(out.Body.Candidates, toTermCandidate(c))
 	}
 	return out, nil
 }
@@ -175,6 +205,9 @@ type decideCandidateInput struct {
 	Candidate string `path:"candidate" doc:"術語候選的 id"`
 	Body      struct {
 		State string `json:"state" enum:"accepted,rejected"`
+		// term、scope 不用 enum／長度限制：規格指定了錯誤的 path 與訊息（GLOS-R1、R2），由 pipeline 檢查。
+		Term  *string `json:"term,omitempty" doc:"接受時實際加進詞彙表的寫法（省略時是候選原本的詞）；控制字元換成空白、合併連續空白，最多 100 個字元；拒絕時不能帶"`
+		Scope *string `json:"scope,omitempty" doc:"channel（預設）或 global；拒絕時不能帶"`
 	}
 }
 
@@ -188,16 +221,14 @@ func (h *glossariesAPI) decide(ctx context.Context, in *decideCandidateInput) (*
 	if err != nil {
 		return nil, err
 	}
-	c, err := svc.DecideTermCandidate(ctx, in.ID, in.Candidate, in.Body.State)
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		return nil, newError(http.StatusNotFound, CodeNotFound, "找不到這個術語候選。")
-	case errors.Is(err, pipeline.ErrTermCandidateDecided):
-		return nil, newError(http.StatusConflict, CodeCandidateDecided, "這個術語候選已經決定過了。")
-	case err != nil:
+	c, err := svc.DecideTermCandidateWith(ctx, in.ID, in.Candidate, pipeline.TermDecisionInput{State: in.Body.State, Term: in.Body.Term, Scope: in.Body.Scope})
+	if err != nil {
+		if e := termDecisionErr(err, ""); e != nil {
+			return nil, e
+		}
 		return nil, h.mapErr(ctx, store.GlossaryChannel, err)
 	}
-	return &termCandidateOutput{Body: TermCandidate{ID: c.ID, Term: c.Term, State: c.State, ItemID: c.ItemID, CreatedAt: c.CreatedAt}}, nil
+	return &termCandidateOutput{Body: toTermCandidate(c)}, nil
 }
 
 // mapErr 同 routes.mapErr；找不到時，頻道詞彙表說找不到頻道，全域詞彙表說找不到詞彙表。

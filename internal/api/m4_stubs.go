@@ -22,8 +22,10 @@ import (
 //   - GET /api/search 在 S8 SRCH 實作（search.go）。
 //   - GET /api/items/:id 的 reprobe、better_source 在 SRC-10 實作（items.go）。
 //   - BND 的路由（GET /api/items/{id}/bundle、POST /api/bundles/import）已實作（bundles.go）。
+//   - GLOS 的路由（GET /api/term-candidates、POST /api/term-candidates/decide）已實作（term_review.go）；
+//     PATCH /api/channels/:id/term-candidates/:candidate 的 term、scope 也已加上（glossaries.go）。
 //   - 既有路由的欄位擴充（GET /api/items/:id 的 read_state，
-//     PATCH /api/channels/:id/term-candidates/:candidate 的 term、scope，GET /api/system 的 alerts、backup）由各切片加上。
+//     GET /api/system 的 alerts、backup）由各切片加上。
 var m4Stubs = []m2Stub{
 	// LIB-R16～R21（S13 LIB）。批次的 scope 依動作（LIB-R16），stub 不讀 body，先要求多數動作需要的 ingest；
 	// 實作時改成在讀取影音之前依動作判斷（delete 要 admin、export_bundle 同 BND 的匯出）。
@@ -31,11 +33,6 @@ var m4Stubs = []m2Stub{
 		Summary: "對多部影音執行同一個動作（重跑、換處理方案、標記已讀、刪除、匯出 bundle，尚未實作）", Scope: auth.ScopeIngest},
 	{ID: "overview-get", Method: http.MethodGet, Path: "/api/overview",
 		Summary: "總覽：處理中、等你決定、失敗、本月花費、磁碟用量與今天的動態（尚未實作）", Scope: auth.ScopeRead},
-	// GLOS-R4、R5（S9 GLOS）
-	{ID: "term-candidates-decide", Method: http.MethodPost, Path: "/api/term-candidates/decide",
-		Summary: "一次決定多個術語候選（尚未實作）", Scope: auth.ScopeAdmin},
-	{ID: "term-candidates-list", Method: http.MethodGet, Path: "/api/term-candidates",
-		Summary: "列出所有頻道待確認的術語候選（尚未實作）", Scope: auth.ScopeRead},
 }
 
 // registerM4Stubs 註冊 M4 的 501 stub。
