@@ -291,7 +291,14 @@ M3-S0（2026-11-23）已把 SponsorBlock、Gemini 登記到 fakenet（`World.Spo
 
 ## M4 的假服務（2026-11-23，規格展開時設計，接進 harness 由 M4 的實作切片負責）
 
-M4 的步驟（`docs/specs/steps.md` 4.17～4.21）目前都是 pending 的步驟樁。下列假服務已有可以單獨測試的骨架（`features/internal/fakefeed`、`fakenotify`、`fakebatch`、`fakeoidc`），還沒有登記到 fakenet 或 `faketool.Dispatch`；實作切片接上它們時，要確認預設 tag 的場景不退步。
+M4 的步驟（`docs/specs/steps.md` 4.17～4.21）目前都是 pending 的步驟樁。下列假服務已有可以單獨測試的骨架（`features/internal/fakefeed`、`fakenotify`、`fakebatch`、`fakeoidc`）。
+
+**M4-S0 已接進 harness**（`features/internal/harness/m4.go`（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認））：
+
+- `World.Feed`、`World.Notify` 在每個場景建立，但只有閘門句型呼叫 `w.ServeFeeds()`、`w.ReachNotifyEndpoints()` 時才登記到 fakenet（`www.youtube.com` 以 `Handle` 登記，`the URL … serves …` 的 `Route` 仍然優先）。
+- fakebatch 的路徑分派是每個場景預設的：LLM 主機的 handler 把 `fakebatch.Owns` 的路徑交給 `w.Batch()`；`w.EnableBatch(answerer)` 之前回 404 並記一筆違規（`World.Check` 回報）。BATCH 切片在 `the batch API of …` 呼叫 `EnableBatch`，answerer 接 fakellm 的 answers。
+- `w.StartOIDC(fakeoidc.Config{Issuer: …})` 把 issuer 的主機導到 fakeoidc，client secret 預設 `harness.TestOIDCClientSecret`（也設成產品的 `NOTESTEME_OIDC_CLIENT_SECRET`，並在 NFR-SEC-3 的掃描清單中），`Now` 預設是場景的 fake clock。
+- 預設 tag 的 308 個場景、`@M3` 109 個、`@M4` 371 個的逐場景結果在接線前後相同。
 
 ### 訂閱、SRC-10、ENTRY
 
