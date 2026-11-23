@@ -130,7 +130,7 @@
   - **M4-S6 DIG（2026-11-23，分支 `feat/dig-summary-digest`；決定記在 DIG 待決問題的「M4-S6：實作時的決定」，待 owner 追認）**：摘要、摘要後暫停與繼續、每日／每週彙整。
     - llm／prompts：`internal/llm/summary.go`（`SummarySpec`、`CheckSummary`，含 fuzz）；schema 檢查支援 `["string","null"]`；prompt 變數 `summary_lang`；內建 prompt `summary-default`。
     - pipeline：`internal/pipeline/summary.go`（`llmStages` 登記 summary；一個請求；`too_long` 依片長或 token 估計 → `skipped`；重試用盡 → `done` 沒有產出；內容相同沿用產出）。`applyResult` 在 summary 結束後依快照的 `pause_after` 把下一步改成 `blocked`（`awaiting_user`）；`Pipeline.Continue`、`AwaitingUser`、`ItemSummary`、`SeedSummary`；`Detail.Summary`。從 summary 重跑不再 501。
-    - store：migration `00024_digests`（`digests`、`digest_entries`、`stage_runs(stage, finished_at)` 索引）、`internal/store/digests.go`。
+    - store：migration `00025_digests`（`digests`、`digest_entries`、`stage_runs(stage, finished_at)` 索引）、`internal/store/digests.go`。
     - `internal/digest`：彙整設定 CRUD、排程工作 `digest`（當地時間對齊、DST、停機後補跑一次）、內容與預覽；經 `notify.Outbox.EmitTo` 只寫給彙整的 notifier。`scheduler.Run` 一輪最多兩趟，讓同一輪被提前的 `notify.deliver` 立刻執行。
     - API／MCP／CLI：`POST /api/items/{id}/continue`、`POST /api/items/continue`、`/api/digests` CRUD 與 `/preview`（從 `m4_stubs.go` 移除）；`ItemDetail.summary`；MCP `continue_item`；CLI `notesteme items continue <ref>...`（超過 100 部時分批）。OpenAPI 與 `schema.d.ts` 已重產。
     - steps：`features/steps/digest.go` 實作 DIG 的三個句型；`notifyGate`、`subGate` 對 `@DIG-R*` 放行；彙整在 notifier 之後寫入（steps.md 4.18）。
