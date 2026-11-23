@@ -268,6 +268,10 @@ func runParity(t *testing.T, open Open) {
 		if err != nil || !u.CreatedAt.Equal(want) || u.CreatedAt.Location() != time.UTC {
 			t.Fatalf("CreatedAt = %v（%v），預期截到毫秒的 %v（UTC）", u.CreatedAt, err, want)
 		}
+		// 從資料庫讀回的時間也是 UTC（不受資料庫或程序的時區影響）。
+		if got, err := s.User(ctx, u.ID); err != nil || !got.CreatedAt.Equal(want) || got.CreatedAt.Location() != time.UTC {
+			t.Fatalf("讀回的 CreatedAt = %v（%v），預期 UTC 的 %v", got.CreatedAt, err, want)
+		}
 		exp := clk.Now().Add(time.Hour + 999*time.Microsecond)
 		if err := s.CreateSession(ctx, hubstore.Session{ID: "s1", UserID: u.ID, TokenHash: "h", CreatedAt: clk.Now(),
 			AuthenticatedAt: clk.Now(), ExpiresAt: exp}); err != nil {
