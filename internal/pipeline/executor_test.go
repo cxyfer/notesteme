@@ -129,8 +129,8 @@ func TestResolveExecutorRejects(t *testing.T) {
 	if _, err := ResolveExecutor(bad, StageCorrect, StageContext{}); !errors.As(err, &inv) {
 		t.Errorf("correct 的 opencc：%v", err)
 	}
-	if _, err := ResolveExecutor(mustEffective(t, nil), "summary", StageContext{}); !errors.As(err, &inv) {
-		t.Errorf("summary：%v", err)
+	if _, err := ResolveExecutor(mustEffective(t, nil), "frames.select", StageContext{}); !errors.As(err, &inv) {
+		t.Errorf("不認識的步驟：%v", err)
 	}
 }
 
@@ -175,10 +175,14 @@ func TestStageExecutorsAndLLMStages(t *testing.T) {
 			t.Errorf("%s 是 LLM 步驟", s)
 		}
 	}
-	for _, s := range []string{StageMetadata, StageTranscript, StageNormalize, StagePublish, "summary"} {
+	for _, s := range []string{StageMetadata, StageTranscript, StageNormalize, StagePublish, "frames.select"} {
 		if IsLLMStage(s) || StageExecutors(s) != nil {
 			t.Errorf("%s 不是 LLM 步驟，也不能設定 executor", s)
 		}
+	}
+	// summary 可以設定 executor（DIG-R1），但不是 M2 的 LLM 步驟（不走 LLM 引擎與 AGT 的路由，ADR-0021 第 3 點）。
+	if IsLLMStage(StageSummary) || !slices.Equal(StageExecutors(StageSummary), []string{ExecutorAPI, ExecutorAgent, ExecutorOff}) {
+		t.Errorf("summary 的 executor：%v", StageExecutors(StageSummary))
 	}
 	if slices.Contains(StageExecutors(StageCorrect), ExecutorOpenCC) || !slices.Contains(StageExecutors(StageTranslate), ExecutorOpenCC) {
 		t.Error("opencc 只用於 translate")
@@ -256,10 +260,11 @@ func TestBuildEffectiveRejectsInvalidStages(t *testing.T) {
 	}{
 		{"確定性步驟不能設定", stagesOver("metadata", map[string]any{"executor": "api"})},
 		{"publish 不能設定", stagesOver("publish", map[string]any{"executor": "off"})},
-		{"規劃中的步驟不能設定", stagesOver("summary", map[string]any{"executor": "api"})},
+		{"不認識的步驟不能設定", stagesOver("frames.select", map[string]any{"executor": "api"})},
+		{"summary 不能用 opencc", stagesOver("summary", map[string]any{"executor": "opencc"})},
 		{"correct 不能用 opencc", stagesOver("correct", map[string]any{"executor": "opencc"})},
 		{"segment 不能用 opencc", stagesOver("segment", map[string]any{"executor": "opencc"})},
-		{"batch 屬於 M4", stagesOver("correct", map[string]any{"executor": "batch"})},
+		{"batch 不是 executor", stagesOver("correct", map[string]any{"executor": "batch"})},
 		{"不認識的 executor", stagesOver("translate", map[string]any{"executor": "magic"})},
 		{"provider 不是字串", stagesOver("correct", map[string]any{"provider": 1})},
 		{"model 不是字串", stagesOver("correct", map[string]any{"model": []any{"x"}})},

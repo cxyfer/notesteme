@@ -11,11 +11,12 @@ import (
 	"github.com/cxyfer/notesteme/internal/transcript"
 )
 
-// pipeline 的步驟，依執行順序（plan 第 5 節、ADR-0020；summary 屬於 M4）。
+// pipeline 的步驟，依執行順序（plan 第 5 節、ADR-0020、ADR-0021）。
 const (
 	StageMetadata     = "metadata"
 	StageTranscript   = "transcript"
 	StageNormalize    = "normalize"
+	StageSummary      = "summary"
 	StageSegment      = "segment"
 	StageCorrect      = "correct"
 	StageTranslate    = "translate"
@@ -26,21 +27,31 @@ const (
 	StagePublish      = "publish"
 )
 
-// Stages 是步驟的執行順序（M3 的四個步驟接在 translate 之後、publish 之前，ADR-0020 第 1 點）。
+// Stages 是步驟的執行順序（M3 的四個步驟接在 translate 之後、publish 之前，ADR-0020 第 1 點；
+// M4 的 summary 在 normalize 之後、segment 之前，ADR-0021 第 3 點）。
 var Stages = []string{
-	StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate,
+	StageMetadata, StageTranscript, StageNormalize, StageSummary, StageSegment, StageCorrect, StageTranslate,
 	StageSponsorBlock, StageChapters, StageFrames, StageNote, StagePublish,
 }
 
 // plannedStages 是 plan 第 5 節中還沒排進來的步驟；重跑它們回傳 501，名稱不對則是 422。
-// frames.candidates、frames.select 已合併成 frames（ADR-0020 第 1 點），現在是不認識的名稱（422）。
-var plannedStages = []string{"summary"}
+// frames.candidates、frames.select 已合併成 frames（ADR-0020 第 1 點），現在是不認識的名稱（422）；
+// summary 在 M4-S0 加進 Stages，清單現在是空的（ADR-0021「影響」）。
+var plannedStages []string
 
 // IsM3Stage 回報步驟是不是 M3 的步驟（sponsorblock、chapters、frames、note，ADR-0020）。
 // 和 IsLLMStage 分開：IsLLMStage 決定 M2 的 LLM 引擎、AGT 與資源類別的路由，M3 的步驟由各自的切片接上。
 func IsM3Stage(stage string) bool {
 	return stage == StageSponsorBlock || stage == StageChapters || stage == StageFrames || stage == StageNote
 }
+
+// IsM4Stage 回報步驟是不是 M4 新增的步驟（summary，ADR-0021 第 3 點）。
+// 和 IsLLMStage 分開：summary 不走 M2 的 LLM 引擎與 AGT 路由，由 DIG 的切片接上。
+func IsM4Stage(stage string) bool { return stage == StageSummary }
+
+// gatedStage 回報步驟是不是「加進 Stages 但可能還沒有實作」的步驟（M3 的四個步驟與 M4 的 summary）：
+// 設定要求執行而還沒有實作時，planChain 改成 skipped（not_implemented），從它重跑回 501。
+func gatedStage(stage string) bool { return IsM3Stage(stage) || IsM4Stage(stage) }
 
 // 步驟的 executor（stage_runs.executor、來源紀錄的 executor）。
 const (
@@ -66,6 +77,8 @@ const (
 	SkipPlatformChapters = "platform_chapters" // 平台已有 2 個以上的章節（CHAP-R1）
 	SkipAudioOnly        = "audio_only"        // 沒有影像串流（FRM-R1）
 	SkipGemini           = "gemini"            // stages.note.engine 為 gemini（GEM-R2）
+	// M4 的略過原因（DIG-R2）；由 DIG 的切片判斷，S0 只登記名稱。
+	SkipTooLong = "too_long" // 片長或估算的輸入超過 summary 的上限
 	// SkipNotImplemented 是暫時的原因（M3-S0）：設定要求執行、但這個 M3 步驟還沒有實作。
 	// 前進時不建任務、直接 skipped，M1、M2 的影音才能做到 publish；各切片在 stageImplemented 登記後就不會再出現。
 	SkipNotImplemented = "not_implemented"
@@ -83,7 +96,7 @@ func StageExecutors(stage string) []string {
 		return []string{ExecutorAPI, ExecutorAgent, ExecutorOff}
 	case StageTranslate:
 		return []string{ExecutorAPI, ExecutorAgent, ExecutorOff, ExecutorOpenCC}
-	case StageChapters, StageNote:
+	case StageChapters, StageNote, StageSummary:
 		return []string{ExecutorAPI, ExecutorAgent, ExecutorOff}
 	case StageFrames:
 		return []string{ExecutorRules, ExecutorAPI, ExecutorAgent, ExecutorOff}
@@ -106,6 +119,8 @@ const (
 	chaptersImplVersion     = 1
 	framesImplVersion       = 1
 	noteImplVersion         = 1
+	// M4 的步驟（ADR-0021）。
+	summaryImplVersion = 1
 )
 
 // defaultImplVersion 是步驟宣告的 impl_version。
@@ -133,6 +148,8 @@ func defaultImplVersion(stage string) int {
 		return framesImplVersion
 	case StageNote:
 		return noteImplVersion
+	case StageSummary:
+		return summaryImplVersion
 	}
 	return 0
 }
@@ -170,9 +187,10 @@ func (p *Pipeline) SetImplVersion(stage string, v int) error {
 // LLM 步驟走 api 或 agent 時是 llm；opencc 與 publish 是本機的確定性處理。
 // M3 的步驟依 ADR-0020 第 3 點：sponsorblock 是 download；chapters、note 走 api 或 agent 時是 llm；
 // frames 的任務由 FRM 的切片依 tasks.kind 分類，這裡先給候選擷取的 frames 類別。
+// M4 的 summary 走 api 或 agent 時是 llm（ADR-0021 第 6 點）。
 func resourceClass(stage, executor string, transcriptASR bool) string {
 	switch {
-	case stage == StageChapters || stage == StageNote:
+	case stage == StageChapters || stage == StageNote || stage == StageSummary:
 		if executor == ExecutorAPI || executor == ExecutorAgent {
 			return queue.ResourceLLM
 		}

@@ -60,6 +60,7 @@ type StageResolution struct {
 //   - chapters、note：同 segment 與 correct（off、not_configured）；frames 另有 rules，預設 off（FRM-R1）。
 //     chapters 有 2 個以上的平台章節（sc.PlatformChapters）而且不是 off 時是 local（CHAP-R1，執行後 skipped（platform_chapters））。
 //     audio_only、gemini 需要執行期的資訊，由各自的切片判斷（ADR-0020 第 2 點）。
+//   - summary：同 chapters（DIG-R1），但預設 off；too_long 需要執行期的資訊，由 DIG 的切片判斷。
 //
 // 這裡不看步驟有沒有實作：還沒有實作的 M3 步驟由 planChain 改成 skipped（not_implemented）。
 func ResolveExecutor(eff Effective, stage string, sc StageContext) (StageResolution, error) {
@@ -134,7 +135,7 @@ func ResolveExecutor(eff Effective, stage string, sc StageContext) (StageResolut
 		}
 		// 平台章節（CHAP-R1）：本機任務寫入 origin platform 的產出，步驟結束時是 skipped（platform_chapters），不需要 provider。
 		return StageResolution{Stage: stage, Executor: ExecutorLocal}, nil
-	case stage == StageChapters || stage == StageFrames || stage == StageNote:
+	case stage == StageChapters || stage == StageFrames || stage == StageNote || stage == StageSummary:
 		cfg, err := eff.Stage(stage)
 		if err != nil {
 			return StageResolution{}, err
@@ -197,7 +198,7 @@ func planChainFor(eff Effective, from, until string, sc StageContext, has func(s
 		if err != nil {
 			return nil, err
 		}
-		if IsM3Stage(stage) && !res.Skip && !stageImplemented(stage, res.Executor) {
+		if gatedStage(stage) && !res.Skip && !stageImplemented(stage, res.Executor) {
 			res.Skip, res.Reason = true, SkipNotImplemented
 		}
 		chain = append(chain, res)
@@ -230,7 +231,7 @@ func stageImplemented(stage, executor string) bool {
 		// M3-S3：規則與 vision 選圖（FRM）；agent 依 F6 在處理方案中回 422。
 		return executor == ExecutorRules || executor == ExecutorAPI
 	}
-	// 其他 M3 的步驟（chapters、frames、note）：各切片完成時在這裡登記。
+	// note 與 M4 的 summary：各切片完成時在這裡登記。
 	return false
 }
 

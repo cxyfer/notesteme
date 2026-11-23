@@ -20,6 +20,9 @@ type Language struct {
 	AllowPlatformTranslated bool              `json:"allow_platform_translated"`
 	Fallback                []string          `json:"fallback"`
 	VariantStrategy         string            `json:"variant_strategy"`
+	// BetterSource 是 language.better_source（SRC-R22，M4）：notify、rerun 或 off；空字串代表沒有設定（notify）。
+	// omitempty：沒有設定時不寫進快照，既有處理方案的快照 sha 不變。transcript 的快取鍵只取用到的欄位，不含它。
+	BetterSource string `json:"better_source,omitempty"`
 
 	// Supadata 是 supadata 區段的生效值。它不屬於 language 區段（所以不序列化），
 	// 由 Effective.Language 一併讀出，讓只拿到 Language 的步驟也能取得來源的參數。
@@ -77,6 +80,9 @@ func (l Language) Validate() error {
 	if !slices.Contains([]string{"", "convert", "localize"}, l.VariantStrategy) {
 		return invalidf("language.variant_strategy 必須是 convert 或 localize。")
 	}
+	if !validBetterSource(l.BetterSource) {
+		return invalidf("language.better_source 必須是 notify、rerun 或 off。")
+	}
 	return nil
 }
 
@@ -126,7 +132,8 @@ func defaultStageConfig(stage string) StageConfig {
 	switch {
 	case IsLLMStage(stage), stage == StageChapters, stage == StageNote:
 		return StageConfig{Executor: ExecutorAPI, Prompt: stage + "-default"}
-	case stage == StageFrames:
+	case stage == StageFrames, stage == StageSummary:
+		// summary 預設 off（DIG-R1）；同樣只在讀取時補上，不寫進快照。
 		return StageConfig{Executor: ExecutorOff, Prompt: stage + "-default"}
 	}
 	return StageConfig{}
@@ -242,7 +249,7 @@ func (e Effective) validateStages() error {
 			}
 			continue
 		}
-		if !IsLLMStage(stage) && !IsM3Stage(stage) {
+		if !IsLLMStage(stage) && !gatedStage(stage) {
 			return invalidf("stages 的步驟必須是 %s 其中之一，收到 %q。", strings.Join(configurableStages, "、"), stage)
 		}
 		cfg, err := e.Stage(stage)
@@ -256,8 +263,8 @@ func (e Effective) validateStages() error {
 	return nil
 }
 
-// configurableStages 是 stages 底下可以設定的步驟（M2 的 LLM 步驟與 M3 的步驟）。
-var configurableStages = []string{StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StageChapters, StageFrames, StageNote}
+// configurableStages 是 stages 底下可以設定的步驟（M4 的 summary、M2 的 LLM 步驟與 M3 的步驟，同 Stages 的順序）。
+var configurableStages = []string{StageSummary, StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StageChapters, StageFrames, StageNote}
 
 // SponsorBlockSettings 是 stages.sponsorblock（SPB-R1、R3）。
 type SponsorBlockSettings struct {

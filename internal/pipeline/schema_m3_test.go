@@ -192,7 +192,12 @@ func parseFeatureDocs(t *testing.T, path string) []featureDoc {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lines := strings.Split(string(raw), "\n")
+	return parseFeatureLines(t, path, strings.Split(string(raw), "\n"))
+}
+
+// parseFeatureLines 同 parseFeatureDocs，輸入是已經切好的行（M4 的測試先展開 Scenario Outline）。
+func parseFeatureLines(t *testing.T, path string, lines []string) []featureDoc {
+	t.Helper()
 	var docs []featureDoc
 	readDoc := func(i int) (string, int) { // lines[i] 是開頭的 """；回傳內容與結尾 """ 的下一行
 		indent := strings.Index(lines[i], `"""`)

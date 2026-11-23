@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"path/filepath"
 	"slices"
@@ -69,8 +70,8 @@ const (
 	msgRequired      = "必填。"
 )
 
-// stageOrder 是 stages 底下已知步驟的檢查順序（M2 的 LLM 步驟，接著是 M3 的步驟，同 Stages 的順序）。
-var stageOrder = []string{StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StageChapters, StageFrames, StageNote}
+// stageOrder 是 stages 底下已知步驟的檢查順序（同 Stages 的順序：M4 的 summary、M2 的 LLM 步驟，接著是 M3 的步驟）。
+var stageOrder = []string{StageSummary, StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StageChapters, StageFrames, StageNote}
 
 // SponsorBlock 的類別（SPB-R3）。
 var sponsorBlockCategories = []string{"sponsor", "selfpromo", "interaction", "intro", "outro", "preview", "music_offtopic", "filler"}
@@ -95,20 +96,28 @@ const (
 var stageCommonFields = []string{"executor", "provider", "model", "prompt"}
 
 // stageFields 登記步驟專屬的欄位；之後的切片在同一張表中加上自己的欄位。
+// stages.<stage>.batch（BATCH-R1）不在這張表：checkStage 在 executor 之後檢查，只有 batchStages 的步驟接受。
 var stageFields = map[string][]fieldSpec{
-	StageSegment: {
-		{"on_manual", checkEnum(OnManualSkip, OnManualRun)},
-	},
-	StageCorrect: {
-		{"min_similarity", checkNumberRange(0, 1)},
-	},
-	StageTranslate: {
-		{"length_ratio", checkLengthRatio},
-	},
+	// M4（DIG 的「介面」）；S0 只做型別與範圍檢查，語意由 DIG 的切片使用。pause_after 與 executor 的關係見 checkStage。
+	StageSummary: stageSpecs(
+		fieldSpec{"language", checkLangTag},
+		fieldSpec{"pause_after", checkBool},
+		fieldSpec{"max_duration", checkDurationRange(summaryMinDuration, summaryMaxDuration)},
+		fieldSpec{"max_input_tokens", checkIntRange(summaryMinInputTokens, summaryMaxInputTokens)},
+	),
+	StageSegment: stageSpecs(
+		fieldSpec{"on_manual", checkEnum(OnManualSkip, OnManualRun)},
+	),
+	StageCorrect: stageSpecs(
+		fieldSpec{"min_similarity", checkNumberRange(0, 1)},
+	),
+	StageTranslate: stageSpecs(
+		fieldSpec{"length_ratio", checkLengthRatio},
+	),
 	// M3（CHAP、FRM、NOTE、GEM 的「介面」）；S0 只做型別與範圍檢查，語意由各自的切片使用。
-	StageChapters: {
-		{"max_chapters", checkIntRange(1, maxChapters)},
-	},
+	StageChapters: stageSpecs(
+		fieldSpec{"max_chapters", checkIntRange(1, maxChapters)},
+	),
 	StageFrames: {
 		{"scene_threshold", checkNumberRange(0, 1)},
 		{"min_interval_s", checkIntRange(1, maxFrameInterval)},
@@ -118,14 +127,14 @@ var stageFields = map[string][]fieldSpec{
 		{"per_minute", checkNumberRangeOpen(0, maxFramesPerMin)},
 		{"hint_words", checkStringList(0, nil)},
 	},
-	StageNote: {
-		{"engine", checkEnum(NoteEnginePipeline, NoteEngineGemini)},
-		{"template", checkString},
-		{"lang", checkLangTag},
-		{"include_translation", checkBool},
-		{"map_reduce_after", checkDuration},
-		{"gemini", checkObject([]fieldSpec{{"max_duration", checkDuration}}, msgUnknownField)},
-	},
+	StageNote: stageSpecs(
+		fieldSpec{"engine", checkEnum(NoteEnginePipeline, NoteEngineGemini)},
+		fieldSpec{"template", checkString},
+		fieldSpec{"lang", checkLangTag},
+		fieldSpec{"include_translation", checkBool},
+		fieldSpec{"map_reduce_after", checkDuration},
+		fieldSpec{"gemini", checkObject([]fieldSpec{{"max_duration", checkDuration}}, msgUnknownField)},
+	),
 }
 
 // stages.note.engine 的值（GEM-R1）。
@@ -222,6 +231,8 @@ var languageFields = []fieldSpec{
 	{"allow_platform_translated", checkBool},
 	{"fallback", checkStringList(0, nil)},
 	{"variant_strategy", checkEnum("convert", "localize")},
+	// M4（SRC-R22）：事後出現更好的字幕來源時的動作。
+	{"better_source", checkEnum(BetterSourceNotify, BetterSourceRerun, BetterSourceOff)},
 }
 
 var timingFields = []fieldSpec{
@@ -676,9 +687,21 @@ func (v *layerValidator) checkStages(path string, val any) {
 		switch {
 		case !has:
 		case name == StageSponsorBlock:
+			if sm, ok := sv.(map[string]any); ok {
+				sv = v.rejectBatch(joinPath(path, name), sm)
+			}
 			checkObject(sponsorBlockFields, msgUnknownField)(v, joinPath(path, name), sv)
 		default:
 			v.checkStage(joinPath(path, name), name, sv)
+		}
+	}
+	// pipeline 的其他步驟（transcript 等）寫了 batch：在 batch 欄位回報「這個步驟不支援 batch。」（BATCH-R1），
+	// 其餘的欄位照舊在步驟上回報「沒有可設定的欄位」。
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		if sm, ok := m[k].(map[string]any); ok && ValidStage(k) && !slices.Contains(stageOrder, k) {
+			if rest := v.rejectBatch(joinPath(path, k), sm); len(rest) == 0 && len(sm) > 0 {
+				delete(m, k)
+			}
 		}
 	}
 	v.unknown(path, m, func(k string) bool { return slices.Contains(stageOrder, k) }, msgNoStageFields)
@@ -696,6 +719,15 @@ func (v *layerValidator) checkStage(path, stage string, val any) {
 	if raw, has := m["executor"]; has {
 		exec, ok := v.checkExecutor(joinPath(path, "executor"), stage, raw)
 		needComplete = v.kind == KindProfile && ok && exec == ExecutorAPI
+	}
+	// batch 緊接在 executor 之後檢查（BATCH-R1）：處理方案的完整性錯誤（provider、model）排在它後面，
+	// 「batch 只能是 auto 或 off。」才會是 errors[0]。
+	if raw, has := m["batch"]; has {
+		if slices.Contains(batchStages, stage) {
+			checkBatch(v, joinPath(path, "batch"), raw)
+		} else {
+			v.add(joinPath(path, "batch"), msgBatchUnsupported)
+		}
 	}
 
 	if raw, has := m["provider"]; has {
@@ -731,8 +763,11 @@ func (v *layerValidator) checkStage(path, stage string, val any) {
 			s.check(v, joinPath(path, s.name), raw)
 		}
 	}
+	if stage == StageSummary {
+		v.checkSummaryPause(path, m)
+	}
 	v.unknown(path, m, func(k string) bool {
-		return slices.Contains(stageCommonFields, k) || slices.ContainsFunc(extra, func(s fieldSpec) bool { return s.name == k })
+		return k == "batch" || slices.Contains(stageCommonFields, k) || slices.ContainsFunc(extra, func(s fieldSpec) bool { return s.name == k })
 	}, msgUnknownField)
 }
 
@@ -743,7 +778,8 @@ func (v *layerValidator) checkExecutor(path, stage string, val any) (string, boo
 		return "", false
 	}
 	if exec == "batch" {
-		v.add(path, "batch 屬於 M4，尚未支援。")
+		// M4 起 batch 是獨立的欄位（BATCH-R1），不是 executor。
+		v.add(path, fmt.Sprintf(msgBatchNotExecutor, stage))
 		return exec, false
 	}
 	if allowed := StageExecutors(stage); !slices.Contains(allowed, exec) {

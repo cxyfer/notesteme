@@ -490,13 +490,13 @@ func (r errResolver) ResolvePrompt(context.Context, string) (ResolvedPrompt, err
 	return ResolvedPrompt{}, r.err
 }
 
-// batch 屬於 M4：每個 LLM 步驟都回報同一句話，而且不再回報完整性。
-func TestValidateLayer_BatchIsM4(t *testing.T) {
+// executor 寫成 batch：每個 LLM 步驟都回報同一句話（指向 M4 的 stages.<stage>.batch），而且不再回報完整性。
+func TestValidateLayer_BatchIsNotAnExecutor(t *testing.T) {
 	for _, stage := range []string{"segment", "correct", "translate"} {
 		doc := map[string]any{"stages": map[string]any{stage: map[string]any{"executor": "batch"}}}
 		for _, kind := range []LayerKind{KindProfile, KindOverride, KindGlobal} {
 			errs := ValidateLayer(t.Context(), doc, kind, testDeps)
-			if len(errs) != 1 || errs[0].Path != "stages."+stage+".executor" || errs[0].Message != "batch 屬於 M4，尚未支援。" {
+			if len(errs) != 1 || errs[0].Path != "stages."+stage+".executor" || errs[0].Message != "batch 不是 executor；請改用 stages."+stage+".batch: auto。" {
 				t.Errorf("%s kind=%d：errs = %+v", stage, kind, errs)
 			}
 		}

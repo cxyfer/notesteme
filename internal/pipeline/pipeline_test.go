@@ -233,7 +233,7 @@ func TestIngestRejections(t *testing.T) {
 		{"處理方案不存在", IngestRequest{URL: watch, Profile: "standard"}, func(e error) bool {
 			return errors.As(e, &inv) && len(inv.Fields) == 1 && inv.Fields[0].Path == "profile"
 		}},
-		{"未知的 until", IngestRequest{URL: watch, Until: "summary"}, func(e error) bool { return errors.As(e, &inv) }},
+		{"未知的 until", IngestRequest{URL: watch, Until: "frames.select"}, func(e error) bool { return errors.As(e, &inv) }},
 		{"YouTube 不能指定分P", IngestRequest{URL: watch, Parts: []int{1}}, func(e error) bool { return errors.As(e, &inv) }},
 		{"不合法的覆寫", IngestRequest{URL: watch, Overrides: map[string]any{"language": map[string]any{"targets": []any{}}}}, func(e error) bool { return errors.As(e, &inv) }},
 		{"拼錯的覆寫欄位", IngestRequest{URL: watch, Overrides: map[string]any{"language": map[string]any{"fallbck": []any{"groq"}}}}, func(e error) bool { return errors.As(e, &inv) }},
@@ -799,9 +799,11 @@ func TestNextStageHonoursUntil(t *testing.T) {
 		{"metadata", "transcript", "transcript", true},
 		{"transcript", "transcript", "", false},
 		{"transcript", "normalize", "normalize", true},
-		{"normalize", "", "segment", true},
+		{"normalize", "", "summary", true},
 		{"normalize", "normalize", "", false},
-		{"normalize", "correct", "segment", true},
+		{"normalize", "correct", "summary", true},
+		{"summary", "", "segment", true},
+		{"summary", "summary", "", false},
 		{"segment", "segment", "", false},
 		{"translate", "", "sponsorblock", true},
 		{"translate", "translate", "", false},

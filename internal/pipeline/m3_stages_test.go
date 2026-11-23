@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/queue"
@@ -185,8 +186,9 @@ func advanceWithRuns(t *testing.T, m2 []string) {
 		t.Fatal(err)
 	}
 	for _, run := range runs {
-		if IsM3Stage(run.Stage) {
-			t.Errorf("不該補建 M3 的步驟：%+v", run)
+		// 不補建影音原本沒有記錄的步驟（M3 的四個步驟、M4 的 summary）。
+		if !slices.Contains(m2, run.Stage) {
+			t.Errorf("不該補建 %s：%+v", run.Stage, run)
 		}
 	}
 }
