@@ -170,3 +170,18 @@
 - O8：每部影音一則 `stuck_task`（OPS-R14），很多影音同時卡住時靠 NOTIFY-R11 的速率上限限制。之後可以改成彙總成一則。
 - O9：ADR-0021 第 7 點的 migration 清單沒有 `alert_states`、`tool_call_stats` 與 cookie 的 `last_ok_at`，要在 ADR 補上（OPS 的 M4 切片）。
 - M4-S0：`backup.daily.*`、`alerts.*` 與 `NOTESTEME_DEPLOYMENT` 已解析與驗證（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`at` 是 `HH:MM`、`timezone` 用 `time.LoadLocation` 驗證（binary 內嵌 `time/tzdata`，容器沒有時區資料也能啟動；`Local` 不接受）、`dir` 是絕對路徑（預設 `<資料目錄>/backups`）、`keep` 為 1～365；`alerts` 的門檻是 0 以上的整數（`disk_usage_percent` 0～100、`ytdlp_failure_ratio` 0～1），上限是 S0 暫定的。`NOTESTEME_DEPLOYMENT` 只接受 `local`、`vps`（OPS-R21 的第一句）；`vps` 的其他行為（拒絕 `--insecure-no-auth`、cookie 一律 `Secure`）屬於 S12。排程工作 `backup.daily`、`alerts` 要等 S12 在 `internal/scheduler` 登記。
+
+### M4 OPS 實作的決定（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）
+
+- O11（`stuck_task` 的「沒有改變狀態」）：`stage_runs` 沒有「狀態改變的時間」欄位，也不為此新增（改狀態的查詢由 pipeline／queue 共用）。改由既有欄位推算：`running` 取最後一次領取（`started_at`）；排隊中（`pending`，以及等 Agent 領取的 `awaiting_agent`，R14 的「pending」包含它）取「最新的未完成任務建立時間」「最晚的重試時間」與「最後一次領取（Agent 租約到期放回佇列時保留）」中最晚的一個。只看有未完成任務（`pending`、`leased`）的步驟，還在等前一步的步驟不算；垃圾桶中的影音不算。代價：內建 worker 的租約在重啟時放回佇列（`started_at` 清空）後，會從任務建立的時間算起，可能提早告警。每部影音取最先建立而且卡住的步驟。
+- O12（`backup_failed` 的訊息）：通知與 `last_error` 的 `<原因>` 是固定的幾種說明（磁碟空間不足、路徑中有不是目錄的項目、沒有寫入權限、唯讀的檔案系統、無法產生資料庫快照、其他寫入錯誤），不放系統錯誤字串（含絕對路徑，NOTIFY-R9）；完整錯誤只寫進 log。成功時解除並送「已恢復：每日備份成功。」（文字管道標題「Notesteme 已恢復：每日備份成功。」）。`backup_failed` 由 `backup.daily` 管理，不受 `alerts.enabled` 影響。
+- O13（保留）：剛寫好的那一份一定保留，即使目錄中有名稱時間更晚的檔案（例如使用者放進一份未來時間的檔名，`keep: 1` 時不會把今天的備份刪掉）；保留數仍是 `keep`。刪除經 `os.Root`，刪除前再確認一次是一般檔案。清理失敗只記 log，不算備份失敗。
+- O14（空間檢查）：寫出前以「資料庫快照＋設定檔＋上傳檔」的大小與目錄的剩餘空間（statfs）比較；不足時不寫出。寫入中失敗（例如 ENOSPC）時刪除暫存檔，`latest` 不更新。`notesteme-backup-latest.tar.gz` 的暫存 symlink 改用隨機名稱，手動備份與每日備份同時寫入同一個目錄時不會互相覆蓋（M1 的實作是固定名稱）。
+- O15（排程）：啟動時 `backup.daily` 的排定時間已經過了（停機錯過）或正在失敗重試時保留；否則依目前的 `at`、`timezone` 重排（設定可能改了）。`enabled: false` 時刪除排程列（`GET /api/system` 的 `backup.next_run_at` 為 null）。`alerts.enabled: false` 時刪除 `alerts` 的排程列，並安靜地解除它管理、仍然成立的告警（不送 resolved），總覽不會一直顯示停用前的狀態；個別門檻設成 0 時也是安靜地解除。
+- O16（`alert_states.message`）：表多一個 `message` 欄位，`GET /api/system` 的 `alerts[].message` 讀它。告警持續成立時只更新文字（例如磁碟用量的百分比、yt-dlp 的次數）不重複通知；磁碟用量在門檻與門檻減 5 之間時沿用成立時的文字。
+- O17（alert 事件的形狀）：`notify.Alert` 是 `{kind, key, message, since, resolved}`，另有選填的 `summary` 給文字管道的標題（沒有時用 `message`）；resolved 的 `message` 是「已恢復：<摘要>」、`since` 是原本成立的時間。磁碟用量告警的 `key` 與訊息一律寫 `/data`（容器中的名稱），不寫實際的資料目錄路徑。
+- O18（yt-dlp 的統計）：YouTube 與 Bilibili 的 yt-dlp 呼叫都記在 `tool_call_stats` 的 `yt-dlp`；runner 本身失敗（無法執行）算失敗，被取消的不記錄；`permanent`（影片不存在、私人、地區限制）不算失敗但算呼叫次數。帶 cookie、結束碼 0 時更新該平台 cookie 的 `last_ok_at`。`cookie_stale` 的基準是「`last_ok_at` 與上傳時間（`updated_at`）較晚的一個」，重新上傳即解除。統計在每次 `alerts` 檢查時清掉 48 小時前的時間格。
+- O19（`deploy-check vps`）：網域除了 IP 與 `localhost`，也拒絕 `*.localhost`、沒有點的名稱與網址形式（含 scheme、port、路徑）。DB 以 `mode=ro` 開啟；唯讀掛載下打不開（WAL 的 `-shm` 建不起來）時改以 `immutable=1` 再試一次；DB 存在但仍打不開時結束碼 1 並說明，不當成「沒有密碼」。訊息印在 stderr，通過時印在 stdout；`--json` 輸出 `{ok, message}`。
+- O20（`--insecure-no-auth`）：serve 現在認得這個旗標；`vps` 部署拒絕（OPS-R21，在密碼檢查之前）。`local` 部署時 AUTH-R3 的無密碼模式還沒有實作，所以同樣拒絕並說明（之前是「unknown argument」、結束碼 2，現在是啟動失敗、結束碼 1），由 AUTH-R3 的切片補上。
+- O21（compose）：`vps-check` 不設 `restart`（否則永遠不會 `service_completed_successfully`）、資料 volume 唯讀；`caddy` 另有 `caddy-data`、`caddy-config` 兩個 volume 保存憑證；Caddyfile 加 `encode zstd gzip`。`compose.yaml` 的 vps 變數一律 `:-`（O5）。M5 的 `hub` profile 不在這個切片。真正的 `docker compose config`、映像建置與 VPS 上的憑證申請要由 owner 或 CI 驗證（本機沒有 docker）。
+- O22（doctor）：OPS-R11～R21 沒有要求 doctor 的檢查，這個切片沒有加；之後可以考慮檢查 `backup.daily.dir` 可寫入。

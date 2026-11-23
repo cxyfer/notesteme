@@ -558,6 +558,8 @@ M4-S6 已實作上面三個句型（`features/steps/digest.go`）。DIG 的場�
 | `When the server starts with the flag {string}` | 同 `When the server starts`，但在 `serve` 後面加上指定的旗標（例如 `--insecure-no-auth`） |
 | `Given the compose .env file contains:` | 表格（欄位 `field`、`value`）模擬 `deploy/docker/.env`：之後的 `docker compose … config --format json`（fakecompose）以這些變數代入，優先於場景的環境變數；`value` 空白代表空字串。不寫入真的 `.env` |
 
+實作（2026-11-24，M4 OPS）：`features/steps/ops_unattended.go`。閘門 `opsGate` 只對 `@OPS-R11`～`@OPS-R21` 的場景放行（`notifyGate` 排除這些場景，避免 NOTIFY 的閘門句型被當成 OPS 的）；cookie 與 yt-dlp 統計的累積在 `prepareOwner` 中 notifiers 之後 flush（`flushOps`），所以 `POST /api/cookies` 在第一個送出請求的步驟之前完成；`When the server starts with the flag` 經 `app.ParseServeArgs` 啟動；磁碟用量經 `World.SetDiskUsage` → `TestControls.DiskUsage`。
+
 ### 4.19 成本、預算與 Batch API（`steps/costs.go`，M4）
 
 閘門的共用：`features/COST-cost-budget.feature` 的閘門是 `the price of … is … USD per …`；`features/BATCH-batch-api.feature` 的閘門是 `the batch API of … completes after …`；`features/LIB-bulk-overview.feature` 的閘門是 COST 的 `the cost estimate of every … task is … USD`（後面還有 `the price of …`）。所以 COST 切片實作這兩個句型之後、LIB-R13～R22 實作之前，LIB-bulk-overview 的場景會從 pending 變成 failed；COST 切片要先確認 LIB 的場景仍是 pending（例如 `POST /api/items/batch`、`GET /api/overview` 回 501），或和 LIB 切片一起合併。BATCH 的場景同時依賴 COST 的句型（價格、usage），BATCH 切片排在 COST 之後。
