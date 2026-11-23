@@ -273,8 +273,20 @@ type Call struct {
 	Provider, Model     string
 	CustomBase          bool
 	InputTokens, Output int
-	// Batch 為 true 時是 Batch API 的請求（BATCH-R6）；目前只記在 unit_price_json。
+	// Batch 為 true 時是 Batch API 的請求：預留與結算的金額都乘以 BatchDiscount（BATCH-R6、R7），
+	// unit_price_json 記 batch 與 batch_discount。
 	Batch bool
+}
+
+// BatchDiscount 是 batch 的單價相對於一般單價的倍數（BATCH-R6）：Anthropic 與 OpenAI 內建都是 0.5。
+const BatchDiscount = 0.5
+
+// discounted 是 Batch API 的金額：一般金額乘以 BatchDiscount，四捨五入到 micro-USD。
+func discounted(m Micro, batch bool) Micro {
+	if !batch {
+		return m
+	}
+	return Micro(math.Round(float64(m) * BatchDiscount))
 }
 
 // Reservation 是 Reserve 寫入的預留。
@@ -308,6 +320,8 @@ func (s *Service) Reserve(ctx context.Context, r *store.Repo, c Call) (Reservati
 	} else if priced {
 		est = llmMicro(c.InputTokens, c.Output, in.USDPerUnit, out.USDPerUnit)
 	}
+	// 測試控制的估算也是一般 API 的金額（steps.md 4.19）：batch 一樣乘以折扣（BATCH-R7）。
+	est = discounted(est, c.Batch)
 	b, err := s.Budget(ctx, r)
 	if err != nil {
 		return Reservation{}, err
@@ -433,6 +447,8 @@ type unitPrice struct {
 	InputTokens  int      `json:"input_tokens"`
 	OutputTokens int      `json:"output_tokens"`
 	Batch        bool     `json:"batch"`
+	// BatchDiscount 只在 batch 時記錄（BATCH-R6）。
+	BatchDiscount *float64 `json:"batch_discount,omitempty"`
 }
 
 // Settle 把 Reserve 的預留改成實際的結果（COST-R1、R2、R5）。已經結算過、或已被啟動時的清理刪掉的預留不再改動，
@@ -459,6 +475,10 @@ func (s *Service) settlement(ctx context.Context, r *store.Repo, c Call, u Usage
 		return store.CostSettlement{}, err
 	}
 	up := unitPrice{InputTokens: max(u.InputTokens, 0), OutputTokens: max(u.OutputTokens, 0), Batch: c.Batch}
+	if c.Batch {
+		d := BatchDiscount
+		up.BatchDiscount = &d
+	}
 	if priced {
 		inP, outP := in.USDPerUnit, out.USDPerUnit
 		up.InputMTok, up.OutputMTok = &inP, &outP
@@ -486,7 +506,8 @@ func (s *Service) settlement(ctx context.Context, r *store.Repo, c Call, u Usage
 			up.Source = SourceUnknown
 		}
 	case priced:
-		set.USD = llmMicro(up.InputTokens, up.OutputTokens, in.USDPerUnit, out.USDPerUnit).USD()
+		// provider 回報金額時以回報為準（上面）；否則 batch 的單價是一般單價乘以折扣（BATCH-R6）。
+		set.USD = discounted(llmMicro(up.InputTokens, up.OutputTokens, in.USDPerUnit, out.USDPerUnit), c.Batch).USD()
 	default:
 		up.Source = SourceUnknown
 		set.State, set.USD = store.CostUnknown, 0
@@ -497,6 +518,43 @@ func (s *Service) settlement(ctx context.Context, r *store.Repo, c Call, u Usage
 	}
 	set.UnitPriceJSON = string(raw)
 	return set, nil
+}
+
+// SettleBatch 同 Settle，但預留已經不在時（請求改走一般 API 時刪掉了，BATCH-R5、R7）另外寫一筆實際的紀錄：
+// batch 晚到的結果 provider 照樣計費（outcome discarded，BATCH-R9）。
+func (s *Service) SettleBatch(ctx context.Context, r *store.Repo, res Reservation, c Call, u Usage) error {
+	set, err := s.settlement(ctx, r, c, u)
+	if err != nil {
+		return err
+	}
+	ok := false
+	if res.ID != "" {
+		if ok, err = r.SettleCostRow(ctx, res.ID, set); err != nil {
+			return err
+		}
+	}
+	if !ok {
+		attempt := 1
+		if c.TaskID != "" {
+			n, err := r.CountTaskCostRows(ctx, c.TaskID)
+			if err != nil {
+				return err
+			}
+			attempt = n + 1
+		}
+		if _, err := r.InsertCostRow(ctx, store.CostRow{
+			ItemID: c.ItemID, ItemTitle: c.ItemTitle, StageRunID: c.StageRunID, TaskID: c.TaskID, Stage: c.Stage,
+			Provider: c.Provider, Model: c.Model, Units: set.Units, UnitType: set.UnitType, USD: set.USD, State: set.State,
+			Attempt: attempt, Outcome: set.Outcome, UnitPriceJSON: set.UnitPriceJSON, At: s.clock.Now(),
+		}); err != nil {
+			return err
+		}
+	}
+	b, err := s.Budget(ctx, r)
+	if err != nil {
+		return err
+	}
+	return s.warn(ctx, r, b)
 }
 
 // Release 刪除 Reserve 的預留（任務失敗、取消或放回佇列，COST-R5）；已經結算的不刪。
