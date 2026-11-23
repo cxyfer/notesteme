@@ -56,12 +56,16 @@ func TestPlanChainSkipsUnimplementedM3Stages(t *testing.T) {
 		StageChapters: map[string]any{"provider": "anthropic", "model": "m"},
 		StageFrames:   map[string]any{"executor": "rules"},
 	}}
-	c, err := planChain(mustEffective(t, over), StageSponsorBlock, "", StageContext{Platform: "youtube"})
+	// sponsorblock 已在 M3-S1 實作，鏈從 chapters 開始看其他還沒有實作的步驟。
+	c, err := planChain(mustEffective(t, over), StageChapters, "", StageContext{Platform: "youtube"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if sb, _ := planChain(mustEffective(t, over), StageSponsorBlock, "", StageContext{Platform: "youtube"}); len(sb) != 1 || sb[0].Skip {
+		t.Errorf("sponsorblock 已實作，應建立任務：%+v", sb)
+	}
 	want := map[string]string{
-		StageSponsorBlock: SkipNotImplemented, StageChapters: SkipNotImplemented, StageFrames: SkipNotImplemented,
+		StageChapters: SkipNotImplemented, StageFrames: SkipNotImplemented,
 		StageNote: SkipNotConfigured, StagePublish: SkipNoOutputs,
 	}
 	if len(c) != len(want) {
@@ -80,26 +84,30 @@ func TestPlanChainSkipsUnimplementedM3Stages(t *testing.T) {
 }
 
 func TestStageAvailable(t *testing.T) {
-	for _, s := range []string{StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate, StagePublish} {
+	for _, s := range []string{StageMetadata, StageTranscript, StageNormalize, StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StagePublish} {
 		if !StageAvailable(s) {
 			t.Errorf("%s 應該已經實作", s)
 		}
 	}
-	for _, s := range []string{StageSponsorBlock, StageChapters, StageFrames, StageNote, "summary", "frames.select", ""} {
+	for _, s := range []string{StageChapters, StageFrames, StageNote, "summary", "frames.select", ""} {
 		if StageAvailable(s) {
 			t.Errorf("%s 不應該回報已實作", s)
 		}
 	}
 }
 
-// 預設設定的 YouTube 影音：M3 的四個步驟依序 skipped、不建任務，publish 照常前進（308 個場景不受影響的前提）。
+// 預設設定的 YouTube 影音：sponsorblock 查詢後 done（M3-S1），其他三個 M3 步驟依序 skipped、不建任務，
+// publish 照常前進（308 個場景不受影響的前提）。
 func TestFullRunSkipsM3StagesWithoutTasks(t *testing.T) {
 	r := newRig(t)
 	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
 	it := r.ingest(watch, nil, "")
 	r.run()
+	if st := latestStage(t, r, it.ID, StageSponsorBlock); st.Status != store.StatusDone || !hasTask(t, r, it.ID, StageSponsorBlock) {
+		t.Errorf("sponsorblock = %+v，預期 done 並有任務", st)
+	}
 	want := map[string]string{
-		StageSponsorBlock: SkipNotImplemented, StageChapters: SkipNotConfigured, StageFrames: SkipOff,
+		StageChapters: SkipNotConfigured, StageFrames: SkipOff,
 		StageNote: SkipNotConfigured, StagePublish: SkipNoOutputs,
 	}
 	for s, reason := range want {

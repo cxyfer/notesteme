@@ -197,8 +197,11 @@ func stageImplemented(stage, executor string) bool {
 	case IsLLMStage(stage):
 		// api：有登記在 llmStages 的步驟（correct、segment、translate）。
 		return executor == ExecutorAgent || usesLLMEngine(stage, executor)
+	case stage == StageSponsorBlock:
+		// M3-S1：確定性的 HTTP 查詢（SPB）。
+		return executor == ExecutorLocal
 	}
-	// M3 的步驟（sponsorblock、chapters、frames、note）：各切片完成時在這裡登記。
+	// 其他 M3 的步驟（chapters、frames、note）：各切片完成時在這裡登記。
 	return false
 }
 

@@ -69,8 +69,9 @@ func TestFullRunSkipsUnconfiguredStagesWithoutTasks(t *testing.T) {
 			t.Errorf("%s = %+v", s, st)
 		}
 	}
-	if n, _ := r.st.Read().CountTasks(context.Background(), store.TaskDone); n != 3 {
-		t.Errorf("完成的任務 = %d，預期 3", n)
+	// M1 的 3 個加上 sponsorblock（M3-S1 起，YouTube 影音預設查詢 SponsorBlock）。
+	if n, _ := r.st.Read().CountTasks(context.Background(), store.TaskDone); n != 4 {
+		t.Errorf("完成的任務 = %d，預期 4", n)
 	}
 	if n, _ := r.st.Read().CountTasks(context.Background(), store.TaskPending); n != 0 {
 		t.Errorf("pending 任務 = %d，預期 0", n)

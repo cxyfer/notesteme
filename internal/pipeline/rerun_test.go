@@ -118,9 +118,9 @@ func TestRerunFromTranscriptRunsDownstreamOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 第一輪 3 個任務，重跑 transcript 與 normalize 各一個。
-	if n != 5 {
-		t.Errorf("完成的任務 = %d，預期 5", n)
+	// 第一輪 4 個任務（M1 的 3 個與 sponsorblock），重跑 transcript、normalize、sponsorblock 各一個（SPB-R8）。
+	if n != 7 {
+		t.Errorf("完成的任務 = %d，預期 7", n)
 	}
 }
 
@@ -142,14 +142,16 @@ func TestRerunErrors(t *testing.T) {
 }
 
 // 重跑 M2 的步驟：沒有可執行的 executor 時整條鏈 skipped，不建任務（PIPE-R7）。
+// 例外是 sponsorblock：從它或更早的步驟重跑一律重新查詢（SPB-R8），所以多一個任務。
 func TestRerunFromM2StageSkipsChain(t *testing.T) {
 	cases := []struct {
 		from    string
 		skipped []string
+		tasks   int
 	}{
-		{StageCorrect, []string{StageCorrect, StageTranslate, StagePublish}},
-		{StageTranslate, []string{StageTranslate, StagePublish}},
-		{StagePublish, []string{StagePublish}},
+		{StageCorrect, []string{StageCorrect, StageTranslate, StagePublish}, 1},
+		{StageTranslate, []string{StageTranslate, StagePublish}, 1},
+		{StagePublish, []string{StagePublish}, 0},
 	}
 	for _, c := range cases {
 		r := newRig(t)
@@ -174,8 +176,8 @@ func TestRerunFromM2StageSkipsChain(t *testing.T) {
 				t.Errorf("from %s：%s 的事件 %v", c.from, s, ev)
 			}
 		}
-		if n, _ := r.st.Read().CountTasks(ctx, store.TaskDone); n != doneBefore {
-			t.Errorf("from %s：沒有任務該執行，完成的任務 %d → %d", c.from, doneBefore, n)
+		if n, _ := r.st.Read().CountTasks(ctx, store.TaskDone); n != doneBefore+c.tasks {
+			t.Errorf("from %s：只有 sponsorblock 該執行（%d 個），完成的任務 %d → %d", c.from, c.tasks, doneBefore, n)
 		}
 		// 上游不動。
 		if now := latestStage(t, r, it.ID, StageSegment); c.from != StageSegment && now.ID != oldSegment.ID {
@@ -211,7 +213,6 @@ func TestRerunNotImplementedWritesNothing(t *testing.T) {
 		{"chapters", RerunRequest{From: StageChapters}},
 		{"note", RerunRequest{From: StageNote}},
 		{"frames", RerunRequest{From: StageFrames}},
-		{"sponsorblock", RerunRequest{From: StageSponsorBlock}},
 	}
 	for _, tt := range tests {
 		if _, err := r.p.Rerun(ctx, it.ID, tt.req); !errors.As(err, &ni) {

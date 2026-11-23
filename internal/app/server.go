@@ -26,6 +26,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/secrets"
 	"github.com/cxyfer/notesteme/internal/source/bilibili"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
+	"github.com/cxyfer/notesteme/internal/sponsorblock"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/toolexec"
 	"github.com/cxyfer/notesteme/internal/tools/ytdlp"
@@ -255,6 +256,14 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	deps.Providers, deps.Prompts = deps.LLM, promptResolver{s.prompts}
 	// vault 與 hook 只能在設定檔定義（VAULT-R1、R10）：處理方案只能引用這些 id。
 	deps.Outputs = outputCatalog{vaults: cfg.Vaults, hooks: cfg.Hooks}
+	// SponsorBlock 經同一個 netguard client（SPB-R2）；base_url 只能寫在設定檔。
+	// 沒有經過設定檔載入的 Config（測試、standalone 的預設值）沒有 base_url，用公開伺服器。
+	sbBase := cfg.SponsorBlockBaseURL
+	if sbBase == "" {
+		sbBase = config.DefaultSponsorBlockBase
+	}
+	deps.SponsorBlock = &sponsorblock.Client{HTTP: deps.HTTP, BaseURL: sbBase}
+	deps.SponsorBlockBaseURL = sbBase
 	pl = pipeline.New(deps)
 	s.pipeline = pl
 	s.worker = worker.New(s.queue, s.pipeline, env.Clock, log)

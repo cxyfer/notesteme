@@ -134,7 +134,7 @@ func newRig(t *testing.T, opts ...func(*Deps)) *rig {
 	yt := &fakeYT{cues: 4, info: youtube.Info{ID: "abc123xxxxx", Title: "T", Language: "en"}}
 	q := queue.New(st, clk, "w1")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	deps := Deps{Store: st, Clock: clk, DataDir: dir, Log: log, YouTube: yt, Wake: q.Wake, Version: "test"}
+	deps := Deps{Store: st, Clock: clk, DataDir: dir, Log: log, YouTube: yt, Wake: q.Wake, Version: "test", SponsorBlock: &fakeSponsor{}, SponsorBlockBaseURL: testSponsorBase}
 	for _, o := range opts {
 		o(&deps)
 	}

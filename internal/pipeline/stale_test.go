@@ -165,8 +165,9 @@ func TestStaleStageRunResultIsDiscarded(t *testing.T) {
 		}
 	}
 	files, _ := os.ReadDir(filepath.Join(r.dir, artifactsDir, it.ID))
-	if len(files) != 2 {
-		t.Errorf("產出檔 %d 個，預期 2（舊結果的檔案要清掉）", len(files))
+	// source、normalized，加上 sponsorblock 的 sponsor_segments（M3-S1）。
+	if len(files) != 3 {
+		t.Errorf("產出檔 %d 個，預期 3（舊結果的檔案要清掉）", len(files))
 	}
 
 	runs, _ := r.st.Read().StageRunsByItem(ctx, it.ID)
@@ -212,8 +213,9 @@ func TestRerunMarksSupersededPendingRunsSkipped(t *testing.T) {
 	}
 	// 取消的任務不會被執行：只有最新那一筆 metadata 會跑。
 	r.run()
-	if n, _ := r.st.Read().CountTasks(ctx, store.TaskDone); n != 3 {
-		t.Errorf("完成的任務 = %d，預期 3", n)
+	// M1 的 3 個加上 sponsorblock（M3-S1）。
+	if n, _ := r.st.Read().CountTasks(ctx, store.TaskDone); n != 4 {
+		t.Errorf("完成的任務 = %d，預期 4", n)
 	}
 }
 

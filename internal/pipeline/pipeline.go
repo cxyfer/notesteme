@@ -104,6 +104,10 @@ type Deps struct {
 	Prompts PromptResolver
 	// LLM 是 LLM provider 的 client、API key 與限流（LLM 規格）；nil 代表 api executor 的 LLM 步驟以 permanent 失敗。
 	LLM *llm.Registry
+	// SponsorBlock 查詢 SponsorBlock 的片段（SPB-R2）；nil 代表沒有設定，sponsorblock 步驟以 permanent 失敗。
+	SponsorBlock SponsorBlockLookup
+	// SponsorBlockBaseURL 是設定檔的 sponsorblock.base_url，寫進來源紀錄（SPB-R6）。
+	SponsorBlockBaseURL string
 }
 
 // Pipeline 是影音處理的入口：API 呼叫 Ingest 與查詢方法，worker 呼叫 Handle。
@@ -149,6 +153,9 @@ type Pipeline struct {
 	outputs   OutputCatalog
 	prompts   PromptResolver
 	llm       *llm.Registry
+	// sponsor、sponsorBase 見 Deps.SponsorBlock、Deps.SponsorBlockBaseURL。
+	sponsor     SponsorBlockLookup
+	sponsorBase string
 	// agentLimit 回傳資源類別的並行上限，Agent 領取時用（AGT-R2）；nil 時用 queue.DefaultLimit。
 	agentLimit func(class string) int
 }
@@ -174,7 +181,7 @@ func New(d Deps) *Pipeline {
 	if retention <= 0 {
 		retention = DefaultTrashRetention
 	}
-	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, outputs: d.Outputs, prompts: d.Prompts, llm: d.LLM}
+	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, outputs: d.Outputs, prompts: d.Prompts, llm: d.LLM, sponsor: d.SponsorBlock, sponsorBase: d.SponsorBlockBaseURL}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。

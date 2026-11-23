@@ -143,8 +143,9 @@ func TestPlanChain(t *testing.T) {
 		return out
 	}
 	eff := mustEffective(t, nil)
-	// 預設：normalize 之後全部略過，鏈一路走到 publish。
-	c, err := planChain(eff, StageSegment, "", StageContext{})
+	// 預設：normalize 之後全部略過，鏈一路走到 publish（不是 YouTube，sponsorblock 也略過；
+	// YouTube 的 sponsorblock 會執行，見 TestPlanChainSkipsUnimplementedM3Stages）。
+	c, err := planChain(eff, StageSegment, "", StageContext{Platform: "bilibili"})
 	if err != nil || !slices.Equal(stages(c), []string{StageSegment, StageCorrect, StageTranslate, StageSponsorBlock, StageChapters, StageFrames, StageNote, StagePublish}) {
 		t.Fatalf("segment → 最後：%v，%v", stages(c), err)
 	}
@@ -400,7 +401,7 @@ func TestPlanChainTranslateUsesStageContext(t *testing.T) {
 	if err != nil || len(c) != 3 || c[2].Stage != StageTranslate || c[2].Skip || c[2].Executor != ExecutorOpenCC {
 		t.Fatalf("簡體原文：%+v, %v", c, err)
 	}
-	c, err = planChain(eff, StageSegment, "", StageContext{SourceLang: "zh-Hant-TW"})
+	c, err = planChain(eff, StageSegment, "", StageContext{SourceLang: "zh-Hant-TW", Platform: "bilibili"})
 	if err != nil || len(c) != 8 || c[2].Reason != SkipSameLanguage || c[7].Stage != StagePublish {
 		t.Fatalf("繁體原文：%+v, %v", c, err)
 	}

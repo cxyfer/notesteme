@@ -192,8 +192,9 @@ func TestManualWorkerRunsPipelineWithInjectedRunner(t *testing.T) {
 		}
 	}
 	// 產出檔寫在資料目錄的 artifacts/<item-id>/ 底下；暫存目錄用完就清除。
+	// source、normalized，加上 sponsorblock 的 sponsor_segments（測試沒有網路依賴，查詢失敗存成空的產出，SPB-R5）。
 	entries, err := os.ReadDir(filepath.Join(env.Vars["NOTESTEME_DATA"], "artifacts", id))
-	if err != nil || len(entries) != 2 {
+	if err != nil || len(entries) != 3 {
 		t.Errorf("artifacts = %v, %v", entries, err)
 	}
 	if tmp, _ := os.ReadDir(filepath.Join(env.Vars["NOTESTEME_DATA"], "tmp")); len(tmp) != 0 {

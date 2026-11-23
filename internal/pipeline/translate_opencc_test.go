@@ -542,9 +542,10 @@ func TestApplyMultiArtifactsPurgesPerLang(t *testing.T) {
 			count++
 		}
 	}
-	// metadata 之後沒有 source／normalized；corrected 1 個。
-	if count != 1+2*keepArtifactVersions {
-		t.Errorf("產出檔 = %d 個，預期 %d", count, 1+2*keepArtifactVersions)
+	// metadata 之後沒有 source／normalized；corrected 1 個；translate 之後每次重新查詢 SponsorBlock，
+	// 結果相同不建立新版本，所以 sponsor_segments 只有 1 個（SPB-R8）。
+	if count != 2+2*keepArtifactVersions {
+		t.Errorf("產出檔 = %d 個，預期 %d", count, 2+2*keepArtifactVersions)
 	}
 }
 

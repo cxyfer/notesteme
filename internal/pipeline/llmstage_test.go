@@ -122,7 +122,7 @@ func newLLMRigCap(t *testing.T, fake *chunkLLM, llmCap int) (*rig, store.Item) {
 	reg.Env = map[string]string{llm.KeyEnvVar("anthropic"): "k"}
 	reg.NewClient = func(llm.ProviderConfig, string) llm.Client { return fake }
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	p := New(Deps{Store: st, Clock: clk, DataDir: dir, Log: log, YouTube: yt, Wake: q.Wake, Version: "test", Prompts: staticPrompts{}, LLM: reg})
+	p := New(Deps{Store: st, Clock: clk, DataDir: dir, Log: log, YouTube: yt, Wake: q.Wake, Version: "test", Prompts: staticPrompts{}, LLM: reg, SponsorBlock: &fakeSponsor{}})
 	r := &rig{t: t, p: p, st: st, clk: clk, w: worker.New(q, p, clk, log), yt: yt, dir: dir}
 	over := map[string]any{
 		"stages": map[string]any{"correct": map[string]any{"executor": "api", "provider": "anthropic", "model": "m", "prompt": "correct-default"}},

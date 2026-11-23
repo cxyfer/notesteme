@@ -7,6 +7,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/langtag"
 	"strings"
 
+	"github.com/cxyfer/notesteme/internal/sponsorblock"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
@@ -23,6 +24,8 @@ type Detail struct {
 	Sources []store.Probe
 	// Attempts 是各步驟（以 stage run ID 為 key）最近一個任務已經嘗試的次數；還沒有任務的步驟不在其中。
 	Attempts map[string]int
+	// SponsorSegments 是現行的 SponsorBlock 片段（SPB-R4）；步驟沒有執行過（沒有產出）時是 nil，沒有片段時是空切片。
+	SponsorSegments []sponsorblock.Segment
 }
 
 // Item 回傳影音詳情；不存在時回傳 store.ErrNotFound，在垃圾桶中時回傳 *InTrashError（DEL-R1）。
@@ -60,7 +63,15 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 	if err != nil {
 		return Detail{}, err
 	}
-	return Detail{Item: it, Stages: stages, Sources: probes, Attempts: attempts}, nil
+	d := Detail{Item: it, Stages: stages, Sources: probes, Attempts: attempts}
+	// 產出檔讀不到時只略過這個欄位，不讓整個詳情失敗。
+	switch segs, ok, err := p.SponsorSegments(ctx, id); {
+	case err != nil:
+		p.log.Warn("讀取 SponsorBlock 片段失敗", "item", id, "error", err)
+	case ok:
+		d.SponsorSegments = segs
+	}
+	return d, nil
 }
 
 // Runs 列出影音實際執行過的步驟與當時的生效設定，由新到舊（PIPE-R13）；

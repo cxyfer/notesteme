@@ -117,7 +117,7 @@ func newTrnRig(t *testing.T, fake *trnLLM, chunk map[string]any, texts ...string
 	reg.Env = map[string]string{llm.KeyEnvVar("anthropic"): "k"}
 	reg.NewClient = func(llm.ProviderConfig, string) llm.Client { return fake }
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	p := New(Deps{Store: st, Clock: clk, DataDir: dir, Log: log, YouTube: yt, Wake: q.Wake, Version: "test", Prompts: trnPrompts{}, LLM: reg})
+	p := New(Deps{Store: st, Clock: clk, DataDir: dir, Log: log, YouTube: yt, Wake: q.Wake, Version: "test", Prompts: trnPrompts{}, LLM: reg, SponsorBlock: &fakeSponsor{}})
 	r := &rig{t: t, p: p, st: st, clk: clk, w: worker.New(q, p, clk, log), yt: yt, dir: dir}
 	it := r.ingest(watch, trnOver(chunk), "normalize")
 	r.run()
