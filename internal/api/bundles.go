@@ -168,6 +168,9 @@ func bundleImportIntercept(rt *routes, d Deps) func(http.Handler) http.Handler {
 				writeError(w, rt.mapBundleErr(ctx, err))
 				return
 			}
+			// Client 沒有稽核表：以 log 留下誰匯入了什麼（BND 待決問題）。
+			rt.d.Log.LogAttrs(ctx, slog.LevelInfo, "已匯入 bundle", slog.String("item_id", res.Item.ID),
+				slog.Int("imported", res.Imported), slog.Int("skipped", res.Skipped), slog.Bool("add_versions", onExisting == "add_versions"))
 			writeJSON(w, http.StatusCreated, BundleImportResult{
 				Item:     BundleImportItem{ID: res.Item.ID, Ref: res.Ref, Title: res.Item.Title},
 				Imported: res.Imported, Skipped: res.Skipped,
