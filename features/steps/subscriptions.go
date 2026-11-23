@@ -24,7 +24,7 @@ import (
 // registerSubscriptions 註冊「訂閱、事後的更好來源與新增入口」的步驟（steps.md 4.17，M4）。
 //
 // M4-S2 實作了訂閱核心的句型，M4-S3 實作了匯入（SUB-R7）；SUB 的閘門只對 SUB 範圍的場景放行（見 subGate）。
-// SRC-10 的句型仍是步驟樁（godog.ErrPending）；ENTRY 的句型在 entry.go。
+// SRC-10 的句型在 better_source.go；ENTRY 的句型在 entry.go。
 func registerSubscriptions(r *Registry, s *Scenario) {
 	r.Step(`the YouTube feeds are served from the registered videos`, s.youtubeFeedsServed)
 	r.Step(`the YouTube feed of the channel {string} fails with HTTP {int}`, s.youtubeFeedFails)
@@ -40,7 +40,7 @@ func registerSubscriptions(r *Registry, s *Scenario) {
 	r.Step(`the podcast feed {string} adds the episode {string} titled {string} with the audio {string}`, s.podcastFeedAdds)
 	r.Step(`the owner imports the subscriptions from {string}`, s.ownerImportsSubscriptions)
 	r.Step(`the owner imports a generated OPML file with {int} feeds`, s.ownerImportsGeneratedOPML)
-	r.Step(`the platform adds {word} captions in {string} to {string} at {string}`, func(string, string, string, string) error { return godog.ErrPending })
+	r.Step(`the platform adds {word} captions in {string} to {string} at {string}`, s.platformAddsCaptions)
 	registerEntry(r, s)
 }
 

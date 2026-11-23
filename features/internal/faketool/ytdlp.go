@@ -255,6 +255,8 @@ func runYtDlp(e env, args []string) int {
 	if platform == "BiliBili" {
 		return biliRun(e, st, a, op, target, v, cookies)
 	}
+	// 平台事後才補上的字幕軌（SRC-10）：場景的 fake clock 到了補上的時間才列出、才能下載。
+	v = v.at(readNow(e.root))
 
 	// 會員限定影片沒有 YouTube cookie 時，下載字幕與媒體會失敗（訊息依 yt-dlp）。
 	// 取得資訊（-J）不失敗：辨識網址時的 Probe 不帶 cookie，要靠 availability 標示 requires_cookie（ING-R9）。

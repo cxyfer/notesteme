@@ -43,6 +43,10 @@ func (s *Scenario) spbGate() error {
 	if pipeline.StageAvailable(pipeline.StageNote) && slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@NOTE-") }) {
 		return nil
 	}
+	// SRC-10：SponsorBlock 的重新查詢（SRC-R20）也放行。
+	if slices.Contains(s.tags, "@SRC-R20") {
+		return nil
+	}
 	if !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@SPB-") }) {
 		return fmt.Errorf("SponsorBlock 的句型只對 SPB 的場景實作（其他 M3 領域還沒有實作）：%w", godog.ErrPending)
 	}

@@ -7,6 +7,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
+	"time"
 
 	"github.com/cxyfer/notesteme/features/internal/fakeframes"
 )
@@ -93,6 +96,10 @@ type Video struct {
 	// Videos["<bvid>/p<n>"]（PartKey），沒有登記的分P 沿用這部影片本身。
 	Parts  int     `json:"parts,omitempty"`
 	Tracks []Track `json:"tracks,omitempty"`
+	// Later 是平台事後才補上的字幕軌（SRC-10，`the platform adds … captions in … to … at …`）：
+	// 場景的 fake clock（NowFile）到了 Track.AvailableAt 才和 Tracks 一起列出。和 Tracks 分開存放，
+	// `has no caption tracks` 不會清掉它。
+	Later []Track `json:"later,omitempty"`
 	// AutoNotReady 為 true 時，自動字幕與平台翻譯字幕尚未生成：
 	// 不會出現在 info JSON，也不會被下載。
 	AutoNotReady bool     `json:"auto_not_ready,omitempty"`
@@ -145,6 +152,8 @@ type Track struct {
 	Lang    string `json:"lang"`
 	Fixture string `json:"fixture,omitempty"`
 	Cues    int    `json:"cues,omitempty"`
+	// AvailableAt 只用於 Video.Later：RFC 3339 的補上時間。
+	AvailableAt string `json:"available_at,omitempty"`
 }
 
 // Failure 讓 yt-dlp 對這部影片失敗。
@@ -193,6 +202,57 @@ func PidAlive(pid int) bool { return pidAlive(pid) }
 func FakeDir(root string) string { return filepath.Join(root, "fake") }
 
 func statePath(root string) string { return filepath.Join(FakeDir(root), "state.json") }
+
+// NowFile 是場景的 fake clock 現在的時間（RFC 3339），harness 在時鐘改變時寫入（見 WriteNow）；
+// 假工具是另一個程序，讀不到 harness 的 clock。
+func NowFile(root string) string { return filepath.Join(FakeDir(root), "now") }
+
+// WriteNow 寫入 fake clock 現在的時間。
+func WriteNow(root string, now time.Time) error {
+	if err := os.MkdirAll(FakeDir(root), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(NowFile(root), []byte(now.UTC().Format(time.RFC3339Nano)), 0o644)
+}
+
+// readNow 讀取 fake clock 現在的時間；沒有寫入過或格式不對時是零值（事後補上的字幕軌都還沒出現）。
+func readNow(root string) time.Time {
+	b, err := os.ReadFile(NowFile(root))
+	if err != nil {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(string(b)))
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// at 回傳 now 時看得到的影片：Later 中已經到了補上時間的字幕軌併進 Tracks（同種類、同語言的取代原本的）。
+// 沒有任何字幕軌補上時回傳 v 本身。
+func (v *Video) at(now time.Time) *Video {
+	var add []Track
+	for _, t := range v.Later {
+		at, err := time.Parse(time.RFC3339, t.AvailableAt)
+		if err != nil || now.IsZero() || now.Before(at) {
+			continue
+		}
+		t.AvailableAt = ""
+		add = append(add, t)
+	}
+	if len(add) == 0 {
+		return v
+	}
+	cp := *v
+	cp.Tracks = nil
+	for _, t := range v.Tracks {
+		if !slices.ContainsFunc(add, func(a Track) bool { return a.Kind == t.Kind && a.Lang == t.Lang }) {
+			cp.Tracks = append(cp.Tracks, t)
+		}
+	}
+	cp.Tracks = append(cp.Tracks, add...)
+	return &cp
+}
 func callsPath(root string) string { return filepath.Join(FakeDir(root), "calls.jsonl") }
 
 // WriteState 以原子方式（寫暫存檔再改名）寫入 root 場景的狀態檔。

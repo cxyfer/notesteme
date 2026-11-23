@@ -131,7 +131,7 @@ func (s *Scenario) clockIsAt(ts string) error {
 		return fmt.Errorf("時間 %q 不是 RFC 3339：%w", ts, err)
 	}
 	s.World.Clock.Set(t)
-	return nil
+	return s.World.SyncNow()
 }
 
 func (s *Scenario) clockAdvances(d string) error {
@@ -140,7 +140,7 @@ func (s *Scenario) clockAdvances(d string) error {
 		return err
 	}
 	s.World.Clock.Advance(dur)
-	return nil
+	return s.World.SyncNow()
 }
 
 // parseDuration 解析 "61s"、"25h" 這類寫法；另外接受以 "d" 結尾的天數（"2d"）。
