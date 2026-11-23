@@ -115,7 +115,7 @@
     - Go：`internal/auth/next.go` 的 `SafeNext`（ENTRY-R6，上限 2048 bytes）；`POST /api/auth/login` 加上可選的 `next`，成功時回 `next`（不加 schema 限制，不合格的值回 `/` 而不是 422）。`internal/entry`：`ShareURL`／`ValidURL`（ENTRY-R4）與頁面路由 `Pages`（`/add`、`/share`、`/login`、`/manifest.webmanifest`、`/sw.js`），由 `internal/api/ui.go` 的 `entryPages` 掛在 Web UI 之前（只有 TCP listener）。`/add`、`/share` 只認 session cookie；三個頁面的回應（含 303）都帶 webui 的 CSP（`frame-ancestors 'none'`）與 `Cache-Control: no-store`。沒有 MCP、CLI、migration 或 `m4_stubs.go` 的變更（ENTRY 本來就不在 stub 清單）。
     - Web：設定頁新的「書籤小工具」分區（`/settings/bookmarklet`）；`/add` 是 lazy route，打開「新增」抽屜（`useAddDrawer().open(url, notice)`）後換成 `/library`；登入頁送出 `next`（或舊的 `redirect`）並只前往回應中的 `next`；`index.html` 引用 manifest，`main.tsx` 在 production 註冊 `/sw.js`；`public/icons/icon-192.png`、`icon-512.png` 依 favicon 放大繪製。bundle 初始 241.5 KB／300 KB。
     - steps：`features/steps/entry.go`（4 個句型），`subscriptions.go` 只改成呼叫 `registerEntry`。
-    - 數字：見本切片的回報（`@M4` 22 個 ENTRY 場景 pending → passed，其他場景逐場景不變）。
+    - 數字（基準 origin/master a0b3e60）：預設 tag 308 passed；`@M3` 109 passed；`@M4` 371 個：138／233 → 160 passed、211 pending、0 failed（改變的只有 22 個 ENTRY 場景 pending → passed）；`@M5` 74／74 不變；逐場景（cucumber 的第一個非 passed 步驟）其他場景都相同。涵蓋率 `internal/entry` 100%、`internal/auth` 89.6%。
     - 人工驗收（owner）：6 個 `@ui @manual` 場景（拖到書籤列並檢查程式碼、在 YouTube 分頁點書籤、無效網址的提示、Android 的 YouTube App 分享）；iOS 捷徑。
     - 給 S11 AUTH（proxy／OIDC）：登入後的 `next` 一律經 `auth.SafeNext`；OIDC 的 `start?next=` 與 proxy 登入的導向也要帶同一個 `next`（ENTRY-R5）。`/login` 由 `internal/entry` 提供，登入頁的「用 OIDC 登入」按鈕要把 `next` 一併帶到 `/api/auth/oidc/start?next=`。
 - **M5 規格展開（2026-11-23，分支 `docs/m5-hub-specs`，只有文件、場景、步驟樁與假服務骨架，沒有產品程式）**：
