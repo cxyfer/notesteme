@@ -34,15 +34,17 @@ WHERE item_id = sqlc.arg(item_id) AND kind = sqlc.arg(kind) AND variant = sqlc.a
   AND (CAST(sqlc.arg(lang) AS TEXT) = '' OR lang = sqlc.arg(lang));
 
 -- name: InsertProbe :exec
-INSERT INTO source_probes (id, item_id, run_id, source_id, lang, kind, available, est_cost, state, rejected_reason, probed_at)
+INSERT INTO source_probes (id, item_id, run_id, source_id, lang, kind, available, est_cost, state, rejected_reason, probed_at, probe_trigger)
 VALUES (sqlc.arg(id), sqlc.arg(item_id), sqlc.arg(run_id), sqlc.arg(source_id), sqlc.arg(lang), sqlc.arg(kind),
-        sqlc.arg(available), sqlc.narg(est_cost), sqlc.arg(state), sqlc.arg(rejected_reason), sqlc.arg(probed_at));
+        sqlc.arg(available), sqlc.narg(est_cost), sqlc.arg(state), sqlc.arg(rejected_reason), sqlc.arg(probed_at), sqlc.arg(probe_trigger));
 
 -- name: LatestProbes :many
--- Every result of the latest probe run of an item (run_id of the last written row), in insertion order.
+-- Every result of the latest stage probe run of an item (run_id of the last written row), in insertion order.
+-- Reprobe results (SRC-R19) are kept apart: the detail shows the probe of the current transcript.
 SELECT * FROM source_probes AS sp
 WHERE sp.item_id = sqlc.arg(item_id)
-  AND sp.run_id = (SELECT p.run_id FROM source_probes AS p WHERE p.item_id = sqlc.arg(item_id) ORDER BY p.rowid DESC LIMIT 1)
+  AND sp.run_id = (SELECT p.run_id FROM source_probes AS p
+                   WHERE p.item_id = sqlc.arg(item_id) AND p.probe_trigger = 'stage' ORDER BY p.rowid DESC LIMIT 1)
 ORDER BY sp.rowid;
 
 -- name: ArtifactGroup :many

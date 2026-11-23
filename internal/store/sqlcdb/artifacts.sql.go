@@ -274,9 +274,9 @@ func (q *Queries) InsertArtifact(ctx context.Context, arg InsertArtifactParams) 
 }
 
 const insertProbe = `-- name: InsertProbe :exec
-INSERT INTO source_probes (id, item_id, run_id, source_id, lang, kind, available, est_cost, state, rejected_reason, probed_at)
+INSERT INTO source_probes (id, item_id, run_id, source_id, lang, kind, available, est_cost, state, rejected_reason, probed_at, probe_trigger)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6,
-        ?7, ?8, ?9, ?10, ?11)
+        ?7, ?8, ?9, ?10, ?11, ?12)
 `
 
 type InsertProbeParams struct {
@@ -291,6 +291,7 @@ type InsertProbeParams struct {
 	State          string
 	RejectedReason string
 	ProbedAt       int64
+	ProbeTrigger   string
 }
 
 func (q *Queries) InsertProbe(ctx context.Context, arg InsertProbeParams) error {
@@ -306,18 +307,21 @@ func (q *Queries) InsertProbe(ctx context.Context, arg InsertProbeParams) error 
 		arg.State,
 		arg.RejectedReason,
 		arg.ProbedAt,
+		arg.ProbeTrigger,
 	)
 	return err
 }
 
 const latestProbes = `-- name: LatestProbes :many
-SELECT id, item_id, run_id, source_id, lang, kind, available, est_cost, state, rejected_reason, probed_at FROM source_probes AS sp
+SELECT id, item_id, run_id, source_id, lang, kind, available, est_cost, state, rejected_reason, probed_at, probe_trigger FROM source_probes AS sp
 WHERE sp.item_id = ?1
-  AND sp.run_id = (SELECT p.run_id FROM source_probes AS p WHERE p.item_id = ?1 ORDER BY p.rowid DESC LIMIT 1)
+  AND sp.run_id = (SELECT p.run_id FROM source_probes AS p
+                   WHERE p.item_id = ?1 AND p.probe_trigger = 'stage' ORDER BY p.rowid DESC LIMIT 1)
 ORDER BY sp.rowid
 `
 
-// Every result of the latest probe run of an item (run_id of the last written row), in insertion order.
+// Every result of the latest stage probe run of an item (run_id of the last written row), in insertion order.
+// Reprobe results (SRC-R19) are kept apart: the detail shows the probe of the current transcript.
 func (q *Queries) LatestProbes(ctx context.Context, itemID string) ([]SourceProbe, error) {
 	rows, err := q.db.QueryContext(ctx, latestProbes, itemID)
 	if err != nil {
@@ -339,6 +343,7 @@ func (q *Queries) LatestProbes(ctx context.Context, itemID string) ([]SourceProb
 			&i.State,
 			&i.RejectedReason,
 			&i.ProbedAt,
+			&i.ProbeTrigger,
 		); err != nil {
 			return nil, err
 		}

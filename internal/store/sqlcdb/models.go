@@ -375,6 +375,18 @@ type SourceProbe struct {
 	State          string
 	RejectedReason string
 	ProbedAt       int64
+	ProbeTrigger   string
+}
+
+type SourceReprobe struct {
+	ItemID       string
+	UntilAt      int64
+	Runs         int64
+	Sources      int64
+	Sponsorblock int64
+	BetterJson   *string
+	AutoReruns   int64
+	UpdatedAt    int64
 }
 
 type StageRun struct {

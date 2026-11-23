@@ -276,8 +276,19 @@ type NewProbe struct {
 	Reason    string
 }
 
-// InsertProbes 記錄一次 Probe 的全部結果（SRC-R17）。
+// Probe 的觸發來源（source_probes.probe_trigger，SRC-R19）。
+const (
+	ProbeTriggerStage   = "stage"
+	ProbeTriggerReprobe = "reprobe"
+)
+
+// InsertProbes 記錄 transcript 步驟一次 Probe 的全部結果（SRC-R17）。
 func (r *Repo) InsertProbes(ctx context.Context, itemID string, probes []NewProbe) error {
+	return r.InsertProbesFor(ctx, itemID, ProbeTriggerStage, probes)
+}
+
+// InsertProbesFor 同 InsertProbes，另外指定觸發來源；重新 Probe 的結果（reprobe）不會出現在 LatestProbes（SRC-R19）。
+func (r *Repo) InsertProbesFor(ctx context.Context, itemID, trigger string, probes []NewProbe) error {
 	runID, now := NewID(), r.nowMs()
 	for _, p := range probes {
 		if err := r.q.InsertProbe(ctx, sqlcdb.InsertProbeParams{
@@ -292,6 +303,7 @@ func (r *Repo) InsertProbes(ctx context.Context, itemID string, probes []NewProb
 			State:          p.State,
 			RejectedReason: p.Reason,
 			ProbedAt:       now,
+			ProbeTrigger:   trigger,
 		}); err != nil {
 			return err
 		}
