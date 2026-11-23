@@ -33,6 +33,7 @@ import {
   validateLibrarySearch,
   type LibrarySearch,
 } from "./library/filters";
+import { ContinueBar } from "./library/ContinueBar";
 import { LibraryRow } from "./library/LibraryRow";
 import type { ApiItem } from "./library/stageView";
 
@@ -173,6 +174,10 @@ export function LibraryPage() {
         </Link>
       </p>
       <FilterBar search={search} onChange={setSearch} onClear={clearFilters} />
+
+      {search.blocked === "awaiting_user" && rows.length > 0 && (
+        <ContinueBar ids={rows.map((r) => r.id)} onDone={reload} />
+      )}
 
       <p className="visually-hidden" aria-live="polite">
         {announcement}

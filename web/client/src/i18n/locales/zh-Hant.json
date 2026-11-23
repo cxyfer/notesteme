@@ -282,7 +282,17 @@
       "durMin_other": "至少 {{count}} 分鐘",
       "durMax_other": "最多 {{count}} 分鐘"
     },
-    "total_other": "共 {{formatted}} 部"
+    "total_other": "共 {{formatted}} 部",
+    "awaiting": {
+      "toggle": "等你決定",
+      "chip": "等你決定",
+      "hint": "摘要後暫停的影音。列表依「分段停住」近似篩選，不是等你決定的影音繼續時會略過。",
+      "continueAll_other": "繼續處理已載入的 {{count}} 部",
+      "confirmTitle_other": "繼續處理 {{count}} 部？",
+      "confirmBody": "之後的步驟會開始處理並計入預算；不是等你決定的影音會略過。",
+      "confirm": "繼續處理",
+      "done": "已繼續處理 {{continued}} 部，略過 {{skipped}} 部"
+    }
   },
   "add": {
     "open": "新增",
@@ -359,7 +369,13 @@
     "upgradeSupadata": "升級 Supadata 方案",
     "checkQuota": "檢查 provider 額度",
     "changeModel": "換一個模型重新處理",
-    "openPrompt": "選擇 Prompt 重新處理"
+    "openPrompt": "選擇 Prompt 重新處理",
+    "continue": "繼續處理",
+    "cancelItem": "取消處理",
+    "regenerateSummary": "重新產生摘要",
+    "rerunBetter": "改用更好的字幕重跑",
+    "requerySponsor": "重新查詢 SponsorBlock",
+    "rerunChapters": "從章節重跑"
   },
   "item": {
     "loading": "正在載入影音…",
@@ -608,6 +624,12 @@
       "commit": "commit {{commit}}",
       "download": "下載 Markdown",
       "content": "筆記內容"
+    },
+    "summary": {
+      "title": "摘要",
+      "none": "沒有摘要。",
+      "paused": "摘要完成，等你決定要不要繼續處理。",
+      "continued": "已繼續處理，從{{stage}}開始"
     }
   },
   "queue": {
@@ -906,7 +928,6 @@
         "rewriteNamed": "改寫後接受 {{term}}",
         "rewriteLabel": "把「{{term}}」改寫成",
         "confirmRewrite": "接受改寫",
-        "cancel": "取消",
         "done": "已接受 {{accepted}} 項、拒絕 {{rejected}} 項",
         "stale": "有術語已被處理（可能在另一個分頁、CLI 或 MCP），已重新整理列表，請再決定一次。"
       }
@@ -1149,6 +1170,53 @@
       "done": "已匯入 {{imported}} 個產出，略過 {{skipped}} 個相同的版本：",
       "exists": "這部影音已在媒體庫中。勾選「影音已存在時，把產出加成新版本」後再匯入。",
       "entry": "出錯的項目："
+    },
+    "digest": {
+      "title": "彙整",
+      "hint": "每天或每週把新影音的摘要整理成一則通知，送到勾選了「彙整」事件的端點。",
+      "empty": "還沒有彙整。",
+      "needNotifier": "先在上面的通知端點勾選「彙整」事件，才能新增彙整。",
+      "add": "新增彙整",
+      "addTitle": "新增彙整",
+      "editTitle": "編輯彙整 {{id}}",
+      "deleteTitle": "刪除彙整 {{id}}？",
+      "disableTitle": "停用彙整 {{id}}？",
+      "deleteDescription": "之後不再送出這個彙整。影音與摘要都會保留。",
+      "disableDescription": "停用期間不會送出；重新啟用後從下一次排定的時間開始。",
+      "dailyAt": "每天 {{at}}（{{tz}}）",
+      "weeklyAt": "每{{day}} {{at}}（{{tz}}）",
+      "weekday": {
+        "mon": "週一",
+        "tue": "週二",
+        "wed": "週三",
+        "thu": "週四",
+        "fri": "週五",
+        "sat": "週六",
+        "sun": "週日"
+      },
+      "scope": {
+        "subscriptions": "只有訂閱帶進來的影音",
+        "all": "所有影音"
+      },
+      "sendTo": "送到 {{list}}",
+      "runs": "上次 {{last}}，下次 {{next}}",
+      "never": "還沒有執行過",
+      "preview": "預覽",
+      "previewCount_other": "現在執行會包含 {{count}} 部影音（不會送出）：",
+      "idHint": "小寫英文字母、數字與 -，最多 40 個字元。",
+      "period": "頻率",
+      "periodOf": {
+        "daily": "每天",
+        "weekly": "每週"
+      },
+      "weekdayLabel": "星期",
+      "at": "時間",
+      "atHint": "用 24 小時制的 HH:MM。",
+      "timezone": "時區",
+      "timezoneHint": "IANA 時區名稱，例如 Asia/Taipei。",
+      "scopeLabel": "包含哪些影音",
+      "notifiers": "送到哪些端點",
+      "notifiersHint": "選 1～5 個端點。"
     }
   },
   "diff": {

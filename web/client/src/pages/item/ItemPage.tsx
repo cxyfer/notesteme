@@ -17,6 +17,7 @@ import { api, apiPath } from "../../api/client";
 import { describeError } from "../../api/describeError";
 import { isApiError } from "../../api/errors";
 import { queryKeys } from "../../api/queryKeys";
+import type { components } from "../../api/schema";
 import { Button, EmptyState, ErrorCallout, Spinner, useToast } from "../../components";
 import { useServerEvent } from "../../events/useEventStream";
 import { formatDate, formatTimecode } from "../../i18n";
@@ -50,6 +51,8 @@ import {
 } from "./search";
 import { CancelDialog, CookieDialog } from "./SmallDialogs";
 import { StagePanel, orderedStages } from "./StagePanel";
+import { SummaryBlock } from "./SummaryBlock";
+import "../../styles/ui5.css";
 
 const route = getRouteApi("/app/items/$id");
 
@@ -270,10 +273,35 @@ function ItemView({
       }),
     onError: (err) => toast.show({ title: describeError(t, err) }),
   });
+  // DIG-R7：摘要後暫停的影音繼續處理
+  const continueItem = useMutation({
+    // 回 202：ResponseOf 只認 200／201，型別自己標
+    mutationFn: () =>
+      api.post(apiPath("/api/items/{id}/continue", { id })) as Promise<
+        components["schemas"]["ContinueOutputBody"] | undefined
+      >,
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.items.detail(id) });
+      toast.show({ title: t("item.summary.continued", { stage: stageName(r?.continued ?? "") }) });
+    },
+    onError: (err) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.items.detail(id) });
+      toast.show({ title: describeError(t, err) });
+    },
+  });
+  const awaitingStage = stages.find(
+    (s) => s.status === "blocked" && s.block_reason === "awaiting_user",
+  )?.stage;
   const onAction = (stage: string, a: ActionKind) => {
     switch (a.kind) {
       case "rerun":
-        setRerunFrom(stage);
+        setRerunFrom(a.from ?? stage);
+        break;
+      case "continue":
+        continueItem.mutate();
+        break;
+      case "cancel":
+        setCancelOpen(true);
         break;
       case "switchToApi":
         switchExecutor.mutate(stage);
@@ -381,6 +409,14 @@ function ItemView({
           </div>
         )}
       </dl>
+
+      <SummaryBlock
+        summary={d.summary}
+        awaiting={awaitingStage}
+        busy={continueItem.isPending}
+        onContinue={() => continueItem.mutate()}
+        onCancel={() => setCancelOpen(true)}
+      />
 
       <StatusBand
         variant="full"

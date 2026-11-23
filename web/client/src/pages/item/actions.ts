@@ -4,7 +4,11 @@
 import type { SettingsSection } from "../SettingsPage";
 
 export type ActionKind =
-  | { kind: "rerun" }
+  // from：從哪個步驟重跑；省略時是顯示這個動作的步驟
+  | { kind: "rerun"; from?: string }
+  // UI-5（DIG-R6、R7）：摘要後暫停的「繼續處理」與「取消」
+  | { kind: "continue" }
+  | { kind: "cancel" }
   | { kind: "switchToApi" }
   | { kind: "uploadCookie" }
   | { kind: "updateYtDlp" }
@@ -41,6 +45,13 @@ const TABLE: Record<string, { key: string; action: ActionKind }> = {
   更換模型: { key: "changeModel", action: { kind: "rerun" } },
   // Prompt 庫是 UI-3：先打開重新處理對話框，在那裡選 prompt 版本
   "開啟 Prompt": { key: "openPrompt", action: { kind: "rerun" } },
+  // UI-5：DIG（internal/pipeline/summary.go）、SRC-10 與 SPB（reprobe.go、sponsorblock.go）
+  繼續處理: { key: "continue", action: { kind: "continue" } },
+  取消: { key: "cancelItem", action: { kind: "cancel" } },
+  重新產生摘要: { key: "regenerateSummary", action: { kind: "rerun" } },
+  改用更好的字幕重跑: { key: "rerunBetter", action: { kind: "rerun", from: "transcript" } },
+  "重新查詢 SponsorBlock": { key: "requerySponsor", action: { kind: "rerun" } },
+  從章節重跑: { key: "rerunChapters", action: { kind: "rerun", from: "chapters" } },
 };
 
 export function mapActions(raw: readonly string[] | null | undefined): StageAction[] {

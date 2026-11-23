@@ -38,3 +38,20 @@ export function termReview(
     ...over,
   };
 }
+
+export function digest(id: string, over: Partial<S["DigestInfo"]> = {}): S["DigestInfo"] {
+  return {
+    id,
+    period: "daily",
+    weekday: null,
+    at: "08:00",
+    timezone: "Asia/Taipei",
+    scope: "subscriptions",
+    notifiers: ["ops"],
+    enabled: true,
+    last_run_at: null,
+    next_run_at: "2026-11-25T00:00:00Z",
+    created_at: "2026-11-20T00:00:00Z",
+    ...over,
+  };
+}

@@ -190,6 +190,7 @@ function useAppliedChips(search: LibrarySearch, onChange: FilterBarProps["onChan
       { status: toggleStatus(search.status, s) },
     );
   }
+  if (search.blocked) add("blocked", t("library.awaiting.chip"), { blocked: undefined });
   if (search.error_class)
     add(
       "error_class",
@@ -250,6 +251,12 @@ export function FilterBar({ search, onChange, onClear }: FilterBarProps) {
           optionLabel={(v) => t(`errorClass.${v}`)}
           onChange={(v) => onChange({ error_class: v })}
         />
+        <Button
+          aria-pressed={search.blocked === "awaiting_user"}
+          onClick={() => onChange({ blocked: search.blocked ? undefined : "awaiting_user" })}
+        >
+          {t("library.awaiting.toggle")}
+        </Button>
         <Button
           className="filters__more"
           aria-expanded={more}

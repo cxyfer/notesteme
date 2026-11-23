@@ -74,7 +74,8 @@ function StageRow({
     onClick: () => handlers.onAction(stage.stage, a.action),
   }));
   const hasKind = (k: ActionKind["kind"]) => mapped.some((a) => a.action.kind === k);
-  if ((problem || explainSkip) && !hasKind("rerun")) {
+  // 摘要後暫停（awaiting_user）：動作是「繼續處理」與「取消」，不另外加重新處理
+  if ((problem || explainSkip) && !hasKind("rerun") && !hasKind("continue")) {
     actions.push({
       label: t("item.actions.rerunFrom", { stage: name }),
       onClick: () => handlers.onAction(stage.stage, { kind: "rerun" }),

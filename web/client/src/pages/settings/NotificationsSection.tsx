@@ -5,7 +5,7 @@
 // 輸入的值只在元件 state，送出時立即清空，不用 useMutation，不進 URL、toast 或錯誤訊息。
 // PATCH 沒有重新輸入的密鑰就省略（後端保留原值，NOTIFY-R6）。
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { lazy, Suspense, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { api, apiPath } from "../../api/client";
@@ -16,6 +16,11 @@ import { formatDateTime } from "../../i18n";
 import { Loading, Panel, SaveError } from "./shared";
 
 type Notifier = components["schemas"]["Info"];
+
+// UI-5：彙整設定（DIG-R8～R11）放在通知分區，lazy 載入
+const DigestsPanel = lazy(() =>
+  import("./DigestsPanel").then((m) => ({ default: m.DigestsPanel })),
+);
 type TestResult = components["schemas"]["TestResult"];
 
 export const NOTIFIER_KINDS = ["ntfy", "discord", "telegram", "webhook"] as const;
@@ -88,6 +93,9 @@ export function NotificationsSection() {
           <Button onClick={() => setEditing("new")}>{t("settings.notify.add")}</Button>
         </div>
       </Panel>
+      <Suspense fallback={<Loading />}>
+        <DigestsPanel />
+      </Suspense>
       <RecentNotifications />
       {editing !== null && (
         <NotifierDialog

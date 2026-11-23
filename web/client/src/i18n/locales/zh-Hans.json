@@ -282,7 +282,17 @@
       "durMin_other": "至少 {{count}} 分钟",
       "durMax_other": "最多 {{count}} 分钟"
     },
-    "total_other": "共 {{formatted}} 部"
+    "total_other": "共 {{formatted}} 部",
+    "awaiting": {
+      "toggle": "等你决定",
+      "chip": "等你决定",
+      "hint": "摘要后暂停的音视频。列表按“分段停住”近似筛选，不是等你决定的音视频继续时会跳过。",
+      "continueAll_other": "继续处理已加载的 {{count}} 个",
+      "confirmTitle_other": "继续处理 {{count}} 个？",
+      "confirmBody": "之后的步骤会开始处理并计入预算；不是等你决定的音视频会跳过。",
+      "confirm": "继续处理",
+      "done": "已继续处理 {{continued}} 个，跳过 {{skipped}} 个"
+    }
   },
   "add": {
     "open": "新增",
@@ -359,7 +369,13 @@
     "upgradeSupadata": "升级 Supadata 方案",
     "checkQuota": "检查 provider 额度",
     "changeModel": "换一个模型重新处理",
-    "openPrompt": "选择 Prompt 重新处理"
+    "openPrompt": "选择 Prompt 重新处理",
+    "continue": "继续处理",
+    "cancelItem": "取消处理",
+    "regenerateSummary": "重新生成摘要",
+    "rerunBetter": "改用更好的字幕重跑",
+    "requerySponsor": "重新查询 SponsorBlock",
+    "rerunChapters": "从章节重跑"
   },
   "item": {
     "loading": "正在加载影音…",
@@ -608,6 +624,12 @@
       "commit": "commit {{commit}}",
       "download": "下载 Markdown",
       "content": "笔记内容"
+    },
+    "summary": {
+      "title": "摘要",
+      "none": "没有摘要。",
+      "paused": "摘要完成，等你决定要不要继续处理。",
+      "continued": "已继续处理，从{{stage}}开始"
     }
   },
   "queue": {
@@ -906,7 +928,6 @@
         "rewriteNamed": "改写后接受 {{term}}",
         "rewriteLabel": "把“{{term}}”改写成",
         "confirmRewrite": "接受改写",
-        "cancel": "取消",
         "done": "已接受 {{accepted}} 项、拒绝 {{rejected}} 项",
         "stale": "有术语已被处理（可能在另一个标签页、CLI 或 MCP），已刷新列表，请再决定一次。"
       }
@@ -1149,6 +1170,53 @@
       "done": "已导入 {{imported}} 个产出，跳过 {{skipped}} 个相同的版本：",
       "exists": "这个音视频已在媒体库中。勾选“音视频已存在时，把产出加为新版本”后再导入。",
       "entry": "出错的项目："
+    },
+    "digest": {
+      "title": "汇总",
+      "hint": "每天或每周把新音视频的摘要整理成一则通知，发送到勾选了“汇总”事件的端点。",
+      "empty": "还没有汇总。",
+      "needNotifier": "先在上面的通知端点勾选“汇总”事件，才能新增汇总。",
+      "add": "新增汇总",
+      "addTitle": "新增汇总",
+      "editTitle": "编辑汇总 {{id}}",
+      "deleteTitle": "删除汇总 {{id}}？",
+      "disableTitle": "停用汇总 {{id}}？",
+      "deleteDescription": "之后不再发送这个汇总。音视频与摘要都会保留。",
+      "disableDescription": "停用期间不会发送；重新启用后从下一次排定的时间开始。",
+      "dailyAt": "每天 {{at}}（{{tz}}）",
+      "weeklyAt": "每{{day}} {{at}}（{{tz}}）",
+      "weekday": {
+        "mon": "周一",
+        "tue": "周二",
+        "wed": "周三",
+        "thu": "周四",
+        "fri": "周五",
+        "sat": "周六",
+        "sun": "周日"
+      },
+      "scope": {
+        "subscriptions": "只有订阅带进来的音视频",
+        "all": "所有音视频"
+      },
+      "sendTo": "发送到 {{list}}",
+      "runs": "上次 {{last}}，下次 {{next}}",
+      "never": "还没有执行过",
+      "preview": "预览",
+      "previewCount_other": "现在执行会包含 {{count}} 个音视频（不会发送）：",
+      "idHint": "小写英文字母、数字与 -，最多 40 个字符。",
+      "period": "频率",
+      "periodOf": {
+        "daily": "每天",
+        "weekly": "每周"
+      },
+      "weekdayLabel": "星期",
+      "at": "时间",
+      "atHint": "用 24 小时制的 HH:MM。",
+      "timezone": "时区",
+      "timezoneHint": "IANA 时区名称，例如 Asia/Shanghai。",
+      "scopeLabel": "包含哪些音视频",
+      "notifiers": "发送到哪些端点",
+      "notifiersHint": "选 1～5 个端点。"
     }
   },
   "diff": {

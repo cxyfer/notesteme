@@ -73,6 +73,8 @@ export const queryKeys = {
   search: (q: string, lang: string) => ["search", q, lang] as const,
   // 跨頻道的術語審核清單（GLOS-R5）：前綴與 termCandidates 相同，決定後一起失效
   termCandidatesAll: ["termCandidates"] as const,
+  // 彙整設定（DIG-R8）
+  digests: ["digests"] as const,
   termReview: (state: string, channel: string) =>
     ["termCandidates", "review", state, channel] as const,
 };

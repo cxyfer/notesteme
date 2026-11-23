@@ -419,7 +419,7 @@ function Row({
               {t("settings.glossary.review.confirmRewrite")}
             </Button>
             <Button variant="text" onClick={() => onPatch({ rewrite: undefined })}>
-              {t("settings.glossary.review.cancel")}
+              {t("settings.common.cancel")}
             </Button>
           </div>
         </form>

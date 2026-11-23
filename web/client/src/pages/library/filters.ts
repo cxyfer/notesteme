@@ -70,6 +70,11 @@ export interface LibrarySearch {
   /** 分鐘 */
   dur_max?: number;
   timing?: Timing;
+  /**
+   * 等你決定（DIG-R6、R10 的彙整連結 /library?blocked=awaiting_user）。API 沒有依 block_reason 篩選，
+   * 送最接近的條件：summary 完成或略過、segment 停住（見 UI README 10.15）。
+   */
+  blocked?: "awaiting_user";
 }
 
 export const FILTER_KEYS = [
@@ -84,6 +89,7 @@ export const FILTER_KEYS = [
   "dur_min",
   "dur_max",
   "timing",
+  "blocked",
 ] as const satisfies readonly (keyof LibrarySearch)[];
 
 /** API 的上限：標題搜尋最多 200 字元 */
@@ -163,6 +169,7 @@ export function validateLibrarySearch(raw: Record<string, unknown>): LibrarySear
     dur_min: minutes(raw.dur_min),
     dur_max: minutes(raw.dur_max),
     timing: oneOf(TIMINGS, raw.timing),
+    blocked: oneOf(["awaiting_user"] as const, raw.blocked),
   };
   // 拿掉 undefined，讓網址只帶有值的參數
   for (const k of FILTER_KEYS) if (out[k] === undefined) delete out[k];
@@ -181,6 +188,9 @@ function dayBound(d: string, end: boolean): string {
   return dt.toISOString();
 }
 
+/** 「等你決定」對應的 API 條件（DIG-R6：summary 結束後下一步 segment 為 blocked） */
+export const AWAITING_STATUS = ["summary:done", "summary:skipped", "segment:blocked"] as const;
+
 export type ItemsQuery = Record<string, string | readonly string[] | undefined>;
 
 /** LibrarySearch → GET /api/items 的查詢參數（不含 cursor、limit）。 */
@@ -189,7 +199,7 @@ export function toApiQuery(s: LibrarySearch): ItemsQuery {
     q: s.q,
     platform: s.platform,
     channel: s.channel,
-    status: s.status,
+    status: s.blocked ? normalizeStatus([...(s.status ?? []), ...AWAITING_STATUS]) : s.status,
     error_class: s.error_class,
     lang: s.lang,
     published_from: s.published_from ? dayBound(s.published_from, false) : undefined,
