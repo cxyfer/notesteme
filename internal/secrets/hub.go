@@ -51,4 +51,3 @@ func (s *Services) SetHubToken(ctx context.Context, token string) error {
 	}
 	return s.st.Write().UpsertSecret(ctx, HubKind, HubTokenName, nonce, ct)
 }
-
