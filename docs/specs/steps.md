@@ -575,6 +575,13 @@ M4 的新句型都用 `r.Step` 註冊（不限關鍵字），因為部分 `Given
 | `Then the cost ledger entries of {string} are:` | 這部影音的成本紀錄依 `at`、`rowid` 排序後與表格依序比對，筆數必須相同。欄位可以是 `stage`、`provider`、`model`、`attempt`、`outcome`、`state`、`usd`、`unit_type`、`price_source`（`unit_price_json.source`）、`batch`（`unit_price_json.batch`，`true`／`false`）；只比對表格中出現的欄位。`usd` 以數值比較（誤差 1e-9），其他以字串比較。經測試 hook 讀取 DB（同 `Server.CostEntries`），不新增 API |
 | `Then the cost export has a row with {string} set to {string}` | 最近一次回應的 body 依 RFC 4180 解析成 CSV（第一列是欄位名稱）；至少一列的這個欄位（解析後、未去掉 `'` 的值）與指定值完全相等。body 不是 CSV、沒有這個欄位時失敗 |
 
+M4-S4 的實作說明（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+
+- COST 的句型只對 COST 的場景（有 `@COST-` 開頭的 tag）放行（`costGate`，同 4.13 的 `spbGate`、4.18 的 `notifyGate`）；LIB-bulk-overview（LIB-08、09）與 BATCH 的場景遇到這些句型時回裸的 pending，停在切片之前的同一個步驟。LIB、BATCH 切片實作時各自放寬（例如加上 `@LIB-R1`、`@BATCH-` 的 tag 前綴）。
+- 寫入順序是 全域設定 → … → 處理方案 → 預設處理方案 → 頻道覆寫 → **計價覆寫（依宣告順序）→ 預算** → 訂閱（M4-S2）→ 佇列 → notifier（`flushCosts` 在 `flushConfig` 之後、`flushSubscriptions` 之前：訂閱建立的影音可能執行付費步驟，預算要先寫入）。
+- `the cost estimate of every … task is …`、`the built-in prices were checked on …` 是 server 啟動前的測試控制；server 已啟動時步驟失敗（不默默失效）。
+- `When the worker starts one round` 的補充：等待的條件是「這一輪領取的任務都已開始」或「worker 已經沒有執行中的任務」（`Server.ActiveTasks() == 0`）。被預算擋下的任務在送出請求之前就結束、不會啟動閘控的程序，只等前者會逾時。
+
 #### Batch API（BATCH）
 
 假服務是 `features/internal/fakebatch`（見最後一節）。批次中的每個請求由 fakellm 依 4.6 的 `answers`、`for chunk`、`fails with HTTP` 回答，但**不計入** `the LLM provider … received …`（那只算一般 API 的請求）。

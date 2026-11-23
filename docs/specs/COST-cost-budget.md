@@ -89,3 +89,19 @@
 - C10：金額以整數 micro-USD 計算（規則表上方的說明，2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。`cost_ledger.usd` 維持 00007 的 REAL 欄位，只在寫入與加總時四捨五入；之後要改成整數欄位再另開 migration。驗收場景的金額比對（`Then the response contains:`）是浮點數完全相等，不這樣做的話 `0.10 + 0.20` 會失敗。
 - C9：provider 回報的金額只認 OpenAI 相容回應的 `usage.cost`（OpenRouter 的格式）；Anthropic 與 OpenAI 官方 API 目前不回報金額。其他格式之後再加。
 - M4-S0：`budget` 仍是 SEC-R2 的「由資料庫管理」的頂層欄位，設定檔寫了會啟動失敗（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。COST 的介面以 `PUT /api/settings/budget` 設定預算（C1），M4 的 `.feature` 的設定檔也沒有 `budget`；steps.md 4.17 開頭把 `budget` 列在「設定檔的 schema 要接受」的清單中，是筆誤，以本規格為準。`GET`／`PUT /api/settings/budget` 沿用既有的 `settings-get`／`settings-put` 路由（目前回 501，`internal/api/items_test.go` 斷言這個行為），S0 不另外註冊字面路徑；其他 COST 路由（`/api/prices*`、`/api/costs*`）是 501 stub。
+
+M4-S4 實作的決定：
+
+- C11：預留放在每個付費請求送出之前，不是 COST-R5 寫的「領取任務的同一個交易」（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。領取時還沒有組出請求（prompt、字幕資料區塊），無法依 COST-R5 的方法估算；檢查與預留仍在同一個寫入交易（ADR-0021 第 4 點），所以平行任務不會一起超支（場景「Parallel tasks never spend past the budget together」）。差別：被擋下的任務會短暫占用一個並行名額（不送出請求，立即 `blocked`）；RunChunk 的驗證重試每次各自預留與結算。實作在 `internal/pipeline/meter.go`。
+- C12：`cost_ledger` 加 `stage` 欄位（migration，預設 `''`）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。`Then the cost ledger entries of … are:` 與 `group_by=stage` 需要步驟名稱，從 `stage_run_id` 反查在影音永久刪除（DEL-R7）後查不到。另加 `price_overrides` 表（主鍵 `(provider, model, unit_type)`）與三個索引。
+- C13：預算存在 settings 的 `cost.budget`（金額存整數 micro-USD），內建計價表的確認日期存 `cost.prices_checked_at`，已提醒的月份存 `cost.budget_warned_month`（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
+- C14：`remaining_usd` 最少是 0（超支時不回負數）；`monthly_usd` 為 0 時不提醒（沒有比例可言，任何花費都會被擋下）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
+- C15：provider 回報的金額是負數、NaN、無限大或大於 10 億美元時視為沒有回報，改用計價表（COST-R2 的 (2)～(4)）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。不可信的回應不應讓帳本出現負數或天文數字。
+- C16：錯誤的分類：HTTP 狀態碼、回應不是 JSON、回應過大是 `http_error`；其他（連線失敗、逾時、DNS）是 `network_error`（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。兩者金額都是 0（provider 回報了金額時除外）。worker 停止（ctx 取消）而中斷的請求刪除預留，不留下紀錄。
+- C17：沒有計量的呼叫（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：Playground（`POST /api/prompts/{id}/try`，不屬於任何影音）、Groq ASR（`audio_hour`）與 Supadata（`credit`）。Groq 與 Supadata 的單價已在內建計價表，但記帳要把 `Call` 擴充成非 token 的單位，留給後續切片；這兩者目前不會被預算擋下。Gemini 筆記與 frames 的 vision 請求有計量，但影片與圖片的 token 不在估算內（只估文字），實際金額以回應的 usage 為準。
+- C18：內建計價表沒有加入任何 LLM 的單價（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。官方價格會變動，寫死容易過期；LLM 的單價由使用者以 `PUT /api/prices` 覆寫，沒有單價時依 COST-R7 處理。
+- C19：`budget.warning` 的通知摘要是「本月已用 $X（含預留），達到預算 $Y 的 N%。」，文字管道的標題沿用 NOTIFY 暫定的「Notesteme 預算提醒：<摘要>」；webhook 的 body 多一個 `budget` 欄位（`month`、`percent`、`spent_usd`、`reserved_usd`、`monthly_usd`，同事件的欄位），NOTIFY-R4 的欄位清單沒有列，要補上（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
+- C20：`GET /api/costs/entries` 的 `limit` 是 1～500（預設 100），超出時 422「limit 必須是 1 到 500 的整數。」；`cursor` 是不透明的字串，不正確時 422「cursor 不正確。」；CSV 由舊到新排列，最多 100000 筆，超過時 422「一次最多匯出 100000 筆，請縮小日期範圍。」（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。CSV 用 CRLF；欄位中單獨的 CR 會被 Go 的 `encoding/csv` 去掉，但開頭的 `'` 防護在去掉之前就已加上。
+- C21：恢復被擋下的 LLM 步驟時，沿用這次執行已完成的 chunk 紀錄，不重送已完成的 chunk（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。原本恢復會因 `llm_chunks` 的唯一鍵而失敗。
+- C22：場景「A retried server error is recorded at no cost」需要修改，待 owner 決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。503 是 retryable，LLM-R6 的退避是 30 秒，場景在第一次 `When the worker runs until idle` 之後就比對兩筆紀錄，但 fake clock 沒有前進，第二次嘗試還沒到期，所以目前只有 1 筆（`attempt 1`、`http_error`、`0`）。建議的最小修改：在第一個 `And the worker runs until idle` 之後加 `And the clock advances by "1m"` 與 `And the worker runs until idle`，和 `LLM-execution.feature`（429 once 之後）、`GEM-gemini.feature`（429 once 之後）的既有寫法相同。行為本身由 `internal/pipeline/meter_test.go` 的 `TestMeterRecordsFailedRequestsAtNoCost` 驗證（503 → 退避 → 兩筆，第二筆 `ok`）。這個切片沒有修改 `.feature`，這個場景目前是 failed。
+- C23：ING-R8（`POST /api/estimate` 改用 COST-R2 的單價順序）沒有在 M4-S4 實作（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）；估價仍只用內建計價表。之後改成 `cost.Service.Lookup`。
