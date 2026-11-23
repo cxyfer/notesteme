@@ -20,6 +20,7 @@ import (
 //   - ENTRY 的頁面路由（/add、/share、/login、/manifest.webmanifest、/sw.js）不在 /api 底下，已由 internal/entry 實作（掛在 ui.go 的 entryPages）；
 //     POST /api/auth/login 的 next（ENTRY-R6）也已實作。
 //   - DIG 的路由（continue、digests）在 M4-S6 實作（digests.go）。
+//   - GET /api/search 在 S8 SRCH 實作（search.go）。
 //   - 既有路由的欄位擴充（GET /api/items/:id 的 reprobe、better_source、read_state，
 //     PATCH /api/channels/:id/term-candidates/:candidate 的 term、scope，GET /api/system 的 alerts、backup）由各切片加上。
 var m4Stubs = []m2Stub{
@@ -39,9 +40,6 @@ var m4Stubs = []m2Stub{
 		Summary: "一次決定多個術語候選（尚未實作）", Scope: auth.ScopeAdmin},
 	{ID: "term-candidates-list", Method: http.MethodGet, Path: "/api/term-candidates",
 		Summary: "列出所有頻道待確認的術語候選（尚未實作）", Scope: auth.ScopeRead},
-	// SRCH-R5、R6、R10（S8 SRCH）
-	{ID: "search", Method: http.MethodGet, Path: "/api/search",
-		Summary: "字幕全文搜尋（尚未實作）", Scope: auth.ScopeRead},
 	// AUTH-R20、R21（S11 AUTH）
 	{ID: "auth-sessions-list", Method: http.MethodGet, Path: "/api/auth/sessions",
 		Summary: "列出登入的工作階段（尚未實作）", Scope: auth.ScopeAdmin},

@@ -303,6 +303,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerVaults(api)
 	rt.registerM4Stubs(api)
 	rt.registerDigests(api)
+	rt.registerSearch(api)
 	rt.registerCosts(api)
 	rt.registerM5Stubs(api)
 	rt.registerFrames(api)

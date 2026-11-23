@@ -19,7 +19,6 @@ var m4StubCases = []stubCase{
 	{"POST", "/api/term-candidates/decide", auth.ScopeAdmin},
 	{"GET", "/api/term-candidates", auth.ScopeRead},
 	// SRCH
-	{"GET", "/api/search", auth.ScopeRead},
 	// AUTH
 	{"GET", "/api/auth/sessions", auth.ScopeAdmin},
 	{"DELETE", "/api/auth/sessions/current", auth.ScopeAdmin},

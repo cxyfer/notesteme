@@ -1240,7 +1240,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 字幕全文搜尋（尚未實作） */
+    /** 字幕全文搜尋：結果以字幕句為單位，帶時間戳、句子編號與命中範圍（SRCH-R3～R10） */
     get: operations["search"];
     put?: never;
     post?: never;
@@ -3202,6 +3202,44 @@ export interface components {
     RunsOutputBody: {
       runs: components["schemas"]["Run"][] | null;
     };
+    SearchItem: {
+      id: string;
+      /** @description 影音的短代號，例如 yt:abc123xxxxx */
+      ref: string;
+      title: string;
+    };
+    SearchOutputBody: {
+      /** @description 下一頁的游標；最後一頁沒有這個欄位 */
+      next_cursor?: string;
+      results: components["schemas"]["SearchResult"][] | null;
+      /**
+       * Format: int64
+       * @description 符合條件的字幕句總數
+       */
+      total: number;
+    };
+    SearchResult: {
+      /** @description 後一句的純文字；沒有時省略 */
+      after?: string;
+      /** @description 前一句的純文字；沒有時省略 */
+      before?: string;
+      /**
+       * Format: int64
+       * @description 字幕句在這份字幕中的編號，從 1 起，與 GET /api/items/{id}/cues 的順序相同
+       */
+      cue: number;
+      /** @example 00:00:08.000 */
+      end: string;
+      /** @description 命中範圍在 text 中的位移（UTF-16 code unit，end 不含），依序、不重疊 */
+      highlights: components["schemas"]["Span"][] | null;
+      item: components["schemas"]["SearchItem"];
+      lang: string;
+      /** @example 00:00:04.000 */
+      start: string;
+      text: string;
+      /** @description 命中的是哪一份字幕 */
+      variant: string;
+    };
     SetPromptDefaultInputBody: {
       /**
        * Format: int64
@@ -3222,6 +3260,12 @@ export interface components {
       source: string;
       /** @enum {string} */
       state: "used" | "rejected" | "unavailable";
+    };
+    Span: {
+      /** Format: int64 */
+      end: number;
+      /** Format: int64 */
+      start: number;
     };
     SponsorSegment: {
       /** @description SponsorBlock 的類別，例如 sponsor */
@@ -6491,19 +6535,32 @@ export interface operations {
   };
   search: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description 要搜尋的文字：照字面比對（不是查詢語法），不分大小寫，去掉前後空白後 1～200 個字 */
+        q?: string;
+        /** @description 搜尋方式；只支援 fulltext（預設） */
+        mode?: string;
+        /** @description 只搜尋這個語言的字幕（BCP 47，完全相等） */
+        lang?: string;
+        /** @description 單頁筆數，1～100，預設 20 */
+        limit?: string;
+        /** @description 上一頁回傳的 next_cursor */
+        cursor?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["SearchOutputBody"];
+        };
       };
       /** @description Error */
       default: {
