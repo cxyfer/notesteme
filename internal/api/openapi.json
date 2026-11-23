@@ -1616,6 +1616,12 @@
               "null"
             ]
           },
+          "disclosure": {
+            "type": "string"
+          },
+          "disclosure_version": {
+            "type": "string"
+          },
           "entry": {
             "type": "string"
           },
@@ -2124,6 +2130,247 @@
         ],
         "type": "object"
       },
+      "HubImportInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "overrides": {
+            "additionalProperties": {},
+            "description": "單次覆寫（ING-R7）",
+            "type": "object"
+          },
+          "profile": {
+            "description": "處理方案；省略時用預設",
+            "type": "string"
+          },
+          "version": {
+            "description": "Hub 上的版本 ID",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "type": "object"
+      },
+      "HubImportItem": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ref"
+        ],
+        "type": "object"
+      },
+      "HubImportView": {
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/HubImportItem"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "type": "object"
+      },
+      "HubPrecheck": {
+        "additionalProperties": false,
+        "properties": {
+          "disclosure": {
+            "type": "string"
+          },
+          "disclosure_version": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "disclosure",
+          "disclosure_version"
+        ],
+        "type": "object"
+      },
+      "HubPrecheckUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledge": {
+            "description": "開啟時必須等於 disclosure_version",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "開啟或關閉 ASR 前查詢",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "HubSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "precheck": {
+            "$ref": "#/components/schemas/HubPrecheck"
+          },
+          "token_set": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "token_set",
+          "precheck"
+        ],
+        "type": "object"
+      },
+      "HubSettingsInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "precheck": {
+            "$ref": "#/components/schemas/HubPrecheckUpdate"
+          },
+          "token": {
+            "description": "Hub token（nsh_…）；空字串刪除，省略時不變",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "HubShareArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "description": "transcript、chapters、note 或 frames",
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "HubShareInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "artifacts": {
+            "description": "只分享列出的產出；省略時分享每個字幕變體與語言的現行版本、chapters 與 note",
+            "items": {
+              "$ref": "#/components/schemas/HubShareArtifact"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "attest": {
+            "description": "必須是 true：確認有權分享這些內容",
+            "type": "boolean"
+          },
+          "include_frames": {
+            "description": "也分享選中的畫面（Hub 端一律 private）",
+            "type": "boolean"
+          },
+          "license": {
+            "description": "授權（SPDX）：CC-BY-4.0、CC-BY-SA-4.0、CC-BY-NC-4.0、CC-BY-NC-SA-4.0 或 CC0-1.0",
+            "type": "string"
+          },
+          "visibility": {
+            "description": "public、authenticated、private 或 group:\u003c群組\u003e；省略時依 Hub 的預設",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "HubShareRef": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hub_url": {
+            "type": "string"
+          },
+          "share_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "share_id",
+          "hub_url",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "HubShareView": {
+        "additionalProperties": false,
+        "properties": {
+          "share_id": {
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/HubSharedVersion"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "share_id",
+          "versions"
+        ],
+        "type": "object"
+      },
+      "HubSharedVersion": {
+        "additionalProperties": false,
+        "properties": {
+          "deduplicated": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          },
+          "version_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "variant",
+          "lang",
+          "version_id",
+          "deduplicated"
+        ],
+        "type": "object"
+      },
       "ImportAssStyleInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -2592,6 +2839,16 @@
           },
           "external_id": {
             "type": "string"
+          },
+          "hub_shares": {
+            "description": "分享到 Hub 的紀錄，依時間排序；沒有分享過時沒有這個欄位",
+            "items": {
+              "$ref": "#/components/schemas/HubShareRef"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "id": {
             "type": "string"
@@ -7663,10 +7920,28 @@
     },
     "/api/hub/import": {
       "post": {
+        "description": "先取得並驗證版本與內容（sha256、cues 格式），通過之後才新增影音或從 transcript 重跑；transcript 寫入這份字幕、來源 hub，不呼叫其他字幕來源。只接受 source、normalized 的字幕（422 not_raw）。",
         "operationId": "hub-import",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HubImportInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubImportView"
+                }
+              }
+            },
+            "description": "Accepted"
           },
           "default": {
             "content": {
@@ -7679,7 +7954,7 @@
             "description": "Error"
           }
         },
-        "summary": "以 Hub 上的原始字幕重新生成影音（尚未實作）"
+        "summary": "以 Hub 上別人的原始字幕重新生成影音（HSHR-R9～R11）"
       }
     },
     "/api/items": {
@@ -8319,10 +8594,40 @@
     },
     "/api/items/{id}/hub/share": {
       "post": {
+        "description": "產生只含白名單欄位的 bundle 送到 Hub 的 POST /api/v1/shares。attest 必須是 true、license 必須是支援的授權；本機檔案、非公開影音、需要登入才能取得的字幕不能分享（422 not_shareable）。Hub 的錯誤回 502（hub_*）或原樣的 422。",
         "operationId": "items-hub-share",
+        "parameters": [
+          {
+            "description": "影音 ID 或代號",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID 或代號",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HubShareInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubShareView"
+                }
+              }
+            },
+            "description": "Created"
           },
           "default": {
             "content": {
@@ -8335,7 +8640,7 @@
             "description": "Error"
           }
         },
-        "summary": "把影音的產出分享到 Hub（尚未實作）"
+        "summary": "把影音的產出分享到 Hub（HSHR-R2～R8）"
       }
     },
     "/api/items/{id}/note": {
@@ -10238,8 +10543,15 @@
       "get": {
         "operationId": "settings-hub-get",
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubSettings"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -10252,13 +10564,31 @@
             "description": "Error"
           }
         },
-        "summary": "Hub 的連線設定：url、token_set 與 ASR 前查詢（不含 token，尚未實作）"
+        "summary": "Hub 的連線設定：url、token_set 與 ASR 前查詢（不含 token，HSHR-R1、R12）"
       },
       "put": {
+        "description": "開啟 ASR 前查詢時 precheck.acknowledge 必須等於目前的 disclosure_version，否則回 422 acknowledgement_required，回應帶 disclosure 與 disclosure_version（HSHR-R12）。",
         "operationId": "settings-hub-put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HubSettingsInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubSettings"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -10271,7 +10601,7 @@
             "description": "Error"
           }
         },
-        "summary": "設定 Hub token 與 ASR 前查詢（部分更新，尚未實作）"
+        "summary": "設定 Hub token 與 ASR 前查詢（部分更新；token 為空字串時刪除；不會連線到 Hub）"
       }
     },
     "/api/settings/{section}": {

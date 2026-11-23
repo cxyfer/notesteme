@@ -495,7 +495,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 以 Hub 上的原始字幕重新生成影音（尚未實作） */
+    /**
+     * 以 Hub 上別人的原始字幕重新生成影音（HSHR-R9～R11）
+     * @description 先取得並驗證版本與內容（sha256、cues 格式），通過之後才新增影音或從 transcript 重跑；transcript 寫入這份字幕、來源 hub，不呼叫其他字幕來源。只接受 source、normalized 的字幕（422 not_raw）。
+     */
     post: operations["hub-import"];
     delete?: never;
     options?: never;
@@ -684,7 +687,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 把影音的產出分享到 Hub（尚未實作） */
+    /**
+     * 把影音的產出分享到 Hub（HSHR-R2～R8）
+     * @description 產生只含白名單欄位的 bundle 送到 Hub 的 POST /api/v1/shares。attest 必須是 true、license 必須是支援的授權；本機檔案、非公開影音、需要登入才能取得的字幕不能分享（422 not_shareable）。Hub 的錯誤回 502（hub_*）或原樣的 422。
+     */
     post: operations["items-hub-share"];
     delete?: never;
     options?: never;
@@ -1308,9 +1314,12 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Hub 的連線設定：url、token_set 與 ASR 前查詢（不含 token，尚未實作） */
+    /** Hub 的連線設定：url、token_set 與 ASR 前查詢（不含 token，HSHR-R1、R12） */
     get: operations["settings-hub-get"];
-    /** 設定 Hub token 與 ASR 前查詢（部分更新，尚未實作） */
+    /**
+     * 設定 Hub token 與 ASR 前查詢（部分更新；token 為空字串時刪除；不會連線到 Hub）
+     * @description 開啟 ASR 前查詢時 precheck.acknowledge 必須等於目前的 disclosure_version，否則回 422 acknowledgement_required，回應帶 disclosure 與 disclosure_version（HSHR-R12）。
+     */
     put: operations["settings-hub-put"];
     post?: never;
     delete?: never;
@@ -2277,6 +2286,8 @@ export interface components {
       /** @description 機器可讀的錯誤代碼 */
       code: string;
       details?: string[] | null;
+      disclosure?: string;
+      disclosure_version?: string;
       entry?: string;
       error_class?: string;
       errors?: components["schemas"]["FieldError"][] | null;
@@ -2466,6 +2477,79 @@ export interface components {
       /** Format: double */
       usd: number;
     };
+    HubImportInputBody: {
+      /** @description 單次覆寫（ING-R7） */
+      overrides?: {
+        [key: string]: unknown;
+      };
+      /** @description 處理方案；省略時用預設 */
+      profile?: string;
+      /** @description Hub 上的版本 ID */
+      version: string;
+    };
+    HubImportItem: {
+      id: string;
+      ref: string;
+    };
+    HubImportView: {
+      item: components["schemas"]["HubImportItem"];
+    };
+    HubPrecheck: {
+      disclosure: string;
+      disclosure_version: string;
+      enabled: boolean;
+    };
+    HubPrecheckUpdate: {
+      /** @description 開啟時必須等於 disclosure_version */
+      acknowledge?: string;
+      /** @description 開啟或關閉 ASR 前查詢 */
+      enabled?: boolean;
+    };
+    HubSettings: {
+      precheck: components["schemas"]["HubPrecheck"];
+      token_set: boolean;
+      url: string;
+    };
+    HubSettingsInputBody: {
+      precheck?: components["schemas"]["HubPrecheckUpdate"];
+      /** @description Hub token（nsh_…）；空字串刪除，省略時不變 */
+      token?: string;
+    };
+    HubShareArtifact: {
+      /** @description transcript、chapters、note 或 frames */
+      kind: string;
+      lang?: string;
+      variant?: string;
+    };
+    HubShareInputBody: {
+      /** @description 只分享列出的產出；省略時分享每個字幕變體與語言的現行版本、chapters 與 note */
+      artifacts?: components["schemas"]["HubShareArtifact"][] | null;
+      /** @description 必須是 true：確認有權分享這些內容 */
+      attest?: boolean;
+      /** @description 也分享選中的畫面（Hub 端一律 private） */
+      include_frames?: boolean;
+      /** @description 授權（SPDX）：CC-BY-4.0、CC-BY-SA-4.0、CC-BY-NC-4.0、CC-BY-NC-SA-4.0 或 CC0-1.0 */
+      license?: string;
+      /** @description public、authenticated、private 或 group:<群組>；省略時依 Hub 的預設 */
+      visibility?: string;
+    };
+    HubShareRef: {
+      /** Format: date-time */
+      created_at: string;
+      hub_url: string;
+      share_id: string;
+    };
+    HubShareView: {
+      share_id: string;
+      versions: components["schemas"]["HubSharedVersion"][] | null;
+    };
+    HubSharedVersion: {
+      deduplicated: boolean;
+      kind: string;
+      lang: string;
+      variant: string;
+      version_id: string;
+    };
     ImportAssStyleInputBody: {
       /** @description .ass 檔的內容；與 path 擇一 */
       content?: string;
@@ -2636,6 +2720,8 @@ export interface components {
       /** Format: int64 */
       duration_s: number | null;
       external_id: string;
+      /** @description 分享到 Hub 的紀錄，依時間排序；沒有分享過時沒有這個欄位 */
+      hub_shares?: components["schemas"]["HubShareRef"][] | null;
       id: string;
       lang_mixed: boolean;
       /** @description 原文語言的來源：metadata、asr 或 detected */
@@ -5018,14 +5104,20 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["HubImportInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description Accepted */
+      202: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["HubImportView"];
+        };
       };
       /** @description Error */
       default: {
@@ -5460,17 +5552,26 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 影音 ID 或代號 */
+        id: string;
+      };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["HubShareInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description Created */
+      201: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["HubShareView"];
+        };
       };
       /** @description Error */
       default: {
@@ -7017,12 +7118,14 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["HubSettings"];
+        };
       };
       /** @description Error */
       default: {
@@ -7042,14 +7145,20 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["HubSettingsInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["HubSettings"];
+        };
       };
       /** @description Error */
       default: {

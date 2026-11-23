@@ -110,6 +110,8 @@ type ItemDetail struct {
 	SponsorSegments *[]SponsorSegment `json:"sponsor_segments,omitempty" doc:"SponsorBlock 的片段，依開始時間排序；沒有片段時是空陣列，步驟沒有執行過時沒有這個欄位"`
 	// Chapters 是現行的章節（CHAP-R7）：沒有章節時是空陣列，chapters 步驟沒有產生過產出時沒有這個欄位。
 	Chapters *[]Chapter `json:"chapters,omitempty" doc:"章節，依開始時間排序；沒有章節時是空陣列，chapters 步驟沒有產生過產出時沒有這個欄位"`
+	// HubShares 是分享到 Hub 的紀錄（HSHR-R2）；沒有分享過時沒有這個欄位。
+	HubShares []HubShareRef `json:"hub_shares,omitempty" doc:"分享到 Hub 的紀錄，依時間排序；沒有分享過時沒有這個欄位"`
 	// Summary 是現行的摘要（DIG-R5）；沒有摘要產出時沒有這個欄位。
 	Summary *ItemSummary `json:"summary,omitempty" doc:"摘要（DIG-R5）；沒有摘要產出時沒有這個欄位"`
 	// Reprobe 是排定的重新 Probe（SRC-R18），BetterSource 是事後發現的更好字幕來源（SRC-R23）；沒有時都是 null。
@@ -554,7 +556,11 @@ func (rt *routes) getItem(ctx context.Context, in *itemInput) (*itemDetailOutput
 	if err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}
-	return &itemDetailOutput{Body: toDetail(d)}, nil
+	out := toDetail(d)
+	if out.HubShares, err = rt.hubShares(ctx, id); err != nil {
+		return nil, rt.mapErr(ctx, err)
+	}
+	return &itemDetailOutput{Body: out}, nil
 }
 
 func toDetail(d pipeline.Detail) ItemDetail {

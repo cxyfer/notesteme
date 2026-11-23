@@ -50,6 +50,9 @@ type Error struct {
 	Entry string `json:"entry,omitempty"`
 	// ErrorClass 是錯誤類別（ADR-0006），例如 bundle 不通過驗證時是 permanent（BND-R10）；沒有分類的錯誤省略。
 	ErrorClass string `json:"error_class,omitempty"`
+	// Disclosure 與 DisclosureVersion 在開啟 ASR 前查詢卻沒有確認說明時，帶上要確認的說明與版本（422，HSHR-R12）。
+	Disclosure        string `json:"disclosure,omitempty"`
+	DisclosureVersion string `json:"disclosure_version,omitempty"`
 }
 
 // Error 實作 error。

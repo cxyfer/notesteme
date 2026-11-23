@@ -234,6 +234,7 @@ func (s *Server) apiDeps(env Env) api.Deps {
 		Digests:   s.digests,
 		// bundle 匯入的上限（BND-R3、R5）。
 		BundleImport: s.cfg.M4.BundleImport,
+		Hub:          s.hub,
 	}
 	if s.subscriptions != nil {
 		d.Subscriptions = s.subscriptions

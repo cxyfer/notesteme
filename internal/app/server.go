@@ -19,6 +19,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/cookies"
 	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/digest"
+	"github.com/cxyfer/notesteme/internal/hubsettings"
 	"github.com/cxyfer/notesteme/internal/inbox"
 	"github.com/cxyfer/notesteme/internal/media"
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -74,6 +75,8 @@ type Server struct {
 	keys              *secrets.Keyring
 	// services 管理加密存放的服務商 API key（GET／PUT /api/settings/services 與執行期解析）。
 	services *secrets.Services
+	// hub 是 Client 的 Hub 設定（HSHR）；startPipeline 建立。
+	hub *hubsettings.Settings
 	// cookies 加密存放平台 cookie，並提供 yt-dlp 用的暫存檔（SEC-R7）；startPipeline 建立。
 	cookies *cookies.Store
 	auth    *auth.Service
@@ -294,6 +297,8 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	}
 	deps.SponsorBlock = &sponsorblock.Client{HTTP: deps.HTTP, BaseURL: sbBase}
 	deps.SponsorBlockBaseURL = sbBase
+	// Hub（HSHR）：經同一個 netguard client；hub.url 只能寫在設定檔。
+	s.configureHub(env, cfg, &deps)
 	// 通知（NOTIFY）：pipeline 在步驟狀態的交易中寫入 outbox，排程工作 notify.deliver 送出。
 	var outbox *notify.Outbox
 	s.notify, outbox = s.newNotify(env.Clock, cfg, log)

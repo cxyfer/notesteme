@@ -26,6 +26,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/digest"
 	"github.com/cxyfer/notesteme/internal/events"
+	"github.com/cxyfer/notesteme/internal/hubsettings"
 	"github.com/cxyfer/notesteme/internal/notify"
 	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/pipeline"
@@ -102,6 +103,8 @@ type Deps struct {
 	Subscriptions SubscriptionService
 	// BundleImport 是 bundle 匯入的上限（設定檔 bundles.import，BND-R3、R5）；零值用預設值。
 	BundleImport config.BundleImport
+	// Hub 是 Client 的 Hub 設定（GET／PUT /api/settings/hub，HSHR-R1、R12）；nil 時回應 501。
+	Hub *hubsettings.Settings
 }
 
 // processCursorKey 是沒有指定 CursorKey 時用的金鑰：每個 process 只產生一次，
@@ -320,7 +323,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerDigests(api)
 	rt.registerSearch(api)
 	rt.registerCosts(api)
-	rt.registerM5Stubs(api)
+	rt.registerHub(api)
 	rt.registerFrames(api)
 	rt.registerNotes(api)
 	registerScoped(api, huma.Operation{

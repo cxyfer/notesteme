@@ -254,6 +254,12 @@
               "null"
             ]
           },
+          "disclosure": {
+            "type": "string"
+          },
+          "disclosure_version": {
+            "type": "string"
+          },
           "entry": {
             "type": "string"
           },

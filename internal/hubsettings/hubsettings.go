@@ -30,18 +30,18 @@ func Disclosure(hubURL string) string {
 // ErrAcknowledgementRequired 表示開啟 ASR 前查詢時沒有確認目前版本的說明。
 var ErrAcknowledgementRequired = errors.New("開啟 Hub 查詢之前，請先確認會送出哪些資料。")
 
-// PrecheckView 是 GET 回應的 precheck。
-type PrecheckView struct {
+// HubPrecheck 是 GET 回應的 precheck。
+type HubPrecheck struct {
 	Enabled           bool   `json:"enabled"`
 	Disclosure        string `json:"disclosure"`
 	DisclosureVersion string `json:"disclosure_version"`
 }
 
-// View 是 GET／PUT /api/settings/hub 的回應：不含 token。
-type View struct {
+// HubSettings 是 GET／PUT /api/settings/hub 的回應：不含 token。
+type HubSettings struct {
 	URL      string       `json:"url"`
 	TokenSet bool         `json:"token_set"`
-	Precheck PrecheckView `json:"precheck"`
+	Precheck HubPrecheck `json:"precheck"`
 }
 
 // PrecheckUpdate 是 precheck 的部分更新。
@@ -99,24 +99,24 @@ func (s *Settings) PrecheckEnabled(ctx context.Context) (bool, error) {
 }
 
 // Get 回傳目前的設定。
-func (s *Settings) Get(ctx context.Context) (View, error) {
+func (s *Settings) Get(ctx context.Context) (HubSettings, error) {
 	_, tokenSet, err := s.Token(ctx)
 	if err != nil {
-		return View{}, err
+		return HubSettings{}, err
 	}
 	on, err := s.PrecheckEnabled(ctx)
 	if err != nil {
-		return View{}, err
+		return HubSettings{}, err
 	}
-	return View{URL: s.URL, TokenSet: tokenSet, Precheck: PrecheckView{Enabled: on, Disclosure: Disclosure(s.URL), DisclosureVersion: DisclosureVersion}}, nil
+	return HubSettings{URL: s.URL, TokenSet: tokenSet, Precheck: HubPrecheck{Enabled: on, Disclosure: Disclosure(s.URL), DisclosureVersion: DisclosureVersion}}, nil
 }
 
 // Put 套用部分更新；全部檢查通過才寫入（開啟查詢沒有確認說明時，token 也不寫入）。設定 token 不會連線到 Hub。
-func (s *Settings) Put(ctx context.Context, u Update) (View, error) {
+func (s *Settings) Put(ctx context.Context, u Update) (HubSettings, error) {
 	var stored *storedPrecheck
 	if p := u.Precheck; p != nil && p.Enabled != nil {
 		if *p.Enabled && p.Acknowledge != DisclosureVersion {
-			return View{}, ErrAcknowledgementRequired
+			return HubSettings{}, ErrAcknowledgementRequired
 		}
 		stored = &storedPrecheck{Enabled: *p.Enabled}
 		if *p.Enabled {
@@ -125,16 +125,16 @@ func (s *Settings) Put(ctx context.Context, u Update) (View, error) {
 	}
 	if u.Token != nil {
 		if err := s.Secrets.SetHubToken(ctx, *u.Token); err != nil {
-			return View{}, err
+			return HubSettings{}, err
 		}
 	}
 	if stored != nil {
 		b, err := json.Marshal(stored)
 		if err != nil {
-			return View{}, err
+			return HubSettings{}, err
 		}
 		if err := s.Store.SetSetting(ctx, settingPrecheck, string(b)); err != nil {
-			return View{}, err
+			return HubSettings{}, err
 		}
 	}
 	return s.Get(ctx)
