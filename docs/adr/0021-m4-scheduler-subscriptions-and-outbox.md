@@ -120,5 +120,5 @@ M4 的 migration 接在 M3 的 migration 之後（M3 規劃 `00017`；實際編�
 - 2026-11-24，M4-S9 GLOS 實作（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：
   - 第 7 點：migration `00029_glossary_review`，`glossary_candidates` 加 `decided_term`、`decided_scope`、`decided_at`（拒絕時只有 `decided_at`，GLOS G6），索引是 `(state, created_at, id)`（GLOS-R5 的排序含 id）；沒有 `suggestion`（GLOS G2）。
 - 2026-11-24，M4 OPS（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：
-  - 第 7 點：migration `00029_ops`（`alert_states` 多一個 `message` 欄位給 `GET /api/system`；`tool_call_stats (tool, bucket_start, calls, failures)`；`secrets.last_ok_at`）。stage_runs 沒有加「狀態改變的時間」，`stuck_task` 由既有欄位推算（OPS O11）。
+  - 第 7 點：migration `00030_ops`（`alert_states` 多一個 `message` 欄位給 `GET /api/system`；`tool_call_stats (tool, bucket_start, calls, failures)`；`secrets.last_ok_at`）。stage_runs 沒有加「狀態改變的時間」，`stuck_task` 由既有欄位推算（OPS O11）。
   - 排程工作 `backup.daily`（`key` 固定 `daily`，handler 傳回對齊時區的 `Next`，不加 jitter）與 `alerts`（`key` 固定 `check`，間隔 15 分鐘、不加 jitter、啟動時排在現在）只在 serve 登記；standalone 的 CLI 不跑。
