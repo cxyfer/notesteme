@@ -88,16 +88,17 @@ ORDER BY not_before LIMIT 1;
 SELECT COUNT(*) FROM tasks WHERE state = sqlc.arg(state);
 
 -- name: CancelPendingTasks :execrows
--- Pending tasks stop here. Agent tasks are stopped even when leased: no worker is running them, and the
+-- Pending tasks stop here, and so do tasks waiting for a batch (they leave it, BATCH-R9). Agent tasks are stopped even when leased: no worker is running them, and the
 -- agent's lease must end at once so its token is rejected (AGT-R7) instead of the task coming back later.
 UPDATE tasks SET state = 'failed', lease_token = NULL, lease_owner = NULL, lease_until = NULL
-WHERE stage_run_id = sqlc.arg(stage_run_id) AND (state = 'pending' OR (state = 'leased' AND executor = 'agent'));
+WHERE stage_run_id = sqlc.arg(stage_run_id)
+  AND (state IN ('pending', 'waiting') OR (state = 'leased' AND executor = 'agent'));
 
 -- name: CancelItemTasks :many
--- Cancel every unfinished (pending or leased) task of an item and drop its lease, so a late write-back
+-- Cancel every unfinished (pending, leased or waiting for a batch) task of an item and drop its lease, so a late write-back
 -- from the former holder matches no row. Returns the ids so the worker can stop what is running.
 UPDATE tasks SET state = 'cancelled', lease_token = NULL, lease_owner = NULL, lease_until = NULL
-WHERE state IN ('pending', 'leased')
+WHERE state IN ('pending', 'leased', 'waiting')
   AND stage_run_id IN (SELECT id FROM stage_runs WHERE item_id = sqlc.arg(item_id))
 RETURNING id;
 

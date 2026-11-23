@@ -41,6 +41,19 @@ type AssStyle struct {
 	UpdatedAt int64
 }
 
+type Batch struct {
+	ID          string
+	Provider    string
+	Model       string
+	ExternalID  string
+	State       string
+	SubmittedAt int64
+	DeadlineAt  int64
+	EndedAt     *int64
+	TaskIdsJson string
+	Notice      string
+}
+
 type Channel struct {
 	ID            string
 	Platform      string
@@ -176,6 +189,7 @@ type LlmChunk struct {
 	Executor      string
 	Agent         string
 	ModelReported string
+	BatchJson     string
 }
 
 type NoteTemplate struct {
@@ -403,4 +417,5 @@ type Task struct {
 	CreatedAt     int64
 	AgentFailures int64
 	ReleaseReason string
+	BatchID       *string
 }

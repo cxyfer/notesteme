@@ -52,9 +52,13 @@ const deleteOrphanReservations = `-- name: DeleteOrphanReservations :execrows
 DELETE FROM cost_ledger
 WHERE state = 'reserved'
   AND (task_id IS NULL OR task_id NOT IN (SELECT t.id FROM tasks AS t WHERE t.state = 'leased'))
+  AND (task_id IS NULL OR task_id NOT IN (SELECT t.id FROM tasks AS t JOIN batches AS b ON b.id = t.batch_id
+                                          WHERE b.state IN ('submitted', 'cancelling')))
 `
 
-// A reservation belongs to a task that is running right now; any other one was left by a crash (COST-R5, PIPE-R11).
+// A reservation belongs to a task that is running right now, or to a request of a batch that has not ended
+// (BATCH-R10: also when the task left the batch, the result is still charged, BATCH-R9); any other one was left
+// by a crash (COST-R5, PIPE-R11).
 func (q *Queries) DeleteOrphanReservations(ctx context.Context) (int64, error) {
 	result, err := q.db.ExecContext(ctx, deleteOrphanReservations)
 	if err != nil {

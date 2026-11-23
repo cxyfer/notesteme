@@ -202,6 +202,8 @@ type Task struct {
 	AgentFailures int
 	// ReleaseReason 是上一個持有者放回任務時給的原因（AGT-R8）。
 	ReleaseReason string
+	// BatchID 是任務等待的（或曾經等待、後來被移除的）batch（BATCH）；沒有時是空字串。
+	BatchID string
 }
 
 // NewTask 是新增任務所需的欄位。

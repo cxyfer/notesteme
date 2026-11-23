@@ -30,7 +30,7 @@ func (q *Queries) AddAgentFailure(ctx context.Context, arg AddAgentFailureParams
 }
 
 const agentTaskForLease = `-- name: AgentTaskForLease :one
-SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason FROM tasks WHERE id = ?1 AND executor = 'agent'
+SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason, batch_id FROM tasks WHERE id = ?1 AND executor = 'agent'
 `
 
 // The agent task with this id, whatever its state; the caller checks the lease token, holder and expiry.
@@ -58,6 +58,7 @@ func (q *Queries) AgentTaskForLease(ctx context.Context, id string) (Task, error
 		&i.CreatedAt,
 		&i.AgentFailures,
 		&i.ReleaseReason,
+		&i.BatchID,
 	)
 	return i, err
 }
@@ -134,7 +135,7 @@ func (q *Queries) CountRunTasks(ctx context.Context, arg CountRunTasksParams) (i
 }
 
 const expiredAgentLeases = `-- name: ExpiredAgentLeases :many
-SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason FROM tasks
+SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason, batch_id FROM tasks
 WHERE executor = 'agent' AND state = 'leased' AND lease_until <= CAST(?1 AS INTEGER)
 ORDER BY lease_until, rowid
 `
@@ -170,6 +171,7 @@ func (q *Queries) ExpiredAgentLeases(ctx context.Context, now int64) ([]Task, er
 			&i.CreatedAt,
 			&i.AgentFailures,
 			&i.ReleaseReason,
+			&i.BatchID,
 		); err != nil {
 			return nil, err
 		}
@@ -327,7 +329,7 @@ func (q *Queries) SwitchAgentTasksToBuiltin(ctx context.Context, stageRunID stri
 }
 
 const timedOutAgentTasks = `-- name: TimedOutAgentTasks :many
-SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason FROM tasks
+SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason, batch_id FROM tasks
 WHERE executor = 'agent' AND state = 'pending' AND deadline_at IS NOT NULL
   AND deadline_at <= CAST(?1 AS INTEGER)
 ORDER BY deadline_at, rowid
@@ -364,6 +366,7 @@ func (q *Queries) TimedOutAgentTasks(ctx context.Context, now int64) ([]Task, er
 			&i.CreatedAt,
 			&i.AgentFailures,
 			&i.ReleaseReason,
+			&i.BatchID,
 		); err != nil {
 			return nil, err
 		}

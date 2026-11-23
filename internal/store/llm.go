@@ -37,8 +37,10 @@ type LLMChunk struct {
 	Executor      string
 	Agent         string
 	ModelReported string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	// Batch 是 chunk 的 batch 紀錄（BATCH-R8）；沒有經過 batch 時是 {}。
+	Batch     json.RawMessage
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 func llmChunkFromRow(row sqlcdb.LlmChunk) LLMChunk {
@@ -46,7 +48,7 @@ func llmChunkFromRow(row sqlcdb.LlmChunk) LLMChunk {
 		StageRunID: row.StageRunID, Chunk: int(row.Chunk), ItemID: row.ItemID, Stage: row.Stage,
 		CacheKey: row.CacheKey, Status: row.Status, Reason: row.Reason, Plan: json.RawMessage(row.PlanJson),
 		Usage: json.RawMessage(row.UsageJson), Detail: json.RawMessage(row.DetailJson), Reused: row.Reused != 0,
-		Executor: row.Executor, Agent: row.Agent, ModelReported: row.ModelReported,
+		Executor: row.Executor, Agent: row.Agent, ModelReported: row.ModelReported, Batch: json.RawMessage(row.BatchJson),
 		CreatedAt: fromMs(row.CreatedAt), UpdatedAt: fromMs(row.UpdatedAt),
 	}
 	if row.OutputJson != nil {

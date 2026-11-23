@@ -32,6 +32,9 @@ func taskFromRow(row sqlcdb.Task) Task {
 		AgentFailures: int(row.AgentFailures),
 		ReleaseReason: row.ReleaseReason,
 	}
+	if row.BatchID != nil {
+		t.BatchID = *row.BatchID
+	}
 	if row.ChunkIndex != nil {
 		c := int(*row.ChunkIndex)
 		t.ChunkIndex = &c
@@ -339,12 +342,16 @@ func (r *Repo) CountTasks(ctx context.Context, state string) (n int, err error) 
 	return int(c), err
 }
 
-// CancelPendingTasks 把指定步驟中還沒被領取的任務標記為 failed，讓它們不再執行。
+// CancelPendingTasks 把指定步驟中還沒被領取（含等待 batch 結果）的任務標記為 failed，讓它們不再執行。
 // 重跑取代了這些步驟時使用；內建 worker 已經領取的任務不受影響（完成時 apply 會丟棄結果），
 // Agent 領取中的任務一併結束、租約立即失效（AGT-R7）。回傳被取消的任務數。
 func (r *Repo) CancelPendingTasks(ctx context.Context, stageRunIDs []string) (int, error) {
 	n := 0
 	for _, id := range stageRunIDs {
+		// 等待 batch 的任務離開 batch：下一輪就輪詢那些 batch（BATCH-R9）。要在取消之前，查詢依 state = 'waiting'。
+		if err := r.q.KickBatchPollsOfRun(ctx, sqlcdb.KickBatchPollsOfRunParams{Now: r.nowMs(), StageRunID: id}); err != nil {
+			return n, err
+		}
 		c, err := r.q.CancelPendingTasks(ctx, id)
 		if err != nil {
 			return n, err
@@ -357,9 +364,13 @@ func (r *Repo) CancelPendingTasks(ctx context.Context, stageRunIDs []string) (in
 // TaskCancelled 是被取消的任務的狀態（PIPE-R15）：不再被領取，租約也已清除，晚到的寫回不會有任何作用。
 const TaskCancelled = "cancelled"
 
-// CancelItemTasks 把影音所有還沒結束（pending 或 leased）的任務改為 cancelled，回傳它們的 ID，
+// CancelItemTasks 把影音所有還沒結束（pending、leased 或等待 batch）的任務改為 cancelled，回傳它們的 ID，
 // 讓呼叫端通知 worker 結束其中正在執行的。
 func (r *Repo) CancelItemTasks(ctx context.Context, itemID string) ([]string, error) {
+	// 同 CancelPendingTasks：等待 batch 的任務也取消，那些 batch 在下一輪輪詢（BATCH-R9）。
+	if err := r.q.KickBatchPollsOfItem(ctx, sqlcdb.KickBatchPollsOfItemParams{Now: r.nowMs(), ItemID: itemID}); err != nil {
+		return nil, err
+	}
 	return r.q.CancelItemTasks(ctx, itemID)
 }
 

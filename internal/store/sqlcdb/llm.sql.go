@@ -21,7 +21,7 @@ func (q *Queries) CountPendingLLMChunks(ctx context.Context, stageRunID string) 
 }
 
 const doneLLMChunkByCacheKey = `-- name: DoneLLMChunkByCacheKey :one
-SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json, executor, agent, model_reported FROM llm_chunks
+SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json, executor, agent, model_reported, batch_json FROM llm_chunks
 WHERE item_id = ?1 AND stage = ?2 AND cache_key = ?3 AND status = 'done'
   AND executor = 'api'
 ORDER BY updated_at DESC, rowid DESC LIMIT 1
@@ -57,6 +57,7 @@ func (q *Queries) DoneLLMChunkByCacheKey(ctx context.Context, arg DoneLLMChunkBy
 		&i.Executor,
 		&i.Agent,
 		&i.ModelReported,
+		&i.BatchJson,
 	)
 	return i, err
 }
@@ -147,7 +148,7 @@ func (q *Queries) InsertLLMChunk(ctx context.Context, arg InsertLLMChunkParams) 
 }
 
 const lLMChunk = `-- name: LLMChunk :one
-SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json, executor, agent, model_reported FROM llm_chunks WHERE stage_run_id = ?1 AND chunk = ?2
+SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json, executor, agent, model_reported, batch_json FROM llm_chunks WHERE stage_run_id = ?1 AND chunk = ?2
 `
 
 type LLMChunkParams struct {
@@ -176,12 +177,13 @@ func (q *Queries) LLMChunk(ctx context.Context, arg LLMChunkParams) (LlmChunk, e
 		&i.Executor,
 		&i.Agent,
 		&i.ModelReported,
+		&i.BatchJson,
 	)
 	return i, err
 }
 
 const lLMChunksByRun = `-- name: LLMChunksByRun :many
-SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json, executor, agent, model_reported FROM llm_chunks WHERE stage_run_id = ?1 ORDER BY chunk
+SELECT stage_run_id, chunk, item_id, stage, cache_key, status, reason, plan_json, output_json, usage_json, reused, created_at, updated_at, detail_json, executor, agent, model_reported, batch_json FROM llm_chunks WHERE stage_run_id = ?1 ORDER BY chunk
 `
 
 func (q *Queries) LLMChunksByRun(ctx context.Context, stageRunID string) ([]LlmChunk, error) {
@@ -211,6 +213,7 @@ func (q *Queries) LLMChunksByRun(ctx context.Context, stageRunID string) ([]LlmC
 			&i.Executor,
 			&i.Agent,
 			&i.ModelReported,
+			&i.BatchJson,
 		); err != nil {
 			return nil, err
 		}

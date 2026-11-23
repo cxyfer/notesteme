@@ -11,12 +11,12 @@ import (
 
 const cancelItemTasks = `-- name: CancelItemTasks :many
 UPDATE tasks SET state = 'cancelled', lease_token = NULL, lease_owner = NULL, lease_until = NULL
-WHERE state IN ('pending', 'leased')
+WHERE state IN ('pending', 'leased', 'waiting')
   AND stage_run_id IN (SELECT id FROM stage_runs WHERE item_id = ?1)
 RETURNING id
 `
 
-// Cancel every unfinished (pending or leased) task of an item and drop its lease, so a late write-back
+// Cancel every unfinished (pending, leased or waiting for a batch) task of an item and drop its lease, so a late write-back
 // from the former holder matches no row. Returns the ids so the worker can stop what is running.
 func (q *Queries) CancelItemTasks(ctx context.Context, itemID string) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, cancelItemTasks, itemID)
@@ -43,10 +43,11 @@ func (q *Queries) CancelItemTasks(ctx context.Context, itemID string) ([]string,
 
 const cancelPendingTasks = `-- name: CancelPendingTasks :execrows
 UPDATE tasks SET state = 'failed', lease_token = NULL, lease_owner = NULL, lease_until = NULL
-WHERE stage_run_id = ?1 AND (state = 'pending' OR (state = 'leased' AND executor = 'agent'))
+WHERE stage_run_id = ?1
+  AND (state IN ('pending', 'waiting') OR (state = 'leased' AND executor = 'agent'))
 `
 
-// Pending tasks stop here. Agent tasks are stopped even when leased: no worker is running them, and the
+// Pending tasks stop here, and so do tasks waiting for a batch (they leave it, BATCH-R9). Agent tasks are stopped even when leased: no worker is running them, and the
 // agent's lease must end at once so its token is rejected (AGT-R7) instead of the task coming back later.
 func (q *Queries) CancelPendingTasks(ctx context.Context, stageRunID string) (int64, error) {
 	result, err := q.db.ExecContext(ctx, cancelPendingTasks, stageRunID)
@@ -74,7 +75,7 @@ WHERE id IN (
     LIMIT ?9
   ) AS picked
 )
-RETURNING id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason
+RETURNING id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason, batch_id
 `
 
 type ClaimTasksParams struct {
@@ -138,6 +139,7 @@ func (q *Queries) ClaimTasks(ctx context.Context, arg ClaimTasksParams) ([]Task,
 			&i.CreatedAt,
 			&i.AgentFailures,
 			&i.ReleaseReason,
+			&i.BatchID,
 		); err != nil {
 			return nil, err
 		}
@@ -485,7 +487,7 @@ func (q *Queries) SetTaskLeaseToken(ctx context.Context, arg SetTaskLeaseTokenPa
 }
 
 const taskByID = `-- name: TaskByID :one
-SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason FROM tasks WHERE id = ?1
+SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason, batch_id FROM tasks WHERE id = ?1
 `
 
 func (q *Queries) TaskByID(ctx context.Context, id string) (Task, error) {
@@ -512,12 +514,13 @@ func (q *Queries) TaskByID(ctx context.Context, id string) (Task, error) {
 		&i.CreatedAt,
 		&i.AgentFailures,
 		&i.ReleaseReason,
+		&i.BatchID,
 	)
 	return i, err
 }
 
 const taskByStageRun = `-- name: TaskByStageRun :one
-SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason FROM tasks WHERE stage_run_id = ?1 ORDER BY created_at DESC, rowid DESC LIMIT 1
+SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason, batch_id FROM tasks WHERE stage_run_id = ?1 ORDER BY created_at DESC, rowid DESC LIMIT 1
 `
 
 func (q *Queries) TaskByStageRun(ctx context.Context, stageRunID string) (Task, error) {
@@ -544,6 +547,7 @@ func (q *Queries) TaskByStageRun(ctx context.Context, stageRunID string) (Task, 
 		&i.CreatedAt,
 		&i.AgentFailures,
 		&i.ReleaseReason,
+		&i.BatchID,
 	)
 	return i, err
 }

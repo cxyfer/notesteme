@@ -22,10 +22,14 @@ WHERE id = sqlc.arg(id) AND state = 'reserved';
 DELETE FROM cost_ledger WHERE id = sqlc.arg(id) AND state = 'reserved';
 
 -- name: DeleteOrphanReservations :execrows
--- A reservation belongs to a task that is running right now; any other one was left by a crash (COST-R5, PIPE-R11).
+-- A reservation belongs to a task that is running right now, or to a request of a batch that has not ended
+-- (BATCH-R10: also when the task left the batch, the result is still charged, BATCH-R9); any other one was left
+-- by a crash (COST-R5, PIPE-R11).
 DELETE FROM cost_ledger
 WHERE state = 'reserved'
-  AND (task_id IS NULL OR task_id NOT IN (SELECT t.id FROM tasks AS t WHERE t.state = 'leased'));
+  AND (task_id IS NULL OR task_id NOT IN (SELECT t.id FROM tasks AS t WHERE t.state = 'leased'))
+  AND (task_id IS NULL OR task_id NOT IN (SELECT t.id FROM tasks AS t JOIN batches AS b ON b.id = t.batch_id
+                                          WHERE b.state IN ('submitted', 'cancelling')));
 
 -- name: SumCostMicrosBetween :one
 SELECT CAST(COALESCE(SUM(CASE WHEN state = 'actual' THEN CAST(ROUND(usd * 1000000) AS INTEGER) ELSE 0 END), 0) AS INTEGER) AS actual,
