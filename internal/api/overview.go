@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -9,9 +10,13 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/cost"
+	"github.com/cxyfer/notesteme/internal/pipeline"
 )
 
 // 這個檔案是總覽 GET /api/overview（LIB-R21、R22）。
+
+// NoticeTermsPending 是總覽「有 N 個術語等你確認。」的提醒代碼（GLOS-R7）。
+const NoticeTermsPending = "terms_pending"
 
 func (rt *routes) registerOverview(api huma.API) {
 	registerScoped(api, huma.Operation{
@@ -182,6 +187,15 @@ func (rt *routes) getOverview(ctx context.Context, in *overviewInput) (*overview
 			return nil, rt.mapErr(ctx, err)
 		}
 		out.Notices = append(out.Notices, notices...)
+	}
+	// GLOS-R7：有待審的術語候選時提醒（數字來自 GLOS-R5 的 total，L-M16）。
+	terms, err := rt.d.Pipeline.ListTermCandidates(ctx, pipeline.TermCandidateQuery{Limit: 1})
+	if err != nil {
+		return nil, rt.mapErr(ctx, err)
+	}
+	if terms.Total > 0 {
+		out.Notices = append(out.Notices, cost.Notice{Code: NoticeTermsPending,
+			Message: fmt.Sprintf("有 %d 個術語等你確認。", terms.Total), Actions: []string{"去審核"}})
 	}
 	if rt.d.Disk != nil {
 		u := rt.d.Disk.Get(ctx)

@@ -406,6 +406,36 @@ func TestOverviewRoute(t *testing.T) {
 	if got := decode[OverviewResult](t, r.owner("GET", "/api/overview?tz=Pacific/Kiritimati", "")); len(got.Today) == 0 {
 		t.Errorf("UTC+14 的今天 = %+v", got.Today)
 	}
+	// GLOS-R7：有待確認的術語候選時提醒「有 N 個術語等你確認。」；沒有時不提醒。
+	for _, n := range overviewNotices(t, r) {
+		if n.Code == NoticeTermsPending {
+			t.Errorf("沒有候選時不提醒：%+v", n)
+		}
+	}
+	ctx := context.Background()
+	if err := r.st.Tx(ctx, func(w *store.Repo) error {
+		ch, err := w.UpsertChannel(ctx, store.Channel{Platform: "youtube", ExternalID: "UCterms", Overrides: json.RawMessage(`{}`)})
+		if err != nil {
+			return err
+		}
+		for _, term := range []string{"KRaft", "Raft"} {
+			if _, err := w.AddTermCandidate(ctx, ch, "", term); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, n := range overviewNotices(t, r) {
+		if n.Code == NoticeTermsPending {
+			found = n.Message == "有 2 個術語等你確認。" && len(n.Actions) == 1 && n.Actions[0] == "去審核"
+		}
+	}
+	if !found {
+		t.Errorf("要提醒待確認的術語：%+v", overviewNotices(t, r))
+	}
 	// read 就能看；垃圾桶中的影音不出現。
 	if rec := r.do("GET", "/api/overview", "", withBearer(r.token(auth.ScopeIngest))); rec.Code != 403 {
 		t.Errorf("沒有 read：%d", rec.Code)
@@ -433,4 +463,9 @@ func TestBatchRunStopsWhenCancelled(t *testing.T) {
 	if got, _ := r.st.Read().ItemByID(context.Background(), a.ID); got.ReadState != store.ReadUnread {
 		t.Error("中斷後不能再處理")
 	}
+}
+
+func overviewNotices(t *testing.T, r *batchRig) []cost.Notice {
+	t.Helper()
+	return decode[OverviewResult](t, r.owner("GET", "/api/overview", "")).Notices
 }
