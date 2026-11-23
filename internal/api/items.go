@@ -54,6 +54,8 @@ type Item struct {
 	Overrides    map[string]any `json:"overrides" doc:"新增時的單次覆寫"`
 	Until        string         `json:"until,omitempty" doc:"新增時指定做到哪個步驟為止"`
 	CreatedAt    time.Time      `json:"created_at"`
+	// SubscriptionID 是建立這部影音的訂閱（SUB-R13）；手動新增或訂閱已刪除時是 null。
+	SubscriptionID *string `json:"subscription_id" nullable:"true" doc:"建立這部影音的訂閱；手動新增或訂閱已刪除時是 null"`
 }
 
 // Stage 是影音某個步驟的狀態（plan 第 5.3 節）。
@@ -125,6 +127,10 @@ func toItem(it store.Item) Item {
 		Overrides: map[string]any{},
 	}
 	_ = json.Unmarshal(it.Overrides, &out.Overrides)
+	if it.SubscriptionID != "" {
+		id := it.SubscriptionID
+		out.SubscriptionID = &id
+	}
 	return out
 }
 

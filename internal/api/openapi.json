@@ -110,6 +110,22 @@
         ],
         "type": "object"
       },
+      "Backfill": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
       "ChangePasswordInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -665,6 +681,39 @@
         ],
         "type": "object"
       },
+      "CreateSubscriptionInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "backfill": {
+            "$ref": "#/components/schemas/SubscriptionBackfill"
+          },
+          "enabled": {
+            "description": "預設 true",
+            "type": "boolean"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/SubscriptionFilters"
+          },
+          "overrides": {
+            "additionalProperties": {},
+            "description": "建立影音時的單次覆寫（同 POST /api/items）",
+            "type": "object"
+          },
+          "profile": {
+            "description": "處理方案；省略時用預設處理方案",
+            "type": "string"
+          },
+          "schedule": {
+            "description": "檢查頻率（Go duration，1h～168h，預設 6h）",
+            "type": "string"
+          },
+          "url": {
+            "description": "頻道、播放清單、Bilibili 合集或 Podcast feed 的網址",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "CreateTokenInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -867,6 +916,87 @@
         ],
         "type": "object"
       },
+      "EntryView": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "created",
+              "skipped",
+              "deferred"
+            ],
+            "type": "string"
+          },
+          "duration_s": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "live_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "part": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "published_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ref": {
+            "description": "影音的短代號，例如 yt:abc123xxxxx",
+            "type": "string"
+          },
+          "seen_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "platform",
+          "external_id",
+          "part",
+          "title",
+          "published_at",
+          "duration_s",
+          "live_status",
+          "decision",
+          "reason",
+          "item_id",
+          "seen_at"
+        ],
+        "type": "object"
+      },
       "Episode": {
         "additionalProperties": false,
         "properties": {
@@ -973,6 +1103,9 @@
           "retry_after_s": {
             "format": "int64",
             "type": "integer"
+          },
+          "subscription_id": {
+            "type": "string"
           },
           "undefined_variables": {
             "items": {
@@ -1196,6 +1329,36 @@
         "required": [
           "path",
           "message"
+        ],
+        "type": "object"
+      },
+      "Filters": {
+        "additionalProperties": false,
+        "properties": {
+          "exclude_shorts": {
+            "type": "boolean"
+          },
+          "live": {
+            "type": "string"
+          },
+          "max_duration_s": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "min_duration_s": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "title_exclude": {
+            "type": "string"
+          },
+          "title_include": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "exclude_shorts",
+          "live"
         ],
         "type": "object"
       },
@@ -1571,6 +1734,13 @@
             "description": "影音的短代號，例如 yt:abc123xxxxx",
             "type": "string"
           },
+          "subscription_id": {
+            "description": "建立這部影音的訂閱；手動新增或訂閱已刪除時是 null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "title": {
             "type": "string"
           },
@@ -1595,7 +1765,8 @@
           "published_at",
           "lang_mixed",
           "overrides",
-          "created_at"
+          "created_at",
+          "subscription_id"
         ],
         "type": "object"
       },
@@ -1659,6 +1830,13 @@
             "description": "影音的短代號，例如 yt:abc123xxxxx",
             "type": "string"
           },
+          "subscription_id": {
+            "description": "建立這部影音的訂閱；手動新增或訂閱已刪除時是 null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "title": {
             "type": "string"
           },
@@ -1681,7 +1859,8 @@
           "published_at",
           "lang_mixed",
           "overrides",
-          "created_at"
+          "created_at",
+          "subscription_id"
         ],
         "type": "object"
       },
@@ -1777,6 +1956,13 @@
               "null"
             ]
           },
+          "subscription_id": {
+            "description": "建立這部影音的訂閱；手動新增或訂閱已刪除時是 null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "title": {
             "type": "string"
           },
@@ -1801,7 +1987,8 @@
           "published_at",
           "lang_mixed",
           "overrides",
-          "created_at"
+          "created_at",
+          "subscription_id"
         ],
         "type": "object"
       },
@@ -2439,6 +2626,35 @@
               "object",
               "null"
             ]
+          }
+        },
+        "type": "object"
+      },
+      "PatchSubscriptionInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "backfill": {
+            "$ref": "#/components/schemas/SubscriptionBackfill",
+            "description": "修改時，下一次檢查重新評估因回補範圍略過的條目（只評估一次）"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/SubscriptionFilters",
+            "description": "只影響之後的條目，不重新評估已略過的"
+          },
+          "overrides": {
+            "additionalProperties": {},
+            "description": "整個取代單次覆寫",
+            "type": "object"
+          },
+          "profile": {
+            "description": "處理方案；空字串改回預設處理方案",
+            "type": "string"
+          },
+          "schedule": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -3575,6 +3791,105 @@
         ],
         "type": "object"
       },
+      "SubscriptionBackfill": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "recent 的部數，1～200",
+            "format": "int64",
+            "type": "integer"
+          },
+          "mode": {
+            "description": "none（只抓之後的新內容）、recent（最近幾部）或 all（全部，有上限）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
+      "SubscriptionCheckOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "next_check_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "next_check_at"
+        ],
+        "type": "object"
+      },
+      "SubscriptionEntriesOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/EntryView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "type": "object"
+      },
+      "SubscriptionFilters": {
+        "additionalProperties": false,
+        "properties": {
+          "exclude_shorts": {
+            "description": "排除 Shorts（預設 true）",
+            "type": "boolean"
+          },
+          "live": {
+            "description": "wait（預設，等到有錄影）或 skip",
+            "type": "string"
+          },
+          "max_duration_s": {
+            "description": "最長片長（秒），必須大於最短片長",
+            "format": "int64",
+            "type": "integer"
+          },
+          "min_duration_s": {
+            "description": "最短片長（秒）",
+            "format": "int64",
+            "type": "integer"
+          },
+          "title_exclude": {
+            "description": "標題符合就略過的 RE2 正規表示式，最長 200 個字元",
+            "type": "string"
+          },
+          "title_include": {
+            "description": "標題必須符合的 RE2 正規表示式，最長 200 個字元",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SubscriptionsListOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "subscriptions": {
+            "items": {
+              "$ref": "#/components/schemas/View"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "subscriptions"
+        ],
+        "type": "object"
+      },
       "SwitchItemInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -3929,6 +4244,121 @@
           "title",
           "deleted_at",
           "purge_at"
+        ],
+        "type": "object"
+      },
+      "View": {
+        "additionalProperties": false,
+        "properties": {
+          "backfill": {
+            "$ref": "#/components/schemas/Backfill"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/Filters"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "channel",
+              "playlist",
+              "collection",
+              "feed"
+            ],
+            "type": "string"
+          },
+          "last_checked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_error_class": {
+            "enum": [
+              "retryable",
+              "permanent",
+              "needs_action"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_check_at": {
+            "description": "下一次檢查；停用時是 null",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "overrides": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "bilibili",
+              "podcast"
+            ],
+            "type": "string"
+          },
+          "profile": {
+            "description": "處理方案；null 代表預設處理方案",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "schedule": {
+            "description": "檢查頻率（Go duration）",
+            "type": "string"
+          },
+          "title": {
+            "description": "第一次檢查時從來源取得；還沒檢查時是空字串",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "platform",
+          "external_id",
+          "url",
+          "title",
+          "profile",
+          "overrides",
+          "schedule",
+          "backfill",
+          "filters",
+          "enabled",
+          "created_at",
+          "last_checked_at",
+          "next_check_at",
+          "last_error",
+          "last_error_class"
         ],
         "type": "object"
       },
@@ -7641,8 +8071,15 @@
       "get": {
         "operationId": "subscriptions-list",
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionsListOutputBody"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -7655,13 +8092,29 @@
             "description": "Error"
           }
         },
-        "summary": "列出訂閱（尚未實作）"
+        "summary": "列出訂閱（依建立順序）"
       },
       "post": {
         "operationId": "subscriptions-create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSubscriptionInputBody"
+              }
+            }
+          }
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            },
+            "description": "Created"
           },
           "default": {
             "content": {
@@ -7674,7 +8127,7 @@
             "description": "Error"
           }
         },
-        "summary": "建立訂閱（頻道、播放清單、Bilibili 合集或 Podcast feed，尚未實作）"
+        "summary": "建立訂閱（YouTube 頻道或播放清單、Bilibili 合集、Podcast feed）；只依網址的格式辨識，不連外"
       }
     },
     "/api/subscriptions/import": {
@@ -7722,6 +8175,18 @@
     "/api/subscriptions/{id}": {
       "delete": {
         "operationId": "subscriptions-delete",
+        "parameters": [
+          {
+            "description": "訂閱的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "訂閱的 id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No Content"
@@ -7737,13 +8202,32 @@
             "description": "Error"
           }
         },
-        "summary": "刪除訂閱（尚未實作）"
+        "summary": "刪除訂閱與它的條目；已建立的影音保留"
       },
       "get": {
         "operationId": "subscriptions-get",
+        "parameters": [
+          {
+            "description": "訂閱的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "訂閱的 id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -7756,13 +8240,41 @@
             "description": "Error"
           }
         },
-        "summary": "取得一個訂閱（尚未實作）"
+        "summary": "取得一個訂閱，含上次與下次檢查的時間、最近一次的錯誤"
       },
       "patch": {
         "operationId": "subscriptions-patch",
+        "parameters": [
+          {
+            "description": "訂閱的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "訂閱的 id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchSubscriptionInputBody"
+              }
+            }
+          }
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -7775,15 +8287,34 @@
             "description": "Error"
           }
         },
-        "summary": "修改訂閱（尚未實作）"
+        "summary": "修改訂閱的處理方案、檢查頻率、回補範圍、過濾條件或啟用狀態"
       }
     },
     "/api/subscriptions/{id}/check": {
       "post": {
         "operationId": "subscriptions-check",
+        "parameters": [
+          {
+            "description": "訂閱的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "訂閱的 id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionCheckOutputBody"
+                }
+              }
+            },
+            "description": "Accepted"
           },
           "default": {
             "content": {
@@ -7796,15 +8327,63 @@
             "description": "Error"
           }
         },
-        "summary": "立即檢查訂閱的新內容（尚未實作）"
+        "summary": "把下一次檢查改成現在（下一輪排程器執行，不在請求中探索）"
       }
     },
     "/api/subscriptions/{id}/entries": {
       "get": {
         "operationId": "subscriptions-entries",
+        "parameters": [
+          {
+            "description": "訂閱的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "訂閱的 id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "只列這一種決定",
+            "explode": false,
+            "in": "query",
+            "name": "decision",
+            "schema": {
+              "description": "只列這一種決定",
+              "enum": [
+                "created",
+                "skipped",
+                "deferred",
+                ""
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "最多幾筆；0 代表上限 5000",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "最多幾筆；0 代表上限 5000",
+              "format": "int64",
+              "maximum": 5000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionEntriesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -7817,7 +8396,7 @@
             "description": "Error"
           }
         },
-        "summary": "列出訂閱探索到的條目與略過原因（尚未實作）"
+        "summary": "列出訂閱探索到的條目與略過原因（新的在前）"
       }
     },
     "/api/subscriptions/{id}/preview": {

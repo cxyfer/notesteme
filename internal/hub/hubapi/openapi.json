@@ -187,6 +187,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "subscription_id": {
+            "type": "string"
+          },
           "undefined_variables": {
             "items": {
               "type": "string"

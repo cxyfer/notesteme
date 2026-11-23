@@ -30,6 +30,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/sponsorblock"
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/subscription"
 	"github.com/cxyfer/notesteme/internal/toolexec"
 	"github.com/cxyfer/notesteme/internal/tools/ytdlp"
 	"github.com/cxyfer/notesteme/internal/webui"
@@ -98,6 +99,8 @@ type Server struct {
 	scheduler *scheduler.Scheduler
 	// notify 管理 notifier 與送出通知 outbox（NOTIFY）；startPipeline 建立。
 	notify *notify.Service
+	// subscriptions 是訂閱（SUB，M4-S2）；startPipeline 建立，並在排程器登記 subscription.check。
+	subscriptions *subscription.Service
 	// workerDone 在 production 的 worker 迴圈結束時關閉；手動模式（測試）沒有迴圈，為 nil。
 	workerDone chan struct{}
 	// watchCancel、watchDone 是 inbox 監看迴圈（production 的 serve 才有，ING-05）；沒有時為 nil。
@@ -295,6 +298,10 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	// Agent 任務的租約到期與逾時（AGT-R4、R9）：每一輪開頭檢查；production 閒置時睡到最早的到期時間。
 	s.scheduler = scheduler.New(s.store, env.Clock, log, cfg.M4.JitterMax)
 	if err := s.notify.Register(s.scheduler); err != nil {
+		return err
+	}
+	bc, _ := deps.Bilibili.(*bilibili.Client)
+	if err := s.startSubscriptions(env.Clock, cfg, log, deps.HTTP, runner, tools, yt, bc); err != nil {
 		return err
 	}
 	var periodic worker.Periodic = periodics{hk, s.pipeline.AgentSweeper(), s.scheduler}

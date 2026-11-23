@@ -88,6 +88,8 @@ type Deps struct {
 	// CursorKey 是列表游標的 HMAC 金鑰（LIB-R4）；空的時候用 processCursorKey（每個 process 隨機產生一次）。
 	// 金鑰只存在記憶體，重新啟動後舊游標會回 422，用戶端從第一頁重新讀取即可。
 	CursorKey []byte
+	// Subscriptions 是訂閱（SUB）；nil 時訂閱的路由回應 501。
+	Subscriptions SubscriptionService
 }
 
 // processCursorKey 是沒有指定 CursorKey 時用的金鑰：每個 process 只產生一次，
@@ -287,6 +289,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerM2Stubs(api)
 	rt.registerM3Stubs(api)
 	rt.registerNotifiers(api)
+	rt.registerSubscriptions(api)
 	rt.registerM4Stubs(api)
 	rt.registerM5Stubs(api)
 	rt.registerFrames(api)

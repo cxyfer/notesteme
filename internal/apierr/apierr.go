@@ -44,6 +44,8 @@ type Error struct {
 	FileLine *int `json:"file_line,omitempty"`
 	// UndefinedVariables 在 prompt 內文用到未定義的變數時列出它們（422，PRM-R3）。
 	UndefinedVariables []string `json:"undefined_variables,omitempty"`
+	// SubscriptionID 在重複訂閱時指出既有的訂閱（409，SUB-R1）。
+	SubscriptionID string `json:"subscription_id,omitempty"`
 }
 
 // Error 實作 error。

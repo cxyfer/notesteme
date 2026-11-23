@@ -6,19 +6,12 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 )
 
-// m4StubCases 是 M4 規格「介面」章節中尚未實作的路由（M4-S0 的 41 條；M4-S1 移除 NOTIFY 的 7 條）。
+// m4StubCases 是 M4 規格「介面」章節中尚未實作的路由（M4-S0 的 41 條；M4-S1 移除 NOTIFY 的 7 條，M4-S2 移除訂閱的 7 條）。
 // 這份清單獨立於 production 的 m4Stubs，才抓得到 method、path、scope 寫錯。
 var m4StubCases = []stubCase{
-	// SUB
-	{"GET", "/api/subscriptions", auth.ScopeRead},
-	{"POST", "/api/subscriptions", auth.ScopeAdmin},
-	{"GET", "/api/subscriptions/s1", auth.ScopeRead},
-	{"PATCH", "/api/subscriptions/s1", auth.ScopeAdmin},
-	{"DELETE", "/api/subscriptions/s1", auth.ScopeAdmin},
-	{"GET", "/api/subscriptions/s1/entries", auth.ScopeRead},
+	// SUB（預覽與匯入，M4-S3）
 	{"POST", "/api/subscriptions/s1/preview", auth.ScopeAdmin},
 	{"POST", "/api/subscriptions/preview", auth.ScopeAdmin},
-	{"POST", "/api/subscriptions/s1/check", auth.ScopeAdmin},
 	{"POST", "/api/subscriptions/import", auth.ScopeAdmin},
 	// DIG
 	{"POST", "/api/items/x/continue", auth.ScopeIngest},

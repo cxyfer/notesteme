@@ -196,7 +196,7 @@ func (s *Server) fileGuard() *pathguard.Guard {
 // Paths 預設限制在 inbox 與 media_roots 之內（GRD-R7）：serve 的 TCP 與本機 socket（client 模式）都由 server 端檢查。
 // 獨立模式不受限制（GRD-R8），由 OpenStandalone 改成 pathguard.Unrestricted。
 func (s *Server) apiDeps(env Env) api.Deps {
-	return api.Deps{
+	d := api.Deps{
 		Paths: pathguard.New(append([]string{s.cfg.Inbox}, s.cfg.MediaRoots...)),
 		// 本機影音（ING-05）：inbox 決定識別鍵，資料目錄放上傳的暫存與檔案。
 		Inbox: s.cfg.Inbox, DataDir: s.cfg.Data, UploadMaxBytes: s.cfg.UploadMaxBytes,
@@ -223,6 +223,10 @@ func (s *Server) apiDeps(env Env) api.Deps {
 		Services:  s.services,
 		Notify:    s.notify,
 	}
+	if s.subscriptions != nil {
+		d.Subscriptions = s.subscriptions
+	}
+	return d
 }
 
 // lockedByCLIError 表示資料目錄正被獨立模式的 CLI 使用。它仍然是 store.ErrLocked。
