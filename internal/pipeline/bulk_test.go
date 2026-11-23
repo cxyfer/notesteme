@@ -398,3 +398,30 @@ func TestOverviewNowLimit(t *testing.T) {
 		}
 	}
 }
+
+// 任意的 ids（不可信的輸入）：不會回傳錯誤或 panic；每一筆不是找到的影音就是 not_found；去掉重複之後不會變多。
+func FuzzResolveBatch(f *testing.F) {
+	for _, s := range []string{"yt:aaaaaaaaaaa", "bili:BV1xx411c7mD", "bili:BV1xx411c7mD/p0", "bili:/p1", "pod:", "local:x/../y", "\x00", "' OR 1=1 --", "%", "bili:BV1xx411c7mD/p99999999999999999999"} {
+		f.Add(s, s+"x")
+	}
+	f.Fuzz(func(t *testing.T, a, b string) {
+		r := newRig(t)
+		insertItem(t, r, source.PlatformYouTube, "aaaaaaaaaaa", 0)
+		insertItem(t, r, source.PlatformBilibili, "BV1xx411c7mD", 1)
+		got, err := r.p.ResolveBatch(context.Background(), []string{a, b, a})
+		if err != nil {
+			t.Fatalf("ResolveBatch(%q, %q) = %v", a, b, err)
+		}
+		if len(got) > 3 {
+			t.Fatalf("結果比輸入多：%+v", got)
+		}
+		for _, g := range got {
+			if g.Err != nil && !errors.Is(g.Err, store.ErrNotFound) && !errors.Is(g.Err, ErrInTrash) {
+				t.Fatalf("錯誤 = %v", g.Err)
+			}
+			if g.Err == nil && g.Item.ID == "" {
+				t.Fatalf("找到的影音沒有 ID：%+v", g)
+			}
+		}
+	})
+}

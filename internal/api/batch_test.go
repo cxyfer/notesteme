@@ -352,12 +352,15 @@ func TestBatchRerun(t *testing.T) {
 	if normalize.Status != "pending" && normalize.Status != "running" {
 		t.Errorf("normalize = %+v", normalize)
 	}
-	res, _, _ = r.batch(`{"action":"change_profile","from":"normalize","profile":"default","ids":["` + id + `"]}`)
+	if rec := r.owner("POST", "/api/profiles", `{"name":"other","config":{}}`); rec.Code != 201 {
+		t.Fatalf("建立處理方案 = %d %s", rec.Code, rec.Body)
+	}
+	res, _, _ = r.batch(`{"action":"change_profile","from":"normalize","profile":"other","ids":["` + id + `"]}`)
 	if *res.Succeeded != 1 {
 		t.Errorf("換處理方案 = %+v", res)
 	}
 	got, _ := r.st.Read().ItemByID(context.Background(), id)
-	if got.ProfileID != "default" {
+	if got.ProfileID != "other" {
 		t.Errorf("處理方案 = %q", got.ProfileID)
 	}
 }
