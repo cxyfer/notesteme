@@ -587,13 +587,14 @@ func (pa *preparedArtifact) prepareFrames(b *bundle.Bundle, used map[string]bool
 	if err := dec.Decode(&man); err != nil || dec.More() {
 		return errContent(pa.src.Path, " frames JSON")
 	}
-	pa.frames = map[int][]byte{}
+	seenN := map[int]bool{}
+	imgs := map[int][]byte{}
 	var keep []frameCandidate
 	for _, c := range man.Candidates {
 		if !c.Selected {
 			continue
 		}
-		if c.N < 1 || c.N > maxBundleFrame || pa.frames[c.N] != nil || c.AtMS < 0 || c.AtMS > maxTimeMS ||
+		if c.N < 1 || c.N > maxBundleFrame || seenN[c.N] || c.AtMS < 0 || c.AtMS > maxTimeMS ||
 			!utf8.ValidString(c.Caption) || !utf8.ValidString(c.Chapter) || len(c.Caption) > 4096 || len(c.Chapter) > 2048 {
 			return errContent(pa.src.Path, " frames JSON")
 		}
@@ -607,11 +608,18 @@ func (pa *preparedArtifact) prepareFrames(b *bundle.Bundle, used map[string]bool
 			return bundleInvalid(pa.src.Path, "bundle 中的檔案「%s」選中的畫面 %d 沒有圖片，已拒絕匯入。", c.N)
 		}
 		used[img] = true
-		pa.frames[c.N] = jpg
-		c.File, c.Thumb, c.Excluded = frameFile(c.N), frameThumb(c.N), ""
+		seenN[c.N] = true
+		imgs[c.N] = jpg
 		keep = append(keep, c)
 	}
+	// 產品的畫面編號是 1..len(candidates)（FrameImage 依此檢查）：選中的畫面依原本的編號排序後重新編號。
 	sort.Slice(keep, func(i, j int) bool { return keep[i].N < keep[j].N })
+	pa.frames = map[int][]byte{}
+	for i := range keep {
+		n := i + 1
+		pa.frames[n] = imgs[keep[i].N]
+		keep[i].N, keep[i].File, keep[i].Thumb, keep[i].Excluded = n, frameFile(n), frameThumb(n), ""
+	}
 	man.Candidates = nonNilCandidates(keep)
 	body, err := json.Marshal(man)
 	if err != nil {
