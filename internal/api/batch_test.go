@@ -418,3 +418,19 @@ func TestOverviewRoute(t *testing.T) {
 		t.Errorf("垃圾桶中的影音 = %+v", got)
 	}
 }
+
+// client 中斷時剩下的影音不處理，各自是 cancelled；事件照樣寫一筆。
+func TestBatchRunStopsWhenCancelled(t *testing.T) {
+	r := newBatchRig(t)
+	a := r.insert("youtube", "aaaaaaaaaaa", 0)
+	rt := &routes{d: Deps{Store: r.st, Pipeline: nil, Log: nil}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	res := rt.batchRun(ctx, BatchMarkRead, "", "", false, []pipeline.BatchTarget{{Raw: a.ID, Item: a}})
+	if *res.Failed != 1 || res.Items[0].Code != CodeBatchCancelled || res.Items[0].OK {
+		t.Errorf("結果 = %+v", res)
+	}
+	if got, _ := r.st.Read().ItemByID(context.Background(), a.ID); got.ReadState != store.ReadUnread {
+		t.Error("中斷後不能再處理")
+	}
+}

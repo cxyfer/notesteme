@@ -31,6 +31,9 @@ const (
 	BatchExportBundle  = "export_bundle"
 )
 
+// CodeBatchCancelled 是請求中斷時沒有處理的影音（批次的 items[].code）。
+const CodeBatchCancelled = "cancelled"
+
 // batchScopes 是每個動作需要的 scope（LIB-R16）：delete 同 DEL-R12，export_bundle 同 BND 的匯出（read）。
 var batchScopes = map[string]string{
 	BatchRerun: auth.ScopeIngest, BatchChangeProfile: auth.ScopeIngest, BatchMarkRead: auth.ScopeIngest,
@@ -304,6 +307,12 @@ func (rt *routes) batchRun(ctx context.Context, action, from, profile string, de
 		it.OK = true
 		var err error
 		switch {
+		case ctx.Err() != nil:
+			// client 中斷：剩下的影音不再處理，也不經 mapErr 逐筆記錯誤 log（L-M15）。
+			it.OK, it.Code, it.Message = false, CodeBatchCancelled, "請求已中斷，這部影音沒有處理。"
+			failed++
+			res.Items = append(res.Items, it)
+			continue
 		case t.Err != nil:
 			err = t.Err
 		case action == BatchRerun:
