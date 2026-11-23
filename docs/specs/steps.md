@@ -642,6 +642,8 @@ bundle 一律在執行時由步驟產生（Go 的 `archive/zip`，必要時用 `
 | `Then the bundle {string} contains no local paths` | bundle 中每個項目的名稱與內容（JSON 與 Markdown 都以原始 bytes 比對）都不含：場景根目錄的實際路徑、`/data/`、`/config/`、`/media/`、`/vault/`、inbox 的實際路徑、執行測試的使用者家目錄。任何一個出現就失敗，並列出項目名稱 |
 | `Then the bundle {string} does not contain {string}` | bundle 中每個項目的名稱與內容都不含這段文字；bundle 沒有任何檔案項目時失敗（沒有東西可以驗證） |
 
+BND 切片（2026-11-23）實作了上表全部的句型（`features/steps/bundles.go`），沒有新句型。補充（依 /goal 採 advisor 建議，待 owner 追認）：bundle 每次被修改都立刻寫到磁碟（不是等到第一個請求）；`also has the entries` 的 `hardlink` 以改寫 central directory 的方式加在最後；`the bundle instance ID is` 在 server 已執行時立刻寫入，否則在 server 啟動之後、第一個請求之前寫入（`app.Server.SetInstanceID`）；`the owner runs` 先建立 `<場景根目錄>/tmp`，指令才能把輸出寫到 `/tmp/<x>`；`the note of … is:` 對 `@BND-` 的場景放行。
+
 #### 術語審核（GLOS）
 
 | 步驟 | 意思 |
