@@ -6,11 +6,6 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"log/slog"
 	"net/netip"
@@ -19,13 +14,14 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/websession"
 )
 
 // Cookie 與標頭名稱。
 const (
 	SessionCookie = "notesteme_session"
 	CSRFCookie    = "notesteme_csrf"
-	CSRFHeader    = "X-CSRF-Token"
+	CSRFHeader    = websession.CSRFHeader
 )
 
 // SessionIdleTimeout 是 session 閒置多久後失效（AUTH-R4）。
@@ -240,37 +236,19 @@ func (s *Service) AuthenticateSession(ctx context.Context, sessionToken string) 
 	return Principal{Kind: "session"}, nil
 }
 
-// CheckCSRF 檢查非 GET 的 session 請求：標頭必須等於 cookie，且等於由 session token 推導的值。
-// 推導值讓攻擊者就算能寫入 cookie（例如子網域），沒有 HttpOnly 的 session token 也無法偽造。
+// CheckCSRF 檢查非 GET 的 session 請求（實作在 internal/websession，與 Hub 共用）。
 func CheckCSRF(sessionToken, cookieValue, headerValue string) error {
-	if sessionToken == "" || cookieValue == "" || headerValue == "" {
-		return ErrCSRF
-	}
-	want := csrfFor(sessionToken)
-	if subtle.ConstantTimeCompare([]byte(headerValue), []byte(cookieValue)) != 1 ||
-		subtle.ConstantTimeCompare([]byte(headerValue), []byte(want)) != 1 {
+	if err := websession.CheckCSRF(sessionToken, cookieValue, headerValue); err != nil {
 		return ErrCSRF
 	}
 	return nil
 }
 
 // randomToken 產生 256 bits 的隨機 token。
-func randomToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
-}
+func randomToken() (string, error) { return websession.RandomToken(32) }
 
-// hashToken 回傳 token 的 SHA-256（hex）。token 本身是高熵隨機值，不需要慢雜湊。
-func hashToken(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(sum[:])
-}
+// hashToken 回傳 token 的 SHA-256（hex）。
+func hashToken(token string) string { return websession.HashToken(token) }
 
 // csrfFor 由 session token 推導 CSRF token。
-func csrfFor(sessionToken string) string {
-	sum := sha256.Sum256([]byte("notesteme-csrf\x00" + sessionToken))
-	return base64.RawURLEncoding.EncodeToString(sum[:])
-}
+func csrfFor(sessionToken string) string { return websession.CSRFFor(sessionToken) }
