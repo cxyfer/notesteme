@@ -140,6 +140,11 @@ func TestProxyAuthRejections(t *testing.T) {
 	if !strings.Contains(s.logs.String(), "忽略來自不受信任位址 203.0.113.7 的 Remote-User 標頭。") {
 		t.Fatalf("missing log: %s", s.logs)
 	}
+	// 受信任的對端帶了 X-Forwarded-For（真實 client 的位址）：信任判斷仍看對端，接受標頭。
+	rec = at("10.0.0.5:1", map[string]string{"Remote-User": "alice", "X-Forwarded-For": "198.51.100.3"}, "GET", "/api/tokens")
+	if rec.Code != 200 {
+		t.Fatalf("trusted peer with XFF = %d", rec.Code)
+	}
 	// /mcp 不接受 proxy 身分。
 	if rec := at("10.0.0.5:1", map[string]string{"Remote-User": "alice"}, "POST", "/mcp"); rec.Code != 401 {
 		t.Fatalf("/mcp = %d", rec.Code)

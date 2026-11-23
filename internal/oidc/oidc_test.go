@@ -107,7 +107,11 @@ type idp struct {
 func newIdP(t *testing.T) *idp {
 	t.Helper()
 	keys(t)
-	p := &idp{jwks: []map[string]any{rsaJWK("rsa1", &rsaKey.PublicKey), ecJWK("ec1", &ecKey.PublicKey)}}
+	// rsa-noalg、ec-noalg 沒有 alg：只能靠金鑰種類擋下演算法混用。
+	rsaNoAlg, ecNoAlg := rsaJWK("rsa-noalg", &rsaKey.PublicKey), ecJWK("ec-noalg", &ecKey.PublicKey)
+	delete(rsaNoAlg, "alg")
+	delete(ecNoAlg, "alg")
+	p := &idp{jwks: []map[string]any{rsaJWK("rsa1", &rsaKey.PublicKey), ecJWK("ec1", &ecKey.PublicKey), rsaNoAlg, ecNoAlg}}
 	p.srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
@@ -349,6 +353,10 @@ func TestVerify(t *testing.T) {
 		{"PS256", sign(t, map[string]any{"alg": "PS256", "kid": "rsa1"}, goodClaims(iss, now), rsaKey), ErrAlgorithm},
 		{"rs256 on ec key", sign(t, map[string]any{"alg": "RS256", "kid": "ec1"}, goodClaims(iss, now), rsaKey), ErrAlgorithm},
 		{"es256 on rsa key", sign(t, map[string]any{"alg": "ES256", "kid": "rsa1"}, goodClaims(iss, now), ecKey), ErrAlgorithm},
+		{"rs256 on ec key without alg", sign(t, map[string]any{"alg": "RS256", "kid": "ec-noalg"}, goodClaims(iss, now), rsaKey), ErrAlgorithm},
+		{"es256 on rsa key without alg", sign(t, map[string]any{"alg": "ES256", "kid": "rsa-noalg"}, goodClaims(iss, now), ecKey), ErrAlgorithm},
+		{"rs256 ok without jwk alg", sign(t, map[string]any{"alg": "RS256", "kid": "rsa-noalg"}, goodClaims(iss, now), rsaKey), nil},
+		{"es256 ok without jwk alg", sign(t, map[string]any{"alg": "ES256", "kid": "ec-noalg"}, goodClaims(iss, now), ecKey), nil},
 		{"wrong issuer", sign(t, rs, with(func(c map[string]any) { c["iss"] = "https://evil.example" }), rsaKey), ErrIssuer},
 		{"issuer trailing slash", sign(t, rs, with(func(c map[string]any) { c["iss"] = iss + "/" }), rsaKey), ErrIssuer},
 		{"wrong audience", sign(t, rs, with(func(c map[string]any) { c["aud"] = "someone-else" }), rsaKey), ErrAudience},
