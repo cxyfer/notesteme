@@ -208,3 +208,19 @@ func TestLoadM5FeatureHubConfigs(t *testing.T) {
 	}
 	t.Logf("檢查了 %d 份 Hub 設定", checked)
 }
+
+// session 金鑰只來自環境變數；太短時載入失敗，錯誤訊息不帶金鑰內容（HACC A10）。
+func TestSessionKey(t *testing.T) {
+	key := strings.Repeat("k", MinSessionKeyLen)
+	cfg, err := load(t, minimal, map[string]string{EnvSessionKey: key})
+	if err != nil || cfg.SessionKey != key {
+		t.Fatalf("SessionKey = %q, %v", cfg.SessionKey, err)
+	}
+	short := "short-session-key"
+	if _, err := load(t, minimal, map[string]string{EnvSessionKey: short}); err != ErrSessionKey || strings.Contains(err.Error(), short) {
+		t.Fatalf("太短的金鑰 = %v", err)
+	}
+	if cfg, err := load(t, minimal, nil); err != nil || cfg.SessionKey != "" {
+		t.Fatalf("沒有金鑰時載入 = %v（由 hub.Open 決定是否必填）", err)
+	}
+}

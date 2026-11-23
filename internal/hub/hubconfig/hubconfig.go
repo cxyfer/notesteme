@@ -38,6 +38,8 @@ const (
 	EnvData      = "NOTESTEME_HUB_DATA"
 	EnvStoreDSN  = "NOTESTEME_HUB_STORE_DSN"
 	EnvMasterKey = "NOTESTEME_HUB_MASTER_KEY"
+	// EnvSessionKey 是 session 金鑰（HACC-R2：加密等待中登入的 PKCE verifier；HACC A10）。
+	EnvSessionKey = "NOTESTEME_HUB_SESSION_KEY"
 	// envOAuthSecret 是 OAuth client secret 的環境變數（HACC-R1）：NOTESTEME_HUB_OAUTH_<PROVIDER>_CLIENT_SECRET。
 	envOAuthSecret = "NOTESTEME_HUB_OAUTH_%s_CLIENT_SECRET"
 )
@@ -202,6 +204,9 @@ type Config struct {
 	MCP        MCP
 	// MasterKey 是信封加密的主金鑰（NOTESTEME_HUB_MASTER_KEY，同 SEC-R4）；格式由使用它的切片驗證。
 	MasterKey string
+	// SessionKey 是 session 金鑰（NOTESTEME_HUB_SESSION_KEY，至少 MinSessionKeyLen 個字元，HACC A10）；
+	// 有啟用登入方式時必填，由 hub.Open 與 doctor 檢查。
+	SessionKey string
 }
 
 // EnabledProviders 依 HACC-R1 的順序回傳啟用的登入方式。
@@ -342,6 +347,10 @@ func Load(src Sources) (*Config, error) {
 	cfg.Data = abs
 	cfg.StoreDSN = src.Env[EnvStoreDSN]
 	cfg.MasterKey = src.Env[EnvMasterKey]
+	cfg.SessionKey = src.Env[EnvSessionKey]
+	if cfg.SessionKey != "" && len(cfg.SessionKey) < MinSessionKeyLen {
+		return nil, ErrSessionKey
+	}
 	for _, p := range Providers {
 		c := cfg.OAuth[p]
 		c.ClientSecret = src.Env[OAuthSecretEnv(p)]
@@ -357,6 +366,15 @@ func Load(src Sources) (*Config, error) {
 	}
 	return cfg, nil
 }
+
+// MinSessionKeyLen 是 session 金鑰的最短長度（字元）；金鑰應是隨機產生的值，例如 openssl rand -base64 32。
+const MinSessionKeyLen = 32
+
+// ErrSessionKey 是 session 金鑰太短時的錯誤（不帶金鑰內容）。
+var ErrSessionKey = fmt.Errorf("環境變數 %s 至少要 %d 個字元（例如 openssl rand -base64 32 產生的值）。", EnvSessionKey, MinSessionKeyLen)
+
+// ErrNoSessionKey 是有啟用登入方式、卻沒有 session 金鑰時的錯誤。
+var ErrNoSessionKey = fmt.Errorf("有啟用登入方式時要設定環境變數 %s（至少 %d 個字元，例如 openssl rand -base64 32 產生的值）。", EnvSessionKey, MinSessionKeyLen)
 
 // ErrPublicURL 是 public_url 缺少或不是 https 網址時的錯誤。
 var ErrPublicURL = errors.New("設定 public_url 必須是 https 網址。")
