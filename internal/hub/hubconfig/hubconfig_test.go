@@ -127,30 +127,36 @@ content_defaults: { note: "group:translators" }
 
 func TestInvalid(t *testing.T) {
 	cases := map[string]string{
-		"沒有 public_url":        "listen: x\n",
-		"public_url 是 http":    "public_url: http://hub.example.org\n",
-		"未知頂層欄位":               minimal + "sessions: {}\n",
-		"site.visibility":      minimal + "site: { visibility: private }\n",
-		"store.driver":         minimal + "store: { driver: mysql }\n",
-		"blobs.driver":         minimal + "blobs: { driver: gcs }\n",
-		"不認得的權限":               minimal + "groups:\n  members: { permissions: [write] }\n",
-		"admins 權限":            minimal + "groups:\n  admins: { permissions: [read] }\n",
-		"moderators 的規則":       minimal + "groups:\n  moderators: { rules: [ { provider: linuxdo, trust_level_gte: 1 } ] }\n",
-		"自訂群組沒有權限":             minimal + "groups:\n  x: { rules: [] }\n",
-		"群組名稱":                 minimal + "groups:\n  Bad Name: { permissions: [read] }\n",
-		"規則條件不符":               minimal + "groups:\n  contributors: { rules: [ { provider: github, trust_level_gte: 1 } ] }\n",
-		"規則兩個條件":               minimal + "groups:\n  contributors: { rules: [ { provider: google, email_domain: [a], org_member: [b] } ] }\n",
-		"trust level 範圍":       minimal + "groups:\n  contributors: { rules: [ { provider: linuxdo, trust_level_gte: 9 } ] }\n",
-		"content_defaults 種類":  minimal + "content_defaults: { video: public }\n",
-		"content_defaults 群組":  minimal + "content_defaults: { note: \"group:nobody\" }\n",
-		"admins 缺 subject":     minimal + "admins: [ { provider: google } ]\n",
-		"rate_limits 拼字":       minimal + "rate_limits: { request_per_minute: 1 }\n",
-		"rate_limits 0":        minimal + "rate_limits: { requests_per_minute: 0 }\n",
-		"rate_limits 小數":       minimal + "rate_limits: { requests_per_minute: 1.5 }\n",
-		"bundles 大小":           minimal + "bundles: { max_upload_bytes: \"1KB\" }\n",
-		"moderation 時間":        minimal + "moderation: { auto_hide_min_account_age: \"7 days\" }\n",
-		"mcp.max_result_bytes": minimal + "mcp: { max_result_bytes: 0 }\n",
-		"licenses 空":           minimal + "licenses: []\n",
+		"沒有 public_url":            "listen: x\n",
+		"public_url 是 http":        "public_url: http://hub.example.org\n",
+		"未知頂層欄位":                   minimal + "sessions: {}\n",
+		"site.visibility":          minimal + "site: { visibility: private }\n",
+		"store.driver":             minimal + "store: { driver: mysql }\n",
+		"blobs.driver":             minimal + "blobs: { driver: gcs }\n",
+		"不認得的權限":                   minimal + "groups:\n  members: { permissions: [write] }\n",
+		"admins 權限":                minimal + "groups:\n  admins: { permissions: [read] }\n",
+		"moderators 的規則":           minimal + "groups:\n  moderators: { rules: [ { provider: linuxdo, trust_level_gte: 1 } ] }\n",
+		"自訂群組沒有權限":                 minimal + "groups:\n  x: { rules: [] }\n",
+		"群組名稱":                     minimal + "groups:\n  Bad Name: { permissions: [read] }\n",
+		"規則條件不符":                   minimal + "groups:\n  contributors: { rules: [ { provider: github, trust_level_gte: 1 } ] }\n",
+		"規則兩個條件":                   minimal + "groups:\n  contributors: { rules: [ { provider: google, email_domain: [a], org_member: [b] } ] }\n",
+		"trust level 範圍":           minimal + "groups:\n  contributors: { rules: [ { provider: linuxdo, trust_level_gte: 9 } ] }\n",
+		"content_defaults 種類":      minimal + "content_defaults: { video: public }\n",
+		"content_defaults 群組":      minimal + "content_defaults: { note: \"group:nobody\" }\n",
+		"admins 缺 subject":         minimal + "admins: [ { provider: google } ]\n",
+		"rate_limits 拼字":           minimal + "rate_limits: { request_per_minute: 1 }\n",
+		"rate_limits 0":            minimal + "rate_limits: { requests_per_minute: 0 }\n",
+		"rate_limits 小數":           minimal + "rate_limits: { requests_per_minute: 1.5 }\n",
+		"bundles 大小":               minimal + "bundles: { max_upload_bytes: \"1KB\" }\n",
+		"moderation 時間":            minimal + "moderation: { auto_hide_min_account_age: \"7 days\" }\n",
+		"mcp.max_result_bytes":     minimal + "mcp: { max_result_bytes: 0 }\n",
+		"licenses 空":               minimal + "licenses: []\n",
+		"mcp.allowed_origins 路徑":   minimal + "mcp: { allowed_origins: [\"https://a.example/x\"] }\n",
+		"mcp.allowed_origins 協定":   minimal + "mcp: { allowed_origins: [\"ftp://a.example\"] }\n",
+		"mcp.allowed_origins null": minimal + "mcp: { allowed_origins: [\"null\"] }\n",
+		"mcp.allowed_hosts port":   minimal + "mcp: { allowed_hosts: [\"a.example:443\"] }\n",
+		"mcp.allowed_hosts 萬用字元":   minimal + "mcp: { allowed_hosts: [\"*.example\"] }\n",
+		"mcp.allowed_hosts 空":      minimal + "mcp: { allowed_hosts: [\" \"] }\n",
 	}
 	for name, y := range cases {
 		if _, err := load(t, y, nil); err == nil {
@@ -166,6 +172,22 @@ func TestSizes(t *testing.T) {
 	}
 	if cfg.Bundles.MaxUploadBytes != 1024 || cfg.Bundles.MaxFiles != 3 || cfg.MCP.MaxResultBytes != 120 || cfg.RateLimits.UploadBytesPerDay != 2<<20 {
 		t.Errorf("大小 = %+v %+v %+v", cfg.Bundles, cfg.MCP, cfg.RateLimits)
+	}
+}
+
+// mcp.allowed_origins 與 allowed_hosts 正規化成小寫（HMCP-R2 的比對依賴它）。
+func TestMCPOriginsAndHosts(t *testing.T) {
+	cfg, err := load(t, minimal+"mcp: { allowed_origins: [\"HTTPS://Agent.Example:443/\", \"http://a.example:8080\"], allowed_hosts: [\" Hub.Internal \"] }\n", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(cfg.MCP.AllowedOrigins, ",") != "https://agent.example,http://a.example:8080" || strings.Join(cfg.MCP.AllowedHosts, ",") != "hub.internal" {
+		t.Errorf("mcp = %+v", cfg.MCP)
+	}
+	for in, want := range map[string]string{"https://[::1]:443": "https://[::1]", "http://x.example:80": "http://x.example", "https://x.example?q": "", "https://u@x.example": "", "https://": ""} {
+		if got, _ := NormalizeOrigin(in); got != want {
+			t.Errorf("NormalizeOrigin(%q) = %q，預期 %q", in, got, want)
+		}
 	}
 }
 

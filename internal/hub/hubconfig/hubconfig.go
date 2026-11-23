@@ -479,8 +479,26 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 	if err := applyModeration(&cfg.Moderation, f.Moderation, bad); err != nil {
 		return err
 	}
-	cfg.MCP.AllowedOrigins = f.MCP.AllowedOrigins
-	cfg.MCP.AllowedHosts = f.MCP.AllowedHosts
+	if f.MCP.AllowedOrigins != nil {
+		cfg.MCP.AllowedOrigins = nil
+		for i, v := range f.MCP.AllowedOrigins {
+			o, ok := NormalizeOrigin(v)
+			if !ok {
+				return bad(fmt.Sprintf("mcp.allowed_origins[%d]", i), "必須是 http:// 或 https:// 開頭、不含路徑的來源（例如 \"https://agent.example.com\"）：%q", v)
+			}
+			cfg.MCP.AllowedOrigins = append(cfg.MCP.AllowedOrigins, o)
+		}
+	}
+	if f.MCP.AllowedHosts != nil {
+		cfg.MCP.AllowedHosts = nil
+		for i, v := range f.MCP.AllowedHosts {
+			h := strings.ToLower(strings.TrimSpace(v))
+			if h == "" || strings.ContainsAny(h, "/:@ *[]") {
+				return bad(fmt.Sprintf("mcp.allowed_hosts[%d]", i), "必須是主機名稱（不含 port 與萬用字元，例如 \"hub.example.org\"）：%q", v)
+			}
+			cfg.MCP.AllowedHosts = append(cfg.MCP.AllowedHosts, h)
+		}
+	}
 	if f.MCP.MaxResultBytes.Kind != 0 {
 		n, ok := sizeNode(&f.MCP.MaxResultBytes)
 		if !ok {
@@ -489,6 +507,32 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 		cfg.MCP.MaxResultBytes = n
 	}
 	return nil
+}
+
+// NormalizeOrigin 把 Origin 正規化成小寫的 scheme://host[:port]（去掉預設 port）；不是合法的 http(s) 來源時 ok 為 false
+// （同 Client 的 config.NormalizeOrigin；Hub 不引用 Client 的設定套件）。
+func NormalizeOrigin(v string) (string, bool) {
+	u, err := url.Parse(strings.TrimSpace(v))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil ||
+		(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+		return "", false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return "", false
+	}
+	port := u.Port()
+	if (u.Scheme == "http" && port == "80") || (u.Scheme == "https" && port == "443") {
+		port = ""
+	}
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	out := u.Scheme + "://" + host
+	if port != "" {
+		out += ":" + port
+	}
+	return out, true
 }
 
 func parsePublicURL(raw string) (string, error) {
