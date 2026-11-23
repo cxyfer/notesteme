@@ -415,15 +415,57 @@ func TestImportBundleLocalItem(t *testing.T) {
 func TestExportBundleStopsOnLeak(t *testing.T) {
 	r, it := bundleRig(t)
 	ctx := context.Background()
+	// 字幕提到資料目錄是使用者的內容，可以匯出。
 	if err := r.p.SeedTranscript(ctx, SeedRequest{ItemID: it.ID, Variant: subtitle.VariantEdited, Lang: "en",
 		Cues: []subtitle.Cue{{StartMS: 0, EndMS: 1, Text: "see " + r.dir + "/secret"}}}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := r.p.ExportBundle(ctx, it.ID); err != nil {
+		t.Fatalf("字幕含路徑：%v", err)
+	}
+	// 標題（manifest 的欄位）含資料目錄：不送出。
+	if err := r.st.Tx(ctx, func(tx *store.Repo) error {
+		return tx.UpdateItemMeta(ctx, it.ID, store.ItemMeta{Title: "x " + r.dir + "/y"})
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := r.p.ExportBundle(ctx, it.ID); !errors.Is(err, ErrBundleLeak) {
-		t.Fatalf("err = %v", err)
+		t.Fatalf("標題含路徑 = %v", err)
+	}
+	// secret 的值出現在任何項目都不送出。
+	t.Setenv("NOTESTEME_TEST_API_KEY", "sk-leak-0123456789")
+	if err := r.st.Tx(ctx, func(tx *store.Repo) error { return tx.UpdateItemMeta(ctx, it.ID, store.ItemMeta{Title: "T"}) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.p.SeedTranscript(ctx, SeedRequest{ItemID: it.ID, Variant: subtitle.VariantEdited, Lang: "en",
+		Cues: []subtitle.Cue{{StartMS: 0, EndMS: 1, Text: "key sk-leak-0123456789"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.p.ExportBundle(ctx, it.ID); !errors.Is(err, ErrBundleLeak) {
+		t.Fatalf("secret = %v", err)
 	}
 	if _, err := r.p.ExportBundle(ctx, "yt:nope0000000"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("不存在 = %v", err)
+	}
+}
+
+func TestContainsPath(t *testing.T) {
+	for _, c := range []struct {
+		hay, needle string
+		want        bool
+	}{
+		{`"/data/x"`, "/data", true},
+		{`"/data"`, "/data", true},
+		{`/database`, "/data", false},
+		{`/home/u/data`, "/data", false},
+		{`x /data\\y`, "/data", true},
+		{`/datax /data.`, "/data", false},
+		{`/datax /data `, "/data", true},
+		{``, "/data", false},
+	} {
+		if got := containsPath([]byte(c.hay), c.needle); got != c.want {
+			t.Errorf("containsPath(%q, %q) = %v", c.hay, c.needle, got)
+		}
 	}
 }
 

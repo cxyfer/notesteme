@@ -453,13 +453,13 @@ func truthy(v any) bool {
 
 // ---- 最後一道檢查（BND-R2）----
 
-// leakNeedles 是不能出現在 bundle 中的字串：資料目錄、本機檔案的根目錄、家目錄，以及環境變數中像 secret 的值。
-func (p *Pipeline) leakNeedles() []string {
-	var out []string
+// leakNeedles 回傳不能出現在 bundle 中的字串：paths 是本機路徑（資料目錄、本機檔案的根目錄、家目錄），
+// secrets 是環境變數中像 secret 的值。
+func (p *Pipeline) leakNeedles() (paths, secrets []string) {
 	add := func(s string) {
 		s = strings.TrimRight(s, `/\`)
-		if len(s) >= 4 {
-			out = append(out, s)
+		if len(s) >= 2 {
+			paths = append(paths, s)
 		}
 	}
 	if p.dataDir != "" {
@@ -473,44 +473,74 @@ func (p *Pipeline) leakNeedles() []string {
 			add(r)
 		}
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != "/" {
+	if home, err := os.UserHomeDir(); err == nil {
 		add(home)
 	}
 	for k, v := range p.env {
 		if len(v) >= 8 && (secretKey.MatchString(k) || cookieKey.MatchString(k)) {
-			out = append(out, v)
+			secrets = append(secrets, v)
 		}
 	}
 	for _, kv := range os.Environ() {
 		k, v, _ := strings.Cut(kv, "=")
 		if strings.HasPrefix(k, "NOTESTEME_") && len(v) >= 8 && (secretKey.MatchString(k) || cookieKey.MatchString(k)) {
-			out = append(out, v)
+			secrets = append(secrets, v)
 		}
 	}
-	return out
+	return paths, secrets
 }
 
+// isPathNameByte 回報 b 是否屬於路徑段中的名稱字元。
+func isPathNameByte(b byte) bool {
+	return b == '_' || b == '-' || b == '.' || b == '~' || b == '+' || b == '@' ||
+		(b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b >= 0x80
+}
+
+// containsPath 回報 hay 中是否出現完整的路徑 needle：前面是開頭或不是名稱字元與 '/'，後面是結尾、'/'、'\' 或不是名稱字元
+// （/data 不會命中 /database 或 /home/u/data）。
+func containsPath(hay []byte, needle string) bool {
+	n := []byte(needle)
+	for off := 0; ; {
+		i := bytes.Index(hay[off:], n)
+		if i < 0 {
+			return false
+		}
+		i += off
+		end := i + len(n)
+		before := i == 0 || (!isPathNameByte(hay[i-1]) && hay[i-1] != '/')
+		after := end == len(hay) || hay[end] == '/' || hay[end] == '\\' || !isPathNameByte(hay[end])
+		if before && after {
+			return true
+		}
+		off = i + 1
+	}
+}
+
+// checkBundleLeak 是匯出前的最後一道檢查：manifest（影音 metadata 與清理過的來源紀錄，產品組出的欄位）不能含本機路徑；
+// 任何項目都不能含 secret 的值。字幕與筆記的本文是使用者的內容，提到 /data 這類字串不算洩漏。
 func (p *Pipeline) checkBundleLeak(man bundle.OutManifest, entries []bundle.OutEntry) error {
 	mj, err := json.Marshal(man)
 	if err != nil {
 		return err
 	}
-	needles := p.leakNeedles()
-	check := func(what string, b []byte) error {
-		for _, n := range needles {
-			if bytes.Contains(b, []byte(n)) {
-				p.log.Error("bundle 含有本機路徑或 secret", "entry", what)
-				return ErrBundleLeak
-			}
+	paths, secrets := p.leakNeedles()
+	leak := func(what string) error {
+		p.log.Error("bundle 含有本機路徑或 secret", "entry", what)
+		return ErrBundleLeak
+	}
+	for _, n := range paths {
+		if containsPath(mj, n) {
+			return leak(bundle.ManifestName)
 		}
-		return nil
 	}
-	if err := check(bundle.ManifestName, mj); err != nil {
-		return err
-	}
-	for _, e := range entries {
-		if err := check(e.Path, e.Data); err != nil {
-			return err
+	for _, n := range secrets {
+		if bytes.Contains(mj, []byte(n)) {
+			return leak(bundle.ManifestName)
+		}
+		for _, e := range entries {
+			if bytes.Contains(e.Data, []byte(n)) {
+				return leak(e.Path)
+			}
 		}
 	}
 	return nil
