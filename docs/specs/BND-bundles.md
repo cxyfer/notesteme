@@ -104,4 +104,4 @@
   - N18 資源：一次只做一個匯入（全域名額 1），bundle 與解壓後的內容都在記憶體中（最多 `max_upload_bytes` 加 `max_total_bytes`），檔案寫到 `<data>/tmp/import-*` 再搬進 artifacts；同步請求沒有另外的逾時（client 斷線時 `ctx` 取消，等待名額的請求隨之結束）。
   - N19 稽核：Client 沒有稽核表，成功的匯入以 info log 記錄（影音 ID、imported、skipped、是否 add_versions）。
   - N20 CLI：`import <bundle>` 加上 `--lang`、`--format` 時結束碼 2；字幕檔加 `--add-versions` 時結束碼 2；CLI 最多讀 1 GiB 的 bundle；`export --format bundle` 加上 `--lang`、`--variant`、`--style` 時結束碼 2；沒有 `--out` 時檔名取 `Content-Disposition` 的最後一段（不合格時依代號產生）。
-  - N21 還沒做：Web UI（媒體庫批次「匯出 bundle」屬 LIB、影音詳情的匯出選單、設定頁的匯入、筆記不渲染原始 HTML 的 `@ui @manual` 場景）；全文搜尋的索引（SRCH 合併後確認匯入的字幕會進索引，見 SRCH-R2）。
+  - N21 還沒做：Web UI（媒體庫批次「匯出 bundle」屬 LIB、影音詳情的匯出選單、設定頁的匯入、筆記不渲染原始 HTML 的 `@ui @manual` 場景）。全文搜尋的索引（SRCH-R2）在 rebase 到 SRCH 之後確認：匯入走 `store.InsertArtifact`，匯入的字幕會進索引（單元測試守住）。
