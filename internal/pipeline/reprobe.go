@@ -325,18 +325,40 @@ func (p *Pipeline) Reprobe(ctx context.Context, itemID string, now time.Time, op
 			return ReprobeResult{}, err
 		}
 	}
-	rp.Runs++
 	next := scheduler.NextWithJitter(store.ReprobeKind, itemID, now, ReprobeInterval, opts.JitterMax)
-	done := !rp.Sources && !rp.SponsorBlock
-	if !done && next.After(rp.Until) {
-		// 最後一次不晚於期限。
-		if now.Before(rp.Until) {
-			next = rp.Until
-		} else {
+	done := false
+	err = p.st.Tx(ctx, func(r *store.Repo) error {
+		// 執行期間使用者可能重跑了 transcript 或 sponsorblock（endReprobeOnRerun 已重設並結束對應部分）：
+		// 以交易中最新的一列為準，只把這次關掉的部分關掉並累加次數，不蓋掉重跑的重設。
+		cur, err := r.Reprobe(ctx, itemID)
+		if errors.Is(err, store.ErrNotFound) {
 			done = true
+			return nil
 		}
-	}
-	if err := p.st.Write().SaveReprobe(ctx, rp); err != nil {
+		if err != nil {
+			return err
+		}
+		if _, err := r.ScheduledJob(ctx, store.ReprobeKind, itemID); errors.Is(err, store.ErrNotFound) {
+			done = true
+			return nil
+		} else if err != nil {
+			return err
+		}
+		cur.Runs++
+		cur.Sources = cur.Sources && rp.Sources
+		cur.SponsorBlock = cur.SponsorBlock && rp.SponsorBlock
+		done = !cur.Sources && !cur.SponsorBlock
+		if !done && next.After(cur.Until) {
+			// 最後一次不晚於期限。
+			if now.Before(cur.Until) {
+				next = cur.Until
+			} else {
+				done = true
+			}
+		}
+		return r.SaveReprobe(ctx, cur)
+	})
+	if err != nil {
 		return ReprobeResult{}, err
 	}
 	if done {
