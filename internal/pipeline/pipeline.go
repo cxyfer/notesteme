@@ -15,6 +15,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/cost"
+	"github.com/cxyfer/notesteme/internal/hubclient"
 	"github.com/cxyfer/notesteme/internal/llm"
 	"github.com/cxyfer/notesteme/internal/media"
 	"github.com/cxyfer/notesteme/internal/notify"
@@ -122,6 +123,10 @@ type Deps struct {
 	Notify *notify.Outbox
 	// Cost 為付費的 LLM 請求記帳、預留與檢查預算（COST）；nil 代表不記帳（單元測試的最小組裝）。
 	Cost *cost.Service
+	// Hub 是 Client 對 Hub 的連線（HSHR）；nil 或沒有 hub.url 時不分享、不重新生成、不查詢。
+	Hub *hubclient.Client
+	// HubPrecheck 回報 ASR 前查詢是否開啟（HSHR-R12）；nil 代表關閉。
+	HubPrecheck func(ctx context.Context) (bool, error)
 }
 
 // Pipeline 是影音處理的入口：API 呼叫 Ingest 與查詢方法，worker 呼叫 Handle。
@@ -185,6 +190,9 @@ type Pipeline struct {
 	cost *cost.Service
 	// batchAPIFor 替換 Batch API 的 client（只給測試，SetBatchAPI）；nil 時用 provider 的 HTTP client。
 	batchAPIFor func(ctx context.Context, provider string) (BatchAPI, error)
+	// hub、hubPrecheck 見 Deps.Hub、Deps.HubPrecheck。
+	hub         *hubclient.Client
+	hubPrecheck func(ctx context.Context) (bool, error)
 }
 
 // New 建立 Pipeline。
@@ -208,7 +216,8 @@ func New(d Deps) *Pipeline {
 	if retention <= 0 {
 		retention = DefaultTrashRetention
 	}
-	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, outputs: d.Outputs, prompts: d.Prompts, llm: d.LLM, sponsor: d.SponsorBlock, sponsorBase: d.SponsorBlockBaseURL, notify: d.Notify, vaults: d.Vaults, hooks: d.Hooks, runner: d.Runner, env: d.Env, cost: d.Cost}
+	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, outputs: d.Outputs, prompts: d.Prompts, llm: d.LLM, sponsor: d.SponsorBlock, sponsorBase: d.SponsorBlockBaseURL, notify: d.Notify, vaults: d.Vaults, hooks: d.Hooks, runner: d.Runner, env: d.Env, cost: d.Cost,
+		hub: d.Hub, hubPrecheck: d.HubPrecheck}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。

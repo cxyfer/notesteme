@@ -88,6 +88,12 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	if err != nil {
 		return result{}, err
 	}
+	// HSHR-R9、R11：有等待中的 Hub 字幕時直接寫入，不呼叫任何其他字幕來源。
+	if imp, ok, err := p.pendingHubImport(ctx, it.ID); err != nil {
+		return result{}, err
+	} else if ok {
+		return p.runHubImport(ctx, it, imp)
+	}
 	info, err := ad.probe(ctx, it)
 	if err != nil {
 		return result{}, err
@@ -329,6 +335,8 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		"stage": StageTranscript, "impl_version": p.implVersion(StageTranscript),
 		"source":        srcID,
 		"track":         map[string]string{"lang": artLang, "kind": chosen.Kind},
+		// HSHR-R7：來源需要登入才拿得到時為 true（不進快取鍵）。
+		"cookie_required": cookieRequired(it, srcID),
 		"params_sha256": paramsSHA(map[string]any{"caption_priority": lang.CaptionPriority, "allow_platform_translated": lang.AllowPlatformTranslated}),
 	}
 	if isPodcast {
@@ -743,6 +751,8 @@ func supadataUserError(err error) error {
 // 只要有來源真的執行了並回報沒有結果，就照 SRC-R5 失敗。
 func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language, stage *store.StageResult, decisions []transcript.Decision) (result, error) {
 	executed, notConfigured := false, false
+	// HSHR-R13～R15：即將呼叫第一個付費來源時查詢 Hub 一次；失敗時照常繼續，完成後附上提醒。
+	prechecked, hubNote := false, ""
 	for _, id := range lang.Fallback {
 		f, ok := p.fetchers[id]
 		if !ok {
@@ -754,6 +764,17 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 			// 來源不支援這個平台（例如 Supadata 與本機檔案）：略過，不送出任何資料，也不算已執行。
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: transcript.ReasonUnsupported})
 			continue
+		}
+		if !prechecked && paidSource(id) && (f.configured == nil || configuredOK(ctx, f)) {
+			prechecked = true
+			out, err := p.precheckHub(ctx, it, decisions, stage)
+			if err != nil {
+				return result{}, err
+			}
+			if out.hit != nil {
+				return *out.hit, nil
+			}
+			hubNote = out.note
 		}
 		srcLang := lang
 		if !f.supportsGlossary {
@@ -771,7 +792,9 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 				Source: id, Lang: transcript.NormalizeLang(got.Lang), State: transcript.StateRejected, Reason: reasonLanguageMismatch,
 			})
 		case err == nil:
-			return p.fallbackResult(ctx, id, f, it, lang, stage, decisions, got)
+			res, err := p.fallbackResult(ctx, id, f, it, lang, stage, decisions, got)
+			addNote(&res, hubNote)
+			return res, err
 		case errors.Is(err, errclass.ErrNoResult):
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: reasonNoTranscript})
 		case errors.Is(err, errclass.ErrNotConfigured):
@@ -838,6 +861,8 @@ func (p *Pipeline) fallbackResult(ctx context.Context, id string, f fallbackFetc
 		"stage": StageTranscript, "impl_version": p.implVersion(StageTranscript),
 		"source": id, "timing": timing,
 		"params_sha256": paramsSHA(f.params(it, lang)),
+		// HSHR-R7。
+		"cookie_required": cookieRequired(it, id),
 	}
 	if got.ASR != nil {
 		fields["asr"] = got.ASR
