@@ -98,12 +98,12 @@ describe("登入頁", () => {
     expect(router.state.location.searchStr).toBe("?x=1");
   });
 
-  it("不安全的 redirect（//evil.example）改成 /library", async () => {
+  it("不安全的 redirect（//evil.example）不送出，回到首頁（UI-7 起是總覽）", async () => {
     fetchMock.mockImplementation(echoNext);
     const { router } = renderRoute("/login?redirect=%2F%2Fevil.example");
     await submit("pw");
-    await screen.findByRole("heading", { level: 1, name: "媒體庫" });
-    expect(router.state.location.pathname).toBe("/library");
+    await screen.findByRole("heading", { level: 1, name: "總覽" });
+    expect(router.state.location.pathname).toBe("/");
   });
 
   it("登入後前往回應中的 next（分享帶來的網址，ENTRY-R5、R6）", async () => {
@@ -130,8 +130,8 @@ describe("登入頁", () => {
     });
     const { router } = renderRoute("/login?next=%2Fqueue");
     await submit("pw");
-    await screen.findByRole("heading", { level: 1, name: "媒體庫" });
-    expect(router.state.location.pathname).toBe("/library");
+    await screen.findByRole("heading", { level: 1, name: "總覽" });
+    expect(router.state.location.pathname).toBe("/");
   });
 
   it("登出後回到登入頁", async () => {

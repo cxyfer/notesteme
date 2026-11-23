@@ -79,7 +79,8 @@ export function OverviewPage() {
   ]);
   useStreamReconnect(refresh);
 
-  const o = q.data;
+  // 回應的形狀不對（例如代理回了別的 JSON）時當成錯誤，不讓整頁崩潰
+  const o = q.data?.now && q.data.needs_you && q.data.month && q.data.disk ? q.data : undefined;
   const blank =
     !!o &&
     o.now.total === 0 &&
@@ -96,7 +97,7 @@ export function OverviewPage() {
         <Spinner label={t("common.loading")} showLabel />
       ) : !o ? (
         <ErrorCallout
-          error={q.error}
+          error={q.error ?? new Error("bad overview")}
           actions={[{ label: t("common.retry"), onClick: () => void q.refetch() }]}
         />
       ) : (
