@@ -105,3 +105,4 @@
   - N19 稽核：Client 沒有稽核表，成功的匯入以 info log 記錄（影音 ID、imported、skipped、是否 add_versions）。
   - N20 CLI：`import <bundle>` 加上 `--lang`、`--format` 時結束碼 2；字幕檔加 `--add-versions` 時結束碼 2；CLI 最多讀 1 GiB 的 bundle；`export --format bundle` 加上 `--lang`、`--variant`、`--style` 時結束碼 2；沒有 `--out` 時檔名取 `Content-Disposition` 的最後一段（不合格時依代號產生）。
   - N21 還沒做：Web UI（媒體庫批次「匯出 bundle」屬 LIB、影音詳情的匯出選單、設定頁的匯入、筆記不渲染原始 HTML 的 `@ui @manual` 場景）。全文搜尋的索引（SRCH-R2）在 rebase 到 SRCH 之後確認：匯入走 `store.InsertArtifact`，匯入的字幕會進索引（單元測試守住）。
+  - N22 與 SRC-10 的重新 Probe：`add_versions` 匯入 transcript 或 sponsorblock 的新版本時，在同一個交易中比照從該步驟重跑（`endReprobeOnRerun`，SRC-R18）結束對應的重新 Probe 並清除更好的來源，避免之後拿舊的 Probe 比較而自動重跑、蓋掉剛匯入的版本；只匯入較後面的步驟（筆記等）時不動。自動重跑的次數保留（SRC-R22）。（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
