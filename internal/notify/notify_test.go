@@ -474,3 +474,18 @@ func TestRegisterAndRetention(t *testing.T) {
 		t.Error("ValidState")
 	}
 }
+
+func TestWants(t *testing.T) {
+	g := newRig(t)
+	var nilOutbox *Outbox
+	if ok, err := nilOutbox.Wants(context.Background(), g.st.Write(), EventItemDone); ok || err != nil {
+		t.Errorf("nil：%v %v", ok, err)
+	}
+	if ok, _ := g.ob.Wants(context.Background(), g.st.Write(), EventItemDone); ok {
+		t.Error("沒有 notifier")
+	}
+	g.webhook(t, "auto", "item.done")
+	if ok, _ := g.ob.Wants(context.Background(), g.st.Write(), EventItemDone); !ok {
+		t.Error("有訂閱的 notifier")
+	}
+}

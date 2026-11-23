@@ -37,7 +37,12 @@ func TestRunEvent(t *testing.T) {
 	}
 	pending := map[string]store.StageRun{StageMetadata: {Status: store.StatusDone}, StageTranscript: {Status: store.StatusPending}}
 	if _, ok := runEvent(it, pending, StageMetadata); ok {
-		t.Error("還有 pending 的步驟不算完成")
+		t.Error("最後一個步驟還是 pending 不算完成")
+	}
+	// 從 publish 重跑（seeding 之後）：更早的步驟從來沒有執行過也算完成。
+	late := map[string]store.StageRun{StageTranscript: {Status: store.StatusPending}, StagePublish: {ID: "p2", Status: store.StatusSkipped}}
+	if ev, ok := runEvent(it, late, StagePublish); !ok || ev.DedupeKey != "item.done:i1:p2" {
+		t.Errorf("從 publish 重跑：%+v %v", ev, ok)
 	}
 	failed := map[string]store.StageRun{StageMetadata: {Status: store.StatusFailed, ErrorClass: "permanent", Message: "影片不存在。", Actions: []string{"刪除"}}}
 	if ev, ok := runEvent(it, failed, StageMetadata); !ok || ev.Name != notify.EventItemFailed || ev.DedupeKey != "item.failed:i1:metadata" ||

@@ -214,8 +214,12 @@ func (p *Pipeline) Rerun(ctx context.Context, itemID string, req RerunRequest) (
 			fresh[s] = run
 		}
 		// 只有鏈上的步驟處理：略過的 skipped，第一個要執行的建立任務；之後的等上游完成再前進（PIPE-R1）。
-		_, err = p.applyChain(ctx, r, itemID, chain, fresh, queue.PriorityManual, false)
-		return err
+		if _, err = p.applyChain(ctx, r, itemID, chain, fresh, queue.PriorityManual, false); err != nil {
+			return err
+		}
+		// 鏈上的步驟全部直接略過時（例如從沒有輸出的 publish 重跑）沒有任務會寫回結果：在這裡判斷通知（NOTIFY-R3）。
+		cur.UntilStage = req.Until
+		return p.emitRunEvent(ctx, r, cur, chain[len(chain)-1].Stage)
 	})
 	if err != nil {
 		return Detail{}, err

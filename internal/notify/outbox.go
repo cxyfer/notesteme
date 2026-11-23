@@ -145,6 +145,15 @@ func (o *Outbox) Emit(ctx context.Context, r *store.Repo, ev Event) (int, error)
 	return n, nil
 }
 
+// Wants 回報是否有啟用中的 notifier 訂閱了這個事件；呼叫端可以先問，再組事件的內容（避免沒有 notifier 時多讀資料）。
+func (o *Outbox) Wants(ctx context.Context, r *store.Repo, event string) (bool, error) {
+	if o == nil {
+		return false, nil
+	}
+	ids, err := r.NotifierIDsForEvent(ctx, event)
+	return len(ids) > 0, err
+}
+
 // ItemOf 讀出影音與頻道，組成通知用的 Item（在呼叫端的交易中）。
 func ItemOf(ctx context.Context, r *store.Repo, itemID string) (*Item, error) {
 	it, err := r.ItemByID(ctx, itemID)
