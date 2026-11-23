@@ -92,6 +92,25 @@ type CostLedger struct {
 	Stage         string
 }
 
+type Digest struct {
+	ID              string
+	Period          string
+	At              string
+	Weekday         string
+	Timezone        string
+	NotifierIdsJson string
+	Scope           string
+	Enabled         int64
+	CreatedAt       int64
+	LastRunAt       *int64
+}
+
+type DigestEntry struct {
+	DigestID string
+	ItemID   string
+	RunAt    int64
+}
+
 type EncryptionKey struct {
 	ID         string
 	WrappedKey string
