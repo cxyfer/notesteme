@@ -26,7 +26,7 @@ export function ItemPicker({ value, onChange }: ItemPickerProps) {
     return () => clearTimeout(h);
   }, [text]);
   const items = useQuery({
-    queryKey: queryKeys.items.list({ picker: true, q }),
+    queryKey: queryKeys.items.picker(q),
     queryFn: ({ signal }) =>
       api.get("/api/items", { query: { limit: PICKER_LIMIT, q: q || undefined }, signal }),
     staleTime: 60_000,

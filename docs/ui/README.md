@@ -304,7 +304,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 8. **provider 沒有列表 API**：文字欄位加 `datalist`（內建的 anthropic、openai），model 自由輸入；試跑面板同樣。
 9. **用語**：步驟 `segment` 沿用既有字典的「分段」（`stage.segment`），pages.md 的「斷句」沒有改既有字串；Prompt 庫的分組也用「分段」。英文的處理方案沿用用語表的 Preset。
 10. **字型**：API 依 `lang` 帶入預設字型後，分不出原本是不是空字串（自動）。表單只送改過的欄位，所以打開表單不會把自動字型寫死；把字型欄位清空就送 `""`（依語言自動）。顏色用文字欄位（`<input type="color">` 會丟掉不透明度）加色塊。
-11. **共用元件**：`SelectField`、`ItemPicker`（試跑與樣式預覽都要選影音；只列 `GET /api/items` 的前 50 部，用標題搜尋縮小）放進 `components/`；逐字差異放 `web/shared`，與 UI-2 分支的 `pages/item/diff.ts` 形狀相同，合併時改成都從 `@shared` 匯入、刪掉重複的一份。
+11. **共用元件**：`SelectField`、`ItemPicker`（試跑與樣式預覽都要選影音；只列 `GET /api/items` 的前 50 部，用標題搜尋縮小）放進 `components/`（ItemPicker 用獨立的 `queryKeys.items.picker(q)`，不放在媒體庫 infinite query 的 `items.lists()` 前綴下）；逐字差異放 `web/shared`，與 UI-2 分支的 `pages/item/diff.ts` 形狀相同，合併時改成都從 `@shared` 匯入、刪掉重複的一份。
 12. **新增相依**：`@codemirror/state` 6.7.6、`view` 6.43.15、`commands` 6.11.1、`lint` 6.9.7（都發佈超過 2 週）；transitive 的 `@lezer/common`、`style-mod` 用 npm `overrides` 鎖在 1.5.5、4.1.4（最新版未滿 2 週）。CodeMirror 只在 lazy chunk（約 104KB gzip），初始 JS 由約 174KB 增加到約 198KB（三個頁面與共用元件）。CodeMirror 透過 style-mod 插入 `<style>`，依賴 10.3 的 `style-src 'unsafe-inline'`。
 13. **eslint**：`i18next/no-literal-string` 的屬性排除清單加上事件處理器（`on[A-Z].*`）與 `form`、`accept`、`list`、`stage`、`path`：這些屬性裡的字串是欄位路徑與列舉值，不是顯示的文字。
 14. **測試**：`src/test/setup.ts` 補上 `Range.getClientRects`／`getBoundingClientRect`（CodeMirror 在 jsdom 需要）；預覽的 debounce 用真實計時器驗證（連續改三次只送一次、內容是最後一次）。

@@ -7,6 +7,8 @@ export const queryKeys = {
     list: (filters: Record<string, unknown>) => [...queryKeys.items.lists(), filters] as const,
     details: () => [...queryKeys.items.all, "detail"] as const,
     detail: (id: string) => [...queryKeys.items.details(), id] as const,
+    // 選影音用的清單（ItemPicker）：不放在 lists() 底下，避免和媒體庫的 infinite query 共用前綴
+    picker: (q: string) => [...queryKeys.items.all, "picker", q] as const,
   },
   profiles: ["profiles"] as const,
   // 處理方案的單筆與版本（前綴是 profiles，列表失效時一起失效）
