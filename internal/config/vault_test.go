@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -113,6 +114,16 @@ func TestLoadRejectsBadM3Config(t *testing.T) {
 // steps.md 4.13：@M3 場景在閘門句型實作之前一律 pending，驗證不到設定檔。
 // 這裡把 M3 .feature 中每個 `the config file contains:` 的內容載入一次：預期 server 啟動失敗的要失敗且訊息相符，其他要成功。
 func TestLoadM3FeatureConfigs(t *testing.T) {
+	n := loadFeatureConfigs(t, "VAULT-", "SPB-", "GEM-", "NOTE-", "FRM-", "CHAP-")
+	if n < 5 {
+		t.Errorf("只檢查了 %d 份設定檔，解析可能有誤", n)
+	}
+	t.Logf("檢查了 %d 份 M3 的設定檔", n)
+}
+
+// loadFeatureConfigs 把檔名以 prefixes 之一開頭的 .feature 中，每個 `the config file contains:` 載入一次，回傳檢查的份數。
+func loadFeatureConfigs(t *testing.T, prefixes ...string) int {
+	t.Helper()
 	files, err := filepath.Glob("../../features/*.feature")
 	if err != nil {
 		t.Fatal(err)
@@ -121,8 +132,7 @@ func TestLoadM3FeatureConfigs(t *testing.T) {
 	checked := 0
 	for _, f := range files {
 		base := filepath.Base(f)
-		if !strings.HasPrefix(base, "VAULT-") && !strings.HasPrefix(base, "SPB-") && !strings.HasPrefix(base, "GEM-") &&
-			!strings.HasPrefix(base, "NOTE-") && !strings.HasPrefix(base, "FRM-") && !strings.HasPrefix(base, "CHAP-") {
+		if !slices.ContainsFunc(prefixes, func(p string) bool { return strings.HasPrefix(base, p) }) {
 			continue
 		}
 		raw, err := os.ReadFile(f)
@@ -171,10 +181,7 @@ func TestLoadM3FeatureConfigs(t *testing.T) {
 			}
 		}
 	}
-	if checked < 5 {
-		t.Errorf("只檢查了 %d 份設定檔，解析可能有誤", checked)
-	}
-	t.Logf("檢查了 %d 份 M3 的設定檔", checked)
+	return checked
 }
 
 // outlineExamples 把每一行（步驟所在的行號）對到它所屬 Scenario Outline 的 Examples 列。

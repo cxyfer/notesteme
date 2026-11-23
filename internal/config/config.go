@@ -124,6 +124,11 @@ type Config struct {
 	// SponsorBlockBaseURL 是設定檔 sponsorblock.base_url（SPB-R2），預設公開伺服器，結尾不含 /。
 	SponsorBlockBaseURL string
 
+	// HubURL 是設定檔 hub.url（HSHR-R1，https，結尾不含 /）；空字串代表沒有設定 Hub。
+	HubURL string
+	// HubPrecheckEnabled 是設定檔 hub.precheck.enabled（HSHR-R12，預設 false）。
+	HubPrecheckEnabled bool
+
 	// Origin 記錄每個欄位生效值的來源，key 為欄位名稱。
 	Origin map[string]Source
 }
@@ -160,6 +165,8 @@ type fileSchema struct {
 	Library    librarySchema `yaml:"library"`
 	// MCP 的子欄位同樣用 KnownFields 檢查（AUTH-R11）。
 	MCP mcpSchema `yaml:"mcp"`
+	// Hub 的子欄位同樣用 KnownFields 檢查（HSHR-R1、R12）。
+	Hub hubSchema `yaml:"hub"`
 }
 
 // mcpSchema 是設定檔 mcp 區段：MCP HTTP 的 Origin 與 Host 檢查（AUTH-R11）。
@@ -251,7 +258,7 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 	for k := range top {
 		switch k {
 		case "listen", "data", "trusted_proxies", "tools", "providers", "hooks", "asr", "llm", "network", "inbox", "media_roots", "library", "mcp",
-			"vaults", "sponsorblock":
+			"vaults", "sponsorblock", "hub":
 		default:
 			if dbManagedFields[k] {
 				managed = append(managed, k)
@@ -357,6 +364,10 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 	if cfg.SponsorBlockBaseURL, err = parseSponsorBlock(f.SponsorBlock, path); err != nil {
 		return err
 	}
+	if cfg.HubURL, err = parseHubURL(f.Hub.URL); err != nil {
+		return fmt.Errorf("設定檔 %s 的欄位 hub.url 不正確：%w", path, err)
+	}
+	cfg.HubPrecheckEnabled = f.Hub.Precheck.Enabled
 	for i, v := range f.MediaRoots {
 		if !filepath.IsAbs(v) {
 			return fmt.Errorf("設定檔 %s 的欄位 media_roots[%d] 必須是絕對路徑：%q", path, i, v)
