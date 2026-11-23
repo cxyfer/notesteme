@@ -137,6 +137,14 @@ func (p *Provider) SetUser(u User) {
 	p.users[u.Name] = u
 }
 
+// User 回傳登記過的使用者（步驟以它為基礎修改欄位）。
+func (p *Provider) User(name string) (User, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	u, ok := p.users[name]
+	return u, ok
+}
+
 // NextAs 讓下一次 authorize 以這個使用者完成；使用者不存在時以 DefaultUser 建立。
 func (p *Provider) NextAs(name string) {
 	p.mu.Lock()

@@ -77,6 +77,8 @@ type Scenario struct {
 	mcp mcpState
 	// agents 是場景中的 Agent 與最近一次提交（見 agent.go）。
 	agents agentsState
+	// hub 是真 Hub 的瀏覽器狀態（M5，見 hub.go）。
+	hub hubState
 }
 
 // response 是最近一次請求的回應。

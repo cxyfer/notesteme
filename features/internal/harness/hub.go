@@ -34,6 +34,10 @@ const HubPublicURL = "https://" + HubHost
 // TestHubToken 是 fakehub 接受的 Client token（Hub 的 PAT 格式：nsh_ 加 40 個 base62 字元，HACC-R9）。
 const TestHubToken = "nsh_TestHubToken0123456789abcdefghijABCDEFGH"
 
+// TestHubSessionKey 是真 Hub 的 session 金鑰（NOTESTEME_HUB_SESSION_KEY，HACC A10）；只經環境變數交給 Hub，也加進 log 的 secret 掃描。
+// 固定值讓 Hub 依新設定重新啟動之後，等待中的登入仍然有效。
+const TestHubSessionKey = "nst-test-hub-session-key-4b9e2f7a1c08d6e3"
+
 // OAuth 供應商的測試憑證：client_id 寫在 Hub 的預設設定，secret 只經環境變數交給 Hub（HACC-R1）。
 func testOAuthClientID(k fakeoauth.Kind) string { return "nst-test-" + string(k) + "-client" }
 
@@ -135,8 +139,9 @@ func mergeConfig(dst, src map[string]any) {
 // hubEnv 是交給真 Hub 的環境變數：設定檔、資料目錄與 OAuth client secret（不放進 Client 的 Env）。
 func (w *World) hubEnv() map[string]string {
 	env := map[string]string{
-		hubconfig.EnvConfig: w.HubConfigFile(),
-		hubconfig.EnvData:   w.HubDir(),
+		hubconfig.EnvConfig:     w.HubConfigFile(),
+		hubconfig.EnvData:       w.HubDir(),
+		hubconfig.EnvSessionKey: TestHubSessionKey,
 	}
 	for _, k := range OAuthKinds {
 		env[hubconfig.OAuthSecretEnv(hubconfig.Provider(k))] = TestOAuthClientSecret(k)
@@ -249,7 +254,7 @@ func (w *World) HubHTTPClient() *http.Client {
 
 // HubSecrets 回傳 M5 的測試秘密（OAuth client secret 與 fakehub 的 token），加進 log 的 secret 掃描。
 func HubSecrets() []string {
-	out := []string{TestHubToken}
+	out := []string{TestHubToken, TestHubSessionKey}
 	for _, k := range OAuthKinds {
 		out = append(out, TestOAuthClientSecret(k))
 	}
