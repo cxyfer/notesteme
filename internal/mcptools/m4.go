@@ -57,7 +57,8 @@ func addCreateSubscription(s *mcp.Server, d *Deps) {
 		Description: "建立訂閱，參數與錯誤（code、訊息）都和 POST /api/subscriptions 相同。只依網址的格式辨識、不連外；" +
 			"第一次檢查在下一輪排程執行。回補範圍預設 none（只抓之後的新內容），recent 與 all 會處理舊影片並產生花費。需要 admin scope。",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a createSubscriptionArgs) (*mcp.CallToolResult, any, error) {
-		if r := checkStrings(field{"url", a.URL, maxURLLen}, field{"profile", a.Profile, maxIDLen}); r != nil {
+		// url 的長度交給 API 檢查（同樣上限 2048），錯誤的 code 與訊息才會和 REST 相同（SUB-R13）。
+		if r := checkStrings(field{"profile", a.Profile, maxIDLen}); r != nil {
 			return r, nil, nil
 		}
 		return call(ctx, d, http.MethodPost, "/api/subscriptions", nil, a), nil, nil

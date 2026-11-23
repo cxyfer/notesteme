@@ -315,9 +315,10 @@ func TestSubscriptionMCPTools(t *testing.T) {
 	if !res.IsError || !strings.Contains(resultText(res), "這是單一影片，請直接新增，不需要訂閱。") || !strings.Contains(resultText(res), CodeNotACollection) {
 		t.Errorf("錯誤 = %s", resultText(res))
 	}
+	f.err = &subscription.FieldsError{Fields: []validate.FieldError{{Path: "url", Message: "網址最長 2048 個字元。"}}}
 	res = callTool(t, cs, "create_subscription", map[string]any{"url": strings.Repeat("a", 3000)})
-	if !res.IsError {
-		t.Errorf("過長的網址要在 tool 擋下：%s", resultText(res))
+	if !res.IsError || !strings.Contains(resultText(res), "網址最長 2048 個字元。") || len(f.created.URL) != 3000 {
+		t.Errorf("過長的網址交給 API，訊息相同：%s", resultText(res))
 	}
 	f.err = nil
 	res = callTool(t, cs, "list_subscriptions", map[string]any{})

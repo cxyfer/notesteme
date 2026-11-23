@@ -111,7 +111,7 @@
   - Google Takeout 的網址以 `Channel Id` 組成 `https://www.youtube.com/channel/<id>`（檔案中的是 `http://`），`Channel Id` 空白時改用 `Channel Url`；`duplicates`、`failed` 的 `url` 是檔案中的原文（`Channel Url`）。欄位數不是 3、或沒有任何網址的列放進 `failed`（「這一列的欄位數不正確。」、「這一列沒有網址。」），不影響其他列；`line` 是檔案中的行號（表頭是第 1 行）。
   - OPML 中 YouTube 的 feed 網址（`youtube.com/feeds/videos.xml?channel_id=`）依 SUB-R1 是 `unsupported_url`，列在 `failed`，不自動轉成頻道訂閱（要轉的話需要修改 SUB-R1／R7）。
   - 內部網路的 `xmlUrl`（例如 `http://10.0.0.5/feed.xml`）匯入時不擋：判斷要解析 DNS，違反「匯入時不連外」，也會和 `network.allow_private` 的 allowlist 衝突；第一次檢查時由 netguard 擋下（SUB-R11、GRD-R2）。`file://`、`ftp://` 等非 `http`／`https` 依 SUB-R1 列在 `failed`。
-  - 訂閱網址的長度上限 2048 個字元（同 MCP 的 `url`）：`POST /api/subscriptions` 與 MCP 回 422（`errors[].path` 為 `url`、訊息「網址最長 2048 個字元。」），匯入時列在 `failed`。標題只能由匯入帶入（SUB-R1 的 `POST` 沒有 `title`），經 SUB-R11 的清理並截到 300 個字元。
+  - 訂閱網址的長度上限 2048（以位元組計，網址通常是 ASCII；MCP 不另外檢查，交給 API 回同樣的錯誤）：`POST /api/subscriptions` 與 MCP 回 422（`errors[].path` 為 `url`、訊息「網址最長 2048 個字元。」），匯入時列在 `failed`。標題只能由匯入帶入（SUB-R1 的 `POST` 沒有 `title`），經 SUB-R11 的清理並截到 300 個字元。
   - 匯入的大小限制在進入 Huma 之前檢查（Huma 的 `MaxBodyBytes` 只會回通用的 413）：先檢查 `admin`（沒有時不讀本體、回 403），本體上限是 1 MiB 加 64 KiB 的 multipart 餘裕，handler 再檢查檔案本身是否超過 1 MiB，兩者都回 413 `too_large`。回 413 之前最多丟棄 8 MiB 的剩餘本體，避免 client 還在送出時連線被重設而看不到 413。缺少 `file` 欄位回 422（`errors[].path` 為 `file`、訊息「請上傳匯入檔。」）。
   - 部分失敗不回滾：單列的辨識錯誤與重複照規格列出；建立中遇到無法歸類的錯誤（資料庫錯誤、處理方案錯誤）時整個請求回錯誤，但已經建立的訂閱保留。
   - MCP：`create_subscription` 的參數與 `POST /api/subscriptions` 相同（`url`、`profile`、`overrides`、`schedule`、`backfill`、`filters`、`enabled`），經程序內的 API 呼叫，所以 scope、code 與訊息相同；`list_subscriptions` 不帶參數。MCP 不提供預覽與匯入（SUB-R13 只列這兩個 tool）。
