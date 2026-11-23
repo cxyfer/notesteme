@@ -33,6 +33,7 @@ import {
 
 import { validateAddEntrySearch } from "./add/entry";
 import { validateCostsSearch } from "./pages/costs/search";
+import { isInsecureNoAuth } from "./auth/insecure";
 import { hasSessionHint, safeRedirect } from "./auth/session";
 import { validateItemSearch } from "./pages/item/search";
 import { validateLibrarySearch } from "./pages/library/filters";
@@ -76,8 +77,9 @@ export const loginRoute = createRoute({
 const appRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "app",
-  beforeLoad: ({ location }) => {
-    if (!hasSessionHint()) {
+  beforeLoad: async ({ location, context }) => {
+    // 無驗證模式（AUTH-R3）沒有 CSRF cookie，不導到登入頁。
+    if (!hasSessionHint() && !(await isInsecureNoAuth(context.queryClient))) {
       throw redirect({ to: "/login", search: { redirect: location.href } });
     }
   },

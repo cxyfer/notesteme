@@ -38,5 +38,9 @@ func entryPages(d Deps) http.Handler {
 	if !ok || d.Auth == nil {
 		return d.UI
 	}
+	if d.InsecureNoAuth {
+		// 無驗證模式：/add、/share 一律視為已登入，不會導回登入頁（AUTH-R3）。
+		return entry.NewPages(insecureSessions{}, ix.IndexHTML, d.UI, d.Log)
+	}
 	return entry.NewPages(d.Auth, ix.IndexHTML, d.UI, d.Log)
 }

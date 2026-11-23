@@ -52,6 +52,8 @@ func (rt *routes) changePassword(ctx context.Context, in *changePasswordInput) (
 		e := newError(http.StatusTooManyRequests, CodeLoginLocked, locked.Error())
 		e.RetryAfterS = &secs
 		return nil, e
+	case errors.Is(err, auth.ErrNoPassword):
+		return nil, newError(http.StatusConflict, CodeNoPassword, err.Error())
 	case err != nil:
 		rt.d.Log.ErrorContext(ctx, "修改密碼時發生錯誤", "error", err)
 		return nil, asError(err)

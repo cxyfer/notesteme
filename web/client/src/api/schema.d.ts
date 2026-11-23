@@ -1827,6 +1827,8 @@ export interface components {
       since: string;
     };
     AuthMethodsOutputBody: {
+      /** @description 以 --insecure-no-auth 啟動、沒有任何登入驗證時是 true；UI 在頂部持續顯示警告（AUTH-R3） */
+      insecure_no_auth: boolean;
       oidc: components["schemas"]["OIDCStruct"];
     };
     Backfill: {

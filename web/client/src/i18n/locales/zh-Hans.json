@@ -17,7 +17,8 @@
     "subscriptions": "订阅",
     "noteTemplates": "笔记模板",
     "costs": "成本",
-    "overview": "总览"
+    "overview": "总览",
+    "insecureNoAuth": "目前没有任何登录验证：这个实例以 --insecure-no-auth 启动，这台电脑上的任何程序都能完整操作它。请设置 NOTESTEME_PASSWORD 后不带这个参数重新启动。"
   },
   "prefs": {
     "theme": "主题",

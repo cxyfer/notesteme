@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 
 import { api } from "../api/client";
 import { isApiError } from "../api/errors";
+import { authMethodsQuery } from "../auth/insecure";
 import { safeRedirect } from "../auth/session";
 import { Button, ErrorCallout, TextField } from "../components";
 import { usePageTitle } from "../shell/usePageTitle";
@@ -28,16 +29,17 @@ export function LoginPage() {
   const [error, setError] = useState<unknown>();
   const [lockedUntil, setLockedUntil] = useState<number>();
   const [now, setNow] = useState(() => Date.now());
-  const methods = useQuery({
-    queryKey: ["auth-methods"],
-    queryFn: () => api.get("/api/auth/methods"),
-    retry: false,
-    staleTime: Infinity,
-  });
+  const methods = useQuery(authMethodsQuery);
   const oidc = methods.data?.oidc;
   const requested = next ?? redirect;
   const oidcHref =
     "/api/auth/oidc/start" + (requested ? `?next=${encodeURIComponent(requested)}` : "");
+
+  // 無驗證模式（AUTH-R3）不需要登入：直接回到要去的頁面（例如登出之後）。
+  const insecure = methods.data?.insecure_no_auth === true;
+  useEffect(() => {
+    if (insecure) void navigate({ href: safeRedirect(requested), replace: true });
+  }, [insecure, navigate, requested]);
 
   const remaining = lockedUntil ? Math.max(0, Math.ceil((lockedUntil - now) / 1000)) : 0;
   useEffect(() => {

@@ -59,6 +59,8 @@ type authMethodsOutput struct {
 			Enabled bool   `json:"enabled"`
 			Host    string `json:"host,omitempty" doc:"issuer 的主機名稱（按鈕文字「用 <主機名稱> 登入」）"`
 		} `json:"oidc"`
+		// InsecureNoAuth 是 serve 帶了 --insecure-no-auth：UI 在頂部持續顯示警告（AUTH-R3）。
+		InsecureNoAuth bool `json:"insecure_no_auth" doc:"以 --insecure-no-auth 啟動、沒有任何登入驗證時是 true；UI 在頂部持續顯示警告（AUTH-R3）"`
 	}
 }
 
@@ -156,6 +158,7 @@ func errKind(err error) string {
 
 func (rt *routes) authMethods(ctx context.Context, _ *struct{}) (*authMethodsOutput, error) {
 	out := &authMethodsOutput{}
+	out.Body.InsecureNoAuth = rt.d.InsecureNoAuth
 	if rt.d.Auth != nil && rt.d.Auth.OIDCEnabled() {
 		out.Body.OIDC.Enabled = true
 		if u, err := url.Parse(rt.d.Auth.OIDCIssuer()); err == nil {

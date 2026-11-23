@@ -18,7 +18,7 @@ import (
 // principalProbe 讓測試看到 handler 收到的身分。
 func principalProbe(t *testing.T, got *auth.Principal) http.Handler {
 	t.Helper()
-	return localMiddleware(nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return ownerMiddleware(nil, nil, PrincipalLocal)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p, ok := principalFrom(r.Context())
 		if !ok {
 			t.Error("context 裡沒有身分")

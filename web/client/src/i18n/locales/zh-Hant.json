@@ -17,7 +17,8 @@
     "subscriptions": "訂閱",
     "noteTemplates": "筆記模板",
     "costs": "成本",
-    "overview": "總覽"
+    "overview": "總覽",
+    "insecureNoAuth": "目前沒有任何登入驗證：這個實例以 --insecure-no-auth 啟動，這台電腦上的任何程式都能完整操作它。請設定 NOTESTEME_PASSWORD 後不帶這個旗標重新啟動。"
   },
   "prefs": {
     "theme": "主題",

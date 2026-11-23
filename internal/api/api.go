@@ -75,6 +75,9 @@ type Deps struct {
 	// SecureCookies 為 true 時 session 與 CSRF cookie 一律帶 Secure（vps 部署，OPS-R21）；
 	// 否則只在請求經由 HTTPS 到達時才帶。
 	SecureCookies bool
+	// InsecureNoAuth 是 serve 的 --insecure-no-auth（AUTH-R3）：New 的每個請求都以 owner 身分執行，
+	// 但只接受以 loopback 主機名稱存取、拒絕跨站的寫入（insecure.go）。NewLocal 不看這個欄位。
+	InsecureNoAuth bool
 	// System、Tools、Backup、Providers 是 OPS 切片的依賴；nil 時對應的路由回應 501。
 	// 介面只定最小骨架：System 與 Tools 由 OPS-B、Backup 由 OPS-A、Providers 由 OPS-C 擴充。
 	System    SystemInfo
@@ -129,6 +132,9 @@ const readyTimeout = 5 * time.Second
 
 // New 建立完整的 HTTP handler：受保護的路徑要有 session 或 token（AUTH-R1）。
 func New(d Deps) http.Handler {
+	if d.InsecureNoAuth {
+		return insecureGuard(build(d, ownerMiddleware(d.Auth, d.Log, PrincipalInsecure), true))
+	}
 	return build(d, authMiddleware(d.Auth, d.Log), true)
 }
 
@@ -383,6 +389,9 @@ func (rt *routes) login(ctx context.Context, in *loginInput) (*loginOutput, erro
 		e := newError(http.StatusTooManyRequests, CodeLoginLocked, locked.Error())
 		e.RetryAfterS = &secs
 		return nil, e
+	case errors.Is(err, auth.ErrNoPassword):
+		// 無驗證模式（AUTH-R3）沒有密碼可以登入；不是伺服器錯誤。
+		return nil, newError(http.StatusConflict, CodeNoPassword, err.Error())
 	case err != nil:
 		rt.d.Log.ErrorContext(ctx, "登入時發生錯誤", "error", err)
 		return nil, asError(err)

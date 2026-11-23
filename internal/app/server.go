@@ -152,10 +152,17 @@ func StartServerWith(ctx context.Context, env Env, opts ServeOptions) (*Server, 
 		manualWorker: env.Test != nil && env.Test.ManualWorker,
 		check: func(ctx context.Context, s *Server) error {
 			// 旗標的檢查在密碼之前：vps 部署拒絕 --insecure-no-auth 時，訊息要說明原因（OPS-R21）。
-			if err := opts.check(s.cfg); err != nil {
+			if err := opts.check(s.cfg, env.Vars[envPassword]); err != nil {
 				return err
 			}
-			if err := s.auth.EnsurePassword(ctx, env.Vars[envPassword]); err != nil {
+			if opts.InsecureNoAuth {
+				// 無驗證模式（AUTH-R3）：DB 已經有密碼時拒絕，不默默停用 owner 設好的驗證。
+				if has, err := s.auth.HasPassword(ctx); err != nil {
+					return err
+				} else if has {
+					return ErrInsecureWithPassword
+				}
+			} else if err := s.auth.EnsurePassword(ctx, env.Vars[envPassword]); err != nil {
 				return err
 			}
 			if n, err := s.store.DeleteExpiredSessions(ctx); err != nil {
@@ -194,6 +201,8 @@ func StartServerWith(ctx context.Context, env Env, opts ServeOptions) (*Server, 
 	}
 
 	deps := s.apiDeps(env)
+	// 無驗證模式只套用在 TCP listener（api.New）；本機 socket 本來就不驗證。
+	deps.InsecureNoAuth = opts.InsecureNoAuth
 	// Web UI 只掛在 TCP listener（api.New 才會使用 Deps.UI）；本機 socket 只給 CLI。
 	deps.UI = webui.New(webclient.FS())
 	s.http = s.newHTTPServer(api.New(deps))
@@ -216,6 +225,9 @@ func StartServerWith(ctx context.Context, env Env, opts ServeOptions) (*Server, 
 
 	started = true
 	log.InfoContext(ctx, "server started", "listen", s.ln.Addr().String(), "data", cfg.Data)
+	if opts.InsecureNoAuth {
+		s.warnInsecure(env, s.ln.Addr().String())
+	}
 	return s, nil
 }
 

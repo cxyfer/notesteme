@@ -2,13 +2,14 @@
 // 也在這裡連上 SSE（useEventStream）、處理 401（導到登入頁），並掛上「新增」抽屜：
 // 導覽的「新增」按鈕、N 快捷鍵、焦點不在輸入框時貼上網址（docs/ui/README.md §3.2、§3.6）。
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AddProvider, useAddDrawer } from "../add/AddContext";
 import { isHttpUrl } from "../add/url";
 import { api, setUnauthorizedHandler } from "../api/client";
+import { authMethodsQuery } from "../auth/insecure";
 import { Button } from "../components";
 import { useEventStream } from "../events/useEventStream";
 import { isEditableTarget, modalOpen } from "./keyboard";
@@ -114,6 +115,18 @@ function GlobalShortcuts() {
   ) : null;
 }
 
+// AUTH-R3：以 --insecure-no-auth 啟動時，頂部持續顯示警告（/api/auth/methods 免驗證；查詢失敗時不顯示）。
+function InsecureBanner() {
+  const { t } = useTranslation();
+  const methods = useQuery(authMethodsQuery);
+  if (!methods.data?.insecure_no_auth) return null;
+  return (
+    <p className="insecure-banner" role="alert">
+      {t("nav.insecureNoAuth")}
+    </p>
+  );
+}
+
 function ShellLayout() {
   const { t } = useTranslation();
   const add = useAddDrawer();
@@ -160,6 +173,7 @@ function ShellLayout() {
       <a className="skip-link" href="#main">
         {t("nav.skip")}
       </a>
+      <InsecureBanner />
       <div className="app">
         <nav className="nav" aria-label={t("nav.label")}>
           <Link to="/" className="nav__mark">

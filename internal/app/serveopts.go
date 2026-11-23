@@ -3,7 +3,10 @@ package app
 import (
 	"errors"
 	"fmt"
+	"net"
+	"time"
 
+	"github.com/cxyfer/notesteme/internal/api"
 	"github.com/cxyfer/notesteme/internal/config"
 )
 
@@ -19,9 +22,18 @@ const flagInsecureNoAuth = "--insecure-no-auth"
 // ErrVPSInsecure 是 vps 部署使用 --insecure-no-auth 時的錯誤（OPS-R21，逐字）。
 var ErrVPSInsecure = errors.New("vps 部署不能使用 --insecure-no-auth。請設定 NOTESTEME_PASSWORD。")
 
-// errInsecureNotImplemented 是 local 部署使用 --insecure-no-auth 的錯誤：AUTH-R3 的無密碼模式還沒有實作，
-// 不能默默接受旗標卻照樣要求密碼。
-var errInsecureNotImplemented = errors.New("--insecure-no-auth 尚未實作（AUTH-R3）。請設定 NOTESTEME_PASSWORD。")
+// --insecure-no-auth 的其他啟動條件（AUTH 待決問題 A23，待 owner 追認）。
+var (
+	// ErrInsecureWithProxy：反向代理或 OIDC 的設定代表實例會經由其他主機存取，不能關掉驗證。
+	ErrInsecureWithProxy = errors.New("--insecure-no-auth 不能與 trusted_proxies、auth.proxy 或 auth.oidc 一起使用。")
+	// ErrInsecureWithPassword：已經有密碼（DB 或 NOTESTEME_PASSWORD）時不默默停用驗證。
+	ErrInsecureWithPassword = errors.New("已經設定了登入密碼，不能使用 --insecure-no-auth。請移除這個旗標，或移除 NOTESTEME_PASSWORD。")
+)
+
+// insecureListenError 是無驗證模式的 listen 不是 loopback 時的錯誤。
+func insecureListenError(listen string) error {
+	return fmt.Errorf("--insecure-no-auth 只能在只監聽本機（127.0.0.1、::1 或 localhost）時使用，目前的 listen 是 %q。", listen)
+}
 
 // ParseServeArgs 解析 serve 的參數（驗收測試的 harness 也用它）；不認得的參數是錯誤。
 func ParseServeArgs(args []string) (ServeOptions, error) { return parseServeArgs(args) }
@@ -40,13 +52,59 @@ func parseServeArgs(args []string) (ServeOptions, error) {
 	return o, nil
 }
 
-// check 依載入的設定檢查旗標（在密碼檢查之前）：vps 部署一律拒絕 --insecure-no-auth（OPS-R21，AUTH-R3 的例外不適用）。
-func (o ServeOptions) check(cfg *config.Config) error {
+// check 依載入的設定檢查旗標（在密碼檢查之前），順序：
+//  1. vps 部署一律拒絕（OPS-R21，AUTH-R3 的例外不適用）；
+//  2. listen 必須是 loopback；
+//  3. 不能有反向代理（trusted_proxies、auth.proxy）或 OIDC 的設定；
+//  4. 環境變數不能有密碼（DB 裡的密碼由呼叫端在開啟 DB 之後檢查）。
+func (o ServeOptions) check(cfg *config.Config, envPassword string) error {
 	if !o.InsecureNoAuth {
 		return nil
 	}
 	if cfg.M4.Deployment == config.DeploymentVPS {
 		return ErrVPSInsecure
 	}
-	return errInsecureNotImplemented
+	if !LoopbackListen(cfg.Listen) {
+		return insecureListenError(cfg.Listen)
+	}
+	if len(cfg.TrustedProxies) > 0 || cfg.M4.Proxy.UserHeader != "" || cfg.M4.OIDC.Issuer != "" {
+		return ErrInsecureWithProxy
+	}
+	if envPassword != "" {
+		return ErrInsecureWithPassword
+	}
+	return nil
+}
+
+// LoopbackListen 回報 listen 位址（host:port）是否只綁本機：host 是 localhost 或 loopback 的 IP 字面值。
+// 不做 DNS 解析；空的 host（所有介面）、0.0.0.0、:: 與其他名稱一律不是。
+func LoopbackListen(listen string) bool {
+	host, _, err := net.SplitHostPort(listen)
+	if err != nil {
+		return false
+	}
+	return api.IsLoopbackHost(host)
+}
+
+// insecureWarnEvery 是無驗證模式重複寫警告 log 的間隔（AUTH-R3 的「持續顯示警告」）。
+const insecureWarnEvery = time.Hour
+
+// InsecureWarning 是無驗證模式的警告 log（固定文字；listen 另外以欄位記錄）。
+const InsecureWarning = "目前以 --insecure-no-auth 啟動：沒有任何登入驗證，這台電腦上的任何程式都能完整操作 Notesteme。請設定 NOTESTEME_PASSWORD 後不帶這個旗標重新啟動。"
+
+// warnInsecure 在啟動時寫一筆 Warn，之後每小時再寫一次，直到 server 關閉。
+func (s *Server) warnInsecure(env Env, listen string) {
+	s.log.Warn(InsecureWarning, "listen", listen)
+	go func() {
+		for {
+			t := env.Clock.NewTimer(insecureWarnEvery)
+			select {
+			case <-s.root.Done():
+				t.Stop()
+				return
+			case <-t.C():
+				s.log.Warn(InsecureWarning, "listen", listen)
+			}
+		}
+	}()
 }

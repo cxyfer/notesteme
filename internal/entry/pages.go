@@ -111,8 +111,12 @@ func (h *Pages) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// signedIn 只認 session cookie（ENTRY-R2）：bearer token 與 query 中的 token 一律不當成登入。
+// signedIn 只認 session cookie（ENTRY-R2）；Sessions 另外實作 NoAuth() 且回 true 時一律視為已登入：bearer token 與 query 中的 token 一律不當成登入。
 func (h *Pages) signedIn(r *http.Request) (bool, error) {
+	// 無驗證模式（serve --insecure-no-auth，AUTH-R3）：沒有 session 也視為已登入。
+	if a, ok := h.sessions.(interface{ NoAuth() bool }); ok && a.NoAuth() {
+		return true, nil
+	}
 	c, err := r.Cookie(auth.SessionCookie)
 	if err != nil || c.Value == "" {
 		return false, nil

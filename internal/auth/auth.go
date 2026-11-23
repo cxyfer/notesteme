@@ -128,7 +128,7 @@ func New(cfg Config) *Service {
 //   - DB 沒有、envPassword 非空：以 envPassword 設定。
 //   - 兩者都沒有：回傳 ErrNoPassword。
 //
-// TODO: --insecure-no-auth 才允許在沒有密碼時啟動，並持續顯示警告（AUTH-R3）。
+// --insecure-no-auth（AUTH-R3）不呼叫這個方法，改用 HasPassword 確認 DB 沒有密碼。
 func (s *Service) EnsurePassword(ctx context.Context, envPassword string) error {
 	if _, ok, err := s.store.GetSetting(ctx, settingPasswordHash); err != nil {
 		return err
@@ -145,6 +145,12 @@ func (s *Service) EnsurePassword(ctx context.Context, envPassword string) error 
 	// 以 IfAbsent 寫入，避免和其他寫入者競爭時覆寫已存在的密碼。
 	_, err = s.store.SetSettingIfAbsent(ctx, settingPasswordHash, h)
 	return err
+}
+
+// HasPassword 回報 DB 是否已有登入密碼（--insecure-no-auth 的啟動檢查，AUTH-R3）。
+func (s *Service) HasPassword(ctx context.Context) (bool, error) {
+	_, ok, err := s.store.GetSetting(ctx, settingPasswordHash)
+	return ok, err
 }
 
 // Credentials 是登入成功後要交給瀏覽器的值。

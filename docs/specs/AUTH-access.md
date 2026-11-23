@@ -128,3 +128,12 @@
 - A21：稽核紀錄沒有另外建表：建立 proxy／OIDC session、撤銷 session、輪替 token、OIDC 登入失敗的原因都寫 log（只記 session／token 的 ID、來源位址與失敗原因，不記標頭值、code、token、client secret）。
 - A22：驗收步驟的 `redirect_url` 用設定的 listen 位址當 base URL（實際的 port 在啟動後才知道）；callback 的步驟只取 IdP 轉回網址的 path 與 query，送到實際的位址（steps.md 4.21 的補充）。
 
+
+#### `--insecure-no-auth` 的實作決定（後端補洞切片，AUTH-R3）
+
+以下皆為 （2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）。
+
+- A23 啟動條件：AUTH-R3 只寫了「加上 `--insecure-no-auth` 才能在沒有密碼時啟動」。另外加上（依序檢查，`vps` 部署的 OPS-R21 在最前面）：（1）設定的 `listen` 必須只綁本機：host 是 `localhost` 或 loopback 的 IP 字面值（`127.0.0.0/8`、`::1`），不做 DNS 解析，空的 host（所有介面）、`0.0.0.0`、`::`、IPv4-mapped 與帶 zone 的位址一律拒絕，訊息「--insecure-no-auth 只能在只監聽本機（127.0.0.1、::1 或 localhost）時使用，目前的 listen 是 "<值>"。」；（2）設定了 `trusted_proxies`、`auth.proxy` 或 `auth.oidc` 時拒絕（代表會經由其他主機存取），訊息「--insecure-no-auth 不能與 trusted_proxies、auth.proxy 或 auth.oidc 一起使用。」；（3）已經有密碼（`NOTESTEME_PASSWORD` 或 DB 中的 hash）時拒絕，不默默停用 owner 設好的驗證，訊息「已經設定了登入密碼，不能使用 --insecure-no-auth。請移除這個旗標，或移除 NOTESTEME_PASSWORD。」。無驗證模式不寫入任何密碼。
+- A24 身分：TCP listener 上沒有憑證的請求一律是 owner（全部權限，身分種類 `insecure`，與本機 socket 的 `local` 分開，之後只給本機 socket 的能力不會被它繼承）；帶 bearer token 時改用 token 的身分（只會縮小權限，無效的 token 回 401），與本機 socket 相同。session cookie 不使用；`POST /api/auth/login` 與 `POST /api/auth/password` 回 409 `no_password`（訊息同 AUTH-R3 的啟動訊息），不是 500。ENTRY 的 `/add`、`/share` 視為已登入（不導回登入頁）。本機 socket 的行為不變。
+- A25 瀏覽器防護：沒有 session 就沒有 CSRF token（AUTH-R5），所以在所有路徑（含 Web UI、`/mcp`）之前檢查：`Host` 必須是 `localhost`、loopback 的 IP（可帶 port），否則 403 `insecure_host`（擋 DNS rebinding）；會改變狀態的請求帶了 `Origin` 時必須與 `Host` 同源（`null`、多個值、帶路徑或帳號的都拒絕），`Sec-Fetch-Site` 只接受 `same-origin` 與 `none`，否則 403 `csrf_invalid`（擋其他網站、包含同一台電腦其他 port 的網頁）。不帶這兩個標頭的程式（curl、CLI）照常可用。偽造的 `X-Forwarded-For`、反向代理的使用者標頭沒有作用（啟動條件已排除 `trusted_proxies`）。
+- A26 警告：log 在啟動時寫一筆 warn（固定文字「目前以 --insecure-no-auth 啟動：沒有任何登入驗證……」，listen 另外記錄），之後每小時再寫一次（「持續顯示」的 log 部分）。UI 從免驗證的 `GET /api/auth/methods` 多出的 `insecure_no_auth`（布林，一般模式是 `false`）得知，所有頁面頂部顯示警告橫幅（`role="alert"`，三語）；沒有 CSRF cookie 時不導到登入頁，登入頁在無驗證模式直接回到要去的頁面。沒有 `.feature` 場景，由 `internal/app`、`internal/api` 的單元測試與 Web UI 的元件測試守住。

@@ -19,6 +19,10 @@ const (
 	CodeInvalidPass  = "invalid_password"
 	CodeLoginLocked  = "login_locked"
 	CodeCSRF         = "csrf_invalid"
+	// CodeNoPassword 是還沒有設定登入密碼（--insecure-no-auth 啟動，AUTH-R3）時的登入與修改密碼。
+	CodeNoPassword = "no_password"
+	// CodeInsecureHost 是無驗證模式下不是以 loopback 主機名稱存取的請求（AUTH-R3，防 DNS rebinding）。
+	CodeInsecureHost = "insecure_host"
 	// AUTH-R14、R18、R19、R21（M4）
 	CodeProxyUserNotAllowed = "proxy_user_not_allowed"
 	CodeOIDCStateInvalid    = "oidc_state_invalid"

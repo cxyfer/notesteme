@@ -91,6 +91,15 @@ h3 {
 }
 
 /* ---------- App shell ---------- */
+/* AUTH-R3：無驗證模式的警告橫幅（所有頁面的頂部） */
+.insecure-banner {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-panel);
+  border-bottom: 3px solid var(--state-failed);
+  font-weight: 600;
+}
+
 .app {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);

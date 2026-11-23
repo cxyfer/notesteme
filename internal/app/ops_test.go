@@ -26,7 +26,8 @@ func TestParseServeArgs(t *testing.T) {
 	}
 }
 
-// OPS-R21：vps 部署拒絕 --insecure-no-auth（在密碼檢查之前）；local 時 AUTH-R3 還沒實作，也不默默接受。
+// OPS-R21、AUTH-R3：vps 部署拒絕 --insecure-no-auth（在密碼檢查之前）；local 部署在 listen 是 loopback、
+// 沒有反向代理與 OIDC 設定、也沒有任何密碼時才能啟動（之前 local 回「尚未實作」，AUTH-R3 實作後改為可以啟動）。
 func TestServeInsecureNoAuth(t *testing.T) {
 	env := testEnv(t)
 	delete(env.Vars, "NOTESTEME_PASSWORD")
@@ -34,12 +35,65 @@ func TestServeInsecureNoAuth(t *testing.T) {
 	if _, err := StartServerWith(t.Context(), env, ServeOptions{InsecureNoAuth: true}); !errors.Is(err, ErrVPSInsecure) {
 		t.Fatalf("vps：%v", err)
 	}
+	// vps 優先於其他條件：listen 不是 loopback 時仍回 OPS-R21 的訊息。
+	env.Vars["NOTESTEME_LISTEN"] = "0.0.0.0:8080"
+	if _, err := StartServerWith(t.Context(), env, ServeOptions{InsecureNoAuth: true}); !errors.Is(err, ErrVPSInsecure) {
+		t.Fatalf("vps + 0.0.0.0：%v", err)
+	}
 	env.Vars["NOTESTEME_DEPLOYMENT"] = "local"
-	if _, err := StartServerWith(t.Context(), env, ServeOptions{InsecureNoAuth: true}); !errors.Is(err, errInsecureNotImplemented) {
-		t.Fatalf("local：%v", err)
+	for _, listen := range []string{"0.0.0.0:8080", ":8080", "[::]:8080", "192.168.1.10:8080", "notes.example.com:8080", "localhost.evil.com:8080"} {
+		env.Vars["NOTESTEME_LISTEN"] = listen
+		_, err := StartServerWith(t.Context(), env, ServeOptions{InsecureNoAuth: true})
+		if err == nil || !strings.Contains(err.Error(), "只能在只監聽本機") || !strings.Contains(err.Error(), listen) {
+			t.Errorf("listen %s：%v", listen, err)
+		}
+	}
+	env.Vars["NOTESTEME_LISTEN"] = "127.0.0.1:8080"
+	// 有 NOTESTEME_PASSWORD：拒絕（不默默停用驗證），也不寫入密碼。
+	env.Vars["NOTESTEME_PASSWORD"] = "pw"
+	if _, err := StartServerWith(t.Context(), env, ServeOptions{InsecureNoAuth: true}); !errors.Is(err, ErrInsecureWithPassword) {
+		t.Fatalf("有 NOTESTEME_PASSWORD：%v", err)
+	}
+	delete(env.Vars, "NOTESTEME_PASSWORD")
+	// 反向代理與 OIDC 的設定。
+	cfgPath := env.Vars["NOTESTEME_CONFIG"]
+	for name, yaml := range map[string]string{
+		"trusted_proxies": "trusted_proxies: [\"10.0.0.0/8\"]\n",
+		"auth.proxy":      "trusted_proxies: [\"10.0.0.0/8\"]\nauth:\n  proxy:\n    user_header: Remote-User\n    allowed_users: [me]\n",
+		"auth.oidc": "auth:\n  oidc:\n    issuer: https://id.example.com\n    client_id: c\n    redirect_url: https://n.example.com/api/auth/oidc/callback\n" +
+			"    allowed_subjects: [s]\n",
+	} {
+		if err := os.WriteFile(cfgPath, []byte(yaml), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		env.Vars["NOTESTEME_OIDC_CLIENT_SECRET"] = "x"
+		if _, err := StartServerWith(t.Context(), env, ServeOptions{InsecureNoAuth: true}); !errors.Is(err, ErrInsecureWithProxy) {
+			t.Errorf("%s：%v", name, err)
+		}
+		delete(env.Vars, "NOTESTEME_OIDC_CLIENT_SECRET")
+	}
+	if err := os.Remove(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+	// 沒有旗標也沒有密碼：AUTH-R3 的訊息不變。
+	if _, err := StartServerWith(t.Context(), env, ServeOptions{}); err == nil || err.Error() != "尚未設定登入密碼。請設定 NOTESTEME_PASSWORD 後重新啟動。" {
+		t.Fatalf("沒有密碼：%v", err)
 	}
 	if code, _, stderr := run("serve", "--insecure-no-auth", "--bogus"); code != 2 || !strings.Contains(stderr, "--bogus") {
 		t.Errorf("exit = %d, stderr = %q", code, stderr)
+	}
+}
+
+// LoopbackListen 只接受 localhost 與 loopback 的 IP 字面值。
+func TestLoopbackListen(t *testing.T) {
+	for listen, want := range map[string]bool{
+		"127.0.0.1:8080": true, "127.0.0.2:1": true, "[::1]:8080": true, "localhost:8080": true, "LOCALHOST:1": true,
+		"0.0.0.0:8080": false, ":8080": false, "[::]:8080": false, "10.0.0.1:80": false, "localhost.evil.com:80": false,
+		"[::ffff:127.0.0.1]:80": false, "[::1%lo]:80": false, "127.0.0.1": false, "": false, "evil.com:80": false,
+	} {
+		if got := LoopbackListen(listen); got != want {
+			t.Errorf("LoopbackListen(%q) = %v，預期 %v", listen, got, want)
+		}
 	}
 }
 
