@@ -77,7 +77,8 @@
     "submit": "登录",
     "submitting": "登录中…",
     "invalidPassword": "密码不正确。",
-    "locked": "连续失败次数过多，请在 {{seconds}} 秒后再试。"
+    "locked": "连续失败次数过多，请在 {{seconds}} 秒后再试。",
+    "oidc": "用 {{host}} 登录"
   },
   "errors": {
     "unauthorized": "尚未登录或登录已失效。",
@@ -838,7 +839,12 @@
         "requeue": "放回队列",
         "fallback_api": "改用 API 处理"
       },
-      "useDefault": "使用默认值"
+      "useDefault": "使用默认值",
+      "rotate": "轮换",
+      "rotateNamed": "轮换 {{name}}",
+      "rotateTitle": "轮换 {{name}}？",
+      "rotateBody": "轮换后，旧的 token 会立即失效，请更新使用它的程序。",
+      "rotatedTitle": "已轮换 {{name}}"
     },
     "glossary": {
       "globalTitle": "全局词汇表",
@@ -949,7 +955,25 @@
       "submit": "修改密码",
       "changed": "已修改密码，其他设备已退出登录",
       "wrongCurrent": "当前密码不正确。确认后再试一次；连续错误 5 次会锁定 1 分钟。",
-      "sessionsTitle": "登录会话、反向代理验证与 OIDC"
+      "sessionsTitle": "登录会话",
+      "sessionsHint": "目前登录 Notesteme 的浏览器与设备。撤销后，那个会话会立即登出。",
+      "revoke": "撤销",
+      "revokeTitle": "撤销这个会话？",
+      "revokeBody": "撤销后，这个浏览器或设备会立即登出。",
+      "sessionRevoked": "已撤销会话",
+      "col": {
+        "method": "登录方式",
+        "device": "地址与浏览器",
+        "created": "登录时间",
+        "lastSeen": "最后使用",
+        "actions": "操作"
+      },
+      "method": {
+        "password": "密码",
+        "proxy": "反向代理",
+        "oidc": "OIDC"
+      },
+      "currentSession": "（当前这个）"
     },
     "bookmarklet": {
       "title": "书签小工具",

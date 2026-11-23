@@ -23,6 +23,29 @@ const SYSTEM = {
   yt_dlp: { pinned: null, previous: "2026.10.01" },
 };
 
+const SESSIONS = {
+  sessions: [
+    {
+      id: "s1",
+      method: "oidc",
+      created_at: "2026-11-20T00:00:00Z",
+      last_seen_at: "2026-11-23T00:00:00Z",
+      ip: "192.0.2.1",
+      user_agent: "Firefox",
+      current: true,
+    },
+    {
+      id: "s2",
+      method: "password",
+      created_at: "2026-11-19T00:00:00Z",
+      last_seen_at: "2026-11-22T00:00:00Z",
+      ip: "192.0.2.2",
+      user_agent: "Safari",
+      current: false,
+    },
+  ],
+};
+
 const TOKENS = {
   tokens: [
     {
@@ -61,6 +84,7 @@ function settingsApi(routes: Record<string, MockHandler> = {}) {
     "GET /api/settings/language": () => LANGUAGE,
     "GET /api/settings/agent": () => ({}),
     "GET /api/tokens": () => TOKENS,
+    "GET /api/auth/sessions": () => SESSIONS,
     "GET /api/system": () => SYSTEM,
     "GET /api/glossaries/{scope}/{id}": (req) => ({
       scope: req.params.scope,
@@ -267,6 +291,26 @@ describe("MCP 與 Agent", () => {
     await waitFor(() => expect(api.calls("DELETE", "/api/tokens/t1")).toHaveLength(1));
   });
 
+  it("輪替要先確認，新的 token 只顯示一次（AUTH-R21、R22）", async () => {
+    const api = settingsApi({
+      "POST /api/tokens/{id}/rotate": () => ({ ...TOKENS.tokens[0], token: TOKEN }),
+    });
+    await openSection("agent");
+    await userEvent.click(await screen.findByRole("button", { name: "輪替 claude-code" }));
+    const dialog = await screen.findByRole("dialog", { name: "輪替 claude-code？" });
+    expect(
+      within(dialog).getByText("輪替後，舊的 token 會立即失效，請更新使用它的程式。"),
+    ).toBeTruthy();
+    expect(api.calls("POST", "/api/tokens/{id}/rotate")).toHaveLength(0);
+    await userEvent.click(within(dialog).getByRole("button", { name: "輪替" }));
+    await waitFor(() => expect(api.calls("POST", "/api/tokens/t1/rotate")).toHaveLength(1));
+    const shown = await screen.findByRole("dialog", { name: "已輪替 claude-code" });
+    expect(within(shown).getByDisplayValue(TOKEN)).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(document.body.innerHTML).not.toContain(TOKEN));
+    expect(localStorage.length).toBe(0);
+  });
+
   it("Agent 設定只送有填的欄位；422 逐欄位顯示", async () => {
     let body: unknown;
     settingsApi({
@@ -300,6 +344,23 @@ describe("登入：修改密碼", () => {
     await userEvent.click(screen.getByRole("button", { name: "修改密碼" }));
     expect(await screen.findByText(/目前的密碼不正確/)).toBeTruthy();
     expect(current.value).toBe("");
+  });
+
+  it("工作階段列表標出目前這個，其他的可以撤銷（先確認，AUTH-R20、R22）", async () => {
+    const api = settingsApi({
+      "DELETE /api/auth/sessions/{id}": () => new Response(null, { status: 204 }),
+    });
+    await openSection("login");
+    expect(await screen.findByText("192.0.2.1")).toBeTruthy();
+    expect(screen.getByText("（目前這個）")).toBeTruthy();
+    // 只有一個撤銷按鈕：目前的 session 沒有
+    const buttons = screen.getAllByRole("button", { name: "撤銷" });
+    expect(buttons).toHaveLength(1);
+    await userEvent.click(buttons[0]!);
+    const dialog = await screen.findByRole("dialog", { name: "撤銷這個工作階段？" });
+    expect(api.calls("DELETE", "/api/auth/sessions/{id}")).toHaveLength(0);
+    await userEvent.click(within(dialog).getByRole("button", { name: "撤銷" }));
+    await waitFor(() => expect(api.calls("DELETE", "/api/auth/sessions/s2")).toHaveLength(1));
   });
 
   it("兩次新密碼不同時不送出", async () => {

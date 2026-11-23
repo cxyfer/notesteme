@@ -108,6 +108,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/auth/methods": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** 登入頁可用的登入方式：OIDC 是否啟用與 issuer 的主機名稱（免驗證） */
+    get: operations["auth-methods"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/auth/oidc/callback": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** OIDC 的 callback：驗證 state、換 token、驗證 id_token 與 sub，建立 session 後 302 到 next（AUTH-R18、R19） */
+    get: operations["auth-oidc-callback"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/auth/oidc/start": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** 開始 OIDC 登入：302 到身分提供者（PKCE S256），設定 notesteme_oidc cookie；沒有啟用 OIDC 時 404（AUTH-R16、R17） */
+    get: operations["auth-oidc-start"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/auth/password": {
     parameters: {
       query?: never;
@@ -132,7 +183,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 列出登入的工作階段（尚未實作） */
+    /** 列出登入的工作階段，依最後使用時間由新到舊；不含 session 的 secret（AUTH-R20） */
     get: operations["auth-sessions-list"];
     put?: never;
     post?: never;
@@ -152,7 +203,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** 撤銷一個工作階段（id 為 current 時等同登出，尚未實作） */
+    /** 撤銷一個工作階段；id 為 current 時撤銷目前的 session 並清除 cookie（等同登出，AUTH-R20） */
     delete: operations["auth-sessions-revoke"];
     options?: never;
     head?: never;
@@ -1554,7 +1605,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 輪替 token 的 secret，名稱、scope 與到期時間不變（尚未實作） */
+    /** 輪替 token 的 secret：名稱、scope 與到期時間不變，舊的 secret 立即失效；新 token 只回傳這一次（AUTH-R21） */
     post: operations["tokens-rotate"];
     delete?: never;
     options?: never;
@@ -1736,6 +1787,9 @@ export interface components {
       sha256: string;
       /** Format: int64 */
       version: number;
+    };
+    AuthMethodsOutputBody: {
+      oidc: components["schemas"]["OIDCStruct"];
     };
     Backfill: {
       /** Format: int64 */
@@ -2685,6 +2739,9 @@ export interface components {
        */
       total: number;
     };
+    ListSessionsOutputBody: {
+      sessions: components["schemas"]["SessionInfo"][] | null;
+    };
     ListTokensOutputBody: {
       tokens: components["schemas"]["TokenInfo"][] | null;
     };
@@ -2813,6 +2870,11 @@ export interface components {
     };
     NotifierListOutputBody: {
       notifiers: components["schemas"]["Info"][] | null;
+    };
+    OIDCStruct: {
+      enabled: boolean;
+      /** @description issuer 的主機名稱（按鈕文字「用 <主機名稱> 登入」） */
+      host?: string;
     };
     OkOutputBody: {
       ok: boolean;
@@ -3297,6 +3359,18 @@ export interface components {
       text: string;
       /** @description 命中的是哪一份字幕 */
       variant: string;
+    };
+    SessionInfo: {
+      /** Format: date-time */
+      created_at: string;
+      current: boolean;
+      id: string;
+      ip: string;
+      /** Format: date-time */
+      last_seen_at: string;
+      /** @enum {string} */
+      method: "password" | "proxy" | "oidc";
+      user_agent: string;
     };
     SetPromptDefaultInputBody: {
       /**
@@ -3888,6 +3962,183 @@ export interface operations {
       };
     };
   };
+  "auth-methods": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthMethodsOutputBody"];
+        };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "auth-oidc-callback": {
+    parameters: {
+      query?: {
+        state?: string;
+        code?: string;
+        error?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: {
+        notesteme_oidc?: string;
+      };
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          Location?: string;
+          "Set-Cookie"?: string;
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Unprocessable Entity */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Internal Server Error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "auth-oidc-start": {
+    parameters: {
+      query?: {
+        /** @description 登入後要前往的站內路徑；不安全或超過 2048 bytes 時換成 /（AUTH-R17） */
+        next?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          Location?: string;
+          "Set-Cookie"?: string;
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Unprocessable Entity */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Too Many Requests */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Internal Server Error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Bad Gateway */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
   "auth-password": {
     parameters: {
       query?: never;
@@ -3932,12 +4183,14 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ListSessionsOutputBody"];
+        };
       };
       /** @description Error */
       default: {
@@ -3954,7 +4207,10 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description session ID；current 代表送出請求的這個 session */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
@@ -3962,6 +4218,7 @@ export interface operations {
       /** @description No Content */
       204: {
         headers: {
+          "Set-Cookie"?: string;
           [name: string]: unknown;
         };
         content?: never;
@@ -7385,17 +7642,22 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description token ID 或有效的名稱 */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["CreatedToken"];
+        };
       };
       /** @description Error */
       default: {

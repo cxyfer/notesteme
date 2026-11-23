@@ -23,6 +23,13 @@ async function echoNext(_input: unknown, init?: RequestInit) {
   return json(200, { expires_at: "2026-12-01T00:00:00Z", next });
 }
 
+// 登入頁也會讀 GET /api/auth/methods；取出登入的那一次請求。
+function loginCall() {
+  const call = fetchMock.mock.calls.find(([u]) => u === "/api/auth/login");
+  if (!call) throw new Error("沒有送出 POST /api/auth/login");
+  return call;
+}
+
 async function submit(password: string) {
   const input = await screen.findByLabelText("密碼");
   await userEvent.clear(input);
@@ -43,13 +50,13 @@ function mockAddRoutes() {
 
 describe("登入頁", () => {
   it("密碼錯誤顯示「密碼不正確。」", async () => {
-    fetchMock.mockResolvedValue(
+    fetchMock.mockImplementation(async () =>
       json(401, { code: "invalid_password", message: "invalid password" }),
     );
     renderRoute("/login");
     await submit("wrong");
     expect((await screen.findByRole("alert")).textContent).toContain("密碼不正確。");
-    const [url, init] = fetchMock.mock.calls[0]!;
+    const [url, init] = loginCall();
     expect(url).toBe("/api/auth/login");
     expect(init!.body).toBe('{"password":"wrong"}');
   });
@@ -57,7 +64,7 @@ describe("登入頁", () => {
   it("鎖定時顯示剩餘秒數並停用按鈕，時間到後恢復", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      fetchMock.mockResolvedValue(
+      fetchMock.mockImplementation(async () =>
         json(429, { code: "login_locked", message: "locked", retry_after_s: 3 }),
       );
       renderRoute("/login");
@@ -106,7 +113,7 @@ describe("登入頁", () => {
       "/login?next=%2Fadd%3Furl%3Dhttps%253A%252F%252Fyoutu.be%252Fabc123xxxxx",
     );
     await submit("pw");
-    const [, init] = fetchMock.mock.calls[0]!;
+    const [, init] = loginCall();
     expect(JSON.parse(String(init!.body))).toEqual({
       password: "pw",
       next: "/add?url=https%3A%2F%2Fyoutu.be%2Fabc123xxxxx",
@@ -145,5 +152,26 @@ describe("登入頁", () => {
     expect(call).toBeDefined();
     const [, init] = call!;
     expect((init!.headers as Record<string, string>)["X-CSRF-Token"]).toBe("t");
+  });
+
+  it("OIDC 啟用時顯示「用 <主機名稱> 登入」，連到 start 並帶上要回去的頁面", async () => {
+    fetchMock.mockImplementation(async (input) =>
+      input === "/api/auth/methods"
+        ? json(200, { oidc: { enabled: true, host: "id.example.com" } })
+        : json(401, { code: "invalid_password", message: "x" }),
+    );
+    renderRoute("/login?next=%2Fitems%2Fabc%3Ft%3D12");
+    const link = await screen.findByRole("link", { name: "用 id.example.com 登入" });
+    expect(link.getAttribute("href")).toBe("/api/auth/oidc/start?next=%2Fitems%2Fabc%3Ft%3D12");
+  });
+
+  it("沒有啟用 OIDC 或讀取失敗時不顯示 OIDC 按鈕", async () => {
+    fetchMock.mockImplementation(async (input) =>
+      input === "/api/auth/methods" ? json(200, { oidc: { enabled: false } }) : json(500, {}),
+    );
+    renderRoute("/login");
+    await screen.findByLabelText("密碼");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });

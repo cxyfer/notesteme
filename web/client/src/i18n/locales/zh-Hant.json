@@ -77,7 +77,8 @@
     "submit": "登入",
     "submitting": "登入中…",
     "invalidPassword": "密碼不正確。",
-    "locked": "連續失敗太多次，請在 {{seconds}} 秒後再試。"
+    "locked": "連續失敗太多次，請在 {{seconds}} 秒後再試。",
+    "oidc": "用 {{host}} 登入"
   },
   "errors": {
     "unauthorized": "尚未登入或登入已失效。",
@@ -838,7 +839,12 @@
         "requeue": "放回佇列",
         "fallback_api": "改用 API 處理"
       },
-      "useDefault": "使用預設"
+      "useDefault": "使用預設",
+      "rotate": "輪替",
+      "rotateNamed": "輪替 {{name}}",
+      "rotateTitle": "輪替 {{name}}？",
+      "rotateBody": "輪替後，舊的 token 會立即失效，請更新使用它的程式。",
+      "rotatedTitle": "已輪替 {{name}}"
     },
     "glossary": {
       "globalTitle": "全域詞彙表",
@@ -949,7 +955,25 @@
       "submit": "修改密碼",
       "changed": "已修改密碼，其他裝置已登出",
       "wrongCurrent": "目前的密碼不正確。確認後再試一次；連續錯誤 5 次會鎖定 1 分鐘。",
-      "sessionsTitle": "登入工作階段、反向代理驗證與 OIDC"
+      "sessionsTitle": "登入工作階段",
+      "sessionsHint": "目前登入 Notesteme 的瀏覽器與裝置。撤銷後，那個工作階段會立即登出。",
+      "revoke": "撤銷",
+      "revokeTitle": "撤銷這個工作階段？",
+      "revokeBody": "撤銷後，這個瀏覽器或裝置會立即登出。",
+      "sessionRevoked": "已撤銷工作階段",
+      "col": {
+        "method": "登入方式",
+        "device": "位址與瀏覽器",
+        "created": "登入時間",
+        "lastSeen": "最後使用",
+        "actions": "動作"
+      },
+      "method": {
+        "password": "密碼",
+        "proxy": "反向代理",
+        "oidc": "OIDC"
+      },
+      "currentSession": "（目前這個）"
     },
     "bookmarklet": {
       "title": "書籤小工具",

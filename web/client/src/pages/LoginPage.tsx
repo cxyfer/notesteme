@@ -2,8 +2,10 @@
 // 連續失敗被鎖定（429 login_locked）時顯示剩餘秒數並停用按鈕；登入後導回原本的路徑。
 // 登入頁網址的 next（伺服器的頁面路由帶來，ENTRY-R5）與 redirect（UI 自己帶的）都交給後端檢查，
 // 只前往登入回應中的 next（ENTRY-R6），不直接使用網址中的值。
+// OIDC 啟用時多一個「用 <issuer 的主機名稱> 登入」（AUTH 的 UI 說明）：連到 /api/auth/oidc/start?next=，
+// next 同樣由後端以 SafeNext 檢查（AUTH-R17）。登入方式取自免驗證的 GET /api/auth/methods，失敗時不顯示按鈕。
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -26,6 +28,16 @@ export function LoginPage() {
   const [error, setError] = useState<unknown>();
   const [lockedUntil, setLockedUntil] = useState<number>();
   const [now, setNow] = useState(() => Date.now());
+  const methods = useQuery({
+    queryKey: ["auth-methods"],
+    queryFn: () => api.get("/api/auth/methods"),
+    retry: false,
+    staleTime: Infinity,
+  });
+  const oidc = methods.data?.oidc;
+  const requested = next ?? redirect;
+  const oidcHref =
+    "/api/auth/oidc/start" + (requested ? `?next=${encodeURIComponent(requested)}` : "");
 
   const remaining = lockedUntil ? Math.max(0, Math.ceil((lockedUntil - now) / 1000)) : 0;
   useEffect(() => {
@@ -47,7 +59,6 @@ export function LoginPage() {
     setPending(true);
     setError(undefined);
     try {
-      const requested = next ?? redirect;
       const res = await api.post("/api/auth/login", {
         body: requested ? { password, next: requested } : { password },
       });
@@ -96,6 +107,11 @@ export function LoginPage() {
         <Button type="submit" variant="primary" disabled={pending || remaining > 0}>
           {pending ? t("login.submitting") : t("login.submit")}
         </Button>
+        {oidc?.enabled && oidc.host && (
+          <a className="button button--outline" href={oidcHref}>
+            {t("login.oidc", { host: oidc.host })}
+          </a>
+        )}
       </form>
     </main>
   );

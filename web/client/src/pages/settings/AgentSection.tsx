@@ -1,5 +1,5 @@
 // MCP 與 Agent（pages.md §12、AUTH-R7～R10、AUTH-R22、AGT A3）：
-//   - token：列表、建立（scope、到期時間）、撤銷（先確認）。輪替是 M4（AUTH-R21），不做。
+//   - token：列表、建立（scope、到期時間）、撤銷與輪替（都先確認，AUTH-R21、R22）。
 //   - Claude Code 的設定片段。
 //   - Agent：一次最多領取幾個、租約時長、逾時後的處理（/api/settings/agent，整段取代）。
 //
@@ -68,6 +68,23 @@ function Tokens() {
   });
   const [revoking, setRevoking] = useState<TokenInfo>();
   const [revokeError, setRevokeError] = useState<unknown>();
+  const [rotating, setRotating] = useState<TokenInfo>();
+  // 輪替後的明文 token：只在這裡，關閉對話框時清掉
+  const [rotated, setRotated] = useState<{ name: string; token: string }>();
+
+  async function rotate(tk: TokenInfo) {
+    setRotating(undefined);
+    setRevokeError(undefined);
+    try {
+      const out = await api.post<"/api/tokens/{id}/rotate">(
+        apiPath("/api/tokens/{id}/rotate", { id: tk.id }),
+      );
+      setRotated({ name: out.name, token: out.token });
+      await qc.invalidateQueries({ queryKey: queryKeys.tokens });
+    } catch (err) {
+      setRevokeError(err);
+    }
+  }
 
   async function revoke(tk: TokenInfo) {
     setRevoking(undefined);
@@ -131,13 +148,22 @@ function Tokens() {
                     <td>{t(`settings.agent.state.${st}`)}</td>
                     <td>
                       {st === "active" && (
-                        <Button
-                          variant="text"
-                          aria-label={t("settings.agent.revokeNamed", { name: tk.name })}
-                          onClick={() => setRevoking(tk)}
-                        >
-                          {t("settings.agent.revoke")}
-                        </Button>
+                        <>
+                          <Button
+                            variant="text"
+                            aria-label={t("settings.agent.rotateNamed", { name: tk.name })}
+                            onClick={() => setRotating(tk)}
+                          >
+                            {t("settings.agent.rotate")}
+                          </Button>
+                          <Button
+                            variant="text"
+                            aria-label={t("settings.agent.revokeNamed", { name: tk.name })}
+                            onClick={() => setRevoking(tk)}
+                          >
+                            {t("settings.agent.revoke")}
+                          </Button>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -166,7 +192,88 @@ function Tokens() {
           </>
         }
       />
+      <Dialog
+        open={rotating !== undefined}
+        onOpenChange={(o) => !o && setRotating(undefined)}
+        title={t("settings.agent.rotateTitle", { name: rotating?.name ?? "" })}
+        description={t("settings.agent.rotateBody")}
+        closable={false}
+        footer={
+          <>
+            <Button variant="text" onClick={() => setRotating(undefined)}>
+              {t("settings.common.cancel")}
+            </Button>
+            <Button variant="danger" onClick={() => rotating && void rotate(rotating)}>
+              {t("settings.agent.rotate")}
+            </Button>
+          </>
+        }
+      />
+      <ShownToken
+        shown={rotated}
+        title={t("settings.agent.rotatedTitle", { name: rotated?.name ?? "" })}
+        onClose={() => setRotated(undefined)}
+      />
     </Panel>
+  );
+}
+
+/** 只顯示一次的明文 token（建立或輪替之後）；關閉時由呼叫端清掉 state。 */
+function ShownToken({
+  shown,
+  title,
+  onClose,
+}: {
+  shown?: { name: string; token: string };
+  title: string;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState<"token" | "snippet">();
+  async function copy(what: "token" | "snippet", text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(what);
+    } catch {
+      setCopied(undefined);
+    }
+  }
+  return (
+    <Dialog
+      open={shown !== undefined}
+      onOpenChange={(o) => {
+        if (!o) {
+          setCopied(undefined);
+          onClose();
+        }
+      }}
+      title={title}
+      description={t("settings.agent.createdBody")}
+    >
+      {shown && (
+        <div className="settings-form">
+          <TextField
+            label={t("settings.agent.tokenLabel")}
+            readOnly
+            autoComplete="off"
+            spellCheck={false}
+            value={shown.token}
+            onFocus={(e) => e.currentTarget.select()}
+          />
+          <div className="settings-actions">
+            <Button onClick={() => void copy("token", shown.token)}>
+              {t("settings.agent.copyToken")}
+            </Button>
+            <Button onClick={() => void copy("snippet", claudeCodeSnippet(shown.token))}>
+              {t("settings.agent.copySnippet")}
+            </Button>
+            <span className="settings-row__meta" aria-live="polite">
+              {copied ? t("settings.agent.copied") : ""}
+            </span>
+          </div>
+        </div>
+      )}
+    </Dialog>
   );
 }
 
@@ -180,7 +287,6 @@ function CreateToken() {
   const [error, setError] = useState<unknown>();
   // 明文 token：只在這裡，關閉對話框時清掉
   const [created, setCreated] = useState<{ name: string; token: string }>();
-  const [copied, setCopied] = useState<"token" | "snippet">();
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -204,18 +310,6 @@ function CreateToken() {
       setPending(false);
     }
   }
-
-  async function copy(what: "token" | "snippet", text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(what);
-    } catch {
-      setCopied(undefined);
-    }
-  }
-
-  const copyToken = () => created && void copy("token", created.token);
-  const copySnippet = () => created && void copy("snippet", claudeCodeSnippet(created.token));
 
   return (
     <>
@@ -269,37 +363,11 @@ function CreateToken() {
           </Button>
         </div>
       </form>
-      <Dialog
-        open={created !== undefined}
-        onOpenChange={(o) => {
-          if (!o) {
-            setCreated(undefined);
-            setCopied(undefined);
-          }
-        }}
+      <ShownToken
+        shown={created}
         title={t("settings.agent.createdTitle", { name: created?.name ?? "" })}
-        description={t("settings.agent.createdBody")}
-      >
-        {created && (
-          <div className="settings-form">
-            <TextField
-              label={t("settings.agent.tokenLabel")}
-              readOnly
-              autoComplete="off"
-              spellCheck={false}
-              value={created.token}
-              onFocus={(e) => e.currentTarget.select()}
-            />
-            <div className="settings-actions">
-              <Button onClick={copyToken}>{t("settings.agent.copyToken")}</Button>
-              <Button onClick={copySnippet}>{t("settings.agent.copySnippet")}</Button>
-              <span className="settings-row__meta" aria-live="polite">
-                {copied ? t("settings.agent.copied") : ""}
-              </span>
-            </div>
-          </div>
-        )}
-      </Dialog>
+        onClose={() => setCreated(undefined)}
+      />
     </>
   );
 }

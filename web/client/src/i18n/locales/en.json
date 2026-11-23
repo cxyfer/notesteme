@@ -77,7 +77,8 @@
     "submit": "Sign in",
     "submitting": "Signing in…",
     "invalidPassword": "The password is incorrect.",
-    "locked": "Too many failed attempts. Try again in {{seconds}} seconds."
+    "locked": "Too many failed attempts. Try again in {{seconds}} seconds.",
+    "oidc": "Sign in with {{host}}"
   },
   "errors": {
     "unauthorized": "You are not signed in, or your session has expired.",
@@ -861,7 +862,12 @@
         "requeue": "Put back in the queue",
         "fallback_api": "Use API instead"
       },
-      "useDefault": "Use default"
+      "useDefault": "Use default",
+      "rotate": "Rotate",
+      "rotateNamed": "Rotate {{name}}",
+      "rotateTitle": "Rotate {{name}}?",
+      "rotateBody": "After rotating, the old token stops working immediately. Update the programs that use it.",
+      "rotatedTitle": "Rotated {{name}}"
     },
     "glossary": {
       "globalTitle": "Global glossary",
@@ -976,7 +982,25 @@
       "submit": "Change password",
       "changed": "Password changed. Other devices were signed out",
       "wrongCurrent": "The current password is incorrect. Check it and try again; 5 wrong attempts in a row lock sign-in for 1 minute.",
-      "sessionsTitle": "Sign-in sessions, reverse proxy authentication and OIDC"
+      "sessionsTitle": "Sign-in sessions",
+      "sessionsHint": "Browsers and devices signed in to Notesteme. A revoked session is signed out immediately.",
+      "revoke": "Revoke",
+      "revokeTitle": "Revoke this session?",
+      "revokeBody": "The browser or device is signed out immediately.",
+      "sessionRevoked": "Session revoked",
+      "col": {
+        "method": "Method",
+        "device": "Address and browser",
+        "created": "Signed in",
+        "lastSeen": "Last used",
+        "actions": "Actions"
+      },
+      "method": {
+        "password": "Password",
+        "proxy": "Reverse proxy",
+        "oidc": "OIDC"
+      },
+      "currentSession": "(this one)"
     },
     "bookmarklet": {
       "title": "Bookmarklet",
