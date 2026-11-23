@@ -8,7 +8,9 @@ export {
   type ErrorCalloutProps,
   type ErrorCategory,
 } from "./ErrorCallout";
+export { ItemPicker, type ItemPickerProps } from "./ItemPicker";
 export { LoadMore, type LoadMoreProps } from "./LoadMore";
+export { SelectField, type SelectFieldProps } from "./SelectField";
 export { Spinner } from "./Spinner";
 export { STATUSES, StatusBadge, type Status } from "./StatusBadge";
 export { TextField, type TextFieldProps } from "./TextField";

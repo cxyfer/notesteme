@@ -72,6 +72,13 @@ export default tseslint.config(
               "aria-describedby",
               "aria-labelledby",
               "aria-controls",
+              // UI-3a：事件處理器裡的字串是程式用的（欄位路徑、列舉值），不是顯示的文字
+              "on[A-Z].*",
+              "form",
+              "accept",
+              "list",
+              "stage",
+              "path",
             ],
           },
         },

@@ -6,3 +6,5 @@ export {
   type StatusBandProps,
   type StatusBandStage,
 } from "./StatusBand";
+export { diffChars, hasChanges, type DiffPart } from "./diff";
+export { DiffText, type DiffTextProps } from "./DiffText";

@@ -1,0 +1,11 @@
+/* 逐字差異（DiffText）：刪除是刪除線＋失敗色，新增是底線＋高亮底色；不只靠顏色區分。 */
+.diff__del {
+  color: var(--state-failed);
+  text-decoration: line-through;
+}
+.diff__ins {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  background: color-mix(in srgb, var(--mark-now) 28%, transparent);
+}

@@ -146,3 +146,45 @@ export const api = {
     return request<ResponseOf<P, "patch">>("PATCH", path, opts);
   },
 };
+
+/**
+ * 回應是二進位（例如 POST /api/ass-styles/preview 的 PNG）時用這個：成功回 Blob，
+ * 錯誤一樣是 ApiError（401 一樣會導到登入頁）。
+ */
+export async function requestBlob(
+  method: string,
+  path: string,
+  opts: RequestOptions = {},
+): Promise<Blob> {
+  const headers: Record<string, string> = {
+    Accept: "image/*, application/json",
+    "Accept-Language": currentLanguage(),
+    ...opts.headers,
+  };
+  const token = csrfToken();
+  if (token) headers[CSRF_HEADER] = token;
+  let body: string | undefined;
+  if (opts.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(opts.body);
+  }
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method: method.toUpperCase(),
+      headers,
+      body,
+      credentials: "same-origin",
+      signal: opts.signal,
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw e;
+    throw new ApiError(0, CLIENT_CODES.network, e instanceof Error ? e.message : String(e));
+  }
+  if (!res.ok) {
+    const err = await errorFromResponse(res);
+    if (res.status === 401 && err.code === "unauthorized") onUnauthorized?.(err);
+    throw err;
+  }
+  return res.blob();
+}

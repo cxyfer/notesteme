@@ -9,6 +9,21 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.items.details(), id] as const,
   },
   profiles: ["profiles"] as const,
+  // 處理方案的單筆與版本（前綴是 profiles，列表失效時一起失效）
+  profile: (id: string) => [...queryKeys.profiles, "detail", id] as const,
+  profileVersions: (id: string) => [...queryKeys.profiles, "versions", id] as const,
+  prompts: {
+    all: ["prompts"] as const,
+    list: () => [...queryKeys.prompts.all, "list"] as const,
+    versions: (id: string) => [...queryKeys.prompts.all, "versions", id] as const,
+  },
+  assStyles: {
+    all: ["ass-styles"] as const,
+    list: (lang = "", sourceLang = "") =>
+      [...queryKeys.assStyles.all, "list", lang, sourceLang] as const,
+    detail: (id: string, lang = "", sourceLang = "") =>
+      [...queryKeys.assStyles.all, "detail", id, lang, sourceLang] as const,
+  },
   queue: ["queue"] as const,
   trash: ["trash"] as const,
   settings: (section: string) => ["settings", section] as const,
