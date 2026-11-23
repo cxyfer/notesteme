@@ -61,6 +61,7 @@ func (p *Pipeline) writeGeminiNote(ctx context.Context, it store.Item, eff Effec
 	out, cueStart := geminiSections(n.Output)
 	in := p.noteInputFor(it, lang, status, subtitle.Transcript{}, nil, nil, nil)
 	in.CueStart = cueStart
+	in.SubtitleLink = p.vaultSubtitleLink(it, eff)
 	in.Front.Engine, in.Front.Timing = "gemini", "model"
 	doc, err := renderNote(in, out, tpl)
 	if err != nil {

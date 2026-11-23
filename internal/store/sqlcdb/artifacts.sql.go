@@ -353,6 +353,16 @@ func (q *Queries) LatestProbes(ctx context.Context, itemID string) ([]SourceProb
 	return items, nil
 }
 
+const pinArtifact = `-- name: PinArtifact :exec
+UPDATE artifacts SET pinned = 1 WHERE id = ?1
+`
+
+// A version a vault output references is kept when older versions are purged (ADR-0020 section 4).
+func (q *Queries) PinArtifact(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, pinArtifact, id)
+	return err
+}
+
 const repointDanglingSuperseded = `-- name: RepointDanglingSuperseded :exec
 UPDATE artifacts SET superseded_by = CAST(?1 AS TEXT)
 WHERE artifacts.item_id = ?2 AND artifacts.kind = ?3 AND artifacts.variant = ?4

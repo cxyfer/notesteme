@@ -665,7 +665,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 輸出目標（sidecar、folder）寫出過的檔案與寫入時的 sha256（OUT-R11） */
+    /** 輸出目標（sidecar、folder、vault）寫出過的檔案與寫入時的 sha256（OUT-R11、VAULT-R5） */
     get: operations["items-outputs"];
     put?: never;
     post?: never;
@@ -1655,7 +1655,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 列出設定檔定義的 vault（id、adapter、base，尚未實作） */
+    /** 列出設定檔定義的 vault（id、adapter、base；VAULT-R1） */
     get: operations["vaults-list"];
     put?: never;
     post?: never;
@@ -2503,7 +2503,7 @@ export interface components {
       lang: string;
       /** @description 筆記的 Markdown；由 LLM 依字幕寫成，是不可信的資料 */
       markdown: string;
-      /** @description 筆記寫入的位置（vault，M3-S5 之後才有） */
+      /** @description 筆記寫入的位置（vault，VAULT-R5） */
       outputs: components["schemas"]["NoteOutput"][] | null;
       /** @description 輸入字幕已更新、筆記可能過時（NOTE-R10） */
       stale: boolean;
@@ -2519,8 +2519,16 @@ export interface components {
       ok: boolean;
     };
     NoteOutput: {
-      /** @description vault 內的路徑 */
+      /** @description git vault 中這個檔案所在的 commit */
+      commit?: string;
+      /** @description 檔案的種類：note、asset 或 subtitle */
+      kind: string;
+      /** @description vault 內的路徑（相對於 vault 根目錄） */
       path: string;
+      /** @description 最近一次發布時的結果：written、unchanged、saved_as_new、skipped_user_changed */
+      state: string;
+      /** @description 輸出目標，固定是 vault */
+      target: string;
       /** @description vault 的 id */
       vault: string;
     };
@@ -2580,16 +2588,24 @@ export interface components {
       notifiers: components["schemas"]["Info"][] | null;
     };
     OutputFile: {
+      /** @description git vault 中這個檔案所在的 commit */
+      commit?: string;
       format: string;
+      /** @description 檔案的種類：subtitle、note 或 asset（筆記嵌入的畫面） */
+      kind: string;
       lang: string;
-      /** @description 伺服器上的檔案路徑 */
+      /** @description 伺服器上的檔案路徑；vault 目標是相對於 vault 根目錄的路徑 */
       path: string;
       /** @description notesteme 寫入時的內容雜湊；之後檔案的雜湊與它不同代表被改過 */
       sha256: string;
       /** Format: int64 */
       size: number;
-      /** @description 輸出目標：sidecar 或 folder */
+      /** @description 最近一次發布時的結果：written、unchanged、saved_as_new、skipped_user_changed */
+      state: string;
+      /** @description 輸出目標：sidecar、folder 或 vault */
       target: string;
+      /** @description vault 的 id（vault 目標） */
+      vault?: string;
       /** Format: date-time */
       written_at: string;
     };
@@ -3178,6 +3194,17 @@ export interface components {
       /** @description 影音的短代號，例如 yt:abc123xxxxx */
       ref: string;
       title: string;
+    };
+    VaultInfo: {
+      /** @description fs（本機資料夾）或 git（推送到 git repo） */
+      adapter: string;
+      /** @description vault 內的根資料夾 */
+      base: string;
+      /** @description vault 的 id（處理方案的 outputs[].vault） */
+      id: string;
+    };
+    VaultsOutputBody: {
+      vaults: components["schemas"]["VaultInfo"][] | null;
     };
     View: {
       backfill: components["schemas"]["Backfill"];
@@ -7080,12 +7107,14 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["VaultsOutputBody"];
+        };
       };
       /** @description Error */
       default: {

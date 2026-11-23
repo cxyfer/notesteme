@@ -40,13 +40,17 @@ type NoteBody struct {
 	Checks      []NoteCheck       `json:"checks" doc:"自動檢查的結果，依檢查的順序"`
 	Stale       bool              `json:"stale" doc:"輸入字幕已更新、筆記可能過時（NOTE-R10）"`
 	StaleReason string            `json:"stale_reason,omitempty" doc:"過時的原因"`
-	Outputs     []NoteOutput      `json:"outputs" doc:"筆記寫入的位置（vault，M3-S5 之後才有）"`
+	Outputs     []NoteOutput      `json:"outputs" doc:"筆記寫入的位置（vault，VAULT-R5）"`
 }
 
-// NoteOutput 是筆記寫入的一個位置（VAULT 的切片補上欄位；目前一律是空清單）。
+// NoteOutput 是筆記寫入 vault 的一個檔案（VAULT-R5）。
 type NoteOutput struct {
-	Vault string `json:"vault" doc:"vault 的 id"`
-	Path  string `json:"path" doc:"vault 內的路徑"`
+	Target string `json:"target" doc:"輸出目標，固定是 vault"`
+	Vault  string `json:"vault" doc:"vault 的 id"`
+	Kind   string `json:"kind" doc:"檔案的種類：note、asset 或 subtitle"`
+	Path   string `json:"path" doc:"vault 內的路徑（相對於 vault 根目錄）"`
+	State  string `json:"state" doc:"最近一次發布時的結果：written、unchanged、saved_as_new、skipped_user_changed"`
+	Commit string `json:"commit,omitempty" doc:"git vault 中這個檔案所在的 commit"`
 }
 
 type noteInput struct {
@@ -177,6 +181,9 @@ func (rt *routes) getNote(ctx context.Context, in *noteInput) (*huma.StreamRespo
 	}
 	body := NoteBody{Lang: v.Lang, Markdown: v.Markdown, Frontmatter: v.Frontmatter, Checks: toNoteChecks(v.Checks),
 		Stale: v.Stale, StaleReason: v.StaleReason, Outputs: []NoteOutput{}}
+	for _, o := range v.Outputs {
+		body.Outputs = append(body.Outputs, NoteOutput{Target: o.Target, Vault: o.Vault, Kind: o.Kind, Path: o.Path, State: o.State, Commit: o.GitCommit})
+	}
 	if body.Frontmatter == nil {
 		body.Frontmatter = map[string]string{}
 	}

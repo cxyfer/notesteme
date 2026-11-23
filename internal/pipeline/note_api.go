@@ -23,6 +23,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/frames"
 	"github.com/cxyfer/notesteme/internal/llm"
 	"github.com/cxyfer/notesteme/internal/notes"
+	"github.com/cxyfer/notesteme/internal/output"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 	"github.com/cxyfer/notesteme/internal/validate"
@@ -304,6 +305,8 @@ type noteRender struct {
 	CueStart map[int]int64       `json:"cue_start"`
 	Frames   map[int]noteFrameAt `json:"frames"`
 	Extra    []notes.InfoRow     `json:"extra"`
+	// SubtitleLink 是資訊表「字幕」列的 vault 路徑（VAULT-R2、V8）；publish 用它判斷連結是否過時。
+	SubtitleLink string `json:"subtitle_link,omitempty"`
 }
 
 type noteFrameAt struct {
@@ -319,6 +322,8 @@ type NoteView struct {
 	Checks      []notes.Check
 	Stale       bool
 	StaleReason string
+	// Outputs 是寫進 vault 的檔案（VAULT-R5，筆記、圖片與字幕）。
+	Outputs []store.Output
 }
 
 // currentNote 回傳影音現行的筆記；lang 為空時用最近寫出的一份。沒有時回傳 ErrNoNote。
@@ -370,6 +375,15 @@ func (p *Pipeline) ItemNote(ctx context.Context, itemID, lang string) (NoteView,
 		return NoteView{}, err
 	}
 	v := NoteView{Lang: doc.Lang, Markdown: doc.Markdown, Frontmatter: doc.Frontmatter, Checks: doc.Checks}
+	outs, err := p.Outputs(ctx, it.ID)
+	if err != nil {
+		return NoteView{}, err
+	}
+	for _, o := range outs {
+		if o.Target == output.TargetVault {
+			v.Outputs = append(v.Outputs, o)
+		}
+	}
 	if v.Checks == nil {
 		v.Checks = []notes.Check{}
 	}
@@ -412,6 +426,7 @@ func (p *Pipeline) PreviewNoteTemplate(ctx context.Context, templateRef, itemRef
 	}
 	in := p.noteInputFor(it, doc.Lang, rd.Status, subtitle.Transcript{}, nil, fr, rd.Extra)
 	in.CueStart = rd.CueStart
+	in.SubtitleLink = rd.SubtitleLink
 	out := llm.NoteOutput{SelfCheck: doc.SelfCheck}
 	for _, s := range doc.Sections {
 		out.Sections = append(out.Sections, llm.NoteSection{Level: s.Level, Title: s.Title, Cue: s.Cue, Body: s.Body, Frames: s.Frames})
@@ -557,4 +572,73 @@ func seedJPEG(w, h int, hex string) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// SeedNote 直接寫入影音現行的 note 產出（steps.md 4.15 `the note of … is:`）：markdown 是完整的筆記（含 frontmatter），
+// 語言依生效設定的筆記語言（NOTE-R5），來源紀錄的 checks.passed 為 true。markdown 中嵌入的、現行 frames 產出中
+// 選中的畫面記成 images，frames 產出列為 parent（VAULT 寫入圖片與 pin 版本用）。
+// 只給驗收測試的 harness 使用（ADR-0015）；沒有任何 HTTP 端點或 CLI 指令呼叫它。
+func (p *Pipeline) SeedNote(ctx context.Context, itemID, markdown string) error {
+	it, err := p.st.Read().ItemByID(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	eff, err := p.playgroundEffective(ctx, it.ID)
+	if err != nil {
+		return err
+	}
+	set, _ := noteSettingsOf(eff)
+	lang := noteLangOf(eff, set, it.OriginalLang)
+	if lang == "" {
+		// seeding 時常常還沒有字幕可以判斷原文語言；用驗收測試假平台的預設語言，之後產生的筆記才會取代它。
+		lang = "en"
+	}
+	tpl := builtinNoteTemplate()
+	doc := noteDoc{
+		Lang: lang, Markdown: markdown, Frontmatter: map[string]string{}, Checks: []notes.Check{}, Engine: "pipeline",
+		Template: tpl.Ref(), Sections: []notes.Section{}, SelfCheck: []string{}, Images: []noteImage{},
+		Render: noteRender{CueStart: map[int]int64{}, Frames: map[int]noteFrameAt{}},
+	}
+	var parents []string
+	if art, man, ok, err := p.currentFrames(ctx, it.ID); err != nil {
+		return err
+	} else if ok {
+		for i, c := range man.Candidates {
+			n := i + 1
+			name := notes.FrameFileName(it.Title, c.AtMS, n)
+			if c.Selected && strings.Contains(markdown, "![["+name) {
+				doc.Images = append(doc.Images, noteImage{N: n, File: name})
+				doc.Render.Frames[n] = noteFrameAt{AtMS: c.AtMS, Caption: c.Caption}
+			}
+		}
+		if len(doc.Images) > 0 {
+			parents = append(parents, art.ID)
+		}
+	}
+	body, err := json.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	prov, err := p.provenance(map[string]any{
+		"stage": StageNote, "impl_version": p.implVersion(StageNote), "seeded": true, "engine": "pipeline",
+		"template": tpl.Ref(), "checks": map[string]any{"passed": true}, "lang": lang,
+	}, nil)
+	if err != nil {
+		return err
+	}
+	id := store.NewID()
+	rel, sha, size, err := writeArtifactFile(p.dataDir, it.ID, id, func(wr io.Writer) error {
+		_, werr := wr.Write(body)
+		return werr
+	})
+	if err != nil {
+		return err
+	}
+	return p.st.Tx(ctx, func(r *store.Repo) error {
+		_, err := r.InsertArtifact(ctx, store.NewArtifact{
+			ID: id, ItemID: it.ID, Kind: KindNote, Variant: KindNote, Lang: lang, Format: noteFmt,
+			Path: rel, SHA256: sha, Size: size, Parents: parents, Provenance: prov,
+		})
+		return err
+	})
 }

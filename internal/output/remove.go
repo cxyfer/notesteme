@@ -8,6 +8,8 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
+	"strings"
 )
 
 // FileState 是輸出檔目前的內容與 notesteme 最後一次寫入時的紀錄的關係（DEL-R9）。
@@ -46,6 +48,32 @@ func inspect(dir, name, wantSHA string, remove bool) (FileState, error) {
 		return "", fmt.Errorf("開啟輸出資料夾：%w", err)
 	}
 	defer root.Close()
+	return inspectRoot(root, name, wantSHA, remove)
+}
+
+// InspectIn 同 Inspect，但檔案是 parent 之內的相對路徑 rel（以 / 分隔，vault 目標用）：所有操作都限制在 parent 之內。
+// 資料夾不存在時是 StateMissing；資料夾經由指向 parent 以外的連結時回傳錯誤（由 os.Root 拒絕）。
+func InspectIn(parent *os.Root, rel, wantSHA string, remove bool) (FileState, error) {
+	dir, name := path.Split(rel)
+	if err := validName(name); err != nil {
+		return "", err
+	}
+	root := parent
+	if d := strings.TrimSuffix(dir, "/"); d != "" {
+		sub, err := parent.OpenRoot(d)
+		if errors.Is(err, fs.ErrNotExist) {
+			return StateMissing, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("開啟輸出資料夾：%w", err)
+		}
+		defer sub.Close()
+		root = sub
+	}
+	return inspectRoot(root, name, wantSHA, remove)
+}
+
+func inspectRoot(root *os.Root, name, wantSHA string, remove bool) (FileState, error) {
 
 	lst, err := root.Lstat(name)
 	switch {

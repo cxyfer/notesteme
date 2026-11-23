@@ -6,13 +6,12 @@ package output
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"regexp"
 	"slices"
 )
 
-// 輸出目標。vault 屬於 M3，這裡只認得名稱，好給出清楚的「尚未支援」。
+// 輸出目標。vault 的寫出由 internal/vault 與 pipeline 的 publish 處理（VAULT），這裡只檢查設定的結構。
 const (
 	TargetSidecar = "sidecar"
 	TargetFolder  = "folder"
@@ -44,14 +43,11 @@ type Config struct {
 	Path string `json:"path,omitempty"`
 	// OnUserChange 是目標檔案被改過時的處理方式，預設 save_as_new。
 	OnUserChange string `json:"on_user_change,omitempty"`
-	// Vault、Folder、Hooks 只用於 vault 目標（VAULT-R1、R2、R10）；寫出由 VAULT 的切片實作。
+	// Vault、Folder、Hooks 只用於 vault 目標（VAULT-R1、R2、R10）。
 	Vault  string   `json:"vault,omitempty"`
 	Folder string   `json:"folder,omitempty"`
 	Hooks  []string `json:"hooks,omitempty"`
 }
-
-// ErrVaultNotImplemented 是 vault 目標在 VAULT 的切片實作之前的錯誤（M3-S0）：設定可以儲存，發布時才失敗。
-var ErrVaultNotImplemented = errors.New("vault 輸出目標還沒有實作（M3 的 VAULT 切片）。")
 
 // Parse 嚴格解析設定中 outputs 的一項：不認識的欄位是錯誤，避免拼錯的設定被默默忽略。
 // 只檢查結構與列舉；folder 的路徑是否允許由寫出時檢查。
@@ -77,8 +73,17 @@ func ValidLang(s string) bool { return langPattern.MatchString(s) }
 func (c Config) validate() error {
 	switch c.Target {
 	case TargetSidecar, TargetFolder:
+		if c.Vault != "" || c.Folder != "" || c.Hooks != nil {
+			return fmt.Errorf("vault、folder、hooks 只用於 vault 目標。")
+		}
 	case TargetVault:
-		return ErrVaultNotImplemented
+		// vault 與 hook 是否存在、folder 的形狀由處理方案的驗證檢查（VAULT-R1、R2、R10）；這裡只確認結構。
+		if c.Vault == "" {
+			return fmt.Errorf("vault 目標必須指定 vault。")
+		}
+		if c.Path != "" {
+			return fmt.Errorf("vault 目標不可以指定 path。")
+		}
 	default:
 		return fmt.Errorf("輸出目標 %q 不認識，必須是 sidecar、folder 或 vault。", c.Target)
 	}
@@ -107,6 +112,14 @@ func (c Config) validate() error {
 // FormatList 回傳要寫出的格式（沒寫時用預設）。
 func (c Config) FormatList() []string {
 	if len(c.Formats) == 0 {
+		return DefaultFormats
+	}
+	return c.Formats
+}
+
+// VaultFormats 回傳 vault 目標要寫出的字幕格式（VAULT-R5）：沒寫時是預設的 [srt]，`formats: []` 時不寫字幕。
+func (c Config) VaultFormats() []string {
+	if c.Formats == nil {
 		return DefaultFormats
 	}
 	return c.Formats

@@ -2,11 +2,13 @@ package pipeline
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/cxyfer/notesteme/internal/assstyle"
@@ -64,7 +66,23 @@ func (p *Pipeline) runPublish(ctx context.Context, it store.Item, eff Effective)
 		missing    []string
 		dirs       = map[string]publishDir{}
 	)
+	var vaults []*vaultOutcome
 	for _, cfg := range cfgs {
+		if cfg.Target == output.TargetVault {
+			vo, err := p.publishVaultTarget(ctx, it, cfg, w)
+			if err != nil {
+				return result{}, err
+			}
+			applicable++
+			blocked = append(blocked, vo.blocked...)
+			for _, l := range vo.missing {
+				if !contains(missing, l) {
+					missing = append(missing, l)
+				}
+			}
+			vaults = append(vaults, vo)
+			continue
+		}
 		pd, ok, err := p.publishDir(ctx, it, cfg, dirs)
 		if err != nil {
 			return result{}, err
@@ -114,9 +132,18 @@ func (p *Pipeline) runPublish(ctx context.Context, it store.Item, eff Effective)
 		}
 	}
 	done := store.StageState{Status: store.StatusDone}
+	var msgs []string
 	if len(missing) > 0 {
-		done.Message = msgPublishNoLang + strings.Join(missing, "、") + "。"
+		msgs = append(msgs, msgPublishNoLang+strings.Join(missing, "、")+"。")
 	}
+	for _, vo := range vaults {
+		for _, m := range vo.messages {
+			if !contains(msgs, m) {
+				msgs = append(msgs, m)
+			}
+		}
+	}
+	done.Message = strings.Join(msgs, "")
 	return result{task: taskDone, stage: stage, state: done}, nil
 }
 
@@ -165,7 +192,7 @@ func (p *Pipeline) publishDir(ctx context.Context, it store.Item, cfg output.Con
 	default:
 		return publishDir{}, false, &errclass.Error{
 			Class: errclass.ClassPermanent, Source: "publish", Detail: "尚未支援的輸出目標 " + cfg.Target,
-			Message: "輸出目標 " + cfg.Target + " 尚未支援（vault 在 M3 提供）。",
+			Message: "輸出目標 " + cfg.Target + " 尚未支援。",
 		}
 	}
 	cache[key] = pd
@@ -328,5 +355,26 @@ func (p *Pipeline) Outputs(ctx context.Context, itemID string) ([]store.Output, 
 	if it.DeletedAt != nil {
 		return nil, &InTrashError{ItemID: it.ID}
 	}
-	return r.Outputs(ctx, it.ID)
+	list, err := r.Outputs(ctx, it.ID)
+	if err != nil {
+		return nil, err
+	}
+	// 同一個時間寫出的檔案依種類排列：筆記、圖片、字幕（VAULT-R5 的寫入順序），再依路徑。
+	slices.SortStableFunc(list, func(a, b store.Output) int {
+		if c := a.WrittenAt.Compare(b.WrittenAt); c != 0 {
+			return c
+		}
+		return cmp.Compare(outputKindRank(a.Kind), outputKindRank(b.Kind))
+	})
+	return list, nil
+}
+
+func outputKindRank(kind string) int {
+	switch kind {
+	case store.OutputKindNote:
+		return 0
+	case store.OutputKindAsset:
+		return 1
+	}
+	return 2
 }

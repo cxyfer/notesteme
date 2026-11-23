@@ -10,7 +10,7 @@ import (
 )
 
 const getOutput = `-- name: GetOutput :one
-SELECT item_id, path, target, format, lang, sha256, size, written_at, kind, vault, git_commit FROM outputs WHERE item_id = ?1 AND path = ?2
+SELECT item_id, path, target, format, lang, sha256, size, written_at, kind, vault, git_commit, state FROM outputs WHERE item_id = ?1 AND path = ?2
 `
 
 type GetOutputParams struct {
@@ -33,12 +33,13 @@ func (q *Queries) GetOutput(ctx context.Context, arg GetOutputParams) (Output, e
 		&i.Kind,
 		&i.Vault,
 		&i.GitCommit,
+		&i.State,
 	)
 	return i, err
 }
 
 const listOutputs = `-- name: ListOutputs :many
-SELECT item_id, path, target, format, lang, sha256, size, written_at, kind, vault, git_commit FROM outputs WHERE item_id = ?1 ORDER BY written_at, path
+SELECT item_id, path, target, format, lang, sha256, size, written_at, kind, vault, git_commit, state FROM outputs WHERE item_id = ?1 ORDER BY written_at, path
 `
 
 func (q *Queries) ListOutputs(ctx context.Context, itemID string) ([]Output, error) {
@@ -62,6 +63,7 @@ func (q *Queries) ListOutputs(ctx context.Context, itemID string) ([]Output, err
 			&i.Kind,
 			&i.Vault,
 			&i.GitCommit,
+			&i.State,
 		); err != nil {
 			return nil, err
 		}
@@ -76,14 +78,47 @@ func (q *Queries) ListOutputs(ctx context.Context, itemID string) ([]Output, err
 	return items, nil
 }
 
+const setOutputCommit = `-- name: SetOutputCommit :exec
+UPDATE outputs SET git_commit = ?1 WHERE item_id = ?2 AND path = ?3
+`
+
+type SetOutputCommitParams struct {
+	GitCommit *string
+	ItemID    string
+	Path      string
+}
+
+// Records the git commit that a vault file landed in (VAULT-R7).
+func (q *Queries) SetOutputCommit(ctx context.Context, arg SetOutputCommitParams) error {
+	_, err := q.db.ExecContext(ctx, setOutputCommit, arg.GitCommit, arg.ItemID, arg.Path)
+	return err
+}
+
+const setOutputState = `-- name: SetOutputState :exec
+UPDATE outputs SET state = ?1 WHERE item_id = ?2 AND path = ?3
+`
+
+type SetOutputStateParams struct {
+	State  string
+	ItemID string
+	Path   string
+}
+
+// Updates only the publish state of a recorded file (VAULT-R5): the hash keeps telling whether the user changed it.
+func (q *Queries) SetOutputState(ctx context.Context, arg SetOutputStateParams) error {
+	_, err := q.db.ExecContext(ctx, setOutputState, arg.State, arg.ItemID, arg.Path)
+	return err
+}
+
 const upsertOutput = `-- name: UpsertOutput :exec
-INSERT INTO outputs (item_id, path, target, format, lang, sha256, size, written_at, kind, vault, git_commit)
+INSERT INTO outputs (item_id, path, target, format, lang, sha256, size, written_at, kind, vault, git_commit, state)
 VALUES (?1, ?2, ?3, ?4, ?5,
-        ?6, ?7, ?8, ?9, ?10, ?11)
+        ?6, ?7, ?8, ?9, ?10, ?11,
+        ?12)
 ON CONFLICT (item_id, path) DO UPDATE SET
     target = excluded.target, format = excluded.format, lang = excluded.lang,
     sha256 = excluded.sha256, size = excluded.size, written_at = excluded.written_at,
-    kind = excluded.kind, vault = excluded.vault, git_commit = excluded.git_commit
+    kind = excluded.kind, vault = excluded.vault, git_commit = excluded.git_commit, state = excluded.state
 `
 
 type UpsertOutputParams struct {
@@ -98,6 +133,7 @@ type UpsertOutputParams struct {
 	Kind      string
 	Vault     *string
 	GitCommit *string
+	State     string
 }
 
 // One row per (item, path): a rewrite replaces the recorded hash with the one just written.
@@ -115,6 +151,7 @@ func (q *Queries) UpsertOutput(ctx context.Context, arg UpsertOutputParams) erro
 		arg.Kind,
 		arg.Vault,
 		arg.GitCommit,
+		arg.State,
 	)
 	return err
 }

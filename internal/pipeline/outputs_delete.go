@@ -3,11 +3,14 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"io/fs"
+	"os"
 	"path/filepath"
 
 	"github.com/cxyfer/notesteme/internal/output"
 	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/vault"
 )
 
 // 這個檔案是刪除影音時輸出檔的處理（DEL-R3、R9）：預設保留；指定 delete_outputs 時只刪除
@@ -21,6 +24,10 @@ const (
 	KeptOutsideRoots = "outside_roots"
 	// KeptUnreadable 是檢查或刪除時失敗（權限等）：保留。
 	KeptUnreadable = "unreadable"
+	// KeptVaultMissing 是紀錄的 vault 已經不在設定檔中：不知道它的根目錄，不碰。
+	KeptVaultMissing = "vault_not_configured"
+	// KeptGitVault 是 git vault 的檔案：刪除要另外 commit 與推送（VAULT-R12），還沒有實作，保留。
+	KeptGitVault = "git_vault"
 )
 
 // outputStatus 是一筆輸出紀錄對應的檔案現況。
@@ -47,6 +54,10 @@ func (s outputStatus) keepReason() string {
 func (p *Pipeline) outputStatuses(ctx context.Context, recs []store.Output, remove bool) []outputStatus {
 	out := make([]outputStatus, 0, len(recs))
 	for _, rec := range recs {
+		if rec.Target == output.TargetVault {
+			out = append(out, p.vaultOutputStatus(rec, remove))
+			continue
+		}
 		st := outputStatus{Path: rec.Path}
 		dir, err := p.files.Resolve(filepath.Dir(rec.Path))
 		switch {
@@ -125,4 +136,47 @@ func (p *Pipeline) republishMissingOutputs(ctx context.Context, itemID string) {
 	if _, err := p.Rerun(ctx, itemID, RerunRequest{From: StagePublish}); err != nil {
 		p.log.Warn("還原後重新發布輸出檔失敗", "item", itemID, "error", err)
 	}
+}
+
+// vaultOutputStatus 檢查（remove 時刪除）vault 中的一個檔案（VAULT-R12、DEL-R9）：路徑相對於設定檔定義的 vault 根目錄，
+// 一律在 os.Root 之內操作，不跟隨指向 vault 以外的連結。
+func (p *Pipeline) vaultOutputStatus(rec store.Output, remove bool) outputStatus {
+	st := outputStatus{Path: rec.Path}
+	def, ok := p.vaults[rec.Vault]
+	switch {
+	case !ok:
+		st.State, st.Reason = output.StateModified, KeptVaultMissing
+		return st
+	case def.Adapter != vault.AdapterFS:
+		st.State, st.Reason = output.StateModified, KeptGitVault
+		if !remove {
+			st.State, st.Reason = p.inspectVaultFile(p.vaultRoot(def), rec, false)
+		}
+		return st
+	}
+	st.State, st.Reason = p.inspectVaultFile(def.Path, rec, remove)
+	return st
+}
+
+// inspectVaultFile 在 vault 根目錄 dir 中檢查（或刪除）紀錄的檔案；無法判斷時回傳保留的原因。
+func (p *Pipeline) inspectVaultFile(dir string, rec store.Output, remove bool) (output.FileState, string) {
+	root, err := os.OpenRoot(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return output.StateMissing, ""
+	}
+	if err != nil {
+		p.log.Warn("開啟 vault 失敗", "vault", rec.Vault, "error", err)
+		return output.StateModified, KeptUnreadable
+	}
+	defer root.Close()
+	if err := vault.CheckInside(root, rec.Path); err != nil {
+		p.log.Warn("vault 的輸出檔經過連結", "vault", rec.Vault, "path", rec.Path, "error", err)
+		return output.StateModified, KeptModified
+	}
+	state, err := output.InspectIn(root, rec.Path, rec.SHA256, remove)
+	if err != nil {
+		p.log.Warn("檢查或刪除 vault 的輸出檔失敗", "vault", rec.Vault, "path", rec.Path, "error", err)
+		return output.StateModified, KeptUnreadable
+	}
+	return state, ""
 }

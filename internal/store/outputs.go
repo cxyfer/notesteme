@@ -23,7 +23,18 @@ type Output struct {
 	Vault string
 	// GitCommit 是 git vault 這次寫入所在的 commit；其他情況為空字串。
 	GitCommit string
+	// State 是最近一次發布時這個檔案的結果（VAULT-R5）：written、unchanged、saved_as_new、skipped_user_changed；
+	// 空字串寫入時視為 written。
+	State string
 }
+
+// 輸出檔在最近一次發布的結果（outputs.state，VAULT-R5）。
+const (
+	OutputStateWritten     = "written"
+	OutputStateUnchanged   = "unchanged"
+	OutputStateSavedAsNew  = "saved_as_new"
+	OutputStateUserChanged = "skipped_user_changed"
+)
 
 // 輸出檔案的種類（outputs.kind，ADR-0020 第 8 點）。
 const (
@@ -44,7 +55,7 @@ func outputFromRow(row sqlcdb.Output) Output {
 	return Output{
 		ItemID: row.ItemID, Path: row.Path, Target: row.Target, Format: row.Format, Lang: row.Lang,
 		SHA256: row.Sha256, Size: row.Size, WrittenAt: fromMs(row.WrittenAt),
-		Kind: row.Kind, Vault: deref(row.Vault), GitCommit: deref(row.GitCommit),
+		Kind: row.Kind, Vault: deref(row.Vault), GitCommit: deref(row.GitCommit), State: row.State,
 	}
 }
 
@@ -59,10 +70,14 @@ func (r *Repo) RecordOutput(ctx context.Context, o Output) error {
 		if kind == "" {
 			kind = OutputKindSubtitle
 		}
+		state := o.State
+		if state == "" {
+			state = OutputStateWritten
+		}
 		return tx.q.UpsertOutput(ctx, sqlcdb.UpsertOutputParams{
 			ItemID: o.ItemID, Path: o.Path, Target: o.Target, Format: o.Format, Lang: o.Lang,
 			Sha256: o.SHA256, Size: o.Size, WrittenAt: tx.nowMs(),
-			Kind: kind, Vault: nullable(o.Vault), GitCommit: nullable(o.GitCommit),
+			Kind: kind, Vault: nullable(o.Vault), GitCommit: nullable(o.GitCommit), State: state,
 		})
 	})
 }
@@ -87,4 +102,14 @@ func (r *Repo) Outputs(ctx context.Context, itemID string) ([]Output, error) {
 		out = append(out, outputFromRow(row))
 	}
 	return out, nil
+}
+
+// SetOutputState 只更新輸出紀錄的發布結果（VAULT-R5），不動 sha256；沒有紀錄時不做任何事。
+func (r *Repo) SetOutputState(ctx context.Context, itemID, path, state string) error {
+	return r.q.SetOutputState(ctx, sqlcdb.SetOutputStateParams{ItemID: itemID, Path: path, State: state})
+}
+
+// SetOutputCommit 記錄 vault 檔案所在的 git commit（VAULT-R7）；沒有紀錄時不做任何事。
+func (r *Repo) SetOutputCommit(ctx context.Context, itemID, path, commit string) error {
+	return r.q.SetOutputCommit(ctx, sqlcdb.SetOutputCommitParams{ItemID: itemID, Path: path, GitCommit: nullable(commit)})
 }

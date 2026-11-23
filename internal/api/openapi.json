@@ -2216,7 +2216,7 @@
             "type": "string"
           },
           "outputs": {
-            "description": "筆記寫入的位置（vault，M3-S5 之後才有）",
+            "description": "筆記寫入的位置（vault，VAULT-R5）",
             "items": {
               "$ref": "#/components/schemas/NoteOutput"
             },
@@ -2269,8 +2269,24 @@
       "NoteOutput": {
         "additionalProperties": false,
         "properties": {
+          "commit": {
+            "description": "git vault 中這個檔案所在的 commit",
+            "type": "string"
+          },
+          "kind": {
+            "description": "檔案的種類：note、asset 或 subtitle",
+            "type": "string"
+          },
           "path": {
-            "description": "vault 內的路徑",
+            "description": "vault 內的路徑（相對於 vault 根目錄）",
+            "type": "string"
+          },
+          "state": {
+            "description": "最近一次發布時的結果：written、unchanged、saved_as_new、skipped_user_changed",
+            "type": "string"
+          },
+          "target": {
+            "description": "輸出目標，固定是 vault",
             "type": "string"
           },
           "vault": {
@@ -2279,8 +2295,11 @@
           }
         },
         "required": [
+          "target",
           "vault",
-          "path"
+          "kind",
+          "path",
+          "state"
         ],
         "type": "object"
       },
@@ -2476,14 +2495,22 @@
       "OutputFile": {
         "additionalProperties": false,
         "properties": {
+          "commit": {
+            "description": "git vault 中這個檔案所在的 commit",
+            "type": "string"
+          },
           "format": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "檔案的種類：subtitle、note 或 asset（筆記嵌入的畫面）",
             "type": "string"
           },
           "lang": {
             "type": "string"
           },
           "path": {
-            "description": "伺服器上的檔案路徑",
+            "description": "伺服器上的檔案路徑；vault 目標是相對於 vault 根目錄的路徑",
             "type": "string"
           },
           "sha256": {
@@ -2494,8 +2521,16 @@
             "format": "int64",
             "type": "integer"
           },
+          "state": {
+            "description": "最近一次發布時的結果：written、unchanged、saved_as_new、skipped_user_changed",
+            "type": "string"
+          },
           "target": {
-            "description": "輸出目標：sidecar 或 folder",
+            "description": "輸出目標：sidecar、folder 或 vault",
+            "type": "string"
+          },
+          "vault": {
+            "description": "vault 的 id（vault 目標）",
             "type": "string"
           },
           "written_at": {
@@ -2506,6 +2541,8 @@
         "required": [
           "path",
           "target",
+          "kind",
+          "state",
           "format",
           "lang",
           "sha256",
@@ -4244,6 +4281,47 @@
           "title",
           "deleted_at",
           "purge_at"
+        ],
+        "type": "object"
+      },
+      "VaultInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter": {
+            "description": "fs（本機資料夾）或 git（推送到 git repo）",
+            "type": "string"
+          },
+          "base": {
+            "description": "vault 內的根資料夾",
+            "type": "string"
+          },
+          "id": {
+            "description": "vault 的 id（處理方案的 outputs[].vault）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "adapter",
+          "base"
+        ],
+        "type": "object"
+      },
+      "VaultsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "vaults": {
+            "items": {
+              "$ref": "#/components/schemas/VaultInfo"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "vaults"
         ],
         "type": "object"
       },
@@ -6250,7 +6328,7 @@
             "description": "Error"
           }
         },
-        "summary": "輸出目標（sidecar、folder）寫出過的檔案與寫入時的 sha256（OUT-R11）"
+        "summary": "輸出目標（sidecar、folder、vault）寫出過的檔案與寫入時的 sha256（OUT-R11、VAULT-R5）"
       }
     },
     "/api/items/{id}/rerun": {
@@ -8910,8 +8988,15 @@
       "get": {
         "operationId": "vaults-list",
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -8924,7 +9009,7 @@
             "description": "Error"
           }
         },
-        "summary": "列出設定檔定義的 vault（id、adapter、base，尚未實作）"
+        "summary": "列出設定檔定義的 vault（id、adapter、base；VAULT-R1）"
       }
     },
     "/healthz": {

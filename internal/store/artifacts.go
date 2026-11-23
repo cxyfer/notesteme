@@ -306,3 +306,8 @@ func (r *Repo) LatestProbes(ctx context.Context, itemID string) ([]Probe, error)
 	}
 	return out, nil
 }
+
+// PinArtifact 把產出標記為 pinned（被 vault 輸出引用，ADR-0020 第 4 點）：清除舊版本時保留。
+func (r *Repo) PinArtifact(ctx context.Context, id string) error {
+	return r.q.PinArtifact(ctx, id)
+}

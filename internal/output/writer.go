@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -62,6 +63,35 @@ type File struct {
 	Lang   string
 	// Policy 是目標檔案被改過時的處理方式（PolicySaveAsNew 或 PolicySkip）。
 	Policy string
+
+	// Root 不是 nil 時（vault 目標，VAULT-R4）：Dir 是相對於 Root 的資料夾（以 / 分隔），寫入前在 Root 之內建立；
+	// 紀錄與結果的路徑也是相對於 Root 的路徑。Root 由呼叫端開啟與關閉。
+	Root *os.Root
+	// Kind、Vault 寫進輸出紀錄（ADR-0020 第 8 點）；Kind 空字串是 subtitle。
+	Kind  string
+	Vault string
+}
+
+// recordPath 是寫進紀錄與結果的路徑：一般目標是絕對路徑，vault 目標是相對於 vault 根目錄的路徑。
+func (f File) recordPath(name string) string {
+	if f.Root != nil {
+		return path.Join(f.Dir, name)
+	}
+	return filepath.Join(f.Dir, name)
+}
+
+// openDir 開啟寫入的資料夾：一般目標直接開啟 Dir；vault 目標在 Root 之內建立並開啟 Dir（不會離開 Root）。
+func (f File) openDir() (*os.Root, error) {
+	if f.Root == nil {
+		return os.OpenRoot(f.Dir)
+	}
+	if f.Dir == "" || f.Dir == "." {
+		return f.Root.OpenRoot(".")
+	}
+	if err := f.Root.MkdirAll(f.Dir, 0o755); err != nil {
+		return nil, err
+	}
+	return f.Root.OpenRoot(f.Dir)
 }
 
 // Outcome 是寫出的結果。
@@ -98,7 +128,7 @@ func (w *Writer) Write(ctx context.Context, f File) (Result, error) {
 	if err := validName(f.Name); err != nil {
 		return Result{}, err
 	}
-	root, err := os.OpenRoot(f.Dir)
+	root, err := f.openDir()
 	if err != nil {
 		return Result{}, fmt.Errorf("開啟輸出資料夾：%w", err)
 	}
@@ -117,11 +147,11 @@ func (w *Writer) Write(ctx context.Context, f File) (Result, error) {
 			if name != f.Name && out == Written {
 				out = SavedNew
 			}
-			return Result{Outcome: out, Path: filepath.Join(f.Dir, name)}, nil
+			return Result{Outcome: out, Path: f.recordPath(name)}, nil
 		}
 		// 改過的檔案。
 		if f.Policy == PolicySkip {
-			return Result{Outcome: Blocked, Path: filepath.Join(f.Dir, name)}, nil
+			return Result{Outcome: Blocked, Path: f.recordPath(name)}, nil
 		}
 		name = alternateName(f.Name, date, try+1)
 	}
@@ -130,7 +160,12 @@ func (w *Writer) Write(ctx context.Context, f File) (Result, error) {
 
 // attempt 嘗試寫入 name：寫入或確認內容相同時回傳結果；目標是使用者的檔案時回傳空字串。
 func (w *Writer) attempt(ctx context.Context, root *os.Root, f File, name, hash string) (Outcome, error) {
-	path := filepath.Join(f.Dir, name)
+	path := f.recordPath(name)
+	// 另存的新檔記為 saved_as_new（VAULT-R5）。
+	state := store.OutputStateWritten
+	if name != f.Name {
+		state = store.OutputStateSavedAsNew
+	}
 	st, err := root.Lstat(name)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -141,7 +176,7 @@ func (w *Writer) attempt(ctx context.Context, root *os.Root, f File, name, hash 
 		if !created {
 			return "", nil // 競態中別人先建立了檔案：視為使用者的
 		}
-		if err := w.record(ctx, f, path, hash); err != nil {
+		if err := w.record(ctx, f, path, hash, state); err != nil {
 			_ = root.Remove(name)
 			return "", err
 		}
@@ -163,7 +198,7 @@ func (w *Writer) attempt(ctx context.Context, root *os.Root, f File, name, hash 
 	case cur == hash:
 		// 內容已經相同：不需要寫；沒有（或過時的）紀錄就補上，下次才認得這是我們的輸出。
 		if !ok || rec != cur {
-			if err := w.record(ctx, f, path, hash); err != nil {
+			if err := w.record(ctx, f, path, hash, store.OutputStateUnchanged); err != nil {
 				return "", err
 			}
 		}
@@ -172,7 +207,7 @@ func (w *Writer) attempt(ctx context.Context, root *os.Root, f File, name, hash 
 		if err := replace(root, name, f.Data); err != nil {
 			return "", err
 		}
-		if err := w.record(ctx, f, path, hash); err != nil {
+		if err := w.record(ctx, f, path, hash, state); err != nil {
 			return "", err
 		}
 		return Written, nil
@@ -180,9 +215,10 @@ func (w *Writer) attempt(ctx context.Context, root *os.Root, f File, name, hash 
 	return "", nil
 }
 
-func (w *Writer) record(ctx context.Context, f File, path, hash string) error {
+func (w *Writer) record(ctx context.Context, f File, path, hash, state string) error {
 	return w.Records.Record(ctx, store.Output{
 		ItemID: f.ItemID, Path: path, Target: f.Target, Format: f.Format, Lang: f.Lang, SHA256: hash, Size: int64(len(f.Data)),
+		Kind: f.Kind, Vault: f.Vault, State: state,
 	})
 }
 

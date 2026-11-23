@@ -274,12 +274,15 @@ func TestPublishFolderPathMustStayInsideRoots(t *testing.T) {
 	}
 }
 
-// vault 屬於 M3：回清楚的「尚未支援」（permanent），不是 panic。
-func TestPublishVaultIsNotSupportedYet(t *testing.T) {
+// vault 目標缺 vault id 或引用設定檔沒有的 vault：permanent，不是 panic（vault 的寫出見 vault_publish_test.go）。
+func TestPublishVaultNeedsAConfiguredVault(t *testing.T) {
 	r := newPublishRig(t)
-	_, err := r.publish(r.it, map[string]any{"target": "vault"})
+	if _, err := r.publish(r.it, map[string]any{"target": "vault"}); err == nil || !strings.Contains(err.Error(), "必須指定 vault") {
+		t.Errorf("err = %v", err)
+	}
+	_, err := r.publish(r.it, map[string]any{"target": "vault", "vault": "main"})
 	var ce *errclass.Error
-	if !errors.As(err, &ce) || ce.Class != errclass.ClassPermanent || !strings.Contains(ce.Detail, "M3") {
+	if !errors.As(err, &ce) || ce.Class != errclass.ClassPermanent || !strings.Contains(ce.Message, "沒有這個 vault：main") {
 		t.Errorf("err = %v", err)
 	}
 }

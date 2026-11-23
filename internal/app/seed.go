@@ -56,3 +56,8 @@ func (s *Server) SeedFrames(ctx context.Context, itemID string, list []pipeline.
 func (s *Server) ItemNote(ctx context.Context, itemID string) (pipeline.NoteView, error) {
 	return s.pipeline.ItemNote(ctx, itemID, "")
 }
+
+// SeedNote 直接寫入影音現行的 note 產出（steps.md 4.15）。只供驗收測試的 harness 使用（同 SeedTranscript）。
+func (s *Server) SeedNote(ctx context.Context, itemID, markdown string) error {
+	return s.pipeline.SeedNote(ctx, itemID, markdown)
+}

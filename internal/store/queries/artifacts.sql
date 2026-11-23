@@ -68,3 +68,7 @@ UPDATE artifacts SET superseded_by = CAST(sqlc.arg(current_id) AS TEXT)
 WHERE artifacts.item_id = sqlc.arg(item_id) AND artifacts.kind = sqlc.arg(kind) AND artifacts.variant = sqlc.arg(variant)
   AND artifacts.lang = sqlc.arg(lang) AND artifacts.superseded_by IS NOT NULL
   AND artifacts.superseded_by NOT IN (SELECT a.id FROM artifacts AS a);
+
+-- name: PinArtifact :exec
+-- A version a vault output references is kept when older versions are purged (ADR-0020 section 4).
+UPDATE artifacts SET pinned = 1 WHERE id = sqlc.arg(id);

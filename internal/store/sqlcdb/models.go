@@ -227,6 +227,7 @@ type Output struct {
 	Kind      string
 	Vault     *string
 	GitCommit *string
+	State     string
 }
 
 type Profile struct {

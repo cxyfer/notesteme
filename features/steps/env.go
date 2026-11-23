@@ -37,6 +37,9 @@ func registerEnv(r *Registry, s *Scenario) {
 // configFileContains 把內容（虛擬路徑換成實際路徑）寫成設定檔，下一次啟動 server 時生效。
 // server 已在執行時設定檔不會重新載入，寫入也不會生效，所以讓步驟失敗，而不是默默忽略。
 func (s *Scenario) configFileContains(doc *godog.DocString) error {
+	if err := s.stopForVaultReconfig(); err != nil {
+		return err
+	}
 	if s.server != nil {
 		return errors.New("server 已經在執行，設定檔只在啟動時讀取：`the config file contains:` 必須放在啟動 server 的步驟之前")
 	}
@@ -55,12 +58,33 @@ func (s *Scenario) configFileContains(doc *godog.DocString) error {
 
 // setEnv 只累積設定：之後啟動的 server 才會看到（已在執行的 server 不受影響）。
 func (s *Scenario) setEnv(name, value string) error {
+	if err := s.stopForVaultReconfig(); err != nil {
+		return err
+	}
 	s.World.Env[name] = value
 	return nil
 }
 
 func (s *Scenario) unsetEnv(name string) error {
 	delete(s.World.Env, name)
+	return nil
+}
+
+// stopForVaultReconfig 讓 VAULT 的場景（有 @VAULT- 開頭的 tag）在 server 執行中也能改設定檔與環境變數
+// （steps.md 4.16）：先正常關閉 server（資料保留），下一個需要 server 的步驟以新的設定與環境隱含重新啟動。
+// 其他場景不受影響（維持「設定只在啟動時讀取」）。
+func (s *Scenario) stopForVaultReconfig() error {
+	if s.server == nil || !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@VAULT-") }) {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+	defer cancel()
+	srv := s.server
+	s.server, s.stopped = nil, false
+	if err := srv.Shutdown(ctx); err != nil {
+		srv.Kill()
+		return fmt.Errorf("為了改設定而關閉 server 失敗：%w", err)
+	}
 	return nil
 }
 

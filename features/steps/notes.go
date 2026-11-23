@@ -16,9 +16,9 @@ import (
 // registerNotes 註冊「筆記與 Gemini」的步驟（steps.md 4.15，M3）。
 //
 // M3-S7 實作了 `Gemini accepts YouTube videos up to …`（只對 GEM 的場景放行，GEM G9）；M3-S4 實作了讀取筆記的三個句型。
-// `the note of … is:`（VAULT 的閘門）仍是步驟樁，由 VAULT 的切片實作。
+// `the note of … is:`（VAULT 的閘門）由 M3-S5 實作，只對 VAULT 的場景放行（見 noteIs）。
 func registerNotes(r *Registry, s *Scenario) {
-	r.Step(`the note of {string} is:`, func(string, *godog.DocString) error { return godog.ErrPending })
+	r.Step(`the note of {string} is:`, s.noteIs)
 	r.Step(`the note of {string} contains {string}`, s.noteContains)
 	r.Step(`the note of {string} does not contain {string}`, s.noteDoesNotContain)
 	r.Step(`the note of {string} has the frontmatter:`, s.noteHasFrontmatter)
@@ -37,6 +37,22 @@ func (s *Scenario) geminiAcceptsUpTo(limit string) error {
 	}
 	s.World.Gemini.SetMaxDuration(d)
 	return nil
+}
+
+// noteIs 直接寫入影音現行的筆記（steps.md 4.15 的 seeding）。只對 VAULT 的場景（有 @VAULT- 開頭的 tag）放行；
+// 其他領域（M4 的 BND 等）維持 pending，等各自的切片放寬（同 spbGate 的做法）。
+func (s *Scenario) noteIs(ref string, doc *godog.DocString) error {
+	if !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@VAULT-") }) {
+		return fmt.Errorf("筆記的 seeding 只對 VAULT 的場景實作：%w", godog.ErrPending)
+	}
+	if err := s.prepareOwner(); err != nil {
+		return err
+	}
+	id, err := s.ensureItemForSeed(ref)
+	if err != nil {
+		return err
+	}
+	return s.server.SeedNote(s.ctx, id, doc.Content)
 }
 
 // noteMarkdown 讀取影音現行的筆記（GET /api/items/:id/note 的 markdown，預設的筆記語言）；

@@ -290,6 +290,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerM3Stubs(api)
 	rt.registerNotifiers(api)
 	rt.registerSubscriptions(api)
+	rt.registerVaults(api)
 	rt.registerM4Stubs(api)
 	rt.registerM5Stubs(api)
 	rt.registerFrames(api)

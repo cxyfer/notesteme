@@ -61,8 +61,10 @@ type noteJob struct {
 	frameArt *store.Artifact
 	// extraRows 是影片資訊表的附加列（畫面不足、畫質，NOTE-R9）。
 	extraRows []notes.InfoRow
-	status    string
-	template  noteTemplate
+	// subtitleLink 是資訊表「字幕」列的 vault 路徑（VAULT-R2、V8）；沒有 vault 輸出時是空字串。
+	subtitleLink string
+	status       string
+	template     noteTemplate
 }
 
 // noteMaps 回傳 map 的 chunk 數（不是 note 或沒有 map-reduce 時是 0）。
@@ -213,6 +215,7 @@ func (p *Pipeline) prepareNote(ctx context.Context, it store.Item, job *llmJob, 
 	}
 	nj := &noteJob{cueSet: map[int]bool{}, frames: map[int]notes.Frame{}, status: notes.StatusComplete}
 	job.note = nj
+	nj.subtitleLink = p.vaultSubtitleLink(it, job.eff)
 	nj.lang = noteLangOf(job.eff, set, vars.SourceLang)
 	vars.NoteLang = nj.lang
 	for _, c := range job.cues {
@@ -324,7 +327,7 @@ func (p *Pipeline) prepareNote(ctx context.Context, it store.Item, job *llmJob, 
 	}
 	key, err := json.Marshal(map[string]any{
 		"template": nj.template.SHA256, "rules": nj.template.Rules, "lang": nj.lang, "status": nj.status,
-		"map": job.extraKey, "extra": nj.extraRows,
+		"map": job.extraKey, "extra": nj.extraRows, "subtitle_link": nj.subtitleLink,
 	})
 	if err != nil {
 		return err
@@ -582,7 +585,7 @@ func renderNote(in notes.Input, out llm.NoteOutput, tpl noteTemplate) (noteDoc, 
 	if doc.Sections == nil {
 		doc.Sections = []notes.Section{}
 	}
-	doc.Render = noteRender{Status: in.Front.Status, CueStart: in.CueStart, Frames: map[int]noteFrameAt{}, Extra: in.Extra}
+	doc.Render = noteRender{Status: in.Front.Status, CueStart: in.CueStart, Frames: map[int]noteFrameAt{}, Extra: in.Extra, SubtitleLink: in.SubtitleLink}
 	for n, f := range in.Frames {
 		doc.Render.Frames[n] = noteFrameAt{AtMS: f.AtMS, Caption: f.Caption}
 	}
@@ -619,6 +622,7 @@ func (p *Pipeline) writeNote(ctx context.Context, it store.Item, job *llmJob, ou
 		return nil, store.StageState{}, errPermanent("筆記的輸出不正確：" + verr.Message)
 	}
 	in := p.noteInputFor(it, nj.lang, nj.status, job.tr, nj.cueSet, nj.frames, nj.extraRows)
+	in.SubtitleLink = nj.subtitleLink
 	doc, err := renderNote(in, out, nj.template)
 	if err != nil {
 		var te *notes.TemplateError

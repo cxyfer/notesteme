@@ -8,6 +8,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/llm"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/secrets"
+	"github.com/cxyfer/notesteme/internal/vault"
 )
 
 // llmRegistry 組出 LLM provider 的 Registry（LLM 規格、ADR-0019）：
@@ -39,6 +40,19 @@ func (s *Server) llmRegistry(env Env, cfg *config.Config, hc *http.Client) *llm.
 type outputCatalog struct {
 	vaults map[string]config.Vault
 	hooks  map[string]config.Hook
+}
+
+// vaultDefs 把設定檔的 vault 與 hook 轉成 pipeline 使用的定義（VAULT-R1、R10）。
+func vaultDefs(cfg *config.Config) (map[string]vault.Def, map[string]vault.Hook) {
+	vs := make(map[string]vault.Def, len(cfg.Vaults))
+	for id, v := range cfg.Vaults {
+		vs[id] = vault.Def{ID: id, Adapter: v.Adapter, Path: v.Path, Remote: v.Remote, Branch: v.Branch, Author: v.Author, Base: v.Base}
+	}
+	hs := make(map[string]vault.Hook, len(cfg.Hooks))
+	for id, h := range cfg.Hooks {
+		hs[id] = vault.Hook{ID: id, Argv: h.Argv, Timeout: h.Timeout, MaxOutput: h.MaxOutput, EnvAllowlist: h.EnvAllowlist}
+	}
+	return vs, hs
 }
 
 func (c outputCatalog) HasVault(id string) bool { _, ok := c.vaults[id]; return ok }
