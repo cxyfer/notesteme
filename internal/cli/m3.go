@@ -1,16 +1,18 @@
 package cli
 
 // 這個檔案是 M3 的子命令（FRM、NOTE 的「介面」）：frames ls、frames get、note show。
-// M3-S0 先接上參數與 API 路由：路由目前是 501 stub，所以會以「尚未實作」結束；
-// 文字輸出的格式由 FRM、NOTE 的切片補上，在那之前成功時原樣輸出 API 的回應。
+// frames 在 M3-S3 實作；note show 的路由仍是 501 stub（NOTE 的切片補上文字輸出）。
 
 import (
 	"context"
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 func parseFrames(args []string) (*plan, error) {
@@ -41,21 +43,66 @@ func parseFramesLs(args []string) (*plan, error) {
 	}
 	item := pos[0]
 	return &plan{g: g, run: func(ctx context.Context, s *session) (int, error) {
-		q := url.Values{}
-		if *all {
-			q.Set("selected_only", "false")
-		}
-		path := "/api/items/" + url.PathEscape(item) + "/frames"
-		if len(q) > 0 {
-			path += "?" + q.Encode()
-		}
-		raw, _, err := s.be.call(ctx, http.MethodGet, path, nil)
+		raw, _, err := s.be.call(ctx, http.MethodGet, "/api/items/"+url.PathEscape(item)+"/frames", nil)
 		if err != nil {
 			return 0, err
 		}
-		s.printRaw(raw)
+		var v struct {
+			Frames []struct {
+				N        int    `json:"n"`
+				At       string `json:"at"`
+				Selected bool   `json:"selected"`
+				Excluded string `json:"excluded"`
+				Caption  string `json:"caption"`
+				Chapter  string `json:"chapter"`
+			} `json:"frames"`
+		}
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return 0, fmt.Errorf("回應不是預期的 JSON：%w", err)
+		}
+		if g.json {
+			if *all {
+				s.printRaw(raw)
+				return exitOK, nil
+			}
+			sel := v.Frames[:0]
+			for _, f := range v.Frames {
+				if f.Selected {
+					sel = append(sel, f)
+				}
+			}
+			return exitOK, s.printJSON(map[string]any{"frames": sel})
+		}
+		// 圖說與章節是不可信的資料：去掉控制字元，一張畫面只佔一行。
+		for _, f := range v.Frames {
+			if !f.Selected && !*all {
+				continue
+			}
+			mark := " "
+			switch {
+			case f.Selected:
+				mark = "*"
+			case f.Excluded != "":
+				mark = "x"
+			}
+			line := fmt.Sprintf("%s %3d  %s  %s", mark, f.N, f.At, oneLine(f.Caption))
+			if f.Chapter != "" {
+				line += "  [" + oneLine(f.Chapter) + "]"
+			}
+			fmt.Fprintln(s.stdout, strings.TrimRight(line, " "))
+		}
 		return exitOK, nil
 	}}, nil
+}
+
+// oneLine 把換行與控制字元換成空白。
+func oneLine(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s)
 }
 
 // frames get <item> <n> -o <file>（FRM-R10）：寫出原圖。
@@ -83,7 +130,7 @@ func parseFramesGet(args []string) (*plan, error) {
 		if err != nil {
 			return 0, err
 		}
-		if err := os.WriteFile(*out, raw, 0o644); err != nil {
+		if err := writeFile(*out, bytes.NewReader(raw)); err != nil {
 			return 0, err
 		}
 		return exitOK, nil

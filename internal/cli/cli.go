@@ -266,7 +266,7 @@ const usageText = `用法：notesteme <子命令> [旗標]
   import <subtitle> --item <item>       匯入外部編輯過的字幕為 edited 版本（--lang、--format）
   tokens create|ls|revoke               管理 API token
   secrets rotate-key|reset              管理 master key 與 secrets
-  frames ls <item> [--all] | get <item> <n> -o <file>  關鍵畫面（M3，尚未實作）
+  frames ls <item> [--all] | get <item> <n> -o <file>  關鍵畫面（M3）
   note show <item> [--lang] [--format md|json]         筆記（M3，尚未實作）
   config export [--out <file>]          輸出 DB 管理的設定（處理方案，不含 secrets）成 YAML
   config import <file>                  匯入 YAML：先驗證整份，有錯誤就整份不套用
