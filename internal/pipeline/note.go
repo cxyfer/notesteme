@@ -51,6 +51,8 @@ type noteJob struct {
 	maps     int
 	mapSpec  *llm.Spec
 	mapFixed llm.Fixed
+	// mapFixedSHA 是 mapFixed 的 sha256（map chunk 的快取鍵）。
+	mapFixedSHA string
 	// cueSet 是可以引用的句號（輸入中、不在 SponsorBlock 片段內，NOTE-R3）。
 	cueSet map[int]bool
 	// frames 是選中的畫面：編號 → 時間與圖說（NOTE-R9）。
@@ -321,6 +323,8 @@ func (p *Pipeline) prepareNote(ctx context.Context, it store.Item, job *llmJob, 
 		if nj.mapFixed, err = llm.BuildFixed(nj.mapSpec, rp.Body, *vars, *meta); err != nil {
 			return errPermanent("prompt 無法渲染：" + err.Error())
 		}
+		fixedJSON, _ := json.Marshal(nj.mapFixed)
+		nj.mapFixedSHA = sha256Hex(fixedJSON)
 		job.extraKey = rp.SHA256
 	}
 	key, err := json.Marshal(map[string]any{

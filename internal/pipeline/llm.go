@@ -528,13 +528,18 @@ func (j *llmJob) chunkInput(c llm.Chunk) llm.ChunkInput {
 // chunkKey 是 chunk 層的快取鍵（LLM-R8）：步驟、實作版本、provider、model、固定前綴與這個 chunk 的資料區塊。
 func (j *llmJob) chunkKey(impl int, c llm.Chunk) (string, error) {
 	in := j.chunkInput(c)
-	data, err := llm.DataBlock(c.Index, len(j.chunks), in.Context, in.Cues)
+	stage, fixed, total := j.stage, j.fixedSHA, len(j.chunks)
+	if j.isNoteMap(c) {
+		// note 的 map 用自己的 prompt 與段數（NOTE-R6）：map 的 prompt 改版時 map 的快取不命中。
+		stage, fixed, total = TaskNoteMap, j.note.mapFixedSHA, j.note.maps
+	}
+	data, err := llm.DataBlock(c.Index, total, in.Context, in.Cues)
 	if err != nil {
 		return "", err
 	}
 	b, err := json.Marshal(map[string]any{
-		"stage": j.stage, "impl_version": impl, "provider": j.cfg.Provider, "model": j.cfg.Model,
-		"fixed": j.fixedSHA, "params": j.chunkParamsSHA, "data": data,
+		"stage": stage, "impl_version": impl, "provider": j.cfg.Provider, "model": j.cfg.Model,
+		"fixed": fixed, "params": j.chunkParamsSHA, "data": data,
 	})
 	if err != nil {
 		return "", err
