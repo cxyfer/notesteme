@@ -87,6 +87,12 @@ type hubErrorBody struct {
 
 // do 送出請求並在逾時內讀完本體（上限 limit）。成功（2xx）時回傳本體，否則回傳 *Error。
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body io.Reader, contentType string, timeout time.Duration, limit int64) ([]byte, http.Header, error) {
+	return c.doRaw(ctx, method, path, query, body, contentType, timeout, limit, false)
+}
+
+// doRaw 同 do；verbatim 為 true 時回傳未改寫的本體（版本內容），含有 token 時視為內容驗證失敗。
+// 其他回應中的 token 一律換成 redactedToken（Hub 是不可信的，HSHR 待決問題 S18）。
+func (c *Client) doRaw(ctx context.Context, method, path string, query url.Values, body io.Reader, contentType string, timeout time.Duration, limit int64, verbatim bool) ([]byte, http.Header, error) {
 	if c == nil || c.url == "" {
 		return nil, nil, ErrNotConfigured
 	}
@@ -132,6 +138,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBytes))
+		raw = scrubToken(raw, tok)
 		var eb hubErrorBody
 		_ = json.Unmarshal(raw, &eb)
 		return nil, nil, statusError(resp.StatusCode, resp.Header, eb)
@@ -143,7 +150,14 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if int64(len(data)) > limit {
 		return nil, nil, &Error{Kind: KindContentInvalid, Status: resp.StatusCode, Detail: fmt.Sprintf("回應超過 %d MiB 的上限", limit>>20)}
 	}
-	return data, resp.Header, nil
+	if verbatim {
+		// 版本內容有 sha256，不能改寫：含有 token 時整份拒絕。
+		if containsToken(data, tok) {
+			return nil, nil, &Error{Kind: KindIntegrity, Status: resp.StatusCode}
+		}
+		return data, resp.Header, nil
+	}
+	return scrubToken(data, tok), resp.Header, nil
 }
 
 // connError 是連線層的錯誤：呼叫端自己取消時原樣回傳 context 的錯誤，否則是 hub_unavailable。
@@ -422,7 +436,7 @@ func (c *Client) Content(ctx context.Context, id, wantSHA string, timeout time.D
 	if timeout <= 0 {
 		timeout = DefaultTimeout
 	}
-	data, _, err := c.do(ctx, http.MethodGet, "/api/v1/versions/"+url.PathEscape(id)+"/content", nil, nil, "", timeout, MaxContentBytes)
+	data, _, err := c.doRaw(ctx, http.MethodGet, "/api/v1/versions/"+url.PathEscape(id)+"/content", nil, nil, "", timeout, MaxContentBytes, true)
 	if err != nil {
 		return nil, err
 	}

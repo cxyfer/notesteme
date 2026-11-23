@@ -886,3 +886,23 @@ func TestHubImportDoesNotEchoHubMessagesExceptValidation(t *testing.T) {
 		t.Errorf("422：%d %s", rec.Code, rec.Body)
 	}
 }
+
+// 惡意的 Hub 把收到的 admin token 放進 422 的訊息：只有 ingest scope 的呼叫端也看不到它（HSHR 待決問題 S18）。
+func TestHubImportDoesNotReflectTheHubToken(t *testing.T) {
+	r := newHubAPIRig(t, "public", true)
+	r.hub.mu.Lock()
+	r.hub.hook = func(w http.ResponseWriter, req *http.Request) bool {
+		if req.Header.Get("Authorization") != "Bearer "+apiHubToken {
+			return false
+		}
+		w.WriteHeader(422)
+		_, _ = io.WriteString(w, `{"code":"bad","message":"got `+apiHubToken+`","errors":[{"path":"x","message":" `+apiHubToken+`"}]}`)
+		return true
+	}
+	r.hub.mu.Unlock()
+	rec := r.do("POST", "/api/hub/import", `{"version":"v1"}`, withBearer(r.tokenFor("agent", auth.ScopeIngest)))
+	if rec.Code != 422 {
+		t.Fatalf("POST /api/hub/import = %d %s", rec.Code, rec.Body)
+	}
+	r.noSecretLeak("import 的 422", rec)
+}
