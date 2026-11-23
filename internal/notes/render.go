@@ -135,7 +135,14 @@ type Frontmatter struct {
 	VideoPublished string // YYYY-MM-DD；不知道時是空字串
 	ItemID         string
 	Status         string // StatusComplete 或 StatusPartial
+	// Engine、Timing 只有 Gemini 直接生成的筆記才有（GEM-R6：notesteme_engine: gemini、notesteme_timing: model）；
+	// 空字串時不輸出這兩個欄位。
+	Engine string
+	Timing string
 }
+
+// extraFrontmatter 是只在有值時輸出的欄位，接在 FrontmatterFields 之後。
+var extraFrontmatter = []string{"notesteme_engine", "notesteme_timing"}
 
 // FrontmatterFields 是 frontmatter 的欄位，依輸出順序（NOTE-R2）。
 var FrontmatterFields = []string{
@@ -145,11 +152,18 @@ var FrontmatterFields = []string{
 
 // Map 回傳欄位與值（給 API 的 frontmatter）。
 func (f Frontmatter) Map() map[string]string {
-	return map[string]string{
+	m := map[string]string{
 		"title": f.Title, "source": f.Source, "channel": f.Channel, "video_published": f.VideoPublished,
 		"source_kind": "derived", "status": "not-started", "read_at": "", "reading_status": "⚪ 待閱讀",
 		"notesteme_id": f.ItemID, "notesteme_status": f.Status,
 	}
+	if f.Engine != "" {
+		m["notesteme_engine"] = f.Engine
+	}
+	if f.Timing != "" {
+		m["notesteme_timing"] = f.Timing
+	}
+	return m
 }
 
 // YAML 回傳含開頭與結尾 `---` 的 frontmatter（結尾沒有換行）。
@@ -159,6 +173,11 @@ func (f Frontmatter) YAML() string {
 	b.WriteString("---\n")
 	for _, k := range FrontmatterFields {
 		b.WriteString(k + ": " + QuoteYAML(m[k]) + "\n")
+	}
+	for _, k := range extraFrontmatter {
+		if v, ok := m[k]; ok {
+			b.WriteString(k + ": " + QuoteYAML(v) + "\n")
+		}
 	}
 	b.WriteString("---")
 	return b.String()
