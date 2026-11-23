@@ -321,7 +321,8 @@ func TestTakedownRequests(t *testing.T) {
 	}
 	// 失敗的申請不佔額度；版本不存在也回 201（不洩漏存在性）。
 	ghost := "0190f0f0-0000-7000-8000-000000000000"
-	expect(t, "不存在的版本", e.anon("POST", "/api/v1/takedowns", takedownBody(ghost)), 201, "")
+	ghostBody := strings.Replace(takedownBody(ghost), "rights@example.com", "ghost@example.com", 1)
+	expect(t, "不存在的版本", e.anon("POST", "/api/v1/takedowns", ghostBody), 201, "")
 	ghostID := decode(t, e.as("mod", "GET", "/api/v1/admin/takedowns", ""))["takedowns"].([]any)[0].(map[string]any)["id"].(string)
 	rec = e.anon("POST", "/api/v1/takedowns", takedownBody(v.ID))
 	expect(t, "超過每小時的次數", rec, 429, CodeRateLimited)
@@ -334,7 +335,8 @@ func TestTakedownRequests(t *testing.T) {
 	// 聯絡 email 只有版主看得到，DB 中是密文。
 	expect(t, "一般人看申請", e.as("bob", "GET", "/api/v1/admin/takedowns", ""), 403, "forbidden")
 	rec = e.as("mod", "GET", "/api/v1/admin/takedowns?state=open&limit=10", "")
-	if rec.Code != 200 || strings.Count(rec.Body.String(), `"contact_email":"rights@example.com"`) != 3 {
+	if rec.Code != 200 || strings.Count(rec.Body.String(), `"contact_email":"rights@example.com"`) != 2 ||
+		!strings.Contains(rec.Body.String(), `"contact_email":"ghost@example.com"`) {
 		t.Errorf("版主看申請 = %d %s", rec.Code, rec.Body)
 	}
 	db, err := sqlitedb.Open(filepath.Join(e.dir, sqlite.DBFileName), false)
@@ -350,12 +352,12 @@ func TestTakedownRequests(t *testing.T) {
 		t.Error("聯絡 email 沒有加密")
 	}
 	// 申請 ID 綁定在 AAD 中：把別筆的密文搬過來就解不開（列表回 null，不是 500）。
-	if _, err := db.Exec(`UPDATE takedowns SET dek_nonce = (SELECT dek_nonce FROM takedowns WHERE id = ?),
-		dek_sealed = (SELECT dek_sealed FROM takedowns WHERE id = ?) WHERE id = ?`, id, id, ghostID); err != nil {
+	if _, err := db.Exec(`UPDATE takedowns SET (dek_nonce, dek_sealed, contact_nonce, contact_sealed) =
+		(SELECT dek_nonce, dek_sealed, contact_nonce, contact_sealed FROM takedowns WHERE id = ?) WHERE id = ?`, id, ghostID); err != nil {
 		t.Fatal(err)
 	}
 	rec = e.as("mod", "GET", "/api/v1/admin/takedowns", "")
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"contact_email":null`) {
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"contact_email":null`) || strings.Count(rec.Body.String(), "rights@example.com") != 2 {
 		t.Errorf("被竄改的密文 = %d %s", rec.Code, rec.Body)
 	}
 }
