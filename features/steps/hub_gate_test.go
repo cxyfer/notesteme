@@ -7,7 +7,7 @@ import (
 	"github.com/cucumber/godog"
 )
 
-// 真 Hub 的閘門只對已實作範圍的場景放行（M5-S1：HACC-R1～R8；M5-S2：R9～R13、R18；M5-S3：HACC-R14 與 HREP-R1～R6、R8～R12；M5-S4：HREP-R7、R16～R19；M5-S5：HACC-R15～R17、HREP-R13～R15），
+// 真 Hub 的閘門只對已實作範圍的場景放行（M5-S1：HACC-R1～R8；M5-S2：R9～R13、R18；M5-S3：HACC-R14 與 HREP-R1～R6、R8～R12；M5-S4：HREP-R7、R16～R19；M5-S5：HACC-R15～R17、HREP-R13～R15；M5-S6：HMCP-R1～R8），
 // 混了其他規則或其他領域的場景維持 pending，而且是裸的 ErrPending（junit 的訊息與切片之前相同）。
 // M5-S3 起 Hub 內容的句型（steps.md 4.31）已實作，不再擋場景。
 func TestHubGate(t *testing.T) {
@@ -55,8 +55,12 @@ func TestHubGate(t *testing.T) {
 		{[]string{"@M5", "@HUB-07", "@HACC-R19"}, plain, true},                 // 規格沒有的規則
 		{[]string{"@M5", "@HUB-06", "@HREP-R20"}, content, true},               // 規格沒有的規則
 		{[]string{"@M5", "@HUB-06", "@HREP-R13", "@HACC-R19"}, plain, true},    // 混了不認得的規則
-		{[]string{"@M5", "@HUB-08", "@HMCP-R1", "@HACC-R17"}, plain, true},     // HMCP 不是 S5
-		{[]string{"@M5", "@HUB-05", "@HMCP-R1"}, plain, true},
+		{[]string{"@M5", "@HUB-08", "@HMCP-R1"}, plain, false},                 // M5-S6
+		{[]string{"@M5", "@HUB-08", "@HMCP-R3", "@HMCP-R4"}, plain, false},     // M5-S6
+		{[]string{"@M5", "@HUB-08", "@HMCP-R8"}, plain, false},                 // M5-S6
+		{[]string{"@M5", "@HUB-08", "@HMCP-R1", "@HACC-R17"}, plain, false},    // M5-S6
+		{[]string{"@M5", "@HUB-08", "@HMCP-R9"}, plain, true},                  // 規格沒有的規則
+		{[]string{"@M5", "@HUB-08", "@HMCP-R1", "@HSHR-R1"}, plain, true},      // HSHR 用 fakehub
 		{[]string{"@M5", "@HUB-02", "@HREP-R1", "@HSHR-R1"}, share, true},
 		{[]string{"@M5", "@HUB-02", "@HREP-Rx"}, share, true},
 		{[]string{"@M5", "@HUB-02"}, share, true},

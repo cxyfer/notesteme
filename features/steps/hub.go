@@ -23,7 +23,7 @@ import (
 // registerHub 註冊「Hub 實例與帳號」的步驟（steps.md 4.30，M5）。
 //
 // M5-S1 實作閘門、Hub 設定、假供應商、登入流程、帳號數與送到 Hub 的請求（session 與匿名）；
-// M5-S2 實作 Hub token 與群組的句型；M5-S5 實作停用與 {takedown:last}、{report:last}。`from the origin` 與 MCP 的句型仍是步驟樁（S6）。
+// M5-S2 實作 Hub token 與群組的句型；M5-S5 實作停用與 {takedown:last}、{report:last}。M5-S6 實作 `from the origin` 與 Hub MCP 的句型（hub_mcp.go）。
 // 閘門只對 S1～S3 範圍的 HACC、HREP 場景放行（見 hubGate）。
 func registerHub(r *Registry, s *Scenario) {
 	r.Step(`a Hub is running`, s.hubIsRunning)
@@ -52,11 +52,12 @@ func registerHub(r *Registry, s *Scenario) {
 	r.Step(`the Hub client sends {string} with the Hub token {string} and:`, func(spec, tok string, doc *godog.DocString) error {
 		return s.hubTokenSends(spec, tok, s.requestBody(doc))
 	})
-	r.Step(`the Hub client sends {string} with the Hub token {string} from the origin {string}`, func(string, string, string) error { return godog.ErrPending })
+	r.Step(`the Hub client sends {string} with the Hub token {string} from the origin {string}`, s.hubTokenSendsFromOrigin)
 	r.Step(`the hub member {string} is in the group {string}`, s.hubMemberInGroup)
 	r.Step(`the hub member {string} is suspended`, s.hubMemberSuspended)
-	r.Step(`the Hub MCP client with the Hub token {string} lists the tools`, func(string) error { return godog.ErrPending })
-	r.Step(`the Hub MCP client with the Hub token {string} calls {string} with:`, func(string, string, *godog.DocString) error { return godog.ErrPending })
+	// M5-S6：Hub MCP（hub_mcp.go）。
+	r.Step(`the Hub MCP client with the Hub token {string} lists the tools`, s.hubMCPListsTools)
+	r.Step(`the Hub MCP client with the Hub token {string} calls {string} with:`, s.hubMCPCalls)
 }
 
 // hubState 是場景中 Hub 的瀏覽器狀態：每個人一份 cookie（以名稱保存，最後一次成功登入的 session 生效）、等待中的登入與最近一次 callback，
@@ -100,6 +101,9 @@ var hrepRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: tru
 	// M5-S5：投票、檢舉與自動隱藏（R13～R15）。
 	13: true, 14: true, 15: true}
 
+// hmcpRules 是已實作的 HMCP 規則（M5-S6：R1～R8）。
+var hmcpRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true}
+
 // ruleOf 解析 @<prefix>R<n> 的規則編號。
 func ruleOf(tag, prefix string) (int, bool, bool) {
 	v, found := strings.CutPrefix(tag, prefix)
@@ -110,17 +114,17 @@ func ruleOf(tag, prefix string) (int, bool, bool) {
 	return n, true, err == nil
 }
 
-// hubGate 讓真 Hub 的閘門只對已實作範圍的場景放行：至少一個已實作的 @HACC-R 或 @HREP-R，沒有還沒實作的 HACC、HREP 規則，
-// 也沒有其他領域（HMCP、HSHR）的 tag。Hub 內容的句型（steps.md 4.31）在 M5-S3 實作，不再擋場景。
+// hubGate 讓真 Hub 的閘門只對已實作範圍的場景放行：至少一個已實作的 @HACC-R、@HREP-R 或 @HMCP-R（M5-S6），
+// 沒有還沒實作的 HACC、HREP、HMCP 規則，也沒有 HSHR 的 tag（HSHR 用 fakehub）。Hub 內容的句型（steps.md 4.31）在 M5-S3 實作，不再擋場景。
 // 其他場景在它們的切片實作之前維持 pending，停在同一個閘門（同 M3-S1 的 spbGate）。回傳裸的 godog.ErrPending，
 // junit 的訊息與切片之前相同。
 func (s *Scenario) hubGate() error {
 	ok := false
 	for _, t := range s.tags {
-		if strings.HasPrefix(t, "@HMCP-") || strings.HasPrefix(t, "@HSHR-") {
+		if strings.HasPrefix(t, "@HSHR-") {
 			return godog.ErrPending
 		}
-		for prefix, rules := range map[string]map[int]bool{"@HACC-R": hubRules, "@HREP-R": hrepRules} {
+		for prefix, rules := range map[string]map[int]bool{"@HACC-R": hubRules, "@HREP-R": hrepRules, "@HMCP-R": hmcpRules} {
 			n, found, valid := ruleOf(t, prefix)
 			if !found {
 				continue
@@ -252,6 +256,8 @@ type hubRequest struct {
 	csrf        bool
 	// bearer 非空時以 Authorization: Bearer 送出（Hub token）。
 	bearer string
+	// origin 非空時以 Origin 標頭送出（HMCP-R2）。
+	origin string
 	// preRoute403 表示這個請求缺少完整憑證（沒有身分或缺 CSRF），見 pendingIfNotImplemented。
 	preRoute403 bool
 }
@@ -293,6 +299,9 @@ func (s *Scenario) hubDo(r hubRequest) (*response, error) {
 	}
 	if r.bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+r.bearer)
+	}
+	if r.origin != "" {
+		req.Header.Set("Origin", r.origin)
 	}
 	resp, err := s.World.HubHTTPClient().Do(req)
 	if err != nil {
