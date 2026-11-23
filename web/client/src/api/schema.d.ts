@@ -2499,8 +2499,22 @@ export interface components {
       until?: string;
       url: string;
     };
+    ItemBetterSource: {
+      /**
+       * Format: double
+       * @description 從 transcript 重跑的預估費用；無法估算時是 null
+       */
+      estimate_usd: number | null;
+      /** Format: date-time */
+      found_at: string;
+      kind: string;
+      lang: string;
+      source: string;
+    };
     ItemDetail: {
       availability?: string;
+      /** @description 事後發現的更好字幕來源（SRC-R23）；沒有時是 null */
+      better_source: components["schemas"]["ItemBetterSource"] | null;
       channel_id?: string;
       /** @description 章節，依開始時間排序；沒有章節時是空陣列，chapters 步驟沒有產生過產出時沒有這個欄位 */
       chapters?: components["schemas"]["Chapter"][];
@@ -2528,6 +2542,8 @@ export interface components {
       published_at: string | null;
       /** @description 影音的短代號，例如 yt:abc123xxxxx */
       ref: string;
+      /** @description 排定的重新 Probe（SRC-R18）；沒有排程時是 null */
+      reprobe: components["schemas"]["ItemReprobe"] | null;
       sources: components["schemas"]["Source"][] | null;
       /** @description SponsorBlock 的片段，依開始時間排序；沒有片段時是空陣列，步驟沒有執行過時沒有這個欄位 */
       sponsor_segments?: components["schemas"]["SponsorSegment"][];
@@ -2540,6 +2556,27 @@ export interface components {
       /** @description 新增時指定做到哪個步驟為止 */
       until?: string;
       url: string;
+    };
+    ItemReprobe: {
+      /**
+       * Format: date-time
+       * @description 下一次重新 Probe 的時間
+       */
+      next_at: string;
+      /**
+       * Format: int64
+       * @description 已經執行的次數
+       */
+      runs: number;
+      /** @description 是否重新列出平台字幕軌 */
+      sources: boolean;
+      /** @description 是否重新查詢 SponsorBlock（SRC-R20） */
+      sponsorblock: boolean;
+      /**
+       * Format: date-time
+       * @description 最後一次不晚於這個時間（發布時間＋7 天）
+       */
+      until: string;
     };
     ItemSummary: {
       /** @description 0～7 個重點 */
