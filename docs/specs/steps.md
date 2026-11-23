@@ -528,6 +528,8 @@ M4 的新句型都用 `r.Step` 註冊（不限關鍵字），因為部分 `Given
 | `Given the summary of {string} is:` | 直接寫入現行的 `summary` 產出（seeding，同 `the note of … is:`）：doc string 是 JSON `{summary, key_points, title_translation, language}`（`language` 省略時是 `zh-Hant`），`summary` 步驟為 `done`，結束時間是 fake clock 的現在，來源紀錄的 `checks.passed` 為 `true`。影音不存在時先新增並做到 metadata。用於彙整這類只需要「已經有摘要」的場景 |
 | `Given the digest {string} is:` | 累積一個彙整設定：doc string 是 `POST /api/digests` 的 JSON body（不含 `id`，`id` 是參數），必須回 201 |
 
+M4-S6 已實作上面三個句型（`features/steps/digest.go`）。DIG 的場景（有 `@DIG-R` 開頭的 tag）也放行 NOTIFY 的句型（`notifyGate`）與 SUB 的句型（`subGate`）。
+
 #### NOTIFY
 
 | 步驟 | 意思 |

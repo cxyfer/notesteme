@@ -79,3 +79,18 @@
 - M4-S0：`summary` 已加進 `pipeline.Stages`（`normalize` 之後、`segment` 之前），`plannedStages` 清空（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。預設 `executor: off`（照 DIG-R1；委派說明寫成 `enabled: false`，以規格為準），預設值只在讀取時補上、不寫進快照（內建預設的快照 sha 寫死在 `internal/pipeline/m4_stages_test.go`）。設定要求執行（`api`、`agent`）時，S0 改成 `skipped`（暫時的原因 `not_implemented`）、不建任務；從 `summary` 重跑回 501。M4 之前建立的影音沒有 `summary` 的 stage run，前進時跳過、不補建。`too_long` 只登記名稱。內建 prompt `summary-default` 還沒有加入（prompt 類型 `summary` 已存在），S6 DIG 要補上，否則寫了 `prompt: summary-default` 的處理方案會 422。預設 tag 308 個場景逐場景比對不變（沒有斷言依賴步驟數量或「下一步是 segment」）。
 - M4-S0：DIG-R1 的「`executor: off` 時設定 `pause_after: true` 回 422」在處理方案層檢查：處理方案沒有寫 `executor` 時用預設的 `off`，一樣拒絕；覆寫（頻道、新增、重跑）沒有寫 `executor` 時不知道下層的設定，不拒絕（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。合併後的生效設定是否矛盾（例如處理方案 `api`、覆寫改成 `off` 但仍有 `pause_after`）由 S6 決定要不要在 `BuildEffective` 再擋一次。`max_duration` 以 `10m`～`6h`、`max_input_tokens` 以 1000～200000 檢查，訊息「必須是 10m 到 6h 之間的期間。」是 S0 暫定的句子。
 - M4-S0：steps.md 4.18 的「`processed up to "summary"`」與 `the summary profile is:` 原本寫「`pipeline.ValidStage("summary")` 為 false 時 pending」；S0 之後 `ValidStage` 已經是 true，改成以 `pipeline.StageAvailable("summary")` 判斷（同 M3 的四個步驟）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。`the summary profile is:` 的步驟樁仍然一律 pending，由 S6 換成實作。
+- M4-S6：實作時的決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 彙整的範圍終點是「不晚於執行時間的最近一個排定時間」，且不早於 `next_run_at`（失敗退避後的重試不在 `at` 上時，終點就是排定的時間）；停機好幾個週期後只補跑一次，範圍 `(last_run_at, 最近一個排定時間]` 涵蓋整段錯過的期間（DIG-R9）。第一次執行的起點是 `next_run_at` 減一個週期。
+  - 預覽（DIG-R11）的範圍終點是「現在」，起點同正式執行（`last_run_at`，沒有時是排定的下一次減一個週期）。
+  - 文字管道的標題：每日「Notesteme 每日彙整：<範圍終點的當地日期>（N 部）」；每週「Notesteme 每週彙整：<起點的當地日期>～<終點的前一天>（N 部）」。內文每部影音一段：標題（有譯文時加「（譯文）」）、頻道・H:MM:SS、摘要（空白壓成一個空格，超過 280 字截斷加「…」，沒有摘要時「（沒有摘要）」）、等你決定的影音加「等你決定」、有 `server.public_url` 時加影音連結。結尾：超過 50 部時「還有 N 部，請到 Notesteme 查看。」；沒有 `public_url` 時「設定 server.public_url 後，彙整會附上連結。」；有等你決定的影音而且有 `public_url` 時加「等你決定：<public_url>/library?blocked=awaiting_user」。彙整不再附 UI 首頁連結（每部影音已有連結）。
+  - webhook 的 `message` 是同一段內文、`summary` 是標題；整個 body 超過 64 KiB（NOTIFY-R9）時拿掉 `digest`、`items`，`message` 改成截斷說明。超過 50 部時 `items` 只列前 50 部，但 `digest_entries` 記錄範圍內全部的影音（其餘的不會在下一則彙整再出現）。
+  - 彙整只寫給它設定的 notifier（`notify.Outbox.EmitTo`），notifier 停用或取消勾選 `digest` 時略過；dedupe 鍵是 `digest:<id>:<範圍終點>`。
+  - 排程器一輪最多兩趟：第一趟執行的工作把其他工作提前到這一輪開頭以前（彙整寫入 outbox 後的 `notify.deliver`）時，同一輪再執行一次，讓彙整在排定的時間送出，不必等下一輪（ADR-0021 第 1 點的補充）。
+  - 彙整設定的回應多了 `next_run_at`（停用時是 `null`）。每日彙整給 `weekday` 回 422（`weekday 只能用在每週彙整。`）；PATCH 改成每日時沒有給 `weekday` 就清掉。停用時刪除排程工作；從停用改回啟用時 `last_run_at` 清空、範圍重新起算（不會把停用期間的影音一次送出）。時區只接受 IANA 名稱（不接受 `Local`、路徑），時區資料編進執行檔（`time/tzdata`）。夏令時間跳過的 `at` 改在之後第一個有效時間執行，重複的 `at` 取第一次。
+  - `summary` 的 prompt 加了變數 `summary_lang`（PRM-R3 的變數表多一個；內建 `summary-default` 使用 title、channel、description、source_lang、summary_lang）。LLM 的 schema 檢查支援 `["string", "null"]` 的可為 null 純量（OpenAI strict 相容；object、array 不能是 null）。
+  - `too_long` 的 token 估計包含標題、頻道、說明（前 2000 字）與每句字幕；訊息中的數字取到百位。片長未知時只檢查 token。
+  - 重試用盡（DIG-R4）時不建立新產出，之前的摘要（如果有）仍是現行產出；`pause_after` 照常套用（`done` 與 `skipped` 的 `too_long` 都會暫停）。內容與現行產出完全相同時沿用現行產出，不建立新版本。
+  - 從 `summary` 重跑不再回 501（M4-S0 的暫時行為）。
+  - 生效設定的矛盾（處理方案 `api` + `pause_after`、覆寫改成 `off`）不在 `BuildEffective` 擋：`summary` 是 `off` 時直接 `skipped`、沒有任務，也不會暫停，結果無害。
+  - CLI `items continue` 超過 100 部時分批呼叫批次 API；有任何一部沒有繼續時結束碼 1，`--json` 輸出合併後的 `{continued, skipped}`。
+  - 沒有做：UI（影音詳情的摘要區塊、媒體庫「等你決定」的篩選與批次繼續、設定頁的彙整設定）；`@ui @manual` 的場景「Continuing several items from the library」留給 UI 切片。
