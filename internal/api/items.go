@@ -112,6 +112,27 @@ type ItemDetail struct {
 	Chapters *[]Chapter `json:"chapters,omitempty" doc:"章節，依開始時間排序；沒有章節時是空陣列，chapters 步驟沒有產生過產出時沒有這個欄位"`
 	// Summary 是現行的摘要（DIG-R5）；沒有摘要產出時沒有這個欄位。
 	Summary *ItemSummary `json:"summary,omitempty" doc:"摘要（DIG-R5）；沒有摘要產出時沒有這個欄位"`
+	// Reprobe 是排定的重新 Probe（SRC-R18），BetterSource 是事後發現的更好字幕來源（SRC-R23）；沒有時都是 null。
+	Reprobe      *ItemReprobe      `json:"reprobe" doc:"排定的重新 Probe（SRC-R18）；沒有排程時是 null"`
+	BetterSource *ItemBetterSource `json:"better_source" doc:"事後發現的更好字幕來源（SRC-R23）；沒有時是 null"`
+}
+
+// ItemReprobe 是影音排定的重新 Probe（SRC-R18）。
+type ItemReprobe struct {
+	NextAt       time.Time `json:"next_at" doc:"下一次重新 Probe 的時間"`
+	Until        time.Time `json:"until" doc:"最後一次不晚於這個時間（發布時間＋7 天）"`
+	Runs         int       `json:"runs" doc:"已經執行的次數"`
+	Sources      bool      `json:"sources" doc:"是否重新列出平台字幕軌"`
+	SponsorBlock bool      `json:"sponsorblock" doc:"是否重新查詢 SponsorBlock（SRC-R20）"`
+}
+
+// ItemBetterSource 是事後發現的更好字幕來源（SRC-R23）；改用它要從 transcript 重跑。
+type ItemBetterSource struct {
+	Source      string    `json:"source"`
+	Lang        string    `json:"lang"`
+	Kind        string    `json:"kind"`
+	FoundAt     time.Time `json:"found_at"`
+	EstimateUSD *float64  `json:"estimate_usd" nullable:"true" doc:"從 transcript 重跑的預估費用；無法估算時是 null"`
 }
 
 // ItemSummary 是影音的摘要（DIG-R5）。內容來自模型，是不可信的文字，顯示時要跳脫。
@@ -564,6 +585,12 @@ func toDetail(d pipeline.Detail) ItemDetail {
 	}
 	if sm := d.Summary; sm != nil {
 		out.Summary = &ItemSummary{Text: sm.Text, KeyPoints: sm.KeyPoints, TitleTranslation: sm.TitleTranslation, Language: sm.Language}
+	}
+	if rp := d.Reprobe; rp != nil {
+		out.Reprobe = &ItemReprobe{NextAt: rp.NextAt.UTC(), Until: rp.Until.UTC(), Runs: rp.Runs, Sources: rp.Sources, SponsorBlock: rp.SponsorBlock}
+	}
+	if b := d.BetterSource; b != nil {
+		out.BetterSource = &ItemBetterSource{Source: b.Source, Lang: b.Lang, Kind: b.Kind, FoundAt: b.FoundAt.UTC(), EstimateUSD: b.EstimateUSD}
 	}
 	return out
 }

@@ -21,7 +21,8 @@ import (
 //     POST /api/auth/login 的 next（ENTRY-R6）也已實作。
 //   - DIG 的路由（continue、digests）在 M4-S6 實作（digests.go）。
 //   - GET /api/search 在 S8 SRCH 實作（search.go）。
-//   - 既有路由的欄位擴充（GET /api/items/:id 的 reprobe、better_source、read_state，
+//   - GET /api/items/:id 的 reprobe、better_source 在 SRC-10 實作（items.go）。
+//   - 既有路由的欄位擴充（GET /api/items/:id 的 read_state，
 //     PATCH /api/channels/:id/term-candidates/:candidate 的 term、scope，GET /api/system 的 alerts、backup）由各切片加上。
 var m4Stubs = []m2Stub{
 	// LIB-R16～R21（S13 LIB）。批次的 scope 依動作（LIB-R16），stub 不讀 body，先要求多數動作需要的 ingest；

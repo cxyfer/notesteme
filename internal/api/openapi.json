@@ -2347,11 +2347,56 @@
         ],
         "type": "object"
       },
+      "ItemBetterSource": {
+        "additionalProperties": false,
+        "properties": {
+          "estimate_usd": {
+            "description": "從 transcript 重跑的預估費用；無法估算時是 null",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "found_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "lang",
+          "kind",
+          "found_at",
+          "estimate_usd"
+        ],
+        "type": "object"
+      },
       "ItemDetail": {
         "additionalProperties": false,
         "properties": {
           "availability": {
             "type": "string"
+          },
+          "better_source": {
+            "description": "事後發現的更好字幕來源（SRC-R23）；沒有時是 null",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemBetterSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "channel_id": {
             "type": "string"
@@ -2414,6 +2459,17 @@
             "description": "影音的短代號，例如 yt:abc123xxxxx",
             "type": "string"
           },
+          "reprobe": {
+            "description": "排定的重新 Probe（SRC-R18）；沒有排程時是 null",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemReprobe"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "sources": {
             "items": {
               "$ref": "#/components/schemas/Source"
@@ -2464,6 +2520,8 @@
         "required": [
           "stages",
           "sources",
+          "reprobe",
+          "better_source",
           "id",
           "ref",
           "platform",
@@ -2476,6 +2534,42 @@
           "overrides",
           "created_at",
           "subscription_id"
+        ],
+        "type": "object"
+      },
+      "ItemReprobe": {
+        "additionalProperties": false,
+        "properties": {
+          "next_at": {
+            "description": "下一次重新 Probe 的時間",
+            "format": "date-time",
+            "type": "string"
+          },
+          "runs": {
+            "description": "已經執行的次數",
+            "format": "int64",
+            "type": "integer"
+          },
+          "sources": {
+            "description": "是否重新列出平台字幕軌",
+            "type": "boolean"
+          },
+          "sponsorblock": {
+            "description": "是否重新查詢 SponsorBlock（SRC-R20）",
+            "type": "boolean"
+          },
+          "until": {
+            "description": "最後一次不晚於這個時間（發布時間＋7 天）",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "next_at",
+          "until",
+          "runs",
+          "sources",
+          "sponsorblock"
         ],
         "type": "object"
       },

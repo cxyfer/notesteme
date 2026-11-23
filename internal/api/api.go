@@ -161,6 +161,7 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 
 	r := &routes{d: d, api: api}
 	r.register(api)
+	nullableRefs(api, "ItemDetail", "reprobe", "better_source")
 	if d.Events != nil {
 		mux.Handle("GET /api/events", requireScopeHandler(auth.ScopeRead, d.Events))
 	} else {
