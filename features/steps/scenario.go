@@ -309,7 +309,7 @@ func (s *Scenario) send(spec string, o requestOpts) error {
 			return err
 		}
 	}
-	path, err = s.substRefs(s.World.SubstRequest(path))
+	path, err = s.requestPath(path)
 	if err != nil {
 		return err
 	}
@@ -461,4 +461,9 @@ func (s *Scenario) prepareOwner() error {
 		return err
 	}
 	return s.flushQueue()
+}
+
+// requestPath 代入請求路徑：{token:…} 與 M5 的參照（SubstRequest），再把影音代號換成實際 ID。
+func (s *Scenario) requestPath(path string) (string, error) {
+	return s.substRefs(s.World.SubstRequest(path))
 }

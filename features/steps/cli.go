@@ -72,7 +72,7 @@ func (s *Scenario) ownerRuns(line string) error {
 	}
 	for i, a := range argv {
 		// /tmp/<x> 對應到 `Given the file "/tmp/<x>" contains:` 寫的檔案（steps.md 第 4 節），不碰真正的 /tmp。
-		argv[i] = s.World.Expand(s.World.SubstRequest(s.mapTmpPaths(a)))
+		argv[i] = s.expandArg(a)
 	}
 	switch argv[0] {
 	case "notesteme":
@@ -223,4 +223,9 @@ func (s *Scenario) commandRanIn(want string) error {
 	}
 	c.step = s.step
 	return nil
+}
+
+// expandArg 代入 CLI 的一個參數：/tmp/<x>、{token:…} 與 M5 的參照、虛擬路徑。
+func (s *Scenario) expandArg(a string) string {
+	return s.World.Expand(s.World.SubstRequest(s.mapTmpPaths(a)))
 }
