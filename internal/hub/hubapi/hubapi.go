@@ -75,7 +75,7 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 	cfg.SchemasPath = ""
 	cfg.CreateHooks = nil
 	api := humago.New(mux, cfg)
-	rt := &routes{d: d, api: api, limiter: newRateLimiter(d.Clock)}
+	rt := &routes{d: d, api: api, limiter: newRateLimiter(d.Clock), takedownLimiter: newHourlyLimiter(d.Clock)}
 	api.UseMiddleware(rt.accessMiddleware, rt.rawOperations)
 	public := map[string]any{AccessExtension: string(AccessPublic)}
 	huma.Register(api, huma.Operation{
@@ -90,6 +90,9 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 	registerAccounts(api, rt)
 	registerRepository(api, rt)
 	registerListing(api, rt)
+	registerCommunity(api, rt)
+	registerTakedowns(api, rt)
+	registerModeration(api, rt)
 	registerStubs(api)
 	return rt
 }
@@ -108,6 +111,8 @@ type routes struct {
 	d       Deps
 	api     huma.API
 	limiter *rateLimiter
+	// takedownLimiter 是下架申請每個 IP 每小時的額度（HACC-R15）。
+	takedownLimiter *hourlyLimiter
 }
 
 type statusOutput struct {

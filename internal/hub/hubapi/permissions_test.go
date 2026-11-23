@@ -264,7 +264,7 @@ func TestTokenFollowsAccountPermissions(t *testing.T) {
 	e.grant("alice", hubconfig.GroupContributors)
 	_, tok := e.createToken("alice", `{"name":"up","permissions":["upload"]}`)
 	// upload 有，但 read 沒有（PAT 只有 upload）。
-	expect(t, "upload", e.bearer(tok, "GET", "/api/v1/me/shares", "", ""), 501, "not_implemented")
+	expect(t, "upload", e.bearer(tok, "GET", "/api/v1/me/shares", "", ""), 200, "")
 	expect(t, "PAT 沒有 read", e.bearer(tok, "GET", "/api/v1/versions", "", ""), 403, "forbidden")
 	e.revokeGroup("alice", hubconfig.GroupContributors)
 	rec := e.bearer(tok, "GET", "/api/v1/me/shares", "", "")
@@ -280,7 +280,7 @@ func TestTokenFollowsAccountPermissions(t *testing.T) {
 	expect(t, "停用帳號的 session", e.as("alice", "GET", "/api/v1/me", ""), 403, "account_suspended")
 }
 
-// setSuspended 直接改 DB（停用的路由是 S5）。
+// setSuspended 直接改 DB（只測 middleware；停用的路由見 moderation_test.go）。
 func setSuspended(e *permEnv, who string) error {
 	db, err := sqlitedb.Open(filepath.Join(e.dir, sqlite.DBFileName), false)
 	if err != nil {
@@ -297,7 +297,7 @@ func TestAdminTokenHasEverything(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, tok := e.createToken("alice", `{"name":"root","permissions":["admin"]}`)
-	expect(t, "admin 的 PAT 可以 moderate", e.bearer(tok, "GET", "/api/v1/admin/takedowns", "", ""), 501, "not_implemented")
+	expect(t, "admin 的 PAT 可以 moderate", e.bearer(tok, "GET", "/api/v1/admin/takedowns", "", ""), 200, "")
 	expect(t, "admin 的 PAT 可以看稽核", e.bearer(tok, "GET", "/api/v1/admin/audit", "", ""), 200, "")
 	// read 的 PAT 不能做 admin 的事，即使帳號是 admin。
 	_, rtok := e.createToken("alice", `{"name":"r","permissions":["read"]}`)
@@ -323,7 +323,7 @@ func TestAdminGroupRoutes(t *testing.T) {
 	expect(t, "不存在的使用者", e.as("alice", "PUT", "/api/v1/admin/users/nope/groups/moderators", ""), 404, "not_found")
 	expect(t, "指派 moderators", e.as("alice", "PUT", "/api/v1/admin/users/"+bob+"/groups/moderators", ""), 204, "")
 	expect(t, "再指派一次", e.as("alice", "PUT", "/api/v1/admin/users/"+bob+"/groups/moderators", ""), 204, "")
-	expect(t, "bob 可以 moderate", e.as("bob", "GET", "/api/v1/admin/takedowns", ""), 501, "not_implemented")
+	expect(t, "bob 可以 moderate", e.as("bob", "GET", "/api/v1/admin/takedowns", ""), 200, "")
 	expect(t, "移除", e.as("alice", "DELETE", "/api/v1/admin/users/"+bob+"/groups/moderators", ""), 204, "")
 	expect(t, "移除後", e.as("bob", "GET", "/api/v1/admin/takedowns", ""), 403, "forbidden")
 

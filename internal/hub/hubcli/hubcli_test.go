@@ -34,6 +34,7 @@ const cfg = "public_url: https://hub.example.org\noauth:\n  github: { client_id:
 var secret = map[string]string{
 	"NOTESTEME_HUB_OAUTH_GITHUB_CLIENT_SECRET": "s",
 	"NOTESTEME_HUB_SESSION_KEY":                "0123456789abcdef0123456789abcdef",
+	"NOTESTEME_HUB_MASTER_KEY":                 "fedcba9876543210fedcba9876543210",
 }
 
 func TestUsageAndVersion(t *testing.T) {

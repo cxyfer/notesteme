@@ -108,7 +108,7 @@ func TestAuthMiddleware(t *testing.T) {
 		r.AddCookie(&http.Cookie{Name: hubauth.SessionCookie, Value: "forged"})
 	}), 401, "unauthorized")
 	expect(t, "公開的路由", e.do("GET", "/api/v1/auth/providers"), 200, "")
-	expect(t, "公開的 stub", e.do("POST", "/api/v1/takedowns"), 501, "not_implemented")
+	expect(t, "公開的下架申請（body 不正確）", e.do("POST", "/api/v1/takedowns"), 422, "invalid_request")
 	for _, p := range PublicDocPaths {
 		expect(t, p, e.do("GET", p), 200, "")
 	}

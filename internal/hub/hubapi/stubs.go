@@ -7,7 +7,6 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/cxyfer/notesteme/internal/apierr"
-	"github.com/cxyfer/notesteme/internal/hub/hubconfig"
 )
 
 // Access 是路由需要的存取層級（HACC 規格「介面」的權限欄）：不需要登入、只能用 session、任何有效身分，或一個權限。
@@ -37,38 +36,9 @@ type Stub struct {
 
 // Stubs 是 HACC、HREP 規格「介面」章節的 /api/v1 路由（M5-S0）。
 var Stubs = []Stub{
-	// HACC：登入、登出、/me 與登入方式的連結、移除由 M5-S1 實作（auth.go）；Hub token、群組指派與稽核紀錄由 M5-S2 實作（tokens.go）。
-	{ID: "me-shares", Method: http.MethodGet, Path: "/api/v1/me/shares", Access: perm(hubconfig.PermUpload), Spec: "HACC-R16",
-		Summary: "我的分享與版本狀態（尚未實作）"},
-	// HACC：下架申請（S5）
-	{ID: "takedowns-create", Method: http.MethodPost, Path: "/api/v1/takedowns", Access: AccessPublic, Spec: "HACC-R15",
-		Summary: "提出下架申請，不需要登入（尚未實作）"},
-	{ID: "takedowns-get", Method: http.MethodGet, Path: "/api/v1/takedowns/{id}", Access: AccessPublic, Spec: "HACC-R15",
-		Summary: "查詢下架申請的狀態（尚未實作）"},
-	// HACC：管理（S2、S5）
-	{ID: "admin-takedowns-list", Method: http.MethodGet, Path: "/api/v1/admin/takedowns", Access: perm(hubconfig.PermModerate), Spec: "HACC-R16",
-		Summary: "列出下架申請（尚未實作）"},
-	{ID: "admin-takedowns-decide", Method: http.MethodPost, Path: "/api/v1/admin/takedowns/{id}/decision", Access: perm(hubconfig.PermModerate), Spec: "HACC-R16",
-		Summary: "決定下架申請（尚未實作）"},
-	{ID: "admin-reports-list", Method: http.MethodGet, Path: "/api/v1/admin/reports", Access: perm(hubconfig.PermModerate), Spec: "HREP-R14",
-		Summary: "列出檢舉（尚未實作）"},
-	{ID: "admin-reports-decide", Method: http.MethodPost, Path: "/api/v1/admin/reports/{id}/decision", Access: perm(hubconfig.PermModerate), Spec: "HREP-R15",
-		Summary: "處理檢舉（尚未實作）"},
-	{ID: "admin-versions-hide", Method: http.MethodPost, Path: "/api/v1/admin/versions/{id}/hide", Access: perm(hubconfig.PermModerate), Spec: "HREP-R15",
-		Summary: "隱藏版本（尚未實作）"},
-	{ID: "admin-users-list", Method: http.MethodGet, Path: "/api/v1/admin/users", Access: perm(hubconfig.PermAdmin), Spec: "HACC-R12",
-		Summary: "列出使用者（尚未實作）"},
-	{ID: "admin-users-suspend", Method: http.MethodPost, Path: "/api/v1/admin/users/{id}/suspend", Access: perm(hubconfig.PermAdmin), Spec: "HACC-R17",
-		Summary: "停用帳號（尚未實作）"},
-	{ID: "admin-users-unsuspend", Method: http.MethodPost, Path: "/api/v1/admin/users/{id}/unsuspend", Access: perm(hubconfig.PermAdmin), Spec: "HACC-R17",
-		Summary: "恢復帳號（尚未實作）"},
-	// HREP：分享、撤回與版本詳情由 M5-S3 實作（repository.go）；篩選、影片頁、取用與 lookup 由 M5-S4 實作（listing.go、download.go）；社群（S5）
-	{ID: "versions-vote-put", Method: http.MethodPut, Path: "/api/v1/versions/{id}/vote", Access: perm(hubconfig.PermRead), Spec: "HREP-R13",
-		Summary: "投票（尚未實作）"},
-	{ID: "versions-vote-delete", Method: http.MethodDelete, Path: "/api/v1/versions/{id}/vote", Access: perm(hubconfig.PermRead), Spec: "HREP-R13",
-		Summary: "收回投票（尚未實作）"},
-	{ID: "versions-reports-create", Method: http.MethodPost, Path: "/api/v1/versions/{id}/reports", Access: perm(hubconfig.PermRead), Spec: "HREP-R14",
-		Summary: "檢舉版本（尚未實作）"},
+	// HACC、HREP 的路由都已實作：登入、登出、/me 與登入方式（M5-S1，auth.go）；Hub token、群組指派與稽核紀錄（M5-S2，tokens.go）；
+	// 分享、撤回與版本詳情（M5-S3，repository.go）；篩選、影片頁、取用與 lookup（M5-S4，listing.go、download.go）；
+	// 投票與檢舉（M5-S5，community.go）、下架申請（takedowns.go）、管理與我的分享（moderation.go）。
 }
 
 // RawStubs 是不經過 Huma 的路由（MCP 的 JSON-RPC），同樣先回 501。瀏覽器的 OAuth 流程（/auth/<provider>/start|callback）由 M5-S1 實作（auth.go）。

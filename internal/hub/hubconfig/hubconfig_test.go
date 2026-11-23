@@ -78,12 +78,15 @@ func TestOAuthProviders(t *testing.T) {
 }
 
 func TestEnvOverrides(t *testing.T) {
-	cfg, err := load(t, minimal+"listen: 0.0.0.0:1\n", map[string]string{EnvListen: "127.0.0.1:2", EnvData: "/srv/hub", EnvMasterKey: "k"})
+	cfg, err := load(t, minimal+"listen: 0.0.0.0:1\n", map[string]string{EnvListen: "127.0.0.1:2", EnvData: "/srv/hub", EnvMasterKey: strings.Repeat("k", MinMasterKeyLen)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Listen != "127.0.0.1:2" || cfg.Data != "/srv/hub" || cfg.MasterKey != "k" {
+	if cfg.Listen != "127.0.0.1:2" || cfg.Data != "/srv/hub" || cfg.MasterKey != strings.Repeat("k", MinMasterKeyLen) {
 		t.Errorf("cfg = %q %q %q", cfg.Listen, cfg.Data, cfg.MasterKey)
+	}
+	if _, err := load(t, minimal, map[string]string{EnvMasterKey: "short"}); err != ErrMasterKey || strings.Contains(err.Error(), "short") {
+		t.Errorf("太短的主金鑰：err = %v", err)
 	}
 	if _, err := load(t, minimal+"store: { driver: postgres }\n", nil); err == nil || !strings.Contains(err.Error(), EnvStoreDSN) {
 		t.Errorf("postgres 沒有 DSN：err = %v", err)

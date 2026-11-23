@@ -34,6 +34,15 @@ import (
 
 type principalKey struct{}
 
+// remoteAddrKey 是公開路由的連線位址（下架申請以 IP 限流，HACC-R15）。
+type remoteAddrKey struct{}
+
+// remoteAddrFrom 回傳 middleware 記下的連線位址；沒有時是空字串。
+func remoteAddrFrom(ctx context.Context) string {
+	s, _ := ctx.Value(remoteAddrKey{}).(string)
+	return s
+}
+
 // principalFrom 回傳 middleware 驗證過的身分；沒有時是 nil（公開路由或未登入的公開站台）。
 func principalFrom(ctx context.Context) *hubauth.Principal {
 	p, _ := ctx.Value(principalKey{}).(*hubauth.Principal)
@@ -118,7 +127,7 @@ func (rt *routes) accessMiddleware(ctx huma.Context, next func(huma.Context)) {
 				return
 			}
 		}
-		next(ctx)
+		next(huma.WithValue(ctx, remoteAddrKey{}, ctx.RemoteAddr()))
 		return
 	}
 	p, err := rt.authenticate(ctx)

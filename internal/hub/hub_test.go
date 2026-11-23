@@ -17,6 +17,9 @@ import (
 	"github.com/cxyfer/notesteme/internal/hub/hubstore"
 )
 
+// testMasterKey 是測試用的主金鑰（hub.Open 一律需要，HACC-R15）。
+const testMasterKey = "test-master-key-0123456789abcdefghij"
+
 func testConfig(t *testing.T, extra string) *hubconfig.Config {
 	t.Helper()
 	dir := t.TempDir()
@@ -24,7 +27,7 @@ func testConfig(t *testing.T, extra string) *hubconfig.Config {
 	if err := os.WriteFile(p, []byte("public_url: https://hub.example.org\n"+extra), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := hubconfig.Load(hubconfig.Sources{File: p, Env: map[string]string{hubconfig.EnvData: filepath.Join(dir, "data")}})
+	cfg, err := hubconfig.Load(hubconfig.Sources{File: p, Env: map[string]string{hubconfig.EnvData: filepath.Join(dir, "data"), hubconfig.EnvMasterKey: testMasterKey}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,3 +141,4 @@ func TestOpenSyncsConfigAdmins(t *testing.T) {
 		}
 	}
 }
+

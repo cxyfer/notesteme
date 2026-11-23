@@ -90,6 +90,11 @@ func serve(ctx context.Context, env Env) int {
 	if !ok {
 		return ExitError
 	}
+	// 下架申請（不需要登入）的聯絡 email 以主金鑰加密，serve 一律需要它（HACC-R15）。
+	if cfg.MasterKey == "" {
+		fmt.Fprintln(env.Stderr, hubconfig.ErrNoMasterKey)
+		return ExitError
+	}
 	log := slog.New(slog.NewJSONHandler(env.Stderr, nil))
 	s, err := hub.Open(ctx, hub.Options{Config: cfg, Clock: env.Clock, Log: log, Net: &env.Net})
 	if err != nil {
@@ -200,6 +205,10 @@ func doctor(ctx context.Context, env Env) int {
 			fmt.Fprintf(out, "  ✗ 沒有環境變數 %s（session 金鑰）\n", hubconfig.EnvSessionKey)
 			problems++
 		}
+	}
+	if cfg.MasterKey == "" {
+		fmt.Fprintf(out, "  ✗ 沒有環境變數 %s（主金鑰，加密下架申請的聯絡 email）\n", hubconfig.EnvMasterKey)
+		problems++
 	}
 	if cfg.StoreDriver == hubconfig.StoreSQLite {
 		st, err := sqlite.Open(ctx, cfg.Data, env.Clock, sqlite.Options{NoMigrate: true})

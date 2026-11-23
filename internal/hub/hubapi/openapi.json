@@ -1,6 +1,77 @@
 {
   "components": {
     "schemas": {
+      "AdminUserView": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "identities": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "suspended_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "suspended_reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "created_at",
+          "groups",
+          "identities",
+          "suspended_at",
+          "suspended_reason"
+        ],
+        "type": "object"
+      },
+      "AdminUsersOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/AdminUserView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "users"
+        ],
+        "type": "object"
+      },
       "AuditOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -47,6 +118,35 @@
           "target_id",
           "at"
         ],
+        "type": "object"
+      },
+      "CreateTakedownInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "contact_email": {
+            "description": "聯絡 email（加密存放，只有版主看得到）",
+            "type": "string"
+          },
+          "good_faith": {
+            "description": "善意聲明，必須是 true",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "reason": {
+            "description": "copyright、privacy、other",
+            "type": "string"
+          },
+          "statement": {
+            "description": "說明，20～5,000 個字元",
+            "type": "string"
+          },
+          "version_id": {
+            "description": "要下架的版本 ID",
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "CreateTokenInputBody": {
@@ -113,6 +213,20 @@
           "created_at",
           "expires_at"
         ],
+        "type": "object"
+      },
+      "DecisionInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "description": "下架申請：remove 或 reject；檢舉：dismiss 或 remove",
+            "type": "string"
+          },
+          "note": {
+            "description": "處理說明（最多 2,000 個字元）",
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "Error": {
@@ -385,6 +499,157 @@
         ],
         "type": "object"
       },
+      "MyShareView": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/MyVersionView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "video": {
+            "$ref": "#/components/schemas/VideoRef"
+          },
+          "withdrawn_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "video",
+          "created_at",
+          "withdrawn_at",
+          "versions"
+        ],
+        "type": "object"
+      },
+      "MySharesOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "shares": {
+            "items": {
+              "$ref": "#/components/schemas/MyShareView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "shares"
+        ],
+        "type": "object"
+      },
+      "MyVersionView": {
+        "additionalProperties": false,
+        "properties": {
+          "badges": {
+            "description": "model_verified 為 false 時有 unverified_model",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "correct_model": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "license": {
+            "type": "string"
+          },
+          "model_verified": {
+            "description": "true 只代表由 Client 的 api executor 記錄，Hub 無法驗證模型",
+            "type": "boolean"
+          },
+          "removal": {
+            "$ref": "#/components/schemas/RemovalView"
+          },
+          "score": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "transcribe_model": {
+            "type": "string"
+          },
+          "translate_model": {
+            "type": "string"
+          },
+          "uploaders": {
+            "items": {
+              "$ref": "#/components/schemas/UploaderView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "variant": {
+            "type": "string"
+          },
+          "video": {
+            "$ref": "#/components/schemas/VideoRef"
+          },
+          "visibility": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "visibility",
+          "state",
+          "id",
+          "video",
+          "kind",
+          "variant",
+          "lang",
+          "transcribe_model",
+          "correct_model",
+          "translate_model",
+          "model_verified",
+          "license",
+          "score",
+          "uploaders",
+          "created_at",
+          "sha256"
+        ],
+        "type": "object"
+      },
       "Provider": {
         "additionalProperties": false,
         "properties": {
@@ -470,6 +735,153 @@
         ],
         "type": "object"
       },
+      "RemovalView": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "description": "申請或檢舉的理由",
+            "type": "string"
+          },
+          "source": {
+            "description": "takedown（下架申請）或 report（檢舉）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "ReportCreatedView": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state"
+        ],
+        "type": "object"
+      },
+      "ReportDecisionView": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "version_state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "version_state"
+        ],
+        "type": "object"
+      },
+      "ReportInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "description": "說明，最多 1,000 個字元",
+            "type": "string"
+          },
+          "reason": {
+            "description": "wrong_language、bad_quality、spam、offensive、other（版權與隱私問題改用下架申請）",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ReportView": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decided_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "reporter": {
+            "$ref": "#/components/schemas/ReporterView"
+          },
+          "state": {
+            "type": "string"
+          },
+          "version_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version_id",
+          "reporter",
+          "reason",
+          "note",
+          "state",
+          "created_at",
+          "decided_at"
+        ],
+        "type": "object"
+      },
+      "ReporterView": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "type": "object"
+      },
+      "ReportsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "reports": {
+            "items": {
+              "$ref": "#/components/schemas/ReportView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "reports"
+        ],
+        "type": "object"
+      },
       "ShareView": {
         "additionalProperties": false,
         "properties": {
@@ -545,6 +957,139 @@
         },
         "required": [
           "status"
+        ],
+        "type": "object"
+      },
+      "SuspendInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "description": "停用的原因（1～500 個字元）",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SuspensionView": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "suspended": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "suspended"
+        ],
+        "type": "object"
+      },
+      "TakedownCreatedView": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "message"
+        ],
+        "type": "object"
+      },
+      "TakedownStateView": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "description": "open、removed、rejected",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state"
+        ],
+        "type": "object"
+      },
+      "TakedownView": {
+        "additionalProperties": false,
+        "properties": {
+          "contact_email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decided_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "statement": {
+            "type": "string"
+          },
+          "version_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version_id",
+          "reason",
+          "statement",
+          "contact_email",
+          "state",
+          "note",
+          "created_at",
+          "decided_at"
+        ],
+        "type": "object"
+      },
+      "TakedownsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "takedowns": {
+            "items": {
+              "$ref": "#/components/schemas/TakedownView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "takedowns"
         ],
         "type": "object"
       },
@@ -749,6 +1294,22 @@
         ],
         "type": "object"
       },
+      "VersionStateView": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state"
+        ],
+        "type": "object"
+      },
       "VersionView": {
         "additionalProperties": false,
         "properties": {
@@ -946,6 +1507,39 @@
           "channel_title"
         ],
         "type": "object"
+      },
+      "VoteInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "description": "1 或 -1",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "VoteView": {
+        "additionalProperties": false,
+        "properties": {
+          "score": {
+            "description": "沒有被停用的帳號的票數總和",
+            "format": "int64",
+            "type": "integer"
+          },
+          "value": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "score"
+        ],
+        "type": "object"
       }
     }
   },
@@ -1046,9 +1640,78 @@
       "get": {
         "description": "規則：HREP-R14。",
         "operationId": "admin-reports-list",
+        "parameters": [
+          {
+            "description": "只列這個狀態",
+            "explode": false,
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "description": "只列這個狀態",
+              "type": "string"
+            }
+          },
+          {
+            "description": "最多幾筆（1～500，預設 100）",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "最多幾筆（1～500，預設 100）",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -1059,19 +1722,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "列出檢舉（尚未實作）",
+        "summary": "列出檢舉（含檢舉者）",
         "x-notesteme-access": "moderate"
       }
     },
@@ -1079,9 +1732,99 @@
       "post": {
         "description": "規則：HREP-R15。",
         "operationId": "admin-reports-decide",
+        "parameters": [
+          {
+            "description": "ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "ID",
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDecisionView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -1092,19 +1835,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "處理檢舉（尚未實作）",
+        "summary": "處理檢舉（dismiss 或 remove）",
         "x-notesteme-access": "moderate"
       }
     },
@@ -1112,9 +1845,78 @@
       "get": {
         "description": "規則：HACC-R16。",
         "operationId": "admin-takedowns-list",
+        "parameters": [
+          {
+            "description": "只列這個狀態",
+            "explode": false,
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "description": "只列這個狀態",
+              "type": "string"
+            }
+          },
+          {
+            "description": "最多幾筆（1～500，預設 100）",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "最多幾筆（1～500，預設 100）",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TakedownsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -1125,19 +1927,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "列出下架申請（尚未實作）",
+        "summary": "列出下架申請（含聯絡 email）",
         "x-notesteme-access": "moderate"
       }
     },
@@ -1145,9 +1937,99 @@
       "post": {
         "description": "規則：HACC-R16。",
         "operationId": "admin-takedowns-decide",
+        "parameters": [
+          {
+            "description": "ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "ID",
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TakedownStateView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -1158,19 +2040,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "決定下架申請（尚未實作）",
+        "summary": "決定下架申請（remove 或 reject）",
         "x-notesteme-access": "moderate"
       }
     },
@@ -1178,9 +2050,68 @@
       "get": {
         "description": "規則：HACC-R12。",
         "operationId": "admin-users-list",
+        "parameters": [
+          {
+            "description": "最多幾筆（1～500，預設 100）",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "最多幾筆（1～500，預設 100）",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUsersOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -1191,19 +2122,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "列出使用者（尚未實作）",
+        "summary": "列出使用者",
         "x-notesteme-access": "admin"
       }
     },
@@ -1403,9 +2324,89 @@
       "post": {
         "description": "規則：HACC-R17。",
         "operationId": "admin-users-suspend",
+        "parameters": [
+          {
+            "description": "使用者 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "使用者 ID",
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuspendInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuspensionView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -1416,19 +2417,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "停用帳號（尚未實作）",
+        "summary": "停用帳號（session 與 Hub token 回 403，票不計入分數）",
         "x-notesteme-access": "admin"
       }
     },
@@ -1436,9 +2427,79 @@
       "post": {
         "description": "規則：HACC-R17。",
         "operationId": "admin-users-unsuspend",
+        "parameters": [
+          {
+            "description": "使用者 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "使用者 ID",
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuspensionView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -1449,19 +2510,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "恢復帳號（尚未實作）",
+        "summary": "恢復帳號（停用前的 session 與 Hub token 失效）",
         "x-notesteme-access": "admin"
       }
     },
@@ -1469,9 +2520,89 @@
       "post": {
         "description": "規則：HREP-R15。",
         "operationId": "admin-versions-hide",
+        "parameters": [
+          {
+            "description": "版本 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "版本 ID",
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionStateView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -1482,19 +2613,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "隱藏版本（尚未實作）",
+        "summary": "隱藏版本",
         "x-notesteme-access": "moderate"
       }
     },
@@ -2069,9 +3190,68 @@
       "get": {
         "description": "規則：HACC-R16。",
         "operationId": "me-shares",
+        "parameters": [
+          {
+            "description": "最多幾筆（1～500，預設 100）",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "最多幾筆（1～500，預設 100）",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MySharesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -2082,19 +3262,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "我的分享與版本狀態（尚未實作）",
+        "summary": "我的分享與版本狀態（含被移除的原因）",
         "x-notesteme-access": "upload"
       }
     },
@@ -2542,9 +3712,46 @@
       "post": {
         "description": "規則：HACC-R15。",
         "operationId": "takedowns-create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTakedownInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TakedownCreatedView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -2556,7 +3763,7 @@
             },
             "description": "Internal Server Error"
           },
-          "501": {
+          "503": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2564,10 +3771,10 @@
                 }
               }
             },
-            "description": "Not Implemented"
+            "description": "Service Unavailable"
           }
         },
-        "summary": "提出下架申請，不需要登入（尚未實作）",
+        "summary": "提出下架申請，不需要登入",
         "x-notesteme-access": "public"
       }
     },
@@ -2575,9 +3782,59 @@
       "get": {
         "description": "規則：HACC-R15。",
         "operationId": "takedowns-get",
+        "parameters": [
+          {
+            "description": "下架申請 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "下架申請 ID",
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TakedownStateView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -2588,19 +3845,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "查詢下架申請的狀態（尚未實作）",
+        "summary": "查詢下架申請的狀態，不需要登入",
         "x-notesteme-access": "public"
       }
     },
@@ -3194,11 +4441,111 @@
     },
     "/api/v1/versions/{id}/reports": {
       "post": {
-        "description": "規則：HREP-R14。",
+        "description": "規則：HREP-R14、R15。",
         "operationId": "versions-reports-create",
+        "parameters": [
+          {
+            "description": "版本 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "版本 ID",
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportCreatedView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -3209,19 +4556,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "檢舉版本（尚未實作）",
+        "summary": "檢舉版本（版權與隱私問題改用下架申請）",
         "x-notesteme-access": "read"
       }
     },
@@ -3229,9 +4566,92 @@
       "delete": {
         "description": "規則：HREP-R13。",
         "operationId": "versions-vote-delete",
+        "parameters": [
+          {
+            "description": "版本 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "版本 ID",
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -3242,27 +4662,117 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "收回投票（尚未實作）",
+        "summary": "收回投票",
         "x-notesteme-access": "read"
       },
       "put": {
         "description": "規則：HREP-R13。",
         "operationId": "versions-vote-put",
+        "parameters": [
+          {
+            "description": "版本 ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "版本 ID",
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoteInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoteView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too Many Requests"
           },
           "500": {
             "content": {
@@ -3273,19 +4783,9 @@
               }
             },
             "description": "Internal Server Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Not Implemented"
           }
         },
-        "summary": "投票（尚未實作）",
+        "summary": "投票或改票（一人一票）",
         "x-notesteme-access": "read"
       }
     },

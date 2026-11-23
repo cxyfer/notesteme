@@ -347,6 +347,9 @@ func Load(src Sources) (*Config, error) {
 	cfg.Data = abs
 	cfg.StoreDSN = src.Env[EnvStoreDSN]
 	cfg.MasterKey = src.Env[EnvMasterKey]
+	if cfg.MasterKey != "" && len(cfg.MasterKey) < MinMasterKeyLen {
+		return nil, ErrMasterKey
+	}
 	cfg.SessionKey = src.Env[EnvSessionKey]
 	if cfg.SessionKey != "" && len(cfg.SessionKey) < MinSessionKeyLen {
 		return nil, ErrSessionKey
@@ -375,6 +378,15 @@ var ErrSessionKey = fmt.Errorf("環境變數 %s 至少要 %d 個字元（例如 
 
 // ErrNoSessionKey 是有啟用登入方式、卻沒有 session 金鑰時的錯誤。
 var ErrNoSessionKey = fmt.Errorf("有啟用登入方式時要設定環境變數 %s（至少 %d 個字元，例如 openssl rand -base64 32 產生的值）。", EnvSessionKey, MinSessionKeyLen)
+
+// MinMasterKeyLen 是主金鑰的最短長度（字元，同 session 金鑰）。
+const MinMasterKeyLen = 32
+
+// ErrMasterKey 是主金鑰太短時的錯誤（不帶金鑰內容）。
+var ErrMasterKey = fmt.Errorf("環境變數 %s 至少要 %d 個字元（例如 openssl rand -base64 32 產生的值）。", EnvMasterKey, MinMasterKeyLen)
+
+// ErrNoMasterKey 是沒有主金鑰時的錯誤：下架申請的聯絡 email 要以它加密（HACC-R15），serve 一律需要。
+var ErrNoMasterKey = fmt.Errorf("要設定環境變數 %s（至少 %d 個字元，例如 openssl rand -base64 32 產生的值），下架申請的聯絡 email 以它加密。", EnvMasterKey, MinMasterKeyLen)
 
 // ErrPublicURL 是 public_url 缺少或不是 https 網址時的錯誤。
 var ErrPublicURL = errors.New("設定 public_url 必須是 https 網址。")
