@@ -12,11 +12,11 @@ describe("路由", () => {
     expect(router.state.location.search).toEqual({ redirect: "/queue?x=1" });
   });
 
-  it("GET / 導到 /library", async () => {
+  it("GET / 是總覽（UI-7）", async () => {
     signIn();
     const { router } = renderRoute("/");
-    await screen.findByRole("heading", { level: 1, name: "媒體庫" });
-    expect(router.state.location.pathname).toBe("/library");
+    await screen.findByRole("heading", { level: 1, name: "總覽" });
+    expect(router.state.location.pathname).toBe("/");
   });
 
   it("/settings 導到第一個分區", async () => {
@@ -32,6 +32,7 @@ describe("路由", () => {
     const nav = await screen.findByRole("navigation", { name: "主要導覽" });
     const links = [...nav.querySelectorAll("a.nav__item")].map((a) => a.textContent);
     expect(links).toEqual([
+      "總覽",
       "媒體庫",
       "佇列",
       "訂閱",

@@ -16,7 +16,8 @@
     "styles": "字幕样式",
     "subscriptions": "订阅",
     "noteTemplates": "笔记模板",
-    "costs": "成本"
+    "costs": "成本",
+    "overview": "总览"
   },
   "prefs": {
     "theme": "主题",
@@ -1922,6 +1923,41 @@
       "done": "已分享到 Hub：",
       "dedup": "（Hub 上已有相同内容）",
       "configure": "设置 Hub"
+    }
+  },
+  "overview": {
+    "title": "总览",
+    "now": "现在",
+    "processing_other": "处理中 {{count}} 部",
+    "idle": "目前没有正在处理的音视频。",
+    "more_other": "还有 {{count}} 部，查看队列",
+    "count_other": "{{formatted}} 项",
+    "allInLibrary": "只列出最近 50 项，到媒体库查看全部",
+    "view": "查看",
+    "review": "去审核",
+    "adjustBudget": "调整预算",
+    "viewCosts": "查看成本",
+    "continued": "已继续处理",
+    "today": "今天",
+    "quiet": "今天还没有事件。",
+    "recentDone": "近期完成",
+    "spent": "本月花费 {{spent}}，预算 {{budget}}",
+    "spentNoBudget": "本月花费 {{spent}}，没有设置预算",
+    "disk": "数据占用 {{used}}，可用空间 {{free}}",
+    "diskUsed": "数据占用 {{used}}",
+    "diskUnknown": "磁盘用量还在统计中",
+    "ev": {
+      "item.created": "新增了“{{title}}”",
+      "item.deleted": "“{{title}}”移到回收站",
+      "item.restored": "“{{title}}”已还原",
+      "item.purged": "“{{title}}”已永久删除",
+      "items.batch": "执行了一次批量操作",
+      "stage.status": "“{{title}}”的步骤有新状态",
+      "budget.warning": "本月花费接近预算",
+      "notify.dropped": "有通知没有发出",
+      "subscription.checked": "订阅检查完成",
+      "subscription.check_failed": "订阅检查失败",
+      "other": "{{type}} {{title}}"
     }
   }
 }

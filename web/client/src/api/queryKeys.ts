@@ -79,4 +79,7 @@ export const queryKeys = {
     ["termCandidates", "review", state, channel] as const,
   // M5-S9：Hub 的連線設定（HSHR-R1）
   hubSettings: ["hubSettings"] as const,
+  // ---- UI-7：總覽（LIB-R21）；tz 是瀏覽器的時區 ----
+  overviewAll: ["overview"] as const,
+  overview: (tz: string) => ["overview", tz] as const,
 };

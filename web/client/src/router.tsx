@@ -3,7 +3,7 @@
 //   root
 //   ├─ /login                 登入（不需要 session）
 //   └─ app（layout，需要 session；AppShell）
-//      ├─ /                   M1–M3 導到 /library（docs/ui/README.md §2）
+//      ├─ /                   總覽（UI-7，lazy；M1–M3 曾導到 /library）
 //      ├─ /library
 //      ├─ /queue
 //      ├─ /items/$id
@@ -83,12 +83,11 @@ const appRoute = createRoute({
   component: AppShell,
 });
 
+// UI-7：總覽（LIB-09）是首頁
 const indexRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/",
-  beforeLoad: () => {
-    throw redirect({ to: "/library", replace: true });
-  },
+  component: lazyRouteComponent(() => import("./pages/overview/OverviewPage"), "OverviewPage"),
 });
 
 const libraryRoute = createRoute({

@@ -16,7 +16,8 @@
     "styles": "字幕樣式",
     "subscriptions": "訂閱",
     "noteTemplates": "筆記模板",
-    "costs": "成本"
+    "costs": "成本",
+    "overview": "總覽"
   },
   "prefs": {
     "theme": "主題",
@@ -1922,6 +1923,41 @@
       "done": "已分享到 Hub：",
       "dedup": "（Hub 上已有相同內容）",
       "configure": "設定 Hub"
+    }
+  },
+  "overview": {
+    "title": "總覽",
+    "now": "現在",
+    "processing_other": "處理中 {{count}} 部",
+    "idle": "目前沒有正在處理的影音。",
+    "more_other": "還有 {{count}} 部，查看佇列",
+    "count_other": "{{formatted}} 項",
+    "allInLibrary": "只列出最近 50 項，到媒體庫查看全部",
+    "view": "查看",
+    "review": "去審核",
+    "adjustBudget": "調整預算",
+    "viewCosts": "查看成本",
+    "continued": "已繼續處理",
+    "today": "今天",
+    "quiet": "今天還沒有事件。",
+    "recentDone": "近期完成",
+    "spent": "本月花費 {{spent}}，預算 {{budget}}",
+    "spentNoBudget": "本月花費 {{spent}}，沒有設定預算",
+    "disk": "資料佔用 {{used}}，可用空間 {{free}}",
+    "diskUsed": "資料佔用 {{used}}",
+    "diskUnknown": "磁碟用量還在統計中",
+    "ev": {
+      "item.created": "新增了「{{title}}」",
+      "item.deleted": "「{{title}}」移到垃圾桶",
+      "item.restored": "「{{title}}」已還原",
+      "item.purged": "「{{title}}」已永久刪除",
+      "items.batch": "執行了一次批次操作",
+      "stage.status": "「{{title}}」的步驟有新狀態",
+      "budget.warning": "本月花費接近預算",
+      "notify.dropped": "有通知沒有送出",
+      "subscription.checked": "訂閱檢查完成",
+      "subscription.check_failed": "訂閱檢查失敗",
+      "other": "{{type}} {{title}}"
     }
   }
 }

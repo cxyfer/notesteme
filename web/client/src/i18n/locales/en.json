@@ -16,7 +16,8 @@
     "styles": "Subtitle styles",
     "subscriptions": "Subscriptions",
     "noteTemplates": "Note templates",
-    "costs": "Costs"
+    "costs": "Costs",
+    "overview": "Overview"
   },
   "prefs": {
     "theme": "Theme",
@@ -1965,6 +1966,44 @@
       "done": "Shared to the Hub:",
       "dedup": "(already on the Hub)",
       "configure": "Set up Hub"
+    }
+  },
+  "overview": {
+    "title": "Overview",
+    "now": "Now",
+    "processing_one": "{{count}} processing",
+    "processing_other": "{{count}} processing",
+    "idle": "Nothing is processing right now.",
+    "more_one": "{{count}} more — see the queue",
+    "more_other": "{{count}} more — see the queue",
+    "count_one": "{{formatted}} item",
+    "count_other": "{{formatted}} items",
+    "allInLibrary": "Only the latest 50 are listed. See all in the library",
+    "view": "View",
+    "review": "Review",
+    "adjustBudget": "Adjust budget",
+    "viewCosts": "View costs",
+    "continued": "Continued",
+    "today": "Today",
+    "quiet": "No events yet today.",
+    "recentDone": "Recently finished",
+    "spent": "Spent {{spent}} this month, budget {{budget}}",
+    "spentNoBudget": "Spent {{spent}} this month, no budget set",
+    "disk": "Data uses {{used}}, {{free}} free",
+    "diskUsed": "Data uses {{used}}",
+    "diskUnknown": "Disk usage is still being measured",
+    "ev": {
+      "item.created": "Added “{{title}}”",
+      "item.deleted": "Moved “{{title}}” to the trash",
+      "item.restored": "Restored “{{title}}”",
+      "item.purged": "Deleted “{{title}}” forever",
+      "items.batch": "Ran a bulk action",
+      "stage.status": "A step of “{{title}}” changed status",
+      "budget.warning": "This month's spending is near the budget",
+      "notify.dropped": "A notification was not sent",
+      "subscription.checked": "Subscriptions checked",
+      "subscription.check_failed": "A subscription check failed",
+      "other": "{{type}} {{title}}"
     }
   }
 }

@@ -1,0 +1,60 @@
+/* UI-7：總覽、媒體庫的批次操作、垃圾桶。顏色、間距只用 tokens.css 的變數。 */
+
+/* ---------- 總覽 ---------- */
+.ov-sec {
+  margin: 0 0 var(--space-6);
+}
+.ov-sec__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: var(--space-3);
+}
+.ov-sec__head h2 {
+  font-size: var(--font-16);
+  margin: 0 0 var(--space-1);
+}
+.ov-list,
+.ov-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.ov-now {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-1) var(--space-3);
+  align-items: baseline;
+}
+.ov-now__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ov-now__band {
+  grid-column: 1 / -1;
+}
+.ov-need__title {
+  margin: 0 0 var(--space-1);
+}
+.ov-events > li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+}
+.ov-events time {
+  flex: none;
+}
+.ov-foot {
+  border-top: 1px solid var(--rule);
+  padding-top: var(--space-3);
+}
+.ov-foot p {
+  margin: 0 0 var(--space-1);
+}

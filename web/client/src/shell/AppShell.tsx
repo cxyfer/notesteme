@@ -19,6 +19,7 @@ const NAV_GROUPS = [
   {
     label: "nav.work",
     items: [
+      { to: "/", label: "nav.overview" },
       { to: "/library", label: "nav.library" },
       { to: "/queue", label: "nav.queue" },
       { to: "/subscriptions", label: "nav.subscriptions" },
@@ -128,7 +129,7 @@ function ShellLayout() {
       </a>
       <div className="app">
         <nav className="nav" aria-label={t("nav.label")}>
-          <Link to="/library" className="nav__mark">
+          <Link to="/" className="nav__mark">
             {t("app.name")}
           </Link>
           <Button className="nav__add" variant="primary" onClick={() => add.open()}>
@@ -147,7 +148,9 @@ function ShellLayout() {
                       to={it.to}
                       className="nav__item"
                       aria-current={
-                        pathname === it.to || pathname.startsWith(`${it.to}/`) ? "page" : undefined
+                        pathname === it.to || (it.to !== "/" && pathname.startsWith(`${it.to}/`))
+                          ? "page"
+                          : undefined
                       }
                     >
                       {t(it.label)}
