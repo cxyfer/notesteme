@@ -115,6 +115,9 @@ jobs:
             echo "::error::binary 沒有內嵌 Web UI 的建置產物（只有 placeholder）"
             exit 1
           fi
+          # Hub 是另一個 binary（ADR-0030），只確認可以執行。
+          hub="$(ls dist/notesteme-hub_linux_amd64*/notesteme-hub)"
+          "$hub" --version
 
   sqlc:
     name: sqlc generated code

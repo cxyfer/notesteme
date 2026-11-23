@@ -28,12 +28,33 @@ builds:
       - goos: darwin
         goarch: amd64
 
+  # Hub 是獨立的 binary（ADR-0030 第 1 點），不內嵌 Web UI；正式環境跑在 Linux 容器中。
+  - id: notesteme-hub
+    main: ./cmd/notesteme-hub
+    binary: notesteme-hub
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/cxyfer/notesteme/internal/hub.version={{ .Version }}
+    goos: [linux]
+    goarch: [amd64, arm64]
+
 archives:
-  - formats: [tar.gz]
+  - id: notesteme
+    ids: [notesteme]
+    formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
         formats: [zip]
+    files:
+      - README.md
+  - id: notesteme-hub
+    ids: [notesteme-hub]
+    formats: [tar.gz]
+    name_template: "notesteme-hub_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
 

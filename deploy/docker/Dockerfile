@@ -46,9 +46,43 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go build -trimpath \
       -ldflags "-s -w -X github.com/cxyfer/notesteme/internal/app.version=${VERSION}" \
       -o /out/notesteme ./cmd/notesteme
+# Hub 是獨立的 binary（ADR-0030 第 1 點），不內嵌 Client 的 UI；版本號的 -X 目標是 internal/hub。
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath \
+      -ldflags "-s -w -X github.com/cxyfer/notesteme/internal/hub.version=${VERSION}" \
+      -o /out/notesteme-hub ./cmd/notesteme-hub
 
 # ---- Deno（yt-dlp 解 YouTube 需要外部 JS runtime）----
 FROM denoland/deno:bin-${DENO_VERSION} AS deno
+
+# ---- Hub 的執行環境（docker build --target notesteme-hub，ADR-0030 第 1 點）----
+# 放在 Client 的執行環境之前：沒有 --target 時建置的是最後一個 stage（Client）。
+# Hub 不執行外部工具，不需要 ffmpeg、yt-dlp、deno。
+FROM debian:${DEBIAN_VERSION}-slim AS notesteme-hub
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl tini \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/notesteme-hub /usr/local/bin/notesteme-hub
+RUN groupadd --system --gid 10001 notesteme \
+ && useradd --system --uid 10001 --gid notesteme --home-dir /data --shell /usr/sbin/nologin notesteme \
+ && mkdir -p /data /config \
+ && chown notesteme:notesteme /data /config \
+ && chmod 0700 /data
+ENV NOTESTEME_HUB_LISTEN=0.0.0.0:8090 \
+    NOTESTEME_HUB_DATA=/data \
+    NOTESTEME_HUB_CONFIG=/config/notesteme-hub.yaml \
+    HOME=/data \
+    LANG=C.UTF-8
+USER notesteme:notesteme
+WORKDIR /data
+VOLUME ["/data"]
+EXPOSE 8090
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -fsS -o /dev/null http://127.0.0.1:8090/readyz || exit 1
+ENTRYPOINT ["/usr/bin/tini", "--", "notesteme-hub"]
+CMD ["serve"]
 
 # ---- 執行環境 ----
 FROM debian:${DEBIAN_VERSION}-slim
