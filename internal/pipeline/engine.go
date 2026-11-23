@@ -452,14 +452,14 @@ func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.Stag
 			}
 			next, ok := nextStage(run.Stage, it.UntilStage)
 			if !ok {
-				return nil
+				return p.emitRunEvent(ctx, r, it, run.Stage)
 			}
 			// 走到這裡時這一筆一定是最新的（上面已檢查），舊的結果不會觸發下游。
 			// 影音沒有記錄的步驟（M2 建立的影音沒有 M3 的四個步驟）跳過，前進到下一個有記錄的步驟。
 			nr, ok := latest[next]
 			for !ok {
 				if next, ok = nextStage(next, it.UntilStage); !ok {
-					return nil
+					return p.emitRunEvent(ctx, r, it, run.Stage)
 				}
 				nr, ok = latest[next]
 			}
@@ -487,7 +487,8 @@ func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.Stag
 			}
 			wake = wake || created
 		}
-		return nil
+		// 通知事件與狀態在同一個交易（NOTIFY-R3）：鏈直接略過的最後幾個步驟也已寫入，所以放在最後判斷。
+		return p.emitRunEvent(ctx, r, it, run.Stage)
 	})
 	// 租約已經失效（被放回、到期後被別人領走，或任務已被取消）：寫回的交易已整個回復，
 	// 這次的結果不算數。不是錯誤；產出檔沒有記錄指向它，一併丟棄。

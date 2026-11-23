@@ -16,6 +16,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/llm"
 	"github.com/cxyfer/notesteme/internal/media"
+	"github.com/cxyfer/notesteme/internal/notify"
 	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/source/bilibili"
 	"github.com/cxyfer/notesteme/internal/source/groq"
@@ -108,6 +109,8 @@ type Deps struct {
 	SponsorBlock SponsorBlockLookup
 	// SponsorBlockBaseURL 是設定檔的 sponsorblock.base_url，寫進來源紀錄（SPB-R6）。
 	SponsorBlockBaseURL string
+	// Notify 在步驟狀態寫回的同一個交易中寫入通知事件（NOTIFY-R3）；nil 代表不通知。
+	Notify *notify.Outbox
 }
 
 // Pipeline 是影音處理的入口：API 呼叫 Ingest 與查詢方法，worker 呼叫 Handle。
@@ -158,6 +161,8 @@ type Pipeline struct {
 	sponsorBase string
 	// agentLimit 回傳資源類別的並行上限，Agent 領取時用（AGT-R2）；nil 時用 queue.DefaultLimit。
 	agentLimit func(class string) int
+	// notify 見 Deps.Notify。
+	notify *notify.Outbox
 }
 
 // New 建立 Pipeline。
@@ -181,7 +186,7 @@ func New(d Deps) *Pipeline {
 	if retention <= 0 {
 		retention = DefaultTrashRetention
 	}
-	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, outputs: d.Outputs, prompts: d.Prompts, llm: d.LLM, sponsor: d.SponsorBlock, sponsorBase: d.SponsorBlockBaseURL}
+	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, outputs: d.Outputs, prompts: d.Prompts, llm: d.LLM, sponsor: d.SponsorBlock, sponsorBase: d.SponsorBlockBaseURL, notify: d.Notify}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。
