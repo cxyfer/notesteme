@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cxyfer/notesteme/features/internal/fakebatch"
@@ -132,6 +133,10 @@ type World struct {
 
 	// hub 是 M5 的 Hub 狀態（真 Hub 或 fakehub，見 hub.go）。
 	hub hubState
+
+	// diskUsage 是產品讀到的 /data 用量百分比加 1（OPS-R16，`the data volume is … percent full`）；0 代表沒有設定，
+	// 用預設的 10%（OPS 待決問題 O10）。server 啟動後也可以改，下一次 alerts 檢查時生效。
+	diskUsage atomic.Int32
 
 	closed bool
 }

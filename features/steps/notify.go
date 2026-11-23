@@ -19,7 +19,7 @@ import (
 //
 // M4 規格展開時（2026-11-23）只註冊步驟樁；M4-S1 實作 NOTIFY 的句型。NOTIFY 的句型也是 DIG 與 OPS-06～08 的閘門，
 // 所以只對 NOTIFY 的場景放行（見 notifyGate），其他領域維持 pending、停在同一個閘門。
-// DIG 的句型在 M4-S6 實作（digest.go）；OPS 自己的句型仍是步驟樁，由它的切片實作。
+// DIG 的句型在 M4-S6 實作（digest.go）；OPS 的句型在 OPS 的 M4 切片實作（ops_unattended.go）。
 func registerNotify(r *Registry, s *Scenario) {
 	r.Step(`the summary profile is:`, s.summaryProfileIs)
 	r.Step(`the summary of {string} is:`, s.summaryOfIs)
@@ -34,21 +34,14 @@ func registerNotify(r *Registry, s *Scenario) {
 	r.Step(`the last request to the notification endpoint {string} is signed with {string}`, s.notifyLastSigned)
 	r.Step(`the notification endpoint {string} received a request containing {string}`, s.notifyReceivedContaining)
 	r.Step(`no request to a notification endpoint contains {string}`, s.noNotifyRequestContains)
-	r.Step(`the backup directory {string} contains:`, func(string, *godog.Table) error { return godog.ErrPending })
-	r.Step(`the backup directory {string} contains exactly:`, func(string, *godog.Table) error { return godog.ErrPending })
-	r.Step(`the data volume is {int} percent full`, func(int) error { return godog.ErrPending })
-	r.Step(`the cookie for {string} was last used successfully at {string}`, func(string, string) error { return godog.ErrPending })
-	r.Step(`yt-dlp recorded {int} failures out of {int} calls in the last hour`, func(int, int) error { return godog.ErrPending })
-	r.Step(`the instance is deployed with the {string} profile`, func(string) error { return godog.ErrPending })
-	r.Step(`the server starts with the flag {string}`, func(string) error { return godog.ErrPending })
-	r.Step(`the compose .env file contains:`, func(*godog.Table) error { return godog.ErrPending })
+	registerOpsUnattended(r, s)
 }
 
 // notifyGate 讓 NOTIFY 的句型只對 NOTIFY 的場景（有 @NOTIFY- 開頭的 tag）放行（M4-S1）；M4-S6 起也對 DIG 的場景放行（digGate）。
 // DIG 的彙整與 OPS-06～08 的告警共用這些句型，在它們的切片實作之前維持 pending；回傳裸的 godog.ErrPending，
 // junit 的訊息與切片之前相同（同 M5-S1 的 hubGate）。
 func (s *Scenario) notifyGate() error {
-	if !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@NOTIFY-") }) && !s.digGate() {
+	if !slices.ContainsFunc(s.tags, func(t string) bool { return strings.HasPrefix(t, "@NOTIFY-") }) && !s.digGate() && !s.opsGate() {
 		return godog.ErrPending
 	}
 	return nil

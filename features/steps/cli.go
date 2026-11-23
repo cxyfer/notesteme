@@ -136,7 +136,7 @@ func (s *Scenario) runDocker(args []string) error {
 	if err != nil {
 		return err
 	}
-	out, err := fakecompose.Run(root, args, composeEnv)
+	out, err := fakecompose.Run(root, args, s.composeVars())
 	var exit *fakecompose.ExitError
 	switch {
 	case err == nil:

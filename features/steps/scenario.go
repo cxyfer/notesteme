@@ -99,6 +99,8 @@ type Scenario struct {
 	hub hubState
 	// signin 是反向代理、OIDC 與具名 session 的狀態（M4 AUTH，見 signin.go）。
 	signin signinState
+	// ops 是 OPS-06～08 累積的狀態（見 ops_unattended.go）。
+	ops opsState
 }
 
 // response 是最近一次請求的回應。
@@ -241,13 +243,18 @@ func (s *Scenario) checkLogs() error {
 
 // startServer 以場景目前的設定啟動 server。啟動失敗時錯誤記在 startErr 並回傳。
 func (s *Scenario) startServer() error {
+	return s.startServerWith(app.ServeOptions{})
+}
+
+// startServerWith 同 startServer，帶 serve 的旗標（`the server starts with the flag …`）。
+func (s *Scenario) startServerWith(opts app.ServeOptions) error {
 	s.started = true
 	s.stopped = false
 	if err := s.writeSigninConfig(); err != nil {
 		s.server, s.startErr = nil, err
 		return err
 	}
-	srv, err := app.StartServer(s.ctx, s.World.AppEnv())
+	srv, err := app.StartServerWith(s.ctx, s.World.AppEnv(), opts)
 	if err != nil {
 		s.server, s.startErr = nil, err
 		return err
@@ -510,6 +517,9 @@ func (s *Scenario) prepareOwner() error {
 		return err
 	}
 	if err := s.flushNotifiers(); err != nil {
+		return err
+	}
+	if err := s.flushOps(); err != nil {
 		return err
 	}
 	if err := s.flushDigests(); err != nil {

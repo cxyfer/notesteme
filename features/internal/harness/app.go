@@ -91,6 +91,21 @@ func (w *World) AppEnv() app.Env {
 		Listen: w.Listen,
 		Log:    w.Log,
 		Test: &app.TestControls{LowCostHashing: true, ManualWorker: true, SkipShutdownGrace: true, SerialLLM: true, ImplVersions: impl, Migrations: migs,
-			CostEstimates: est, PricesAsOf: w.PricesAsOf},
+			CostEstimates: est, PricesAsOf: w.PricesAsOf, DiskUsage: w.diskUsagePercent},
 	}
+}
+
+// DefaultDiskUsage 是沒有 `the data volume is … percent full` 時產品讀到的 /data 用量（OPS 待決問題 O10）：
+// CI 機器真實的磁碟用量不會觸發告警。
+const DefaultDiskUsage = 10
+
+// SetDiskUsage 設定產品讀到的 /data 用量百分比（0～100）。
+func (w *World) SetDiskUsage(percent int) { w.diskUsage.Store(int32(percent) + 1) }
+
+// diskUsagePercent 是交給 app 的 TestControls.DiskUsage：每次呼叫都讀目前的設定。
+func (w *World) diskUsagePercent(string) (int, error) {
+	if v := w.diskUsage.Load(); v > 0 {
+		return int(v - 1), nil
+	}
+	return DefaultDiskUsage, nil
 }
