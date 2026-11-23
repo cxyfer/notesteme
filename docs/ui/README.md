@@ -218,7 +218,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 登入頁背景的淡化時間帶（§13） | 未做 | 等 UI-1 的時間帶元件 |
 | 768–1279px 的收合導覽（只剩圖示） | 未做：沒有圖示前維持展開；UI-1 沒有引入 Phosphor Icons | 之後的切片 |
 | 訂閱、成本、筆記模板、設定的通知與預算、影音詳情的畫面與筆記 | 完成（UI-4，見 10.12） | `src/pages/{subscriptions,costs,noteTemplates}`、`src/pages/settings`、`src/pages/item/NotePanels.tsx` |
-| 總覽、批次操作、搜尋、Hub UI | 未做：後端還沒有（LIB-09、LIB-08、SRCH、HREP） | 之後的切片 |
+| 字幕全文搜尋、術語審核、bundle 匯出與匯入、系統告警與備份、摘要與彙整、更好的字幕來源 | 完成（UI-5，見 10.14） | `src/pages/search`、`src/pages/settings`、`src/pages/item`、`src/pages/library` |
+| 總覽、批次操作、Hub UI | 未做：總覽依賴 LIB-09 `/api/overview`、批次依賴 LIB-08 `POST /api/items/batch`（兩者仍是 501 stub）；Hub UI 屬 M5 | 之後的切片 |
 
 ### 10.2 UI-0 的決定
 
@@ -457,3 +458,42 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 18. **時間連結跳播**只在連結指向同一部影音時（比對主機、路徑與 YouTube 的 `v`；`t=` 或 `#t=`）攔截，其他連結開新分頁。
 19. **畫面與筆記只在切到該分頁時讀取**，404 `no_frames`／`no_note` 是「還沒有」，顯示說明不當成錯誤；SSE 的 `stage.status` 在 frames、note、publish `done` 時讓兩者失效。詳情頁的分頁順序是字幕、畫面、筆記、步驟、紀錄、輸出（README §3.6 的 1–4 是字幕、畫面、筆記、紀錄）。
 20. **共用檔案只增不改**：`router.tsx`、`queryKeys.ts`、locale JSON、`SettingsPage.tsx`（通知、預算改接新的元件，`PlannedSection` 保留但目前沒有分區使用）、`a11yRoutes.ts`、`fixtures.ts`；`router.test.tsx` 的導覽清單與 `settings.test.tsx` 的「通知與預算只說明 M4 起提供」測試依新行為修改。新的樣式在 `src/styles/m4.css`（由 `main.tsx` 載入）。
+
+### 10.14 UI-5：搜尋、術語審核、bundle、系統告警與備份、摘要與彙整、更好的字幕來源（2026-11-24）
+
+| 範圍 | 狀態 | 位置 |
+|---|---|---|
+| 字幕全文搜尋 `/search?q=&lang=`（lazy route）：送出前檢查空白與 200 個 code point、伺服器 422 顯示訊息、依影音分組、命中範圍依 `highlights` 切成 `<mark>`（React 節點，不用 innerHTML）、前後文、字幕帶 `lang`、游標「載入更多」與游標失效重讀、點結果跳到影音詳情的那一句（`?t=`） | 完成 | `src/pages/search` |
+| 媒體庫搜尋欄下的「在字幕內容中搜尋」入口 | 完成 | `src/pages/LibraryPage.tsx` |
+| 設定「詞彙表」分區的術語審核（GLOS-R7）：狀態與頻道篩選、依頻道分組、來源影音與時間、接受／改寫後接受（預填原詞）／拒絕、加到這個頻道或全域、多選後一次接受或拒絕（上限 100）、422 的 `decisions.<n>` 對回那一列、409 `glossary_full` 與 `term_candidate_decided` 分開處理、游標分頁 | 完成（lazy） | `src/pages/settings/TermReview.tsx` |
+| 影音詳情的「匯出 bundle」（`<a download>`） | 完成 | `src/pages/item/ItemPage.tsx` |
+| 設定「系統」分區的「匯入 bundle」：multipart 上傳、「影音已存在時加成新版本」（`on_existing=add_versions`）、上限提示（不在前端擋）、422 的訊息與 `entry`／逐欄錯誤、413、409 已存在時提示勾選、成功時顯示匯入與略過數並連到影音 | 完成（lazy） | `src/pages/settings/BundleImport.tsx` |
+| 設定「系統」分區的系統告警（種類、訊息、對象、開始時間與已持續多久）與每日備份（最近一次成功、下一次執行或已停用、最近一次失敗的原因） | 完成（lazy） | `src/pages/settings/OpsStatus.tsx` |
+| 影音詳情的摘要（譯名、摘要、重點，純文字、帶 `lang`）與摘要後暫停的「繼續處理」「取消處理」；步驟分頁的 `繼續處理`、`取消`、`重新產生摘要`、`改用更好的字幕重跑`、`重新查詢 SponsorBlock`、`從章節重跑` 對應到動作 | 完成 | `src/pages/item/{SummaryBlock.tsx,actions.ts}` |
+| 媒體庫「等你決定」（`/library?blocked=awaiting_user`，彙整的連結）與「繼續處理已載入的 N 部」（確認後每 100 部一批） | 完成（近似篩選，見 10.15 第 4 點） | `src/pages/library/{filters.ts,ContinueBar.tsx}` |
+| 設定「通知」分區的彙整：列表、新增與編輯（PATCH 只送改過的欄位）、只能選勾了「彙整」事件的端點（1～5 個）、停用與刪除先確認、預覽 | 完成（lazy） | `src/pages/settings/DigestsPanel.tsx` |
+| 影音詳情的「有更好的字幕來源」提示（`estimate_usd` 為 null 時寫「無法預估費用」）與「改用更好的字幕重跑」（從字幕步驟重新處理）；排定的重新 Probe 時間 | 完成 | `src/pages/item/BetterSource.tsx` |
+| 通知分區移除「彙整」「系統告警」「有更好的字幕來源」的「尚未會發出」標示 | 完成 | `src/pages/settings/NotificationsSection.tsx` |
+| AUTH 的 token 輪替、工作階段列表、OIDC 登入按鈕 | AUTH 切片已完成，沒有重做 | `src/pages/settings/{AgentSection,LoginSection}.tsx`、`src/pages/LoginPage.tsx` |
+| 總覽（LIB-09）、媒體庫的批次操作（LIB-08）、Hub UI | 未做：`/api/overview`、`/api/items/batch` 仍是 501 stub，不放入口 | — |
+| 匯出時選擇產出種類 | 未做：`GET /api/items/{id}/bundle` 沒有參數（見 10.15 第 6 點） | — |
+| 真實瀏覽器的視覺、鍵盤與螢幕閱讀器驗收（`@ui @manual`：SRCH、GLOS、BND、OPS、DIG、SRC-10） | owner 手動驗收 | — |
+
+驗證：vitest 42 個檔案 413 個測試（新頁面與新區塊都有 axe 測試，`a11yRoutes` 加了 `/search` 兩條路徑）、i18n 三語各 1537 個 key、初始 JS 271.2KB gzip（UI-4 之後約 261.6KB；增加的主要是三語字串，設定的四個新區塊與搜尋頁都在 lazy chunk）。**沒有改後端**（OpenAPI 與 `schema.d.ts` 不變）。
+
+### 10.15 UI-5 的決定與待決問題
+
+（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）
+
+1. **搜尋是獨立的 lazy route `/search`**，入口在媒體庫的搜尋欄下方（「在字幕內容中搜尋「…」」，帶入目前的標題搜尋文字）；不加導覽項目，也不做指令面板（§3.1 仍是之後的切片）。SRCH 的 `@ui @manual` 場景寫「在搜尋欄選擇『字幕內容』」，這裡是搜尋欄旁的連結，不是同一個欄位的切換。查詢與語言存在 URL。
+2. **搜尋結果依影音分組**（SRCH 待決問題 S5 允許前端分組）：只把相鄰的同一部影音放在一起，順序照 API（SRCH-R7）。單頁 50 句；OpenAPI 把 `limit` 定成字串，照字串送。
+3. **跳轉時間**：影音詳情的 `?t=` 只收整數秒（會 floor），結果的 `start` 是毫秒，所以送 `ceil(start)`，超過這一句的 `end` 時退回 `floor(start)`，避免定位到前一句。
+4. **「等你決定」是近似篩選**：`GET /api/items` 沒有依 `block_reason` 篩選，`/library?blocked=awaiting_user` 換成 `status=summary:done&status=summary:skipped&status=segment:blocked`（DIG-R6 的下一步是 `segment`）。會混入因預算等其他原因停在分段的影音，以及漏掉「這次執行不含 segment」時停在更後面步驟的影音；橫幅寫明，批次繼續時伺服器會以 `not_awaiting_user` 略過。**待決**：建議 API 加 `blocked=<reason>` 篩選（或在列表回傳 `awaiting_user`）。
+5. **批次繼續**只送「已載入」的影音（不是篩選結果的全部），先確認（之後的步驟會計入預算），每 100 部一批，toast 顯示繼續與略過的數量。沒有做逐列選取（那屬於 LIB-08 的批次操作）；DIG 的 `@ui @manual` 場景「Continuing several items from the library」若要求逐列勾選，等 LIB-08 一起做。
+6. **bundle 匯出沒有選產出種類**：API 沒有參數，匯出現行版本的全部產出（BND-R1）。**待決**：pages.md §4 的匯出選單與 brief 提到「選產出種類」，需要的話 API 要加 `kinds` 參數。
+7. **bundle 匯入的大小上限**只在設定檔（`bundles.import.max_upload_bytes`），API 不提供，前端只提示「預設 64 MiB」、不在前端擋，以 413 的訊息為準。409 `bundle_item_exists` 的訊息提到 `on_existing=add_versions`（給 CLI／API 的說法），UI 改寫成「勾選『影音已存在時，把產出加成新版本』」並提供一鍵勾選。**待決**：409 沒有 `item_id`，不能直接連到已存在的影音；BND 的 `@ui @manual` 場景要求影音詳情顯示「從 bundle 匯入」與來源實例，`GET /api/items/{id}` 沒有 `imported_from`，目前沒有顯示。
+8. **術語審核放在「詞彙表」分區的最上面**（GLOS G1），既有的單一頻道清單（UI-3b）保留不動。單筆與批次都走 `POST /api/term-candidates/decide`（同一條錯誤處理路徑）；每一列的「加到哪裡」預設是這個頻道，批次接受時各列用自己的選擇。**待決（API 與規格不一致）**：GLOS-R5 說來源影音永久刪除時 `item` 是 `null`，但 OpenAPI 的 `TermCandidateReview.item` 不是 nullable；前端照 null 處理（顯示「來源影音已刪除」）。
+9. **彙整放在「通知」分區**（DIG 介面）：時區預設為瀏覽器的時區；端點只列出勾了 `digest` 事件的 notifier（編輯時已選但取消勾選事件的端點也列出，方便移除）；沒有這樣的端點時「新增彙整」停用並說明。預覽把伺服器組好的文字原樣放在 `<pre>`。
+10. **系統告警只顯示目前成立的告警**：`GET /api/system` 沒有已解除的告警或歷史，「恢復狀態」以「目前沒有告警」與說明（解除時會送出解除通知）表示。持續時間以讀到資料的時間計算，用 `Intl` 的單位格式（分鐘／小時／天），不另加字串。沒有放「立即備份」（`/api/backup` 是下載備份檔，不在 brief 範圍）。
+11. **摘要與「有更好的字幕來源」放在標題資訊與時間帶之間**；摘要是 LLM 輸出，一律當純文字（保留換行），帶 `summary.language`。「改用更好的字幕重跑」打開既有的重新處理對話框並帶 `from: transcript`（handoff 的 SRC-10 說明），金額由對話框照 UI-2 的方式處理；提示中的預估為 null 時寫「無法預估費用」，不顯示 $0.00。沒有 SSE 事件告知 `better_source` 出現，詳情在步驟狀態改變或重新開啟時才會更新。
+12. **共用檔案只增不改**：`router.tsx`（`/search`）、`queryKeys.ts`（`search`、`termCandidatesAll`、`termReview`、`digests`）、locale JSON（新增 key；移除不再使用的 `settings.notify.notYetEmitted`）、`SettingsPage.tsx` 沒有改；`GlossarySection`、`SystemSection`、`NotificationsSection` 各只加一個 lazy 掛載點。步驟動作的對照表（`actions.ts`）加了六個後端字串，`ActionKind` 的 `rerun` 多了選填的 `from`，另加 `continue`、`cancel`。新的樣式在 `src/styles/ui5.css`（由 lazy 模組載入），媒體庫的兩個小樣式加在 `library.css`。

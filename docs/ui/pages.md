@@ -131,6 +131,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - 每列顯示刪除時間與「N 天後永久刪除」，可以還原或永久刪除；頂部有「清空垃圾桶」。
   - 永久刪除與清空都要再確認一次，訊息為「永久刪除後無法復原，已花費的金額仍會保留在成本紀錄中。」
 - **狀態**：空狀態與篩選結果為空，文案見 [README §4.3](README.md#43-空狀態範例)。
+- **實作狀態（UI-5，2026-11-24）**：字幕全文搜尋是獨立的 `/search` 頁，從搜尋欄下方的「在字幕內容中搜尋」進入；「等你決定」檢視（`?blocked=awaiting_user`）與批次繼續已完成（近似篩選）；批次操作列仍等 LIB-08。見 [README 10.14、10.15](README.md#1015-ui-5-的決定與待決問題)。
 - **API**：`GET /api/items`、`GET /api/search`、`POST /api/items/batch`、`GET/POST /api/views`、`GET /api/trash`、`POST /api/trash/:id/restore`、`DELETE /api/trash/:id`、`DELETE /api/trash`
 
 ## 4. 影音詳情
@@ -187,6 +188,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
     - 依步驟列出狀態、開始與結束時間、耗時、花費、provider、model、prompt 版本、log。
     - 每個產出都有版本，可以比較兩個版本的差異。
 - **實作狀態（UI-4，2026-11-23）**：畫面與筆記分頁已完成，見 [README 10.12](README.md#1012-ui-4訂閱成本筆記模板通知與預算影音詳情的畫面與筆記2026-11-23)；匯出選單的 Markdown 筆記改放在筆記分頁的「下載 Markdown」。
+- **實作狀態（UI-5，2026-11-24）**：摘要區塊與「繼續處理」（DIG）、「有更好的字幕來源」提示與「改用更好的字幕重跑」（SRC-10）、動作列的「匯出 bundle」已完成；匯出不能選產出種類（API 沒有參數），見 [README 10.14、10.15](README.md#1015-ui-5-的決定與待決問題)。
 - **重新處理**選單：
   - 從某個步驟開始重新處理。
   - 換 prompt 或模型重新生成，會產生新版本，舊版本保留。
@@ -425,6 +427,7 @@ Prompt 庫 › 校正 › correct-default
 - **修訂（2026-11-23，ADR-0020、VAULT 規格待決問題 V1，待 owner 追認）**：「輸出」分區的 vault（路徑、git repo、分支）與 hook 只能在設定檔定義，這裡唯讀顯示，處理方案只能選用已定義的 id；字幕的本機影片旁與資料夾目標維持可以在處理方案中設定。
 - **API**：`GET/PUT /api/settings/:section`、`POST /api/providers/:id/test`、`POST /api/cookies`、`GET /api/system`、`POST /api/tools/yt-dlp/update`、`GET/POST/DELETE /api/tokens`
 - **修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）**：「書籤小工具」是 ENTRY-R1 的區塊，獨立成一個分區（`/settings/bookmarklet`，排在「外觀」之後），見 ENTRY 待決問題 E7。
+- **實作狀態（UI-5，2026-11-24）**：「詞彙表」加上跨頻道的術語審核（GLOS-R7）；「通知」加上彙整設定（DIG）；「系統」加上系統告警、每日備份狀態與「匯入 bundle」（OPS、BND），見 [README 10.14、10.15](README.md#1015-ui-5-的決定與待決問題)。
 - **實作狀態（UI-4，2026-11-23）**：「通知」與「預算」分區完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)；其他分區見 README 10.10。
 
 ## 13. 登入
