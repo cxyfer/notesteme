@@ -21,6 +21,7 @@ const NAV_GROUPS = [
     items: [
       { to: "/library", label: "nav.library" },
       { to: "/queue", label: "nav.queue" },
+      { to: "/subscriptions", label: "nav.subscriptions" },
     ],
   },
   // M2（UI-3a）：調整（design-language.md §5.1 的三組：工作、調整、系統）

@@ -13,7 +13,10 @@
     "tune": "調整",
     "prompts": "Prompt 庫",
     "profiles": "處理方案",
-    "styles": "字幕樣式"
+    "styles": "字幕樣式",
+    "subscriptions": "訂閱",
+    "noteTemplates": "筆記模板",
+    "costs": "成本"
   },
   "prefs": {
     "theme": "主題",
@@ -57,6 +60,15 @@
     },
     "styles": {
       "title": "字幕樣式"
+    },
+    "subscriptions": {
+      "title": "訂閱"
+    },
+    "costs": {
+      "title": "成本"
+    },
+    "noteTemplates": {
+      "title": "筆記模板"
     }
   },
   "login": {
@@ -106,7 +118,11 @@
     "api_not_configured": "這個步驟沒有設定 API 的 provider，無法改用 API 處理。先到設定加上 provider。",
     "no_media": "這部影音沒有可以播放的本機媒體。",
     "media_missing": "本機檔案已經不在原處。",
-    "not_implemented": "這個功能還沒有做好。"
+    "not_implemented": "這個功能還沒有做好。",
+    "unsupported_url": "無法辨識這個網址。訂閱支援 YouTube 頻道與播放清單、Bilibili 合集與 Podcast RSS。",
+    "not_a_collection": "這是單一影片，請直接新增，不需要訂閱。",
+    "duplicate_subscription": "已經訂閱了這個來源。",
+    "invalid_format": "無法辨識匯入檔的格式。支援 OPML 與 Google Takeout 的 subscriptions.csv。"
   },
   "status": {
     "pending": "等待中",
@@ -1232,5 +1248,147 @@
     "previewAlt": "樣式 {{name}} 在 {{at}} 的預覽畫面",
     "previewAt": "畫面時間",
     "previewAtHint": "MM:SS 或 HH:MM:SS；也決定預覽用哪一句字幕。"
+  },
+  "subs": {
+    "lead": "訂閱的頻道、播放清單與 Podcast 會依檢查頻率自動探索，新內容依處理方案自動處理。",
+    "new": "新增訂閱",
+    "empty": "還沒有訂閱。訂閱頻道後，新內容會自動處理。",
+    "tableCaption": "訂閱列表",
+    "col": {
+      "source": "頻道",
+      "platform": "平台",
+      "schedule": "檢查頻率",
+      "lastChecked": "上次檢查",
+      "nextCheck": "下次檢查",
+      "profile": "處理方案",
+      "state": "狀態"
+    },
+    "never": "還沒檢查",
+    "disabled": "已停用",
+    "profileDefault": "預設處理方案",
+    "errorSep": "：",
+    "ok": "正常",
+    "created": "已新增訂閱 {{name}}",
+    "oneInstance": "同一個頻道只在一台實例上訂閱，避免重複處理。",
+    "newTitle": "新增訂閱",
+    "creating": "新增中…",
+    "create": "新增訂閱",
+    "openExisting": "開啟已有的訂閱",
+    "import": {
+      "open": "匯入",
+      "title": "匯入訂閱",
+      "description": "選擇 OPML 或 Google Takeout 的 subscriptions.csv（上限 1 MiB）。匯入的訂閱只抓之後的新內容、使用預設處理方案。",
+      "running": "匯入中…",
+      "submit": "匯入",
+      "file": "匯入檔",
+      "created_other": "已新增 {{count}} 個訂閱。",
+      "duplicates_other": "{{count}} 個已經訂閱或重複",
+      "failed_other": "{{count}} 列無法匯入：",
+      "line": "第 {{line}} 行"
+    },
+    "url": "來源",
+    "urlHint": "YouTube 頻道或播放清單、Bilibili 合集或 Podcast feed 的網址。",
+    "profile": "處理方案",
+    "scheduleLabel": "檢查頻率",
+    "schedule": {
+      "1h": "每小時",
+      "3h": "每 3 小時",
+      "6h": "每 6 小時",
+      "12h": "每 12 小時",
+      "24h": "每天",
+      "72h": "每 3 天",
+      "168h": "每週"
+    },
+    "scheduleCustom": "每 {{value}}",
+    "backfill": "回補範圍",
+    "backfillMode": {
+      "none": "只抓之後的新內容",
+      "recent": "最近幾部",
+      "all": "全部（有上限）"
+    },
+    "backfillCount": "最近幾部",
+    "backfillCountRule": "最近幾部必須是 1 到 200 之間的整數。",
+    "filters": "過濾條件",
+    "minMinutes": "最短長度（分鐘）",
+    "maxMinutes": "最長長度（分鐘）",
+    "minutesRule": "請輸入正數，或留白表示不限。",
+    "excludeShorts": "排除 Shorts",
+    "live": "直播與首播",
+    "liveMode": {
+      "wait": "等回放出來再處理",
+      "skip": "略過"
+    },
+    "titleInclude": "標題必須包含",
+    "titleExclude": "標題不包含",
+    "regexHint": "正規表示式（RE2），最長 200 個字元；留白表示不限。",
+    "preview": {
+      "title": "試跑預覽",
+      "network": "預覽會連到來源網站讀取目前的清單，並消耗這個平台的請求額度（rate limit）；不會建立影音。",
+      "run": "試跑預覽",
+      "loading": "正在讀取來源…",
+      "rateLimited": "這個平台的請求太頻繁，請在 {{seconds}} 秒後再試。",
+      "noneMode": "回補範圍是「只抓之後的新內容」：清單中已有的內容都列在「略過」，訂閱之後發布的才會處理。",
+      "wouldProcess_other": "會處理 {{count}} 部",
+      "wouldSkip_other": "略過 {{count}} 部",
+      "truncated": "清單超過 200 部，只列出最新的 200 部。",
+      "needUrl": "輸入來源網址後才能預覽。",
+      "fixFields": "先修正標示的欄位才能預覽。"
+    },
+    "reason": {
+      "tombstoned": "已永久刪除過",
+      "in_trash": "在垃圾桶中",
+      "already_in_library": "已在媒體庫",
+      "live": "直播",
+      "shorts": "Shorts",
+      "too_short": "太短",
+      "too_long": "太長",
+      "title_excluded": "標題符合排除條件",
+      "title_not_included": "標題不符合",
+      "before_subscription": "訂閱之前的內容",
+      "backfill_limit": "超出回補範圍",
+      "backfill_per_check": "排在之後的檢查",
+      "details_unavailable": "取不到影片資訊",
+      "ingest_failed": "建立失敗"
+    },
+    "reasonPrefix": "原因：{{reason}}",
+    "dateUnknown": "日期不明",
+    "breadcrumb": "訂閱的位置",
+    "notFound": "找不到這個訂閱，可能已經刪除。",
+    "enabledDone": "已啟用訂閱",
+    "disabledDone": "已停用訂閱",
+    "checkQueued": "已排定在下一輪檢查，結果會更新在這裡",
+    "deleted": "已刪除訂閱，已建立的影音都保留",
+    "checkNow": "立即檢查",
+    "disable": "停用",
+    "enable": "啟用",
+    "delete": "刪除訂閱",
+    "kind": {
+      "channel": "頻道",
+      "playlist": "播放清單",
+      "collection": "合集",
+      "feed": "Podcast feed"
+    },
+    "settingsTitle": "設定",
+    "backfillChangeHint": "改了回補範圍之後，下一次檢查會重新評估因回補範圍而略過的內容（只評估一次）。",
+    "filtersHint": "過濾條件只影響之後探索到的內容，不會移除已建立的影音。",
+    "deleteTitle": "刪除訂閱「{{name}}」？",
+    "deleteDescription": "會刪除這個訂閱與它探索到的紀錄，無法復原。已建立的影音都保留。",
+    "disableTitle": "停用訂閱「{{name}}」？",
+    "disableDescription": "停用後不會再自動檢查，直到重新啟用。已建立的影音不受影響。",
+    "entries": {
+      "title": "探索到的內容",
+      "filter": "顯示",
+      "all": "全部",
+      "empty": "還沒有探索到任何內容。",
+      "published": "發布",
+      "titleCol": "標題",
+      "duration": "長度",
+      "decision": "結果"
+    },
+    "decision": {
+      "created": "已建立",
+      "skipped": "略過",
+      "deferred": "延後"
+    }
   }
 }

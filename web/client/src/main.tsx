@@ -10,6 +10,7 @@ import "@shared/diff.css";
 import "./styles/library.css";
 import "./styles/tune.css";
 import "./styles/item.css";
+import "./styles/m4.css";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

@@ -5,6 +5,9 @@ export const EVENT_TYPES = [
   "item.deleted",
   "item.restored",
   "item.purged",
+  // UI-4：訂閱檢查的結果（SUB-R12）
+  "subscription.checked",
+  "subscription.check_failed",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -17,6 +20,8 @@ export interface ServerEvent {
   stage?: string;
   status?: string;
   title?: string;
+  /** 訂閱 id（subscription.*） */
+  subscription?: string;
 }
 
 export function parseEvent(data: string): ServerEvent | undefined {

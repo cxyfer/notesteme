@@ -22,6 +22,11 @@ export const queryKeys = {
     /** 佇列頁「需要你處理」的計數（GET /api/items?status=…&limit=1 的 total） */
     allAttention: () => [...queryKeys.items.all, "attention"] as const,
     attention: (stage: string) => [...queryKeys.items.allAttention(), stage] as const,
+    // UI-4：畫面與筆記（frames、note、publish 完成時失效，見 src/events/invalidation.ts）
+    allFrames: () => [...queryKeys.items.all, "frames"] as const,
+    frames: (id: string) => [...queryKeys.items.allFrames(), id] as const,
+    allNotes: () => [...queryKeys.items.all, "note"] as const,
+    note: (id: string) => [...queryKeys.items.allNotes(), id] as const,
   },
   profiles: ["profiles"] as const,
   // 處理方案的單筆與版本（前綴是 profiles，列表失效時一起失效）
@@ -46,4 +51,21 @@ export const queryKeys = {
   system: ["system"] as const,
   glossary: (scope: string, id: string) => ["glossary", scope, id] as const,
   termCandidates: (channel: string) => ["termCandidates", channel] as const,
+  // ---- UI-4：訂閱、成本、筆記模板、通知 ----
+  subscriptions: {
+    all: ["subscriptions"] as const,
+    list: () => [...queryKeys.subscriptions.all, "list"] as const,
+    detail: (id: string) => [...queryKeys.subscriptions.all, "detail", id] as const,
+    entries: (id: string, decision: string) =>
+      [...queryKeys.subscriptions.all, "entries", id, decision] as const,
+  },
+  costs: {
+    all: ["costs"] as const,
+    summary: (q: Record<string, string>) => [...queryKeys.costs.all, "summary", q] as const,
+    entries: (q: Record<string, string>) => [...queryKeys.costs.all, "entries", q] as const,
+  },
+  prices: ["prices"] as const,
+  noteTemplates: ["note-templates"] as const,
+  notifiers: ["notifiers"] as const,
+  notifications: ["notifications"] as const,
 };

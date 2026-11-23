@@ -12,7 +12,8 @@
 //      ├─ /settings/$section
 //      ├─ /prompts、/prompts/$id     Prompt 庫（編輯頁含 CodeMirror，lazy 載入）
 //      ├─ /profiles、/profiles/$id   處理方案
-//      └─ /styles、/styles/$id       字幕樣式
+//      ├─ /styles、/styles/$id       字幕樣式
+//      └─ /subscriptions、/subscriptions/$id   訂閱（UI-4，lazy）
 //
 // 新增頁面：在這裡加一個 createRoute、加進 routeTree，並把路徑加進 src/test/a11yRoutes.ts。
 import type { QueryClient } from "@tanstack/react-query";
@@ -168,6 +169,23 @@ export const styleRoute = createRoute({
   component: StyleEditorPage,
 });
 
+// ---- UI-4：訂閱、成本、筆記模板（都是 lazy route，不進初始 bundle）----
+const subscriptionsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/subscriptions",
+  component: lazyRouteComponent(
+    () => import("./pages/subscriptions/SubscriptionsPage"),
+    "SubscriptionsPage",
+  ),
+});
+export const subscriptionRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/subscriptions/$id",
+  component: lazyRouteComponent(
+    () => import("./pages/subscriptions/SubscriptionPage"),
+    "SubscriptionPage",
+  ),
+});
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute.addChildren([
@@ -184,6 +202,8 @@ export const routeTree = rootRoute.addChildren([
     profileRoute,
     stylesRoute,
     styleRoute,
+    subscriptionsRoute,
+    subscriptionRoute,
   ]),
 ]);
 

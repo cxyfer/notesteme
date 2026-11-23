@@ -13,7 +13,10 @@
     "tune": "Tune",
     "prompts": "Prompts",
     "profiles": "Presets",
-    "styles": "Subtitle styles"
+    "styles": "Subtitle styles",
+    "subscriptions": "Subscriptions",
+    "noteTemplates": "Note templates",
+    "costs": "Costs"
   },
   "prefs": {
     "theme": "Theme",
@@ -57,6 +60,15 @@
     },
     "styles": {
       "title": "Subtitle styles"
+    },
+    "subscriptions": {
+      "title": "Subscriptions"
+    },
+    "costs": {
+      "title": "Costs"
+    },
+    "noteTemplates": {
+      "title": "Note templates"
     }
   },
   "login": {
@@ -106,7 +118,11 @@
     "api_not_configured": "No API provider is set for this step. Add one in settings first.",
     "no_media": "There is no local media to play for this item.",
     "media_missing": "The local file is no longer where it was.",
-    "not_implemented": "This feature is not available yet."
+    "not_implemented": "This feature is not available yet.",
+    "unsupported_url": "This URL isn't recognized. Subscriptions support YouTube channels and playlists, Bilibili collections and podcast RSS feeds.",
+    "not_a_collection": "This is a single video. Add it directly instead of subscribing.",
+    "duplicate_subscription": "You're already subscribed to this source.",
+    "invalid_format": "The import file's format isn't recognized. OPML and Google Takeout's subscriptions.csv are supported."
   },
   "status": {
     "pending": "Waiting",
@@ -1262,5 +1278,152 @@
     "previewAlt": "Preview of style {{name}} at {{at}}",
     "previewAt": "Frame time",
     "previewAtHint": "MM:SS or HH:MM:SS; also picks the line shown."
+  },
+  "subs": {
+    "lead": "Subscribed channels, playlists and podcasts are checked on a schedule, and new content is processed with the chosen preset.",
+    "new": "Add subscription",
+    "empty": "No subscriptions yet. Subscribe to a channel and new content is processed automatically.",
+    "tableCaption": "Subscriptions",
+    "col": {
+      "source": "Channel",
+      "platform": "Platform",
+      "schedule": "Checks",
+      "lastChecked": "Last checked",
+      "nextCheck": "Next check",
+      "profile": "Preset",
+      "state": "Status"
+    },
+    "never": "Not yet",
+    "disabled": "Turned off",
+    "profileDefault": "Default preset",
+    "errorSep": ": ",
+    "ok": "OK",
+    "created": "Subscribed to {{name}}",
+    "oneInstance": "Subscribe to a channel on one instance only, so it isn't processed twice.",
+    "newTitle": "Add subscription",
+    "creating": "Adding…",
+    "create": "Add subscription",
+    "openExisting": "Open the existing subscription",
+    "import": {
+      "open": "Import",
+      "title": "Import subscriptions",
+      "description": "Choose an OPML file or Google Takeout's subscriptions.csv (up to 1 MiB). Imported subscriptions only pick up new content and use the default preset.",
+      "running": "Importing…",
+      "submit": "Import",
+      "file": "File",
+      "created_one": "Added 1 subscription.",
+      "created_other": "Added {{count}} subscriptions.",
+      "duplicates_one": "1 was already subscribed or listed twice",
+      "duplicates_other": "{{count}} were already subscribed or listed twice",
+      "failed_one": "1 line couldn't be imported:",
+      "failed_other": "{{count}} lines couldn't be imported:",
+      "line": "Line {{line}}"
+    },
+    "url": "Source",
+    "urlHint": "A YouTube channel or playlist, Bilibili collection or podcast feed URL.",
+    "profile": "Preset",
+    "scheduleLabel": "Check every",
+    "schedule": {
+      "1h": "Every hour",
+      "3h": "Every 3 hours",
+      "6h": "Every 6 hours",
+      "12h": "Every 12 hours",
+      "24h": "Daily",
+      "72h": "Every 3 days",
+      "168h": "Weekly"
+    },
+    "scheduleCustom": "Every {{value}}",
+    "backfill": "Backfill",
+    "backfillMode": {
+      "none": "Only new content from now on",
+      "recent": "The most recent few",
+      "all": "Everything (capped)"
+    },
+    "backfillCount": "How many",
+    "backfillCountRule": "Use a whole number from 1 to 200.",
+    "filters": "Filters",
+    "minMinutes": "Shortest (minutes)",
+    "maxMinutes": "Longest (minutes)",
+    "minutesRule": "Enter a positive number, or leave it blank for no limit.",
+    "excludeShorts": "Skip Shorts",
+    "live": "Live streams and premieres",
+    "liveMode": {
+      "wait": "Wait for the recording",
+      "skip": "Skip"
+    },
+    "titleInclude": "Title must match",
+    "titleExclude": "Title must not match",
+    "regexHint": "A regular expression (RE2), up to 200 characters. Leave blank for no filter.",
+    "preview": {
+      "title": "Preview",
+      "network": "Previewing fetches the current list from the source site and uses up part of that platform's request limit. Nothing is added.",
+      "run": "Run preview",
+      "loading": "Reading the source…",
+      "rateLimited": "Too many requests to this platform. Try again in {{seconds}} seconds.",
+      "noneMode": "Backfill is set to new content only: everything already in the list is shown as skipped, and only what's published after subscribing is processed.",
+      "wouldProcess_one": "Would process 1",
+      "wouldProcess_other": "Would process {{count}}",
+      "wouldSkip_one": "Would skip 1",
+      "wouldSkip_other": "Would skip {{count}}",
+      "truncated": "The list has more than 200 entries; only the newest 200 are shown.",
+      "needUrl": "Enter a source URL to preview.",
+      "fixFields": "Fix the marked fields to preview."
+    },
+    "reason": {
+      "tombstoned": "Deleted forever before",
+      "in_trash": "In the trash",
+      "already_in_library": "Already in the library",
+      "live": "Live stream",
+      "shorts": "Shorts",
+      "too_short": "Too short",
+      "too_long": "Too long",
+      "title_excluded": "Title excluded",
+      "title_not_included": "Title doesn't match",
+      "before_subscription": "From before subscribing",
+      "backfill_limit": "Outside the backfill range",
+      "backfill_per_check": "Queued for a later check",
+      "details_unavailable": "Details unavailable",
+      "ingest_failed": "Couldn't be added"
+    },
+    "reasonPrefix": "Reason: {{reason}}",
+    "dateUnknown": "Date unknown",
+    "breadcrumb": "Breadcrumb",
+    "notFound": "This subscription doesn't exist. It may have been deleted.",
+    "enabledDone": "Subscription turned on",
+    "disabledDone": "Subscription turned off",
+    "checkQueued": "Queued for the next check; results will show up here",
+    "deleted": "Subscription deleted. Media already added is kept.",
+    "checkNow": "Check now",
+    "disable": "Turn off",
+    "enable": "Turn on",
+    "delete": "Delete subscription",
+    "kind": {
+      "channel": "Channel",
+      "playlist": "Playlist",
+      "collection": "Collection",
+      "feed": "Podcast feed"
+    },
+    "settingsTitle": "Settings",
+    "backfillChangeHint": "After changing the backfill, the next check re-evaluates entries skipped because of it (once).",
+    "filtersHint": "Filters only apply to content found from now on; media already added stays.",
+    "deleteTitle": "Delete the subscription “{{name}}”?",
+    "deleteDescription": "This deletes the subscription and its discovery history and can't be undone. Media already added is kept.",
+    "disableTitle": "Turn off “{{name}}”?",
+    "disableDescription": "It won't be checked again until you turn it back on. Media already added isn't affected.",
+    "entries": {
+      "title": "Discovered entries",
+      "filter": "Show",
+      "all": "All",
+      "empty": "Nothing discovered yet.",
+      "published": "Published",
+      "titleCol": "Title",
+      "duration": "Length",
+      "decision": "Result"
+    },
+    "decision": {
+      "created": "Added",
+      "skipped": "Skipped",
+      "deferred": "Deferred"
+    }
   }
 }

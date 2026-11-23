@@ -13,7 +13,10 @@
     "tune": "调整",
     "prompts": "Prompt 库",
     "profiles": "处理方案",
-    "styles": "字幕样式"
+    "styles": "字幕样式",
+    "subscriptions": "订阅",
+    "noteTemplates": "笔记模板",
+    "costs": "成本"
   },
   "prefs": {
     "theme": "主题",
@@ -57,6 +60,15 @@
     },
     "styles": {
       "title": "字幕样式"
+    },
+    "subscriptions": {
+      "title": "订阅"
+    },
+    "costs": {
+      "title": "成本"
+    },
+    "noteTemplates": {
+      "title": "笔记模板"
     }
   },
   "login": {
@@ -106,7 +118,11 @@
     "api_not_configured": "这个步骤没有设置 API 的 provider，无法改用 API 处理。先到设置添加 provider。",
     "no_media": "这部影音没有可以播放的本地媒体。",
     "media_missing": "本地文件已经不在原处。",
-    "not_implemented": "这个功能还没有做好。"
+    "not_implemented": "这个功能还没有做好。",
+    "unsupported_url": "无法识别这个网址。订阅支持 YouTube 频道与播放列表、Bilibili 合集与 Podcast RSS。",
+    "not_a_collection": "这是单个视频，请直接添加，不需要订阅。",
+    "duplicate_subscription": "已经订阅了这个来源。",
+    "invalid_format": "无法识别导入文件的格式。支持 OPML 与 Google Takeout 的 subscriptions.csv。"
   },
   "status": {
     "pending": "等待中",
@@ -1232,5 +1248,147 @@
     "previewAlt": "样式 {{name}} 在 {{at}} 的预览画面",
     "previewAt": "画面时间",
     "previewAtHint": "MM:SS 或 HH:MM:SS；也决定预览用哪一句字幕。"
+  },
+  "subs": {
+    "lead": "订阅的频道、播放列表与 Podcast 会按检查频率自动探索，新内容按处理方案自动处理。",
+    "new": "新增订阅",
+    "empty": "还没有订阅。订阅频道后，新内容会自动处理。",
+    "tableCaption": "订阅列表",
+    "col": {
+      "source": "频道",
+      "platform": "平台",
+      "schedule": "检查频率",
+      "lastChecked": "上次检查",
+      "nextCheck": "下次检查",
+      "profile": "处理方案",
+      "state": "状态"
+    },
+    "never": "还没检查",
+    "disabled": "已停用",
+    "profileDefault": "默认处理方案",
+    "errorSep": "：",
+    "ok": "正常",
+    "created": "已新增订阅 {{name}}",
+    "oneInstance": "同一个频道只在一台实例上订阅，避免重复处理。",
+    "newTitle": "新增订阅",
+    "creating": "新增中…",
+    "create": "新增订阅",
+    "openExisting": "打开已有的订阅",
+    "import": {
+      "open": "导入",
+      "title": "导入订阅",
+      "description": "选择 OPML 或 Google Takeout 的 subscriptions.csv（上限 1 MiB）。导入的订阅只抓之后的新内容、使用默认处理方案。",
+      "running": "导入中…",
+      "submit": "导入",
+      "file": "导入文件",
+      "created_other": "已新增 {{count}} 个订阅。",
+      "duplicates_other": "{{count}} 个已经订阅或重复",
+      "failed_other": "{{count}} 行无法导入：",
+      "line": "第 {{line}} 行"
+    },
+    "url": "来源",
+    "urlHint": "YouTube 频道或播放列表、Bilibili 合集或 Podcast feed 的网址。",
+    "profile": "处理方案",
+    "scheduleLabel": "检查频率",
+    "schedule": {
+      "1h": "每小时",
+      "3h": "每 3 小时",
+      "6h": "每 6 小时",
+      "12h": "每 12 小时",
+      "24h": "每天",
+      "72h": "每 3 天",
+      "168h": "每周"
+    },
+    "scheduleCustom": "每 {{value}}",
+    "backfill": "回补范围",
+    "backfillMode": {
+      "none": "只抓之后的新内容",
+      "recent": "最近几部",
+      "all": "全部（有上限）"
+    },
+    "backfillCount": "最近几部",
+    "backfillCountRule": "最近几部必须是 1 到 200 之间的整数。",
+    "filters": "过滤条件",
+    "minMinutes": "最短长度（分钟）",
+    "maxMinutes": "最长长度（分钟）",
+    "minutesRule": "请输入正数，或留空表示不限。",
+    "excludeShorts": "排除 Shorts",
+    "live": "直播与首播",
+    "liveMode": {
+      "wait": "等回放出来再处理",
+      "skip": "跳过"
+    },
+    "titleInclude": "标题必须包含",
+    "titleExclude": "标题不包含",
+    "regexHint": "正则表达式（RE2），最长 200 个字符；留空表示不限。",
+    "preview": {
+      "title": "试跑预览",
+      "network": "预览会连到来源网站读取当前的列表，并消耗这个平台的请求额度（rate limit）；不会创建音视频。",
+      "run": "试跑预览",
+      "loading": "正在读取来源…",
+      "rateLimited": "这个平台的请求太频繁，请在 {{seconds}} 秒后再试。",
+      "noneMode": "回补范围是「只抓之后的新内容」：列表中已有的内容都列在「跳过」，订阅之后发布的才会处理。",
+      "wouldProcess_other": "会处理 {{count}} 部",
+      "wouldSkip_other": "跳过 {{count}} 部",
+      "truncated": "列表超过 200 部，只列出最新的 200 部。",
+      "needUrl": "输入来源网址后才能预览。",
+      "fixFields": "先修正标示的字段才能预览。"
+    },
+    "reason": {
+      "tombstoned": "已永久删除过",
+      "in_trash": "在回收站中",
+      "already_in_library": "已在媒体库",
+      "live": "直播",
+      "shorts": "Shorts",
+      "too_short": "太短",
+      "too_long": "太长",
+      "title_excluded": "标题符合排除条件",
+      "title_not_included": "标题不符合",
+      "before_subscription": "订阅之前的内容",
+      "backfill_limit": "超出回补范围",
+      "backfill_per_check": "排在之后的检查",
+      "details_unavailable": "取不到视频信息",
+      "ingest_failed": "创建失败"
+    },
+    "reasonPrefix": "原因：{{reason}}",
+    "dateUnknown": "日期不明",
+    "breadcrumb": "订阅的位置",
+    "notFound": "找不到这个订阅，可能已经删除。",
+    "enabledDone": "已启用订阅",
+    "disabledDone": "已停用订阅",
+    "checkQueued": "已安排在下一轮检查，结果会更新在这里",
+    "deleted": "已删除订阅，已创建的音视频都保留",
+    "checkNow": "立即检查",
+    "disable": "停用",
+    "enable": "启用",
+    "delete": "删除订阅",
+    "kind": {
+      "channel": "频道",
+      "playlist": "播放列表",
+      "collection": "合集",
+      "feed": "Podcast feed"
+    },
+    "settingsTitle": "设置",
+    "backfillChangeHint": "改了回补范围之后，下一次检查会重新评估因回补范围而跳过的内容（只评估一次）。",
+    "filtersHint": "过滤条件只影响之后探索到的内容，不会移除已创建的音视频。",
+    "deleteTitle": "删除订阅「{{name}}」？",
+    "deleteDescription": "会删除这个订阅与它探索到的记录，无法恢复。已创建的音视频都保留。",
+    "disableTitle": "停用订阅「{{name}}」？",
+    "disableDescription": "停用后不会再自动检查，直到重新启用。已创建的音视频不受影响。",
+    "entries": {
+      "title": "探索到的内容",
+      "filter": "显示",
+      "all": "全部",
+      "empty": "还没有探索到任何内容。",
+      "published": "发布",
+      "titleCol": "标题",
+      "duration": "长度",
+      "decision": "结果"
+    },
+    "decision": {
+      "created": "已创建",
+      "skipped": "跳过",
+      "deferred": "延后"
+    }
   }
 }
