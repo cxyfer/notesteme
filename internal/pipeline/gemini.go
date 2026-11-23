@@ -166,10 +166,11 @@ func (p *Pipeline) runGeminiNote(ctx context.Context, t store.Task, it store.Ite
 	}
 	videoTokens := int(dur/1000) * geminiTokensPerSecond
 	limiter := p.llm.Limiter
+	m := p.newMeter(t, store.StageRun{ID: t.StageRunID, Stage: StageNote}, it, cfg.Provider, cfg.Model)
 	out, err := llm.RunGemini(ctx, llm.GeminiOptions{
 		Client: client, Spec: spec, Model: cfg.Model, Fixed: fixed, FileURI: geminiFileURI(it),
-		MaxRetries: settings.MaxValidationRetries, Timeout: p.chunkTimeout(t),
-		BeforeRequest: func(_ context.Context, attempt int, req llm.Request) error {
+		MaxRetries: settings.MaxValidationRetries, Timeout: p.chunkTimeout(t), AfterRequest: m.afterFunc(),
+		BeforeRequest: m.then(func(_ context.Context, attempt int, req llm.Request) error {
 			tokens := llm.RequestTokens(req) + videoTokens
 			if attempt > 0 {
 				limiter.Charge(prov.ID, prov.Limits, tokens)
@@ -182,7 +183,7 @@ func (p *Pipeline) runGeminiNote(ctx context.Context, t store.Task, it store.Ite
 				}
 			}
 			return nil
-		},
+		}),
 	})
 	if err != nil {
 		return result{}, err

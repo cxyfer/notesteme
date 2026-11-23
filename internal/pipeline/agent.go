@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/cxyfer/notesteme/internal/auth"
+	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/llm"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/source"
@@ -483,10 +484,18 @@ func (p *Pipeline) SubmitAgentTask(ctx context.Context, agent, taskID, token str
 		return p.rejectSubmission(ctx, agent, t, verr)
 	}
 	res := result{task: taskDone, keepState: true, inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {
-		return finishChunkTx(ctx, tx, c.item.ID, c.run, t.Priority, c.plan.Index, store.ChunkResult{
+		wake, err := finishChunkTx(ctx, tx, c.item.ID, c.run, t.Priority, c.plan.Index, store.ChunkResult{
 			Status: store.ChunkDone, Output: out, Usage: json.RawMessage(`{}`),
 			By: store.ChunkProducer{Executor: ExecutorAgent, Agent: agent, ModelReported: sanitizeAgentText(sub.ModelReported, maxAgentModelLen)},
 		})
+		if err != nil || p.cost == nil {
+			return wake, err
+		}
+		// Agent 的結果記為 unknown、0 元，不預留、不計入預算（COST-R3）；只記在這條提交路徑，api 的 chunk 不經過這裡。
+		return wake, p.cost.RecordAgent(ctx, tx, cost.Call{
+			ItemID: c.item.ID, ItemTitle: c.item.Title, StageRunID: c.run.ID, TaskID: t.ID, Stage: c.run.Stage,
+			Provider: c.job.cfg.Provider, Model: c.job.cfg.Model,
+		}, 0, 0)
 	}}
 	lost, err := p.applyResult(ctx, t, c.run, c.item, res)
 	if err != nil {

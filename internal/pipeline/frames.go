@@ -757,11 +757,12 @@ func (p *Pipeline) framesVision(ctx context.Context, t store.Task, it store.Item
 	}
 	prov, _ := p.llm.Provider(cfg.Provider)
 	limiter := p.llm.Limiter
+	m := p.newMeter(t, store.StageRun{ID: t.StageRunID, Stage: StageFrames}, it, cfg.Provider, cfg.Model)
 	out, err := llm.RunChunk(ctx, llm.RunOptions{
 		Client: client, Spec: spec, Model: cfg.Model, Fixed: fixed, Images: sheets,
 		Input:      llm.ChunkInput{Chunk: llm.Chunk{Index: 1}, Chunks: 1, Cues: dataCues},
-		MaxRetries: settings.MaxValidationRetries, Timeout: p.chunkTimeout(t),
-		BeforeRequest: func(_ context.Context, attempt int, req llm.Request) error {
+		MaxRetries: settings.MaxValidationRetries, Timeout: p.chunkTimeout(t), AfterRequest: m.afterFunc(),
+		BeforeRequest: m.then(func(_ context.Context, attempt int, req llm.Request) error {
 			tokens := llm.RequestTokens(req)
 			if attempt > 0 {
 				limiter.Charge(prov.ID, prov.Limits, tokens)
@@ -774,7 +775,7 @@ func (p *Pipeline) framesVision(ctx context.Context, t store.Task, it store.Item
 				}
 			}
 			return nil
-		},
+		}),
 	})
 	if err != nil {
 		return nil, nil, out.Usage, false, err

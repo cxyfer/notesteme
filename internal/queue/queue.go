@@ -154,8 +154,18 @@ func (q *Queue) Entries(ctx context.Context) ([]store.QueueEntry, error) {
 
 // RecoverStale 把別的 worker 留下的租約，以及已到期的租約放回 pending（PIPE-R11）。
 // 這次中斷不計入重試次數。啟動時呼叫一次。
+// 同一個交易刪除沒有對應執行中任務的成本預留（程序中斷留下的，COST-R5）：放回佇列的任務之後會重新預留。
 func (q *Queue) RecoverStale(ctx context.Context) (int, error) {
-	return q.release(ctx, func(r *store.Repo) (int, error) { return r.ReleaseLeases(ctx, q.owner) })
+	return q.release(ctx, func(r *store.Repo) (int, error) {
+		n, err := r.ReleaseLeases(ctx, q.owner)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := r.DeleteOrphanReservations(ctx); err != nil {
+			return 0, err
+		}
+		return n, nil
+	})
 }
 
 // ReleaseOwned 把自己持有的租約放回 pending（正常關閉，PIPE-R12）。

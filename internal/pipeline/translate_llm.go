@@ -423,6 +423,10 @@ func (p *Pipeline) trnPlan(ctx context.Context, t store.Task, run store.StageRun
 			tg.Reuse = p.currentTranslation(arts, tg.Lang, tg.Key)
 		}
 	}
+	existing, err := runChunks(ctx, p.st.Read(), run.ID)
+	if err != nil {
+		return result{}, err
+	}
 	for i, tg := range targets {
 		if !tg.usesLLM() || tg.Reuse != "" {
 			continue
@@ -433,6 +437,14 @@ func (p *Pipeline) trnPlan(ctx context.Context, t store.Task, run store.StageRun
 		}
 		for _, c := range job.chunks {
 			g := tg.Offset + c.Index
+			if ex, ok := existing[g]; ok {
+				// 恢復 blocked 的步驟（COST-R9）：沿用這次執行已有的 chunk（同 llmPlan）。
+				if ex.Status == store.ChunkPending {
+					pending = append(pending, g)
+				}
+				rows = append(rows, ex)
+				continue
+			}
 			key, err := job.chunkKey(impl, b, c)
 			if err != nil {
 				return result{}, err
@@ -457,6 +469,9 @@ func (p *Pipeline) trnPlan(ctx context.Context, t store.Task, run store.StageRun
 	}
 	insertRows := func(ctx context.Context, tx *store.Repo) error {
 		for _, row := range rows {
+			if _, ok := existing[row.Chunk]; ok {
+				continue
+			}
 			if err := tx.InsertLLMChunk(ctx, row); err != nil {
 				return err
 			}
@@ -599,7 +614,8 @@ func (p *Pipeline) trnChunk(ctx context.Context, t store.Task, run store.StageRu
 	if err != nil {
 		return result{}, err
 	}
-	out, usage, err := p.trnRunChunk(ctx, job, b, client, plan.Chunk, p.chunkTimeout(t))
+	m := p.newMeter(t, run, it, b.cfg.Provider, b.cfg.Model)
+	out, usage, err := p.trnRunChunk(ctx, job, b, client, plan.Chunk, p.chunkTimeout(t), m)
 	if err != nil {
 		return result{}, err
 	}
@@ -648,14 +664,15 @@ func (p *Pipeline) trnChunk(ctx context.Context, t store.Task, run store.StageRu
 }
 
 // trnRunChunk 執行一個 chunk 的請求，回傳每個 cue 的結果與用量。
-func (p *Pipeline) trnRunChunk(ctx context.Context, job *trnJob, b *trnBase, client llm.Client, c llm.Chunk, timeout time.Duration) (trnChunkOutput, llm.Usage, error) {
+// m 為每次請求記帳（COST），可以是 nil。
+func (p *Pipeline) trnRunChunk(ctx context.Context, job *trnJob, b *trnBase, client llm.Client, c llm.Chunk, timeout time.Duration, m *meter) (trnChunkOutput, llm.Usage, error) {
 	in := job.chunkInput(c)
 	units := job.units[c.From-1 : c.To]
 	started := p.clock.Now()
 	var usage llm.Usage
 	res, err := llm.RunChunk(ctx, llm.RunOptions{
 		Client: client, Spec: job.spec, Model: b.cfg.Model, Fixed: job.fixed, Input: in,
-		MaxRetries: b.settings.MaxValidationRetries, Timeout: timeout, BeforeRequest: p.trnLimiter(b.cfg.Provider, false),
+		MaxRetries: b.settings.MaxValidationRetries, Timeout: timeout, BeforeRequest: m.then(p.trnLimiter(b.cfg.Provider, false)), AfterRequest: m.afterFunc(),
 	})
 	if err != nil {
 		return trnChunkOutput{}, usage, err
@@ -684,7 +701,7 @@ func (p *Pipeline) trnRunChunk(ctx context.Context, job *trnJob, b *trnBase, cli
 		in2 := llm.ChunkInput{Chunk: c, Chunks: in.Chunks, Context: in.Context, Cues: cues}
 		res2, err := llm.RunChunk(ctx, llm.RunOptions{
 			Client: client, Spec: job.spec, Model: b.cfg.Model, Fixed: job.fixed, Input: in2,
-			MaxRetries: b.settings.MaxValidationRetries, Timeout: left, BeforeRequest: p.trnLimiter(b.cfg.Provider, true),
+			MaxRetries: b.settings.MaxValidationRetries, Timeout: left, BeforeRequest: m.then(p.trnLimiter(b.cfg.Provider, true)), AfterRequest: m.afterFunc(),
 		})
 		if err != nil {
 			return trnChunkOutput{}, usage, err

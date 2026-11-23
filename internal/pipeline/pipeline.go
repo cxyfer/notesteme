@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/llm"
 	"github.com/cxyfer/notesteme/internal/media"
 	"github.com/cxyfer/notesteme/internal/notify"
@@ -119,6 +120,8 @@ type Deps struct {
 	SponsorBlockBaseURL string
 	// Notify 在步驟狀態寫回的同一個交易中寫入通知事件（NOTIFY-R3）；nil 代表不通知。
 	Notify *notify.Outbox
+	// Cost 為付費的 LLM 請求記帳、預留與檢查預算（COST）；nil 代表不記帳（單元測試的最小組裝）。
+	Cost *cost.Service
 }
 
 // Pipeline 是影音處理的入口：API 呼叫 Ingest 與查詢方法，worker 呼叫 Handle。
@@ -178,6 +181,8 @@ type Pipeline struct {
 	agentLimit func(class string) int
 	// notify 見 Deps.Notify。
 	notify *notify.Outbox
+	// cost 見 Deps.Cost。
+	cost *cost.Service
 }
 
 // New 建立 Pipeline。
@@ -201,7 +206,7 @@ func New(d Deps) *Pipeline {
 	if retention <= 0 {
 		retention = DefaultTrashRetention
 	}
-	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, outputs: d.Outputs, prompts: d.Prompts, llm: d.LLM, sponsor: d.SponsorBlock, sponsorBase: d.SponsorBlockBaseURL, notify: d.Notify, vaults: d.Vaults, hooks: d.Hooks, runner: d.Runner, env: d.Env}
+	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, outputs: d.Outputs, prompts: d.Prompts, llm: d.LLM, sponsor: d.SponsorBlock, sponsorBase: d.SponsorBlockBaseURL, notify: d.Notify, vaults: d.Vaults, hooks: d.Hooks, runner: d.Runner, env: d.Env, cost: d.Cost}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。

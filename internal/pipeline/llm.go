@@ -595,7 +595,19 @@ func (p *Pipeline) llmPlan(ctx context.Context, t store.Task, run store.StageRun
 
 	rows := make([]store.LLMChunk, 0, len(job.chunks))
 	var pending []int
+	existing, err := runChunks(ctx, r, run.ID)
+	if err != nil {
+		return result{}, err
+	}
 	for _, c := range job.chunks {
+		if ex, ok := existing[c.Index]; ok {
+			// 恢復 blocked 的步驟（例如 budget_blocked，COST-R9）：沿用這次執行已有的 chunk，已有結果的不再送出。
+			if ex.Status == store.ChunkPending {
+				pending = append(pending, c.Index)
+			}
+			rows = append(rows, ex)
+			continue
+		}
 		key, err := job.chunkKey(p.implVersion(run.Stage), c)
 		if err != nil {
 			return result{}, err
@@ -621,6 +633,9 @@ func (p *Pipeline) llmPlan(ctx context.Context, t store.Task, run store.StageRun
 	}
 	insertRows := func(ctx context.Context, tx *store.Repo) error {
 		for _, row := range rows {
+			if _, ok := existing[row.Chunk]; ok {
+				continue
+			}
 			if err := tx.InsertLLMChunk(ctx, row); err != nil {
 				return err
 			}
@@ -687,6 +702,20 @@ func (p *Pipeline) llmPlan(ctx context.Context, t store.Task, run store.StageRun
 	}}, nil
 }
 
+// runChunks 回傳這次執行已有的 chunk（以編號為 key）。只有恢復 blocked 的步驟時才會有：
+// 重跑一律是新的 stage run，所以一般的 plan 讀到的是空的。
+func runChunks(ctx context.Context, r *store.Repo, runID string) (map[int]store.LLMChunk, error) {
+	list, err := r.LLMChunks(ctx, runID)
+	if err != nil || len(list) == 0 {
+		return nil, err
+	}
+	out := make(map[int]store.LLMChunk, len(list))
+	for _, c := range list {
+		out[c.Chunk] = c
+	}
+	return out, nil
+}
+
 // stageExecutor 是 stage run 記錄的 executor；沒有記錄（舊的 stage run）時是 api。
 func stageExecutor(run store.StageRun) string {
 	if run.Executor == ExecutorAgent {
@@ -748,10 +777,11 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 	}
 	prov, _ := p.llm.Provider(job.cfg.Provider)
 	limiter := p.llm.Limiter
+	m := p.newMeter(t, run, it, job.cfg.Provider, job.cfg.Model)
 	out, err := llm.RunChunk(ctx, llm.RunOptions{
 		Client: client, Spec: job.specFor(plan.Chunk), Model: job.cfg.Model, Fixed: job.fixedFor(plan.Chunk), Input: in,
-		MaxRetries: job.settings.MaxValidationRetries, Timeout: p.chunkTimeout(t),
-		BeforeRequest: func(_ context.Context, attempt int, req llm.Request) error {
+		MaxRetries: job.settings.MaxValidationRetries, Timeout: p.chunkTimeout(t), AfterRequest: m.afterFunc(),
+		BeforeRequest: m.then(func(_ context.Context, attempt int, req llm.Request) error {
 			tokens := llm.RequestTokens(req)
 			if attempt > 0 {
 				// 驗證重試立刻送出（LLM-R5），額度可以透支，由之後的請求等待補回。
@@ -766,7 +796,7 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 				}
 			}
 			return nil
-		},
+		}),
 	})
 	if err != nil {
 		return result{}, err
