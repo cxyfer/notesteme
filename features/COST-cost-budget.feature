@@ -43,6 +43,8 @@ Feature: Cost ledger and budget
     And the LLM provider "anthropic" answers "correct" with "correct-kafka-kraft"
     When the owner reruns "yt:cost01xxxxx" from "correct"
     And the worker runs until idle
+    And the clock advances by "1m"
+    And the worker runs until idle
     Then the cost ledger entries of "yt:cost01xxxxx" are:
       | attempt | outcome    | state  | usd  |
       | 1       | http_error | actual | 0    |
