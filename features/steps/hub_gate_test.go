@@ -7,7 +7,7 @@ import (
 	"github.com/cucumber/godog"
 )
 
-// 真 Hub 的閘門只對已實作範圍的場景放行（M5-S1：HACC-R1～R8；M5-S2：R9～R13、R18；M5-S3：HACC-R14 與 HREP-R1～R6、R8～R12），
+// 真 Hub 的閘門只對已實作範圍的場景放行（M5-S1：HACC-R1～R8；M5-S2：R9～R13、R18；M5-S3：HACC-R14 與 HREP-R1～R6、R8～R12；M5-S4：HREP-R7、R16～R19），
 // 混了其他規則或其他領域的場景維持 pending，而且是裸的 ErrPending（junit 的訊息與切片之前相同）。
 // M5-S3 起 Hub 內容的句型（steps.md 4.31）已實作，不再擋場景。
 func TestHubGate(t *testing.T) {
@@ -37,20 +37,21 @@ func TestHubGate(t *testing.T) {
 		{[]string{"@M5", "@HUB-02", "@HREP-R6"}, content, false},
 		{[]string{"@M5", "@HUB-02", "@HUB-04", "@HREP-R6"}, content, false},
 		{[]string{"@M5", "@HUB-02", "@HREP-R12"}, share, false},
-		{[]string{"@M5", "@HUB-03", "@HREP-R7"}, share, true},               // 以列表驗證：S4
-		{[]string{"@M5", "@HUB-03", "@HREP-R16"}, content, true},            // 篩選：S4
-		{[]string{"@M5", "@HUB-03", "@HREP-R17"}, content, true},            // 詳情與影片頁：S4
-		{[]string{"@M5", "@HUB-03", "@HREP-R18"}, content, true},            // 下載：S4
-		{[]string{"@M5", "@HUB-05", "@HREP-R19"}, content, true},            // lookup：S4
-		{[]string{"@M5", "@HUB-06", "@HREP-R13"}, content, true},            // 投票：S5
-		{[]string{"@M5", "@HUB-06", "@HREP-R14"}, content, true},            // 檢舉：S5
-		{[]string{"@M5", "@HUB-06", "@HREP-R15"}, content, true},            // 自動隱藏：S5
-		{[]string{"@M5", "@HUB-07", "@HACC-R15"}, plain, true},              // 下架是 S5
-		{[]string{"@M5", "@HUB-07", "@HACC-R16"}, content, true},            // 下架是 S5
-		{[]string{"@M5", "@HUB-01", "@HACC-R6", "@HACC-R17"}, plain, true},  // 混了 S5 的規則
-		{[]string{"@M5", "@HUB-06", "@HREP-R13", "@HACC-R17"}, plain, true}, // 兩邊都還沒做
-		{[]string{"@M5", "@HUB-06", "@HREP-R13", "@HACC-R9"}, plain, true},  // 混了還沒做的 HREP 規則
-		{[]string{"@M5", "@HUB-02", "@HREP-R1", "@HACC-R15"}, share, true},  // 混了還沒做的 HACC 規則
+		{[]string{"@M5", "@HUB-03", "@HREP-R7"}, share, false},                // M5-S4：以列表驗證
+		{[]string{"@M5", "@HUB-03", "@HREP-R16"}, content, false},             // M5-S4：篩選
+		{[]string{"@M5", "@HUB-03", "@HREP-R17"}, content, false},             // M5-S4：詳情與影片頁
+		{[]string{"@M5", "@HUB-03", "@HREP-R18"}, content, false},             // M5-S4：下載
+		{[]string{"@M5", "@HUB-05", "@HREP-R19"}, content, false},             // M5-S4：lookup
+		{[]string{"@M5", "@HUB-06", "@HREP-R13"}, content, true},              // 投票：S5
+		{[]string{"@M5", "@HUB-06", "@HREP-R14"}, content, true},              // 檢舉：S5
+		{[]string{"@M5", "@HUB-06", "@HREP-R15"}, content, true},              // 自動隱藏：S5
+		{[]string{"@M5", "@HUB-03", "@HREP-R16", "@HREP-R13"}, content, true}, // 混了 S5 的規則
+		{[]string{"@M5", "@HUB-07", "@HACC-R15"}, plain, true},                // 下架是 S5
+		{[]string{"@M5", "@HUB-07", "@HACC-R16"}, content, true},              // 下架是 S5
+		{[]string{"@M5", "@HUB-01", "@HACC-R6", "@HACC-R17"}, plain, true},    // 混了 S5 的規則
+		{[]string{"@M5", "@HUB-06", "@HREP-R13", "@HACC-R17"}, plain, true},   // 兩邊都還沒做
+		{[]string{"@M5", "@HUB-06", "@HREP-R13", "@HACC-R9"}, plain, true},    // 混了還沒做的 HREP 規則
+		{[]string{"@M5", "@HUB-02", "@HREP-R1", "@HACC-R15"}, share, true},    // 混了還沒做的 HACC 規則
 		{[]string{"@M5", "@HUB-05", "@HMCP-R1"}, plain, true},
 		{[]string{"@M5", "@HUB-02", "@HREP-R1", "@HSHR-R1"}, share, true},
 		{[]string{"@M5", "@HUB-02", "@HREP-Rx"}, share, true},

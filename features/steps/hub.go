@@ -89,8 +89,10 @@ var hubRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true
 	9: true, 10: true, 11: true, 12: true, 13: true, 14: true, 18: true}
 
 // hrepRules 是已實作的 HREP 規則：M5-S3 的分享、bundle 驗證、白名單、去重、衍生關係、可見度、下架後的內容、撤回、
-// 分享的限流與不抓取網址（R1～R6、R8～R12）。R7（場景以列表驗證）與 R16～R19 是 S4，R13～R15 是 S5。
-var hrepRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 8: true, 9: true, 10: true, 11: true, 12: true}
+// 分享的限流與不抓取網址（R1～R6、R8～R12）；M5-S4 的模型欄位（R7，以列表驗證）、篩選、詳情與影片頁、取用與 lookup（R16～R19）。
+// R13～R15 是 S5。
+var hrepRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true,
+	16: true, 17: true, 18: true, 19: true}
 
 // ruleOf 解析 @<prefix>R<n> 的規則編號。
 func ruleOf(tag, prefix string) (int, bool, bool) {
