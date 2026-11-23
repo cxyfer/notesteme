@@ -299,6 +299,7 @@ M4 的步驟（`docs/specs/steps.md` 4.17～4.21）目前都是 pending 的步�
 - fakebatch 的路徑分派是每個場景預設的：LLM 主機的 handler 把 `fakebatch.Owns` 的路徑交給 `w.Batch()`；`w.EnableBatch(answerer)` 之前回 404 並記一筆違規（`World.Check` 回報）。BATCH 切片在 `the batch API of …` 呼叫 `EnableBatch`，answerer 接 fakellm 的 answers。
 - `w.StartOIDC(fakeoidc.Config{Issuer: …})` 把 issuer 的主機導到 fakeoidc，client secret 預設 `harness.TestOIDCClientSecret`（也設成產品的 `NOTESTEME_OIDC_CLIENT_SECRET`，並在 NFR-SEC-3 的掃描清單中），`Now` 預設是場景的 fake clock。
 - 預設 tag 的 308 個場景、`@M3` 109 個（M3-S3 之後 42 passed、67 pending）、`@M4` 371 個的逐場景結果在接線前後相同。
+- M4-S1（NOTIFY）：`w.ReachNotifyEndpoints()` 改成回傳 `(*fakenotify.Server, error)`，並把 `ntfy.sh`、`discord.com`、`api.telegram.org`、`hooks.example.com` 依序解析到 `harness.NotifyIPs`（`93.184.216.60`～`.63`，steps.md 4.18）；每個請求抵達時記下 fake clock 的時間，`w.NotifyReceivedAt(i)` 依 `Notify.Requests()` 的順序取回，`is signed with` 用它比對 `X-Notesteme-Timestamp`（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
 
 ### 訂閱、SRC-10、ENTRY
 

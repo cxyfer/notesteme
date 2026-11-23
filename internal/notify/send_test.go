@@ -168,6 +168,8 @@ func TestSendConnectionErrorsHideTheURL(t *testing.T) {
 	}
 }
 
+const testSecretVector = "whsec-0123456789abcdef"
+
 type failDialer struct{}
 
 func (failDialer) Dial(context.Context, netguard.Target) (net.Conn, error) {
@@ -205,6 +207,10 @@ func TestEndpointURLsAndHeaders(t *testing.T) {
 }
 
 func TestSignDetectsTampering(t *testing.T) {
+	// 獨立計算的向量：hex(HMAC-SHA256("whsec-0123456789abcdef", "1800000000." + `{"a":1}`))。
+	if got := Sign(testSecretVector, 1_800_000_000, []byte(`{"a":1}`)); got != "sha256=d056fd5474ba03ed9cdbe1076f08cb25926142f7e99899ec3944232a3357657a" {
+		t.Errorf("Sign 的固定向量 = %s", got)
+	}
 	sig := Sign("secret-0123456789", 100, []byte(`{"a":1}`))
 	if sig != Sign("secret-0123456789", 100, []byte(`{"a":1}`)) || !strings.HasPrefix(sig, "sha256=") || len(sig) != 7+64 {
 		t.Fatalf("Sign = %q", sig)
