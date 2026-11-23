@@ -290,6 +290,8 @@ func (w *World) SyncTools() error {
 			})
 		}
 	}
+	// 假 YouTube RSS 依登記的影片產生（SUB，見 m4.go 的 syncFeed）。
+	w.syncFeed()
 	return faketool.WriteState(w.Root, w.Tools)
 }
 
@@ -530,6 +532,7 @@ var tokenRef = regexp.MustCompile(`\{token:([^}]+)\}`)
 // Subst 代入 {token:<名稱>}：以 Refs["token:<名稱>"] 取代；Refs 沒有該項目時維持原樣。
 // 影音代號的代入（steps.md 第 2 節）之後接在這裡。
 func (w *World) Subst(s string) string {
+	s = w.substSubscriptions(s)
 	return tokenRef.ReplaceAllStringFunc(s, func(m string) string {
 		if v, ok := w.Refs["token:"+tokenRef.FindStringSubmatch(m)[1]]; ok {
 			return v

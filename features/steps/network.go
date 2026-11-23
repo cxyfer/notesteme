@@ -82,17 +82,29 @@ func isYtDlpHost(rawURL string) bool {
 
 // servesYtDlpPlaylist 把 ytdlp/<name> 登記為播放清單網址的 yt-dlp 輸出。fixture 不存在時立即失敗。
 func (s *Scenario) servesYtDlpPlaylist(rawURL, name string) error {
-	listID, ok := faketool.PlaylistID(rawURL)
-	if !ok {
-		return fmt.Errorf("%s 是由 yt-dlp 處理的網址，serves 只支援 YouTube 播放清單（/playlist?list=…）", rawURL)
+	// 依網址決定登記到哪一張表：播放清單、Bilibili 合集（SUB，M4）、YouTube 頻道的 /videos（SUB，M4）。
+	var table *map[string]string
+	key, ok := faketool.PlaylistID(rawURL)
+	switch {
+	case ok:
+		table = &s.World.Tools.Playlists
+	default:
+		if key, ok = faketool.CollectionKey(rawURL); ok {
+			table = &s.World.Tools.Collections
+		} else if key, ok = faketool.ChannelVideosID(rawURL); ok {
+			table = &s.World.Tools.ChannelLists
+		}
+	}
+	if table == nil {
+		return fmt.Errorf("%s 是由 yt-dlp 處理的網址，serves 只支援 YouTube 播放清單（/playlist?list=…）、頻道的影片列表與 Bilibili 合集", rawURL)
 	}
 	if _, err := os.Stat(filepath.Join(s.World.FixturesDir, "ytdlp", name)); err != nil {
 		return fmt.Errorf("讀取 fixture：%w", err)
 	}
-	if s.World.Tools.Playlists == nil {
-		s.World.Tools.Playlists = map[string]string{}
+	if *table == nil {
+		*table = map[string]string{}
 	}
-	s.World.Tools.Playlists[listID] = name
+	(*table)[key] = name
 	return s.World.SyncTools()
 }
 

@@ -31,7 +31,9 @@ type ytArgs struct {
 	noWarnings bool
 	// useExtractors 是 --use-extractors 的值（逗號分隔的 extractor 名稱 regex）；空字串代表沒有限制。
 	useExtractors string
-	url           string
+	// playlistEnd 是 --playlist-end 的值（0 代表沒有限制）。
+	playlistEnd int
+	url         string
 }
 
 // 沒有值、直接接受的旗標。
@@ -97,7 +99,7 @@ func parseYtDlp(args []string) (ytArgs, error) {
 				a.noWarnings = true
 			}
 		case flag == "--sub-langs", flag == "--sub-format", flag == "-o", flag == "--output",
-			flag == "-f", flag == "--format", flag == "--cookies", flag == "--use-extractors", ytIgnoredValueFlags[flag]:
+			flag == "-f", flag == "--format", flag == "--cookies", flag == "--use-extractors", flag == "--playlist-end", ytIgnoredValueFlags[flag]:
 			v, err := valueOf(&i, flag, inline, hasInline)
 			if err != nil {
 				return a, err
@@ -120,6 +122,12 @@ func parseYtDlp(args []string) (ytArgs, error) {
 				a.cookies = v
 			case "--use-extractors":
 				a.useExtractors = v
+			case "--playlist-end":
+				n, err := strconv.Atoi(v)
+				if err != nil || n < 1 {
+					return a, fmt.Errorf("invalid playlist end %q", v)
+				}
+				a.playlistEnd = n
 			}
 		case strings.HasPrefix(arg, "-"):
 			return a, fmt.Errorf("unrecognized option %q", arg)
@@ -187,11 +195,14 @@ func runYtDlp(e env, args []string) int {
 
 	listID, isList := PlaylistID(a.url)
 	target, terr := parseTarget(a.url)
+	lt, isSubList := parseListURL(a.url)
 
 	// --use-extractors：extractor 不在清單內時，網址視為不支援（GRD-R6）。
 	if a.useExtractors != "" {
 		var names []string
 		switch {
+		case isSubList:
+			names = listExtractors(lt)
 		case isList:
 			names = []string{"youtube:tab", "youtube:playlist"}
 		case terr == nil && target.platform == "youtube":
@@ -207,7 +218,11 @@ func runYtDlp(e env, args []string) int {
 
 	// 展開播放清單：--flat-playlist -J 加上播放清單網址。其他網址（含影片網址）照一般流程處理。
 	if isList && op == OpInfo && a.flatPlaylist {
-		return ytPlaylist(e, st, listID)
+		return ytPlaylistEnd(e, st, listID, a.playlistEnd)
+	}
+	// 訂閱的清單（SUB）：頻道的 /videos、@handle、Bilibili 合集。
+	if isSubList && op == OpInfo {
+		return ytList(e, st, lt, a.playlistEnd)
 	}
 
 	if terr != nil {
@@ -476,6 +491,15 @@ func PlaylistID(raw string) (string, bool) {
 	return id, id != ""
 }
 
+// ytPlaylistEnd 同 ytPlaylist，但遵守 --playlist-end（0 代表沒有限制）。
+func ytPlaylistEnd(e env, st State, listID string, end int) int {
+	name, ok := st.Playlists[listID]
+	if !ok || end <= 0 {
+		return ytPlaylist(e, st, listID)
+	}
+	return writeFixture(e, st, name, end)
+}
+
 // ytPlaylist 輸出 State.Playlists 登記的 fixture（FixturesDir/ytdlp/<檔名>）。
 // 沒有登記時與真實的 yt-dlp 相同：回報播放清單不存在。
 func ytPlaylist(e env, st State, listID string) int {
@@ -564,6 +588,9 @@ func ytInfo(e env, id, platform string, part int, v *Video) int {
 		chapters = append(chapters, map[string]any{"title": c.Title, "start_time": c.Start, "end_time": c.End})
 	}
 	webpage := "https://www.youtube.com/watch?v=" + id
+	if v.Shorts {
+		webpage = "https://www.youtube.com/shorts/" + id
+	}
 	info := map[string]any{
 		"_type":              "video",
 		"id":                 id,

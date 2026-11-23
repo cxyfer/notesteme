@@ -181,6 +181,15 @@ func setVideoField(v *faketool.Video, field, value string) error {
 			return fmt.Errorf("published_at %q 不是 RFC 3339：%w", value, err)
 		}
 		v.PublishedAt = value
+	case "shorts":
+		switch value {
+		case "yes":
+			v.Shorts = true
+		case "no":
+			v.Shorts = false
+		default:
+			return fmt.Errorf("shorts %q 只能是 yes 或 no", value)
+		}
 	case "chapters":
 		chapters, err := parseChapters(value, v.Duration)
 		if err != nil {

@@ -1,9 +1,12 @@
 package harness
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -160,4 +163,62 @@ func (w *World) m4Violations() []string {
 	out := w.m4.violations
 	w.m4.violations = nil
 	return out
+}
+
+// syncFeed 把假 yt-dlp 的 YouTube 影片（有 channel_id 的）同步到 fakefeed（SyncTools 呼叫，在場景的 goroutine 中執行）。
+func (w *World) syncFeed() {
+	if w.Feed == nil {
+		return
+	}
+	var vs []fakefeed.Video
+	for id, v := range w.Tools.Videos {
+		if v == nil || v.ChannelID == "" || strings.Contains(id, "/") {
+			continue
+		}
+		fv := fakefeed.Video{ID: id, ChannelID: v.ChannelID, Channel: v.Channel, Title: v.Title, Shorts: v.Shorts}
+		if t, err := time.Parse(time.RFC3339, v.PublishedAt); err == nil {
+			fv.PublishedAt = t
+		}
+		vs = append(vs, fv)
+	}
+	w.Feed.SetVideos(vs)
+}
+
+// subscriptionRef 是 `{subscription:<別名>}`（steps.md 4.17 的別名替換）。
+var subscriptionRef = regexp.MustCompile(`\{subscription:([a-z0-9-]+)\}`)
+
+// SetSubscription 記下訂閱別名對應的 id。
+func (w *World) SetSubscription(alias, id string) {
+	if w.Refs == nil {
+		w.Refs = map[string]string{}
+	}
+	w.Refs["subscription:"+alias] = id
+}
+
+// Subscription 回傳訂閱別名對應的 id。
+func (w *World) Subscription(alias string) (string, bool) {
+	id, ok := w.Refs["subscription:"+alias]
+	return id, ok
+}
+
+// substSubscriptions 代入 {subscription:<別名>}；別名不存在時維持原樣（請求會找不到訂閱、斷言會失敗）。
+func (w *World) substSubscriptions(s string) string {
+	if !strings.Contains(s, "{subscription:") {
+		return s
+	}
+	return subscriptionRef.ReplaceAllStringFunc(s, func(m string) string {
+		if v, ok := w.Refs["subscription:"+subscriptionRef.FindStringSubmatch(m)[1]]; ok {
+			return v
+		}
+		return m
+	})
+}
+
+// DBCountSubscriptions 以唯讀方式查詢訂閱數（server 已明確停下時，`the number of subscriptions is`）。
+func (w *World) DBCountSubscriptions() (int, error) {
+	n := 0
+	err := w.dbQuery(func(ctx context.Context, db *sql.DB) error {
+		return db.QueryRowContext(ctx, `SELECT COUNT(*) FROM subscriptions`).Scan(&n)
+	})
+	return n, err
 }

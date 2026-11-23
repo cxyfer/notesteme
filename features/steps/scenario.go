@@ -26,6 +26,8 @@ type Scenario struct {
 	tags []string
 	// stepTexts 是場景全部步驟的文字（不含關鍵字）；給依「用到哪些句型」放行的閘門使用（見 hubGate）。
 	stepTexts []string
+	// sub 是訂閱的狀態（SUB，M4；見 subscriptions.go）。
+	sub subState
 
 	// ctx 是 server 的 root context，場景結束時取消。
 	ctx    context.Context
@@ -469,6 +471,9 @@ func (s *Scenario) prepareOwner() error {
 		return err
 	}
 	if err := s.flushConfig(); err != nil {
+		return err
+	}
+	if err := s.flushSubscriptions(); err != nil {
 		return err
 	}
 	if err := s.flushQueue(); err != nil {

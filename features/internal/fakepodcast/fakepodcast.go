@@ -353,3 +353,30 @@ func (f *Feeds) TranscriptHandler(ref string) http.Handler {
 		_, _ = w.Write(ep.Transcript.Body)
 	})
 }
+
+// Prepend 在既有的 feed 最前面加上一集（`the podcast feed … adds the episode …`，SUB）。
+// feed 不存在、guid 為空或重複、音檔不是假媒體檔時回傳錯誤。
+func (f *Feeds) Prepend(name string, ep Episode) error {
+	if ep.GUID == "" {
+		return fmt.Errorf("fakepodcast: guid 不可為空")
+	}
+	if _, ok := faketool.ParseMedia(ep.Audio); !ok {
+		return fmt.Errorf("fakepodcast: %s 的音檔不是假媒體檔（第一行要是 NOTESTEME-FAKE-MEDIA 標記）", Ref(name, ep.GUID))
+	}
+	if ep.Listed == 0 {
+		ep.Listed = ListedFromMarker(ep.Audio)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	feed := f.feeds[name]
+	if feed == nil {
+		return fmt.Errorf("fakepodcast: feed %q 不存在（先用 `a podcast feed … with the episodes:` 建立）", name)
+	}
+	for _, e := range feed.Episodes {
+		if e.GUID == ep.GUID {
+			return fmt.Errorf("fakepodcast: feed %q 的 guid %q 重複", name, ep.GUID)
+		}
+	}
+	feed.Episodes = append([]Episode{ep}, feed.Episodes...)
+	return nil
+}

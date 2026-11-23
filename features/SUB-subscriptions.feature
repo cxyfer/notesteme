@@ -329,7 +329,7 @@ Feature: Subscriptions
       | { "title_exclude": "(" }                             | filters.title_exclude | 標題的正規表示式無效。             |
       | { "title_exclude": "(?=sponsor)" }                   | filters.title_exclude | 標題的正規表示式無效。             |
       | { "title_include": "(?<!x)y" }                      | filters.title_include | 標題的正規表示式無效。             |
-      | { "title_include": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } | filters.title_include | 標題的正規表示式最長 200 個字元。 |
+      | { "title_include": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } | filters.title_include | 標題的正規表示式最長 200 個字元。 |
       | { "min_duration_s": 600, "max_duration_s": 300 }     | filters.max_duration_s | 最長片長必須大於最短片長。         |
 
   @SUB-02 @SUB-R5

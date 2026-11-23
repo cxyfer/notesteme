@@ -45,6 +45,13 @@ type State struct {
 	// Playlists 的 key 是 YouTube 播放清單 ID（例如 PL123），值是 FixturesDir/ytdlp/ 內的檔名：
 	// `yt-dlp --flat-playlist -J` 對該清單輸出這個檔案的內容。沒有登記的清單回報「播放清單不存在」。
 	Playlists map[string]string `json:"playlists,omitempty"`
+	// Collections 的 key 是 Bilibili 合集的 "<mid>:<sid>"，ChannelLists 的 key 是 YouTube 頻道 ID，值同 Playlists：
+	// `yt-dlp --flat-playlist -J` 對合集網址、頻道的 /videos 網址輸出這個 fixture（SUB，M4）。
+	// 頻道沒有登記 fixture 時，/videos 依登記的影片（同一個 channel_id、不是 Shorts）產生清單。
+	Collections  map[string]string `json:"collections,omitempty"`
+	ChannelLists map[string]string `json:"channel_lists,omitempty"`
+	// Channels 是 @handle（小寫，含 @）對應的頻道 ID；影片的頻道名稱轉小寫、去掉空白也會自動對應（SUB）。
+	Channels map[string]string `json:"channels,omitempty"`
 	// Gate 是 gate 檔的路徑；檔案存在時，處理網址的 yt-dlp 呼叫會阻塞，
 	// 直到檔案被刪除。每個被擋住的程序各寫一個 <Gate>.waiting.<pid> 標記檔，
 	// 並在 <root>/data/tmp 寫下部分檔（見 waitGate）。
@@ -74,12 +81,14 @@ type Video struct {
 	Language    string `json:"language,omitempty"`
 	Description string `json:"description,omitempty"`
 	// PublishedAt 是 RFC 3339 的發布時間；-J 輸出為 timestamp 與 upload_date。
-	PublishedAt  string    `json:"published_at,omitempty"`
-	Availability string    `json:"availability,omitempty"` // 預設 public
-	LiveStatus   string    `json:"live_status,omitempty"`  // 預設 not_live
-	ChannelID    string    `json:"channel_id,omitempty"`
-	Channel      string    `json:"channel,omitempty"`
-	Chapters     []Chapter `json:"chapters,omitempty"`
+	PublishedAt  string `json:"published_at,omitempty"`
+	Availability string `json:"availability,omitempty"` // 預設 public
+	LiveStatus   string `json:"live_status,omitempty"`  // 預設 not_live
+	// Shorts 為 true 時，-J 的 webpage_url 是 /shorts/<ID>，也不出現在頻道 /videos 的清單（SUB 待決問題 S6）。
+	Shorts    bool      `json:"shorts,omitempty"`
+	ChannelID string    `json:"channel_id,omitempty"`
+	Channel   string    `json:"channel,omitempty"`
+	Chapters  []Chapter `json:"chapters,omitempty"`
 	// Parts 是 Bilibili 的分P數；0 視為 1。各分P 的標題、原文語言與字幕軌另放在
 	// Videos["<bvid>/p<n>"]（PartKey），沒有登記的分P 沿用這部影片本身。
 	Parts  int     `json:"parts,omitempty"`
