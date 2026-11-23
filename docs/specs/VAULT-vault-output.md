@@ -63,3 +63,25 @@
 - V9：M3-S0 的設定檔驗證（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：vault 與 hook 的 id 只能用小寫英數字、`_`、`-`（同 LLM provider，因為會變成 `NOTESTEME_VAULT_<ID>_TOKEN`），`-`／`_` 互換後相同的兩個 vault id 拒絕。`fs` 不能寫 `remote`、`branch`、`author`；`git` 不能寫 `path`。`remote` 另外拒絕帶密碼的 https 網址（憑證只能經 `GIT_ASKPASS`）、https 的帳號、以 `-` 開頭的值與 `host::helper`。`branch` 不能以 `-` 開頭、不含 `..`、不以 `.lock` 結尾；`author` 必須是「名稱 <email>」。`base` 不能是絕對路徑或含 `..`。hook 的 `argv[0]` 不能使用變數；`timeout` 用 Go 的期間格式（`2s`、`1m`），大於 0、最多 `5m`；`max_output` 接受位元組數或 `KiB`、`MiB`，最多 16 MiB；`env_allowlist` 的名稱必須是有效的環境變數名稱，禁用的名稱不分大小寫。
 - V10：M3-S0 的發布（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：處理方案可以儲存 `target: vault`，但 VAULT 的切片實作之前，`publish` 遇到 vault 目標會以 permanent 失敗（「vault 輸出目標還沒有實作」），不會寫任何檔案。`GET /api/vaults` 已註冊為 501 stub（`admin`）。
 - V11：`outputs` 的主鍵維持 `(item_id, path)`（ADR-0020 第 8 點），vault 的 `path` 相對於 vault 根目錄（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：同一部影音寫到兩個 vault 的同一個相對路徑時，兩筆紀錄會互相覆蓋。場景沒有這種情況；VAULT 的切片若要支援多個 vault，主鍵要改成含 `vault`（另一個 migration）。
+- V12：M3-S5／S6 的場景修改提案（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認；`.feature` 沒有修改）：`The note links its subtitles by the full vault path`、`Publishing an unchanged note pushes nothing new`、`A rejected push asks the owner to sync the vault`、`Bad credentials ask for new ones`、`A network error is retried without a second commit` 在場景中改了預設處理方案（`vault-note`、`vault-git`），但影音已在 Background 的 `the note of … is:` 以當時的預設處理方案 `vault-test` 建立；依 PRF-R3，`reruns … from …` 沿用影音記錄的處理方案，所以 note 不會執行、git vault 不會被用到，這 5 個場景目前 failed。最小修改：把這些場景的 `When/And the owner reruns "yt:vlt001xxxxx" from "<stage>"` 改成 `When the owner sends "POST /api/items/yt:vlt001xxxxx/rerun" with:`，body `{ "from": "<stage>", "profile": "<該場景的處理方案>" }`；以這個修改後的副本執行，`@M3` 的 VAULT 27 個場景全部通過。不採用的替代：讓 seeding 建立的影音不記錄處理方案（等於在 harness 繞過 PRF-R3）。
+- V13：M3-S5 的寫入細節（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+  - `outputs` 加欄位 `state`（migration 00022，預設 `written`）：最近一次發布時每個檔案的結果（VAULT-R5）。`skip` 擋下的檔案只更新 `state` 為 `skipped_user_changed`，不動 `sha256`（下次仍認得使用者改過）；另存的新檔記為 `saved_as_new`；內容相同時是 `unchanged`。V11 的主鍵維持 `(item_id, path)`，沒有改。
+  - 同一個時間寫出的檔案在 API 中依種類排列（筆記、圖片、字幕），再依路徑。
+  - 檔名：title 經 `subtitle.DownloadFileName` 的規則；每一段最多 200 位元組、整個相對路徑最多 240 字元，以筆記與最長的字幕檔名（保留 40 字元給 `.<語言>.bilingual.srt`）計算，超過時從尾端截短標題；base 與 folder 本身就超過時 `permanent`。不做 Unicode 正規化（VAULT-R3 沒有要求，沿用下載檔名的處理）。筆記嵌入的畫面檔名沿用筆記中的名稱（NOTE-R9），不另外截短。
+  - 字幕檔名：`lang` 有兩個以上的語言時是 `<名稱>.<語言>.<ext>`，雙語 SRT 是 `<名稱>.bilingual.srt`（避免互相覆蓋）；只有一種語言時是 `<名稱>.<ext>`。
+  - 沒有筆記時只寫字幕（步驟 `done`，訊息「這部影音還沒有筆記，只寫出字幕。」）；沒有字幕時只寫筆記與圖片（訊息「沒有字幕，未寫出字幕檔。」）；指定的語言沒有字幕時同 OUT 的訊息。筆記來源紀錄的 `checks.passed` 為 `false` 時 `blocked`（`needs_action`），動作「重新產生筆記」，不寫任何檔案。
+  - symlink：路徑的每一段先 `Lstat`，遇到連結時經 `os.Root` 解析，解析失敗（指向 vault 外、懸空）就拒絕（VAULT-R4 的訊息）；`os.Root` 一律把絕對路徑的連結視為離開根目錄，所以 vault 內以絕對路徑指向 vault 內的連結也會被拒絕。檢查之後才被換成連結的情況由 `os.Root` 的寫入本身拒絕。最後一段是指向 vault 內的連結時視為使用者的檔案（同 OUT，依 `on_user_change`）。
+  - 筆記與它引用的 `frames` 版本在寫入圖片後標成 `pinned`。
+  - V8 的提醒：只有筆記記錄了字幕連結、而且與這次 publish 的版面不同時才提醒（seeding 的筆記沒有連結）。
+  - `GET /api/vaults` 只回 `{vaults: [{id, adapter, base}]}`，依 id 排列；不列 hook（UI 選用 hook 的來源另外決定）。
+  - 刪除影音（VAULT-R12）：`fs` vault 依 DEL-R9 只刪 hash 相同的檔案（`os.Root` 之內）；`git` vault 的刪除 commit 與推送**還沒有實作**，檔案保留，`kept_outputs` 的原因是 `git_vault`；設定檔已沒有那個 vault 時原因是 `vault_not_configured`。
+- V14：M3-S6 的 git 與 hook（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 每次執行 git 另外帶 `-c core.fsmonitor=false`；commit 帶 `-c user.name=… -c user.email=…`（由 `author` 拆出；`GIT_CONFIG_GLOBAL=/dev/null` 時沒有 committer 身分，git 會拒絕 commit）與 `--no-verify`。commit 訊息壓成一行、去掉控制字元。`git add --`、`clone … -- <remote> <dir>`、`push origin HEAD:refs/heads/<branch>`。
+  - 憑證只支援環境變數 `NOTESTEME_VAULT_<ID>_TOKEN`；secrets 中的 `vault:<id>` 還沒有實作。askpass 是暫存目錄中的 `/bin/sh` 腳本，帳號固定 `x-access-token`、密碼讀環境變數，腳本內容不含 token；錯誤訊息中的 token 換成 `***`。git 的環境另外傳 `SSH_AUTH_SOCK`（有設定時）。
+  - 有沒有要推送：比較 `HEAD` 與 `refs/remotes/origin/<branch>`（追蹤分支不存在而本機有 commit 時也推送），所以重試時沿用已建立的本機 commit。遠端分支還不存在（空的 repo）時不 `pull`。
+  - 有檔案被 `skip` 擋下時，這次寫入或另存的其他檔案仍然 commit 與推送（V7：已寫入的檔案保留），之後 `publish` 為 `blocked`，hook 不執行。
+  - 錯誤分類依 git 的 stderr（clone、pull、push 都適用）：認證（`Authentication failed`、`Permission denied (publickey)`、`terminal prompts disabled`、HTTP 401／403）、被拒（`non-fast-forward`、`Not possible to fast-forward`、`[rejected]`、`fetch first`）、網路（`Could not resolve host`、`unable to access`、連線逾時或被拒、HTTP 5xx、`early EOF`；git 本身逾時 5 分鐘）；其他是 `permanent`。
+  - 同一個 vault 的發布在程序內互斥（同一個 clone 不能同時有兩個 git 操作）。
+  - `publish` 的資源類別仍是 `local`（偏離 ADR-0020 第 3 點「有 git vault 時 `download`」：建立任務時還沒有讀生效設定）。
+  - hook：`argv[0]` 不是絕對路徑時在 notesteme 的 `PATH` 中尋找；環境只有 `env_allowlist` 中、而且有設定的變數，加上 `NOTESTEME_ITEM_ID`（執行時再擋一次禁用的名稱）；stdout 與 stderr 合計只保留前 `max_output`，其餘丟棄但不結束 hook；輸出寫進 info log。無法執行時的提醒是「hook <id> 無法執行。檔案已經寫入。」。多個 vault 輸出都有 hook 時，全部目標寫完、沒有任何目標被擋下之後才依序執行。
+  - Docker 映像加上 `git` 與 `openssh-client`（`deploy/docker/Dockerfile`）；真實的 git 服務（空的 repo 的第一次 clone、ssh remote、真實的認證錯誤訊息）與 Obsidian 中的顯示屬於 owner 驗收。
