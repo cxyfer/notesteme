@@ -471,6 +471,8 @@ M4 的新句型都用 `r.Step` 註冊（不限關鍵字），因為部分 `Given
 - `When the worker runs until idle`：ADR-0021 第 1 點的排程器是 worker 的 `Periodic`，所以「直到沒有可以執行的任務」也包含「沒有到期的排程工作」；排程工作建立的影音、影音建立的任務都會在同一次執行中處理完。被 rate limit 延後（SUB-R10）的檢查不算到期。
 - `When the server starts`、`When the server restarts`：在 server 停止期間 `the clock advances by …` 之後啟動時，過期的排程工作要等到 `the worker runs until idle` 才執行（啟動本身不執行排程），讓場景可以在中間斷言。
 
+- 實作狀態（M4-S2，2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：上表除了兩個 `imports` 句型（M4-S3）之外都已實作。閘門只對「所有 `@SUB-R*` 都屬於 R1～R5、R8～R13，且沒有 `@mcp`／`@cli`」的場景放行，其他場景（R6 預覽、R7 匯入、MCP、CLI，以及只有 `@SUB-01` 等故事 tag 的其他領域場景）回傳裸的 `godog.ErrPending`、停在同一步。server 啟動前宣告的訂閱在 `prepareOwner` 套用處理方案與全域設定之後、依宣告順序建立。
+
 #### SRC-10：事後出現更好的來源（`steps/subscriptions.go`，M4）
 
 | 步驟 | 意思 |

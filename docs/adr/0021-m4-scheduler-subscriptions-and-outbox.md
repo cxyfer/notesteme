@@ -112,3 +112,8 @@ M4 的 migration 接在 M3 的 migration 之後（M3 規劃 `00017`；實際編�
   - 第 5 點：端點回應 `permanent` 的錯誤（netguard 封鎖、3xx、408／429 以外的 4xx）第一次就 `dropped`（NOTIFY N1）；`notify.dropped` 只寫進 `events` 表。
   - `notify.deliver` 不刪除排程列，下一次是「最早的 pending 項目」與「一分鐘之後」取較早的；有新的 outbox 項目時提前到現在。端點的失敗記在 outbox，不回傳給排程器。
   - 第 7 點：migration `00020_notify`；`notifiers` 加 `config_nonce`，`notification_outbox` 加 `last_attempt_at`、不加外鍵（見 NOTIFY 待決問題「M4-S1 實作的決定」）。
+- 2026-11-23，M4-S2 訂閱核心（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 新增 `scheduler.RetryAfter{Err, NotBefore}`：handler 回傳它時算一次失敗（failures 加一、記 `last_error`），下一次取「退避時間」與 `NotBefore` 較晚的那個（SUB-R10：平台回 429 時等到 bucket 恢復）。
+  - 新增 `scheduler.NextWithJitter(kind, key, now, interval, jitterMax)`，讓 handler 自己傳回 `Next` 時與預設的「間隔＋jitter」算法一致；`subscription.check` 的 `Kind.Interval` 是 0，每個訂閱的間隔不同，由 handler 傳回。
+  - 第 2 點「探索在排程器內同步執行」：`pipeline.Ingest` 在 `store.Tx` 之外呼叫（store 只有一個寫入連線，在交易內呼叫會卡住）。
+

@@ -86,3 +86,19 @@
 - S9：UI 第 5 節的線框在「只抓之後的新內容」時仍顯示「會處理 8 部」。依 SUB-R6，預覽在 `none` 模式下會把列表中的舊內容列為 `before_subscription`；線框要在 UI 切片時改成「之後的新內容才會處理；目前列表中的 12 部都不會處理」之類的說明，並讓使用者切換回補範圍時即時更新。
 - S10：jitter 的確定性（同一個訂閱、同一個時段一定得到同一個延遲）與 30 秒的單輪上限由 `internal/app` 的單元測試把關；驗收場景只驗證延遲落在範圍內，以及 `scheduler.jitter_max: 0s` 時的精確時間。
 - M4-S0：`subscriptions` 原本列在 SEC-R2 的「由資料庫管理」的頂層欄位，現在是設定檔區段（`backfill_max`、`backfill_per_check`、`rate_limits`；訂閱本身仍由 API 管理）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。`backfill_max`、`backfill_per_check` 必須是正整數（S0 不檢查兩者的大小關係）；`rate_limits.<平台>` 的格式 `<n>/m`、n 為 1～600（SUB-R10）。`scheduler.jitter_max` 用 Go 的期間寫法，可以是 `0s`。排程器的接點在 `internal/scheduler`（不是 S10 寫的 `internal/app`）：jitter 的確定性與 30 秒的單輪上限由 `internal/scheduler` 的單元測試把關。
+- M4-S2（訂閱核心）的切法（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：S2 實作 SUB-R1～R5、R8～R12 與 R13 的 REST 路由；S3 實作 R6 預覽、R7 匯入與 R13 的 MCP、CLI。`POST /api/subscriptions/preview`、`/{id}/preview`、`/import` 仍是 501 stub（scope 已是 `admin`，所以 R13 的 scope 場景在 S2 通過）。R8 放在 S2：`live: wait` 只是照常建立影音、由 SRC-R7 的 `metadata` 等待，`live: skip` 是過濾鏈的一環，兩者都不需要 S3 的功能。閘門 `the YouTube feeds are served from the registered videos` 只對「所有 `@SUB-R*` 都屬於上述範圍、且沒有 `@mcp`／`@cli`」的場景放行；只有 `@SUB-01` 的其他領域場景（DIG 等）照舊停在閘門。
+- M4-S2 實作細節（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 下一次檢查的唯一來源是 `scheduled_jobs.next_run_at`（`subscription.check` 的 `Kind.Interval` 為 0，handler 自己傳回 `Next`）；成功、`permanent`、`needs_action` 都是「這次執行的時間＋schedule＋jitter」（不退避），`retryable` 回錯誤讓排程器退避，429／412 時下一次不早於 bucket 恢復（ADR-0021 修訂的 `RetryAfter`）。額度不足是 `Deferred`，不連線、不更新 `last_checked_at`。
+  - rate limit 的 bucket 在記憶體中（容量＝每分鐘的額度、重啟後重新計算）；key 是 `youtube`、`bilibili`、`feed:<host>`。429／412 時清空並暫停 15 分鐘，恢復時只有一顆額度。
+  - 每次 feed 檢查都帶 `Connection: close`，不重用連線池裡的連線，所以每次檢查都重新解析 DNS 並經過 netguard 的位址檢查（SUB-R11 的 DNS rebinding）。
+  - 404／410 是「訂閱來源已不存在（HTTP n）…」；其他 4xx（408、429 除外）是 `permanent`，訊息「訂閱來源回應了錯誤（HTTP n）。請確認網址，或刪除這個訂閱。」；408 與 5xx 是 `retryable`。
+  - Bilibili 合集的條目以第 1 個分P 記錄（代號 `bili:<BV>/p1`），新增時用不帶 `?p=` 的 BV 網址，分P 由 ingest 展開（ING）；yt-dlp 以舊格式網址 `space.bilibili.com/<mid>/channel/collectiondetail?sid=<sid>` 與 extractor `BilibiliCollectionList` 列出。YouTube 用 `youtube:tab,youtube:playlist`。這兩組 extractor 名稱只在假 yt-dlp 驗證過，**要用真的 yt-dlp 實測**。
+  - 播放清單、合集一次最多列 1000 筆（`--playlist-end 1000`，與 feed 的條目上限相同）；頻道平常只讀 RSS；第一次檢查（或修改 `backfill` 之後）且回補範圍不是 `none` 時，另以 `/channel/<ID>/videos` 的 flat 列表取得 RSS 以外的舊影片（`--playlist-end` 取回補上限）。`@handle` 以 `yt-dlp -J https://www.youtube.com/@handle --playlist-end 1` 換成頻道 ID。
+  - 過濾需要片長或直播狀態、但列表沒有提供時，以 yt-dlp `-J` 查單一影片；查不到時記為 `deferred`（`details_unavailable`），新增失敗時記為 `deferred`（`ingest_failed`），下一次檢查再試，不影響其他條目、不算檢查失敗。兩個原因不在 SUB-R3～R5 的清單中，是內部的暫時狀態。
+  - `PATCH` 修改 `backfill` 時，下一次檢查重新評估因回補範圍略過（`before_subscription`、`backfill_limit`）的條目，已建立的影音不變（S8）。
+  - 由訂閱建立的影音記下 `items.subscription_id`；刪除訂閱時清成 null（影音保留，SUB-R13）。訂閱新增不清除 tombstone（使用者刪除過的影片不會因為訂閱又回來，SUB-R5）。
+  - 409 的 `subscription_id` 加在共用的錯誤格式 `apierr.Error`（前例是 M5 的 `required_permission`），所以 Hub 的 OpenAPI 快照（`internal/hub/hubapi/openapi.json`）的 `Error` 也多了這個 Client 才會用到的選用欄位；Hub 不會填它。要分開的話，改成 Client 自己的錯誤型別。
+  - `GET /api/items` 的 `Item` 與詳情一律帶 `subscription_id`（可為 null，SUB-R13），web 的測試資料一併補上。
+  - 網址正規化之後必須能再辨識成同一個網址才接受（fuzz 找到 `http://0::0` 會被正規化成無法解析的主機）。
+- 場景修改（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：SUB-R4「Invalid filters are rejected with the field and the reason」第 4 個範例的 `title_include` 原本只有 195 個 `a`，達不到規則的「超過 200 個字元」，改成 201 個 `a`；斷言不變。
+
