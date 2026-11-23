@@ -95,7 +95,13 @@ func TestRemoveAPIKey(t *testing.T) {
 	if w.Env[OpenAIAPIKeyEnv] == "" {
 		t.Error("openai 的 key 不應被動到")
 	}
-	if err := w.RemoveAPIKey("gemini"); err == nil {
+	if err := w.RemoveAPIKey("gemini"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := w.Env[GeminiAPIKeyEnv]; ok {
+		t.Error("gemini 的環境變數應該被移除")
+	}
+	if err := w.RemoveAPIKey("mistral"); err == nil {
 		t.Error("未知的來源應該回傳錯誤")
 	}
 }

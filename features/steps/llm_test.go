@@ -79,7 +79,9 @@ func TestLLMRequestStepsFailWhenRequestIsMissing(t *testing.T) {
 	// 另一個 provider 沒有請求。
 	mustFail(t, "openai 沒有請求：does not contain", s.llmRequestDoesNotContain(1, "openai", "x"))
 	// 不認識的 provider。
-	mustFail(t, "不認識的 provider", s.llmRequestDoesNotContain(1, "gemini", "x"))
+	mustFail(t, "不認識的 provider", s.llmRequestDoesNotContain(1, "mistral", "x"))
+	// gemini 由 fakegemini 回應：沒有請求時失敗。
+	mustFail(t, "gemini 沒有請求", s.llmRequestDoesNotContain(1, "gemini", "x"))
 }
 
 func TestLLMRequestContains(t *testing.T) {
@@ -121,7 +123,9 @@ func TestLLMReceivedCounts(t *testing.T) {
 	mustFail(t, "segment 4 個", s.llmReceivedFor("anthropic", 4, "segment"))
 	mustFail(t, "translate 1 個", s.llmReceivedFor("anthropic", 1, "translate"))
 	mustNil(t, s.llmReceived("openai", 0))
-	mustFail(t, "不認識的 provider", s.llmReceived("gemini", 0))
+	mustFail(t, "不認識的 provider", s.llmReceived("mistral", 0))
+	mustNil(t, s.llmReceived("gemini", 0))
+	mustFail(t, "gemini 1 個", s.llmReceived("gemini", 1))
 }
 
 func TestLLMSharePrefix(t *testing.T) {
@@ -155,9 +159,15 @@ func TestLLMAnswerAndFailSteps(t *testing.T) {
 	if err == nil || errors.Is(err, godog.ErrPending) {
 		t.Errorf("fixture 不存在：err = %v，預期明確失敗", err)
 	}
-	mustFail(t, "不認識的 provider：answers", s.llmAnswers("gemini", "correct", "correct-echo"))
-	mustFail(t, "不認識的 provider：chunk", s.llmAnswersChunk("gemini", "correct", 1, "correct-echo"))
-	mustFail(t, "不認識的 provider：fails", s.llmFails("gemini", 500))
+	mustFail(t, "不認識的 provider：answers", s.llmAnswers("mistral", "correct", "correct-echo"))
+	mustFail(t, "不認識的 provider：chunk", s.llmAnswersChunk("mistral", "correct", 1, "correct-echo"))
+	mustFail(t, "不認識的 provider：fails", s.llmFails("mistral", 500))
+	// gemini 只回答 note，也沒有 chunk（GEM-R4）。
+	mustFail(t, "gemini 的 correct", s.llmAnswers("gemini", "correct", "correct-echo"))
+	mustFail(t, "gemini 的 chunk", s.llmAnswersChunk("gemini", "note", 1, "gemini-note-two-sections"))
+	mustNil(t, s.llmAnswers("gemini", "note", "gemini-note-two-sections"))
+	mustFail(t, "gemini HTTP 200 不是錯誤", s.llmFails("gemini", 200))
+	mustNil(t, s.llmFailsOnce("gemini", 429))
 	mustFail(t, "chunk 0", s.llmAnswersChunk("anthropic", "correct", 0, "correct-echo"))
 	mustFail(t, "HTTP 200 不是錯誤", s.llmFails("anthropic", 200))
 
@@ -238,9 +248,16 @@ func TestProviderHasNoAPIKeyForLLM(t *testing.T) {
 		t.Error("openai 的 key 不該被移除")
 	}
 
+	// gemini（GEM-R7）：移除 NOTESTEME_GEMINI_API_KEY。
+	s4 := newTestScenario(t)
+	mustNil(t, s4.providerHasNoAPIKey("gemini"))
+	if _, ok := s4.World.Env[harness.GeminiAPIKeyEnv]; ok {
+		t.Error("gemini 的 key 應該被移除")
+	}
+
 	// 不認識的 provider 明確失敗，不是 pending。
 	s3 := newTestScenario(t)
-	err := s3.providerHasNoAPIKey("gemini")
+	err := s3.providerHasNoAPIKey("mistral")
 	if err == nil || errors.Is(err, godog.ErrPending) {
 		t.Errorf("不認識的 provider：err = %v，預期明確失敗", err)
 	}
