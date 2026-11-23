@@ -356,3 +356,15 @@ func TestChaptersAgent(t *testing.T) {
 		t.Errorf("chapters = %+v，llm calls = %d", doc, fake.calls())
 	}
 }
+
+// 每一句都在片段內時不呼叫 LLM，存成沒有章節的產出（CHAP H9）。
+func TestChaptersAllCuesInSponsor(t *testing.T) {
+	fake := &chapLLM{out: `{"chapters":[{"cue":1,"title":"a"}]}`}
+	r, it := newChapRig(t, fake, sponsorAt(0, 600_000))
+	r.rerun(it.ID, StageChapters, nil)
+	st := latestStage(t, r, it.ID, StageChapters)
+	doc, ok, _ := r.p.ItemChapters(context.Background(), it.ID)
+	if st.Status != store.StatusDone || fake.calls() != 0 || !ok || len(doc.Chapters) != 0 {
+		t.Fatalf("chapters = %+v，calls = %d，doc = %+v", st, fake.calls(), doc)
+	}
+}

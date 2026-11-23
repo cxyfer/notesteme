@@ -553,7 +553,8 @@ func (p *Pipeline) llmPlan(ctx context.Context, t store.Task, run store.StageRun
 	if err != nil {
 		return result{}, err
 	}
-	if len(job.chunks) == 0 {
+	// chapters 的句子全部在 SponsorBlock 片段內時沒有東西可以送出：直接組出沒有章節的產出（CHAP H9）。
+	if len(job.chunks) == 0 && (job.def.write == nil || len(job.tr.Cues) == 0) {
 		return result{}, &errclass.Error{Class: errclass.ClassPermanent, Source: "pipeline", Detail: "輸入字幕沒有任何句子",
 			Message: "字幕是空的，沒有可以處理的內容。"}
 	}
