@@ -182,6 +182,24 @@ func (q *Queries) SearchIndexBuilt(ctx context.Context) (int64, error) {
 	return built, err
 }
 
+const seedItemCreatedAt = `-- name: SeedItemCreatedAt :execrows
+UPDATE items SET created_at = ?1 WHERE id = ?2
+`
+
+type SeedItemCreatedAtParams struct {
+	CreatedAt int64
+	ID        string
+}
+
+// Test-only: the acceptance harness pins created_at so that "newer first" (SRCH-R7) is deterministic.
+func (q *Queries) SeedItemCreatedAt(ctx context.Context, arg SeedItemCreatedAtParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, seedItemCreatedAt, arg.CreatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const setSearchIndexBuilt = `-- name: SetSearchIndexBuilt :exec
 UPDATE search_index_state SET built = 1 WHERE id = 1
 `

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/queue"
@@ -65,4 +66,15 @@ func (s *Server) SeedNote(ctx context.Context, itemID, markdown string) error {
 // SeedSummary 直接寫入影音現行的 summary 產出，summary 步驟改成 done（steps.md 4.18）。只供驗收測試的 harness 使用。
 func (s *Server) SeedSummary(ctx context.Context, itemID string, doc []byte) error {
 	return s.pipeline.SeedSummary(ctx, itemID, doc)
+}
+
+// SeedItemCreatedAt 改寫影音的 created_at（SRCH-R7 的排序）。只供驗收測試的 harness 使用（同 SeedTranscript）。
+func (s *Server) SeedItemCreatedAt(ctx context.Context, itemID string, at time.Time) error {
+	return s.store.SeedItemCreatedAt(ctx, itemID, at)
+}
+
+// SearchIndexCheck 回報影音在全文搜尋索引中的列數，並執行 cues_fts 的 integrity-check（SRCH-R8）。
+// 只供驗收測試的 harness 使用。
+func (s *Server) SearchIndexCheck(ctx context.Context, itemID string) (int, error) {
+	return s.store.SearchIndexCheck(ctx, itemID)
 }

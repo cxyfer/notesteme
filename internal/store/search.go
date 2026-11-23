@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/search"
 	"github.com/cxyfer/notesteme/internal/store/sqlcdb"
@@ -235,4 +236,14 @@ LIMIT ?`, append(args, limit+1)...)
 		page.Next = &k
 	}
 	return page, nil
+}
+
+// SeedItemCreatedAt 改寫影音的 created_at。只供驗收測試的 harness 使用：同一個場景中依序建立的影音，
+// created_at 要嚴格遞增，SRCH-R7 的「新的在前」才能斷言（steps.md 的 search library 句型）。
+func (s *Store) SeedItemCreatedAt(ctx context.Context, itemID string, at time.Time) error {
+	n, err := s.wq.SeedItemCreatedAt(ctx, sqlcdb.SeedItemCreatedAtParams{CreatedAt: at.UnixMilli(), ID: itemID})
+	if err == nil && n == 0 {
+		return ErrNotFound
+	}
+	return err
 }

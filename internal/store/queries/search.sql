@@ -32,3 +32,7 @@ ORDER BY created_at, id;
 SELECT DISTINCT item_id, lang FROM artifacts
 WHERE kind = 'transcript' AND superseded_by IS NULL
 ORDER BY item_id, lang;
+
+-- name: SeedItemCreatedAt :execrows
+-- Test-only: the acceptance harness pins created_at so that "newer first" (SRCH-R7) is deterministic.
+UPDATE items SET created_at = sqlc.arg(created_at) WHERE id = sqlc.arg(id);
