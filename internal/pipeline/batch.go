@@ -449,11 +449,11 @@ func (p *Pipeline) PollBatch(ctx context.Context, id string, now time.Time) (nex
 	}
 	api, err := p.batchAPI(ctx, b.Provider)
 	if err != nil {
-		return time.Time{}, false, err
+		return p.abandonBatch(ctx, b, now, err)
 	}
 	st, err := api.Status(ctx, b.ExternalID)
 	if err != nil {
-		return time.Time{}, false, err
+		return p.abandonBatch(ctx, b, now, err)
 	}
 	if st.State == llm.BatchInProgress {
 		live, err := liveEntries(ctx, r, b)
@@ -492,8 +492,40 @@ func (p *Pipeline) PollBatch(ctx context.Context, id string, now time.Time) (nex
 		b.State, st = store.BatchCancelling, cst
 	}
 	if err := p.finishBatch(ctx, api, b, st, now); err != nil {
+		return p.abandonBatch(ctx, b, now, err)
+	}
+	return time.Time{}, true, nil
+}
+
+// abandonBatch 處理輪詢的錯誤：還沒逾時就回傳錯誤（排程器依退避重試）；已經逾時（查詢或取回結果一直失敗）時
+// 不再等待，還沒有結果的任務改走一般 API（batch_failed），batch 標為 failed、停止輪詢，否則任務會永遠停在 waiting。
+// provider 端之後才產生的結果無法取回，也不會記帳。
+func (p *Pipeline) abandonBatch(ctx context.Context, b store.Batch, now time.Time, cause error) (time.Time, bool, error) {
+	if now.Before(b.DeadlineAt) {
+		return time.Time{}, false, cause
+	}
+	p.log.Warn("batch 逾時且無法取得結果，改走一般 API", "batch", b.ID, "provider", b.Provider, "error", cause)
+	wctx := context.WithoutCancel(ctx)
+	err := p.st.Tx(wctx, func(tx *store.Repo) error {
+		if err := p.fallbackLive(wctx, tx, b, batchFallback{
+			Reason: BatchFallbackBatchFailed, BatchID: b.ExternalID, SubmittedAt: &b.SubmittedAt,
+		}); err != nil {
+			return err
+		}
+		// 已經被移除的任務的預留也一併刪除：這個 batch 不會再結算。
+		for _, e := range b.Entries {
+			if e.Reservation != "" && p.cost != nil {
+				if err := p.cost.Release(wctx, tx, cost.Reservation{ID: e.Reservation}); err != nil {
+					return err
+				}
+			}
+		}
+		return tx.SetBatchState(wctx, b.ID, store.BatchFailed, &now, "")
+	})
+	if err != nil {
 		return time.Time{}, false, err
 	}
+	p.wake()
 	return time.Time{}, true, nil
 }
 

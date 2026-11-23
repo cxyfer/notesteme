@@ -677,6 +677,33 @@ func TestBatchPollErrors(t *testing.T) {
 	}
 }
 
+// 逾時之後查詢或取回結果仍然失敗時不再等待：任務改走一般 API（batch_failed）、預留刪除、輪詢結束。
+func TestBatchPollErrorsAfterDeadlineGiveUp(t *testing.T) {
+	for name, set := range map[string]func(*batchRig){
+		"查詢":   func(b *batchRig) { b.api.statusErr = errors.New("boom") },
+		"取回結果": func(b *batchRig) { b.api.state, b.api.resultsErr = llm.BatchEnded, errors.New("read failed") },
+		"client": func(b *batchRig) {
+			b.p.SetBatchAPI(func(context.Context, string) (BatchAPI, error) { return nil, errors.New("no key") })
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b := newBatchRig(t, batchRigConfig{opts: cost.Options{Estimates: map[string]float64{StageCorrect: 0.01}}})
+			set(b)
+			b.clk.Advance(24 * time.Hour)
+			if _, done := b.poll(); !done {
+				t.Fatal("逾時之後要結束輪詢")
+			}
+			_, chunks, _ := b.provenance()
+			if got := reasons(chunks); got != "api:batch_failed,api:batch_failed,api:batch_failed,api:batch_failed" {
+				t.Fatalf("來源紀錄 = %s", got)
+			}
+			if bt := b.batch(); bt.State != store.BatchFailed || b.reserved() != 0 {
+				t.Fatalf("batch = %+v reserved=%v", bt, b.reserved())
+			}
+		})
+	}
+}
+
 // BATCH-R7：超過預算的請求不放進 batch，依 COST-R8 blocked。
 func TestBatchBudgetBlocksBeforeSubmit(t *testing.T) {
 	b := newBatchRig(t, batchRigConfig{opts: cost.Options{Estimates: map[string]float64{StageCorrect: 0.01}}, budget: map[string]any{"monthly_usd": 0.012}})
