@@ -68,6 +68,14 @@ type Client struct {
 	Cookies Cookies
 	// Log 記錄被丟掉的字幕軌等不影響結果的狀況；nil 時用 slog.Default()。
 	Log *slog.Logger
+	// Calls 記錄每次呼叫的結果（OPS-R17、R18）；nil 時不記錄。
+	Calls CallRecorder
+}
+
+// CallRecorder 記錄 yt-dlp 呼叫的結果（*ops.Calls 實作它）：失敗率的統計與 cookie 最近一次成功使用。
+type CallRecorder interface {
+	ToolCall(ctx context.Context, tool string, failed bool)
+	CookieOK(ctx context.Context, platform string)
 }
 
 func (c *Client) log() *slog.Logger {
@@ -122,6 +130,7 @@ func (c *Client) run(ctx context.Context, timeout time.Duration, args []string, 
 			Class: errclass.ClassNeedsAction, Source: "yt-dlp", Err: err, Message: msgNoYtDlp, Actions: []string{actionInstallYtDlp},
 		}
 	}
+	usedCookie := false
 	if c.Cookies != nil {
 		path, release, err := c.Cookies.Acquire(ctx, Platform)
 		if err != nil {
@@ -139,6 +148,7 @@ func (c *Client) run(ctx context.Context, timeout time.Duration, args []string, 
 		}
 		if path != "" {
 			args = append(args, "--cookies", path)
+			usedCookie = true
 		}
 	}
 	args = append(args, "--", target)
@@ -147,12 +157,28 @@ func (c *Client) run(ctx context.Context, timeout time.Duration, args []string, 
 		if ctx.Err() != nil {
 			return res, ctx.Err() // 被取消：不是工具的錯，由呼叫端處理
 		}
+		c.record(ctx, true, false)
 		return res, &errclass.Error{Class: errclass.ClassRetryable, Source: "yt-dlp", Err: err}
 	}
 	if res.ExitCode != 0 {
-		return res, classify(res)
+		err := classify(res)
+		// 影片本身不存在或地區限制（permanent）不算 yt-dlp 失敗（OPS-R18）。
+		c.record(ctx, !isPermanent(err), false)
+		return res, err
 	}
+	c.record(ctx, false, usedCookie)
 	return res, nil
+}
+
+// record 把一次呼叫的結果交給 Calls（沒有設定時不記錄）。
+func (c *Client) record(ctx context.Context, failed, cookieOK bool) {
+	if c.Calls == nil {
+		return
+	}
+	c.Calls.ToolCall(ctx, "yt-dlp", failed)
+	if cookieOK {
+		c.Calls.CookieOK(ctx, Platform)
+	}
 }
 
 // goneLine 比對 yt-dlp 回報「影片不存在或地區限制」的錯誤行（只看 ERROR 行）：
@@ -381,4 +407,10 @@ func (c *Client) Version(ctx context.Context) (string, error) {
 		return "", &errclass.Error{Class: errclass.ClassRetryable, Source: "yt-dlp", Detail: "--version 沒有輸出"}
 	}
 	return v, nil
+}
+
+// isPermanent 回報錯誤是不是 permanent（影片本身不存在、私人或地區限制）。
+func isPermanent(err error) bool {
+	c, ok := errclass.ClassOf(err)
+	return ok && c == errclass.ClassPermanent
 }

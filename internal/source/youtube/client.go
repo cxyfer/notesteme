@@ -39,6 +39,14 @@ type Client struct {
 	Tools  toolexec.Resolver
 	// Cookies 提供 YouTube 的 cookie 檔；nil 或沒有 cookie 時不帶 --cookies（SEC-R7）。
 	Cookies Cookies
+	// Calls 記錄每次呼叫的結果（OPS-R17、R18）；nil 時不記錄。
+	Calls CallRecorder
+}
+
+// CallRecorder 記錄 yt-dlp 呼叫的結果（*ops.Calls 實作它）：失敗率的統計與 cookie 最近一次成功使用。
+type CallRecorder interface {
+	ToolCall(ctx context.Context, tool string, failed bool)
+	CookieOK(ctx context.Context, platform string)
 }
 
 // Cookies 提供平台 cookie 的暫存檔（*cookies.Store 實作它）。
@@ -117,6 +125,7 @@ func (c *Client) exec(ctx context.Context, timeout time.Duration, args []string,
 			Class: errclass.ClassNeedsAction, Source: "yt-dlp", Err: err, Message: msgNoYtDlp, Actions: []string{actionInstallYtDlp},
 		}
 	}
+	usedCookie := false
 	if withCookies && c.Cookies != nil {
 		path, release, err := c.Cookies.Acquire(ctx, platformYouTube)
 		if err != nil {
@@ -130,6 +139,7 @@ func (c *Client) exec(ctx context.Context, timeout time.Duration, args []string,
 		if path != "" {
 			// 放在最前面：args 結尾有 "--" 加網址，選項不能在它之後。
 			args = append([]string{"--cookies", path}, args...)
+			usedCookie = true
 		}
 	}
 	res, err := c.Runner.Run(ctx, toolexec.Cmd{Path: bin, Args: args, Timeout: timeout})
@@ -137,12 +147,28 @@ func (c *Client) exec(ctx context.Context, timeout time.Duration, args []string,
 		if ctx.Err() != nil {
 			return res, ctx.Err() // 被取消：不是工具的錯，由呼叫端處理
 		}
+		c.record(ctx, true, false)
 		return res, &errclass.Error{Class: errclass.ClassRetryable, Source: "yt-dlp", Err: err}
 	}
 	if res.ExitCode != 0 {
-		return res, classify(res)
+		err := classify(res)
+		// 影片本身不存在或私人（permanent）不算 yt-dlp 失敗（OPS-R18）。
+		c.record(ctx, !isPermanent(err), false)
+		return res, err
 	}
+	c.record(ctx, false, usedCookie)
 	return res, nil
+}
+
+// record 把一次呼叫的結果交給 Calls（沒有設定時不記錄）。
+func (c *Client) record(ctx context.Context, failed, cookieOK bool) {
+	if c.Calls == nil {
+		return
+	}
+	c.Calls.ToolCall(ctx, "yt-dlp", failed)
+	if cookieOK {
+		c.Calls.CookieOK(ctx, platformYouTube)
+	}
 }
 
 // videoGoneLine 比對 yt-dlp 回報「影片不存在」的錯誤行。YouTube extractor 在 stderr 輸出
@@ -418,4 +444,10 @@ func (c *Client) FetchCaptions(ctx context.Context, videoID string, t Track, dir
 		return nil, &errclass.Error{Class: errclass.ClassPermanent, Source: "yt-dlp", Detail: "字幕檔過大"}
 	}
 	return os.ReadFile(path)
+}
+
+// isPermanent 回報錯誤是不是 permanent（影片本身不存在、私人或地區限制）。
+func isPermanent(err error) bool {
+	c, ok := errclass.ClassOf(err)
+	return ok && c == errclass.ClassPermanent
 }
