@@ -134,7 +134,7 @@ Feature: Notifications
     Then the last request to the notification endpoint "https://hooks.example.com/notesteme" contains:
       """
       { "event": "item.failed", "stage": "metadata", "error_class": "permanent",
-        "item": { "ref": "yt:ntf02xxxxxx", "title": "Removed video", "url": null }, "instance": null }
+        "item": { "ref": "yt:ntf02xxxxxx", "url": null }, "instance": null }
       """
     And the last request to the notification endpoint "https://hooks.example.com/notesteme" has the header "X-Notesteme-Event" containing "item.failed"
     And the last request to the notification endpoint "https://hooks.example.com/notesteme" is signed with "whsec-0123456789abcdef"

@@ -71,4 +71,15 @@
 - N6：outbox 寫入與事件在同一個交易（ADR-0021 第 5 點），所以 notifier 的設定在事件發生時決定；之後才勾選的事件不會補送。
 - N8：`notifiers` 的欄位比 plan 第 21 節多了 `config_public_json`、`created_at`、`updated_at`，`id` 改成 owner 取的 slug（和處理方案以名稱識別相同，路由與彙整設定才能直接引用）；ADR-0021 第 7 點要同步。
 - N7：`item.done` 的「一次執行」以 `POST /api/items`、`rerun`、`continue` 的批次為單位；重跑一次就通知一次（dedupe 鍵含執行 id）。只想知道失敗的 owner 可以不勾 `item.done`。
+- N9（場景修改）：「A failure reaches the webhook signed with its secret」原本預期 `"item": { "ref": "yt:ntf02xxxxxx", "title": "Removed video", "url": null }`，改成 `"item": { "ref": "yt:ntf02xxxxxx", "url": null }`（只刪掉 `title` 這個鍵，其他斷言不變）（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。理由：`yt-dlp fails for` 讓這部影片的所有 yt-dlp 操作都失敗，metadata 步驟永久失敗、沒有寫回標題，產品沒有任何標題來源。產品的行為：webhook 的 `item.title` 是 `""`，文字管道的標題改用影音代號（例如「失敗：yt:ntf02xxxxxx」）。
+- M4-S1 實作的決定（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
+  - `item.done` 的判定是「最後一個步驟是 `done` 或 `skipped`，而且沒有以 `until` 提前結束」，而不是字面上的「所有步驟」：鏈是線性的（失敗、blocked、`until` 都讓鏈停在前面），走到最後一個步驟就代表這次執行做完了；從後面的步驟重跑時（例如 seeding 之後從 `publish` 重跑），更早的步驟可能從來沒有執行過。dedupe 鍵的「執行 id」是最後一個步驟的 stage run id。判斷放在任務寫回結果的交易最後（鏈直接略過的步驟也已寫入），另外在 `rerun` 的交易也判斷一次（鏈全部被略過時沒有任務會寫回）。
+  - 不通知的路徑：不經過任務寫回（`applyResult`）或 `rerun` 的狀態變更，例如租約回收、`RecoverStale`、取消與 `ResumeBlocked`；`item.failed`、`item.blocked` 只在「這次寫回的步驟」變成 `failed`、`blocked` 時通知。
+  - notifier 的設定整份（含非機密欄位）以資料金鑰加密（AAD `notifier/<id>`），`config_nonce` 另存一欄；`config_public_json` 存非機密欄位與末四碼。`secrets reset` 之後解不開：送出為 `permanent`（訊息同「與其他規格的關係」），`PATCH` 以非機密欄位為基礎、缺少的密鑰要重新輸入。
+  - 停用的 notifier（`enabled: false`）還沒送出的項目在下一次 `notify.deliver` 時標記 `dropped`（`last_error`「notifier 已停用。」），不再送出。
+  - `notify.deliver` 不刪除排程列：下一次是「最早的 pending 項目」與「一分鐘之後」取較早的（並行寫入的事件被覆寫時最多慢一分鐘），所以送過一次通知之後，production 的 worker 每分鐘醒來一次。端點的失敗記在 outbox，不回傳給排程器（排程器的 `last_error` 與 log 不會出現網址）。
+  - 速率上限計算視窗 `(now - per, now]` 內的**嘗試次數**（成功或失敗），不只是成功送出的則數，避免失敗的端點被大量重試；`Retry-After`（秒數或 HTTP 日期）與 Telegram 的 `parameters.retry_after` 上限 6 小時。
+  - `notify.dropped` 只寫進 `events` 表（`item_id` 空白，payload `{outbox, notifier, event, message}`），不送到 SSE。
+  - 欄位驗證的補充：`config` 中不認得的鍵 422「不認得的欄位。」；值要是字串（`priority`、`chat_id` 也接受整數）；`chat_id` 是數字或 `@` 開頭的頻道名稱；ntfy 的 `server` 規則同 webhook 的 `url`（https，http 只在 `network.allow_private`），不含 query；Discord 的官方網址要 https、沒有 port；webhook 的 `url` 可以有 query。`events` 重複時 422「重複的事件：<值>。」。
+  - 文字管道的內文：`item.done` 是「所有步驟都已完成。」；`budget.warning`、`digest` 的標題暫定「Notesteme 預算提醒：<摘要>」「Notesteme 彙整：<摘要>」（規格沒有列，由 COST、DIG 切片確認）。webhook 的 `created_at` 是 outbox 項目建立的時間（重送時不變）。
 - M4-S0：設定檔的 `notify.*` 已解析與驗證（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`allow_hosts` 是小寫的主機名稱（不含 scheme、port、萬用字元）；`dedupe_window` 接受 `24h`、`30d` 的寫法，範圍 `1m`～`30d`；`rate_limit.count` 為 1～10000、`rate_limit.per` 為 `1s`～`24h`（規格沒有寫上限，S0 只擋明顯不合理的值）。`server.public_url` 必須是 http 或 https、不含帳號密碼、query 與 fragment，結尾的 `/` 會去掉。通知的路由是 501 stub（scope `admin`）。
