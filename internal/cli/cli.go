@@ -255,6 +255,8 @@ func parse(args []string) (*plan, error) {
 		return parseNote(args[1:])
 	case "search":
 		return parseSearch(args[1:])
+	case "deploy-check":
+		return parseDeployCheck(args[1:])
 	default:
 		return nil, usagef("不認得的子命令 %q。", name)
 	}
@@ -285,6 +287,7 @@ const usageText = `用法：notesteme <子命令> [旗標]
   config import <file>                  匯入 YAML：先驗證整份，有錯誤就整份不套用
   mcp [--token <t>] [--list-tools]      在 stdin／stdout 上執行 MCP server
   doctor                                檢查外部工具與設定
+  deploy-check vps                      檢查 vps 部署的網域、部署方式與登入密碼（compose 的 vps-check 服務，M4）
 
 全域旗標：--server <url> --token <t> --data <dir> --json
 結束碼：0 成功、1 執行錯誤、2 參數錯誤、3 需要使用者處理、4 等待中
