@@ -21,6 +21,7 @@
     // web/shared 沒有自己的 node_modules：型別一律從這裡解析
     "paths": {
       "@shared": ["../shared/src/index.ts"],
+      "@shared/*": ["../shared/src/*"],
       "react": ["./node_modules/@types/react"],
       "react/*": ["./node_modules/@types/react/*"]
     }
