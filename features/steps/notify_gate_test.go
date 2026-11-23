@@ -15,7 +15,8 @@ func TestNotifyGate(t *testing.T) {
 	}{
 		{[]string{"@M4", "@NOTIFY-01", "@NOTIFY-R1"}, false},
 		{[]string{"@M4", "@NOTIFY-01", "@NOTIFY-R7", "@NOTIFY-R12"}, false},
-		{[]string{"@M4", "@DIG-03", "@DIG-R9"}, true},
+		{[]string{"@M4", "@DIG-01", "@DIG-R9"}, false}, // M4-S6：DIG 的場景也放行
+		{[]string{"@M4", "@DIG-01"}, true},             // 沒有 @DIG-R* 的不算
 		{[]string{"@M4", "@OPS-07", "@OPS-R13"}, true},
 		{[]string{"@M4", "@NOTIFY"}, true}, // 沒有 - 的不算
 		{nil, true},
@@ -31,8 +32,8 @@ func TestNotifyGate(t *testing.T) {
 		}
 	}
 	// 閘門也擋住其他 NOTIFY 句型：非 NOTIFY 場景不登記 notifier。
-	s := &Scenario{tags: []string{"@DIG-01"}}
+	s := &Scenario{tags: []string{"@OPS-07", "@OPS-R13"}}
 	if err := s.notifierIs("x", &godog.DocString{Content: "{}"}); err != godog.ErrPending || len(s.notifiers) != 0 {
-		t.Errorf("DIG 場景的 notifier：%v %v", err, s.notifiers)
+		t.Errorf("OPS 場景的 notifier：%v %v", err, s.notifiers)
 	}
 }

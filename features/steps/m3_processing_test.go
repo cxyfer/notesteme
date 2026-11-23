@@ -10,18 +10,9 @@ import (
 )
 
 // steps.md 4.13、4.18：`processed up to` M3 的步驟與 M4 的 summary 在產品實作之前是 pending，而且不啟動 server。
-// M3-S1～S4 之後 sponsorblock、chapters、frames、note 都已實作（pipeline.StageAvailable 為 true）；summary 仍是 pending。
+// M3-S1～S4 之後 sponsorblock、chapters、frames、note 都已實作（pipeline.StageAvailable 為 true）；M4-S6 之後 summary 也是。
 func TestProcessedUpToM3StagePending(t *testing.T) {
-	for _, stage := range []string{"summary"} {
-		s := newTestScenario(t)
-		if err := s.itemProcessedUpTo("yt:talk01xxxxx", stage); !errors.Is(err, godog.ErrPending) {
-			t.Errorf("%s：err = %v，預期 pending", stage, err)
-		}
-		if s.server != nil {
-			t.Errorf("%s：不該啟動 server", stage)
-		}
-	}
-	for _, stage := range []string{pipeline.StageSponsorBlock, pipeline.StageChapters, pipeline.StageFrames, pipeline.StageNote} {
+	for _, stage := range []string{pipeline.StageSponsorBlock, pipeline.StageChapters, pipeline.StageFrames, pipeline.StageNote, pipeline.StageSummary} {
 		if !pipeline.StageAvailable(stage) {
 			t.Errorf("%s 應該已經實作", stage)
 		}
@@ -33,7 +24,7 @@ func TestProcessedUpToM3StagePending(t *testing.T) {
 	}
 }
 
-// 還沒有實作的步驟（summary）一律 skipped，不能當成重跑的起點；note 已實作，它的 skipped 是重跑的起點。
+// 已實作的步驟的 skipped 是重跑的起點：M4-S6 之後 summary 的 skipped（off）也是（同 M3 的四個步驟）。
 func TestFirstUnfinishedSkipsUnimplementedM3Stages(t *testing.T) {
 	var it itemJSON
 	for _, name := range []string{"metadata", "transcript", "normalize", "summary", "segment", "correct", "translate",
@@ -41,7 +32,7 @@ func TestFirstUnfinishedSkipsUnimplementedM3Stages(t *testing.T) {
 		st := stageJSON{Stage: name, Status: "done"}
 		switch name {
 		case "summary":
-			// M4-S0：預設 off 的 summary 也不能當成重跑的起點（從它重跑回 501）。
+			// M4-S6：summary 已實作，從它重跑不再回 501。
 			st.Status, st.BlockReason = "skipped", "off"
 		case "note":
 			st.Status, st.BlockReason = "skipped", "not_implemented"
@@ -50,11 +41,11 @@ func TestFirstUnfinishedSkipsUnimplementedM3Stages(t *testing.T) {
 		}
 		it.Stages = append(it.Stages, st)
 	}
-	if got := firstUnfinished(it, "publish"); got != "note" {
-		t.Errorf("firstUnfinished = %q，預期 note", got)
+	if got := firstUnfinished(it, "publish"); got != "summary" {
+		t.Errorf("firstUnfinished = %q，預期 summary", got)
 	}
-	if got := firstUnfinished(it, "segment"); got != "" {
-		t.Errorf("做到 segment：firstUnfinished = %q，預期沒有", got)
+	if got := firstUnfinished(it, "normalize"); got != "" {
+		t.Errorf("做到 normalize：firstUnfinished = %q，預期沒有", got)
 	}
 	if !reached(stageJSON{Stage: "note", Status: "skipped", BlockReason: "off"}, "note") {
 		t.Error("M3 的目標步驟 skipped 也算處理到（2c）")
