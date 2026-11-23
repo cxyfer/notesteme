@@ -166,6 +166,7 @@
     - API：`GET /api/auth/sessions`、`DELETE /api/auth/sessions/{id}`、`POST /api/tokens/{id}/rotate`、`GET /api/auth/oidc/start`、`/callback`、`GET /api/auth/methods`（新的免驗證端點）；三個 AUTH stub 從 `m4_stubs.go` 移除；OpenAPI 與 `schema.d.ts` 已重產。CLI `notesteme tokens rotate <name|id> [--json]`。
     - Web：登入頁的「用 <主機> 登入」（帶 `next`）、設定頁 token 的輪替、登入分區的工作階段列表與撤銷（三個語系）。
     - steps：`features/steps/signin.go` 實作 steps.md 4.21 全部句型；`scenario.go` 只加了 `signin` 欄位、cookie jar 與啟動前寫入設定。
+    - 數字（基準 rebase 後的 origin/master 4763298，含 SRC-10）：預設 tag 308 passed、`@M3` 109 passed、`@M5` 91 passed／57 pending，逐場景相同；`@M4` 371 個：245／126 → 283 passed、88 pending、0 failed，改變的只有 38 個 AUTH 場景（pending → passed）；`features/passing.txt` 與 `.feature` 沒有變動。涵蓋率 oidc 90.8%、auth 88.7%、api 80.1%。新 migration 從 00029 起。
     - 沒做：真實 IdP 與真實反向代理的部署驗收、2 個 `@ui @manual` 場景（owner）；稽核紀錄只寫 log，沒有另外建表（A21）。
     - 給之後的切片：(1) 新的免驗證路徑要加進 `internal/api/middleware.go` 的 `needsAuth`（只比對精確路徑與 GET）；(2) 需要「目前是誰」時用 `auth.Principal` 的 `Method`／`SessionID`，`/mcp` 只接受密碼登入的 session 與 token；(3) 要信任來源位址或標頭時一律經 `Service.ProxyUser`、`auth.SourceAddr` 的判斷（TCP 對端），不要直接讀 `X-Forwarded-*`；(4) `X-Forwarded-Proto` 仍接受任何來源（A20，待 owner 確認）。
 - **M5 規格展開（2026-11-23，分支 `docs/m5-hub-specs`，只有文件、場景、步驟樁與假服務骨架，沒有產品程式）**：
