@@ -11,8 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// M3 的 tool（NOTE-R14、FRM-R12）。M3-S0 先註冊名稱、scope 與參數：get_note 轉呼叫的路由還是 501 stub，
-// 結果是 not_implemented；list_frames、get_frame 在 M3-S3 實作（行為與 HTTP API 相同，MCP-R3）。
+// M3 的 tool（NOTE-R14、FRM-R12）：get_note 在 M3-S4、list_frames、get_frame 在 M3-S3 實作（行為與 HTTP API 相同，MCP-R3）。
 func m3Tools() []tool {
 	return []tool{
 		{ToolSpec{"get_note", ScopeRead}, addGetNote},

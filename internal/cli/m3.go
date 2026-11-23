@@ -1,7 +1,7 @@
 package cli
 
 // 這個檔案是 M3 的子命令（FRM、NOTE 的「介面」）：frames ls、frames get、note show。
-// frames 在 M3-S3 實作；note show 的路由仍是 501 stub（NOTE 的切片補上文字輸出）。
+// frames 在 M3-S3、note show 在 M3-S4 實作。
 
 import (
 	"bytes"

@@ -648,7 +648,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 取得影音的筆記（Markdown、frontmatter、自動檢查與寫入狀態，尚未實作） */
+    /** 取得影音的筆記（NOTE-R13）：Markdown、frontmatter、自動檢查與是否過時；format=md 時回傳 text/markdown；沒有筆記時回 404 no_note */
     get: operations["items-note"];
     put?: never;
     post?: never;
@@ -770,10 +770,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 列出筆記模板（尚未實作） */
+    /** 列出筆記模板，每個只列最新版本（NOTE-R11） */
     get: operations["note-templates-list"];
     put?: never;
-    /** 建立筆記模板，或複製內建模板（尚未實作） */
+    /** 建立筆記模板或複製內建模板（NOTE-R11）；未知的變數或語法錯誤回 422，內建 id 回 409 builtin_template，已存在回 409 template_exists */
     post: operations["note-templates-create"];
     delete?: never;
     options?: never;
@@ -794,7 +794,7 @@ export interface paths {
     delete?: never;
     options?: never;
     head?: never;
-    /** 修改筆記模板，建立新版本（尚未實作） */
+    /** 修改筆記模板，建立新版本（NOTE-R11）；內建模板回 409 builtin_template */
     patch: operations["note-templates-update"];
     trace?: never;
   };
@@ -807,7 +807,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 用影音現行筆記的段落預覽模板，不呼叫 LLM、不寫入檔案（尚未實作） */
+    /** 用影音現行筆記的段落預覽模板（NOTE-R12）：不呼叫 LLM、不建立產出、不寫入檔案；影音沒有筆記時回 409 no_note */
     post: operations["note-templates-preview"];
     delete?: never;
     options?: never;
@@ -1878,6 +1878,20 @@ export interface components {
     CreateItemOutputBody: {
       items: components["schemas"]["IngestedItem"][] | null;
     };
+    CreateNoteTemplateInputBody: {
+      /** @description 模板內文；沒有時沿用 from 的內文 */
+      body?: string;
+      /** @description 要執行的自動檢查 */
+      checks?: string[];
+      /** @description 要複製的模板（例如 video-notes） */
+      from?: string;
+      /** @description 模板 id：小寫英數字與 -，1～64 字元 */
+      id: string;
+      /** @description 顯示名稱 */
+      name?: string;
+      /** @description 「閱讀」按鈕的 Markdown */
+      read_button?: string;
+    };
     CreateProfileInputBody: {
       /** @description 處理方案的設定；省略或 null 視為 {} */
       config?: {
@@ -2393,6 +2407,74 @@ export interface components {
        */
       expires_at: string;
     };
+    NoteBody: {
+      /** @description 自動檢查的結果，依檢查的順序 */
+      checks: components["schemas"]["NoteCheck"][] | null;
+      /** @description frontmatter 的欄位（值都是字串） */
+      frontmatter: {
+        [key: string]: string;
+      };
+      /** @description 筆記的語言 */
+      lang: string;
+      /** @description 筆記的 Markdown；由 LLM 依字幕寫成，是不可信的資料 */
+      markdown: string;
+      /** @description 筆記寫入的位置（vault，M3-S5 之後才有） */
+      outputs: components["schemas"]["NoteOutput"][] | null;
+      /** @description 輸入字幕已更新、筆記可能過時（NOTE-R10） */
+      stale: boolean;
+      /** @description 過時的原因 */
+      stale_reason?: string;
+    };
+    NoteCheck: {
+      /** @description 檢查的 id：frontmatter、heading_timestamps、images_exist、image_names、self_check */
+      id: string;
+      /** @description 沒有通過時的說明 */
+      message?: string;
+      /** @description 是否通過 */
+      ok: boolean;
+    };
+    NoteOutput: {
+      /** @description vault 內的路徑 */
+      path: string;
+      /** @description vault 的 id */
+      vault: string;
+    };
+    NotePreviewOutputBody: {
+      /** @description 自動檢查的結果 */
+      checks: components["schemas"]["NoteCheck"][] | null;
+      /** @description 套用模板後的 Markdown */
+      markdown: string;
+    };
+    NoteTemplateBody: {
+      /** @description 模板內文（text/template 的受限子集） */
+      body: string;
+      /** @description 是否為內建模板（不能修改，只能複製） */
+      builtin: boolean;
+      /** @description 要執行的自動檢查 */
+      checks: string[] | null;
+      /**
+       * Format: date-time
+       * @description 這個版本建立的時間
+       */
+      created_at: string;
+      /** @description 模板 id */
+      id: string;
+      /** @description 顯示名稱 */
+      name: string;
+      /** @description 「閱讀」按鈕的 Markdown；空字串代表不加 */
+      read_button: string;
+      /** @description 內文的 SHA-256 */
+      sha256: string;
+      /**
+       * Format: int64
+       * @description 版本，從 1 起算；PATCH 建立新版本
+       */
+      version: number;
+    };
+    NoteTemplatesOutputBody: {
+      /** @description 內建模板在前，其他依 id 排序，每個只列最新版本 */
+      templates: components["schemas"]["NoteTemplateBody"][] | null;
+    };
     OutputFile: {
       format: string;
       lang: string;
@@ -2425,6 +2507,16 @@ export interface components {
       primary?: components["schemas"]["LinePatch"];
       /** @description 譯文行 */
       translation?: components["schemas"]["LinePatch"];
+    };
+    PatchNoteTemplateInputBody: {
+      /** @description 模板內文 */
+      body?: string;
+      /** @description 要執行的自動檢查 */
+      checks?: string[];
+      /** @description 顯示名稱 */
+      name?: string;
+      /** @description 「閱讀」按鈕的 Markdown */
+      read_button?: string;
     };
     PatchProfileInputBody: {
       /** @description RFC 7396 merge patch：null 刪除該鍵，物件遞迴合併，陣列與純量整個取代 */
@@ -2501,6 +2593,12 @@ export interface components {
       patch?: components["schemas"]["Patch"];
       /** @description 樣式名稱，預設 default */
       style?: string;
+    };
+    PreviewNoteTemplateInputBody: {
+      /** @description 影音 ID 或代號 */
+      item: string;
+      /** @description 筆記的語言；沒有指定時用最近寫出的一份 */
+      lang?: string;
     };
     PreviewOutput: {
       /** @description 內容與寫入時的紀錄不同（或不是一般檔案、不在允許的目錄內）：不會被刪除 */
@@ -4362,19 +4460,30 @@ export interface operations {
   };
   "items-note": {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description 筆記的語言；沒有指定時用最近寫出的一份 */
+        lang?: string;
+        /** @description json（預設）或 md（回傳 text/markdown） */
+        format?: string;
+      };
       header?: never;
-      path?: never;
+      path: {
+        /** @description 影音 ID 或代號 */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description 筆記 */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["NoteBody"];
+          "text/markdown": string;
+        };
       };
       /** @description Error */
       default: {
@@ -4611,12 +4720,14 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["NoteTemplatesOutputBody"];
+        };
       };
       /** @description Error */
       default: {
@@ -4636,14 +4747,20 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateNoteTemplateInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description Created */
+      201: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["NoteTemplateBody"];
+        };
       };
       /** @description Error */
       default: {
@@ -4660,17 +4777,26 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 模板 id */
+        id: string;
+      };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PatchNoteTemplateInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["NoteTemplateBody"];
+        };
       };
       /** @description Error */
       default: {
@@ -4687,17 +4813,26 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 模板 id（可帶 @版本） */
+        id: string;
+      };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PreviewNoteTemplateInputBody"];
+      };
+    };
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["NotePreviewOutputBody"];
+        };
       };
       /** @description Error */
       default: {

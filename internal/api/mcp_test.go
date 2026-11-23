@@ -706,11 +706,8 @@ func TestMCPM3ToolsNotImplemented(t *testing.T) {
 		{"get_frame", map[string]any{"item": "yt:abc123xxxxx", "n": 1}},
 	}
 	for _, c := range calls {
-		// list_frames、get_frame 在 M3-S3 實作：沒有這部影音時是 not_found。
-		want := "not_implemented"
-		if c.name != "get_note" {
-			want = "not_found"
-		}
+		// list_frames、get_frame 在 M3-S3、get_note 在 M3-S4 實作：沒有這部影音時是 not_found。
+		want := "not_found"
 		res := callTool(t, reader, c.name, c.args)
 		if !res.IsError || structured(t, res)["code"] != want {
 			t.Errorf("%s = %s，預期 %s", c.name, resultText(res), want)

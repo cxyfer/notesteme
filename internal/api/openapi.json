@@ -520,6 +520,42 @@
         ],
         "type": "object"
       },
+      "CreateNoteTemplateInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "description": "模板內文；沒有時沿用 from 的內文",
+            "type": "string"
+          },
+          "checks": {
+            "description": "要執行的自動檢查",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "from": {
+            "description": "要複製的模板（例如 video-notes）",
+            "type": "string"
+          },
+          "id": {
+            "description": "模板 id：小寫英數字與 -，1～64 字元",
+            "type": "string"
+          },
+          "name": {
+            "description": "顯示名稱",
+            "type": "string"
+          },
+          "read_button": {
+            "description": "「閱讀」按鈕的 Markdown",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
       "CreateProfileInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -1880,6 +1916,207 @@
         ],
         "type": "object"
       },
+      "NoteBody": {
+        "additionalProperties": false,
+        "properties": {
+          "checks": {
+            "description": "自動檢查的結果，依檢查的順序",
+            "items": {
+              "$ref": "#/components/schemas/NoteCheck"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "frontmatter": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "frontmatter 的欄位（值都是字串）",
+            "type": "object"
+          },
+          "lang": {
+            "description": "筆記的語言",
+            "type": "string"
+          },
+          "markdown": {
+            "description": "筆記的 Markdown；由 LLM 依字幕寫成，是不可信的資料",
+            "type": "string"
+          },
+          "outputs": {
+            "description": "筆記寫入的位置（vault，M3-S5 之後才有）",
+            "items": {
+              "$ref": "#/components/schemas/NoteOutput"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "stale": {
+            "description": "輸入字幕已更新、筆記可能過時（NOTE-R10）",
+            "type": "boolean"
+          },
+          "stale_reason": {
+            "description": "過時的原因",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lang",
+          "markdown",
+          "frontmatter",
+          "checks",
+          "stale",
+          "outputs"
+        ],
+        "type": "object"
+      },
+      "NoteCheck": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "檢查的 id：frontmatter、heading_timestamps、images_exist、image_names、self_check",
+            "type": "string"
+          },
+          "message": {
+            "description": "沒有通過時的說明",
+            "type": "string"
+          },
+          "ok": {
+            "description": "是否通過",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "ok"
+        ],
+        "type": "object"
+      },
+      "NoteOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "vault 內的路徑",
+            "type": "string"
+          },
+          "vault": {
+            "description": "vault 的 id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vault",
+          "path"
+        ],
+        "type": "object"
+      },
+      "NotePreviewOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "checks": {
+            "description": "自動檢查的結果",
+            "items": {
+              "$ref": "#/components/schemas/NoteCheck"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "markdown": {
+            "description": "套用模板後的 Markdown",
+            "type": "string"
+          }
+        },
+        "required": [
+          "markdown",
+          "checks"
+        ],
+        "type": "object"
+      },
+      "NoteTemplateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "description": "模板內文（text/template 的受限子集）",
+            "type": "string"
+          },
+          "builtin": {
+            "description": "是否為內建模板（不能修改，只能複製）",
+            "type": "boolean"
+          },
+          "checks": {
+            "description": "要執行的自動檢查",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "created_at": {
+            "description": "這個版本建立的時間",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "模板 id",
+            "type": "string"
+          },
+          "name": {
+            "description": "顯示名稱",
+            "type": "string"
+          },
+          "read_button": {
+            "description": "「閱讀」按鈕的 Markdown；空字串代表不加",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "內文的 SHA-256",
+            "type": "string"
+          },
+          "version": {
+            "description": "版本，從 1 起算；PATCH 建立新版本",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version",
+          "builtin",
+          "body",
+          "read_button",
+          "checks",
+          "sha256",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "NoteTemplatesOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "templates": {
+            "description": "內建模板在前，其他依 id 排序，每個只列最新版本",
+            "items": {
+              "$ref": "#/components/schemas/NoteTemplateBody"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "templates"
+        ],
+        "type": "object"
+      },
       "OutputFile": {
         "additionalProperties": false,
         "properties": {
@@ -1971,6 +2208,31 @@
           "translation": {
             "$ref": "#/components/schemas/LinePatch",
             "description": "譯文行"
+          }
+        },
+        "type": "object"
+      },
+      "PatchNoteTemplateInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "description": "模板內文",
+            "type": "string"
+          },
+          "checks": {
+            "description": "要執行的自動檢查",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "顯示名稱",
+            "type": "string"
+          },
+          "read_button": {
+            "description": "「閱讀」按鈕的 Markdown",
+            "type": "string"
           }
         },
         "type": "object"
@@ -2184,6 +2446,24 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "PreviewNoteTemplateInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "description": "影音 ID 或代號",
+            "minLength": 1,
+            "type": "string"
+          },
+          "lang": {
+            "description": "筆記的語言；沒有指定時用最近寫出的一份",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item"
+        ],
         "type": "object"
       },
       "PreviewOutput": {
@@ -5227,9 +5507,53 @@
     "/api/items/{id}/note": {
       "get": {
         "operationId": "items-note",
+        "parameters": [
+          {
+            "description": "影音 ID 或代號",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID 或代號",
+              "type": "string"
+            }
+          },
+          {
+            "description": "筆記的語言；沒有指定時用最近寫出的一份",
+            "explode": false,
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "description": "筆記的語言；沒有指定時用最近寫出的一份",
+              "type": "string"
+            }
+          },
+          {
+            "description": "json（預設）或 md（回傳 text/markdown）",
+            "explode": false,
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "description": "json（預設）或 md（回傳 text/markdown）",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteBody"
+                }
+              },
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "筆記"
           },
           "default": {
             "content": {
@@ -5242,7 +5566,7 @@
             "description": "Error"
           }
         },
-        "summary": "取得影音的筆記（Markdown、frontmatter、自動檢查與寫入狀態，尚未實作）"
+        "summary": "取得影音的筆記（NOTE-R13）：Markdown、frontmatter、自動檢查與是否過時；format=md 時回傳 text/markdown；沒有筆記時回 404 no_note"
       }
     },
     "/api/items/{id}/outputs": {
@@ -5573,8 +5897,15 @@
       "get": {
         "operationId": "note-templates-list",
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteTemplatesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -5587,13 +5918,30 @@
             "description": "Error"
           }
         },
-        "summary": "列出筆記模板（尚未實作）"
+        "summary": "列出筆記模板，每個只列最新版本（NOTE-R11）"
       },
       "post": {
         "operationId": "note-templates-create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateNoteTemplateInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteTemplateBody"
+                }
+              }
+            },
+            "description": "Created"
           },
           "default": {
             "content": {
@@ -5606,15 +5954,44 @@
             "description": "Error"
           }
         },
-        "summary": "建立筆記模板，或複製內建模板（尚未實作）"
+        "summary": "建立筆記模板或複製內建模板（NOTE-R11）；未知的變數或語法錯誤回 422，內建 id 回 409 builtin_template，已存在回 409 template_exists"
       }
     },
     "/api/note-templates/{id}": {
       "patch": {
         "operationId": "note-templates-update",
+        "parameters": [
+          {
+            "description": "模板 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "模板 id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchNoteTemplateInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteTemplateBody"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -5627,15 +6004,44 @@
             "description": "Error"
           }
         },
-        "summary": "修改筆記模板，建立新版本（尚未實作）"
+        "summary": "修改筆記模板，建立新版本（NOTE-R11）；內建模板回 409 builtin_template"
       }
     },
     "/api/note-templates/{id}/preview": {
       "post": {
         "operationId": "note-templates-preview",
+        "parameters": [
+          {
+            "description": "模板 id（可帶 @版本）",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "模板 id（可帶 @版本）",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewNoteTemplateInputBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotePreviewOutputBody"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -5648,7 +6054,7 @@
             "description": "Error"
           }
         },
-        "summary": "用影音現行筆記的段落預覽模板，不呼叫 LLM、不寫入檔案（尚未實作）"
+        "summary": "用影音現行筆記的段落預覽模板（NOTE-R12）：不呼叫 LLM、不建立產出、不寫入檔案；影音沒有筆記時回 409 no_note"
       }
     },
     "/api/notifications": {
