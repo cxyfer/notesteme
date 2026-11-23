@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -736,5 +737,31 @@ func TestBatchWithoutExternalIDFallsBack(t *testing.T) {
 	}
 	if _, chunks, _ := b.provenance(); reasons(chunks) != "api:submit_failed,api:submit_failed,api:submit_failed,api:submit_failed" {
 		t.Fatalf("來源紀錄 = %s", reasons(chunks))
+	}
+}
+
+// BATCH-R7：沒有測試用的估算值時（正式環境），batch 的預留是同一個請求在一般 API 的預留的一半，不是 $0。
+func TestBatchReservationUsesRequestEstimate(t *testing.T) {
+	b := newBatchRig(t, batchRigConfig{})
+	ctx := context.Background()
+	var want cost.Micro
+	errRollback := errors.New("rollback")
+	for _, q := range b.api.submitted[0] {
+		in, out := requestTokens(q.Request)
+		if in <= 0 || out <= 0 {
+			t.Fatalf("估算 = %d %d", in, out)
+		}
+		// 一般 API 的預留（在回復的交易中算，不留下紀錄）。
+		_ = b.st.Tx(ctx, func(r *store.Repo) error {
+			res, err := b.svc.Reserve(ctx, r, cost.Call{Stage: StageCorrect, Provider: "anthropic", Model: "m", InputTokens: in, Output: out})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want += cost.Micro(math.Round(float64(res.Estimate) * cost.BatchDiscount))
+			return errRollback
+		})
+	}
+	if want == 0 || b.reserved() != want.USD() {
+		t.Fatalf("batch 預留 = %v，預期 %v（一般預留的一半）", b.reserved(), want.USD())
 	}
 }

@@ -159,10 +159,13 @@ type batchItem struct {
 	req  llm.Request
 }
 
+// call 是這個請求的計費資料；token 數與一般 API 的預留用同樣的估算（COST-R5），Reserve 再乘上 batch 折扣（BATCH-R7）。
+// batch 只用在內建 base_url 的 provider（BATCH-R1），所以 CustomBase 一律是 false。
 func (b batchItem) call(provider, model string) cost.Call {
+	in, out := requestTokens(b.req)
 	return cost.Call{
 		ItemID: b.item.ID, ItemTitle: b.item.Title, StageRunID: b.run.ID, TaskID: b.task.ID, Stage: b.run.Stage,
-		Provider: provider, Model: model, Batch: true,
+		Provider: provider, Model: model, Batch: true, InputTokens: in, Output: out,
 	}
 }
 
