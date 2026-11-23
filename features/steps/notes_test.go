@@ -10,7 +10,7 @@ import (
 	"github.com/cucumber/godog"
 )
 
-// GEM G9：`Gemini accepts …` 只對 GEM 的場景放行；note 的一般流程還沒有實作時，anthropic、openai 的 note 回答是 pending。
+// GEM G9：`Gemini accepts …` 只對 GEM 的場景放行；note 的一般流程實作之前 anthropic、openai 的 note 回答是 pending（M3-S4 之後放行）。
 func TestGeminiGates(t *testing.T) {
 	s := newTestScenario(t)
 	if err := s.geminiAcceptsUpTo("45m"); !errors.Is(err, godog.ErrPending) {
@@ -20,9 +20,8 @@ func TestGeminiGates(t *testing.T) {
 	mustNil(t, s.geminiAcceptsUpTo("45m"))
 	mustFail(t, "不是時間長度", s.geminiAcceptsUpTo("forever"))
 	mustFail(t, "0", s.geminiAcceptsUpTo("0s"))
-	if err := llmNoteGate("anthropic", "note"); !errors.Is(err, godog.ErrPending) {
-		t.Errorf("anthropic 的 note：%v", err)
-	}
+	// M3-S4 之後 note 的一般流程已實作（StageAvailable("note")），anthropic 的 note 回答不再 pending。
+	mustNil(t, llmNoteGate("anthropic", "note"))
 	mustNil(t, llmNoteGate("gemini", "note"))
 	mustNil(t, llmNoteGate("anthropic", "correct"))
 }
