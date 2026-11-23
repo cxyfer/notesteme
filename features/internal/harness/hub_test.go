@@ -46,7 +46,7 @@ func TestStartHub(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := w.HubHTTPClient()
-	for path, want := range map[string]int{"/healthz": 200, "/readyz": 200, "/api/v1/openapi.json": 200, "/api/v1/me": 501, "/auth/github/start": 501} {
+	for path, want := range map[string]int{"/healthz": 200, "/readyz": 200, "/api/v1/openapi.json": 200, "/api/v1/me": 401, "/auth/github/start": 302, "/mcp": 501} {
 		if code, body := get(t, c, HubPublicURL+path); code != want {
 			t.Errorf("%s = %d %s，預期 %d", path, code, body, want)
 		}
