@@ -1,6 +1,6 @@
 // Package hubblob 是 Hub 的檔案儲存（ADR-0030 第 2 點）：以內容的 sha256 為鍵，天然去重。
 //
-// 實作：FS（參考實作，存在 <data>/blobs/<sha256 前 2 碼>/<sha256>）與 S3（R2、MinIO；M5-S0 只有佔位）。
+// 實作：FS（參考實作，存在 <data>/blobs/<sha256 前 2 碼>/<sha256>）與 S3（R2、MinIO、AWS S3，見 s3.go）。
 // blob 的內容是使用者上傳的不可信資料：Put 自己計算 sha256，呼叫端給的雜湊只用來比對。
 package hubblob
 
@@ -23,7 +23,7 @@ var ErrNotFound = errors.New("blob 不存在")
 // ErrHashMismatch 表示內容的 sha256 和預期的不同。
 var ErrHashMismatch = errors.New("blob 的內容與 sha256 不符")
 
-// ErrNotImplemented 表示這個 driver 還沒有實作（M5-S0 的 s3）。
+// ErrNotImplemented 表示這個 driver 還沒有實作（目前沒有使用；保留給之後的 driver）。
 var ErrNotImplemented = errors.New("尚未實作")
 
 // Store 是 blob 的儲存介面。
@@ -133,9 +133,4 @@ func (f *FS) Delete(_ context.Context, sha string) error {
 		return err
 	}
 	return nil
-}
-
-// NewS3 是 S3 相容儲存（R2、MinIO）的佔位：M5-S0 一律回 ErrNotImplemented。
-func NewS3() (Store, error) {
-	return nil, fmt.Errorf("blobs.driver: s3 %w，目前只能用 fs（ADR-0030）", ErrNotImplemented)
 }

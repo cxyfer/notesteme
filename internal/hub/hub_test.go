@@ -49,16 +49,24 @@ func TestOpenSQLiteAndFS(t *testing.T) {
 	}
 }
 
-// postgres 與 s3 還沒有實作：Open 明確失敗，不會默默改用 sqlite／fs。
-func TestOpenUnimplementedDrivers(t *testing.T) {
-	cfg := testConfig(t, "blobs: { driver: s3 }\n")
-	if _, err := Open(context.Background(), Options{Config: cfg}); !errors.Is(err, hubblob.ErrNotImplemented) {
-		t.Errorf("s3：err = %v", err)
+// s3 與 postgres 依設定開啟，不會默默改用 sqlite／fs（ADR-0030 第 2 點）。
+func TestOpenOtherDrivers(t *testing.T) {
+	cfg := testConfig(t, "")
+	cfg.BlobsDriver = hubconfig.BlobsS3
+	cfg.S3 = hubconfig.S3Config{Endpoint: "http://127.0.0.1:1", Bucket: "b-1", AccessKeyID: "AKID", SecretAccessKey: "s3cr3t", Timeout: time.Second}
+	s, err := Open(context.Background(), Options{Config: cfg})
+	if err != nil {
+		t.Fatalf("s3：%v", err)
 	}
+	if _, ok := s.Blobs().(*hubblob.S3); !ok {
+		t.Errorf("s3：Blobs = %T", s.Blobs())
+	}
+	_ = s.Close()
 	cfg = testConfig(t, "")
-	cfg.StoreDriver, cfg.StoreDSN = hubconfig.StorePostgres, "postgres://x"
-	if _, err := Open(context.Background(), Options{Config: cfg}); !errors.Is(err, hubstore.ErrNotImplemented) {
-		t.Errorf("postgres：err = %v", err)
+	cfg.StoreDriver, cfg.StoreDSN = hubconfig.StorePostgres, "postgres://hub:pw-s3cr3t@127.0.0.1:1/hub?connect_timeout=1&sslmode=disable"
+	_, err = Open(context.Background(), Options{Config: cfg})
+	if err == nil || errors.Is(err, hubstore.ErrNotImplemented) || strings.Contains(err.Error(), "pw-s3cr3t") {
+		t.Errorf("postgres 連不上時：err = %v，預期連線錯誤且不含密碼", err)
 	}
 }
 

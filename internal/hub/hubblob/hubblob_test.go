@@ -100,8 +100,13 @@ func TestFSRejectsInvalidKeys(t *testing.T) {
 	}
 }
 
-func TestS3NotImplemented(t *testing.T) {
-	if s, err := NewS3(); s != nil || !errors.Is(err, ErrNotImplemented) {
-		t.Fatalf("NewS3 = %v %v", s, err)
-	}
+// FS 通過共用的案例。
+func TestFSContract(t *testing.T) {
+	runContract(t, func(t *testing.T) Store {
+		f, err := NewFS(filepath.Join(t.TempDir(), "blobs"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return f
+	})
 }

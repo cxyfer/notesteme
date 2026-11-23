@@ -132,7 +132,13 @@ func openBlobs(cfg *hubconfig.Config) (hubblob.Store, error) {
 	case hubconfig.BlobsFS:
 		return hubblob.NewFS(filepath.Join(cfg.Data, BlobsDirName))
 	case hubconfig.BlobsS3:
-		return hubblob.NewS3()
+		c := cfg.S3
+		return hubblob.NewS3(hubblob.S3Options{
+			Endpoint: c.Endpoint, Region: c.Region, Bucket: c.Bucket, Prefix: c.Prefix, PathStyle: c.PathStyle,
+			AccessKeyID: c.AccessKeyID, SecretAccessKey: c.SecretAccessKey, Timeout: c.Timeout,
+			// 單一 blob 是 bundle 中的一個檔案（HREP），上限同 bundles.max_file_bytes。
+			MaxObjectBytes: cfg.Bundles.MaxFileBytes,
+		})
 	}
 	return nil, fmt.Errorf("不支援的 blobs.driver：%q", cfg.BlobsDriver)
 }
