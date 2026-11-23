@@ -212,7 +212,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 新增抽屜、媒體庫（M1 基本版）、精簡版時間帶、`N`／`/` 快捷鍵、貼上網址 | 完成（UI-1，見 10.4） | `web/client/src/add`、`src/pages/library`、`web/shared` |
 | 指令面板（`Ctrl K`）、`G` 開頭的快捷鍵、`?` 快捷鍵說明 | 未做 | 之後的切片 |
 | 影音詳情、佇列 | 未做 | UI-2 |
-| 設定各分區、Prompt 庫、處理方案、字幕樣式 | 未做 | UI-3 |
+| 設定各分區 | 未做 | UI-3 |
+| Prompt 庫、處理方案、字幕樣式 | 完成（UI-3a，見 10.6） | `web/client/src/pages/{prompts,profiles,styles}` |
 | 登入頁背景的淡化時間帶（§13） | 未做 | 等 UI-1 的時間帶元件 |
 | 768–1279px 的收合導覽（只剩圖示） | 未做：沒有圖示前維持展開；UI-1 沒有引入 Phosphor Icons | 之後的切片 |
 
@@ -234,7 +235,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 ### 10.3 待決問題
 
 - **CSP 的 `style-src 'unsafe-inline'`**（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：NFR-SEC-1 只限制 `script-src`。React 的 `style` 屬性走 CSSOM，不受 CSP 限制；但 Radix Dialog 的捲動鎖定（react-remove-scroll）會插入 `<style>` 元素，`style-src 'self'` 會擋掉它。預設允許 `'unsafe-inline'`（只限 style）；風險是 CSS injection（例如用屬性選擇器外洩資料），前提是先有 HTML injection，而 NFR-SEC-2 已禁止原始 HTML。替代方案：用 nonce（需要伺服器端渲染 `index.html`）或換掉會插入 `<style>` 的套件。
-- **縮圖與嵌入的網域**（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`img-src` 開放 `https://*.ytimg.com`、`https://*.hdslb.com`；`frame-src` 開放 `https://www.youtube.com`、`https://www.youtube-nocookie.com`、`https://player.bilibili.com`。如果之後改成由後端代理縮圖，就可以從 `img-src` 移除。
+- **縮圖與嵌入的網域**（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：`img-src` 開放 `https://*.ytimg.com`、`https://*.hdslb.com`；`frame-src` 開放 `https://www.youtube.com`、`https://www.youtube-nocookie.com`、`https://player.bilibili.com`。如果之後改成由後端代理縮圖，就可以從 `img-src` 移除。UI-3a 另外加了 `blob:`（字幕樣式預覽的 PNG，見 10.7 第 1 點）。
 - **`X-Frame-Options: DENY`、`Permissions-Policy`、`Cross-Origin-Opener-Policy: same-origin`** 是 NFR-SEC-1 以外另外加的標頭（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）。
 
 ### 10.4 UI-1：媒體庫與「新增」抽屜（2026-11-23）
@@ -265,6 +266,50 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 7. **新增相依**：`@tanstack/react-virtual` 3.14.26（2026-11-03 發佈；3.14.27／28 是 11-22 才發佈）。初始 JS 由約 137KB 增加到約 174KB（gzip），沒有另外做 lazy route。
 8. **`web/shared` 的接線**：沿用 brief 把 StatusBand 放進 `web/shared`（web/shared/README 原本寫「穩定後再搬」）；`react` 由 `web/client` 解析，lint、prettier、tsc 都涵蓋它，Dockerfile 一併複製。
 9. **測試替身**：不引入 MSW，用自寫的 `src/test/mockApi.ts`；vitest 的 `testTimeout` 提高到 15 秒（多個 child 同時跑時，整頁的互動測試在 5 秒內跑不完）。
+### 10.6 UI-3a：Prompt 庫、處理方案、字幕樣式（2026-11-23）
+
+| 範圍 | 狀態 | 位置 |
+|---|---|---|
+| 導覽的「調整」組（Prompt 庫、處理方案、字幕樣式）、六條路由；`/prompts/$id` 是 lazy route | 完成 | `src/shell/AppShell.tsx`、`src/router.tsx` |
+| Prompt 列表：依用途分組（分段、校正、翻譯、選圖、筆記、其他）、目前版本與最新版本、使用中的處理方案、最後修改時間；新增 prompt | 完成 | `src/pages/prompts/PromptsPage.tsx`、`NewPromptDialog.tsx` |
+| Prompt 編輯：版本列（切換、未儲存時確認放棄）、CodeMirror 6（`{{變數}}` 高亮、未定義／無法解析的變數 lint 成錯誤，另附文字清單）、可用變數、另存新版本（422 `undefined_variables`）、設為預設、內建唯讀＋另存為新的 prompt | 完成 | `PromptEditorPage.tsx`、`PromptCodeEditor.tsx`、`promptModel.ts` |
+| 試跑面板：影音（搜尋＋選擇）、範圍、provider、model；結果用逐字差異＋驗證結果、用量與花費；501／429／409 `needs_action` 各有說明 | 完成 | `playground.tsx` |
+| 比較版本：逐行差異；可選「同一段字幕試跑兩個版本」（寫明花費兩倍）並排顯示輸出 | 完成 | `PromptEditorPage.tsx` 的 `CompareDialog` |
+| 刪除 prompt：不可復原，先確認（寫明版本數）；409 `prompt_in_use` 列出 `used_by`（處理方案連到編輯頁，影音覆寫連到影音詳情，其他純文字） | 完成 | `DeleteDialog` |
+| 處理方案列表與新增、複製（POST，剝掉 null）、設為預設 | 完成 | `src/pages/profiles` |
+| 處理方案編輯：流程列（不執行的步驟變淡、刪除線）、編號步驟：1 字幕來源（順序、平台機器翻譯字幕）、2 分段（執行方式、provider／model、prompt＋版本、段內切分、有人工字幕時）、3 校正（＋最低相似度）、4 翻譯（＋OpenCC、目標語言、中文只差字形時）、5 輸出（目標、路徑、格式、ASS 樣式） | 完成 | `ProfileEditorPage.tsx`、`profileModel.ts` |
+| 儲存：RFC 7396 merge patch（只送改過的鍵）、422 `errors[].path` 顯示在欄位旁、版本衝突提示 | 完成 | 同上 |
+| 字幕樣式列表（內建在前、自訂在後）、複製成自訂樣式、匯入 .ass（讀檔內容送 `content`） | 完成 | `src/pages/styles` |
+| 字幕樣式編輯：原文行／譯文行／版面三個分頁（鍵盤可切換）、目標語言與原文語言（帶入預設字型）、前端先檢查顏色與範圍、PATCH 只送改過的欄位；內建唯讀 | 完成 | `StyleEditorPage.tsx`、`styleModel.ts` |
+| 預覽：`POST /api/ass-styles/preview` 回 PNG，debounce 300ms、新請求取消舊的；沒選影音、欄位有錯、失敗（「預覽尚未可用：原因」）各有狀態，不假造圖片 | 完成 | `StylePreview.tsx` |
+| 逐字差異元件（`diffChars`、`DiffText`） | 完成 | `web/shared/src/diff.ts`、`DiffText.tsx` |
+| 被頻道訂閱使用的處理方案，修改前提示受影響的訂閱 | 未做：M4 才有訂閱 API | — |
+| 處理方案刪除、版本紀錄（`GET /api/profiles/{id}/versions`）的檢視與還原 | 未做：pages.md §8 沒有要求，留給之後 | — |
+| 處理方案的 `llm`、`agent`、`subtitle_rules`、`glossary`、`supadata`、`translate.length_ratio`、`outputs[].lang`、`on_user_change` | 未做：表單不顯示，但原樣保留（儲存只送改過的鍵） | — |
+| M3／M4 的步驟（sponsorblock、chapters、frames、note） | 不顯示：schema（`internal/pipeline/schema.go`）還不接受 | — |
+| 內建樣式用同一張畫面渲染成縮圖並排比較 | 未做：預覽需要指定影音，每個縮圖都要跑一次 ffmpeg | — |
+| libass 真實渲染的視覺驗收、CodeMirror 在真實瀏覽器的鍵盤與螢幕閱讀器操作 | owner 手動驗收 | — |
+
+### 10.7 UI-3a 的決定
+
+（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
+
+1. **唯一的後端改動：CSP 的 `img-src` 加 `blob:`**（`internal/webui/webui.go`，測試檢查 `img-src` 只有 `'self'`、`blob:` 與兩個縮圖網域）。預覽 API 回 PNG，前端以 object URL 顯示；jsdom 不執行 CSP，沒有這項時測試全綠、真實瀏覽器卻是破圖。替代方案（改成 GET 圖片網址、data URI）都要改 API 或放寬更多。風險：`blob:` 只能由同源的 JS 產生，前提是已經有 script 執行。
+2. **「被哪些處理方案使用」在前端組合**：`GET /api/prompts` 沒有這項資料，列表另外讀 `GET /api/profiles`，解析 `config.stages.*.prompt`（`<id>`、`<id>@default`、`<id>@N`）。代價：多一次請求；只看處理方案目前的版本，看不到全域設定、頻道與影音層的引用（刪除時後端的 409 `used_by` 會列出全部）。
+3. **可用變數寫在前端**（`promptModel.ts` 的 `PROMPT_VARIABLES`，規則與 `internal/prompts/vars.go` 一致）：後端所有類型共用 7 個變數、沒有清單 API。後端改了要同步；依類型區分時改 `promptModel.ts`。
+4. **試跑只能用已儲存的版本**（API 只接受 `<id>@N`）：有未儲存的修改時提示「試跑已儲存的 vN」。試跑前沒有預估 API，只在完成後顯示用量；`estimate_usd` 是 null 時寫明「計價表沒有這個模型的價格」，不自己算。
+5. **刪除 prompt 用確認框**（§3.5 不可復原的操作）：後端是硬刪除，沒有可以還原的方式。
+6. **處理方案的樂觀鎖在前端補**：PATCH 沒有 If-Match。儲存前先讀一次，版本和開始編輯時不同就跳出衝突（重新載入／仍要儲存：只寫改過的鍵）；儲存後回應的版本不是「開始時 + 1」時也明確告知。兩次請求之間仍有很小的窗口；要完全關閉需要後端支援 `If-Match` 或 `expected_version`。
+7. **處理方案表單編輯 config 的副本**，儲存時算 merge patch；選「沿用全域設定」就刪掉該鍵（送 null），讓步驟的 executor 回到「沿用全域設定」時整個 `stages.<步驟>` 一起刪掉（寫出來的步驟會被檢查完整性，D8）。「複製」用已儲存的設定，不含未儲存的修改。
+8. **provider 沒有列表 API**：文字欄位加 `datalist`（內建的 anthropic、openai），model 自由輸入；試跑面板同樣。
+9. **用語**：步驟 `segment` 沿用既有字典的「分段」（`stage.segment`），pages.md 的「斷句」沒有改既有字串；Prompt 庫的分組也用「分段」。英文的處理方案沿用用語表的 Preset。
+10. **字型**：API 依 `lang` 帶入預設字型後，分不出原本是不是空字串（自動）。表單只送改過的欄位，所以打開表單不會把自動字型寫死；把字型欄位清空就送 `""`（依語言自動）。顏色用文字欄位（`<input type="color">` 會丟掉不透明度）加色塊。
+11. **共用元件**：`SelectField`、`ItemPicker`（試跑與樣式預覽都要選影音；只列 `GET /api/items` 的前 50 部，用標題搜尋縮小）放進 `components/`；逐字差異放 `web/shared`，與 UI-2 分支的 `pages/item/diff.ts` 形狀相同，合併時改成都從 `@shared` 匯入、刪掉重複的一份。
+12. **新增相依**：`@codemirror/state` 6.7.6、`view` 6.43.15、`commands` 6.11.1、`lint` 6.9.7（都發佈超過 2 週）；transitive 的 `@lezer/common`、`style-mod` 用 npm `overrides` 鎖在 1.5.5、4.1.4（最新版未滿 2 週）。CodeMirror 只在 lazy chunk（約 104KB gzip），初始 JS 由約 174KB 增加到約 198KB（三個頁面與共用元件）。CodeMirror 透過 style-mod 插入 `<style>`，依賴 10.3 的 `style-src 'unsafe-inline'`。
+13. **eslint**：`i18next/no-literal-string` 的屬性排除清單加上事件處理器（`on[A-Z].*`）與 `form`、`accept`、`list`、`stage`、`path`：這些屬性裡的字串是欄位路徑與列舉值，不是顯示的文字。
+14. **測試**：`src/test/setup.ts` 補上 `Range.getClientRects`／`getBoundingClientRect`（CodeMirror 在 jsdom 需要）；預覽的 debounce 用真實計時器驗證（連續改三次只送一次、內容是最後一次）。
+
+
 頁面清單（2026-11-23，M5 規格展開時暫定，視覺與文案待 Hub UI 切片補上）：登入、帳號（登入方式、Hub token、我的分享）、管理（使用者與群組、檢舉、下架申請、稽核紀錄）、下架申請表單見 [HACC](../specs/HACC-hub-accounts.md) 的介面；首頁與搜尋、影片頁（版本比較）、版本頁見 [HREP](../specs/HREP-hub-repository.md) 的介面；Client 端的「分享到 Hub」對話框與設定頁的 Hub 區段見 [HSHR](../specs/HSHR-hub-sharing.md) 的介面。
 
 ### 10.6 UI-3b：設定、詞彙表與術語候選、設定匯出與匯入（2026-11-23）

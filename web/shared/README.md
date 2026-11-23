@@ -26,3 +26,7 @@ Client UI（`web/client`）與之後的 Hub UI（`web/hub`，M5）共用的元�
 | `variant`   | `"compact"`              | UI-2 加入 `"full"`（72px 底軌、刻度、播放頭、`role="slider"`）                                                                                                                               |
 
 每種狀態的紋理不同（實心、虛線、長虛線、點線、斜線紋），不只靠顏色；`prefers-reduced-motion` 時「顯影」改成靜態斜線紋。
+
+### 逐字差異（`src/diff.ts`、`src/DiffText.tsx`、`src/diff.css`）
+
+`diffChars(before, after)` 以 code point 為單位的 LCS，回傳 `{ type: "eq" | "del" | "ins", text }[]`；太長（n·m > 4,000,000）時退化成整段刪除＋新增。`DiffText` 用 `<del>`／`<ins>` 顯示（刪除線＋失敗色、底線＋高亮），每段前面有 visually-hidden 的 `labels.del`／`labels.ins`，內容一律是純文字。UI-3a 的試跑結果使用；UI-2 分支的 `pages/item/diff.ts` 形狀相同，合併時改成從這裡匯入。

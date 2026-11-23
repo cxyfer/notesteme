@@ -79,6 +79,7 @@ src/
 
 ### API 呼叫
 
+- 回應是二進位（例如預覽 PNG）時用 `requestBlob`；422 的逐欄位錯誤用 `fieldErrorsOf(err)` 取得 `{ path: message }`。
 - 一律經過 `src/api/client.ts`：`api.get("/api/queue")`、`api.post("/api/auth/login", { body })`，路徑參數用 `apiPath("/api/items/{id}", { id })`。不要在元件裡直接 `fetch`。
 - client 自動帶 cookie、對非 GET 加 `X-CSRF-Token`、送 `Accept-Language`（UI 語言）。
 - 錯誤一律是 `ApiError`（`status`、`code`、`message`、`body`）。**程式只依 `code` 判斷**（NFR-I18N-2）；顯示文字用 `describeError(t, err)`：字典有 `errors.<code>` 就用它，否則用後端依語言產生的 `message`。
@@ -147,7 +148,7 @@ src/
 
 - **不可有 inline script**（`index.html` 只能有 `<script type="module" src>`）、不可用 `eval`、`new Function`、字串形式的 `setTimeout`；eslint 已禁止。主題防閃爍也不能用 inline script（見下）。
 - 不可用 `dangerouslySetInnerHTML`（NFR-SEC-2）；Markdown 渲染之後由專用元件處理。
-- 圖片、字型只能來自同源；Vite 設 `assetsInlineLimit: 0`，不產生 `data:` URI。外部縮圖只允許 YouTube（`*.ytimg.com`）與 Bilibili（`*.hdslb.com`）；嵌入播放器只允許 YouTube 與 Bilibili。
+- 圖片、字型只能來自同源（另外允許 `blob:`：字幕樣式預覽的 PNG 用 object URL 顯示，用完要 `revokeObjectURL`）；Vite 設 `assetsInlineLimit: 0`，不產生 `data:` URI。外部縮圖只允許 YouTube（`*.ytimg.com`）與 Bilibili（`*.hdslb.com`）；嵌入播放器只允許 YouTube 與 Bilibili。
 - `style-src` 允許 `'unsafe-inline'`（只限 style）：Radix 的捲動鎖定會插入 `<style>`。不要依賴它寫 inline style 屬性以外的東西。
 - API 與 SSE 都是同源（`connect-src 'self'`）；不要呼叫外部 API。
 
@@ -157,4 +158,4 @@ src/
 
 ### Bundle 預算
 
-初始載入的 JS（gzip）< 300KB（NFR-PERF-10，UI-0 約 137KB，UI-1 約 174KB）。`npm run check:bundle` 計算 `index.html` 直接引用的 module script 與 modulepreload。加入大型相依（CodeMirror、TanStack Table）時放在 lazy route 裡。
+初始載入的 JS（gzip）< 300KB（NFR-PERF-10，UI-0 約 137KB，UI-1 約 174KB，UI-3a 約 198KB；CodeMirror 在 `/prompts/$id` 的 lazy chunk）。`npm run check:bundle` 計算 `index.html` 直接引用的 module script 與 modulepreload。加入大型相依（CodeMirror、TanStack Table）時放在 lazy route 裡。
