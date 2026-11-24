@@ -183,3 +183,31 @@ Feature: Hub MCP server
       { "id": "{version:raw}" }
       """
     Then the tool call fails with "請求太頻繁"
+
+  # 停用的帳號沒有可用的身分，和無效的 token 一樣以來源 IP 計入未登入的額度（HACC-R18）。
+  @HUB-08 @HMCP-R8
+  Scenario: A suspended account is still rate limited by its address
+    Given the Hub config contains:
+      """
+      rate_limits: { anonymous_requests_per_minute: 2 }
+      """
+    And the hub member "alice" is suspended
+    When the Hub client sends "POST /mcp" with the Hub token "reader" and:
+      """
+      { "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "test", "version": "0" } } }
+      """
+    Then the response status is 403
+    When the Hub client sends "POST /mcp" with the Hub token "reader" and:
+      """
+      { "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "test", "version": "0" } } }
+      """
+    Then the response status is 403
+    When the Hub client sends "POST /mcp" with the Hub token "reader" and:
+      """
+      { "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "test", "version": "0" } } }
+      """
+    Then the response status is 429
+    And the response contains:
+      """
+      { "code": "rate_limited", "retry_after_s": "*" }
+      """

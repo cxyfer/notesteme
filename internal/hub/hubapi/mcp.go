@@ -105,6 +105,14 @@ func (e *mcpEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rt := e.rt
 	p, err := e.authenticate(r)
 	if err != nil {
+		// 停用的帳號也在限流之內（HMCP-R8、HACC-R18，同 accessMiddleware）：沒有可用的身分，以 IP 計入。
+		var ae *apierr.Error
+		if errors.As(err, &ae) && ae.Code == hubauth.CodeSuspended {
+			if le := rt.limitAnonymous(r.RemoteAddr); le != nil {
+				writeRawErr(w, le)
+				return
+			}
+		}
 		writeRawErr(w, rt.apiError(r.Context(), err))
 		return
 	}

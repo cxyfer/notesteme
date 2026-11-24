@@ -3,6 +3,7 @@ package hubapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -137,6 +138,29 @@ func TestMCPNeedsAHubToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	expect(t, "停用", rawMCP(e.h, "POST", initBody, map[string]string{"Authorization": "Bearer " + tok}), http.StatusForbidden, hubauth.CodeSuspended)
+}
+
+// HMCP-R8、HACC-R18：停用帳號的 /mcp 請求沒有可用的身分，以來源 IP 計入未登入的額度（同 API 的安全修補 A），
+// 而且和同一個 IP 的匿名請求共用額度。
+func TestMCPSuspendedAccountIsRateLimitedByIP(t *testing.T) {
+	e := newRepoEnv(t, func(c *hubconfig.Config) { c.RateLimits.AnonymousRequestsPerMinute = 3 })
+	_, tok := e.createToken("bob", `{"name":"r","permissions":["read"]}`)
+	if _, err := e.store.SuspendUser(context.Background(), "", e.users["bob"], "spam"); err != nil {
+		t.Fatal(err)
+	}
+	auth := map[string]string{"Authorization": "Bearer " + tok}
+	// 同一個 IP（httptest 的 192.0.2.1）：匿名 1 次、停用 2 次，用完 3 次的額度。
+	expect(t, "匿名", rawMCP(e.h, "POST", initBody, nil), http.StatusUnauthorized, "unauthorized")
+	for i := 1; i <= 2; i++ {
+		expect(t, fmt.Sprintf("停用第 %d 次", i), rawMCP(e.h, "POST", initBody, auth), http.StatusForbidden, hubauth.CodeSuspended)
+	}
+	rec := rawMCP(e.h, "POST", initBody, auth)
+	expect(t, "停用超過額度", rec, http.StatusTooManyRequests, "rate_limited")
+	if rec.Header().Get("Retry-After") == "" {
+		t.Error("429 沒有 Retry-After")
+	}
+	// 計的是 IP：同一個 IP 的匿名請求也被擋下。
+	expect(t, "同 IP 的匿名", rawMCP(e.h, "POST", initBody, nil), http.StatusTooManyRequests, "rate_limited")
 }
 
 func TestMCPOriginAndHost(t *testing.T) {
