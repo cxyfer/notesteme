@@ -71,7 +71,7 @@ func TestRedirectFromPublicHostCannotUseAllowlist(t *testing.T) {
 	newClient := func() (*http.Client, *recDialer) {
 		d := &recDialer{addr: srv.Listener.Addr().String()}
 		return NewClient(Deps{Resolver: resolver, Dialer: d,
-			AllowPrivate: Allowlist{Prefixes: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}}}), d
+			AllowPrivate: Allowlist{Prefixes: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}, Hosts: []string{"nas.lan"}}}), d
 	}
 
 	c, d := newClient()
@@ -88,7 +88,7 @@ func TestRedirectFromPublicHostCannotUseAllowlist(t *testing.T) {
 		}
 	}
 
-	// 起點本身在 allowlist（解析到 10.0.0.7）時，轉到 allowlist 內的另一個位址照常可用（每一跳仍重新檢查）。
+	// 起點本身在 allowlist（主機名稱列在 allowlist）時，轉到 allowlist 內的另一個位址照常可用（每一跳仍重新檢查）。
 	c, _ = newClient()
 	resp, err = c.Get("http://nas.lan/rss")
 	if err != nil {
@@ -134,5 +134,43 @@ func TestRedirectFromPublicHostCannotUseAllowlist(t *testing.T) {
 	}
 	if !errors.Is(err, ErrBlockedAddress) || hits != before {
 		t.Fatalf("沿用連線池轉到內網：err = %v，hits %d → %d", err, before, hits)
+	}
+}
+
+// 起點是否在 allowlist 不能靠重新解析攻擊者控制的主機名稱判斷：DNS rebinding 可以讓第二次解析回內網位址。
+// 只有 allowlist 列出的主機名稱、或 allowlist 網段內的 IP 字面值算「起點在 allowlist」；
+// 沒有列出、只是解析到 allowlist 網段的主機名稱，它的轉址不使用 allowlist（GRD 待決問題的代價）。
+func TestRedirectOriginNotDecidedByReresolving(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Host {
+		case "evil.example", "rss.lan":
+			http.Redirect(w, r, "http://10.0.0.5/router-admin", http.StatusFound)
+		default:
+			hits++
+		}
+	}))
+	defer srv.Close()
+	lookups := 0
+	resolver := stubResolverFunc(func(host string) []netip.Addr {
+		if host == "rss.lan" {
+			return []netip.Addr{netip.MustParseAddr("10.0.0.7")}
+		}
+		lookups++
+		if lookups == 1 {
+			return []netip.Addr{publicIP} // dial 時是公開位址
+		}
+		return []netip.Addr{netip.MustParseAddr("10.0.0.7")} // 之後 rebinding 到內網
+	})
+	allow := Allowlist{Prefixes: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}}
+	for _, origin := range []string{"http://evil.example/feed.xml", "http://rss.lan/feed.xml"} {
+		c := NewClient(Deps{Resolver: resolver, Dialer: &recDialer{addr: srv.Listener.Addr().String()}, AllowPrivate: allow})
+		resp, err := c.Get(origin)
+		if err == nil {
+			resp.Body.Close()
+		}
+		if !errors.Is(err, ErrBlockedAddress) || hits != 0 {
+			t.Fatalf("%s：err = %v，內網收到 %d 次請求", origin, err, hits)
+		}
 	}
 }

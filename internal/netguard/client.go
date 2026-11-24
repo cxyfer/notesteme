@@ -50,7 +50,6 @@ type schemeTransport struct {
 	base   *http.Transport
 	strict *http.Transport
 	allow  Allowlist
-	res    Resolver
 }
 
 func (t *schemeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -69,35 +68,24 @@ func (t *schemeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		for origin.Response != nil && origin.Response.Request != nil {
 			origin = origin.Response.Request
 		}
-		if !t.originAllowlisted(req, origin.URL.Hostname()) {
+		if !t.originAllowlisted(origin.URL.Hostname()) {
 			return t.strict.RoundTrip(req)
 		}
 	}
 	return t.base.RoundTrip(req)
 }
 
-// originAllowlisted 回報轉址鏈的起點是不是要靠 allowlist 才能連線：主機名稱列在 allowlist，
-// 或它的位址被預設規則擋下、但 allowlist 開放。解析失敗時視為不在 allowlist。
-func (t *schemeTransport) originAllowlisted(req *http.Request, host string) bool {
+// originAllowlisted 回報轉址鏈的起點本身是不是在 allowlist：主機名稱列在 allowlist，
+// 或起點是 allowlist 網段內的 IP 字面值。不重新解析主機名稱：名稱由外部控制，DNS rebinding 可以讓
+// 第二次解析回內網位址。代價：沒有列出、只是解析到 allowlist 網段的主機名稱，它的轉址不使用 allowlist。
+func (t *schemeTransport) originAllowlisted(host string) bool {
 	if host == "" {
 		return false
 	}
-	if t.allow.containsHost(normalizeHost(host)) {
-		return true
-	}
-	ips := []netip.Addr{}
 	if ip, err := netip.ParseAddr(host); err == nil {
-		ips = append(ips, ip)
-	} else if t.res != nil {
-		ips, _ = t.res.LookupNetIP(req.Context(), "ip", host)
+		return t.allow.containsIP(ip.Unmap().WithZone(""))
 	}
-	for _, ip := range ips {
-		ip = ip.Unmap()
-		if checkIP(host, ip, Allowlist{}) != nil && checkIP(host, ip, t.allow) == nil {
-			return true
-		}
-	}
-	return false
+	return t.allow.containsHost(normalizeHost(host))
 }
 
 // clone 以 f 調整 base 與 strict 的複本；其他防護不變。
@@ -138,7 +126,7 @@ func (t *schemeTransport) WithTimeouts(header, idle time.Duration) http.RoundTri
 // NewClient 回傳對外 HTTP 的 client：連線經過 Transport（ADR-0014），
 // 起始網址與轉址的每一跳都檢查 scheme，最多跟隨 MaxRedirects 次。逾時與大小由呼叫端自己限制。
 func NewClient(d Deps) *http.Client {
-	st := &schemeTransport{base: Transport(d), allow: d.mergedAllowlist(), res: d.Resolver}
+	st := &schemeTransport{base: Transport(d), allow: d.mergedAllowlist()}
 	if len(st.allow.Prefixes) > 0 || len(st.allow.Hosts) > 0 {
 		st.strict = Transport(Deps{Resolver: d.Resolver, Dialer: d.Dialer, RootCAs: d.RootCAs})
 	}

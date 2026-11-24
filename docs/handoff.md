@@ -484,7 +484,7 @@
 - **安全修補 C（2026-11-24，分支 `fix/client-security-hardening`，Client 端）**：唯讀安全審查的 Client 發現逐項修補，各附會失敗再通過的測試（含 mutation 自檢）；決定都標「待 owner 追認」。
   - vps 鎖定共用：新增 `NOTESTEME_TRUSTED_PROXIES`（逗號分隔 CIDR，取代設定檔的 `trusted_proxies`）；`compose.yaml` 固定預設網路 `172.31.250.0/24`、caddy `172.31.250.10`，預設信任 `172.31.250.10/32`；`deploy-check vps` 多一項檢查（`trusted_proxies` 是空的時失敗），`serve` 在 vps 且為空時記 warn。驗收步驟 `deployed with the "vps" profile` 比照 compose 設定它（OPS O23）。
   - VAULT（V15）：git 環境加 `GIT_LITERAL_PATHSPECS=1`（標題的 `[`、`]` 不再讓 `add` 選到其他檔案）；`http.followRedirects=false`；askpass 只把 token 交給設定的 remote 主機（`NOTESTEME_GIT_HOST`）；hook 以 `{{title}}`／`{{commit}}` 開頭的元素展開後以 `-` 開頭時加一個前導空白（場景把 `{{title}}` 當獨立元素，所以不在載入時拒絕），`{{ title }}` 有空白時執行時也會展開；禁用環境變數改成 `vault.ForbiddenHookEnv` 單一來源並補上 OIDC／Hub 秘密與 `_DSN`、`_PASSWORD`、`_SECRET` 等結尾。
-  - netguard（GRD 待決問題）：allowlist 只給起點本身在 allowlist 的請求使用，公開主機的轉址改走不含 allowlist、獨立連線池的 transport；另外擋 `64:ff9b:1::/48`、`::ffff:0:0:0/96`、`100::/64` 與 metadata `168.63.129.16`。
+  - netguard（GRD 待決問題）：allowlist 只給起點本身在 allowlist 的請求使用（主機名稱列在 allowlist，或 allowlist 內的 IP 字面值；不重新解析，避免 DNS rebinding），其他起點的轉址改走不含 allowlist、獨立連線池的 transport；另外擋 `64:ff9b:1::/48`、`::ffff:0:0:0/96`、`100::/64` 與 metadata `168.63.129.16`。
   - AUTH（A27）：IPv6 鎖定以 `/64` 計；OIDC start 每個來源 10 分鐘最多 20 次（全域 1000 不變）；token 建立 token 時 scope 必須是子集。
   - OPS（O24）：名稱時間在未來的備份檔在保留時視為最舊、最先刪除。
   - 工具鏈：`go.mod` 加 `toolchain go1.26.11`、Dockerfile `GO_VERSION=1.26.11`、CI 的 govulncheck 改用 go.mod 的版本；`golang.org/x/text` v0.29.0 → v0.41.0。govulncheck v1.10.0：修補前（go1.26.8）15 個會被呼叫到的弱點（標準函式庫 13、x/text 2），修補後 0 個。`web/client/embed.go` 的說明文字不再像 embed 指令（SA9009）；worker 的空 critical section 是刻意的屏障（SA2001，加說明與 `lint:ignore`）。
