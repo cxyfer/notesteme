@@ -28,12 +28,12 @@ import { usePageTitle } from "../shell/usePageTitle";
 import { isEditableTarget } from "../shell/keyboard";
 import { FilterBar, SearchBox, type SearchPatch } from "./library/FilterBar";
 import {
+  AWAITING_USER,
   hasFilters,
   toApiQuery,
   validateLibrarySearch,
   type LibrarySearch,
 } from "./library/filters";
-import { ContinueBar } from "./library/ContinueBar";
 import { LibraryRow } from "./library/LibraryRow";
 import type { ApiItem } from "./library/stageView";
 import type { BulkBarProps } from "./library/BulkBar";
@@ -219,8 +219,9 @@ export function LibraryPage() {
       </p>
       <FilterBar search={search} onChange={setSearch} onClear={clearFilters} />
 
-      {search.blocked === "awaiting_user" && rows.length > 0 && sel.ids.size === 0 && (
-        <ContinueBar ids={rows.map((r) => r.id)} onDone={reload} />
+      {/* 等你決定（DIG-R7）：勾選要繼續的影音，由批次操作列「繼續處理」（UI-8 起不再一次送已載入的全部） */}
+      {search.blocked === AWAITING_USER && rows.length > 0 && sel.ids.size === 0 && (
+        <p className="library__awaiting secondary">{t("library.awaiting.hint")}</p>
       )}
       {rows.length > 0 && (
         <div className="library__select">
@@ -246,7 +247,7 @@ export function LibraryPage() {
             ids={[...sel.ids]}
             total={total}
             apiQuery={apiQuery}
-            awaiting={search.blocked === "awaiting_user"}
+            awaiting={search.blocked === AWAITING_USER}
             onSelect={(ids) => setPicked({ key: keyHash, ids: new Set(ids), last: -1 })}
             onClear={clearSelection}
             onDone={onBulkDone}

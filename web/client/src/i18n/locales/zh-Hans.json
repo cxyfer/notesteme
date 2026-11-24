@@ -282,18 +282,15 @@
       "publishedTo": "{{value}} 之前发布",
       "remove": "移除条件：{{label}}",
       "durMin_other": "至少 {{count}} 分钟",
-      "durMax_other": "最多 {{count}} 分钟"
+      "durMax_other": "最多 {{count}} 分钟",
+      "blocked": "停住的原因：{{value}}"
     },
     "total_other": "共 {{formatted}} 部",
     "awaiting": {
       "toggle": "等你决定",
       "chip": "等你决定",
-      "hint": "摘要后暂停的音视频。列表按“分段停住”近似筛选，不是等你决定的音视频继续时会跳过。",
-      "continueAll_other": "继续处理已加载的 {{count}} 个",
-      "confirmTitle_other": "继续处理 {{count}} 个？",
-      "confirmBody": "之后的步骤会开始处理并计入预算；不是等你决定的音视频会跳过。",
-      "confirm": "继续处理",
-      "done": "已继续处理 {{continued}} 个，跳过 {{skipped}} 个"
+      "hint": "摘要后暂停、等你决定是否继续的音视频。勾选要继续的音视频（或选取符合条件的全部），再点“继续处理”。",
+      "confirm": "继续处理"
     },
     "unread": "未读",
     "readState": {

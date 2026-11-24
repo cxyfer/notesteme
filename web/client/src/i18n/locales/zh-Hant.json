@@ -282,18 +282,15 @@
       "publishedTo": "{{value}} 之前發布",
       "remove": "移除條件：{{label}}",
       "durMin_other": "至少 {{count}} 分鐘",
-      "durMax_other": "最多 {{count}} 分鐘"
+      "durMax_other": "最多 {{count}} 分鐘",
+      "blocked": "停住的原因：{{value}}"
     },
     "total_other": "共 {{formatted}} 部",
     "awaiting": {
       "toggle": "等你決定",
       "chip": "等你決定",
-      "hint": "摘要後暫停的影音。列表依「分段停住」近似篩選，不是等你決定的影音繼續時會略過。",
-      "continueAll_other": "繼續處理已載入的 {{count}} 部",
-      "confirmTitle_other": "繼續處理 {{count}} 部？",
-      "confirmBody": "之後的步驟會開始處理並計入預算；不是等你決定的影音會略過。",
-      "confirm": "繼續處理",
-      "done": "已繼續處理 {{continued}} 部，略過 {{skipped}} 部"
+      "hint": "摘要後暫停、等你決定是否繼續的影音。勾選要繼續的影音（或選取符合條件的全部），再按「繼續處理」。",
+      "confirm": "繼續處理"
     },
     "unread": "未讀",
     "readState": {

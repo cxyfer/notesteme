@@ -286,21 +286,16 @@
       "durMin_other": "At least {{count}} minutes",
       "durMin_one": "At least {{count}} minute",
       "durMax_other": "At most {{count}} minutes",
-      "durMax_one": "At most {{count}} minute"
+      "durMax_one": "At most {{count}} minute",
+      "blocked": "Stopped because: {{value}}"
     },
     "total_other": "{{formatted}} items",
     "total_one": "{{formatted}} item",
     "awaiting": {
       "toggle": "Awaiting your decision",
       "chip": "Awaiting your decision",
-      "hint": "Media paused after the summary. The list approximates this as “segment is stopped”; media that isn't awaiting your decision is skipped when continuing.",
-      "continueAll_one": "Continue the {{count}} loaded item",
-      "continueAll_other": "Continue the {{count}} loaded items",
-      "confirmTitle_one": "Continue {{count}} item?",
-      "confirmTitle_other": "Continue {{count}} items?",
-      "confirmBody": "The remaining steps start and count toward the budget. Media that isn't awaiting your decision is skipped.",
-      "confirm": "Continue",
-      "done": "Continued {{continued}}, skipped {{skipped}}"
+      "hint": "Media paused after the summary, waiting for you to decide. Select the items to continue (or select all matching), then choose “Continue”.",
+      "confirm": "Continue"
     },
     "unread": "Unread",
     "readState": {

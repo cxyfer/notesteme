@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "../../components";
 import {
+  AWAITING_USER,
   ERROR_CLASSES,
   hasFilters,
   PLATFORMS,
@@ -191,7 +192,14 @@ function useAppliedChips(search: LibrarySearch, onChange: FilterBarProps["onChan
       { status: toggleStatus(search.status, s) },
     );
   }
-  if (search.blocked) add("blocked", t("library.awaiting.chip"), { blocked: undefined });
+  if (search.blocked)
+    add(
+      "blocked",
+      search.blocked === AWAITING_USER
+        ? t("library.awaiting.chip")
+        : t("library.chips.blocked", { value: search.blocked }),
+      { blocked: undefined },
+    );
   if (search.error_class)
     add(
       "error_class",
@@ -262,8 +270,10 @@ export function FilterBar({ search, onChange, onClear }: FilterBarProps) {
           onChange={(v) => onChange({ read_state: v })}
         />
         <Button
-          aria-pressed={search.blocked === "awaiting_user"}
-          onClick={() => onChange({ blocked: search.blocked ? undefined : "awaiting_user" })}
+          aria-pressed={search.blocked === AWAITING_USER}
+          onClick={() =>
+            onChange({ blocked: search.blocked === AWAITING_USER ? undefined : AWAITING_USER })
+          }
         >
           {t("library.awaiting.toggle")}
         </Button>

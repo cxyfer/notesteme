@@ -71,10 +71,10 @@ export interface LibrarySearch {
   dur_max?: number;
   timing?: Timing;
   /**
-   * 等你決定（DIG-R6、R10 的彙整連結 /library?blocked=awaiting_user）。API 沒有依 block_reason 篩選，
-   * 送最接近的條件：summary 完成或略過、segment 停住（見 UI README 10.15）。
+   * 停住的原因（GET /api/items 的 blocked，單一值）。等你決定是 awaiting_user（DIG-R6、R10 的彙整連結
+   * /library?blocked=awaiting_user）；其他原因（budget_blocked、needs_action…）只驗格式（UI-8）。
    */
-  blocked?: "awaiting_user";
+  blocked?: string;
   /** 已讀狀態（LIB-R19，UI-7） */
   read_state?: ReadState;
 }
@@ -135,6 +135,15 @@ function date(v: unknown): string | undefined {
   return s && isValidDate(s) ? s : undefined;
 }
 
+/** 等你決定（DIG-R6） */
+export const AWAITING_USER = "awaiting_user";
+
+/** 停住的原因：與 API 相同的格式 ^[a-z_]{1,64}$ */
+function blockReason(v: unknown): string | undefined {
+  const s = str(v);
+  return s && /^[a-z_]{1,64}$/.test(s) ? s : undefined;
+}
+
 function minutes(v: unknown): number | undefined {
   const s = str(v)?.trim();
   if (!s || !/^\d{1,5}$/.test(s)) return undefined;
@@ -175,7 +184,7 @@ export function validateLibrarySearch(raw: Record<string, unknown>): LibrarySear
     dur_min: minutes(raw.dur_min),
     dur_max: minutes(raw.dur_max),
     timing: oneOf(TIMINGS, raw.timing),
-    blocked: oneOf(["awaiting_user"] as const, raw.blocked),
+    blocked: blockReason(raw.blocked),
     read_state: oneOf(READ_STATES, raw.read_state),
   };
   // 拿掉 undefined，讓網址只帶有值的參數
@@ -195,9 +204,6 @@ function dayBound(d: string, end: boolean): string {
   return dt.toISOString();
 }
 
-/** 「等你決定」對應的 API 條件（DIG-R6：summary 結束後下一步 segment 為 blocked） */
-export const AWAITING_STATUS = ["summary:done", "summary:skipped", "segment:blocked"] as const;
-
 export type ItemsQuery = Record<string, string | readonly string[] | undefined>;
 
 /** LibrarySearch → GET /api/items 的查詢參數（不含 cursor、limit）。 */
@@ -206,7 +212,8 @@ export function toApiQuery(s: LibrarySearch): ItemsQuery {
     q: s.q,
     platform: s.platform,
     channel: s.channel,
-    status: s.blocked ? normalizeStatus([...(s.status ?? []), ...AWAITING_STATUS]) : s.status,
+    status: s.status,
+    blocked: s.blocked,
     error_class: s.error_class,
     lang: s.lang,
     published_from: s.published_from ? dayBound(s.published_from, false) : undefined,
