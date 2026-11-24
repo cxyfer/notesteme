@@ -1206,7 +1206,8 @@
         "tool": "工具",
         "state": "状态",
         "path": "路径",
-        "source": "来源"
+        "source": "来源",
+        "version": "版本"
       },
       "available": "可以使用",
       "unavailable": "无法使用：{{reason}}",
@@ -1218,7 +1219,6 @@
         "managed": "由 notesteme 管理",
         "path": "PATH"
       },
-      "versionsUnavailable": "版本号：后端还没有提供；更新 yt-dlp 之后会显示新的版本。",
       "ytdlpTitle": "yt-dlp",
       "ytdlpHint": "平台改版时 yt-dlp 常需要更新。更新后会先自检，失败就自动回到原来的版本。",
       "pinned": "固定的版本",
@@ -1235,8 +1235,16 @@
       "dataTitle": "数据与存储",
       "data": "数据目录",
       "listen": "监听地址",
-      "diskUnavailable": "磁盘用量：后端还没有提供（磁盘用量告警是 M4）。",
-      "retentionUnavailable": "媒体文件保留天数：后端还没有提供。回收站的保留天数在配置文件的 library.trash_retention_days 设置。"
+      "retentionUnavailable": "媒体文件保留天数：后端还没有提供。回收站的保留天数在配置文件的 library.trash_retention_days 设置。",
+      "versionUnknown": "不知道",
+      "appVersion": "notesteme 版本",
+      "schemaVersion": "数据库 schema 版本",
+      "disk": "磁盘用量",
+      "diskUsed": "数据占用 {{used}}",
+      "diskUsedFree": "数据占用 {{used}}，可用空间 {{free}}",
+      "diskUnknown": "还在统计中",
+      "diskMeasuredAt": "（统计于 {{at}}）",
+      "diskError": "读不到磁盘用量：{{reason}}"
     },
     "config": {
       "exportTitle": "导出设置",

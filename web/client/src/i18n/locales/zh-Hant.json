@@ -1206,7 +1206,8 @@
         "tool": "工具",
         "state": "狀態",
         "path": "路徑",
-        "source": "來源"
+        "source": "來源",
+        "version": "版本"
       },
       "available": "可以使用",
       "unavailable": "無法使用：{{reason}}",
@@ -1218,7 +1219,6 @@
         "managed": "由 notesteme 管理",
         "path": "PATH"
       },
-      "versionsUnavailable": "版本號：後端還沒有提供；更新 yt-dlp 之後會顯示新的版本。",
       "ytdlpTitle": "yt-dlp",
       "ytdlpHint": "平台改版時 yt-dlp 常需要更新。更新後會先自我檢查，失敗就自動回到原本的版本。",
       "pinned": "固定的版本",
@@ -1235,8 +1235,16 @@
       "dataTitle": "資料與儲存",
       "data": "資料目錄",
       "listen": "監聽位址",
-      "diskUnavailable": "磁碟用量：後端還沒有提供（磁碟用量告警是 M4）。",
-      "retentionUnavailable": "媒體檔保留天數：後端還沒有提供。垃圾桶的保留天數在設定檔的 library.trash_retention_days 設定。"
+      "retentionUnavailable": "媒體檔保留天數：後端還沒有提供。垃圾桶的保留天數在設定檔的 library.trash_retention_days 設定。",
+      "versionUnknown": "不知道",
+      "appVersion": "notesteme 版本",
+      "schemaVersion": "資料庫 schema 版本",
+      "disk": "磁碟用量",
+      "diskUsed": "資料佔用 {{used}}",
+      "diskUsedFree": "資料佔用 {{used}}，可用空間 {{free}}",
+      "diskUnknown": "還在統計中",
+      "diskMeasuredAt": "（統計於 {{at}}）",
+      "diskError": "讀不到磁碟用量：{{reason}}"
     },
     "config": {
       "exportTitle": "匯出設定",

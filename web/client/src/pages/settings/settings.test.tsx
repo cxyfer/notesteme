@@ -12,12 +12,19 @@ const SECRET_KEY = "sk-test-SECRET-abcd1234";
 const TOKEN = "nst_PLAINTEXT_TOKEN_value";
 
 const SYSTEM = {
+  version: "1.4.0",
+  schema_version: 42,
   listen: "127.0.0.1:8080",
   listen_source: "default",
   data: "/data",
   data_source: "env",
   tools: {
-    "yt-dlp": { path: "/data/tools/yt-dlp", source: "managed", available: true },
+    "yt-dlp": {
+      path: "/data/tools/yt-dlp",
+      source: "managed",
+      available: true,
+      version: "2026.11.01",
+    },
     ffmpeg: { path: "", source: "path", available: false, error: "找不到 ffmpeg" },
   },
   yt_dlp: { pinned: null, previous: "2026.10.01" },
@@ -654,6 +661,55 @@ describe("系統", () => {
     expect(await screen.findByText("無法使用：找不到 ffmpeg")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "更新 yt-dlp" }));
     expect((await screen.findAllByText("已更新到 2026.11.08")).length).toBeGreaterThan(0);
+  });
+
+  it("顯示程式、schema 與工具的版本，以及總覽的磁碟用量（OPS-R22、LIB-R22）", async () => {
+    settingsApi({
+      "GET /api/overview": () => ({
+        disk: {
+          data_bytes: 2 * 1024 ** 3,
+          media_bytes: null,
+          artifacts_bytes: null,
+          uploads_bytes: null,
+          free_bytes: 50 * 1024 ** 3,
+          measured_at: null,
+        },
+      }),
+    });
+    await openSection("system");
+    const row = (await screen.findByRole("rowheader", { name: "yt-dlp" })).closest("tr")!;
+    expect(within(row).getByText("2026.11.01")).toBeTruthy();
+    const ff = screen.getByRole("rowheader", { name: "ffmpeg" }).closest("tr")!;
+    expect(within(ff).getByText("不知道")).toBeTruthy();
+    expect(screen.getByText("1.4.0")).toBeTruthy();
+    expect(screen.getByText("42")).toBeTruthy();
+    expect(await screen.findByText(/資料佔用 2(\.0)? GB，可用空間 50(\.0)? GB/)).toBeTruthy();
+    expect(screen.queryByText(/後端還沒有提供（磁碟用量/)).toBeNull();
+    expect(screen.queryByText(/版本號：後端還沒有提供/)).toBeNull();
+  });
+
+  it("讀不到總覽時只有磁碟用量那一行說明，其他照常顯示", async () => {
+    settingsApi({ "GET /api/overview": () => apiError(403, "forbidden", "權限不足") });
+    await openSection("system");
+    expect(await screen.findByText(/讀不到磁碟用量/)).toBeTruthy();
+    expect(screen.getByText("1.4.0")).toBeTruthy();
+  });
+
+  it("磁碟用量還沒統計時寫「還在統計中」", async () => {
+    settingsApi({
+      "GET /api/overview": () => ({
+        disk: {
+          data_bytes: null,
+          media_bytes: null,
+          artifacts_bytes: null,
+          uploads_bytes: null,
+          free_bytes: null,
+          measured_at: null,
+        },
+      }),
+    });
+    await openSection("system");
+    expect(await screen.findByText("還在統計中")).toBeTruthy();
   });
 });
 

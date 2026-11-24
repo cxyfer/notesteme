@@ -1258,7 +1258,8 @@
         "tool": "Tool",
         "state": "Status",
         "path": "Path",
-        "source": "Source"
+        "source": "Source",
+        "version": "Version"
       },
       "available": "Available",
       "unavailable": "Unavailable: {{reason}}",
@@ -1270,7 +1271,6 @@
         "managed": "Managed by notesteme",
         "path": "PATH"
       },
-      "versionsUnavailable": "Versions: the backend doesn't report them yet; the new version is shown after updating yt-dlp.",
       "ytdlpTitle": "yt-dlp",
       "ytdlpHint": "yt-dlp often needs updating when platforms change. After updating it runs a self-check and rolls back automatically if that fails.",
       "pinned": "Pinned version",
@@ -1287,8 +1287,16 @@
       "dataTitle": "Data and storage",
       "data": "Data directory",
       "listen": "Listen address",
-      "diskUnavailable": "Disk usage: the backend doesn't report it yet (disk usage alerts are M4).",
-      "retentionUnavailable": "Media file retention: the backend doesn't provide it yet. Trash retention is set with library.trash_retention_days in the config file."
+      "retentionUnavailable": "Media file retention: the backend doesn't provide it yet. Trash retention is set with library.trash_retention_days in the config file.",
+      "versionUnknown": "Unknown",
+      "appVersion": "notesteme version",
+      "schemaVersion": "Database schema version",
+      "disk": "Disk usage",
+      "diskUsed": "Data uses {{used}}",
+      "diskUsedFree": "Data uses {{used}}, {{free}} free",
+      "diskUnknown": "Still being measured",
+      "diskMeasuredAt": "(measured {{at}})",
+      "diskError": "Couldn't read disk usage: {{reason}}"
     },
     "config": {
       "exportTitle": "Export settings",

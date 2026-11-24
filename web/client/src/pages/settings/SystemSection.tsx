@@ -1,14 +1,19 @@
-// 系統（pages.md §12、OPS）：外部工具的路徑與狀態、更新 yt-dlp 與回到上一個版本、資料目錄。
-// GET /api/system 沒有工具的版本號、磁碟用量與媒體檔保留天數；版本號只能從更新的結果得知，其他標示尚未提供。
+// 系統（pages.md §12、OPS）：外部工具的路徑、狀態與版本、更新 yt-dlp 與回到上一個版本、資料目錄。
+// 程式、schema 與工具的版本來自 GET /api/system（OPS-R22、NFR-OBS-3；工具的版本不知道時省略）；
+// 磁碟用量讀總覽的 GET /api/overview（LIB-R22，和總覽頁共用 query），讀不到時只在那一行說明。
+// 媒體檔保留天數不在 M4（ADR-0021 第 8 點），仍標示尚未提供。
 // UI-5：最上面加上告警與備份（OPS，OpsStatus.tsx），最下面是匯入 bundle（BND，BundleImport.tsx），都是 lazy 載入。
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { api } from "../../api/client";
+import { describeError } from "../../api/describeError";
 import { queryKeys } from "../../api/queryKeys";
 import type { components } from "../../api/schema";
 import { Button, ErrorCallout, useToast } from "../../components";
+import { formatBytes, formatDateTime } from "../../i18n";
+import { browserTimeZone, fetchOverview } from "../overview/overviewQuery";
 import { Loading, NotAvailable, Panel } from "./shared";
 
 type Result = components["schemas"]["Result"];
@@ -43,6 +48,7 @@ export function SystemSection() {
               <tr>
                 <th scope="col">{t("settings.system.col.tool")}</th>
                 <th scope="col">{t("settings.system.col.state")}</th>
+                <th scope="col">{t("settings.system.col.version")}</th>
                 <th scope="col">{t("settings.system.col.path")}</th>
                 <th scope="col">{t("settings.system.col.source")}</th>
               </tr>
@@ -56,6 +62,7 @@ export function SystemSection() {
                       ? t("settings.system.available")
                       : t("settings.system.unavailable", { reason: tool.error ?? "" })}
                   </td>
+                  <td className="num">{tool.version ?? t("settings.system.versionUnknown")}</td>
                   <td>
                     <code>{tool.path || t("settings.system.notFound")}</code>
                   </td>
@@ -67,7 +74,6 @@ export function SystemSection() {
             </tbody>
           </table>
         </div>
-        <NotAvailable>{t("settings.system.versionsUnavailable")}</NotAvailable>
       </Panel>
       <YtDlp
         pinned={sys.yt_dlp.pinned}
@@ -76,6 +82,10 @@ export function SystemSection() {
       />
       <Panel title={t("settings.system.dataTitle")}>
         <dl className="settings-dl">
+          <dt>{t("settings.system.appVersion")}</dt>
+          <dd className="num">{sys.version}</dd>
+          <dt>{t("settings.system.schemaVersion")}</dt>
+          <dd className="num">{sys.schema_version ?? t("settings.system.versionUnknown")}</dd>
           <dt>{t("settings.system.data")}</dt>
           <dd>
             <code>{sys.data}</code>{" "}
@@ -86,14 +96,52 @@ export function SystemSection() {
             <code>{sys.listen}</code>{" "}
             {t(`settings.system.source.${sys.listen_source}`, { defaultValue: sys.listen_source })}
           </dd>
+          <dt>{t("settings.system.disk")}</dt>
+          <dd>
+            <DiskUsage />
+          </dd>
         </dl>
-        <NotAvailable>{t("settings.system.diskUnavailable")}</NotAvailable>
         <NotAvailable>{t("settings.system.retentionUnavailable")}</NotAvailable>
       </Panel>
       <Suspense fallback={<Loading />}>
         <BundleImport />
       </Suspense>
     </>
+  );
+}
+
+/** 磁碟用量（LIB-R22）：和總覽頁共用 GET /api/overview 的 query；讀不到時只在這一行說明，不擋整個分區。 */
+function DiskUsage() {
+  const { t } = useTranslation();
+  const tz = browserTimeZone();
+  const q = useQuery({
+    queryKey: queryKeys.overview(tz),
+    queryFn: ({ signal }) => fetchOverview(tz, signal),
+    retry: false,
+  });
+  if (q.isPending) return <span className="secondary">{t("common.loading")}</span>;
+  const disk = q.data?.disk;
+  if (q.isError || !disk)
+    return (
+      <span className="secondary">
+        {t("settings.system.diskError", { reason: describeError(t, q.error) })}
+      </span>
+    );
+  if (disk.data_bytes == null)
+    return <span className="secondary">{t("settings.system.diskUnknown")}</span>;
+  const used = formatBytes(disk.data_bytes);
+  return (
+    <span className="num">
+      {disk.free_bytes == null
+        ? t("settings.system.diskUsed", { used })
+        : t("settings.system.diskUsedFree", { used, free: formatBytes(disk.free_bytes) })}
+      {disk.measured_at && (
+        <span className="secondary">
+          {" "}
+          {t("settings.system.diskMeasuredAt", { at: formatDateTime(disk.measured_at) })}
+        </span>
+      )}
+    </span>
   );
 }
 

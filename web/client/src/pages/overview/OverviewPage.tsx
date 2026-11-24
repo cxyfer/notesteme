@@ -14,7 +14,6 @@ import { StatusBand, type StatusBandStage } from "@shared";
 import { useAddDrawer } from "../../add/AddContext";
 import { api, apiPath } from "../../api/client";
 import { describeError } from "../../api/describeError";
-import { isApiError } from "../../api/errors";
 import { queryKeys } from "../../api/queryKeys";
 import type { components } from "../../api/schema";
 import { EmptyState, ErrorCallout, Spinner, useToast, type ErrorAction } from "../../components";
@@ -26,29 +25,11 @@ import { mapActions } from "../item/actions";
 import { useItemDetail } from "../library/LibraryRow";
 import { BAND_STAGES, bandStatus, badgeStatus } from "../library/stageView";
 import { AlertsSection } from "./AlertsSection";
+import { browserTimeZone, fetchOverview, type Overview } from "./overviewQuery";
 import "../../styles/ui7.css";
 
-type Overview = components["schemas"]["OverviewResult"];
 type NeedItem = components["schemas"]["OverviewNeedItem"];
 type NowItem = components["schemas"]["OverviewNowItem"];
-
-/** 瀏覽器的 IANA 時區；取不到時讓伺服器用預算時區 */
-export function browserTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
-  } catch {
-    return "";
-  }
-}
-
-async function fetchOverview(tz: string, signal: AbortSignal): Promise<Overview> {
-  try {
-    return await api.get("/api/overview", { query: tz ? { tz } : {}, signal });
-  } catch (err) {
-    if (tz && isApiError(err) && err.status === 422) return api.get("/api/overview", { signal });
-    throw err;
-  }
-}
 
 export function OverviewPage() {
   const { t } = useTranslation();
