@@ -6,6 +6,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"sync"
 	"time"
@@ -98,7 +99,19 @@ func clientIP(remoteAddr string) string {
 
 func accountKey(userID string) string { return "user:" + userID }
 
-func ipKey(remoteAddr string) string { return "ip:" + clientIP(remoteAddr) }
+// ipKey 是未登入請求的限流鍵：IPv6 以 /64 為單位（一般用戶端一次就拿到整個 /64，逐一換位址就能繞過限流，安全修補 A）。
+func ipKey(remoteAddr string) string {
+	ip := clientIP(remoteAddr)
+	if a, err := netip.ParseAddr(ip); err == nil {
+		a = a.Unmap()
+		if a.Is6() {
+			p, _ := a.Prefix(64)
+			return "ip:" + p.String()
+		}
+		return "ip:" + a.String()
+	}
+	return "ip:" + ip
+}
 
 // limitAnonymous 以 IP 計入一個未登入的請求。
 func (rt *routes) limitAnonymous(remoteAddr string) *apierr.Error {

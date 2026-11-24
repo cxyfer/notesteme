@@ -137,6 +137,14 @@ func (rt *routes) accessMiddleware(ctx huma.Context, next func(huma.Context)) {
 	}
 	p, bearer, err := rt.authenticate(ctx)
 	if err != nil {
+		// 停用的帳號也在限流之內（安全修補 A）：沒有可用的身分，以 IP 計入。
+		var ae *apierr.Error
+		if errors.As(err, &ae) && ae.Code == hubauth.CodeSuspended {
+			if e := rt.limitAnonymous(ctx.RemoteAddr()); e != nil {
+				writeHumaErr(ctx, e)
+				return
+			}
+		}
 		writeHumaErr(ctx, rt.apiError(ctx.Context(), err))
 		return
 	}

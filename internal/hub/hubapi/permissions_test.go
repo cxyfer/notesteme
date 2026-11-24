@@ -424,3 +424,29 @@ func TestInvalidTokenOnPublicSiteIs401(t *testing.T) {
 	e.h.ServeHTTP(rec, req)
 	expect(t, "匿名", rec, 200, "")
 }
+
+// 安全修補 A：IPv6 以 /64 計入同一個額度；IPv4 與 IPv4-mapped 相同。
+func TestIPKeyGroupsIPv6By64(t *testing.T) {
+	for _, c := range [][2]string{
+		{"[2001:db8:1:2::1]:443", "[2001:db8:1:2:ffff:ffff:ffff:ffff]:1"},
+		{"192.0.2.1:1", "[::ffff:192.0.2.1]:2"},
+	} {
+		if ipKey(c[0]) != ipKey(c[1]) {
+			t.Errorf("%s 與 %s 應該同一個鍵：%s / %s", c[0], c[1], ipKey(c[0]), ipKey(c[1]))
+		}
+	}
+	if ipKey("[2001:db8:1:2::1]:1") == ipKey("[2001:db8:1:3::1]:1") || ipKey("192.0.2.1:1") == ipKey("192.0.2.2:1") {
+		t.Error("不同的 /64 或 IPv4 位址要分開計算")
+	}
+}
+
+// 安全修補 A：停用的帳號一樣受限流（以 IP 計），不能無限制地打 API。
+func TestSuspendedAccountIsRateLimited(t *testing.T) {
+	e := newPermEnv(t, func(c *hubconfig.Config) { c.RateLimits.AnonymousRequestsPerMinute = 2 })
+	if _, err := e.store.SuspendUser(context.Background(), "", e.users["alice"], "x"); err != nil {
+		t.Fatal(err)
+	}
+	expect(t, "第 1 次", e.as("alice", "GET", "/api/v1/me", ""), 403, "account_suspended")
+	expect(t, "第 2 次", e.as("alice", "GET", "/api/v1/me", ""), 403, "account_suspended")
+	expect(t, "第 3 次", e.as("alice", "GET", "/api/v1/me", ""), 429, "rate_limited")
+}
