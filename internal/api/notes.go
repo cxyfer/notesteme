@@ -106,6 +106,10 @@ type previewNoteTemplateInput struct {
 	Body struct {
 		Item string `json:"item" minLength:"1" doc:"影音 ID 或代號"`
 		Lang string `json:"lang,omitempty" doc:"筆記的語言；沒有指定時用最近寫出的一份"`
+		// 尚未儲存的修改（NOTE-R12）：有任何一個時套在模板的副本上預覽，不建立版本。
+		Body       *string   `json:"body,omitempty" doc:"尚未儲存的模板內文；省略時用模板已儲存的內文"`
+		ReadButton *string   `json:"read_button,omitempty" doc:"尚未儲存的「閱讀」按鈕"`
+		Checks     *[]string `json:"checks,omitempty" doc:"尚未儲存的自動檢查清單"`
 	}
 }
 
@@ -144,7 +148,7 @@ func (rt *routes) registerNotes(api huma.API) {
 	}, auth.ScopeAdmin, rt.updateNoteTemplate)
 	registerScoped(api, huma.Operation{
 		OperationID: "note-templates-preview", Method: http.MethodPost, Path: "/api/note-templates/{id}/preview",
-		Summary: "用影音現行筆記的段落預覽模板（NOTE-R12）：不呼叫 LLM、不建立產出、不寫入檔案；影音沒有筆記時回 409 no_note",
+		Summary: "用影音現行筆記的段落預覽模板（NOTE-R12）：可帶尚未儲存的 body、read_button、checks；不呼叫 LLM、不建立產出與模板版本、不寫入檔案；影音沒有筆記時回 409 no_note",
 	}, auth.ScopeAdmin, rt.previewNoteTemplate)
 }
 
@@ -253,7 +257,11 @@ func (rt *routes) previewNoteTemplate(ctx context.Context, in *previewNoteTempla
 	if rt.d.Pipeline == nil {
 		return nil, rt.noPipeline(ctx)
 	}
-	pv, err := rt.d.Pipeline.PreviewNoteTemplate(ctx, in.ID, in.Body.Item, in.Body.Lang)
+	var draft *pipeline.NoteTemplateInput
+	if b := in.Body; b.Body != nil || b.ReadButton != nil || b.Checks != nil {
+		draft = &pipeline.NoteTemplateInput{Body: b.Body, ReadButton: b.ReadButton, Checks: b.Checks}
+	}
+	pv, err := rt.d.Pipeline.PreviewNoteTemplate(ctx, in.ID, in.Body.Item, in.Body.Lang, draft)
 	if err != nil {
 		// 預覽時影音沒有筆記是狀態衝突（409），不是找不到資源（NOTE-R12）。
 		return nil, rt.noteErr(ctx, err, http.StatusConflict)

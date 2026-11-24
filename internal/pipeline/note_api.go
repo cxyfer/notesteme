@@ -403,10 +403,19 @@ type NotePreview struct {
 
 // PreviewNoteTemplate 以影音現行筆記的 sections 套用模板（NOTE-R12）：不呼叫 LLM、不建立產出、不寫入任何檔案。
 // 錯誤：ErrTemplateNotFound、store.ErrNotFound、*InTrashError、ErrNoNote（影音沒有筆記）。
-func (p *Pipeline) PreviewNoteTemplate(ctx context.Context, templateRef, itemRef, lang string) (NotePreview, error) {
+//
+// draft 不是 nil 時，把它的 body、read_button、checks 套在查到的模板的副本上再預覽（尚未儲存的修改，NOTE-R12）：
+// 和儲存走同一個檢查（錯誤是 422，path 為 body 等），但不建立版本、不寫入任何東西。
+func (p *Pipeline) PreviewNoteTemplate(ctx context.Context, templateRef, itemRef, lang string, draft *NoteTemplateInput) (NotePreview, error) {
 	tpl, err := p.lookupNoteTemplate(ctx, templateRef)
 	if err != nil {
 		return NotePreview{}, err
+	}
+	if draft != nil {
+		applyTemplateInput(&tpl, NoteTemplateInput{Body: draft.Body, ReadButton: draft.ReadButton, Checks: draft.Checks})
+		if err := validateNoteTemplate(tpl); err != nil {
+			return NotePreview{}, err
+		}
 	}
 	it, err := p.itemByIDOrRef(ctx, itemRef)
 	if err != nil {

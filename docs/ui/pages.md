@@ -399,6 +399,7 @@ Prompt 庫 › 校正 › correct-default
   - 檢查失敗時，任務會標示「需要你處理」，不會寫入 vault。
 - **API**：`GET/POST/PATCH /api/note-templates`、`POST /api/note-templates/:id/preview`
 - **實作狀態（UI-4，2026-11-23）**：完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)。版面規則（檔名、資料夾）由設定檔的 vault 決定，頁面只說明；中欄只連到 Prompt 庫的筆記 prompt。
+- **草稿預覽（2026-11-24）**：有未儲存的修改時，預覽用編輯中的內容（NOTE-R12 的 `body`、`read_button`、`checks`，不建立版本）；內文用 Prompt 庫的編輯器，不認識的變數在儲存前就加底線。見 [README 10.23](README.md#1023-client-ui-的-ui-manual-缺口2026-11-24)。
 
 ## 11. 成本
 

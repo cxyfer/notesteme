@@ -2017,13 +2017,17 @@
     "promptNote": "How the text is written comes from the note prompts in the Prompt library; presets pick the prompt separately from the template.",
     "previewTitle": "Preview",
     "previewNote": "Pick media that already has a note to apply this template to its content. No LLM calls, nothing is written.",
-    "previewSaved": "The preview uses saved v{{version}}, without your unsaved changes.",
     "noNote": "This media has no note yet. Pick one that does.",
     "noChecks": "No automatic checks are selected.",
     "checksResult": "Check results",
     "checkOk": "Passed: {{name}}",
     "checkFailed": "Failed: {{name}}",
-    "previewResult": "Preview result"
+    "previewResult": "Preview result",
+    "previewDraft": "Previewing your unsaved changes.",
+    "issue": {
+      "undefined": "Unknown variable {{name}}.",
+      "unclosed": "“{{open}}” has no matching “{{close}}”."
+    }
   },
   "search": {
     "intro": "Find the line where something was said, across every transcript.",

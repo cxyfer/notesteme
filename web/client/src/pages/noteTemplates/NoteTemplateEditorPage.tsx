@@ -1,11 +1,13 @@
 // 筆記模板編輯（docs/ui/pages.md §10；NOTE-R7、R11、R12）：三欄。
-//   左：模板內文、名稱、「閱讀」按鈕、自動檢查（PATCH 建立新版本；內建模板唯讀，只能複製）
+//   左：模板內文（CodeMirror，變數高亮、不認識的變數加波浪底線）、名稱、「閱讀」按鈕、自動檢查
+//       （PATCH 建立新版本；內建模板唯讀，只能複製）
 //   中：筆記 prompt（模板與 prompt 沒有綁定的 API，只連到 Prompt 庫）
-//   右：預覽（選一部有筆記的影音；只能預覽已儲存的版本 <id>@<版本>，不呼叫 LLM）
+//   右：預覽（選一部有筆記的影音，不呼叫 LLM）：沒有修改時預覽已儲存的版本 <id>@<版本>；有修改時把尚未儲存的
+//       body、read_button、checks 一起送出（NOTE-R12，停止輸入 500ms 後才送），伺服器不建立版本
 // 這個頁面是 lazy route。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { api, apiPath } from "../../api/client";
@@ -23,9 +25,13 @@ import {
   useToast,
 } from "../../components";
 import { NoteMarkdown } from "../../notes/NoteMarkdown";
+import { PromptCodeEditor } from "../prompts/PromptCodeEditor";
+import type { VarIssue } from "../prompts/promptModel";
+import "../prompts/prompt-editor.css";
 import { usePageTitle } from "../../shell/usePageTitle";
 import { NoteChecks } from "../../notes/NoteChecks";
 import { NewTemplateDialog, useNoteTemplates } from "./NoteTemplatesPage";
+import { scanTemplateVariables, TEMPLATE_VARS } from "./templateVars";
 
 type Template = components["schemas"]["NoteTemplateBody"];
 
@@ -36,20 +42,6 @@ export const NOTE_CHECKS = [
   "images_exist",
   "image_names",
   "self_check",
-] as const;
-/** NOTE-R11：模板可以用的變數（與 internal/notes 一致；後端改了要同步） */
-const TEMPLATE_VARS = [
-  ".Frontmatter",
-  ".Title",
-  ".ReadButton",
-  ".InfoTable",
-  ".Sections",
-  ".SelfCheck",
-  ".Lang",
-  ".Item.URL",
-  ".Item.Channel",
-  ".Item.Published",
-  ".Item.Duration",
 ] as const;
 const NOTE_PROMPTS = ["note-default", "note-map-default"] as const;
 
@@ -100,6 +92,13 @@ function Editor({ tpl, options }: { tpl: Template; options: { value: string; lab
   const [checks, setChecks] = useState<string[]>(tpl.checks ?? []);
   const [copying, setCopying] = useState(false);
   const readOnly = tpl.builtin;
+  const bodyLabel = useId();
+  const bodyErrors = useId();
+  const issues = scanTemplateVariables(body).issues;
+  const issueMessage = (i: VarIssue) =>
+    i.kind === "undefined"
+      ? t("noteTemplates.issue.undefined", { name: i.name })
+      : t("noteTemplates.issue.unclosed", { open: "{{", close: "}}" });
 
   const savedChecks = tpl.checks ?? [];
   const checksChanged =
@@ -155,23 +154,26 @@ function Editor({ tpl, options }: { tpl: Template; options: { value: string; lab
             error={fe.name}
           />
           <div className="field">
-            <label className="field__label" htmlFor="note-template-body">
+            <span id={bodyLabel} className="field__label">
               {t("noteTemplates.body")}
-            </label>
-            <textarea
-              id="note-template-body"
-              className="field__input code-textarea"
+            </span>
+            <PromptCodeEditor
               value={body}
+              onChange={setBody}
               readOnly={readOnly}
-              spellCheck={false}
-              onChange={(e) => setBody(e.target.value)}
-              aria-invalid={fe.body ? true : undefined}
-              aria-describedby={fe.body ? "note-template-body-error" : undefined}
+              labelledBy={bodyLabel}
+              describedBy={fe.body || issues.length ? bodyErrors : undefined}
+              variables={TEMPLATE_VARS}
+              scan={scanTemplateVariables}
+              issueMessage={issueMessage}
             />
-            {fe.body && (
-              <span id="note-template-body-error" className="field__error">
-                {fe.body}
-              </span>
+            {(fe.body || issues.length > 0) && (
+              <ul id={bodyErrors} className="field-errors">
+                {issues.map((i) => (
+                  <li key={`${i.from}-${i.kind}`}>{issueMessage(i)}</li>
+                ))}
+                {fe.body && <li className="field__error">{fe.body}</li>}
+              </ul>
             )}
           </div>
           <details>
@@ -250,7 +252,18 @@ function Editor({ tpl, options }: { tpl: Template; options: { value: string; lab
           </ul>
         </section>
 
-        <PreviewColumn tpl={tpl} dirty={dirty} />
+        <PreviewColumn
+          tpl={tpl}
+          draft={
+            dirty
+              ? {
+                  body,
+                  read_button: readButton,
+                  checks: NOTE_CHECKS.filter((c) => checks.includes(c)),
+                }
+              : undefined
+          }
+        />
       </div>
       {copying && (
         <NewTemplateDialog from={tpl.id} options={options} onClose={() => setCopying(false)} />
@@ -259,17 +272,28 @@ function Editor({ tpl, options }: { tpl: Template; options: { value: string; lab
   );
 }
 
-function PreviewColumn({ tpl, dirty }: { tpl: Template; dirty: boolean }) {
+type Draft = Pick<Template, "body" | "read_button"> & { checks: string[] };
+
+const DRAFT_DELAY_MS = 500;
+
+function PreviewColumn({ tpl, draft }: { tpl: Template; draft: Draft | undefined }) {
   const { t } = useTranslation();
   const [item, setItem] = useState("");
   const ref = `${tpl.id}@${tpl.version}`;
-  // 只預覽已儲存的版本；選了影音才送出，不重試（409 no_note 是正常結果）
+  // 草稿停止變動 DRAFT_DELAY_MS 之後才送；沒有修改時是空字串（預覽已儲存的版本）
+  const draftJson = draft ? JSON.stringify(draft) : "";
+  const [sent, setSent] = useState(draftJson);
+  useEffect(() => {
+    const id = setTimeout(() => setSent(draftJson), draftJson ? DRAFT_DELAY_MS : 0);
+    return () => clearTimeout(id);
+  }, [draftJson]);
+  // 選了影音才送出，不重試（409 no_note 是正常結果）
   const preview = useQuery({
-    queryKey: [...queryKeys.noteTemplates, "preview", ref, item],
+    queryKey: [...queryKeys.noteTemplates, "preview", ref, item, sent],
     queryFn: ({ signal }) =>
       api.post<"/api/note-templates/{id}/preview">(
         apiPath("/api/note-templates/{id}/preview", { id: ref }),
-        { body: { item }, signal },
+        { body: { item, ...(sent ? (JSON.parse(sent) as Draft) : {}) }, signal },
       ),
     enabled: item !== "",
     retry: false,
@@ -283,9 +307,7 @@ function PreviewColumn({ tpl, dirty }: { tpl: Template; dirty: boolean }) {
     <section className="note-editor__column" aria-labelledby="note-preview-title">
       <h2 id="note-preview-title">{t("noteTemplates.previewTitle")}</h2>
       <p className="secondary">{t("noteTemplates.previewNote")}</p>
-      {dirty && (
-        <p className="secondary">{t("noteTemplates.previewSaved", { version: tpl.version })}</p>
-      )}
+      {draft && <p className="secondary">{t("noteTemplates.previewDraft")}</p>}
       <ItemPicker value={item} onChange={setItem} />
       {loading && <Spinner label={t("common.loading")} showLabel />}
       {noNote ? (

@@ -381,6 +381,44 @@ Feature: Notes
     And the "note" artifact of "yt:note01xxxxx" has 1 version
 
   @NOTE-05 @NOTE-R12
+  Scenario: An unsaved draft can be previewed without creating a version
+    Given the LLM provider "anthropic" answers "note" with "note-two-sections"
+    When the owner reruns "yt:note01xxxxx" from "note"
+    And the worker runs until idle
+    And the owner sends "POST /api/note-templates" with:
+      """
+      { "id": "my-notes", "from": "video-notes" }
+      """
+    And the owner sends "POST /api/note-templates/my-notes/preview" with:
+      """
+      { "item": "yt:note01xxxxx", "body": "# Draft {{.Title}}\n", "checks": [] }
+      """
+    Then the response status is 200
+    And the response contains:
+      """
+      { "markdown": "# Draft Writing a Toy Kernel\n", "checks": [] }
+      """
+    When the owner sends "POST /api/note-templates/my-notes@2/preview" with:
+      """
+      { "item": "yt:note01xxxxx" }
+      """
+    Then the response status is 404
+    And the LLM provider "anthropic" received 1 request for "note"
+    And the "note" artifact of "yt:note01xxxxx" has 1 version
+
+  @NOTE-05 @NOTE-R11 @NOTE-R12
+  Scenario: An unsaved draft with an unknown variable is refused
+    When the owner sends "POST /api/note-templates/video-notes/preview" with:
+      """
+      { "item": "yt:note01xxxxx", "body": "{{.Frontmatter}}\n{{.Secret}}\n" }
+      """
+    Then the response status is 422
+    And the response contains:
+      """
+      { "errors": [ { "path": "body", "message": "不認識的變數 .Secret。" } ] }
+      """
+
+  @NOTE-05 @NOTE-R12
   Scenario: Previewing on an item without a note says so
     Given a YouTube video "yt:note06xxxxx" titled "Not processed yet"
     And the item "yt:note06xxxxx" has been processed up to "metadata"

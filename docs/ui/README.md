@@ -429,7 +429,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 成本頁：本月花費／預算／預計月底（2 位小數）與「調整預算」、`notices`（`prices_stale` 依 code 提供「確認計價表」）、找不到單價的次數、日期範圍與分組在 URL、依分組的長條圖（附同資料的表格）、明細（cursor 分頁，未知單價顯示「未知單價」、預留顯示「預留」）、CSV 匯出（範圍超過 366 天時停用） | 完成 | `src/pages/costs` |
 | 計價表：內建與覆寫、確認日期與過期、確認內建計價表、新增或覆寫單價（已有單價時先確認舊價 → 新價）、移除覆寫（確認） | 完成 | `src/pages/costs/PricesPanel.tsx` |
 | 筆記模板列表（內建在前、版本、檢查數）、新增與複製（`from`） | 完成 | `src/pages/noteTemplates/NoteTemplatesPage.tsx` |
-| 筆記模板編輯（三欄）：模板內文、名稱、「閱讀」按鈕、可用變數、五項自動檢查（全部取消時送 `checks: []`）、另存新版本（422 顯示在內文旁）；內建唯讀只能複製；中欄連到 `note-default`、`note-map-default`；右欄用一部影音的筆記預覽已儲存的版本（`<id>@<版本>`），`409 no_note` 顯示說明 | 完成 | `NoteTemplateEditorPage.tsx` |
+| 筆記模板編輯（三欄）：模板內文、名稱、「閱讀」按鈕、可用變數、五項自動檢查（全部取消時送 `checks: []`）、另存新版本（422 顯示在內文旁）；內建唯讀只能複製；中欄連到 `note-default`、`note-map-default`；右欄用一部影音的筆記預覽已儲存的版本（`<id>@<版本>`），`409 no_note` 顯示說明（10.23 改成有修改時用草稿預覽、內文改用 CodeMirror） | 完成 | `NoteTemplateEditorPage.tsx` |
 | 設定的「通知」分區：端點列表（種類、主機／末四碼、事件、啟用狀態）、新增與編輯（四種 notifier 的欄位、密鑰只寫不讀、七個事件）、傳送測試通知與結果、停用與刪除（確認）、最近的通知（outbox） | 完成 | `src/pages/settings/NotificationsSection.tsx` |
 | 設定的「預算」分區：月預算、單部上限、提醒門檻、預算時區；本月花費、預留與剩餘 | 完成 | `src/pages/settings/BudgetSection.tsx` |
 | 影音詳情的「畫面」分頁：印樣（只看選中的／全部候選）、時間（點擊跳播）、章節、圖說、排除原因、張數摘要與不足提示 | 完成 | `src/pages/item/NotePanels.tsx` |
@@ -461,7 +461,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 12. **通知的密鑰**比照 UI-3b 決定 6：只放在元件 state，送出時立即清空（失敗也要重新輸入），不用 `useMutation`；編輯時沒有重新輸入就不送（後端保留原值，NOTIFY-R6），清空選填的非機密欄位送 `null`。ntfy 的 token 目前沒有「移除」的操作（PATCH 的 `null` 可以刪，UI 沒有做）。
 13. **還沒有產生端的事件**（`digest`、`alert`、`source.better_available`：DIG、OPS 告警、SRC-10 尚未實作）仍可勾選，旁邊標示「尚未會發出」（已過期：DIG、OPS、SRC-10 實作後這個標示已經移除）。
 14. **預算分區** PUT 只送 `monthly_usd`、`per_item_usd`、`warn_at_percent`、`timezone` 四個欄位（GET 另外回傳的 `month`、`spent_usd` 等送回去會 422）；空白送 `null`（不限）。時區用文字輸入，驗證交給後端。
-15. **筆記模板**：沒有單筆 GET，編輯頁從列表找；預覽只能用已儲存的版本（API 吃 `<id>@<版本>`），有未儲存的修改時提示。三欄的中欄只連到 Prompt 庫：沒有 API 把模板和 prompt 綁在一起（處理方案分別選）。可用變數與五項檢查寫在前端（`NOTE_CHECKS`、`TEMPLATE_VARS`，與 NOTE-R7、R11 一致；後端改了要同步）。
+15. **筆記模板**：沒有單筆 GET，編輯頁從列表找；預覽只能用已儲存的版本（API 吃 `<id>@<版本>`），有未儲存的修改時提示（10.23 第 7 點已改成用草稿預覽）。三欄的中欄只連到 Prompt 庫：沒有 API 把模板和 prompt 綁在一起（處理方案分別選）。可用變數與五項檢查寫在前端（`NOTE_CHECKS`、`TEMPLATE_VARS`，與 NOTE-R7、R11 一致；後端改了要同步）。
 16. **Markdown renderer 自寫**（`src/notes/markdown.ts`、`NoteMarkdown.tsx`）：輸出 React element，不用 `dangerouslySetInnerHTML`，不加相依；原始 HTML 一律是文字，連結只留 http／https／mailto，`![](…)` 外部圖片只顯示替代文字，wikilink 只留文字，標題層級往下移一層（頁面已有 h1）。只支援筆記會用到的語法（巢狀清單攤平成一層）。
 17. **筆記中的畫面嵌入**以檔名的 `frame_NNNN` 對應到 `GET /api/items/{id}/frames/{n}?size=thumb`（`internal/notes/render.go` 的 `%04d` 就是畫面編號）。待決：frames 重跑後版本會換，筆記若還沒重新產生，NNNN 可能指到新版本的另一張畫面（vault 內的檔案是 pin 住的舊版本，不受影響）；需要的話 API 要讓筆記帶畫面版本。
 18. **時間連結跳播**只在連結指向同一部影音時（比對主機、路徑與 YouTube 的 `v`；`t=` 或 `#t=`）攔截，其他連結開新分頁。
@@ -673,6 +673,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 影音詳情的「更多」選單（刪除移進去；DEL 的「The delete dialog explains the consequences and can be undone」） | 完成 | `src/components/MoreMenu.tsx`、`src/pages/item/ItemPage.tsx` |
 | 「改用更好的字幕重跑」的對話框顯示預估花費（SRC 的「The item page offers the upgrade with its estimated cost」） | 完成 | `src/pages/item/RerunDialog.tsx` |
 | 訂閱列表的「新內容」欄（SUB 的「The subscriptions page lists each subscription with its schedule」） | 完成（後端加 `new_items`，SUB-R14） | `internal/subscription/service.go`、`src/pages/subscriptions/SubscriptionsPage.tsx` |
+| 筆記模板編輯的即時預覽與未知變數的標示（NOTE 的「Editing a template shows a live preview on a real item」） | 完成（預覽 API 加草稿欄位，NOTE-R12） | `src/pages/noteTemplates/{NoteTemplateEditorPage.tsx,templateVars.ts}`、`src/pages/prompts/PromptCodeEditor.tsx` |
 | 總覽的系統告警與最近沒有送出的通知（OPS 的「Active alerts are shown on the overview」） | 完成（沒有改後端） | `src/pages/overview/AlertsSection.tsx` |
 | 「新增」抽屜的預估花費（ENTRY 的「Clicking the bookmarklet on a video page fills in the add drawer」）與貼上頻道時的「建立訂閱」（SUB 的「Pasting a channel address offers to subscribe」） | 完成 | `src/add/AddDrawer.tsx`、`src/pages/subscriptions/SubscriptionsPage.tsx`、`src/router.tsx` |
 
@@ -682,3 +683,4 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 4. **貼上頻道時的「建立訂閱」**：頻道（`subscribable`）在預覽中顯示「這是頻道。要追蹤新內容，請建立訂閱。」與「建立訂閱」按鈕，「開始處理」維持停用。按下後關閉抽屜，前往 `/subscriptions?subscribe=<貼上的網址>`，訂閱頁直接打開「新增訂閱」抽屜並帶入網址（抽屜的說明就是「同一個頻道只在一台實例上訂閱，避免重複處理。」），關閉時從網址移除參數。帶的是貼上的網址（resolve 對頻道回的 `url` 就是原網址）；SUB-R1 不接受的形式（例如 `/c/<名稱>`、UP 主空間）由建立時的 422 說明。Podcast feed 仍然可以勾選集數新增，另外多一個「建立訂閱」的文字按鈕（pages.md §2 寫「貼上頻道或 RSS 網址時」提示訂閱），不擋新增。訂閱頁的參數只做長度上限（2048），不在前端判斷格式。
 5. **總覽的告警讀既有的 API，沒有加到 `/api/overview`**：brief 原本要在 `OverviewResult` 加 `alerts`，但 OPS 規格的介面寫「`GET /api/system` 加上 `alerts`……總覽（LIB-09）讀這兩個欄位」，`system.go` 的註解也這樣寫；而且 `/api/overview` 是 `read` scope、`/api/system` 只有 owner，告警訊息含排程的錯誤與影音標題，放進 overview 會讓只有 `read` 的 token 也看得到。所以總覽另外讀 `GET /api/system` 的 `alerts`，與 `GET /api/notifications?state=dropped`（NOTIFY-R8 寫 `notify.dropped`「總覽顯示」）。兩個查詢各自每 5 分鐘重讀（告警每 15 分鐘才檢查一次），不跟著 SSE 失效、不重試；讀不到（403、501、其他錯誤）或兩者都是空的時整區隱藏。告警列出種類、訊息、開始時間與已持續多久（沿用設定「系統」的字串；`formatElapsed` 從 `OpsStatus` 搬到 `src/i18n`）。沒有送出的通知只列**建立時間在最近 24 小時內**的（API 沒有「何時 dropped」，只有 `created_at`；24 小時與 NOTIFY-R10 的去重視窗相同），最多 5 則，連到通知設定。「今天」裡的 `notify.dropped` 事件照舊保留（那是時間軸，這裡是狀態），兩處都會出現。
 6. **訂閱的「新內容」**：SUB 規格原本沒有定義這個數字，定為「這個訂閱建立、還沒有標為已讀、不在垃圾桶中的影音數」（SUB-R14、SUB 待決問題 S11）：讀過就歸零，與媒體庫的已讀狀態一致。後端在訂閱的每個回應加 `new_items`（列表用一次 `GROUP BY` 算出），場景是 `features/SUB-subscriptions.feature` 的「The subscription list counts the new items that are still unread」（`@M4`）。列表在「處理方案」與「狀態」之間多一欄「新內容」，數字不連到媒體庫（`GET /api/items` 沒有依訂閱篩選）。
+7. **筆記模板的草稿預覽與未知變數**：預覽 API 原本只接受已儲存的 `<id>@<版本>`。`POST /api/note-templates/:id/preview` 加選填的 `body`、`read_button`、`checks`（NOTE-R12、NOTE 待決問題 N23），伺服器套在模板的副本上、走與儲存相同的檢查（未知變數 422），不建立版本；場景是 `features/NOTE-notes.feature` 的「An unsaved draft can be previewed without creating a version」「An unsaved draft with an unknown variable is refused」（`@M3`）。編輯頁有修改時把草稿一起送出（停止輸入 500ms 後），說明改成「預覽的是編輯中的內容，還沒有儲存。」；沒有修改時照舊預覽 `<id>@<版本>`。內文從 textarea 改成 Prompt 庫的 CodeMirror 編輯器（`PromptCodeEditor` 多了 `scan` 參數，沒有複製一份）：筆記模板的掃描（`templateVars.ts`）只看 `{{ … }}` 中的欄位參照（`.Title`、`.Item.URL`），在 NOTE-R11 清單中的高亮、不在的加波浪底線並列出「不認識的變數 .X。」（與後端訊息相同）；`if`／`else`／`end`、函式、字串常數與註解不判斷，交給後端，寧可少標也不誤標。模板頁因此也載入 `prompt-editor.css`。

@@ -884,7 +884,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 用影音現行筆記的段落預覽模板（NOTE-R12）：不呼叫 LLM、不建立產出、不寫入檔案；影音沒有筆記時回 409 no_note */
+    /** 用影音現行筆記的段落預覽模板（NOTE-R12）：可帶尚未儲存的 body、read_button、checks；不呼叫 LLM、不建立產出與模板版本、不寫入檔案；影音沒有筆記時回 409 no_note */
     post: operations["note-templates-preview"];
     delete?: never;
     options?: never;
@@ -3426,10 +3426,16 @@ export interface components {
       url?: string;
     };
     PreviewNoteTemplateInputBody: {
+      /** @description 尚未儲存的模板內文；省略時用模板已儲存的內文 */
+      body?: string;
+      /** @description 尚未儲存的自動檢查清單 */
+      checks?: string[];
       /** @description 影音 ID 或代號 */
       item: string;
       /** @description 筆記的語言；沒有指定時用最近寫出的一份 */
       lang?: string;
+      /** @description 尚未儲存的「閱讀」按鈕 */
+      read_button?: string;
     };
     PreviewOutput: {
       /** @description 內容與寫入時的紀錄不同（或不是一般檔案、不在允許的目錄內）：不會被刪除 */

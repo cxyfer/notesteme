@@ -1964,13 +1964,17 @@
     "promptNote": "正文的写法由 Prompt 库中的笔记 prompt 决定；处理方案选用哪一个 prompt，与模板分开设置。",
     "previewTitle": "预览",
     "previewNote": "选一部已有笔记的音视频，用它的笔记内容套用模板；不调用 LLM，也不写入任何文件。",
-    "previewSaved": "预览的是已保存的 v{{version}}，还没包含未保存的修改。",
     "noNote": "这部音视频还没有笔记，换一部已经写好笔记的音视频。",
     "noChecks": "这个模板没有勾选自动检查。",
     "checksResult": "自动检查的结果",
     "checkOk": "通过：{{name}}",
     "checkFailed": "没有通过：{{name}}",
-    "previewResult": "预览结果"
+    "previewResult": "预览结果",
+    "previewDraft": "预览的是编辑中的内容，还没有保存。",
+    "issue": {
+      "undefined": "不认识的变量 {{name}}。",
+      "unclosed": "“{{open}}”没有对应的“{{close}}”。"
+    }
   },
   "search": {
     "intro": "在所有音视频的字幕中找出说到某段话的那一句。",

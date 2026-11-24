@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -7,6 +7,18 @@ import { item } from "../../test/fixtures";
 import { NOTE_MD, noteTemplate } from "../../test/m4Fixtures";
 import { apiError, json, mockApi, type MockHandler } from "../../test/mockApi";
 import { renderRoute, signIn } from "../../test/render";
+
+/** CodeMirror 的編輯區（contenteditable，由 aria-labelledby 取名「模板內文」） */
+function bodyEditor() {
+  return screen.getByRole("textbox", { name: "模板內文" });
+}
+
+/** 取代編輯器全部內容（jsdom 沒有排版，直接改 DOM 讓 CodeMirror 讀取變更；同 prompts.test.tsx） */
+async function typeBody(text: string) {
+  const el = bodyEditor();
+  el.textContent = text;
+  await waitFor(() => expect(el.textContent).toBe(text));
+}
 
 function tplApi(extra: Record<string, MockHandler> = {}) {
   return mockApi({
@@ -58,7 +70,7 @@ describe("筆記模板：編輯", () => {
     signIn();
     renderRoute("/note-templates/video-notes");
     await screen.findByRole("heading", { level: 1, name: "Video Notes 預設" });
-    expect((screen.getByLabelText("模板內文") as HTMLTextAreaElement).readOnly).toBe(true);
+    expect(bodyEditor().getAttribute("aria-readonly")).toBe("true");
     expect(screen.queryByRole("button", { name: "另存新版本" })).toBeNull();
   });
 
@@ -76,14 +88,18 @@ describe("筆記模板：編輯", () => {
     const user = userEvent.setup();
     const { container } = renderRoute("/note-templates/mine");
     await screen.findByRole("heading", { level: 1, name: "模板 mine" });
-    fireEvent.change(screen.getByLabelText("模板內文"), { target: { value: "{{.Secret}}" } });
-    await user.click(screen.getByRole("button", { name: "另存新版本" }));
+    await typeBody("{{.Secret}}");
+    // 儲存之前就標出不認識的變數（NOTE 的 @ui 場景），樣式是 cm-var--unknown（波浪底線）
     expect(await screen.findByText("不認識的變數 .Secret。")).toBeTruthy();
+    await waitFor(() =>
+      expect(bodyEditor().querySelector(".cm-var--unknown")?.textContent).toBe(".Secret"),
+    );
+    await user.click(screen.getByRole("button", { name: "另存新版本" }));
+    // 伺服器的 422 也顯示在內文旁
+    await waitFor(() => expect(screen.getAllByText("不認識的變數 .Secret。")).toHaveLength(2));
     await expectNoA11yViolations(container);
 
-    fireEvent.change(screen.getByLabelText("模板內文"), {
-      target: { value: noteTemplate("mine").body },
-    });
+    await typeBody(noteTemplate("mine").body);
     for (const box of screen.getAllByRole("checkbox"))
       if ((box as HTMLInputElement).checked) await user.click(box);
     await user.click(screen.getByRole("button", { name: "另存新版本" }));
@@ -117,5 +133,43 @@ describe("筆記模板：編輯", () => {
     expect(api.calls("POST", "/api/note-templates/mine%403/preview")).toHaveLength(1);
     await user.selectOptions(picker, "item-2");
     expect(await screen.findByText(/這部影音還沒有筆記/)).toBeTruthy();
+  });
+
+  it("有未儲存的修改時用草稿預覽（body、read_button、checks），不另存版本", async () => {
+    const api = tplApi({
+      "POST /api/note-templates/{id}/preview": () => ({ markdown: NOTE_MD, checks: [] }),
+    });
+    signIn();
+    const user = userEvent.setup();
+    renderRoute("/note-templates/mine");
+    await screen.findByRole("heading", { level: 1, name: "模板 mine" });
+    const picker = screen.getByLabelText("影音");
+    await waitFor(() =>
+      expect(within(picker).getByRole("option", { name: "影片 1" })).toBeTruthy(),
+    );
+    await user.selectOptions(picker, "item-1");
+    await waitFor(() =>
+      expect(api.calls("POST", "/api/note-templates/mine%403/preview")).toHaveLength(1),
+    );
+    expect(
+      JSON.parse(String(api.calls("POST", "/api/note-templates/mine%403/preview")[0]!.init.body)),
+    ).toEqual({
+      item: "item-1",
+    });
+
+    await typeBody("# 草稿 {{.Title}}\n");
+    expect(await screen.findByText("預覽的是編輯中的內容，還沒有儲存。")).toBeTruthy();
+    await waitFor(
+      () => expect(api.calls("POST", "/api/note-templates/mine%403/preview")).toHaveLength(2),
+      { timeout: 3000 },
+    );
+    const draft = JSON.parse(
+      String(api.calls("POST", "/api/note-templates/mine%403/preview")[1]!.init.body),
+    );
+    expect(draft.item).toBe("item-1");
+    expect(draft.body).toBe("# 草稿 {{.Title}}\n");
+    expect(draft).toHaveProperty("read_button");
+    expect(Array.isArray(draft.checks)).toBe(true);
+    expect(api.calls("PATCH", "/api/note-templates/mine")).toHaveLength(0);
   });
 });

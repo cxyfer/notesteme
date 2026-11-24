@@ -1964,13 +1964,17 @@
     "promptNote": "內文的寫法由 Prompt 庫中的筆記 prompt 決定；處理方案選用哪一個 prompt，與模板分開設定。",
     "previewTitle": "預覽",
     "previewNote": "選一部已有筆記的影音，用它的筆記內容套用模板；不呼叫 LLM，也不寫入任何檔案。",
-    "previewSaved": "預覽的是已儲存的 v{{version}}，還沒包含未儲存的修改。",
     "noNote": "這部影音還沒有筆記，換一部已經寫好筆記的影音。",
     "noChecks": "這個模板沒有勾選自動檢查。",
     "checksResult": "自動檢查的結果",
     "checkOk": "通過：{{name}}",
     "checkFailed": "沒有通過：{{name}}",
-    "previewResult": "預覽結果"
+    "previewResult": "預覽結果",
+    "previewDraft": "預覽的是編輯中的內容，還沒有儲存。",
+    "issue": {
+      "undefined": "不認識的變數 {{name}}。",
+      "unclosed": "「{{open}}」沒有對應的「{{close}}」。"
+    }
   },
   "search": {
     "intro": "在所有影音的字幕中找出說到某段話的那一句。",

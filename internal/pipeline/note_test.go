@@ -265,7 +265,7 @@ func TestNoteTemplatesAndChecks(t *testing.T) {
 	fake := &noteLLM{note: []string{goodNote}}
 	r, it := newNoteRig(t, fake, 600)
 	ctx := context.Background()
-	if _, err := r.p.PreviewNoteTemplate(ctx, notes.BuiltinTemplateID, it.ID, ""); !errors.Is(err, ErrNoNote) {
+	if _, err := r.p.PreviewNoteTemplate(ctx, notes.BuiltinTemplateID, it.ID, "", nil); !errors.Is(err, ErrNoNote) {
 		t.Errorf("沒有筆記時預覽：%v", err)
 	}
 	seedNoteInputs(t, r, it)
@@ -296,7 +296,7 @@ func TestNoteTemplatesAndChecks(t *testing.T) {
 	// 預覽：用現行筆記的 sections 套用內建模板，不呼叫模型、不建立產出。
 	before, _ := r.st.Read().CurrentArtifacts(ctx, it.ID, KindNote)
 	calls, _ := fake.count()
-	pv, err := r.p.PreviewNoteTemplate(ctx, notes.BuiltinTemplateID, "yt:abc123xxxxx", "")
+	pv, err := r.p.PreviewNoteTemplate(ctx, notes.BuiltinTemplateID, "yt:abc123xxxxx", "", nil)
 	if err != nil || !notes.Passed(pv.Checks) || strings.Contains(pv.Markdown, "補充說明") || !strings.Contains(pv.Markdown, "Toolchain diagram") {
 		t.Fatalf("preview = %+v %v", pv, err)
 	}
@@ -304,10 +304,10 @@ func TestNoteTemplatesAndChecks(t *testing.T) {
 	if n, _ := fake.count(); n != calls || len(after) != len(before) || after[0].ID != before[0].ID {
 		t.Errorf("預覽不該呼叫模型或建立產出：calls %d→%d", calls, n)
 	}
-	if _, err := r.p.PreviewNoteTemplate(ctx, "nope", it.ID, ""); !errors.Is(err, ErrTemplateNotFound) {
+	if _, err := r.p.PreviewNoteTemplate(ctx, "nope", it.ID, "", nil); !errors.Is(err, ErrTemplateNotFound) {
 		t.Errorf("找不到模板：%v", err)
 	}
-	if _, err := r.p.PreviewNoteTemplate(ctx, notes.BuiltinTemplateID, "yt:zzz999xxxxx", ""); !errors.Is(err, store.ErrNotFound) {
+	if _, err := r.p.PreviewNoteTemplate(ctx, notes.BuiltinTemplateID, "yt:zzz999xxxxx", "", nil); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("找不到影音：%v", err)
 	}
 
@@ -754,7 +754,7 @@ func TestItemNoteErrors(t *testing.T) {
 	if _, err := r.p.ItemNote(ctx, it.ID, ""); !errors.Is(err, ErrInTrash) {
 		t.Errorf("垃圾桶中：%v", err)
 	}
-	if _, err := r.p.PreviewNoteTemplate(ctx, notes.BuiltinTemplateID, it.ID, ""); !errors.Is(err, ErrInTrash) {
+	if _, err := r.p.PreviewNoteTemplate(ctx, notes.BuiltinTemplateID, it.ID, "", nil); !errors.Is(err, ErrInTrash) {
 		t.Errorf("預覽垃圾桶中的影音：%v", err)
 	}
 }
