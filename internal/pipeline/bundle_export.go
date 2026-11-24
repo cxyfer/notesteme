@@ -331,10 +331,35 @@ func bundleFrameName(framesID string, n int) string { return fmt.Sprintf("%s-%03
 // ---- 來源紀錄的清理（BND-R2）----
 
 var (
-	secretKey   = regexp.MustCompile(`(?i)(^|[_-])(api[_-]?key|apikey|token|secret|password|passwd|authorization|auth|master[_-]?key|credentials?|bearer)($|[_-])`)
 	cookieKey   = regexp.MustCompile(`(?i)cookie`)
 	windowsPath = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
 )
+
+// secretKeyParts 是鍵名正規化（小寫、去掉 _ 與 -）之後，含有就視為 secret 的子字串（BND N11，安全修補 B 起改成子字串比對：
+// accessToken、private_key、x-api-key 這類寫法原本會漏掉）。
+var secretKeyParts = []string{"apikey", "accesskey", "privatekey", "secretkey", "masterkey", "signingkey", "token", "secret",
+	"password", "passwd", "passphrase", "authorization", "credential", "bearer", "sessionid", "signature"}
+
+// secretKeyExact 只在整個鍵名（正規化後）相同時才視為 secret：當子字串會誤刪 author、needs_auth 等合法欄位。
+var secretKeyExact = []string{"auth", "pass", "pwd", "sid"}
+
+// isSecretKey 回報鍵名像不像 secret。計數欄位（max_tokens、input_tokens 這類以 tokens 結尾的）不算。
+func isSecretKey(k string) bool {
+	n := strings.ToLower(strings.NewReplacer("_", "", "-", "", ".", "", " ", "").Replace(k))
+	if slices.Contains(secretKeyExact, n) {
+		return true
+	}
+	for _, part := range secretKeyParts {
+		if !strings.Contains(n, part) {
+			continue
+		}
+		if part == "token" && strings.HasSuffix(n, "tokens") && strings.Count(n, "token") == 1 {
+			continue
+		}
+		return true
+	}
+	return false
+}
 
 // sanitizeProvenance 去掉來源紀錄中的 secrets 與本機路徑：像 secret 的欄位刪除；cookie 只留布林值 cookies_used；
 // 路徑只留檔名；網址去掉帳密與 query，指向本機或私有網段的網址整個刪除。沒有可以留下的內容時回傳 {}。
@@ -370,7 +395,7 @@ func sanitizeValue(v any) any {
 			case cookieKey.MatchString(k):
 				sawCookie = true
 				cookies = cookies || truthy(x)
-			case secretKey.MatchString(k):
+			case isSecretKey(k):
 			default:
 				if s, drop := sanitizeOne(x); !drop {
 					out[k] = s
@@ -477,13 +502,13 @@ func (p *Pipeline) leakNeedles(ctx context.Context) (paths, secrets []string, er
 		add(home)
 	}
 	for k, v := range p.env {
-		if len(v) >= 8 && (secretKey.MatchString(k) || cookieKey.MatchString(k)) {
+		if len(v) >= 8 && (isSecretKey(k) || cookieKey.MatchString(k)) {
 			secrets = append(secrets, v)
 		}
 	}
 	for _, kv := range os.Environ() {
 		k, v, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(k, "NOTESTEME_") && len(v) >= 8 && (secretKey.MatchString(k) || cookieKey.MatchString(k)) {
+		if strings.HasPrefix(k, "NOTESTEME_") && len(v) >= 8 && (isSecretKey(k) || cookieKey.MatchString(k)) {
 			secrets = append(secrets, v)
 		}
 	}

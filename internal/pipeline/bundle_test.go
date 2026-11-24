@@ -520,6 +520,10 @@ func TestSanitizeProvenance(t *testing.T) {
 		`{"p":"~/x/y.txt","q":"\\\\server\\share\\f.txt","r":"relative/ok"}`:                                 `{"p":"y.txt","q":"f.txt","r":"relative/ok"}`,
 		`{"n":[{"api_key":"k","x":"/a/b"}]}`:                                                                 `{"n":[{"x":"b"}]}`,
 		`{"input_tokens":3,"max_tokens":4}`:                                                                  `{"input_tokens":3,"max_tokens":4}`,
+		// 安全修補 B：審查列出的漏網鍵名（camelCase、*_key、*Token）。
+		`{"accessToken":"AAA","hubToken":"BBB","private_key":"CCC","access_key":"DDD","sessionId":"EEE","api_key":"FFF","refreshToken":"GGG","x-api-key":"HHH","clientSecret":"III","db.password":"JJJ","ok":1}`: `{"ok":1}`,
+		// 合法的欄位要留下：計數、快取鍵、重點、作者、needs_auth。
+		`{"max_input_tokens":1,"output_tokens":2,"cache_key":"c","key_points":3,"author":"a","needs_auth":false,"keyframes":4}`: `{"author":"a","cache_key":"c","key_points":3,"keyframes":4,"max_input_tokens":1,"needs_auth":false,"output_tokens":2}`,
 	}
 	for in, want := range cases {
 		got := string(sanitizeProvenance(json.RawMessage(in)))
@@ -564,7 +568,7 @@ func FuzzSanitizeProvenance(f *testing.F) {
 			switch x := v.(type) {
 			case map[string]any:
 				for k, y := range x {
-					if secretKey.MatchString(k) || (cookieKey.MatchString(k) && k != "cookies_used") {
+					if isSecretKey(k) || (cookieKey.MatchString(k) && k != "cookies_used") {
 						t.Fatalf("留下了 %q：%s", k, out)
 					}
 					walk(y)
@@ -871,6 +875,20 @@ func replaceFrame(files map[string][]byte, d []byte) {
 	for p := range files {
 		if strings.HasSuffix(p, "-001.jpg") {
 			files[p] = d
+		}
+	}
+}
+
+func TestIsSecretKey(t *testing.T) {
+	for k, want := range map[string]bool{
+		"api_key": true, "apiKey": true, "X-Api-Key": true, "accessToken": true, "access_key": true, "private_key": true,
+		"refresh-token": true, "client_secret": true, "PASSWORD": true, "auth": true, "Authorization": true, "credentials": true,
+		"sessionId": true, "token": true, "tokens_token": true, "NOTESTEME_HUB_TOKEN": true, "NOTESTEME_ANTHROPIC_API_KEY": true,
+		"max_tokens": false, "input_tokens": false, "max_input_tokens": false, "cache_key": false, "key_points": false,
+		"author": false, "needs_auth": false, "key": false, "model": false, "NOTESTEME_MAX_TOKENS": false,
+	} {
+		if got := isSecretKey(k); got != want {
+			t.Errorf("isSecretKey(%q) = %v，預期 %v", k, got, want)
 		}
 	}
 }
