@@ -24,6 +24,23 @@ Feature: Sign-in and tokens
     Then the response status is 200
     And the data directory does not contain "correct horse"
 
+  @M1 @AUTH-01 @AUTH-R2 @cli
+  Scenario: The password can be reset from the command line
+    Given the environment variable "NOTESTEME_PASSWORD" is "correct horse"
+    When the server starts
+    And someone signs in with the password "correct horse"
+    Then the response status is 200
+    When the server shuts down gracefully
+    And the environment variable "NEW_PASSWORD" is "battery staple"
+    And the owner runs "notesteme password set --password-env NEW_PASSWORD"
+    Then the command exits with 0
+    And the command output contains "已更新登入密碼"
+    When the server starts
+    And someone signs in with the password "correct horse"
+    Then the response status is 401
+    When someone signs in with the password "battery staple"
+    Then the response status is 200
+
   @M1 @AUTH-01 @AUTH-R3
   Scenario: The server refuses to start without any password
     Given the environment variable "NOTESTEME_PASSWORD" is not set

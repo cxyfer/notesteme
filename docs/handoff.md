@@ -1,6 +1,6 @@
 # 交接：開發進度（M1～M5 與 Web UI）
 
-> 更新：2026-11-24。M1～M5 的後端、Client Web UI（UI-0～UI-8）與 Hub Web UI 都已推送到 master；943 個自動化場景（預設 tag 313＋`@M3,@M4,@M5` 630）全部通過（本機驗證）。安全審查的 16 項發現已修補（第 1 節「安全修補 A／B／C」）。`@manual`、`@pending-m0`、真實樣本與真實服務的驗收屬 owner，做不到的清單在第 2 節。GitHub Actions 自 2026-11-23 約 16:30 起因帳務問題（付款失敗或額度上限）無法啟動 job，所有驗證都在本機做。依 owner 的 /goal（MVP 階段不再開 PR）每個切片完成後直接推送 master。2026-11-22 前的 PR #1～#19（LOCAL、PODCAST、ESTIMATE、M2 S0～S2、S6a 等）已合併，之後的切片見 `git log`。**接手請先讀第 2 節的「2026-11-24 現況」。**
+> 更新：2026-11-24。M1～M5 的後端、Client Web UI（UI-0～UI-8）與 Hub Web UI 都已推送到 master；944 個自動化場景（預設 tag 314＋`@M3,@M4,@M5` 630）全部通過（本機與 CI 驗證）。安全審查的 16 項發現已修補（第 1 節「安全修補 A／B／C」）。`@manual`、`@pending-m0`、真實樣本與真實服務的驗收屬 owner，做不到的清單在第 2 節。GitHub Actions 自 2026-11-23 約 16:30 起因帳務問題（付款失敗或額度上限）無法啟動 job，所有驗證都在本機做。依 owner 的 /goal（MVP 階段不再開 PR）每個切片完成後直接推送 master。2026-11-22 前的 PR #1～#19（LOCAL、PODCAST、ESTIMATE、M2 S0～S2、S6a 等）已合併，之後的切片見 `git log`。**接手請先讀第 2 節的「2026-11-24 現況」。**
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -523,7 +523,7 @@
   - SRC-R4：`runFallback` 在 `language_mismatch` 之後依序檢查 `music_only`（>80% 的 cue 只有音樂標記）→ `low_coverage`（cue 聯集 <50% 片長）→ `repetition`（>30% 重複句，少於 5 句不判斷），不通過記為 `rejected` 並改用下一個來源（`internal/pipeline/quality.go`）。只套用在 fallback 來源（平台字幕軌不檢查）；涵蓋率的分母：Groq 用它回報的音訊長度，其他用影音片長，不知道就略過。門檻是常數、沒有開放設定；transcript 的 `impl_version` 沒有提升。Groq 也套用：已付費的轉錄被拒絕時步驟仍失敗，重跑會再付費（待 owner 決定是否排除 ASR）。見 SRC 待決問題「SRC-R4 其餘品質檢查與 SRC-R13 幻覺過濾」。
   - SRC-R13：`groq.Transcribe` 移除 `no_speech_prob > 0.6` 且 `compression_ratio > 2.4` 的 segment；`transcribeASR` 在接回時間軸之後把連續 3 次以上相同的句子只留一句（單檔與切塊都套用）。
   - LLM 估算：`POST /api/estimate` 的 `llm_usd` 用片長推估資料區塊（每秒 6 token），依 COST-R5 與 `cost.Service.Estimate`（含價格覆寫）估算各付費 LLM 步驟（`internal/pipeline/estimate_llm.go`）；不知道時 `null`，沒有付費 LLM 步驟時 `0`。reprobe 的 `estimate_usd` 改用 `EstimateRerun(from=transcript)`；有無法估算的任務**或沒有任何付費任務**時維持 `null`（場景與訊息「目前無法估算金額」因此不變）。`RerunEstimate` 多了 `Priced`。OpenAPI 與 `schema.d.ts` 只改了說明文字。見 ING 待決問題、SRC R10、COST C23。
-  - 規格整理：SRC 第 91／125／130 行與 R10、BND N21、§6 的 SRC「還沒做」條目已改或劃掉。其他 grep 到的「還沒實作」屬真實未做（`notesteme password set`、vault 的 secrets 憑證）或是條件式的歷史敘述，沒有動。
+  - 規格整理：SRC 第 91／125／130 行與 R10、BND N21、§6 的 SRC「還沒做」條目已改或劃掉。其他 grep 到的「還沒實作」屬真實未做（vault 的 secrets 憑證；`notesteme password set` 在 D3 之後的收尾補上，見 AUTH 待決問題 A28）或是條件式的歷史敘述，沒有動。
   - 數字：預設 tag 313 個、`@M1,@M2,@M3,@M4,@M5` 943 個場景全部 passed（沒有新增場景，`passing.txt` 沒動）；涵蓋率 subtitle 95.8%、pipeline 84.7%、queue 89.2%、netguard 93.6%；`go test -p 2 ./internal/... ./cmd/... ./features/...` 全過；`-race` 只跑改過的 pipeline、`source/groq`、api，全過；`check_steps`、`check_trace` 通過；沒有改前端程式（UI 只在 `estimate_usd` 為 null 時顯示「無法預估費用」，沒有顯示 probe 原因與 `/api/estimate`）。
   - 沒實測：真實的 Groq `verbose_json`（`no_speech_prob`、`compression_ratio` 欄位與數值）、真實的 Supadata 結果、真實語音樣本的門檻；只用假服務與 fixture。
   - `@pending-m0` 盤點（14 個場景、20 個 example；`-godog.tags='@pending-m0'`，標籤都沒有拿掉，由 owner 決定）：
@@ -548,12 +548,18 @@
     結論：20 個 example 中 19 個在本機通過，只剩 COR 一個因相似度算法還沒定而失敗。全部都還需要 M0 實測或真實服務，才能決定是否拿掉 `@pending-m0`。
 
 
+- **收尾 D4：`notesteme password set`、規格文字掃描（2026-11-24）**：
+  - 掃描：grep 規格與 ADR 裡的「還沒實作」類文字並逐條對照程式。AUTH 的介面列了 `notesteme password set`，程式裡沒有（UI-3b 當時只補了設定頁的 API）——這是唯一符合「有規則或介面、本機可驗證、沒有記為延後」的缺口，已補上。`docs/ui/README.md` 的三處過期文字（`/api/auth/sessions` 尚未實作、事件「尚未會發出」、`password set` 還沒實作）已更正。其餘是真的沒做或沒有規格：vault 的 `vault:<id>` secrets 憑證（沒有規則）、`summary` 步驟（`plannedStages`，沒有規格）。
+  - 實作：`auth.Service.SetPassword`（不需要目前的密碼、撤銷所有 session）、`app.SetPassword`（和 `secrets` 一樣取資料目錄的鎖，serve 執行中時失敗，不需要 master key）、`internal/cli/password.go`（`password set --password-env <變數> | --password-stdin`，或終端機提示輸入兩次；不接受命令列參數、不能和 `--server` 並用、密碼不寫進任何輸出）。
+  - 驗證：三層單元測試（auth、app、cli，含 serve 執行中被拒、stdin 的 CRLF、提示輸入不一致、資料目錄不存在）；新場景 AUTH `The password can be reset from the command line`（預設 tag 313 → 314，`passing.txt` 加一行）。
+  - 決定（AUTH 待決問題 A28，待追認）：直接改資料目錄、不需要舊密碼、撤銷全部 session、新密碼只接受環境變數／stdin／終端機。
+
 ## 2. 下一步
 
 ### 2026-11-24 現況
 
 - **已完成並推送（master）**：M1、M2（後端與場景）、M3（SPB、CHAP、FRM、NOTE、VAULT、GEM）、M4（NOTIFY、SUB、COST、BATCH、DIG、SRC-10、SRCH、GLOS、BND、AUTH、OPS、ENTRY、LIB-08/09）、M5（HACC、HREP、HMCP、HSHR、Postgres＋S3 backend、`deploy/docker/compose.hub.yaml`）、UI-0～UI-8、Hub Web UI（`web/hub`）。三份安全修補（Hub、bundle／分享、Client）已合併。
-- **收尾切片（已完成並推送）**：盤點出規格有寫、沒有場景守住的項目，由三個切片補完——D1：`POST /api/tasks/{id}/retry`／`cancel`（PIPE）、NFR-REL-2 讀取時比對 sha256、LIB-R4 `group_by`、修好不穩定測試 `TestMCPLoopbackRechecksPermissions`；D2：VAULT-R12 的 git vault 刪除、SRC-R11 文字語言偵測與 `mixed`（`@wip` 場景已拿掉 `@wip`）、SRC-R6「現在改用語音轉錄」動作、yt-dlp 每日排程更新（OPS-R6／R7）；D3：SRC-R4 的 `low_coverage`／`repetition`／`music_only`、SRC-R13 的 Whisper 幻覺過濾、ING-08 的 `llm_usd` 與 reprobe 的 `estimate_usd`（SRC-10 R10）、規格裡過期的「還沒做」文字、`@pending-m0` 的盤點（14 個場景）。場景數現在是預設 tag（`@M1,@M2`）313＋`@M3,@M4,@M5` 630 = 943，全部 passed。摘要見第 1 節末尾的「收尾 D1／D2／D3」。
+- **收尾切片（已完成並推送）**：盤點出規格有寫、沒有場景守住的項目，由四個切片補完——D1：`POST /api/tasks/{id}/retry`／`cancel`（PIPE）、NFR-REL-2 讀取時比對 sha256、LIB-R4 `group_by`、修好不穩定測試 `TestMCPLoopbackRechecksPermissions`；D2：VAULT-R12 的 git vault 刪除、SRC-R11 文字語言偵測與 `mixed`（`@wip` 場景已拿掉 `@wip`）、SRC-R6「現在改用語音轉錄」動作、yt-dlp 每日排程更新（OPS-R6／R7）；D3：SRC-R4 的 `low_coverage`／`repetition`／`music_only`、SRC-R13 的 Whisper 幻覺過濾、ING-08 的 `llm_usd` 與 reprobe 的 `estimate_usd`（SRC-10 R10）、規格裡過期的「還沒做」文字、`@pending-m0` 的盤點（14 個場景）；D4：`notesteme password set`（AUTH 介面列了卻一直沒實作）與規格文字掃描。場景數現在是預設 tag（`@M1,@M2`）314＋`@M3,@M4,@M5` 630 = 944，全部 passed。摘要見第 1 節末尾的「收尾 D1／D2／D3／D4」。
 - **owner 要做的事（我做不到）**：
   1. **GitHub Actions**：repo 公開之後（2026-11-24）CI 才真的跑起來，第一次完整執行找到兩個問題，都已修正：
      - `go test -race ./...` 在 GitHub 的 runner 上超過每個測試程式 30 分鐘的上限，`features` 被中止（05:15 的那次還在 27.5 分鐘通過，之後測試變多）。CI 改成平行的四個 job：`go`（其餘套件，`-race`，逾時 60 分鐘）、`bdd`（`./features`，`-race`，60 分鐘）、`bdd-extra`（`@M3,@M4,@M5`，不加 `-race`，45 分鐘；在 runner 上約 3 分鐘）、`coverage`（涵蓋率門檻）。

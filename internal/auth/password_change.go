@@ -61,3 +61,24 @@ func (s *Service) ChangePassword(ctx context.Context, current, newPassword, ip, 
 	s.log.InfoContext(ctx, "已修改登入密碼", "revoked_sessions", n)
 	return nil
 }
+
+// SetPassword 直接設定登入密碼，不需要目前的密碼（`notesteme password set`，AUTH-R2）。
+//
+// 只給持有資料目錄鎖的呼叫端（CLI）使用：能開資料目錄就等於擁有 owner 的權限，所以忘記密碼時用它重設。
+// DB 還沒有密碼時也可以設定（之後 NOTESTEME_PASSWORD 被忽略，AUTH-R2）。新密碼只要求非空（和 EnsurePassword 一致）。
+// 成功後撤銷所有 session，回傳撤銷的數量。
+func (s *Service) SetPassword(ctx context.Context, newPassword string) (int64, error) {
+	if newPassword == "" {
+		return 0, ErrEmptyNewPassword
+	}
+	h, err := hashPassword(newPassword, s.params)
+	if err != nil {
+		return 0, err
+	}
+	n, err := s.store.ReplacePasswordHash(ctx, settingPasswordHash, h, "")
+	if err != nil {
+		return 0, err
+	}
+	s.log.InfoContext(ctx, "已用命令列設定登入密碼", "revoked_sessions", n)
+	return n, nil
+}

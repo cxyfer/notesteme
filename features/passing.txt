@@ -18,6 +18,7 @@ AUTH-access.feature: Unauthenticated requests are refused [example 3]
 AUTH-access.feature: Unauthenticated requests are refused [example 4]
 AUTH-access.feature: Unauthenticated requests are refused [example 5]
 AUTH-access.feature: The first start takes the password from the environment
+AUTH-access.feature: The password can be reset from the command line
 AUTH-access.feature: The server refuses to start without any password
 AUTH-access.feature: The session cookie is locked down
 AUTH-access.feature: Signing out ends the session

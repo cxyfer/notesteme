@@ -245,6 +245,8 @@ func parse(args []string) (*plan, error) {
 		return parseSubs(args[1:])
 	case "secrets":
 		return parseSecrets(args[1:])
+	case "password":
+		return parsePassword(args[1:])
 	case "mcp":
 		return parseMCP(args[1:])
 	case "config":
@@ -282,6 +284,7 @@ const usageText = `用法：notesteme <子命令> [旗標]
   subs ls | add <url> | show <id> | preview <id|url> | check <id> | rm <id> | import <file>
                                         訂閱（add：--profile、--schedule、--backfill none|recent:<N>|all；M4）
   secrets rotate-key|reset              管理 master key 與 secrets
+  password set --password-env <變數> | --password-stdin   重設登入密碼（直接改資料目錄，serve 要先停止）
   frames ls <item> [--all] | get <item> <n> -o <file>  關鍵畫面（M3）
   note show <item> [--lang] [--format md|json]         筆記（預設輸出 Markdown）
   search <query> [--lang <l>] [--limit <n>]            字幕全文搜尋（M4）

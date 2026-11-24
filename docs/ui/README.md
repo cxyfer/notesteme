@@ -398,7 +398,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 
 （2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
 
-1. **唯一的後端改動：`POST /api/auth/password`**。AUTH-R2 要求「修改密碼要透過設定頁」，但沒有路由，`notesteme password set` 也還沒實作，沒有替代方案。只有 owner（token 即使有 `admin` 也 403）、與登入共用鎖定（AUTH-R6）、目前的密碼錯誤回 422 `invalid_password`（不用 401，避免被當成 session 失效而導到登入頁）、新密碼只要求非空、成功後在同一個交易中撤銷目前以外的所有 session。細節記在 AUTH 規格的待決問題。其他缺口（測試連線、cookie 狀態、工具版本、磁碟用量、匯入 dry-run、頻道列表）都**不補後端**，UI 明確寫「後端還沒有提供」；有排程的寫「M3／M4 起提供」，沒有排程的不捏造里程碑。
+1. **唯一的後端改動：`POST /api/auth/password`**。AUTH-R2 要求「修改密碼要透過設定頁」，但沒有路由，`notesteme password set` 當時還沒實作（現在已實作，見 AUTH 待決問題 A28），沒有替代方案。只有 owner（token 即使有 `admin` 也 403）、與登入共用鎖定（AUTH-R6）、目前的密碼錯誤回 422 `invalid_password`（不用 401，避免被當成 session 失效而導到登入頁）、新密碼只要求非空、成功後在同一個交易中撤銷目前以外的所有 session。細節記在 AUTH 規格的待決問題。其他缺口（測試連線、cookie 狀態、工具版本、磁碟用量、匯入 dry-run、頻道列表）都**不補後端**，UI 明確寫「後端還沒有提供」；有排程的寫「M3／M4 起提供」，沒有排程的不捏造里程碑。
 2. **分區**：依 pages.md §12 的順序，另外加一個「匯出與匯入」分區（`config`），不併進「系統」：兩者的權限與風險不同（匯入會取代處理方案）。詞彙表放在設定頁的「詞彙表」分區（pages.md §12 已列），不另開 `/channels/:id/glossary`。
 3. **未知分區**導到第一個分區（`<Navigate replace>`，不改 `router.tsx`）；原本 UI-0 的「顯示找不到」測試一併改掉。
 4. **窄螢幕**：分區清單在 767px 以下隱藏，改成頂部的 `<select>`（切換時導到該分區）。
@@ -446,7 +446,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 
 1. **不改後端**：沒有新增路由或欄位，OpenAPI 與 `schema.d.ts` 沒有變動。
 2. **介面語言**：brief 寫的 zh-TW／ja 與 repo 不符；照 repo 的 `zh-Hant`、`zh-Hans`、`en`。
-3. **scope**：沒有查詢目前身分與 scope 的 API（`/api/auth` 只有 login、logout、password，`/api/auth/sessions` 尚未實作）。Web UI 以 owner 的 session 登入，有全部權限，所以不依 scope 隱藏按鈕；token 才有 scope 限制，萬一收到 403 由 `ErrorCallout` 顯示。之後有 `GET /api/auth/me` 之類的路由時再依 scope 停用按鈕。
+3. **scope**：沒有查詢目前身分與 scope 的 API（`/api/auth` 只有 login、logout、password，`/api/auth/sessions` 當時尚未實作，AUTH 切片已補上）。Web UI 以 owner 的 session 登入，有全部權限，所以不依 scope 隱藏按鈕；token 才有 scope 限制，萬一收到 403 由 `ErrorCallout` 顯示。之後有 `GET /api/auth/me` 之類的路由時再依 scope 停用按鈕。
 4. **金額**：API 回傳的是浮點數美元（micro-USD ÷ 1e6），前端不自己加總，只顯示伺服器算好的總額、預留與預計。頂部一行與預算分區依 COST 規格用 2 位小數；明細的單筆金額常小於 1 美分，沿用 `formatUsd`（小於 $0.01 時最多 4 位，**偏離規格「四捨五入到兩位」**）；單價最多 6 位。幣別符號用 `Intl`（繁中、簡中是 `US$`），與 UI-2 的 `formatUsd` 一致，不硬寫 `$`。`state: unknown` 顯示「未知單價」，不顯示 `$0.00`；`unknown_calls` 在頂部說明並連到計價表。
 5. **訂閱的試跑預覽不在開頁時自動執行**：預覽會連外並消耗 rate limit（SUB-R10、handoff 給 UI 的提醒），開啟頁面或抽屜時不送；按過一次「試跑預覽」之後，修改設定才以 800ms debounce 即時更新（pages.md 的「即時更新」），新請求取消舊的，429 不自動重試。新增時網址要先像 http(s) 網址才能預覽。
 6. **訂閱詳情是頁面，不是抽屜**：pages.md §5 畫的是抽屜，§2 的路由表有 `/subscriptions/:id`；做成獨立頁面（可加書籤，條目列表也放得下）。
@@ -456,7 +456,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 10. **CSV 匯出**是 `<a download>` 的 GET；錯誤時瀏覽器會下載到 JSON，所以前端先檢查範圍（1～366 天）不合法時不顯示連結。匯出用回應中的 `from`、`to`（伺服器依預算時區決定的預設值），不用瀏覽器的時區計算本月。
 11. **計價表放在成本頁**（`#prices`），`prices_stale` 的「調整單價」捲到那裡；pages.md §11 沒有畫計價表，COST-03 與 COST-R13 的動作需要它。覆寫已有的單價時先在對話框內顯示「舊價 → 新價」，再按一次「確認覆寫」。
 12. **通知的密鑰**比照 UI-3b 決定 6：只放在元件 state，送出時立即清空（失敗也要重新輸入），不用 `useMutation`；編輯時沒有重新輸入就不送（後端保留原值，NOTIFY-R6），清空選填的非機密欄位送 `null`。ntfy 的 token 目前沒有「移除」的操作（PATCH 的 `null` 可以刪，UI 沒有做）。
-13. **還沒有產生端的事件**（`digest`、`alert`、`source.better_available`：DIG、OPS 告警、SRC-10 尚未實作）仍可勾選，旁邊標示「尚未會發出」。
+13. **還沒有產生端的事件**（`digest`、`alert`、`source.better_available`：DIG、OPS 告警、SRC-10 尚未實作）仍可勾選，旁邊標示「尚未會發出」（已過期：DIG、OPS、SRC-10 實作後這個標示已經移除）。
 14. **預算分區** PUT 只送 `monthly_usd`、`per_item_usd`、`warn_at_percent`、`timezone` 四個欄位（GET 另外回傳的 `month`、`spent_usd` 等送回去會 422）；空白送 `null`（不限）。時區用文字輸入，驗證交給後端。
 15. **筆記模板**：沒有單筆 GET，編輯頁從列表找；預覽只能用已儲存的版本（API 吃 `<id>@<版本>`），有未儲存的修改時提示。三欄的中欄只連到 Prompt 庫：沒有 API 把模板和 prompt 綁在一起（處理方案分別選）。可用變數與五項檢查寫在前端（`NOTE_CHECKS`、`TEMPLATE_VARS`，與 NOTE-R7、R11 一致；後端改了要同步）。
 16. **Markdown renderer 自寫**（`src/notes/markdown.ts`、`NoteMarkdown.tsx`）：輸出 React element，不用 `dangerouslySetInnerHTML`，不加相依；原始 HTML 一律是文字，連結只留 http／https／mailto，`![](…)` 外部圖片只顯示替代文字，wikilink 只留文字，標題層級往下移一層（頁面已有 h1）。只支援筆記會用到的語法（巢狀清單攤平成一層）。
