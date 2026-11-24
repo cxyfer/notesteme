@@ -260,7 +260,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 時間帶（精簡版）放進 `web/shared` | 完成 | `web/shared/src/StatusBand.tsx`、[web/shared/README](../../web/shared/README.md) |
 | 依頻道／發布日／狀態分組、「格」檢視、儲存檢視 | 分組完成（收尾 D1，見 10.22）；「格」檢視完成（UI-8）；儲存檢視未做 | 儲存檢視不在 M4 範圍 |
 | 批次操作、垃圾桶檢視 | 完成（UI-7，見 10.18） | `src/pages/library/BulkBar.tsx`、`src/pages/trash` |
-| 預估花費（`POST /api/estimate`） | 完成（10.23 第 3 點） | `src/add/AddDrawer.tsx` |
+| 預估花費（`POST /api/estimate`） | 完成（10.24 第 3 點） | `src/add/AddDrawer.tsx` |
 | 「調整這次的設定」、一次貼上多個網址、把檔案拖進視窗 | 未做 | 見 10.5 第 6 點 |
 
 ### 10.5 UI-1 的決定
@@ -272,7 +272,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 3. ~~**預設不分組**（LIB-R4 的「預設依頻道分組」沒做）：列表依建立時間的 keyset cursor 分頁，前端分組會讓同一個頻道散在不同頁；而且 API 沒有頻道名稱。等 API 有 `group_by`（LIB 規格待決問題已記錄）再做。~~ 收尾 D1 已做：API 加了 `group_by` 與頻道名稱，媒體庫預設依頻道分組（見 10.22）。
 4. **篩選的 URL 參數**與 API 同名，除了發布日存 `YYYY-MM-DD`（當地時區的整天）、長度存分鐘（`dur_min`／`dur_max`）。頻道沒有列表 API，改成文字輸入，並可以點列上的頻道「只看這個頻道」。
 5. **步驟狀態的對應**：`blocked` 依 `block_reason` 對應到需要你處理／超出預算／等你決定，認不得的當成需要你處理。狀態欄顯示最需要注意的步驟（失敗 > 停住 > 等待 Agent > 處理中 > 稍後檢查，否則是最後完成的步驟）。失敗的列提供「從該步驟重新處理」（`POST /api/items/{id}/rerun`），停住（非預算）的列提供「開啟帳號與 Cookie 設定」。步驟的 `message` 是後端的繁中文字，原樣顯示（沒有 code 可以查字典）。
-6. **抽屜的範圍**：一次一個網址或一個檔案（上傳 API 一次只收一個檔案）；播放清單整份新增（API 沒有範圍參數，見 LIB／ING 待決問題）；Bilibili 沒有指定分P 時可以選「全部」或輸入編號（resolve 不回分P 數，不為了列出分P 呼叫會跑 yt-dlp 的 estimate）；頻道只提示訂閱（M4）。預估花費與單次覆寫留給之後的切片。（10.23 已補預估花費與頻道的「建立訂閱」；單次覆寫仍未做。）
+6. **抽屜的範圍**：一次一個網址或一個檔案（上傳 API 一次只收一個檔案）；播放清單整份新增（API 沒有範圍參數，見 LIB／ING 待決問題）；Bilibili 沒有指定分P 時可以選「全部」或輸入編號（resolve 不回分P 數，不為了列出分P 呼叫會跑 yt-dlp 的 estimate）；頻道只提示訂閱（M4）。預估花費與單次覆寫留給之後的切片。（10.24 已補預估花費與頻道的「建立訂閱」；單次覆寫仍未做。）
 7. **新增相依**：`@tanstack/react-virtual` 3.14.26（2026-11-03 發佈；3.14.27／28 是 11-22 才發佈）。初始 JS 由約 137KB 增加到約 174KB（gzip），沒有另外做 lazy route。
 8. **`web/shared` 的接線**：沿用 brief 把 StatusBand 放進 `web/shared`（web/shared/README 原本寫「穩定後再搬」）；`react` 由 `web/client` 解析，lint、prettier、tsc 都涵蓋它，Dockerfile 一併複製。
 9. **測試替身**：不引入 MSW，用自寫的 `src/test/mockApi.ts`；vitest 的 `testTimeout` 提高到 15 秒（多個 child 同時跑時，整頁的互動測試在 5 秒內跑不完）。
@@ -313,7 +313,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 8. **API 缺口**（記在這裡，之後的後端切片處理）：
    - `Stage.actions` 應改成動作代碼（現在是繁中按鈕文字，前端只能比對字串）。部分處理（收尾 D2，2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：`Stage` 多了 `action_codes`（只列出有穩定代碼的動作，目前只有 `use_asr_now`），`mapActions` 先依代碼對應、同一個動作的文字不重複；其他動作仍比對文字，沒有大改。
    - 沒有 log 片段（OBS-2 的「相關 log 片段」）：步驟面板改連到「紀錄」分頁，顯示 `GET /runs` 的狀態、時間與設定快照；`runs` 也沒有花費、provider 實際回應等欄位。
-   - rerun 沒有 `estimate`／`estimate_usd`：對話框顯示「無法預估」。沒有拿 `POST /api/estimate` 代替（它針對網址，可能呼叫 yt-dlp）。（有更好的字幕來源時改顯示 `better_source.estimate_usd`，見 10.23 第 2 點。）
+   - rerun 沒有 `estimate`／`estimate_usd`：對話框顯示「無法預估」。沒有拿 `POST /api/estimate` 代替（它針對網址，可能呼叫 yt-dlp）。（有更好的字幕來源時改顯示 `better_source.estimate_usd`，見 10.24 第 2 點。）
    - 沒有 provider 列表 API：provider 用文字輸入，建議值取自處理方案設定。
    - 沒有列出影音有哪些字幕變體與語言的 API：模式依步驟狀態推得，`edited` 用一次 `variant=edited` 的查詢確認。
    - 沒有章節、說話密度、LLM chunk 的時間範圍：時間帶只畫整條步驟狀態，沒有章節線、拖曳選取、chunk 進度。
@@ -380,7 +380,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 帳號與 Cookie：上傳 YouTube／Bilibili cookie（貼上或選擇檔案）、這次上傳的數量與時間、`cookie_*` 錯誤的說明 | 完成 | `AccountsSection.tsx` |
 | 帳號與 Cookie：最後一次成功使用的時間、是否失效 | 未做：後端沒有讀取 cookie 狀態的 API | — |
 | 語言：預設目標語言、中文變體、原文字幕的語言優先順序（新增、移除、上下移）、平台翻譯字幕、fallback；介面語言 | 完成 | `LanguageSection.tsx` |
-| 輸出：本機影片旁與資料夾的說明（在處理方案中設定）；vault 與 hook 唯讀說明「尚未啟用（M3 起提供）」（10.23 第 8 點改成唯讀列出設定檔的 vault 與 hook） | 完成 | `OutputsSection.tsx` |
+| 輸出：本機影片旁與資料夾的說明（在處理方案中設定）；vault 與 hook 唯讀說明「尚未啟用（M3 起提供）」（10.24 第 8 點改成唯讀列出設定檔的 vault 與 hook） | 完成 | `OutputsSection.tsx` |
 | MCP 與 Agent：token 列表（名稱、前綴、scope、建立、最後使用、到期、狀態）、建立（scope、到期 7 天／30 天／90 天〔預設〕／1 年／不設到期）、只顯示一次並可複製、撤銷先確認；Claude Code 指令；Agent 的 `max_claims`、`lease`、`timeout`、`on_timeout`、`on_validation_failure` | 完成 | `AgentSection.tsx` |
 | token 輪替（AUTH-R21） | 未做：M4 | — |
 | 詞彙表：全域與頻道詞彙表的檢視與整份取代；頻道的術語候選（接受、拒絕、409 `term_candidate_decided` 顯示「已被處理」並重新整理；已處理的收在 `<details>`） | 完成 | `GlossarySection.tsx` |
@@ -429,13 +429,13 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 成本頁：本月花費／預算／預計月底（2 位小數）與「調整預算」、`notices`（`prices_stale` 依 code 提供「確認計價表」）、找不到單價的次數、日期範圍與分組在 URL、依分組的長條圖（附同資料的表格）、明細（cursor 分頁，未知單價顯示「未知單價」、預留顯示「預留」）、CSV 匯出（範圍超過 366 天時停用） | 完成 | `src/pages/costs` |
 | 計價表：內建與覆寫、確認日期與過期、確認內建計價表、新增或覆寫單價（已有單價時先確認舊價 → 新價）、移除覆寫（確認） | 完成 | `src/pages/costs/PricesPanel.tsx` |
 | 筆記模板列表（內建在前、版本、檢查數）、新增與複製（`from`） | 完成 | `src/pages/noteTemplates/NoteTemplatesPage.tsx` |
-| 筆記模板編輯（三欄）：模板內文、名稱、「閱讀」按鈕、可用變數、五項自動檢查（全部取消時送 `checks: []`）、另存新版本（422 顯示在內文旁）；內建唯讀只能複製；中欄連到 `note-default`、`note-map-default`；右欄用一部影音的筆記預覽已儲存的版本（`<id>@<版本>`），`409 no_note` 顯示說明（10.23 改成有修改時用草稿預覽、內文改用 CodeMirror） | 完成 | `NoteTemplateEditorPage.tsx` |
+| 筆記模板編輯（三欄）：模板內文、名稱、「閱讀」按鈕、可用變數、五項自動檢查（全部取消時送 `checks: []`）、另存新版本（422 顯示在內文旁）；內建唯讀只能複製；中欄連到 `note-default`、`note-map-default`；右欄用一部影音的筆記預覽已儲存的版本（`<id>@<版本>`），`409 no_note` 顯示說明（10.24 改成有修改時用草稿預覽、內文改用 CodeMirror） | 完成 | `NoteTemplateEditorPage.tsx` |
 | 設定的「通知」分區：端點列表（種類、主機／末四碼、事件、啟用狀態）、新增與編輯（四種 notifier 的欄位、密鑰只寫不讀、七個事件）、傳送測試通知與結果、停用與刪除（確認）、最近的通知（outbox） | 完成 | `src/pages/settings/NotificationsSection.tsx` |
 | 設定的「預算」分區：月預算、單部上限、提醒門檻、預算時區；本月花費、預留與剩餘 | 完成 | `src/pages/settings/BudgetSection.tsx` |
 | 影音詳情的「畫面」分頁：印樣（只看選中的／全部候選）、時間（點擊跳播）、章節、圖說、排除原因、張數摘要與不足提示 | 完成 | `src/pages/item/NotePanels.tsx` |
 | 影音詳情的「筆記」分頁：閱讀字體渲染（標題、段落、清單、callout、表格、程式碼、連結只留 http／https／mailto、wikilink 轉文字）、同一部影音的時間連結點擊跳播、`![[…frame_NNNN.jpg]]` 對應到畫面圖片、自動檢查、寫入 vault 的路徑與 commit、過時提示與「重新產生筆記」、下載 Markdown | 完成 | `NotePanels.tsx`、`src/notes` |
 | 總覽（`/`，依賴 LIB-09 `/api/overview`）、媒體庫的批次操作（LIB-08 `POST /api/items/batch`）、搜尋、Hub | 未做：後端還沒有（不放會 501 的入口） | — |
-| 訂閱列表的「新內容」欄 | 完成（10.23 第 6 點，SUB-R14） | `src/pages/subscriptions/SubscriptionsPage.tsx` |
+| 訂閱列表的「新內容」欄 | 完成（10.24 第 6 點，SUB-R14） | `src/pages/subscriptions/SubscriptionsPage.tsx` |
 | 處理方案被訂閱使用時的提示 | 未做：沒有「哪些訂閱用這個處理方案」的查詢（可以從列表的 `profile` 組合，留給之後） | — |
 | 筆記模板的檔名與資料夾版面規則 | 不提供：vault 只在設定檔定義（ADR-0020、VAULT V1），頁面只說明 | — |
 | `G` 然後 `S` 的快捷鍵、`1`–`4` 切換詳情分頁 | 未做：快捷鍵仍是之後的切片（10.1） | — |
@@ -461,7 +461,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 12. **通知的密鑰**比照 UI-3b 決定 6：只放在元件 state，送出時立即清空（失敗也要重新輸入），不用 `useMutation`；編輯時沒有重新輸入就不送（後端保留原值，NOTIFY-R6），清空選填的非機密欄位送 `null`。ntfy 的 token 目前沒有「移除」的操作（PATCH 的 `null` 可以刪，UI 沒有做）。
 13. **還沒有產生端的事件**（`digest`、`alert`、`source.better_available`：DIG、OPS 告警、SRC-10 尚未實作）仍可勾選，旁邊標示「尚未會發出」（已過期：DIG、OPS、SRC-10 實作後這個標示已經移除）。
 14. **預算分區** PUT 只送 `monthly_usd`、`per_item_usd`、`warn_at_percent`、`timezone` 四個欄位（GET 另外回傳的 `month`、`spent_usd` 等送回去會 422）；空白送 `null`（不限）。時區用文字輸入，驗證交給後端。
-15. **筆記模板**：沒有單筆 GET，編輯頁從列表找；預覽只能用已儲存的版本（API 吃 `<id>@<版本>`），有未儲存的修改時提示（10.23 第 7 點已改成用草稿預覽）。三欄的中欄只連到 Prompt 庫：沒有 API 把模板和 prompt 綁在一起（處理方案分別選）。可用變數與五項檢查寫在前端（`NOTE_CHECKS`、`TEMPLATE_VARS`，與 NOTE-R7、R11 一致；後端改了要同步）。
+15. **筆記模板**：沒有單筆 GET，編輯頁從列表找；預覽只能用已儲存的版本（API 吃 `<id>@<版本>`），有未儲存的修改時提示（10.24 第 7 點已改成用草稿預覽）。三欄的中欄只連到 Prompt 庫：沒有 API 把模板和 prompt 綁在一起（處理方案分別選）。可用變數與五項檢查寫在前端（`NOTE_CHECKS`、`TEMPLATE_VARS`，與 NOTE-R7、R11 一致；後端改了要同步）。
 16. **Markdown renderer 自寫**（`src/notes/markdown.ts`、`NoteMarkdown.tsx`）：輸出 React element，不用 `dangerouslySetInnerHTML`，不加相依；原始 HTML 一律是文字，連結只留 http／https／mailto，`![](…)` 外部圖片只顯示替代文字，wikilink 只留文字，標題層級往下移一層（頁面已有 h1）。只支援筆記會用到的語法（巢狀清單攤平成一層）。
 17. **筆記中的畫面嵌入**以檔名的 `frame_NNNN` 對應到 `GET /api/items/{id}/frames/{n}?size=thumb`（`internal/notes/render.go` 的 `%04d` 就是畫面編號）。待決：frames 重跑後版本會換，筆記若還沒重新產生，NNNN 可能指到新版本的另一張畫面（vault 內的檔案是 pin 住的舊版本，不受影響）；需要的話 API 要讓筆記帶畫面版本。
 18. **時間連結跳播**只在連結指向同一部影音時（比對主機、路徑與 YouTube 的 `v`；`t=` 或 `#t=`）攔截，其他連結開新分頁。
@@ -504,7 +504,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 8. **術語審核放在「詞彙表」分區的最上面**（GLOS G1），既有的單一頻道清單（UI-3b）保留不動。單筆與批次都走 `POST /api/term-candidates/decide`（同一條錯誤處理路徑）；每一列的「加到哪裡」預設是這個頻道，批次接受時各列用自己的選擇。**待決（API 與規格不一致）**：GLOS-R5 說來源影音永久刪除時 `item` 是 `null`，但 OpenAPI 的 `TermCandidateReview.item` 不是 nullable；前端照 null 處理（顯示「來源影音已刪除」）。（後端補洞切片已把 schema 改成 nullable。）
 9. **彙整放在「通知」分區**（DIG 介面）：時區預設為瀏覽器的時區；端點只列出勾了 `digest` 事件的 notifier（編輯時已選但取消勾選事件的端點也列出，方便移除）；沒有這樣的端點時「新增彙整」停用並說明。預覽把伺服器組好的文字原樣放在 `<pre>`。
 10. **系統告警只顯示目前成立的告警**：`GET /api/system` 沒有已解除的告警或歷史，「恢復狀態」以「目前沒有告警」與說明（解除時會送出解除通知）表示。持續時間以讀到資料的時間計算，用 `Intl` 的單位格式（分鐘／小時／天），不另加字串。沒有放「立即備份」（`/api/backup` 是下載備份檔，不在 brief 範圍）。
-11. **摘要與「有更好的字幕來源」放在標題資訊與時間帶之間**；摘要是 LLM 輸出，一律當純文字（保留換行），帶 `summary.language`。「改用更好的字幕重跑」打開既有的重新處理對話框並帶 `from: transcript`（handoff 的 SRC-10 說明），金額由對話框照 UI-2 的方式處理（10.23 第 2 點已改成顯示 `better_source.estimate_usd`）；提示中的預估為 null 時寫「無法預估費用」，不顯示 $0.00。沒有 SSE 事件告知 `better_source` 出現，詳情在步驟狀態改變或重新開啟時才會更新。
+11. **摘要與「有更好的字幕來源」放在標題資訊與時間帶之間**；摘要是 LLM 輸出，一律當純文字（保留換行），帶 `summary.language`。「改用更好的字幕重跑」打開既有的重新處理對話框並帶 `from: transcript`（handoff 的 SRC-10 說明），金額由對話框照 UI-2 的方式處理（10.24 第 2 點已改成顯示 `better_source.estimate_usd`）；提示中的預估為 null 時寫「無法預估費用」，不顯示 $0.00。沒有 SSE 事件告知 `better_source` 出現，詳情在步驟狀態改變或重新開啟時才會更新。
 12. **術語的拒絕（單筆與多選批次）不跳確認框**：和 UI-3b 的單筆拒絕一致，GLOS 的 `@ui @manual` 場景（「選取其餘兩個並一起拒絕」）也沒有確認步驟；拒絕只改候選的狀態，不刪除任何詞彙表內容（被拒絕的詞之後仍可能再被提出）。代價是一次最多 100 項、UI 上不能撤回；需要的話之後加 toast 的「復原」（API 要能把候選改回 pending）。
 13. **匯出 bundle 用 `<a download>`**：沿用 UI-4 決定 10（CSV 匯出）的做法；出錯時瀏覽器會下載到 JSON 錯誤。影音詳情只會顯示不在垃圾桶中的影音，所以 404 `in_trash` 不會從這裡發生；bundle 只含字幕、筆記與選中的畫面，大小通常在幾十 MiB 以內（BND N4），不另做進度顯示。
 14. **跳轉後的字幕定位**：影音詳情的字幕列表在掛載時就跟隨 `?t=` 的目前句捲動（UI-2 的行為），測試確認 `?t=2` 時目前句是第 2 句。
@@ -664,7 +664,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 8. **上傳者名稱**：Hub 的顯示名稱是不可信的文字（S23 已去掉控制與格式字元、最多 64 字），UI 只用文字節點渲染，超過 32 個字（以 code point 計，不切開 surrogate pair）時截斷加「…」，完整名稱放在 `title`。
 9. **版本頁的連結只給 https 的 Hub**：網址是 `hub_origin.url` 加 `/versions/<version_id>`，沿用 `hubLink`（「已分享到 Hub」的同一個規則，10.17 第 15 點），`http:`、`javascript:` 等都不產生連結，比「接受 http／https」更保守；另開分頁並帶 `rel="noopener noreferrer"`。
 
-### 10.23 Client UI 的 `@ui @manual` 缺口（2026-11-24）
+### 10.24 Client UI 的 `@ui @manual` 缺口（2026-11-24）
 
 一次唯讀對帳找出七個 `@ui @manual` 場景背後的畫面功能還沒有做或只做了一部分，這個切片補齊。下面的決定都是「（2026-11-24，依 /goal 由實作者暫定，待 owner 追認）」。
 

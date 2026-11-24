@@ -3,7 +3,7 @@
 //
 //   - 費用預估：rerun 的 API 沒有 estimate 欄位。有更好的字幕來源時，詳情的 better_source.estimate_usd
 //     （SRC-R23）是「用現行設定從 transcript 做到最後」的金額：起點是 transcript、沒有改任何設定時顯示它；
-//     其他情況顯示「無法預估」（docs/ui/README.md 10.23）。
+//     其他情況顯示「無法預估」（docs/ui/README.md 10.24）。
 //   - provider 沒有列表 API：用文字輸入，建議值取自處理方案的設定。
 //   - 422 的 errors[] 逐筆顯示（chunks[i] 的訊息裡有現有的編號）；其他錯誤用 describeError。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

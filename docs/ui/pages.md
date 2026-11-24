@@ -41,7 +41,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
 - **狀態**：完全沒有資料時，顯示媒體庫的空狀態。
 - **API**：`GET /api/overview`、`GET /api/events`（SSE）
 - **實作狀態（UI-7，2026-11-24）**：完成，`/` 是總覽（lazy）。偏離：「今天」的步驟事件沒有步驟與狀態（API 只回類型與標題），只寫「步驟有新狀態」且不連到影音；底部另顯示磁碟用量；「需要你處理」的動作中需要更多說明的（取消、改用 API 等）改為打開影音詳情。見 [README 10.18、10.19](README.md#1019-ui-7-的決定與待決問題)。
-- **系統告警（2026-11-24）**：「需要你處理」上方另有「系統告警」區塊，列出目前成立的告警（OPS-R13，讀 `GET /api/system`）與最近 24 小時沒有送出的通知（NOTIFY-R8，讀 `GET /api/notifications?state=dropped`）；都沒有時隱藏。見 [README 10.23](README.md#1023-client-ui-的-ui-manual-缺口2026-11-24)。
+- **系統告警（2026-11-24）**：「需要你處理」上方另有「系統告警」區塊，列出目前成立的告警（OPS-R13，讀 `GET /api/system`）與最近 24 小時沒有送出的通知（NOTIFY-R8，讀 `GET /api/notifications?state=dropped`）；都沒有時隱藏。見 [README 10.24](README.md#1024-client-ui-的-ui-manual-缺口2026-11-24)。
 
 ## 2. 新增
 
@@ -77,7 +77,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
 - **元件**：
   - 網址輸入框：即時辨識平台與類型（影片、播放清單、頻道、Podcast RSS）。
   - 貼上頻道或 RSS 網址時，改為提示「要訂閱這個頻道嗎？」，並附上「建立訂閱」按鈕。
-  - 實作（2026-11-24）：頻道顯示「這是頻道。要追蹤新內容，請建立訂閱。」與「建立訂閱」（打開訂閱頁的新增抽屜並帶入網址）；RSS 仍可勾選集數新增，另有「建立訂閱」的文字按鈕。辨識成功後顯示預估花費。見 [README 10.23](README.md#1023-client-ui-的-ui-manual-缺口2026-11-24)。
+  - 實作（2026-11-24）：頻道顯示「這是頻道。要追蹤新內容，請建立訂閱。」與「建立訂閱」（打開訂閱頁的新增抽屜並帶入網址）；RSS 仍可勾選集數新增，另有「建立訂閱」的文字按鈕。辨識成功後顯示預估花費。見 [README 10.24](README.md#1024-client-ui-的-ui-manual-缺口2026-11-24)。
   - 「調整這次的設定」預設收合，只影響這一次，不會修改處理方案。
 - **互動**：
   - 已經處理過的影音會標示「已在媒體庫中」，並提供「打開」或「重新處理」。
@@ -202,7 +202,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - 換 prompt 或模型重新生成，會產生新版本，舊版本保留。
   - 改用 API 處理（只在任務等待 Agent 時出現）。
 - **匯出**選單：SRT、VTT、ASS（選擇樣式）、雙語 SRT、純文字、Markdown 筆記、bundle。
-- **更多**選單（`⋯`，位在匯出之後）：刪除（M1）。實作（2026-11-24）：按鈕文字是「更多」，見 [README 10.23](README.md#1023-client-ui-的-ui-manual-缺口2026-11-24)。
+- **更多**選單（`⋯`，位在匯出之後）：刪除（M1）。實作（2026-11-24）：按鈕文字是「更多」，見 [README 10.24](README.md#1024-client-ui-的-ui-manual-缺口2026-11-24)。
   - 確認對話框列出會失去的產出數、可釋放的磁碟空間，以及這部影音已經花掉的金額（刪除不會退費）。
   - M2 起有輸出檔時，多一個選項「同時刪除未修改過的輸出檔（N 個）」，預設不勾選；改過的檔案列出路徑並標示「已修改，不會刪除」。
   - 確認後回到媒體庫，顯示「已移到垃圾桶。」與「復原」。規則見 [DEL 規格](../specs/DEL-delete.md)。
@@ -261,7 +261,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - 新增訂閱時提醒：「同一個頻道只在一台實例上訂閱，避免重複處理。」（見 ADR-0011）
 - **API**：`GET/POST/PATCH /api/subscriptions`、`POST /api/subscriptions/:id/preview`、`POST /api/subscriptions/:id/check`
 - **修訂（2026-11-23，[SUB 規格](../specs/SUB-subscriptions.md) SUB-R6、待決問題 S9，待 owner 追認）**：回補範圍為「只抓之後的新內容」時，試跑預覽把清單中已存在的舊內容列在「略過」（原因 `before_subscription`），線框中的「會處理 8 部」只適用於「最近 N 部」與「全部」。API 另有 `DELETE /api/subscriptions/:id`、`GET /api/subscriptions/:id/entries`、`POST /api/subscriptions/preview` 與匯入路由（SUB-R13）。
-- **實作狀態（UI-4，2026-11-23）**：完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)。偏離：詳情與編輯做成 `/subscriptions/:id` 頁面而不是抽屜；試跑預覽要先按一次「試跑預覽」才會連外。「新內容」欄在 2026-11-24 補上：這個訂閱建立、還沒有標為已讀、不在垃圾桶中的影音數（SUB-R14，見 [README 10.23](README.md#1023-client-ui-的-ui-manual-缺口2026-11-24)）。
+- **實作狀態（UI-4，2026-11-23）**：完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)。偏離：詳情與編輯做成 `/subscriptions/:id` 頁面而不是抽屜；試跑預覽要先按一次「試跑預覽」才會連外。「新內容」欄在 2026-11-24 補上：這個訂閱建立、還沒有標為已讀、不在垃圾桶中的影音數（SUB-R14，見 [README 10.24](README.md#1024-client-ui-的-ui-manual-缺口2026-11-24)）。
 
 ## 6. 佇列
 
@@ -399,7 +399,7 @@ Prompt 庫 › 校正 › correct-default
   - 檢查失敗時，任務會標示「需要你處理」，不會寫入 vault。
 - **API**：`GET/POST/PATCH /api/note-templates`、`POST /api/note-templates/:id/preview`
 - **實作狀態（UI-4，2026-11-23）**：完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)。版面規則（檔名、資料夾）由設定檔的 vault 決定，頁面只說明；中欄只連到 Prompt 庫的筆記 prompt。
-- **草稿預覽（2026-11-24）**：有未儲存的修改時，預覽用編輯中的內容（NOTE-R12 的 `body`、`read_button`、`checks`，不建立版本）；內文用 Prompt 庫的編輯器，不認識的變數在儲存前就加底線。見 [README 10.23](README.md#1023-client-ui-的-ui-manual-缺口2026-11-24)。
+- **草稿預覽（2026-11-24）**：有未儲存的修改時，預覽用編輯中的內容（NOTE-R12 的 `body`、`read_button`、`checks`，不建立版本）；內文用 Prompt 庫的編輯器，不認識的變數在儲存前就加底線。見 [README 10.24](README.md#1024-client-ui-的-ui-manual-缺口2026-11-24)。
 
 ## 11. 成本
 
@@ -436,7 +436,7 @@ Prompt 庫 › 校正 › correct-default
 
 - **安全**：API key 儲存後只顯示末四碼，不能再次查看完整內容，只能更換。
 - **修訂（2026-11-23，ADR-0020、VAULT 規格待決問題 V1，待 owner 追認）**：「輸出」分區的 vault（路徑、git repo、分支）與 hook 只能在設定檔定義，這裡唯讀顯示，處理方案只能選用已定義的 id；字幕的本機影片旁與資料夾目標維持可以在處理方案中設定。
-- **實作（2026-11-24）**：「輸出」分區唯讀列出 `GET /api/vaults`（id、adapter、根資料夾）與 `GET /api/hooks`（只有 id，VAULT 待決問題 V18）；處理方案的輸出目標可以選 vault、vault 內的資料夾與 hook。見 [README 10.23](README.md#1023-client-ui-的-ui-manual-缺口2026-11-24)。
+- **實作（2026-11-24）**：「輸出」分區唯讀列出 `GET /api/vaults`（id、adapter、根資料夾）與 `GET /api/hooks`（只有 id，VAULT 待決問題 V18）；處理方案的輸出目標可以選 vault、vault 內的資料夾與 hook。見 [README 10.24](README.md#1024-client-ui-的-ui-manual-缺口2026-11-24)。
 - **API**：`GET/PUT /api/settings/:section`、`POST /api/providers/:id/test`、`POST /api/cookies`、`GET /api/system`、`POST /api/tools/yt-dlp/update`、`GET/POST/DELETE /api/tokens`
 - **修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）**：「書籤小工具」是 ENTRY-R1 的區塊，獨立成一個分區（`/settings/bookmarklet`，排在「外觀」之後），見 ENTRY 待決問題 E7。
 - **實作狀態（UI-6，2026-11-24）**：新增「Hub」分區（`/settings/hub`，在「系統」之後）：URL 唯讀、Hub token、測試連線、ASR 前查詢的開關與說明、用 Hub 的版本重新生成（HSHR），見 [README 10.16、10.17](README.md#1017-ui-6-的決定與待決問題)。
