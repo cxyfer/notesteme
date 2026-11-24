@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"slices"
 	"strings"
@@ -21,11 +22,24 @@ const (
 )
 
 // ItemCursor 是列表中的位置：排序是 (created_at, id) 由新到舊，游標是上一頁最後一筆。
-// CreatedAtMs 是 Unix 毫秒，和資料庫的精度一致。
+// CreatedAtMs 是 Unix 毫秒，和資料庫的精度一致。分組時 Group 是上一頁最後一筆的分組鍵（不透明的排序字串）。
 type ItemCursor struct {
+	Group       string
 	CreatedAtMs int64
 	ID          string
 }
+
+// 分組列表的組（LIB-R4）：ItemPage.Groups 的值。
+const (
+	// GroupFailed 等是依狀態分組時的組：有步驟失敗、有步驟停住、處理中（有步驟執行中、稍後檢查、等待 Agent，或有未結束的任務）、其他。
+	GroupFailed     = "failed"
+	GroupBlocked    = "blocked"
+	GroupProcessing = "processing"
+	GroupIdle       = "idle"
+)
+
+// statusGroups 把 SQL 的分組鍵（排序用的 1～4）對應到組名。
+var statusGroups = map[string]string{"1": GroupFailed, "2": GroupBlocked, "3": GroupProcessing, "4": GroupIdle}
 
 // blockedPattern 是 blocked 篩選接受的格式：停住的原因是程式內的代碼（block_reason）。
 var blockedPattern = regexp.MustCompile(`^[a-z_]{1,64}$`)
@@ -53,6 +67,8 @@ type ItemQuery struct {
 	DurationMax   *int
 	// ReadState 是 read 或 unread（LIB-R19）；空字串代表不篩選，其他值 422。
 	ReadState string
+	// GroupBy 是 channel、published 或 status（LIB-R4）；空字串代表不分組（依建立時間由新到舊），其他值 422。
+	GroupBy string
 	// Limit 小於 1 時用 DefaultItemLimit，超過 MaxItemLimit 時用 MaxItemLimit。
 	Limit int
 	// After 不為 nil 時，只回傳排在它之後的影音。
@@ -66,6 +82,12 @@ type ItemPage struct {
 	Total int
 	// Next 是下一頁的起點；最後一頁為 nil。
 	Next *ItemCursor
+	// Groups 與 Items 一一對應，是每部影音所屬的組（只在分組時有值）：
+	// channel 是頻道 ID（沒有頻道是空字串）；published 是發布日（UTC 的 YYYY-MM-DD，沒有發布時間是空字串）；
+	// status 是 GroupFailed、GroupBlocked、GroupProcessing 或 GroupIdle。
+	Groups []string
+	// ChannelNames 是這一頁出現的頻道 ID 對應的名稱（頻道還沒有名稱時不列）。
+	ChannelNames map[string]string
 }
 
 // 步驟狀態的完整清單（store.Status*）。
@@ -81,6 +103,11 @@ func ValidStatus(s string) bool { return slices.Contains(itemStatuses, s) }
 func (q ItemQuery) Validate() error {
 	if q.ReadState != "" && q.ReadState != store.ReadRead && q.ReadState != store.ReadUnread {
 		return invalidf("read_state 必須是 read 或 unread。")
+	}
+	switch q.GroupBy {
+	case "", store.GroupChannel, store.GroupPublished, store.GroupStatus:
+	default:
+		return invalidf("group_by 必須是 channel、published 或 status。")
 	}
 	switch q.Platform {
 	case "", source.PlatformYouTube, source.PlatformBilibili, source.PlatformPodcast, source.PlatformLocal:
@@ -120,8 +147,9 @@ func (q ItemQuery) filter() store.ItemFilter {
 	}
 }
 
-// ListItems 依 (created_at, id) 由新到舊列出符合條件的影音（不含垃圾桶中的）。
-// Total 用同一組篩選條件（不含游標）另外計算。
+// ListItems 列出符合條件的影音（不含垃圾桶中的）：不分組時依 (created_at, id) 由新到舊；
+// 分組時（GroupBy）組依頻道名稱、發布時間（新到舊）或狀態排序，同一組連續、組內依 (created_at, id) 由新到舊，
+// 游標記著分組鍵，所以一組跨頁時下一頁從同一組接著列（LIB-R4）。Total 用同一組篩選條件（不含游標）另外計算。
 func (p *Pipeline) ListItems(ctx context.Context, q ItemQuery) (ItemPage, error) {
 	if err := q.Validate(); err != nil {
 		return ItemPage{}, err
@@ -131,22 +159,38 @@ func (p *Pipeline) ListItems(ctx context.Context, q ItemQuery) (ItemPage, error)
 		limit = DefaultItemLimit
 	}
 	limit = min(limit, MaxItemLimit)
-	var after *store.ItemPos
-	if q.After != nil {
-		after = &store.ItemPos{CreatedAtMs: q.After.CreatedAtMs, ID: q.After.ID}
-	}
 	r := p.st.Read()
 	f := q.filter()
+	var page ItemPage
+	var err error
+	if q.GroupBy == "" {
+		page, err = listItemsFlat(ctx, r, f, q.After, limit)
+	} else {
+		page, err = listItemsGrouped(ctx, r, f, q.GroupBy, q.After, limit)
+	}
+	if err != nil {
+		return ItemPage{}, err
+	}
+	if page.Total, err = r.CountItems(ctx, f); err != nil {
+		return ItemPage{}, err
+	}
+	if page.ChannelNames, err = channelNames(ctx, r, page.Items); err != nil {
+		return ItemPage{}, err
+	}
+	return page, nil
+}
+
+func listItemsFlat(ctx context.Context, r *store.Repo, f store.ItemFilter, after *ItemCursor, limit int) (ItemPage, error) {
+	var pos *store.ItemPos
+	if after != nil {
+		pos = &store.ItemPos{CreatedAtMs: after.CreatedAtMs, ID: after.ID}
+	}
 	// 多取一筆來判斷有沒有下一頁。
-	items, err := r.ListItemsPage(ctx, f, after, limit+1)
+	items, err := r.ListItemsPage(ctx, f, pos, limit+1)
 	if err != nil {
 		return ItemPage{}, err
 	}
-	total, err := r.CountItems(ctx, f)
-	if err != nil {
-		return ItemPage{}, err
-	}
-	page := ItemPage{Total: total}
+	var page ItemPage
 	if len(items) > limit {
 		items = items[:limit]
 		last := items[limit-1]
@@ -154,4 +198,73 @@ func (p *Pipeline) ListItems(ctx context.Context, q ItemQuery) (ItemPage, error)
 	}
 	page.Items = items
 	return page, nil
+}
+
+func listItemsGrouped(ctx context.Context, r *store.Repo, f store.ItemFilter, groupBy string, after *ItemCursor, limit int) (ItemPage, error) {
+	var pos *store.GroupedPos
+	if after != nil {
+		pos = &store.GroupedPos{Group: after.Group, CreatedAtMs: after.CreatedAtMs, ID: after.ID}
+	}
+	keys, err := r.ListItemKeysGrouped(ctx, f, groupBy, pos, limit+1)
+	if err != nil {
+		return ItemPage{}, err
+	}
+	var page ItemPage
+	if len(keys) > limit {
+		keys = keys[:limit]
+		last := keys[limit-1]
+		page.Next = &ItemCursor{Group: last.Group, CreatedAtMs: last.CreatedAtMs, ID: last.ID}
+	}
+	page.Items = make([]store.Item, 0, len(keys))
+	page.Groups = make([]string, 0, len(keys))
+	for _, k := range keys {
+		it, err := r.ItemByID(ctx, k.ID)
+		if err != nil {
+			return ItemPage{}, err
+		}
+		page.Items = append(page.Items, it)
+		page.Groups = append(page.Groups, groupName(groupBy, k.Group, it))
+	}
+	return page, nil
+}
+
+// groupName 是影音所屬的組（ItemPage.Groups 的說明）。
+func groupName(groupBy, key string, it store.Item) string {
+	switch groupBy {
+	case store.GroupChannel:
+		return it.ChannelID
+	case store.GroupPublished:
+		if it.PublishedAt == nil {
+			return ""
+		}
+		return it.PublishedAt.UTC().Format(time.DateOnly)
+	}
+	return statusGroups[key]
+}
+
+// channelNames 讀出這一頁出現的頻道名稱。
+func channelNames(ctx context.Context, r *store.Repo, items []store.Item) (map[string]string, error) {
+	out := map[string]string{}
+	for _, it := range items {
+		if it.ChannelID == "" {
+			continue
+		}
+		if _, ok := out[it.ChannelID]; ok {
+			continue
+		}
+		ch, err := r.ChannelByID(ctx, it.ChannelID)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		out[it.ChannelID] = ch.Title
+	}
+	for id, name := range out {
+		if name == "" {
+			delete(out, id)
+		}
+	}
+	return out, nil
 }

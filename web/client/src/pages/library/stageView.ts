@@ -6,7 +6,7 @@ import type { BandStatus } from "@shared";
 import { STAGES, type ErrorClass, type Stage } from "./filters";
 
 export type ApiStage = components["schemas"]["Stage"];
-export type ApiItem = components["schemas"]["Item"];
+export type ApiItem = components["schemas"]["ListedItem"];
 export type ApiItemDetail = components["schemas"]["ItemDetail"];
 
 /** 精簡版時間帶畫的步驟（design-language.md §6.1：字幕、校正、翻譯） */

@@ -98,7 +98,7 @@ func (h *glossariesAPI) review(ctx context.Context, in *reviewInput) (*reviewOut
 	fp := reviewFingerprint(state, in.Channel)
 	q := pipeline.TermCandidateQuery{State: state, Channel: in.Channel, Limit: in.Limit}
 	if in.Cursor != "" {
-		if q.After, err = decodeItemCursor(in.Cursor, h.rt.d.CursorKey, fp); err != nil {
+		if q.After, err = decodeItemCursor(in.Cursor, h.rt.d.CursorKey, fp, false); err != nil {
 			return nil, errBadCursor()
 		}
 	}
@@ -125,7 +125,7 @@ func (h *glossariesAPI) review(ctx context.Context, in *reviewInput) (*reviewOut
 	}
 	out.Body.Total = page.Total
 	if page.Next != nil {
-		out.Body.NextCursor = encodeItemCursor(*page.Next, h.rt.d.CursorKey, fp)
+		out.Body.NextCursor = encodeItemCursor(*page.Next, h.rt.d.CursorKey, fp, false)
 	}
 	return out, nil
 }

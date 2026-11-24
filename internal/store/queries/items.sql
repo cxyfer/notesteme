@@ -145,6 +145,83 @@ WHERE deleted_at IS NULL
                 '|' || COALESCE((SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
                                  ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1), 'pending') || '|'), 0) = 0));
 
+-- name: ListItemKeysGrouped :many
+-- The library list grouped by channel, publish date or status (LIB-R4). Keep the WHERE block identical to ListItemsPage.
+-- group_key orders the groups (ascending) and keeps each group contiguous; inside a group the order is (created_at, id)
+-- descending, like the ungrouped list. Only ids and keys are returned: the caller loads the items by id.
+--   channel:   '0' || channel title (first 100 characters, keeps the cursor short) || char(31) || channel id;
+--              items without a channel last ('1').
+--   published: newest publish time first ('0' || zero-padded (big - published_at)); without a publish time last ('1').
+--   status:    '1' a stage failed, '2' a stage blocked, '3' processing (a stage running, waiting or awaiting an agent,
+--              or an unfinished task), '4' everything else. Stages count by their latest run.
+-- Keyset: rows after (after_group, after_created_at, after_id); has_after = 0 starts from the first row.
+WITH sf AS (
+  SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
+  FROM json_each(CAST(sqlc.arg(status_filters) AS TEXT)) AS j
+), g AS (
+SELECT id, created_at,
+  CAST(CASE CAST(sqlc.arg(group_by) AS TEXT)
+    WHEN 'channel' THEN
+      CASE WHEN COALESCE(channel_id, '') = '' THEN '1'
+           ELSE '0' || COALESCE((SELECT substr(c.title, 1, 100) FROM channels AS c WHERE c.id = items.channel_id), '') || char(31) || channel_id END
+    WHEN 'published' THEN
+      CASE WHEN published_at IS NULL THEN '1' ELSE '0' || printf('%020d', 5000000000000000000 - published_at) END
+    ELSE
+      -- Uncorrelated IN lists are built once per query (a correlated EXISTS per item was too slow on lib-10k).
+      CASE
+        WHEN items.id IN (SELECT sr.item_id FROM stage_runs AS sr WHERE sr.status = 'failed'
+                            AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)) THEN '1'
+        WHEN items.id IN (SELECT sr.item_id FROM stage_runs AS sr WHERE sr.status = 'blocked'
+                            AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)) THEN '2'
+        WHEN items.id IN (SELECT sr.item_id FROM stage_runs AS sr WHERE sr.status IN ('running', 'waiting', 'awaiting_agent')
+                            AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1))
+          OR items.id IN (SELECT sr.item_id FROM tasks AS t JOIN stage_runs AS sr ON sr.id = t.stage_run_id
+                          WHERE t.state IN ('pending', 'leased', 'waiting')) THEN '3'
+        ELSE '4'
+      END
+  END AS TEXT) AS group_key
+FROM items
+WHERE deleted_at IS NULL
+  AND (CAST(sqlc.arg(platform) AS TEXT) = '' OR platform = sqlc.arg(platform))
+  AND (CAST(sqlc.arg(channel_id) AS TEXT) = '' OR channel_id = sqlc.arg(channel_id))
+  AND (CAST(sqlc.arg(lang) AS TEXT) = '' OR lower(original_lang) = lower(sqlc.arg(lang)))
+  AND (CAST(sqlc.narg(published_from) AS INTEGER) IS NULL OR published_at >= CAST(sqlc.narg(published_from) AS INTEGER))
+  AND (CAST(sqlc.narg(published_to) AS INTEGER) IS NULL OR published_at <= CAST(sqlc.narg(published_to) AS INTEGER))
+  AND (CAST(sqlc.narg(duration_min) AS INTEGER) IS NULL OR duration_s >= CAST(sqlc.narg(duration_min) AS INTEGER))
+  AND (CAST(sqlc.narg(duration_max) AS INTEGER) IS NULL OR duration_s <= CAST(sqlc.narg(duration_max) AS INTEGER))
+  AND (CAST(sqlc.arg(q_fold) AS TEXT) = '' OR instr(title_fold, sqlc.arg(q_fold)) > 0)
+  AND (CAST(sqlc.arg(read_state) AS TEXT) = '' OR read_state = sqlc.arg(read_state))
+  AND (CAST(sqlc.arg(error_class) AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM stage_runs AS sr
+        WHERE sr.item_id = items.id AND sr.error_class = sqlc.arg(error_class)
+          AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                       ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)))
+  AND (CAST(sqlc.arg(timing) AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
+        WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = sqlc.arg(timing)))
+  AND (CAST(sqlc.arg(blocked) AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM stage_runs AS sr
+        WHERE sr.item_id = items.id AND sr.status = 'blocked' AND sr.block_reason = sqlc.arg(blocked)
+          AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                       ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)))
+  AND (json_array_length(CAST(sqlc.arg(status_filters) AS TEXT)) = 0 OR NOT EXISTS (
+        SELECT 1 FROM sf
+        WHERE COALESCE(instr(sf.statuses,
+                '|' || COALESCE((SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
+                                 ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1), 'pending') || '|'), 0) = 0))
+)
+SELECT g.id AS id, g.created_at AS created_at, g.group_key AS group_key FROM g
+WHERE CAST(sqlc.arg(has_after) AS INTEGER) = 0
+   OR g.group_key > CAST(sqlc.arg(after_group) AS TEXT)
+   OR (g.group_key = CAST(sqlc.arg(after_group) AS TEXT)
+       AND (g.created_at < CAST(sqlc.arg(after_created_at) AS INTEGER)
+            OR (g.created_at = CAST(sqlc.arg(after_created_at) AS INTEGER) AND g.id < CAST(sqlc.arg(after_id) AS TEXT))))
+ORDER BY g.group_key, g.created_at DESC, g.id DESC
+LIMIT sqlc.arg(page_size);
+
 -- name: SetItemLangMixed :execrows
 -- The original language is marked mixed (several languages in one transcript).
 UPDATE items SET lang_mixed = sqlc.arg(lang_mixed) WHERE id = sqlc.arg(id);

@@ -2788,45 +2788,6 @@ export interface components {
       until?: string;
       url: string;
     };
-    Item: {
-      availability?: string;
-      channel_id?: string;
-      /** Format: date-time */
-      created_at: string;
-      /** Format: int64 */
-      duration_s: number | null;
-      external_id: string;
-      id: string;
-      lang_mixed: boolean;
-      /** @description 原文語言的來源：metadata、asr 或 detected */
-      lang_source?: string;
-      original_lang?: string;
-      /** @description 新增時的單次覆寫 */
-      overrides: {
-        [key: string]: unknown;
-      };
-      /**
-       * Format: int64
-       * @description Bilibili 的分P，其他平台沒有
-       */
-      part?: number;
-      platform: string;
-      /** Format: date-time */
-      published_at: string | null;
-      /**
-       * @description 已讀狀態：unread（新增時的預設）或 read；用批次的 mark_read、mark_unread 改變
-       * @enum {string}
-       */
-      read_state: "unread" | "read";
-      /** @description 影音的短代號，例如 yt:abc123xxxxx */
-      ref: string;
-      /** @description 建立這部影音的訂閱；手動新增或訂閱已刪除時是 null */
-      subscription_id: string | null;
-      title: string;
-      /** @description 新增時指定做到哪個步驟為止 */
-      until?: string;
-      url: string;
-    };
     ItemBetterSource: {
       /**
        * Format: double
@@ -3005,7 +2966,7 @@ export interface components {
       styles: components["schemas"]["StyleBody"][] | null;
     };
     ListItemsOutputBody: {
-      items: components["schemas"]["Item"][] | null;
+      items: components["schemas"]["ListedItem"][] | null;
       /** @description 下一頁的游標；最後一頁沒有這個欄位 */
       next_cursor?: string;
       /**
@@ -3019,6 +2980,49 @@ export interface components {
     };
     ListTokensOutputBody: {
       tokens: components["schemas"]["TokenInfo"][] | null;
+    };
+    ListedItem: {
+      availability?: string;
+      channel_id?: string;
+      /** @description 頻道名稱；沒有頻道或頻道還沒有名稱時省略 */
+      channel_name?: string;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: int64 */
+      duration_s: number | null;
+      external_id: string;
+      /** @description 分組時這部影音所屬的組：channel 是頻道 ID；published 是發布日（UTC 的 YYYY-MM-DD）；status 是 failed、blocked、processing 或 idle。沒有頻道或發布時間時省略 */
+      group?: string;
+      id: string;
+      lang_mixed: boolean;
+      /** @description 原文語言的來源：metadata、asr 或 detected */
+      lang_source?: string;
+      original_lang?: string;
+      /** @description 新增時的單次覆寫 */
+      overrides: {
+        [key: string]: unknown;
+      };
+      /**
+       * Format: int64
+       * @description Bilibili 的分P，其他平台沒有
+       */
+      part?: number;
+      platform: string;
+      /** Format: date-time */
+      published_at: string | null;
+      /**
+       * @description 已讀狀態：unread（新增時的預設）或 read；用批次的 mark_read、mark_unread 改變
+       * @enum {string}
+       */
+      read_state: "unread" | "read";
+      /** @description 影音的短代號，例如 yt:abc123xxxxx */
+      ref: string;
+      /** @description 建立這部影音的訂閱；手動新增或訂閱已刪除時是 null */
+      subscription_id: string | null;
+      title: string;
+      /** @description 新增時指定做到哪個步驟為止 */
+      until?: string;
+      url: string;
     };
     LoginInputBody: {
       /** @description 登入後要前往的站內路徑（ENTRY-R6）；不安全或超過 2048 bytes 時回應的 next 為 / */
@@ -5440,6 +5444,8 @@ export interface operations {
         cursor?: string;
         /** @description read 或 unread（LIB-R19）；其他值回 422 */
         read_state?: string;
+        /** @description 分組（LIB-R4）：channel 依頻道名稱、published 依發布時間由新到舊、status 依狀態（failed、blocked、processing、idle）；同一組連續，組內依建立時間由新到舊。省略時不分組，依建立時間由新到舊 */
+        group_by?: "channel" | "published" | "status";
       };
       header?: never;
       path?: never;

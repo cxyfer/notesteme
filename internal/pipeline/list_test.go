@@ -610,7 +610,14 @@ func BenchmarkListItems10k(b *testing.B) {
 				return err
 			}
 			title := fmt.Sprintf("Video %d about PostgreSQL 與 Agile", i)
-			if err := tx.UpdateItemMeta(ctx, it.ID, store.ItemMeta{Title: title, DurationS: ip(i % 3600), OriginalLang: []string{"en", "zh"}[i%2], LangSource: "metadata"}); err != nil {
+			// lib-10k：500 個頻道（LIB-R4 的分組）。
+			chID, err := tx.UpsertChannel(ctx, store.Channel{Platform: "youtube", ExternalID: fmt.Sprintf("ch%03d", i%500), Title: fmt.Sprintf("Channel %03d", i%500)})
+			if err != nil {
+				return err
+			}
+			pub := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i%900) * time.Hour)
+			if err := tx.UpdateItemMeta(ctx, it.ID, store.ItemMeta{Title: title, DurationS: ip(i % 3600), OriginalLang: []string{"en", "zh"}[i%2], LangSource: "metadata",
+				ChannelID: chID, PublishedAt: &pub}); err != nil {
 				return err
 			}
 			for _, stage := range Stages {
@@ -653,6 +660,9 @@ func BenchmarkListItems10k(b *testing.B) {
 		{"timing", ItemQuery{Timing: "interpolated", Limit: 50}},
 		{"all_filters", ItemQuery{Platform: "youtube", Lang: "en", Timing: "interpolated", Q: "postgresql",
 			Status: map[string][]string{StageNormalize: {"done"}}, DurationMin: ip(10), Limit: 50}},
+		{"group_channel", ItemQuery{GroupBy: store.GroupChannel, Limit: 200}},
+		{"group_published", ItemQuery{GroupBy: store.GroupPublished, Limit: 200}},
+		{"group_status", ItemQuery{GroupBy: store.GroupStatus, Limit: 200}},
 	}
 	for _, c := range cases {
 		b.Run(c.name, func(b *testing.B) {

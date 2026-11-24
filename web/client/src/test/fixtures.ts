@@ -14,7 +14,7 @@ import {
 } from "./m4Fixtures";
 import { searchResult } from "./ui5Fixtures";
 
-type Item = components["schemas"]["Item"];
+type Item = components["schemas"]["ListedItem"];
 type Detail = components["schemas"]["ItemDetail"];
 type Stage = components["schemas"]["Stage"];
 

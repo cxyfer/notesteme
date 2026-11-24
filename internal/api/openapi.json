@@ -2891,109 +2891,6 @@
         ],
         "type": "object"
       },
-      "Item": {
-        "additionalProperties": false,
-        "properties": {
-          "availability": {
-            "type": "string"
-          },
-          "channel_id": {
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "duration_s": {
-            "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "external_id": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "lang_mixed": {
-            "type": "boolean"
-          },
-          "lang_source": {
-            "description": "原文語言的來源：metadata、asr 或 detected",
-            "type": "string"
-          },
-          "original_lang": {
-            "type": "string"
-          },
-          "overrides": {
-            "additionalProperties": {},
-            "description": "新增時的單次覆寫",
-            "type": "object"
-          },
-          "part": {
-            "description": "Bilibili 的分P，其他平台沒有",
-            "format": "int64",
-            "type": "integer"
-          },
-          "platform": {
-            "type": "string"
-          },
-          "published_at": {
-            "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "read_state": {
-            "description": "已讀狀態：unread（新增時的預設）或 read；用批次的 mark_read、mark_unread 改變",
-            "enum": [
-              "unread",
-              "read"
-            ],
-            "type": "string"
-          },
-          "ref": {
-            "description": "影音的短代號，例如 yt:abc123xxxxx",
-            "type": "string"
-          },
-          "subscription_id": {
-            "description": "建立這部影音的訂閱；手動新增或訂閱已刪除時是 null",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "title": {
-            "type": "string"
-          },
-          "until": {
-            "description": "新增時指定做到哪個步驟為止",
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "ref",
-          "platform",
-          "external_id",
-          "url",
-          "title",
-          "duration_s",
-          "published_at",
-          "lang_mixed",
-          "overrides",
-          "created_at",
-          "subscription_id",
-          "read_state"
-        ],
-        "type": "object"
-      },
       "ItemBetterSource": {
         "additionalProperties": false,
         "properties": {
@@ -3443,7 +3340,7 @@
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/Item"
+              "$ref": "#/components/schemas/ListedItem"
             },
             "type": [
               "array",
@@ -3499,6 +3396,117 @@
         },
         "required": [
           "tokens"
+        ],
+        "type": "object"
+      },
+      "ListedItem": {
+        "additionalProperties": false,
+        "properties": {
+          "availability": {
+            "type": "string"
+          },
+          "channel_id": {
+            "type": "string"
+          },
+          "channel_name": {
+            "description": "頻道名稱；沒有頻道或頻道還沒有名稱時省略",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "duration_s": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "group": {
+            "description": "分組時這部影音所屬的組：channel 是頻道 ID；published 是發布日（UTC 的 YYYY-MM-DD）；status 是 failed、blocked、processing 或 idle。沒有頻道或發布時間時省略",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lang_mixed": {
+            "type": "boolean"
+          },
+          "lang_source": {
+            "description": "原文語言的來源：metadata、asr 或 detected",
+            "type": "string"
+          },
+          "original_lang": {
+            "type": "string"
+          },
+          "overrides": {
+            "additionalProperties": {},
+            "description": "新增時的單次覆寫",
+            "type": "object"
+          },
+          "part": {
+            "description": "Bilibili 的分P，其他平台沒有",
+            "format": "int64",
+            "type": "integer"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "published_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "read_state": {
+            "description": "已讀狀態：unread（新增時的預設）或 read；用批次的 mark_read、mark_unread 改變",
+            "enum": [
+              "unread",
+              "read"
+            ],
+            "type": "string"
+          },
+          "ref": {
+            "description": "影音的短代號，例如 yt:abc123xxxxx",
+            "type": "string"
+          },
+          "subscription_id": {
+            "description": "建立這部影音的訂閱；手動新增或訂閱已刪除時是 null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "until": {
+            "description": "新增時指定做到哪個步驟為止",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ref",
+          "platform",
+          "external_id",
+          "url",
+          "title",
+          "duration_s",
+          "published_at",
+          "lang_mixed",
+          "overrides",
+          "created_at",
+          "subscription_id",
+          "read_state"
         ],
         "type": "object"
       },
@@ -8855,6 +8863,21 @@
             "name": "read_state",
             "schema": {
               "description": "read 或 unread（LIB-R19）；其他值回 422",
+              "type": "string"
+            }
+          },
+          {
+            "description": "分組（LIB-R4）：channel 依頻道名稱、published 依發布時間由新到舊、status 依狀態（failed、blocked、processing、idle）；同一組連續，組內依建立時間由新到舊。省略時不分組，依建立時間由新到舊",
+            "explode": false,
+            "in": "query",
+            "name": "group_by",
+            "schema": {
+              "description": "分組（LIB-R4）：channel 依頻道名稱、published 依發布時間由新到舊、status 依狀態（failed、blocked、processing、idle）；同一組連續，組內依建立時間由新到舊。省略時不分組，依建立時間由新到舊",
+              "enum": [
+                "channel",
+                "published",
+                "status"
+              ],
               "type": "string"
             }
           }

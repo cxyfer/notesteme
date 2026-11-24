@@ -108,3 +108,47 @@ func (r *Repo) CountItems(ctx context.Context, f ItemFilter) (int, error) {
 	})
 	return int(n), err
 }
+
+// 列表的分組（LIB-R4）。
+const (
+	GroupChannel   = "channel"
+	GroupPublished = "published"
+	GroupStatus    = "status"
+)
+
+// GroupedPos 是分組列表中的位置：分組鍵（排序用的字串，不透明）加上組內的 (created_at, id)。
+type GroupedPos struct {
+	Group       string
+	CreatedAtMs int64
+	ID          string
+}
+
+// ListItemKeysGrouped 依 groupBy（GroupChannel、GroupPublished、GroupStatus）分組列出符合條件的影音 ID 與分組鍵：
+// 組依分組鍵由小到大，同一組連續、組內依 (created_at, id) 由新到舊；after 不為 nil 時只回傳排在它之後的。
+// 篩選條件與 ListItemsPage 相同（不含垃圾桶中的）。
+func (r *Repo) ListItemKeysGrouped(ctx context.Context, f ItemFilter, groupBy string, after *GroupedPos, limit int) ([]GroupedPos, error) {
+	status, err := statusFiltersJSON(f.Status)
+	if err != nil {
+		return nil, err
+	}
+	p := sqlcdb.ListItemKeysGroupedParams{
+		GroupBy:  groupBy,
+		Platform: f.Platform, ChannelID: f.Channel, Lang: f.Lang,
+		PublishedFrom: msPtr(f.PublishedFrom), PublishedTo: msPtr(f.PublishedTo),
+		DurationMin: intPtr64(f.DurationMin), DurationMax: intPtr64(f.DurationMax),
+		QFold: FoldTitle(f.Q), ErrorClass: f.ErrorClass, Timing: f.Timing, Blocked: f.Blocked, StatusFilters: status, ReadState: f.ReadState,
+		PageSize: int64(limit),
+	}
+	if after != nil {
+		p.HasAfter, p.AfterGroup, p.AfterCreatedAt, p.AfterID = 1, after.Group, after.CreatedAtMs, after.ID
+	}
+	rows, err := r.q.ListItemKeysGrouped(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]GroupedPos, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, GroupedPos{Group: row.GroupKey, CreatedAtMs: row.CreatedAt, ID: row.ID})
+	}
+	return out, nil
+}

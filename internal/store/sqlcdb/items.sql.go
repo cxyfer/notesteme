@@ -390,6 +390,157 @@ func (q *Queries) ItemsOverridingPrompt(ctx context.Context, promptID string) ([
 	return items, nil
 }
 
+const listItemKeysGrouped = `-- name: ListItemKeysGrouped :many
+WITH sf AS (
+  SELECT json_extract(j.value, '$.stage') AS stage, json_extract(j.value, '$.statuses') AS statuses
+  FROM json_each(CAST(?6 AS TEXT)) AS j
+), g AS (
+SELECT id, created_at,
+  CAST(CASE CAST(?7 AS TEXT)
+    WHEN 'channel' THEN
+      CASE WHEN COALESCE(channel_id, '') = '' THEN '1'
+           ELSE '0' || COALESCE((SELECT substr(c.title, 1, 100) FROM channels AS c WHERE c.id = items.channel_id), '') || char(31) || channel_id END
+    WHEN 'published' THEN
+      CASE WHEN published_at IS NULL THEN '1' ELSE '0' || printf('%020d', 5000000000000000000 - published_at) END
+    ELSE
+      -- Uncorrelated IN lists are built once per query (a correlated EXISTS per item was too slow on lib-10k).
+      CASE
+        WHEN items.id IN (SELECT sr.item_id FROM stage_runs AS sr WHERE sr.status = 'failed'
+                            AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)) THEN '1'
+        WHEN items.id IN (SELECT sr.item_id FROM stage_runs AS sr WHERE sr.status = 'blocked'
+                            AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)) THEN '2'
+        WHEN items.id IN (SELECT sr.item_id FROM stage_runs AS sr WHERE sr.status IN ('running', 'waiting', 'awaiting_agent')
+                            AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1))
+          OR items.id IN (SELECT sr.item_id FROM tasks AS t JOIN stage_runs AS sr ON sr.id = t.stage_run_id
+                          WHERE t.state IN ('pending', 'leased', 'waiting')) THEN '3'
+        ELSE '4'
+      END
+  END AS TEXT) AS group_key
+FROM items
+WHERE deleted_at IS NULL
+  AND (CAST(?8 AS TEXT) = '' OR platform = ?8)
+  AND (CAST(?9 AS TEXT) = '' OR channel_id = ?9)
+  AND (CAST(?10 AS TEXT) = '' OR lower(original_lang) = lower(?10))
+  AND (CAST(?11 AS INTEGER) IS NULL OR published_at >= CAST(?11 AS INTEGER))
+  AND (CAST(?12 AS INTEGER) IS NULL OR published_at <= CAST(?12 AS INTEGER))
+  AND (CAST(?13 AS INTEGER) IS NULL OR duration_s >= CAST(?13 AS INTEGER))
+  AND (CAST(?14 AS INTEGER) IS NULL OR duration_s <= CAST(?14 AS INTEGER))
+  AND (CAST(?15 AS TEXT) = '' OR instr(title_fold, ?15) > 0)
+  AND (CAST(?16 AS TEXT) = '' OR read_state = ?16)
+  AND (CAST(?17 AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM stage_runs AS sr
+        WHERE sr.item_id = items.id AND sr.error_class = ?17
+          AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                       ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)))
+  AND (CAST(?18 AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM artifacts AS a, json_each(a.timings_json) AS tj
+        WHERE a.item_id = items.id AND a.kind = 'transcript' AND a.superseded_by IS NULL AND tj.value = ?18))
+  AND (CAST(?19 AS TEXT) = '' OR EXISTS (
+        SELECT 1 FROM stage_runs AS sr
+        WHERE sr.item_id = items.id AND sr.status = 'blocked' AND sr.block_reason = ?19
+          AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+                       ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)))
+  AND (json_array_length(CAST(?6 AS TEXT)) = 0 OR NOT EXISTS (
+        SELECT 1 FROM sf
+        WHERE COALESCE(instr(sf.statuses,
+                '|' || COALESCE((SELECT r.status FROM stage_runs AS r WHERE r.item_id = items.id AND r.stage = sf.stage
+                                 ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1), 'pending') || '|'), 0) = 0))
+)
+SELECT g.id AS id, g.created_at AS created_at, g.group_key AS group_key FROM g
+WHERE CAST(?1 AS INTEGER) = 0
+   OR g.group_key > CAST(?2 AS TEXT)
+   OR (g.group_key = CAST(?2 AS TEXT)
+       AND (g.created_at < CAST(?3 AS INTEGER)
+            OR (g.created_at = CAST(?3 AS INTEGER) AND g.id < CAST(?4 AS TEXT))))
+ORDER BY g.group_key, g.created_at DESC, g.id DESC
+LIMIT ?5
+`
+
+type ListItemKeysGroupedParams struct {
+	HasAfter       int64
+	AfterGroup     string
+	AfterCreatedAt int64
+	AfterID        string
+	PageSize       int64
+	StatusFilters  string
+	GroupBy        string
+	Platform       string
+	ChannelID      string
+	Lang           string
+	PublishedFrom  *int64
+	PublishedTo    *int64
+	DurationMin    *int64
+	DurationMax    *int64
+	QFold          string
+	ReadState      string
+	ErrorClass     string
+	Timing         string
+	Blocked        string
+}
+
+type ListItemKeysGroupedRow struct {
+	ID        string
+	CreatedAt int64
+	GroupKey  string
+}
+
+// The library list grouped by channel, publish date or status (LIB-R4). Keep the WHERE block identical to ListItemsPage.
+// group_key orders the groups (ascending) and keeps each group contiguous; inside a group the order is (created_at, id)
+// descending, like the ungrouped list. Only ids and keys are returned: the caller loads the items by id.
+//
+//	channel:   '0' || channel title (first 100 characters, keeps the cursor short) || char(31) || channel id;
+//	           items without a channel last ('1').
+//	published: newest publish time first ('0' || zero-padded (big - published_at)); without a publish time last ('1').
+//	status:    '1' a stage failed, '2' a stage blocked, '3' processing (a stage running, waiting or awaiting an agent,
+//	           or an unfinished task), '4' everything else. Stages count by their latest run.
+//
+// Keyset: rows after (after_group, after_created_at, after_id); has_after = 0 starts from the first row.
+func (q *Queries) ListItemKeysGrouped(ctx context.Context, arg ListItemKeysGroupedParams) ([]ListItemKeysGroupedRow, error) {
+	rows, err := q.db.QueryContext(ctx, listItemKeysGrouped,
+		arg.HasAfter,
+		arg.AfterGroup,
+		arg.AfterCreatedAt,
+		arg.AfterID,
+		arg.PageSize,
+		arg.StatusFilters,
+		arg.GroupBy,
+		arg.Platform,
+		arg.ChannelID,
+		arg.Lang,
+		arg.PublishedFrom,
+		arg.PublishedTo,
+		arg.DurationMin,
+		arg.DurationMax,
+		arg.QFold,
+		arg.ReadState,
+		arg.ErrorClass,
+		arg.Timing,
+		arg.Blocked,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListItemKeysGroupedRow
+	for rows.Next() {
+		var i ListItemKeysGroupedRow
+		if err := rows.Scan(&i.ID, &i.CreatedAt, &i.GroupKey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listItems = `-- name: ListItems :many
 SELECT id, platform, external_id, part, channel_id, profile_id, overrides_json, until_stage, title, url, published_at, duration_s, original_lang, lang_source, lang_mixed, availability, media_kind, metadata_json, created_at, deleted_at, title_fold, source_path, content_sha256, origin, profile_version, subscription_id, read_state FROM items WHERE deleted_at IS NULL ORDER BY created_at, rowid
 `

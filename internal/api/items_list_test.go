@@ -292,8 +292,8 @@ var testCursorKey = []byte("test-cursor-key")
 
 func TestDecodeItemCursorNeverPanics(t *testing.T) {
 	fp := "0123456789abcdef"
-	good := encodeItemCursor(pipeline.ItemCursor{CreatedAtMs: 42, ID: "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"}, testCursorKey, fp)
-	c, err := decodeItemCursor(good, testCursorKey, fp)
+	good := encodeItemCursor(pipeline.ItemCursor{CreatedAtMs: 42, ID: "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"}, testCursorKey, fp, false)
+	c, err := decodeItemCursor(good, testCursorKey, fp, false)
 	if err != nil || c.CreatedAtMs != 42 || c.ID != "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5" {
 		t.Fatalf("往返：%+v, %v", c, err)
 	}
@@ -301,14 +301,14 @@ func TestDecodeItemCursorNeverPanics(t *testing.T) {
 		t.Errorf("正常的游標不該超過上限：%d", len(good))
 	}
 	for _, in := range []string{"", "e30", "bnVsbA", "W10", "InN0ciI", "e30K", "eyJ2IjoxfQ", strings.Repeat("e", 600), "\x00\xff", fmt.Sprintf("%s.%s", good, good)} {
-		if _, err := decodeItemCursor(in, testCursorKey, fp); err == nil {
+		if _, err := decodeItemCursor(in, testCursorKey, fp, false); err == nil {
 			t.Errorf("%q 不該被接受", in)
 		}
 	}
-	if _, err := decodeItemCursor(good, testCursorKey, "ffffffffffffffff"); err == nil {
+	if _, err := decodeItemCursor(good, testCursorKey, "ffffffffffffffff", false); err == nil {
 		t.Error("指紋不符不該被接受")
 	}
-	if _, err := decodeItemCursor(good, []byte("another-key"), fp); err == nil {
+	if _, err := decodeItemCursor(good, []byte("another-key"), fp, false); err == nil {
 		t.Error("其他金鑰簽的游標不該被接受")
 	}
 }
@@ -316,7 +316,7 @@ func TestDecodeItemCursorNeverPanics(t *testing.T) {
 // 改掉位置（t 或 id）再重新編碼、保留原本的 f，仍要被拒絕：MAC 涵蓋整個游標內容。
 func TestDecodeItemCursorRejectsTamperedPosition(t *testing.T) {
 	const fp = "0123456789abcdef"
-	good := encodeItemCursor(pipeline.ItemCursor{CreatedAtMs: 42, ID: "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"}, testCursorKey, fp)
+	good := encodeItemCursor(pipeline.ItemCursor{CreatedAtMs: 42, ID: "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"}, testCursorKey, fp, false)
 	raw, err := base64.RawURLEncoding.DecodeString(good)
 	if err != nil {
 		t.Fatal(err)
@@ -332,7 +332,7 @@ func TestDecodeItemCursorRejectsTamperedPosition(t *testing.T) {
 		tc := c
 		edit(&tc)
 		b, _ := json.Marshal(tc)
-		if _, err := decodeItemCursor(base64.RawURLEncoding.EncodeToString(b), testCursorKey, fp); err == nil {
+		if _, err := decodeItemCursor(base64.RawURLEncoding.EncodeToString(b), testCursorKey, fp, false); err == nil {
 			t.Errorf("%s：被竄改的游標不該被接受", name)
 		}
 	}
@@ -360,7 +360,7 @@ func TestDecodeItemCursorRejectsNonCanonicalForms(t *testing.T) {
 	const id = "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"
 	enc := func(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s)) }
 	// MAC 用標準形式的 id 計算，非標準寫法的 uuid 要在格式檢查就被擋下，而不是只因 MAC 不符。
-	mac := cursorMAC(testCursorKey, 1, 42, id, fp)
+	mac := cursorMAC(testCursorKey, 1, "", 42, id, fp)
 	body := func(id string) string {
 		return fmt.Sprintf(`{"v":1,"t":42,"id":%q,"f":%q}`, id, mac)
 	}
@@ -378,11 +378,11 @@ func TestDecodeItemCursorRejectsNonCanonicalForms(t *testing.T) {
 		return s[:len(s)-1] + string(alphabet[i^1])
 	}
 	good := enc(body(id))
-	if _, err := decodeItemCursor(good, testCursorKey, fp); err != nil {
+	if _, err := decodeItemCursor(good, testCursorKey, fp, false); err != nil {
 		t.Fatalf("前置條件：標準形式要能通過：%v", err)
 	}
 	spare := enc(withSpareBits(id))
-	if _, err := decodeItemCursor(spare, testCursorKey, fp); err != nil {
+	if _, err := decodeItemCursor(spare, testCursorKey, fp, false); err != nil {
 		t.Fatalf("前置條件：尾端空白的游標要能通過：%v", err)
 	}
 	tests := []struct{ name, cursor string }{
@@ -395,7 +395,7 @@ func TestDecodeItemCursorRejectsNonCanonicalForms(t *testing.T) {
 		{"uuid 大寫", enc(body(strings.ToUpper(id)))},
 	}
 	for _, tt := range tests {
-		if _, err := decodeItemCursor(tt.cursor, testCursorKey, fp); err == nil {
+		if _, err := decodeItemCursor(tt.cursor, testCursorKey, fp, false); err == nil {
 			t.Errorf("%s：不該被接受 %q", tt.name, tt.cursor)
 		}
 	}
@@ -404,7 +404,7 @@ func TestDecodeItemCursorRejectsNonCanonicalForms(t *testing.T) {
 // 沒有注入 Pipeline 時，列表也要先驗證參數：不合法回 422，合法才回空列表。
 func TestListItemsValidatesParamsWithoutPipeline(t *testing.T) {
 	r := newItemsRigAPI(t, func(d *Deps) { d.Pipeline = nil; d.CursorKey = testCursorKey })
-	valid := encodeItemCursor(pipeline.ItemCursor{CreatedAtMs: 1, ID: "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"}, testCursorKey, filterFingerprint(pipeline.ItemQuery{}))
+	valid := encodeItemCursor(pipeline.ItemCursor{CreatedAtMs: 1, ID: "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"}, testCursorKey, filterFingerprint(pipeline.ItemQuery{}), false)
 	for _, q := range []string{
 		"?platform=vimeo", "?status=bogus:done", "?status=normalize:bogus", "?timing=bogus",
 		"?duration_min=-1", "?q=" + strings.Repeat("a", 201), "?cursor=nope", "?platform=youtube&cursor=" + valid,
@@ -559,5 +559,114 @@ func TestListItemsBlockedFilter(t *testing.T) {
 	}
 	if rec := r.owner("GET", "/api/items?blocked="+strings.Repeat("a", 64), ""); rec.Code != 200 {
 		t.Errorf("64 個字元應該可以：%d", rec.Code)
+	}
+}
+
+type groupedBody struct {
+	Items      []ListedItem `json:"items"`
+	Total      int          `json:"total"`
+	NextCursor string       `json:"next_cursor"`
+}
+
+// LIB-R4 的 group_by：每部影音帶 group 與 channel_name；分組的游標（版本 2）只能用在同樣的分組，
+// 拿去不分組或其他分組的請求回 422；不認識的 group_by 也是 422。
+func TestListItemsGroupBy(t *testing.T) {
+	r := newItemsRig(t)
+	ctx := context.Background()
+	refs := seedLibrary(t, r)
+	// 讓 pg100 與 other 屬於同一個頻道。
+	chID, err := r.st.Write().UpsertChannel(ctx, store.Channel{Platform: "youtube", ExternalID: "UCx", Title: "Fireship"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ext := range []string{"pg100xxxxxx", "other000001"} {
+		it, err := r.st.Read().ItemByKey(ctx, "youtube", ext, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := r.st.Write().UpdateItemMeta(ctx, it.ID, store.ItemMeta{Title: it.Title, ChannelID: chID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var got []string
+	cursor := ""
+	for range 10 {
+		rec := r.owner("GET", "/api/items?group_by=channel&limit=1"+cursor, "")
+		if rec.Code != 200 {
+			t.Fatalf("group_by=channel = %d %s", rec.Code, rec.Body)
+		}
+		b := decode[groupedBody](t, rec)
+		if b.Total != 5 || len(b.Items) != 1 {
+			t.Fatalf("頁 = %+v", b)
+		}
+		it := b.Items[0]
+		got = append(got, it.Ref+"|"+it.Group+"|"+it.ChannelName)
+		if b.NextCursor == "" {
+			break
+		}
+		// 分組的游標拿去不分組、或其他分組：422。
+		for _, q := range []string{"", "&group_by=status"} {
+			if rec := r.owner("GET", "/api/items?limit=1&cursor="+b.NextCursor+q, ""); rec.Code != 422 {
+				t.Errorf("分組的游標用在%q = %d", q, rec.Code)
+			}
+		}
+		cursor = "&cursor=" + b.NextCursor
+	}
+	pg, ot := refs[0], refs[3]
+	want := []string{ot + "|" + chID + "|Fireship", pg + "|" + chID + "|Fireship", refs[4] + "||", refs[2] + "||", refs[1] + "||"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("依頻道分組 = %v，預期 %v", got, want)
+	}
+	// 不分組的游標拿去分組的請求也是 422；不分組時沒有 group 欄位，但有頻道名稱。
+	rec := r.owner("GET", "/api/items?limit=1", "")
+	b := decode[groupedBody](t, rec)
+	if b.Items[0].Group != "" || b.Items[0].ChannelName != "" || b.NextCursor == "" {
+		t.Fatalf("不分組 = %+v", b)
+	}
+	if rec := r.owner("GET", "/api/items?limit=1&group_by=channel&cursor="+b.NextCursor, ""); rec.Code != 422 {
+		t.Errorf("不分組的游標用在分組 = %d", rec.Code)
+	}
+	if rec := r.owner("GET", "/api/items?group_by=title", ""); rec.Code != 422 {
+		t.Errorf("不認識的 group_by = %d %s", rec.Code, rec.Body)
+	}
+	b = decode[groupedBody](t, r.owner("GET", "/api/items?limit=5", ""))
+	names := 0
+	for _, it := range b.Items {
+		if it.ChannelName == "Fireship" {
+			names++
+		}
+	}
+	if names != 2 {
+		t.Errorf("列表應帶頻道名稱：%+v", b.Items)
+	}
+}
+
+// 版本 2 的游標：分組鍵在 MAC 內，改掉分組鍵就被拒絕；版本 1 不能帶分組鍵。
+func TestGroupedCursorMACCoversGroup(t *testing.T) {
+	const fp = "0123456789abcdef"
+	c := pipeline.ItemCursor{Group: "0Fireship\x1fch", CreatedAtMs: 42, ID: "01a1dc0b-d8dd-78d5-8f34-3a708ef8a2a5"}
+	good := encodeItemCursor(c, testCursorKey, fp, true)
+	if got, err := decodeItemCursor(good, testCursorKey, fp, true); err != nil || *got != c {
+		t.Fatalf("往返 = %+v, %v", got, err)
+	}
+	if _, err := decodeItemCursor(good, testCursorKey, fp, false); err == nil {
+		t.Error("版本 2 的游標不能用在不分組的列表")
+	}
+	raw, _ := base64.RawURLEncoding.DecodeString(good)
+	var m map[string]any
+	_ = json.Unmarshal(raw, &m)
+	m["g"] = "0Alpha\x1fch"
+	b, _ := json.Marshal(m)
+	if _, err := decodeItemCursor(base64.RawURLEncoding.EncodeToString(b), testCursorKey, fp, true); err == nil {
+		t.Error("改掉分組鍵的游標不該被接受")
+	}
+	m["v"], m["g"] = 1.0, "x"
+	b, _ = json.Marshal(m)
+	if _, err := decodeItemCursor(base64.RawURLEncoding.EncodeToString(b), testCursorKey, fp, false); err == nil {
+		t.Error("版本 1 不能帶分組鍵")
+	}
+	long := encodeItemCursor(pipeline.ItemCursor{Group: strings.Repeat("g", maxCursorGroupLen+1), CreatedAtMs: 1, ID: c.ID}, testCursorKey, fp, true)
+	if _, err := decodeItemCursor(long, testCursorKey, fp, true); err == nil {
+		t.Error("分組鍵太長不該被接受")
 	}
 }

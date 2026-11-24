@@ -357,12 +357,20 @@ type listItemsInput struct {
 	Limit         int      `query:"limit" default:"50" minimum:"1" maximum:"200" doc:"單頁筆數"`
 	Cursor        string   `query:"cursor" doc:"上一頁回傳的 next_cursor"`
 	ReadState     string   `query:"read_state" doc:"read 或 unread（LIB-R19）；其他值回 422"`
+	GroupBy       string   `query:"group_by" enum:"channel,published,status" doc:"分組（LIB-R4）：channel 依頻道名稱、published 依發布時間由新到舊、status 依狀態（failed、blocked、processing、idle）；同一組連續，組內依建立時間由新到舊。省略時不分組，依建立時間由新到舊"`
+}
+
+// ListedItem 是列表中的一部影音：Item 加上頻道名稱與所屬的組。
+type ListedItem struct {
+	Item
+	ChannelName string `json:"channel_name,omitempty" doc:"頻道名稱；沒有頻道或頻道還沒有名稱時省略"`
+	Group       string `json:"group,omitempty" doc:"分組時這部影音所屬的組：channel 是頻道 ID；published 是發布日（UTC 的 YYYY-MM-DD）；status 是 failed、blocked、processing 或 idle。沒有頻道或發布時間時省略"`
 }
 
 type listItemsOutput struct {
 	Body struct {
-		Items []Item `json:"items"`
-		Total int    `json:"total" doc:"符合條件的總數，和目前在第幾頁無關"`
+		Items []ListedItem `json:"items"`
+		Total int          `json:"total" doc:"符合條件的總數，和目前在第幾頁無關"`
 		// NextCursor 在最後一頁省略，不回 null。
 		NextCursor string `json:"next_cursor,omitempty" doc:"下一頁的游標；最後一頁沒有這個欄位"`
 	}
@@ -444,7 +452,7 @@ func (rt *routes) listItems(ctx context.Context, in *listItemsInput) (*listItems
 	q := pipeline.ItemQuery{
 		Platform: in.Platform, Channel: in.Channel, ErrorClass: in.ErrorClass, Lang: in.Lang, Timing: in.Timing,
 		Q: strings.TrimSpace(in.Q), Blocked: in.Blocked, Status: status, PublishedFrom: from, PublishedTo: to,
-		DurationMin: durMin, DurationMax: durMax, ReadState: in.ReadState, Limit: in.Limit,
+		DurationMin: durMin, DurationMax: durMax, ReadState: in.ReadState, Limit: in.Limit, GroupBy: in.GroupBy,
 	}
 	// 不論有沒有 Pipeline，都先驗證參數與游標，不合法回 422。
 	if err := q.Validate(); err != nil {
@@ -452,12 +460,12 @@ func (rt *routes) listItems(ctx context.Context, in *listItemsInput) (*listItems
 	}
 	fp := filterFingerprint(q)
 	if in.Cursor != "" {
-		if q.After, err = decodeItemCursor(in.Cursor, rt.d.CursorKey, fp); err != nil {
+		if q.After, err = decodeItemCursor(in.Cursor, rt.d.CursorKey, fp, q.GroupBy != ""); err != nil {
 			return nil, errBadCursor()
 		}
 	}
 	out := &listItemsOutput{}
-	out.Body.Items = []Item{}
+	out.Body.Items = []ListedItem{}
 	if rt.d.Pipeline == nil {
 		return out, nil
 	}
@@ -465,25 +473,35 @@ func (rt *routes) listItems(ctx context.Context, in *listItemsInput) (*listItems
 	if err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}
-	for _, it := range page.Items {
-		out.Body.Items = append(out.Body.Items, toItem(it))
+	for i, it := range page.Items {
+		li := ListedItem{Item: toItem(it), ChannelName: page.ChannelNames[it.ChannelID]}
+		if i < len(page.Groups) {
+			li.Group = page.Groups[i]
+		}
+		out.Body.Items = append(out.Body.Items, li)
 	}
 	out.Body.Total = page.Total
 	if page.Next != nil {
-		out.Body.NextCursor = encodeItemCursor(*page.Next, rt.d.CursorKey, fp)
+		out.Body.NextCursor = encodeItemCursor(*page.Next, rt.d.CursorKey, fp, q.GroupBy != "")
 	}
 	return out, nil
 }
 
 // ---- 游標 ----
 
-// maxCursorLen 是游標字串的長度上限；正常的游標不到 150 字元。
-const maxCursorLen = 512
+// maxCursorLen 是游標字串的長度上限；正常的游標不到 150 字元，依頻道分組的游標含頻道名稱（SQL 只取前 100 個字元），最長約 1KB。
+// maxCursorGroupLen 是分組鍵的長度上限。
+const (
+	maxCursorLen      = 2048
+	maxCursorGroupLen = 512
+)
 
 // itemCursor 是游標的內容：版本、位置（created_at 毫秒與 id），以及 MAC。
 // F 是 cursorMAC 的結果，涵蓋版本、位置與篩選條件的指紋；改動任何一項都會被拒絕。
+// 分組的列表用版本 2，多一個分組鍵 G（LIB-R4）；不分組的列表仍是版本 1，G 必須省略。
 type itemCursor struct {
 	V  int    `json:"v"`
+	G  string `json:"g,omitempty"`
 	T  int64  `json:"t"`
 	ID string `json:"id"`
 	F  string `json:"f"`
@@ -517,27 +535,40 @@ func filterFingerprint(q pipeline.ItemQuery) string {
 		ReadState                                      string `json:",omitempty"`
 		// Blocked 省略空值：沒有用這個篩選時指紋與之前相同。
 		Blocked string `json:",omitempty"`
-	}{q.Platform, q.Channel, q.ErrorClass, q.Lang, q.Timing, q.Q, status, ms(q.PublishedFrom), ms(q.PublishedTo), q.DurationMin, q.DurationMax, q.ReadState, q.Blocked})
+		// GroupBy 省略空值，理由同上；分組方式不同的游標不能互用。
+		GroupBy string `json:",omitempty"`
+	}{q.Platform, q.Channel, q.ErrorClass, q.Lang, q.Timing, q.Q, status, ms(q.PublishedFrom), ms(q.PublishedTo), q.DurationMin, q.DurationMax, q.ReadState, q.Blocked, q.GroupBy})
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:8])
 }
 
-// cursorMAC 是游標內容的 HMAC-SHA256（前 16 bytes 的 hex）：涵蓋版本、位置與篩選條件的指紋。
+// cursorMAC 是游標內容的 HMAC-SHA256（前 16 bytes 的 hex）：涵蓋版本、位置（含分組鍵）與篩選條件的指紋。
 // 只比對篩選條件的指紋擋不住竄改：指紋不含位置，改掉 t 或 id 再重新編碼仍會通過。
-func cursorMAC(key []byte, v int, t int64, id, fp string) string {
+// 版本 1 的輸入格式不變（沒有分組鍵），已發出的游標仍然有效。
+func cursorMAC(key []byte, v int, g string, t int64, id, fp string) string {
 	m := hmac.New(sha256.New, key)
-	fmt.Fprintf(m, "%d\x00%d\x00%s\x00%s", v, t, id, fp)
+	if v == 1 {
+		fmt.Fprintf(m, "%d\x00%d\x00%s\x00%s", v, t, id, fp)
+	} else {
+		fmt.Fprintf(m, "%d\x00%s\x00%d\x00%s\x00%s", v, g, t, id, fp)
+	}
 	return hex.EncodeToString(m.Sum(nil)[:16])
 }
 
-func encodeItemCursor(c pipeline.ItemCursor, key []byte, fp string) string {
-	b, _ := json.Marshal(itemCursor{V: 1, T: c.CreatedAtMs, ID: c.ID, F: cursorMAC(key, 1, c.CreatedAtMs, c.ID, fp)})
+// encodeItemCursor 編碼游標；grouped 為 true 時是分組列表的版本 2。
+func encodeItemCursor(c pipeline.ItemCursor, key []byte, fp string, grouped bool) string {
+	ic := itemCursor{V: 1, T: c.CreatedAtMs, ID: c.ID}
+	if grouped {
+		ic.V, ic.G = 2, c.Group
+	}
+	ic.F = cursorMAC(key, ic.V, ic.G, ic.T, ic.ID, fp)
+	b, _ := json.Marshal(ic)
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
 // decodeItemCursor 嚴格解析游標：長度上限、標準的 base64url（不補 =、不含換行、尾端位元為零）、
 // 不接受未知欄位或多餘內容、版本為 1、id 必須是標準形式的 UUID、MAC 必須與內容及目前的篩選條件相符。任何不符都回傳錯誤，不 panic。
-func decodeItemCursor(s string, key []byte, wantFP string) (*pipeline.ItemCursor, error) {
+func decodeItemCursor(s string, key []byte, wantFP string, grouped bool) (*pipeline.ItemCursor, error) {
 	if len(s) > maxCursorLen {
 		return nil, errors.New("游標太長")
 	}
@@ -559,7 +590,11 @@ func decodeItemCursor(s string, key []byte, wantFP string) (*pipeline.ItemCursor
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return nil, errors.New("游標有多餘的內容")
 	}
-	if c.V != 1 || c.T < 0 {
+	wantV := 1
+	if grouped {
+		wantV = 2
+	}
+	if c.V != wantV || c.T < 0 || (c.V == 1 && c.G != "") || len(c.G) > maxCursorGroupLen {
 		return nil, errors.New("游標的版本或位置不正確")
 	}
 	// 只接受小寫、帶連字號的標準形式；uuid.Parse 還會接受大括號、urn:uuid: 與沒有連字號的寫法。
@@ -570,10 +605,10 @@ func decodeItemCursor(s string, key []byte, wantFP string) (*pipeline.ItemCursor
 	if c.ID != parsed.String() {
 		return nil, errors.New("游標的 id 不是標準的 uuid")
 	}
-	if !hmac.Equal([]byte(c.F), []byte(cursorMAC(key, c.V, c.T, c.ID, wantFP))) {
+	if !hmac.Equal([]byte(c.F), []byte(cursorMAC(key, c.V, c.G, c.T, c.ID, wantFP))) {
 		return nil, errors.New("游標被竄改或篩選條件已經改變")
 	}
-	return &pipeline.ItemCursor{CreatedAtMs: c.T, ID: c.ID}, nil
+	return &pipeline.ItemCursor{Group: c.G, CreatedAtMs: c.T, ID: c.ID}, nil
 }
 
 type itemInput struct {
