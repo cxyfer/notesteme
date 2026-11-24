@@ -18,6 +18,10 @@ import { Preferences } from "./Preferences";
 const ShortcutsDialog = lazy(() =>
   import("./ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })),
 );
+// UI-8：指令面板（README §3.1）只在打開時載入
+const CommandPalette = lazy(() =>
+  import("./CommandPalette").then((m) => ({ default: m.CommandPalette })),
+);
 
 /** G 之後接的鍵（README §3.6）；G 之後 1.5 秒內沒有按第二個鍵就取消 */
 const GO_TO = { l: "/library", q: "/queue", s: "/subscriptions" } as const;
@@ -65,14 +69,22 @@ export function AppShell() {
 /**
  * N 打開新增抽屜；焦點不在輸入框時貼上 http(s) 網址，打開抽屜並帶入網址。
  * UI-7：G 然後 L／Q／S 前往媒體庫、佇列、訂閱；? 顯示所有快捷鍵。
+ * UI-8：Ctrl K／⌘ K 打開指令面板（焦點在輸入框也可以；已有對話框時不作用）。
  */
 function GlobalShortcuts() {
   const add = useAddDrawer();
   const navigate = useNavigate();
   const [help, setHelp] = useState(false);
+  const [palette, setPalette] = useState(false);
   useEffect(() => {
     let goAt = 0;
     function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
+        if (modalOpen()) return;
+        e.preventDefault();
+        setPalette(true);
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
       if (isEditableTarget(e.target) || modalOpen()) return;
       // ? 在多數鍵盤配置要按 Shift
@@ -108,11 +120,12 @@ function GlobalShortcuts() {
       document.removeEventListener("paste", onPaste);
     };
   }, [add, navigate]);
-  return help ? (
+  return (
     <Suspense fallback={null}>
-      <ShortcutsDialog onClose={() => setHelp(false)} />
+      {help && <ShortcutsDialog onClose={() => setHelp(false)} />}
+      {palette && <CommandPalette onClose={() => setPalette(false)} />}
     </Suspense>
-  ) : null;
+  );
 }
 
 // AUTH-R3：以 --insecure-no-auth 啟動時，頂部持續顯示警告（/api/auth/methods 免驗證；查詢失敗時不顯示）。

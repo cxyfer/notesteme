@@ -2046,6 +2046,17 @@
     "queue": "前往佇列",
     "subscriptions": "前往訂閱",
     "itemTabs": "影音詳情頁：切換字幕、畫面、筆記、紀錄分頁",
-    "help": "顯示所有快捷鍵"
+    "help": "顯示所有快捷鍵",
+    "palette": "指令面板"
+  },
+  "palette": {
+    "title": "指令面板",
+    "input": "輸入頁面、動作或影音標題",
+    "groups": {
+      "items": "影音",
+      "pages": "頁面",
+      "actions": "動作"
+    },
+    "empty": "沒有符合的項目。"
   }
 }

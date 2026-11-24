@@ -2046,6 +2046,17 @@
     "queue": "前往队列",
     "subscriptions": "前往订阅",
     "itemTabs": "音视频详情页：切换字幕、画面、笔记、记录标签页",
-    "help": "显示所有快捷键"
+    "help": "显示所有快捷键",
+    "palette": "命令面板"
+  },
+  "palette": {
+    "title": "命令面板",
+    "input": "输入页面、动作或音视频标题",
+    "groups": {
+      "items": "音视频",
+      "pages": "页面",
+      "actions": "动作"
+    },
+    "empty": "没有符合的项目。"
   }
 }

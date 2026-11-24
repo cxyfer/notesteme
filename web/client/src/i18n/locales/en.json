@@ -2103,6 +2103,17 @@
     "queue": "Go to the queue",
     "subscriptions": "Go to subscriptions",
     "itemTabs": "Media page: switch to the transcript, frames, note or runs tab",
-    "help": "Show all shortcuts"
+    "help": "Show all shortcuts",
+    "palette": "Command palette"
+  },
+  "palette": {
+    "title": "Command palette",
+    "input": "Type a page, action or media title",
+    "groups": {
+      "items": "Media",
+      "pages": "Pages",
+      "actions": "Actions"
+    },
+    "empty": "Nothing matches."
   }
 }

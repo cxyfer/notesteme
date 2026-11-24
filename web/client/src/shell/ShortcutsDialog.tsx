@@ -5,6 +5,7 @@ import { Dialog } from "../components";
 
 /** [按鍵, 說明的 key]；按鍵不翻譯 */
 const ROWS = [
+  ["Ctrl K", "palette"],
   ["N", "add"],
   ["/", "search"],
   ["G L", "library"],
