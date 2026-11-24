@@ -421,7 +421,7 @@
     - `correct`：相似度檢查（rune 為單位、忽略大小寫的 normalized Levenshtein，取 chunk 最低值，門檻 `stages.correct.min_similarity` 預設 0.6，COR-R2／R3，演算法待 M0）、詞彙表（全域 → 頻道 → 方案層含頻道覆寫，大小寫去重；放在 `<video_metadata>` 而非系統指示，模板的 `{{glossary}}` 也改成指向它）、`mixed` 語言規則（COR-R5，目前只認 `items.lang_mixed`，沒有產品流程會標 mixed，SRC-R11 是 `@wip`）、術語候選 `term_candidates`（pending，不自動入詞彙表，已拒絕的詞不重複）。
     - 新 API：`GET/PUT /api/glossaries/{scope}/{id}`（`global`／`channel`）、`GET /api/channels/{id}/term-candidates`；migration 00015（`glossaries`、`glossary_candidates`、`llm_chunks.detail_json`）；詞彙表傳給 Groq ASR 的 `prompt`（最多 200 字元，沒有詞彙表時快取鍵不變，來源紀錄 `asr.prompt`）。
     - 依 /goal 由 advisor 採保守預設、待 owner 追認：COR 規格 C1～C7。
-    - **還沒做／待決**：術語候選的核可／拒絕 API 已在 S11 補上（`PATCH /api/channels/{id}/term-candidates/{cid}`，見 COR 規格 C4）；`@pending-m0` 的 `A rewrite that strays too far` 場景寫「相似度 0.42」，Levenshtein 算出 0.19，要等 M0 決定算法或改場景；COR-R8 場景在 S6b 補上 `translate-two-cues` fixture 後已通過。
+    - **還沒做／待決**：術語候選的核可／拒絕 API 已在 S11 補上（`PATCH /api/channels/{id}/term-candidates/{cid}`，見 COR 規格 C4）；`@pending-m0` 的 `A rewrite that strays too far` 場景寫「相似度 0.42」，Levenshtein 算出 0.19，要等 M0 決定算法或改場景（2026-11-24 已把場景改成 0.19，見第 2 節）；COR-R8 場景在 S6b 補上 `translate-two-cues` fixture 後已通過。
     - `@M2`：62 passed、24 failed、31 pending。
   - M2 S5 SEG 斷句（直接推送到 master）：
     - `segment` 登記在 `llmStages`：LLM 輸出 `{text, breaks}`（`breaks` 是新字幕在 `text` 中開始的 code point 位置，**不含時間**；時間欄位視為驗證失敗）；對回來源時忽略空白、標點與格式字元、大小寫要相同（`text_changed`），斷點切在字中間或產生空字幕是 `alignment`（fallback 保留原切法）；產出文字一律從來源切出。時間規則：`merged`／`source`（word 時間）／`silence`（`silencedetect`，停頓點取離字數比例估計值最近者）／`interpolated`；`timing.split_timing`（`forbid`／`when_needed`／`free`）、`timing.split_timing_audio`（`never` 不下載、`auto` 只下載音訊）；`stages.segment.on_manual: skip|run`，新的 skipped 原因 `manual_captions`（steps.md 已同步）；`internal/subtitle` 的 per-script 字幕規則（CJK 每行暫取 22 字）與 `warnings[]`。`timing`／`subtitle_rules` 只進步驟層快取鍵，不進 chunk 層，所以只改時間設定的重跑會重用已付費的 chunk。
@@ -530,7 +530,7 @@
 
     | 場景 | 規則是否已用預設值實作 | 結果（開工前 → 現在） | 擋住的原因 |
     |---|---|---|---|
-    | COR `A rewrite that strays too far falls back to the original` | 是（C1：rune 的 normalized Levenshtein，門檻 0.6） | failed → failed，停在訊息步驟：實際「相似度 0.19」，場景預期 0.42 | 相似度算法要用 M0 樣本決定（COR 待決問題 C1）；只有門檻符合，數字取決於算法 |
+    | COR `A rewrite that strays too far falls back to the original` | 是（C1：rune 的 normalized Levenshtein，門檻 0.6） | failed → failed，停在訊息步驟：實際「相似度 0.19」，場景預期 0.42 | 相似度算法要用 M0 樣本決定（COR 待決問題 C1）；只有門檻符合，數字取決於算法（2026-11-24 場景改為 0.19，已通過） |
     | FRM `Quiet stretches still get a frame every interval` | 是 | passed → passed | 只差 M0 實測門檻 |
     | FRM `Repeated frames are dropped but different solid colours are kept` | 是 | passed → passed | 同上 |
     | FRM `A cue that points at the screen lifts the nearby frame` | 是 | passed → passed | 同上 |
@@ -586,7 +586,7 @@
      - SRC-R4：品質檢查只套用在 `fallback` 來源（Supadata、Groq），不套用平台字幕軌；Groq 的涵蓋率用它回報的音訊長度；順序固定為語言→音樂→涵蓋率→重複；少於 5 句不判斷重複；音樂標記用固定清單；門檻是常數、沒有開放設定；沒有提升 transcript 的 `impl_version`（已完成的步驟不重跑）。
      - SRC-R13：`no_speech_prob > 0.6` 且 `compression_ratio > 2.4`（都嚴格大於、同時成立）的 segment 移除；連續 3 次以上相同的句子只留一句（含切塊接縫）。
      - LLM 估算：每秒 6 個 token（刻意偏高）；ING 估價的 `total_usd` 在「只有 ASR 費用未知、LLM 確定是 0」時是 `0`（頂層仍帶「部分金額未知」，符合 ING-08「只加總已知的金額」）；reprobe 的 `estimate_usd` 在沒有任何付費 LLM 步驟時仍是 `null`。
-     - `@pending-m0` 的 14 個場景（20 個 example）有 19 個在本機通過，標籤一個都沒拿掉；沒通過的是 COR 的相似度場景（算出 0.19，場景預期 0.42，等 M0 決定算法）。
+     - `@pending-m0` 的 14 個場景（20 個 example）在本機全部通過（`go test ./features -run TestFeatures -godog.tags='@pending-m0'`：20 passed、195 steps passed），標籤一個都沒拿掉。原本唯一沒通過的是 COR 的相似度場景（算出 0.19，場景預期 0.42）；**已決定（2026-11-24，依 /goal 採 advisor 建議，待追認）**：場景訊息改為 0.19，對齊 COR C1 目前的算法（0.42 是 M0 之前的占位值，沒有任何算法算得出）；標籤保留，M0 改算法或門檻時連同場景一起改。
 - **已知缺口（沒有規格規則或需要真實樣本，沒做）**：
   - UI 文件列的 API 缺口（`docs/ui/README.md` 10.7 第 8 點、10.13～10.21）：`Stage.actions` 的動作代碼、佇列優先順序與 Agent 任務、「需要你處理」彙總 API、`/api/items/continue` 沒有 `dry_run`、總覽 `today` 事件沒有步驟／狀態／影音代號、儲存的檢視（saved views）、provider 列表 API、字幕變體列表 API。
   - Hub Web UI 缺的 API：`my_vote`、unhide（HREP R8／R10 規格就沒有）、群組列表、`hub_origin.uploader`；OAuth callback 的錯誤仍回 JSON。

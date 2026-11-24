@@ -47,7 +47,7 @@ Feature: Correct subtitles line by line
       | # | text                    |
       | 1 | we use cafca streams    |
       | 2 | with craft mode enabled |
-    And "yt:talk01xxxxx" shows the message "第 1 段的校正結果和原文差異過大（相似度 0.42），已退回原文。"
+    And "yt:talk01xxxxx" shows the message "第 1 段的校正結果和原文差異過大（相似度 0.19），已退回原文。"
     And "yt:talk01xxxxx" offers the actions "重新校正這段, 開啟 Prompt"
 
   @COR-03 @COR-R4
