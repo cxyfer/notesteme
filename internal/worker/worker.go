@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/logctx"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
 )
@@ -97,8 +98,10 @@ func (w *Worker) runPeriodic(ctx context.Context) {
 	if w.isDraining() {
 		return
 	}
-	if err := w.periodic.Run(ctx); err != nil && ctx.Err() == nil {
-		w.log.Warn("定期工作失敗", "error", err)
+	// 每一次定期工作有自己的 request ID（NFR-OBS-1）：它們的 log 可以串在一起。
+	pctx := logctx.WithRequestID(ctx, logctx.NewID())
+	if err := w.periodic.Run(pctx); err != nil && ctx.Err() == nil {
+		w.log.WarnContext(pctx, "定期工作失敗", "error", err)
 	}
 }
 
@@ -150,6 +153,8 @@ func (w *Worker) isDraining() bool {
 
 func (w *Worker) execute(ctx context.Context, t store.Task, at *activeTask) {
 	defer w.wg.Done()
+	// 每一次執行有自己的 request ID，log 帶上 task；item 與 stage 由 Handler 讀到步驟後補上（NFR-OBS-1）。
+	ctx, _ = logctx.WithTask(logctx.WithRequestID(ctx, logctx.NewID()), t.ID)
 	defer func() {
 		at.cancel()
 		w.mu.Lock()
@@ -166,16 +171,16 @@ func (w *Worker) execute(ctx context.Context, t store.Task, at *activeTask) {
 	}()
 	defer func() {
 		if r := recover(); r != nil {
-			w.fail(fmt.Errorf("任務 %s（%s）發生 panic：%v", t.ID, t.Kind, r))
+			w.fail(ctx, fmt.Errorf("任務 %s（%s）發生 panic：%v", t.ID, t.Kind, r))
 		}
 	}()
 	if err := w.h.Handle(ctx, t); err != nil && ctx.Err() == nil {
-		w.fail(fmt.Errorf("任務 %s（%s）：%w", t.ID, t.Kind, err))
+		w.fail(ctx, fmt.Errorf("任務 %s（%s）：%w", t.ID, t.Kind, err))
 	}
 }
 
-func (w *Worker) fail(err error) {
-	w.log.Error("任務執行失敗", "error", err)
+func (w *Worker) fail(ctx context.Context, err error) {
+	w.log.ErrorContext(ctx, "任務執行失敗", "error", err)
 	w.mu.Lock()
 	w.errs = append(w.errs, err)
 	w.mu.Unlock()

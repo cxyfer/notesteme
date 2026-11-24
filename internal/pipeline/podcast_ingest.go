@@ -129,7 +129,7 @@ func (p *Pipeline) precheckEnclosures(ctx context.Context, eps []podcast.Episode
 		}
 		if pctx.Err() != nil {
 			// 還有沒檢查到的位址：不能斷定全部被擋。
-			p.log.Debug("音檔位址預檢逾時，略過剩下的", "host", host)
+			p.log.DebugContext(ctx, "音檔位址預檢逾時，略過剩下的", "host", host)
 			return ctx.Err()
 		}
 		checked[key] = true
@@ -138,7 +138,7 @@ func (p *Pipeline) precheckEnclosures(ctx context.Context, eps []podcast.Episode
 			return nil
 		}
 		if pe := asPolicyError(err); pe != nil {
-			p.log.Warn("新增 Podcast 單集時音檔位址被防護擋下", "host", host, "error", err.Error())
+			p.log.WarnContext(ctx, "新增 Podcast 單集時音檔位址被防護擋下", "host", host, "error", err.Error())
 			if blocked == nil {
 				blocked = pe
 			}
@@ -147,7 +147,7 @@ func (p *Pipeline) precheckEnclosures(ctx context.Context, eps []podcast.Episode
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		p.log.Debug("音檔位址預檢沒有結果，略過", "host", host, "error", err.Error())
+		p.log.DebugContext(ctx, "音檔位址預檢沒有結果，略過", "host", host, "error", err.Error())
 		return nil
 	}
 	if blocked != nil {

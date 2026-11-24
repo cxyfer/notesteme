@@ -564,7 +564,7 @@ func (p *Pipeline) checkBundleLeak(ctx context.Context, man bundle.OutManifest, 
 		return err
 	}
 	leak := func(what string) error {
-		p.log.Error("bundle 含有本機路徑或 secret", "entry", what)
+		p.log.ErrorContext(ctx, "bundle 含有本機路徑或 secret", "entry", what)
 		return ErrBundleLeak
 	}
 	for _, n := range paths {

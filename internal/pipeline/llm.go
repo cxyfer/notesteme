@@ -868,7 +868,7 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 				return result{}, err
 			}
 		}
-		p.log.Warn("chunk 驗證重試用盡，退回", "item", it.ID, "stage", run.Stage, "chunk", plan.Index, "reason", reason, "detail", out.Fallback.Message)
+		p.log.WarnContext(ctx, "chunk 驗證重試用盡，退回", "item", it.ID, "stage", run.Stage, "chunk", plan.Index, "reason", reason, "detail", out.Fallback.Message)
 	}
 	res := store.ChunkResult{Status: status, Reason: reason, Output: output, Usage: usage, Detail: detail}
 	return result{task: taskDone, keepState: true, inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {

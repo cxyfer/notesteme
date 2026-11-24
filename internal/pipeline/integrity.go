@@ -88,7 +88,7 @@ func (p *Pipeline) cacheHit(ctx context.Context, r *store.Repo, itemID, stage, k
 	}
 	switch err := verifyArtifactFile(p.dataDir, a); {
 	case errors.Is(err, ErrCorruptArtifact):
-		p.log.Warn("快取命中的產出檔已損毀，重新產生", "item", itemID, "stage", stage, "artifact", a.ID, "error", err)
+		p.log.WarnContext(ctx, "快取命中的產出檔已損毀，重新產生", "item", itemID, "stage", stage, "artifact", a.ID, "error", err)
 		if err := p.st.Tx(ctx, func(tx *store.Repo) error { _, err := tx.MarkArtifactCorrupt(ctx, a.ID); return err }); err != nil {
 			return store.StageRun{}, false, err
 		}
@@ -128,7 +128,7 @@ func (p *Pipeline) handleCorrupt(ctx context.Context, a store.Artifact) error {
 	}
 	stage := producerStage(a)
 	if stage == "" {
-		p.log.Error("產出檔已損毀，無法自動重新產生", "item", a.ItemID, "artifact", a.ID, "path", a.Path)
+		p.log.ErrorContext(ctx, "產出檔已損毀，無法自動重新產生", "item", a.ItemID, "artifact", a.ID, "path", a.Path)
 		return ce
 	}
 	ce.Stage = stage
@@ -139,9 +139,9 @@ func (p *Pipeline) handleCorrupt(ctx context.Context, a store.Artifact) error {
 	if err != nil {
 		return err
 	}
-	p.log.Warn("產出檔已損毀，從產生它的步驟重新處理", "item", a.ItemID, "artifact", a.ID, "stage", stage)
+	p.log.WarnContext(ctx, "產出檔已損毀，從產生它的步驟重新處理", "item", a.ItemID, "artifact", a.ID, "stage", stage)
 	if _, err := p.Rerun(ctx, a.ItemID, RerunRequest{From: stage, Until: it.UntilStage}); err != nil {
-		p.log.Error("重新處理損毀的產出失敗", "item", a.ItemID, "stage", stage, "error", err)
+		p.log.ErrorContext(ctx, "重新處理損毀的產出失敗", "item", a.ItemID, "stage", stage, "error", err)
 		return ce
 	}
 	ce.Rerun = true

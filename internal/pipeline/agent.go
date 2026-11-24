@@ -13,6 +13,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/llm"
+	"github.com/cxyfer/notesteme/internal/logctx"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -272,7 +273,7 @@ func (p *Pipeline) ClaimAgentTasks(ctx context.Context, agent string, kinds []st
 		at, err := p.agentTaskContext(ctx, t)
 		if err != nil {
 			// 組不出上下文（例如輸入的字幕產出已不存在）：放回佇列、不計次數，記 log；不讓其他任務領不到。
-			p.log.Warn("無法組出 Agent 任務的上下文，放回佇列", "task", t.ID, "error", err)
+			p.log.WarnContext(p.taskLogCtx(ctx, t.ID, t.StageRunID), "無法組出 Agent 任務的上下文，放回佇列", "error", err)
 			_ = p.st.Tx(ctx, func(r *store.Repo) error {
 				return p.requeueAgent(ctx, r, t, "context_unavailable", false)
 			})
@@ -479,6 +480,9 @@ func (p *Pipeline) SubmitAgentTask(ctx context.Context, agent, taskID, token str
 	if err != nil {
 		return err
 	}
+	// 提交是在 HTTP 請求中處理任務的結果：log 另外帶上 task、item、stage（NFR-OBS-1）。
+	ctx, sc := logctx.WithTask(ctx, t.ID)
+	sc.SetItemStage(c.item.ID, c.run.Stage)
 	out, verr := c.job.specFor(c.plan.Chunk).Validate(c.in, sub.Output)
 	if verr != nil {
 		return p.rejectSubmission(ctx, agent, t, verr)
@@ -679,7 +683,7 @@ func (p *Pipeline) agentTimeout(ctx context.Context, r *store.Repo, runID string
 		if _, err := r.SwitchAgentTasksToBuiltin(ctx, run.ID); err != nil {
 			return false, err
 		}
-		p.log.Info("Agent 任務逾時沒有被領取，改用 API 執行", "item", run.ItemID, "stage", run.Stage)
+		p.log.InfoContext(ctx, "Agent 任務逾時沒有被領取，改用 API 執行", "item", run.ItemID, "stage", run.Stage)
 		return true, nil
 	}
 	// notify，或 fallback_api 但沒有設定 provider 與 model：步驟 blocked，請使用者處理；只通知一次。

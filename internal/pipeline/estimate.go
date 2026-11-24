@@ -187,7 +187,7 @@ func (e *estimator) groqState(ctx context.Context) (ready bool, model, note stri
 		ok, err := g.Configured(ctx)
 		switch {
 		case err != nil:
-			e.p.log.Debug("估價時讀取 Groq API key 失敗，視為沒有設定", "error", err.Error())
+			e.p.log.DebugContext(ctx, "估價時讀取 Groq API key 失敗，視為沒有設定", "error", err.Error())
 			e.groqNote = "已略過 groq：無法確認 API key。"
 		case !ok:
 			e.groqNote = "已略過 groq：沒有設定 API key。"
@@ -214,7 +214,7 @@ func (e *estimator) supadataState(ctx context.Context) (ready bool, note string)
 		}
 		switch ok, err := f.configured(ctx); {
 		case err != nil:
-			e.p.log.Debug("估價時讀取 Supadata API key 失敗，視為沒有設定", "error", err.Error())
+			e.p.log.DebugContext(ctx, "估價時讀取 Supadata API key 失敗，視為沒有設定", "error", err.Error())
 			e.supadataNote = "已略過 supadata：無法確認 API key。"
 		case !ok:
 			e.supadataNote = "已略過 supadata：沒有設定 API key。"
@@ -433,7 +433,7 @@ func (e *estimator) llm(ctx context.Context, it *EstimateItem) error {
 			return ctx.Err()
 		}
 		// 設定在新增時就驗證過；這裡失敗只讓 LLM 費用變成未知，不讓整份估價失敗。
-		e.p.log.Debug("估算 LLM 費用失敗，視為未知", "ref", it.Ref, "error", err.Error())
+		e.p.log.DebugContext(ctx, "估算 LLM 費用失敗，視為未知", "ref", it.Ref, "error", err.Error())
 		est = llmEstimate{unknown: 1}
 	}
 	if est.unknown > 0 {
@@ -526,7 +526,7 @@ func (e *estimator) asrPrice(ctx context.Context, it *EstimateItem, model string
 	})
 	switch {
 	case err != nil:
-		e.p.log.Debug("估價時讀取 Groq 的單價失敗", "error", err.Error())
+		e.p.log.DebugContext(ctx, "估價時讀取 Groq 的單價失敗", "error", err.Error())
 		it.unknown = true
 		it.Notes = append(it.Notes, "無法讀取 "+model+" 的單價，無法估算語音轉錄費用。")
 	case !priced && e.groqCustomBase:
@@ -553,7 +553,7 @@ func (e *estimator) supadataPrice(ctx context.Context, it *EstimateItem) {
 	})
 	switch {
 	case err != nil:
-		e.p.log.Debug("估價時讀取 Supadata 的單價失敗", "error", err.Error())
+		e.p.log.DebugContext(ctx, "估價時讀取 Supadata 的單價失敗", "error", err.Error())
 		it.unknown = true
 		it.Notes = append(it.Notes, "無法讀取 Supadata 的單價，無法換算成金額。")
 	case !priced:

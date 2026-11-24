@@ -108,7 +108,7 @@ func (p *Pipeline) flagCookie(ctx context.Context, res *Resolution) {
 	defer cancel()
 	info, err := p.yt.Probe(ctx, res.ExternalID)
 	if err != nil {
-		p.log.Debug("辨識網址時 Probe 失敗，略過 availability", "error", err.Error())
+		p.log.DebugContext(ctx, "辨識網址時 Probe 失敗，略過 availability", "error", err.Error())
 		return
 	}
 	res.Availability = info.Availability

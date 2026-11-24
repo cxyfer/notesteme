@@ -132,19 +132,19 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 	// 產出檔讀不到時只略過這個欄位，不讓整個詳情失敗。
 	switch segs, ok, err := p.SponsorSegments(ctx, id); {
 	case err != nil:
-		p.log.Warn("讀取 SponsorBlock 片段失敗", "item", id, "error", err)
+		p.log.WarnContext(ctx, "讀取 SponsorBlock 片段失敗", "item", id, "error", err)
 	case ok:
 		d.SponsorSegments = segs
 	}
 	switch ch, ok, err := p.ItemChapters(ctx, id); {
 	case err != nil:
-		p.log.Warn("讀取章節失敗", "item", id, "error", err)
+		p.log.WarnContext(ctx, "讀取章節失敗", "item", id, "error", err)
 	case ok:
 		d.Chapters = &ch
 	}
 	switch sm, ok, err := p.ItemSummary(ctx, id); {
 	case err != nil:
-		p.log.Warn("讀取摘要失敗", "item", id, "error", err)
+		p.log.WarnContext(ctx, "讀取摘要失敗", "item", id, "error", err)
 	case ok:
 		d.Summary = &sm
 	}

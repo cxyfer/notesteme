@@ -230,7 +230,7 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 
 func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
-// logMiddleware 記錄每個請求（方法、路徑、狀態碼、耗時）。
+// logMiddleware 記錄每個請求（方法、路徑、狀態碼、耗時；request_id 由 logctx 從 context 帶上）。
 // 不記錄 query、標頭、cookie 與 body，避免 secret 進入 log（NFR-SEC-3）。
 func logMiddleware(log *slog.Logger, clk clock.Clock) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

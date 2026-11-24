@@ -12,6 +12,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/api"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/config"
+	"github.com/cxyfer/notesteme/internal/logctx"
 	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/secrets"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -48,7 +49,8 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 	if logw == nil {
 		logw = io.Discard
 	}
-	log := slog.New(slog.NewJSONHandler(logw, nil))
+	// logctx 從 context 補上 request_id、task、item、stage（NFR-OBS-1），並擷取任務的 log 片段（NFR-OBS-2）。
+	log := slog.New(logctx.NewHandler(slog.NewJSONHandler(logw, nil)))
 
 	cfg, err := config.Load(config.Sources{Env: env.Vars})
 	if err != nil {

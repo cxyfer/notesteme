@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/logctx"
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
@@ -90,6 +91,11 @@ type metaUpdate struct {
 // 回傳的錯誤只代表資料庫或檔案系統出了問題。ctx 取消（關閉中）時不改變任何狀態，租約之後會放回佇列。
 func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	started := p.clock.Now()
+	// 任務的 log 範圍（NFR-OBS-1、OBS-2）：worker 已經建立時沿用，直接呼叫（測試）時在這裡建立。
+	scope := logctx.ScopeFrom(ctx)
+	if scope == nil {
+		ctx, scope = logctx.WithTask(ctx, t.ID)
+	}
 	r := p.st.Read()
 	run, err := r.StageRun(ctx, t.StageRunID)
 	if err != nil {
@@ -98,11 +104,12 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		}
 		if errors.Is(err, store.ErrNotFound) {
 			// 步驟已隨影音永久刪除：沒有東西可以寫回。
-			p.log.Info("步驟已不存在，略過任務", "task", t.ID, "stage_run", t.StageRunID)
+			p.log.InfoContext(ctx, "步驟已不存在，略過任務", "stage_run", t.StageRunID)
 			return nil
 		}
 		return fmt.Errorf("讀取步驟 %s：%w", t.StageRunID, err)
 	}
+	scope.SetItemStage(run.ItemID, run.Stage)
 	it, err := r.ItemByID(ctx, run.ItemID)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -110,7 +117,7 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		}
 		if errors.Is(err, store.ErrNotFound) {
 			// 同上：影音已永久刪除。
-			p.log.Info("影音已不存在，略過任務", "task", t.ID, "item", run.ItemID)
+			p.log.InfoContext(ctx, "影音已不存在，略過任務")
 			return nil
 		}
 		return fmt.Errorf("讀取影音 %s：%w", run.ItemID, err)
@@ -194,11 +201,11 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	if errors.Is(err, errItemGone) {
 		// 影音在執行期間被移到垃圾桶或永久刪除：產出沒有寫出（DEL-R2），任務與步驟比照移到垃圾桶結束，
 		// 不能留下 leased 或 running。
-		p.log.Info("影音已不在媒體庫中，丟棄這次的結果", "item", it.ID, "stage", run.Stage)
+		p.log.InfoContext(ctx, "影音已不在媒體庫中，丟棄這次的結果", "item", it.ID, "stage", run.Stage)
 		return p.dropTrashedTask(ctx, it.ID)
 	}
 	if err != nil {
-		p.log.Warn("步驟失敗", "item", it.ID, "stage", run.Stage, "attempt", t.Attempts, "error", err)
+		p.log.WarnContext(ctx, "步驟失敗", "item", it.ID, "stage", run.Stage, "attempt", t.Attempts, "error", err)
 		res = p.classify(t, err)
 	}
 	if res.parked {
@@ -209,6 +216,16 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		return fmt.Errorf("寫回步驟 %s 的結果：%w", run.Stage, err)
 	}
 	return nil
+}
+
+// taskLogCtx 回傳帶著任務 log 範圍的 context（NFR-OBS-1），盡量補上 item 與 stage：讀不到步驟時只有 task。
+// 用在 Handle 之外、與某個任務相關的 log（Agent 領取、Batch API 的結果）。
+func (p *Pipeline) taskLogCtx(ctx context.Context, taskID, stageRunID string) context.Context {
+	ctx, sc := logctx.WithTask(ctx, taskID)
+	if run, err := p.st.Read().StageRun(ctx, stageRunID); err == nil {
+		sc.SetItemStage(run.ItemID, run.Stage)
+	}
+	return ctx
 }
 
 // dropTrashedTask 結束垃圾桶中影音的任務（DEL-R1）：在交易內重新確認它仍在垃圾桶中，
@@ -346,7 +363,7 @@ func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.Stag
 		if t.ChunkIndex != nil && !res.keepState && stageStopped(latest[run.Stage].Status) {
 			// 晚到的 chunk 錯誤（其他 chunk 已讓步驟 blocked 或 failed、或步驟已被取消）：不改寫步驟的狀態、訊息與動作，
 			// 也不重新排任務；只結束這個任務。修正後的重跑會重用已完成的 chunk。
-			p.log.Info("步驟已停下，忽略晚到的 chunk 錯誤", "item", it.ID, "stage", run.Stage, "chunk", *t.ChunkIndex, "status", latest[run.Stage].Status)
+			p.log.InfoContext(ctx, "步驟已停下，忽略晚到的 chunk 錯誤", "item", it.ID, "stage", run.Stage, "chunk", *t.ChunkIndex, "status", latest[run.Stage].Status)
 			return r.FailTask(ctx, t.ID, t.LeaseToken)
 		}
 		if len(res.probes) > 0 {
@@ -520,7 +537,7 @@ func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.Stag
 	// 這次的結果不算數。不是錯誤；產出檔沒有記錄指向它，一併丟棄。
 	lost := errors.Is(err, store.ErrLeaseLost)
 	if lost {
-		p.log.Warn("任務的租約已失效，丟棄這次的結果", "task", t.ID, "stage", run.Stage)
+		p.log.WarnContext(ctx, "任務的租約已失效，丟棄這次的結果")
 		err = nil
 	}
 	if err != nil {

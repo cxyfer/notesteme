@@ -23,7 +23,7 @@ const PrincipalLocal = "local"
 // 例外：請求帶了 bearer token 時改用那個 token 的身分（只會縮小權限）。`notesteme mcp --token` 在本機模式下
 // 用它限制 Agent 的 scope（MCP-R1，MCP 規格待決問題，待 owner 追認）；無效的 token 回 401。
 func NewLocal(d Deps) http.Handler {
-	return build(d, ownerMiddleware(d.Auth, d.Log, PrincipalLocal), false)
+	return outer(d, build(d, ownerMiddleware(d.Auth, d.Log, PrincipalLocal), false))
 }
 
 // ownerMiddleware 把 owner 身分（Kind 為 kind，全部權限）放進 context，取代 authMiddleware；

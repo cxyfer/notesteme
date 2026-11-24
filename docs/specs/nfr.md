@@ -134,6 +134,7 @@
 | 2026-11-23 | v0.1 | 新增第 11 節：Web UI 相關 NFR 的實作位置（UI-0）。數值未改。 |
 | 2026-11-25 | v0.1 | CI 補上四項檢查，數值未改（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：**NFR-TEST-2** 以不開 `-race` 的執行為準（`-race` 讓場景慢 6～8 倍，另列為 `bdd` job 的安全檢查）；預設 tag 與 `@M3,@M4,@M5` 兩個 job 平行，各自在 CI 內計時並以 300 秒為門檻，完整 features 的牆鐘時間是兩者的最大值；首次實測 89 秒與 123 秒（含編譯）。**NFR-RES-5** 的 image 大小在 `deploy/docker/smoke-test.sh`、binary 大小在 release-check 檢查，以 10^6 計（比 2^20 更嚴）；首次實測 image 322MB、binary 最大 32.2MB（Windows）。**NFR-CMP-3** 的 OpenAPI diff 用 `oasdiff breaking`（v1.37.0）比對推送／PR 之前的 `internal/api/openapi.json` 與 `internal/hub/hubapi/openapi.json`，有破壞性變更時失敗；真的要破壞時依規定先寫 ADR，再把那一行加進 `.github/oasdiff-err-ignore.txt`。**NFR-SEC-4** 的前端弱點掃描除了 PR，再由 web.yml 的 `schedule` 每天跑一次。**NFR-SEC-4 的「不能合併」**需要 branch protection 的 required status checks：MVP 期間不設（會讓 /goal 授權的直接推 master 推不上去），建議 MVP 結束後開啟。 |
 | 2026-11-25 | v0.1 | 第 11 節對照實作更新（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：**NFR-A11Y-3**、**NFR-I18N-3**、**NFR-RWD-1**、**NFR-PERF-10** 的「尚未涵蓋」原本寫著等 UI-1、UI-2 的頁面，這些頁面已經完成，自動檢查的位置改寫為實際的元件與測試；`manual` 的部分改指向新的[人工驗收清單](../manual-acceptance.md)。數值未改。 |
+| 2026-11-25 | v0.1 | **NFR-OBS-1** 的實作與 `ci` 檢查（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：`internal/logctx` 從 context 補上 `request_id`、`item`、`stage`、`task`；HTTP 請求的 `request_id` 與回應標頭 `X-Request-Id` 相同，任務的每次執行與每次定期工作各有一個；檢查在 `internal/app/logfields_test.go`。「每筆」的範圍見 [OPS 待決問題 O26](OPS-operations.md#nfr-obs-1-的實作決定2026-11-25依-goal-由實作者暫定待-owner-追認)：程序層級的 log（啟動、關閉、放回租約、領取失敗）不屬於任何請求，沒有 `request_id`。目標未改。 |
 
 ## 11. 實作位置（Web UI）
 

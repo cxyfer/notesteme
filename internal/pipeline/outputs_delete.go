@@ -78,7 +78,7 @@ func (p *Pipeline) outputStatuses(ctx context.Context, recs []store.Output, remo
 		case errors.Is(err, pathguard.ErrOutsideRoots):
 			st.State, st.Reason = output.StateModified, KeptOutsideRoots
 		case err != nil:
-			p.log.Warn("解析輸出檔的資料夾失敗", "path", rec.Path, "error", err)
+			p.log.WarnContext(ctx, "解析輸出檔的資料夾失敗", "path", rec.Path, "error", err)
 			st.State, st.Reason = output.StateModified, KeptUnreadable
 		default:
 			name := filepath.Base(rec.Path)
@@ -88,7 +88,7 @@ func (p *Pipeline) outputStatuses(ctx context.Context, recs []store.Output, remo
 				st.State, err = output.Inspect(dir, name, rec.SHA256)
 			}
 			if err != nil {
-				p.log.Warn("檢查或刪除輸出檔失敗", "path", rec.Path, "error", err)
+				p.log.WarnContext(ctx, "檢查或刪除輸出檔失敗", "path", rec.Path, "error", err)
 				st.State, st.Reason = output.StateModified, KeptUnreadable
 			}
 		}
@@ -149,19 +149,19 @@ func (p *Pipeline) deleteGitVaultOutputs(ctx context.Context, it store.Item, def
 	}
 	unlock, err := p.vaultLocks.lock(gctx, def.ID)
 	if err != nil {
-		p.log.Warn("等待 vault 的發布結束時逾時，保留 vault 中的檔案", "vault", def.ID, "item", it.ID, "error", err)
+		p.log.WarnContext(ctx, "等待 vault 的發布結束時逾時，保留 vault 中的檔案", "vault", def.ID, "item", it.ID, "error", err)
 		return keepAll(recs, KeptGitUnreachable)
 	}
 	defer unlock()
 	g, cleanup, err := p.newGit(def)
 	if err != nil {
-		p.log.Warn("無法執行 git，保留 vault 中的檔案", "vault", def.ID, "item", it.ID, "error", err)
+		p.log.WarnContext(ctx, "無法執行 git，保留 vault 中的檔案", "vault", def.ID, "item", it.ID, "error", err)
 		return keepAll(recs, KeptGitFailed)
 	}
 	defer cleanup()
 	dir := p.vaultRoot(def)
 	if err := g.Sync(gctx, def, dir); err != nil {
-		p.log.Warn("同步 git vault 失敗，保留 vault 中的檔案", "vault", def.ID, "item", it.ID, "error", err)
+		p.log.WarnContext(ctx, "同步 git vault 失敗，保留 vault 中的檔案", "vault", def.ID, "item", it.ID, "error", err)
 		return keepAll(recs, gitKeepReason(err))
 	}
 	var kept []KeptOutput
@@ -182,7 +182,7 @@ func (p *Pipeline) deleteGitVaultOutputs(ctx context.Context, it store.Item, def
 		paths = append(paths, rec.Path)
 	}
 	if _, err := g.CommitRemoval(gctx, dir, paths, "notesteme: 刪除 "+it.Title, def.Author); err != nil {
-		p.log.Warn("提交 git vault 的刪除失敗", "vault", def.ID, "item", it.ID, "error", err)
+		p.log.WarnContext(ctx, "提交 git vault 的刪除失敗", "vault", def.ID, "item", it.ID, "error", err)
 		return append(kept, keepAll(removed, gitKeepReason(err))...)
 	}
 	// 本機領先遠端就推送：也會推送之前推送失敗、留在本機的 commit（VAULT-R9）。
@@ -191,7 +191,7 @@ func (p *Pipeline) deleteGitVaultOutputs(ctx context.Context, it store.Item, def
 		err = g.Push(gctx, dir, def.Branch)
 	}
 	if err != nil {
-		p.log.Warn("推送 git vault 的刪除失敗，刪除留在本機的 commit，下一次發布時推送", "vault", def.ID, "item", it.ID, "error", err)
+		p.log.WarnContext(ctx, "推送 git vault 的刪除失敗，刪除留在本機的 commit，下一次發布時推送", "vault", def.ID, "item", it.ID, "error", err)
 		return append(kept, keepAll(removed, gitKeepReason(err))...)
 	}
 	return kept
@@ -249,7 +249,7 @@ func (p *Pipeline) republishMissingOutputs(ctx context.Context, itemID string) {
 		return
 	}
 	if _, err := p.Rerun(ctx, itemID, RerunRequest{From: StagePublish}); err != nil {
-		p.log.Warn("還原後重新發布輸出檔失敗", "item", itemID, "error", err)
+		p.log.WarnContext(ctx, "還原後重新發布輸出檔失敗", "item", itemID, "error", err)
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/hub/hubstore"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore/postgres"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore/sqlite"
+	"github.com/cxyfer/notesteme/internal/logctx"
 	"github.com/cxyfer/notesteme/internal/netguard"
 )
 
@@ -99,7 +100,7 @@ func serve(ctx context.Context, env Env) int {
 		fmt.Fprintln(env.Stderr, hubconfig.ErrNoMasterKey)
 		return ExitError
 	}
-	log := slog.New(slog.NewJSONHandler(env.Stderr, nil))
+	log := slog.New(logctx.NewHandler(slog.NewJSONHandler(env.Stderr, nil)))
 	s, err := hub.Open(ctx, hub.Options{Config: cfg, Clock: env.Clock, Log: log, Net: &env.Net})
 	if err != nil {
 		fmt.Fprintln(env.Stderr, "啟動 Hub 失敗：", err)

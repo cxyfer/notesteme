@@ -26,6 +26,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/hub/hubblob"
 	"github.com/cxyfer/notesteme/internal/hub/hubconfig"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore"
+	"github.com/cxyfer/notesteme/internal/logctx"
 )
 
 // Deps 是 handler 需要的依賴。
@@ -64,7 +65,8 @@ func New(d Deps) http.Handler {
 	registerRawStubs(mux)
 	// /mcp 的 loopback 呼叫同一個 mux（只限 /api/v1/ 的 GET）。
 	mux.Handle("/mcp", newMCPEndpoint(rt, mux))
-	return recoverMiddleware(d.Log, mux)
+	// request ID 在最外層（NFR-OBS-1，與 Client 相同，見 internal/logctx）。
+	return logctx.Middleware(recoverMiddleware(d.Log, mux))
 }
 
 // newHumaAPI 建立 Huma API 並註冊所有 Huma 路由；OpenAPISpec 共用同一段。

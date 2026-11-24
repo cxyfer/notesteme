@@ -28,6 +28,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/diskusage"
 	"github.com/cxyfer/notesteme/internal/events"
 	"github.com/cxyfer/notesteme/internal/hubsettings"
+	"github.com/cxyfer/notesteme/internal/logctx"
 	"github.com/cxyfer/notesteme/internal/notify"
 	"github.com/cxyfer/notesteme/internal/pathguard"
 	"github.com/cxyfer/notesteme/internal/pipeline"
@@ -133,9 +134,17 @@ const readyTimeout = 5 * time.Second
 // New 建立完整的 HTTP handler：受保護的路徑要有 session 或 token（AUTH-R1）。
 func New(d Deps) http.Handler {
 	if d.InsecureNoAuth {
-		return insecureGuard(build(d, ownerMiddleware(d.Auth, d.Log, PrincipalInsecure), true))
+		return outer(d, insecureGuard(build(d, ownerMiddleware(d.Auth, d.Log, PrincipalInsecure), true)))
 	}
-	return build(d, authMiddleware(d.Auth, d.Log), true)
+	return outer(d, build(d, authMiddleware(d.Auth, d.Log), true))
+}
+
+// outer 是所有請求最外層的 middleware：request ID 最先設定（NFR-OBS-1），之後的 log 與每一種錯誤回應
+// （含驗證失敗與 insecureGuard）都帶得到它；recover 在 log 之內，panic 轉成的 500 也會記錄。
+func outer(d Deps, h http.Handler) http.Handler {
+	h = recoverMiddleware(d.Log)(h)
+	h = logMiddleware(d.Log, d.Clock)(h)
+	return logctx.Middleware(h)
 }
 
 // build 組出路由與 middleware；authn 決定受保護路徑的驗證方式。
@@ -166,10 +175,7 @@ func build(d Deps, authn func(http.Handler) http.Handler, remote bool) http.Hand
 		// 反向代理驗證只在 TCP listener（AUTH-R13）；本機 socket 沒有 proxy。
 		h = proxyMiddleware(d.Auth)(h)
 	}
-	h = requestInfoMiddleware(d.Auth, d.SecureCookies)(h)
-	h = logMiddleware(d.Log, d.Clock)(h)
-	h = recoverMiddleware(d.Log)(h)
-	return h
+	return requestInfoMiddleware(d.Auth, d.SecureCookies)(h)
 }
 
 // newHumaAPI 建立 Huma API 並註冊所有 Huma 路由與 SSE；OpenAPI 匯出（OpenAPISpec）共用同一段。

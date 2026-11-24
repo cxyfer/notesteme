@@ -147,7 +147,7 @@ func (p *Pipeline) runHubImport(ctx context.Context, it store.Item, imp store.Hu
 		state:  store.StageState{Status: store.StatusDone},
 		afterCommit: func() {
 			if err := p.st.Write().DeleteHubImport(context.WithoutCancel(ctx), it.ID, sha); err != nil {
-				p.log.Warn("刪除已寫入的 Hub 字幕失敗", "item", it.ID, "error", err)
+				p.log.WarnContext(ctx, "刪除已寫入的 Hub 字幕失敗", "item", it.ID, "error", err)
 			}
 		},
 	}, nil
@@ -191,10 +191,10 @@ func (p *Pipeline) precheckHub(ctx context.Context, it store.Item, decisions []t
 		}
 		var he *hubclient.Error
 		if !errors.As(err, &he) {
-			p.log.Warn("Hub 查詢失敗", "item", it.ID, "error", err)
+			p.log.WarnContext(ctx, "Hub 查詢失敗", "item", it.ID, "error", err)
 			return hubPrecheckOutcome{note: msgHubPrecheckFailed("連線失敗")}, nil
 		}
-		p.log.Info("Hub 查詢失敗，改用付費來源", "item", it.ID, "code", he.Code(), "status", he.Status)
+		p.log.InfoContext(ctx, "Hub 查詢失敗，改用付費來源", "item", it.ID, "code", he.Code(), "status", he.Status)
 		return hubPrecheckOutcome{note: msgHubPrecheckFailed(he.PrecheckReason())}, nil
 	}
 	key := hubclient.VideoKeySHA256(it.Platform, it.ExternalID, it.Part)
@@ -489,7 +489,7 @@ func (p *Pipeline) ShareToHub(ctx context.Context, itemID string, req HubShareRe
 	}
 	// 分享已經在 Hub 上成立：記錄失敗只寫 log，不讓請求失敗（重送會在 Hub 去重）。
 	if err := p.st.Write().InsertHubShare(context.WithoutCancel(ctx), store.HubShare{ItemID: it.ID, HubURL: p.hub.URL(), ShareID: res.ShareID, VersionsJSON: string(vj)}); err != nil {
-		p.log.Error("記錄 Hub 分享失敗", "item", it.ID, "error", err)
+		p.log.ErrorContext(ctx, "記錄 Hub 分享失敗", "item", it.ID, "error", err)
 	}
 	return out, nil
 }
@@ -770,7 +770,7 @@ func (p *Pipeline) checkShareLeak(ctx context.Context, it store.Item, raw []byte
 		return err
 	}
 	if leak != nil {
-		p.log.Error("送往 Hub 的 bundle 含有不能送出的內容", "item", it.ID, "entry", leak.Entry, "kind", leak.What)
+		p.log.ErrorContext(ctx, "送往 Hub 的 bundle 含有不能送出的內容", "item", it.ID, "entry", leak.Entry, "kind", leak.What)
 		return ErrBundleLeak
 	}
 	return nil

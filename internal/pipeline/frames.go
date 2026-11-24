@@ -784,7 +784,7 @@ func (p *Pipeline) framesVision(ctx context.Context, t store.Task, it store.Item
 		return nil, nil, out.Usage, false, err
 	}
 	if out.Output == nil {
-		p.log.Warn("選圖的驗證重試用盡，改用規則選圖", "item", it.ID, "detail", out.Fallback.Message)
+		p.log.WarnContext(ctx, "選圖的驗證重試用盡，改用規則選圖", "item", it.ID, "detail", out.Fallback.Message)
 		return nil, nil, out.Usage, false, nil
 	}
 	picks, err := frames.ParsePicks(out.Output)

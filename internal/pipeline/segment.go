@@ -815,7 +815,7 @@ func (f *silenceFinder) get(ctx context.Context) ([]media.Silence, error) {
 		if ctx.Err() != nil || !degradable(err) {
 			return nil, err
 		}
-		p.log.Warn("無法取得停頓點，段內切分改用插值", "item", f.it.ID, "error", err)
+		p.log.WarnContext(ctx, "無法取得停頓點，段內切分改用插值", "item", f.it.ID, "error", err)
 		f.warn = "無法取得音訊的停頓點，段內切分改用字數比例插值。"
 		f.sils = nil
 	}

@@ -46,7 +46,7 @@ func (p *Pipeline) trnPlatformTracks(ctx context.Context, it store.Item, b *trnB
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		p.log.Warn("列出平台字幕軌失敗，改用 LLM 翻譯", "item", it.ID, "error", err)
+		p.log.WarnContext(ctx, "列出平台字幕軌失敗，改用 LLM 翻譯", "item", it.ID, "error", err)
 		return nil
 	}
 	for i := range targets {

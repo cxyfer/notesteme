@@ -300,7 +300,7 @@ func (p *Pipeline) submitBatch(ctx context.Context, t store.Task, run store.Stag
 		err = p.st.Tx(wctx, func(tx *store.Repo) error { return tx.SetBatchExternalID(wctx, id, external) })
 	} else {
 		// BATCH-R2：送出本身失敗（429、5xx、連線錯誤）時改走一般 API。
-		p.log.Warn("送出 Batch API 失敗，改走一般 API", "batch", id, "provider", provider, "requests", len(reqs), "error", serr)
+		p.log.WarnContext(ctx, "送出 Batch API 失敗，改走一般 API", "batch", id, "provider", provider, "requests", len(reqs), "error", serr)
 		err = p.st.Tx(wctx, func(tx *store.Repo) error {
 			b, err := tx.Batch(wctx, id)
 			if err != nil {
@@ -319,7 +319,7 @@ func (p *Pipeline) submitBatch(ctx context.Context, t store.Task, run store.Stag
 	if err != nil {
 		return true, err
 	}
-	p.log.Info("已送出 Batch API", "batch", id, "provider", provider, "requests", len(reqs), "submitted", serr == nil)
+	p.log.InfoContext(ctx, "已送出 Batch API", "batch", id, "provider", provider, "requests", len(reqs), "submitted", serr == nil)
 	p.wake()
 	return true, nil
 }
@@ -330,7 +330,7 @@ func (p *Pipeline) batchCandidates(ctx context.Context, t store.Task, provider, 
 	r := p.st.Read()
 	cands, err := r.BatchCandidateTasks(ctx, t.ID, queue.PrioritySubscription, batchCandidateScan)
 	if err != nil {
-		p.log.Warn("讀取 batch 的候選任務失敗", "error", err)
+		p.log.WarnContext(ctx, "讀取 batch 的候選任務失敗", "error", err)
 		return nil
 	}
 	var out []batchItem
@@ -507,7 +507,7 @@ func (p *Pipeline) PollBatch(ctx context.Context, id string, now time.Time) (nex
 		// BATCH-R5：逾時就取消，還沒有結果的任務立刻改走一般 API；BATCH-R9：所有任務都被移除時取消這個 batch。
 		cst, cerr := api.Cancel(ctx, b.ExternalID)
 		if cerr != nil {
-			p.log.Warn("取消 batch 失敗", "batch", b.ID, "provider", b.Provider, "error", cerr)
+			p.log.WarnContext(ctx, "取消 batch 失敗", "batch", b.ID, "provider", b.Provider, "error", cerr)
 		}
 		err = p.st.Tx(wctx, func(tx *store.Repo) error {
 			if timedOut {
@@ -544,7 +544,7 @@ func (p *Pipeline) abandonBatch(ctx context.Context, b store.Batch, now time.Tim
 	if now.Before(b.DeadlineAt) {
 		return time.Time{}, false, cause
 	}
-	p.log.Warn("batch 逾時且無法取得結果，改走一般 API", "batch", b.ID, "provider", b.Provider, "error", cause)
+	p.log.WarnContext(ctx, "batch 逾時且無法取得結果，改走一般 API", "batch", b.ID, "provider", b.Provider, "error", cause)
 	wctx := context.WithoutCancel(ctx)
 	err := p.st.Tx(wctx, func(tx *store.Repo) error {
 		if err := p.fallbackLive(wctx, tx, b, batchFallback{
@@ -603,10 +603,10 @@ func (p *Pipeline) finishBatch(ctx context.Context, api BatchAPI, b store.Batch,
 	switch {
 	case errors.Is(rerr, llm.ErrForeignResults):
 		// BATCH-R11：不取用其他主機的結果；這個 batch 視為 batch_failed。
-		p.log.Warn("batch 的結果網址不在 provider 的主機上，改走一般 API", "batch", b.ID, "provider", b.Provider)
+		p.log.WarnContext(ctx, "batch 的結果網址不在 provider 的主機上，改走一般 API", "batch", b.ID, "provider", b.Provider)
 		results, notice = map[string]llm.BatchResult{}, noticeForeignResults
 	case errors.Is(rerr, llm.ErrBatchResultsTooLarge):
-		p.log.Warn("batch 的結果超過大小上限，改走一般 API", "batch", b.ID, "provider", b.Provider)
+		p.log.WarnContext(ctx, "batch 的結果超過大小上限，改走一般 API", "batch", b.ID, "provider", b.Provider)
 		results = map[string]llm.BatchResult{}
 	case rerr != nil:
 		return rerr
@@ -641,7 +641,7 @@ func (p *Pipeline) finishBatch(ctx context.Context, api BatchAPI, b store.Batch,
 		if w.trn != nil && (v.verr == nil || v.retries < 1) {
 			if v.trnRes, v.trnPrior, err = w.trn.batchOutcome(v.out, v.verr, resp.Usage); err != nil {
 				// 分不回各 cue（不應該發生）：當成不能解碼，改走一般 API。
-				p.log.Warn("batch 的譯文無法分回各句，改走一般 API", "batch", b.ID, "task", tid, "error", err)
+				p.log.WarnContext(p.taskLogCtx(ctx, tid, e.Run), "batch 的譯文無法分回各句，改走一般 API", "batch", b.ID, "error", err)
 				v.decoded, v.trnRes, v.trnPrior = false, nil, nil
 			}
 		}

@@ -189,7 +189,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		if !isPermanent(lerr) {
 			return result{}, lerr
 		}
-		p.log.Warn("外掛字幕無法使用，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle, "error", lerr)
+		p.log.WarnContext(ctx, "外掛字幕無法使用，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle, "error", lerr)
 		reject(transcript.ReasonUnreadable)
 	}
 
@@ -261,7 +261,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 				if isPodcast && ctx.Err() == nil && podcastFallbackable(err) {
 					// Podcast 的字幕抓不到（404 等）、被防護擋下或解析失敗：記為 unavailable／permanent，
 					// 改用 feed 宣告的下一條字幕軌；都不能用才改用 fallback（ASR）。
-					p.log.Warn("Podcast 字幕無法使用，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle, "error", err)
+					p.log.WarnContext(ctx, "Podcast 字幕無法使用，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle, "error", err)
 					drop(transcript.StateUnavailable, string(errclass.ClassPermanent))
 					stage.CacheKey = keyFor(chosen == nil)
 					if res, ok := reuse(); ok {
@@ -273,7 +273,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 					return result{}, err
 				}
 				// 內嵌字幕抽取失敗：與外掛字幕相同，記為 rejected 後改用下一條，最後才是 fallback。
-				p.log.Warn("內嵌字幕無法使用，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle, "error", err)
+				p.log.WarnContext(ctx, "內嵌字幕無法使用，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle, "error", err)
 				reject(transcript.ReasonUnreadable)
 				stage.CacheKey = keyFor(chosen == nil)
 				if res, ok := reuse(); ok {
@@ -288,7 +288,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		if isPodcast {
 			// Podcast 宣告的字幕軌是空的：和抓不到一樣，記為 rejected（empty）後改用下一條宣告的字幕軌，
 			// 都不能用才改用 fallback（ASR）。
-			p.log.Warn("Podcast 字幕是空的，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle)
+			p.log.WarnContext(ctx, "Podcast 字幕是空的，改用下一個字幕來源", "item", it.ID, "track", chosen.Handle)
 			reject("empty")
 			cuesLoaded = false
 			stage.CacheKey = keyFor(chosen == nil)
@@ -841,7 +841,7 @@ sources:
 		case err == nil:
 			if reason := qualityReason(got.Cues, qualityDuration(id, it, got)); reason != "" {
 				// 其他品質檢查（SRC-R4）：只有音樂標記、涵蓋率太低、重複句太多時不採用，繼續下一個來源。
-				p.log.Warn("字幕來源的結果沒有通過品質檢查，改用下一個來源", "source", id, "reason", reason)
+				p.log.WarnContext(ctx, "字幕來源的結果沒有通過品質檢查，改用下一個來源", "source", id, "reason", reason)
 				decisions = append(decisions, transcript.Decision{
 					Source: id, Lang: transcript.NormalizeLang(got.Lang), State: transcript.StateRejected, Reason: reason,
 				})
@@ -874,7 +874,7 @@ sources:
 		case isPermanent(err):
 			// 這個來源的請求有問題（重試也不會好）：記下原因後繼續下一個來源；全部用完才照 SRC-R5。
 			// err 只含狀態碼等診斷資訊，不含 API key（NFR-SEC-3）。
-			p.log.Warn("字幕來源回報永久性錯誤，改用下一個來源", "source", id, "error", err)
+			p.log.WarnContext(ctx, "字幕來源回報永久性錯誤，改用下一個來源", "source", id, "error", err)
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: probeReason(err, errclass.ClassPermanent)})
 		case held != nil && cost.IsBudgetBlocked(err):
 			// 下一個付費來源超過預算、沒有送出（COST-R8）：已經有付費的暫留結果時採用它，不讓步驟 blocked——

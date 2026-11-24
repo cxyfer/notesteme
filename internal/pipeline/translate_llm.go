@@ -720,7 +720,7 @@ func (p *Pipeline) trnChunk(ctx context.Context, t store.Task, run store.StageRu
 		return result{}, err
 	}
 	if res.Status == store.ChunkFallback {
-		p.log.Warn("譯文驗證重試用盡，退回原文", "item", it.ID, "chunk", w.row.Chunk, "reason", res.Reason)
+		p.log.WarnContext(ctx, "譯文驗證重試用盡，退回原文", "item", it.ID, "chunk", w.row.Chunk, "reason", res.Reason)
 	}
 	fb := pl.Batch
 	return result{task: taskDone, keepState: true, inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {

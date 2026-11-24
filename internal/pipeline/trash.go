@@ -135,7 +135,7 @@ func (p *Pipeline) Trash(ctx context.Context, id string, opts TrashOptions) (Tra
 		if err := canceller.Cancel(cctx, taskIDs); err != nil {
 			// 逾時仍沒結束：任務可能還在讀寫媒體快取，所以保留它，永久刪除時再一起刪除（itemDataDirs）。
 			// 刪除本身仍然成功：任務在資料庫中已經是 cancelled，晚點寫回會因租約失效被丟棄。
-			p.log.Warn("等待被取消的任務結束時失敗，保留媒體快取到永久刪除", "item", it.ID, "error", err)
+			p.log.WarnContext(ctx, "等待被取消的任務結束時失敗，保留媒體快取到永久刪除", "item", it.ID, "error", err)
 			cancelled = false
 		}
 	}
@@ -147,7 +147,7 @@ func (p *Pipeline) Trash(ctx context.Context, id string, opts TrashOptions) (Tra
 	kept := []KeptOutput{}
 	if opts.DeleteOutputs {
 		if k, err := p.deleteOutputs(cctx, it); err != nil {
-			p.log.Warn("刪除輸出檔失敗", "item", it.ID, "error", err)
+			p.log.WarnContext(ctx, "刪除輸出檔失敗", "item", it.ID, "error", err)
 		} else {
 			kept = k
 		}

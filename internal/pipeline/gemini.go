@@ -189,7 +189,7 @@ func (p *Pipeline) runGeminiNote(ctx context.Context, t store.Task, it store.Ite
 		return result{}, err
 	}
 	if out.Output == nil {
-		p.log.Warn("Gemini 筆記的驗證重試用盡", "item", it.ID, "reason", out.Fallback.Reason, "detail", out.Fallback.Message)
+		p.log.WarnContext(ctx, "Gemini 筆記的驗證重試用盡", "item", it.ID, "reason", out.Fallback.Reason, "detail", out.Fallback.Message)
 		return result{}, &errclass.Error{
 			Class: errclass.ClassPermanent, Source: "gemini", Detail: "驗證重試用盡：" + out.Fallback.Reason,
 			Message: fmt.Sprintf("Gemini 回傳的筆記沒有通過驗證（%s）。", out.Fallback.Message),

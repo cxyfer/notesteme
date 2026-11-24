@@ -77,7 +77,7 @@ func (p *Pipeline) resolveStagePrompts(ctx context.Context, eff Effective) (Effe
 		rp, err := p.prompts.ResolvePrompt(ctx, res.Prompt)
 		if err != nil {
 			// 引用不存在或版本不存在：留空，S3 執行時再讓該步驟以 permanent 失敗。
-			p.log.Warn("解析 prompt 失敗，快照不記錄版本", "stage", stage, "prompt", res.Prompt, "error", err)
+			p.log.WarnContext(ctx, "解析 prompt 失敗，快照不記錄版本", "stage", stage, "prompt", res.Prompt, "error", err)
 			continue
 		}
 		entry["prompt_version"] = rp.Version
@@ -228,7 +228,7 @@ func (p *Pipeline) rebindSnapshotChannel(ctx context.Context, r *store.Repo, it 
 	l.Channel = ChannelLayer{ID: ch.ID, Overrides: orEmpty(ov)}
 	eff, err := p.Compose(ctx, l)
 	if err != nil {
-		p.log.Warn("加入頻道層後的設定不正確，保留原本的快照", "item", it.ID, "channel", ch.ID, "error", err)
+		p.log.WarnContext(ctx, "加入頻道層後的設定不正確，保留原本的快照", "item", it.ID, "channel", ch.ID, "error", err)
 		return nil
 	}
 	sha, cfgJSON, layersJSON, err := SnapshotOf(eff, l)

@@ -476,7 +476,7 @@ func (p *Pipeline) reprobeSources(ctx context.Context, it store.Item, rp *store.
 	}
 	// SRC-R22：沿用影音記錄的處理方案從 transcript 重跑，backfill 優先級，做到影音原本的 until。
 	if _, err := p.Rerun(ctx, it.ID, RerunRequest{From: StageTranscript, Until: it.UntilStage, Priority: queue.PriorityBackfill}); err != nil {
-		p.log.Warn("改用更好的字幕來源自動重跑失敗，只通知", "item", it.ID, "error", err)
+		p.log.WarnContext(ctx, "改用更好的字幕來源自動重跑失敗，只通知", "item", it.ID, "error", err)
 		return false, nil
 	}
 	return true, nil
@@ -490,7 +490,7 @@ func (p *Pipeline) betterEstimate(ctx context.Context, it store.Item) *float64 {
 	est, err := p.estimateRerun(ctx, it.ID, StageTranscript, "", true)
 	if err != nil {
 		if ctx.Err() == nil {
-			p.log.Debug("估算改用更好的來源重跑的費用失敗，視為無法估算", "item", it.ID, "error", err.Error())
+			p.log.DebugContext(ctx, "估算改用更好的來源重跑的費用失敗，視為無法估算", "item", it.ID, "error", err.Error())
 		}
 		return nil
 	}
@@ -550,7 +550,7 @@ func (p *Pipeline) reprobeSponsorBlock(ctx context.Context, it store.Item, rp *s
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		p.log.Warn("重新查詢 SponsorBlock 失敗，保留現行的片段", "item", it.ID, "error", err)
+		p.log.WarnContext(ctx, "重新查詢 SponsorBlock 失敗，保留現行的片段", "item", it.ID, "error", err)
 		return nil
 	}
 	if res.state.Message != "" || res.artifact == nil {
