@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"time"
 )
 
@@ -41,7 +42,16 @@ func (e *TooLargeError) Is(target error) bool { return target == ErrTooLarge }
 // schemeTransport 在發出請求之前檢查 scheme：不是 http、https（含沒有 scheme 的相對網址）就回傳
 // ErrUnsupportedScheme，與轉址到其他 scheme 的錯誤相同（GRD-R1）。
 // 沒有它，http.Client 會對起始網址回一般的 "unsupported protocol scheme" 錯誤，呼叫端無法分類。
-type schemeTransport struct{ base *http.Transport }
+//
+// 轉址（GRD-R4）：allow_private 只給「起點本身就在 allowlist」的請求使用。起點是公開主機的轉址改走 strict，
+// 每一跳以不含 allowlist 的預設規則檢查，外部的 feed、音檔主機不能把 notesteme 導到內網。
+// strict 有自己的連線池，不會沿用先前連到 allowlist 位址的閒置連線。allowlist 是空的時 strict 為 nil。
+type schemeTransport struct {
+	base   *http.Transport
+	strict *http.Transport
+	allow  Allowlist
+	res    Resolver
+}
 
 func (t *schemeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.URL != nil {
@@ -53,34 +63,87 @@ func (t *schemeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, fmt.Errorf("%w：%q", ErrUnsupportedScheme, s)
 		}
 	}
+	// req.Response 只在 http.Client 跟隨轉址時有值：沿著它找到最初的請求。
+	if t.strict != nil && req.Response != nil {
+		origin := req
+		for origin.Response != nil && origin.Response.Request != nil {
+			origin = origin.Response.Request
+		}
+		if !t.originAllowlisted(req, origin.URL.Hostname()) {
+			return t.strict.RoundTrip(req)
+		}
+	}
 	return t.base.RoundTrip(req)
 }
 
+// originAllowlisted 回報轉址鏈的起點是不是要靠 allowlist 才能連線：主機名稱列在 allowlist，
+// 或它的位址被預設規則擋下、但 allowlist 開放。解析失敗時視為不在 allowlist。
+func (t *schemeTransport) originAllowlisted(req *http.Request, host string) bool {
+	if host == "" {
+		return false
+	}
+	if t.allow.containsHost(normalizeHost(host)) {
+		return true
+	}
+	ips := []netip.Addr{}
+	if ip, err := netip.ParseAddr(host); err == nil {
+		ips = append(ips, ip)
+	} else if t.res != nil {
+		ips, _ = t.res.LookupNetIP(req.Context(), "ip", host)
+	}
+	for _, ip := range ips {
+		ip = ip.Unmap()
+		if checkIP(host, ip, Allowlist{}) != nil && checkIP(host, ip, t.allow) == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// clone 以 f 調整 base 與 strict 的複本；其他防護不變。
+func (t *schemeTransport) clone(f func(*http.Transport)) *schemeTransport {
+	c := *t
+	c.base = t.base.Clone()
+	f(c.base)
+	if t.strict != nil {
+		c.strict = t.strict.Clone()
+		f(c.strict)
+	}
+	return &c
+}
+
 // CloseIdleConnections 讓 http.Client.CloseIdleConnections 能關閉底層的閒置連線。
-func (t *schemeTransport) CloseIdleConnections() { t.base.CloseIdleConnections() }
+func (t *schemeTransport) CloseIdleConnections() {
+	t.base.CloseIdleConnections()
+	if t.strict != nil {
+		t.strict.CloseIdleConnections()
+	}
+}
 
 // WithResponseHeaderTimeout 回傳複製的 Transport，等待回應標頭的逾時改為 d；其他防護（dial 檢查、scheme 檢查）不變。
 // 轉錄這類要伺服器處理完才回標頭的請求使用；用完後呼叫複本的 CloseIdleConnections。
 func (t *schemeTransport) WithResponseHeaderTimeout(d time.Duration) http.RoundTripper {
-	base := t.base.Clone()
-	base.ResponseHeaderTimeout = d
-	return &schemeTransport{base: base}
+	return t.clone(func(tr *http.Transport) { tr.ResponseHeaderTimeout = d })
 }
 
 // WithTimeouts 回傳複製的 Transport，等待回應標頭的逾時改為 header、閒置連線 idle 之後關閉；其他防護不變。
 // 給長期共用一個連線池的呼叫端（LLM provider）：只在建立時呼叫一次。
 func (t *schemeTransport) WithTimeouts(header, idle time.Duration) http.RoundTripper {
-	base := t.base.Clone()
-	base.ResponseHeaderTimeout = header
-	base.IdleConnTimeout = idle
-	return &schemeTransport{base: base}
+	return t.clone(func(tr *http.Transport) {
+		tr.ResponseHeaderTimeout = header
+		tr.IdleConnTimeout = idle
+	})
 }
 
 // NewClient 回傳對外 HTTP 的 client：連線經過 Transport（ADR-0014），
 // 起始網址與轉址的每一跳都檢查 scheme，最多跟隨 MaxRedirects 次。逾時與大小由呼叫端自己限制。
 func NewClient(d Deps) *http.Client {
+	st := &schemeTransport{base: Transport(d), allow: d.mergedAllowlist(), res: d.Resolver}
+	if len(st.allow.Prefixes) > 0 || len(st.allow.Hosts) > 0 {
+		st.strict = Transport(Deps{Resolver: d.Resolver, Dialer: d.Dialer, RootCAs: d.RootCAs})
+	}
 	return &http.Client{
-		Transport: &schemeTransport{base: Transport(d)},
+		Transport: st,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// via 含最初的請求，所以 len(via) 是「已經跟隨的轉址次數 + 1」。
 			if len(via) > MaxRedirects {

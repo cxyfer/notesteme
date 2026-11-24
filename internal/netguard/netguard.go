@@ -86,6 +86,7 @@ var metadataAddrs = []netip.Addr{
 	netip.MustParseAddr("169.254.169.254"), // AWS、GCP、Azure 等
 	netip.MustParseAddr("fd00:ec2::254"),   // AWS IPv6
 	netip.MustParseAddr("100.100.100.200"), // Alibaba Cloud
+	netip.MustParseAddr("168.63.129.16"),   // Azure WireServer（VM agent 與 metadata 的通道）
 }
 
 // blockedPrefixes 是 netip.Addr 的 IsLoopback、IsPrivate、IsLinkLocal 等判斷沒有涵蓋的保留網段。
@@ -101,6 +102,9 @@ var blockedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("fec0::/10"),       // site-local（已棄用）
 	netip.MustParsePrefix("::/96"),           // IPv4-compatible（已棄用）
 	netip.MustParsePrefix("2001:db8::/32"),   // 文件用
+	netip.MustParsePrefix("64:ff9b:1::/48"),  // local-use NAT64（RFC 8215）：只用在內部網路，內嵌 IPv4 的位置隨前綴長度而定，整段擋下
+	netip.MustParsePrefix("::ffff:0:0:0/96"), // IPv4-translated（SIIT，RFC 2765）；IPv4-mapped（::ffff:0:0/96）由 Unmap 還原後檢查
+	netip.MustParsePrefix("100::/64"),        // discard-only（RFC 6666）
 }
 
 // 內嵌 IPv4 位址的 IPv6 轉換前綴；內嵌的 IPv4 要依同一套政策檢查，否則可用它們繞過 IPv4 的封鎖。

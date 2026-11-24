@@ -24,7 +24,7 @@ Notesteme 會依使用者或外部內容提供的網址主動發出請求，也�
 |---|---|
 | GRD-R1 | 所有對外 HTTP 請求（RSS、Podcast 音檔與 transcript、Supadata、通知 webhook）都經過同一個 client，只接受 `http` 與 `https`；轉址到其他 scheme 時錯誤類別為 `permanent`，訊息為「只支援 http 與 https 網址。」 |
 | GRD-R2 | 建立連線時檢查實際的目標 IP，至少擋掉 loopback（`127.0.0.0/8`、`::1`）、私有網段（`10/8`、`172.16/12`、`192.168/16`、`fc00::/7`）、link-local（`169.254/16`、`fe80::/10`），以及 CGNAT、multicast 等非公開位址。一個主機名稱解析出多個 IP 時，只連到通過檢查的 IP；全部被擋才算被封鎖。檢查的是實際連線的 IP，所以 DNS rebinding 也一併擋掉。被擋的請求錯誤類別為 `permanent`，訊息為「這個網址指向內部網路，已封鎖。」 |
-| GRD-R3 | 設定檔的 `network.allow_private` 可以列出允許的主機或網段。主機名稱比對的是網址中的主機名稱，不分大小寫、完全相同才算（不支援萬用字元）；網段用 CIDR 或單一 IP。雲端 metadata 位址（`169.254.169.254`、`fd00:ec2::254`）一律封鎖：直接把它列進 allowlist 時拒絕啟動；網段包含它時可以設定，但它仍然被封鎖。 |
+| GRD-R3 | 設定檔的 `network.allow_private` 可以列出允許的主機或網段。主機名稱比對的是網址中的主機名稱，不分大小寫、完全相同才算（不支援萬用字元）；網段用 CIDR 或單一 IP。雲端 metadata 位址（`169.254.169.254`、`fd00:ec2::254`、`100.100.100.200`、Azure 的 `168.63.129.16`）一律封鎖：直接把它列進 allowlist 時拒絕啟動；網段包含它時可以設定，但它仍然被封鎖。 |
 | GRD-R4 | 最多轉址 5 次，每一跳都重新套用 GRD-R1 到 GRD-R3。超過時錯誤類別為 `permanent`，訊息為「轉址超過 5 次。」 |
 | GRD-R5 | 回應大小的上限依用途設定：RSS 與 transcript 10 MiB、音檔 2 GiB；超過時中斷下載，不截斷、不接受部分內容，錯誤類別為 `permanent`，訊息為「回應超過大小上限（10 MiB）。」（依用途顯示上限）。連線逾時 10 秒、整體逾時依用途設定。 |
 | GRD-R6 | yt-dlp 只能使用 YouTube 與 Bilibili 的 extractor；generic extractor 關閉。新增其他平台的網址在辨識階段就會被拒絕（見 ING-R1）。 |
@@ -56,3 +56,6 @@ Notesteme 會依使用者或外部內容提供的網址主動發出請求，也�
 - ~~「DNS rebinding」場景：連線時才檢查 IP 的設計下，第一次解析到公開 IP 的那次連線會真的送出。場景沒有寫明哪一次解析對應哪一個請求（feed 與音檔），這個場景依賴 ING 的 podcast feed，交給 ING 切片釐清。~~ 已釐清（2026-11-21，PODCAST 切片）：第一次解析是新增時對音檔網址做的只解析、不連線的檢查（見 ING 待決問題），第二次是 `metadata` 下載音檔時的連線，在連線前被擋下，所以完全沒有連到 rebind 的主機。場景依賴「新增時剛好解析過一次」這個順序，比較脆弱；真正的保證由 `netguard` 的 `TestTransportRechecksAfterRebinding`（每次連線都重新檢查）與 `pipeline` 的 `TestPodcastMetadataRebindingBlocked` 把關。場景只斷言 `permanent`，podcast 的 metadata 還沒實作時也會是 `permanent`；建議補上 `shows the message "這個網址指向內部網路，已封鎖。"`（已確認實際訊息相同），需要 owner 同意。
 - 「Paths outside the media folders are refused」中預期 201 的兩個例子，要等 ING-05（本機檔案的新增）決定檔案是否必須存在、是否要經過 ffprobe；GRD 切片只做到路徑檢查，通過檢查後仍回 501。
 - GRD-R6 的 extractor 限制（`--use-extractors`）只由 `internal/source/youtube` 的單元測試把關：假 yt-dlp 不模擬 extractor，「yt-dlp is never asked to open an arbitrary site」驗證的是辨識階段的拒絕。若要在驗收層驗證，需要新增斷言 yt-dlp 參數的句型。
+- 安全修補 C（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 轉址與 allowlist：GRD-R4 的「每一跳重新套用 GRD-R1 到 GRD-R3」保留，但 GRD-R3 的 allowlist 只給起點本身在 allowlist 的請求使用（起點的主機名稱列在 allowlist，或它的位址被預設規則擋下、但 allowlist 開放）。起點是公開主機時，轉址的每一跳以不含 allowlist 的預設規則檢查：外部的 feed、音檔主機 302 到 `allow_private` 的網段時被擋（「這個網址指向內部網路，已封鎖。」），notesteme 不會替外部主機對內網發 blind GET。這類轉址使用另一個連線池，不沿用先前連到 allowlist 位址的閒置連線。代價：公開主機轉到自架服務（例如公開網址轉到內網的 RSSHub）不再可行，要直接訂閱內網的網址。
+  - 預設規則另外擋下 `64:ff9b:1::/48`（RFC 8215 local-use NAT64，內嵌 IPv4 的位置隨前綴長度而定，所以整段擋）、`::ffff:0:0:0/96`（SIIT 的 IPv4-translated；IPv4-mapped `::ffff:0:0/96` 原本就先還原成 IPv4 再判斷）、`100::/64`（discard-only）；metadata 位址加上 `168.63.129.16`（allowlist 不能開放，也不能直接列出）。`fd00:ec2::254` 原本就已涵蓋。
