@@ -90,6 +90,13 @@ func (r *Repo) Task(ctx context.Context, id string) (Task, error) {
 	return taskFromRow(row), nil
 }
 
+// SkipTaskWait 讓還沒被領取的任務略過等待（SRC-R6「現在改用語音轉錄」）：payload 加上 skip_auto_wait、
+// not_before 改成現在。任務不是 pending（已被領取、已結束）時回傳 false。
+func (r *Repo) SkipTaskWait(ctx context.Context, id string) (bool, error) {
+	n, err := r.q.SkipTaskWait(ctx, sqlcdb.SkipTaskWaitParams{Now: r.nowMs(), ID: id})
+	return n > 0, err
+}
+
 // TaskByStageRun 回傳步驟最近建立的任務。
 func (r *Repo) TaskByStageRun(ctx context.Context, stageRunID string) (Task, error) {
 	row, err := r.q.TaskByStageRun(ctx, stageRunID)

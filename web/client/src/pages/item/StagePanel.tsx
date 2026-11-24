@@ -67,7 +67,7 @@ function StageRow({
   const explainSkip = stage.status === "skipped" && !!stage.message;
 
   // 動作：API 的 actions 先；失敗的步驟一定可以重新處理；等待 Agent 一定可以改用 API
-  const mapped = mapActions(stage.actions);
+  const mapped = mapActions(stage.actions, stage.action_codes);
   const actions: ErrorAction[] = mapped.map((a, i) => ({
     label: a.key ? t(`actions.${a.key}`) : a.raw,
     primary: i === 0,

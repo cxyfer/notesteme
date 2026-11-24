@@ -5890,6 +5890,16 @@
       "Stage": {
         "additionalProperties": false,
         "properties": {
+          "action_codes": {
+            "description": "actions 中有穩定代碼的動作（例如 use_asr_now：POST /api/items/{id}/use-asr-now）；沒有時省略",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "actions": {
             "items": {
               "type": "string"
@@ -6732,6 +6742,28 @@
           "title",
           "deleted_at",
           "purge_at"
+        ],
+        "type": "object"
+      },
+      "UseASROutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "item_id": {
+            "type": "string"
+          },
+          "stage": {
+            "description": "固定是 transcript",
+            "type": "string"
+          },
+          "status": {
+            "description": "略過等待之後的狀態（pending）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "stage",
+          "status"
         ],
         "type": "object"
       },
@@ -9689,6 +9721,47 @@
           }
         },
         "summary": "把影音某個步驟等待中或已被領取的 Agent 任務改用 API 執行，原本的租約立即失效（AGT-R11）"
+      }
+    },
+    "/api/items/{id}/use-asr-now": {
+      "post": {
+        "description": "只在 transcript 為 waiting、而且任務還沒被領取時可以使用，否則回 409 not_waiting。",
+        "operationId": "items-use-asr-now",
+        "parameters": [
+          {
+            "description": "影音 ID 或代號",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID 或代號",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UseASROutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "略過等待 YouTube 自動字幕，立刻改用下一個字幕來源（語音轉錄），不消耗重試次數（SRC-R6）"
       }
     },
     "/api/note-templates": {

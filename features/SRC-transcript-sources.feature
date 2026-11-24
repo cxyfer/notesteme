@@ -155,6 +155,30 @@ Feature: Transcript sources and quality
     And the worker runs until idle
     Then the transcript of "yt:fresh1xxxxx" came from "groq"
 
+  @SRC-04 @SRC-R6
+  Scenario: Use ASR now skips the wait for auto captions
+    Given a YouTube video "yt:fresh1xxxxx" with:
+      | field        | value                |
+      | language     | en                   |
+      | published_at | 2026-11-12T09:30:00Z |
+    And the auto captions of "yt:fresh1xxxxx" are not ready yet
+    And the source "groq" returns "groq-en.json" for "yt:fresh1xxxxx"
+    When the owner ingests "yt:fresh1xxxxx" with the overrides:
+      """
+      language:
+        fallback: [groq]
+      until: transcript
+      """
+    And the worker runs until idle
+    And the owner sends "POST /api/items/yt:fresh1xxxxx/use-asr-now"
+    Then the response status is 200
+    When the worker runs until idle
+    Then the transcript of "yt:fresh1xxxxx" came from "groq"
+    And the source "groq" was called 1 times
+    And the task of "transcript" for "yt:fresh1xxxxx" has 1 attempts
+    When the owner sends "POST /api/items/yt:fresh1xxxxx/use-asr-now"
+    Then the response status is 409
+
   @SRC-04 @SRC-R7
   Scenario: A live stream waits for its replay
     Given a YouTube video "yt:live01xxxxx" with:

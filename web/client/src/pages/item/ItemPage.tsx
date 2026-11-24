@@ -293,6 +293,19 @@ function ItemView({
       }),
     onError: (err) => toast.show({ title: describeError(t, err) }),
   });
+  // SRC-R6：略過等待自動字幕，立刻改用語音轉錄（不消耗重試次數）
+  const useAsrNow = useMutation({
+    mutationFn: () =>
+      api.post<"/api/items/{id}/use-asr-now">(apiPath("/api/items/{id}/use-asr-now", { id })),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.items.detail(id) });
+      toast.show({ title: t("item.actions.asrNow") });
+    },
+    onError: (err) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.items.detail(id) });
+      toast.show({ title: describeError(t, err) });
+    },
+  });
   // DIG-R7：摘要後暫停的影音繼續處理
   const continueItem = useMutation({
     // 回 202：ResponseOf 只認 200／201，型別自己標
@@ -331,6 +344,9 @@ function ItemView({
         break;
       case "updateYtDlp":
         updateYtDlp.mutate();
+        break;
+      case "useAsrNow":
+        useAsrNow.mutate();
         break;
       case "settings":
         void navigate({ to: "/settings/$section", params: { section: a.section } });

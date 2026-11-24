@@ -1,6 +1,7 @@
-// 步驟的 actions（API 回傳的是後端的繁中按鈕文字，不是代碼）→ 畫面上的動作。
+// 步驟的 actions（API 回傳的是後端的繁中按鈕文字）→ 畫面上的動作。
 // 對照表的鍵是後端的字串（internal/**：Action* 與 action* 常數）；認不得的字串原樣顯示，並連到設定頁。
-// 缺口：API 應改回傳動作代碼（見 docs/ui/README.md 10.7）。
+// 有穩定代碼的動作（Stage.action_codes，目前只有 use_asr_now）先依代碼對應，同一個動作的文字不再重複顯示；
+// 其他動作仍靠文字對照（見 docs/ui/README.md 10.7）。
 import type { SettingsSection } from "../SettingsPage";
 
 export type ActionKind =
@@ -12,6 +13,8 @@ export type ActionKind =
   | { kind: "switchToApi" }
   | { kind: "uploadCookie" }
   | { kind: "updateYtDlp" }
+  // SRC-R6：略過等待自動字幕，立刻改用語音轉錄（POST /api/items/{id}/use-asr-now）
+  | { kind: "useAsrNow" }
   | { kind: "settings"; section: SettingsSection }
   | { kind: "unknown" };
 
@@ -27,7 +30,7 @@ const TABLE: Record<string, { key: string; action: ActionKind }> = {
   重新翻譯: { key: "retranslate", action: { kind: "rerun" } },
   重新校正這段: { key: "recorrectChunk", action: { kind: "rerun" } },
   處理該檔案後重新發布: { key: "republish", action: { kind: "rerun" } },
-  現在改用語音轉錄: { key: "useAsrNow", action: { kind: "settings", section: "services" } },
+  現在改用語音轉錄: { key: "useAsrNow", action: { kind: "useAsrNow" } },
   改用語音轉錄: { key: "useAsr", action: { kind: "settings", section: "services" } },
   "改用 API 處理": { key: "switchToApi", action: { kind: "switchToApi" } },
   "上傳 cookie": { key: "uploadCookie", action: { kind: "uploadCookie" } },
@@ -54,9 +57,23 @@ const TABLE: Record<string, { key: string; action: ActionKind }> = {
   從章節重跑: { key: "rerunChapters", action: { kind: "rerun", from: "chapters" } },
 };
 
-export function mapActions(raw: readonly string[] | null | undefined): StageAction[] {
+// 動作代碼（後端 pipeline.ActionCode*）→ 動作；label 是同一個動作在 actions 中的文字。
+const CODES: Record<string, { key: string; label: string; action: ActionKind }> = {
+  use_asr_now: { key: "useAsrNow", label: "現在改用語音轉錄", action: { kind: "useAsrNow" } },
+};
+
+export function mapActions(
+  raw: readonly string[] | null | undefined,
+  codes?: readonly string[] | null,
+): StageAction[] {
   const seen = new Set<string>();
   const out: StageAction[] = [];
+  for (const c of codes ?? []) {
+    const hit = CODES[c];
+    if (!hit || seen.has(hit.label)) continue;
+    seen.add(hit.label);
+    out.push({ raw: hit.label, key: hit.key, action: hit.action });
+  }
   for (const r of raw ?? []) {
     const label = r.trim();
     if (!label || seen.has(label)) continue;

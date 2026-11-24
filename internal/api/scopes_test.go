@@ -107,6 +107,8 @@ func TestScopeMatrix(t *testing.T) {
 				// AGT 的 switch-executor（AGT-R11）已實作：沒有注入 Pipeline 時回 500。
 				{"POST", "/api/items/i1/switch-executor", `{"stage":"correct","executor":"api"}`, auth.ScopeIngest, auth.ScopeRead, 500},
 				{"POST", "/api/tasks/t1/switch-executor", `{"executor":"api"}`, auth.ScopeIngest, auth.ScopeAgent, 500},
+				// SRC-R6 的「現在改用語音轉錄」：同 switch-executor 是 ingest。
+				{"POST", "/api/items/i1/use-asr-now", "", auth.ScopeIngest, auth.ScopeRead, 500},
 			}
 
 			for _, c := range cases {

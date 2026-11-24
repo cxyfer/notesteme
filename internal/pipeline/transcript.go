@@ -311,7 +311,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 			res.meta = meta
 			return res, nil
 		}
-		if res, ok := p.waitForAutoCaptions(it, lang, info, decisions); ok {
+		if res, ok := p.waitForAutoCaptions(it, lang, info, decisions); ok && !skipAutoWait(ctx) {
 			return res, nil
 		}
 		res, err := p.runFallback(ctx, fit, lang, stage, decisions)

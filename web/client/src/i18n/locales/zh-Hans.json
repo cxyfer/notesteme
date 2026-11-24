@@ -454,6 +454,7 @@
       "openSettings": "打开设置",
       "switched": "{{stage}}已改用 API 处理。",
       "ytdlpUpdated": "yt-dlp 已更新到 {{version}}。",
+      "asrNow": "已改用语音转录，不再等待自动字幕。",
       "ytdlpRolledBack": "新版 yt-dlp 自检失败，已回到 {{version}}。",
       "exportBundle": "导出 bundle"
     },

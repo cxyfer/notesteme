@@ -474,6 +474,7 @@
       "openSettings": "Open settings",
       "switched": "{{stage}} now runs with the API.",
       "ytdlpUpdated": "yt-dlp is now {{version}}.",
+      "asrNow": "Switched to speech-to-text; no longer waiting for auto captions.",
       "ytdlpRolledBack": "The new yt-dlp failed its self-check and was rolled back to {{version}}.",
       "exportBundle": "Export bundle"
     },

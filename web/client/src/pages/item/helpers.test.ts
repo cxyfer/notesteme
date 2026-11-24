@@ -53,6 +53,15 @@ describe("actions 的對應", () => {
       section: "services",
     });
   });
+
+  it("動作代碼優先（SRC-R6 的 use_asr_now）；同一個動作的文字不重複；認不得的代碼略過", () => {
+    expect(mapActions(["現在改用語音轉錄", "重試"], ["use_asr_now", "not_a_code"])).toEqual([
+      { raw: "現在改用語音轉錄", key: "useAsrNow", action: { kind: "useAsrNow" } },
+      { raw: "重試", key: "retry", action: { kind: "rerun" } },
+    ]);
+    // 沒有代碼（舊的回應）時文字也對應到同一個動作，不再導到設定頁
+    expect(mapActions(["現在改用語音轉錄"])[0]!.action).toEqual({ kind: "useAsrNow" });
+  });
 });
 
 describe("parseChunks", () => {

@@ -213,6 +213,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - `GET /api/artifacts/:id/content?format=`
   - `GET /api/items/:id/media`（Range）
   - `GET /api/items/:id/deletion-preview`、`DELETE /api/items/:id`
+- **實作狀態（收尾 D2，2026-11-24）**：步驟為 `waiting`（等待 YouTube 自動字幕，SRC-R6）時，步驟面板的「現在改用語音轉錄」呼叫 `POST /api/items/:id/use-asr-now`，成功後重新讀取詳情並提示「已改用語音轉錄，不再等待自動字幕。」，失敗（409）顯示錯誤。按鈕依 `Stage.action_codes` 的 `use_asr_now` 決定（沒有代碼時退回比對文字）。之前這個按鈕只會打開設定頁。
 
 ## 5. 訂閱
 

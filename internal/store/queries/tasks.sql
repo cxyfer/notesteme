@@ -127,3 +127,11 @@ JOIN stage_runs AS sr ON sr.id = t.stage_run_id
 JOIN items AS i ON i.id = sr.item_id
 WHERE t.state IN ('leased', 'pending') AND t.executor = sqlc.arg(executor) AND i.deleted_at IS NULL
 ORDER BY bucket, score DESC, t.created_at, t.stage_run_id, t.rowid;
+
+-- name: SkipTaskWait :execrows
+-- SRC-R6 "use ASR now": only a pending (not leased) task can skip its wait. The flag is merged into the
+-- payload (requeue keeps the payload, so later retries of the same task still skip) and not_before becomes now.
+UPDATE tasks
+SET payload_json = json_set(CASE WHEN json_valid(payload_json) THEN payload_json ELSE '{}' END, '$.skip_auto_wait', json('true')),
+    not_before = CAST(sqlc.arg(now) AS INTEGER)
+WHERE id = sqlc.arg(id) AND state = 'pending';

@@ -48,6 +48,42 @@ func (rt *routes) registerAgent(api huma.API) {
 		OperationID: "tasks-switch-executor", Method: http.MethodPost, Path: "/api/tasks/{id}/switch-executor",
 		Summary: "把一個等待中或已被領取的 Agent 任務改用 API 執行，原本的租約立即失效（AGT-R11）",
 	}, auth.ScopeIngest, rt.switchTaskExecutor)
+	registerScoped(api, huma.Operation{
+		OperationID: "items-use-asr-now", Method: http.MethodPost, Path: "/api/items/{id}/use-asr-now",
+		Summary:     "略過等待 YouTube 自動字幕，立刻改用下一個字幕來源（語音轉錄），不消耗重試次數（SRC-R6）",
+		Description: "只在 transcript 為 waiting、而且任務還沒被領取時可以使用，否則回 409 not_waiting。",
+	}, auth.ScopeIngest, rt.useASRNow)
+}
+
+// CodeNotWaiting 是 transcript 沒有在等待自動字幕（SRC-R6 的「現在改用語音轉錄」不適用，409）。
+const CodeNotWaiting = "not_waiting"
+
+type useASRInput struct {
+	ID string `path:"id" doc:"影音 ID 或代號"`
+}
+
+type useASROutput struct {
+	Body struct {
+		ItemID string `json:"item_id"`
+		Stage  string `json:"stage" doc:"固定是 transcript"`
+		Status string `json:"status" doc:"略過等待之後的狀態（pending）"`
+	}
+}
+
+func (rt *routes) useASRNow(ctx context.Context, in *useASRInput) (*useASROutput, error) {
+	if rt.d.Pipeline == nil {
+		return nil, rt.noPipeline(ctx)
+	}
+	run, err := rt.d.Pipeline.UseASRNow(ctx, in.ID)
+	if errors.Is(err, pipeline.ErrNotWaiting) {
+		return nil, newError(http.StatusConflict, CodeNotWaiting, err.Error())
+	}
+	if err != nil {
+		return nil, rt.mapErr(ctx, err)
+	}
+	out := &useASROutput{}
+	out.Body.ItemID, out.Body.Stage, out.Body.Status = run.ItemID, run.Stage, run.Status
+	return out, nil
 }
 
 func (rt *routes) switchItemExecutor(ctx context.Context, in *switchItemInput) (*switchOutput, error) {

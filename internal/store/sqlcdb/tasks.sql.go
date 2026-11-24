@@ -486,6 +486,28 @@ func (q *Queries) SetTaskLeaseToken(ctx context.Context, arg SetTaskLeaseTokenPa
 	return err
 }
 
+const skipTaskWait = `-- name: SkipTaskWait :execrows
+UPDATE tasks
+SET payload_json = json_set(CASE WHEN json_valid(payload_json) THEN payload_json ELSE '{}' END, '$.skip_auto_wait', json('true')),
+    not_before = CAST(?1 AS INTEGER)
+WHERE id = ?2 AND state = 'pending'
+`
+
+type SkipTaskWaitParams struct {
+	Now int64
+	ID  string
+}
+
+// SRC-R6 "use ASR now": only a pending (not leased) task can skip its wait. The flag is merged into the
+// payload (requeue keeps the payload, so later retries of the same task still skip) and not_before becomes now.
+func (q *Queries) SkipTaskWait(ctx context.Context, arg SkipTaskWaitParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, skipTaskWait, arg.Now, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const taskByID = `-- name: TaskByID :one
 SELECT id, stage_run_id, kind, executor, resource_class, state, priority, payload_json, chunk_index, result_path, lease_token, lease_owner, lease_until, attempts, max_attempts, not_before, deadline_at, created_at, agent_failures, release_reason, batch_id FROM tasks WHERE id = ?1
 `

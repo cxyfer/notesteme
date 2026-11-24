@@ -72,6 +72,7 @@ type Stage struct {
 	NotBefore        *time.Time `json:"not_before"`
 	Message          string     `json:"message,omitempty"`
 	Actions          []string   `json:"actions"`
+	ActionCodes      []string   `json:"action_codes,omitempty" doc:"actions 中有穩定代碼的動作（例如 use_asr_now：POST /api/items/{id}/use-asr-now）；沒有時省略"`
 	ConfigSnapshotID string     `json:"config_snapshot_id"`
 	ArtifactID       string     `json:"artifact_id,omitempty"`
 	StartedAt        *time.Time `json:"started_at"`
@@ -222,7 +223,7 @@ func toStage(s store.StageRun, attempts int) Stage {
 	}
 	return Stage{
 		Stage: s.Stage, Status: s.Status, BlockReason: s.BlockReason, Executor: s.Executor, ErrorClass: s.ErrorClass, NotBefore: s.NotBefore,
-		Message: s.Message, Actions: actions, ConfigSnapshotID: s.ConfigSnapshotID, ArtifactID: s.ArtifactID,
+		Message: s.Message, Actions: actions, ActionCodes: pipeline.ActionCodes(actions), ConfigSnapshotID: s.ConfigSnapshotID, ArtifactID: s.ArtifactID,
 		StartedAt: s.StartedAt, FinishedAt: s.FinishedAt, Attempts: attempts,
 	}
 }

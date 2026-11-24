@@ -820,6 +820,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/items/{id}/use-asr-now": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * 略過等待 YouTube 自動字幕，立刻改用下一個字幕來源（語音轉錄），不消耗重試次數（SRC-R6）
+     * @description 只在 transcript 為 waiting、而且任務還沒被領取時可以使用，否則回 409 not_waiting。
+     */
+    post: operations["items-use-asr-now"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/note-templates": {
     parameters: {
       query?: never;
@@ -3767,6 +3787,8 @@ export interface components {
       start: string;
     };
     Stage: {
+      /** @description actions 中有穩定代碼的動作（例如 use_asr_now：POST /api/items/{id}/use-asr-now）；沒有時省略 */
+      action_codes?: string[] | null;
       actions: string[] | null;
       artifact_id?: string;
       /**
@@ -4034,6 +4056,13 @@ export interface components {
       /** @description 影音的短代號，例如 yt:abc123xxxxx */
       ref: string;
       title: string;
+    };
+    UseASROutputBody: {
+      item_id: string;
+      /** @description 固定是 transcript */
+      stage: string;
+      /** @description 略過等待之後的狀態（pending） */
+      status: string;
     };
     VaultInfo: {
       /** @description fs（本機資料夾）或 git（推送到 git repo） */
@@ -6057,6 +6086,38 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SwitchResult"];
+        };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "items-use-asr-now": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description 影音 ID 或代號 */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UseASROutputBody"];
         };
       };
       /** @description Error */

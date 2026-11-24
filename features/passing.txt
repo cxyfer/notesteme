@@ -282,6 +282,7 @@ SRC-transcript-sources.feature: Fallback sources are tried in the configured ord
 SRC-transcript-sources.feature: Running out of sources fails with a fix action
 SRC-transcript-sources.feature: Wait for YouTube auto captions instead of paying for ASR
 SRC-transcript-sources.feature: Stop waiting for auto captions after 24 hours
+SRC-transcript-sources.feature: Use ASR now skips the wait for auto captions
 SRC-transcript-sources.feature: A live stream waits for its replay
 SRC-transcript-sources.feature: Bilibili AI captions without a cookie ask for one
 SRC-transcript-sources.feature: A 403 from YouTube suggests updating yt-dlp first

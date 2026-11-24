@@ -110,7 +110,7 @@
 | Cookie 過期 | YouTube cookie 已失效，3 部影片無法下載。 | 上傳新的 cookie |
 | 超出預算 | 本月預算 $20 已用完，4 個任務暫停中。提高預算，或等到 12 月 1 日自動恢復。 | 調整預算 |
 | LLM 驗證失敗 | 第 10 段的校正結果和原文差異過大（相似度 0.42），已退回原文。可以換一個 prompt 或模型後重新校正。 | 重新校正這段、開啟 Prompt |
-| 自動字幕還沒生成 | YouTube 還沒產生自動字幕，預計 2 小時後再檢查。 | 現在改用語音轉錄 |
+| 自動字幕還沒生成 | YouTube 還沒產生自動字幕，預計 2 小時後再檢查。 | 現在改用語音轉錄（`POST /api/items/:id/use-asr-now`，SRC-R6：略過等待、立刻改用下一個來源；transcript 不是 `waiting` 或任務正在執行時回 409 `not_waiting`） |
 | git push 被拒 | Vault 的遠端有新的 commit，push 被拒。在本機 pull 之後，再按「重新寫入」。 | 重新寫入 |
 
 ### 4.3 空狀態範例
@@ -308,7 +308,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 6. **YouTube 播放器不載入 IFrame API 的 script**：CSP 的 `script-src` 只有 `'self'`，不放寬。用嵌入網址的 `enablejsapi=1&origin=…` 加 postMessage（送 `listening`，收 `infoDelivery.currentTime`；跳播送 `seekTo`、`playVideo`）；訊息只接受 YouTube 的 origin 且 `source` 是這個 iframe。`listening` 每 250ms 重送直到收到第一則訊息，4 秒內沒有收到就降級成「更新 `start` 重新載入」；訊息只送到嵌入的 origin（nocookie）。協定是 YouTube 未公開文件化的部分，**需要在真實瀏覽器人工驗證**（LIB-03 是 `@manual`）。頁面的 `Referrer-Policy` 是 `same-origin`，YouTube 嵌入需要來源網域，只在 iframe 元素上設 `referrerpolicy="strict-origin-when-cross-origin"`（不改全站標頭）。Bilibili 沒有公開的控制介面，跳播用 `t` 參數重新載入，另附「在 Bilibili 開啟這個時間」。
 7. **步驟的 `actions` 是後端的繁中字串**：`src/pages/item/actions.ts` 用對照表對應到三語文案與實際動作（重試、重新翻譯、重新校正這段、處理該檔案後重新發布、更換模型、開啟 Prompt → 重新處理對話框並預選該步驟；改用 API 處理 → `switch-executor`；上傳 cookie → `POST /api/cookies`；更新 yt-dlp → `POST /api/tools/yt-dlp/update`；設定 API key、語音轉錄、額度、安裝工具 → 設定頁對應分區）。認不得的字串原樣顯示並附「開啟設定」。失敗與停住的步驟一定有「從這個步驟重新處理」，等待 Agent 一定有「改用 API 處理」。
 8. **API 缺口**（記在這裡，之後的後端切片處理）：
-   - `Stage.actions` 應改成動作代碼（現在是繁中按鈕文字，前端只能比對字串）。
+   - `Stage.actions` 應改成動作代碼（現在是繁中按鈕文字，前端只能比對字串）。部分處理（收尾 D2，2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：`Stage` 多了 `action_codes`（只列出有穩定代碼的動作，目前只有 `use_asr_now`），`mapActions` 先依代碼對應、同一個動作的文字不重複；其他動作仍比對文字，沒有大改。
    - 沒有 log 片段（OBS-2 的「相關 log 片段」）：步驟面板改連到「紀錄」分頁，顯示 `GET /runs` 的狀態、時間與設定快照；`runs` 也沒有花費、provider 實際回應等欄位。
    - rerun 沒有 `estimate`／`estimate_usd`：對話框顯示「無法預估」。沒有拿 `POST /api/estimate` 代替（它針對網址，可能呼叫 yt-dlp）。
    - 沒有 provider 列表 API：provider 用文字輸入，建議值取自處理方案設定。
