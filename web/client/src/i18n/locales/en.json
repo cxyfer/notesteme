@@ -2104,7 +2104,10 @@
     "subscriptions": "Go to subscriptions",
     "itemTabs": "Media page: switch to the transcript, frames, note or runs tab",
     "help": "Show all shortcuts",
-    "palette": "Command palette"
+    "palette": "Command palette",
+    "playPause": "Media page: play or pause",
+    "seek": "Media page: move 5 seconds back or forward",
+    "chapter": "Media page: previous or next chapter"
   },
   "palette": {
     "title": "Command palette",

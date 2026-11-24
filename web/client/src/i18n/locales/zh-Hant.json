@@ -2047,7 +2047,10 @@
     "subscriptions": "前往訂閱",
     "itemTabs": "影音詳情頁：切換字幕、畫面、筆記、紀錄分頁",
     "help": "顯示所有快捷鍵",
-    "palette": "指令面板"
+    "palette": "指令面板",
+    "playPause": "影音詳情頁：播放或暫停",
+    "seek": "影音詳情頁：前後移動 5 秒",
+    "chapter": "影音詳情頁：上一個或下一個章節"
   },
   "palette": {
     "title": "指令面板",

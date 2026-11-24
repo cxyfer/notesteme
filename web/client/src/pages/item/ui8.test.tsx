@@ -1,10 +1,11 @@
-import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { expectNoA11yViolations } from "../../test/axe";
 import { defaultRoutes, detail, item, stage } from "../../test/fixtures";
 import { mockApi } from "../../test/mockApi";
 import { renderRoute, signIn } from "../../test/render";
+import { chapterTarget } from "./playKeys";
 
 type Detail = ReturnType<typeof detail>;
 
@@ -54,5 +55,80 @@ describe("影音詳情：從 bundle 匯入（BND N24）", () => {
     open({ imported_from: null });
     await screen.findByRole("heading", { level: 1, name: "影片 1" });
     expect(screen.queryByText("從 bundle 匯入")).toBeNull();
+  });
+});
+
+describe("影音詳情：播放快捷鍵（README §3.6，UI-8）", () => {
+  const chapters = [
+    { title: "開場", start: "00:00:00.000", end: "00:01:00.000", origin: "llm" as const },
+    { title: "第二章", start: "00:01:00.000", end: "00:05:00.000", origin: "llm" as const },
+  ];
+
+  it("[／] 的目標：離章節開頭超過 2 秒先回到開頭，否則上一章", () => {
+    const starts = [0, 60, 300];
+    expect(chapterTarget(starts, 100, 1)).toBe(300);
+    expect(chapterTarget(starts, 100, -1)).toBe(60);
+    expect(chapterTarget(starts, 61, -1)).toBe(0);
+    expect(chapterTarget(starts, 1, -1)).toBeUndefined();
+    expect(chapterTarget(starts, 300, 1)).toBeUndefined();
+  });
+
+  it("本機檔案：Space 播放或暫停、←／→ 移動 5 秒、] 跳到下一章；焦點在按鈕上時不接手", async () => {
+    const { container } = open({ platform: "local", chapters });
+    await screen.findByRole("heading", { level: 1, name: "影片 1" });
+    const video = container.querySelector("video")!;
+    const play = vi.spyOn(video, "play").mockResolvedValue();
+    const pause = vi.spyOn(video, "pause").mockImplementation(() => {});
+
+    fireEvent.keyDown(document.body, { key: " " });
+    expect(play).toHaveBeenCalledTimes(1);
+    Object.defineProperty(video, "paused", { configurable: true, value: false });
+    fireEvent.keyDown(document.body, { key: " " });
+    expect(pause).toHaveBeenCalledTimes(1);
+
+    video.currentTime = 10;
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(video.currentTime).toBe(15);
+    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    expect(video.currentTime).toBe(0);
+
+    fireEvent.keyDown(document.body, { key: "]" });
+    expect(video.currentTime).toBe(60);
+
+    // 按鈕上的 Space 是按下那個按鈕
+    const button = screen.getByRole("button", { name: "重新處理…" });
+    fireEvent.keyDown(button, { key: " " });
+    expect(play).toHaveBeenCalledTimes(2); // ] 跳章節時開始播放；Space 沒有再呼叫
+    expect(pause).toHaveBeenCalledTimes(1);
+  });
+
+  it("YouTube：播放器回應後 Space 送 pauseVideo／playVideo；Bilibili 不接 Space（不擋捲動）", async () => {
+    const { container, unmount } = open({ platform: "youtube", external_id: "abcdEFGhijk" });
+    await screen.findByRole("heading", { level: 1, name: "影片 1" });
+    const frame = container.querySelector("iframe")!;
+    const post = vi.spyOn(frame.contentWindow!, "postMessage");
+    // 還沒有回應：不處理
+    expect(fireEvent.keyDown(document.body, { key: " " })).toBe(true);
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          origin: "https://www.youtube-nocookie.com",
+          source: frame.contentWindow,
+          data: JSON.stringify({ event: "infoDelivery", info: { currentTime: 3, playerState: 1 } }),
+        }),
+      );
+    });
+    expect(fireEvent.keyDown(document.body, { key: " " })).toBe(false);
+    const funcs = post.mock.calls.map(
+      (c) => (JSON.parse(c[0] as string) as { func?: string }).func,
+    );
+    expect(funcs).toContain("pauseVideo");
+    unmount();
+
+    open({ platform: "bilibili", external_id: "BV1xx411c7mD" });
+    await screen.findByRole("heading", { level: 1, name: "影片 1" });
+    expect(fireEvent.keyDown(document.body, { key: " " })).toBe(true);
   });
 });

@@ -11,6 +11,9 @@ const ROWS = [
   ["G L", "library"],
   ["G Q", "queue"],
   ["G S", "subscriptions"],
+  ["Space", "playPause"],
+  ["← →", "seek"],
+  ["[ ]", "chapter"],
   ["1–4", "itemTabs"],
   ["?", "help"],
 ] as const;

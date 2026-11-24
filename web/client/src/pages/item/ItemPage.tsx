@@ -33,7 +33,8 @@ import { formatDate, formatDateTime, formatTimecode } from "../../i18n";
 import { usePageTitle } from "../../shell/usePageTitle";
 import { BAND_STAGES, badgeStatus, bandStatus, type ApiItemDetail } from "../library/stageView";
 import type { ActionKind } from "./actions";
-import { cueAt } from "./cues";
+import { cueAt, parseCueTime } from "./cues";
+import { chapterTarget, ownsPlaybackKeys } from "./playKeys";
 import { CueList } from "./CueList";
 import {
   availableModes,
@@ -341,10 +342,14 @@ function ItemView({
   };
 
   const showRuns = () => setSearch({ tab: "runs" }, true);
-  // README §3.6：1–4 切換字幕、畫面、筆記、紀錄分頁（UI-7）
-  const tabKeys = useRef(setSearch);
+  // README §3.6：1–4 切換字幕、畫面、筆記、紀錄分頁（UI-7）；Space、←／→、[／] 控制播放（UI-8）
+  const chapterStarts = useMemo(
+    () => (d.chapters ?? []).map((c) => parseCueTime(c.start)).filter((n) => Number.isFinite(n)),
+    [d.chapters],
+  );
+  const keyState = useRef({ setSearch, time, chapterStarts, seek });
   useEffect(() => {
-    tabKeys.current = setSearch;
+    keyState.current = { setSearch, time, chapterStarts, seek };
   });
   useEffect(() => {
     const map: Record<string, ItemTab> = {
@@ -354,11 +359,32 @@ function ItemView({
       "4": "runs",
     };
     function onKey(e: globalThis.KeyboardEvent) {
-      const tab = map[e.key];
-      if (!tab || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isEditableTarget(e.target) || modalOpen()) return;
-      e.preventDefault();
-      tabKeys.current({ tab }, true);
+      const k = keyState.current;
+      const tab = map[e.key];
+      if (tab) {
+        if (e.repeat) return;
+        e.preventDefault();
+        k.setSearch({ tab }, true);
+        return;
+      }
+      if (e.key === "[" || e.key === "]") {
+        const to = chapterTarget(k.chapterStarts, k.time, e.key === "[" ? -1 : 1);
+        if (to === undefined) return;
+        e.preventDefault();
+        k.seek(to);
+        return;
+      }
+      // Space 與方向鍵：焦點在有自己用途的元素上時不接手；播放器不能控制時不擋預設行為（例如捲動）
+      if (ownsPlaybackKeys(e.target) || e.shiftKey) return;
+      const handled =
+        e.key === " "
+          ? !e.repeat && !!player.current?.toggle()
+          : e.key === "ArrowLeft" || e.key === "ArrowRight"
+            ? !!player.current?.nudge(e.key === "ArrowLeft" ? -5 : 5)
+            : false;
+      if (handled) e.preventDefault();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

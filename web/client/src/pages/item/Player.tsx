@@ -23,6 +23,10 @@ import { formatTimecode } from "../../i18n";
 
 export interface PlayerHandle {
   seek: (seconds: number) => void;
+  /** 播放或暫停（README §3.6 的 Space）；播放器不能控制時回傳 false（Bilibili、YouTube 降級時） */
+  toggle: () => boolean;
+  /** 前後移動幾秒，不改變播放或暫停；不能控制時回傳 false（Bilibili 每次都要重新載入，不接） */
+  nudge: (delta: number) => boolean;
 }
 
 export interface PlayerProps {
@@ -83,8 +87,10 @@ export function bilibiliPageUrl(externalId: string, part: number | undefined, st
   return `https://www.bilibili.com/video/${encodeURIComponent(bvid)}?p=${p}&t=${Math.max(0, Math.floor(start))}`;
 }
 
-/** YouTube 播放器的訊息：只取 currentTime；格式不對回傳 undefined */
-export function parseYouTubeMessage(data: unknown): { ready?: true; time?: number } | undefined {
+/** YouTube 播放器的訊息：只取 currentTime 與 playerState（1 是播放中）；格式不對回傳 undefined */
+export function parseYouTubeMessage(
+  data: unknown,
+): { ready?: true; time?: number; playing?: boolean } | undefined {
   let v: unknown = data;
   if (typeof data === "string") {
     try {
@@ -97,8 +103,12 @@ export function parseYouTubeMessage(data: unknown): { ready?: true; time?: numbe
   const ev = (v as { event?: unknown }).event;
   if (ev === "onReady" || ev === "initialDelivery") return { ready: true };
   if (ev === "infoDelivery") {
-    const t = (v as { info?: { currentTime?: unknown } }).info?.currentTime;
-    return typeof t === "number" && Number.isFinite(t) ? { ready: true, time: t } : { ready: true };
+    const info = (v as { info?: { currentTime?: unknown; playerState?: unknown } }).info;
+    const out: { ready: true; time?: number; playing?: boolean } = { ready: true };
+    const t = info?.currentTime;
+    if (typeof t === "number" && Number.isFinite(t)) out.time = t;
+    if (typeof info?.playerState === "number") out.playing = info.playerState === 1;
+    return out;
   }
   return undefined;
 }
@@ -114,6 +124,8 @@ function YouTubePlayer(
   );
   // 播放器有沒有回應過 postMessage；沒有回應就用重新載入的方式跳轉
   const live = useRef(false);
+  // 播放器最後回報的狀態（Space、←／→ 用）
+  const state = useRef({ time: start, playing: false });
   const [fallback, setFallback] = useState(false);
   const onTimeRef = useRef(onTime);
   useEffect(() => {
@@ -133,7 +145,11 @@ function YouTubePlayer(
       if (!m) return;
       live.current = true;
       setFallback(false);
-      if (m.time !== undefined) onTimeRef.current?.(m.time);
+      if (m.playing !== undefined) state.current.playing = m.playing;
+      if (m.time !== undefined) {
+        state.current.time = m.time;
+        onTimeRef.current?.(m.time);
+      }
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -176,6 +192,27 @@ function YouTubePlayer(
         onTimeRef.current?.(s);
       }
     },
+    toggle: () => {
+      if (!live.current) return false;
+      const playing = state.current.playing;
+      post({
+        event: "command",
+        func: playing ? "pauseVideo" : "playVideo",
+        args: [],
+        id: 1,
+        channel: "widget",
+      });
+      state.current.playing = !playing;
+      return true;
+    },
+    nudge: (delta) => {
+      if (!live.current) return false;
+      const s = Math.max(0, state.current.time + delta);
+      post({ event: "command", func: "seekTo", args: [s, true], id: 1, channel: "widget" });
+      state.current.time = s;
+      onTimeRef.current?.(s);
+      return true;
+    },
   }));
 
   return (
@@ -207,6 +244,8 @@ function BilibiliPlayer(
       setAt({ s, autoplay: true });
       onTime?.(s);
     },
+    toggle: () => false,
+    nudge: () => false,
   }));
   return (
     <div className="player player--video">
@@ -246,6 +285,26 @@ function MediaPlayer(
         // jsdom 與還沒載入 metadata 的元素可能不接受
       }
       onTime?.(s);
+    },
+    toggle: () => {
+      const m = el.current;
+      if (!m || failed) return false;
+      if (m.paused) void m.play()?.catch(() => {});
+      else m.pause();
+      return true;
+    },
+    nudge: (delta) => {
+      const m = el.current;
+      if (!m || failed) return false;
+      const end = Number.isFinite(m.duration) ? m.duration : Infinity;
+      const s = Math.min(end, Math.max(0, m.currentTime + delta));
+      try {
+        m.currentTime = s;
+      } catch {
+        return false;
+      }
+      onTime?.(s);
+      return true;
     },
   }));
   const common = {
