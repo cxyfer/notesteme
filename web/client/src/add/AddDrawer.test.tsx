@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { expectNoA11yViolations } from "../test/axe";
-import { item } from "../test/fixtures";
+import { detail, item, stage } from "../test/fixtures";
 import { apiError, json, mockApi, type MockHandler } from "../test/mockApi";
 import { renderRoute, signIn } from "../test/render";
 
@@ -205,8 +205,60 @@ describe("新增抽屜", () => {
     await within(dialog).findByRole("heading", { name: "YouTube 影片" });
     await userEvent.click(within(dialog).getByRole("button", { name: "開始處理" }));
     expect(await within(dialog).findByText("已在媒體庫中（1 部），沒有重複新增。")).toBeTruthy();
-    await userEvent.click(within(dialog).getByRole("button", { name: "打開" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "打開「影片 1」" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/items/item-1"));
+  });
+
+  it("辨識後就標示已在媒體庫中：「打開」用 ref 找到影音，「重新處理」打開重新處理對話框（pages.md §2）", async () => {
+    const api = drawerApi({
+      "POST /api/estimate": () => ({
+        ...ESTIMATE,
+        items: [{ ...ESTIMATE.items[0], title: "舊影片", already_in_library: true }],
+      }),
+      "GET /api/items/{id}": () => ({
+        ...detail(item(7), [
+          stage("metadata", "done"),
+          stage("transcript", "done"),
+          stage("correct", "done"),
+        ]),
+      }),
+      "POST /api/items/{id}/rerun": () => detail(item(7)),
+    });
+    const { dialog, router } = await openDrawer();
+    await userEvent.type(within(dialog).getByLabelText("網址"), YT);
+    expect(
+      await within(dialog).findByText(
+        "已在媒體庫中（1 部）。開始處理不會重複新增；要重新產生，請用「重新處理」。",
+      ),
+    ).toBeTruthy();
+    // 「開始處理」仍然可以按（ING-R2：不會重複新增）
+    expect(within(dialog).getByRole("button", { name: "開始處理" })).toHaveProperty(
+      "disabled",
+      false,
+    );
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "重新處理「舊影片」…" }));
+    // ref 帶在路徑上查影音（rerun 只接受 ID）
+    await waitFor(() => expect(api.calls("GET", "/api/items/{id}")).toHaveLength(1));
+    expect(api.calls("GET", "/api/items/{id}")[0]!.url.pathname).toBe(
+      "/api/items/yt%3Avid00000001",
+    );
+    const rerun = await screen.findByRole("dialog", { name: "重新處理" });
+    await userEvent.selectOptions(within(rerun).getByLabelText("從哪個步驟開始"), "correct");
+    await userEvent.click(within(rerun).getByRole("button", { name: /^從.+重新處理$/ }));
+    await waitFor(() => expect(api.calls("POST", "/api/items/{id}/rerun")).toHaveLength(1));
+    expect(api.calls("POST", "/api/items/{id}/rerun")[0]!.url.pathname).toBe(
+      "/api/items/item-7/rerun",
+    );
+    expect(JSON.parse(String(api.calls("POST", "/api/items/{id}/rerun")[0]!.init.body)).from).toBe(
+      "correct",
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "重新處理" })).toBeNull());
+    // 重新處理不會順便送出「新增」（對話框的 submit 不能冒泡到抽屜的 form），抽屜還在
+    expect(api.calls("POST", "/api/items")).toHaveLength(0);
+    expect(screen.getByRole("dialog", { name: "新增" })).toBeTruthy();
+    await userEvent.click(within(dialog).getByRole("button", { name: "打開「舊影片」" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/items/item-7"));
   });
 
   it("在垃圾桶中（409 in_trash）：提供「從垃圾桶還原」", async () => {

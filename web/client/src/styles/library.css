@@ -374,6 +374,15 @@
   justify-content: space-between;
   gap: var(--space-3);
 }
+/* 「已在媒體庫中」放在抽屜的 form 之後（見 AddDrawer.tsx） */
+.add + .add__existing {
+  margin-top: var(--space-4);
+}
+.add__existing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
 
 /* 一行一個網址（pages.md §2） */
 .add__urls {

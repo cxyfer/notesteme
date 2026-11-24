@@ -207,6 +207,9 @@ function LineStatus({ state: s }: { state: LineState }) {
         ? `${t("common.listSeparator")}${t("add.lines.allParts")}`
         : ""}
       {s.res.requires_cookie ? `${t("common.listSeparator")}${t("add.lines.cookie")}` : ""}
+      {s.estimate?.items?.some((i) => i.already_in_library)
+        ? `${t("common.listSeparator")}${t("add.lines.inLibrary")}`
+        : ""}
       {s.estimating
         ? `${t("common.listSeparator")}${t("add.estimating")}`
         : s.estimateError

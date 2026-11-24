@@ -507,8 +507,14 @@
       "feed": "Podcasts need episodes picked. Paste the feed on its own.",
       "allParts": "all parts",
       "cookie": "needs a cookie",
-      "noEstimate": "no estimate"
-    }
+      "noEstimate": "no estimate",
+      "inLibrary": "already in the library"
+    },
+    "knownInLibrary_one": "Already in the library ({{count}} item). Starting won't add it again; use Reprocess to generate it again.",
+    "knownInLibrary_other": "Already in the library ({{count}} items). Starting won't add them again; use Reprocess to generate them again.",
+    "rerun": "Reprocess…",
+    "rerunNamed": "Reprocess “{{title}}”…",
+    "openNamed": "Open “{{title}}”"
   },
   "actions": {
     "retry": "Retry",

@@ -10,7 +10,8 @@
 //   2. 或選擇本機檔案（multipart POST /api/items，一次一個檔案）；把檔案拖進視窗時由 AddContext 帶入（initialFile）。
 //   3. 選擇處理方案（GET /api/profiles），可以展開「調整這次的設定」（RunOverrides，單次覆寫只影響這一次，ING-R7），
 //      按「開始處理」→ POST /api/items（overrides 也送給預估）。
-//   4. 成功：關閉抽屜，toast「已開始處理 N 部」附「查看」；全部都已在媒體庫中時留在抽屜，提供「打開」。
+//   4. 已經處理過的影音在辨識（預估）後就標示「已在媒體庫中」，提供「打開」與「重新處理」（AlreadyInLibrary）。
+//      成功：關閉抽屜，toast「已開始處理 N 部」附「查看」；全部都已在媒體庫中時留在抽屜，提供「打開」。
 //      錯誤依 code 顯示並給修正動作（例如 in_trash 給「還原」）。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -40,6 +41,7 @@ import {
   useRunDefaults,
   type RunOverridesValue,
 } from "./RunOverrides";
+import { AlreadyInLibrary, type LibraryEntry } from "./AlreadyInLibrary";
 import { MAX_LINES, MultiLines, uniqueLines, useMultiLines, type LineState } from "./MultiAdd";
 import { isHttpUrl, parseParts } from "./url";
 
@@ -217,6 +219,17 @@ export function AddDrawer({
     staleTime: 60_000,
   });
   const estimateCurrent = estimateJson !== "" && estimateKey === estimateJson;
+
+  // 辨識（預估）後就知道已在媒體庫中的影音（pages.md §2）；多行時合計每一行的
+  const known: LibraryEntry[] = (
+    multi
+      ? okLines.flatMap((l) => l.estimate?.items ?? [])
+      : estimateCurrent
+        ? (estimate.data?.items ?? [])
+        : []
+  )
+    .filter((i) => i.already_in_library)
+    .map((i) => ({ ref: i.ref, title: i.title || i.ref }));
 
   function subscribeInstead() {
     const target = trimmed;
@@ -539,27 +552,32 @@ export function AddDrawer({
           </p>
         )}
 
-        {existing.length > 0 && (
-          <div className="add__existing" role="status">
-            <p>{t("add.alreadyInLibrary", { count: existing.length })}</p>
-            <ul>
-              {existing.map((it) => (
-                <li key={it.id}>
-                  <span lang={it.original_lang || undefined}>{it.title || it.ref}</span>
-                  <Button variant="text" onClick={() => openItem(it.id)}>
-                    {it.in_trash ? t("add.inTrash") : t("add.openItem")}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
         {submit.isError && (
           <ErrorCallout error={submit.error} actions={errorActions(submit.error)} />
         )}
         {restore.isError && <ErrorCallout error={restore.error} />}
       </form>
+      {/* 放在 form 之外：「重新處理」的對話框是 portal，但 React 的 submit 事件會沿元件樹冒泡到這個 form */}
+      {existing.length > 0 ? (
+        <AlreadyInLibrary
+          entries={existing.map((it) => ({
+            id: it.id,
+            title: it.title || it.ref,
+            lang: it.original_lang,
+            inTrash: it.in_trash,
+          }))}
+          message={t("add.alreadyInLibrary", { count: existing.length })}
+          onOpen={openItem}
+        />
+      ) : (
+        known.length > 0 && (
+          <AlreadyInLibrary
+            entries={known}
+            message={t("add.knownInLibrary", { count: known.length })}
+            onOpen={openItem}
+          />
+        )
+      )}
     </Drawer>
   );
 }

@@ -482,8 +482,13 @@
       "feed": "Podcast 要选集数，请一次粘贴一个网址。",
       "allParts": "全部分P",
       "cookie": "需要 cookie",
-      "noEstimate": "无法预估"
-    }
+      "noEstimate": "无法预估",
+      "inLibrary": "已在媒体库中"
+    },
+    "knownInLibrary": "已在媒体库中（{{count}} 部）。开始处理不会重复新增；要重新生成，请用「重新处理」。",
+    "rerun": "重新处理…",
+    "rerunNamed": "重新处理「{{title}}」…",
+    "openNamed": "打开「{{title}}」"
   },
   "actions": {
     "retry": "重试",
