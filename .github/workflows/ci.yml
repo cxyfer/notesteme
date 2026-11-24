@@ -230,6 +230,10 @@ jobs:
             sleep 2
           done
           if [ "$made" != 1 ]; then echo "::error::建立 bucket 失敗"; tail -n 50 "$RUNNER_TEMP/weed.log"; exit 1; fi
+          # 反證：沒簽章的請求必須被拒絕（403）。bucket 已存在，所以沒驗證簽章時會是 404（NoSuchKey）。
+          code="$(curl -s -o /dev/null -w '%{http_code}' "$NOTESTEME_TEST_S3_ENDPOINT/$NOTESTEME_TEST_S3_BUCKET/anon-probe")"
+          if [ "$code" != 403 ]; then echo "::error::匿名請求預期 403，實際 $code：SeaweedFS 沒有驗證簽章"; exit 1; fi
+          echo "匿名請求被拒絕（403）"
 
       - name: seaweedfs log
         if: failure()
@@ -272,6 +276,12 @@ jobs:
           docker compose -f compose.hub.yaml --env-file .env.hub --profile hub up -d --build
           curl --retry 30 --retry-delay 2 --retry-all-errors -fsS http://127.0.0.1:8090/readyz
           docker compose -f compose.hub.yaml --env-file .env.hub --profile hub run --rm hub doctor
+          # 反證：hub-s3 要驗證簽章。bucket 已存在，匿名 GET 不存在的物件：有驗證是 403，沒驗證會是 404。
+          bucket="$(sed -n 's/^NOTESTEME_HUB_S3_BUCKET=//p' .env.hub | head -n 1)"
+          anon="$(docker compose -f compose.hub.yaml --env-file .env.hub --profile hub exec -T hub-s3 \
+            wget -S -O /dev/null "http://127.0.0.1:9000/${bucket:-notesteme-hub}/anon-probe" 2>&1 || true)"
+          echo "$anon"
+          grep -q 'HTTP/1.1 403' <<<"$anon" || { echo "::error::hub-s3 的匿名請求預期 403"; exit 1; }
 
       - name: hub stack logs
         if: failure()
