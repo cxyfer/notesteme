@@ -94,7 +94,7 @@ func TestScopeMatrix(t *testing.T) {
 				{"DELETE", "/api/trash/x", "", auth.ScopeAdmin, auth.ScopeIngest, 500},
 				{"DELETE", "/api/trash", "", auth.ScopeAdmin, auth.ScopeRead, 500},
 				{"GET", "/api/tokens", "", auth.ScopeAdmin, auth.ScopeRead, 200},
-				{"POST", "/api/tokens", `{"name":"t","scopes":["read"]}`, auth.ScopeAdmin, auth.ScopeRead, 201},
+				{"POST", "/api/tokens", `{"name":"t","scopes":["admin"]}`, auth.ScopeAdmin, auth.ScopeRead, 201},
 				{"DELETE", "/api/tokens/missing", "", auth.ScopeAdmin, auth.ScopeRead, 404},
 				{"POST", "/api/tasks/t1/retry", "", auth.ScopeAdmin, auth.ScopeAgent, 501},
 				{"POST", "/api/tasks/t1/cancel", "", auth.ScopeAdmin, auth.ScopeAgent, 501},
@@ -125,8 +125,8 @@ func TestScopeMatrix(t *testing.T) {
 
 				// Right scope passes authz (reaches handler / 501 / expected status).
 				if c.path == "/api/tokens" && c.method == "POST" {
-					// avoid duplicate token name across subtests
-					c.body = `{"name":"t-` + name + `","scopes":["read"]}`
+					// avoid duplicate token name across subtests；token 只能發出自己有的 scope（AUTH A27）
+					c.body = `{"name":"t-` + name + `","scopes":["admin"]}`
 				}
 				req2 := httptest.NewRequest(c.method, c.path, strings.NewReader(c.body))
 				if c.body != "" {
