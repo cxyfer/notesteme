@@ -25,7 +25,32 @@ export const CAPTION_KINDS = ["manual", "auto"] as const;
 /** output.Formats */
 export const OUTPUT_FORMATS = ["srt", "vtt", "txt", "cues-json", "ass", "bilingual-srt"] as const;
 /** vault 在 M3 才提供（schema 回 422） */
-export const OUTPUT_TARGETS = ["sidecar", "folder"] as const;
+/** 輸出目標（OUT-R*、VAULT-R1）：vault 只能選用設定檔定義的 id */
+export const OUTPUT_TARGETS = ["sidecar", "folder", "vault"] as const;
+
+/** 各輸出目標可以有的欄位（internal/pipeline/schema.go 的 outputFields、vaultOutputFields）；換目標時丟掉其他的 */
+const TARGET_FIELDS: Record<string, readonly string[]> = {
+  sidecar: ["target", "formats", "lang", "style", "on_user_change"],
+  folder: ["target", "formats", "lang", "style", "path", "on_user_change"],
+  vault: ["target", "vault", "formats", "lang", "folder", "on_user_change", "hooks"],
+};
+
+/**
+ * 把一個輸出改成另一個目標：只留下新目標認得的欄位（否則伺服器回 422「不認識的欄位。」）。
+ * 改成 vault 時預設選第一個 vault（沒有時不填，由伺服器回「必填」）；vault 的 formats 可以是空陣列。
+ */
+export function retarget(
+  o: Record<string, unknown>,
+  target: string,
+  vaults: readonly string[] = [],
+): Record<string, unknown> {
+  const keep = TARGET_FIELDS[target] ?? TARGET_FIELDS.sidecar!;
+  const n: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(o)) if (keep.includes(k)) n[k] = v;
+  n.target = target;
+  if (target === "vault" && n.vault === undefined && vaults[0]) n.vault = vaults[0];
+  return n;
+}
 
 export function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);

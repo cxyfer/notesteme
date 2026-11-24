@@ -436,6 +436,7 @@ Prompt 庫 › 校正 › correct-default
 
 - **安全**：API key 儲存後只顯示末四碼，不能再次查看完整內容，只能更換。
 - **修訂（2026-11-23，ADR-0020、VAULT 規格待決問題 V1，待 owner 追認）**：「輸出」分區的 vault（路徑、git repo、分支）與 hook 只能在設定檔定義，這裡唯讀顯示，處理方案只能選用已定義的 id；字幕的本機影片旁與資料夾目標維持可以在處理方案中設定。
+- **實作（2026-11-24）**：「輸出」分區唯讀列出 `GET /api/vaults`（id、adapter、根資料夾）與 `GET /api/hooks`（只有 id，VAULT 待決問題 V18）；處理方案的輸出目標可以選 vault、vault 內的資料夾與 hook。見 [README 10.23](README.md#1023-client-ui-的-ui-manual-缺口2026-11-24)。
 - **API**：`GET/PUT /api/settings/:section`、`POST /api/providers/:id/test`、`POST /api/cookies`、`GET /api/system`、`POST /api/tools/yt-dlp/update`、`GET/POST/DELETE /api/tokens`
 - **修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）**：「書籤小工具」是 ENTRY-R1 的區塊，獨立成一個分區（`/settings/bookmarklet`，排在「外觀」之後），見 ENTRY 待決問題 E7。
 - **實作狀態（UI-6，2026-11-24）**：新增「Hub」分區（`/settings/hub`，在「系統」之後）：URL 唯讀、Hub token、測試連線、ASR 前查詢的開關與說明、用 Hub 的版本重新生成（HSHR），見 [README 10.16、10.17](README.md#1017-ui-6-的決定與待決問題)。

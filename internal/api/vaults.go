@@ -9,7 +9,8 @@ import (
 	"github.com/cxyfer/notesteme/internal/auth"
 )
 
-// 這個檔案是設定檔定義的 vault 清單（VAULT-R1）：只有 id、adapter 與 base，不回傳路徑、remote 或憑證。
+// 這個檔案是設定檔定義的 vault 清單（VAULT-R1）：只有 id、adapter 與 base，不回傳路徑、remote 或憑證；
+// 與 hook 清單（VAULT-R10）：只有 id，不回傳 argv、timeout 與 env_allowlist（argv 可能含有參數形式的秘密）。
 
 // VaultInfo 是一個 vault 的公開資訊。
 type VaultInfo struct {
@@ -24,11 +25,41 @@ type vaultsOutput struct {
 	}
 }
 
+// HookInfo 是一個 hook 的公開資訊。
+type HookInfo struct {
+	ID string `json:"id" doc:"hook 的 id（處理方案的 outputs[].hooks）"`
+}
+
+type hooksOutput struct {
+	Body struct {
+		Hooks []HookInfo `json:"hooks"`
+	}
+}
+
 func (rt *routes) registerVaults(api huma.API) {
 	registerScoped(api, huma.Operation{
 		OperationID: "vaults-list", Method: http.MethodGet, Path: "/api/vaults",
 		Summary: "列出設定檔定義的 vault（id、adapter、base；VAULT-R1）",
 	}, auth.ScopeAdmin, rt.listVaults)
+	registerScoped(api, huma.Operation{
+		OperationID: "hooks-list", Method: http.MethodGet, Path: "/api/hooks",
+		Summary: "列出設定檔定義的 hook（只有 id；VAULT-R10）",
+	}, auth.ScopeAdmin, rt.listHooks)
+}
+
+func (rt *routes) listHooks(ctx context.Context, _ *struct{}) (*hooksOutput, error) {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
+		return nil, err
+	}
+	out := &hooksOutput{}
+	out.Body.Hooks = []HookInfo{}
+	if rt.d.Pipeline == nil {
+		return out, nil
+	}
+	for _, id := range rt.d.Pipeline.HookIDs() {
+		out.Body.Hooks = append(out.Body.Hooks, HookInfo{ID: id})
+	}
+	return out, nil
 }
 
 func (rt *routes) listVaults(ctx context.Context, _ *struct{}) (*vaultsOutput, error) {

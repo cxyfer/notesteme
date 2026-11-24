@@ -2319,6 +2319,37 @@
         ],
         "type": "object"
       },
+      "HookInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "hook 的 id（處理方案的 outputs[].hooks）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "HooksOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "hooks": {
+            "items": {
+              "$ref": "#/components/schemas/HookInfo"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "hooks"
+        ],
+        "type": "object"
+      },
       "HubImportInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -8744,6 +8775,34 @@
           }
         },
         "summary": "整份取代詞彙表；natural key 找不到頻道時建立它"
+      }
+    },
+    "/api/hooks": {
+      "get": {
+        "operationId": "hooks-list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HooksOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出設定檔定義的 hook（只有 id；VAULT-R10）"
       }
     },
     "/api/hub/import": {

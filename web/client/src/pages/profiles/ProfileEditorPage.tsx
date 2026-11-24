@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 
 import { api, apiPath } from "../../api/client";
 import { isApiError } from "../../api/errors";
+import { useHooks, useVaults } from "../../api/outputCatalog";
 import { fieldErrorsOf, type FieldErrors } from "../../api/fieldErrors";
 import { queryKeys } from "../../api/queryKeys";
 import {
@@ -37,6 +38,7 @@ import {
   ON_MANUAL,
   OUTPUT_FORMATS,
   OUTPUT_TARGETS,
+  retarget,
   parsePromptRef,
   setPath,
   splitList,
@@ -698,17 +700,22 @@ function SourceStep({ draft, update, errors }: StepCtx) {
 function OutputsStep({ draft, update, errors, styles }: StepCtx) {
   const { t } = useTranslation();
   const outputs = outputsOf(draft);
+  // vault 與 hook 只能選用設定檔定義的 id（VAULT-R1、R10）
+  const vaults = useVaults();
+  const hooks = useHooks();
+  const vaultIds = (vaults.data?.vaults ?? []).map((v) => v.id);
+  const hookIds = (hooks.data?.hooks ?? []).map((h) => h.id);
   const setOutputs = (next: Record<string, unknown>[]) =>
     update("outputs", next.length ? next : undefined);
   const setAt = (i: number, key: string, value: unknown) =>
     setOutputs(
       outputs.map((o, j) => {
         if (j !== i) return o;
+        // 換目標時只留下新目標認得的欄位（sidecar 不可以有 path；vault 沒有 path、style）
+        if (key === "target") return retarget(o, String(value), vaultIds);
         const n = { ...o };
         if (value === undefined) delete n[key];
         else n[key] = value;
-        // sidecar 寫在影片旁邊，不可以有 path
-        if (key === "target" && value === "sidecar") delete n.path;
         return n;
       }),
     );
@@ -719,6 +726,8 @@ function OutputsStep({ draft, update, errors, styles }: StepCtx) {
       {outputs.map((o, i) => {
         const p = `outputs.${i}`;
         const formats = Array.isArray(o.formats) ? (o.formats as string[]) : [];
+        const isVault = o.target === "vault";
+        const chosenHooks = Array.isArray(o.hooks) ? (o.hooks as string[]) : [];
         return (
           <fieldset key={i} className="output-card">
             <legend className="output-card__title">{t("profiles.outputN", { n: i + 1 })}</legend>
@@ -743,19 +752,47 @@ function OutputsStep({ draft, update, errors, styles }: StepCtx) {
                   spellCheck={false}
                 />
               )}
-              <SelectField
-                label={t("profiles.field.style")}
-                value={str(o.style)}
-                onChange={(e) => setAt(i, "style", e.target.value || undefined)}
-                options={[
-                  { value: "", label: t("profiles.styleDefault") },
-                  ...styles.map((s) => ({ value: s, label: s })),
-                  ...(str(o.style) && !styles.includes(str(o.style))
-                    ? [{ value: str(o.style), label: str(o.style) }]
-                    : []),
-                ]}
-                error={errors[`${p}.style`]}
-              />
+              {isVault && (
+                <SelectField
+                  label={t("profiles.field.vault")}
+                  value={str(o.vault)}
+                  onChange={(e) => setAt(i, "vault", e.target.value || undefined)}
+                  hint={vaultIds.length ? t("profiles.field.vaultHint") : t("profiles.noVaults")}
+                  options={[
+                    ...(str(o.vault) ? [] : [{ value: "", label: t("profiles.vaultPick") }]),
+                    ...vaultIds.map((v) => ({ value: v, label: v })),
+                    ...(str(o.vault) && !vaultIds.includes(str(o.vault))
+                      ? [{ value: str(o.vault), label: str(o.vault) }]
+                      : []),
+                  ]}
+                  error={errors[`${p}.vault`]}
+                />
+              )}
+              {isVault && (
+                <TextField
+                  label={t("profiles.field.vaultFolder")}
+                  value={str(o.folder)}
+                  onChange={(e) => setAt(i, "folder", e.target.value.trim() || undefined)}
+                  hint={t("profiles.field.vaultFolderHint")}
+                  error={errors[`${p}.folder`]}
+                  spellCheck={false}
+                />
+              )}
+              {!isVault && (
+                <SelectField
+                  label={t("profiles.field.style")}
+                  value={str(o.style)}
+                  onChange={(e) => setAt(i, "style", e.target.value || undefined)}
+                  options={[
+                    { value: "", label: t("profiles.styleDefault") },
+                    ...styles.map((s) => ({ value: s, label: s })),
+                    ...(str(o.style) && !styles.includes(str(o.style))
+                      ? [{ value: str(o.style), label: str(o.style) }]
+                      : []),
+                  ]}
+                  error={errors[`${p}.style`]}
+                />
+              )}
             </div>
             <fieldset className="plain-fieldset">
               <legend className="field__label">{t("profiles.field.formats")}</legend>
@@ -769,7 +806,8 @@ function OutputsStep({ draft, update, errors, styles }: StepCtx) {
                         const next = e.target.checked
                           ? [...formats, f]
                           : formats.filter((x) => x !== f);
-                        setAt(i, "formats", next.length ? next : undefined);
+                        // vault 的 formats 可以是空陣列：只寫筆記與圖片（VAULT-R5）
+                        setAt(i, "formats", next.length || isVault ? next : undefined);
                       }}
                     />
                     {t(`profiles.format.${f}`)}
@@ -784,6 +822,36 @@ function OutputsStep({ draft, update, errors, styles }: StepCtx) {
                 </p>
               )}
             </fieldset>
+            {isVault && (
+              <fieldset className="plain-fieldset">
+                <legend className="field__label">{t("profiles.field.hooks")}</legend>
+                <p className="field__hint">
+                  {hookIds.length ? t("profiles.field.hooksHint") : t("profiles.noHooks")}
+                </p>
+                <div className="check-row">
+                  {[...new Set([...hookIds, ...chosenHooks])].map((h) => (
+                    <label key={h} className="check">
+                      <input
+                        type="checkbox"
+                        checked={chosenHooks.includes(h)}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...chosenHooks, h]
+                            : chosenHooks.filter((x) => x !== h);
+                          setAt(i, "hooks", next.length ? next : undefined);
+                        }}
+                      />
+                      <code>{h}</code>
+                    </label>
+                  ))}
+                </div>
+                {Object.entries(errors).find(([k]) => k.startsWith(`${p}.hooks`))?.[1] && (
+                  <p className="field__error">
+                    {Object.entries(errors).find(([k]) => k.startsWith(`${p}.hooks`))?.[1]}
+                  </p>
+                )}
+              </fieldset>
+            )}
             <Button variant="text" onClick={() => setOutputs(outputs.filter((_, j) => j !== i))}>
               {t("profiles.outputRemove", { n: i + 1 })}
             </Button>

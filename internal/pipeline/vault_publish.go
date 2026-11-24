@@ -478,6 +478,16 @@ func (p *Pipeline) vaultRoot(def vault.Def) string {
 	return def.Path
 }
 
+// HookIDs 回傳設定檔定義的 hook 的 id，依 id 排列（GET /api/hooks，VAULT-R10）。
+func (p *Pipeline) HookIDs() []string {
+	out := make([]string, 0, len(p.hooks))
+	for id := range p.hooks {
+		out = append(out, id)
+	}
+	slices.Sort(out)
+	return out
+}
+
 // Vaults 回傳設定檔定義的 vault，依 id 排列（GET /api/vaults，VAULT-R1）。
 func (p *Pipeline) Vaults() []vault.Def {
 	out := make([]vault.Def, 0, len(p.vaults))

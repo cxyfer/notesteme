@@ -604,6 +604,21 @@ Feature: Vault output and hooks
       """
     And the file "/data/vault-repo/remote/Video Notes/YouTube/Designing a Cache - 2025-08-09.md" contains "Caches trade memory for latency."
 
+  @VAULT-01 @VAULT-04 @VAULT-R1 @VAULT-R10
+  Scenario: The vaults and hooks from the config file are listed by id only
+    When the owner sends "GET /api/vaults"
+    Then the response status is 200
+    And the response contains:
+      """
+      { "vaults": [ { "id": "main", "adapter": "fs", "base": "Video Notes" } ] }
+      """
+    When the owner sends "GET /api/hooks"
+    Then the response status is 200
+    And the response contains:
+      """
+      { "hooks": [ { "id": "notify" } ] }
+      """
+
   @ui @manual @VAULT-01
   Scenario: The output settings show the vaults and hooks from the config file
     Given the config file defines the vault "main" and the hook "notify"

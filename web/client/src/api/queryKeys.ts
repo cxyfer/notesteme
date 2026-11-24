@@ -69,6 +69,8 @@ export const queryKeys = {
   noteTemplates: ["note-templates"] as const,
   notifiers: ["notifiers"] as const,
   notifications: ["notifications"] as const,
+  vaults: ["vaults"] as const,
+  hooks: ["hooks"] as const,
   // ---- UI-5：字幕全文搜尋 ----
   search: (q: string, lang: string) => ["search", q, lang] as const,
   // 跨頻道的術語審核清單（GLOS-R5）：前綴與 termCandidates 相同，決定後一起失效

@@ -927,7 +927,13 @@
       "vaultBody": "Vault（本機資料夾或 git repo、分支、使用者修改過時的處理方式）只能在設定檔中定義，這裡唯讀顯示。",
       "hookTitle": "寫入後執行的 hook",
       "hookBody": "hook 只能在設定檔中定義，處理方案只能選用已定義的項目。",
-      "notEnabled": "尚未啟用（M3 起提供）。"
+      "noVaults": "設定檔沒有定義任何 vault。",
+      "noHooks": "設定檔沒有定義任何 hook。",
+      "adapter": {
+        "fs": "本機資料夾（fs）",
+        "git": "git repo（git）"
+      },
+      "base": "根資料夾：{{base}}"
     },
     "agent": {
       "tokensTitle": "API token",
@@ -1533,7 +1539,13 @@
       "path": "資料夾路徑",
       "pathHint": "伺服器上的絕對路徑。",
       "style": "字幕樣式（ASS）",
-      "formats": "字幕檔格式"
+      "formats": "字幕檔格式",
+      "vault": "Vault",
+      "vaultHint": "vault 只能在設定檔定義，這裡選用其中一個。",
+      "vaultFolder": "Vault 內的資料夾",
+      "vaultFolderHint": "選填。相對於 vault 根資料夾的路徑，不能是絕對路徑或含「..」。",
+      "hooks": "寫入後執行的 hook",
+      "hooksHint": "hook 只能在設定檔定義，這裡只能選用。"
     },
     "promptInherit": "沿用全域設定（預設 {{id}}）",
     "versionFollow": "跟隨預設（目前 v{{version}}）",
@@ -1571,7 +1583,8 @@
     "outputRemove": "移除輸出 {{n}}",
     "target": {
       "sidecar": "影片旁邊（sidecar）",
-      "folder": "指定資料夾"
+      "folder": "指定資料夾",
+      "vault": "Vault"
     },
     "styleDefault": "default",
     "format": {
@@ -1581,7 +1594,10 @@
       "cues-json": "JSON",
       "ass": "ASS",
       "bilingual-srt": "雙語 SRT"
-    }
+    },
+    "noVaults": "設定檔沒有定義任何 vault。",
+    "vaultPick": "選擇 vault",
+    "noHooks": "設定檔沒有定義任何 hook。"
   },
   "styles": {
     "lead": "選擇或自訂 ASS 樣式。內建樣式不能修改，複製成自訂樣式後再調整。",

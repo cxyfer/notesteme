@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -129,6 +129,30 @@ describe("處理方案：編輯", () => {
     expect(body).toEqual({
       config: { stages: { correct: { model: "m2", prompt: "my-correct" } } },
     });
+  });
+
+  it("輸出目標可以選 vault：只能選用設定檔的 vault 與 hook，換目標時丟掉不適用的欄位", async () => {
+    const api = profilesApi({
+      "GET /api/vaults": () => ({ vaults: [{ id: "main", adapter: "fs", base: "Video Notes" }] }),
+      "GET /api/hooks": () => ({ hooks: [{ id: "notify" }] }),
+      "PATCH /api/profiles/{id}": () => ({ ...standard, version: 6 }),
+    });
+    await openStandard();
+    const card = within(screen.getByRole("group", { name: "輸出 1" }));
+    expect(card.getByLabelText("字幕樣式（ASS）")).toBeTruthy();
+    await userEvent.selectOptions(card.getByLabelText("輸出目標"), "vault");
+    // vault 預設選第一個；沒有字幕樣式；hook 只能勾選設定檔定義的
+    await waitFor(() =>
+      expect((card.getByLabelText("Vault") as HTMLSelectElement).value).toBe("main"),
+    );
+    expect(card.queryByLabelText("字幕樣式（ASS）")).toBeNull();
+    await userEvent.click(card.getByRole("checkbox", { name: "notify" }));
+    await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
+    expect(await screen.findByText("已儲存（v6）")).toBeTruthy();
+    const body = JSON.parse(String(api.calls("PATCH", "/api/profiles/standard")[0]!.init.body));
+    expect(body.config.outputs).toEqual([
+      { target: "vault", formats: ["srt"], vault: "main", hooks: ["notify"] },
+    ]);
   });
 
   it("儲存前發現版本已改變：提示衝突，可以重新載入或仍要儲存", async () => {

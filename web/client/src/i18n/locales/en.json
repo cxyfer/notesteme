@@ -963,7 +963,13 @@
       "vaultBody": "The vault (local folder or git repo, branch, and what to do when you edited a file) can only be defined in the config file and is shown read-only here.",
       "hookTitle": "Hooks after writing",
       "hookBody": "Hooks can only be defined in the config file; presets can only pick defined ones.",
-      "notEnabled": "Not enabled yet (available from M3)."
+      "noVaults": "The config file defines no vaults.",
+      "noHooks": "The config file defines no hooks.",
+      "adapter": {
+        "fs": "Local folder (fs)",
+        "git": "Git repository (git)"
+      },
+      "base": "Base folder: {{base}}"
     },
     "agent": {
       "tokensTitle": "API tokens",
@@ -1579,7 +1585,13 @@
       "path": "Folder path",
       "pathHint": "An absolute path on the server.",
       "style": "Subtitle style (ASS)",
-      "formats": "File formats"
+      "formats": "File formats",
+      "vault": "Vault",
+      "vaultHint": "Vaults are defined only in the config file; pick one here.",
+      "vaultFolder": "Folder inside the vault",
+      "vaultFolderHint": "Optional. A path relative to the vault's base folder; no absolute paths or “..”.",
+      "hooks": "Hooks to run after writing",
+      "hooksHint": "Hooks are defined only in the config file; you can only pick them here."
     },
     "promptInherit": "Use global setting (default {{id}})",
     "versionFollow": "Follow default (now v{{version}})",
@@ -1617,7 +1629,8 @@
     "outputRemove": "Remove output {{n}}",
     "target": {
       "sidecar": "Next to the video (sidecar)",
-      "folder": "Folder"
+      "folder": "Folder",
+      "vault": "Vault"
     },
     "styleDefault": "default",
     "format": {
@@ -1627,7 +1640,10 @@
       "cues-json": "JSON",
       "ass": "ASS",
       "bilingual-srt": "Bilingual SRT"
-    }
+    },
+    "noVaults": "The config file defines no vaults.",
+    "vaultPick": "Choose a vault",
+    "noHooks": "The config file defines no hooks."
   },
   "styles": {
     "lead": "Choose or customize ASS styles. Built-in styles can't be changed; copy one to a custom style to adjust it.",

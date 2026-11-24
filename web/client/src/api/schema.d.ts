@@ -486,6 +486,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/hooks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** 列出設定檔定義的 hook（只有 id；VAULT-R10） */
+    get: operations["hooks-list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/hub/import": {
     parameters: {
       query?: never;
@@ -2593,6 +2610,13 @@ export interface components {
       reserved_usd: number;
       /** Format: double */
       usd: number;
+    };
+    HookInfo: {
+      /** @description hook 的 id（處理方案的 outputs[].hooks） */
+      id: string;
+    };
+    HooksOutputBody: {
+      hooks: components["schemas"]["HookInfo"][] | null;
     };
     HubImportInputBody: {
       /** @description 單次覆寫（ING-R7） */
@@ -5400,6 +5424,35 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Glossary"];
+        };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "hooks-list": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HooksOutputBody"];
         };
       };
       /** @description Error */

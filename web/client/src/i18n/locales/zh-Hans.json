@@ -927,7 +927,13 @@
       "vaultBody": "Vault（本地文件夹或 git repo、分支、用户修改过时的处理方式）只能在配置文件中定义，这里只读显示。",
       "hookTitle": "写入后执行的 hook",
       "hookBody": "hook 只能在配置文件中定义，处理方案只能选用已定义的项目。",
-      "notEnabled": "尚未启用（M3 起提供）。"
+      "noVaults": "配置文件没有定义任何 vault。",
+      "noHooks": "配置文件没有定义任何 hook。",
+      "adapter": {
+        "fs": "本机文件夹（fs）",
+        "git": "git repo（git）"
+      },
+      "base": "根文件夹：{{base}}"
     },
     "agent": {
       "tokensTitle": "API token",
@@ -1533,7 +1539,13 @@
       "path": "文件夹路径",
       "pathHint": "服务器上的绝对路径。",
       "style": "字幕样式（ASS）",
-      "formats": "字幕文件格式"
+      "formats": "字幕文件格式",
+      "vault": "Vault",
+      "vaultHint": "vault 只能在配置文件中定义，这里选用其中一个。",
+      "vaultFolder": "Vault 内的文件夹",
+      "vaultFolderHint": "选填。相对于 vault 根文件夹的路径，不能是绝对路径或含“..”。",
+      "hooks": "写入后执行的 hook",
+      "hooksHint": "hook 只能在配置文件中定义，这里只能选用。"
     },
     "promptInherit": "沿用全局设置（默认 {{id}}）",
     "versionFollow": "跟随默认（目前 v{{version}}）",
@@ -1571,7 +1583,8 @@
     "outputRemove": "移除输出 {{n}}",
     "target": {
       "sidecar": "视频旁边（sidecar）",
-      "folder": "指定文件夹"
+      "folder": "指定文件夹",
+      "vault": "Vault"
     },
     "styleDefault": "default",
     "format": {
@@ -1581,7 +1594,10 @@
       "cues-json": "JSON",
       "ass": "ASS",
       "bilingual-srt": "双语 SRT"
-    }
+    },
+    "noVaults": "配置文件没有定义任何 vault。",
+    "vaultPick": "选择 vault",
+    "noHooks": "配置文件没有定义任何 hook。"
   },
   "styles": {
     "lead": "选择或自定义 ASS 样式。内置样式不能修改，复制成自定义样式后再调整。",
