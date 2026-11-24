@@ -17,6 +17,10 @@ on:
       - "internal/api/openapi.json"
       - "internal/hub/hubapi/openapi.json"
       - ".github/workflows/web.yml"
+  # NFR-SEC-4：前端依賴每天掃一次 high 以上的弱點。上面的 paths 過濾讓沒碰 web/ 的變更不掃，新的弱點資料庫更新也不會觸發；
+  # schedule 只跑 audit job（其他 job 在 schedule 時略過）。
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
 
 permissions:
@@ -31,8 +35,34 @@ defaults:
     working-directory: web/client
 
 jobs:
+  audit:
+    name: npm audit (scheduled)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: [web/client, web/hub]
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/client/.nvmrc
+          cache: npm
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+
+      - name: npm ci
+        run: npm ci --no-audit
+
+      - name: npm audit
+        run: npm audit --audit-level=high
+
   web:
     name: Web lint, test & build
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -82,6 +112,7 @@ jobs:
   # Hub 的 Web UI（web/hub，M5-S9）：獨立的 Vite 專案，同一組檢查；型別由 internal/hub/hubapi/openapi.json 產生。
   hub:
     name: Hub web lint, test & build
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     defaults:
       run:

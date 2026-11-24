@@ -33,6 +33,12 @@ out="$(docker run --rm "$IMAGE" --version)"
 echo "$out"
 [[ "$out" == notesteme\ * ]] || fail "--version 的輸出不正確：$out"
 
+step "image 大小（NFR-RES-5）"
+# < 800MB（以 10^6 計，比 2^20 更嚴）。
+size="$(docker image inspect -f '{{.Size}}' "$IMAGE")"
+echo "image 大小：$size bytes"
+(( size < 800 * 1000 * 1000 )) || fail "image 是 $size bytes，超過 800MB"
+
 step "OpenCC 授權文件"
 run_shell 'set -e
   test -s /usr/share/doc/notesteme/opencc/LICENSE

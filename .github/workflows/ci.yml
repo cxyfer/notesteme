@@ -95,8 +95,35 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: go test ./features (@M3,@M4,@M5)
-        run: go test -count=1 -timeout 45m ./features -run TestFeatures -godog.tags='@M3,@M4,@M5'
+      # NFR-TEST-2：完整的 features 在 CI 上 < 5 分鐘。以不開 -race 的執行為準（-race 讓場景慢 6～8 倍，
+      # 是上面 bdd job 的另一層安全檢查）；預設 tag 與 @M3,@M4,@M5 兩個 job 平行，各自要在 5 分鐘內，
+      # 完整 features 的牆鐘時間就是兩者的最大值。超過時失敗，門檻不放寬。
+      - name: go test ./features (@M3,@M4,@M5, under 5 minutes)
+        run: |
+          start=$SECONDS
+          go test -count=1 -timeout 45m ./features -run TestFeatures -godog.tags='@M3,@M4,@M5'
+          elapsed=$((SECONDS - start))
+          echo "features @M3,@M4,@M5（含編譯）：${elapsed} 秒"
+          test "$elapsed" -lt 300 || { echo "::error::NFR-TEST-2：@M3,@M4,@M5 的場景用了 ${elapsed} 秒，超過 300 秒"; exit 1; }
+
+  # 預設 tag（@M1,@M2）不開 -race 的執行（NFR-TEST-2，見 bdd-extra 的說明）；套用 ratchet 與規格一致性檢查。
+  bdd-fast:
+    name: Scenarios (@M1,@M2, no race)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: go test ./features (under 5 minutes)
+        run: |
+          start=$SECONDS
+          go test -count=1 -timeout 45m ./features
+          elapsed=$((SECONDS - start))
+          echo "features 預設 tag（含編譯與規格一致性檢查）：${elapsed} 秒"
+          test "$elapsed" -lt 300 || { echo "::error::NFR-TEST-2：預設 tag 的場景用了 ${elapsed} 秒，超過 300 秒"; exit 1; }
 
   vuln:
     name: govulncheck
@@ -164,6 +191,22 @@ jobs:
             echo "::error::notesteme-hub 沒有內嵌 Hub UI 的建置產物（只有 placeholder）"
             exit 1
           fi
+
+      # NFR-RES-5：原生 binary < 80MB（以 10^6 計，比 2^20 更嚴）。每個平台都量；超過時失敗，門檻不放寬。
+      - name: binary sizes
+        run: |
+          limit=$((80 * 1000 * 1000))
+          fail=0
+          for f in dist/notesteme_*/notesteme dist/notesteme_*/notesteme.exe dist/notesteme-hub_*/notesteme-hub; do
+            [ -f "$f" ] || continue
+            size="$(stat -c %s "$f")"
+            echo "$f: $size bytes"
+            if [ "$size" -ge "$limit" ]; then
+              echo "::error::NFR-RES-5：$f 是 $size bytes，超過 80MB"
+              fail=1
+            fi
+          done
+          exit "$fail"
 
   # Hub 的 Postgres store 與 S3 backend（ADR-0030 第 2 點）：hubstore/storetest 的共用案例跑在真的 Postgres 上，
   # hubblob 的共用案例跑在真的 S3 相容服務（SeaweedFS）上。沒有這些環境變數時同一組測試會略過（go job 只跑 SQLite＋fs）。
@@ -435,6 +478,49 @@ jobs:
           docker run --rm --platform linux/arm64 notesteme:arm64 --version
           docker run --rm --platform linux/arm64 --entrypoint sh notesteme:arm64 -c 'set -e; yt-dlp --version; ffmpeg -hide_banner -version | head -n 1; ffprobe -hide_banner -version | head -n 1; deno --version | head -n 1'
           docker run --rm --platform linux/arm64 notesteme-hub:arm64 --version
+
+  # NFR-CMP-3：API 在 M1 之後不可移除欄位或改變欄位意義。比對這次推送（或 PR）之前的 OpenAPI 快照，
+  # 有破壞性變更時失敗；真的要破壞時依 NFR 的規定先寫 ADR，再把 oasdiff 輸出的那一行加進 .github/oasdiff-err-ignore.txt。
+  openapi-diff:
+    name: OpenAPI breaking changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: oasdiff breaking
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            *) base="HEAD~1" ;;
+          esac
+          if [ -z "$base" ] || [ "$base" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "沒有可以比對的前一個版本（$base），略過"
+            exit 0
+          fi
+          ignore=()
+          [ -f .github/oasdiff-err-ignore.txt ] && ignore=(--err-ignore .github/oasdiff-err-ignore.txt)
+          status=0
+          for f in internal/api/openapi.json internal/hub/hubapi/openapi.json; do
+            if ! git cat-file -e "$base:$f" 2>/dev/null; then
+              echo "$f：前一個版本沒有這個檔案，略過"
+              continue
+            fi
+            git show "$base:$f" > "$RUNNER_TEMP/base.json"
+            echo "== $f（$base → HEAD）"
+            go run github.com/oasdiff/oasdiff@v1.37.0 breaking "$RUNNER_TEMP/base.json" "$f" --fail-on ERR "${ignore[@]}" || status=1
+          done
+          exit "$status"
 
   sqlc:
     name: sqlc generated code
