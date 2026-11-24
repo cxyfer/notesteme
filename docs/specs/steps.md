@@ -554,7 +554,7 @@ M4-S6 已實作上面三個句型（`features/steps/digest.go`）。DIG 的場�
 | `Given the data volume is {int} percent full` | 測試 hook（`TestControls.DiskUsage`）讓產品讀到的 `/data` 所在檔案系統用量是指定百分比；不寫入真的檔案。沒有這個步驟的場景，harness 預設 10%（OPS 待決問題 O10），CI 機器的真實磁碟用量不會觸發告警。可以在 server 啟動後再次使用，下一次 `alerts` 檢查時生效 |
 | `Given the cookie for {string} was last used successfully at {string}` | 累積：第一個送出請求的步驟先以 `POST /api/cookies` 上傳該平台（`youtube`、`bilibili`）的測試 cookie，再經測試 hook 把它的「最後一次成功使用」設為指定的 RFC 3339 時間（上傳時間也設為同一時間） |
 | `Given yt-dlp recorded {int} failures out of {int} calls in the last hour` | 測試 hook 寫入 yt-dlp 呼叫統計：在 fake clock 的現在之前 1 小時內，共 N 次呼叫、其中 M 次失敗（平均分布在這 1 小時內）；之前 24 小時沒有紀錄。第一個參數大於第二個時步驟失敗 |
-| `Given the instance is deployed with the {string} profile` | 把參數原樣設為環境變數 `NOTESTEME_DEPLOYMENT`（不檢查值，場景也用不合法的值驗證 OPS-R21），必須在 server 啟動之前；CLI 的 `When the owner runs` 也帶這個環境變數。OPS-08 的閘門 |
+| `Given the instance is deployed with the {string} profile` | 把參數原樣設為環境變數 `NOTESTEME_DEPLOYMENT`（不檢查值，場景也用不合法的值驗證 OPS-R21），必須在 server 啟動之前；`vps` 時另外像 compose 的 `vps` profile 一樣把 `NOTESTEME_TRUSTED_PROXIES` 設成 caddy 的固定位址（場景已設定時不覆蓋；OPS-R20）；CLI 的 `When the owner runs` 也帶這個環境變數。OPS-08 的閘門 |
 | `When the server starts with the flag {string}` | 同 `When the server starts`，但在 `serve` 後面加上指定的旗標（例如 `--insecure-no-auth`） |
 | `Given the compose .env file contains:` | 表格（欄位 `field`、`value`）模擬 `deploy/docker/.env`：之後的 `docker compose … config --format json`（fakecompose）以這些變數代入，優先於場景的環境變數；`value` 空白代表空字串。不寫入真的 `.env` |
 

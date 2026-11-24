@@ -8,8 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"net/netip"
+
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/store"
+	"gopkg.in/yaml.v3"
 )
 
 func TestValidDomain(t *testing.T) {
@@ -47,15 +50,68 @@ func TestCheckVPSOrder(t *testing.T) {
 		{map[string]string{"NOTESTEME_DEPLOYMENT": "vps", "NOTESTEME_DOMAIN": "notes.example.com", "NOTESTEME_PASSWORD": "pw"}, called, true, MsgVPSOK},
 	}
 	for i, c := range cases {
-		ok, msg, err := CheckVPS(c.env, c.has)
+		ok, msg, err := CheckVPS(c.env, c.has, yes)
 		if err != nil || ok != c.ok || msg != c.want {
 			t.Errorf("%d：CheckVPS = %v %q %v", i, ok, msg, err)
 		}
 	}
 	boom := errors.New("cannot open")
 	if _, _, err := CheckVPS(map[string]string{"NOTESTEME_DEPLOYMENT": "vps", "NOTESTEME_DOMAIN": "notes.example.com"},
-		func() (bool, error) { return false, boom }); !errors.Is(err, boom) {
+		func() (bool, error) { return false, boom }, yes); !errors.Is(err, boom) {
 		t.Errorf("讀 DB 失敗要回報：%v", err)
+	}
+	// trusted_proxies 是空的：Caddy 後面所有登入共用同一個來源位址（AUTH-R6），不能對外開放。
+	ready := map[string]string{"NOTESTEME_DEPLOYMENT": "vps", "NOTESTEME_DOMAIN": "notes.example.com", "NOTESTEME_PASSWORD": "pw"}
+	if ok, msg, err := CheckVPS(ready, called, no); ok || msg != MsgVPSTrustedProxies || err != nil {
+		t.Errorf("沒有 trusted_proxies：%v %q %v", ok, msg, err)
+	}
+	if _, _, err := CheckVPS(ready, called, func() (bool, error) { return false, boom }); !errors.Is(err, boom) {
+		t.Errorf("載入設定失敗要回報：%v", err)
+	}
+	// 前面的檢查沒過時不讀設定（順序同 OPS-R20）。
+	if _, msg, _ := CheckVPS(map[string]string{"NOTESTEME_DEPLOYMENT": "vps", "NOTESTEME_DOMAIN": "notes.example.com"}, no,
+		func() (bool, error) { t.Fatal("密碼檢查沒過時不檢查 trusted_proxies"); return false, nil }); msg != MsgVPSPassword {
+		t.Errorf("順序：%q", msg)
+	}
+}
+
+// compose 的 vps profile 預設的 trusted_proxies 必須正好是 caddy 的固定位址，兩邊不能各改各的（OPS-R19、R20）。
+func TestComposeTrustsCaddy(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "deploy", "docker", "compose.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Services map[string]struct {
+			Environment map[string]string `yaml:"environment"`
+			Networks    map[string]struct {
+				IPv4 string `yaml:"ipv4_address"`
+			} `yaml:"networks"`
+		} `yaml:"services"`
+		Networks map[string]struct {
+			IPAM struct {
+				Config []struct {
+					Subnet string `yaml:"subnet"`
+				} `yaml:"config"`
+			} `yaml:"ipam"`
+		} `yaml:"networks"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	caddy := doc.Services["caddy"].Networks["default"].IPv4
+	if caddy+"/32" != DefaultVPSTrustedProxies {
+		t.Fatalf("caddy 的位址 %q 與 DefaultVPSTrustedProxies %q 不一致", caddy, DefaultVPSTrustedProxies)
+	}
+	subnet := netip.MustParsePrefix(doc.Networks["default"].IPAM.Config[0].Subnet)
+	if !subnet.Contains(netip.MustParseAddr(caddy)) {
+		t.Fatalf("caddy 的位址 %s 不在網段 %s 內", caddy, subnet)
+	}
+	want := "${NOTESTEME_TRUSTED_PROXIES:-" + DefaultVPSTrustedProxies + "}"
+	for _, svc := range []string{"notesteme", "vps-check"} {
+		if got := doc.Services[svc].Environment["NOTESTEME_TRUSTED_PROXIES"]; got != want {
+			t.Errorf("%s 的 NOTESTEME_TRUSTED_PROXIES = %q，預期 %q", svc, got, want)
+		}
 	}
 }
 

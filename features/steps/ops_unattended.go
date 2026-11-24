@@ -15,6 +15,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/app"
 	"github.com/cxyfer/notesteme/internal/config"
+	"github.com/cxyfer/notesteme/internal/ops"
 )
 
 // registerOpsUnattended 註冊 OPS-06～08 的句型（steps.md 4.18 的「OPS-06～08」）。這些句型只有 OPS-unattended.feature 使用；
@@ -192,6 +193,10 @@ func (s *Scenario) deployedWithProfile(kind string) error {
 		return errors.New("NOTESTEME_DEPLOYMENT 必須在 server 啟動之前設定")
 	}
 	s.World.Env[config.EnvDeployment] = kind
+	// compose 的 vps profile 同時把 caddy 的固定位址設成 trusted_proxies（OPS-R19、R20）；場景設定過時不覆蓋。
+	if _, set := s.World.Env[config.EnvTrustedProxies]; kind == config.DeploymentVPS && !set {
+		s.World.Env[config.EnvTrustedProxies] = ops.DefaultVPSTrustedProxies
+	}
 	return nil
 }
 

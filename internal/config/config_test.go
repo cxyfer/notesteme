@@ -1,8 +1,10 @@
 package config
 
 import (
+	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -137,5 +139,27 @@ func TestLoadRejectsInvalidTrustedProxies(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "trusted_proxies") {
 			t.Errorf("err = %v，應指出 trusted_proxies", err)
 		}
+	}
+}
+
+// NOTESTEME_TRUSTED_PROXIES（SEC-R1：環境變數優先）：compose 的 vps profile 以它信任 caddy（AUTH-R6、OPS-R20）。
+func TestTrustedProxiesFromEnv(t *testing.T) {
+	file := writeFile(t, "trusted_proxies: [\"10.0.0.0/8\"]\n")
+	cfg, err := Load(Sources{File: file, Env: map[string]string{EnvTrustedProxies: " 172.31.250.10/32 , ,2001:db8::1/64"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []netip.Prefix{netip.MustParsePrefix("172.31.250.10/32"), netip.MustParsePrefix("2001:db8::/64")}
+	if !slices.Equal(cfg.TrustedProxies, want) || cfg.SourceOf(FieldTrustedProxies) != SourceEnv {
+		t.Errorf("環境變數要整份取代設定檔：%v（來源 %s）", cfg.TrustedProxies, cfg.SourceOf(FieldTrustedProxies))
+	}
+	// 空字串視為沒有設定，沿用設定檔。
+	cfg, err = Load(Sources{File: file, Env: map[string]string{EnvTrustedProxies: "  "}})
+	if err != nil || len(cfg.TrustedProxies) != 1 || cfg.SourceOf(FieldTrustedProxies) != SourceConfigFile {
+		t.Errorf("空的環境變數：%v %v", cfg.TrustedProxies, err)
+	}
+	if _, err := Load(Sources{File: file, Env: map[string]string{EnvTrustedProxies: "172.31.250.10/32,caddy"}}); err == nil ||
+		!strings.Contains(err.Error(), "NOTESTEME_TRUSTED_PROXIES") || !strings.Contains(err.Error(), `"caddy"`) {
+		t.Errorf("不是 CIDR 要拒絕並指出值：%v", err)
 	}
 }

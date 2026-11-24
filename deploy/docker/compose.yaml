@@ -19,6 +19,10 @@ services:
       NOTESTEME_PASSWORD: ${NOTESTEME_PASSWORD:-}
       # local 或 vps（OPS-R21）；vps 時拒絕 --insecure-no-auth，session cookie 一律帶 Secure。
       NOTESTEME_DEPLOYMENT: ${NOTESTEME_DEPLOYMENT:-local}
+      # 可信任的反向代理（AUTH-R6）：預設是 vps profile 的 caddy 的固定位址（見下方 caddy.networks）。
+      # 沒有它時所有經 Caddy 的登入都是同一個來源位址，任何人錯 5 次密碼就會讓 owner 一起被鎖。
+      # 沒有啟動 caddy 時這個位址沒有人使用，不影響本機部署。
+      NOTESTEME_TRUSTED_PROXIES: ${NOTESTEME_TRUSTED_PROXIES:-172.31.250.10/32}
     ports:
       # 所有 profile 都只映射到 loopback（OPS-R9）；VPS 由 vps profile 的 caddy 對外提供 HTTPS。
       - "127.0.0.1:${NOTESTEME_PORT:-8080}:8080"
@@ -39,6 +43,7 @@ services:
       NOTESTEME_DOMAIN: ${NOTESTEME_DOMAIN:-}
       NOTESTEME_DEPLOYMENT: ${NOTESTEME_DEPLOYMENT:-local}
       NOTESTEME_PASSWORD: ${NOTESTEME_PASSWORD:-}
+      NOTESTEME_TRUSTED_PROXIES: ${NOTESTEME_TRUSTED_PROXIES:-172.31.250.10/32}
     volumes:
       - notesteme-data:/data:ro
 
@@ -53,6 +58,10 @@ services:
       - "443:443/udp"
     environment:
       NOTESTEME_DOMAIN: ${NOTESTEME_DOMAIN:-}
+    # 固定位址，notesteme 才能只信任 caddy 送來的 X-Forwarded-For（NOTESTEME_TRUSTED_PROXIES 的預設值）。
+    networks:
+      default:
+        ipv4_address: 172.31.250.10
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # 憑證與 ACME 帳號要保存下來，否則每次重建都重新申請，可能碰到 Let's Encrypt 的頻率限制。
@@ -63,6 +72,14 @@ services:
         condition: service_completed_successfully
       notesteme:
         condition: service_healthy
+
+# 固定網段，caddy 才有固定位址。和主機上其他網路衝突時，同時修改這裡、caddy 的 ipv4_address
+# 與 .env 的 NOTESTEME_TRUSTED_PROXIES。
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24
 
 volumes:
   notesteme-data:

@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -18,7 +20,8 @@ func runDeployCheck(t *testing.T, vars map[string]string, args ...string) (int, 
 
 func TestDeployCheckVPS(t *testing.T) {
 	data := t.TempDir()
-	base := map[string]string{"NOTESTEME_DATA": data, "NOTESTEME_DOMAIN": "notes.example.com", "NOTESTEME_DEPLOYMENT": "vps"}
+	base := map[string]string{"NOTESTEME_DATA": data, "NOTESTEME_DOMAIN": "notes.example.com", "NOTESTEME_DEPLOYMENT": "vps",
+		"NOTESTEME_TRUSTED_PROXIES": "172.31.250.10/32", "NOTESTEME_CONFIG": filepath.Join(data, "none.yaml")}
 	code, _, errOut := runDeployCheck(t, base, "vps")
 	if code != 1 || !strings.Contains(errOut, "vps profile 必須設定登入密碼。") {
 		t.Fatalf("沒有密碼：%d %q", code, errOut)
@@ -30,6 +33,24 @@ func TestDeployCheckVPS(t *testing.T) {
 	code, out, _ := runDeployCheck(t, withPW, "vps")
 	if code != 0 || !strings.Contains(out, "vps 部署檢查通過。") {
 		t.Fatalf("通過：%d %q", code, out)
+	}
+	// 沒有 trusted_proxies（環境變數空白、設定檔也沒有）：經 Caddy 的登入共用同一個來源位址，不能對外開放（AUTH-R6）。
+	noProxy := map[string]string{}
+	for k, v := range withPW {
+		noProxy[k] = v
+	}
+	noProxy["NOTESTEME_TRUSTED_PROXIES"] = ""
+	if code, _, errOut := runDeployCheck(t, noProxy, "vps"); code != 1 || !strings.Contains(errOut, "NOTESTEME_TRUSTED_PROXIES") {
+		t.Fatalf("沒有 trusted_proxies：%d %q", code, errOut)
+	}
+	// 設定檔的 trusted_proxies 也算。
+	cfgFile := filepath.Join(data, "notesteme.yaml")
+	if err := os.WriteFile(cfgFile, []byte("trusted_proxies: [\"172.31.250.10/32\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	noProxy["NOTESTEME_CONFIG"] = cfgFile
+	if code, _, errOut := runDeployCheck(t, noProxy, "vps"); code != 0 {
+		t.Fatalf("設定檔有 trusted_proxies：%d %q", code, errOut)
 	}
 	code, out, _ = runDeployCheck(t, withPW, "vps", "--json")
 	if code != 0 || !strings.Contains(out, `"ok":true`) {

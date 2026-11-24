@@ -94,6 +94,10 @@ const insecureWarnEvery = time.Hour
 // InsecureWarning 是無驗證模式的警告 log（固定文字；listen 另外以欄位記錄）。
 const InsecureWarning = "目前以 --insecure-no-auth 啟動：沒有任何登入驗證，這台電腦上的任何程式都能完整操作 Notesteme。請設定 NOTESTEME_PASSWORD 後不帶這個旗標重新啟動。"
 
+// VPSNoTrustedProxiesWarning 是 vps 部署沒有 trusted_proxies 時的啟動警告（AUTH-R6、OPS-R20）：
+// 所有經 Caddy 的登入都會被當成同一個來源，任何人錯 5 次密碼就讓 owner 一起被鎖。
+const VPSNoTrustedProxiesWarning = "vps 部署沒有設定 trusted_proxies：經反向代理的登入都會被當成同一個來源位址，任何人連續輸錯密碼就會讓 owner 也被鎖定。請設定 NOTESTEME_TRUSTED_PROXIES 或設定檔的 trusted_proxies。"
+
 // warnInsecure 在啟動時寫一筆 Warn，之後每小時再寫一次，直到 server 關閉。
 func (s *Server) warnInsecure(env Env, listen string) {
 	s.log.Warn(InsecureWarning, "listen", listen)

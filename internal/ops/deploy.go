@@ -27,16 +27,24 @@ const (
 	MsgVPSDomain     = "vps profile 需要在 .env 設定 NOTESTEME_DOMAIN（例如 notes.example.com）。"
 	MsgVPSDeployment = "vps profile 需要在 .env 設定 NOTESTEME_DEPLOYMENT=vps。"
 	MsgVPSPassword   = "vps profile 必須設定登入密碼。請在 .env 設定 NOTESTEME_PASSWORD 後重新啟動。"
-	MsgVPSOK         = "vps 部署檢查通過。"
+	// MsgVPSTrustedProxies：沒有 trusted_proxies 時，所有登入的來源位址都是 Caddy，任何人錯 5 次就讓 owner 一起被鎖（AUTH-R6）。
+	MsgVPSTrustedProxies = "vps profile 必須把 Caddy 設成 trusted_proxies。請在 .env 設定 NOTESTEME_TRUSTED_PROXIES（compose 的預設值是 " + DefaultVPSTrustedProxies + "）。"
+	MsgVPSOK             = "vps 部署檢查通過。"
 )
+
+// DefaultVPSTrustedProxies 是 compose 的 vps profile 預設的 trusted_proxies：Caddy 在 compose 網路中的固定位址
+// （deploy/docker/compose.yaml 的 caddy.networks.default.ipv4_address；兩邊由測試確認一致）。
+const DefaultVPSTrustedProxies = "172.31.250.10/32"
 
 // passwordSetting 是 DB 中登入密碼雜湊的 settings 鍵（internal/auth）。
 const passwordSetting = "owner_password_hash"
 
 // CheckVPS 依序檢查 vps 部署的條件（OPS-R20），遇到第一個問題就回傳它的訊息（ok 為 false）：
-// NOTESTEME_DOMAIN 是可以申請憑證的網域、NOTESTEME_DEPLOYMENT 是 vps、DB 中或 NOTESTEME_PASSWORD 有登入密碼。
+// NOTESTEME_DOMAIN 是可以申請憑證的網域、NOTESTEME_DEPLOYMENT 是 vps、DB 中或 NOTESTEME_PASSWORD 有登入密碼、
+// trusted_proxies（設定檔或 NOTESTEME_TRUSTED_PROXIES）不是空的。
 // hasPassword 回報 DB 中是否已有密碼；只有前兩項通過、而且環境變數沒有密碼時才會呼叫。
-func CheckVPS(env map[string]string, hasPassword func() (bool, error)) (ok bool, msg string, err error) {
+// hasTrustedProxies 回報生效的 trusted_proxies 是否不是空的；前三項通過時才會呼叫。
+func CheckVPS(env map[string]string, hasPassword, hasTrustedProxies func() (bool, error)) (ok bool, msg string, err error) {
 	if !ValidDomain(env[EnvDomain]) {
 		return false, MsgVPSDomain, nil
 	}
@@ -51,6 +59,13 @@ func CheckVPS(env map[string]string, hasPassword func() (bool, error)) (ok bool,
 		if !has {
 			return false, MsgVPSPassword, nil
 		}
+	}
+	has, err := hasTrustedProxies()
+	if err != nil {
+		return false, "", err
+	}
+	if !has {
+		return false, MsgVPSTrustedProxies, nil
 	}
 	return true, MsgVPSOK, nil
 }

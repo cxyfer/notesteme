@@ -25,12 +25,27 @@ func parseDeployCheck(args []string) (*plan, error) {
 			return 0, usagef("deploy-check 檢查這台機器的資料目錄，不能和 --server 一起使用。")
 		}
 		env := withData(s.env, g.data).Vars
+		var cfg *config.Config
+		load := func() (*config.Config, error) {
+			if cfg != nil {
+				return cfg, nil
+			}
+			c, err := config.Load(config.Sources{Env: env})
+			cfg = c
+			return c, err
+		}
 		ok, msg, err := ops.CheckVPS(env, func() (bool, error) {
-			cfg, err := config.Load(config.Sources{Env: env})
+			c, err := load()
 			if err != nil {
 				return false, err
 			}
-			return ops.PasswordInDB(ctx, cfg.Data)
+			return ops.PasswordInDB(ctx, c.Data)
+		}, func() (bool, error) {
+			c, err := load()
+			if err != nil {
+				return false, err
+			}
+			return len(c.TrustedProxies) > 0, nil
 		})
 		if err != nil {
 			return 0, err

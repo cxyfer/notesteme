@@ -228,6 +228,9 @@ func StartServerWith(ctx context.Context, env Env, opts ServeOptions) (*Server, 
 	if opts.InsecureNoAuth {
 		s.warnInsecure(env, s.ln.Addr().String())
 	}
+	if cfg.M4.Deployment == config.DeploymentVPS && len(cfg.TrustedProxies) == 0 {
+		log.WarnContext(ctx, VPSNoTrustedProxiesWarning)
+	}
 	return s, nil
 }
 

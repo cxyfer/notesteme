@@ -39,6 +39,9 @@ const (
 	// EnvGroqAPIKey 是 Groq 的 API key（SEC-R1，對應 asr.providers.groq 的 key）。
 	// 目前只從環境變數讀取（SEC-R4 加密存放時一併整理命名）；沒有設定時 Groq 視為 not_configured。
 	EnvGroqAPIKey = "NOTESTEME_GROQ_API_KEY"
+	// EnvTrustedProxies 是 trusted_proxies 的環境變數（SEC-R1：環境變數優先於設定檔）：以逗號分隔的 CIDR。
+	// compose 的 vps profile 以它把 Caddy 的位址設成可信任的反向代理（AUTH-R6、OPS-R19）。
+	EnvTrustedProxies = "NOTESTEME_TRUSTED_PROXIES"
 )
 
 // Source 是設定值的來源。
@@ -55,6 +58,8 @@ const (
 	FieldListen = "listen"
 	FieldData   = "data"
 	FieldInbox  = "inbox"
+	// FieldTrustedProxies 是 trusted_proxies（AUTH-R6）。
+	FieldTrustedProxies = "trusted_proxies"
 	// FieldTrashRetentionDays 是 library.trash_retention_days（DEL-R4）。
 	FieldTrashRetentionDays = "library.trash_retention_days"
 	// FieldUploadMaxBytes 是 library.upload_max_bytes（ING-05 上傳大小上限）。
@@ -240,6 +245,13 @@ func Load(src Sources) (*Config, error) {
 	if v := src.Env[EnvData]; v != "" {
 		cfg.Data, cfg.Origin[FieldData] = v, SourceEnv
 	}
+	if v := strings.TrimSpace(src.Env[EnvTrustedProxies]); v != "" {
+		prefixes, err := parseTrustedProxiesEnv(v)
+		if err != nil {
+			return nil, err
+		}
+		cfg.TrustedProxies, cfg.Origin[FieldTrustedProxies] = prefixes, SourceEnv
+	}
 	// 資料目錄轉成絕對路徑：相對路徑會讓預設 inbox 也變成相對路徑，被 pathguard 靜默忽略（GRD-R7）。
 	abs, err := filepath.Abs(cfg.Data)
 	if err != nil {
@@ -318,6 +330,9 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 		}
 		cfg.TrustedProxies = append(cfg.TrustedProxies, p.Masked())
 	}
+	if len(cfg.TrustedProxies) > 0 {
+		cfg.Origin[FieldTrustedProxies] = SourceConfigFile
+	}
 
 	allow, err := netguard.ParseAllowlist(f.Network.AllowPrivate)
 	if err != nil {
@@ -388,4 +403,21 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 		cfg.MediaRoots = append(cfg.MediaRoots, filepath.Clean(v))
 	}
 	return nil
+}
+
+// parseTrustedProxiesEnv 解析 NOTESTEME_TRUSTED_PROXIES：逗號分隔的 CIDR，空白項目略過；整份取代設定檔的 trusted_proxies。
+func parseTrustedProxiesEnv(v string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, part := range strings.Split(v, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		p, err := netip.ParsePrefix(part)
+		if err != nil {
+			return nil, fmt.Errorf("環境變數 %s 的 %q 不是有效的 CIDR（例如 \"172.18.0.0/16\"）。", EnvTrustedProxies, part)
+		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
 }

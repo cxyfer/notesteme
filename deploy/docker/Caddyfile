@@ -2,6 +2,7 @@
 {$NOTESTEME_DOMAIN} {
 	encode zstd gzip
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-	# notesteme 只看 X-Forwarded-For 時要把 caddy 設成 trusted_proxies（AUTH-R6）。
+	# compose 以 NOTESTEME_TRUSTED_PROXIES 把 caddy 的固定位址設成 trusted_proxies（AUTH-R6）；
+	# notesteme 才會改用 X-Forwarded-For 區分登入的來源。
 	reverse_proxy notesteme:8080
 }
