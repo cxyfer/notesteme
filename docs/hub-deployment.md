@@ -14,6 +14,8 @@
 | `hub-migrate` | 一次性：`notesteme-hub migrate`；多個實例同時執行時以 advisory lock 排隊 |
 | `hub` | Hub 本身（`Dockerfile` 的 `notesteme-hub` target，內嵌 `web/hub`）；只映射到 `127.0.0.1:8090`，另接 `hub-egress` 以連 OAuth 供應商 |
 
+**`hub-s3` 的內部服務**：SeaweedFS 單容器除了 S3 API（9000）還開著 master（9333）、volume、filer（8888）、Iceberg（8181）等沒有認證的內部服務，只在 `hub-internal`（internal network，沒有映射 port），只有 `hub`、`hub-migrate` 與 `hub-s3-init` 連得到。Hub 容器若被攻破，可以不經 S3 簽章直接讀寫 filer；在意這點時改用 R2 或 AWS S3（§3），或不要讓其他服務加入 `hub-internal`。
+
 對外的 HTTPS 由前面的反向代理負責（Caddy、nginx、Cloudflare Tunnel），反向代理指向 `127.0.0.1:8090`。`public_url` 必須是對外的 https 網址（OAuth 的 redirect_uri 由它組成）。
 
 **反向代理與限流（`server.trusted_proxies`）**：Hub 以連線的 IP 限制未登入的請求（每分鐘 `rate_limits.anonymous_requests_per_minute`，含 OAuth 登入與下架申請）。放在反向代理後面時，Hub 看到的連線位址都是代理的，所有訪客會共用同一份額度——一個用戶端就能讓其他人無法登入。這時在設定檔列出代理的位址（CIDR 或單一 IP）：
