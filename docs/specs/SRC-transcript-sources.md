@@ -85,10 +85,13 @@ SRC-10 屬於 M4（故事地圖第 5 節），規則是 SRC-R18～R23；其餘�
 | `needs_action` | `unavailable` | 來源需要使用者處理（API key 被拒、方案不支援、需要 cookie（SRC-R8）），步驟為 `blocked`。 |
 | `download_failed` | `unavailable` | 語音轉錄來源需要的音訊下載失敗（yt-dlp 的問題，不是來源本身的問題）；步驟的狀態與訊息沿用下載錯誤的（例如 403 為 `blocked`，SRC-R9）。 |
 | `language_mismatch` | `rejected` | 來源回報的語言和影音的原文語言不同（SRC-R4）。 |
+| `music_only` | `rejected` | 超過 80% 的 cue 只有音樂標記（SRC-R4）。 |
+| `low_coverage` | `rejected` | cue 涵蓋的時間低於片長的 50%（SRC-R4）。 |
+| `repetition` | `rejected` | 重複句的比例超過 30%（SRC-R4）。 |
 | `unsupported` | `unavailable` | 來源不支援這個平台（例如 Supadata 不處理本機檔案），略過，不送出任何資料。 |
 | `unreadable` | `rejected` | 本機的外掛字幕或內嵌字幕讀不到、超過大小上限、解析或抽取失敗；改用下一條字幕，最後才用 fallback。 |
 
-順序是評估順序：先 `caption_priority` 的各條規則，再 `fallback` 的各個來源。只列最近一次 Probe 的結果；重跑或等待後再檢查時，舊的結果被取代。其他品質檢查的原因（`low_coverage`、`repetition`、`music_only`）等 SRC-R4 其餘門檻實作後加入。
+順序是評估順序：先 `caption_priority` 的各條規則，再 `fallback` 的各個來源。只列最近一次 Probe 的結果；重跑或等待後再檢查時，舊的結果被取代。SRC-R4 的品質檢查只套用在 `fallback` 來源的結果（見待決問題）。
 
 名詞：來源紀錄（provenance）的 `timing` 是這個來源的時間粒度，值為 `word`、`segment`、`cue`、`chunk`、`model`；cue 的 `timing` 是這句時間的來源（SRC-R16）。兩者是不同的欄位，不要混用。Groq 在 M1 的來源紀錄 `timing` 是 `segment`。
 
@@ -122,12 +125,12 @@ SRC-10 屬於 M4（故事地圖第 5 節），規則是 SRC-R18～R23；其餘�
 - SRC-R6 的「自動字幕還沒生成」是推定：YouTube 沒有「還沒生成」的訊號，只能從「發布不到 24 小時、`automatic_captions` 完全是空的（含平台翻譯軌）、`caption_priority` 有 `auto` 規則」推斷。沒有語音的影片永遠不會有自動字幕，會白等 24 小時才改用下一個來源；動作「現在改用語音轉錄」（略過等待）見下面「SRC-R6 的現在改用語音轉錄」。每次檢查固定間隔 2 小時，不截到 24 小時的期限，所以實際改用下一個來源的時間可能比發布後 24 小時晚最多 2 小時（2026-11-14，SRC 切片實作時決定）。
 - SRC-R6 的 24 小時期限依發布時間的精度而定：yt-dlp 有 `timestamp` 時是精確時間，期限為發布時間 + 24 小時；只有 `upload_date`（日期精度，當天 00:00 UTC）時，實際發布時間可能是當天任何時刻，期限改為該日 00:00 UTC + 48 小時（等於把不確定的那一天補上），寧可多等也不讓晚發布的影片提早付費轉錄。代價是這類影片最多多等一天（2026-11-14，SRC 審查後修正）。
 - SRC-R9 的訊息字串還沒對真實的 yt-dlp 驗證：目前依 yt-dlp 原始碼，比對 stderr 中以 `ERROR:` 開頭、含 `HTTP Error 403` 的行（涵蓋 `unable to download video data` 與 `Unable to download webpage`）。實際的 403 多半在下載媒體（ASR 需要的音訊）時發生，不是 `-J` 或字幕；等 `media.go` 與真實環境驗證後再確認字串與分類。
-- SRC-R4 的 `language_mismatch` 在 M1 只比較來源回報的語言與影音的原文語言（只比主要語言，`zh` 與 `zh-Hans` 視為相同）；任一邊未知時略過檢查。文字語言偵測與其他門檻（`low_coverage`、`repetition`、`music_only`）仍待實作。
+- SRC-R4 的 `language_mismatch` 在 M1 只比較來源回報的語言與影音的原文語言（只比主要語言，`zh` 與 `zh-Hans` 視為相同）；任一邊未知時略過檢查。文字語言偵測（SRC-R11 第三層）在收尾 D2 已完成，但只用來補原文語言與 `mixed`，不用來判斷 `language_mismatch`。其他門檻（`low_coverage`、`repetition`、`music_only`）已在收尾 D3 實作，見下方「SRC-R4 其餘品質檢查」。
 - SRC-R5 失敗之後才補上 API key，影音不會自動重跑：步驟已是 `failed`（`permanent`），不是 `blocked`，PIPE-R4 的自動回到 `pending` 不適用。使用者要手動重跑 transcript。key 設定在步驟 `blocked`（SRC-R10）時才會自動繼續（2026-11-14，SRC 切片實作時發現）。
 - ~~SRC-R10、R17 的場景與規格不一致~~：已結案（2026-11-14，owner 同意）。R10 原本在設定檔用 `openai-compatible` 定義 groq，和 ADR-0013、SEC-R2（一般 provider 由 DB 管理）以及 steps.md「fake provider 預設有 key」衝突，改用 `Given the provider "groq" has no API key`；Groq 的預設 preset 內建在程式中。R17 的 `sources` 依評估順序列出，平台字幕的列排在前面，場景補上這三列。
 - Groq 的 API key 暫時用環境變數 `NOTESTEME_GROQ_API_KEY`（與 Supadata 一致）；SEC-R1 的字面規則會得到 `NOTESTEME_PROVIDERS_GROQ_API_KEY`，SEC-R4 加密存放時一併整理命名（2026-11-14）。
 - `language_mismatch` 在 Groq 送出語言提示時幾乎不會觸發：Whisper 會回報被強制指定的語言，與影音的原文語言一定相同。真正的語言檢查屬 SRC-R4 的文字語言偵測（偵測轉錄出來的文字，而不是信任來源回報的語言），待該門檻實作後才有意義。語言比對前，舊代碼與變體先正規化成同一個代碼（nb、nn → no，fil → tl，iw → he，in → id，jw → jv）；Whisper 的語言提示只送兩個字母的 ISO-639-1 代碼，三字母的 yue、haw 等不送，讓 Whisper 自行偵測（2026-11-14，SRC 審查後修正）。
-- Groq 單一音檔的上限是 25 MiB（免費方案），在切塊（SRC-R12）完成前，超過的音檔不上傳，直接 `permanent`（訊息「音檔超過語音轉錄服務的大小上限（25 MiB），長音訊的切塊還沒實作。」），改用下一個來源，沒有其他來源可用時依 SRC-R5 失敗。這個訊息目前只寫進 log 與錯誤，不顯示在步驟上（SRC-R5 的訊息是固定的）；實務上 25 MiB 約等於十幾分鐘的壓縮音訊，長影音在切塊完成前無法用 Groq 轉錄。音訊下載另外帶 `--max-filesize 2G`（GRD-R5 的音檔上限，以 bytes 傳給 yt-dlp），超過時為 `permanent`；這個行為依 yt-dlp 原始碼，尚未對真實環境驗證（2026-11-14，SRC 審查後修正）。
+- ~~Groq 單一音檔的上限是 25 MiB（免費方案），在切塊（SRC-R12）完成前，超過的音檔不上傳，直接 `permanent`（訊息「…長音訊的切塊還沒實作。」）~~：**已過期（SRC-R12 切塊已完成，見下方「ASR 前處理與切塊」）**。現況：前處理後超過上限的音檔在靜音處切塊後分別上傳；切塊後仍有塊超過上限（多切 `maxExtraChunks` 次仍不行）時 `permanent`（訊息「音檔切塊後仍超過語音轉錄服務的大小上限。」），改用下一個來源；Groq 回 413 時的訊息是「音檔超過語音轉錄服務的大小上限（25 MiB）。」，只寫進 log 與錯誤（SRC-R5 的步驟訊息是固定的）。音訊下載另外帶 `--max-filesize 2G`（GRD-R5 的音檔上限，以 bytes 傳給 yt-dlp），超過時為 `permanent`；這個行為依 yt-dlp 原始碼，尚未對真實環境驗證（2026-11-14，SRC 審查後修正；2026-11-24 收尾 D3 更新）。
 - R17 場景補上 groq 那一列的 `lang`（2026-11-14，owner 同意），讓 Whisper 語言全名轉成 BCP-47 有場景驗證。
 - SRC-R6 的 24 小時期限在場景中只驗證「0.5 小時仍等待」與「25.5 小時已放棄」，期限的確切值由 `internal/pipeline` 的單元測試把關（owner 決定不加 23 小時的檢查點，2026-11-14）。
 - SRC-R8 是推定：Bilibili 未登入時，yt-dlp 不列出任何字幕（結束碼 0），只在 stderr 印出 `WARNING: [BiliBili] Subtitles are only available when logged in.`，所以分不出平台有沒有 CC 或 AI 字幕，也看不到語言。實作的條件是：Probe 偵測到這行 WARNING、沒有選到字幕軌、`caption_priority` 有 `kind: auto` 的規則，三者都成立才 `blocked`（`needs_action`，`resume_on` 為 `cookie:bilibili`，`bilibili-ai` 記為 `unavailable`／`needs_action`）。已登入卻沒有任何字幕時不會有這行 WARNING，照 fallback 處理。因此 Bilibili 的 Probe 不能帶 `--no-warnings`（會吃掉這行）。這些語意依 yt-dlp 原始碼確認，等 M0 用真實環境驗證（2026-11-14，SRC-B 切片實作時決定）。動作「改用語音轉錄」目前只顯示；Groq 對非 YouTube 的平台仍是 `permanent`（音訊下載還沒支援）。
@@ -158,6 +161,17 @@ SRC-10 屬於 M4（故事地圖第 5 節），規則是 SRC-R18～R23；其餘�
   - 套用的時機：`transcript` 產生新的原始字幕時（平台字幕或 fallback 來源）。原文語言依序採用平台中繼資料、ASR 回報、文字偵測；只有前兩層都沒有時才寫入偵測的主要語言，`lang_source` 為 `detected`（API 文件原本就列了這個值）。`mixed` 不論原文語言來自哪一層，都依這次的字幕文字重新判斷（達到時設為 true，否則清掉）；快取命中時不重新判斷。
   - 快取鍵：`detected` 與 `asr` 一樣是 transcript 自己的產出，重跑時視為原文語言未知（快取鍵、ASR 的語言提示、`language_mismatch`），重跑不會重複付費（`internal/pipeline/textlang_test.go`）。`mixed` 不進 transcript 的快取鍵；它是 correct、translate 的輸入（COR-R5），改變時下游的快取鍵跟著變，這是預期的。
   - 場景「Code-switching speech is marked as mixed」拿掉 `@wip`，並把第一步從 `a YouTube video … titled …` 改成 `a YouTube video … with:`（`title` 與 `language: zh`）：場景原本沒有宣告語言，harness 預設 `en`，依 SRC-R11 的順序平台中繼資料優先，不可能得到 `zh`；原文語言留空時，預設的 `caption_priority`（`original` 的規則）又選不到 zh 的自動字幕，會改走 fallback。宣告 `zh` 是最小修改：場景驗證文字判斷的 `mixed`，第三層的語言判斷由單元測試把關。待 owner 追認；若要由場景驗證第三層，需要先做「原文語言未知時從 YouTube 自動字幕（`*-orig`）推斷」（handoff §6 SRC）。
+
+- SRC-R4 其餘品質檢查與 SRC-R13 幻覺過濾（收尾 D3，2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 適用範圍：品質檢查只套用在 `fallback` 來源（Supadata、Groq）的結果，平台字幕軌（YouTube、Bilibili、本機、Podcast 的字幕）不檢查。理由：拒絕免費的平台字幕會改用付費的來源，這是花錢的決定，應該由使用者用 `caption_priority` 決定；而且自動字幕的音樂影片（全是 `[Music]`）改用 ASR 也多半一樣。規則字面是「每個來源」，要不要擴大到平台字幕軌待 owner 決定。
+  - 檢查順序固定：`language_mismatch` → `music_only` → `low_coverage` → `repetition`，第一個不通過的就是原因（音樂標記不算重複句，所以先判斷音樂）。比較都不含等號：剛好 50%、30%、80% 都通過。
+  - `low_coverage`：cue 區間的聯集（裁到 `[0, 片長]`，重疊只算一次）除以片長。分母：語音轉錄來源（Groq）用它回報的實際音訊長度（`verbose_json` 的 `duration`，切塊時是 ffprobe 量到的長度），沒有回報時不檢查；其他來源用影音的片長（平台中繼資料），不知道片長時不檢查。ASR 不拿平台的片長比，是因為它轉錄的就是那段音訊，平台的片長是不可信輸入（場景 `Unusable results are rejected…` 的 `duration: 600` 搭配只有 6.5 秒的 `groq-en.json`，也依此通過）。
+  - `repetition`：文字去掉前後空白、壓縮空白、轉小寫（數字與標點保留）後，與前面某一句相同的句子數，除以不是音樂標記、不是空白的句子數；少於 5 句時不判斷（太短的結果一句重複就超過 30%）。
+  - `music_only`：去掉代表音樂的括號標記（`[Music]`、`（音樂）`、`[BGM]` 等，多語的固定清單）與音符（♪♫♬♩🎵🎶）、標點、空白之後什麼都不剩，而且至少去掉一個標記。`♪ 歌詞 ♪` 不算；`[Applause]` 不算音樂。
+  - 門檻是程式中的常數（`internal/pipeline/quality.go`、`internal/source/groq` 的 `Hallucination*`、`minHallucinatedRun`），沒有做成設定檔可以覆寫：與 SRC-R15 的 `timingDriftLimit` 等既有門檻一致，M0 之後依樣本調整常數。要不要開放設定待 owner 決定。
+  - 快取：transcript 的 `impl_version` 沒有提升。已完成的步驟不會因為新的檢查而重跑（否則所有已付費的 ASR 都要重新轉錄）；之後重跑 transcript、快取鍵不變時仍會命中舊結果。
+  - SRC-R13：`no_speech_prob > 0.6` 而且 `compression_ratio > 2.4` 的 segment 在 `groq.Transcribe` 建立 cue 前移除（兩者都要成立，剛好等於門檻保留，沒有回報欄位視為 0）；全部被移除時視為沒有結果（`no_transcript`）。「連續 3 次以上完全相同的句子只保留一次」在接回單一時間軸之後（含切塊接縫）做：比較去掉前後空白後的文字（大小寫不同不算相同），留第一句、時間不變，cue 重新編號；兩次重複保留，交錯（A B A B）不算連續。音訊長度仍是 Groq 回報的長度，不因移除結尾的幻覺而縮短。
+  - 場景：`Unusable results are rejected and the next source is used`（4 個 example）與 `Whisper hallucinations are filtered out` 補上 fixture 後通過（`supadata-covers-200s.json`、`supadata-repeating.json`、`supadata-music-only.json`、`groq-hallucinated-tail.json`、`local/quiet-ending.m4a`），仍保留 `@pending-m0`（門檻要用 M0 的真實樣本確認，拿掉標籤由 owner 決定）。
 
 ### M4（SRC-10）
 

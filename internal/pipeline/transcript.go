@@ -79,7 +79,8 @@ const supadataTiming = "chunk"
 //
 // 平台字幕都不符合時，依 language.fallback 的順序嘗試其他來源（SRC-R3）；目前只有 Supadata 已實作，
 // 其他來源（ASR 等）記為 not_configured 並略過。
-// TODO(SRC-R4)：每個來源的結果還要通過品質檢查（涵蓋率、語言、重複句、純音樂）。
+// fallback 來源的結果要通過 SRC-R4 的品質檢查（語言、純音樂、涵蓋率、重複句，見 runFallback）；
+// 平台字幕軌不做這些檢查（SRC 待決問題：拒絕免費的平台字幕會改用付費的來源）。
 // 自動字幕還沒生成時等待（SRC-R6，見 waitForAutoCaptions），超過 24 小時才改用下一個來源。
 // SRC-R8：Bilibili 的 AI 字幕需要 cookie 而沒有時 blocked，在等待與 fallback 之前判斷（見 blockForCookie）。
 func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Language) (result, error) {
@@ -570,6 +571,8 @@ type fetchResult struct {
 	ToolVersions map[string]string
 	// ASR 是語音轉錄用到的提示（例如詞彙表組成的 prompt，COR-R7），寫進來源紀錄的 asr；nil 代表沒有。
 	ASR map[string]any
+	// DurationS 是來源實際處理的音訊長度（秒，ASR 回報）；0 代表沒有，涵蓋率改用影音的片長（SRC-R4）。
+	DurationS float64
 }
 
 // fallbackFetcher 是一個可以執行的 fallback 來源；沒有設定（缺 API key）的來源不在 Pipeline.fetchers 中。
@@ -704,7 +707,7 @@ func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 			if err != nil {
 				return nil, err
 			}
-			return &fetchResult{Lang: got.Lang, Cues: got.Cues, Timing: groq.Timing, ToolVersions: tv, ASR: asr}, nil
+			return &fetchResult{Lang: got.Lang, Cues: got.Cues, Timing: groq.Timing, ToolVersions: tv, ASR: asr, DurationS: got.DurationS}, nil
 		},
 	}
 }
@@ -788,11 +791,18 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 		switch {
 		case err == nil && langMismatch(it.OriginalLang, got.Lang):
 			// 來源回報的語言和影音的原文語言不同：不採用，繼續下一個來源（SRC-R4）。
-			// TODO(SRC-R4)：其他門檻（low_coverage、repetition、music_only）與文字語言偵測。
 			decisions = append(decisions, transcript.Decision{
 				Source: id, Lang: transcript.NormalizeLang(got.Lang), State: transcript.StateRejected, Reason: reasonLanguageMismatch,
 			})
 		case err == nil:
+			if reason := qualityReason(got.Cues, qualityDuration(id, it, got)); reason != "" {
+				// 其他品質檢查（SRC-R4）：只有音樂標記、涵蓋率太低、重複句太多時不採用，繼續下一個來源。
+				p.log.Warn("字幕來源的結果沒有通過品質檢查，改用下一個來源", "source", id, "reason", reason)
+				decisions = append(decisions, transcript.Decision{
+					Source: id, Lang: transcript.NormalizeLang(got.Lang), State: transcript.StateRejected, Reason: reason,
+				})
+				continue
+			}
 			res, err := p.fallbackResult(ctx, id, f, it, lang, stage, decisions, got)
 			addNote(&res, hubNote)
 			return res, err
@@ -928,6 +938,18 @@ func detectLang(it store.Item, meta *metaUpdate, cues []subtitle.Cue) *metaUpdat
 	mixed := d.Mixed
 	out.mixed = &mixed
 	return &out
+}
+
+// qualityDuration 是涵蓋率（SRC-R4）的分母：語音轉錄來源用它回報的實際音訊長度（它轉錄的就是這段音訊；
+// 沒有回報時不檢查涵蓋率），其他來源用影音的片長（平台中繼資料）；都沒有時為 0，不檢查涵蓋率。
+func qualityDuration(id string, it store.Item, got *fetchResult) float64 {
+	if isASR(id) || got.DurationS > 0 {
+		return got.DurationS
+	}
+	if it.DurationS != nil {
+		return float64(*it.DurationS)
+	}
+	return 0
 }
 
 // langMismatch 回報來源回報的語言 got 是否和影音的原文語言 want 不同（SRC-R4 的 language_mismatch）。

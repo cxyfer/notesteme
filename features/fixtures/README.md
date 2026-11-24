@@ -37,6 +37,9 @@
 
 - `supadata-*.json`：Supadata `GET /v1/transcript` 的回應（`lang`、`availableLangs`、`content[{text, offset, duration, lang}]`，時間單位為毫秒）。
   `supadata-in-german.json` 是德文（`lang: de`），用來驗證語言不符時不採用（SRC-R4、R17）。
+  SRC-R4 其餘品質檢查（影音 `duration: 600`）：`supadata-covers-200s.json`（40 句、各 5 秒，只涵蓋前 200 秒 → `low_coverage`）、
+  `supadata-repeating.json`（60 句涵蓋整段，其中 24 句是同一句、約 38% 重複 → `repetition`）、
+  `supadata-music-only.json`（22 句涵蓋整段，20 句只有 `[Music]` 或 `♪♪♪`、約 91% → `music_only`）。每個只觸發一個原因。
 - `groq-no-language-ja.json`：Groq 回報 `language: "japanese"`，用來驗證 metadata 沒有原文語言時由 ASR 偵測（SRC-R11）。
 - `groq-two-chunks.json`：約 80 個 segment、單一絕對時間軸（0 到 3004 秒）：#1–#40 在 1497 秒之前結束，
   #41（1498–1502 "and that is where the overlap starts"）與 #42（1502–1506 "so we remove the duplicate line"）落在兩個切塊的重疊區，

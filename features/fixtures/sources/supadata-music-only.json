@@ -1,0 +1,28 @@
+{
+  "lang": "en",
+  "availableLangs": ["en"],
+  "content": [
+    {"text": "[Music]", "offset": 0, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 27000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 54000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 81000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 108000, "duration": 27000, "lang": "en"},
+    {"text": "Hello and welcome back.", "offset": 135000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 162000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 189000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 216000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 243000, "duration": 27000, "lang": "en"},
+    {"text": "♪♪♪", "offset": 270000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 297000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 324000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 351000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 378000, "duration": 27000, "lang": "en"},
+    {"text": "Hello and welcome back.", "offset": 405000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 432000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 459000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 486000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 513000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 540000, "duration": 27000, "lang": "en"},
+    {"text": "[Music]", "offset": 567000, "duration": 27000, "lang": "en"}
+  ]
+}
