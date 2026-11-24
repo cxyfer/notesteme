@@ -11,8 +11,8 @@
 //      ├─ /settings           導到第一個分區
 //      ├─ /settings/$section
 //      ├─ /prompts、/prompts/$id     Prompt 庫（編輯頁含 CodeMirror，lazy 載入）
-//      ├─ /profiles、/profiles/$id   處理方案
-//      ├─ /styles、/styles/$id       字幕樣式
+//      ├─ /profiles、/profiles/$id   處理方案（2026-11-25 起 lazy）
+//      ├─ /styles、/styles/$id       字幕樣式（2026-11-25 起 lazy）
 //      ├─ /subscriptions、/subscriptions/$id   訂閱（UI-4，lazy）
 //      ├─ /costs                     成本（UI-4，lazy；篩選在 URL）
 //      ├─ /note-templates、/note-templates/$id 筆記模板（UI-4，lazy）
@@ -39,14 +39,10 @@ import { validateItemSearch } from "./pages/item/search";
 import { validateLibrarySearch } from "./pages/library/filters";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { ProfileEditorPage } from "./pages/profiles/ProfileEditorPage";
-import { ProfilesPage } from "./pages/profiles/ProfilesPage";
 import { PromptsPage } from "./pages/prompts/PromptsPage";
 import { validateQueueSearch } from "./pages/queue/filters";
 import { validateSearchParams } from "./pages/search/model";
 import { SETTINGS_SECTIONS, SettingsPage } from "./pages/SettingsPage";
-import { StyleEditorPage } from "./pages/styles/StyleEditorPage";
-import { StylesPage } from "./pages/styles/StylesPage";
 import { AppShell } from "./shell/AppShell";
 
 export interface RouterContext {
@@ -156,22 +152,26 @@ export const promptRoute = createRoute({
 const profilesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/profiles",
-  component: ProfilesPage,
+  // 處理方案與字幕樣式的頁面只在進入時才載入（初始 bundle 預算，NFR-PERF-10）
+  component: lazyRouteComponent(() => import("./pages/profiles/ProfilesPage"), "ProfilesPage"),
 });
 export const profileRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/profiles/$id",
-  component: ProfileEditorPage,
+  component: lazyRouteComponent(
+    () => import("./pages/profiles/ProfileEditorPage"),
+    "ProfileEditorPage",
+  ),
 });
 const stylesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/styles",
-  component: StylesPage,
+  component: lazyRouteComponent(() => import("./pages/styles/StylesPage"), "StylesPage"),
 });
 export const styleRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/styles/$id",
-  component: StyleEditorPage,
+  component: lazyRouteComponent(() => import("./pages/styles/StyleEditorPage"), "StyleEditorPage"),
 });
 
 // ---- UI-4：訂閱、成本、筆記模板（都是 lazy route，不進初始 bundle）----
