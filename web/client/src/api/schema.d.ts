@@ -2461,7 +2461,7 @@ export interface components {
       expected_source: string | null;
       /**
        * Format: double
-       * @description LLM 費用；M2 實作之前一律為 null
+       * @description LLM 費用的估算：還沒有字幕，用片長推估 token 數（COST-R5 的方法）；片長或單價未知、或有沒有估算方法的付費步驟時為 null；沒有付費的 LLM 步驟時為 0
        */
       llm_usd: number | null;
       notes: string[] | null;
@@ -2791,7 +2791,7 @@ export interface components {
     ItemBetterSource: {
       /**
        * Format: double
-       * @description 從 transcript 重跑的預估費用；無法估算時是 null
+       * @description 從 transcript 重跑到最後一個步驟的 LLM 預估費用（與批次重跑 dry_run 相同的 COST-R5 估算）；有無法估算的付費任務、或沒有任何付費 LLM 任務時是 null
        */
       estimate_usd: number | null;
       /** Format: date-time */

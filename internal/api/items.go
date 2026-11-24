@@ -171,7 +171,7 @@ type ItemBetterSource struct {
 	Lang        string    `json:"lang"`
 	Kind        string    `json:"kind"`
 	FoundAt     time.Time `json:"found_at"`
-	EstimateUSD *float64  `json:"estimate_usd" nullable:"true" doc:"從 transcript 重跑的預估費用；無法估算時是 null"`
+	EstimateUSD *float64  `json:"estimate_usd" nullable:"true" doc:"從 transcript 重跑到最後一個步驟的 LLM 預估費用（與批次重跑 dry_run 相同的 COST-R5 估算）；有無法估算的付費任務、或沒有任何付費 LLM 任務時是 null"`
 }
 
 // ItemSummary 是影音的摘要（DIG-R5）。內容來自模型，是不可信的文字，顯示時要跳脫。

@@ -72,15 +72,19 @@ type EstimateItem struct {
 	ASRUSD *float64
 	// SourceUSD 是其他付費字幕來源（Supadata）的費用；單價未知（credit 計價）或沒有用到時為 nil。
 	SourceUSD *float64
-	// LLMUSD 在 M2 實作 LLM 之前一律為 nil。
+	// LLMUSD 是 LLM 步驟的費用：用片長推估 token 數，依 COST-R5 估算（estimateLLM）；
+	// 片長或單價未知、或有沒有估算方法的付費步驟時為 nil；沒有任何付費 LLM 步驟時為 0。
 	LLMUSD *float64
 	// TotalUSD 是已知金額的和；沒有任何已知金額時為 nil。
 	TotalUSD         *float64
 	RequiresCookie   bool
 	AlreadyInLibrary bool
 	Notes            []string
-	// unknown 為 true 代表有金額不知道（長度、單價未知，或 Probe 失敗）；LLM 尚未實作不算。
+	// unknown 為 true 代表有金額不知道（長度、單價未知，或 Probe 失敗）。
 	unknown bool
+	// sc 是估算 LLM 費用用的步驟情境；probed 為 false 代表沒有取得影音的資訊（Probe 失敗），不估算 LLM 費用。
+	sc     StageContext
+	probed bool
 }
 
 // Estimate 是估價的結果。
@@ -109,7 +113,7 @@ func (p *Pipeline) Estimate(ctx context.Context, req IngestRequest) (*Estimate, 
 	if err != nil {
 		return nil, err
 	}
-	e := &estimator{p: p, lang: lang}
+	e := &estimator{p: p, lang: lang, eff: x.plan.eff}
 	out := &Estimate{Currency: "USD", PricesAsOf: cost.PricesAsOf, Notes: []string{}}
 	targets := x.targets
 	if x.podcast == nil && len(targets) > maxEstimateItems {
@@ -124,6 +128,11 @@ func (p *Pipeline) Estimate(ctx context.Context, req IngestRequest) (*Estimate, 
 		return nil, err
 	}
 
+	for i := range out.Items {
+		if err := e.llm(ctx, &out.Items[i]); err != nil {
+			return nil, err
+		}
+	}
 	unknown := false
 	for _, it := range out.Items {
 		if it.TotalUSD != nil {
@@ -147,6 +156,7 @@ func (p *Pipeline) Estimate(ctx context.Context, req IngestRequest) (*Estimate, 
 type estimator struct {
 	p    *Pipeline
 	lang Language
+	eff  Effective
 	// allFailed 為 true 代表有多部影音而且每一部的 Probe 都失敗（例如 yt-dlp 無法使用）。
 	allFailed bool
 	// groqCustomBase 為 true 代表 Groq 設定了自訂的 base_url。
@@ -308,6 +318,8 @@ func (e *estimator) probeItem(ctx context.Context, t source.Target) (EstimateIte
 
 	originalLang, _ := inferOriginalLang(t.Platform, info.Language, info.Tracks, e.lang)
 	chosen, decisions := selectTracks(t.Platform, info.Tracks, originalLang, e.lang)
+	it.probed = true
+	it.sc = estimateContextFor(t.Platform, originalLang, chosen != nil && chosen.Kind == transcript.KindManual, len(info.Chapters), false)
 	if chosen != nil {
 		src := transcript.PlatformSource(t.Platform, chosen.Kind)
 		e.platformCaptions(&it, src)
@@ -349,6 +361,8 @@ func (e *estimator) podcastItems(ctx context.Context, s *podcastSelection) ([]Es
 			}
 		}
 		it.setDuration(ep.DurationS)
+		it.probed = true
+		it.sc = estimateContextFor(source.PlatformPodcast, podcast.Lang(s.feed.Language), false, 0, true)
 		if e.podcastCaptions(s.feed.Language, ep) {
 			e.platformCaptions(&it, transcript.SourcePodcastTranscript)
 		} else {
@@ -407,6 +421,38 @@ type libraryError struct{ err error }
 
 func (e *libraryError) Error() string { return "查詢媒體庫失敗：" + e.err.Error() }
 func (e *libraryError) Unwrap() error { return e.err }
+
+// llm 估算一部影音的 LLM 費用（ING-R8 的 llm_usd），並重算總額。Probe 失敗的項目不估算（金額已是未知）。
+func (e *estimator) llm(ctx context.Context, it *EstimateItem) error {
+	if !it.probed {
+		return nil
+	}
+	est, err := e.p.estimateLLM(ctx, e.eff, it.sc, it.Title, it.DurationS)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		// 設定在新增時就驗證過；這裡失敗只讓 LLM 費用變成未知，不讓整份估價失敗。
+		e.p.log.Debug("估算 LLM 費用失敗，視為未知", "ref", it.Ref, "error", err.Error())
+		est = llmEstimate{unknown: 1}
+	}
+	if est.unknown > 0 {
+		it.LLMUSD = nil
+		it.unknown = true
+		if it.DurationS == nil {
+			it.Notes = append(it.Notes, "不知道影音的長度，無法估算 LLM 費用。")
+		} else {
+			it.Notes = append(it.Notes, "部分 LLM 步驟找不到單價或沒有估算方法，無法估算 LLM 費用。")
+		}
+	} else {
+		it.LLMUSD = usd(est.usd.USD())
+		if est.usd > 0 {
+			it.Notes = append(it.Notes, "LLM 費用依片長推估字幕長度，是估算值。")
+		}
+	}
+	it.finish()
+	return nil
+}
 
 // platformCaptions 記錄使用平台（或 feed）字幕：不需要 ASR，費用為 0。
 func (e *estimator) platformCaptions(it *EstimateItem, src string) {

@@ -104,6 +104,11 @@ YouTube 播放清單（ING-R4）展開時由 yt-dlp 列出清單內容：清單�
   - Supadata 不處理這個平台（Podcast、本機檔案）時，估價先判斷平台再看 API key，與處理時 `runFallback` 先看 `supports` 一致：不為用不上的來源在 `notes` 提示「沒有設定 API key」（2026-11-22，Codex 審查後決定）。Groq 沒有平台的 `supports` 判斷，處理時是先執行再回報沒有 key，估價維持先看 key。
   - 預計來源是預測：執行時平台字幕、feed 字幕或 Supadata 失敗，會改用下一個來源，實際費用可能不同。直播或還沒首播的影音在 `notes` 提醒要等結束後才會處理。
   - 資源上限：一次最多 Probe 100 部（播放清單更長時只估前 100 部，頂層 `notes` 說明總數）；整個程序同時最多 4 個估價 Probe（跨請求共用）；一次估價的 Probe 總時間上限 3 分鐘，用完時還沒輪到的影音標為未知（「估價逾時」）。
-  - 一次估算多部影音時，單一部 Probe 失敗只在該項的 `notes` 說明；全部都失敗時，頂層 `notes` 也說明，仍回 200。只有一部時回傳錯誤。`llm_usd` 在 M2 實作 LLM 之前一律為 `null`。內建計價表在 `internal/cost`，使用者自訂單價屬於 M4（COST-03）。
+  - 一次估算多部影音時，單一部 Probe 失敗只在該項的 `notes` 說明；全部都失敗時，頂層 `notes` 也說明，仍回 200。只有一部時回傳錯誤。~~`llm_usd` 在 M2 實作 LLM 之前一律為 `null`。~~（已過期：收尾 D3 實作，見下一條。）內建計價表在 `internal/cost`，使用者自訂單價屬於 M4（COST-03）。
+- 估算花費的 `llm_usd`（ING-R8，收尾 D3，2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 範圍：從頭處理到最後一個步驟，每個步驟依生效設定解析 executor（與處理時相同的 `ResolveExecutor`，Probe 得到的原文語言、人工字幕、平台章節數、Podcast 是只有音訊）；只有 `api` 的 LLM 步驟計費，`local`、`opencc`、`off`、沒有設定 provider 的不花錢，`agent` 由 Agent 自己的帳號計費（COST-R3）。`translate` 乘上需要 LLM 的目標數（翻譯與在地化；OpenCC 轉換與相同語言不算）。
+  - token 推估：新增前還沒有字幕可以量，資料區塊用片長推估，每秒 6 個 token（約每分鐘 240 個語音 token，偏快的語速，加上資料區塊的編號與格式），刻意偏高；依 `llm.chunk.max_tokens` 算 chunk 數，每個 chunk 的輸入再加上 prompt 與標題的 token 數；輸出是資料區塊的 1.2 倍（COST-R5）。沒有算進去：前後文 cue 的重疊、詞彙表、頻道與說明等中繼資料、驗證失敗的重試。這是估算，`notes` 會帶「LLM 費用依片長推估字幕長度，是估算值。」。
+  - 單價：用 `cost.Service.Estimate`（與預留、批次重跑的 `dry_run` 相同），所以 LLM 的部分已經依 COST-R2 的順序（覆寫優先，再來是內建計價表；自訂 `base_url` 不套用內建計價表）。ASR（Groq）仍只用內建計價表（COST 待決問題 C23 的其餘部分）。
+  - 金額語意：片長不知道、找不到單價、或有 vision 選圖、Gemini 筆記這類沒有估算方法的付費步驟時 `llm_usd` 為 `null`（不知道），並在 `notes` 說明、頂層帶「部分金額未知」；沒有任何付費的 LLM 步驟時為 `0`（確定不用錢）。因此 `total_usd` 在只有 ASR 未知、LLM 確定是 0 時是 `0`，不再是 `null`。Probe 失敗的項目不估算 LLM 費用。
 - ING-R9 的 Bilibili 部分在未登入時做不到：Bilibili 的 AI 字幕需要 cookie，但未登入時 yt-dlp 不列出字幕，辨識（`POST /api/resolve`）看不出這部影片有沒有 AI 字幕，無法標示 `requires_cookie`。目前只有 YouTube 的 `availability` 會標示；Bilibili 的標示記為待修的規則，等 M0 驗證後再決定（可能改成只在 transcript 步驟 `blocked` 時提示，見 SRC-R8）。
 - 估算花費支援 `profile`（2026-11-22，M2 S1/S2 設計時決定）：`POST /api/estimate` 的 `profile` 隨 PRF 切片實作，不再回 501，估價用該處理方案的生效設定。但估價沒有頻道層：頻道要到 `metadata` 完成才知道，估價又不寫入資料庫，所以頻道覆寫（PRF-R8）不影響估價，實際處理時才套用。

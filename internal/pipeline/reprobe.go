@@ -421,7 +421,7 @@ func (p *Pipeline) reprobeSources(ctx context.Context, it store.Item, rp *store.
 	if chosen != nil {
 		b := store.Probe{SourceID: transcript.PlatformSource(it.Platform, chosen.Kind), Lang: transcript.NormalizeLang(chosen.Lang), Kind: chosen.Kind}
 		if reprobeLang.MatchString(b.Lang) && evalRank(it.Platform, b, origLang, lang) < curRank {
-			better = &store.BetterSource{Source: b.SourceID, Lang: b.Lang, Kind: b.Kind, FoundAt: now.UTC(), EstimateUSD: p.betterEstimate()}
+			better = &store.BetterSource{Source: b.SourceID, Lang: b.Lang, Kind: b.Kind, FoundAt: now.UTC(), EstimateUSD: p.betterEstimate(ctx, it)}
 		}
 	}
 	action := ""
@@ -482,9 +482,24 @@ func (p *Pipeline) reprobeSources(ctx context.Context, it store.Item, rp *store.
 	return true, nil
 }
 
-// betterEstimate 是改用更好的來源重跑的估算（SRC-R23）：與 POST /api/estimate 相同的估算，
-// 而它的 LLM 費用（EstimateItem.LLMUSD）還沒有實作，所以目前一律無法估算（null，SRC 待決問題 R10）。
-func (p *Pipeline) betterEstimate() *float64 { return nil }
+// betterEstimate 是改用更好的來源重跑的估算（SRC-R23）：從 transcript 重跑到最後一個步驟、影音現行的設定，
+// 與批次重跑的 dry_run（LIB-R14）相同的 COST-R5 估算（EstimateRerun）。更好的來源一定是平台字幕，ASR 費用為 0。
+// 有任何付費任務無法估算（找不到單價、vision 等沒有估算方法的呼叫）、沒有任何付費任務、或估算失敗時為 nil，不是 0（SRC 待決問題 R10）。
+func (p *Pipeline) betterEstimate(ctx context.Context, it store.Item) *float64 {
+	est, err := p.EstimateRerun(ctx, it.ID, StageTranscript, "")
+	if err != nil {
+		if ctx.Err() == nil {
+			p.log.Debug("估算改用更好的來源重跑的費用失敗，視為無法估算", "item", it.ID, "error", err.Error())
+		}
+		return nil
+	}
+	if est.Unknown > 0 || est.Priced == 0 {
+		// 沒有任何付費的 LLM 任務（步驟都是 local、off 或沒有設定 provider）時也是 nil：
+		// 訊息說「重跑會再花一次 LLM 費用」，估出「$0.00」反而誤導（SRC 待決問題 R10）。
+		return nil
+	}
+	return usd(est.USD.USD())
+}
 
 // emitBetterNotify 在同一個交易中寫入通知 outbox（SRC-R21）；鍵含來源與語言，每部影音每個更好的來源只通知一次。
 func (p *Pipeline) emitBetterNotify(ctx context.Context, r *store.Repo, itemID string, b *store.BetterSource, msg string, actions []string) error {

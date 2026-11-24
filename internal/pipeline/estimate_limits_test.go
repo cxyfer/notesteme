@@ -68,7 +68,7 @@ func TestEstimateIgnoresUnreasonableDuration(t *testing.T) {
 		t.Fatalf("est = %+v, %v", est, err)
 	}
 	it := est.Items[0]
-	if it.DurationS != nil || it.ASRUSD != nil || it.TotalUSD != nil || !hasNote(it, "長度不合理") {
+	if it.DurationS != nil || it.ASRUSD != nil || !near(it.LLMUSD, 0) || !near(it.TotalUSD, 0) || !hasNote(it, "長度不合理") {
 		t.Errorf("item = %+v", it)
 	}
 	if math.IsInf(est.TotalUSD, 0) || math.IsNaN(est.TotalUSD) || !hasTopNote(est, "部分金額未知") {

@@ -111,6 +111,8 @@ type RerunEstimate struct {
 	USD cost.Micro
 	// Unknown 是無法估算的付費任務數（找不到單價、輸入還不存在，或 vision、Gemini 等沒有估算方法的呼叫）。
 	Unknown int
+	// Priced 是已估算的付費任務數；USD 為 0 而 Priced 也是 0 代表沒有任何付費任務（不是估出 0 元）。
+	Priced int
 }
 
 // EstimateRerun 估算 Rerun(itemID, {From: from, Profile: profile}) 會花多少錢，不寫入任何資料、不呼叫外部服務（LIB-R14）。
@@ -147,6 +149,7 @@ func (p *Pipeline) EstimateRerun(ctx context.Context, itemID, from, profile stri
 			}
 			out.USD += e.USD
 			out.Unknown += e.Unknown
+			out.Priced += e.Priced
 		default:
 			// vision 選圖、Gemini 筆記：沒有事先估算的方法。
 			out.Unknown++
@@ -189,6 +192,7 @@ func (p *Pipeline) estimateLLMStage(ctx context.Context, r *store.Repo, it store
 			continue
 		}
 		out.USD += est
+		out.Priced++
 	}
 	return out, nil
 }

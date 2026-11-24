@@ -28,7 +28,7 @@ type EstimateItem struct {
 	ExpectedSource   *string  `json:"expected_source" doc:"預計使用的字幕來源；沒有可用的來源時為 null"`
 	ASRUSD           *float64 `json:"asr_usd" doc:"語音轉錄費用：用平台字幕時為 0；長度或單價未知時為 null"`
 	SourceUSD        *float64 `json:"source_usd" doc:"其他付費字幕來源（Supadata，以 credit 計價）的費用；沒有內建單價，目前一律為 null"`
-	LLMUSD           *float64 `json:"llm_usd" doc:"LLM 費用；M2 實作之前一律為 null"`
+	LLMUSD           *float64 `json:"llm_usd" doc:"LLM 費用的估算：還沒有字幕，用片長推估 token 數（COST-R5 的方法）；片長或單價未知、或有沒有估算方法的付費步驟時為 null；沒有付費的 LLM 步驟時為 0"`
 	TotalUSD         *float64 `json:"total_usd" doc:"已知金額的和；沒有任何已知金額時為 null"`
 	RequiresCookie   bool     `json:"requires_cookie" doc:"需要 cookie 才能取得（ING-R9）"`
 	AlreadyInLibrary bool     `json:"already_in_library" doc:"已經在媒體庫中；仍照樣估價"`

@@ -28,7 +28,7 @@ func TestEstimateShape(t *testing.T) {
 	it := raw.Items[0]
 	want := map[string]string{
 		"ref": `"yt:abc123xxxxx"`, "title": `"Hello"`, "duration_s": `100`, "expected_source": `"youtube-manual"`,
-		"asr_usd": `0`, "source_usd": `null`, "llm_usd": `null`, "total_usd": `0`,
+		"asr_usd": `0`, "source_usd": `null`, "llm_usd": `0`, "total_usd": `0`, // 沒有付費的 LLM 步驟：確定是 0
 		"requires_cookie": `false`, "already_in_library": `false`, "notes": `[]`,
 	}
 	for k, v := range want {
