@@ -140,6 +140,12 @@ func TestFramesShortfallSkipsTheModel(t *testing.T) {
 	if _, prov := r.currentFramesArtifact(); prov["frames"].(map[string]any)["select"] != selectAPI {
 		t.Errorf("provenance = %v", prov)
 	}
+	// FRM-R9：沒有呼叫模型，圖說和 rules 一樣取該時間的 cue，不留空。
+	for _, f := range v.Frames {
+		if f.Selected && f.Caption == "" {
+			t.Errorf("shortfall 的畫面 %d 沒有圖說", f.N)
+		}
+	}
 }
 
 // FRM-R13、R11：reuse_candidates 沿用現行的候選（不下載、不偵測、不擷取），只重新選圖；舊版本的目錄在新版本完成後刪除。

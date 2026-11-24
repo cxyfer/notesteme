@@ -143,6 +143,36 @@ Feature: Key frames
       { "selected_count": 1, "shortfall": true }
       """
 
+  # 不夠時全部選用、不呼叫模型（FRM-R4），圖說和 rules 一樣取該時間的 cue（FRM-R9）。
+  @FRM-01 @FRM-R4 @FRM-R9
+  Scenario: Frames kept without asking the vision model still get captions
+    Given a YouTube video "yt:frm004xxxxx" with:
+      | field    | value        |
+      | title    | Talking head |
+      | duration | 360          |
+    And "yt:frm004xxxxx" has manual captions in "en"
+    And the video of "yt:frm004xxxxx" has the scenes:
+      | at       | score | color   |
+      | 00:00:05 | 0.90  | #404040 |
+    And the profile "frm-vision" is:
+      """
+      stages:
+        frames: { executor: api, provider: anthropic, model: fixture-model, prompt: frames-default }
+      """
+    And the default profile is "frm-vision"
+    And the "corrected" transcript of "yt:frm004xxxxx" is:
+      | # | start    | end      | text                             |
+      | 1 | 00:00:04 | 00:00:07 | Caches trade memory for latency. |
+    When the owner reruns "yt:frm004xxxxx" from "frames"
+    And the worker runs until idle
+    Then the stage "frames" of "yt:frm004xxxxx" is "done"
+    And the LLM provider "anthropic" received 0 requests for "frames"
+    When the owner sends "GET /api/items/yt:frm004xxxxx/frames"
+    Then the response contains:
+      """
+      { "shortfall": true, "frames": [ { "at": "00:00:05.000", "selected": true, "caption": "Caches trade memory for latency." } ] }
+      """
+
   @FRM-02 @FRM-R5 @pending-m0
   Scenario: A cue that points at the screen lifts the nearby frame
     Given the "corrected" transcript of "yt:frm001xxxxx" is:

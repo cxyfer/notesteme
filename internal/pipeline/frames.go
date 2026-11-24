@@ -552,10 +552,13 @@ func (p *Pipeline) framesSelect(ctx context.Context, t store.Task, run store.Sta
 	if shortfall {
 		state.Message = fmt.Sprintf("只找到 %d 張有意義的畫面，少於建議的 %d 張。", len(picked), band.Min)
 	}
+	// 只有模型真的選了圖（vision 成功）時圖說來自模型；shortfall 時 mode 雖然記為 api，但沒有呼叫模型，
+	// 圖說和 rules 一樣取該時間的 cue（FRM-R9：每張選中的畫面都有圖說）。
+	modelCaptions := mode == selectAPI && !shortfall
 	for _, i := range picked {
 		list[i].Selected = true
 		caption := captions[i]
-		if caption == "" && mode != selectAPI {
+		if caption == "" && !modelCaptions {
 			caption = frames.CueAt(list[i].AtMS, cues)
 		}
 		list[i].Caption = frames.CleanCaption(caption)
