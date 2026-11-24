@@ -523,3 +523,75 @@ func TestShareLargerThanHumaDefaultLimit(t *testing.T) {
 	}
 	e.mustShare("alice", b, nil)
 }
+
+// 安全修補 A：相同內容的後到者不能藉去重成為別人 private／hidden 版本的上傳者，回應不洩漏既有版本的可見度。
+func TestShareDedupDoesNotJoinInvisibleVersions(t *testing.T) {
+	e := newRepoEnv(t, nil)
+	e.grant("bob", hubconfig.GroupContributors)
+	a := src("same-bytes")
+	a.prov = map[string]any{"executor": "api", "provider": "groq", "model": "whisper-secret-ft", "created_at": "2026-11-01T00:00:00Z"}
+	out := e.mustShare("alice", makeBundle(t, bundleOpts{}, a), map[string]string{"visibility": "private"})
+	priv := versionsOf(out)[0]["id"].(string)
+	other := e.mustShare("bob", makeBundle(t, bundleOpts{license: "CC0-1.0"}, src("same-bytes")), map[string]string{"visibility": "authenticated"})
+	v := versionsOf(other)[0]
+	if v["id"] == priv || v["deduplicated"] != false || v["visibility"] != "authenticated" {
+		t.Fatalf("bob 的分享 = %v，不能併入 alice 的 private 版本 %s", v, priv)
+	}
+	expect(t, "bob 看 alice 的 private", e.as("bob", "GET", "/api/v1/versions/"+priv, ""), 404, "")
+	rec := e.as("bob", "GET", "/api/v1/versions/"+v["id"].(string), "")
+	if rec.Code != 200 || strings.Contains(rec.Body.String(), "whisper-secret-ft") || strings.Contains(rec.Body.String(), `"alice"`) {
+		t.Fatalf("bob 自己的版本 = %d %s", rec.Code, rec.Body)
+	}
+	// hidden：同樣另建一列，bob 看不到被隱藏的版本。
+	hid := versionsOf(e.mustShare("alice", makeBundle(t, bundleOpts{}, src("hidden-bytes")), nil))[0]["id"].(string)
+	if err := e.store.SetVersionState(context.Background(), hid, "hidden"); err != nil {
+		t.Fatal(err)
+	}
+	hv := versionsOf(e.mustShare("bob", makeBundle(t, bundleOpts{license: "CC0-1.0"}, src("hidden-bytes")), nil))[0]
+	if hv["id"] == hid || hv["deduplicated"] != false {
+		t.Fatalf("併入 hidden 版本：%v", hv)
+	}
+	expect(t, "bob 看 hidden", e.as("bob", "GET", "/api/v1/versions/"+hid, ""), 404, "")
+}
+
+// 安全修補 A：撤回的內容再分享時恢復成新分享者的版本（HREP-R8、R10），不會被吞掉。
+func TestReshareAfterWithdrawRestores(t *testing.T) {
+	e := newRepoEnv(t, nil)
+	e.grant("bob", hubconfig.GroupContributors)
+	first := e.mustShare("bob", makeBundle(t, bundleOpts{}, src("platform captions")), nil)
+	id := versionsOf(first)[0]["id"].(string)
+	expect(t, "bob 撤回", e.as("bob", "DELETE", "/api/v1/shares/"+first["share_id"].(string), ""), 204, "")
+	again := e.mustShare("alice", makeBundle(t, bundleOpts{license: "CC0-1.0"}, src("platform captions")), map[string]string{"visibility": "authenticated"})
+	v := versionsOf(again)[0]
+	if v["deduplicated"] != false || v["visibility"] != "authenticated" {
+		t.Fatalf("alice 的分享 = %v", v)
+	}
+	rec := e.as("alice", "GET", "/api/v1/versions/"+v["id"].(string), "")
+	m := decode(t, rec)
+	if rec.Code != 200 || m["state"] != "visible" || m["license"] != "CC0-1.0" || v["id"] != id {
+		t.Fatalf("恢復後 = %d %v", rec.Code, m)
+	}
+	ups, _ := json.Marshal(m["uploaders"])
+	if string(ups) != `[{"display_name":"alice"}]` {
+		t.Fatalf("uploaders = %s", ups)
+	}
+}
+
+// 安全修補 A：不在群組裡的人指定相同的 group:<name> 也不能併入群組的版本；群組成員可以。
+func TestShareDedupGroupNeedsMembership(t *testing.T) {
+	e := newRepoEnv(t, nil)
+	e.grant("bob", hubconfig.GroupContributors)
+	e.grant("alice", "translators")
+	vis := map[string]string{"visibility": "group:translators"}
+	g := versionsOf(e.mustShare("alice", makeBundle(t, bundleOpts{}, src("group-bytes")), vis))[0]["id"].(string)
+	bv := versionsOf(e.mustShare("bob", makeBundle(t, bundleOpts{license: "CC0-1.0"}, src("group-bytes")), vis))[0]
+	if bv["id"] == g || bv["deduplicated"] != false {
+		t.Fatalf("非成員併入群組的版本：%v", bv)
+	}
+	expect(t, "bob 看群組的版本", e.as("bob", "GET", "/api/v1/versions/"+g, ""), 404, "")
+	e.grant("bob", "translators")
+	bv2 := versionsOf(e.mustShare("bob", makeBundle(t, bundleOpts{license: "CC-BY-4.0"}, src("group-bytes")), vis))[0]
+	if bv2["deduplicated"] != true {
+		t.Fatalf("成員分享 = %v，預期併入", bv2)
+	}
+}

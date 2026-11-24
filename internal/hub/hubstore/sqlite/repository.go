@@ -99,12 +99,14 @@ func (s *Store) CreateShare(ctx context.Context, in hubstore.NewShare) (hubstore
 		var fresh []created
 		for i, nv := range in.Versions {
 			x := nv.Version
-			v, err := q.VersionByKey(ctx, sqlcdb.VersionByKeyParams{VideoID: video.ID, Kind: x.Kind, Variant: x.Variant, Lang: x.Lang, Sha256: x.SHA256})
-			dedup := err == nil
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			v, dedup, restored, err := pickExisting(ctx, q, video.ID, in, nv)
+			if err != nil {
 				return err
 			}
-			if !dedup {
+			if restored {
+				fresh = append(fresh, created{v: v, nv: nv})
+			}
+			if !dedup && !restored {
 				state := x.State
 				if state == "" {
 					state = "visible"
@@ -183,6 +185,56 @@ func (s *Store) CreateShare(ctx context.Context, in hubstore.NewShare) (hubstore
 		return hubstore.ShareResult{}, err
 	}
 	return res, nil
+}
+
+// pickExisting 依 hubstore.ChooseExisting 處理鍵相同的既有版本：回傳併入的版本（dedup）或恢復的 withdrawn 版本（restored）；
+// 兩者都不是時呼叫端建立新版本。
+func pickExisting(ctx context.Context, q *sqlcdb.Queries, videoID string, in hubstore.NewShare, nv hubstore.NewVersion) (sqlcdb.Version, bool, bool, error) {
+	x := nv.Version
+	rows, err := q.VersionsByKey(ctx, sqlcdb.VersionsByKeyParams{VideoID: videoID, Kind: x.Kind, Variant: x.Variant, Lang: x.Lang, Sha256: x.SHA256})
+	if err != nil {
+		return sqlcdb.Version{}, false, false, err
+	}
+	cands := make([]hubstore.ExistingVersion, len(rows))
+	for i, r := range rows {
+		n, err := q.UserSharesVersion(ctx, sqlcdb.UserSharesVersionParams{VersionID: r.ID, UserID: in.UserID})
+		if err != nil {
+			return sqlcdb.Version{}, false, false, err
+		}
+		cands[i] = hubstore.ExistingVersion{Version: toVersion(r), IsUploader: n > 0}
+	}
+	join, restore := hubstore.ChooseExisting(cands, x.Visibility, in.CanJoin)
+	switch {
+	case join >= 0:
+		return rows[join], true, false, nil
+	case restore < 0:
+		return sqlcdb.Version{}, false, false, nil
+	}
+	id := rows[restore].ID
+	prov := string(x.Provenance)
+	if prov == "" {
+		prov = "{}"
+	}
+	n, err := q.RestoreVersion(ctx, sqlcdb.RestoreVersionParams{
+		Format: x.Format, Size: x.Size, ProvenanceJson: prov, TranscribeModel: x.TranscribeModel, CorrectModel: x.CorrectModel,
+		TranslateModel: x.TranslateModel, ModelVerified: boolInt(x.ModelVerified), Visibility: x.Visibility, License: x.License, ID: id,
+	})
+	if err != nil {
+		return sqlcdb.Version{}, false, false, err
+	}
+	if n != 1 {
+		return sqlcdb.Version{}, false, false, fmt.Errorf("恢復撤回的版本 %s 失敗", id)
+	}
+	if err := q.DeleteVersionImageBlobs(ctx, id); err != nil {
+		return sqlcdb.Version{}, false, false, err
+	}
+	for _, img := range nv.Images {
+		if err := q.AddVersionBlob(ctx, sqlcdb.AddVersionBlobParams{VersionID: id, Sha256: img, Role: "image"}); err != nil {
+			return sqlcdb.Version{}, false, false, err
+		}
+	}
+	v, err := q.VersionByID(ctx, id)
+	return v, false, true, err
 }
 
 func addDerivation(ctx context.Context, q *sqlcdb.Queries, child, parent, relation string) error {

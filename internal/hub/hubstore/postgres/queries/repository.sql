@@ -20,8 +20,27 @@ ON CONFLICT DO NOTHING;
 -- Blobs are keyed by content; the first record wins.
 INSERT INTO blobs (sha256, size, media_type, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING;
 
--- name: VersionByKey :one
-SELECT * FROM versions WHERE video_id = $1 AND kind = $2 AND variant = $3 AND lang = $4 AND sha256 = $5;
+-- name: VersionsByKey :many
+-- Several rows may share a key: each visibility scope keeps its own row (security fix A).
+SELECT * FROM versions WHERE video_id = $1 AND kind = $2 AND variant = $3 AND lang = $4 AND sha256 = $5
+ORDER BY created_at, id;
+
+-- name: LockVideo :one
+-- Row lock that serializes the shares of one video (the version key is no longer unique).
+SELECT id FROM videos WHERE id = $1 FOR UPDATE;
+
+-- name: UserSharesVersion :one
+SELECT COUNT(*) FROM share_versions sv JOIN shares s ON s.id = sv.share_id
+WHERE sv.version_id = $1 AND s.user_id = $2 AND s.withdrawn_at IS NULL;
+
+-- name: RestoreVersion :execrows
+-- A withdrawn version shared again takes the values of the new share.
+UPDATE versions SET state = 'visible', format = $1, size = $2, provenance_json = $3, transcribe_model = $4, correct_model = $5,
+                    translate_model = $6, model_verified = $7, visibility = $8, license = $9, removal_source = '', removal_reason = ''
+WHERE id = $10 AND state = 'withdrawn';
+
+-- name: DeleteVersionImageBlobs :exec
+DELETE FROM version_blobs WHERE version_id = $1 AND role = 'image';
 
 -- name: VersionByID :one
 SELECT * FROM versions WHERE id = $1;

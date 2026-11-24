@@ -113,6 +113,125 @@ func runContent(t *testing.T, open Open) {
 		}
 	})
 
+	// 安全修補 A：去重只併入上傳者以一般成員身分看得到、可見度相同的版本；撤回的版本以新分享的值恢復。
+	t.Run("DedupRespectsVisibilityAndWithdrawal", func(t *testing.T) {
+		s, clk := fresh(t, open)
+		alice, bob := users(t, s)
+		carol, _, err := s.SignIn(ctx, ident("github", "3", "carol"), "carol")
+		if err != nil {
+			t.Fatal(err)
+		}
+		withVis := func(nv hubstore.NewVersion, vis string) hubstore.NewVersion { nv.Version.Visibility = vis; return nv }
+		share := func(user, bundle, vis string, canJoin func(string) bool, sha string) hubstore.SharedVersion {
+			t.Helper()
+			clk.Advance(time.Second)
+			in := newShare(user, bundle, withVis(ver("source", sha, `{"model":"`+bundle+`"}`), vis))
+			in.CanJoin = canJoin
+			r, err := s.CreateShare(ctx, in)
+			if err != nil || len(r.Versions) != 1 {
+				t.Fatalf("CreateShare(%s) = %+v, %v", bundle, r, err)
+			}
+			return r.Versions[0]
+		}
+		uploaders := func(id string) []string {
+			t.Helper()
+			ups, err := s.VersionUploaders(ctx, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var names []string
+			for _, u := range ups {
+				names = append(names, u.DisplayName)
+			}
+			return names
+		}
+		same := func(got []string, want ...string) bool { return strings.Join(got, ",") == strings.Join(want, ",") }
+
+		// 別人的 private：不併入，另建一列，回應是自己的值。
+		ap := share(alice, "a1", "private", nil, shaN("1"))
+		bp := share(bob, "b1", "authenticated", nil, shaN("1"))
+		if bp.Deduplicated || bp.ID == ap.ID || bp.Visibility != "authenticated" || !same(uploaders(ap.ID), "alice") {
+			t.Fatalf("併入別人的 private：%+v（alice 的 %s 上傳者 %v）", bp, ap.ID, uploaders(ap.ID))
+		}
+		// 同一個人再分享相同內容（不同 bundle、不同可見度）：併入自己的版本。
+		again := share(alice, "a1b", "authenticated", nil, shaN("1"))
+		if !again.Deduplicated || again.ID != ap.ID || again.Visibility != "private" {
+			t.Fatalf("自己的版本 = %+v，預期併入 %s", again, ap.ID)
+		}
+		// 可見度相同、看得到：併入（HREP-R5）。
+		cp := share(carol.ID, "c1", "authenticated", nil, shaN("1"))
+		if !cp.Deduplicated || cp.ID != bp.ID || !same(uploaders(bp.ID), "bob", "carol") {
+			t.Fatalf("可見度相同 = %+v，預期併入 %s", cp, bp.ID)
+		}
+		// 反方向：指定 private 的人不併進公開的版本（名字不出現在別人看得到的 uploaders）。
+		bpriv := share(bob, "b2", "private", nil, shaN("2"))
+		apub := share(alice, "a2", "authenticated", nil, shaN("2"))
+		if apub.Deduplicated || apub.ID == bpriv.ID {
+			t.Fatalf("authenticated 併入 private：%+v", apub)
+		}
+		cpriv := share(carol.ID, "c2", "private", nil, shaN("2"))
+		if cpriv.Deduplicated || cpriv.ID == apub.ID || cpriv.ID == bpriv.ID || !same(uploaders(apub.ID), "alice") {
+			t.Fatalf("private 併入公開的版本：%+v", cpriv)
+		}
+		// group：看不到的群組不併入；群組成員併入。
+		ag := share(alice, "a3", "group:g", func(v string) bool { return v == "group:g" }, shaN("3"))
+		bg := share(bob, "b3", "group:g", func(string) bool { return false }, shaN("3"))
+		if bg.Deduplicated || bg.ID == ag.ID {
+			t.Fatalf("併入看不到的群組：%+v", bg)
+		}
+		cg := share(carol.ID, "c3", "group:g", func(v string) bool { return v == "group:g" }, shaN("3"))
+		if !cg.Deduplicated || cg.ID != ag.ID {
+			t.Fatalf("群組成員 = %+v，預期併入 %s", cg, ag.ID)
+		}
+		// hidden：不併入；removed：併入（內容已移除，不能藉重新上傳繞過）。
+		ah := share(alice, "a4", "authenticated", nil, shaN("4"))
+		if err := s.SetVersionState(ctx, ah.ID, "hidden"); err != nil {
+			t.Fatal(err)
+		}
+		bh := share(bob, "b4", "authenticated", nil, shaN("4"))
+		if bh.Deduplicated || bh.ID == ah.ID || bh.State != "visible" || !same(uploaders(ah.ID), "alice") {
+			t.Fatalf("併入 hidden：%+v", bh)
+		}
+		ar := share(alice, "a5", "authenticated", nil, shaN("5"))
+		if err := s.SetVersionState(ctx, ar.ID, "removed"); err != nil {
+			t.Fatal(err)
+		}
+		if br := share(bob, "b5", "authenticated", nil, shaN("5")); !br.Deduplicated || br.ID != ar.ID {
+			t.Fatalf("removed = %+v，預期併入 %s", br, ar.ID)
+		}
+		// withdrawn：以新分享的值恢復（可見度、來源紀錄），不是 deduplicated。
+		clk.Advance(time.Second)
+		wr, err := s.CreateShare(ctx, newShare(alice, "a6", withVis(ver("source", shaN("6"), `{"model":"old"}`), "authenticated")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.WithdrawShare(ctx, alice, wr.ShareID); err != nil {
+			t.Fatal(err)
+		}
+		bw := share(bob, "b6", "private", nil, shaN("6"))
+		got, err := s.Version(ctx, wr.Versions[0].ID)
+		if err != nil || bw.Deduplicated || bw.ID != got.ID || got.State != "visible" || got.Visibility != "private" ||
+			string(got.Provenance) != `{"model":"b6"}` || bw.Visibility != "private" || !same(uploaders(got.ID), "bob") {
+			t.Fatalf("恢復撤回的版本 = %+v / %+v, %v", bw, got, err)
+		}
+		vs, err := s.VideoVersions(ctx, wr.Video.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, v := range vs {
+			if v.SHA256 == shaN("6") {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Fatalf("恢復時不應另建一列：%d 列", n)
+		}
+		if refs, _ := s.BlobRefs(ctx, shaN("1")); refs != 2 {
+			t.Fatalf("另建的版本共用 blob：BlobRefs = %d，預期 2", refs)
+		}
+	})
+
 	t.Run("ParentUploadedLaterAndRegenerated", func(t *testing.T) {
 		s, _ := fresh(t, open)
 		alice, bob := users(t, s)

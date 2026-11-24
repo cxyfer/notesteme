@@ -286,6 +286,15 @@ func (q *Queries) DeleteVersionContentBlobs(ctx context.Context, versionID strin
 	return err
 }
 
+const deleteVersionImageBlobs = `-- name: DeleteVersionImageBlobs :exec
+DELETE FROM version_blobs WHERE version_id = $1 AND role = 'image'
+`
+
+func (q *Queries) DeleteVersionImageBlobs(ctx context.Context, versionID string) error {
+	_, err := q.db.Exec(ctx, deleteVersionImageBlobs, versionID)
+	return err
+}
+
 const isRemovedHash = `-- name: IsRemovedHash :one
 SELECT COUNT(*) FROM removed_hashes WHERE video_id = $1 AND sha256 = $2
 `
@@ -312,6 +321,57 @@ func (q *Queries) LockVersion(ctx context.Context, id string) (string, error) {
 	var id_2 string
 	err := row.Scan(&id_2)
 	return id_2, err
+}
+
+const lockVideo = `-- name: LockVideo :one
+SELECT id FROM videos WHERE id = $1 FOR UPDATE
+`
+
+// Row lock that serializes the shares of one video (the version key is no longer unique).
+func (q *Queries) LockVideo(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, lockVideo, id)
+	var id_2 string
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
+const restoreVersion = `-- name: RestoreVersion :execrows
+UPDATE versions SET state = 'visible', format = $1, size = $2, provenance_json = $3, transcribe_model = $4, correct_model = $5,
+                    translate_model = $6, model_verified = $7, visibility = $8, license = $9, removal_source = '', removal_reason = ''
+WHERE id = $10 AND state = 'withdrawn'
+`
+
+type RestoreVersionParams struct {
+	Format          string
+	Size            int64
+	ProvenanceJson  string
+	TranscribeModel string
+	CorrectModel    string
+	TranslateModel  string
+	ModelVerified   bool
+	Visibility      string
+	License         string
+	ID              string
+}
+
+// A withdrawn version shared again takes the values of the new share.
+func (q *Queries) RestoreVersion(ctx context.Context, arg RestoreVersionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, restoreVersion,
+		arg.Format,
+		arg.Size,
+		arg.ProvenanceJson,
+		arg.TranscribeModel,
+		arg.CorrectModel,
+		arg.TranslateModel,
+		arg.ModelVerified,
+		arg.Visibility,
+		arg.License,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setVersionContent = `-- name: SetVersionContent :execrows
@@ -425,58 +485,29 @@ func (q *Queries) ShareVersions(ctx context.Context, shareID string) ([]ShareVer
 	return items, nil
 }
 
+const userSharesVersion = `-- name: UserSharesVersion :one
+SELECT COUNT(*) FROM share_versions sv JOIN shares s ON s.id = sv.share_id
+WHERE sv.version_id = $1 AND s.user_id = $2 AND s.withdrawn_at IS NULL
+`
+
+type UserSharesVersionParams struct {
+	VersionID string
+	UserID    string
+}
+
+func (q *Queries) UserSharesVersion(ctx context.Context, arg UserSharesVersionParams) (int64, error) {
+	row := q.db.QueryRow(ctx, userSharesVersion, arg.VersionID, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const versionByID = `-- name: VersionByID :one
 SELECT id, video_id, kind, variant, lang, format, sha256, size, provenance_json, transcribe_model, correct_model, translate_model, model_verified, visibility, license, state, score, created_at, removal_source, removal_reason FROM versions WHERE id = $1
 `
 
 func (q *Queries) VersionByID(ctx context.Context, id string) (Version, error) {
 	row := q.db.QueryRow(ctx, versionByID, id)
-	var i Version
-	err := row.Scan(
-		&i.ID,
-		&i.VideoID,
-		&i.Kind,
-		&i.Variant,
-		&i.Lang,
-		&i.Format,
-		&i.Sha256,
-		&i.Size,
-		&i.ProvenanceJson,
-		&i.TranscribeModel,
-		&i.CorrectModel,
-		&i.TranslateModel,
-		&i.ModelVerified,
-		&i.Visibility,
-		&i.License,
-		&i.State,
-		&i.Score,
-		&i.CreatedAt,
-		&i.RemovalSource,
-		&i.RemovalReason,
-	)
-	return i, err
-}
-
-const versionByKey = `-- name: VersionByKey :one
-SELECT id, video_id, kind, variant, lang, format, sha256, size, provenance_json, transcribe_model, correct_model, translate_model, model_verified, visibility, license, state, score, created_at, removal_source, removal_reason FROM versions WHERE video_id = $1 AND kind = $2 AND variant = $3 AND lang = $4 AND sha256 = $5
-`
-
-type VersionByKeyParams struct {
-	VideoID string
-	Kind    string
-	Variant string
-	Lang    string
-	Sha256  string
-}
-
-func (q *Queries) VersionByKey(ctx context.Context, arg VersionByKeyParams) (Version, error) {
-	row := q.db.QueryRow(ctx, versionByKey,
-		arg.VideoID,
-		arg.Kind,
-		arg.Variant,
-		arg.Lang,
-		arg.Sha256,
-	)
 	var i Version
 	err := row.Scan(
 		&i.ID,
@@ -631,6 +662,67 @@ func (q *Queries) VersionUploaders(ctx context.Context, versionID string) ([]Ver
 	for rows.Next() {
 		var i VersionUploadersRow
 		if err := rows.Scan(&i.ID, &i.DisplayName, &i.FirstAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const versionsByKey = `-- name: VersionsByKey :many
+SELECT id, video_id, kind, variant, lang, format, sha256, size, provenance_json, transcribe_model, correct_model, translate_model, model_verified, visibility, license, state, score, created_at, removal_source, removal_reason FROM versions WHERE video_id = $1 AND kind = $2 AND variant = $3 AND lang = $4 AND sha256 = $5
+ORDER BY created_at, id
+`
+
+type VersionsByKeyParams struct {
+	VideoID string
+	Kind    string
+	Variant string
+	Lang    string
+	Sha256  string
+}
+
+// Several rows may share a key: each visibility scope keeps its own row (security fix A).
+func (q *Queries) VersionsByKey(ctx context.Context, arg VersionsByKeyParams) ([]Version, error) {
+	rows, err := q.db.Query(ctx, versionsByKey,
+		arg.VideoID,
+		arg.Kind,
+		arg.Variant,
+		arg.Lang,
+		arg.Sha256,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Version
+	for rows.Next() {
+		var i Version
+		if err := rows.Scan(
+			&i.ID,
+			&i.VideoID,
+			&i.Kind,
+			&i.Variant,
+			&i.Lang,
+			&i.Format,
+			&i.Sha256,
+			&i.Size,
+			&i.ProvenanceJson,
+			&i.TranscribeModel,
+			&i.CorrectModel,
+			&i.TranslateModel,
+			&i.ModelVerified,
+			&i.Visibility,
+			&i.License,
+			&i.State,
+			&i.Score,
+			&i.CreatedAt,
+			&i.RemovalSource,
+			&i.RemovalReason,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

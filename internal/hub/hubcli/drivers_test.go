@@ -58,7 +58,7 @@ func TestPostgresMigrateAndDoctor(t *testing.T) {
 		t.Fatalf("doctor（沒有 migrate）= %d %s", c, out)
 	}
 	e, out, errb := env(t, yml, vars)
-	if c := Run(context.Background(), []string{"migrate"}, e); c != ExitOK || !strings.Contains(out.String(), "schema 版本：5") {
+	if c := Run(context.Background(), []string{"migrate"}, e); c != ExitOK || !strings.Contains(out.String(), "schema 版本：6") {
 		t.Fatalf("migrate = %d %s %s", c, out, errb)
 	}
 	e, out, _ = env(t, yml, vars)

@@ -219,6 +219,44 @@ func runConcurrency(t *testing.T, open Open) {
 		}
 	})
 
+	// 版本的鍵不唯一（安全修補 A）：影片已存在時，並行分享相同內容仍只建立一個版本（不能靠影片的唯一鍵重試序列化）。
+	t.Run("ConcurrentSharesOfExistingVideoDedupe", func(t *testing.T) {
+		s, _ := fresh(t, open)
+		const n = 8
+		users := make([]string, n)
+		for i := range users {
+			u, _, err := s.SignIn(ctx, ident("github", fmt.Sprint(450+i), fmt.Sprint("x", i)), fmt.Sprint("x", i))
+			if err != nil {
+				t.Fatal(err)
+			}
+			users[i] = u.ID
+		}
+		// 先讓 blob 存在：新 blob 的 INSERT 會在 Postgres 互相等待，那樣測不到版本的去重。
+		for round := range 5 {
+			if _, err := s.CreateShare(ctx, newShare(users[0], fmt.Sprint("seed", round), ver("source", shaN(fmt.Sprint(round)), `{}`))); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for round := range 5 {
+			sha := shaN(fmt.Sprint(round))
+			vids := make([]string, n)
+			if errs := parallel(n, func(i int) error {
+				res, err := s.CreateShare(ctx, newShare(users[i], fmt.Sprint("r", round), ver("normalized", sha, `{}`)))
+				if err == nil {
+					vids[i] = res.Versions[0].ID
+				}
+				return err
+			}); len(errs) > 0 {
+				t.Fatalf("並行分享：%v", errs)
+			}
+			for _, id := range vids {
+				if id != vids[0] {
+					t.Fatalf("第 %d 輪：同一份內容並行分享得到不同的版本：%v", round, vids)
+				}
+			}
+		}
+	})
+
 	t.Run("ConcurrentSuspendAndVotes", func(t *testing.T) {
 		s, _ := fresh(t, open)
 		a, _, _ := s.SignIn(ctx, ident("github", "1", "alice"), "alice")

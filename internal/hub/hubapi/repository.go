@@ -459,6 +459,11 @@ func (rt *routes) buildShare(ctx context.Context, p *hubauth.Principal, b *bundl
 	if err != nil {
 		return in, err
 	}
+	// 去重只併入上傳者以一般成員身分（不靠上傳者或 moderate）看得到的版本（安全修補 A）。
+	member := hubrepo.Viewer{UserID: viewer.UserID, Groups: viewer.Groups}
+	in.CanJoin = func(vis string) bool {
+		return hubrepo.CanSee(hubrepo.Subject{Visibility: vis, State: hubrepo.StateVisible}, member, cfg.SiteVisibility)
+	}
 	// hub_origin 只在版本存在、上傳者看得到時採用（看不到的版本不能藉衍生關係確認存在）。
 	origins := map[string]*hubstore.Version{}
 	origin := func(id string) *hubstore.Version {

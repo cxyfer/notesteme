@@ -174,3 +174,81 @@ func TestCommunityMigrationKeepsData(t *testing.T) {
 		t.Errorf("Down 後的成員資格 = %d, %v", n, err)
 	}
 }
+
+// migration 00006 重建 versions（移除鍵的唯一限制，安全修補 A）：被其他表參照的資料、外鍵與 index 都要保留。
+func TestScopedDedupMigrationKeepsData(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	path := filepath.Join(dir, DBFileName)
+	db, err := sqlitedb.Open(path, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	p, err := goose.NewProvider(goose.DialectSQLite3, db, MigrationsFS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.UpTo(ctx, 5); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO users (id, display_name, created_at) VALUES ('u1', 'alice', 1), ('u2', 'bob', 1)`,
+		`INSERT INTO videos (id, platform, external_id, key_sha256, first_shared_at) VALUES ('v1', 'youtube', 'abc', 'k', 1)`,
+		`INSERT INTO blobs (sha256, size, media_type, created_at) VALUES ('s1', 1, 'application/json', 1), ('s2', 1, 'application/json', 1)`,
+		`INSERT INTO versions (id, video_id, kind, variant, lang, format, sha256, size, model_verified, visibility, license, score, created_at, removal_source, removal_reason)
+		 VALUES ('x1', 'v1', 'transcript', 'source', 'en', 'notesteme-cues+json', 's1', 1, 1, 'private', 'CC0-1.0', 1, 1, '', ''),
+		        ('x2', 'v1', 'transcript', 'normalized', 'en', 'notesteme-cues+json', 's2', 1, 0, 'public', 'CC0-1.0', 0, 2, 'report', 'spam')`,
+		`INSERT INTO version_blobs (version_id, sha256, role) VALUES ('x1', 's1', 'content'), ('x2', 's2', 'content')`,
+		`INSERT INTO shares (id, user_id, video_id, license, attested_at, bundle_sha256, bundle_size, created_at) VALUES ('sh1', 'u1', 'v1', 'CC0-1.0', 1, 'b', 1, 1)`,
+		`INSERT INTO share_versions (share_id, version_id, position, deduplicated) VALUES ('sh1', 'x1', 0, 0), ('sh1', 'x2', 1, 0)`,
+		`INSERT INTO derivations (child_version_id, parent_version_id, relation) VALUES ('x2', 'x1', 'parent')`,
+		`INSERT INTO votes (version_id, user_id, value, created_at, updated_at) VALUES ('x1', 'u2', 1, 1, 1)`,
+		`INSERT INTO reports (id, version_id, reporter_id, reason, created_at) VALUES ('r1', 'x2', 'u2', 'spam', 1)`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s：%v", q, err)
+		}
+	}
+	_ = db.Close()
+	s := openTemp(t, dir)
+	if v, err := s.SchemaVersion(ctx); err != nil || v != 6 {
+		t.Fatalf("schema 版本 = %d, %v", v, err)
+	}
+	x1, err := s.Version(ctx, "x1")
+	if err != nil || x1.Visibility != "private" || !x1.ModelVerified || x1.Score != 1 {
+		t.Fatalf("x1 = %+v, %v", x1, err)
+	}
+	var src, reason string
+	if err := s.r.QueryRow(`SELECT removal_source, removal_reason FROM versions WHERE id = 'x2'`).Scan(&src, &reason); err != nil || src != "report" || reason != "spam" {
+		t.Fatalf("x2 的 removal = %q %q, %v", src, reason, err)
+	}
+	for table, want := range map[string]int{"version_blobs": 2, "share_versions": 2, "derivations": 1, "votes": 1, "reports": 1} {
+		var n int
+		if err := s.r.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil || n != want {
+			t.Errorf("%s = %d, %v，預期 %d", table, n, err, want)
+		}
+	}
+	var bad int
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&bad); err != nil || bad != 0 {
+		t.Errorf("foreign_key_check = %d, %v", bad, err)
+	}
+	var fk int
+	if err := s.w.QueryRow(`PRAGMA foreign_keys`).Scan(&fk); err != nil || fk != 1 {
+		t.Errorf("migration 後 foreign_keys = %d, %v，預期打開", fk, err)
+	}
+	for _, idx := range []string{"versions_sha", "versions_key"} {
+		var n int
+		if err := s.r.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?`, idx).Scan(&n); err != nil || n != 1 {
+			t.Errorf("index %s = %d, %v", idx, n, err)
+		}
+	}
+	// 同一個鍵可以有第二列；外鍵仍然生效。
+	if _, err := s.w.Exec(`INSERT INTO versions (id, video_id, kind, variant, lang, format, sha256, size, model_verified, visibility, license, created_at)
+		VALUES ('x3', 'v1', 'transcript', 'source', 'en', 'notesteme-cues+json', 's1', 1, 1, 'public', 'CC0-1.0', 3)`); err != nil {
+		t.Errorf("同一個鍵的第二列：%v", err)
+	}
+	if _, err := s.w.Exec(`INSERT INTO version_blobs (version_id, sha256, role) VALUES ('nope', 's1', 'content')`); err == nil {
+		t.Error("version_blobs 的外鍵要生效")
+	}
+}

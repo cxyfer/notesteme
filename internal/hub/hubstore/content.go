@@ -84,6 +84,44 @@ type NewShare struct {
 	BundleSize   int64
 	Blobs        []Blob
 	Versions     []NewVersion
+	// CanJoin 回報上傳者以一般成員身分（不靠上傳者或 moderate）看不看得到這個可見度的版本；nil 時只有
+	// public 與 authenticated 看得到。去重只併入看得到、可見度相同的既有版本（ChooseExisting）。
+	CanJoin func(visibility string) bool
+}
+
+// ExistingVersion 是鍵相同的既有版本；IsUploader 表示新上傳者已有它未撤回的分享。
+type ExistingVersion struct {
+	Version
+	IsUploader bool
+}
+
+// ChooseExisting 決定分享的一個產出怎麼處理鍵相同的既有版本（HREP-R5、R8，安全修補 A）。cands 依建立順序。
+// 回傳 join（併入的版本索引）或 restore（以新分享的值恢復的 withdrawn 版本索引），都是 -1 時建立新版本、只共用 blob：
+//  1. 上傳者自己的版本（未撤回）直接併入（冪等）；
+//  2. 否則併入 visible 或 removed、可見度與這次指定的值完全相同、且上傳者不靠上傳者身分就看得到的版本
+//     （不併入別人的 private、看不到的 group、hidden，也不把指定 private 的人併進公開的版本）；
+//  3. 否則恢復最早的 withdrawn 版本（撤回後再分享相同內容不會被吞掉）。
+func ChooseExisting(cands []ExistingVersion, requested string, canJoin func(string) bool) (join, restore int) {
+	if canJoin == nil {
+		canJoin = func(v string) bool { return v == "public" || v == "authenticated" }
+	}
+	join, restore = -1, -1
+	for i, c := range cands {
+		if c.IsUploader && c.State != "withdrawn" {
+			return i, -1
+		}
+	}
+	for i, c := range cands {
+		if (c.State == "visible" || c.State == "removed") && c.Visibility == requested && canJoin(requested) {
+			return i, -1
+		}
+	}
+	for i, c := range cands {
+		if c.State == "withdrawn" {
+			return -1, i
+		}
+	}
+	return -1, -1
 }
 
 // SharedVersion 是分享結果中的一個版本。

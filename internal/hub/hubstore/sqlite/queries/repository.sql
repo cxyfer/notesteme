@@ -20,8 +20,23 @@ ON CONFLICT DO NOTHING;
 -- Blobs are keyed by content; the first record wins.
 INSERT INTO blobs (sha256, size, media_type, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING;
 
--- name: VersionByKey :one
-SELECT * FROM versions WHERE video_id = ? AND kind = ? AND variant = ? AND lang = ? AND sha256 = ?;
+-- name: VersionsByKey :many
+-- Several rows may share a key: each visibility scope keeps its own row (security fix A).
+SELECT * FROM versions WHERE video_id = ? AND kind = ? AND variant = ? AND lang = ? AND sha256 = ?
+ORDER BY created_at, id;
+
+-- name: UserSharesVersion :one
+SELECT COUNT(*) FROM share_versions sv JOIN shares s ON s.id = sv.share_id
+WHERE sv.version_id = ? AND s.user_id = ? AND s.withdrawn_at IS NULL;
+
+-- name: RestoreVersion :execrows
+-- A withdrawn version shared again takes the values of the new share.
+UPDATE versions SET state = 'visible', format = ?, size = ?, provenance_json = ?, transcribe_model = ?, correct_model = ?,
+                    translate_model = ?, model_verified = ?, visibility = ?, license = ?, removal_source = '', removal_reason = ''
+WHERE id = ? AND state = 'withdrawn';
+
+-- name: DeleteVersionImageBlobs :exec
+DELETE FROM version_blobs WHERE version_id = ? AND role = 'image';
 
 -- name: VersionByID :one
 SELECT * FROM versions WHERE id = ?;
