@@ -269,10 +269,14 @@ jobs:
               echo "NOTESTEME_HUB_POSTGRES_PASSWORD=$(openssl rand -hex 24)"
               echo "NOTESTEME_HUB_S3_ACCESS_KEY_ID=notestemehub"
               echo "NOTESTEME_HUB_S3_SECRET_ACCESS_KEY=$(openssl rand -hex 24)"
+              echo "NOTESTEME_HUB_OAUTH_GITHUB_CLIENT_SECRET=ci-client-secret"
             } > .env.hub
           )
           mkdir -p hub-config
           cp hub-config.example.yaml hub-config/notesteme-hub.yaml
+          # doctor 要求至少啟用一個登入方式：填入假的 client_id（只啟用設定，不會連到 GitHub）。
+          sed -i 's/github: { client_id: "" }/github: { client_id: "ci-client-id" }/' hub-config/notesteme-hub.yaml
+          grep -q 'client_id: "ci-client-id"' hub-config/notesteme-hub.yaml
           docker compose -f compose.hub.yaml --env-file .env.hub --profile hub up -d --build
           curl --retry 30 --retry-delay 2 --retry-all-errors -fsS http://127.0.0.1:8090/readyz
           docker compose -f compose.hub.yaml --env-file .env.hub --profile hub run --rm hub doctor
