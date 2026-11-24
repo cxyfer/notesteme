@@ -2812,6 +2812,8 @@ export interface components {
       /** Format: int64 */
       duration_s: number | null;
       external_id: string;
+      /** @description 現行的原始字幕來自 Hub 時的來源（HSHR-R9）；不是來自 Hub 時是 null */
+      hub_origin: components["schemas"]["ItemHubOrigin"];
       /** @description 分享到 Hub 的紀錄，依時間排序；沒有分享過時沒有這個欄位 */
       hub_shares?: components["schemas"]["HubShareRef"][] | null;
       id: string;
@@ -2854,6 +2856,16 @@ export interface components {
       /** @description 新增時指定做到哪個步驟為止 */
       until?: string;
       url: string;
+    };
+    ItemHubOrigin: {
+      /** @description Hub 上的版本內容的 sha256 */
+      sha256: string;
+      /** @description Hub 上的上傳者顯示名稱（不可信的文字，已去掉控制與格式字元） */
+      uploader: string;
+      /** @description 取得字幕時的 Hub 網址（hub.url） */
+      url: string;
+      /** @description Hub 上的版本 ID */
+      version_id: string;
     };
     ItemImportedFrom: {
       /** @description 產生 bundle 的 Notesteme 版本 */
@@ -3589,12 +3601,12 @@ export interface components {
       paused: boolean;
       /**
        * Format: int64
-       * @description 正在執行（已被領取）的任務數
+       * @description 內建 worker 正在執行（已被領取）的任務數；Agent 領取的任務不算（Agent 另有自己的額度，AGT-R2）
        */
       running: number;
       /**
        * Format: int64
-       * @description 等待領取的任務數
+       * @description 等待內建 worker 領取的任務數；等待 Agent 領取的任務不算
        */
       waiting: number;
     };
@@ -3628,12 +3640,24 @@ export interface components {
       tasks: components["schemas"]["QueueTask"][] | null;
     };
     QueueTask: {
+      /** @description 領取這個任務的 Agent（token 名稱）；只有被 Agent 領取中的任務才有 */
+      agent?: string;
       /** Format: int64 */
       attempts: number;
+      /**
+       * @description builtin 是內建 worker 執行的任務，agent 是等待或已被 Agent 領取的任務（AGT）
+       * @enum {string}
+       */
+      executor: "builtin" | "agent";
       id: string;
       /** @description 影音的短代號，例如 yt:abc123xxxxx */
       item: string;
       item_id: string;
+      /**
+       * Format: date-time
+       * @description Agent 租約的到期時間（AGT-R2、R4）；只有被 Agent 領取中的任務才有，其他是 null
+       */
+      lease_until: string | null;
       /**
        * Format: date-time
        * @description 重試或等待時，最早可以再被領取的時間
