@@ -72,7 +72,7 @@ func (rt *routes) oidcStart(ctx context.Context, in *oidcStartInput) (*redirectO
 	if rt.d.Auth == nil || !rt.d.Auth.OIDCEnabled() {
 		return nil, errOIDCNotFound()
 	}
-	start, err := rt.d.Auth.StartOIDC(ctx, in.Next)
+	start, err := rt.d.Auth.StartOIDC(ctx, in.Next, infoFrom(ctx).IP)
 	switch {
 	case errors.Is(err, auth.ErrOIDCBusy):
 		return nil, newError(http.StatusTooManyRequests, CodeOIDCFailed, err.Error())

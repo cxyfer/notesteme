@@ -53,3 +53,18 @@ func inPrefixes(a netip.Addr, prefixes []netip.Prefix) bool {
 	}
 	return false
 }
+
+// sourceKey 是以來源位址計數（登入鎖定、OIDC start 的限流）時的 key：IPv4（含 IPv4-mapped）是位址本身，
+// IPv6 是所在的 /64。一般的網路至少分配一個 /64，以完整位址計算的話，換一個位址就能多得一輪嘗試。
+// 不是 IP 的值原樣使用。
+func sourceKey(addr string) string {
+	a, err := netip.ParseAddr(addr)
+	if err != nil {
+		return addr
+	}
+	a = a.Unmap().WithZone("")
+	if a.Is4() {
+		return a.String()
+	}
+	return netip.PrefixFrom(a, 64).Masked().String()
+}

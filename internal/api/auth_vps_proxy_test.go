@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"net/netip"
 	"testing"
@@ -40,5 +41,26 @@ func TestVPSDefaultTrustedProxiesKeepOwnerOut(t *testing.T) {
 				t.Fatalf("攻擊者自己要被鎖：%d", got)
 			}
 		})
+	}
+}
+
+// AUTH-R17：未登入的人從同一個來源一直送 /api/auth/oidc/start，不能佔滿全域的未完成上限讓 owner 拿到 429；
+// 同一個 IPv6 /64 換位址也算同一個來源。
+func TestOIDCStartFloodFromOneSourceDoesNotBlockOwner(t *testing.T) {
+	s := newM4Server(t, auth.Config{OIDC: auth.OIDCConfig{Provider: &stubIdP{}, AllowedSubjects: []string{"user-1"}}})
+	start := func(remote string) int {
+		return s.do("GET", "/api/auth/oidc/start", "", func(r *http.Request) { r.RemoteAddr = remote }).Code
+	}
+	blocked := 0
+	for i := 0; i < auth.MaxPendingOIDCLogins; i++ {
+		if start(fmt.Sprintf("[2001:db8:66::%x]:1", i+1)) == http.StatusTooManyRequests {
+			blocked++
+		}
+	}
+	if blocked != auth.MaxPendingOIDCLogins-auth.MaxOIDCStartsPerSource {
+		t.Fatalf("同一個 /64 有 %d 次被擋，預期只放行 %d 次", blocked, auth.MaxOIDCStartsPerSource)
+	}
+	if got := start("198.51.100.7:1"); got != http.StatusFound {
+		t.Fatalf("owner 開始 OIDC 登入 = %d，預期 302", got)
 	}
 }

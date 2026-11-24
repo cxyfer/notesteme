@@ -101,6 +101,8 @@ type Service struct {
 	proxy    ProxyConfig
 	proxyLog *logLimiter
 	oidc     OIDCConfig
+	// oidcStarts 限制每個來源開始 OIDC 登入的次數（AUTH-R17）。
+	oidcStarts *startLimiter
 }
 
 // New 建立 Service。
@@ -115,7 +117,8 @@ func New(cfg Config) *Service {
 	}
 	s := &Service{store: cfg.Store, clock: cfg.Clock, params: p, verify: verifyPassword, log: lg,
 		locks: newLockouts(maxLockoutRecords), trusted: cfg.TrustedProxies,
-		proxy: cfg.Proxy, proxyLog: newLogLimiter(maxLogLimiterRecords), oidc: cfg.OIDC}
+		proxy: cfg.Proxy, proxyLog: newLogLimiter(maxLogLimiterRecords), oidc: cfg.OIDC,
+		oidcStarts: newStartLimiter(maxLockoutRecords, MaxOIDCStartsPerSource, OIDCLoginTTL)}
 	if cfg.Store != nil {
 		s.touch = cfg.Store.TouchSession
 		s.touchToken = cfg.Store.TouchAPIToken

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/netip"
 	"strings"
@@ -348,7 +349,7 @@ func newOIDCService(t *testing.T) (*Service, *fakeIdP, *clock.Fake, *bytes.Buffe
 func TestOIDCHappyPathAndSingleUse(t *testing.T) {
 	svc, idp, _, logs := newOIDCService(t)
 	ctx := context.Background()
-	st, err := svc.StartOIDC(ctx, "/items/x?t=1")
+	st, err := svc.StartOIDC(ctx, "/items/x?t=1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +383,7 @@ func TestOIDCStateChecks(t *testing.T) {
 	ctx := context.Background()
 	start := func(t *testing.T) (*Service, *fakeIdP, *clock.Fake, OIDCStart) {
 		svc, idp, clk, _ := newOIDCService(t)
-		st, err := svc.StartOIDC(ctx, "")
+		st, err := svc.StartOIDC(ctx, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -465,7 +466,7 @@ func TestOIDCStartLimitsAndNext(t *testing.T) {
 	svc, idp, _, _ := newOIDCService(t)
 	ctx := context.Background()
 	for _, next := range []string{"//evil", "https://evil", "/\\evil", "javascript:x"} {
-		st, err := svc.StartOIDC(ctx, next)
+		st, err := svc.StartOIDC(ctx, next, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -476,16 +477,17 @@ func TestOIDCStartLimitsAndNext(t *testing.T) {
 	}
 	idp.authErr = errors.New("discovery failed")
 	var failed *OIDCFailedError
-	if _, err := svc.StartOIDC(ctx, ""); !errors.As(err, &failed) {
+	if _, err := svc.StartOIDC(ctx, "", ""); !errors.As(err, &failed) {
 		t.Fatalf("discovery failure: %v", err)
 	}
 	idp.authErr = nil
+	// 全域上限：每個來源各自的上限之外，總數仍然最多 MaxPendingOIDCLogins。
 	for i := 0; i < MaxPendingOIDCLogins; i++ {
-		if _, err := svc.StartOIDC(ctx, ""); err != nil {
+		if _, err := svc.StartOIDC(ctx, "", distinctIP(i)); err != nil {
 			t.Fatalf("start %d: %v", i, err)
 		}
 	}
-	if _, err := svc.StartOIDC(ctx, ""); !errors.Is(err, ErrOIDCBusy) {
+	if _, err := svc.StartOIDC(ctx, "", distinctIP(MaxPendingOIDCLogins)); !errors.Is(err, ErrOIDCBusy) {
 		t.Fatalf("over the limit: %v", err)
 	}
 }
@@ -494,12 +496,12 @@ func TestOIDCPendingLoginsExpireBeforeTheLimit(t *testing.T) {
 	svc, _, clk, _ := newOIDCService(t)
 	ctx := context.Background()
 	for i := 0; i < MaxPendingOIDCLogins; i++ {
-		if _, err := svc.StartOIDC(ctx, ""); err != nil {
+		if _, err := svc.StartOIDC(ctx, "", distinctIP(i)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	clk.Advance(OIDCLoginTTL)
-	if _, err := svc.StartOIDC(ctx, ""); err != nil {
+	if _, err := svc.StartOIDC(ctx, "", distinctIP(0)); err != nil {
 		t.Fatalf("expired logins should be cleared: %v", err)
 	}
 }
@@ -509,7 +511,7 @@ func TestOIDCDisabled(t *testing.T) {
 	if svc.OIDCEnabled() || svc.OIDCIssuer() != "" {
 		t.Fatal("OIDC should be disabled")
 	}
-	if _, err := svc.StartOIDC(context.Background(), ""); !errors.Is(err, ErrOIDCDisabled) {
+	if _, err := svc.StartOIDC(context.Background(), "", ""); !errors.Is(err, ErrOIDCDisabled) {
 		t.Fatal(err)
 	}
 	if _, _, err := svc.FinishOIDC(context.Background(), OIDCCallback{State: "x"}); !errors.Is(err, ErrOIDCDisabled) {
@@ -560,3 +562,6 @@ func FuzzSanitizeOIDCError(f *testing.F) {
 		}
 	})
 }
+
+// distinctIP 回傳第 i 個不同的來源位址（測試全域上限時，避開每個來源的上限）。
+func distinctIP(i int) string { return fmt.Sprintf("10.%d.%d.1", i/256, i%256) }

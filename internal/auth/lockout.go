@@ -43,7 +43,9 @@ func newLockouts(max int) *lockouts {
 }
 
 // remaining 回傳 addr 的鎖定還剩多久；沒有鎖定時為 0。
+// addr 一律先轉成 sourceKey（IPv6 以 /64 計算），fail、reset 也一樣。
 func (l *lockouts) remaining(addr string, now time.Time) time.Duration {
+	addr = sourceKey(addr)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	e := l.live(addr, now)
@@ -55,6 +57,7 @@ func (l *lockouts) remaining(addr string, now time.Time) time.Duration {
 
 // fail 記錄 addr 的一次密碼錯誤；連續達到 maxFailures 次時開始鎖定並重新計數。
 func (l *lockouts) fail(addr string, now time.Time) {
+	addr = sourceKey(addr)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.sweep(now)
@@ -77,6 +80,7 @@ func (l *lockouts) fail(addr string, now time.Time) {
 
 // reset 在登入成功時清除 addr 的計數。
 func (l *lockouts) reset(addr string) {
+	addr = sourceKey(addr)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.remove(addr)
@@ -134,4 +138,65 @@ func (l *lockouts) remove(addr string) {
 		l.order.Remove(el)
 		delete(l.entries, addr)
 	}
+}
+
+// MaxOIDCStartsPerSource 是同一個來源（sourceKey）在 OIDCLoginTTL 內最多可以開始幾次 OIDC 登入（AUTH-R17）。
+// start 是免驗證的端點，沒有這個上限時，一個來源就能佔滿 MaxPendingOIDCLogins，讓 owner 拿到 429。
+const MaxOIDCStartsPerSource = 20
+
+// startLimiter 記錄每個來源最近 OIDCLoginTTL 內開始的 OIDC 登入時間。只存在記憶體，有筆數上限。
+type startLimiter struct {
+	mu      sync.Mutex
+	max     int // 來源筆數上限
+	window  time.Duration
+	perKey  int
+	entries map[string][]time.Time
+}
+
+func newStartLimiter(maxKeys, perKey int, window time.Duration) *startLimiter {
+	return &startLimiter{max: maxKeys, window: window, perKey: perKey, entries: map[string][]time.Time{}}
+}
+
+// allow 在 key 還沒到上限時記錄一次並回傳 true。
+func (l *startLimiter) allow(key string, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	live := l.live(key, now)
+	if len(live) >= l.perKey {
+		return false
+	}
+	if _, ok := l.entries[key]; !ok && len(l.entries) >= l.max {
+		// 先清掉過期的；仍然太多時淘汰最久沒有活動的來源（只會讓它少計幾次，不會擋住別人）。
+		for k := range l.entries {
+			l.live(k, now)
+		}
+		if len(l.entries) >= l.max {
+			var oldest string
+			var at time.Time
+			for k, ts := range l.entries {
+				if last := ts[len(ts)-1]; oldest == "" || last.Before(at) {
+					oldest, at = k, last
+				}
+			}
+			delete(l.entries, oldest)
+		}
+	}
+	l.entries[key] = append(live, now)
+	return true
+}
+
+// live 回傳 key 在時間窗內的紀錄，並清掉過期的。呼叫端須持有 mu。
+func (l *startLimiter) live(key string, now time.Time) []time.Time {
+	ts := l.entries[key]
+	i := 0
+	for i < len(ts) && !now.Before(ts[i].Add(l.window)) {
+		i++
+	}
+	ts = ts[i:]
+	if len(ts) == 0 {
+		delete(l.entries, key)
+		return nil
+	}
+	l.entries[key] = ts
+	return ts
 }

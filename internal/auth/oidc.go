@@ -95,10 +95,14 @@ type OIDCStart struct {
 
 // StartOIDC 開始一次 OIDC 登入（AUTH-R17）：產生 state、nonce、code verifier 與綁定用的 cookie，
 // 存在 server 端（10 分鐘後失效、只能用一次），回傳要轉去的 authorization endpoint。next 以 SafeNext 檢查。
-func (s *Service) StartOIDC(ctx context.Context, next string) (OIDCStart, error) {
+// ip 是 SourceAddr 決定的來源位址：同一個來源 10 分鐘內最多 MaxOIDCStartsPerSource 次，超過時 ErrOIDCBusy。
+func (s *Service) StartOIDC(ctx context.Context, next, ip string) (OIDCStart, error) {
 	p := s.oidc.Provider
 	if p == nil {
 		return OIDCStart{}, ErrOIDCDisabled
+	}
+	if !s.oidcStarts.allow(sourceKey(ip), s.clock.Now()) {
+		return OIDCStart{}, ErrOIDCBusy
 	}
 	var vals [4]string
 	for i := range vals {
