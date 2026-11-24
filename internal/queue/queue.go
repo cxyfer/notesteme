@@ -37,6 +37,9 @@ func PriorityByName(name string) (int, bool) {
 // 內建 worker 執行的任務，executor 為 builtin。
 const ExecutorBuiltin = "builtin"
 
+// Agent 領取的任務（AGT），executor 為 agent。
+const ExecutorAgent = "agent"
+
 // 資源類別（ADR-0004）。
 const (
 	ResourceDownload = "download"
@@ -147,9 +150,19 @@ func (q *Queue) ClaimFree(ctx context.Context, running map[string]int) ([]store.
 	return out, nil
 }
 
-// Entries 列出還沒結束的任務：先是已被領取的，再是 pending 的（排序與領取相同，見 store.Repo.QueueTasks）。
+// Entries 列出還沒結束的任務：先是內建 worker 的，再是 Agent 的（AGT）；各自先列已被領取的，
+// 再列 pending 的，pending 的排序與各自的領取相同（見 store.Repo.QueueTasks）。
 func (q *Queue) Entries(ctx context.Context) ([]store.QueueEntry, error) {
-	return q.st.Read().QueueTasks(ctx, ExecutorBuiltin, AgingInterval)
+	r := q.st.Read()
+	out, err := r.QueueTasks(ctx, ExecutorBuiltin, AgingInterval)
+	if err != nil {
+		return nil, err
+	}
+	agent, err := r.QueueTasks(ctx, ExecutorAgent, AgingInterval)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, agent...), nil
 }
 
 // MaxRetryable 是佇列頁「失敗」清單最多列出的筆數。

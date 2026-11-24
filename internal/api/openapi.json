@@ -5312,12 +5312,12 @@
             "type": "boolean"
           },
           "running": {
-            "description": "正在執行（已被領取）的任務數",
+            "description": "內建 worker 正在執行（已被領取）的任務數；Agent 領取的任務不算（Agent 另有自己的額度，AGT-R2）",
             "format": "int64",
             "type": "integer"
           },
           "waiting": {
-            "description": "等待領取的任務數",
+            "description": "等待內建 worker 領取的任務數；等待 Agent 領取的任務不算",
             "format": "int64",
             "type": "integer"
           }
@@ -5440,9 +5440,21 @@
       "QueueTask": {
         "additionalProperties": false,
         "properties": {
+          "agent": {
+            "description": "領取這個任務的 Agent（token 名稱）；只有被 Agent 領取中的任務才有",
+            "type": "string"
+          },
           "attempts": {
             "format": "int64",
             "type": "integer"
+          },
+          "executor": {
+            "description": "builtin 是內建 worker 執行的任務，agent 是等待或已被 Agent 領取的任務（AGT）",
+            "enum": [
+              "builtin",
+              "agent"
+            ],
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -5453,6 +5465,14 @@
           },
           "item_id": {
             "type": "string"
+          },
+          "lease_until": {
+            "description": "Agent 租約的到期時間（AGT-R2、R4）；只有被 Agent 領取中的任務才有，其他是 null",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "not_before": {
             "description": "重試或等待時，最早可以再被領取的時間",
@@ -5484,7 +5504,9 @@
           "resource_class",
           "state",
           "attempts",
-          "not_before"
+          "not_before",
+          "executor",
+          "lease_until"
         ],
         "type": "object"
       },

@@ -1,4 +1,5 @@
 AGT-agent-tasks.feature: An agent claims several tasks with their full context
+AGT-agent-tasks.feature: The queue shows agent tasks with their lease
 AGT-agent-tasks.feature: Two agents never receive the same task
 AGT-agent-tasks.feature: A valid submission completes the task
 AGT-agent-tasks.feature: An invalid submission is explained and the lease is kept

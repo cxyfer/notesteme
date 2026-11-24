@@ -319,7 +319,8 @@ func (q *Queries) ItemTaskIDs(ctx context.Context, itemID string) ([]string, err
 
 const listQueueTasks = `-- name: ListQueueTasks :many
 SELECT t.id AS id, t.kind AS kind, t.resource_class AS resource_class, t.state AS state, t.attempts AS attempts,
-       t.priority AS priority, t.not_before AS not_before, sr.item_id AS item_id,
+       t.priority AS priority, t.not_before AS not_before, t.lease_owner AS lease_owner, t.lease_until AS lease_until,
+       sr.item_id AS item_id,
        i.platform AS platform, i.external_id AS external_id, i.part AS part,
        CASE WHEN t.state = 'leased' THEN 0
             WHEN t.not_before IS NOT NULL AND t.not_before > CAST(?1 AS INTEGER) THEN 2
@@ -346,6 +347,8 @@ type ListQueueTasksRow struct {
 	Attempts      int64
 	Priority      int64
 	NotBefore     *int64
+	LeaseOwner    *string
+	LeaseUntil    *int64
 	ItemID        string
 	Platform      string
 	ExternalID    string
@@ -376,6 +379,8 @@ func (q *Queries) ListQueueTasks(ctx context.Context, arg ListQueueTasksParams) 
 			&i.Attempts,
 			&i.Priority,
 			&i.NotBefore,
+			&i.LeaseOwner,
+			&i.LeaseUntil,
 			&i.ItemID,
 			&i.Platform,
 			&i.ExternalID,

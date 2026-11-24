@@ -2,9 +2,12 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/queue"
+	"github.com/cxyfer/notesteme/internal/store"
 )
 
 func queueOf(t *testing.T, r *itemsRig) QueueStatus {
@@ -185,5 +188,70 @@ func TestItemDetailShowsAttempts(t *testing.T) {
 	detail = decode[ItemDetail](t, r.owner("GET", "/api/items/"+id, ""))
 	if detail.Stages[0].Attempts != 1 {
 		t.Errorf("做完一次：attempts = %d，預期 1", detail.Stages[0].Attempts)
+	}
+}
+
+// Agent 的任務也列在 tasks（在內建 worker 的任務之後），被領取時附 Agent 與租約到期時間；
+// lanes 只算內建 worker 的任務（Agent 另有自己的額度，AGT-R2），內建 worker 的持有者（worker ID）不外露。
+func TestQueueListsAgentTasksWithTheirLease(t *testing.T) {
+	var q *queue.Queue
+	r := newItemsRigAPI(t, func(d *Deps) { q = d.Queue })
+	ctx := context.Background()
+	for _, id := range []string{"abc123xxxxx", "def456xxxxx"} {
+		if rec := r.owner("POST", "/api/items", `{"url":"https://www.youtube.com/watch?v=`+id+`"}`); rec.Code != 201 {
+			t.Fatalf("新增 %s：%d %s", id, rec.Code, rec.Body)
+		}
+	}
+	builtin := queueOf(t, r).Tasks
+	if len(builtin) != 2 {
+		t.Fatalf("前置條件：tasks = %+v", builtin)
+	}
+	// 在第一部影音的 metadata 步驟上放兩個 Agent 任務（llm），其中一個被 Agent 領取。
+	var lease time.Time
+	if err := r.st.Tx(ctx, func(tx *store.Repo) error {
+		runs, err := tx.StageRunsByItem(ctx, builtin[0].ItemID)
+		if err != nil || len(runs) == 0 {
+			return fmt.Errorf("stage runs：%v", err)
+		}
+		for i := 0; i < 2; i++ {
+			if _, err := tx.InsertTask(ctx, store.NewTask{StageRunID: runs[0].ID, Kind: "correct", Executor: queue.ExecutorAgent,
+				ResourceClass: queue.ResourceLLM}); err != nil {
+				return err
+			}
+		}
+		got, err := tx.ClaimTasks(ctx, store.ClaimOptions{Owner: "claude-code", Max: 1, Lease: 10 * time.Minute,
+			Executor: queue.ExecutorAgent, AgingInterval: queue.AgingInterval})
+		if err != nil || len(got) != 1 {
+			return fmt.Errorf("Agent 領取 = %d, %v", len(got), err)
+		}
+		lease = r.clk.Now().Add(10 * time.Minute).UTC().Truncate(time.Millisecond)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Claim(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	st := queueOf(t, r)
+	if len(st.Tasks) != 4 {
+		t.Fatalf("tasks = %+v", st.Tasks)
+	}
+	b0, b1, a0, a1 := st.Tasks[0], st.Tasks[1], st.Tasks[2], st.Tasks[3]
+	if b0.Executor != queue.ExecutorBuiltin || b0.State != "leased" || b0.Agent != "" || b0.LeaseUntil != nil ||
+		b1.Executor != queue.ExecutorBuiltin || b1.State != "pending" {
+		t.Errorf("內建 worker 的任務 = %+v、%+v", b0, b1)
+	}
+	if a0.Executor != queue.ExecutorAgent || a0.State != "leased" || a0.Agent != "claude-code" || a0.LeaseUntil == nil ||
+		!a0.LeaseUntil.Equal(lease) || a0.ResourceClass != queue.ResourceLLM {
+		t.Errorf("被領取的 Agent 任務 = %+v（預期租約到 %v）", a0, lease)
+	}
+	if a1.Executor != queue.ExecutorAgent || a1.State != "pending" || a1.Agent != "" || a1.LeaseUntil != nil {
+		t.Errorf("等待中的 Agent 任務 = %+v", a1)
+	}
+	if c := classOf(t, st, queue.ResourceLLM); c.Running != 0 || c.Waiting != 0 {
+		t.Errorf("llm 不計 Agent 的任務：%+v", c)
+	}
+	if c := classOf(t, st, queue.ResourceDownload); c.Running != 1 || c.Waiting != 1 {
+		t.Errorf("download = %+v", c)
 	}
 }

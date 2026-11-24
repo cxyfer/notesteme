@@ -17,8 +17,8 @@ import (
 type QueueClass struct {
 	Class   string `json:"class" doc:"資源類別：download、asr、llm、frames"`
 	Limit   int    `json:"limit" doc:"並行上限"`
-	Running int    `json:"running" doc:"正在執行（已被領取）的任務數"`
-	Waiting int    `json:"waiting" doc:"等待領取的任務數"`
+	Running int    `json:"running" doc:"內建 worker 正在執行（已被領取）的任務數；Agent 領取的任務不算（Agent 另有自己的額度，AGT-R2）"`
+	Waiting int    `json:"waiting" doc:"等待內建 worker 領取的任務數；等待 Agent 領取的任務不算"`
 	Paused  bool   `json:"paused" doc:"這個類別是否單獨暫停；整個佇列暫停時不一定是 true，看最上層的 paused"`
 }
 
@@ -32,6 +32,9 @@ type QueueTask struct {
 	State         string     `json:"state" enum:"leased,pending"`
 	Attempts      int        `json:"attempts"`
 	NotBefore     *time.Time `json:"not_before" doc:"重試或等待時，最早可以再被領取的時間"`
+	Executor      string     `json:"executor" enum:"builtin,agent" doc:"builtin 是內建 worker 執行的任務，agent 是等待或已被 Agent 領取的任務（AGT）"`
+	Agent         string     `json:"agent,omitempty" doc:"領取這個任務的 Agent（token 名稱）；只有被 Agent 領取中的任務才有"`
+	LeaseUntil    *time.Time `json:"lease_until" doc:"Agent 租約的到期時間（AGT-R2、R4）；只有被 Agent 領取中的任務才有，其他是 null"`
 }
 
 // QueueFailedTask 是可以手動重試的步驟與它最新的任務（POST /api/tasks/:id/retry 用 id）。
@@ -49,7 +52,8 @@ type QueueFailedTask struct {
 	FinishedAt    *time.Time `json:"finished_at"`
 }
 
-// QueueStatus 是佇列的狀態。tasks 先列已被領取的，再列 pending 的，pending 的順序就是之後領取的順序。
+// QueueStatus 是佇列的狀態。tasks 先列內建 worker 的任務，再列 Agent 的任務（AGT）；各自先列已被領取的，
+// 再列 pending 的，pending 的順序就是各自之後領取的順序。lanes 只計算內建 worker 的任務。
 type QueueStatus struct {
 	Paused bool         `json:"paused" doc:"整個佇列是否暫停"`
 	Lanes  []QueueClass `json:"lanes"`
@@ -94,15 +98,23 @@ func (rt *routes) queueStatus(ctx context.Context) (QueueStatus, error) {
 	out := QueueStatus{Paused: ctl.Paused, Lanes: make([]QueueClass, 0, len(ctl.Classes)), Tasks: make([]QueueTask, 0, len(entries))}
 	running, pending := map[string]int{}, map[string]int{}
 	for _, e := range entries {
-		if e.State == "leased" {
-			running[e.ResourceClass]++
-		} else {
-			pending[e.ResourceClass]++
-		}
-		out.Tasks = append(out.Tasks, QueueTask{
+		task := QueueTask{
 			ID: e.ID, ItemID: e.ItemID, Item: source.Ref(e.Platform, e.ExternalID, e.Part), Stage: e.Stage,
 			ResourceClass: e.ResourceClass, State: e.State, Attempts: e.Attempts, NotBefore: e.NotBefore,
-		})
+			Executor: e.Executor,
+		}
+		switch {
+		case e.Executor == queue.ExecutorAgent:
+			// Agent 的租約屬於 Agent（AGT A7），lanes 不計；內建 worker 的持有者是 worker 的 ID，不外露。
+			if e.State == "leased" {
+				task.Agent, task.LeaseUntil = e.LeaseOwner, e.LeaseUntil
+			}
+		case e.State == "leased":
+			running[e.ResourceClass]++
+		default:
+			pending[e.ResourceClass]++
+		}
+		out.Tasks = append(out.Tasks, task)
 	}
 	failed, err := q.Retryable(ctx)
 	if err != nil {

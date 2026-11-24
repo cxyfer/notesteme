@@ -244,6 +244,11 @@ type QueueEntry struct {
 	Attempts      int
 	Priority      int
 	NotBefore     *time.Time
+	// Executor 是查詢時指定的 executor（builtin 或 agent）。
+	Executor string
+	// LeaseOwner、LeaseUntil 只在 leased 時有值：持有者（builtin 是 worker 的 ID，agent 是 token 名稱）與租約到期時間。
+	LeaseOwner string
+	LeaseUntil *time.Time
 }
 
 // QueueTasks 列出 executor 還沒結束的任務：先是已被領取的，再是 pending 的。
@@ -260,11 +265,18 @@ func (r *Repo) QueueTasks(ctx context.Context, executor string, aging time.Durat
 	}
 	out := make([]QueueEntry, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, QueueEntry{
+		e := QueueEntry{
 			ID: row.ID, ItemID: row.ItemID, Platform: row.Platform, ExternalID: row.ExternalID, Part: int(row.Part),
 			Stage: row.Kind, ResourceClass: row.ResourceClass, State: row.State, Attempts: int(row.Attempts),
-			Priority: int(row.Priority), NotBefore: msToTime(row.NotBefore),
-		})
+			Priority: int(row.Priority), NotBefore: msToTime(row.NotBefore), Executor: executor,
+		}
+		if row.State == "leased" {
+			if row.LeaseOwner != nil {
+				e.LeaseOwner = *row.LeaseOwner
+			}
+			e.LeaseUntil = msToTime(row.LeaseUntil)
+		}
+		out = append(out, e)
 	}
 	return out, nil
 }

@@ -40,6 +40,21 @@ Feature: Agent tasks
                      "prompt": "*", "cues": "*", "output_schema": "*" } ] }
       """
 
+  # 佇列頁顯示 Agent 領取的任務、是哪個 Agent 與租約到期時間（docs/ui/pages.md 第 6 節）；等待中的 Agent 任務沒有租約。
+  @AGT-01 @AGT-R2
+  Scenario: The queue shows agent tasks with their lease
+    When the agent "claude" claims up to 1 task of kind "correct"
+    And the owner sends "GET /api/queue"
+    Then the response status is 200
+    And the response contains:
+      """
+      { "tasks": [
+          { "item": "yt:long08xxxxx", "stage": "correct", "resource_class": "llm", "executor": "agent",
+            "state": "leased", "agent": "claude-code", "lease_until": "2026-11-12T10:10:00Z" },
+          { "item": "yt:long08xxxxx", "stage": "correct", "executor": "agent", "state": "pending", "lease_until": null }
+      ] }
+      """
+
   @AGT-02 @AGT-R3
   Scenario: Two agents never receive the same task
     When the agent "claude" claims up to 3 tasks of kind "correct"

@@ -116,7 +116,8 @@ WHERE sr.item_id = sqlc.arg(item_id);
 -- row is the task the next claim takes. The score is computed in the select list because sqlc does
 -- not rewrite parameters inside ORDER BY.
 SELECT t.id AS id, t.kind AS kind, t.resource_class AS resource_class, t.state AS state, t.attempts AS attempts,
-       t.priority AS priority, t.not_before AS not_before, sr.item_id AS item_id,
+       t.priority AS priority, t.not_before AS not_before, t.lease_owner AS lease_owner, t.lease_until AS lease_until,
+       sr.item_id AS item_id,
        i.platform AS platform, i.external_id AS external_id, i.part AS part,
        CASE WHEN t.state = 'leased' THEN 0
             WHEN t.not_before IS NOT NULL AND t.not_before > CAST(sqlc.arg(now) AS INTEGER) THEN 2
