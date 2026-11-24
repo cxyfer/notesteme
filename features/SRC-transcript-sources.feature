@@ -100,6 +100,24 @@ Feature: Transcript sources and quality
       | supadata-repeating.json     | repetition        |
       | supadata-music-only.json    | music_only        |
 
+  @SRC-03 @SRC-R4
+  Scenario: A paid result that fails the coverage check is still used when nothing else is left
+    Given a YouTube video "yt:paid01xxxxx" with:
+      | field    | value |
+      | language | en    |
+      | duration | 600   |
+    And "yt:paid01xxxxx" has no caption tracks
+    And the source "supadata" returns "supadata-covers-200s.json" for "yt:paid01xxxxx"
+    When the owner ingests "yt:paid01xxxxx" with the overrides:
+      """
+      language:
+        fallback: [supadata]
+      until: transcript
+      """
+    And the worker runs until idle
+    Then the transcript of "yt:paid01xxxxx" came from "supadata"
+    And "yt:paid01xxxxx" shows the message "字幕只涵蓋不到一半的片長，沒有通過品質檢查；但這是已付費的結果，所以仍採用。請檢查字幕，必要時改用其他來源重跑。"
+
   @SRC-02 @SRC-R5
   Scenario: Running out of sources fails with a fix action
     Given a YouTube video "yt:nocap1xxxxx" titled "No captions here"

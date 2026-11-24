@@ -154,3 +154,27 @@ func musicOnly(text string) bool {
 	}
 	return marked
 }
+
+// heldPaid 是暫留的付費來源結果：它沒有通過 low_coverage 或 repetition，但已經付過費（SRC-R4 的例外，收尾 D5）。
+type heldPaid struct {
+	id     string
+	f      fallbackFetcher
+	got    *fetchResult
+	reason string
+	// row 是 decisions 中這個來源的 rejected 那一列。
+	row int
+}
+
+// keepPaid 回報被拒的原因是否允許在所有來源用完時仍採用已付費的結果。
+// 只有 low_coverage、repetition：付費 ASR 的涵蓋率低多半是片頭或間奏的音樂與靜音，結果仍有價值；
+// music_only 的結果沒有內容，language_mismatch 的結果是錯的語言，兩者採用也沒有用，照舊失敗。
+func keepPaid(reason string) bool { return reason == reasonLowCoverage || reason == reasonRepetition }
+
+// heldNote 是採用暫留結果時附在步驟訊息的提醒。
+func heldNote(reason string) string {
+	what := map[string]string{
+		reasonLowCoverage: "字幕只涵蓋不到一半的片長",
+		reasonRepetition:  "字幕有太多重複的句子",
+	}[reason]
+	return what + "，沒有通過品質檢查；但這是已付費的結果，所以仍採用。請檢查字幕，必要時改用其他來源重跑。"
+}

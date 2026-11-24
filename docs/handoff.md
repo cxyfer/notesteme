@@ -1,6 +1,6 @@
 # 交接：開發進度（M1～M5 與 Web UI）
 
-> 更新：2026-11-24。M1～M5 的後端、Client Web UI（UI-0～UI-8）與 Hub Web UI 都已推送到 master；944 個自動化場景（預設 tag 314＋`@M3,@M4,@M5` 630）全部通過（本機與 CI 驗證）。安全審查的 16 項發現已修補（第 1 節「安全修補 A／B／C」）。`@manual`、`@pending-m0`、真實樣本與真實服務的驗收屬 owner，做不到的清單在第 2 節。GitHub Actions 自 2026-11-23 約 16:30 起因帳務問題（付款失敗或額度上限）無法啟動 job，所有驗證都在本機做。依 owner 的 /goal（MVP 階段不再開 PR）每個切片完成後直接推送 master。2026-11-22 前的 PR #1～#19（LOCAL、PODCAST、ESTIMATE、M2 S0～S2、S6a 等）已合併，之後的切片見 `git log`。**接手請先讀第 2 節的「2026-11-24 現況」。**
+> 更新：2026-11-24。M1～M5 的後端、Client Web UI（UI-0～UI-8）與 Hub Web UI 都已推送到 master；945 個自動化場景（預設 tag 315＋`@M3,@M4,@M5` 630）全部通過（本機與 CI 驗證）。安全審查的 16 項發現已修補（第 1 節「安全修補 A／B／C」）。`@manual`、`@pending-m0`、真實樣本與真實服務的驗收屬 owner，做不到的清單在第 2 節。GitHub Actions 自 2026-11-23 約 16:30 起因帳務問題（付款失敗或額度上限）無法啟動 job，所有驗證都在本機做。依 owner 的 /goal（MVP 階段不再開 PR）每個切片完成後直接推送 master。2026-11-22 前的 PR #1～#19（LOCAL、PODCAST、ESTIMATE、M2 S0～S2、S6a 等）已合併，之後的切片見 `git log`。**接手請先讀第 2 節的「2026-11-24 現況」。**
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -555,12 +555,14 @@
   - 決定（AUTH 待決問題 A28，待追認）：直接改資料目錄、不需要舊密碼、撤銷全部 session、新密碼只接受環境變數／stdin／終端機。
   - 介面對照（除了「還沒實作」文字，另用腳本把規格列出的介面對照程式）：規格裡的 API 路由（對 OpenAPI 與 `mux.Handle` 註冊）、CLI 子命令（對 CLI 分派）、MCP／HMCP／AGT 的 tool 名稱（55 個）與 `NOTESTEME_*` 環境變數（29 個）。除了 `password set`，沒有「規格有列、程式沒有」而且沒有被明確延後的項目。找到的差異都是規格自己記錄的：`notesteme costs`（COST C6 延後）、`GET/POST /api/views`（LIB、SRCH 明寫不在範圍）、`NOTESTEME_PROVIDERS_GROQ_API_KEY`（SRC 記錄的命名衝突，暫用 `NOTESTEME_GROQ_API_KEY`）；其餘是掃描的誤報（截斷的路徑、手寫路由、上游 provider 的 API）。
 
+- **收尾 D5：SRC-R4 付費結果的例外（2026-11-24）**：D3 把「已付費的 ASR 被 R4 拒絕」留成待決；依 advisor 的裁決（照 /goal 由我決定、待追認）實作窄版：只在 `runFallback` 所有來源用完那一處，採用第一個因 `low_coverage`／`repetition` 被拒的付費結果，probe 換成 `used`（保留原因）、步驟訊息附提醒。測試：`internal/pipeline/quality_paid_test.go`（採用 `low_coverage` 與 `repetition`；`music_only`、免費來源、語言不符照舊失敗；後面有來源通過就用後面的；後面 `needs_action` 仍 blocked；兩個付費都被拒採用第一個；並做過兩個變異檢查）；新增預設 tag 場景 `A paid result that fails the coverage check is still used when nothing else is left`（預設 tag 314 → 315，總共 945）。
+
 ## 2. 下一步
 
 ### 2026-11-24 現況
 
 - **已完成並推送（master）**：M1、M2（後端與場景）、M3（SPB、CHAP、FRM、NOTE、VAULT、GEM）、M4（NOTIFY、SUB、COST、BATCH、DIG、SRC-10、SRCH、GLOS、BND、AUTH、OPS、ENTRY、LIB-08/09）、M5（HACC、HREP、HMCP、HSHR、Postgres＋S3 backend、`deploy/docker/compose.hub.yaml`）、UI-0～UI-8、Hub Web UI（`web/hub`）。三份安全修補（Hub、bundle／分享、Client）已合併。
-- **收尾切片（已完成並推送）**：盤點出規格有寫、沒有場景守住的項目，由四個切片補完——D1：`POST /api/tasks/{id}/retry`／`cancel`（PIPE）、NFR-REL-2 讀取時比對 sha256、LIB-R4 `group_by`、修好不穩定測試 `TestMCPLoopbackRechecksPermissions`；D2：VAULT-R12 的 git vault 刪除、SRC-R11 文字語言偵測與 `mixed`（`@wip` 場景已拿掉 `@wip`）、SRC-R6「現在改用語音轉錄」動作、yt-dlp 每日排程更新（OPS-R6／R7）；D3：SRC-R4 的 `low_coverage`／`repetition`／`music_only`、SRC-R13 的 Whisper 幻覺過濾、ING-08 的 `llm_usd` 與 reprobe 的 `estimate_usd`（SRC-10 R10）、規格裡過期的「還沒做」文字、`@pending-m0` 的盤點（14 個場景）；D4：`notesteme password set`（AUTH 介面列了卻一直沒實作）與規格文字掃描。場景數現在是預設 tag（`@M1,@M2`）314＋`@M3,@M4,@M5` 630 = 944，全部 passed。摘要見第 1 節末尾的「收尾 D1／D2／D3／D4」。
+- **收尾切片（已完成並推送）**：盤點出規格有寫、沒有場景守住的項目，由五個切片補完——D1：`POST /api/tasks/{id}/retry`／`cancel`（PIPE）、NFR-REL-2 讀取時比對 sha256、LIB-R4 `group_by`、修好不穩定測試 `TestMCPLoopbackRechecksPermissions`；D2：VAULT-R12 的 git vault 刪除、SRC-R11 文字語言偵測與 `mixed`（`@wip` 場景已拿掉 `@wip`）、SRC-R6「現在改用語音轉錄」動作、yt-dlp 每日排程更新（OPS-R6／R7）；D3：SRC-R4 的 `low_coverage`／`repetition`／`music_only`、SRC-R13 的 Whisper 幻覺過濾、ING-08 的 `llm_usd` 與 reprobe 的 `estimate_usd`（SRC-10 R10）、規格裡過期的「還沒做」文字、`@pending-m0` 的盤點（14 個場景）；D4：`notesteme password set`（AUTH 介面列了卻一直沒實作）與規格文字掃描；D5：SRC-R4 對已付費結果的例外（付費 ASR 被拒時仍採用）。場景數現在是預設 tag（`@M1,@M2`）315＋`@M3,@M4,@M5` 630 = 945，全部 passed。摘要見第 1 節末尾的「收尾 D1／D2／D3／D4／D5」。
 - **owner 要做的事（我做不到）**：
   1. **GitHub Actions**：repo 公開之後（2026-11-24）CI 才真的跑起來，第一次完整執行找到兩個問題，都已修正：
      - `go test -race ./...` 在 GitHub 的 runner 上超過每個測試程式 30 分鐘的上限，`features` 被中止（05:15 的那次還在 27.5 分鐘通過，之後測試變多）。CI 改成平行的四個 job：`go`（其餘套件，`-race`，逾時 60 分鐘）、`bdd`（`./features`，`-race`，60 分鐘）、`bdd-extra`（`@M3,@M4,@M5`，不加 `-race`，45 分鐘；在 runner 上約 3 分鐘）、`coverage`（涵蓋率門檻）。
@@ -580,7 +582,7 @@
   7. **CI 逾時餘裕**：已處理（第 1 項）。拆成平行的 job 之後每個測試程式的上限是 60 分鐘（實測最慢約 35 分鐘）；場景再增加時 `bdd`（`-race` 下的 `./features`）是第一個會碰到上限的，可以再依 feature 檔分片。
   8. **S3 相容服務改用 SeaweedFS（ADR-0030 修訂，待追認）**：compose 的 `hub-minio`、`hub-minio-init` 改為 `hub-s3`（`chrislusf/seaweedfs:4.55`，單容器 `weed server -s3`）與 `hub-s3-init`（`curlimages/curl:8.18.0` 以 SigV4 建 bucket）；volume 改名 `hub-s3-data`，沒有提供 MinIO 資料的遷移（沒有已知的部署）。代價：SeaweedFS 在 `hub-internal` network 上還開了沒有認證的內部服務（filer 8888、master 9333、Iceberg 8181 等），Hub 容器被攻破時可繞過 S3 簽章；network 是 internal，只有 Hub 與 migrate 連得到。也可以改用 R2 或 AWS S3（`docs/hub-deployment.md` §3）。
   9. **收尾 D3 的決定（待追認）**：
-     - **請優先決定**：已付費的 Groq 轉錄被 SRC-R4 拒絕（`low_coverage`、`repetition`）時，步驟仍以「找不到可用的字幕來源」失敗，手動重跑會再付一次、而且多半又被拒絕。建議：付費 ASR 是最後一個可用來源時採用並顯示提醒，不要失敗（需要新的狀態、訊息與 UI，所以沒有在 /goal 內做）。
+     - **已決定（收尾 D5，待追認）**：已付費的 Groq／Supadata 結果被 SRC-R4 的 `low_coverage` 或 `repetition` 拒絕、而且沒有其他來源可用時，改為**採用它並附提醒**，不再失敗（`music_only`、`language_mismatch`、免費來源照舊；後面來源 `needs_action` 仍 blocked；多個付費來源被拒時採用順序中第一個）。見 SRC 待決問題「付費結果的例外」。
      - SRC-R4：品質檢查只套用在 `fallback` 來源（Supadata、Groq），不套用平台字幕軌；Groq 的涵蓋率用它回報的音訊長度；順序固定為語言→音樂→涵蓋率→重複；少於 5 句不判斷重複；音樂標記用固定清單；門檻是常數、沒有開放設定；沒有提升 transcript 的 `impl_version`（已完成的步驟不重跑）。
      - SRC-R13：`no_speech_prob > 0.6` 且 `compression_ratio > 2.4`（都嚴格大於、同時成立）的 segment 移除；連續 3 次以上相同的句子只留一句（含切塊接縫）。
      - LLM 估算：每秒 6 個 token（刻意偏高）；ING 估價的 `total_usd` 在「只有 ASR 費用未知、LLM 確定是 0」時是 `0`（頂層仍帶「部分金額未知」，符合 ING-08「只加總已知的金額」）；reprobe 的 `estimate_usd` 在沒有任何付費 LLM 步驟時仍是 `null`。

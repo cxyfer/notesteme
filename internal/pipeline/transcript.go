@@ -757,6 +757,8 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 	executed, notConfigured := false, false
 	// HSHR-R13～R15：即將呼叫第一個付費來源時查詢 Hub 一次；失敗時照常繼續，完成後附上提醒。
 	prechecked, hubNote := false, ""
+	// 付費來源因 low_coverage、repetition 被拒時暫留它的結果；所有來源用完仍沒有可用的結果時才採用（見 heldPaid）。
+	var held *heldPaid
 	for _, id := range lang.Fallback {
 		f, ok := p.fetchers[id]
 		if !ok {
@@ -801,9 +803,12 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 				decisions = append(decisions, transcript.Decision{
 					Source: id, Lang: transcript.NormalizeLang(got.Lang), State: transcript.StateRejected, Reason: reason,
 				})
+				if held == nil && paidSource(id) && keepPaid(reason) {
+					held = &heldPaid{id: id, f: f, got: got, reason: reason, row: len(decisions) - 1}
+				}
 				continue
 			}
-			res, err := p.fallbackResult(ctx, id, f, it, lang, stage, decisions, got)
+			res, err := p.fallbackResult(ctx, id, f, it, lang, stage, decisions, got, "")
 			addNote(&res, hubNote)
 			return res, err
 		case errors.Is(err, errclass.ErrNoResult):
@@ -837,6 +842,16 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 	if !executed && notConfigured {
 		return blockedFor(stage, decisions, "", msgNoKey, actionSetKey), nil
 	}
+	if held != nil {
+		// SRC-R4 的例外（收尾 D5）：已經付費的結果沒通過 low_coverage 或 repetition，而且沒有其他來源可以用時，
+		// 採用它並附上提醒，不讓已付的費用變成失敗；手動重跑只會再付一次、多半又被拒絕。
+		// 只留一列 probe：把這個來源的 rejected 換成 used（保留原因）。
+		decisions = slices.Delete(slices.Clone(decisions), held.row, held.row+1)
+		res, err := p.fallbackResult(ctx, held.id, held.f, it, lang, stage, decisions, held.got, held.reason)
+		addNote(&res, hubNote)
+		addNote(&res, heldNote(held.reason))
+		return res, err
+	}
 	return result{
 		task: taskFailed, stage: stage, probes: toProbes(decisions),
 		state: store.StageState{
@@ -857,8 +872,9 @@ func blockedFor(stage *store.StageResult, decisions []transcript.Decision, resum
 	}
 }
 
-// fallbackResult 把 fallback 來源回傳的字幕寫成原始字幕的產出。
-func (p *Pipeline) fallbackResult(ctx context.Context, id string, f fallbackFetcher, it store.Item, lang Language, stage *store.StageResult, decisions []transcript.Decision, got *fetchResult) (result, error) {
+// fallbackResult 把 fallback 來源回傳的字幕寫成原始字幕的產出。usedReason 非空代表這個結果沒有通過品質檢查、
+// 但因為是已付費的結果而仍被採用（heldPaid），它會記在 used 那一列的 reason。
+func (p *Pipeline) fallbackResult(ctx context.Context, id string, f fallbackFetcher, it store.Item, lang Language, stage *store.StageResult, decisions []transcript.Decision, got *fetchResult, usedReason string) (result, error) {
 	artLang := transcript.NormalizeLang(got.Lang)
 	if artLang == "" {
 		// 來源沒回報語言時，用影音的原文語言；都不知道就標為 und。
@@ -866,7 +882,7 @@ func (p *Pipeline) fallbackResult(ctx context.Context, id string, f fallbackFetc
 			artLang = "und"
 		}
 	}
-	decisions = append(decisions, transcript.Decision{Source: id, Lang: artLang, State: transcript.StateUsed})
+	decisions = append(decisions, transcript.Decision{Source: id, Lang: artLang, State: transcript.StateUsed, Reason: usedReason})
 	timing := cmp.Or(got.Timing, f.timing)
 	fields := map[string]any{
 		"stage": StageTranscript, "impl_version": p.implVersion(StageTranscript),
