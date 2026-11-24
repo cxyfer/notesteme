@@ -123,17 +123,19 @@ type Channel struct {
 
 // StageRun 是影音某個步驟的一次執行。
 type StageRun struct {
-	ID               string
-	ItemID           string
-	Stage            string
-	Lang             string
-	Variant          string
-	Status           string
-	BlockReason      string
-	ResumeOn         string // blocked 時機器可讀的恢復條件，例如 cookie:bilibili；其他狀態為空
-	ErrorClass       string
-	Message          string
-	Actions          []string
+	ID          string
+	ItemID      string
+	Stage       string
+	Lang        string
+	Variant     string
+	Status      string
+	BlockReason string
+	ResumeOn    string // blocked 時機器可讀的恢復條件，例如 cookie:bilibili；其他狀態為空
+	ErrorClass  string
+	Message     string
+	Actions     []string
+	// LogExcerpt 是讓步驟 failed 或 blocked 的那次執行最後幾行 log（已遮蔽 secret，以換行分隔；PIPE-R16）；其他情況是空字串。
+	LogExcerpt       string
 	Executor         string
 	CacheKey         string
 	ImplVersion      int
@@ -177,6 +179,8 @@ type StageState struct {
 	Message     string
 	Actions     []string
 	NotBefore   *time.Time
+	// LogExcerpt 只有 failed 與 blocked 會帶（PIPE-R16）；空字串寫成 NULL。
+	LogExcerpt string
 }
 
 // StageResult 是步驟完成後記錄的產出與快取鍵。

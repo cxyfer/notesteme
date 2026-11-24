@@ -219,6 +219,8 @@ OUT-subtitle-output.feature: An import with broken timings points at the bad lin
 PIPE-pipeline-queue.feature: Processing stops after the requested stage
 PIPE-pipeline-queue.feature: A temporary failure is retried with backoff
 PIPE-pipeline-queue.feature: A temporary failure becomes a failure after three attempts
+PIPE-pipeline-queue.feature: A failed stage shows the related log lines without secrets
+PIPE-pipeline-queue.feature: A blocked stage shows the related log lines
 PIPE-pipeline-queue.feature: A blocked stage resumes after the fix action
 PIPE-pipeline-queue.feature: Rerunning with the same settings reuses the cached result
 PIPE-pipeline-queue.feature: A new stage implementation invalidates the cache

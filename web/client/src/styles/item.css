@@ -387,6 +387,30 @@
 .stage__actions .callout__actions {
   margin-top: var(--space-2);
 }
+/* log 片段（PIPE-R16）：收合，等寬字型，長行換行，太長時捲動 */
+.stage__log {
+  margin-top: var(--space-2);
+}
+.stage__log summary {
+  cursor: pointer;
+  min-height: 24px;
+}
+.stage__log p {
+  margin: var(--space-1) 0;
+  font-size: var(--font-14);
+}
+.stage__log-text {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-container);
+  background: var(--surface-app);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: var(--font-12);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .run__meta {
   margin: var(--space-1) 0;
   font-size: var(--font-14);

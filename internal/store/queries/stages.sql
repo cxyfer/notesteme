@@ -36,6 +36,7 @@ SELECT * FROM stage_runs WHERE item_id = sqlc.arg(item_id) ORDER BY created_at, 
 -- name: SetStageState :one
 -- Every descriptive column is written (unset means cleared); started_at only changes when given,
 -- finished_at is always overwritten. resume_on is only kept while the new status is blocked.
+-- log_excerpt is written as given (NULL clears it; only failed and blocked carry one, PIPE-R16).
 UPDATE stage_runs SET
   status        = sqlc.arg(status),
   block_reason  = sqlc.arg(block_reason),
@@ -45,7 +46,8 @@ UPDATE stage_runs SET
   actions_json  = sqlc.arg(actions_json),
   not_before    = sqlc.narg(not_before),
   started_at    = COALESCE(sqlc.narg(started_at), started_at),
-  finished_at   = sqlc.narg(finished_at)
+  finished_at   = sqlc.narg(finished_at),
+  log_excerpt   = sqlc.narg(log_excerpt)
 WHERE id = sqlc.arg(id)
 RETURNING item_id, stage, status;
 

@@ -1,8 +1,8 @@
-// 步驟狀態與錯誤（OBS-2）：每個步驟的狀態、執行方式、來源紀錄摘要；failed／blocked／skipped 顯示錯誤類別、訊息、
-// 可以直接處理的按鈕，以及相關的執行紀錄（API 沒有 log 片段，改列 GET /runs 的最近一筆）。
+// 步驟狀態與錯誤（NFR-OBS-2）：每個步驟的狀態、執行方式、來源紀錄摘要；failed／blocked／skipped 顯示錯誤類別、訊息、
+// 可以直接處理的按鈕與相關的執行紀錄；failed／blocked 另外有可以展開、複製的 log 片段（PIPE-R16 的 log_excerpt）。
 import { useTranslation } from "react-i18next";
 
-import { Button, ErrorCallout, StatusBadge, type ErrorAction } from "../../components";
+import { Button, ErrorCallout, StatusBadge, useToast, type ErrorAction } from "../../components";
 import { formatDateTime } from "../../i18n";
 import { STAGES } from "../library/filters";
 import { badgeStatus, calloutCategory, type ApiStage } from "../library/stageView";
@@ -163,6 +163,7 @@ function StageRow({
           actions={actions}
         />
       )}
+      {problem && stage.log_excerpt && <LogExcerpt text={stage.log_excerpt} />}
       {!problem && !explainSkip && actions.length > 0 && (
         <div className="stage__actions">
           {stage.message && <p className="secondary">{stage.message}</p>}
@@ -179,5 +180,36 @@ function StageRow({
         <p className="stage__message secondary">{stage.message}</p>
       )}
     </li>
+  );
+}
+
+/** failed／blocked 步驟的 log 片段（PIPE-R16）：預設收合，等寬字型，可以複製 */
+function LogExcerpt({ text }: { text: string }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+
+  async function copy() {
+    try {
+      // navigator.clipboard 只在安全的來源（https、localhost）存在
+      if (!navigator.clipboard) throw new Error("clipboard unavailable");
+      await navigator.clipboard.writeText(text);
+      toast.show({ title: t("item.stages.logCopied") });
+    } catch {
+      toast.show({ title: t("item.stages.logCopyFailed") });
+    }
+  }
+
+  return (
+    <details className="stage__log">
+      <summary>{t("item.stages.logExcerpt")}</summary>
+      <p className="secondary">{t("item.stages.logExcerptHint")}</p>
+      {/* 片段是 log 原文（不翻譯）；可以用鍵盤捲動 */}
+      <pre className="stage__log-text" tabIndex={0} translate="no">
+        {text}
+      </pre>
+      <Button variant="outline" onClick={() => void copy()}>
+        {t("item.stages.copyLog")}
+      </Button>
+    </details>
   );
 }

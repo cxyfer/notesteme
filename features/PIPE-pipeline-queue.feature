@@ -51,6 +51,35 @@ Feature: Pipeline and task queue
     Then the stage "transcript" of "yt:abc123xxxxx" failed with the error class "retryable"
     And the task of "transcript" for "yt:abc123xxxxx" has 3 attempts
 
+  @PIPE-02 @PIPE-R16
+  Scenario: A failed stage shows the related log lines without secrets
+    Given the source "supadata" returns "http-503" for "yt:abc123xxxxx"
+    When the owner ingests "yt:abc123xxxxx" with the overrides:
+      """
+      language:
+        fallback: [supadata]
+      until: transcript
+      """
+    And the worker runs until idle
+    Then the stage "transcript" of "yt:abc123xxxxx" has no log excerpt
+    When the clock advances by "30s"
+    And the worker runs until idle
+    And the clock advances by "2m"
+    And the worker runs until idle
+    Then the stage "transcript" of "yt:abc123xxxxx" failed with the error class "retryable"
+    And the stage "transcript" of "yt:abc123xxxxx" shows a log excerpt containing "步驟失敗"
+    And the log excerpt of the stage "transcript" of "yt:abc123xxxxx" contains no secret
+
+  @PIPE-02 @PIPE-R16
+  Scenario: A blocked stage shows the related log lines
+    Given yt-dlp fails for "yt:abc123xxxxx" with "ERROR: unable to download video data: HTTP Error 403: Forbidden"
+    When the owner ingests "yt:abc123xxxxx"
+    And the worker runs until idle
+    Then the stage "metadata" of "yt:abc123xxxxx" is blocked with the reason "needs_action"
+    And the stage "metadata" of "yt:abc123xxxxx" shows a log excerpt containing "HTTP Error 403"
+    And the log excerpt of the stage "metadata" of "yt:abc123xxxxx" contains no secret
+    And the stage "transcript" of "yt:abc123xxxxx" has no log excerpt
+
   @PIPE-02 @PIPE-R4
   Scenario: A blocked stage resumes after the fix action
     Given the source "bilibili-ai" requires the cookie "bilibili"

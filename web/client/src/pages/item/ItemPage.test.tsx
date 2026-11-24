@@ -512,6 +512,44 @@ describe("影音詳情：步驟與動作", () => {
     expect(await screen.findByText("已儲存 3 個 cookie。")).toBeTruthy();
   });
 
+  it("failed／blocked 的步驟有可展開、可複製的 log 片段（等寬、不翻譯）；其他狀態沒有；axe 無違規", async () => {
+    const excerpt =
+      'level=WARN msg=步驟失敗 attempt=3 error="supadata 失敗（retryable）：HTTP 503"\nlevel=INFO msg=步驟停下';
+    itemApi({
+      stages: [
+        ...DONE_ALL.slice(0, 1),
+        stage("transcript", "failed", {
+          error_class: "retryable",
+          message: "重試多次仍然失敗。",
+          log_excerpt: excerpt,
+        }),
+        // 不是 failed／blocked 的步驟即使帶著舊的片段也不顯示
+        stage("normalize", "pending", { log_excerpt: "stale" }),
+      ],
+    });
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    try {
+      const { container } = await openItem("/items/item-1?tab=stages");
+      const summary = await screen.findByText("log 片段");
+      const details = summary.closest("details")!;
+      expect(details.open).toBe(false);
+      const pre = details.querySelector("pre")!;
+      expect(pre.textContent).toBe(excerpt);
+      expect(pre.getAttribute("translate")).toBe("no");
+      expect(container.textContent).not.toContain("stale");
+      expect(container.querySelectorAll(".stage__log")).toHaveLength(1);
+      await userEvent.click(summary);
+      expect(details.open).toBe(true);
+      await expectNoA11yViolations(container);
+      await userEvent.click(within(details).getByRole("button", { name: "複製 log 片段" }));
+      expect(writeText).toHaveBeenCalledWith(excerpt);
+      expect(await screen.findByText("已複製 log 片段。")).toBeTruthy();
+    } finally {
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
   it("等待 Agent 的步驟可以改用 API；409 時顯示原因", async () => {
     const api = itemApi({
       stages: [...DONE_ALL.slice(0, 4), stage("correct", "awaiting_agent", { executor: "agent" })],

@@ -618,7 +618,12 @@
       "attempts": "尝试次数",
       "problem": "{{reason}}：{{message}}",
       "problemNoMessage": "{{reason}}。",
-      "showRuns": "查看执行记录"
+      "showRuns": "查看执行记录",
+      "logExcerpt": "日志片段",
+      "logExcerptHint": "这次执行最后几行日志，secret 已遮盖。",
+      "copyLog": "复制日志片段",
+      "logCopied": "已复制日志片段。",
+      "logCopyFailed": "无法复制，请手动选取文本。"
     },
     "runs": {
       "title": "执行记录",

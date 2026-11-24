@@ -35,6 +35,8 @@ type stageJSON struct {
 	NotBefore   *string  `json:"not_before"`
 	Message     string   `json:"message"`
 	Actions     []string `json:"actions"`
+	// LogExcerpt 是 failed、blocked 步驟的 log 片段（PIPE-R16）；nil 代表回應中沒有這個欄位。
+	LogExcerpt *string `json:"log_excerpt"`
 }
 
 type sourceJSON struct {

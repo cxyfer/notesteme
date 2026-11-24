@@ -647,7 +647,12 @@
       "attempts": "Attempts",
       "problem": "{{reason}}: {{message}}",
       "problemNoMessage": "{{reason}}.",
-      "showRuns": "Show the run history"
+      "showRuns": "Show the run history",
+      "logExcerpt": "Log excerpt",
+      "logExcerptHint": "The last log lines of this run, with secrets masked.",
+      "copyLog": "Copy the log excerpt",
+      "logCopied": "Log excerpt copied.",
+      "logCopyFailed": "Could not copy. Select the text instead."
     },
     "runs": {
       "title": "Run history",

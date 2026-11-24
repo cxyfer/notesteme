@@ -60,6 +60,7 @@ func stageRunFromRow(row sqlcdb.StageRun) (StageRun, error) {
 		ResumeOn:         row.ResumeOn,
 		ErrorClass:       row.ErrorClass,
 		Message:          row.ErrorMessage,
+		LogExcerpt:       deref(row.LogExcerpt),
 		Executor:         row.Executor,
 		CacheKey:         row.CacheKey,
 		ImplVersion:      int(row.ImplVersion),
@@ -185,6 +186,7 @@ func (r *Repo) setStageState(ctx context.Context, id string, st StageState) erro
 		NotBefore:    msPtr(st.NotBefore),
 		StartedAt:    started,
 		FinishedAt:   finished,
+		LogExcerpt:   strPtr(st.LogExcerpt),
 		ID:           id,
 	})
 	if errors.Is(err, sql.ErrNoRows) {

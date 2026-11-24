@@ -56,6 +56,50 @@ func (s *Scenario) stageFailedWith(stage, ref, class string) error {
 	return nil
 }
 
+// stageLogExcerptContains 比對步驟的 log 片段（PIPE-R16）包含指定文字。
+func (s *Scenario) stageLogExcerptContains(stage, ref, text string) error {
+	st, err := s.stageOf(ref, stage)
+	if err != nil {
+		return err
+	}
+	if st.LogExcerpt == nil {
+		return fmt.Errorf("%s 的步驟 %s 沒有 log_excerpt（%s）", ref, stage, describeStage(st))
+	}
+	if !strings.Contains(*st.LogExcerpt, text) {
+		return fmt.Errorf("%s 的步驟 %s 的 log 片段不含 %q：\n%s", ref, stage, text, *st.LogExcerpt)
+	}
+	return nil
+}
+
+// stageHasNoLogExcerpt 比對步驟沒有 log 片段。
+func (s *Scenario) stageHasNoLogExcerpt(stage, ref string) error {
+	st, err := s.stageOf(ref, stage)
+	if err != nil {
+		return err
+	}
+	if st.LogExcerpt != nil {
+		return fmt.Errorf("%s 的步驟 %s（%s）不應該有 log_excerpt：\n%s", ref, stage, st.Status, *st.LogExcerpt)
+	}
+	return nil
+}
+
+// stageLogExcerptHasNoSecret 確認步驟的 log 片段存在、不是空的，而且不含已知的 secret 測試值（PIPE-R16、NFR-SEC-3）。
+func (s *Scenario) stageLogExcerptHasNoSecret(stage, ref string) error {
+	st, err := s.stageOf(ref, stage)
+	if err != nil {
+		return err
+	}
+	if st.LogExcerpt == nil || strings.TrimSpace(*st.LogExcerpt) == "" {
+		return fmt.Errorf("%s 的步驟 %s 沒有 log 片段，無法確認不含 secret（%s）", ref, stage, describeStage(st))
+	}
+	for v := range s.knownSecrets() {
+		if strings.Contains(*st.LogExcerpt, v) {
+			return fmt.Errorf("%s 的步驟 %s 的 log 片段含有 secret %q", ref, stage, v)
+		}
+	}
+	return nil
+}
+
 // stageRetriesAt 比對步驟為 pending（重試中），且下一次嘗試的時間相符。
 func (s *Scenario) stageRetriesAt(stage, ref, at string) error {
 	want, err := time.Parse(time.RFC3339, at)

@@ -73,6 +73,7 @@ type Stage struct {
 	Message          string     `json:"message,omitempty"`
 	Actions          []string   `json:"actions"`
 	ActionCodes      []string   `json:"action_codes,omitempty" doc:"actions 中有穩定代碼的動作（例如 use_asr_now：POST /api/items/{id}/use-asr-now）；沒有時省略"`
+	LogExcerpt       string     `json:"log_excerpt,omitempty" doc:"步驟 failed 或 blocked 時，讓它停下的那次執行最後幾行 log（最多 20 行、每行最多 500 bytes，已遮蔽 secret，以換行分隔；PIPE-R16）；其他狀態或沒有 log 時省略"`
 	ConfigSnapshotID string     `json:"config_snapshot_id"`
 	ArtifactID       string     `json:"artifact_id,omitempty"`
 	StartedAt        *time.Time `json:"started_at"`
@@ -254,8 +255,16 @@ func toStage(s store.StageRun, attempts int) Stage {
 	return Stage{
 		Stage: s.Stage, Status: s.Status, BlockReason: s.BlockReason, Executor: s.Executor, ErrorClass: s.ErrorClass, NotBefore: s.NotBefore,
 		Message: s.Message, Actions: actions, ActionCodes: pipeline.ActionCodes(actions), ConfigSnapshotID: s.ConfigSnapshotID, ArtifactID: s.ArtifactID,
-		StartedAt: s.StartedAt, FinishedAt: s.FinishedAt, Attempts: attempts,
+		StartedAt: s.StartedAt, FinishedAt: s.FinishedAt, Attempts: attempts, LogExcerpt: stageLogExcerpt(s),
 	}
+}
+
+// stageLogExcerpt 只在步驟是 failed 或 blocked 時回傳 log 片段（PIPE-R16）：其他寫入狀態的路徑不一定清除它。
+func stageLogExcerpt(s store.StageRun) string {
+	if s.Status == store.StatusFailed || s.Status == store.StatusBlocked {
+		return s.LogExcerpt
+	}
+	return ""
 }
 
 // ---- 新增 ----

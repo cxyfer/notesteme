@@ -462,6 +462,7 @@ type StageRun struct {
 	FinishedAt       *int64
 	CreatedAt        int64
 	ResumeOn         string
+	LogExcerpt       *string
 }
 
 type Subscription struct {

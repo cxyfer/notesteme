@@ -40,6 +40,7 @@
 | PIPE-R13 | 每筆 stage run 都記錄生效設定的快照（`config_snapshot_id`），API 可以查到當時的設定。 |
 | PIPE-R14 | 步驟狀態改變時，透過 SSE（`GET /api/events`）推送事件。事件型別：`item.created`（`type`、`item`、`item_id`）、`stage.status`（另加 `stage`、`status`）。 |
 | PIPE-R15 | 可以取消某部影音的處理；取消後，執行中的子程序整組結束，步驟為 `skipped`（原因 `cancelled`）。 |
+| PIPE-R16 | 步驟成為 `failed` 或 `blocked` 時，保存讓它停下的那次執行最後最多 20 行 log（每行最多 500 bytes），寫入之前遮蔽 secret；`GET /api/items/:id` 該步驟帶 `log_excerpt`，Web UI 的步驟面板可以展開、複製這段「log 片段」，不需要進容器看 log（NFR-OBS-2）。其他狀態不帶。 |
 
 ## 介面
 
@@ -48,6 +49,10 @@
   - `POST /api/queue/pause`、`POST /api/queue/resume`：沒有 body 時作用在整個佇列；`{ "class": "asr" }` 只作用在該資源類別。
   - `POST /api/items/:id/cancel`：取消該影音所有未結束的步驟（PIPE-R15）；`POST /api/tasks/:id/cancel` 只取消單一任務。
 - CLI：`notesteme items ls --status <stage>=<status>`、`notesteme items rerun <item> --from <stage>`
+- log 片段（PIPE-R16）：
+  - 來源：任務每次執行時，log handler（`internal/logctx`）把這次執行輸出的 log（通過 level 過濾的）另外記在記憶體中，只保留最後 20 行；每行是 slog 的 text 格式，不含 `request_id`、`task`、`item`、`stage`（片段本來就屬於這個步驟），超過 500 bytes 的截斷並以「…」結尾（不切斷 UTF-8 字元）。步驟自己回報停下、沒有錯誤時另記一行「步驟停下」，片段不會是空的。
+  - 遮蔽：已知的 secret（環境變數中像 secret 的值、資料庫中所有 secret 的明文，與 BND-R2 的洩漏掃描同一份清單）換成 `[已遮蔽]`；另外遮蔽 `Bearer <token>` 與 `api_key=…`、`token: …`、`password=…`、`cookie=…` 等寫法的值。片段寫進資料庫（也就會進備份），所以在寫入之前遮蔽；讀不到 secret 時不保存片段。
+  - 保存：`stage_runs.log_excerpt`（migration 00035，可為 NULL）；寫入步驟狀態時一併寫入，只有 `failed` 與 `blocked` 有值。API 只在步驟是 `failed` 或 `blocked` 時輸出 `log_excerpt`（以換行分隔；沒有時省略）。
 - `blocked` 的恢復（PIPE-R4）：
   - 步驟因為需要使用者補上某個東西而 `blocked` 時，記錄恢復條件 `resume_on`，格式是 `<種類>:<名稱>`，目前只有 `cookie:youtube` 與 `cookie:bilibili`（`errclass.Error.ResumeOn`）。沒有 `resume_on` 的 `blocked`（例如缺 API key）不會自動恢復，要手動重試。`resume_on` 只在步驟是 `blocked` 時保留，離開 `blocked` 就清空。
   - `POST /api/cookies` 儲存成功後，以 `cookie:<platform>` 呼叫 `ResumeBlocked`：在同一個交易中，找出沒有刪除的影音裡每個（影音、步驟）最新一筆、`resume_on` 相符的 `blocked` 步驟，改回 `pending`，並以原本任務的優先順序與資源類別建立新任務，嘗試次數從 0 開始。
@@ -95,3 +100,4 @@
   - **重跑**：快取命中時發現的，就是這個步驟自己重新產生（當成沒有命中）。讀取時發現的，從產生它的步驟（來源紀錄的 `stage`）以 `Rerun` 重新處理：沿用影音的 `until`，設定依影音目前的處理方案與覆寫（和使用者手動重跑相同，可能與當初的快照不同），優先順序是手動。損毀的產出要仍是現行版本才重跑。下游步驟讀到損毀的輸入時，這次執行以 permanent 結束，但它已被重跑取代，結果會被丟棄。匯入、編輯（`stage` 不是 pipeline 的步驟）與從 bundle、Hub 播種（`seeded`）的產出不自動重跑，只標記並回報。
   - **成本**：重跑走一般的流程。LLM 步驟的 chunk 層快取（`llm_chunks`，不依賴產出檔）照常重用，已付費的 chunk 不會再呼叫 provider、不新增花費；ASR、下載等其他付費步驟會重新呼叫一次（重新產生壞掉的結果本來就要付費，預算檢查照常）。
   - API 讀到損毀的產出回 409 `artifact_corrupt`，訊息說明已重新處理哪個步驟（或無法自動重新產生）。
+- log 片段的來源（2026-11-25，依 /goal 由實作者暫定，待 owner 追認；PIPE-R16、NFR-OBS-2）：採用「每次任務執行一個有上限的記憶體緩衝」，由 log handler 在輸出時同步寫入，不是讀 log 檔或全域的環形緩衝。理由：log 輸出到 stdout，程式不一定能讀回；全域緩衝要再依任務過濾，並行時其他任務的 log 會把這個任務的擠掉。代價是只有「這次執行」的 log：retryable 用盡後的片段是最後一次嘗試的；LLM 步驟由某個 chunk 讓步驟停下時，片段是那個 chunk 任務的。`budget_blocked` 在建立任務前判定的、Agent 執行逾時改成 `blocked` 的（沒有任務在執行）沒有片段，UI 只顯示錯誤類別、訊息與修正動作。

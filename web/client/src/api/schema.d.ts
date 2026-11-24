@@ -3992,6 +3992,8 @@ export interface components {
       executor?: string;
       /** Format: date-time */
       finished_at: string | null;
+      /** @description 步驟 failed 或 blocked 時，讓它停下的那次執行最後幾行 log（最多 20 行、每行最多 500 bytes，已遮蔽 secret，以換行分隔；PIPE-R16）；其他狀態或沒有 log 時省略 */
+      log_excerpt?: string;
       message?: string;
       /** Format: date-time */
       not_before: string | null;

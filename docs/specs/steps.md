@@ -198,6 +198,9 @@
 | `Then the stage {string} of {string} failed with the error class {string}` | `failed` 及錯誤類別 |
 | `Then the stage {string} of {string} waits until {string}` | 狀態為 `waiting`，`not_before` 與指定的 RFC 3339 時間是同一個時間點（不比時區寫法） |
 | `Then the stage {string} of {string} retries at {string}` | `pending`（重試中），下一次嘗試的時間為指定時間 |
+| `Then the stage {string} of {string} shows a log excerpt containing {string}` | `GET /api/items/:id` 中該步驟的 `log_excerpt`（PIPE-R16）包含這段文字；沒有 `log_excerpt` 時失敗 |
+| `Then the stage {string} of {string} has no log excerpt` | 該步驟沒有 `log_excerpt` 欄位（PIPE-R16：只有 `failed`、`blocked` 帶） |
+| `Then the log excerpt of the stage {string} of {string} contains no secret` | 該步驟的 `log_excerpt` 不是空的，而且不含任何已知的 secret 測試值（與 After hook 的 NFR-SEC-3 掃描同一份清單：密碼、master key、各 provider 的測試 API key、場景送出的 cookie 與 API key 等） |
 | `Then {string} shows the message {string}` | 影音的狀態訊息（UI 與 API 共用的文案）：依 pipeline 的順序，取第一個「不是 `done` 而且有 `message`」的步驟；沒有的話，取第一個「`done` 而且有 `message`」的步驟（提醒，例如 SRC-R15 的「時間可能偏移」）。訊息必須完全相同；都沒有就失敗。比對不符時，若緊接在前一個步驟送出的請求回 501 `not_implemented`，視為 pending（ADR-0015）。最近一次送出的請求回應是這部影音的 409 `in_trash`（新增時被擋下，`item_id` 與代號對應的 ID 相同）時，比對那個 409 回應的 `message`；否則影音在垃圾桶中（`GET /api/items/:id` 回 404 `in_trash`）時，比對那個 404 回應的 `message` |
 | `Then {string} offers the actions {string}` | 可以執行的修正動作：同一個步驟（同上）的 `actions`；參數以逗號切開並去掉前後空白，與 `actions` 依序完全相等。比對不符時，若緊接在前一個步驟送出的請求回 501 `not_implemented`，視為 pending（ADR-0015）。最近一次送出的請求回應是這部影音的 409 `in_trash`（同上）時，比對那個 409 回應的 `actions`；否則影音在垃圾桶中（`GET /api/items/:id` 回 404 `in_trash`）時，比對那個 404 回應的 `actions` |
 | `Then the transcript of {string} came from {string}` | 採用的字幕來源 |

@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
@@ -211,11 +214,57 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	if res.parked {
 		return nil
 	}
+	if !res.keepState && (res.state.Status == store.StatusFailed || res.state.Status == store.StatusBlocked) {
+		if err == nil {
+			// 步驟自己回報停下（例如沒有可用的字幕來源）：記一行，片段才看得到停在哪裡。
+			p.log.InfoContext(ctx, "步驟停下", "status", res.state.Status, "error_class", res.state.ErrorClass, "message", res.state.Message)
+		}
+		res.state.LogExcerpt = p.logExcerpt(ctx, scope.Lines())
+	}
 	res.startedAt = started
 	if err := p.apply(ctx, t, run, it, res); err != nil {
 		return fmt.Errorf("寫回步驟 %s 的結果：%w", run.Stage, err)
 	}
 	return nil
+}
+
+// excerptMask 取代 log 片段中的 secret。
+const excerptMask = "[已遮蔽]"
+
+// excerptPatterns 是 log 片段中看起來像 secret 的寫法（不知道值也遮）：Bearer token 與 key=value 形式的 API key、token、密碼、cookie。
+var excerptPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)(\bbearer\s+)[A-Za-z0-9._~+/=-]{4,}`),
+	regexp.MustCompile(`(?i)(\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|client[_-]?secret|authorization|cookie)["']?\s*[:=]\s*["']?)[^\s"'&,;]{4,}`),
+}
+
+// logExcerpt 把這次執行擷取的 log 行接成步驟的「log 片段」（PIPE-R16、NFR-OBS-2）：
+// 先把已知的 secret（環境變數與資料庫中所有 secret 的明文，見 leakNeedles）換成 excerptMask，再遮蔽看起來像 secret 的寫法。
+// 片段會寫進資料庫（也就會進備份），所以在寫入之前遮蔽。讀不到 secret 時不保存片段：寧可沒有，也不冒外洩的風險。
+func (p *Pipeline) logExcerpt(ctx context.Context, lines []string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	_, secrets, err := p.leakNeedles(ctx)
+	if err != nil {
+		p.log.WarnContext(ctx, "讀取 secret 失敗，不保存 log 片段", "error", err)
+		return ""
+	}
+	return redactExcerpt(strings.Join(lines, "\n"), secrets)
+}
+
+// redactExcerpt 遮蔽 text 中的 secrets（由長到短，避免短的先換掉長的一部分）與 excerptPatterns。
+func redactExcerpt(text string, secrets []string) string {
+	sorted := slices.Clone(secrets)
+	slices.SortFunc(sorted, func(a, b string) int { return len(b) - len(a) })
+	for _, v := range sorted {
+		if v != "" {
+			text = strings.ReplaceAll(text, v, excerptMask)
+		}
+	}
+	for _, re := range excerptPatterns {
+		text = re.ReplaceAllString(text, "${1}"+excerptMask)
+	}
+	return text
 }
 
 // taskLogCtx 回傳帶著任務 log 範圍的 context（NFR-OBS-1），盡量補上 item 與 stage：讀不到步驟時只有 task。

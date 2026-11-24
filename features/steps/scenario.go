@@ -189,6 +189,31 @@ func (s *Scenario) close() error {
 // checkLogs 確認 server 的 log 與假工具的呼叫參數沒有出現環境變數中的密碼、master key 或 API key（NFR-SEC-3）。
 func (s *Scenario) checkLogs() error {
 	logs := s.World.Log.String()
+	secrets := s.knownSecrets()
+	var errs []error
+	for v := range secrets {
+		if strings.Contains(logs, v) {
+			errs = append(errs, fmt.Errorf("server 的 log 含有 secret %q（NFR-SEC-3）", v))
+		}
+	}
+	// 假工具的呼叫參數也要掃：命令列會被 ps 看到，secret 不能出現在子程序的參數中。
+	calls, err := s.World.ToolCalls()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("讀取假工具的呼叫紀錄：%w", err))
+	}
+	for _, c := range calls {
+		argv := strings.Join(c.Argv, "\x00")
+		for v := range secrets {
+			if strings.Contains(argv, v) {
+				errs = append(errs, fmt.Errorf("假工具 %s 的呼叫參數含有 secret %q（NFR-SEC-3）：%q", c.Tool, v, c.Argv))
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// knownSecrets 是場景中已知的 secret 測試值（NFR-SEC-3 的掃描與 log 片段的檢查共用）。
+func (s *Scenario) knownSecrets() map[string]bool {
 	secrets := map[string]bool{
 		harness.TestPassword: true, harness.TestMasterKey: true, harness.TestSupadataKey: true, harness.TestGroqKey: true,
 		fakellm.TestAnthropicKey: true, fakellm.TestOpenAIKey: true, harness.TestGeminiKey: true,
@@ -218,26 +243,7 @@ func (s *Scenario) checkLogs() error {
 	for _, v := range s.hub.tokens {
 		secrets[v] = true
 	}
-	var errs []error
-	for v := range secrets {
-		if strings.Contains(logs, v) {
-			errs = append(errs, fmt.Errorf("server 的 log 含有 secret %q（NFR-SEC-3）", v))
-		}
-	}
-	// 假工具的呼叫參數也要掃：命令列會被 ps 看到，secret 不能出現在子程序的參數中。
-	calls, err := s.World.ToolCalls()
-	if err != nil {
-		errs = append(errs, fmt.Errorf("讀取假工具的呼叫紀錄：%w", err))
-	}
-	for _, c := range calls {
-		argv := strings.Join(c.Argv, "\x00")
-		for v := range secrets {
-			if strings.Contains(argv, v) {
-				errs = append(errs, fmt.Errorf("假工具 %s 的呼叫參數含有 secret %q（NFR-SEC-3）：%q", c.Tool, v, c.Argv))
-			}
-		}
-	}
-	return errors.Join(errs...)
+	return secrets
 }
 
 // ---- server 的啟動與關閉 ----
