@@ -1,4 +1,5 @@
 // 字幕樣式列表（docs/ui/pages.md §9）：內建樣式在前（不能修改，只能複製成自訂），接著是自訂樣式。
+// 內建樣式下方是縮圖並排比較（BuiltinCompare：選了影音才渲染，進入視窗才載入，一次一張）。
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -8,6 +9,7 @@ import { api } from "../../api/client";
 import { queryKeys } from "../../api/queryKeys";
 import { Button, EmptyState, ErrorCallout, Spinner } from "../../components";
 import { usePageTitle } from "../../shell/usePageTitle";
+import { BuiltinCompare } from "./BuiltinCompare";
 import { CopyStyleDialog, ImportStyleDialog } from "./StyleDialogs";
 import type { Style } from "./styleModel";
 
@@ -49,6 +51,7 @@ export function StylesPage() {
               ))}
             </ul>
           </section>
+          {builtin.length > 0 && <BuiltinCompare styles={builtin.map((s) => s.name)} />}
           <section className="tune-section" aria-labelledby="styles-custom">
             <h2 id="styles-custom" className="tune-section__title">
               {t("styles.custom")}

@@ -1874,7 +1874,13 @@
     "previewUnavailable": "预览尚未可用：{{reason}}",
     "previewAlt": "样式 {{name}} 在 {{at}} 的预览画面",
     "previewAt": "画面时间",
-    "previewAtHint": "MM:SS 或 HH:MM:SS；也决定预览用哪一句字幕。"
+    "previewAtHint": "MM:SS 或 HH:MM:SS；也决定预览用哪一句字幕。",
+    "compareTitle": "内置样式比较",
+    "compareLead": "用同一部音视频的同一帧画面渲染每个内置样式。选了音视频才开始渲染，只渲染滚动到画面中的缩略图，而且一次一张。",
+    "compareNoItems": "媒体库还没有音视频，没有画面可以比较。先到媒体库新增一部。",
+    "compareChooseItem": "选一部音视频来比较内置样式。",
+    "compareAlt": "「{{name}}」样式的预览",
+    "compareQueued": "滚动到这里时才渲染"
   },
   "subs": {
     "lead": "订阅的频道、播放列表与 Podcast 会按检查频率自动探索，新内容按处理方案自动处理。",

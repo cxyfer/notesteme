@@ -1874,7 +1874,13 @@
     "previewUnavailable": "預覽尚未可用：{{reason}}",
     "previewAlt": "樣式 {{name}} 在 {{at}} 的預覽畫面",
     "previewAt": "畫面時間",
-    "previewAtHint": "MM:SS 或 HH:MM:SS；也決定預覽用哪一句字幕。"
+    "previewAtHint": "MM:SS 或 HH:MM:SS；也決定預覽用哪一句字幕。",
+    "compareTitle": "內建樣式比較",
+    "compareLead": "用同一部影音的同一張畫面渲染每個內建樣式。選了影音才開始渲染，只渲染捲到畫面中的縮圖，而且一次一張。",
+    "compareNoItems": "媒體庫還沒有影音，沒有畫面可以比較。先到媒體庫新增一部。",
+    "compareChooseItem": "選一部影音來比較內建樣式。",
+    "compareAlt": "「{{name}}」樣式的預覽",
+    "compareQueued": "捲到這裡時才渲染"
   },
   "subs": {
     "lead": "訂閱的頻道、播放清單與 Podcast 會依檢查頻率自動探索，新內容依處理方案自動處理。",

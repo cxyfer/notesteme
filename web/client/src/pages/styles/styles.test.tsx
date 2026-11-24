@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -48,6 +48,109 @@ describe("字幕樣式：模型", () => {
       "translation.shadow": "range",
       "layout.margin_v": "range",
     });
+  });
+});
+
+// IntersectionObserver 的替身：測試決定哪些縮圖進入視窗
+class FakeIO {
+  static all: FakeIO[] = [];
+  els: Element[] = [];
+  constructor(private cb: IntersectionObserverCallback) {
+    FakeIO.all.push(this);
+  }
+  observe(el: Element) {
+    this.els.push(el);
+  }
+  disconnect() {
+    this.els = [];
+  }
+  unobserve() {}
+  takeRecords() {
+    return [];
+  }
+  static show(el: Element) {
+    for (const io of FakeIO.all.filter((x) => x.els.includes(el)))
+      io.cb(
+        [{ isIntersecting: true, target: el } as unknown as IntersectionObserverEntry],
+        io as unknown as IntersectionObserver,
+      );
+  }
+}
+
+const png = () =>
+  new Response(new Blob(["png"], { type: "image/png" }), {
+    status: 200,
+    headers: { "Content-Type": "image/png" },
+  });
+
+describe("字幕樣式：內建樣式比較（pages.md §9）", () => {
+  beforeEach(() => {
+    FakeIO.all = [];
+    vi.stubGlobal("IntersectionObserver", FakeIO);
+  });
+
+  it("選了影音才渲染；進入視窗才送出，一次一張（axe 無違規）", async () => {
+    const pending: (() => void)[] = [];
+    const api = stylesApi({
+      "POST /api/ass-styles/preview": () =>
+        new Promise<Response>((resolve) => pending.push(() => resolve(png()))),
+    });
+    signIn();
+    const { container } = renderRoute("/styles");
+    const section = await screen.findByRole("region", { name: "內建樣式比較" });
+    expect(within(section).getByText("選一部影音來比較內建樣式。")).toBeTruthy();
+    await userEvent.selectOptions(await within(section).findByLabelText("影音"), "item-1");
+    const cells = within(section).getAllByRole("listitem");
+    expect(cells.map((c) => within(c).getByRole("figure").textContent)).toEqual([
+      expect.stringContaining("default"),
+      expect.stringContaining("large"),
+    ]);
+    // 還沒進入視窗：不送任何預覽
+    expect(api.calls("POST", "/api/ass-styles/preview")).toHaveLength(0);
+    act(() => {
+      FakeIO.show(cells[0]!);
+      FakeIO.show(cells[1]!);
+    });
+    await waitFor(() => expect(api.calls("POST", "/api/ass-styles/preview")).toHaveLength(1));
+    expect(JSON.parse(String(api.calls("POST", "/api/ass-styles/preview")[0]!.init.body))).toEqual({
+      style: "default",
+      item: "item-1",
+    });
+    // 前一張完成才送下一張
+    await act(async () => pending.shift()!());
+    await waitFor(() => expect(api.calls("POST", "/api/ass-styles/preview")).toHaveLength(2));
+    expect(
+      JSON.parse(String(api.calls("POST", "/api/ass-styles/preview")[1]!.init.body)).style,
+    ).toBe("large");
+    await act(async () => pending.shift()!());
+    expect(await within(section).findByRole("img", { name: "「large」樣式的預覽" })).toBeTruthy();
+    expect(within(section).getByRole("img", { name: "「default」樣式的預覽" })).toBeTruthy();
+    await expectNoA11yViolations(container);
+  });
+
+  it("失敗的縮圖顯示原因，不擋下一張", async () => {
+    stylesApi({
+      "POST /api/ass-styles/preview": (req) =>
+        (req.body as { style: string }).style === "default"
+          ? apiError(502, "upstream_failed", "ffmpeg 失敗")
+          : png(),
+    });
+    vi.stubGlobal("IntersectionObserver", undefined);
+    signIn();
+    renderRoute("/styles");
+    const section = await screen.findByRole("region", { name: "內建樣式比較" });
+    await userEvent.selectOptions(await within(section).findByLabelText("影音"), "item-1");
+    expect(await within(section).findByRole("img", { name: "「large」樣式的預覽" })).toBeTruthy();
+    expect(within(section).getByText(/預覽尚未可用/)).toBeTruthy();
+  });
+
+  it("媒體庫沒有影音時顯示空狀態，沒有選擇器", async () => {
+    stylesApi({ "GET /api/items": () => ({ items: [], total: 0 }) });
+    signIn();
+    renderRoute("/styles");
+    const section = await screen.findByRole("region", { name: "內建樣式比較" });
+    expect(await within(section).findByText(/媒體庫還沒有影音/)).toBeTruthy();
+    expect(within(section).queryByLabelText("影音")).toBeNull();
   });
 });
 

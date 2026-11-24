@@ -1933,7 +1933,13 @@
     "previewUnavailable": "Preview isn't available: {{reason}}",
     "previewAlt": "Preview of style {{name}} at {{at}}",
     "previewAt": "Frame time",
-    "previewAtHint": "MM:SS or HH:MM:SS; also picks the line shown."
+    "previewAtHint": "MM:SS or HH:MM:SS; also picks the line shown.",
+    "compareTitle": "Compare built-in styles",
+    "compareLead": "Renders every built-in style on the same frame of one item. Rendering starts only after you pick an item, only for thumbnails scrolled into view, one at a time.",
+    "compareNoItems": "The library has no items yet, so there is no frame to compare on. Add one in the library first.",
+    "compareChooseItem": "Pick an item to compare the built-in styles.",
+    "compareAlt": "Preview of the “{{name}}” style",
+    "compareQueued": "Rendered when scrolled into view"
   },
   "subs": {
     "lead": "Subscribed channels, playlists and podcasts are checked on a schedule, and new content is processed with the chosen preset.",
