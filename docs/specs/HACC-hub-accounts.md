@@ -117,4 +117,5 @@ Hub 是多使用者的公開服務：使用者用 Google、GitHub 或 Linux.do �
   - **權限的兩層檢查**：middleware 依 `x-notesteme-access` 在讀取 body 之前檢查（HACC-R13），`moderate`、`admin` 與 `me/shares` 的 handler 再以 `requirePermission` 確認一次（註冊時 Access 寫錯也不會放行）。store 不知道設定檔的群組，無法判斷權限；store 層的防線是條件式的 UPDATE（已處理的決定不會被覆寫）與執行者必須是存在的帳號（foreign key）。
   - 驗收：`hubRules` 加 R15～R17，`hrepRules` 加 R13～R15；`Given the hub member … is suspended` 直接寫 DB（不寫稽核紀錄，分數照樣重算）；建立下架申請與檢舉回 201 時以回應的 `id` 記下 `{takedown:last}`、`{report:last}`。
 - A14：安全修補 A（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：
+  - **無效的 token（HACC-R9）**：帶了 `Authorization` 標頭而驗證失敗（不是 `Bearer`、格式錯誤、不存在、撤銷、過期）時一律 401 `unauthorized`，`site.visibility: public` 也不退回匿名（原本的實作退回匿名，與 A12 的順序不符）；只有沒帶標頭的請求在公開站台以匿名讀取。過期或無效的 session cookie 仍視為沒有登入（瀏覽器留著舊 cookie 的訪客不應被擋）。
   - **停用管理員**：持有 `admin` 的帳號（設定檔、CLI 或任何帶 `admin` 的群組）不能由 `POST /api/v1/admin/users/:id/suspend` 停用，回 403 `admin_by_config`「管理員只能用 notesteme-hub admin suspend 停用。」；要停用管理員時先把他移出 `admins`（設定檔或 `admin revoke`），或用 CLI。原因：管理員由設定檔指定（ADR-0031 第 2 點），API 不能讓一位管理員鎖住其他管理員。

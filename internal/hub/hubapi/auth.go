@@ -91,30 +91,31 @@ func (rt *routes) rateLimits() hubconfig.RateLimits {
 }
 
 // authenticate 依 Authorization 標頭或 session cookie 取得身分；沒有有效身分時回 (nil, nil)。
-func (rt *routes) authenticate(ctx huma.Context) (*hubauth.Principal, error) {
+// bearer 為 true 表示請求帶了 Authorization 標頭：驗證失敗時一律回 401，不退回匿名（HACC-R9，安全修補 A）。
+func (rt *routes) authenticate(ctx huma.Context) (p *hubauth.Principal, bearer bool, err error) {
 	if rt.d.Auth == nil {
-		return nil, nil
+		return nil, false, nil
 	}
 	if h := strings.TrimSpace(ctx.Header("Authorization")); h != "" {
 		scheme, tok, ok := strings.Cut(h, " ")
 		if !ok || !strings.EqualFold(scheme, "Bearer") {
-			return nil, nil
+			return nil, true, nil
 		}
 		p, err := rt.d.Auth.AuthenticateToken(ctx.Context(), strings.TrimSpace(tok))
 		if hubauth.IsNoSession(err) {
-			return nil, nil
+			return nil, true, nil
 		}
-		return p, err
+		return p, true, err
 	}
 	c, err := huma.ReadCookie(ctx, hubauth.SessionCookie)
 	if err != nil || c.Value == "" {
-		return nil, nil
+		return nil, false, nil
 	}
-	p, err := rt.d.Auth.Authenticate(ctx.Context(), c.Value)
+	p, err = rt.d.Auth.Authenticate(ctx.Context(), c.Value)
 	if hubauth.IsNoSession(err) {
-		return nil, nil
+		return nil, false, nil
 	}
-	return p, err
+	return p, false, err
 }
 
 func (rt *routes) accessMiddleware(ctx huma.Context, next func(huma.Context)) {
@@ -134,7 +135,7 @@ func (rt *routes) accessMiddleware(ctx huma.Context, next func(huma.Context)) {
 		next(huma.WithValue(ctx, remoteAddrKey{}, ctx.RemoteAddr()))
 		return
 	}
-	p, err := rt.authenticate(ctx)
+	p, bearer, err := rt.authenticate(ctx)
 	if err != nil {
 		writeHumaErr(ctx, rt.apiError(ctx.Context(), err))
 		return
@@ -145,7 +146,8 @@ func (rt *routes) accessMiddleware(ctx huma.Context, next func(huma.Context)) {
 			writeHumaErr(ctx, e)
 			return
 		}
-		if access == Access(hubconfig.PermRead) && rt.d.Config != nil && rt.d.Config.SiteVisibility == hubconfig.VisibilityPublic {
+		// 帶了 token 卻無效（撤銷、過期、格式錯誤）時不退回匿名：用戶端要知道 token 已經不能用（HACC-R9）。
+		if !bearer && access == Access(hubconfig.PermRead) && rt.d.Config != nil && rt.d.Config.SiteVisibility == hubconfig.VisibilityPublic {
 			next(ctx)
 			return
 		}

@@ -404,3 +404,23 @@ func TestAdminCannotSuspendAdminViaAPI(t *testing.T) {
 	e.addUser("carol")
 	expect(t, "停用一般帳號", e.as("alice", "POST", "/api/v1/admin/users/"+e.users["carol"]+"/suspend", `{"reason":"x"}`), 200, "")
 }
+
+// 安全修補 A：公開站台上，撤銷、亂填或不是 Bearer 的 Authorization 一律回 401，不退回匿名（HACC-R9）；
+// 沒有帶標頭的匿名請求照常可以讀取。
+func TestInvalidTokenOnPublicSiteIs401(t *testing.T) {
+	e := newPermEnv(t, func(c *hubconfig.Config) { c.SiteVisibility = hubconfig.VisibilityPublic })
+	id, tok := e.createToken("alice", `{"name":"x","permissions":["read"]}`)
+	expect(t, "撤銷前", e.bearer(tok, "GET", "/api/v1/versions", "", ""), 200, "")
+	expect(t, "撤銷", e.as("alice", "DELETE", "/api/v1/me/tokens/"+id, ""), 204, "")
+	expect(t, "撤銷後", e.bearer(tok, "GET", "/api/v1/versions", "", ""), 401, "unauthorized")
+	expect(t, "亂填", e.bearer("garbage", "GET", "/api/v1/versions", "", ""), 401, "unauthorized")
+	req := httptest.NewRequest("GET", "/api/v1/versions", nil)
+	req.Header.Set("Authorization", "Basic Zm9vOmJhcg==")
+	rec := httptest.NewRecorder()
+	e.h.ServeHTTP(rec, req)
+	expect(t, "不是 Bearer", rec, 401, "unauthorized")
+	req = httptest.NewRequest("GET", "/api/v1/versions", nil)
+	rec = httptest.NewRecorder()
+	e.h.ServeHTTP(rec, req)
+	expect(t, "匿名", rec, 200, "")
+}
