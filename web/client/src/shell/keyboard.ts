@@ -17,3 +17,8 @@ export function isEditableTarget(target: EventTarget | null): boolean {
 export function modalOpen(): boolean {
   return document.querySelector("[role='dialog']") !== null;
 }
+
+/** macOS／iOS：指令面板用 ⌘ K，Ctrl K 留給系統（文字輸入框的「刪到行尾」）。 */
+export function isMac(): boolean {
+  return typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+}

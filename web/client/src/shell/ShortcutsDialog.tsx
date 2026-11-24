@@ -2,6 +2,7 @@
 import { useTranslation } from "react-i18next";
 
 import { Dialog } from "../components";
+import { isMac } from "./keyboard";
 
 /** [按鍵, 說明的 key]；按鍵不翻譯 */
 const ROWS = [
@@ -18,6 +19,11 @@ const ROWS = [
   ["?", "help"],
 ] as const;
 
+/** macOS 顯示 ⌘ K */
+function keyLabel(key: string) {
+  return key === "Ctrl K" && isMac() ? "⌘ K" : key;
+}
+
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   return (
@@ -33,7 +39,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
           {ROWS.map(([key, label]) => (
             <tr key={key}>
               <td>
-                <kbd>{key}</kbd>
+                <kbd>{keyLabel(key)}</kbd>
               </td>
               <td>{t(`shortcuts.${label}`)}</td>
             </tr>

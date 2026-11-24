@@ -12,7 +12,7 @@ import { api, setUnauthorizedHandler } from "../api/client";
 import { authMethodsQuery } from "../auth/insecure";
 import { Button } from "../components";
 import { useEventStream } from "../events/useEventStream";
-import { isEditableTarget, modalOpen } from "./keyboard";
+import { isEditableTarget, isMac, modalOpen } from "./keyboard";
 import { Preferences } from "./Preferences";
 import { TabBar, useNarrow } from "./TabBar";
 
@@ -70,7 +70,7 @@ export function AppShell() {
 /**
  * N 打開新增抽屜；焦點不在輸入框時貼上 http(s) 網址，打開抽屜並帶入網址。
  * UI-7：G 然後 L／Q／S 前往媒體庫、佇列、訂閱；? 顯示所有快捷鍵。
- * UI-8：Ctrl K／⌘ K 打開指令面板（焦點在輸入框也可以；已有對話框時不作用）。
+ * UI-8：Ctrl K（macOS 為 ⌘ K）打開指令面板（焦點在輸入框也可以；已有對話框時不作用）。
  */
 function GlobalShortcuts() {
   const add = useAddDrawer();
@@ -80,8 +80,10 @@ function GlobalShortcuts() {
   useEffect(() => {
     let goAt = 0;
     function onKey(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
-        if (modalOpen()) return;
+      // README §3.1：Ctrl K（macOS 為 ⌘ K；Mac 的 Ctrl K 是文字輸入框的「刪到行尾」，不攔）
+      const mod = isMac() ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+      if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
+        if (e.defaultPrevented || modalOpen()) return;
         e.preventDefault();
         setPalette(true);
         return;

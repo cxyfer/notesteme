@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { expectNoA11yViolations } from "../test/axe";
 import { defaultRoutes, item } from "../test/fixtures";
@@ -77,6 +77,20 @@ describe("指令面板（README §3.1，UI-8）", () => {
     expect(await screen.findByText("已暫停佇列。")).toBeTruthy();
     expect(paused).toBe(true);
     expect(api.calls("POST", "/api/queue/pause")).toHaveLength(1);
+  });
+
+  it("macOS 用 ⌘ K；Ctrl K 留給系統", async () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    mockApi(defaultRoutes());
+    signIn();
+    renderRoute("/library");
+    await screen.findByRole("heading", { level: 1, name: "媒體庫" });
+    const user = userEvent.setup();
+    await user.keyboard("{Control>}k{/Control}");
+    expect(screen.queryByRole("dialog", { name: "指令面板" })).toBeNull();
+    await user.keyboard("{Meta>}k{/Meta}");
+    expect(await screen.findByRole("dialog", { name: "指令面板" })).toBeTruthy();
+    vi.restoreAllMocks();
   });
 
   it("「新增」關閉面板後打開新增抽屜，焦點在抽屜裡", async () => {
