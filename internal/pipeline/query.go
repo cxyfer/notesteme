@@ -39,6 +39,16 @@ type Detail struct {
 	ImportedFrom *store.BundleImport
 	// HubOrigin 是現行的原始字幕從 Hub 取得時的來源（HSHR-R9 的 hub_origin）；現行的原始字幕不是來自 Hub 時是 nil。
 	HubOrigin *HubOrigin
+	// Running 是執行中（running）的步驟（以 stage run ID 為 key）的任務完成數與 provider（LIB-R24）；
+	// 其他狀態的步驟不在其中。
+	Running map[string]RunningStage
+}
+
+// RunningStage 是執行中步驟的補充說明（LIB-R24）：任務完成數的算法同總覽的 progress（LIB-R21，不含取消的任務），
+// Provider 是 stage run 設定快照中 stages.<stage>.provider（沒有時是空字串）。
+type RunningStage struct {
+	Done, Total int
+	Provider    string
 }
 
 // HubOrigin 是來源紀錄的 hub_origin（HSHR-R9）。Uploader 是 Hub 上的顯示名稱，是不可信的文字。
@@ -68,6 +78,7 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 	var stages []store.StageRun
 	attempts := map[string]int{}
 	var batches map[string]*BatchView
+	var running map[string]RunningStage
 	for _, s := range Stages {
 		run, ok := latest[s]
 		if !ok {
@@ -90,12 +101,22 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 		case !errors.Is(err, store.ErrNotFound):
 			return Detail{}, err
 		}
+		if run.Status == store.StatusRunning {
+			rs, err := runningStage(ctx, r, run)
+			if err != nil {
+				return Detail{}, err
+			}
+			if running == nil {
+				running = map[string]RunningStage{}
+			}
+			running[run.ID] = rs
+		}
 	}
 	probes, err := r.LatestProbes(ctx, id)
 	if err != nil {
 		return Detail{}, err
 	}
-	d := Detail{Item: it, Stages: stages, Sources: probes, Attempts: attempts, Batches: batches}
+	d := Detail{Item: it, Stages: stages, Sources: probes, Attempts: attempts, Batches: batches, Running: running}
 	if d.Reprobe, d.BetterSource, err = reprobeDetail(ctx, r, id); err != nil {
 		return Detail{}, err
 	}
@@ -128,6 +149,24 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 		d.Summary = &sm
 	}
 	return d, nil
+}
+
+// runningStage 算出執行中步驟的任務完成數與 provider（LIB-R24）。設定快照讀不到或格式不對時只略過 provider：
+// 這只是列表上的補充說明，不讓整個詳情失敗。
+func runningStage(ctx context.Context, r *store.Repo, run store.StageRun) (RunningStage, error) {
+	done, total, err := r.StageRunTaskProgress(ctx, run.ID)
+	if err != nil {
+		return RunningStage{}, err
+	}
+	rs := RunningStage{Done: done, Total: total}
+	if snap, err := r.Snapshot(ctx, run.ConfigSnapshotID); err == nil {
+		if eff, err := ParseEffective(snap); err == nil {
+			if cfg, err := eff.Stage(run.Stage); err == nil {
+				rs.Provider = cfg.Provider
+			}
+		}
+	}
+	return rs, nil
 }
 
 // Runs 列出影音實際執行過的步驟與當時的生效設定，由新到舊（PIPE-R13）；

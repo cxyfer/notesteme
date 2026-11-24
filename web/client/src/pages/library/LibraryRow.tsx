@@ -33,12 +33,21 @@ import {
   type ApiItemDetail,
 } from "./stageView";
 
-export function useItemDetail(id: string) {
+/** 有進度的執行中步驟時，媒體庫列重新讀取詳情的間隔（和總覽相同；任務完成不發 SSE，LIB-R24） */
+export const PROGRESS_POLL_MS = 60_000;
+
+export function useItemDetail(id: string, opts: { pollProgress?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.items.detail(id),
     queryFn: ({ signal }) =>
       api.get<"/api/items/{id}">(apiPath("/api/items/{id}", { id }), { signal }),
     staleTime: 30_000,
+    refetchInterval: opts.pollProgress
+      ? (q) =>
+          q.state.data?.stages?.some((s) => s.status === "running" && s.progress)
+            ? PROGRESS_POLL_MS
+            : false
+      : undefined,
   });
 }
 
@@ -53,6 +62,24 @@ export interface LibraryRowProps {
   onSelect?: (on: boolean, shift: boolean) => void;
 }
 
+/**
+ * 狀態欄的補充說明（pages.md §3 的「轉錄 4/5 段」「Groq」）：執行中步驟的任務完成數（LIB-R24）、
+ * 執行方式與 provider，只列出有值的部分。
+ */
+function useStatusNote() {
+  const { t } = useTranslation();
+  return (run: NonNullable<ReturnType<typeof headline>["run"]>) =>
+    [
+      run.status === "running" && run.progress
+        ? t("library.progress", { done: run.progress.done, total: run.progress.total })
+        : "",
+      run.executor ? t(`executor.${run.executor}`, { defaultValue: run.executor }) : "",
+      run.status === "running" ? (run.provider ?? "") : "",
+    ]
+      .filter(Boolean)
+      .join(t("common.listSeparator"));
+}
+
 export function LibraryRow({
   item,
   focusProps,
@@ -61,8 +88,9 @@ export function LibraryRow({
   onSelect,
 }: LibraryRowProps) {
   const { t } = useTranslation();
+  const statusNote = useStatusNote();
   const navigate = useNavigate();
-  const detail = useItemDetail(item.id);
+  const detail = useItemDetail(item.id, { pollProgress: true });
   const d: ApiItemDetail | undefined = detail.data;
   // metadata 完成後標題與長度才會出現：detail 比列表新
   const it: ApiItem = d ?? item;
@@ -188,10 +216,8 @@ export function LibraryRow({
                 status: t(`status.${h.status}`),
               })}
             />
-            {!attention && h.run?.executor && h.status !== "done" && (
-              <small className="lrow__note secondary">
-                {t(`executor.${h.run.executor}`, { defaultValue: h.run.executor })}
-              </small>
+            {!attention && h.run && h.status !== "done" && statusNote(h.run) && (
+              <small className="lrow__note secondary">{statusNote(h.run)}</small>
             )}
           </>
         )}

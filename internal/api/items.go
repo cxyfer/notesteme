@@ -80,6 +80,15 @@ type Stage struct {
 	Attempts         int        `json:"attempts" doc:"最近一個任務已經嘗試的次數；重啟時放回的租約不計入（PIPE-R11）"`
 	// Batch 只在步驟等待 Batch API 的結果時出現（BATCH 的介面）。
 	Batch *StageBatch `json:"batch,omitempty" doc:"步驟等待 Batch API 的結果時才有"`
+	// Progress、Provider 只在步驟 running 時出現（LIB-R24），給媒體庫列的狀態欄（「轉錄 4/5 段」「Groq」）。
+	Progress *StageProgress `json:"progress,omitempty" doc:"步驟 running 時那個 stage run 的任務完成數（不含取消的任務，同總覽的 progress）；不是 running 或沒有任務時省略"`
+	Provider string         `json:"provider,omitempty" doc:"步驟 running 時設定快照中這個步驟的 provider；不是 running 或沒有 provider 時省略"`
+}
+
+// StageProgress 是執行中步驟的任務完成數（LIB-R24）。
+type StageProgress struct {
+	Done  int `json:"done"`
+	Total int `json:"total"`
 }
 
 // StageBatch 是步驟正在等待的 Batch API（BATCH-R3）。
@@ -666,6 +675,12 @@ func toDetail(d pipeline.Detail) ItemDetail {
 		st := toStage(s, d.Attempts[s.ID])
 		if b := d.Batches[s.ID]; b != nil {
 			st.Batch = &StageBatch{Provider: b.Provider, SubmittedAt: b.SubmittedAt, DeadlineAt: b.DeadlineAt}
+		}
+		if rs, ok := d.Running[s.ID]; ok {
+			if rs.Total > 0 {
+				st.Progress = &StageProgress{Done: rs.Done, Total: rs.Total}
+			}
+			st.Provider = rs.Provider
 		}
 		out.Stages = append(out.Stages, st)
 	}

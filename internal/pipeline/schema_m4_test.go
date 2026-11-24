@@ -165,7 +165,7 @@ func expandOutlines(lines []string) []string {
 }
 
 // steps.md 4.17 的閘門讓 @M4 場景在 S0 之後仍是 pending，場景本身驗證不到「schema 接受全部 M4 欄位」。
-// 這個測試直接把 13 個 M4 .feature 中的處理方案、覆寫、全域設定與預期 422 的請求跑過 ValidateLayer
+// 這個測試直接把 14 個 M4 .feature 中的處理方案、覆寫、全域設定與預期 422 的請求跑過 ValidateLayer
 // （Scenario Outline 逐列展開；不檢查 prompt 是否存在）。
 func TestValidateLayer_M4FeatureDocs(t *testing.T) {
 	files, err := filepath.Glob("../../features/*.feature")
@@ -182,7 +182,7 @@ func TestValidateLayer_M4FeatureDocs(t *testing.T) {
 			m4 = append(m4, f)
 		}
 	}
-	if len(m4) != 13 {
+	if len(m4) != 14 { // LIB-library.feature 的 LIB-R24 場景（2026-11-25）是第 14 個
 		t.Fatalf("找到 %d 個 M4 feature 檔：%v", len(m4), m4)
 	}
 	checked, rejected := 0, 0

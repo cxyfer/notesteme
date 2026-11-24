@@ -72,6 +72,29 @@ describe("媒體庫：列表", () => {
     expect(img.getAttribute("referrerpolicy")).toBe("no-referrer");
   });
 
+  it("狀態欄的補充說明：執行中步驟的任務完成數、執行方式與 provider（LIB-R24）；axe 無違規", async () => {
+    libraryApi(items(2), {
+      stages: (id) =>
+        id === "item-1"
+          ? [
+              stage("metadata", "done"),
+              stage("transcript", "running", {
+                executor: "api",
+                provider: "groq",
+                progress: { done: 4, total: 5 },
+              }),
+            ]
+          : [stage("metadata", "done"), stage("transcript", "running", { executor: "local" })],
+    });
+    const { container } = await openLibrary();
+    const list = await screen.findByRole("list", { name: "影音列表" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(await within(rows[0]!).findByText("4/5 個任務，API 處理，groq")).toBeTruthy();
+    // 沒有 progress、provider 時只列有值的部分
+    expect(await within(rows[1]!).findByText("本機處理")).toBeTruthy();
+    await expectNoA11yViolations(container);
+  });
+
   it("沒有影音時邀請新增；按鈕打開新增抽屜", async () => {
     libraryApi([]);
     await openLibrary();

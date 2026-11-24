@@ -400,7 +400,8 @@
     },
     "band": {
       "seek": "Click a point on the timeline to open “{{title}}” at that time"
-    }
+    },
+    "progress": "{{done}}/{{total}} tasks"
   },
   "add": {
     "open": "Add",

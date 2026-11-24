@@ -139,3 +139,25 @@ Feature: Library, item page and queue page
       """
     And the worker runs until idle
     Then the "corrected" artifact of "yt:pg100xxxxxx" has 2 versions
+
+  @M4 @LIB-05 @LIB-R24
+  Scenario: A running stage shows its task progress and provider in the item detail
+    Given the profile "llm-lib" is:
+      """
+      stages:
+        correct: { executor: api, provider: anthropic, model: fixture-model, prompt: correct-default }
+      """
+    And the LLM provider "anthropic" answers "correct" with "correct-ok.json"
+    And the item "yt:pg100xxxxxx" has been processed up to "segment"
+    When the owner sends "POST /api/items/yt:pg100xxxxxx/rerun" with:
+      """
+      { "from": "correct", "profile": "llm-lib" }
+      """
+    And the worker starts one round
+    And the owner sends "GET /api/items/yt:pg100xxxxxx"
+    Then the response contains:
+      """
+      { "stages": [ { "stage": "metadata" }, { "stage": "transcript" }, { "stage": "normalize" }, { "stage": "summary" },
+                    { "stage": "segment" },
+                    { "stage": "correct", "status": "running", "provider": "anthropic", "progress": { "done": 1, "total": 2 } } ] }
+      """

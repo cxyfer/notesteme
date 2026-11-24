@@ -3929,6 +3929,10 @@ export interface components {
       message?: string;
       /** Format: date-time */
       not_before: string | null;
+      /** @description 步驟 running 時那個 stage run 的任務完成數（不含取消的任務，同總覽的 progress）；不是 running 或沒有任務時省略 */
+      progress?: components["schemas"]["StageProgress"];
+      /** @description 步驟 running 時設定快照中這個步驟的 provider；不是 running 或沒有 provider 時省略 */
+      provider?: string;
       stage: string;
       /** Format: date-time */
       started_at: string | null;
@@ -3943,6 +3947,12 @@ export interface components {
       provider: string;
       /** Format: date-time */
       submitted_at: string;
+    };
+    StageProgress: {
+      /** Format: int64 */
+      done: number;
+      /** Format: int64 */
+      total: number;
     };
     StatusBody: {
       /** @example ok */
