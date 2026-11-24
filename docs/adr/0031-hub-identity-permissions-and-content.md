@@ -110,3 +110,4 @@ encryption_keys  (id, wrapped_key, created_at, retired_at)  -- 同 Client 的信
 ## 修訂
 
 - 2026-11-24（安全修補 A，依 /goal 採 advisor 建議，待 owner 追認）：第 3 點「相同的鍵只存一份」改為「相同的鍵只在新上傳者看得到、可見度相同時共用一個版本」；看不到（別人的 `private`、看不到的群組、`hidden`）或可見度不同時另建版本、只共用 blob，`withdrawn` 的版本以新分享的值恢復。細節見 HREP 待決問題 R8「去重與可見度」。
+- 2026-11-24（安全修補 A，依 /goal 採 advisor 建議，待 owner 追認）：第 2 點「管理員只能由設定檔或 CLI 指定」改為以**權限**判斷：設定檔中 `admins` 以外的群組（內建或自訂、帶不帶自動規則）列出 `admin` 時載入失敗；API 指派群組時，群組的權限含 `admin` 就回 403 `admin_by_config`（不只比對名稱 `admins`）。已有這種設定的部署升級後無法啟動，要先把 `admin` 移出那個群組。持有 `admin` 的帳號只能由 CLI（`notesteme-hub admin suspend`）停用，API 回 403 `admin_by_config`。

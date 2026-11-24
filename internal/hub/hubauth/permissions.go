@@ -250,13 +250,15 @@ func (s *Service) SyncConfigAdmins(ctx context.Context) error {
 
 // SetGroup 以 source: manual 把帳號加入或移出群組；admins 不能用 API 指派。
 func (s *Service) SetGroup(ctx context.Context, actor *Principal, userID, group string, member bool) error {
-	if group == hubconfig.GroupAdmins {
+	g, ok := s.cfg.Groups[group]
+	// 依群組的權限判斷（不只看名稱）：帶 admin 的群組一律不能由 API 指派（ADR-0031 第 2 點）。
+	if group == hubconfig.GroupAdmins || (ok && slices.Contains(g.Permissions, hubconfig.PermAdmin)) {
 		return apierr.New(http.StatusForbidden, CodeAdminByConfig, "管理員只能在設定檔或用 notesteme-hub admin grant 指定。")
 	}
 	if group == hubconfig.GroupMembers {
 		return apierr.New(http.StatusUnprocessableEntity, apierr.CodeInvalidInput, "每個帳號都在 members 群組，不能指派或移除。")
 	}
-	if _, ok := s.cfg.Groups[group]; !ok {
+	if !ok {
 		return apierr.New(http.StatusNotFound, apierr.CodeNotFound, "找不到這個群組。")
 	}
 	_, err := s.store.SetManualGroup(ctx, actor.User.ID, userID, group, member)

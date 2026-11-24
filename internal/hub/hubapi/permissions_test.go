@@ -376,3 +376,17 @@ func (e *permEnv) do(method, path string) *httptest.ResponseRecorder {
 	e.h.ServeHTTP(rec, httptest.NewRequest(method, path, nil))
 	return rec
 }
+
+// 安全修補 A：群組帶 admin 時（不論名稱）API 一律不能指派，回 403 admin_by_config。
+func TestSetGroupRefusesAdminPermissionGroups(t *testing.T) {
+	e := newPermEnv(t, func(c *hubconfig.Config) {
+		// 繞過設定檔的檢查，直接造出帶 admin 的群組（例如舊版設定或未來的程式錯誤）。
+		c.Groups["ops"] = hubconfig.Group{Name: "ops", Permissions: []string{"admin"}}
+	})
+	if err := e.store.SetConfigGroup(context.Background(), e.users["alice"], hubconfig.GroupAdmins, true); err != nil {
+		t.Fatal(err)
+	}
+	bob := e.users["bob"]
+	expect(t, "指派 ops", e.as("alice", "PUT", "/api/v1/admin/users/"+bob+"/groups/ops", ""), 403, "admin_by_config")
+	expect(t, "bob 不是管理員", e.as("bob", "GET", "/api/v1/admin/users", ""), 403, "")
+}

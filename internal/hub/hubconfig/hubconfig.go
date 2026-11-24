@@ -617,6 +617,10 @@ func applyGroups(cfg *Config, groups map[string]groupSchema, bad func(string, st
 			if name == GroupAdmins && !slices.Equal(*g.Permissions, []string{PermAdmin}) {
 				return bad(field+".permissions", "固定是 [admin]，不能修改。")
 			}
+			// 其他群組不能帶 admin：否則可以經由 API 指派或自動規則取得管理員（ADR-0031 第 2 點，安全修補 A）。
+			if name != GroupAdmins && slices.Contains(*g.Permissions, PermAdmin) {
+				return bad(field+".permissions", "不能包含 admin：管理員只能放在 admins 群組（設定檔或 notesteme-hub admin grant）。")
+			}
 			cur.Permissions = slices.Clone(*g.Permissions)
 		}
 		if len(g.Rules) > 0 && (name == GroupAdmins || name == GroupModerators || name == GroupMembers) {

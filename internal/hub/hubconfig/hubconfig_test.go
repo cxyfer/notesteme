@@ -249,3 +249,20 @@ func TestSessionKey(t *testing.T) {
 		t.Fatalf("沒有金鑰時載入 = %v（由 hub.Open 決定是否必填）", err)
 	}
 }
+
+// 安全修補 A：admins 以外的群組（內建、自訂、帶自動規則）都不能帶 admin（ADR-0031 第 2 點）。
+func TestAdminPermissionOnlyInAdmins(t *testing.T) {
+	for name, yml := range map[string]string{
+		"custom":       minimal + "groups:\n  ops: { permissions: [admin] }\n",
+		"moderators":   minimal + "groups:\n  moderators: { permissions: [moderate, admin] }\n",
+		"rule-contrib": minimal + "groups:\n  contributors: { permissions: [admin], rules: [ { provider: github, org_member: [acme] } ] }\n",
+	} {
+		_, err := load(t, yml, nil)
+		if err == nil || !strings.Contains(err.Error(), "不能包含 admin") {
+			t.Errorf("%s：err = %v，預期拒絕", name, err)
+		}
+	}
+	if _, err := load(t, minimal+"groups:\n  admins: { permissions: [admin] }\n  ops: { permissions: [moderate] }\n", nil); err != nil {
+		t.Errorf("合法的設定被拒絕：%v", err)
+	}
+}
