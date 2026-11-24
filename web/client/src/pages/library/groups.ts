@@ -41,3 +41,27 @@ export function groupLabel(t: TFunction, item: ApiItem, group: Grouping | undefi
       return t(`library.group.status.${key}`, { defaultValue: key });
   }
 }
+
+/** 某一組在已載入的列中的數量；complete 為 false 代表這組可能延續到還沒載入的頁（API 沒有每組的總數） */
+export interface GroupCount {
+  count: number;
+  complete: boolean;
+}
+
+/** 每組第一列的 index → 這組已載入的列數。API 依分組排序，同一組連續 */
+export function groupCounts(
+  rows: readonly ApiItem[],
+  group: Grouping | undefined,
+  hasMore: boolean,
+): Map<number, GroupCount> {
+  const out = new Map<number, GroupCount>();
+  let start = 0;
+  for (let i = 1; i <= rows.length; i++) {
+    if (i === rows.length || groupKey(rows[i]!, group) !== groupKey(rows[start]!, group)) {
+      // 最後一組在還有下一頁時可能沒數完
+      out.set(start, { count: i - start, complete: i < rows.length || !hasMore });
+      start = i;
+    }
+  }
+  return out;
+}

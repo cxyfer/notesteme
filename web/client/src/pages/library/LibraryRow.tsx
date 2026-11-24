@@ -67,6 +67,9 @@ export function LibraryRow({
   // metadata 完成後標題與長度才會出現：detail 比列表新
   const it: ApiItem = d ?? item;
   const title = it.title || t("library.untitled");
+  // 頻道名稱只在列表 API 有（ListedItem.channel_name）；詳情沒有，所以從列表的 item 取，沒有時退回頻道 ID
+  const channelName =
+    (item.channel_id === it.channel_id ? item.channel_name : undefined) || it.channel_id || "";
   const stageName = (s: string) => t(`stage.${s}`, { defaultValue: s });
 
   const byStage = new Map((d?.stages ?? []).map((s) => [s.stage, s]));
@@ -136,9 +139,10 @@ export function LibraryRow({
               className="lrow__channel"
               tabIndex={focusProps.tabIndex}
               onClick={() => onFilterChannel(it.channel_id!)}
-              aria-label={t("library.filterChannel", { channel: it.channel_id })}
+              aria-label={t("library.filterChannel", { channel: channelName })}
+              title={channelName !== it.channel_id ? it.channel_id : undefined}
             >
-              {t("library.channel", { channel: it.channel_id })}
+              {t("library.channel", { channel: channelName })}
             </button>
           )}
           {it.published_at && (

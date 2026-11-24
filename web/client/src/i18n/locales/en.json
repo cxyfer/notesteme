@@ -391,7 +391,11 @@
         "blocked": "Needs you",
         "processing": "Processing",
         "idle": "Other"
-      }
+      },
+      "count_one": "{{formatted}} item",
+      "count_other": "{{formatted}} items",
+      "countAtLeast_one": "At least {{formatted}} item",
+      "countAtLeast_other": "At least {{formatted}} items"
     }
   },
   "add": {

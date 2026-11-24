@@ -479,4 +479,13 @@
 }
 .library__group {
   margin: var(--space-4) 0 var(--space-1);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.library__group-count {
+  font-size: var(--font-14);
+  font-weight: normal;
+  white-space: nowrap;
 }

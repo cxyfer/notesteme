@@ -248,11 +248,33 @@ describe("媒體庫：分組（LIB-R4）", () => {
       .getAllByRole("heading", { level: 2 })
       .filter((h) => h.classList.contains("library__group"))
       .map((h) => h.textContent);
-    // 同一頻道只顯示一次；沒有名稱時用頻道 ID；沒有頻道另成一組
-    expect(heads).toEqual(["頻道甲", "UCb", "沒有頻道"]);
+    // 同一頻道只顯示一次；沒有名稱時用頻道 ID；沒有頻道另成一組；組名旁是這組的數量
+    expect(heads).toEqual(["頻道甲 2 部", "UCb 1 部", "沒有頻道 1 部"]);
+    // 列上顯示頻道名稱（沒有名稱時退回頻道 ID），篩選仍用頻道 ID
+    expect(screen.getAllByRole("button", { name: "只看頻道 頻道甲" })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "只看頻道 UCb" })).toBeTruthy();
     expect((screen.getByRole("combobox", { name: "分組" }) as HTMLSelectElement).value).toBe(
       "channel",
     );
+  });
+
+  it("跨頁的組在讀完之後顯示確定的數量；點頻道名稱用頻道 ID 篩選", async () => {
+    const api = libraryApi(
+      [
+        item(1, { channel_id: "UCa", channel_name: "頻道甲" }),
+        item(2, { channel_id: "UCb", channel_name: "頻道乙" }),
+        item(3, { channel_id: "UCb", channel_name: "頻道乙" }),
+        item(4, { channel_id: "UCb", channel_name: "頻道乙" }),
+      ],
+      { pageSize: 2 },
+    );
+    const { router } = await openLibrary();
+    expect(await screen.findByRole("heading", { level: 2, name: "頻道甲 1 部" })).toBeTruthy();
+    // 列表捲到底會讀下一頁，讀完之後就是確定的數量（「至少」的情況見 groups.test.ts）
+    expect(await screen.findByRole("heading", { level: 2, name: "頻道乙 3 部" })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "只看頻道 頻道甲" }));
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ channel: "UCa" }));
+    expect(api.calls("GET", "/api/items").at(-1)!.url.searchParams.get("channel")).toBe("UCa");
   });
 
   it("切換成依狀態：寫進網址、重新查詢，組名來自 API 的 group", async () => {
@@ -266,8 +288,8 @@ describe("媒體庫：分組（LIB-R4）", () => {
         "status",
       ),
     );
-    expect(await screen.findByRole("heading", { level: 2, name: "有步驟失敗" })).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 2, name: "其他" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 2, name: "有步驟失敗 1 部" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "其他 1 部" })).toBeTruthy();
   });
 
   it("不分組：不送 group_by、沒有組名；切回預設時從網址移除、其他條件保留；不合法的 group 丟掉", async () => {

@@ -39,10 +39,12 @@ import {
 import {
   DEFAULT_GROUPING,
   groupByParam,
+  groupCounts,
   groupKey,
   groupLabel,
   GROUPINGS,
   type Grouping,
+  type GroupCount,
 } from "./library/groups";
 import { LibraryRow } from "./library/LibraryRow";
 import type { ApiItem } from "./library/stageView";
@@ -98,6 +100,10 @@ export function LibraryPage() {
     [list.data],
   );
   const total = list.data?.pages[0]?.total ?? 0;
+  const counts = useMemo(
+    () => groupCounts(rows, search.group, !!list.hasNextPage),
+    [rows, search.group, list.hasNextPage],
+  );
 
   const setSearch = useCallback(
     (patch: SearchPatch, opts: { replace?: boolean } = {}) => {
@@ -378,7 +384,10 @@ export function LibraryPage() {
             <>
               {groupBy &&
                 (index === 0 || groupKey(rows[index - 1]!, group) !== groupKey(item, group)) && (
-                  <h2 className="library__group section__title">{groupLabel(t, item, group)}</h2>
+                  <h2 className="library__group section__title">
+                    {groupLabel(t, item, group)}{" "}
+                    <GroupCountText count={counts.get(index)} />
+                  </h2>
                 )}
               <LibraryRow
                 item={item}
@@ -402,5 +411,19 @@ export function LibraryPage() {
         />
       )}
     </div>
+  );
+}
+
+/** 組名旁的「3 部」；這組可能延續到還沒載入的頁時寫「至少 3 部」 */
+function GroupCountText({ count }: { count: GroupCount | undefined }) {
+  const { t } = useTranslation();
+  if (!count) return null;
+  const formatted = formatNumber(count.count);
+  return (
+    <span className="library__group-count secondary num">
+      {count.complete
+        ? t("library.group.count", { count: count.count, formatted })
+        : t("library.group.countAtLeast", { count: count.count, formatted })}
+    </span>
   );
 }

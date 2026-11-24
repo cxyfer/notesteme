@@ -375,7 +375,9 @@
         "blocked": "需要你处理",
         "processing": "处理中",
         "idle": "其他"
-      }
+      },
+      "count_other": "{{formatted}} 部",
+      "countAtLeast_other": "至少 {{formatted}} 部"
     }
   },
   "add": {
