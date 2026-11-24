@@ -76,21 +76,37 @@ describe("設定：匯入 bundle（BND）", () => {
     expect(await screen.findByText("bundle 超過 64 MiB 的上傳上限。")).toBeTruthy();
   });
 
-  it("409 已存在：提示勾選加成新版本", async () => {
+  it("409 已存在：提示勾選加成新版本，並連到既有的影音（item_id）", async () => {
     bundleApi(() =>
-      apiError(409, "bundle_item_exists", "這部影音已在媒體庫中（yt:x）。請加上 on_existing。"),
+      apiError(409, "bundle_item_exists", "這部影音已在媒體庫中（yt:x）。請加上 on_existing。", {
+        item_id: "item-7",
+      }),
     );
     await open();
     const user = userEvent.setup();
     await user.upload(screen.getByLabelText("bundle 檔案"), zip());
     await user.click(screen.getByRole("button", { name: "匯入" }));
     expect(await screen.findByText(/勾選「影音已存在時/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "打開既有的影音" }).getAttribute("href")).toBe(
+      "/items/item-7",
+    );
     await user.click(screen.getByRole("button", { name: "影音已存在時，把產出加成新版本" }));
     await waitFor(() =>
       expect(
         (screen.getByLabelText("影音已存在時，把產出加成新版本") as HTMLInputElement).checked,
       ).toBe(true),
     );
+  });
+
+  it("409 在垃圾桶：沒有 item_id，提示並連到垃圾桶", async () => {
+    bundleApi(() => apiError(409, "bundle_item_in_trash", "這部影音在垃圾桶中。"));
+    await open();
+    const user = userEvent.setup();
+    await user.upload(screen.getByLabelText("bundle 檔案"), zip());
+    await user.click(screen.getByRole("button", { name: "匯入" }));
+    expect(await screen.findByText(/這部影音在垃圾桶中。先還原/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "前往垃圾桶" }).getAttribute("href")).toBe("/trash");
+    expect(screen.queryByRole("link", { name: "打開既有的影音" })).toBeNull();
   });
 
   it("影音詳情有匯出 bundle 的下載連結", async () => {

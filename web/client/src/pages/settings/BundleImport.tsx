@@ -2,7 +2,8 @@
 //
 //   - multipart 的 file；勾選「已存在時加成新版本」送 on_existing=add_versions。
 //   - 上傳上限只在設定檔（bundles.import.max_upload_bytes，預設 64 MiB），API 不提供：前端只提示，不擋，以 413 的訊息為準。
-//   - 422 顯示伺服器的訊息、出錯的項目（entry）與 manifest 的逐欄錯誤；409 已存在時提示勾選「加成新版本」。
+//   - 422 顯示伺服器的訊息、出錯的項目（entry）與 manifest 的逐欄錯誤；409 已存在時提示勾選「加成新版本」，
+//     並連到既有的影音（item_id，BND N23）；影音在垃圾桶時（沒有 item_id）連到垃圾桶。
 //   - 匯入後不會自動處理（BND-R8），成功時連到匯入的影音。
 import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,6 +21,7 @@ import { Panel, SaveError } from "./shared";
 type ImportResult = components["schemas"]["BundleImportResult"];
 
 const EXISTS = "bundle_item_exists";
+const IN_TRASH = "bundle_item_in_trash";
 
 export function BundleImport() {
   const { t } = useTranslation();
@@ -57,6 +59,8 @@ export function BundleImport() {
   }
 
   const apiErr = isApiError(error) ? error : undefined;
+  const existingId =
+    apiErr?.code === EXISTS && typeof apiErr.body.item_id === "string" ? apiErr.body.item_id : "";
   return (
     <Panel title={t("settings.bundle.title")} description={t("settings.bundle.hint")}>
       <form className="settings-form" onSubmit={onSubmit} noValidate>
@@ -115,10 +119,24 @@ export function BundleImport() {
               : [{ label: t("settings.bundle.addVersions"), onClick: () => setAddVersions(true) }]
           }
         />
+      ) : apiErr?.code === IN_TRASH ? (
+        <ErrorCallout error={error} message={t("settings.bundle.inTrash")} />
       ) : apiErr?.body.errors?.length ? (
         <SaveError error={error} />
       ) : (
         error !== undefined && <ErrorCallout error={error} />
+      )}
+      {existingId && (
+        <p className="settings-note">
+          <Link to="/items/$id" params={{ id: existingId }}>
+            {t("settings.bundle.openExisting")}
+          </Link>
+        </p>
+      )}
+      {apiErr?.code === IN_TRASH && (
+        <p className="settings-note">
+          <Link to="/trash">{t("settings.bundle.openTrash")}</Link>
+        </p>
       )}
       {apiErr?.body.entry && (
         <p className="settings-note">

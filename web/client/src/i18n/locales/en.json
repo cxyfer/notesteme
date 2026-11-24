@@ -1279,7 +1279,10 @@
       "importing": "Importing…",
       "done": "Imported {{imported}} outputs and skipped {{skipped}} identical versions:",
       "exists": "This media is already in the library. Check “If the media already exists, add the outputs as new versions” and import again.",
-      "entry": "Entry with the problem:"
+      "entry": "Entry with the problem:",
+      "openExisting": "Open the existing media",
+      "inTrash": "This media is in the trash. Restore it or delete it forever, then import again.",
+      "openTrash": "Go to the trash"
     },
     "digest": {
       "title": "Digests",
