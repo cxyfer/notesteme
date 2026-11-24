@@ -162,3 +162,31 @@ func TestToolVersionsProbeInParallelWithinTimeout(t *testing.T) {
 		t.Fatalf("花了 %v：沒有同時執行或沒有逾時", d)
 	}
 }
+
+// 請求已取消時仍然取得並快取真正的版本，不會被記成失敗。
+func TestToolVersionsIgnoreCanceledRequest(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "yt-dlp")
+	writeTool(t, p, "2026.11.01\n")
+	r := &cancelAwareRunner{versionRunner{calls: map[string]int{}}}
+	cache := newToolVersions(r, time.Now)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	locs := map[string]toolexec.Location{"yt-dlp": {Path: p}}
+	if got := cache.Versions(ctx, locs)["yt-dlp"]; got != "2026.11.01" {
+		t.Fatalf("取消的請求 = %q", got)
+	}
+	if got := cache.Versions(context.Background(), locs)["yt-dlp"]; got != "2026.11.01" || r.count(p) != 1 {
+		t.Fatalf("快取：版本 %q、執行 %d 次", got, r.count(p))
+	}
+}
+
+// cancelAwareRunner 在 ctx 已取消時失敗（和真正的子程序一樣）。
+type cancelAwareRunner struct{ versionRunner }
+
+func (r *cancelAwareRunner) Run(ctx context.Context, c toolexec.Cmd) (toolexec.Result, error) {
+	if err := ctx.Err(); err != nil {
+		return toolexec.Result{}, err
+	}
+	return r.versionRunner.Run(ctx, c)
+}

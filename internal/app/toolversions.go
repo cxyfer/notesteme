@@ -112,7 +112,8 @@ func (v *toolVersions) Versions(ctx context.Context, locs map[string]toolexec.Lo
 		return out
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, v.timeout)
+	// 不跟著請求取消：客戶端在期限內中斷時，結果仍是真正的版本，不會把四個工具都記成失敗而快取 1 分鐘。
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), v.timeout)
 	defer cancel()
 	type result struct{ name, version string }
 	ch := make(chan result, len(miss))
