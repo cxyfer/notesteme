@@ -239,7 +239,7 @@
     "attentionMessage": "{{stage}}：{{reason}}。{{message}}",
     "attentionNoMessage": "{{stage}}：{{reason}}。打開影音查看紀錄。",
     "rerunQueued": "已排入重新處理，從{{stage}}開始",
-    "empty": "還沒有任何影音。貼上 YouTube、Bilibili 或 Podcast 網址，或選擇本機的影片檔。",
+    "empty": "還沒有任何影音。貼上 YouTube、Bilibili 或 Podcast 網址，或把影片檔拖進來。",
     "emptyFiltered": "沒有符合條件的影音。",
     "staleList": "連線曾經中斷，列表可能不是最新的。重新載入",
     "live": {
@@ -388,7 +388,7 @@
     "open": "新增",
     "hotkey": "N",
     "title": "新增",
-    "description": "貼上網址或選擇本機檔案，Notesteme 會取得字幕並依處理方案處理。",
+    "description": "貼上網址、選擇本機檔案，或把檔案拖進視窗，Notesteme 會取得字幕並依處理方案處理。",
     "url": "網址",
     "urlPlaceholder": "https://",
     "urlHint": "YouTube 影片或播放清單、Bilibili 影片、Podcast RSS",
@@ -447,7 +447,8 @@
     "estimate": "預估花費約 {{usd}}。",
     "estimatePartial": "預估花費至少 {{usd}}，有些部分無法預估。",
     "estimateUnknown": "無法預估花費。",
-    "estimateFailed": "無法預估花費：{{reason}}"
+    "estimateFailed": "無法預估花費：{{reason}}",
+    "dropOnlyFirst": "一次只能上傳一個檔案。拖進來的 {{total}} 個檔案只帶入了第一個：{{name}}。"
   },
   "actions": {
     "retry": "重試",

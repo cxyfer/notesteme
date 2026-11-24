@@ -366,6 +366,35 @@ describe("新增抽屜", () => {
     expect(await screen.findByText("已開始處理 1 部")).toBeTruthy();
   });
 
+  it("把檔案拖進視窗：打開抽屜並帶入第一個檔案，多個時提示；拖文字不接手（pages.md §2）", async () => {
+    drawerApi();
+    signIn();
+    renderRoute("/library");
+    await screen.findByRole("heading", { level: 1, name: "媒體庫" });
+    const a = new File(["a"], "talk.mp4", { type: "video/mp4" });
+    const b = new File(["b"], "other.mp4", { type: "video/mp4" });
+
+    // 拖的是文字：不 preventDefault、不打開
+    const textOver = fireEvent.dragOver(document.body, { dataTransfer: { types: ["text/plain"] } });
+    expect(textOver).toBe(true);
+    fireEvent.drop(document.body, { dataTransfer: { types: ["text/plain"], files: [] } });
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // 拖的是檔案：dragover 要 preventDefault 才能 drop
+    const fileOver = fireEvent.dragOver(document.body, { dataTransfer: { types: ["Files"] } });
+    expect(fileOver).toBe(false);
+    const dropped = fireEvent.drop(document.body, {
+      dataTransfer: { types: ["Files"], files: [a, b] },
+    });
+    expect(dropped).toBe(false);
+    const dialog = await screen.findByRole("dialog", { name: "新增" });
+    expect(within(dialog).getByText("已選擇 talk.mp4")).toBeTruthy();
+    expect(
+      within(dialog).getByText("一次只能上傳一個檔案。拖進來的 2 個檔案只帶入了第一個：talk.mp4。"),
+    ).toBeTruthy();
+    expect(within(dialog).getByLabelText("網址")).toHaveProperty("disabled", true);
+  });
+
   it("打開時沒有 axe 問題；Esc 關閉後焦點回到開啟前的元素", async () => {
     drawerApi();
     signIn();

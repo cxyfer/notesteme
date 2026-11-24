@@ -262,7 +262,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 依頻道／發布日／狀態分組、「格」檢視、儲存檢視 | 分組完成（收尾 D1，見 10.22）；「格」檢視完成（UI-8）；儲存檢視未做 | 儲存檢視不在 M4 範圍 |
 | 批次操作、垃圾桶檢視 | 完成（UI-7，見 10.18） | `src/pages/library/BulkBar.tsx`、`src/pages/trash` |
 | 預估花費（`POST /api/estimate`） | 完成（10.24 第 3 點） | `src/add/AddDrawer.tsx` |
-| 「調整這次的設定」、一次貼上多個網址、把檔案拖進視窗 | 未做 | 見 10.5 第 6 點 |
+| 「調整這次的設定」、一次貼上多個網址 | 未做 | 見 10.5 第 6 點 |
+| 把檔案拖進視窗 | 完成（10.25） | `src/add/AddContext.tsx` |
 
 ### 10.5 UI-1 的決定
 
@@ -733,6 +734,7 @@ pages.md §12 的「服務與金鑰」要求每個 provider 都有「測試連�
 | 點時間帶打開影音詳情並定位到點擊的時間（總覽的「現在」、媒體庫的列；pages.md §1、§3，design-language.md §6.1） | 完成 | `web/shared/src/StatusBand.tsx`（精簡版的 `onSeek`）、`src/pages/library/LibraryRow.tsx`、`src/pages/overview/OverviewPage.tsx` |
 | 媒體庫的「更多篩選」加「只看有筆記的影音」（pages.md §3、plan.md 第 14 節） | 完成（對應既有的 `status=note:done`，沒有改後端） | `src/pages/library/{FilterBar.tsx,filters.ts}` |
 | 佇列頁頂的「Agent 一次最多領取 N 個」與「調整」連結（pages.md §6 的線框） | 完成（只顯示，調整在設定 › Agent） | `src/pages/queue/QueuePage.tsx` |
+| 把檔案拖進視窗：打開「新增」抽屜並帶入檔案（pages.md §2；ENTRY 的「檔案請用『新增』的拖放」）；媒體庫空狀態的文案還原成 §4.3 的「把影片檔拖進來」 | 完成 | `src/add/{AddContext.tsx,AddDrawer.tsx}`、locale 的 `library.empty` |
 | 媒體庫的列顯示頻道名稱（沒有名稱時退回頻道 ID）；分組的組名旁顯示「N 部」（pages.md §3） | 完成 | `src/pages/library/{LibraryRow.tsx,groups.ts}`、`src/pages/LibraryPage.tsx` |
 
 1. **字幕來源的名稱**：依 [steps.md 第 3 節](../specs/steps.md#3-字幕來源-id) 的來源 ID 加三語字典 `item.source.<ID>`（例如 `youtube-manual` 是「YouTube 人工字幕」）；ASR 的 ID 由設定檔自訂，字典沒有的 ID 原樣顯示。「有更好的字幕來源」的說明也改用同一個名稱。
@@ -740,4 +742,5 @@ pages.md §12 的「服務與金鑰」要求每個 provider 都有「測試連�
 3. **精簡版時間帶的點擊**：design-language.md §6.1 寫精簡版是 `role="img"`，所以帶子本身不加互動，另外疊一個透明的按鈕（名稱是「在時間帶上點一個位置，打開『…』並定位到那個時間」）。點擊位置的比例乘上影音長度，取整數秒後打開 `/items/<id>?t=<秒>`（詳情頁已支援 `t`）。用鍵盤按下時沒有位置，打開詳情並從 0 秒開始；鍵盤使用者要定位到某個時間，用詳情頁完整版時間帶的方向鍵。媒體庫的按鈕跟著列表的 roving focus（只有目前的列可以 Tab 到）；沒有長度（例如直播中）時沒有按鈕，點帶子就和點列的其他地方一樣打開詳情。精簡版沒有 hover 的時間碼與字幕句（列只有步驟狀態，沒有讀字幕）。
 4. **「有筆記」用既有的步驟狀態篩選**：LIB-R1 沒有 `has_note` 參數，「有筆記」等於筆記步驟最新一次是 `done`，所以「更多篩選」的勾選框只是 `status=note:done` 的捷徑，不加 API 參數（和「筆記：完成」是同一個條件，已套用的條件也顯示成「筆記：完成」）。打開時拿掉筆記步驟的其他狀態條件（例如 `note:failed`）：同一個步驟的多個值是 OR，留著的話結果會變多而不是變少；只有筆記步驟恰好是「完成」一個條件時才顯示為勾選。筆記被關閉（`executor: off`）或還沒做到筆記的影音都算「沒有筆記」。
 5. **佇列頁的 Agent 領取上限只顯示、不在原地調整**：線框畫的是可以直接選的 `▾`，但 `max_claims` 在設定的 `agent` 分區（AGT-R3），那個分區的 `PUT` 是整段取代、而且需要 `admin`；在佇列頁改一個欄位就要先讀整段再寫回，和設定頁同時編輯時會互相覆蓋。所以頁頂只顯示「Agent 一次最多領取 N 個」（讀 `GET /api/settings/agent`，已合併內建預設）與連到設定 › Agent 的「調整」；讀不到（權限不足、501、其他錯誤）時整句不顯示，不重試。和設定頁共用同一個 query key，在設定頁儲存之後回到佇列頁就是新的值。
+6. **把檔案拖進視窗**：`AddProvider` 在 document 上聽 `dragover` 與 `drop`，只有 `dataTransfer.types` 含 `Files` 時才接手（`preventDefault`，不讓瀏覽器直接打開檔案）；拖文字或連結（例如拖進輸入框）、事件已經被處理過（`defaultPrevented`）、或放在 `input[type=file]` 上時照瀏覽器原本的行為。放下後打開「新增」抽屜並帶入檔案（`open(url, notice, file)`），之後和「選擇本機檔案」相同，不自動開始處理。上傳 API 一次只收一個檔案（10.5 第 6 點），拖進多個檔案時只帶入第一個，抽屜上方寫「一次只能上傳一個檔案。拖進來的 N 個檔案只帶入了第一個：…。」。抽屜已經打開時再拖進檔案，抽屜會換成新的表單（和其他開啟方式一樣每次都是新的表單）。前端不檢查檔案類型，交給上傳時的 `unsupported_media`（已有「選擇其他檔案」）。拖曳中沒有另外的覆蓋層提示。媒體庫空狀態的文案在 UI-1 被改成「選擇本機的影片檔」，現在拖放做好了，三語都還原成 §4.3 的「把影片檔拖進來」；抽屜的說明也加上「或把檔案拖進視窗」。
 

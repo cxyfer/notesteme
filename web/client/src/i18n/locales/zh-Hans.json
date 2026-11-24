@@ -239,7 +239,7 @@
     "attentionMessage": "{{stage}}：{{reason}}。{{message}}",
     "attentionNoMessage": "{{stage}}：{{reason}}。打开音视频查看记录。",
     "rerunQueued": "已排入重新处理，从{{stage}}开始",
-    "empty": "还没有任何音视频。粘贴 YouTube、Bilibili 或 Podcast 网址，或选择本地的视频文件。",
+    "empty": "还没有任何音视频。粘贴 YouTube、Bilibili 或 Podcast 网址，或把视频文件拖进来。",
     "emptyFiltered": "没有符合条件的音视频。",
     "staleList": "连接曾经中断，列表可能不是最新的。重新加载",
     "live": {
@@ -388,7 +388,7 @@
     "open": "新增",
     "hotkey": "N",
     "title": "新增",
-    "description": "粘贴网址或选择本地文件，Notesteme 会获取字幕并按处理方案处理。",
+    "description": "粘贴网址、选择本地文件，或把文件拖进窗口，Notesteme 会获取字幕并按处理方案处理。",
     "url": "网址",
     "urlPlaceholder": "https://",
     "urlHint": "YouTube 视频或播放列表、Bilibili 视频、Podcast RSS",
@@ -447,7 +447,8 @@
     "estimate": "预估花费约 {{usd}}。",
     "estimatePartial": "预估花费至少 {{usd}}，有些部分无法预估。",
     "estimateUnknown": "无法预估花费。",
-    "estimateFailed": "无法预估花费：{{reason}}"
+    "estimateFailed": "无法预估花费：{{reason}}",
+    "dropOnlyFirst": "一次只能上传一个文件。拖进来的 {{total}} 个文件只带入了第一个：{{name}}。"
   },
   "actions": {
     "retry": "重试",

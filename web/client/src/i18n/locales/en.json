@@ -240,7 +240,7 @@
     "attentionMessage": "{{stage}}: {{reason}}. {{message}}",
     "attentionNoMessage": "{{stage}}: {{reason}}. Open the item to see its log.",
     "rerunQueued": "Queued to reprocess from {{stage}}",
-    "empty": "No media yet. Paste a YouTube, Bilibili or podcast URL, or pick a video file.",
+    "empty": "No media yet. Paste a YouTube, Bilibili or podcast URL, or drop a video file here.",
     "emptyFiltered": "No media matches these filters.",
     "staleList": "The connection dropped, so this list may be out of date. Reload",
     "live": {
@@ -406,7 +406,7 @@
     "open": "Add",
     "hotkey": "N",
     "title": "Add",
-    "description": "Paste a URL or pick a local file. Notesteme gets the subtitles and processes them with your preset.",
+    "description": "Paste URLs, pick a local file or drop one onto the window. Notesteme fetches the subtitles and processes them with the profile.",
     "url": "URL",
     "urlPlaceholder": "https://",
     "urlHint": "A YouTube video or playlist, a Bilibili video, or a podcast RSS feed",
@@ -469,7 +469,8 @@
     "estimate": "Estimated cost: about {{usd}}.",
     "estimatePartial": "Estimated cost: at least {{usd}}; some parts can't be estimated.",
     "estimateUnknown": "The cost can't be estimated.",
-    "estimateFailed": "The cost can't be estimated: {{reason}}"
+    "estimateFailed": "The cost can't be estimated: {{reason}}",
+    "dropOnlyFirst": "Only one file can be uploaded at a time. Of the {{total}} files you dropped, only the first was added: {{name}}."
   },
   "actions": {
     "retry": "Retry",

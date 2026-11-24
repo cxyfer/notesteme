@@ -6,7 +6,7 @@
 //      Podcast feed（勾選要新增的集，ING-R6；也可以改成建立訂閱）。
 //      辨識成功、不是頻道時另外呼叫 POST /api/estimate 顯示預估花費（ENTRY-R2 的書籤與分享也會看到）；
 //      估算可能呼叫 yt-dlp，所以延遲送出、不重試，失敗也不擋「開始處理」。
-//   2. 或選擇本機檔案（multipart POST /api/items，一次一個檔案）。
+//   2. 或選擇本機檔案（multipart POST /api/items，一次一個檔案）；把檔案拖進視窗時由 AddContext 帶入（initialFile）。
 //   3. 選擇處理方案（GET /api/profiles），按「開始處理」→ POST /api/items。
 //   4. 成功：關閉抽屜，toast「已開始處理 N 部」附「查看」；全部都已在媒體庫中時留在抽屜，提供「打開」。
 //      錯誤依 code 顯示並給修正動作（例如 in_trash 給「還原」）。
@@ -44,6 +44,8 @@ export interface AddDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialUrl?: string;
+  /** 帶入要上傳的檔案（把檔案拖進視窗） */
+  initialFile?: File;
   /** 抽屜上方的提示（例如書籤或分享帶進來的網址無效，ENTRY-R2、R4） */
   notice?: string;
 }
@@ -69,7 +71,13 @@ const URL_CODES = new Set([
 /** 檔案錯誤（要換檔案）的 code */
 const FILE_CODES = new Set(["upload_too_large", "unsupported_media"]);
 
-export function AddDrawer({ open, onOpenChange, initialUrl = "", notice }: AddDrawerProps) {
+export function AddDrawer({
+  open,
+  onOpenChange,
+  initialUrl = "",
+  initialFile,
+  notice,
+}: AddDrawerProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const toast = useToast();
@@ -79,7 +87,7 @@ export function AddDrawer({ open, onOpenChange, initialUrl = "", notice }: AddDr
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [url, setUrl] = useState(initialUrl);
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFile] = useState<File | null>(initialFile ?? null);
   const [partsMode, setPartsMode] = useState<"all" | "some">("all");
   const [partsText, setPartsText] = useState("");
   const [episodes, setEpisodes] = useState<Set<string>>(new Set());
