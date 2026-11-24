@@ -565,6 +565,7 @@
      - `go test -race ./...` 在 GitHub 的 runner 上超過每個測試程式 30 分鐘的上限，`features` 被中止（05:15 的那次還在 27.5 分鐘通過，之後測試變多）。CI 改成平行的四個 job：`go`（其餘套件，`-race`，逾時 60 分鐘）、`bdd`（`./features`，`-race`，60 分鐘）、`bdd-extra`（`@M3,@M4,@M5`，不加 `-race`，45 分鐘；在 runner 上約 3 分鐘）、`coverage`（涵蓋率門檻）。
      - `hub-backends` 從來沒通過：MinIO 的 image 已經拉不到，連 `compose.hub.yaml` 都啟動不了。改用 SeaweedFS（第 8 項、ADR-0030 修訂）；這個 job 第一次在真的 Postgres 16 與真的 S3 相容服務上跑完 Hub 的共用案例（136 個通過、0 個略過），並新增「沒簽章的 S3 請求必須回 403」的反證。
      - 新增 `docker` job（第 3 項）。
+     - 結果：master `a147a379`（含收尾 D3）的完整 CI 全部 9 個 job 成功。runner 上的實測耗時：`go`（其餘套件，`-race`）約 27 分鐘、`bdd`（`./features`，`-race`）約 22 分鐘、`bdd-extra` 約 3 分鐘、`docker` 約 3 分鐘，其餘 job 不到 3 分鐘；最慢的兩個離 60 分鐘上限還有一倍以上的餘裕。之後的提交以 `gh run list --branch master` 為準。
   2. **真實驗收**：yt-dlp（YouTube、Bilibili）、Groq、Supadata、Gemini、ntfy、真實 IdP、真實反向代理、Hub 的真實 OAuth、R2／AWS S3、真實 ffmpeg 輸出（bundle 的 JPEG 結構檢查只用 Go encoder 與手工樣本）、真實 libass 預覽、Jellyfin／Plex sidecar；`@manual`、`@ui @manual` 的人工驗收；M0 量測與 `@pending-m0`。
   3. **Docker**：CI 的 `docker` job 實際建置 Client 與 Hub 的 image（先前本機沒有 docker，這是第一次實測）。Client image 通過 `deploy/docker/smoke-test.sh`（工具齊全含 ffmpeg libass、非 root、缺 master key 時拒絕啟動、登入、SIGTERM 正常關閉、重啟後資料保存）；Hub 用 `compose.hub.yaml` 啟動整組（Postgres 16、SeaweedFS、`hub-s3-init` 建 bucket、`hub-migrate`、`hub`），`/readyz` 回 ok、`hub doctor` 通過、匿名的 S3 請求被拒絕（403）。**仍沒驗證**：Hub image 沒有發布到 ghcr；arm64 的多架構建置（只在發布 tag 時由 `docker-publish.yml` 建置）；Client 的 `compose.yaml`（`wsl`／`vps` profile 與 Caddy）沒有在 CI 啟動；真實反向代理後面的行為。
   4. **追認決定**：各規格「待決問題」中標「（2026-11-23／24，依 /goal 採 advisor 建議，待 owner 追認）」的項目（很長的清單，依規格 grep 這句話即可列出）。其中修改了既有 `.feature` 的：VAULT 5 個場景（V12，rerun 帶明確 profile）、COST C22、SRC-10 R16、NOTIFY N9、SUB-R4 的 regex 範例、HSHR S17（R13 檔名）與 S20（`hub-precheck-v1` → `v2`，12 處）、SRC-R11 的 `@wip` 場景（`SRC-transcript-sources.feature:214`：第一步從 `titled` 改成 `with:` 並加上 `language zh`，拿掉 `@wip`）。破壞性變更：Hub 需要 `NOTESTEME_HUB_MASTER_KEY`（≥ 32 字元）與 `NOTESTEME_HUB_SESSION_KEY`；Hub 的 cookie 改成 `__Host-` 前綴（部署後每個人要重新登入）。
@@ -575,7 +576,7 @@
      - 產出損毀（NFR-REL-2）：重跑依影音**目前**的處理方案；匯入、編輯或從 bundle 播種的產出只標記不自動重跑；畫面、筆記、摘要、章節的產出讀到損毀只回報錯誤。
      - 單一任務的重試／取消以任務所屬的整個步驟為單位，scope 是 `admin`。
      - OPS 的「固定版本略過」場景偏弱：排程完全沒執行時它也會通過（同一組的第一個場景才證明排程真的有跑）。
-  7. **CI 逾時餘裕**：已處理（第 1 項）。拆成平行的 job 之後每個測試程式的上限是 60 分鐘；場景再增加時 `bdd`（`-race` 下的 `./features`）是第一個會碰到上限的，可以再依 feature 檔分片。
+  7. **CI 逾時餘裕**：已處理（第 1 項）。拆成平行的 job 之後每個測試程式的上限是 60 分鐘（實測最慢約 27 分鐘）；場景再增加時 `bdd`（`-race` 下的 `./features`）是第一個會碰到上限的，可以再依 feature 檔分片。
   8. **S3 相容服務改用 SeaweedFS（ADR-0030 修訂，待追認）**：compose 的 `hub-minio`、`hub-minio-init` 改為 `hub-s3`（`chrislusf/seaweedfs:4.55`，單容器 `weed server -s3`）與 `hub-s3-init`（`curlimages/curl:8.18.0` 以 SigV4 建 bucket）；volume 改名 `hub-s3-data`，沒有提供 MinIO 資料的遷移（沒有已知的部署）。代價：SeaweedFS 在 `hub-internal` network 上還開了沒有認證的內部服務（filer 8888、master 9333、Iceberg 8181 等），Hub 容器被攻破時可繞過 S3 簽章；network 是 internal，只有 Hub 與 migrate 連得到。也可以改用 R2 或 AWS S3（`docs/hub-deployment.md` §3）。
   9. **收尾 D3 的決定（待追認）**：
      - **請優先決定**：已付費的 Groq 轉錄被 SRC-R4 拒絕（`low_coverage`、`repetition`）時，步驟仍以「找不到可用的字幕來源」失敗，手動重跑會再付一次、而且多半又被拒絕。建議：付費 ASR 是最後一個可用來源時採用並顯示提醒，不要失敗（需要新的狀態、訊息與 UI，所以沒有在 /goal 內做）。
