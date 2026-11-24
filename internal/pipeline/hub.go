@@ -775,3 +775,28 @@ func (p *Pipeline) checkShareLeak(ctx context.Context, it store.Item, raw []byte
 	}
 	return nil
 }
+
+// currentHubOrigin 回傳現行的 source 字幕（transcript 的 source 變體）來自 Hub 時的 hub_origin（HSHR-R9、介面的「來自 Hub」標示）。
+// 只認 executor 為 hub 的來源紀錄：從 bundle 匯入的 hub 字幕已改名成 imported_hub_origin（BND N27），不算；
+// 之後改用別的來源重跑 transcript 時，現行的 source 不再來自 Hub，回傳 nil。
+func currentHubOrigin(ctx context.Context, r *store.Repo, itemID string) (*HubOrigin, error) {
+	arts, err := r.CurrentArtifacts(ctx, itemID, "transcript")
+	if err != nil {
+		return nil, err
+	}
+	for _, a := range arts {
+		if a.Variant != string(subtitle.VariantSource) {
+			continue
+		}
+		var prov struct {
+			Executor  string     `json:"executor"`
+			HubOrigin *hubOrigin `json:"hub_origin"`
+		}
+		if json.Unmarshal(a.Provenance, &prov) != nil || prov.Executor != SourceHub || prov.HubOrigin == nil || prov.HubOrigin.VersionID == "" {
+			continue
+		}
+		o := prov.HubOrigin
+		return &HubOrigin{URL: o.URL, VersionID: o.VersionID, SHA256: o.SHA256, Uploader: o.Uploader}, nil
+	}
+	return nil, nil
+}

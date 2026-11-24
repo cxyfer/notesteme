@@ -372,6 +372,36 @@ Feature: Sharing to the Hub and reusing subtitles from it
       | hub_origin.url      | https://hub.example.org |
     And the stage "normalize" of "yt:hshr03xxxxx" is "done"
 
+  # 影音詳情帶著現行原始字幕的 hub_origin，UI 據此顯示「來自 Hub：@alice 的原始字幕」（HSHR 介面）；不是來自 Hub 時是 null。
+  @HUB-04 @HSHR-R9
+  Scenario: The item tells whose Hub subtitles it was regenerated from
+    Given a YouTube video "yt:hshr03xxxxx" titled "Alice's Talk"
+    And "yt:hshr03xxxxx" has no caption tracks
+    And "yt:hshr01xxxxx" has manual captions in "en"
+    And the Hub has the version "alice-raw" of "yt:hshr03xxxxx" with:
+      | field    | value  |
+      | variant  | source |
+      | uploader | alice  |
+    And the Hub version "alice-raw" has the cues:
+      | # | start        | end          | text              |
+      | 1 | 00:00:01.000 | 00:00:03.000 | Hello from Alice. |
+    When the owner sends "POST /api/hub/import" with:
+      """
+      { "version": "{version:alice-raw}" }
+      """
+    And the owner ingests "yt:hshr01xxxxx"
+    And the worker runs until idle
+    And the owner sends "GET /api/items/yt:hshr03xxxxx"
+    Then the response contains:
+      """
+      { "hub_origin": { "url": "https://hub.example.org", "version_id": "*", "sha256": "*", "uploader": "alice" } }
+      """
+    When the owner sends "GET /api/items/yt:hshr01xxxxx"
+    Then the response contains:
+      """
+      { "hub_origin": null }
+      """
+
   @HUB-04 @HSHR-R9
   Scenario: Only raw subtitles can be used to regenerate
     Given the Hub has the version "alice-fixed" of "yt:hshr03xxxxx" with:

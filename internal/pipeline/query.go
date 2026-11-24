@@ -37,6 +37,16 @@ type Detail struct {
 	BetterSource *store.BetterSource
 	// ImportedFrom 是最近一次從 bundle 匯入的來源（BND-R8、N7）；沒有從 bundle 匯入過時是 nil。
 	ImportedFrom *store.BundleImport
+	// HubOrigin 是現行的原始字幕從 Hub 取得時的來源（HSHR-R9 的 hub_origin）；現行的原始字幕不是來自 Hub 時是 nil。
+	HubOrigin *HubOrigin
+}
+
+// HubOrigin 是來源紀錄的 hub_origin（HSHR-R9）。Uploader 是 Hub 上的顯示名稱，是不可信的文字。
+type HubOrigin struct {
+	URL       string
+	VersionID string
+	SHA256    string
+	Uploader  string
 }
 
 // Item 回傳影音詳情；不存在時回傳 store.ErrNotFound，在垃圾桶中時回傳 *InTrashError（DEL-R1）。
@@ -94,6 +104,9 @@ func (p *Pipeline) Item(ctx context.Context, id string) (Detail, error) {
 		return Detail{}, err
 	case ok:
 		d.ImportedFrom = &b
+	}
+	if d.HubOrigin, err = currentHubOrigin(ctx, r, id); err != nil {
+		return Detail{}, err
 	}
 	// 產出檔讀不到時只略過這個欄位，不讓整個詳情失敗。
 	switch segs, ok, err := p.SponsorSegments(ctx, id); {

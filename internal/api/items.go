@@ -124,6 +124,25 @@ type ItemDetail struct {
 	BetterSource *ItemBetterSource `json:"better_source" doc:"事後發現的更好字幕來源（SRC-R23）；沒有時是 null"`
 	// ImportedFrom 是最近一次從 bundle 匯入的來源（BND-R8、N7）；沒有時是 null。
 	ImportedFrom *ItemImportedFrom `json:"imported_from" doc:"最近一次從 bundle 匯入的來源（BND-R8）；沒有從 bundle 匯入過時是 null"`
+	// HubOrigin 是現行的原始字幕從 Hub 重新生成或查詢命中時的來源（HSHR-R9、R13 的 hub_origin）；沒有時是 null。
+	HubOrigin *ItemHubOrigin `json:"hub_origin" doc:"現行的原始字幕來自 Hub 時的來源（HSHR-R9）；不是來自 Hub 時是 null"`
+}
+
+// ItemHubOrigin 是來源紀錄的 hub_origin（HSHR-R9）。uploader 是 Hub 上的顯示名稱，是不可信的文字。
+type ItemHubOrigin struct {
+	URL       string `json:"url" doc:"取得字幕時的 Hub 網址（hub.url）"`
+	VersionID string `json:"version_id" doc:"Hub 上的版本 ID"`
+	SHA256    string `json:"sha256" doc:"Hub 上的版本內容的 sha256"`
+	Uploader  string `json:"uploader" doc:"Hub 上的上傳者顯示名稱（不可信的文字，已去掉控制與格式字元）"`
+}
+
+// hubOriginView 轉成 API 的形狀；字串來自 Hub，輸出前去掉控制與格式字元並限制長度。
+func hubOriginView(o *pipeline.HubOrigin) *ItemHubOrigin {
+	if o == nil {
+		return nil
+	}
+	return &ItemHubOrigin{URL: cleanUntrusted(o.URL, 512), VersionID: cleanUntrusted(o.VersionID, 64),
+		SHA256: cleanUntrusted(o.SHA256, 64), Uploader: cleanUntrusted(o.Uploader, 64)}
 }
 
 // ItemImportedFrom 是影音的產出從哪個實例的 bundle 匯入（BND-R8）。值取自 bundle 的 manifest，是不可信的文字。
@@ -139,21 +158,23 @@ func importedFromView(b *store.BundleImport) *ItemImportedFrom {
 	if b == nil {
 		return nil
 	}
-	clean := func(s string, n int) string {
-		s = strings.Map(func(r rune) rune {
-			// 控制字元、格式字元（例如 U+202E 雙向覆寫）與不合法的 UTF-8 一律去掉。
-			if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == utf8.RuneError {
-				return -1
-			}
-			return r
-		}, s)
-		if rs := []rune(s); len(rs) > n {
-			s = string(rs[:n])
+	return &ItemImportedFrom{InstanceID: cleanUntrusted(b.InstanceID, 64), AppVersion: cleanUntrusted(b.AppVersion, 64),
+		BundleSHA256: cleanUntrusted(b.BundleSHA256, 64), ImportedAt: b.ImportedAt}
+}
+
+// cleanUntrusted 去掉不可信文字中的控制與格式字元，並截到最多 n 個字元。
+func cleanUntrusted(s string, n int) string {
+	s = strings.Map(func(r rune) rune {
+		// 控制字元、格式字元（例如 U+202E 雙向覆寫）與不合法的 UTF-8 一律去掉。
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == utf8.RuneError {
+			return -1
 		}
-		return s
+		return r
+	}, s)
+	if rs := []rune(s); len(rs) > n {
+		s = string(rs[:n])
 	}
-	return &ItemImportedFrom{InstanceID: clean(b.InstanceID, 64), AppVersion: clean(b.AppVersion, 64),
-		BundleSHA256: clean(b.BundleSHA256, 64), ImportedAt: b.ImportedAt}
+	return s
 }
 
 // ItemReprobe 是影音排定的重新 Probe（SRC-R18）。
@@ -675,6 +696,7 @@ func toDetail(d pipeline.Detail) ItemDetail {
 		out.BetterSource = &ItemBetterSource{Source: b.Source, Lang: b.Lang, Kind: b.Kind, FoundAt: b.FoundAt.UTC(), EstimateUSD: b.EstimateUSD}
 	}
 	out.ImportedFrom = importedFromView(d.ImportedFrom)
+	out.HubOrigin = hubOriginView(d.HubOrigin)
 	return out
 }
 

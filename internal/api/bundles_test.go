@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/config"
+	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
@@ -136,6 +137,19 @@ func TestImportedFromView(t *testing.T) {
 		AppVersion: "0.4.0\x1b[31m\n\u202e\xff" + strings.Repeat("v", 100), BundleSHA256: strings.Repeat("a", 64), ImportedAt: at})
 	if strings.ContainsAny(v.AppVersion, "\x1b\n\ufffd\u202e") || !strings.HasPrefix(v.AppVersion, "0.4.0[31m") || len([]rune(v.AppVersion)) != 64 ||
 		v.InstanceID != "0190a1b2-0000-7000-8000-000000000001" || v.BundleSHA256 != strings.Repeat("a", 64) || !v.ImportedAt.Equal(at) {
+		t.Errorf("view = %+v", v)
+	}
+}
+
+// hubOriginView：上傳者的顯示名稱來自 Hub，是不可信的輸入，同 importedFromView 清理並限制長度。
+func TestHubOriginView(t *testing.T) {
+	if hubOriginView(nil) != nil {
+		t.Error("nil 應該是 nil")
+	}
+	v := hubOriginView(&pipeline.HubOrigin{URL: "https://hub.example.org", VersionID: "0193a3b4-0000-7000-8000-000000000001",
+		SHA256: strings.Repeat("b", 64), Uploader: "alice‮\x1b[31m\n" + strings.Repeat("x", 100)})
+	if strings.ContainsAny(v.Uploader, "\x1b\n‮") || !strings.HasPrefix(v.Uploader, "alice[31m") || len([]rune(v.Uploader)) != 64 ||
+		v.URL != "https://hub.example.org" || v.VersionID != "0193a3b4-0000-7000-8000-000000000001" || v.SHA256 != strings.Repeat("b", 64) {
 		t.Errorf("view = %+v", v)
 	}
 }

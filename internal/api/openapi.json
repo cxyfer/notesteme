@@ -2966,6 +2966,10 @@
           "external_id": {
             "type": "string"
           },
+          "hub_origin": {
+            "$ref": "#/components/schemas/ItemHubOrigin",
+            "description": "現行的原始字幕來自 Hub 時的來源（HSHR-R9）；不是來自 Hub 時是 null"
+          },
           "hub_shares": {
             "description": "分享到 Hub 的紀錄，依時間排序；沒有分享過時沒有這個欄位",
             "items": {
@@ -3096,6 +3100,7 @@
           "reprobe",
           "better_source",
           "imported_from",
+          "hub_origin",
           "id",
           "ref",
           "platform",
@@ -3109,6 +3114,34 @@
           "created_at",
           "subscription_id",
           "read_state"
+        ],
+        "type": "object"
+      },
+      "ItemHubOrigin": {
+        "additionalProperties": false,
+        "properties": {
+          "sha256": {
+            "description": "Hub 上的版本內容的 sha256",
+            "type": "string"
+          },
+          "uploader": {
+            "description": "Hub 上的上傳者顯示名稱（不可信的文字，已去掉控制與格式字元）",
+            "type": "string"
+          },
+          "url": {
+            "description": "取得字幕時的 Hub 網址（hub.url）",
+            "type": "string"
+          },
+          "version_id": {
+            "description": "Hub 上的版本 ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "version_id",
+          "sha256",
+          "uploader"
         ],
         "type": "object"
       },
