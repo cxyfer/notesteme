@@ -39,7 +39,7 @@ function subsApi(extra: Record<string, MockHandler> = {}) {
   return mockApi({
     "GET /api/subscriptions": () => ({
       subscriptions: [
-        subscription("s1"),
+        subscription("s1", { new_items: 3 }),
         subscription("s2", {
           title: "",
           url: "https://feeds.example.com/pod.xml",
@@ -71,6 +71,20 @@ describe("訂閱：列表", () => {
     expect(screen.getByRole("link", { name: "https://feeds.example.com/pod.xml" })).toBeTruthy();
     expect(screen.getByText("已停用")).toBeTruthy();
     expect(screen.getByText(/訂閱來源已不存在/)).toBeTruthy();
+    // SUB 的 @ui 場景：平台、檢查頻率、上次與下次檢查、處理方案與新內容（SUB-R14）
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(headers).toEqual([
+      "頻道",
+      "平台",
+      "檢查頻率",
+      "上次檢查",
+      "下次檢查",
+      "處理方案",
+      "新內容",
+      "狀態",
+    ]);
+    const row = screen.getByRole("link", { name: "码农高天" }).closest("tr")!;
+    expect(within(row).getAllByRole("cell")[5]!.textContent).toBe("3");
     await expectNoA11yViolations(container);
   });
 

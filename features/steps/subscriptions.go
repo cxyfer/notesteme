@@ -44,8 +44,9 @@ func registerSubscriptions(r *Registry, s *Scenario) {
 	registerEntry(r, s)
 }
 
-// subCoreRules 是已實作的 SUB 規則（沿用 M4-S2 的名稱）：M4-S2 的訂閱核心，加上 M4-S3 的 R6 試跑預覽、R7 匯入與 R13 的 MCP、CLI（SUB 全部的規則）。
-var subCoreRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true}
+// subCoreRules 是已實作的 SUB 規則（沿用 M4-S2 的名稱）：M4-S2 的訂閱核心，加上 M4-S3 的 R6 試跑預覽、R7 匯入與 R13 的 MCP、CLI，
+// 以及 R14 的新內容數（SUB 全部的規則）。
+var subCoreRules = map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true}
 
 // subGate 讓 SUB 的閘門只對 SUB 範圍的場景放行：至少一個 @SUB-R*，而且所有 @SUB-R* 都在 subCoreRules。
 // 其他場景（DIG 等只有 @SUB-01 的場景）停在同一個閘門，回傳裸的 godog.ErrPending，junit 的訊息與切片之前相同（同 hubGate）。

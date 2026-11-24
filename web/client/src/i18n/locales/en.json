@@ -1745,7 +1745,8 @@
       "lastChecked": "Last checked",
       "nextCheck": "Next check",
       "profile": "Preset",
-      "state": "Status"
+      "state": "Status",
+      "newItems": "New"
     },
     "never": "Not yet",
     "disabled": "Turned off",

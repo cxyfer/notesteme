@@ -1699,7 +1699,8 @@
       "lastChecked": "上次检查",
       "nextCheck": "下次检查",
       "profile": "处理方案",
-      "state": "状态"
+      "state": "状态",
+      "newItems": "新内容"
     },
     "never": "还没检查",
     "disabled": "已停用",

@@ -1699,7 +1699,8 @@
       "lastChecked": "上次檢查",
       "nextCheck": "下次檢查",
       "profile": "處理方案",
-      "state": "狀態"
+      "state": "狀態",
+      "newItems": "新內容"
     },
     "never": "還沒檢查",
     "disabled": "已停用",

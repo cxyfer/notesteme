@@ -22,6 +22,7 @@ export function subscription(id: string, over: Partial<View> = {}): View {
     next_check_at: "2026-11-22T19:40:00Z",
     last_error: null,
     last_error_class: null,
+    new_items: 0,
     ...over,
   };
 }

@@ -134,6 +134,7 @@ type View struct {
 	NextCheckAt    *time.Time     `json:"next_check_at" nullable:"true" doc:"下一次檢查；停用時是 null"`
 	LastError      *string        `json:"last_error" nullable:"true"`
 	LastErrorClass *string        `json:"last_error_class" nullable:"true" enum:"retryable,permanent,needs_action"`
+	NewItems       int            `json:"new_items" doc:"新內容：這個訂閱建立、還沒有標為已讀、不在垃圾桶中的影音數（SUB-R14）"`
 }
 
 // EntryView 是 API 回應的條目。
@@ -159,13 +160,21 @@ func nilIfEmpty(s string) *string {
 	return &s
 }
 
-func (s *Service) view(ctx context.Context, r *store.Repo, sub store.Subscription) (View, error) {
+// newItems 是 SubscriptionNewItems 的結果；nil 時在這裡查詢（單一訂閱的回應）。
+func (s *Service) view(ctx context.Context, r *store.Repo, sub store.Subscription, newItems map[string]int) (View, error) {
+	if newItems == nil {
+		var err error
+		if newItems, err = r.SubscriptionNewItems(ctx); err != nil {
+			return View{}, err
+		}
+	}
 	v := View{
 		ID: sub.ID, Kind: sub.Kind, Platform: sub.Platform, ExternalID: sub.ExternalID, URL: sub.URL, Title: sub.Title,
 		Profile: nilIfEmpty(sub.ProfileID), Overrides: map[string]any{}, Schedule: FormatSchedule(sub.Schedule),
 		Backfill: decodeBackfill(sub.Backfill), Filters: decodeFilters(sub.Filters), Enabled: sub.Enabled,
 		CreatedAt: sub.CreatedAt, LastCheckedAt: sub.LastCheckedAt,
 		LastError: nilIfEmpty(sub.LastError), LastErrorClass: nilIfEmpty(sub.LastErrorClass),
+		NewItems: newItems[sub.ID],
 	}
 	if len(sub.Overrides) > 0 {
 		_ = json.Unmarshal(sub.Overrides, &v.Overrides)
@@ -282,7 +291,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (View, error) {
 		if err := r.EmitSubscriptionEvent(ctx, events.Event{Type: events.TypeSubscriptionCreated, Subscription: created.ID}); err != nil {
 			return err
 		}
-		out, err = s.view(ctx, r, created)
+		out, err = s.view(ctx, r, created, map[string]int{})
 		return err
 	})
 	return out, err
@@ -360,7 +369,7 @@ func (s *Service) Patch(ctx context.Context, id string, in PatchInput) (View, er
 		if err != nil {
 			return err
 		}
-		out, err = s.view(ctx, r, got)
+		out, err = s.view(ctx, r, got, nil)
 		return err
 	})
 	return out, err
@@ -375,9 +384,13 @@ func (s *Service) List(ctx context.Context) ([]View, error) {
 	if err != nil {
 		return nil, err
 	}
+	newItems, err := r.SubscriptionNewItems(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]View, 0, len(subs))
 	for _, sub := range subs {
-		v, err := s.view(ctx, r, sub)
+		v, err := s.view(ctx, r, sub, newItems)
 		if err != nil {
 			return nil, err
 		}
@@ -393,7 +406,7 @@ func (s *Service) Get(ctx context.Context, id string) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
-	return s.view(ctx, r, sub)
+	return s.view(ctx, r, sub, nil)
 }
 
 // Entries 列出訂閱的條目，decision 不是空字串時只列那一種，最多 limit 筆（0 代表上限）。

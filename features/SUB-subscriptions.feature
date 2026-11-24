@@ -40,6 +40,42 @@ Feature: Subscriptions
       { "subscription_id": "{subscription:talks}" }
       """
 
+  @SUB-01 @SUB-R13 @SUB-R14
+  Scenario: The subscription list counts the new items that are still unread
+    Given the subscription "talks" for "https://www.youtube.com/channel/UCfixture000000000000000"
+    When the worker runs until idle
+    And a YouTube video "yt:new001xxxxx" with:
+      | field        | value                |
+      | title        | First new talk       |
+      | published_at | 2026-11-20T09:00:00Z |
+    And a YouTube video "yt:new002xxxxx" with:
+      | field        | value                |
+      | title        | Second new talk      |
+      | published_at | 2026-11-20T10:00:00Z |
+    And a YouTube video "yt:new003xxxxx" with:
+      | field        | value                |
+      | title        | Third new talk       |
+      | published_at | 2026-11-20T11:00:00Z |
+    And the clock advances by "7h"
+    And the worker runs until idle
+    Then the library contains 3 items
+    When the owner sends "POST /api/items/batch" with:
+      """
+      { "action": "mark_read", "ids": ["yt:new001xxxxx"] }
+      """
+    And the owner sends "DELETE /api/items/yt:new002xxxxx"
+    And the owner sends "GET /api/subscriptions"
+    Then the response status is 200
+    And the response contains:
+      """
+      { "subscriptions": [ { "id": "{subscription:talks}", "new_items": 1 } ] }
+      """
+    When the owner sends "GET /api/subscriptions/{subscription:talks}"
+    Then the response contains:
+      """
+      { "id": "{subscription:talks}", "new_items": 1 }
+      """
+
   @SUB-01 @SUB-R1
   Scenario Outline: Subscription URLs are recognised by their shape
     When the owner sends "POST /api/subscriptions" with:

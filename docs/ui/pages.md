@@ -261,7 +261,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - 新增訂閱時提醒：「同一個頻道只在一台實例上訂閱，避免重複處理。」（見 ADR-0011）
 - **API**：`GET/POST/PATCH /api/subscriptions`、`POST /api/subscriptions/:id/preview`、`POST /api/subscriptions/:id/check`
 - **修訂（2026-11-23，[SUB 規格](../specs/SUB-subscriptions.md) SUB-R6、待決問題 S9，待 owner 追認）**：回補範圍為「只抓之後的新內容」時，試跑預覽把清單中已存在的舊內容列在「略過」（原因 `before_subscription`），線框中的「會處理 8 部」只適用於「最近 N 部」與「全部」。API 另有 `DELETE /api/subscriptions/:id`、`GET /api/subscriptions/:id/entries`、`POST /api/subscriptions/preview` 與匯入路由（SUB-R13）。
-- **實作狀態（UI-4，2026-11-23）**：完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)。偏離：詳情與編輯做成 `/subscriptions/:id` 頁面而不是抽屜；試跑預覽要先按一次「試跑預覽」才會連外；列表沒有「新內容」欄（API 沒有這個數字）。
+- **實作狀態（UI-4，2026-11-23）**：完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)。偏離：詳情與編輯做成 `/subscriptions/:id` 頁面而不是抽屜；試跑預覽要先按一次「試跑預覽」才會連外。「新內容」欄在 2026-11-24 補上：這個訂閱建立、還沒有標為已讀、不在垃圾桶中的影音數（SUB-R14，見 [README 10.23](README.md#1023-client-ui-的-ui-manual-缺口2026-11-24)）。
 
 ## 6. 佇列
 

@@ -1,5 +1,5 @@
 // 訂閱列表（docs/ui/pages.md §5；SUB-R1、R6、R7、R9、R12、R13）：頻道、平台、檢查頻率、上次與下次檢查、
-// 處理方案、最近的錯誤；「新增訂閱」抽屜（含試跑預覽）與 OPML／Takeout 匯入。這個頁面是 lazy route。
+// 處理方案、新內容（SUB-R14：這個訂閱建立、還沒有標為已讀、不在垃圾桶中的影音數）、最近的錯誤；「新增訂閱」抽屜（含試跑預覽）與 OPML／Takeout 匯入。這個頁面是 lazy route。
 // ?subscribe=<網址>（「新增」抽屜的「建立訂閱」）直接打開新增訂閱的抽屜並帶入網址；關閉時從網址移除。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
@@ -103,6 +103,9 @@ function SubscriptionTable({ list }: { list: SubscriptionView[] }) {
             <th scope="col">{t("subs.col.lastChecked")}</th>
             <th scope="col">{t("subs.col.nextCheck")}</th>
             <th scope="col">{t("subs.col.profile")}</th>
+            <th scope="col" className="num">
+              {t("subs.col.newItems")}
+            </th>
             <th scope="col">{t("subs.col.state")}</th>
           </tr>
         </thead>
@@ -127,6 +130,7 @@ function SubscriptionTable({ list }: { list: SubscriptionView[] }) {
                     : "—"}
               </td>
               <td>{s.profile ?? t("subs.profileDefault")}</td>
+              <td className="num">{formatNumber(s.new_items ?? 0)}</td>
               <td>
                 {s.last_error ? (
                   <span className="data-table__problem">

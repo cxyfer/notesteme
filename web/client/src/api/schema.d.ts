@@ -4142,6 +4142,11 @@ export interface components {
       /** @enum {string|null} */
       last_error_class: "retryable" | "permanent" | "needs_action" | null;
       /**
+       * Format: int64
+       * @description 新內容：這個訂閱建立、還沒有標為已讀、不在垃圾桶中的影音數（SUB-R14）
+       */
+      new_items: number;
+      /**
        * Format: date-time
        * @description 下一次檢查；停用時是 null
        */

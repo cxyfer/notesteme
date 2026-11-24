@@ -249,3 +249,26 @@ func (r *Repo) EmitSubscriptionEvent(ctx context.Context, ev events.Event) error
 		return tx.emit(ctx, ev)
 	})
 }
+
+// SubscriptionNewItems 回傳每個訂閱的「新內容」數：這個訂閱建立的（items.subscription_id）、
+// 還沒有標為已讀（LIB-R19）、不在垃圾桶中的影音數（SUB-R14）。沒有新內容的訂閱不在結果中。
+// 一次 GROUP BY 算出全部，列表不必每列各查一次。
+func (r *Repo) SubscriptionNewItems(ctx context.Context) (map[string]int, error) {
+	rows, err := r.s.r.QueryContext(ctx, `SELECT subscription_id, COUNT(*) FROM items
+WHERE subscription_id IS NOT NULL AND read_state = 'unread' AND deleted_at IS NULL
+GROUP BY subscription_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var id string
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
+}

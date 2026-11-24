@@ -435,7 +435,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 影音詳情的「畫面」分頁：印樣（只看選中的／全部候選）、時間（點擊跳播）、章節、圖說、排除原因、張數摘要與不足提示 | 完成 | `src/pages/item/NotePanels.tsx` |
 | 影音詳情的「筆記」分頁：閱讀字體渲染（標題、段落、清單、callout、表格、程式碼、連結只留 http／https／mailto、wikilink 轉文字）、同一部影音的時間連結點擊跳播、`![[…frame_NNNN.jpg]]` 對應到畫面圖片、自動檢查、寫入 vault 的路徑與 commit、過時提示與「重新產生筆記」、下載 Markdown | 完成 | `NotePanels.tsx`、`src/notes` |
 | 總覽（`/`，依賴 LIB-09 `/api/overview`）、媒體庫的批次操作（LIB-08 `POST /api/items/batch`）、搜尋、Hub | 未做：後端還沒有（不放會 501 的入口） | — |
-| 訂閱列表的「新內容」欄、處理方案被訂閱使用時的提示 | 未做：API 沒有每個訂閱的新內容數，也沒有「哪些訂閱用這個處理方案」的查詢（可以從列表的 `profile` 組合，留給之後） | — |
+| 訂閱列表的「新內容」欄 | 完成（10.23 第 6 點，SUB-R14） | `src/pages/subscriptions/SubscriptionsPage.tsx` |
+| 處理方案被訂閱使用時的提示 | 未做：沒有「哪些訂閱用這個處理方案」的查詢（可以從列表的 `profile` 組合，留給之後） | — |
 | 筆記模板的檔名與資料夾版面規則 | 不提供：vault 只在設定檔定義（ADR-0020、VAULT V1），頁面只說明 | — |
 | `G` 然後 `S` 的快捷鍵、`1`–`4` 切換詳情分頁 | 未做：快捷鍵仍是之後的切片（10.1） | — |
 | 真實瀏覽器的視覺、鍵盤與螢幕閱讀器驗收（`@ui @manual`） | owner 手動驗收 | — |
@@ -671,6 +672,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | --- | --- | --- |
 | 影音詳情的「更多」選單（刪除移進去；DEL 的「The delete dialog explains the consequences and can be undone」） | 完成 | `src/components/MoreMenu.tsx`、`src/pages/item/ItemPage.tsx` |
 | 「改用更好的字幕重跑」的對話框顯示預估花費（SRC 的「The item page offers the upgrade with its estimated cost」） | 完成 | `src/pages/item/RerunDialog.tsx` |
+| 訂閱列表的「新內容」欄（SUB 的「The subscriptions page lists each subscription with its schedule」） | 完成（後端加 `new_items`，SUB-R14） | `internal/subscription/service.go`、`src/pages/subscriptions/SubscriptionsPage.tsx` |
 | 總覽的系統告警與最近沒有送出的通知（OPS 的「Active alerts are shown on the overview」） | 完成（沒有改後端） | `src/pages/overview/AlertsSection.tsx` |
 | 「新增」抽屜的預估花費（ENTRY 的「Clicking the bookmarklet on a video page fills in the add drawer」）與貼上頻道時的「建立訂閱」（SUB 的「Pasting a channel address offers to subscribe」） | 完成 | `src/add/AddDrawer.tsx`、`src/pages/subscriptions/SubscriptionsPage.tsx`、`src/router.tsx` |
 
@@ -679,3 +681,4 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 3. **「新增」抽屜的預估花費**：辨識成功、不是頻道、Bilibili 的分P 格式正確、Podcast 至少勾一集時，用和「開始處理」相同的內容（網址、處理方案、分P、集）呼叫 `POST /api/estimate`；內容停止變動 400ms 後才送出、不重試、同樣的內容 60 秒內不重送，因為估算可能呼叫 yt-dlp（10.5 第 6 點的顧慮仍在，只是改成「辨識成功之後才估」）。只顯示已知金額：全部未知寫「無法預估花費。」（不顯示 $0.00），部分未知寫「預估花費至少 $X，有些部分無法預估。」；伺服器的 `notes` 原樣列在下面。估算失敗（例如 429）只寫一行原因，不擋「開始處理」。書籤、分享帶進來的網址（ENTRY-R2、R4）走同一個抽屜，所以也會顯示預估。
 4. **貼上頻道時的「建立訂閱」**：頻道（`subscribable`）在預覽中顯示「這是頻道。要追蹤新內容，請建立訂閱。」與「建立訂閱」按鈕，「開始處理」維持停用。按下後關閉抽屜，前往 `/subscriptions?subscribe=<貼上的網址>`，訂閱頁直接打開「新增訂閱」抽屜並帶入網址（抽屜的說明就是「同一個頻道只在一台實例上訂閱，避免重複處理。」），關閉時從網址移除參數。帶的是貼上的網址（resolve 對頻道回的 `url` 就是原網址）；SUB-R1 不接受的形式（例如 `/c/<名稱>`、UP 主空間）由建立時的 422 說明。Podcast feed 仍然可以勾選集數新增，另外多一個「建立訂閱」的文字按鈕（pages.md §2 寫「貼上頻道或 RSS 網址時」提示訂閱），不擋新增。訂閱頁的參數只做長度上限（2048），不在前端判斷格式。
 5. **總覽的告警讀既有的 API，沒有加到 `/api/overview`**：brief 原本要在 `OverviewResult` 加 `alerts`，但 OPS 規格的介面寫「`GET /api/system` 加上 `alerts`……總覽（LIB-09）讀這兩個欄位」，`system.go` 的註解也這樣寫；而且 `/api/overview` 是 `read` scope、`/api/system` 只有 owner，告警訊息含排程的錯誤與影音標題，放進 overview 會讓只有 `read` 的 token 也看得到。所以總覽另外讀 `GET /api/system` 的 `alerts`，與 `GET /api/notifications?state=dropped`（NOTIFY-R8 寫 `notify.dropped`「總覽顯示」）。兩個查詢各自每 5 分鐘重讀（告警每 15 分鐘才檢查一次），不跟著 SSE 失效、不重試；讀不到（403、501、其他錯誤）或兩者都是空的時整區隱藏。告警列出種類、訊息、開始時間與已持續多久（沿用設定「系統」的字串；`formatElapsed` 從 `OpsStatus` 搬到 `src/i18n`）。沒有送出的通知只列**建立時間在最近 24 小時內**的（API 沒有「何時 dropped」，只有 `created_at`；24 小時與 NOTIFY-R10 的去重視窗相同），最多 5 則，連到通知設定。「今天」裡的 `notify.dropped` 事件照舊保留（那是時間軸，這裡是狀態），兩處都會出現。
+6. **訂閱的「新內容」**：SUB 規格原本沒有定義這個數字，定為「這個訂閱建立、還沒有標為已讀、不在垃圾桶中的影音數」（SUB-R14、SUB 待決問題 S11）：讀過就歸零，與媒體庫的已讀狀態一致。後端在訂閱的每個回應加 `new_items`（列表用一次 `GROUP BY` 算出），場景是 `features/SUB-subscriptions.feature` 的「The subscription list counts the new items that are still unread」（`@M4`）。列表在「處理方案」與「狀態」之間多一欄「新內容」，數字不連到媒體庫（`GET /api/items` 沒有依訂閱篩選）。

@@ -7006,6 +7006,11 @@
               "null"
             ]
           },
+          "new_items": {
+            "description": "新內容：這個訂閱建立、還沒有標為已讀、不在垃圾桶中的影音數（SUB-R14）",
+            "format": "int64",
+            "type": "integer"
+          },
           "next_check_at": {
             "description": "下一次檢查；停用時是 null",
             "format": "date-time",
@@ -7062,7 +7067,8 @@
           "last_checked_at",
           "next_check_at",
           "last_error",
-          "last_error_class"
+          "last_error_class",
+          "new_items"
         ],
         "type": "object"
       },
