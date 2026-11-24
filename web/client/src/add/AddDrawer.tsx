@@ -522,7 +522,11 @@ export function AddDrawer({
             className="field__input"
             value={chosenProfile ?? ""}
             disabled={!profiles.isSuccess || profileList.length === 0}
-            onChange={(e) => setProfile(e.target.value || undefined)}
+            onChange={(e) => {
+              setProfile(e.target.value || undefined);
+              // 字幕來源的起始清單跟著處理方案：換方案時丟掉舊方案的清單，免得把新方案移除的來源整份送回去
+              setRun((r) => ({ ...r, sources: undefined }));
+            }}
           >
             {profileList.length === 0 && <option value="">{t("add.profileDefault")}</option>}
             {profileList.map((p) => (

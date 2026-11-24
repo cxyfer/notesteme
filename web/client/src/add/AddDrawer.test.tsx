@@ -530,6 +530,39 @@ describe("新增抽屜", () => {
     });
   });
 
+  it("換處理方案時丟掉調整過的字幕來源，改用新方案的清單（不把新方案移除的來源送回去）", async () => {
+    const api = drawerApi({
+      "GET /api/profiles": () => ({
+        profiles: [
+          PROFILES.profiles[0],
+          { ...PROFILES.profiles[1], config: { language: { fallback: ["supadata"] } } },
+        ],
+      }),
+      "GET /api/settings/{section}": (req) =>
+        req.params.section === "language" ? { fallback: ["supadata", "groq"] } : {},
+    });
+    const { dialog } = await openDrawer();
+    await userEvent.type(within(dialog).getByLabelText("網址"), YT);
+    await within(dialog).findByText("預估花費約 US$0.21。");
+    await userEvent.click(within(dialog).getByRole("button", { name: "調整這次的設定" }));
+    const sources = within(dialog).getByRole("group", { name: "字幕來源" });
+    await userEvent.click(
+      await within(sources).findByRole("button", { name: "把Groq 語音轉錄往前移" }),
+    );
+    await userEvent.selectOptions(within(dialog).getByLabelText("處理方案"), "notes");
+    expect(
+      within(sources)
+        .getAllByRole("checkbox")
+        .map((c) => c.parentElement!.textContent),
+    ).toEqual(["Supadata"]);
+    await userEvent.click(within(dialog).getByRole("button", { name: "開始處理" }));
+    await waitFor(() => expect(api.calls("POST", "/api/items")).toHaveLength(1));
+    expect(JSON.parse(String(api.calls("POST", "/api/items")[0]!.init.body))).toEqual({
+      url: YT,
+      profile: "notes",
+    });
+  });
+
   it("選了本機檔案時，單次覆寫放在 multipart 的 overrides 欄位（在 file 之前）", async () => {
     const api = drawerApi({
       "GET /api/settings/{section}": () => ({ fallback: ["groq"] }),
