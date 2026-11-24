@@ -182,7 +182,7 @@
 這一項不在原本指定的清單內，但 `nfr.md` 第 2 節的驗證方式是 `ci`（bundle 大小）加 `manual`（LCP 與捲動），所以一併列出。
 
 - 目標：初始載入的 JS（gzip 後）< 300KB（CI 已檢查）；`ref-wsl` 上本機連線的 LCP < 2 秒；媒體庫列表虛擬化，捲動 10,000 列不掉幀。M1。
-- 需要的環境：`ref-wsl`；Client 載入 `lib-10k` 規模的資料（10,000 部影音、500 個頻道，`nfr.md` 1.2）。目前沒有現成的匯入腳本：`BenchmarkListItems10k`（`internal/pipeline/list_test.go`）在測試內建立同樣形狀的資料，需要另外準備一份 DB。
+- 需要的環境：`ref-wsl`；Client 載入 `lib-10k` 規模的資料（10,000 部影音、500 個頻道，`nfr.md` 1.2）。用 `go run ./internal/benchdata/cmd/genlib -out <資料目錄> -profile lib-10k` 產生（完整規模約十幾分鐘、數 GB；`-profile item-long` 產生步驟 3 的 3 小時影片），再以 `NOTESTEME_DATA=<資料目錄> notesteme serve` 啟動；產生器的說明見 `internal/benchdata/doc.go`。
 
 步驟與預期結果：
 
