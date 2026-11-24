@@ -429,10 +429,10 @@ Prompt 庫 › 校正 › correct-default
 | 通知 | ntfy、Discord、Telegram、webhook；分別勾選要通知哪些事件；「傳送測試通知」 | M4 |
 | 預算 | 月預算、單部上限、預算將用完時的通知門檻 | M4 |
 | 詞彙表 | 全域與各頻道的詞彙表；待審的術語候選（接受、修改後接受、拒絕、批次決定），見 GLOS 規格 | M4 |
-| 系統 | yt-dlp、ffmpeg、Deno 的版本；「更新 yt-dlp」與「回到上一個版本」；磁碟用量；媒體檔保留天數 | M1 |
+| 系統 | yt-dlp、ffmpeg、Deno 的版本；「更新 yt-dlp」與「回到上一個版本」；yt-dlp 目前固定的版本（只顯示，固定與解除固定只在 CLI 與 API，見下方修訂）；磁碟用量；媒體檔保留天數（M4 只顯示、不刪除，見下方修訂） | M1 |
 | 外觀 | 淺色、深色或跟隨系統；介面密度 | M1 |
 | 書籤小工具 | 可以拖到書籤列的 bookmarklet（ENTRY-R1）；手機的入口：Android 安裝成 App 後用「分享」，iOS 用捷徑開啟 `/add?url=` | M4 |
-| 登入 | 修改密碼（M1）；目前的登入工作階段、反向代理驗證與 OIDC（M4） | M1 起逐步補齊 |
+| 登入 | 修改密碼（M1）；目前的登入工作階段（M4）；反向代理驗證與 OIDC 只能寫在設定檔，UI 只有登入頁的 OIDC 按鈕與這裡的工作階段列表（M4，見下方修訂） | M1 起逐步補齊 |
 
 - **安全**：API key 儲存後只顯示末四碼，不能再次查看完整內容，只能更換。
 - **修訂（2026-11-23，ADR-0020、VAULT 規格待決問題 V1，待 owner 追認）**：「輸出」分區的 vault（路徑、git repo、分支）與 hook 只能在設定檔定義，這裡唯讀顯示，處理方案只能選用已定義的 id；字幕的本機影片旁與資料夾目標維持可以在處理方案中設定。
@@ -444,11 +444,15 @@ Prompt 庫 › 校正 › correct-default
 - **實作狀態（UI-5，2026-11-24）**：「詞彙表」加上跨頻道的術語審核（GLOS-R7）；「通知」加上彙整設定（DIG）；「系統」加上系統告警、每日備份狀態與「匯入 bundle」（OPS、BND），見 [README 10.14、10.15](README.md#1015-ui-5-的決定與待決問題)。
 - **實作狀態（2026-11-25）**：「服務與金鑰」加上 provider 目錄（`GET /api/providers`，內建與設定檔中的 provider 全部唯讀，`command` 註明只能在設定檔定義）、每個 provider 的「測試連線」（`POST /api/providers/:id/test`，SEC-R11）與模型的停用公告（機制已有；目前內建的模型沒有停用公告，見 SEC 待決問題），見 [README 10.25](README.md#1025-設定頁的-provider-目錄與測試連線2026-11-25)。
 - **實作狀態（UI-4，2026-11-23）**：「通知」與「預算」分區完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)；其他分區見 README 10.10。
+- **修訂（2026-11-25，依 /goal 由實作者暫定，待 owner 追認；一次唯讀稽核：規格與 UI 文字對照實作）**：
+  - 「系統」的 yt-dlp 版本固定：設定 › 系統有「更新 yt-dlp」、「回到上一個版本」與目前固定的版本（`pinned`，沒有固定時顯示「沒有固定」），**固定（pin）與解除固定（unpin）只在 CLI 與 API**：`notesteme tools update --pin <版本>`／`--unpin`、`POST /api/tools/yt-dlp/update {"pin": "<版本>"}`／`{"unpin": true}`（OPS-R7）；UI 沒有提供這兩個動作。依據：`web/client/src/pages/settings/SystemSection.tsx`、`internal/cli/tools.go`、ADR-0009 的修訂。
+  - 「系統」的「媒體檔保留天數」：M4 只顯示、不刪除；媒體檔保留策略不在 M4（[ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md) 第 8 點、LIB-R22）；垃圾桶保留天數在設定檔 `library.trash_retention_days`（DEL-R4），不是這裡的設定。磁碟用量目前顯示在總覽（`OverviewPage.tsx`，LIB-R22）；系統分區只有「後端還沒有提供」的提示（`settings.system.diskUnavailable`、`retentionUnavailable`），沒有可以編輯的欄位。
+  - 「登入」的「反向代理驗證與 OIDC」：**不能從 UI 設定**，只能寫在設定檔（`docs/specs/AUTH-access.md`「不在範圍內」第 86 行，AUTH-R12、R16）；UI 只有登入頁在 OIDC 啟用時多出的「用 <issuer 主機> 登入」按鈕，與設定 › 登入的工作階段列表（AUTH-R20、R22，可撤銷目前以外的工作階段）。依據：`web/client/src/pages/settings/LoginSection.tsx`、`web/client/src/pages/LoginPage.tsx`。
 
 ## 13. 登入
 
 - **目的**：保護所有部署的實例，包括只在本機使用的情況。
-- **里程碑**：M1。反向代理驗證與 OIDC 在 M4。
+- **里程碑**：M1。反向代理驗證與 OIDC 在 M4（只能寫在設定檔，UI 沒有設定畫面，見第 12 節的修訂）。
 - **版面**：
   - Opal 背景中央放一張 Sheet 卡片，內容是 notesteme 字標、密碼欄位、「登入」按鈕。
   - 背景是一條淡化的時間帶，畫的是固定的示意資料。登入前不能露出任何實際內容，所以不使用真實影片的資料。登入頁只有這一個裝飾元素。

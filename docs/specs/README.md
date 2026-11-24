@@ -170,6 +170,7 @@ go test ./features -godog.tags="@M2"        # 只跑 M2
 ### 6.2 Definition of Done（完成）
 
 - 故事的所有自動化場景都在 CI 通過；`@manual` 場景已人工驗收，結果記錄在 PR 中。
+- 人工驗收的項目（`nfr.md` 的 `manual` 與全部 `@manual` 場景）、檢查步驟與 MVP 階段不開 PR 時的記錄方式，見[人工驗收清單](../manual-acceptance.md)。
 - 每個新產出都寫入來源紀錄。沒有來源紀錄的產出視為錯誤（ADR-0005）。
 - 錯誤訊息屬於 plan 第 5.2 節的某個類別，並附上可行動的修正方式。
 - UI、CLI、MCP 中屬於這則故事範圍的介面都已完成，能力一致（ADR-0008）。

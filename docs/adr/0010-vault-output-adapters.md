@@ -67,3 +67,12 @@
 - 代價：
   - `git` adapter 要處理認證（deploy key 或 token）和衝突回報。
 - Windows 端的 Obsidian 會自動偵測 bind mount 的變更。git 模式下則要使用者自己 pull（或用 Obsidian Git plugin）。
+
+## 修訂
+
+- 2026-11-25（依 /goal 由實作者暫定，待 owner 追認；一次唯讀稽核：每份 ADR 的「決定」對照程式與規格）：
+  - 決策 1 的 `OutputWriter{Plan, Apply}` 介面**不存在**：
+    - 原本寫：所有輸出目標實作同一個 `OutputWriter` 介面，先 `Plan` 列出要寫的檔案與衝突，再 `Apply` 執行；`fs`、`git` 是兩個 adapter。
+    - 實際是：沒有 `OutputWriter`、`WritePlan`，也沒有「先計畫、再執行」的兩階段。所有輸出目標（`sidecar`、`folder`、`vault`）都經過同一個 `output.Writer.Write(ctx, File)`（`internal/output/writer.go:127`）逐檔寫入，由它負責不覆蓋使用者修改的 sha256 比對（決策 3）；vault 另外由 `internal/vault` 提供兩個零件：`fs.go` 的 `CheckInside`／`EscapeError`（路徑不能經由 symlink 離開 vault，VAULT-R4）與 `git.go` 的 `Git`（`Sync`、`Commit`、`CommitRemoval`、`Push`，經 `internal/toolexec` 執行 `git`）；兩者由 `internal/pipeline/vault_publish.go`（`publishVault`、`publishVaultTarget`）串起來，`fs` 與 `git` 的差別只在寫入前後有沒有 `Sync`、`Commit`、`Push`，不是兩個實作同一介面的 adapter。
+    - 行為沒有改變，衝突與 hash guard 由場景覆蓋：`features/OUT-subtitle-output.feature` 的「A file edited by hand is saved alongside instead of overwritten」（OUT-R11、R12）、「With the skip policy an edited file blocks publishing」（OUT-R12）；`features/VAULT-vault-output.feature` 的「A note edited in the vault is kept and the new one is saved beside it」（VAULT-R6）、「A rejected push asks the owner to sync the vault」（VAULT-R9，non-fast-forward 時 `blocked`、不自動 rebase）。
+    - 依據：`internal/output/writer.go:127`（`Write`）；`internal/vault/fs.go`、`internal/vault/git.go:121`；`internal/pipeline/publish.go:62`、`internal/pipeline/vault_publish.go:178、322、343`；`docs/specs/OUT-subtitle-output.md`（OUT-R11、R12）、`docs/specs/VAULT-vault-output.md`（VAULT-R4～R9）。

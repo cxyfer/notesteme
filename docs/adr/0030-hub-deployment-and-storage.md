@@ -55,3 +55,11 @@ M5「Hub」是分享字幕與筆記的資源站（plan 第 3.2、20 節）。規
   - 兩份 sqlc 查詢檔要一起維護；Postgres 特有的行為（例如並行投票的鎖）要靠 store 介面的單元測試在 CI 的 Postgres 上驗證。
   - fakehub 與真 Hub 可能漂移，要靠 contract test 守住。
 - ADR-0007 的 Hub 段落不改；本 ADR 補上「SQLite 是 Hub 的參考 backend」。
+
+## 修訂
+
+- 2026-11-25（依 /goal 由實作者暫定，待 owner 追認；一次唯讀稽核：每份 ADR 的「決定」對照程式與規格）：
+  - 決策 1 與 Client 共用的套件，不包含 `internal/secrets` 與 `internal/errclass`：
+    - 原本寫：共用 `internal/subtitle`、`internal/bundle`、`internal/netguard`、`internal/secrets`（OAuth client secret 的信封加密）、`internal/errclass`。
+    - 實際是：`internal/hub` 直接與間接都沒有 import `internal/secrets`、`internal/errclass`（`go list -deps ./cmd/notesteme-hub` 的 24 個 `internal/` 套件中沒有這兩個）。OAuth client secret 只來自環境變數 `NOTESTEME_HUB_OAUTH_<PROVIDER>_CLIENT_SECRET`，不加密存放；信封加密只用在下架申請的聯絡 email，由 `internal/hub/hubapi/takedowns.go` 自行實作：`NOTESTEME_HUB_MASTER_KEY` 以 HKDF-SHA256 推導 KEK，每筆申請一把隨機資料金鑰，XChaCha20-Poly1305，AAD 綁定申請 ID。Hub 實際共用的套件另有 `internal/apierr`、`internal/sqlitedb`（見 M5-S0 修訂）、`internal/idtoken`、`internal/websession`、`internal/langtag`、`internal/validate`、`internal/clock`、`internal/webui`。
+    - 依據：`internal/hub/hubapi/takedowns.go:34、109～160`；`docs/specs/HACC-hub-accounts.md`（A13 第 109 行「主金鑰與信封加密」、設定檔段落第 44 行）。

@@ -143,6 +143,8 @@ tools:
 
 容器以 UID／GID `10001` 執行；bind mount 主機目錄時，請讓該使用者可以寫入 `/data`。
 
+`/data` 要放在 Linux 檔案系統上（SQLite 的 WAL 與檔案鎖，ADR-0007）：具名 volume（上面的 `notesteme-data`）沒有問題；在 WSL 上不要把 `/data` bind mount 到 Windows 磁碟（例如 `/mnt/d/...`），跨檔案系統的效能差，檔案鎖的語意也不同。
+
 ## HTTP 端點
 
 | 端點 | 說明 |

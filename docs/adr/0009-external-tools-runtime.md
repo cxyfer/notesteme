@@ -50,3 +50,15 @@
 - 代價：
   - image 要包含 Python 和 Deno，大約幾百 MB。
   - 執行期更新可能引入新的錯誤，所以 UI 要能固定或回退 yt-dlp 的版本，自我檢查失敗時也會自動回退。
+
+## 修訂
+
+- 2026-11-25（依 /goal 由實作者暫定，待 owner 追認；一次唯讀稽核：每份 ADR 的「決定」對照程式與規格）：
+  - 決策 7「選配 sidecar：PO Token provider」：
+    - 原本寫：選配的 PO Token provider sidecar，透過 yt-dlp plugin 連到 sidecar。
+    - 實際是：**延後，VPS 被擋再做**。沒有實作，`deploy/docker/` 沒有這個 sidecar；`docs/specs/story-map.md` 第 450 行仍把「VPS 上有無 PO Token provider 的差異（影響 OPS-08 的預設 sidecar）」列為 M0 待驗證的問題。決策 2 的「`yt-dlp[default]` 也能安裝 PO Token provider 之類的 plugin」只是保留空間，沒有預設啟用。
+  - 決策 1 的「解析結構化的輸出：`yt-dlp -J`、`--print`、`--progress-template` 搭配 `--newline`、`ffprobe -of json`」：
+    - 原本寫：四種結構化輸出都解析。
+    - 實際是：只有 `yt-dlp -J`（`internal/source/youtube/client.go:287`；播放清單與 Bilibili 另有 `internal/source/youtube/playlist.go:46`、`internal/source/bilibili/client.go:225、302`）與 `ffprobe -of json`（`internal/media/media.go:212`）。沒有用 `--print`、`--progress-template`、`--newline`，也**沒有解析下載進度**。
+  - 「影響」的「UI 要能固定或回退 yt-dlp 的版本」只做了一部分：
+    - 實際是：設定 › 系統有「更新 yt-dlp」、「回到上一個版本」並顯示目前固定的版本（`web/client/src/pages/settings/SystemSection.tsx`：`pinned`、`update`、`rollback`）；**固定（pin）與解除固定（unpin）只有 CLI 與 API**：`notesteme tools update --pin <版本>`／`--unpin`（`internal/cli/tools.go`）、`POST /api/tools/yt-dlp/update {"pin": "<版本>"}`／`{"unpin": true}`（`docs/specs/OPS-operations.md` OPS-R6、R7）。`docs/ui/pages.md` 設定 › 系統分區已同步註明。

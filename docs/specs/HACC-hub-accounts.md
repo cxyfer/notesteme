@@ -61,7 +61,7 @@ Hub 是多使用者的公開服務：使用者用 Google、GitHub 或 Linux.do �
 
 - CLI：`notesteme-hub admin grant|revoke --provider <p> --subject <s>`、`notesteme-hub admin suspend <user-id>`（直接操作 DB，給第一位管理員與救援）。
 - Hub UI（`web/hub`，`@ui @manual`）：登入頁（列出已啟用的登入方式）、帳號頁（登入方式的連結與移除、PAT 的建立與撤銷、我的分享）、管理頁（使用者與群組、檢舉、下架申請、稽核紀錄）、下架申請表單（不需要登入）。頁面清單與文案在 `docs/ui/README.md` 第 9 節補上之前，以本規格為準。
-- 資料表：`users`、`identities`、`oauth_states`、`sessions`、`pats`、`groups`、`group_members`、`takedowns`、`removed_hashes`、`audit_log`（ADR-0031 第 5 點）。
+- 資料表：`users`、`identities`、`oauth_states`、`sessions`、`pats`、`group_members`、`takedowns`、`removed_hashes`、`audit_log`（ADR-0031 第 5 點；沒有 `groups` 與 `encryption_keys`：群組的定義只在設定檔，`members` 是隱含的，成員資格在 `group_members`，見下方 A 決定與 ADR-0031 的修訂；下架申請的聯絡 email 以主金鑰推導的信封加密，見 A13）。
 
 ## 不在範圍內
 

@@ -57,3 +57,12 @@
 
 - 2026-11-23：UI-0（骨架）完成，見 [UI 規格總覽第 10 節](../ui/README.md#10-實作現況)。依本 ADR 實作；ADR 沒有規定的細節（npm、Node 24.12、程式碼式路由、axe-core、session 判斷、主題防閃爍、OpenAPI 快照、CSP 的 `style-src`）記在該節，待 owner 追認。
 - 本 ADR 決策 8 的「後端用 `air` 熱重載」沒有導入；開發時直接重新執行 `go run ./cmd/notesteme serve`。
+- 修訂（2026-11-25，依 /goal 由實作者暫定，待 owner 追認；一次唯讀稽核：每份 ADR 的「決定」對照程式與規格）：
+  - 決策 2 的「TanStack Table：大型列表用虛擬捲動」：
+    - 原本寫：用 TanStack Table 處理大型列表。
+    - 實際是：沒有導入 TanStack Table。虛擬捲動是自寫的 `web/client/src/components/VirtualList.tsx`，底層用 `@tanstack/react-virtual`（`useVirtualizer`）。TanStack 套件只用了 Router、Query 與 Virtual 三個。
+    - 依據：`web/client/package.json`（TanStack 相依套件只有 `@tanstack/react-query`、`@tanstack/react-router`、`@tanstack/react-virtual`）；`web/client/src/components/VirtualList.tsx:8`。
+  - 決策 3 的「用 Radix primitives 處理行為與無障礙」只做了一部分：
+    - 原本寫：以 Radix primitives 做元件行為。
+    - 實際是：Radix 只用了 `@radix-ui/react-dialog`（`Dialog.tsx`）與 `@radix-ui/react-toast`（`Toast.tsx`）。選單等其他元件自寫，無障礙由 axe 與元件測試檢查（`src/test/axe.ts`、`src/test/a11yRoutes.ts`）；例如「更多」選單是 disclosure 按鈕（`aria-expanded`）加普通按鈕，不用 `role="menu"`（`MoreMenu.tsx`、`moreMenu.test.tsx`；理由見 [UI README 10.24](../ui/README.md#1024-client-ui-的-ui-manual-缺口2026-11-24) 第 1 點）。
+    - 依據：`web/client/package.json`；`web/client/src/components/{Dialog,Toast,MoreMenu}.tsx`。

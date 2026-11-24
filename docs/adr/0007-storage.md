@@ -61,3 +61,15 @@
   - 兩種資料庫的查詢檔要分開維護。
   - 選配的 Postgres＋Redis backend 要多一套實作與測試。
 - `/data` 要放在 Linux 檔案系統上。在 WSL 上不要放 `/mnt/d`，因為跨檔案系統的效能差，檔案鎖的語意也不同。
+
+## 修訂
+
+- 2026-11-25（依 /goal 由實作者暫定，待 owner 追認；一次唯讀稽核：每份 ADR 的「決定」對照程式與規格）：
+  - 「選配：Postgres＋Redis backend」的「store、佇列、限流、事件匯流排都定義成介面」：
+    - 原本寫：四者都是介面，預設實作是 SQLite 加記憶體。
+    - 實際是：四者都是具體的 struct：`store.Store`（`internal/store/store.go:49`）、`queue.Queue`（`internal/queue/queue.go:72`）、`llm.Limiter`（`internal/llm/ratelimit.go:19`）、`events.Bus`（`internal/events/bus.go:80`）。Postgres＋Redis backend 不在 M4，屬於「視需要」（[ADR-0021](0021-m4-scheduler-subscriptions-and-outbox.md) 第 8 點、`docs/specs/story-map.md` 第 7 節）；要做時再抽介面。Hub 的 `hubstore` 本來就是介面，有 SQLite 與 Postgres 兩種實作（[ADR-0030](0030-hub-deployment-and-storage.md)）。
+  - 「媒體快取」的「套用保留策略，例如 N 天後刪影片」：
+    - 原本寫：`/data/media` 套用保留策略。
+    - 實際是：M4 只顯示磁碟用量（`disk{data_bytes, media_bytes, …}`），不刪除任何檔案；媒體檔保留策略（N 天後刪影片、只保留選中的畫面、批次「刪除媒體檔」）延到 M4 之後。垃圾桶的保留天數是另一件事，寫在設定檔 `library.trash_retention_days`（預設 30，範圍 1～3650）。
+    - 依據：[ADR-0021](0021-m4-scheduler-subscriptions-and-outbox.md) 第 8 點；`docs/specs/LIB-library.md`（LIB-R22、不在範圍內 M4 小節第 108 行、待決問題 L-M2 第 146 行）；`docs/specs/story-map.md` 第 7 節；`internal/config/config.go:109`。
+  - 最後一條「`/data` 要放在 Linux 檔案系統上，在 WSL 上不要放 `/mnt/d`」原本只存在這份 ADR：現在根目錄 `README.md` 的「Volume」段落與 `deploy/docker/compose.yaml` 的檔頭註解各加了一句。`compose.yaml` 的 `/data` 是具名 volume（`notesteme-data`），不受影響；只有把 `/data` bind mount 到 Windows 磁碟（例如 `/mnt/d/...`）才有跨檔案系統的效能與檔案鎖問題。

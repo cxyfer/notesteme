@@ -103,3 +103,12 @@ RETURNING *;
 - 代價：
   - SQLite 一次只能有一個寫入者，寫入量大時要批次處理。
   - 單機規模足夠；需要多台 worker 時，改用選配的 Postgres＋Redis backend。
+
+## 修訂
+
+- 2026-11-25（依 /goal 由實作者暫定，待 owner 追認；一次唯讀稽核：每份 ADR 的「決定」對照程式與規格）：
+  - 「可替換的 backend」：佇列、限流（token bucket）、事件匯流排**沒有定義成介面**。
+    - 原本寫：三者都定義成介面，預設實作是 SQLite 加記憶體，之後可換成 Postgres＋Redis。
+    - 實際是：三者都是具體的 struct：`queue.Queue`（`internal/queue/queue.go:72`）、`events.Bus`（`internal/events/bus.go:80`）、`llm.Limiter`（`internal/llm/ratelimit.go:19`）；資料層的 `store.Store` 也是 struct（`internal/store/store.go:49`）。要換 backend 時再抽介面。
+    - Postgres＋Redis backend 不在 M4：[ADR-0021](0021-m4-scheduler-subscriptions-and-outbox.md) 第 8 點、`docs/specs/story-map.md` 第 7 節「M4 之後視需要」。
+  - 「可替換的 backend」最後一條的 `batch` executor：batch 不是 executor，是處理方案的 `stages.<stage>.batch: auto | off`（見 [ADR-0002](0002-deterministic-workflow-and-llm-executors.md) 修訂、`docs/specs/BATCH-batch-api.md` BATCH-R1）；等待結果的任務是 `waiting`，由排程工作 `batch.poll` 輪詢，不占用並行上限（BATCH-R3、R4）。

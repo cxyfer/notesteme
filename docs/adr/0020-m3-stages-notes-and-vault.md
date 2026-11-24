@@ -100,3 +100,15 @@ metadata → transcript → normalize → segment → correct → translate
 - 好處：M1、M2 的行為與場景不受影響；新步驟可以逐一實作，每個步驟在 `stageImplemented` 登記後才會執行。
 - 代價：產生的章節不參與 M2 的 chunk 切分；vault 改設定要重新啟動。
 - 之後要注意：`Effective.Stage` 對新步驟的預設 provider、harness 預設的假 SponsorBlock、`plannedStages` 的同步。
+
+## 修訂
+
+- 2026-11-25（依 /goal 由實作者暫定，待 owner 追認；一次唯讀稽核：每份 ADR 的「決定」對照程式與規格）：
+  - 第 3 點「`frames` 的影片下載 → `download`」：
+    - 原本寫：影片下載屬 `download` 資源類別（與 OUT-R9 預覽共用媒體快取），場景偵測、擷取、縮圖去重與拼圖屬 `frames`。
+    - 實際是：影片下載在 `frames.candidates` 任務內執行，屬 `frames` 資源類別，沒有獨立的下載任務；`frames.select` 才依 executor 分到 `local`（`rules`）或 `llm`（`api`）。原因是拆成第三個任務要多一份中間狀態，先保守合併，量測後再決定。**以實作與 [FRM 規格](../specs/FRM-frames.md) F10 為準**；F10 本身也明寫與本 ADR 第 3 點不同。
+    - 依據：`docs/specs/FRM-frames.md`（F10 第 65 行）；`internal/pipeline/frames.go:185`（候選任務的 `ResourceClass: queue.ResourceFrames`）、`frames.go:327`（候選任務內以 yt-dlp 下載到媒體快取）。
+  - 第 3 點「`frames` 的預設並行上限是 1」：
+    - 原本寫：`frames`（`queue.Classes` 已經有，預設上限 1）。
+    - 實際是：預設上限是 CPU 核心數（`max(runtime.NumCPU(), 1)`），與 [ADR-0004](0004-task-queue-with-leases.md) 的「`frames=CPU 核心數`」一致；兩份 ADR 原本互相矛盾，**以實作與 ADR-0004 為準**；並行上限可調整，範圍 1～64（`MaxLimit`）。
+    - 依據：`internal/queue/control.go:38`（`DefaultLimit`）。

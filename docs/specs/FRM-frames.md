@@ -42,7 +42,7 @@
 - MCP：`list_frames`、`get_frame`（`read`）
 - CLI：`notesteme frames ls <item> [--all] [--json]`、`notesteme frames get <item> <n> -o <file>`
 - UI：影音詳情的畫面分頁（[pages.md 第 4 節](../ui/pages.md#4-影音詳情)）、處理方案的第 5 步（[第 8 節](../ui/pages.md#8-處理方案)）
-- 資源類別：影片下載 `download`；場景偵測、擷取、去重與拼圖 `frames`；vision 選圖 `llm`；`rules` 選圖 `local`（ADR-0020 第 3 點）
+- 資源類別：影片下載、場景偵測、擷取、去重與拼圖都在 `frames.candidates` 任務內，屬 `frames`（ADR-0020 第 3 點原本寫下載是 `download`，實作改成合併，見 F10；2026-11-25，依 /goal 由實作者暫定，待 owner 追認）；vision 選圖 `llm`；`rules` 選圖 `local`
 
 ## 不在範圍內
 

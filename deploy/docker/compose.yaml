@@ -3,6 +3,8 @@
 #   docker compose up -d
 # VPS（HTTPS，OPS-R19～R21）：在 .env 另外設定 COMPOSE_PROFILES=vps、NOTESTEME_DEPLOYMENT=vps 與 NOTESTEME_DOMAIN，
 # 再執行同一個指令；vps-check 檢查不通過時 caddy 不會啟動，實例不會對外開放。
+# /data 要放在 Linux 檔案系統上（ADR-0007）：下面的具名 volume 沒有問題；在 WSL 上不要改成 bind mount 到
+# Windows 磁碟（例如 /mnt/d/...），跨檔案系統的效能差，SQLite 的檔案鎖語意也不同。
 name: notesteme
 
 services:

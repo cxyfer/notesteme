@@ -25,7 +25,7 @@
 | [0017](0017-podcast-identity-and-precheck.md) | Podcast 單集的識別、feed key 與新增時的位址預檢 | 已採納 |
 | [0018](0018-chinese-script-conversion.md) | 中文字形轉換：自寫 OpenCC 轉換器與內嵌字典 | 已採納 |
 | [0019](0019-llm-wire-contract.md) | LLM 步驟的 wire 契約、chunk 任務與限流 | 已採納 |
-| [0020](0020-m3-stages-notes-and-vault.md) | M3 的步驟順序、產出、筆記模板與 vault 輸出 | 提議中 |
+| [0020](0020-m3-stages-notes-and-vault.md) | M3 的步驟順序、產出、筆記模板與 vault 輸出 | 已採納（待 owner 追認） |
 | [0021](0021-m4-scheduler-subscriptions-and-outbox.md) | M4 的排程器、訂閱探索、摘要步驟、預算預留與通知 outbox | 提議中 |
 | [0030](0030-hub-deployment-and-storage.md) | Hub 的部署形態、儲存與測試替身 | 提議中 |
 | [0031](0031-hub-identity-permissions-and-content.md) | Hub 的身分、權限與內容模型 | 提議中 |

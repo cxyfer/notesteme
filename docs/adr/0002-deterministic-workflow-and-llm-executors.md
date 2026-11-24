@@ -53,3 +53,15 @@ LLM 的處理方式有兩種需求：
   - 需要維護任務佇列和驗證機制。
   - Agent 交回的結果要和 API 的結果走同一套驗證。
 - UI 要清楚顯示「等待 Agent」的任務，並讓使用者可以改用 API 執行。
+
+## 修訂
+
+- 2026-11-25（依 /goal 由實作者暫定，待 owner 追認；一次唯讀稽核：每份 ADR 的「決定」對照程式與規格）：
+  - 決策 2 的 `batch`（M4）**不是 executor**：
+    - 原本寫：LLM 步驟的 executor 有 `api`、`agent`、`off`、`batch` 四種。
+    - 實際是：`executor` 維持 `api`、`agent`、`off`，batch 是處理方案中另一個欄位 `stages.<stage>.batch: auto | off`（預設 `off`），可設在 `summary`、`segment`、`correct`、`translate`、`chapters`、`note`；只有 `executor: api`、優先序是 `subscription` 或 `backfill`、provider 是沒有自訂 `base_url` 的 `anthropic` 或 `openai` 時才送進 batch，其餘照一般 API，不是錯誤。
+    - 依據：`docs/specs/BATCH-batch-api.md`（BATCH-R1，第 22 行）；`internal/pipeline/schema_m4.go:24`（`BatchAuto`）、`internal/pipeline/batch.go:160`。
+  - 決策 6 的 Gemini 三種角色，**只做了第一種**：
+    - 原本寫：直接把 URL 或影片轉成筆記；當作字幕來源（時間標記為 `model`）；協助校正（同時參考字幕與畫面）。
+    - 實際是：只有「URL → 筆記」（`stages.note.engine: gemini`，時間標記為 `model` 只用在筆記標題的時間連結，ADR-0020 第 7 點）。「用 Gemini 產生字幕」與「Gemini 當字幕來源」在規格中明列為不在範圍內；「協助校正」沒有任何規格，`type: gemini` 的 provider 用在 `stages.note.engine: gemini` 以外的步驟時，執行期以 permanent 失敗。
+    - 依據：`docs/specs/GEM-gemini.md`（「不在範圍內」第 42 行、待決問題 G8 第 54 行）、`docs/specs/SRC-transcript-sources.md`（「不在範圍內」第 114 行）；`internal/pipeline/gemini.go`、`internal/pipeline/gemini_note.go`；`internal/llm/gemini.go:99`（訊息「type 為 gemini 的 provider 只能用於 stages.note.engine: gemini。」）；`internal/source/` 沒有 Gemini 的字幕來源。
