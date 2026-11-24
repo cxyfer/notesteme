@@ -510,9 +510,15 @@ func TestClientSendsWithTokenFromOriginPendsOnNotImplemented(t *testing.T) {
 	if err := s.aTokenWithScopes("agent", "read,agent,admin"); err != nil {
 		t.Fatal(err)
 	}
-	// /mcp 已經實作（S9），read_state 也已實作（M4-S13）；改用一直回 501 的單一任務重試（admin）。
-	if err := s.clientSendsWithTokenFromOrigin("POST /api/tasks/x/retry", "agent", "https://evil.example.com"); err != nil {
-		t.Fatalf("clientSendsWithTokenFromOrigin：%v", err)
+	// 所有 m2／m3／m4 的 stub 與單一任務的重試／取消都已實作；目前仍回 501 的是「非 command 類型的 provider 建立」
+	// （SEC-R3，規格沒有定義 DB 管理的建立方式）。這個步驟不能帶本體，所以直接送出請求，並帶上 Origin。
+	headers, err := s.bearerHeader("agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers["Origin"] = "https://evil.example.com"
+	if err := s.send("POST /api/providers", requestOpts{who: asClient, body: []byte(`{"id":"p1","type":"openai"}`), headers: headers}); err != nil {
+		t.Fatalf("send：%v", err)
 	}
 	if s.last == nil || s.last.status != http.StatusNotImplemented || s.last.preRoute403 {
 		t.Fatalf("帶 token 的請求打未實作路由：status=%d preRoute403=%v，預期 501 且 preRoute403 為 false", s.last.status, s.last.preRoute403)
