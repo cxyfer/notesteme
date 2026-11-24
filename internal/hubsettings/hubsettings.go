@@ -12,7 +12,8 @@ import (
 )
 
 // DisclosureVersion 是 ASR 前查詢說明的版本；說明的內容改變時要換版本，使用者要重新確認。
-const DisclosureVersion = "hub-precheck-v1"
+// v2（安全修補 B）：說明補上「命中後下載版本，Hub 會知道是哪一部影片」；確認過 v1 的使用者要重新確認。
+const DisclosureVersion = "hub-precheck-v2"
 
 // settingPrecheck 是 settings 表的鍵：{"enabled": bool, "acknowledged": "<版本>"}。
 const settingPrecheck = "hub.precheck"
@@ -23,8 +24,9 @@ func Disclosure(hubURL string) string {
 		hubURL = "（尚未設定的 Hub）"
 	}
 	return "開啟後，Notesteme 在付費轉錄（Supadata、ASR）之前，會把平台名稱與影片 ID 的 SHA-256 前 4 個十六進位字元送到 " +
-		hubURL + "，並用你的 Hub token 驗證身分。Hub 會知道你的帳號在什麼時候查詢了哪個前綴，但無法從前綴得知是哪一部影片。" +
-		"本機檔案與非公開影音不會查詢。"
+		hubURL + "，並用你的 Hub token 驗證身分。Hub 會知道你的帳號在什麼時候查詢了哪個前綴；只看前綴無法得知是哪一部影片，" +
+		"但查到可以用的字幕時，Notesteme 會接著向 Hub 下載那個版本，Hub 因此會知道你正在處理哪一部影片" +
+		"（Hub 也可能刻意放上假的版本來確認這件事）。本機檔案與非公開影音不會查詢。"
 }
 
 // ErrAcknowledgementRequired 表示開啟 ASR 前查詢時沒有確認目前版本的說明。

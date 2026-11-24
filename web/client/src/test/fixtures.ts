@@ -195,7 +195,7 @@ export function hubSettings(over: { token_set?: boolean; enabled?: boolean; url?
       enabled: over.enabled ?? false,
       disclosure:
         "開啟後，Notesteme 在付費轉錄（Supadata、ASR）之前，會把平台名稱與影片 ID 的 SHA-256 前 4 個十六進位字元送到 https://hub.example.org。",
-      disclosure_version: "hub-precheck-v1",
+      disclosure_version: "hub-precheck-v2",
     },
   };
 }

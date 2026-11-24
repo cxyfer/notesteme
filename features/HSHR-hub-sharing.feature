@@ -542,17 +542,17 @@ Feature: Sharing to the Hub and reusing subtitles from it
     Then the response status is 422
     And the response contains:
       """
-      { "code": "acknowledgement_required", "disclosure_version": "hub-precheck-v1", "disclosure": "*" }
+      { "code": "acknowledgement_required", "disclosure_version": "hub-precheck-v2", "disclosure": "*" }
       """
     When the owner sends "PUT /api/settings/hub" with:
       """
-      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v1" } }
+      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v2" } }
       """
     Then the response status is 200
     When the owner sends "GET /api/settings/hub"
     Then the response contains:
       """
-      { "token_set": true, "precheck": { "enabled": true, "disclosure_version": "hub-precheck-v1" } }
+      { "token_set": true, "precheck": { "enabled": true, "disclosure_version": "hub-precheck-v2" } }
       """
 
   @HUB-05 @HSHR-R12
@@ -582,7 +582,7 @@ Feature: Sharing to the Hub and reusing subtitles from it
       | variant | source |
     And the owner sends "PUT /api/settings/hub" with:
       """
-      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v1" } }
+      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v2" } }
       """
     When the owner ingests "yt:hshr05xxxxx" with the overrides:
       """
@@ -600,7 +600,7 @@ Feature: Sharing to the Hub and reusing subtitles from it
     Given "yt:hshr01xxxxx" has manual captions in "en"
     And the owner sends "PUT /api/settings/hub" with:
       """
-      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v1" } }
+      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v2" } }
       """
     When the owner ingests "yt:hshr01xxxxx" with the overrides:
       """
@@ -616,7 +616,7 @@ Feature: Sharing to the Hub and reusing subtitles from it
     And the source "groq" returns "groq-en.json" for "local:meetup.mp4"
     And the owner sends "PUT /api/settings/hub" with:
       """
-      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v1" } }
+      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v2" } }
       """
     When the owner ingests "local:meetup.mp4" with the overrides:
       """
@@ -651,7 +651,7 @@ Feature: Sharing to the Hub and reusing subtitles from it
       | score   | 20     |
     And the owner sends "PUT /api/settings/hub" with:
       """
-      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v1" } }
+      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v2" } }
       """
     When the owner ingests "yt:hshr06xxxxx" with the overrides:
       """
@@ -675,7 +675,7 @@ Feature: Sharing to the Hub and reusing subtitles from it
       | lang    | ja     |
     And the owner sends "PUT /api/settings/hub" with:
       """
-      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v1" } }
+      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v2" } }
       """
     When the owner ingests "yt:hshr05xxxxx" with the overrides:
       """
@@ -696,7 +696,7 @@ Feature: Sharing to the Hub and reusing subtitles from it
       | variant | source |
     And the owner sends "PUT /api/settings/hub" with:
       """
-      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v1" } }
+      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v2" } }
       """
     And the Hub fails with HTTP 503
     When the owner ingests "yt:hshr05xxxxx" with the overrides:
@@ -719,7 +719,7 @@ Feature: Sharing to the Hub and reusing subtitles from it
       | variant | source |
     And the owner sends "PUT /api/settings/hub" with:
       """
-      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v1" } }
+      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v2" } }
       """
     And the Hub does not respond
     When the owner ingests "yt:hshr05xxxxx" with the overrides:
@@ -742,7 +742,7 @@ Feature: Sharing to the Hub and reusing subtitles from it
       | variant | source |
     And the owner sends "PUT /api/settings/hub" with:
       """
-      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v1" } }
+      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v2" } }
       """
     And the client's Hub token has the permissions "read"
     When the owner ingests "yt:hshr05xxxxx" with the overrides:
@@ -765,7 +765,7 @@ Feature: Sharing to the Hub and reusing subtitles from it
       | variant | source |
     And the owner sends "PUT /api/settings/hub" with:
       """
-      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v1" } }
+      { "precheck": { "enabled": true, "acknowledge": "hub-precheck-v2" } }
       """
     And the Hub serves tampered content for the version "alice-raw"
     When the owner ingests "yt:hshr05xxxxx" with the overrides:

@@ -12,6 +12,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/hubclient"
+	"github.com/cxyfer/notesteme/internal/hubsettings"
 	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/transcript"
@@ -92,6 +93,40 @@ func TestPrecheckHitUsesHubTranscriptAndSkipsPaidSources(t *testing.T) {
 		if strings.Contains(rq.Query, "abc123") || strings.Contains(rq.Path, "abc123") {
 			t.Errorf("請求洩漏影片 ID：%+v", rq)
 		}
+	}
+}
+
+// 安全修補 B：查詢本身只送前綴，但命中後的後續請求以版本 ID 取得版本與內容，Hub 由此得知是哪一部影片。
+// 這裡鎖住實際的揭露範圍，並確認說明（hubsettings.Disclosure）與它一致；未命中時沒有任何後續請求。
+func TestPrecheckFollowUpRequestsMatchTheDisclosure(t *testing.T) {
+	stub := newHubStub(t)
+	stub.add(ytVer("v1"))
+	r, _ := precheckRig(t, stub)
+	if _, st := r.runTranscript(); st.Status != store.StatusDone {
+		t.Fatalf("transcript = %+v", st)
+	}
+	var paths []string
+	for _, rq := range stub.requests() {
+		paths = append(paths, rq.Method+" "+rq.Path)
+	}
+	want := []string{"GET /api/v1/lookup", "GET /api/v1/versions/v1", "GET /api/v1/versions/v1/content"}
+	if strings.Join(paths, "|") != strings.Join(want, "|") {
+		t.Fatalf("命中時的請求 = %v，預期 %v", paths, want)
+	}
+	if d := hubsettings.Disclosure(stub.srv.URL); !strings.Contains(d, "會接著向 Hub 下載那個版本") || !strings.Contains(d, "Hub 因此會知道你正在處理哪一部影片") {
+		t.Errorf("說明沒有寫出命中後的揭露範圍：%s", d)
+	}
+
+	miss := newHubStub(t)
+	other := ytVer("v2")
+	other.ExternalID = "zzzzzzzzzzz"
+	miss.add(other)
+	r2, sd := precheckRig(t, miss)
+	if _, st := r2.runTranscript(); st.Status != store.StatusDone || sd.calls() != 1 {
+		t.Fatalf("未命中 = %+v", st)
+	}
+	if reqs := miss.requests(); len(reqs) != 1 || reqs[0].Path != "/api/v1/lookup" {
+		t.Errorf("未命中時只有一次查詢：%+v", reqs)
 	}
 }
 

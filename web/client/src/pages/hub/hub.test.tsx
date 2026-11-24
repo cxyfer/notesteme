@@ -62,7 +62,7 @@ describe("設定「Hub」分區", () => {
     await userEvent.click(enable);
     await screen.findByText("已開啟");
     expect(JSON.parse(String(api.calls("PUT", "/api/settings/hub")[1]!.init.body))).toEqual({
-      precheck: { enabled: true, acknowledge: "hub-precheck-v1" },
+      precheck: { enabled: true, acknowledge: "hub-precheck-v2" },
     });
     await expectNoA11yViolations(container);
   });
