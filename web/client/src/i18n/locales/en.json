@@ -478,7 +478,10 @@
       "duration": "Length",
       "lang": "Original language",
       "profile": "Profile",
-      "source": "Subtitle source"
+      "source": "Subtitle source",
+      "imported": "Imported from a bundle",
+      "importedFrom": "Instance {{instance}} (Notesteme {{version}}), imported {{at}}",
+      "unknownInstance": "unknown"
     },
     "band": {
       "label": "Time ribbon: playback position",

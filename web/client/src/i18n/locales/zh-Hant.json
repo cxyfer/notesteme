@@ -458,7 +458,10 @@
       "duration": "長度",
       "lang": "原文語言",
       "profile": "處理方案",
-      "source": "字幕來源"
+      "source": "字幕來源",
+      "imported": "從 bundle 匯入",
+      "importedFrom": "實例 {{instance}}（Notesteme {{version}}），{{at}} 匯入",
+      "unknownInstance": "不明"
     },
     "band": {
       "label": "時間帶：播放位置",

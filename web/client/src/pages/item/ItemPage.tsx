@@ -29,7 +29,7 @@ import { queryKeys } from "../../api/queryKeys";
 import type { components } from "../../api/schema";
 import { Button, EmptyState, ErrorCallout, Spinner, useToast } from "../../components";
 import { useServerEvent } from "../../events/useEventStream";
-import { formatDate, formatTimecode } from "../../i18n";
+import { formatDate, formatDateTime, formatTimecode } from "../../i18n";
 import { usePageTitle } from "../../shell/usePageTitle";
 import { BAND_STAGES, badgeStatus, bandStatus, type ApiItemDetail } from "../library/stageView";
 import type { ActionKind } from "./actions";
@@ -453,6 +453,19 @@ function ItemView({
               {(d.sources ?? []).find((s) => s.state === "used")!.source === "hub"
                 ? t("hub.fromHub")
                 : (d.sources ?? []).find((s) => s.state === "used")!.source}
+            </dd>
+          </div>
+        )}
+        {/* BND N24：從 bundle 匯入（manifest 的字串不可信，純文字渲染；實例 ID 可能是空字串） */}
+        {d.imported_from && (
+          <div>
+            <dt>{t("item.meta.imported")}</dt>
+            <dd>
+              {t("item.meta.importedFrom", {
+                instance: d.imported_from.instance_id || t("item.meta.unknownInstance"),
+                version: d.imported_from.app_version || "?",
+                at: formatDateTime(d.imported_from.imported_at),
+              })}
             </dd>
           </div>
         )}
