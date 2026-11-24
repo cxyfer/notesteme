@@ -7,6 +7,7 @@ func registerOps(r *Registry, s *Scenario) {
 	r.Step(`the current schema version is {int}`, s.opsCurrentSchemaIs)
 	r.Step(`migration {int} fails`, s.opsMigrationFails)
 	r.Step(`the database is at schema version {int}`, s.opsDatabaseAtSchema)
+	r.Step(`the response field {string} is the current schema version`, s.opsResponseSchemaVersion)
 	r.Step(`yt-dlp {string} is installed`, s.opsYtDlpInstalled)
 	r.Step(`the yt-dlp release {string} passes the self-check`, s.opsYtDlpReleasePasses)
 	r.Step(`the yt-dlp release {string} fails the self-check`, s.opsYtDlpReleaseFails)

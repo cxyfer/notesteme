@@ -91,7 +91,7 @@
 |---|---|---|---|
 | NFR-OBS-1 | Log 使用 `slog` 輸出 JSON；每筆帶 `request_id`，與任務相關的 log 另帶 `item`、`stage`、`task`。 | `ci` | M1 |
 | NFR-OBS-2 | 每個 `failed` 或 `blocked` 的步驟都能在 UI 看到錯誤類別、訊息、修正動作與相關的 log 片段，不需要進容器看 log。 | `feature`（PIPE-R2、SRC 的 blocked 場景） | M1 |
-| NFR-OBS-3 | `/api/system` 回傳程式版本、schema 版本、yt-dlp、ffmpeg、Deno 的版本與設定來源。 | `feature`（SEC-R1） | M1 |
+| NFR-OBS-3 | `/api/system` 回傳程式版本、schema 版本、yt-dlp、ffmpeg、Deno 的版本與設定來源。 | `feature`（版本：OPS-R22；設定來源：SEC-R1、OPS-R8） | M1 |
 
 ## 7. 相容性
 

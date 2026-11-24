@@ -2,9 +2,12 @@ package steps
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/cxyfer/notesteme/internal/store"
 )
 
 // 這個檔案放 schema 與 migration 的步驟（OPS-R3、R4）；語意見 docs/specs/steps.md 第 4.12 節。
@@ -64,4 +67,33 @@ func (s *Scenario) opsDatabaseAtSchema(version int) error {
 	ctx, cancel := context.WithTimeout(s.ctx, schemaTimeout)
 	defer cancel()
 	return s.World.CheckDBSchema(ctx, version)
+}
+
+// opsResponseSchemaVersion 實作 `the response field {string} is the current schema version`（OPS-R22）：
+// 最近一次回應的頂層欄位是數字，等於這個場景的 server 使用的最新 schema 版本
+// （內建的 migration，或 `the current schema version is` 指定的版本）。
+func (s *Scenario) opsResponseSchemaVersion(field string) error {
+	if s.last == nil {
+		return errors.New("還沒有送出任何請求")
+	}
+	var body map[string]any
+	if err := json.Unmarshal(s.last.body, &body); err != nil {
+		return fmt.Errorf("回應不是 JSON 物件：%w", err)
+	}
+	got, ok := body[field].(float64)
+	if !ok {
+		return fmt.Errorf("回應的 %s 不是數字：%v", field, body[field])
+	}
+	migs, err := s.World.Migrations()
+	if err != nil {
+		return err
+	}
+	want, err := store.LatestSchemaVersion(migs)
+	if err != nil {
+		return err
+	}
+	if int64(got) != want {
+		return fmt.Errorf("回應的 %s 是 %v，預期目前的 schema 版本 %d", field, got, want)
+	}
+	return nil
 }

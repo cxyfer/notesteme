@@ -101,8 +101,11 @@ type Server struct {
 	// runner 執行外部工具（yt-dlp、ffmpeg 與 yt-dlp 的安裝）；startPipeline 設定。
 	runner toolexec.Runner
 	// ytdlp 管理 yt-dlp 的更新與回退（OPS-R6、R7），見 tools.go。
-	ytdlp  *ytdlp.Manager
-	worker *worker.Worker
+	ytdlp *ytdlp.Manager
+	// versions 是 GET /api/system 的工具版本快取（OPS-R22），見 toolversions.go。
+	versions     *toolVersions
+	versionsOnce sync.Once
+	worker       *worker.Worker
 	// scheduler 是 M4 的排程器（ADR-0021 第 1 點）：worker 的一個 Periodic。各切片在 worker 開始之前
 	// 以 scheduler.Register 登記自己的 kind；M4-S0 的註冊表是空的，不查資料庫、不改變 worker 的喚醒時間。
 	scheduler *scheduler.Scheduler

@@ -12,6 +12,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/api"
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/ops"
+	"github.com/cxyfer/notesteme/internal/store"
 )
 
 func TestParseServeArgs(t *testing.T) {
@@ -118,6 +119,14 @@ func TestServeRegistersOpsAndReportsStatus(t *testing.T) {
 	v, err := srv.systemInfo(env).Info(ctx)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// 程式與 schema 的版本（OPS-R22）。
+	latest, err := store.LatestSchemaVersion(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Version != Version() || v.SchemaVersion != latest {
+		t.Fatalf("version = %q、schema_version = %d，預期 %q、%d", v.Version, v.SchemaVersion, Version(), latest)
 	}
 	if len(v.Alerts) != 1 || v.Alerts[0].Kind != ops.KindDiskUsage || v.Alerts[0].Key != "/data" || !v.Alerts[0].Since.Equal(clk.Now()) {
 		t.Fatalf("alerts = %+v", v.Alerts)

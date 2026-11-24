@@ -356,6 +356,7 @@ fixture 在 `features/fixtures/llm/<名稱>`，沒有 `.json` 時自動補上。
 | `Given the current schema version is {int}` | 程式內建的最新 schema 版本是 N：透過 `TestControls.Migrations` 只提供版本 1 到 N 的 migration，之後啟動的 server 都用這份 |
 | `Given migration {int} fails` | 第 N 支 migration 會失敗：以一支 `-- +goose NO TRANSACTION` 的 migration 取代第 N 支，先做一部分變更（建立一個 marker 表）再失敗，讓「失敗時只還原快照才會乾淨」可以被驗證 |
 | `Then the database is at schema version {int}` | DB 目前的 schema 版本：goose 版本表的最新版本是 N，而且 `sqlite_master` 的 schema 與「全新 DB 跑到 N」的參考 schema 完全相同，所以失敗 migration 留下的 marker 表也會被發現 |
+| `Then the response field {string} is the current schema version` | 最近一次回應（JSON 物件）的頂層欄位是數字，而且等於這個場景的 server 使用的最新 schema 版本（內建 migration 的最新版本；有 `the current schema version is` 時是它指定的版本）。用在 `GET /api/system` 的 `schema_version`（OPS-R22），場景不用寫死會隨 migration 增加的數字 |
 | `Given yt-dlp {string} is installed` | 在 OPS 規格規定的目錄結構中建立假的 venv：`/data/tools/yt-dlp/<版本>/` 是 venv，`/data/tools/yt-dlp-venv` 是指向它的 symlink；venv 內的假 yt-dlp 與假 python 回報該版本 |
 | `Given the yt-dlp release {string} passes the self-check` | 可更新到的版本，且自我檢查會通過。假 python 支援 `-m venv`、`-m pip install yt-dlp[default]==V` 與 `-U`（裝出來的 venv 回報版本 V）；不連外網 |
 | `Given the yt-dlp release {string} fails the self-check` | 可更新到的版本，但自我檢查會失敗：只有對「檢查影片」的 `Probe` 失敗，`--version` 照常成功（要驗證的是 Probe 的那一步）。安裝的支援同上 |

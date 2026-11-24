@@ -178,6 +178,24 @@ Feature: Backup, health and external tools
       { "tools": { "ffmpeg": { "path": "/opt/ffmpeg/bin/ffmpeg", "source": "config_file" } } }
       """
 
+  @OPS-04 @OPS-R22
+  Scenario: The system information reports the program, schema and tool versions
+    Given the server is running
+    And the owner is signed in
+    And yt-dlp "2026.11.01" is installed
+    When the owner sends "GET /api/system"
+    Then the response contains:
+      """
+      {
+        "version": "*",
+        "tools": {
+          "yt-dlp": { "source": "managed", "version": "2026.11.01" },
+          "ffmpeg": { "version": "7.1-notesteme-fake" }
+        }
+      }
+      """
+    And the response field "schema_version" is the current schema version
+
   @OPS-05 @OPS-R9
   Scenario: The WSL compose profile binds to localhost only
     When the owner runs "docker compose -f deploy/docker/compose.yaml --profile wsl config --format json"

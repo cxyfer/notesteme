@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/cxyfer/notesteme/internal/api"
 	"github.com/cxyfer/notesteme/internal/config"
@@ -17,7 +18,8 @@ var systemTools = []toolexec.Spec{toolexec.YtDlp, toolexec.FFmpeg, toolexec.FFpr
 
 // systemInfo 回傳 GET /api/system 的提供者。env 在這裡傳入，讓實作不必再改 core.go 的 apiDeps。
 func (s *Server) systemInfo(env Env) api.SystemInfo {
-	return systemInfo{cfg: s.cfg, res: ToolResolver(env.Vars, s.cfg), ytdlp: s.ytdlpManager(env), store: s.store}
+	return systemInfo{cfg: s.cfg, res: ToolResolver(env.Vars, s.cfg), ytdlp: s.ytdlpManager(env), store: s.store,
+		versions: s.toolVersionCache(env), log: s.log}
 }
 
 type systemInfo struct {
@@ -25,6 +27,9 @@ type systemInfo struct {
 	res   toolexec.Resolver
 	ytdlp *ytdlp.Manager
 	store *store.Store
+	// versions 是工具版本的快取（OPS-R22）；指標，每個 Server 共用一份。
+	versions *toolVersions
+	log      *slog.Logger
 }
 
 // opsStatus 填入成立中的告警與每日備份的狀態（OPS-R11、R13）。
@@ -61,17 +66,35 @@ func (i systemInfo) opsStatus(ctx context.Context, v *api.SystemView) error {
 // 設定檔或環境變數指定的路徑不能執行時，仍然回報該路徑與來源，available 為 false。
 func (i systemInfo) Info(ctx context.Context) (*api.SystemView, error) {
 	v := &api.SystemView{
-		Listen: i.cfg.Listen, ListenSource: string(i.cfg.SourceOf(config.FieldListen)),
+		Version: version,
+		Listen:  i.cfg.Listen, ListenSource: string(i.cfg.SourceOf(config.FieldListen)),
 		Data: i.cfg.Data, DataSource: string(i.cfg.SourceOf(config.FieldData)),
 		Tools: make(map[string]api.ToolView, len(systemTools)),
 	}
+	// schema 版本讀不到時省略，不讓 /api/system 整個失敗（它正是用來診斷的）。
+	if i.store != nil {
+		if sv, err := i.store.SchemaVersion(ctx); err == nil {
+			v.SchemaVersion = sv
+		} else if i.log != nil {
+			i.log.WarnContext(ctx, "讀取 schema 版本失敗", "error", err)
+		}
+	}
+	locs := make(map[string]toolexec.Location, len(systemTools))
 	for _, sp := range systemTools {
 		loc := i.res.Locate(sp)
+		locs[sp.Name] = loc
 		tv := api.ToolView{Path: loc.Path, Source: string(loc.Source), Available: loc.Available()}
 		if loc.Err != nil {
 			tv.Error = loc.Err.Error()
 		}
 		v.Tools[sp.Name] = tv
+	}
+	if i.versions != nil {
+		for name, ver := range i.versions.Versions(ctx, locs) {
+			tv := v.Tools[name]
+			tv.Version = ver
+			v.Tools[name] = tv
+		}
 	}
 	if err := i.opsStatus(ctx, v); err != nil {
 		return nil, err

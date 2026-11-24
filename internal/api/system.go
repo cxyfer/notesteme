@@ -8,17 +8,20 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-// SystemInfo 提供 GET /api/system 的內容：生效的設定與其來源、外部工具（SEC-R1、OPS-R8）。
+// SystemInfo 提供 GET /api/system 的內容：生效的設定與其來源、版本、外部工具（SEC-R1、OPS-R8、OPS-R22）。
 type SystemInfo interface {
 	Info(ctx context.Context) (*SystemView, error)
 }
 
 // SystemView 是 GET /api/system 的回應。
 type SystemView struct {
-	Listen       string `json:"listen" doc:"HTTP 監聽位址"`
-	ListenSource string `json:"listen_source" doc:"default、config_file 或 env"`
-	Data         string `json:"data" doc:"資料目錄"`
-	DataSource   string `json:"data_source" doc:"default、config_file 或 env"`
+	// Version 與 SchemaVersion 是程式與資料庫的版本（OPS-R22、NFR-OBS-3）。
+	Version       string `json:"version" doc:"程式版本（建置時寫入；開發版是 dev）"`
+	SchemaVersion int64  `json:"schema_version,omitempty" doc:"資料庫的 schema 版本（最新已套用的 migration）；讀不到時省略"`
+	Listen        string `json:"listen" doc:"HTTP 監聽位址"`
+	ListenSource  string `json:"listen_source" doc:"default、config_file 或 env"`
+	Data          string `json:"data" doc:"資料目錄"`
+	DataSource    string `json:"data_source" doc:"default、config_file 或 env"`
 	// Tools 的 key 是工具名稱（yt-dlp、ffmpeg、ffprobe、deno）。
 	Tools map[string]ToolView `json:"tools"`
 	YtDlp YtDlpView           `json:"yt_dlp"`
@@ -49,6 +52,8 @@ type ToolView struct {
 	Source    string `json:"source" doc:"config_file、env、managed 或 path"`
 	Available bool   `json:"available" doc:"路徑是否可以執行"`
 	Error     string `json:"error,omitempty" doc:"不能執行的原因"`
+	// Version 是工具回報的版本（OPS-R22）：結果會快取，第一次查詢最多等 2 秒；不能執行、逾時或認不出版本時省略。
+	Version string `json:"version,omitempty" doc:"工具回報的版本；不知道時省略"`
 }
 
 // YtDlpView 是 yt-dlp 的固定版本與上一版（OPS-R6、R7）；沒有時為空字串。
@@ -67,7 +72,7 @@ type systemOutput struct{ Body SystemView }
 func (rt *routes) registerSystem(api huma.API) {
 	registerOwnerOnly(api, huma.Operation{
 		OperationID: "system-get", Method: http.MethodGet, Path: "/api/system",
-		Summary: "生效的設定與其來源、外部工具的路徑與來源（只有 owner）",
+		Summary: "生效的設定與其來源、程式與 schema 的版本、外部工具的路徑、來源與版本（只有 owner）",
 	}, "查看系統資訊", rt.getSystem)
 }
 

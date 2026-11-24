@@ -6728,17 +6728,27 @@
             "description": "default、config_file 或 env",
             "type": "string"
           },
+          "schema_version": {
+            "description": "資料庫的 schema 版本（最新已套用的 migration）；讀不到時省略",
+            "format": "int64",
+            "type": "integer"
+          },
           "tools": {
             "additionalProperties": {
               "$ref": "#/components/schemas/ToolView"
             },
             "type": "object"
           },
+          "version": {
+            "description": "程式版本（建置時寫入；開發版是 dev）",
+            "type": "string"
+          },
           "yt_dlp": {
             "$ref": "#/components/schemas/YtDlpView"
           }
         },
         "required": [
+          "version",
           "listen",
           "listen_source",
           "data",
@@ -7053,6 +7063,10 @@
           },
           "source": {
             "description": "config_file、env、managed 或 path",
+            "type": "string"
+          },
+          "version": {
+            "description": "工具回報的版本；不知道時省略",
             "type": "string"
           }
         },
@@ -12609,7 +12623,7 @@
             "description": "Error"
           }
         },
-        "summary": "生效的設定與其來源、外部工具的路徑與來源（只有 owner）"
+        "summary": "生效的設定與其來源、程式與 schema 的版本、外部工具的路徑、來源與版本（只有 owner）"
       }
     },
     "/api/tasks/{id}/cancel": {

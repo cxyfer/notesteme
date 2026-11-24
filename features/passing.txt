@@ -197,6 +197,7 @@ OPS-operations.feature: yt-dlp is updated every day on a schedule
 OPS-operations.feature: A scheduled yt-dlp update that fails the self-check is rolled back and reported
 OPS-operations.feature: A pinned yt-dlp is skipped by the scheduled update
 OPS-operations.feature: The config file path wins over the environment and PATH
+OPS-operations.feature: The system information reports the program, schema and tool versions
 OPS-operations.feature: The WSL compose profile binds to localhost only
 OPS-operations.feature: Old events are cleaned up
 OPS-operations.feature: Events are cleaned up at most once a day

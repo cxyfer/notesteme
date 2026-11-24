@@ -1581,7 +1581,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 生效的設定與其來源、外部工具的路徑與來源（只有 owner） */
+    /** 生效的設定與其來源、程式與 schema 的版本、外部工具的路徑、來源與版本（只有 owner） */
     get: operations["system-get"];
     put?: never;
     post?: never;
@@ -4125,9 +4125,16 @@ export interface components {
       listen: string;
       /** @description default、config_file 或 env */
       listen_source: string;
+      /**
+       * Format: int64
+       * @description 資料庫的 schema 版本（最新已套用的 migration）；讀不到時省略
+       */
+      schema_version?: number;
       tools: {
         [key: string]: components["schemas"]["ToolView"];
       };
+      /** @description 程式版本（建置時寫入；開發版是 dev） */
+      version: string;
       yt_dlp: components["schemas"]["YtDlpView"];
     };
     TermCandidate: {
@@ -4224,6 +4231,8 @@ export interface components {
       path: string;
       /** @description config_file、env、managed 或 path */
       source: string;
+      /** @description 工具回報的版本；不知道時省略 */
+      version?: string;
     };
     TrashItemInputBody: {
       /** @description 同時刪除沒被改過的輸出檔；改過的保留並列在 kept_outputs（DEL-R9） */

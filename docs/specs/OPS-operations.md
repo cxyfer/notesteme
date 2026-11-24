@@ -47,6 +47,7 @@
 | OPS-R19 | `deploy/docker/compose.yaml` 的 `vps` profile 加上 `vps-check` 與 `caddy` 兩個服務。`caddy` 使用固定版本的 image（`caddy:2.8.4-alpine`），把 `80`、`443`（tcp）與 `443/udp` 映射到所有介面（只有這三個 port 不綁 `127.0.0.1`），以 `deploy/docker/Caddyfile`（唯讀掛載）對 `{$NOTESTEME_DOMAIN}` 自動取得 HTTPS 憑證、反向代理到 `notesteme:8080`，並加上 `Strict-Transport-Security`；`depends_on` 是 `vps-check`（`service_completed_successfully`）與 `notesteme`（`service_healthy`）。`notesteme` 服務在所有 profile 都只映射到 `127.0.0.1`（OPS-R9 不變），並傳入 `NOTESTEME_DEPLOYMENT: ${NOTESTEME_DEPLOYMENT:-local}`。 | M4 |
 | OPS-R20 | `notesteme deploy-check vps`（`vps-check` 服務執行，資料目錄唯讀掛載）依序檢查，遇到第一個問題就以結束碼 1 結束並印出：沒有 `NOTESTEME_DOMAIN`，或它是 IP 或 `localhost`：「vps profile 需要在 .env 設定 NOTESTEME_DOMAIN（例如 notes.example.com）。」；`NOTESTEME_DEPLOYMENT` 不是 `vps`：「vps profile 需要在 .env 設定 NOTESTEME_DEPLOYMENT=vps。」；DB 中沒有密碼（資料目錄還沒有 DB 時視為沒有）、也沒有 `NOTESTEME_PASSWORD`：「vps profile 必須設定登入密碼。請在 .env 設定 NOTESTEME_PASSWORD 後重新啟動。」；生效的 `trusted_proxies`（設定檔或 `NOTESTEME_TRUSTED_PROXIES`）是空的：「vps profile 必須把 Caddy 設成 trusted_proxies。請在 .env 設定 NOTESTEME_TRUSTED_PROXIES（compose 的預設值是 172.31.250.10/32）。」。全部通過時結束碼 0，印出「vps 部署檢查通過。」。檢查不通過時 Caddy 不會啟動，實例不會對外開放。 | M4 |
 | OPS-R21 | `NOTESTEME_DEPLOYMENT` 只接受 `local`（預設）與 `vps`，其他值拒絕啟動：「NOTESTEME_DEPLOYMENT 只能是 local 或 vps。」。`vps` 時 `serve` 拒絕 `--insecure-no-auth`：「vps 部署不能使用 --insecure-no-auth。請設定 NOTESTEME_PASSWORD。」（AUTH-R3 的例外不適用），session cookie 一律帶 `Secure`。 | M4 |
+| OPS-R22 | `GET /api/system` 回報程式版本（`version`，建置時寫入，開發版是 `dev`）、資料庫的 schema 版本（`schema_version`，最新已套用的 migration）與每個外部工具回報的版本（`tools.<名稱>.version`，yt-dlp、ffmpeg、ffprobe、Deno）。工具的版本以執行一次版本指令取得並快取：快取鍵是工具解開 symlink 後的實際路徑、大小與修改時間（更新或回退 yt-dlp 後重新取得），沒有快取時所有工具同時執行、最多等 2 秒；不能執行、逾時或認不出版本時省略 `version`，其他欄位照常回傳。 | M1 |
 
 ## 介面
 
@@ -94,7 +95,7 @@
 - 錯誤碼：版本格式不符 422；`tool_externally_managed`、`update_in_progress`、`no_previous_version`、`tool_state_corrupt`（`state.json` 損毀，訊息指出位置，可刪除後重試）、`tool_unsupported_platform`（Windows 不支援受管理的 venv）都是 409；安裝失敗 502 `upstream_failed`，回應只有「yt-dlp 安裝失敗，詳見 server log。」，pip 的輸出只寫進 log。
 - 更新與 rollback 在 server 關閉時取消，並清理新的 venv。
 - 狀態（固定版本、上一版）存在 `/data/tools/yt-dlp/state.json`（0600）。`-U` 更新時安裝前不知道版本，venv 目錄名稱是 `latest-<UTC 時間>`。
-- `GET /api/system` 的回應：`listen`、`listen_source`、`data`、`data_source`、`tools.<名稱>.{path, source, available, error}`（source 是 `config_file`、`env`、`managed` 或 `path`）、`yt_dlp.{pinned, previous}`（沒有時為 null）。設定檔中的路徑不能執行時，仍然回報路徑與來源，`available: false`。`state.json` 損毀時仍回 200，`yt_dlp` 為 `{pinned: null, previous: null, error}`。
+- `GET /api/system` 的回應：`version`、`schema_version`（OPS-R22）、`listen`、`listen_source`、`data`、`data_source`、`tools.<名稱>.{path, source, available, error, version}`（source 是 `config_file`、`env`、`managed` 或 `path`）、`yt_dlp.{pinned, previous}`（沒有時為 null）。設定檔中的路徑不能執行時，仍然回報路徑與來源，`available: false`。`state.json` 損毀時仍回 200，`yt_dlp` 為 `{pinned: null, previous: null, error}`。
 
 **事件（OPS-R10）**
 
@@ -197,3 +198,11 @@
   - **每一次定期工作**（清理、排程、訂閱檢查等）：worker 產生一個新的 `request_id`。
   - **解讀**：NFR-OBS-1 的「每筆帶 `request_id`」以「每個請求、每次任務執行、每次定期工作」為範圍。程序層級的 log（啟動、關閉、放回租約、worker 領取失敗、`net/http` 自己的錯誤 log）不屬於任何請求，沒有 `request_id`；它們的時間與訊息已足以對照。log 呼叫必須用 `*Context` 版本並傳入 context 才拿得到這些值，pipeline 與 worker 中有 context 可用的呼叫都已改寫。
   - 檢查：`internal/app/logfields_test.go` 用 production 組出的 logger 實際送出請求、執行失敗的任務，逐行解析 JSON log，斷言每筆請求 log 有 `request_id` 且等於回應標頭、每筆帶 `task` 的 log 有 `item`、`stage`、`request_id`（NFR-OBS-1 的 `ci`）。
+
+### OPS-R22 的實作決定（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）
+
+- O27（OPS-R22：`/api/system` 的版本，NFR-OBS-3；2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：NFR-OBS-3 要求 `/api/system` 回傳程式、schema 與工具的版本，原本的驗證欄寫 SEC-R1，但 SEC-R1 講的是設定的優先順序、場景只斷言 `listen_source`，版本一直沒有被實作也沒有被驗證。決定：
+  - 欄位只新增、不改既有的意義（OpenAPI 只加欄位）：頂層 `version`（字串，`internal/app.version`，建置時以 `-ldflags` 寫入）、`schema_version`（整數，`store.SchemaVersion`；讀不到時省略並記 log），`tools.<名稱>.version`（字串，不知道時省略）。
+  - 工具版本的指令和 doctor 相同（yt-dlp、Deno 是 `--version`，ffmpeg、ffprobe 是 `-version`）；從第一行取版本號（ffmpeg 是 `version` 後面的字、Deno 是工具名稱後面的字、yt-dlp 是整行），超過 64 字元或含控制字元時視為認不出來。
+  - 不讓 `/api/system` 因為外部指令變慢：結果以「解開 symlink 後的路徑、大小、修改時間」為鍵快取在 server 中（成功 10 分鐘、失敗 1 分鐘），沒有快取時四個工具同時執行、共用 2 秒的期限。所以第一次查詢最多多等 2 秒；受管理的 yt-dlp 更新或回退後 symlink 指向的檔案改變，下一次查詢就會重新取得。
+  - 驗證：OPS 的場景「The system information reports the program, schema and tool versions」（`features/OPS-operations.feature`）斷言 `version` 存在、`schema_version` 等於目前的 schema 版本（新句型 `the response field {string} is the current schema version`，不寫死會隨 migration 增加的數字）、受管理的 yt-dlp 與假 ffmpeg 的版本；快取、symlink 與逾時由 `internal/app/toolversions_test.go` 守住。假工具沒有 Deno，場景不斷言 Deno。
