@@ -78,4 +78,15 @@ describe("指令面板（README §3.1，UI-8）", () => {
     expect(paused).toBe(true);
     expect(api.calls("POST", "/api/queue/pause")).toHaveLength(1);
   });
+
+  it("「新增」關閉面板後打開新增抽屜，焦點在抽屜裡", async () => {
+    const { user, dialog } = await openPalette();
+    await user.click(within(dialog).getByRole("option", { name: "新增" }));
+    const drawer = await screen.findByRole("dialog", { name: "新增" });
+    await waitFor(() => expect(drawer.contains(document.activeElement)).toBe(true));
+    // 面板卸載時延遲還原的焦點不會把焦點搶回去
+    await new Promise((r) => setTimeout(r, 50));
+    expect(drawer.contains(document.activeElement)).toBe(true);
+    expect(screen.queryByRole("dialog", { name: "指令面板" })).toBeNull();
+  });
 });
