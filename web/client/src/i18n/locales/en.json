@@ -18,7 +18,9 @@
     "noteTemplates": "Note templates",
     "costs": "Costs",
     "overview": "Overview",
-    "insecureNoAuth": "No sign-in is required: this instance was started with --insecure-no-auth, so any program on this computer can control it. Set NOTESTEME_PASSWORD and restart without the flag."
+    "insecureNoAuth": "No sign-in is required: this instance was started with --insecure-no-auth, so any program on this computer can control it. Set NOTESTEME_PASSWORD and restart without the flag.",
+    "tabs": "Tab bar",
+    "more": "More"
   },
   "prefs": {
     "theme": "Theme",

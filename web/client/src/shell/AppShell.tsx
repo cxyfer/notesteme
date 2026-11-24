@@ -14,6 +14,7 @@ import { Button } from "../components";
 import { useEventStream } from "../events/useEventStream";
 import { isEditableTarget, modalOpen } from "./keyboard";
 import { Preferences } from "./Preferences";
+import { TabBar, useNarrow } from "./TabBar";
 
 const ShortcutsDialog = lazy(() =>
   import("./ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })),
@@ -146,6 +147,8 @@ function ShellLayout() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // UI-8：767px 以下改用底部分頁列（README §8），側邊導覽不渲染
+  const narrow = useNarrow();
 
   const toLogin = useCallback(() => {
     qc.clear();
@@ -188,50 +191,90 @@ function ShellLayout() {
       </a>
       <InsecureBanner />
       <div className="app">
-        <nav className="nav" aria-label={t("nav.label")}>
-          <Link to="/" className="nav__mark">
-            {t("app.name")}
-          </Link>
-          <Button className="nav__add" variant="primary" onClick={() => add.open()}>
-            {t("add.open")}
-            <kbd className="nav__kbd" aria-hidden="true">
-              {t("add.hotkey")}
-            </kbd>
-          </Button>
-          {NAV_GROUPS.map((g) => (
-            <div className="nav__section" key={g.label}>
-              <h2 className="nav__group">{t(g.label)}</h2>
-              <ul className="nav__list">
-                {g.items.map((it) => (
-                  <li key={it.to}>
-                    <Link
-                      to={it.to}
-                      className="nav__item"
-                      aria-current={
-                        pathname === it.to || (it.to !== "/" && pathname.startsWith(`${it.to}/`))
-                          ? "page"
-                          : undefined
-                      }
-                    >
-                      {t(it.label)}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-          <div className="nav__footer">
-            <Preferences />
-            <Button variant="text" onClick={() => void logout()}>
-              {t("prefs.logout")}
+        {!narrow && (
+          <nav className="nav" aria-label={t("nav.label")}>
+            <Link to="/" className="nav__mark">
+              {t("app.name")}
+            </Link>
+            <Button className="nav__add" variant="primary" onClick={() => add.open()}>
+              {t("add.open")}
+              <kbd className="nav__kbd" aria-hidden="true">
+                {t("add.hotkey")}
+              </kbd>
             </Button>
-          </div>
-        </nav>
+            <NavGroups pathname={pathname} />
+            <div className="nav__footer">
+              <Preferences />
+              <Button variant="text" onClick={() => void logout()}>
+                {t("prefs.logout")}
+              </Button>
+            </div>
+          </nav>
+        )}
         {/* tabIndex=-1：skip link 與換頁時可以把焦點移到這裡 */}
         <main className="main" id="main" tabIndex={-1} ref={mainRef}>
           <Outlet />
         </main>
       </div>
+      {narrow && (
+        <TabBar
+          pathname={pathname}
+          onAdd={() => add.open()}
+          more={(close) => (
+            <>
+              <NavGroups pathname={pathname} skip={TAB_PAGES} onNavigate={close} />
+              <div className="nav__footer">
+                <Preferences />
+                <Button variant="text" onClick={() => void logout()}>
+                  {t("prefs.logout")}
+                </Button>
+              </div>
+            </>
+          )}
+        />
+      )}
     </>
   );
+}
+
+/** 底部分頁列已經有的頁面，「更多」裡不重複列出 */
+const TAB_PAGES: readonly string[] = ["/", "/library", "/queue"];
+
+function NavGroups({
+  pathname,
+  skip = [],
+  onNavigate,
+}: {
+  pathname: string;
+  skip?: readonly string[];
+  onNavigate?: () => void;
+}) {
+  const { t } = useTranslation();
+  return NAV_GROUPS.map((g) => {
+    const items = g.items.filter((it) => !skip.includes(it.to));
+    if (!items.length) return null;
+    return (
+      <div className="nav__section" key={g.label}>
+        <h2 className="nav__group">{t(g.label)}</h2>
+        <ul className="nav__list">
+          {items.map((it) => (
+            <li key={it.to}>
+              <Link
+                to={it.to}
+                className="nav__item"
+                onClick={onNavigate}
+                aria-current={
+                  pathname === it.to || (it.to !== "/" && pathname.startsWith(`${it.to}/`))
+                    ? "page"
+                    : undefined
+                }
+              >
+                {t(it.label)}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  });
 }

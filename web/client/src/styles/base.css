@@ -195,40 +195,60 @@ h3 {
   color: var(--text-primary);
 }
 
-/* 767px 以下：導覽改成底部分頁列（docs/ui/README.md §8）。 */
+/* 767px 以下：導覽改成底部分頁列（docs/ui/README.md §8；UI-8 起是 TabBar，側邊導覽不渲染）。 */
 @media (max-width: 767px) {
   .app {
     grid-template-columns: minmax(0, 1fr);
     padding-bottom: 64px;
   }
-  .nav {
-    position: fixed;
-    inset: auto 0 0 0;
-    top: auto;
-    height: auto;
-    z-index: 10;
-    flex-direction: row;
-    align-items: center;
-    padding: var(--space-1) var(--space-2);
-    background: var(--surface-panel);
-    border-top: 1px solid var(--rule);
-  }
-  .nav__mark,
-  .nav__group,
-  .nav__footer {
-    display: none;
-  }
-  .nav__section {
-    display: contents;
-  }
-  .nav__list {
-    flex-direction: row;
-    flex: 1;
-    justify-content: space-around;
-  }
   .main {
     padding: var(--space-4);
   }
+}
+.tabbar {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 10;
+  padding: var(--space-1) var(--space-2) calc(var(--space-1) + env(safe-area-inset-bottom, 0px));
+  background: var(--surface-panel);
+  border-top: 1px solid var(--rule);
+}
+.tabbar__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+.tabbar__item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-14);
+  font-weight: 500;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+.tabbar__item[aria-current="page"] {
+  background: var(--surface-hover);
+  box-shadow: inset 0 3px 0 var(--text-primary);
+}
+.tabbar__add {
+  font-weight: 600;
+}
+.tabbar__more .nav__footer {
+  margin-top: var(--space-4);
+  padding: 0;
 }
 
 /* ---------- Login ---------- */
