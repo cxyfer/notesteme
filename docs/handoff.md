@@ -519,6 +519,35 @@
   - LIB-R4：`GET /api/items` 加 `group_by=channel|published|status`、每列的 `channel_name` 與 `group`；分組時游標 v2（HMAC 涵蓋組鍵，指紋含 `group_by`）；沒有另外的 `sort`。媒體庫預設依頻道分組，可以切換（網址 `group`），媒體庫頁改成 lazy。翻頁期間組鍵可能改變（已知限制）。見 LIB 待決問題與 ui/README 10.22。
   - 驗證：預設 tag 308 個、`@M1,@M2,@M3,@M4,@M5` 936 個場景逐場景與開工前相同（全部 passed）；涵蓋率 subtitle 95.8%、pipeline 84.6%、queue 89.2%、netguard 93.6%；`-race` 只跑改過的套件 hubapi、pipeline、store、api、queue、app（store/sqlcdb 是產生碼、沒有測試）；前端初始 JS 271.6KB／300KB。
 
+- **收尾 D3：SRC-R4 其餘品質檢查、SRC-R13 幻覺過濾、LLM 費用估算、`@pending-m0` 盤點（2026-11-24，分支 `feat/src-quality-checks-llm-estimate`，決定都標「依 /goal 採 advisor 建議，待 owner 追認」）**：
+  - SRC-R4：`runFallback` 在 `language_mismatch` 之後依序檢查 `music_only`（>80% 的 cue 只有音樂標記）→ `low_coverage`（cue 聯集 <50% 片長）→ `repetition`（>30% 重複句，少於 5 句不判斷），不通過記為 `rejected` 並改用下一個來源（`internal/pipeline/quality.go`）。只套用在 fallback 來源（平台字幕軌不檢查）；涵蓋率的分母：Groq 用它回報的音訊長度，其他用影音片長，不知道就略過。門檻是常數、沒有開放設定；transcript 的 `impl_version` 沒有提升。見 SRC 待決問題「SRC-R4 其餘品質檢查與 SRC-R13 幻覺過濾」。
+  - SRC-R13：`groq.Transcribe` 移除 `no_speech_prob > 0.6` 且 `compression_ratio > 2.4` 的 segment；`transcribeASR` 在接回時間軸之後把連續 3 次以上相同的句子只留一句（單檔與切塊都套用）。
+  - LLM 估算：`POST /api/estimate` 的 `llm_usd` 用片長推估資料區塊（每秒 6 token），依 COST-R5 與 `cost.Service.Estimate`（含價格覆寫）估算各付費 LLM 步驟（`internal/pipeline/estimate_llm.go`）；不知道時 `null`，沒有付費 LLM 步驟時 `0`。reprobe 的 `estimate_usd` 改用 `EstimateRerun(from=transcript)`；有無法估算的任務**或沒有任何付費任務**時維持 `null`（場景與訊息「目前無法估算金額」因此不變）。`RerunEstimate` 多了 `Priced`。OpenAPI 與 `schema.d.ts` 只改了說明文字。見 ING 待決問題、SRC R10、COST C23。
+  - 規格整理：SRC 第 91／125／130 行與 R10、BND N21、§6 的 SRC「還沒做」條目已改或劃掉。其他 grep 到的「還沒實作」屬真實未做（`notesteme password set`、vault 的 secrets 憑證）或是條件式的歷史敘述，沒有動。
+  - 數字：預設 tag 313 個、`@M1,@M2,@M3,@M4,@M5` 943 個場景全部 passed（沒有新增場景，`passing.txt` 沒動）；涵蓋率 subtitle 95.8%、pipeline 84.7%、queue 89.2%、netguard 93.6%；`go test -p 2 ./internal/... ./cmd/... ./features/...` 全過；`-race` 只跑改過的 pipeline、`source/groq`、api，全過；`check_steps`、`check_trace` 通過；沒有改前端程式（UI 只在 `estimate_usd` 為 null 時顯示「無法預估費用」，沒有顯示 probe 原因與 `/api/estimate`）。
+  - 沒實測：真實的 Groq `verbose_json`（`no_speech_prob`、`compression_ratio` 欄位與數值）、真實的 Supadata 結果、真實語音樣本的門檻；只用假服務與 fixture。
+  - `@pending-m0` 盤點（14 個場景、20 個 example；`-godog.tags='@pending-m0'`，標籤都沒有拿掉，由 owner 決定）：
+
+    | 場景 | 規則是否已用預設值實作 | 結果（開工前 → 現在） | 擋住的原因 |
+    |---|---|---|---|
+    | COR `A rewrite that strays too far falls back to the original` | 是（C1：rune 的 normalized Levenshtein，門檻 0.6） | failed → failed，停在訊息步驟：實際「相似度 0.19」，場景預期 0.42 | 相似度算法要用 M0 樣本決定（COR 待決問題 C1）；只有門檻符合，數字取決於算法 |
+    | FRM `Quiet stretches still get a frame every interval` | 是 | passed → passed | 只差 M0 實測門檻 |
+    | FRM `Repeated frames are dropped but different solid colours are kept` | 是 | passed → passed | 同上 |
+    | FRM `A cue that points at the screen lifts the nearby frame` | 是 | passed → passed | 同上 |
+    | GEM `Videos that are not public are not sent to Gemini` | 是 | passed → passed | 需要真實 Gemini 確認 |
+    | GEM `Videos longer than the limit are not sent to Gemini` | 是 | passed → passed | 同上 |
+    | GEM `Gemini refusing the video asks for the regular pipeline` | 是 | passed → passed | 同上（拒絕的回應形狀） |
+    | SEG `Break markers survive small punctuation changes by the model` | 是 | passed → passed | M0 樣本 |
+    | SEG `Subtitle rules are enforced per script`（2 個 example） | 是 | passed → passed | M0 樣本 |
+    | TRN `A wrong number of split markers falls back to cue-by-cue translation` | 是 | passed → passed | M0 樣本 |
+    | OPS `A jump in yt-dlp failures is reported only with enough calls`（3 個 example） | 是 | passed → passed | 門檻要用真實的 yt-dlp 失敗率確認 |
+    | OPS `The yt-dlp alert says what to try` | 是 | passed → passed | 同上 |
+    | **SRC `Unusable results are rejected and the next source is used`**（4 個 example） | **是（本切片）** | `language_mismatch` passed，其餘 3 個 failed（`sources` 沒有對應的 rejected）→ **4 個都 passed** | 補了 `supadata-covers-200s.json`、`supadata-repeating.json`、`supadata-music-only.json`；門檻待 M0 |
+    | **SRC `Whisper hallucinations are filtered out`** | **是（本切片）** | failed（缺 `local/quiet-ending.m4a`）→ **passed** | 補了 `groq-hallucinated-tail.json` 與 `quiet-ending.m4a`；門檻與真實 Groq 欄位待 M0 |
+
+    結論：20 個 example 中 19 個在本機通過，只剩 COR 一個因相似度算法還沒定而失敗。全部都還需要 M0 實測或真實服務，才能決定是否拿掉 `@pending-m0`。
+
+
 ## 2. 下一步
 
 ### 2026-11-24 現況
@@ -716,7 +745,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 - **SRC**：
   - yt-dlp 的錯誤分類：影片不存在、私人、已移除是 `permanent`（依 stderr 的 `ERROR: [youtube] <id>: …`，見 `source/youtube/client.go`，還沒對真實的 yt-dlp 驗證過訊息）；`HTTP Error 403` 是 `needs_action`（SRC-R9）；其餘都當成 `retryable`。
   - 原文語言未知時，應該從 `*-orig` 字幕軌推斷。
-  - 還沒做：cookie（SRC-R8）、品質檢查（SRC-R4，只做了 `language_mismatch`）、音訊切塊（SRC-R12）、幻覺過濾（SRC-R13）。
+  - ~~還沒做：cookie（SRC-R8）、品質檢查（SRC-R4，只做了 `language_mismatch`）、音訊切塊（SRC-R12）、幻覺過濾（SRC-R13）。~~ **已處理（cookie 在 SRC-B、切塊在 LOCAL、品質檢查與幻覺過濾在收尾 D3；門檻仍待 M0）**。
   - Supadata：非同步 job（202）還不會輪詢，目前當 permanent；暫時性錯誤時不會寫入 `source_probes`。（API key 已支援 DB 加密存放與 fallback，見 SEC-R4。）
   - 做 `youtube-auto` 前，要評估改用 yt-dlp 的 `json3` 格式（見 NRM 待決問題）。`features/fixtures/captions/auto-zh-en-mixed.json` 目前內容是 VTT，決定後與假 yt-dlp 一起改。
 - **CLI**：
