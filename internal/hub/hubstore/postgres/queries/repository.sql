@@ -39,6 +39,10 @@ UPDATE versions SET state = 'visible', format = $1, size = $2, provenance_json =
                     translate_model = $6, model_verified = $7, visibility = $8, license = $9, removal_source = '', removal_reason = ''
 WHERE id = $10 AND state = 'withdrawn';
 
+-- name: DeleteChildDerivations :exec
+-- A restored version takes the new share's provenance, so its own parents are rebuilt from it.
+DELETE FROM derivations WHERE child_version_id = $1;
+
 -- name: DeleteVersionImageBlobs :exec
 DELETE FROM version_blobs WHERE version_id = $1 AND role = 'image';
 

@@ -671,3 +671,20 @@ func TestShareValidatesVideoMetadata(t *testing.T) {
 		t.Fatalf("影片 = %q / %q（%v）", v.Title, v.ChannelTitle, out["share_id"])
 	}
 }
+
+// 安全修補 A：撤回的人在「我的分享」看不到別人之後以相同內容恢復的版本（可見度、上傳者、模型）。
+func TestMySharesHidesRestoredVersionFromWithdrawer(t *testing.T) {
+	e := newRepoEnv(t, nil)
+	e.grant("bob", hubconfig.GroupContributors)
+	first := e.mustShare("alice", makeBundle(t, bundleOpts{}, src("restored-bytes")), nil)
+	expect(t, "alice 撤回", e.as("alice", "DELETE", "/api/v1/shares/"+first["share_id"].(string), ""), 204, "")
+	b := src("restored-bytes")
+	b.prov = map[string]any{"executor": "api", "provider": "groq", "model": "bob-secret-model", "created_at": "2026-11-01T00:00:00Z"}
+	e.mustShare("bob", makeBundle(t, bundleOpts{license: "CC0-1.0"}, b), map[string]string{"visibility": "private"})
+	rec := e.as("alice", "GET", "/api/v1/me/shares", "")
+	body := rec.Body.String()
+	if rec.Code != 200 || strings.Contains(body, `"bob"`) || strings.Contains(body, "private") || strings.Contains(body, "bob-secret-model") ||
+		!strings.Contains(body, `"state":"withdrawn"`) {
+		t.Fatalf("alice 的分享 = %d %s", rec.Code, body)
+	}
+}

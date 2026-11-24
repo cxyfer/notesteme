@@ -276,6 +276,16 @@ func (q *Queries) CreateVideo(ctx context.Context, arg CreateVideoParams) error 
 	return err
 }
 
+const deleteChildDerivations = `-- name: DeleteChildDerivations :exec
+DELETE FROM derivations WHERE child_version_id = ?
+`
+
+// A restored version takes the new share's provenance, so its own parents are rebuilt from it.
+func (q *Queries) DeleteChildDerivations(ctx context.Context, childVersionID string) error {
+	_, err := q.db.ExecContext(ctx, deleteChildDerivations, childVersionID)
+	return err
+}
+
 const deleteVersionContentBlobs = `-- name: DeleteVersionContentBlobs :exec
 DELETE FROM version_blobs WHERE version_id = ? AND role = 'content'
 `

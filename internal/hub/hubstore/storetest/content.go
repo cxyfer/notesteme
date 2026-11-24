@@ -201,9 +201,14 @@ func runContent(t *testing.T, open Open) {
 		}
 		// withdrawn：以新分享的值恢復（可見度、來源紀錄），不是 deduplicated。
 		clk.Advance(time.Second)
-		wr, err := s.CreateShare(ctx, newShare(alice, "a6", withVis(ver("source", shaN("6"), `{"model":"old"}`), "authenticated")))
+		old := withVis(ver("source", shaN("6"), `{"model":"old"}`, shaN("1")), "authenticated")
+		old.RegeneratedFrom = bp.ID
+		wr, err := s.CreateShare(ctx, newShare(alice, "a6", old))
 		if err != nil {
 			t.Fatal(err)
+		}
+		if ps, _, _ := s.VersionDerivations(ctx, wr.Versions[0].ID); len(ps) == 0 {
+			t.Fatal("撤回前應該有衍生關係")
 		}
 		if err := s.WithdrawShare(ctx, alice, wr.ShareID); err != nil {
 			t.Fatal(err)
@@ -213,6 +218,10 @@ func runContent(t *testing.T, open Open) {
 		if err != nil || bw.Deduplicated || bw.ID != got.ID || got.State != "visible" || got.Visibility != "private" ||
 			string(got.Provenance) != `{"model":"b6"}` || bw.Visibility != "private" || !same(uploaders(got.ID), "bob") {
 			t.Fatalf("恢復撤回的版本 = %+v / %+v, %v", bw, got, err)
+		}
+		// 舊的來源紀錄宣告的衍生關係不留在恢復的版本上（新的分享沒有宣告任何 parent）。
+		if ps, _, err := s.VersionDerivations(ctx, got.ID); err != nil || len(ps) != 0 {
+			t.Fatalf("恢復後的 parents = %+v, %v", ps, err)
 		}
 		vs, err := s.VideoVersions(ctx, wr.Video.ID)
 		if err != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/hub/hubauth"
 	"github.com/cxyfer/notesteme/internal/hub/hubconfig"
+	"github.com/cxyfer/notesteme/internal/hub/hubrepo"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore"
 )
 
@@ -482,6 +483,10 @@ func (rt *routes) myShares(ctx context.Context, in *adminUsersInput) (*mySharesO
 	if err != nil {
 		return nil, rt.apiError(ctx, err)
 	}
+	viewer, err := rt.viewer(ctx, p)
+	if err != nil {
+		return nil, rt.apiError(ctx, err)
+	}
 	o := &mySharesOutput{}
 	o.Body.Shares = make([]MyShareView, 0, len(ss))
 	for _, s := range ss {
@@ -490,6 +495,21 @@ func (rt *routes) myShares(ctx context.Context, in *adminUsersInput) (*mySharesO
 			ups, err := rt.d.Store.VersionUploaders(ctx, x.ID)
 			if err != nil {
 				return nil, rt.apiError(ctx, err)
+			}
+			// 撤回的分享：版本之後可能被別人以相同內容重新分享並恢復（安全修補 A），看不到它時只顯示自己分享過的識別，
+			// 狀態是 withdrawn，不透露別人的可見度、上傳者與模型。
+			if s.WithdrawnAt != nil {
+				ids := make([]string, 0, len(ups))
+				for _, u := range ups {
+					ids = append(ids, u.UserID)
+				}
+				if !hubrepo.CanSee(hubrepo.Subject{Visibility: x.Visibility, State: x.State, Uploaders: ids}, viewer, rt.d.Config.SiteVisibility) {
+					v.Versions = append(v.Versions, MyVersionView{VersionItem: VersionItem{
+						ID: x.ID, Video: videoRef(s.Video), Kind: x.Kind, Variant: x.Variant, Lang: x.Lang, SHA256: x.SHA256,
+						CreatedAt: x.CreatedAt, Uploaders: []UploaderView{},
+					}, State: hubrepo.StateWithdrawn})
+					continue
+				}
 			}
 			mv := MyVersionView{VersionItem: versionItem(x.Version, s.Video, ups), Visibility: x.Visibility, State: x.State}
 			if x.State == "removed" && x.RemovalSource != "" {

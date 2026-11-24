@@ -228,6 +228,10 @@ func pickExisting(ctx context.Context, q *sqlcdb.Queries, videoID string, in hub
 	if n != 1 {
 		return sqlcdb.Version{}, false, false, fmt.Errorf("恢復撤回的版本 %s 失敗", id)
 	}
+	// 舊的來源紀錄宣告的 parent／regenerated_from 不再成立：刪掉，呼叫端依新的來源紀錄重建（別的版本以它為 parent 的關係依內容判斷，保留）。
+	if err := q.DeleteChildDerivations(ctx, id); err != nil {
+		return sqlcdb.Version{}, false, false, err
+	}
 	if err := q.DeleteVersionImageBlobs(ctx, id); err != nil {
 		return sqlcdb.Version{}, false, false, err
 	}
