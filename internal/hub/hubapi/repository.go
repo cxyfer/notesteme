@@ -267,7 +267,7 @@ func shareRateLimited(wait time.Duration) *apierr.Error {
 }
 
 // checkShareLimits 檢查分享的額度（HREP-R11）：每小時的次數，以及加上 size 之後的每日位元組數。
-// 以 DB 中成功的分享計算（含撤回的），Hub 重新啟動後不會歸零。
+// 每小時的次數是 DB 中成功的分享（含撤回的，Hub 重新啟動後不會歸零）加上記憶體中失敗的分享（uploadguard.go）。
 func (rt *routes) checkShareLimits(ctx context.Context, userID string, size int64) error {
 	rl := rt.rateLimits()
 	now := rt.d.Clock.Now()
@@ -276,8 +276,12 @@ func (rt *routes) checkShareLimits(ctx context.Context, userID string, size int6
 		if err != nil {
 			return err
 		}
-		if u.Count >= rl.SharesPerHour {
-			return shareRateLimited(u.Oldest.Add(time.Hour).Sub(now))
+		n, oldest := rt.uploads.recentFailures(userID)
+		if u.Count+n >= rl.SharesPerHour {
+			if u.Count > 0 && (n == 0 || u.Oldest.Before(oldest)) {
+				oldest = u.Oldest
+			}
+			return shareRateLimited(oldest.Add(time.Hour).Sub(now))
 		}
 	}
 	if rl.UploadBytesPerDay > 0 && size > 0 {
@@ -310,7 +314,11 @@ func (rt *routes) createShare(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := rt.share(ctx, w, r, p)
 	if err != nil {
-		writeRawErr(w, rt.apiError(ctx, err))
+		e := rt.apiError(ctx, err)
+		if countsAsFailure(e) {
+			rt.uploads.recordFailure(p.User.ID)
+		}
+		writeRawErr(w, e)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -324,6 +332,14 @@ func (rt *routes) share(ctx context.Context, w http.ResponseWriter, r *http.Requ
 	if err := rt.checkShareLimits(ctx, p.User.ID, 0); err != nil {
 		return nil, err
 	}
+	// 全域的並行名額在讀取本體之前取得（uploadguard.go）。
+	release, ok := rt.uploads.acquire(p.User.ID)
+	if !ok {
+		return nil, errShareBusy()
+	}
+	defer release()
+	// 讀取本體的期限（連線層的期限，用真實時間而不是注入的 clock）；不支援時（測試的 ResponseRecorder）略過。
+	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(shareReadTimeout))
 	maxUpload := cfg.Bundles.MaxUploadBytes
 	if r.ContentLength > maxUpload+shareFormOverhead {
 		return nil, hubrepo.ErrTooLarge(maxUpload)
@@ -374,7 +390,7 @@ func (rt *routes) share(ctx context.Context, w http.ResponseWriter, r *http.Requ
 	if e := hubrepo.CheckProvenanceSize(b); e != nil {
 		return nil, e
 	}
-	if err := b.ValidateContents(); err != nil {
+	if err := b.ValidateContentsContext(ctx); err != nil {
 		var be *bundle.Error
 		if errors.As(err, &be) {
 			return nil, hubrepo.FromBundleError(be)

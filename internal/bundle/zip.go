@@ -58,8 +58,8 @@ func Read(data []byte, o Options) (*Bundle, error) {
 	if len(entries) > lim.MaxFiles {
 		return nil, invalid("", "bundle 的項目超過 %d 個的上限，已拒絕匯入。", lim.MaxFiles)
 	}
-	b := &Bundle{files: map[string][]byte{}}
-	var total int64
+	b := &Bundle{files: map[string][]byte{}, limits: lim}
+	var total, packed int64
 	for _, en := range entries {
 		if en.dir {
 			continue
@@ -71,6 +71,14 @@ func Read(data []byte, o Options) (*Bundle, error) {
 		content, e := inflate(en, limit, &total, lim)
 		if e != nil {
 			return nil, e
+		}
+		// 合計的壓縮比：單檔 1 MiB 以下不檢查壓縮比，許多高度壓縮的小檔加起來仍可能是炸彈（BND 待決問題 N25）。
+		// 每個檔案解壓完才檢查，單檔的壓縮比錯誤先回報。
+		// header 宣告的壓縮大小不可信：合計不會超過整個 zip 的大小。
+		packed = min(packed+int64(min(en.f.CompressedSize64, uint64(len(data)))), int64(len(data)))
+		if total > ratioThreshold && total > int64(lim.MaxRatio)*max(packed, 1) {
+			s := ShowEntry(en.name)
+			return nil, invalid(s, "bundle 解壓後合計的壓縮比超過 %d 倍的上限，已拒絕匯入。", lim.MaxRatio)
 		}
 		if en.name == ManifestName {
 			b.ManifestJSON = content

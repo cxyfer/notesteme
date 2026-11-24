@@ -77,7 +77,7 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 	cfg.SchemasPath = ""
 	cfg.CreateHooks = nil
 	api := humago.New(mux, cfg)
-	rt := &routes{d: d, api: api, limiter: newRateLimiter(d.Clock), takedownLimiter: newHourlyLimiter(d.Clock)}
+	rt := &routes{d: d, api: api, limiter: newRateLimiter(d.Clock), takedownLimiter: newHourlyLimiter(d.Clock), uploads: newUploadGuard(d.Clock)}
 	api.UseMiddleware(rt.accessMiddleware, rt.rawOperations)
 	public := map[string]any{AccessExtension: string(AccessPublic)}
 	huma.Register(api, huma.Operation{
@@ -115,6 +115,8 @@ type routes struct {
 	limiter *rateLimiter
 	// takedownLimiter 是下架申請每個 IP 每小時的額度（HACC-R15）。
 	takedownLimiter *hourlyLimiter
+	// uploads 是分享的並行名額與失敗紀錄（uploadguard.go）。
+	uploads *uploadGuard
 }
 
 type statusOutput struct {

@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cxyfer/notesteme/internal/bundle"
+	"github.com/cxyfer/notesteme/internal/frames"
 	"github.com/cxyfer/notesteme/internal/notes"
 	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/sponsorblock"
@@ -77,9 +78,10 @@ type preparedArtifact struct {
 	data    []byte
 	sha     string
 	timings []string
-	// frames 是 frames 產出選中的畫面（編號 → JPEG）。
-	frames map[int][]byte
-	skip   bool
+	// frames 是 frames 產出選中的畫面（編號 → JPEG）；framePaths 是畫面在 bundle 中的項目名稱（錯誤訊息用）。
+	frames     map[int][]byte
+	framePaths map[int]string
+	skip       bool
 }
 
 // stageForArtifact 是產出對應的步驟（BND-R8）；edited 沒有對應的步驟。
@@ -134,9 +136,6 @@ func (p *Pipeline) ImportBundle(ctx context.Context, req BundleImportRequest) (B
 	if err != nil {
 		return BundleImportResult{}, err
 	}
-	if err := b.ValidateContents(); err != nil {
-		return BundleImportResult{}, err
-	}
 	m := b.Manifest
 	if m.Item.Platform == source.PlatformLocal && !sha256Pattern.MatchString(m.Item.ExternalID) {
 		return BundleImportResult{}, &bundle.Error{Code: bundle.CodeInvalid, Entry: bundle.ManifestName, Path: "item.external_id",
@@ -146,8 +145,13 @@ func (p *Pipeline) ImportBundle(ctx context.Context, req BundleImportRequest) (B
 		return BundleImportResult{}, &bundle.Error{Code: bundle.CodeInvalid, Entry: bundle.ManifestName, Path: "item.part",
 			Message: "manifest.json 不符合格式：item.part：Bilibili 影片必須有分P。"}
 	}
+	// 先以產品的解碼器解析產出，拒絕沒有被引用的檔案與超過擷取畫面尺寸的圖片，再做圖片的結構檢查；
+	// 完整解碼只在 placeArtifacts 產生縮圖時（BND 待決問題 N25）。
 	arts, err := prepareArtifacts(b)
 	if err != nil {
+		return BundleImportResult{}, err
+	}
+	if err := b.ValidateContentsContext(ctx); err != nil {
 		return BundleImportResult{}, err
 	}
 	sum := sha256.Sum256(req.Data)
@@ -187,7 +191,7 @@ func (p *Pipeline) ImportBundle(ctx context.Context, req BundleImportRequest) (B
 		return BundleImportResult{}, err
 	}
 	defer os.RemoveAll(tmp)
-	placed, err := p.placeArtifacts(tmp, itemID, arts)
+	placed, err := p.placeArtifacts(ctx, tmp, itemID, arts)
 	cleanup := func() {
 		for _, f := range placed {
 			_ = os.RemoveAll(f)
@@ -612,6 +616,7 @@ func (pa *preparedArtifact) prepareFrames(b *bundle.Bundle, used map[string]bool
 	}
 	seenN := map[int]bool{}
 	imgs := map[int][]byte{}
+	paths := map[int]string{}
 	var keep []frameCandidate
 	for _, c := range man.Candidates {
 		if !c.Selected {
@@ -630,17 +635,21 @@ func (pa *preparedArtifact) prepareFrames(b *bundle.Bundle, used map[string]bool
 		if !ok {
 			return bundleInvalid(pa.src.Path, "bundle 中的檔案「%s」選中的畫面 %d 沒有圖片，已拒絕匯入。", c.N)
 		}
+		// 擷取畫面的解碼上限（frames.MaxDecodePixels）比 bundle 的單張上限小：在這裡先擋，否則縮圖時才失敗。
+		if px, ok := bundle.JPEGPixels(jpg); !ok || px > frames.MaxDecodePixels {
+			return errContent(img, " JPEG 圖片")
+		}
 		used[img] = true
 		seenN[c.N] = true
-		imgs[c.N] = jpg
+		imgs[c.N], paths[c.N] = jpg, img
 		keep = append(keep, c)
 	}
 	// 產品的畫面編號是 1..len(candidates)（FrameImage 依此檢查）：選中的畫面依原本的編號排序後重新編號。
 	sort.Slice(keep, func(i, j int) bool { return keep[i].N < keep[j].N })
-	pa.frames = map[int][]byte{}
+	pa.frames, pa.framePaths = map[int][]byte{}, map[int]string{}
 	for i := range keep {
 		n := i + 1
-		pa.frames[n] = imgs[keep[i].N]
+		pa.frames[n], pa.framePaths[n] = imgs[keep[i].N], paths[keep[i].N]
 		keep[i].N, keep[i].File, keep[i].Thumb, keep[i].Excluded = n, frameFile(n), frameThumb(n), ""
 	}
 	man.Candidates = nonNilCandidates(keep)
@@ -654,7 +663,8 @@ func (pa *preparedArtifact) prepareFrames(b *bundle.Bundle, used map[string]bool
 
 // placeArtifacts 把要匯入的產出寫到暫存目錄，再搬到 artifacts/<item>/；回傳搬過去的路徑（失敗時由呼叫端刪除）。
 // 檔案一律以 0600 建立一般檔案（BND N3）。
-func (p *Pipeline) placeArtifacts(tmp, itemID string, arts []preparedArtifact) ([]string, error) {
+// 縮圖要完整解碼：每張之間檢查 ctx，解碼失敗是 bundle 的內容錯誤（結構檢查不保證熵編碼的資料正確）。
+func (p *Pipeline) placeArtifacts(ctx context.Context, tmp, itemID string, arts []preparedArtifact) ([]string, error) {
 	type move struct{ from, to string }
 	var moves []move
 	for i, a := range arts {
@@ -672,12 +682,19 @@ func (p *Pipeline) placeArtifacts(tmp, itemID string, arts []preparedArtifact) (
 				return nil, err
 			}
 			for n, jpg := range a.frames {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
 				full := filepath.Join(dir, frameFile(n))
 				if err := writeFileSync(full, jpg); err != nil {
 					return nil, err
 				}
 				if err := writeThumb(full, filepath.Join(dir, frameThumb(n))); err != nil {
-					return nil, err
+					var fe *os.PathError
+					if errors.As(err, &fe) {
+						return nil, err
+					}
+					return nil, errContent(a.framePaths[n], " JPEG 圖片")
 				}
 			}
 			moves = append(moves, move{dir, framesDir(p.dataDir, itemID, a.id)})

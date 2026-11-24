@@ -38,11 +38,14 @@ type Limits struct {
 	MaxFileBytes  int64
 	MaxTotalBytes int64
 	MaxRatio      int
+	// MaxTotalPixels 是所有 JPEG 的像素合計（BND 待決問題 N25）；預設 256M 像素，
+	// 由 max_total_bytes 的預設值推導：每個解壓後的位元組對應 1 像素。
+	MaxTotalPixels int64
 }
 
 // DefaultLimits 是 BND 規格的預設上限（N4）。
 func DefaultLimits() Limits {
-	return Limits{MaxFiles: 2000, MaxFileBytes: 64 << 20, MaxTotalBytes: 256 << 20, MaxRatio: 100}
+	return Limits{MaxFiles: 2000, MaxFileBytes: 64 << 20, MaxTotalBytes: 256 << 20, MaxRatio: 100, MaxTotalPixels: 256 << 20}
 }
 
 func (l Limits) withDefaults() Limits {
@@ -58,6 +61,9 @@ func (l Limits) withDefaults() Limits {
 	}
 	if l.MaxRatio <= 0 {
 		l.MaxRatio = d.MaxRatio
+	}
+	if l.MaxTotalPixels <= 0 {
+		l.MaxTotalPixels = d.MaxTotalPixels
 	}
 	return l
 }
@@ -126,6 +132,7 @@ type Bundle struct {
 	ManifestJSON []byte
 	files        map[string][]byte
 	order        []string
+	limits       Limits
 }
 
 // File 回傳 manifest.json 以外的一個檔案內容。

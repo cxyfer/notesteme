@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/jpeg"
 	"io"
 	"os"
 	"path/filepath"
@@ -322,6 +324,24 @@ func TestImportBundleRejectsBadContent(t *testing.T) {
 				}
 			}
 		}, "沒有被任何產出引用"},
+		// 安全修補 B：沒有被引用的檔案在任何圖片檢查之前就拒絕（不先處理 8192×8192 的炸彈圖）。
+		"沒有被引用的巨大圖片": {func(m *bundle.OutManifest, files map[string][]byte) {
+			files["artifacts/orphan.jpg"] = flatJPEG(t, 8192, 8192)
+		}, "沒有被任何產出引用"},
+		// 擷取畫面的解碼上限比 bundle 的單張上限小：在縮圖之前就以內容錯誤拒絕（原本是縮圖時的 500）。
+		"選中的畫面超過擷取尺寸": {func(m *bundle.OutManifest, files map[string][]byte) {
+			replaceFrame(files, flatJPEG(t, 2048, 2048))
+		}, "JPEG 圖片"},
+		// 結構正確但熵編碼的資料壞掉：縮圖的完整解碼才發現，仍是 bundle 的內容錯誤。
+		"選中的畫面無法解碼": {func(m *bundle.OutManifest, files map[string][]byte) {
+			replaceFrame(files, truncatedScanJPEG(t))
+		}, "JPEG 圖片"},
+		"選中的畫面是 progressive": {func(m *bundle.OutManifest, files map[string][]byte) {
+			d := flatJPEG(t, 64, 64)
+			i := bytes.Index(d, []byte{0xFF, 0xC0})
+			d[i+1] = 0xC2
+			replaceFrame(files, d)
+		}, "JPEG 圖片"},
 		"選中的畫面沒有圖片": {func(m *bundle.OutManifest, files map[string][]byte) {
 			for p := range files {
 				if strings.HasSuffix(p, "-001.jpg") {
@@ -808,5 +828,49 @@ func TestItemDetailImportedFrom(t *testing.T) {
 	}
 	if d := detailOf(t, dst, res.Item.ID); d.ImportedFrom == nil || d.ImportedFrom.InstanceID != inst2 || d.ImportedFrom.AppVersion != "0.5.0" {
 		t.Fatalf("第二次匯入後 = %+v", d.ImportedFrom)
+	}
+}
+
+// flatJPEG 回傳 w×h 的單色灰階 JPEG。
+func flatJPEG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewGray(image.Rect(0, 0, w, h))
+	var b bytes.Buffer
+	if err := jpeg.Encode(&b, img, &jpeg.Options{Quality: 1}); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
+
+// truncatedScanJPEG 回傳標記序列正確、但 scan 只剩一個 byte 的 JPEG：結構檢查通過，完整解碼失敗。
+func truncatedScanJPEG(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	for i := range img.Pix {
+		img.Pix[i] = byte(i * 31)
+	}
+	var b bytes.Buffer
+	if err := jpeg.Encode(&b, img, nil); err != nil {
+		t.Fatal(err)
+	}
+	d := b.Bytes()
+	sos := bytes.Index(d, []byte{0xFF, 0xDA})
+	end := sos + 2 + (int(d[sos+2])<<8 | int(d[sos+3]))
+	out := append(append([]byte(nil), d[:end+1]...), 0xFF, 0xD9)
+	if _, ok := bundle.JPEGPixels(out); !ok {
+		t.Fatal("截斷的 JPEG 應該通過結構檢查")
+	}
+	if _, err := jpeg.Decode(bytes.NewReader(out)); err == nil {
+		t.Fatal("截斷的 JPEG 應該無法解碼")
+	}
+	return out
+}
+
+// replaceFrame 把第一張選中的畫面換成 d。
+func replaceFrame(files map[string][]byte, d []byte) {
+	for p := range files {
+		if strings.HasSuffix(p, "-001.jpg") {
+			files[p] = d
+		}
 	}
 }
