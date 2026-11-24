@@ -2920,7 +2920,7 @@ export interface components {
     };
     KeptOutput: {
       path: string;
-      /** @description modified（內容改過，或不是一般檔案）、outside_roots（路徑不在允許的目錄內）或 unreadable */
+      /** @description modified（內容改過，或不是一般檔案）、outside_roots（路徑不在允許的目錄內）、unreadable、vault_not_configured（設定檔已沒有這個 vault），或 git vault 的刪除沒有推送成功（VAULT-R12）：git_unreachable、git_rejected、git_auth、git_failed */
       reason: string;
     };
     LayoutPatch: {

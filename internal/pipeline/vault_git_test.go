@@ -29,6 +29,7 @@ type gitScript struct {
 	staged     []string
 	commits    [][]string // 每個 commit 的檔案
 	cloneErr   string     // clone 的 stderr（非空時失敗）
+	pullErr    string     // pull 的 stderr（非空時失敗）
 	pushErrs   []string   // 依序的 push 失敗（用完後成功）
 	hookResult toolexec.Result
 	hookErr    error
@@ -67,8 +68,19 @@ func (g *gitScript) Run(_ context.Context, c toolexec.Cmd) (toolexec.Result, err
 			return toolexec.Result{ExitCode: 1}, nil
 		}
 		return toolexec.Result{Stdout: []byte(ref + "\n")}, nil
+	case "pull":
+		if g.pullErr != "" {
+			return fail(g.pullErr)
+		}
 	case "add":
 		g.staged = append(g.staged, rest[1:]...)
+	case "ls-files":
+		// 腳本化：-- 之後的路徑都視為有追蹤。
+		i := slices.Index(rest, "--")
+		return toolexec.Result{Stdout: []byte(strings.Join(rest[i+1:], "\x00") + "\x00")}, nil
+	case "rm":
+		i := slices.Index(rest, "--")
+		g.staged = append(g.staged, rest[i+1:]...)
 	case "commit":
 		g.commits = append(g.commits, g.staged)
 		g.staged, g.head = nil, "c"+string(rune('0'+len(g.commits)))

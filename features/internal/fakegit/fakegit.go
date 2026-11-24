@@ -5,7 +5,7 @@
 // 狀態放在場景目錄的檔案中（StateDir），和 faketool 一樣以假工具自己的位置找到場景，不依賴環境變數
 // （產品會清掉 git 的環境變數，VAULT-R8）。
 //
-// 支援的子命令只有產品會用到的：clone、pull --ff-only、add --、commit、push、rev-parse HEAD。
+// 支援的子命令只有產品會用到的：clone、pull --ff-only、add --、ls-files --cached、rm --cached --、commit、push、rev-parse HEAD。
 // 每次呼叫的 argv 都記錄下來（Calls），讓步驟檢查 `-c core.hooksPath=/dev/null` 與 argv 中沒有憑證。
 package fakegit
 
@@ -32,7 +32,9 @@ type Commit struct {
 	ID      string   `json:"id"`
 	Message string   `json:"message"`
 	Author  string   `json:"author,omitempty"`
-	Files   []string `json:"files"` // 相對於 repo 根目錄、這個 commit 變動的檔案
+	Files   []string `json:"files"` // 相對於 repo 根目錄、這個 commit 變動的檔案（含刪除的）
+	// Deleted 是 Files 中被刪除的檔案（VAULT-R12）。
+	Deleted []string `json:"deleted,omitempty"`
 }
 
 // RemoteState 是假遠端的狀態（StateDir/remote.json）。
@@ -47,9 +49,11 @@ type RemoteState struct {
 
 // cloneState 是本機 clone 的狀態（<clone>/.git/fakegit.json）。
 type cloneState struct {
-	Remote   string   `json:"remote"`
-	Branch   string   `json:"branch"`
-	Staged   []string `json:"staged"`
+	Remote string   `json:"remote"`
+	Branch string   `json:"branch"`
+	Staged []string `json:"staged"`
+	// Removed 是 Staged 中以 rm --cached 暫存刪除的檔案。
+	Removed  []string `json:"removed,omitempty"`
 	Unpushed []Commit `json:"unpushed"`
 	Head     string   `json:"head"`
 	// Origin 是 refs/remotes/origin/<branch>：最近一次 clone、pull 或 push 時遠端的最後一個 commit。
@@ -172,6 +176,10 @@ func (f Fake) run(dir string, args []string, stdout, stderr io.Writer) int {
 		return f.add(dir, args[1:], stderr)
 	case "commit":
 		return f.commit(dir, args[1:], stdout, stderr)
+	case "ls-files":
+		return f.lsFiles(dir, args[1:], stdout, stderr)
+	case "rm":
+		return f.rm(dir, args[1:], stderr)
 	case "push":
 		return f.push(dir, args[1:], stderr)
 	case "rev-parse":
@@ -356,8 +364,84 @@ func (f Fake) commit(dir string, args []string, stdout, stderr io.Writer) int {
 	}
 	st, _ := f.Remote()
 	id := "c" + strconv.Itoa(len(st.Commits)+len(cs.Unpushed)+1)
-	cs.Unpushed = append(cs.Unpushed, Commit{ID: id, Message: msg, Author: author, Files: cs.Staged})
-	cs.Staged, cs.Head = nil, id
+	cs.Unpushed = append(cs.Unpushed, Commit{ID: id, Message: msg, Author: author, Files: cs.Staged, Deleted: cs.Removed})
+	cs.Staged, cs.Removed, cs.Head = nil, nil, id
+	if err := saveClone(dir, cs); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 128
+	}
+	return 0
+}
+
+// tracked 回傳 clone 中 git 追蹤的檔案：遠端與本機 commit 中出現過、之後沒有被刪除的檔案，加上已暫存的新增。
+func (f Fake) tracked(cs cloneState) map[string]bool {
+	st, _ := f.Remote()
+	out := map[string]bool{}
+	for _, c := range append(slices.Clone(st.Commits), cs.Unpushed...) {
+		for _, p := range c.Files {
+			out[p] = !slices.Contains(c.Deleted, p)
+		}
+	}
+	for _, p := range cs.Staged {
+		out[p] = !slices.Contains(cs.Removed, p)
+	}
+	return out
+}
+
+// pathsAfterDash 回傳 -- 之後的路徑；沒有 -- 時回傳 false。
+func pathsAfterDash(args []string) ([]string, bool) {
+	i := slices.Index(args, "--")
+	if i < 0 {
+		return nil, false
+	}
+	return args[i+1:], true
+}
+
+// lsFiles 實作 `ls-files --cached -z -- <paths>`：列出其中有追蹤的檔案（以 NUL 分隔）。
+func (f Fake) lsFiles(dir string, args []string, stdout, stderr io.Writer) int {
+	cs, err := loadClone(dir)
+	if err != nil {
+		fmt.Fprintln(stderr, "fatal: not a git repository")
+		return 128
+	}
+	paths, ok := pathsAfterDash(args)
+	if !ok || !slices.Contains(args, "-z") {
+		fmt.Fprintln(stderr, "fake git: ls-files requires -z and -- before the paths")
+		return 1
+	}
+	tr := f.tracked(cs)
+	for _, p := range paths {
+		if tr[filepath.ToSlash(p)] {
+			fmt.Fprint(stdout, filepath.ToSlash(p)+"\x00")
+		}
+	}
+	return 0
+}
+
+// rm 實作 `rm --cached -- <paths>`：暫存刪除；沒有追蹤的路徑同 git 失敗。
+func (f Fake) rm(dir string, args []string, stderr io.Writer) int {
+	cs, err := loadClone(dir)
+	if err != nil {
+		fmt.Fprintln(stderr, "fatal: not a git repository")
+		return 128
+	}
+	paths, ok := pathsAfterDash(args)
+	if !ok || !slices.Contains(args, "--cached") {
+		fmt.Fprintln(stderr, "fake git: rm requires --cached and -- before the paths")
+		return 1
+	}
+	tr := f.tracked(cs)
+	for _, p := range paths {
+		p = filepath.ToSlash(p)
+		if !tr[p] {
+			fmt.Fprintf(stderr, "fatal: pathspec '%s' did not match any files\n", p)
+			return 128
+		}
+		if !slices.Contains(cs.Staged, p) {
+			cs.Staged = append(cs.Staged, p)
+		}
+		cs.Removed = append(cs.Removed, p)
+	}
 	if err := saveClone(dir, cs); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 128

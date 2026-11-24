@@ -352,18 +352,14 @@ func TestVaultDeleteOutputs(t *testing.T) {
 	if err != nil || len(preview) != 2 || preview[0].Modified || !preview[1].Modified {
 		t.Fatalf("預覽 = %+v，%v", preview, err)
 	}
-	kept, err := r.p.deleteOutputs(context.Background(), r.it.ID)
+	kept, err := r.p.deleteOutputs(context.Background(), r.it)
 	if err != nil || len(kept) != 1 || kept[0].Path != vaultSRT || kept[0].Reason != KeptModified {
 		t.Fatalf("kept = %+v，%v", kept, err)
 	}
 	if _, err := os.Stat(filepath.Join(r.root, vaultNote)); !errors.Is(err, os.ErrNotExist) {
 		t.Error("沒改過的筆記應被刪除")
 	}
-	// 設定檔已經沒有這個 vault、git vault：保留。
-	r.p.vaults = map[string]vault.Def{"main": {ID: "main", Adapter: vault.AdapterGit}}
-	if st := r.p.vaultOutputStatus(store.Output{Vault: "main", Path: vaultSRT}, true); st.Reason != KeptGitVault {
-		t.Errorf("git vault = %+v", st)
-	}
+	// 設定檔已經沒有這個 vault：保留。
 	r.p.vaults = nil
 	if st := r.p.vaultOutputStatus(store.Output{Vault: "main", Path: vaultSRT}, true); st.Reason != KeptVaultMissing {
 		t.Errorf("沒有 vault = %+v", st)

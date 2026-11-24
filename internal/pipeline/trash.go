@@ -146,7 +146,7 @@ func (p *Pipeline) Trash(ctx context.Context, id string, opts TrashOptions) (Tra
 	// 輸出檔（DEL-R9）：預設保留；指定時刪除沒被改過的。已經 commit，失敗只記 log，不讓刪除變成失敗。
 	kept := []KeptOutput{}
 	if opts.DeleteOutputs {
-		if k, err := p.deleteOutputs(cctx, it.ID); err != nil {
+		if k, err := p.deleteOutputs(cctx, it); err != nil {
 			p.log.Warn("刪除輸出檔失敗", "item", it.ID, "error", err)
 		} else {
 			kept = k

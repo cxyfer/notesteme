@@ -482,6 +482,77 @@ Feature: Vault output and hooks
     Then the response status is 200
     And the file "/vault/Video Notes/YouTube/Designing a Cache - 2025-08-09.md" does not exist
 
+  @VAULT-01 @VAULT-R12
+  Scenario: Deleting an item removes its untouched files from the git vault in one commit
+    Given the config file contains:
+      """
+      vaults:
+        main: { adapter: fs, path: /vault }
+        remote: { adapter: git, remote: "https://git.example.com/me/vault.git", branch: master }
+      """
+    And the profile "vault-git" is:
+      """
+      outputs:
+        - { target: vault, vault: remote, formats: [srt] }
+      """
+    And the default profile is "vault-git"
+    When the owner sends "POST /api/items/yt:vlt001xxxxx/rerun" with:
+      """
+      { "from": "publish", "profile": "vault-git" }
+      """
+    And the worker runs until idle
+    Given the file "/data/vault-repo/remote/Video Notes/YouTube/_Assets/Designing a Cache/Designing a Cache.srt" contains:
+      """
+      My own subtitle edits.
+      """
+    When the owner sends "DELETE /api/items/yt:vlt001xxxxx" with:
+      """
+      { "delete_outputs": true }
+      """
+    Then the response status is 200
+    And the response contains:
+      """
+      { "kept_outputs": [ { "path": "Video Notes/YouTube/_Assets/Designing a Cache/Designing a Cache.srt", "reason": "modified" } ] }
+      """
+    And the vault remote received a commit with the files:
+      | path                                                  |
+      | Video Notes/YouTube/Designing a Cache - 2025-08-09.md |
+    And the file "/data/vault-repo/remote/Video Notes/YouTube/Designing a Cache - 2025-08-09.md" does not exist
+
+  @VAULT-01 @VAULT-R12 @VAULT-R9
+  Scenario: A git vault that cannot be synced keeps the files of a deleted item
+    Given the config file contains:
+      """
+      vaults:
+        main: { adapter: fs, path: /vault }
+        remote: { adapter: git, remote: "https://git.example.com/me/vault.git", branch: master }
+      """
+    And the profile "vault-git" is:
+      """
+      outputs:
+        - { target: vault, vault: remote, formats: [srt] }
+      """
+    And the default profile is "vault-git"
+    When the owner sends "POST /api/items/yt:vlt001xxxxx/rerun" with:
+      """
+      { "from": "publish", "profile": "vault-git" }
+      """
+    And the worker runs until idle
+    Given the vault remote rejects pushes as "non-fast-forward"
+    When the owner sends "DELETE /api/items/yt:vlt001xxxxx" with:
+      """
+      { "delete_outputs": true }
+      """
+    Then the response status is 200
+    And the response contains:
+      """
+      { "kept_outputs": [
+          { "path": "Video Notes/YouTube/Designing a Cache - 2025-08-09.md", "reason": "git_rejected" },
+          { "path": "Video Notes/YouTube/_Assets/Designing a Cache/Designing a Cache.srt", "reason": "git_rejected" }
+      ] }
+      """
+    And the file "/data/vault-repo/remote/Video Notes/YouTube/Designing a Cache - 2025-08-09.md" contains "Caches trade memory for latency."
+
   @ui @manual @VAULT-01
   Scenario: The output settings show the vaults and hooks from the config file
     Given the config file defines the vault "main" and the hook "notify"

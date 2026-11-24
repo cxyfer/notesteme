@@ -74,7 +74,7 @@
   - 筆記與它引用的 `frames` 版本在寫入圖片後標成 `pinned`。
   - V8 的提醒：只有筆記記錄了字幕連結、而且與這次 publish 的版面不同時才提醒（seeding 的筆記沒有連結）。
   - `GET /api/vaults` 只回 `{vaults: [{id, adapter, base}]}`，依 id 排列；不列 hook（UI 選用 hook 的來源另外決定）。
-  - 刪除影音（VAULT-R12）：`fs` vault 依 DEL-R9 只刪 hash 相同的檔案（`os.Root` 之內）；`git` vault 的刪除 commit 與推送**還沒有實作**，檔案保留，`kept_outputs` 的原因是 `git_vault`；設定檔已沒有那個 vault 時原因是 `vault_not_configured`。
+  - 刪除影音（VAULT-R12）：`fs` vault 依 DEL-R9 只刪 hash 相同的檔案（`os.Root` 之內）；~~`git` vault 的刪除 commit 與推送還沒有實作，檔案保留，`kept_outputs` 的原因是 `git_vault`~~（已實作，見 V16）；設定檔已沒有那個 vault 時原因是 `vault_not_configured`。
 - V14：M3-S6 的 git 與 hook（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
   - 每次執行 git 另外帶 `-c core.fsmonitor=false`；commit 帶 `-c user.name=… -c user.email=…`（由 `author` 拆出；`GIT_CONFIG_GLOBAL=/dev/null` 時沒有 committer 身分，git 會拒絕 commit）與 `--no-verify`。commit 訊息壓成一行、去掉控制字元。`git add --`、`clone … -- <remote> <dir>`、`push origin HEAD:refs/heads/<branch>`。
   - 憑證只支援環境變數 `NOTESTEME_VAULT_<ID>_TOKEN`；secrets 中的 `vault:<id>` 還沒有實作。askpass 是暫存目錄中的 `/bin/sh` 腳本，帳號固定 `x-access-token`、密碼讀環境變數，腳本內容不含 token；錯誤訊息中的 token 換成 `***`。git 的環境另外傳 `SSH_AUTH_SOCK`（有設定時）。
@@ -90,3 +90,9 @@
   - git 不跟隨 https 的轉址（`-c http.followRedirects=false`；預設會跟隨初次轉址，轉到其他主機時憑證與推送的內容都會跟著過去）。askpass 比對 git 提示中的主機（不分大小寫、含 port）與設定的 `remote` 主機（環境變數 `NOTESTEME_GIT_HOST`，非 https 的 remote 為空字串）：不符或提示沒有網址時回空字串，並在 stderr 寫「notesteme: 拒絕把 vault 的憑證交給 <主機>（設定的 remote 主機是 <主機>）。」，這段文字會留在 git 的錯誤訊息中（認證失敗，`needs_action`），不含 token。代價：轉址到新網址的 remote 會失敗，要在設定檔改成新網址。
   - hook 的 `{{title}}`、`{{commit}}`：場景（`features/VAULT-vault-output.feature` 的 `notify`）把 `{{title}}` 當成獨立的元素，所以不在載入設定時拒絕；改成執行時，元素以這兩個變數開頭、展開後以 `-` 開頭就在前面加一個空白（getopt、pflag、argparse 等都把它當成一般參數），標題本身其他部分不變。代價：這種標題傳給 hook 時多一個前導空白。另外修正 `{{ title }}`（大括號內有空白）在設定檔通過檢查、執行時卻沒有展開的問題：執行時與設定檔用同一個變數的正規表示式（`vault.HookVar`）。
   - hook 的禁用變數改成單一來源（`vault.ForbiddenHookEnv`，設定檔載入與執行時共用），另外禁止 OIDC 的 client secret、Hub 的 session／master key 與名稱以 `_DSN`、`_PASSWORD`、`_SECRET`、`_MASTER_KEY`、`_SESSION_KEY`、`_SECRET_ACCESS_KEY` 結尾的變數（VAULT-R11 只列了 master key、密碼、`_API_KEY`、`_TOKEN`）。
+- V16：`git` vault 的刪除（VAULT-R12，2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：
+  - `DELETE /api/items/:id` 帶 `delete_outputs: true` 時，`git` vault 的紀錄依 vault 分組，每個 vault 在請求中同步處理一次：取得該 vault 的發布鎖 → `git pull --ff-only`（先同步，遠端有使用者改過的版本時 hash 不同，檔案保留）→ 在 clone 中只刪 hash 與紀錄相同的檔案（DEL-R9，`os.Root` 之內）→ `git ls-files --cached -z -- <路徑>` 取出其中有追蹤的 → `git rm --cached --quiet -- <路徑>` → 一個 commit（訊息「notesteme: 刪除 <標題>」，作者與 committer 同 VAULT-R7；`author` 沒有設定時用預設的 `Notesteme <notesteme@localhost>`）→ 本機領先遠端時 `git push`。沒有任何檔案要刪時不 commit、不 push。整個 vault 的期限 3 分鐘（含等鎖），不受請求取消影響（同 DEL 的善後）；刪除仍然成功，失敗只反映在 `kept_outputs`。
+  - 失敗的處理沿用 VAULT-R9 的分類，`kept_outputs` 的原因是 `git_unreachable`（連線失敗、逾時、5xx）、`git_rejected`（non-fast-forward、無法快轉）、`git_auth`（認證失敗）、`git_failed`（找不到 git、clone 不能用等）；原本的 `git_vault` 不再出現。同步就失敗時 clone 中什麼都沒動、所有檔案保留；commit 之後推送失敗時，刪除留在本機的 commit，這次刪除的檔案也列為保留（遠端仍有它們）。不回滾（clone 中可能有使用者還沒提交的檔案，不自動 reset，ADR-0010）。
+  - 重試：刪除沒有自己的任務可以重試；留在本機的刪除 commit 由下一次發布到同一個 vault 時一併推送（VAULT-R9「沿用已建立的本機 commit」）。被拒絕（`git_rejected`）時同發布：使用者要先處理遠端，Notesteme 不自動合併。是否要提供單獨的「重新推送 vault」動作，待 owner 決定。
+  - 還原：被刪除的檔案由還原後的 `publish` 重跑寫回並重新 commit（DEL-R9）；推送失敗留在本機的刪除 commit 會和重新寫回的 commit 一起推送，遠端的結果是檔案仍在。
+  - 測試：`internal/pipeline/vault_delete_real_test.go` 用真的 git 與本機 bare repo（測試在產品的 `-c` 之後補 `protocol.file.allow=always`）驗證成功、遠端改過的檔案保留、沒有 commit 身分、推送時遠端多了 commit（non-fast-forward）；認證、連線與其他錯誤用腳本化的 git。驗收場景用假 git（`features/internal/fakegit` 加上 `ls-files`、`rm --cached`）。真實的 git 遠端（GitHub、GitLab 的 https／ssh）沒有實測。

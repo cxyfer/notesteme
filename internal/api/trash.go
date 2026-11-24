@@ -16,7 +16,7 @@ import (
 // KeptOutput 是刪除時保留下來的輸出檔（DEL-R9）。
 type KeptOutput struct {
 	Path   string `json:"path"`
-	Reason string `json:"reason" doc:"modified（內容改過，或不是一般檔案）、outside_roots（路徑不在允許的目錄內）或 unreadable"`
+	Reason string `json:"reason" doc:"modified（內容改過，或不是一般檔案）、outside_roots（路徑不在允許的目錄內）、unreadable、vault_not_configured（設定檔已沒有這個 vault），或 git vault 的刪除沒有推送成功（VAULT-R12）：git_unreachable、git_rejected、git_auth、git_failed"`
 }
 
 // TrashedItem 是垃圾桶中的一部影音。

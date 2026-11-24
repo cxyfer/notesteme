@@ -127,3 +127,46 @@ func TestAskpassOnlyAnswersConfiguredHost(t *testing.T) {
 		t.Errorf("SafeConfig 沒有 http.followRedirects=false：%q", SafeConfig)
 	}
 }
+
+// VAULT-R12：CommitRemoval 只提交 paths 中有追蹤、已從工作目錄刪除的檔案；沒追蹤的路徑略過，其他未提交的變更
+// （使用者的草稿、已暫存的其他檔案以外）不加入；pathspec 照字面比對。沒有任何追蹤中的檔案時不 commit。
+func TestGitCommitRemoval(t *testing.T) {
+	dir, gitPath, run := realGit(t)
+	for name, body := range map[string]string{"[A-Z].md": "ours", "B.md": "user", "keep.md": "keep"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("add", "--", "[A-Z].md", "B.md", "keep.md")
+	run("-c", "user.name=U", "-c", "user.email=u@x", "commit", "-q", "-m", "init")
+	if err := os.WriteFile(filepath.Join(dir, "draft.md"), []byte("untracked"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"[A-Z].md", "keep.md"} {
+		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	vars := map[string]string{"PATH": os.Getenv("PATH")}
+	g := &Git{Runner: toolexec.New(vars), Path: gitPath, Vars: vars, Home: t.TempDir()}
+	ctx := context.Background()
+	// never.md 從沒追蹤過：略過，不讓 git 失敗。
+	id, err := g.CommitRemoval(ctx, dir, []string{"[A-Z].md", "never.md"}, "notesteme: 刪除\nx", "")
+	if err != nil || id == "" {
+		t.Fatalf("CommitRemoval = %q，%v", id, err)
+	}
+	changed := strings.TrimSpace(run("show", "--name-status", "--format=%an|%s", "HEAD"))
+	if changed != "Notesteme|notesteme: 刪除 x\n\nD\t[A-Z].md" {
+		t.Errorf("commit = %q", changed)
+	}
+	// keep.md 沒有列在 paths：仍是工作目錄中未提交的刪除；B.md 不受萬用字元影響。
+	if got := run("ls-files", "--", "B.md", "keep.md"); got != "B.md\nkeep.md\n" {
+		t.Errorf("追蹤的檔案 = %q", got)
+	}
+	if id, err := g.CommitRemoval(ctx, dir, []string{"never.md", "draft.md"}, "m", ""); err != nil || id != "" {
+		t.Errorf("沒有追蹤中的檔案時不應 commit：%q，%v", id, err)
+	}
+	if id, err := g.CommitRemoval(ctx, dir, nil, "m", ""); err != nil || id != "" {
+		t.Errorf("空的 paths：%q，%v", id, err)
+	}
+}

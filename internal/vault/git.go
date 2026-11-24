@@ -225,10 +225,42 @@ func (g *Git) Commit(ctx context.Context, dir string, paths []string, message, a
 	if _, err := g.run(ctx, dir, "add", nil, append([]string{"add", "--"}, paths...)...); err != nil {
 		return "", err
 	}
+	return g.commitStaged(ctx, dir, message, author)
+}
+
+// CommitRemoval 把已經從工作目錄刪掉的檔案以一個 commit 提交（VAULT-R12）：只處理 paths 中 git 有追蹤的
+// （從沒提交過的檔案沒有東西可以刪除），以 `rm --cached` 暫存刪除，其他未提交的變更不加入。
+// 沒有任何追蹤中的檔案時不 commit，回傳空字串。
+func (g *Git) CommitRemoval(ctx context.Context, dir string, paths []string, message, author string) (string, error) {
+	if len(paths) == 0 {
+		return "", nil
+	}
+	out, err := g.run(ctx, dir, "ls-files", nil, append([]string{"ls-files", "--cached", "-z", "--"}, paths...)...)
+	if err != nil {
+		return "", err
+	}
+	var tracked []string
+	for _, p := range strings.Split(out, "\x00") {
+		if p != "" {
+			tracked = append(tracked, p)
+		}
+	}
+	if len(tracked) == 0 {
+		return "", nil
+	}
+	if _, err := g.run(ctx, dir, "rm", nil, append([]string{"rm", "--cached", "--quiet", "--"}, tracked...)...); err != nil {
+		return "", err
+	}
+	return g.commitStaged(ctx, dir, message, author)
+}
+
+// commitStaged 以 author 提交目前暫存的變更，回傳 commit id。
+func (g *Git) commitStaged(ctx context.Context, dir, message, author string) (string, error) {
 	// committer 也用 author：GIT_CONFIG_GLOBAL=/dev/null 時沒有 user.name、user.email，git 會拒絕 commit。
+	// 沒有設定 author 時用預設的身分（設定檔載入時會補上，這裡是防呆）。
 	name, email := splitAuthor(author)
 	ident := []string{"user.name=" + name, "user.email=" + email}
-	if _, err := g.run(ctx, dir, "commit", ident, "commit", "--quiet", "--no-verify", "-m", oneLine(message), "--author="+author); err != nil {
+	if _, err := g.run(ctx, dir, "commit", ident, "commit", "--quiet", "--no-verify", "-m", oneLine(message), "--author="+name+" <"+email+">"); err != nil {
 		return "", err
 	}
 	return g.Head(ctx, dir)

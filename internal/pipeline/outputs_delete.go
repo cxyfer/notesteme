@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"time"
 
 	"github.com/cxyfer/notesteme/internal/output"
 	"github.com/cxyfer/notesteme/internal/pathguard"
@@ -26,9 +28,21 @@ const (
 	KeptUnreadable = "unreadable"
 	// KeptVaultMissing 是紀錄的 vault 已經不在設定檔中：不知道它的根目錄，不碰。
 	KeptVaultMissing = "vault_not_configured"
-	// KeptGitVault 是 git vault 的檔案：刪除要另外 commit 與推送（VAULT-R12），還沒有實作，保留。
-	KeptGitVault = "git_vault"
+	// git vault 的刪除（VAULT-R12）沒有完成時的原因，分類同 VAULT-R9。同步（pull）就失敗時 clone 中的檔案
+	// 都沒有動；推送失敗時刪除已在本機 commit，下一次發布到同一個 vault 時一併推送（同 VAULT-R9 的重試）。
+	// KeptGitUnreachable 是連線失敗、逾時、遠端 5xx。
+	KeptGitUnreachable = "git_unreachable"
+	// KeptGitRejected 是遠端有本機沒有的提交（non-fast-forward、無法快轉）。
+	KeptGitRejected = "git_rejected"
+	// KeptGitAuth 是認證失敗。
+	KeptGitAuth = "git_auth"
+	// KeptGitFailed 是其他失敗（找不到 git、clone 無法使用、commit 失敗等）。
+	KeptGitFailed = "git_failed"
 )
+
+// gitDeleteTimeout 是一個 git vault 刪除的整體期限（含等待同一個 vault 的發布）。刪除在 DELETE 請求中同步執行，
+// 不受請求 ctx 取消影響（已經 commit 移到垃圾桶）。
+const gitDeleteTimeout = 3 * time.Minute
 
 // outputStatus 是一筆輸出紀錄對應的檔案現況。
 type outputStatus struct {
@@ -85,18 +99,119 @@ func (p *Pipeline) outputStatuses(ctx context.Context, recs []store.Output, remo
 
 // deleteOutputs 刪除影音沒被改過的輸出檔（DEL-R9），回傳保留下來的檔案。紀錄本身不動：
 // 移到垃圾桶時保留，還原後重新發布會更新；永久刪除時隨影音 cascade。已經不存在的檔案略過。
-func (p *Pipeline) deleteOutputs(ctx context.Context, itemID string) ([]KeptOutput, error) {
-	recs, err := p.st.Read().Outputs(ctx, itemID)
+// git vault 的檔案依 vault 分組，每個 vault 以一個 commit 刪除並推送（VAULT-R12）。
+func (p *Pipeline) deleteOutputs(ctx context.Context, it store.Item) ([]KeptOutput, error) {
+	recs, err := p.st.Read().Outputs(ctx, it.ID)
 	if err != nil {
 		return nil, err
 	}
+	var plain []store.Output
+	git := map[string][]store.Output{}
+	for _, rec := range recs {
+		if def, ok := p.vaults[rec.Vault]; ok && rec.Target == output.TargetVault && def.Adapter == vault.AdapterGit {
+			git[def.ID] = append(git[def.ID], rec)
+			continue
+		}
+		plain = append(plain, rec)
+	}
 	kept := []KeptOutput{}
-	for _, st := range p.outputStatuses(ctx, recs, true) {
+	for _, st := range p.outputStatuses(ctx, plain, true) {
 		if reason := st.keepReason(); reason != "" {
 			kept = append(kept, KeptOutput{Path: st.Path, Reason: reason})
 		}
 	}
+	ids := make([]string, 0, len(git))
+	for id := range git {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	for _, id := range ids {
+		kept = append(kept, p.deleteGitVaultOutputs(ctx, it, p.vaults[id], git[id])...)
+	}
 	return kept, nil
+}
+
+// deleteGitVaultOutputs 從 git vault 刪除這部影音沒被改過的檔案（VAULT-R12、DEL-R9）：取得 vault 的鎖、
+// 先 pull --ff-only（遠端有使用者改過的版本時 hash 不同，檔案保留），在 clone 中只刪 hash 與紀錄相同的檔案，
+// 以一個 commit 提交（訊息「notesteme: 刪除 <標題>」），再推送。回傳保留的檔案。
+//
+// 失敗時不回滾（clone 中可能有使用者還沒提交的檔案，VAULT-R7 不自動 reset）：同步失敗時什麼都沒動，
+// 全部保留；commit 或推送失敗時這次刪除的檔案也列為保留（遠端仍有它們），原因依 VAULT-R9 分類。
+func (p *Pipeline) deleteGitVaultOutputs(ctx context.Context, it store.Item, def vault.Def, recs []store.Output) []KeptOutput {
+	gctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gitDeleteTimeout)
+	defer cancel()
+	keepAll := func(list []store.Output, reason string) []KeptOutput {
+		out := make([]KeptOutput, 0, len(list))
+		for _, rec := range list {
+			out = append(out, KeptOutput{Path: rec.Path, Reason: reason})
+		}
+		return out
+	}
+	unlock, err := p.vaultLocks.lock(gctx, def.ID)
+	if err != nil {
+		p.log.Warn("等待 vault 的發布結束時逾時，保留 vault 中的檔案", "vault", def.ID, "item", it.ID, "error", err)
+		return keepAll(recs, KeptGitUnreachable)
+	}
+	defer unlock()
+	g, cleanup, err := p.newGit(def)
+	if err != nil {
+		p.log.Warn("無法執行 git，保留 vault 中的檔案", "vault", def.ID, "item", it.ID, "error", err)
+		return keepAll(recs, KeptGitFailed)
+	}
+	defer cleanup()
+	dir := p.vaultRoot(def)
+	if err := g.Sync(gctx, def, dir); err != nil {
+		p.log.Warn("同步 git vault 失敗，保留 vault 中的檔案", "vault", def.ID, "item", it.ID, "error", err)
+		return keepAll(recs, gitKeepReason(err))
+	}
+	var kept []KeptOutput
+	var removed []store.Output
+	for _, rec := range recs {
+		state, reason := p.inspectVaultFile(dir, rec, true)
+		switch {
+		case reason != "":
+			kept = append(kept, KeptOutput{Path: rec.Path, Reason: reason})
+		case state == output.StateModified:
+			kept = append(kept, KeptOutput{Path: rec.Path, Reason: KeptModified})
+		case state == output.StateIntact:
+			removed = append(removed, rec)
+		}
+	}
+	paths := make([]string, 0, len(removed))
+	for _, rec := range removed {
+		paths = append(paths, rec.Path)
+	}
+	if _, err := g.CommitRemoval(gctx, dir, paths, "notesteme: 刪除 "+it.Title, def.Author); err != nil {
+		p.log.Warn("提交 git vault 的刪除失敗", "vault", def.ID, "item", it.ID, "error", err)
+		return append(kept, keepAll(removed, gitKeepReason(err))...)
+	}
+	// 本機領先遠端就推送：也會推送之前推送失敗、留在本機的 commit（VAULT-R9）。
+	ahead, err := g.Ahead(gctx, dir, def.Branch)
+	if err == nil && ahead {
+		err = g.Push(gctx, dir, def.Branch)
+	}
+	if err != nil {
+		p.log.Warn("推送 git vault 的刪除失敗，刪除留在本機的 commit，下一次發布時推送", "vault", def.ID, "item", it.ID, "error", err)
+		return append(kept, keepAll(removed, gitKeepReason(err))...)
+	}
+	return kept
+}
+
+// gitKeepReason 把 git 的失敗分類成保留的原因（VAULT-R9）。
+func gitKeepReason(err error) string {
+	var ge *vault.GitError
+	if !errors.As(err, &ge) {
+		return KeptGitFailed
+	}
+	switch ge.Kind {
+	case vault.KindNetwork:
+		return KeptGitUnreachable
+	case vault.KindRejected:
+		return KeptGitRejected
+	case vault.KindAuth:
+		return KeptGitAuth
+	}
+	return KeptGitFailed
 }
 
 // previewOutputs 回傳刪除預覽的輸出檔清單：會被刪除的（modified 為 false）與會保留的（modified 為 true）；
@@ -148,10 +263,8 @@ func (p *Pipeline) vaultOutputStatus(rec store.Output, remove bool) outputStatus
 		st.State, st.Reason = output.StateModified, KeptVaultMissing
 		return st
 	case def.Adapter != vault.AdapterFS:
-		st.State, st.Reason = output.StateModified, KeptGitVault
-		if !remove {
-			st.State, st.Reason = p.inspectVaultFile(p.vaultRoot(def), rec, false)
-		}
+		// git vault 的刪除要 commit 與推送，由 deleteGitVaultOutputs 處理；這裡只檢查 clone 中的檔案（預覽、還原）。
+		st.State, st.Reason = p.inspectVaultFile(p.vaultRoot(def), rec, false)
 		return st
 	}
 	st.State, st.Reason = p.inspectVaultFile(def.Path, rec, remove)

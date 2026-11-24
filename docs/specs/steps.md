@@ -433,7 +433,7 @@ M3-S5／S6（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）實�
 - `Given the note of … is:` 只對有 `@VAULT-` 開頭 tag 的場景執行，其他領域（M4 的 BND 等）維持 pending（同 `spbGate` 的做法）。筆記語言依生效設定（NOTE-R5）；還判斷不出語言時（seeding 時常常還沒有字幕）是 `en`。markdown 中以 `![[…]]` 嵌入、而且是現行 `frames` 產出中選中的畫面（檔名依 NOTE-R9）記為筆記的圖片，那個 `frames` 產出列為筆記的 parent。
 - 有 `@VAULT-` 開頭 tag 的場景中，server 已在執行時的 `Given the config file contains:` 與 `Given the environment variable … is …`：先正常關閉 server（資料保留），下一個需要 server 的步驟以新的設定與環境隱含重新啟動（`When the server starts` 同樣以新的設定啟動）。真實環境中改設定檔或環境變數也要重新啟動；其他場景維持「設定只在啟動時讀取」。
 - `Then the hook … ran with the arguments:` 等 hook 句型：以設定檔中這個 hook 的 `argv` 找出它的執行紀錄（長度相同、沒有變數的元素逐字相同）；設定檔沒有這個 hook 時失敗。
-- 假 git（`features/internal/fakegit`）的擴充：`clone` 接受 `--`；`rev-parse` 的 `refs/remotes/origin/<branch>` 是最近一次 clone、pull 或 push 時遠端的最後一個 commit（空的 repo 時以結束碼 1 失敗，同 `--verify --quiet`）；`pull --ff-only` 在沒有本機的新 commit 時把 HEAD 快轉到遠端的最後一個 commit。
+- 假 git（`features/internal/fakegit`）的擴充：`clone` 接受 `--`；`rev-parse` 的 `refs/remotes/origin/<branch>` 是最近一次 clone、pull 或 push 時遠端的最後一個 commit（空的 repo 時以結束碼 1 失敗，同 `--verify --quiet`）；`pull --ff-only` 在沒有本機的新 commit 時把 HEAD 快轉到遠端的最後一個 commit。VAULT-R12（2026-11-24）：`ls-files --cached -z -- <路徑>` 列出其中有追蹤的檔案（遠端與本機 commit 中出現過、之後沒有被刪除的），`rm --cached -- <路徑>` 暫存刪除（沒有追蹤的路徑以結束碼 128 失敗）；commit 的 `files` 含刪除的檔案（另記在 `deleted`），所以 `the vault remote received a commit with the files:` 也列出被刪除的檔案。
 - `Then the vault remote received a single new commit`：假遠端在場景中第一次 clone 時才建立，所以「場景開始後多出的 commit」就是遠端的 commit 總數。
 
 ### 4.17 訂閱、事後的更好來源與新增入口（`steps/subscriptions.go`，M4）
