@@ -270,7 +270,7 @@ jobs:
           mkdir -p hub-config
           cp hub-config.example.yaml hub-config/notesteme-hub.yaml
           docker compose -f compose.hub.yaml --env-file .env.hub --profile hub up -d --build
-          curl --retry 30 --retry-delay 2 --retry-connrefused -fsS http://127.0.0.1:8090/readyz
+          curl --retry 30 --retry-delay 2 --retry-all-errors -fsS http://127.0.0.1:8090/readyz
           docker compose -f compose.hub.yaml --env-file .env.hub --profile hub run --rm hub doctor
 
       - name: hub stack logs
