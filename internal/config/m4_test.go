@@ -213,7 +213,7 @@ func TestM4OIDCAndDeploymentEnv(t *testing.T) {
 }
 
 // steps.md 4.17：@M4 場景在閘門句型實作之前一律 pending，驗證不到設定檔。
-// 這裡把 13 個 M4 .feature 中每個 `the config file contains:` 的內容載入一次（Scenario Outline 逐列代入）。
+// 這裡把 14 個含 @M4 的 .feature（LIB-library 自 LIB-R24 起有 @M4 場景）中每個 `the config file contains:` 的內容載入一次（Scenario Outline 逐列代入）。
 // AUTH 的 proxy、OIDC 設定由步驟合併進設定檔（steps.md 4.21），由 TestM4Values、TestM4Rejects、TestM4OIDCAndDeploymentEnv 涵蓋。
 func TestLoadM4FeatureConfigs(t *testing.T) {
 	files := 0
@@ -224,7 +224,7 @@ func TestLoadM4FeatureConfigs(t *testing.T) {
 		}
 		return false
 	})
-	if files != 13 || checked < 20 {
+	if files != 14 || checked < 20 {
 		t.Errorf("找到 %d 個 M4 feature、檢查了 %d 份設定檔，解析可能有誤", files, checked)
 	}
 	t.Logf("檢查了 %d 份 M4 的設定檔", checked)
