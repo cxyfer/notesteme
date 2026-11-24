@@ -136,7 +136,9 @@
     "no_note": "This media has no note yet.",
     "no_frames": "No frames have been captured for this media yet.",
     "notifier_exists": "A notification endpoint with this id already exists.",
-    "too_many_notifiers": "You can have at most 20 notification endpoints."
+    "too_many_notifiers": "You can have at most 20 notification endpoints.",
+    "task_not_retryable": "This step can't be retried now: only failed, stopped or cancelled steps that aren't being processed can be retried.",
+    "task_not_cancellable": "This task has already finished and can't be cancelled."
   },
   "status": {
     "pending": "Waiting",
@@ -780,7 +782,7 @@
     "tasks_one": "Tasks ({{formatted}})",
     "tasks_other": "Tasks ({{formatted}})",
     "agentNote": "Only tasks notesteme runs itself are listed here. See an item's Steps for tasks handed to an Agent.",
-    "taskActionsNote": "Single tasks can't be retried, cancelled or reprioritized yet. Stop processing stops every unfinished step of that item.",
+    "taskActionsNote": "Cancel stops only the step this task belongs to; Stop processing stops every unfinished step of that item. Tasks can't be reprioritized yet.",
     "filterClass": "Resource class",
     "filterState": "Status",
     "all": "All",
@@ -795,7 +797,24 @@
     "attempts_one": "{{count}} attempt",
     "attempts_other": "{{count}} attempts",
     "stopItem": "Stop processing…",
-    "stopItemDescription": "Every unfinished step of {{item}} stops and is marked as skipped, not just this task. Finished outputs are kept."
+    "stopItemDescription": "Every unfinished step of {{item}} stops and is marked as skipped, not just this task. Finished outputs are kept.",
+    "cancelTask": "Cancel…",
+    "cancelTaskTitle": "Cancel this step?",
+    "cancelTaskDescription": "The {{stage}} step of {{item}} stops and is marked skipped; running programs end. Other steps are not touched. You can retry it later under Failed and stopped.",
+    "cancelTaskConfirm": "Cancel this step",
+    "cancelTaskDone": "Step cancelled.",
+    "failed": {
+      "title_one": "Failed and stopped ({{formatted}})",
+      "title_other": "Failed and stopped ({{formatted}})",
+      "none": "No failed, stopped or cancelled steps.",
+      "listLabel": "Failed and stopped steps",
+      "retryAll": "Retry all",
+      "retried": "Queued again.",
+      "retriedAll_one": "Queued {{formatted}} step again.",
+      "retriedAll_other": "Queued {{formatted}} steps again.",
+      "retryOne": "Retry {{item}}",
+      "cancelled": "Cancelled"
+    }
   },
   "settings": {
     "sections": {

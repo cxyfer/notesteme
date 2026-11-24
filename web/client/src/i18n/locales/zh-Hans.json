@@ -136,7 +136,9 @@
     "no_note": "这部音视频还没有笔记。",
     "no_frames": "这部音视频还没有截取画面。",
     "notifier_exists": "已经有这个 id 的通知端点。",
-    "too_many_notifiers": "最多只能有 20 个通知端点。"
+    "too_many_notifiers": "最多只能有 20 个通知端点。",
+    "task_not_retryable": "这个步骤现在不能重试：只有失败、停住或已取消、而且没有在处理的步骤可以重试。",
+    "task_not_cancellable": "这个任务已经结束，不能取消。"
   },
   "status": {
     "pending": "等待中",
@@ -749,7 +751,7 @@
     "attentionStage_other": "{{stage}}：{{formatted}} 部",
     "tasks_other": "任务（{{formatted}}）",
     "agentNote": "这里只列出 notesteme 自己执行的任务；交给 Agent 的任务请到影音详情的“步骤”查看。",
-    "taskActionsNote": "还不能单独重试或取消一个任务，也不能调整优先顺序；“停止处理”会停止这部影音所有未结束的步骤。",
+    "taskActionsNote": "“取消”只停止这个任务所属的步骤；“停止处理”会停止这部影音所有未结束的步骤。还不能调整优先顺序。",
     "filterClass": "资源类别",
     "filterState": "状态",
     "all": "全部",
@@ -763,7 +765,22 @@
     "notBefore": "{{time}} 之后重试",
     "attempts_other": "已尝试 {{count}} 次",
     "stopItem": "停止处理…",
-    "stopItemDescription": "{{item}} 所有还没结束的步骤都会停止并标成“已略过”，执行中的程序会结束；不是只停这一个任务。已完成的产出保留。"
+    "stopItemDescription": "{{item}} 所有还没结束的步骤都会停止并标成“已略过”，执行中的程序会结束；不是只停这一个任务。已完成的产出保留。",
+    "cancelTask": "取消…",
+    "cancelTaskTitle": "取消这个步骤？",
+    "cancelTaskDescription": "{{item}} 的“{{stage}}”会停止并标成“已略过”，运行中的程序会结束；其他步骤不动。之后可以在“失败与停住”重试。",
+    "cancelTaskConfirm": "取消这个步骤",
+    "cancelTaskDone": "已取消这个步骤。",
+    "failed": {
+      "title_other": "失败与停住（{{formatted}}）",
+      "none": "没有失败、停住或已取消的步骤。",
+      "listLabel": "失败与停住的步骤",
+      "retryAll": "全部重试",
+      "retried": "已重新排入队列。",
+      "retriedAll_other": "已重新排入 {{formatted}} 个步骤。",
+      "retryOne": "重试 {{item}}",
+      "cancelled": "已取消"
+    }
   },
   "settings": {
     "sections": {

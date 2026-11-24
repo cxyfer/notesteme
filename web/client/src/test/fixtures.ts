@@ -126,6 +126,7 @@ export function queueStatus(over: Partial<QueueStatus> = {}): QueueStatus {
         not_before: null,
       },
     ],
+    failed: [],
     ...over,
   };
 }

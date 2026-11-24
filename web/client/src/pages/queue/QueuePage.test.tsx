@@ -125,7 +125,23 @@ describe("佇列：任務", () => {
     expect(within(rows[0]!).getByText("處理中")).toBeTruthy();
     expect(within(rows[1]!).getByText("等待中")).toBeTruthy();
     expect(screen.getByText(/交給 Agent 的任務請到影音詳情/)).toBeTruthy();
-    expect(screen.getByText(/還不能單獨重試或取消一個任務/)).toBeTruthy();
+    expect(screen.getByText(/「取消」只停止這個任務所屬的步驟/)).toBeTruthy();
+  });
+
+  it("「取消…」只取消這個任務所屬的步驟：確認後 POST /api/tasks/{id}/cancel", async () => {
+    const api = queueApi(() => queueStatus(), {
+      "POST /api/tasks/{id}/cancel": () => detail(item(2), []),
+    });
+    await openQueue();
+    const list = await screen.findByRole("list", { name: "任務列表" });
+    await userEvent.click(within(list).getAllByRole("button", { name: "取消…" })[1]!);
+    const dialog = await screen.findByRole("dialog", { name: "取消這個步驟？" });
+    expect(within(dialog).getByText(/「校正」會停止並標成「已略過」/)).toBeTruthy();
+    expect(within(dialog).getByText(/其他步驟不動/)).toBeTruthy();
+    await userEvent.click(within(dialog).getByRole("button", { name: "取消這個步驟" }));
+    await waitFor(() => expect(api.calls("POST", "/api/tasks/task-2/cancel")).toHaveLength(1));
+    expect(api.calls("POST", "/api/items/item-2/cancel")).toHaveLength(0);
+    expect(await screen.findByText("已取消這個步驟。")).toBeTruthy();
   });
 
   it("篩選存在網址；沒有符合的任務時可以清除", async () => {
@@ -187,6 +203,75 @@ describe("佇列：任務", () => {
     queueApi(() => queueStatus({ tasks: [] }));
     await openQueue();
     expect(await screen.findByText("佇列是空的。新增影音，或等訂閱的頻道有新內容。")).toBeTruthy();
+  });
+});
+
+describe("佇列：失敗與停住", () => {
+  const failed = (id: string, n: number, over: Record<string, unknown> = {}) => ({
+    id,
+    item_id: `item-${n}`,
+    item: `yt:vid0000000${n}`,
+    stage: "correct",
+    resource_class: "llm",
+    status: "failed" as const,
+    message: "重試多次仍然失敗。",
+    attempts: 3,
+    finished_at: "2026-11-24T01:00:00Z",
+    ...over,
+  });
+
+  it("列出失敗、停住與已取消的步驟；重試送 POST /api/tasks/{id}/retry，成功後重新讀取佇列", async () => {
+    let q = queueStatus({
+      failed: [
+        failed("t-a", 1),
+        failed("t-b", 2, { status: "blocked", block_reason: "budget_blocked", message: "" }),
+        failed("t-c", 3, { status: "skipped", block_reason: "cancelled", message: "已取消。" }),
+      ],
+    });
+    const api = queueApi(() => q, {
+      "POST /api/tasks/{id}/retry": (req) => {
+        q = { ...q, failed: q.failed!.filter((f) => f.id !== req.params.id) };
+        return detail(item(1), []);
+      },
+    });
+    const { container } = await openQueue();
+    const list = await screen.findByRole("list", { name: "失敗與停住的步驟" });
+    expect(screen.getByRole("heading", { level: 2, name: "失敗與停住（3）" })).toBeTruthy();
+    const rows = within(list).getAllByRole("listitem");
+    expect(within(rows[0]!).getByText("失敗")).toBeTruthy();
+    expect(within(rows[0]!).getByText("重試多次仍然失敗。")).toBeTruthy();
+    expect(within(rows[1]!).getByText("超出預算")).toBeTruthy();
+    expect(within(rows[2]!).getByText("已取消")).toBeTruthy();
+    await userEvent.click(await within(rows[0]!).findByRole("button", { name: "重試 影片 1" }));
+    await waitFor(() => expect(api.calls("POST", "/api/tasks/t-a/retry")).toHaveLength(1));
+    expect(await screen.findByText("已重新排入佇列。")).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 2, name: "失敗與停住（2）" })).toBeTruthy(),
+    );
+    await expectNoA11yViolations(container);
+  });
+
+  it("全部重試依序送出；有失敗時說明原因，其他照樣重試", async () => {
+    const q = queueStatus({ failed: [failed("t-a", 1), failed("t-b", 2), failed("t-c", 3)] });
+    const api = queueApi(() => q, {
+      "POST /api/tasks/{id}/retry": (req) =>
+        req.params.id === "t-b"
+          ? apiError(409, "task_not_retryable", "這個步驟已經在處理中。")
+          : detail(item(1), []),
+    });
+    await openQueue();
+    await userEvent.click(await screen.findByRole("button", { name: "全部重試" }));
+    await waitFor(() => expect(api.calls("POST", "/api/tasks/t-c/retry")).toHaveLength(1));
+    expect(api.calls("POST", "/api/tasks/t-a/retry")).toHaveLength(1);
+    expect(api.calls("POST", "/api/tasks/t-b/retry")).toHaveLength(1);
+    expect(await screen.findByText(/已重新排入 2 個步驟。 這個步驟現在不能重試/)).toBeTruthy();
+  });
+
+  it("沒有失敗的步驟時說明，沒有「全部重試」", async () => {
+    queueApi(() => queueStatus());
+    await openQueue();
+    expect(await screen.findByText("沒有失敗、停住或已取消的步驟。")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "全部重試" })).toBeNull();
   });
 });
 

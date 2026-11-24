@@ -5,7 +5,7 @@
 //   └─ app（layout，需要 session；AppShell）
 //      ├─ /                   總覽（UI-7，lazy；M1–M3 曾導到 /library）
 //      ├─ /library
-//      ├─ /queue
+//      ├─ /queue              佇列（lazy）
 //      ├─ /items/$id
 //      ├─ /add                書籤小工具與分享的落地頁：打開「新增」抽屜後換成 /library（ENTRY-R2，lazy）
 //      ├─ /settings           導到第一個分區
@@ -45,7 +45,6 @@ import { ProfilesPage } from "./pages/profiles/ProfilesPage";
 import { PromptsPage } from "./pages/prompts/PromptsPage";
 import { validateQueueSearch } from "./pages/queue/filters";
 import { validateSearchParams } from "./pages/search/model";
-import { QueuePage } from "./pages/queue/QueuePage";
 import { SETTINGS_SECTIONS, SettingsPage } from "./pages/SettingsPage";
 import { StyleEditorPage } from "./pages/styles/StyleEditorPage";
 import { StylesPage } from "./pages/styles/StylesPage";
@@ -103,9 +102,9 @@ const libraryRoute = createRoute({
 const queueRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/queue",
-  // 資源類別與任務狀態的篩選在 URL
+  // 資源類別與任務狀態的篩選在 URL；頁面 lazy 載入（收尾 D1 加了重試與取消）
   validateSearch: validateQueueSearch,
-  component: QueuePage,
+  component: lazyRouteComponent(() => import("./pages/queue/QueuePage"), "QueuePage"),
 });
 export const itemRoute = createRoute({
   getParentRoute: () => appRoute,

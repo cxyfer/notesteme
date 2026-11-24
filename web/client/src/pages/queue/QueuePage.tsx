@@ -3,7 +3,8 @@
 //   - 每個資源類別一條通道：方格數是並行上限、實心是使用中；上限可以直接 +／−（PATCH /api/queue/limits）；
 //     每個類別與整個佇列都可以暫停／繼續。
 //   - 任務列表：執行中與等待中的任務（只有內建 worker 的任務；API 不列 Agent 任務，頁面上明說）。
-//     單一任務的重試／取消 API 還沒做（501），改提供影音層級的「停止處理」（POST /api/items/{id}/cancel）。
+//     每列可以只取消這個步驟（POST /api/tasks/{id}/cancel），或停止整部影音（POST /api/items/{id}/cancel）。
+//   - 失敗與停住：GET /api/queue 的 failed 清單，可以單獨或全部重試（FailedTasks.tsx）。
 //   - 需要你處理：依步驟計數 failed／blocked 的影音（GET /api/items?status=…&limit=1 的 total），連到媒體庫的篩選。
 //   - SSE：stage.status 讓 queue 失效；列表以任務 ID 為 key，重新讀取只更新受影響的列，不重排捲動位置。
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,6 +33,7 @@ import { formatDateTime, formatNumber } from "../../i18n";
 import { usePageTitle } from "../../shell/usePageTitle";
 import { STAGES } from "../library/filters";
 import { useItemDetail } from "../library/LibraryRow";
+import { FailedTasks } from "./FailedTasks";
 import {
   filterTasks,
   RESOURCE_CLASSES,
@@ -116,7 +118,7 @@ export function QueuePage() {
   const togglePauseAll = () => control.mutate({ kind: q?.paused ? RESUME : PAUSE });
   const resumeAll = () => control.mutate({ kind: RESUME });
   const tasks = useMemo(() => filterTasks(q?.tasks ?? [], search), [q?.tasks, search]);
-  const [cancelFor, setCancelFor] = useState<QueueTask | null>(null);
+  const [cancelFor, setCancelFor] = useState<CancelTarget | null>(null);
 
   // 佇列沒有啟用（501）：說明，不顯示會失敗的控制項
   const disabled = isApiError(queue.error) && queue.error.status === 501;
@@ -161,6 +163,7 @@ export function QueuePage() {
               control.mutate({ kind: paused ? RESUME : PAUSE, class: cls })
             }
           />
+          <FailedTasks failed={q.failed ?? []} />
           <Attention />
 
           <section aria-labelledby="tasks-title">
@@ -243,7 +246,8 @@ export function QueuePage() {
                   <TaskRow
                     task={task}
                     focusProps={focusProps}
-                    onCancel={() => setCancelFor(task)}
+                    onCancelTask={() => setCancelFor({ task, scope: "task" })}
+                    onCancel={() => setCancelFor({ task, scope: "item" })}
                   />
                 )}
               />
@@ -251,7 +255,7 @@ export function QueuePage() {
           </section>
         </>
       )}
-      <CancelItemDialog task={cancelFor} onClose={() => setCancelFor(null)} />
+      <CancelDialog target={cancelFor} onClose={() => setCancelFor(null)} />
     </div>
   );
 }
@@ -398,10 +402,12 @@ function Attention() {
 function TaskRow({
   task,
   focusProps,
+  onCancelTask,
   onCancel,
 }: {
   task: QueueTask;
   focusProps: RowFocusProps;
+  onCancelTask: () => void;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
@@ -430,6 +436,9 @@ function TaskRow({
             ? t("queue.attempts", { count: task.attempts })
             : t(`queue.class.${task.resource_class}`, { defaultValue: task.resource_class })}
       </span>
+      <Button variant="text" tabIndex={focusProps.tabIndex} onClick={onCancelTask}>
+        {t("queue.cancelTask")}
+      </Button>
       <Button variant="text" tabIndex={focusProps.tabIndex} onClick={onCancel}>
         {t("queue.stopItem")}
       </Button>
@@ -437,37 +446,49 @@ function TaskRow({
   );
 }
 
-function CancelItemDialog({ task, onClose }: { task: QueueTask | null; onClose: () => void }) {
+/** 取消的對象：只有這個任務所屬的步驟，或整部影音 */
+type CancelTarget = { task: QueueTask; scope: "task" | "item" };
+
+function CancelDialog({ target, onClose }: { target: CancelTarget | null; onClose: () => void }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
   const cancel = useMutation({
-    mutationFn: (id: string) => api.post(apiPath("/api/items/{id}/cancel", { id })),
-    onSuccess: (_d, id) => {
+    mutationFn: (x: CancelTarget) =>
+      x.scope === "task"
+        ? api.post(apiPath("/api/tasks/{id}/cancel", { id: x.task.id }))
+        : api.post(apiPath("/api/items/{id}/cancel", { id: x.task.item_id })),
+    onSuccess: (_d, x) => {
       void qc.invalidateQueries({ queryKey: queryKeys.queue });
-      void qc.invalidateQueries({ queryKey: queryKeys.items.detail(id) });
-      toast.show({ title: t("item.cancel.done") });
+      void qc.invalidateQueries({ queryKey: queryKeys.items.detail(x.task.item_id) });
+      toast.show({ title: x.scope === "task" ? t("queue.cancelTaskDone") : t("item.cancel.done") });
       onClose();
     },
   });
+  const forTask = target?.scope === "task";
+  const stage = target ? t(`stage.${target.task.stage}`, { defaultValue: target.task.stage }) : "";
   return (
     <Dialog
-      open={task !== null}
+      open={target !== null}
       onOpenChange={(o) => {
         if (!o) {
           cancel.reset();
           onClose();
         }
       }}
-      title={t("item.cancel.title")}
-      description={t("queue.stopItemDescription", { item: task?.item ?? "" })}
+      title={forTask ? t("queue.cancelTaskTitle") : t("item.cancel.title")}
+      description={
+        forTask
+          ? t("queue.cancelTaskDescription", { item: target?.task.item ?? "", stage })
+          : t("queue.stopItemDescription", { item: target?.task.item ?? "" })
+      }
       footer={
         <Button
           variant="danger"
           disabled={cancel.isPending}
-          onClick={() => task && cancel.mutate(task.item_id)}
+          onClick={() => target && cancel.mutate(target)}
         >
-          {t("item.cancel.confirm")}
+          {forTask ? t("queue.cancelTaskConfirm") : t("item.cancel.confirm")}
         </Button>
       }
     >

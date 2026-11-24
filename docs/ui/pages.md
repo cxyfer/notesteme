@@ -291,6 +291,7 @@ LLM      ■ ■ ■ ■           使用中 4，上限 4      等待 12
 - **互動**：點任務會打開影音詳情頁的「紀錄」分頁。
 - **狀態**：空狀態見 README §4.3。佇列暫停時，頂部顯示「佇列已暫停，新任務不會開始。」並附上「繼續處理」按鈕。
 - **API**：`GET /api/queue`、`PATCH /api/queue/limits`、`POST /api/queue/pause`、`POST /api/queue/resume`、`POST /api/tasks/:id/retry`、`POST /api/tasks/:id/cancel`、`POST /api/tasks/:id/switch-executor`
+- **實作狀態（收尾 D1，2026-11-24）**：單一任務的「取消…」（只停這個任務所屬的步驟）與「失敗與停住」清單（`GET /api/queue` 的 `failed`，每列「重試」、超過一列時「全部重試」）已完成；影音層級的「停止處理…」保留。頁面改成 lazy route。還沒做：Agent 任務與租約剩餘時間、調整優先順序（API 沒有）。見 [README 10.22](README.md#1022-收尾-d1佇列的重試取消媒體庫的分組2026-11-24)。
 
 ## 7. Prompt 庫
 

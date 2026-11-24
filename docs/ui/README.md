@@ -293,7 +293,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | SSE：`stage.status` 讓 detail、runs 失效；產生字幕的步驟 `done` 才讓字幕失效、`publish` `done` 才讓輸出失效；頁面層級 aria-live | 完成 | `src/events/invalidation.ts` |
 | 佇列：各資源類別的通道（方格＝上限、實心＝使用中）、上限 +／−、整個佇列與各類別的暫停／繼續、暫停橫幅、任務列表（虛擬化、篩選在 URL）、「需要你處理」依步驟計數、影音層級的停止處理 | 完成 | `src/pages/queue` |
 | 時間帶的章節線、`Shift + ←／→`、拖曳選取範圍（重新校正這段、複製這段字幕）、說話密度、畫面刻度 | 未做 | API 沒有章節、說話密度、chunk 範圍（10.7 第 8 點） |
-| 佇列的優先順序、Agent 任務、租約剩餘時間、單一任務的重試／取消、「全部重試」 | 未做 | API 缺口（10.7 第 8 點） |
+| 佇列的單一任務重試／取消、「失敗與停住」清單與「全部重試」 | 完成（收尾 D1，見 10.22） | `src/pages/queue/FailedTasks.tsx`、`QueuePage.tsx` |
+| 佇列的優先順序、Agent 任務、租約剩餘時間 | 未做 | API 缺口（10.7 第 8 點） |
 | 匯出選單的 ASS 樣式選擇、Markdown 筆記、bundle；兩個版本之間的比較（紀錄分頁） | 未做 | 之後的切片（ASS 用預設樣式） |
 
 ### 10.7 UI-2 的決定
@@ -315,7 +316,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
    - 沒有列出影音有哪些字幕變體與語言的 API：模式依步驟狀態推得，`edited` 用一次 `variant=edited` 的查詢確認。
    - 沒有章節、說話密度、LLM chunk 的時間範圍：時間帶只畫整條步驟狀態，沒有章節線、拖曳選取、chunk 進度。
    - `ItemDetail` 沒有處理方案名稱：從設定快照的 `profile` 取（沒有就不顯示）。
-   - 佇列：`GET /api/queue` 只列內建 worker 的任務（沒有 Agent 任務、租約剩餘時間、優先順序欄位）；`POST /api/tasks/{id}/retry`、`cancel` 回 501；沒有調整優先順序的 API。頁面上明說，並改提供影音層級的「停止處理」。
+   - 佇列：`GET /api/queue` 只列內建 worker 的任務（沒有 Agent 任務、租約剩餘時間、優先順序欄位）；沒有調整優先順序的 API。頁面上明說。~~`POST /api/tasks/{id}/retry`、`cancel` 回 501~~：收尾 D1 已實作，佇列頁接上單一任務的取消與重試（見 10.22）。
    - 「需要你處理」沒有彙總 API：依步驟各查一次 `GET /api/items?status=<stage>:failed&status=<stage>:blocked&limit=1` 的 `total`（7 個請求；同一部影音可能在不同步驟各算一次）。佇列頁收到 failed／blocked／pending／done／skipped 的 `stage.status`、刪除、還原或重新連上時，2 秒 debounce 後重新讀取。
 9. **其他**：用垃圾桶中的影音連結進入詳情時提供「從垃圾桶還原」；cookie 對話框關閉時清掉貼上的內容；拖曳捲軸（不只 wheel／touch／按鍵）也會停止跟隨播放。
 10. **501 不重試**：TanStack Query 的預設重試排除 501（功能還沒做），佇列沒有啟用時立即顯示說明。
