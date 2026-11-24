@@ -1696,7 +1696,10 @@
       "noteLangHint": "BCP-47 語言標記，例如 zh-Hant-TW。空白時沿用全域設定；都沒有設定時用第一個目標語言，沒有目標語言時用原文語言。",
       "noteIncludeTranslation": "給模型的字幕",
       "onUserChange": "檔案被改過時",
-      "onUserChangeHint": "你修改過這個輸出寫出的檔案後，重新產生時怎麼處理。"
+      "onUserChangeHint": "你修改過這個輸出寫出的檔案後，重新產生時怎麼處理。",
+      "fallback": "平台字幕都不符合時改用",
+      "fallbackList": "依序改用的來源",
+      "fallbackListHint": "以逗號分隔，例如 supadata, groq。空白時沿用全域設定。"
     },
     "promptInherit": "沿用全域設定（預設 {{id}}）",
     "versionFollow": "跟隨預設（目前 v{{version}}）",
@@ -1761,7 +1764,9 @@
       "default": "另存一份（預設）",
       "save_as_new": "另存一份，檔名加上「(notesteme 日期)」",
       "skip": "不寫入，標示「需要你處理」"
-    }
+    },
+    "fallbackNone": "不改用其他來源（只用平台字幕）",
+    "fallbackCustom": "自訂順序"
   },
   "styles": {
     "lead": "選擇或自訂 ASS 樣式。內建樣式不能修改，複製成自訂樣式後再調整。",

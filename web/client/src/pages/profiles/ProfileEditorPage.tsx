@@ -66,6 +66,7 @@ const P = {
   variantStrategy: "language.variant_strategy",
   captionPriority: "language.caption_priority",
   allowPlatformTranslated: "language.allow_platform_translated",
+  fallback: "language.fallback",
   framesPerMinute: "stages.frames.per_minute",
   framesMax: "stages.frames.max_frames",
   noteTemplate: "stages.note.template",
@@ -78,6 +79,8 @@ const NEW_CAPTION_FIRST = { lang: "original", kind: "manual" };
 const NEW_CAPTION_NEXT = { lang: "original", kind: "auto" };
 const NEW_OUTPUT = { target: "sidecar", formats: ["srt"] };
 const TRI = { inherit: "", yes: "yes", no: "no" } as const;
+const FALLBACK_MODE = { inherit: "", none: "none", custom: "custom" } as const;
+type FallbackMode = (typeof FALLBACK_MODE)[keyof typeof FALLBACK_MODE];
 
 interface EditState {
   base: Config;
@@ -794,6 +797,7 @@ function SourceStep({ draft, update, errors }: StepCtx) {
           <p className="field__error">{errors["language.caption_priority"]}</p>
         )}
       </fieldset>
+      <FallbackField draft={draft} update={update} errors={errors} />
       <SelectField
         label={t("profiles.field.allowPlatformTranslated")}
         value={allow === true ? TRI.yes : allow === false ? TRI.no : TRI.inherit}
@@ -811,6 +815,67 @@ function SourceStep({ draft, update, errors }: StepCtx) {
         error={errors["language.allow_platform_translated"]}
       />
     </div>
+  );
+}
+
+/**
+ * 平台字幕都不符合時改用的來源（language.fallback，例如 supadata、groq）。list 是整個取代，而且空陣列有意義
+ * （不用後備、只用平台字幕，10.27 第 7 點），所以分成三種：沿用全域設定（不寫）、不用後備（[]）、自訂順序。
+ * 自訂順序的文字是空的時不寫（等於沿用），說明會寫明。
+ */
+function FallbackField({ draft, update, errors }: Pick<StepCtx, "draft" | "update" | "errors">) {
+  const { t } = useTranslation();
+  const v = getPath(draft, P.fallback);
+  const list = Array.isArray(v) ? (v as string[]) : undefined;
+  const [mode, setMode] = useState<FallbackMode>(
+    list === undefined
+      ? FALLBACK_MODE.inherit
+      : list.length === 0
+        ? FALLBACK_MODE.none
+        : FALLBACK_MODE.custom,
+  );
+  const [text, setText] = useState(list?.join(", ") ?? "");
+  const err = Object.entries(errors).find(
+    ([p]) => p === P.fallback || p.startsWith(`${P.fallback}.`),
+  );
+  return (
+    <>
+      <SelectField
+        label={t("profiles.field.fallback")}
+        value={mode}
+        onChange={(e) => {
+          const m = e.target.value as FallbackMode;
+          setMode(m);
+          if (m === FALLBACK_MODE.inherit) update(P.fallback, undefined);
+          else if (m === FALLBACK_MODE.none) update(P.fallback, []);
+          else {
+            const l = splitList(text);
+            update(P.fallback, l.length ? l : undefined);
+          }
+        }}
+        options={[
+          { value: FALLBACK_MODE.inherit, label: t("profiles.inherit") },
+          { value: FALLBACK_MODE.none, label: t("profiles.fallbackNone") },
+          { value: FALLBACK_MODE.custom, label: t("profiles.fallbackCustom") },
+        ]}
+        error={mode === FALLBACK_MODE.custom ? undefined : err?.[1]}
+      />
+      {mode === FALLBACK_MODE.custom && (
+        <TextField
+          label={t("profiles.field.fallbackList")}
+          hint={t("profiles.field.fallbackListHint")}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            const l = splitList(e.target.value);
+            update(P.fallback, l.length ? l : undefined);
+          }}
+          error={err?.[1]}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      )}
+    </>
   );
 }
 

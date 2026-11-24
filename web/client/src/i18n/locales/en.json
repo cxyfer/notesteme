@@ -1754,7 +1754,10 @@
       "noteLangHint": "A BCP-47 language tag, for example zh-Hant-TW. Leave blank to use the global setting; otherwise the first target language, or the original language when there is none.",
       "noteIncludeTranslation": "Captions given to the model",
       "onUserChange": "When the file was edited",
-      "onUserChangeHint": "What to do on regeneration after you have edited a file this output wrote."
+      "onUserChangeHint": "What to do on regeneration after you have edited a file this output wrote.",
+      "fallback": "When no platform captions fit, use",
+      "fallbackList": "Sources to try in order",
+      "fallbackListHint": "Separated by commas, for example supadata, groq. Leave blank to use the global setting."
     },
     "promptInherit": "Use global setting (default {{id}})",
     "versionFollow": "Follow default (now v{{version}})",
@@ -1819,7 +1822,9 @@
       "default": "Save a copy (default)",
       "save_as_new": "Save a copy named “(notesteme date)”",
       "skip": "Don't write; mark it as needing you"
-    }
+    },
+    "fallbackNone": "Nothing else (platform captions only)",
+    "fallbackCustom": "A custom order"
   },
   "styles": {
     "lead": "Choose or customize ASS styles. Built-in styles can't be changed; copy one to a custom style to adjust it.",

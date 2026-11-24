@@ -323,6 +323,37 @@ describe("處理方案：編輯", () => {
     ]);
   });
 
+  it("字幕來源的後備：沿用、不用後備（空陣列）、自訂順序", async () => {
+    const api = profilesApi({
+      "PATCH /api/profiles/{id}": () => ({ ...standard, version: 6 }),
+    });
+    await openStandard();
+    const source = within(screen.getByRole("heading", { name: /字幕來源/ }).closest("li")!);
+    const mode = source.getByLabelText("平台字幕都不符合時改用") as HTMLSelectElement;
+    expect(mode.value).toBe("");
+    await userEvent.selectOptions(mode, "none");
+    expect(source.queryByLabelText("依序改用的來源")).toBeNull();
+    await userEvent.selectOptions(mode, "custom");
+    await userEvent.type(source.getByLabelText("依序改用的來源"), "groq, supadata");
+    await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
+    expect(await screen.findByText("已儲存（v6）")).toBeTruthy();
+    const body = JSON.parse(String(api.calls("PATCH", "/api/profiles/standard")[0]!.init.body));
+    expect(body.config.language).toEqual({ fallback: ["groq", "supadata"] });
+  });
+
+  it("字幕來源的後備選「不用後備」送空陣列", async () => {
+    const api = profilesApi({
+      "PATCH /api/profiles/{id}": () => ({ ...standard, version: 6 }),
+    });
+    await openStandard();
+    const source = within(screen.getByRole("heading", { name: /字幕來源/ }).closest("li")!);
+    await userEvent.selectOptions(source.getByLabelText("平台字幕都不符合時改用"), "none");
+    await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
+    expect(await screen.findByText("已儲存（v6）")).toBeTruthy();
+    const body = JSON.parse(String(api.calls("PATCH", "/api/profiles/standard")[0]!.init.body));
+    expect(body.config.language).toEqual({ fallback: [] });
+  });
+
   it("設為預設", async () => {
     const api = profilesApi({
       "POST /api/profiles/{id}/default": () => ({ ...standard, default: true }),
