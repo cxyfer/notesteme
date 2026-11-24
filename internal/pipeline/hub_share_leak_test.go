@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cxyfer/notesteme/internal/bundle"
 	"github.com/cxyfer/notesteme/internal/hubshare"
 	"github.com/cxyfer/notesteme/internal/store"
 )
@@ -127,3 +128,32 @@ func TestShareToHubScansBeforeSending(t *testing.T) {
 	}
 }
 func ptrTo[T any](v T) *T { return &v }
+
+// 安全修補 B 的第 4(b) 項：bundle 匯入的來源紀錄自稱 executor: hub 不可信，匯入時改成 import；
+// 否則分享時會略過「需要登入的字幕」檢查（HSHR-R4），還會帶上偽造的 hub_origin。
+func TestImportedHubExecutorIsNotTrusted(t *testing.T) {
+	forged := `{"executor":"hub","source":"bilibili-ai","cookie_required":true,"hub_origin":{"version_id":"forged","sha256":"` + strings.Repeat("a", 64) + `"}}`
+	out, err := importProvenance(json.RawMessage(forged), bundle.CreatedBy{InstanceID: "i", AppVersion: "v"}, "s", bundleTestNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	_ = json.Unmarshal(out, &m)
+	if m["executor"] != ExecutorImport || m["imported_executor"] != SourceHub || m["hub_origin"] != nil || m["imported_hub_origin"] == nil {
+		t.Fatalf("provenance = %s", out)
+	}
+
+	ctx := context.Background()
+	stub := newHubStub(t)
+	r := newHubRig(t, stub)
+	it := r.processedItem()
+	r.setProvenance(r.artifact(it, "source"), string(out))
+	_, err = r.p.ShareToHub(ctx, it.ID, shareReq)
+	var he *HubError
+	if !errors.As(err, &he) || he.Code != "not_shareable" || !strings.Contains(he.Msg, "需要登入") {
+		t.Fatalf("err = %v", err)
+	}
+	if stub.total() != 0 {
+		t.Error("不能連線到 Hub")
+	}
+}

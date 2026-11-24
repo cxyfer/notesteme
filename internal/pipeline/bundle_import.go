@@ -449,6 +449,21 @@ func importProvenance(raw json.RawMessage, by bundle.CreatedBy, bundleSHA string
 	if e, ok := obj["executor"]; ok {
 		_ = json.Unmarshal(e, &executor)
 	}
+	// bundle 自稱 executor: hub 不可信：分享時 hub 來源可以略過「需要登入」的檢查並帶上 hub_origin（HSHR-R4、R6），
+	// 所以改成 import，原本的值與 hub_origin 改名保留（BND 待決問題 N27）。
+	if executor == SourceHub {
+		executor = ExecutorImport
+		if err := set("executor", ExecutorImport); err != nil {
+			return nil, err
+		}
+		if err := set("imported_executor", SourceHub); err != nil {
+			return nil, err
+		}
+		if o, ok := obj["hub_origin"]; ok {
+			obj["imported_hub_origin"] = o
+			delete(obj, "hub_origin")
+		}
+	}
 	if executor == ExecutorAgent {
 		if err := set("model_verified", false); err != nil {
 			return nil, err
