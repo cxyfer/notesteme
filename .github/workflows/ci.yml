@@ -1,6 +1,6 @@
 name: CI
 
-# 只跑測試與檢查，不建置 image；image 只在 v* tag 時由 docker-publish.yml 建置。
+# 測試與檢查；docker job 會在 runner 上建置 image 並啟動，但不推送。image 只在 v* tag 時由 docker-publish.yml 建置並推送。
 on:
   push:
     branches: [master]
@@ -237,6 +237,48 @@ jobs:
 
       - name: go test (hub backends)
         run: go test -race -count=1 -timeout 15m ./internal/hub/hubstore/... ./internal/hub/hubblob/ ./internal/hub/hubcli/ ./internal/hub/
+
+  # 實際建置 image 並啟動（本機沒有 Docker 時驗證不到的部分）：
+  # Client image 跑 deploy/docker/smoke-test.sh；Hub 用 compose.hub.yaml 啟動整組服務
+  # （Postgres、SeaweedFS、migrate、hub），確認 hub 就緒並通過 doctor（連得上 Postgres 與 S3 bucket）。
+  docker:
+    name: Docker images & hub stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: build client image
+        run: docker build -f deploy/docker/Dockerfile -t notesteme:ci .
+
+      - name: smoke test (client image)
+        run: deploy/docker/smoke-test.sh notesteme:ci
+
+      - name: hub stack up
+        working-directory: deploy/docker
+        run: |
+          umask 077
+          {
+            echo "NOTESTEME_HUB_MASTER_KEY=$(openssl rand -base64 32)"
+            echo "NOTESTEME_HUB_SESSION_KEY=$(openssl rand -base64 32)"
+            echo "NOTESTEME_HUB_POSTGRES_PASSWORD=$(openssl rand -hex 24)"
+            echo "NOTESTEME_HUB_S3_ACCESS_KEY_ID=notestemehub"
+            echo "NOTESTEME_HUB_S3_SECRET_ACCESS_KEY=$(openssl rand -hex 24)"
+          } > .env.hub
+          mkdir -p hub-config
+          cp hub-config.example.yaml hub-config/notesteme-hub.yaml
+          docker compose -f compose.hub.yaml --env-file .env.hub --profile hub up -d --build
+          curl --retry 30 --retry-delay 2 --retry-connrefused -fsS http://127.0.0.1:8090/readyz
+          docker compose -f compose.hub.yaml --env-file .env.hub --profile hub run --rm hub doctor
+
+      - name: hub stack logs
+        if: failure()
+        working-directory: deploy/docker
+        run: docker compose -f compose.hub.yaml --env-file .env.hub --profile hub logs --no-color --tail 150
+
+      - name: hub stack down
+        if: always()
+        working-directory: deploy/docker
+        run: docker compose -f compose.hub.yaml --env-file .env.hub --profile hub down -v
 
   sqlc:
     name: sqlc generated code

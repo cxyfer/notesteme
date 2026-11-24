@@ -12,7 +12,7 @@ store:
   driver: postgres   # DSN 由 compose 以環境變數 NOTESTEME_HUB_STORE_DSN 提供
 blobs:
   driver: s3         # endpoint、bucket、憑證由 compose 以 NOTESTEME_HUB_S3_* 提供
-  # 改用 Cloudflare R2 或 AWS S3 時（並移除 compose 的 hub-minio 服務與環境變數 NOTESTEME_HUB_S3_ENDPOINT）：
+  # 改用 Cloudflare R2 或 AWS S3 時（並移除 compose 的 hub-s3、hub-s3-init 服務與環境變數 NOTESTEME_HUB_S3_ENDPOINT）：
   # s3:
   #   endpoint: https://<account-id>.r2.cloudflarestorage.com
   #   region: auto

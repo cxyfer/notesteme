@@ -38,7 +38,7 @@ func TestHubComposeFile(t *testing.T) {
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	if strings.Join(names, ",") != "hub,hub-migrate,hub-minio,hub-minio-init,hub-postgres" {
+	if strings.Join(names, ",") != "hub,hub-migrate,hub-postgres,hub-s3,hub-s3-init" {
 		t.Fatalf("服務 = %v", names)
 	}
 	networks := func(name string) []string {
@@ -49,7 +49,7 @@ func TestHubComposeFile(t *testing.T) {
 		return out
 	}
 	// 資料庫與物件儲存只在 internal network、沒有映射 port。
-	for _, n := range []string{"hub-postgres", "hub-minio", "hub-minio-init", "hub-migrate"} {
+	for _, n := range []string{"hub-postgres", "hub-s3", "hub-s3-init", "hub-migrate"} {
 		if nets := networks(n); !slices.Equal(nets, []string{"hub-internal"}) {
 			t.Errorf("%s 的 networks = %v，預期只有 hub-internal", n, nets)
 		}
@@ -77,7 +77,7 @@ func TestHubComposeFile(t *testing.T) {
 	if dep["condition"] != "service_completed_successfully" {
 		t.Errorf("hub 的 depends_on = %v", dep)
 	}
-	for _, n := range []string{"hub-postgres", "hub-minio"} {
+	for _, n := range []string{"hub-postgres", "hub-s3"} {
 		if _, ok := svcs[n].(map[string]any)["healthcheck"]; !ok {
 			t.Errorf("%s 沒有 healthcheck", n)
 		}

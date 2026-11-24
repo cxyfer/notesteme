@@ -1,10 +1,10 @@
-# Hub 的正式部署（ADR-0030 第 1、2 點）：Hub、Postgres、MinIO。與 Client 的 compose.yaml（wsl／vps profile）分開：
+# Hub 的正式部署（ADR-0030 第 1、2 點）：Hub、Postgres、S3 相容儲存（SeaweedFS）。與 Client 的 compose.yaml（wsl／vps profile）分開：
 # 獨立的檔案與 project name，所有服務都在 hub profile。在這個目錄執行：
 #   cp .env.hub.example .env.hub   # 填入密鑰
 #   mkdir -p hub-config && cp hub-config.example.yaml hub-config/notesteme-hub.yaml   # 填入 public_url、OAuth client_id
 #   docker compose -f compose.hub.yaml --env-file .env.hub --profile hub up -d --build
-# 啟動順序：postgres、minio healthy → hub-minio-init 建立 bucket → hub-migrate 套用 migration → hub。
-# Postgres 與 MinIO 只在 hub-internal（internal network，不對外、不映射 port）；Hub 另接 hub-egress 才能連 OAuth 供應商。
+# 啟動順序：postgres、hub-s3 healthy → hub-s3-init 建立 bucket → hub-migrate 套用 migration → hub。
+# Postgres 與 hub-s3 只在 hub-internal（internal network，不對外、不映射 port）；Hub 另接 hub-egress 才能連 OAuth 供應商。
 # Hub 只映射到 127.0.0.1，對外的 HTTPS 由前面的反向代理（Caddy、nginx、Cloudflare Tunnel）負責。
 # 反向代理的位址要寫進設定檔的 server.trusted_proxies（例如 hub-egress 的 gateway），否則所有訪客共用代理的限流額度。
 # 詳細步驟、備份與還原見 docs/hub-deployment.md。
@@ -29,40 +29,57 @@ services:
       timeout: 5s
       retries: 10
 
-  hub-minio:
+  # S3 相容的物件儲存：SeaweedFS（Apache-2.0）單一容器（master、volume、filer、S3 gateway）。
+  # MinIO 社群版已停止發布 image（quay.io 要認證、Docker Hub 沒有 tag），所以改用 SeaweedFS；
+  # 也可以改用 R2 或 AWS S3（移除 hub-s3 與 hub-s3-init 並改 NOTESTEME_HUB_S3_*）。
+  # S3 的憑證由 NOTESTEME_HUB_S3_* 組成 identity 檔；只接受英數字（printf 不做 JSON 跳脫）。
+  hub-s3:
     profiles: ["hub"]
-    # MinIO 社群版已停止發布新的 image；固定在最後一個版本。也可以改用 R2 或 AWS S3（移除這兩個 minio 服務並改 NOTESTEME_HUB_S3_*）。
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: chrislusf/seaweedfs:4.55
     restart: unless-stopped
-    command: ["server", "/data"]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        printf '{"identities":[{"name":"hub","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$$S3_ACCESS_KEY_ID" "$$S3_SECRET_ACCESS_KEY" > /tmp/s3.json
+        exec weed server -dir=/data -ip=hub-s3 -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=1024 -volume.max=0 -s3 -s3.port=9000 -s3.config=/tmp/s3.json
     environment:
-      MINIO_ROOT_USER: ${NOTESTEME_HUB_S3_ACCESS_KEY_ID:?請在 .env.hub 設定 NOTESTEME_HUB_S3_ACCESS_KEY_ID}
-      MINIO_ROOT_PASSWORD: ${NOTESTEME_HUB_S3_SECRET_ACCESS_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_S3_SECRET_ACCESS_KEY}
+      S3_ACCESS_KEY_ID: ${NOTESTEME_HUB_S3_ACCESS_KEY_ID:?請在 .env.hub 設定 NOTESTEME_HUB_S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${NOTESTEME_HUB_S3_SECRET_ACCESS_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_S3_SECRET_ACCESS_KEY}
     volumes:
-      - hub-minio-data:/data
+      - hub-s3-data:/data
     networks:
       - hub-internal
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # 有 identity 時匿名請求回 403；有回應 HTTP 就代表 S3 gateway 起來了。
+      test: ["CMD-SHELL", "wget -S -O /dev/null http://127.0.0.1:9000/ 2>&1 | grep -q 'HTTP/1'"]
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 10s
 
-  # 一次性：建立 bucket（已存在時不動）。用同一個 image 內附的 mc。
-  hub-minio-init:
+  # 一次性：建立 bucket（已存在時不動）。用 curl 的 SigV4 簽章呼叫 S3 API，不需要額外的 CLI。
+  hub-s3-init:
     profiles: ["hub"]
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: curlimages/curl:8.18.0
     entrypoint: ["/bin/sh", "-c"]
     command:
-      - mc alias set hub http://hub-minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null && mc mb --ignore-existing "hub/$$BUCKET"
+      - |
+        empty=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        for i in $$(seq 1 30); do
+          code="$$(curl -s -o /dev/null -w '%{http_code}' -X PUT --aws-sigv4 'aws:amz:us-east-1:s3' --user "$$S3_ACCESS_KEY_ID:$$S3_SECRET_ACCESS_KEY" -H "x-amz-content-sha256: $$empty" "http://hub-s3:9000/$$BUCKET" || true)"
+          case "$$code" in 200|409) echo "bucket $$BUCKET ready ($$code)"; exit 0 ;; esac
+          sleep 2
+        done
+        echo "建立 bucket 失敗（最後的 HTTP 狀態：$$code）" >&2
+        exit 1
     environment:
-      MINIO_ROOT_USER: ${NOTESTEME_HUB_S3_ACCESS_KEY_ID:?請在 .env.hub 設定 NOTESTEME_HUB_S3_ACCESS_KEY_ID}
-      MINIO_ROOT_PASSWORD: ${NOTESTEME_HUB_S3_SECRET_ACCESS_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_S3_SECRET_ACCESS_KEY}
+      S3_ACCESS_KEY_ID: ${NOTESTEME_HUB_S3_ACCESS_KEY_ID:?請在 .env.hub 設定 NOTESTEME_HUB_S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${NOTESTEME_HUB_S3_SECRET_ACCESS_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_S3_SECRET_ACCESS_KEY}
       BUCKET: ${NOTESTEME_HUB_S3_BUCKET:-notesteme-hub}
     networks:
       - hub-internal
     depends_on:
-      hub-minio:
+      hub-s3:
         condition: service_healthy
 
   # 一次性：套用資料庫 migration（多個實例同時執行時以 advisory lock 排隊）。
@@ -79,7 +96,7 @@ services:
       NOTESTEME_HUB_MASTER_KEY: ${NOTESTEME_HUB_MASTER_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_MASTER_KEY}
       NOTESTEME_HUB_SESSION_KEY: ${NOTESTEME_HUB_SESSION_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_SESSION_KEY}
       NOTESTEME_HUB_STORE_DSN: postgres://notesteme_hub:${NOTESTEME_HUB_POSTGRES_PASSWORD:?請在 .env.hub 設定 NOTESTEME_HUB_POSTGRES_PASSWORD}@hub-postgres:5432/notesteme_hub?sslmode=disable
-      NOTESTEME_HUB_S3_ENDPOINT: http://hub-minio:9000
+      NOTESTEME_HUB_S3_ENDPOINT: http://hub-s3:9000
       NOTESTEME_HUB_S3_BUCKET: ${NOTESTEME_HUB_S3_BUCKET:-notesteme-hub}
       NOTESTEME_HUB_S3_PATH_STYLE: "true"
       NOTESTEME_HUB_S3_ACCESS_KEY_ID: ${NOTESTEME_HUB_S3_ACCESS_KEY_ID:?請在 .env.hub 設定 NOTESTEME_HUB_S3_ACCESS_KEY_ID}
@@ -91,7 +108,7 @@ services:
     depends_on:
       hub-postgres:
         condition: service_healthy
-      hub-minio-init:
+      hub-s3-init:
         condition: service_completed_successfully
 
   hub:
@@ -108,7 +125,7 @@ services:
       NOTESTEME_HUB_MASTER_KEY: ${NOTESTEME_HUB_MASTER_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_MASTER_KEY}
       NOTESTEME_HUB_SESSION_KEY: ${NOTESTEME_HUB_SESSION_KEY:?請在 .env.hub 設定 NOTESTEME_HUB_SESSION_KEY}
       NOTESTEME_HUB_STORE_DSN: postgres://notesteme_hub:${NOTESTEME_HUB_POSTGRES_PASSWORD:?請在 .env.hub 設定 NOTESTEME_HUB_POSTGRES_PASSWORD}@hub-postgres:5432/notesteme_hub?sslmode=disable
-      NOTESTEME_HUB_S3_ENDPOINT: http://hub-minio:9000
+      NOTESTEME_HUB_S3_ENDPOINT: http://hub-s3:9000
       NOTESTEME_HUB_S3_BUCKET: ${NOTESTEME_HUB_S3_BUCKET:-notesteme-hub}
       NOTESTEME_HUB_S3_PATH_STYLE: "true"
       NOTESTEME_HUB_S3_ACCESS_KEY_ID: ${NOTESTEME_HUB_S3_ACCESS_KEY_ID:?請在 .env.hub 設定 NOTESTEME_HUB_S3_ACCESS_KEY_ID}
@@ -138,5 +155,5 @@ networks:
 
 volumes:
   hub-postgres-data:
-  hub-minio-data:
+  hub-s3-data:
   hub-data:
