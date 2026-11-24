@@ -29,10 +29,10 @@
 | **M1** | [ING](ING-ingest.md) | [SRC](SRC-transcript-sources.md)、[NRM](NRM-normalize.md)、[PIPE](PIPE-pipeline-queue.md) | — | [OUT](OUT-subtitle-output.md)（SRT／VTT）、[LIB](LIB-library.md)、[DEL](DEL-delete.md)、[CLI](CLI-cli.md) | [AUTH](AUTH-access.md)、[SEC](SEC-config-secrets.md)、[GRD](GRD-guards.md)、[OPS](OPS-operations.md) |
 | **M2** | — | — | [LLM](LLM-execution.md)、[SEG](SEG-segment.md)、[COR](COR-correct.md)、[TRN](TRN-translate.md)、[PRM](PRM-prompts.md)、[PRF](PRF-profiles.md) | [OUT](OUT-subtitle-output.md)（ASS、sidecar、匯入）、[LIB](LIB-library.md)（對照檢視）、[DEL](DEL-delete.md)（輸出檔）、[MCP](MCP-tools.md)、[AGT](AGT-agent-tasks.md) | [AUTH](AUTH-access.md)（MCP Origin）、[SEC](SEC-config-secrets.md)（設定匯出入） |
 | **M3** | — | [SPB](SPB-sponsorblock.md) | [FRM](FRM-frames.md)、[CHAP](CHAP-chapters.md)、[NOTE](NOTE-notes.md)、[GEM](GEM-gemini.md) | [VAULT](VAULT-vault-output.md) | — |
-| **M4** | [SUB](SUB-subscriptions.md)、[ENTRY](ENTRY-entry-points.md)、[BND](BND-bundles.md) | [SRC](SRC-transcript-sources.md)（SRC-10） | [DIG](DIG-digest.md)、[BATCH](BATCH-batch-api.md)、[GLOS](GLOS-glossary-review.md) | [SRCH](SRCH-search.md)、[LIB](LIB-library.md)（LIB-08、09）、[NOTIFY](NOTIFY-notifications.md) | [COST](COST-cost-budget.md)、[AUTH](AUTH-access.md)（AUTH-06～08）、[OPS](OPS-operations.md)（OPS-06～08） |
+| **M4** | [SUB](SUB-subscriptions.md)、[ENTRY](ENTRY-entry-points.md)、[BND](BND-bundles.md) | [SRC](SRC-transcript-sources.md)（SRC-10） | [DIG](DIG-digest.md)、[BATCH](BATCH-batch-api.md)、[GLOS](GLOS-glossary-review.md) | [SRCH](SRCH-search.md)、[LIB](LIB-library.md)（LIB-08～10）、[NOTIFY](NOTIFY-notifications.md) | [COST](COST-cost-budget.md)、[AUTH](AUTH-access.md)（AUTH-06～08）、[OPS](OPS-operations.md)（OPS-06～08） |
 | **M5** | HUB | HUB | — | HUB | HUB |
 | **M3** | — | SPB | FRM、CHAP、NOTE、GEM | VAULT | — |
-| **M4** | SUB、ENTRY、BND | SRC-10 | DIG、BATCH、GLOS | SRCH、LIB-08、LIB-09、NOTIFY | COST、AUTH-06～08、OPS-06～08 |
+| **M4** | SUB、ENTRY、BND | SRC-10 | DIG、BATCH、GLOS | SRCH、LIB-08～LIB-10、NOTIFY | COST、AUTH-06～08、OPS-06～08 |
 | **M5** | [HSHR](HSHR-hub-sharing.md) | [HSHR](HSHR-hub-sharing.md)、[HREP](HREP-hub-repository.md) | — | [HREP](HREP-hub-repository.md)、[HMCP](HMCP-hub-mcp.md) | [HACC](HACC-hub-accounts.md) |
 
 ## 3. M1、M2 故事索引
@@ -360,7 +360,7 @@ M4 共 13 項能力（9 份新規格，SRC、LIB、AUTH、OPS 另加 M4 章節�
   - 結果附時間戳，可以直接跳到那一句。MCP `search` 支援 `mode: fulltext`。
   - 規格：[SRCH](SRCH-search.md)：SRCH-R1～R10；場景 [SRCH-search.feature](../../features/SRCH-search.feature)
 
-### LIB-08、LIB-09：批次操作與總覽
+### LIB-08～LIB-10：批次操作、總覽與儲存檢視
 
 - **LIB-08** As the owner, I want to select many items and act on them at once, so that I can rerun, pause or delete in bulk.
   - 動作前顯示影響的數量與預估費用。
@@ -370,6 +370,9 @@ M4 共 13 項能力（9 份新規格，SRC、LIB、AUTH、OPS 另加 M4 章節�
 - **LIB-09** As the owner, I want an overview page, so that I see what needs my attention first.
   - 顯示需要處理的項目、最近完成、本月花費與磁碟用量。
   - 規格：[LIB](LIB-library.md)：LIB-R21～R23；場景 [LIB-bulk-overview.feature](../../features/LIB-bulk-overview.feature)
+- **LIB-10** As the owner, I want to save my library filters as named views, so that I can return to a set of items in one click.
+  - 補上的故事（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：UI pages.md §3 寫 M4 有儲存檢視，但原本沒有任何故事接手。
+  - 規格：[LIB](LIB-library.md)：LIB-R26～R28；場景 [LIB-library.feature](../../features/LIB-library.feature)
 
 ### AUTH-06～08：進階登入與 token 管理
 

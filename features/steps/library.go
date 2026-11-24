@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"slices"
@@ -27,6 +28,7 @@ func registerLibrary(r *Registry, s *Scenario) {
 	})
 	r.Step(`the search index has no rows for {string}`, func(ref string) error { return s.searchIndexRows(ref, false) })
 	r.Step(`the search index has rows for {string}`, func(ref string) error { return s.searchIndexRows(ref, true) })
+	r.Step(`the owner deletes the saved view {string}`, s.ownerDeletesSavedView)
 	// BND 的句型由 bundles.go 實作。
 	registerBundles(r, s)
 	// GLOS 的句型由 glossary_review.go 實作。
@@ -103,4 +105,27 @@ func (s *Scenario) searchIndexRows(ref string, want bool) error {
 		return fmt.Errorf("索引中仍有 %s 的 %d 列", ref, n)
 	}
 	return nil
+}
+
+// ownerDeletesSavedView 用 owner 的 session 讀 GET /api/views，依名稱找到檢視後送出 DELETE /api/views/<id>（LIB-R28）。
+// 檢視的 id 由產品產生，場景無法寫死，所以用名稱指定。最近一次回應是 DELETE 的回應；找不到這個名稱時步驟失敗。
+func (s *Scenario) ownerDeletesSavedView(name string) error {
+	if err := s.ownerSends("GET /api/views"); err != nil {
+		return err
+	}
+	if s.last.status != 200 {
+		return fmt.Errorf("GET /api/views 回應 %d：%s", s.last.status, snippet(s.last.body))
+	}
+	var list struct {
+		Views []struct{ ID, Name string }
+	}
+	if err := json.Unmarshal(s.last.body, &list); err != nil {
+		return fmt.Errorf("GET /api/views 的回應不是 JSON：%w", err)
+	}
+	for _, v := range list.Views {
+		if v.Name == name {
+			return s.ownerSends("DELETE /api/views/" + url.PathEscape(v.ID))
+		}
+	}
+	return fmt.Errorf("找不到名稱是 %q 的檢視", name)
 }

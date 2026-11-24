@@ -1,6 +1,6 @@
 // 媒體庫的篩選列：標題搜尋、平台、錯誤類別、「更多篩選」（頻道、語言、時間來源、發布日、長度、各步驟的狀態），
 // 以及已套用條件的清單（可以個別移除或全部清除）。所有條件都在 URL（filters.ts）。
-import { forwardRef, useEffect, useId, useState, type Ref } from "react";
+import { forwardRef, useEffect, useId, useState, type ReactNode, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "../../components";
@@ -26,6 +26,8 @@ export interface FilterBarProps {
   /** 合併後重新驗證；replace=true 時不新增瀏覽紀錄（打字中的搜尋） */
   onChange: (patch: SearchPatch, opts?: { replace?: boolean }) => void;
   onClear: () => void;
+  /** 「已套用」那一列最後的動作（例如「存成檢視」，LIB-R28） */
+  appliedActions?: ReactNode;
 }
 
 const DEBOUNCE_MS = 300;
@@ -231,7 +233,7 @@ function useAppliedChips(search: LibrarySearch, onChange: FilterBarProps["onChan
   return chips;
 }
 
-export function FilterBar({ search, onChange, onClear }: FilterBarProps) {
+export function FilterBar({ search, onChange, onClear, appliedActions }: FilterBarProps) {
   const { t } = useTranslation();
   const [more, setMore] = useState(false);
   const panelId = useId();
@@ -400,6 +402,7 @@ export function FilterBar({ search, onChange, onClear }: FilterBarProps) {
           <Button variant="text" onClick={onClear}>
             {t("library.filters.clearAll")}
           </Button>
+          {appliedActions}
         </div>
       )}
     </div>

@@ -259,7 +259,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 「新增」抽屜：貼上網址辨識預覽（影片、播放清單、頻道、Podcast 各集、Bilibili 分P）、本機檔案上傳、處理方案、依 `code` 的錯誤與修正動作、toast | 完成 | `src/add` |
 | 導覽的「新增」按鈕、`N`、焦點不在輸入框時貼上網址 | 完成 | `src/shell/AppShell.tsx`、`keyboard.ts` |
 | 時間帶（精簡版）放進 `web/shared` | 完成 | `web/shared/src/StatusBand.tsx`、[web/shared/README](../../web/shared/README.md) |
-| 依頻道／發布日／狀態分組、「格」檢視、儲存檢視 | 分組完成（收尾 D1，見 10.22）；「格」檢視完成（UI-8）；儲存檢視未做 | 儲存檢視不在 M4 範圍 |
+| 依頻道／發布日／狀態分組、「格」檢視、儲存檢視 | 分組完成（收尾 D1，見 10.22）；「格」檢視完成（UI-8）；儲存檢視完成（2026-11-25，見 10.29） | `src/pages/library/SavedViews.tsx` |
 | 批次操作、垃圾桶檢視 | 完成（UI-7，見 10.18） | `src/pages/library/BulkBar.tsx`、`src/pages/trash` |
 | 預估花費（`POST /api/estimate`） | 完成（10.24 第 3 點） | `src/add/AddDrawer.tsx` |
 | 「調整這次的設定」 | 完成（10.27） | `src/add/RunOverrides.tsx` |
@@ -573,7 +573,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 垃圾桶 `/trash`（lazy）：刪除時間、幾天後永久刪除、還原（不確認）、永久刪除與清空（先確認）；媒體庫搜尋欄下方的入口 | 完成 | `src/pages/trash` |
 | `G` 然後 `L`／`Q`／`S`、`?` 快捷鍵說明、影音詳情的 `1`–`4` | 完成 | `src/shell`、`src/pages/item/ItemPage.tsx` |
 | 匯入 409 連到既有影音、影音詳情的「從 bundle 匯入」、術語審核 `item` 的型別、「等你決定」改用 `blocked=` 篩選 | 未做：後端補洞切片在交付時還沒有合併到 master（見 10.19 第 9 點）。（UI-8 已做，見 10.20、10.21） | — |
-| 指令面板、影音詳情的 `Space`／`←`／`→`／`[`／`]`、依頻道分組、「格」檢視、儲存檢視 | 未做：之後的切片（儲存檢視不在 M4）。（UI-8 已做指令面板、播放快捷鍵與「格」檢視；依頻道分組已在收尾 D1 完成（10.22），儲存檢視仍未做） | — |
+| 指令面板、影音詳情的 `Space`／`←`／`→`／`[`／`]`、依頻道分組、「格」檢視、儲存檢視 | 未做：之後的切片。（UI-8 已做指令面板、播放快捷鍵與「格」檢視；依頻道分組已在收尾 D1 完成（10.22）；儲存檢視已在 2026-11-25 完成（10.28）） | — |
 | 真實瀏覽器的視覺、鍵盤與螢幕閱讀器驗收（`@ui @manual`：LIB-08、LIB-09、DIG 的「從媒體庫挑選暫停的影音」） | owner 手動驗收 | — |
 
 驗證：vitest 46 個檔案 444 個測試（總覽、垃圾桶、批次對話框、快捷鍵說明都有 axe；`a11yRoutes` 加 `/`、`/trash`）、i18n 三語各 1695 個 key、初始 JS 281.5KB gzip（UI-6 之後 274.0KB）。**沒有改後端**（OpenAPI 與 `schema.d.ts` 不變）。
@@ -612,7 +612,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 767px 以下的底部分頁列（README §8）：總覽、媒體庫、新增、佇列、更多（對話框：其餘頁面、偏好、登出） | 完成 | `src/shell/{TabBar.tsx,AppShell.tsx}` |
 | 媒體庫的「列｜格」切換與「格」檢視（pages.md §3） | 完成（lazy，沒有多選，見 10.21 第 7 點） | `src/pages/library/LibraryGrid.tsx` |
 | 媒體庫依頻道分組 | 完成（收尾 D1，見 10.22） | `src/pages/library/groups.ts`、`src/pages/LibraryPage.tsx` |
-| 儲存檢視 | 未做：LIB 寫明不在 M4，也沒有 `/api/views` | — |
+| 儲存檢視 | ~~未做：LIB 寫明不在 M4，也沒有 `/api/views`~~ 已做（2026-11-25，LIB-R26～R28，見 10.29） | `src/pages/library/SavedViews.tsx` |
 | 總覽「今天」的事件缺步驟、狀態與影音 ID | 未做（不改後端）：維持 UI-7 的近似呈現，仍是 10.19 第 5 點的待決 | — |
 | 真實瀏覽器的視覺、鍵盤與螢幕閱讀器驗收（`@ui @manual`：BND「匯入的筆記不含 raw HTML」與「從 bundle 匯入」、DIG「從媒體庫挑選暫停的影音」） | owner 手動驗收 | — |
 
@@ -798,3 +798,18 @@ pages.md §12 的「服務與金鑰」要求每個 provider 都有「測試連�
 8. **縮圖並排比較**：每張縮圖都是一次 ffmpeg，後端同時只做 2 個預覽，所以**不自動挑影音**（打開頁面不花任何渲染），選了影音才開始；縮圖進入視窗（`IntersectionObserver`，瀏覽器沒有時視為都在視窗內）才排進佇列，一次只送一個請求，前一張完成才送下一張；換影音時取消進行中的請求、釋放圖片。用預覽 API 的預設畫面時間（不另外選時間）。媒體庫沒有影音時顯示空狀態、不顯示選擇器。失敗的那張寫「預覽尚未可用：原因」，不擋下一張。
 9. **介面密度**：design-language.md 原本沒有定義，和 pages.md §12 矛盾。取最保守的做法：兩檔（舒適＝現狀、緊湊），緊湊只縮小列表的列與表格儲存格的上下留白，不改字級、`--space-*` token 與按鈕（定義在 design-language.md §5.5）。和主題同一個機制（localStorage、`<html data-density>`、啟動時在 `main.tsx` 套用），不存到伺服器。測試檢查 `density.css` 只有 `padding-block` 宣告。
 10. **bundle**：處理方案編輯器變大後初始 JS 到 288KB（預算 300KB），所以 `/profiles`、`/profiles/$id`、`/styles`、`/styles/$id` 改成 lazy route（和其他「調整」頁一樣），初始 JS 回到約 280KB。
+
+### 10.29 儲存檢視（2026-11-25）
+
+pages.md §3 寫 M4 有儲存檢視（線框的「存成檢視」、`GET/POST /api/views`），LIB 與 SRCH 規格卻寫不在範圍內，沒有任何故事接手。依 /goal 補上 LIB-10、LIB-R26～R28（決定記在 LIB 規格的待決問題，待 owner 追認）。
+
+| 項目 | 狀態 | 位置 |
+| --- | --- | --- |
+| 「已套用」那一列的「存成檢視」：對話框輸入名稱（最多 60 字元），名稱重複（409 `view_exists`）或到上限（409 `view_limit`）的錯誤顯示在對話框裡，成功時 toast | 完成 | `src/pages/library/SavedViews.tsx`、`FilterBar.tsx` 的 `appliedActions` |
+| 已存的檢視：篩選列下方的一排 chip，點名稱套用，× 刪除（先確認）；套用中的檢視加粗、加深框線，並以 `aria-pressed` 標出 | 完成 | `src/pages/library/SavedViews.tsx`、`src/styles/library.css` |
+
+1. **存網址參數**：檢視的 `query` 就是媒體庫網址的篩選條件（`FILTER_KEYS`）加上分組 `group`；「列｜格」不存。套用時把網址參數整組換成檢視的內容（不是合併），只保留目前的顯示方式；舊的檢視再經 `validateLibrarySearch` 驗證一次，現在不認得的值會被丟掉。
+2. **只有套用中有篩選時才能存**：照線框，「存成檢視」放在「已套用」那一列；只改分組、沒有篩選時不顯示（API 允許只有分組的檢視，UI 沒有入口）。
+3. **沒有已存的檢視時整排不顯示**；讀取失敗時顯示錯誤與「重試」，不影響列表。
+
+驗證：這個切片新增 `savedViews.test.tsx` 的 5 個測試（存成檢視的對話框與套用後的頁面都有 axe）與三語各 17 個 key（`library.views.*`、`errors.view_exists`、`errors.view_limit`）；併入 master 時 vitest、i18n 與初始 JS 都在預算內（推送前的數字見提交時的 CI）。

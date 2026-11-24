@@ -198,3 +198,103 @@ Feature: Library, item page and queue page
                     { "stage": "segment" },
                     { "stage": "correct", "status": "running", "provider": "anthropic", "progress": { "done": 1, "total": 2 } } ] }
       """
+
+  @M4 @LIB-10 @LIB-R26 @LIB-R27
+  Scenario: The current library filters are saved as a named view
+    When the owner sends "POST /api/views" with:
+      """
+      { "name": "YouTube 待處理", "query": { "platform": "youtube", "status": ["normalize:done"], "q": "Postgre", "group": "status" } }
+      """
+    Then the response status is 201
+    When the owner sends "POST /api/views" with:
+      """
+      { "name": "等你決定", "query": { "blocked": "awaiting_user", "published_from": "2026-11-01", "dur_max": 30 } }
+      """
+    And the owner sends "GET /api/views"
+    Then the response contains:
+      """
+      { "views": [
+          { "id": "*", "name": "YouTube 待處理", "created_at": "*",
+            "query": { "platform": "youtube", "status": ["normalize:done"], "q": "Postgre", "group": "status" } },
+          { "name": "等你決定", "query": { "blocked": "awaiting_user", "published_from": "2026-11-01", "dur_max": 30 } } ] }
+      """
+
+  @M4 @LIB-10 @LIB-R27
+  Scenario: A view name is unique regardless of case
+    Given the owner sends "POST /api/views" with:
+      """
+      { "name": "Bilibili", "query": { "platform": "bilibili" } }
+      """
+    When the owner sends "POST /api/views" with:
+      """
+      { "name": "bilibili", "query": { "platform": "youtube" } }
+      """
+    Then the response status is 409
+    And the response contains:
+      """
+      { "code": "view_exists", "message": "已經有名稱是「bilibili」的檢視。" }
+      """
+
+  @M4 @LIB-10 @LIB-R27
+  Scenario Outline: A view keeps only valid library parameters
+    When the owner sends "POST /api/views" with:
+      """
+      { "name": "壞掉的檢視", "query": <query> }
+      """
+    Then the response status is 422
+    And the response contains:
+      """
+      { "code": "invalid_request", "errors": [ { "path": "<path>" } ] }
+      """
+    When the owner sends "GET /api/views"
+    Then the response contains:
+      """
+      { "views": [] }
+      """
+    And the response does not contain "壞掉的檢視"
+
+    Examples:
+      | query                                   | path                 |
+      | {}                                      | query                |
+      | { "platform": "vimeo" }                 | query.platform       |
+      | { "status": ["publish:sleeping"] }      | query.status         |
+      | { "published_from": "2026-02-30" }      | query.published_from |
+      | { "group": "channel" }                  | query.group          |
+
+  @M4 @LIB-10 @LIB-R27
+  Scenario: A view does not accept parameters the library does not know
+    When the owner sends "POST /api/views" with:
+      """
+      { "name": "格狀檢視", "query": { "platform": "youtube", "view": "grid" } }
+      """
+    Then the response status is 422
+    And the response contains:
+      """
+      { "code": "invalid_request" }
+      """
+
+  @M4 @LIB-10 @LIB-R28
+  Scenario: A saved view is deleted
+    Given the owner sends "POST /api/views" with:
+      """
+      { "name": "舊的檢視", "query": { "read_state": "unread" } }
+      """
+    When the owner deletes the saved view "舊的檢視"
+    Then the response status is 204
+    When the owner sends "GET /api/views"
+    Then the response does not contain "舊的檢視"
+
+  @M4 @LIB-10 @LIB-R26 @LIB-R27 @LIB-R28
+  Scenario: Reading views needs read and changing them needs admin
+    Given a token "viewer" with scopes "read,ingest"
+    When the client sends "GET /api/views" with the token "viewer"
+    Then the response status is 200
+    When the client sends "POST /api/views" with the token "viewer" and:
+      """
+      { "name": "x", "query": { "platform": "youtube" } }
+      """
+    Then the response status is 403
+    And the response contains:
+      """
+      { "required_scope": "admin" }
+      """

@@ -306,6 +306,7 @@ func (rt *routes) register(api huma.API) {
 	}, auth.ScopeRead, rt.listRuns)
 	rt.registerQueue(api)
 	rt.registerCookies(api)
+	rt.registerViews(api)
 	rt.registerCancel(api)
 	// DEL 切片的路由，各自放在獨立的檔案；實作前 pipeline 回 501。
 	rt.registerTrash(api)

@@ -29,6 +29,7 @@ import { formatNumber } from "../i18n";
 import { usePageTitle } from "../shell/usePageTitle";
 import { isEditableTarget } from "../shell/keyboard";
 import { FilterBar, SearchBox, type SearchPatch } from "./library/FilterBar";
+import { SavedViewsList, SaveViewButton } from "./library/SavedViews";
 import {
   AWAITING_USER,
   hasFilters,
@@ -251,7 +252,14 @@ export function LibraryPage() {
           {t("trash.title")}
         </Link>
       </p>
-      <FilterBar search={search} onChange={setSearch} onClear={clearFilters} />
+      <FilterBar
+        search={search}
+        onChange={setSearch}
+        onClear={clearFilters}
+        appliedActions={<SaveViewButton search={search} />}
+      />
+      {/* LIB-R26～R28：已存的檢視，套用就是把網址參數整組換掉 */}
+      <SavedViewsList search={search} onApply={(next) => void navigate({ search: next })} />
 
       {/* 等你決定（DIG-R7）：勾選要繼續的影音，由批次操作列「繼續處理」（UI-8 起不再一次送已載入的全部） */}
       {search.blocked === AWAITING_USER && !grid && rows.length > 0 && sel.ids.size === 0 && (

@@ -1,7 +1,7 @@
 # LIB：媒體庫、影音詳情與佇列頁
 
-- 狀態：draft（M4 章節 LIB-R13～R23：ready）
-- 里程碑：M1（列表、基本篩選、標題搜尋、字幕分頁、佇列頁）、M2（對照、差異、重新處理選單）、M4（批次操作、總覽，LIB-R13～R23）
+- 狀態：draft（M4 章節 LIB-R13～R28：ready）
+- 里程碑：M1（列表、基本篩選、標題搜尋、字幕分頁、佇列頁）、M2（對照、差異、重新處理選單）、M4（批次操作、總覽、列的進度、儲存檢視，LIB-R13～R28）
 - 相關：plan 第 14 節；[ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md)（第 8 點）；UI [總覽](../ui/pages.md#1-總覽)、[媒體庫](../ui/pages.md#3-媒體庫)、[影音詳情](../ui/pages.md#4-影音詳情)、[佇列](../ui/pages.md#6-佇列)、[設計語言](../ui/design-language.md)
 - 驗收場景：[`features/LIB-library.feature`](../../features/LIB-library.feature)；M4：[`features/LIB-bulk-overview.feature`](../../features/LIB-bulk-overview.feature)
 
@@ -22,6 +22,7 @@
 | LIB-07 | As the owner, I want to rerun an item from any stage or with another prompt or model, so that I can improve a result without starting over. | M2 |
 | LIB-08 | As the owner, I want to select many items and act on them at once, so that I can rerun, pause or delete in bulk. | M4 |
 | LIB-09 | As the owner, I want an overview page, so that I see what needs my attention first. | M4 |
+| LIB-10 | As the owner, I want to save my library filters as named views, so that I can return to a set of items in one click. | M4 |
 
 ## 規則
 
@@ -52,6 +53,9 @@
 | LIB-R23 | UI：總覽（UI 第 1 節）的「現在」最多列 3 部並顯示「還有 N 部」連到佇列，「需要你處理」每一項都有直接處理的按鈕、沒有項目時整個區塊隱藏，「今天」依時間排列，底部顯示本月花費與預算。媒體庫（UI 第 3 節）選取多列後出現批次操作列；執行之前先以 `dry_run` 取得影響範圍，確認對話框顯示數量與預估費用，刪除時另外顯示 DEL-R3 的合計；部分失敗時列出失敗的影音與原因。 | M4 |
 | LIB-R24 | `GET /api/items/:id` 的步驟（`stages[]`）在狀態是 `running` 時多兩個欄位：`progress{done, total}` 是那個 stage run 的任務完成數，算法同 LIB-R21 的 `now.progress`（不含取消的任務；`total` 為 0 時省略）；`provider` 是那個 stage run 的設定快照中 `stages.<stage>.provider`（沒有時省略）。其他狀態的步驟不回這兩個欄位。媒體庫列的狀態欄顯示它們（UI 第 3 節的「轉錄 4/5 段」「Groq」）。 | M4 |
 | LIB-R25 | 產出的版本（LIB-R11 的「舊版本保留並可比較」）：`GET /api/items/:id/artifacts?kind=&variant=`（`read`）列出影音每個產出保留中的每個版本，包括被取代的版本（PIPE-R7），依 `(kind, variant, lang)` 分組、組的順序是現行版本的建立順序、組內由新到舊：`{artifacts: [{id, kind, variant?, lang?, format, size, created_at, current, stage?, executor?, provider?, model?, prompt?, prompt_version?}]}`；來源資訊只取來源紀錄中的這幾個欄位（型別不對的丟掉）。`kind`、`variant` 是選填的完全比對篩選。`GET /api/artifacts/:id/content?format=`（`read`）回傳一個版本的內容：字幕（`transcript`）的 `format` 是 `json`（預設，形狀同 `GET /api/items/:id/cues` 的 `{variant, lang, cues}`）、`srt`、`vtt`、`txt`；筆記（`note`）是 `md`（預設，`text/markdown`）。其他種類或 format 回 422 `invalid_request`；產出不存在回 404 `not_found`「找不到這個產出。」；影音在垃圾桶中回 404 `in_trash`（列表也是）；產出檔損毀回 409 `artifact_corrupt`（現行版本照 NFR-REL-2 從產生它的步驟重跑，舊版本只標記）。 | M2 |
+| LIB-R26 | 媒體庫的篩選與分組可以存成有名稱的檢視（`saved_views` 表）。檢視存的是媒體庫的**網址參數**（LIB-R2），不是 `GET /api/items` 的參數：`q`、`platform`、`channel`、`status`（可多個）、`error_class`、`lang`、`published_from`、`published_to`（`YYYY-MM-DD`）、`dur_min`、`dur_max`（分鐘）、`timing`、`blocked`、`read_state` 與分組 `group`（`published`、`status`、`none`，省略是依頻道）；顯示方式（列｜格）不存。`GET /api/views`（`read`）依建立順序列出 `{views[{id, name, query, created_at}]}`；套用檢視就是把網址參數整組換成 `query`。 | M4 |
+| LIB-R27 | `POST /api/views`（`admin`）`{name, query}` 建立檢視，回 201 與檢視。名稱去掉前後空白後 1～60 個字元、不含控制字元，不分大小寫（Go 的 `strings.ToLower`）不得重複，重複回 409 `view_exists`「已經有名稱是「<名稱>」的檢視。」。`query` 至少要有一個參數；每個參數的值照 `GET /api/items` 的規則驗證（日期必須存在、分鐘不得小於 0、`q` 最多 200 字元、`status` 最多 96 個（每個步驟的每個狀態各一個））；不認識的參數與不合法的值回 422 `invalid_request`，`errors[].path` 是 `name` 或 `query.<參數>`。最多 100 個檢視，超過回 409 `view_limit`。 | M4 |
+| LIB-R28 | `DELETE /api/views/:id`（`admin`）刪除檢視，回 204；不存在回 404 `not_found`「找不到這個檢視。」。UI：媒體庫有套用中的篩選時，篩選列顯示「存成檢視」（輸入名稱的對話框）；已存的檢視列在篩選列下方，點一下套用，每個都可以刪除（先確認）。 | M4 |
 
 ## 介面
 
@@ -98,10 +102,11 @@
 - 處理方案、`pipeline.Stages`、`outputs`：不影響。
 - CLI：既有的 `notesteme items rm <ref>...`（DEL-R13）已經可以一次刪除多部；M4 不新增批次的 CLI 子命令。
 - UI：總覽（UI 第 1 節）、媒體庫的批次操作列（UI 第 3 節）。
+- 儲存檢視（LIB-R26～R28）：API `GET /api/views`（`read`）、`POST /api/views`、`DELETE /api/views/:id`（`admin`）；資料表 `saved_views (id, name, name_fold UNIQUE, query_json, created_at)`。檢視只存網址參數，後端不執行查詢；MCP 與 CLI 不提供。
 
 ## 不在範圍內
 
-- 字幕全文搜尋見 [SRCH 規格](SRCH-search.md)；儲存檢視不在 M4 範圍內。批次操作見 LIB-R13～R20。
+- 字幕全文搜尋見 [SRCH 規格](SRCH-search.md)。批次操作見 LIB-R13～R20；儲存檢視見 LIB-R26～R28（MCP、CLI 不提供儲存檢視）。
 - 畫面與筆記分頁（M3）。
 
 ### M4
@@ -180,3 +185,12 @@
   - **損毀**：讀舊版本時也驗證 sha256；`handleCorrupt` 只會讓現行版本重跑，舊版本只標記並回 409，避免讀一個舊版本就觸發重新處理。
   - **沒有改 sqlc 查詢**：列表用既有的 `CurrentArtifacts` 找出各組，再用既有的 `ArtifactGroup` 讀每組的版本（每組最多保留 3 版加上被引用的版本，組數是個位數）。
   - 場景：`features/LIB-library.feature` 的「The versions of a rerun output can be listed and read for comparison」（`@M2`），步驟句型 `the version … of the … artifact of … is known as …` 已在 steps.md 登記。
+
+- 儲存檢視（LIB-10、LIB-R26～R28，2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：原本寫不在 M4，pages.md 寫 M4（§3 的里程碑、「存成檢視」的線框與 `GET/POST /api/views`），現在補上。決定如下：
+  - **存網址參數，不存 API 參數**：媒體庫的篩選本來就在網址（LIB-R2），套用就是還原網址，UI 不必轉換；所以長度是分鐘、發布日是 `YYYY-MM-DD`，和 `GET /api/items` 不同。驗證重用 `pipeline.ItemQuery.Validate`（每次帶一個參數，錯誤才能指到欄位），規則和列表一致。
+  - **分組存、顯示方式不存**：`group` 決定看到哪些組，是檢視的一部分；「列｜格」只是呈現，不存（`view` 參數回 422）。
+  - **scope**：父代理的需求寫「建立與刪除用 `write`」，但 token 的 scope 只有 `read`、`agent`、`ingest`、`admin`（`internal/auth` 的 Scope*，AUTH-R8 的宣告方式），沒有 `write`。不新增 scope，取最嚴格的 `admin`（同 ASS 樣式庫的建立，OUT-R6）；列出用 `read`。
+  - **名稱**：不分大小寫不得重複（同名的兩個檢視在 UI 上分不出來）；最多 60 字元、100 個檢視，都是保守的上限，需要時再放寬。列表依建立順序，不依名稱排序。
+  - **沒有修改（PATCH）**：要改就刪掉再存；pages.md 只要求存、套用與刪除。
+  - **頻道**：檢視存頻道 ID；頻道被刪除後套用會得到空的列表，檢視不自動刪除。
+

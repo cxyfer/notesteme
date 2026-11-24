@@ -1320,6 +1320,24 @@
         ],
         "type": "object"
       },
+      "CreateViewInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "名稱：去掉前後空白後 1～60 個字元，不含控制字元；不分大小寫不得重複",
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/ViewQuery",
+            "description": "至少一個篩選條件或分組"
+          }
+        },
+        "required": [
+          "name",
+          "query"
+        ],
+        "type": "object"
+      },
       "CreatedToken": {
         "additionalProperties": false,
         "properties": {
@@ -3640,6 +3658,24 @@
         },
         "required": [
           "tokens"
+        ],
+        "type": "object"
+      },
+      "ListViewsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "views": {
+            "items": {
+              "$ref": "#/components/schemas/ViewBody"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "views"
         ],
         "type": "object"
       },
@@ -7425,6 +7461,101 @@
           "last_error_class",
           "new_items"
         ],
+        "type": "object"
+      },
+      "ViewBody": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/ViewQuery"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "query",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ViewQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked": {
+            "description": "停住的原因，例如 awaiting_user",
+            "type": "string"
+          },
+          "channel": {
+            "description": "頻道 ID，最多 200 字元",
+            "type": "string"
+          },
+          "dur_max": {
+            "description": "長度上限（分鐘，含），不得小於 0",
+            "format": "int64",
+            "type": "integer"
+          },
+          "dur_min": {
+            "description": "長度下限（分鐘，含），不得小於 0",
+            "format": "int64",
+            "type": "integer"
+          },
+          "error_class": {
+            "description": "retryable、wait、needs_action、budget_blocked 或 permanent",
+            "type": "string"
+          },
+          "group": {
+            "description": "published、status 或 none（不分組）；省略時依頻道分組",
+            "type": "string"
+          },
+          "lang": {
+            "description": "原文語言，最多 200 字元",
+            "type": "string"
+          },
+          "platform": {
+            "description": "youtube、bilibili、podcast 或 local",
+            "type": "string"
+          },
+          "published_from": {
+            "description": "發布日下限（含），YYYY-MM-DD",
+            "type": "string"
+          },
+          "published_to": {
+            "description": "發布日上限（含），YYYY-MM-DD",
+            "type": "string"
+          },
+          "q": {
+            "description": "標題搜尋，最多 200 字元",
+            "type": "string"
+          },
+          "read_state": {
+            "description": "read 或 unread",
+            "type": "string"
+          },
+          "status": {
+            "description": "\u003c步驟\u003e:\u003c狀態\u003e，同 GET /api/items 的 status；最多 96 個",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "timing": {
+            "description": "source、merged、silence、interpolated 或 model",
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "Word": {
@@ -13328,6 +13459,101 @@
           }
         },
         "summary": "列出設定檔定義的 vault（id、adapter、base；VAULT-R1）"
+      }
+    },
+    "/api/views": {
+      "get": {
+        "operationId": "views-list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListViewsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出媒體庫的儲存檢視，依建立順序（LIB-R26）"
+      },
+      "post": {
+        "operationId": "views-create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateViewInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewBody"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "把媒體庫目前的篩選與分組存成有名稱的檢視；內容不正確回 422，名稱重複回 409 view_exists，數量到上限回 409 view_limit（LIB-R27）"
+      }
+    },
+    "/api/views/{id}": {
+      "delete": {
+        "operationId": "views-delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "刪除儲存檢視；不存在回 404（LIB-R28）"
       }
     },
     "/healthz": {

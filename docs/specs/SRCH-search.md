@@ -57,7 +57,7 @@
 - 筆記、章節、畫面說明的全文搜尋（只搜字幕）。
 - 簡繁互通、拼音、模糊比對、同義詞（SRCH-R9）。
 - 依相關度排序（SRCH-R7）。
-- 儲存檢視（`GET/POST /api/views`，屬於 LIB 的另一個切片）。
+- 儲存檢視：見 LIB 規格的 LIB-R26～R28（`GET/POST /api/views`、`DELETE /api/views/:id`），只存媒體庫的篩選，不存字幕全文搜尋的查詢。
 
 ## 待決問題
 

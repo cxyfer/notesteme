@@ -138,7 +138,9 @@
     "notifier_exists": "A notification endpoint with this id already exists.",
     "too_many_notifiers": "You can have at most 20 notification endpoints.",
     "task_not_retryable": "This step can't be retried now: only failed, stopped or cancelled steps that aren't being processed can be retried.",
-    "task_not_cancellable": "This task has already finished and can't be cancelled."
+    "task_not_cancellable": "This task has already finished and can't be cancelled.",
+    "view_exists": "A view with this name already exists. Choose another name.",
+    "view_limit": "You've reached the limit of 100 views. Delete one you no longer use first."
   },
   "status": {
     "pending": "Waiting",
@@ -402,7 +404,24 @@
     "band": {
       "seek": "Click a point on the timeline to open “{{title}}” at that time"
     },
-    "progress": "{{done}}/{{total}} tasks"
+    "progress": "{{done}}/{{total}} tasks",
+    "views": {
+      "title": "Saved views",
+      "save": "Save as view",
+      "saveTitle": "Save as view",
+      "saveBody": "Save the current filters and grouping so you can come back to these items in one click.",
+      "name": "Name",
+      "nameHint": "Up to {{max}} characters, different from your other views.",
+      "saveConfirm": "Save",
+      "cancel": "Cancel",
+      "saved": "Saved the view “{{name}}”",
+      "delete": "Delete the view “{{name}}”",
+      "deleteTitle": "Delete the view “{{name}}”?",
+      "deleteBody": "Only the view is deleted; your items stay as they are.",
+      "deleteConfirm": "Delete",
+      "deleted": "Deleted the view “{{name}}”",
+      "loadError": "Couldn't load your saved views."
+    }
   },
   "add": {
     "open": "Add",

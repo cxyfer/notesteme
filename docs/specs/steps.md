@@ -631,6 +631,12 @@ M4-S5 的實作說明（2026-11-23，依 /goal 採 advisor 建議，待 owner �
 | `Then the search index has no rows for {string}` | 以唯讀方式查詢 DB：`search_cues` 中沒有這部影音（影音 ID 取自代號對照表，永久刪除後仍是原本的 ID）的任何列，而且 `cues_fts` 的 `integrity-check` 通過（外部內容表與索引一致）。代號從未對應到影音 ID 時失敗。實作註記（M4-S8）：`integrity-check` 是寫入陳述句，唯讀連線不能執行，harness 經測試專用的 `Server.SearchIndexCheck` 在寫入連線上執行，不改變資料 |
 | `Then the search index has rows for {string}` | 以唯讀方式查詢 DB：`search_cues` 中至少有一列屬於這部影音；用來確認 `has no rows` 不是因為查錯資料表而成立 |
 
+#### 儲存檢視（LIB）
+
+| 步驟 | 意思 |
+|---|---|
+| `When the owner deletes the saved view {string}` | 用 owner 的 session 讀 `GET /api/views`，找到名稱相同的檢視後送出 `DELETE /api/views/<id>`；回應成為最近一次的回應。檢視的 id 由產品產生，場景無法寫死，所以用名稱指定。`GET /api/views` 不是 200 或找不到這個名稱時步驟失敗（LIB-R28） |
+
 #### Bundle（BND）
 
 bundle 一律在執行時由步驟產生（Go 的 `archive/zip`，必要時用 `CreateRaw` 自訂 header），不 commit 任何二進位 fixture。路徑參數套用 `/tmp/<x>` → `<場景根目錄>/tmp/<x>` 的對應。「合法 bundle」是固定內容（下表第一列），讓場景可以直接寫出產出的路徑與文字。

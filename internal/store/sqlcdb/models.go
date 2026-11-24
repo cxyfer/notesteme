@@ -358,6 +358,14 @@ type PromptVersion struct {
 	CreatedAt     int64
 }
 
+type SavedView struct {
+	ID        string
+	Name      string
+	NameFold  string
+	QueryJson string
+	CreatedAt int64
+}
+
 type ScheduledJob struct {
 	Kind      string
 	Key       string

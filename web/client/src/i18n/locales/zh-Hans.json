@@ -138,7 +138,9 @@
     "notifier_exists": "已经有这个 id 的通知端点。",
     "too_many_notifiers": "最多只能有 20 个通知端点。",
     "task_not_retryable": "这个步骤现在不能重试：只有失败、停住或已取消、而且没有在处理的步骤可以重试。",
-    "task_not_cancellable": "这个任务已经结束，不能取消。"
+    "task_not_cancellable": "这个任务已经结束，不能取消。",
+    "view_exists": "已经有同名的视图。换一个名称。",
+    "view_limit": "视图已经到上限（100 个）。先删除不用的视图。"
   },
   "status": {
     "pending": "等待中",
@@ -384,7 +386,24 @@
     "band": {
       "seek": "在时间带上点一个位置，打开「{{title}}」并定位到那个时间"
     },
-    "progress": "{{done}}/{{total}} 个任务"
+    "progress": "{{done}}/{{total}} 个任务",
+    "views": {
+      "title": "已保存的视图",
+      "save": "保存为视图",
+      "saveTitle": "保存为视图",
+      "saveBody": "把当前的筛选条件与分组保存起来，之后点一下就能回到这组影音。",
+      "name": "名称",
+      "nameHint": "最多 {{max}} 个字符，不能和其他视图重复。",
+      "saveConfirm": "保存",
+      "cancel": "取消",
+      "saved": "已保存视图“{{name}}”",
+      "delete": "删除视图“{{name}}”",
+      "deleteTitle": "删除视图“{{name}}”？",
+      "deleteBody": "只删除这个视图，影音不受影响。",
+      "deleteConfirm": "删除",
+      "deleted": "已删除视图“{{name}}”",
+      "loadError": "无法读取已保存的视图。"
+    }
   },
   "add": {
     "open": "新增",

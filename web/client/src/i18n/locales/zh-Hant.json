@@ -138,7 +138,9 @@
     "notifier_exists": "已經有這個 id 的通知端點。",
     "too_many_notifiers": "最多只能有 20 個通知端點。",
     "task_not_retryable": "這個步驟現在不能重試：只有失敗、停住或已取消、而且沒有在處理的步驟可以重試。",
-    "task_not_cancellable": "這個任務已經結束，不能取消。"
+    "task_not_cancellable": "這個任務已經結束，不能取消。",
+    "view_exists": "已經有同名的檢視。換一個名稱。",
+    "view_limit": "檢視已經到上限（100 個）。先刪除不用的檢視。"
   },
   "status": {
     "pending": "等待中",
@@ -384,7 +386,24 @@
     "band": {
       "seek": "在時間帶上點一個位置，打開「{{title}}」並定位到那個時間"
     },
-    "progress": "{{done}}/{{total}} 個任務"
+    "progress": "{{done}}/{{total}} 個任務",
+    "views": {
+      "title": "已存的檢視",
+      "save": "存成檢視",
+      "saveTitle": "存成檢視",
+      "saveBody": "把目前的篩選條件與分組存起來，之後點一下就能回到這組影音。",
+      "name": "名稱",
+      "nameHint": "最多 {{max}} 個字元，不能和其他檢視重複。",
+      "saveConfirm": "儲存",
+      "cancel": "取消",
+      "saved": "已儲存檢視「{{name}}」",
+      "delete": "刪除檢視「{{name}}」",
+      "deleteTitle": "刪除檢視「{{name}}」？",
+      "deleteBody": "只刪除這個檢視，影音不受影響。",
+      "deleteConfirm": "刪除",
+      "deleted": "已刪除檢視「{{name}}」",
+      "loadError": "無法讀取已存的檢視。"
+    }
   },
   "add": {
     "open": "新增",

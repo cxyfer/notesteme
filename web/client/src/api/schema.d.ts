@@ -1832,6 +1832,41 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/views": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** 列出媒體庫的儲存檢視，依建立順序（LIB-R26） */
+    get: operations["views-list"];
+    put?: never;
+    /** 把媒體庫目前的篩選與分組存成有名稱的檢視；內容不正確回 422，名稱重複回 409 view_exists，數量到上限回 409 view_limit（LIB-R27） */
+    post: operations["views-create"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/views/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** 刪除儲存檢視；不存在回 404（LIB-R28） */
+    delete: operations["views-delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/healthz": {
     parameters: {
       query?: never;
@@ -2351,6 +2386,12 @@ export interface components {
       name: string;
       /** @description 允許的 scope：read、agent、ingest、admin */
       scopes: string[] | null;
+    };
+    CreateViewInputBody: {
+      /** @description 名稱：去掉前後空白後 1～60 個字元，不含控制字元；不分大小寫不得重複 */
+      name: string;
+      /** @description 至少一個篩選條件或分組 */
+      query: components["schemas"]["ViewQuery"];
     };
     CreatedToken: {
       /** Format: date-time */
@@ -3133,6 +3174,9 @@ export interface components {
     };
     ListTokensOutputBody: {
       tokens: components["schemas"]["TokenInfo"][] | null;
+    };
+    ListViewsOutputBody: {
+      views: components["schemas"]["ViewBody"][] | null;
     };
     ListedItem: {
       availability?: string;
@@ -4353,6 +4397,49 @@ export interface components {
       /** @description 第一次檢查時從來源取得；還沒檢查時是空字串 */
       title: string;
       url: string;
+    };
+    ViewBody: {
+      /** Format: date-time */
+      created_at: string;
+      id: string;
+      name: string;
+      query: components["schemas"]["ViewQuery"];
+    };
+    ViewQuery: {
+      /** @description 停住的原因，例如 awaiting_user */
+      blocked?: string;
+      /** @description 頻道 ID，最多 200 字元 */
+      channel?: string;
+      /**
+       * Format: int64
+       * @description 長度上限（分鐘，含），不得小於 0
+       */
+      dur_max?: number;
+      /**
+       * Format: int64
+       * @description 長度下限（分鐘，含），不得小於 0
+       */
+      dur_min?: number;
+      /** @description retryable、wait、needs_action、budget_blocked 或 permanent */
+      error_class?: string;
+      /** @description published、status 或 none（不分組）；省略時依頻道分組 */
+      group?: string;
+      /** @description 原文語言，最多 200 字元 */
+      lang?: string;
+      /** @description youtube、bilibili、podcast 或 local */
+      platform?: string;
+      /** @description 發布日下限（含），YYYY-MM-DD */
+      published_from?: string;
+      /** @description 發布日上限（含），YYYY-MM-DD */
+      published_to?: string;
+      /** @description 標題搜尋，最多 200 字元 */
+      q?: string;
+      /** @description read 或 unread */
+      read_state?: string;
+      /** @description <步驟>:<狀態>，同 GET /api/items 的 status；最多 96 個 */
+      status?: string[] | null;
+      /** @description source、merged、silence、interpolated 或 model */
+      timing?: string;
     };
     Word: {
       /** @example 00:00:01.800 */
@@ -8884,6 +8971,97 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["VaultsOutputBody"];
         };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "views-list": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListViewsOutputBody"];
+        };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "views-create": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateViewInputBody"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ViewBody"];
+        };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "views-delete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Error */
       default: {

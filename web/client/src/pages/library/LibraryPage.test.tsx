@@ -37,6 +37,7 @@ function libraryApi(
     },
     "POST /api/items/{id}/rerun": () => ({}),
     "GET /api/profiles": () => ({ profiles: [] }),
+    "GET /api/views": () => ({ views: [] }),
   });
 }
 
