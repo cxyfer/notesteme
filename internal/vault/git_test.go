@@ -85,7 +85,7 @@ func TestGitSafetyAndCredentials(t *testing.T) {
 			}
 		}
 		env := strings.Join(c.Env, "\n")
-		for _, want := range []string{"PATH=/bin", "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "HOME=" + g.Home, "SSH_AUTH_SOCK=/s", "NOTESTEME_GIT_TOKEN=vault-token-123", "GIT_ASKPASS="} {
+		for _, want := range []string{"PATH=/bin", "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_LITERAL_PATHSPECS=1", "HOME=" + g.Home, "SSH_AUTH_SOCK=/s", "NOTESTEME_GIT_TOKEN=vault-token-123", "GIT_ASKPASS="} {
 			if !strings.Contains(env, want) {
 				t.Errorf("環境缺少 %s：%s", want, env)
 			}

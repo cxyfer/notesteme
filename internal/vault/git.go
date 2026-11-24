@@ -104,6 +104,8 @@ func (g *Git) env() ([]string, error) {
 		"GIT_TERMINAL_PROMPT=0",
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_CONFIG_GLOBAL=/dev/null",
+		// pathspec 一律照字面比對（VAULT-R7）：檔名來自影片標題，`[`、`]` 等萬用字元不能讓 add 選到其他檔案。
+		"GIT_LITERAL_PATHSPECS=1",
 		"HOME=" + g.Home,
 	}
 	if sock := g.Vars["SSH_AUTH_SOCK"]; sock != "" {
