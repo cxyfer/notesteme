@@ -275,7 +275,8 @@
       "clearAll": "Clear all",
       "clearFilters": "Clear filters",
       "moreCount_other": "More filters ({{count}})",
-      "moreCount_one": "More filters ({{count}})"
+      "moreCount_one": "More filters ({{count}})",
+      "hasNote": "Only items with a note"
     },
     "chips": {
       "q": "Title contains “{{value}}”",

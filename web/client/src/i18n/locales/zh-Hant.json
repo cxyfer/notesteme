@@ -273,7 +273,8 @@
       "applied": "已套用的篩選條件",
       "clearAll": "清除全部",
       "clearFilters": "清除篩選條件",
-      "moreCount_other": "更多篩選（{{count}}）"
+      "moreCount_other": "更多篩選（{{count}}）",
+      "hasNote": "只看有筆記的影音"
     },
     "chips": {
       "q": "標題含「{{value}}」",

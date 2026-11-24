@@ -241,3 +241,15 @@ export function toggleStatus(current: string[] | undefined, value: string): stri
   else set.add(value);
   return normalizeStatus([...set]);
 }
+
+/** 「有筆記」（pages.md §3、plan.md 第 14 節）就是 `note:done`：API 沒有另外的參數 */
+export const HAS_NOTE = "note:done";
+
+/**
+ * 切換「有筆記」。打開時拿掉筆記步驟的其他狀態條件：同一個步驟的多個值是 OR，
+ * 留著的話「有筆記」反而會讓結果變多。
+ */
+export function setHasNote(current: string[] | undefined, on: boolean): string[] | undefined {
+  const rest = (current ?? []).filter((s) => !s.startsWith("note:"));
+  return normalizeStatus(on ? [...rest, HAS_NOTE] : rest);
+}

@@ -204,6 +204,35 @@ describe("媒體庫：篩選 ↔ 網址", () => {
     await waitFor(() => expect(router.state.location.search).toEqual({}));
   });
 
+  it("「只看有筆記的影音」送 status=note:done，並換掉筆記步驟的其他條件", async () => {
+    const api = libraryApi([]);
+    const { router } = await openLibrary("/library?status=note:failed&status=correct:done");
+    await userEvent.click(screen.getByRole("button", { name: "更多篩選（2）" }));
+    const hasNote = screen.getByRole("checkbox", { name: "只看有筆記的影音" });
+    expect((hasNote as HTMLInputElement).checked).toBe(false);
+    await userEvent.click(hasNote);
+    await waitFor(() =>
+      expect(router.state.location.search.status).toEqual(["correct:done", "note:done"]),
+    );
+    await waitFor(() =>
+      expect(api.calls("GET", "/api/items").at(-1)!.url.searchParams.getAll("status")).toEqual([
+        "correct:done",
+        "note:done",
+      ]),
+    );
+    expect((hasNote as HTMLInputElement).checked).toBe(true);
+    // 和步驟狀態的「筆記：完成」是同一個條件
+    expect(
+      (
+        within(screen.getByRole("group", { name: "筆記" })).getByLabelText(
+          "完成",
+        ) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    await userEvent.click(hasNote);
+    await waitFor(() => expect(router.state.location.search.status).toEqual(["correct:done"]));
+  });
+
   it("標題搜尋延遲送出、不新增瀏覽紀錄；「/」聚焦搜尋框、Esc 清除", async () => {
     const api = libraryApi([]);
     const { router } = await openLibrary();

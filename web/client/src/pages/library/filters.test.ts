@@ -5,6 +5,7 @@ import {
   isValidDate,
   normalizeStatus,
   toApiQuery,
+  setHasNote,
   toggleStatus,
   validateLibrarySearch,
 } from "./filters";
@@ -63,6 +64,16 @@ describe("normalizeStatus", () => {
     ).toEqual(["metadata:done", "metadata:failed", "normalize:done"]);
     expect(normalizeStatus("correct:running")).toEqual(["correct:running"]);
     expect(normalizeStatus([])).toBeUndefined();
+  });
+
+  it("setHasNote：打開時換掉筆記步驟的其他狀態（同一步驟是 OR），關閉時移除筆記的條件", () => {
+    expect(setHasNote(undefined, true)).toEqual(["note:done"]);
+    expect(setHasNote(["correct:failed", "note:failed"], true)).toEqual([
+      "correct:failed",
+      "note:done",
+    ]);
+    expect(setHasNote(["note:done", "correct:failed"], false)).toEqual(["correct:failed"]);
+    expect(setHasNote(["note:done"], false)).toBeUndefined();
   });
 
   it("toggleStatus 加入與移除", () => {

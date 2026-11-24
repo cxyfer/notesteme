@@ -13,6 +13,8 @@ import {
   STAGE_STATUSES,
   STAGES,
   TIMINGS,
+  HAS_NOTE,
+  setHasNote,
   toggleStatus,
   type LibrarySearch,
 } from "./filters";
@@ -234,6 +236,9 @@ export function FilterBar({ search, onChange, onClear }: FilterBarProps) {
   const [more, setMore] = useState(false);
   const panelId = useId();
   const chips = useAppliedChips(search, onChange);
+  // 筆記步驟只有「完成」一個條件時才算「有筆記」（還有其他筆記狀態時是 OR，意思不同）
+  const noteStatus = (search.status ?? []).filter((s) => s.startsWith("note:"));
+  const hasNote = noteStatus.length === 1 && noteStatus[0] === HAS_NOTE;
   const moreCount =
     [
       search.channel,
@@ -334,6 +339,14 @@ export function FilterBar({ search, onChange, onClear }: FilterBarProps) {
             value={search.dur_max?.toString()}
             onCommit={(v) => onChange({ dur_max: v })}
           />
+          <label className="check filters__has-note">
+            <input
+              type="checkbox"
+              checked={hasNote}
+              onChange={(e) => onChange({ status: setHasNote(search.status, e.target.checked) })}
+            />
+            <span>{t("library.filters.hasNote")}</span>
+          </label>
         </div>
         <fieldset className="filters__stages">
           <legend>{t("library.filters.stageStatus")}</legend>
