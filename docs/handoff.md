@@ -529,8 +529,15 @@
   1. **GitHub Actions 帳務問題**（付款失敗或額度上限）：解決後先確認 CI 全綠；CI 有一步不加 `-race` 跑 `@M3,@M4,@M5` 的場景（加 `-race` 會逾時）。
   2. **真實驗收**：yt-dlp（YouTube、Bilibili）、Groq、Supadata、Gemini、ntfy、真實 IdP、真實反向代理、Hub 的真實 OAuth、R2／AWS S3、真實 ffmpeg 輸出（bundle 的 JPEG 結構檢查只用 Go encoder 與手工樣本）、真實 libass 預覽、Jellyfin／Plex sidecar；`@manual`、`@ui @manual` 的人工驗收；M0 量測與 `@pending-m0`。
   3. **Docker**：本機 docker daemon 沒有回應，只驗證到 `docker compose config` 與 YAML 解析；`docker build`、`compose up` 都沒實測；Hub image 沒有發布到 ghcr。
-  4. **追認決定**：各規格「待決問題」中標「（2026-11-23／24，依 /goal 採 advisor 建議，待 owner 追認）」的項目（很長的清單，依規格 grep 這句話即可列出）。其中修改了既有 `.feature` 的：VAULT 5 個場景（V12，rerun 帶明確 profile）、COST C22、SRC-10 R16、NOTIFY N9、SUB-R4 的 regex 範例、HSHR S17（R13 檔名）與 S20（`hub-precheck-v1` → `v2`，12 處）。破壞性變更：Hub 需要 `NOTESTEME_HUB_MASTER_KEY`（≥ 32 字元）與 `NOTESTEME_HUB_SESSION_KEY`；Hub 的 cookie 改成 `__Host-` 前綴（部署後每個人要重新登入）。
+  4. **追認決定**：各規格「待決問題」中標「（2026-11-23／24，依 /goal 採 advisor 建議，待 owner 追認）」的項目（很長的清單，依規格 grep 這句話即可列出）。其中修改了既有 `.feature` 的：VAULT 5 個場景（V12，rerun 帶明確 profile）、COST C22、SRC-10 R16、NOTIFY N9、SUB-R4 的 regex 範例、HSHR S17（R13 檔名）與 S20（`hub-precheck-v1` → `v2`，12 處）、SRC-R11 的 `@wip` 場景（`SRC-transcript-sources.feature:214`：第一步從 `titled` 改成 `with:` 並加上 `language zh`，拿掉 `@wip`）。破壞性變更：Hub 需要 `NOTESTEME_HUB_MASTER_KEY`（≥ 32 字元）與 `NOTESTEME_HUB_SESSION_KEY`；Hub 的 cookie 改成 `__Host-` 前綴（部署後每個人要重新登入）。
   5. 各規格 `status` 仍不是 `implemented`（owner 的步驟）。
+  6. **營運上要先知道的行為改變（收尾 D1／D2）**：
+     - **yt-dlp 排程更新預設開啟**（OPS O25）：每天 04:00 UTC 執行 `tools.yt-dlp.update`，正式環境會真的連 PyPI；更新是同步執行，期間暫停領取任務；失敗會自我檢查、回退並發告警 `ytdlp_update_failed`。不想要就把設定檔的 `updates.yt_dlp.enabled` 設成 `false`；固定版本時略過。
+     - 媒體庫預設依頻道分組（LIB-R4）；依狀態或頻道分組翻頁期間組鍵可能改變，同一部影音可能重複出現或漏掉（依 LIB-R9 不自動重新讀取）。
+     - 產出損毀（NFR-REL-2）：重跑依影音**目前**的處理方案；匯入、編輯或從 bundle 播種的產出只標記不自動重跑；畫面、筆記、摘要、章節的產出讀到損毀只回報錯誤。
+     - 單一任務的重試／取消以任務所屬的整個步驟為單位，scope 是 `admin`。
+     - OPS 的「固定版本略過」場景偏弱：排程完全沒執行時它也會通過（同一組的第一個場景才證明排程真的有跑）。
+  7. **CI 逾時餘裕**：2026-11-24 沒有其他負載的完整 `go test -race ./...` 中，`features` 跑了約 1350 秒、`internal/pipeline` 約 1220 秒；CI 每個測試程式的上限是 30 分鐘，餘裕只有約 7～10 分鐘。帳務恢復後若 CI 逾時，先查這裡（場景再增加時要把 features 拆成獨立的 job 或並行化）。
 - **已知缺口（沒有規格規則或需要真實樣本，沒做）**：
   - UI 文件列的 API 缺口（`docs/ui/README.md` 10.7 第 8 點、10.13～10.21）：`Stage.actions` 的動作代碼、佇列優先順序與 Agent 任務、「需要你處理」彙總 API、`/api/items/continue` 沒有 `dry_run`、總覽 `today` 事件沒有步驟／狀態／影音代號、儲存的檢視（saved views）、provider 列表 API、字幕變體列表 API。
   - Hub Web UI 缺的 API：`my_vote`、unhide（HREP R8／R10 規格就沒有）、群組列表、`hub_origin.uploader`；OAuth callback 的錯誤仍回 JSON。
