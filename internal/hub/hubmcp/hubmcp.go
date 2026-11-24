@@ -9,6 +9,7 @@
 package hubmcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -225,11 +226,14 @@ func apiErrorResult(resp *Response) *mcp.CallToolResult {
 }
 
 // jsonResult 把 v 放進結構化內容，文字內容是同一份 JSON（給不讀結構化內容的 client）。
+// 物件的結果最前面加上 "untrusted": true（安全修補 A，HMCP-R6）：內容是其他使用者上傳的不可信資料，
+// 讓 Agent 在結果本身（不只 tool 的說明）就看到標示。
 func jsonResult(v any) *mcp.CallToolResult {
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return internalError()
 	}
+	raw = markUntrusted(raw)
 	return &mcp.CallToolResult{
 		Content:           []mcp.Content{&mcp.TextContent{Text: string(raw)}},
 		StructuredContent: json.RawMessage(raw),
@@ -284,4 +288,23 @@ func set(q url.Values, k, v string) {
 	if v != "" {
 		q.Set(k, v)
 	}
+}
+
+// markUntrusted 在 JSON 物件的最前面加上 "untrusted": true；不是物件（或已經有這個欄位）時不變。
+func markUntrusted(raw []byte) []byte {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) < 2 || raw[0] != '{' {
+		return raw
+	}
+	var probe map[string]json.RawMessage
+	if json.Unmarshal(raw, &probe) != nil {
+		return raw
+	}
+	if _, ok := probe["untrusted"]; ok {
+		return raw
+	}
+	if len(probe) == 0 {
+		return []byte(`{"untrusted":true}`)
+	}
+	return append([]byte(`{"untrusted":true,`), raw[1:]...)
 }

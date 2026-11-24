@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"sync"
@@ -594,4 +595,26 @@ func FuzzBuildTranscript(f *testing.F) {
 			t.Error("截斷時至少要有一句")
 		}
 	})
+}
+
+// 安全修補 A：成功的結果（結構化內容與文字）都標示 untrusted；錯誤結果不標示。
+func TestResultsAreMarkedUntrusted(t *testing.T) {
+	cs := connect(t, Deps{Backend: transcriptBackend(t, cuesJSON(t, subtitle.Cue{Index: 1, StartMS: 0, EndMS: 1000, Text: "hi", Timing: subtitle.TimingSource})), Allowed: allow(PermDownload)})
+	res := call(t, cs, "get_transcript", map[string]any{"version": "v1"})
+	raw, _ := json.Marshal(res.StructuredContent)
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil || m["untrusted"] != true {
+		t.Fatalf("結構化內容 = %s", raw)
+	}
+	if txt := res.Content[0].(*mcp.TextContent).Text; !strings.HasPrefix(txt, `{"untrusted":true,`) {
+		t.Fatalf("文字內容 = %s", txt)
+	}
+	if bad := call(t, cs, "get_transcript", map[string]any{"version": "v1", "format": "ass"}); !bad.IsError || strings.Contains(fmt.Sprint(bad.StructuredContent), "untrusted") {
+		t.Fatalf("錯誤結果 = %+v", bad)
+	}
+	for in, want := range map[string]string{`{}`: `{"untrusted":true}`, `[1]`: `[1]`, `{"untrusted":false}`: `{"untrusted":false}`, `{"a":1}`: `{"untrusted":true,"a":1}`} {
+		if got := string(markUntrusted([]byte(in))); got != want {
+			t.Errorf("markUntrusted(%s) = %s，預期 %s", in, got, want)
+		}
+	}
 }
