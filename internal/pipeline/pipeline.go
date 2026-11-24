@@ -127,6 +127,9 @@ type Deps struct {
 	Hub *hubclient.Client
 	// HubPrecheck 回報 ASR 前查詢是否開啟（HSHR-R12）；nil 代表關閉。
 	HubPrecheck func(ctx context.Context) (bool, error)
+	// SecretValues 回傳資料庫中所有 secret 的明文（API key、cookie、Hub token），只用於匯出與分享前的洩漏掃描；
+	// nil 代表沒有。
+	SecretValues func(ctx context.Context) ([]string, error)
 }
 
 // Pipeline 是影音處理的入口：API 呼叫 Ingest 與查詢方法，worker 呼叫 Handle。
@@ -193,6 +196,8 @@ type Pipeline struct {
 	// hub、hubPrecheck 見 Deps.Hub、Deps.HubPrecheck。
 	hub         *hubclient.Client
 	hubPrecheck func(ctx context.Context) (bool, error)
+	// secretValues 見 Deps.SecretValues。
+	secretValues func(ctx context.Context) ([]string, error)
 }
 
 // New 建立 Pipeline。
@@ -217,7 +222,7 @@ func New(d Deps) *Pipeline {
 		retention = DefaultTrashRetention
 	}
 	return &Pipeline{trashRetention: retention, impl: impl, st: d.Store, clock: d.Clock, dataDir: d.DataDir, log: log, yt: d.YouTube, bili: d.Bilibili, fetchers: newFetchers(d), groq: d.Groq, http: d.HTTP, checkFn: d.CheckURL, media: d.Media, files: d.Files, wake: wake, version: d.Version, providers: d.Providers, outputs: d.Outputs, prompts: d.Prompts, llm: d.LLM, sponsor: d.SponsorBlock, sponsorBase: d.SponsorBlockBaseURL, notify: d.Notify, vaults: d.Vaults, hooks: d.Hooks, runner: d.Runner, env: d.Env, cost: d.Cost,
-		hub: d.Hub, hubPrecheck: d.HubPrecheck}
+		hub: d.Hub, hubPrecheck: d.HubPrecheck, secretValues: d.SecretValues}
 }
 
 // settingKey 是全域設定區段在 settings 表中的 key。

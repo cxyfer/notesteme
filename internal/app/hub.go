@@ -13,4 +13,7 @@ func (s *Server) configureHub(env Env, cfg *config.Config, deps *pipeline.Deps) 
 	s.hub = &hubsettings.Settings{URL: cfg.HubURL, ConfigPrecheck: cfg.HubPrecheckEnabled, Store: s.store, Secrets: s.services}
 	deps.Hub = hubclient.New(cfg.HubURL, s.hub.Token, deps.HTTP, env.Clock)
 	deps.HubPrecheck = s.hub.PrecheckEnabled
+	if s.services != nil {
+		deps.SecretValues = s.services.Values
+	}
 }

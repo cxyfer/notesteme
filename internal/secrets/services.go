@@ -176,3 +176,28 @@ func last4(s string) string {
 	}
 	return string(r)
 }
+
+// Values 解密並回傳所有 secret 的值（API key、cookie、Hub token…），只給送出資料前的洩漏掃描使用；
+// 呼叫端不能記錄或回傳這些值。
+func (s *Services) Values(ctx context.Context) ([]string, error) {
+	if s == nil {
+		return nil, nil
+	}
+	list, err := s.st.Read().ListSecrets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(list))
+	for _, info := range list {
+		sec, err := s.st.Read().Secret(ctx, info.Kind, info.Name)
+		if err != nil {
+			return nil, err
+		}
+		plain, err := s.keys.Open(info.Kind, info.Name, sec.Nonce, sec.Ciphertext)
+		if err != nil {
+			return nil, fmt.Errorf("解開 secret %s/%s 失敗：%w", info.Kind, info.Name, err)
+		}
+		out = append(out, string(plain))
+	}
+	return out, nil
+}

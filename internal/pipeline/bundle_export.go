@@ -178,7 +178,7 @@ func (p *Pipeline) ExportBundle(ctx context.Context, idOrRef string) (BundleExpo
 	if err != nil {
 		return BundleExport{}, err
 	}
-	if err := p.checkBundleLeak(man, entries); err != nil {
+	if err := p.checkBundleLeak(ctx, man, entries); err != nil {
 		return BundleExport{}, err
 	}
 	return BundleExport{Name: BundleFileName(source.Ref(it.Platform, it.ExternalID, it.Part)), Data: zipData, Item: it}, nil
@@ -454,8 +454,8 @@ func truthy(v any) bool {
 // ---- 最後一道檢查（BND-R2）----
 
 // leakNeedles 回傳不能出現在 bundle 中的字串：paths 是本機路徑（資料目錄、本機檔案的根目錄、家目錄），
-// secrets 是環境變數中像 secret 的值。
-func (p *Pipeline) leakNeedles() (paths, secrets []string) {
+// secrets 是環境變數中像 secret 的值與資料庫中所有 secret 的明文（至少 8 個字元，避免誤判）。
+func (p *Pipeline) leakNeedles(ctx context.Context) (paths, secrets []string, err error) {
 	add := func(s string) {
 		s = strings.TrimRight(s, `/\`)
 		if len(s) >= 2 {
@@ -487,7 +487,18 @@ func (p *Pipeline) leakNeedles() (paths, secrets []string) {
 			secrets = append(secrets, v)
 		}
 	}
-	return paths, secrets
+	if p.secretValues != nil {
+		vals, err := p.secretValues(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, v := range vals {
+			if len(v) >= 8 {
+				secrets = append(secrets, v)
+			}
+		}
+	}
+	return paths, secrets, nil
 }
 
 // isPathNameByte 回報 b 是否屬於路徑段中的名稱字元。
@@ -518,12 +529,15 @@ func containsPath(hay []byte, needle string) bool {
 
 // checkBundleLeak 是匯出前的最後一道檢查：manifest（影音 metadata 與清理過的來源紀錄，產品組出的欄位）不能含本機路徑；
 // 任何項目都不能含 secret 的值。字幕與筆記的本文是使用者的內容，提到 /data 這類字串不算洩漏。
-func (p *Pipeline) checkBundleLeak(man bundle.OutManifest, entries []bundle.OutEntry) error {
+func (p *Pipeline) checkBundleLeak(ctx context.Context, man bundle.OutManifest, entries []bundle.OutEntry) error {
 	mj, err := json.Marshal(man)
 	if err != nil {
 		return err
 	}
-	paths, secrets := p.leakNeedles()
+	paths, secrets, err := p.leakNeedles(ctx)
+	if err != nil {
+		return err
+	}
 	leak := func(what string) error {
 		p.log.Error("bundle 含有本機路徑或 secret", "entry", what)
 		return ErrBundleLeak

@@ -460,7 +460,7 @@ func (p *Pipeline) ShareToHub(ctx context.Context, itemID string, req HubShareRe
 	if !publicForHub(it) {
 		return HubShareResult{}, notShareable("非公開影音不能分享到 Hub。")
 	}
-	arts, err := p.shareArtifacts(ctx, it, req)
+	arts, buttons, err := p.shareArtifacts(ctx, it, req)
 	if err != nil {
 		return HubShareResult{}, err
 	}
@@ -470,6 +470,9 @@ func (p *Pipeline) ShareToHub(ctx context.Context, itemID string, req HubShareRe
 		PublishedAt: it.PublishedAt, DurationS: it.DurationS, OriginalLang: validLang(it.OriginalLang), Availability: "public",
 	}, arts, hubshare.Options{License: req.License, AppVersion: p.version, Now: p.clock.Now()})
 	if err != nil {
+		return HubShareResult{}, err
+	}
+	if err := p.checkShareLeak(ctx, it, raw, buttons); err != nil {
 		return HubShareResult{}, err
 	}
 	res, err := p.hub.Share(ctx, raw, req.Visibility)
@@ -509,11 +512,12 @@ func validLang(l string) string {
 }
 
 // shareArtifacts 選出要分享的產出（HSHR-R5），檢查衍生鏈上的 cookie_required（R4），並組出 bundle 的產出（R6）。
-func (p *Pipeline) shareArtifacts(ctx context.Context, it store.Item, req HubShareRequest) ([]hubshare.Artifact, error) {
+// 第二個回傳值是要從筆記刪掉、也不能出現在 bundle 中的模板 read button。
+func (p *Pipeline) shareArtifacts(ctx context.Context, it store.Item, req HubShareRequest) ([]hubshare.Artifact, []string, error) {
 	r := p.st.Read()
 	cur, err := r.CurrentArtifacts(ctx, it.ID, "")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var chosen []store.Artifact
 	if len(req.Artifacts) > 0 {
@@ -522,7 +526,7 @@ func (p *Pipeline) shareArtifacts(ctx context.Context, it store.Item, req HubSha
 				return a.Kind == want.Kind && (want.Variant == "" || a.Variant == want.Variant) && (want.Lang == "" || a.Lang == want.Lang)
 			})
 			if i < 0 || !slices.Contains(kindOrder, want.Kind) {
-				return nil, hubErr(http.StatusUnprocessableEntity, "artifact_not_found",
+				return nil, nil, hubErr(http.StatusUnprocessableEntity, "artifact_not_found",
 					"這部影音沒有「"+clip(cmpOr(want.Variant, want.Kind), 40)+"（"+clip(cmpOr(want.Lang, "-"), 20)+"）」的字幕。")
 			}
 			if !slices.ContainsFunc(chosen, func(a store.Artifact) bool { return a.ID == cur[i].ID }) {
@@ -551,21 +555,25 @@ func (p *Pipeline) shareArtifacts(ctx context.Context, it store.Item, req HubSha
 		return strings.Compare(a.Lang, b.Lang)
 	})
 	if len(chosen) == 0 {
-		return nil, hubErr(http.StatusUnprocessableEntity, "nothing_to_share", "這部影音還沒有可以分享的字幕或筆記。")
+		return nil, nil, hubErr(http.StatusUnprocessableEntity, "nothing_to_share", "這部影音還沒有可以分享的字幕或筆記。")
 	}
 	chain := chainWalker{r: r, ctx: ctx, it: it, seen: map[string]store.Artifact{}}
 	out := make([]hubshare.Artifact, 0, len(chosen))
+	var buttons []string
 	for _, a := range chosen {
 		needsLogin, origin, err := chain.inspect(a)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if needsLogin {
-			return nil, notShareable("需要登入才能取得的字幕不能分享到 Hub。")
+			return nil, nil, notShareable("需要登入才能取得的字幕不能分享到 Hub。")
 		}
-		ha, err := p.bundleArtifact(ctx, a)
+		ha, rb, err := p.shareableArtifact(ctx, a)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		if rb != "" {
+			buttons = append(buttons, rb)
 		}
 		ha.HubOrigin = origin
 		for _, pid := range a.Parents {
@@ -575,7 +583,7 @@ func (p *Pipeline) shareArtifacts(ctx context.Context, it store.Item, req HubSha
 		}
 		out = append(out, ha)
 	}
-	return out, nil
+	return out, buttons, nil
 }
 
 func executorOf(prov json.RawMessage) string {
@@ -656,11 +664,19 @@ func (c *chainWalker) inspect(a store.Artifact) (bool, *hubshare.HubOrigin, erro
 
 // bundleArtifact 讀出產出的內容並轉成送到 Hub 的形式：字幕原樣（cues JSON）、筆記取 Markdown 本文、
 // 章節原樣、畫面只放選中的畫面（沒有候選與本機檔名）與圖片。
+// 筆記去掉本機的 frontmatter 欄位與模板的 read button（HSHR 待決問題 S21），回傳刪掉的 read button。
 func (p *Pipeline) bundleArtifact(ctx context.Context, a store.Artifact) (hubshare.Artifact, error) {
+	out, _, err := p.shareableArtifact(ctx, a)
+	return out, err
+}
+
+// shareableArtifact 同 bundleArtifact，另外回傳從筆記刪掉的 read button（沒有時是空字串）。
+func (p *Pipeline) shareableArtifact(ctx context.Context, a store.Artifact) (hubshare.Artifact, string, error) {
 	data, err := os.ReadFile(filepath.Join(p.dataDir, filepath.FromSlash(a.Path)))
 	if err != nil {
-		return hubshare.Artifact{}, fmt.Errorf("讀取產出 %s：%w", a.ID, err)
+		return hubshare.Artifact{}, "", fmt.Errorf("讀取產出 %s：%w", a.ID, err)
 	}
+	readButton := ""
 	out := hubshare.Artifact{Kind: a.Kind, Variant: a.Variant, Lang: validLang(a.Lang), Provenance: a.Provenance}
 	switch a.Kind {
 	case "transcript":
@@ -671,13 +687,19 @@ func (p *Pipeline) bundleArtifact(ctx context.Context, a store.Artifact) (hubsha
 	case "note":
 		var doc noteDoc
 		if err := json.Unmarshal(data, &doc); err != nil {
-			return hubshare.Artifact{}, fmt.Errorf("筆記的內容損壞：%w", err)
+			return hubshare.Artifact{}, "", fmt.Errorf("筆記的內容損壞：%w", err)
 		}
-		out.Data = []byte(doc.Markdown)
+		// 模板版本不會刪除；匯入或 Gemini 的筆記沒有模板，就沒有 read button。
+		if doc.Template != "" {
+			if tpl, err := p.lookupNoteTemplate(ctx, doc.Template); err == nil && len(tpl.Rules.ReadButton) >= minReadButtonNeedle {
+				readButton = tpl.Rules.ReadButton
+			}
+		}
+		out.Data = []byte(hubshare.StripNote(doc.Markdown, readButton))
 	case "frames":
 		var m framesManifest
 		if err := json.Unmarshal(data, &m); err != nil {
-			return hubshare.Artifact{}, fmt.Errorf("畫面的內容損壞：%w", err)
+			return hubshare.Artifact{}, "", fmt.Errorf("畫面的內容損壞：%w", err)
 		}
 		type frame struct {
 			N       int    `json:"n"`
@@ -692,21 +714,21 @@ func (p *Pipeline) bundleArtifact(ctx context.Context, a store.Artifact) (hubsha
 			}
 			img, err := os.ReadFile(filepath.Join(framesDir(p.dataDir, a.ItemID, a.ID), frameFile(c.N)))
 			if err != nil {
-				return hubshare.Artifact{}, fmt.Errorf("讀取畫面 %d：%w", c.N, err)
+				return hubshare.Artifact{}, "", fmt.Errorf("讀取畫面 %d：%w", c.N, err)
 			}
 			frames = append(frames, frame{N: c.N, AtMS: c.AtMS, Caption: c.Caption, Chapter: c.Chapter})
 			out.Images = append(out.Images, hubshare.Image{N: c.N, Data: img})
 		}
 		if out.Data, err = json.Marshal(map[string]any{"frames": frames}); err != nil {
-			return hubshare.Artifact{}, err
+			return hubshare.Artifact{}, "", err
 		}
 	default:
 		if !json.Valid(data) {
-			return hubshare.Artifact{}, fmt.Errorf("產出 %s 不是 JSON", a.ID)
+			return hubshare.Artifact{}, "", fmt.Errorf("產出 %s 不是 JSON", a.ID)
 		}
 		out.Data = bytes.TrimSpace(data)
 	}
-	return out, nil
+	return out, readButton, nil
 }
 
 // ItemHubShares 列出影音的分享紀錄（GET /api/items/:id 的 hub_shares）。
@@ -728,4 +750,28 @@ func (p *Pipeline) HubMe(ctx context.Context) (hubclient.Me, error) {
 		return hubclient.Me{}, hubclient.ErrNotConfigured
 	}
 	return p.hub.Me(ctx)
+}
+
+// minReadButtonNeedle 是 read button 刪除與掃描的最短長度：太短的字串（例如「讀」）會誤刪使用者的內文，
+// 也不可能含有網址。
+const minReadButtonNeedle = 8
+
+// checkShareLeak 是分享前的最後一道檢查（HSHR-R6，安全修補 B）：解開 bundle 逐項目掃描，
+// 不能含有 secret（環境變數與資料庫中的 secret，包括 Hub token）、本機影音 ID、模板的 read button；
+// manifest 不能含本機路徑。這是程式錯誤，回 500，不連線到 Hub。
+func (p *Pipeline) checkShareLeak(ctx context.Context, it store.Item, raw []byte, buttons []string) error {
+	paths, secrets, err := p.leakNeedles(ctx)
+	if err != nil {
+		return err
+	}
+	leak, err := hubshare.Scan(raw, hubshare.Needles{Secrets: secrets, Local: append([]string{it.ID}, buttons...),
+		Paths: paths, ContainsPath: containsPath})
+	if err != nil {
+		return err
+	}
+	if leak != nil {
+		p.log.Error("送往 Hub 的 bundle 含有不能送出的內容", "item", it.ID, "entry", leak.Entry, "kind", leak.What)
+		return ErrBundleLeak
+	}
+	return nil
 }
