@@ -1,6 +1,6 @@
-# 交接：開發進度（M1 與 M2）
+# 交接：開發進度（M1～M5 與 Web UI）
 
-> 更新：2026-11-23（M2 後端與驗收場景全部完成，見第 1 節開頭的「2026-11-23 收尾摘要」）。2026-11-22：PR #1～#19 已合併（LOCAL #13、PODCAST #14、ESTIMATE #15、M2 S0 #16、M2 S1/S2 #17、規格與 `.feature` 修改 #18、M2 S6a #19）；之後依 owner 的 /goal 指示（MVP 階段，不再開 PR）改為每個切片完成後直接推送到 master，commit 在 `git log` 可查：M2 S7（OUT 渲染與匯入）、M2 S3（LLM 核心引擎）。owner 已同意的規格與 `.feature` 修改已完成（第 2 節第 4 點）。**M1 的後端已完成；Web UI 有 UI-0 骨架與 UI-1 媒體庫、新增抽屜（2026-11-23），影音詳情、佇列、設定等頁面（UI-2、UI-3）與真實樣本驗收還沒做，M1 尚未收尾（第 1 節「M1 尚未收尾」）。**
+> 更新：2026-11-24。M1～M5 的後端、Client Web UI（UI-0～UI-8）與 Hub Web UI 都已推送到 master；預設 tag 308＋`@M3` 109＋`@M4` 371＋`@M5` 148 = 936 個自動化場景全部通過（本機驗證）。安全審查的 16 項發現已修補（第 1 節「安全修補 A／B／C」）。`@manual`、`@pending-m0`、真實樣本與真實服務的驗收屬 owner，做不到的清單在第 2 節。GitHub Actions 自 2026-11-23 約 16:30 起因帳務問題（付款失敗或額度上限）無法啟動 job，所有驗證都在本機做。依 owner 的 /goal（MVP 階段不再開 PR）每個切片完成後直接推送 master。2026-11-22 前的 PR #1～#19（LOCAL、PODCAST、ESTIMATE、M2 S0～S2、S6a 等）已合併，之後的切片見 `git log`。**接手請先讀第 2 節的「2026-11-24 現況」。**
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -503,6 +503,26 @@
   - 工具鏈：`go.mod` 加 `toolchain go1.26.11`、Dockerfile `GO_VERSION=1.26.11`、CI 的 govulncheck 改用 go.mod 的版本；`golang.org/x/text` v0.29.0 → v0.41.0。govulncheck v1.10.0：修補前（go1.26.8）15 個會被呼叫到的弱點（標準函式庫 13、x/text 2），修補後 0 個。`web/client/embed.go` 的說明文字不再像 embed 指令（SA9009）；worker 的空 critical section 是刻意的屏障（SA2001，加說明與 `lint:ignore`）。
   - 未處理：OIDC 全域上限仍可用 50 個以上不同來源（或 `/64`）佔滿（要依來源淘汰未完成的登入，需要改 DB）；compose 的固定網段可能與主機既有網路衝突（`.env.example` 有說明）；本機沒有跑 `docker build`。
 ## 2. 下一步
+
+### 2026-11-24 現況
+
+- **已完成並推送（master）**：M1、M2（後端與場景）、M3（SPB、CHAP、FRM、NOTE、VAULT、GEM）、M4（NOTIFY、SUB、COST、BATCH、DIG、SRC-10、SRCH、GLOS、BND、AUTH、OPS、ENTRY、LIB-08/09）、M5（HACC、HREP、HMCP、HSHR、Postgres＋S3 backend、`deploy/docker/compose.hub.yaml`）、UI-0～UI-8、Hub Web UI（`web/hub`）。三份安全修補（Hub、bundle／分享、Client）已合併。
+- **收尾切片（進行中）**：規格有寫、沒有場景守住、盤點出還沒做的項目——D1：`POST /api/tasks/{id}/retry`／`cancel`（PIPE）、NFR-REL-2 讀取時比對 sha256、LIB-R4 `group_by`、不穩定測試 `TestMCPLoopbackRechecksPermissions`；D2：VAULT-R12 的 git vault 刪除、SRC-R11 文字語言偵測與 `mixed`（含 `@wip` 場景）、SRC-R6「現在改用語音轉錄」動作、yt-dlp 排程更新（OPS-R6／R7）。完成後各自在第 1 節追加摘要。
+- **owner 要做的事（我做不到）**：
+  1. **GitHub Actions 帳務問題**（付款失敗或額度上限）：解決後先確認 CI 全綠；CI 有一步不加 `-race` 跑 `@M3,@M4,@M5` 的場景（加 `-race` 會逾時）。
+  2. **真實驗收**：yt-dlp（YouTube、Bilibili）、Groq、Supadata、Gemini、ntfy、真實 IdP、真實反向代理、Hub 的真實 OAuth、R2／AWS S3、真實 ffmpeg 輸出（bundle 的 JPEG 結構檢查只用 Go encoder 與手工樣本）、真實 libass 預覽、Jellyfin／Plex sidecar；`@manual`、`@ui @manual` 的人工驗收；M0 量測與 `@pending-m0`。
+  3. **Docker**：本機 docker daemon 沒有回應，只驗證到 `docker compose config` 與 YAML 解析；`docker build`、`compose up` 都沒實測；Hub image 沒有發布到 ghcr。
+  4. **追認決定**：各規格「待決問題」中標「（2026-11-23／24，依 /goal 採 advisor 建議，待 owner 追認）」的項目（很長的清單，依規格 grep 這句話即可列出）。其中修改了既有 `.feature` 的：VAULT 5 個場景（V12，rerun 帶明確 profile）、COST C22、SRC-10 R16、NOTIFY N9、SUB-R4 的 regex 範例、HSHR S17（R13 檔名）與 S20（`hub-precheck-v1` → `v2`，12 處）。破壞性變更：Hub 需要 `NOTESTEME_HUB_MASTER_KEY`（≥ 32 字元）與 `NOTESTEME_HUB_SESSION_KEY`；Hub 的 cookie 改成 `__Host-` 前綴（部署後每個人要重新登入）。
+  5. 各規格 `status` 仍不是 `implemented`（owner 的步驟）。
+- **已知缺口（沒有規格規則或需要真實樣本，沒做）**：
+  - UI 文件列的 API 缺口（`docs/ui/README.md` 10.7 第 8 點、10.13～10.21）：`Stage.actions` 的動作代碼、佇列優先順序與 Agent 任務、「需要你處理」彙總 API、`/api/items/continue` 沒有 `dry_run`、總覽 `today` 事件沒有步驟／狀態／影音代號、儲存的檢視（saved views）、provider 列表 API、字幕變體列表 API。
+  - Hub Web UI 缺的 API：`my_vote`、unhide（HREP R8／R10 規格就沒有）、群組列表、`hub_origin.uploader`；OAuth callback 的錯誤仍回 JSON。
+  - Supadata 非同步 job（202）還不會輪詢；FRM 的 `api` executor 有 shortfall 候選時字幕留空（待決問題）。
+  - 安全修補沒處理的：OIDC 全域 1000 筆上限仍可用大量不同的 IPv6 `/64` 佔滿；Hub 的 `buildShare` 可能透過 `parents_sha256` 洩漏 `known` 模型、`/mcp` 的被停權帳號沒有限流、重新分享仍可繞過 hidden 版本、影片 metadata 仍由第一個分享者決定。
+- **維護提醒**：5 小時 API 用量上限會讓 child 失敗（訊息含重置時間），重置後用 `t3_thread_send` 叫它繼續；機器 16GB（WSL），同時超過 3 個重度任務會被 OOM，全套測試用 `-p 2`、`-race` 的逾時要設 100 分鐘以上；別在主 checkout 做 `git checkout --detach`；child 還在跑時別動它的 worktree。
+
+### 歷史（2026-11-22／23，M1／M2 時期；已完成或已被上面取代，保留供對照）
+
 
 切片進度：PIPE → CLI 與 `/data` 鎖 → GRD → SRC-A → SRC-B → OPS → LIB → DEL → AUTH-SEC → LOCAL → PODCAST → ESTIMATE → M2 S0 骨架 → M2 S1 PRF＋S2 PRM → 規格修改 → M2 S6a TRN OpenCC（PR #1～#19，全部已合併）→ M2 S7 OUT 渲染與匯入（直接推送到 master）。下一步（S3 完成後）是 S8 OUT sidecar／folder 輸出、PRM compare／playground、DEL-R9 的 `delete_outputs`，再到並行的 S4 COR、S5 SEG、S6b TRN LLM（有 `edited` 時以它為輸入，見 TRN 規格）、S8 OUT publish；Web UI 已開始（2026-11-23 UI-0 骨架、UI-1 媒體庫與新增抽屜，接著 UI-2、UI-3）。**工作方式（owner 的 /goal，2026-11-22）**：MVP 階段不再開 PR，每個切片在 `.worktrees/<slug>` 的分支完成後 rebase 到 origin/master 直接 `git push origin HEAD:master`；需要決策時問 advisor，決定記在規格的待決問題並標「待 owner 追認」；推送後確認 master 的 CI 是綠的。
 
