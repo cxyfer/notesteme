@@ -1,7 +1,9 @@
 // 「重新處理」對話框（LIB-R11、PIPE-R7、PRF-R3、LLM-R8）：從哪個步驟開始、做到哪裡、處理方案或單次覆寫
 // （provider／model／prompt 版本）、只重跑指定的 chunk。會產生新版本，舊版本保留。
 //
-//   - 費用預估：rerun 的 API 沒有 estimate 欄位，顯示「無法預估」（缺口見 docs/ui/README.md 10.7）。
+//   - 費用預估：rerun 的 API 沒有 estimate 欄位。有更好的字幕來源時，詳情的 better_source.estimate_usd
+//     （SRC-R23）是「用現行設定從 transcript 做到最後」的金額：起點是 transcript、沒有改任何設定時顯示它；
+//     其他情況顯示「無法預估」（docs/ui/README.md 10.23）。
 //   - provider 沒有列表 API：用文字輸入，建議值取自處理方案的設定。
 //   - 422 的 errors[] 逐筆顯示（chunks[i] 的訊息裡有現有的編號）；其他錯誤用 describeError。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,6 +15,7 @@ import { describeError } from "../../api/describeError";
 import { isApiError } from "../../api/errors";
 import { queryKeys } from "../../api/queryKeys";
 import { Button, Dialog, ErrorCallout, TextField, useToast } from "../../components";
+import { formatUsd } from "../../i18n";
 import { STAGES } from "../library/filters";
 
 /** 可以指定 chunk 與覆寫 provider／model／prompt 的 LLM 步驟 */
@@ -47,9 +50,18 @@ export interface RerunDialogProps {
   from?: string;
   /** 影音實際有的步驟（依順序） */
   stages: readonly string[];
+  /** 已知的預估：從 from 開始、用現行設定做到最後的金額（SRC-R23 的 better_source.estimate_usd） */
+  estimate?: { from: string; usd: number | null };
 }
 
-export function RerunDialog({ open, onOpenChange, itemId, from, stages }: RerunDialogProps) {
+export function RerunDialog({
+  open,
+  onOpenChange,
+  itemId,
+  from,
+  stages,
+  estimate,
+}: RerunDialogProps) {
   const { t } = useTranslation();
   // 每次打開都是新的表單
   return (
@@ -64,6 +76,7 @@ export function RerunDialog({ open, onOpenChange, itemId, from, stages }: RerunD
           itemId={itemId}
           initialFrom={from}
           stages={stages}
+          estimate={estimate}
           onDone={() => onOpenChange(false)}
         />
       )}
@@ -75,11 +88,13 @@ function RerunForm({
   itemId,
   initialFrom,
   stages,
+  estimate,
   onDone,
 }: {
   itemId: string;
   initialFrom?: string;
   stages: readonly string[];
+  estimate?: { from: string; usd: number | null };
   onDone: () => void;
 }) {
   const { t } = useTranslation();
@@ -104,6 +119,9 @@ function RerunForm({
   const [chunksText, setChunksText] = useState("");
   const isLlm = (LLM_STAGES as readonly string[]).includes(from);
   const chunks = isLlm ? parseChunks(chunksText) : [];
+  // 預估只適用於「同一個起點、做到最後、沒有改任何設定」
+  const untouched = !until && !profile && !provider && !model && !prompt && !chunksText.trim();
+  const knownUsd = estimate && estimate.from === from && untouched ? estimate.usd : null;
 
   const profiles = useQuery({
     queryKey: queryKeys.profiles,
@@ -313,7 +331,11 @@ function RerunForm({
         </fieldset>
       )}
 
-      <p className="rerun__estimate secondary">{t("item.rerun.noEstimate")}</p>
+      <p className="rerun__estimate secondary">
+        {knownUsd == null
+          ? t("item.rerun.noEstimate")
+          : t("item.rerun.estimate", { usd: formatUsd(knownUsd) })}
+      </p>
 
       {rerun.isError && chunkErrors.length === 0 && (
         <ErrorCallout

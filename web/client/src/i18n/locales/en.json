@@ -621,7 +621,8 @@
       "fieldError": "{{path}}: {{message}}",
       "submit": "Process again from {{stage}}",
       "submitting": "Submitting…",
-      "queued": "Queued again from {{stage}}."
+      "queued": "Queued again from {{stage}}.",
+      "estimate": "Estimated cost: {{usd}} to run from subtitles to the end with the current settings."
     },
     "cancel": {
       "title": "Stop processing this item?",

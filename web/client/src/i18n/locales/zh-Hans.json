@@ -598,7 +598,8 @@
       "fieldError": "{{path}}：{{message}}",
       "submit": "从{{stage}}重新处理",
       "submitting": "正在提交…",
-      "queued": "已从{{stage}}重新排入队列。"
+      "queued": "已从{{stage}}重新排入队列。",
+      "estimate": "费用预估：用当前的设置从字幕步骤做到最后，预估花费 {{usd}}。"
     },
     "cancel": {
       "title": "停止处理这部影音？",

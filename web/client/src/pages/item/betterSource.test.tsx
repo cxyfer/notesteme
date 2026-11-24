@@ -9,7 +9,11 @@ import { renderRoute, signIn } from "../../test/render";
 
 function withBetter(estimate: number | null) {
   return () => ({
-    ...detail(item(1), [stage("metadata", "done"), stage("transcript", "done")]),
+    ...detail(item(1), [
+      stage("metadata", "done"),
+      stage("transcript", "done"),
+      stage("correct", "done"),
+    ]),
     better_source: {
       source: "youtube-manual",
       lang: "en",
@@ -58,5 +62,16 @@ describe("影音詳情：更好的字幕來源（SRC-10）", () => {
     renderRoute("/items/item-1");
     const notice = await screen.findByRole("region", { name: "有更好的字幕來源" });
     expect(within(notice).getByText(/預估花費 US\$0\.42/)).toBeTruthy();
+
+    // SRC 的 @ui 場景：「改用更好的字幕重跑」在執行前顯示預估的 LLM 花費
+    const user = userEvent.setup();
+    await user.click(within(notice).getByRole("button", { name: "改用更好的字幕重跑" }));
+    const dialog = await screen.findByRole("dialog", { name: "重新處理" });
+    expect(
+      within(dialog).getByText("費用預估：用目前的設定從字幕步驟做到最後，預估花費 US$0.42。"),
+    ).toBeTruthy();
+    // 換了起點，預估就不適用
+    await user.selectOptions(within(dialog).getByLabelText("從哪個步驟開始"), "correct");
+    expect(within(dialog).getByText("費用預估：重新處理目前無法預估花費。")).toBeTruthy();
   });
 });

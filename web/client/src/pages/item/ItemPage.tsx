@@ -82,6 +82,9 @@ function byStageStatus(stages: readonly { stage: string; status: string }[], sta
   return stages.find((s) => s.stage === stage)?.status;
 }
 
+/** 更好的字幕來源的預估是從這個步驟開始算的（SRC-R23） */
+const BETTER_SOURCE_FROM = "transcript";
+
 export function ItemPage() {
   const { t } = useTranslation();
   const { id: param } = route.useParams();
@@ -652,6 +655,11 @@ function ItemView({
         itemId={id}
         from={rerunFrom || undefined}
         stages={stages.map((s) => s.stage)}
+        estimate={
+          d.better_source
+            ? { from: BETTER_SOURCE_FROM, usd: d.better_source.estimate_usd ?? null }
+            : undefined
+        }
       />
       <CookieDialog
         open={cookieOpen}

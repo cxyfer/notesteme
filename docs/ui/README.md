@@ -312,7 +312,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 8. **API 缺口**（記在這裡，之後的後端切片處理）：
    - `Stage.actions` 應改成動作代碼（現在是繁中按鈕文字，前端只能比對字串）。部分處理（收尾 D2，2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：`Stage` 多了 `action_codes`（只列出有穩定代碼的動作，目前只有 `use_asr_now`），`mapActions` 先依代碼對應、同一個動作的文字不重複；其他動作仍比對文字，沒有大改。
    - 沒有 log 片段（OBS-2 的「相關 log 片段」）：步驟面板改連到「紀錄」分頁，顯示 `GET /runs` 的狀態、時間與設定快照；`runs` 也沒有花費、provider 實際回應等欄位。
-   - rerun 沒有 `estimate`／`estimate_usd`：對話框顯示「無法預估」。沒有拿 `POST /api/estimate` 代替（它針對網址，可能呼叫 yt-dlp）。
+   - rerun 沒有 `estimate`／`estimate_usd`：對話框顯示「無法預估」。沒有拿 `POST /api/estimate` 代替（它針對網址，可能呼叫 yt-dlp）。（有更好的字幕來源時改顯示 `better_source.estimate_usd`，見 10.23 第 2 點。）
    - 沒有 provider 列表 API：provider 用文字輸入，建議值取自處理方案設定。
    - 沒有列出影音有哪些字幕變體與語言的 API：模式依步驟狀態推得，`edited` 用一次 `variant=edited` 的查詢確認。
    - 沒有章節、說話密度、LLM chunk 的時間範圍：時間帶只畫整條步驟狀態，沒有章節線、拖曳選取、chunk 進度。
@@ -502,7 +502,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 8. **術語審核放在「詞彙表」分區的最上面**（GLOS G1），既有的單一頻道清單（UI-3b）保留不動。單筆與批次都走 `POST /api/term-candidates/decide`（同一條錯誤處理路徑）；每一列的「加到哪裡」預設是這個頻道，批次接受時各列用自己的選擇。**待決（API 與規格不一致）**：GLOS-R5 說來源影音永久刪除時 `item` 是 `null`，但 OpenAPI 的 `TermCandidateReview.item` 不是 nullable；前端照 null 處理（顯示「來源影音已刪除」）。（後端補洞切片已把 schema 改成 nullable。）
 9. **彙整放在「通知」分區**（DIG 介面）：時區預設為瀏覽器的時區；端點只列出勾了 `digest` 事件的 notifier（編輯時已選但取消勾選事件的端點也列出，方便移除）；沒有這樣的端點時「新增彙整」停用並說明。預覽把伺服器組好的文字原樣放在 `<pre>`。
 10. **系統告警只顯示目前成立的告警**：`GET /api/system` 沒有已解除的告警或歷史，「恢復狀態」以「目前沒有告警」與說明（解除時會送出解除通知）表示。持續時間以讀到資料的時間計算，用 `Intl` 的單位格式（分鐘／小時／天），不另加字串。沒有放「立即備份」（`/api/backup` 是下載備份檔，不在 brief 範圍）。
-11. **摘要與「有更好的字幕來源」放在標題資訊與時間帶之間**；摘要是 LLM 輸出，一律當純文字（保留換行），帶 `summary.language`。「改用更好的字幕重跑」打開既有的重新處理對話框並帶 `from: transcript`（handoff 的 SRC-10 說明），金額由對話框照 UI-2 的方式處理；提示中的預估為 null 時寫「無法預估費用」，不顯示 $0.00。沒有 SSE 事件告知 `better_source` 出現，詳情在步驟狀態改變或重新開啟時才會更新。
+11. **摘要與「有更好的字幕來源」放在標題資訊與時間帶之間**；摘要是 LLM 輸出，一律當純文字（保留換行），帶 `summary.language`。「改用更好的字幕重跑」打開既有的重新處理對話框並帶 `from: transcript`（handoff 的 SRC-10 說明），金額由對話框照 UI-2 的方式處理（10.23 第 2 點已改成顯示 `better_source.estimate_usd`）；提示中的預估為 null 時寫「無法預估費用」，不顯示 $0.00。沒有 SSE 事件告知 `better_source` 出現，詳情在步驟狀態改變或重新開啟時才會更新。
 12. **術語的拒絕（單筆與多選批次）不跳確認框**：和 UI-3b 的單筆拒絕一致，GLOS 的 `@ui @manual` 場景（「選取其餘兩個並一起拒絕」）也沒有確認步驟；拒絕只改候選的狀態，不刪除任何詞彙表內容（被拒絕的詞之後仍可能再被提出）。代價是一次最多 100 項、UI 上不能撤回；需要的話之後加 toast 的「復原」（API 要能把候選改回 pending）。
 13. **匯出 bundle 用 `<a download>`**：沿用 UI-4 決定 10（CSV 匯出）的做法；出錯時瀏覽器會下載到 JSON 錯誤。影音詳情只會顯示不在垃圾桶中的影音，所以 404 `in_trash` 不會從這裡發生；bundle 只含字幕、筆記與選中的畫面，大小通常在幾十 MiB 以內（BND N4），不另做進度顯示。
 14. **跳轉後的字幕定位**：影音詳情的字幕列表在掛載時就跟隨 `?t=` 的目前句捲動（UI-2 的行為），測試確認 `?t=2` 時目前句是第 2 句。
@@ -669,5 +669,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 項目 | 狀態 | 位置 |
 | --- | --- | --- |
 | 影音詳情的「更多」選單（刪除移進去；DEL 的「The delete dialog explains the consequences and can be undone」） | 完成 | `src/components/MoreMenu.tsx`、`src/pages/item/ItemPage.tsx` |
+| 「改用更好的字幕重跑」的對話框顯示預估花費（SRC 的「The item page offers the upgrade with its estimated cost」） | 完成 | `src/pages/item/RerunDialog.tsx` |
 
 1. **「更多」選單是 disclosure，不是 `role="menu"`**：按鈕帶 `aria-expanded`，展開後是一組普通按鈕；Esc、點外面或 Tab 離開就收起。選了項目之後先把焦點還給「更多」再打開對話框，所以對話框關閉時焦點回到「更多」。目前只有「刪除…」一項（pages.md §4 只列刪除）；按鈕文字從「移到垃圾桶…」改成「刪除…」，對齊場景與 pages.md 的用字，確認框的標題仍是「移到垃圾桶？」。
+2. **重新處理對話框的預估**：rerun 的 API 仍然沒有 `dry_run`。影音有 `better_source` 時，`estimate_usd`（SRC-R23）就是「用現行設定從 `transcript` 做到最後」的金額，所以只在起點是「字幕」、而且沒有改做到哪裡、處理方案、provider、模型、prompt 與 chunk 時顯示「用目前的設定從字幕步驟做到最後，預估花費 $X。」；其他情況與 `estimate_usd` 為 null 時仍是「無法預估」，不自己推算。不論從哪個按鈕打開對話框都一樣（從字幕步驟重跑時一定會改用更好的來源）。
