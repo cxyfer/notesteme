@@ -144,6 +144,27 @@ describe("字幕樣式：內建樣式比較（pages.md §9）", () => {
     expect(within(section).getByText(/預覽尚未可用/)).toBeTruthy();
   });
 
+  it("StrictMode 的模擬卸載後仍會送出第一張", async () => {
+    vi.stubGlobal("IntersectionObserver", undefined);
+    const api = stylesApi({ "POST /api/ass-styles/preview": () => png() });
+    const { BuiltinCompare } = await import("./BuiltinCompare");
+    const { render } = await import("@testing-library/react");
+    const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
+    const { StrictMode } = await import("react");
+    render(
+      <StrictMode>
+        <QueryClientProvider client={new QueryClient()}>
+          <BuiltinCompare styles={["default", "large"]} />
+        </QueryClientProvider>
+      </StrictMode>,
+    );
+    await screen.findByRole("option", { name: "第一部" });
+    await userEvent.selectOptions(screen.getByLabelText("影音"), "item-1");
+    expect(await screen.findByRole("img", { name: "「large」樣式的預覽" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "「default」樣式的預覽" })).toBeTruthy();
+    expect(api.calls("POST", "/api/ass-styles/preview").length).toBeGreaterThanOrEqual(2);
+  });
+
   it("媒體庫沒有影音時顯示空狀態，沒有選擇器", async () => {
     stylesApi({ "GET /api/items": () => ({ items: [], total: 0 }) });
     signIn();

@@ -64,7 +64,9 @@ function CompareGrid({ item, styles }: { item: string; styles: readonly string[]
   const urls = useRef<string[]>([]);
   useEffect(
     () => () => {
+      // 清掉 busy：StrictMode 的模擬卸載後會重新掛載，被取消的請求不會自己清
       busy.current?.abort();
+      busy.current = null;
       for (const u of urls.current) URL.revokeObjectURL(u);
     },
     [],
