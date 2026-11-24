@@ -283,3 +283,15 @@
   background: color-mix(in srgb, var(--mark-now) 18%, transparent);
   border-inline: 1px solid var(--mark-now);
 }
+
+/* 精簡版可以點擊（pages.md §1、§3）：透明的按鈕疊在帶子上，role="img" 的帶子本身不互動 */
+.sband__seek {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: var(--radius-mark);
+}

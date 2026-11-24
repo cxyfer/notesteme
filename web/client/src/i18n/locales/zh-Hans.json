@@ -378,6 +378,9 @@
       },
       "count_other": "{{formatted}} 部",
       "countAtLeast_other": "至少 {{formatted}} 部"
+    },
+    "band": {
+      "seek": "在时间带上点一个位置，打开「{{title}}」并定位到那个时间"
     }
   },
   "add": {

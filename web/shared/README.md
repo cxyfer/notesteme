@@ -28,7 +28,9 @@ Client UI（`web/client`）與之後的 Hub UI（`web/hub`，M5）共用的元�
 | `track`     | `ReactNode`              | 底軌上的內容（UI-2 的說話密度、章節）                                                                                                                                                        |
 | `variant`   | `"compact" \| "full"`    | 預設 `compact`                                                                                                                                                                               |
 
-完整版另外的 props（compact 忽略）：
+精簡版可以點擊（2026-11-25，pages.md §1、§3：點時間帶打開詳情並定位到該時間）：傳 `onSeek`、`seekLabel` 與 `durationS` 時，`role="img"` 的帶子不變（不加互動），另外疊一個透明的 `<button>`（`aria-label` 是 `seekLabel`，`seekTabIndex` 給列表的 roving focus），點擊位置的比例乘上 `durationS` 傳給 `onSeek`；用鍵盤按下時傳 0。沒有長度或沒有 `seekLabel` 時結構與原本相同、不能點擊。
+
+完整版另外的 props（compact 忽略；`onSeek` 兩種都用）：
 
 | prop           | 型別                    | 說明                                                                |
 | -------------- | ----------------------- | ------------------------------------------------------------------- |

@@ -1,5 +1,7 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+import { expectNoA11yViolations } from "../test/axe";
 
 import { StatusBand, type StatusBandStage } from "@shared";
 
@@ -65,5 +67,66 @@ describe("StatusBand", () => {
     );
     const segs = [...container.querySelectorAll<HTMLElement>(".sband__seg")];
     expect(segs.map((s) => [s.dataset.status, s.style.width])).toEqual([["running", "100%"]]);
+  });
+
+  describe("精簡版的 onSeek（pages.md §1、§3）", () => {
+    function rect(el: Element, left: number, width: number) {
+      el.getBoundingClientRect = () =>
+        ({
+          left,
+          width,
+          top: 0,
+          height: 30,
+          right: left + width,
+          bottom: 30,
+          x: left,
+          y: 0,
+        }) as DOMRect;
+    }
+
+    it("role=img 不變、不變成互動元素；另有可聚焦的按鈕，點擊位置的比例乘上長度（axe 無違規）", async () => {
+      const onSeek = vi.fn();
+      const { container } = render(
+        <StatusBand
+          stages={stages}
+          label="字幕完成，校正失敗"
+          durationS={200}
+          onSeek={onSeek}
+          seekLabel="打開「影片」並定位到點擊的時間"
+          className="row-band"
+        />,
+      );
+      const img = screen.getByRole("img", { name: "字幕完成，校正失敗" });
+      expect(img.tabIndex).toBe(-1);
+      expect(img.onclick).toBeNull();
+      // 版面用的 className 留在最外層
+      expect(container.firstElementChild!.classList.contains("row-band")).toBe(true);
+      const button = screen.getByRole("button", { name: "打開「影片」並定位到點擊的時間" });
+      rect(button, 100, 400);
+      fireEvent.click(button, { clientX: 200, detail: 1 });
+      expect(onSeek).toHaveBeenLastCalledWith(50);
+      fireEvent.click(button, { clientX: 900, detail: 1 });
+      expect(onSeek).toHaveBeenLastCalledWith(200);
+      // 鍵盤按下（detail 0）沒有位置：從頭打開
+      fireEvent.click(button, { clientX: 0, detail: 0 });
+      expect(onSeek).toHaveBeenLastCalledWith(0);
+      await expectNoA11yViolations(container);
+    });
+
+    it("沒有長度或沒有 seekLabel 時不提供點擊，結構和原本相同", () => {
+      const { container, rerender } = render(
+        <StatusBand
+          stages={stages}
+          label="x"
+          durationS={null}
+          onSeek={() => undefined}
+          seekLabel="y"
+        />,
+      );
+      expect(screen.queryByRole("button")).toBeNull();
+      expect(container.firstElementChild!.getAttribute("role")).toBe("img");
+      rerender(<StatusBand stages={stages} label="x" durationS={100} onSeek={() => undefined} />);
+      expect(screen.queryByRole("button")).toBeNull();
+    });
   });
 });

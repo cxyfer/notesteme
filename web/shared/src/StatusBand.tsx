@@ -4,6 +4,9 @@
 // 顏色用設計 token 的 CSS 變數（web/client/src/styles/tokens.css 的名稱），由使用端提供。
 //
 // 精簡版（variant="compact"，UI-1）：底軌加上每個步驟一條 3px 的帶子，用在媒體庫的列，role="img"。
+//   有 onSeek 時（pages.md §1、§3：點時間帶打開詳情並定位到該時間），role="img" 的元素不變、不加互動，
+//   另外疊一個透明的 <button>（aria-label 由呼叫端提供）接收點擊：點擊位置的比例乘上影音長度；
+//   用鍵盤按下時沒有位置，傳 0（從頭打開）。
 // 完整版（variant="full"，UI-2）：底軌 72px、時間刻度、6px 的步驟帶與右側逐列對齊的標籤、播放頭；
 // 整條是 role="slider"（aria-valuetext 是時間碼），點擊、方向鍵移動播放頭，hover 顯示該時間的說明。
 // 新的圖層用新的選用 props 加入，不改變既有 props 的意義。
@@ -61,11 +64,19 @@ export interface StatusBandProps {
   /** 底軌上的內容（說話密度、章節）；省略時畫一條點狀基線，代表還不知道說話密度 */
   track?: ReactNode;
   className?: string;
+  /**
+   * full：點擊、方向鍵移動播放頭時呼叫（秒，已限制在 [0, durationS]）。
+   * compact：點擊帶子時呼叫（點擊位置的比例 × durationS；鍵盤按下時是 0）；需要 durationS 與 seekLabel，
+   * 沒有長度時不提供點擊。
+   */
+  onSeek?: (seconds: number) => void;
+  /** compact 有 onSeek 時，疊在帶子上的按鈕的 aria-label（例如「打開『…』並定位到點擊的時間」） */
+  seekLabel?: string;
+  /** compact 的按鈕的 tabIndex（列表的 roving focus 用） */
+  seekTabIndex?: number;
   // ---- 以下只用在 full ----
   /** 播放頭的位置（秒） */
   position?: number;
-  /** 點擊、方向鍵移動播放頭時呼叫（秒，已限制在 [0, durationS]） */
-  onSeek?: (seconds: number) => void;
   /** 時間碼的格式（呼叫端提供，web/shared 不依賴 i18n）；刻度、aria-valuetext、hover 都用它 */
   formatTime?: (seconds: number) => string;
   /** hover 時顯示在時間碼下方的說明（例如那個時間點的字幕句）；回傳空字串時不顯示 */
@@ -127,14 +138,62 @@ function CompactBand({
   variant = "compact",
   track,
   className,
+  onSeek,
+  seekLabel,
+  seekTabIndex,
 }: StatusBandProps) {
-  // 略過的步驟不畫帶子（§6.1 的狀態表），文字版本由呼叫端的狀態欄提供。
-  const visible = stages.filter((s) => s.status !== "skipped");
-  const cls = ["sband", `sband--${variant}`, className]
+  const d =
+    durationS && Number.isFinite(durationS) && durationS > 0 ? durationS : 0;
+  const seekable = !!onSeek && d > 0 && !!seekLabel;
+  const cls = [
+    "sband",
+    `sband--${variant}`,
+    seekable && "sband--seekable",
+    className,
+  ]
     .filter(Boolean)
     .join(" ");
+  const bands = <CompactBands stages={stages} durationS={d} track={track} />;
+  // 沒有點擊時維持原本的結構：最外層就是 role="img"
+  if (!seekable)
+    return (
+      <div className={cls} role="img" aria-label={label}>
+        {bands}
+      </div>
+    );
   return (
-    <div className={cls} role="img" aria-label={label}>
+    <div className={cls}>
+      <div className="sband__img" role="img" aria-label={label}>
+        {bands}
+      </div>
+      <button
+        type="button"
+        className="sband__seek"
+        aria-label={seekLabel}
+        tabIndex={seekTabIndex}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          // 鍵盤（detail 0）或量不到寬度時沒有位置：從頭打開
+          const t =
+            e.detail === 0 || r.width <= 0
+              ? 0
+              : clamp(((e.clientX - r.left) / r.width) * d, d);
+          onSeek(t);
+        }}
+      />
+    </div>
+  );
+}
+
+function CompactBands({
+  stages,
+  durationS,
+  track,
+}: Pick<StatusBandProps, "stages" | "durationS" | "track">) {
+  // 略過的步驟不畫帶子（§6.1 的狀態表），文字版本由呼叫端的狀態欄提供。
+  const visible = stages.filter((s) => s.status !== "skipped");
+  return (
+    <>
       <div className="sband__track" aria-hidden="true">
         {track ?? <span className="sband__baseline" />}
       </div>
@@ -160,7 +219,7 @@ function CompactBand({
           </div>
         ))}
       </div>
-    </div>
+    </>
   );
 }
 

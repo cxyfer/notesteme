@@ -233,6 +233,28 @@ describe("媒體庫：篩選 ↔ 網址", () => {
   });
 });
 
+describe("媒體庫：點時間帶（pages.md §3）", () => {
+  it("點時間帶打開影音詳情並定位到點擊的時間；按鈕跟著列表的 roving focus", async () => {
+    libraryApi(items(2));
+    const { router } = await openLibrary();
+    await screen.findByRole("link", { name: "影片 2" });
+    const band = await screen.findByRole("button", {
+      name: "在時間帶上點一個位置，打開「影片 1」並定位到那個時間",
+    });
+    // 列表只有目前的列可以 Tab 到
+    const other = screen.getByRole("button", {
+      name: "在時間帶上點一個位置，打開「影片 2」並定位到那個時間",
+    });
+    expect(band.tabIndex === 0 || other.tabIndex === 0).toBe(true);
+    expect(band.tabIndex === -1 || other.tabIndex === -1).toBe(true);
+    band.getBoundingClientRect = () => ({ left: 10, width: 200 }) as DOMRect;
+    fireEvent.click(band, { clientX: 60, detail: 1 });
+    await waitFor(() => expect(router.state.location.pathname).toBe("/items/item-1"));
+    // 影片 1 長 601 秒：(60-10)/200 × 601 = 150.25 → 150
+    expect(router.state.location.search).toEqual({ t: 150 });
+  });
+});
+
 describe("媒體庫：分組（LIB-R4）", () => {
   it("預設依頻道分組：送出 group_by=channel，每組第一列上方顯示頻道名稱", async () => {
     const api = libraryApi([

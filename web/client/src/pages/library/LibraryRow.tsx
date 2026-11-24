@@ -167,6 +167,12 @@ export function LibraryRow({
         stages={bands}
         label={bandLabel}
         durationS={it.duration_s}
+        // pages.md §3：點時間帶打開詳情並定位到該時間
+        onSeek={(s) =>
+          void navigate({ to: "/items/$id", params: { id: item.id }, search: { t: Math.floor(s) } })
+        }
+        seekLabel={t("library.band.seek", { title })}
+        seekTabIndex={focusProps.tabIndex}
       />
       <div className="lrow__status">
         {detail.isPending ? (

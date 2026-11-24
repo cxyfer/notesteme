@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -140,5 +140,21 @@ describe("總覽", () => {
     renderRoute("/");
     expect(await screen.findByText("超出預算的影片")).toBeTruthy();
     expect(api.calls("GET", "/api/overview").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("點「現在」的時間帶打開影音詳情並定位到點擊的時間（pages.md §1）", async () => {
+    overviewApi();
+    signIn();
+    const { router } = renderRoute("/");
+    const now = (await screen.findByRole("heading", { name: "現在" })).closest("section")!;
+    const band = await within(now).findByRole("button", {
+      name: "在時間帶上點一個位置，打開「影片 1」並定位到那個時間",
+    });
+    // jsdom 沒有版面：量到的寬度用替身
+    band.getBoundingClientRect = () => ({ left: 0, width: 100 }) as DOMRect;
+    fireEvent.click(band, { clientX: 50, detail: 1 });
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/items\//));
+    // fixture 的影片 1 長度是 601 秒
+    expect(router.state.location.search).toEqual({ t: 300 });
   });
 });

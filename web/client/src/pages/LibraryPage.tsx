@@ -385,8 +385,7 @@ export function LibraryPage() {
               {groupBy &&
                 (index === 0 || groupKey(rows[index - 1]!, group) !== groupKey(item, group)) && (
                   <h2 className="library__group section__title">
-                    {groupLabel(t, item, group)}{" "}
-                    <GroupCountText count={counts.get(index)} />
+                    {groupLabel(t, item, group)} <GroupCountText count={counts.get(index)} />
                   </h2>
                 )}
               <LibraryRow

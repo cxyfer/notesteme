@@ -192,6 +192,7 @@ function NowSection({ now }: { now: Overview["now"] }) {
 
 function NowRow({ it }: { it: NowItem }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const detail = useItemDetail(it.id);
   const d = detail.data;
   const stageName = (s: string) => t(`stage.${s}`, { defaultValue: s });
@@ -223,6 +224,11 @@ function NowRow({ it }: { it: NowItem }) {
           stages={bands}
           label={bands.map((b) => b.label).join(t("common.listSeparator"))}
           durationS={d.duration_s}
+          // pages.md §1：點時間帶打開詳情並定位到該時間
+          onSeek={(s) =>
+            void navigate({ to: "/items/$id", params: { id: it.id }, search: { t: Math.floor(s) } })
+          }
+          seekLabel={t("library.band.seek", { title: it.title || it.ref })}
         />
       )}
     </li>
