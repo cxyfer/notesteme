@@ -118,7 +118,7 @@
             "type": "string"
           },
           "kind": {
-            "description": "backup_failed、stuck_task、job_stale、disk_usage、cookie_stale 或 ytdlp_failure_rate",
+            "description": "backup_failed、stuck_task、job_stale、disk_usage、cookie_stale、ytdlp_failure_rate 或 ytdlp_update_failed",
             "type": "string"
           },
           "message": {

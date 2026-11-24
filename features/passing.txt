@@ -183,6 +183,9 @@ OPS-operations.feature: Readiness reports what is broken
 OPS-operations.feature: A yt-dlp update that fails the self-check is rolled back
 OPS-operations.feature: A healthy yt-dlp update is kept
 OPS-operations.feature: A pinned yt-dlp is not updated
+OPS-operations.feature: yt-dlp is updated every day on a schedule
+OPS-operations.feature: A scheduled yt-dlp update that fails the self-check is rolled back and reported
+OPS-operations.feature: A pinned yt-dlp is skipped by the scheduled update
 OPS-operations.feature: The config file path wins over the environment and PATH
 OPS-operations.feature: The WSL compose profile binds to localhost only
 OPS-operations.feature: Old events are cleaned up

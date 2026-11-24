@@ -1817,7 +1817,7 @@ export interface components {
     AlertView: {
       /** @description 告警的對象，例如影音 id、<kind>:<key>、/data、平台 */
       key: string;
-      /** @description backup_failed、stuck_task、job_stale、disk_usage、cookie_stale 或 ytdlp_failure_rate */
+      /** @description backup_failed、stuck_task、job_stale、disk_usage、cookie_stale、ytdlp_failure_rate 或 ytdlp_update_failed */
       kind: string;
       message: string;
       /**

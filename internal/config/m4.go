@@ -55,9 +55,11 @@ const (
 	DefaultBundleMaxFile   = 64 << 20
 	DefaultBundleMaxRatio  = 100
 
-	DefaultBackupAt   = "03:00" // OPS-R11
-	DefaultBackupKeep = 7       // OPS-R12
-	MaxBackupKeep     = 365
+	DefaultBackupAt = "03:00" // OPS-R11
+	// DefaultYtDlpUpdateAt 是 yt-dlp 排程更新的時間（OPS-R6、R7）：避開 03:00 的每日備份。
+	DefaultYtDlpUpdateAt = "04:00"
+	DefaultBackupKeep    = 7 // OPS-R12
+	MaxBackupKeep        = 365
 
 	DefaultAlertStuckTaskHours  = 6 // OPS-R14～R18
 	DefaultAlertJobStaleHours   = 24
@@ -109,6 +111,15 @@ type DailyBackup struct {
 	Keep int
 }
 
+// YtDlpUpdate 是設定檔 updates.yt_dlp 區段：yt-dlp 的每日排程更新（OPS-R6、R7、ADR-0009 第 2 點）。
+type YtDlpUpdate struct {
+	Enabled bool
+	// EnabledSet 為 true 時設定檔明確寫了 enabled（驗收測試的 harness 預設關閉排程更新，只有明確開啟的場景才執行）。
+	EnabledSet bool
+	At         string // HH:MM
+	Timezone   string // IANA 名稱
+}
+
 // Alerts 是設定檔 alerts 區段（OPS-R13～R18）；門檻為 0 代表停用那一項。
 type Alerts struct {
 	Enabled           bool
@@ -146,6 +157,7 @@ type M4 struct {
 	Notify        Notify
 	BundleImport  BundleImport
 	DailyBackup   DailyBackup
+	YtDlpUpdate   YtDlpUpdate
 	Alerts        Alerts
 	Proxy         ProxyAuth
 	OIDC          OIDCAuth
@@ -167,6 +179,7 @@ func defaultM4() M4 {
 			MaxFileBytes: DefaultBundleMaxFile, MaxRatio: DefaultBundleMaxRatio,
 		},
 		DailyBackup: DailyBackup{Enabled: true, At: DefaultBackupAt, Timezone: "UTC", Keep: DefaultBackupKeep},
+		YtDlpUpdate: YtDlpUpdate{Enabled: true, At: DefaultYtDlpUpdateAt, Timezone: "UTC"},
 		Alerts: Alerts{
 			Enabled: true, StuckTaskHours: DefaultAlertStuckTaskHours, JobStaleHours: DefaultAlertJobStaleHours,
 			DiskUsagePercent: DefaultAlertDiskPercent, CookieStaleDays: DefaultAlertCookieStaleDays,
@@ -186,6 +199,7 @@ type m4Schema struct {
 	Notify        notifySchema        `yaml:"notify"`
 	Bundles       bundlesSchema       `yaml:"bundles"`
 	Backup        backupSchema        `yaml:"backup"`
+	Updates       updatesSchema       `yaml:"updates"`
 	Alerts        alertsSchema        `yaml:"alerts"`
 	Auth          authSchema          `yaml:"auth"`
 }
@@ -235,6 +249,14 @@ type backupSchema struct {
 		Dir      yaml.Node `yaml:"dir"`
 		Keep     yaml.Node `yaml:"keep"`
 	} `yaml:"daily"`
+}
+
+type updatesSchema struct {
+	YtDlp struct {
+		Enabled  yaml.Node `yaml:"enabled"`
+		At       yaml.Node `yaml:"at"`
+		Timezone yaml.Node `yaml:"timezone"`
+	} `yaml:"yt_dlp"`
 }
 
 type alertsSchema struct {
@@ -288,6 +310,28 @@ func nodeInt(n yaml.Node, file, field string, def, lo, hi int) (int, error) {
 		return 0, fieldErr(file, field, "必須是 %d 到 %d 的整數。", lo, hi)
 	}
 	return v, nil
+}
+
+// parseDailyAt 讀取每天固定時刻的 at（HH:MM）與 timezone（IANA 名稱，不接受 Local），欄位名稱以 prefix 開頭。
+// 沒有寫的欄位維持 at、tz 原本的值。
+func parseDailyAt(at, tz *string, atNode, tzNode yaml.Node, file, prefix string) error {
+	if v, ok, err := nodeString(atNode, file, prefix+".at"); err != nil {
+		return err
+	} else if ok {
+		if !clockTime.MatchString(v) {
+			return fieldErr(file, prefix+".at", "必須是 HH:MM（例如 \"03:00\"）：%q", v)
+		}
+		*at = v
+	}
+	if v, ok, err := nodeString(tzNode, file, prefix+".timezone"); err != nil {
+		return err
+	} else if ok {
+		if _, lerr := time.LoadLocation(v); lerr != nil || v == "" || v == "Local" {
+			return fieldErr(file, prefix+".timezone", "不是認得的 IANA 時區名稱（例如 Asia/Taipei）：%q", v)
+		}
+		*tz = v
+	}
+	return nil
 }
 
 // nodeBool 讀取 true／false 欄位。
@@ -488,6 +532,14 @@ func parseM4(s *m4Schema, file string, cfg *Config) error {
 	if bd.Keep, err = nodeInt(d.Keep, file, "backup.daily.keep", DefaultBackupKeep, 1, MaxBackupKeep); err != nil {
 		return err
 	}
+
+	if err := parseDailyAt(&out.YtDlpUpdate.At, &out.YtDlpUpdate.Timezone, s.Updates.YtDlp.At, s.Updates.YtDlp.Timezone, file, "updates.yt_dlp"); err != nil {
+		return err
+	}
+	if out.YtDlpUpdate.Enabled, err = nodeBool(s.Updates.YtDlp.Enabled, file, "updates.yt_dlp.enabled", true); err != nil {
+		return err
+	}
+	out.YtDlpUpdate.EnabledSet = s.Updates.YtDlp.Enabled.Kind != 0
 
 	al, a := &out.Alerts, s.Alerts
 	if al.Enabled, err = nodeBool(a.Enabled, file, "alerts.enabled", true); err != nil {

@@ -37,10 +37,28 @@ func TestM4Defaults(t *testing.T) {
 	if m.Alerts != (Alerts{true, 6, 24, 90, 14, 5, 0.5}) {
 		t.Errorf("alerts = %+v", m.Alerts)
 	}
+	if m.YtDlpUpdate != (YtDlpUpdate{Enabled: true, At: "04:00", Timezone: "UTC"}) {
+		t.Errorf("updates.yt_dlp = %+v", m.YtDlpUpdate)
+	}
 	// 沒有設定檔時也一樣。
 	cfg, err = Load(Sources{File: "/nonexistent/notesteme.yaml", Env: map[string]string{}})
 	if err != nil || cfg.M4.JitterMax != DefaultJitterMax || cfg.M4.DailyBackup.Dir == "" {
 		t.Errorf("沒有設定檔：%+v，%v", cfg, err)
+	}
+}
+
+// updates.yt_dlp：寫了 enabled 時 EnabledSet 為 true（harness 的預設關閉只在沒有寫時生效）。
+func TestYtDlpUpdateConfig(t *testing.T) {
+	cfg, err := loadYAML(t, "updates: { yt_dlp: { enabled: false, at: \"05:30\", timezone: Asia/Taipei } }\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.M4.YtDlpUpdate != (YtDlpUpdate{Enabled: false, EnabledSet: true, At: "05:30", Timezone: "Asia/Taipei"}) {
+		t.Errorf("updates.yt_dlp = %+v", cfg.M4.YtDlpUpdate)
+	}
+	cfg, err = loadYAML(t, "updates: { yt_dlp: { at: \"05:30\" } }\n")
+	if err != nil || !cfg.M4.YtDlpUpdate.Enabled || cfg.M4.YtDlpUpdate.EnabledSet {
+		t.Errorf("沒有寫 enabled：%+v，%v", cfg.M4.YtDlpUpdate, err)
 	}
 }
 
@@ -125,6 +143,10 @@ func TestM4Rejects(t *testing.T) {
 		{"保留份數是 0", `backup: { daily: { keep: 0 } }`, "backup.daily.keep"},
 		{"保留份數太多", `backup: { daily: { keep: 366 } }`, "backup.daily.keep"},
 		{"enabled 不是 bool", `backup: { daily: { enabled: "yes" } }`, "backup.daily.enabled"},
+		{"更新時間", `updates: { yt_dlp: { at: "4:00" } }`, "updates.yt_dlp.at"},
+		{"更新時區", `updates: { yt_dlp: { timezone: Local } }`, "updates.yt_dlp.timezone"},
+		{"更新的 enabled 不是 bool", `updates: { yt_dlp: { enabled: 1 } }`, "updates.yt_dlp.enabled"},
+		{"updates 打錯字", `updates: { ytdlp: { enabled: true } }`, "ytdlp"},
 		{"磁碟門檻超過 100", `alerts: { disk_usage_percent: 101 }`, "alerts.disk_usage_percent"},
 		{"失敗率超過 1", `alerts: { ytdlp_failure_ratio: 1.5 }`, "alerts.ytdlp_failure_ratio"},
 		{"告警門檻是負的", `alerts: { cookie_stale_days: -1 }`, "alerts.cookie_stale_days"},

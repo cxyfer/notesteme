@@ -288,7 +288,7 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 		switch k {
 		case "listen", "data", "trusted_proxies", "tools", "providers", "hooks", "asr", "llm", "network", "inbox", "media_roots", "library", "mcp",
 			"vaults", "sponsorblock", "hub":
-		case "server", "scheduler", "subscriptions", "notify", "bundles", "backup", "alerts", "auth": // M4（m4Schema）
+		case "server", "scheduler", "subscriptions", "notify", "bundles", "backup", "updates", "alerts", "auth": // M4（m4Schema）
 		default:
 			if dbManagedFields[k] {
 				managed = append(managed, k)

@@ -29,7 +29,7 @@ type SystemView struct {
 
 // AlertView 是一則成立中的告警（OPS-R13～R18）。
 type AlertView struct {
-	Kind    string    `json:"kind" doc:"backup_failed、stuck_task、job_stale、disk_usage、cookie_stale 或 ytdlp_failure_rate"`
+	Kind    string    `json:"kind" doc:"backup_failed、stuck_task、job_stale、disk_usage、cookie_stale、ytdlp_failure_rate 或 ytdlp_update_failed"`
 	Key     string    `json:"key" doc:"告警的對象，例如影音 id、<kind>:<key>、/data、平台"`
 	Message string    `json:"message"`
 	Since   time.Time `json:"since" doc:"條件開始成立的時間"`

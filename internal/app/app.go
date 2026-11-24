@@ -68,6 +68,9 @@ type TestControls struct {
 	PricesAsOf    string
 	// DiskUsage 取代讀取資料目錄所在檔案系統用量的函式（OPS-R16 的告警）；每次檢查都呼叫，可以在 server 啟動後改變結果。
 	DiskUsage func(dir string) (int, error)
+	// NoYtDlpAutoUpdate 讓 yt-dlp 的排程更新（updates.yt_dlp）在設定檔沒有明確寫 enabled 時預設關閉：
+	// 驗收場景的 fake clock 常常跨過更新的時刻，假的 python 會真的換掉 yt-dlp 或送出告警，影響無關的場景。
+	NoYtDlpAutoUpdate bool
 }
 
 // IO 是標準輸入輸出。

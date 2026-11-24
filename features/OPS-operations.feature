@@ -109,6 +109,59 @@ Feature: Backup, health and external tools
     And the owner runs "notesteme tools update"
     Then the command output contains "已固定在 2026.11.01"
 
+  @OPS-04 @OPS-R6
+  Scenario: yt-dlp is updated every day on a schedule
+    Given the config file contains:
+      """
+      updates:
+        yt_dlp: { enabled: true, at: "04:00", timezone: UTC }
+      """
+    And the server is running
+    And yt-dlp "2026.11.01" is installed
+    And the yt-dlp release "2026.11.10" passes the self-check
+    When the clock advances by "25h"
+    And the worker runs until idle
+    Then yt-dlp "2026.11.10" is the active version
+
+  @OPS-04 @OPS-R6
+  Scenario: A scheduled yt-dlp update that fails the self-check is rolled back and reported
+    Given the config file contains:
+      """
+      updates:
+        yt_dlp: { enabled: true, at: "04:00", timezone: UTC }
+      """
+    And the server is running
+    And the owner is signed in
+    And yt-dlp "2026.11.01" is installed
+    And the yt-dlp release "2026.11.10" fails the self-check
+    When the clock advances by "25h"
+    And the worker runs until idle
+    Then yt-dlp "2026.11.01" is the active version
+    When the owner sends "GET /api/system"
+    Then the response contains:
+      """
+      { "alerts": [ { "kind": "ytdlp_update_failed", "message": "yt-dlp 更新後自我檢查失敗，已回到 2026.11.01。" } ] }
+      """
+
+  @OPS-04 @OPS-R7
+  Scenario: A pinned yt-dlp is skipped by the scheduled update
+    Given the config file contains:
+      """
+      updates:
+        yt_dlp: { enabled: true, at: "04:00", timezone: UTC }
+      """
+    And the server is running
+    And the owner is signed in
+    And yt-dlp "2026.11.01" is installed
+    And the yt-dlp release "2026.11.10" passes the self-check
+    When the owner sends "POST /api/tools/yt-dlp/update" with:
+      """
+      { "pin": "2026.11.01" }
+      """
+    And the clock advances by "25h"
+    And the worker runs until idle
+    Then yt-dlp "2026.11.01" is the active version
+
   @OPS-04 @OPS-R8
   Scenario: The config file path wins over the environment and PATH
     Given the config file contains:
