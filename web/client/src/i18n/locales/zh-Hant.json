@@ -1274,7 +1274,11 @@
     "appearance": {
       "themeHint": "存在這個瀏覽器。導覽底部也可以快速切換。",
       "densityTitle": "介面密度",
-      "densityUnavailable": "尚未提供：設計規格還沒有定義介面密度。"
+      "densityHint": "緊湊會縮小列表與表格每一列的留白，一個畫面看得到更多列；字級與按鈕大小不變。存在這個瀏覽器。",
+      "density": {
+        "comfortable": "舒適（預設）",
+        "compact": "緊湊"
+      }
     },
     "login": {
       "passwordTitle": "修改密碼",

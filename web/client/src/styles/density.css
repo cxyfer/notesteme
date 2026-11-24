@@ -1,0 +1,18 @@
+/*
+ * 介面密度：緊湊（design-language.md §5.5）。只縮小列表的列與表格儲存格的上下留白；
+ * 不改字級、--space-* token 與按鈕（按鈕有自己的 min-height 32px，可點擊目標仍 ≥ 24px）。
+ * 用 :root[data-density] 提高特異度，和各元件 CSS 的載入順序無關。
+ */
+:root[data-density="compact"] .data-table th,
+:root[data-density="compact"] .data-table td,
+:root[data-density="compact"] .settings-table th,
+:root[data-density="compact"] .settings-table td {
+  padding-block: var(--space-1);
+}
+:root[data-density="compact"] .lrow,
+:root[data-density="compact"] .trow {
+  padding-block: var(--space-1);
+}
+:root[data-density="compact"] .tune-row {
+  padding-block: var(--space-2);
+}

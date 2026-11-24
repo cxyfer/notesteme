@@ -11,6 +11,7 @@ import "./styles/library.css";
 import "./styles/tune.css";
 import "./styles/item.css";
 import "./styles/m4.css";
+import "./styles/density.css";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -18,9 +19,11 @@ import { createRoot } from "react-dom/client";
 import { createQueryClient } from "./api/queryClient";
 import { App } from "./App";
 import { initI18n } from "./i18n";
+import { applyDensity, readDensity } from "./theme/density";
 import { applyTheme, readTheme } from "./theme/theme";
 
 applyTheme(readTheme());
+applyDensity(readDensity());
 initI18n();
 
 const root = document.getElementById("root");

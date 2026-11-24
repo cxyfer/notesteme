@@ -1274,7 +1274,11 @@
     "appearance": {
       "themeHint": "保存在这个浏览器。导航底部也可以快速切换。",
       "densityTitle": "界面密度",
-      "densityUnavailable": "尚未提供：设计规格还没有定义界面密度。"
+      "densityHint": "紧凑会缩小列表与表格每一行的留白，一屏能看到更多行；字号与按钮大小不变。保存在这个浏览器。",
+      "density": {
+        "comfortable": "舒适（默认）",
+        "compact": "紧凑"
+      }
     },
     "login": {
       "passwordTitle": "修改密码",

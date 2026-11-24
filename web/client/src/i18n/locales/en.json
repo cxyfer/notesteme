@@ -1327,7 +1327,11 @@
     "appearance": {
       "themeHint": "Saved in this browser. You can also switch it at the bottom of the navigation.",
       "densityTitle": "Interface density",
-      "densityUnavailable": "Not available yet: the design spec doesn't define interface density."
+      "densityHint": "Compact trims the spacing of list and table rows so more fit on screen; text and button sizes stay the same. Saved in this browser.",
+      "density": {
+        "comfortable": "Comfortable (default)",
+        "compact": "Compact"
+      }
     },
     "login": {
       "passwordTitle": "Change password",

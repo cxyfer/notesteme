@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -750,6 +752,35 @@ describe("語言與外觀", () => {
     );
     await userEvent.click(screen.getByRole("radio", { name: "跟隨系統" }));
     expect(document.documentElement.dataset.theme).toBeUndefined();
+  });
+});
+
+describe("介面密度（design-language.md §5.5）", () => {
+  it("選緊湊時套用 data-density 並記在這個瀏覽器；回到舒適時移除（axe 無違規）", async () => {
+    settingsApi();
+    const { container } = await openSection("appearance");
+    const comfortable = screen.getByRole("radio", { name: "舒適（預設）" }) as HTMLInputElement;
+    expect(comfortable.checked).toBe(true);
+    await userEvent.click(screen.getByRole("radio", { name: "緊湊" }));
+    expect(document.documentElement.dataset.density).toBe("compact");
+    expect(localStorage.getItem("notesteme.density")).toBe("compact");
+    await expectNoA11yViolations(container);
+    await userEvent.click(comfortable);
+    expect(document.documentElement.dataset.density).toBeUndefined();
+    expect(localStorage.getItem("notesteme.density")).toBeNull();
+  });
+
+  it("緊湊只改列與儲存格的上下留白：不改字級、token 與按鈕大小", () => {
+    // 去掉註解再看宣告
+    const densityCss = readFileSync("src/styles/density.css", "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    const decls = [...densityCss.matchAll(/([\w-]+)\s*:/g)]
+      .map((m) => m[1])
+      .filter((p) => p !== "root" && p !== "compact");
+    expect(new Set(decls)).toEqual(new Set(["padding-block"]));
+    expect(densityCss).not.toMatch(/--space-\d+\s*:/);
   });
 });
 
