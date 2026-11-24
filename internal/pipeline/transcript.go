@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/langdetect"
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/source/bilibili"
@@ -135,7 +136,7 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		// 快取鍵、Groq 的語言提示與 language_mismatch 檢查都以 inputLang 為準：第一次執行時原文語言為空，
 		// 回寫之後重跑要算出相同的鍵，否則快取不會命中而重複付費。
 		inputLang = originalLang
-		if it.LangSource == "asr" {
+		if selfLangSource(it.LangSource) {
 			inputLang = ""
 		}
 		fit = it
@@ -365,8 +366,8 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 		return result{}, err
 	}
 	return result{
-		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions), meta: mergeMeta(meta, refresh),
-		state: state,
+		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions),
+		meta: detectLang(it, mergeMeta(meta, refresh), cues), state: state,
 	}, nil
 }
 
@@ -882,9 +883,51 @@ func (p *Pipeline) fallbackResult(ctx context.Context, id string, f fallbackFetc
 	// SRC-R11：原文語言未知、ASR 回報了語言時，寫回影音的原文語言（lang_source 為 asr）。
 	// UpdateItemMeta 會整欄覆寫 metadata_json，所以一定要帶上原本的 Metadata。
 	if isASR(id) && it.OriginalLang == "" && got.Lang != "" {
-		res.meta = &metaUpdate{item: store.ItemMeta{OriginalLang: got.Lang, LangSource: "asr", Metadata: it.Metadata}}
+		res.meta = &metaUpdate{item: store.ItemMeta{OriginalLang: got.Lang, LangSource: langSourceASR, Metadata: it.Metadata}}
 	}
+	res.meta = detectLang(it, res.meta, got.Cues)
 	return res, nil
+}
+
+// 原文語言的來源（items.lang_source，SRC-R11）。
+const (
+	langSourceASR      = "asr"
+	langSourceDetected = "detected"
+)
+
+// selfLangSource 回報這個 lang_source 是不是 transcript 步驟自己的產出（ASR 回報、文字偵測）：
+// 重跑 transcript 時這種原文語言不當成輸入，快取鍵、ASR 的語言提示都視為未知，否則重跑會因為鍵改變而重複付費。
+func selfLangSource(src string) bool { return src == langSourceASR || src == langSourceDetected }
+
+// detectLang 依這次的字幕文字補上 SRC-R11 的第三層（2026-11-24）：
+//   - 原文語言：平台中繼資料、ASR 都沒有給（影音與 meta 都沒有原文語言，或原文語言本來就是偵測來的）時，
+//     採用文字偵測的主要語言，lang_source 為 detected。
+//   - mixed：不論原文語言來自哪一層，兩種語言都各占 20% 以上時標為 mixed，否則清掉。
+//
+// 文字太短、判斷不了時不改動任何欄位。meta 可以是 nil；回傳的 meta 一定帶著影音原本的 Metadata（UpdateItemMeta 整欄覆寫）。
+func detectLang(it store.Item, meta *metaUpdate, cues []subtitle.Cue) *metaUpdate {
+	var b strings.Builder
+	for _, c := range cues {
+		b.WriteString(c.Text)
+		b.WriteByte('\n')
+	}
+	d, ok := langdetect.Detect(b.String())
+	if !ok {
+		return meta
+	}
+	out := metaUpdate{item: store.ItemMeta{Metadata: it.Metadata}}
+	if meta != nil {
+		out = *meta
+	}
+	// it 可能是交給 fallback 的副本（原文語言是 ASR 的產出時被清空，lang_source 仍是 asr）：那也算已知。
+	known := out.item.OriginalLang != "" ||
+		(it.LangSource != langSourceDetected && (it.OriginalLang != "" || it.LangSource != ""))
+	if !known && d.Lang != "" {
+		out.item.OriginalLang, out.item.LangSource = d.Lang, langSourceDetected
+	}
+	mixed := d.Mixed
+	out.mixed = &mixed
+	return &out
 }
 
 // langMismatch 回報來源回報的語言 got 是否和影音的原文語言 want 不同（SRC-R4 的 language_mismatch）。

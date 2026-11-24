@@ -97,7 +97,7 @@ func (p *Pipeline) SeedTranscript(ctx context.Context, req SeedRequest) error {
 }
 
 // SeedLangMixed 把影音的原文語言標記為 mixed（夾雜多種語言）。只給驗收測試的 harness 使用（同 SeedTranscript）：
-// 產品中判斷 mixed 的流程（SRC-R11）還沒有實作。
+// 產品由 transcript 步驟依字幕文字判斷 mixed（SRC-R11，detectLang）；這裡給只需要「已經是 mixed」的場景直接寫入。
 func (p *Pipeline) SeedLangMixed(ctx context.Context, itemID string) error {
 	return p.st.Tx(ctx, func(r *store.Repo) error { return r.SetItemLangMixed(ctx, itemID, true) })
 }

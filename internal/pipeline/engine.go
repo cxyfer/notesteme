@@ -81,6 +81,8 @@ type supersedeSet struct {
 type metaUpdate struct {
 	item    store.ItemMeta
 	channel *store.Channel
+	// mixed 非 nil 時寫入 items.lang_mixed（SRC-R11：transcript 依文字判斷是否夾雜多種語言）。
+	mixed *bool
 }
 
 // Handle 執行一個已領取的任務，並把結果寫回（worker.Handler）。
@@ -363,6 +365,11 @@ func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.Stag
 			}
 			if err := r.UpdateItemMeta(ctx, it.ID, m); err != nil {
 				return err
+			}
+			if res.meta.mixed != nil {
+				if err := r.SetItemLangMixed(ctx, it.ID, *res.meta.mixed); err != nil {
+					return err
+				}
 			}
 		}
 		if res.stage != nil {

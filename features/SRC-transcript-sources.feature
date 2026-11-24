@@ -211,9 +211,12 @@ Feature: Transcript sources and quality
     And the worker runs until idle
     Then the original language of "local:meetup.mp4" is "ja"
 
-  @SRC-08 @SRC-R11 @wip
+  @SRC-08 @SRC-R11
   Scenario: Code-switching speech is marked as mixed
-    Given a YouTube video "yt:mix001xxxxx" titled "混合語言的分享"
+    Given a YouTube video "yt:mix001xxxxx" with:
+      | field    | value          |
+      | title    | 混合語言的分享 |
+      | language | zh             |
     And "yt:mix001xxxxx" has auto captions in "zh"
     And the source "youtube-auto" returns "auto-zh-en-mixed.json" for "yt:mix001xxxxx"
     When the owner ingests "yt:mix001xxxxx" with the overrides:

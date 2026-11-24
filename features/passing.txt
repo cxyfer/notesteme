@@ -284,6 +284,7 @@ SRC-transcript-sources.feature: Bilibili AI captions without a cookie ask for on
 SRC-transcript-sources.feature: A 403 from YouTube suggests updating yt-dlp first
 SRC-transcript-sources.feature: A paid source without an API key asks for the key
 SRC-transcript-sources.feature: Detect the original language when metadata does not have it
+SRC-transcript-sources.feature: Code-switching speech is marked as mixed
 SRC-transcript-sources.feature: Audio above the provider limit is split and stitched back seamlessly
 SRC-transcript-sources.feature: A sidecar subtitle file next to a local video is used before ASR
 SRC-transcript-sources.feature: An embedded subtitle track is used before ASR

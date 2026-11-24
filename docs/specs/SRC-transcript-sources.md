@@ -149,8 +149,14 @@ SRC-10 屬於 M4（故事地圖第 5 節），規則是 SRC-R18～R23；其餘�
   - 字幕抓取失敗（4xx、被防護擋下、解析失敗）記為 `unavailable`／`permanent`（每條失敗的字幕軌一筆來源紀錄），先改用 feed 宣告的下一條字幕軌（把失敗的軌拿掉後重新選軌，2026-11-22，Codex 審查後決定），都不能用才改用 fallback；5xx、429 與連線錯誤讓步驟重試。Supadata 對 podcast 是 `unsupported`。
   - SRC-R15 的「實際長度」是 ffprobe 量到的音檔長度，不是 feed 的 `itunes:duration`；與最大的 cue 結束時間相差超過 2%（不含）時，`transcript` 步驟仍為 `done`，帶 message「時間可能偏移」，沒有動作，來源紀錄加上 `timing_check`。只檢查 `podcast-transcript`，ASR 的結果不檢查。done 步驟的訊息在 UI 顯示為提醒（`shows the message` 的語意已補上這種情況，需要 owner 確認）。
   - Podcasting 2.0 JSON 的 segment 只有每個 body 都沒有空白且不含 CJK 時才視為字詞級，合併成 cue 並填入 `Words`；含 CJK 的文件一律一個 segment 一個 cue。CJK 沒有空白可以分辨字詞與整句，「大家好」「歡迎收聽」這類短句靠字數判斷會被誤合併，所以不靠長度猜測；代價是逐字切分的 CJK 文件會有很多很短的 cue（2026-11-22，Codex 審查後決定，取代 2026-11-21「不超過 4 個字」的做法）。
-- SRC-R11 的 ASR 語言（2026-11-21）：原文語言未知、ASR 回報了語言時，寫回影音的原文語言，`lang_source` 為 `asr`。這個語言是 transcript 步驟自己的產出，所以重跑 transcript 時不當成輸入：快取鍵、送給 ASR 的語言提示與 `language_mismatch` 檢查都視為原文語言未知，否則重跑會因為快取鍵改變而重複付費。第三層的文字語言偵測仍未實作。
-- SRC-R11「Code-switching speech is marked as mixed」暫時標為 `@wip`（2026-11-15，owner 同意）：`the original language of … is …` 實作後，這個場景會失敗。場景沒有宣告語言，harness 預設 `en`，場景卻預期由文字偵測得到 `zh`；production 也還沒有文字語言偵測。等文字語言偵測的切片一併解決這個矛盾後，再拿掉 `@wip`。
+- SRC-R11 的 ASR 語言（2026-11-21）：原文語言未知、ASR 回報了語言時，寫回影音的原文語言，`lang_source` 為 `asr`。這個語言是 transcript 步驟自己的產出，所以重跑 transcript 時不當成輸入：快取鍵、送給 ASR 的語言提示與 `language_mismatch` 檢查都視為原文語言未知，否則重跑會因為快取鍵改變而重複付費。第三層的文字語言偵測見下一條「SRC-R11 的文字語言偵測」。
+- ~~SRC-R11「Code-switching speech is marked as mixed」暫時標為 `@wip`（2026-11-15，owner 同意）：`the original language of … is …` 實作後，這個場景會失敗。場景沒有宣告語言，harness 預設 `en`，場景卻預期由文字偵測得到 `zh`；production 也還沒有文字語言偵測。等文字語言偵測的切片一併解決這個矛盾後，再拿掉 `@wip`。~~ 已處理，見下一條。
+- SRC-R11 的文字語言偵測與 `mixed`（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：
+  - 實作在 `internal/langdetect.Detect`：純 Go、不連網，依文字系統的份量判斷。份量的單位：漢字、假名、諺文、泰文一個字一份，其他字母文字一個「詞」一份。規格寫「字元」，但照字母逐一計算時，中英夾雜的字幕（例如場景的 `auto-zh-en-mixed`：29 個漢字、13 個英文詞、約 70 個英文字母）英文會變成主要語言，與場景預期的 `zh` 相反；改成「一個英文詞與一個漢字等重」，該 fixture 是 zh 69%、en 31%，標為 `mixed`、主要語言 `zh`。這是對「字元」的解讀。
+  - 假名的份量達到漢字的五分之一時，漢字與假名都算日文；中文的簡繁都算 `zh`（`items.original_lang` 只寫主語言，字形另由 `zhconv.DetectScript` 判斷，不寫入）。拉丁字母與西里爾字母的語言依常見功能詞判斷（en、fr、de、es、pt、it；ru、uk）；一個都對不到時，主要語言不判斷（空字串），夾雜在其他語言中的第二語言視為 `en`（多半是英文術語）。總份量少於 8 時判斷不了，不改動任何欄位。
+  - 套用的時機：`transcript` 產生新的原始字幕時（平台字幕或 fallback 來源）。原文語言依序採用平台中繼資料、ASR 回報、文字偵測；只有前兩層都沒有時才寫入偵測的主要語言，`lang_source` 為 `detected`（API 文件原本就列了這個值）。`mixed` 不論原文語言來自哪一層，都依這次的字幕文字重新判斷（達到時設為 true，否則清掉）；快取命中時不重新判斷。
+  - 快取鍵：`detected` 與 `asr` 一樣是 transcript 自己的產出，重跑時視為原文語言未知（快取鍵、ASR 的語言提示、`language_mismatch`），重跑不會重複付費（`internal/pipeline/textlang_test.go`）。`mixed` 不進 transcript 的快取鍵；它是 correct、translate 的輸入（COR-R5），改變時下游的快取鍵跟著變，這是預期的。
+  - 場景「Code-switching speech is marked as mixed」拿掉 `@wip`，並把第一步從 `a YouTube video … titled …` 改成 `a YouTube video … with:`（`title` 與 `language: zh`）：場景原本沒有宣告語言，harness 預設 `en`，依 SRC-R11 的順序平台中繼資料優先，不可能得到 `zh`；原文語言留空時，預設的 `caption_priority`（`original` 的規則）又選不到 zh 的自動字幕，會改走 fallback。宣告 `zh` 是最小修改：場景驗證文字判斷的 `mixed`，第三層的語言判斷由單元測試把關。待 owner 追認；若要由場景驗證第三層，需要先做「原文語言未知時從 YouTube 自動字幕（`*-orig`）推斷」（handoff §6 SRC）。
 
 ### M4（SRC-10）
 

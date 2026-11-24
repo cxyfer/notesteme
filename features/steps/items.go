@@ -49,7 +49,7 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`the transcript of {string} came from {string}`, s.transcriptCameFrom)
 	r.Step(`the source {string} was rejected for {string} because {string}`, s.sourceRejectedFor)
 	r.Step(`the original language of {string} is {string}`, s.originalLanguageIs)
-	r.Step(`the original language of {string} is marked as mixed`, func(string) error { return godog.ErrPending })
+	r.Step(`the original language of {string} is marked as mixed`, s.originalLanguageIsMixed)
 	r.Step(`the {string} transcript of {string} has {int} cues`, s.transcriptHasCues)
 	r.Step(`the {string} transcript of {string} in {string} has {int} cues`, s.transcriptInLangHasCues)
 	r.Step(`every cue of the {string} transcript of {string} follows the subtitle rules for {string}`, s.everyCueFollowsRules)
@@ -612,6 +612,18 @@ func (s *Scenario) itemHasNoArtifact(ref, name string) error {
 }
 
 // originalLanguageIs 比對影音詳情的原文語言（original_lang，SRC-R11）。server 已停止時明確失敗，不隱含啟動新的 server。
+// originalLanguageIsMixed 檢查影音詳情的 lang_mixed（SRC-R11）。
+func (s *Scenario) originalLanguageIsMixed(ref string) error {
+	it, err := s.item(ref)
+	if err != nil {
+		return err
+	}
+	if !it.LangMixed {
+		return fmt.Errorf("%s 的原文語言沒有標記為 mixed（original_lang %q）", ref, it.OriginalLang)
+	}
+	return nil
+}
+
 func (s *Scenario) originalLanguageIs(ref, want string) error {
 	if s.stopped {
 		return fmt.Errorf("server 已停止，還不支援從 DB 讀原文語言")
@@ -627,7 +639,7 @@ func (s *Scenario) originalLanguageIs(ref, want string) error {
 }
 
 // itemIsMixedLanguage 把影音的原文語言標記為 mixed（steps.md：Given {string} is a mixed-language item）。
-// 判斷 mixed 的流程（SRC-R11）還沒有實作，所以直接寫入（harness 可以存取 Core，ADR-0015）。
+// 這是前置條件（seeding）：產品的判斷由 transcript 步驟依字幕文字做（SRC-R11），這裡直接寫入（harness 可以存取 Core，ADR-0015）。
 func (s *Scenario) itemIsMixedLanguage(ref string) error {
 	if err := s.prepareOwner(); err != nil {
 		return err
