@@ -5,7 +5,6 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
@@ -143,7 +142,7 @@ func (p *Pipeline) RetryTask(ctx context.Context, taskID string) (itemID string,
 		if run.Stage == StageFrames {
 			return insertFramesTask(ctx, r, it.ID, run, t.Priority, false)
 		}
-		_, err = insertStageTask(ctx, r, it.ID, run, t.Priority, t.ResourceClass == queue.ResourceASR)
+		_, err = insertStageTaskLike(ctx, r, it.ID, run, t.Priority, &t)
 		return err
 	})
 	if err != nil {

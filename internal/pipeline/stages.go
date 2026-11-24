@@ -184,7 +184,8 @@ func (p *Pipeline) SetImplVersion(stage string, v int) error {
 
 // resourceClass 是步驟使用的資源類別（ADR-0004）。
 // transcriptASR 只對 transcript 有意義：true 代表這個任務很可能要走 ASR 來源（見 transcriptNeedsASR）。
-// LLM 步驟走 api 或 agent 時是 llm；opencc 與 publish 是本機的確定性處理。
+// LLM 步驟走 api 或 agent 時是 llm；opencc 與 publish 是本機的確定性處理（publish 有 git vault 時，
+// applyChain 依 StageResolution.Vaults 改成 download，ADR-0020 第 3 點；這裡不知道 vault 的設定）。
 // M3 的步驟依 ADR-0020 第 3 點：sponsorblock 是 download；chapters、note 走 api 或 agent 時是 llm；
 // frames 的任務由 FRM 的切片依 tasks.kind 分類，這裡先給候選擷取的 frames 類別。
 // M4 的 summary 走 api 或 agent 時是 llm（ADR-0021 第 6 點）。

@@ -268,6 +268,57 @@ Feature: Vault output and hooks
     And the worker runs until idle
     Then the vault remote received a single new commit
 
+  # push 是網路操作：有 git vault 時 publish 用 download 資源類別，沒有時是 local（ADR-0020 第 3 點、VAULT 介面）。
+  @VAULT-02 @VAULT-R7
+  Scenario: Publishing to a git vault waits for a download slot
+    Given the config file contains:
+      """
+      vaults:
+        main: { adapter: fs, path: /vault }
+        remote: { adapter: git, remote: "https://git.example.com/me/vault.git", branch: master }
+      """
+    And the profile "vault-git" is:
+      """
+      outputs:
+        - { target: vault, vault: remote, formats: [srt] }
+      """
+    And the default profile is "vault-git"
+    And the resource class "download" is paused
+    When the owner sends "POST /api/items/yt:vlt001xxxxx/rerun" with:
+      """
+      { "from": "publish", "profile": "vault-git" }
+      """
+    And the worker runs until idle
+    Then the stage "publish" of "yt:vlt001xxxxx" is "pending"
+    When the owner sends "GET /api/queue"
+    Then the response contains:
+      """
+      { "tasks": [ { "item": "yt:vlt001xxxxx", "stage": "publish", "resource_class": "download", "state": "pending" } ] }
+      """
+    When the owner sends "POST /api/queue/resume" with:
+      """
+      { "class": "download" }
+      """
+    And the worker runs until idle
+    Then the stage "publish" of "yt:vlt001xxxxx" is "done"
+    And the vault remote received a single new commit
+
+  @VAULT-02 @VAULT-R7
+  Scenario: Publishing to a folder vault does not wait for downloads
+    Given the config file contains:
+      """
+      vaults:
+        main: { adapter: fs, path: /vault }
+        remote: { adapter: git, remote: "https://git.example.com/me/vault.git", branch: master }
+      """
+    And the resource class "download" is paused
+    When the owner sends "POST /api/items/yt:vlt001xxxxx/rerun" with:
+      """
+      { "from": "publish", "profile": "vault-test" }
+      """
+    And the worker runs until idle
+    Then the stage "publish" of "yt:vlt001xxxxx" is "done"
+
   @VAULT-02 @VAULT-R8
   Scenario Outline: Remotes that could run commands are refused at startup
     Given the config file contains:

@@ -363,7 +363,26 @@ func insertStageTask(ctx context.Context, r *store.Repo, itemID string, run stor
 // insertStageTaskChunks 同 insertStageTask；LLM 步驟走 api 時建立的是協調（plan）任務：local 資源類別，
 // chunk 任務由它建立（見 llm.go）。chunks 是要強制重跑的 chunk（LLM-R8），只用於這種任務。
 func insertStageTaskChunks(ctx context.Context, r *store.Repo, itemID string, run store.StageRun, priority int, transcriptASR bool, chunks []int) (store.Task, error) {
-	class := resourceClass(run.Stage, run.Executor, transcriptASR)
+	return insertStageTaskClass(ctx, r, itemID, run, priority, resourceClass(run.Stage, run.Executor, transcriptASR), chunks)
+}
+
+// insertStageTaskLike 為步驟建立任務，沿用 old（同一個步驟之前的任務）建立時推定的資源類別：
+// transcript 要不要歸為 asr、publish 有沒有 git vault（download）都是建立任務時的推定，重試與恢復時不重新判斷。
+// old 為 nil 時（找不到之前的任務）照 resourceClass 推定。
+func insertStageTaskLike(ctx context.Context, r *store.Repo, itemID string, run store.StageRun, priority int, old *store.Task) (store.Task, error) {
+	var asr bool
+	if old != nil {
+		asr = old.ResourceClass == queue.ResourceASR
+	}
+	class := resourceClass(run.Stage, run.Executor, asr)
+	if old != nil && run.Stage == StagePublish && old.ResourceClass == queue.ResourceDownload {
+		class = queue.ResourceDownload
+	}
+	return insertStageTaskClass(ctx, r, itemID, run, priority, class, nil)
+}
+
+// insertStageTaskClass 同 insertStageTaskChunks，資源類別由呼叫端決定（LLM 引擎的 plan 任務一律是 local）。
+func insertStageTaskClass(ctx context.Context, r *store.Repo, itemID string, run store.StageRun, priority int, class string, chunks []int) (store.Task, error) {
 	var payload []byte
 	var err error
 	if usesLLMEngine(run.Stage, run.Executor) {

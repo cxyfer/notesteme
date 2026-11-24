@@ -82,7 +82,7 @@
   - 有檔案被 `skip` 擋下時，這次寫入或另存的其他檔案仍然 commit 與推送（V7：已寫入的檔案保留），之後 `publish` 為 `blocked`，hook 不執行。
   - 錯誤分類依 git 的 stderr（clone、pull、push 都適用）：認證（`Authentication failed`、`Permission denied (publickey)`、`terminal prompts disabled`、HTTP 401／403）、被拒（`non-fast-forward`、`Not possible to fast-forward`、`[rejected]`、`fetch first`）、網路（`Could not resolve host`、`unable to access`、連線逾時或被拒、HTTP 5xx、`early EOF`；git 本身逾時 5 分鐘）；其他是 `permanent`。
   - 同一個 vault 的發布在程序內互斥（同一個 clone 不能同時有兩個 git 操作）。
-  - `publish` 的資源類別仍是 `local`（偏離 ADR-0020 第 3 點「有 git vault 時 `download`」：建立任務時還沒有讀生效設定）。
+  - `publish` 的資源類別：有 `git` vault 時 `download`，否則 `local`（ADR-0020 第 3 點；原本一律 `local`，2026-11-24 補上，見 V17）。
   - hook：`argv[0]` 不是絕對路徑時在 notesteme 的 `PATH` 中尋找；環境只有 `env_allowlist` 中、而且有設定的變數，加上 `NOTESTEME_ITEM_ID`（執行時再擋一次禁用的名稱）；stdout 與 stderr 合計只保留前 `max_output`，其餘丟棄但不結束 hook；輸出寫進 info log。無法執行時的提醒是「hook <id> 無法執行。檔案已經寫入。」。多個 vault 輸出都有 hook 時，全部目標寫完、沒有任何目標被擋下之後才依序執行。
   - Docker 映像加上 `git` 與 `openssh-client`（`deploy/docker/Dockerfile`）；真實的 git 服務（空的 repo 的第一次 clone、ssh remote、真實的認證錯誤訊息）與 Obsidian 中的顯示屬於 owner 驗收。
 - V15：安全修補 C（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：
@@ -96,3 +96,4 @@
   - 重試：刪除沒有自己的任務可以重試；留在本機的刪除 commit 由下一次發布到同一個 vault 時一併推送（VAULT-R9「沿用已建立的本機 commit」）。被拒絕（`git_rejected`）時同發布：使用者要先處理遠端，Notesteme 不自動合併。是否要提供單獨的「重新推送 vault」動作，待 owner 決定。
   - 還原：被刪除的檔案由還原後的 `publish` 重跑寫回並重新 commit（DEL-R9）；推送失敗留在本機的刪除 commit 會和重新寫回的 commit 一起推送，遠端的結果是檔案仍在。
   - 測試：`internal/pipeline/vault_delete_real_test.go` 用真的 git 與本機 bare repo（測試在產品的 `-c` 之後補 `protocol.file.allow=always`）驗證成功、遠端改過的檔案保留、沒有 commit 身分、推送時遠端多了 commit（non-fast-forward）；認證、連線與其他錯誤用腳本化的 git。驗收場景用假 git（`features/internal/fakegit` 加上 `ls-files`、`rm --cached`）。真實的 git 遠端（GitHub、GitLab 的 https／ssh）沒有實測。
+- V17：`publish` 的資源類別（ADR-0020 第 3 點、本規格介面）（2026-11-24，依 /goal 由實作者暫定，待 owner 追認）：建立 `publish` 任務時，依這次生效設定的 `outputs` 中 `target: vault` 的 vault，只要有一個是設定檔中 `adapter: git` 的 vault，任務的資源類別就是 `download`（push 是網路操作，受 `download` 的並行上限與暫停控制），否則 `local`；設定檔沒有的 vault 不算（執行時以 permanent 失敗，不需要網路），格式不對的 `outputs` 項目也不算。這是建立任務時的推定（和 transcript 的 `asr` 相同）：重試（`POST /api/tasks/:id/retry`）、`ResumeBlocked` 與 blocked 條件已滿足時的重新排入，都沿用原任務的類別，不重新判斷；重跑（`POST /rerun`）與前進時依當時的生效設定重新推定。驗收：`features/VAULT-vault-output.feature` 的「Publishing to a git vault waits for a download slot」與「Publishing to a folder vault does not wait for downloads」。

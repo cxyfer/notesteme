@@ -44,12 +44,13 @@ func (p *Pipeline) ResumeBlocked(ctx context.Context, token string) (int, error)
 			return err
 		}
 		for _, run := range runs {
-			priority, asr := queue.PriorityManual, false
+			priority := queue.PriorityManual
+			var prev *store.Task
 			switch old, err := r.TaskByStageRun(ctx, run.ID); {
 			case err == nil:
 				priority = old.Priority
-				// 沿用原本任務的資源類別：transcript 要不要歸為 asr 是建立任務時的推定，不重新判斷。
-				asr = old.ResourceClass == queue.ResourceASR
+				// 沿用原本任務的資源類別：transcript 要不要歸為 asr、publish 要不要歸為 download 是建立任務時的推定，不重新判斷。
+				prev = &old
 			case !errors.Is(err, store.ErrNotFound):
 				return err
 			}
@@ -57,7 +58,7 @@ func (p *Pipeline) ResumeBlocked(ctx context.Context, token string) (int, error)
 			if err := r.SetStageState(ctx, run.ID, store.StageState{Status: store.StatusPending}); err != nil {
 				return err
 			}
-			if _, err := insertStageTask(ctx, r, run.ItemID, run, priority, asr); err != nil {
+			if _, err := insertStageTaskLike(ctx, r, run.ItemID, run, priority, prev); err != nil {
 				return err
 			}
 			n++
@@ -107,6 +108,6 @@ func requeueResolved(ctx context.Context, r *store.Repo, t store.Task, run store
 	if err := r.FailTask(ctx, t.ID, t.LeaseToken); err != nil {
 		return err
 	}
-	_, err := insertStageTask(ctx, r, run.ItemID, run, t.Priority, t.ResourceClass == queue.ResourceASR)
+	_, err := insertStageTaskLike(ctx, r, run.ItemID, run, t.Priority, &t)
 	return err
 }

@@ -487,3 +487,12 @@ func (p *Pipeline) Vaults() []vault.Def {
 	slices.SortFunc(out, func(a, b vault.Def) int { return strings.Compare(a.ID, b.ID) })
 	return out
 }
+
+// hasGitVault 回報 ids 中有沒有 git adapter 的 vault（publish 的資源類別，ADR-0020 第 3 點）。
+// 設定檔沒有的 vault 不算：publish 執行時以 permanent 失敗，不需要網路。
+func (p *Pipeline) hasGitVault(ids []string) bool {
+	return slices.ContainsFunc(ids, func(id string) bool {
+		def, ok := p.vaults[id]
+		return ok && def.Adapter == vault.AdapterGit
+	})
+}

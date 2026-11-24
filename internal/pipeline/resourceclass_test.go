@@ -2,11 +2,13 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/source/youtube"
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/vault"
 )
 
 func TestIsASR(t *testing.T) {
@@ -88,5 +90,62 @@ func TestRerunFromTranscriptIsDownloadClass(t *testing.T) {
 	}
 	if got := r.transcriptClass(it); got != queue.ResourceDownload {
 		t.Errorf("從 transcript 重跑的資源類別 = %s，預期 download", got)
+	}
+}
+
+// publish 有 git vault 時是 download（ADR-0020 第 3 點）；重試、恢復時沿用原任務的類別，不重新判斷（同 transcript 的 asr）。
+func TestInsertStageTaskLikeKeepsTheEstimatedClass(t *testing.T) {
+	r, it := blockedRig(t)
+	ctx := context.Background()
+	base := r.stage(it, StageMetadata)
+	publish, transcript := base, base
+	publish.Stage, publish.Executor = StagePublish, ExecutorLocal
+	transcript.Stage, transcript.Executor = StageTranscript, ExecutorLocal
+	for _, tt := range []struct {
+		name string
+		run  store.StageRun
+		old  *store.Task
+		want string
+	}{
+		{"publish 沿用 download", publish, &store.Task{ResourceClass: queue.ResourceDownload}, queue.ResourceDownload},
+		{"publish 原本是 local", publish, &store.Task{ResourceClass: queue.ResourceLocal}, queue.ResourceLocal},
+		{"publish 找不到原任務", publish, nil, queue.ResourceLocal},
+		{"transcript 沿用 asr", transcript, &store.Task{ResourceClass: queue.ResourceASR}, queue.ResourceASR},
+		{"transcript 的 download 照推定", transcript, &store.Task{ResourceClass: queue.ResourceDownload}, queue.ResourceDownload},
+		{"metadata 不受原任務影響", base, &store.Task{ResourceClass: queue.ResourceASR}, queue.ResourceDownload},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			errRollback := errors.New("rollback")
+			err := r.st.Tx(ctx, func(tx *store.Repo) error {
+				tk, err := insertStageTaskLike(ctx, tx, it.ID, tt.run, queue.PriorityManual, tt.old)
+				if err != nil {
+					return err
+				}
+				if tk.ResourceClass != tt.want {
+					t.Errorf("資源類別 = %s，預期 %s", tk.ResourceClass, tt.want)
+				}
+				return errRollback
+			})
+			if !errors.Is(err, errRollback) {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestHasGitVault(t *testing.T) {
+	p := &Pipeline{vaults: map[string]vault.Def{
+		"main":   {ID: "main", Adapter: vault.AdapterFS},
+		"remote": {ID: "remote", Adapter: vault.AdapterGit},
+	}}
+	for _, tt := range []struct {
+		ids  []string
+		want bool
+	}{
+		{nil, false}, {[]string{"main"}, false}, {[]string{"main", "remote"}, true}, {[]string{"missing"}, false},
+	} {
+		if got := p.hasGitVault(tt.ids); got != tt.want {
+			t.Errorf("hasGitVault(%v) = %v", tt.ids, got)
+		}
 	}
 }

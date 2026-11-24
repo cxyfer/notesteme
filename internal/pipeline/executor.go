@@ -5,6 +5,8 @@ import (
 	"slices"
 
 	"github.com/cxyfer/notesteme/internal/langtag"
+	"github.com/cxyfer/notesteme/internal/output"
+	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
@@ -45,6 +47,9 @@ type StageResolution struct {
 	Chunks []int
 	// ReuseCandidates 是重跑 frames 時的 reuse_candidates（FRM-R13）；只用於重跑的起點步驟。
 	ReuseCandidates bool
+	// Vaults 只在 publish 有值：outputs 中 target 為 vault 的 vault ID（依出現順序、不重複）。
+	// applyChain 依 vault 的 adapter 決定資源類別（有 git vault 時 download，ADR-0020 第 3 點）。
+	Vaults []string
 }
 
 // ResolveExecutor 依步驟與生效設定決定執行方式。純函式：不讀 DB、不讀時鐘。
@@ -175,6 +180,12 @@ func resolveExecutor(eff Effective, stage string, sc StageContext) (StageResolut
 		res := StageResolution{Stage: stage, Executor: ExecutorLocal}
 		if len(outs) == 0 {
 			res.Skip, res.Reason = true, SkipNoOutputs
+		}
+		for _, m := range outs {
+			// 格式不對的項目由 runPublish 回報（permanent），這裡只是推定資源類別。
+			if c, err := output.Parse(m); err == nil && c.Target == output.TargetVault && !slices.Contains(res.Vaults, c.Vault) {
+				res.Vaults = append(res.Vaults, c.Vault)
+			}
 		}
 		return res, nil
 	}
@@ -312,7 +323,11 @@ func (p *Pipeline) applyChain(ctx context.Context, r *store.Repo, itemID string,
 		if res.Executor != ExecutorAPI {
 			chunks = nil // 指定重跑的 chunk 只用於 api（L12）
 		}
-		if _, err := insertStageTaskChunks(ctx, r, itemID, run, priority, transcriptASR, chunks); err != nil {
+		class := resourceClass(run.Stage, run.Executor, transcriptASR)
+		if res.Stage == StagePublish && p.hasGitVault(res.Vaults) {
+			class = queue.ResourceDownload // push 是網路操作（ADR-0020 第 3 點、VAULT 介面）
+		}
+		if _, err := insertStageTaskClass(ctx, r, itemID, run, priority, class, chunks); err != nil {
 			return created, err
 		}
 		// agent 也一樣先由內建 worker 執行 plan（切 chunk），之後的 chunk 任務才等 Agent 領取（AGT-R1）。
