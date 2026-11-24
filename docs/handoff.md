@@ -1,6 +1,6 @@
 # 交接：開發進度（M1～M5 與 Web UI）
 
-> 更新：2026-11-24。M1～M5 的後端、Client Web UI（UI-0～UI-8）與 Hub Web UI 都已推送到 master；預設 tag 308＋`@M3` 109＋`@M4` 371＋`@M5` 148 = 936 個自動化場景全部通過（本機驗證）。安全審查的 16 項發現已修補（第 1 節「安全修補 A／B／C」）。`@manual`、`@pending-m0`、真實樣本與真實服務的驗收屬 owner，做不到的清單在第 2 節。GitHub Actions 自 2026-11-23 約 16:30 起因帳務問題（付款失敗或額度上限）無法啟動 job，所有驗證都在本機做。依 owner 的 /goal（MVP 階段不再開 PR）每個切片完成後直接推送 master。2026-11-22 前的 PR #1～#19（LOCAL、PODCAST、ESTIMATE、M2 S0～S2、S6a 等）已合併，之後的切片見 `git log`。**接手請先讀第 2 節的「2026-11-24 現況」。**
+> 更新：2026-11-24。M1～M5 的後端、Client Web UI（UI-0～UI-8）與 Hub Web UI 都已推送到 master；943 個自動化場景（預設 tag 313＋`@M3,@M4,@M5` 630）全部通過（本機驗證）。安全審查的 16 項發現已修補（第 1 節「安全修補 A／B／C」）。`@manual`、`@pending-m0`、真實樣本與真實服務的驗收屬 owner，做不到的清單在第 2 節。GitHub Actions 自 2026-11-23 約 16:30 起因帳務問題（付款失敗或額度上限）無法啟動 job，所有驗證都在本機做。依 owner 的 /goal（MVP 階段不再開 PR）每個切片完成後直接推送 master。2026-11-22 前的 PR #1～#19（LOCAL、PODCAST、ESTIMATE、M2 S0～S2、S6a 等）已合併，之後的切片見 `git log`。**接手請先讀第 2 節的「2026-11-24 現況」。**
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -509,10 +509,10 @@
   - SRC-R6：`POST /api/items/{id}/use-asr-now`（`ingest`）：只接受 transcript `waiting` 且任務 `pending`，在交易中把 `not_before` 改成現在、payload 加 `skip_auto_wait`，步驟改回 `pending`；否則 409 `not_waiting`。`Stage.action_codes`（只有 `use_asr_now`），前端 `mapActions` 先依代碼、按鈕改成呼叫這個路由（三語 i18n `item.actions.asrNow`，bundle 283.3 KB／300 KB）。sqlc 新查詢 `SkipTaskWait`，沒有 migration。
   - OPS（O25）：排程工作 `tools.yt-dlp.update`，設定檔 `updates.yt_dlp.{enabled,at,timezone}`，預設開啟、`04:00` `UTC`；呼叫與 API 共用的 `ytdlp.Manager.Update`；固定版本略過、回退或安裝失敗以告警 `ytdlp_update_failed` 通知並在成功時解除、外部指定的路徑或 Windows 不動作、手動更新進行中延後 30 分鐘。harness 在設定檔沒寫 `enabled` 時關閉（`TestControls.NoYtDlpAutoUpdate`）。
   - 驗證：`go build`／`vet`／`gofmt` 乾淨；`go test -p 2 ./internal/... ./cmd/...` 全過；`scripts/ci/coverage.sh` 通過（pipeline 84.7%）；`go test -race -p 2 -timeout 100m` 只跑改過的套件（langdetect、pipeline、ops、vault、config、app、api、store、`features/internal/fakegit`、`features/steps`）全過；`./features`（驗收場景）沒有在 `-race` 下跑，只跑了一般模式的 313／943 個場景；前端 typecheck、lint、format、test（467）、build、bundle（283.6KB）、i18n 都過；新的保留原因 `git_*` 與告警 `ytdlp_update_failed` 已補三語文字。
-  - 沒實測：真實的 git 遠端（GitHub／GitLab）、真實的 PyPI 更新、真實語音樣本的語言偵測；都只用假工具與本機 bare repo。§6 的「每天的排程更新還沒做」與「現在改用語音轉錄只顯示」兩條已由這個切片處理（§6 未改，留給主代理整理）。
+  - 沒實測：真實的 git 遠端（GitHub／GitLab）、真實的 PyPI 更新、真實語音樣本的語言偵測；都只用假工具與本機 bare repo。§6 的「每天的排程更新還沒做」與「現在改用語音轉錄只顯示」兩條已由這個切片處理（已在 §6 劃掉）。
 
 
-- **收尾 D1（2026-11-24，分支 `feat/task-retry-cancel-lib-grouping`，未推送）**：決定都標「依 /goal 採 advisor 建議，待 owner 追認」。
+- **收尾 D1（2026-11-24，分支 `feat/task-retry-cancel-lib-grouping`，已推送 master）**：決定都標「依 /goal 採 advisor 建議，待 owner 追認」。
   - 不穩定測試 `TestMCPLoopbackRechecksPermissions`：根因是 MCP 請求的 context 已取消時，`context.AfterFunc` 在另一個 goroutine 非同步取消內部請求，內部請求可能先做完。`mcpLoopback.Get` 在開始前與結束後都檢查 base 的 `Err()`；新增同一請求跑 300 次的 `TestMCPLoopbackCancelledBaseAlwaysFails`，`-count=50` 通過。
   - PIPE：`POST /api/tasks/{id}/retry`／`cancel` 取代 501 stub（單位是任務所屬的 stage run，scope `admin`，回影音詳情；409 `task_not_retryable`／`task_not_cancellable`）；`GET /api/queue` 多 `failed` 清單；migration 00033。佇列頁加單一任務的「取消…」與「失敗與停住」清單（每列重試、全部重試），佇列頁改成 lazy。MCP／CLI 規格沒有對應功能，沒有新增。見 PIPE 待決問題。
   - NFR-REL-2：快取命中重用產出時與讀取字幕產出時比對大小與 sha256，不符或不見就標記 `artifacts.corrupt_at`（migration 00034）並從產生它的步驟重跑（只有第一個標記的呼叫端觸發；匯入、編輯、seeded 的產出只標記）；LLM 的 chunk 快取照常重用。API 回 409 `artifact_corrupt`。frames 圖片、筆記、摘要、章節不自動重跑（已知限制）。見 PIPE 待決問題。
@@ -524,7 +524,7 @@
 ### 2026-11-24 現況
 
 - **已完成並推送（master）**：M1、M2（後端與場景）、M3（SPB、CHAP、FRM、NOTE、VAULT、GEM）、M4（NOTIFY、SUB、COST、BATCH、DIG、SRC-10、SRCH、GLOS、BND、AUTH、OPS、ENTRY、LIB-08/09）、M5（HACC、HREP、HMCP、HSHR、Postgres＋S3 backend、`deploy/docker/compose.hub.yaml`）、UI-0～UI-8、Hub Web UI（`web/hub`）。三份安全修補（Hub、bundle／分享、Client）已合併。
-- **收尾切片（進行中）**：規格有寫、沒有場景守住、盤點出還沒做的項目——D1：`POST /api/tasks/{id}/retry`／`cancel`（PIPE）、NFR-REL-2 讀取時比對 sha256、LIB-R4 `group_by`、不穩定測試 `TestMCPLoopbackRechecksPermissions`；D2：VAULT-R12 的 git vault 刪除、SRC-R11 文字語言偵測與 `mixed`（含 `@wip` 場景）、SRC-R6「現在改用語音轉錄」動作、yt-dlp 排程更新（OPS-R6／R7）。完成後各自在第 1 節追加摘要。
+- **收尾切片（已完成並推送）**：盤點出規格有寫、沒有場景守住的項目，由兩個切片補完——D1：`POST /api/tasks/{id}/retry`／`cancel`（PIPE）、NFR-REL-2 讀取時比對 sha256、LIB-R4 `group_by`、修好不穩定測試 `TestMCPLoopbackRechecksPermissions`；D2：VAULT-R12 的 git vault 刪除、SRC-R11 文字語言偵測與 `mixed`（`@wip` 場景已拿掉 `@wip`）、SRC-R6「現在改用語音轉錄」動作、yt-dlp 每日排程更新（OPS-R6／R7）。場景數現在是預設 tag（`@M1,@M2`）313＋`@M3,@M4,@M5` 630 = 943，全部 passed。摘要見第 1 節末尾的「收尾 D1／D2」。
 - **owner 要做的事（我做不到）**：
   1. **GitHub Actions 帳務問題**（付款失敗或額度上限）：解決後先確認 CI 全綠；CI 有一步不加 `-race` 跑 `@M3,@M4,@M5` 的場景（加 `-race` 會逾時）。
   2. **真實驗收**：yt-dlp（YouTube、Bilibili）、Groq、Supadata、Gemini、ntfy、真實 IdP、真實反向代理、Hub 的真實 OAuth、R2／AWS S3、真實 ffmpeg 輸出（bundle 的 JPEG 結構檢查只用 Go encoder 與手工樣本）、真實 libass 預覽、Jellyfin／Plex sidecar；`@manual`、`@ui @manual` 的人工驗收；M0 量測與 `@pending-m0`。
@@ -700,9 +700,9 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 
 - **PIPE**：
   - 執行期回收過期租約延到 AGT（理由見 PIPE 待決問題），M1 只在啟動時回收。S10 只為 Agent 任務做了執行期回收（sweeper），內建 worker 的任務仍只在啟動時回收。
-  - 產出檔的 sha256 不符時，應該標記損毀並重跑（NFR-REL-2）。
+  - ~~產出檔的 sha256 不符時，應該標記損毀並重跑（NFR-REL-2）。~~ **已處理（收尾 D1）**：快取命中重用與讀取字幕產出時比對，畫面、筆記、摘要、章節的產出讀到損毀只回報錯誤、不自動重跑。
   - `transcript` 的資源類別一律是 `download`，ASR 來源實作時要依 PIPE 待決問題判斷。
-  - `POST /api/tasks/{id}/retry`、`/cancel`（單一任務）仍回 501。
+  - ~~`POST /api/tasks/{id}/retry`、`/cancel`（單一任務）仍回 501。~~ **已處理（收尾 D1）**。
   - SSE：沒有寫入期限（要用真實時間，與 fake clock 衝突，需要另外設計）；登出後串流不會斷開；事件沒有 `id:` 與 replay。
   - `queue/control.go` 更新時持有寫鎖做 SQLite 寫入；pause 回傳後，進行中的一輪領取仍可能多領一個任務（毫秒級）。
   - `GET /api/queue` 只列 `executor=builtin` 的任務；S10 沒有加入 agent 任務，留給 UI 切片。
@@ -737,7 +737,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
     - ffprobe 的 disposition 在假工具中固定為「每種類型的第一條是 default」。
   - Groq 上傳用 chunked（`io.Pipe`），要求 Content-Length 的 proxy 會失敗。
   - Supadata 仍是先讀完 body 再依狀態碼分類（Groq 已改成先看狀態碼）。
-  - 動作「現在改用語音轉錄」（SRC-R6）只顯示，點擊的處理還沒做。
+  - ~~動作「現在改用語音轉錄」（SRC-R6）只顯示，點擊的處理還沒做。~~ **已處理（收尾 D2，`POST /api/items/{id}/use-asr-now`）**。
 - **SRC-B**：
   - SRC-R8 是推定：Bilibili 未登入時只說「字幕需要登入」，分不出 CC 或 AI，也看不到語言；Bilibili 的錯誤字串、412 風控都依 yt-dlp 原始碼推測，等 M0 實測。
   - 假 yt-dlp 的兩處與真實不同：members-only 只在下載時失敗（`-J` 不失敗，為了不讓 ING-R9 的 `availability` 偵測失效）；空的 cookie 檔視為未登入（production 不會產生空檔）。production 之後應把 `-J` 的 members-only 錯誤歸為需要 cookie。
@@ -753,7 +753,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
   - 「備份的 schema 版本比程式新時拒絕還原」只由 `internal/app/restore_test.go` 把關（現有步驟做不出這種備份檔）。
   - 備份串流沒有寫入期限：慢速的 client 會讓 `<data>/tmp/backup-*` 的快照留到連線結束。
   - 受管理的 yt-dlp 在 Windows 上不支援（回 409）。
-  - 每天的排程更新（OPS-R7 的「排程更新」）還沒做，目前只有手動更新。
+  - ~~每天的排程更新（OPS-R7 的「排程更新」）還沒做，目前只有手動更新。~~ **已處理（收尾 D2，排程工作 `tools.yt-dlp.update`）**。
   - 修改 provider 的 API 還沒有路由（SEC-R3 說「新增或修改」都回 403）；`POST /api/providers` 的非 command 類型回 501。
   - fixture 例外：`Given the file … contains:` 寫入、之後內容沒被改過的檔案，After hook 照字面掃描，不當成封存檔解壓（R2 刻意寫入不合法的 `.tar.gz`）。
 - **AUTH / SEC**：
@@ -782,7 +782,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 - **LIB**：
   - 詳情 API（`Pipeline.Item` 的 `stages`）不列出沒有執行紀錄的 stage，列表篩選則視為 `pending`，UI 切片要決定是否補上。
   - 標題搜尋不做 NFKC 與簡繁互通；00006 的回填只處理 ASCII 的大小寫（M1 尚未發布，沒有舊資料）。
-  - `group_by`（LIB-R4 的分組）、`read_state`（回 501）還沒做；`status` 只認 M1 的三個 stage。
+  - ~~`group_by`（LIB-R4 的分組）、`read_state`（回 501）還沒做~~ **已處理（`read_state` 在 LIB-08/09，`group_by` 在收尾 D1）**；`status` 只認 M1 的三個 stage。
   - `CountItemsFiltered` 每次掃全表（10k 筆約 3ms）；status 篩選在 10k 筆約 62ms。列表與 COUNT 是兩段相同的 WHERE，靠單元測試確認一致。
   - CLI 的 `resolveItem` 每次逐頁找，API 沒有依代號篩選的參數。
   - 只靠單元測試守住：`waiting` 不含執行中的任務、垃圾桶中的影音不在列表、排序、`limit` 與最後一頁沒有 `next_cursor`。
