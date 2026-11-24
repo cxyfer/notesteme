@@ -219,7 +219,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | Prompt 庫、處理方案、字幕樣式 | 完成（UI-3a，見 10.8） | `web/client/src/pages/{prompts,profiles,styles}` |
 | 設定各分區、詞彙表與術語候選、設定匯出與匯入 | 完成（UI-3b，見 10.10；後端沒有的部分見 10.10 的「未做」） | `web/client/src/pages/settings` |
 | 影音詳情、佇列 | 完成（UI-2，見 10.6） | `web/client/src/pages/item`、`src/pages/queue` |
-| 登入頁背景的淡化時間帶（§13） | 未做 | 等 UI-1 的時間帶元件 |
+| 登入頁背景的淡化時間帶（§13） | 完成（2026-11-25，見 10.28）：用 UI-1 的 `StatusBand`，固定示意資料、`aria-hidden`、lazy 載入 | `src/pages/{LoginPage,LoginRibbon}.tsx` |
 | 768–1279px 的收合導覽（只剩圖示） | 未做：沒有圖示前維持展開；UI-1 沒有引入 Phosphor Icons | 之後的切片 |
 | 訂閱、成本、筆記模板、設定的通知與預算、影音詳情的畫面與筆記 | 完成（UI-4，見 10.12） | `src/pages/{subscriptions,costs,noteTemplates}`、`src/pages/settings`、`src/pages/item/NotePanels.tsx` |
 | 字幕全文搜尋、術語審核、bundle 匯出與匯入、系統告警與備份、摘要與彙整、更好的字幕來源 | 完成（UI-5，見 10.14） | `src/pages/search`、`src/pages/settings`、`src/pages/item`、`src/pages/library` |
@@ -347,11 +347,13 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 字幕樣式編輯：原文行／譯文行／版面三個分頁（鍵盤可切換）、目標語言與原文語言（帶入預設字型）、前端先檢查顏色與範圍、PATCH 只送改過的欄位；內建唯讀 | 完成 | `StyleEditorPage.tsx`、`styleModel.ts` |
 | 預覽：`POST /api/ass-styles/preview` 回 PNG，debounce 300ms、新請求取消舊的；沒選影音、欄位有錯、失敗（「預覽尚未可用：原因」）各有狀態，不假造圖片 | 完成 | `StylePreview.tsx` |
 | 逐字差異元件（`diffChars`、`DiffText`） | 完成 | `web/shared/src/diff.ts`、`DiffText.tsx` |
-| 被頻道訂閱使用的處理方案，修改前提示受影響的訂閱 | 未做：M4 才有訂閱 API | — |
+| 被頻道訂閱使用的處理方案，修改前提示受影響的訂閱 | 完成（2026-11-25，見 10.28）：儲存前讀 `GET /api/subscriptions` | `ProfileEditorPage.tsx` |
 | 處理方案刪除、版本紀錄（`GET /api/profiles/{id}/versions`）的檢視與還原 | 未做：pages.md §8 沒有要求，留給之後 | — |
-| 處理方案的 `llm`、`agent`、`subtitle_rules`、`glossary`、`supadata`、`translate.length_ratio`、`outputs[].lang`、`on_user_change` | 未做：表單不顯示，但原樣保留（儲存只送改過的鍵） | — |
-| M3／M4 的步驟（sponsorblock、chapters、frames、note） | 不顯示：schema（`internal/pipeline/schema.go`）還不接受 | — |
-| 內建樣式用同一張畫面渲染成縮圖並排比較 | 未做：預覽需要指定影音，每個縮圖都要跑一次 ffmpeg | — |
+| 處理方案的 `llm`、`agent`、`subtitle_rules`、`glossary`、`supadata`、`translate.length_ratio`、`outputs[].lang` | 未做：pages.md §8 的線框沒有這些欄位；表單不顯示，但原樣保留（儲存只送改過的鍵） | — |
+| 輸出的 `on_user_change`、字幕來源的後備 `language.fallback` | 完成（2026-11-25，見 10.28） | `ProfileEditorPage.tsx`、`profileModel.ts` |
+| 關鍵畫面（frames）與筆記（note）步驟、流程列 | 完成（2026-11-25，見 10.28）：schema 在 M3-S0 就已接受，原本的理由失效 | `ProfileEditorPage.tsx`、`profileModel.ts` |
+| sponsorblock、chapters、summary 步驟 | 不顯示：不在 pages.md §8 的線框中（沒有要求）；原樣保留 | — |
+| 內建樣式用同一張畫面渲染成縮圖並排比較 | 完成（2026-11-25，見 10.28）：選了影音才渲染、進入視窗才載入、一次一張 | `src/pages/styles/BuiltinCompare.tsx` |
 | libass 真實渲染的視覺驗收、CodeMirror 在真實瀏覽器的鍵盤與螢幕閱讀器操作 | owner 手動驗收 | — |
 
 ### 10.9 UI-3a 的決定
@@ -361,7 +363,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 1. **唯一的後端改動：CSP 的 `img-src` 加 `blob:`**（`internal/webui/webui.go`，測試檢查 `img-src` 只有 `'self'`、`blob:` 與兩個縮圖網域）。預覽 API 回 PNG，前端以 object URL 顯示；jsdom 不執行 CSP，沒有這項時測試全綠、真實瀏覽器卻是破圖。替代方案（改成 GET 圖片網址、data URI）都要改 API 或放寬更多。風險：`blob:` 只能由同源的 JS 產生，前提是已經有 script 執行。
 2. **「被哪些處理方案使用」在前端組合**：`GET /api/prompts` 沒有這項資料，列表另外讀 `GET /api/profiles`，解析 `config.stages.*.prompt`（`<id>`、`<id>@default`、`<id>@N`）。代價：多一次請求；只看處理方案目前的版本，看不到全域設定、頻道與影音層的引用（刪除時後端的 409 `used_by` 會列出全部）。
 3. **可用變數寫在前端**（`promptModel.ts` 的 `PROMPT_VARIABLES`，規則與 `internal/prompts/vars.go` 一致）：後端所有類型共用 7 個變數、沒有清單 API。後端改了要同步；依類型區分時改 `promptModel.ts`。
-4. **試跑只能用已儲存的版本**（API 只接受 `<id>@N`）：有未儲存的修改時提示「試跑已儲存的 vN」。試跑前沒有預估 API，只在完成後顯示用量；`estimate_usd` 是 null 時寫明「計價表沒有這個模型的價格」，不自己算。
+4. **試跑只能用已儲存的版本**（API 只接受 `<id>@N`）：有未儲存的修改時提示「試跑已儲存的 vN」。試跑前沒有預估 API，只在完成後顯示用量；`estimate_usd` 是 null 時寫明「計價表沒有這個模型的價格」，不自己算。（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）pages.md §7 線框的「預估 $0.004」不實作：PRM 待決問題 P10 規定 `estimate_usd` 以 provider 回報的用量計算（試跑之後才有），而 `POST /api/estimate`（ING-R8）的輸入是網址與處理方案、估的是整部影音的處理，不能估「某段字幕 × 某個 prompt 版本 × 某個 model」；要在試跑前估就得新增 dry-run 端點。以能力規格為準，pages.md 的線框說明已更正，PRM P10 的措辭一併更正。
 5. **刪除 prompt 用確認框**（§3.5 不可復原的操作）：後端是硬刪除，沒有可以還原的方式。
 6. **處理方案的樂觀鎖在前端補**：PATCH 沒有 If-Match。儲存前先讀一次，版本和開始編輯時不同就跳出衝突（重新載入／仍要儲存：只寫改過的鍵）；儲存後回應的版本不是「開始時 + 1」時也明確告知。兩次請求之間仍有很小的窗口；要完全關閉需要後端支援 `If-Match` 或 `expected_version`。
 7. **處理方案表單編輯 config 的副本**，儲存時算 merge patch；選「沿用全域設定」就刪掉該鍵（送 null），讓步驟的 executor 回到「沿用全域設定」時整個 `stages.<步驟>` 一起刪掉（寫出來的步驟會被檢查完整性，D8）。「複製」用已儲存的設定，不含未儲存的修改。
@@ -392,11 +394,12 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 詞彙表：全域與頻道詞彙表的檢視與整份取代；頻道的術語候選（接受、拒絕、409 `term_candidate_decided` 顯示「已被處理」並重新整理；已處理的收在 `<details>`） | 完成 | `GlossarySection.tsx` |
 | 詞彙表：修改後接受、批次決定、頻道選單 | 未做：沒有 API（GLOS 是 M4；沒有頻道列表 API） | — |
 | 系統：外部工具的路徑、來源與能否使用；更新 yt-dlp、回到上一個版本；資料目錄與監聽位址 | 完成 | `SystemSection.tsx` |
-| 系統：工具的版本號、磁碟用量、媒體檔保留天數 | 未做：`GET /api/system` 沒有這些欄位（版本只在更新的結果中顯示） | — |
+| 系統：程式、schema 與工具的版本；磁碟用量 | 完成（2026-11-25，見 10.28）：版本來自 `GET /api/system`（新增 OPS-R22），磁碟用量讀總覽的 `GET /api/overview`（LIB-R22） | `SystemSection.tsx`、`internal/app/toolversions.go` |
+| 系統：媒體檔保留天數 | 未做：媒體檔保留策略不在 M4（ADR-0021 第 8 點），沒有設定可以顯示 | — |
 | 匯出與匯入：下載 YAML、匯入前先確認、422 逐項顯示 `errors[]`、成功時列出新建立／新版本／沒有變更／預設處理方案 | 完成 | `ConfigSection.tsx` |
 | 匯入前的 dry-run 差異預覽 | 未做：後端沒有 dry-run（SEC 規格的待決問題） | — |
 | 外觀：淺色／深色／跟隨系統（和導覽底部共用同一個值） | 完成 | `AppearanceSection.tsx`、`src/theme/useTheme.ts` |
-| 外觀：介面密度 | 未做：design-language.md 沒有定義密度 | — |
+| 外觀：介面密度 | 完成（2026-11-25，見 10.28）：design-language.md 新增 §5.5（舒適、緊湊） | `AppearanceSection.tsx`、`src/theme/density.ts`、`src/styles/density.css` |
 | 登入：修改密碼（目前的密碼、新密碼、再輸入一次；錯誤與鎖定倒數） | 完成（新增後端路由，見決定 1） | `LoginSection.tsx`、`internal/api/auth_password.go` |
 | 登入：工作階段列表、反向代理驗證、OIDC | 未做：M4 | — |
 | 通知、預算 | 分區列出，內容是「M4 起提供。」，沒有表單（UI-4 已補上，見 10.12） | `PlannedSection.tsx` |
@@ -406,7 +409,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 
 （2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
 
-1. **唯一的後端改動：`POST /api/auth/password`**。AUTH-R2 要求「修改密碼要透過設定頁」，但沒有路由，`notesteme password set` 當時還沒實作（現在已實作，見 AUTH 待決問題 A28），沒有替代方案。只有 owner（token 即使有 `admin` 也 403）、與登入共用鎖定（AUTH-R6）、目前的密碼錯誤回 422 `invalid_password`（不用 401，避免被當成 session 失效而導到登入頁）、新密碼只要求非空、成功後在同一個交易中撤銷目前以外的所有 session。細節記在 AUTH 規格的待決問題。其他缺口（測試連線、cookie 狀態、工具版本、磁碟用量、匯入 dry-run、頻道列表）都**不補後端**，UI 明確寫「後端還沒有提供」；有排程的寫「M3／M4 起提供」，沒有排程的不捏造里程碑。（測試連線之後在 2026-11-25 補上後端，見 10.25。）
+1. **唯一的後端改動：`POST /api/auth/password`**。AUTH-R2 要求「修改密碼要透過設定頁」，但沒有路由，`notesteme password set` 當時還沒實作（現在已實作，見 AUTH 待決問題 A28），沒有替代方案。只有 owner（token 即使有 `admin` 也 403）、與登入共用鎖定（AUTH-R6）、目前的密碼錯誤回 422 `invalid_password`（不用 401，避免被當成 session 失效而導到登入頁）、新密碼只要求非空、成功後在同一個交易中撤銷目前以外的所有 session。細節記在 AUTH 規格的待決問題。其他缺口（測試連線、cookie 狀態、工具版本、磁碟用量、匯入 dry-run、頻道列表）都**不補後端**，UI 明確寫「後端還沒有提供」；有排程的寫「M3／M4 起提供」，沒有排程的不捏造里程碑。（測試連線之後在 2026-11-25 補上後端，見 10.25；工具版本與磁碟用量見 10.28。）
 2. **分區**：依 pages.md §12 的順序，另外加一個「匯出與匯入」分區（`config`），不併進「系統」：兩者的權限與風險不同（匯入會取代處理方案）。詞彙表放在設定頁的「詞彙表」分區（pages.md §12 已列），不另開 `/channels/:id/glossary`。
 3. **未知分區**導到第一個分區（`<Navigate replace>`，不改 `router.tsx`）；原本 UI-0 的「顯示找不到」測試一併改掉。
 4. **窄螢幕**：分區清單在 767px 以下隱藏，改成頂部的 `<select>`（切換時導到該分區）。
@@ -766,3 +769,32 @@ pages.md §12 的「服務與金鑰」要求每個 provider 都有「測試連�
    - 預估失敗（例如 429）或沒有預估時，照舊在送出之後由 `POST /api/items` 的結果顯示「已在媒體庫中（N 部），沒有重複新增。」，現在也多了「重新處理…」；垃圾桶中的影音照舊是「在垃圾桶中」（打開詳情，可以從那裡還原）。
 10. **bundle 預算**：「新增」抽屜在主 chunk（任何頁面都能打開），這次的多行、單次覆寫與「已在媒體庫中」讓初始 JS 由 277.2KB 增加到 284.1KB（gzip，預算 300KB）；「重新處理」的對話框從抽屜 lazy 載入，不算在內。沒有把抽屜改成 lazy（第一次打開會多一次載入，`N` 與貼上網址的回應會變慢）；之後預算吃緊時，抽屜是最先可以拆出去的部分。
 
+### 10.28 pages.md 第 7～14 節的缺口（2026-11-25）
+
+一次唯讀稽核找出 pages.md 第 7～14 節（Prompt 庫、處理方案、字幕樣式、設定、登入）寫了、程式沒有、也沒有規格層延後註記的項目，加上 NFR-OBS-3，這個切片補齊。下面的決定都是「（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）」。
+
+| 項目 | 狀態 | 位置 |
+| --- | --- | --- |
+| 處理方案的「關鍵畫面」與「筆記」步驟（pages.md §8 的第 5、6 步），流程列跟著加 | 完成（沒有改後端） | `src/pages/profiles/{ProfileEditorPage.tsx,profileModel.ts}` |
+| 修改被訂閱使用的處理方案前，列出受影響的訂閱（§8） | 完成（沒有改後端） | `ProfileEditorPage.tsx` |
+| 輸出的「檔案被改過時」（`on_user_change`，§12、OUT-R12、VAULT-R6） | 完成（沒有改後端） | `ProfileEditorPage.tsx` |
+| 字幕來源的後備（`language.fallback`，§8 的「Supadata › Groq」） | 完成（沒有改後端） | `ProfileEditorPage.tsx` |
+| 設定 › 系統：程式版本、schema 版本、每個工具的版本（NFR-OBS-3）；磁碟用量 | 完成（後端新增 OPS-R22） | `internal/app/{system.go,toolversions.go}`、`internal/api/system.go`、`src/pages/settings/SystemSection.tsx` |
+| 登入頁背景的淡化時間帶（§13） | 完成 | `src/pages/{LoginPage,LoginRibbon}.tsx`、`src/styles/base.css` |
+| 內建字幕樣式的縮圖並排比較（§9） | 完成（沒有改後端） | `src/pages/styles/BuiltinCompare.tsx` |
+| 外觀的「介面密度」（§12） | 完成（design-language.md §5.5） | `src/theme/{density.ts,useDensity.ts}`、`src/styles/density.css`、`AppearanceSection.tsx` |
+| Prompt 試跑前的「預估 $0.004」（§7 的線框） | 不實作：能力規格只有試跑後的花費（見 10.9 第 4 點） | — |
+| 處理方案與字幕樣式的頁面改成 lazy route | 完成（初始 JS 由 288KB 回到約 280KB） | `src/router.tsx` |
+
+1. **關鍵畫面與筆記的欄位只在步驟寫進處理方案後顯示**：沿用 segment 的 `on_manual` 的做法。筆記的預設 executor 是 `api`（`defaultStageConfig`），schema 在沒寫 executor 時用預設檢查完整性（PRF-R5），所以「沿用全域設定」時只寫 `stages.note.template` 會被要求 provider 與 model；把執行方式改回「沿用全域設定」時整段 `stages.<步驟>` 一起刪掉（含模板、張數）。
+   - **關鍵畫面**：執行方式是「依規則選圖」（`rules`）、API 處理、不執行；不列「交給 Agent」（schema 回 422，FRM F6）。`rules` 沒有 provider、model、prompt。欄位是「每分鐘最多幾張」（`per_minute`，大於 0、最多 60）與「整部最多幾張」（`max_frames`，1～100）；線框的「依片長的建議範圍 ✓」是 FRM-R4 一律套用的規則，不是開關，所以只寫成說明。`scene_threshold`、`min_interval_s`、`dedupe_*`、`hint_words` 不在線框中，表單不顯示、原樣保留。寫出來的步驟沒填 executor 時，流程列依步驟的預設判斷（關鍵畫面是不執行）。
+   - **筆記**：模板是 `GET /api/note-templates` 的下拉（和筆記模板頁共用 query；選的是 id，也就是跟隨最新版本；固定版本 `<id>@N` 或清單中沒有的值原樣列為一個選項），另外有「筆記的寫法」（`engine`：一般流程、Gemini 直接生成）、筆記語言（`lang`）、給模型的字幕（`include_translation`）。`map_reduce_after`、`gemini.max_duration` 不顯示、原樣保留。provider 的建議清單只有筆記多列 `gemini`（GEM 規格 G 段的後續）。
+2. **受影響的訂閱**：按「儲存變更」時先讀 `GET /api/subscriptions`（不用快取），`profile` 等於這個處理方案、或 `profile` 是 null（預設處理方案）而這個處理方案是預設時算受影響；有的話跳出確認框列出訂閱名稱（沒有名稱時用網址），按「仍要儲存」才繼續（之後照常走版本衝突的檢查）。讀不到訂閱（權限不足、501、其他錯誤）時不擋儲存，因為這只是提示。只看訂閱本身的處理方案，不看訂閱的 `overrides`。
+3. **`on_user_change`**：每個輸出一個「檔案被改過時」的下拉：預設（不寫，等於另存一份）、另存一份、不寫入並標示「需要你處理」。三種目標都有這個欄位（`TARGET_FIELDS`），換目標時保留。
+4. **`language.fallback` 的三種狀態**：list 是整個取代，而且空陣列有意義（只用平台字幕），逗號欄位分不出「沿用」與「不用後備」，所以先選「沿用全域設定」「不改用其他來源」「自訂順序」，選自訂才出現逗號欄位；自訂的文字是空的時不寫（等於沿用）。不在前端檢查來源 ID，交給伺服器。
+5. **工具版本（OPS-R22）**：見 OPS 待決問題 O26。前端在工具表加「版本」欄（不知道時寫「不知道」），「資料與儲存」加 notesteme 版本與資料庫 schema 版本。原本的「版本號：後端還沒有提供」刪掉。
+6. **磁碟用量**：系統分區讀總覽的 `GET /api/overview`（和總覽頁共用 query key 與讀法，抽成 `src/pages/overview/overviewQuery.ts`），顯示「資料佔用 X，可用空間 Y（統計於 …）」；還沒統計時「還在統計中」，讀不到時只在那一行寫原因，不影響分區的其他內容。總覽需要 `read`，`/api/system` 需要 owner，兩者分開讀。
+7. **登入頁的時間帶**：一部 10 分鐘的示意影音（字幕、分段完成，校正做到一半，翻譯未開始），不用「處理中」的狀態（有動畫）；包在 `aria-hidden` 的容器、沒有 `onSeek`（沒有可以聚焦的元素）、`pointer-events: none`、不透明度 0.35，放在卡片後方（卡片是不透明的 Sheet，文字對比不受影響）。不呼叫任何 API；`StatusBand` 不在初始 bundle，所以時間帶 lazy 載入（載入前只是沒有背景）。
+8. **縮圖並排比較**：每張縮圖都是一次 ffmpeg，後端同時只做 2 個預覽，所以**不自動挑影音**（打開頁面不花任何渲染），選了影音才開始；縮圖進入視窗（`IntersectionObserver`，瀏覽器沒有時視為都在視窗內）才排進佇列，一次只送一個請求，前一張完成才送下一張；換影音時取消進行中的請求、釋放圖片。用預覽 API 的預設畫面時間（不另外選時間）。媒體庫沒有影音時顯示空狀態、不顯示選擇器。失敗的那張寫「預覽尚未可用：原因」，不擋下一張。
+9. **介面密度**：design-language.md 原本沒有定義，和 pages.md §12 矛盾。取最保守的做法：兩檔（舒適＝現狀、緊湊），緊湊只縮小列表的列與表格儲存格的上下留白，不改字級、`--space-*` token 與按鈕（定義在 design-language.md §5.5）。和主題同一個機制（localStorage、`<html data-density>`、啟動時在 `main.tsx` 套用），不存到伺服器。測試檢查 `density.css` 只有 `padding-block` 宣告。
+10. **bundle**：處理方案編輯器變大後初始 JS 到 288KB（預算 300KB），所以 `/profiles`、`/profiles/$id`、`/styles`、`/styles/$id` 改成 lazy route（和其他「調整」頁一樣），初始 JS 回到約 280KB。

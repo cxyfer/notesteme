@@ -333,6 +333,7 @@ Prompt 庫 › 校正 › correct-default
   - 「比較版本」並排顯示兩個版本的 prompt 差異，也可以用同一段字幕比較兩者的輸出。
 - **互動**：「另存新版本」後，正在使用它的處理方案不會自動改用新版，要按「設為預設」或到處理方案中更新。
 - **API**：`GET/POST /api/prompts`、`GET /api/prompts/:id/versions`、`POST /api/prompts/:id/versions`、`POST /api/prompts/playground`
+- **修訂（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）**：線框中試跑按鈕旁的「預估 $0.004」不實作。能力規格（PRM 待決問題 P10、COST C17）只有試跑**之後**以 provider 回報的用量計算的 `estimate_usd`，`POST /api/estimate` 估的是整部影音的處理、不能估一段字幕與一個 prompt 版本；試跑面板在完成後顯示用量與花費。見 [README 10.9 第 4 點](README.md#109-ui-3a-的決定)。
 
 ## 8. 處理方案
 
@@ -361,6 +362,7 @@ Prompt 庫 › 校正 › correct-default
 - 每個 LLM 步驟都可以選擇 API 處理、交給 Agent 或不執行。
 - 被頻道訂閱使用的處理方案，在修改前會提示有哪些訂閱會受到影響。
 - **API**：`GET/POST/PATCH /api/profiles`
+- **實作狀態（2026-11-25）**：關鍵畫面與筆記步驟、修改前提示受影響的訂閱、字幕來源的後備（線框的「Supadata › Groq」）、輸出的「使用者修改過時的處理方式」都已完成；sponsorblock、chapters 不在線框中，表單不顯示。見 [README 10.28](README.md#1028-pagesmd-第-714-節的缺口2026-11-25)。
 
 ## 9. 字幕樣式
 
@@ -388,6 +390,7 @@ Prompt 庫 › 校正 › correct-default
   - 「版面」分頁設定原文與譯文誰在上方，或只顯示其中一種。
   - 字型依目標語言自動帶入預設值，例如 zh-Hans 帶入 Noto Sans CJK SC。
 - **API**：`GET/POST/PATCH /api/ass-styles`、`POST /api/ass-styles/preview`（回傳 PNG）、`POST /api/ass-styles/import`
+- **實作狀態（2026-11-25）**：內建樣式的縮圖並排比較在字幕樣式列表（選了影音才渲染、進入視窗才載入、一次一張），見 [README 10.28](README.md#1028-pagesmd-第-714-節的缺口2026-11-25)。
 
 ## 10. 筆記模板
 
@@ -444,6 +447,7 @@ Prompt 庫 › 校正 › correct-default
 - **修訂（2026-11-23，ADR-0020、VAULT 規格待決問題 V1，待 owner 追認）**：「輸出」分區的 vault（路徑、git repo、分支）與 hook 只能在設定檔定義，這裡唯讀顯示，處理方案只能選用已定義的 id；字幕的本機影片旁與資料夾目標維持可以在處理方案中設定。
 - **實作（2026-11-24）**：「輸出」分區唯讀列出 `GET /api/vaults`（id、adapter、根資料夾）與 `GET /api/hooks`（只有 id，VAULT 待決問題 V18）；處理方案的輸出目標可以選 vault、vault 內的資料夾與 hook。見 [README 10.24](README.md#1024-client-ui-的-ui-manual-缺口2026-11-24)。
 - **API**：`GET/PUT /api/settings/:section`、`POST /api/providers/:id/test`、`POST /api/cookies`、`GET /api/system`、`POST /api/tools/yt-dlp/update`、`GET/POST/DELETE /api/tokens`
+- **實作狀態（2026-11-25）**：「系統」顯示程式版本、schema 版本與 yt-dlp、ffmpeg、ffprobe、Deno 的版本（`GET /api/system`，OPS-R22、NFR-OBS-3）與磁碟用量（`GET /api/overview`）；「外觀」的介面密度有舒適與緊湊兩檔（design-language.md §5.5）；處理方案的輸出可以選使用者修改過時的處理方式。見 [README 10.28](README.md#1028-pagesmd-第-714-節的缺口2026-11-25)。
 - **修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）**：「書籤小工具」是 ENTRY-R1 的區塊，獨立成一個分區（`/settings/bookmarklet`，排在「外觀」之後），見 ENTRY 待決問題 E7。
 - **實作狀態（UI-6，2026-11-24）**：新增「Hub」分區（`/settings/hub`，在「系統」之後）：URL 唯讀、Hub token、測試連線、ASR 前查詢的開關與說明、用 Hub 的版本重新生成（HSHR），見 [README 10.16、10.17](README.md#1017-ui-6-的決定與待決問題)。
 - **實作狀態（UI-8，2026-11-24）**：「系統」的匯入 bundle 在 409 時連到既有影音，影音在垃圾桶時連到垃圾桶，見 [README 10.20、10.21](README.md#1021-ui-8-的決定與待決問題)。
@@ -452,7 +456,7 @@ Prompt 庫 › 校正 › correct-default
 - **實作狀態（UI-4，2026-11-23）**：「通知」與「預算」分區完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)；其他分區見 README 10.10。
 - **修訂（2026-11-25，依 /goal 由實作者暫定，待 owner 追認；一次唯讀稽核：規格與 UI 文字對照實作）**：
   - 「系統」的 yt-dlp 版本固定：設定 › 系統有「更新 yt-dlp」、「回到上一個版本」與目前固定的版本（`pinned`，沒有固定時顯示「沒有固定」），**固定（pin）與解除固定（unpin）只在 CLI 與 API**：`notesteme tools update --pin <版本>`／`--unpin`、`POST /api/tools/yt-dlp/update {"pin": "<版本>"}`／`{"unpin": true}`（OPS-R7）；UI 沒有提供這兩個動作。依據：`web/client/src/pages/settings/SystemSection.tsx`、`internal/cli/tools.go`、ADR-0009 的修訂。
-  - 「系統」的「媒體檔保留天數」：M4 只顯示、不刪除；媒體檔保留策略不在 M4（[ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md) 第 8 點、LIB-R22）；垃圾桶保留天數在設定檔 `library.trash_retention_days`（DEL-R4），不是這裡的設定。磁碟用量目前顯示在總覽（`OverviewPage.tsx`，LIB-R22）；系統分區只有「後端還沒有提供」的提示（`settings.system.diskUnavailable`、`retentionUnavailable`），沒有可以編輯的欄位。
+  - 「系統」的「媒體檔保留天數」：M4 只顯示、不刪除；媒體檔保留策略不在 M4（[ADR-0021](../adr/0021-m4-scheduler-subscriptions-and-outbox.md) 第 8 點、LIB-R22）；垃圾桶保留天數在設定檔 `library.trash_retention_days`（DEL-R4），不是這裡的設定。磁碟用量顯示在總覽（`OverviewPage.tsx`，LIB-R22），2026-11-25 起系統分區也讀同一個 `GET /api/overview` 顯示；媒體檔保留天數仍是「後端還沒有提供」（`settings.system.retentionUnavailable`），沒有可以編輯的欄位。
   - 「登入」的「反向代理驗證與 OIDC」：**不能從 UI 設定**，只能寫在設定檔（`docs/specs/AUTH-access.md`「不在範圍內」第 86 行，AUTH-R12、R16）；UI 只有登入頁在 OIDC 啟用時多出的「用 <issuer 主機> 登入」按鈕，與設定 › 登入的工作階段列表（AUTH-R20、R22，可撤銷目前以外的工作階段）。依據：`web/client/src/pages/settings/LoginSection.tsx`、`web/client/src/pages/LoginPage.tsx`。
 
 ## 13. 登入
@@ -464,6 +468,7 @@ Prompt 庫 › 校正 › correct-default
   - 背景是一條淡化的時間帶，畫的是固定的示意資料。登入前不能露出任何實際內容，所以不使用真實影片的資料。登入頁只有這一個裝飾元素。
 - **錯誤**：「密碼不正確。」連續失敗 5 次後鎖定 1 分鐘，並顯示剩餘時間。
 - **API**：`POST /api/auth/login`、`POST /api/auth/logout`
+- **實作狀態（2026-11-25）**：背景的淡化時間帶完成（UI-1 的 `StatusBand`，固定示意資料、`aria-hidden`、不呼叫 API），見 [README 10.28](README.md#1028-pagesmd-第-714-節的缺口2026-11-25)。
 - **修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）**：登入頁接受 `?next=`（`/add`、`/share` 在沒有 session 時帶來，ENTRY-R5）與舊的 `?redirect=`，交給 `POST /api/auth/login` 的 `next` 檢查，登入後只前往回應中的 `next`（ENTRY-R6、待決問題 E11）。
 
 ## 14. Hub UI（M5）
