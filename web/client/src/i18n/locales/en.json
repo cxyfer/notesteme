@@ -223,7 +223,8 @@
     "api": "Use API",
     "agent": "Hand to agent",
     "off": "Skip",
-    "opencc": "OpenCC"
+    "opencc": "OpenCC",
+    "rules": "Pick by rules"
   },
   "library": {
     "listLabel": "Media list",
@@ -1740,7 +1741,18 @@
       "vaultFolder": "Folder inside the vault",
       "vaultFolderHint": "Optional. A path relative to the vault's base folder; no absolute paths or “..”.",
       "hooks": "Hooks to run after writing",
-      "hooksHint": "Hooks are defined only in the config file; you can only pick them here."
+      "hooksHint": "Hooks are defined only in the config file; you can only pick them here.",
+      "framesPerMinute": "At most per minute",
+      "framesPerMinuteHint": "More than 0, at most 60; decimals are fine (for example 0.5). Leave blank to use the global setting (default 1).",
+      "framesMax": "At most per video",
+      "framesMaxHint": "A whole number from 1 to 100. Leave blank to use the global setting (default 20).",
+      "noteTemplate": "Note template",
+      "noteTemplateHint": "Templates are managed on the Note templates page. Inheriting uses the global template, or the built-in video-notes when none is set.",
+      "noteEngine": "How notes are written",
+      "noteEngineHint": "With Gemini direct generation the provider must be gemini, and captions, segmenting, correction, translation, chapters and key frames are skipped.",
+      "noteLang": "Note language",
+      "noteLangHint": "A BCP-47 language tag, for example zh-Hant-TW. Leave blank to use the global setting; otherwise the first target language, or the original language when there is none.",
+      "noteIncludeTranslation": "Captions given to the model"
     },
     "promptInherit": "Use global setting (default {{id}})",
     "versionFollow": "Follow default (now v{{version}})",
@@ -1792,7 +1804,15 @@
     },
     "noVaults": "The config file defines no vaults.",
     "vaultPick": "Choose a vault",
-    "noHooks": "The config file defines no hooks."
+    "noHooks": "The config file defines no hooks.",
+    "framesRange": "The number of frames is the smallest of “per minute × length”, “at most per video” and the suggested range for the length: under 10 minutes 5–8, 10–30 minutes 8–12, 30–60 minutes 12–16, over 60 minutes 16–20. When there aren't enough meaningful frames, fewer are used.",
+    "noteEngine": {
+      "pipeline": "Standard (from captions, chapters and key frames)",
+      "gemini": "Gemini direct generation (public YouTube videos only)"
+    },
+    "noteIncludeYes": "Original and the translation in the note language",
+    "noteIncludeNo": "Original only",
+    "templateOption": "{{name}} ({{id}})"
   },
   "styles": {
     "lead": "Choose or customize ASS styles. Built-in styles can't be changed; copy one to a custom style to adjust it.",

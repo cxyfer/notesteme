@@ -204,6 +204,104 @@ describe("處理方案：編輯", () => {
     expect(correct.getByLabelText("Provider").getAttribute("aria-invalid")).toBe("true");
   });
 
+  it("關鍵畫面與筆記：沿用時沒有子欄位，選了執行方式才寫進處理方案（axe 無違規）", async () => {
+    const api = profilesApi({
+      "GET /api/note-templates": () => ({
+        templates: [
+          { id: "video-notes", name: "Video Notes 預設", version: 1, builtin: true },
+          { id: "mine", name: "mine", version: 2, builtin: false },
+        ],
+      }),
+      "PATCH /api/profiles/{id}": () => ({ ...standard, version: 6 }),
+    });
+    const { container } = await openStandard();
+    const flow = screen.getByRole("list", { name: "處理流程" });
+    expect(within(flow).getByText("關鍵畫面")).toBeTruthy();
+    expect(within(flow).getByText("筆記")).toBeTruthy();
+
+    const frames = within(screen.getByRole("heading", { name: /關鍵畫面/ }).closest("li")!);
+    const framesExec = frames.getByLabelText("執行方式") as HTMLSelectElement;
+    // frames 不能交給 Agent（FRM F6）；沿用時沒有張數欄位
+    expect([...framesExec.options].map((o) => o.value)).toEqual(["", "rules", "api", "off"]);
+    expect(frames.queryByLabelText("每分鐘最多幾張")).toBeNull();
+    await userEvent.selectOptions(framesExec, "rules");
+    expect(frames.queryByLabelText("Provider")).toBeNull();
+    fireEvent.change(frames.getByLabelText("每分鐘最多幾張"), { target: { value: "0.5" } });
+    fireEvent.change(frames.getByLabelText("整部最多幾張"), { target: { value: "12" } });
+
+    const note = within(screen.getByRole("heading", { name: /筆記/ }).closest("li")!);
+    expect(note.queryByLabelText("筆記模板")).toBeNull();
+    await userEvent.selectOptions(note.getByLabelText("執行方式"), "api");
+    fireEvent.change(note.getByLabelText("Provider"), { target: { value: "gemini" } });
+    fireEvent.change(note.getByLabelText("模型"), { target: { value: "g1" } });
+    await waitFor(() =>
+      expect(note.getByRole("option", { name: "Video Notes 預設（video-notes）" })).toBeTruthy(),
+    );
+    await userEvent.selectOptions(note.getByLabelText("筆記模板"), "mine");
+    await userEvent.selectOptions(note.getByLabelText("筆記的寫法"), "gemini");
+    await expectNoA11yViolations(container);
+
+    await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
+    expect(await screen.findByText("已儲存（v6）")).toBeTruthy();
+    const body = JSON.parse(String(api.calls("PATCH", "/api/profiles/standard")[0]!.init.body));
+    expect(body.config.stages).toEqual({
+      frames: { executor: "rules", per_minute: 0.5, max_frames: 12 },
+      note: {
+        executor: "api",
+        provider: "gemini",
+        model: "g1",
+        template: "mine",
+        engine: "gemini",
+      },
+    });
+  });
+
+  it("筆記步驟改回沿用全域設定時，連同模板整段刪掉", async () => {
+    const withNote = profile("standard", {
+      version: 5,
+      config: { stages: { note: { executor: "agent", template: "mine@2" } } },
+    });
+    const api = profilesApi({
+      "GET /api/profiles/{id}": () => withNote,
+      "GET /api/note-templates": () => ({ templates: [] }),
+      "PATCH /api/profiles/{id}": () => ({ ...withNote, version: 6 }),
+    });
+    await openStandard();
+    const note = within(screen.getByRole("heading", { name: /筆記/ }).closest("li")!);
+    // 固定版本或清單沒有的模板原樣列出
+    expect((note.getByLabelText("筆記模板") as HTMLSelectElement).value).toBe("mine@2");
+    await userEvent.selectOptions(note.getByLabelText("執行方式"), "");
+    expect(note.queryByLabelText("筆記模板")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
+    await screen.findByText("已儲存（v6）");
+    const body = JSON.parse(String(api.calls("PATCH", "/api/profiles/standard")[0]!.init.body));
+    // stages 只有 note：整個 stages 變空，一起刪掉
+    expect(body).toEqual({ config: { stages: null } });
+  });
+
+  it("筆記步驟的 422 顯示在筆記的欄位旁", async () => {
+    profilesApi({
+      "PATCH /api/profiles/{id}": () =>
+        apiError(422, "invalid_request", "設定不正確", {
+          errors: [
+            {
+              path: "stages.note.provider",
+              message: "engine: gemini 需要 type 為 gemini 的 provider。",
+            },
+          ],
+        }),
+    });
+    await openStandard();
+    const note = within(screen.getByRole("heading", { name: /筆記/ }).closest("li")!);
+    await userEvent.selectOptions(note.getByLabelText("執行方式"), "api");
+    fireEvent.change(note.getByLabelText("Provider"), { target: { value: "anthropic" } });
+    await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
+    expect(
+      await screen.findByText("engine: gemini 需要 type 為 gemini 的 provider。"),
+    ).toBeTruthy();
+    expect(note.getByLabelText("Provider").getAttribute("aria-invalid")).toBe("true");
+  });
+
   it("設為預設", async () => {
     const api = profilesApi({
       "POST /api/profiles/{id}/default": () => ({ ...standard, default: true }),

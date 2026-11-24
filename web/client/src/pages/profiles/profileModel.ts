@@ -6,17 +6,51 @@ import type { components } from "../../api/schema";
 export type Profile = components["schemas"]["Profile"];
 export type Config = Record<string, unknown>;
 
-/** schema 接受的 LLM 步驟（stageOrder）；M3／M4 的步驟還不在 schema 裡，所以不顯示。 */
-export const LLM_STAGES = ["segment", "correct", "translate"] as const;
+/**
+ * 編輯器顯示的步驟（pages.md §8 的線框：分段、校正、翻譯、關鍵畫面、筆記），依執行順序；
+ * 都在 schema 的 stageOrder 中（internal/pipeline/schema.go）。sponsorblock、chapters、summary
+ * 不在 §8 的線框中，表單不顯示，但原樣保留（儲存只送改過的鍵）。
+ */
+export const LLM_STAGES = ["segment", "correct", "translate", "frames", "note"] as const;
 export type LlmStage = (typeof LLM_STAGES)[number];
 
-/** StageExecutors：translate 另外可以用 opencc。batch 屬於 M4（schema 回 422），不列出。 */
+/**
+ * StageExecutors（internal/pipeline/stages.go）：translate 另外可以用 opencc；frames 可以用 rules（只依規則選圖），
+ * 不列 agent（schema 回 422「選圖還不支援交給 Agent。」，FRM F6）。batch 是獨立欄位（BATCH-R1），不是 executor。
+ */
 export function stageExecutors(stage: LlmStage): string[] {
-  return stage === "translate" ? ["api", "agent", "off", "opencc"] : ["api", "agent", "off"];
+  switch (stage) {
+    case "translate":
+      return ["api", "agent", "off", "opencc"];
+    case "frames":
+      return ["rules", "api", "off"];
+    default:
+      return ["api", "agent", "off"];
+  }
 }
+
+/** 寫出來的步驟沒填 executor 時，schema 以步驟的預設檢查（defaultStageConfig：frames 是 off，其他是 api）。 */
+const DEFAULT_EXECUTOR: Record<LlmStage, string> = {
+  segment: "api",
+  correct: "api",
+  translate: "api",
+  frames: "off",
+  note: "api",
+};
 
 /** 內建的 provider（D10）；設定檔 llm.providers 登記的沒有列表 API，可以直接輸入。 */
 export const KNOWN_PROVIDERS = ["anthropic", "openai"] as const;
+
+/**
+ * 步驟的 provider 建議清單：筆記另外有 gemini（GEM-R1：engine: gemini 需要 type 為 gemini 的 provider；
+ * gemini 用在其他步驟時執行期失敗，所以只在筆記列出）。
+ */
+export function knownProviders(stage: LlmStage): readonly string[] {
+  return stage === "note" ? [...KNOWN_PROVIDERS, "gemini"] : KNOWN_PROVIDERS;
+}
+
+/** stages.note.engine（GEM-R1） */
+export const NOTE_ENGINES = ["pipeline", "gemini"] as const;
 
 export const SPLIT_TIMING = ["forbid", "when_needed", "free"] as const;
 export const ON_MANUAL = ["skip", "run"] as const;
@@ -131,11 +165,11 @@ export function stripNulls(v: unknown): unknown {
   return v;
 }
 
-/** 步驟生效的 executor：寫出來的步驟沒填 executor 時是 api；整個步驟沒寫時沿用全域（undefined）。 */
+/** 步驟生效的 executor：寫出來的步驟沒填 executor 時是步驟的預設（frames 是 off，其他是 api）；整個步驟沒寫時沿用全域（undefined）。 */
 export function stageExecutor(doc: Config, stage: LlmStage): string | undefined {
   const s = getPath(doc, `stages.${stage}`);
   if (!isObject(s)) return undefined;
-  return typeof s.executor === "string" ? s.executor : "api";
+  return typeof s.executor === "string" ? s.executor : DEFAULT_EXECUTOR[stage];
 }
 
 /** prompt 引用 <id>、<id>@default、<id>@N（D11）→ id 與版本（undefined＝跟隨預設）。 */

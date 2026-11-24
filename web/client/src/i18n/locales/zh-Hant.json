@@ -222,7 +222,8 @@
     "api": "API 處理",
     "agent": "交給 Agent",
     "off": "不執行",
-    "opencc": "OpenCC 轉換"
+    "opencc": "OpenCC 轉換",
+    "rules": "依規則選圖"
   },
   "library": {
     "listLabel": "影音列表",
@@ -1682,7 +1683,18 @@
       "vaultFolder": "Vault 內的資料夾",
       "vaultFolderHint": "選填。相對於 vault 根資料夾的路徑，不能是絕對路徑或含「..」。",
       "hooks": "寫入後執行的 hook",
-      "hooksHint": "hook 只能在設定檔定義，這裡只能選用。"
+      "hooksHint": "hook 只能在設定檔定義，這裡只能選用。",
+      "framesPerMinute": "每分鐘最多幾張",
+      "framesPerMinuteHint": "大於 0、最多 60，可以有小數（例如 0.5）。空白代表沿用全域設定（預設 1）。",
+      "framesMax": "整部最多幾張",
+      "framesMaxHint": "1 到 100 的整數。空白代表沿用全域設定（預設 20）。",
+      "noteTemplate": "筆記模板",
+      "noteTemplateHint": "模板在「筆記模板」頁管理。沿用時用全域設定的模板，都沒有設定時用內建的 video-notes。",
+      "noteEngine": "筆記的寫法",
+      "noteEngineHint": "Gemini 直接生成時 provider 必須是 gemini，字幕、分段、校正、翻譯、章節與關鍵畫面都會略過。",
+      "noteLang": "筆記語言",
+      "noteLangHint": "BCP-47 語言標記，例如 zh-Hant-TW。空白時沿用全域設定；都沒有設定時用第一個目標語言，沒有目標語言時用原文語言。",
+      "noteIncludeTranslation": "給模型的字幕"
     },
     "promptInherit": "沿用全域設定（預設 {{id}}）",
     "versionFollow": "跟隨預設（目前 v{{version}}）",
@@ -1734,7 +1746,15 @@
     },
     "noVaults": "設定檔沒有定義任何 vault。",
     "vaultPick": "選擇 vault",
-    "noHooks": "設定檔沒有定義任何 hook。"
+    "noHooks": "設定檔沒有定義任何 hook。",
+    "framesRange": "張數取「每分鐘張數 × 片長」、「整部最多幾張」與依片長的建議範圍中最小的一個；建議範圍是未滿 10 分鐘 5–8 張、10–30 分鐘 8–12 張、30–60 分鐘 12–16 張、60 分鐘以上 16–20 張。有意義的畫面不夠時寧可少放。",
+    "noteEngine": {
+      "pipeline": "一般流程（依字幕、章節與關鍵畫面寫筆記）",
+      "gemini": "Gemini 直接生成（只支援公開的 YouTube 影片）"
+    },
+    "noteIncludeYes": "原文與筆記語言的譯文",
+    "noteIncludeNo": "只有原文",
+    "templateOption": "{{name}}（{{id}}）"
   },
   "styles": {
     "lead": "選擇或自訂 ASS 樣式。內建樣式不能修改，複製成自訂樣式後再調整。",

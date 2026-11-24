@@ -4,7 +4,9 @@
 // - 樂觀鎖：PATCH 沒有 If-Match，所以儲存前先讀一次目前的版本，和開始編輯時不同就停下來讓使用者決定；
 //   儲存後回應的版本不是「開始時 + 1」時，也明確告知（兩次請求之間仍有很小的窗口，見 docs/ui/README.md 10.x）。
 // - 422 的 errors[].path（例如 stages.correct.provider）顯示在對應欄位旁。
-// - 被頻道訂閱使用時的提示屬於 M4（還沒有訂閱 API），這裡不做。
+// - 步驟：字幕來源、分段、校正、翻譯、關鍵畫面、筆記、輸出（pages.md §8 的線框）。關鍵畫面與筆記的專屬欄位
+//   只在步驟寫進處理方案（選了執行方式）後顯示：筆記的預設 executor 是 api，只寫 template 會被 schema 要求
+//   provider 與 model（PRF-R5），沿用全域設定時不能單獨寫子欄位。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useId, useState, type ReactNode } from "react";
@@ -32,8 +34,9 @@ import {
   clone,
   getPath,
   isObject,
-  KNOWN_PROVIDERS,
+  knownProviders,
   LLM_STAGES,
+  NOTE_ENGINES,
   mergePatch,
   ON_MANUAL,
   OUTPUT_FORMATS,
@@ -62,6 +65,12 @@ const P = {
   variantStrategy: "language.variant_strategy",
   captionPriority: "language.caption_priority",
   allowPlatformTranslated: "language.allow_platform_translated",
+  framesPerMinute: "stages.frames.per_minute",
+  framesMax: "stages.frames.max_frames",
+  noteTemplate: "stages.note.template",
+  noteEngine: "stages.note.engine",
+  noteLang: "stages.note.lang",
+  noteIncludeTranslation: "stages.note.include_translation",
 } as const;
 const CONFIG_ROOT = "config";
 const NEW_CAPTION_FIRST = { lang: "original", kind: "manual" };
@@ -131,6 +140,12 @@ function ProfileEditor({ heading, profile }: { heading: ReactNode; profile: Prof
     queryKey: queryKeys.assStyles.list(),
     queryFn: ({ signal }) => api.get("/api/ass-styles", { signal }),
   });
+  // 筆記模板（NOTE-R11）：和筆記模板頁共用 query；讀不到時模板欄位只列已寫的值
+  const templates = useQuery({
+    queryKey: queryKeys.noteTemplates,
+    queryFn: ({ signal }) => api.get("/api/note-templates", { signal }),
+    retry: false,
+  });
 
   // 放棄修改或重新載入時遞增，讓步驟區塊重新掛載（文字欄位的暫存內容一起重設）
   const [formKey, setFormKey] = useState(0);
@@ -188,12 +203,15 @@ function ProfileEditor({ heading, profile }: { heading: ReactNode; profile: Prof
     errors,
     prompts: prompts.data?.prompts ?? [],
     styles: (styles.data?.styles ?? []).map((s) => s.name),
+    templates: (templates.data?.templates ?? []).map((x) => ({ id: x.id, name: x.name })),
   };
   const splitTimingOptions = inheritOptions(t, SPLIT_TIMING, "profiles.splitTiming");
   const onManualOptions = inheritOptions(t, ON_MANUAL, "profiles.onManual");
   const variantOptions = inheritOptions(t, VARIANT_STRATEGY, "profiles.variantStrategy");
   const segmentWritten = !!stageExecutor(draft, "segment");
   const correctWritten = !!stageExecutor(draft, "correct");
+  const framesWritten = !!stageExecutor(draft, "frames");
+  const noteWritten = !!stageExecutor(draft, "note");
   const unmapped = Object.entries(errors).filter(
     ([p]) => !KNOWN_ERROR_PREFIXES.some((x) => p.startsWith(x)),
   );
@@ -306,7 +324,37 @@ function ProfileEditor({ heading, profile }: { heading: ReactNode; profile: Prof
             error={errors[P.variantStrategy]}
           />
         </Step>
-        <Step n={5} title={t("stage.publish")} off={outputsOf(draft).length === 0}>
+        <Step n={5} title={t("stage.frames")} off={stageExecutor(draft, "frames") === "off"}>
+          <LlmStageFields stage="frames" {...ctx} />
+          {framesWritten && (
+            <div className="form-grid">
+              <NumberField
+                label={t("profiles.field.framesPerMinute")}
+                hint={t("profiles.field.framesPerMinuteHint")}
+                path={P.framesPerMinute}
+                min={0.1}
+                max={60}
+                step={0.1}
+                {...ctx}
+              />
+              <NumberField
+                label={t("profiles.field.framesMax")}
+                hint={t("profiles.field.framesMaxHint")}
+                path={P.framesMax}
+                min={1}
+                max={100}
+                step={1}
+                {...ctx}
+              />
+            </div>
+          )}
+          <p className="secondary step__note">{t("profiles.framesRange")}</p>
+        </Step>
+        <Step n={6} title={t("stage.note")} off={stageExecutor(draft, "note") === "off"}>
+          <LlmStageFields stage="note" {...ctx} />
+          {noteWritten && <NoteFields {...ctx} />}
+        </Step>
+        <Step n={7} title={t("stage.publish")} off={outputsOf(draft).length === 0}>
           <OutputsStep {...ctx} />
         </Step>
       </ol>
@@ -356,6 +404,9 @@ const KNOWN_ERROR_PREFIXES = [
   "language.allow_platform_translated",
   "language.targets",
   "language.variant_strategy",
+  "language.fallback",
+  "stages.frames.",
+  "stages.note.",
   "outputs",
 ];
 
@@ -365,6 +416,7 @@ interface StepCtx {
   errors: FieldErrors;
   prompts: { id: string; kind: string; default_version: number; latest_version: number }[];
   styles: string[];
+  templates: { id: string; name: string }[];
 }
 
 type TFn = ReturnType<typeof useTranslation>["t"];
@@ -485,7 +537,7 @@ function LlmStageFields({ stage, draft, update, errors, prompts }: StepCtx & { s
             autoComplete="off"
           />
           <datalist id={listId}>
-            {KNOWN_PROVIDERS.map((p) => (
+            {knownProviders(stage).map((p) => (
               <option key={p} value={p} />
             ))}
           </datalist>
@@ -524,6 +576,70 @@ function LlmStageFields({ stage, draft, update, errors, prompts }: StepCtx & { s
         </>
       )}
       {!written && <p className="secondary step__note">{t("profiles.stageInheritNote")}</p>}
+    </div>
+  );
+}
+
+/** 筆記步驟的專屬欄位（NOTE、GEM 的介面）：模板、引擎、筆記語言、附上譯文。只在步驟寫進處理方案後顯示。 */
+function NoteFields({ draft, update, errors, templates }: StepCtx) {
+  const { t } = useTranslation();
+  const tpl = str(getPath(draft, P.noteTemplate));
+  const engine = str(getPath(draft, P.noteEngine));
+  const incl = getPath(draft, P.noteIncludeTranslation);
+  const engineOptions = inheritOptions(t, NOTE_ENGINES, "profiles.noteEngine");
+  // 下拉選的是模板 id（跟隨最新版本）；固定版本（<id>@N，同 prompt 的引用）或清單中沒有的值原樣列為一個選項
+  const templateOptions = [
+    { value: "", label: t("profiles.inherit") },
+    ...templates.map((x) => ({
+      value: x.id,
+      label:
+        x.name && x.name !== x.id ? t("profiles.templateOption", { name: x.name, id: x.id }) : x.id,
+    })),
+  ];
+  if (tpl && !templates.some((x) => x.id === tpl)) templateOptions.push({ value: tpl, label: tpl });
+  return (
+    <div className="form-grid">
+      <SelectField
+        label={t("profiles.field.noteTemplate")}
+        value={tpl}
+        onChange={(e) => update(P.noteTemplate, e.target.value || undefined)}
+        options={templateOptions}
+        hint={t("profiles.field.noteTemplateHint")}
+        error={errors[P.noteTemplate]}
+      />
+      <SelectField
+        label={t("profiles.field.noteEngine")}
+        value={engine}
+        onChange={(e) => update(P.noteEngine, e.target.value || undefined)}
+        options={engineOptions}
+        hint={t("profiles.field.noteEngineHint")}
+        error={errors[P.noteEngine]}
+      />
+      <TextField
+        label={t("profiles.field.noteLang")}
+        hint={t("profiles.field.noteLangHint")}
+        value={str(getPath(draft, P.noteLang))}
+        onChange={(e) => update(P.noteLang, e.target.value.trim() || undefined)}
+        error={errors[P.noteLang]}
+        autoComplete="off"
+        spellCheck={false}
+      />
+      <SelectField
+        label={t("profiles.field.noteIncludeTranslation")}
+        value={incl === true ? TRI.yes : incl === false ? TRI.no : TRI.inherit}
+        onChange={(e) =>
+          update(
+            P.noteIncludeTranslation,
+            e.target.value === "" ? undefined : e.target.value === TRI.yes,
+          )
+        }
+        options={[
+          { value: TRI.inherit, label: t("profiles.inherit") },
+          { value: TRI.yes, label: t("profiles.noteIncludeYes") },
+          { value: TRI.no, label: t("profiles.noteIncludeNo") },
+        ]}
+        error={errors[P.noteIncludeTranslation]}
+      />
     </div>
   );
 }
