@@ -184,7 +184,7 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 
 	r := &routes{d: d, api: api}
 	r.register(api)
-	nullableRefs(api, "ItemDetail", "reprobe", "better_source", "imported_from")
+	nullableRefs(api, "ItemDetail", "reprobe", "better_source", "imported_from", "hub_origin")
 	// 來源影音已永久刪除時 item 是 null（GLOS-R5）。
 	nullableRefs(api, "TermCandidateReview", "item")
 	if d.Events != nil {

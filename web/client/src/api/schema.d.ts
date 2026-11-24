@@ -2813,7 +2813,7 @@ export interface components {
       duration_s: number | null;
       external_id: string;
       /** @description 現行的原始字幕來自 Hub 時的來源（HSHR-R9）；不是來自 Hub 時是 null */
-      hub_origin: components["schemas"]["ItemHubOrigin"];
+      hub_origin: components["schemas"]["ItemHubOrigin"] | null;
       /** @description 分享到 Hub 的紀錄，依時間排序；沒有分享過時沒有這個欄位 */
       hub_shares?: components["schemas"]["HubShareRef"][] | null;
       id: string;

@@ -2967,8 +2967,15 @@
             "type": "string"
           },
           "hub_origin": {
-            "$ref": "#/components/schemas/ItemHubOrigin",
-            "description": "現行的原始字幕來自 Hub 時的來源（HSHR-R9）；不是來自 Hub 時是 null"
+            "description": "現行的原始字幕來自 Hub 時的來源（HSHR-R9）；不是來自 Hub 時是 null",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemHubOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "hub_shares": {
             "description": "分享到 Hub 的紀錄，依時間排序；沒有分享過時沒有這個欄位",

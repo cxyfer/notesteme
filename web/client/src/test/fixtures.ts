@@ -53,7 +53,7 @@ export function stage(name: string, status: string, over: Partial<Stage> = {}): 
 }
 
 export function detail(it: Item, stages: Stage[] = []): Detail {
-  return { ...it, stages, sources: [], reprobe: null, better_source: null, imported_from: null };
+  return { ...it, stages, sources: [], reprobe: null, better_source: null, imported_from: null, hub_origin: null };
 }
 
 type Cue = components["schemas"]["Cue"];
@@ -112,6 +112,8 @@ export function queueStatus(over: Partial<QueueStatus> = {}): QueueStatus {
         stage: "transcript",
         resource_class: "download",
         state: "leased",
+        executor: "builtin",
+        lease_until: null,
         attempts: 1,
         not_before: null,
       },
@@ -122,6 +124,8 @@ export function queueStatus(over: Partial<QueueStatus> = {}): QueueStatus {
         stage: "correct",
         resource_class: "llm",
         state: "pending",
+        executor: "builtin",
+        lease_until: null,
         attempts: 0,
         not_before: null,
       },
