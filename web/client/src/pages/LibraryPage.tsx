@@ -4,6 +4,8 @@
 //   - GET /api/items 的 keyset cursor 無限捲動；列表虛擬化，只渲染可視範圍（NFR-PERF-10）。
 //   - 即時更新不打亂列表：item.created 只累計「有 N 個新項目」，點擊後才回到頂部重新載入；
 //     步驟狀態只更新那一列（每列的 detail query，見 LibraryRow）。
+//   - 分組（LIB-R4）：預設依頻道，可以改成依發布日、狀態或不分組（網址的 group）；API 的 group_by 讓同一組連續，
+//     列表在每組第一列的上方顯示組名（library/groups.ts）。「格」檢視只照分組的順序，不顯示組名。
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -34,6 +36,14 @@ import {
   validateLibrarySearch,
   type LibrarySearch,
 } from "./library/filters";
+import {
+  DEFAULT_GROUPING,
+  groupByParam,
+  groupKey,
+  groupLabel,
+  GROUPINGS,
+  type Grouping,
+} from "./library/groups";
 import { LibraryRow } from "./library/LibraryRow";
 import type { ApiItem } from "./library/stageView";
 import type { BulkBarProps } from "./library/BulkBar";
@@ -64,12 +74,17 @@ export function LibraryPage() {
   const addDrawer = useAddDrawer();
 
   const apiQuery = useMemo(() => toApiQuery(search), [search]);
-  const listKey = useMemo(() => queryKeys.items.list(apiQuery), [apiQuery]);
+  // 分組不是篩選條件：不放進 apiQuery（批次操作用它選「全部符合的」），只送列表
+  const groupBy = groupByParam(search.group);
+  const listKey = useMemo(
+    () => queryKeys.items.list({ ...apiQuery, group_by: groupBy }),
+    [apiQuery, groupBy],
+  );
   const list = useInfiniteQuery({
     queryKey: listKey,
     queryFn: ({ pageParam, signal }) =>
       api.get("/api/items", {
-        query: { ...apiQuery, limit: PAGE_SIZE, cursor: pageParam },
+        query: { ...apiQuery, group_by: groupBy, limit: PAGE_SIZE, cursor: pageParam },
         signal,
       }),
     initialPageParam: undefined as string | undefined,
@@ -93,11 +108,15 @@ export function LibraryPage() {
     },
     [navigate],
   );
-  // 清除篩選時保留顯示方式（列／格不是篩選條件）
+  // 清除篩選時保留顯示方式與分組（都不是篩選條件）
   const grid = search.view === "grid";
+  const group = search.group;
   const clearFilters = useCallback(
-    () => void navigate({ search: grid ? { view: "grid" as const } : {} }),
-    [navigate, grid],
+    () =>
+      void navigate({
+        search: { ...(grid ? { view: "grid" as const } : {}), ...(group ? { group } : {}) },
+      }),
+    [navigate, grid, group],
   );
 
   // ---- 新項目與重新連上：只提示，使用者點擊後才重新載入 ----
@@ -250,6 +269,24 @@ export function LibraryPage() {
               <span>{t("library.bulk.pickLoaded", { count: rows.length })}</span>
             </label>
           )}
+          {/* LIB-R4 的分組 */}
+          <label className="library__grouping">
+            <span>{t("library.group.label")}</span>
+            <select
+              className="field__input"
+              value={search.group ?? DEFAULT_GROUPING}
+              onChange={(e) => {
+                const g = e.target.value as Grouping;
+                setSearch({ group: g === DEFAULT_GROUPING ? undefined : g }, { replace: true });
+              }}
+            >
+              {GROUPINGS.map((g) => (
+                <option key={g} value={g}>
+                  {t(`library.group.by.${g}`)}
+                </option>
+              ))}
+            </select>
+          </label>
           {/* pages.md §3 的「列｜格」 */}
           <div className="library__view" role="group" aria-label={t("library.view.label")}>
             <Button
@@ -338,13 +375,19 @@ export function LibraryPage() {
           estimateSize={88}
           onEndReached={onEndReached}
           renderItem={(item, { index, focusProps }) => (
-            <LibraryRow
-              item={item}
-              focusProps={focusProps}
-              onFilterChannel={(channel) => setSearch({ channel })}
-              selected={sel.ids.has(item.id)}
-              onSelect={(on, shift) => toggle(index, on, shift)}
-            />
+            <>
+              {groupBy &&
+                (index === 0 || groupKey(rows[index - 1]!, group) !== groupKey(item, group)) && (
+                  <h2 className="library__group section__title">{groupLabel(t, item, group)}</h2>
+                )}
+              <LibraryRow
+                item={item}
+                focusProps={focusProps}
+                onFilterChannel={(channel) => setSearch({ channel })}
+                selected={sel.ids.has(item.id)}
+                onSelect={(on, shift) => toggle(index, on, shift)}
+              />
+            </>
           )}
           footer={
             <LoadMore

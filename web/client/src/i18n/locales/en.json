@@ -374,6 +374,23 @@
       "label": "View",
       "list": "List",
       "grid": "Grid"
+    },
+    "group": {
+      "label": "Group",
+      "by": {
+        "channel": "By channel",
+        "published": "By publish date",
+        "status": "By status",
+        "none": "No grouping"
+      },
+      "noChannel": "No channel",
+      "noDate": "No publish date",
+      "status": {
+        "failed": "A step failed",
+        "blocked": "Needs you",
+        "processing": "Processing",
+        "idle": "Other"
+      }
     }
   },
   "add": {

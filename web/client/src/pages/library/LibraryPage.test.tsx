@@ -233,6 +233,61 @@ describe("媒體庫：篩選 ↔ 網址", () => {
   });
 });
 
+describe("媒體庫：分組（LIB-R4）", () => {
+  it("預設依頻道分組：送出 group_by=channel，每組第一列上方顯示頻道名稱", async () => {
+    const api = libraryApi([
+      item(1, { channel_id: "UCa", channel_name: "頻道甲" }),
+      item(2, { channel_id: "UCa", channel_name: "頻道甲" }),
+      item(3, { channel_id: "UCb" }),
+      item(4, { channel_id: undefined }),
+    ]);
+    await openLibrary();
+    expect(await screen.findByRole("link", { name: "影片 4" })).toBeTruthy();
+    expect(api.calls("GET", "/api/items")[0]!.url.searchParams.get("group_by")).toBe("channel");
+    const heads = screen
+      .getAllByRole("heading", { level: 2 })
+      .filter((h) => h.classList.contains("library__group"))
+      .map((h) => h.textContent);
+    // 同一頻道只顯示一次；沒有名稱時用頻道 ID；沒有頻道另成一組
+    expect(heads).toEqual(["頻道甲", "UCb", "沒有頻道"]);
+    expect((screen.getByRole("combobox", { name: "分組" }) as HTMLSelectElement).value).toBe(
+      "channel",
+    );
+  });
+
+  it("切換成依狀態：寫進網址、重新查詢，組名來自 API 的 group", async () => {
+    const api = libraryApi([item(1, { group: "failed" }), item(2, { group: "idle" })]);
+    const { router } = await openLibrary();
+    await screen.findByRole("link", { name: "影片 2" });
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "分組" }), "status");
+    await waitFor(() => expect(router.state.location.search).toEqual({ group: "status" }));
+    await waitFor(() =>
+      expect(api.calls("GET", "/api/items").at(-1)!.url.searchParams.get("group_by")).toBe(
+        "status",
+      ),
+    );
+    expect(await screen.findByRole("heading", { level: 2, name: "有步驟失敗" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "其他" })).toBeTruthy();
+  });
+
+  it("不分組：不送 group_by、沒有組名；切回預設時從網址移除、其他條件保留；不合法的 group 丟掉", async () => {
+    const api = libraryApi(items(2));
+    const { router } = await openLibrary("/library?group=none&platform=youtube");
+    await screen.findByRole("link", { name: "影片 2" });
+    expect(api.calls("GET", "/api/items")[0]!.url.searchParams.has("group_by")).toBe(false);
+    expect(document.querySelector(".library__group")).toBeNull();
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "分組" }), "channel");
+    await waitFor(() => expect(router.state.location.search).toEqual({ platform: "youtube" }));
+
+    await act(() => router.navigate({ to: "/library", search: { group: "bogus" } as never }));
+    await waitFor(() =>
+      expect(api.calls("GET", "/api/items").at(-1)!.url.searchParams.get("group_by")).toBe(
+        "channel",
+      ),
+    );
+  });
+});
+
 describe("媒體庫：即時更新不打亂列表（LIB-R9）", () => {
   it("item.created 只累計「有 N 個新項目」，點擊後才重新載入", async () => {
     const api = libraryApi(items(2));

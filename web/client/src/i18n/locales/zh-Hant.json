@@ -358,6 +358,23 @@
       "label": "顯示方式",
       "list": "列",
       "grid": "格"
+    },
+    "group": {
+      "label": "分組",
+      "by": {
+        "channel": "依頻道",
+        "published": "依發布日",
+        "status": "依狀態",
+        "none": "不分組"
+      },
+      "noChannel": "沒有頻道",
+      "noDate": "沒有發布日期",
+      "status": {
+        "failed": "有步驟失敗",
+        "blocked": "需要你處理",
+        "processing": "處理中",
+        "idle": "其他"
+      }
     }
   },
   "add": {

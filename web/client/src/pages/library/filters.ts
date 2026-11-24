@@ -77,6 +77,8 @@ export interface LibrarySearch {
   blocked?: string;
   /** 已讀狀態（LIB-R19，UI-7） */
   read_state?: ReadState;
+  /** 分組（LIB-R4）：不是篩選條件；省略時依頻道，none 是不分組。送 API 的 group_by 見 groups.ts */
+  group?: "published" | "status" | "none";
   /** 顯示方式（pages.md §3 的「列｜格」，UI-8）：不是篩選條件，不送 API；預設是列 */
   view?: "grid";
 }
@@ -189,10 +191,12 @@ export function validateLibrarySearch(raw: Record<string, unknown>): LibrarySear
     blocked: blockReason(raw.blocked),
     read_state: oneOf(READ_STATES, raw.read_state),
     view: oneOf(["grid"] as const, raw.view),
+    group: oneOf(["published", "status", "none"] as const, raw.group),
   };
   // 拿掉 undefined，讓網址只帶有值的參數
   for (const k of FILTER_KEYS) if (out[k] === undefined) delete out[k];
   if (out.view === undefined) delete out.view;
+  if (out.group === undefined) delete out.group;
   return out;
 }
 

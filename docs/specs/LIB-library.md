@@ -67,6 +67,7 @@
   - `duration_min`、`duration_max`：秒，不得小於 0。
   - `timing`：timing origin。條件是影音目前的 transcript 產出中，至少有一個 cue 的 timing 是這個值。
   - `q`：標題搜尋，去掉前後空白，最多 200 字元。
+  - `group_by`：`channel`、`published`、`status`（LIB-R4，見待決問題「LIB-R4 的分組」）。
   - `limit`：1～200，預設 50。
   - `cursor`。
   - `read_state`：M1 沒有資料模型，帶這個參數回 501（M4 起見 LIB-R19）。
@@ -117,7 +118,7 @@
   - R8 的 download 上限由 2 改成 3。2 是預設值，上限沒有套用或寫死都會通過。
   - 「`waiting` 不含執行中的任務」、「垃圾桶中的影音不在列表與 `total` 中」、排序、`limit` 與最後一頁沒有 `next_cursor`，由單元測試守住。
 - 某個 stage 還沒有任何執行紀錄時（例如只處理到 metadata 的影音的 normalize），視為 `pending`，`status=<stage>:pending` 會列出它（2026-11-15，LIB 審查後決定）。
-- LIB-R4 的「依頻道、發布日、狀態分組」是 UI 的呈現。API 目前只依建立時間排序，`group_by` 等 UI 切片再設計。
+- LIB-R4 的「依頻道、發布日、狀態分組」是 UI 的呈現。~~API 目前只依建立時間排序，`group_by` 等 UI 切片再設計。~~ 收尾 D1 已加 `group_by`，見下方「LIB-R4 的分組」。
 - 標題搜尋不做 NFKC（全形英數）與簡繁互通，例如「假装」找不到「假裝」，之後再評估。
 - 舊的 transcript 產出沒有 `timings_json`，不回填。M1 尚未發布，沒有舊資料。
 - R6（本機檔案的 Range 請求）要先有 ING-05 的本機檔案新增與 inbox watcher，留給 ING 切片。
@@ -125,10 +126,19 @@
 - LIB-R11 場景已修改 `.feature`（2026-11-22，M2 S3 實作時發現，依 /goal 採 advisor 建議，待 owner 追認）。原場景的 Background 沒有指定處理方案，內建 `default` 的 `correct` 沒有 provider，依 X1 是 `skipped`（`not_configured`），第一版 corrected 不會產生，斷言「has 2 versions」失敗（S3 之前因為 `processed up to` 的 M2 目標 pending 而看不出來）。改成：場景內建立 `llm-lib` 處理方案（`correct` 用 anthropic）、用 `rerun` 帶 `"profile": "llm-lib"` 產生第一版（設定快照在新增當下已凍結，不能靠改預設處理方案），再用 openai 的覆寫重跑第二次，斷言兩個版本都保留。
 - 影音路由接受代號（2026-11-23，M2 S9 實作 MCP 的 `item` 參數時決定，依 /goal 採保守預設，**待 owner 追認**）：`GET /api/items/{id}`、`GET /api/items/{id}/cues`、`GET /api/items/{id}/subtitles`、`POST /api/items/{id}/subtitles/import` 的 `{id}` 也接受影音代號（`yt:…`、`bili:…/p1`，URL 編碼後放進路徑）；代號在垃圾桶中時回 404 `in_trash`，與用 ID 存取相同。其他影音路由仍只接受 ID。細節見 MCP 規格待決問題 S2。
 - UI-1 的媒體庫（2026-11-23，依 /goal 採 advisor 建議，**待 owner 追認**；細節見 [ui/README 10.5](../ui/README.md#105-ui-1-的決定)）：
-  - LIB-R4 的「預設依頻道分組」沒做，列表依建立時間排序、不分組：前端分組會讓同一頻道散在不同的 cursor 頁，而且 `GET /api/items` 沒有頻道名稱。等 API 有 `group_by` 再做。
+  - ~~LIB-R4 的「預設依頻道分組」沒做，列表依建立時間排序、不分組：前端分組會讓同一頻道散在不同的 cursor 頁，而且 `GET /api/items` 沒有頻道名稱。等 API 有 `group_by` 再做。~~ 收尾 D1 已做，見下方「LIB-R4 的分組」。
   - `GET /api/items` 沒有步驟狀態、頻道名稱與縮圖網址，UI 對每個渲染出來的列另外讀 `GET /api/items/{id}`（N+1，只有可視範圍）。建議之後在列表回應加 `stages` 摘要（各步驟最新的 `status`、`block_reason`、`error_class`）、頻道名稱與縮圖網址。
   - LIB-R9：`stage.status` 與 SSE 重新連上都不讓列表失效（只更新那一列的詳情），否則重抓時新項目會插入頂端。
 - 新增抽屜的 YouTube 播放清單（2026-11-23，UI-1，**待 owner 追認**）：ING 與 API 沒有範圍參數，UI 只說明「會新增整份播放清單」，不讓使用者選範圍。要選範圍需要 `POST /api/items` 加 `entries`（或 `playlist_items`）並由 resolve 列出清單內容。
+
+- LIB-R4 的分組（2026-11-24，收尾 D1 實作時決定，依 /goal 採 advisor 建議，待 owner 追認）：
+  - **API**：`GET /api/items` 加 `group_by`（`channel`、`published`、`status`，其他值 422；省略時和原本一樣不分組、依建立時間由新到舊）。分組時排序是「組、組內依建立時間由新到舊、ID」，同一組在結果中連續，跨頁時下一頁接著同一組。**沒有另外的 `sort` 參數**：LIB-R4 只要求分組，排序跟著分組決定；之後要其他排序再加。
+  - **各組的定義與順序**：`channel` 依頻道名稱（前 100 字元，名稱相同時依頻道 ID），沒有頻道的排最後；`published` 依發布時間由新到舊（同一個時間點一組，UI 再依當地時區的日期合併相鄰的組），沒有發布時間的排最後；`status` 依「最需要注意」：`failed`（任一步驟最新一次是失敗）> `blocked`（停住，不論原因）> `processing`（有步驟在執行、等待、等 Agent，或有未結束的任務）> `idle`（其他）。每一列回傳 `group`（只在 `status` 分組時有值，是上面四個名稱之一）。
+  - **頻道名稱**：列表的每一列多一個 `channel_name`（頻道表的標題，沒有頻道或沒有名稱時省略），不論有沒有分組。UI 不必再為了頻道名稱讀詳情。
+  - **游標**：分組時游標改用 v2 格式，多帶目前的組鍵，HMAC 涵蓋組鍵；篩選條件的指紋也包含 `group_by`，換了分組方式的游標回 422（UI 從第一頁重讀）。游標最長 2048 字元、組鍵最長 512 字元。
+  - **已知限制**：`status` 與 `channel` 的組鍵在翻頁期間可能改變（步驟狀態改變、頻道改名）。游標記的是上一頁最後一列的組鍵，之後的頁依當下的組鍵比較，所以狀態改變的影音可能在已載入的頁與下一頁都出現，或兩頁都沒有。和建立時間的分頁一樣不保證快照一致；UI 依 LIB-R9 不自動重抓，使用者重新載入即可。
+  - **效能**（`lib-10k` 基準，單頁 50 筆）：`status` 約 97ms（狀態用非相關的 `IN` 子查詢一次算出，避免逐列的相關子查詢的 300ms）、`channel` 約 34ms、`published` 約 25ms。
+  - **UI**：媒體庫預設依頻道分組（網址省略 `group`），可以切換成依發布日、依狀態或不分組（網址的 `group`，清除篩選時保留）；列表在每組第一列上方顯示組名。「格」檢視照分組的順序，不顯示組名。見 [ui/README 10.22](../ui/README.md#1022-收尾-d1佇列的重試取消媒體庫的分組2026-11-24)。
 
 ### M4
 

@@ -358,6 +358,23 @@
       "label": "显示方式",
       "list": "列表",
       "grid": "网格"
+    },
+    "group": {
+      "label": "分组",
+      "by": {
+        "channel": "按频道",
+        "published": "按发布日",
+        "status": "按状态",
+        "none": "不分组"
+      },
+      "noChannel": "没有频道",
+      "noDate": "没有发布日期",
+      "status": {
+        "failed": "有步骤失败",
+        "blocked": "需要你处理",
+        "processing": "处理中",
+        "idle": "其他"
+      }
     }
   },
   "add": {

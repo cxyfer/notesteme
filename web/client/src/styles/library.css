@@ -449,3 +449,17 @@
   gap: var(--space-1);
   margin-left: auto;
 }
+
+/* 收尾 D1：分組（LIB-R4）。組名在每組第一列的上方（同一個 listitem 內，虛擬列表量得到高度） */
+.library__grouping {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.library__grouping + .library__view {
+  margin-left: 0;
+}
+.library__group {
+  margin: var(--space-4) 0 var(--space-1);
+}
