@@ -1,7 +1,6 @@
 name: CI
 
-# 只跑測試與檢查，不建置 image；image 只在 v* tag 時由 docker-publish.yml 建置，
-# 避免私人 repo 的 Actions 額度浪費在每次 PR 與合併上。
+# 只跑測試與檢查，不建置 image；image 只在 v* tag 時由 docker-publish.yml 建置。
 on:
   push:
     branches: [master]
@@ -49,18 +48,55 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      # NFR-TEST-3：核心 package 涵蓋率 >= 80%。
+      # 驗收場景（features 套件本身）另開 bdd 與 bdd-extra 兩個 job，各自佔一台 runner；
+      # 這裡只跑其餘的套件（含 features/steps、features/internal 的 harness 單元測試）。
+      # -race 下 internal/pipeline 與 internal/api 各要 10～26 分鐘，所以逾時放寬到 60m（每個測試 binary 各自計算）。
+      - name: go test (race, without the scenarios)
+        run: go test -race -count=1 -timeout 60m $(go list ./... | grep -vx 'github.com/cxyfer/notesteme/features')
+
+  # NFR-TEST-3：核心 package 涵蓋率 >= 80%。coverage.sh 會重跑這幾個 package，獨立成一個 job 才不會拖長 go job。
+  coverage:
+    name: Coverage gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
       - name: coverage gate
         run: scripts/ci/coverage.sh
 
-      # 包含 features/ 的驗收場景（godog）與規格靜態檢查。
-      - name: go test
-        # features 的驗收場景（@M1 與 @M2 共 308 個）在 -race 下約 10 分鐘，超過 go test 預設的 10m 逾時。
-        run: go test -race -count=1 -timeout 30m ./...
-      # @M3、@M4、@M5 的場景（共 628 個）全部通過；不放進 -race 的預設執行，以免逾時。
-      # 預設 tag 之外的執行不套用 ratchet，這一步擋的是「任何場景 failed 或 undefined」。
-      - name: go test (M3–M5 scenarios)
-        run: go test -count=1 -timeout 20m ./features -run TestFeatures -godog.tags='@M3,@M4,@M5'
+  # 驗收場景（godog）與規格靜態檢查（features 套件）：預設 tag @M1,@M2（313 個），套用 features/passing.txt 的 ratchet。
+  # 在 -race 下本機約 22 分鐘、GitHub runner 更慢，所以獨佔一台 runner，逾時 60m。
+  bdd:
+    name: Scenarios (@M1,@M2, race)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: go test ./features (race)
+        run: go test -race -count=1 -timeout 60m ./features
+
+  # @M3、@M4、@M5 的場景（共 630 個）全部通過；不放進 -race 的預設執行，以免逾時。
+  # 預設 tag 之外的執行不套用 ratchet，這一步擋的是「任何場景 failed 或 undefined」。
+  bdd-extra:
+    name: Scenarios (@M3–M5)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: go test ./features (@M3,@M4,@M5)
+        run: go test -count=1 -timeout 45m ./features -run TestFeatures -godog.tags='@M3,@M4,@M5'
 
   vuln:
     name: govulncheck
@@ -130,7 +166,7 @@ jobs:
           fi
 
   # Hub 的 Postgres store 與 S3 backend（ADR-0030 第 2 點）：hubstore/storetest 的共用案例跑在真的 Postgres 上，
-  # hubblob 的共用案例跑在真的 MinIO 上。沒有這些環境變數時同一組測試會略過（go job 只跑 SQLite＋fs）。
+  # hubblob 的共用案例跑在真的 S3 相容服務（SeaweedFS）上。沒有這些環境變數時同一組測試會略過（go job 只跑 SQLite＋fs）。
   hub-backends:
     name: Hub postgres & s3
     runs-on: ubuntu-latest
@@ -152,8 +188,8 @@ jobs:
       NOTESTEME_TEST_POSTGRES_DSN: postgres://hub:hub-ci-password@127.0.0.1:5432/hub?sslmode=disable
       NOTESTEME_TEST_S3_ENDPOINT: http://127.0.0.1:9000
       NOTESTEME_TEST_S3_BUCKET: notesteme-test
-      NOTESTEME_TEST_S3_ACCESS_KEY_ID: minio-ci
-      NOTESTEME_TEST_S3_SECRET_ACCESS_KEY: minio-ci-secret
+      NOTESTEME_TEST_S3_ACCESS_KEY_ID: s3-ci
+      NOTESTEME_TEST_S3_SECRET_ACCESS_KEY: s3-ci-secret
     steps:
       - uses: actions/checkout@v7
 
@@ -161,17 +197,43 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # service container 不能指定 command（MinIO 要 server /data），所以用 docker run 啟動；bucket 由 mc 建立。
-      - name: start minio
+      # S3 相容服務用 SeaweedFS（Apache-2.0）的 release binary，版本與 sha256 固定。
+      # MinIO 社群版已停止發布 image（quay.io 要認證、Docker Hub 沒有該 tag，GitHub repo 也已封存），拉不到了。
+      # 設了 identity，所以 SigV4 簽章不對的請求會被拒絕（hubblob 的「錯誤 secret」案例才驗得到）；bucket 由 aws CLI 建立。
+      - name: start seaweedfs (s3)
+        env:
+          SEAWEEDFS_VERSION: "4.55"
+          SEAWEEDFS_SHA256: f156c609eeaf9e5fcfeea33fd70411222005f83760aa95893c9d58eff006b45c
         run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER="$NOTESTEME_TEST_S3_ACCESS_KEY_ID" -e MINIO_ROOT_PASSWORD="$NOTESTEME_TEST_S3_SECRET_ACCESS_KEY" \
-            quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
-          for i in $(seq 1 30); do
-            curl -fsS http://127.0.0.1:9000/minio/health/live && break
+          curl -fsSL -o "$RUNNER_TEMP/weed.tar.gz" "https://github.com/seaweedfs/seaweedfs/releases/download/${SEAWEEDFS_VERSION}/linux_amd64.tar.gz"
+          echo "${SEAWEEDFS_SHA256}  $RUNNER_TEMP/weed.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/weed" "$RUNNER_TEMP/weed-data"
+          tar -xzf "$RUNNER_TEMP/weed.tar.gz" -C "$RUNNER_TEMP/weed" weed
+          cat > "$RUNNER_TEMP/weed/s3.json" <<EOF
+          {"identities":[{"name":"ci","credentials":[{"accessKey":"${NOTESTEME_TEST_S3_ACCESS_KEY_ID}","secretKey":"${NOTESTEME_TEST_S3_SECRET_ACCESS_KEY}"}],"actions":["Admin","Read","Write","List","Tagging"]}]}
+          EOF
+          nohup "$RUNNER_TEMP/weed/weed" server -dir="$RUNNER_TEMP/weed-data" -ip=127.0.0.1 \
+            -master.volumeSizeLimitMB=128 -volume.max=20 \
+            -s3 -s3.port=9000 -s3.config="$RUNNER_TEMP/weed/s3.json" > "$RUNNER_TEMP/weed.log" 2>&1 &
+          ready=0
+          for i in $(seq 1 60); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/ || true)"
+            # 有 identity 時匿名請求回 403；只要不是連線失敗（000）就代表 S3 gateway 起來了
+            if [ "$code" != "000" ]; then ready=1; break; fi
             sleep 1
           done
-          docker exec minio sh -c 'mc alias set ci http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" && mc mb --ignore-existing ci/notesteme-test'
+          if [ "$ready" != 1 ]; then echo "::error::SeaweedFS 60 秒內沒有就緒"; tail -n 50 "$RUNNER_TEMP/weed.log"; exit 1; fi
+          export AWS_ACCESS_KEY_ID="$NOTESTEME_TEST_S3_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$NOTESTEME_TEST_S3_SECRET_ACCESS_KEY" AWS_DEFAULT_REGION=us-east-1
+          made=0
+          for i in $(seq 1 30); do
+            if aws --endpoint-url "$NOTESTEME_TEST_S3_ENDPOINT" s3 mb "s3://$NOTESTEME_TEST_S3_BUCKET"; then made=1; break; fi
+            sleep 2
+          done
+          if [ "$made" != 1 ]; then echo "::error::建立 bucket 失敗"; tail -n 50 "$RUNNER_TEMP/weed.log"; exit 1; fi
+
+      - name: seaweedfs log
+        if: failure()
+        run: tail -n 100 "$RUNNER_TEMP/weed.log" || true
 
       - name: go test (hub backends)
         run: go test -race -count=1 -timeout 15m ./internal/hub/hubstore/... ./internal/hub/hubblob/ ./internal/hub/hubcli/ ./internal/hub/
