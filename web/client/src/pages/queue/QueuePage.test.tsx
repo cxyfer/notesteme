@@ -7,7 +7,7 @@ import { expectNoA11yViolations } from "../../test/axe";
 import { detail, item, queueStatus, stage } from "../../test/fixtures";
 import { apiError, mockApi, type MockHandler } from "../../test/mockApi";
 import { renderRoute, signIn } from "../../test/render";
-import { filterTasks, validateQueueSearch } from "./filters";
+import { filterTasks, validateQueueSearch, type QueueTask } from "./filters";
 
 type Q = ReturnType<typeof queueStatus>;
 
@@ -124,7 +124,7 @@ describe("佇列：任務", () => {
     expect(link.getAttribute("href")).toBe("/items/item-1?tab=runs");
     expect(within(rows[0]!).getByText("處理中")).toBeTruthy();
     expect(within(rows[1]!).getByText("等待中")).toBeTruthy();
-    expect(screen.getByText(/交給 Agent 的任務請到影音詳情/)).toBeTruthy();
+    expect(screen.getByText(/交給 Agent 的任務也列在這裡/)).toBeTruthy();
     expect(screen.getByText(/「取消」只停止這個任務所屬的步驟/)).toBeTruthy();
   });
 
@@ -203,6 +203,100 @@ describe("佇列：任務", () => {
     queueApi(() => queueStatus({ tasks: [] }));
     await openQueue();
     expect(await screen.findByText("佇列是空的。新增影音，或等訂閱的頻道有新內容。")).toBeTruthy();
+  });
+});
+
+describe("佇列：Agent 任務（AGT A13）", () => {
+  const base = queueStatus().tasks!;
+  const agentTask = (id: string, n: number, over: Partial<QueueTask> = {}): QueueTask => ({
+    id,
+    item_id: `item-${n}`,
+    item: `yt:vid0000000${n}`,
+    stage: "correct",
+    resource_class: "llm",
+    state: "leased",
+    executor: "agent",
+    attempts: 1,
+    not_before: null,
+    lease_until: null,
+    ...over,
+  });
+  const inSeconds = (s: number) => new Date(Date.now() + s * 1000).toISOString();
+
+  it("被 Agent 領取的任務顯示是哪個 Agent 與租約剩多少時間；通道的使用中仍只算內建 worker", async () => {
+    queueApi(() =>
+      queueStatus({
+        tasks: [
+          ...base,
+          agentTask("ag-1", 3, { agent: "Claude Code", lease_until: inSeconds(462) }),
+          agentTask("ag-2", 4, { agent: "<b>codex</b>", lease_until: inSeconds(-5) }),
+          agentTask("ag-3", 5, { state: "pending", attempts: 0 }),
+        ],
+      }),
+    );
+    const { container } = await openQueue();
+    const list = await screen.findByRole("list", { name: "任務列表" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows).toHaveLength(5);
+    const claude = rows.find((r) => within(r).queryByText("由 Claude Code 處理中"))!;
+    expect(claude).toBeTruthy();
+    const left = within(claude).getByText(/^租約剩 0?7:(4\d|3\d)$/);
+    expect(left.tagName).toBe("TIME");
+    expect(left.getAttribute("datetime")).toBeTruthy();
+    // Agent 名稱是不可信的文字：原樣當文字顯示
+    const codex = rows.find((r) => within(r).queryByText("由 <b>codex</b> 處理中"))!;
+    expect(codex.querySelector("b")).toBeNull();
+    expect(within(codex).getByText("租約已到期，稍後放回佇列")).toBeTruthy();
+    const waiting = rows.find((r) => within(r).queryByText("等待 Agent"))!;
+    expect(within(waiting).queryByText(/租約/)).toBeNull();
+    // Agent 的任務才有「改用 API 處理」
+    expect(within(list).getAllByRole("button", { name: "改用 API 處理" })).toHaveLength(3);
+    // AGT-R2：Agent 領取的 llm 任務不佔內建 worker 的名額
+    const llm = within(screen.getByRole("list", { name: "資源類別" })).getAllByRole("listitem")[2]!;
+    expect(within(llm).getByText("使用中 0，上限 4，等待 1")).toBeTruthy();
+    expect(llm.querySelectorAll(".lane__slot[data-used]")).toHaveLength(0);
+    await expectNoA11yViolations(container);
+  });
+
+  it("沒有回報名稱的 Agent 顯示「由 Agent 處理中」；租約會倒數", async () => {
+    queueApi(() => queueStatus({ tasks: [agentTask("ag-1", 3, { lease_until: inSeconds(90) })] }));
+    await openQueue();
+    const list = await screen.findByRole("list", { name: "任務列表" });
+    expect(within(list).getByText("由 Agent 處理中")).toBeTruthy();
+    const first = within(list).getByText(/^租約剩/).textContent;
+    await waitFor(() => expect(within(list).getByText(/^租約剩/).textContent).not.toBe(first), {
+      timeout: 2500,
+    });
+  });
+
+  it("「改用 API 處理」送 POST /api/tasks/{id}/switch-executor；沒有設定 API 時說明原因", async () => {
+    let q = queueStatus({
+      tasks: [
+        agentTask("ag-1", 3, { agent: "Claude Code", lease_until: inSeconds(300) }),
+        agentTask("ag-2", 4, { state: "pending" }),
+      ],
+    });
+    const api = queueApi(() => q, {
+      "POST /api/tasks/{id}/switch-executor": (req) => {
+        if (req.params.id === "ag-2")
+          return apiError(409, "api_not_configured", "沒有設定 provider。");
+        q = { ...q, tasks: q.tasks!.filter((x) => x.id !== req.params.id) };
+        return { item_id: "item-3", stage: "correct", executor: "api", tasks: ["ag-1"] };
+      },
+    });
+    await openQueue();
+    const list = await screen.findByRole("list", { name: "任務列表" });
+    await userEvent.click(within(list).getAllByRole("button", { name: "改用 API 處理" })[0]!);
+    await waitFor(() =>
+      expect(api.calls("POST", "/api/tasks/ag-1/switch-executor")).toHaveLength(1),
+    );
+    expect(
+      JSON.parse(api.calls("POST", "/api/tasks/ag-1/switch-executor")[0]!.init.body as string),
+    ).toEqual({ executor: "api" });
+    expect(await screen.findByText("校正已改用 API 處理。")).toBeTruthy();
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(1));
+    await userEvent.click(within(list).getByRole("button", { name: "改用 API 處理" }));
+    expect(await screen.findByText(/無法改用 API 處理/)).toBeTruthy();
   });
 });
 

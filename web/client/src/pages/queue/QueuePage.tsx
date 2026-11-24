@@ -2,8 +2,10 @@
 //
 //   - 每個資源類別一條通道：方格數是並行上限、實心是使用中；上限可以直接 +／−（PATCH /api/queue/limits）；
 //     每個類別與整個佇列都可以暫停／繼續。
-//   - 任務列表：執行中與等待中的任務（只有內建 worker 的任務；API 不列 Agent 任務，頁面上明說）。
+//   - 任務列表：執行中與等待中的任務，包含 Agent 的任務（AGT A13）：被 Agent 領取的顯示是哪個 Agent 與租約剩多少時間，
+//     並可以改用 API 處理（POST /api/tasks/{id}/switch-executor）。通道的使用中／等待只算內建 worker（AGT-R2）。
 //     每列可以只取消這個步驟（POST /api/tasks/{id}/cancel），或停止整部影音（POST /api/items/{id}/cancel）。
+//   - 租約剩餘時間每秒倒數（只在有 Agent 租約時計時）；Agent 延長租約沒有 SSE 事件，所以這時每 30 秒重新讀取佇列。
 //   - 失敗與停住：GET /api/queue 的 failed 清單，可以單獨或全部重試（FailedTasks.tsx）。
 //   - 需要你處理：依步驟計數 failed／blocked 的影音（GET /api/items?status=…&limit=1 的 total），連到媒體庫的篩選。
 //   - SSE：stage.status 讓 queue 失效；列表以任務 ID 為 key，重新讀取只更新受影響的列，不重排捲動位置。
@@ -29,7 +31,7 @@ import {
 } from "../../components";
 import { useAddDrawer } from "../../add/AddContext";
 import { useServerEvent, useStreamReconnect } from "../../events/useEventStream";
-import { formatDateTime, formatNumber } from "../../i18n";
+import { formatDateTime, formatNumber, formatTimecode } from "../../i18n";
 import { usePageTitle } from "../../shell/usePageTitle";
 import { STAGES } from "../library/filters";
 import { useItemDetail } from "../library/LibraryRow";
@@ -53,6 +55,9 @@ const PAUSE = "pause";
 const RESUME = "resume";
 const LIMIT = "limit";
 const ATTENTION_DEBOUNCE_MS = 2000;
+/** 有 Agent 租約時重新讀取佇列的間隔（extend_lease 不發 SSE 事件） */
+const LEASE_REFETCH_MS = 30_000;
+const SECOND_MS = 1000;
 /** 會讓「需要你處理」的數字改變的步驟狀態（重新處理時離開 failed 會先變成 pending） */
 const ATTENTION_EVENTS = new Set(["failed", "blocked", "pending", "done", "skipped"]);
 
@@ -60,6 +65,28 @@ type QueueStatus = NonNullable<Awaited<ReturnType<typeof fetchQueue>>>;
 
 function fetchQueue(signal?: AbortSignal) {
   return api.get<"/api/queue">("/api/queue", { signal });
+}
+
+/** 被 Agent 領取中的任務（有租約到期時間） */
+function hasAgentLease(tasks: readonly QueueTask[] | null | undefined) {
+  return (tasks ?? []).some((x) => x.executor === "agent" && !!x.lease_until);
+}
+
+/** 現在時間；enabled 時每秒更新一次（整頁共用一個計時器，不是每列一個） */
+function useNow(enabled: boolean) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!enabled) return;
+    // 開始計時時先校正一次（之前沒有計時，now 可能是很久以前的）
+    const tick = () => setNow(Date.now());
+    const first = window.setTimeout(tick, 0);
+    const id = window.setInterval(tick, SECOND_MS);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(id);
+    };
+  }, [enabled]);
+  return now;
 }
 
 export function QueuePage() {
@@ -79,8 +106,10 @@ export function QueuePage() {
     queryKey: queryKeys.queue,
     queryFn: ({ signal }) => fetchQueue(signal),
     staleTime: 5_000,
+    refetchInterval: (query) => (hasAgentLease(query.state.data?.tasks) ? LEASE_REFETCH_MS : false),
   });
   const q = queue.data;
+  const now = useNow(hasAgentLease(q?.tasks));
 
   // 暫停、繼續、上限：成功時直接用回應更新快取
   const control = useMutation({
@@ -119,6 +148,24 @@ export function QueuePage() {
   const resumeAll = () => control.mutate({ kind: RESUME });
   const tasks = useMemo(() => filterTasks(q?.tasks ?? [], search), [q?.tasks, search]);
   const [cancelFor, setCancelFor] = useState<CancelTarget | null>(null);
+  // AGT-R11：只把這個 Agent 任務所屬的步驟改用 API 處理，原本的租約立即失效
+  const switchExecutor = useMutation({
+    mutationFn: (task: QueueTask) =>
+      api.post<"/api/tasks/{id}/switch-executor">(
+        apiPath("/api/tasks/{id}/switch-executor", { id: task.id }),
+        { body: { executor: "api" } },
+      ),
+    onSuccess: (_r, task) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.queue });
+      void qc.invalidateQueries({ queryKey: queryKeys.items.detail(task.item_id) });
+      toast.show({
+        title: t("item.actions.switched", {
+          stage: t(`stage.${task.stage}`, { defaultValue: task.stage }),
+        }),
+      });
+    },
+    onError: (err) => toast.show({ title: describeError(t, err) }),
+  });
 
   // 佇列沒有啟用（501）：說明，不顯示會失敗的控制項
   const disabled = isApiError(queue.error) && queue.error.status === 501;
@@ -245,7 +292,10 @@ export function QueuePage() {
                 renderItem={(task, { focusProps }) => (
                   <TaskRow
                     task={task}
+                    now={now}
                     focusProps={focusProps}
+                    switching={switchExecutor.isPending}
+                    onSwitch={() => switchExecutor.mutate(task)}
                     onCancelTask={() => setCancelFor({ task, scope: "task" })}
                     onCancel={() => setCancelFor({ task, scope: "item" })}
                   />
@@ -401,18 +451,25 @@ function Attention() {
 
 function TaskRow({
   task,
+  now,
   focusProps,
+  switching,
+  onSwitch,
   onCancelTask,
   onCancel,
 }: {
   task: QueueTask;
+  now: number;
   focusProps: RowFocusProps;
+  switching: boolean;
+  onSwitch: () => void;
   onCancelTask: () => void;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
   const detail = useItemDetail(task.item_id);
   const title = detail.data?.title || task.item;
+  const byAgent = task.executor === "agent";
   // 重試或等待中的任務有 not_before（最早可以再被領取的時間）
   const later = task.state === "pending" && !!task.not_before;
   return (
@@ -428,14 +485,41 @@ function TaskRow({
         {title}
       </Link>
       <span>{t(`stage.${task.stage}`, { defaultValue: task.stage })}</span>
-      <StatusBadge status={task.state === "leased" ? "running" : later ? "waiting" : "pending"} />
+      {byAgent ? (
+        <StatusBadge
+          status={task.state === "leased" ? "running" : "awaiting_agent"}
+          label={
+            task.state !== "leased"
+              ? undefined
+              : task.agent
+                ? t("queue.byAgent", { agent: task.agent })
+                : t("queue.byAnyAgent")
+          }
+        />
+      ) : (
+        <StatusBadge status={task.state === "leased" ? "running" : later ? "waiting" : "pending"} />
+      )}
       <span className="secondary">
-        {later
-          ? t("queue.notBefore", { time: formatDateTime(task.not_before!) })
-          : task.attempts > 0
-            ? t("queue.attempts", { count: task.attempts })
-            : t(`queue.class.${task.resource_class}`, { defaultValue: task.resource_class })}
+        {byAgent && task.lease_until ? (
+          <LeaseLeft until={task.lease_until} now={now} />
+        ) : later ? (
+          t("queue.notBefore", { time: formatDateTime(task.not_before!) })
+        ) : task.attempts > 0 ? (
+          t("queue.attempts", { count: task.attempts })
+        ) : (
+          t(`queue.class.${task.resource_class}`, { defaultValue: task.resource_class })
+        )}
       </span>
+      {byAgent && (
+        <Button
+          variant="text"
+          tabIndex={focusProps.tabIndex}
+          disabled={switching}
+          onClick={onSwitch}
+        >
+          {t("actions.switchToApi")}
+        </Button>
+      )}
       <Button variant="text" tabIndex={focusProps.tabIndex} onClick={onCancelTask}>
         {t("queue.cancelTask")}
       </Button>
@@ -443,6 +527,19 @@ function TaskRow({
         {t("queue.stopItem")}
       </Button>
     </div>
+  );
+}
+
+/** Agent 租約剩多少時間（pages.md §6 的「租約剩 7:42」）；滑過時顯示到期的時間 */
+function LeaseLeft({ until, now }: { until: string; now: number }) {
+  const { t } = useTranslation();
+  const end = new Date(until).getTime();
+  if (Number.isNaN(end)) return null;
+  const left = Math.floor((end - now) / SECOND_MS);
+  return (
+    <time dateTime={until} title={formatDateTime(until)}>
+      {left > 0 ? t("queue.leaseLeft", { time: formatTimecode(left) }) : t("queue.leaseExpired")}
+    </time>
   );
 }
 
