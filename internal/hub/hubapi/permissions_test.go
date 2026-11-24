@@ -390,3 +390,17 @@ func TestSetGroupRefusesAdminPermissionGroups(t *testing.T) {
 	expect(t, "指派 ops", e.as("alice", "PUT", "/api/v1/admin/users/"+bob+"/groups/ops", ""), 403, "admin_by_config")
 	expect(t, "bob 不是管理員", e.as("bob", "GET", "/api/v1/admin/users", ""), 403, "")
 }
+
+// 安全修補 A：管理員不能用 API 停用另一位管理員（設定檔或 CLI 指定），只能用 CLI。
+func TestAdminCannotSuspendAdminViaAPI(t *testing.T) {
+	e := newPermEnv(t, nil)
+	for _, who := range []string{"alice", "bob"} {
+		if err := e.store.SetConfigGroup(context.Background(), e.users[who], hubconfig.GroupAdmins, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expect(t, "停用另一位管理員", e.as("alice", "POST", "/api/v1/admin/users/"+e.users["bob"]+"/suspend", `{"reason":"x"}`), 403, "admin_by_config")
+	expect(t, "bob 仍可使用", e.as("bob", "GET", "/api/v1/me", ""), 200, "")
+	e.addUser("carol")
+	expect(t, "停用一般帳號", e.as("alice", "POST", "/api/v1/admin/users/"+e.users["carol"]+"/suspend", `{"reason":"x"}`), 200, "")
+}

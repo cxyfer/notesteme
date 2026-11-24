@@ -407,6 +407,14 @@ func (rt *routes) suspendUser(ctx context.Context, in *suspendInput) (*suspensio
 	if in.ID == p.User.ID {
 		return nil, apierr.New(http.StatusUnprocessableEntity, apierr.CodeInvalidInput, "不能停用自己的帳號。")
 	}
+	// 持有 admin 的帳號只能由 CLI（notesteme-hub admin suspend）停用：管理員由設定檔指定，API 不能互相停用（安全修補 A）。
+	perms, err := rt.d.Auth.AccountPermissions(ctx, in.ID)
+	if err != nil {
+		return nil, rt.apiError(ctx, err)
+	}
+	if slices.Contains(perms, hubconfig.PermAdmin) {
+		return nil, apierr.New(http.StatusForbidden, hubauth.CodeAdminByConfig, "管理員只能用 notesteme-hub admin suspend 停用。")
+	}
 	if _, err := rt.d.Store.SuspendUser(ctx, p.User.ID, in.ID, reason); err != nil {
 		if errors.Is(err, hubstore.ErrNotFound) {
 			return nil, apierr.New(http.StatusNotFound, apierr.CodeNotFound, msgUserNotFound)
