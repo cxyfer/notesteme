@@ -486,7 +486,8 @@ func (p *Pipeline) reprobeSources(ctx context.Context, it store.Item, rp *store.
 // 與批次重跑的 dry_run（LIB-R14）相同的 COST-R5 估算（EstimateRerun）。更好的來源一定是平台字幕，ASR 費用為 0。
 // 有任何付費任務無法估算（找不到單價、vision 等沒有估算方法的呼叫）、沒有任何付費任務、或估算失敗時為 nil，不是 0（SRC 待決問題 R10）。
 func (p *Pipeline) betterEstimate(ctx context.Context, it store.Item) *float64 {
-	est, err := p.EstimateRerun(ctx, it.ID, StageTranscript, "")
+	// 更好的來源一定是平台字幕，transcript 不用錢：不估目前來源（可能是 ASR）的費用。
+	est, err := p.estimateRerun(ctx, it.ID, StageTranscript, "", true)
 	if err != nil {
 		if ctx.Err() == nil {
 			p.log.Debug("估算改用更好的來源重跑的費用失敗，視為無法估算", "item", it.ID, "error", err.Error())

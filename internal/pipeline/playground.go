@@ -272,6 +272,9 @@ func (p *Pipeline) Playground(ctx context.Context, req PlaygroundRequest) (Playg
 	defer cancel()
 
 	res := PlaygroundResult{Stage: stage, Prompt: rp, Inputs: len(picked), Passed: true, Errors: []string{}}
+	// COST-R1：試跑也是付費的呼叫，每個請求記帳並受預算限制（COST-R5～R8），記在這部影音名下；
+	// 不屬於任何任務與步驟，所以沒有 stage_run_id、task_id，attempt 一律是 1（COST 待決問題 C17）。
+	pm := p.newMeter(store.Task{}, store.StageRun{Stage: stage}, it, prov.ID, req.Model)
 	outputs := make([][]llm.Cue, len(chunks))
 	var estIn int
 	for k, c := range chunks {
@@ -281,7 +284,8 @@ func (p *Pipeline) Playground(ctx context.Context, req PlaygroundRequest) (Playg
 		}
 		out, err := llm.RunChunk(runCtx, llm.RunOptions{
 			Client: client, Spec: spec, Model: req.Model, Fixed: fixed, Input: in, MaxRetries: settings.MaxValidationRetries,
-			BeforeRequest: func(_ context.Context, attempt int, r llm.Request) error {
+			AfterRequest: pm.afterFunc(),
+			BeforeRequest: pm.then(func(_ context.Context, attempt int, r llm.Request) error {
 				tokens := llm.RequestTokens(r)
 				estIn += tokens
 				if attempt > 0 {
@@ -297,7 +301,7 @@ func (p *Pipeline) Playground(ctx context.Context, req PlaygroundRequest) (Playg
 					}
 				}
 				return nil
-			},
+			}),
 		})
 		res.Usage.Add(out.Usage)
 		if err != nil {

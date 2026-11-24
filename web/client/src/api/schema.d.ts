@@ -2471,7 +2471,7 @@ export interface components {
       requires_cookie: boolean;
       /**
        * Format: double
-       * @description 其他付費字幕來源（Supadata，以 credit 計價）的費用；沒有內建單價，目前一律為 null
+       * @description 其他付費字幕來源（Supadata，以 credit 計價）的費用：估算的 credit 數乘以設定的單價；沒有設定單價時為 null
        */
       source_usd: number | null;
       title: string;

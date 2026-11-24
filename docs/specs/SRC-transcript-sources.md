@@ -91,6 +91,7 @@ SRC-10 屬於 M4（故事地圖第 5 節），規則是 SRC-R18～R23；其餘�
 | `repetition` | `rejected` | 重複句的比例超過 30%（SRC-R4）。 |
 | `unsupported` | `unavailable` | 來源不支援這個平台（例如 Supadata 不處理本機檔案），略過，不送出任何資料。 |
 | `unreadable` | `rejected` | 本機的外掛字幕或內嵌字幕讀不到、超過大小上限、解析或抽取失敗；改用下一條字幕，最後才用 fallback。 |
+| `budget_blocked` | `unavailable` | 付費來源預估會超過預算而沒有送出請求（COST-R8），而前面已經有付費但沒通過 `low_coverage`／`repetition` 的結果，所以採用那個結果（2026-11-24，依 /goal 由實作者暫定，待 owner 追認；COST 待決問題 C17）。沒有暫留的結果時步驟是 `budget_blocked`，不記這一列。 |
 
 順序是評估順序：先 `caption_priority` 的各條規則，再 `fallback` 的各個來源。只列最近一次 Probe 的結果；重跑或等待後再檢查時，舊的結果被取代。SRC-R4 的品質檢查只套用在 `fallback` 來源的結果（見待決問題）。
 

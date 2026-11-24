@@ -156,7 +156,7 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	case run.Stage == StageTranscript:
 		// COR-R7：詞彙表也提供給支援詞彙提示的 ASR 來源。
 		if lang.Glossary, err = p.glossaryTerms(ctx, it, eff); err == nil {
-			res, err = p.runTranscript(withTaskFlags(ctx, t), it, lang)
+			res, err = p.runTranscript(p.withSourceMeter(withTaskFlags(ctx, t), t, run, it), it, lang)
 		}
 	case run.Stage == StageNormalize:
 		res, err = p.runNormalize(ctx, it)

@@ -118,6 +118,117 @@ Feature: Cost ledger and budget
       | model         | state   | usd | price_source |
       | mystery-model | unknown | 0   | unknown      |
 
+  # ASR 與 Supadata 的記帳（COST 待決問題 C17）：groq-en.json 回報 6.5 秒，6.5 / 3600 小時 × $36 = $0.065。
+
+  @COST-01 @COST-R1 @COST-R2
+  Scenario: A Groq transcription is recorded by the audio hour
+    Given the price of "groq" for "whisper-large-v3-turbo" is "36.00" USD per "audio_hour"
+    And a YouTube video "yt:asr001xxxxx" with:
+      | field    | value |
+      | language | en    |
+      | duration | 7     |
+    And "yt:asr001xxxxx" has no caption tracks
+    And the source "groq" returns "groq-en.json" for "yt:asr001xxxxx"
+    When the owner ingests "yt:asr001xxxxx" with the overrides:
+      """
+      language:
+        fallback: [groq]
+      until: transcript
+      """
+    And the worker runs until idle
+    Then the transcript of "yt:asr001xxxxx" came from "groq"
+    And the cost ledger entries of "yt:asr001xxxxx" are:
+      | stage      | provider | model                  | attempt | outcome | state  | usd   | unit_type  | price_source |
+      | transcript | groq     | whisper-large-v3-turbo | 1       | ok      | actual | 0.065 | audio_hour | override     |
+
+  @COST-01 @COST-R1 @COST-R7
+  Scenario: A Supadata transcript is recorded by the credit
+    Given a YouTube video "yt:sup001xxxxx" with:
+      | field    | value |
+      | language | en    |
+      | duration | 7     |
+    And "yt:sup001xxxxx" has no caption tracks
+    And the source "supadata" returns "supadata-en.json" for "yt:sup001xxxxx"
+    When the owner ingests "yt:sup001xxxxx" with the overrides:
+      """
+      language:
+        fallback: [supadata]
+      until: transcript
+      """
+    And the worker runs until idle
+    Then the transcript of "yt:sup001xxxxx" came from "supadata"
+    And the cost ledger entries of "yt:sup001xxxxx" are:
+      | stage      | provider | model      | outcome | state   | usd | unit_type | price_source |
+      | transcript | supadata | transcript | ok      | unknown | 0   | credit    | unknown      |
+
+  @COST-02 @COST-R7 @COST-R8
+  Scenario: A Supadata transcript without a price is blocked once a budget is set
+    Given the budget is:
+      | field       | value |
+      | monthly_usd | 1     |
+    And a YouTube video "yt:sup002xxxxx" with:
+      | field    | value |
+      | language | en    |
+      | duration | 7     |
+    And "yt:sup002xxxxx" has no caption tracks
+    And the source "supadata" returns "supadata-en.json" for "yt:sup002xxxxx"
+    And the source "groq" returns "groq-en.json" for "yt:sup002xxxxx"
+    When the owner ingests "yt:sup002xxxxx" with the overrides:
+      """
+      language:
+        fallback: [supadata, groq]
+      until: transcript
+      """
+    And the worker runs until idle
+    Then the stage "transcript" of "yt:sup002xxxxx" is blocked with the reason "budget_blocked"
+    And "yt:sup002xxxxx" shows the message "找不到 supadata／transcript 的單價，無法檢查預算。"
+    And "yt:sup002xxxxx" offers the actions "設定單價, 調整預算"
+    And the source "supadata" was called 0 times
+    And the source "groq" was called 0 times
+
+  @COST-02 @COST-R5 @COST-R6 @COST-R8
+  Scenario: A transcription that would go over the monthly budget is blocked before any call
+    Given the budget is:
+      | field       | value |
+      | monthly_usd | 0.05  |
+    And the cost estimate of every "transcript" task is "0.06" USD
+    And a YouTube video "yt:asr002xxxxx" with:
+      | field    | value |
+      | language | en    |
+      | duration | 7     |
+    And "yt:asr002xxxxx" has no caption tracks
+    And the source "groq" returns "groq-en.json" for "yt:asr002xxxxx"
+    When the owner ingests "yt:asr002xxxxx" with the overrides:
+      """
+      language:
+        fallback: [groq]
+      until: transcript
+      """
+    And the worker runs until idle
+    Then the stage "transcript" of "yt:asr002xxxxx" is blocked with the reason "budget_blocked"
+    And "yt:asr002xxxxx" shows the message "本月預算 $0.05 已用 $0.00（含預留），這個步驟預估 $0.06，超過預算。"
+    And the source "groq" was called 0 times
+
+  # ING-R8 的估價改用 COST-R2 的單價順序（COST 待決問題 C23）：600 秒 = 1/6 小時 × $3.60 = $0.60。
+
+  @COST-03 @COST-R2 @ING-R8
+  Scenario: The estimate uses the overridden ASR price
+    Given the price of "groq" for "whisper-large-v3-turbo" is "3.60" USD per "audio_hour"
+    And a YouTube video "yt:asr003xxxxx" with:
+      | field    | value |
+      | language | en    |
+      | duration | 600   |
+    And "yt:asr003xxxxx" has no caption tracks
+    When the owner sends "POST /api/estimate" with:
+      """
+      { "url": "https://www.youtube.com/watch?v=asr003xxxxx", "overrides": { "language": { "fallback": ["groq"] } } }
+      """
+    Then the response status is 200
+    And the response contains:
+      """
+      { "items": [ { "expected_source": "groq", "asr_usd": 0.6 } ] }
+      """
+
   @COST-02 @COST-R7 @COST-R8
   Scenario: A model without a price is blocked once a budget is set
     Given the budget is:

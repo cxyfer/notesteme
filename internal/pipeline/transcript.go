@@ -14,8 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/langdetect"
+	"github.com/cxyfer/notesteme/internal/media"
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/source"
 	"github.com/cxyfer/notesteme/internal/source/bilibili"
@@ -49,6 +51,8 @@ const (
 	reasonLanguageMismatch = "language_mismatch"
 	// reasonDownloadFailed 是 ASR 來源需要的音訊下載失敗（yt-dlp 的問題，不是來源本身的問題）。
 	reasonDownloadFailed = "download_failed"
+	// reasonBudgetBlocked：付費來源預估會超過預算而沒有送出請求（COST-R8），只在採用已付費的暫留結果時記錄。
+	reasonBudgetBlocked = "budget_blocked"
 )
 
 // 等待 YouTube 自動字幕（SRC-R6）：每 2 小時檢查一次，從發布時間算起 24 小時後放棄。
@@ -607,7 +611,12 @@ func newFetchers(d Deps) map[string]fallbackFetcher {
 			supports: supadataSupports,
 			params:   func(_ store.Item, l Language) any { return l.Supadata },
 			fetch: func(ctx context.Context, it store.Item, l Language) (*fetchResult, error) {
-				got, err := sd.Fetch(ctx, it.URL, l.Supadata.Mode)
+				var opts []supadata.Option
+				// COST-R1、R5：每個請求記帳；單位是 credit，預留依取得模式與片長估算的 credit 數。
+				if m := unitMeterFor(ctx, supadata.ID, supadata.PriceModel, cost.UnitCredit, false); m != nil {
+					opts = append(opts, supadata.WithMeter(m.supadataMeter(supadata.EstimateCredits(l.Supadata.Mode, itemDurationS(it)))))
+				}
+				got, err := sd.Fetch(ctx, it.URL, l.Supadata.Mode, opts...)
 				if err != nil {
 					return nil, supadataUserError(err)
 				}
@@ -703,6 +712,12 @@ func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 			if prompt := groq.GlossaryPrompt(lang.Glossary); prompt != "" {
 				opts, asr = append(opts, groq.WithPrompt(prompt)), map[string]any{"prompt": prompt}
 			}
+			// COST-R1、R5：每個轉錄請求記帳；單位是音訊小時，預留依音訊長度（切塊時是每一塊的長度）。
+			baseURL, model := gc.Endpoint()
+			customBase := strings.TrimRight(baseURL, "/") != strings.TrimRight(groq.DefaultBaseURL, "/")
+			if m := unitMeterFor(ctx, groq.ID, model, cost.UnitAudioHour, customBase); m != nil {
+				opts = append(opts, groq.WithMeter(m.groqMeter()), groq.WithExpectedDuration(audioDurationS(ctx, d.Media, it, path)))
+			}
 			got, err := transcribeASR(ctx, d.Media, gc, path, dir, groq.LangHint(it.OriginalLang), opts...)
 			if err != nil {
 				return nil, err
@@ -710,6 +725,30 @@ func groqFetcher(d Deps, gc Groq) fallbackFetcher {
 			return &fetchResult{Lang: got.Lang, Cues: got.Cues, Timing: groq.Timing, ToolVersions: tv, ASR: asr, DurationS: got.DurationS}, nil
 		},
 	}
+}
+
+// itemDurationS 是影音的片長（秒）；不知道時是 0。
+func itemDurationS(it store.Item) float64 {
+	if it.DurationS == nil || *it.DurationS <= 0 {
+		return 0
+	}
+	return float64(*it.DurationS)
+}
+
+// audioDurationS 是要轉錄的音訊長度（秒），用來預留 ASR 的花費（COST-R5）：用影音的片長；不知道時以 ffprobe
+// 量取得的音檔，量不到時是 0（預留 0，實際金額在結算時以 Groq 回報的長度為準）。
+func audioDurationS(ctx context.Context, m *media.Tool, it store.Item, path string) float64 {
+	if d := itemDurationS(it); d > 0 {
+		return d
+	}
+	if m == nil {
+		return 0
+	}
+	info, err := m.Probe(ctx, path)
+	if err != nil || info.DurationS <= 0 {
+		return 0
+	}
+	return info.DurationS
 }
 
 // downloadError 標示錯誤來自下載音訊（yt-dlp），不是 ASR 來源本身：錯誤的類別、訊息與動作沿用 yt-dlp 的，
@@ -759,6 +798,9 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 	prechecked, hubNote := false, ""
 	// 付費來源因 low_coverage、repetition 被拒時暫留它的結果；所有來源用完仍沒有可用的結果時才採用（見 heldPaid）。
 	var held *heldPaid
+	// budgetNote 非空代表後面的付費來源因為預算被擋下，改採用已付費的暫留結果（COST 待決問題 C17）。
+	budgetNote := ""
+sources:
 	for _, id := range lang.Fallback {
 		f, ok := p.fetchers[id]
 		if !ok {
@@ -834,6 +876,12 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 			// err 只含狀態碼等診斷資訊，不含 API key（NFR-SEC-3）。
 			p.log.Warn("字幕來源回報永久性錯誤，改用下一個來源", "source", id, "error", err)
 			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: probeReason(err, errclass.ClassPermanent)})
+		case held != nil && cost.IsBudgetBlocked(err):
+			// 下一個付費來源超過預算、沒有送出（COST-R8）：已經有付費的暫留結果時採用它，不讓步驟 blocked——
+			// 恢復時重跑會讓已付費的來源再付一次（同 SRC-R4 例外的理由）。
+			decisions = append(decisions, transcript.Decision{Source: id, State: transcript.StateUnavailable, Reason: reasonBudgetBlocked})
+			budgetNote = "下一個字幕來源預估會超過預算，所以沿用已付費的結果。"
+			break sources
 		default:
 			return result{}, err
 		}
@@ -850,6 +898,7 @@ func (p *Pipeline) runFallback(ctx context.Context, it store.Item, lang Language
 		res, err := p.fallbackResult(ctx, held.id, held.f, it, lang, stage, decisions, held.got, held.reason)
 		addNote(&res, hubNote)
 		addNote(&res, heldNote(held.reason))
+		addNote(&res, budgetNote)
 		return res, err
 	}
 	return result{

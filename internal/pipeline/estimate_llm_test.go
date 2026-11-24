@@ -171,9 +171,11 @@ func TestBetterEstimateWithoutPaidStagesIsNull(t *testing.T) {
 	r, _ := newSupadataRig(t)
 	it := r.ingest(watch, nil, StageTranscript)
 	r.run()
-	est, err := r.p.EstimateRerun(context.Background(), it.ID, StageTranscript, "")
+	// 更好的來源是平台字幕，transcript 不計費（betterEstimate 用的估算）；批次重跑的 EstimateRerun 會把目前的
+	// Supadata 來源計入（沒有單價時是 unknown，COST 待決問題 C17），所以這裡不用它。
+	est, err := r.p.estimateRerun(context.Background(), it.ID, StageTranscript, "", true)
 	if err != nil || est.Priced != 0 || est.Unknown != 0 || est.USD != 0 {
-		t.Fatalf("EstimateRerun = %+v, %v（這個 rig 應該沒有付費步驟）", est, err)
+		t.Fatalf("estimateRerun = %+v, %v（這個 rig 應該沒有付費步驟）", est, err)
 	}
 	if got := r.p.betterEstimate(context.Background(), it); got != nil {
 		t.Errorf("betterEstimate = %v，預期 nil", *got)

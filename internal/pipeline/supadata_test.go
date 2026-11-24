@@ -26,9 +26,30 @@ type fakeSupadata struct {
 	err   error
 	lang  string
 	cues  int
+	// credits 非 0 時模擬 x-billable-requests 回報的 credit 數。
+	credits int
 }
 
-func (f *fakeSupadata) Fetch(_ context.Context, videoURL, mode string) (*supadata.Result, error) {
+// Fetch 模擬真正的 client 的計費掛勾（supadata.WithMeter）：送出前呼叫 Before（失敗就不算呼叫），之後呼叫 After。
+func (f *fakeSupadata) Fetch(ctx context.Context, videoURL, mode string, opts ...supadata.Option) (*supadata.Result, error) {
+	m := supadata.MeterOf(opts...)
+	if m.Before != nil {
+		if err := m.Before(ctx); err != nil {
+			return nil, err
+		}
+	}
+	res, err := f.fetch(videoURL, mode)
+	if m.After != nil {
+		b := supadata.Billing{Outcome: supadata.OutcomeOK, Credits: float64(f.credits), Reported: f.credits > 0}
+		if err != nil && !errors.Is(err, errclass.ErrNoResult) {
+			b = supadata.Billing{Outcome: supadata.OutcomeHTTPError}
+		}
+		m.After(ctx, b)
+	}
+	return res, err
+}
+
+func (f *fakeSupadata) fetch(videoURL, mode string) (*supadata.Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.urls = append(f.urls, videoURL)

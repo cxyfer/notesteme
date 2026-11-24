@@ -212,13 +212,28 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string, opt
 
 	base, model := c.Endpoint()
 
+	// 確定會送出請求了：先讓呼叫端預留花費（COST-R5），通過之後才開始上傳；結束時回報計費資訊（COST-R1）。
+	if o.meter.Before != nil {
+		if err := o.meter.Before(ctx, o.expectS); err != nil {
+			return nil, err
+		}
+	}
+	res, bill, err := c.send(ctx, f, audioPath, base, model, key, langHint, o.prompt)
+	if o.meter.After != nil {
+		o.meter.After(ctx, bill)
+	}
+	return res, err
+}
+
+// send 上傳音檔並解析回應；bill 是這次請求的計費資訊（Outcome 為空代表請求沒有送出或因 ctx 取消而中斷）。
+func (c *Client) send(ctx context.Context, f *os.File, audioPath, base, model, key, langHint, prompt string) (*Result, Billing, error) {
 	// 以 pipe 串流上傳，不把整個音檔讀進記憶體。
 	// 注意：body 長度未知，會使用 chunked（Transfer-Encoding: chunked）上傳；
 	// 若遇到要求 Content-Length 的 proxy，需改為先把 multipart 寫進暫存檔再上傳。
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
 	go func() {
-		pw.CloseWithError(writeForm(mw, f, filepath.Base(audioPath), model, langHint, o.prompt))
+		pw.CloseWithError(writeForm(mw, f, filepath.Base(audioPath), model, langHint, prompt))
 	}()
 
 	reqCtx, cancel := context.WithTimeout(ctx, c.requestTimeout())
@@ -226,7 +241,7 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string, opt
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, strings.TrimRight(base, "/")+"/audio/transcriptions", pr)
 	if err != nil {
 		pr.Close()
-		return nil, fail(errclass.ClassPermanent, "", err)
+		return nil, Billing{}, fail(errclass.ClassPermanent, "", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
@@ -255,13 +270,15 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string, opt
 	if err != nil {
 		pr.Close() // 讓上傳的 goroutine 結束
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, Billing{}, ctx.Err()
 		}
 		// url.Error 只含網址（沒有標頭），不會帶出 API key。
-		return nil, fail(errclass.ClassRetryable, "", err)
+		return nil, Billing{Outcome: OutcomeNetworkError}, fail(errclass.ClassRetryable, "", err)
 	}
 	defer resp.Body.Close()
 	defer pr.Close()
+	// 收到回應之後的錯誤都是 http_error（COST 待決問題 C16：狀態碼、回應不是 JSON、回應過大）。
+	httpErr := Billing{Outcome: OutcomeHTTPError}
 
 	// 先依狀態碼分類，再讀 body：非 200 的 body 不影響分類（例如 401 搭超大 body 仍是 needs_action），
 	// 也不會因為 body 過大或讀取失敗而被誤判；只讀固定的少量，讓連線有機會重用。
@@ -271,35 +288,40 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string, opt
 	// 錯誤訊息只帶狀態碼，不帶回應內文。
 	switch code := resp.StatusCode; {
 	case code == http.StatusUnauthorized, code == http.StatusForbidden:
-		return nil, &errclass.Error{
+		return nil, httpErr, &errclass.Error{
 			Class: errclass.ClassNeedsAction, Source: ID, Detail: fmt.Sprintf("HTTP %d", code), Err: ErrKeyRejected,
 			Message: MsgKeyRejected, Actions: []string{ActionSetKey},
 		}
 	case code == http.StatusTooManyRequests || code >= 500:
-		return nil, fail(errclass.ClassRetryable, fmt.Sprintf("HTTP %d", code), nil)
+		return nil, httpErr, fail(errclass.ClassRetryable, fmt.Sprintf("HTTP %d", code), nil)
 	case code == http.StatusRequestEntityTooLarge:
-		return nil, fail(errclass.ClassPermanent, "HTTP 413（音檔超過 provider 的單檔上限）", nil)
+		return nil, httpErr, fail(errclass.ClassPermanent, "HTTP 413（音檔超過 provider 的單檔上限）", nil)
 	case code >= 300 && code < 400:
-		return nil, fail(errclass.ClassPermanent, fmt.Sprintf("HTTP %d（不跟隨轉址）", code), nil)
+		return nil, httpErr, fail(errclass.ClassPermanent, fmt.Sprintf("HTTP %d（不跟隨轉址）", code), nil)
 	case code != http.StatusOK:
-		return nil, fail(errclass.ClassPermanent, fmt.Sprintf("HTTP %d", code), nil)
+		return nil, httpErr, fail(errclass.ClassPermanent, fmt.Sprintf("HTTP %d", code), nil)
 	}
 
 	// 只有 200 才讀完整 body。LimitBody 多讀 1 個 byte 才能分辨「剛好到上限」與「超過上限」，超過時不截斷。
 	body, err := io.ReadAll(netguard.LimitBody(resp, netguard.LimitFeed))
 	if err != nil {
 		if errors.Is(err, netguard.ErrTooLarge) {
-			return nil, fail(errclass.ClassPermanent, "回應超過大小上限", err)
+			return nil, httpErr, fail(errclass.ClassPermanent, "回應超過大小上限", err)
 		}
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, Billing{}, ctx.Err()
 		}
-		return nil, fail(errclass.ClassRetryable, "讀取回應失敗", err)
+		return nil, Billing{Outcome: OutcomeNetworkError}, fail(errclass.ClassRetryable, "讀取回應失敗", err)
 	}
 
 	var out transcriptionResponse
 	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fail(errclass.ClassRetryable, "回應不是預期的 JSON", err)
+		return nil, httpErr, fail(errclass.ClassRetryable, "回應不是預期的 JSON", err)
+	}
+	// 200 的回應都計費（沒有語音也一樣）；用量是 Groq 回報的音訊長度，沒有回報（或不合理）時為 0，由呼叫端改用估算。
+	bill := Billing{Outcome: OutcomeOK}
+	if d := out.Duration; d > 0 && !math.IsInf(d, 0) {
+		bill.DurationS = d
 	}
 	res := &Result{Lang: BCP47(out.Language), DurationS: out.Duration}
 	for _, seg := range out.Segments {
@@ -314,12 +336,12 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string, opt
 		})
 	}
 	if len(res.Cues) == 0 {
-		return nil, ErrNoTranscript
+		return nil, bill, ErrNoTranscript
 	}
 	if last := float64(res.Cues[len(res.Cues)-1].EndMS) / 1000; res.DurationS < last {
 		res.DurationS = last
 	}
-	return res, nil
+	return res, bill, nil
 }
 
 // writeForm 寫出 multipart 欄位；file 放最後，避免 provider 在讀完設定前就開始處理。
@@ -366,7 +388,50 @@ func fail(class errclass.Class, detail string, err error) error {
 // Option 是 Transcribe 的選用參數。
 type Option func(*options)
 
-type options struct{ prompt string }
+type options struct {
+	prompt  string
+	meter   Meter
+	expectS float64
+}
+
+// 計費的結果（cost_ledger.outcome，COST-R1）。
+const (
+	OutcomeOK           = "ok"
+	OutcomeHTTPError    = "http_error"
+	OutcomeNetworkError = "network_error"
+)
+
+// Billing 是一次送出的轉錄請求的計費資訊（COST-R1）。
+type Billing struct {
+	// Outcome 是 OutcomeOK（200，包括沒有語音的結果）、OutcomeHTTPError（錯誤的狀態碼、回應不是 JSON 或過大）、
+	// OutcomeNetworkError（連線失敗、逾時、讀取回應失敗）；空字串代表請求沒有送出或因 ctx 取消而中斷。
+	Outcome string
+	// DurationS 是 Groq 回報的音訊長度（秒）；0 代表沒有回報。
+	DurationS float64
+}
+
+// Meter 是呼叫端的計費掛勾（COST-R1、R5）：Before 在確定要送出請求時呼叫（API key、音檔都檢查過之後、上傳之前），
+// 回傳錯誤（例如超過預算）時請求不會送出、Transcribe 回傳那個錯誤；Before 成功後一定會呼叫 After 一次。
+// expectS 是 WithExpectedDuration 給的估算長度。兩者都可以是 nil。
+type Meter struct {
+	Before func(ctx context.Context, expectS float64) error
+	After  func(ctx context.Context, b Billing)
+}
+
+// WithMeter 為這次轉錄掛上計費掛勾。
+func WithMeter(m Meter) Option { return func(o *options) { o.meter = m } }
+
+// WithExpectedDuration 是這次上傳的音訊估算長度（秒），傳給 Meter.Before 預留花費；後面的值取代前面的。
+func WithExpectedDuration(s float64) Option { return func(o *options) { o.expectS = s } }
+
+// MeterOf 解析 opts 中的計費掛勾與估算長度；給不經過 HTTP 的測試替身模擬計費用。
+func MeterOf(opts ...Option) (Meter, float64) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return o.meter, o.expectS
+}
 
 // WithPrompt 帶上 Whisper 的 prompt（詞彙提示，COR-R7）；空字串代表不帶。
 func WithPrompt(prompt string) Option { return func(o *options) { o.prompt = prompt } }

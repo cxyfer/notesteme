@@ -2,14 +2,19 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/llm"
 	"github.com/cxyfer/notesteme/internal/source"
+	"github.com/cxyfer/notesteme/internal/source/groq"
+	"github.com/cxyfer/notesteme/internal/source/supadata"
 	"github.com/cxyfer/notesteme/internal/store"
+	"github.com/cxyfer/notesteme/internal/subtitle"
 )
 
 // 這個檔案是媒體庫批次操作（LIB-R13～R20）在 pipeline 這一層的部分：解析 ids、已讀狀態與批次重跑的估算。
@@ -121,6 +126,11 @@ type RerunEstimate struct {
 // 估算是近似值（LIB 待決問題 L-M10）：從 from 起每個要執行的步驟依目前的輸入字幕切分 chunk，每個 chunk 依 COST-R5 估算；
 // 不扣除快取命中（是上限）；下游步驟的輸入用目前現有的字幕代替；agent 不經 API 計費，不計入。
 func (p *Pipeline) EstimateRerun(ctx context.Context, itemID, from, profile string) (RerunEstimate, error) {
+	return p.estimateRerun(ctx, itemID, from, profile, false)
+}
+
+// estimateRerun 是 EstimateRerun；freeTranscript 為 true 時 transcript 不計費（改用更好的平台字幕重跑，SRC-R23）。
+func (p *Pipeline) estimateRerun(ctx context.Context, itemID, from, profile string, freeTranscript bool) (RerunEstimate, error) {
 	prep, err := p.prepareRerun(ctx, itemID, RerunRequest{From: from, Profile: profile})
 	if err != nil {
 		return RerunEstimate{}, err
@@ -137,6 +147,20 @@ func (p *Pipeline) EstimateRerun(ctx context.Context, itemID, from, profile stri
 			return RerunEstimate{}, err
 		}
 		if res.Skip || (gatedStage(stage) && !stageImplemented(stage, res.Executor) && !geminiNoteRes(prep.eff, stage, res.Executor)) {
+			continue
+		}
+		if stage == StageTranscript && freeTranscript {
+			continue
+		}
+		if stage == StageTranscript {
+			// transcript 不是 LLM 步驟，付費的是 ASR 與 Supadata（COST-R5、C17）。
+			e, err := p.estimateTranscript(ctx, r, prep.it, prep.eff)
+			if err != nil {
+				return RerunEstimate{}, err
+			}
+			out.USD += e.USD
+			out.Unknown += e.Unknown
+			out.Priced += e.Priced
 			continue
 		}
 		switch {
@@ -156,6 +180,66 @@ func (p *Pipeline) EstimateRerun(ctx context.Context, itemID, from, profile stri
 		}
 	}
 	return out, nil
+}
+
+// estimateTranscript 估算重跑 transcript 的付費請求（LIB-R14、COST-R5，COST 待決問題 C17）：不呼叫外部服務，
+// 所以不知道重跑時會選到哪個來源，假設沿用目前原始字幕的來源。目前的來源是平台、feed、本機字幕這類不用錢的來源時是 0；
+// 是 Groq 或 Supadata 時依片長估算一個請求（不扣除快取命中，是上限，同 L-M10）；還沒有原始字幕、而 fallback 中有設定的
+// 付費來源時無法估算，計入 Unknown。片長或單價未知時也計入 Unknown。
+func (p *Pipeline) estimateTranscript(ctx context.Context, r *store.Repo, it store.Item, eff Effective) (RerunEstimate, error) {
+	lang, err := eff.Language()
+	if err != nil {
+		return RerunEstimate{}, err
+	}
+	arts, err := r.CurrentArtifacts(ctx, it.ID, "transcript")
+	if err != nil {
+		return RerunEstimate{}, err
+	}
+	src := ""
+	for _, a := range arts {
+		if a.Variant == string(subtitle.VariantSource) {
+			var prov struct {
+				Source string `json:"source"`
+			}
+			_ = json.Unmarshal(a.Provenance, &prov)
+			src = prov.Source
+			break
+		}
+	}
+	if src == "" {
+		for _, id := range lang.Fallback {
+			if _, ok := p.fetchers[id]; ok && paidSource(id) {
+				return RerunEstimate{Unknown: 1}, nil
+			}
+		}
+		return RerunEstimate{}, nil
+	}
+	if !paidSource(src) {
+		return RerunEstimate{}, nil
+	}
+	dur := itemDurationS(it)
+	call := cost.Call{ItemID: it.ID, Stage: StageTranscript, Provider: src}
+	switch {
+	case src == supadata.ID:
+		call.Model, call.Unit, call.Units = supadata.PriceModel, cost.UnitCredit, supadata.EstimateCredits(lang.Supadata.Mode, dur)
+	case p.groq != nil && src == groq.ID && dur > 0:
+		base, model := p.groq.Endpoint()
+		call.Model, call.Unit, call.Units = model, cost.UnitAudioHour, dur/3600
+		call.CustomBase = strings.TrimRight(base, "/") != strings.TrimRight(groq.DefaultBaseURL, "/")
+	default:
+		return RerunEstimate{Unknown: 1}, nil
+	}
+	if p.cost == nil {
+		return RerunEstimate{Unknown: 1}, nil
+	}
+	est, priced, err := p.cost.Estimate(ctx, r, call)
+	if err != nil {
+		return RerunEstimate{}, err
+	}
+	if !priced && !p.cost.Estimated(StageTranscript) {
+		return RerunEstimate{Unknown: 1}, nil
+	}
+	return RerunEstimate{USD: est, Priced: 1}, nil
 }
 
 // estimateLLMStage 估算一個 LLM 步驟：每個 chunk 一個請求，依 COST-R5 的 token 估算與單價（或測試控制的金額）。

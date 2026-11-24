@@ -97,10 +97,10 @@ YouTube 播放清單（ING-R4）展開時由 yt-dlp 列出清單內容：清單�
 - 估算花費（ING-R8，2026-11-21，ESTIMATE 切片實作時決定，待 owner 確認）：
   - `POST /api/estimate` 的 body 與 `POST /api/items` 相同（`url`、`parts`、`episodes`、`overrides`；`until` 忽略；`profile` 比照新增回 501）。辨識與展開共用新增的流程，錯誤碼也相同；不寫入資料庫，Podcast 也不建立 feed key 的頻道。本機檔案（`path`）還不支援，回 422 `invalid_input`。需要 `ingest` scope。
   - 回應：`items[{ref, title, duration_s, expected_source, asr_usd, source_usd, llm_usd, total_usd, requires_cookie, already_in_library, notes}]`、`total_usd`、`currency`（`USD`）、`prices_as_of`、`notes`。金額為 `null` 代表不知道，`0` 代表確定不用錢；`total_usd` 只加總已知的金額，有未知金額時 `notes` 帶「部分金額未知」。
-  - 每部影音以平台的 Probe 取得字幕軌與長度，依生效的 `language` 用與 transcript 步驟相同的規則選軌；選到平台字幕（或 Podcast 的 `<podcast:transcript>`）時 `asr_usd` 為 0。沒選到時，依 `fallback` 的順序找第一個有設定（實際查詢 API key，沒有 key 的來源略過，與處理時記為 `not_configured` 一致）、支援這個平台的來源：Groq 以長度乘上內建單價（`whisper-large-v3-turbo` 0.04、`whisper-large-v3` 0.111 USD／音訊小時）；Supadata 以 credit 計價，`source_usd` 為 `null`。都沒有時 `expected_source` 為 `null`。
+  - 每部影音以平台的 Probe 取得字幕軌與長度，依生效的 `language` 用與 transcript 步驟相同的規則選軌；選到平台字幕（或 Podcast 的 `<podcast:transcript>`）時 `asr_usd` 為 0。沒選到時，依 `fallback` 的順序找第一個有設定（實際查詢 API key，沒有 key 的來源略過，與處理時記為 `not_configured` 一致）、支援這個平台的來源：Groq 以長度乘上單價（內建的 `whisper-large-v3-turbo` 0.04、`whisper-large-v3` 0.111 USD／音訊小時；2026-11-24 起依 COST-R2 覆寫優先，見下方「估算花費的單價」）；Supadata 以 credit 計價，沒有設定 credit 單價時 `source_usd` 為 `null`。都沒有時 `expected_source` 為 `null`。
   - Podcast 的長度是 feed 宣稱的 `itunes:duration`，不下載音檔；實際費用以下載後量到的長度為準。`ref` 與新增一樣以 feed 網址查 feed key：已經新增過的 feed 用它的 key（可能是 `-2`），並據此標示 `already_in_library`；還沒新增過的 feed 用新增此刻會取得的候選 key（之後別的 feed 先新增時仍可能改變）。
   - 長度不是有限值、為負或超過 1000 小時時視為不知道長度（`duration_s` 為 `null`，金額未知），避免不可信的 feed 讓金額變成無限大。
-  - Groq 設定了自訂的 `base_url`（可能是其他相容服務）時，內建單價不適用，`asr_usd` 為 `null`。
+  - Groq 設定了自訂的 `base_url`（可能是其他相容服務）時，內建單價不適用，`asr_usd` 為 `null`；有設定覆寫的單價時用覆寫（2026-11-24，見下方「估算花費的單價」）。
   - Supadata 不處理這個平台（Podcast、本機檔案）時，估價先判斷平台再看 API key，與處理時 `runFallback` 先看 `supports` 一致：不為用不上的來源在 `notes` 提示「沒有設定 API key」（2026-11-22，Codex 審查後決定）。Groq 沒有平台的 `supports` 判斷，處理時是先執行再回報沒有 key，估價維持先看 key。
   - 預計來源是預測：執行時平台字幕、feed 字幕或 Supadata 失敗，會改用下一個來源，實際費用可能不同。直播或還沒首播的影音在 `notes` 提醒要等結束後才會處理。
   - 資源上限：一次最多 Probe 100 部（播放清單更長時只估前 100 部，頂層 `notes` 說明總數）；整個程序同時最多 4 個估價 Probe（跨請求共用）；一次估價的 Probe 總時間上限 3 分鐘，用完時還沒輪到的影音標為未知（「估價逾時」）。
@@ -108,7 +108,8 @@ YouTube 播放清單（ING-R4）展開時由 yt-dlp 列出清單內容：清單�
 - 估算花費的 `llm_usd`（ING-R8，收尾 D3，2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：
   - 範圍：從頭處理到最後一個步驟，每個步驟依生效設定解析 executor（與處理時相同的 `ResolveExecutor`，Probe 得到的原文語言、人工字幕、平台章節數、Podcast 是只有音訊）；只有 `api` 的 LLM 步驟計費，`local`、`opencc`、`off`、沒有設定 provider 的不花錢，`agent` 由 Agent 自己的帳號計費（COST-R3）。`translate` 乘上需要 LLM 的目標數（翻譯與在地化；OpenCC 轉換與相同語言不算）。
   - token 推估：新增前還沒有字幕可以量，資料區塊用片長推估，每秒 6 個 token（約每分鐘 240 個語音 token，偏快的語速，加上資料區塊的編號與格式），刻意偏高；依 `llm.chunk.max_tokens` 算 chunk 數，每個 chunk 的輸入再加上 prompt 與標題的 token 數；輸出是資料區塊的 1.2 倍（COST-R5）。沒有算進去：前後文 cue 的重疊、詞彙表、頻道與說明等中繼資料、驗證失敗的重試。這是估算，`notes` 會帶「LLM 費用依片長推估字幕長度，是估算值。」。
-  - 單價：用 `cost.Service.Estimate`（與預留、批次重跑的 `dry_run` 相同），所以 LLM 的部分已經依 COST-R2 的順序（覆寫優先，再來是內建計價表；自訂 `base_url` 不套用內建計價表）。ASR（Groq）仍只用內建計價表（COST 待決問題 C23 的其餘部分）。
+  - 單價：用 `cost.Service.Estimate`（與預留、批次重跑的 `dry_run` 相同），所以 LLM 的部分已經依 COST-R2 的順序（覆寫優先，再來是內建計價表；自訂 `base_url` 不套用內建計價表）。~~ASR（Groq）仍只用內建計價表（COST 待決問題 C23 的其餘部分）。~~（已過期：見下一條。）
+- 估算花費的單價（ING-R8，2026-11-24，依 /goal 由實作者暫定，待 owner 追認）：`asr_usd`（Groq 的 `audio_hour`）與 `source_usd`（Supadata 的 `credit`）也改用 `cost.Service.Estimate`，和處理時的預留相同（COST 待決問題 C17、C23）：覆寫優先，再來是內建計價表；自訂 `base_url` 不套用內建計價表，但覆寫仍然適用。Supadata 有設定 credit 單價時，`source_usd` 是依取得模式與片長估算的 credit 數（`native` 1；`generate`、`auto` 每分鐘 2，無條件進位）乘以單價，`generate`／`auto` 在 `notes` 說明是估算值；沒有單價時維持 `null`。
   - 金額語意：片長不知道、找不到單價、或有 vision 選圖、Gemini 筆記這類沒有估算方法的付費步驟時 `llm_usd` 為 `null`（不知道），並在 `notes` 說明、頂層帶「部分金額未知」；沒有任何付費的 LLM 步驟時為 `0`（確定不用錢）。因此 `total_usd` 在只有 ASR 未知、LLM 確定是 0 時是 `0`，不再是 `null`。Probe 失敗的項目不估算 LLM 費用。
 - ING-R9 的 Bilibili 部分在未登入時做不到：Bilibili 的 AI 字幕需要 cookie，但未登入時 yt-dlp 不列出字幕，辨識（`POST /api/resolve`）看不出這部影片有沒有 AI 字幕，無法標示 `requires_cookie`。目前只有 YouTube 的 `availability` 會標示；Bilibili 的標示記為待修的規則，等 M0 驗證後再決定（可能改成只在 transcript 步驟 `blocked` 時提示，見 SRC-R8）。
 - 估算花費支援 `profile`（2026-11-22，M2 S1/S2 設計時決定）：`POST /api/estimate` 的 `profile` 隨 PRF 切片實作，不再回 501，估價用該處理方案的生效設定。但估價沒有頻道層：頻道要到 `metadata` 完成才知道，估價又不寫入資料庫，所以頻道覆寫（PRF-R8）不影響估價，實際處理時才套用。

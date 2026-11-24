@@ -29,6 +29,8 @@ type fakeGroq struct {
 	audios  []string
 	hints   []string
 	existed []bool // 呼叫當下音檔是否存在
+	// billedS 是模擬 Groq 回報的音訊長度（秒，計費用）；0 代表沒有回報。
+	billedS float64
 	// maxBytes 是回報的單檔上限；0 代表 groq.MaxFileBytes。
 	maxBytes int64
 	// respond 非 nil 時決定每次 Transcribe 的回應（i 是第幾次呼叫，從 0 起）。
@@ -51,7 +53,27 @@ func (f *fakeGroq) Configured(context.Context) (bool, error) {
 
 func (f *fakeGroq) Endpoint() (string, string) { return f.baseURL, f.model }
 
-func (f *fakeGroq) Transcribe(_ context.Context, audioPath, langHint string, _ ...groq.Option) (*groq.Result, error) {
+// Transcribe 模擬真正的 client 的計費掛勾（groq.WithMeter）：送出前呼叫 Before（失敗就不算呼叫），之後呼叫 After；
+// 回報的長度是 billedS（0 代表沒有回報）。
+func (f *fakeGroq) Transcribe(ctx context.Context, audioPath, langHint string, opts ...groq.Option) (*groq.Result, error) {
+	m, expectS := groq.MeterOf(opts...)
+	if m.Before != nil {
+		if err := m.Before(ctx, expectS); err != nil {
+			return nil, err
+		}
+	}
+	res, err := f.transcribe(audioPath, langHint)
+	if m.After != nil {
+		b := groq.Billing{Outcome: groq.OutcomeOK, DurationS: f.billedS}
+		if err != nil && !errors.Is(err, errclass.ErrNoResult) {
+			b = groq.Billing{Outcome: groq.OutcomeHTTPError}
+		}
+		m.After(ctx, b)
+	}
+	return res, err
+}
+
+func (f *fakeGroq) transcribe(audioPath, langHint string) (*groq.Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	_, statErr := os.Stat(audioPath)

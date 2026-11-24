@@ -72,3 +72,13 @@ func llmMicro(in, out int, inPerMTok, outPerMTok float64) Micro {
 	}
 	return Micro(math.Round(v))
 }
+
+// unitMicro 是以單一單位計價的金額（ASR 的 audio_hour、Supadata 的 credit）：單位數乘以單價，四捨五入到 micro-USD。
+// 負數當成 0；NaN、無限大或超過 MaxUSD 時是 MaxUSD（不讓不可信的數字溢位）。
+func unitMicro(units, usdPerUnit float64) Micro {
+	v := max(units, 0) * max(usdPerUnit, 0) * 1e6
+	if math.IsNaN(v) || math.IsInf(v, 0) || v > MaxUSD*1e6 {
+		return Micro(MaxUSD * 1e6)
+	}
+	return Micro(math.Round(v))
+}

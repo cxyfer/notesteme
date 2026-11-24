@@ -53,7 +53,7 @@ type Bilibili interface {
 
 // Supadata 是 Supadata 字幕來源（*supadata.Client 實作它）；測試可以替換。
 type Supadata interface {
-	Fetch(ctx context.Context, videoURL, mode string) (*supadata.Result, error)
+	Fetch(ctx context.Context, videoURL, mode string, opts ...supadata.Option) (*supadata.Result, error)
 }
 
 // Groq 是 Groq 的語音轉錄來源（*groq.Client 實作它）；測試可以替換。

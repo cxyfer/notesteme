@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/cxyfer/notesteme/internal/audio"
@@ -186,7 +187,9 @@ func transcribeChunks(ctx context.Context, m *media.Tool, tr transcriber, in, pr
 	var lang string
 	hint := langHint
 	for i, f := range files {
-		res, err := tr.Transcribe(ctx, f, hint, opts...)
+		// 每一塊各自記帳，預留依這一塊的長度（COST-R5）；後面的 WithExpectedDuration 取代整個音檔的長度。
+		chunkOpts := append(slices.Clone(opts), groq.WithExpectedDuration(chunks[i].EndS-chunks[i].StartS))
+		res, err := tr.Transcribe(ctx, f, hint, chunkOpts...)
 		_ = os.Remove(f) // 傳完就刪，減少暫存用量
 		switch {
 		case err == nil:

@@ -11,8 +11,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -130,7 +132,11 @@ type transcriptResponse struct {
 //   - 401（key 無效）、402（方案不支援）：needs_action，分別帶 ErrKeyRejected、ErrPlanUnsupported。
 //   - 429、5xx、網路錯誤、無法解析的回應：retryable。
 //   - 3xx（不跟隨轉址）、400 及其他 4xx、非同步任務（202）：permanent；非同步任務的輪詢還沒做。
-func (c *Client) Fetch(ctx context.Context, videoURL, mode string) (*Result, error) {
+func (c *Client) Fetch(ctx context.Context, videoURL, mode string, opts ...Option) (*Result, error) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
 	key, err := c.resolveKey(ctx)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -162,51 +168,79 @@ func (c *Client) Fetch(ctx context.Context, videoURL, mode string) (*Result, err
 	req.Header.Set("x-api-key", key)
 	req.Header.Set("Accept", "application/json")
 
+	// 確定會送出請求了：先讓呼叫端預留花費（COST-R5），通過之後才送出；結束時回報計費資訊（COST-R1）。
+	if o.meter.Before != nil {
+		if err := o.meter.Before(ctx); err != nil {
+			return nil, err
+		}
+	}
+	res, bill, err := c.send(ctx, req)
+	if o.meter.After != nil {
+		o.meter.After(ctx, bill)
+	}
+	return res, err
+}
+
+// send 送出請求並解析回應；bill 是這次請求的計費資訊（Outcome 為空代表因 ctx 取消而中斷）。
+func (c *Client) send(ctx context.Context, req *http.Request) (*Result, Billing, error) {
+
 	// API key 放在自訂標頭，Go 跨網域轉址時不會移除它；所以不跟隨轉址，3xx 當成 permanent。
 	// 複製 client，不改動呼叫端提供的那一個。
 	hc := *c.HTTP
 	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := hc.Do(req)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, Billing{}, ctx.Err()
+		}
 		// url.Error 只含網址（沒有標頭），不會帶出 API key。
-		return nil, fail(errclass.ClassRetryable, "", err)
+		return nil, Billing{Outcome: OutcomeNetworkError}, fail(errclass.ClassRetryable, "", err)
 	}
 	defer resp.Body.Close()
+	// 收到回應之後的錯誤是 http_error（COST 待決問題 C16）；Supadata 在每個回應的 x-billable-requests 回報用掉的 credit。
+	httpErr := billingOf(resp, OutcomeHTTPError)
 	// LimitBody 多讀 1 個 byte 才能分辨「剛好到上限」與「超過上限」；一般的 LimitReader 到上限時只會回 EOF，
 	// 截斷的 JSON 會被當成暫時性錯誤一直重試，甚至接受後面帶垃圾的完整文件。
 	body, err := io.ReadAll(netguard.LimitBody(resp, netguard.LimitFeed))
 	if err != nil {
 		if errors.Is(err, netguard.ErrTooLarge) {
-			return nil, fail(errclass.ClassPermanent, "回應超過大小上限", err)
+			return nil, httpErr, fail(errclass.ClassPermanent, "回應超過大小上限", err)
 		}
-		return nil, fail(errclass.ClassRetryable, "讀取回應失敗", err)
+		if ctx.Err() != nil {
+			return nil, Billing{}, ctx.Err()
+		}
+		return nil, billingOf(resp, OutcomeNetworkError), fail(errclass.ClassRetryable, "讀取回應失敗", err)
 	}
 
 	switch {
-	case resp.StatusCode == http.StatusNotFound, resp.StatusCode == http.StatusForbidden, resp.StatusCode == http.StatusPartialContent:
-		// 404：沒有結果；403：內容私人或受限；206 transcript-unavailable：沒有字幕。
-		// 都是這個來源沒有結果，不是 key 的問題。
-		return nil, ErrNoTranscript
+	case resp.StatusCode == http.StatusPartialContent:
+		// 206 transcript-unavailable：沒有字幕，但 Supadata 照樣計費，所以記為 ok。
+		return nil, billingOf(resp, OutcomeOK), ErrNoTranscript
+	case resp.StatusCode == http.StatusNotFound, resp.StatusCode == http.StatusForbidden:
+		// 404：沒有結果；403：內容私人或受限。都是這個來源沒有結果，不是 key 的問題。
+		return nil, httpErr, ErrNoTranscript
 	case resp.StatusCode == http.StatusUnauthorized:
-		return nil, fail(errclass.ClassNeedsAction, "HTTP 401（API key 無效）", ErrKeyRejected)
+		return nil, httpErr, fail(errclass.ClassNeedsAction, "HTTP 401（API key 無效）", ErrKeyRejected)
 	case resp.StatusCode == http.StatusPaymentRequired:
-		return nil, fail(errclass.ClassNeedsAction, "HTTP 402（方案不支援）", ErrPlanUnsupported)
+		return nil, httpErr, fail(errclass.ClassNeedsAction, "HTTP 402（方案不支援）", ErrPlanUnsupported)
 	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
-		return nil, fail(errclass.ClassRetryable, fmt.Sprintf("HTTP %d", resp.StatusCode), nil)
+		return nil, httpErr, fail(errclass.ClassRetryable, fmt.Sprintf("HTTP %d", resp.StatusCode), nil)
 	case resp.StatusCode == http.StatusAccepted:
-		return nil, fail(errclass.ClassPermanent, "回應為非同步任務（202），還沒有支援輪詢", nil)
+		// 非同步任務已經建立，Supadata 會計費：記為 ok（沒有回報 credit 時呼叫端用估算）。
+		return nil, billingOf(resp, OutcomeOK), fail(errclass.ClassPermanent, "回應為非同步任務（202），還沒有支援輪詢", nil)
 	case resp.StatusCode >= 300 && resp.StatusCode < 400:
-		return nil, fail(errclass.ClassPermanent, fmt.Sprintf("HTTP %d（不跟隨轉址）", resp.StatusCode), nil)
+		return nil, httpErr, fail(errclass.ClassPermanent, fmt.Sprintf("HTTP %d（不跟隨轉址）", resp.StatusCode), nil)
 	case resp.StatusCode != http.StatusOK:
-		return nil, fail(errclass.ClassPermanent, fmt.Sprintf("HTTP %d", resp.StatusCode), nil)
+		return nil, httpErr, fail(errclass.ClassPermanent, fmt.Sprintf("HTTP %d", resp.StatusCode), nil)
 	}
 
 	var out transcriptResponse
 	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fail(errclass.ClassRetryable, "回應不是預期的 JSON", err)
+		return nil, httpErr, fail(errclass.ClassRetryable, "回應不是預期的 JSON", err)
 	}
+	bill := billingOf(resp, OutcomeOK)
 	if out.JobID != "" && len(out.Content) == 0 {
-		return nil, fail(errclass.ClassPermanent, "回應為非同步任務，還沒有支援輪詢", nil)
+		return nil, bill, fail(errclass.ClassPermanent, "回應為非同步任務，還沒有支援輪詢", nil)
 	}
 	res := &Result{Lang: out.Lang}
 	for _, seg := range out.Content {
@@ -220,11 +254,90 @@ func (c *Client) Fetch(ctx context.Context, videoURL, mode string) (*Result, err
 		})
 	}
 	if len(res.Cues) == 0 {
-		return nil, ErrNoTranscript
+		return nil, bill, ErrNoTranscript
 	}
-	return res, nil
+	return res, bill, nil
 }
 
 func fail(class errclass.Class, detail string, err error) error {
 	return &errclass.Error{Class: class, Source: ID, Detail: detail, Err: err}
+}
+
+// PriceModel 是 Supadata 在計價表中的 model 名稱（cost_ledger.model、price_overrides 的 model）：
+// credit 的單價不隨取得模式改變，所以固定一個名稱，不用 mode（COST 待決問題 C17）。
+const PriceModel = "transcript"
+
+// 計費的結果（cost_ledger.outcome，COST-R1）。
+const (
+	OutcomeOK           = "ok"
+	OutcomeHTTPError    = "http_error"
+	OutcomeNetworkError = "network_error"
+)
+
+// HeaderBillable 是 Supadata 回報這個請求用掉多少 credit 的回應標頭。
+const HeaderBillable = "x-billable-requests"
+
+// maxCredits 是可信的單次 credit 數上限；超過（或不是非負整數）的標頭當成沒有回報。
+const maxCredits = 1_000_000
+
+// Billing 是一次送出的請求的計費資訊（COST-R1）。
+type Billing struct {
+	// Outcome 是 OutcomeOK（200、206、202 這些 Supadata 會計費的回應）、OutcomeHTTPError、OutcomeNetworkError；
+	// 空字串代表請求因 ctx 取消而中斷。
+	Outcome string
+	// Credits 是 x-billable-requests 回報的 credit 數；Reported 為 false 時沒有回報（或標頭不合理）。
+	Credits  float64
+	Reported bool
+}
+
+// billingOf 讀取回應的 x-billable-requests。
+func billingOf(resp *http.Response, outcome string) Billing {
+	b := Billing{Outcome: outcome}
+	if v := strings.TrimSpace(resp.Header.Get(HeaderBillable)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= maxCredits {
+			b.Credits, b.Reported = float64(n), true
+		}
+	}
+	return b
+}
+
+// Meter 是呼叫端的計費掛勾（COST-R1、R5）：Before 在確定要送出請求時呼叫（API key 檢查過之後），
+// 回傳錯誤（例如超過預算）時請求不會送出、Fetch 回傳那個錯誤；Before 成功後一定會呼叫 After 一次。
+type Meter struct {
+	Before func(ctx context.Context) error
+	After  func(ctx context.Context, b Billing)
+}
+
+// Option 是 Fetch 的選用參數。
+type Option func(*options)
+
+type options struct{ meter Meter }
+
+// WithMeter 為這次請求掛上計費掛勾。
+func WithMeter(m Meter) Option { return func(o *options) { o.meter = m } }
+
+// MeterOf 解析 opts 中的計費掛勾；給不經過 HTTP 的測試替身模擬計費用。
+func MeterOf(opts ...Option) Meter {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return o.meter
+}
+
+// 預估一次請求的 credit 數（COST-R5 的預留與 ING-R8 的估價）。依 Supadata 的公開價格（https://supadata.ai/pricing，
+// 2026-11-24 由搜尋結果的摘要得知，待 owner 確認）：既有字幕 1 credit；AI 產生的字幕每分鐘 2 credit。
+// 實際用量以 x-billable-requests 為準，這裡只用來預留與估價。
+const (
+	creditsPerTranscript      = 1
+	creditsPerGeneratedMinute = 2
+)
+
+// EstimateCredits 估算一次請求的 credit 數：native 是 1；generate 與 auto（沒有既有字幕時會改為產生）
+// 以每分鐘 2 credit 計（無條件進位，最少 1 分鐘），刻意取上限；不知道長度時是 1。
+func EstimateCredits(mode string, durationS float64) float64 {
+	if mode == ModeNative || durationS <= 0 || math.IsNaN(durationS) || math.IsInf(durationS, 0) {
+		return creditsPerTranscript
+	}
+	return creditsPerGeneratedMinute * max(math.Ceil(durationS/60), 1)
 }

@@ -487,10 +487,8 @@ func (e *estimator) fallback(ctx context.Context, it *EstimateItem, platform str
 			}
 			src := supadata.ID
 			it.ExpectedSource = &src
-			// Supadata 以 credit 計價，內建計價表沒有它的單價：source_usd 未知（null），不是 0。
 			it.ASRUSD = usd(0)
-			it.unknown = true
-			it.Notes = append(it.Notes, "Supadata 以 credit 計價，沒有內建單價，無法換算成金額。")
+			e.supadataPrice(ctx, it)
 			it.finish()
 			return
 		case groq.ID:
@@ -504,7 +502,7 @@ func (e *estimator) fallback(ctx context.Context, it *EstimateItem, platform str
 			}
 			src := groq.ID
 			it.ExpectedSource = &src
-			e.asrPrice(it, model)
+			e.asrPrice(ctx, it, model)
 			it.finish()
 			return
 		}
@@ -515,21 +513,75 @@ func (e *estimator) fallback(ctx context.Context, it *EstimateItem, platform str
 }
 
 // asrPrice 以音訊長度乘上單價算出語音轉錄費用；長度或單價未知時為 nil，並在 notes 說明。
-func (e *estimator) asrPrice(it *EstimateItem, model string) {
-	price, ok := cost.Lookup(groq.ID, model, cost.UnitAudioHour)
-	switch {
-	case e.groqCustomBase:
-		it.unknown = true
-		it.Notes = append(it.Notes, "Groq 使用自訂的 base_url，沒有內建單價，無法估算語音轉錄費用。")
-	case !ok:
-		it.unknown = true
-		it.Notes = append(it.Notes, "沒有 "+model+" 的內建單價，無法估算語音轉錄費用。")
-	case it.DurationS == nil:
+// 單價依 COST-R2 的順序（覆寫優先，再來是內建計價表；自訂的 base_url 不套用內建計價表），與預留相同（COST-R5）。
+func (e *estimator) asrPrice(ctx context.Context, it *EstimateItem, model string) {
+	if it.DurationS == nil {
 		it.unknown = true
 		it.Notes = append(it.Notes, "不知道影音的長度，無法估算語音轉錄費用。")
-	default:
-		it.ASRUSD = usd(*it.DurationS / 3600 * price.USDPerUnit)
+		return
 	}
+	est, priced, err := e.unitEstimate(ctx, cost.Call{
+		Stage: StageTranscript, Provider: groq.ID, Model: model, CustomBase: e.groqCustomBase,
+		Unit: cost.UnitAudioHour, Units: *it.DurationS / 3600,
+	})
+	switch {
+	case err != nil:
+		e.p.log.Debug("估價時讀取 Groq 的單價失敗", "error", err.Error())
+		it.unknown = true
+		it.Notes = append(it.Notes, "無法讀取 "+model+" 的單價，無法估算語音轉錄費用。")
+	case !priced && e.groqCustomBase:
+		it.unknown = true
+		it.Notes = append(it.Notes, "Groq 使用自訂的 base_url，沒有內建單價，也沒有設定單價，無法估算語音轉錄費用。")
+	case !priced:
+		it.unknown = true
+		it.Notes = append(it.Notes, "沒有 "+model+" 的單價，無法估算語音轉錄費用。")
+	default:
+		it.ASRUSD = usd(est.USD())
+	}
+}
+
+// supadataPrice 估算 Supadata 的費用（source_usd）：依取得模式與片長估算的 credit 數乘以 credit 的單價（與預留相同）。
+// 內建計價表沒有 credit 的單價，沒有設定單價時 source_usd 未知（null），不是 0（COST 待決問題 C18）。
+func (e *estimator) supadataPrice(ctx context.Context, it *EstimateItem) {
+	var durS float64
+	if it.DurationS != nil {
+		durS = *it.DurationS
+	}
+	est, priced, err := e.unitEstimate(ctx, cost.Call{
+		Stage: StageTranscript, Provider: supadata.ID, Model: supadata.PriceModel,
+		Unit: cost.UnitCredit, Units: supadata.EstimateCredits(e.lang.Supadata.Mode, durS),
+	})
+	switch {
+	case err != nil:
+		e.p.log.Debug("估價時讀取 Supadata 的單價失敗", "error", err.Error())
+		it.unknown = true
+		it.Notes = append(it.Notes, "無法讀取 Supadata 的單價，無法換算成金額。")
+	case !priced:
+		it.unknown = true
+		it.Notes = append(it.Notes, "Supadata 以 credit 計價，沒有內建單價，無法換算成金額。")
+	default:
+		it.SourceUSD = usd(est.USD())
+		if e.lang.Supadata.Mode != supadata.ModeNative {
+			it.Notes = append(it.Notes, "Supadata 的 credit 依片長以 AI 產生字幕的用量推估，是估算值。")
+		}
+	}
+}
+
+// unitEstimate 估算以單一單價計價的呼叫（COST-R5 的方法，與預留共用 cost.Service.Estimate）；
+// 沒有成本服務（測試的最小組裝）時只查內建計價表。
+func (e *estimator) unitEstimate(ctx context.Context, c cost.Call) (cost.Micro, bool, error) {
+	if e.p.cost != nil {
+		return e.p.cost.Estimate(ctx, e.p.st.Read(), c)
+	}
+	if c.CustomBase {
+		return 0, false, nil
+	}
+	price, ok := cost.Lookup(c.Provider, c.Model, c.Unit)
+	if !ok {
+		return 0, false, nil
+	}
+	m, _ := cost.FromUSD(c.Units * price.USDPerUnit)
+	return m, true, nil
 }
 
 // finish 算出項目的總額：已知金額的和，沒有任何已知金額時為 nil。

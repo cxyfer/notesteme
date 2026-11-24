@@ -276,7 +276,23 @@ type Call struct {
 	// Batch 為 true 時是 Batch API 的請求：預留與結算的金額都乘以 BatchDiscount（BATCH-R6、R7），
 	// unit_price_json 記 batch 與 batch_discount。
 	Batch bool
+	// Unit 是計價單位：空字串是 LLM 的 tokens（輸入與輸出分別計價）；UnitAudioHour（ASR）、UnitCredit（Supadata）
+	// 以單一單價計價（COST-R1）。
+	Unit string
+	// Units 是 Unit 不是 tokens 時估算的單位數（音訊小時、credit 數），用於預留（COST-R5）。
+	Units float64
 }
+
+// unit 是這次呼叫寫進 cost_ledger.unit_type 的單位。
+func (c Call) unit() string {
+	if c.Unit == "" || c.Unit == UnitTokens {
+		return UnitTokens
+	}
+	return c.Unit
+}
+
+// perUnit 回報這次呼叫是不是以單一單價計價（ASR、Supadata），而不是 LLM 的輸入／輸出 token。
+func (c Call) perUnit() bool { return c.unit() != UnitTokens }
 
 // BatchDiscount 是 batch 的單價相對於一般單價的倍數（BATCH-R6）：Anthropic 與 OpenAI 內建都是 0.5。
 const BatchDiscount = 0.5
@@ -328,7 +344,7 @@ func (s *Service) Reserve(ctx context.Context, r *store.Repo, c Call) (Reservati
 	}
 	id, err := r.InsertCostRow(ctx, store.CostRow{
 		ItemID: c.ItemID, ItemTitle: c.ItemTitle, StageRunID: c.StageRunID, TaskID: c.TaskID, Stage: c.Stage,
-		Provider: c.Provider, Model: c.Model, UnitType: UnitTokens, USD: est.USD(), State: store.CostReserved,
+		Provider: c.Provider, Model: c.Model, UnitType: c.unit(), USD: est.USD(), State: store.CostReserved,
 		Attempt: attempt, At: s.clock.Now(),
 	})
 	if err != nil {
@@ -344,6 +360,20 @@ func (s *Service) Reserve(ctx context.Context, r *store.Repo, c Call) (Reservati
 // 否則依單價與 c 的 token 數計算；batch 乘以折扣（BATCH-R7）。priced 為 false 代表找不到單價（沒有測試控制時金額是 0）。
 // Reserve 與批次重跑的 dry_run（LIB-R14）共用它，兩者的估算方法才不會分歧。
 func (s *Service) Estimate(ctx context.Context, r *store.Repo, c Call) (est Micro, priced bool, err error) {
+	if c.perUnit() {
+		// ASR 以音訊長度乘以單價（COST-R5）；Supadata 以估算的 credit 數乘以單價。
+		q, ok, err := s.Lookup(ctx, r, c.Provider, c.Model, c.unit(), c.CustomBase)
+		if err != nil {
+			return 0, false, err
+		}
+		if v, has := s.estimates[c.Stage]; has {
+			return v, ok, nil
+		}
+		if ok {
+			est = unitMicro(c.Units, q.USDPerUnit)
+		}
+		return est, ok, nil
+	}
 	in, out, priced, err := s.llmPrices(ctx, r, c.Provider, c.Model, c.CustomBase)
 	if err != nil {
 		return 0, false, err
@@ -452,6 +482,18 @@ type Usage struct {
 	OutputTokens int
 	// ProviderUSD 是 provider 在回應中回報的金額（OpenAI 相容的 usage.cost，COST-R2 的 (1)）；nil 代表沒有回報。
 	ProviderUSD *float64
+	// Units 是以單一單價計價的呼叫（Call.Unit 不是 tokens）實際用掉的單位數（音訊小時、credit 數）。
+	Units float64
+	// UnitsReported 為 true 代表 Units 是 provider 回報的（Groq 回報的音訊長度、Supadata 的 x-billable-requests）：
+	// 錯誤的回應也有回報用量時照樣計費（同 COST-R1「除非 provider 在錯誤回應中回報了金額」）。
+	UnitsReported bool
+}
+
+// unitRate 是以單一單價計價的呼叫的 unit_price_json（COST-R1）：來源、確認日期與當時的單價。
+type unitRate struct {
+	Source     string   `json:"source"`
+	CheckedAt  string   `json:"checked_at,omitempty"`
+	USDPerUnit *float64 `json:"usd_per_unit,omitempty"`
 }
 
 // unitPrice 是 unit_price_json（COST-R1）。
@@ -486,6 +528,9 @@ func (s *Service) Settle(ctx context.Context, r *store.Repo, res Reservation, c 
 }
 
 func (s *Service) settlement(ctx context.Context, r *store.Repo, c Call, u Usage) (store.CostSettlement, error) {
+	if c.perUnit() {
+		return s.unitSettlement(ctx, r, c, u)
+	}
 	in, out, priced, err := s.llmPrices(ctx, r, c.Provider, c.Model, c.CustomBase)
 	if err != nil {
 		return store.CostSettlement{}, err
@@ -526,6 +571,44 @@ func (s *Service) settlement(ctx context.Context, r *store.Repo, c Call, u Usage
 		set.USD = discounted(llmMicro(up.InputTokens, up.OutputTokens, in.USDPerUnit, out.USDPerUnit), c.Batch).USD()
 	default:
 		up.Source = SourceUnknown
+		set.State, set.USD = store.CostUnknown, 0
+	}
+	raw, err := json.Marshal(up)
+	if err != nil {
+		return store.CostSettlement{}, err
+	}
+	set.UnitPriceJSON = string(raw)
+	return set, nil
+}
+
+// unitSettlement 是 ASR（audio_hour）與 Supadata（credit）的結算：單位數乘以單價（COST-R2 的 (2)～(4)）。
+// 錯誤的回應金額為 0，除非 provider 回報了用量（UnitsReported）；找不到單價時 state unknown、usd 0。
+func (s *Service) unitSettlement(ctx context.Context, r *store.Repo, c Call, u Usage) (store.CostSettlement, error) {
+	q, priced, err := s.Lookup(ctx, r, c.Provider, c.Model, c.unit(), c.CustomBase)
+	if err != nil {
+		return store.CostSettlement{}, err
+	}
+	units := u.Units
+	if math.IsNaN(units) || math.IsInf(units, 0) || units < 0 {
+		units = 0
+	}
+	failed := u.Outcome == OutcomeHTTPError || u.Outcome == OutcomeNetworkError
+	if failed && !u.UnitsReported {
+		units = 0
+	}
+	set := store.CostSettlement{State: store.CostActual, Units: units, UnitType: c.unit(), Outcome: u.Outcome}
+	up := unitRate{Source: SourceUnknown}
+	if priced {
+		p := q.USDPerUnit
+		up = unitRate{Source: q.Source, CheckedAt: q.CheckedAt.UTC().Format(time.DateOnly), USDPerUnit: &p}
+	}
+	switch {
+	case priced:
+		set.USD = unitMicro(units, q.USDPerUnit).USD()
+	case failed:
+		// 錯誤的呼叫沒有單價時同 LLM：記為 actual、金額 0。
+		set.USD = 0
+	default:
 		set.State, set.USD = store.CostUnknown, 0
 	}
 	raw, err := json.Marshal(up)

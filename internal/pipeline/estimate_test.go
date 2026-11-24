@@ -112,10 +112,10 @@ func TestEstimateWithoutCaptionsUsesGroqPrice(t *testing.T) {
 	if want := 600.0 * 0.111 / 3600; math.Abs(*est.Items[0].ASRUSD-want) > 1e-6 {
 		t.Errorf("v3 asr = %v，預期 %v", *est.Items[0].ASRUSD, want)
 	}
-	// 不認得的 model 沒有內建單價：金額未知。
+	// 不認得的 model 沒有內建單價，也沒有覆寫：金額未知。
 	g.model = "custom-whisper"
 	est, _ = r.estimate(IngestRequest{URL: watch, Overrides: fallbackOverride("groq")})
-	if it := est.Items[0]; srcOf(it) != "groq" || it.ASRUSD != nil || !hasNote(it, "內建單價") || len(est.Notes) != 1 {
+	if it := est.Items[0]; srcOf(it) != "groq" || it.ASRUSD != nil || !hasNote(it, "沒有 custom-whisper 的單價") || len(est.Notes) != 1 {
 		t.Errorf("item = %+v，notes = %v", it, est.Notes)
 	}
 	r.noWrites()

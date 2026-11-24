@@ -2,7 +2,7 @@
 //
 // 這裡的價格是內建預設值，跟著程式發布，不是即時價格：provider 調價後內容會過期，
 // 要依各 provider 的公開價格定期確認，並更新 PricesAsOf。
-// 使用者自訂的單價（price_overrides）屬於 M4 的 COST-03，之後在 Lookup 之前先查覆寫。
+// 使用者自訂的單價（price_overrides，COST-03）由 Service.Lookup 先查；這裡的 Lookup 只查內建計價表。
 package cost
 
 // PricesAsOf 是內建計價表最後一次對照 provider 公開價格的日期（YYYY-MM-DD）。
