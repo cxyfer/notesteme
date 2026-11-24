@@ -502,6 +502,14 @@
   - OPS（O24）：名稱時間在未來的備份檔在保留時視為最舊、最先刪除。
   - 工具鏈：`go.mod` 加 `toolchain go1.26.11`、Dockerfile `GO_VERSION=1.26.11`、CI 的 govulncheck 改用 go.mod 的版本；`golang.org/x/text` v0.29.0 → v0.41.0。govulncheck v1.10.0：修補前（go1.26.8）15 個會被呼叫到的弱點（標準函式庫 13、x/text 2），修補後 0 個。`web/client/embed.go` 的說明文字不再像 embed 指令（SA9009）；worker 的空 critical section 是刻意的屏障（SA2001，加說明與 `lint:ignore`）。
   - 未處理：OIDC 全域上限仍可用 50 個以上不同來源（或 `/64`）佔滿（要依來源淘汰未完成的登入，需要改 DB）；compose 的固定網段可能與主機既有網路衝突（`.env.example` 有說明）；本機沒有跑 `docker build`。
+- **收尾 D2：VAULT-R12、SRC-R11 第三層、SRC-R6「現在改用語音轉錄」、yt-dlp 排程更新（2026-11-24，分支 `feat/spec-remainder-vault-lang-ytdlp`，決定都標「依 /goal 採 advisor 建議，待 owner 追認」）**：
+  - 數字：預設 tag 308 → 313 passed（新增 `Use ASR now skips the wait for auto captions`、OPS 的三個排程更新場景，`@wip` 的 `Code-switching speech is marked as mixed` 拿掉 `@wip`）；`-godog.tags='@M1,@M2,@M3,@M4,@M5'` 943 個全部 passed（936 + VAULT 兩個新場景 + 上面五個）。`passing.txt` 只新增 5 行。
+  - VAULT-R12（V16）：刪除影音帶 `delete_outputs` 時，git vault 依 vault 分組：取發布鎖 → `pull --ff-only` → 在 clone 中只刪 hash 相同的檔案 → `ls-files --cached -z` + `rm --cached` → 一個 commit「notesteme: 刪除 <標題>」→ 領先時 push。`kept_outputs` 的 `git_vault` 不再出現，改成 `git_unreachable`／`git_rejected`／`git_auth`／`git_failed`；推送失敗的 commit 留在本機，由下一次發布推送（不 reset）。真 git + 本機 bare repo 的單元測試（`vault_delete_real_test.go`、`vault.TestGitCommitRemoval`），fakegit 加 `ls-files`、`rm`（steps.md 4.16 已登記）。
+  - SRC-R11：`internal/langdetect.Detect`（文字系統份量，一個英文詞與一個漢字等重；日文、簡繁、拉丁與西里爾的功能詞；少於 8 份不判斷）。前兩層都沒有時寫入偵測的主要語言（`lang_source: detected`，重跑時同 `asr` 不當成輸入，快取鍵不變）；`mixed` 每次產生新的原始字幕時依文字判斷（`metaUpdate.mixed` → `SetItemLangMixed`）。`@wip` 場景以「宣告 `language: zh`」最小修改（SRC 待決問題，原文語言留空時預設 `caption_priority` 選不到 zh 的自動字幕）。`Given … is a mixed-language item` 仍是 seeding。
+  - SRC-R6：`POST /api/items/{id}/use-asr-now`（`ingest`）：只接受 transcript `waiting` 且任務 `pending`，在交易中把 `not_before` 改成現在、payload 加 `skip_auto_wait`，步驟改回 `pending`；否則 409 `not_waiting`。`Stage.action_codes`（只有 `use_asr_now`），前端 `mapActions` 先依代碼、按鈕改成呼叫這個路由（三語 i18n `item.actions.asrNow`，bundle 283.3 KB／300 KB）。sqlc 新查詢 `SkipTaskWait`，沒有 migration。
+  - OPS（O25）：排程工作 `tools.yt-dlp.update`，設定檔 `updates.yt_dlp.{enabled,at,timezone}`，預設開啟、`04:00` `UTC`；呼叫與 API 共用的 `ytdlp.Manager.Update`；固定版本略過、回退或安裝失敗以告警 `ytdlp_update_failed` 通知並在成功時解除、外部指定的路徑或 Windows 不動作、手動更新進行中延後 30 分鐘。harness 在設定檔沒寫 `enabled` 時關閉（`TestControls.NoYtDlpAutoUpdate`）。
+  - 驗證：`go build`／`vet`／`gofmt` 乾淨；`go test -p 2 ./internal/... ./cmd/...` 全過；`scripts/ci/coverage.sh` 通過（pipeline 84.7%）；`-race` 只跑改過的套件；前端 typecheck、lint、format、test（467）、build、bundle、i18n 都過。
+  - 沒實測：真實的 git 遠端（GitHub／GitLab）、真實的 PyPI 更新、真實語音樣本的語言偵測；都只用假工具與本機 bare repo。§6 的「每天的排程更新還沒做」與「現在改用語音轉錄只顯示」兩條已由這個切片處理（§6 未改，留給主代理整理）。
 ## 2. 下一步
 
 ### 2026-11-24 現況
