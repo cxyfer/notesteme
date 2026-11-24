@@ -1,5 +1,5 @@
 // 「更多」選單（pages.md §4 的 `⋯`）：disclosure 按鈕（aria-expanded）加一組普通按鈕，
-// 不用 role="menu"（那需要完整的方向鍵行為）。Esc 或點選單外面就關閉，焦點回到觸發按鈕。
+// 不用 role="menu"（那需要完整的方向鍵行為）。Esc 或點選單外面就關閉（Esc 時焦點回到觸發按鈕）。
 // 選了項目之後先把焦點還給觸發按鈕再執行動作：動作若打開對話框，關閉時焦點會回到「更多」，
 // 不會掉到已卸載的選單項目上。
 import { useEffect, useId, useRef, useState } from "react";
@@ -47,15 +47,9 @@ export function MoreMenu({ items, label }: MoreMenuProps) {
   }, [open]);
 
   return (
-    <div
-      className="more-menu"
-      ref={root}
-      onBlur={(e) => {
-        // 焦點移到選單外面（Tab 離開）時關閉
-        if (open && root.current && !root.current.contains(e.relatedTarget as Node | null))
-          setOpen(false);
-      }}
-    >
+    // 不用 onBlur 關閉：Safari 與 macOS 的 Firefox 點按鈕時不給焦點，blur 的 relatedTarget 是 null，
+    // 會在點到選單項目之前就把選單關掉。只靠點外面與 Esc 關閉。
+    <div className="more-menu" ref={root}>
       <Button
         ref={trigger}
         aria-expanded={open}
