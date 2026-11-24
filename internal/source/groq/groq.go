@@ -150,7 +150,22 @@ type transcriptionResponse struct {
 		Start float64 `json:"start"`
 		End   float64 `json:"end"`
 		Text  string  `json:"text"`
+		// NoSpeechProb、CompressionRatio 用來過濾 Whisper 的幻覺（SRC-R13）；沒有回報時是 0，不會被過濾。
+		NoSpeechProb     float64 `json:"no_speech_prob"`
+		CompressionRatio float64 `json:"compression_ratio"`
 	} `json:"segments"`
+}
+
+// SRC-R13 的幻覺門檻：no_speech_prob 與 compression_ratio 都「高於」門檻（不含）的 segment 移除。
+// 門檻是預設值，依 M0 結果調整。
+const (
+	HallucinationNoSpeechProb     = 0.6
+	HallucinationCompressionRatio = 2.4
+)
+
+// Hallucinated 回報一個 segment 是否符合 SRC-R13 的幻覺條件（兩個條件同時成立）。
+func Hallucinated(noSpeechProb, compressionRatio float64) bool {
+	return noSpeechProb > HallucinationNoSpeechProb && compressionRatio > HallucinationCompressionRatio
 }
 
 // Transcribe 轉錄 audioPath 的音檔；langHint 是 ISO-639-1 語言提示，空字串表示讓 Whisper 自行偵測。
@@ -289,7 +304,7 @@ func (c *Client) Transcribe(ctx context.Context, audioPath, langHint string, opt
 	res := &Result{Lang: BCP47(out.Language), DurationS: out.Duration}
 	for _, seg := range out.Segments {
 		text := strings.TrimSpace(seg.Text)
-		if text == "" {
+		if text == "" || Hallucinated(seg.NoSpeechProb, seg.CompressionRatio) {
 			continue
 		}
 		start, end := ms(seg.Start), ms(seg.End)

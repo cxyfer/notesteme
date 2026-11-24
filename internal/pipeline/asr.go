@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cxyfer/notesteme/internal/audio"
 	"github.com/cxyfer/notesteme/internal/errclass"
@@ -109,10 +110,44 @@ func transcribeASR(ctx context.Context, m *media.Tool, tr transcriber, in, dir, 
 		return nil, err
 	}
 	limit := tr.MaxFileBytes()
+	var res *groq.Result
 	if fi.Size() <= limit {
-		return tr.Transcribe(ctx, prepared, langHint, opts...)
+		res, err = tr.Transcribe(ctx, prepared, langHint, opts...)
+	} else {
+		res, err = transcribeChunks(ctx, m, tr, in, prepared, fi.Size(), limit, langHint, opts...)
 	}
-	return transcribeChunks(ctx, m, tr, in, prepared, fi.Size(), limit, langHint, opts...)
+	if err != nil {
+		return nil, err
+	}
+	// SRC-R13：在接回單一時間軸之後才合併連續重複，切塊接縫兩側的重複也算。
+	res.Cues = collapseRepeats(res.Cues)
+	return res, nil
+}
+
+// minHallucinatedRun 是 SRC-R13 的「連續 N 次以上完全相同的句子只保留一次」的 N（預設值，依 M0 結果調整）。
+const minHallucinatedRun = 3
+
+// collapseRepeats 把連續 minHallucinatedRun 次以上文字完全相同（去掉前後空白後比較）的 cue 只留第一句，
+// 時間維持第一句原本的時間；只重複兩次的保留，交錯出現（A B A B）不算連續。回傳的 cue 重新從 1 編號。
+func collapseRepeats(cues []subtitle.Cue) []subtitle.Cue {
+	out := make([]subtitle.Cue, 0, len(cues))
+	for i := 0; i < len(cues); {
+		j := i + 1
+		text := strings.TrimSpace(cues[i].Text)
+		for j < len(cues) && strings.TrimSpace(cues[j].Text) == text {
+			j++
+		}
+		if j-i >= minHallucinatedRun {
+			out = append(out, cues[i])
+		} else {
+			out = append(out, cues[i:j]...)
+		}
+		i = j
+	}
+	for k := range out {
+		out[k].Index = k + 1
+	}
+	return out
 }
 
 // transcribeChunks 是 transcribeASR 的切塊路徑；size 是前處理後的大小，已確認超過 limit。

@@ -42,8 +42,12 @@
   #41（1498–1502 "and that is where the overlap starts"）與 #42（1502–1506 "so we remove the duplicate line"）落在兩個切塊的重疊區，
   之後到 3004 秒。切塊上傳時（標記有 `offset`），假 Groq 只回傳完全落在 `[offset, offset+duration]` 內的 segments，
   時間減去 offset，所以兩塊都含有 #41、#42，接縫的去重由程式負責（SRC-R12）。
+- `groq-hallucinated-tail.json`（`local/quiet-ending.m4a`，300 秒）：96 個 segment，驗證 SRC-R13 的幻覺過濾後剩 87 句：
+  #1–#83 一般句子（0–249 秒）；兩次 "Okay."（保留）；一句 `no_speech_prob` 剛好 0.6（保留）；
+  連續四次 "Thank you."（只留一次）；結尾六句 `no_speech_prob` 0.92、`compression_ratio` 2.6 的 "Thanks for watching!"（移除）。
+  過濾後的涵蓋率仍超過片長的 50%，不會被 SRC-R4 的 `low_coverage` 拒絕。
 - `groq-*.json`：Groq（OpenAI 相容 `POST /audio/transcriptions`）的 `verbose_json` 回應：
-  `language`（全名，例如 `english`，不是 `en`）、`duration`（秒）、`segments[{id, start, end, text}]`（秒）。
+  `language`（全名，例如 `english`，不是 `en`）、`duration`（秒）、`segments[{id, start, end, text}]`（秒），可帶 `no_speech_prob`、`compression_ratio`（SRC-R13，沒有時視為 0）。
   fake 的端點要求請求帶 `response_format=verbose_json`，並以 `Authorization: Bearer <key>` 驗證；
   測試環境預設有 key（`NOTESTEME_GROQ_API_KEY`），`Given the provider "groq" has no API key` 才會移除。
 
