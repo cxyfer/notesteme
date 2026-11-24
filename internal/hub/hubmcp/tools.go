@@ -165,7 +165,7 @@ func addGetTranscript(s *mcp.Server, d *Deps) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "get_transcript",
 		Description: "讀取字幕版本的內容：format 為 cues-json（預設，cues 陣列）、srt、vtt 或 txt（text 欄位）；from、to 為時間碼（HH:MM:SS.mmm），" +
-			"只回傳開始時間在 [from, to) 內的字幕。結果太大時截到最後一個完整的字幕，回傳 truncated: true 與 next_from，用 next_from 當 from 繼續取。" +
+			"只回傳開始時間在 [from, to) 內的字幕。結果太大時截到最後一個完整的字幕，回傳 truncated: true 與 next_from（必要時還有 next_from_index），分別當 from 與 from_index 繼續取。" +
 			"需要 download 權限。" + UntrustedNote,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a transcriptArgs) (*mcp.CallToolResult, any, error) {
 		return getTranscript(ctx, d, a), nil, nil

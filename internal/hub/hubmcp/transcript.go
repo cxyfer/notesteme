@@ -6,9 +6,11 @@ import (
 	"io"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/cxyfer/notesteme/internal/hub/hubrepo"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
 
@@ -22,16 +24,23 @@ type transcriptArgs struct {
 	Format  string `json:"format,omitempty" jsonschema:"cues-json（預設）、srt、vtt 或 txt"`
 	From    string `json:"from,omitempty" jsonschema:"起點時間碼（HH:MM:SS.mmm）；只回傳開始時間不早於它的字幕。續取時填上一次的 next_from"`
 	To      string `json:"to,omitempty" jsonschema:"終點時間碼（HH:MM:SS.mmm，不含）；只回傳開始時間早於它的字幕"`
+	// FromIndex 讓開始時間相同的句子也能分頁（安全修補 A）。
+	FromIndex int `json:"from_index,omitempty" jsonschema:"開始時間剛好等於 from 的字幕中，跳過前幾句（0 起算）。續取時填上一次的 next_from_index"`
 }
 
 // transcriptRequest 是檢查過的 get_transcript 參數。toMS < 0 代表沒有上限。
 type transcriptRequest struct {
 	format       string
 	fromMS, toMS int64
+	// fromIndex 是開始時間等於 fromMS 的句子中要跳過的句數。
+	fromIndex int
 }
 
 func parseTranscriptArgs(a transcriptArgs) (transcriptRequest, *mcp.CallToolResult) {
-	req := transcriptRequest{format: a.Format, toMS: -1}
+	req := transcriptRequest{format: a.Format, toMS: -1, fromIndex: a.FromIndex}
+	if req.fromIndex < 0 {
+		return req, invalid("from_index 不能是負數。")
+	}
 	if req.format == "" {
 		req.format = formatCuesJSON
 	}
@@ -73,30 +82,47 @@ type TranscriptResult struct {
 	Text      *string   `json:"text,omitempty"`
 	Truncated bool      `json:"truncated"`
 	NextFrom  string    `json:"next_from,omitempty"`
+	// NextFromIndex 是續取時的 from_index：下一句與這一頁的句子開始時間相同時才有（大於 0）。
+	NextFromIndex int `json:"next_from_index,omitempty"`
 }
 
 func cueView(c subtitle.Cue) CueView {
 	return CueView{Index: c.Index, Start: subtitle.FormatDisplayTime(c.StartMS), End: subtitle.FormatDisplayTime(c.EndMS), Text: c.Text}
 }
 
+// cleanText 把換行與 tab 以外的控制字元換成空白：上傳時已拒絕（hubrepo.CheckCues），這裡防範之前存進來的資料
+// （\r 在 WebVTT 是換行，可以偽造字幕）。
+func cleanText(s string) string {
+	if !hubrepo.HasControl(s) {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if r != '\n' && r != '\t' && (r < 0x20 || (r >= 0x7f && r <= 0x9f)) {
+			return ' '
+		}
+		return r
+	}, s)
+}
+
 // buildTranscript 解碼 cues JSON，依開始時間篩選 [from, to)，並截到 limit 位元組以內（HMCP-R7）。
 //
-// 篩選看開始時間（不是和範圍重疊）：上傳的 cues 可能重疊或沒有排序，以重疊判斷時用 next_from 續取會重複回傳同一句，
-// 一頁只放得下一句時永遠不會前進。cue 依開始時間穩定排序；一頁至少有一句（單句超過上限時仍回傳它），
-// 而且同一個開始時間的句子不會被拆到兩頁，所以 next_from 一定比這一頁所有句子的開始時間晚，續取一定會前進。
-// limit 量的是 cues 陣列的 JSON 或渲染後的文字，不含其他欄位。
+// 篩選看開始時間（不是和範圍重疊）：上傳的 cues 可能重疊或沒有排序，以重疊判斷時用 next_from 續取會重複回傳同一句。
+// cue 依開始時間穩定排序（同一個開始時間依原本的順序）；一頁至少有一句（單句超過上限時仍回傳它，上傳時已限制每句的大小），
+// 開始時間相同的句子也會截斷（安全修補 A）：續取鍵是 (next_from, next_from_index)，next_from_index 是開始時間等於
+// next_from 的句子中已經回傳過的句數，所以續取一定前進。limit 量的是 cues 陣列的 JSON 或渲染後的文字，不含其他欄位。
 func buildTranscript(r io.Reader, version string, req transcriptRequest, limit int64) (TranscriptResult, error) {
 	t, err := subtitle.DecodeCuesJSON(r)
 	if err != nil {
 		return TranscriptResult{}, err
 	}
-	cues := make([]subtitle.Cue, 0, len(t.Cues))
+	all := make([]subtitle.Cue, 0, len(t.Cues))
 	for _, c := range t.Cues {
 		if c.StartMS >= req.fromMS && (req.toMS < 0 || c.StartMS < req.toMS) {
-			cues = append(cues, c)
+			c.Text = cleanText(c.Text)
+			all = append(all, c)
 		}
 	}
-	slices.SortStableFunc(cues, func(a, b subtitle.Cue) int {
+	slices.SortStableFunc(all, func(a, b subtitle.Cue) int {
 		switch {
 		case a.StartMS < b.StartMS:
 			return -1
@@ -105,14 +131,24 @@ func buildTranscript(r io.Reader, version string, req transcriptRequest, limit i
 		}
 		return 0
 	})
+	// 跳過開始時間等於 from 的前 from_index 句（它們排在最前面）。
+	skip := 0
+	for skip < len(all) && skip < req.fromIndex && all[skip].StartMS == req.fromMS {
+		skip++
+	}
+	cues := all[skip:]
 	n, err := fitCues(cues, req.format, limit)
 	if err != nil {
 		return TranscriptResult{}, err
 	}
 	out := TranscriptResult{Version: version, Variant: string(t.Variant), Lang: t.Lang, Format: req.format}
 	if n < len(cues) {
+		next := skip + n
 		out.Truncated = true
-		out.NextFrom = subtitle.FormatDisplayTime(cues[n].StartMS)
+		out.NextFrom = subtitle.FormatDisplayTime(all[next].StartMS)
+		for j := next - 1; j >= 0 && all[j].StartMS == all[next].StartMS; j-- {
+			out.NextFromIndex++
+		}
 	}
 	page := cues[:n]
 	if req.format == formatCuesJSON {
@@ -131,7 +167,7 @@ func buildTranscript(r io.Reader, version string, req transcriptRequest, limit i
 	return out, nil
 }
 
-// fitCues 回傳放得進 limit 的前幾句（至少一句；同一個開始時間的句子一起放）。cues 已依開始時間排序。
+// fitCues 回傳放得進 limit 的前幾句（至少一句）。cues 已依開始時間排序。
 func fitCues(cues []subtitle.Cue, format string, limit int64) (int, error) {
 	size, err := baseSize(format)
 	if err != nil {
@@ -143,8 +179,7 @@ func fitCues(cues []subtitle.Cue, format string, limit int64) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		sameStart := i > 0 && c.StartMS == cues[i-1].StartMS
-		if i > 0 && !sameStart && size+piece > limit {
+		if i > 0 && size+piece > limit {
 			break
 		}
 		size += piece

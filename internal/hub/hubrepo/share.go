@@ -1,6 +1,8 @@
 package hubrepo
 
 import (
+	"bytes"
+	"fmt"
 	"net/http"
 	"path"
 	"slices"
@@ -8,6 +10,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/bundle"
+	"github.com/cxyfer/notesteme/internal/subtitle"
 )
 
 // 分享的檢查（HREP-R1、R3、R4）。
@@ -128,6 +131,56 @@ func CheckProvenanceSize(b *bundle.Bundle) *apierr.Error {
 		}
 	}
 	return nil
+}
+
+// 字幕的上限（安全修補 A，HMCP 待決問題 M7）：每句文字與句數有上限，MCP 的 get_transcript 一頁才放得進
+// mcp.max_result_bytes（JSON 轉義後最多約 6 倍，仍遠小於預設的 256 KiB）。
+const (
+	MaxCueTextBytes = 8 << 10
+	MaxCues         = 100_000
+)
+
+// CheckCues 檢查字幕產出的每一句：文字最多 MaxCueTextBytes、句數最多 MaxCues，不能有換行（\n）與 tab 以外的
+// 控制字元（含 \r：WebVTT 把 CR 當成換行，可以偽造字幕）。呼叫前 ValidateContents 已確認格式。
+func CheckCues(b *bundle.Bundle) *apierr.Error {
+	for _, a := range b.Manifest.Artifacts {
+		if a.Format != bundle.CuesFormat {
+			continue
+		}
+		d, _ := b.File(a.Path)
+		t, err := subtitle.DecodeCuesJSON(bytes.NewReader(d))
+		if err != nil {
+			return apierr.New(http.StatusUnprocessableEntity, CodeBundleInvalid, "bundle 中的檔案「"+bundle.ShowEntry(a.Path)+"」不是有效的 notesteme-cues+json 字幕，已拒絕匯入。")
+		}
+		if len(t.Cues) > MaxCues {
+			return apierr.New(http.StatusUnprocessableEntity, CodeBundleInvalid,
+				fmt.Sprintf("字幕「%s」超過 %d 句的上限。", bundle.ShowEntry(a.Path), MaxCues))
+		}
+		for i, c := range t.Cues {
+			if len(c.Text) > MaxCueTextBytes {
+				return apierr.New(http.StatusUnprocessableEntity, CodeBundleInvalid,
+					fmt.Sprintf("字幕「%s」第 %d 句超過 %d KiB 的上限。", bundle.ShowEntry(a.Path), i+1, MaxCueTextBytes>>10))
+			}
+			if HasControl(c.Text) {
+				return apierr.New(http.StatusUnprocessableEntity, CodeBundleInvalid,
+					fmt.Sprintf("字幕「%s」第 %d 句有不允許的控制字元。", bundle.ShowEntry(a.Path), i+1))
+			}
+		}
+	}
+	return nil
+}
+
+// HasControl 回報文字有沒有換行（\n）與 tab 以外的控制字元（C0、DEL、C1，含 \r）。
+func HasControl(s string) bool {
+	for _, r := range s {
+		if r == '\n' || r == '\t' {
+			continue
+		}
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+			return true
+		}
+	}
+	return false
 }
 
 // ImagesOf 回傳屬於這個產出的圖片：沒有被產出引用、檔名以 artifacts/<產出 ID>- 開頭的檔案（BND-R1 的畫面圖片）。

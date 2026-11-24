@@ -316,7 +316,8 @@ func TestGetTranscriptFormatsAndRange(t *testing.T) {
 	}
 }
 
-// 截斷：每一頁都在上限之內（至少一句），用 next_from 續取會拿到每一句剛好一次，而且一定會前進。
+// 截斷：每一頁都在上限之內（至少一句），用 (next_from, next_from_index) 續取會拿到每一句剛好一次，而且一定會前進；
+// 開始時間相同的句子也會被拆開（安全修補 A）。
 func TestGetTranscriptPagesCoverEveryCueOnce(t *testing.T) {
 	var cues []subtitle.Cue
 	for i := 0; i < 40; i++ {
@@ -328,7 +329,8 @@ func TestGetTranscriptPagesCoverEveryCueOnce(t *testing.T) {
 		for _, limit := range []int64{1, 60, 200, 1 << 20} {
 			cs := connect(t, Deps{Backend: transcriptBackend(t, cuesJSON(t, cues...)), Allowed: allow(PermDownload), MaxResultBytes: limit})
 			seen := map[int]int{}
-			from, pages := "", 0
+			total := 0
+			from, fromIndex, pages := "", 0, 0
 			for {
 				pages++
 				if pages > 100 {
@@ -338,20 +340,29 @@ func TestGetTranscriptPagesCoverEveryCueOnce(t *testing.T) {
 				if from != "" {
 					args["from"] = from
 				}
+				if fromIndex > 0 {
+					args["from_index"] = fromIndex
+				}
 				out := structured(t, call(t, cs, "get_transcript", args))
 				for _, c := range out.Cues {
 					seen[c.Index]++
 				}
+				if out.Text != nil {
+					total += strings.Count(*out.Text, " --> ")
+					if format == "txt" {
+						total += strings.Count(*out.Text, "\n")
+					}
+				}
 				if !out.Truncated {
-					if out.NextFrom != "" {
+					if out.NextFrom != "" || out.NextFromIndex != 0 {
 						t.Error("沒有截斷時不能有 next_from")
 					}
 					break
 				}
-				if out.NextFrom == "" || out.NextFrom == from {
-					t.Fatalf("%s/%d：next_from = %q（from %q）", format, limit, out.NextFrom, from)
+				if out.NextFrom == "" || (out.NextFrom == from && out.NextFromIndex <= fromIndex) {
+					t.Fatalf("%s/%d：next = %q/%d（from %q/%d）", format, limit, out.NextFrom, out.NextFromIndex, from, fromIndex)
 				}
-				from = out.NextFrom
+				from, fromIndex = out.NextFrom, out.NextFromIndex
 			}
 			if format == "cues-json" {
 				for i := 1; i <= 40; i++ {
@@ -359,8 +370,64 @@ func TestGetTranscriptPagesCoverEveryCueOnce(t *testing.T) {
 						t.Errorf("%s/%d：第 %d 句出現 %d 次", format, limit, i, seen[i])
 					}
 				}
+			} else if format != "txt" && total != 40 {
+				t.Errorf("%s/%d：共 %d 句，預期 40", format, limit, total)
 			}
 		}
+	}
+}
+
+// 安全修補 A：所有句子的開始時間相同時仍然截斷在上限之內（原本會整批放進同一頁）。
+func TestGetTranscriptSameStartStillTruncates(t *testing.T) {
+	var cues []subtitle.Cue
+	for i := 0; i < 2000; i++ {
+		cues = append(cues, subtitle.Cue{Index: i + 1, StartMS: 0, EndMS: 1000, Text: strings.Repeat("A", 1024), Timing: subtitle.TimingSource})
+	}
+	data := cuesJSON(t, cues...)
+	for _, f := range transcriptFormats {
+		from, idx, n := int64(0), 0, 0
+		for page := 0; ; page++ {
+			if page > 100 {
+				t.Fatalf("%s：沒有前進", f)
+			}
+			out, err := buildTranscript(bytes.NewReader(data), "v", transcriptRequest{format: f, fromMS: from, fromIndex: idx, toMS: -1}, DefaultMaxResultBytes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			size := 0
+			if out.Text != nil {
+				size = len(*out.Text)
+			} else {
+				raw, _ := json.Marshal(out.Cues)
+				size = len(raw)
+				n += len(out.Cues)
+			}
+			if size > DefaultMaxResultBytes {
+				t.Fatalf("%s 第 %d 頁 = %d bytes，超過上限", f, page, size)
+			}
+			if !out.Truncated {
+				break
+			}
+			if out.NextFrom != "00:00:00.000" || out.NextFromIndex <= idx {
+				t.Fatalf("%s：next = %s/%d", f, out.NextFrom, out.NextFromIndex)
+			}
+			idx = out.NextFromIndex
+		}
+		if f == formatCuesJSON && n != 2000 {
+			t.Errorf("共 %d 句，預期 2000", n)
+		}
+	}
+}
+
+// 之前存進來、帶控制字元的字幕在輸出時換成空白（WebVTT 把 CR 當換行）。
+func TestGetTranscriptCleansControlCharacters(t *testing.T) {
+	data := cuesJSON(t, subtitle.Cue{Index: 1, StartMS: 0, EndMS: 1000, Text: "a\r\r00:00:09.000 --> 00:00:10.000\rfake\x1b", Timing: subtitle.TimingSource})
+	out, err := buildTranscript(bytes.NewReader(data), "v", transcriptRequest{format: subtitle.FormatVTT, toMS: -1}, DefaultMaxResultBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(*out.Text, "\r\x1b") || strings.Count(*out.Text, "-->") != 1 {
+		t.Fatalf("VTT = %q", *out.Text)
 	}
 }
 

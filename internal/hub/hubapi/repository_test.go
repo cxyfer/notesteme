@@ -20,6 +20,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/hub/hubauth"
 	"github.com/cxyfer/notesteme/internal/hub/hubblob"
 	"github.com/cxyfer/notesteme/internal/hub/hubconfig"
+	"github.com/cxyfer/notesteme/internal/hub/hubrepo"
 	"github.com/cxyfer/notesteme/internal/hub/hubstore"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 	"github.com/cxyfer/notesteme/internal/websession"
@@ -513,11 +514,22 @@ func TestReadVersionAnonymouslyOnAPublicSite(t *testing.T) {
 // 超過 Huma 預設 1 MiB 的分享：multipart 要在 Huma 讀取本體之前由 rawOperations 接手。
 func TestShareLargerThanHumaDefaultLimit(t *testing.T) {
 	e := newRepoEnv(t, func(c *hubconfig.Config) { c.Bundles.MaxUploadBytes = 8 << 20 })
-	var text strings.Builder
-	for seed := sha256.Sum256([]byte("seed")); text.Len() < 3<<20; seed = sha256.Sum256(seed[:]) {
-		text.WriteString(hex.EncodeToString(seed[:]))
+	// 每句的文字有上限（hubrepo.MaxCueTextBytes），所以分成很多句。
+	var cues []subtitle.Cue
+	size := 0
+	seed := sha256.Sum256([]byte("seed"))
+	for size < 3<<20 {
+		var text strings.Builder
+		for text.Len() < 4096 {
+			seed = sha256.Sum256(seed[:])
+			text.WriteString(hex.EncodeToString(seed[:]))
+		}
+		size += text.Len()
+		cues = append(cues, subtitle.Cue{Index: len(cues) + 1, StartMS: int64(len(cues)) * 1000, EndMS: int64(len(cues))*1000 + 900, Text: text.String(), Timing: subtitle.TimingSource})
 	}
-	b := makeBundle(t, bundleOpts{}, src(text.String()))
+	a := src("")
+	a.data = cuesData(t, cues)
+	b := makeBundle(t, bundleOpts{}, a)
 	if len(b) < 3<<19 { // 1.5 MiB
 		t.Fatalf("bundle 只有 %d bytes", len(b))
 	}
@@ -594,4 +606,45 @@ func TestShareDedupGroupNeedsMembership(t *testing.T) {
 	if bv2["deduplicated"] != true {
 		t.Fatalf("成員分享 = %v，預期併入", bv2)
 	}
+}
+
+func cuesData(t *testing.T, cues []subtitle.Cue) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	if err := subtitle.RenderCuesJSON(&b, subtitle.Transcript{Lang: "en", Variant: subtitle.VariantSource, Cues: cues}); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
+
+// 安全修補 A：字幕每句的大小、句數與控制字元在上傳時檢查（HMCP 的分頁才有上界，CR 不能偽造 WebVTT 的字幕）。
+func TestShareRejectsOversizedOrControlCues(t *testing.T) {
+	e := newRepoEnv(t, func(c *hubconfig.Config) {
+		c.Bundles.MaxUploadBytes, c.Bundles.MaxFileBytes, c.Bundles.MaxTotalBytes = 16<<20, 32<<20, 64<<20
+	})
+	cue := func(i int, text string) subtitle.Cue {
+		return subtitle.Cue{Index: i + 1, StartMS: int64(i) * 10, EndMS: int64(i)*10 + 5, Text: text, Timing: subtitle.TimingSource}
+	}
+	for name, cues := range map[string][]subtitle.Cue{
+		"單句太長": {cue(0, strings.Repeat("a", hubrepo.MaxCueTextBytes+1))},
+		"CR":   {cue(0, "ok"), cue(1, "line\r\r00:00:09.000 --> 00:00:10.000\rfake")},
+		"NUL":  {cue(0, "a\x00b")},
+		"C1":   {cue(0, "a\u0085b")},
+		"ESC":  {cue(0, "\x1b[31mred")},
+	} {
+		a := src("")
+		a.data = cuesData(t, cues)
+		rec := e.share("alice", makeBundle(t, bundleOpts{}, a), nil)
+		expect(t, name, rec, 422, "bundle_invalid")
+	}
+	many := make([]subtitle.Cue, hubrepo.MaxCues+1)
+	for i := range many {
+		many[i] = cue(i, "x")
+	}
+	a := src("")
+	a.data = cuesData(t, many)
+	expect(t, "句數太多", e.share("alice", makeBundle(t, bundleOpts{}, a), nil), 422, "bundle_invalid")
+	ok := src("")
+	ok.data = cuesData(t, []subtitle.Cue{cue(0, strings.Repeat("a", hubrepo.MaxCueTextBytes)), cue(1, "two\nlines\twith tab")})
+	e.mustShare("alice", makeBundle(t, bundleOpts{}, ok), nil)
 }

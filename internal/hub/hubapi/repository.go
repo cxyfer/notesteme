@@ -397,6 +397,9 @@ func (rt *routes) share(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		}
 		return nil, err
 	}
+	if e := hubrepo.CheckCues(b); e != nil {
+		return nil, e
+	}
 	in, err := rt.buildShare(ctx, p, b, provs, filtered, form)
 	if err != nil {
 		return nil, err
