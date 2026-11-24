@@ -142,16 +142,22 @@ func TestLoadRejectsInvalidTrustedProxies(t *testing.T) {
 	}
 }
 
-// NOTESTEME_TRUSTED_PROXIES（SEC-R1：環境變數優先）：compose 的 vps profile 以它信任 caddy（AUTH-R6、OPS-R20）。
+// NOTESTEME_TRUSTED_PROXIES（與設定檔的 trusted_proxies 取聯集，SEC-R1 的例外）：compose 的 vps profile 以它信任 caddy（AUTH-R6、OPS-R20）。
 func TestTrustedProxiesFromEnv(t *testing.T) {
 	file := writeFile(t, "trusted_proxies: [\"10.0.0.0/8\"]\n")
 	cfg, err := Load(Sources{File: file, Env: map[string]string{EnvTrustedProxies: " 172.31.250.10/32 , ,2001:db8::1/64"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []netip.Prefix{netip.MustParsePrefix("172.31.250.10/32"), netip.MustParsePrefix("2001:db8::/64")}
+	// 與設定檔取聯集：compose 的預設值不能默默蓋掉使用者在設定檔寫好的 proxy（auth.proxy 依賴它）。
+	want := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("172.31.250.10/32"), netip.MustParsePrefix("2001:db8::/64")}
 	if !slices.Equal(cfg.TrustedProxies, want) || cfg.SourceOf(FieldTrustedProxies) != SourceEnv {
-		t.Errorf("環境變數要整份取代設定檔：%v（來源 %s）", cfg.TrustedProxies, cfg.SourceOf(FieldTrustedProxies))
+		t.Errorf("環境變數與設定檔取聯集：%v（來源 %s）", cfg.TrustedProxies, cfg.SourceOf(FieldTrustedProxies))
+	}
+	// 重複的網段只留一份。
+	cfg, err = Load(Sources{File: file, Env: map[string]string{EnvTrustedProxies: "10.0.0.0/8"}})
+	if err != nil || len(cfg.TrustedProxies) != 1 {
+		t.Errorf("重複的網段：%v %v", cfg.TrustedProxies, err)
 	}
 	// 空字串視為沒有設定，沿用設定檔。
 	cfg, err = Load(Sources{File: file, Env: map[string]string{EnvTrustedProxies: "  "}})

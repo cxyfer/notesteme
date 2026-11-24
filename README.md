@@ -126,6 +126,7 @@ Hub（`notesteme-hub`，Postgres＋S3 相容儲存）的部署是另一份 compo
 listen: 0.0.0.0:8080
 data: /data
 # 連線來自這些位址時，登入鎖定改看 X-Forwarded-For。
+# 環境變數 NOTESTEME_TRUSTED_PROXIES（逗號分隔）會與這裡取聯集；compose 預設信任 vps profile 的 caddy。
 trusted_proxies:
   - 172.18.0.0/16
 tools:

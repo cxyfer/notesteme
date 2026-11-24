@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -39,7 +40,7 @@ const (
 	// EnvGroqAPIKey 是 Groq 的 API key（SEC-R1，對應 asr.providers.groq 的 key）。
 	// 目前只從環境變數讀取（SEC-R4 加密存放時一併整理命名）；沒有設定時 Groq 視為 not_configured。
 	EnvGroqAPIKey = "NOTESTEME_GROQ_API_KEY"
-	// EnvTrustedProxies 是 trusted_proxies 的環境變數（SEC-R1：環境變數優先於設定檔）：以逗號分隔的 CIDR。
+	// EnvTrustedProxies 是額外的 trusted_proxies：以逗號分隔的 CIDR，與設定檔的 trusted_proxies 取聯集。
 	// compose 的 vps profile 以它把 Caddy 的位址設成可信任的反向代理（AUTH-R6、OPS-R19）。
 	EnvTrustedProxies = "NOTESTEME_TRUSTED_PROXIES"
 )
@@ -250,7 +251,14 @@ func Load(src Sources) (*Config, error) {
 		if err != nil {
 			return nil, err
 		}
-		cfg.TrustedProxies, cfg.Origin[FieldTrustedProxies] = prefixes, SourceEnv
+		// 與設定檔的 trusted_proxies 取聯集（SEC-R1 的例外）：compose 一律傳入預設值，
+		// 取代的話會默默蓋掉使用者在設定檔寫好的 proxy，auth.proxy 的驗證就會失效。
+		for _, p := range prefixes {
+			if !slices.Contains(cfg.TrustedProxies, p) {
+				cfg.TrustedProxies = append(cfg.TrustedProxies, p)
+			}
+		}
+		cfg.Origin[FieldTrustedProxies] = SourceEnv
 	}
 	// 資料目錄轉成絕對路徑：相對路徑會讓預設 inbox 也變成相對路徑，被 pathguard 靜默忽略（GRD-R7）。
 	abs, err := filepath.Abs(cfg.Data)
@@ -405,7 +413,7 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 	return nil
 }
 
-// parseTrustedProxiesEnv 解析 NOTESTEME_TRUSTED_PROXIES：逗號分隔的 CIDR，空白項目略過；整份取代設定檔的 trusted_proxies。
+// parseTrustedProxiesEnv 解析 NOTESTEME_TRUSTED_PROXIES：逗號分隔的 CIDR，空白項目略過。
 func parseTrustedProxiesEnv(v string) ([]netip.Prefix, error) {
 	var out []netip.Prefix
 	for _, part := range strings.Split(v, ",") {

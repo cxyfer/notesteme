@@ -54,7 +54,7 @@
 - API：`POST /api/auth/login`、`POST /api/auth/logout`、`GET/POST/DELETE /api/tokens`
 - CLI：`notesteme tokens create|ls|revoke`、`notesteme password set`
 - 環境變數：`NOTESTEME_PASSWORD`
-- 設定檔：`trusted_proxies`（CIDR 清單，預設為空；放在 Caddy 等反向代理後面時填入 proxy 的位址）；環境變數 `NOTESTEME_TRUSTED_PROXIES`（逗號分隔）優先，compose 的 `vps` profile 預設信任 caddy 的固定位址（OPS O23）
+- 設定檔：`trusted_proxies`（CIDR 清單，預設為空；放在 Caddy 等反向代理後面時填入 proxy 的位址）；環境變數 `NOTESTEME_TRUSTED_PROXIES`（逗號分隔）與它取聯集，compose 預設信任 caddy 的固定位址（OPS O23）
 - 設定檔（AUTH-R11，M2）：`mcp.allowed_hosts`（主機名稱清單，不含 port；IP 位址與 `localhost` 一律接受，用網域名稱存取 `/mcp` 時要列出）、`mcp.allowed_origins`（`scheme://host[:port]` 清單；同源一律接受）。只檢查 TCP listener；本機 socket 與獨立模式不檢查。檢查在驗證之後：沒有有效憑證先回 401。
 - Session 與 CSRF：登入成功後設定 `notesteme_session`（`HttpOnly`、`SameSite=Lax`）與 `notesteme_csrf` 兩個 cookie。`notesteme_csrf` 可以由前端讀取；非 GET 請求把它的值放在 `X-CSRF-Token` 標頭（double-submit）。
 - Bearer token：`Authorization: Bearer <token>`。
