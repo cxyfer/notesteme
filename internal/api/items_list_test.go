@@ -670,3 +670,50 @@ func TestGroupedCursorMACCoversGroup(t *testing.T) {
 		t.Error("分組鍵太長不該被接受")
 	}
 }
+
+// 依頻道分組的游標含頻道名稱：名稱很長（SQL 只取前 100 個字元）、全是 4 byte 的 emoji 或 JSON 會跳脫的字元時，
+// 編碼出來的游標仍要能拿來讀下一頁（不能超過解碼端的長度上限，否則 UI 會一直從第一頁重讀）。
+func TestGroupedCursorLongChannelName(t *testing.T) {
+	r := newItemsRig(t)
+	ctx := context.Background()
+	seedLibrary(t, r)
+	for i, title := range []string{
+		strings.Repeat("😀", 300),
+		strings.Repeat("<>& \"\\", 100),
+		strings.Repeat("\x01", 300),
+	} {
+		chID, err := r.st.Write().UpsertChannel(ctx, store.Channel{Platform: "youtube", ExternalID: fmt.Sprintf("UClong%d", i), Title: title})
+		if err != nil {
+			t.Fatal(err)
+		}
+		page := decode[groupedBody](t, r.owner("GET", "/api/items?limit=5", ""))
+		for _, it := range page.Items {
+			full, err := r.st.Read().ItemByID(ctx, it.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := r.st.Write().UpdateItemMeta(ctx, it.ID, store.ItemMeta{Title: full.Title, ChannelID: chID}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		pages, cursor := 0, ""
+		for {
+			rec := r.owner("GET", "/api/items?group_by=channel&limit=1"+cursor, "")
+			if rec.Code != 200 {
+				t.Fatalf("名稱 %d：第 %d 頁 = %d %s", i, pages+1, rec.Code, rec.Body)
+			}
+			pages++
+			b := decode[groupedBody](t, rec)
+			if b.NextCursor == "" {
+				break
+			}
+			if len(b.NextCursor) > maxCursorLen {
+				t.Fatalf("名稱 %d：游標 %d 字元超過上限", i, len(b.NextCursor))
+			}
+			cursor = "&cursor=" + url.QueryEscape(b.NextCursor)
+		}
+		if pages != 5 {
+			t.Errorf("名稱 %d：讀了 %d 頁，預期 5", i, pages)
+		}
+	}
+}
