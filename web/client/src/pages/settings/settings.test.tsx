@@ -79,10 +79,45 @@ const LANGUAGE = {
   variant_strategy: "convert",
 };
 
+const PROVIDERS = [
+  {
+    id: "anthropic",
+    type: "anthropic",
+    kind: "llm",
+    editable: false,
+    defined_in: "builtin",
+    testable: true,
+    deprecations: [
+      // 測試用的假公告：只驗證機制，不是真實的停用日期
+      { model: "fake-model-1", after: "2099-01-31", replacement: "fake-model-2" },
+    ],
+  },
+  {
+    id: "voxtral",
+    type: "mistral",
+    kind: "asr",
+    editable: false,
+    defined_in: "config_file",
+    testable: false,
+    untestable_reason: "這種 provider 還沒有接上處理流程，無法測試連線。",
+    deprecations: [],
+  },
+  {
+    id: "whisperx",
+    type: "command",
+    kind: "asr",
+    editable: false,
+    defined_in: "config_file",
+    testable: true,
+    deprecations: [],
+  },
+] as const;
+
 function settingsApi(routes: Record<string, MockHandler> = {}) {
   return mockApi({
     "GET /api/settings/services": () => ({ providers: { groq: { api_key_last4: "9z9z" } } }),
     "GET /api/settings/supadata": () => ({ mode: "auto" }),
+    "GET /api/providers": () => ({ providers: PROVIDERS }),
     "GET /api/settings/language": () => LANGUAGE,
     "GET /api/settings/agent": () => ({}),
     "GET /api/tokens": () => TOKENS,
@@ -201,11 +236,91 @@ describe("服務與金鑰", () => {
     await waitFor(() => expect(body).toEqual({ providers: { groq: { api_key: "" } } }));
   });
 
-  it("後端沒有測試連線的 API：明確說明，不放假的按鈕", async () => {
+  it("provider 目錄：唯讀列出、command 說明只能在設定檔定義、停用公告（axe 無違規）", async () => {
     settingsApi();
     await openSection("services");
-    expect(await screen.findByText(/「測試連線」與模型的停用公告/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /測試連線/ })).toBeNull();
+    const panel = (await screen.findByRole("heading", { name: "Provider 與測試連線" })).closest(
+      ".settings-panel",
+    ) as HTMLElement;
+    const rows = await within(panel).findAllByRole("listitem");
+    expect(rows.map((r) => within(r).getAllByText(/./)[0]!.textContent)).toEqual([
+      "anthropic",
+      "voxtral",
+      "whisperx",
+    ]);
+    expect(within(rows[0]!).getByText("LLM · anthropic · 內建")).toBeTruthy();
+    expect(
+      within(rows[0]!).getByText(
+        /停用公告：模型 fake-model-1 在 2099-01-31 停止服務。 建議改用 fake-model-2。/,
+      ),
+    ).toBeTruthy();
+    expect(
+      within(rows[2]!).getByText("command 類型：只能在設定檔中定義，這裡唯讀顯示。"),
+    ).toBeTruthy();
+    // 不提供測試的 provider：按鈕停用並說明
+    expect(
+      (within(rows[1]!).getByRole("button", { name: "測試連線：voxtral" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      within(rows[1]!).getByText("這種 provider 還沒有接上處理流程，無法測試連線。"),
+    ).toBeTruthy();
+    // 目錄是唯讀的：沒有新增、修改或刪除 provider 的按鈕
+    expect(within(panel).queryByRole("button", { name: /新增|修改|刪除/ })).toBeNull();
+    await expectNoA11yViolations();
+  });
+
+  it("測試連線：成功顯示延遲，帶 kind；command 只檢查不執行", async () => {
+    const api = settingsApi({
+      "POST /api/providers/{id}/test": (req) => ({
+        ok: true,
+        latency_ms: req.params.id === "whisperx" ? 0 : 123,
+        message: "連線成功。",
+      }),
+    });
+    await openSection("services");
+    await userEvent.click(await screen.findByRole("button", { name: "測試連線：anthropic" }));
+    expect((await screen.findByRole("status")).textContent).toBe("連線成功（123 ms）。");
+    expect(api.calls("POST", "/api/providers/anthropic/test").map((c) => c.url.search)).toEqual([
+      "?kind=llm",
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: "測試連線：whisperx" }));
+    expect(await screen.findByText("找到指令且可以執行；沒有實際執行。")).toBeTruthy();
+  });
+
+  it("測試連線失敗：顯示訊息與建議動作（axe 無違規）", async () => {
+    settingsApi({
+      "POST /api/providers/{id}/test": () =>
+        apiError(409, "needs_action", "LLM provider anthropic 沒有設定 API key。", {
+          actions: ["設定 API key"],
+        }),
+    });
+    await openSection("services");
+    await userEvent.click(await screen.findByRole("button", { name: "測試連線：anthropic" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "LLM provider anthropic 沒有設定 API key。 建議動作：設定 API key。",
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    await expectNoA11yViolations();
+  });
+
+  it("provider 失敗（502）：歸為可以重試", async () => {
+    settingsApi({
+      "POST /api/providers/{id}/test": () =>
+        apiError(
+          502,
+          "upstream_failed",
+          "provider anthropic 暫時無法使用（HTTP 503），請稍後再試。",
+        ),
+    });
+    await openSection("services");
+    await userEvent.click(await screen.findByRole("button", { name: "測試連線：anthropic" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.getAttribute("data-category")).toBe("retryable");
+    expect(alert.textContent).toContain(
+      "provider anthropic 暫時無法使用（HTTP 503），請稍後再試。",
+    );
   });
 });
 

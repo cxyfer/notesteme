@@ -1215,7 +1215,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get?: never;
+    /** 列出內建與設定檔中定義的 provider（唯讀，含模型的停用公告，SEC-R11） */
+    get: operations["providers-list"];
     put?: never;
     /** 新增 provider：command 類型只能在設定檔中定義，回 403（SEC-R3） */
     post: operations["providers-create"];
@@ -1232,10 +1233,27 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** 讀取設定檔中定義的 provider（唯讀） */
+    /** 讀取內建或設定檔中定義的 provider（唯讀） */
     get: operations["providers-get"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/providers/{id}/test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** 測試 provider 的連線：送一個帶認證、不產生費用的請求；command 只檢查指令，不執行（SEC-R11） */
+    post: operations["providers-test"];
     delete?: never;
     options?: never;
     head?: never;
@@ -3591,11 +3609,33 @@ export interface components {
     PromptsOutputBody: {
       prompts: components["schemas"]["PromptSummary"][] | null;
     };
+    ProviderDeprecation: {
+      /** @description 停止服務的日期（YYYY-MM-DD） */
+      after: string;
+      message?: string;
+      model: string;
+      replacement?: string;
+    };
     ProviderInfo: {
-      defined_in: string;
+      /** @enum {string} */
+      defined_in: "builtin" | "config_file";
+      deprecations: components["schemas"]["ProviderDeprecation"][] | null;
       editable: boolean;
       id: string;
+      /** @enum {string} */
+      kind: "llm" | "asr" | "transcript";
+      testable: boolean;
       type: string;
+      untestable_reason?: string;
+    };
+    ProviderListOutputBody: {
+      providers: components["schemas"]["ProviderInfo"][] | null;
+    };
+    ProviderTestResult: {
+      /** Format: int64 */
+      latency_ms: number;
+      message: string;
+      ok: boolean;
     };
     PurgedItemOutputBody: {
       /** @description 被刪除的影音的內部 ID */
@@ -7255,6 +7295,35 @@ export interface operations {
       };
     };
   };
+  "providers-list": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProviderListOutputBody"];
+        };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
   "providers-create": {
     parameters: {
       query?: never;
@@ -7292,7 +7361,10 @@ export interface operations {
   };
   "providers-get": {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description 同一個 id 有多種 provider 時指定種類；省略時依 asr、llm、transcript 的順序 */
+        kind?: "llm" | "asr" | "transcript";
+      };
       header?: never;
       path: {
         /** @description provider 的 id */
@@ -7309,6 +7381,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ProviderInfo"];
+        };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "providers-test": {
+    parameters: {
+      query?: {
+        /** @description 同一個 id 有多種 provider 時指定種類；省略時依 asr、llm、transcript 的順序 */
+        kind?: "llm" | "asr" | "transcript";
+      };
+      header?: never;
+      path: {
+        /** @description provider 的 id */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProviderTestResult"];
         };
       };
       /** @description Error */

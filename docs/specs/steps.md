@@ -379,6 +379,7 @@ M3-S4（2026-11-23）實作了 `Given the chapters of … are:`（4.13）、`Giv
 - `Given the item … has been processed up to …`：目標也可以是 `sponsorblock`、`chapters`、`frames`、`note`。產品的 `pipeline.StageAvailable` 回報這個步驟還沒有任何 executor 實作時 pending（M3-S0 之後四個步驟都在 `pipeline.Stages` 中，改用這個判斷；與 `source.Implemented` 同類，只限這四個名稱；其他不認識的名稱仍然失敗）；實作之後依 (2c) 的規則判斷（`done` 或 `skipped` 都算處理到）。決定重跑的起點時，跳過還沒有實作的 M3 步驟（它們一律 `skipped`（`not_implemented`），從它們重跑回 501）。
 - `Then the {string} artifact of {string} has the provenance:`、`has {int} versions`、`the item … has no … artifact`：名稱也可以是 M3 產出的 `kind`：`sponsor_segments`、`chapters`、`frames`、`note`。
 - 4.6 的 LLM 步驟：步驟名稱也可以是 `chapters`、`frames`、`note`、`note_map`（tool 或 schema 名稱 `notesteme_<stage>`）；provider 也可以是 `gemini`，由 `features/internal/fakegemini` 回應（`Given Gemini accepts YouTube videos up to …` 登記它），fixture 一樣放在 `features/fixtures/llm/`，`output` 會被包成 Gemini 回應的 `candidates[0].content.parts[0].text`。`frames` 的請求含有圖片區塊，fakellm 要接受 anthropic 的 `image` block 與 openai 的 `image_url`（FRM 規格 F4）。
+- 4.6 的 fakellm 也回答測試連線用的模型列表 `GET /v1/models`（SEC-R11，2026-11-25）：檢查 key（`the provider … has no API key` 取消要求時不檢查）與 anthropic 的 `anthropic-version`，套用 `fails with HTTP`，成功回空的列表；請求計入 `the LLM provider … received …`（沒有步驟名稱）。不是新句型，只擴充既有句型涵蓋的端點。
 - `Given the provider {string} has no API key`：也接受 `gemini`（移除 `NOTESTEME_GEMINI_API_KEY`）。
 
 | 步驟 | 意思 |

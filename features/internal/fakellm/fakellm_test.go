@@ -810,3 +810,41 @@ func TestConcurrentRequests(t *testing.T) {
 		t.Errorf("Seq 不重複的請求數 = %d，預期 20", len(seen))
 	}
 }
+
+// 測試連線的模型列表（SEC-R11）：檢查 key、套用 Fail、計入 Requests，不記違規。
+func TestModelsEndpoint(t *testing.T) {
+	s := New(t.TempDir(), nil)
+	s.RequireKey("anthropic", TestAnthropicKey)
+	s.RequireKey("openai", TestOpenAIKey)
+	get := func(provider, key string) int {
+		r := httptest.NewRequest(http.MethodGet, "https://x"+ModelsPath, nil)
+		if provider == "anthropic" {
+			r.Header.Set("anthropic-version", AnthropicVersion)
+			r.Header.Set("x-api-key", key)
+		} else {
+			r.Header.Set("Authorization", "Bearer "+key)
+		}
+		w := httptest.NewRecorder()
+		s.Handler(provider).ServeHTTP(w, r)
+		return w.Code
+	}
+	if c := get("anthropic", TestAnthropicKey); c != 200 {
+		t.Errorf("anthropic：%d", c)
+	}
+	if c := get("openai", "wrong"); c != 401 {
+		t.Errorf("錯的 key：%d，預期 401", c)
+	}
+	s.Fail("openai", 503, 1)
+	if c := get("openai", TestOpenAIKey); c != 503 {
+		t.Errorf("Fail：%d，預期 503", c)
+	}
+	if c := get("openai", TestOpenAIKey); c != 200 {
+		t.Errorf("Fail 一次之後：%d，預期 200", c)
+	}
+	if n := len(s.Requests("openai")); n != 3 {
+		t.Errorf("openai 的請求數 = %d，預期 3", n)
+	}
+	if v := s.Violations(); len(v) != 0 {
+		t.Errorf("violations = %v", v)
+	}
+}

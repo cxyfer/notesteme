@@ -18,6 +18,7 @@
 | SEC-03 | As the owner, I want API keys and cookies encrypted and never shown in full again, so that a copied database or a glance at the screen does not leak them. | M1 |
 | SEC-04 | As the owner, I want to rotate the master key and recover from losing it, so that a key problem never costs me my library. | M1 |
 | SEC-05 | As the owner, I want to export and import my settings as YAML, so that I can version them or move them to another instance. | M2 |
+| SEC-06 | As the owner, I want to see every provider, test its connection, and read model deprecation notices on the settings page, so that a wrong key or a retiring model shows up before a job fails. | M1 |
 
 ## 規則
 
@@ -33,12 +34,19 @@
 | SEC-R8 | `notesteme secrets rotate-key` 用新的 master key 重新加密資料金鑰；完成後舊的 master key 無法再啟動。 | M1 |
 | SEC-R9 | `notesteme secrets reset` 刪除所有 secrets 與資料金鑰，並以新的 master key 建立新的資料金鑰；影音、產出、設定都保留，token 與密碼不受影響。 | M1 |
 | SEC-R10 | `notesteme config export` 輸出 DB 管理的設定（不含 secrets）；`notesteme config import` 匯入時先驗證整份內容，有錯誤就整份不套用。 | M2 |
+| SEC-R11 | 設定頁「服務與金鑰」的 provider 目錄與測試連線（pages.md §12）：`GET /api/providers`（`read`）列出內建與設定檔中定義的 provider 與模型的停用公告，不含 API key 與 `command` 的內容，全部唯讀。`POST /api/providers/:id/test`（`admin`）送一個帶認證、不產生費用的請求，成功回 `{ok, latency_ms, message}`；沒有 API key 或 key 被拒絕回 409 `needs_action`（動作「設定 API key」）；provider 失敗、逾時或連線失敗回 502 `upstream_failed`。`command` provider 只檢查指令存在且可以執行，不執行它。 | M1 |
 
 ## 介面
 
 - 設定檔：`/config/notesteme.yaml`
 - 環境變數：`NOTESTEME_MASTER_KEY`、`NOTESTEME_<設定路徑>`
-- API：`GET/PUT /api/settings/:section`、`POST /api/cookies`、`GET /api/config/export`、`POST /api/config/import`
+- API：`GET/PUT /api/settings/:section`、`POST /api/cookies`、`GET /api/config/export`、`POST /api/config/import`、`GET /api/providers`、`GET /api/providers/:id`、`POST /api/providers/:id/test`
+- provider 目錄與測試連線（SEC-R11）：
+  - `GET /api/providers` 回 `{ "providers": [ … ] }`，依 id 排序（同一個 id 依 `asr`、`llm`、`transcript` 的順序）。每一項是 `{ id, type, kind, editable, defined_in, testable, untestable_reason?, deprecations }`：`kind` 是 `llm`、`asr`（語音轉錄）或 `transcript`（字幕服務）；`defined_in` 是 `builtin` 或 `config_file`；`editable` 一律是 `false`（API key 在 `PUT /api/settings/services` 設定）；`deprecations` 是 `[{ model, after, replacement?, message? }]`，沒有時是空陣列。
+  - 目錄的內容：LLM 是內建的 `anthropic`、`openai`、`gemini` 與設定檔 `llm.providers`（同名時是設定檔的）；語音轉錄是內建的 `groq` 與設定檔 `asr.providers`（含 `command`；同名時設定檔的取代內建的）；字幕服務是內建的 `supadata`。`GET /api/providers/:id` 與 `/test` 接受 `?kind=`，省略時依 `asr`、`llm`、`transcript` 的順序取第一個。
+  - 測試的請求：anthropic `GET /v1/models?limit=1`、OpenAI 相容 `GET <base_url>/models`、Gemini `GET /v1beta/models?pageSize=1`、Groq `GET /openai/v1/models`、Supadata `GET /v1/me`（帳號資訊，不消耗 credit）。API key 的來源與正式執行相同（環境變數優先，其次是資料庫）；請求經 netguard（ADR-0014）、不跟隨轉址、逾時 15 秒，回應只讀 64 KiB 並丟棄。
+  - 錯誤：401、403 是 409 `needs_action`「provider <id> 拒絕了 API key（HTTP <碼>）。」；沒有 key 的訊息與正式執行相同（例如「LLM provider openai 沒有設定 API key。」）；429、5xx 是 502「provider <id> 暫時無法使用（HTTP <碼>），請稍後再試。」；其他狀態碼（含轉址）是 502「provider <id> 拒絕了測試請求（HTTP <碼>），請確認設定檔的 base_url。」；逾時、連線失敗、被 netguard 擋下各有固定訊息。訊息與 log 都不含 API key、網址與 provider 回應的內容。找不到 provider 回 404，不提供測試的 provider（`testable: false`）回 501。
+  - `command` provider：只檢查 `command` 的第一個元素是存在且可以執行的檔案（含 `/` 時直接檢查，否則在 `PATH` 中找），成功時 `message` 是「找到指令且可以執行；沒有實際執行。」；找不到或沒有執行權限是 409 `needs_action`「找不到 command provider <id> 的指令，或沒有執行權限。」，動作「修改設定檔」。訊息不含指令與路徑。
 - CLI：`notesteme secrets rotate-key|reset`、`notesteme config export [--out <file>]`、`notesteme config import <file>`
 - `POST /api/cookies`：上傳平台的 cookie。
   - 請求：`{ "platform": "youtube" | "bilibili", "content": "<Netscape cookie 檔，或 name=value; … 標頭>" }`，內容上限 64 KiB；請求本體（JSON）上限 512 KiB，超過同樣回 422 `cookie_too_large`（含沒有 Content-Length 的請求，讀到上限就停止；其他路由維持 Huma 預設的 1 MiB 與 413）。
@@ -91,3 +99,11 @@
   - 結束碼：`config import` 內容不正確時是 **1**，不是 CLI-R6 對 API 422 規定的 2。理由：檔案的內容不是命令列參數，而且 `features/SEC-config-secrets.feature` 的「An invalid config import changes nothing」要求 1。只有 `config_invalid` 這個 422 走這條規則，其他 400、422 維持 2。CLI 規格有一行交叉引用。
   - YAML 解析器比標準嚴格（輸入是不可信的）：不接受別名與合併鍵（避免展開炸彈）、重複的鍵、非字串的鍵、NaN／無限大、多份文件、不認得的型別標籤；沒有加引號的日期（`2024-01-01`）保留原文字；巢狀上限 64 層、檔案上限 1 MiB。有 fuzz，並以「讀得進來的內容輸出再讀回來必須相同」為不變條件。
   - API 用 JSON 外層（`{ "content": "<YAML>" }`）而不是直接收 `application/yaml`，和 `POST /api/cookies`、字幕匯入的 `content` 一致，OpenAPI 與 Huma 的驗證也直接適用；代價是 `curl` 要先包成 JSON。沒有做 `--dry-run`（只驗證不套用）；需要時加在 API 與 CLI 上都很小。
+- SEC-R11 的決定（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：
+  - 規則放在 SEC（新增 SEC-06、SEC-R11），因為既有的 provider 規則（SEC-R3）與 API key（SEC-R4、R6）都在這裡；pages.md §12 把它列為 M1。
+  - 測試請求一律用列出模型或帳號資訊的 GET 端點，不送 completion：不產生費用、不消耗 token 或 credit，也不需要選模型。代價是只驗證「key 有效、服務連得到」，不驗證某個模型能不能用（模型不存在在正式執行時仍是 LLM-R11 的 `needs_action`）。
+  - 成功一律是 200 `ok: true`；失敗不用 200 `ok: false`，而是沿用 PRM 待決問題 P10 的錯誤碼（409 `needs_action` 帶 `actions`、502 `upstream_failed`），UI 用同一個錯誤元件顯示。429 也是 502（不是 429 `rate_limited`）：測試連線不排隊等待，提示稍後再試。
+  - `command` provider 的測試沒有規格規定；保守的做法是不執行使用者的命令（命令可能很慢、會寫檔或花錢），只檢查指令存在且可以執行。
+  - 設定檔 `asr.providers` 的 `openai-compatible`、`mistral` 目前沒有接上處理流程，也沒有對應的 client 與 API key 來源，所以 `testable: false`（`untestable_reason`「這種 provider 還沒有接上處理流程，無法測試連線。」），`/test` 回 501；不另外發明 key 的綁定方式。服務與金鑰中的 `mistral`、`openai-compatible` API key 也因此沒有測試按鈕。
+  - 同一個 id 可能同時是 `asr.providers` 與 LLM provider（兩個命名空間獨立）：列表兩個都列，以 `kind` 區分；單一 id 的查詢先取 `asr`，維持 `GET /api/providers/{id}` 原本只查 `asr.providers` 的行為。
+  - **模型停用公告：機制已有，目前沒有資料。** 規格沒有定義資料來源；目錄（`internal/providers.Deprecations`）以 provider id 為 key，每項是 `model`、`after`（YYYY-MM-DD）、`replacement`、`message`，只放能對照 provider 官方公告確認的資料，並記下來源與查證日期。2026-11-25 查證：程式內建的模型 ID 只有 Groq 的 `whisper-large-v3-turbo`（`groq.DefaultModel`），它不在 Groq 的官方停用清單（https://console.groq.com/docs/deprecations ，該頁只列出它是 `distil-whisper-large-v3-en` 的替代模型），也仍列在 production models；LLM 的模型 ID 都是處理方案中自由輸入，程式沒有模型清單可以掛公告。所以目前是空的，API 一律回空陣列。plan 第 25 節風險表的 `whisper-1` 日期不是官方公告的原文，`whisper-1` 也不是程式內建的模型，不放。之後內建了模型 ID（例如預設處理方案寫死模型）時，要對照該 provider 的官方停用頁補上。

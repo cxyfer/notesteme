@@ -1,6 +1,7 @@
 // Package fakellm 是驗收測試用的腳本化 LLM provider（ADR-0015、docs/specs/steps.md 4.6）。
 //
 // Server 同時模擬 anthropic（POST /v1/messages）與 openai（POST /v1/chat/completions）兩種 wire format，
+// 也回答測試連線用的模型列表（GET /v1/models，SEC-R11），
 // handler 以 fakenet.Handle 掛在正式主機名稱上，被測程式照正常路徑連線。
 //
 // wire 契約（S0 凍結，S3 寫成 ADR-0019；internal/llm 的 client 遵守它，要改的話 fakellm 一起改）：
@@ -296,6 +297,9 @@ func (s *Server) handle(id string, r *http.Request, body []byte) result {
 		return res
 	}
 
+	if r.Method == http.MethodGet && r.URL.Path == ModelsPath {
+		return finish(s.models(id, p, r))
+	}
 	if r.Method != http.MethodPost || r.URL.Path != p.path {
 		s.violate(id, req.Seq, "非預期的端點 %s %s（只接受 POST %s）", r.Method, r.URL.Path, p.path)
 		return finish(p.errorResult(http.StatusNotFound, ""))
@@ -339,6 +343,31 @@ func (s *Server) handle(id string, r *http.Request, body []byte) result {
 		return finish(p.errorResult(http.StatusBadRequest, req.Model))
 	}
 	return finish(p.successResult(req, out))
+}
+
+// ModelsPath 是測試連線用的模型列表（設定頁的「測試連線」，SEC-R11）：anthropic 與 openai 都是 GET /v1/models。
+const ModelsPath = "/v1/models"
+
+// models 回答模型列表（呼叫時須持有 s.mu）：一樣檢查 key（anthropic 另外檢查 anthropic-version）並套用 Fail，
+// 成功時回空的列表。不屬於任何步驟（Stage 為空），計入 Requests。
+func (s *Server) models(id string, p *provider, r *http.Request) result {
+	if p.key != "" && !p.authorized(r, p.key) {
+		return p.errorResult(http.StatusUnauthorized, "")
+	}
+	if id == providerAnthropic && r.Header.Get("anthropic-version") != AnthropicVersion {
+		s.violate(id, p.seq, "模型列表的 anthropic-version 標頭是 %q，預期 %q", r.Header.Get("anthropic-version"), AnthropicVersion)
+		return p.errorResult(http.StatusBadRequest, "")
+	}
+	if f := p.fail; f != nil {
+		if f.remaining > 0 {
+			f.remaining--
+			if f.remaining == 0 {
+				p.fail = nil
+			}
+		}
+		return p.errorResult(f.status, "")
+	}
+	return result{status: http.StatusOK, body: []byte(`{"data":[],"has_more":false}`)}
 }
 
 // AnswerBatch 回答 Batch API 中的一個請求（fakebatch 的 Answerer，steps.md 4.19）：wire 契約的檢查與腳本和一般 API 相同，

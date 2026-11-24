@@ -341,3 +341,40 @@ func EstimateCredits(mode string, durationS float64) float64 {
 	}
 	return creditsPerGeneratedMinute * max(math.Ceil(durationS/60), 1)
 }
+
+// msgNoKey 是沒有設定 API key 時測試連線給使用者看的訊息（SEC-R11）。
+const msgNoKey = "Supadata 沒有設定 API key。"
+
+// PingRequest 組出測試連線用的請求（設定頁的「測試連線」，SEC-R11）：GET /v1/me（帳號資訊），
+// 帶認證、不消耗 credit，也不受限流（https://docs.supadata.ai/api-reference/endpoint/account/me）。
+// 沒有 API key 或 key 格式不正確時是 needs_action，動作「設定 API key」，不會發出請求。請求還沒送出；呼叫端負責逾時與 netguard。
+func (c *Client) PingRequest(ctx context.Context) (*http.Request, error) {
+	key, err := c.resolveKey(ctx)
+	if err != nil {
+		return nil, fail(errclass.ClassRetryable, "讀取 API key 失敗", err)
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, &errclass.Error{
+			Class: errclass.ClassNeedsAction, Source: ID, Err: ErrNoKey,
+			Message: msgNoKey, Actions: []string{actionSetKey},
+		}
+	}
+	if !validKey(key) {
+		return nil, &errclass.Error{
+			Class: errclass.ClassNeedsAction, Source: ID, Err: ErrKeyMalformed,
+			Message: msgKeyMalformed, Actions: []string{actionSetKey},
+		}
+	}
+	base := c.BaseURL
+	if base == "" {
+		base = DefaultBaseURL
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/v1/me", nil)
+	if err != nil {
+		return nil, fail(errclass.ClassPermanent, "", err)
+	}
+	req.Header.Set("x-api-key", key)
+	req.Header.Set("Accept", "application/json")
+	return req, nil
+}

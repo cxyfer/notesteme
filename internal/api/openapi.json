@@ -5267,11 +5267,47 @@
         ],
         "type": "object"
       },
+      "ProviderDeprecation": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "description": "停止服務的日期（YYYY-MM-DD）",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "replacement": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "after"
+        ],
+        "type": "object"
+      },
       "ProviderInfo": {
         "additionalProperties": false,
         "properties": {
           "defined_in": {
+            "enum": [
+              "builtin",
+              "config_file"
+            ],
             "type": "string"
+          },
+          "deprecations": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderDeprecation"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "editable": {
             "type": "boolean"
@@ -5279,15 +5315,71 @@
           "id": {
             "type": "string"
           },
+          "kind": {
+            "enum": [
+              "llm",
+              "asr",
+              "transcript"
+            ],
+            "type": "string"
+          },
+          "testable": {
+            "type": "boolean"
+          },
           "type": {
+            "type": "string"
+          },
+          "untestable_reason": {
             "type": "string"
           }
         },
         "required": [
           "id",
           "type",
+          "kind",
           "editable",
-          "defined_in"
+          "defined_in",
+          "testable",
+          "deprecations"
+        ],
+        "type": "object"
+      },
+      "ProviderListOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderInfo"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "type": "object"
+      },
+      "ProviderTestResult": {
+        "additionalProperties": false,
+        "properties": {
+          "latency_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "latency_ms",
+          "message"
         ],
         "type": "object"
       },
@@ -11189,6 +11281,32 @@
       }
     },
     "/api/providers": {
+      "get": {
+        "operationId": "providers-list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderListOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出內建與設定檔中定義的 provider（唯讀，含模型的停用公告，SEC-R11）"
+      },
       "post": {
         "operationId": "providers-create",
         "requestBody": {
@@ -11239,6 +11357,21 @@
               "description": "provider 的 id",
               "type": "string"
             }
+          },
+          {
+            "description": "同一個 id 有多種 provider 時指定種類；省略時依 asr、llm、transcript 的順序",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "同一個 id 有多種 provider 時指定種類；省略時依 asr、llm、transcript 的順序",
+              "enum": [
+                "llm",
+                "asr",
+                "transcript"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -11263,7 +11396,62 @@
             "description": "Error"
           }
         },
-        "summary": "讀取設定檔中定義的 provider（唯讀）"
+        "summary": "讀取內建或設定檔中定義的 provider（唯讀）"
+      }
+    },
+    "/api/providers/{id}/test": {
+      "post": {
+        "operationId": "providers-test",
+        "parameters": [
+          {
+            "description": "provider 的 id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "provider 的 id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "同一個 id 有多種 provider 時指定種類；省略時依 asr、llm、transcript 的順序",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "同一個 id 有多種 provider 時指定種類；省略時依 asr、llm、transcript 的順序",
+              "enum": [
+                "llm",
+                "asr",
+                "transcript"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderTestResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "測試 provider 的連線：送一個帶認證、不產生費用的請求；command 只檢查指令，不執行（SEC-R11）"
       }
     },
     "/api/queue": {

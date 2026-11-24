@@ -27,6 +27,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/notify"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/prompts"
+	"github.com/cxyfer/notesteme/internal/providers"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/scheduler"
 	"github.com/cxyfer/notesteme/internal/secrets"
@@ -76,6 +77,8 @@ type Server struct {
 	keys              *secrets.Keyring
 	// services 管理加密存放的服務商 API key（GET／PUT /api/settings/services 與執行期解析）。
 	services *secrets.Services
+	// providerCatalog 是設定頁的 provider 目錄與測試連線（SEC-R11）；pipeline 建立時才有 LLM 與字幕來源。
+	providerCatalog *providers.Catalog
 	// hub 是 Client 的 Hub 設定（HSHR）；startPipeline 建立。
 	hub *hubsettings.Settings
 	// cookies 加密存放平台 cookie，並提供 yt-dlp 用的暫存檔（SEC-R7）；startPipeline 建立。
@@ -302,6 +305,7 @@ func (s *Server) startPipeline(ctx context.Context, env Env, cfg *config.Config,
 	// LLM provider：內建的加上設定檔 llm.providers 的；同一個 Registry 也回答處理方案驗證的「provider 存在嗎」（PRF-R4）。
 	deps.LLM = s.llmRegistry(env, cfg, deps.HTTP)
 	deps.Providers, deps.Prompts = deps.LLM, promptResolver{s.prompts}
+	s.providerCatalog = newProviderCatalog(cfg, deps)
 	// vault 與 hook 只能在設定檔定義（VAULT-R1、R10）：處理方案只能引用這些 id。
 	deps.Outputs = outputCatalog{vaults: cfg.Vaults, hooks: cfg.Hooks}
 	deps.Vaults, deps.Hooks = vaultDefs(cfg)

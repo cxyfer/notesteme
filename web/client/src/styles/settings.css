@@ -48,6 +48,12 @@
 .settings-note[data-kind="ok"] {
   color: var(--state-ok-text);
 }
+/* 模型的停用公告（SEC-R11）：實線邊框，和「尚未提供」的虛線區分 */
+.settings-note[data-kind="warn"] {
+  color: var(--text-primary);
+  border-left: 2px solid var(--rule);
+  padding-left: var(--space-2);
+}
 .settings-subtitle {
   margin: var(--space-2) 0 0;
   font-size: var(--font-14);

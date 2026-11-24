@@ -314,7 +314,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
    - `Stage.actions` 應改成動作代碼（現在是繁中按鈕文字，前端只能比對字串）。部分處理（收尾 D2，2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）：`Stage` 多了 `action_codes`（只列出有穩定代碼的動作，目前只有 `use_asr_now`），`mapActions` 先依代碼對應、同一個動作的文字不重複；其他動作仍比對文字，沒有大改。
    - 沒有 log 片段（OBS-2 的「相關 log 片段」）：步驟面板改連到「紀錄」分頁，顯示 `GET /runs` 的狀態、時間與設定快照；`runs` 也沒有花費、provider 實際回應等欄位。
    - rerun 沒有 `estimate`／`estimate_usd`：對話框顯示「無法預估」。沒有拿 `POST /api/estimate` 代替（它針對網址，可能呼叫 yt-dlp）。（有更好的字幕來源時改顯示 `better_source.estimate_usd`，見 10.24 第 2 點。）
-   - 沒有 provider 列表 API：provider 用文字輸入，建議值取自處理方案設定。
+   - 沒有 provider 列表 API：provider 用文字輸入，建議值取自處理方案設定。（2026-11-25 起後端有 `GET /api/providers`〔SEC-R11〕，這裡還沒有改用，列為後續，見 10.25。）
    - 沒有列出影音有哪些字幕變體與語言的 API：模式依步驟狀態推得，`edited` 用一次 `variant=edited` 的查詢確認。
    - 沒有章節、說話密度、LLM chunk 的時間範圍：時間帶只畫整條步驟狀態，沒有章節線、拖曳選取、chunk 進度。
    - `ItemDetail` 沒有處理方案名稱：從設定快照的 `profile` 取（沒有就不顯示）。
@@ -359,7 +359,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 5. **刪除 prompt 用確認框**（§3.5 不可復原的操作）：後端是硬刪除，沒有可以還原的方式。
 6. **處理方案的樂觀鎖在前端補**：PATCH 沒有 If-Match。儲存前先讀一次，版本和開始編輯時不同就跳出衝突（重新載入／仍要儲存：只寫改過的鍵）；儲存後回應的版本不是「開始時 + 1」時也明確告知。兩次請求之間仍有很小的窗口；要完全關閉需要後端支援 `If-Match` 或 `expected_version`。
 7. **處理方案表單編輯 config 的副本**，儲存時算 merge patch；選「沿用全域設定」就刪掉該鍵（送 null），讓步驟的 executor 回到「沿用全域設定」時整個 `stages.<步驟>` 一起刪掉（寫出來的步驟會被檢查完整性，D8）。「複製」用已儲存的設定，不含未儲存的修改。
-8. **provider 沒有列表 API**：文字欄位加 `datalist`（內建的 anthropic、openai），model 自由輸入；試跑面板同樣。
+8. **provider 沒有列表 API**：文字欄位加 `datalist`（內建的 anthropic、openai），model 自由輸入；試跑面板同樣。（2026-11-25 起後端有 `GET /api/providers`，`datalist` 還沒有改用它，列為後續，見 10.25。）
 9. **用語**：步驟 `segment` 沿用既有字典的「分段」（`stage.segment`），pages.md 的「斷句」沒有改既有字串；Prompt 庫的分組也用「分段」。英文的處理方案沿用用語表的 Preset。
 10. **字型**：API 依 `lang` 帶入預設字型後，分不出原本是不是空字串（自動）。表單只送改過的欄位，所以打開表單不會把自動字型寫死；把字型欄位清空就送 `""`（依語言自動）。顏色用文字欄位（`<input type="color">` 會丟掉不透明度）加色塊。
 11. **共用元件**：`SelectField`、`ItemPicker`（試跑與樣式預覽都要選影音；只列 `GET /api/items` 的前 50 部，用標題搜尋縮小）放進 `components/`（ItemPicker 用獨立的 `queryKeys.items.picker(q)`，不放在媒體庫 infinite query 的 `items.lists()` 前綴下）；逐字差異放 `web/shared`，與 UI-2 分支的 `pages/item/diff.ts` 形狀相同，合併時改成都從 `@shared` 匯入、刪掉重複的一份。
@@ -376,7 +376,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 |---|---|---|
 | 設定頁版面：左側分區清單、右側表單、每個分區各自儲存；窄螢幕（< 768px）清單收成頂部的下拉選單；未知分區導到第一個分區 | 完成 | `src/pages/SettingsPage.tsx`、`src/styles/settings.css` |
 | 服務與金鑰：7 個 provider 的 API key（只顯示末四碼，只能設定、更換或清除，清除先確認）、Supadata 取得字幕的方式、`command` provider 的唯讀說明 | 完成 | `src/pages/settings/ServicesSection.tsx` |
-| 服務與金鑰：「測試連線」、模型停用公告、列出設定檔中的 `command` provider | 未做：後端沒有對應的路由（只有 `GET /api/providers/{id}`，沒有列表） | — |
+| 服務與金鑰：「測試連線」、模型停用公告、列出設定檔中的 `command` provider | 完成（2026-11-25，後端加 `GET /api/providers` 與 `POST /api/providers/{id}/test`，SEC-R11；見 10.25） | `src/pages/settings/ServicesSection.tsx` |
 | 帳號與 Cookie：上傳 YouTube／Bilibili cookie（貼上或選擇檔案）、這次上傳的數量與時間、`cookie_*` 錯誤的說明 | 完成 | `AccountsSection.tsx` |
 | 帳號與 Cookie：最後一次成功使用的時間、是否失效 | 未做：後端沒有讀取 cookie 狀態的 API | — |
 | 語言：預設目標語言、中文變體、原文字幕的語言優先順序（新增、移除、上下移）、平台翻譯字幕、fallback；介面語言 | 完成 | `LanguageSection.tsx` |
@@ -400,13 +400,13 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 
 （2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）
 
-1. **唯一的後端改動：`POST /api/auth/password`**。AUTH-R2 要求「修改密碼要透過設定頁」，但沒有路由，`notesteme password set` 當時還沒實作（現在已實作，見 AUTH 待決問題 A28），沒有替代方案。只有 owner（token 即使有 `admin` 也 403）、與登入共用鎖定（AUTH-R6）、目前的密碼錯誤回 422 `invalid_password`（不用 401，避免被當成 session 失效而導到登入頁）、新密碼只要求非空、成功後在同一個交易中撤銷目前以外的所有 session。細節記在 AUTH 規格的待決問題。其他缺口（測試連線、cookie 狀態、工具版本、磁碟用量、匯入 dry-run、頻道列表）都**不補後端**，UI 明確寫「後端還沒有提供」；有排程的寫「M3／M4 起提供」，沒有排程的不捏造里程碑。
+1. **唯一的後端改動：`POST /api/auth/password`**。AUTH-R2 要求「修改密碼要透過設定頁」，但沒有路由，`notesteme password set` 當時還沒實作（現在已實作，見 AUTH 待決問題 A28），沒有替代方案。只有 owner（token 即使有 `admin` 也 403）、與登入共用鎖定（AUTH-R6）、目前的密碼錯誤回 422 `invalid_password`（不用 401，避免被當成 session 失效而導到登入頁）、新密碼只要求非空、成功後在同一個交易中撤銷目前以外的所有 session。細節記在 AUTH 規格的待決問題。其他缺口（測試連線、cookie 狀態、工具版本、磁碟用量、匯入 dry-run、頻道列表）都**不補後端**，UI 明確寫「後端還沒有提供」；有排程的寫「M3／M4 起提供」，沒有排程的不捏造里程碑。（測試連線之後在 2026-11-25 補上後端，見 10.25。）
 2. **分區**：依 pages.md §12 的順序，另外加一個「匯出與匯入」分區（`config`），不併進「系統」：兩者的權限與風險不同（匯入會取代處理方案）。詞彙表放在設定頁的「詞彙表」分區（pages.md §12 已列），不另開 `/channels/:id/glossary`。
 3. **未知分區**導到第一個分區（`<Navigate replace>`，不改 `router.tsx`）；原本 UI-0 的「顯示找不到」測試一併改掉。
 4. **窄螢幕**：分區清單在 767px 以下隱藏，改成頂部的 `<select>`（切換時導到該分區）。
 5. **主題與介面語言的快速切換保留在導覽底部**（UI-0 決定 6 的後續），設定頁的「外觀」「語言」分區有同樣的選項；主題改由 `theme.ts` 的 `subscribeTheme`／`useTheme` 共用，兩邊不會不同步。介面語言本來就由 i18next 共用。
 6. **secrets 的處理**：API key、cookie、token 明文、密碼只放在元件的 `useState`，送出時立即清空（失敗也要重新輸入）；不用 TanStack Query 的 `useMutation`（`variables`、`data` 會留在 MutationCache），不放進 URL、localStorage、toast、錯誤訊息。API key 欄位 `type="password"`、`autocomplete="new-password"`；cookie 的 textarea `autocomplete="off"`，選擇檔案時內容不顯示；token 對話框關閉時清掉。
-7. **服務與金鑰的 provider 清單**照抄後端白名單（`internal/secrets/services.go` 的 `allowedServiceProviders`）：後端沒有列表 API。後端增減 provider 時要同步改 `SERVICE_PROVIDERS`。PUT services 是部分更新，每次只送正在改的那一個 provider（`api_key: ""` 是清除）。
+7. **服務與金鑰的 provider 清單**照抄後端白名單（`internal/secrets/services.go` 的 `allowedServiceProviders`）：後端沒有列表 API（2026-11-25 起有 `GET /api/providers`，但它列的是 provider 本身，不是「可以設定 API key 的服務商」，所以 API key 的清單仍照抄白名單，見 10.25）。後端增減 provider 時要同步改 `SERVICE_PROVIDERS`。PUT services 是部分更新，每次只送正在改的那一個 provider（`api_key: ""` 是清除）。
 8. **整段取代的區段**（`language`、`agent`、`supadata`）：GET 後在本地修改、整段 PUT；沒有填的欄位直接省略（不送 `""` 或 `null`，後端不接受）。`language` 的 GET 已合併預設值；`agent` 沒有存過時是 `{}`，表單顯示預設值的提示（AGT 待決問題 A3 的預設）。422 的 `errors[]` 逐項顯示 path 與訊息。
 9. **輸出**：全域設定沒有 `outputs` 區段（`/api/settings/outputs` 不存在），所以「輸出」分區只說明在處理方案中設定；沒有連到 `/profiles`（UI-3a 同時在做，避免互相依賴的路由型別）。
 10. **詞彙表的頻道**用文字輸入（UUID 或 `平台:頻道 ID`），選擇只在元件 state，不加 search 參數（不改 `router.tsx`）。接受候選後同時讓頻道詞彙表重新讀取；409 `term_candidate_decided` 顯示「已被處理」並重新讀取候選。
@@ -686,3 +686,21 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 6. **訂閱的「新內容」**：SUB 規格原本沒有定義這個數字，定為「這個訂閱建立、還沒有標為已讀、不在垃圾桶中的影音數」（SUB-R14、SUB 待決問題 S11）：讀過就歸零，與媒體庫的已讀狀態一致。後端在訂閱的每個回應加 `new_items`（列表用一次 `GROUP BY` 算出），場景是 `features/SUB-subscriptions.feature` 的「The subscription list counts the new items that are still unread」（`@M4`）。列表在「處理方案」與「狀態」之間多一欄「新內容」，數字不連到媒體庫（`GET /api/items` 沒有依訂閱篩選）。
 7. **筆記模板的草稿預覽與未知變數**：預覽 API 原本只接受已儲存的 `<id>@<版本>`。`POST /api/note-templates/:id/preview` 加選填的 `body`、`read_button`、`checks`（NOTE-R12、NOTE 待決問題 N23），伺服器套在模板的副本上、走與儲存相同的檢查（未知變數 422），不建立版本；場景是 `features/NOTE-notes.feature` 的「An unsaved draft can be previewed without creating a version」「An unsaved draft with an unknown variable is refused」（`@M3`）。編輯頁有修改時把草稿一起送出（停止輸入 500ms 後），說明改成「預覽的是編輯中的內容，還沒有儲存。」；沒有修改時照舊預覽 `<id>@<版本>`。內文從 textarea 改成 Prompt 庫的 CodeMirror 編輯器（`PromptCodeEditor` 多了 `scan` 參數，沒有複製一份）：筆記模板的掃描（`templateVars.ts`）只看 `{{ … }}` 中的欄位參照（`.Title`、`.Item.URL`），在 NOTE-R11 清單中的高亮、不在的加波浪底線並列出「不認識的變數 .X。」（與後端訊息相同）；`if`／`else`／`end`、函式、字串常數與註解不判斷，交給後端，寧可少標也不誤標。模板頁因此也載入 `prompt-editor.css`。
 8. **vault 與 hook 的清單**：`GET /api/vaults` 早就有（VAULT-R1），hook 沒有 API，新增唯讀的 `GET /api/hooks`（`admin`），只回 id（VAULT-R10、VAULT 待決問題 V18：`argv` 可能含參數形式的秘密）；場景是 `features/VAULT-vault-output.feature` 的「The vaults and hooks from the config file are listed by id only」（`@M3`）。設定 › 輸出把「尚未啟用」換成兩個唯讀清單：vault 列 id、adapter（本機資料夾或 git repo）與根資料夾，hook 只列 id，沒有任何輸入框（V1：只能在設定檔修改）。處理方案的輸出目標多了「Vault」：選用設定檔的 vault（預設第一個）、vault 內的資料夾（選填，`folder`）、勾選寫入後的 hook；vault 沒有「字幕樣式」，字幕檔格式可以全部不勾（送 `[]`，只寫筆記與圖片，VAULT-R5）。換目標時只留下新目標認得的欄位（`retarget`，對照 `internal/pipeline/schema.go` 的兩組欄位），避免伺服器回「不認識的欄位。」；處理方案中已經寫了、但設定檔沒有的 vault 或 hook 仍會列出，讓使用者看得到、改得掉。`lang`、`on_user_change` 仍不在表單中、原樣保留（10.8）。
+
+### 10.25 設定頁的 provider 目錄與測試連線（2026-11-25）
+
+pages.md §12 的「服務與金鑰」要求每個 provider 都有「測試連線」、顯示模型的停用公告、`command` 唯讀顯示，原本因為後端沒有路由而標為「未做」（10.10）。這個切片補上後端（SEC-06、SEC-R11）與畫面。下面的決定都是「（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）」；後端的決定記在 SEC 規格的待決問題。
+
+| 項目 | 狀態 | 位置 |
+| --- | --- | --- |
+| `GET /api/providers`（`read`）：內建與設定檔中的 provider、種類、來源、能不能測試、模型的停用公告 | 完成 | `internal/providers`、`internal/api/providers.go` |
+| `POST /api/providers/{id}/test`（`admin`）：帶認證、不產生費用的請求；409 `needs_action`、502 `upstream_failed`；`command` 只檢查指令 | 完成 | `internal/providers`、`internal/llm/registry.go`、`internal/source/{groq,supadata}` |
+| 「Provider 與測試連線」面板：唯讀清單、測試結果（延遲或訊息＋建議動作）、停用公告、`command` 的說明 | 完成 | `src/pages/settings/ServicesSection.tsx` |
+| 模型停用公告的資料 | 機制已有；目前沒有資料：2026-11-25 查證，程式內建的唯一模型 `whisper-large-v3-turbo` 不在 Groq 的官方停用清單，LLM 的模型都是使用者輸入的（見 SEC 待決問題） | `internal/providers.Deprecations` |
+
+1. **兩個清單**：API key 的清單（7 個服務商，照抄後端白名單）與 provider 目錄是不同的東西：目錄的 id 可以是設定檔中的任意名稱（例如 `whisperx`），而 `mistral`、`openai-compatible` 的 key 沒有對應的 provider 可以測試。所以 provider 目錄是獨立的面板，排在 API key 之後、Supadata 之前；原本的「命令類型的 provider」面板併進來，說明放在面板最後。
+2. **列的內容**：id 原樣顯示（不翻譯），下面一行是「種類 · type · 來源」；`command` 多一行「只能在設定檔中定義，這裡唯讀顯示」；停用公告每個模型一行（實線左框，和「尚未提供」的虛線區分）；`testable: false` 的按鈕停用並說明原因。目錄沒有任何新增、修改、刪除的按鈕。
+3. **測試連線的按鈕**：可見文字是「測試連線」，可存取名稱是「測試連線：<id>」（含可見文字，WCAG 2.5.3）；請求帶 `?kind=`，同一個 id 有兩種 provider 時不會測錯。成功顯示「連線成功（N ms）。」（`role="status"`），`command` 顯示「找到指令且可以執行；沒有實際執行。」；不用後端的 `message`，三種語言才一致。
+4. **失敗的顯示**：用 `ErrorCallout`。`upstream_failed` 改用後端的訊息（含 provider 與狀態碼），因為前端字典的 `errors.upstream_failed` 是講 yt-dlp 的；`needs_action` 的 `actions` 是後端的文字，接在訊息後面（「建議動作：設定 API key。」），沿用 Prompt 庫試跑的做法；不做成按鈕，因為「設定 API key」就在同一頁上方。
+5. **還沒有改用的地方**：處理方案與試跑面板的 provider 欄位仍是文字輸入加內建 `datalist`（10.8 第 8 點）；改用目錄要決定是否列出設定檔的 LLM provider 與怎麼處理不在目錄中的舊值，留給之後的切片。
+

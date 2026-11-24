@@ -268,6 +268,11 @@ SEC-config-secrets.feature: A wrong master key is reported with the way out
 SEC-config-secrets.feature: Rotating the master key keeps every secret readable
 SEC-config-secrets.feature: Resetting secrets keeps the library
 SEC-config-secrets.feature: An invalid config import changes nothing
+SEC-config-secrets.feature: Built-in and config file providers are listed read-only
+SEC-config-secrets.feature: Testing a provider sends one authenticated request that costs nothing
+SEC-config-secrets.feature: Testing a provider without an API key asks for one
+SEC-config-secrets.feature: A provider failure during the test is reported as an upstream failure
+SEC-config-secrets.feature: A command provider is checked without being run
 SEG-segment.feature: Manual captions skip segmentation
 SEG-segment.feature: Merging fragments keeps the outer timestamps
 SEG-segment.feature: A split inside a cue uses the word timings

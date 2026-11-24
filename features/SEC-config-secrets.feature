@@ -185,3 +185,99 @@ Feature: Configuration and secrets
     And the command output contains "profiles.broken.language.targets"
     When the owner runs "notesteme config export"
     Then the command output contains "zh-Hant-TW"
+
+  @M1 @SEC-06 @SEC-R11
+  Scenario: Built-in and config file providers are listed read-only
+    Given the config file contains:
+      """
+      asr:
+        providers:
+          whisperx:
+            type: command
+            command: ["whisperx", "{audio}", "--output_format", "json", "--output_dir", "{out}"]
+            output: { format: whisperx-json, path: "{out}/{stem}.json" }
+      """
+    And the server is running
+    And the owner is signed in
+    When the owner sends "GET /api/providers"
+    Then the response status is 200
+    And the response contains:
+      """
+      { "providers": [
+        { "id": "anthropic", "type": "anthropic", "kind": "llm", "editable": false, "defined_in": "builtin", "testable": true, "deprecations": [] },
+        { "id": "gemini", "kind": "llm", "defined_in": "builtin" },
+        { "id": "groq", "kind": "asr", "defined_in": "builtin" },
+        { "id": "openai", "kind": "llm", "defined_in": "builtin" },
+        { "id": "supadata", "kind": "transcript", "defined_in": "builtin" },
+        { "id": "whisperx", "type": "command", "kind": "asr", "editable": false, "defined_in": "config_file", "testable": true }
+      ] }
+      """
+    And the response does not contain "--output_format"
+
+  @M1 @SEC-06 @SEC-R11
+  Scenario: Testing a provider sends one authenticated request that costs nothing
+    Given the server is running
+    And the owner is signed in
+    When the owner sends "POST /api/providers/anthropic/test"
+    Then the response status is 200
+    And the response contains:
+      """
+      { "ok": true, "message": "連線成功。" }
+      """
+    And the LLM provider "anthropic" received 1 requests
+
+  @M1 @SEC-06 @SEC-R11
+  Scenario: Testing a provider without an API key asks for one
+    Given the provider "openai" has no API key
+    And the server is running
+    And the owner is signed in
+    When the owner sends "POST /api/providers/openai/test"
+    Then the response status is 409
+    And the response contains:
+      """
+      { "code": "needs_action", "message": "LLM provider openai 沒有設定 API key。", "actions": ["設定 API key"] }
+      """
+    And the LLM provider "openai" received 0 requests
+
+  @M1 @SEC-06 @SEC-R11
+  Scenario: A provider failure during the test is reported as an upstream failure
+    Given the LLM provider "anthropic" fails with HTTP 503
+    And the server is running
+    And the owner is signed in
+    When the owner sends "POST /api/providers/anthropic/test"
+    Then the response status is 502
+    And the response contains:
+      """
+      { "code": "upstream_failed", "message": "provider anthropic 暫時無法使用（HTTP 503），請稍後再試。" }
+      """
+
+  @M1 @SEC-06 @SEC-R11
+  Scenario: A command provider is checked without being run
+    Given the config file contains:
+      """
+      asr:
+        providers:
+          present:
+            type: command
+            command: ["sh", "{audio}"]
+            output: { format: srt, path: "{out}/{stem}.srt" }
+          missing:
+            type: command
+            command: ["notesteme-no-such-asr", "{audio}"]
+            output: { format: srt, path: "{out}/{stem}.srt" }
+      """
+    And the server is running
+    And the owner is signed in
+    When the owner sends "POST /api/providers/present/test"
+    Then the response status is 200
+    And the response contains:
+      """
+      { "ok": true, "message": "找到指令且可以執行；沒有實際執行。" }
+      """
+    When the owner sends "POST /api/providers/missing/test"
+    Then the response status is 409
+    And the response contains:
+      """
+      { "code": "needs_action", "message": "找不到 command provider missing 的指令，或沒有執行權限。", "actions": ["修改設定檔"] }
+      """
+    And the response does not contain "notesteme-no-such-asr"

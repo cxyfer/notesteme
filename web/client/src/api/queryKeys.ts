@@ -68,6 +68,8 @@ export const queryKeys = {
   prices: ["prices"] as const,
   noteTemplates: ["note-templates"] as const,
   notifiers: ["notifiers"] as const,
+  // 設定頁「服務與金鑰」的 provider 目錄（SEC-R11）
+  providers: ["providers"] as const,
   notifications: ["notifications"] as const,
   vaults: ["vaults"] as const,
   hooks: ["hooks"] as const,

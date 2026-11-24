@@ -465,3 +465,36 @@ func GlossaryPrompt(terms []string) string {
 	}
 	return b.String()
 }
+
+// MsgNoKey 是沒有設定 API key 時測試連線給使用者看的訊息（SEC-R11）。
+const MsgNoKey = "Groq 沒有設定 API key。"
+
+// PingRequest 組出測試連線用的請求（設定頁的「測試連線」，SEC-R11）：GET <base>/models，帶認證、不產生費用。
+// 沒有 API key 或 key 格式不正確時是 needs_action，動作「設定 API key」，不會發出請求。請求還沒送出；呼叫端負責逾時與 netguard。
+func (c *Client) PingRequest(ctx context.Context) (*http.Request, error) {
+	key, err := c.resolveKey(ctx)
+	if err != nil {
+		return nil, fail(errclass.ClassRetryable, "讀取 API key 失敗", err)
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, &errclass.Error{
+			Class: errclass.ClassNeedsAction, Source: ID, Err: ErrNoKey,
+			Message: MsgNoKey, Actions: []string{ActionSetKey},
+		}
+	}
+	if strings.ContainsFunc(key, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return nil, &errclass.Error{
+			Class: errclass.ClassNeedsAction, Source: ID, Err: ErrKeyMalformed,
+			Message: MsgKeyMalformed, Actions: []string{ActionSetKey},
+		}
+	}
+	base, _ := c.Endpoint()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/models", nil)
+	if err != nil {
+		return nil, fail(errclass.ClassPermanent, "", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Accept", "application/json")
+	return req, nil
+}

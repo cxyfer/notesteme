@@ -442,6 +442,7 @@ Prompt 庫 › 校正 › correct-default
 - **實作狀態（UI-6，2026-11-24）**：新增「Hub」分區（`/settings/hub`，在「系統」之後）：URL 唯讀、Hub token、測試連線、ASR 前查詢的開關與說明、用 Hub 的版本重新生成（HSHR），見 [README 10.16、10.17](README.md#1017-ui-6-的決定與待決問題)。
 - **實作狀態（UI-8，2026-11-24）**：「系統」的匯入 bundle 在 409 時連到既有影音，影音在垃圾桶時連到垃圾桶，見 [README 10.20、10.21](README.md#1021-ui-8-的決定與待決問題)。
 - **實作狀態（UI-5，2026-11-24）**：「詞彙表」加上跨頻道的術語審核（GLOS-R7）；「通知」加上彙整設定（DIG）；「系統」加上系統告警、每日備份狀態與「匯入 bundle」（OPS、BND），見 [README 10.14、10.15](README.md#1015-ui-5-的決定與待決問題)。
+- **實作狀態（2026-11-25）**：「服務與金鑰」加上 provider 目錄（`GET /api/providers`，內建與設定檔中的 provider 全部唯讀，`command` 註明只能在設定檔定義）、每個 provider 的「測試連線」（`POST /api/providers/:id/test`，SEC-R11）與模型的停用公告（機制已有；目前內建的模型沒有停用公告，見 SEC 待決問題），見 [README 10.25](README.md#1025-設定頁的-provider-目錄與測試連線2026-11-25)。
 - **實作狀態（UI-4，2026-11-23）**：「通知」與「預算」分區完成，見 [README 10.12、10.13](README.md#1013-ui-4-的決定)；其他分區見 README 10.10。
 
 ## 13. 登入

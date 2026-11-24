@@ -127,27 +127,78 @@ func (r *Registry) Client(ctx context.Context, id string) (Client, error) {
 			Message: fmt.Sprintf("找不到 LLM provider「%s」。", id),
 		}
 	}
+	key, err := r.apiKey(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if r.NewClient != nil {
+		return r.NewClient(cfg, key), nil
+	}
+	return r.httpClient(cfg, key), nil
+}
+
+// apiKey 讀取 provider 的 API key：環境變數優先，其次是資料庫。沒有 key 時是 needs_action，動作「設定 API key」（LLM-R12）。
+func (r *Registry) apiKey(ctx context.Context, id string) (string, error) {
 	key := strings.TrimSpace(r.Env[KeyEnvVar(id)])
 	if key == "" && r.StoredKey != nil {
 		k, ok, err := r.StoredKey(ctx, id)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		if ok {
 			key = strings.TrimSpace(k)
 		}
 	}
 	if key == "" {
-		return nil, &errclass.Error{
+		return "", &errclass.Error{
 			Class: errclass.ClassNeedsAction, Source: "llm:" + id, Detail: "沒有 API key（" + KeyEnvVar(id) + "）",
 			Message: fmt.Sprintf("LLM provider %s 沒有設定 API key。", id), Actions: []string{ActionSetAPIKey},
 			Err: errclass.ErrNotConfigured,
 		}
 	}
-	if r.NewClient != nil {
-		return r.NewClient(cfg, key), nil
+	return key, nil
+}
+
+// PingRequest 組出測試連線用的請求（設定頁的「測試連線」，SEC-R11）：列出模型的 GET 請求，
+// 帶認證但不產生費用（anthropic：GET /v1/models?limit=1；openai 相容：GET <base>/models；gemini：GET /v1beta/models?pageSize=1）。
+// provider 不存在時是 permanent，沒有 API key 時與 Client 相同是 needs_action。請求還沒送出；呼叫端負責逾時與 netguard。
+func (r *Registry) PingRequest(ctx context.Context, id string) (*http.Request, error) {
+	cfg, ok := r.providers[id]
+	if !ok {
+		return nil, &errclass.Error{
+			Class: errclass.ClassPermanent, Source: "llm", Detail: "找不到 LLM provider " + id,
+			Message: fmt.Sprintf("找不到 LLM provider「%s」。", id),
+		}
 	}
-	return r.httpClient(cfg, key), nil
+	key, err := r.apiKey(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	base := strings.TrimRight(cfg.BaseURL, "/")
+	var url string
+	switch cfg.Type {
+	case TypeAnthropic:
+		url = base + "/v1/models?limit=1"
+	case TypeGemini:
+		url = base + "/v1beta/models?pageSize=1"
+	default:
+		url = base + "/models"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, &errclass.Error{Class: errclass.ClassPermanent, Source: "llm:" + id, Detail: "組出請求失敗", Err: err}
+	}
+	req.Header.Set("Accept", "application/json")
+	switch cfg.Type {
+	case TypeAnthropic:
+		req.Header.Set("x-api-key", key)
+		req.Header.Set("anthropic-version", AnthropicVersion)
+	case TypeGemini:
+		req.Header.Set(GeminiKeyHeader, key)
+	default:
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	return req, nil
 }
 
 // httpClient 回傳 provider 的 HTTPClient：設定與 key 都沒變時重用，連線池一律共用 shared。

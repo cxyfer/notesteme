@@ -898,7 +898,6 @@
       "cleared": "Cleared the {{name}} API key",
       "clearTitle": "Clear the {{name}} API key?",
       "clearBody": "Steps that use {{name}} will fail until you set a new key. The key can't be recovered, so make sure you have a copy.",
-      "testUnavailable": "Test connection and model deprecation notices: the backend doesn't provide an API for these yet.",
       "supadataTitle": "Supadata",
       "supadataMode": "How to get transcripts",
       "supadata": {
@@ -906,8 +905,29 @@
         "native": "Platform captions only",
         "generate": "Always generate with Supadata"
       },
-      "commandTitle": "Command providers",
-      "commandHint": "Command providers run commands on the host, so they can only be defined in the config file. They can't be added or changed here."
+      "commandHint": "Command providers run commands on the host, so they can only be defined in the config file. They can't be added or changed here.",
+      "providersTitle": "Providers and connection tests",
+      "providersHint": "Built-in providers and those defined in the config file. They're read-only here; set API keys above. Test connection sends one request that costs nothing (listing models or account info).",
+      "providersEmpty": "No providers.",
+      "kind": {
+        "llm": "LLM",
+        "asr": "Speech-to-text",
+        "transcript": "Transcript service"
+      },
+      "definedIn": {
+        "builtin": "Built-in",
+        "config_file": "Config file"
+      },
+      "commandReadOnly": "Command provider: can only be defined in the config file and is shown read-only here.",
+      "test": "Test connection",
+      "testLabel": "Test connection: {{name}}",
+      "testing": "Testing…",
+      "testOk": "Connected ({{ms}} ms).",
+      "testActions": "Suggested action: {{actions}}.",
+      "untestable": "This kind of provider isn't wired into processing yet, so it can't be tested.",
+      "deprecation": "Deprecation notice: model {{model}} stops working on {{after}}.",
+      "deprecationReplacement": "Use {{replacement}} instead.",
+      "testOkCommand": "The command exists and is executable; it was not run."
     },
     "accounts": {
       "intro": "Some videos require sign-in to download or to get captions. Uploaded cookies are stored encrypted, one per platform; a new upload replaces the old one. Media waiting for a cookie continues after saving.",

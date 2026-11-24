@@ -864,7 +864,6 @@
       "cleared": "已清除 {{name}} 的 API key",
       "clearTitle": "清除 {{name}} 的 API key？",
       "clearBody": "清除后，使用 {{name}} 的步骤会失败，直到你设置新的 API key。这个 key 无法恢复，请确认你另外保存了它。",
-      "testUnavailable": "“测试连接”与模型的停用公告：后端还没有提供对应的 API。",
       "supadataTitle": "Supadata",
       "supadataMode": "获取字幕的方式",
       "supadata": {
@@ -872,8 +871,29 @@
         "native": "只取平台字幕",
         "generate": "一律由 Supadata 生成"
       },
-      "commandTitle": "命令类型的 provider",
-      "commandHint": "command 类型的 provider 会在主机上执行命令，只能在配置文件中定义，这里不能新增或修改。"
+      "commandHint": "command 类型的 provider 会在主机上执行命令，只能在配置文件中定义，这里不能新增或修改。",
+      "providersTitle": "Provider 与测试连接",
+      "providersHint": "列出内置与配置文件中定义的 provider，这里都是只读；API key 在上方设置。“测试连接”会发送一个不产生费用的请求（列出模型或账户信息）。",
+      "providersEmpty": "没有任何 provider。",
+      "kind": {
+        "llm": "LLM",
+        "asr": "语音转录",
+        "transcript": "字幕服务"
+      },
+      "definedIn": {
+        "builtin": "内置",
+        "config_file": "配置文件"
+      },
+      "commandReadOnly": "command 类型：只能在配置文件中定义，这里只读显示。",
+      "test": "测试连接",
+      "testLabel": "测试连接：{{name}}",
+      "testing": "测试中…",
+      "testOk": "连接成功（{{ms}} ms）。",
+      "testActions": "建议操作：{{actions}}。",
+      "untestable": "这种 provider 还没有接入处理流程，无法测试连接。",
+      "deprecation": "停用公告：模型 {{model}} 在 {{after}} 停止服务。",
+      "deprecationReplacement": "建议改用 {{replacement}}。",
+      "testOkCommand": "找到命令且可以执行；没有实际执行。"
     },
     "accounts": {
       "intro": "有些视频需要登录才能下载或获取字幕。上传的 cookie 加密存放，每个平台一份，新的会替换旧的；保存后会继续处理等待 cookie 的音视频。",
