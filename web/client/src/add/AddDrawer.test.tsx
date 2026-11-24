@@ -83,9 +83,32 @@ function drawerApi(routes: Record<string, MockHandler> = {}) {
       return apiError(422, "unrecognized_url", "無法辨識（後端）");
     },
     "POST /api/items": () => json(201, { items: [ingested(1)] }),
+    "POST /api/estimate": () => ESTIMATE,
     ...routes,
   });
 }
+
+const ESTIMATE = {
+  items: [
+    {
+      ref: "yt:vid00000001",
+      title: "",
+      duration_s: 600,
+      expected_source: "youtube-auto",
+      asr_usd: 0,
+      source_usd: null,
+      llm_usd: 0.21,
+      total_usd: 0.21,
+      requires_cookie: false,
+      already_in_library: false,
+      notes: ["有自動字幕，可能用不到語音轉錄。"],
+    },
+  ],
+  total_usd: 0.21,
+  currency: "USD",
+  prices_as_of: "2026-11-01",
+  notes: [],
+};
 
 async function openDrawer(path = "/library") {
   signIn();
@@ -240,6 +263,58 @@ describe("新增抽屜", () => {
     expect(JSON.parse(String(api.calls("POST", "/api/items")[0]!.init.body)).episodes).toEqual([
       "ep-2",
     ]);
+  });
+
+  it("辨識成功後顯示預估花費（ENTRY 的書籤場景）；估算失敗不擋開始處理", async () => {
+    let fail = false;
+    const api = drawerApi({
+      "POST /api/estimate": () =>
+        fail ? apiError(429, "rate_limited", "請求太頻繁，請稍後再試。") : ESTIMATE,
+    });
+    const { dialog } = await openDrawer();
+    await userEvent.type(within(dialog).getByLabelText("網址"), YT);
+    expect(await within(dialog).findByText("預估花費約 US$0.21。")).toBeTruthy();
+    expect(within(dialog).getByText("有自動字幕，可能用不到語音轉錄。")).toBeTruthy();
+    const body = JSON.parse(String(api.calls("POST", "/api/estimate")[0]!.init.body));
+    expect(body).toEqual({ url: YT, profile: "default" });
+    // 換處理方案會重新估算；這次失敗：寫明原因，但仍然可以開始處理
+    fail = true;
+    await userEvent.selectOptions(within(dialog).getByLabelText("處理方案"), "notes");
+    expect(await within(dialog).findByText(/無法預估花費：/)).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "開始處理" })).toHaveProperty(
+      "disabled",
+      false,
+    );
+    expect(api.calls("POST", "/api/items")).toHaveLength(0);
+  });
+
+  it("全部金額未知時寫「無法預估花費」，不顯示 $0.00", async () => {
+    drawerApi({
+      "POST /api/estimate": () => ({
+        ...ESTIMATE,
+        items: [{ ...ESTIMATE.items[0], llm_usd: null, total_usd: null, notes: [] }],
+        total_usd: 0,
+      }),
+    });
+    const { dialog } = await openDrawer();
+    await userEvent.type(within(dialog).getByLabelText("網址"), YT);
+    expect(await within(dialog).findByText("無法預估花費。")).toBeTruthy();
+    expect(within(dialog).queryByText(/\$0\.00/)).toBeNull();
+  });
+
+  it("貼上頻道：提供「建立訂閱」，打開新增訂閱並帶入網址與一台實例的提醒（SUB 的 @ui 場景）", async () => {
+    const api = drawerApi({ "GET /api/subscriptions": () => ({ subscriptions: [] }) });
+    const { dialog, router } = await openDrawer();
+    const channel = "https://www.youtube.com/@fixturechannel";
+    await userEvent.type(within(dialog).getByLabelText("網址"), channel);
+    await within(dialog).findByRole("heading", { name: "YouTube 頻道" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "建立訂閱" }));
+    // 頻道不估價
+    expect(api.calls("POST", "/api/estimate")).toHaveLength(0);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/subscriptions"));
+    const drawer = await screen.findByRole("dialog", { name: "新增訂閱" });
+    expect(within(drawer).getByText("同一個頻道只在一台實例上訂閱，避免重複處理。")).toBeTruthy();
+    expect((within(drawer).getByLabelText("來源") as HTMLInputElement).value).toBe(channel);
   });
 
   it("頻道不能直接新增：提示訂閱並停用送出（ING-R5）", async () => {

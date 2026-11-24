@@ -260,7 +260,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 時間帶（精簡版）放進 `web/shared` | 完成 | `web/shared/src/StatusBand.tsx`、[web/shared/README](../../web/shared/README.md) |
 | 依頻道／發布日／狀態分組、「格」檢視、儲存檢視 | 分組完成（收尾 D1，見 10.22）；「格」檢視完成（UI-8）；儲存檢視未做 | 儲存檢視不在 M4 範圍 |
 | 批次操作、垃圾桶檢視 | 完成（UI-7，見 10.18） | `src/pages/library/BulkBar.tsx`、`src/pages/trash` |
-| 預估花費（`POST /api/estimate`）、「調整這次的設定」、一次貼上多個網址、把檔案拖進視窗 | 未做 | 見 10.5 第 6 點 |
+| 預估花費（`POST /api/estimate`） | 完成（10.23 第 3 點） | `src/add/AddDrawer.tsx` |
+| 「調整這次的設定」、一次貼上多個網址、把檔案拖進視窗 | 未做 | 見 10.5 第 6 點 |
 
 ### 10.5 UI-1 的決定
 
@@ -271,7 +272,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 3. ~~**預設不分組**（LIB-R4 的「預設依頻道分組」沒做）：列表依建立時間的 keyset cursor 分頁，前端分組會讓同一個頻道散在不同頁；而且 API 沒有頻道名稱。等 API 有 `group_by`（LIB 規格待決問題已記錄）再做。~~ 收尾 D1 已做：API 加了 `group_by` 與頻道名稱，媒體庫預設依頻道分組（見 10.22）。
 4. **篩選的 URL 參數**與 API 同名，除了發布日存 `YYYY-MM-DD`（當地時區的整天）、長度存分鐘（`dur_min`／`dur_max`）。頻道沒有列表 API，改成文字輸入，並可以點列上的頻道「只看這個頻道」。
 5. **步驟狀態的對應**：`blocked` 依 `block_reason` 對應到需要你處理／超出預算／等你決定，認不得的當成需要你處理。狀態欄顯示最需要注意的步驟（失敗 > 停住 > 等待 Agent > 處理中 > 稍後檢查，否則是最後完成的步驟）。失敗的列提供「從該步驟重新處理」（`POST /api/items/{id}/rerun`），停住（非預算）的列提供「開啟帳號與 Cookie 設定」。步驟的 `message` 是後端的繁中文字，原樣顯示（沒有 code 可以查字典）。
-6. **抽屜的範圍**：一次一個網址或一個檔案（上傳 API 一次只收一個檔案）；播放清單整份新增（API 沒有範圍參數，見 LIB／ING 待決問題）；Bilibili 沒有指定分P 時可以選「全部」或輸入編號（resolve 不回分P 數，不為了列出分P 呼叫會跑 yt-dlp 的 estimate）；頻道只提示訂閱（M4）。預估花費與單次覆寫留給之後的切片。
+6. **抽屜的範圍**：一次一個網址或一個檔案（上傳 API 一次只收一個檔案）；播放清單整份新增（API 沒有範圍參數，見 LIB／ING 待決問題）；Bilibili 沒有指定分P 時可以選「全部」或輸入編號（resolve 不回分P 數，不為了列出分P 呼叫會跑 yt-dlp 的 estimate）；頻道只提示訂閱（M4）。預估花費與單次覆寫留給之後的切片。（10.23 已補預估花費與頻道的「建立訂閱」；單次覆寫仍未做。）
 7. **新增相依**：`@tanstack/react-virtual` 3.14.26（2026-11-03 發佈；3.14.27／28 是 11-22 才發佈）。初始 JS 由約 137KB 增加到約 174KB（gzip），沒有另外做 lazy route。
 8. **`web/shared` 的接線**：沿用 brief 把 StatusBand 放進 `web/shared`（web/shared/README 原本寫「穩定後再搬」）；`react` 由 `web/client` 解析，lint、prettier、tsc 都涵蓋它，Dockerfile 一併複製。
 9. **測試替身**：不引入 MSW，用自寫的 `src/test/mockApi.ts`；vitest 的 `testTimeout` 提高到 15 秒（多個 child 同時跑時，整頁的互動測試在 5 秒內跑不完）。
@@ -670,6 +671,9 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | --- | --- | --- |
 | 影音詳情的「更多」選單（刪除移進去；DEL 的「The delete dialog explains the consequences and can be undone」） | 完成 | `src/components/MoreMenu.tsx`、`src/pages/item/ItemPage.tsx` |
 | 「改用更好的字幕重跑」的對話框顯示預估花費（SRC 的「The item page offers the upgrade with its estimated cost」） | 完成 | `src/pages/item/RerunDialog.tsx` |
+| 「新增」抽屜的預估花費（ENTRY 的「Clicking the bookmarklet on a video page fills in the add drawer」）與貼上頻道時的「建立訂閱」（SUB 的「Pasting a channel address offers to subscribe」） | 完成 | `src/add/AddDrawer.tsx`、`src/pages/subscriptions/SubscriptionsPage.tsx`、`src/router.tsx` |
 
 1. **「更多」選單是 disclosure，不是 `role="menu"`**：按鈕帶 `aria-expanded`，展開後是一組普通按鈕；Esc、點外面或 Tab 離開就收起。選了項目之後先把焦點還給「更多」再打開對話框，所以對話框關閉時焦點回到「更多」。目前只有「刪除…」一項（pages.md §4 只列刪除）；按鈕文字從「移到垃圾桶…」改成「刪除…」，對齊場景與 pages.md 的用字，確認框的標題仍是「移到垃圾桶？」。
 2. **重新處理對話框的預估**：rerun 的 API 仍然沒有 `dry_run`。影音有 `better_source` 時，`estimate_usd`（SRC-R23）就是「用現行設定從 `transcript` 做到最後」的金額，所以只在起點是「字幕」、而且沒有改做到哪裡、處理方案、provider、模型、prompt 與 chunk 時顯示「用目前的設定從字幕步驟做到最後，預估花費 $X。」；其他情況與 `estimate_usd` 為 null 時仍是「無法預估」，不自己推算。不論從哪個按鈕打開對話框都一樣（從字幕步驟重跑時一定會改用更好的來源）。
+3. **「新增」抽屜的預估花費**：辨識成功、不是頻道、Bilibili 的分P 格式正確、Podcast 至少勾一集時，用和「開始處理」相同的內容（網址、處理方案、分P、集）呼叫 `POST /api/estimate`；內容停止變動 400ms 後才送出、不重試、同樣的內容 60 秒內不重送，因為估算可能呼叫 yt-dlp（10.5 第 6 點的顧慮仍在，只是改成「辨識成功之後才估」）。只顯示已知金額：全部未知寫「無法預估花費。」（不顯示 $0.00），部分未知寫「預估花費至少 $X，有些部分無法預估。」；伺服器的 `notes` 原樣列在下面。估算失敗（例如 429）只寫一行原因，不擋「開始處理」。書籤、分享帶進來的網址（ENTRY-R2、R4）走同一個抽屜，所以也會顯示預估。
+4. **貼上頻道時的「建立訂閱」**：頻道（`subscribable`）在預覽中顯示「這是頻道。要追蹤新內容，請建立訂閱。」與「建立訂閱」按鈕，「開始處理」維持停用。按下後關閉抽屜，前往 `/subscriptions?subscribe=<貼上的網址>`，訂閱頁直接打開「新增訂閱」抽屜並帶入網址（抽屜的說明就是「同一個頻道只在一台實例上訂閱，避免重複處理。」），關閉時從網址移除參數。帶的是貼上的網址（resolve 對頻道回的 `url` 就是原網址）；SUB-R1 不接受的形式（例如 `/c/<名稱>`、UP 主空間）由建立時的 422 說明。Podcast feed 仍然可以勾選集數新增，另外多一個「建立訂閱」的文字按鈕（pages.md §2 寫「貼上頻道或 RSS 網址時」提示訂閱），不擋新增。訂閱頁的參數只做長度上限（2048），不在前端判斷格式。

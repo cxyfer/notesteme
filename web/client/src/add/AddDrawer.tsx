@@ -2,7 +2,10 @@
 //
 //   1. 貼上網址 → POST /api/resolve 辨識（延遲 400ms，不建立影音）→ 顯示預覽：
 //      影片（Bilibili 沒有指定分P 時可以選「全部」或指定編號）、播放清單（整份新增）、
-//      頻道（不能直接新增，提示建立訂閱）、Podcast feed（勾選要新增的集，ING-R6）。
+//      頻道（不能直接新增，改為提供「建立訂閱」：打開 /subscriptions?subscribe=<網址>，SUB-R1）、
+//      Podcast feed（勾選要新增的集，ING-R6；也可以改成建立訂閱）。
+//      辨識成功、不是頻道時另外呼叫 POST /api/estimate 顯示預估花費（ENTRY-R2 的書籤與分享也會看到）；
+//      估算可能呼叫 yt-dlp，所以延遲送出、不重試，失敗也不擋「開始處理」。
 //   2. 或選擇本機檔案（multipart POST /api/items，一次一個檔案）。
 //   3. 選擇處理方案（GET /api/profiles），按「開始處理」→ POST /api/items。
 //   4. 成功：關閉抽屜，toast「已開始處理 N 部」附「查看」；全部都已在媒體庫中時留在抽屜，提供「打開」。
@@ -13,6 +16,7 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "rea
 import { useTranslation } from "react-i18next";
 
 import { api, apiPath } from "../api/client";
+import { describeError } from "../api/describeError";
 import { isApiError } from "../api/errors";
 import { queryKeys } from "../api/queryKeys";
 import type { components } from "../api/schema";
@@ -25,12 +29,14 @@ import {
   useToast,
   type ErrorAction,
 } from "../components";
-import { formatDate, formatNumber, formatTimecode } from "../i18n";
+import { formatDate, formatNumber, formatTimecode, formatUsd } from "../i18n";
 import { isHttpUrl, parseParts } from "./url";
 
 type Resolution = components["schemas"]["Resolution"];
 type IngestedItem = components["schemas"]["IngestedItem"];
 type CreateBody = components["schemas"]["CreateItemInputBody"];
+type EstimateBody = components["schemas"]["EstimateInputBody"];
+type EstimateResult = components["schemas"]["EstimateResult"];
 
 const RESOLVE_DELAY_MS = 400;
 
@@ -119,13 +125,42 @@ export function AddDrawer({ open, onOpenChange, initialUrl = "", notice }: AddDr
       : !isHttpUrl(trimmed)
         ? t("add.invalidUrl")
         : res?.subscribable
-          ? t("add.channelHint")
+          ? t("add.channelBlocked")
           : isFeed && episodes.size === 0
             ? t("add.pickEpisodes")
             : partsInvalid
               ? t("add.partsInvalid")
               : undefined;
   const ready = file !== null || (res !== undefined && !blockedReason);
+
+  // ---- 預估花費（POST /api/estimate）：和送出的內容相同；勾選分P／集數時等停下來再送 ----
+  const estimateBody: EstimateBody | undefined =
+    !file && res && !res.subscribable && !partsInvalid && !(isFeed && episodes.size === 0)
+      ? {
+          url: res.url || trimmed,
+          ...(chosenProfile ? { profile: chosenProfile } : {}),
+          ...(parts ? { parts } : {}),
+          ...(isFeed ? { episodes: [...episodes].sort() } : {}),
+        }
+      : undefined;
+  const estimateJson = estimateBody ? JSON.stringify(estimateBody) : "";
+  const estimateKey = useDebouncedValue(estimateJson, RESOLVE_DELAY_MS);
+  const estimate = useQuery({
+    queryKey: ["estimate", estimateKey],
+    queryFn: ({ signal }) =>
+      api.post("/api/estimate", { body: JSON.parse(estimateKey) as EstimateBody, signal }),
+    // 等處理方案清單讀完再送，避免先用「沒有指定」估一次
+    enabled: open && estimateKey !== "" && !profiles.isPending,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const estimateCurrent = estimateJson !== "" && estimateKey === estimateJson;
+
+  function subscribeInstead() {
+    const target = trimmed;
+    onOpenChange(false);
+    void navigate({ to: "/subscriptions", search: { subscribe: target } });
+  }
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -330,6 +365,14 @@ export function AddDrawer({ open, onOpenChange, initialUrl = "", notice }: AddDr
             partsInvalid={partsInvalid}
             episodes={episodes}
             setEpisodes={setEpisodes}
+            onSubscribe={subscribeInstead}
+          />
+        )}
+        {estimateCurrent && (
+          <EstimateLine
+            result={estimate.data}
+            loading={estimate.isFetching}
+            error={estimate.error}
           />
         )}
 
@@ -394,6 +437,7 @@ function Preview({
   partsInvalid,
   episodes,
   setEpisodes,
+  onSubscribe,
 }: {
   res: Resolution;
   partsMode: "all" | "some";
@@ -403,6 +447,7 @@ function Preview({
   partsInvalid: boolean;
   episodes: Set<string>;
   setEpisodes: (s: Set<string>) => void;
+  onSubscribe: () => void;
 }) {
   const { t } = useTranslation();
   const id = useId();
@@ -440,7 +485,22 @@ function Preview({
       )}
 
       {res.kind === "playlist" && <p>{t("add.playlistWhole")}</p>}
-      {res.subscribable && <p>{t("add.channelHint")}</p>}
+      {res.subscribable && (
+        <div className="add__subscribe">
+          <p>{t("add.channelHint")}</p>
+          <Button variant="primary" onClick={onSubscribe}>
+            {t("add.subscribe")}
+          </Button>
+        </div>
+      )}
+      {res.kind === "feed" && (
+        <p className="add__subscribe">
+          <span className="secondary">{t("add.feedSubscribeHint")}</span>{" "}
+          <Button variant="text" onClick={onSubscribe}>
+            {t("add.subscribe")}
+          </Button>
+        </p>
+      )}
 
       {res.platform === "bilibili" && res.kind === "video" && !res.part && (
         <fieldset className="add__parts">
@@ -526,5 +586,47 @@ function Preview({
         </fieldset>
       )}
     </section>
+  );
+}
+
+/** 預估花費：只顯示已知金額；全部未知時寫明無法預估，不顯示 $0.00（同 UI-4 決定 4） */
+function EstimateLine({
+  result,
+  loading,
+  error,
+}: {
+  result: EstimateResult | undefined;
+  loading: boolean;
+  error: unknown;
+}) {
+  const { t } = useTranslation();
+  if (loading) return <Spinner label={t("add.estimating")} showLabel />;
+  if (error != null)
+    return (
+      <p className="add__estimate secondary">
+        {t("add.estimateFailed", { reason: describeError(t, error) })}
+      </p>
+    );
+  if (!result) return null;
+  const items = result.items ?? [];
+  const known = items.filter((i) => i.total_usd != null).length;
+  const notes = [...new Set([...(result.notes ?? []), ...items.flatMap((i) => i.notes ?? [])])];
+  return (
+    <div className="add__estimate" role="status">
+      <p>
+        {known === 0
+          ? t("add.estimateUnknown")
+          : known < items.length
+            ? t("add.estimatePartial", { usd: formatUsd(result.total_usd) })
+            : t("add.estimate", { usd: formatUsd(result.total_usd) })}
+      </p>
+      {notes.length > 0 && (
+        <ul className="add__estimate-notes secondary">
+          {notes.map((n) => (
+            <li key={n}>{n}</li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

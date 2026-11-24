@@ -1,7 +1,8 @@
 // 訂閱列表（docs/ui/pages.md §5；SUB-R1、R6、R7、R9、R12、R13）：頻道、平台、檢查頻率、上次與下次檢查、
 // 處理方案、最近的錯誤；「新增訂閱」抽屜（含試跑預覽）與 OPML／Takeout 匯入。這個頁面是 lazy route。
+// ?subscribe=<網址>（「新增」抽屜的「建立訂閱」）直接打開新增訂閱的抽屜並帶入網址；關閉時從網址移除。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -35,6 +36,8 @@ import {
 
 type ImportResult = components["schemas"]["ImportResult"];
 
+const route = getRouteApi("/app/subscriptions");
+
 export function SubscriptionsPage() {
   const { t } = useTranslation();
   usePageTitle(t("pages.subscriptions.title"));
@@ -42,8 +45,15 @@ export function SubscriptionsPage() {
     queryKey: queryKeys.subscriptions.list(),
     queryFn: ({ signal }) => api.get("/api/subscriptions", { signal }),
   });
-  const [creating, setCreating] = useState(false);
+  const { subscribe } = route.useSearch();
+  const navigate = useNavigate();
+  const [creatingLocal, setCreating] = useState(false);
+  const creating = creatingLocal || subscribe !== undefined;
   const [importing, setImporting] = useState(false);
+  function closeCreate() {
+    setCreating(false);
+    if (subscribe !== undefined) void navigate({ to: "/subscriptions", search: {}, replace: true });
+  }
   const list = subs.data?.subscriptions ?? [];
   return (
     <>
@@ -71,7 +81,9 @@ export function SubscriptionsPage() {
         />
       )}
       {list.length > 0 && <SubscriptionTable list={list} />}
-      {creating && <NewSubscriptionDrawer onClose={() => setCreating(false)} />}
+      {creating && (
+        <NewSubscriptionDrawer key={subscribe ?? ""} initialUrl={subscribe} onClose={closeCreate} />
+      )}
       {importing && <ImportDialog onClose={() => setImporting(false)} />}
     </>
   );
@@ -136,12 +148,20 @@ function SubscriptionTable({ list }: { list: SubscriptionView[] }) {
   );
 }
 
-function NewSubscriptionDrawer({ onClose }: { onClose: () => void }) {
+function NewSubscriptionDrawer({
+  initialUrl,
+  onClose,
+}: {
+  initialUrl?: string;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
   const navigate = useNavigate();
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(() =>
+    initialUrl ? { ...EMPTY_FORM, url: initialUrl } : EMPTY_FORM,
+  );
   const create = useMutation({
     mutationFn: () => api.post("/api/subscriptions", { body: createBody(form) }),
     onSuccess: async (s) => {

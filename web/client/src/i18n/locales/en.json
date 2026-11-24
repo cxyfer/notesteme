@@ -418,7 +418,7 @@
     },
     "onlyPart": "Only part {{part}}",
     "playlistWhole": "Every video in the playlist will be added. Videos already in your library are not added again.",
-    "channelHint": "This is a channel. To follow new content, create a subscription (coming in a later version).",
+    "channelHint": "This is a channel. To follow new videos, create a subscription.",
     "requiresCookie": "This video needs a signed-in account. Upload a cookie first.",
     "cookieSettings": "Go to accounts and cookies",
     "parts": "Parts",
@@ -453,7 +453,15 @@
     "entry": {
       "invalidUrl": "The address from the bookmarklet or share was not valid and was ignored.",
       "noUrl": "The shared content has no web address."
-    }
+    },
+    "channelBlocked": "A channel can't be processed directly. Create a subscription instead.",
+    "subscribe": "Create subscription",
+    "feedSubscribeHint": "You can also subscribe to this podcast so new episodes are processed automatically.",
+    "estimating": "Estimating cost…",
+    "estimate": "Estimated cost: about {{usd}}.",
+    "estimatePartial": "Estimated cost: at least {{usd}}; some parts can't be estimated.",
+    "estimateUnknown": "The cost can't be estimated.",
+    "estimateFailed": "The cost can't be estimated: {{reason}}"
   },
   "actions": {
     "retry": "Retry",

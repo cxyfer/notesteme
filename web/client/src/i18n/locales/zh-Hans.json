@@ -402,7 +402,7 @@
     },
     "onlyPart": "只新增 P{{part}}",
     "playlistWhole": "会新增整个播放列表中的视频，已经在媒体库中的不会重复新增。",
-    "channelHint": "这是频道。要追踪新内容，请创建订阅（订阅在之后的版本加入）。",
+    "channelHint": "这是频道。要追踪新内容，请建立订阅。",
     "requiresCookie": "这个视频需要登录才能获取，先上传 cookie。",
     "cookieSettings": "前往账号与 Cookie",
     "parts": "分P",
@@ -433,7 +433,15 @@
     "entry": {
       "invalidUrl": "书签或分享的网址无效，已忽略。",
       "noUrl": "分享的内容中没有网址。"
-    }
+    },
+    "channelBlocked": "频道不能直接开始处理，请建立订阅。",
+    "subscribe": "建立订阅",
+    "feedSubscribeHint": "也可以订阅这个 Podcast，之后的新集数会自动处理。",
+    "estimating": "正在预估花费…",
+    "estimate": "预估花费约 {{usd}}。",
+    "estimatePartial": "预估花费至少 {{usd}}，有些部分无法预估。",
+    "estimateUnknown": "无法预估花费。",
+    "estimateFailed": "无法预估花费：{{reason}}"
   },
   "actions": {
     "retry": "重试",

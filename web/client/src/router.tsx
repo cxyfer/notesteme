@@ -178,6 +178,11 @@ export const styleRoute = createRoute({
 const subscriptionsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/subscriptions",
+  // ?subscribe=<網址>：「新增」抽屜貼上頻道時的「建立訂閱」，打開新增訂閱的抽屜並帶入網址
+  validateSearch: (search: Record<string, unknown>): { subscribe?: string } =>
+    typeof search.subscribe === "string" && search.subscribe.trim()
+      ? { subscribe: search.subscribe.trim().slice(0, 2048) }
+      : {},
   component: lazyRouteComponent(
     () => import("./pages/subscriptions/SubscriptionsPage"),
     "SubscriptionsPage",

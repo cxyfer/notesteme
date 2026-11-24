@@ -402,7 +402,7 @@
     },
     "onlyPart": "只新增 P{{part}}",
     "playlistWhole": "會新增整份播放清單中的影片，已經在媒體庫中的不會重複新增。",
-    "channelHint": "這是頻道。要追蹤新內容，請建立訂閱（訂閱在之後的版本加入）。",
+    "channelHint": "這是頻道。要追蹤新內容，請建立訂閱。",
     "requiresCookie": "這部影片需要登入才能取得，先上傳 cookie。",
     "cookieSettings": "前往帳號與 Cookie",
     "parts": "分P",
@@ -433,7 +433,15 @@
     "entry": {
       "invalidUrl": "書籤或分享的網址無效，已忽略。",
       "noUrl": "分享的內容中沒有網址。"
-    }
+    },
+    "channelBlocked": "頻道不能直接開始處理，請建立訂閱。",
+    "subscribe": "建立訂閱",
+    "feedSubscribeHint": "也可以訂閱這個 Podcast，之後的新集數會自動處理。",
+    "estimating": "正在預估花費…",
+    "estimate": "預估花費約 {{usd}}。",
+    "estimatePartial": "預估花費至少 {{usd}}，有些部分無法預估。",
+    "estimateUnknown": "無法預估花費。",
+    "estimateFailed": "無法預估花費：{{reason}}"
   },
   "actions": {
     "retry": "重試",
