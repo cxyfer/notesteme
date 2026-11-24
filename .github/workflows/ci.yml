@@ -1,6 +1,6 @@
 name: CI
 
-# 測試與檢查；docker job 會在 runner 上建置 image 並啟動，但不推送。image 只在 v* tag 時由 docker-publish.yml 建置並推送。
+# 測試與檢查；docker、compose、docker-arm64 job 會在 runner 上建置 image 並啟動，但不推送。image 只在 v* tag 時由 docker-publish.yml 建置並推送。
 on:
   push:
     branches: [master]
@@ -287,6 +287,27 @@ jobs:
           echo "$anon"
           grep -q 'HTTP/1.1 403' <<<"$anon" || { echo "::error::hub-s3 的匿名請求預期 403"; exit 1; }
 
+      # 重啟後資料還在：Postgres 與 S3 各寫一筆標記，down（不帶 -v）再 up，兩邊都要讀得回來，hub 重新就緒並通過 doctor。
+      - name: hub stack restart keeps data
+        working-directory: deploy/docker
+        run: |
+          hub() { docker compose -f compose.hub.yaml --env-file .env.hub --profile hub "$@"; }
+          hub exec -T hub-postgres psql -U notesteme_hub -d notesteme_hub -v ON_ERROR_STOP=1 \
+            -c "create table ci_restart_marker (v text); insert into ci_restart_marker values ('kept');"
+          # hub-s3-init 的 image 有 curl 與 sha256sum，且帶著 S3 的金鑰與 bucket 名稱：覆寫它的指令來寫入與讀回物件。
+          s3put='h="$(printf kept | sha256sum | cut -d" " -f1)"; code="$(printf kept | curl -s -o /dev/null -w "%{http_code}" -X PUT --aws-sigv4 "aws:amz:us-east-1:s3" --user "$S3_ACCESS_KEY_ID:$S3_SECRET_ACCESS_KEY" -H "x-amz-content-sha256: $h" --data-binary @- "http://hub-s3:9000/$BUCKET/ci-restart-marker")"; echo "PUT -> $code"; test "$code" = 200'
+          s3get='empty=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855; code="$(curl -s -o /tmp/obj -w "%{http_code}" --aws-sigv4 "aws:amz:us-east-1:s3" --user "$S3_ACCESS_KEY_ID:$S3_SECRET_ACCESS_KEY" -H "x-amz-content-sha256: $empty" "http://hub-s3:9000/$BUCKET/ci-restart-marker")"; echo "GET -> $code body=$(cat /tmp/obj)"; test "$code" = 200 && test "$(cat /tmp/obj)" = kept'
+          hub run -T --rm hub-s3-init "$s3put"
+          hub run -T --rm hub-s3-init "$s3get"
+          hub down
+          hub up -d
+          curl --retry 30 --retry-delay 2 --retry-all-errors -fsS http://127.0.0.1:8090/readyz
+          hub run --rm hub doctor
+          kept="$(hub exec -T hub-postgres psql -U notesteme_hub -d notesteme_hub -tA -c 'select v from ci_restart_marker')"
+          echo "postgres marker: $kept"
+          test "$kept" = kept
+          hub run -T --rm hub-s3-init "$s3get"
+
       - name: hub stack logs
         if: failure()
         working-directory: deploy/docker
@@ -296,6 +317,124 @@ jobs:
         if: always()
         working-directory: deploy/docker
         run: docker compose -f compose.hub.yaml --env-file .env.hub --profile hub down -v
+
+  # Client 的 compose.yaml 實際啟動：local profile（登入、資料在重建容器後還在、只映射到 loopback，OPS-R9）
+  # 與 vps profile（vps-check 擋住沒有網域的設定、Caddy 反向代理、HTTPS、HSTS、固定位址，OPS-R19～R21）。
+  # Caddy 的網域用 notes.local：通過 vps-check 的網域檢查，又屬於 Caddy 只用內部 CA 簽發的名稱，不需要公網與 ACME。
+  compose:
+    name: Client compose (local & vps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: build client image
+        run: docker build -f deploy/docker/Dockerfile -t notesteme:ci .
+
+      - name: local profile
+        working-directory: deploy/docker
+        run: |
+          pw=compose-ci-password
+          printf 'NOTESTEME_IMAGE=notesteme:ci\nNOTESTEME_MASTER_KEY=%s\nNOTESTEME_PASSWORD=%s\nNOTESTEME_PORT=18080\n' "$(openssl rand -base64 32)" "$pw" > .env
+          base=http://127.0.0.1:18080
+          login() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d "{\"password\":\"$1\"}" "$base/api/auth/login"; }
+          docker compose up -d --no-build --pull never
+          curl --retry 30 --retry-delay 2 --retry-all-errors -fsS "$base/readyz"
+          test "$(login "$pw")" = 200
+          test "$(login wrong-password)" = 401
+          # 只映射到 loopback（OPS-R9）。
+          port="$(docker compose port notesteme 8080)"
+          echo "port: $port"
+          test "$port" = "127.0.0.1:18080"
+          # 密碼只在第一次啟動時需要：從 .env 移除後重建容器，登入仍然成功，代表資料在 volume 裡。
+          docker compose down
+          sed -i '/^NOTESTEME_PASSWORD=/d' .env
+          docker compose up -d --no-build --pull never
+          curl --retry 30 --retry-delay 2 --retry-all-errors -fsS "$base/readyz"
+          test "$(login "$pw")" = 200
+
+      - name: local profile logs
+        if: failure()
+        working-directory: deploy/docker
+        run: docker compose logs --no-color --tail 100
+
+      - name: local profile down
+        if: always()
+        working-directory: deploy/docker
+        run: docker compose down -v
+
+      - name: vps profile
+        working-directory: deploy/docker
+        run: |
+          pw=compose-ci-password
+          key="$(openssl rand -base64 32)"
+          dom=notes.local
+          printf 'COMPOSE_PROFILES=vps\nNOTESTEME_IMAGE=notesteme:ci\nNOTESTEME_MASTER_KEY=%s\nNOTESTEME_PASSWORD=%s\nNOTESTEME_DEPLOYMENT=vps\n' "$key" "$pw" > .env
+          # 反證：沒有網域時 vps-check 要失敗（Caddy 等它成功才會啟動）。
+          if out="$(docker compose run -T --rm vps-check 2>&1)"; then
+            echo "$out"; echo "::error::沒有 NOTESTEME_DOMAIN 時 vps-check 預期失敗"; exit 1
+          fi
+          echo "$out"
+          grep -q NOTESTEME_DOMAIN <<<"$out" || { echo "::error::vps-check 的錯誤訊息沒有提到 NOTESTEME_DOMAIN"; exit 1; }
+          printf 'NOTESTEME_DOMAIN=%s\n' "$dom" >> .env
+          # notesteme 用本機剛建好的 image；caddy 需要從 registry 拉。
+          docker compose up -d --no-build
+          https() { curl -sk --resolve "$dom:443:127.0.0.1" "$@"; }
+          https --retry 30 --retry-delay 2 --retry-all-errors -fS -o /dev/null "https://$dom/readyz"
+          # HTTP 轉到 HTTPS。
+          redirect="$(curl -s -o /dev/null -w '%{http_code}' --resolve "$dom:80:127.0.0.1" "http://$dom/")"
+          echo "http -> $redirect"
+          test "$redirect" = 308
+          # HSTS（Caddyfile）。
+          https -I "https://$dom/readyz" | tee /dev/stderr | grep -qi '^strict-transport-security: max-age=31536000'
+          # 經由 Caddy 登入；vps 的 session cookie 一律帶 Secure（OPS-R21）。
+          hdr="$(https -D - -o /dev/null -X POST -H 'Content-Type: application/json' -d "{\"password\":\"$pw\"}" "https://$dom/api/auth/login")"
+          echo "$hdr"
+          grep -q '^HTTP/[0-9.]* 200' <<<"$hdr"
+          grep -i '^set-cookie:' <<<"$hdr" | grep -qi 'secure'
+          # Caddy 的固定位址要和預設的 NOTESTEME_TRUSTED_PROXIES（172.31.250.10）一致（AUTH-R6）。
+          ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$(docker compose ps -q caddy)")"
+          echo "caddy ip: $ip"
+          test "$ip" = 172.31.250.10
+
+      - name: vps profile logs
+        if: failure()
+        working-directory: deploy/docker
+        run: docker compose --profile vps logs --no-color --tail 100
+
+      - name: vps profile down
+        if: always()
+        working-directory: deploy/docker
+        run: docker compose --profile vps down -v
+
+  # NFR-CMP-1：Docker image 支援 arm64。binary 的 arm64 交叉編譯由 release-check 的 goreleaser 涵蓋；
+  # 這裡真的建出 linux/arm64 的 image（Dockerfile 的 runtime 階段會在 arm64 上執行 apt、pip），
+  # 並在 QEMU 下執行它帶的外部工具，確認 image 裡的每個 binary 都是 arm64 且跑得起來。不推送。
+  docker-arm64:
+    name: Docker image (arm64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: build client image (linux/arm64)
+        run: docker buildx build --platform linux/arm64 -f deploy/docker/Dockerfile -t notesteme:arm64 --load .
+
+      - name: build hub image (linux/arm64)
+        run: docker buildx build --platform linux/arm64 -f deploy/docker/Dockerfile --target notesteme-hub -t notesteme-hub:arm64 --load .
+
+      - name: run the arm64 images
+        run: |
+          arch="$(docker run --rm --platform linux/arm64 --entrypoint uname notesteme:arm64 -m)"
+          echo "client arch: $arch"
+          test "$arch" = aarch64
+          docker run --rm --platform linux/arm64 notesteme:arm64 --version
+          docker run --rm --platform linux/arm64 --entrypoint sh notesteme:arm64 -c 'set -e; yt-dlp --version; ffmpeg -hide_banner -version | head -n 1; ffprobe -hide_banner -version | head -n 1; deno --version | head -n 1'
+          docker run --rm --platform linux/arm64 notesteme-hub:arm64 --version
 
   sqlc:
     name: sqlc generated code
