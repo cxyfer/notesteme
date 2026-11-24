@@ -428,3 +428,29 @@ func TestMCPConcurrentCalls(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// base 已取消時 context.AfterFunc 會在另一個 goroutine 非同步呼叫 cancel，
+// 內部請求可能在那之前做完；Get 必須每一次都回報取消，不能偶爾成功（曾是不穩定測試的根因）。
+func TestMCPLoopbackCancelledBaseAlwaysFails(t *testing.T) {
+	e := newRepoEnv(t, nil)
+	v := e.seed("alice", seedOpt{content: "x"})
+	_, reader := e.createToken("bob", `{"name":"r","permissions":["read"]}`)
+	auth, err := hubauth.New(hubauth.Deps{Config: e.cfg, Store: e.store, Clock: e.clk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := auth.AuthenticateToken(context.Background(), reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	rt := newHumaAPI(mux, Deps{Config: e.cfg, Store: e.store, Blobs: e.blobs, Clock: e.clk, Auth: auth, Log: nilLogger()})
+	cctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	lb := &mcpLoopback{e: newMCPEndpoint(rt, mux), base: cctx, p: p}
+	for i := 0; i < 300; i++ {
+		if resp, err := lb.Get(context.Background(), "/api/v1/versions/"+v.ID, nil); err == nil {
+			t.Fatalf("第 %d 次：取消的請求成功了 %+v", i, resp)
+		}
+	}
+}

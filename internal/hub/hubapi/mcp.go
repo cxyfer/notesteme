@@ -235,6 +235,11 @@ func (l *mcpLoopback) Get(ctx context.Context, path string, query url.Values) (*
 	if !strings.HasPrefix(path, "/api/v1/") {
 		return nil, errors.New("hubapi: mcp loopback 只能呼叫 /api/v1/ 底下的路由")
 	}
+	// base 已取消時 AfterFunc 會在另一個 goroutine 非同步呼叫 cancel，內部請求可能搶先做完；
+	// 所以開始前與結束後都直接檢查 base，不只依賴 AfterFunc。
+	if err := l.base.Err(); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(l.base, cancel)
@@ -254,6 +259,9 @@ func (l *mcpLoopback) Get(ctx context.Context, path string, query url.Values) (*
 	l.e.inner.ServeHTTP(rec, req)
 	if rec.over {
 		return nil, hubmcp.ErrResponseTooLarge
+	}
+	if err := l.base.Err(); err != nil {
+		return nil, err
 	}
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
