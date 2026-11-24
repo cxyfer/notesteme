@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -30,18 +31,68 @@ type HookValues struct {
 	Commit    string
 }
 
-// expand 展開一個 argv 元素中的變數。
-func (v HookValues) expand(s string) string {
-	return strings.NewReplacer(
-		"{{note_path}}", v.NotePath, "{{vault_root}}", v.VaultRoot, "{{item_id}}", v.ItemID,
-		"{{title}}", v.Title, "{{commit}}", v.Commit,
-	).Replace(s)
+// HookVar 是 argv 中的變數（VAULT-R10）；名稱前後可以有空白，例如 {{ title }}。設定檔的檢查也用它。
+var HookVar = regexp.MustCompile(`\{\{\s*([^{}]*?)\s*\}\}`)
+
+// value 回傳變數的值；不認識的變數回傳 false（設定檔載入時已拒絕）。
+func (v HookValues) value(name string) (string, bool) {
+	switch name {
+	case "note_path":
+		return v.NotePath, true
+	case "vault_root":
+		return v.VaultRoot, true
+	case "item_id":
+		return v.ItemID, true
+	case "title":
+		return v.Title, true
+	case "commit":
+		return v.Commit, true
+	}
+	return "", false
 }
 
-// forbiddenEnv 回報 hook 不能看到的變數（同設定檔的檢查，執行時再擋一次）。
-func forbiddenEnv(name string) bool {
+// untrustedHookVar 回報變數的值是不是來自外部（影片標題、git 的 commit id）。
+func untrustedHookVar(name string) bool { return name == "title" || name == "commit" }
+
+// expand 展開一個 argv 元素中的變數。元素以不可信的變數開頭、展開後以 - 開頭時，前面加一個空白，
+// hook 程式不會把它當成選項（例如標題「--exec=…」；VAULT-R10）。
+func (v HookValues) expand(s string) string {
+	out := HookVar.ReplaceAllStringFunc(s, func(m string) string {
+		if val, ok := v.value(HookVar.FindStringSubmatch(m)[1]); ok {
+			return val
+		}
+		return m
+	})
+	if m := HookVar.FindStringSubmatchIndex(s); m != nil && m[0] == 0 && untrustedHookVar(s[m[2]:m[3]]) && strings.HasPrefix(out, "-") {
+		out = " " + out
+	}
+	return out
+}
+
+// forbiddenHookEnvNames 與 forbiddenHookEnvSuffixes 是 hook 不能看到的變數（VAULT-R11，不分大小寫）：
+// notesteme 與 Hub 的金鑰、密碼、資料庫連線字串與各種憑證。設定檔載入與執行時共用這一份。
+var (
+	forbiddenHookEnvNames = []string{
+		"NOTESTEME_MASTER_KEY", "NOTESTEME_PASSWORD", "NOTESTEME_OIDC_CLIENT_SECRET",
+		"NOTESTEME_HUB_SESSION_KEY", "NOTESTEME_HUB_MASTER_KEY",
+	}
+	forbiddenHookEnvSuffixes = []string{
+		"_API_KEY", "_TOKEN", "_DSN", "_PASSWORD", "_SECRET", "_MASTER_KEY", "_SESSION_KEY", "_SECRET_ACCESS_KEY",
+	}
+)
+
+// ForbiddenHookEnv 回報 hook 不能看到的變數（設定檔的 env_allowlist 檢查與執行時共用）。
+func ForbiddenHookEnv(name string) bool {
 	u := strings.ToUpper(name)
-	return u == "NOTESTEME_MASTER_KEY" || u == "NOTESTEME_PASSWORD" || strings.HasSuffix(u, "_API_KEY") || strings.HasSuffix(u, "_TOKEN")
+	if slices.Contains(forbiddenHookEnvNames, u) {
+		return true
+	}
+	for _, suf := range forbiddenHookEnvSuffixes {
+		if strings.HasSuffix(u, suf) {
+			return true
+		}
+	}
+	return false
 }
 
 // HookResult 是一次 hook 的結果。
@@ -79,7 +130,7 @@ func (r HookResult) Message(h Hook) string {
 func HookEnv(h Hook, vars map[string]string, itemID string) []string {
 	env := []string{}
 	for _, name := range h.EnvAllowlist {
-		if forbiddenEnv(name) || name == "NOTESTEME_ITEM_ID" {
+		if ForbiddenHookEnv(name) || name == "NOTESTEME_ITEM_ID" {
 			continue
 		}
 		if v, ok := vars[name]; ok {

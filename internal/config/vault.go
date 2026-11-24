@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cxyfer/notesteme/internal/vault"
 	"gopkg.in/yaml.v3"
 )
 
@@ -87,8 +88,6 @@ var (
 	gitAuthor = regexp.MustCompile(`^[^<>\n\r\x00]+ <[^<>\s]+>$`)
 	// envName 是環境變數名稱。
 	envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	// hookVar 找出 argv 中的 {{變數}}。
-	hookVar = regexp.MustCompile(`\{\{\s*([^{}]*?)\s*\}\}`)
 	// sizeValue 是 max_output 的大小字串（例如 64KiB、1MiB、512）。
 	sizeValue = regexp.MustCompile(`^([0-9]+)\s*(B|KiB|MiB)?$`)
 )
@@ -243,13 +242,13 @@ func parseHooks(node *yaml.Node, file string) (map[string]Hook, error) {
 			return nil, bad("%s.argv 必須是字串陣列，第一個元素是要執行的程式。", field)
 		}
 		for i, a := range h.Argv {
-			for _, m := range hookVar.FindAllStringSubmatch(a, -1) {
+			for _, m := range vault.HookVar.FindAllStringSubmatch(a, -1) {
 				name := m[1]
 				if !containsString(HookVariables, name) {
 					return nil, bad("%s.argv[%d] 使用了不認識的變數 {{%s}}（可用 %s）。", field, i, name, strings.Join(HookVariables, "、"))
 				}
 			}
-			if i == 0 && hookVar.MatchString(a) {
+			if i == 0 && vault.HookVar.MatchString(a) {
 				return nil, bad("%s.argv[0] 是要執行的程式，不能使用變數。", field)
 			}
 		}
@@ -271,19 +270,13 @@ func parseHooks(node *yaml.Node, file string) (map[string]Hook, error) {
 			if !envName.MatchString(name) {
 				return nil, bad("%s.env_allowlist 的 %q 不是有效的環境變數名稱。", field, name)
 			}
-			if forbiddenHookEnv(name) {
+			if vault.ForbiddenHookEnv(name) {
 				return nil, bad("%s.env_allowlist 不能包含 %s。", field, name)
 			}
 		}
 		out[id] = h
 	}
 	return out, nil
-}
-
-// forbiddenHookEnv 回報變數是不是不能交給 hook 的秘密（VAULT-R11）。
-func forbiddenHookEnv(name string) bool {
-	u := strings.ToUpper(name)
-	return u == "NOTESTEME_MASTER_KEY" || u == "NOTESTEME_PASSWORD" || strings.HasSuffix(u, "_API_KEY") || strings.HasSuffix(u, "_TOKEN")
 }
 
 func containsString(list []string, s string) bool {
