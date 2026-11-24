@@ -196,7 +196,7 @@
   - **HTTP 請求**（Client 與 Hub）：最外層的 middleware 決定，請求帶合法的 `X-Request-Id`（1～64 個英數字與 `.`、`_`、`-`）時沿用，否則產生 16 個十六進位字元；回應標頭 `X-Request-Id` 是同一個值，驗證失敗等錯誤回應也有。不合法的值不沿用，避免把任意內容寫進 log。錯誤回應的 body 不新增欄位（`apierr.Error` 沒有 trace 欄位，OpenAPI 不變），用回應標頭對照 log。
   - **任務的每一次執行**：worker 產生一個新的 `request_id`，並帶上 `task`；pipeline 讀到步驟後補上 `item`、`stage`。Agent 提交結果（MCP 的 HTTP 請求）沿用該請求的 `request_id`，另外帶上任務的三個欄位；Batch API 的結果與 Agent 領取時組不出上下文的 log 也補上三個欄位。
   - **每一次定期工作**（清理、排程、訂閱檢查等）：worker 產生一個新的 `request_id`。
-  - **解讀**：NFR-OBS-1 的「每筆帶 `request_id`」以「每個請求、每次任務執行、每次定期工作」為範圍。程序層級的 log（啟動、關閉、放回租約、worker 領取失敗、`net/http` 自己的錯誤 log）不屬於任何請求，沒有 `request_id`；它們的時間與訊息已足以對照。log 呼叫必須用 `*Context` 版本並傳入 context 才拿得到這些值，pipeline 與 worker 中有 context 可用的呼叫都已改寫。
+  - **解讀**：NFR-OBS-1 的「每筆帶 `request_id`」以「每個請求、每次任務執行、每次定期工作」為範圍。程序層級的 log（啟動、關閉、放回租約、worker 領取失敗、`net/http` 自己的錯誤 log）不屬於任何請求，沒有 `request_id`；它們的時間與訊息已足以對照。log 呼叫必須用 `*Context` 版本並傳入 context 才拿得到這些值，pipeline 與 worker 中有 context 可用的呼叫都已改寫。其他套件中不帶 context 的 log 呼叫（2026-11-25 實測 11 處）：10 處是程序層級（啟動時的警告、排定每日工作失敗、本機 socket、Hub 啟動），1 處在上傳的處理中（`internal/api/upload.go` 建立暫存檔失敗，函式沒有 context 可用），這一處沒有 `request_id`。
   - 檢查：`internal/app/logfields_test.go` 用 production 組出的 logger 實際送出請求、執行失敗的任務，逐行解析 JSON log，斷言每筆請求 log 有 `request_id` 且等於回應標頭、每筆帶 `task` 的 log 有 `item`、`stage`、`request_id`（NFR-OBS-1 的 `ci`）。
 
 ### OPS-R22 的實作決定（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）
