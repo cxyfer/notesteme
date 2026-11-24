@@ -259,6 +259,11 @@ func doctor(ctx context.Context, env Env) int {
 	problems := 0
 	fmt.Fprintf(out, "設定檔：%s\npublic_url：%s\n資料目錄：%s\n", cfg.ConfigFile, cfg.PublicURL, cfg.Data)
 	fmt.Fprintf(out, "儲存：store.driver=%s、blobs.driver=%s\n", cfg.StoreDriver, cfg.BlobsDriver)
+	// Hub 不終止 TLS：public_url 是 https 時前面一定有反向代理。沒有設定 trusted_proxies 時，所有人共用代理的 IP 額度
+	// （登入與下架申請很容易被一個用戶端用完），只警告、不算問題（安全修補 A）。
+	if strings.HasPrefix(cfg.PublicURL, "https://") && len(cfg.TrustedProxies) == 0 {
+		fmt.Fprintln(out, "  ⚠ 沒有設定 server.trusted_proxies：放在反向代理後面時，所有未登入的請求共用代理的 IP 限流額度（見 docs/hub-deployment.md）。")
+	}
 	var enabled []string
 	for _, p := range hubconfig.Providers {
 		c := cfg.OAuth[p]

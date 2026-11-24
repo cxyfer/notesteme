@@ -105,7 +105,7 @@ func Open(ctx context.Context, o Options) (*Server, error) {
 	if ui == nil {
 		ui = webhub.FS()
 	}
-	s.handler = withUI(NewUI(ui), api)
+	s.handler = withTrustedProxies(cfg.TrustedProxies, withUI(NewUI(ui), api))
 	return s, nil
 }
 

@@ -16,6 +16,15 @@
 
 對外的 HTTPS 由前面的反向代理負責（Caddy、nginx、Cloudflare Tunnel），反向代理指向 `127.0.0.1:8090`。`public_url` 必須是對外的 https 網址（OAuth 的 redirect_uri 由它組成）。
 
+**反向代理與限流（`server.trusted_proxies`）**：Hub 以連線的 IP 限制未登入的請求（每分鐘 `rate_limits.anonymous_requests_per_minute`，含 OAuth 登入與下架申請）。放在反向代理後面時，Hub 看到的連線位址都是代理的，所有訪客會共用同一份額度——一個用戶端就能讓其他人無法登入。這時在設定檔列出代理的位址（CIDR 或單一 IP）：
+
+```yaml
+server:
+  trusted_proxies: [172.18.0.1/32]   # 例：docker network inspect notesteme-hub_hub-egress 的 Gateway
+```
+
+只有 TCP 對端在清單中時，Hub 才採用 `X-Forwarded-For`：從右邊往左取第一個不在清單中的位址當成用戶端（左邊的部分可能是用戶端自己偽造的；Caddy 與 nginx 的 `$proxy_add_x_forwarded_for` 都把真正的對端加在最右邊）。清單是空的（預設）時一律用連線的位址。在 compose 中，主機上的反向代理經 `127.0.0.1:8090` 連進來時，Hub 看到的是 `hub-egress` network 的 gateway（Docker 的 userland proxy）；Cloudflare Tunnel 等在容器中的代理則是它在 network 中的位址。不要列出整個網際網路或使用者能直接連到 Hub 的網段。Hub 不依請求的 scheme 決定任何事（cookie 一律 `Secure`、網址取自 `public_url`），所以不需要 `X-Forwarded-Proto`。`notesteme-hub doctor` 在 `public_url` 是 https 而沒有設定 `trusted_proxies` 時警告。
+
 ## 2. 第一次部署
 
 ```sh

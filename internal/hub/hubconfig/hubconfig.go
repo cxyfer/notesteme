@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -211,6 +212,9 @@ type Config struct {
 	Bundles    Bundles
 	Moderation Moderation
 	MCP        MCP
+	// TrustedProxies 是可信任的反向代理（server.trusted_proxies，安全修補 A）：只有 TCP 對端在其中時才採用
+	// X-Forwarded-For 決定用戶端的 IP（限流、下架申請）；空的時候一律用連線的位址。
+	TrustedProxies []netip.Prefix
 	// MasterKey 是信封加密的主金鑰（NOTESTEME_HUB_MASTER_KEY，同 SEC-R4）；格式由使用它的切片驗證。
 	MasterKey string
 	// SessionKey 是 session 金鑰（NOTESTEME_HUB_SESSION_KEY，至少 MinSessionKeyLen 個字元，HACC A10）；
@@ -254,6 +258,11 @@ type fileSchema struct {
 	Bundles         map[string]yaml.Node   `yaml:"bundles"`
 	Moderation      map[string]yaml.Node   `yaml:"moderation"`
 	MCP             mcpSchema              `yaml:"mcp"`
+	Server          serverSchema           `yaml:"server"`
+}
+
+type serverSchema struct {
+	TrustedProxies []string `yaml:"trusted_proxies"`
 }
 
 type storeSchema struct {
@@ -437,6 +446,13 @@ func applyFile(cfg *Config, raw []byte, path string) error {
 	}
 	if f.Listen != "" {
 		cfg.Listen = f.Listen
+	}
+	for i, s := range f.Server.TrustedProxies {
+		p, err := parseProxy(s)
+		if err != nil {
+			return bad(fmt.Sprintf("server.trusted_proxies[%d]", i), "不是 IP 位址或 CIDR（例如 172.18.0.0/16）：%q。", s)
+		}
+		cfg.TrustedProxies = append(cfg.TrustedProxies, p)
 	}
 	if f.Data != "" {
 		cfg.Data = f.Data
@@ -782,4 +798,19 @@ func applyModeration(mo *Moderation, m map[string]yaml.Node, bad func(string, st
 		}
 	}
 	return nil
+}
+
+// parseProxy 解析 CIDR 或單一 IP（視為 /32 或 /128）。
+func parseProxy(s string) (netip.Prefix, error) {
+	s = strings.TrimSpace(s)
+	if strings.Contains(s, "/") {
+		p, err := netip.ParsePrefix(s)
+		return p.Masked(), err
+	}
+	a, err := netip.ParseAddr(s)
+	if err != nil {
+		return netip.Prefix{}, err
+	}
+	a = a.Unmap()
+	return netip.PrefixFrom(a, a.BitLen()), nil
 }

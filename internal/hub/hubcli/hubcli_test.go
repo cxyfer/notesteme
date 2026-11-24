@@ -217,3 +217,23 @@ func TestAdminCommands(t *testing.T) {
 		t.Errorf("稽核紀錄的順序 = %+v", entries)
 	}
 }
+
+// 安全修補 A：public_url 是 https 而沒有 trusted_proxies 時 doctor 警告（不算問題）；設定之後不再警告。
+func TestDoctorWarnsWithoutTrustedProxies(t *testing.T) {
+	e, out, _ := env(t, cfg, secret)
+	if c := Run(context.Background(), []string{"migrate"}, e); c != ExitOK {
+		t.Fatal(c)
+	}
+	out.Reset()
+	if c := Run(context.Background(), []string{"doctor"}, e); c != ExitOK || !strings.Contains(out.String(), "server.trusted_proxies") {
+		t.Errorf("doctor = %d %s", c, out)
+	}
+	e2, out2, _ := env(t, cfg+"server:\n  trusted_proxies: [172.18.0.0/16]\n", secret)
+	if c := Run(context.Background(), []string{"migrate"}, e2); c != ExitOK {
+		t.Fatal(c)
+	}
+	out2.Reset()
+	if c := Run(context.Background(), []string{"doctor"}, e2); c != ExitOK || strings.Contains(out2.String(), "trusted_proxies") {
+		t.Errorf("doctor（有設定）= %d %s", c, out2)
+	}
+}

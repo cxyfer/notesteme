@@ -6,6 +6,7 @@
 # 啟動順序：postgres、minio healthy → hub-minio-init 建立 bucket → hub-migrate 套用 migration → hub。
 # Postgres 與 MinIO 只在 hub-internal（internal network，不對外、不映射 port）；Hub 另接 hub-egress 才能連 OAuth 供應商。
 # Hub 只映射到 127.0.0.1，對外的 HTTPS 由前面的反向代理（Caddy、nginx、Cloudflare Tunnel）負責。
+# 反向代理的位址要寫進設定檔的 server.trusted_proxies（例如 hub-egress 的 gateway），否則所有訪客共用代理的限流額度。
 # 詳細步驟、備份與還原見 docs/hub-deployment.md。
 name: notesteme-hub
 

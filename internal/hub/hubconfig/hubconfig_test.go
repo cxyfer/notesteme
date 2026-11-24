@@ -266,3 +266,27 @@ func TestAdminPermissionOnlyInAdmins(t *testing.T) {
 		t.Errorf("合法的設定被拒絕：%v", err)
 	}
 }
+
+// 安全修補 A：server.trusted_proxies 接受 CIDR 與單一 IP，其他值載入失敗；預設是空的。
+func TestTrustedProxies(t *testing.T) {
+	cfg, err := load(t, minimal, nil)
+	if err != nil || len(cfg.TrustedProxies) != 0 {
+		t.Fatalf("預設 = %v, %v", cfg.TrustedProxies, err)
+	}
+	cfg, err = load(t, minimal+"server:\n  trusted_proxies: [172.18.0.0/16, 10.0.0.1, \"::1\", 192.168.1.7/24]\n", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, p := range cfg.TrustedProxies {
+		got = append(got, p.String())
+	}
+	if strings.Join(got, ",") != "172.18.0.0/16,10.0.0.1/32,::1/128,192.168.1.0/24" {
+		t.Fatalf("trusted_proxies = %v", got)
+	}
+	for _, bad := range []string{"nope", "10.0.0.0/99", "*"} {
+		if _, err := load(t, minimal+"server:\n  trusted_proxies: [\""+bad+"\"]\n", nil); err == nil || !strings.Contains(err.Error(), "server.trusted_proxies[0]") {
+			t.Errorf("%q：err = %v", bad, err)
+		}
+	}
+}

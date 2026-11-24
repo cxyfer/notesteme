@@ -17,7 +17,8 @@ import (
 
 // 一般限流（HACC-R18）：每個帳號（session 與 PAT 合計）與每個未登入的 IP 各自一個固定的一分鐘視窗。
 // 計數只在這個程序的記憶體中（多個 Hub 程序共用不在範圍內，ADR-0031 第 5 點），時間取自注入的 clock。
-// IP 取自連線的 RemoteAddr，不信任 X-Forwarded-For（HACC 待決問題 A12）。
+// IP 取自連線的 RemoteAddr；server.trusted_proxies 中的代理連進來時，hub 的 handler 已依 X-Forwarded-For 改寫它
+// （安全修補 A，HACC 待決問題 A14；預設不信任 X-Forwarded-For，同 A12）。
 
 // CodeRateLimited 是超過限流的代碼。
 const CodeRateLimited = "rate_limited"

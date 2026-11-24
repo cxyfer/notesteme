@@ -2,6 +2,12 @@
 # 欄位見 HACC、HREP、HMCP 規格的「介面」；祕密（client secret、金鑰、密碼）一律放在 .env.hub，不要寫在這裡。
 public_url: https://hub.example.org
 
+# 反向代理的位址（CIDR 或 IP）：只有從這些位址連進來時才採用 X-Forwarded-For 決定訪客的 IP（限流）。
+# 主機上的反向代理經 compose 映射的 port 連進來時，是 hub-egress network 的 gateway
+# （docker network inspect notesteme-hub_hub-egress）。留空時所有訪客共用代理的限流額度。
+# server:
+#   trusted_proxies: [172.18.0.1/32]
+
 store:
   driver: postgres   # DSN 由 compose 以環境變數 NOTESTEME_HUB_STORE_DSN 提供
 blobs:
