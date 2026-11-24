@@ -687,6 +687,8 @@
         "bilingual-srt": "Bilingual SRT",
         "txt": "Plain text"
       },
+      "assStyled": "ASS ({{style}})",
+      "assStyle": "ASS style",
       "written": "Written files",
       "loading": "Loading outputs…",
       "none": "No files written yet. Files appear here when the profile has a sidecar or folder output.",

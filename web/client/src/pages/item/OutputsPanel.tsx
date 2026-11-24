@@ -1,8 +1,9 @@
-// 輸出與下載（OUT-R1、R11、R13～R15）：
+// 輸出與下載（OUT-R1、R6、R11、R13～R15）：
 //   - 下載：GET /api/items/{id}/subtitles?format=… 即時渲染（同源、帶 cookie 的一般連結）。
+//   - ASS 可以選擇樣式（OUT-R6，`style=` 是樣式名稱）；樣式清單讀不到時退回預設樣式的連結，不擋下載。
 //   - 輸出目標寫過的檔案（sidecar、folder）與寫入時的雜湊。
 //   - 匯入修正過的字幕（SRT、VTT、ASS）成新的 edited 版本；422 時指出第幾句或檔案第幾行。
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -10,7 +11,7 @@ import { api, apiPath } from "../../api/client";
 import { describeError } from "../../api/describeError";
 import { isApiError } from "../../api/errors";
 import { queryKeys } from "../../api/queryKeys";
-import { Button, ErrorCallout, Spinner, useToast } from "../../components";
+import { Button, ErrorCallout, SelectField, Spinner, useToast } from "../../components";
 import { formatBytes, formatDateTime } from "../../i18n";
 import type { ApiOutput } from "./data";
 
@@ -19,8 +20,12 @@ export const DOWNLOAD_FORMATS = ["srt", "vtt", "ass", "bilingual-srt", "txt"] as
 /** 匯入的檔案大小上限（字幕是純文字；避免把大檔讀進記憶體） */
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 
-export function downloadUrl(itemId: string, format: string) {
-  return `${apiPath("/api/items/{id}/subtitles", { id: itemId })}?format=${encodeURIComponent(format)}`;
+/** 內建的預設 ASS 樣式（後端省略 style 時用它，OUT-R6） */
+export const DEFAULT_ASS_STYLE = "default";
+
+export function downloadUrl(itemId: string, format: string, style?: string) {
+  const base = `${apiPath("/api/items/{id}/subtitles", { id: itemId })}?format=${encodeURIComponent(format)}`;
+  return style ? `${base}&style=${encodeURIComponent(style)}` : base;
 }
 
 export function OutputsPanel({
@@ -40,6 +45,16 @@ export function OutputsPanel({
 }) {
   const { t } = useTranslation();
   const formats = DOWNLOAD_FORMATS.filter((f) => f !== "bilingual-srt" || hasTranslation);
+  // 樣式清單和設定頁共用快取；讀不到（權限、未啟用、錯誤）時不重試，只提供預設樣式的連結。
+  const styles = useQuery({
+    queryKey: queryKeys.assStyles.list(),
+    queryFn: ({ signal }) => api.get("/api/ass-styles", { signal }),
+    retry: false,
+  });
+  const styleNames = (styles.data?.styles ?? []).map((s) => s.name);
+  const [style, setStyle] = useState(DEFAULT_ASS_STYLE);
+  // 選過的樣式被刪掉時回到預設，不送出會 422 的名稱
+  const chosen = styleNames.includes(style) ? style : DEFAULT_ASS_STYLE;
   return (
     <div className="outputs">
       <section aria-labelledby="dl-title">
@@ -47,13 +62,32 @@ export function OutputsPanel({
           {t("item.outputs.download")}
         </h2>
         <ul className="outputs__downloads">
-          {formats.map((f) => (
-            <li key={f}>
-              <a className="button button--outline" href={downloadUrl(itemId, f)} download>
-                {t(`item.outputs.formats.${f}`)}
-              </a>
-            </li>
-          ))}
+          {formats.map((f) =>
+            f === "ass" && styleNames.length > 0 ? (
+              <li key={f} className="outputs__ass">
+                <a
+                  className="button button--outline"
+                  href={downloadUrl(itemId, f, chosen)}
+                  download
+                >
+                  {t("item.outputs.assStyled", { style: chosen })}
+                </a>
+                <SelectField
+                  className="outputs__style"
+                  label={t("item.outputs.assStyle")}
+                  value={chosen}
+                  onChange={(e) => setStyle(e.target.value)}
+                  options={styleNames.map((n) => ({ value: n, label: n }))}
+                />
+              </li>
+            ) : (
+              <li key={f}>
+                <a className="button button--outline" href={downloadUrl(itemId, f)} download>
+                  {t(`item.outputs.formats.${f}`)}
+                </a>
+              </li>
+            ),
+          )}
         </ul>
       </section>
 

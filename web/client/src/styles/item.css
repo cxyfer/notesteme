@@ -345,10 +345,21 @@
 .outputs__downloads {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-end;
   gap: var(--space-2);
   list-style: none;
   margin: 0;
   padding: 0;
+}
+/* ASS 與它的樣式選單放在同一格：選單的標籤在上，按鈕對齊底部 */
+.outputs__ass {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.outputs__style {
+  margin: 0;
 }
 .delete__facts {
   margin: 0 0 var(--space-3);

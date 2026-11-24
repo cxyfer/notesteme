@@ -660,6 +660,8 @@
         "bilingual-srt": "双语 SRT",
         "txt": "纯文本"
       },
+      "assStyled": "ASS（{{style}}）",
+      "assStyle": "ASS 样式",
       "written": "写出的文件",
       "loading": "正在加载输出…",
       "none": "还没有写出任何文件。处理方案设置了 sidecar 或 folder 输出时，文件会列在这里。",

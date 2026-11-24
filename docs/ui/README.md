@@ -297,7 +297,9 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 佇列的單一任務重試／取消、「失敗與停住」清單與「全部重試」 | 完成（收尾 D1，見 10.22） | `src/pages/queue/FailedTasks.tsx`、`QueuePage.tsx` |
 | 佇列的 Agent 任務（由哪個 Agent 處理、租約剩餘時間的倒數、改用 API 處理） | 完成（見 10.23） | `src/pages/queue/QueuePage.tsx` |
 | 佇列的優先順序 | 未做 | API 缺口（10.7 第 8 點） |
-| 匯出選單的 ASS 樣式選擇、Markdown 筆記、bundle；兩個版本之間的比較（紀錄分頁） | 未做 | 之後的切片（ASS 用預設樣式） |
+| 匯出選單的 ASS 樣式選擇 | 完成（見 10.26） | `OutputsPanel.tsx` |
+| 匯出選單的 Markdown 筆記、bundle | 完成（UI-4 的筆記分頁「下載 Markdown」、UI-5 的動作列「匯出 bundle」） | `NotePanels.tsx`、`ItemPage.tsx` |
+| 兩個版本之間的比較（紀錄分頁） | 未做 | 之後的切片 |
 
 ### 10.7 UI-2 的決定
 
@@ -704,3 +706,13 @@ pages.md §12 的「服務與金鑰」要求每個 provider 都有「測試連�
 4. **失敗的顯示**：用 `ErrorCallout`。`upstream_failed` 改用後端的訊息（含 provider 與狀態碼），因為前端字典的 `errors.upstream_failed` 是講 yt-dlp 的；`needs_action` 的 `actions` 是後端的文字，接在訊息後面（「建議動作：設定 API key。」），沿用 Prompt 庫試跑的做法；不做成按鈕，因為「設定 API key」就在同一頁上方。
 5. **還沒有改用的地方**：處理方案與試跑面板的 provider 欄位仍是文字輸入加內建 `datalist`（10.8 第 8 點）；改用目錄要決定是否列出設定檔的 LLM provider 與怎麼處理不在目錄中的舊值，留給之後的切片。
 
+
+### 10.26 影音詳情與媒體庫列的規格缺口（2026-11-25）
+
+一次唯讀稽核找出 pages.md §3、§4 寫了、程式沒有、而且沒有延後註記的項目，這個切片補齊。下面的決定都是「（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）」。
+
+| 項目 | 狀態 | 位置 |
+| --- | --- | --- |
+| 匯出的「ASS（選擇樣式）」（pages.md §4 的匯出選單，OUT-R6） | 完成（沒有改後端） | `src/pages/item/OutputsPanel.tsx` |
+
+1. **ASS 的樣式選擇**：輸出分頁的 ASS 下載按鈕旁多一個「ASS 樣式」下拉選單，選項是 `GET /api/ass-styles` 的樣式名稱（`style=` 傳的是名稱，`AssStyles.Get` 以名稱查），預設 `default`；按鈕文字是「ASS（<樣式>）」，連結帶 `&style=<名稱>`。樣式清單和設定頁共用快取、不重試；讀不到（403、501、其他錯誤）或是空的時退回原本的「ASS（預設樣式）」連結，不擋下載。選過的樣式之後不在清單中時回到 `default`，不送出會 422 的名稱。其他格式的連結不帶 `style`。
