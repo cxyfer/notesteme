@@ -344,7 +344,7 @@ func convertKey(p *Pipeline, it store.Item, b *trnBase, t trnTarget) string {
 func (p *Pipeline) runTranslateLLM(ctx context.Context, t store.Task, run store.StageRun, it store.Item, eff Effective, pl llmPayload) (result, error) {
 	switch {
 	case t.ChunkIndex != nil:
-		return p.trnChunk(ctx, t, run, it, eff)
+		return p.trnChunk(ctx, t, run, it, eff, pl)
 	case pl.Phase == llmPhaseAssemble:
 		rows, err := p.st.Read().LLMChunks(ctx, run.ID)
 		if err != nil {
@@ -576,108 +576,191 @@ func (p *Pipeline) trnLimiter(provider string, always bool) func(context.Context
 	}
 }
 
-// trnChunk 送出一個 chunk：驗證重試（TRN-R5）、句群切分（TRN-R3）、標記數不符時逐 cue 補送（TRN-R4），
-// 重試用盡時只把沒有通過驗證的句子退回原文（TRN-R7）。最後一個完成的 chunk 建立 assemble 任務。
-func (p *Pipeline) trnChunk(ctx context.Context, t store.Task, run store.StageRun, it store.Item, eff Effective) (result, error) {
-	if p.llm == nil {
-		return result{}, errPermanent("沒有設定 LLM provider")
-	}
-	row, err := p.st.Read().LLMChunk(ctx, run.ID, *t.ChunkIndex)
+// trnChunkWork 是一個 translate chunk 任務送出之前算好的內容；一般 API（trnChunk）與 Batch API（submitBatch、
+// finishBatch）共用。
+type trnChunkWork struct {
+	row  store.LLMChunk
+	plan trnChunkPlan
+	b    *trnBase
+	job  *trnJob
+}
+
+// trnPrepareChunk 讀出 chunk 的記錄並組出這個目標的工作內容。chunk 已經有結果時 done 為 true（不再送出）。
+func (p *Pipeline) trnPrepareChunk(ctx context.Context, r *store.Repo, t store.Task, run store.StageRun, it store.Item, eff Effective) (*trnChunkWork, bool, error) {
+	row, err := r.LLMChunk(ctx, run.ID, *t.ChunkIndex)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return result{}, errPermanent(fmt.Sprintf("找不到 chunk %d 的記錄", *t.ChunkIndex))
+			return nil, false, errPermanent(fmt.Sprintf("找不到 chunk %d 的記錄", *t.ChunkIndex))
 		}
-		return result{}, err
+		return nil, false, err
 	}
 	if row.Status != store.ChunkPending {
-		return result{task: taskDone, keepState: true}, nil
+		return nil, true, nil
 	}
 	var plan trnChunkPlan
 	if err := json.Unmarshal(row.Plan, &plan); err != nil {
-		return result{}, errPermanent("chunk 的記錄不正確：" + err.Error())
+		return nil, false, errPermanent("chunk 的記錄不正確：" + err.Error())
 	}
 	if plan.Target < 0 || plan.Target >= len(plan.Targets) || !plan.Targets[plan.Target].usesLLM() {
-		return result{}, errPermanent(fmt.Sprintf("chunk %d 的目標不正確", row.Chunk))
+		return nil, false, errPermanent(fmt.Sprintf("chunk %d 的目標不正確", row.Chunk))
 	}
 	b, err := p.trnPrepare(ctx, it, eff, plan.Input)
 	if err != nil {
-		return result{}, err
+		return nil, false, err
 	}
 	job, err := p.trnJobFor(ctx, b, plan.Targets[plan.Target])
 	if err != nil {
-		return result{}, err
+		return nil, false, err
 	}
 	if plan.To > len(job.units) || plan.From < 1 || plan.From > plan.To || plan.Chunks != len(job.chunks) {
-		return result{}, errPermanent(fmt.Sprintf("chunk %d 的範圍與輸入字幕不符", row.Chunk))
+		return nil, false, errPermanent(fmt.Sprintf("chunk %d 的範圍與輸入字幕不符", row.Chunk))
 	}
-	client, err := p.llm.Client(ctx, b.cfg.Provider)
+	return &trnChunkWork{row: row, plan: plan, b: b, job: job}, false, nil
+}
+
+// runOptions 是這個 chunk 第一個請求的 RunChunk 輸入（不含 Client 與 hook）；一般 API 與 Batch API 共用（BATCH-R2）。
+func (w *trnChunkWork) runOptions() llm.RunOptions {
+	return llm.RunOptions{
+		Spec: w.job.spec, Model: w.b.cfg.Model, Fixed: w.job.fixed, Input: w.job.chunkInput(w.plan.Chunk),
+		MaxRetries: w.b.settings.MaxValidationRetries,
+	}
+}
+
+func (w *trnChunkWork) batchWork() *batchWork {
+	return &batchWork{provider: w.b.cfg.Provider, model: w.b.cfg.Model, opts: w.runOptions(), trn: w}
+}
+
+// units 是這個 chunk 的翻譯單位。
+func (w *trnChunkWork) units() []llm.Unit { return w.job.units[w.plan.From-1 : w.plan.To] }
+
+// trnPrior 是 translate 經 Batch API 取得、已經付費的第一個請求的結果（BATCH-R4）：句群的切分標記不符時，
+// 一般 API 的任務沿用它，只補送逐 cue 的請求（TRN-R4）。Output 是通過驗證的輸出；沒有驗證重試額度時是 nil，
+// Fallback 是驗證錯誤（其中通過驗證的句子照樣採用，TRN-R7）。
+type trnPrior struct {
+	Output   json.RawMessage      `json:"output,omitempty"`
+	Fallback *llm.ValidationError `json:"fallback,omitempty"`
+	Usage    llm.Usage            `json:"usage"`
+}
+
+// batchOutcome 把 batch 的結果分回各 cue（BATCH-R4）。out 是通過驗證的輸出；沒有通過時 verr 是驗證錯誤（呼叫端只在
+// 沒有驗證重試額度時呼叫，照 TRN-R7 只退回沒有通過的句子）。句群的切分標記不符時回傳 prior（要補送逐 cue 的請求）。
+func (w *trnChunkWork) batchOutcome(out json.RawMessage, verr *llm.ValidationError, usage llm.Usage) (*store.ChunkResult, *trnPrior, error) {
+	res := llm.ChunkResult{Output: out}
+	if out == nil {
+		res.Fallback = verr
+	}
+	units := w.units()
+	results := map[int]trnCueOut{}
+	var redo []llm.Unit
+	w.job.collect(units, w.job.chunkInput(w.plan.Chunk).Cues, res, results, &redo)
+	if len(redo) > 0 {
+		return nil, &trnPrior{Output: res.Output, Fallback: res.Fallback, Usage: usage}, nil
+	}
+	cues, err := w.job.chunkOutput(w.plan.Chunk, units, results)
 	if err != nil {
-		return result{}, err
+		return nil, nil, err
 	}
-	m := p.newMeter(t, run, it, b.cfg.Provider, b.cfg.Model)
-	out, usage, err := p.trnRunChunk(ctx, job, b, client, plan.Chunk, p.chunkTimeout(t), m)
+	cr, err := trnChunkResult(cues, usage)
 	if err != nil {
-		return result{}, err
+		return nil, nil, err
 	}
+	return &cr, nil, nil
+}
+
+// trnChunkResult 是寫進 llm_chunks 的結果：任一句退回原文時整個 chunk 是 fallback（TRN-R7）。
+func trnChunkResult(out trnChunkOutput, usage llm.Usage) (store.ChunkResult, error) {
 	output, err := json.Marshal(out)
 	if err != nil {
-		return result{}, err
+		return store.ChunkResult{}, err
 	}
 	usageJSON, err := json.Marshal(usage)
 	if err != nil {
-		return result{}, err
+		return store.ChunkResult{}, err
 	}
-	status, reason := store.ChunkDone, ""
+	res := store.ChunkResult{Status: store.ChunkDone, Output: output, Usage: usageJSON}
 	for _, c := range out.Cues {
 		if c.Reason != "" {
-			status, reason = store.ChunkFallback, c.Reason
-			p.log.Warn("譯文驗證重試用盡，退回原文", "item", it.ID, "chunk", row.Chunk, "cue", c.I, "reason", c.Reason)
+			res.Status, res.Reason = store.ChunkFallback, c.Reason
 			break
 		}
 	}
+	return res, nil
+}
+
+// trnChunk 送出一個 chunk：驗證重試（TRN-R5）、句群切分（TRN-R3）、標記數不符時逐 cue 補送（TRN-R4），
+// 重試用盡時只把沒有通過驗證的句子退回原文（TRN-R7）。最後一個完成的 chunk 建立 assemble 任務。
+// 背景的工作改用 Batch API（BATCH-R1、R2），送出之後任務等待結果（BATCH-R3）。
+func (p *Pipeline) trnChunk(ctx context.Context, t store.Task, run store.StageRun, it store.Item, eff Effective, pl llmPayload) (result, error) {
+	if p.llm == nil {
+		return result{}, errPermanent("沒有設定 LLM provider")
+	}
+	w, done, err := p.trnPrepareChunk(ctx, p.st.Read(), t, run, it, eff)
+	if err != nil {
+		return result{}, err
+	}
+	if done {
+		return result{task: taskDone, keepState: true}, nil
+	}
+	if p.batchEligible(t, run, w.b.cfg, eff, pl) {
+		if handled, err := p.submitBatch(ctx, t, run, it, w.batchWork()); handled || err != nil {
+			return result{parked: err == nil}, err
+		}
+	}
+	client, err := p.llm.Client(ctx, w.b.cfg.Provider)
+	if err != nil {
+		return result{}, err
+	}
+	m := p.newMeter(t, run, it, w.b.cfg.Provider, w.b.cfg.Model)
+	out, usage, err := p.trnRunChunk(ctx, w, client, p.chunkTimeout(t), m, pl.Batch)
+	if err != nil {
+		return result{}, err
+	}
+	res, err := trnChunkResult(out, usage)
+	if err != nil {
+		return result{}, err
+	}
+	if res.Status == store.ChunkFallback {
+		p.log.Warn("譯文驗證重試用盡，退回原文", "item", it.ID, "chunk", w.row.Chunk, "reason", res.Reason)
+	}
+	fb := pl.Batch
 	return result{task: taskDone, keepState: true, inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {
-		ok, err := tx.FinishLLMChunk(ctx, run.ID, row.Chunk, store.ChunkResult{Status: status, Reason: reason, Output: output, Usage: usageJSON})
-		if err != nil || !ok {
-			return false, err
+		if fb != nil {
+			// 來源紀錄的 mode 與 fallback_reason（BATCH-R8）。
+			if err := tx.SetLLMChunkBatch(ctx, run.ID, w.row.Chunk, fb.record()); err != nil {
+				return false, err
+			}
 		}
-		cur, err := tx.StageRun(ctx, run.ID)
-		if err != nil {
-			return false, err
-		}
-		if stageStopped(cur.Status) {
-			return false, nil
-		}
-		n, err := tx.CountPendingLLMChunks(ctx, run.ID)
-		if err != nil || n > 0 {
-			return false, err
-		}
-		payload, err := json.Marshal(llmPayload{ItemID: it.ID, Phase: llmPhaseAssemble})
-		if err != nil {
-			return false, err
-		}
-		_, err = tx.InsertTask(ctx, store.NewTask{
-			StageRunID: run.ID, Kind: run.Stage, Executor: queue.ExecutorBuiltin, ResourceClass: queue.ResourceLocal,
-			Priority: t.Priority, Payload: payload, MaxAttempts: queue.DefaultMaxAttempts,
-		})
-		return err == nil, err
+		return finishChunkTx(ctx, tx, it.ID, run, t.Priority, w.row.Chunk, res)
 	}}, nil
 }
 
-// trnRunChunk 執行一個 chunk 的請求，回傳每個 cue 的結果與用量。
-// m 為每次請求記帳（COST），可以是 nil。
-func (p *Pipeline) trnRunChunk(ctx context.Context, job *trnJob, b *trnBase, client llm.Client, c llm.Chunk, timeout time.Duration, m *meter) (trnChunkOutput, llm.Usage, error) {
-	in := job.chunkInput(c)
-	units := job.units[c.From-1 : c.To]
+// trnRunChunk 執行一個 chunk 的請求，回傳每個 cue 的結果與用量。m 為每次請求記帳（COST），可以是 nil。
+// fb 是從 Batch API 改走一般 API 的原因（沒有經過 batch 時是 nil）：驗證失敗的 batch 結果附上錯誤說明並計入驗證重試
+// （LLM-R5）；帶著 batch 結果（Prior）時不再送第一個請求，只補送逐 cue 的請求（TRN-R4）。
+func (p *Pipeline) trnRunChunk(ctx context.Context, w *trnChunkWork, client llm.Client, timeout time.Duration, m *meter, fb *batchFallback) (trnChunkOutput, llm.Usage, error) {
+	job, b, c := w.job, w.b, w.plan.Chunk
+	opts := w.runOptions()
+	in := opts.Input
+	units := w.units()
 	started := p.clock.Now()
 	var usage llm.Usage
-	res, err := llm.RunChunk(ctx, llm.RunOptions{
-		Client: client, Spec: job.spec, Model: b.cfg.Model, Fixed: job.fixed, Input: in,
-		MaxRetries: b.settings.MaxValidationRetries, Timeout: timeout, BeforeRequest: m.then(p.trnLimiter(b.cfg.Provider, false)), AfterRequest: m.afterFunc(),
-	})
-	if err != nil {
-		return trnChunkOutput{}, usage, err
+	var res llm.ChunkResult
+	prior := fb != nil && fb.Prior != nil
+	if prior {
+		res = llm.ChunkResult{Output: fb.Prior.Output, Fallback: fb.Prior.Fallback}
+		usage.Add(fb.Prior.Usage)
+	} else {
+		if fb != nil && fb.Retry != "" {
+			opts.Retry, opts.MaxRetries = fb.Retry, max(opts.MaxRetries-1, 0)
+		}
+		opts.Client, opts.Timeout = client, timeout
+		opts.BeforeRequest, opts.AfterRequest = m.then(p.trnLimiter(b.cfg.Provider, false)), m.afterFunc()
+		var err error
+		if res, err = llm.RunChunk(ctx, opts); err != nil {
+			return trnChunkOutput{}, usage, err
+		}
+		usage.Add(res.Usage)
 	}
-	usage.Add(res.Usage)
 
 	results := map[int]trnCueOut{} // cue 的位置（從 0 起算）→ 結果
 	var redo []llm.Unit
@@ -699,9 +782,10 @@ func (p *Pipeline) trnRunChunk(ctx context.Context, job *trnJob, b *trnBase, cli
 			}
 		}
 		in2 := llm.ChunkInput{Chunk: c, Chunks: in.Chunks, Context: in.Context, Cues: cues}
+		// 一般情況下補送一律透支、不等待（見 trnLimiter）；沿用 batch 結果時補送是這個任務的第一個請求，可以等待。
 		res2, err := llm.RunChunk(ctx, llm.RunOptions{
 			Client: client, Spec: job.spec, Model: b.cfg.Model, Fixed: job.fixed, Input: in2,
-			MaxRetries: b.settings.MaxValidationRetries, Timeout: left, BeforeRequest: m.then(p.trnLimiter(b.cfg.Provider, true)), AfterRequest: m.afterFunc(),
+			MaxRetries: b.settings.MaxValidationRetries, Timeout: left, BeforeRequest: m.then(p.trnLimiter(b.cfg.Provider, !prior)), AfterRequest: m.afterFunc(),
 		})
 		if err != nil {
 			return trnChunkOutput{}, usage, err
@@ -710,17 +794,23 @@ func (p *Pipeline) trnRunChunk(ctx context.Context, job *trnJob, b *trnBase, cli
 		var again []llm.Unit
 		job.collect(singles, cues, res2, results, &again)
 	}
+	out, err := job.chunkOutput(c, units, results)
+	return out, usage, err
+}
+
+// chunkOutput 依單位順序取出每一句的結果；缺少任何一句都是程式錯誤。
+func (j *trnJob) chunkOutput(c llm.Chunk, units []llm.Unit, results map[int]trnCueOut) (trnChunkOutput, error) {
 	out := trnChunkOutput{Cues: make([]trnCueOut, 0, len(results))}
 	for _, u := range units {
 		for k := u.First; k < u.First+u.Count; k++ {
 			r, ok := results[k]
 			if !ok {
-				return trnChunkOutput{}, usage, errPermanent(fmt.Sprintf("chunk %d 缺少第 %d 句的結果", c.Index, k+1))
+				return trnChunkOutput{}, errPermanent(fmt.Sprintf("chunk %d 缺少第 %d 句的結果", c.Index, k+1))
 			}
 			out.Cues = append(out.Cues, r)
 		}
 	}
-	return out, usage, nil
+	return out, nil
 }
 
 // collect 把一次 RunChunk 的結果分回各 cue。通過驗證的輸出：單句直接採用，句群依標記切分，切不開的句群放進 redo。
@@ -796,6 +886,7 @@ func (p *Pipeline) trnAssemble(ctx context.Context, it store.Item, b *trnBase, t
 	keys := make([]string, 0, len(targets))
 	clean := true
 	firstReuse := ""
+	notice := "" // BATCH-R11 的提醒
 	for _, tg := range targets {
 		keys = append(keys, tg.Key)
 		if tg.Reuse != "" {
@@ -813,7 +904,11 @@ func (p *Pipeline) trnAssemble(ctx context.Context, it store.Item, b *trnBase, t
 		case tg.Kind == TargetPlatform:
 			art, fellBack, err = p.trnPlatform(ctx, it, b, tg)
 		case tg.usesLLM():
-			art, fellBack, err = p.trnAssembleLLM(ctx, it, b, tg, rows)
+			var n string
+			art, fellBack, n, err = p.trnAssembleLLM(ctx, it, b, tg, rows)
+			if notice == "" {
+				notice = n
+			}
 		default:
 			err = errPermanent("不認識的目標處理方式 " + string(tg.Kind))
 		}
@@ -833,7 +928,8 @@ func (p *Pipeline) trnAssemble(ctx context.Context, it store.Item, b *trnBase, t
 	for _, tg := range targets {
 		langs = append(langs, openccJob{lang: tg.Lang})
 	}
-	res := result{task: taskDone, advance: true, stage: stage, state: store.StageState{Status: store.StatusDone},
+	// 步驟沒有其他訊息時，BATCH-R11 的提醒成為步驟的訊息（同 assembleLLM）。
+	res := result{task: taskDone, advance: true, stage: stage, state: store.StageState{Status: store.StatusDone, Message: notice},
 		supersede: translatedSupersede(removedTranslatedLangs(currentArtifactsOrNil(ctx, p, it.ID), langs))}
 	if len(outs) == 0 {
 		stage.ArtifactID = firstReuse
@@ -879,14 +975,16 @@ func derivedFrom(a store.Artifact) []map[string]string {
 }
 
 // trnAssembleLLM 合併一個 LLM 目標的 chunk 結果：重疊區以前一個 chunk 為準，記下退回（TRN-R7）與閱讀速度的警告（TRN-R6）。
-func (p *Pipeline) trnAssembleLLM(ctx context.Context, it store.Item, b *trnBase, tg trnTarget, rows []store.LLMChunk) (*store.NewArtifact, bool, error) {
+// 經過 Batch API 的 chunk 記下 mode 等欄位（BATCH-R8）；回傳的 notice 是 BATCH-R11 的提醒。
+func (p *Pipeline) trnAssembleLLM(ctx context.Context, it store.Item, b *trnBase, tg trnTarget, rows []store.LLMChunk) (art *store.NewArtifact, fellBack bool, notice string, err error) {
 	job, err := p.trnJobFor(ctx, b, tg)
 	if err != nil {
-		return nil, false, err
+		return nil, false, "", err
 	}
 	if len(job.chunks) != tg.Chunks {
-		return nil, false, errPermanent(fmt.Sprintf("%s 的切分結果有 %d 個 chunk，記錄有 %d 個", tg.Lang, len(job.chunks), tg.Chunks))
+		return nil, false, "", errPermanent(fmt.Sprintf("%s 的切分結果有 %d 個 chunk，記錄有 %d 個", tg.Lang, len(job.chunks), tg.Chunks))
 	}
+	viaBatch := false
 	texts := make([]*trnCueOut, len(b.tr.Cues))
 	chunkOf := make([]int, len(b.tr.Cues))
 	records := make([]chunkRecord, 0, tg.Chunks)
@@ -894,20 +992,20 @@ func (p *Pipeline) trnAssembleLLM(ctx context.Context, it store.Item, b *trnBase
 		g := tg.Offset + c.Index
 		i := slices.IndexFunc(rows, func(r store.LLMChunk) bool { return r.Chunk == g })
 		if i < 0 {
-			return nil, false, errPermanent(fmt.Sprintf("找不到 chunk %d 的記錄", g))
+			return nil, false, "", errPermanent(fmt.Sprintf("找不到 chunk %d 的記錄", g))
 		}
 		row := rows[i]
 		if row.Status != store.ChunkDone && row.Status != store.ChunkFallback {
-			return nil, false, errPermanent(fmt.Sprintf("chunk %d 還沒有結果", g))
+			return nil, false, "", errPermanent(fmt.Sprintf("chunk %d 還沒有結果", g))
 		}
 		var out trnChunkOutput
 		if err := json.Unmarshal(row.Output, &out); err != nil {
-			return nil, false, errPermanent(fmt.Sprintf("chunk %d 的輸出不正確：%v", g, err))
+			return nil, false, "", errPermanent(fmt.Sprintf("chunk %d 的輸出不正確：%v", g, err))
 		}
 		for _, cue := range out.Cues {
 			k := cue.I - 1
 			if k < 0 || k >= len(texts) {
-				return nil, false, errPermanent(fmt.Sprintf("chunk %d 的輸出有不存在的第 %d 句", g, cue.I))
+				return nil, false, "", errPermanent(fmt.Sprintf("chunk %d 的輸出有不存在的第 %d 句", g, cue.I))
 			}
 			if texts[k] == nil { // 重疊區：前一個 chunk 已經輸出
 				cp := cue
@@ -921,6 +1019,11 @@ func (p *Pipeline) trnAssembleLLM(ctx context.Context, it store.Item, b *trnBase
 		if !row.Reused && len(row.Usage) > 0 {
 			_ = json.Unmarshal(row.Usage, &rec.Usage)
 		}
+		via, n := rec.applyBatch(row)
+		viaBatch = viaBatch || via
+		if notice == "" {
+			notice = n
+		}
 		records = append(records, rec)
 	}
 	limit := llm.ReadingSpeedLimit(tg.Lang)
@@ -928,7 +1031,7 @@ func (p *Pipeline) trnAssembleLLM(ctx context.Context, it store.Item, b *trnBase
 	fallbacks, warnings := []trnRecord{}, []trnRecord{}
 	for k, c := range b.tr.Cues {
 		if texts[k] == nil {
-			return nil, false, errPermanent(fmt.Sprintf("%s 的譯文缺少第 %d 句", tg.Lang, k+1))
+			return nil, false, "", errPermanent(fmt.Sprintf("%s 的譯文缺少第 %d 句", tg.Lang, k+1))
 		}
 		out := texts[k]
 		cues[k] = subtitle.Cue{Index: c.Index, StartMS: c.StartMS, EndMS: c.EndMS, Text: out.Text, Timing: c.Timing, Speaker: c.Speaker}
@@ -955,15 +1058,18 @@ func (p *Pipeline) trnAssembleLLM(ctx context.Context, it store.Item, b *trnBase
 	if tg.Kind == TargetLocalize {
 		fields["table"], fields["opencc_data"] = string(tg.Table), zhconv.DataVersion
 	}
+	if viaBatch {
+		fields["batch"] = true
+	}
 	if len(fallbacks) == 0 {
 		// 有退回的譯文不寫快取鍵：下一次重跑要重新送出（LLM-R8）。
 		fields["cache_key"] = tg.Key
 	}
 	prov, err := p.provenance(fields, nil)
 	if err != nil {
-		return nil, false, err
+		return nil, false, "", err
 	}
-	art, err := p.writeCuesArtifact(ctx, it.ID, subtitle.Transcript{Lang: tg.Lang, Variant: subtitle.VariantTranslated, Speakers: b.tr.Speakers, Cues: cues},
+	art, err = p.writeCuesArtifact(ctx, it.ID, subtitle.Transcript{Lang: tg.Lang, Variant: subtitle.VariantTranslated, Speakers: b.tr.Speakers, Cues: cues},
 		[]string{b.input.ID}, prov)
-	return art, len(fallbacks) > 0, err
+	return art, len(fallbacks) > 0, notice, err
 }

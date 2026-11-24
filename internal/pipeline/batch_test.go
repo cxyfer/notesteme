@@ -28,8 +28,10 @@ import (
 
 // fakeBatchAPI 是假的 Batch API：每個請求由 answers（另一個 chunkLLM，不計入一般 API 的請求）回答。
 type fakeBatchAPI struct {
-	mu        sync.Mutex
-	answers   *chunkLLM
+	mu      sync.Mutex
+	answers *chunkLLM
+	// client 非 nil 時取代 answers 回答成功的請求（translate 的 batch 用 trnLLM）。
+	client    llm.Client
 	submitErr error
 	statusErr error
 	// state 是 Status 回報的狀態；cancelState 是 Cancel 之後的狀態（空字串代表同 state）。
@@ -92,7 +94,11 @@ func (f *fakeBatchAPI) Results(ctx context.Context, _ llm.BatchStatus, fn func(l
 				}
 				continue
 			case "", llm.ResultSucceeded:
-				resp, err := f.answers.Complete(ctx, q.Request)
+				var c llm.Client = f.answers
+				if f.client != nil {
+					c = f.client
+				}
+				resp, err := c.Complete(ctx, q.Request)
 				if err != nil {
 					return err
 				}
@@ -422,7 +428,7 @@ func TestBatchSubmitFailureFallsBack(t *testing.T) {
 	}
 }
 
-// BATCH-R1：手動新增（manual）、batch: off、自訂 base_url、agent 與 translate 都不用 batch。
+// BATCH-R1：手動新增（manual）、batch: off、自訂 base_url、agent 都不用 batch；translate 與其他 LLM 步驟一樣可以用。
 func TestBatchEligibility(t *testing.T) {
 	b := newBatchRig(t, batchRigConfig{priority: queue.PriorityManual})
 	if len(b.api.submitted) != 0 || latestStage(t, b.rig, b.it.ID, StageCorrect).Status != store.StatusDone {
@@ -441,13 +447,15 @@ func TestBatchEligibility(t *testing.T) {
 	if !p.batchEligible(task, run, cfg, auto, llmPayload{}) {
 		t.Fatal("符合條件的任務要用 batch")
 	}
+	if !p.batchEligible(task, store.StageRun{Stage: StageTranslate, Executor: ExecutorAPI}, cfg, auto, llmPayload{}) {
+		t.Fatal("translate 設定 batch: auto 時要用 batch")
+	}
 	for name, ok := range map[string]bool{
 		"已經改走一般 API":     p.batchEligible(task, run, cfg, auto, llmPayload{Batch: &batchFallback{Reason: BatchFallbackTimeout}}),
 		"manual":         p.batchEligible(store.Task{Executor: queue.ExecutorBuiltin, Priority: queue.PriorityManual, ChunkIndex: new(int)}, run, cfg, auto, llmPayload{}),
 		"agent 任務":       p.batchEligible(store.Task{Executor: ExecutorAgent, Priority: queue.PriorityBackfill, ChunkIndex: new(int)}, run, cfg, auto, llmPayload{}),
 		"不是 chunk":       p.batchEligible(store.Task{Executor: queue.ExecutorBuiltin, Priority: queue.PriorityBackfill}, run, cfg, auto, llmPayload{}),
 		"executor agent": p.batchEligible(task, store.StageRun{Stage: StageCorrect, Executor: ExecutorAgent}, cfg, auto, llmPayload{}),
-		"translate":      p.batchEligible(task, store.StageRun{Stage: StageTranslate, Executor: ExecutorAPI}, cfg, auto, llmPayload{}),
 		"frames":         p.batchEligible(task, store.StageRun{Stage: StageFrames, Executor: ExecutorAPI}, cfg, auto, llmPayload{}),
 		"batch 沒設定":      p.batchEligible(task, run, cfg, Effective{}, llmPayload{}),
 		"gemini":         p.batchEligible(task, run, StageConfig{Provider: "gemini"}, auto, llmPayload{}),

@@ -57,6 +57,9 @@ type batchFallback struct {
 	// Retry 是 batch 的結果沒有通過驗證時的錯誤說明（invalid_output）：一般 API 的第一次請求就附上（LLM-R5）。
 	Retry  string `json:"retry,omitempty"`
 	Notice string `json:"notice,omitempty"`
+	// Prior 是 translate 已經付費的 batch 結果：句群的切分標記不符（TRN-R4）時帶到一般 API，只補送逐 cue 的請求。
+	// 這時 Reason 是空字串，來源紀錄記 mode: batch（chunk 的譯文來自 batch）。
+	Prior *trnPrior `json:"prior,omitempty"`
 }
 
 // batchRecord 是 llm_chunks.batch_json：來源紀錄 chunks.<n> 的 batch 欄位（BATCH-R8）。
@@ -71,11 +74,45 @@ type batchRecord struct {
 }
 
 func (f *batchFallback) record() json.RawMessage {
-	b, _ := json.Marshal(batchRecord{
+	rec := batchRecord{
 		Mode: batchModeAPI, BatchID: f.BatchID, SubmittedAt: f.SubmittedAt, EndedAt: f.EndedAt,
 		FallbackReason: f.Reason, Notice: f.Notice,
-	})
+	}
+	if f.Prior != nil {
+		rec.Mode, rec.FallbackReason = batchModeBatch, ""
+	}
+	b, _ := json.Marshal(rec)
 	return b
+}
+
+// batchWork 是一個 chunk 任務送進 batch、以及驗證 batch 結果需要的內容。opts 與一般 API 的第一次請求是同一份
+// （BATCH-R2：請求的內容完全相同）。同一個 batch 可以混有不同步驟的任務，所以依每個任務自己的步驟組出（prepareBatchWork）。
+type batchWork struct {
+	provider, model string
+	// opts 是 RunChunk 的輸入（Spec、Model、Fixed、Input、MaxRetries；不含 Client 與 hook）。
+	opts llm.RunOptions
+	// trn 是 translate 的 chunk：結果要分回各 cue（TRN-R3、R4、R7）；其他步驟是 nil。
+	trn *trnChunkWork
+}
+
+// prepareBatchWork 依 stage run 的步驟組出 batchWork；chunk 已經有結果時 done 為 true。
+func (p *Pipeline) prepareBatchWork(ctx context.Context, r *store.Repo, t store.Task, run store.StageRun, it store.Item, eff Effective) (*batchWork, bool, error) {
+	if run.Stage == StageTranslate {
+		w, done, err := p.trnPrepareChunk(ctx, r, t, run, it, eff)
+		if err != nil || done {
+			return nil, done, err
+		}
+		return w.batchWork(), false, nil
+	}
+	w, done, err := p.prepareChunk(ctx, r, t, run, it, eff)
+	if err != nil || done {
+		return nil, done, err
+	}
+	return w.batchWork(), false, nil
+}
+
+func (w *chunkWork) batchWork() *batchWork {
+	return &batchWork{provider: w.job.cfg.Provider, model: w.job.cfg.Model, opts: w.opts}
 }
 
 // BatchAPI 是 provider 的 Batch API（*llm.BatchClient 實作它）；測試可以替換（SetBatchAPI）。
@@ -128,7 +165,7 @@ func stageBatch(eff Effective, stage string) string {
 
 // batchEligible 判斷 chunk 任務是否改用 Batch API（BATCH-R1）：處理方案設定 auto、優先序是 subscription 或 backfill、
 // executor 是 api、provider 是內建 base_url 的 anthropic 或 openai。已經從 batch 改走一般 API 的任務不再送進 batch。
-// translate 的 chunk 走自己的路徑（runTranslateLLM），這個切片沒有接上 batch（BATCH 待決問題）。
+// LLM 引擎的步驟（segment、correct、chapters、note、summary）由 llmChunk 呼叫，translate 由 trnChunk 呼叫。
 func (p *Pipeline) batchEligible(t store.Task, run store.StageRun, cfg StageConfig, eff Effective, pl llmPayload) bool {
 	if pl.Batch != nil || p.llm == nil || t.ChunkIndex == nil || t.Executor != queue.ExecutorBuiltin {
 		return false
@@ -136,7 +173,7 @@ func (p *Pipeline) batchEligible(t store.Task, run store.StageRun, cfg StageConf
 	if t.Priority > queue.PrioritySubscription || run.Executor != ExecutorAPI {
 		return false
 	}
-	if !slices.Contains(batchStages, run.Stage) || run.Stage == StageTranslate || stageBatch(eff, run.Stage) != BatchAuto {
+	if !slices.Contains(batchStages, run.Stage) || stageBatch(eff, run.Stage) != BatchAuto {
 		return false
 	}
 	prov, ok := p.llm.Provider(cfg.Provider)
@@ -174,8 +211,8 @@ var errBatchSkip = errors.New("pipeline: 這次不送 batch")
 
 // submitBatch 把已領取的 chunk 任務 t 與同一輪其他符合的任務送成一個 batch（BATCH-R2）。
 // handled 為 false 時呼叫端照一般 API 執行；t 自己超過預算時回傳 budget_blocked（呼叫端照 COST-R8 處理）。
-func (p *Pipeline) submitBatch(ctx context.Context, t store.Task, run store.StageRun, it store.Item, w *chunkWork) (bool, error) {
-	provider, model := w.job.cfg.Provider, w.job.cfg.Model
+func (p *Pipeline) submitBatch(ctx context.Context, t store.Task, run store.StageRun, it store.Item, w *batchWork) (bool, error) {
+	provider, model := w.provider, w.model
 	api, err := p.batchAPI(ctx, provider)
 	if err != nil {
 		// 沒有 key 等問題交給一般 API 的路徑回報（LLM-R12）。
@@ -337,7 +374,7 @@ func (p *Pipeline) batchCandidate(ctx context.Context, r *store.Repo, c store.Ta
 	if pl.Phase != llmPhaseChunk || !p.batchEligible(c, run, cfg, eff, pl) {
 		return batchItem{}, false
 	}
-	w, done, err := p.prepareChunk(ctx, r, c, run, it, eff)
+	w, done, err := p.prepareBatchWork(ctx, r, c, run, it, eff)
 	if err != nil || done {
 		return batchItem{}, false
 	}
@@ -540,6 +577,10 @@ type batchVerdict struct {
 	out     json.RawMessage
 	verr    *llm.ValidationError
 	retries int // 這個步驟的 max_validation_retries
+	// trnRes、trnPrior 是 translate 的結果分回各 cue 之後（TRN-R3、R7）：可以直接寫回的 chunk 結果，
+	// 或句群的切分標記不符、要在一般 API 補送逐 cue 的請求（TRN-R4）。只在通過驗證或沒有驗證重試額度時設定。
+	trnRes   *store.ChunkResult
+	trnPrior *trnPrior
 }
 
 // finishBatch 取回已結束的 batch 的結果並交給對應的任務（BATCH-R4、R9、R11）。
@@ -583,7 +624,7 @@ func (p *Pipeline) finishBatch(ctx context.Context, api BatchAPI, b store.Batch,
 		if res.Kind != llm.ResultSucceeded {
 			continue
 		}
-		w, retries, err := p.batchChunkWork(ctx, e)
+		w, err := p.batchChunkWork(ctx, e)
 		if err != nil {
 			// 輸入已經不存在（例如影音被刪除）：只記帳。
 			if resp, derr := api.DecodeBatchBody(res.Body, nil); derr == nil {
@@ -595,8 +636,15 @@ func (p *Pipeline) finishBatch(ctx context.Context, api BatchAPI, b store.Batch,
 		if derr != nil {
 			continue
 		}
-		v.resp, v.decoded, v.retries = resp, true, retries
-		v.out, v.verr = llm.ValidateResponse(w.opts.Spec, w.in, resp)
+		v.resp, v.decoded, v.retries = resp, true, w.opts.MaxRetries
+		v.out, v.verr = llm.ValidateResponse(w.opts.Spec, w.opts.Input, resp)
+		if w.trn != nil && (v.verr == nil || v.retries < 1) {
+			if v.trnRes, v.trnPrior, err = w.trn.batchOutcome(v.out, v.verr, resp.Usage); err != nil {
+				// 分不回各 cue（不應該發生）：當成不能解碼，改走一般 API。
+				p.log.Warn("batch 的譯文無法分回各句，改走一般 API", "batch", b.ID, "task", tid, "error", err)
+				v.decoded, v.trnRes, v.trnPrior = false, nil, nil
+			}
+		}
 	}
 	final := store.BatchEnded
 	switch {
@@ -627,37 +675,38 @@ func (p *Pipeline) finishBatch(ctx context.Context, api BatchAPI, b store.Batch,
 	return nil
 }
 
-// batchChunkWork 重新組出一個請求的 chunk 與驗證用的輸入（與送出時相同，prepareLLM 是確定性的）。
-func (p *Pipeline) batchChunkWork(ctx context.Context, e store.BatchEntry) (*chunkWork, int, error) {
+// batchChunkWork 重新組出一個請求的 chunk 與驗證用的輸入（與送出時相同，prepareLLM、trnJobFor 是確定性的）；
+// 依這個請求自己的步驟組出（同一個 batch 可以混有不同步驟）。
+func (p *Pipeline) batchChunkWork(ctx context.Context, e store.BatchEntry) (*batchWork, error) {
 	r := p.st.Read()
 	t, err := r.Task(ctx, e.Task)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	run, err := r.StageRun(ctx, e.Run)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	it, err := r.ItemByID(ctx, run.ItemID)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	snap, err := r.Snapshot(ctx, run.ConfigSnapshotID)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	eff, err := ParseEffective(snap)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-	w, done, err := p.prepareChunk(ctx, r, t, run, it, eff)
+	w, done, err := p.prepareBatchWork(ctx, r, t, run, it, eff)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	if done {
-		return nil, 0, errors.New("chunk 已經有結果")
+		return nil, errors.New("chunk 已經有結果")
 	}
-	return w, w.job.settings.MaxValidationRetries, nil
+	return w, nil
 }
 
 // applyBatchResult 在交易中處理一個請求的結果。回傳 true 代表建立了任務（要喚醒 worker）。
@@ -721,26 +770,35 @@ func (p *Pipeline) applyBatchResult(ctx context.Context, tx *store.Repo, b store
 			_, err := p.unpark(ctx, tx, b, e, fb, false)
 			return err == nil, err
 		}
-		if v.verr == nil {
-			if err := settle(cost.OutcomeOK); err != nil {
-				return false, err
-			}
-			return p.finishBatchChunk(ctx, tx, b, e, run, task, v, store.ChunkResult{Status: store.ChunkDone, Output: v.out}, ended)
+		outcome := cost.OutcomeOK
+		if v.verr != nil {
+			outcome = cost.OutcomeInvalid
 		}
-		if err := settle(cost.OutcomeInvalid); err != nil {
+		if err := settle(outcome); err != nil {
 			return false, err
 		}
-		if v.retries < 1 {
+		switch {
+		case v.trnPrior != nil:
+			// translate 的句群切分標記不符（TRN-R4）：帶著這個結果到一般 API，只補送逐 cue 的請求。
+			fb.Prior = v.trnPrior
+			_, err := p.unpark(ctx, tx, b, e, fb, false)
+			return err == nil, err
+		case v.trnRes != nil:
+			return p.finishBatchChunk(ctx, tx, b, e, run, task, v, *v.trnRes, ended)
+		case v.verr == nil:
+			return p.finishBatchChunk(ctx, tx, b, e, run, task, v, store.ChunkResult{Status: store.ChunkDone, Output: v.out}, ended)
+		case v.retries < 1:
 			// 沒有驗證重試的額度：照 LLM-R5 的步驟退回規則處理。
 			res := store.ChunkResult{Status: store.ChunkFallback, Reason: v.verr.Reason}
 			if len(v.verr.Detail) > 0 {
 				res.Detail, _ = json.Marshal(v.verr.Detail)
 			}
 			return p.finishBatchChunk(ctx, tx, b, e, run, task, v, res, ended)
+		default:
+			fb.Reason, fb.Retry = BatchFallbackInvalidOutput, llm.RetryNote(v.verr)
+			_, err := p.unpark(ctx, tx, b, e, fb, false)
+			return err == nil, err
 		}
-		fb.Reason, fb.Retry = BatchFallbackInvalidOutput, llm.RetryNote(v.verr)
-		_, err := p.unpark(ctx, tx, b, e, fb, false)
-		return err == nil, err
 	case llm.ResultErrored:
 		if err := settle(cost.OutcomeHTTPError); err != nil {
 			return false, err

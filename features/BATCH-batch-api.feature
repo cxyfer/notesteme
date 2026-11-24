@@ -219,3 +219,105 @@ Feature: Batch API for background work
     And the "corrected" artifact of "yt:batch1xxxxx" has the provenance:
       | field                    | value        |
       | chunks.0.fallback_reason | batch_failed |
+
+  # translate 與 summary 也照同一套 batch 流程（BATCH-R1 列出的步驟）。
+
+  @BATCH-01 @BATCH-R1 @BATCH-R2 @BATCH-R3 @BATCH-R4 @BATCH-R8
+  Scenario: Translations of subscription work go through the batch API
+    Given the profile "batch-translate" is:
+      """
+      stages:
+        translate: { executor: api, provider: anthropic, model: fixture-model, prompt: translate-default, batch: auto }
+      language:
+        targets: [ja]
+      """
+    And the default profile is "batch-translate"
+    And the LLM provider "anthropic" answers "translate" with "translate-echo-target"
+    And the item "yt:batch1xxxxx" has been ingested as subscription
+    And the worker runs until idle
+    And the stage "translate" of "yt:batch1xxxxx" is "waiting"
+    When the clock advances by "15m"
+    And the worker runs until idle
+    Then the stage "translate" of "yt:batch1xxxxx" is "done"
+    And the batch request count of "anthropic" is 1
+    And the LLM provider "anthropic" received 0 requests for "translate"
+    And the "translated" artifact of "yt:batch1xxxxx" has the provenance:
+      | field             | value |
+      | batch             | true  |
+      | chunks.0.mode     | batch |
+      | chunks.0.batch_id | *     |
+    And the cost ledger entries of "yt:batch1xxxxx" are:
+      | stage     | state  | usd  | batch |
+      | translate | actual | 0.02 | true  |
+
+  @BATCH-01 @BATCH-R4 @BATCH-R8
+  Scenario: A failed translation request in a batch falls back to the regular API
+    Given the profile "batch-translate" is:
+      """
+      stages:
+        translate: { executor: api, provider: anthropic, model: fixture-model, prompt: translate-default, batch: auto }
+      language:
+        targets: [ja]
+      """
+    And the default profile is "batch-translate"
+    And the LLM provider "anthropic" answers "translate" with "translate-echo-target"
+    And the batch API of "anthropic" fails the requests for chunk 1
+    And the item "yt:batch1xxxxx" has been ingested as subscription
+    And the worker runs until idle
+    When the clock advances by "15m"
+    And the worker runs until idle
+    Then the stage "translate" of "yt:batch1xxxxx" is "done"
+    And the LLM provider "anthropic" received 1 request for "translate"
+    And the "translated" artifact of "yt:batch1xxxxx" has the provenance:
+      | field                    | value          |
+      | chunks.0.mode            | api            |
+      | chunks.0.fallback_reason | request_failed |
+
+  @BATCH-01 @BATCH-R5 @BATCH-R8
+  Scenario: A translation batch that takes too long goes to the regular API
+    Given the profile "batch-translate" is:
+      """
+      stages:
+        translate: { executor: api, provider: anthropic, model: fixture-model, prompt: translate-default, batch: auto }
+      language:
+        targets: [ja]
+      """
+    And the default profile is "batch-translate"
+    And the LLM provider "anthropic" answers "translate" with "translate-echo-target"
+    And the batch API of "anthropic" never completes
+    And the item "yt:batch1xxxxx" has been ingested as subscription
+    And the worker runs until idle
+    When the clock advances by "25h"
+    And the worker runs until idle
+    Then the stage "translate" of "yt:batch1xxxxx" is "done"
+    And the cancelled batch count of "anthropic" is 1
+    And the "translated" artifact of "yt:batch1xxxxx" has the provenance:
+      | field                    | value   |
+      | chunks.0.mode            | api     |
+      | chunks.0.fallback_reason | timeout |
+
+  @BATCH-01 @BATCH-R1 @BATCH-R2 @BATCH-R4 @BATCH-R6 @BATCH-R8
+  Scenario: Summaries of subscription work go through the batch API
+    Given the profile "batch-summary" is:
+      """
+      stages:
+        summary: { executor: api, provider: anthropic, model: fixture-model, prompt: summary-default, language: zh-Hant, batch: auto }
+      """
+    And the default profile is "batch-summary"
+    And the LLM provider "anthropic" answers "summary" with "summary-kernel"
+    And the item "yt:batch1xxxxx" has been ingested as subscription
+    And the worker runs until idle
+    And the stage "summary" of "yt:batch1xxxxx" is "waiting"
+    When the clock advances by "15m"
+    And the worker runs until idle
+    Then the stage "summary" of "yt:batch1xxxxx" is "done"
+    And the batch request count of "anthropic" is 1
+    And the LLM provider "anthropic" received 0 requests for "summary"
+    And the "summary" artifact of "yt:batch1xxxxx" has the provenance:
+      | field             | value |
+      | batch             | true  |
+      | chunks.0.mode     | batch |
+      | chunks.0.batch_id | *     |
+    And the cost ledger entries of "yt:batch1xxxxx" are:
+      | stage   | state  | usd  | batch |
+      | summary | actual | 0.02 | true  |

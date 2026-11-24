@@ -814,7 +814,7 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 	job, plan := w.job, w.plan
 	// BATCH-R1、R2：背景的工作改用 Batch API；送出之後任務等待結果（BATCH-R3）。
 	if p.batchEligible(t, run, job.cfg, eff, pl) {
-		if handled, err := p.submitBatch(ctx, t, run, it, w); handled || err != nil {
+		if handled, err := p.submitBatch(ctx, t, run, it, w.batchWork()); handled || err != nil {
 			return result{parked: err == nil}, err
 		}
 	}
@@ -963,6 +963,20 @@ type chunkRecord struct {
 	FallbackReason string     `json:"fallback_reason,omitempty"`
 }
 
+// applyBatch 把 llm_chunks.batch_json 寫進來源紀錄的 chunk（BATCH-R8）；重用的 chunk 不記。
+// 回傳這個 chunk 是否經 batch 完成，以及 BATCH-R11 的提醒。
+func (rec *chunkRecord) applyBatch(row store.LLMChunk) (bool, string) {
+	if len(row.Batch) <= 2 || row.Reused { // 沒有記錄或是 {}
+		return false, ""
+	}
+	var br batchRecord
+	if json.Unmarshal(row.Batch, &br) != nil || br.Mode == "" {
+		return false, ""
+	}
+	rec.Mode, rec.BatchID, rec.SubmittedAt, rec.EndedAt, rec.FallbackReason = br.Mode, br.BatchID, br.SubmittedAt, br.EndedAt, br.FallbackReason
+	return br.Mode == batchModeBatch, br.Notice
+}
+
 // fallbackRecord 是來源紀錄 fallbacks[] 的一項（LLM-R5）。
 type fallbackRecord struct {
 	Chunk  int    `json:"chunk"`
@@ -1028,14 +1042,10 @@ func (p *Pipeline) assembleLLM(ctx context.Context, it store.Item, job *llmJob, 
 		if !row.Reused && len(row.Usage) > 0 {
 			_ = json.Unmarshal(row.Usage, &rec.Usage)
 		}
-		if len(row.Batch) > 2 && !row.Reused { // 不是 {}
-			var br batchRecord
-			if json.Unmarshal(row.Batch, &br) == nil && br.Mode != "" {
-				rec.Mode, rec.BatchID, rec.SubmittedAt, rec.EndedAt, rec.FallbackReason = br.Mode, br.BatchID, br.SubmittedAt, br.EndedAt, br.FallbackReason
-				viaBatch = viaBatch || br.Mode == batchModeBatch
-				if batchNotice == "" {
-					batchNotice = br.Notice
-				}
+		if via, notice := rec.applyBatch(row); via || notice != "" {
+			viaBatch = viaBatch || via
+			if batchNotice == "" {
+				batchNotice = notice
 			}
 		}
 		if row.Status == store.ChunkDone && row.Executor == ExecutorAgent {
