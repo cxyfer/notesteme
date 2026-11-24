@@ -391,7 +391,7 @@
     "description": "貼上網址、選擇本機檔案，或把檔案拖進視窗，Notesteme 會取得字幕並依處理方案處理。",
     "url": "網址",
     "urlPlaceholder": "https://",
-    "urlHint": "YouTube 影片或播放清單、Bilibili 影片、Podcast RSS",
+    "urlHint": "一行一個。YouTube 影片或播放清單、Bilibili 影片、Podcast RSS",
     "pickFile": "選擇本機檔案",
     "pickOtherFile": "選擇其他檔案",
     "fileChosen": "已選擇 {{name}}",
@@ -468,6 +468,21 @@
       "stagesHint": "取消勾選就是這次不做。處理方案沒有開啟的步驟不能在這裡打開。",
       "stagesHintUnknown": "取消勾選就是這次不做。讀不到全域設定，勾選只代表沿用處理方案。",
       "stageOff": "處理方案沒有開啟"
+    },
+    "summary": {
+      "existing_other": "{{count}} 部已在媒體庫中",
+      "failed_other": "{{count}} 個網址沒有新增",
+      "separator": "，"
+    },
+    "lines": {
+      "title_other": "{{count}} 個網址",
+      "tooMany": "一次最多 {{max}} 個網址，多了 {{extra}} 個。請分次新增。",
+      "noneReady": "沒有可以新增的網址。",
+      "channel": "這是頻道，不能直接新增。請一次貼一個網址，再建立訂閱。",
+      "feed": "Podcast 要選集數，請一次貼一個網址。",
+      "allParts": "全部分P",
+      "cookie": "需要 cookie",
+      "noEstimate": "無法預估"
     }
   },
   "actions": {

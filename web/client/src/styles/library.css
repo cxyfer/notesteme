@@ -375,6 +375,39 @@
   gap: var(--space-3);
 }
 
+/* 一行一個網址（pages.md §2） */
+.add__urls {
+  resize: vertical;
+  min-height: 2.5em;
+}
+.add__lines {
+  display: grid;
+  gap: var(--space-2);
+}
+.add__line-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.add__line {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.add__line-url {
+  overflow-wrap: anywhere;
+  font-size: var(--font-14);
+}
+.add__line-ok {
+  font-size: var(--font-14);
+}
+.add__line-error {
+  color: var(--state-failed);
+  font-size: var(--font-14);
+}
+
 /* 「調整這次的設定」（pages.md §2） */
 .add__run-head {
   margin: 0;

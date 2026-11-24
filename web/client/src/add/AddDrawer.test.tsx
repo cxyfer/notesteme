@@ -504,6 +504,92 @@ describe("新增抽屜", () => {
     });
   });
 
+  it("一行一個網址：逐行辨識與預估，無效的行就地標示不擋其他行，逐個新增並合計（axe 無違規）", async () => {
+    const YT2 = "https://www.youtube.com/watch?v=vid00000002";
+    const BILI = "https://www.bilibili.com/video/BV1xx411c7mD";
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const api = drawerApi({
+      "POST /api/estimate": async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight--;
+        return ESTIMATE;
+      },
+      "POST /api/items": (req) => {
+        const url = (req.body as { url: string }).url;
+        if (url === YT2) return json(200, { items: [ingested(2, { already_in_library: true })] });
+        return json(201, { items: [ingested(url === YT ? 1 : 3)] });
+      },
+    });
+    const { dialog } = await openDrawer();
+    const box = within(dialog).getByLabelText("網址");
+    // 重複的行與空行略過
+    fireEvent.change(box, {
+      target: {
+        value: `${YT}\n\nnot a url\n${YT2}\n${YT}\nhttps://www.youtube.com/@fixturechannel\n${BILI}`,
+      },
+    });
+    const lines = await within(dialog).findByRole("region", { name: "5 個網址" });
+    expect(await within(lines).findByText("請輸入 http 或 https 開頭的完整網址。")).toBeTruthy();
+    expect(
+      await within(lines).findByText("這是頻道，不能直接新增。請一次貼一個網址，再建立訂閱。"),
+    ).toBeTruthy();
+    expect(await within(lines).findByText(/全部分P/)).toBeTruthy();
+    // 三行可以新增，預估依序送出（一次一個），合計 3 × 0.21
+    expect(await within(lines).findByText("預估花費約 US$0.63。")).toBeTruthy();
+    expect(api.calls("POST", "/api/estimate")).toHaveLength(3);
+    expect(maxInFlight).toBe(1);
+    await expectNoA11yViolations(document.body);
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "開始處理" }));
+    await waitFor(() => expect(api.calls("POST", "/api/items")).toHaveLength(3));
+    expect(api.calls("POST", "/api/items").map((c) => JSON.parse(String(c.init.body)).url)).toEqual(
+      [YT, YT2, BILI],
+    );
+    expect(await screen.findByText("已開始處理 2 部，1 部已在媒體庫中")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("一行一個網址：部分失敗時留在抽屜，成功的行移除、失敗的行標示原因", async () => {
+    const YT2 = "https://www.youtube.com/watch?v=vid00000002";
+    const api = drawerApi({
+      "POST /api/items": (req) =>
+        (req.body as { url: string }).url === YT2
+          ? apiError(409, "in_trash", "在垃圾桶中", { item_id: "item-9" })
+          : json(201, { items: [ingested(1)] }),
+    });
+    const { dialog } = await openDrawer();
+    fireEvent.change(within(dialog).getByLabelText("網址"), {
+      target: { value: `${YT}\n${YT2}\nnot a url` },
+    });
+    const lines = await within(dialog).findByRole("region", { name: "3 個網址" });
+    await within(lines).findByText("預估花費約 US$0.42。");
+    await userEvent.click(within(dialog).getByRole("button", { name: "開始處理" }));
+    expect(await screen.findByText("已開始處理 1 部，1 個網址沒有新增")).toBeTruthy();
+    expect(api.calls("POST", "/api/items")).toHaveLength(2);
+    expect(screen.getByRole("dialog", { name: "新增" })).toBeTruthy();
+    expect((within(dialog).getByLabelText("網址") as HTMLTextAreaElement).value).toBe(
+      `${YT2}\nnot a url`,
+    );
+    expect(await within(dialog).findByText("這部影音在垃圾桶中。還原後就能再使用。")).toBeTruthy();
+  });
+
+  it("一行一個網址：超過 20 行時不能送出", async () => {
+    drawerApi();
+    const { dialog } = await openDrawer();
+    const many = Array.from({ length: 21 }, (_, i) => `https://www.youtube.com/watch?v=v${i}`);
+    fireEvent.change(within(dialog).getByLabelText("網址"), { target: { value: many.join("\n") } });
+    expect(
+      (await within(dialog).findAllByText("一次最多 20 個網址，多了 1 個。請分次新增。")).length,
+    ).toBeGreaterThan(0);
+    expect(within(dialog).getByRole("button", { name: "開始處理" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+  });
+
   it("打開時沒有 axe 問題；Esc 關閉後焦點回到開啟前的元素", async () => {
     drawerApi();
     signIn();

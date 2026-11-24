@@ -1,6 +1,7 @@
 // 「新增」抽屜（docs/ui/pages.md §2、ING-R1～R6、R9）：
 //
-//   1. 貼上網址 → POST /api/resolve 辨識（延遲 400ms，不建立影音）→ 顯示預覽：
+//   1. 貼上網址（一行一個；兩行以上走 MultiAdd：逐行辨識、預估，送出時逐行新增）
+//      → POST /api/resolve 辨識（延遲 400ms，不建立影音）→ 顯示預覽：
 //      影片（Bilibili 沒有指定分P 時可以選「全部」或指定編號）、播放清單（整份新增）、
 //      頻道（不能直接新增，改為提供「建立訂閱」：打開 /subscriptions?subscribe=<網址>，SUB-R1）、
 //      Podcast feed（勾選要新增的集，ING-R6；也可以改成建立訂閱）。
@@ -39,6 +40,7 @@ import {
   useRunDefaults,
   type RunOverridesValue,
 } from "./RunOverrides";
+import { MAX_LINES, MultiLines, uniqueLines, useMultiLines, type LineState } from "./MultiAdd";
 import { isHttpUrl, parseParts } from "./url";
 
 type Resolution = components["schemas"]["Resolution"];
@@ -46,6 +48,9 @@ type IngestedItem = components["schemas"]["IngestedItem"];
 type CreateBody = components["schemas"]["CreateItemInputBody"];
 type EstimateBody = components["schemas"]["EstimateInputBody"];
 type EstimateResult = components["schemas"]["EstimateResult"];
+type OkLine = Extract<LineState, { kind: "ok" }>;
+/** 多行送出時一行的結果 */
+type LineResult = { url: string; items: IngestedItem[] } | { url: string; error: unknown };
 
 const RESOLVE_DELAY_MS = 400;
 
@@ -92,10 +97,12 @@ export function AddDrawer({
   const toast = useToast();
   const qc = useQueryClient();
   const formId = useId();
-  const urlRef = useRef<HTMLInputElement>(null);
+  const urlRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [url, setUrl] = useState(initialUrl);
+  const [text, setText] = useState(initialUrl);
+  /** 上次多行送出時失敗的行（網址 → 錯誤） */
+  const [lineErrors, setLineErrors] = useState<ReadonlyMap<string, unknown>>(new Map());
   const [file, setFile] = useState<File | null>(initialFile ?? null);
   const [partsMode, setPartsMode] = useState<"all" | "some">("all");
   const [partsText, setPartsText] = useState("");
@@ -106,11 +113,14 @@ export function AddDrawer({
   const [run, setRun] = useState<RunOverridesValue>(EMPTY_RUN_OVERRIDES);
 
   // ---- 辨識 ----
-  const trimmed = url.trim();
+  const lines = uniqueLines(text);
+  const multi = !file && lines.length > 1;
+  // 一行（或空的）時沿用原本的單一網址流程
+  const trimmed = multi ? "" : (lines[0] ?? "");
   const debounced = useDebouncedValue(trimmed, RESOLVE_DELAY_MS);
   // 帶入的網址（貼上）不用等
   const target = trimmed === initialUrl.trim() ? trimmed : debounced;
-  const canResolve = !file && isHttpUrl(target);
+  const canResolve = !file && !multi && isHttpUrl(target);
   const resolve = useQuery({
     queryKey: ["resolve", target],
     queryFn: ({ signal }) => api.post("/api/resolve", { body: { url: target }, signal }),
@@ -137,6 +147,23 @@ export function AddDrawer({
   const runDefaults = useRunDefaults(profileConfig, open && runOpen);
   const overrides = buildOverrides(run, runDefaults.sources);
 
+  // ---- 多個網址（一行一個） ----
+  const debouncedLines = uniqueLines(useDebouncedValue(text, RESOLVE_DELAY_MS));
+  const lineStates = useMultiLines({
+    lines: multi ? debouncedLines.slice(0, MAX_LINES) : [],
+    enabled: open && multi,
+    base: {
+      ...(chosenProfile ? { profile: chosenProfile } : {}),
+      ...(overrides ? { overrides } : {}),
+    },
+    estimateEnabled: open && multi && !profiles.isPending,
+  });
+  const extraLines = Math.max(0, lines.length - MAX_LINES);
+  const linesCurrent =
+    debouncedLines.length === lines.length && debouncedLines.every((l, i) => l === lines[i]);
+  const okLines = lineStates.filter((s): s is OkLine => s.kind === "ok");
+  const linesResolving = !linesCurrent || lineStates.some((s) => s.kind === "resolving");
+
   // ---- 送出的內容 ----
   const isBiliAllParts = res?.platform === "bilibili" && res.kind === "video" && !res.part;
   const parts = isBiliAllParts && partsMode === "some" ? parseParts(partsText) : undefined;
@@ -144,18 +171,28 @@ export function AddDrawer({
   const isFeed = res?.kind === "feed";
   const blockedReason: string | undefined = file
     ? undefined
-    : !trimmed
-      ? t("add.needInput")
-      : !isHttpUrl(trimmed)
-        ? t("add.invalidUrl")
-        : res?.subscribable
-          ? t("add.channelBlocked")
-          : isFeed && episodes.size === 0
-            ? t("add.pickEpisodes")
-            : partsInvalid
-              ? t("add.partsInvalid")
-              : undefined;
-  const ready = file !== null || (res !== undefined && !blockedReason);
+    : multi
+      ? extraLines > 0
+        ? t("add.lines.tooMany", { max: MAX_LINES, extra: extraLines })
+        : !linesResolving && okLines.length === 0
+          ? t("add.lines.noneReady")
+          : undefined
+      : !trimmed
+        ? t("add.needInput")
+        : !isHttpUrl(trimmed)
+          ? t("add.invalidUrl")
+          : res?.subscribable
+            ? t("add.channelBlocked")
+            : isFeed && episodes.size === 0
+              ? t("add.pickEpisodes")
+              : partsInvalid
+                ? t("add.partsInvalid")
+                : undefined;
+  const ready =
+    file !== null ||
+    (multi
+      ? !blockedReason && !linesResolving && okLines.length > 0
+      : res !== undefined && !blockedReason);
 
   // ---- 預估花費（POST /api/estimate）：和送出的內容相同；勾選分P／集數時等停下來再送 ----
   const estimateBody: EstimateBody | undefined =
@@ -250,6 +287,58 @@ export function AddDrawer({
     },
   });
 
+  // 多個網址：依序逐行新增（一個失敗不影響其他行），結果合計在 toast
+  const submitMany = useMutation({
+    mutationFn: async (targets: OkLine[]): Promise<LineResult[]> => {
+      const out: LineResult[] = [];
+      for (const s of targets) {
+        try {
+          const r = await api.post("/api/items", { body: s.body as CreateBody });
+          out.push({ url: s.url, items: r?.items ?? [] });
+        } catch (error) {
+          out.push({ url: s.url, error });
+        }
+      }
+      return out;
+    },
+    onSuccess: (results) => {
+      const items = results.flatMap((r) => ("items" in r ? r.items : []));
+      const created = items.filter((i) => !i.already_in_library && !i.in_trash);
+      const already = items.filter((i) => i.already_in_library).length;
+      const failed = results.filter((r) => "error" in r);
+      const summary = [
+        created.length > 0 ? t("add.started", { count: created.length }) : "",
+        already > 0 ? t("add.summary.existing", { count: already }) : "",
+        failed.length > 0 ? t("add.summary.failed", { count: failed.length }) : "",
+      ]
+        .filter(Boolean)
+        .join(t("add.summary.separator"));
+      if (failed.length === 0) {
+        onOpenChange(false);
+      } else {
+        // 留在抽屜：成功的行從輸入框移除，失敗的行就地標示（沒送出的行也留著）
+        const done = new Set(results.filter((r) => "items" in r).map((r) => r.url));
+        setText(lines.filter((l) => !done.has(l)).join("\n"));
+        setLineErrors(new Map(failed.map((r) => [r.url, (r as { error: unknown }).error])));
+      }
+      const first = created[0];
+      toast.show({
+        title: summary,
+        ...(first
+          ? {
+              action: {
+                label: t("add.view"),
+                onClick: () =>
+                  void (created.length === 1
+                    ? navigate({ to: "/items/$id", params: { id: first.id } })
+                    : navigate({ to: "/library", search: {} })),
+              },
+            }
+          : {}),
+      });
+    },
+  });
+
   function openItem(id: string) {
     onOpenChange(false);
     void navigate({ to: "/items/$id", params: { id } });
@@ -257,9 +346,11 @@ export function AddDrawer({
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!ready || submit.isPending) return;
+    if (!ready || submit.isPending || submitMany.isPending) return;
     setExisting([]);
-    submit.mutate();
+    setLineErrors(new Map());
+    if (multi) submitMany.mutate(okLines);
+    else submit.mutate();
   }
 
   function errorActions(err: unknown): ErrorAction[] {
@@ -304,10 +395,10 @@ export function AddDrawer({
           type="submit"
           form={formId}
           variant="primary"
-          disabled={!ready || submit.isPending}
+          disabled={!ready || submit.isPending || submitMany.isPending}
           aria-describedby={blockedReason && !file ? `${formId}-blocked` : undefined}
         >
-          {submit.isPending ? t("add.submitting") : t("add.submit")}
+          {submit.isPending || submitMany.isPending ? t("add.submitting") : t("add.submit")}
         </Button>
       }
     >
@@ -321,20 +412,21 @@ export function AddDrawer({
           <label className="field__label" htmlFor={`${formId}-url`}>
             {t("add.url")}
           </label>
-          <input
+          <textarea
             ref={urlRef}
             id={`${formId}-url`}
-            className="field__input"
-            type="url"
+            className="field__input add__urls"
             inputMode="url"
             autoComplete="off"
             spellCheck={false}
+            rows={Math.min(Math.max(lines.length, 1), 6)}
             placeholder={t("add.urlPlaceholder")}
-            value={url}
+            value={text}
             disabled={file !== null}
             onChange={(e) => {
-              setUrl(e.target.value);
+              setText(e.target.value);
               setExisting([]);
+              setLineErrors(new Map());
               submit.reset();
             }}
             aria-describedby={`${formId}-url-hint`}
@@ -378,6 +470,11 @@ export function AddDrawer({
           )}
         </div>
 
+        {multi && <MultiLines states={lineStates} errors={lineErrors} extra={extraLines} />}
+        {/* 多行送出後只剩一行失敗時，錯誤仍顯示在單一網址的畫面 */}
+        {!multi && !file && lineErrors.has(trimmed) && (
+          <ErrorCallout error={lineErrors.get(trimmed)} />
+        )}
         {!file && resolving && <Spinner label={t("add.resolving")} showLabel />}
         {!file && canResolve && resolve.isError && target === trimmed && (
           <ErrorCallout error={resolve.error} actions={errorActions(resolve.error)} />
@@ -436,7 +533,7 @@ export function AddDrawer({
           errors={fieldErrorsOf(submit.error)}
         />
 
-        {blockedReason && !file && trimmed && !resolving && (
+        {blockedReason && !file && (multi || trimmed) && !resolving && (
           <p id={`${formId}-blocked`} className="add__blocked secondary">
             {blockedReason}
           </p>

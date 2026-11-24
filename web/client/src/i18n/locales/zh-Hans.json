@@ -391,7 +391,7 @@
     "description": "粘贴网址、选择本地文件，或把文件拖进窗口，Notesteme 会获取字幕并按处理方案处理。",
     "url": "网址",
     "urlPlaceholder": "https://",
-    "urlHint": "YouTube 视频或播放列表、Bilibili 视频、Podcast RSS",
+    "urlHint": "一行一个。YouTube 视频或播放列表、Bilibili 视频、Podcast RSS",
     "pickFile": "选择本地文件",
     "pickOtherFile": "选择其他文件",
     "fileChosen": "已选择 {{name}}",
@@ -468,6 +468,21 @@
       "stagesHint": "取消勾选就是这次不做。处理方案没有开启的步骤不能在这里打开。",
       "stagesHintUnknown": "取消勾选就是这次不做。读不到全局设置，勾选只代表沿用处理方案。",
       "stageOff": "处理方案没有开启"
+    },
+    "summary": {
+      "existing_other": "{{count}} 部已在媒体库中",
+      "failed_other": "{{count}} 个网址没有新增",
+      "separator": "，"
+    },
+    "lines": {
+      "title_other": "{{count}} 个网址",
+      "tooMany": "一次最多 {{max}} 个网址，多了 {{extra}} 个。请分次新增。",
+      "noneReady": "没有可以新增的网址。",
+      "channel": "这是频道，不能直接新增。请一次粘贴一个网址，再创建订阅。",
+      "feed": "Podcast 要选集数，请一次粘贴一个网址。",
+      "allParts": "全部分P",
+      "cookie": "需要 cookie",
+      "noEstimate": "无法预估"
     }
   },
   "actions": {

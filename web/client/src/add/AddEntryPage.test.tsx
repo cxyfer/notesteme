@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { expectNoA11yViolations } from "../test/axe";
@@ -37,7 +37,8 @@ describe("/add（ENTRY-R2）", () => {
     renderRoute("/add?url=javascript%3Aalert(1)");
     expect(await screen.findByText("書籤或分享的網址無效，已忽略。")).toBeTruthy();
     const dialog = await screen.findByRole("dialog");
-    expect((dialog.querySelector('input[type="url"]') as HTMLInputElement).value).toBe("");
+    // 網址欄是一行一個的 textarea（pages.md §2）
+    expect((within(dialog).getByLabelText("網址") as HTMLTextAreaElement).value).toBe("");
     expect(api.calls("POST", "/api/resolve")).toHaveLength(0);
     await expectNoA11yViolations(dialog);
   });

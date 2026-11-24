@@ -409,7 +409,7 @@
     "description": "Paste URLs, pick a local file or drop one onto the window. Notesteme fetches the subtitles and processes them with the profile.",
     "url": "URL",
     "urlPlaceholder": "https://",
-    "urlHint": "A YouTube video or playlist, a Bilibili video, or a podcast RSS feed",
+    "urlHint": "One per line. YouTube videos or playlists, Bilibili videos, podcast RSS",
     "pickFile": "Pick a local file",
     "pickOtherFile": "Pick another file",
     "fileChosen": "Selected {{name}}",
@@ -490,6 +490,24 @@
       "stagesHint": "Untick a step to skip it this time. Steps the profile turns off can't be turned on here.",
       "stagesHintUnknown": "Untick a step to skip it this time. The global settings could not be read, so a tick only means the profile decides.",
       "stageOff": "Off in the profile"
+    },
+    "summary": {
+      "existing_one": "{{count}} item was already in the library",
+      "existing_other": "{{count}} items were already in the library",
+      "failed_one": "{{count}} URL was not added",
+      "failed_other": "{{count}} URLs were not added",
+      "separator": ", "
+    },
+    "lines": {
+      "title_one": "{{count}} URL",
+      "title_other": "{{count}} URLs",
+      "tooMany": "At most {{max}} URLs at a time; {{extra}} too many. Add the rest separately.",
+      "noneReady": "None of these URLs can be added.",
+      "channel": "This is a channel and can't be added directly. Paste it on its own and create a subscription.",
+      "feed": "Podcasts need episodes picked. Paste the feed on its own.",
+      "allParts": "all parts",
+      "cookie": "needs a cookie",
+      "noEstimate": "no estimate"
     }
   },
   "actions": {
