@@ -61,9 +61,9 @@ func TestNewLocalNeedsNoCredentials(t *testing.T) {
 	if code := do(remote, "GET", "/api/items"); code != 401 {
 		t.Errorf("New GET /api/items = %d，預期 401", code)
 	}
-	// 非 GET 沒有 CSRF token 也不會被擋（回 501 是因為這個路由還沒實作，不是驗證失敗）。
-	if code := do(local, "POST", "/api/tasks/t1/retry"); code != 501 {
-		t.Errorf("local POST /api/tasks/t1/retry = %d，預期 501", code)
+	// 非 GET 沒有 CSRF token 也不會被擋（回 500 是因為這個測試沒有注入 Pipeline，不是驗證失敗）。
+	if code := do(local, "POST", "/api/tasks/t1/retry"); code != 500 {
+		t.Errorf("local POST /api/tasks/t1/retry = %d，預期 500", code)
 	}
 	if code := do(remote, "POST", "/api/tasks/t1/retry"); code != 401 {
 		t.Errorf("New POST /api/tasks/t1/retry = %d，預期 401", code)

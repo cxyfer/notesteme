@@ -5290,9 +5290,81 @@
         ],
         "type": "object"
       },
+      "QueueFailedTask": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "block_reason": {
+            "type": "string"
+          },
+          "error_class": {
+            "type": "string"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "步驟最新的任務 ID",
+            "type": "string"
+          },
+          "item": {
+            "description": "影音的短代號，例如 yt:abc123xxxxx",
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "resource_class": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "status": {
+            "description": "skipped 只會是被取消的步驟（block_reason 為 cancelled）",
+            "enum": [
+              "failed",
+              "blocked",
+              "skipped"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "item_id",
+          "item",
+          "stage",
+          "resource_class",
+          "status",
+          "attempts",
+          "finished_at"
+        ],
+        "type": "object"
+      },
       "QueueStatus": {
         "additionalProperties": false,
         "properties": {
+          "failed": {
+            "description": "可以手動重試的步驟：最新一筆是 failed、blocked 或被取消、沒有未結束的任務；由新到舊，最多 200 筆",
+            "items": {
+              "$ref": "#/components/schemas/QueueFailedTask"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "lanes": {
             "items": {
               "$ref": "#/components/schemas/QueueClass"
@@ -5319,7 +5391,8 @@
         "required": [
           "paused",
           "lanes",
-          "tasks"
+          "tasks",
+          "failed"
         ],
         "type": "object"
       },
@@ -11931,9 +12004,28 @@
     "/api/tasks/{id}/cancel": {
       "post": {
         "operationId": "tasks-cancel",
+        "parameters": [
+          {
+            "description": "任務 ID（GET /api/queue 的 tasks[].id 或 failed[].id）",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "任務 ID（GET /api/queue 的 tasks[].id 或 failed[].id）",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDetail"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -11946,15 +12038,34 @@
             "description": "Error"
           }
         },
-        "summary": "取消單一任務（尚未實作）"
+        "summary": "只取消這個任務所屬的步驟（PIPE-R15 的語意）：步驟改為 skipped（cancelled），執行中的子程序整組結束；已取消時也回 200，已結束回 409"
       }
     },
     "/api/tasks/{id}/retry": {
       "post": {
         "operationId": "tasks-retry",
+        "parameters": [
+          {
+            "description": "任務 ID（GET /api/queue 的 tasks[].id 或 failed[].id）",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "任務 ID（GET /api/queue 的 tasks[].id 或 failed[].id）",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDetail"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -11967,7 +12078,7 @@
             "description": "Error"
           }
         },
-        "summary": "重試任務（尚未實作）"
+        "summary": "手動重試任務所屬的步驟（PIPE-R4）：failed、blocked 或已取消的步驟回到 pending，以原任務的優先順序與資源類別建立新任務；其他狀態回 409"
       }
     },
     "/api/tasks/{id}/switch-executor": {

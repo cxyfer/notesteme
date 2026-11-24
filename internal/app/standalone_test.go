@@ -97,7 +97,7 @@ func TestStandaloneIngestAndRunUntilIdle(t *testing.T) {
 	_ = lock.Close()
 }
 
-// 受保護的路由不需要憑證，但仍是同一組路由（沒實作的回 501）。
+// 受保護的路由不需要憑證，但仍是同一組路由（不存在的任務回 404）。
 func TestStandaloneHandlerIsLocal(t *testing.T) {
 	sa, err := OpenStandalone(t.Context(), testEnv(t))
 	if err != nil {
@@ -107,8 +107,8 @@ func TestStandaloneHandlerIsLocal(t *testing.T) {
 	if code, body := call(t, sa.Handler(), "GET", "/api/items", ""); code != 200 {
 		t.Errorf("GET /api/items = %d %s", code, body)
 	}
-	if code, _ := call(t, sa.Handler(), "POST", "/api/tasks/t1/retry", ""); code != 501 {
-		t.Errorf("POST /api/tasks/t1/retry = %d，預期 501", code)
+	if code, _ := call(t, sa.Handler(), "POST", "/api/tasks/t1/retry", ""); code != 404 {
+		t.Errorf("POST /api/tasks/t1/retry = %d，預期 404", code)
 	}
 }
 

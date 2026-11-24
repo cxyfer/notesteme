@@ -301,13 +301,7 @@ func (rt *routes) register(api huma.API) {
 	// DEL 切片的路由，各自放在獨立的檔案；實作前 pipeline 回 501。
 	rt.registerTrash(api)
 	rt.registerPurge(api)
-	// 之後切片才會實作的路由：先明確回應 501。
-	for _, op := range []huma.Operation{
-		{OperationID: "tasks-retry", Method: http.MethodPost, Path: "/api/tasks/{id}/retry", Summary: "重試任務（尚未實作）"},
-		{OperationID: "tasks-cancel", Method: http.MethodPost, Path: "/api/tasks/{id}/cancel", Summary: "取消單一任務（尚未實作）"},
-	} {
-		registerScoped(api, op, auth.ScopeAdmin, notImplemented)
-	}
+	rt.registerTaskControl(api)
 	rt.registerTokens(api)
 	// OPS 切片的路由，各自放在獨立的檔案；實作前一律回 501。
 	rt.registerSystem(api)

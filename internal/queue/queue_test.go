@@ -149,3 +149,31 @@ func TestRecoverStaleDeletesOrphanReservations(t *testing.T) {
 		t.Errorf("清理後 actual = %d、reserved = %d，預期 125000 與 250000（%v）", actual, reserved, err)
 	}
 }
+
+// Retryable 只列最新一筆是 failed、blocked 或被取消、而且沒有未結束任務的步驟。
+func TestRetryableListsStoppedStages(t *testing.T) {
+	s, clk := setup(t)
+	ctx := context.Background()
+	q := New(s, clk, "w1")
+	tk := seedTask(t, s, "aaaaaaaaaaa")
+	if got, err := q.Retryable(ctx); err != nil || len(got) != 0 {
+		t.Fatalf("pending 的任務不列出：%+v, %v", got, err)
+	}
+	claimed, err := s.Read().ClaimTasks(ctx, store.ClaimOptions{Owner: "w1", Executor: ExecutorBuiltin, Max: 1, Lease: time.Minute})
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim = %+v, %v", claimed, err)
+	}
+	if err := s.Tx(ctx, func(r *store.Repo) error {
+		if err := r.FailTask(ctx, tk.ID, claimed[0].LeaseToken); err != nil {
+			return err
+		}
+		return r.SetStageState(ctx, tk.StageRunID, store.StageState{Status: store.StatusFailed, ErrorClass: "permanent", Message: "壞了"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := q.Retryable(ctx)
+	if err != nil || len(got) != 1 || got[0].ID != tk.ID || got[0].Status != store.StatusFailed || got[0].Message != "壞了" ||
+		got[0].Stage != "metadata" || got[0].ExternalID != "aaaaaaaaaaa" || got[0].FinishedAt == nil {
+		t.Fatalf("Retryable = %+v, %v", got, err)
+	}
+}

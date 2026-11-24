@@ -34,11 +34,28 @@ type QueueTask struct {
 	NotBefore     *time.Time `json:"not_before" doc:"重試或等待時，最早可以再被領取的時間"`
 }
 
+// QueueFailedTask 是可以手動重試的步驟與它最新的任務（POST /api/tasks/:id/retry 用 id）。
+type QueueFailedTask struct {
+	ID            string     `json:"id" doc:"步驟最新的任務 ID"`
+	ItemID        string     `json:"item_id"`
+	Item          string     `json:"item" doc:"影音的短代號，例如 yt:abc123xxxxx"`
+	Stage         string     `json:"stage"`
+	ResourceClass string     `json:"resource_class"`
+	Status        string     `json:"status" enum:"failed,blocked,skipped" doc:"skipped 只會是被取消的步驟（block_reason 為 cancelled）"`
+	BlockReason   string     `json:"block_reason,omitempty"`
+	ErrorClass    string     `json:"error_class,omitempty"`
+	Message       string     `json:"message,omitempty"`
+	Attempts      int        `json:"attempts"`
+	FinishedAt    *time.Time `json:"finished_at"`
+}
+
 // QueueStatus 是佇列的狀態。tasks 先列已被領取的，再列 pending 的，pending 的順序就是之後領取的順序。
 type QueueStatus struct {
 	Paused bool         `json:"paused" doc:"整個佇列是否暫停"`
 	Lanes  []QueueClass `json:"lanes"`
 	Tasks  []QueueTask  `json:"tasks"`
+	// Failed 是可以手動重試的步驟（failed、blocked、被取消），由新到舊，最多 200 筆；垃圾桶中的影音不列出。
+	Failed []QueueFailedTask `json:"failed" doc:"可以手動重試的步驟：最新一筆是 failed、blocked 或被取消、沒有未結束的任務；由新到舊，最多 200 筆"`
 }
 
 type queueOutput struct{ Body QueueStatus }
@@ -85,6 +102,18 @@ func (rt *routes) queueStatus(ctx context.Context) (QueueStatus, error) {
 		out.Tasks = append(out.Tasks, QueueTask{
 			ID: e.ID, ItemID: e.ItemID, Item: source.Ref(e.Platform, e.ExternalID, e.Part), Stage: e.Stage,
 			ResourceClass: e.ResourceClass, State: e.State, Attempts: e.Attempts, NotBefore: e.NotBefore,
+		})
+	}
+	failed, err := q.Retryable(ctx)
+	if err != nil {
+		return QueueStatus{}, err
+	}
+	out.Failed = make([]QueueFailedTask, 0, len(failed))
+	for _, f := range failed {
+		out.Failed = append(out.Failed, QueueFailedTask{
+			ID: f.ID, ItemID: f.ItemID, Item: source.Ref(f.Platform, f.ExternalID, f.Part), Stage: f.Stage,
+			ResourceClass: f.ResourceClass, Status: f.Status, BlockReason: f.BlockReason, ErrorClass: f.ErrorClass,
+			Message: f.Message, Attempts: f.Attempts, FinishedAt: f.FinishedAt,
 		})
 	}
 	for _, c := range ctl.Classes {

@@ -57,6 +57,37 @@ func (q *Queries) CancelPendingTasks(ctx context.Context, stageRunID string) (in
 	return result.RowsAffected()
 }
 
+const cancelStageRunTasks = `-- name: CancelStageRunTasks :many
+UPDATE tasks SET state = 'cancelled', lease_token = NULL, lease_owner = NULL, lease_until = NULL
+WHERE stage_run_id = ?1 AND state IN ('pending', 'leased', 'waiting')
+RETURNING id
+`
+
+// Cancel every unfinished (pending, leased or waiting for a batch) task of one stage run and drop its lease, so a late
+// write-back from the former holder matches no row (POST /api/tasks/:id/cancel). Returns the ids for the worker.
+func (q *Queries) CancelStageRunTasks(ctx context.Context, stageRunID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, cancelStageRunTasks, stageRunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const claimTasks = `-- name: ClaimTasks :many
 UPDATE tasks
 SET state = 'leased', lease_owner = CAST(?1 AS TEXT), lease_token = CAST(?2 AS TEXT),
@@ -179,6 +210,18 @@ SELECT COUNT(*) FROM tasks WHERE state = ?1
 
 func (q *Queries) CountTasks(ctx context.Context, state string) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countTasks, state)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countUnfinishedStageRunTasks = `-- name: CountUnfinishedStageRunTasks :one
+SELECT COUNT(*) FROM tasks WHERE stage_run_id = ?1 AND state IN ('pending', 'leased', 'waiting')
+`
+
+// Unfinished tasks of one stage run: a manual retry is refused while any exists (no duplicate task on a double click).
+func (q *Queries) CountUnfinishedStageRunTasks(ctx context.Context, stageRunID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countUnfinishedStageRunTasks, stageRunID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -339,6 +382,78 @@ func (q *Queries) ListQueueTasks(ctx context.Context, arg ListQueueTasksParams) 
 			&i.Part,
 			&i.Bucket,
 			&i.Score,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRetryableTasks = `-- name: ListRetryableTasks :many
+SELECT t.id AS id, t.resource_class AS resource_class, t.attempts AS attempts, sr.item_id AS item_id, sr.stage AS stage,
+       sr.status AS status, sr.block_reason AS block_reason, sr.error_class AS error_class, sr.error_message AS error_message,
+       sr.finished_at AS finished_at, i.platform AS platform, i.external_id AS external_id, i.part AS part
+FROM stage_runs AS sr
+JOIN items AS i ON i.id = sr.item_id
+JOIN tasks AS t ON t.id = (SELECT t2.id FROM tasks AS t2 WHERE t2.stage_run_id = sr.id ORDER BY t2.created_at DESC, t2.rowid DESC LIMIT 1)
+WHERE i.deleted_at IS NULL
+  AND (sr.status IN ('blocked', 'failed') OR (sr.status = 'skipped' AND sr.block_reason = 'cancelled'))
+  AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+               ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)
+  AND NOT EXISTS (SELECT 1 FROM tasks AS u WHERE u.stage_run_id = sr.id AND u.state IN ('pending', 'leased', 'waiting'))
+ORDER BY COALESCE(sr.finished_at, sr.created_at) DESC, sr.id DESC
+LIMIT ?1
+`
+
+type ListRetryableTasksRow struct {
+	ID            string
+	ResourceClass string
+	Attempts      int64
+	ItemID        string
+	Stage         string
+	Status        string
+	BlockReason   string
+	ErrorClass    string
+	ErrorMessage  string
+	FinishedAt    *int64
+	Platform      string
+	ExternalID    string
+	Part          int64
+}
+
+// Stage runs a manual retry accepts (latest run of the stage, failed, blocked or cancelled, no unfinished task) with
+// their latest task, newest first, for the queue page. Items in the trash and stage runs without any task (for example
+// later stages of a cancelled item, awaiting_user) are left out.
+func (q *Queries) ListRetryableTasks(ctx context.Context, max int64) ([]ListRetryableTasksRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRetryableTasks, max)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRetryableTasksRow
+	for rows.Next() {
+		var i ListRetryableTasksRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ResourceClass,
+			&i.Attempts,
+			&i.ItemID,
+			&i.Stage,
+			&i.Status,
+			&i.BlockReason,
+			&i.ErrorClass,
+			&i.ErrorMessage,
+			&i.FinishedAt,
+			&i.Platform,
+			&i.ExternalID,
+			&i.Part,
 		); err != nil {
 			return nil, err
 		}

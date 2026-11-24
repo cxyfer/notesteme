@@ -879,6 +879,7 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 		ni  *pipeline.NotImplementedError
 		up  *pipeline.UpstreamError
 		iu  *pipeline.InUseError
+		ts  *pipeline.TaskStateError
 	)
 	if pe := policyError(err); pe != nil {
 		return pe
@@ -916,6 +917,10 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 			itemID = tr.ItemID
 		}
 		return inTrashError(http.StatusNotFound, itemID)
+	case errors.Is(err, pipeline.ErrTaskNotFound):
+		return newError(http.StatusNotFound, CodeNotFound, err.Error())
+	case errors.As(err, &ts):
+		return newError(http.StatusConflict, ts.Code, ts.Error())
 	case errors.Is(err, pipeline.ErrNoTranscript):
 		return newError(http.StatusNotFound, CodeNotFound, err.Error())
 	case errors.Is(err, store.ErrNotFound):

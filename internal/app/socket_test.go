@@ -62,9 +62,9 @@ func TestSocketNeedsNoCredentialsButTCPDoes(t *testing.T) {
 	if code := get(t, srv.Addr(), "/api/items"); code != 401 {
 		t.Errorf("TCP GET /api/items = %d，預期 401", code)
 	}
-	// 非 GET 沒有 CSRF token 也可以（501 代表通過驗證，只是路由還沒實作）。
-	if code, _ := statusOf(t, uc, "POST", "http://local/api/tasks/t1/retry", ""); code != 501 {
-		t.Errorf("socket POST /api/tasks/t1/retry = %d，預期 501", code)
+	// 非 GET 沒有 CSRF token 也可以（404 代表通過驗證、到達 handler，只是沒有這個任務）。
+	if code, _ := statusOf(t, uc, "POST", "http://local/api/tasks/t1/retry", ""); code != 404 {
+		t.Errorf("socket POST /api/tasks/t1/retry = %d，預期 404", code)
 	}
 	if code := get(t, srv.Addr(), "/healthz"); code != 200 {
 		t.Errorf("TCP /healthz = %d", code)

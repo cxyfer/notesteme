@@ -1531,7 +1531,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 取消單一任務（尚未實作） */
+    /** 只取消這個任務所屬的步驟（PIPE-R15 的語意）：步驟改為 skipped（cancelled），執行中的子程序整組結束；已取消時也回 200，已結束回 409 */
     post: operations["tasks-cancel"];
     delete?: never;
     options?: never;
@@ -1548,7 +1548,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** 重試任務（尚未實作） */
+    /** 手動重試任務所屬的步驟（PIPE-R4）：failed、blocked 或已取消的步驟回到 pending，以原任務的優先順序與資源類別建立新任務；其他狀態回 409 */
     post: operations["tasks-retry"];
     delete?: never;
     options?: never;
@@ -3594,7 +3594,30 @@ export interface components {
        */
       waiting: number;
     };
+    QueueFailedTask: {
+      /** Format: int64 */
+      attempts: number;
+      block_reason?: string;
+      error_class?: string;
+      /** Format: date-time */
+      finished_at: string | null;
+      /** @description 步驟最新的任務 ID */
+      id: string;
+      /** @description 影音的短代號，例如 yt:abc123xxxxx */
+      item: string;
+      item_id: string;
+      message?: string;
+      resource_class: string;
+      stage: string;
+      /**
+       * @description skipped 只會是被取消的步驟（block_reason 為 cancelled）
+       * @enum {string}
+       */
+      status: "failed" | "blocked" | "skipped";
+    };
     QueueStatus: {
+      /** @description 可以手動重試的步驟：最新一筆是 failed、blocked 或被取消、沒有未結束的任務；由新到舊，最多 200 筆 */
+      failed: components["schemas"]["QueueFailedTask"][] | null;
       lanes: components["schemas"]["QueueClass"][] | null;
       /** @description 整個佇列是否暫停 */
       paused: boolean;
@@ -7943,17 +7966,22 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 任務 ID（GET /api/queue 的 tasks[].id 或 failed[].id） */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ItemDetail"];
+        };
       };
       /** @description Error */
       default: {
@@ -7970,17 +7998,22 @@ export interface operations {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        /** @description 任務 ID（GET /api/queue 的 tasks[].id 或 failed[].id） */
+        id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description No Content */
-      204: {
+      /** @description OK */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ItemDetail"];
+        };
       };
       /** @description Error */
       default: {

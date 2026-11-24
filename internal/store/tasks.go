@@ -385,3 +385,53 @@ func (r *Repo) CancelItemTasks(ctx context.Context, itemID string) ([]string, er
 func (r *Repo) ItemTaskIDs(ctx context.Context, itemID string) ([]string, error) {
 	return r.q.ItemTaskIDs(ctx, itemID)
 }
+
+// CancelStageRunTasks 把一個 stage run 所有未結束（pending、leased、等待 batch）的任務改為 cancelled 並清掉租約，
+// 回傳它們的 ID，讓 worker 結束其中正在執行的。等待 batch 的任務離開 batch（BATCH-R9），作法同 CancelPendingTasks。
+func (r *Repo) CancelStageRunTasks(ctx context.Context, stageRunID string) ([]string, error) {
+	if err := r.q.KickBatchPollsOfRun(ctx, sqlcdb.KickBatchPollsOfRunParams{Now: r.nowMs(), StageRunID: stageRunID}); err != nil {
+		return nil, err
+	}
+	return r.q.CancelStageRunTasks(ctx, stageRunID)
+}
+
+// CountUnfinishedStageRunTasks 回傳 stage run 還沒結束（pending、leased、等待 batch）的任務數。
+func (r *Repo) CountUnfinishedStageRunTasks(ctx context.Context, stageRunID string) (int, error) {
+	n, err := r.q.CountUnfinishedStageRunTasks(ctx, stageRunID)
+	return int(n), err
+}
+
+// RetryableTask 是可以手動重試的步驟與它最新的任務（佇列頁的「失敗」清單）。
+type RetryableTask struct {
+	ID            string // 最新的任務
+	ItemID        string
+	Platform      string
+	ExternalID    string
+	Part          int
+	Stage         string
+	ResourceClass string
+	Attempts      int
+	Status        string // failed、blocked 或 skipped（原因 cancelled）
+	BlockReason   string
+	ErrorClass    string
+	Message       string
+	FinishedAt    *time.Time
+}
+
+// RetryableTasks 列出可以手動重試的步驟（最新一筆、failed／blocked／被取消、沒有未結束的任務），由新到舊，最多 max 筆。
+// 垃圾桶中的影音與沒有任何任務的步驟不列出。
+func (r *Repo) RetryableTasks(ctx context.Context, max int) ([]RetryableTask, error) {
+	rows, err := r.q.ListRetryableTasks(ctx, int64(max))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RetryableTask, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, RetryableTask{
+			ID: row.ID, ItemID: row.ItemID, Platform: row.Platform, ExternalID: row.ExternalID, Part: int(row.Part),
+			Stage: row.Stage, ResourceClass: row.ResourceClass, Attempts: int(row.Attempts), Status: row.Status,
+			BlockReason: row.BlockReason, ErrorClass: row.ErrorClass, Message: row.ErrorMessage, FinishedAt: msToTime(row.FinishedAt),
+		})
+	}
+	return out, nil
+}

@@ -135,3 +135,32 @@ UPDATE tasks
 SET payload_json = json_set(CASE WHEN json_valid(payload_json) THEN payload_json ELSE '{}' END, '$.skip_auto_wait', json('true')),
     not_before = CAST(sqlc.arg(now) AS INTEGER)
 WHERE id = sqlc.arg(id) AND state = 'pending';
+
+-- name: CancelStageRunTasks :many
+-- Cancel every unfinished (pending, leased or waiting for a batch) task of one stage run and drop its lease, so a late
+-- write-back from the former holder matches no row (POST /api/tasks/:id/cancel). Returns the ids for the worker.
+UPDATE tasks SET state = 'cancelled', lease_token = NULL, lease_owner = NULL, lease_until = NULL
+WHERE stage_run_id = sqlc.arg(stage_run_id) AND state IN ('pending', 'leased', 'waiting')
+RETURNING id;
+
+-- name: CountUnfinishedStageRunTasks :one
+-- Unfinished tasks of one stage run: a manual retry is refused while any exists (no duplicate task on a double click).
+SELECT COUNT(*) FROM tasks WHERE stage_run_id = sqlc.arg(stage_run_id) AND state IN ('pending', 'leased', 'waiting');
+
+-- name: ListRetryableTasks :many
+-- Stage runs a manual retry accepts (latest run of the stage, failed, blocked or cancelled, no unfinished task) with
+-- their latest task, newest first, for the queue page. Items in the trash and stage runs without any task (for example
+-- later stages of a cancelled item, awaiting_user) are left out.
+SELECT t.id AS id, t.resource_class AS resource_class, t.attempts AS attempts, sr.item_id AS item_id, sr.stage AS stage,
+       sr.status AS status, sr.block_reason AS block_reason, sr.error_class AS error_class, sr.error_message AS error_message,
+       sr.finished_at AS finished_at, i.platform AS platform, i.external_id AS external_id, i.part AS part
+FROM stage_runs AS sr
+JOIN items AS i ON i.id = sr.item_id
+JOIN tasks AS t ON t.id = (SELECT t2.id FROM tasks AS t2 WHERE t2.stage_run_id = sr.id ORDER BY t2.created_at DESC, t2.rowid DESC LIMIT 1)
+WHERE i.deleted_at IS NULL
+  AND (sr.status IN ('blocked', 'failed') OR (sr.status = 'skipped' AND sr.block_reason = 'cancelled'))
+  AND sr.id = (SELECT r.id FROM stage_runs AS r WHERE r.item_id = sr.item_id AND r.stage = sr.stage
+               ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1)
+  AND NOT EXISTS (SELECT 1 FROM tasks AS u WHERE u.stage_run_id = sr.id AND u.state IN ('pending', 'leased', 'waiting'))
+ORDER BY COALESCE(sr.finished_at, sr.created_at) DESC, sr.id DESC
+LIMIT sqlc.arg(max);

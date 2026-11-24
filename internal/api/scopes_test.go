@@ -96,8 +96,8 @@ func TestScopeMatrix(t *testing.T) {
 				{"GET", "/api/tokens", "", auth.ScopeAdmin, auth.ScopeRead, 200},
 				{"POST", "/api/tokens", `{"name":"t","scopes":["admin"]}`, auth.ScopeAdmin, auth.ScopeRead, 201},
 				{"DELETE", "/api/tokens/missing", "", auth.ScopeAdmin, auth.ScopeRead, 404},
-				{"POST", "/api/tasks/t1/retry", "", auth.ScopeAdmin, auth.ScopeAgent, 501},
-				{"POST", "/api/tasks/t1/cancel", "", auth.ScopeAdmin, auth.ScopeAgent, 501},
+				{"POST", "/api/tasks/t1/retry", "", auth.ScopeAdmin, auth.ScopeAgent, 500},
+				{"POST", "/api/tasks/t1/cancel", "", auth.ScopeAdmin, auth.ScopeAgent, 500},
 				// M2 的路由：PRF 已實作（沒有注入 Pipeline 時回 500，完整清單見 TestPRFRoutesScopes）。
 				{"GET", "/api/profiles", "", auth.ScopeRead, auth.ScopeAdmin, 500},
 				{"POST", "/api/profiles", `{"name":"x"}`, auth.ScopeAdmin, auth.ScopeRead, 500},

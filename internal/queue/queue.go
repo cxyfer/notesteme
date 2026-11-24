@@ -152,6 +152,14 @@ func (q *Queue) Entries(ctx context.Context) ([]store.QueueEntry, error) {
 	return q.st.Read().QueueTasks(ctx, ExecutorBuiltin, AgingInterval)
 }
 
+// MaxRetryable 是佇列頁「失敗」清單最多列出的筆數。
+const MaxRetryable = 200
+
+// Retryable 列出可以手動重試的步驟與它們最新的任務（failed、blocked、被取消），由新到舊，最多 MaxRetryable 筆。
+func (q *Queue) Retryable(ctx context.Context) ([]store.RetryableTask, error) {
+	return q.st.Read().RetryableTasks(ctx, MaxRetryable)
+}
+
 // RecoverStale 把別的 worker 留下的租約，以及已到期的租約放回 pending（PIPE-R11）。
 // 這次中斷不計入重試次數。啟動時呼叫一次。
 // 同一個交易刪除沒有對應執行中任務的成本預留（程序中斷留下的，COST-R5）：放回佇列的任務之後會重新預留。

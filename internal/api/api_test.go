@@ -261,9 +261,9 @@ func TestSessionRequests(t *testing.T) {
 			t.Errorf("%s: status = %d", name, rec.Code)
 		}
 	}
-	// 有 CSRF：通過驗證，到達尚未實作的 handler。
+	// 有 CSRF：通過驗證，到達 handler（沒有注入 Pipeline，回 500）。
 	rec = s.do("POST", "/api/tasks/t1/retry", "", withCookies(sess, csrf, csrf))
-	if rec.Code != 501 {
+	if rec.Code != 500 {
 		t.Errorf("with csrf: status = %d, body = %s", rec.Code, rec.Body)
 	}
 	// MCP：通過驗證之後才檢查 Host（AUTH-R11）。httptest 的 Host 是 example.com，不在 mcp.allowed_hosts，所以是 403。
