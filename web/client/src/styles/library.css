@@ -442,3 +442,10 @@
 .library__trash {
   margin-left: var(--space-4);
 }
+
+/* UI-8：「列｜格」切換（格檢視本身的樣式在 ui8.css，由 lazy 模組載入） */
+.library__view {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin-left: auto;
+}

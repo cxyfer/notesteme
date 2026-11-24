@@ -40,6 +40,10 @@ import type { BulkBarProps } from "./library/BulkBar";
 
 // 批次操作列只有選取時才需要：lazy 載入，不進初始 bundle（UI-7）
 const BulkBar = lazy(() => import("./library/BulkBar").then((m) => ({ default: m.BulkBar })));
+// 「格」檢視（UI-8）只在切換時載入
+const LibraryGrid = lazy(() =>
+  import("./library/LibraryGrid").then((m) => ({ default: m.LibraryGrid })),
+);
 
 const route = getRouteApi("/app/library");
 
@@ -89,7 +93,12 @@ export function LibraryPage() {
     },
     [navigate],
   );
-  const clearFilters = useCallback(() => void navigate({ search: {} }), [navigate]);
+  // 清除篩選時保留顯示方式（列／格不是篩選條件）
+  const grid = search.view === "grid";
+  const clearFilters = useCallback(
+    () => void navigate({ search: grid ? { view: "grid" as const } : {} }),
+    [navigate, grid],
+  );
 
   // ---- 新項目與重新連上：只提示，使用者點擊後才重新載入 ----
   const listRef = useRef<VirtualListHandle>(null);
@@ -220,28 +229,45 @@ export function LibraryPage() {
       <FilterBar search={search} onChange={setSearch} onClear={clearFilters} />
 
       {/* 等你決定（DIG-R7）：勾選要繼續的影音，由批次操作列「繼續處理」（UI-8 起不再一次送已載入的全部） */}
-      {search.blocked === AWAITING_USER && rows.length > 0 && sel.ids.size === 0 && (
+      {search.blocked === AWAITING_USER && !grid && rows.length > 0 && sel.ids.size === 0 && (
         <p className="library__awaiting secondary">{t("library.awaiting.hint")}</p>
       )}
       {rows.length > 0 && (
         <div className="library__select">
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={allLoaded}
-              onChange={(e) =>
-                setPicked({
-                  key: keyHash,
-                  ids: e.target.checked ? new Set(rows.map((r) => r.id)) : new Set(),
-                  last: -1,
-                })
-              }
-            />
-            <span>{t("library.bulk.pickLoaded", { count: rows.length })}</span>
-          </label>
+          {!grid && (
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={allLoaded}
+                onChange={(e) =>
+                  setPicked({
+                    key: keyHash,
+                    ids: e.target.checked ? new Set(rows.map((r) => r.id)) : new Set(),
+                    last: -1,
+                  })
+                }
+              />
+              <span>{t("library.bulk.pickLoaded", { count: rows.length })}</span>
+            </label>
+          )}
+          {/* pages.md §3 的「列｜格」 */}
+          <div className="library__view" role="group" aria-label={t("library.view.label")}>
+            <Button
+              aria-pressed={!grid}
+              onClick={() => setSearch({ view: undefined }, { replace: true })}
+            >
+              {t("library.view.list")}
+            </Button>
+            <Button
+              aria-pressed={grid}
+              onClick={() => setSearch({ view: "grid" }, { replace: true })}
+            >
+              {t("library.view.grid")}
+            </Button>
+          </div>
         </div>
       )}
-      {sel.ids.size > 0 && (
+      {!grid && sel.ids.size > 0 && (
         <Suspense fallback={<Spinner label={t("common.loading")} />}>
           <BulkBar
             ids={[...sel.ids]}
@@ -287,6 +313,20 @@ export function LibraryPage() {
             action={{ label: t("add.open"), onClick: () => addDrawer.open() }}
           />
         )
+      ) : grid ? (
+        <Suspense fallback={<Spinner label={t("library.loading")} showLabel />}>
+          <LibraryGrid
+            items={rows}
+            more={{
+              loaded: rows.length,
+              total,
+              hasMore: !!list.hasNextPage,
+              loading: list.isFetchingNextPage,
+              error: list.isFetchNextPageError && !cursorExpired ? list.error : undefined,
+              onLoadMore: () => void list.fetchNextPage(),
+            }}
+          />
+        </Suspense>
       ) : (
         <VirtualList
           ref={listRef}

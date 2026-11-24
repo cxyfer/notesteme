@@ -367,6 +367,11 @@
         "in_trash": "This item is in the trash."
       },
       "overMax": "Other than read status, up to {{max}} at once"
+    },
+    "view": {
+      "label": "View",
+      "list": "List",
+      "grid": "Grid"
     }
   },
   "add": {
