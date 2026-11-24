@@ -535,3 +535,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.queue__agent-claims {
+  margin: 0 0 0 auto;
+}

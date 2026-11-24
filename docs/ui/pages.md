@@ -295,7 +295,7 @@ LLM      ■ ■ ■ ■           使用中 4，上限 4      等待 12
 - **互動**：點任務會打開影音詳情頁的「紀錄」分頁。
 - **狀態**：空狀態見 README §4.3。佇列暫停時，頂部顯示「佇列已暫停，新任務不會開始。」並附上「繼續處理」按鈕。
 - **API**：`GET /api/queue`、`PATCH /api/queue/limits`、`POST /api/queue/pause`、`POST /api/queue/resume`、`POST /api/tasks/:id/retry`、`POST /api/tasks/:id/cancel`、`POST /api/tasks/:id/switch-executor`
-- **實作狀態（收尾 D1，2026-11-24）**：單一任務的「取消…」（只停這個任務所屬的步驟）與「失敗與停住」清單（`GET /api/queue` 的 `failed`，每列「重試」、超過一列時「全部重試」）已完成；影音層級的「停止處理…」保留。頁面改成 lazy route。Agent 任務（`GET /api/queue` 的 `tasks[].executor`、`agent`、`lease_until`，見 [AGT A13](../specs/AGT-agent-tasks.md)）已顯示：由哪個 Agent 處理、租約剩餘時間的倒數、「改用 API 處理」（2026-11-24，見 [README 10.23](README.md#1023-佇列的-agent-任務影音詳情的-hub-來源2026-11-24)）。還沒做：調整優先順序（API 沒有）。見 [README 10.22](README.md#1022-收尾-d1佇列的重試取消媒體庫的分組2026-11-24)。
+- **實作狀態（收尾 D1，2026-11-24）**：單一任務的「取消…」（只停這個任務所屬的步驟）與「失敗與停住」清單（`GET /api/queue` 的 `failed`，每列「重試」、超過一列時「全部重試」）已完成；影音層級的「停止處理…」保留。頁面改成 lazy route。Agent 任務（`GET /api/queue` 的 `tasks[].executor`、`agent`、`lease_until`，見 [AGT A13](../specs/AGT-agent-tasks.md)）已顯示：由哪個 Agent 處理、租約剩餘時間的倒數、「改用 API 處理」（2026-11-24，見 [README 10.23](README.md#1023-佇列的-agent-任務影音詳情的-hub-來源2026-11-24)）。還沒做：調整優先順序（API 沒有）。頁頂的「Agent 一次最多領取 N 個」（2026-11-25）只顯示設定的值並連到設定 › Agent，不在佇列頁直接調整（設定的 agent 分區是整段取代），見 [README 10.25](README.md#1025-pagesmd-第-16-節的前端缺口2026-11-25)。見 [README 10.22](README.md#1022-收尾-d1佇列的重試取消媒體庫的分組2026-11-24)。
 
 ## 7. Prompt 庫
 

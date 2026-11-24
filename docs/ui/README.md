@@ -732,10 +732,12 @@ pages.md §12 的「服務與金鑰」要求每個 provider 都有「測試連�
 | 影音詳情的「字幕來源」顯示人話名稱（pages.md §4） | 完成 | `src/pages/item/sourceLabel.ts`、`ItemPage.tsx`、`BetterSource.tsx` |
 | 點時間帶打開影音詳情並定位到點擊的時間（總覽的「現在」、媒體庫的列；pages.md §1、§3，design-language.md §6.1） | 完成 | `web/shared/src/StatusBand.tsx`（精簡版的 `onSeek`）、`src/pages/library/LibraryRow.tsx`、`src/pages/overview/OverviewPage.tsx` |
 | 媒體庫的「更多篩選」加「只看有筆記的影音」（pages.md §3、plan.md 第 14 節） | 完成（對應既有的 `status=note:done`，沒有改後端） | `src/pages/library/{FilterBar.tsx,filters.ts}` |
+| 佇列頁頂的「Agent 一次最多領取 N 個」與「調整」連結（pages.md §6 的線框） | 完成（只顯示，調整在設定 › Agent） | `src/pages/queue/QueuePage.tsx` |
 | 媒體庫的列顯示頻道名稱（沒有名稱時退回頻道 ID）；分組的組名旁顯示「N 部」（pages.md §3） | 完成 | `src/pages/library/{LibraryRow.tsx,groups.ts}`、`src/pages/LibraryPage.tsx` |
 
 1. **字幕來源的名稱**：依 [steps.md 第 3 節](../specs/steps.md#3-字幕來源-id) 的來源 ID 加三語字典 `item.source.<ID>`（例如 `youtube-manual` 是「YouTube 人工字幕」）；ASR 的 ID 由設定檔自訂，字典沒有的 ID 原樣顯示。「有更好的字幕來源」的說明也改用同一個名稱。
 2. **列上的頻道名稱與組的數量**：頻道名稱只在列表 API 有（`ListedItem.channel_name`），詳情沒有，所以列從列表的資料取名稱、沒有名稱時顯示頻道 ID；點擊仍依頻道 ID 篩選，名稱與 ID 不同時 ID 放在 `title`。API 沒有每組的總數，組名旁的數量是**已載入的列**中這組的數量：這組是已載入的最後一組、而且還有下一頁時寫「至少 N 部」，讀到下一組或最後一頁時變成確定的數量（不為了數量另外查詢；依 LIB-R9 不重排列表，所以數量也只隨使用者載入的頁改變）。
 3. **精簡版時間帶的點擊**：design-language.md §6.1 寫精簡版是 `role="img"`，所以帶子本身不加互動，另外疊一個透明的按鈕（名稱是「在時間帶上點一個位置，打開『…』並定位到那個時間」）。點擊位置的比例乘上影音長度，取整數秒後打開 `/items/<id>?t=<秒>`（詳情頁已支援 `t`）。用鍵盤按下時沒有位置，打開詳情並從 0 秒開始；鍵盤使用者要定位到某個時間，用詳情頁完整版時間帶的方向鍵。媒體庫的按鈕跟著列表的 roving focus（只有目前的列可以 Tab 到）；沒有長度（例如直播中）時沒有按鈕，點帶子就和點列的其他地方一樣打開詳情。精簡版沒有 hover 的時間碼與字幕句（列只有步驟狀態，沒有讀字幕）。
 4. **「有筆記」用既有的步驟狀態篩選**：LIB-R1 沒有 `has_note` 參數，「有筆記」等於筆記步驟最新一次是 `done`，所以「更多篩選」的勾選框只是 `status=note:done` 的捷徑，不加 API 參數（和「筆記：完成」是同一個條件，已套用的條件也顯示成「筆記：完成」）。打開時拿掉筆記步驟的其他狀態條件（例如 `note:failed`）：同一個步驟的多個值是 OR，留著的話結果會變多而不是變少；只有筆記步驟恰好是「完成」一個條件時才顯示為勾選。筆記被關閉（`executor: off`）或還沒做到筆記的影音都算「沒有筆記」。
+5. **佇列頁的 Agent 領取上限只顯示、不在原地調整**：線框畫的是可以直接選的 `▾`，但 `max_claims` 在設定的 `agent` 分區（AGT-R3），那個分區的 `PUT` 是整段取代、而且需要 `admin`；在佇列頁改一個欄位就要先讀整段再寫回，和設定頁同時編輯時會互相覆蓋。所以頁頂只顯示「Agent 一次最多領取 N 個」（讀 `GET /api/settings/agent`，已合併內建預設）與連到設定 › Agent 的「調整」；讀不到（權限不足、501、其他錯誤）時整句不顯示，不重試。和設定頁共用同一個 query key，在設定頁儲存之後回到佇列頁就是新的值。
 

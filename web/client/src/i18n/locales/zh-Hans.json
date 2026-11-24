@@ -846,7 +846,9 @@
       "retriedAll_other": "已重新排入 {{formatted}} 个步骤。",
       "retryOne": "重试 {{item}}",
       "cancelled": "已取消"
-    }
+    },
+    "agentMaxClaims_other": "Agent 一次最多领取 {{formatted}} 个",
+    "agentMaxClaimsEdit": "调整"
   },
   "settings": {
     "sections": {

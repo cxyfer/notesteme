@@ -34,6 +34,26 @@ async function openQueue(path = "/queue") {
   return r;
 }
 
+describe("佇列：頁頂的 Agent 領取上限（pages.md §6）", () => {
+  it("顯示設定的 max_claims 並連到設定 › Agent；讀不到（例如 403）時不顯示", async () => {
+    queueApi(() => queueStatus(), {
+      "GET /api/settings/{section}": (req) =>
+        req.params.section === "agent" ? { max_claims: 6, lease: "10m" } : {},
+    });
+    const { unmount } = await openQueue();
+    const text = await screen.findByText(/Agent 一次最多領取 6 個/);
+    const link = within(text).getByRole("link", { name: "調整" });
+    expect(link.getAttribute("href")).toBe("/settings/agent");
+    unmount();
+
+    queueApi(() => queueStatus(), {
+      "GET /api/settings/{section}": () => apiError(403, "forbidden", "權限不足。"),
+    });
+    await openQueue();
+    await waitFor(() => expect(screen.queryByText(/Agent 一次最多領取/)).toBeNull());
+  });
+});
+
 describe("佇列：通道", () => {
   it("每個資源類別一條通道：使用中、上限、等待；上限可以 +／−", async () => {
     let q = queueStatus();

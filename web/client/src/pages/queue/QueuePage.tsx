@@ -174,6 +174,7 @@ export function QueuePage() {
     <div className="queue">
       <div className="page__head">
         <h1 className="page__title">{t("pages.queue.title")}</h1>
+        <AgentMaxClaims />
         {q && (
           <Button onClick={togglePauseAll} disabled={control.isPending}>
             {q.paused ? t("queue.resumeAll") : t("queue.pauseAll")}
@@ -591,5 +592,34 @@ function CancelDialog({ target, onClose }: { target: CancelTarget | null; onClos
     >
       {cancel.isError && <ErrorCallout error={cancel.error} />}
     </Dialog>
+  );
+}
+
+/**
+ * 頁頂的「Agent 一次最多領取 N 個」（pages.md §6 的線框）：讀設定的 agent 分區（GET /api/settings/agent，
+ * 已合併內建預設），連到設定 › Agent 調整。分區是整段取代、需要 admin，所以這裡只顯示不修改；讀不到就不顯示。
+ */
+const AGENT_SETTINGS = { section: "agent" } as const;
+
+function AgentMaxClaims() {
+  const { t } = useTranslation();
+  const agent = useQuery({
+    queryKey: queryKeys.settings("agent"),
+    queryFn: ({ signal }) =>
+      api.get<"/api/settings/{section}">(apiPath("/api/settings/{section}", { section: "agent" }), {
+        signal,
+      }) as Promise<Record<string, unknown>>,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const n = agent.data?.max_claims;
+  if (typeof n !== "number" || !Number.isInteger(n) || n < 1) return null;
+  return (
+    <p className="queue__agent-claims secondary">
+      {t("queue.agentMaxClaims", { count: n, formatted: formatNumber(n) })}{" "}
+      <Link to="/settings/$section" params={AGENT_SETTINGS}>
+        {t("queue.agentMaxClaimsEdit")}
+      </Link>
+    </p>
   );
 }

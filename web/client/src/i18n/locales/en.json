@@ -884,7 +884,10 @@
       "retriedAll_other": "Queued {{formatted}} steps again.",
       "retryOne": "Retry {{item}}",
       "cancelled": "Cancelled"
-    }
+    },
+    "agentMaxClaims_one": "Agents claim at most {{formatted}} task at a time",
+    "agentMaxClaims_other": "Agents claim at most {{formatted}} tasks at a time",
+    "agentMaxClaimsEdit": "Change"
   },
   "settings": {
     "sections": {
