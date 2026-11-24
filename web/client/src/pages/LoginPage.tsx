@@ -4,9 +4,11 @@
 // 只前往登入回應中的 next（ENTRY-R6），不直接使用網址中的值。
 // OIDC 啟用時多一個「用 <issuer 的主機名稱> 登入」（AUTH 的 UI 說明）：連到 /api/auth/oidc/start?next=，
 // next 同樣由後端以 SafeNext 檢查（AUTH-R17）。登入方式取自免驗證的 GET /api/auth/methods，失敗時不顯示按鈕。
+// 背景是一條淡化的時間帶（pages.md §13）：固定的示意資料、純裝飾（aria-hidden、不能點），
+// 登入前不能露出任何實際內容，所以不呼叫任何 API；不用「處理中」（有動畫）的狀態。
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { api } from "../api/client";
@@ -17,6 +19,9 @@ import { Button, ErrorCallout, TextField } from "../components";
 import { usePageTitle } from "../shell/usePageTitle";
 
 const route = getRouteApi("/login");
+
+// 背景時間帶是裝飾，lazy 載入：StatusBand 不進初始 bundle（媒體庫、總覽也是 lazy route）
+const LoginRibbon = lazy(() => import("./LoginRibbon").then((m) => ({ default: m.LoginRibbon })));
 
 export function LoginPage() {
   const { t } = useTranslation();
@@ -87,6 +92,9 @@ export function LoginPage() {
 
   return (
     <main className="login" id="main">
+      <Suspense fallback={null}>
+        <LoginRibbon />
+      </Suspense>
       <form className="login__card" onSubmit={onSubmit} noValidate>
         <h1 className="login__mark">{t("app.name")}</h1>
         <TextField

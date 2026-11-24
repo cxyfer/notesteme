@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { expectNoA11yViolations } from "../test/axe";
 import { renderRoute } from "../test/render";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -49,6 +50,27 @@ function mockAddRoutes() {
 }
 
 describe("登入頁", () => {
+  it("背景是淡化的示意時間帶：aria-hidden、沒有可以聚焦的元素、不讀任何資料（axe 無違規）", async () => {
+    fetchMock.mockImplementation(async () => json(200, {}));
+    const { container } = renderRoute("/login");
+    await screen.findByLabelText("密碼");
+    // 時間帶是 lazy 載入
+    const ribbon = await waitFor(() => {
+      const el = container.querySelector(".login__ribbon");
+      if (!el) throw new Error("時間帶還沒載入");
+      return el;
+    });
+    expect(ribbon.getAttribute("aria-hidden")).toBe("true");
+    expect(ribbon.querySelector(".sband")).toBeTruthy();
+    expect(ribbon.querySelectorAll("button, a, input, [tabindex]")).toHaveLength(0);
+    // 示意資料沒有「處理中」（有動畫的狀態）
+    expect(ribbon.querySelector('[data-status="running"]')).toBeNull();
+    // 只讀登入方式，時間帶不呼叫 API
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).toEqual(["/api/auth/methods"]);
+    await expectNoA11yViolations(container);
+  });
+
   it("密碼錯誤顯示「密碼不正確。」", async () => {
     fetchMock.mockImplementation(async () =>
       json(401, { code: "invalid_password", message: "invalid password" }),

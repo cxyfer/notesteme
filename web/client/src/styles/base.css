@@ -257,8 +257,25 @@ h3 {
   display: grid;
   place-items: center;
   padding: var(--space-4);
+  position: relative;
+  overflow: hidden;
+}
+/* 背景的淡化時間帶（pages.md §13）：橫跨整個視窗、卡片後方，只是裝飾 */
+.login__ribbon {
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  padding-inline: var(--space-4);
+  opacity: 0.35;
+  pointer-events: none;
+}
+.login__ribbon .sband {
+  --sband-track-h: 72px;
+  --sband-band-h: 6px;
 }
 .login__card {
+  position: relative;
   width: min(360px, 100%);
   background: var(--surface-panel);
   border-radius: var(--radius-container);
