@@ -648,3 +648,26 @@ func TestShareRejectsOversizedOrControlCues(t *testing.T) {
 	ok.data = cuesData(t, []subtitle.Cue{cue(0, strings.Repeat("a", hubrepo.MaxCueTextBytes)), cue(1, "two\nlines\twith tab")})
 	e.mustShare("alice", makeBundle(t, bundleOpts{}, ok), nil)
 }
+
+// 安全修補 A：影片的 metadata 由第一位分享者決定，所以 external_id 依平台檢查格式，標題與頻道名稱去掉控制字元。
+func TestShareValidatesVideoMetadata(t *testing.T) {
+	e := newRepoEnv(t, nil)
+	for name, item := range map[string]map[string]any{
+		"youtube 格式":   {"external_id": "../../evil"},
+		"youtube 長度":   {"external_id": "abcdefghijkl"},
+		"bilibili":     {"platform": "bilibili", "external_id": "av170001"},
+		"podcast 控制字元": {"platform": "podcast", "external_id": "feed/\u0007guid"},
+		"頻道 ID 空白":     {"channel": map[string]any{"external_id": "UC evil", "title": "x"}},
+	} {
+		expect(t, name, e.share("alice", makeBundle(t, bundleOpts{item: item}, src(name)), nil), 422, "bundle_invalid")
+	}
+	item := map[string]any{"title": "Hi‮evil\r\nnext" + strings.Repeat("長", 400), "channel": map[string]any{"external_id": "UC1", "title": "\u0007Ch⁦an"}}
+	out := e.mustShare("alice", makeBundle(t, bundleOpts{item: item}, src("ok")), nil)
+	v, err := e.store.VideoByKey(context.Background(), "youtube", "vid00000001", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(v.Title, "‮\r\n") || !strings.HasPrefix(v.Title, "Hievil next") || len([]rune(v.Title)) != hubrepo.MaxVideoText || v.ChannelTitle != "Chan" {
+		t.Fatalf("影片 = %q / %q（%v）", v.Title, v.ChannelTitle, out["share_id"])
+	}
+}

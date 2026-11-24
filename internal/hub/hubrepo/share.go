@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -181,6 +182,50 @@ func HasControl(s string) bool {
 		}
 	}
 	return false
+}
+
+// 影片 metadata 的最小防護（安全修補 A，HREP 待決問題 R8）：影片的標題與頻道由第一位分享者決定（ensureVideo），
+// 所以 external_id 依平台檢查格式（同 hubclient，Client 依它組網址），文字欄位去掉控制字元與雙向控制字元。
+var externalIDRe = map[string]*regexp.Regexp{
+	"youtube":  regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`),
+	"bilibili": regexp.MustCompile(`^BV[0-9A-Za-z]{10}$`),
+	// Podcast 的 external_id 是 <feed key>/<guid>，只限制控制字元與長度。
+	"podcast": regexp.MustCompile(`^[^\x00-\x1f\x7f]{1,512}$`),
+}
+
+// channelIDRe 是頻道 ID：不能有空白與控制字元（各平台的格式不同，Podcast 是 feed 的鍵）。
+var channelIDRe = regexp.MustCompile(`^[^\s\x00-\x1f\x7f]{0,256}$`)
+
+// CheckVideo 檢查 bundle 的影片識別：external_id 依平台的格式，頻道 ID 不能有空白或控制字元；否則 422 bundle_invalid。
+func CheckVideo(it bundle.Item) *apierr.Error {
+	if re, ok := externalIDRe[it.Platform]; !ok || !re.MatchString(it.ExternalID) || HasControl(it.ExternalID) {
+		return apierr.New(http.StatusUnprocessableEntity, CodeBundleInvalid, "item.external_id 不是 "+it.Platform+" 的影片 ID。")
+	}
+	if !channelIDRe.MatchString(it.Channel.ExternalID) || HasControl(it.Channel.ExternalID) {
+		return apierr.New(http.StatusUnprocessableEntity, CodeBundleInvalid, "item.channel.external_id 不能有空白或控制字元。")
+	}
+	return nil
+}
+
+// MaxVideoText 是影片標題與頻道名稱保存的上限（字元）。
+const MaxVideoText = 300
+
+// CleanVideoText 去掉控制字元與雙向控制字元（可以讓標題顯示成別的樣子），合併空白並截到 MaxVideoText 個字元。
+func CleanVideoText(s string) string {
+	s = strings.Map(func(r rune) rune {
+		switch {
+		case r < 0x20 || (r >= 0x7f && r <= 0x9f):
+			return ' '
+		case (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069) || r == 0x200e || r == 0x200f || r == 0x061c:
+			return -1
+		}
+		return r
+	}, s)
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > MaxVideoText {
+		s = strings.TrimSpace(string(r[:MaxVideoText]))
+	}
+	return s
 }
 
 // ImagesOf 回傳屬於這個產出的圖片：沒有被產出引用、檔名以 artifacts/<產出 ID>- 開頭的檔案（BND-R1 的畫面圖片）。

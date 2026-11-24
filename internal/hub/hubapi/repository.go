@@ -397,6 +397,9 @@ func (rt *routes) share(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		}
 		return nil, err
 	}
+	if e := hubrepo.CheckVideo(b.Manifest.Item); e != nil {
+		return nil, e
+	}
 	if e := hubrepo.CheckCues(b); e != nil {
 		return nil, e
 	}
@@ -439,8 +442,8 @@ func (rt *routes) buildShare(ctx context.Context, p *hubauth.Principal, b *bundl
 	it := b.Manifest.Item
 	in := hubstore.NewShare{
 		UserID: p.User.ID, License: b.Manifest.License, BundleSHA256: sha256Hex(form.bundle), BundleSize: int64(len(form.bundle)),
-		Video: hubstore.Video{Platform: it.Platform, ExternalID: it.ExternalID, Part: it.Part, Title: it.Title,
-			ChannelExternalID: it.Channel.ExternalID, ChannelTitle: it.Channel.Title, DurationS: it.DurationS,
+		Video: hubstore.Video{Platform: it.Platform, ExternalID: it.ExternalID, Part: it.Part, Title: hubrepo.CleanVideoText(it.Title),
+			ChannelExternalID: it.Channel.ExternalID, ChannelTitle: hubrepo.CleanVideoText(it.Channel.Title), DurationS: it.DurationS,
 			OriginalLang: it.OriginalLang, PublishedAt: it.PublishedAt},
 	}
 	// 同一部影片在 Hub 上已有的版本（parents_sha256 指到它們時沿用模型欄位）。
