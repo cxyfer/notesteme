@@ -493,10 +493,10 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 1. **搜尋是獨立的 lazy route `/search`**，入口在媒體庫的搜尋欄下方（「在字幕內容中搜尋「…」」，帶入目前的標題搜尋文字）；不加導覽項目，也不做指令面板（§3.1 仍是之後的切片）。SRCH 的 `@ui @manual` 場景寫「在搜尋欄選擇『字幕內容』」，這裡是搜尋欄旁的連結，不是同一個欄位的切換。查詢與語言存在 URL。
 2. **搜尋結果依影音分組**（SRCH 待決問題 S5 允許前端分組）：只把相鄰的同一部影音放在一起，順序照 API（SRCH-R7）。單頁 50 句；OpenAPI 把 `limit` 定成字串，照字串送。
 3. **跳轉時間**：影音詳情的 `?t=` 只收整數秒（會 floor），結果的 `start` 是毫秒，所以送 `ceil(start)`，超過這一句的 `end` 時退回 `floor(start)`，避免定位到前一句。
-4. **「等你決定」是近似篩選**：`GET /api/items` 沒有依 `block_reason` 篩選，`/library?blocked=awaiting_user` 換成 `status=summary:done&status=summary:skipped&status=segment:blocked`（DIG-R6 的下一步是 `segment`）。會混入因預算等其他原因停在分段的影音，以及漏掉「這次執行不含 segment」時停在更後面步驟的影音；橫幅寫明，批次繼續時伺服器會以 `not_awaiting_user` 略過。**待決**：建議 API 加 `blocked=<reason>` 篩選（或在列表回傳 `awaiting_user`）。（後端補洞切片已在 `GET /api/items` 加上 `blocked=<原因>`，見 LIB 待決問題；前端改用它留給之後的 UI 切片。）
+4. **「等你決定」是近似篩選**：`GET /api/items` 沒有依 `block_reason` 篩選，`/library?blocked=awaiting_user` 換成 `status=summary:done&status=summary:skipped&status=segment:blocked`（DIG-R6 的下一步是 `segment`）。會混入因預算等其他原因停在分段的影音，以及漏掉「這次執行不含 segment」時停在更後面步驟的影音；橫幅寫明，批次繼續時伺服器會以 `not_awaiting_user` 略過。**待決**：建議 API 加 `blocked=<reason>` 篩選（或在列表回傳 `awaiting_user`）。（後端補洞切片已在 `GET /api/items` 加上 `blocked=<原因>`，見 LIB 待決問題；UI-8 已改用它，見 10.21 第 1 點。）
 5. **批次繼續**只送「已載入」的影音（不是篩選結果的全部），先確認（之後的步驟會計入預算），每 100 部一批，toast 顯示繼續與略過的數量。沒有做逐列選取（那屬於 LIB-08 的批次操作）；DIG 的 `@ui @manual` 場景「Continuing several items from the library」若要求逐列勾選，等 LIB-08 一起做。
 6. **bundle 匯出沒有選產出種類**：API 沒有參數，匯出現行版本的全部產出（BND-R1）。**待決**：pages.md §4 的匯出選單與 brief 提到「選產出種類」，需要的話 API 要加 `kinds` 參數。
-7. **bundle 匯入的大小上限**只在設定檔（`bundles.import.max_upload_bytes`），API 不提供，前端只提示「預設 64 MiB」、不在前端擋，以 413 的訊息為準。409 `bundle_item_exists` 的訊息提到 `on_existing=add_versions`（給 CLI／API 的說法），UI 改寫成「勾選『影音已存在時，把產出加成新版本』」並提供一鍵勾選。**待決**：409 沒有 `item_id`，不能直接連到已存在的影音；BND 的 `@ui @manual` 場景要求影音詳情顯示「從 bundle 匯入」與來源實例，`GET /api/items/{id}` 沒有 `imported_from`，目前沒有顯示。（後端補洞切片已補：409 `bundle_item_exists` 帶 `item_id`、詳情有 `imported_from`，見 BND 待決問題 N23、N24；UI 的連結與顯示留給之後的 UI 切片。）
+7. **bundle 匯入的大小上限**只在設定檔（`bundles.import.max_upload_bytes`），API 不提供，前端只提示「預設 64 MiB」、不在前端擋，以 413 的訊息為準。409 `bundle_item_exists` 的訊息提到 `on_existing=add_versions`（給 CLI／API 的說法），UI 改寫成「勾選『影音已存在時，把產出加成新版本』」並提供一鍵勾選。**待決**：409 沒有 `item_id`，不能直接連到已存在的影音；BND 的 `@ui @manual` 場景要求影音詳情顯示「從 bundle 匯入」與來源實例，`GET /api/items/{id}` 沒有 `imported_from`，目前沒有顯示。（後端補洞切片已補：409 `bundle_item_exists` 帶 `item_id`、詳情有 `imported_from`，見 BND 待決問題 N23、N24；UI-8 已加上連結與顯示，見 10.21 第 2、3 點。）
 8. **術語審核放在「詞彙表」分區的最上面**（GLOS G1），既有的單一頻道清單（UI-3b）保留不動。單筆與批次都走 `POST /api/term-candidates/decide`（同一條錯誤處理路徑）；每一列的「加到哪裡」預設是這個頻道，批次接受時各列用自己的選擇。**待決（API 與規格不一致）**：GLOS-R5 說來源影音永久刪除時 `item` 是 `null`，但 OpenAPI 的 `TermCandidateReview.item` 不是 nullable；前端照 null 處理（顯示「來源影音已刪除」）。（後端補洞切片已把 schema 改成 nullable。）
 9. **彙整放在「通知」分區**（DIG 介面）：時區預設為瀏覽器的時區；端點只列出勾了 `digest` 事件的 notifier（編輯時已選但取消勾選事件的端點也列出，方便移除）；沒有這樣的端點時「新增彙整」停用並說明。預覽把伺服器組好的文字原樣放在 `<pre>`。
 10. **系統告警只顯示目前成立的告警**：`GET /api/system` 沒有已解除的告警或歷史，「恢復狀態」以「目前沒有告警」與說明（解除時會送出解除通知）表示。持續時間以讀到資料的時間計算，用 `Intl` 的單位格式（分鐘／小時／天），不另加字串。沒有放「立即備份」（`/api/backup` 是下載備份檔，不在 brief 範圍）。
@@ -577,7 +577,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 6. **空狀態**：各區塊都沒有東西時再讀 `GET /api/items?limit=1`，總數是 0 才顯示媒體庫的空狀態（只有等待中的影音時各區塊也是空的，不能當成空媒體庫）。「現在」沒有影音時顯示「目前沒有正在處理的影音。」而不隱藏（pages.md 只要求「需要你處理」隱藏）。
 7. **批次的執行方式**：`dry_run` 一次送全部選取（≤500）；實際執行分批（刪除每批 10 部，其他 50 部），以便顯示進度與「停止（目前這批完成後）」，沒有送出的影音標成 `cancelled`。不在請求中途 abort：中途斷線時伺服器會把剩下的標成 cancelled（L-M15），但瀏覽器拿不到逐項結果。代價是每批各寫一筆 `items.batch` 事件，`dry_run` 與實際執行之間的資料可能已經改變（以實際執行的逐項結果為準）。實際執行只送 `dry_run` 中 `ok: true` 的影音；不能處理的影音在確認框列出原因。
 8. **確認方式依動作**：重新處理、改用處理方案、匯出 bundle、刪除、繼續處理都先 `dry_run` 再確認（LIB-R23）；`budget.exceeds` 只顯示警告、不擋確認（LIB-R17：超過預算的步驟是 `budget_blocked`，回應仍是 `ok: true`）；`unknown_estimates > 0` 時寫「另有 N 個任務無法預估費用」。**偏離 LIB-R23 的字面**：標為已讀／未讀可以復原，依 README §3.5 不跳確認框，直接執行並在 toast 提供「復原」（送相反的動作）。匯出 bundle 依 L-M11 在結果中列出每部的下載連結（瀏覽器會擋連續的程式化下載），只接受 `/api/` 開頭的路徑。刪除的結果另提醒可以從垃圾桶還原。
-9. **後端補洞切片（`blocked=` 篩選、匯入 409 的 `item_id`、`imported_from`、`TermCandidateReview.item` nullable）在交付時還沒有合併到 master**：「等你決定」維持 UI-5 的近似篩選（10.15 第 4 點）與「繼續處理已載入的 N 部」，另外可以逐列勾選後「繼續處理」（DIG 的 `@ui @manual` 場景）；匯入 409、「從 bundle 匯入」、術語審核維持 UI-5 的行為（10.15 第 7、8 點）。後端合併後，`toApiQuery` 是唯一要改的地方（`blocked` 換成 API 的篩選）。
+9. **後端補洞切片（`blocked=` 篩選、匯入 409 的 `item_id`、`imported_from`、`TermCandidateReview.item` nullable）在交付時還沒有合併到 master**：「等你決定」維持 UI-5 的近似篩選（10.15 第 4 點）與「繼續處理已載入的 N 部」，另外可以逐列勾選後「繼續處理」（DIG 的 `@ui @manual` 場景）；匯入 409、「從 bundle 匯入」、術語審核維持 UI-5 的行為（10.15 第 7、8 點）。後端合併後，`toApiQuery` 是唯一要改的地方（`blocked` 換成 API 的篩選）。（UI-8 已處理，見 10.20、10.21。）
 10. **「繼續處理」的預估**：`/api/items/continue` 沒有 `dry_run`，確認框用 `POST /api/items/batch {action: rerun, from: segment, dry_run: true}` 的 `estimated_usd` 當近似值（DIG-R6 的下一步是 segment），文字標明「以從分段重新處理估算」。送出時送全部勾選的影音，由伺服器略過不是等你決定的（`not_awaiting_user`，結果列出原因）。**待決**：建議 `/api/items/continue` 加 `dry_run`。
 11. **選取的範圍**：選取記在當下的篩選條件上，換篩選（含標題搜尋）時清除，避免畫面外、條件外的影音被一起處理；執行完後列表重新載入，關閉結果對話框時才清除選取（結果持續顯示）。「選取符合條件的全部」用同一組條件分頁讀出 ID（每頁 200），是當下的快照；符合的超過 500 部時不提供，改提示上限。載入超過 500 列後全選、或 Shift 範圍選取超過 500 部時，走 `dry_run` 的動作停用並提示上限，標為已讀／未讀（分批送）仍可用。
 12. **已讀狀態的顯示**：每部影音預設是未讀（LIB-R19），列上「未讀」以圓點加文字放在標題下的資訊列，不放進標題連結（連結的名稱維持標題）。打開詳情不會自動標為已讀；詳情頁的按鈕用批次 API 送單一影音（沒有單一影音的已讀路由）。
@@ -585,3 +585,38 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 14. **快捷鍵**：`G` 之後 1.5 秒內按 `L`／`Q`／`S`；`?` 打開的說明只列出已經做好的快捷鍵（`Ctrl K`、影音詳情的播放控制還沒做，不列）。影音詳情的 `1`–`4` 依 README §3.6 是字幕、畫面、筆記、紀錄。焦點在輸入框或有對話框時不作用。
 15. **bundle 預算**：所有新頁面、批次操作列、快捷鍵說明都是 lazy；主 chunk 只多了選取狀態、勾選框、已讀篩選、快捷鍵的處理與三語字串。總覽 lazy chunk 引用主 chunk 的模組（`useItemDetail`、`stageView`、`@shared` 的時間帶、`AddContext`）使 Rollup 多切出幾個小 chunk，初始 JS 也算進去。沒有調整預算。
 16. **共用檔案只增不改**：`router.tsx`（`/` 改成總覽、加 `/trash`）、`queryKeys.ts`（`overviewAll`、`overview`）、locale JSON（只新增 key）、`LibraryPage.tsx`（選取狀態、批次操作列與垃圾桶入口）、`LibraryRow.tsx`（選填的勾選框與未讀標示）、`filters.ts`／`FilterBar.tsx`（`read_state`）、`AppShell.tsx`（導覽項目與快捷鍵）。`router.test.tsx` 的「`/` 導到媒體庫」與 `LoginPage.test.tsx` 的兩個登入後落點依新行為修改。新的樣式在 `src/styles/ui7.css`（由 lazy 模組載入），列的勾選框與未讀標示加在 `library.css`。
+
+### 10.20 UI-8：後端補洞的欄位、指令面板、播放快捷鍵、底部分頁列、「格」檢視（2026-11-24）
+
+| 範圍 | 狀態 | 位置 |
+|---|---|---|
+| 媒體庫的 `?blocked=<原因>` 直接送 `GET /api/items` 的 `blocked`（格式 `^[a-z_]{1,64}$`，取代 UI-5 的近似條件）；「等你決定」改為逐列勾選（或「選取符合條件的全部」，最多 500 部）後由批次操作列「繼續處理」；其他原因顯示通用的條件標籤 | 完成 | `src/pages/library/{filters.ts,FilterBar.tsx}`、`src/pages/LibraryPage.tsx` |
+| bundle 匯入的 409：`bundle_item_exists` 連到既有影音（`item_id`）並保留「一鍵勾選加成新版本」；`bundle_item_in_trash` 提示在垃圾桶並連到 `/trash` | 完成 | `src/pages/settings/BundleImport.tsx` |
+| 影音詳情的「從 bundle 匯入」：來源實例、Notesteme 版本、匯入時間（純文字；實例 ID 是空字串時寫「不明」；`null` 時不顯示） | 完成 | `src/pages/item/ItemPage.tsx` |
+| AUTH `--insecure-no-auth` 的頂部警告橫幅 | 已確認與後端補洞切片一致（`InsecureBanner` 與測試），沒有重做 | `src/shell/AppShell.tsx` |
+| 指令面板（README §3.1）：`Ctrl K`／`⌘ K`（lazy）；影音標題搜尋與「在字幕內容中搜尋」、所有頁面、動作（新增、暫停佇列或繼續處理、更新 yt-dlp）；combobox＋listbox，↑／↓／Enter | 完成 | `src/shell/CommandPalette.tsx` |
+| 影音詳情的 `Space`（播放或暫停）、`←`／`→`（前後 5 秒）、`[`／`]`（上一個或下一個章節）；`?` 的說明加上這些與 `Ctrl K` | 完成（Bilibili 不接 `Space` 與方向鍵，見 10.21 第 5 點） | `src/pages/item/{ItemPage.tsx,Player.tsx,playKeys.ts}`、`src/shell/ShortcutsDialog.tsx` |
+| 767px 以下的底部分頁列（README §8）：總覽、媒體庫、新增、佇列、更多（對話框：其餘頁面、偏好、登出） | 完成 | `src/shell/{TabBar.tsx,AppShell.tsx}` |
+| 媒體庫的「列｜格」切換與「格」檢視（pages.md §3） | 完成（lazy，沒有多選，見 10.21 第 7 點） | `src/pages/library/LibraryGrid.tsx` |
+| 媒體庫依頻道分組 | 未做：`GET /api/items` 沒有排序或分組參數（只依時間分頁），列表也只有 `channel_id` 沒有頻道名稱；前端分組會切成碎片（見 10.21 第 8 點） | — |
+| 儲存檢視 | 未做：LIB 寫明不在 M4，也沒有 `/api/views` | — |
+| 總覽「今天」的事件缺步驟、狀態與影音 ID | 未做（不改後端）：維持 UI-7 的近似呈現，仍是 10.19 第 5 點的待決 | — |
+| 真實瀏覽器的視覺、鍵盤與螢幕閱讀器驗收（`@ui @manual`：BND「匯入的筆記不含 raw HTML」與「從 bundle 匯入」、DIG「從媒體庫挑選暫停的影音」） | owner 手動驗收 | — |
+
+驗證：vitest 51 個檔案 464 個測試（指令面板、底部分頁列與「更多」、格檢視、從 bundle 匯入、等你決定的檢視都有 axe）、i18n 三語各 1714 個 key、初始 JS 283.1KB gzip（UI-8 之前 282.1KB；指令面板與格檢視在 lazy chunk，增加的是分頁列、快捷鍵的處理與三語字串）。**沒有改後端**（OpenAPI 與 `schema.d.ts` 不變）。
+
+### 10.21 UI-8 的決定與待決問題
+
+（2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）
+
+1. **`blocked` 篩選**：網址接受任何符合 API 格式的原因（`^[a-z_]{1,64}$`），原樣送 API。只有 `awaiting_user` 有切換按鈕、提示與批次操作列的「繼續處理」；其他原因（例如佇列或外部連結帶進來的 `budget_blocked`）的條件標籤直接顯示原因代碼（UI 沒有原因的翻譯表）。**移除 UI-5 的「繼續處理已載入的 N 部」**：brief 要求改成逐列勾選，現在的流程是勾選（或「選取符合條件的全部」，沿用 UI-7 的 500 部上限）→ 批次操作列「繼續處理」→ 確認框顯示數量與預估費用（DIG 的 `@ui @manual` 場景）。預估仍借用 `rerun from=segment` 的 `dry_run`（10.19 第 10 點，`/api/items/continue` 沒有 `dry_run`，仍待決）。
+2. **匯入 409**：`bundle_item_exists` 的訊息與「一鍵勾選」不變，下方另放「打開既有的影音」連結（`item_id` 是非空字串才顯示；`ErrorCallout` 的動作只能放按鈕）。`bundle_item_in_trash` 用前端的文案（「先還原或永久刪除，再匯入」）與「前往垃圾桶」，不提供「加成新版本」（伺服器對垃圾桶中的影音不接受）。
+3. **「從 bundle 匯入」放在標題下的資訊列**（`<dl>`），文字是「實例 <ID>（Notesteme <版本>），<時間> 匯入」；`bundle_sha256` 不顯示（太長，API 有）。manifest 的字串不可信，一律是 React 的文字節點；測試確認 `<img onerror>` 不會變成元素。
+4. **指令面板**：焦點在輸入框時 `Ctrl K` 也能開（已有對話框時不作用）。影音搜尋沿用 `ItemPicker` 的 query key 與查詢（同一個 key 同一種資料，最多顯示 6 部），輸入延遲 200ms；「在字幕內容中搜尋「…」」導到 `/search?q=`，不在面板裡重做結果列表。「暫停佇列／繼續處理」依 `GET /api/queue` 的 `paused` 只出現一個，讀取失敗（例如佇列沒有啟用的 501）時不出現。動作不另外確認（佇列頁與設定頁的同一個按鈕也不確認），結果用 toast。面板的 `<li role="presentation">` 包分組（`role="group"` 加標題），axe 無違規。
+5. **播放快捷鍵**：焦點在按鈕、連結、輸入框、分頁、時間帶的 slider、字幕句等有自己用途的元素上時不接手（`playKeys.ts` 的清單），有對話框時也不作用；播放器不能控制時不 `preventDefault`（不擋 `Space` 捲動）。`←`／`→` 只移動位置、不改變播放或暫停。YouTube 要等播放器回應 postMessage 之後才有作用（降級成重新載入時不作用），播放狀態取自 `infoDelivery` 的 `playerState`。**Bilibili 不接 `Space` 與方向鍵**：嵌入播放器沒有控制介面，每次跳轉都要重新載入 iframe，連按會很糟。`[`／`]` 用 `GET /api/items/{id}` 的 `chapters`（`HH:MM:SS.mmm`），離目前章節開頭超過 2 秒時 `[` 先回到開頭；跳章節和點時間帶一樣會開始播放；沒有章節時不作用。
+6. **底部分頁列只在 767px 以下渲染**（`matchMedia`），那時側邊導覽不渲染，避免兩組相同的連結同時出現在無障礙樹中（jsdom 沒有 `matchMedia`，測試另外模擬）。「新增」在中間；「更多」是對話框，列出其餘頁面（依工作、調整、系統分組）、偏好（主題、語言）與登出，點頁面後關閉。README §8 的其他手機版面（媒體庫的時間帶移到標題下方、播放器固定在頂部）不在這次範圍。
+7. **「格」檢視**：網址的 `view=grid`（可以加書籤），不是篩選條件：不送 API、不影響選取與「清除篩選」（清除時保留）。只用列表已載入的資料（每格是縮圖、標題、長度、發布日，不像列檢視每列再讀 detail，所以沒有時間帶與狀態）、不虛擬化（一頁 100 部加「載入更多」）。**格檢視沒有多選與批次操作**：要選取時切回列檢視。縮圖只有 YouTube（由影片 ID 推得），其他平台是占位（API 沒有縮圖網址）。
+8. **依頻道分組沒有做（待決，API）**：pages.md §3 寫「預設依頻道分組，也可以改成依發布日或依狀態分組」，但 `GET /api/items` 只依建立時間分頁、沒有排序參數，前端只能把相鄰的同頻道列放在一起（同一個頻道會散在很多組），而且列表只有 `channel_id`。建議 API 加 `sort=channel|published|status`（或分組的計數）與頻道名稱，再做分組。**儲存檢視**不在 M4（LIB），沒有做。
+9. **總覽「今天」**：沒有改後端，維持 UI-7 的近似呈現；10.19 第 5 點的待決（`stage`、`status`、批次的 `action` 與數量、影音 ID）仍有效。
+10. **bundle 預算**：指令面板與格檢視是 lazy（樣式在 `src/styles/ui8.css`，由 lazy 模組載入）；主 chunk 只多了分頁列、`Ctrl K` 與播放鍵的處理、三語字串，拿掉 `ContinueBar` 抵掉一些。沒有調整預算，也沒有拆分 locale。
+11. **共用檔案只增不改**：`router.tsx`、`queryKeys.ts`、`client.ts` 沒有改；locale JSON 新增 key，並移除不再使用的 `library.awaiting.{continueAll,confirmTitle,confirmBody,done}`、改寫 `library.awaiting.hint`；`LibraryPage.tsx` 加「列｜格」切換、格檢視與等你決定的提示（取代 `ContinueBar`）；`AppShell.tsx` 把導覽分組抽成 `NavGroups`（側邊導覽與「更多」共用）並加 `Ctrl K` 與分頁列；`base.css` 的手機版導覽改成 `.tabbar`，`library.css` 移除不再用到的手機版 `.nav__add` 規則並加 `.library__view`。
