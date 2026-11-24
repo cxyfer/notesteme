@@ -171,7 +171,8 @@
     "saved": "Saved",
     "saving": "Saving…",
     "setAsDefault": "Set as default",
-    "setAsDefaultDone": "Set as default"
+    "setAsDefaultDone": "Set as default",
+    "more": "More"
   },
   "platform": {
     "youtube": "YouTube",
@@ -489,7 +490,7 @@
       "rerunFrom": "Process again from {{stage}}",
       "downloadSrt": "Download subtitles (SRT)",
       "cancel": "Stop processing…",
-      "delete": "Move to trash…",
+      "delete": "Delete…",
       "openSettings": "Open settings",
       "switched": "{{stage}} now runs with the API.",
       "ytdlpUpdated": "yt-dlp is now {{version}}.",

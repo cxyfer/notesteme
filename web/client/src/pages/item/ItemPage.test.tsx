@@ -660,7 +660,12 @@ describe("影音詳情：刪除、輸出與匯入", () => {
       },
     });
     const { router } = await openItem();
-    await userEvent.click(screen.getByRole("button", { name: "移到垃圾桶…" }));
+    // pages.md §4、DEL 的 @ui 場景：從「更多」選單選「刪除」
+    const more = screen.getByRole("button", { name: "更多" });
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    await userEvent.click(more);
+    expect(more.getAttribute("aria-expanded")).toBe("true");
+    await userEvent.click(screen.getByRole("button", { name: "刪除…" }));
     const dialog = await screen.findByRole("dialog", { name: "移到垃圾桶？" });
     expect(await within(dialog).findByText("7 個產出（所有版本）")).toBeTruthy();
     expect(within(dialog).getByText("可釋放 3 MB")).toBeTruthy();

@@ -661,3 +661,13 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 7. **Hub 來源的顯示條件**：有 `hub_origin` 時一律以它為準；`uploader` 是空字串、或 `hub_origin` 是 `null` 但使用中的來源是 `hub` 時，維持通用的「來自 Hub 的原始字幕」。
 8. **上傳者名稱**：Hub 的顯示名稱是不可信的文字（S23 已去掉控制與格式字元、最多 64 字），UI 只用文字節點渲染，超過 32 個字（以 code point 計，不切開 surrogate pair）時截斷加「…」，完整名稱放在 `title`。
 9. **版本頁的連結只給 https 的 Hub**：網址是 `hub_origin.url` 加 `/versions/<version_id>`，沿用 `hubLink`（「已分享到 Hub」的同一個規則，10.17 第 15 點），`http:`、`javascript:` 等都不產生連結，比「接受 http／https」更保守；另開分頁並帶 `rel="noopener noreferrer"`。
+
+### 10.23 Client UI 的 `@ui @manual` 缺口（2026-11-24）
+
+一次唯讀對帳找出七個 `@ui @manual` 場景背後的畫面功能還沒有做或只做了一部分，這個切片補齊。下面的決定都是「（2026-11-24，依 /goal 由實作者暫定，待 owner 追認）」。
+
+| 項目 | 狀態 | 位置 |
+| --- | --- | --- |
+| 影音詳情的「更多」選單（刪除移進去；DEL 的「The delete dialog explains the consequences and can be undone」） | 完成 | `src/components/MoreMenu.tsx`、`src/pages/item/ItemPage.tsx` |
+
+1. **「更多」選單是 disclosure，不是 `role="menu"`**：按鈕帶 `aria-expanded`，展開後是一組普通按鈕；Esc、點外面或 Tab 離開就收起。選了項目之後先把焦點還給「更多」再打開對話框，所以對話框關閉時焦點回到「更多」。目前只有「刪除…」一項（pages.md §4 只列刪除）；按鈕文字從「移到垃圾桶…」改成「刪除…」，對齊場景與 pages.md 的用字，確認框的標題仍是「移到垃圾桶？」。

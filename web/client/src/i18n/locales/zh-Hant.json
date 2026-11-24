@@ -170,7 +170,8 @@
     "saved": "已儲存",
     "saving": "儲存中…",
     "setAsDefault": "設為預設",
-    "setAsDefaultDone": "已設為預設"
+    "setAsDefaultDone": "已設為預設",
+    "more": "更多"
   },
   "platform": {
     "youtube": "YouTube",
@@ -469,7 +470,7 @@
       "rerunFrom": "從{{stage}}重新處理",
       "downloadSrt": "下載字幕（SRT）",
       "cancel": "停止處理…",
-      "delete": "移到垃圾桶…",
+      "delete": "刪除…",
       "openSettings": "開啟設定",
       "switched": "{{stage}}已改用 API 處理。",
       "ytdlpUpdated": "yt-dlp 已更新到 {{version}}。",

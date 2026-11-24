@@ -27,7 +27,7 @@ import { describeError } from "../../api/describeError";
 import { isApiError } from "../../api/errors";
 import { queryKeys } from "../../api/queryKeys";
 import type { components } from "../../api/schema";
-import { Button, EmptyState, ErrorCallout, Spinner, useToast } from "../../components";
+import { Button, EmptyState, ErrorCallout, MoreMenu, Spinner, useToast } from "../../components";
 import { useServerEvent } from "../../events/useEventStream";
 import { formatDate, formatDateTime, formatTimecode } from "../../i18n";
 import { usePageTitle } from "../../shell/usePageTitle";
@@ -441,9 +441,16 @@ function ItemView({
             <Button onClick={() => setCancelOpen(true)}>{t("item.actions.cancel")}</Button>
           )}
           <ReadStateButton id={id} state={d.read_state} />
-          <Button variant="danger" onClick={() => setDeleteOpen(true)}>
-            {t("item.actions.delete")}
-          </Button>
+          {/* pages.md §4：「更多」選單（位在匯出之後）放刪除 */}
+          <MoreMenu
+            items={[
+              {
+                label: t("item.actions.delete"),
+                danger: true,
+                onSelect: () => setDeleteOpen(true),
+              },
+            ]}
+          />
         </div>
       </div>
       <dl className="item__meta">

@@ -52,6 +52,29 @@
   text-underline-offset: 3px;
 }
 
+/* ---------- MoreMenu ---------- */
+.more-menu {
+  position: relative;
+  display: inline-block;
+}
+.more-menu__list {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 10rem;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  background: var(--surface-panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-container);
+}
+.more-menu__list .button {
+  width: 100%;
+  justify-content: flex-start;
+}
+
 /* ---------- TextField ---------- */
 .field {
   display: flex;
