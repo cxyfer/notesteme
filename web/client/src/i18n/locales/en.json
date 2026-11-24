@@ -296,7 +296,7 @@
     "awaiting": {
       "toggle": "Awaiting your decision",
       "chip": "Awaiting your decision",
-      "hint": "Media paused after the summary, waiting for you to decide. Select the items to continue (or select all matching), then choose “Continue”.",
+      "hint": "Media paused after the summary, waiting for you to decide. Select the items to continue, then choose “Continue”; once something is selected you can also select all matching.",
       "confirm": "Continue"
     },
     "unread": "Unread",
