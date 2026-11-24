@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,17 +26,49 @@ var SafeConfig = []string{
 	"protocol.https.allow=always",
 	"protocol.ssh.allow=always",
 	"core.fsmonitor=false",
+	// 不跟隨 https 的轉址：轉到其他主機時，憑證與 push 的內容都不能跟著過去。
+	"http.followRedirects=false",
 }
 
 // GitTimeout 是一次 git 呼叫的上限。
 const GitTimeout = 5 * time.Minute
 
-// tokenEnv 是交給 askpass 腳本的憑證變數（只在 git 的環境中）。
-const tokenEnv = "NOTESTEME_GIT_TOKEN"
+// tokenEnv 是交給 askpass 腳本的憑證變數（只在 git 的環境中）；hostEnv 是設定的 remote 主機（小寫，含 port）。
+const (
+	tokenEnv = "NOTESTEME_GIT_TOKEN"
+	hostEnv  = "NOTESTEME_GIT_HOST"
+)
 
 // askpassScript 回答 git 的帳號與密碼提示：帳號固定是 x-access-token（GitHub、GitLab、Gitea 的 token 都接受），
 // 密碼是環境變數中的 token。腳本本身不含 token。
-const askpassScript = "#!/bin/sh\ncase \"$1\" in\n  Username*) printf '%s\\n' x-access-token ;;\n  *) printf '%s\\n' \"$" + tokenEnv + "\" ;;\nesac\n"
+// git 的提示是「Password for 'https://<帳號>@<主機>': 」；提示中的主機（不分大小寫、含 port）與 hostEnv 不同，
+// 或提示沒有網址時，回空字串並在 stderr 說明（git 會把它留在錯誤訊息中；不含 token）。
+const askpassScript = `#!/bin/sh
+url=${1#*\'}
+url=${url%%\'*}
+host=
+case "$url" in
+  *://*) rest=${url#*://}; rest=${rest%%/*}; host=$(printf '%s' "${rest##*@}" | tr 'A-Z' 'a-z') ;;
+esac
+if [ -z "$host" ] || [ "$host" != "$` + hostEnv + `" ]; then
+  printf 'notesteme: 拒絕把 vault 的憑證交給 %s（設定的 remote 主機是 %s）。\n' "${host:-（不明）}" "$` + hostEnv + `" >&2
+  printf '\n'
+  exit 0
+fi
+case "$1" in
+  Username*) printf '%s\n' x-access-token ;;
+  *) printf '%s\n' "$` + tokenEnv + `" ;;
+esac
+`
+
+// remoteHost 回傳 https remote 的主機（小寫，含 port）；其他形式回傳空字串（askpass 一律拒絕）。
+func remoteHost(remote string) string {
+	u, err := url.Parse(remote)
+	if err != nil || u.Scheme != "https" {
+		return ""
+	}
+	return strings.ToLower(u.Host)
+}
 
 // ErrorKind 是 git 失敗的分類（VAULT-R9）。
 type ErrorKind int
@@ -95,6 +128,8 @@ type Git struct {
 	Home string
 	// Token 是 https remote 的憑證；空字串代表沒有。
 	Token string
+	// Remote 是設定的 remote 網址；askpass 只把 Token 交給它的主機。
+	Remote string
 }
 
 // env 組出 git 的環境變數（VAULT-R8）。
@@ -116,7 +151,7 @@ func (g *Git) env() ([]string, error) {
 		if err := os.WriteFile(script, []byte(askpassScript), 0o700); err != nil {
 			return nil, err
 		}
-		env = append(env, "GIT_ASKPASS="+script, tokenEnv+"="+g.Token)
+		env = append(env, "GIT_ASKPASS="+script, tokenEnv+"="+g.Token, hostEnv+"="+remoteHost(g.Remote))
 	}
 	return env, nil
 }

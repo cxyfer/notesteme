@@ -394,7 +394,7 @@ func (p *Pipeline) newGit(def vault.Def) (*vault.Git, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return &vault.Git{Runner: p.runner, Path: path, Vars: p.env, Home: home, Token: p.env[vault.TokenEnvVar(def.ID)]}, cleanup, nil
+	return &vault.Git{Runner: p.runner, Path: path, Vars: p.env, Home: home, Token: p.env[vault.TokenEnvVar(def.ID)], Remote: def.Remote}, cleanup, nil
 }
 
 // taskTempDir 在 <data>/tmp 建立一個任務專用的暫存目錄（權限 0700），回傳刪除它的函式。

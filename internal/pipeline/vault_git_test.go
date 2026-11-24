@@ -21,6 +21,7 @@ import (
 // gitScript 是腳本化的 git 與 hook：記錄每次呼叫，維持最小的 clone 狀態（HEAD、遠端追蹤分支、遠端的 commit 數）。
 type gitScript struct {
 	calls      [][]string
+	envs       [][]string // 每次 git 呼叫的環境
 	hookCalls  []toolexec.Cmd
 	head       string
 	origin     string
@@ -46,6 +47,7 @@ func (g *gitScript) Run(_ context.Context, c toolexec.Cmd) (toolexec.Result, err
 		return g.hookResult, g.hookErr
 	}
 	g.calls = append(g.calls, c.Args)
+	g.envs = append(g.envs, c.Env)
 	sub, rest := gitSub(c.Args)
 	fail := func(s string) (toolexec.Result, error) { return toolexec.Result{ExitCode: 128, Stderr: []byte(s)}, nil }
 	switch sub {
@@ -179,6 +181,12 @@ func TestGitVaultPublishCommitsOnlyChangedFiles(t *testing.T) {
 			if strings.Contains(s, gitToken) {
 				t.Errorf("argv 含有 token：%q", a)
 			}
+		}
+	}
+	// askpass 只把 token 交給設定的 remote 主機（VAULT V15）。
+	for _, env := range r.g.envs {
+		if !slices.Contains(env, "NOTESTEME_GIT_HOST=git.example.com") {
+			t.Errorf("git 的環境沒有 remote 主機：%q", env)
 		}
 	}
 	// 草稿與第二次發布：沒有變更，不 add、不 commit、不 push。
