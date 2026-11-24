@@ -107,7 +107,8 @@ type groupPath struct {
 
 func (rt *routes) setGroup(member bool) func(context.Context, *groupPath) (*struct{}, error) {
 	return func(ctx context.Context, in *groupPath) (*struct{}, error) {
-		p, err := mustPrincipal(ctx)
+		// 除了 middleware，handler 自己也檢查 admin（安全修補 A：路由的 Access 設錯時仍然拒絕）。
+		p, err := rt.requirePermission(ctx, hubconfig.PermAdmin)
 		if err != nil {
 			return nil, err
 		}
@@ -138,6 +139,10 @@ type auditOutput struct {
 }
 
 func (rt *routes) audit(ctx context.Context, in *auditInput) (*auditOutput, error) {
+	// 除了 middleware，handler 自己也檢查 admin（安全修補 A）。
+	if _, err := rt.requirePermission(ctx, hubconfig.PermAdmin); err != nil {
+		return nil, err
+	}
 	limit := in.Limit
 	if limit <= 0 {
 		limit = 100

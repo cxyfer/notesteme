@@ -29,3 +29,7 @@ SELECT * FROM pats WHERE user_id = $1 AND revoked_at IS NULL ORDER BY created_at
 -- name: RevokePAT :execrows
 -- Only the owner can revoke; revoking twice is a no-op that still matches the row.
 UPDATE pats SET revoked_at = COALESCE(revoked_at, sqlc.arg(now)) WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id);
+
+-- name: RevokeActivePAT :execrows
+-- Revokes a token that is not revoked yet (the audit entry is written only when this changes a row).
+UPDATE pats SET revoked_at = sqlc.arg(now) WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id) AND revoked_at IS NULL;

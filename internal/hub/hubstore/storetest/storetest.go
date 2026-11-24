@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -332,6 +333,20 @@ func Run(t *testing.T, open Open) {
 		}
 		if ls, _ := s.PATs(ctx, u.ID); len(ls) != 1 || ls[0].ID != "p3" {
 			t.Fatalf("撤銷後的列表 = %+v", ls)
+		}
+		// 安全修補 A：建立與撤銷寫入稽核紀錄；建立失敗（相同 hash）、撤銷別人的與重複撤銷都不寫。
+		es, err := s.AuditEntries(ctx, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got2 []string
+		for _, e := range es {
+			if e.TargetKind == "token" && e.ActorUserID == u.ID && e.Actor == "alice" {
+				got2 = append(got2, e.Action+":"+e.TargetID)
+			}
+		}
+		if strings.Join(got2, ",") != "token.revoke:p1,token.create:p3,token.create:p1" || len(es) != 3 {
+			t.Fatalf("稽核紀錄 = %v（共 %d 筆）", got2, len(es))
 		}
 	})
 

@@ -421,6 +421,8 @@
     "user_unsuspend": "Unsuspended account",
     "takedown_decide": "Decided takedown",
     "report_decide": "Decided report",
-    "version_hide": "Hid version"
+    "version_hide": "Hid version",
+    "token_create": "Created Hub token",
+    "token_revoke": "Revoked Hub token"
   }
 }

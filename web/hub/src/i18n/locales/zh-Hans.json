@@ -421,6 +421,8 @@
     "user_unsuspend": "恢复账号",
     "takedown_decide": "处理下架申请",
     "report_decide": "处理举报",
-    "version_hide": "隐藏版本"
+    "version_hide": "隐藏版本",
+    "token_create": "创建 Hub token",
+    "token_revoke": "撤销 Hub token"
   }
 }

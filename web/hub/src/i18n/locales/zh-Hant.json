@@ -421,6 +421,8 @@
     "user_unsuspend": "恢復帳號",
     "takedown_decide": "處理下架申請",
     "report_decide": "處理檢舉",
-    "version_hide": "隱藏版本"
+    "version_hide": "隱藏版本",
+    "token_create": "建立 Hub token",
+    "token_revoke": "撤銷 Hub token"
   }
 }

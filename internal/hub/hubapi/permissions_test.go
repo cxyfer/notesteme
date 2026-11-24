@@ -3,6 +3,7 @@ package hubapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/hub/hubauth"
 	"github.com/cxyfer/notesteme/internal/hub/hubconfig"
@@ -449,4 +451,33 @@ func TestSuspendedAccountIsRateLimited(t *testing.T) {
 	expect(t, "第 1 次", e.as("alice", "GET", "/api/v1/me", ""), 403, "account_suspended")
 	expect(t, "第 2 次", e.as("alice", "GET", "/api/v1/me", ""), 403, "account_suspended")
 	expect(t, "第 3 次", e.as("alice", "GET", "/api/v1/me", ""), 429, "rate_limited")
+}
+
+// 安全修補 A：指派群組與稽核紀錄的 handler 自己也檢查 admin，不只靠 middleware（路由的 Access 設錯時仍然拒絕）。
+func TestAdminHandlersCheckPermissionThemselves(t *testing.T) {
+	e := newPermEnv(t, nil)
+	auth, err := hubauth.New(hubauth.Deps{Config: e.cfg, Store: e.store, Clock: e.clk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := &routes{d: Deps{Config: e.cfg, Store: e.store, Auth: auth, Clock: e.clk}}
+	p, err := auth.Authenticate(context.Background(), e.toks["bob"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(context.Background(), principalKey{}, p)
+	if _, err := rt.audit(ctx, &auditInput{}); !isForbidden(err) {
+		t.Errorf("audit = %v，預期 403", err)
+	}
+	if _, err := rt.setGroup(true)(ctx, &groupPath{ID: e.users["bob"], Group: hubconfig.GroupModerators}); !isForbidden(err) {
+		t.Errorf("setGroup = %v，預期 403", err)
+	}
+	if ms, _ := e.store.GroupMemberships(context.Background(), e.users["bob"]); len(ms) != 0 {
+		t.Errorf("bob 被加入群組：%+v", ms)
+	}
+}
+
+func isForbidden(err error) bool {
+	var ae *apierr.Error
+	return errors.As(err, &ae) && ae.Status == http.StatusForbidden
 }

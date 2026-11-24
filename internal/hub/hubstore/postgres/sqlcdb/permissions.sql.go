@@ -199,6 +199,25 @@ func (q *Queries) RemoveGroupMember(ctx context.Context, arg RemoveGroupMemberPa
 	return result.RowsAffected(), nil
 }
 
+const revokeActivePAT = `-- name: RevokeActivePAT :execrows
+UPDATE pats SET revoked_at = $1 WHERE id = $2 AND user_id = $3 AND revoked_at IS NULL
+`
+
+type RevokeActivePATParams struct {
+	Now    *time.Time
+	ID     string
+	UserID string
+}
+
+// Revokes a token that is not revoked yet (the audit entry is written only when this changes a row).
+func (q *Queries) RevokeActivePAT(ctx context.Context, arg RevokeActivePATParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeActivePAT, arg.Now, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const revokePAT = `-- name: RevokePAT :execrows
 UPDATE pats SET revoked_at = COALESCE(revoked_at, $1) WHERE id = $2 AND user_id = $3
 `

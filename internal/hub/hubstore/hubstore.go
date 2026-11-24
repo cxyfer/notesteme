@@ -221,4 +221,7 @@ const (
 	AuditIdentityUnlink = "identity.unlink"
 	AuditGroupAdd       = "group.add"
 	AuditGroupRemove    = "group.remove"
+	// AuditTokenCreate、AuditTokenRevoke 是 Hub token 的建立與撤銷（安全修補 A，target_kind: token）。
+	AuditTokenCreate = "token.create"
+	AuditTokenRevoke = "token.revoke"
 )

@@ -114,9 +114,15 @@ func (s *Store) CreatePAT(ctx context.Context, p hubstore.PAT) error {
 	if err != nil {
 		return err
 	}
-	return s.wq.CreatePAT(ctx, sqlcdb.CreatePATParams{
-		ID: p.ID, UserID: p.UserID, Name: p.Name, TokenHash: p.TokenHash, Permissions: string(perms),
-		CreatedAt: ms(p.CreatedAt), ExpiresAt: ms(p.ExpiresAt),
+	// 建立與稽核紀錄在同一個交易中（安全修補 A）。
+	return s.inTx(ctx, func(q *sqlcdb.Queries) error {
+		if err := q.CreatePAT(ctx, sqlcdb.CreatePATParams{
+			ID: p.ID, UserID: p.UserID, Name: p.Name, TokenHash: p.TokenHash, Permissions: string(perms),
+			CreatedAt: ms(p.CreatedAt), ExpiresAt: ms(p.ExpiresAt),
+		}); err != nil {
+			return err
+		}
+		return audit(ctx, q, p.UserID, hubstore.AuditTokenCreate, "token", p.ID, map[string]any{"name": p.Name, "permissions": p.Permissions}, s.now())
 	})
 }
 
@@ -162,12 +168,21 @@ func (s *Store) PATs(ctx context.Context, userID string) ([]hubstore.PAT, error)
 // RevokePAT 實作 hubstore.Store。
 func (s *Store) RevokePAT(ctx context.Context, userID, id string) error {
 	now := s.now()
-	n, err := s.wq.RevokePAT(ctx, sqlcdb.RevokePATParams{Now: &now, ID: id, UserID: userID})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return hubstore.ErrNotFound
-	}
-	return nil
+	return s.inTx(ctx, func(q *sqlcdb.Queries) error {
+		changed, err := q.RevokeActivePAT(ctx, sqlcdb.RevokeActivePATParams{Now: &now, ID: id, UserID: userID})
+		if err != nil {
+			return err
+		}
+		if changed > 0 {
+			return audit(ctx, q, userID, hubstore.AuditTokenRevoke, "token", id, map[string]any{}, now)
+		}
+		n, err := q.RevokePAT(ctx, sqlcdb.RevokePATParams{Now: &now, ID: id, UserID: userID})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return hubstore.ErrNotFound
+		}
+		return nil
+	})
 }
