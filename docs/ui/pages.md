@@ -431,7 +431,7 @@ Prompt 庫 › 校正 › correct-default
 | 分區 | 內容 | 里程碑 |
 |---|---|---|
 | 服務與金鑰 | ASR、LLM、Supadata 的 provider 與 API key；每個都有「測試連線」按鈕；顯示模型的停用公告。`command` adapter 只能在設定檔中定義，這裡唯讀顯示 | M1 |
-| 帳號與 Cookie | 上傳 YouTube、Bilibili cookie，加密存放；顯示最後一次成功使用的時間與是否失效 | M1 |
+| 帳號與 Cookie | 上傳 YouTube、Bilibili cookie，加密存放；顯示最後一次成功使用的時間與是否失效（`GET /api/cookies`，SEC-R12，2026-11-25 完成） | M1 |
 | 語言 | 預設目標語言、原文字幕的語言優先順序、介面語言 | M1 |
 | 輸出 | 輸出目標：vault（本機資料夾或 git）、本機影片旁、指定資料夾；路徑或 repo、分支、使用者修改過時的處理方式；寫入後執行的 hook（只能選用設定檔中定義的項目） | M2 本機影片旁與資料夾，M3 vault |
 | MCP 與 Agent | 產生與撤銷 token，選擇 scope 與到期時間；顯示 Claude Code 的設定片段；Agent 一次最多領取幾個、租約時長、逾時後的處理方式 | M2 |

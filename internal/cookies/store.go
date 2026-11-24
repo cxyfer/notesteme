@@ -108,3 +108,64 @@ func randomHex() (string, error) {
 	}
 	return hex.EncodeToString(b), nil
 }
+
+// 狀態（SEC-R12）。
+const (
+	StateMissing = "missing" // 沒有上傳 cookie
+	StateOK      = "ok"      // 上傳之後至少一次帶這份 cookie 的呼叫成功，而且之後沒有被判定失效
+	StateExpired = "expired" // 帶這份 cookie 的呼叫被要求登入，之後還沒有重新上傳
+	StateUnknown = "unknown" // 已上傳，但這份 cookie 還沒有成功使用過，也沒有被判定失效
+)
+
+// Platforms 是可以上傳 cookie 的平台，依顯示順序。
+var Platforms = []string{PlatformYouTube, PlatformBilibili}
+
+// Status 是一個平台的 cookie 狀態（SEC-R12），永遠不含 cookie 的內容。
+// 沒有上傳時只有 Platform 與 State（missing）。
+type Status struct {
+	Platform   string
+	State      string
+	UpdatedAt  *time.Time
+	LastUsedAt *time.Time
+	LastOKAt   *time.Time
+	ExpiredAt  *time.Time
+}
+
+// Status 依 Platforms 的順序列出每個平台的 cookie 狀態；只讀時間欄位，不讀也不解密密文。
+func (s *Store) Status(ctx context.Context) ([]Status, error) {
+	list, err := s.st.Read().SecretsStatus(ctx, secretKind)
+	if err != nil {
+		return nil, fmt.Errorf("讀取 cookie 狀態失敗：%w", err)
+	}
+	byName := make(map[string]store.SecretStatus, len(list))
+	for _, st := range list {
+		byName[st.Name] = st
+	}
+	out := make([]Status, 0, len(Platforms))
+	for _, p := range Platforms {
+		st, ok := byName[p]
+		if !ok {
+			out = append(out, Status{Platform: p, State: StateMissing})
+			continue
+		}
+		updated := st.UpdatedAt
+		out = append(out, Status{
+			Platform: p, State: stateOf(st), UpdatedAt: &updated,
+			LastUsedAt: st.LastUsedAt, LastOKAt: st.LastOKAt, ExpiredAt: st.ExpiredAt,
+		})
+	}
+	return out, nil
+}
+
+// stateOf 依時間判斷狀態：被判定失效優先；成功使用的時間不早於上傳時間才算 ok（重新上傳之後，
+// 舊 cookie 的成功不代表新的也能用）。
+func stateOf(st store.SecretStatus) string {
+	switch {
+	case st.ExpiredAt != nil:
+		return StateExpired
+	case st.LastOKAt != nil && !st.LastOKAt.Before(st.UpdatedAt):
+		return StateOK
+	default:
+		return StateUnknown
+	}
+}

@@ -77,6 +77,26 @@ const TOKENS = {
   ],
 };
 
+const COOKIES = {
+  cookies: [
+    {
+      platform: "youtube",
+      state: "ok",
+      updated_at: "2026-11-20T00:00:00Z",
+      last_used_at: "2026-11-23T00:00:00Z",
+      last_ok_at: "2026-11-23T00:00:00Z",
+    },
+    {
+      platform: "bilibili",
+      state: "expired",
+      updated_at: "2026-11-01T00:00:00Z",
+      last_used_at: "2026-11-22T00:00:00Z",
+      last_ok_at: "2026-11-10T00:00:00Z",
+      expired_at: "2026-11-22T00:00:00Z",
+    },
+  ],
+};
+
 const LANGUAGE = {
   targets: ["zh-Hant-TW"],
   caption_priority: [
@@ -131,6 +151,7 @@ function settingsApi(routes: Record<string, MockHandler> = {}) {
     "GET /api/settings/agent": () => ({}),
     "GET /api/tokens": () => TOKENS,
     "GET /api/auth/sessions": () => SESSIONS,
+    "GET /api/cookies": () => COOKIES,
     "GET /api/system": () => SYSTEM,
     "GET /api/glossaries/{scope}/{id}": (req) => ({
       scope: req.params.scope,
@@ -351,6 +372,56 @@ describe("帳號與 Cookie", () => {
     expect(body).toEqual({ platform: "youtube", content: "SID=secret-cookie-value" });
     expect(box.value).toBe("");
     expect(document.body.innerHTML).not.toContain("secret-cookie-value");
+  });
+
+  it("顯示每個平台的狀態；失效時提示並可以直接跳到重新上傳", async () => {
+    settingsApi();
+    await openSection("accounts");
+    expect(await screen.findByText("可以使用：上傳之後成功使用過。")).toBeTruthy();
+    expect(screen.getByText("已失效。")).toBeTruthy();
+    const times = document.querySelectorAll("time");
+    expect(times.length).toBe(6);
+    expect(times[0]!.getAttribute("datetime")).toBe("2026-11-20T00:00:00Z");
+    const callout = screen.getByText(/Bilibili 要求重新登入/).closest(".callout") as HTMLElement;
+    await userEvent.click(
+      within(callout).getByRole("button", { name: "重新上傳 Bilibili cookie" }),
+    );
+    expect(document.activeElement).toBe(screen.getAllByLabelText("貼上 cookie")[1]);
+    await expectNoA11yViolations(document.body);
+  });
+
+  it("沒有上傳時只顯示尚未上傳；上傳後重新讀取狀態", async () => {
+    let reads = 0;
+    settingsApi({
+      "GET /api/cookies": () => {
+        reads++;
+        return {
+          cookies: [
+            { platform: "youtube", state: "missing" },
+            { platform: "bilibili", state: "missing" },
+          ],
+        };
+      },
+      "POST /api/cookies": () => ({
+        platform: "youtube",
+        cookies: 1,
+        updated_at: "2026-11-23T01:02:03Z",
+      }),
+    });
+    await openSection("accounts");
+    expect(await screen.findByText("尚未上傳 YouTube cookie。")).toBeTruthy();
+    expect(document.querySelectorAll("time").length).toBe(0);
+    expect(reads).toBe(1);
+    fireEvent.change(screen.getAllByLabelText("貼上 cookie")[0]!, { target: { value: "SID=x" } });
+    await userEvent.click(screen.getByRole("button", { name: "上傳 YouTube cookie" }));
+    await waitFor(() => expect(reads).toBe(2));
+  });
+
+  it("狀態讀不到時仍可以上傳", async () => {
+    settingsApi({ "GET /api/cookies": () => apiError(403, "forbidden", "boom") });
+    await openSection("accounts");
+    expect(await screen.findByText("無法讀取 cookie 的狀態，仍然可以上傳。")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "上傳 YouTube cookie" })).toBeTruthy();
   });
 
   it("錯誤依 code 顯示原因與下一步", async () => {

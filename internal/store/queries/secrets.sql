@@ -1,11 +1,12 @@
 -- name: UpsertSecret :exec
--- created_at is kept when the secret is replaced.
+-- created_at is kept when the secret is replaced; a new upload is no longer known to be expired (SEC-R12).
 INSERT INTO secrets (kind, name, nonce, ciphertext, created_at, updated_at)
 VALUES (sqlc.arg(kind), sqlc.arg(name), sqlc.arg(nonce), sqlc.arg(ciphertext), sqlc.arg(now), sqlc.arg(now))
 ON CONFLICT (kind, name) DO UPDATE SET
   nonce      = excluded.nonce,
   ciphertext = excluded.ciphertext,
-  updated_at = excluded.updated_at;
+  updated_at = excluded.updated_at,
+  expired_at = NULL;
 
 -- name: GetSecret :one
 SELECT * FROM secrets WHERE kind = sqlc.arg(kind) AND name = sqlc.arg(name);

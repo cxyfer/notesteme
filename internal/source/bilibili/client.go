@@ -76,6 +76,8 @@ type Client struct {
 type CallRecorder interface {
 	ToolCall(ctx context.Context, tool string, failed bool)
 	CookieOK(ctx context.Context, platform string)
+	// CookieFailed 記錄 cookie 被一次失敗的呼叫使用；expired 表示 cookie 沒有登入（SEC-R12）。
+	CookieFailed(ctx context.Context, platform string, expired bool)
 }
 
 func (c *Client) log() *slog.Logger {
@@ -157,27 +159,57 @@ func (c *Client) run(ctx context.Context, timeout time.Duration, args []string, 
 		if ctx.Err() != nil {
 			return res, ctx.Err() // 被取消：不是工具的錯，由呼叫端處理
 		}
-		c.record(ctx, true, false)
+		c.record(ctx, true, cookieResult(usedCookie, cookieFailed))
 		return res, &errclass.Error{Class: errclass.ClassRetryable, Source: "yt-dlp", Err: err}
 	}
 	if res.ExitCode != 0 {
 		err := classify(res)
+		use := cookieFailed
+		if loginLine.Match(res.Stderr) {
+			use = cookieExpired // 帶了 cookie 仍被要求登入：cookie 已經失效（SEC-R12）
+		}
 		// 影片本身不存在或地區限制（permanent）不算 yt-dlp 失敗（OPS-R18）。
-		c.record(ctx, !isPermanent(err), false)
+		c.record(ctx, !isPermanent(err), cookieResult(usedCookie, use))
 		return res, err
 	}
-	c.record(ctx, false, usedCookie)
+	use := cookieOK
+	if loginWarningLine.Match(res.Stderr) {
+		// 帶了 cookie 卻仍印出「只有登入才看得到字幕」：cookie 沒有登入，不算成功使用（SEC-R12）。
+		use = cookieExpired
+	}
+	c.record(ctx, false, cookieResult(usedCookie, use))
 	return res, nil
 }
 
+// cookieUse 是一次呼叫對 cookie 的結果（SEC-R12）。
+type cookieUse int
+
+const (
+	cookieNotUsed cookieUse = iota // 沒有帶 cookie
+	cookieOK                       // 帶 cookie 而且成功
+	cookieFailed                   // 帶 cookie 但失敗，原因與 cookie 無關
+	cookieExpired                  // 帶 cookie 仍被要求登入
+)
+
+// cookieResult 在沒有帶 cookie 時回傳 cookieNotUsed，否則回傳 use。
+func cookieResult(used bool, use cookieUse) cookieUse {
+	if !used {
+		return cookieNotUsed
+	}
+	return use
+}
+
 // record 把一次呼叫的結果交給 Calls（沒有設定時不記錄）。
-func (c *Client) record(ctx context.Context, failed, cookieOK bool) {
+func (c *Client) record(ctx context.Context, failed bool, use cookieUse) {
 	if c.Calls == nil {
 		return
 	}
 	c.Calls.ToolCall(ctx, "yt-dlp", failed)
-	if cookieOK {
+	switch use {
+	case cookieOK:
 		c.Calls.CookieOK(ctx, Platform)
+	case cookieFailed, cookieExpired:
+		c.Calls.CookieFailed(ctx, Platform, use == cookieExpired)
 	}
 }
 

@@ -281,3 +281,74 @@ Feature: Configuration and secrets
       { "code": "needs_action", "message": "找不到 command provider missing 的指令，或沒有執行權限。", "actions": ["修改設定檔"] }
       """
     And the response does not contain "notesteme-no-such-asr"
+
+  @M1 @SEC-07 @SEC-R12
+  Scenario: The cookie status shows when each cookie last worked, never its content
+    Given the clock is at "2026-11-25T08:00:00Z"
+    And the server is running
+    And the owner is signed in
+    And a YouTube video "yt:members1xxx" with:
+      | field        | value           |
+      | availability | subscriber_only |
+    When the owner sends "POST /api/cookies" with:
+      """
+      { "platform": "youtube", "content": "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tsecret-sid" }
+      """
+    And the owner ingests "yt:members1xxx"
+    And the worker runs until idle
+    And the owner sends "GET /api/cookies"
+    Then the response contains:
+      """
+      { "cookies": [
+          { "platform": "youtube", "state": "ok", "updated_at": "2026-11-25T08:00:00Z",
+            "last_used_at": "*", "last_ok_at": "*" },
+          { "platform": "bilibili", "state": "missing" } ] }
+      """
+    And the response does not contain "secret-sid"
+    And the response does not contain "expired_at"
+
+  @M1 @SEC-07 @SEC-R12
+  Scenario: A cookie that no longer signs in is marked expired until it is uploaded again
+    Given the server is running
+    And the owner is signed in
+    And a Bilibili video "BV1ai411c7mD" with 1 part
+    And "bili:BV1ai411c7mD/p1" has auto captions in "zh-Hans"
+    And the source "bilibili-ai" requires the cookie "bilibili"
+    And the platform "bilibili" no longer accepts the uploaded cookie
+    When the owner sends "POST /api/cookies" with:
+      """
+      { "platform": "bilibili", "content": "SESSDATA=signed-out-sessdata" }
+      """
+    And the owner ingests "bili:BV1ai411c7mD/p1" with the overrides:
+      """
+      until: transcript
+      """
+    And the worker runs until idle
+    And the owner sends "GET /api/cookies"
+    Then the response contains:
+      """
+      { "cookies": [ { "platform": "youtube", "state": "missing" },
+          { "platform": "bilibili", "state": "expired", "expired_at": "*", "last_used_at": "*" } ] }
+      """
+    When the owner sends "POST /api/cookies" with:
+      """
+      { "platform": "bilibili", "content": "SESSDATA=fresh-sessdata" }
+      """
+    And the owner sends "GET /api/cookies"
+    Then the response contains:
+      """
+      { "cookies": [ { "platform": "youtube", "state": "missing" }, { "platform": "bilibili", "state": "unknown" } ] }
+      """
+    And the response does not contain "expired_at"
+    And the response does not contain "sessdata"
+
+  @M1 @SEC-07 @SEC-R12
+  Scenario: Reading the cookie status needs the admin scope
+    Given the server is running
+    And a token "viewer" with scopes "read"
+    When the client sends "GET /api/cookies" with the token "viewer"
+    Then the response status is 403
+    And the response contains:
+      """
+      { "required_scope": "admin" }
+      """

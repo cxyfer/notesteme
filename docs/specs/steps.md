@@ -171,6 +171,7 @@
 | `Given the source {string} returns {string} for {string}` | 字幕來源回傳指定的 fixture。平台來源（`youtube-*`、`bilibili-*`）寫進假 yt-dlp 對應種類的字幕軌（`*-manual`、`bilibili-cc` 是 `manual`，`*-auto`、`bilibili-ai` 是 `auto`），來源與影音的平台必須相符；Bilibili 的 fixture 是字幕 JSON（`body[{from, to, content}]`）。`podcast-transcript` 在 feed 的這一集加上 `<podcast:transcript>`，fixture 放在 `features/fixtures/podcast/`，副檔名只接受 `.vtt`、`.srt`、`.json`；feed 或這一集不存在、同一個 feed 中兩集用同一個字幕檔名時失敗；`was called … times` 計算字幕網址被請求的次數 |
 | `Given the source {string} has nothing for {string}` | 字幕來源沒有結果 |
 | `Given the source {string} requires the cookie {string}` | 需要指定的 cookie 才能取得。平台來源（`bilibili-*`）的參數是 cookie 的平台：假 yt-dlp 沒有收到該平台的有效 cookie 檔（`--cookies` 指到 Netscape 格式、含 `.bilibili.com` 網域 `SESSDATA` 的檔案）時，不列出也不下載該來源的字幕軌，結束碼 0，並在 stderr 印出 login WARNING（有 `--no-warnings` 時不印）。平台來源還沒實作（`source.Implemented`）時 pending |
+| `Given the platform {string} no longer accepts the uploaded cookie` | 平台不再接受上傳的 cookie（SEC-R12，例如 cookie 在瀏覽器中被登出）：假 yt-dlp 收到該平台含 `SESSDATA` 的 cookie 檔也當作沒有登入，照 `the source … requires the cookie …` 的規則不列出需要登入的字幕軌並印出 login WARNING。目前只接受 `bilibili`；其他平台失敗 |
 | `Given the source {string} accepts files up to {string}` | ASR 的單檔大小上限，例如 `"25MB"` |
 | `Given the audio of {string} is {string}` | 音訊 fixture（`features/fixtures/media/`），例如長度或大小不同的檔案。`local:` 把 fixture 的長度、壓縮後大小與靜音區段併進 inbox 中的檔案；`yt:`、`bili:` 寫進假 yt-dlp 中這部影片的對應屬性。檔案不在 inbox、fixture 不存在時失敗 |
 | `Given yt-dlp fails for {string} with {string}` | yt-dlp 對這個影音的所有操作（取得資訊、下載字幕、下載媒體）都以結束碼 1 失敗，stderr 為指定的錯誤輸出。只接受 `yt:` |

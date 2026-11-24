@@ -232,3 +232,49 @@ func openOther(t *testing.T) *store.Store {
 	t.Cleanup(func() { _ = st.Close() })
 	return st
 }
+
+// SEC-R12：每個平台都列出；沒有上傳是 missing，上傳後是 unknown，成功使用後 ok，被判定失效是 expired，
+// 重新上傳後回到 unknown（舊 cookie 的成功不代表新的也能用）。
+func TestStatus(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	states := func() map[string]Status {
+		t.Helper()
+		list, err := r.cs.Status(ctx)
+		if err != nil || len(list) != 2 || list[0].Platform != "youtube" || list[1].Platform != "bilibili" {
+			t.Fatalf("Status = %+v, %v", list, err)
+		}
+		return map[string]Status{"youtube": list[0], "bilibili": list[1]}
+	}
+	if s := states(); s["youtube"].State != StateMissing || s["youtube"].UpdatedAt != nil || s["bilibili"].State != StateMissing {
+		t.Fatalf("沒有上傳：%+v", s)
+	}
+	if _, _, err := r.cs.Put(ctx, "youtube", ytCookie); err != nil {
+		t.Fatal(err)
+	}
+	if s := states()["youtube"]; s.State != StateUnknown || s.UpdatedAt == nil || !s.UpdatedAt.Equal(r.clk.Now()) {
+		t.Fatalf("剛上傳：%+v", s)
+	}
+	w := r.st.Write()
+	r.clk.Advance(time.Hour)
+	if err := w.MarkSecretOK(ctx, "cookie", "youtube", r.clk.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if s := states()["youtube"]; s.State != StateOK || !s.LastOKAt.Equal(r.clk.Now()) {
+		t.Fatalf("成功後：%+v", s)
+	}
+	r.clk.Advance(time.Hour)
+	if err := w.MarkSecretExpired(ctx, "cookie", "youtube", r.clk.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if s := states()["youtube"]; s.State != StateExpired || s.LastOKAt == nil || !s.ExpiredAt.Equal(r.clk.Now()) {
+		t.Fatalf("失效：%+v", s)
+	}
+	r.clk.Advance(time.Hour)
+	if _, _, err := r.cs.Put(ctx, "youtube", ytCookie); err != nil {
+		t.Fatal(err)
+	}
+	if s := states()["youtube"]; s.State != StateUnknown || s.ExpiredAt != nil || s.LastOKAt == nil {
+		t.Fatalf("重新上傳：%+v", s)
+	}
+}

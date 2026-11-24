@@ -12,10 +12,13 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/cookies"
 )
 
 // cancelingCookies 在儲存成功的同時取消請求的 ctx，模擬客戶端在 cookie 存好之後斷線。
 type cancelingCookies struct{ cancel context.CancelFunc }
+
+func (cancelingCookies) Status(context.Context) ([]cookies.Status, error) { return nil, nil }
 
 func (c cancelingCookies) Put(context.Context, string, string) (int, time.Time, error) {
 	c.cancel()

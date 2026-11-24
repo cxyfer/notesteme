@@ -19,6 +19,7 @@
 | SEC-04 | As the owner, I want to rotate the master key and recover from losing it, so that a key problem never costs me my library. | M1 |
 | SEC-05 | As the owner, I want to export and import my settings as YAML, so that I can version them or move them to another instance. | M2 |
 | SEC-06 | As the owner, I want to see every provider, test its connection, and read model deprecation notices on the settings page, so that a wrong key or a retiring model shows up before a job fails. | M1 |
+| SEC-07 | As the owner, I want to see when each cookie last worked and whether it has expired, so that I re-upload it before videos get stuck. | M1 |
 
 ## 規則
 
@@ -35,6 +36,7 @@
 | SEC-R9 | `notesteme secrets reset` 刪除所有 secrets 與資料金鑰，並以新的 master key 建立新的資料金鑰；影音、產出、設定都保留，token 與密碼不受影響。 | M1 |
 | SEC-R10 | `notesteme config export` 輸出 DB 管理的設定（不含 secrets）；`notesteme config import` 匯入時先驗證整份內容，有錯誤就整份不套用。 | M2 |
 | SEC-R11 | 設定頁「服務與金鑰」的 provider 目錄與測試連線（pages.md §12）：`GET /api/providers`（`read`）列出內建與設定檔中定義的 provider 與模型的停用公告，不含 API key 與 `command` 的內容，全部唯讀。`POST /api/providers/:id/test`（`admin`）送一個帶認證、不產生費用的請求，成功回 `{ok, latency_ms, message}`；沒有 API key 或 key 被拒絕回 409 `needs_action`（動作「設定 API key」）；provider 失敗、逾時或連線失敗回 502 `upstream_failed`。`command` provider 只檢查指令存在且可以執行，不執行它。 | M1 |
+| SEC-R12 | `GET /api/cookies`（`admin`）依序列出 YouTube、Bilibili 的 cookie 狀態：`state`（`missing` 沒有上傳、`unknown` 上傳後還沒有成功使用過、`ok` 上傳後成功使用過、`expired` 帶這份 cookie 仍被要求登入，目前只有 Bilibili 判定得到）、上傳時間、最近一次使用、最近一次成功使用與判定失效的時間。`expired` 只有重新上傳會清掉。回應永遠不含 cookie 的內容。 | M1 |
 
 ## 介面
 
@@ -47,6 +49,7 @@
   - 測試的請求：anthropic `GET /v1/models?limit=1`、OpenAI 相容 `GET <base_url>/models`、Gemini `GET /v1beta/models?pageSize=1`、Groq `GET /openai/v1/models`、Supadata `GET /v1/me`（帳號資訊，不消耗 credit）。API key 的來源與正式執行相同（環境變數優先，其次是資料庫）；請求經 netguard（ADR-0014）、不跟隨轉址、逾時 15 秒，回應只讀 64 KiB 並丟棄。
   - 錯誤：401、403 是 409 `needs_action`「provider <id> 拒絕了 API key（HTTP <碼>）。」；沒有 key 的訊息與正式執行相同（例如「LLM provider openai 沒有設定 API key。」）；429、5xx 是 502「provider <id> 暫時無法使用（HTTP <碼>），請稍後再試。」；其他狀態碼（含轉址）是 502「provider <id> 拒絕了測試請求（HTTP <碼>），請確認設定檔的 base_url。」；逾時、連線失敗、被 netguard 擋下各有固定訊息。訊息與 log 都不含 API key、網址與 provider 回應的內容。找不到 provider 回 404，不提供測試的 provider（`testable: false`）回 501。
   - `command` provider：只檢查 `command` 的第一個元素是存在且可以執行的檔案（含 `/` 時直接檢查，否則在 `PATH` 中找），成功時 `message` 是「找到指令且可以執行；沒有實際執行。」；找不到或沒有執行權限是 409 `needs_action`「找不到 command provider <id> 的指令，或沒有執行權限。」，動作「修改設定檔」。訊息不含指令與路徑。
+- API：`GET/PUT /api/settings/:section`、`POST /api/cookies`、`GET /api/cookies`（SEC-R12）、`GET /api/config/export`、`POST /api/config/import`
 - CLI：`notesteme secrets rotate-key|reset`、`notesteme config export [--out <file>]`、`notesteme config import <file>`
 - `POST /api/cookies`：上傳平台的 cookie。
   - 請求：`{ "platform": "youtube" | "bilibili", "content": "<Netscape cookie 檔，或 name=value; … 標頭>" }`，內容上限 64 KiB；請求本體（JSON）上限 512 KiB，超過同樣回 422 `cookie_too_large`（含沒有 Content-Length 的請求，讀到上限就停止；其他路由維持 Huma 預設的 1 MiB 與 413）。
@@ -74,6 +77,10 @@
 - 儲存方式：secrets 表以 `(kind, name)` 為主鍵，cookie 是 `kind=cookie`、`name=<platform>`。內容用資料金鑰以 XChaCha20-Poly1305 加密，AAD 是 `kind/name`（`cookie/youtube`），每次加密用新的隨機 nonce；密文搬到別筆 secret 後無法解開。DB、WAL、log 都不會出現明文。
 - 執行時：每次呼叫 yt-dlp 時解密，在 `<data>/tmp` 以 `O_EXCL` 建立權限 `0600` 的暫存檔 `cookies-<platform>-<隨機>.txt`，每次呼叫一個新檔名（SEC-R7），子程序結束後刪除。
 - stderr 遮蔽：yt-dlp 讀 cookie 檔遇到格式有問題的行時，會在 stderr 印出含 cookie 值的 `skipping cookie file entry …`。stderr 進入錯誤訊息（`errclass.Error.Detail`）與 log 之前，含這段文字的整行以固定字串取代（`toolexec.RedactCookieLines`，YouTube 與 Bilibili 的 client 都套用），其他行不變。
+- `GET /api/cookies`（SEC-R12）：200 `{ "cookies": [ { "platform", "state", "updated_at"?, "last_used_at"?, "last_ok_at"?, "expired_at"? } ] }`，永遠兩筆，依 `youtube`、`bilibili` 的順序；沒有的時間省略（`missing` 只有 `platform` 與 `state`）。只讀 secrets 表的時間欄位，不讀也不解密密文。權限：`admin`（session 擁有全部權限）；token 缺少時回 403 並帶 `required_scope`。
+  - 記錄點：每次帶 cookie 的 yt-dlp 呼叫都更新 `last_used_at`（`secrets.last_used_at`）；結束碼 0 時另外更新 `last_ok_at`（OPS-R17 既有欄位）；被要求登入時更新 `expired_at`。沒有帶 cookie 的呼叫不更新。
+  - 判定失效（`expired_at`）：只有 Bilibili。stderr 的 `ERROR:` 行要求登入（`-101` 等，同 SRC 的 `needs_action` 分類），或結束碼 0 但印出 `Subtitles are only available when logged in`（帶了 cookie 仍看不到需要登入的字幕）。YouTube 不判定失效，狀態只會是 `ok`、`unknown` 或 `missing`（見待決問題）。
+  - `state` 的判斷：沒有這筆 secret → `missing`；有 `expired_at` → `expired`；`last_ok_at` 不早於 `updated_at` → `ok`；其他 → `unknown`。重新上傳（`POST /api/cookies`）清掉 `expired_at`，`last_used_at` 與 `last_ok_at` 保留（舊 cookie 的成功早於新的上傳時間，所以狀態回到 `unknown`）。
 - 使用政策：有該平台的 cookie 時，這個平台的每一次 yt-dlp 呼叫都帶 `--cookies`（Probe、字幕、音訊、播放清單），不是只有失敗時才用；`--version` 不帶。沒有 cookie 時不帶這個旗標。
 
 ## 不在範圍內
@@ -107,3 +114,9 @@
   - 設定檔 `asr.providers` 的 `openai-compatible`、`mistral` 目前沒有接上處理流程，也沒有對應的 client 與 API key 來源，所以 `testable: false`（`untestable_reason`「這種 provider 還沒有接上處理流程，無法測試連線。」），`/test` 回 501；不另外發明 key 的綁定方式。服務與金鑰中的 `mistral`、`openai-compatible` API key 也因此沒有測試按鈕。
   - 同一個 id 可能同時是 `asr.providers` 與 LLM provider（兩個命名空間獨立）：列表兩個都列，以 `kind` 區分；單一 id 的查詢先取 `asr`，維持 `GET /api/providers/{id}` 原本只查 `asr.providers` 的行為。
   - **模型停用公告：機制已有，目前沒有資料。** 規格沒有定義資料來源；目錄（`internal/providers.Deprecations`）以 provider id 為 key，每項是 `model`、`after`（YYYY-MM-DD）、`replacement`、`message`，只放能對照 provider 官方公告確認的資料，並記下來源與查證日期。2026-11-25 查證：程式內建的模型 ID 只有 Groq 的 `whisper-large-v3-turbo`（`groq.DefaultModel`），它不在 Groq 的官方停用清單（https://console.groq.com/docs/deprecations ，該頁只列出它是 `distil-whisper-large-v3-en` 的替代模型），也仍列在 production models；LLM 的模型 ID 都是處理方案中自由輸入，程式沒有模型清單可以掛公告。所以目前是空的，API 一律回空陣列。plan 第 25 節風險表的 `whisper-1` 日期不是官方公告的原文，`whisper-1` 也不是程式內建的模型，不放。之後內建了模型 ID（例如預設處理方案寫死模型）時，要對照該 provider 的官方停用頁補上。
+- SEC-R12 的 cookie 狀態（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：UI pages.md §12 要求「帳號與 Cookie」顯示最後一次成功使用的時間與是否失效（M1），但原本只有 `POST /api/cookies`。新增 SEC-07、SEC-R12 與 `GET /api/cookies`，決定如下：
+  - scope 用 `admin`：回應不含 cookie 的值，所以不比照上傳的「只有 owner」；但它透露帳號的使用狀況，不給只有 `read` 的 token。
+  - 失效的判斷只認「帶了 cookie 仍被明確要求登入」，而且只有 Bilibili 做得到。YouTube 的 yt-dlp 呼叫都帶 `--no-warnings`（既有設計），yt-dlp 唯一明確的訊號是 `WARNING: [youtube] The provided YouTube account cookies are no longer valid…`，被這個旗標吃掉；會員限定可能只是這個帳號不是會員、403 要先更新 yt-dlp（SRC-R9）、`Sign in to confirm you're not a bot` 與 IP 有關，三者都不能證明 cookie 失效。拿掉 `--no-warnings` 會讓 stderr 多出 WARNING 行、改變既有的錯誤分類與摘要，風險大於好處，所以**不做 YouTube 的失效判斷**：帶 cookie 的失敗只更新 `last_used_at`，YouTube cookie 的狀態只會是 `ok` 或 `unknown`。需要時再評估「帶 cookie 的呼叫不加 `--no-warnings`」並對真實的 yt-dlp 驗證。Bilibili 的 `-101` 與 login WARNING 依 yt-dlp 原始碼推測，沒有對真實的 yt-dlp 與平台驗證（測試不連外網），由場景（假 yt-dlp 的「平台不再接受上傳的 cookie」）與 `internal/source/bilibili` 的單元測試把關。
+  - 失效之後的成功呼叫**不**清掉 `expired_at`：很多呼叫（例如 Bilibili 的 metadata）不需要登入也會成功，成功不代表 cookie 有效。只有重新上傳會清掉。代價是誤判之後要重新上傳一次才會恢復。
+  - 已知限制：呼叫開始時讀到的是舊 cookie、結束前使用者重新上傳時，這次呼叫的結果會記到新的 cookie 上（例如把新 cookie 標成失效）。發生的機率低，重新上傳一次即可恢復，所以不在呼叫中帶上傳時間比對。
+  - OPS-R17 的「cookie 超過 N 天沒有成功使用」告警不變，仍以 `last_ok_at` 與上傳時間判斷。

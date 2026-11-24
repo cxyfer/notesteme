@@ -1064,7 +1064,21 @@
       "saved_other": "Saved the {{name}} cookie ({{count}} entries)",
       "result_one": "Saved {{count}} cookie ({{time}}).",
       "result_other": "Saved {{count}} cookies ({{time}}).",
-      "statusUnavailable": "Last successful use and expiry status: the backend doesn't provide an API to read cookie status yet."
+      "statusError": "Couldn't load the cookie status. You can still upload.",
+      "state": {
+        "missing": "No {{name}} cookie uploaded yet.",
+        "unknown": "Uploaded, not used successfully yet.",
+        "ok": "Working: used successfully since the upload.",
+        "expired": "Expired."
+      },
+      "when": {
+        "uploaded": "Uploaded",
+        "lastOk": "Last successful use",
+        "lastUsed": "Last used"
+      },
+      "never": "Not yet",
+      "expired": "{{name}} asked to sign in again ({{time}}): this cookie no longer works, and videos that need it will stop. Sign in to {{name}} in your browser, export the cookies and upload them again.",
+      "reupload": "Upload a new {{name}} cookie"
     },
     "language": {
       "targetsTitle": "Translation",

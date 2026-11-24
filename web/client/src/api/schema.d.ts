@@ -354,7 +354,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get?: never;
+    /** 列出每個平台的 cookie 狀態：上傳時間、最近一次使用、最近一次成功使用、是否失效；永遠不含 cookie 的內容（SEC-R12） */
+    get: operations["cookies-status"];
     put?: never;
     /** 上傳平台 cookie（加密存放，每個平台一份），並恢復等待它的 blocked 步驟（SEC-R4、SRC-R8、PIPE-R4） */
     post: operations["cookies-put"];
@@ -2174,6 +2175,35 @@ export interface components {
       /** @description 請求中 ids 的原始寫法 */
       id: string;
     };
+    CookieStatusBody: {
+      /**
+       * Format: date-time
+       * @description 被判定失效的時間（帶這份 cookie 仍被要求登入）；只有重新上傳會清掉
+       */
+      expired_at?: string;
+      /**
+       * Format: date-time
+       * @description 最近一次成功使用的時間（可能早於重新上傳）
+       */
+      last_ok_at?: string;
+      /**
+       * Format: date-time
+       * @description 最近一次交給 yt-dlp 的時間，不論結果
+       */
+      last_used_at?: string;
+      /** @enum {string} */
+      platform: "youtube" | "bilibili";
+      /**
+       * @description missing：沒有上傳；unknown：上傳後還沒有成功使用過；ok：上傳後成功使用過；expired：帶這份 cookie 仍被要求登入
+       * @enum {string}
+       */
+      state: "missing" | "unknown" | "ok" | "expired";
+      /**
+       * Format: date-time
+       * @description 上傳的時間
+       */
+      updated_at?: string;
+    };
     CookiesInputBody: {
       /** @description Netscape cookie 檔，或瀏覽器標頭的 name=value; …（上限 64 KiB） */
       content: string;
@@ -2189,6 +2219,9 @@ export interface components {
       platform: string;
       /** Format: date-time */
       updated_at: string;
+    };
+    CookiesStatusOutputBody: {
+      cookies: components["schemas"]["CookieStatusBody"][] | null;
     };
     CreateAssStyleInputBody: {
       /** @description 複製哪個樣式（內建或自訂），預設 default */
@@ -5184,6 +5217,35 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ConfigImportOutputBody"];
+        };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "cookies-status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CookiesStatusOutputBody"];
         };
       };
       /** @description Error */

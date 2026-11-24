@@ -217,3 +217,57 @@ func TestPostCookiesNotConfigured(t *testing.T) {
 		t.Errorf("status = %d，預期 501", rec.Code)
 	}
 }
+
+// SEC-R12：GET /api/cookies 列出每個平台的狀態，不含 cookie 的值；需要 admin，token 只有 read 時回 403。
+func TestGetCookiesStatus(t *testing.T) {
+	r := newCookieRig(t)
+	if rec := r.post(t, `{"platform":"youtube","content":"SID=top-secret-sid"}`); rec.Code != 200 {
+		t.Fatalf("POST = %d %s", rec.Code, rec.Body)
+	}
+	ctx := context.Background()
+	r.clk.Advance(time.Hour)
+	if err := r.st.Write().MarkSecretOK(ctx, "cookie", "youtube", r.clk.Now()); err != nil {
+		t.Fatal(err)
+	}
+	session, csrf := r.login(t)
+	rec := r.do("GET", "/api/cookies", "", withCookies(session, csrf, ""))
+	if rec.Code != 200 {
+		t.Fatalf("GET = %d %s", rec.Code, rec.Body)
+	}
+	if strings.Contains(rec.Body.String(), "top-secret") {
+		t.Fatalf("回應含 cookie 的值：%s", rec.Body)
+	}
+	var out struct {
+		Cookies []map[string]any `json:"cookies"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Cookies) != 2 {
+		t.Fatalf("cookies = %v", out.Cookies)
+	}
+	yt, bili := out.Cookies[0], out.Cookies[1]
+	if yt["platform"] != "youtube" || yt["state"] != "ok" || yt["last_ok_at"] != "2026-11-14T11:00:00Z" ||
+		yt["last_used_at"] != "2026-11-14T11:00:00Z" || yt["updated_at"] != "2026-11-14T10:00:00Z" || yt["expired_at"] != nil {
+		t.Errorf("youtube = %v", yt)
+	}
+	if len(bili) != 2 || bili["platform"] != "bilibili" || bili["state"] != "missing" {
+		t.Errorf("bilibili = %v", bili)
+	}
+
+	// token 只有 read：403，帶 required_scope。
+	rec = r.do("POST", "/api/tokens", `{"name":"r","scopes":["read"]}`, withCookies(session, csrf, csrf))
+	var tok struct {
+		Token string `json:"token"`
+	}
+	if rec.Code != 201 || json.Unmarshal(rec.Body.Bytes(), &tok) != nil || tok.Token == "" {
+		t.Fatalf("建立 token = %d %s", rec.Code, rec.Body)
+	}
+	rec = r.do("GET", "/api/cookies", "", withBearer(tok.Token))
+	if rec.Code != 403 || !strings.Contains(rec.Body.String(), `"required_scope":"admin"`) {
+		t.Errorf("read token：%d %s", rec.Code, rec.Body)
+	}
+	if rec := r.do("GET", "/api/cookies", "", nil); rec.Code != 401 {
+		t.Errorf("沒登入：%d", rec.Code)
+	}
+}

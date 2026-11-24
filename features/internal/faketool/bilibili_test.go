@@ -261,3 +261,15 @@ func TestEmptyCookieFileIsLoggedOut(t *testing.T) {
 		t.Fatalf("code=%d stderr=%q out=%q", code, errs, out)
 	}
 }
+
+// RejectedCookies（SEC-R12）：平台不再接受上傳的 cookie 時，有 SESSDATA 也當作沒登入，照樣印出 login WARNING。
+func TestBiliRejectedCookie(t *testing.T) {
+	st := biliState(t, true)
+	st.RejectedCookies = map[string]bool{"bilibili": true}
+	s := newScenario(t, st)
+	ck := writeCookies(t, s.work, biliCookie)
+	code, out, errs := s.inproc("yt-dlp", "-J", "--write-subs", "--cookies", ck, biliURL+"?p=1")
+	if code != 0 || biliInfoSubs(t, out)["ai-zh"] != nil || !strings.Contains(errs, "Subtitles are only available when logged in") {
+		t.Fatalf("code=%d stderr=%q out=%q", code, errs, out)
+	}
+}

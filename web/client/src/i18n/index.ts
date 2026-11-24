@@ -100,6 +100,32 @@ export function formatDateTime(d: Date | string, lang: Language = currentLanguag
   );
 }
 
+/**
+ * 相對時間（「3 小時前」「昨天」）：依距離選秒、分鐘、小時、天、月、年，用 Intl.RelativeTimeFormat。
+ * 未來的時間（時鐘不同步）也照實顯示，不硬改成「剛剛」。
+ */
+export function formatRelativeTime(
+  d: Date | string,
+  now: number = Date.now(),
+  lang: Language = currentLanguage(),
+) {
+  const diffSec = Math.round(((typeof d === "string" ? new Date(d) : d).getTime() - now) / 1000);
+  const abs = Math.abs(diffSec);
+  const [value, unit]: [number, Intl.RelativeTimeFormatUnit] =
+    abs < 60
+      ? [diffSec, "second"]
+      : abs < 3600
+        ? [Math.round(diffSec / 60), "minute"]
+        : abs < 86_400
+          ? [Math.round(diffSec / 3600), "hour"]
+          : abs < 30 * 86_400
+            ? [Math.round(diffSec / 86_400), "day"]
+            : abs < 365 * 86_400
+              ? [Math.round(diffSec / (30 * 86_400)), "month"]
+              : [Math.round(diffSec / (365 * 86_400)), "year"];
+  return new Intl.RelativeTimeFormat(lang, { numeric: "auto" }).format(value, unit);
+}
+
 /** 只有日期（媒體庫的發布日） */
 export function formatDate(d: Date | string, lang: Language = currentLanguage()) {
   return new Intl.DateTimeFormat(lang, { dateStyle: "medium" }).format(

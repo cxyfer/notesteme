@@ -10,12 +10,15 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/cookies"
 )
 
 // CookieStore 加密存放平台的 cookie（*cookies.Store 實作它）。
 type CookieStore interface {
 	Put(ctx context.Context, platform, content string) (count int, updatedAt time.Time, err error)
+	// Status 依顯示順序列出每個平台的 cookie 狀態（SEC-R12），不含 cookie 的內容。
+	Status(ctx context.Context) ([]cookies.Status, error)
 }
 
 // Resumer 在使用者補上缺少的東西（例如 cookie）後，把等待它的 blocked 步驟恢復（*pipeline.Pipeline 實作它）。
@@ -107,6 +110,49 @@ func (rt *routes) registerCookies(api huma.API) {
 		// 明確設定上限，不用 huma 的預設值；超過時由 cookieBodyLimit 先回 422（huma 自己只會回 413）。
 		MaxBodyBytes: maxCookieBodyBytes,
 	}, "上傳 cookie", rt.putCookies)
+	registerScoped(api, huma.Operation{
+		OperationID: "cookies-status", Method: http.MethodGet, Path: "/api/cookies",
+		Summary: "列出每個平台的 cookie 狀態：上傳時間、最近一次使用、最近一次成功使用、是否失效；永遠不含 cookie 的內容（SEC-R12）",
+	}, auth.ScopeAdmin, rt.cookiesStatus)
+}
+
+// CookieStatusBody 是一個平台的 cookie 狀態（SEC-R12）。沒有上傳時只有 platform 與 state。
+type CookieStatusBody struct {
+	Platform   string     `json:"platform" enum:"youtube,bilibili"`
+	State      string     `json:"state" enum:"missing,unknown,ok,expired" doc:"missing：沒有上傳；unknown：上傳後還沒有成功使用過；ok：上傳後成功使用過；expired：帶這份 cookie 仍被要求登入"`
+	UpdatedAt  *time.Time `json:"updated_at,omitempty" doc:"上傳的時間"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty" doc:"最近一次交給 yt-dlp 的時間，不論結果"`
+	LastOKAt   *time.Time `json:"last_ok_at,omitempty" doc:"最近一次成功使用的時間（可能早於重新上傳）"`
+	ExpiredAt  *time.Time `json:"expired_at,omitempty" doc:"被判定失效的時間（帶這份 cookie 仍被要求登入）；只有重新上傳會清掉"`
+}
+
+type cookiesStatusOutput struct {
+	Body struct {
+		Cookies []CookieStatusBody `json:"cookies"`
+	}
+}
+
+// cookiesStatus 需要 admin（SEC-R12）：回應只有時間與狀態，不含 cookie 的值。
+func (rt *routes) cookiesStatus(ctx context.Context, _ *struct{}) (*cookiesStatusOutput, error) {
+	if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
+		return nil, err
+	}
+	if rt.d.Cookies == nil {
+		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
+	}
+	list, err := rt.d.Cookies.Status(ctx)
+	if err != nil {
+		return nil, rt.mapErr(ctx, err)
+	}
+	out := &cookiesStatusOutput{}
+	out.Body.Cookies = make([]CookieStatusBody, 0, len(list))
+	for _, s := range list {
+		out.Body.Cookies = append(out.Body.Cookies, CookieStatusBody{
+			Platform: s.Platform, State: s.State, UpdatedAt: s.UpdatedAt,
+			LastUsedAt: s.LastUsedAt, LastOKAt: s.LastOKAt, ExpiredAt: s.ExpiredAt,
+		})
+	}
+	return out, nil
 }
 
 // putCookies 只有 owner（session 或本機）可以使用：token 即使帶了 scope 也不行，

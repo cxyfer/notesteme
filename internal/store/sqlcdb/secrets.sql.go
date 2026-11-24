@@ -36,7 +36,7 @@ func (q *Queries) DeleteSecret(ctx context.Context, arg DeleteSecretParams) (int
 }
 
 const getSecret = `-- name: GetSecret :one
-SELECT kind, name, nonce, ciphertext, created_at, updated_at, last_ok_at FROM secrets WHERE kind = ?1 AND name = ?2
+SELECT kind, name, nonce, ciphertext, created_at, updated_at, last_ok_at, last_used_at, expired_at FROM secrets WHERE kind = ?1 AND name = ?2
 `
 
 type GetSecretParams struct {
@@ -55,6 +55,8 @@ func (q *Queries) GetSecret(ctx context.Context, arg GetSecretParams) (Secret, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastOkAt,
+		&i.LastUsedAt,
+		&i.ExpiredAt,
 	)
 	return i, err
 }
@@ -105,7 +107,8 @@ VALUES (?1, ?2, ?3, ?4, ?5, ?5)
 ON CONFLICT (kind, name) DO UPDATE SET
   nonce      = excluded.nonce,
   ciphertext = excluded.ciphertext,
-  updated_at = excluded.updated_at
+  updated_at = excluded.updated_at,
+  expired_at = NULL
 `
 
 type UpsertSecretParams struct {
@@ -116,7 +119,7 @@ type UpsertSecretParams struct {
 	Now        int64
 }
 
-// created_at is kept when the secret is replaced.
+// created_at is kept when the secret is replaced; a new upload is no longer known to be expired (SEC-R12).
 func (q *Queries) UpsertSecret(ctx context.Context, arg UpsertSecretParams) error {
 	_, err := q.db.ExecContext(ctx, upsertSecret,
 		arg.Kind,

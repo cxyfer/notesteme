@@ -294,6 +294,9 @@ SEC-config-secrets.feature: Testing a provider sends one authenticated request t
 SEC-config-secrets.feature: Testing a provider without an API key asks for one
 SEC-config-secrets.feature: A provider failure during the test is reported as an upstream failure
 SEC-config-secrets.feature: A command provider is checked without being run
+SEC-config-secrets.feature: The cookie status shows when each cookie last worked, never its content
+SEC-config-secrets.feature: A cookie that no longer signs in is marked expired until it is uploaded again
+SEC-config-secrets.feature: Reading the cookie status needs the admin scope
 SEG-segment.feature: Manual captions skip segmentation
 SEG-segment.feature: Merging fragments keeps the outer timestamps
 SEG-segment.feature: A split inside a cue uses the word timings

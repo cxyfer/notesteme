@@ -97,6 +97,43 @@ func (r *Repo) MarkSecretOK(ctx context.Context, kind, name string, at time.Time
 	return r.q.MarkSecretOK(ctx, sqlcdb.MarkSecretOKParams{Kind: kind, Name: name, At: msPtr(&at)})
 }
 
+// MarkSecretUsed 記錄 (kind, name) 的 secret 剛被一次失敗、但與 secret 本身無關的呼叫使用（SEC-R12）。
+func (r *Repo) MarkSecretUsed(ctx context.Context, kind, name string, at time.Time) error {
+	return r.q.MarkSecretUsed(ctx, sqlcdb.MarkSecretUsedParams{Kind: kind, Name: name, At: msPtr(&at)})
+}
+
+// MarkSecretExpired 記錄 (kind, name) 的 secret 剛被使用、而且呼叫的結果表示它已經失效（SEC-R12）。
+// 只有重新上傳（UpsertSecret）會清掉失效的標記：很多呼叫不需要登入也會成功，成功不代表 cookie 有效。
+func (r *Repo) MarkSecretExpired(ctx context.Context, kind, name string, at time.Time) error {
+	return r.q.MarkSecretExpired(ctx, sqlcdb.MarkSecretExpiredParams{Kind: kind, Name: name, At: msPtr(&at)})
+}
+
+// SecretStatus 是 secret 的狀態時間（SEC-R12），不含密文：上傳時間、最近一次使用、最近一次成功使用、
+// 被判定失效的時間（目前沒有失效時為 nil）。
+type SecretStatus struct {
+	Name       string
+	UpdatedAt  time.Time
+	LastUsedAt *time.Time
+	LastOKAt   *time.Time
+	ExpiredAt  *time.Time
+}
+
+// SecretsStatus 依 name 列出 kind 的 secret 的狀態時間，不含密文。
+func (r *Repo) SecretsStatus(ctx context.Context, kind string) ([]SecretStatus, error) {
+	rows, err := r.q.SecretStatus(ctx, kind)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SecretStatus, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, SecretStatus{
+			Name: row.Name, UpdatedAt: fromMs(row.UpdatedAt),
+			LastUsedAt: msToTime(row.LastUsedAt), LastOKAt: msToTime(row.LastOkAt), ExpiredAt: msToTime(row.ExpiredAt),
+		})
+	}
+	return out, nil
+}
+
 // SetSecretTimes 把 secret 的上傳時間與最近一次成功使用都設為 at（測試 hook）；不存在時回傳 ErrNotFound。
 func (r *Repo) SetSecretTimes(ctx context.Context, kind, name string, at time.Time) error {
 	n, err := r.q.SetSecretTimes(ctx, sqlcdb.SetSecretTimesParams{Kind: kind, Name: name, At: at.UnixMilli()})

@@ -54,6 +54,7 @@ export const queryKeys = {
   settings: (section: string) => ["settings", section] as const,
   tokens: ["tokens"] as const,
   sessions: ["sessions"] as const,
+  cookies: ["cookies"] as const,
   system: ["system"] as const,
   glossary: (scope: string, id: string) => ["glossary", scope, id] as const,
   termCandidates: (channel: string) => ["termCandidates", channel] as const,

@@ -872,6 +872,53 @@
         ],
         "type": "object"
       },
+      "CookieStatusBody": {
+        "additionalProperties": false,
+        "properties": {
+          "expired_at": {
+            "description": "被判定失效的時間（帶這份 cookie 仍被要求登入）；只有重新上傳會清掉",
+            "format": "date-time",
+            "type": "string"
+          },
+          "last_ok_at": {
+            "description": "最近一次成功使用的時間（可能早於重新上傳）",
+            "format": "date-time",
+            "type": "string"
+          },
+          "last_used_at": {
+            "description": "最近一次交給 yt-dlp 的時間，不論結果",
+            "format": "date-time",
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "bilibili"
+            ],
+            "type": "string"
+          },
+          "state": {
+            "description": "missing：沒有上傳；unknown：上傳後還沒有成功使用過；ok：上傳後成功使用過；expired：帶這份 cookie 仍被要求登入",
+            "enum": [
+              "missing",
+              "unknown",
+              "ok",
+              "expired"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "上傳的時間",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "state"
+        ],
+        "type": "object"
+      },
       "CookiesInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -910,6 +957,24 @@
           "platform",
           "cookies",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "CookiesStatusOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "cookies": {
+            "items": {
+              "$ref": "#/components/schemas/CookieStatusBody"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "cookies"
         ],
         "type": "object"
       },
@@ -8529,6 +8594,32 @@
       }
     },
     "/api/cookies": {
+      "get": {
+        "operationId": "cookies-status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CookiesStatusOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出每個平台的 cookie 狀態：上傳時間、最近一次使用、最近一次成功使用、是否失效；永遠不含 cookie 的內容（SEC-R12）"
+      },
       "post": {
         "operationId": "cookies-put",
         "requestBody": {

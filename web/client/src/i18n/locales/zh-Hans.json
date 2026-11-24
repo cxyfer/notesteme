@@ -1016,7 +1016,21 @@
       "upload": "上传 {{name}} cookie",
       "saved_other": "已保存 {{name}} cookie（{{count}} 个）",
       "result_other": "已保存 {{count}} 个 cookie（{{time}}）。",
-      "statusUnavailable": "最后一次成功使用的时间与是否失效：后端还没有提供读取 cookie 状态的 API。"
+      "statusError": "无法读取 cookie 的状态，仍然可以上传。",
+      "state": {
+        "missing": "尚未上传 {{name}} cookie。",
+        "unknown": "已上传，还没有成功使用过。",
+        "ok": "可以使用：上传之后成功使用过。",
+        "expired": "已失效。"
+      },
+      "when": {
+        "uploaded": "上传时间",
+        "lastOk": "最近一次成功使用",
+        "lastUsed": "最近一次使用"
+      },
+      "never": "还没有",
+      "expired": "{{name}} 要求重新登录（{{time}}）：这份 cookie 已经失效，需要 cookie 的视频会停住。在浏览器重新登录 {{name}}、导出 cookie 后重新上传。",
+      "reupload": "重新上传 {{name}} cookie"
     },
     "language": {
       "targetsTitle": "译文",

@@ -155,7 +155,7 @@ func biliPlaylist(e env, st State, bvid string, v *Video) int {
 
 // biliVisibleSubs 回傳目前可見的字幕（含 danmaku）；沒有登入時，需要登入的種類不列出，並印出 login WARNING。
 func biliVisibleSubs(e env, st State, a ytArgs, id string, p *Video, cookies cookieJar) ([]biliSub, error) {
-	loggedIn := cookies.has("bilibili.com", "SESSDATA")
+	loggedIn := cookies.has("bilibili.com", "SESSDATA") && !st.RejectedCookies["bilibili"]
 	gated := false
 	var subs []biliSub
 	for _, t := range p.Tracks {

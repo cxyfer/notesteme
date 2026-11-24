@@ -29,6 +29,7 @@ func registerSources(r *Registry, s *Scenario) {
 	r.Step(`the source {string} returns {string} for {string}`, s.sourceReturns)
 	r.Step(`the source {string} has nothing for {string}`, s.sourceHasNothing)
 	r.Step(`the source {string} requires the cookie {string}`, s.sourceRequiresCookie)
+	r.Step(`the platform {string} no longer accepts the uploaded cookie`, s.platformRejectsCookie)
 	r.Step(`the source {string} accepts files up to {string}`, s.sourceAcceptsUpTo)
 	r.Step(`the audio of {string} is {string}`, s.audioOfIs)
 	r.Step(`yt-dlp fails for {string} with {string}`, s.ytdlpFails)
@@ -454,6 +455,19 @@ func (s *Scenario) platformRequiresCookie(id, cookie string) error {
 		s.World.Tools.CookieKinds = map[string]string{}
 	}
 	s.World.Tools.CookieKinds[ps.kind] = cookie
+	return s.World.SyncTools()
+}
+
+// platformRejectsCookie 讓假 yt-dlp 不再接受該平台上傳的 cookie（SEC-R12）：cookie 檔有 SESSDATA 也當作沒登入。
+// 只有 bilibili：YouTube 的「cookie 已失效」只靠單元測試把關（internal/source/youtube）。
+func (s *Scenario) platformRejectsCookie(platform string) error {
+	if platform != "bilibili" {
+		return fmt.Errorf("假 yt-dlp 還不能模擬 %q 的 cookie 失效", platform)
+	}
+	if s.World.Tools.RejectedCookies == nil {
+		s.World.Tools.RejectedCookies = map[string]bool{}
+	}
+	s.World.Tools.RejectedCookies[platform] = true
 	return s.World.SyncTools()
 }
 

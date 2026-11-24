@@ -37,7 +37,7 @@
 
 ## 3. M1、M2 故事索引
 
-M1、M2 共 20 項能力、109 則故事（SEC-06 於 2026-11-25 新增）。故事的角色、目的與理由見各份規格的 User stories 表。
+M1、M2 共 20 項能力、110 則故事（SEC-06、SEC-07 於 2026-11-25 新增）。故事的角色、目的與理由見各份規格的 User stories 表。
 
 ### 收集影音
 
@@ -163,6 +163,7 @@ M1、M2 共 20 項能力、109 則故事（SEC-06 於 2026-11-25 新增）。故
 | SEC-04 | rotate the master key and recover from losing it | M1 | [SEC](SEC-config-secrets.md) |
 | SEC-05 | export and import my settings as YAML | M2 | [SEC](SEC-config-secrets.md) |
 | SEC-06 | see every provider, test its connection, and read model deprecation notices | M1 | [SEC](SEC-config-secrets.md) |
+| SEC-07 | see when each cookie last worked and whether it has expired | M1 | [SEC](SEC-config-secrets.md) |
 | GRD-01 | feeds and URLs to be unable to reach my private network | M1 | [GRD](GRD-guards.md) |
 | GRD-02 | allow specific private hosts such as my RSSHub or NAS | M1 | [GRD](GRD-guards.md) |
 | GRD-03 | downloads limited in size and redirects | M1 | [GRD](GRD-guards.md) |

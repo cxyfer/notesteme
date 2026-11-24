@@ -386,7 +386,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 服務與金鑰：7 個 provider 的 API key（只顯示末四碼，只能設定、更換或清除，清除先確認）、Supadata 取得字幕的方式、`command` provider 的唯讀說明 | 完成 | `src/pages/settings/ServicesSection.tsx` |
 | 服務與金鑰：「測試連線」、模型停用公告、列出設定檔中的 `command` provider | 完成（2026-11-25，後端加 `GET /api/providers` 與 `POST /api/providers/{id}/test`，SEC-R11；見 10.25） | `src/pages/settings/ServicesSection.tsx` |
 | 帳號與 Cookie：上傳 YouTube／Bilibili cookie（貼上或選擇檔案）、這次上傳的數量與時間、`cookie_*` 錯誤的說明 | 完成 | `AccountsSection.tsx` |
-| 帳號與 Cookie：最後一次成功使用的時間、是否失效 | 未做：後端沒有讀取 cookie 狀態的 API | — |
+| 帳號與 Cookie：最後一次成功使用的時間、是否失效 | 已做（2026-11-25）：`GET /api/cookies`（SEC-R12）回每個平台的狀態，UI 顯示狀態、上傳時間、最近一次成功使用與使用（相對時間，滑過顯示完整時間）；失效時顯示提示與「重新上傳」（焦點移到該平台的貼上欄位）。失效只認「帶 cookie 仍被要求登入」（目前只有 Bilibili 判定得到，YouTube 只會是可以使用或未知），見 SEC 待決問題 | — |
 | 語言：預設目標語言、中文變體、原文字幕的語言優先順序（新增、移除、上下移）、平台翻譯字幕、fallback；介面語言 | 完成 | `LanguageSection.tsx` |
 | 輸出：本機影片旁與資料夾的說明（在處理方案中設定）；vault 與 hook 唯讀說明「尚未啟用（M3 起提供）」（10.24 第 8 點改成唯讀列出設定檔的 vault 與 hook） | 完成 | `OutputsSection.tsx` |
 | MCP 與 Agent：token 列表（名稱、前綴、scope、建立、最後使用、到期、狀態）、建立（scope、到期 7 天／30 天／90 天〔預設〕／1 年／不設到期）、只顯示一次並可複製、撤銷先確認；Claude Code 指令；Agent 的 `max_claims`、`lease`、`timeout`、`on_timeout`、`on_validation_failure` | 完成 | `AgentSection.tsx` |

@@ -395,6 +395,8 @@ type Secret struct {
 	CreatedAt  int64
 	UpdatedAt  int64
 	LastOkAt   *int64
+	LastUsedAt *int64
+	ExpiredAt  *int64
 }
 
 type Session struct {

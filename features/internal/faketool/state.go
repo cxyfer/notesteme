@@ -65,6 +65,9 @@ type State struct {
 	// value 是需要登入的平台（目前只有 "bilibili"）。假 yt-dlp 沒有收到該平台的有效 cookie 檔時，
 	// 不列出也不下載這個種類的字幕軌，並印出 login WARNING（見 bilibili.go）。
 	CookieKinds map[string]string `json:"cookie_kinds,omitempty"`
+	// RejectedCookies 是不再接受上傳的 cookie 的平台（目前只有 "bilibili"，SEC-R12）：
+	// 即使 cookie 檔有 SESSDATA，假 yt-dlp 也當作沒有登入（例如 cookie 在瀏覽器中被登出）。
+	RejectedCookies map[string]bool `json:"rejected_cookies,omitempty"`
 	// Releases 是假 pip 可以安裝的 yt-dlp 版本，key 是版本。沒有登記的版本裝不起來（找不到 distribution）；
 	// 沒有指定版本的安裝（-U）取最新的（版本字串最大的）一個。
 	Releases map[string]*Release `json:"releases,omitempty"`

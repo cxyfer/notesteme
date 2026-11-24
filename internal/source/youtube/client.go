@@ -47,6 +47,8 @@ type Client struct {
 type CallRecorder interface {
 	ToolCall(ctx context.Context, tool string, failed bool)
 	CookieOK(ctx context.Context, platform string)
+	// CookieFailed 記錄 cookie 被一次失敗的呼叫使用；expired 表示 cookie 已經失效（SEC-R12，YouTube 一律 false）。
+	CookieFailed(ctx context.Context, platform string, expired bool)
 }
 
 // Cookies 提供平台 cookie 的暫存檔（*cookies.Store 實作它）。
@@ -147,27 +149,51 @@ func (c *Client) exec(ctx context.Context, timeout time.Duration, args []string,
 		if ctx.Err() != nil {
 			return res, ctx.Err() // 被取消：不是工具的錯，由呼叫端處理
 		}
-		c.record(ctx, true, false)
+		c.record(ctx, true, cookieResult(usedCookie, cookieFailed))
 		return res, &errclass.Error{Class: errclass.ClassRetryable, Source: "yt-dlp", Err: err}
 	}
+	// YouTube 不判定 cookie 失效（SEC-R12 的待決問題）：呼叫都帶 --no-warnings，yt-dlp 唯一明確的訊號
+	// （「The provided YouTube account cookies are no longer valid」的 WARNING）不會出現；會員限定、403、
+	// 「Sign in to confirm you're not a bot」可能只是帳號不是會員、要先更新 yt-dlp 或 IP 被限制，cookie 未必失效。
+	// 所以帶 cookie 的失敗只記一次使用，YouTube cookie 的狀態只會是 ok 或 unknown。
 	if res.ExitCode != 0 {
 		err := classify(res)
 		// 影片本身不存在或私人（permanent）不算 yt-dlp 失敗（OPS-R18）。
-		c.record(ctx, !isPermanent(err), false)
+		c.record(ctx, !isPermanent(err), cookieResult(usedCookie, cookieFailed))
 		return res, err
 	}
-	c.record(ctx, false, usedCookie)
+	c.record(ctx, false, cookieResult(usedCookie, cookieOK))
 	return res, nil
 }
 
+// cookieUse 是一次呼叫對 cookie 的結果（SEC-R12）。
+type cookieUse int
+
+const (
+	cookieNotUsed cookieUse = iota // 沒有帶 cookie
+	cookieOK                       // 帶 cookie 而且成功
+	cookieFailed                   // 帶 cookie 但失敗
+)
+
+// cookieResult 在沒有帶 cookie 時回傳 cookieNotUsed，否則回傳 use。
+func cookieResult(used bool, use cookieUse) cookieUse {
+	if !used {
+		return cookieNotUsed
+	}
+	return use
+}
+
 // record 把一次呼叫的結果交給 Calls（沒有設定時不記錄）。
-func (c *Client) record(ctx context.Context, failed, cookieOK bool) {
+func (c *Client) record(ctx context.Context, failed bool, use cookieUse) {
 	if c.Calls == nil {
 		return
 	}
 	c.Calls.ToolCall(ctx, "yt-dlp", failed)
-	if cookieOK {
+	switch use {
+	case cookieOK:
 		c.Calls.CookieOK(ctx, platformYouTube)
+	case cookieFailed:
+		c.Calls.CookieFailed(ctx, platformYouTube, false)
 	}
 }
 

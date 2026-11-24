@@ -201,6 +201,59 @@ func TestCallsRecorder(t *testing.T) {
 	c.CookieOK(ctx, "youtube")
 }
 
+// SEC-R12：失敗的使用更新 last_used_at；失效的使用另外記 expired_at；之後的成功不清掉失效，只有重新上傳會。
+func TestCallsRecorderCookieStatus(t *testing.T) {
+	ctx := context.Background()
+	s, clk := openStore(t)
+	c := &Calls{Store: s, Clock: clk}
+	w := s.Write()
+	if err := w.UpsertSecret(ctx, CookieKind, "bilibili", []byte("n"), []byte("c")); err != nil {
+		t.Fatal(err)
+	}
+	status := func() store.SecretStatus {
+		t.Helper()
+		list, err := s.Read().SecretsStatus(ctx, CookieKind)
+		if err != nil || len(list) != 1 {
+			t.Fatalf("status = %v, %v", list, err)
+		}
+		return list[0]
+	}
+	clk.Advance(time.Minute)
+	c.CookieFailed(ctx, "bilibili", false)
+	if st := status(); st.LastUsedAt == nil || !st.LastUsedAt.Equal(clk.Now()) || st.ExpiredAt != nil || st.LastOKAt != nil {
+		t.Fatalf("一般失敗：%+v", st)
+	}
+	clk.Advance(time.Minute)
+	c.CookieFailed(ctx, "bilibili", true)
+	if st := status(); st.ExpiredAt == nil || !st.ExpiredAt.Equal(clk.Now()) || !st.LastUsedAt.Equal(clk.Now()) {
+		t.Fatalf("失效：%+v", st)
+	}
+	clk.Advance(time.Minute)
+	c.CookieOK(ctx, "bilibili")
+	if st := status(); st.ExpiredAt == nil || st.LastOKAt == nil || !st.LastOKAt.Equal(clk.Now()) || !st.LastUsedAt.Equal(clk.Now()) {
+		t.Fatalf("成功後：%+v", st)
+	}
+	c.CookieFailed(ctx, "bilibili", true)
+	clk.Advance(time.Minute)
+	if err := w.UpsertSecret(ctx, CookieKind, "bilibili", []byte("n2"), []byte("c2")); err != nil {
+		t.Fatal(err)
+	}
+	if st := status(); st.ExpiredAt != nil || !st.UpdatedAt.Equal(clk.Now()) || st.LastUsedAt == nil {
+		t.Fatalf("重新上傳後：%+v", st)
+	}
+	// 取消的 context 與 nil 不記錄；寫入失敗只記 log。
+	cctx, cancel := context.WithCancel(ctx)
+	cancel()
+	c.CookieFailed(cctx, "bilibili", true)
+	var nilCalls *Calls
+	nilCalls.CookieFailed(ctx, "bilibili", true)
+	if st := status(); st.ExpiredAt != nil {
+		t.Fatalf("取消後仍記錄了：%+v", st)
+	}
+	_ = s.Close()
+	c.CookieFailed(ctx, "bilibili", false)
+}
+
 func TestUsagePercent(t *testing.T) {
 	cases := []struct {
 		blocks, free, avail uint64

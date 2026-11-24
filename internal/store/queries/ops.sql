@@ -43,8 +43,23 @@ FROM tool_call_stats WHERE tool = sqlc.arg(tool) AND bucket_start >= sqlc.arg(si
 DELETE FROM tool_call_stats WHERE bucket_start < sqlc.arg(before);
 
 -- name: MarkSecretOK :exec
--- A yt-dlp call that used this cookie exited with 0 (OPS-R17).
-UPDATE secrets SET last_ok_at = sqlc.arg(at) WHERE kind = sqlc.arg(kind) AND name = sqlc.arg(name);
+-- A yt-dlp call that used this cookie exited with 0 (OPS-R17). It does not clear expired_at (SEC-R12):
+-- many calls succeed without signing in, so only a new upload does.
+UPDATE secrets SET last_used_at = sqlc.arg(at), last_ok_at = sqlc.arg(at)
+WHERE kind = sqlc.arg(kind) AND name = sqlc.arg(name);
+
+-- name: MarkSecretUsed :exec
+-- A yt-dlp call that used this cookie failed for a reason that says nothing about the cookie (SEC-R12).
+UPDATE secrets SET last_used_at = sqlc.arg(at) WHERE kind = sqlc.arg(kind) AND name = sqlc.arg(name);
+
+-- name: MarkSecretExpired :exec
+-- A yt-dlp call that used this cookie was told to sign in: the cookie no longer logs in (SEC-R12).
+UPDATE secrets SET last_used_at = sqlc.arg(at), expired_at = sqlc.arg(at)
+WHERE kind = sqlc.arg(kind) AND name = sqlc.arg(name);
+
+-- name: SecretStatus :many
+-- The status times of the secrets of one kind (SEC-R12); never the nonce or the ciphertext.
+SELECT name, updated_at, last_used_at, last_ok_at, expired_at FROM secrets WHERE kind = sqlc.arg(kind) ORDER BY name;
 
 -- name: SetSecretTimes :execrows
 -- Test hook: the upload time and the last success of a secret.

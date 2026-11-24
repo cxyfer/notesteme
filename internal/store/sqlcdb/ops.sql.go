@@ -200,8 +200,26 @@ func (q *Queries) MarkAlertNotified(ctx context.Context, arg MarkAlertNotifiedPa
 	return err
 }
 
+const markSecretExpired = `-- name: MarkSecretExpired :exec
+UPDATE secrets SET last_used_at = ?1, expired_at = ?1
+WHERE kind = ?2 AND name = ?3
+`
+
+type MarkSecretExpiredParams struct {
+	At   *int64
+	Kind string
+	Name string
+}
+
+// A yt-dlp call that used this cookie was told to sign in: the cookie no longer logs in (SEC-R12).
+func (q *Queries) MarkSecretExpired(ctx context.Context, arg MarkSecretExpiredParams) error {
+	_, err := q.db.ExecContext(ctx, markSecretExpired, arg.At, arg.Kind, arg.Name)
+	return err
+}
+
 const markSecretOK = `-- name: MarkSecretOK :exec
-UPDATE secrets SET last_ok_at = ?1 WHERE kind = ?2 AND name = ?3
+UPDATE secrets SET last_used_at = ?1, last_ok_at = ?1
+WHERE kind = ?2 AND name = ?3
 `
 
 type MarkSecretOKParams struct {
@@ -210,9 +228,26 @@ type MarkSecretOKParams struct {
 	Name string
 }
 
-// A yt-dlp call that used this cookie exited with 0 (OPS-R17).
+// A yt-dlp call that used this cookie exited with 0 (OPS-R17). It does not clear expired_at (SEC-R12):
+// many calls succeed without signing in, so only a new upload does.
 func (q *Queries) MarkSecretOK(ctx context.Context, arg MarkSecretOKParams) error {
 	_, err := q.db.ExecContext(ctx, markSecretOK, arg.At, arg.Kind, arg.Name)
+	return err
+}
+
+const markSecretUsed = `-- name: MarkSecretUsed :exec
+UPDATE secrets SET last_used_at = ?1 WHERE kind = ?2 AND name = ?3
+`
+
+type MarkSecretUsedParams struct {
+	At   *int64
+	Kind string
+	Name string
+}
+
+// A yt-dlp call that used this cookie failed for a reason that says nothing about the cookie (SEC-R12).
+func (q *Queries) MarkSecretUsed(ctx context.Context, arg MarkSecretUsedParams) error {
+	_, err := q.db.ExecContext(ctx, markSecretUsed, arg.At, arg.Kind, arg.Name)
 	return err
 }
 
@@ -269,6 +304,48 @@ func (q *Queries) SecretFreshness(ctx context.Context, kind string) ([]SecretFre
 	for rows.Next() {
 		var i SecretFreshnessRow
 		if err := rows.Scan(&i.Name, &i.UpdatedAt, &i.LastOkAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const secretStatus = `-- name: SecretStatus :many
+SELECT name, updated_at, last_used_at, last_ok_at, expired_at FROM secrets WHERE kind = ?1 ORDER BY name
+`
+
+type SecretStatusRow struct {
+	Name       string
+	UpdatedAt  int64
+	LastUsedAt *int64
+	LastOkAt   *int64
+	ExpiredAt  *int64
+}
+
+// The status times of the secrets of one kind (SEC-R12); never the nonce or the ciphertext.
+func (q *Queries) SecretStatus(ctx context.Context, kind string) ([]SecretStatusRow, error) {
+	rows, err := q.db.QueryContext(ctx, secretStatus, kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SecretStatusRow
+	for rows.Next() {
+		var i SecretStatusRow
+		if err := rows.Scan(
+			&i.Name,
+			&i.UpdatedAt,
+			&i.LastUsedAt,
+			&i.LastOkAt,
+			&i.ExpiredAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
