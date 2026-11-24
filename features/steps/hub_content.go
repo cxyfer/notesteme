@@ -33,7 +33,8 @@ import (
 // registerHubContent 註冊「Hub 的內容」的步驟（steps.md 4.31，M5）。
 //
 // M5-S3 實作全部的句型（真 Hub）：seeding 直接寫 Hub 的 DB 與 blob，bundle 在場景目錄產生（不 commit 二進位 fixture），
-// 分享以 session 送出 multipart。fakehub（HSHR）的 seeding 仍是 pending（S7），HSHR 的場景停在自己的閘門。
+// 分享以 session 送出 multipart。fakehub（HSHR）的 seeding（`the Hub has the version …`、`the Hub version … has the cues:`）
+// 在 hub_client.go 實作（M5-S7）；其他句型只支援真 Hub，對 fakehub 是 pending。
 func registerHubContent(r *Registry, s *Scenario) {
 	r.Step(`the Hub has the version {string} of {string} with:`, s.hubHasVersion)
 	r.Step(`the Hub version {string} has the cues:`, s.hubVersionHasCues)

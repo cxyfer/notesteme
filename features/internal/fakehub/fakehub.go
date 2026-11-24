@@ -31,7 +31,7 @@ import (
 const Host = "hub.example.org"
 
 // Routes 是 fakehub 實作的路由（ADR-0032 第 1 點的 Client 契約）。
-// Hub 有 OpenAPI 快照之後，contract test 要確認每一條都存在於 Hub 的 OpenAPI。
+// contract_test.go 確認每一條都存在於 Hub 的 OpenAPI，而且回應涵蓋 Hub 宣告的必要欄位（ADR-0030 第 3 點）。
 var Routes = []string{
 	"GET /api/v1/me",
 	"POST /api/v1/shares",
@@ -253,6 +253,9 @@ var versionPath = regexp.MustCompile(`^/api/v1/versions/([^/]+)(/content)?$`)
 
 var prefixPattern = regexp.MustCompile(`^[0-9a-f]{4}$`)
 
+// createdAt 是版本資訊的 created_at（fakehub 的版本沒有上傳時間，固定值讓回應可重現）。
+const createdAt = "2026-01-01T00:00:00Z"
+
 // ServeHTTP 實作 http.Handler。
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	isShare := r.Method == http.MethodPost && r.URL.Path == "/api/v1/shares"
@@ -356,7 +359,11 @@ func (s *Server) serveMe(w http.ResponseWriter) {
 	}
 	s.mu.Unlock()
 	sort.Strings(perms)
-	writeJSON(w, http.StatusOK, map[string]any{"id": "fake-user", "display_name": "owner", "permissions": perms})
+	// identities、groups 與真 Hub 的 Me 同形（Client 不讀它們；每個帳號都在 members 群組，HACC）。
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id": "fake-user", "display_name": "owner", "permissions": perms,
+		"identities": []map[string]string{{"provider": "github", "login": "owner"}}, "groups": []string{"members"},
+	})
 }
 
 func (s *Server) serveShare(w http.ResponseWriter, r *http.Request, body []byte) {
@@ -415,10 +422,22 @@ func (s *Server) serveShare(w http.ResponseWriter, r *http.Request, body []byte)
 		variant, _ := m["variant"].(string)
 		out = append(out, map[string]any{
 			"id": fmt.Sprintf("%s-v%d", share.ID, i+1), "kind": m["kind"], "variant": variant, "lang": m["lang"],
-			"sha256": sha, "deduplicated": known[sha],
+			"sha256": sha, "deduplicated": known[sha], "visibility": shareVisibility(fields["visibility"], m["kind"]),
 		})
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"share_id": share.ID, "video": videoOf(manifest), "versions": out})
+}
+
+// shareVisibility 是分享後版本的可見度：有指定時照用，否則 frames 為 private、其他為 public
+// （真 Hub 的 content_defaults 預設值，HACC-R14；fakehub 不檢查站台上限）。
+func shareVisibility(requested string, kind any) string {
+	switch {
+	case requested != "":
+		return requested
+	case kind == "frames":
+		return "private"
+	}
+	return "public"
 }
 
 // fileSHA 回傳 manifest 的 files 中這個路徑的 sha256。
@@ -543,6 +562,9 @@ func (s *Server) serveVersion(w http.ResponseWriter, id string) {
 		"sha256": v.SHA256, "transcribe_model": v.TranscribeModel, "correct_model": v.CorrectModel,
 		"translate_model": v.TranslateModel, "model_verified": v.ModelVerified, "license": v.License,
 		"score": v.Score, "uploaders": []map[string]string{{"display_name": v.Uploader}}, "state": "visible",
+		// 以下與真 Hub 的 VersionView 同形；Client 不讀它們，fakehub 沒有衍生關係與上傳時間。
+		"created_at": createdAt, "provenance": map[string]any{}, "parents": []any{}, "children": []any{},
+		"visibility": "public",
 	})
 }
 
@@ -561,6 +583,7 @@ func (s *Server) serveContent(w http.ResponseWriter, id string) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Notesteme-SHA256", v.SHA256)
+	w.Header().Set("X-Notesteme-License", v.License)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(content)
 }
