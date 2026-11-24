@@ -41,7 +41,7 @@ describe("影音詳情：更好的字幕來源（SRC-10）", () => {
     signIn();
     const { container } = renderRoute("/items/item-1");
     const notice = await screen.findByRole("region", { name: "有更好的字幕來源" });
-    expect(within(notice).getByText(/en 的人工字幕（youtube-manual）/)).toBeTruthy();
+    expect(within(notice).getByText(/en 的人工字幕（YouTube 人工字幕）/)).toBeTruthy();
     expect(within(notice).getByText(/無法預估費用/)).toBeTruthy();
     expect(within(notice).queryByText(/\$0\.00/)).toBeNull();
     expect(screen.getByText(/之後會再檢查字幕來源：/)).toBeTruthy();
@@ -73,5 +73,34 @@ describe("影音詳情：更好的字幕來源（SRC-10）", () => {
     // 換了起點，預估就不適用
     await user.selectOptions(within(dialog).getByLabelText("從哪個步驟開始"), "correct");
     expect(within(dialog).getByText("費用預估：重新處理目前無法預估花費。")).toBeTruthy();
+  });
+
+  it("字幕來源顯示人話名稱；設定檔自訂的 ASR ID 原樣顯示（pages.md §4）", async () => {
+    mockApi({
+      ...defaultRoutes(),
+      "GET /api/items/{id}": () => ({
+        ...detail(item(1), [stage("metadata", "done"), stage("transcript", "done")]),
+        sources: [
+          { source: "youtube-manual", state: "unavailable" },
+          { source: "youtube-auto", state: "used", lang: "en", kind: "auto" },
+        ],
+      }),
+    });
+    signIn();
+    const { unmount } = renderRoute("/items/item-1");
+    const dt = await screen.findByText("字幕來源", { selector: "dt" });
+    expect(dt.nextElementSibling?.textContent).toBe("YouTube 自動字幕");
+    unmount();
+
+    mockApi({
+      ...defaultRoutes(),
+      "GET /api/items/{id}": () => ({
+        ...detail(item(1), [stage("metadata", "done"), stage("transcript", "done")]),
+        sources: [{ source: "my-whisper", state: "used" }],
+      }),
+    });
+    renderRoute("/items/item-1");
+    const dt2 = await screen.findByText("字幕來源", { selector: "dt" });
+    expect(dt2.nextElementSibling?.textContent).toBe("my-whisper");
   });
 });

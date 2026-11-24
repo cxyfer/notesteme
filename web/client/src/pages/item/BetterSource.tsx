@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import type { components } from "../../api/schema";
 import { Button } from "../../components";
 import { formatDateTime, formatUsd } from "../../i18n";
+import { sourceLabel } from "./sourceLabel";
 
 type Better = components["schemas"]["ItemBetterSource"];
 type Reprobe = components["schemas"]["ItemReprobe"];
@@ -33,7 +34,7 @@ export function BetterSource({
               time: formatDateTime(better.found_at),
               lang: better.lang,
               kind: t(`settings.language.kind.${better.kind}`, { defaultValue: better.kind }),
-              source: better.source,
+              source: sourceLabel(t, better.source),
             })}{" "}
             {better.estimate_usd == null
               ? t("item.better.noEstimate")

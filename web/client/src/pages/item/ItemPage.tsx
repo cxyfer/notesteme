@@ -54,6 +54,7 @@ import { FramesPanel, NotePanel } from "./NotePanels";
 import { OutputsPanel, downloadUrl } from "./OutputsPanel";
 import { Player, type PlayerHandle } from "./Player";
 import { RerunDialog } from "./RerunDialog";
+import { sourceLabel } from "./sourceLabel";
 import { RunsPanel } from "./RunsPanel";
 import {
   ITEM_TABS,
@@ -518,7 +519,7 @@ function ItemView({
               (d.sources ?? []).find((s) => s.state === "used")!.source === "hub" ? (
                 <HubOrigin origin={d.hub_origin} />
               ) : (
-                (d.sources ?? []).find((s) => s.state === "used")!.source
+                sourceLabel(t, (d.sources ?? []).find((s) => s.state === "used")!.source)
               )}
             </dd>
           </div>

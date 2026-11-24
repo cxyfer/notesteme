@@ -758,6 +758,20 @@
       "copied_other": "已复制 {{count}} 句字幕。",
       "copyFailed": "无法复制：浏览器不允许访问剪贴板。",
       "clear": "取消选取"
+    },
+    "source": {
+      "youtube-manual": "YouTube 人工字幕",
+      "youtube-auto": "YouTube 自动字幕",
+      "bilibili-cc": "Bilibili CC 字幕",
+      "bilibili-ai": "Bilibili AI 字幕",
+      "podcast-transcript": "Podcast 附带的逐字稿",
+      "local-sidecar": "外挂字幕文件",
+      "local-embedded": "视频内嵌的字幕轨",
+      "supadata": "Supadata",
+      "groq": "Groq 语音转录",
+      "whisper-1": "OpenAI Whisper 语音转录",
+      "voxtral": "Voxtral 语音转录",
+      "hub": "Hub 的原始字幕"
     }
   },
   "queue": {

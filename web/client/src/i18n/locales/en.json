@@ -789,6 +789,20 @@
       "copied_other": "Copied {{count}} subtitle lines.",
       "copyFailed": "Could not copy: the browser does not allow clipboard access.",
       "clear": "Clear selection"
+    },
+    "source": {
+      "youtube-manual": "YouTube manual captions",
+      "youtube-auto": "YouTube auto captions",
+      "bilibili-cc": "Bilibili CC subtitles",
+      "bilibili-ai": "Bilibili AI subtitles",
+      "podcast-transcript": "The podcast's transcript",
+      "local-sidecar": "Sidecar subtitle file",
+      "local-embedded": "Embedded subtitle track",
+      "supadata": "Supadata",
+      "groq": "Groq transcription",
+      "whisper-1": "OpenAI Whisper transcription",
+      "voxtral": "Voxtral transcription",
+      "hub": "Original subtitles from Hub"
     }
   },
   "queue": {
