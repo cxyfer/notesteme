@@ -64,6 +64,6 @@
   - 同步執行，不經過 task queue 與 stage run，不寫入產出、`llm_chunks`、術語候選與事件。受限流約束：超過 RPM／TPM 不等待，回 429 `rate_limited` 與 `retry_after_s`；驗證重試可以透支額度（LLM-R5）。同時進行的試跑最多 2 個，超過也回 429。整體時間上限 3 分鐘，逾時回 502。
   - 錯誤碼：缺 API key、模型不存在是 `needs_action`（409，帶 `actions`）；provider 失敗（5xx、逾時）是 `upstream_failed`（502）；其他永久失敗 422。
   - 驗證重試用盡的 chunk 以步驟的退回內容輸出（correct 是原文），`validation.passed` 為 `false` 並在 `errors` 列出 chunk 與原因。
-  - `estimate_usd`：沒有 M4 的成本帳本，也不寫入帳本。內建計價表（`internal/cost`）有該 model 的輸入與輸出單價時，以 provider 回報的 token 用量計算（沒有用量時用 L2 的估算，輸出以輸入為上界）；**目前計價表沒有任何 LLM 的價格，所以一律是 `null`**（欄位存在；`"*"` 接受 `null`），不編價格。
+  - `estimate_usd`：只是試跑前的預估，不是帳本。試跑本身會依 COST-R1 記入成本帳本並受預算限制（COST 待決問題 C17，2026-11-24，依 /goal 由實作者暫定，待 owner 追認；原本這句寫「沒有 M4 的成本帳本，也不寫入帳本」是 M2 時期的狀態）。內建計價表（`internal/cost`）有該 model 的輸入與輸出單價時，以 provider 回報的 token 用量計算（沒有用量時用 L2 的估算，輸出以輸入為上界）；**目前計價表沒有任何 LLM 的價格，所以一律是 `null`**（欄位存在；`"*"` 接受 `null`），不編價格。
   - `item` 接受影音 ID 與短代號（場景的 body 不會被 harness 代換成 ID）；影音在垃圾桶中回 404 `in_trash`。
 - M3 修訂（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：prompt 的 kind 增加 `chapters`、`frames`、`note`、`note_map`，PRM-R4 的內建 prompt 增加 `chapters-default`、`frames-default`、`note-default`、`note-map-default`、`note-gemini-default`，同樣不能修改（[CHAP](CHAP-chapters.md)、[FRM](FRM-frames.md)、[NOTE](NOTE-notes.md)、[GEM](GEM-gemini.md)、ADR-0020）。既有 M2 場景不變。

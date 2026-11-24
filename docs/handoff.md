@@ -1,6 +1,6 @@
 # 交接：開發進度（M1～M5 與 Web UI）
 
-> 更新：2026-11-24。M1～M5 的後端、Client Web UI（UI-0～UI-8）與 Hub Web UI 都已推送到 master；945 個自動化場景（預設 tag 315＋`@M3,@M4,@M5` 630）全部通過（本機與 CI 驗證）。安全審查的 16 項發現已修補（第 1 節「安全修補 A／B／C」）。`@manual`、`@pending-m0`、真實樣本與真實服務的驗收屬 owner，做不到的清單在第 2 節。GitHub Actions 自 2026-11-23 約 16:30 起因帳務問題（付款失敗或額度上限）無法啟動 job，所有驗證都在本機做。依 owner 的 /goal（MVP 階段不再開 PR）每個切片完成後直接推送 master。2026-11-22 前的 PR #1～#19（LOCAL、PODCAST、ESTIMATE、M2 S0～S2、S6a 等）已合併，之後的切片見 `git log`。**接手請先讀第 2 節的「2026-11-24 現況」。**
+> 更新：2026-11-24。M1～M5 的後端、Client Web UI（UI-0～UI-8）與 Hub Web UI 都已推送到 master；964 個自動化場景（預設 tag 316＋`@M3,@M4,@M5` 648）全部通過（本機與 CI 驗證）。安全審查的 16 項發現已修補（第 1 節「安全修補 A／B／C」）。`@manual`、`@ui @manual`、真實樣本與真實服務的驗收屬 owner（`@pending-m0` 的 20 個 example 在本機全部通過，門檻仍是暫定值，等 M0 樣本）；做不到的清單與逐項對帳在第 2 節。repo 公開（2026-11-24）後 GitHub Actions 已經正常執行，驗證以 CI 為準；注意 `ci.yml` 之外還有 `web.yml`（Web UI，路徑過濾）、`fuzz.yml`、`docker-publish.yml`，看 `gh run list --branch master` 時要四個 workflow 都看。依 owner 的 /goal（MVP 階段不再開 PR）每個切片完成後直接推送 master。2026-11-22 前的 PR #1～#19（LOCAL、PODCAST、ESTIMATE、M2 S0～S2、S6a 等）已合併，之後的切片見 `git log`。**接手請先讀第 2 節的「2026-11-24 現況」。**
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
@@ -128,11 +128,11 @@
     - store：migration `00024_batches`（`batches`、`tasks.batch_id`、`llm_chunks.batch_json`）、`internal/store/batches.go`；任務狀態 `waiting`（不被領取、不屬於租約回收）；`CancelPendingTasks`／`CancelItemTasks` 也取消 `waiting` 並把相關的 `batch.poll` 提前到現在；開著的 batch 的預留不算孤兒預留。
     - llm：`internal/llm/batch.go`（`BatchClient` 的 Submit／Status／Cancel／Results、`DecodeBatchBody`、`BatchSupported`）；`ChunkRequest`、`ValidateResponse` 從 `RunChunk` 抽出，batch 與一般 API 共用同一份請求與驗證。結果逐行讀取（單行 10 MiB、總共 256 MiB），不跟隨重新導向，results_url 必須與 base_url 同主機。
     - cost：`Call.Batch`、`BatchDiscount = 0.5`（預留與結算都打折，provider 回報的金額不打折）、`SettleBatch`（預留不在時另寫一筆，給 discarded 用）。
-    - pipeline：`internal/pipeline/batch.go`。chunk 任務（segment、correct、chapters、note；translate 與 summary 還沒接上）符合 BATCH-R1 時送出 batch、任務 `waiting`、步驟 `waiting`；`PollBatch` 是排程工作 `batch.poll`（`internal/app/batch.go`）。結果照一般 API 的驗證寫入 chunk；失敗、逾時、送出失敗時改走一般 API，`llmPayload.Batch` 帶著 fallback 原因（驗證失敗時連同重試說明）。逾時後仍無法查詢時放棄 batch（`batch_failed`）。`GET /api/items/:id` 的步驟多 `batch`（OpenAPI 與 `schema.d.ts` 已重產）。
+    - pipeline：`internal/pipeline/batch.go`。chunk 任務（segment、correct、translate、summary、chapters、note；translate 與 summary 在收尾 D6 接上）符合 BATCH-R1 時送出 batch、任務 `waiting`、步驟 `waiting`；`PollBatch` 是排程工作 `batch.poll`（`internal/app/batch.go`）。結果照一般 API 的驗證寫入 chunk；失敗、逾時、送出失敗時改走一般 API，`llmPayload.Batch` 帶著 fallback 原因（驗證失敗時連同重試說明）。逾時後仍無法查詢時放棄 batch（`batch_failed`）。`GET /api/items/:id` 的步驟多 `batch`（OpenAPI 與 `schema.d.ts` 已重產）。
     - steps：`costGate` 加 `@BATCH-`、`batchGate`；fakebatch 的答案由 fakellm 的 answers 產生（`harness.LLMBatchAnswerer`、`fakellm.AnswerBatch`，不記入一般請求數）；`provenance` 斷言的值 `*` 代表「存在且非空」（steps.md 的 M4-S5 說明）。
     - 數字（基準 origin/master a0b3e60）：預設 tag 308 passed、`@M3` 109 passed、`@M5` 74／74，逐場景相同；`@M4` 371 個：138／233 → 154 passed、217 pending、0 failed，只有 BATCH 的 16 個場景 pending → passed。`features/passing.txt` 與 `.feature` 沒有變動。
-    - 沒做：真實 Anthropic／OpenAI 的 batch 驗收（只有 fakebatch）；translate 與 summary 的 batch；Gemini batch（不在範圍內）；送出後、寫入 external_id 前中斷時 provider 端已建立的 batch 無法取消（可能重複計費一次）。
-    - 給後續切片：DIG（S6）的 summary 要用 batch 時，經 `llmChunk` 的 chunk 任務會自動適用；不經 chunk engine 的話要自行呼叫 `submitBatch`。新增會取消任務的路徑時，記得同時處理 `waiting` 狀態並提前 `batch.poll`（參考 `KickBatchPollsOfItem`）。重新啟動後 batch 由 `scheduled_jobs` 繼續輪詢，不需要額外接線。
+    - 沒做：真實 Anthropic／OpenAI 的 batch 驗收（只有 fakebatch）；Gemini batch（不在範圍內）；送出後、寫入 external_id 前中斷時 provider 端已建立的 batch 無法取消（可能重複計費一次）。
+    - 給後續切片：translate 與 summary 都已經走 batch（收尾 D6，`batchWork` 與步驟無關）；新增的 LLM 步驟若不經 chunk engine，要自行呼叫 `submitBatch`。新增會取消任務的路徑時，記得同時處理 `waiting` 狀態並提前 `batch.poll`（參考 `KickBatchPollsOfItem`）。重新啟動後 batch 由 `scheduled_jobs` 繼續輪詢，不需要額外接線。
   - **M4-S6 DIG（2026-11-23，分支 `feat/dig-summary-digest`；決定記在 DIG 待決問題的「M4-S6：實作時的決定」，待 owner 追認）**：摘要、摘要後暫停與繼續、每日／每週彙整。
     - llm／prompts：`internal/llm/summary.go`（`SummarySpec`、`CheckSummary`，含 fuzz）；schema 檢查支援 `["string","null"]`；prompt 變數 `summary_lang`；內建 prompt `summary-default`。
     - pipeline：`internal/pipeline/summary.go`（`llmStages` 登記 summary；一個請求；`too_long` 依片長或 token 估計 → `skipped`；重試用盡 → `done` 沒有產出；內容相同沿用產出）。`applyResult` 在 summary 結束後依快照的 `pause_after` 把下一步改成 `blocked`（`awaiting_user`）；`Pipeline.Continue`、`AwaitingUser`、`ItemSummary`、`SeedSummary`；`Detail.Summary`。從 summary 重跑不再 501。
@@ -557,20 +557,35 @@
 
 - **收尾 D5：SRC-R4 付費結果的例外（2026-11-24）**：D3 把「已付費的 ASR 被 R4 拒絕」留成待決；依 advisor 的裁決（照 /goal 由我決定、待追認）實作窄版：只在 `runFallback` 所有來源用完那一處，採用第一個因 `low_coverage`／`repetition` 被拒的付費結果，probe 換成 `used`（保留原因）、步驟訊息附提醒。測試：`internal/pipeline/quality_paid_test.go`（採用 `low_coverage` 與 `repetition`；`music_only`、免費來源、語言不符照舊失敗；後面有來源通過就用後面的；後面 `needs_action` 仍 blocked；兩個付費都被拒採用第一個；並做過兩個變異檢查）；新增預設 tag 場景 `A paid result that fails the coverage check is still used when nothing else is left`（預設 tag 314 → 315，總共 945）。
 
+- **收尾 D6：規格缺口收尾（2026-11-24，依 /goal 的「完成 SPEC 中剩餘的部分」）**：Stop hook 指出前面把一部分剩餘項目歸為「做不到」沒有逐項證據。由三個唯讀 agent 逐項對帳 handoff 的 43 條「沒做」、34 個 `@ui @manual` 場景背後的畫面功能，並自己查 CI 能補的三項；結果見第 2 節「規格對帳」。對帳找出規格有規則、程式沒做、不需要外部資源的項目，由五個子代理補完並推送 master（決定都記在各規格的待決問題，格式「（2026-11-24，依 /goal 由實作者暫定，待 owner 追認）」）：
+  - **CI（`aea5be2d`）**：新增 `compose` job（Client `compose.yaml` 的 local profile：登入、只綁 loopback、重建容器後資料還在；vps profile：沒有網域時 `vps-check` 失敗、Caddy 的 HTTPS 與 HTTP→HTTPS 308、HSTS、Secure cookie、Caddy 固定位址 172.31.250.10；網域用 `notes.local`，Caddy 2.8.4 把 `.local` 當內部名稱、不連 ACME，`.internal` 不是）、`docker` job 加「Hub 重啟後資料還在」（Postgres 與 S3 各寫標記，down 不帶 `-v` 再 up，兩邊都讀得回來，hub 重新就緒並通過 doctor）、新增 `docker-arm64` job（QEMU 下真的建出 linux/arm64 的 Client 與 Hub image 並執行 `--version` 與外部工具；NFR-CMP-1）。三項先用 scratch 分支驗證，再合進 `ci.yml`；`aea5be2d` 的完整 CI 全綠。
+  - **fakehub contract test（`e7adf929`，HSHR S22）**：ADR-0030 要求 `fakehub.Routes` 的回應必要欄位與 Hub OpenAPI 相同，原本只比對路徑與 method；現在比對 2xx 的 `required` 欄位與型別（巢狀物件與陣列元素也檢查），並補齊 fakehub 缺的欄位。
+  - **`/mcp` 停用帳號限流（`bc5dee28`，HMCP M10）**：停用帳號的請求以 IP 計入未登入額度，超過回 429。
+  - **FRM-R9 shortfall 圖說（`49c3bc46`，F11）**：模型沒有選圖時，圖說改取該時間的 cue。
+  - **VAULT publish 的 `download` 資源類別（`1758cdf3`，V17）**：有 git vault 時 publish 任務歸為 `download`，重試與恢復沿用原類別。
+  - **BATCH 的 translate 與 summary（`0619d052`）**：`batch: auto` 真的走 batch API（`batchWork` 與步驟無關，同一個 batch 可混有不同步驟；TRN-R4 的切分標記不符時帶著已付費的 batch 結果只補送逐句請求）。新增 4 個 `@M4` 場景。決定見 BATCH 規格「translate 與 summary 的實作決定」。
+  - **COST 的 ASR／Supadata／Playground 計量（`02ee740e`，C17、C23）**：Groq `audio_hour`、Supadata `credit`、Playground 都記入成本帳本並受預算限制（預留放在「確定送出」之後；沒有 credit 單價時依 COST-R7 擋下）；ING-R8 的估價與批次重跑 `dry_run` 共用 `cost.Service.Estimate`，覆寫的單價優先。新增 5 個 `@M4` 場景。沒確認：Groq 的最低計費秒數與 Supadata 每分鐘 2 credit 的換算（需要官方帳單規則，需要外部資源）。
+  - **API 補洞（`e37bd094`、`49c804d4`、`fb61a80b`）**：`GET /api/items/{id}` 的 `hub_origin`（HSHR S23）、`GET /api/queue` 的 Agent 任務與 `executor`／`agent`／`lease_until`（AGT A13，lanes 仍只算 builtin）；過程中補了一個真缺陷：`hub_origin` 沒進 `nullableRefs`，OpenAPI 把它標成一定有值。
+  - **Client Web UI 的 `@ui @manual` 缺口（`d55d71ea`..`e3864924`、`f79623ba`..`524273e3`）**：影音詳情的刪除移進「更多」選單；重跑對話框顯示 `better_source.estimate_usd`；新增抽屜顯示 `/api/estimate` 的預估並在貼上頻道時提供「建立訂閱」；總覽新增「系統告警」區塊（偏離原計畫：讀 `/api/system` 的 `alerts` 與最近 24 小時沒送出的通知，沒有加到 `/api/overview`，因為 OPS 介面原文如此，而且 `/api/system` 只有 owner 能讀）；訂閱加 `new_items` 與「新內容」欄（SUB-R14）；筆記模板預覽可帶未儲存草稿（NOTE-R12、N23）；`GET /api/hooks`（只回 id，VAULT-R10、V18）與設定 › 輸出唯讀列出 vault 與 hook、處理方案可選 vault；佇列頁顯示 Agent 任務與租約倒數；影音詳情顯示「來自 Hub：@alice 的原始字幕」。UI 決定在 `docs/ui/README.md` 10.23、10.24。
+  - **COR 相似度場景（`22401c66`）**：場景訊息從 0.42 改成 0.19，對齊 COR C1 的算法；`@pending-m0` 標籤保留（見第 2 節第 9 項）。
+  - 新增場景：BATCH 4、COST 5、HMCP 1、FRM 1、VAULT 3（含 hooks 清單）、HSHR 1、AGT 1、SUB 1、NOTE 2；**沒有修改任何既有場景**（既有 Go 測試 `TestBatchEligibility`、`TestEstimateWithoutCaptionsUsesGroqPrice`、`TestBetterEstimateWithoutPaidStagesIsNull`、`TestFramesShortfallSkipsTheModel` 的斷言依新行為調整；`features/steps/subscriptions.go` 的 `subCoreRules` 加入 14）。預設 tag 315 → 316、`@M3,@M4,@M5` 630 → 648，總共 964。
+  - **踩到的事**：`web.yml`（Web UI）有 `format:check` 與 `check:api`，自己推送前沒有跑，`fb61a80b` 讓它失敗，`524273e3` 修掉；`ci.yml` 之外要看 `web.yml`。子代理在 `git push origin HEAD:master` 被權限分類器擋下時（BATCH 那次）把 commit 留在分支回報，由我驗證後推送。
+
 ## 2. 下一步
 
 ### 2026-11-24 現況
 
 - **已完成並推送（master）**：M1、M2（後端與場景）、M3（SPB、CHAP、FRM、NOTE、VAULT、GEM）、M4（NOTIFY、SUB、COST、BATCH、DIG、SRC-10、SRCH、GLOS、BND、AUTH、OPS、ENTRY、LIB-08/09）、M5（HACC、HREP、HMCP、HSHR、Postgres＋S3 backend、`deploy/docker/compose.hub.yaml`）、UI-0～UI-8、Hub Web UI（`web/hub`）。三份安全修補（Hub、bundle／分享、Client）已合併。
 - **收尾切片（已完成並推送）**：盤點出規格有寫、沒有場景守住的項目，由五個切片補完——D1：`POST /api/tasks/{id}/retry`／`cancel`（PIPE）、NFR-REL-2 讀取時比對 sha256、LIB-R4 `group_by`、修好不穩定測試 `TestMCPLoopbackRechecksPermissions`；D2：VAULT-R12 的 git vault 刪除、SRC-R11 文字語言偵測與 `mixed`（`@wip` 場景已拿掉 `@wip`）、SRC-R6「現在改用語音轉錄」動作、yt-dlp 每日排程更新（OPS-R6／R7）；D3：SRC-R4 的 `low_coverage`／`repetition`／`music_only`、SRC-R13 的 Whisper 幻覺過濾、ING-08 的 `llm_usd` 與 reprobe 的 `estimate_usd`（SRC-10 R10）、規格裡過期的「還沒做」文字、`@pending-m0` 的盤點（14 個場景）；D4：`notesteme password set`（AUTH 介面列了卻一直沒實作）與規格文字掃描；D5：SRC-R4 對已付費結果的例外（付費 ASR 被拒時仍採用）。場景數現在是預設 tag（`@M1,@M2`）315＋`@M3,@M4,@M5` 630 = 945，全部 passed。摘要見第 1 節末尾的「收尾 D1／D2／D3／D4／D5」。
+- **收尾 D6：規格缺口收尾（已完成並推送）**：見第 1 節末尾的「收尾 D6」；第 2 節最後的「規格對帳」是逐項證據。
 - **owner 要做的事（我做不到）**：
   1. **GitHub Actions**：repo 公開之後（2026-11-24）CI 才真的跑起來，第一次完整執行找到兩個問題，都已修正：
      - `go test -race ./...` 在 GitHub 的 runner 上超過每個測試程式 30 分鐘的上限，`features` 被中止（05:15 的那次還在 27.5 分鐘通過，之後測試變多）。CI 改成平行的四個 job：`go`（其餘套件，`-race`，逾時 60 分鐘）、`bdd`（`./features`，`-race`，60 分鐘）、`bdd-extra`（`@M3,@M4,@M5`，不加 `-race`，45 分鐘；在 runner 上約 3 分鐘）、`coverage`（涵蓋率門檻）。
      - `hub-backends` 從來沒通過：MinIO 的 image 已經拉不到，連 `compose.hub.yaml` 都啟動不了。改用 SeaweedFS（第 8 項、ADR-0030 修訂）；這個 job 第一次在真的 Postgres 16 與真的 S3 相容服務上跑完 Hub 的共用案例（136 個通過、0 個略過），並新增「沒簽章的 S3 請求必須回 403」的反證。
      - 新增 `docker` job（第 3 項）。
-     - 結果：master 連續五次完整 CI 全部 9 個 job 成功——`ec666176`（CI 重構）、`a147a379`（含收尾 D3）、`da58184b`（含收尾 D4）、`58c7613b`（含收尾 D5）、`22401c66`（COR 場景改為 0.19，最後一個程式碼／場景提交）。runner 上的實測耗時：`go`（其餘套件，`-race`）23～35 分鐘、`bdd`（`./features`，`-race`）22～27 分鐘、`bdd-extra` 約 3 分鐘、`docker` 約 3 分鐘，其餘 job 不到 3 分鐘；最慢的離 60 分鐘上限還有 25 分鐘以上的餘裕，但不同次執行的差異可到 8 分鐘。之後的提交以 `gh run list --branch master` 為準。
+     - 結果：master 的完整 CI 全部 job 成功——`ec666176`（CI 重構）、`a147a379`（含收尾 D3）、`da58184b`（含收尾 D4）、`58c7613b`（含收尾 D5）、`22401c66`（COR 場景改為 0.19）、`aea5be2d`（新增 `compose`、`docker-arm64`，現在共 11 個 job）、`0619d052`、`1758cdf3`；之後的提交以 `gh run list --branch master` 為準（`ci.yml` 與 `web.yml` 都要看；連續推送時 `ci.yml` 的排隊中 run 會被新的取代，只有最後一個會跑完）。runner 上的實測耗時：`go`（其餘套件，`-race`）23～35 分鐘、`bdd`（`./features`，`-race`）22～27 分鐘、`bdd-extra` 約 3 分鐘、`docker` 約 3 分鐘，其餘 job 不到 3 分鐘；最慢的離 60 分鐘上限還有 25 分鐘以上的餘裕，但不同次執行的差異可到 8 分鐘。之後的提交以 `gh run list --branch master` 為準。
   2. **真實驗收**：yt-dlp（YouTube、Bilibili）、Groq、Supadata、Gemini、ntfy、真實 IdP、真實反向代理、Hub 的真實 OAuth、R2／AWS S3、真實 ffmpeg 輸出（bundle 的 JPEG 結構檢查只用 Go encoder 與手工樣本）、真實 libass 預覽、Jellyfin／Plex sidecar；`@manual`、`@ui @manual` 的人工驗收；M0 量測與 `@pending-m0`。
-  3. **Docker**：CI 的 `docker` job 實際建置 Client 與 Hub 的 image（先前本機沒有 docker，這是第一次實測）。Client image 通過 `deploy/docker/smoke-test.sh`（工具齊全含 ffmpeg libass、非 root、缺 master key 時拒絕啟動、登入、SIGTERM 正常關閉、重啟後資料保存）；Hub 用 `compose.hub.yaml` 啟動整組（Postgres 16、SeaweedFS、`hub-s3-init` 建 bucket、`hub-migrate`、`hub`），`/readyz` 回 ok、`hub doctor` 通過、匿名的 S3 請求被拒絕（403）。**仍沒驗證**：Hub image 沒有發布到 ghcr；arm64 的多架構建置（只在發布 tag 時由 `docker-publish.yml` 建置）；Client 的 `compose.yaml`（`wsl`／`vps` profile 與 Caddy）沒有在 CI 啟動；真實反向代理後面的行為。
+  3. **Docker**：CI 的 `docker` job 實際建置 Client 與 Hub 的 image（先前本機沒有 docker，這是第一次實測）。Client image 通過 `deploy/docker/smoke-test.sh`（工具齊全含 ffmpeg libass、非 root、缺 master key 時拒絕啟動、登入、SIGTERM 正常關閉、重啟後資料保存）；Hub 用 `compose.hub.yaml` 啟動整組（Postgres 16、SeaweedFS、`hub-s3-init` 建 bucket、`hub-migrate`、`hub`），`/readyz` 回 ok、`hub doctor` 通過、匿名的 S3 請求被拒絕（403）。收尾 D6 補上：Client 的 `compose.yaml`（local 與 vps profile、Caddy 的 HTTPS）、Hub 重啟後資料保留、arm64 的 Client 與 Hub image（QEMU 下建置並執行）都已在 CI 實際跑過。**仍沒驗證**：`docker-publish.yml`（tag 觸發）從沒實跑過，Hub image 沒有發布到 ghcr（規格沒有要求，ADR-0030 只要求 image target；建議先推 `-rc.1` 試跑，會發布到 ghcr，由 owner 決定）；真實網域的 ACME 憑證與真實反向代理後面的行為；arm64 image 只驗證到「建得出來、工具跑得起來」，沒有在真實 arm64 主機上跑完整的 smoke test。
   4. **追認決定**：各規格「待決問題」中標「（2026-11-23／24，依 /goal 採 advisor 建議，待 owner 追認）」的項目（很長的清單，依規格 grep 這句話即可列出）。其中修改了既有 `.feature` 的：VAULT 5 個場景（V12，rerun 帶明確 profile）、COST C22、SRC-10 R16、NOTIFY N9、SUB-R4 的 regex 範例、HSHR S17（R13 檔名）與 S20（`hub-precheck-v1` → `v2`，12 處）、SRC-R11 的 `@wip` 場景（`SRC-transcript-sources.feature:214`：第一步從 `titled` 改成 `with:` 並加上 `language zh`，拿掉 `@wip`）。破壞性變更：Hub 需要 `NOTESTEME_HUB_MASTER_KEY`（≥ 32 字元）與 `NOTESTEME_HUB_SESSION_KEY`；Hub 的 cookie 改成 `__Host-` 前綴（部署後每個人要重新登入）。
   5. 各規格 `status` 仍不是 `implemented`（owner 的步驟）。
   6. **營運上要先知道的行為改變（收尾 D1／D2）**：
@@ -587,12 +602,23 @@
      - SRC-R13：`no_speech_prob > 0.6` 且 `compression_ratio > 2.4`（都嚴格大於、同時成立）的 segment 移除；連續 3 次以上相同的句子只留一句（含切塊接縫）。
      - LLM 估算：每秒 6 個 token（刻意偏高）；ING 估價的 `total_usd` 在「只有 ASR 費用未知、LLM 確定是 0」時是 `0`（頂層仍帶「部分金額未知」，符合 ING-08「只加總已知的金額」）；reprobe 的 `estimate_usd` 在沒有任何付費 LLM 步驟時仍是 `null`。
      - `@pending-m0` 的 14 個場景（20 個 example）在本機全部通過（`go test ./features -run TestFeatures -godog.tags='@pending-m0'`：20 passed、195 steps passed），標籤一個都沒拿掉。原本唯一沒通過的是 COR 的相似度場景（算出 0.19，場景預期 0.42）；**已決定（2026-11-24，依 /goal 採 advisor 建議，待追認）**：場景訊息改為 0.19，對齊 COR C1 目前的算法（0.42 是 M0 之前的占位值，沒有任何算法算得出）；標籤保留，M0 改算法或門檻時連同場景一起改。
-- **已知缺口（沒有規格規則或需要真實樣本，沒做）**：
-  - UI 文件列的 API 缺口（`docs/ui/README.md` 10.7 第 8 點、10.13～10.21）：`Stage.actions` 的動作代碼、佇列優先順序與 Agent 任務、「需要你處理」彙總 API、`/api/items/continue` 沒有 `dry_run`、總覽 `today` 事件沒有步驟／狀態／影音代號、儲存的檢視（saved views）、provider 列表 API、字幕變體列表 API。
-  - Hub Web UI 缺的 API：`my_vote`、unhide（HREP R8／R10 規格就沒有）、群組列表、`hub_origin.uploader`；OAuth callback 的錯誤仍回 JSON。
-  - Supadata 非同步 job（202）還不會輪詢；FRM 的 `api` executor 有 shortfall 候選時字幕留空（待決問題）。
-  - 安全修補沒處理的：OIDC 全域 1000 筆上限仍可用大量不同的 IPv6 `/64` 佔滿；Hub 的 `buildShare` 可能透過 `parents_sha256` 洩漏 `known` 模型、`/mcp` 的被停權帳號沒有限流、重新分享仍可繞過 hidden 版本、影片 metadata 仍由第一個分享者決定。
+- **已知缺口（對帳後：規格沒要求，或需要真實樣本與外部資源）**：
+  - UI 文件列的 API 缺口（`docs/ui/README.md` 10.7 第 8 點、10.13～10.21）：`Stage.actions` 的動作代碼、佇列優先順序（PIPE-R 沒有調整優先序的規則）、`/api/items/continue` 沒有 `dry_run`（DIG-R7 只定 `{ids}`）、總覽 `today` 事件沒有步驟／狀態／影音代號（LIB-R21 的形狀是 `{at,type,item?,title?}`）、儲存的檢視（LIB 規格寫 saved views 不在 M4）、provider 列表 API、字幕變體列表 API。這些規格都沒有對應規則，沒做。
+  - Hub Web UI 缺的 API：`my_vote`、unhide（HREP 規格寫沒有取消隱藏的路由）、群組列表；OAuth callback 的錯誤仍回 JSON（HACC-R3 規定回 400／502 的 JSON code）。`hub_origin.uploader` 已在收尾 D6 補上。
+  - Supadata 非同步 job（202）不會輪詢（SRC 規格沒有非同步或輪詢的條文）。
+  - 安全修補沒處理的（規格沒有對應規則，見第 2 節「規格對帳」）：OIDC 全域 1000 筆上限仍可用大量不同的 IPv6 `/64` 佔滿（AUTH A13 只定 1000 筆→429、A27 只定每來源額度）；Hub 的 `buildShare` 可能透過 `parents_sha256` 洩漏 `known` 模型（HREP-R7 沿上游取模型）、重新分享仍可繞過 hidden 版本與影片 metadata 由第一個分享者決定（HREP 規格第 89、90 行明寫的取捨）。`/mcp` 的被停權帳號沒有限流已在收尾 D6 修掉。
 - **維護提醒**：5 小時 API 用量上限會讓 child 失敗（訊息含重置時間），重置後用 `t3_thread_send` 叫它繼續；機器 16GB（WSL），同時超過 3 個重度任務會被 OOM，全套測試用 `-p 2`、`-race` 的逾時要設 100 分鐘以上；別在主 checkout 做 `git checkout --detach`；child 還在跑時別動它的 worktree。
+
+### 規格對帳（2026-11-24，收尾 D6 的逐項證據）
+
+方法：handoff 內 43 條「沒做」逐條對程式與規格；34 個 `@ui @manual` 場景與 3 個非 UI 的 `@manual` 場景逐個對 `web/client/src`、`web/hub/src` 與 handoff 以外的原始碼；CI 能補的項目自己實作並在 CI 驗證。`@manual` 的意思是「由人驗收」，不是「不用做」：`docs/specs/steps.md` 第 103 行規定只有 `@manual` 場景可以用清單以外的句子（不會被自動執行），所以這些場景的畫面功能都要存在，對帳後 34 個 UI 場景裡 1 個找不到、7 個部分存在（共 8 個場景缺畫面），由 D1 的七項與 D2 的上傳者名稱補完。
+
+- **原本記為沒做、其實已做**（附證據位置）：`GET /api/v1/admin/users` 與 `notesteme-hub admin grant|revoke|suspend`（`internal/hub/hubapi/moderation.go`、`hubcli`）、`GET /api/v1/me/shares`、Client 的 `hub_shares`／`hub` 來源／`notesteme hub` CLI、Postgres 與 S3 backend、compose 的 `hub` profile、`server.trusted_proxies`、Hub UI 管理頁、fakehub seeding、VAULT 的寫入與 `outputs`、git vault 刪除（V12）、筆記分頁、摘要與「等你決定」與設定頁彙整的 UI、bundle 匯出匯入 UI、GLOS-R7 的 UI 與總覽「有 N 個術語等你確認」、PRM-R6／R7、術語候選 PATCH、COR→ASR glossary、SEG 手動字幕略過、TRN 沿用人工軌、`/api/overview` 的提醒、「需要你處理」彙總、UI 的「更好的字幕來源」金額與 LLM 估算（D3）、frames 的 vision 計量。
+- **規格有規則、程式沒做 → 收尾 D6 已補**：COST-R1／R5／C23 的 ASR 與 Supadata 計量與估價覆寫、BATCH-R1／R2 的 translate 與 summary、FRM-R9 shortfall 圖說、VAULT publish 的 `download` 類別（ADR-0020 §3）、HMCP-R8／HACC-R18 的 `/mcp` 停用帳號限流、ADR-0030 的 fakehub 必要欄位比對、HSHR:55 的 `hub_origin`／上傳者名稱、AGT:71 的佇列 Agent 任務與租約、VAULT 介面的 vault 與 hook 清單、OPS 的總覽告警、ENTRY 的預估花費、SUB 的「建立訂閱」與「新內容」、NOTE 的草稿預覽、DEL 的「更多」選單。
+- **規格互相矛盾 → 已更正**：PRM 第 67 行（M2 時期）寫 Playground 的試跑「不寫入帳本」，與 COST C17（收尾 D6 實作 Playground 計量）衝突；PRM 該句已改成指向 COST C17（待追認）。
+- **規格沒要求（附出處，沒做是對的）**：Range、cursor 簽章、lookup 專用限流（HREP:101～104）；取消隱藏、`my_vote`、群組列表（HREP:112、HREP-R13、HACC 路由表）；換主金鑰（HACC:109）；下架申請 IP 額度跨重啟（HACC:108，刻意不保存 IP）；email 通知、多 Hub 共用額度（HACC:70～71 不在範圍）；Client 端撤回的路由與 CLI（HSHR S12）；分享與撤回的稽核（HACC-R17 的清單沒有）；讀取稽核與 MCP 專用額度（HMCP M9、HMCP-R8）；Gemini 計價與 Gemini batch（GEM:51、58；BATCH:54）；送出後寫入 `external_id` 前中斷（BATCH:71 已知限制）；內建 LLM 單價（COST C18、R7 的處理）；Podcast transcript 事後補上（SRC:118）；CLI `items show` 文字模式列 `better_source`（CLI-cli.md:39 只列指令）；secrets 的 `vault:<id>` 憑證（VAULT:42 只定環境變數）；cookie 的 GET／DELETE（SEC:41、43）；稽核表（AUTH A21）；`agent` 選圖與 Bilibili 影片（FRM-R1、F6、F10）、取消選圖任務留下的版本目錄（FRM:72）；doctor 的 OPS 檢查與 OPS 的 MCP 介面（OPS:187，規格明寫沒有要求）。
+- **需要這個環境沒有的資源（做不到）**：真實 YouTube／Bilibili／Groq／Supadata／Gemini／Anthropic／OpenAI batch 的驗收與品質、ntfy、真實 IdP 與反向代理、Hub 的真實 OAuth（Google／GitHub／Linux.do）、R2／AWS S3、真實 git 服務與 Obsidian、Jellyfin／Plex、真實 MCP client、真實 libass 預覽與 ffmpeg 輸出的視覺品質、Windows 主機（CLI 的 WSL 場景）、repo 外的 watch skill（CLI-04）、真實網域的 ACME、`@manual` 與 `@ui @manual` 的人眼驗收、Groq 最低計費秒數與 Supadata credit 換算（要官方帳單規則）、M0 樣本（`@pending-m0` 的門檻）。
+- **屬於 owner 的步驟**：各規格 `status` 欄位。`docs/specs/README.md` 的定義：`implemented`＝場景全部通過，且 6.2 Definition of Done 要求「`@manual` 場景已人工驗收，結果記錄在 PR 中」，所以含 `@manual` 場景的規格不能由我改成 `implemented`。
 
 ### 歷史（2026-11-22／23，M1／M2 時期；已完成或已被上面取代，保留供對照）
 
