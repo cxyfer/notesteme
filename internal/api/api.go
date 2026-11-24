@@ -188,6 +188,7 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 	cfg.DocsPath = ""
 	cfg.SchemasPath = ""
 	cfg.CreateHooks = nil
+	cfg.Transformers = append(cfg.Transformers, localizeErrors)
 	api := humago.New(mux, cfg)
 
 	r := &routes{d: d, api: api}

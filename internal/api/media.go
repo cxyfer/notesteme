@@ -53,23 +53,23 @@ func (rt *routes) registerMedia(mux *http.ServeMux) {
 func (rt *routes) serveMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if rt.d.Pipeline == nil {
-		writeError(w, newError(http.StatusNotFound, CodeNotFound, "找不到這部影音。"))
+		writeError(w, r, newError(http.StatusNotFound, CodeNotFound, "找不到這部影音。"))
 		return
 	}
 	f, fi, it, err := rt.d.Pipeline.MediaFile(ctx, r.PathValue("id"))
 	switch {
 	case err == nil:
 	case errors.Is(err, pipeline.ErrNoMedia):
-		writeError(w, newError(http.StatusNotFound, CodeNoMedia, err.Error()))
+		writeError(w, r, newError(http.StatusNotFound, CodeNoMedia, err.Error()))
 		return
 	case errors.Is(err, pipeline.ErrMediaMissing):
-		writeError(w, newError(http.StatusNotFound, CodeMediaMissing, err.Error()))
+		writeError(w, r, newError(http.StatusNotFound, CodeMediaMissing, err.Error()))
 		return
 	case errors.Is(err, pathguard.ErrOutsideRoots):
-		writeError(w, newError(http.StatusForbidden, CodePathOutsideRoots, "只能讀取媒體資料夾中的檔案。"))
+		writeError(w, r, newError(http.StatusForbidden, CodePathOutsideRoots, "只能讀取媒體資料夾中的檔案。"))
 		return
 	default:
-		writeError(w, asError(rt.mapErr(ctx, err)))
+		writeError(w, r, asError(rt.mapErr(ctx, err)))
 		return
 	}
 	defer f.Close()

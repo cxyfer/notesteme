@@ -199,7 +199,7 @@ func subscriptionImportLimit(next http.Handler) http.Handler {
 	tooLarge := func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, io.LimitReader(r.Body, importDrainBytes))
 		ie := subscription.ImportTooLarge()
-		writeError(w, newError(http.StatusRequestEntityTooLarge, ie.Code, ie.Message))
+		writeError(w, r, newError(http.StatusRequestEntityTooLarge, ie.Code, ie.Message))
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != importPath || r.Body == nil {
@@ -207,7 +207,7 @@ func subscriptionImportLimit(next http.Handler) http.Handler {
 			return
 		}
 		if err := requireScope(r.Context(), auth.ScopeAdmin); err != nil {
-			writeError(w, asError(err))
+			writeError(w, r, asError(err))
 			return
 		}
 		if r.ContentLength > limit {
@@ -216,7 +216,7 @@ func subscriptionImportLimit(next http.Handler) http.Handler {
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
 		if err != nil {
-			writeError(w, newError(http.StatusBadRequest, CodeInvalidInput, defaultMessages[http.StatusBadRequest].msg))
+			writeError(w, r, newError(http.StatusBadRequest, CodeInvalidInput, defaultMessages[http.StatusBadRequest].msg))
 			return
 		}
 		if len(body) > limit {

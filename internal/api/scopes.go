@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/cxyfer/notesteme/internal/apierr"
 )
 
 // requireScope 檢查目前請求的身分是否具備指定的 scope（AUTH-R8）。
@@ -35,6 +37,7 @@ func requireOwner(ctx context.Context, what string) error {
 }
 
 func writeHumaError(hc huma.Context, e *Error) {
+	e = apierr.Localize(e, apierr.Negotiate(hc.Header("Accept-Language")))
 	hc.SetHeader("Content-Type", "application/json")
 	hc.SetStatus(e.Status)
 	_ = json.NewEncoder(hc.BodyWriter()).Encode(e)
@@ -76,7 +79,7 @@ func registerOwnerOnly[I, O any](api huma.API, op huma.Operation, what string, h
 func requireScopeHandler(scope string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := requireScope(r.Context(), scope); err != nil {
-			writeError(w, asError(err))
+			writeError(w, r, asError(err))
 			return
 		}
 		next.ServeHTTP(w, r)

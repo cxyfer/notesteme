@@ -1,5 +1,6 @@
 // API 錯誤：後端一律回 { code, message, ... }（internal/api/errors.go）。
-// 程式只依 code 判斷（NFR-I18N-2）；message 是後端依 Accept-Language 產生的說明，只用來顯示。
+// 程式只依 code 判斷（NFR-I18N-2）；message 是後端依 Accept-Language 選擇語言的說明（AUTH-R23；
+// 尚未翻譯的訊息仍是繁中），只用來顯示。
 import type { components } from "./schema";
 
 export type ApiErrorBody = components["schemas"]["Error"];

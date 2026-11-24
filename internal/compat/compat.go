@@ -77,14 +77,22 @@ func Check(client, server string) Verdict {
 	return Compatible
 }
 
+// MajorMinor 回傳版本的「major.minor」；無法解析時是空字串。
+func MajorMinor(v string) string {
+	s, ok := parse(v)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%d.%d", s.major, s.minor)
+}
+
 // Message 是不相容時給使用者看的訊息：指出要升級哪一邊。serve 的 426 與 CLI 自己的檢查用同一段文字。
 func Message(v Verdict, client, server string) string {
 	switch v {
 	case ClientTooOld:
 		return fmt.Sprintf("CLI 版本太舊（CLI %s，serve %s），請升級 CLI。", client, server)
 	case ServerTooOld:
-		s, _ := parse(server)
-		return fmt.Sprintf("serve 版本太舊（serve %s，CLI %s），請升級 serve，或換成 %d.%d 版的 CLI。", server, client, s.major, s.minor)
+		return fmt.Sprintf("serve 版本太舊（serve %s，CLI %s），請升級 serve，或換成 %s 版的 CLI。", server, client, MajorMinor(server))
 	}
 	return ""
 }

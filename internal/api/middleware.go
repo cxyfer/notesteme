@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/compat"
@@ -133,7 +134,7 @@ func authMiddleware(svc *auth.Service, log *slog.Logger) func(http.Handler) http
 			if h := r.Header.Get("Authorization"); h != "" {
 				token, ok := strings.CutPrefix(h, "Bearer ")
 				if !ok || strings.TrimSpace(token) == "" {
-					writeError(w, unauthorized)
+					writeError(w, r, unauthorized)
 					return
 				}
 				p, err := svc.AuthenticateBearer(r.Context(), strings.TrimSpace(token))
@@ -157,8 +158,7 @@ func authMiddleware(svc *auth.Service, log *slog.Logger) func(http.Handler) http
 				freshSession := false
 				if proxyUser, _ := auth.ProxyUserFrom(r.Context()); proxyUser != "" {
 					if !svc.ProxyUserAllowed(proxyUser) {
-						writeError(w, newError(http.StatusForbidden, CodeProxyUserNotAllowed,
-							"這個帳號（"+auth.ProxyUserShown(proxyUser)+"）不能使用 Notesteme。"))
+						writeError(w, r, apierr.Newf(http.StatusForbidden, CodeProxyUserNotAllowed, "proxy_user_not_allowed", auth.ProxyUserShown(proxyUser)))
 						return
 					}
 					if sessionToken == "" {
@@ -178,11 +178,11 @@ func authMiddleware(svc *auth.Service, log *slog.Logger) func(http.Handler) http
 					}
 				}
 				if sessionToken == "" {
-					writeError(w, unauthorized)
+					writeError(w, r, unauthorized)
 					return
 				}
 				if isMCPPath(r.URL.Path) && principal.Method != "" && principal.Method != "password" {
-					writeError(w, unauthorized)
+					writeError(w, r, unauthorized)
 					return
 				}
 				if !safeMethod(r.Method) {
@@ -191,7 +191,7 @@ func authMiddleware(svc *auth.Service, log *slog.Logger) func(http.Handler) http
 						cv = csrfCookie.Value
 					}
 					if err := auth.CheckCSRF(sessionToken, cv, r.Header.Get(auth.CSRFHeader)); freshSession || err != nil {
-						writeError(w, newError(http.StatusForbidden, CodeCSRF, "CSRF token 缺少或不正確。"))
+						writeError(w, r, newError(http.StatusForbidden, CodeCSRF, "CSRF token 缺少或不正確。"))
 						return
 					}
 				}
@@ -204,11 +204,11 @@ func authMiddleware(svc *auth.Service, log *slog.Logger) func(http.Handler) http
 // failAuth 回應驗證失敗：無效的憑證是 401，其餘（例如 DB 錯誤）是 500。
 func failAuth(w http.ResponseWriter, r *http.Request, log *slog.Logger, err error, unauthorized *Error) {
 	if errors.Is(err, auth.ErrUnauthenticated) {
-		writeError(w, unauthorized)
+		writeError(w, r, unauthorized)
 		return
 	}
 	log.ErrorContext(r.Context(), "驗證時發生錯誤", "error", err)
-	writeError(w, asError(err))
+	writeError(w, r, asError(err))
 }
 
 // statusRecorder 記錄回應狀態碼供 log 使用，並保留 Flusher 等能力（Unwrap）。
@@ -266,7 +266,12 @@ func versionMiddleware(own string) func(http.Handler) http.Handler {
 			w.Header().Set(compat.Header, own)
 			if v := compat.Check(cv, own); v != compat.Compatible {
 				w.Header().Set("Upgrade", "Notesteme/"+own)
-				writeError(w, newError(http.StatusUpgradeRequired, CodeClientIncompatible, compat.Message(v, cv, own)))
+				// 訊息與 CLI 自己的檢查相同（compat.Message），另有简中與 English（NFR-I18N-2）。
+				key := "cli_too_old"
+				if v == compat.ServerTooOld {
+					key = "serve_too_old"
+				}
+				writeError(w, r, apierr.Newf(http.StatusUpgradeRequired, CodeClientIncompatible, key, cv, own, compat.MajorMinor(own)))
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -284,7 +289,7 @@ func recoverMiddleware(log *slog.Logger) func(http.Handler) http.Handler {
 						panic(v)
 					}
 					log.ErrorContext(r.Context(), "handler panic", "panic", v)
-					writeError(w, asError(nil))
+					writeError(w, r, asError(nil))
 				}
 			}()
 			next.ServeHTTP(w, r)

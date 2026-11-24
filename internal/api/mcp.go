@@ -100,7 +100,7 @@ func (e *mcpEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 驗證（401）已經由外層的 middleware 完成；Origin 與 Host 在它之後檢查（403）。
 	if e.remote {
 		if err := checkOrigin(r, e.d.MCPAllowedOrigins, e.d.MCPAllowedHosts); err != nil {
-			writeError(w, err)
+			writeError(w, r, err)
 			return
 		}
 	}
@@ -109,7 +109,7 @@ func (e *mcpEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer func() { <-e.slots }()
 	default:
 		w.Header().Set("Retry-After", "5")
-		writeError(w, newError(http.StatusServiceUnavailable, "busy", "同時處理的 MCP 請求太多，請稍後再試。"))
+		writeError(w, r, newError(http.StatusServiceUnavailable, "busy", "同時處理的 MCP 請求太多，請稍後再試。"))
 		return
 	}
 	// 先讀完本體（有上限），再取消這條連線的讀取期限：server 的 ReadTimeout 到期會取消 request context，
@@ -119,10 +119,10 @@ func (e *mcpEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			var mbe *http.MaxBytesError
 			if errors.As(err, &mbe) {
-				writeError(w, newError(http.StatusRequestEntityTooLarge, CodeInvalidInput, "請求內容太大。"))
+				writeError(w, r, newError(http.StatusRequestEntityTooLarge, CodeInvalidInput, "請求內容太大。"))
 				return
 			}
-			writeError(w, newError(http.StatusBadRequest, CodeInvalidInput, "請求格式不正確。"))
+			writeError(w, r, newError(http.StatusBadRequest, CodeInvalidInput, "請求格式不正確。"))
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(raw))

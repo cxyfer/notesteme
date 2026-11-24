@@ -109,27 +109,27 @@ func (rt *routes) registerFrameImage(mux *http.ServeMux) {
 func (rt *routes) serveFrame(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if rt.d.Pipeline == nil {
-		writeError(w, newError(http.StatusNotFound, CodeNotFound, "找不到這部影音。"))
+		writeError(w, r, newError(http.StatusNotFound, CodeNotFound, "找不到這部影音。"))
 		return
 	}
 	n, err := strconv.Atoi(r.PathValue("n"))
 	if err != nil || n < 1 {
-		writeError(w, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "n 必須是從 1 起算的整數。"))
+		writeError(w, r, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "n 必須是從 1 起算的整數。"))
 		return
 	}
 	size := r.URL.Query().Get("size")
 	if size != "" && size != "full" && size != "thumb" {
-		writeError(w, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "size 必須是 full 或 thumb。"))
+		writeError(w, r, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "size 必須是 full 或 thumb。"))
 		return
 	}
 	id, err := rt.itemID(ctx, r.PathValue("id"))
 	if err != nil {
-		writeError(w, asError(err))
+		writeError(w, r, asError(err))
 		return
 	}
 	f, fi, etag, err := rt.d.Pipeline.FrameImage(ctx, id, n, size == "thumb")
 	if err != nil {
-		writeError(w, asError(rt.framesErr(ctx, err)))
+		writeError(w, r, asError(rt.framesErr(ctx, err)))
 		return
 	}
 	defer f.Close()

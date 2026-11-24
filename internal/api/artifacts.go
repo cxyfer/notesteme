@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/subtitle"
@@ -182,7 +183,7 @@ func (rt *routes) artifactContent(ctx context.Context, in *artifactContentInput)
 			_, _ = hc.BodyWriter().Write([]byte(md))
 		}}, nil
 	}
-	return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, "這種產出（"+a.Kind+"）不能讀取內容，只有字幕與筆記可以。")
+	return nil, apierr.Newf(http.StatusUnprocessableEntity, CodeInvalidInput, "artifact_not_readable", a.Kind)
 }
 
 func jsonStream(v any) (*huma.StreamResponse, error) {

@@ -174,3 +174,41 @@ Feature: Sign-in and tokens
     And a token "agent" with scopes "read,agent"
     When the client sends "POST /mcp" with the token "agent" from the origin "https://evil.example.com"
     Then the response status is 403
+
+  @M1 @AUTH-01 @AUTH-R23
+  Scenario Outline: Error messages follow Accept-Language while the code stays the same
+    Given the server is running
+    And the owner is signed in
+    When the owner sends "<request>" with the header "Accept-Language" set to "<language>"
+    Then the response status is 404
+    And the response contains:
+      """
+      { "code": "not_found", "message": "<message>" }
+      """
+
+    Examples:
+      | request                             | language            | message                  |
+      | GET /api/items/yt:zzzzzzzzzzz       | en                  | This item was not found. |
+      | GET /api/items/yt:zzzzzzzzzzz       | zh-CN,zh;q=0.9      | 找不到这个媒体。                 |
+      | GET /api/items/yt:zzzzzzzzzzz       | zh-TW               | 找不到這部影音。                 |
+      | GET /api/items/yt:zzzzzzzzzzz       | fr-FR, de;q=0.8     | 找不到這部影音。                 |
+      | GET /api/items/yt:zzzzzzzzzzz       | fr, en;q=0.5        | This item was not found. |
+      | GET /api/items/yt:zzzzzzzzzzz/media | en-US,en;q=0.9      | This item was not found. |
+      | GET /api/items/yt:zzzzzzzzzzz/media | zh-Hans             | 找不到这个媒体。                 |
+
+  @M1 @AUTH-01 @AUTH-R23
+  Scenario Outline: A message with a parameter is translated around the parameter
+    Given the server is running
+    And the owner is signed in
+    When the owner sends "GET /api/items?duration_min=-5" with the header "Accept-Language" set to "<language>"
+    Then the response status is 422
+    And the response contains:
+      """
+      { "code": "invalid_request", "message": "<message>" }
+      """
+
+    Examples:
+      | language | message                                         |
+      | en       | duration_min must be a non-negative integer (seconds). |
+      | zh-Hans  | duration_min 必须是不小于 0 的整数（秒）。                      |
+      | ja       | duration_min 必須是不小於 0 的整數（秒）。                      |

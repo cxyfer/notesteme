@@ -19,6 +19,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/search"
 	"github.com/cxyfer/notesteme/internal/source"
@@ -86,7 +87,7 @@ func errUnsupportedMode(mode string) *Error {
 	if !utf8.ValidString(mode) {
 		mode = strings.ToValidUTF8(mode, "�")
 	}
-	return newError(http.StatusUnprocessableEntity, CodeUnsupportedMode, "不支援這種搜尋方式："+mode+"。")
+	return apierr.Newf(http.StatusUnprocessableEntity, CodeUnsupportedMode, "unsupported_search_mode", mode)
 }
 
 func (rt *routes) search(ctx context.Context, in *searchInput) (*searchOutput, error) {

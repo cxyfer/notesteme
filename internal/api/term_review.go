@@ -205,7 +205,7 @@ func termDecisionErr(err error, prefix string) *apierr.Error {
 	case errors.Is(err, pipeline.ErrTermCandidateDecided):
 		e = newError(http.StatusConflict, CodeCandidateDecided, "這個術語候選已經決定過了。")
 	case errors.Is(err, pipeline.ErrGlossaryFull):
-		e = newError(http.StatusConflict, CodeGlossaryFull, pipeline.ErrGlossaryFull.Error())
+		e = apierr.Newf(http.StatusConflict, CodeGlossaryFull, "glossary_full", strconv.Itoa(pipeline.MaxGlossaryTerms))
 	default:
 		return nil
 	}

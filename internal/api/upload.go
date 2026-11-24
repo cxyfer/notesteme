@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/media"
@@ -126,29 +127,28 @@ func formatLimit(n int64) string {
 }
 
 func uploadTooLarge(limit int64) *Error {
-	return newError(http.StatusRequestEntityTooLarge, CodeUploadTooLarge,
-		"上傳的檔案超過大小上限（"+formatLimit(limit)+"）。")
+	return apierr.Newf(http.StatusRequestEntityTooLarge, CodeUploadTooLarge, "upload_too_large", formatLimit(limit))
 }
 
 func (rt *routes) upload(w http.ResponseWriter, r *http.Request, limit int64) {
 	ctx := r.Context()
 	if err := requireScope(ctx, auth.ScopeIngest); err != nil {
-		writeError(w, asError(err))
+		writeError(w, r, asError(err))
 		return
 	}
 	if rt.d.Pipeline == nil || rt.d.DataDir == "" {
-		writeError(w, asError(rt.noPipeline(ctx)))
+		writeError(w, r, asError(rt.noPipeline(ctx)))
 		return
 	}
 	// 宣告的長度已經超過上限：直接拒絕，不讀取本體。
 	if r.ContentLength > limit+uploadFormOverhead {
-		writeError(w, uploadTooLarge(limit))
+		writeError(w, r, uploadTooLarge(limit))
 		return
 	}
 	// 同時進行的上傳有上限：沒有名額時直接 429，不讀本體。
 	release := acquireUploadSlot(rt.d.DataDir)
 	if release == nil {
-		writeError(w, newError(http.StatusTooManyRequests, CodeTooManyUploads, "目前有其他上傳正在進行，請稍後再試。"))
+		writeError(w, r, newError(http.StatusTooManyRequests, CodeTooManyUploads, "目前有其他上傳正在進行，請稍後再試。"))
 		return
 	}
 	defer release()
@@ -158,19 +158,19 @@ func (rt *routes) upload(w http.ResponseWriter, r *http.Request, limit int64) {
 
 	mr, err := r.MultipartReader()
 	if err != nil {
-		writeError(w, newError(http.StatusBadRequest, CodeInvalidInput, defaultMessages[http.StatusBadRequest].msg))
+		writeError(w, r, newError(http.StatusBadRequest, CodeInvalidInput, defaultMessages[http.StatusBadRequest].msg))
 		return
 	}
 	tmp := filepath.Join(rt.d.DataDir, "tmp")
 	if err := os.MkdirAll(tmp, 0o700); err != nil {
 		rt.d.Log.ErrorContext(ctx, "建立上傳暫存目錄失敗", "error", err)
-		writeError(w, asError(nil))
+		writeError(w, r, asError(nil))
 		return
 	}
 	dir, err := os.MkdirTemp(tmp, "upload-*")
 	if err != nil {
 		rt.d.Log.ErrorContext(ctx, "建立上傳暫存目錄失敗", "error", err)
-		writeError(w, asError(nil))
+		writeError(w, r, asError(nil))
 		return
 	}
 	defer os.RemoveAll(dir)
@@ -179,7 +179,7 @@ func (rt *routes) upload(w http.ResponseWriter, r *http.Request, limit int64) {
 	// 本體讀完（或失敗）：清除期限，之後的 ffprobe 與入庫可能很久，不能讓連線的背景讀取逾時而取消 request。
 	_ = rc.SetReadDeadline(time.Time{})
 	if apiErr != nil {
-		writeError(w, apiErr)
+		writeError(w, r, apiErr)
 		return
 	}
 	// 上傳的鍵與 inbox 檔案共用命名空間：交給 pipeline 避開 inbox 頂層的同名項目。
@@ -192,15 +192,15 @@ func (rt *routes) upload(w http.ResponseWriter, r *http.Request, limit int64) {
 	out, err := rt.d.Pipeline.IngestUpload(ctx, up)
 	if err != nil {
 		if errors.Is(err, media.ErrNotMedia) {
-			writeError(w, newError(http.StatusUnprocessableEntity, CodeUnsupportedMedia, "這個檔案沒有音訊或影片，無法新增。"))
+			writeError(w, r, newError(http.StatusUnprocessableEntity, CodeUnsupportedMedia, "這個檔案沒有音訊或影片，無法新增。"))
 			return
 		}
-		writeError(w, asError(rt.mapErr(ctx, err)))
+		writeError(w, r, asError(rt.mapErr(ctx, err)))
 		return
 	}
 	if out.Item.DeletedAt != nil {
 		// 相同內容的影音在垃圾桶中：不重新建立，動作「還原」（DEL-R10）。
-		writeError(w, inTrashError(http.StatusConflict, out.Item.ID))
+		writeError(w, r, inTrashError(http.StatusConflict, out.Item.ID))
 		return
 	}
 	status := http.StatusOK

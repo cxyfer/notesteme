@@ -24,6 +24,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/source"
@@ -447,7 +448,7 @@ func parseRFC3339(name, v string) (*time.Time, error) {
 	}
 	t, err := time.Parse(time.RFC3339, v)
 	if err != nil {
-		return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, name+" 必須是 RFC 3339 時間，例如 2026-01-02T15:04:05Z。")
+		return nil, apierr.Newf(http.StatusUnprocessableEntity, CodeInvalidInput, "param_rfc3339", name)
 	}
 	return &t, nil
 }
@@ -459,7 +460,7 @@ func parseSeconds(name, v string) (*int, error) {
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil || n < 0 {
-		return nil, newError(http.StatusUnprocessableEntity, CodeInvalidInput, name+" 必須是不小於 0 的整數（秒）。")
+		return nil, apierr.Newf(http.StatusUnprocessableEntity, CodeInvalidInput, "param_nonneg_seconds", name)
 	}
 	return &n, nil
 }

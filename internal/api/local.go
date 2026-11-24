@@ -36,7 +36,7 @@ func ownerMiddleware(svc *auth.Service, log *slog.Logger, kind string) func(http
 				unauthorized := newError(http.StatusUnauthorized, CodeUnauthorized, "尚未登入或登入已失效。")
 				token, ok := strings.CutPrefix(h, "Bearer ")
 				if !ok || strings.TrimSpace(token) == "" || svc == nil { // 沒有驗證服務時不放大成 owner
-					writeError(w, unauthorized)
+					writeError(w, r, unauthorized)
 					return
 				}
 				tp, err := svc.AuthenticateBearer(r.Context(), strings.TrimSpace(token))

@@ -38,6 +38,16 @@ AUTH-access.feature: A missing scope is named in the error
 AUTH-access.feature: A revoked token stops working immediately
 AUTH-access.feature: An expired token stops working
 AUTH-access.feature: MCP requests from an unexpected origin are refused
+AUTH-access.feature: Error messages follow Accept-Language while the code stays the same [example 1]
+AUTH-access.feature: Error messages follow Accept-Language while the code stays the same [example 2]
+AUTH-access.feature: Error messages follow Accept-Language while the code stays the same [example 3]
+AUTH-access.feature: Error messages follow Accept-Language while the code stays the same [example 4]
+AUTH-access.feature: Error messages follow Accept-Language while the code stays the same [example 5]
+AUTH-access.feature: Error messages follow Accept-Language while the code stays the same [example 6]
+AUTH-access.feature: Error messages follow Accept-Language while the code stays the same [example 7]
+AUTH-access.feature: A message with a parameter is translated around the parameter [example 1]
+AUTH-access.feature: A message with a parameter is translated around the parameter [example 2]
+AUTH-access.feature: A message with a parameter is translated around the parameter [example 3]
 CLI-cli.feature: A second server on the same data directory refuses to start
 CLI-cli.feature: Without a running server the CLI opens the database itself
 CLI-cli.feature: With a running server the CLI goes through it

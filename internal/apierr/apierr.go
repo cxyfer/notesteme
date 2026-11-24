@@ -15,7 +15,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/validate"
 )
 
-// Error 是所有錯誤回應的格式：至少有 code（機器可讀）與 message（預設繁體中文，NFR-I18N-2）。
+// Error 是所有錯誤回應的格式：至少有 code（機器可讀，不隨語言改變）與 message（依 Accept-Language，預設繁體中文，NFR-I18N-2）。
 type Error struct {
 	Status  int    `json:"-"`
 	Code    string `json:"code" doc:"機器可讀的錯誤代碼"`
@@ -53,6 +53,10 @@ type Error struct {
 	// Disclosure 與 DisclosureVersion 在開啟 ASR 前查詢卻沒有確認說明時，帶上要確認的說明與版本（422，HSHR-R12）。
 	Disclosure        string `json:"disclosure,omitempty"`
 	DisclosureVersion string `json:"disclosure_version,omitempty"`
+
+	// msgKey 與 msgArgs 是帶參數訊息的範本與參數（Newf，NFR-I18N-2）；不輸出。
+	msgKey  string
+	msgArgs []string
 }
 
 // Error 實作 error。
@@ -88,6 +92,46 @@ func New(status int, code, message string) *Error {
 	return &Error{Status: status, Code: code, Message: message}
 }
 
+// Newf 建立帶參數的錯誤：訊息是 templates[key] 的繁中版本，回應時依 Accept-Language 換成其他語言（NFR-I18N-2）。
+// 參數只能是不需要翻譯的值（ID、數字、大小、scope 名稱）。key 不存在是程式錯誤，直接 panic。
+func Newf(status int, code, key string, args ...string) *Error {
+	t, ok := templates[key]
+	if !ok {
+		panic("apierr: 沒有這個訊息範本 " + key)
+	}
+	return &Error{Status: status, Code: code, Message: fill(t.hant, args), msgKey: key, msgArgs: args}
+}
+
+// Localize 回傳 lang 語言的錯誤（NFR-I18N-2）：只換 message，code 與其他欄位不變。
+// 繁中、目錄中沒有的訊息或 e 為 nil 時回傳 e 本身；有翻譯時回傳複本，不改動 e（錯誤值可能是共用的）。
+func Localize(e *Error, lang string) *Error {
+	if e == nil || lang == LangZhHant || lang == "" {
+		return e
+	}
+	msg, ok := "", false
+	if t, has := templates[e.msgKey]; e.msgKey != "" && has {
+		switch lang {
+		case LangZhHans:
+			msg, ok = fill(t.hans, e.msgArgs), true
+		case LangEn:
+			msg, ok = fill(t.en, e.msgArgs), true
+		}
+	} else if tr, has := messages[e.Message]; has {
+		switch lang {
+		case LangZhHans:
+			msg, ok = tr.hans, true
+		case LangEn:
+			msg, ok = tr.en, true
+		}
+	}
+	if !ok {
+		return e
+	}
+	c := *e
+	c.Message = msg
+	return &c
+}
+
 // NotImplemented 是還沒有實作的路由的 501（M2 S0、M3-S0、M5-S0 的 stub）。
 func NotImplemented() *Error {
 	return New(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
@@ -115,6 +159,9 @@ func Write(w http.ResponseWriter, e *Error) {
 	w.WriteHeader(e.Status)
 	_ = json.NewEncoder(w).Encode(e)
 }
+
+// WriteFor 同 Write，但訊息依請求的 Accept-Language 選擇語言（NFR-I18N-2）。
+func WriteFor(w http.ResponseWriter, r *http.Request, e *Error) { Write(w, Localize(e, LangFrom(r))) }
 
 // As 把任意 error 轉成 *Error；不是 *Error 的一律視為內部錯誤（不洩漏細節）。
 func As(err error) *Error {

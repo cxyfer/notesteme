@@ -42,12 +42,12 @@ func hostOnly(hostport string) string {
 func insecureGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !IsLoopbackHost(hostOnly(r.Host)) {
-			writeError(w, newError(http.StatusForbidden, CodeInsecureHost,
+			writeError(w, r, newError(http.StatusForbidden, CodeInsecureHost,
 				"這個實例以 --insecure-no-auth 啟動，只接受以 localhost、127.0.0.1 或 [::1] 存取。"))
 			return
 		}
 		if !safeMethod(r.Method) && !sameOriginRequest(r) {
-			writeError(w, newError(http.StatusForbidden, CodeCSRF, "這個實例以 --insecure-no-auth 啟動，拒絕來自其他網站的請求。"))
+			writeError(w, r, newError(http.StatusForbidden, CodeCSRF, "這個實例以 --insecure-no-auth 啟動，拒絕來自其他網站的請求。"))
 			return
 		}
 		next.ServeHTTP(w, r)

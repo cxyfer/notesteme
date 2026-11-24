@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/bundle"
 	"github.com/cxyfer/notesteme/internal/config"
@@ -116,8 +117,7 @@ func bundleImportIntercept(rt *routes, d Deps) func(http.Handler) http.Handler {
 	maxUpload, lim := bundleLimits(d.BundleImport)
 	tooLarge := func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, io.LimitReader(r.Body, bundleDrainBytes))
-		writeError(w, newError(http.StatusRequestEntityTooLarge, CodeBundleTooLarge,
-			"bundle 超過 "+bundle.FormatSize(maxUpload)+" 的上傳上限。"))
+		writeError(w, r, apierr.Newf(http.StatusRequestEntityTooLarge, CodeBundleTooLarge, "bundle_too_large", bundle.FormatSize(maxUpload)))
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -127,18 +127,18 @@ func bundleImportIntercept(rt *routes, d Deps) func(http.Handler) http.Handler {
 			}
 			ctx := r.Context()
 			if err := requireScope(ctx, auth.ScopeAdmin); err != nil {
-				writeError(w, asError(err))
+				writeError(w, r, asError(err))
 				return
 			}
 			if d.Pipeline == nil {
-				writeError(w, asError(rt.noPipeline(ctx)))
+				writeError(w, r, asError(rt.noPipeline(ctx)))
 				return
 			}
 			onExisting := r.URL.Query().Get("on_existing")
 			if onExisting != "" && onExisting != "add_versions" {
 				e := newError(http.StatusUnprocessableEntity, CodeInvalidInput, "on_existing 只能是 add_versions。")
 				e.Errors = []validate.FieldError{{Path: "on_existing", Message: "on_existing 只能是 add_versions。"}}
-				writeError(w, e)
+				writeError(w, r, e)
 				return
 			}
 			if r.ContentLength > maxUpload+bundleFormOverhead {
@@ -146,7 +146,7 @@ func bundleImportIntercept(rt *routes, d Deps) func(http.Handler) http.Handler {
 				return
 			}
 			if !isMultipart(r) {
-				writeError(w, missingBundle())
+				writeError(w, r, missingBundle())
 				return
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, maxUpload+bundleFormOverhead)
@@ -157,15 +157,15 @@ func bundleImportIntercept(rt *routes, d Deps) func(http.Handler) http.Handler {
 				tooLarge(w, r)
 				return
 			case errors.Is(err, errNoBundlePart):
-				writeError(w, missingBundle())
+				writeError(w, r, missingBundle())
 				return
 			case err != nil:
-				writeError(w, newError(http.StatusBadRequest, CodeInvalidInput, defaultMessages[http.StatusBadRequest].msg))
+				writeError(w, r, newError(http.StatusBadRequest, CodeInvalidInput, defaultMessages[http.StatusBadRequest].msg))
 				return
 			}
 			res, err := d.Pipeline.ImportBundle(ctx, pipeline.BundleImportRequest{Data: data, Limits: lim, AddVersions: onExisting == "add_versions"})
 			if err != nil {
-				writeError(w, rt.mapBundleErr(ctx, err))
+				writeError(w, r, rt.mapBundleErr(ctx, err))
 				return
 			}
 			// Client 沒有稽核表：以 log 留下誰匯入了什麼（BND 待決問題）。

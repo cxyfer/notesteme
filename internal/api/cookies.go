@@ -58,8 +58,8 @@ const maxCookieBodyBytes = 512 << 10
 // Huma 的 MaxBodyBytes 超過時只會回 413，而規格要求所有「cookie 太大」都是同一個 422 code。
 // 本體最多讀到上限加 1 個位元組就停止，不會把超大的請求讀進記憶體。
 func cookieBodyLimit(next http.Handler) http.Handler {
-	tooLarge := func(w http.ResponseWriter) {
-		writeError(w, newError(http.StatusUnprocessableEntity, CodeCookieTooLarge, cookies.ErrTooLarge.Error()))
+	tooLarge := func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, r, newError(http.StatusUnprocessableEntity, CodeCookieTooLarge, cookies.ErrTooLarge.Error()))
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/cookies" || r.Body == nil {
@@ -67,16 +67,16 @@ func cookieBodyLimit(next http.Handler) http.Handler {
 			return
 		}
 		if r.ContentLength > maxCookieBodyBytes {
-			tooLarge(w)
+			tooLarge(w, r)
 			return
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, maxCookieBodyBytes+1))
 		if err != nil {
-			writeError(w, newError(http.StatusBadRequest, CodeInvalidInput, defaultMessages[http.StatusBadRequest].msg))
+			writeError(w, r, newError(http.StatusBadRequest, CodeInvalidInput, defaultMessages[http.StatusBadRequest].msg))
 			return
 		}
 		if len(body) > maxCookieBodyBytes {
-			tooLarge(w)
+			tooLarge(w, r)
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))

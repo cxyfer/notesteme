@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 
+	"github.com/danielgtaylor/huma/v2"
+
 	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/pipeline"
 )
@@ -78,7 +80,7 @@ func errForbidden(message string) *Error {
 }
 
 func errForbiddenScope(scope string) *Error {
-	e := errForbidden("權限不足：需要 " + scope + " scope。")
+	e := apierr.Newf(http.StatusForbidden, CodeForbidden, "forbidden_scope", scope)
 	e.RequiredScope = scope
 	return e
 }
@@ -101,8 +103,16 @@ var defaultMessages = func() map[int]struct{ code, msg string } {
 	return m
 }()
 
-// writeError 在 Huma 之外（middleware）寫出錯誤回應。
-func writeError(w http.ResponseWriter, e *Error) { apierr.Write(w, e) }
+// writeError 在 Huma 之外（middleware）寫出錯誤回應；訊息依請求的 Accept-Language 選擇語言（NFR-I18N-2）。
+func writeError(w http.ResponseWriter, r *http.Request, e *Error) { apierr.WriteFor(w, r, e) }
+
+// localizeErrors 是 Huma 的 transformer：錯誤回應的訊息依 Accept-Language 選擇語言，code 不變（NFR-I18N-2）。
+func localizeErrors(ctx huma.Context, _ string, v any) (any, error) {
+	if e, ok := v.(*Error); ok {
+		return apierr.Localize(e, apierr.Negotiate(ctx.Header("Accept-Language"))), nil
+	}
+	return v, nil
+}
 
 // asError 把任意 error 轉成 *Error；不是 *Error 的一律視為內部錯誤（不洩漏細節）。
 func asError(err error) *Error { return apierr.As(err) }
