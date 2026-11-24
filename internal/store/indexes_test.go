@@ -78,7 +78,7 @@ func TestStageRunsQueriesUseIndexes(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	queries := map[string]string{
 		"StageRunsByItem":     "SELECT * FROM stage_runs WHERE item_id = ? ORDER BY created_at, rowid",
-		"DoneStageByCacheKey": "SELECT * FROM stage_runs WHERE item_id = ? AND stage = ? AND cache_key = ? AND status = 'done' ORDER BY created_at DESC, rowid DESC LIMIT 1",
+		"DoneStageByCacheKey": "SELECT * FROM stage_runs WHERE item_id = ? AND stage = ? AND cache_key = ? AND status = 'done' AND NOT EXISTS (SELECT 1 FROM artifacts AS c WHERE c.id = stage_runs.artifact_id AND c.corrupt_at IS NOT NULL) ORDER BY created_at DESC, rowid DESC LIMIT 1",
 		"ExecutedRunsByItem":  "SELECT sr.id FROM stage_runs sr JOIN config_snapshots cs ON cs.id = sr.config_snapshot_id WHERE sr.item_id = ? AND sr.started_at IS NOT NULL ORDER BY sr.started_at DESC, sr.rowid DESC",
 		"LatestRunStatus":     "SELECT r.status FROM stage_runs AS r WHERE r.item_id = ? AND r.stage = ? ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1",
 		"TasksOfItem":         "SELECT id FROM stage_runs WHERE item_id = ?",

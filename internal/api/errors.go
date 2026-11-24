@@ -62,6 +62,9 @@ const (
 	CodeStyleExists  = "style_exists"
 	CodeBuiltinStyle = "builtin_style"
 
+	// 產出檔與記錄的 sha256 不符（NFR-REL-2）：已標記損毀，能自動重新產生時已重新處理。
+	CodeArtifactCorrupt = "artifact_corrupt"
+
 	// 外部工具失敗（例如 yt-dlp 展開播放清單，ING-R4）；稍後重試或處理環境後可能成功。
 	CodeUpstream = "upstream_failed"
 )

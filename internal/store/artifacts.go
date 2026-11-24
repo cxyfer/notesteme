@@ -57,6 +57,7 @@ func artifactFromRow(row sqlcdb.Artifact) (Artifact, error) {
 		SupersededBy: deref(row.SupersededBy),
 		Pinned:       row.Pinned != 0,
 		CreatedAt:    fromMs(row.CreatedAt),
+		CorruptAt:    msToTime(row.CorruptAt),
 	}
 	if err := json.Unmarshal([]byte(row.ParentsJson), &a.Parents); err != nil {
 		return Artifact{}, err
@@ -380,4 +381,11 @@ func (r *Repo) LatestBundleImport(ctx context.Context, itemID string) (BundleImp
 		b.ImportedAt = t.UTC()
 	}
 	return b, true, nil
+}
+
+// MarkArtifactCorrupt 把產出標記為損毀（NFR-REL-2）。回傳 true 代表這次才標記（之前沒有標記過）：
+// 只有它要重跑產生這份產出的步驟，並行讀到同一個壞檔的其他呼叫端不重複重跑。
+func (r *Repo) MarkArtifactCorrupt(ctx context.Context, id string) (bool, error) {
+	n, err := r.q.MarkArtifactCorrupt(ctx, sqlcdb.MarkArtifactCorruptParams{Now: r.nowMs(), ID: id})
+	return n == 1, err
 }

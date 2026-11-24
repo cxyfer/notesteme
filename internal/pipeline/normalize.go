@@ -32,12 +32,14 @@ func (p *Pipeline) runNormalize(ctx context.Context, it store.Item) (result, err
 	done := store.StageState{Status: store.StatusDone}
 
 	// 同一份上游、同一版演算法的結果已經存在：重用（PIPE-R5）。
-	if hit, err := p.st.Read().DoneStageByCacheKey(ctx, it.ID, StageNormalize, key); err == nil && hit.ArtifactID != "" {
+	if hit, ok, err := p.cacheHit(ctx, p.st.Read(), it.ID, StageNormalize, key); err != nil {
+		return result{}, err
+	} else if ok && hit.ArtifactID != "" {
 		stage.ArtifactID = hit.ArtifactID
 		return result{task: taskDone, advance: true, stage: stage, state: done}, nil
 	}
 
-	tr, err := readTranscript(p.dataDir, src.Path, src.SHA256)
+	tr, err := p.readTranscriptArtifact(ctx, *src)
 	if err != nil {
 		if errors.Is(err, ErrCorruptArtifact) {
 			return result{}, errPermanent(err.Error())

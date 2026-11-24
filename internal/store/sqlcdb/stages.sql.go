@@ -66,8 +66,10 @@ func (q *Queries) BlockedRunsByResume(ctx context.Context, resumeOn string) ([]S
 
 const doneStageByCacheKey = `-- name: DoneStageByCacheKey :one
 SELECT id, item_id, stage, lang, variant, status, block_reason, error_class, error_message, actions_json, executor, cache_key, impl_version, config_snapshot_id, artifact_id, not_before, started_at, finished_at, created_at, resume_on FROM stage_runs
-WHERE item_id = ?1 AND stage = ?2 AND cache_key = ?3 AND status = 'done'
-ORDER BY created_at DESC, rowid DESC LIMIT 1
+WHERE stage_runs.item_id = ?1 AND stage_runs.stage = ?2
+  AND stage_runs.cache_key = ?3 AND stage_runs.status = 'done'
+  AND NOT EXISTS (SELECT 1 FROM artifacts AS c WHERE c.id = stage_runs.artifact_id AND c.corrupt_at IS NOT NULL)
+ORDER BY stage_runs.created_at DESC, stage_runs.rowid DESC LIMIT 1
 `
 
 type DoneStageByCacheKeyParams struct {
@@ -76,6 +78,7 @@ type DoneStageByCacheKeyParams struct {
 	CacheKey string
 }
 
+// A run whose artifact is marked corrupt is not a cache hit (NFR-REL-2): rerunning the step must produce it again.
 func (q *Queries) DoneStageByCacheKey(ctx context.Context, arg DoneStageByCacheKeyParams) (StageRun, error) {
 	row := q.db.QueryRowContext(ctx, doneStageByCacheKey, arg.ItemID, arg.Stage, arg.CacheKey)
 	var i StageRun

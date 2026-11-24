@@ -10,7 +10,7 @@ import (
 )
 
 const artifactByID = `-- name: ArtifactByID :one
-SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at, timings_json FROM artifacts WHERE id = ?1
+SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at, timings_json, corrupt_at FROM artifacts WHERE id = ?1
 `
 
 func (q *Queries) ArtifactByID(ctx context.Context, id string) (Artifact, error) {
@@ -32,12 +32,13 @@ func (q *Queries) ArtifactByID(ctx context.Context, id string) (Artifact, error)
 		&i.Pinned,
 		&i.CreatedAt,
 		&i.TimingsJson,
+		&i.CorruptAt,
 	)
 	return i, err
 }
 
 const artifactGroup = `-- name: ArtifactGroup :many
-SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at, timings_json FROM artifacts
+SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at, timings_json, corrupt_at FROM artifacts
 WHERE item_id = ?1 AND kind = ?2 AND variant = ?3 AND lang = ?4
 ORDER BY created_at DESC, rowid DESC
 `
@@ -80,6 +81,7 @@ func (q *Queries) ArtifactGroup(ctx context.Context, arg ArtifactGroupParams) ([
 			&i.Pinned,
 			&i.CreatedAt,
 			&i.TimingsJson,
+			&i.CorruptAt,
 		); err != nil {
 			return nil, err
 		}
@@ -163,7 +165,7 @@ func (q *Queries) CountArtifactVersions(ctx context.Context, arg CountArtifactVe
 }
 
 const currentArtifacts = `-- name: CurrentArtifacts :many
-SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at, timings_json FROM artifacts
+SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at, timings_json, corrupt_at FROM artifacts
 WHERE item_id = ?1 AND (CAST(?2 AS TEXT) = '' OR kind = ?2) AND superseded_by IS NULL
 ORDER BY created_at, rowid
 `
@@ -199,6 +201,7 @@ func (q *Queries) CurrentArtifacts(ctx context.Context, arg CurrentArtifactsPara
 			&i.Pinned,
 			&i.CreatedAt,
 			&i.TimingsJson,
+			&i.CorruptAt,
 		); err != nil {
 			return nil, err
 		}
@@ -417,6 +420,25 @@ func (q *Queries) LatestProbes(ctx context.Context, itemID string) ([]SourceProb
 		return nil, err
 	}
 	return items, nil
+}
+
+const markArtifactCorrupt = `-- name: MarkArtifactCorrupt :execrows
+UPDATE artifacts SET corrupt_at = CAST(?1 AS INTEGER) WHERE id = ?2 AND corrupt_at IS NULL
+`
+
+type MarkArtifactCorruptParams struct {
+	Now int64
+	ID  string
+}
+
+// Mark once: only the caller that changes the row (1) reruns the step that produced it, so concurrent readers that
+// find the same damaged file do not start several reruns.
+func (q *Queries) MarkArtifactCorrupt(ctx context.Context, arg MarkArtifactCorruptParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markArtifactCorrupt, arg.Now, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const pinArtifact = `-- name: PinArtifact :exec

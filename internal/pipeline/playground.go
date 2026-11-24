@@ -198,7 +198,7 @@ func (p *Pipeline) Playground(ctx context.Context, req PlaygroundRequest) (Playg
 	if !found {
 		return PlaygroundResult{}, invalidf("這部影音還沒有可以試跑的字幕，請先完成前面的步驟。")
 	}
-	tr, err := readTranscript(p.dataDir, art.Path, art.SHA256)
+	tr, err := p.readTranscriptArtifact(ctx, art)
 	if err != nil {
 		return PlaygroundResult{}, err
 	}

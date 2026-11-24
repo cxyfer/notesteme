@@ -262,6 +262,8 @@ type Artifact struct {
 	SupersededBy string
 	Pinned       bool
 	CreatedAt    time.Time
+	// CorruptAt 是發現產出檔與 sha256 不符（或不見）的時間；nil 代表沒有發現問題（NFR-REL-2）。
+	CorruptAt *time.Time
 }
 
 // Probe 是一次 Probe 中某個來源的結果（SRC-R17）。

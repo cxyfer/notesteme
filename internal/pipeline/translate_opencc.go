@@ -46,7 +46,7 @@ func (p *Pipeline) runTranslateOpenCC(ctx context.Context, it store.Item, eff Ef
 	if !ok {
 		return result{}, errPermanent(errNoSource.Error())
 	}
-	tr, err := readTranscript(p.dataDir, src.Path, src.SHA256)
+	tr, err := p.readTranscriptArtifact(ctx, src)
 	if err != nil {
 		if errors.Is(err, ErrCorruptArtifact) {
 			return result{}, errPermanent(err.Error())

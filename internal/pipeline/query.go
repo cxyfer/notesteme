@@ -224,7 +224,7 @@ func (p *Pipeline) CuesWithItem(ctx context.Context, itemID string, q CuesQuery)
 			}
 		}
 	}
-	tr, err := readTranscript(p.dataDir, chosen.Path, chosen.SHA256)
+	tr, err := p.readTranscriptArtifact(ctx, chosen)
 	if err != nil {
 		return store.Item{}, subtitle.Transcript{}, err
 	}

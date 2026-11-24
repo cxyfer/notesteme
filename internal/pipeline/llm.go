@@ -360,7 +360,7 @@ func (p *Pipeline) prepareLLM(ctx context.Context, it store.Item, stage string, 
 		}
 		job.input = art
 	}
-	job.tr, err = readTranscript(p.dataDir, job.input.Path, job.input.SHA256)
+	job.tr, err = p.readTranscriptArtifact(ctx, job.input)
 	if err != nil {
 		if errors.Is(err, ErrCorruptArtifact) {
 			return nil, errPermanent(err.Error())
@@ -599,7 +599,9 @@ func (p *Pipeline) llmPlan(ctx context.Context, t store.Task, run store.StageRun
 	r := p.st.Read()
 	// 步驟層的快取（PIPE-R5）：相同輸入與設定的完整結果已經存在時直接重用。指定重跑的 chunk 時不用。
 	if len(force) == 0 {
-		if hit, err := r.DoneStageByCacheKey(ctx, it.ID, run.Stage, job.stageKey); err == nil && hit.ArtifactID != "" {
+		if hit, ok, err := p.cacheHit(ctx, r, it.ID, run.Stage, job.stageKey); err != nil {
+			return result{}, err
+		} else if ok && hit.ArtifactID != "" {
 			stage.ArtifactID = hit.ArtifactID
 			return result{task: taskDone, advance: true, stage: stage, state: store.StageState{Status: store.StatusDone}}, nil
 		}

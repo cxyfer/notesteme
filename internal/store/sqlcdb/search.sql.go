@@ -56,7 +56,7 @@ func (q *Queries) CurrentTranscriptKeys(ctx context.Context) ([]CurrentTranscrip
 }
 
 const currentTranscriptsForLang = `-- name: CurrentTranscriptsForLang :many
-SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at, timings_json FROM artifacts
+SELECT id, item_id, kind, variant, lang, format, path, sha256, size, parents_json, provenance_json, superseded_by, pinned, created_at, timings_json, corrupt_at FROM artifacts
 WHERE item_id = ?1 AND kind = 'transcript' AND lang = ?2 AND superseded_by IS NULL
 ORDER BY created_at, id
 `
@@ -92,6 +92,7 @@ func (q *Queries) CurrentTranscriptsForLang(ctx context.Context, arg CurrentTran
 			&i.Pinned,
 			&i.CreatedAt,
 			&i.TimingsJson,
+			&i.CorruptAt,
 		); err != nil {
 			return nil, err
 		}

@@ -41,6 +41,7 @@ type Artifact struct {
 	Pinned         int64
 	CreatedAt      int64
 	TimingsJson    string
+	CorruptAt      *int64
 }
 
 type AssStyle struct {

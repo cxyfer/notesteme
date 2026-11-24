@@ -96,7 +96,7 @@ func (p *Pipeline) RenderInput(ctx context.Context, itemID string, q CuesQuery) 
 	if !ok {
 		return out, nil
 	}
-	tr, err := readTranscript(p.dataDir, orig.Path, orig.SHA256)
+	tr, err := p.readTranscriptArtifact(ctx, orig)
 	if err != nil {
 		return RenderInput{}, err
 	}

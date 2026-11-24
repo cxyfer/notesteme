@@ -91,3 +91,8 @@ WHERE item_id = sqlc.arg(item_id)
   AND json_type(provenance_json, '$.imported_from.bundle_sha256') = 'text'
 ORDER BY created_at DESC, rowid DESC
 LIMIT 1;
+
+-- name: MarkArtifactCorrupt :execrows
+-- Mark once: only the caller that changes the row (1) reruns the step that produced it, so concurrent readers that
+-- find the same damaged file do not start several reruns.
+UPDATE artifacts SET corrupt_at = CAST(sqlc.arg(now) AS INTEGER) WHERE id = sqlc.arg(id) AND corrupt_at IS NULL;

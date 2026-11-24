@@ -67,9 +67,12 @@ UPDATE stage_runs SET
 WHERE id = sqlc.arg(id);
 
 -- name: DoneStageByCacheKey :one
+-- A run whose artifact is marked corrupt is not a cache hit (NFR-REL-2): rerunning the step must produce it again.
 SELECT * FROM stage_runs
-WHERE item_id = sqlc.arg(item_id) AND stage = sqlc.arg(stage) AND cache_key = sqlc.arg(cache_key) AND status = 'done'
-ORDER BY created_at DESC, rowid DESC LIMIT 1;
+WHERE stage_runs.item_id = sqlc.arg(item_id) AND stage_runs.stage = sqlc.arg(stage)
+  AND stage_runs.cache_key = sqlc.arg(cache_key) AND stage_runs.status = 'done'
+  AND NOT EXISTS (SELECT 1 FROM artifacts AS c WHERE c.id = stage_runs.artifact_id AND c.corrupt_at IS NOT NULL)
+ORDER BY stage_runs.created_at DESC, stage_runs.rowid DESC LIMIT 1;
 
 -- name: MarkStageRunning :one
 -- Claiming a task marks its stage as running and clears the previous message and finish time.

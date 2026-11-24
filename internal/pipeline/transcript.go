@@ -231,8 +231,8 @@ func (p *Pipeline) runTranscript(ctx context.Context, it store.Item, lang Langua
 	// reuse 在快取鍵相同的步驟已經完成時，直接重用，不下載字幕，也不建立新版本（PIPE-R5）。
 	// Probe 的結果照樣記錄（SRC-R17）。
 	reuse := func() (result, bool) {
-		hit, err := p.st.Read().DoneStageByCacheKey(ctx, it.ID, StageTranscript, stage.CacheKey)
-		if err != nil || hit.ArtifactID == "" {
+		hit, ok, err := p.cacheHit(ctx, p.st.Read(), it.ID, StageTranscript, stage.CacheKey)
+		if err != nil || !ok || hit.ArtifactID == "" {
 			return result{}, false
 		}
 		stage.ArtifactID = hit.ArtifactID

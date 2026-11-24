@@ -157,7 +157,7 @@ func (p *Pipeline) trnPrepare(ctx context.Context, it store.Item, eff Effective,
 		}
 		b.input = art
 	}
-	if b.tr, err = readTranscript(p.dataDir, b.input.Path, b.input.SHA256); err != nil {
+	if b.tr, err = p.readTranscriptArtifact(ctx, b.input); err != nil {
 		if errors.Is(err, ErrCorruptArtifact) {
 			return nil, errPermanent(err.Error())
 		}

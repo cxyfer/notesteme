@@ -446,6 +446,28 @@ func TestDoneStageByCacheKey(t *testing.T) {
 	if err != nil || got.ID != sr.ID || got.FinishedAt == nil {
 		t.Fatalf("DoneStageByCacheKey = %+v, %v", got, err)
 	}
+
+	// 產出標記損毀之後不再是快取命中（NFR-REL-2）；標記只成功一次。
+	a, err := w.InsertArtifact(ctx, NewArtifact{ItemID: it.ID, Kind: "transcript", Variant: "source", Format: "cues-json",
+		Path: "artifacts/x.json", SHA256: "abc", Size: 3, Provenance: []byte(`{"stage":"transcript"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = w.SetStageResult(ctx, sr.ID, StageResult{Executor: "builtin", CacheKey: "k", ImplVersion: 1, ArtifactID: a.ID})
+	if got, err := s.Read().DoneStageByCacheKey(ctx, it.ID, "metadata", "k"); err != nil || got.ArtifactID != a.ID {
+		t.Fatalf("完好的產出仍命中：%+v, %v", got, err)
+	}
+	for i, want := range []bool{true, false} {
+		if ok, err := w.MarkArtifactCorrupt(ctx, a.ID); err != nil || ok != want {
+			t.Errorf("第 %d 次標記 = %v, %v", i+1, ok, err)
+		}
+	}
+	if got, _ := s.Read().Artifact(ctx, a.ID); got.CorruptAt == nil {
+		t.Error("CorruptAt 應有值")
+	}
+	if _, err := s.Read().DoneStageByCacheKey(ctx, it.ID, "metadata", "k"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("損毀的產出不應命中：%v", err)
+	}
 }
 
 func ids(ts []Task) []string {

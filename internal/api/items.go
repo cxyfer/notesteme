@@ -880,6 +880,7 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 		up  *pipeline.UpstreamError
 		iu  *pipeline.InUseError
 		ts  *pipeline.TaskStateError
+		ce  *pipeline.CorruptArtifactError
 	)
 	if pe := policyError(err); pe != nil {
 		return pe
@@ -917,6 +918,10 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 			itemID = tr.ItemID
 		}
 		return inTrashError(http.StatusNotFound, itemID)
+	case errors.As(err, &ce):
+		// NFR-REL-2：產出檔損毀，已標記並（能的話）從產生它的步驟重新處理。
+		rt.d.Log.LogAttrs(ctx, slog.LevelWarn, "讀到損毀的產出檔", slog.String("artifact", ce.ArtifactID), slog.Bool("rerun", ce.Rerun))
+		return newError(http.StatusConflict, CodeArtifactCorrupt, ce.Error())
 	case errors.Is(err, pipeline.ErrTaskNotFound):
 		return newError(http.StatusNotFound, CodeNotFound, err.Error())
 	case errors.As(err, &ts):

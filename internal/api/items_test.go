@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -51,6 +53,7 @@ type itemsRig struct {
 	clk    *clock.Fake
 	st     *store.Store
 	t      *testing.T
+	dir    string // 資料目錄
 }
 
 func newItemsRig(t *testing.T, opts ...func(*pipeline.Deps)) *itemsRig {
@@ -90,7 +93,7 @@ func newItemsRigAPI(t *testing.T, apiOpt func(*Deps), opts ...func(*pipeline.Dep
 		apiOpt(&ad)
 	}
 	h := New(ad)
-	r := &itemsRig{h: h, worker: worker.New(q, p, clk, log), clk: clk, st: st, t: t}
+	r := &itemsRig{h: h, worker: worker.New(q, p, clk, log), clk: clk, st: st, t: t, dir: dir}
 	rec := r.do("POST", "/api/auth/login", `{"password":"pw"}`, nil)
 	for _, c := range rec.Result().Cookies() {
 		switch c.Name {
@@ -422,5 +425,46 @@ func TestResolveEndpoint(t *testing.T) {
 	}
 	if rec := r.do("POST", "/api/resolve", `{"url":"https://youtu.be/abc123xxxxx"}`, nil); rec.Code != 401 {
 		t.Errorf("未登入 = %d", rec.Code)
+	}
+}
+
+// NFR-REL-2：下載或讀取時發現字幕檔損毀，回 409 artifact_corrupt，並從產生它的步驟重新處理；完成後可以正常讀取。
+func TestCuesCorruptArtifactReruns(t *testing.T) {
+	r := newItemsRig(t)
+	ctx := context.Background()
+	id := decode[itemsBody](t, r.owner("POST", "/api/items", `{"url":"https://youtu.be/abc123xxxxx"}`)).Items[0].ID
+	if err := r.worker.RunUntilIdle(ctx); err != nil {
+		t.Fatal(err)
+	}
+	arts, err := r.st.Read().CurrentArtifacts(ctx, id, "transcript")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var norm store.Artifact
+	for _, a := range arts {
+		if a.Variant == "normalized" {
+			norm = a
+		}
+	}
+	path := filepath.Join(r.dir, filepath.FromSlash(norm.Path))
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b[len(b)/2] ^= 1
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"/cues", "/subtitles?format=srt"} {
+		rec := r.owner("GET", "/api/items/"+id+p, "")
+		if e := decodeError(t, rec.Body.Bytes()); rec.Code != 409 || e.Code != CodeArtifactCorrupt || !strings.Contains(e.Message, "normalize") {
+			t.Errorf("%s = %d %s", p, rec.Code, rec.Body)
+		}
+	}
+	if err := r.worker.RunUntilIdle(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if rec := r.owner("GET", "/api/items/"+id+"/subtitles?format=srt", ""); rec.Code != 200 || !strings.Contains(rec.Body.String(), "two") {
+		t.Errorf("重新處理後 = %d %s", rec.Code, rec.Body)
 	}
 }
