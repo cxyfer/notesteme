@@ -510,6 +510,15 @@
   - OPS（O25）：排程工作 `tools.yt-dlp.update`，設定檔 `updates.yt_dlp.{enabled,at,timezone}`，預設開啟、`04:00` `UTC`；呼叫與 API 共用的 `ytdlp.Manager.Update`；固定版本略過、回退或安裝失敗以告警 `ytdlp_update_failed` 通知並在成功時解除、外部指定的路徑或 Windows 不動作、手動更新進行中延後 30 分鐘。harness 在設定檔沒寫 `enabled` 時關閉（`TestControls.NoYtDlpAutoUpdate`）。
   - 驗證：`go build`／`vet`／`gofmt` 乾淨；`go test -p 2 ./internal/... ./cmd/...` 全過；`scripts/ci/coverage.sh` 通過（pipeline 84.7%）；`go test -race -p 2 -timeout 100m` 只跑改過的套件（langdetect、pipeline、ops、vault、config、app、api、store、`features/internal/fakegit`、`features/steps`）全過；`./features`（驗收場景）沒有在 `-race` 下跑，只跑了一般模式的 313／943 個場景；前端 typecheck、lint、format、test（467）、build、bundle（283.6KB）、i18n 都過；新的保留原因 `git_*` 與告警 `ytdlp_update_failed` 已補三語文字。
   - 沒實測：真實的 git 遠端（GitHub／GitLab）、真實的 PyPI 更新、真實語音樣本的語言偵測；都只用假工具與本機 bare repo。§6 的「每天的排程更新還沒做」與「現在改用語音轉錄只顯示」兩條已由這個切片處理（§6 未改，留給主代理整理）。
+
+
+- **收尾 D1（2026-11-24，分支 `feat/task-retry-cancel-lib-grouping`，未推送）**：決定都標「依 /goal 採 advisor 建議，待 owner 追認」。
+  - 不穩定測試 `TestMCPLoopbackRechecksPermissions`：根因是 MCP 請求的 context 已取消時，`context.AfterFunc` 在另一個 goroutine 非同步取消內部請求，內部請求可能先做完。`mcpLoopback.Get` 在開始前與結束後都檢查 base 的 `Err()`；新增同一請求跑 300 次的 `TestMCPLoopbackCancelledBaseAlwaysFails`，`-count=50` 通過。
+  - PIPE：`POST /api/tasks/{id}/retry`／`cancel` 取代 501 stub（單位是任務所屬的 stage run，scope `admin`，回影音詳情；409 `task_not_retryable`／`task_not_cancellable`）；`GET /api/queue` 多 `failed` 清單；migration 00033。佇列頁加單一任務的「取消…」與「失敗與停住」清單（每列重試、全部重試），佇列頁改成 lazy。MCP／CLI 規格沒有對應功能，沒有新增。見 PIPE 待決問題。
+  - NFR-REL-2：快取命中重用產出時與讀取字幕產出時比對大小與 sha256，不符或不見就標記 `artifacts.corrupt_at`（migration 00034）並從產生它的步驟重跑（只有第一個標記的呼叫端觸發；匯入、編輯、seeded 的產出只標記）；LLM 的 chunk 快取照常重用。API 回 409 `artifact_corrupt`。frames 圖片、筆記、摘要、章節不自動重跑（已知限制）。見 PIPE 待決問題。
+  - LIB-R4：`GET /api/items` 加 `group_by=channel|published|status`、每列的 `channel_name` 與 `group`；分組時游標 v2（HMAC 涵蓋組鍵，指紋含 `group_by`）；沒有另外的 `sort`。媒體庫預設依頻道分組，可以切換（網址 `group`），媒體庫頁改成 lazy。翻頁期間組鍵可能改變（已知限制）。見 LIB 待決問題與 ui/README 10.22。
+  - 驗證：預設 tag 308 個、`@M1,@M2,@M3,@M4,@M5` 936 個場景逐場景與開工前相同（全部 passed）；涵蓋率 subtitle 95.8%、pipeline 84.6%、queue 89.2%、netguard 93.6%；`-race` 只跑改過的套件 hubapi、pipeline、store、api、queue、app（store/sqlcdb 是產生碼、沒有測試）；前端初始 JS 271.6KB／300KB。
+
 ## 2. 下一步
 
 ### 2026-11-24 現況
