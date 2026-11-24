@@ -2059,6 +2059,8 @@
     "regenStarted": "Processing started.",
     "openItem": "Open item",
     "fromHub": "Raw subtitles from the Hub",
+    "fromHubBy": "Raw subtitles from the Hub by @{{uploader}}",
+    "viewVersion": "View this version on the Hub",
     "shared": "Shared to the Hub",
     "manageOnHub": "Manage or withdraw on the Hub",
     "share": {

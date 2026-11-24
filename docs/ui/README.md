@@ -544,7 +544,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 11. **使用者管理的群組名稱是輸入框**（附 `contributors`、`moderators` 的建議）：API 沒有列出設定檔群組的路由；`admins`（403 `admin_by_config`）與 `members` 不提供移除按鈕，自己的帳號不提供停用。**待決**：需要的話 API 加「群組清單」。
 12. **錯誤訊息的語言**：Hub 的錯誤訊息與欄位錯誤目前只有繁中；UI 對常見的 code（`errors.<code>`，例如 `own_version`、`already_reported`、`last_identity`）用自己的三語字典，其他顯示伺服器的訊息。**待決**：Hub 是否依 `Accept-Language` 產生訊息（同 Client 的 NFR-I18N-2）。
 13. **Client 的「分享到 Hub」**：可選的產出由步驟狀態推測（API 沒有「這部影音有哪些產出」的清單），預設是「全部」（不送 `artifacts`，伺服器決定，HSHR-R5）；改成「只分享勾選的」時才送清單，不存在的產出由伺服器回 422 `artifact_not_found`。授權沒有預設值（HSHR-R3 要求明確選擇）。「預覽會送出的欄位」列出影音的欄位，產出的內容與來源紀錄只用文字說明。**待決**：要逐欄預覽來源紀錄，需要「試做 bundle」的 API。本機檔案不顯示按鈕。
-14. **待決（API）**：HSHR 的 `@ui` 場景要求「來自 Hub：@alice 的原始字幕」，但 `GET /api/items/:id` 沒有 `hub_origin`（上傳者），目前只顯示「來自 Hub 的原始字幕」（字幕來源是 `hub` 時）。建議 `sources` 或 `ItemDetail` 加 `hub_origin.uploader`。
+14. ~~**待決（API）**：`GET /api/items/:id` 沒有 `hub_origin`（上傳者），只顯示「來自 Hub 的原始字幕」~~：HSHR S23 加了 `hub_origin`，影音詳情已顯示「來自 Hub：@alice 的原始字幕」與 Hub 版本頁的連結（見 10.23）。
 15. **已分享清單**連到 Hub 的「帳號」頁（Hub 沒有單一分享的頁面）；撤回只在 Hub 進行（HSHR S12）。`hub_url` 不是 https 時不產生連結。
 16. **設定「Hub」分區**加在「系統」之後（`SETTINGS_SECTIONS` 只加一項），lazy 載入。ASR 前查詢的說明一律顯示，開啟前要勾「我了解」，送出 `acknowledge: <disclosure_version>`。
 17. **commit 的切法**：Hub UI 的頁面共用 router、字典與樣式，拆成每頁一個 commit 時中間的 commit 無法單獨建置，所以 Hub UI 是一個 commit；Go 端、`web/shared` 的搬移、CI 與 Client 各自一個。
@@ -650,6 +650,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 項目 | 狀態 | 位置 |
 | --- | --- | --- |
 | 佇列：Agent 任務也列在任務列表（AGT A13）：被領取的顯示「由 Claude Code 處理中」與「租約剩 7:42」（每秒倒數），等待中的顯示「等待 Agent」；Agent 的列有「改用 API 處理」（`POST /api/tasks/{id}/switch-executor`）；通道的使用中／等待仍只算內建 worker | 完成 | `src/pages/queue/QueuePage.tsx` |
+| 影音詳情：字幕來源是 Hub 時顯示「來自 Hub：@alice 的原始字幕」與「在 Hub 查看這個版本」（`GET /api/items/{id}` 的 `hub_origin`，HSHR S23） | 完成 | `src/pages/hub/HubOrigin.tsx`、`src/pages/item/ItemPage.tsx` |
 
 1. **Agent 任務在列表中的位置**：沿用既有的排序（被領取的在前，同狀態維持 API 的順序）。API 先列內建 worker 的任務（A13），所以被 Agent 領取的排在被內建 worker 領取的之後、所有等待中的之前。篩選不另外加「執行方式」：資源類別照 `resource_class`（Agent 任務是 `llm`），狀態的「執行中」包含被 Agent 領取的。
 2. **狀態的用字**：被領取的是「由〈Agent 名稱〉處理中」（README 用字表的「由 Agent 處理中」，`agent` 是領取者的 token 名稱；沒有名稱時用「由 Agent 處理中」），等待中的用既有的「等待 Agent」。token 名稱是使用者自己取的文字，一律當文字節點顯示。
@@ -657,3 +658,6 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 4. **租約延長的更新**：Agent 呼叫 `extend_lease` 不會發 SSE 事件（`stage.status` 不變），所以有 Agent 租約時每 30 秒重新讀取佇列；沒有 Agent 租約時不輪詢（照舊靠 SSE）。
 5. **通道不算 Agent 任務**：`lanes` 的使用中與等待照 API（只算內建 worker，AGT-R2、A13），UI 不自己加總；任務列表上方的說明改成「交給 Agent 的任務也列在這裡……它們不佔上面各資源類別的並行名額」，避免看到 LLM 通道「使用中 0」卻有 Agent 任務時誤會。
 6. **「改用 API 處理」只在 Agent 的列**：送 `{executor: "api"}`，不另外確認（影音詳情的同一個動作也不確認）；成功的 toast 沿用「〈步驟〉已改用 API 處理。」，`api_not_configured`、`no_agent_tasks` 等錯誤用既有的字典。「失敗與停住」清單不加這個按鈕：那些任務已經結束，切換只會得到 409 `no_agent_tasks`。Agent 任務照樣有「取消…」與「停止處理…」（取消以步驟為單位，Agent 的任務一起取消、租約失效）。
+7. **Hub 來源的顯示條件**：有 `hub_origin` 時一律以它為準；`uploader` 是空字串、或 `hub_origin` 是 `null` 但使用中的來源是 `hub` 時，維持通用的「來自 Hub 的原始字幕」。
+8. **上傳者名稱**：Hub 的顯示名稱是不可信的文字（S23 已去掉控制與格式字元、最多 64 字），UI 只用文字節點渲染，超過 32 個字（以 code point 計，不切開 surrogate pair）時截斷加「…」，完整名稱放在 `title`。
+9. **版本頁的連結只給 https 的 Hub**：網址是 `hub_origin.url` 加 `/versions/<version_id>`，沿用 `hubLink`（「已分享到 Hub」的同一個規則，10.17 第 15 點），`http:`、`javascript:` 等都不產生連結，比「接受 http／https」更保守；另開分頁並帶 `rel="noopener noreferrer"`。

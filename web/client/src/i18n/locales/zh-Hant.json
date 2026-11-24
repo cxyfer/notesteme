@@ -2005,6 +2005,8 @@
     "regenStarted": "已開始處理。",
     "openItem": "開啟影音",
     "fromHub": "來自 Hub 的原始字幕",
+    "fromHubBy": "來自 Hub：@{{uploader}} 的原始字幕",
+    "viewVersion": "在 Hub 查看這個版本",
     "shared": "已分享到 Hub",
     "manageOnHub": "在 Hub 管理或撤回",
     "share": {

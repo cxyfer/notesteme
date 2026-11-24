@@ -7,6 +7,7 @@ import { defaultRoutes, detail, hubSettings, item, stage } from "../../test/fixt
 import { apiError, json, mockApi } from "../../test/mockApi";
 import { renderRoute, signIn } from "../../test/render";
 import { hubLink, parseVersionRef } from "./hub";
+import { truncateName } from "./HubOrigin";
 
 describe("hub 小工具", () => {
   it("版本 ID 或 Hub 版本頁網址", () => {
@@ -205,5 +206,71 @@ describe("影音詳情：分享到 Hub", () => {
     renderRoute("/items/item-1");
     await screen.findByRole("heading", { level: 1 });
     expect(screen.queryByRole("button", { name: "分享到 Hub" })).toBeNull();
+  });
+});
+
+describe("影音詳情：來自誰的 Hub 字幕（HSHR S23）", () => {
+  const origin = (over: Record<string, string> = {}) => ({
+    url: "https://hub.example.org",
+    version_id: "v_42",
+    sha256: "a".repeat(64),
+    uploader: "alice",
+    ...over,
+  });
+  const openWith = async (hubOrigin: ReturnType<typeof origin> | null) => {
+    mockApi({
+      ...defaultRoutes(),
+      "GET /api/items/{id}": () => ({ ...itemWithShares(), hub_origin: hubOrigin }),
+    });
+    signIn();
+    const r = renderRoute("/items/item-1");
+    await screen.findByRole("heading", { level: 1 });
+    return r;
+  };
+
+  it("顯示「來自 Hub：@alice 的原始字幕」與 Hub 版本頁的連結（axe 無違規）", async () => {
+    const { container } = await openWith(origin());
+    expect(await screen.findByText("來自 Hub：@alice 的原始字幕")).toBeTruthy();
+    const link = screen.getByRole("link", { name: "在 Hub 查看這個版本" });
+    expect(link.getAttribute("href")).toBe("https://hub.example.org/versions/v_42");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(link.getAttribute("target")).toBe("_blank");
+    await expectNoA11yViolations(container);
+  });
+
+  it("上傳者名稱是不可信的文字：不當成 HTML，過長時截斷並在 title 放完整名稱", async () => {
+    const evil = '<img src=x onerror="alert(1)">' + "很長的名字".repeat(10);
+    const { container } = await openWith(origin({ uploader: evil }));
+    const text = await screen.findByText(/^來自 Hub：@<img src=x/);
+    expect(container.querySelector("img[src=x]")).toBeNull();
+    expect(text.textContent).toBe(
+      `來自 Hub：@${Array.from(evil).slice(0, 32).join("")}… 的原始字幕`,
+    );
+    expect(text.getAttribute("title")).toBe(evil);
+  });
+
+  it("Hub 網址不是 https 時不產生連結；沒有上傳者名稱時用通用的說法", async () => {
+    await openWith(origin({ url: "javascript:alert(1)", uploader: "" }));
+    expect(await screen.findByText("來自 Hub 的原始字幕")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "在 Hub 查看這個版本" })).toBeNull();
+  });
+
+  it("http 的 Hub 也不產生連結（沿用「已分享到 Hub」的規則）", async () => {
+    await openWith(origin({ url: "http://hub.example.org" }));
+    expect(await screen.findByText("來自 Hub：@alice 的原始字幕")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "在 Hub 查看這個版本" })).toBeNull();
+  });
+
+  it("hub_origin 是 null 時維持原本的「來自 Hub 的原始字幕」", async () => {
+    await openWith(null);
+    expect(await screen.findByText("來自 Hub 的原始字幕")).toBeTruthy();
+    expect(screen.queryByText(/來自 Hub：@/)).toBeNull();
+  });
+});
+
+describe("truncateName", () => {
+  it("以 code point 計，不切開 surrogate pair", () => {
+    expect(truncateName("alice")).toBe("alice");
+    expect(truncateName("😀".repeat(40), 3)).toBe("😀😀😀…");
   });
 });

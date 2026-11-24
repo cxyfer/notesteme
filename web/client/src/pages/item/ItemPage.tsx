@@ -63,6 +63,7 @@ import {
 } from "./search";
 import { CancelDialog, CookieDialog } from "./SmallDialogs";
 import { StagePanel, orderedStages } from "./StagePanel";
+import { HubOrigin } from "../hub/HubOrigin";
 import { HubShares } from "../hub/HubShares";
 import { BetterSource } from "./BetterSource";
 import { SummaryBlock } from "./SummaryBlock";
@@ -488,13 +489,17 @@ function ItemView({
             <dd>{profileName}</dd>
           </div>
         )}
-        {(d.sources ?? []).find((s) => s.state === "used") && (
+        {/* HSHR S23：現行的原始字幕來自 Hub 時，hub_origin 說明是誰的版本 */}
+        {(d.hub_origin || (d.sources ?? []).find((s) => s.state === "used")) && (
           <div>
             <dt>{t("item.meta.source")}</dt>
             <dd>
-              {(d.sources ?? []).find((s) => s.state === "used")!.source === "hub"
-                ? t("hub.fromHub")
-                : (d.sources ?? []).find((s) => s.state === "used")!.source}
+              {d.hub_origin ||
+              (d.sources ?? []).find((s) => s.state === "used")!.source === "hub" ? (
+                <HubOrigin origin={d.hub_origin} />
+              ) : (
+                (d.sources ?? []).find((s) => s.state === "used")!.source
+              )}
             </dd>
           </div>
         )}
