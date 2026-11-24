@@ -8,7 +8,7 @@ import { createAppRouter } from "../router";
 
 /** 設定 Hub 的 CSRF cookie（非 GET 請求會帶上它）。 */
 export function setCsrf(token = "csrf-test") {
-  document.cookie = `notesteme_hub_csrf=${token}; path=/`;
+  document.cookie = `__Host-notesteme_hub_csrf=${token}; path=/; secure`;
 }
 
 export function renderRoute(path: string) {

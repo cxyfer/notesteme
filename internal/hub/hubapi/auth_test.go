@@ -146,7 +146,7 @@ func TestOAuthStartAndCallbackHTTP(t *testing.T) {
 		t.Fatalf("start = %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 	c := rec.Header().Get("Set-Cookie")
-	for _, attr := range []string{"notesteme_hub_oauth=", "Path=/auth", "Max-Age=600", "HttpOnly", "Secure", "SameSite=Lax"} {
+	for _, attr := range []string{"__Host-notesteme_hub_oauth=", "Path=/;", "Max-Age=600", "HttpOnly", "Secure", "SameSite=Lax"} {
 		if !strings.Contains(c, attr) {
 			t.Errorf("oauth cookie %q 沒有 %s", c, attr)
 		}
@@ -158,7 +158,22 @@ func TestOAuthStartAndCallbackHTTP(t *testing.T) {
 		r.AddCookie(&http.Cookie{Name: hubauth.OAuthCookie, Value: "y"})
 	})
 	expect(t, "不存在的 state", rec, 400, "oauth_state_invalid")
-	if rec.Header().Get("Referrer-Policy") != "no-referrer" || !strings.Contains(rec.Header().Get("Set-Cookie"), "notesteme_hub_oauth=;") {
+	if rec.Header().Get("Referrer-Policy") != "no-referrer" || !strings.Contains(rec.Header().Get("Set-Cookie"), "__Host-notesteme_hub_oauth=;") {
 		t.Errorf("callback 的標頭 = %v", rec.Header())
+	}
+}
+
+// 安全修補 A：Hub 的每個 cookie 都符合 __Host- 前綴的要求（Secure、Path=/、沒有 Domain），子網域不能寫入或覆蓋。
+func TestCookiesUseHostPrefix(t *testing.T) {
+	cs := append(sessionCookies(&hubauth.NewSession{Token: "t", CSRF: "c"}), clearSessionCookies()...)
+	cs = append(cs, oauthCookie("s"), clearCookie(hubauth.OAuthCookie, hubauth.OAuthCookiePath, true))
+	for _, c := range cs {
+		line := c.String()
+		if !strings.HasPrefix(c.Name, "__Host-") || !c.Secure || c.Path != "/" || c.Domain != "" || strings.Contains(line, "Domain=") {
+			t.Errorf("cookie 不符合 __Host- 的要求：%s", line)
+		}
+	}
+	if len(cs) != 6 {
+		t.Fatalf("cookie 數 = %d", len(cs))
 	}
 }

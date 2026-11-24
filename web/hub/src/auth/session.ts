@@ -1,6 +1,6 @@
-// Hub 的 session 與 CSRF（HACC-R8）。session cookie 是 HttpOnly；CSRF cookie notesteme_hub_csrf 不是，
+// Hub 的 session 與 CSRF（HACC-R8）。session cookie 是 HttpOnly；CSRF cookie __Host-notesteme_hub_csrf 不是，
 // 前端讀它放進 X-CSRF-Token。Hub 有 GET /api/v1/me，所以「是否登入」以它為準，cookie 只是送出請求時要用。
-export const CSRF_COOKIE = "notesteme_hub_csrf";
+export const CSRF_COOKIE = "__Host-notesteme_hub_csrf";
 export const CSRF_HEADER = "X-CSRF-Token";
 
 export function readCookie(name: string, cookie: string = document.cookie): string | undefined {

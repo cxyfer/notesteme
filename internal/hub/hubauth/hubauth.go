@@ -36,14 +36,16 @@ import (
 	"github.com/cxyfer/notesteme/internal/websession"
 )
 
-// Cookie 名稱（HACC-R2、R4、R8）。
+// Cookie 名稱（HACC-R2、R4、R8）。一律用 __Host- 前綴（安全修補 A）：瀏覽器只接受帶 Secure、Path=/、沒有 Domain 的
+// 這種 cookie，子網域或 http 的頁面不能寫入或覆蓋它們（防 login CSRF 與 session fixation）。Hub 的 cookie 本來就一律
+// Secure；瀏覽器把 http://localhost 視為安全來源，本機開發同樣可用，所以沒有無前綴的退路。
 const (
-	OAuthCookie   = "notesteme_hub_oauth"
-	SessionCookie = "notesteme_hub_session"
-	CSRFCookie    = "notesteme_hub_csrf"
+	OAuthCookie   = "__Host-notesteme_hub_oauth"
+	SessionCookie = "__Host-notesteme_hub_session"
+	CSRFCookie    = "__Host-notesteme_hub_csrf"
 	CSRFHeader    = websession.CSRFHeader
-	// OAuthCookiePath 是等待中登入的 cookie 路徑：只送到 /auth/*。
-	OAuthCookiePath = "/auth"
+	// OAuthCookiePath 是等待中登入的 cookie 路徑：__Host- 前綴要求 Path=/。
+	OAuthCookiePath = "/"
 )
 
 // 時間（HACC-R2、R3、R6、R8）。
