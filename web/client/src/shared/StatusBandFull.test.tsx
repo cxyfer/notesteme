@@ -125,3 +125,97 @@ describe("StatusBand variant=full", () => {
     expect(tickInterval(7200)).toBe(900);
   });
 });
+
+describe("StatusBand variant=full 的選用互動（章節、拖曳選取）", () => {
+  function band(over: Partial<Parameters<typeof StatusBand>[0]> = {}) {
+    const utils = render(
+      <StatusBand
+        variant="full"
+        stages={stages}
+        label="x"
+        durationS={1000}
+        formatTime={fmt}
+        {...over}
+      />,
+    );
+    const slider = screen.getByRole("slider");
+    slider.getBoundingClientRect = () =>
+      ({ left: 100, width: 200, top: 0, height: 100, right: 300, bottom: 100 }) as DOMRect;
+    return { ...utils, slider };
+  }
+
+  it("hover 顯示章節名稱（在字幕句之前）", () => {
+    const { slider } = band({
+      chapterAt: (s) => (s >= 500 ? "第二章" : ""),
+      describeTime: () => "那一句",
+    });
+    fireEvent.pointerMove(slider, { clientX: 250 });
+    const chapter = screen.getByText("第二章");
+    expect(chapter.className).toBe("sband__hover-chapter");
+    expect(chapter.nextElementSibling?.textContent).toBe("那一句");
+    fireEvent.pointerMove(slider, { clientX: 120 });
+    expect(screen.queryByText("第二章")).toBeNull();
+  });
+
+  it("Shift + ←／→ 交給 onShiftStep，不移動 5 秒；沒有 onShiftStep 時照舊", async () => {
+    const onSeek = vi.fn();
+    const onShiftStep = vi.fn();
+    const { slider, unmount } = band({ onSeek, onShiftStep, position: 100 });
+    slider.focus();
+    await userEvent.keyboard("{Shift>}{ArrowRight}{/Shift}");
+    expect(onShiftStep).toHaveBeenLastCalledWith(1);
+    await userEvent.keyboard("{Shift>}{ArrowLeft}{/Shift}");
+    expect(onShiftStep).toHaveBeenLastCalledWith(-1);
+    expect(onSeek).not.toHaveBeenCalled();
+    unmount();
+    const plain = band({ onSeek, position: 100 });
+    plain.slider.focus();
+    await userEvent.keyboard("{Shift>}{ArrowRight}{/Shift}");
+    expect(onSeek).toHaveBeenLastCalledWith(105);
+  });
+
+  it("拖曳選取範圍：超過門檻才算，選取後的 click 不移動播放頭；短距離仍是點擊", () => {
+    const onSeek = vi.fn();
+    const onSelectRange = vi.fn();
+    const { slider, container, rerender } = band({ onSeek, onSelectRange });
+    fireEvent.pointerDown(slider, { clientX: 250, button: 0, pointerId: 1, isPrimary: true });
+    fireEvent.pointerMove(slider, { clientX: 150, pointerId: 1 });
+    expect(container.querySelector(".sband__selection")).toBeTruthy();
+    fireEvent.pointerUp(slider, { clientX: 150, pointerId: 1 });
+    fireEvent.click(slider, { clientX: 150 });
+    expect(onSelectRange).toHaveBeenCalledWith(250, 750);
+    expect(onSeek).not.toHaveBeenCalled();
+    // 拖曳結束後不再自己畫；由 selection 控制
+    expect(container.querySelector(".sband__selection")).toBeNull();
+    rerender(
+      <StatusBand
+        variant="full"
+        stages={stages}
+        label="x"
+        durationS={1000}
+        formatTime={fmt}
+        onSeek={onSeek}
+        onSelectRange={onSelectRange}
+        selection={{ from: 250, to: 750 }}
+      />,
+    );
+    const sel = container.querySelector<HTMLElement>(".sband__selection")!;
+    expect(sel.style.left).toBe("25%");
+    expect(sel.style.width).toBe("50%");
+
+    fireEvent.pointerDown(slider, { clientX: 200, button: 0, pointerId: 2, isPrimary: true });
+    fireEvent.pointerMove(slider, { clientX: 202, pointerId: 2 });
+    fireEvent.pointerUp(slider, { clientX: 202, pointerId: 2 });
+    fireEvent.click(slider, { clientX: 202 });
+    expect(onSelectRange).toHaveBeenCalledTimes(1);
+    expect(onSeek).toHaveBeenCalledWith(510);
+  });
+
+  it("沒有 onSelectRange 時拖曳不選取", () => {
+    const onSeek = vi.fn();
+    const { slider, container } = band({ onSeek });
+    fireEvent.pointerDown(slider, { clientX: 250, button: 0, pointerId: 1, isPrimary: true });
+    fireEvent.pointerMove(slider, { clientX: 150, pointerId: 1 });
+    expect(container.querySelector(".sband__selection")).toBeNull();
+  });
+});

@@ -745,6 +745,19 @@
         "sources": "字幕來源",
         "sponsorblock": "SponsorBlock"
       }
+    },
+    "chapters": {
+      "title": "章節",
+      "jump": "跳到章節「{{title}}」（{{time}}）"
+    },
+    "range": {
+      "label": "時間帶的選取範圍",
+      "selected": "已選取 {{from}}–{{to}}",
+      "copy_other": "複製這段字幕（{{count}} 句）",
+      "noCues": "這段沒有字幕",
+      "copied_other": "已複製 {{count}} 句字幕。",
+      "copyFailed": "無法複製：瀏覽器不允許存取剪貼簿。",
+      "clear": "取消選取"
     }
   },
   "queue": {
@@ -2163,7 +2176,8 @@
     "palette": "指令面板",
     "playPause": "影音詳情頁：播放或暫停",
     "seek": "影音詳情頁：前後移動 5 秒",
-    "chapter": "影音詳情頁：上一個或下一個章節"
+    "chapter": "影音詳情頁：上一個或下一個章節",
+    "chapterBand": "影音詳情頁的時間帶：上一個或下一個章節"
   },
   "palette": {
     "title": "指令面板",

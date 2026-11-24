@@ -33,7 +33,8 @@ import { formatDate, formatDateTime, formatTimecode } from "../../i18n";
 import { usePageTitle } from "../../shell/usePageTitle";
 import { BAND_STAGES, badgeStatus, bandStatus, type ApiItemDetail } from "../library/stageView";
 import type { ActionKind } from "./actions";
-import { cueAt, parseCueTime } from "./cues";
+import { ChapterList, ChapterTrack, RangeBar, chapterIndexAt, toChapters } from "./Chapters";
+import { cueAt } from "./cues";
 import { chapterTarget, ownsPlaybackKeys } from "./playKeys";
 import { CueList } from "./CueList";
 import {
@@ -231,6 +232,19 @@ function ItemView({
     player.current?.seek(s);
   }, []);
 
+  // 章節（CHAP-R7）：時間帶的章節線與 hover、播放器下的清單、[／] 與 Shift + ←／→
+  const chapters = useMemo(() => toChapters(d.chapters), [d.chapters]);
+  const chapterStarts = useMemo(() => chapters.map((c) => c.start), [chapters]);
+  const chapterAt = useCallback(
+    (s: number) => {
+      const i = chapterIndexAt(chapters, s);
+      return i >= 0 ? chapters[i]!.title : "";
+    },
+    [chapters],
+  );
+  // 時間帶拖曳選取的範圍（「複製這段字幕」；「重新校正這段」等 API 有 chunk 範圍再做）
+  const [range, setRange] = useState<{ from: number; to: number } | null>(null);
+
   // hover 時間帶時顯示那個時間點的字幕句（和字幕分頁共用同一份快取）
   const hoverCues = useCues(id, mode ? modeVariant(mode) : undefined);
   const describeTime = useCallback(
@@ -363,10 +377,6 @@ function ItemView({
 
   const showRuns = () => setSearch({ tab: "runs" }, true);
   // README §3.6：1–4 切換字幕、畫面、筆記、紀錄分頁（UI-7）；Space、←／→、[／] 控制播放（UI-8）
-  const chapterStarts = useMemo(
-    () => (d.chapters ?? []).map((c) => parseCueTime(c.start)).filter((n) => Number.isFinite(n)),
-    [d.chapters],
-  );
   const keyState = useRef({ setSearch, time, chapterStarts, seek });
   useEffect(() => {
     keyState.current = { setSearch, time, chapterStarts, seek };
@@ -555,7 +565,18 @@ function ItemView({
         valueText={(tc) => t("item.band.valueText", { time: tc })}
         describeTime={describeTime}
         describeLang={hoverCues.data?.lang}
+        track={<ChapterTrack chapters={chapters} durationS={d.duration_s} />}
+        chapterAt={chapterAt}
+        onShiftStep={(dir) => {
+          const to = chapterTarget(chapterStarts, time, dir);
+          if (to !== undefined) seek(to);
+        }}
+        selection={range}
+        onSelectRange={(from, to) => setRange({ from, to })}
       />
+      {range && (
+        <RangeBar range={range} cues={hoverCues.data?.cues} onClear={() => setRange(null)} />
+      )}
 
       <p className="visually-hidden" aria-live="polite">
         {announcement}
@@ -573,6 +594,7 @@ function ItemView({
             start={search.t}
             onTime={setTime}
           />
+          <ChapterList chapters={chapters} time={time} onSeek={seek} />
         </div>
         <div className="item__tabs">
           <Tabs

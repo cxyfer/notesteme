@@ -15,6 +15,7 @@ const ROWS = [
   ["Space", "playPause"],
   ["← →", "seek"],
   ["[ ]", "chapter"],
+  ["Shift ← →", "chapterBand"],
   ["1–4", "itemTabs"],
   ["?", "help"],
 ] as const;

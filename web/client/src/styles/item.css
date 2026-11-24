@@ -136,6 +136,63 @@
 .item__band {
   margin-bottom: var(--space-4);
 }
+/* 章節線（design-language.md §6.1）：底軌上 1px --chapter 直線，裝飾用；可及的版本是播放器下的章節清單 */
+.item__chapter-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--chapter);
+}
+/* 拖曳選取範圍之後的動作列 */
+.item__range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: calc(var(--space-2) * -1) 0 var(--space-4);
+}
+/* 播放器下的章節清單：目前的章節用左側色條加 aria-current（不只靠顏色） */
+.chapters {
+  margin-top: var(--space-4);
+}
+.chapters__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.chapters__item {
+  display: flex;
+  width: 100%;
+  gap: var(--space-2);
+  justify-content: space-between;
+  align-items: baseline;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-left: 2px solid transparent;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.chapters__item:hover {
+  background: var(--surface-hover);
+}
+.chapters__item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.chapters__item[aria-current="true"] {
+  border-left-color: var(--mark-now);
+  font-weight: 600;
+}
+.chapters__time {
+  color: var(--text-secondary);
+  flex: none;
+}
 .item__body {
   display: grid;
   grid-template-columns: minmax(280px, 2fr) minmax(0, 3fr);

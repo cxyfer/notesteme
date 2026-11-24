@@ -7,8 +7,11 @@
 // 完整版（variant="full"，UI-2）：底軌 72px、時間刻度、6px 的步驟帶與右側逐列對齊的標籤、播放頭；
 // 整條是 role="slider"（aria-valuetext 是時間碼），點擊、方向鍵移動播放頭，hover 顯示該時間的說明。
 // 新的圖層用新的選用 props 加入，不改變既有 props 的意義。
+// 完整版的選用互動（2026-11-25）：hover 的章節名稱（chapterAt）、Shift + ←／→（onShiftStep）、
+// 在底軌上拖曳選取範圍（onSelectRange、selection）。
 
 import {
+  useRef,
   useState,
   type KeyboardEvent,
   type MouseEvent,
@@ -73,7 +76,21 @@ export interface StatusBandProps {
   stepS?: number;
   /** full 的 aria-valuetext 前後的文字，例如「播放位置 01:05」；省略時只有時間碼 */
   valueText?: (formatted: string) => string;
+  /** hover 時顯示在時間碼下方、describeTime 之前的章節名稱；回傳空字串時不顯示 */
+  chapterAt?: (seconds: number) => string;
+  /** Shift + ←／→ 時呼叫（例如跳到上一個或下一個章節）；省略時 Shift + 方向鍵和沒有 Shift 相同 */
+  onShiftStep?: (dir: -1 | 1) => void;
+  /**
+   * 在底軌上拖曳選取時間範圍後呼叫（秒，from < to）。省略時不能拖曳選取。
+   * 移動不到 DRAG_MIN_PX 的拖曳仍是點擊；選取結束的那次 click 不會移動播放頭。
+   */
+  onSelectRange?: (from: number, to: number) => void;
+  /** 目前選取的範圍（秒），畫在底軌上；null／undefined 時不畫 */
+  selection?: { from: number; to: number } | null;
 }
+
+/** 拖曳超過這個距離（px）才算選取範圍，避免手抖把點擊變成選取 */
+export const DRAG_MIN_PX = 4;
 
 function pct(v: number, d: number): string {
   return `${(Math.min(Math.max(v, 0), d) / d) * 100}%`;
@@ -174,11 +191,26 @@ function FullBand({
   describeLang,
   stepS = 5,
   valueText,
+  chapterAt,
+  onShiftStep,
+  onSelectRange,
+  selection,
 }: StatusBandProps) {
   const d =
     durationS && Number.isFinite(durationS) && durationS > 0 ? durationS : 0;
   const visible = stages.filter((s) => s.status !== "skipped");
   const [hover, setHover] = useState<number | null>(null);
+  // 拖曳選取：按下的位置與時間、是否已經移動到算選取；選取結束後吞掉同一次的 click
+  const drag = useRef<{
+    id: number;
+    x: number;
+    t: number;
+    moved: boolean;
+  } | null>(null);
+  const swallowClick = useRef(false);
+  const [dragging, setDragging] = useState<{ from: number; to: number } | null>(
+    null,
+  );
   const pos = clamp(position, d);
   const cls = ["sband", "sband--full", className].filter(Boolean).join(" ");
 
@@ -192,6 +224,15 @@ function FullBand({
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (!d || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (
+      e.shiftKey &&
+      onShiftStep &&
+      (e.key === "ArrowLeft" || e.key === "ArrowRight")
+    ) {
+      e.preventDefault();
+      onShiftStep(e.key === "ArrowLeft" ? -1 : 1);
+      return;
+    }
     const next = {
       ArrowLeft: pos - stepS,
       ArrowDown: pos - stepS,
@@ -220,6 +261,8 @@ function FullBand({
     : [];
   const formatted = formatTime(pos);
   const hoverText = hover !== null ? describeTime?.(hover) : undefined;
+  const hoverChapter = hover !== null ? chapterAt?.(hover) : undefined;
+  const shown = dragging ?? selection;
 
   return (
     <div className={cls}>
@@ -251,14 +294,61 @@ function FullBand({
           aria-disabled={d ? undefined : true}
           onKeyDown={onKeyDown}
           onClick={(e) => {
+            if (swallowClick.current) {
+              swallowClick.current = false;
+              return;
+            }
             const t = timeAt(e);
             if (t !== null) onSeek?.(t);
           }}
-          onPointerMove={(e) => setHover(timeAt(e))}
+          onPointerDown={(e) => {
+            swallowClick.current = false;
+            if (!onSelectRange || e.button !== 0 || !e.isPrimary) return;
+            const t = timeAt(e);
+            if (t === null) return;
+            drag.current = { id: e.pointerId, x: e.clientX, t, moved: false };
+            e.currentTarget.setPointerCapture?.(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            const t = timeAt(e);
+            setHover(t);
+            const g = drag.current;
+            if (!g || g.id !== e.pointerId || t === null) return;
+            if (!g.moved && Math.abs(e.clientX - g.x) < DRAG_MIN_PX) return;
+            g.moved = true;
+            setDragging({ from: Math.min(g.t, t), to: Math.max(g.t, t) });
+          }}
+          onPointerUp={(e) => {
+            const g = drag.current;
+            drag.current = null;
+            if (!g || g.id !== e.pointerId) return;
+            if (e.currentTarget.hasPointerCapture?.(e.pointerId))
+              e.currentTarget.releasePointerCapture(e.pointerId);
+            if (!g.moved) return;
+            swallowClick.current = true;
+            setDragging(null);
+            const t = timeAt(e) ?? g.t;
+            const from = Math.min(g.t, t);
+            const to = Math.max(g.t, t);
+            if (to > from) onSelectRange?.(from, to);
+          }}
+          onPointerCancel={() => {
+            drag.current = null;
+            setDragging(null);
+          }}
           onPointerLeave={() => setHover(null)}
         >
           <div className="sband__track" aria-hidden="true">
             {track ?? <span className="sband__baseline" />}
+            {d > 0 && shown && shown.to > shown.from && (
+              <span
+                className="sband__selection"
+                style={{
+                  left: pct(shown.from, d),
+                  width: pct(Math.min(shown.to, d) - shown.from, d),
+                }}
+              />
+            )}
             {ranges.map((r, i) => (
               <span
                 key={`${r.key}-${i}`}
@@ -301,6 +391,9 @@ function FullBand({
               style={{ left: pct(hover, d) }}
             >
               <span className="sband__hover-time">{formatTime(hover)}</span>
+              {hoverChapter && (
+                <span className="sband__hover-chapter">{hoverChapter}</span>
+              )}
               {hoverText && (
                 <span
                   className="sband__hover-text"

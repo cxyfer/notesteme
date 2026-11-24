@@ -267,3 +267,19 @@
     --sband-label-w: 72px;
   }
 }
+/* hover 的章節名稱（chapterAt）：在時間碼與字幕句之間 */
+.sband__hover-chapter {
+  color: var(--text-primary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 拖曳選取的範圍（onSelectRange、selection）：底軌上 Cue（--mark-now）18% 的區塊加左右 1px 邊 */
+.sband__selection {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--mark-now) 18%, transparent);
+  border-inline: 1px solid var(--mark-now);
+}

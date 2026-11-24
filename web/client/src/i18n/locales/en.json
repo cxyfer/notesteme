@@ -774,6 +774,21 @@
         "sources": "transcript sources",
         "sponsorblock": "SponsorBlock"
       }
+    },
+    "chapters": {
+      "title": "Chapters",
+      "jump": "Jump to chapter “{{title}}” ({{time}})"
+    },
+    "range": {
+      "label": "Selected range on the time ribbon",
+      "selected": "Selected {{from}}–{{to}}",
+      "copy_one": "Copy these subtitles ({{count}} line)",
+      "copy_other": "Copy these subtitles ({{count}} lines)",
+      "noCues": "No subtitles in this range",
+      "copied_one": "Copied {{count}} subtitle line.",
+      "copied_other": "Copied {{count}} subtitle lines.",
+      "copyFailed": "Could not copy: the browser does not allow clipboard access.",
+      "clear": "Clear selection"
     }
   },
   "queue": {
@@ -2223,7 +2238,8 @@
     "palette": "Command palette",
     "playPause": "Media page: play or pause",
     "seek": "Media page: move 5 seconds back or forward",
-    "chapter": "Media page: previous or next chapter"
+    "chapter": "Media page: previous or next chapter",
+    "chapterBand": "Media page time ribbon: previous or next chapter"
   },
   "palette": {
     "title": "Command palette",

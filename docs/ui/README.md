@@ -75,6 +75,7 @@
 | `Space` | 影音詳情頁：播放或暫停 |
 | `←`／`→` | 影音詳情頁：前後移動 5 秒 |
 | `[`／`]` | 影音詳情頁：上一個或下一個章節 |
+| `Shift + ←／→` | 影音詳情頁的時間帶有焦點時：上一個或下一個章節（10.26 第 3 點） |
 | `1`–`4` | 影音詳情頁：切換分頁（字幕、畫面、筆記、紀錄） |
 | `?` | 顯示所有快捷鍵 |
 
@@ -293,7 +294,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 輸出：下載（SRT、VTT、ASS、雙語 SRT、純文字）、寫出的檔案、匯入修正過的字幕（422 指出第幾句或檔案第幾行） | 完成 | `OutputsPanel.tsx` |
 | SSE：`stage.status` 讓 detail、runs 失效；產生字幕的步驟 `done` 才讓字幕失效、`publish` `done` 才讓輸出失效；頁面層級 aria-live | 完成 | `src/events/invalidation.ts` |
 | 佇列：各資源類別的通道（方格＝上限、實心＝使用中）、上限 +／−、整個佇列與各類別的暫停／繼續、暫停橫幅、任務列表（虛擬化、篩選在 URL）、「需要你處理」依步驟計數、影音層級的停止處理 | 完成 | `src/pages/queue` |
-| 時間帶的章節線、`Shift + ←／→`、拖曳選取範圍（重新校正這段、複製這段字幕）、說話密度、畫面刻度 | 未做 | API 沒有章節、說話密度、chunk 範圍（10.7 第 8 點） |
+| 時間帶的章節線與 hover 的章節名稱、播放器下的章節清單、`Shift + ←／→`、拖曳選取範圍後「複製這段字幕」 | 完成（見 10.26） | `src/pages/item/{Chapters.tsx,ItemPage.tsx}`、`web/shared/src/StatusBand.tsx` |
+| 拖曳選取後「重新校正這段」、說話密度、畫面刻度 | 未做 | 重新校正這段：API 沒有 LLM chunk 的時間範圍，`rerun` 的 `chunks` 要 chunk 編號（10.7 第 8 點）；說話密度：沒有 API；畫面刻度：`GET /frames` 已有資料，只是還沒畫，之後的切片 |
 | 佇列的單一任務重試／取消、「失敗與停住」清單與「全部重試」 | 完成（收尾 D1，見 10.22） | `src/pages/queue/FailedTasks.tsx`、`QueuePage.tsx` |
 | 佇列的 Agent 任務（由哪個 Agent 處理、租約剩餘時間的倒數、改用 API 處理） | 完成（見 10.23） | `src/pages/queue/QueuePage.tsx` |
 | 佇列的優先順序 | 未做 | API 缺口（10.7 第 8 點） |
@@ -318,7 +320,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
    - rerun 沒有 `estimate`／`estimate_usd`：對話框顯示「無法預估」。沒有拿 `POST /api/estimate` 代替（它針對網址，可能呼叫 yt-dlp）。（有更好的字幕來源時改顯示 `better_source.estimate_usd`，見 10.24 第 2 點。）
    - 沒有 provider 列表 API：provider 用文字輸入，建議值取自處理方案設定。（2026-11-25 起後端有 `GET /api/providers`〔SEC-R11〕，這裡還沒有改用，列為後續，見 10.25。）
    - 沒有列出影音有哪些字幕變體與語言的 API：模式依步驟狀態推得，`edited` 用一次 `variant=edited` 的查詢確認。
-   - 沒有章節、說話密度、LLM chunk 的時間範圍：時間帶只畫整條步驟狀態，沒有章節線、拖曳選取、chunk 進度。
+   - ~~沒有章節~~、說話密度、LLM chunk 的時間範圍：時間帶只畫整條步驟狀態，沒有 chunk 進度與「重新校正這段」。章節：`GET /api/items/{id}` 已有 `chapters`（CHAP-R7），章節線、章節清單與拖曳選取後的「複製這段字幕」已做（見 10.26）。
    - `ItemDetail` 沒有處理方案名稱：從設定快照的 `profile` 取（沒有就不顯示）。
    - 佇列：~~`GET /api/queue` 只列內建 worker 的任務~~：AGT A13 補上 Agent 任務與租約到期時間，佇列頁已顯示（見 10.23）；仍沒有優先順序欄位與調整優先順序的 API，頁面上明說。~~`POST /api/tasks/{id}/retry`、`cancel` 回 501~~：收尾 D1 已實作，佇列頁接上單一任務的取消與重試（見 10.22）。
    - 「需要你處理」沒有彙總 API：依步驟各查一次 `GET /api/items?status=<stage>:failed&status=<stage>:blocked&limit=1` 的 `total`（7 個請求；同一部影音可能在不同步驟各算一次）。佇列頁收到 failed／blocked／pending／done／skipped 的 `stage.status`、刪除、還原或重新連上時，2 秒 debounce 後重新讀取。
@@ -714,5 +716,9 @@ pages.md §12 的「服務與金鑰」要求每個 provider 都有「測試連�
 | 項目 | 狀態 | 位置 |
 | --- | --- | --- |
 | 匯出的「ASS（選擇樣式）」（pages.md §4 的匯出選單，OUT-R6） | 完成（沒有改後端） | `src/pages/item/OutputsPanel.tsx` |
+| 章節：時間帶的章節線、hover 顯示章節名稱、播放器下的章節清單、時間帶上的 `Shift + ←／→`；拖曳選取範圍後「複製這段字幕」（pages.md §4、design-language.md §6.1） | 完成（沒有改後端） | `src/pages/item/{Chapters.tsx,ItemPage.tsx}`、`web/shared/src/StatusBand.tsx` |
 
 1. **ASS 的樣式選擇**：輸出分頁的 ASS 下載按鈕旁多一個「ASS 樣式」下拉選單，選項是 `GET /api/ass-styles` 的樣式名稱（`style=` 傳的是名稱，`AssStyles.Get` 以名稱查），預設 `default`；按鈕文字是「ASS（<樣式>）」，連結帶 `&style=<名稱>`。樣式清單和設定頁共用快取、不重試；讀不到（403、501、其他錯誤）或是空的時退回原本的「ASS（預設樣式）」連結，不擋下載。選過的樣式之後不在清單中時回到 `default`，不送出會 422 的名稱。其他格式的連結不帶 `style`。
+2. **章節**：用 `GET /api/items/{id}` 的 `chapters`（CHAP-R7；UI-2 當時的延後理由「API 沒有章節」已經不成立）。時間帶的底軌畫 1px `--chapter` 直線（第一章在 0 秒不畫），自己畫的 `track` 照樣保留「還不知道說話密度」的點狀基線；線是裝飾（底軌在 `aria-hidden` 內），可及的版本是播放器下的「章節」清單：每章一個按鈕（可存取名稱「跳到章節「<標題>」（<時間>）」），點擊跳播，目前所在的章節加 `aria-current` 與左側色條（不只靠顏色）；清單最高 40vh、超過時捲動。hover 時間帶依序顯示時間碼、章節名稱、字幕句（`StatusBand` 新增選用的 `chapterAt`）。章節標題是不可信的文字，只用文字節點渲染；不知道章節的語言（平台章節是原文、LLM 章節可能是目標語言），所以不設 `lang`。**API 的 `Chapter` 沒有層級**，design-language.md §6.1 的「`###` 小節只畫下半段」做不到，每章都畫整條線。沒有章節時不顯示清單、不畫線。
+3. **`Shift + ←／→`**：design-language.md §6.1 同時把 `Shift + ←／→` 寫成「跳到上一個或下一個章節」與「`Shift + 方向鍵`：選取範圍」，彼此矛盾。取保守的一邊：時間帶有焦點時 `Shift + ←／→` 跳章節（和 `[`／`]` 同一個規則：離目前章節開頭超過 2 秒時先回到開頭），範圍選取只用指標拖曳。`StatusBand` 新增選用的 `onShiftStep`，沒有傳時 `Shift + 方向鍵` 和原本一樣移動 5 秒（Hub 不受影響）。
+4. **拖曳選取與「複製這段字幕」**：pages.md §4 的拖曳選取屬於影音詳情；兩個動作中「複製這段字幕」只需要已經讀到的字幕，可以獨立做，「重新校正這段」要 LLM chunk 的時間範圍（`rerun` 的 `chunks` 是 chunk 編號，API 沒有範圍），維持不做、也不顯示停用的按鈕。`StatusBand` 新增選用的 `onSelectRange`／`selection`：在底軌上按下後水平移動超過 4px 才算選取（以內仍是點擊、會跳播），用 pointer capture，放開後吞掉同一次的 click，播放頭不動；選取的範圍以 Cue 色 18% 的區塊畫在底軌上。時間帶下方出現動作列「已選取 01:00–01:40」「複製這段字幕（N 句）」「取消選取」（動作列在 slider 之外，slider 的子元素都是裝飾）。複製的是**目前顯示模式的字幕**中和 `[from, to)` 有重疊的句子（OUT-R3 的語意），每句一行、不含時間碼（和 `txt` 下載相同）；範圍內沒有字幕時按鈕停用並寫「這段沒有字幕」。剪貼簿不能用（不是安全來源、權限被拒）時 toast「無法複製：瀏覽器不允許存取剪貼簿。」。鍵盤使用者沒有對應的範圍選取（見第 3 點）；字幕分頁的文字可以直接選取複製。

@@ -745,6 +745,19 @@
         "sources": "字幕来源",
         "sponsorblock": "SponsorBlock"
       }
+    },
+    "chapters": {
+      "title": "章节",
+      "jump": "跳到章节“{{title}}”（{{time}}）"
+    },
+    "range": {
+      "label": "时间带的选取范围",
+      "selected": "已选取 {{from}}–{{to}}",
+      "copy_other": "复制这段字幕（{{count}} 句）",
+      "noCues": "这段没有字幕",
+      "copied_other": "已复制 {{count}} 句字幕。",
+      "copyFailed": "无法复制：浏览器不允许访问剪贴板。",
+      "clear": "取消选取"
     }
   },
   "queue": {
@@ -2163,7 +2176,8 @@
     "palette": "命令面板",
     "playPause": "音视频详情页：播放或暂停",
     "seek": "音视频详情页：前后移动 5 秒",
-    "chapter": "音视频详情页：上一个或下一个章节"
+    "chapter": "音视频详情页：上一个或下一个章节",
+    "chapterBand": "音视频详情页的时间带：上一个或下一个章节"
   },
   "palette": {
     "title": "命令面板",
