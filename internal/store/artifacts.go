@@ -243,6 +243,23 @@ func (r *Repo) Artifact(ctx context.Context, id string) (Artifact, error) {
 	return artifactFromRow(row)
 }
 
+// ArtifactGroupVersions 列出同一組 (item, kind, variant, lang) 保留中的每個版本（含被取代的），由新到舊（LIB-R25）。
+func (r *Repo) ArtifactGroupVersions(ctx context.Context, itemID, kind, variant, lang string) ([]Artifact, error) {
+	rows, err := r.q.ArtifactGroup(ctx, sqlcdb.ArtifactGroupParams{ItemID: itemID, Kind: kind, Variant: variant, Lang: lang})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Artifact, 0, len(rows))
+	for _, row := range rows {
+		a, err := artifactFromRow(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
 // CurrentArtifacts 列出影音現行（沒有被取代）的產出，依建立順序。kind 為空代表全部種類。
 func (r *Repo) CurrentArtifacts(ctx context.Context, itemID, kind string) ([]Artifact, error) {
 	rows, err := r.q.CurrentArtifacts(ctx, sqlcdb.CurrentArtifactsParams{ItemID: itemID, Kind: kind})

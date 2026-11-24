@@ -138,6 +138,88 @@
         ],
         "type": "object"
       },
+      "ArtifactVersionBody": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "current": {
+            "description": "這一組的現行版本（沒有被取代）",
+            "type": "boolean"
+          },
+          "executor": {
+            "description": "執行方式（來源紀錄的 executor，例如 local、api、agent、human、import）",
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "產出的種類，例如 transcript、note、chapters、frames、summary",
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "prompt_version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "stage": {
+            "description": "產生它的步驟（來源紀錄的 stage）",
+            "type": "string"
+          },
+          "variant": {
+            "description": "字幕的變體（source、normalized、segmented、corrected、translated、edited）；其他種類省略",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "format",
+          "size",
+          "created_at",
+          "current"
+        ],
+        "type": "object"
+      },
+      "ArtifactsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactVersionBody"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "artifacts"
+        ],
+        "type": "object"
+      },
       "AuthMethodsOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -1266,6 +1348,32 @@
           "start",
           "end",
           "text"
+        ],
+        "type": "object"
+      },
+      "CuesBody": {
+        "additionalProperties": false,
+        "properties": {
+          "cues": {
+            "items": {
+              "$ref": "#/components/schemas/Cue"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "lang": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "variant",
+          "lang",
+          "cues"
         ],
         "type": "object"
       },
@@ -7310,6 +7418,66 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/artifacts/{id}/content": {
+      "get": {
+        "operationId": "artifacts-content",
+        "parameters": [
+          {
+            "description": "產出 ID（GET /api/items/{id}/artifacts 的 id）",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "產出 ID（GET /api/items/{id}/artifacts 的 id）",
+              "type": "string"
+            }
+          },
+          {
+            "description": "字幕：json（預設）、srt、vtt、txt；筆記：md（預設）",
+            "explode": false,
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "description": "字幕：json（預設）、srt、vtt、txt；筆記：md（預設）",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CuesBody"
+                }
+              },
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "這個版本的內容"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "讀取產出的一個版本（LIB-R25）：字幕的 format 是 json（預設，同 GET /api/items/{id}/cues）、srt、vtt、txt；筆記是 md（預設）。其他種類或 format 回 422；影音在垃圾桶中回 404 in_trash；產出檔損毀回 409 artifact_corrupt"
+      }
+    },
     "/api/ass-styles": {
       "get": {
         "operationId": "ass-styles-list",
@@ -9364,6 +9532,66 @@
           }
         },
         "summary": "影音詳情：各步驟的狀態與各字幕來源的結果"
+      }
+    },
+    "/api/items/{id}/artifacts": {
+      "get": {
+        "operationId": "items-artifacts",
+        "parameters": [
+          {
+            "description": "影音 ID 或代號",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID 或代號",
+              "type": "string"
+            }
+          },
+          {
+            "description": "只列這個種類（例如 transcript、note）；省略時全部",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "只列這個種類（例如 transcript、note）；省略時全部",
+              "type": "string"
+            }
+          },
+          {
+            "description": "只列這個字幕變體（例如 corrected）；省略時全部",
+            "explode": false,
+            "in": "query",
+            "name": "variant",
+            "schema": {
+              "description": "只列這個字幕變體（例如 corrected）；省略時全部",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出影音每個產出保留中的每個版本（含被取代的版本，PIPE-R7），依種類、變體、語言分組，組內由新到舊（LIB-R25）"
       }
     },
     "/api/items/{id}/bundle": {

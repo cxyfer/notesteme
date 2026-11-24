@@ -140,6 +140,43 @@ Feature: Library, item page and queue page
     And the worker runs until idle
     Then the "corrected" artifact of "yt:pg100xxxxxx" has 2 versions
 
+  @M2 @LIB-07 @LIB-R11 @LIB-R25
+  Scenario: The versions of a rerun output can be listed and read for comparison
+    Given the profile "llm-lib" is:
+      """
+      stages:
+        correct: { executor: api, provider: anthropic, model: fixture-model, prompt: correct-default }
+      """
+    And the LLM provider "anthropic" answers "correct" with "correct-ok.json"
+    And the LLM provider "openai" answers "correct" with "correct-ok-alt.json"
+    And the item "yt:pg100xxxxxx" has been processed up to "correct"
+    And the owner sends "POST /api/items/yt:pg100xxxxxx/rerun" with:
+      """
+      { "from": "correct", "profile": "llm-lib" }
+      """
+    And the worker runs until idle
+    And the owner sends "POST /api/items/yt:pg100xxxxxx/rerun" with:
+      """
+      { "from": "correct", "profile": "llm-lib", "overrides": { "stages": { "correct": { "provider": "openai", "model": "fixture-model" } } } }
+      """
+    And the worker runs until idle
+    And the version 1 of the "corrected" artifact of "yt:pg100xxxxxx" is known as "first"
+    When the owner sends "GET /api/items/yt:pg100xxxxxx/artifacts?kind=transcript&variant=corrected"
+    Then the response status is 200
+    And the response contains:
+      """
+      { "artifacts": [ { "kind": "transcript", "variant": "corrected", "current": true, "stage": "correct", "provider": "openai" },
+                       { "kind": "transcript", "variant": "corrected", "current": false, "stage": "correct", "provider": "anthropic" } ] }
+      """
+    When the owner sends "GET /api/artifacts/{artifact:first}/content"
+    Then the response status is 200
+    And the response contains:
+      """
+      { "variant": "corrected", "cues": [ { "index": 1, "text": "PostgreSQL is a relational database." } ] }
+      """
+    When the owner sends "GET /api/artifacts/{artifact:first}/content?format=md"
+    Then the response status is 422
+
   @M4 @LIB-05 @LIB-R24
   Scenario: A running stage shows its task progress and provider in the item detail
     Given the profile "llm-lib" is:

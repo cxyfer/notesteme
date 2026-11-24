@@ -56,6 +56,7 @@ import { Player, type PlayerHandle } from "./Player";
 import { RerunDialog } from "./RerunDialog";
 import { sourceLabel } from "./sourceLabel";
 import { RunsPanel } from "./RunsPanel";
+import { VersionsSection } from "./Versions";
 import {
   ITEM_TABS,
   validateItemSearch,
@@ -651,12 +652,15 @@ function ItemView({
               />
             )}
             {tab === "runs" && (
-              <RunsPanel
-                runs={runs.data?.runs ?? undefined}
-                isPending={runs.isPending}
-                error={runs.error}
-                onRetry={() => void runs.refetch()}
-              />
+              <>
+                <RunsPanel
+                  runs={runs.data?.runs ?? undefined}
+                  isPending={runs.isPending}
+                  error={runs.error}
+                  onRetry={() => void runs.refetch()}
+                />
+                <VersionsSection itemId={id} />
+              </>
             )}
             {tab === "outputs" && (
               <OutputsPanel

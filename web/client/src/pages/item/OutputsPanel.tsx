@@ -159,6 +159,7 @@ function ImportForm({ itemId }: { itemId: string }) {
       ),
     onSuccess: (r) => {
       void qc.invalidateQueries({ queryKey: queryKeys.items.cuesOf(itemId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.items.artifacts(itemId) });
       void qc.invalidateQueries({ queryKey: queryKeys.items.detail(itemId) });
       toast.show({
         title: r?.stale_translation

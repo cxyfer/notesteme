@@ -56,6 +56,7 @@ func registerItems(r *Registry, s *Scenario) {
 	r.Step(`every cue of the {string} transcript of {string} has the timing {string}`, s.everyCueHasTiming)
 	r.Step(`the {string} artifact of {string} has the provenance:`, s.artifactHasProvenance)
 	r.Step(`the {string} artifact of {string} has {int} versions`, s.artifactHasVersions)
+	r.Step(`the version {int} of the {string} artifact of {string} is known as {string}`, s.artifactVersionKnownAs)
 	r.Step(`the item {string} has no {string} artifact`, s.itemHasNoArtifact)
 }
 

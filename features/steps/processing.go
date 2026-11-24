@@ -308,6 +308,21 @@ func (s *Scenario) artifactHasVersions(name, ref string, want int) error {
 	return nil
 }
 
+// artifactVersionKnownAs 給產出的第 n 個版本（1 是保留中最舊的）一個名稱，之後在請求路徑與 body 中用
+// {artifact:<名稱>} 指稱它的 ID（LIB-R25；同 {version:…} 的代入，預期結果的 JSON 不展開）。
+func (s *Scenario) artifactVersionKnownAs(n int, name, ref, as string) error {
+	id, err := s.itemID(ref)
+	if err != nil {
+		return err
+	}
+	aid, err := s.server.ArtifactVersionID(s.ctx, id, name, n)
+	if err != nil {
+		return err
+	}
+	s.World.SetHubRef("artifact", as, aid)
+	return nil
+}
+
 // m2TargetStages 是 M2 的步驟：`processed up to` 這些步驟時，目標步驟是 done 或 skipped 都算完成
 // （X1：沒有設定 provider 的 LLM 步驟、off、沒有輸出的 publish 會 skipped，steps.md 4.4 規則 (2c)）。
 var m2TargetStages = []string{"segment", "correct", "translate", "publish"}

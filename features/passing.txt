@@ -138,6 +138,7 @@ LIB-library.feature: Items with estimated timings can be filtered
 LIB-library.feature: Local media supports range requests for seeking
 LIB-library.feature: The queue shows each lane with its limit
 LIB-library.feature: Rerun from a stage with another model keeps the old version
+LIB-library.feature: The versions of a rerun output can be listed and read for comparison
 LLM-execution.feature: Chapters decide the chunks when they exist
 LLM-execution.feature: Without chapters chunks are cut by tokens with overlap and context
 LLM-execution.feature: Chunks share the same prompt prefix

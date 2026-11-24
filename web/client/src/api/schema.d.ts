@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+  "/api/artifacts/{id}/content": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** 讀取產出的一個版本（LIB-R25）：字幕的 format 是 json（預設，同 GET /api/items/{id}/cues）、srt、vtt、txt；筆記是 md（預設）。其他種類或 format 回 422；影音在垃圾桶中回 404 in_trash；產出檔損毀回 409 artifact_corrupt */
+    get: operations["artifacts-content"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/ass-styles": {
     parameters: {
       query?: never;
@@ -588,6 +605,23 @@ export interface paths {
     post?: never;
     /** 刪除影音，移到垃圾桶（DEL-R1）；已在垃圾桶中回 404 in_trash */
     delete: operations["items-delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/items/{id}/artifacts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** 列出影音每個產出保留中的每個版本（含被取代的版本，PIPE-R7），依種類、變體、語言分組，組內由新到舊（LIB-R25） */
+    get: operations["items-artifacts"];
+    put?: never;
+    post?: never;
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -1881,6 +1915,33 @@ export interface components {
        */
       since: string;
     };
+    ArtifactVersionBody: {
+      /** Format: date-time */
+      created_at: string;
+      /** @description 這一組的現行版本（沒有被取代） */
+      current: boolean;
+      /** @description 執行方式（來源紀錄的 executor，例如 local、api、agent、human、import） */
+      executor?: string;
+      format: string;
+      id: string;
+      /** @description 產出的種類，例如 transcript、note、chapters、frames、summary */
+      kind: string;
+      lang?: string;
+      model?: string;
+      prompt?: string;
+      /** Format: int64 */
+      prompt_version?: number;
+      provider?: string;
+      /** Format: int64 */
+      size: number;
+      /** @description 產生它的步驟（來源紀錄的 stage） */
+      stage?: string;
+      /** @description 字幕的變體（source、normalized、segmented、corrected、translated、edited）；其他種類省略 */
+      variant?: string;
+    };
+    ArtifactsOutputBody: {
+      artifacts: components["schemas"]["ArtifactVersionBody"][] | null;
+    };
     AuthMethodsOutputBody: {
       /** @description 以 --insecure-no-auth 啟動、沒有任何登入驗證時是 true；UI 在頂部持續顯示警告（AUTH-R3） */
       insecure_no_auth: boolean;
@@ -2285,6 +2346,11 @@ export interface components {
       timing?: string;
       /** @description 字詞級時間；來源沒有時省略 */
       words?: components["schemas"]["Word"][] | null;
+    };
+    CuesBody: {
+      cues: components["schemas"]["Cue"][] | null;
+      lang: string;
+      variant: string;
     };
     CuesOutputBody: {
       cues: components["schemas"]["Cue"][] | null;
@@ -4272,6 +4338,43 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  "artifacts-content": {
+    parameters: {
+      query?: {
+        /** @description 字幕：json（預設）、srt、vtt、txt；筆記：md（預設） */
+        format?: string;
+      };
+      header?: never;
+      path: {
+        /** @description 產出 ID（GET /api/items/{id}/artifacts 的 id） */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description 這個版本的內容 */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CuesBody"];
+          "text/markdown": string;
+          "text/plain": string;
+        };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
   "ass-styles-list": {
     parameters: {
       query?: {
@@ -5765,6 +5868,43 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["TrashItemOutputBody"];
+        };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "items-artifacts": {
+    parameters: {
+      query?: {
+        /** @description 只列這個種類（例如 transcript、note）；省略時全部 */
+        kind?: string;
+        /** @description 只列這個字幕變體（例如 corrected）；省略時全部 */
+        variant?: string;
+      };
+      header?: never;
+      path: {
+        /** @description 影音 ID 或代號 */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ArtifactsOutputBody"];
         };
       };
       /** @description Error */

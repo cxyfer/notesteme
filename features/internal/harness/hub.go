@@ -341,7 +341,8 @@ func (w *World) closeHub() error {
 }
 
 // hubRef 是 M5 的代入（steps.md 4.30）：{version:<名稱>}、{user:<名稱>}、{takedown:last}、{report:last}、{share:last}。
-var hubRef = regexp.MustCompile(`\{(version|user|takedown|report|share):([^}]+)\}`)
+// artifact 是 Client 的產出版本（LIB-R25，`the version … of the … artifact of … is known as …`），共用同一套代入。
+var hubRef = regexp.MustCompile(`\{(version|user|takedown|report|share|artifact):([^}]+)\}`)
 
 // SubstRequest 是請求端的代入（請求路徑、請求 body、CLI 參數）：{token:…} 加上 M5 的參照，以 Refs["<種類>:<名稱>"] 取代；
 // 沒有對應的項目時維持原樣。預期結果的 JSON 只用 Subst（steps.md 4.30：M5 的參照在預期 JSON 中不展開）。

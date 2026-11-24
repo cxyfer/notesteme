@@ -196,7 +196,7 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
     - 顯示寫入狀態：已寫入 vault、檔案路徑、git commit。
   - **紀錄**：
     - 依步驟列出狀態、開始與結束時間、耗時、花費、provider、model、prompt 版本、log。
-    - 每個產出都有版本，可以比較兩個版本的差異。
+    - 每個產出都有版本，可以比較兩個版本的差異。實作（2026-11-25）：紀錄分頁的「產出的版本」列出字幕與筆記的各版本，選兩個版本比較逐字差異，見 [README 10.26](README.md#1026-影音詳情與媒體庫列的規格缺口2026-11-25) 第 6 點。
 - **實作狀態（UI-4，2026-11-23）**：畫面與筆記分頁已完成，見 [README 10.12](README.md#1012-ui-4訂閱成本筆記模板通知與預算影音詳情的畫面與筆記2026-11-23)；匯出選單的 Markdown 筆記改放在筆記分頁的「下載 Markdown」。
 - **實作狀態（UI-8，2026-11-24）**：標題下的資訊列顯示「從 bundle 匯入」（來源實例、版本、匯入時間）；`Space`、`←`／`→`、`[`／`]` 的播放快捷鍵（Bilibili 不接 `Space` 與方向鍵），見 [README 10.20、10.21](README.md#1021-ui-8-的決定與待決問題)。
 - **實作狀態（UI-6，2026-11-24）**：動作列加上「分享到 Hub」（本機檔案不顯示）與已分享清單，字幕來源是 `hub` 時顯示「來自 Hub 的原始字幕」（沒有上傳者名稱，API 沒有），見 [README 10.16、10.17](README.md#1017-ui-6-的決定與待決問題)。
@@ -217,7 +217,9 @@ YouTube cookie 已失效，3 部影片無法下載。                 [ 上傳�
   - `GET /api/items/:id/note`
   - `GET /api/items/:id/runs`
   - `POST /api/items/:id/rerun`
-  - `GET /api/artifacts/:id/content?format=`
+  - `GET /api/items/:id/artifacts`（列出每個產出的各版本，LIB-R25）
+  - `GET /api/artifacts/:id/content?format=`（讀取一個版本：字幕 `json`／`srt`／`vtt`／`txt`、筆記 `md`，LIB-R25；2026-11-25 前這個端點只寫在這裡、沒有實作）
+  - 下載與筆記：`GET /api/items/:id/subtitles?format=&style=`（OUT-R1、R6）、`GET /api/items/:id/note?format=md`（NOTE-R13）
   - `GET /api/items/:id/media`（Range）
   - `GET /api/items/:id/deletion-preview`、`DELETE /api/items/:id`
 - **實作狀態（收尾 D2，2026-11-24）**：步驟為 `waiting`（等待 YouTube 自動字幕，SRC-R6）時，步驟面板的「現在改用語音轉錄」呼叫 `POST /api/items/:id/use-asr-now`，成功後重新讀取詳情並提示「已改用語音轉錄，不再等待自動字幕。」，失敗（409）顯示錯誤。按鈕依 `Stage.action_codes` 的 `use_asr_now` 決定（沒有代碼時退回比對文字）。之前這個按鈕只會打開設定頁。

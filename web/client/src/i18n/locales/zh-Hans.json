@@ -820,6 +820,31 @@
       "whisper-1": "OpenAI Whisper 语音转录",
       "voxtral": "Voxtral 语音转录",
       "hub": "Hub 的原始字幕"
+    },
+    "versions": {
+      "title": "产出的版本",
+      "description": "重新处理会产生新版本，旧版本保留（每种最多 3 版）。字幕与笔记可以选两个版本比较差异。",
+      "loading": "正在加载产出的版本…",
+      "empty": "还没有任何产出。",
+      "kinds": {
+        "transcript": "字幕",
+        "note": "笔记",
+        "chapters": "章节",
+        "frames": "画面",
+        "summary": "摘要",
+        "sponsor_segments": "SponsorBlock 片段"
+      },
+      "count_other": "（{{count}} 个版本）",
+      "current": "当前",
+      "before": "比较前",
+      "after": "比较后",
+      "compare": "比较",
+      "compareGroup": "比较“{{name}}”的两个版本",
+      "same": "选了同一个版本。",
+      "loadingDiff": "正在加载两个版本…",
+      "changes_other": "有 {{count}} 处不同。",
+      "noChanges": "两个版本的文字相同。",
+      "truncated_other": "只列出前 {{count}} 处。"
     }
   },
   "queue": {

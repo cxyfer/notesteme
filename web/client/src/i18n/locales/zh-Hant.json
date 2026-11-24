@@ -820,6 +820,31 @@
       "whisper-1": "OpenAI Whisper 語音轉錄",
       "voxtral": "Voxtral 語音轉錄",
       "hub": "Hub 的原始字幕"
+    },
+    "versions": {
+      "title": "產出的版本",
+      "description": "重新處理會產生新版本，舊版本保留（每種最多 3 版）。字幕與筆記可以選兩個版本比較差異。",
+      "loading": "正在載入產出的版本…",
+      "empty": "還沒有任何產出。",
+      "kinds": {
+        "transcript": "字幕",
+        "note": "筆記",
+        "chapters": "章節",
+        "frames": "畫面",
+        "summary": "摘要",
+        "sponsor_segments": "SponsorBlock 片段"
+      },
+      "count_other": "（{{count}} 個版本）",
+      "current": "目前",
+      "before": "比較前",
+      "after": "比較後",
+      "compare": "比較",
+      "compareGroup": "比較「{{name}}」的兩個版本",
+      "same": "選了同一個版本。",
+      "loadingDiff": "正在載入兩個版本…",
+      "changes_other": "有 {{count}} 處不同。",
+      "noChanges": "兩個版本的文字相同。",
+      "truncated_other": "只列出前 {{count}} 處。"
     }
   },
   "queue": {

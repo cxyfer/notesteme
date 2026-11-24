@@ -212,6 +212,7 @@
 | `Then every cue of the {string} transcript of {string} has the timing {string}` | 所有 cue 的時間來源（`GET /api/items/:id/cues`）；沒有任何 cue 視為失敗 |
 | `Then the {string} artifact of {string} has the provenance:` | 現行產出的來源紀錄（`provenance_json`）；表格欄位：`field`、`value`。`field` 用點號表示巢狀欄位，數字的段落是陣列索引（例如 `tool_versions.yt-dlp`），值一律以字串比較（數字用原本的寫法）。`parents` 是上游產出的變體名稱清單（值以逗號分隔、依序相等，例如 `source`）。符合名稱的現行產出必須剛好一個；harness 經測試用的 hook 讀取，不新增 API |
 | `Then the {string} artifact of {string} has {int} versions` | 版本數，包含被取代的版本 |
+| `Given the version {int} of the {string} artifact of {string} is known as {string}` | 給產出的第 N 個版本（1 是保留中最舊的，含被取代的版本）一個名稱，之後在請求路徑與 body 中用 `{artifact:<名稱>}` 指稱它的 ID（LIB-R25）。名稱的比對同上一列（kind 或 variant，必須只有一組）；沒有第 N 個版本時步驟失敗。代入規則同第 10 節的 `{version:…}`（預期結果的 JSON 不展開）；harness 經測試用的 hook 讀取，不經過受測的 API |
 | `Then the item {string} has no {string} artifact` | 沒有這種產出 |
 | `Given the media of {string} is cached` | 媒體快取中已有這部影音下載好的檔案 |
 | `Then the trash contains {string}` | 影音在垃圾桶中 |

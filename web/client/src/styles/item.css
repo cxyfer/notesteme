@@ -538,3 +538,50 @@
 .queue__agent-claims {
   margin: 0 0 0 auto;
 }
+/* 紀錄分頁的產出版本與比較（LIB-R25） */
+.versions {
+  margin-top: var(--space-6);
+}
+.versions__groups,
+.versions__list,
+.versions__changes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.versions__group {
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--rule);
+}
+.versions__name {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-14);
+}
+.versions__list li {
+  font-size: var(--font-12);
+}
+.versions__compare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.versions__compare .field {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+.versions__diff {
+  margin-top: var(--space-3);
+}
+.versions__changes li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  white-space: pre-wrap;
+}
+.versions__at {
+  color: var(--text-secondary);
+}

@@ -303,7 +303,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 佇列的優先順序 | 未做 | API 缺口（10.7 第 8 點） |
 | 匯出選單的 ASS 樣式選擇 | 完成（見 10.26） | `OutputsPanel.tsx` |
 | 匯出選單的 Markdown 筆記、bundle | 完成（UI-4 的筆記分頁「下載 Markdown」、UI-5 的動作列「匯出 bundle」） | `NotePanels.tsx`、`ItemPage.tsx` |
-| 兩個版本之間的比較（紀錄分頁） | 未做 | 之後的切片 |
+| 兩個版本之間的比較（紀錄分頁） | 完成（見 10.26） | `src/pages/item/Versions.tsx` |
 
 ### 10.7 UI-2 的決定
 
@@ -321,7 +321,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
    - 沒有 log 片段（OBS-2 的「相關 log 片段」）：步驟面板改連到「紀錄」分頁，顯示 `GET /runs` 的狀態、時間與設定快照；`runs` 也沒有花費、provider 實際回應等欄位。
    - rerun 沒有 `estimate`／`estimate_usd`：對話框顯示「無法預估」。沒有拿 `POST /api/estimate` 代替（它針對網址，可能呼叫 yt-dlp）。（有更好的字幕來源時改顯示 `better_source.estimate_usd`，見 10.24 第 2 點。）
    - 沒有 provider 列表 API：provider 用文字輸入，建議值取自處理方案設定。（2026-11-25 起後端有 `GET /api/providers`〔SEC-R11〕，這裡還沒有改用，列為後續，見 10.25。）
-   - 沒有列出影音有哪些字幕變體與語言的 API：模式依步驟狀態推得，`edited` 用一次 `variant=edited` 的查詢確認。
+   - ~~沒有列出影音有哪些字幕變體與語言的 API~~：`GET /api/items/:id/artifacts`（LIB-R25）已經能列出各變體、語言與版本（見 10.26 第 6 點），目前只用在紀錄分頁的版本比較；字幕分頁的顯示模式仍依步驟狀態推得，`edited` 仍用一次 `variant=edited` 的查詢確認，沒有改。
    - ~~沒有章節~~、說話密度、LLM chunk 的時間範圍：時間帶只畫整條步驟狀態，沒有 chunk 進度與「重新校正這段」。章節：`GET /api/items/{id}` 已有 `chapters`（CHAP-R7），章節線、章節清單與拖曳選取後的「複製這段字幕」已做（見 10.26）。
    - `ItemDetail` 沒有處理方案名稱：從設定快照的 `profile` 取（沒有就不顯示）。
    - 佇列：~~`GET /api/queue` 只列內建 worker 的任務~~：AGT A13 補上 Agent 任務與租約到期時間，佇列頁已顯示（見 10.23）；仍沒有優先順序欄位與調整優先順序的 API，頁面上明說。~~`POST /api/tasks/{id}/retry`、`cancel` 回 501~~：收尾 D1 已實作，佇列頁接上單一任務的取消與重試（見 10.22）。
@@ -720,12 +720,14 @@ pages.md §12 的「服務與金鑰」要求每個 provider 都有「測試連�
 | 匯出的「ASS（選擇樣式）」（pages.md §4 的匯出選單，OUT-R6） | 完成（沒有改後端） | `src/pages/item/OutputsPanel.tsx` |
 | 章節：時間帶的章節線、hover 顯示章節名稱、播放器下的章節清單、時間帶上的 `Shift + ←／→`；拖曳選取範圍後「複製這段字幕」（pages.md §4、design-language.md §6.1） | 完成（沒有改後端） | `src/pages/item/{Chapters.tsx,ItemPage.tsx}`、`web/shared/src/StatusBand.tsx` |
 | 媒體庫列狀態欄的補充說明（pages.md §3 的「轉錄 4/5 段」「Groq」） | 完成（後端加 `stages[].progress`、`provider`，LIB-R24） | `internal/pipeline/query.go`、`internal/api/items.go`、`src/pages/library/LibraryRow.tsx` |
+| 紀錄分頁：每個產出的版本，字幕與筆記可以比較兩個版本（pages.md §4「紀錄」、LIB-R11 的「可比較」） | 完成（後端加 `GET /api/items/:id/artifacts`、`GET /api/artifacts/:id/content`，LIB-R25） | `internal/api/artifacts.go`、`internal/pipeline/versions.go`、`src/pages/item/Versions.tsx` |
 
 1. **ASS 的樣式選擇**：輸出分頁的 ASS 下載按鈕旁多一個「ASS 樣式」下拉選單，選項是 `GET /api/ass-styles` 的樣式名稱（`style=` 傳的是名稱，`AssStyles.Get` 以名稱查），預設 `default`；按鈕文字是「ASS（<樣式>）」，連結帶 `&style=<名稱>`。樣式清單和設定頁共用快取、不重試；讀不到（403、501、其他錯誤）或是空的時退回原本的「ASS（預設樣式）」連結，不擋下載。選過的樣式之後不在清單中時回到 `default`，不送出會 422 的名稱。其他格式的連結不帶 `style`。
 2. **章節**：用 `GET /api/items/{id}` 的 `chapters`（CHAP-R7；UI-2 當時的延後理由「API 沒有章節」已經不成立）。時間帶的底軌畫 1px `--chapter` 直線（第一章在 0 秒不畫），自己畫的 `track` 照樣保留「還不知道說話密度」的點狀基線；線是裝飾（底軌在 `aria-hidden` 內），可及的版本是播放器下的「章節」清單：每章一個按鈕（可存取名稱「跳到章節「<標題>」（<時間>）」），點擊跳播，目前所在的章節加 `aria-current` 與左側色條（不只靠顏色）；清單最高 40vh、超過時捲動。hover 時間帶依序顯示時間碼、章節名稱、字幕句（`StatusBand` 新增選用的 `chapterAt`）。章節標題是不可信的文字，只用文字節點渲染；不知道章節的語言（平台章節是原文、LLM 章節可能是目標語言），所以不設 `lang`。**API 的 `Chapter` 沒有層級**，design-language.md §6.1 的「`###` 小節只畫下半段」做不到，每章都畫整條線。沒有章節時不顯示清單、不畫線。
 3. **`Shift + ←／→`**：design-language.md §6.1 同時把 `Shift + ←／→` 寫成「跳到上一個或下一個章節」與「`Shift + 方向鍵`：選取範圍」，彼此矛盾。取保守的一邊：時間帶有焦點時 `Shift + ←／→` 跳章節（和 `[`／`]` 同一個規則：離目前章節開頭超過 2 秒時先回到開頭），範圍選取只用指標拖曳。`StatusBand` 新增選用的 `onShiftStep`，沒有傳時 `Shift + 方向鍵` 和原本一樣移動 5 秒（Hub 不受影響）。
 4. **拖曳選取與「複製這段字幕」**：pages.md §4 的拖曳選取屬於影音詳情；兩個動作中「複製這段字幕」只需要已經讀到的字幕，可以獨立做，「重新校正這段」要 LLM chunk 的時間範圍（`rerun` 的 `chunks` 是 chunk 編號，API 沒有範圍），維持不做、也不顯示停用的按鈕。`StatusBand` 新增選用的 `onSelectRange`／`selection`：在底軌上按下後水平移動超過 4px 才算選取（以內仍是點擊、會跳播），用 pointer capture，放開後吞掉同一次的 click，播放頭不動；選取的範圍以 Cue 色 18% 的區塊畫在底軌上。時間帶下方出現動作列「已選取 01:00–01:40」「複製這段字幕（N 句）」「取消選取」（動作列在 slider 之外，slider 的子元素都是裝飾）。複製的是**目前顯示模式的字幕**中和 `[from, to)` 有重疊的句子（OUT-R3 的語意），每句一行、不含時間碼（和 `txt` 下載相同）；範圍內沒有字幕時按鈕停用並寫「這段沒有字幕」。剪貼簿不能用（不是安全來源、權限被拒）時 toast「無法複製：瀏覽器不允許存取剪貼簿。」。鍵盤使用者沒有對應的範圍選取（見第 3 點）；字幕分頁的文字可以直接選取複製。
 5. **媒體庫列的補充說明**：`GET /api/items/{id}` 的 `stages[]` 在步驟 `running` 時多 `progress{done, total}`（那個 stage run 的任務完成數，沿用總覽 `now.progress` 的 `StageRunTaskProgress`，`total` 為 0 時省略）與 `provider`（設定快照的 `stages.<stage>.provider`，沒有時省略），規則是 LIB-R24。**放在詳情而不是 `ListedItem`**（brief 原本寫 `ListedItem`）：列的步驟狀態本來就讀詳情，SSE 只讓那一列的詳情失效，列表依 LIB-R9 不重抓，放在列表會停在載入時的值。狀態欄在徽章下寫「4/5 個任務，API 處理，groq」，只列有值的部分（沒有 progress 時照舊只有執行方式）；用「任務」而不是 mockup 的「段」，因為數字是任務數，LLM 步驟含規劃任務（例如一個 chunk 的校正規劃完成後是 1/2）。provider 是設定檔中的 id，原樣顯示。任務完成不發 SSE，所以只有媒體庫列在「有 running 步驟而且有 progress」時每 60 秒重新讀取詳情（`useItemDetail(id, { pollProgress: true })`，和總覽的間隔相同）；總覽、佇列等其他用 `useItemDetail` 的地方不輪詢，虛擬捲動只掛載可視範圍內的列。
+6. **產出的版本與比較**：後端缺的是「列出版本」與「讀取指定版本」（`GET /api/items/{id}/cues` 只有 `variant`、`lang`，選的是目前那一份）。讀取沿用 pages.md §4 原本就寫的 `GET /api/artifacts/:id/content?format=`（之前只寫在 UI 規格、沒有實作），列出用 `GET /api/items/:id/artifacts`（可用 `kind`、`variant` 篩選），規則是 LIB-R25（細節與理由見 LIB 規格的待決問題）。紀錄分頁在執行紀錄下面多一個「產出的版本」：依（種類、變體、語言）分組，每組列出各版本的時間、「目前」、執行方式、provider、model、prompt；**只有字幕與筆記可以比較**（其他種類只列版本，後端也只提供這兩種的內容）。每組有「比較前」「比較後」兩個選單（預設是上一版與目前），按「比較」才讀取兩個版本的內容（版本不會變，快取不過期，不跟著 SSE 失效；版本列表則和執行紀錄一起在 `stage.status` 與重新連上時失效，匯入字幕後也失效）。字幕的比較沿用字幕分頁「差異」的做法：依時間重疊分組、每組逐字比對（`web/shared` 的 `diffChars` 與 `DiffText`），只列出有變動的組與時間碼，不把整份字幕接成一串（會超過 LCS 的 400 萬格上限而退化成整段刪除加新增）；筆記先逐行比對（每個不同的行對應一個 Unicode 私用區字元，沿用 `diffChars`），連續的刪除與新增行合成一處再逐字比對。最多列出 200 處，超過時寫「只列出前 200 處」。兩邊選同一個版本時「比較」停用。
 
 ### 10.27 pages.md 第 1～6 節的前端缺口（2026-11-25）
 

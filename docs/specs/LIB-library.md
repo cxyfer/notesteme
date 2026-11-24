@@ -51,10 +51,11 @@
 | LIB-R22 | 磁碟用量 `disk{data_bytes, media_bytes, artifacts_bytes, uploads_bytes, free_bytes, measured_at}`：`/data` 及其下 `media`、`artifacts`、`uploads` 的檔案大小總和，以及 `/data` 所在檔案系統的可用空間。不跟隨 symlink；結果快取 5 分鐘（以注入的 clock 判斷），一次統計最多 30 秒，逾時時回傳上一次的結果與 `measured_at`，從來沒有統計完成時各數字為 `null`。只顯示，不刪除任何檔案（媒體檔保留策略不在 M4，ADR-0021 第 8 點）。 | M4 |
 | LIB-R23 | UI：總覽（UI 第 1 節）的「現在」最多列 3 部並顯示「還有 N 部」連到佇列，「需要你處理」每一項都有直接處理的按鈕、沒有項目時整個區塊隱藏，「今天」依時間排列，底部顯示本月花費與預算。媒體庫（UI 第 3 節）選取多列後出現批次操作列；執行之前先以 `dry_run` 取得影響範圍，確認對話框顯示數量與預估費用，刪除時另外顯示 DEL-R3 的合計；部分失敗時列出失敗的影音與原因。 | M4 |
 | LIB-R24 | `GET /api/items/:id` 的步驟（`stages[]`）在狀態是 `running` 時多兩個欄位：`progress{done, total}` 是那個 stage run 的任務完成數，算法同 LIB-R21 的 `now.progress`（不含取消的任務；`total` 為 0 時省略）；`provider` 是那個 stage run 的設定快照中 `stages.<stage>.provider`（沒有時省略）。其他狀態的步驟不回這兩個欄位。媒體庫列的狀態欄顯示它們（UI 第 3 節的「轉錄 4/5 段」「Groq」）。 | M4 |
+| LIB-R25 | 產出的版本（LIB-R11 的「舊版本保留並可比較」）：`GET /api/items/:id/artifacts?kind=&variant=`（`read`）列出影音每個產出保留中的每個版本，包括被取代的版本（PIPE-R7），依 `(kind, variant, lang)` 分組、組的順序是現行版本的建立順序、組內由新到舊：`{artifacts: [{id, kind, variant?, lang?, format, size, created_at, current, stage?, executor?, provider?, model?, prompt?, prompt_version?}]}`；來源資訊只取來源紀錄中的這幾個欄位（型別不對的丟掉）。`kind`、`variant` 是選填的完全比對篩選。`GET /api/artifacts/:id/content?format=`（`read`）回傳一個版本的內容：字幕（`transcript`）的 `format` 是 `json`（預設，形狀同 `GET /api/items/:id/cues` 的 `{variant, lang, cues}`）、`srt`、`vtt`、`txt`；筆記（`note`）是 `md`（預設，`text/markdown`）。其他種類或 format 回 422 `invalid_request`；產出不存在回 404 `not_found`「找不到這個產出。」；影音在垃圾桶中回 404 `in_trash`（列表也是）；產出檔損毀回 409 `artifact_corrupt`（現行版本照 NFR-REL-2 從產生它的步驟重跑，舊版本只標記）。 | M2 |
 
 ## 介面
 
-- API：`GET /api/items`、`GET /api/items/:id`、`GET /api/items/:id/cues`、`GET /api/items/:id/media`、`GET /api/queue`、`GET /api/events`
+- API：`GET /api/items`、`GET /api/items/:id`、`GET /api/items/:id/cues`、`GET /api/items/:id/media`、`GET /api/queue`、`GET /api/events`；產出的版本（LIB-R25）：`GET /api/items/:id/artifacts`、`GET /api/artifacts/:id/content`
 - UI：見上方連結
 
 **`GET /api/items`（LIB-R1、R3、R4、R7）**
@@ -172,3 +173,10 @@
   - **算法沿用總覽**：只對 `running` 的 stage run 呼叫 `StageRunTaskProgress`（LIB-R21 的 `progress`），沒有另外定義「段」。LLM 步驟的任務包含規劃（plan）任務，所以只有一個 chunk 的校正在規劃完成、chunk 還沒做時是 `1/2`；這和總覽的數字一致。UI 因此寫「N/M 個任務」，不寫「段」。`provider` 讀設定快照（和 `GET /runs` 的 `config.stages.<stage>.provider` 相同）；快照讀不到時只省略 `provider`，不讓詳情失敗。
   - **新鮮度**：任務完成不發 SSE 事件（只有步驟狀態改變才發），所以 UI 對「有 running 步驟、而且有 progress」的列每 60 秒重新讀取詳情（和總覽的 `refetchInterval` 相同）；虛擬捲動只掛載可視範圍內的列，看不到的列不輪詢。
   - 場景：`features/LIB-library.feature` 的「A running stage shows its task progress and provider in the item detail」（`@M4`）。
+- LIB-R25 產出的版本與比較（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：
+  - **端點名稱**：讀取一個版本的內容沿用 UI 規格（pages.md §4 的 API 清單）原本就寫的 `GET /api/artifacts/:id/content?format=`；列出版本沒有既有名稱，用 `GET /api/items/:id/artifacts`，和其他影音層級的讀取路由一致（`{id}` 也接受代號）。`GET /api/items/:id/cues` 不加版本參數：它的語意是「目前會選的那一份」（OUT-R2）。
+  - **範圍**：內容只提供字幕與筆記，這兩種是重跑（換 prompt 或模型，LIB-R11）會改變、使用者會想比較的文字；chapters、frames、summary 等只列出版本（來源資訊與時間），不提供內容，UI 也不提供比較。筆記的內容是產出 JSON 中寫好的 Markdown（ADR-0020 第 4 點），不重新套用模板。
+  - **來源資訊用白名單**：`stage`、`executor`、`provider`、`model`、`prompt`（字串，最多 200 字元）、`prompt_version`（正整數）。來源紀錄可能有 Hub 上傳者名稱、匯入資訊、工具版本等，不整份回傳。
+  - **損毀**：讀舊版本時也驗證 sha256；`handleCorrupt` 只會讓現行版本重跑，舊版本只標記並回 409，避免讀一個舊版本就觸發重新處理。
+  - **沒有改 sqlc 查詢**：列表用既有的 `CurrentArtifacts` 找出各組，再用既有的 `ArtifactGroup` 讀每組的版本（每組最多保留 3 版加上被引用的版本，組數是個位數）。
+  - 場景：`features/LIB-library.feature` 的「The versions of a rerun output can be listed and read for comparison」（`@M2`），步驟句型 `the version … of the … artifact of … is known as …` 已在 steps.md 登記。

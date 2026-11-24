@@ -857,6 +857,34 @@
       "whisper-1": "OpenAI Whisper transcription",
       "voxtral": "Voxtral transcription",
       "hub": "Original subtitles from Hub"
+    },
+    "versions": {
+      "title": "Output versions",
+      "description": "Reprocessing creates a new version and keeps the old ones (up to 3 of each). Pick two versions of subtitles or notes to compare them.",
+      "loading": "Loading output versions…",
+      "empty": "No outputs yet.",
+      "kinds": {
+        "transcript": "Subtitles",
+        "note": "Notes",
+        "chapters": "Chapters",
+        "frames": "Frames",
+        "summary": "Summary",
+        "sponsor_segments": "SponsorBlock segments"
+      },
+      "count_one": "({{count}} version)",
+      "count_other": "({{count}} versions)",
+      "current": "current",
+      "before": "Before",
+      "after": "After",
+      "compare": "Compare",
+      "compareGroup": "Compare two versions of “{{name}}”",
+      "same": "Both sides are the same version.",
+      "loadingDiff": "Loading both versions…",
+      "changes_one": "{{count}} difference.",
+      "changes_other": "{{count}} differences.",
+      "noChanges": "The two versions have the same text.",
+      "truncated_one": "Only the first {{count}} is listed.",
+      "truncated_other": "Only the first {{count}} are listed."
     }
   },
   "queue": {

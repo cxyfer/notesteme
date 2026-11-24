@@ -27,7 +27,12 @@ export const queryKeys = {
     frames: (id: string) => [...queryKeys.items.allFrames(), id] as const,
     allNotes: () => [...queryKeys.items.all, "note"] as const,
     note: (id: string) => [...queryKeys.items.allNotes(), id] as const,
+    // 產出的版本（LIB-R25）：stage.status 時和執行紀錄一起失效
+    allArtifacts: () => [...queryKeys.items.all, "artifacts"] as const,
+    artifacts: (id: string) => [...queryKeys.items.allArtifacts(), id] as const,
   },
+  /** 產出一個版本的內容（LIB-R25）：版本不會變，不放在 items 底下，不跟著失效 */
+  artifactContent: (id: string) => ["artifact-content", id] as const,
   profiles: ["profiles"] as const,
   // 處理方案的單筆與版本（前綴是 profiles，列表失效時一起失效）
   profile: (id: string) => [...queryKeys.profiles, "detail", id] as const,
