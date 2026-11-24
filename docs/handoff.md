@@ -553,11 +553,14 @@
 ### 2026-11-24 現況
 
 - **已完成並推送（master）**：M1、M2（後端與場景）、M3（SPB、CHAP、FRM、NOTE、VAULT、GEM）、M4（NOTIFY、SUB、COST、BATCH、DIG、SRC-10、SRCH、GLOS、BND、AUTH、OPS、ENTRY、LIB-08/09）、M5（HACC、HREP、HMCP、HSHR、Postgres＋S3 backend、`deploy/docker/compose.hub.yaml`）、UI-0～UI-8、Hub Web UI（`web/hub`）。三份安全修補（Hub、bundle／分享、Client）已合併。
-- **收尾切片（已完成並推送）**：盤點出規格有寫、沒有場景守住的項目，由兩個切片補完——D1：`POST /api/tasks/{id}/retry`／`cancel`（PIPE）、NFR-REL-2 讀取時比對 sha256、LIB-R4 `group_by`、修好不穩定測試 `TestMCPLoopbackRechecksPermissions`；D2：VAULT-R12 的 git vault 刪除、SRC-R11 文字語言偵測與 `mixed`（`@wip` 場景已拿掉 `@wip`）、SRC-R6「現在改用語音轉錄」動作、yt-dlp 每日排程更新（OPS-R6／R7）。場景數現在是預設 tag（`@M1,@M2`）313＋`@M3,@M4,@M5` 630 = 943，全部 passed。摘要見第 1 節末尾的「收尾 D1／D2」。
+- **收尾切片（已完成並推送）**：盤點出規格有寫、沒有場景守住的項目，由三個切片補完——D1：`POST /api/tasks/{id}/retry`／`cancel`（PIPE）、NFR-REL-2 讀取時比對 sha256、LIB-R4 `group_by`、修好不穩定測試 `TestMCPLoopbackRechecksPermissions`；D2：VAULT-R12 的 git vault 刪除、SRC-R11 文字語言偵測與 `mixed`（`@wip` 場景已拿掉 `@wip`）、SRC-R6「現在改用語音轉錄」動作、yt-dlp 每日排程更新（OPS-R6／R7）；D3：SRC-R4 的 `low_coverage`／`repetition`／`music_only`、SRC-R13 的 Whisper 幻覺過濾、ING-08 的 `llm_usd` 與 reprobe 的 `estimate_usd`（SRC-10 R10）、規格裡過期的「還沒做」文字、`@pending-m0` 的盤點（14 個場景）。場景數現在是預設 tag（`@M1,@M2`）313＋`@M3,@M4,@M5` 630 = 943，全部 passed。摘要見第 1 節末尾的「收尾 D1／D2／D3」。
 - **owner 要做的事（我做不到）**：
-  1. **GitHub Actions 帳務問題**（付款失敗或額度上限）：解決後先確認 CI 全綠；CI 有一步不加 `-race` 跑 `@M3,@M4,@M5` 的場景（加 `-race` 會逾時）。
+  1. **GitHub Actions**：repo 公開之後（2026-11-24）CI 才真的跑起來，第一次完整執行找到兩個問題，都已修正：
+     - `go test -race ./...` 在 GitHub 的 runner 上超過每個測試程式 30 分鐘的上限，`features` 被中止（05:15 的那次還在 27.5 分鐘通過，之後測試變多）。CI 改成平行的四個 job：`go`（其餘套件，`-race`，逾時 60 分鐘）、`bdd`（`./features`，`-race`，60 分鐘）、`bdd-extra`（`@M3,@M4,@M5`，不加 `-race`，45 分鐘；在 runner 上約 3 分鐘）、`coverage`（涵蓋率門檻）。
+     - `hub-backends` 從來沒通過：MinIO 的 image 已經拉不到，連 `compose.hub.yaml` 都啟動不了。改用 SeaweedFS（第 8 項、ADR-0030 修訂）；這個 job 第一次在真的 Postgres 16 與真的 S3 相容服務上跑完 Hub 的共用案例（136 個通過、0 個略過），並新增「沒簽章的 S3 請求必須回 403」的反證。
+     - 新增 `docker` job（第 3 項）。
   2. **真實驗收**：yt-dlp（YouTube、Bilibili）、Groq、Supadata、Gemini、ntfy、真實 IdP、真實反向代理、Hub 的真實 OAuth、R2／AWS S3、真實 ffmpeg 輸出（bundle 的 JPEG 結構檢查只用 Go encoder 與手工樣本）、真實 libass 預覽、Jellyfin／Plex sidecar；`@manual`、`@ui @manual` 的人工驗收；M0 量測與 `@pending-m0`。
-  3. **Docker**：本機 docker daemon 沒有回應，只驗證到 `docker compose config` 與 YAML 解析；`docker build`、`compose up` 都沒實測；Hub image 沒有發布到 ghcr。
+  3. **Docker**：CI 的 `docker` job 實際建置 Client 與 Hub 的 image（先前本機沒有 docker，這是第一次實測）。Client image 通過 `deploy/docker/smoke-test.sh`（工具齊全含 ffmpeg libass、非 root、缺 master key 時拒絕啟動、登入、SIGTERM 正常關閉、重啟後資料保存）；Hub 用 `compose.hub.yaml` 啟動整組（Postgres 16、SeaweedFS、`hub-s3-init` 建 bucket、`hub-migrate`、`hub`），`/readyz` 回 ok、`hub doctor` 通過、匿名的 S3 請求被拒絕（403）。**仍沒驗證**：Hub image 沒有發布到 ghcr；arm64 的多架構建置（只在發布 tag 時由 `docker-publish.yml` 建置）；Client 的 `compose.yaml`（`wsl`／`vps` profile 與 Caddy）沒有在 CI 啟動；真實反向代理後面的行為。
   4. **追認決定**：各規格「待決問題」中標「（2026-11-23／24，依 /goal 採 advisor 建議，待 owner 追認）」的項目（很長的清單，依規格 grep 這句話即可列出）。其中修改了既有 `.feature` 的：VAULT 5 個場景（V12，rerun 帶明確 profile）、COST C22、SRC-10 R16、NOTIFY N9、SUB-R4 的 regex 範例、HSHR S17（R13 檔名）與 S20（`hub-precheck-v1` → `v2`，12 處）、SRC-R11 的 `@wip` 場景（`SRC-transcript-sources.feature:214`：第一步從 `titled` 改成 `with:` 並加上 `language zh`，拿掉 `@wip`）。破壞性變更：Hub 需要 `NOTESTEME_HUB_MASTER_KEY`（≥ 32 字元）與 `NOTESTEME_HUB_SESSION_KEY`；Hub 的 cookie 改成 `__Host-` 前綴（部署後每個人要重新登入）。
   5. 各規格 `status` 仍不是 `implemented`（owner 的步驟）。
   6. **營運上要先知道的行為改變（收尾 D1／D2）**：
@@ -566,7 +569,14 @@
      - 產出損毀（NFR-REL-2）：重跑依影音**目前**的處理方案；匯入、編輯或從 bundle 播種的產出只標記不自動重跑；畫面、筆記、摘要、章節的產出讀到損毀只回報錯誤。
      - 單一任務的重試／取消以任務所屬的整個步驟為單位，scope 是 `admin`。
      - OPS 的「固定版本略過」場景偏弱：排程完全沒執行時它也會通過（同一組的第一個場景才證明排程真的有跑）。
-  7. **CI 逾時餘裕**：2026-11-24 沒有其他負載的完整 `go test -race ./...` 中，`features` 跑了約 1350 秒、`internal/pipeline` 約 1220 秒；CI 每個測試程式的上限是 30 分鐘，餘裕只有約 7～10 分鐘。帳務恢復後若 CI 逾時，先查這裡（場景再增加時要把 features 拆成獨立的 job 或並行化）。
+  7. **CI 逾時餘裕**：已處理（第 1 項）。拆成平行的 job 之後每個測試程式的上限是 60 分鐘；場景再增加時 `bdd`（`-race` 下的 `./features`）是第一個會碰到上限的，可以再依 feature 檔分片。
+  8. **S3 相容服務改用 SeaweedFS（ADR-0030 修訂，待追認）**：compose 的 `hub-minio`、`hub-minio-init` 改為 `hub-s3`（`chrislusf/seaweedfs:4.55`，單容器 `weed server -s3`）與 `hub-s3-init`（`curlimages/curl:8.18.0` 以 SigV4 建 bucket）；volume 改名 `hub-s3-data`，沒有提供 MinIO 資料的遷移（沒有已知的部署）。代價：SeaweedFS 在 `hub-internal` network 上還開了沒有認證的內部服務（filer 8888、master 9333、Iceberg 8181 等），Hub 容器被攻破時可繞過 S3 簽章；network 是 internal，只有 Hub 與 migrate 連得到。也可以改用 R2 或 AWS S3（`docs/hub-deployment.md` §3）。
+  9. **收尾 D3 的決定（待追認）**：
+     - **請優先決定**：已付費的 Groq 轉錄被 SRC-R4 拒絕（`low_coverage`、`repetition`）時，步驟仍以「找不到可用的字幕來源」失敗，手動重跑會再付一次、而且多半又被拒絕。建議：付費 ASR 是最後一個可用來源時採用並顯示提醒，不要失敗（需要新的狀態、訊息與 UI，所以沒有在 /goal 內做）。
+     - SRC-R4：品質檢查只套用在 `fallback` 來源（Supadata、Groq），不套用平台字幕軌；Groq 的涵蓋率用它回報的音訊長度；順序固定為語言→音樂→涵蓋率→重複；少於 5 句不判斷重複；音樂標記用固定清單；門檻是常數、沒有開放設定；沒有提升 transcript 的 `impl_version`（已完成的步驟不重跑）。
+     - SRC-R13：`no_speech_prob > 0.6` 且 `compression_ratio > 2.4`（都嚴格大於、同時成立）的 segment 移除；連續 3 次以上相同的句子只留一句（含切塊接縫）。
+     - LLM 估算：每秒 6 個 token（刻意偏高）；ING 估價的 `total_usd` 在「只有 ASR 費用未知、LLM 確定是 0」時是 `0`（頂層仍帶「部分金額未知」，符合 ING-08「只加總已知的金額」）；reprobe 的 `estimate_usd` 在沒有任何付費 LLM 步驟時仍是 `null`。
+     - `@pending-m0` 的 14 個場景（20 個 example）有 19 個在本機通過，標籤一個都沒拿掉；沒通過的是 COR 的相似度場景（算出 0.19，場景預期 0.42，等 M0 決定算法）。
 - **已知缺口（沒有規格規則或需要真實樣本，沒做）**：
   - UI 文件列的 API 缺口（`docs/ui/README.md` 10.7 第 8 點、10.13～10.21）：`Stage.actions` 的動作代碼、佇列優先順序與 Agent 任務、「需要你處理」彙總 API、`/api/items/continue` 沒有 `dry_run`、總覽 `today` 事件沒有步驟／狀態／影音代號、儲存的檢視（saved views）、provider 列表 API、字幕變體列表 API。
   - Hub Web UI 缺的 API：`my_vote`、unhide（HREP R8／R10 規格就沒有）、群組列表、`hub_origin.uploader`；OAuth callback 的錯誤仍回 JSON。
