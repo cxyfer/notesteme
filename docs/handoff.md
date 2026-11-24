@@ -520,7 +520,7 @@
   - 驗證：預設 tag 308 個、`@M1,@M2,@M3,@M4,@M5` 936 個場景逐場景與開工前相同（全部 passed）；涵蓋率 subtitle 95.8%、pipeline 84.6%、queue 89.2%、netguard 93.6%；`-race` 只跑改過的套件 hubapi、pipeline、store、api、queue、app（store/sqlcdb 是產生碼、沒有測試）；前端初始 JS 271.6KB／300KB。
 
 - **收尾 D3：SRC-R4 其餘品質檢查、SRC-R13 幻覺過濾、LLM 費用估算、`@pending-m0` 盤點（2026-11-24，分支 `feat/src-quality-checks-llm-estimate`，決定都標「依 /goal 採 advisor 建議，待 owner 追認」）**：
-  - SRC-R4：`runFallback` 在 `language_mismatch` 之後依序檢查 `music_only`（>80% 的 cue 只有音樂標記）→ `low_coverage`（cue 聯集 <50% 片長）→ `repetition`（>30% 重複句，少於 5 句不判斷），不通過記為 `rejected` 並改用下一個來源（`internal/pipeline/quality.go`）。只套用在 fallback 來源（平台字幕軌不檢查）；涵蓋率的分母：Groq 用它回報的音訊長度，其他用影音片長，不知道就略過。門檻是常數、沒有開放設定；transcript 的 `impl_version` 沒有提升。見 SRC 待決問題「SRC-R4 其餘品質檢查與 SRC-R13 幻覺過濾」。
+  - SRC-R4：`runFallback` 在 `language_mismatch` 之後依序檢查 `music_only`（>80% 的 cue 只有音樂標記）→ `low_coverage`（cue 聯集 <50% 片長）→ `repetition`（>30% 重複句，少於 5 句不判斷），不通過記為 `rejected` 並改用下一個來源（`internal/pipeline/quality.go`）。只套用在 fallback 來源（平台字幕軌不檢查）；涵蓋率的分母：Groq 用它回報的音訊長度，其他用影音片長，不知道就略過。門檻是常數、沒有開放設定；transcript 的 `impl_version` 沒有提升。Groq 也套用：已付費的轉錄被拒絕時步驟仍失敗，重跑會再付費（待 owner 決定是否排除 ASR）。見 SRC 待決問題「SRC-R4 其餘品質檢查與 SRC-R13 幻覺過濾」。
   - SRC-R13：`groq.Transcribe` 移除 `no_speech_prob > 0.6` 且 `compression_ratio > 2.4` 的 segment；`transcribeASR` 在接回時間軸之後把連續 3 次以上相同的句子只留一句（單檔與切塊都套用）。
   - LLM 估算：`POST /api/estimate` 的 `llm_usd` 用片長推估資料區塊（每秒 6 token），依 COST-R5 與 `cost.Service.Estimate`（含價格覆寫）估算各付費 LLM 步驟（`internal/pipeline/estimate_llm.go`）；不知道時 `null`，沒有付費 LLM 步驟時 `0`。reprobe 的 `estimate_usd` 改用 `EstimateRerun(from=transcript)`；有無法估算的任務**或沒有任何付費任務**時維持 `null`（場景與訊息「目前無法估算金額」因此不變）。`RerunEstimate` 多了 `Priced`。OpenAPI 與 `schema.d.ts` 只改了說明文字。見 ING 待決問題、SRC R10、COST C23。
   - 規格整理：SRC 第 91／125／130 行與 R10、BND N21、§6 的 SRC「還沒做」條目已改或劃掉。其他 grep 到的「還沒實作」屬真實未做（`notesteme password set`、vault 的 secrets 憑證）或是條件式的歷史敘述，沒有動。
@@ -542,7 +542,7 @@
     | TRN `A wrong number of split markers falls back to cue-by-cue translation` | 是 | passed → passed | M0 樣本 |
     | OPS `A jump in yt-dlp failures is reported only with enough calls`（3 個 example） | 是 | passed → passed | 門檻要用真實的 yt-dlp 失敗率確認 |
     | OPS `The yt-dlp alert says what to try` | 是 | passed → passed | 同上 |
-    | **SRC `Unusable results are rejected and the next source is used`**（4 個 example） | **是（本切片）** | `language_mismatch` passed，其餘 3 個 failed（`sources` 沒有對應的 rejected）→ **4 個都 passed** | 補了 `supadata-covers-200s.json`、`supadata-repeating.json`、`supadata-music-only.json`；門檻待 M0 |
+    | **SRC `Unusable results are rejected and the next source is used`**（4 個 example） | **是（本切片）** | `language_mismatch` passed，其餘 3 個 failed（缺 fixture，檢查也還沒做；`sources` 是 `[]`）→ **4 個都 passed** | 補了 `supadata-covers-200s.json`、`supadata-repeating.json`、`supadata-music-only.json`；門檻待 M0 |
     | **SRC `Whisper hallucinations are filtered out`** | **是（本切片）** | failed（缺 `local/quiet-ending.m4a`）→ **passed** | 補了 `groq-hallucinated-tail.json` 與 `quiet-ending.m4a`；門檻與真實 Groq 欄位待 M0 |
 
     結論：20 個 example 中 19 個在本機通過，只剩 COR 一個因相似度算法還沒定而失敗。全部都還需要 M0 實測或真實服務，才能決定是否拿掉 `@pending-m0`。

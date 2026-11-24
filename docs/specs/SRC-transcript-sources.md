@@ -169,6 +169,7 @@ SRC-10 屬於 M4（故事地圖第 5 節），規則是 SRC-R18～R23；其餘�
   - `repetition`：文字去掉前後空白、壓縮空白、轉小寫（數字與標點保留）後，與前面某一句相同的句子數，除以不是音樂標記、不是空白的句子數；少於 5 句時不判斷（太短的結果一句重複就超過 30%）。
   - `music_only`：去掉代表音樂的括號標記（`[Music]`、`（音樂）`、`[BGM]` 等，多語的固定清單）與音符（♪♫♬♩🎵🎶）、標點、空白之後什麼都不剩，而且至少去掉一個標記。`♪ 歌詞 ♪` 不算；`[Applause]` 不算音樂。
   - 門檻是程式中的常數（`internal/pipeline/quality.go`、`internal/source/groq` 的 `Hallucination*`、`minHallucinatedRun`），沒有做成設定檔可以覆寫：與 SRC-R15 的 `timingDriftLimit` 等既有門檻一致，M0 之後依樣本調整常數。要不要開放設定待 owner 決定。
+  - 費用後果（待 owner 決定）：Groq 也套用這些檢查，所以 Groq 的結果因 `low_coverage`（例如片頭或間奏音樂超過一半）或 `repetition` 被拒絕時，轉錄已經付費，步驟仍以「找不到可用的字幕來源」失敗；手動重跑會再付一次，而且多半再被拒絕。可選的方向：把 ASR 排除在 SRC-R4 之外，或 ASR 被拒絕時仍採用、只附提醒。
   - 快取：transcript 的 `impl_version` 沒有提升。已完成的步驟不會因為新的檢查而重跑（否則所有已付費的 ASR 都要重新轉錄）；之後重跑 transcript、快取鍵不變時仍會命中舊結果。
   - SRC-R13：`no_speech_prob > 0.6` 而且 `compression_ratio > 2.4` 的 segment 在 `groq.Transcribe` 建立 cue 前移除（兩者都要成立，剛好等於門檻保留，沒有回報欄位視為 0）；全部被移除時視為沒有結果（`no_transcript`）。「連續 3 次以上完全相同的句子只保留一次」在接回單一時間軸之後（含切塊接縫）做：比較去掉前後空白後的文字（大小寫不同不算相同），留第一句、時間不變，cue 重新編號；兩次重複保留，交錯（A B A B）不算連續。音訊長度仍是 Groq 回報的長度，不因移除結尾的幻覺而縮短。
   - 場景：`Unusable results are rejected and the next source is used`（4 個 example）與 `Whisper hallucinations are filtered out` 補上 fixture 後通過（`supadata-covers-200s.json`、`supadata-repeating.json`、`supadata-music-only.json`、`groq-hallucinated-tail.json`、`local/quiet-ending.m4a`），仍保留 `@pending-m0`（門檻要用 M0 的真實樣本確認，拿掉標籤由 owner 決定）。
