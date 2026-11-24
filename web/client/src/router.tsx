@@ -4,7 +4,7 @@
 //   ├─ /login                 登入（不需要 session）
 //   └─ app（layout，需要 session；AppShell）
 //      ├─ /                   總覽（UI-7，lazy；M1–M3 曾導到 /library）
-//      ├─ /library
+//      ├─ /library            媒體庫（收尾 D1 起 lazy）
 //      ├─ /queue              佇列（lazy）
 //      ├─ /items/$id
 //      ├─ /add                書籤小工具與分享的落地頁：打開「新增」抽屜後換成 /library（ENTRY-R2，lazy）
@@ -37,7 +37,6 @@ import { isInsecureNoAuth } from "./auth/insecure";
 import { hasSessionHint, safeRedirect } from "./auth/session";
 import { validateItemSearch } from "./pages/item/search";
 import { validateLibrarySearch } from "./pages/library/filters";
-import { LibraryPage } from "./pages/LibraryPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { ProfileEditorPage } from "./pages/profiles/ProfileEditorPage";
@@ -97,7 +96,7 @@ const libraryRoute = createRoute({
   path: "/library",
   // 篩選條件在 URL（LIB-R2）：不合法的值丟掉，見 pages/library/filters.ts
   validateSearch: validateLibrarySearch,
-  component: LibraryPage,
+  component: lazyRouteComponent(() => import("./pages/LibraryPage"), "LibraryPage"),
 });
 const queueRoute = createRoute({
   getParentRoute: () => appRoute,
