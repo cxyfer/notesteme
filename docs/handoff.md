@@ -508,7 +508,7 @@
   - SRC-R11：`internal/langdetect.Detect`（文字系統份量，一個英文詞與一個漢字等重；日文、簡繁、拉丁與西里爾的功能詞；少於 8 份不判斷）。前兩層都沒有時寫入偵測的主要語言（`lang_source: detected`，重跑時同 `asr` 不當成輸入，快取鍵不變）；`mixed` 每次產生新的原始字幕時依文字判斷（`metaUpdate.mixed` → `SetItemLangMixed`）。`@wip` 場景以「宣告 `language: zh`」最小修改（SRC 待決問題，原文語言留空時預設 `caption_priority` 選不到 zh 的自動字幕）。`Given … is a mixed-language item` 仍是 seeding。
   - SRC-R6：`POST /api/items/{id}/use-asr-now`（`ingest`）：只接受 transcript `waiting` 且任務 `pending`，在交易中把 `not_before` 改成現在、payload 加 `skip_auto_wait`，步驟改回 `pending`；否則 409 `not_waiting`。`Stage.action_codes`（只有 `use_asr_now`），前端 `mapActions` 先依代碼、按鈕改成呼叫這個路由（三語 i18n `item.actions.asrNow`，bundle 283.3 KB／300 KB）。sqlc 新查詢 `SkipTaskWait`，沒有 migration。
   - OPS（O25）：排程工作 `tools.yt-dlp.update`，設定檔 `updates.yt_dlp.{enabled,at,timezone}`，預設開啟、`04:00` `UTC`；呼叫與 API 共用的 `ytdlp.Manager.Update`；固定版本略過、回退或安裝失敗以告警 `ytdlp_update_failed` 通知並在成功時解除、外部指定的路徑或 Windows 不動作、手動更新進行中延後 30 分鐘。harness 在設定檔沒寫 `enabled` 時關閉（`TestControls.NoYtDlpAutoUpdate`）。
-  - 驗證：`go build`／`vet`／`gofmt` 乾淨；`go test -p 2 ./internal/... ./cmd/...` 全過；`scripts/ci/coverage.sh` 通過（pipeline 84.7%）；`-race` 只跑改過的套件；前端 typecheck、lint、format、test（467）、build、bundle、i18n 都過。
+  - 驗證：`go build`／`vet`／`gofmt` 乾淨；`go test -p 2 ./internal/... ./cmd/...` 全過；`scripts/ci/coverage.sh` 通過（pipeline 84.7%）；`go test -race -p 2 -timeout 100m` 只跑改過的套件（langdetect、pipeline、ops、vault、config、app、api、store、`features/internal/fakegit`、`features/steps`）全過；`./features`（驗收場景）沒有在 `-race` 下跑，只跑了一般模式的 313／943 個場景；前端 typecheck、lint、format、test（467）、build、bundle（283.6KB）、i18n 都過；新的保留原因 `git_*` 與告警 `ytdlp_update_failed` 已補三語文字。
   - 沒實測：真實的 git 遠端（GitHub／GitLab）、真實的 PyPI 更新、真實語音樣本的語言偵測；都只用假工具與本機 bare repo。§6 的「每天的排程更新還沒做」與「現在改用語音轉錄只顯示」兩條已由這個切片處理（§6 未改，留給主代理整理）。
 ## 2. 下一步
 
