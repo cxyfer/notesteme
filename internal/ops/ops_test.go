@@ -371,8 +371,8 @@ func TestPruneOnlyTouchesOwnRegularFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// keep 1：只留剛寫好的那一份，即使有名稱時間更晚的檔案。
-	if strings.Join(removed, ",") != "notesteme-backup-20261101T030000Z.tar.gz,notesteme-backup-20261102T030000Z.tar.gz,notesteme-backup-20991231T030000Z.tar.gz" {
+	// keep 1：只留剛寫好的那一份，即使有名稱時間更晚的檔案（它視為最舊，最先刪除）。
+	if strings.Join(removed, ",") != "notesteme-backup-20991231T030000Z.tar.gz,notesteme-backup-20261101T030000Z.tar.gz,notesteme-backup-20261102T030000Z.tar.gz" {
 		t.Fatalf("removed = %v", removed)
 	}
 	if _, err := os.Stat(victim); err != nil {
@@ -433,5 +433,33 @@ func TestDailyThroughScheduler(t *testing.T) {
 	j, _ := s.Read().ScheduledJob(ctx, BackupKind, BackupKey)
 	if !j.NextRunAt.Equal(time.Date(2026, 11, 27, 3, 0, 0, 0, time.UTC)) {
 		t.Errorf("下一次 = %v", j.NextRunAt)
+	}
+}
+
+// OPS-R12：名稱時間在未來的檔案（時鐘曾經錯誤、或手動放入）不能永遠佔住保留名額：
+// 以剛寫好的那一份為準，比它晚的名稱視為最舊，最先刪除。
+func TestPruneFutureNamesDoNotHoldSlots(t *testing.T) {
+	dir := t.TempDir()
+	names := []string{
+		"notesteme-backup-20261120T030000Z.tar.gz", "notesteme-backup-20261121T030000Z.tar.gz",
+		"notesteme-backup-20261122T030000Z.tar.gz", "notesteme-backup-20991231T030000Z.tar.gz",
+	}
+	current := "notesteme-backup-20261123T030000Z.tar.gz"
+	for _, n := range append(names, current) {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	removed, err := Prune(dir, 3, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(removed, ",") != "notesteme-backup-20991231T030000Z.tar.gz,notesteme-backup-20261120T030000Z.tar.gz" {
+		t.Fatalf("removed = %v", removed)
+	}
+	for _, n := range []string{current, "notesteme-backup-20261122T030000Z.tar.gz", "notesteme-backup-20261121T030000Z.tar.gz"} {
+		if _, err := os.Stat(filepath.Join(dir, n)); err != nil {
+			t.Errorf("%s 要保留：%v", n, err)
+		}
 	}
 }

@@ -228,7 +228,7 @@ func failureReason(err error) string {
 // Prune 只保留 dir 中名稱完全符合 notesteme-backup-<時間>.tar.gz 的最新 keep 份一般檔案（依名稱中的時間排序），
 // 刪除更舊的，回傳刪掉的名稱（OPS-R12）。其他檔案（pre-migration-*、latest、使用者自己的檔案）、symlink 與子目錄
 // 一律不動，也不進子目錄；刪除經 os.Root，不會跟隨 symlink 離開 dir。
-// current 是剛寫好的那一份：即使目錄中有名稱時間更晚的檔案，它也不會被刪掉。
+// current 是剛寫好的那一份：即使目錄中有名稱時間更晚的檔案，它也不會被刪掉；名稱比它晚的檔案視為最舊、最先刪除。
 func Prune(dir string, keep int, current string) ([]string, error) {
 	if keep < 1 {
 		return nil, fmt.Errorf("保留份數必須至少 1：%d", keep)
@@ -259,6 +259,10 @@ func Prune(dir string, keep int, current string) ([]string, error) {
 	others := keep
 	if backup.ValidFileName(current) {
 		others--
+		// 名稱時間比剛寫好的那一份還晚（時鐘曾經錯誤或手動放入）的檔案視為最舊，最先刪除，
+		// 否則它們會永遠佔住保留名額，真正的備份反而被刪掉。
+		i, _ := slices.BinarySearch(names, current)
+		names = append(slices.Clone(names[i:]), names[:i]...)
 	}
 	if len(names) <= others {
 		return nil, nil
