@@ -448,7 +448,27 @@
     "estimatePartial": "预估花费至少 {{usd}}，有些部分无法预估。",
     "estimateUnknown": "无法预估花费。",
     "estimateFailed": "无法预估花费：{{reason}}",
-    "dropOnlyFirst": "一次只能上传一个文件。拖进来的 {{total}} 个文件只带入了第一个：{{name}}。"
+    "dropOnlyFirst": "一次只能上传一个文件。拖进来的 {{total}} 个文件只带入了第一个：{{name}}。",
+    "run": {
+      "toggle": "调整这次的设置",
+      "toggleAdjusted": "调整这次的设置（已调整）",
+      "hint": "只影响这一次新增的音视频，不会修改处理方案。",
+      "targets": "目标语言",
+      "targetsHint": "用逗号分隔多个语言；留空就沿用处理方案（当前是 {{current}}）。",
+      "targetsHintUnknown": "用逗号分隔多个语言，例如 zh-Hant-TW；留空就沿用处理方案。",
+      "sources": "字幕来源",
+      "sourcesHint": "先用平台字幕，没有可用的平台字幕时按这个顺序改用下面的来源。取消勾选就是这次不用。",
+      "sourcesNone": "处理方案没有设置平台字幕以外的来源。",
+      "sourcesUnknown": "读不到全局的字幕来源设置，这次不能调整字幕来源。",
+      "moveUp": "把{{name}}往前移",
+      "moveDown": "把{{name}}往后移",
+      "up": "往前",
+      "down": "往后",
+      "stages": "步骤",
+      "stagesHint": "取消勾选就是这次不做。处理方案没有开启的步骤不能在这里打开。",
+      "stagesHintUnknown": "取消勾选就是这次不做。读不到全局设置，勾选只代表沿用处理方案。",
+      "stageOff": "处理方案没有开启"
+    }
   },
   "actions": {
     "retry": "重试",

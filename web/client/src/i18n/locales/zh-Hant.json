@@ -448,7 +448,27 @@
     "estimatePartial": "預估花費至少 {{usd}}，有些部分無法預估。",
     "estimateUnknown": "無法預估花費。",
     "estimateFailed": "無法預估花費：{{reason}}",
-    "dropOnlyFirst": "一次只能上傳一個檔案。拖進來的 {{total}} 個檔案只帶入了第一個：{{name}}。"
+    "dropOnlyFirst": "一次只能上傳一個檔案。拖進來的 {{total}} 個檔案只帶入了第一個：{{name}}。",
+    "run": {
+      "toggle": "調整這次的設定",
+      "toggleAdjusted": "調整這次的設定（已調整）",
+      "hint": "只影響這一次新增的影音，不會修改處理方案。",
+      "targets": "目標語言",
+      "targetsHint": "用逗號分隔多個語言；留空就沿用處理方案（目前是 {{current}}）。",
+      "targetsHintUnknown": "用逗號分隔多個語言，例如 zh-Hant-TW；留空就沿用處理方案。",
+      "sources": "字幕來源",
+      "sourcesHint": "先用平台字幕，沒有可用的平台字幕時依這個順序改用下面的來源。取消勾選就是這次不用。",
+      "sourcesNone": "處理方案沒有設定平台字幕以外的來源。",
+      "sourcesUnknown": "讀不到全域的字幕來源設定，這次不能調整字幕來源。",
+      "moveUp": "把{{name}}往前移",
+      "moveDown": "把{{name}}往後移",
+      "up": "往前",
+      "down": "往後",
+      "stages": "步驟",
+      "stagesHint": "取消勾選就是這次不做。處理方案沒有開啟的步驟不能在這裡打開。",
+      "stagesHintUnknown": "取消勾選就是這次不做。讀不到全域設定，勾選只代表沿用處理方案。",
+      "stageOff": "處理方案沒有開啟"
+    }
   },
   "actions": {
     "retry": "重試",

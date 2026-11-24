@@ -375,6 +375,53 @@
   gap: var(--space-3);
 }
 
+/* 「調整這次的設定」（pages.md §2） */
+.add__run-head {
+  margin: 0;
+  font-size: inherit;
+}
+.add__run-body {
+  display: grid;
+  gap: var(--space-3);
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--rule);
+}
+.add__run-body > p,
+.add__run-sources > p,
+.add__run-stages > p {
+  margin: 0;
+}
+.add__run-sources,
+.add__run-stages {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.add__run-sources > legend,
+.add__run-stages > legend {
+  font-weight: 600;
+  padding: 0;
+}
+.add__run-source-list {
+  margin: 0;
+  padding-inline-start: 1.4em;
+  display: grid;
+  gap: var(--space-1);
+}
+.add__run-source-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.add__run-source-list .check {
+  flex: 1;
+}
+.add__run-stages .check {
+  gap: var(--space-2);
+}
+
 /* ---------- 響應式（docs/ui/README.md §8） ---------- */
 @media (max-width: 1279px) {
   .lrow {

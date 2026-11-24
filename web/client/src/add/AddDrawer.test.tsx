@@ -395,6 +395,115 @@ describe("新增抽屜", () => {
     expect(within(dialog).getByLabelText("網址")).toHaveProperty("disabled", true);
   });
 
+  it("調整這次的設定：預設收合；只送有改的欄位，預估與新增都帶 overrides（ING-R7）", async () => {
+    const api = drawerApi({
+      "GET /api/settings/{section}": (req) =>
+        req.params.section === "language"
+          ? { targets: ["zh-Hant-TW"], fallback: ["supadata", "groq"] }
+          : {
+              correct: { executor: "api" },
+              translate: { executor: "api" },
+              frames: { executor: "off" },
+            },
+    });
+    const { dialog } = await openDrawer();
+    const toggle = within(dialog).getByRole("button", { name: "調整這次的設定" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(within(dialog).queryByRole("textbox", { name: "目標語言" })).toBeNull();
+    // 收合時不讀設定
+    expect(api.calls("GET", "/api/settings/{section}")).toHaveLength(0);
+
+    await userEvent.type(within(dialog).getByLabelText("網址"), YT);
+    expect(await within(dialog).findByText("預估花費約 US$0.21。")).toBeTruthy();
+    await userEvent.click(toggle);
+    const targets = within(dialog).getByLabelText("目標語言");
+    expect(await within(dialog).findByText(/目前是 zh-Hant-TW/)).toBeTruthy();
+    // 字幕來源：順序來自全域設定，可以調整
+    const sources = within(dialog).getByRole("group", { name: "字幕來源" });
+    expect(
+      within(sources)
+        .getAllByRole("checkbox")
+        .map((c) => c.parentElement!.textContent),
+    ).toEqual(["Supadata", "Groq 語音轉錄"]);
+    await userEvent.click(within(sources).getByRole("button", { name: "把Groq 語音轉錄往前移" }));
+    // 步驟：處理方案沒有開啟的不能打開
+    const stages = within(dialog).getByRole("group", { name: "步驟" });
+    expect(within(stages).getByRole("checkbox", { name: /關鍵畫面/ })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    await userEvent.click(within(stages).getByRole("checkbox", { name: "翻譯" }));
+    await userEvent.type(targets, "ja, en");
+
+    expect(within(dialog).getByRole("button", { name: "調整這次的設定（已調整）" })).toBeTruthy();
+    const want = {
+      language: { targets: ["ja", "en"], fallback: ["groq", "supadata"] },
+      stages: { translate: { executor: "off" } },
+    };
+    await waitFor(() =>
+      expect(
+        JSON.parse(String(api.calls("POST", "/api/estimate").at(-1)!.init.body)).overrides,
+      ).toEqual(want),
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "開始處理" }));
+    await waitFor(() => expect(api.calls("POST", "/api/items")).toHaveLength(1));
+    expect(JSON.parse(String(api.calls("POST", "/api/items")[0]!.init.body))).toEqual({
+      url: YT,
+      profile: "default",
+      overrides: want,
+    });
+  });
+
+  it("調整這次的設定：讀不到全域設定時不提供調整字幕來源；422 顯示在欄位旁", async () => {
+    const api = drawerApi({
+      "GET /api/settings/{section}": () => apiError(403, "forbidden", "權限不足。"),
+      "POST /api/items": () =>
+        apiError(422, "invalid_input", "language.targets.0：不是合法的語言標籤。", {
+          errors: [{ path: "language.targets.0", message: "不是合法的語言標籤。" }],
+        }),
+    });
+    const { dialog } = await openDrawer();
+    await userEvent.type(within(dialog).getByLabelText("網址"), YT);
+    await within(dialog).findByRole("heading", { name: "YouTube 影片" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "調整這次的設定" }));
+    expect(
+      await within(dialog).findByText("讀不到全域的字幕來源設定，這次不能調整字幕來源。"),
+    ).toBeTruthy();
+    await userEvent.type(within(dialog).getByLabelText("目標語言"), "??");
+    await userEvent.click(within(dialog).getByRole("button", { name: "開始處理" }));
+    expect(await within(dialog).findByText("不是合法的語言標籤。")).toBeTruthy();
+    expect(within(dialog).getByLabelText("目標語言").getAttribute("aria-invalid")).toBe("true");
+    expect(JSON.parse(String(api.calls("POST", "/api/items")[0]!.init.body)).overrides).toEqual({
+      language: { targets: ["??"] },
+    });
+  });
+
+  it("選了本機檔案時，單次覆寫放在 multipart 的 overrides 欄位（在 file 之前）", async () => {
+    const api = drawerApi({
+      "GET /api/settings/{section}": () => ({ fallback: ["groq"] }),
+      "POST /api/items": () => json(201, { items: [ingested(2)] }),
+    });
+    const { dialog } = await openDrawer();
+    await userEvent.upload(
+      dialog.querySelector<HTMLInputElement>("input[type=file]")!,
+      new File(["data"], "talk.mp4", { type: "video/mp4" }),
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "調整這次的設定" }));
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "筆記" }));
+    await waitFor(() =>
+      expect((within(dialog).getByLabelText("處理方案") as HTMLSelectElement).value).toBe(
+        "default",
+      ),
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "開始處理" }));
+    await waitFor(() => expect(api.calls("POST", "/api/items")).toHaveLength(1));
+    const body = api.calls("POST", "/api/items")[0]!.init.body as FormData;
+    expect([...body.keys()]).toEqual(["profile", "overrides", "file"]);
+    expect(JSON.parse(body.get("overrides") as string)).toEqual({
+      stages: { note: { executor: "off" } },
+    });
+  });
+
   it("打開時沒有 axe 問題；Esc 關閉後焦點回到開啟前的元素", async () => {
     drawerApi();
     signIn();

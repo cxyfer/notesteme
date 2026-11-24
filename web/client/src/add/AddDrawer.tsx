@@ -7,7 +7,8 @@
 //      辨識成功、不是頻道時另外呼叫 POST /api/estimate 顯示預估花費（ENTRY-R2 的書籤與分享也會看到）；
 //      估算可能呼叫 yt-dlp，所以延遲送出、不重試，失敗也不擋「開始處理」。
 //   2. 或選擇本機檔案（multipart POST /api/items，一次一個檔案）；把檔案拖進視窗時由 AddContext 帶入（initialFile）。
-//   3. 選擇處理方案（GET /api/profiles），按「開始處理」→ POST /api/items。
+//   3. 選擇處理方案（GET /api/profiles），可以展開「調整這次的設定」（RunOverrides，單次覆寫只影響這一次，ING-R7），
+//      按「開始處理」→ POST /api/items（overrides 也送給預估）。
 //   4. 成功：關閉抽屜，toast「已開始處理 N 部」附「查看」；全部都已在媒體庫中時留在抽屜，提供「打開」。
 //      錯誤依 code 顯示並給修正動作（例如 in_trash 給「還原」）。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,6 +19,7 @@ import { useTranslation } from "react-i18next";
 import { api, apiPath } from "../api/client";
 import { describeError } from "../api/describeError";
 import { isApiError } from "../api/errors";
+import { fieldErrorsOf } from "../api/fieldErrors";
 import { queryKeys } from "../api/queryKeys";
 import type { components } from "../api/schema";
 import {
@@ -30,6 +32,13 @@ import {
   type ErrorAction,
 } from "../components";
 import { formatDate, formatNumber, formatTimecode, formatUsd } from "../i18n";
+import {
+  buildOverrides,
+  EMPTY_RUN_OVERRIDES,
+  RunOverrides,
+  useRunDefaults,
+  type RunOverridesValue,
+} from "./RunOverrides";
 import { isHttpUrl, parseParts } from "./url";
 
 type Resolution = components["schemas"]["Resolution"];
@@ -93,6 +102,8 @@ export function AddDrawer({
   const [episodes, setEpisodes] = useState<Set<string>>(new Set());
   const [profile, setProfile] = useState<string | undefined>();
   const [existing, setExisting] = useState<IngestedItem[]>([]);
+  const [runOpen, setRunOpen] = useState(false);
+  const [run, setRun] = useState<RunOverridesValue>(EMPTY_RUN_OVERRIDES);
 
   // ---- 辨識 ----
   const trimmed = url.trim();
@@ -120,6 +131,11 @@ export function AddDrawer({
   const profileList = profiles.data?.profiles ?? [];
   const defaultProfile = profileList.find((p) => p.default)?.name;
   const chosenProfile = profile ?? defaultProfile;
+  const profileConfig = profileList.find((p) => p.name === chosenProfile)?.config;
+
+  // ---- 這次的設定（單次覆寫） ----
+  const runDefaults = useRunDefaults(profileConfig, open && runOpen);
+  const overrides = buildOverrides(run, runDefaults.sources);
 
   // ---- 送出的內容 ----
   const isBiliAllParts = res?.platform === "bilibili" && res.kind === "video" && !res.part;
@@ -149,6 +165,7 @@ export function AddDrawer({
           ...(chosenProfile ? { profile: chosenProfile } : {}),
           ...(parts ? { parts } : {}),
           ...(isFeed ? { episodes: [...episodes].sort() } : {}),
+          ...(overrides ? { overrides } : {}),
         }
       : undefined;
   const estimateJson = estimateBody ? JSON.stringify(estimateBody) : "";
@@ -176,6 +193,7 @@ export function AddDrawer({
         // 文字欄位放在檔案前面：後端邊讀邊驗證，處理方案有錯時不必等檔案傳完
         const fd = new FormData();
         if (chosenProfile) fd.set("profile", chosenProfile);
+        if (overrides) fd.set("overrides", JSON.stringify(overrides));
         fd.set("file", file);
         return api.post("/api/items", { body: fd });
       }
@@ -183,6 +201,7 @@ export function AddDrawer({
       if (chosenProfile) body.profile = chosenProfile;
       if (parts) body.parts = parts;
       if (isFeed) body.episodes = [...episodes];
+      if (overrides) body.overrides = overrides;
       return api.post("/api/items", { body });
     },
     onSuccess: (out) => {
@@ -404,6 +423,18 @@ export function AddDrawer({
           </select>
           {profiles.isError && <span className="field__hint">{t("add.profilesUnavailable")}</span>}
         </div>
+
+        <RunOverrides
+          open={runOpen}
+          onToggle={setRunOpen}
+          value={run}
+          onChange={(v) => {
+            setRun(v);
+            submit.reset();
+          }}
+          defaults={runDefaults}
+          errors={fieldErrorsOf(submit.error)}
+        />
 
         {blockedReason && !file && trimmed && !resolving && (
           <p id={`${formId}-blocked`} className="add__blocked secondary">

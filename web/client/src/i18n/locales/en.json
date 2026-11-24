@@ -470,7 +470,27 @@
     "estimatePartial": "Estimated cost: at least {{usd}}; some parts can't be estimated.",
     "estimateUnknown": "The cost can't be estimated.",
     "estimateFailed": "The cost can't be estimated: {{reason}}",
-    "dropOnlyFirst": "Only one file can be uploaded at a time. Of the {{total}} files you dropped, only the first was added: {{name}}."
+    "dropOnlyFirst": "Only one file can be uploaded at a time. Of the {{total}} files you dropped, only the first was added: {{name}}.",
+    "run": {
+      "toggle": "Adjust settings for this run",
+      "toggleAdjusted": "Adjust settings for this run (adjusted)",
+      "hint": "Only affects the items added now. The profile stays unchanged.",
+      "targets": "Target languages",
+      "targetsHint": "Separate languages with commas. Leave empty to use the profile ({{current}}).",
+      "targetsHintUnknown": "Separate languages with commas, for example zh-Hant-TW. Leave empty to use the profile.",
+      "sources": "Subtitle sources",
+      "sourcesHint": "Platform captions come first. Without usable platform captions, the sources below are tried in this order. Untick a source to skip it this time.",
+      "sourcesNone": "The profile has no sources besides platform captions.",
+      "sourcesUnknown": "The global subtitle source settings could not be read, so the sources can't be adjusted this time.",
+      "moveUp": "Move {{name}} up",
+      "moveDown": "Move {{name}} down",
+      "up": "Up",
+      "down": "Down",
+      "stages": "Steps",
+      "stagesHint": "Untick a step to skip it this time. Steps the profile turns off can't be turned on here.",
+      "stagesHintUnknown": "Untick a step to skip it this time. The global settings could not be read, so a tick only means the profile decides.",
+      "stageOff": "Off in the profile"
+    }
   },
   "actions": {
     "retry": "Retry",
