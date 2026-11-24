@@ -102,6 +102,8 @@ describe("StatusBand", () => {
       // 版面用的 className 留在最外層
       expect(container.firstElementChild!.classList.contains("row-band")).toBe(true);
       const button = screen.getByRole("button", { name: "打開「影片」並定位到點擊的時間" });
+      // 按鈕蓋住了每條帶子的 title，滑過時顯示整條的摘要
+      expect(button.title).toBe("字幕完成，校正失敗");
       rect(button, 100, 400);
       fireEvent.click(button, { clientX: 200, detail: 1 });
       expect(onSeek).toHaveBeenLastCalledWith(50);

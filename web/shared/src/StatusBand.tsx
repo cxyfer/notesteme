@@ -170,6 +170,8 @@ function CompactBand({
         type="button"
         className="sband__seek"
         aria-label={seekLabel}
+        // 按鈕蓋住了每條帶子的 title：滑過時改顯示整條的摘要
+        title={label}
         tabIndex={seekTabIndex}
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
