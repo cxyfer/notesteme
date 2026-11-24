@@ -175,8 +175,14 @@ func RuleHolds(r hubconfig.Rule, id hubstore.ExternalIdentity) bool {
 	case r.TrustLevelGTE != nil:
 		return id.Attrs.TrustLevel != nil && *id.Attrs.TrustLevel >= *r.TrustLevelGTE
 	case len(r.OrgMember) > 0:
-		// GitHub 的組織名稱不分大小寫。
+		// 全是數字的項目是組織的 id（建議：組織改名後舊名稱可能被別人註冊，安全修補 A）；其他是名稱，不分大小寫。
 		for _, want := range r.OrgMember {
+			if isDigits(want) {
+				if slices.Contains(id.Attrs.OrgIDs, want) {
+					return true
+				}
+				continue
+			}
 			if slices.ContainsFunc(id.Attrs.Orgs, func(o string) bool { return strings.EqualFold(o, want) }) {
 				return true
 			}
@@ -191,6 +197,11 @@ func RuleHolds(r hubconfig.Rule, id hubstore.ExternalIdentity) bool {
 			return false
 		}
 		domain := id.Email[at+1:]
+		// 還要是那個網域的 Google Workspace 帳號（hd）：任何人都能用公司信箱註冊個人 Google 帳號，
+		// 離職後也還能用它驗證 email（安全修補 A）。
+		if !strings.EqualFold(id.Attrs.HostedDomain, domain) {
+			return false
+		}
 		return slices.ContainsFunc(r.EmailDomain, func(d string) bool { return strings.EqualFold(d, domain) })
 	}
 	return false
@@ -431,4 +442,17 @@ func (s *Service) RevokeToken(ctx context.Context, p *Principal, id string) erro
 		return apierr.New(http.StatusNotFound, apierr.CodeNotFound, "找不到這個 token。")
 	}
 	return err
+}
+
+// isDigits 回報 s 是否非空且全是 ASCII 數字（GitHub 組織的 id）。
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }

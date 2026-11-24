@@ -54,9 +54,11 @@ type Claims struct {
 	Email         string
 	EmailVerified bool
 	Name          string
-	Nonce         string
-	Expiry        time.Time
-	IssuedAt      time.Time
+	// HostedDomain 是 Google Workspace 的網域（hd）；個人帳號沒有。
+	HostedDomain string
+	Nonce        string
+	Expiry       time.Time
+	IssuedAt     time.Time
 }
 
 // Expect 是驗證條件。
@@ -117,6 +119,7 @@ type rawClaims struct {
 	Email         string   `json:"email"`
 	EmailVerified boolish  `json:"email_verified"`
 	Name          string   `json:"name"`
+	HD            string   `json:"hd"`
 }
 
 // Parsed 是拆開、尚未驗證簽章的 id_token。
@@ -203,7 +206,7 @@ func (p *Parsed) VerifyWith(key *rsa.PublicKey, want Expect) (Claims, error) {
 	}
 	return Claims{
 		Issuer: c.Iss, Subject: c.Sub, Email: c.Email, EmailVerified: bool(c.EmailVerified), Name: c.Name,
-		Nonce: c.Nonce, Expiry: exp, IssuedAt: iat,
+		HostedDomain: c.HD, Nonce: c.Nonce, Expiry: exp, IssuedAt: iat,
 	}, nil
 }
 

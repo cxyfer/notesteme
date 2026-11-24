@@ -19,9 +19,22 @@ func TestRuleHolds(t *testing.T) {
 	gh := func(orgs ...string) hubstore.ExternalIdentity {
 		return hubstore.ExternalIdentity{Provider: "github", Subject: "1", Attrs: hubstore.IdentityAttrs{Orgs: orgs}}
 	}
+	// 預設是 email 網域的 Workspace 帳號（hd 等於 email 的網域）。
 	goog := func(email string, verified bool) hubstore.ExternalIdentity {
-		return hubstore.ExternalIdentity{Provider: "google", Subject: "1", Email: email, EmailVerified: verified}
+		_, d, _ := strings.Cut(email, "@")
+		return hubstore.ExternalIdentity{Provider: "google", Subject: "1", Email: email, EmailVerified: verified, Attrs: hubstore.IdentityAttrs{HostedDomain: d}}
 	}
+	googHD := func(email, hd string) hubstore.ExternalIdentity {
+		i := goog(email, true)
+		i.Attrs.HostedDomain = hd
+		return i
+	}
+	ghID := func(names, ids []string) hubstore.ExternalIdentity {
+		i := gh(names...)
+		i.Attrs.OrgIDs = ids
+		return i
+	}
+	orgID := hubconfig.Rule{Provider: hubconfig.GitHub, OrgMember: []string{"4242"}}
 	trust := hubconfig.Rule{Provider: hubconfig.LinuxDo, TrustLevelGTE: intp(2)}
 	org := hubconfig.Rule{Provider: hubconfig.GitHub, OrgMember: []string{"notesteme-friends"}}
 	domain := hubconfig.Rule{Provider: hubconfig.Google, EmailDomain: []string{"example.com"}}
@@ -51,6 +64,13 @@ func TestRuleHolds(t *testing.T) {
 		{"@ 在結尾", domain, goog("carol@", true), false},
 		{"網域規則對 github", domain, hubstore.ExternalIdentity{Provider: "github", Email: "a@example.com", EmailVerified: true}, false},
 		{"空規則", hubconfig.Rule{Provider: hubconfig.GitHub}, gh("x"), false},
+		// 安全修補 A：email_domain 要是那個網域的 Workspace 帳號；org_member 可以用組織的數字 id。
+		{"個人 Google 帳號（沒有 hd）", domain, googHD("carol@example.com", ""), false},
+		{"hd 是別的網域", domain, googHD("carol@example.com", "evil.org"), false},
+		{"hd 大小寫", domain, googHD("carol@example.com", "Example.COM"), true},
+		{"組織 id", orgID, ghID([]string{"renamed"}, []string{"4242"}), true},
+		{"組織 id 不符", orgID, ghID([]string{"4242"}, []string{"1"}), false},
+		{"名稱是數字也不當成 id 以外的比對", orgID, gh("4242"), false},
 	}
 	for _, c := range cases {
 		if got := RuleHolds(c.rule, c.id); got != c.want {

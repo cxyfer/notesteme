@@ -65,8 +65,13 @@ func verify(raw string, key *rsa.PublicKey, w Expect) (Claims, error) {
 
 func TestVerifyAccepts(t *testing.T) {
 	c, err := verify(sign(testKey, goodHeader(), goodClaims()), &testKey.PublicKey, want)
-	if err != nil || c.Subject != "s-1" || !c.EmailVerified || c.Email != "a@example.com" {
+	if err != nil || c.Subject != "s-1" || !c.EmailVerified || c.Email != "a@example.com" || c.HostedDomain != "" {
 		t.Fatalf("Verify = %+v, %v", c, err)
+	}
+	withHD := goodClaims()
+	withHD["hd"] = "example.com"
+	if c, err := verify(sign(testKey, goodHeader(), withHD), &testKey.PublicKey, want); err != nil || c.HostedDomain != "example.com" {
+		t.Fatalf("hd = %+v, %v", c, err)
 	}
 	// aud 是陣列、iss 沒有 https://、email_verified 是字串，都接受。
 	cl := goodClaims()

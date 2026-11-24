@@ -151,6 +151,10 @@ func (u User) Suspended() bool { return u.SuspendedAt != nil }
 type IdentityAttrs struct {
 	TrustLevel *int     `json:"trust_level,omitempty"` // linuxdo
 	Orgs       []string `json:"orgs,omitempty"`        // github
+	// OrgIDs 是 GitHub 組織的數字 id（與 Orgs 同順序；組織改名後名稱可能被別人註冊，id 不會，安全修補 A）。
+	OrgIDs []string `json:"org_ids,omitempty"`
+	// HostedDomain 是 Google id_token 的 hd（Workspace 的網域；個人帳號沒有，安全修補 A）。
+	HostedDomain string `json:"hd,omitempty"`
 }
 
 // ExternalIdentity 是供應商回報的身分：以 (Provider, Subject) 識別，其他欄位只用來顯示與套用規則。

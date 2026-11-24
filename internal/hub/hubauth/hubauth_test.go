@@ -142,7 +142,7 @@ func (f *fakeIdP) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, u)
 	case "api.github.com/user/orgs":
-		writeJSON(w, http.StatusOK, []map[string]string{{"login": "friends"}})
+		writeJSON(w, http.StatusOK, []map[string]any{{"login": "friends", "id": 4242}})
 	case "connect.linux.do/api/user":
 		if _, _, ok := r.BasicAuth(); ok {
 			writeJSON(w, http.StatusBadRequest, nil)
@@ -158,7 +158,7 @@ func (f *fakeIdP) idToken(g fakeGrant) string {
 	now := time.Now()
 	claims := map[string]any{
 		"iss": "https://accounts.google.com", "aud": testClientID, "sub": g.sub, "email": "alice@example.com",
-		"email_verified": true, "nonce": g.nonce, "iat": now.Unix(), "exp": now.Add(time.Hour).Unix(),
+		"email_verified": true, "hd": "example.com", "nonce": g.nonce, "iat": now.Unix(), "exp": now.Add(time.Hour).Unix(),
 	}
 	if f.idTokenMod != nil {
 		f.idTokenMod(claims)
@@ -340,8 +340,11 @@ func TestLoginEachProvider(t *testing.T) {
 		if len(ids) != 1 || ids[0].Subject != c.subject || ids[0].Login != c.login {
 			t.Errorf("%s 的身分 = %+v", c.provider, ids)
 		}
-		if c.provider == "github" && (len(ids[0].Attrs.Orgs) != 1 || ids[0].Attrs.Orgs[0] != "friends") {
-			t.Errorf("github orgs = %v", ids[0].Attrs.Orgs)
+		if c.provider == "github" && (len(ids[0].Attrs.Orgs) != 1 || ids[0].Attrs.Orgs[0] != "friends" || len(ids[0].Attrs.OrgIDs) != 1 || ids[0].Attrs.OrgIDs[0] != "4242") {
+			t.Errorf("github orgs = %v %v", ids[0].Attrs.Orgs, ids[0].Attrs.OrgIDs)
+		}
+		if c.provider == "google" && ids[0].Attrs.HostedDomain != "example.com" {
+			t.Errorf("google hd = %q", ids[0].Attrs.HostedDomain)
 		}
 		if c.provider == "linuxdo" && (ids[0].Attrs.TrustLevel == nil || *ids[0].Attrs.TrustLevel != 2) {
 			t.Errorf("linuxdo trust_level = %v", ids[0].Attrs.TrustLevel)

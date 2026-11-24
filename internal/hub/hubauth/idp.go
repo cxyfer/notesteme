@@ -200,6 +200,7 @@ func (s *Service) fetchIdentity(ctx context.Context, spec Spec, client hubconfig
 		}
 		// email 與 email_verified 以簽章驗證過的 id_token 為準（email_domain 規則只在 email_verified 時成立，HACC-R11）。
 		out.Subject, out.Email, out.EmailVerified = claims.Subject, claims.Email, claims.EmailVerified
+		out.Attrs.HostedDomain = claims.HostedDomain
 		out.Login = claims.Email
 		if out.Login == "" {
 			out.Login = info.Name
@@ -225,13 +226,17 @@ func (s *Service) fetchIdentity(ctx context.Context, spec Spec, client hubconfig
 		out.Subject, out.Login, out.Email = id, u.Login, u.Email
 		if s.needsGitHubOrgs() {
 			var orgs []struct {
-				Login string `json:"login"`
+				Login string      `json:"login"`
+				ID    json.Number `json:"id"`
 			}
 			if err := s.getJSON(ctx, spec.OrgsURL, tr.AccessToken, "orgs", &orgs); err != nil {
 				return out, "", err
 			}
 			for _, o := range orgs {
 				out.Attrs.Orgs = append(out.Attrs.Orgs, o.Login)
+				if id, ok := numericID(o.ID); ok {
+					out.Attrs.OrgIDs = append(out.Attrs.OrgIDs, id)
+				}
 			}
 		}
 		return out, u.Login, nil
