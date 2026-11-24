@@ -58,9 +58,10 @@ export const VARIANT_STRATEGY = ["convert", "localize"] as const;
 export const CAPTION_KINDS = ["manual", "auto"] as const;
 /** output.Formats */
 export const OUTPUT_FORMATS = ["srt", "vtt", "txt", "cues-json", "ass", "bilingual-srt"] as const;
-/** vault 在 M3 才提供（schema 回 422） */
 /** 輸出目標（OUT-R*、VAULT-R1）：vault 只能選用設定檔定義的 id */
 export const OUTPUT_TARGETS = ["sidecar", "folder", "vault"] as const;
+/** outputs[].on_user_change（OUT-R12、VAULT-R6）：三種目標都有；沒寫時是 save_as_new */
+export const ON_USER_CHANGE = ["save_as_new", "skip"] as const;
 
 /** 各輸出目標可以有的欄位（internal/pipeline/schema.go 的 outputFields、vaultOutputFields）；換目標時丟掉其他的 */
 const TARGET_FIELDS: Record<string, readonly string[]> = {

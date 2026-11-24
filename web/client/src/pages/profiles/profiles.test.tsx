@@ -302,6 +302,27 @@ describe("處理方案：編輯", () => {
     expect(note.getByLabelText("Provider").getAttribute("aria-invalid")).toBe("true");
   });
 
+  it("每個輸出可以選檔案被改過時的處理方式（OUT-R12、VAULT-R6）", async () => {
+    const api = profilesApi({
+      "PATCH /api/profiles/{id}": () => ({ ...standard, version: 6 }),
+    });
+    await openStandard();
+    const card = within(screen.getByRole("group", { name: "輸出 1" }));
+    const sel = card.getByLabelText("檔案被改過時") as HTMLSelectElement;
+    expect(sel.value).toBe("");
+    await userEvent.selectOptions(sel, "skip");
+    // 換目標時保留（三種目標都有這個欄位）
+    await userEvent.selectOptions(card.getByLabelText("輸出目標"), "folder");
+    expect((card.getByLabelText("檔案被改過時") as HTMLSelectElement).value).toBe("skip");
+    await userEvent.selectOptions(card.getByLabelText("輸出目標"), "sidecar");
+    await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
+    expect(await screen.findByText("已儲存（v6）")).toBeTruthy();
+    const body = JSON.parse(String(api.calls("PATCH", "/api/profiles/standard")[0]!.init.body));
+    expect(body.config.outputs).toEqual([
+      { target: "sidecar", formats: ["srt"], on_user_change: "skip" },
+    ]);
+  });
+
   it("設為預設", async () => {
     const api = profilesApi({
       "POST /api/profiles/{id}/default": () => ({ ...standard, default: true }),

@@ -39,6 +39,7 @@ import {
   NOTE_ENGINES,
   mergePatch,
   ON_MANUAL,
+  ON_USER_CHANGE,
   OUTPUT_FORMATS,
   OUTPUT_TARGETS,
   retarget,
@@ -910,6 +911,20 @@ function OutputsStep({ draft, update, errors, styles }: StepCtx) {
                 />
               )}
             </div>
+            <SelectField
+              label={t("profiles.field.onUserChange")}
+              value={str(o.on_user_change)}
+              onChange={(e) => setAt(i, "on_user_change", e.target.value || undefined)}
+              options={[
+                { value: "", label: t("profiles.onUserChange.default") },
+                ...ON_USER_CHANGE.map((x) => ({
+                  value: x,
+                  label: t(`profiles.onUserChange.${x}`),
+                })),
+              ]}
+              hint={t("profiles.field.onUserChangeHint")}
+              error={errors[`${p}.on_user_change`]}
+            />
             <fieldset className="plain-fieldset">
               <legend className="field__label">{t("profiles.field.formats")}</legend>
               <div className="check-row">

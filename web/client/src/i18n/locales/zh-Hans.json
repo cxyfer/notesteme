@@ -1694,7 +1694,9 @@
       "noteEngineHint": "Gemini 直接生成时 provider 必须是 gemini，字幕、分段、校正、翻译、章节与关键画面都会跳过。",
       "noteLang": "笔记语言",
       "noteLangHint": "BCP-47 语言标记，例如 zh-Hant-TW。留空时沿用全局设置；都没有设置时用第一个目标语言，没有目标语言时用原文语言。",
-      "noteIncludeTranslation": "给模型的字幕"
+      "noteIncludeTranslation": "给模型的字幕",
+      "onUserChange": "文件被改过时",
+      "onUserChangeHint": "你修改过这个输出写出的文件后，重新生成时怎么处理。"
     },
     "promptInherit": "沿用全局设置（默认 {{id}}）",
     "versionFollow": "跟随默认（目前 v{{version}}）",
@@ -1754,7 +1756,12 @@
     },
     "noteIncludeYes": "原文与笔记语言的译文",
     "noteIncludeNo": "只有原文",
-    "templateOption": "{{name}}（{{id}}）"
+    "templateOption": "{{name}}（{{id}}）",
+    "onUserChange": {
+      "default": "另存一份（默认）",
+      "save_as_new": "另存一份，文件名加上「(notesteme 日期)」",
+      "skip": "不写入，标示「需要你处理」"
+    }
   },
   "styles": {
     "lead": "选择或自定义 ASS 样式。内置样式不能修改，复制成自定义样式后再调整。",

@@ -1752,7 +1752,9 @@
       "noteEngineHint": "With Gemini direct generation the provider must be gemini, and captions, segmenting, correction, translation, chapters and key frames are skipped.",
       "noteLang": "Note language",
       "noteLangHint": "A BCP-47 language tag, for example zh-Hant-TW. Leave blank to use the global setting; otherwise the first target language, or the original language when there is none.",
-      "noteIncludeTranslation": "Captions given to the model"
+      "noteIncludeTranslation": "Captions given to the model",
+      "onUserChange": "When the file was edited",
+      "onUserChangeHint": "What to do on regeneration after you have edited a file this output wrote."
     },
     "promptInherit": "Use global setting (default {{id}})",
     "versionFollow": "Follow default (now v{{version}})",
@@ -1812,7 +1814,12 @@
     },
     "noteIncludeYes": "Original and the translation in the note language",
     "noteIncludeNo": "Original only",
-    "templateOption": "{{name}} ({{id}})"
+    "templateOption": "{{name}} ({{id}})",
+    "onUserChange": {
+      "default": "Save a copy (default)",
+      "save_as_new": "Save a copy named “(notesteme date)”",
+      "skip": "Don't write; mark it as needing you"
+    }
   },
   "styles": {
     "lead": "Choose or customize ASS styles. Built-in styles can't be changed; copy one to a custom style to adjust it.",
