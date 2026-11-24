@@ -4,7 +4,8 @@
 # build context 是 repo 根目錄：
 #   docker build -f deploy/docker/Dockerfile -t notesteme .
 
-ARG GO_VERSION=1.25
+# 與 go.mod 的 toolchain 一致（釘到 patch 版本，含標準函式庫的安全修補；NFR-SEC-4）。
+ARG GO_VERSION=1.26.11
 ARG DEBIAN_VERSION=trixie
 ARG DENO_VERSION=2.9.8
 # 與 web/client/.nvmrc、.github/workflows/web.yml 一致（Node LTS）。

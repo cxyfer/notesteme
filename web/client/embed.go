@@ -2,7 +2,7 @@
 //
 // dist 只 commit 一個 .gitkeep：沒有 Node、沒有建置前端時，Go 的建置與測試照常通過，
 // UI 回應 internal/webui 的 Placeholder。`npm run build` 之後重新編譯，binary 就會包含真正的 UI。
-// go:embed 不能指向上層目錄，所以這個檔案放在 web/client 裡。
+// embed 指令不能指向上層目錄，所以這個檔案放在 web/client 裡。
 package webclient
 
 import (

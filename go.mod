@@ -2,6 +2,8 @@ module github.com/cxyfer/notesteme
 
 go 1.25.0
 
+toolchain go1.26.11
+
 // web/client 的 npm 套件可能附帶 .go 檔；不讓 ./... 掃到它們（ADR-0008）。
 ignore ./web/client/node_modules
 
@@ -54,8 +56,8 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/text v0.29.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	modernc.org/libc v1.66.10 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

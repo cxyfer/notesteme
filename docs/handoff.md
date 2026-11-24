@@ -759,7 +759,7 @@ uv run --with gherkin-official python -I scripts/spec/parse_all.py features
 
 ## 8. 已確定的技術選擇
 
-- **Go 版本**：go.mod 維持 `go 1.25`，依賴釘在不會把 `go` 指令升到 1.26 的版本（例如 huma v2.34.1、goose v3.26.0、modernc sqlite v1.39.1）。執行 `go get -u` 前要先確認這點。
+- **Go 版本**：go.mod 維持 `go 1.25`，依賴釘在不會把 `go` 指令升到 1.26 的版本（例如 huma v2.34.1、goose v3.26.0、modernc sqlite v1.39.1）。執行 `go get -u` 前要先確認這點。建置用的 toolchain 另外以 `toolchain go1.26.11` 釘住（Dockerfile 的 `GO_VERSION` 同步、CI 的 govulncheck 也用它）；標準函式庫有新的安全修補時三處一起升。
 - **sqlc**：
   - 不放進 go.mod，因為 sqlc v1.31.1 要求 go 1.26；用 `go run …@v1.31.1` 執行，需要 gcc 與 cgo。
   - `queries/*.sql` 的註解只能用英文：sqlc 的 sqlite parser 遇到非 ASCII 字元會讓後面查詢的參數錯位。

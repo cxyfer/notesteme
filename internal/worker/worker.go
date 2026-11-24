@@ -233,7 +233,9 @@ func (w *Worker) StopClaiming() {
 	w.draining = true
 	w.roundMu.Unlock()
 	// 放開 roundMu 之後才等 periodicMu：定期工作可能正在呼叫 Cancel，而 Cancel 要取得 roundMu。
+	// 空的 critical section 是刻意的屏障：只為了等正在執行的定期工作結束（之後的定期工作會看到 draining）。
 	w.periodicMu.Lock()
+	//lint:ignore SA2001 刻意的屏障，見上方說明。
 	w.periodicMu.Unlock()
 }
 

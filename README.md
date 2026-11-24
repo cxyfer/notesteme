@@ -96,7 +96,7 @@ Hub（`notesteme-hub`，Postgres＋S3 相容儲存）的部署是另一份 compo
 | Build arg | 預設 | 說明 |
 |---|---|---|
 | `VERSION` | `dev` | `notesteme --version` 顯示的版本 |
-| `GO_VERSION` | `1.25` | 建置用的 Go 版本 |
+| `GO_VERSION` | `1.26.11` | 建置用的 Go 版本（與 go.mod 的 `toolchain` 一致） |
 | `DENO_VERSION` | `2.9.8` | Deno 版本 |
 | `YTDLP_VERSION` | 空（最新版） | 固定 yt-dlp 版本，例如 `2026.10.26` |
 
@@ -155,7 +155,7 @@ tools:
 
 ## 開發
 
-需求：Go 1.25 以上。執行 pipeline 需要 `yt-dlp`、`ffmpeg`、`deno`；測試會使用假工具，不需要安裝。
+需求：Go 1.25 以上（go.mod 的 `toolchain` 是 go1.26.11，`GOTOOLCHAIN=auto` 時自動下載；發布物以它建置）。執行 pipeline 需要 `yt-dlp`、`ffmpeg`、`deno`；測試會使用假工具，不需要安裝。
 
 ```bash
 go build -o notesteme ./cmd/notesteme
