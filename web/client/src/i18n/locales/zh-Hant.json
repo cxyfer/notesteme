@@ -610,7 +610,11 @@
       "keptReason": {
         "modified": "已修改，不會刪除",
         "outside_roots": "不在允許的資料夾內，不會刪除",
-        "unreadable": "無法讀取，不會刪除"
+        "unreadable": "無法讀取，不會刪除",
+        "git_unreachable": "連不上 git 遠端，這次沒有刪除",
+        "git_rejected": "git 遠端拒絕推送，刪除留在本機，下次發布時推送",
+        "git_auth": "git 遠端認證失敗，這次沒有刪除",
+        "git_failed": "git 操作失敗，這次沒有刪除"
       },
       "confirm": "移到垃圾桶",
       "deleting": "正在移到垃圾桶…",
@@ -1228,7 +1232,8 @@
         "job_stale": "排程工作沒有執行",
         "disk_usage": "磁碟空間不足",
         "cookie_stale": "Cookie 可能已失效",
-        "ytdlp_failure_rate": "yt-dlp 失敗率偏高"
+        "ytdlp_failure_rate": "yt-dlp 失敗率偏高",
+        "ytdlp_update_failed": "yt-dlp 排程更新失敗"
       },
       "backupTitle": "每日備份",
       "backupHint": "資料庫快照與設定檔，不含 master key。位置與保留份數在設定檔設定。",

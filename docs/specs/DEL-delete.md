@@ -154,6 +154,6 @@
 - M1 還沒有 `cues_fts`、`outputs`、術語候選。之後的切片接上時，永久刪除要一併清除。
 - 本機檔案（2026-11-21，LOCAL 切片實作時決定）：上傳的檔案存在 `/data/uploads/<id>/`，永久刪除時一併刪除；inbox 與 `media_roots` 中的原檔是 owner 的，永遠不刪（DEL-R8）。tombstone 記錄內容的 `sha256`；inbox 遇到 `sha256` 相同，或同一個路徑而 tombstone 沒有 `sha256` 的檔案時，不建立影音，也不移除 tombstone（DEL-R11）。
 - DEL-R9 的實作決定（2026-11-23，M2 PRM／DEL-R9 切片，依 /goal 採保守預設，待 owner 追認）：
-  - `kept_outputs` 的原因除了 `modified`，另有 `outside_roots`（紀錄的路徑現在不在 inbox／`media_roots` 內，不碰）與 `unreadable`（檢查或刪除失敗）。deletion-preview 的輸出檔項目多一個 `reason`（保留時才有）。
+  - `kept_outputs` 的原因除了 `modified`，另有 `outside_roots`（紀錄的路徑現在不在 inbox／`media_roots` 內，不碰）與 `unreadable`（檢查或刪除失敗）。git vault 的輸出另有 `git_unreachable`、`git_rejected`、`git_auth`、`git_failed`（VAULT-R12 的同步、commit 或推送失敗，見 VAULT 待釐清 V16；2026-11-24，依 /goal 採 advisor 建議，待 owner 追認）。deletion-preview 的輸出檔項目多一個 `reason`（保留時才有）。
   - 還原時的「被刪除」以「有紀錄、檔案已不存在」判斷，不另外記旗標（避免 migration）。代價：使用者自己在垃圾桶期間刪掉的輸出檔，還原時也會被重新寫回。
   - 永久刪除不動輸出檔（資料表）。`DELETE /api/trash/:id` 沒有 `delete_outputs`。

@@ -610,7 +610,11 @@
       "keptReason": {
         "modified": "已修改，不会删除",
         "outside_roots": "不在允许的文件夹内，不会删除",
-        "unreadable": "无法读取，不会删除"
+        "unreadable": "无法读取，不会删除",
+        "git_unreachable": "连不上 git 远端，这次没有删除",
+        "git_rejected": "git 远端拒绝推送，删除留在本机，下次发布时推送",
+        "git_auth": "git 远端认证失败，这次没有删除",
+        "git_failed": "git 操作失败，这次没有删除"
       },
       "confirm": "移到回收站",
       "deleting": "正在移到回收站…",
@@ -1228,7 +1232,8 @@
         "job_stale": "计划任务没有执行",
         "disk_usage": "磁盘空间不足",
         "cookie_stale": "Cookie 可能已失效",
-        "ytdlp_failure_rate": "yt-dlp 失败率偏高"
+        "ytdlp_failure_rate": "yt-dlp 失败率偏高",
+        "ytdlp_update_failed": "yt-dlp 计划更新失败"
       },
       "backupTitle": "每日备份",
       "backupHint": "数据库快照与配置文件，不含 master key。位置与保留份数在配置文件中设置。",

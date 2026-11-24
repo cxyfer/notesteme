@@ -636,7 +636,11 @@
       "keptReason": {
         "modified": "modified, kept",
         "outside_roots": "outside the allowed folders, kept",
-        "unreadable": "unreadable, kept"
+        "unreadable": "unreadable, kept",
+        "git_unreachable": "git remote unreachable, not deleted this time",
+        "git_rejected": "git remote rejected the push; the deletion stays local and is pushed on the next publish",
+        "git_auth": "git remote authentication failed, not deleted this time",
+        "git_failed": "git operation failed, not deleted this time"
       },
       "confirm": "Move to trash",
       "deleting": "Moving to trash…",
@@ -1268,7 +1272,8 @@
         "job_stale": "Scheduled job not running",
         "disk_usage": "Low disk space",
         "cookie_stale": "Cookie may have expired",
-        "ytdlp_failure_rate": "High yt-dlp failure rate"
+        "ytdlp_failure_rate": "High yt-dlp failure rate",
+        "ytdlp_update_failed": "Scheduled yt-dlp update failed"
       },
       "backupTitle": "Daily backup",
       "backupHint": "A database snapshot and the config file, without the master key. Location and retention are set in the config file.",
