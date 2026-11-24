@@ -79,6 +79,15 @@ func (rt *routes) createToken(ctx context.Context, in *createTokenInput) (*creat
 	if rt.d.Auth == nil {
 		return nil, rt.noAuth(ctx)
 	}
+	// token 不隱含繼承 scope（AUTH-R8）：用 token 建立 token 時，只能發出自己有的 scope，
+	// 否則只有 admin 的 token 可以替自己發出帶 ingest、agent 的 token。owner（session、本機）不受限制。
+	if p, ok := principalFrom(ctx); ok && p.Kind == "token" {
+		for _, sc := range in.Body.Scopes {
+			if auth.ValidScope(sc) && !p.HasScope(sc) {
+				return nil, errForbiddenScope(sc)
+			}
+		}
+	}
 	var expiresIn *time.Duration
 	if in.Body.ExpiresIn != "" {
 		d, err := auth.ParseTokenDuration(in.Body.ExpiresIn)
