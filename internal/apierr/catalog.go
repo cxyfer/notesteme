@@ -69,6 +69,7 @@ var messages = map[string]translation{
 	"找不到這個術語候選。":       {"找不到这个术语候选。", "This term candidate was not found."},
 	"找不到這個訂閱。":         {"找不到这个订阅。", "This subscription was not found."},
 	"找不到這個詞彙表。":        {"找不到这个词汇表。", "This glossary was not found."},
+	"找不到這個檢視。":         {"找不到这个检视。", "This saved view was not found."},
 	"找不到這個路徑。":         {"找不到这个路径。", "This path was not found."},
 	"找不到這個頻道。":         {"找不到这个频道。", "This channel was not found."},
 	"找不到這筆單價覆寫。":       {"找不到这条单价覆盖。", "This price override was not found."},
