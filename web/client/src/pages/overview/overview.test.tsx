@@ -41,6 +41,74 @@ describe("總覽", () => {
     await expectNoA11yViolations(container);
   });
 
+  it("進行中的告警列出訊息與持續時間，旁邊列出最近沒有送出的通知（OPS 的 @ui 場景）", async () => {
+    const hourAgo = new Date(Date.now() - 3 * 3600_000).toISOString();
+    const old = new Date(Date.now() - 3 * 86400_000).toISOString();
+    const api = overviewApi({
+      "GET /api/system": () => ({
+        alerts: [
+          {
+            kind: "disk_usage",
+            key: "/data",
+            message: "/data 的磁碟用量是 93%，超過 90%。",
+            since: hourAgo,
+          },
+        ],
+        backup: { last_ok_at: null, last_error: null, next_run_at: null },
+      }),
+      "GET /api/notifications": () => ({
+        notifications: [
+          {
+            id: "n1",
+            notifier: "phone",
+            event: "alert",
+            state: "dropped",
+            attempts: 6,
+            last_error: "通知端點回應 HTTP 503。",
+            created_at: hourAgo,
+            sent_at: null,
+          },
+          // 超過 24 小時的不列出
+          {
+            id: "n0",
+            notifier: "phone",
+            event: "item.done",
+            state: "dropped",
+            attempts: 1,
+            last_error: "連線失敗。",
+            created_at: old,
+            sent_at: null,
+          },
+        ],
+      }),
+    });
+    signIn();
+    const { container } = renderRoute("/");
+    const sec = (await screen.findByRole("heading", { name: "系統告警" })).closest("section")!;
+    expect(within(sec).getByText("磁碟空間不足")).toBeTruthy();
+    expect(within(sec).getByText("/data 的磁碟用量是 93%，超過 90%。")).toBeTruthy();
+    expect(within(sec).getByText(/已持續 3 小時/)).toBeTruthy();
+    expect(
+      await within(sec).findByRole("heading", { name: "最近 24 小時有 1 則通知沒有送出" }),
+    ).toBeTruthy();
+    expect(
+      within(sec).getByText(/phone 的「系統告警」通知沒有送出。 通知端點回應 HTTP 503。/),
+    ).toBeTruthy();
+    expect(within(sec).queryByText(/連線失敗/)).toBeNull();
+    expect(api.calls("GET", "/api/notifications")[0]!.url.searchParams.get("state")).toBe(
+      "dropped",
+    );
+    await expectNoA11yViolations(container);
+  });
+
+  it("沒有告警、也沒有沒送出的通知（或讀不到）時不顯示告警區塊", async () => {
+    overviewApi({ "GET /api/system": () => apiError(403, "forbidden", "只有 owner") });
+    signIn();
+    renderRoute("/");
+    await screen.findByRole("heading", { name: "現在" });
+    expect(screen.queryByRole("heading", { name: "系統告警" })).toBeNull();
+  });
+
   it("「調整預算」打開設定的預算分區", async () => {
     overviewApi();
     signIn();

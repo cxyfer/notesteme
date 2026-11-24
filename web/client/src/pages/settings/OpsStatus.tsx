@@ -6,23 +6,11 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { components } from "../../api/schema";
-import { currentLanguage, formatDateTime } from "../../i18n";
+import { formatDateTime, formatElapsed } from "../../i18n";
 import { Panel } from "./shared";
 
 type Alert = components["schemas"]["AlertView"];
 type Backup = components["schemas"]["BackupView"];
-
-/** 已經過多久：依長度選分鐘、小時或天，用 Intl 的單位格式（不另外加字串） */
-export function formatElapsed(ms: number, lang: string = currentLanguage()): string {
-  const min = Math.max(0, Math.floor(ms / 60_000));
-  const [value, unit] =
-    min < 60
-      ? [min, "minute"]
-      : min < 48 * 60
-        ? [Math.floor(min / 60), "hour"]
-        : [Math.floor(min / 1440), "day"];
-  return new Intl.NumberFormat(lang, { style: "unit", unit, unitDisplay: "long" }).format(value);
-}
 
 export function OpsStatus({ alerts, backup }: { alerts: Alert[] | null; backup: Backup }) {
   const { t } = useTranslation();

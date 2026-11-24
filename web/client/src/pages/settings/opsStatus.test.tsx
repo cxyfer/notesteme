@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { expectNoA11yViolations } from "../../test/axe";
 import { mockApi } from "../../test/mockApi";
 import { renderRoute, signIn } from "../../test/render";
-import { formatElapsed } from "./OpsStatus";
+import { formatElapsed } from "../../i18n";
 
 function system(over: Record<string, unknown> = {}) {
   return {

@@ -2,6 +2,7 @@
 //
 //   - GET /api/overview?tz=<瀏覽器時區>（L-M8）；時區不被接受（422）時不帶 tz 再讀一次（伺服器用預算時區）。
 //   - 即時更新：步驟與影音的 SSE 事件以 1 秒節流讓總覽失效；今天、本月、磁碟有些變化沒有事件，另外每分鐘重讀。
+//   - 系統告警與沒有送出的通知見 AlertsSection（讀 /api/system 與 /api/notifications，OPS-R13、NOTIFY-R8）。
 //   - 「需要你處理」的 actions 是後端的繁中按鈕文字：成本的兩個動作在這裡對應，其他沿用影音詳情的對照表。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -24,6 +25,7 @@ import { formatUsdCents } from "../costs/money";
 import { mapActions } from "../item/actions";
 import { useItemDetail } from "../library/LibraryRow";
 import { BAND_STAGES, bandStatus, badgeStatus } from "../library/stageView";
+import { AlertsSection } from "./AlertsSection";
 import "../../styles/ui7.css";
 
 type Overview = components["schemas"]["OverviewResult"];
@@ -104,6 +106,7 @@ export function OverviewPage() {
         <>
           {blank && <EmptyLibrary />}
           <Notices notices={o.notices ?? []} />
+          <AlertsSection />
           <NowSection now={o.now} />
           <NeedsSection needs={o.needs_you} />
           <TodaySection o={o} />

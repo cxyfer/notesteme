@@ -2083,6 +2083,13 @@
       "subscription.checked": "订阅检查完成",
       "subscription.check_failed": "订阅检查失败",
       "other": "{{type}} {{title}}"
+    },
+    "alerts": {
+      "title": "系统告警",
+      "settings": "查看系统",
+      "dropped_other": "最近 24 小时有 {{formatted}} 则通知没有送出",
+      "droppedLine": "{{notifier}} 的「{{event}}」通知没有送出。",
+      "notifySettings": "查看通知设置"
     }
   },
   "trash": {

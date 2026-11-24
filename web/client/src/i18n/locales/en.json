@@ -2140,6 +2140,14 @@
       "subscription.checked": "Subscriptions checked",
       "subscription.check_failed": "A subscription check failed",
       "other": "{{type}} {{title}}"
+    },
+    "alerts": {
+      "title": "System alerts",
+      "settings": "View system",
+      "dropped_one": "{{formatted}} notification was not delivered in the last 24 hours",
+      "dropped_other": "{{formatted}} notifications were not delivered in the last 24 hours",
+      "droppedLine": "The “{{event}}” notification to {{notifier}} was not delivered.",
+      "notifySettings": "View notification settings"
     }
   },
   "trash": {
