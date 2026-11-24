@@ -28,6 +28,9 @@ func (e *usageError) Error() string { return e.msg }
 func usagef(format string, a ...any) error { return &usageError{msg: fmt.Sprintf(format, a...)} }
 
 // apiError 是 API 回傳的錯誤（非 2xx）。
+// codeClientIncompatible 是 CLI 與 serve 的版本不相容（CLI-R9；與 serve 的 426 同一個代碼）。
+const codeClientIncompatible = "client_incompatible"
+
 type apiError struct {
 	Status  int
 	Code    string

@@ -9,6 +9,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/clock"
+	"github.com/cxyfer/notesteme/internal/compat"
 )
 
 type ctxKey int
@@ -244,6 +245,31 @@ func logMiddleware(log *slog.Logger, clk clock.Clock) func(http.Handler) http.Ha
 			log.InfoContext(r.Context(), "http request",
 				"method", r.Method, "path", r.URL.Path, "status", rec.status,
 				"duration_ms", clk.Now().Sub(start).Milliseconds())
+		})
+	}
+}
+
+// CodeClientIncompatible 是 CLI 與 serve 的版本不相容（CLI-R9、NFR-CMP-4）。
+const CodeClientIncompatible = "client_incompatible"
+
+// versionMiddleware 檢查 CLI 帶來的 X-Notesteme-Version（CLI-R9）。沒有這個標頭的請求（瀏覽器、MCP、Agent）不檢查，
+// 回應也不帶版本；有的話回應帶上 serve 的版本，不相容時回 426 client_incompatible，訊息指出要升級哪一邊。
+// RFC 9110 規定 426 要帶 Upgrade 標頭：值是 serve 的版本（Notesteme/<版本>），也就是 CLI 要對齊的對象。
+func versionMiddleware(own string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cv := r.Header.Get(compat.Header)
+			if cv == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			w.Header().Set(compat.Header, own)
+			if v := compat.Check(cv, own); v != compat.Compatible {
+				w.Header().Set("Upgrade", "Notesteme/"+own)
+				writeError(w, newError(http.StatusUpgradeRequired, CodeClientIncompatible, compat.Message(v, cv, own)))
+				return
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }

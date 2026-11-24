@@ -111,6 +111,8 @@ func (s *Scenario) ownerRuns(line string) error {
 
 	env := s.World.AppEnv()
 	env.Dial = s.World.Dial
+	// CLI 報告自己的版本（CLI-R9）；AppEnv 帶的是 serve 的版本。
+	env.Test.Version = s.World.CLIVersion
 	var stdout, stderr bytes.Buffer
 	cctx, cancel := context.WithTimeout(s.ctx, cliTimeout)
 	defer cancel()

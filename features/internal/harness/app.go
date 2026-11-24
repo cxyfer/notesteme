@@ -91,7 +91,7 @@ func (w *World) AppEnv() app.Env {
 		Listen: w.Listen,
 		Log:    w.Log,
 		Test: &app.TestControls{LowCostHashing: true, ManualWorker: true, SkipShutdownGrace: true, SerialLLM: true, ImplVersions: impl, Migrations: migs,
-			CostEstimates: est, PricesAsOf: w.PricesAsOf, DiskUsage: w.diskUsagePercent, NoYtDlpAutoUpdate: true},
+			CostEstimates: est, PricesAsOf: w.PricesAsOf, DiskUsage: w.diskUsagePercent, NoYtDlpAutoUpdate: true, Version: w.ServeVersion},
 	}
 }
 

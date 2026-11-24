@@ -26,6 +26,17 @@ func registerEnv(r *Registry, s *Scenario) {
 	r.Step(`the environment variable {string} is {string}`, s.setEnv)
 	r.Step(`the environment variable {string} is not set`, s.unsetEnv)
 	r.Step(`the server is running`, s.serverIsRunning)
+	r.Step(`the server reports the version {string}`, func(v string) error {
+		if s.started {
+			return errors.New("`the server reports the version` 要在 server 啟動之前")
+		}
+		s.World.ServeVersion = v
+		return nil
+	})
+	r.Step(`the CLI reports the version {string}`, func(v string) error {
+		s.World.CLIVersion = v
+		return nil
+	})
 	r.Step(`the server is not running`, s.serverIsNotRunning)
 	r.Step(`the provider {string} has no API key`, s.providerHasNoAPIKey)
 	r.Step(`the server starts`, s.serverStarts)

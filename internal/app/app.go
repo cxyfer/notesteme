@@ -20,6 +20,14 @@ var version = "dev"
 // Version 回傳程式的版本（MCP 的 serverInfo 與 clientInfo 使用）。
 func Version() string { return version }
 
+// VersionFor 是這個程序對外報告的版本：測試可以用 TestControls.Version 讓 CLI 與 serve 報告不同的版本（CLI-R9）。
+func VersionFor(env Env) string {
+	if env.Test != nil && env.Test.Version != "" {
+		return env.Test.Version
+	}
+	return version
+}
+
 // Env 是程式對外部環境的全部依賴（ADR-0015）。
 // production 程式碼只能經由它取得環境變數、時間、網路與 log 輸出；
 // 只有 cmd/notesteme/main.go 可以讀 os.Environ 與建立真實的 clock、listener。
@@ -52,6 +60,8 @@ type TestControls struct {
 	// ManualWorker 讓 server 不自己執行 worker：任務只在測試呼叫 Server.RunUntilIdle 或
 	// Server.RunRound 時才會被領取與執行（ADR-0015）。
 	ManualWorker bool
+	// Version 非空時取代程式版本，只用於 CLI 與 serve 之間的版本檢查（X-Notesteme-Version，CLI-R9）。
+	Version string
 	// SkipShutdownGrace 讓正常關閉的寬限期為 0：執行中的任務立刻被取消，驗收場景不必推進時鐘（PIPE-R12）。
 	SkipShutdownGrace bool
 	// ImplVersions 覆寫步驟的 impl_version（PIPE-R6），key 是步驟名稱；沒列出的步驟用預設值。

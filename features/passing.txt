@@ -48,6 +48,13 @@ CLI-cli.feature: Waiting on an item that needs the owner exits with 3
 CLI-cli.feature: Waiting until the transcript is ready
 CLI-cli.feature: Doctor reports each dependency with a fix
 CLI-cli.feature: The MCP stdio server works without a running server
+CLI-cli.feature: A CLI within one minor version of the server works [example 1]
+CLI-cli.feature: A CLI within one minor version of the server works [example 2]
+CLI-cli.feature: A CLI within one minor version of the server works [example 3]
+CLI-cli.feature: A CLI within one minor version of the server works [example 4]
+CLI-cli.feature: A CLI two minor versions behind is told to upgrade the CLI
+CLI-cli.feature: A CLI two minor versions ahead is told to upgrade the server
+CLI-cli.feature: Only requests that carry a version are checked
 COR-correct.feature: Corrections keep the cue count and timings
 COR-correct.feature: A correction that changes the number of cues is rejected
 COR-correct.feature: Channel glossary and video metadata reach the prompt

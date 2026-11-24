@@ -123,6 +123,8 @@
 | `Given the environment variable {string} is {string}` | 設定環境變數 |
 | `Given the environment variable {string} is not set` | 移除環境變數 |
 | `Given the server is running` | 以目前的設定啟動 `serve` |
+| `Given the server reports the version {string}` | `serve` 報告的程式版本（`X-Notesteme-Version`，CLI-R9）；要在 server 啟動之前（之後才寫時步驟失敗）。沒有這個步驟時是程式本身的版本（測試中是 `dev`） |
+| `Given the CLI reports the version {string}` | `When the owner runs …` 執行的 CLI 報告的程式版本（CLI-R9）；沒有這個步驟時是程式本身的版本 |
 | `Given the server is not running` | 確認沒有 `serve` 持有資料目錄 |
 | `Given the provider {string} has no API key` | 移除 provider 的 API key（fake provider 預設有 key：Supadata 的 `NOTESTEME_SUPADATA_API_KEY`、Groq 的 `NOTESTEME_GROQ_API_KEY`）。參數是字幕來源 ID（第 3 節）時，同時移除環境變數與 fake 的 key 要求，所以產品沒檢查 key 就呼叫來源會拿到轉錄結果、場景失敗；來源還沒實作（`source.Implemented`）時 pending；必須放在 server 啟動之前（環境變數只在啟動時讀取）。LLM provider（`anthropic`、`openai`）會移除 `NOTESTEME_<ID>_API_KEY`，並取消 fakellm 的 key 要求 |
 | `When the server starts` | 啟動 `serve`，等到 `/readyz` 回應或啟動失敗 |

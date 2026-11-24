@@ -102,3 +102,56 @@ Feature: CLI and data ownership
     When the owner runs "notesteme mcp --list-tools"
     Then the command ran in standalone mode
     And the command output contains "claim_tasks"
+
+  @M2 @CLI-03 @CLI-R9
+  Scenario Outline: A CLI within one minor version of the server works
+    Given the server reports the version "<serve>"
+    And the CLI reports the version "<cli>"
+    And a token "win" with scopes "read"
+    And the server is running
+    When the owner runs "notesteme items ls --server http://127.0.0.1:8080 --token {token:win} --data /nonexistent"
+    Then the command ran in client mode
+    And the command exits with 0
+
+    Examples:
+      | cli   | serve  |
+      | 0.5.0 | 0.4.2  |
+      | 0.4.0 | 0.5.1  |
+      | dev   | 0.9.0  |
+      | 1.3.0 | v1.3.7 |
+
+  @M2 @CLI-03 @CLI-R9
+  Scenario: A CLI two minor versions behind is told to upgrade the CLI
+    Given the server reports the version "0.6.0"
+    And the CLI reports the version "0.4.0"
+    And a token "win" with scopes "read"
+    And the server is running
+    When the owner runs "notesteme items ls --server http://127.0.0.1:8080 --token {token:win} --data /nonexistent"
+    Then the command exits with 1
+    And the command output contains "CLI 版本太舊（CLI 0.4.0，serve 0.6.0），請升級 CLI。"
+
+  @M2 @CLI-03 @CLI-R9
+  Scenario: A CLI two minor versions ahead is told to upgrade the server
+    Given the server reports the version "0.3.1"
+    And the CLI reports the version "0.5.0"
+    And the server is running
+    When the owner runs "notesteme items ls"
+    Then the command ran in client mode
+    And the command exits with 1
+    And the command output contains "serve 版本太舊（serve 0.3.1，CLI 0.5.0），請升級 serve，或換成 0.3 版的 CLI。"
+
+  @M2 @CLI-03 @CLI-R9
+  Scenario: Only requests that carry a version are checked
+    Given the server reports the version "0.9.0"
+    And the server is running
+    And the owner is signed in
+    When the owner sends "GET /api/items"
+    Then the response status is 200
+    When the owner sends "GET /api/items" with the header "X-Notesteme-Version" set to "0.1.0"
+    Then the response status is 426
+    And the response header "X-Notesteme-Version" contains "0.9.0"
+    And the response header "Upgrade" contains "Notesteme/0.9.0"
+    And the response contains:
+      """
+      { "code": "client_incompatible", "message": "CLI 版本太舊（CLI 0.1.0，serve 0.9.0），請升級 CLI。" }
+      """

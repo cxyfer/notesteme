@@ -116,6 +116,10 @@ type World struct {
 	// Log 是 serve 的 log 輸出，見 AppEnv。
 	Log *LogBuffer
 
+	// ServeVersion 與 CLIVersion 是 serve 與 CLI 報告的程式版本（CLI-R9 的版本檢查）；空的時候是程式本身的版本（dev）。
+	// ServeVersion 在 server 啟動時交給 app（見 AppEnv）；CLIVersion 由 `the owner runs …` 使用。
+	ServeVersion, CLIVersion string
+
 	// ImplVersions 是步驟 impl_version 的覆寫（PIPE-R6），見 AppEnv。server 已啟動時也會寫入，重啟後覆寫仍然存在。
 	ImplVersions map[string]int
 	// CostEstimates 是 `the cost estimate of every … task is …` 的估算覆寫（美元，steps.md 4.19）；PricesAsOf 是

@@ -141,8 +141,10 @@ func New(d Deps) http.Handler {
 
 // outer 是所有請求最外層的 middleware：request ID 最先設定（NFR-OBS-1），之後的 log 與每一種錯誤回應
 // （含驗證失敗與 insecureGuard）都帶得到它；recover 在 log 之內，panic 轉成的 500 也會記錄。
+// CLI 的版本檢查（CLI-R9）在驗證之前：版本不相容時，CLI 先知道要升級哪一邊，而不是看到 401。
 func outer(d Deps, h http.Handler) http.Handler {
 	h = recoverMiddleware(d.Log)(h)
+	h = versionMiddleware(d.Version)(h)
 	h = logMiddleware(d.Log, d.Clock)(h)
 	return logctx.Middleware(h)
 }

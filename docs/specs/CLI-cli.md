@@ -30,6 +30,7 @@ CLI 和 Web UI 的能力一致，適合給腳本與 Agent 使用。同一份資�
 | CLI-R6 | 結束碼：`0` 成功；`1` 執行錯誤；`2` 參數錯誤（在判斷模式之前檢查，API 回 400、422 也算）；`3` 需要使用者處理（`blocked`）；`4` 等待中（`waiting` 或仍在 `pending`，例如 `--wait` 超過 `--timeout` 時）。 |
 | CLI-R7 | `notesteme ingest --until <stage> --wait` 會等到指定步驟完成或停住才結束，並依 CLI-R6 回傳結束碼。 |
 | CLI-R8 | `notesteme doctor` 依序檢查 ffmpeg（含 libass）、ffprobe、yt-dlp、Deno、各 provider 的 API key 與網路連線，每項顯示 `ok`、`warn` 或 `fail` 與修正方式；有任何 `fail` 時結束碼為 1。Deno 與 API key 缺少時為 `warn`。 |
+| CLI-R9 | CLI 對 `serve` 的每個請求帶 `X-Notesteme-Version`（程式版本）；`serve` 收到時回應也帶自己的版本。major 相同、minor 相差不超過 1 為相容（新版的 CLI 可以連到舊一個小版本的 `serve`，反之亦然，NFR-CMP-4）；版本無法解析（例如開發版 `dev`）或沒有帶時視為相容。不相容時 `serve` 回 426 `client_incompatible`，CLI 也檢查回應標頭，兩邊都以結束碼 1 提示要升級哪一邊：「CLI 版本太舊（CLI <版本>，serve <版本>），請升級 CLI。」或「serve 版本太舊（serve <版本>，CLI <版本>），請升級 serve，或換成 <major.minor> 版的 CLI。」沒有這個標頭的請求（瀏覽器、MCP、Agent）不檢查，回應也不帶版本。 |
 
 ## 介面
 
@@ -48,6 +49,7 @@ notesteme config import <file> [--json]   （SEC-R10；M2：先驗證整份，�
 全域參數：--server <url> --token <t> --data <dir>（可以放在子命令之前或之後）
 ```
 
+- 版本檢查（CLI-R9）：標頭 `X-Notesteme-Version` 的值是程式版本（`notesteme --version` 的版本）。`serve` 的 426 回應另帶 `Upgrade: Notesteme/<serve 的版本>`（RFC 9110 規定 426 要帶 `Upgrade`）與自己的 `X-Notesteme-Version`；body 是一般的錯誤格式，`code` 為 `client_incompatible`。檢查在驗證之前，版本不相容的 CLI 不會先看到 401。
 - `<item>` 與 `ingest` 的位置參數可以用影音代號（`yt:<id>`、`bili:<BV>/p<N>`，見 steps.md 第 2 節）。
 - 獨立模式需要 `NOTESTEME_MASTER_KEY`，和 `serve` 相同。沒有 `--wait` 時，獨立模式只建立任務、不執行；之後由 `serve` 或下一次帶 `--wait` 的指令處理。
 
@@ -61,3 +63,9 @@ notesteme config import <file> [--json]   （SEC-R10；M2：先驗證整份，�
 - `doctor` 的網路連線檢查要等 OPS 的「自我檢查用的已知影片」，M1 的 CLI 切片先不做（測試中真的連外會被 fakenet 記為違規）。
 - 場景修改（2026-11-13，經 owner 同意）：「JSON output matches the API」的 Given 改為處理到 `metadata`，原本只新增、不執行 worker，標題一定是空的；「A bad argument exits with 2」改為帶 `<item>` 並給不支援的 `--format`，原本缺少 `<item>` 就會回 2，驗證不到格式檢查。
 - `config import` 的結束碼（2026-11-23，依 /goal 採保守預設，待 owner 追認）：內容不正確（API 回 422 `config_invalid`）時是 **1**，不是 CLI-R6 對 API 422 規定的 2，因為檔案的內容不是命令列參數，而且 SEC-R10 的場景要求 1；`Result.ErrorCode` 是 `config_invalid`。其他 400、422 仍是 2。細節見 SEC 規格的待決問題。
+- CLI 與 `serve` 的版本檢查（2026-11-25，依 /goal 由實作者暫定，待 owner 追認；CLI-R9、NFR-CMP-3、NFR-CMP-4）：
+  - **0.x 的規則**：與 1.x 以後相同，major 相同、minor 相差不超過 1 即相容（0.5 的 CLI 可以連 0.4 的 `serve`）。另一種讀法是 0.x 把 minor 當成 major（任何 minor 不同都不相容），但那樣「新版 CLI 連到舊一個小版本的 `serve`」在 0.x 期間就做不到，等於收緊到比 NFR-CMP-4 要求的更嚴、而且讓唯一的 0.x 期間沒有這項相容性，所以不採用。0.x 的 API 依 NFR-CMP-3 只新增、不移除，相差一個 minor 的雙方可以互通。
+  - **無法判斷時放行**：沒有標頭、開發版（`dev`）、無法解析的版本（含超過 64 bytes 的值）都視為相容，不擋；patch、`-rc.1`、`git describe` 的後綴不影響判斷。
+  - **狀態碼**：用 426 Upgrade Required，因為要改變的是用戶端；依 RFC 9110 帶 `Upgrade: Notesteme/<版本>`，值是 `serve` 的版本，表示 CLI 要對齊的對象。`serve` 比 CLI 舊太多時同樣回 426 `client_incompatible`（對這個 `serve` 而言，這個 CLI 不相容），訊息指出要升級 `serve`。
+  - **兩邊都檢查**：較新的 `serve` 會擋較舊的 CLI；較舊、沒有這項檢查的 `serve` 不會回報版本，CLI 無從判斷，視為相容（這是本規則開始之前的版本，之後的版本都會回報）。
+  - **只對帶標頭的請求回報版本**：瀏覽器、MCP 與 Agent 的請求不會在回應標頭看到版本，避免未登入的請求也能取得版本資訊；登入後仍可從 `/api/system` 查詢。

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/app"
+	"github.com/cxyfer/notesteme/internal/compat"
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/store"
 )
@@ -31,6 +32,8 @@ type backend struct {
 	token string
 	// warn 是要在 stderr 印出的警告（目前只有明文 http 的 token）。
 	warn string
+	// version 是 CLI 的版本，放在 X-Notesteme-Version（CLI-R9）。
+	version string
 
 	// standalone 只在獨立模式有值：用來執行任務與釋放資料目錄的鎖。
 	standalone *app.Standalone
@@ -60,6 +63,16 @@ var (
 // 持有者是另一個 CLI、socket 還連不上）會在 lockRetryWindow 內每隔 lockRetryStep 重試，
 // 超過仍然不行才回報錯誤。serve 沒有提供 socket（路徑太長）不會因為等待而改變，直接回報。
 func openBackend(ctx context.Context, g *globals, env app.Env) (*backend, error) {
+	b, err := openBackendMode(ctx, g, env)
+	if b != nil {
+		// 每個請求帶 CLI 的版本，並檢查 serve 回報的版本（CLI-R9、NFR-CMP-4）。
+		b.version = app.VersionFor(env)
+	}
+	return b, err
+}
+
+// openBackendMode 是 openBackend 依模式開啟的部分。
+func openBackendMode(ctx context.Context, g *globals, env app.Env) (*backend, error) {
 	if g.server != "" {
 		return openRemote(g, env)
 	}
@@ -269,9 +282,20 @@ func (b *backend) openRaw(ctx context.Context, method, path, contentType string,
 	if b.token != "" {
 		req.Header.Set("Authorization", "Bearer "+b.token)
 	}
+	if b.version != "" {
+		req.Header.Set(compat.Header, b.version)
+	}
 	resp, err := b.hc.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("連線失敗：%w", err)
+	}
+	// serve 回報的版本與 CLI 不相容：不論狀態碼，指出要升級哪一邊（CLI-R9）。
+	// 較舊、自己不檢查的 serve 只要回報了版本，也由這裡擋下；完全不回報版本的 serve 視為相容。
+	if sv := resp.Header.Get(compat.Header); sv != "" {
+		if v := compat.Check(b.version, sv); v != compat.Compatible {
+			resp.Body.Close()
+			return nil, &apiError{Status: http.StatusUpgradeRequired, Code: codeClientIncompatible, Message: compat.Message(v, b.version, sv)}
+		}
 	}
 	if resp.StatusCode >= 300 && resp.StatusCode <= 399 {
 		// 只有 --server 會走到這裡（它不跟隨轉址）。Authorization 不能跟著轉址送到別處。
