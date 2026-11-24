@@ -302,6 +302,78 @@ describe("處理方案：編輯", () => {
     expect(note.getByLabelText("Provider").getAttribute("aria-invalid")).toBe("true");
   });
 
+  it("被訂閱使用時，儲存前列出受影響的訂閱；取消不儲存（pages.md §8）", async () => {
+    const api = profilesApi({
+      "GET /api/subscriptions": () => ({
+        subscriptions: [
+          { id: "s1", title: "码农高天", url: "https://www.youtube.com/@a", profile: "standard" },
+          { id: "s2", title: "", url: "https://www.youtube.com/@b", profile: null },
+          { id: "s3", title: "其他", url: "https://www.youtube.com/@c", profile: "other" },
+        ],
+      }),
+      "PATCH /api/profiles/{id}": () => ({ ...standard, version: 6 }),
+    });
+    await openStandard();
+    const correct = within(screen.getByRole("heading", { name: /校正/ }).closest("li")!);
+    fireEvent.change(correct.getByLabelText("模型"), { target: { value: "m2" } });
+    await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
+    const dialog = await screen.findByRole("dialog", { name: "這個處理方案正被訂閱使用" });
+    // standard 不是預設：只列 profile 是 standard 的訂閱
+    expect(
+      within(dialog)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["码农高天"]);
+    await expectNoA11yViolations(dialog);
+    await userEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(api.calls("PATCH", "/api/profiles/standard")).toHaveLength(0);
+    await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
+    await userEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "仍要儲存" }),
+    );
+    expect(await screen.findByText("已儲存（v6）")).toBeTruthy();
+    expect(api.calls("PATCH", "/api/profiles/standard")).toHaveLength(1);
+  });
+
+  it("預設處理方案也算進 profile 是 null 的訂閱（用網址代替空白的名稱）", async () => {
+    const def = profile("default", { builtin: false, default: true, version: 2 });
+    profilesApi({
+      "GET /api/profiles/{id}": () => def,
+      "GET /api/subscriptions": () => ({
+        subscriptions: [
+          { id: "s2", title: "", url: "https://www.youtube.com/@b", profile: null },
+          { id: "s3", title: "其他", url: "https://www.youtube.com/@c", profile: "other" },
+        ],
+      }),
+    });
+    signIn();
+    renderRoute("/profiles/default");
+    await screen.findByRole("list", { name: "處理流程" });
+    const correct = within(screen.getByRole("heading", { name: /校正/ }).closest("li")!);
+    await userEvent.selectOptions(correct.getByLabelText("執行方式"), "off");
+    await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
+    const dialog = await screen.findByRole("dialog", { name: "這個處理方案正被訂閱使用" });
+    expect(
+      within(dialog)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["https://www.youtube.com/@b"]);
+  });
+
+  it("讀不到訂閱時不擋儲存", async () => {
+    const api = profilesApi({
+      "GET /api/subscriptions": () => apiError(403, "forbidden", "權限不足"),
+      "PATCH /api/profiles/{id}": () => ({ ...standard, version: 6 }),
+    });
+    await openStandard();
+    const correct = within(screen.getByRole("heading", { name: /校正/ }).closest("li")!);
+    fireEvent.change(correct.getByLabelText("模型"), { target: { value: "m2" } });
+    await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
+    expect(await screen.findByText("已儲存（v6）")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(api.calls("PATCH", "/api/profiles/standard")).toHaveLength(1);
+  });
+
   it("每個輸出可以選檔案被改過時的處理方式（OUT-R12、VAULT-R6）", async () => {
     const api = profilesApi({
       "PATCH /api/profiles/{id}": () => ({ ...standard, version: 6 }),

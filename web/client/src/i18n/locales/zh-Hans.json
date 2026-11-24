@@ -1766,7 +1766,11 @@
       "skip": "不写入，标示「需要你处理」"
     },
     "fallbackNone": "不改用其他来源（只用平台字幕）",
-    "fallbackCustom": "自定义顺序"
+    "fallbackCustom": "自定义顺序",
+    "subsWarnTitle": "这个处理方案正被订阅使用",
+    "subsWarnBody_other": "{{name}} 被下面 {{count}} 个订阅使用。保存后，这些订阅之后新增的音视频会用新的设置；已经处理过的音视频不受影响，重新处理时才会使用新版本。",
+    "subsWarnSave": "仍要保存",
+    "subsWarnCancel": "取消"
   },
   "styles": {
     "lead": "选择或自定义 ASS 样式。内置样式不能修改，复制成自定义样式后再调整。",

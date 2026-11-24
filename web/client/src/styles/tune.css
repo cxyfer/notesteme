@@ -308,3 +308,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* 處理方案：儲存前列出受影響的訂閱（pages.md §8） */
+.subs-warn-list {
+  margin: 0;
+  padding-left: var(--space-6);
+  max-height: 40vh;
+  overflow-y: auto;
+}

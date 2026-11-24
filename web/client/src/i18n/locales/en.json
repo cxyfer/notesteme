@@ -1824,7 +1824,12 @@
       "skip": "Don't write; mark it as needing you"
     },
     "fallbackNone": "Nothing else (platform captions only)",
-    "fallbackCustom": "A custom order"
+    "fallbackCustom": "A custom order",
+    "subsWarnTitle": "Subscriptions use this preset",
+    "subsWarnBody_one": "{{name}} is used by the subscription below. After saving, items it adds from now on use the new settings; items already processed are not affected until you reprocess them.",
+    "subsWarnBody_other": "{{name}} is used by the {{count}} subscriptions below. After saving, items they add from now on use the new settings; items already processed are not affected until you reprocess them.",
+    "subsWarnSave": "Save anyway",
+    "subsWarnCancel": "Cancel"
   },
   "styles": {
     "lead": "Choose or customize ASS styles. Built-in styles can't be changed; copy one to a custom style to adjust it.",

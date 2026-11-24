@@ -7,6 +7,8 @@
 // - 步驟：字幕來源、分段、校正、翻譯、關鍵畫面、筆記、輸出（pages.md §8 的線框）。關鍵畫面與筆記的專屬欄位
 //   只在步驟寫進處理方案（選了執行方式）後顯示：筆記的預設 executor 是 api，只寫 template 會被 schema 要求
 //   provider 與 model（PRF-R5），沿用全域設定時不能單獨寫子欄位。
+// - 被訂閱使用的處理方案（pages.md §8）：儲存前讀 GET /api/subscriptions，有訂閱用這個處理方案
+//   （profile 是它的名稱；null 代表預設處理方案，所以預設處理方案也算）時先確認並列出訂閱；讀不到訂閱時不擋儲存。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useId, useState, type ReactNode } from "react";
@@ -132,6 +134,9 @@ function ProfileEditor({ heading, profile }: { heading: ReactNode; profile: Prof
     draft: clone(profile.config),
   }));
   const [conflict, setConflict] = useState<Profile | null>(null);
+  // 儲存前發現有訂閱使用這個處理方案：列出名稱，確認後才儲存
+  const [subsWarn, setSubsWarn] = useState<string[] | null>(null);
+  const [checkingSubs, setCheckingSubs] = useState(false);
   const [copying, setCopying] = useState(false);
   const draft = edit.draft;
   const patch = mergePatch(edit.base, draft);
@@ -198,6 +203,28 @@ function ProfileEditor({ heading, profile }: { heading: ReactNode; profile: Prof
     },
   });
 
+  async function onSave() {
+    let affected: string[] = [];
+    setCheckingSubs(true);
+    try {
+      const res = await qc.fetchQuery({
+        queryKey: queryKeys.subscriptions.list(),
+        queryFn: ({ signal }) => api.get("/api/subscriptions", { signal }),
+        staleTime: 0,
+        retry: false,
+      });
+      affected = (res.subscriptions ?? [])
+        .filter((s) => (s.profile == null || s.profile === "" ? profile.default : s.profile === id))
+        .map((s) => s.title || s.url);
+    } catch {
+      // 讀不到訂閱（權限不足、尚未提供）時不擋儲存：這只是提示
+    } finally {
+      setCheckingSubs(false);
+    }
+    if (affected.length) setSubsWarn(affected);
+    else save.mutate({ force: false });
+  }
+
   const errors = fieldErrorsOf(save.error);
   const update = (path: string, value: unknown) =>
     setEdit((e) => ({ ...e, draft: setPath(e.draft, path, value) }));
@@ -247,8 +274,8 @@ function ProfileEditor({ heading, profile }: { heading: ReactNode; profile: Prof
           </Button>
           <Button
             variant="primary"
-            disabled={!patch || save.isPending}
-            onClick={() => save.mutate({ force: false })}
+            disabled={!patch || save.isPending || checkingSubs}
+            onClick={() => void onSave()}
           >
             {save.isPending ? t("common.saving") : t("common.saveChanges")}
           </Button>
@@ -390,6 +417,34 @@ function ProfileEditor({ heading, profile }: { heading: ReactNode; profile: Prof
             </>
           }
         />
+      )}
+      {subsWarn && (
+        <Dialog
+          open
+          onOpenChange={(o) => !o && setSubsWarn(null)}
+          title={t("profiles.subsWarnTitle")}
+          description={t("profiles.subsWarnBody", { name: id, count: subsWarn.length })}
+          footer={
+            <>
+              <Button onClick={() => setSubsWarn(null)}>{t("profiles.subsWarnCancel")}</Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setSubsWarn(null);
+                  save.mutate({ force: false });
+                }}
+              >
+                {t("profiles.subsWarnSave")}
+              </Button>
+            </>
+          }
+        >
+          <ul className="subs-warn-list">
+            {subsWarn.map((n, i) => (
+              <li key={i}>{n}</li>
+            ))}
+          </ul>
+        </Dialog>
       )}
       {copying && (
         <NewProfileDialog from={id} config={edit.base} onClose={() => setCopying(false)} />
