@@ -173,9 +173,22 @@ func (s *Server) Close() error { return s.store.Close() }
 // shutdownTimeout 是收到停止訊號後等待進行中請求的上限。
 const shutdownTimeout = 10 * time.Second
 
+// newHTTPServer 設定連線的逾時（安全修補 A）：慢速送出標頭或本體的連線不能無限期佔住資源。
+// ReadTimeout 要容得下 bundles.max_upload_bytes（預設 32 MiB）在慢速連線上的上傳；不設 WriteTimeout，
+// 否則會切斷 MCP 的長連線與大檔下載。
+func newHTTPServer(h http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       5 * time.Minute,
+		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    64 << 10,
+	}
+}
+
 // Serve 在 ln 上提供 HTTP，直到 ctx 結束；結束時等待進行中的請求（最多 shutdownTimeout）。
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
-	srv := &http.Server{Handler: s.handler, ReadHeaderTimeout: 10 * time.Second}
+	srv := newHTTPServer(s.handler)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	select {

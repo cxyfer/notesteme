@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -147,5 +148,40 @@ func TestOpenSyncsConfigAdmins(t *testing.T) {
 		if err != nil || len(ms) != want {
 			t.Errorf("%s 的成員資格 = %+v %v，預期 %d 筆", id, ms, err, want)
 		}
+	}
+}
+
+// 安全修補 A：HTTP server 有讀取與閒置的逾時（不設 WriteTimeout，MCP 與下載要能長時間回應）。
+// ReadTimeout 只限制讀取請求：回應寫得比它久的請求（MCP 的串流、慢速下載）不會被取消（以 Go 1.26 實測鎖住）。
+func TestHTTPServerTimeouts(t *testing.T) {
+	srv := newHTTPServer(http.NotFoundHandler())
+	if srv.ReadHeaderTimeout <= 0 || srv.ReadTimeout <= 0 || srv.IdleTimeout <= 0 || srv.MaxHeaderBytes <= 0 || srv.WriteTimeout != 0 {
+		t.Fatalf("server = %+v", srv)
+	}
+	srv.ReadHeaderTimeout, srv.ReadTimeout = 100*time.Millisecond, 100*time.Millisecond
+	errc := make(chan error, 1)
+	srv.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		for range 3 {
+			w.(http.Flusher).Flush()
+			time.Sleep(100 * time.Millisecond)
+			_, _ = w.Write([]byte("x"))
+		}
+		errc <- r.Context().Err()
+	})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = srv.Serve(ln) }()
+	defer srv.Close()
+	resp, err := http.Get("http://" + ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.ReadAll(resp.Body) // 讀到 handler 結束（提早關閉連線也會取消 context）
+	_ = resp.Body.Close()
+	if err := <-errc; err != nil {
+		t.Fatalf("長時間的 GET 被取消：%v", err)
 	}
 }
