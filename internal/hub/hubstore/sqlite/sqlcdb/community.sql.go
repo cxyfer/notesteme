@@ -182,6 +182,21 @@ func (q *Queries) DecideTakedown(ctx context.Context, arg DecideTakedownParams) 
 	return result.RowsAffected()
 }
 
+const deleteOtherUserSessions = `-- name: DeleteOtherUserSessions :exec
+DELETE FROM sessions WHERE user_id = ? AND id <> ?
+`
+
+type DeleteOtherUserSessionsParams struct {
+	UserID string
+	ID     string
+}
+
+// Every session of the account except the one that made the request (removing a sign-in method).
+func (q *Queries) DeleteOtherUserSessions(ctx context.Context, arg DeleteOtherUserSessionsParams) error {
+	_, err := q.db.ExecContext(ctx, deleteOtherUserSessions, arg.UserID, arg.ID)
+	return err
+}
+
 const deleteUserSessions = `-- name: DeleteUserSessions :exec
 DELETE FROM sessions WHERE user_id = ?
 `

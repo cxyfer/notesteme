@@ -83,7 +83,7 @@ func runConcurrency(t *testing.T, open Open) {
 			}
 		}
 		providers := []string{"github", "google", "linuxdo"}
-		errs := parallel(len(providers), func(i int) error { return s.UnlinkIdentity(ctx, u.ID, providers[i]) })
+		errs := parallel(len(providers), func(i int) error { return s.UnlinkIdentity(ctx, u.ID, providers[i], "") })
 		for _, err := range errs {
 			if !errors.Is(err, hubstore.ErrLastIdentity) {
 				t.Fatalf("並行移除：%v", err)

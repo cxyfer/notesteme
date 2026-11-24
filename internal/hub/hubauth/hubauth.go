@@ -54,6 +54,8 @@ const (
 	// ReauthWindow 是連結登入方式時 session 登入的時間上限（HACC-R6、A3）。
 	ReauthWindow       = 10 * time.Minute
 	SessionIdleTimeout = 30 * 24 * time.Hour
+	// SessionMaxLifetime 是 session 的絕對期限（安全修補 A）：從登入起算，持續使用也不會超過。
+	SessionMaxLifetime = 90 * 24 * time.Hour
 	// sessionTouchInterval 是延長 session 期限的最短間隔，避免每個請求都寫 DB。
 	sessionTouchInterval = time.Hour
 	// ProviderTimeout 是一次 callback 對供應商的全部請求的時間上限。
@@ -450,7 +452,19 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 		return nil, ErrSuspended()
 	}
 	now := s.clock.Now()
-	if next := now.Add(SessionIdleTimeout); next.Sub(se.ExpiresAt) >= sessionTouchInterval {
+	limit := se.CreatedAt.Add(SessionMaxLifetime)
+	if !now.Before(limit) {
+		// 超過絕對期限：刪掉 session（刪除失敗不影響結果，SessionByHash 之後也會因為 expires_at 拒絕）。
+		if err := s.store.DeleteSession(ctx, se.TokenHash); err != nil {
+			s.log.WarnContext(ctx, "刪除過期的 Hub session 失敗", "error", err)
+		}
+		return nil, errNoSession
+	}
+	next := now.Add(SessionIdleTimeout)
+	if next.After(limit) {
+		next = limit
+	}
+	if next.Sub(se.ExpiresAt) >= sessionTouchInterval {
 		// 延長失敗不影響這次請求：session 仍然有效，下次請求會再試。
 		if err := s.store.TouchSession(ctx, se.ID, next); err != nil {
 			s.log.WarnContext(ctx, "延長 Hub session 失敗", "error", err)
@@ -487,7 +501,11 @@ func (s *Service) BeginLink(ctx context.Context, p *Principal, provider string) 
 
 // Unlink 移除登入方式（HACC-R7）。
 func (s *Service) Unlink(ctx context.Context, p *Principal, provider string) error {
-	err := s.store.UnlinkIdentity(ctx, p.User.ID, provider)
+	keep := ""
+	if p.IsSession() {
+		keep = p.Session.ID
+	}
+	err := s.store.UnlinkIdentity(ctx, p.User.ID, provider, keep)
 	switch {
 	case errors.Is(err, hubstore.ErrNotFound):
 		return apierr.New(http.StatusNotFound, apierr.CodeNotFound, "這個帳號沒有連結這個登入方式。")

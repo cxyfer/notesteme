@@ -79,10 +79,10 @@ func Run(t *testing.T, open Open) {
 		s, clk := fresh(t, open)
 		alice, _, _ := s.SignIn(ctx, ident("github", "1", "alice"), "alice")
 		bob, _, _ := s.SignIn(ctx, ident("linuxdo", "2", "bob"), "bob")
-		if err := s.UnlinkIdentity(ctx, alice.ID, "github"); !errors.Is(err, hubstore.ErrLastIdentity) {
+		if err := s.UnlinkIdentity(ctx, alice.ID, "github", ""); !errors.Is(err, hubstore.ErrLastIdentity) {
 			t.Fatalf("移除唯一的身分 = %v，預期 ErrLastIdentity", err)
 		}
-		if err := s.UnlinkIdentity(ctx, alice.ID, "google"); !errors.Is(err, hubstore.ErrNotFound) {
+		if err := s.UnlinkIdentity(ctx, alice.ID, "google", ""); !errors.Is(err, hubstore.ErrNotFound) {
 			t.Fatalf("移除沒有的身分 = %v，預期 ErrNotFound", err)
 		}
 		if _, err := s.LinkIdentity(ctx, bob.ID, ident("github", "1", "alice")); !errors.Is(err, hubstore.ErrIdentityInUse) {
@@ -107,7 +107,7 @@ func Run(t *testing.T, open Open) {
 			t.Fatalf("以連結的身分登入 = %+v, %v", u, created)
 		}
 		clk.Advance(time.Second)
-		if err := s.UnlinkIdentity(ctx, alice.ID, "google"); err != nil {
+		if err := s.UnlinkIdentity(ctx, alice.ID, "google", ""); err != nil {
 			t.Fatal(err)
 		}
 		if u, created, _ := s.SignIn(ctx, ident("google", "g-a", "alice"), "alice"); !created || u.ID == alice.ID {
@@ -161,6 +161,56 @@ func Run(t *testing.T, open Open) {
 		got, err = s.ConsumeOAuthState(ctx, "h3", "github")
 		if err != nil || got.UserID != u.ID || got.Intent != hubstore.IntentLink {
 			t.Fatalf("連結的 state = %+v, %v", got, err)
+		}
+	})
+
+	// 安全修補 A：移除登入方式時，發出請求的 session 以外的 session 都刪除、Hub token 都撤銷；失敗時什麼都不變。
+	t.Run("UnlinkRevokesOtherSessionsAndTokens", func(t *testing.T) {
+		s, clk := fresh(t, open)
+		u, _, _ := s.SignIn(ctx, ident("github", "1", "alice"), "alice")
+		other, _, _ := s.SignIn(ctx, ident("github", "2", "bob"), "bob")
+		mk := func(id, user string) {
+			se := hubstore.Session{ID: id, UserID: user, TokenHash: "h-" + id, CreatedAt: clk.Now(), AuthenticatedAt: clk.Now(), ExpiresAt: clk.Now().Add(time.Hour)}
+			if err := s.CreateSession(ctx, se); err != nil {
+				t.Fatal(err)
+			}
+		}
+		mk("keep", u.ID)
+		mk("stolen", u.ID)
+		mk("bob", other.ID)
+		for _, p := range []hubstore.PAT{{ID: "pa", UserID: u.ID, TokenHash: "pa"}, {ID: "pb", UserID: other.ID, TokenHash: "pb"}} {
+			p.Name, p.Permissions, p.CreatedAt, p.ExpiresAt = "x", []string{"read"}, clk.Now(), clk.Now().Add(time.Hour)
+			if err := s.CreatePAT(ctx, p); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// 只有一個登入方式：失敗，什麼都不變。
+		if err := s.UnlinkIdentity(ctx, u.ID, "github", "keep"); !errors.Is(err, hubstore.ErrLastIdentity) {
+			t.Fatalf("唯一的登入方式 = %v", err)
+		}
+		if _, err := s.SessionByHash(ctx, "h-stolen"); err != nil {
+			t.Fatalf("失敗時 session 被刪除：%v", err)
+		}
+		if _, err := s.LinkIdentity(ctx, u.ID, ident("google", "g", "alice")); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.UnlinkIdentity(ctx, u.ID, "google", "keep"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.SessionByHash(ctx, "h-keep"); err != nil {
+			t.Errorf("發出請求的 session = %v，應該保留", err)
+		}
+		if _, err := s.SessionByHash(ctx, "h-stolen"); !errors.Is(err, hubstore.ErrNotFound) {
+			t.Errorf("其他 session = %v，應該刪除", err)
+		}
+		if _, err := s.SessionByHash(ctx, "h-bob"); err != nil {
+			t.Errorf("別人的 session = %v", err)
+		}
+		if p, _ := s.PATByHash(ctx, "pa"); p.ValidAt(clk.Now()) {
+			t.Error("自己的 Hub token 應該撤銷")
+		}
+		if p, _ := s.PATByHash(ctx, "pb"); !p.ValidAt(clk.Now()) {
+			t.Error("別人的 Hub token 不能動")
 		}
 	})
 

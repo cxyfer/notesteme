@@ -35,6 +35,10 @@ UPDATE users SET suspended_at = NULL, suspended_reason = '' WHERE id = $1 AND su
 -- name: DeleteUserSessions :exec
 DELETE FROM sessions WHERE user_id = $1;
 
+-- name: DeleteOtherUserSessions :exec
+-- Every session of the account except the one that made the request (removing a sign-in method).
+DELETE FROM sessions WHERE user_id = $1 AND id <> $2;
+
 -- name: RevokeUserPATs :exec
 UPDATE pats SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL;
 

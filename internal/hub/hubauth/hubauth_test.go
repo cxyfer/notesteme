@@ -578,6 +578,10 @@ func TestLinkFlow(t *testing.T) {
 	if err := e.svc.Unlink(ctx, alice, "google"); err != nil {
 		t.Errorf("移除 = %v", err)
 	}
+	// 安全修補 A：發出移除的 session 仍然有效（其他 session 與 Hub token 由 store 一起失效）。
+	if _, err := e.svc.Authenticate(ctx, alice.Token); err != nil {
+		t.Errorf("移除後自己的 session = %v", err)
+	}
 	entries, _ := e.store.AuditEntries(ctx, 10)
 	if len(entries) != 2 || entries[0].Action != hubstore.AuditIdentityUnlink || entries[1].Action != hubstore.AuditIdentityLink {
 		t.Errorf("稽核紀錄 = %+v", entries)
@@ -719,5 +723,27 @@ func TestAuthorizationCodeInjection(t *testing.T) {
 	}
 	if n := e.accounts(t); n != 0 {
 		t.Fatalf("建立了 %d 個帳號", n)
+	}
+}
+
+// 安全修補 A：session 有 90 天的絕對期限，持續使用也不會延長到超過它；之後的延長以絕對期限為上限。
+func TestSessionMaxLifetime(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	res, _ := e.login(t, "github", "")
+	tok := res.Session.Token
+	for elapsed := time.Duration(0); elapsed < SessionMaxLifetime-48*time.Hour; elapsed += 24 * time.Hour {
+		e.clk.Advance(24 * time.Hour)
+		p, err := e.svc.Authenticate(ctx, tok)
+		if err != nil {
+			t.Fatalf("第 %v 天 = %v", elapsed/(24*time.Hour)+1, err)
+		}
+		if p.Session.ExpiresAt.After(p.Session.CreatedAt.Add(SessionMaxLifetime)) {
+			t.Fatalf("延長超過絕對期限：%v", p.Session.ExpiresAt)
+		}
+	}
+	e.clk.Advance(3 * 24 * time.Hour)
+	if _, err := e.svc.Authenticate(ctx, tok); !IsNoSession(err) {
+		t.Fatalf("超過 90 天 = %v", err)
 	}
 }

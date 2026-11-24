@@ -175,7 +175,7 @@ func (s *Store) LinkIdentity(ctx context.Context, userID string, in hubstore.Ext
 }
 
 // UnlinkIdentity 實作 hubstore.Store。先鎖帳號：兩個並行的移除不會讓帳號失去全部的登入方式。
-func (s *Store) UnlinkIdentity(ctx context.Context, userID, provider string) error {
+func (s *Store) UnlinkIdentity(ctx context.Context, userID, provider, keepSessionID string) error {
 	return s.inTx(ctx, func(q *sqlcdb.Queries) error {
 		if err := lockUser(ctx, q, userID); err != nil {
 			return err
@@ -194,7 +194,15 @@ func (s *Store) UnlinkIdentity(ctx context.Context, userID, provider string) err
 		if err := q.DeleteIdentity(ctx, ident.ID); err != nil {
 			return err
 		}
-		return audit(ctx, q, userID, hubstore.AuditIdentityUnlink, "identity", ident.ID, map[string]string{"provider": provider}, s.now())
+		// 移除的登入方式可能是被盜用後連結的：其他 session 與所有 Hub token 一起失效（安全修補 A）。
+		now := s.now()
+		if err := q.DeleteOtherUserSessions(ctx, sqlcdb.DeleteOtherUserSessionsParams{UserID: userID, ID: keepSessionID}); err != nil {
+			return err
+		}
+		if err := q.RevokeUserPATs(ctx, sqlcdb.RevokeUserPATsParams{RevokedAt: &now, UserID: userID}); err != nil {
+			return err
+		}
+		return audit(ctx, q, userID, hubstore.AuditIdentityUnlink, "identity", ident.ID, map[string]string{"provider": provider}, now)
 	})
 }
 

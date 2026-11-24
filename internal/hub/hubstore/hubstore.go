@@ -46,8 +46,9 @@ type Store interface {
 	// 身分已經屬於這個帳號時視為成功（重新整理屬性）。
 	LinkIdentity(ctx context.Context, userID string, in ExternalIdentity) (Identity, error)
 	// UnlinkIdentity 移除帳號在這個供應商的身分並寫入稽核紀錄（identity.unlink，HACC-R7）。
-	// 沒有這個身分時回 ErrNotFound，是唯一的身分時回 ErrLastIdentity。
-	UnlinkIdentity(ctx context.Context, userID, provider string) error
+	// 沒有這個身分時回 ErrNotFound，是唯一的身分時回 ErrLastIdentity。成功時同一個交易中刪除 keepSessionID 以外的
+	// session、撤銷所有 Hub token（安全修補 A）。
+	UnlinkIdentity(ctx context.Context, userID, provider, keepSessionID string) error
 	// User 回傳帳號；不存在時回 ErrNotFound。
 	User(ctx context.Context, id string) (User, error)
 	// Identities 依連結的先後回傳帳號的身分。
