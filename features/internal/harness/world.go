@@ -145,10 +145,18 @@ type World struct {
 	closed bool
 }
 
+// FixedRoot 不是空字串時，New 不建立新的暫存目錄，改用這個目錄當場景根目錄（不存在就建立），
+// Close 也不刪除它。只給故障注入的 harness（features/fault）使用：被 kill -9 的程序與重新啟動的程序
+// 要共用同一份 /data、假工具狀態與付費呼叫的計數檔。
+var FixedRoot string
+
+// OnNew 不是 nil 時，New 建好 World 之後呼叫它；回傳錯誤時 New 失敗（同樣只給 features/fault 使用）。
+var OnNew func(*World) error
+
 // New 建立場景的根目錄與子目錄（data/、data/inbox/、config/、bin/、fake/、home/、media/talks/），
 // 放入假工具的 symlink、初始狀態檔，以及 media/link-to-root（指向 / 的 symlink，GRD-R7 用）。失敗時已建立的目錄會被清除。
 func New() (*World, error) {
-	root, err := os.MkdirTemp("", "nst")
+	root, err := newRoot()
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +230,21 @@ func New() (*World, error) {
 		_ = w.Close()
 		return nil, err
 	}
+	if OnNew != nil {
+		if err := OnNew(w); err != nil {
+			_ = w.Close()
+			return nil, err
+		}
+	}
 	return w, nil
+}
+
+// newRoot 建立場景根目錄：預設是新的暫存目錄，有 FixedRoot 時沿用它。
+func newRoot() (string, error) {
+	if FixedRoot == "" {
+		return os.MkdirTemp("", "nst")
+	}
+	return FixedRoot, os.MkdirAll(FixedRoot, 0o700)
 }
 
 // NewT 建立 World，失敗時讓測試失敗，並在測試結束時自動 Close。
@@ -275,7 +297,11 @@ func (w *World) seedMedia() error {
 	if err := os.WriteFile(filepath.Join(talks, "keynote.mp4"), []byte(marker), 0o600); err != nil {
 		return err
 	}
-	return os.Symlink("/", filepath.Join(w.MediaDir(), mediaLinkName))
+	link := filepath.Join(w.MediaDir(), mediaLinkName)
+	if fi, err := os.Lstat(link); err == nil && fi.Mode()&os.ModeSymlink != 0 && FixedRoot != "" {
+		return nil // 沿用的根目錄（FixedRoot）已經有這個 symlink
+	}
+	return os.Symlink("/", link)
 }
 
 // removeRoot 清除場景根目錄。場景內含指向 / 的 symlink，所以先以 os.Remove 移除該 symlink 本身
@@ -474,8 +500,8 @@ func (w *World) Close() error {
 	if w.Net != nil {
 		w.Net.Close()
 	}
-	if w.Root == "" {
-		return hubErr
+	if w.Root == "" || (FixedRoot != "" && w.Root == FixedRoot) {
+		return hubErr // FixedRoot 由故障注入的 harness 自己清除
 	}
 	return errors.Join(hubErr, removeRoot(w.Root))
 }

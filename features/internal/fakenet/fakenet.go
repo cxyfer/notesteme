@@ -63,7 +63,11 @@ func (n *Net) serve(h *host, w http.ResponseWriter, r *http.Request) {
 	n.mu.Lock()
 	rt := h.routes[routeKey(r.URL.EscapedPath(), r.URL.RawQuery)]
 	fallback := h.handler
+	observe := n.observer
 	n.mu.Unlock()
+	if observe != nil {
+		observe(h.name, r)
+	}
 	switch {
 	case rt != nil:
 		rt.ServeHTTP(w, r)
@@ -109,6 +113,17 @@ type Net struct {
 	lookups    []Lookup
 	violations []string
 	closed     bool
+	// observer 在每個請求交給 handler 之前被呼叫（見 Observe）。
+	observer func(host string, r *http.Request)
+}
+
+// Observe 登記一個觀察者：每個送到 fake origin 的請求在交給 handler 之前都會先經過它
+// （故障注入的 harness 用來把付費呼叫寫進程序外的計數檔，見 features/fault）。
+// 觀察者可以讀取 r.Body，但讀完要換成內容相同的新 Body。nil 取消登記。
+func (n *Net) Observe(fn func(host string, r *http.Request)) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.observer = fn
 }
 
 // ErrClosed 表示 Net 已經 Close，不再啟動 fake origin。
