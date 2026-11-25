@@ -839,7 +839,7 @@
     },
     "chapters": {
       "title": "章节",
-      "jump": "跳到章节“{{title}}”（{{time}}）"
+      "jumpPrefix": "跳到章节"
     },
     "range": {
       "label": "时间带的选取范围",

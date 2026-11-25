@@ -874,7 +874,7 @@
     },
     "chapters": {
       "title": "Chapters",
-      "jump": "Jump to chapter “{{title}}” ({{time}})"
+      "jumpPrefix": "Jump to chapter"
     },
     "range": {
       "label": "Selected range on the time ribbon",

@@ -94,11 +94,13 @@ describe("影音詳情：章節（CHAP-R7）", () => {
     const { container } = openWithChapters();
     const list = await screen.findByRole("region", { name: "章節" });
     const buttons = within(list).getAllByRole("button");
-    expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual([
-      "跳到章節「開場」（00:00）",
-      "跳到章節「第二章：<b>不是標籤</b>」（01:00）",
-      "跳到章節「結語」（05:00）",
-    ]);
+    // 名稱由內容組成（WCAG 2.5.3：看得到的標題與時間碼都在名稱裡），不用 aria-label
+    expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual([null, null, null]);
+    expect([
+      within(list).getByRole("button", { name: "跳到章節 開場 00:00" }),
+      within(list).getByRole("button", { name: "跳到章節 第二章：<b>不是標籤</b> 01:00" }),
+      within(list).getByRole("button", { name: "跳到章節 結語 05:00" }),
+    ]).toEqual(buttons);
     expect(buttons[0]!.getAttribute("aria-current")).toBe("true");
     expect(container.querySelector("b")).toBeNull();
     const video = container.querySelector("video")!;

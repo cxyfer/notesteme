@@ -91,16 +91,18 @@ export function ChapterList({
           const tc = formatTimecode(c.start);
           return (
             <li key={`${c.start}-${i}`}>
+              {/* 名稱由內容組成（不用 aria-label）：看得到的標題與時間碼都在名稱裡（WCAG 2.5.3 label in name），
+                  前面加上只給輔助科技的「跳到章節」。 */}
               <button
                 type="button"
                 className="chapters__item"
                 aria-current={i === current ? "true" : undefined}
-                aria-label={t("item.chapters.jump", { title: c.title, time: tc })}
                 onClick={() => onSeek(c.start)}
               >
+                <span className="visually-hidden">{t("item.chapters.jumpPrefix")}</span>{" "}
                 <span className="chapters__name" lang={lang || undefined}>
                   {c.title}
-                </span>
+                </span>{" "}
                 <span className="chapters__time num">{tc}</span>
               </button>
             </li>
