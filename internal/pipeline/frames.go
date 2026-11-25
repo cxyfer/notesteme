@@ -599,13 +599,16 @@ func (p *Pipeline) framesSelect(ctx context.Context, t store.Task, run store.Sta
 	if err != nil {
 		return result{}, fmt.Errorf("寫入產出檔：%w", err)
 	}
-	_ = os.Remove(filepath.Join(dir, candidatesFile))
 	art := &store.NewArtifact{
 		ID: version, ItemID: it.ID, Kind: KindFrames, Variant: KindFrames, Format: framesFmt,
 		Path: rel, SHA256: sha, Size: size, Parents: parents, Provenance: prov,
 	}
 	stage := &store.StageResult{Executor: executor, ImplVersion: p.implVersion(StageFrames)}
-	return result{task: taskDone, advance: true, stage: stage, artifact: art, state: state}, nil
+	// 候選的中間檔只在結果 commit 之後才刪：之前就刪的話，寫回之前被 kill -9 或斷電，重新啟動後重跑選圖會找不到候選
+	// （NFR-REL-1，故障注入發現）。commit 之後、刪除之前被殺只會留下這個小檔案，不影響正確性。
+	candsPath := filepath.Join(dir, candidatesFile)
+	return result{task: taskDone, advance: true, stage: stage, artifact: art, state: state,
+		afterCommit: func() { _ = os.Remove(candsPath) }}, nil
 }
 
 func nonNilCandidates(c []frameCandidate) []frameCandidate {
