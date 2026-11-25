@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -203,6 +204,38 @@ func (r *Repo) ChannelByID(ctx context.Context, id string) (Channel, error) {
 		return Channel{}, notFound(err)
 	}
 	return channelFromRow(row), nil
+}
+
+// ChannelTitles 一次讀出多個頻道的名稱（列表每頁一次，取代逐一 ChannelByID）。
+// 不存在的 ID 不會出現在結果中；ID 以 JSON 陣列綁定（同 tasks.sql 的作法，不用 sqlc.slice）。
+func (r *Repo) ChannelTitles(ctx context.Context, ids []string) (map[string]string, error) {
+	out := make(map[string]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	arg, err := json.Marshal(ids)
+	if err != nil {
+		return nil, err
+	}
+	var rows *sql.Rows
+	const q = `SELECT id, title FROM channels WHERE id IN (SELECT value FROM json_each(?))`
+	if r.tx != nil {
+		rows, err = r.tx.QueryContext(ctx, q, string(arg))
+	} else {
+		rows, err = r.s.r.QueryContext(ctx, q, string(arg))
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, title string
+		if err := rows.Scan(&id, &title); err != nil {
+			return nil, err
+		}
+		out[id] = title
+	}
+	return out, rows.Err()
 }
 
 // SetChannelOverrides 寫入頻道層的覆寫（整份取代）；頻道不存在時回傳 ErrNotFound。

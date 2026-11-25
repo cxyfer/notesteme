@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"context"
-	"errors"
 	"regexp"
 	"slices"
 	"strings"
@@ -242,24 +241,19 @@ func groupName(groupBy, key string, it store.Item) string {
 	return statusGroups[key]
 }
 
-// channelNames 讀出這一頁出現的頻道名稱。
+// channelNames 讀出這一頁出現的頻道名稱（一次查詢）；沒有名稱的頻道不放進結果。
 func channelNames(ctx context.Context, r *store.Repo, items []store.Item) (map[string]string, error) {
-	out := map[string]string{}
+	seen := map[string]bool{}
+	var ids []string
 	for _, it := range items {
-		if it.ChannelID == "" {
-			continue
+		if it.ChannelID != "" && !seen[it.ChannelID] {
+			seen[it.ChannelID] = true
+			ids = append(ids, it.ChannelID)
 		}
-		if _, ok := out[it.ChannelID]; ok {
-			continue
-		}
-		ch, err := r.ChannelByID(ctx, it.ChannelID)
-		if errors.Is(err, store.ErrNotFound) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		out[it.ChannelID] = ch.Title
+	}
+	out, err := r.ChannelTitles(ctx, ids)
+	if err != nil {
+		return nil, err
 	}
 	for id, name := range out {
 		if name == "" {
