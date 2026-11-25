@@ -947,12 +947,22 @@ jsdom 不排版、不算對比、不跑動畫，所以 NFR-CMP-2、A11Y-1～3、
    - `reduce` 時的同一頁。
    - 一份同樣列數與列高的靜態清單（基準，沒有 JS、沒有樣式）。
 
-   **Linux 的 WebKit 是引擎限制**：它沒有 GPU，整頁都是軟體繪製。CI 的 WebKit 捲動 200 列時 frame 間隔 p95 約 150ms，`reduce` 時也一樣（123～180ms），所以不是動畫造成。
-   - 在 CI 上逐一隱藏列的各部分（時間帶、縮圖、狀態欄、標題、說明列）、拿掉陰影與濾鏡、拿掉背景圖、改用系統字型，都沒有明顯改善。
-   - 列的內容全部隱藏時，p50 仍有 63ms。
-   - 靜態清單本身也只在 p95 27～65ms 之間浮動（依 runner 的負載），不適合當閘門。
+   **WebKit 的捲動未達標，原因還沒有隔離出來**（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）。CI 的 WebKit 捲動 200 列：
+   - 頁面：frame 間隔 p95 127～162ms，最長連續掉幀 44～117 個 frame。`reduce` 時也一樣（p95 102～180ms），所以不是動畫造成。
+   - 靜態清單的基準：p95 20～27ms，連續掉幀 0。run 45574318360 的 65ms 是診斷 spec 與其他測試同時跑時的值，不算。
    - 同一台 runner 上，Chromium 與 Firefox 都是 p95 17～33ms，不掉幀。
-   - 處理方式：WebKit 在 Linux 掉幀時，以具名的 `test.fixme` 標出，數值照樣記錄，摘要表顯示未通過。真實 Safari 的捲動是人工驗收（`docs/manual-acceptance.md` 第 9 節）。
+
+   所以同一個引擎上靜態清單沒問題、媒體庫頁持續掉幀，是頁面在 WebKit 上的問題，不能歸為引擎限制。已經排除的：
+   - 逐一隱藏列的各部分（時間帶、縮圖、狀態欄、標題、說明列），沒有明顯改善。
+   - 拿掉陰影與濾鏡、背景圖，改用系統字型，也沒有明顯改善。
+   - 列的內容全部隱藏時 p50 仍有 63ms，表示每次捲動的 React 重新渲染加上重繪是主要成本。
+   - 虛擬列表不用 `flushSync`（`useFlushSync: false`），p95 仍是 147ms，沒有採用。
+
+   CI 的 WebKit 是 Linux 版，沒有 GPU，和 macOS 的 Safari 不同，所以要等真實 Safari 驗證。處理方式：
+   - 測試在 Linux 的 WebKit 掉幀時，以具名的 `test.fixme` 標出，不算通過。
+   - 數值照樣記錄，摘要表顯示未通過。
+   - 真實 Safari 的捲動是人工驗收（`docs/manual-acceptance.md` 第 9 節）。
+   - 原因的隔離留給之後；可以從 WebKit 的 profile 著手，本機 WSL 缺 WebKit 的系統函式庫，跑不起來。
 
    引擎不支援 `largest-contentful-paint` 時，LCP 的測試同樣以具名的 `test.fixme` 標出，不算通過。
 8. **10,000 列的資料**：`genlib -profile lib-10k -cues 4`。新增的 `-cues` 旗標只減少每部的字幕句數，媒體庫列表不讀字幕，所以不影響量測，但產生時間和磁碟大幅減少（本機 79 秒、335MB）。只在 `perf` job 跑（Chromium、1 個 worker，不和其他測試搶 CPU）。
@@ -1018,7 +1028,7 @@ CI 實測：第一次全綠的是 scratch 分支的 run [45580704096](https://gi
   - Chromium，perf job，199 列：p95 16.7ms，長工作 0 個，最長連續掉幀 0 個 frame。
   - Chromium，10,000 列：18,247 個 frame，p95 16.8ms，超過 33ms 的 0.1%，最長 67ms，長工作 0 個，最長連續掉幀 1 個 frame，DOM 最多 23 列。
   - Firefox，199 列：p95 17.3ms，最長連續掉幀 0 個 frame。
-  - WebKit，199 列：p95 127ms，最長連續掉幀 44 個 frame，未通過；靜態清單的基準是 p95 20ms。以第 7 點的引擎限制標成 fixme。
+  - WebKit，199 列：p95 127ms，最長連續掉幀 44 個 frame，**未通過**；靜態清單的基準是 p95 20ms、不掉幀。依第 7 點以具名的 fixme 標出，原因未隔離。
 - **本機**（WSL2，開發機，不是 `ref-wsl`），修正前後的 10,000 列：
   - 修正前：長工作 237 個，最長 421ms；連續掉幀 5 個 frame；p95 33.4ms。
   - 修正後：長工作 0 個；p95 16.8ms；最長連續掉幀 1 個 frame。

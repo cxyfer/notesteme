@@ -284,7 +284,7 @@
   ```
 
   資料目錄第一次會自動產生，約 1～2 分鐘。結果在 `e2e/.out/perf/`。
-- macOS 的 Safari 做一次第 2 步。CI 的 WebKit 是 Linux 的軟體繪製，捲動的流暢度量不出來，見 [UI README 10.32](ui/README.md#1032-真實瀏覽器的自動檢查playwright2026-11-25) 第 7 點。
+- macOS 的 Safari 做一次第 2 步。CI 的 WebKit（Linux）捲動未達標、原因未隔離，標成 fixme，見 [UI README 10.32](ui/README.md#1032-真實瀏覽器的自動檢查playwright2026-11-25) 第 7 點。
 - 第 3 步。
 
 步驟與預期結果：
