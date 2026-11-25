@@ -177,7 +177,9 @@
   gap: var(--space-2) var(--space-3);
 }
 
+/* 同 m4.css 的 .data-table-wrap：裡面 absolute 的元素不跳出捲動區 */
 .settings-table-wrap {
+  position: relative;
   overflow-x: auto;
 }
 .settings-table {

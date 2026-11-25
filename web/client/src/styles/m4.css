@@ -9,7 +9,10 @@
 }
 
 /* ---------- 資料表 ---------- */
+/* position: relative 讓包裝成為裡面 absolute 元素（例如欄標題的 .visually-hidden）的定位基準：
+   否則它們跳出 overflow 的裁切，在 375px 撐出整頁的水平捲軸（瀏覽器 e2e 找到，docs/ui/README.md 10.32）。 */
 .data-table-wrap {
+  position: relative;
   overflow-x: auto;
   margin-bottom: var(--space-4);
 }
