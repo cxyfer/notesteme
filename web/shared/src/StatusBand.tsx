@@ -11,7 +11,7 @@
 // 整條是 role="slider"（aria-valuetext 是時間碼），點擊、方向鍵移動播放頭，hover 顯示該時間的說明。
 // 新的圖層用新的選用 props 加入，不改變既有 props 的意義。
 // 完整版的選用互動（2026-11-25）：hover 的章節名稱（chapterAt）、Shift + ←／→（onShiftStep）、
-// 在底軌上拖曳選取範圍（onSelectRange、selection）；底軌裝飾圖層的文字版本（describedBy）。
+// 在底軌上拖曳選取範圍（onSelectRange、selection）；底軌裝飾圖層的文字版本（describedBy）；畫面圖層（marks）。
 
 import {
   useRef,
@@ -100,10 +100,25 @@ export interface StatusBandProps {
   selection?: { from: number; to: number } | null;
   /** slider 的 aria-describedby：底軌上裝飾圖層（說話密度、處理範圍、畫面）的文字版本 */
   describedBy?: string;
+  /**
+   * 畫面圖層（§6.1）：候選畫面是底軌下方的細刻度，選中的畫面是底軌上方的三角。都是裝飾（slider 的子元素），
+   * 不另外加可聚焦的元素；指標在選中畫面的 MARK_SNAP_PX 內時，hover 顯示它的時間與 label，點擊跳到它的時間。
+   */
+  marks?: readonly BandMark[];
+}
+
+/** 時間帶上的一個畫面（秒） */
+export interface BandMark {
+  at: number;
+  selected: boolean;
+  /** hover 時顯示的說明（例如「畫面 3：圖說」）；只有選中的畫面會用到 */
+  label: string;
 }
 
 /** 拖曳超過這個距離（px）才算選取範圍，避免手抖把點擊變成選取 */
 export const DRAG_MIN_PX = 4;
+/** 指標離選中的畫面這麼近（px）時，hover 與點擊對齊到那個畫面 */
+export const MARK_SNAP_PX = 6;
 
 function pct(v: number, d: number): string {
   return `${(Math.min(Math.max(v, 0), d) / d) * 100}%`;
@@ -259,11 +274,13 @@ function FullBand({
   onSelectRange,
   selection,
   describedBy,
+  marks,
 }: StatusBandProps) {
   const d =
     durationS && Number.isFinite(durationS) && durationS > 0 ? durationS : 0;
   const visible = stages.filter((s) => s.status !== "skipped");
   const [hover, setHover] = useState<number | null>(null);
+  const [hoverMark, setHoverMark] = useState<BandMark | null>(null);
   // 拖曳選取：按下的位置與時間、是否已經移動到算選取；選取結束後吞掉同一次的 click
   const drag = useRef<{
     id: number;
@@ -284,6 +301,25 @@ function FullBand({
     const r = e.currentTarget.getBoundingClientRect();
     if (!d || r.width <= 0) return null;
     return clamp(((e.clientX - r.left) / r.width) * d, d);
+  }
+
+  // 指標附近（MARK_SNAP_PX 內）最近的選中畫面
+  function markNear(
+    e: MouseEvent<HTMLElement> | PointerEvent<HTMLElement>,
+  ): BandMark | null {
+    const r = e.currentTarget.getBoundingClientRect();
+    if (!d || r.width <= 0 || !marks?.length) return null;
+    let best: BandMark | null = null;
+    let bestPx = MARK_SNAP_PX;
+    for (const m of marks) {
+      if (!m.selected || !(m.at >= 0 && m.at <= d)) continue;
+      const px = Math.abs(r.left + (m.at / d) * r.width - e.clientX);
+      if (px <= bestPx) {
+        best = m;
+        bestPx = px;
+      }
+    }
+    return best;
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
@@ -363,7 +399,8 @@ function FullBand({
               swallowClick.current = false;
               return;
             }
-            const t = timeAt(e);
+            const m = markNear(e);
+            const t = m ? m.at : timeAt(e);
             if (t !== null) onSeek?.(t);
           }}
           onPointerDown={(e) => {
@@ -376,7 +413,9 @@ function FullBand({
           }}
           onPointerMove={(e) => {
             const t = timeAt(e);
-            setHover(t);
+            const m = drag.current ? null : markNear(e);
+            setHoverMark(m);
+            setHover(m ? m.at : t);
             const g = drag.current;
             if (!g || g.id !== e.pointerId || t === null) return;
             if (!g.moved && Math.abs(e.clientX - g.x) < DRAG_MIN_PX) return;
@@ -401,7 +440,10 @@ function FullBand({
             drag.current = null;
             setDragging(null);
           }}
-          onPointerLeave={() => setHover(null)}
+          onPointerLeave={() => {
+            setHover(null);
+            setHoverMark(null);
+          }}
         >
           <div className="sband__track" aria-hidden="true">
             {track ?? <span className="sband__baseline" />}
@@ -442,6 +484,19 @@ function FullBand({
               </div>
             ))}
           </div>
+          {d > 0 && !!marks?.length && (
+            <div className="sband__marks" aria-hidden="true">
+              {marks
+                .filter((m) => m.at >= 0 && m.at <= d)
+                .map((m, i) => (
+                  <span
+                    key={i}
+                    className={`sband__mark sband__mark--${m.selected ? "selected" : "candidate"}`}
+                    style={{ left: pct(m.at, d) }}
+                  />
+                ))}
+            </div>
+          )}
           {d > 0 && (
             <span
               className="sband__playhead"
@@ -456,6 +511,9 @@ function FullBand({
               style={{ left: pct(hover, d) }}
             >
               <span className="sband__hover-time">{formatTime(hover)}</span>
+              {hoverMark?.label && (
+                <span className="sband__hover-mark">{hoverMark.label}</span>
+              )}
               {hoverChapter && (
                 <span className="sband__hover-chapter">{hoverChapter}</span>
               )}

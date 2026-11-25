@@ -21,7 +21,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { StatusBand, type StatusBandStage } from "@shared";
+import { StatusBand, type BandMark, type StatusBandStage } from "@shared";
 
 import { api, apiPath } from "../../api/client";
 import { describeError } from "../../api/describeError";
@@ -35,7 +35,7 @@ import { usePageTitle } from "../../shell/usePageTitle";
 import { BAND_STAGES, badgeStatus, bandStatus, type ApiItemDetail } from "../library/stageView";
 import type { ActionKind } from "./actions";
 import { ChapterList, ChapterTrack, RangeBar, chapterIndexAt, toChapters } from "./Chapters";
-import { cueAt } from "./cues";
+import { cueAt, parseCueTime } from "./cues";
 import { DensityTrack, densitySummary, speechDensity } from "./density";
 import { chapterTarget, ownsPlaybackKeys } from "./playKeys";
 import { CueList } from "./CueList";
@@ -52,7 +52,7 @@ import {
 import { isEditableTarget, modalOpen } from "../../shell/keyboard";
 import { DeleteDialog } from "./DeleteDialog";
 import { ReadStateButton } from "./ReadStateButton";
-import { FramesPanel, NotePanel } from "./NotePanels";
+import { FramesPanel, NotePanel, useFrames } from "./NotePanels";
 import { OutputsPanel, downloadUrl } from "./OutputsPanel";
 import { Player, type PlayerHandle } from "./Player";
 import { RerunDialog } from "./RerunDialog";
@@ -275,6 +275,22 @@ function ItemView({
     () => densitySummary(densityCues.data?.cues ?? [], d.duration_s ?? 0, densityValues),
     [densityCues.data, d.duration_s, densityValues],
   );
+  // 畫面刻度：和畫面分頁共用同一份快取；frames 步驟完成才讀（沒有畫面的 404 no_frames 是 null）
+  const frames = useFrames(id, byStageStatus(stages, "frames") === "done");
+  const marks = useMemo<BandMark[]>(
+    () =>
+      (frames.data?.frames ?? [])
+        .map((f) => ({
+          at: parseCueTime(f.at),
+          selected: f.selected,
+          label: f.caption
+            ? t("item.band.frameCaption", { n: f.n, caption: f.caption })
+            : t("item.band.frame", { n: f.n }),
+        }))
+        .filter((m) => Number.isFinite(m.at)),
+    [frames.data, t],
+  );
+  const selectedFrames = marks.filter((m) => m.selected).length;
   const bandDescId = useId();
   const bandDesc = [
     density &&
@@ -286,6 +302,11 @@ function ItemView({
       t("item.band.silence", {
         from: formatTimecode(density.silence.from),
         to: formatTimecode(density.silence.to),
+      }),
+    marks.length > 0 &&
+      t("item.band.frames", {
+        selected: selectedFrames,
+        candidates: marks.length - selectedFrames,
       }),
   ]
     .filter(Boolean)
@@ -611,6 +632,7 @@ function ItemView({
           </>
         }
         describedBy={bandDesc ? bandDescId : undefined}
+        marks={marks}
         chapterAt={chapterAt}
         onShiftStep={(dir) => {
           const to = chapterTarget(chapterStarts, time, dir);

@@ -1,5 +1,5 @@
 // 時間帶的其他圖層（README 10.30）：說話密度、畫面刻度、處理範圍（chunk 的時間範圍）與「重新校正這段」。
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { expectNoA11yViolations } from "../../test/axe";
@@ -92,5 +92,84 @@ describe("影音詳情：時間帶的說話密度", () => {
     expect(container.querySelector(".item__band .sband__baseline")).not.toBeNull();
     expect(container.querySelector("[data-testid=density]")).toBeNull();
     expect(slider.getAttribute("aria-describedby")).toBeNull();
+  });
+});
+
+describe("影音詳情：時間帶的畫面刻度", () => {
+  const withFrames = () => ({
+    ...itemWithCues([
+      stage("metadata", "done"),
+      stage("transcript", "done"),
+      stage("frames", "done"),
+    ]),
+    "GET /api/items/{id}/frames": () => ({
+      target: 1,
+      range: { min: 1, max: 2 },
+      candidate_count: 2,
+      selected_count: 1,
+      shortfall: false,
+      frames: [
+        {
+          n: 1,
+          at: "00:00:30.000",
+          score: 0.9,
+          selected: true,
+          excluded: null,
+          caption: "架構圖",
+          chapter: "",
+          width: 1,
+          height: 1,
+        },
+        {
+          n: 2,
+          at: "00:01:30.000",
+          score: 0.1,
+          selected: false,
+          excluded: null,
+          caption: "",
+          chapter: "",
+          width: 1,
+          height: 1,
+        },
+      ],
+    }),
+  });
+
+  it("選中與候選的畫面畫在時間帶上（裝飾），文字版本在 aria-describedby；axe 無違規", async () => {
+    const { container } = open("/items/item-1", withFrames());
+    const slider = await screen.findByRole("slider", { name: "時間帶：播放位置" });
+    await waitFor(() => expect(container.querySelectorAll(".sband__mark")).toHaveLength(2));
+    const sel = container.querySelector<HTMLElement>(".sband__mark--selected")!;
+    expect(sel.style.left).toBe("25%");
+    expect(container.querySelector<HTMLElement>(".sband__mark--candidate")!.style.left).toBe("75%");
+    // 刻度在 aria-hidden 的圖層內，不新增可聚焦的元素
+    expect(sel.closest("[aria-hidden=true]")).not.toBeNull();
+    const desc = document.getElementById(slider.getAttribute("aria-describedby")!)!;
+    expect(desc.textContent).toContain("選中的 1 張畫面");
+    expect(desc.textContent).toContain("其他 1 張候選");
+    await expectNoA11yViolations(container);
+  });
+
+  it("點擊選中畫面附近時對齊到它的時間，hover 顯示畫面的說明", async () => {
+    const { container } = open("/items/item-1", withFrames());
+    const slider = await screen.findByRole("slider", { name: "時間帶：播放位置" });
+    await waitFor(() => expect(container.querySelector(".sband__mark--selected")).not.toBeNull());
+    // jsdom 沒有版面：寬 400px，畫面 1（30 秒）在 x=100
+    slider.getBoundingClientRect = () =>
+      ({ left: 0, width: 400, top: 0, height: 80, right: 400, bottom: 80, x: 0, y: 0 }) as DOMRect;
+    fireEvent.pointerMove(slider, { clientX: 104 });
+    expect(container.querySelector(".sband__hover-time")!.textContent).toBe("00:30");
+    expect(container.querySelector(".sband__hover-mark")!.textContent).toBe("畫面 1：架構圖");
+    fireEvent.click(slider, { clientX: 104 });
+    expect(slider.getAttribute("aria-valuetext")).toBe("播放位置 00:30");
+    // 離得遠時照點擊的位置
+    fireEvent.click(slider, { clientX: 200 });
+    expect(slider.getAttribute("aria-valuetext")).toBe("播放位置 01:00");
+  });
+
+  it("frames 步驟沒有完成時不讀取畫面", async () => {
+    const { api } = open("/items/item-1", itemWithCues());
+    await screen.findByRole("slider", { name: "時間帶：播放位置" });
+    expect(api.calls("GET", "/api/items/{id}/frames")).toHaveLength(0);
   });
 });

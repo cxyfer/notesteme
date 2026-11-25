@@ -571,7 +571,10 @@
       "label": "时间带：播放位置",
       "valueText": "播放位置 {{time}}",
       "density": "说话密度按原始字幕计算，最密集的是 {{from}}–{{to}}。",
-      "silence": "最长的沉默是 {{from}}–{{to}}。"
+      "silence": "最长的沉默是 {{from}}–{{to}}。",
+      "frame": "画面 {{n}}",
+      "frameCaption": "画面 {{n}}：{{caption}}",
+      "frames": "时间带上方的三角是选中的 {{selected}} 张画面，下方的细刻度是其他 {{candidates}} 张候选；“画面”分页可以逐张查看并跳到该时间。"
     },
     "live": {
       "done": "{{stage}}完成。",

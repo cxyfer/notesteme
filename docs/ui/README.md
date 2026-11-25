@@ -297,8 +297,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | SSE：`stage.status` 讓 detail、runs 失效；產生字幕的步驟 `done` 才讓字幕失效、`publish` `done` 才讓輸出失效；頁面層級 aria-live | 完成 | `src/events/invalidation.ts` |
 | 佇列：各資源類別的通道（方格＝上限、實心＝使用中）、上限 +／−、整個佇列與各類別的暫停／繼續、暫停橫幅、任務列表（虛擬化、篩選在 URL）、「需要你處理」依步驟計數、影音層級的停止處理 | 完成 | `src/pages/queue` |
 | 時間帶的章節線與 hover 的章節名稱、播放器下的章節清單、`Shift + ←／→`、拖曳選取範圍後「複製這段字幕」 | 完成（見 10.26） | `src/pages/item/{Chapters.tsx,ItemPage.tsx}`、`web/shared/src/StatusBand.tsx` |
-| 說話密度 | 完成（見 10.30） | `src/pages/item/density.tsx` |
-| 拖曳選取後「重新校正這段」、畫面刻度 | 未做 | 重新校正這段：API 沒有 LLM chunk 的時間範圍，`rerun` 的 `chunks` 要 chunk 編號（10.7 第 8 點）；畫面刻度：`GET /frames` 已有資料，只是還沒畫，之後的切片 |
+| 說話密度、畫面刻度 | 完成（見 10.30） | `src/pages/item/density.tsx`、`web/shared/src/StatusBand.tsx` |
+| 拖曳選取後「重新校正這段」 | 未做 | API 沒有 LLM chunk 的時間範圍，`rerun` 的 `chunks` 要 chunk 編號（10.7 第 8 點） |
 | 佇列的單一任務重試／取消、「失敗與停住」清單與「全部重試」 | 完成（收尾 D1，見 10.22） | `src/pages/queue/FailedTasks.tsx`、`QueuePage.tsx` |
 | 佇列的 Agent 任務（由哪個 Agent 處理、租約剩餘時間的倒數、改用 API 處理） | 完成（見 10.23） | `src/pages/queue/QueuePage.tsx` |
 | 佇列的優先順序 | 未做 | API 缺口（10.7 第 8 點） |
@@ -822,5 +822,7 @@ pages.md §4 與 design-language.md §6.1 的時間帶圖層中，10.26 之後�
 | 項目 | 狀態 | 位置 |
 | --- | --- | --- |
 | 說話密度：底軌上的平滑面積輪廓，文字版本放在時間帶的 `aria-describedby` | 完成（沒有改後端） | `src/pages/item/density.tsx`、`ItemPage.tsx`、`web/shared/src/StatusBand.tsx`（`describedBy`） |
+| 畫面刻度：選中的畫面是底軌上方的三角、候選是底軌下方的細刻度；hover 顯示時間與「畫面 N：圖說」，點擊跳播 | 完成（沒有改後端） | `ItemPage.tsx`、`web/shared/src/StatusBand.tsx`（`marks`） |
 
 1. **說話密度**：用 `GET /api/items/{id}/cues` 的原始字幕（`source`；沒有時用 `normalized`）在前端計算，不新增後端。**固定用原始字幕、不跟著字幕分頁的顯示模式**：切換原始、校正、譯文時輪廓不會跳動；譯文的字數和原文不同，用它算出來的「說話速度」沒有意義。整段影音切成 240 個區間，每句的字數（不含空白的 code point）平均分到它的時間範圍，區間的值是「字數／秒，依重疊時間加權」（§6.1），再做 1-2-1 平滑；高度依最大值正規化（最高 85%）。原始字幕還沒有時（轉錄未完成）照舊只畫點狀基線；ASR 沒有逐段的進度，所以不畫「轉錄到一半」的輪廓。輪廓是裝飾（底軌在 `aria-hidden` 內），**文字版本是相對的描述**：「最密集的是 MM:SS–MM:SS」（長度約為全長 1/20 的視窗）與「最長的沉默是 MM:SS–MM:SS」（沒有字幕的時間，至少 5 秒；沒有時不寫），放在 visually-hidden 的段落，以 `StatusBand` 新增的選用 `describedBy` 接到 slider 的 `aria-describedby`。不寫「每秒 N 字」這類絕對數字：字數依語言而不同，沒有可比的意義。`ChapterTrack` 多一個 `baseline`，有輪廓時不畫基線。
+2. **畫面刻度**：用 `GET /api/items/{id}/frames`（FRM-R10），和畫面分頁共用同一份快取（`items.frames(id)`，frames、note、publish 完成時失效）；frames 步驟 `done` 才讀，404 `no_frames` 當成沒有畫面。`StatusBand` 新增選用的 `marks`（`{at, selected, label}`）：選中的畫面畫 §6.1 的「底軌上方 6px Cue 三角加 1px Ink 邊」，候選畫面畫「底軌下方 1px Pewter 刻度」，兩者形狀不同（三角與直線），不只靠顏色。**刻度不是按鈕**：它們在 `role="slider"` 裡面（slider 的子元素必須是裝飾，放可聚焦的元素會違反 axe 的 nested-interactive），而且一部影音可能有幾十張選中的畫面，每張一個 tab stop 會讓鍵盤使用者要按很多次才到播放器。改成指標在選中畫面的 6px 內（`MARK_SNAP_PX`）時，hover 對齊到那張畫面、顯示它的時間碼與「畫面 N：圖說」（圖說是不可信的文字，只用文字節點，不設 `lang`），點擊跳到那張畫面的時間；離得遠時照原本的點擊位置。候選畫面不對齊（數量多、彼此很近）。可及的版本是畫面分頁（逐張列出、點擊跳播），時間帶的 `aria-describedby` 另外寫「時間帶上方的三角是選中的 N 張畫面，下方的細刻度是其他 M 張候選；「畫面」分頁可以逐張查看並跳到該時間。」。frames 步驟沒有完成（例如只有音訊的內容，§6.1 的特殊情況）時不讀取、不畫。

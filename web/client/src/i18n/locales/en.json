@@ -597,7 +597,10 @@
       "label": "Time ribbon: playback position",
       "valueText": "Playback position {{time}}",
       "density": "Speech density from the original subtitles: densest at {{from}}–{{to}}.",
-      "silence": "Longest silence: {{from}}–{{to}}."
+      "silence": "Longest silence: {{from}}–{{to}}.",
+      "frame": "Frame {{n}}",
+      "frameCaption": "Frame {{n}}: {{caption}}",
+      "frames": "Triangles above the ribbon mark the {{selected}} selected frames and thin ticks below mark the other {{candidates}} candidates; the Frames tab lists each one and can jump to its time."
     },
     "live": {
       "done": "{{stage}} finished.",

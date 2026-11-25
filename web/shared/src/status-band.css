@@ -295,3 +295,44 @@
   cursor: pointer;
   border-radius: var(--radius-mark);
 }
+
+/* 畫面圖層（marks，§6.1）：候選是底軌下方 1px Pewter 刻度；選中是底軌上方 6px Cue 三角加 1px Ink 邊。
+ * 只是裝飾（slider 的子元素、aria-hidden）；形狀不同（直線與三角），不只靠顏色區分。 */
+.sband__marks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--sband-track-h);
+  pointer-events: none;
+}
+.sband__mark {
+  position: absolute;
+}
+.sband__mark--candidate {
+  bottom: -4px;
+  width: 1px;
+  height: 4px;
+  background: var(--state-pending);
+}
+.sband__mark--selected {
+  top: -7px;
+  width: 8px;
+  height: 7px;
+  margin-left: -4px;
+  background: var(--mark-edge);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.sband__mark--selected::after {
+  content: "";
+  position: absolute;
+  inset: 1px 1px 2px;
+  background: var(--mark-now);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.sband__hover-mark {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

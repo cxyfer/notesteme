@@ -2,6 +2,7 @@
 export {
   StatusBand,
   tickInterval,
+  type BandMark,
   type BandSegment,
   type BandStatus,
   type StatusBandProps,
