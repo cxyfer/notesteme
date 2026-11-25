@@ -2,6 +2,10 @@
 //
 //	go run ./internal/benchdata/cmd/genlib -out /tmp/lib10k -profile lib-10k
 //	go run ./internal/benchdata/cmd/genlib -out /tmp/lib -profile lib-10k -scale 0.05
+//	go run ./internal/benchdata/cmd/genlib -out /tmp/lib -profile lib-10k -cues 4
+//
+// -cues 只改每部的句數（影音數、頻道數不變）：瀏覽器的 e2e（web/client/e2e）捲動 10,000 列時不讀字幕，
+// 用少量句子讓產生時間與磁碟空間降到幾十秒、幾十 MB。nfrbench 不使用這個旗標。
 //
 // 產生的目錄可以直接給 notesteme 使用：NOTESTEME_DATA=<dir> notesteme serve，或 notesteme items ls --json。
 // 完整的 lib-10k 約需數 GB 的磁碟空間與數分鐘到十幾分鐘；用完請自行刪除。
@@ -21,6 +25,7 @@ func main() {
 	out := flag.String("out", "", "資料目錄（必填；不存在時建立，已有資料時拒絕）")
 	profile := flag.String("profile", "lib-10k", "lib-10k 或 item-long")
 	scale := flag.Float64("scale", 1, "影音數與頻道數的比例（0～1，開發與 smoke 用）")
+	cues := flag.Int("cues", 0, "每部影音每個版本的句數（0 時用 profile 的預設；e2e 捲動用）")
 	flag.Parse()
 	if *out == "" {
 		fmt.Fprintln(os.Stderr, "genlib: 需要 -out")
@@ -32,6 +37,14 @@ func main() {
 		os.Exit(2)
 	}
 	p = p.Scaled(*scale)
+	if *cues < 0 {
+		fmt.Fprintln(os.Stderr, "genlib: -cues 不能是負數")
+		os.Exit(2)
+	}
+	if *cues > 0 {
+		p.CuesPerItem = *cues
+		p.Name = fmt.Sprintf("%s/cues=%d", p.Name, *cues)
+	}
 	if entries, err := os.ReadDir(*out); err == nil && len(entries) > 0 {
 		fmt.Fprintf(os.Stderr, "genlib: %s 不是空目錄\n", *out)
 		os.Exit(2)
