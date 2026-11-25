@@ -6,8 +6,8 @@
 //       2. 沒有「持續掉幀」：連續 3 個以上的 frame 間隔超過 50ms（約 3 個 60Hz frame）；
 //       3. DOM 中的列數遠少於總數（虛擬化）。
 //     另外記錄 rAF 間隔的 p95 與超過 33.4ms 的比例。
-//   - 頁面持續掉幀時，再在同一個引擎捲動一份靜態清單當基準：基準也持續掉幀代表引擎在這台機器上
-//     量不出來（CI 的 WebKit 是軟體繪製），以具名的 fixme 標出，數值照樣記錄（docs/ui/README.md 10.32）。
+//   - 頁面持續掉幀時，再量 reduce 時的同一頁與一份靜態清單（基準），寫進備註供判讀。
+//     Linux 的 WebKit 是軟體繪製，量不出頁面的流暢度：掉幀時以具名的 fixme 標出，數值照樣記錄（docs/ui/README.md 10.32）。
 //   - 預設用 global setup 的 200 部（驗證虛擬化與捲動到底）；@perf10k 是真實 10,000 列的一次實測，
 //     資料由 genlib -cues 4 產生（列表不讀字幕），只在 NOTESTEME_E2E_PERF10K=1 時執行（browser.yml 的 perf job）。
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -212,11 +212,12 @@ function judgeScroll(
   }
   expect(r.reached, `沒有捲到第 ${total} 列（到 ${r.reached}）`).toBeGreaterThanOrEqual(total);
   expect(r.maxRows, `DOM 裡有 ${r.maxRows} 列：沒有虛擬化`).toBeLessThan(Math.min(100, total / 2));
-  // 引擎限制（docs/ui/README.md 10.32）：連靜態清單都持續掉幀時，這台機器上的這個引擎量不出頁面的流暢度。
-  // 數值照樣記錄；判定以具名的 fixme 標出，不算通過
+  // 引擎限制（docs/ui/README.md 10.32 第 7 點）：Linux 的 WebKit 沒有 GPU，整頁都是軟體繪製。
+  // 媒體庫的列內容全部隱藏時每個 frame 仍要 60ms 以上，連靜態清單的 p95 也在 27～65ms 之間浮動，
+  // 量不出頁面本身的流暢度。數值照樣記錄（摘要表顯示未通過），判定以具名的 fixme 標出；Safari 的實機捲動是人工驗收
   test.fixme(
-    worstStreak >= 3 && !!baseline && baseline.worstStreak >= 3,
-    `${info.project.name} 在這台機器上捲動靜態清單也持續掉幀（基準 ${baseline?.worstStreak} 個 frame、p95 ${baseline?.p95.toFixed(1)}ms），量不出頁面的流暢度：${note}`,
+    worstStreak >= 3 && info.project.name === "webkit" && process.platform === "linux",
+    `Linux 的 WebKit 是軟體繪製，捲動量不出頁面的流暢度（引擎限制，docs/ui/README.md 10.32）：${note}`,
   );
   expect(worstStreak, `持續掉幀：${note}`).toBeLessThan(3);
   if (r.longTaskSupported) expect(longest, `長工作超過 50ms：${note}`).toBeLessThanOrEqual(50);
