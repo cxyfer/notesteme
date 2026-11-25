@@ -20,17 +20,12 @@ export const WIDTHS = [
 const shots = process.env.NOTESTEME_E2E_SHOTS === "1";
 
 /**
- * 引擎限制（docs/ui/README.md 10.32）：Playwright 的 Firefox 159 在 axe 4.14 的 `aria-conditional-attr` 規則
- * 分析新增抽屜的「調整這次的設定」區塊（`.add__run`）時，內容程序 SIGSEGV（signal 11，Page crashed），每次都重現；
- * 只跑這條規則、只分析這個區塊也會崩潰，個別元素與最小重現的 HTML 不會。不是頁面的 JS 例外。
- * 這一頁在 Firefox 標成 fixme；Chromium 與 WebKit 仍以完整規則檢查。不加排除規則。
+ * 引擎限制（docs/ui/README.md 10.32 第 12 點）：Playwright 的 Firefox 159 在 axe 4.14 執行中，內容程序會 SIGSEGV
+ * （Page crashed）。和規則、注入方式、等待方式都無關：`/add` 每次都崩潰，其他頁面零星（`/subscriptions/{id}` 約 1～2 成）。
+ * 只針對這個錯誤，在新分頁做同樣的載入與檢查，最多 3 次，每次記在 annotation；3 次都崩潰才以具名的 fixme 標出
+ * （同一頁仍由 Chromium 與 WebKit 以完整規則檢查）。其他錯誤照常失敗。不加排除規則。
  */
-const FIREFOX_AXE_CRASH = new Map([
-  [
-    "/add?url=javascript%3Aalert(1)",
-    "Firefox 159 在 axe 的 aria-conditional-attr 分析新增抽屜時內容程序 SIGSEGV（引擎問題，見 docs/ui/README.md 10.32）",
-  ],
-]);
+const FIREFOX_CRASH_ATTEMPTS = 3;
 
 test("a11yRoutes 每一條帶 fixture ID 的路由都對應到真資料", ({ env }) => {
   expect(unmappedFixtureRoutes(env)).toEqual([]);
@@ -41,10 +36,6 @@ for (const route of e2eRoutes()) {
     if (!route.auth) test.use({ storageState: { cookies: [], origins: [] } });
     for (const vp of WIDTHS) {
       test(`axe ${vp.width}px 淺色與深色`, async ({ page, env }, info) => {
-        test.fixme(
-          info.project.name === "firefox" && FIREFOX_AXE_CRASH.has(route.source),
-          FIREFOX_AXE_CRASH.get(route.source),
-        );
         const r = route.at(env);
         const load = async (p: Page, theme: "light" | "dark") => {
           await p.setViewportSize(vp);
@@ -78,21 +69,25 @@ for (const route of e2eRoutes()) {
           await current.emulateMedia({ colorScheme: theme });
           // 主題切換的顏色轉場要結束，axe 才量到最終的顏色
           await settleTransitions(current);
-          let report: string;
-          try {
-            report = await axeCheck(current, info, ctx);
-          } catch (e) {
-            // 引擎限制（docs/ui/README.md 10.32 第 12 點）：Firefox 的內容程序在 axe 執行中零星 SIGSEGV。
-            // 只針對崩潰：開新分頁、同樣的檢查重跑一次並記在 annotation；再崩潰或其他錯誤照常失敗
-            if (info.project.name !== "firefox" || !/Page crashed/.test(String(e))) throw e;
-            info.annotations.push({
-              type: "firefox-content-crash",
-              description: `${route.source} ${vp.width}px ${theme}：axe 執行中 Page crashed，已在新分頁重跑`,
-            });
-            current = await page.context().newPage();
-            await load(current, theme);
-            await settleTransitions(current);
-            report = await axeCheck(current, info, ctx);
+          let report: string | undefined;
+          for (let attempt = 1; report === undefined; attempt++) {
+            try {
+              report = await axeCheck(current, info, ctx);
+            } catch (e) {
+              const crashed = info.project.name === "firefox" && /Page crashed/.test(String(e));
+              if (!crashed) throw e;
+              info.annotations.push({
+                type: "firefox-content-crash",
+                description: `${route.source} ${vp.width}px ${theme}：第 ${attempt} 次 axe 執行中 Page crashed`,
+              });
+              test.fixme(
+                attempt >= FIREFOX_CRASH_ATTEMPTS,
+                `Firefox 的內容程序在 axe 執行中連續 ${attempt} 次 SIGSEGV（引擎問題，docs/ui/README.md 10.32 第 12 點）；這一頁由 Chromium 與 WebKit 檢查`,
+              );
+              current = await page.context().newPage();
+              await load(current, theme);
+              await settleTransitions(current);
+            }
           }
           if (report) reports.push(report);
           if (shots && info.project.name === "chromium") {
