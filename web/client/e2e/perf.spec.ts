@@ -129,7 +129,9 @@ async function scrollToBottom(page: Page, total: number, timeoutMs: number) {
           // 每個 frame 捲 120px（約 2 列；一般滾輪連續捲動的速度）
           list.scrollTop += 120;
           const reached = reachedIndex();
-          if (reached >= total || now - t0 > timeoutMs) {
+          // 虛擬列表：最後一列被渲染出來；也要真的捲到底（靜態清單的列一開始就全部在 DOM 裡）
+          const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 1;
+          if ((reached >= total && atBottom) || now - t0 > timeoutMs) {
             obs?.disconnect();
             resolve({
               intervals: intervals.slice(1),
@@ -252,9 +254,20 @@ test.describe("NFR-PERF-10", () => {
     const total = Number(await page.locator("[aria-setsize]").first().getAttribute("aria-setsize"));
     expect(total).toBeGreaterThan(150);
     const r = await scrollToBottom(page, total, 60_000);
-    // 頁面掉幀時才量基準（同一個 page，量完頁面才換內容）
-    const baseline =
-      worstStreakOf(r.intervals) >= 3 ? await baselineScroll(page, total) : undefined;
+    // 頁面掉幀時才量基準（同一個 page，量完頁面才換內容）。另外記錄 reduce 時同一頁的結果，
+    // 分辨是否來自無限的動畫（顯影、spinner）在軟體繪製下持續重繪（只記錄，不影響判定）
+    let baseline: Awaited<ReturnType<typeof baselineScroll>> | undefined;
+    if (worstStreakOf(r.intervals) >= 3) {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.goto("/library?group=none");
+      await waitReady(page, "媒體庫");
+      const reduced = await scrollToBottom(page, total, 60_000);
+      const sortedReduced = [...reduced.intervals].sort((a, b) => a - b);
+      console.log(
+        `PERF-DIAG ${info.project.name} reduce 時的同一頁：連續掉幀 ${worstStreakOf(reduced.intervals)}、p95 ${(sortedReduced[Math.ceil(sortedReduced.length * 0.95) - 1] ?? 0).toFixed(1)}ms`,
+      );
+      baseline = await baselineScroll(page, total);
+    }
     judgeScroll(info, `捲動 ${total} 列`, total, r, baseline);
   });
 });
