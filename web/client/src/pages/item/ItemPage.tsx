@@ -35,6 +35,13 @@ import { usePageTitle } from "../../shell/usePageTitle";
 import { BAND_STAGES, badgeStatus, bandStatus, type ApiItemDetail } from "../library/stageView";
 import type { ActionKind } from "./actions";
 import { ChapterList, ChapterTrack, RangeBar, chapterIndexAt, toChapters } from "./Chapters";
+import {
+  bandSegments as chunkBandSegments,
+  chunkLabel,
+  chunkSummary,
+  stageChunks,
+  useChunks,
+} from "./chunks";
 import { cueAt, parseCueTime } from "./cues";
 import { DensityTrack, densitySummary, speechDensity } from "./density";
 import { chapterTarget, ownsPlaybackKeys } from "./playKeys";
@@ -292,6 +299,27 @@ function ItemView({
   );
   const selectedFrames = marks.filter((m) => m.selected).length;
   const bandDescId = useId();
+  // 步驟帶（§6.1）：LLM 步驟還沒完成時，依這次執行各 chunk 的時間範圍畫出處理到哪裡（chunks.ts，LIB-R29）
+  const byStage = new Map(stages.map((s) => [s.stage, s]));
+  const stageName = (s: string) => t(`stage.${s}`, { defaultValue: s });
+  const chunks = useChunks(id, stages);
+  const chunkSummaries: string[] = [];
+  const bands: StatusBandStage[] = BAND_STAGES.map((key) => {
+    const run = byStage.get(key);
+    const cs = run && run.status !== "done" ? stageChunks(chunks.data, key) : [];
+    if (cs.length) chunkSummaries.push(chunkSummary(t, stageName(key), cs));
+    return {
+      key,
+      status: bandStatus(run),
+      label:
+        chunkLabel(t, stageName(key), run?.status, cs) ??
+        t("library.stageStatus", {
+          stage: stageName(key),
+          status: t(`status.${run ? badgeStatus(run) : "pending"}`),
+        }),
+      ...(cs.length ? { segments: chunkBandSegments(cs) } : {}),
+    };
+  });
   const bandDesc = [
     density &&
       t("item.band.density", {
@@ -308,23 +336,10 @@ function ItemView({
         selected: selectedFrames,
         candidates: marks.length - selectedFrames,
       }),
+    ...chunkSummaries,
   ]
     .filter(Boolean)
     .join(" ");
-
-  const byStage = new Map(stages.map((s) => [s.stage, s]));
-  const stageName = (s: string) => t(`stage.${s}`, { defaultValue: s });
-  const bands: StatusBandStage[] = BAND_STAGES.map((key) => {
-    const run = byStage.get(key);
-    return {
-      key,
-      status: bandStatus(run),
-      label: t("library.stageStatus", {
-        stage: stageName(key),
-        status: t(`status.${run ? badgeStatus(run) : "pending"}`),
-      }),
-    };
-  });
 
   // ---- 宣告（aria-live）：這部影音的步驟完成、失敗、需要處理 ----
   const [announcement, setAnnouncement] = useState("");

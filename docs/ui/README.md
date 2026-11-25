@@ -298,7 +298,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 佇列：各資源類別的通道（方格＝上限、實心＝使用中）、上限 +／−、整個佇列與各類別的暫停／繼續、暫停橫幅、任務列表（虛擬化、篩選在 URL）、「需要你處理」依步驟計數、影音層級的停止處理 | 完成 | `src/pages/queue` |
 | 時間帶的章節線與 hover 的章節名稱、播放器下的章節清單、`Shift + ←／→`、拖曳選取範圍後「複製這段字幕」 | 完成（見 10.26） | `src/pages/item/{Chapters.tsx,ItemPage.tsx}`、`web/shared/src/StatusBand.tsx` |
 | 說話密度、畫面刻度 | 完成（見 10.30） | `src/pages/item/density.tsx`、`web/shared/src/StatusBand.tsx` |
-| 拖曳選取後「重新校正這段」 | 未做 | API 沒有 LLM chunk 的時間範圍，`rerun` 的 `chunks` 要 chunk 編號（10.7 第 8 點） |
+| 步驟帶的 chunk 進度 | 完成（見 10.30；後端加 `GET /api/items/{id}/chunks`，LIB-R29） | `src/pages/item/chunks.ts`、`internal/api/chunks.go` |
+| 拖曳選取後「重新校正這段」 | 未做 | `GET /api/items/{id}/chunks` 已能把時間範圍換成 chunk 編號（LIB-R29），前端還沒接 |
 | 佇列的單一任務重試／取消、「失敗與停住」清單與「全部重試」 | 完成（收尾 D1，見 10.22） | `src/pages/queue/FailedTasks.tsx`、`QueuePage.tsx` |
 | 佇列的 Agent 任務（由哪個 Agent 處理、租約剩餘時間的倒數、改用 API 處理） | 完成（見 10.23） | `src/pages/queue/QueuePage.tsx` |
 | 佇列的優先順序 | 未做 | API 缺口（10.7 第 8 點） |
@@ -323,7 +324,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
    - rerun 沒有 `estimate`／`estimate_usd`：對話框顯示「無法預估」。沒有拿 `POST /api/estimate` 代替（它針對網址，可能呼叫 yt-dlp）。（有更好的字幕來源時改顯示 `better_source.estimate_usd`，見 10.24 第 2 點。）
    - 沒有 provider 列表 API：provider 用文字輸入，建議值取自處理方案設定。（2026-11-25 起後端有 `GET /api/providers`〔SEC-R11〕，這裡還沒有改用，列為後續，見 10.25。）
    - ~~沒有列出影音有哪些字幕變體與語言的 API~~：`GET /api/items/:id/artifacts`（LIB-R25）已經能列出各變體、語言與版本（見 10.26 第 6 點），目前只用在紀錄分頁的版本比較；字幕分頁的顯示模式仍依步驟狀態推得，`edited` 仍用一次 `variant=edited` 的查詢確認，沒有改。
-   - ~~沒有章節~~、~~說話密度~~（前端依原始字幕計算，見 10.30 第 1 點）、LLM chunk 的時間範圍：時間帶只畫整條步驟狀態，沒有 chunk 進度與「重新校正這段」。章節：`GET /api/items/{id}` 已有 `chapters`（CHAP-R7），章節線、章節清單與拖曳選取後的「複製這段字幕」已做（見 10.26）。
+   - ~~沒有章節~~、~~說話密度~~（前端依原始字幕計算，見 10.30 第 1 點）、~~LLM chunk 的時間範圍~~（`GET /api/items/{id}/chunks`，LIB-R29；步驟帶的 chunk 進度見 10.30 第 3 點）。章節：`GET /api/items/{id}` 已有 `chapters`（CHAP-R7），章節線、章節清單與拖曳選取後的「複製這段字幕」已做（見 10.26）。
    - `ItemDetail` 沒有處理方案名稱：從設定快照的 `profile` 取（沒有就不顯示）。
    - 佇列：~~`GET /api/queue` 只列內建 worker 的任務~~：AGT A13 補上 Agent 任務與租約到期時間，佇列頁已顯示（見 10.23）；仍沒有優先順序欄位與調整優先順序的 API，頁面上明說。~~`POST /api/tasks/{id}/retry`、`cancel` 回 501~~：收尾 D1 已實作，佇列頁接上單一任務的取消與重試（見 10.22）。
    - 「需要你處理」沒有彙總 API：依步驟各查一次 `GET /api/items?status=<stage>:failed&status=<stage>:blocked&limit=1` 的 `total`（7 個請求；同一部影音可能在不同步驟各算一次）。佇列頁收到 failed／blocked／pending／done／skipped 的 `stage.status`、刪除、還原或重新連上時，2 秒 debounce 後重新讀取。
@@ -823,9 +824,12 @@ pages.md §4 與 design-language.md §6.1 的時間帶圖層中，10.26 之後�
 | --- | --- | --- |
 | 說話密度：底軌上的平滑面積輪廓，文字版本放在時間帶的 `aria-describedby` | 完成（沒有改後端） | `src/pages/item/density.tsx`、`ItemPage.tsx`、`web/shared/src/StatusBand.tsx`（`describedBy`） |
 | 畫面刻度：選中的畫面是底軌上方的三角、候選是底軌下方的細刻度；hover 顯示時間與「畫面 N：圖說」，點擊跳播 | 完成（沒有改後端） | `ItemPage.tsx`、`web/shared/src/StatusBand.tsx`（`marks`） |
+| 處理範圍：LLM 步驟還沒完成時，步驟帶依各 chunk 的時間範圍畫出完成、處理中、未開始、失敗，底軌淡淡標出處理中與失敗的範圍；標籤是「校正 9/16」「校正：失敗：第 7 段」，每段的時間寫在文字版本 | 完成（後端加 `GET /api/items/{id}/chunks`，LIB-R29） | `internal/api/chunks.go`、`internal/pipeline/chunkspans.go`、`src/pages/item/chunks.ts`、`ItemPage.tsx` |
 
 1. **說話密度**：用 `GET /api/items/{id}/cues` 的原始字幕（`source`；沒有時用 `normalized`）在前端計算，不新增後端。**固定用原始字幕、不跟著字幕分頁的顯示模式**：切換原始、校正、譯文時輪廓不會跳動；譯文的字數和原文不同，用它算出來的「說話速度」沒有意義。整段影音切成 240 個區間，每句的字數（不含空白的 code point）平均分到它的時間範圍，區間的值是「字數／秒，依重疊時間加權」（§6.1），再做 1-2-1 平滑；高度依最大值正規化（最高 85%）。原始字幕還沒有時（轉錄未完成）照舊只畫點狀基線；ASR 沒有逐段的進度，所以不畫「轉錄到一半」的輪廓。輪廓是裝飾（底軌在 `aria-hidden` 內），**文字版本是相對的描述**：「最密集的是 MM:SS–MM:SS」（長度約為全長 1/20 的視窗）與「最長的沉默是 MM:SS–MM:SS」（沒有字幕的時間，至少 5 秒；沒有時不寫），放在 visually-hidden 的段落，以 `StatusBand` 新增的選用 `describedBy` 接到 slider 的 `aria-describedby`。不寫「每秒 N 字」這類絕對數字：字數依語言而不同，沒有可比的意義。`ChapterTrack` 多一個 `baseline`，有輪廓時不畫基線。
 2. **畫面刻度**：用 `GET /api/items/{id}/frames`（FRM-R10），和畫面分頁共用同一份快取（`items.frames(id)`，frames、note、publish 完成時失效）；frames 步驟 `done` 才讀，404 `no_frames` 當成沒有畫面。`StatusBand` 新增選用的 `marks`（`{at, selected, label}`）：選中的畫面畫 §6.1 的「底軌上方 6px Cue 三角加 1px Ink 邊」，候選畫面畫「底軌下方 1px Pewter 刻度」，兩者形狀不同（三角與直線），不只靠顏色。**刻度不是按鈕**：它們在 `role="slider"` 裡面（slider 的子元素必須是裝飾，放可聚焦的元素會違反 axe 的 nested-interactive），而且一部影音可能有幾十張選中的畫面，每張一個 tab stop 會讓鍵盤使用者要按很多次才到播放器。改成指標在選中畫面的 6px 內（`MARK_SNAP_PX`）時，hover 對齊到那張畫面、顯示它的時間碼與「畫面 N：圖說」（圖說是不可信的文字，只用文字節點，不設 `lang`），點擊跳到那張畫面的時間；離得遠時照原本的點擊位置。候選畫面不對齊（數量多、彼此很近）。可及的版本是畫面分頁（逐張列出、點擊跳播），時間帶的 `aria-describedby` 另外寫「時間帶上方的三角是選中的 N 張畫面，下方的細刻度是其他 M 張候選；「畫面」分頁可以逐張查看並跳到該時間。」。frames 步驟沒有完成（例如只有音訊的內容，§6.1 的特殊情況）時不讀取、不畫。
+3. **處理範圍（chunk 的時間範圍）**：`llm_chunks` 只有句號，API 沒有時間，所以後端補 `GET /api/items/{id}/chunks`（LIB-R29，規則與理由見 LIB 規格的待決問題）：最近一次切分（和 rerun 的 `chunks` 對照同一次）的每個 chunk 的 `status`、`start`、`end`（不含開頭的重疊句）與 `current`。前端只在**步驟還沒完成**（running、failed、blocked 等）**而且切分屬於這次執行**（`current`）時，把 chunk 畫成步驟帶的 `segments`（`StatusBand` 原有的選用 props，沒有改 `web/shared`）：`done` 與 `fallback`（驗證失敗後退回原文，LLM-R5）都畫成安靜的「完成」，`running` 是處理中（底軌另外淡淡標出，§6.1 的「處理範圍」圖層，`StatusBand` 原本就依 running／failed 的 segments 畫），`failed` 是失敗，`pending` 是未開始。步驟已完成時照舊整條一個狀態（不畫 chunk 之間的縫，也不把退回的 chunk 標成例外：§6.1 要已完成的帶子保持安靜；退回的段落在步驟面板與來源紀錄看得到）。任何一個 chunk 沒有時間（輸入字幕已清除）時不畫，避免沒畫到的時間看起來像沒有內容；translate 有多個目標語言時同一段時間有多個 chunk，一條帶子畫不下，也不畫。標籤照 §6.1 的狀態表：有失敗的 chunk 時「校正：失敗：第 7 段」，處理中「校正 9/16」（完成數含退回的 chunk），其他情況沿用原本的「校正：處理中」等文字。**文字版本**：每個有 chunk 的步驟一句「校正：第 1–8 段完成（00:00–07:47），第 9 段處理中（07:47–08:45），第 10–16 段未開始（08:45–15:00）。」，和說話密度、畫面的說明放在同一個 `aria-describedby` 段落。chunk 任務完成不發 SSE（同 10.26 第 5 點），所以有 LLM 步驟 `running` 時每 15 秒重新讀取（詳情頁是正在看的頁面，比媒體庫列的 60 秒短；只有一個請求），`stage.status` 與重新連上時失效（`items.chunks(id)`）；沒有任何 LLM 步驟開始過時不讀。處理中的 chunk 沿用 `StatusBand` 既有的「顯影」動畫（§6.1 的「目前的 chunk 用 Ink 顯示『顯影』動畫」；`prefers-reduced-motion: reduce` 時是靜態斜線紋），所以只有處理中的那段會動，不再是整條。
+驗證：`ribbon.test.tsx` 的 11 個測試（說話密度的計算、畫面刻度、chunk 的步驟帶與文字版本，頁面都有 axe）；後端 `chunkspans_test.go` 與 `features/LLM-execution.feature` 的兩個 `@M2` 場景（「The time range of each chunk of the latest split is listed」「A selected time range is turned into the chunks to rerun」）。
 
 ### 10.31 設計語言與 NFR-SEC-2 的落差：閱讀字型、閱讀區版面、圖示、收合導覽、Markdown 連結（2026-11-25）
 

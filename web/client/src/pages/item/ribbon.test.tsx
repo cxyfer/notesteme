@@ -173,3 +173,89 @@ describe("影音詳情：時間帶的畫面刻度", () => {
     expect(api.calls("GET", "/api/items/{id}/frames")).toHaveLength(0);
   });
 });
+
+const ch = (chunk: number, status: string, start: string, end: string, over = {}) => ({
+  stage: "correct",
+  chunk,
+  status,
+  start,
+  end,
+  current: true,
+  ...over,
+});
+const CHUNKS = [
+  ch(1, "done", "00:00:00.000", "00:00:39.500"),
+  ch(2, "running", "00:00:40.000", "00:01:19.500"),
+  ch(3, "pending", "00:01:20.000", "00:01:59.500"),
+];
+
+function itemWithChunks(
+  correct: string,
+  chunks: unknown[],
+  over: Record<string, MockHandler> = {},
+) {
+  return {
+    ...itemWithCues([
+      stage("metadata", "done"),
+      stage("transcript", "done"),
+      stage("segment", "done"),
+      stage("correct", correct, { executor: "api" }),
+    ]),
+    "GET /api/items/{id}/chunks": () => ({ chunks }),
+    ...over,
+  } satisfies Record<string, MockHandler>;
+}
+
+describe("影音詳情：步驟帶依 chunk 的時間範圍畫出處理到哪裡（LIB-R29）", () => {
+  it("處理中：已完成、處理中、未開始的 chunk 畫在各自的時間，標籤是「校正 1/3」，文字版本列出每段；axe 無違規", async () => {
+    const { container } = open("/items/item-1", itemWithChunks("running", CHUNKS));
+    const slider = await screen.findByRole("slider", { name: "時間帶：播放位置" });
+    const band = () => container.querySelector('.sband__band[data-stage="correct"]')!;
+    await waitFor(() => expect(band().querySelectorAll(".sband__seg")).toHaveLength(3));
+    const segs = [...band().querySelectorAll<HTMLElement>(".sband__seg")];
+    expect(segs.map((s) => s.dataset.status)).toEqual(["done", "running", "pending"]);
+    expect(segs[1]!.style.left).toBe(`${(40 / 120) * 100}%`);
+    // 處理中的範圍也淡淡標在底軌上
+    expect(container.querySelector(".sband__range--running")).not.toBeNull();
+    expect(container.querySelector('.sband__label[data-stage="correct"]')!.textContent).toBe(
+      "校正 1/3",
+    );
+    const desc = document.getElementById(slider.getAttribute("aria-describedby")!)!;
+    expect(desc.textContent).toContain(
+      "校正：第 1 段完成（00:00–00:39），第 2 段處理中（00:40–01:19），第 3 段未開始（01:20–01:59）。",
+    );
+    await expectNoA11yViolations(container);
+  });
+
+  it("失敗：失敗的 chunk 用失敗的區段與底軌標出，標籤寫出第幾段", async () => {
+    const { container } = open(
+      "/items/item-1",
+      itemWithChunks("failed", [
+        ch(1, "done", "00:00:00.000", "00:00:39.500"),
+        ch(2, "failed", "00:00:40.000", "00:01:19.500"),
+      ]),
+    );
+    await waitFor(() => expect(container.querySelector(".sband__range--failed")).not.toBeNull());
+    expect(container.querySelector('.sband__label[data-stage="correct"]')!.textContent).toBe(
+      "校正：失敗：第 2 段",
+    );
+  });
+
+  it("不是這次執行的切分（current: false）與已完成的步驟不畫 chunk", async () => {
+    const { container } = open(
+      "/items/item-1",
+      itemWithChunks("running", [
+        ch(1, "done", "00:00:00.000", "00:01:00.000", { current: false }),
+      ]),
+    );
+    await screen.findByRole("slider", { name: "時間帶：播放位置" });
+    await waitFor(() =>
+      expect(container.querySelector('.sband__label[data-stage="correct"]')!.textContent).toBe(
+        "校正：處理中",
+      ),
+    );
+    expect(
+      container.querySelectorAll('.sband__band[data-stage="correct"] .sband__seg'),
+    ).toHaveLength(1);
+  });
+});

@@ -575,7 +575,19 @@
       "silence": "最长的沉默是 {{from}}–{{to}}。",
       "frame": "画面 {{n}}",
       "frameCaption": "画面 {{n}}：{{caption}}",
-      "frames": "时间带上方的三角是选中的 {{selected}} 张画面，下方的细刻度是其他 {{candidates}} 张候选；“画面”分页可以逐张查看并跳到该时间。"
+      "frames": "时间带上方的三角是选中的 {{selected}} 张画面，下方的细刻度是其他 {{candidates}} 张候选；“画面”分页可以逐张查看并跳到该时间。",
+      "chunkProgress": "{{stage}} {{done}}/{{total}}",
+      "chunkFailed": "{{stage}}：失败：第 {{chunks}} 段",
+      "chunkRun": "第 {{chunks}} 段{{status}}（{{from}}–{{to}}）",
+      "chunkSummary": "{{stage}}：{{runs}}。",
+      "sep": "，",
+      "chunkStatus": {
+        "done": "完成",
+        "fallback": "退回原文",
+        "running": "处理中",
+        "failed": "失败",
+        "pending": "未开始"
+      }
     },
     "live": {
       "done": "{{stage}}完成。",

@@ -601,7 +601,19 @@
       "silence": "Longest silence: {{from}}–{{to}}.",
       "frame": "Frame {{n}}",
       "frameCaption": "Frame {{n}}: {{caption}}",
-      "frames": "Triangles above the ribbon mark the {{selected}} selected frames and thin ticks below mark the other {{candidates}} candidates; the Frames tab lists each one and can jump to its time."
+      "frames": "Triangles above the ribbon mark the {{selected}} selected frames and thin ticks below mark the other {{candidates}} candidates; the Frames tab lists each one and can jump to its time.",
+      "chunkProgress": "{{stage}} {{done}}/{{total}}",
+      "chunkFailed": "{{stage}}: failed: part {{chunks}}",
+      "chunkRun": "part {{chunks}} {{status}} ({{from}}–{{to}})",
+      "chunkSummary": "{{stage}}: {{runs}}.",
+      "sep": ", ",
+      "chunkStatus": {
+        "done": "done",
+        "fallback": "kept the original",
+        "running": "in progress",
+        "failed": "failed",
+        "pending": "not started"
+      }
     },
     "live": {
       "done": "{{stage}} finished.",

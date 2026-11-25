@@ -30,6 +30,9 @@ export const queryKeys = {
     // 產出的版本（LIB-R25）：stage.status 時和執行紀錄一起失效
     allArtifacts: () => [...queryKeys.items.all, "artifacts"] as const,
     artifacts: (id: string) => [...queryKeys.items.allArtifacts(), id] as const,
+    // LLM chunk 的時間範圍（LIB-R29）：stage.status 與重新連上時失效；有 LLM 步驟 running 時另外定期重新讀取
+    allChunks: () => [...queryKeys.items.all, "chunks"] as const,
+    chunks: (id: string) => [...queryKeys.items.allChunks(), id] as const,
   },
   /** 產出一個版本的內容（LIB-R25）：版本不會變，不放在 items 底下，不跟著失效 */
   artifactContent: (id: string) => ["artifact-content", id] as const,
