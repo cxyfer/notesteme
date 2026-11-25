@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -127,11 +128,26 @@ type vaultWriter struct {
 }
 
 func (vw *vaultWriter) write(ctx context.Context, rel, kind, format, lang string, data []byte) error {
+	return vw.put(ctx, rel, kind, format, lang, func(f output.File) (output.Result, error) {
+		f.Data = data
+		return vw.w.Write(ctx, f)
+	})
+}
+
+// writeFrom 同 write，內容由 render 逐段寫出（字幕，NFR-RES-3；見 output.Writer.WriteFrom）。
+func (vw *vaultWriter) writeFrom(ctx context.Context, rel, kind, format, lang string, render func(io.Writer) error) error {
+	return vw.put(ctx, rel, kind, format, lang, func(f output.File) (output.Result, error) {
+		return vw.w.WriteFrom(ctx, f, render)
+	})
+}
+
+// put 檢查路徑在 vault 之內、以 do 寫出，再依結果更新紀錄的狀態。
+func (vw *vaultWriter) put(ctx context.Context, rel, kind, format, lang string, do func(output.File) (output.Result, error)) error {
 	if err := vault.CheckInside(vw.root, rel); err != nil {
 		return vaultError(rel, err)
 	}
-	res, err := vw.w.Write(ctx, output.File{
-		ItemID: vw.it.ID, Root: vw.root, Dir: path.Dir(rel), Name: path.Base(rel), Data: data,
+	res, err := do(output.File{
+		ItemID: vw.it.ID, Root: vw.root, Dir: path.Dir(rel), Name: path.Base(rel),
 		Target: output.TargetVault, Format: format, Lang: lang, Policy: vw.cfg.Policy(), Kind: kind, Vault: vw.def.ID,
 	})
 	if err != nil {
@@ -224,7 +240,7 @@ func (p *Pipeline) publishVault(ctx context.Context, it store.Item, cfg output.C
 	noSubs := false
 	for _, lang := range langsOf(cfg) {
 		for _, format := range cfg.VaultFormats() {
-			data, tr, err := p.renderOutput(ctx, it.ID, format, lang, cfg.Style)
+			sub, err := p.openOutput(ctx, it.ID, format, lang, cfg.Style)
 			if errors.Is(err, ErrNoTranscript) {
 				if lang == "" {
 					noSubs = true
@@ -236,7 +252,7 @@ func (p *Pipeline) publishVault(ctx context.Context, it store.Item, cfg output.C
 			if err != nil {
 				return nil, err
 			}
-			if err := vw.write(ctx, layout.Subtitle(format, lang, multi), store.OutputKindSubtitle, format, tr.Lang, data); err != nil {
+			if err := vw.writeFrom(ctx, layout.Subtitle(format, lang, multi), store.OutputKindSubtitle, format, sub.lang, sub.render); err != nil {
 				return nil, err
 			}
 		}

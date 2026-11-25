@@ -1,11 +1,11 @@
 package pipeline
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -93,7 +93,7 @@ func (p *Pipeline) runPublish(ctx context.Context, it store.Item, eff Effective)
 		applicable++
 		for _, lang := range langsOf(cfg) {
 			for _, format := range cfg.FormatList() {
-				data, tr, err := p.renderOutput(ctx, it.ID, format, lang, cfg.Style)
+				out, err := p.openOutput(ctx, it.ID, format, lang, cfg.Style)
 				if errors.Is(err, ErrNoTranscript) {
 					if lang != "" && !contains(missing, lang) {
 						missing = append(missing, lang)
@@ -106,10 +106,10 @@ func (p *Pipeline) runPublish(ctx context.Context, it store.Item, eff Effective)
 				if err != nil {
 					return result{}, err
 				}
-				res, err := w.Write(ctx, output.File{
-					ItemID: it.ID, Dir: pd.dir, Name: outputName(pd, cfg.Target, it.Title, tr.Lang, format),
-					Data: data, Target: cfg.Target, Format: format, Lang: tr.Lang, Policy: cfg.Policy(),
-				})
+				res, err := w.WriteFrom(ctx, output.File{
+					ItemID: it.ID, Dir: pd.dir, Name: outputName(pd, cfg.Target, it.Title, out.lang, format),
+					Target: cfg.Target, Format: format, Lang: out.lang, Policy: cfg.Policy(),
+				}, out.render)
 				switch {
 				case errors.Is(err, store.ErrNotFound):
 					return result{}, errItemGone // 影音在寫出途中被永久刪除
@@ -308,11 +308,18 @@ func outputName(pd publishDir, target, title, lang, format string) string {
 	return name
 }
 
-// renderOutput 把字幕渲染成 format（與 GET /api/items/:id/subtitles 相同的規則），回傳內容與實際使用的字幕。
-// lang 為空時用預設選擇（OUT-R2）；ass 與雙語 SRT 依 RenderInput（原文語言相同時一律單語，OUT-R5）。
-func (p *Pipeline) renderOutput(ctx context.Context, itemID, format, lang, style string) ([]byte, subtitle.Transcript, error) {
+// renderedOutput 是一個要寫出的字幕檔：lang 是實際使用的字幕的語言，render 逐句寫出內容。
+type renderedOutput struct {
+	lang   string
+	render func(io.Writer) error
+}
+
+// openOutput 選出要寫成 format 的字幕（與 GET /api/items/:id/subtitles 相同的規則），回傳逐句渲染的寫出函式（NFR-RES-3）：
+// 不把字幕或渲染結果整份放在記憶體中，由 output.Writer.WriteFrom 邊寫暫存檔邊算 sha256。
+// 錯誤（找不到字幕、樣式、損毀時標記並重跑）都在這裡決定，寫出任何東西之前；內容與整份載入時逐位元組相同。
+// lang 為空時用預設選擇（OUT-R2）；ass 與雙語 SRT 依 OpenRender（原文語言相同時一律單語，OUT-R5）。
+func (p *Pipeline) openOutput(ctx context.Context, itemID, format, lang, style string) (renderedOutput, error) {
 	q := CuesQuery{Lang: lang, ToMS: -1}
-	var buf bytes.Buffer
 	if format == subtitle.FormatASS || format == subtitle.FormatBilingualSRT {
 		ass := subtitle.ASSStyle{}
 		if format == subtitle.FormatASS {
@@ -322,39 +329,52 @@ func (p *Pipeline) renderOutput(ctx context.Context, itemID, format, lang, style
 			}
 			st, err := assstyle.New(p.st).Get(ctx, name)
 			if errors.Is(err, assstyle.ErrNotFound) {
-				return nil, subtitle.Transcript{}, &errclass.Error{
+				return renderedOutput{}, &errclass.Error{
 					Class: errclass.ClassPermanent, Source: "publish", Detail: "找不到 ASS 樣式 " + name,
 					Message: "找不到 ASS 樣式「" + name + "」。",
 				}
 			}
 			if err != nil {
-				return nil, subtitle.Transcript{}, err
+				return renderedOutput{}, err
 			}
 			ass = st.ASS()
 		}
-		ri, err := p.RenderInput(ctx, itemID, q)
+		rs, err := p.OpenRender(ctx, itemID, q)
 		if err != nil {
-			return nil, subtitle.Transcript{}, err
+			return renderedOutput{}, err
 		}
-		var orig []subtitle.Cue
-		origLang := ri.Main.Lang
-		if ri.Orig != nil {
-			orig, origLang = ri.Orig.Cues, ri.Orig.Lang
-		}
-		pairs := subtitle.PairCues(ri.Main.Cues, orig)
 		if format == subtitle.FormatASS {
-			err = subtitle.RenderASS(&buf, pairs, assstyle.ResolveFonts(ass, ri.Main.Lang, origLang), ri.Item.Title)
-		} else {
-			err = subtitle.RenderBilingualSRT(&buf, pairs)
+			ass = assstyle.ResolveFonts(ass, rs.MainLang, rs.OrigLang)
+			return renderedOutput{lang: rs.MainLang, render: func(w io.Writer) error {
+				aw := subtitle.NewASSWriter(w, ass, rs.Item.Title)
+				if err := rs.Each(aw.Write); err != nil {
+					return err
+				}
+				return aw.Close()
+			}}, nil
 		}
-		return buf.Bytes(), ri.Main, err
+		return renderedOutput{lang: rs.MainLang, render: func(w io.Writer) error {
+			sw := subtitle.NewBilingualSRTWriter(w)
+			if err := rs.Each(sw.Write); err != nil {
+				return err
+			}
+			return sw.Close()
+		}}, nil
 	}
-	_, tr, err := p.CuesWithItem(ctx, itemID, q)
+	_, cs, err := p.StreamCuesWithItem(ctx, itemID, q)
 	if err != nil {
-		return nil, subtitle.Transcript{}, err
+		return renderedOutput{}, err
 	}
-	err = subtitle.Render(&buf, format, tr)
-	return buf.Bytes(), tr, err
+	return renderedOutput{lang: cs.Header.Lang, render: func(w io.Writer) error {
+		cw, err := subtitle.NewCueWriter(w, format, cs.Header)
+		if err != nil {
+			return err
+		}
+		if err := cs.Each(cw.Write); err != nil {
+			return err
+		}
+		return cw.Close()
+	}}, nil
 }
 
 // Outputs 列出影音已經寫出的檔案（OUT-R11），依寫入時間排列。影音不存在時回傳 store.ErrNotFound，

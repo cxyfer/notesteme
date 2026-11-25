@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -292,7 +294,7 @@ func TestCreateNewNeverClobbers(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "a.srt"), []byte("theirs"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	created, err := createNew(root, "a.srt", []byte("ours"))
+	created, err := createNew(root, "a.srt", &payload{data: []byte("ours")})
 	if err != nil || created {
 		t.Fatalf("createNew = %v，%v，預期 false", created, err)
 	}
@@ -302,7 +304,157 @@ func TestCreateNewNeverClobbers(t *testing.T) {
 	if names := entries(t, dir); len(names) != 1 {
 		t.Errorf("暫存檔殘留：%v", names)
 	}
-	if created, err := createNew(root, "b.srt", []byte("ours")); err != nil || !created || read(t, filepath.Join(dir, "b.srt")) != "ours" {
+	if created, err := createNew(root, "b.srt", &payload{data: []byte("ours")}); err != nil || !created || read(t, filepath.Join(dir, "b.srt")) != "ours" {
 		t.Errorf("新檔案應建立：%v，%v", created, err)
+	}
+}
+
+// writeFrom 以 WriteFrom 寫出 f.Data（分成兩段寫，模擬逐句渲染）。
+func writeFrom(w *Writer, ctx context.Context, f File) (Result, error) {
+	data := f.Data
+	f.Data = nil
+	return w.WriteFrom(ctx, f, func(out io.Writer) error {
+		half := len(data) / 2
+		if _, err := out.Write(data[:half]); err != nil {
+			return err
+		}
+		_, err := out.Write(data[half:])
+		return err
+	})
+}
+
+// WriteFrom 與 Write 的結果、紀錄、資料夾內容逐項相同（NFR-RES-3 只改讀寫方式，OUT-R11、R12 的語意不變）：
+// 新檔、內容相同、覆蓋、使用者改過後另存、另存的檔案沒改過時覆蓋、另存的也被改過時換檔名、skip 擋下，以及 vault（Root）。
+func TestWriteFromMatchesWrite(t *testing.T) {
+	type step struct {
+		edit   string // 不是空字串時，先把這個檔案改成使用者的內容
+		name   string
+		data   string
+		policy string
+	}
+	steps := []step{
+		{name: "a.en.srt", data: "v1", policy: PolicySaveAsNew},
+		{name: "a.en.srt", data: "v1", policy: PolicySaveAsNew},
+		{name: "a.en.srt", data: "v2", policy: PolicySaveAsNew},
+		{edit: "a.en.srt", name: "a.en.srt", data: "v3", policy: PolicySaveAsNew},
+		{name: "a.en.srt", data: "v4", policy: PolicySaveAsNew},
+		{edit: "a.en (notesteme 2026-11-12).srt", name: "a.en.srt", data: "v5", policy: PolicySaveAsNew},
+		{name: "a.en.srt", data: "v6", policy: PolicySkip},
+		{name: "b.en.srt", data: "", policy: PolicySkip},
+		{name: "b.en.srt", data: strings.Repeat("長", 50000), policy: PolicySkip},
+	}
+	type snap struct {
+		res   []string
+		rows  map[string]store.Output
+		files map[string]string
+	}
+	run := func(t *testing.T, vault bool, write func(*Writer, context.Context, File) (Result, error)) snap {
+		dir := t.TempDir()
+		m := newMem()
+		w := newWriter(m)
+		var root *os.Root
+		sub := dir
+		if vault {
+			r, err := os.OpenRoot(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			root, sub = r, filepath.Join(dir, "Notes", "x")
+		}
+		var out snap
+		for i, s := range steps {
+			if s.edit != "" {
+				if err := os.WriteFile(filepath.Join(sub, s.edit), []byte("hand edit"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			f := file(dir, s.name, s.data, s.policy)
+			if vault {
+				f.Root, f.Dir, f.Target, f.Kind, f.Vault = root, "Notes/x", TargetVault, store.OutputKindSubtitle, "main"
+			}
+			res, err := write(w, context.Background(), f)
+			if err != nil {
+				t.Fatalf("第 %d 步：%v", i+1, err)
+			}
+			out.res = append(out.res, string(res.Outcome)+" "+strings.TrimPrefix(res.Path, dir))
+		}
+		out.rows = map[string]store.Output{}
+		for k, v := range m.rows {
+			v.Path = strings.TrimPrefix(v.Path, dir)
+			out.rows[strings.ReplaceAll(k, dir, "")] = v
+		}
+		out.files = map[string]string{}
+		for _, n := range entries(t, sub) {
+			out.files[n] = read(t, filepath.Join(sub, n))
+		}
+		return out
+	}
+	for _, vault := range []bool{false, true} {
+		t.Run(map[bool]string{false: "folder", true: "vault"}[vault], func(t *testing.T) {
+			want := run(t, vault, (*Writer).Write)
+			got := run(t, vault, writeFrom)
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("WriteFrom 與 Write 不同：\n got %+v\nwant %+v", got, want)
+			}
+			wantRes := []string{"written", "unchanged", "written", "saved_new", "saved_new", "saved_new", "blocked", "written", "written"}
+			for i, r := range got.res {
+				if !strings.HasPrefix(r, wantRes[i]+" ") {
+					t.Errorf("第 %d 步 = %s，預期 %s", i+1, r, wantRes[i])
+				}
+			}
+			for n := range got.files {
+				if strings.HasPrefix(n, ".notesteme-") {
+					t.Errorf("暫存檔殘留：%s", n)
+				}
+			}
+		})
+	}
+}
+
+// render 失敗時不寫任何東西：沒有目標、沒有暫存檔、沒有紀錄，錯誤原樣回傳。
+func TestWriteFromRenderFailsWritesNothing(t *testing.T) {
+	dir := t.TempDir()
+	m := newMem()
+	boom := errors.New("boom")
+	res, err := newWriter(m).WriteFrom(context.Background(), file(dir, "a.en.srt", "", PolicySaveAsNew), func(out io.Writer) error {
+		_, _ = out.Write([]byte("partial"))
+		return boom
+	})
+	if !errors.Is(err, boom) || res != (Result{}) {
+		t.Fatalf("WriteFrom = %+v，%v", res, err)
+	}
+	if names := entries(t, dir); len(names) != 0 {
+		t.Errorf("render 失敗時不該留下檔案：%v", names)
+	}
+	if len(m.rows) != 0 {
+		t.Errorf("render 失敗時不該留下紀錄：%v", m.rows)
+	}
+	if _, err := newWriter(m).WriteFrom(context.Background(), file(dir, "../x", "", PolicySaveAsNew), func(io.Writer) error { return nil }); err == nil {
+		t.Error("檔名含目錄分隔時應拒絕")
+	}
+}
+
+// 已經寫好的暫存檔：目標存在時 createNew 不刪除它（另存新檔的下一個檔名還要用）。
+func TestCreateNewKeepsPreparedTemp(t *testing.T) {
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	tmp, err := writeTemp(root, []byte("ours"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.srt"), []byte("theirs"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pl := &payload{tmp: tmp}
+	if created, err := createNew(root, "a.srt", pl); err != nil || created {
+		t.Fatalf("createNew = %v，%v，預期 false", created, err)
+	}
+	if created, err := createNew(root, "b.srt", pl); err != nil || !created || read(t, filepath.Join(dir, "b.srt")) != "ours" {
+		t.Fatalf("暫存檔應該還在、可以放到下一個檔名：%v，%v", created, err)
 	}
 }
