@@ -160,6 +160,7 @@
     "newItems_other": "{{count}} new items"
   },
   "common": {
+    "tableScroll": "{{name}} (scrollable table)",
     "close": "Close",
     "loading": "Loading…",
     "retry": "Retry",

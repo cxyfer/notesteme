@@ -159,6 +159,7 @@
     "newItems_other": "有 {{count}} 個新項目"
   },
   "common": {
+    "tableScroll": "{{name}}（可捲動的表格）",
     "close": "關閉",
     "loading": "載入中…",
     "retry": "重試",

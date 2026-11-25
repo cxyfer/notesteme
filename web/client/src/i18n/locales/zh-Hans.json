@@ -159,6 +159,7 @@
     "newItems_other": "有 {{count}} 个新项目"
   },
   "common": {
+    "tableScroll": "{{name}}（可滚动的表格）",
     "close": "关闭",
     "loading": "加载中…",
     "retry": "重试",

@@ -73,7 +73,19 @@ describe("成本頁", () => {
       expect(region!.getAttribute("tabindex")).toBe("0");
       expect(region!.getAttribute("aria-label")).toBeTruthy();
     }
-    expect(chart.closest('[role="region"]')!.getAttribute("aria-label")).toBe("依日期的花費");
+    expect(chart.closest('[role="region"]')!.getAttribute("aria-label")).toBe(
+      "依日期的花費（可捲動的表格）",
+    );
+    // 捲動區和所在的 <section> 不同名（landmark-unique）
+    const names = screen
+      .getAllByRole("region")
+      .map(
+        (r) =>
+          r.getAttribute("aria-label") ??
+          document.getElementById(r.getAttribute("aria-labelledby") ?? "")?.textContent ??
+          "",
+      );
+    expect(new Set(names).size, names.join(" / ")).toBe(names.length);
   });
 
   it("沒有月預算時改用另一句；prices_stale 依 code 提供「確認計價表」", async () => {
