@@ -75,6 +75,11 @@ test.describe("NFR-RWD-1 375px", () => {
     await expect(rerun).toBeVisible();
     await bigEnough(rerun);
     await noHorizontalScroll(page);
+    const accepted = page.waitForResponse(
+      (r) =>
+        r.request().method() === "POST" &&
+        /^\/api\/items\/[^/]+\/rerun$/.test(new URL(r.url()).pathname),
+    );
     await rerun.click();
     // 重新處理的對話框（有的話）：確認
     const dialog = page.getByRole("dialog");
@@ -83,14 +88,17 @@ test.describe("NFR-RWD-1 375px", () => {
       await bigEnough(start);
       await start.click();
     }
-    // 結果：步驟不再是失敗（按鈕消失），回到總覽後這部不在「需要你處理」
+    // 結果：伺服器接受重新處理，步驟不再是失敗（按鈕消失）。
+    // 不斷言它永遠離開「需要你處理」：e2e 的 ffmpeg 是假的，重新處理的分段可能很快又失敗而回到清單（時序不定）
+    const res = await accepted;
+    expect(res.ok(), `重新處理的請求失敗：${res.status()}`).toBe(true);
     await expect(rerun).toBeHidden({ timeout: 30_000 });
     await page
       .getByRole("navigation", { name: "分頁列" })
       .getByRole("link", { name: "總覽" })
       .click();
     await waitReady(page, "總覽");
-    await expect(row).toHaveCount(0, { timeout: 30_000 });
+    await noHorizontalScroll(page);
   });
 
   test("貼網址新增：底部「新增」→ 辨識 → 開始處理 → 媒體庫出現新項目", async ({ page }) => {
