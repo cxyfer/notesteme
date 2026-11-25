@@ -220,7 +220,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 設定各分區、詞彙表與術語候選、設定匯出與匯入 | 完成（UI-3b，見 10.10；後端沒有的部分見 10.10 的「未做」） | `web/client/src/pages/settings` |
 | 影音詳情、佇列 | 完成（UI-2，見 10.6） | `web/client/src/pages/item`、`src/pages/queue` |
 | 登入頁背景的淡化時間帶（§13） | 完成（2026-11-25，見 10.28）：用 UI-1 的 `StatusBand`，固定示意資料、`aria-hidden`、lazy 載入 | `src/pages/{LoginPage,LoginRibbon}.tsx` |
-| 768–1279px 的收合導覽（只剩圖示） | 未做：沒有圖示前維持展開；UI-1 沒有引入 Phosphor Icons | 之後的切片 |
+| 768–1279px 的收合導覽（只剩圖示） | 完成（2026-11-25，Phosphor Icons 一併引入，見 10.31） | `src/shell/{AppShell.tsx,media.ts,navIcons.ts}`、`src/styles/base.css` |
 | 訂閱、成本、筆記模板、設定的通知與預算、影音詳情的畫面與筆記 | 完成（UI-4，見 10.12） | `src/pages/{subscriptions,costs,noteTemplates}`、`src/pages/settings`、`src/pages/item/NotePanels.tsx` |
 | 字幕全文搜尋、術語審核、bundle 匯出與匯入、系統告警與備份、摘要與彙整、更好的字幕來源 | 完成（UI-5，見 10.14） | `src/pages/search`、`src/pages/settings`、`src/pages/item`、`src/pages/library` |
 | 總覽、批次操作、垃圾桶 | 完成（UI-7，見 10.18） | `src/pages/{overview,trash}`、`src/pages/library` |
@@ -238,7 +238,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 6. **主題與介面語言的切換**暫時放在導覽底部；UI-3 的「外觀」「語言」分區完成後再決定是否移過去。
 7. **OpenAPI 取得方式**：`internal/api.OpenAPISpec()` 只註冊路由、不需要資料庫；快照 commit 在 `internal/api/openapi.json`，Go 測試檢查它與路由一致（go job 不需要 Node），web.yml 檢查由它產生的型別已 commit。
 8. **非後端路徑的分派**：在 api 層 authn 之前包一層，`/api`、`/mcp`、`/healthz`、`/readyz` 照舊進入 mux；不在 mux 上註冊 `/` catch-all（會改變 405 與未知 `/api/*` 的語意）。UI 只掛在 TCP listener，不掛在 CLI 用的本機 socket。
-9. **字型**：Barlow 與 Barlow Semi Condensed 用 Fontsource 的 latin 子集自架（400／500／600 與 Semi Condensed 600）；閱讀區的 Source Serif 4 等到 UI-2 需要時再加。
+9. **字型**：Barlow 與 Barlow Semi Condensed 用 Fontsource 的 latin 子集自架（400／500／600 與 Semi Condensed 600）；閱讀區的 Source Serif 4 等到 UI-2 需要時再加。（2026-11-25 補上：Source Serif 4 與 Noto Serif TC／SC 已自架，只留 woff2，Barlow 的 woff 備援也一併拿掉，見 10.31。）
 10. **錯誤類別**：`ErrorCallout` 的類別先依狀態碼推測（網路錯誤與 5xx 是「暫時無法完成」，其餘是「需要你處理」），頁面可以覆寫；後端的 `Error` 還沒有類別欄位（`internal/api/errors.go` 的 TODO）。
 
 ### 10.3 待決問題
@@ -443,7 +443,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | 設定的「通知」分區：端點列表（種類、主機／末四碼、事件、啟用狀態）、新增與編輯（四種 notifier 的欄位、密鑰只寫不讀、七個事件）、傳送測試通知與結果、停用與刪除（確認）、最近的通知（outbox） | 完成 | `src/pages/settings/NotificationsSection.tsx` |
 | 設定的「預算」分區：月預算、單部上限、提醒門檻、預算時區；本月花費、預留與剩餘 | 完成 | `src/pages/settings/BudgetSection.tsx` |
 | 影音詳情的「畫面」分頁：印樣（只看選中的／全部候選）、時間（點擊跳播）、章節、圖說、排除原因、張數摘要與不足提示 | 完成 | `src/pages/item/NotePanels.tsx` |
-| 影音詳情的「筆記」分頁：閱讀字體渲染（標題、段落、清單、callout、表格、程式碼、連結只留 http／https／mailto、wikilink 轉文字）、同一部影音的時間連結點擊跳播、`![[…frame_NNNN.jpg]]` 對應到畫面圖片、自動檢查、寫入 vault 的路徑與 commit、過時提示與「重新產生筆記」、下載 Markdown | 完成 | `NotePanels.tsx`、`src/notes` |
+| 影音詳情的「筆記」分頁：閱讀字體渲染（標題、段落、清單、callout、表格、程式碼、連結只留 http／https 與站內路徑（2026-11-25 依 NFR-SEC-2 修正，原本放行 mailto，見 10.31）、wikilink 轉文字）、同一部影音的時間連結點擊跳播、`![[…frame_NNNN.jpg]]` 對應到畫面圖片、自動檢查、寫入 vault 的路徑與 commit、過時提示與「重新產生筆記」、下載 Markdown | 完成 | `NotePanels.tsx`、`src/notes` |
 | 總覽（`/`，依賴 LIB-09 `/api/overview`）、媒體庫的批次操作（LIB-08 `POST /api/items/batch`）、搜尋、Hub | 未做：後端還沒有（不放會 501 的入口） | — |
 | 訂閱列表的「新內容」欄 | 完成（10.24 第 6 點，SUB-R14） | `src/pages/subscriptions/SubscriptionsPage.tsx` |
 | 處理方案被訂閱使用時的提示 | 未做：沒有「哪些訂閱用這個處理方案」的查詢（可以從列表的 `profile` 組合，留給之後） | — |
@@ -472,7 +472,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 13. **還沒有產生端的事件**（`digest`、`alert`、`source.better_available`：DIG、OPS 告警、SRC-10 尚未實作）仍可勾選，旁邊標示「尚未會發出」（已過期：DIG、OPS、SRC-10 實作後這個標示已經移除）。
 14. **預算分區** PUT 只送 `monthly_usd`、`per_item_usd`、`warn_at_percent`、`timezone` 四個欄位（GET 另外回傳的 `month`、`spent_usd` 等送回去會 422）；空白送 `null`（不限）。時區用文字輸入，驗證交給後端。
 15. **筆記模板**：沒有單筆 GET，編輯頁從列表找；預覽只能用已儲存的版本（API 吃 `<id>@<版本>`），有未儲存的修改時提示（10.24 第 7 點已改成用草稿預覽）。三欄的中欄只連到 Prompt 庫：沒有 API 把模板和 prompt 綁在一起（處理方案分別選）。可用變數與五項檢查寫在前端（`NOTE_CHECKS`、`TEMPLATE_VARS`，與 NOTE-R7、R11 一致；後端改了要同步）。
-16. **Markdown renderer 自寫**（`src/notes/markdown.ts`、`NoteMarkdown.tsx`）：輸出 React element，不用 `dangerouslySetInnerHTML`，不加相依；原始 HTML 一律是文字，連結只留 http／https／mailto，`![](…)` 外部圖片只顯示替代文字，wikilink 只留文字，標題層級往下移一層（頁面已有 h1）。只支援筆記會用到的語法（巢狀清單攤平成一層）。
+16. **Markdown renderer 自寫**（`src/notes/markdown.ts`、`NoteMarkdown.tsx`）：輸出 React element，不用 `dangerouslySetInnerHTML`，不加相依；原始 HTML 一律是文字，連結只留 http／https 與站內路徑（2026-11-25 依 NFR-SEC-2 修正，原本放行 mailto、丟掉站內路徑，見 10.31），`![](…)` 外部圖片只顯示替代文字，wikilink 只留文字，標題層級往下移一層（頁面已有 h1）。只支援筆記會用到的語法（巢狀清單攤平成一層）。
 17. **筆記中的畫面嵌入**以檔名的 `frame_NNNN` 對應到 `GET /api/items/{id}/frames/{n}?size=thumb`（`internal/notes/render.go` 的 `%04d` 就是畫面編號）。待決：frames 重跑後版本會換，筆記若還沒重新產生，NNNN 可能指到新版本的另一張畫面（vault 內的檔案是 pin 住的舊版本，不受影響）；需要的話 API 要讓筆記帶畫面版本。
 18. **時間連結跳播**只在連結指向同一部影音時（比對主機、路徑與 YouTube 的 `v`；`t=` 或 `#t=`）攔截，其他連結開新分頁。
 19. **畫面與筆記只在切到該分頁時讀取**，404 `no_frames`／`no_note` 是「還沒有」，顯示說明不當成錯誤；SSE 的 `stage.status` 在 frames、note、publish `done` 時讓兩者失效。詳情頁的分頁順序是字幕、畫面、筆記、步驟、紀錄、輸出（README §3.6 的 1–4 是字幕、畫面、筆記、紀錄）。
@@ -826,3 +826,73 @@ pages.md §4 與 design-language.md §6.1 的時間帶圖層中，10.26 之後�
 
 1. **說話密度**：用 `GET /api/items/{id}/cues` 的原始字幕（`source`；沒有時用 `normalized`）在前端計算，不新增後端。**固定用原始字幕、不跟著字幕分頁的顯示模式**：切換原始、校正、譯文時輪廓不會跳動；譯文的字數和原文不同，用它算出來的「說話速度」沒有意義。整段影音切成 240 個區間，每句的字數（不含空白的 code point）平均分到它的時間範圍，區間的值是「字數／秒，依重疊時間加權」（§6.1），再做 1-2-1 平滑；高度依最大值正規化（最高 85%）。原始字幕還沒有時（轉錄未完成）照舊只畫點狀基線；ASR 沒有逐段的進度，所以不畫「轉錄到一半」的輪廓。輪廓是裝飾（底軌在 `aria-hidden` 內），**文字版本是相對的描述**：「最密集的是 MM:SS–MM:SS」（長度約為全長 1/20 的視窗）與「最長的沉默是 MM:SS–MM:SS」（沒有字幕的時間，至少 5 秒；沒有時不寫），放在 visually-hidden 的段落，以 `StatusBand` 新增的選用 `describedBy` 接到 slider 的 `aria-describedby`。不寫「每秒 N 字」這類絕對數字：字數依語言而不同，沒有可比的意義。`ChapterTrack` 多一個 `baseline`，有輪廓時不畫基線。
 2. **畫面刻度**：用 `GET /api/items/{id}/frames`（FRM-R10），和畫面分頁共用同一份快取（`items.frames(id)`，frames、note、publish 完成時失效）；frames 步驟 `done` 才讀，404 `no_frames` 當成沒有畫面。`StatusBand` 新增選用的 `marks`（`{at, selected, label}`）：選中的畫面畫 §6.1 的「底軌上方 6px Cue 三角加 1px Ink 邊」，候選畫面畫「底軌下方 1px Pewter 刻度」，兩者形狀不同（三角與直線），不只靠顏色。**刻度不是按鈕**：它們在 `role="slider"` 裡面（slider 的子元素必須是裝飾，放可聚焦的元素會違反 axe 的 nested-interactive），而且一部影音可能有幾十張選中的畫面，每張一個 tab stop 會讓鍵盤使用者要按很多次才到播放器。改成指標在選中畫面的 6px 內（`MARK_SNAP_PX`）時，hover 對齊到那張畫面、顯示它的時間碼與「畫面 N：圖說」（圖說是不可信的文字，只用文字節點，不設 `lang`），點擊跳到那張畫面的時間；離得遠時照原本的點擊位置。候選畫面不對齊（數量多、彼此很近）。可及的版本是畫面分頁（逐張列出、點擊跳播），時間帶的 `aria-describedby` 另外寫「時間帶上方的三角是選中的 N 張畫面，下方的細刻度是其他 M 張候選；「畫面」分頁可以逐張查看並跳到該時間。」。frames 步驟沒有完成（例如只有音訊的內容，§6.1 的特殊情況）時不讀取、不畫。
+
+### 10.31 設計語言與 NFR-SEC-2 的落差：閱讀字型、閱讀區版面、圖示、收合導覽、Markdown 連結（2026-11-25）
+
+一次唯讀稽核找到 design-language.md §4、§5 與 NFR-SEC-2 中程式偏離規格的五處。逐項重新驗證後都確實偏離，全部修正。下面的決定都是「（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）」。
+
+| 項目 | 狀態 | 位置 |
+| --- | --- | --- |
+| 閱讀字型（§4.1）：Source Serif 4 ＋ Noto Serif TC／SC 以 Fontsource 自架。原本只寫了字型名稱，而且全域的 `* { font-family }` 規則讓 `.note-view` 底下的段落仍是 Barlow | 完成 | `src/notes/{readingFonts.ts,fonts/}`、`src/notes/NoteMarkdown.tsx`、`scripts/fontsource-slim.ts`、`scripts/check-bundle.mjs` |
+| 閱讀區版面（§4.3、§5.2）：16px；中文行高 1.8、最寬 38em；其他語言行高 1.6、最寬 66ch。原本是 72ch／1.7 | 完成 | `src/styles/m4.css`（`.note-view`） |
+| 圖示（§5.4）：Phosphor Icons Regular，封裝成 `Icon`；導覽、`StatusBadge`、`ErrorCallout`、篩選與檢視 chip 的 × 都改用它 | 完成：沒有剩下的 inline SVG 圖示（時間帶的說話密度 `density.tsx` 是 §6.1 的圖形，不是圖示；底部分頁列照 §8 只有文字） | `src/components/{Icon.tsx,icons.ts,StatusBadge.tsx,ErrorCallout.tsx}`、`src/shell/navIcons.ts`、`scripts/phosphor-regular.ts` |
+| 768–1279px 的收合導覽（§8、design-language.md §5.1）：64px 窄側欄只顯示圖示；1280px 以上維持展開，767px 以下維持底部分頁列 | 完成 | `src/shell/{AppShell.tsx,media.ts}`、`src/styles/base.css` |
+| Markdown 連結（NFR-SEC-2）：只允許 `http`、`https` 與站內路徑。原本放行 `mailto:`，站內路徑因為 `new URL()` 沒有 base 而被丟掉 | 完成 | `web/shared/src/notes/markdown.ts`（`safeHref`；Client 與 Hub 共用同一份） |
+| 字型與圖示的授權聲明（OFL 1.1、MIT） | 完成：`/third-party-notices.txt`（內嵌進 binary），原文取自各套件的 `LICENSE`，Barlow 也一併補上 | `public/third-party-notices.txt`、`scripts/gen-notices.mjs`、`src/notices.test.ts` |
+
+1. **閱讀字型的載入方式**：
+   - 字重只用 §4.3 的 400 與 600（標題、粗體與表頭用 600）。拉丁字母另外有斜體；中文沒有斜體，由瀏覽器合成。
+   - 中文只用 Fontsource 的 unicode-range 切片（`400.css`、`600.css`，各約 100 片），不用整包的 `chinese-traditional-*.css`（一個字重就 1.3MB）。
+   - CJK 字型裡的 latin、latin-ext、cyrillic、vietnamese 切片永遠用不到，因為字型堆疊前面的 Source Serif 4 會先處理這些字。打包前由 Vite 外掛去掉。
+   - **字型一律只用 woff2**：支援 es2022 的瀏覽器都支援 woff2，所以 woff 備援也去掉，包含原本的 Barlow。
+   - 中文字型的 `@font-face` 宣告本身就很大（unicode-range 清單：TC 74KB gzip、SC 67KB gzip），所以不放進初始 CSS。宣告依筆記的 `lang` 動態載入，沒有 `lang` 時用 `<html lang>`：
+     - 拉丁字母一律載入。
+     - 繁中載入 TC。`zh`、`zh-Hant`、`zh-TW`、`zh-HK` 等沒有標明简体的中文，都預設為繁中。
+     - 简中載入 SC，對應 `zh-Hans`、`zh-CN`、`zh-SG`、`zh-MY`。
+     - 日文與韓文不載入中文字型（漢字字形不同），改用 `--cjk` 的系統字型。
+   - 載入的只是宣告：瀏覽器要等閱讀區真的用到某個字，才下載那一片。
+   - 字型 CSS 只從 Client 的 `src/notes/NoteMarkdown.tsx` 匯入，不放進 `web/shared`，因為 Hub 有自己的風格（§9）。
+   - `font-display` 沿用 Fontsource 的 `swap`。
+   - `check:bundle` 另外檢查三件事：初始 CSS 沒有閱讀字型的 `@font-face`、dist 只有 woff2、CSS 裡沒有 `data:` 字型（CSP `font-src 'self'` 不變）。
+2. **閱讀字型的套用範圍**：§4.1 只列「筆記預覽、字幕閱讀模式」，所以只套用在 `.note-view`，也就是影音詳情的筆記與筆記模板的預覽。
+   - 「字幕閱讀模式」目前不存在，留待那個功能自己決定。
+   - 字幕句列表是操作用的列表（§6.2），摘要也不在 §4.1 的清單中，兩者都維持介面字型。
+   - 字型堆疊依 §4.2 只改 `--family`，不直接寫 `font-family`。简中、日文、韓文的覆寫規則同時寫在 `.note-view:lang(…)` 與 `.note-view :lang(…)`，才能蓋過 `tokens.css` 在每個子元素上重設的 `:lang()`。
+3. **行長**：§4.3 寫「中文最多 38 字（38em），英文最多 66 字元」，所以中文用 38em，其他語言用 66ch，判斷依據是 `:lang(zh)`。
+4. **圖示的大小**：Phosphor 的每個圖示定義都帶 6 種字重，所以用 Vite 外掛只保留 regular。唯一的例外是 `CheckCircle` 另外保留 fill，因為 §6.4 規定「完成」用實心勾，這比 §5.4 的 Regular 更具體。
+   - 圖示一律逐一從 `@phosphor-icons/react/dist/csr/<名稱>` 匯入，共用的放在 `src/components/icons.ts`，導覽的放在 `src/shell/navIcons.ts`。
+   - 狀態圖示照 §6.4 的形狀對應：空心圓 `Circle`、半實心圓 `CircleHalf`、時鐘 `Clock`、Agent `Robot`、實心勾 `CheckCircle`（fill）、斜線圓 `Prohibit`、叉號 `X`、驚嘆號 `WarningCircle`、錢包 `Wallet`、問號 `Question`。
+   - 與文字一起出現的圖示改為 §5.4 的 16px：`StatusBadge` 原本是 14px，chip 的 × 原本是 14px。
+5. **窄側欄的細節**：
+   - 頁面名稱留在 DOM 中，平常裁成 1px（不用 `display: none`，accessible name 不變）；hover 或鍵盤焦點時，在右側顯示成 Ink 底的 tooltip。沒有展開動畫，所以 `prefers-reduced-motion` 不需要另外處理。
+   - 每個目標 44×40px。
+   - 群組名稱（工作、調整、系統）同樣裁成 1px，螢幕閱讀器仍讀得到；畫面上改成群組之間的分隔線（§5.3：分隔線只用在分隔群組）。
+   - 品牌字只顯示第一個字母，完整名稱留在連結的 accessible name。
+   - 偏好設定（下拉選單）與登出放不下，收進一個圖示按鈕，打開對話框。按鈕名稱是「偏好設定與登出」，不叫「更多」：頁面上的「更多」選單同時可見，螢幕閱讀器會分不出來。
+   - 底部與對話框兩組控制項由 `useMediaQuery`（`src/shell/media.ts`）只渲染其中一組，DOM 裡不會有隱藏的重複控制項。
+   - 窄側欄沒有手動展開的開關，因為規格沒有要求。
+6. **站內路徑**：
+   - 允許的形式：以 `/` 開頭，但不是 `//`（protocol-relative 會連到別的網站），也不含反斜線。
+   - 拒絕的字元：先拒絕任何控制字元、空白與 DEL，因為 URL 解析器會默默去掉 tab 與換行，`java\tscript:` 會變成 `javascript:`。
+   - 絕對網址不帶 base 解析，只放行 `http:` 與 `https:`。
+   - `#錨點`、`?query`、`./相對路徑` 一律拒絕，因為 NFR-SEC-2 沒有列。
+   - `mailto:` 在網頁上只顯示連結文字。NOTE-R8 寫入 vault 的 Markdown 仍可保留 mailto：那是 Obsidian 的檔案，不經過這個 renderer。
+   - 圖片原本就符合「只允許站內產出」：`![](…)` 一律只顯示替代文字，只有 `![[…frame_NNNN.jpg]]` 由 `resolveFrame` 對應到站內的畫面。這次補了測試當作證據。
+
+實測（本機 `npm run build` 與 `check:bundle`）：
+
+- **初始 JS（gzip）**：rebase 前從 283.2KB 增加到 287.0KB（+3.8KB，含 22 個圖示與窄側欄）；併入 master 最新的時間帶切片後是 287.4KB，預算 300KB。導覽圖示如果保留全部 6 種字重，初始 JS 會是 292.5KB，只留 regular 之後才降下來。
+- **字型**：dist 共 414 個 woff2，合計 12.6MB（Barlow 4 個、Source Serif 4 共 8 個、Noto Serif TC／SC 的 400 與 600 共 402 片）。dist 從 1.8MB 增加到 14.6MB。
+- **binary（NFR-RES-5，< 80MB）**：用 goreleaser 的旗標（`-trimpath -ldflags="-s -w"`）建置，linux/amd64 是 45.1MB，windows/amd64 是 45.7MB；CI 原本的最大值是 32.2MB。
+- **Docker image（< 800MB）**：原本 322MB，預計增加同樣的約 13MB。
+
+驗證：新增或修改的測試如下。
+
+- `src/notes/markdown.test.tsx`：XSS 測試字串 39 個，並修改既有的「只允許 http、https、mailto」測試，因為 mailto 不在 NFR-SEC-2 的允許清單中。
+- `src/notes/readingFonts.test.tsx`：語言對應、Fontsource CSS 瘦身、字型只從筆記載入。
+- `src/styles/reading.test.ts`：讀 m4.css 斷言行高、行長與字重。
+- `src/components/icon.test.tsx`：Icon 的屬性、10 種狀態的形狀各不相同（含 axe）、Regular 瘦身。
+- `src/shell/navRail.test.tsx`：用 matchMedia 模擬三種寬度，加上 CSS 斷言（64px、目標大小、名稱只裁切不隱藏、沒有動畫），並跑 axe。
+- `src/notices.test.ts`：授權聲明與套件一致。
+
+Hub 的 typecheck、lint、測試與 build 也都通過。

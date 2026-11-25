@@ -108,6 +108,8 @@ src/
 - 顏色、圓角、間距、字級只用 `tokens.css` 的變數；不要寫死色碼。深色主題靠 `light-dark()`，不用另寫一套選擇器。
 - 一個畫面最多一個 `variant="primary"` 的按鈕；不可復原的操作用 `danger` 並先確認（design-language.md §6.5）。
 - 狀態一律用 `StatusBadge`（形狀＋文字，不只靠顏色）；錯誤一律用 `ErrorCallout`（類別、訊息、修正動作）。
+- 圖示一律用 `Icon` 包 Phosphor Icons 的 Regular（design-language.md §5.4）：單獨出現 20px、與文字一起 16px，`aria-hidden`、顏色繼承文字色。圖示從 `@phosphor-icons/react/dist/csr/<名稱>` 逐一匯入（共用的加在 `src/components/icons.ts`，只有某個 lazy 頁面用到的就在那個頁面匯入），**不要**從套件入口整包匯入。`scripts/phosphor-regular.ts` 在打包時只留 regular 字重，要用 fill 的圖示要加進它的 `KEEP_FILL`。
+- 閱讀區（筆記）的字型是 Source Serif 4 ＋ Noto Serif TC／SC，由 `src/notes/NoteMarkdown.tsx` 依內容的 `lang` 動態載入（`src/notes/readingFonts.ts`）；不要在 `main.tsx` 或其他初始載入的地方匯入它們（`check:bundle` 會擋）。字型只用 woff2，`scripts/fontsource-slim.ts` 去掉 Fontsource 的 woff 備援與 CJK 字型的拉丁切片。新增字型或圖示套件時，執行 `npm run gen:notices` 更新 `public/third-party-notices.txt`（授權聲明，`src/notices.test.ts` 檢查）。
 - 對話框與抽屜用 `Dialog`／`Drawer`（Radix）：焦點鎖定、Esc 關閉、關閉後焦點回到開啟前的元素。
 - 新元件至少要有兩個頁面會用到才放進 `components/`；每個元件都要有 axe 測試。
 
