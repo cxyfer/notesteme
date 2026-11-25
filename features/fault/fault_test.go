@@ -73,6 +73,7 @@ func envInt(t *testing.T, name string, def int) int {
 // 「kill -9 → 重新啟動 → 斷言」。第 i 次在該點的第 1+(i mod 命中次數) 次命中時殺掉，同一個點的不同命中都會輪到
 // （例如 translate 的 plan、chunk、assemble 三個任務）。
 func TestFaultInjection(t *testing.T) {
+	t.Parallel() // 與另一個測試重疊（兩者各用自己的資料目錄與子程序），縮短 CI 的縮小版
 	iterations := envInt(t, envIterations, 3)
 	parallel := envInt(t, envParallel, 2)
 	start := time.Now()
