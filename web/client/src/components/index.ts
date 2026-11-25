@@ -2,6 +2,7 @@
 export { Button, type ButtonProps, type ButtonVariant } from "./Button";
 export { Dialog, Drawer, type DialogProps } from "./Dialog";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
+export { Icon, type IconComponent, type IconProps } from "./Icon";
 export {
   ErrorCallout,
   type ErrorAction,

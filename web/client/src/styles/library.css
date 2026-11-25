@@ -125,10 +125,6 @@
 .chip__remove:hover {
   background: var(--surface-hover);
 }
-.chip__remove svg {
-  width: 14px;
-  height: 14px;
-}
 
 /* ---------- 儲存檢視（LIB-R26～R28） ---------- */
 .saved-views {

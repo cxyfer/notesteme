@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 import { describeError } from "../api/describeError";
 import { isApiError } from "../api/errors";
 import { Button } from "./Button";
+import { Icon } from "./Icon";
+import { WarningCircle } from "./icons";
 
 /** 錯誤類別（plan 第 5.2 節；後端的 Error 尚未帶類別，見 internal/api/errors.go 的 TODO）。 */
 export type ErrorCategory = "retryable" | "wait" | "needs_action" | "fatal";
@@ -44,15 +46,7 @@ export function ErrorCallout({
   const cat = category ?? guessCategory(error);
   return (
     <div className="callout" role={live ? "alert" : undefined} data-category={cat}>
-      <svg className="callout__icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
-        <path
-          d="M8 4.5v4.25M8 11.25h.01"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-      </svg>
+      <Icon icon={WarningCircle} size={16} className="callout__icon" />
       <p className="callout__category">{t(`errors.category.${cat}`)}</p>
       <p className="callout__message">{message ?? describeError(t, error)}</p>
       {actions.length > 0 && (

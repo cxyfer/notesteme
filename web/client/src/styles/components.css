@@ -234,8 +234,6 @@
   white-space: nowrap;
 }
 .status__icon {
-  width: 14px;
-  height: 14px;
   flex: none;
 }
 .status--done {

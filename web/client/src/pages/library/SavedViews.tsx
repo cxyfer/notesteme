@@ -9,7 +9,8 @@ import { useTranslation } from "react-i18next";
 import { api, apiPath } from "../../api/client";
 import { queryKeys } from "../../api/queryKeys";
 import type { components } from "../../api/schema";
-import { Button, Dialog, ErrorCallout, TextField, useToast } from "../../components";
+import { Button, Dialog, ErrorCallout, Icon, TextField, useToast } from "../../components";
+import { X } from "../../components/icons";
 import { FILTER_KEYS, validateLibrarySearch, type LibrarySearch } from "./filters";
 
 type ViewQuery = components["schemas"]["ViewQuery"];
@@ -183,14 +184,7 @@ export function SavedViewsList({
                 aria-label={t("library.views.delete", { name: v.name })}
                 onClick={() => setDeleting(v)}
               >
-                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <path
-                    d="m4.5 4.5 7 7m0-7-7 7"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                </svg>
+                <Icon icon={X} size={16} />
               </button>
             </li>
           );

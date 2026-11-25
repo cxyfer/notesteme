@@ -9,6 +9,7 @@ export const PACKAGES = [
   "@fontsource/source-serif-4",
   "@fontsource/noto-serif-tc",
   "@fontsource/noto-serif-sc",
+  "@phosphor-icons/react",
 ];
 
 export function renderNotices(root = new URL("../", import.meta.url)) {
