@@ -26,7 +26,7 @@ import (
 
 // 父程序讀的環境變數。
 const (
-	// envIterations 是每個（點 × 時點）的執行次數；預設 3（本機），CI 的 go job 設 1，每晚的 fault.yml 設 100（NFR-REL-1）。
+	// envIterations 是每個（點 × 時點）的執行次數；預設 3（本機），CI 的 fault job 設 1，每晚的 fault.yml 設 100（NFR-REL-1）。
 	envIterations = "NOTESTEME_FAULT_ITERATIONS"
 	// envParallel 是同時執行的迭代數；預設 2。
 	envParallel = "NOTESTEME_FAULT_PARALLEL"

@@ -5,7 +5,7 @@
 // 在 NOTESTEME_FAULT 指定的故障點被 SIGKILL；父程序再起一個子程序在同一份 data dir 上重新啟動，然後斷言
 // DB 沒有損毀、pipeline 依 PIPE-R11 做完且結果與沒中斷時相同、產出檔的 sha256 相符、付費呼叫沒有重複付費。
 //
-//	go test -tags faultinject ./features/fault -run TestFaultInjection -count=1                       # 每點 3 次（預設；CI 的 go job 設 1 次）
+//	go test -tags faultinject ./features/fault -run TestFaultInjection -count=1                       # 每點 3 次（預設；CI 的 fault job 設 1 次）
 //	NOTESTEME_FAULT_ITERATIONS=100 go test -tags faultinject ./features/fault -run TestFaultInjection -timeout 0  # 每晚（fault.yml）
 //
 // 一般建置只有這個檔案（沒有測試），go test ./features/... 不會因為整個套件被 build tag 排除而失敗。

@@ -2,7 +2,7 @@ name: Fault injection
 
 # NFR-REL-1～3：每個故障點（步驟的開始、中間、提交前，產出檔 rename 前後，付費呼叫回來與落地之後）
 # 各 kill -9 100 次再重新啟動，斷言 DB 沒有損毀、pipeline 做完且結果相同、產出的 sha256 相符、沒有重複付費；
-# 另外跑 REL-2 的損毀測試。設計見 docs/specs/nfr.md 第 11.1 節。CI 的 go job 只跑每點 1 次的縮小版。
+# 另外跑 REL-2 的損毀測試。設計見 docs/specs/nfr.md 第 11.1 節。ci.yml 的 fault job 只跑每點 1 次的縮小版。
 on:
   schedule:
     - cron: "47 19 * * *" # UTC 19:47（台灣時間 03:47），與 fuzz.yml 錯開

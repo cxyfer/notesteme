@@ -48,21 +48,31 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      # features/fault 與 internal/faultpoint 的 on.go 只在 faultinject tag 下編譯（NFR-REL-1～3）。
-      # 只有這兩個套件的檔案隨 tag 改變（internal/faultpoint 的 TestOnlyFaultpointUsesTheTag 擋住其他地方使用這個 tag），
-      # 其餘套件的 vet 結果與上一步相同，不再重做。
-      - name: go vet (faultinject)
-        run: go vet -tags faultinject ./internal/faultpoint ./features/fault
-
       # 驗收場景（features 套件本身）另開 bdd 與 bdd-extra 兩個 job，各自佔一台 runner；
       # 這裡只跑其餘的套件（含 features/steps、features/internal 的 harness 單元測試）。
       # -race 下 internal/pipeline 與 internal/api 各要 10～26 分鐘，所以逾時放寬到 60m（每個測試 binary 各自計算）。
       - name: go test (race, without the scenarios)
         run: go test -race -count=1 -timeout 60m $(go list ./... | grep -vx 'github.com/cxyfer/notesteme/features')
 
-      # NFR-REL-1～3 的故障注入縮小版：51 個故障點各 kill -9 一次再重新啟動，與 REL-2 的損毀測試平行；
-      # 每點 100 次的完整版在 fault.yml 每晚執行（docs/specs/nfr.md 第 11.1 節）。internal/faultpoint 只跑
-      # 需要 tag 的 TestHit*：正式建置不含故障注入的檢查（會再建一次 binary）已在上一步以一般建置跑過。
+  # NFR-REL-1～3 的故障注入縮小版：51 個故障點各 kill -9 一次再重新啟動，與 REL-2 的損毀測試平行；每點 100 次的
+  # 完整版在 fault.yml 每晚執行（docs/specs/nfr.md 第 11.1 節）。放在 go job 中實測會讓它多 42 秒（vet 12＋執行 30），
+  # 所以和 coverage 一樣獨立成一個 job，與 go job 平行，不拖長 CI。
+  # internal/faultpoint 只跑需要 tag 的 TestHit*：正式建置不含故障注入的檢查在 go job 以一般建置執行。
+  fault:
+    name: Fault injection (1 iteration per point)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # 只有 internal/faultpoint 與 features/fault 的檔案隨 tag 改變（TestOnlyFaultpointUsesTheTag 擋住其他地方使用），
+      # 其餘套件的 vet 結果與 go job 相同。
+      - name: go vet (faultinject)
+        run: go vet -tags faultinject ./internal/faultpoint ./features/fault
+
       - name: fault injection (1 iteration per point)
         env:
           NOTESTEME_FAULT_ITERATIONS: "1"
