@@ -22,13 +22,24 @@ export type Block =
   | { t: "embed"; target: string }
   | { t: "hr" };
 
-/** 只允許 http、https、mailto；其他（javascript:、data:、file:、obsidian: …）回傳 undefined */
+// NFR-SEC-2：連結只允許 http、https 與站內路徑。
+// 控制字元與空白（含 tab、換行、DEL）一律拒絕：URL 解析器會默默去掉 tab 與換行，`java\tscript:` 會變成 `javascript:`。
+// eslint-disable-next-line no-control-regex
+const UNSAFE_CHARS = /[\u0000-\u0020\u007f-\u009f\u2028\u2029]/;
+
+/**
+ * 只允許 `http:`、`https:` 的絕對網址，與站內路徑（`/` 開頭，但不是 `//` 或 `/\`，也不含反斜線）；
+ * 其他（`mailto:`、`javascript:`、`data:`、`vbscript:`、`file:`、`obsidian:`、`#…`、`?…`、相對路徑…）回傳 undefined。
+ */
 export function safeHref(href: string): string | undefined {
+  const s = href.trim();
+  if (!s || UNSAFE_CHARS.test(s) || s.includes("\\")) return undefined;
+  // 站內路徑：`//host` 是 protocol-relative，會連到別的網站
+  if (s.startsWith("/")) return s.startsWith("//") ? undefined : s;
   try {
-    const u = new URL(href.trim());
-    return u.protocol === "http:" ||
-      u.protocol === "https:" ||
-      u.protocol === "mailto:"
+    // 不帶 base 解析：沒有 scheme 的字串（含 `%` 編碼的 `javascript%3A`、`javascript&colon;`）會丟出例外
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:"
       ? u.href
       : undefined;
   } catch {
