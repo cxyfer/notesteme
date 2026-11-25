@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -175,7 +176,7 @@ func (rt *routes) upload(w http.ResponseWriter, r *http.Request, limit int64) {
 	}
 	defer os.RemoveAll(dir)
 
-	up, apiErr := rt.readUpload(mr, dir, limit)
+	up, apiErr := rt.readUpload(ctx, mr, dir, limit)
 	// 本體讀完（或失敗）：清除期限，之後的 ffprobe 與入庫可能很久，不能讓連線的背景讀取逾時而取消 request。
 	_ = rc.SetReadDeadline(time.Time{})
 	if apiErr != nil {
@@ -216,7 +217,7 @@ func (rt *routes) upload(w http.ResponseWriter, r *http.Request, limit int64) {
 
 // readUpload 串流讀出 multipart：file 必填且只能一個，until、profile、overrides 選填，其他欄位 422。
 // 檔案邊寫入 dir 邊計算 sha256；超過 limit 回 413。回傳的 UploadRequest.TmpPath 在 dir 底下。
-func (rt *routes) readUpload(mr *multipart.Reader, dir string, limit int64) (pipeline.UploadRequest, *Error) {
+func (rt *routes) readUpload(ctx context.Context, mr *multipart.Reader, dir string, limit int64) (pipeline.UploadRequest, *Error) {
 	var (
 		up       pipeline.UploadRequest
 		gotFile  bool
@@ -246,7 +247,7 @@ func (rt *routes) readUpload(mr *multipart.Reader, dir string, limit int64) (pip
 			if !pipeline.ValidUploadName(name) {
 				return up, invalid("檔名不正確。")
 			}
-			sum, tmpPath, aerr := rt.saveUpload(part, dir, name, limit)
+			sum, tmpPath, aerr := rt.saveUpload(ctx, part, dir, name, limit)
 			if aerr != nil {
 				return up, aerr
 			}
@@ -296,11 +297,11 @@ func (rt *routes) readUpload(mr *multipart.Reader, dir string, limit int64) (pip
 
 // saveUpload 把檔案內容寫到 dir，同時計算 sha256；回傳雜湊與暫存檔路徑。
 // 暫存檔保留原本的副檔名：ffprobe 對部分格式要靠副檔名辨識。
-func (rt *routes) saveUpload(part io.Reader, dir, name string, limit int64) (sum, path string, apiErr *Error) {
+func (rt *routes) saveUpload(ctx context.Context, part io.Reader, dir, name string, limit int64) (sum, path string, apiErr *Error) {
 	path = filepath.Join(dir, "upload"+safeExt(name))
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
-		rt.d.Log.Error("建立上傳暫存檔失敗", "error", err)
+		rt.d.Log.ErrorContext(ctx, "建立上傳暫存檔失敗", "error", err)
 		return "", "", asError(nil)
 	}
 	h := sha256.New()

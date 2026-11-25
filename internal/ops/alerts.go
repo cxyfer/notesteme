@@ -123,7 +123,7 @@ func (a *Alerter) Check(ctx context.Context, now time.Time) error {
 	add(KindStuckTask, c, err)
 	c, err = a.staleJobs(ctx, rd, now)
 	add(KindJobStale, c, err)
-	add(KindDiskUsage, a.disk(states), nil)
+	add(KindDiskUsage, a.disk(ctx, states), nil)
 	c, err = a.staleCookies(ctx, rd, now)
 	add(KindCookieStale, c, err)
 	c, err = a.ytdlp(ctx, rd, now)
@@ -282,7 +282,7 @@ func clip(s string, n int) string {
 
 // disk 是 OPS-R16：資料目錄所在檔案系統的用量大於或等於門檻；成立後要低於門檻減 5 個百分點才解除。
 // 讀不到用量時這次不判斷（維持原來的狀態）。
-func (a *Alerter) disk(states []store.AlertState) condition {
+func (a *Alerter) disk(ctx context.Context, states []store.AlertState) condition {
 	limit := a.Cfg.DiskUsagePercent
 	if limit <= 0 {
 		return condition{disabled: true}
@@ -293,7 +293,7 @@ func (a *Alerter) disk(states []store.AlertState) condition {
 	}
 	pct, err := usage(a.DataDir)
 	if err != nil {
-		a.log().Warn("讀取磁碟用量失敗，這次不判斷磁碟用量告警", "error", err)
+		a.log().WarnContext(ctx, "讀取磁碟用量失敗，這次不判斷磁碟用量告警", "error", err)
 		return condition{}
 	}
 	c := condition{firing: map[string]string{}, known: true}

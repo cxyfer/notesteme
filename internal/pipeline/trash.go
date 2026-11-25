@@ -140,7 +140,7 @@ func (p *Pipeline) Trash(ctx context.Context, id string, opts TrashOptions) (Tra
 		}
 	}
 	if cancelled {
-		p.removeMediaCache(it.ID)
+		p.removeMediaCache(ctx, it.ID)
 	}
 
 	// 輸出檔（DEL-R9）：預設保留；指定時刪除沒被改過的。已經 commit，失敗只記 log，不讓刪除變成失敗。
@@ -159,13 +159,13 @@ func (p *Pipeline) Trash(ctx context.Context, id string, opts TrashOptions) (Tra
 
 // removeMediaCache 刪除影音的媒體快取目錄（DEL-R2）。只在 itemID 是標準形式 UUID 時才組出路徑，
 // 失敗只記錄：快取可以重新下載，不影響刪除的結果。
-func (p *Pipeline) removeMediaCache(itemID string) {
+func (p *Pipeline) removeMediaCache(ctx context.Context, itemID string) {
 	if u, err := uuid.Parse(itemID); err != nil || u.String() != itemID {
-		p.log.Warn("影音 ID 不是標準形式，略過刪除媒體快取", "item", itemID)
+		p.log.WarnContext(ctx, "影音 ID 不是標準形式，略過刪除媒體快取", "item", itemID)
 		return
 	}
 	if err := os.RemoveAll(MediaCacheDir(p.dataDir, itemID)); err != nil {
-		p.log.Warn("刪除媒體快取失敗", "item", itemID, "error", err)
+		p.log.WarnContext(ctx, "刪除媒體快取失敗", "item", itemID, "error", err)
 	}
 }
 

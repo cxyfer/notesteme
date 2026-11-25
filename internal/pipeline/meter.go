@@ -122,9 +122,11 @@ type sourceMeterKey struct{}
 
 // sourceMeter 是一個 transcript 任務的付費來源計量：任務與影音的身分，加上成本服務。
 type sourceMeter struct {
-	svc  *cost.Service
-	st   *store.Store
-	log  interface{ Warn(string, ...any) }
+	svc *cost.Service
+	st  *store.Store
+	log interface {
+		WarnContext(context.Context, string, ...any)
+	}
 	call cost.Call
 }
 
@@ -200,7 +202,7 @@ func (m *unitMeter) after(ctx context.Context, outcome string, units float64, re
 		err = m.sm.st.Tx(wctx, func(r *store.Repo) error { return m.sm.svc.Settle(wctx, r, res, m.call, u) })
 	}
 	if err != nil {
-		m.sm.log.Warn("寫入成本紀錄失敗", "provider", m.call.Provider, "item", m.call.ItemID, "error", err)
+		m.sm.log.WarnContext(ctx, "寫入成本紀錄失敗", "provider", m.call.Provider, "item", m.call.ItemID, "error", err)
 	}
 }
 

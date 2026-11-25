@@ -880,7 +880,7 @@ func (p *Pipeline) trnAssemble(ctx context.Context, it store.Item, b *trnBase, t
 	var outs []*store.NewArtifact
 	discard := func() {
 		for _, a := range outs {
-			p.discardArtifactFile(a)
+			p.discardArtifactFile(ctx, a)
 		}
 	}
 	keys := make([]string, 0, len(targets))

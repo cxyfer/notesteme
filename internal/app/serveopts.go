@@ -100,7 +100,7 @@ const VPSNoTrustedProxiesWarning = "vps 部署沒有設定 trusted_proxies：經
 
 // warnInsecure 在啟動時寫一筆 Warn，之後每小時再寫一次，直到 server 關閉。
 func (s *Server) warnInsecure(env Env, listen string) {
-	s.log.Warn(InsecureWarning, "listen", listen)
+	s.log.WarnContext(s.root, InsecureWarning, "listen", listen)
 	go func() {
 		for {
 			t := env.Clock.NewTimer(insecureWarnEvery)
@@ -109,7 +109,7 @@ func (s *Server) warnInsecure(env Env, listen string) {
 				t.Stop()
 				return
 			case <-t.C():
-				s.log.Warn(InsecureWarning, "listen", listen)
+				s.log.WarnContext(s.root, InsecureWarning, "listen", listen)
 			}
 		}
 	}()

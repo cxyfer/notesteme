@@ -361,7 +361,7 @@ func TestVaultDeleteOutputs(t *testing.T) {
 	}
 	// 設定檔已經沒有這個 vault：保留。
 	r.p.vaults = nil
-	if st := r.p.vaultOutputStatus(store.Output{Vault: "main", Path: vaultSRT}, true); st.Reason != KeptVaultMissing {
+	if st := r.p.vaultOutputStatus(t.Context(), store.Output{Vault: "main", Path: vaultSRT}, true); st.Reason != KeptVaultMissing {
 		t.Errorf("沒有 vault = %+v", st)
 	}
 }
@@ -369,7 +369,7 @@ func TestVaultDeleteOutputs(t *testing.T) {
 func TestVaultInspectFileGuards(t *testing.T) {
 	r := newVaultRig(t)
 	rec := store.Output{Vault: "main", Path: "a/b.md", SHA256: "x"}
-	if st, reason := r.p.inspectVaultFile(filepath.Join(r.root, "missing"), rec, false); st != output.StateMissing || reason != "" {
+	if st, reason := r.p.inspectVaultFile(t.Context(), filepath.Join(r.root, "missing"), rec, false); st != output.StateMissing || reason != "" {
 		t.Errorf("不存在的 vault = %v %q", st, reason)
 	}
 	outside := t.TempDir()
@@ -378,7 +378,7 @@ func TestVaultInspectFileGuards(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(r.root, "a")); err != nil {
 		t.Fatal(err)
 	}
-	if st, reason := r.p.inspectVaultFile(r.root, rec, true); st != output.StateModified || reason != KeptModified {
+	if st, reason := r.p.inspectVaultFile(t.Context(), r.root, rec, true); st != output.StateModified || reason != KeptModified {
 		t.Errorf("經過連結 = %v %q", st, reason)
 	}
 	if _, err := os.Stat(filepath.Join(outside, "b.md")); err != nil {

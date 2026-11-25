@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -36,10 +37,10 @@ func SocketPath(dataDir string) string {
 //
 // 路徑長度受 sockaddr_un 限制（Linux 約 108 位元組）：超過時 log Warn 並略過本機 socket，
 // 回傳 (nil, nil)，serve 照常啟動；鎖檔的 Socket 留空，client 模式的 CLI 會提示改用 --server。
-func listenSocket(env Env, dataDir string, log *slog.Logger) (net.Listener, error) {
+func listenSocket(ctx context.Context, env Env, dataDir string, log *slog.Logger) (net.Listener, error) {
 	path := SocketPath(dataDir)
 	if len(path) > sockPathMax {
-		log.Warn("本機 socket 的路徑太長，略過本機 socket；本機 CLI 請改用 --server，或改用較短的資料目錄（NOTESTEME_DATA）",
+		log.WarnContext(ctx, "本機 socket 的路徑太長，略過本機 socket；本機 CLI 請改用 --server，或改用較短的資料目錄（NOTESTEME_DATA）",
 			"path", path, "length", len(path), "max", sockPathMax)
 		return nil, nil
 	}

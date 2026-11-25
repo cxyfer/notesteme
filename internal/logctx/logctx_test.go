@@ -62,8 +62,9 @@ func TestHandlerInjectsFieldsWithoutDuplicates(t *testing.T) {
 			}
 		}
 	}
-	if _, ok := lines[3]["request_id"]; ok {
-		t.Errorf("沒有 context 的 log 不應該有 request_id：%v", lines[3])
+	// 沒有 request ID 的 log（程序層級）帶 boot ID（NFR-OBS-1：每筆都有 request_id）。
+	if id, _ := lines[3]["request_id"].(string); id != BootID() || !strings.HasPrefix(id, "boot-") || !ValidID(id) {
+		t.Errorf("沒有 context 的 log 應該帶 boot ID %q：%v", BootID(), lines[3])
 	}
 }
 

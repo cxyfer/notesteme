@@ -72,7 +72,7 @@ func (p *Pipeline) expandPodcast(ctx context.Context, req IngestRequest) (ingest
 	}
 	feed, err := p.fetchFeed(ctx, feedURL.String())
 	if err != nil {
-		return ingestExpansion{}, p.feedError(err)
+		return ingestExpansion{}, p.feedError(ctx, err)
 	}
 	if len(req.Episodes) == 0 {
 		return ingestExpansion{}, invalidf("這是 Podcast feed，請在 episodes 指定要新增的集。")

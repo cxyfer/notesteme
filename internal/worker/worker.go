@@ -274,7 +274,7 @@ func (w *Worker) Drain(ctx context.Context, grace time.Duration) error {
 	select {
 	case <-idle:
 	default:
-		w.log.Warn("寬限期結束，取消還在執行的任務")
+		w.log.WarnContext(ctx, "寬限期結束，取消還在執行的任務")
 		w.mu.Lock()
 		for _, at := range w.active {
 			at.cancel()
@@ -293,7 +293,7 @@ func (w *Worker) Drain(ctx context.Context, grace time.Duration) error {
 		return fmt.Errorf("釋放租約：%w", err)
 	}
 	if n > 0 {
-		w.log.Info("已放回未完成任務的租約", "count", n)
+		w.log.InfoContext(ctx, "已放回未完成任務的租約", "count", n)
 	}
 	return nil
 }
@@ -326,7 +326,7 @@ func (w *Worker) Run(ctx context.Context) {
 		since := w.clk.Now()
 		n, err := w.RunRound(ctx)
 		if err != nil {
-			w.log.Error("領取任務失敗", "error", err)
+			w.log.ErrorContext(ctx, "領取任務失敗", "error", err)
 		}
 		if n > 0 {
 			continue
@@ -362,13 +362,13 @@ func (w *Worker) sleep(ctx context.Context, after time.Time) {
 // 只有 sleep（Run 的 goroutine）會呼叫它，所以 periodicFired 不需要鎖。
 func (w *Worker) nextWake(ctx context.Context, after time.Time) (d time.Duration, ok bool) {
 	if at, has, err := w.q.NextDue(ctx, after); err != nil {
-		w.log.Error("查詢下一個任務的時間失敗", "error", err)
+		w.log.ErrorContext(ctx, "查詢下一個任務的時間失敗", "error", err)
 	} else if has {
 		d, ok = at.Sub(w.clk.Now()), true
 	}
 	if w.periodic != nil {
 		if at, has, err := w.periodic.NextAt(ctx); err != nil {
-			w.log.Error("查詢定期工作的時間失敗", "error", err)
+			w.log.ErrorContext(ctx, "查詢定期工作的時間失敗", "error", err)
 		} else if pd := at.Sub(w.clk.Now()); has && (pd > 0 || !at.Equal(w.periodicFired)) && (!ok || pd < d) {
 			d, ok = pd, true
 			if pd <= 0 {

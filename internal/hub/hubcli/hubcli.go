@@ -116,7 +116,7 @@ func serve(ctx context.Context, env Env) int {
 		fmt.Fprintln(env.Stderr, "無法監聽", cfg.Listen, "：", err)
 		return ExitError
 	}
-	log.Info("notesteme-hub 已啟動", "listen", ln.Addr().String(), "public_url", cfg.PublicURL, "version", hub.Version())
+	log.InfoContext(ctx, "notesteme-hub 已啟動", "listen", ln.Addr().String(), "public_url", cfg.PublicURL, "version", hub.Version())
 	if err := s.Serve(ctx, ln); err != nil {
 		fmt.Fprintln(env.Stderr, "Hub 停止時發生錯誤：", err)
 		return ExitError

@@ -59,13 +59,13 @@ func (s *Server) registerOps(ctx context.Context, env Env, cfg *config.Config, l
 	// 排定失敗（例如測試以較舊的 schema 啟動、沒有 scheduled_jobs）只記 log，不擋 serve 啟動：
 	// 備份與告警是附加的維運功能，不該讓服務本身起不來。
 	if err := daily.Schedule(ctx); err != nil {
-		log.Error("無法排定每日備份", "err", err)
+		log.ErrorContext(ctx, "無法排定每日備份", "err", err)
 	}
 	if err := alerts.Schedule(ctx); err != nil {
-		log.Error("無法排定系統告警檢查", "err", err)
+		log.ErrorContext(ctx, "無法排定系統告警檢查", "err", err)
 	}
 	if err := ytdlpUpdate.Schedule(ctx); err != nil {
-		log.Error("無法排定 yt-dlp 的排程更新", "err", err)
+		log.ErrorContext(ctx, "無法排定 yt-dlp 的排程更新", "err", err)
 	}
 	return nil
 }

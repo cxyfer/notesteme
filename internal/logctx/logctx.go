@@ -2,6 +2,8 @@
 //
 //   - HTTP 請求：request_id（api 的 middleware 設定，回應標頭 X-Request-Id 是同一個值）。
 //   - 任務的一次執行：request_id（worker 每次執行任務產生一個）、task、item、stage（pipeline 讀到步驟後補上）。
+//   - 其他（程序層級的 log：啟動、關閉、放回租約、本機 socket 拒絕連線等）：request_id 是這個程序的 boot ID（BootID，
+//     「boot-」加 16 個十六進位字元），所以每一筆 log 都有 request_id（NFR-OBS-1、OPS 待決問題 O26）。
 //
 // 任務執行期間的 log 另外擷取最後幾行（Scope.Lines），失敗或 blocked 時隨步驟保存，
 // 讓 UI 看得到「相關的 log 片段」（NFR-OBS-2、PIPE-R2）。
@@ -41,6 +43,12 @@ const (
 	keyRequestID ctxKey = iota
 	keyScope
 )
+
+// bootID 是這個程序的識別：不屬於任何請求或任務的 log 用它當 request_id。前綴讓它與請求的 ID 區分。
+var bootID = "boot-" + NewID()
+
+// BootID 回傳這個程序的 boot ID（程序存活期間不變）。
+func BootID() string { return bootID }
 
 // NewID 產生一個新的 request ID：16 個十六進位字元。
 func NewID() string {
@@ -161,7 +169,7 @@ func Truncate(s string, max int) string {
 }
 
 // Handler 包住另一個 slog.Handler：從 context 補上 request_id、task、item、stage（record 或 With 已有同名欄位時不重複），
-// 並在任務範圍中擷取 log 行。
+// 並在任務範圍中擷取 log 行。context 中沒有 request ID 時（程序層級的 log），request_id 是 BootID。
 type Handler struct {
 	next slog.Handler
 	// pre 是 WithAttrs 累積的欄位（擷取的行也要有）；keys 是其中最上層的欄位名稱（去重用）。
@@ -207,27 +215,28 @@ func (h *Handler) WithGroup(name string) slog.Handler {
 // Handle 實作 slog.Handler。
 func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 	reqID := RequestID(ctx)
+	if reqID == "" {
+		reqID = bootID
+	}
 	scope := ScopeFrom(ctx)
-	if reqID != "" || scope != nil {
-		have := make(map[string]bool, r.NumAttrs())
-		r.Attrs(func(a slog.Attr) bool {
-			have[a.Key] = true
-			return true
-		})
-		r = r.Clone()
-		add := func(k, v string) {
-			if v != "" && !have[k] && !h.keys[k] {
-				r.AddAttrs(slog.String(k, v))
-			}
+	have := make(map[string]bool, r.NumAttrs())
+	r.Attrs(func(a slog.Attr) bool {
+		have[a.Key] = true
+		return true
+	})
+	r = r.Clone()
+	add := func(k, v string) {
+		if v != "" && !have[k] && !h.keys[k] {
+			r.AddAttrs(slog.String(k, v))
 		}
-		add(KeyRequestID, reqID)
-		if scope != nil {
-			task, item, stage := scope.fields()
-			add(KeyTask, task)
-			add(KeyItem, item)
-			add(KeyStage, stage)
-			scope.add(h.format(r))
-		}
+	}
+	add(KeyRequestID, reqID)
+	if scope != nil {
+		task, item, stage := scope.fields()
+		add(KeyTask, task)
+		add(KeyItem, item)
+		add(KeyStage, stage)
+		scope.add(h.format(r))
 	}
 	return h.next.Handle(ctx, r)
 }

@@ -75,7 +75,7 @@ func (p *Pipeline) Resolve(ctx context.Context, raw string) (Resolution, error) 
 	}
 	feed, err := p.fetchFeed(ctx, u.String())
 	if err != nil {
-		return Resolution{}, p.feedError(err)
+		return Resolution{}, p.feedError(ctx, err)
 	}
 	// 只列前 maxFeedEpisodes 集；要新增更舊的集，直接以 guid 指定（ING-R6）。
 	eps := feed.Episodes[:min(len(feed.Episodes), maxFeedEpisodes)]
@@ -136,11 +136,11 @@ func (p *Pipeline) fetchFeed(ctx context.Context, rawURL string) (*podcast.Feed,
 
 // feedError 把抓取 feed 的錯誤對應成使用者看得到的錯誤：防護擋下（內部網路、轉址太多、回應太大）是
 // *PolicyError；其他（連不上、非 2xx、不是 feed）都是 ErrUnrecognizedURL，原因只記在 log。
-func (p *Pipeline) feedError(err error) error {
+func (p *Pipeline) feedError(ctx context.Context, err error) error {
 	if pe := asPolicyError(err); pe != nil {
-		p.log.Warn("抓取 feed 時請求被防護擋下", "error", err.Error())
+		p.log.WarnContext(ctx, "抓取 feed 時請求被防護擋下", "error", err.Error())
 		return pe
 	}
-	p.log.Debug("網址不是可辨識的 feed", "error", err.Error())
+	p.log.DebugContext(ctx, "網址不是可辨識的 feed", "error", err.Error())
 	return ErrUnrecognizedURL
 }

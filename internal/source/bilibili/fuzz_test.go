@@ -13,6 +13,6 @@ func FuzzParseInfo(f *testing.F) {
 	f.Add([]byte(`null`))
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	f.Fuzz(func(t *testing.T, b []byte) {
-		_, _ = parseInfo(b, log)
+		_, _ = parseInfo(t.Context(), b, log)
 	})
 }

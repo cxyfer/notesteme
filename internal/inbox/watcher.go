@@ -120,7 +120,7 @@ func (w *Watcher) NextAt(context.Context) (time.Time, bool, error) {
 func (w *Watcher) Loop(ctx context.Context) {
 	for ctx.Err() == nil {
 		if err := w.Run(ctx); err != nil && ctx.Err() == nil {
-			w.log().Warn("inbox 掃描失敗", "error", err)
+			w.log().WarnContext(ctx, "inbox 掃描失敗", "error", err)
 		}
 		t := w.Clock.NewTimer(PollInterval)
 		select {
@@ -326,20 +326,20 @@ func (w *Watcher) scan(ctx context.Context) error {
 }
 
 // warnOnce 對同一個檔案的同一個狀態只記一次暫時性失敗的 log。
-func (w *Watcher) warnOnce(f file, msg string, err error) {
+func (w *Watcher) warnOnce(ctx context.Context, f file, msg string, err error) {
 	fp := fmt.Sprintf("%s|%d|%d", msg, f.size, f.mtime.UnixNano())
 	if w.warned[f.rel] == fp {
 		return
 	}
 	w.warned[f.rel] = fp
-	w.log().Warn(msg, "path", f.rel, "error", err)
+	w.log().WarnContext(ctx, msg, "path", f.rel, "error", err)
 }
 
 // process 處理一個穩定的檔案。回傳錯誤只限 ctx 取消與資料庫錯誤；檔案本身的問題記 log、下一輪重試。
 func (w *Watcher) process(ctx context.Context, inbox string, f file) error {
 	abs, err := w.Files.Resolve(filepath.Join(inbox, filepath.FromSlash(f.rel)))
 	if err != nil {
-		w.warnOnce(f, "inbox 檔案的路徑不在允許的範圍內，略過", err)
+		w.warnOnce(ctx, f, "inbox 檔案的路徑不在允許的範圍內，略過", err)
 		return nil
 	}
 
@@ -350,7 +350,7 @@ func (w *Watcher) process(ctx context.Context, inbox string, f file) error {
 		}
 		if !errors.Is(err, media.ErrNotMedia) {
 			// 工具不存在、逾時：不寫紀錄，下一輪重試。
-			w.warnOnce(f, "inbox 檔案無法探測，稍後重試", err)
+			w.warnOnce(ctx, f, "inbox 檔案無法探測，稍後重試", err)
 			return nil
 		}
 		return w.record(ctx, f, "", store.InboxNotMedia, "沒有音訊或影片："+probeDetail(err), "")
@@ -363,7 +363,7 @@ func (w *Watcher) process(ctx context.Context, inbox string, f file) error {
 			return ctx.Err()
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
-			w.warnOnce(f, "inbox 檔案無法讀取，稍後重試", err)
+			w.warnOnce(ctx, f, "inbox 檔案無法讀取，稍後重試", err)
 		}
 		return nil
 	}
@@ -384,7 +384,7 @@ func (w *Watcher) process(ctx context.Context, inbox string, f file) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		w.warnOnce(f, "inbox 檔案新增失敗，稍後重試", err)
+		w.warnOnce(ctx, f, "inbox 檔案新增失敗，稍後重試", err)
 		return nil
 	}
 	return w.record(ctx, f, sum, out.State, stateReason(out), out.Item.ID)
@@ -400,7 +400,7 @@ func (w *Watcher) record(ctx context.Context, f file, sum, state, reason, itemID
 		return fmt.Errorf("寫入 inbox 紀錄：%w", err)
 	}
 	delete(w.warned, f.rel)
-	w.log().Info("inbox 檔案已判定", "path", f.rel, "state", state, "reason", reason)
+	w.log().InfoContext(ctx, "inbox 檔案已判定", "path", f.rel, "state", state, "reason", reason)
 	return nil
 }
 

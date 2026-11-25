@@ -483,7 +483,7 @@ func (p *Pipeline) SeedSummary(ctx context.Context, itemID string, doc []byte) e
 		return r.SetStageState(ctx, run.ID, store.StageState{Status: store.StatusDone})
 	})
 	if err != nil {
-		p.discardArtifactFile(art)
+		p.discardArtifactFile(ctx, art)
 	}
 	return err
 }

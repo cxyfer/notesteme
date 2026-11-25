@@ -198,7 +198,7 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 	}
 	if ctx.Err() != nil {
 		// 關閉或取消中：不寫回，已寫出的產出檔也不會有記錄指向它。
-		p.discardResultFiles(res)
+		p.discardResultFiles(ctx, res)
 		return nil
 	}
 	if errors.Is(err, errItemGone) {
@@ -591,16 +591,16 @@ func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.Stag
 	}
 	if err != nil {
 		// 交易沒有 commit（例如 ctx 取消、資料庫錯誤）：沒有記錄會指向已寫出的產出檔。
-		p.discardResultFiles(res)
+		p.discardResultFiles(ctx, res)
 		return false, err
 	}
 	if stale || lost {
 		// 結果已丟棄，沒有記錄會指向這些檔案；清掉避免留下孤兒檔。
-		p.discardResultFiles(res)
+		p.discardResultFiles(ctx, res)
 	} else {
 		// 已 commit：被清除版本的記錄不在了，檔案也一併刪除。
 		for _, a := range purged {
-			p.discardArtifactFile(&store.NewArtifact{ID: a.ID, ItemID: a.ItemID, Kind: a.Kind, Path: a.Path})
+			p.discardArtifactFile(ctx, &store.NewArtifact{ID: a.ID, ItemID: a.ItemID, Kind: a.Kind, Path: a.Path})
 		}
 		if res.afterCommit != nil {
 			res.afterCommit()
@@ -622,26 +622,26 @@ func (r result) allArtifacts() []*store.NewArtifact {
 }
 
 // discardResultFiles 刪除結果帶的所有產出檔（沒有 commit 或結果被丟棄）。
-func (p *Pipeline) discardResultFiles(res result) {
+func (p *Pipeline) discardResultFiles(ctx context.Context, res result) {
 	for _, a := range res.allArtifacts() {
-		p.discardArtifactFile(a)
+		p.discardArtifactFile(ctx, a)
 	}
 	res.discard() // 這次暫存的其他檔案（例如 podcast 的音檔）
 }
 
 // discardArtifactFile 刪除已寫出但不會被任何記錄指向的產出檔（沒有 commit 或結果被丟棄）。a 為 nil 時不做事。
 // 刪除失敗只記錄：檔案留下來不影響正確性，只是多一個孤兒檔。
-func (p *Pipeline) discardArtifactFile(a *store.NewArtifact) {
+func (p *Pipeline) discardArtifactFile(ctx context.Context, a *store.NewArtifact) {
 	if a == nil {
 		return
 	}
 	if err := os.Remove(filepath.Join(p.dataDir, filepath.FromSlash(a.Path))); err != nil && !errors.Is(err, os.ErrNotExist) {
-		p.log.Warn("清除被丟棄的產出檔失敗", "path", a.Path, "error", err)
+		p.log.WarnContext(ctx, "清除被丟棄的產出檔失敗", "path", a.Path, "error", err)
 	}
 	if a.Kind == KindFrames && a.ItemID != "" && versionPattern.MatchString(a.ID) {
 		// frames 的圖片放在版本目錄中（FRM-R11）。
 		if err := os.RemoveAll(framesDir(p.dataDir, a.ItemID, a.ID)); err != nil {
-			p.log.Warn("清除被丟棄的畫面目錄失敗", "item", a.ItemID, "version", a.ID, "error", err)
+			p.log.WarnContext(ctx, "清除被丟棄的畫面目錄失敗", "item", a.ItemID, "version", a.ID, "error", err)
 		}
 	}
 }

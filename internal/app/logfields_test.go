@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cxyfer/notesteme/internal/logctx"
 	"github.com/cxyfer/notesteme/internal/toolexec"
 )
 
@@ -45,6 +46,8 @@ func logLines(t *testing.T, raw string) []map[string]any {
 //   - 每一筆 HTTP 請求的 log 都有 request_id；請求帶合法的 X-Request-Id 時沿用，回應標頭與 log 是同一個值；
 //     不合法的值不沿用，改產生新的。
 //   - 每一筆帶 task 的 log 都有 item、stage 與 request_id（任務的每次執行有自己的 request ID）。
+//   - 每一筆 log 都有 request_id：不屬於請求或任務的（啟動、關閉等程序層級的 log）是這個程序的 boot ID，
+//     不會和任何請求的 request ID 相同（O26）。
 func TestLogsCarryRequestAndTaskFields(t *testing.T) {
 	env := testEnv(t)
 	env.Test.ManualWorker = true
@@ -103,8 +106,18 @@ func TestLogsCarryRequestAndTaskFields(t *testing.T) {
 	}
 
 	lines := logLines(t, logs.String())
-	var sawPost, sawGenerated, sawUnauth, sawTask bool
+	var sawPost, sawGenerated, sawUnauth, sawTask, sawBoot bool
 	for _, m := range lines {
+		id, _ := m["request_id"].(string)
+		if id == "" {
+			t.Errorf("log 沒有 request_id：%v", m)
+		}
+		if id == logctx.BootID() {
+			sawBoot = true
+			if m["msg"] == "http request" || m["task"] != nil {
+				t.Errorf("請求或任務的 log 不應該用 boot ID：%v", m)
+			}
+		}
 		if m["msg"] == "http request" {
 			id, _ := m["request_id"].(string)
 			if id == "" {
@@ -130,6 +143,9 @@ func TestLogsCarryRequestAndTaskFields(t *testing.T) {
 	}
 	if !sawPost || !sawGenerated || !sawUnauth {
 		t.Errorf("找不到對應回應標頭的請求 log（POST %v、產生的 %v、401 %v）\n%s", sawPost, sawGenerated, sawUnauth, logs.String())
+	}
+	if !sawBoot {
+		t.Errorf("沒有任何程序層級的 log（應該帶 boot ID %q）\n%s", logctx.BootID(), logs.String())
 	}
 	if !sawTask {
 		t.Errorf("沒有任何任務的 log（metadata 失敗應該記錄「步驟失敗」）\n%s", logs.String())

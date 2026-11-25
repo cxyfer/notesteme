@@ -30,7 +30,7 @@ const unsafeKeysInfo = `{
 func TestParseInfoDropsUnsafeTrackKeys(t *testing.T) {
 	var buf bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&buf, nil))
-	info, err := parseInfo([]byte(unsafeKeysInfo), log)
+	info, err := parseInfo(t.Context(), []byte(unsafeKeysInfo), log)
 	if err != nil {
 		t.Fatal(err)
 	}

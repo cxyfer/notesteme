@@ -555,7 +555,7 @@ func (p *Pipeline) reprobeSponsorBlock(ctx context.Context, it store.Item, rp *s
 	}
 	if res.state.Message != "" || res.artifact == nil {
 		// 查詢失敗（runSponsorBlock 只在 outcome 為 error 時帶訊息）或結果相同：不建立新版本。
-		p.discardResultFiles(res)
+		p.discardResultFiles(ctx, res)
 		return nil
 	}
 	var purged []store.Artifact
@@ -582,14 +582,14 @@ func (p *Pipeline) reprobeSponsorBlock(ctx context.Context, it store.Item, rp *s
 		return r.SetStageMessage(ctx, run, msgSponsorUpdated, []string{actionRerunChapters})
 	})
 	if err != nil {
-		p.discardResultFiles(res)
+		p.discardResultFiles(ctx, res)
 		if errors.Is(err, errReprobeStale) {
 			return nil
 		}
 		return err
 	}
 	for _, a := range purged {
-		p.discardArtifactFile(&store.NewArtifact{ID: a.ID, ItemID: a.ItemID, Kind: a.Kind, Path: a.Path})
+		p.discardArtifactFile(ctx, &store.NewArtifact{ID: a.ID, ItemID: a.ItemID, Kind: a.Kind, Path: a.Path})
 	}
 	return nil
 }

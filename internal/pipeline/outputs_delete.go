@@ -69,7 +69,7 @@ func (p *Pipeline) outputStatuses(ctx context.Context, recs []store.Output, remo
 	out := make([]outputStatus, 0, len(recs))
 	for _, rec := range recs {
 		if rec.Target == output.TargetVault {
-			out = append(out, p.vaultOutputStatus(rec, remove))
+			out = append(out, p.vaultOutputStatus(ctx, rec, remove))
 			continue
 		}
 		st := outputStatus{Path: rec.Path}
@@ -167,7 +167,7 @@ func (p *Pipeline) deleteGitVaultOutputs(ctx context.Context, it store.Item, def
 	var kept []KeptOutput
 	var removed []store.Output
 	for _, rec := range recs {
-		state, reason := p.inspectVaultFile(dir, rec, true)
+		state, reason := p.inspectVaultFile(ctx, dir, rec, true)
 		switch {
 		case reason != "":
 			kept = append(kept, KeptOutput{Path: rec.Path, Reason: reason})
@@ -255,7 +255,7 @@ func (p *Pipeline) republishMissingOutputs(ctx context.Context, itemID string) {
 
 // vaultOutputStatus 檢查（remove 時刪除）vault 中的一個檔案（VAULT-R12、DEL-R9）：路徑相對於設定檔定義的 vault 根目錄，
 // 一律在 os.Root 之內操作，不跟隨指向 vault 以外的連結。
-func (p *Pipeline) vaultOutputStatus(rec store.Output, remove bool) outputStatus {
+func (p *Pipeline) vaultOutputStatus(ctx context.Context, rec store.Output, remove bool) outputStatus {
 	st := outputStatus{Path: rec.Path}
 	def, ok := p.vaults[rec.Vault]
 	switch {
@@ -264,31 +264,31 @@ func (p *Pipeline) vaultOutputStatus(rec store.Output, remove bool) outputStatus
 		return st
 	case def.Adapter != vault.AdapterFS:
 		// git vault 的刪除要 commit 與推送，由 deleteGitVaultOutputs 處理；這裡只檢查 clone 中的檔案（預覽、還原）。
-		st.State, st.Reason = p.inspectVaultFile(p.vaultRoot(def), rec, false)
+		st.State, st.Reason = p.inspectVaultFile(ctx, p.vaultRoot(def), rec, false)
 		return st
 	}
-	st.State, st.Reason = p.inspectVaultFile(def.Path, rec, remove)
+	st.State, st.Reason = p.inspectVaultFile(ctx, def.Path, rec, remove)
 	return st
 }
 
 // inspectVaultFile 在 vault 根目錄 dir 中檢查（或刪除）紀錄的檔案；無法判斷時回傳保留的原因。
-func (p *Pipeline) inspectVaultFile(dir string, rec store.Output, remove bool) (output.FileState, string) {
+func (p *Pipeline) inspectVaultFile(ctx context.Context, dir string, rec store.Output, remove bool) (output.FileState, string) {
 	root, err := os.OpenRoot(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return output.StateMissing, ""
 	}
 	if err != nil {
-		p.log.Warn("開啟 vault 失敗", "vault", rec.Vault, "error", err)
+		p.log.WarnContext(ctx, "開啟 vault 失敗", "vault", rec.Vault, "error", err)
 		return output.StateModified, KeptUnreadable
 	}
 	defer root.Close()
 	if err := vault.CheckInside(root, rec.Path); err != nil {
-		p.log.Warn("vault 的輸出檔經過連結", "vault", rec.Vault, "path", rec.Path, "error", err)
+		p.log.WarnContext(ctx, "vault 的輸出檔經過連結", "vault", rec.Vault, "path", rec.Path, "error", err)
 		return output.StateModified, KeptModified
 	}
 	state, err := output.InspectIn(root, rec.Path, rec.SHA256, remove)
 	if err != nil {
-		p.log.Warn("檢查或刪除 vault 的輸出檔失敗", "vault", rec.Vault, "path", rec.Path, "error", err)
+		p.log.WarnContext(ctx, "檢查或刪除 vault 的輸出檔失敗", "vault", rec.Vault, "path", rec.Path, "error", err)
 		return output.StateModified, KeptUnreadable
 	}
 	return state, ""

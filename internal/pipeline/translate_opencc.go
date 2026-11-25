@@ -122,7 +122,7 @@ func (p *Pipeline) runTranslateOpenCC(ctx context.Context, it store.Item, eff Ef
 	var out []*store.NewArtifact
 	discard := func() {
 		for _, a := range out {
-			p.discardArtifactFile(a)
+			p.discardArtifactFile(ctx, a)
 		}
 	}
 	for _, j := range jobs {

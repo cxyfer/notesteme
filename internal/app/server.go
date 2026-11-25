@@ -195,7 +195,7 @@ func StartServerWith(ctx context.Context, env Env, opts ServeOptions) (*Server, 
 		return nil, fmt.Errorf("監聽 %s 失敗：%w", cfg.Listen, err)
 	}
 	// 本機 Unix socket 在 TCP 之後建立。路徑太長時 sockLn 為 nil（已 log Warn）：略過 socket，鎖檔的 Socket 留空。
-	if s.sockLn, err = listenSocket(env, cfg.Data, log); err != nil {
+	if s.sockLn, err = listenSocket(ctx, env, cfg.Data, log); err != nil {
 		return nil, err
 	}
 	info := store.LockInfo{Holder: holderServe, PID: os.Getpid(), Listen: s.ln.Addr().String()}
@@ -224,7 +224,7 @@ func StartServerWith(ctx context.Context, env Env, opts ServeOptions) (*Server, 
 		go func() {
 			defer close(s.sockDone)
 			if err := s.sockHTTP.Serve(s.sockLn); !errors.Is(err, http.ErrServerClosed) {
-				log.Error("本機 socket 停止服務", "error", err)
+				log.ErrorContext(ctx, "本機 socket 停止服務", "error", err)
 			}
 		}()
 	}

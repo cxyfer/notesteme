@@ -259,7 +259,7 @@ func (c *Client) Probe(ctx context.Context, bvid string, part int) (*Info, error
 	if err != nil {
 		return nil, err
 	}
-	info, err := parseInfo(res.Stdout, c.log())
+	info, err := parseInfo(ctx, res.Stdout, c.log())
 	if err != nil {
 		return nil, &errclass.Error{Class: errclass.ClassRetryable, Source: "yt-dlp", Detail: "無法解析 -J 的輸出", Err: err}
 	}
@@ -290,7 +290,7 @@ func str(p *string) string {
 	return *p
 }
 
-func parseInfo(b []byte, log *slog.Logger) (*Info, error) {
+func parseInfo(ctx context.Context, b []byte, log *slog.Logger) (*Info, error) {
 	var r rawInfo
 	if err := json.Unmarshal(b, &r); err != nil {
 		return nil, err
@@ -317,7 +317,7 @@ func parseInfo(b []byte, log *slog.Logger) (*Info, error) {
 		// 鍵來自不可信的平台資料；下載時 FetchCaptions 一定會拒絕不合法的鍵，
 		// 所以在這裡就丟掉，免得選軌選到下載不了的軌而白白失敗。
 		if !usableKey(key) {
-			log.Warn("丟掉不合法的字幕軌鍵", "key", key)
+			log.WarnContext(ctx, "丟掉不合法的字幕軌鍵", "key", key)
 			continue
 		}
 		info.Tracks = append(info.Tracks, key)
