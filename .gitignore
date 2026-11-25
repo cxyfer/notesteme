@@ -3,6 +3,8 @@
 /web/client/dist/*
 !/web/client/dist/.gitkeep
 /web/client/coverage/
+# 瀏覽器 e2e（Playwright）的產物：binary、session、測試結果、報告、截圖集
+/web/client/e2e/.out/
 # Hub UI（web/hub，M5-S9）：同上
 /web/hub/node_modules/
 /web/hub/dist/*

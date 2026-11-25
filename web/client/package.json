@@ -20,7 +20,9 @@
     "check:bundle": "node scripts/check-bundle.mjs",
     "gen:notices": "node scripts/gen-notices.mjs",
     "gen:api": "openapi-typescript ../../internal/api/openapi.json -o src/api/schema.d.ts && prettier --write src/api/schema.d.ts",
-    "check:api": "npm run gen:api && git diff --exit-code -- src/api/schema.d.ts"
+    "check:api": "npm run gen:api && git diff --exit-code -- src/api/schema.d.ts",
+    "e2e": "playwright test",
+    "e2e:build": "npm run build && cd ../.. && go build -o web/client/e2e/.out/notesteme ./cmd/notesteme"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
@@ -44,7 +46,9 @@
     "react-i18next": "17.1.13"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.65.0",
     "@testing-library/dom": "10.4.2",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.8",
@@ -67,6 +71,7 @@
   },
   "overrides": {
     "@lezer/common": "1.5.5",
-    "style-mod": "4.1.4"
+    "style-mod": "4.1.4",
+    "playwright-core": "1.65.0"
   }
 }

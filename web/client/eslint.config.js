@@ -9,7 +9,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules", "coverage", "src/api/schema.d.ts"] },
+  { ignores: ["dist", "node_modules", "coverage", "src/api/schema.d.ts", "e2e/.out"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -93,5 +93,16 @@ export default tseslint.config(
   {
     files: ["scripts/**/*.mjs", "*.config.js"],
     languageOptions: { globals: globals.node },
+  },
+  {
+    // 瀏覽器 e2e（Playwright）：在 Node 執行，測試裡的字串不是 UI 文字。
+    files: ["e2e/**/*.ts", "playwright.config.ts"],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+    // Playwright 的 fixture 慣例：沒有依賴時寫 `async ({}, use) =>`，`use` 不是 React hook。
+    rules: {
+      "i18next/no-literal-string": "off",
+      "no-empty-pattern": "off",
+      "react-hooks/rules-of-hooks": "off",
+    },
   },
 );

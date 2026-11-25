@@ -26,5 +26,12 @@
       "react/*": ["./node_modules/@types/react/*"]
     }
   },
-  "include": ["src", "../shared/src", "vite.config.ts", "scripts/*.ts"]
+  "include": [
+    "src",
+    "../shared/src",
+    "vite.config.ts",
+    "scripts/*.ts",
+    "e2e",
+    "playwright.config.ts"
+  ]
 }
