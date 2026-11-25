@@ -67,6 +67,9 @@ type result struct {
 	inTx func(ctx context.Context, r *store.Repo) (wake bool, err error)
 	// parked 為 true 時任務已經放下租約、等待 Batch API 的結果（BATCH-R3）：任務與步驟的狀態已在送出時寫入，不再寫回。
 	parked bool
+	// durable 為 true 時結果帶著付費呼叫（或 Agent）拿到的東西：寫回的交易以 Store.TxDurable commit，
+	// 斷電也不會遺失，重新啟動後不會再付一次錢（NFR-REL-3）。
+	durable bool
 }
 
 // discard 執行 afterDiscard（有設定的話）。
@@ -222,6 +225,8 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		res.state.LogExcerpt = p.logExcerpt(ctx, scope.Lines())
 	}
 	res.startedAt = started
+	// api executor 的任務（LLM 的 chunk 等）帶著付費呼叫的結果（NFR-REL-3）；plan、assemble 也算在內，多幾次 fsync 而已。
+	res.durable = res.durable || executor == ExecutorAPI
 	if err := p.apply(ctx, t, run, it, res); err != nil {
 		return fmt.Errorf("寫回步驟 %s 的結果：%w", run.Stage, err)
 	}
@@ -398,7 +403,11 @@ func (p *Pipeline) apply(ctx context.Context, t store.Task, run store.StageRun, 
 func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.StageRun, it store.Item, res result) (bool, error) {
 	var wake, stale bool
 	var purged []store.Artifact
-	err := p.st.Tx(ctx, func(r *store.Repo) error {
+	tx := p.st.Tx
+	if res.durable {
+		tx = p.st.TxDurable
+	}
+	err := tx(ctx, func(r *store.Repo) error {
 		purged = nil
 		runs, err := r.StageRunsByItem(ctx, it.ID)
 		if err != nil {

@@ -954,6 +954,8 @@ func (p *Pipeline) fallbackResult(ctx context.Context, id string, f fallbackFetc
 	res := result{
 		task: taskDone, advance: true, stage: stage, artifact: art, probes: toProbes(decisions),
 		state: store.StageState{Status: store.StatusDone},
+		// 付費來源（Supadata、ASR）的結果：寫回的交易要 durable（NFR-REL-3）。
+		durable: paidSource(id),
 	}
 	// SRC-R11：原文語言未知、ASR 回報了語言時，寫回影音的原文語言（lang_source 為 asr）。
 	// UpdateItemMeta 會整欄覆寫 metadata_json，所以一定要帶上原本的 Metadata。

@@ -28,6 +28,8 @@ type Repo struct {
 	s     *Store
 	// queued 只在交易中非 nil：步驟狀態的事件先記在這裡，commit 之後才發布；rollback 就丟掉。
 	queued *[]events.Event
+	// tx 是交易中的 Repo 所在的交易；其他時候是 nil（測試用來確認交易的連線設定，見 durable_test.go）。
+	tx *sql.Tx
 }
 
 // Read 回傳唯讀的 Repo。
@@ -114,6 +116,37 @@ func (s *Store) Tx(ctx context.Context, fn func(*Repo) error) (err error) {
 	if err != nil {
 		return err
 	}
+	return s.runTx(tx, fn)
+}
+
+// TxDurable 同 Tx，但這個交易以 synchronous=FULL commit：commit 回來時 WAL 已經 fsync，之後斷電也不會遺失它，
+// 連同 WAL 中在它之前的所有交易（NFR-REL-3）。
+//
+// 平常的交易用 synchronous=NORMAL（sqlitedb.Open）：kill -9 不會遺失已 commit 的交易，斷電則可能遺失最後一次
+// WAL fsync 之後的交易（DB 不會損毀，重新啟動後依 PIPE-R11 重跑，結果相同）。付費呼叫的結果不能這樣遺失，
+// 否則重跑會再付一次錢，所以記錄付費結果的交易改用這裡。每次多一次 fsync（ref-wsl 約 7ms），只用在付費結果上。
+//
+// 取得唯一的寫入連線並獨占到結束：PRAGMA 是連線層級的設定，獨占才不會讓別的交易在中間把它改回 NORMAL。
+func (s *Store) TxDurable(ctx context.Context, fn func(*Repo) error) (err error) {
+	conn, err := s.w.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "PRAGMA synchronous=FULL"); err != nil {
+		return err
+	}
+	// 還原失敗時連線維持 FULL：只會比較慢，不影響正確性。
+	defer func() { _, _ = conn.ExecContext(context.WithoutCancel(ctx), "PRAGMA synchronous=NORMAL") }()
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	return s.runTx(tx, fn)
+}
+
+// runTx 在已經開始的交易中執行 fn 並 commit；失敗、panic 時回復。
+func (s *Store) runTx(tx *sql.Tx, fn func(*Repo) error) (err error) {
 	committed := false
 	defer func() {
 		if !committed {
@@ -121,7 +154,7 @@ func (s *Store) Tx(ctx context.Context, fn func(*Repo) error) (err error) {
 		}
 	}()
 	var queued []events.Event
-	if err := fn(&Repo{q: s.wq.WithTx(tx), clock: s.clock, s: s, queued: &queued}); err != nil {
+	if err := fn(&Repo{q: s.wq.WithTx(tx), clock: s.clock, s: s, queued: &queued, tx: tx}); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

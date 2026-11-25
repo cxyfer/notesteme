@@ -501,6 +501,7 @@ func (p *Pipeline) SubmitAgentTask(ctx context.Context, agent, taskID, token str
 			Provider: c.job.cfg.Provider, Model: c.job.cfg.Model,
 		}, 0, 0)
 	}}
+	res.durable = true // Agent 交回的結果同樣不能因斷電遺失（NFR-REL-3）
 	lost, err := p.applyResult(ctx, t, c.run, c.item, res)
 	if err != nil {
 		return err

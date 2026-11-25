@@ -655,7 +655,8 @@ func (p *Pipeline) finishBatch(ctx context.Context, api BatchAPI, b store.Batch,
 	}
 	wctx := context.WithoutCancel(ctx)
 	var wake bool
-	err := p.st.Tx(wctx, func(tx *store.Repo) error {
+	// Batch API 的結果是付費拿到的：durable commit（NFR-REL-3）。
+	err := p.st.TxDurable(wctx, func(tx *store.Repo) error {
 		wake = false
 		for _, e := range b.Entries {
 			w, err := p.applyBatchResult(wctx, tx, b, e, verdicts[e.Task], ended, notice)
