@@ -86,7 +86,7 @@ func TestExportBundleRoundTrip(t *testing.T) {
 	if ex.Name != "yt-abc123xxxxx.notesteme.zip" {
 		t.Errorf("name = %q", ex.Name)
 	}
-	b, err := bundle.Read(ex.Data, bundle.Options{})
+	b, err := bundle.Read(bundleBytes(t, ex), bundle.Options{})
 	if err != nil {
 		t.Fatalf("匯出的 bundle 不通過自己的驗證：%v", err)
 	}
@@ -137,7 +137,7 @@ func TestExportBundleRoundTrip(t *testing.T) {
 
 	// 匯入到另一個實例。
 	dst := newRig(t)
-	res, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: ex.Data})
+	res, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: bundleBytes(t, ex)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestExportBundleRoundTrip(t *testing.T) {
 		t.Errorf("provenance = %v", prov)
 	}
 	// parents 重新對應到新的 ID；指到 bundle 外的丟掉。
-	withParents := rezip(t, ex.Data, func(m *bundle.OutManifest, _ map[string][]byte) {
+	withParents := rezip(t, bundleBytes(t, ex), func(m *bundle.OutManifest, _ map[string][]byte) {
 		var tid string
 		for _, x := range m.Artifacts {
 			if x.Kind == "transcript" {
@@ -230,11 +230,11 @@ func TestExportBundleRoundTrip(t *testing.T) {
 
 	// 再匯入：預設 409；add_versions 全部略過；從 metadata 重跑不出錯。
 	var ce *BundleConflictError
-	if _, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: ex.Data}); !errors.As(err, &ce) || ce.Code != CodeBundleItemExists ||
+	if _, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: bundleBytes(t, ex)}); !errors.As(err, &ce) || ce.Code != CodeBundleItemExists ||
 		!strings.Contains(ce.Message, "yt:abc123xxxxx") {
 		t.Fatalf("重複匯入 = %v", err)
 	}
-	res2, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: ex.Data, AddVersions: true})
+	res2, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: bundleBytes(t, ex), AddVersions: true})
 	if err != nil || res2.Imported != 0 || res2.Skipped != 7 {
 		t.Fatalf("add_versions = %+v %v", res2, err)
 	}
@@ -244,7 +244,7 @@ func TestExportBundleRoundTrip(t *testing.T) {
 	if _, err := dst.p.Trash(ctx, res.Item.ID, TrashOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: ex.Data, AddVersions: true}); !errors.As(err, &ce) || ce.Code != CodeBundleItemInTrash {
+	if _, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: bundleBytes(t, ex), AddVersions: true}); !errors.As(err, &ce) || ce.Code != CodeBundleItemInTrash {
 		t.Fatalf("垃圾桶 = %v", err)
 	}
 	if _, err := dst.p.ExportBundle(ctx, res.Item.ID); !errors.Is(err, ErrInTrash) {
@@ -254,7 +254,7 @@ func TestExportBundleRoundTrip(t *testing.T) {
 	if err := dst.p.Purge(ctx, res.Item.ID); err != nil {
 		t.Fatal(err)
 	}
-	if res3, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: ex.Data}); err != nil || res3.Imported != 7 {
+	if res3, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: bundleBytes(t, ex)}); err != nil || res3.Imported != 7 {
 		t.Fatalf("永久刪除後 = %+v %v", res3, err)
 	}
 	// 暫存目錄沒有留下東西。
@@ -381,7 +381,7 @@ func TestImportBundleRejectsBadContent(t *testing.T) {
 	dst := newRig(t)
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			data := rezip(t, ex.Data, c.edit)
+			data := rezip(t, bundleBytes(t, ex), c.edit)
 			_, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: data})
 			var be *bundle.Error
 			if !errors.As(err, &be) || be.Code != bundle.CodeInvalid || !strings.Contains(be.Message, c.want) {
@@ -409,7 +409,7 @@ func TestImportBundleLocalItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	sha := strings.Repeat("ab", 32)
-	data := rezip(t, ex.Data, func(m *bundle.OutManifest, _ map[string][]byte) {
+	data := rezip(t, bundleBytes(t, ex), func(m *bundle.OutManifest, _ map[string][]byte) {
 		m.Item.Platform, m.Item.ExternalID, m.Item.Channel = "local", sha, nil
 		name := "../lecture.mp4"
 		m.Item.SourceName = &name
@@ -432,7 +432,7 @@ func TestImportBundleLocalItem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bundle.Read(ex2.Data, bundle.Options{})
+	b, err := bundle.Read(bundleBytes(t, ex2), bundle.Options{})
 	if err != nil || b.Manifest.Item.ExternalID != sha || b.Manifest.Item.SourceName != "lecture.mp4" {
 		t.Fatalf("manifest = %+v %v", b.Manifest.Item, err)
 	}
@@ -640,7 +640,7 @@ func TestBundleItemMetadataRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := rezip(t, ex.Data, func(m *bundle.OutManifest, _ map[string][]byte) {
+	data := rezip(t, bundleBytes(t, ex), func(m *bundle.OutManifest, _ map[string][]byte) {
 		title, pub, lang, dur := "頻道", "2026-11-01", "zh-Hant", 1935.0
 		m.Item.Channel = &bundle.OutChannel{ExternalID: "UCxyz", Title: &title}
 		m.Item.PublishedAt, m.Item.OriginalLang, m.Item.DurationS = &pub, &lang, &dur
@@ -660,7 +660,7 @@ func TestBundleItemMetadataRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bundle.Read(ex2.Data, bundle.Options{})
+	b, err := bundle.Read(bundleBytes(t, ex2), bundle.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -695,7 +695,7 @@ func TestImportBundleEndsReprobe(t *testing.T) {
 		t.Fatal(err)
 	}
 	dst := newRig(t)
-	res, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: ex.Data})
+	res, err := dst.p.ImportBundle(ctx, BundleImportRequest{Data: bundleBytes(t, ex)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -713,7 +713,7 @@ func TestImportBundleEndsReprobe(t *testing.T) {
 		}
 	}
 	edit := func(kind, from, to string) []byte {
-		return rezip(t, ex.Data, func(m *bundle.OutManifest, files map[string][]byte) {
+		return rezip(t, bundleBytes(t, ex), func(m *bundle.OutManifest, files map[string][]byte) {
 			for _, a := range m.Artifacts {
 				if a.Kind != kind {
 					continue
@@ -795,7 +795,7 @@ func TestItemDetailImportedFrom(t *testing.T) {
 		t.Fatal(err)
 	}
 	const inst = "0190a1b2-0000-7000-8000-000000000001"
-	data := rezip(t, ex.Data, func(m *bundle.OutManifest, _ map[string][]byte) {
+	data := rezip(t, bundleBytes(t, ex), func(m *bundle.OutManifest, _ map[string][]byte) {
 		m.CreatedBy = bundle.OutCreatedBy{InstanceID: inst, AppVersion: "0.4.0"}
 	})
 	dst := newRig(t)
@@ -818,7 +818,7 @@ func TestItemDetailImportedFrom(t *testing.T) {
 	}
 	// 之後再用 add_versions 匯入另一個實例的 bundle：顯示最近的那一次。
 	const inst2 = "0190a1b2-0000-7000-8000-000000000002"
-	data2 := rezip(t, ex.Data, func(m *bundle.OutManifest, files map[string][]byte) {
+	data2 := rezip(t, bundleBytes(t, ex), func(m *bundle.OutManifest, files map[string][]byte) {
 		m.CreatedBy = bundle.OutCreatedBy{InstanceID: inst2, AppVersion: "0.5.0"}
 		for name, b := range files {
 			if strings.HasSuffix(name, ".md") {
@@ -891,4 +891,14 @@ func TestIsSecretKey(t *testing.T) {
 			t.Errorf("isSecretKey(%q) = %v，預期 %v", k, got, want)
 		}
 	}
+}
+
+// bundleBytes 把匯出寫成整份 zip。
+func bundleBytes(t *testing.T, ex BundleExport) []byte {
+	t.Helper()
+	b, err := ex.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

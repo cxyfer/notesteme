@@ -140,15 +140,10 @@ func BenchmarkRes2IdleCPU(b *testing.B) {
 // 即成長不超過線性的 30%；512KB 是這個量法的解析度（請求期間 in-flight 的緩衝與 server 背景 goroutine 的配置，
 // 實測單軌串流在 1、10、100 小時都落在 0.1～0.9MB）。
 //
-// 單軌的格式（SRT、VTT、純文字、cues JSON）在 BenchmarkRes3Streaming；ASS、雙語 SRT（要配對兩軌）與 bundle 匯出
-// （整份 zip 在記憶體中組好）仍整份載入，放在 BenchmarkKnownMissRes3（bench.yml 的 known-misses job）。
+// 單軌的格式（SRT、VTT、純文字、cues JSON）第一輪就改成逐句串流；ASS、雙語 SRT（兩軌以時間視窗合併）與 bundle 匯出
+// （逐檔逐段寫進 zip）在第二輪改成串流之後也搬回這裡（nfr.md 第 10 節）。
 func BenchmarkRes3Streaming(b *testing.B) {
-	res3(b, []string{"srt", "vtt", "txt", "cues-json"})
-}
-
-// BenchmarkKnownMissRes3 是 NFR-RES-3 已知未達標的部分（見 nfr.md 第 10 節）：ASS、雙語 SRT 與 bundle 匯出。
-func BenchmarkKnownMissRes3(b *testing.B) {
-	res3(b, []string{"ass", "bilingual-srt", "bundle"})
+	res3(b, []string{"srt", "vtt", "txt", "cues-json", "ass", "bilingual-srt", "bundle"})
 }
 
 // res3Floor 是 heapGrowthDuring 的解析度。

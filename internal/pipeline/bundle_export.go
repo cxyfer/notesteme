@@ -3,9 +3,12 @@ package pipeline
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -33,12 +36,25 @@ const bundleFormatNote = "text/markdown"
 // ErrBundleLeak 表示組好的 bundle 含有本機路徑或 secret（BND-R2 的最後一道檢查）；這是程式錯誤，回 500。
 var ErrBundleLeak = errors.New("bundle 含有本機路徑或 secret，已停止匯出")
 
-// BundleExport 是匯出的結果。
+// BundleExport 是匯出的結果：已經驗證（損毀、名稱、洩漏），Stream 寫出 zip。
 type BundleExport struct {
 	// Name 是下載的檔名（<代號清理後>.notesteme.zip）。
 	Name string
-	Data []byte
 	Item store.Item
+	plan *bundle.Plan
+}
+
+// Stream 把 zip 寫到 w（NFR-RES-3）：字幕等產出檔與畫面逐段從檔案複製，不把整份 bundle 組在記憶體中。
+// 回傳錯誤時 zip 不完整。
+func (e *BundleExport) Stream(w io.Writer) error { return e.plan.Stream(w) }
+
+// Bytes 回傳整份 zip（測試與小型的呼叫端用；API 用 Stream）。
+func (e *BundleExport) Bytes() ([]byte, error) {
+	var buf bytes.Buffer
+	if err := e.plan.Stream(&buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // InstanceID 回傳這個實例的 ID（UUIDv7）；第一次呼叫時產生並存進 settings。
@@ -138,10 +154,6 @@ func (p *Pipeline) ExportBundle(ctx context.Context, idOrRef string) (BundleExpo
 		if !exported[a.ID] {
 			continue
 		}
-		data, err := p.readArtifactBytes(a)
-		if err != nil {
-			return BundleExport{}, err
-		}
 		oa := bundle.OutArtifact{ID: a.ID, Kind: a.Kind, Format: a.Format, Path: bundle.ArtifactsDir + a.ID + ".json",
 			Provenance: sanitizeProvenance(a.Provenance)}
 		if a.Lang != "" {
@@ -153,35 +165,71 @@ func (p *Pipeline) ExportBundle(ctx context.Context, idOrRef string) (BundleExpo
 				oa.Parents = append(oa.Parents, par)
 			}
 		}
-		switch a.Kind {
-		case "transcript":
+		if a.Kind == "transcript" {
 			oa.Variant = a.Variant
-		case KindNote:
-			var doc noteDoc
-			if err := json.Unmarshal(data, &doc); err != nil {
-				return BundleExport{}, fmt.Errorf("讀取筆記 %s：%w", a.ID, err)
-			}
-			data = []byte(doc.Markdown)
-			oa.Format, oa.Path = bundleFormatNote, bundle.ArtifactsDir+a.ID+".md"
-		case KindFrames:
-			body, imgs, err := p.exportFrames(it.ID, a, data)
+		}
+		entry := bundle.OutEntry{Path: oa.Path}
+		switch a.Kind {
+		case KindNote, KindFrames:
+			// 內容要轉換，讀進記憶體（筆記的本文、畫面的清單都不大；畫面的圖片本身以檔案複製）。
+			data, err := p.readArtifactBytes(a)
 			if err != nil {
 				return BundleExport{}, err
 			}
-			data = body
-			entries = append(entries, imgs...)
+			if a.Kind == KindFrames {
+				body, imgs, err := p.exportFrames(it.ID, a, data)
+				if err != nil {
+					return BundleExport{}, err
+				}
+				data = body
+				entries = append(entries, imgs...)
+			} else {
+				var doc noteDoc
+				if err := json.Unmarshal(data, &doc); err != nil {
+					return BundleExport{}, fmt.Errorf("讀取筆記 %s：%w", a.ID, err)
+				}
+				data = []byte(doc.Markdown)
+				oa.Format, oa.Path = bundleFormatNote, bundle.ArtifactsDir+a.ID+".md"
+			}
+			entry = bundle.OutEntry{Path: oa.Path, Data: data}
+		default:
+			// 字幕、章節、贊助片段原樣放進 bundle：先以串流驗證 sha256（損毀時與整份讀取相同的錯誤），寫出時再從檔案複製。
+			path := filepath.Join(p.dataDir, filepath.FromSlash(a.Path))
+			size, sum, err := fileSum(path)
+			if err != nil {
+				return BundleExport{}, err
+			}
+			if sum != a.SHA256 {
+				return BundleExport{}, fmt.Errorf("%s：%w", a.Path, ErrCorruptArtifact)
+			}
+			entry.File, entry.SHA256, entry.Size = path, sum, size
 		}
-		entries = append(entries, bundle.OutEntry{Path: oa.Path, Data: data})
+		entries = append(entries, entry)
 		man.Artifacts = append(man.Artifacts, oa)
 	}
-	zipData, err := bundle.Write(man, entries)
+	plan, err := bundle.Prepare(man, entries)
 	if err != nil {
 		return BundleExport{}, err
 	}
 	if err := p.checkBundleLeak(ctx, man, entries); err != nil {
 		return BundleExport{}, err
 	}
-	return BundleExport{Name: BundleFileName(source.Ref(it.Platform, it.ExternalID, it.Part)), Data: zipData, Item: it}, nil
+	return BundleExport{Name: BundleFileName(source.Ref(it.Platform, it.ExternalID, it.Part)), Item: it, plan: plan}, nil
+}
+
+// fileSum 以串流計算檔案的大小與 sha256。
+func fileSum(path string) (int64, string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	n, err := io.Copy(h, f)
+	if err != nil {
+		return 0, "", err
+	}
+	return n, hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func (p *Pipeline) appVersion() string {
@@ -309,14 +357,15 @@ func (p *Pipeline) exportFrames(itemID string, a store.Artifact, data []byte) ([
 		if c.N < 1 || c.N > maxBundleFrame {
 			return nil, nil, fmt.Errorf("frames %s 的畫面編號 %d 超出範圍", a.ID, c.N)
 		}
-		b, err := os.ReadFile(filepath.Join(dir, frameFile(c.N)))
+		path := filepath.Join(dir, frameFile(c.N))
+		size, sum, err := fileSum(path)
 		if err != nil {
 			return nil, nil, err
 		}
 		name := bundleFrameName(a.ID, c.N)
 		c.File, c.Thumb = name, ""
 		keep = append(keep, c)
-		imgs = append(imgs, bundle.OutEntry{Path: bundle.ArtifactsDir + name, Data: b})
+		imgs = append(imgs, bundle.OutEntry{Path: bundle.ArtifactsDir + name, File: path, SHA256: sum, Size: size})
 	}
 	man.Candidates = nonNilCandidates(keep)
 	body, err := json.Marshal(man)
@@ -572,15 +621,70 @@ func (p *Pipeline) checkBundleLeak(ctx context.Context, man bundle.OutManifest, 
 			return leak(bundle.ManifestName)
 		}
 	}
-	for _, n := range secrets {
+	// 檔案項目每個只讀一次，記下出現了哪些 secret；判定的順序與在記憶體中比對時相同。
+	found := map[int][]bool{}
+	contains := func(i int, k int) (bool, error) {
+		e := entries[i]
+		if e.File == "" {
+			return bytes.Contains(e.Data, []byte(secrets[k])), nil
+		}
+		if _, ok := found[i]; !ok {
+			f, err := fileContainsAny(e.File, secrets)
+			if err != nil {
+				return false, err
+			}
+			found[i] = f
+		}
+		return found[i][k], nil
+	}
+	for k, n := range secrets {
 		if bytes.Contains(mj, []byte(n)) {
 			return leak(bundle.ManifestName)
 		}
-		for _, e := range entries {
-			if bytes.Contains(e.Data, []byte(n)) {
+		for i, e := range entries {
+			hit, err := contains(i, k)
+			if err != nil {
+				return err
+			}
+			if hit {
 				return leak(e.Path)
 			}
 		}
 	}
 	return nil
+}
+
+// fileContainsAny 逐段讀檔，回報每個 needle 是否出現在檔案中；相鄰兩段之間保留 (最長的 needle − 1) 個位元組，
+// 跨段的出現也找得到。
+func fileContainsAny(path string, needles []string) ([]bool, error) {
+	out := make([]bool, len(needles))
+	keep := 0
+	for _, n := range needles {
+		keep = max(keep, len(n)-1)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	const chunk = 64 << 10
+	buf := make([]byte, keep+chunk)
+	carry := 0
+	for {
+		n, err := io.ReadFull(f, buf[carry:])
+		data := buf[:carry+n]
+		for k, nd := range needles {
+			if !out[k] && bytes.Contains(data, []byte(nd)) {
+				out[k] = true
+			}
+		}
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			return out, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		carry = min(keep, len(data))
+		copy(buf, data[len(data)-carry:])
+	}
 }

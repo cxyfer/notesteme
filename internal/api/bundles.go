@@ -66,7 +66,8 @@ func (rt *routes) exportBundle(ctx context.Context, in *bundleExportInput) (*hum
 		hc.SetHeader("Content-Disposition", `attachment; filename="`+ex.Name+`"`)
 		hc.SetHeader("X-Content-Type-Options", "nosniff")
 		hc.SetStatus(http.StatusOK)
-		if _, err := hc.BodyWriter().Write(ex.Data); err != nil {
+		// 逐檔逐段寫出，不在記憶體中組完整的 zip（NFR-RES-3）；中斷時 zip 不完整（沒有中央目錄）。
+		if err := ex.Stream(hc.BodyWriter()); err != nil {
 			rt.d.Log.WarnContext(hc.Context(), "輸出 bundle 時中斷", "error", err.Error())
 		}
 	}}, nil

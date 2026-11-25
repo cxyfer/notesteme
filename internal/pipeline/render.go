@@ -67,17 +67,9 @@ type RenderInput struct {
 //   - 找不到這樣的字幕（原文與目標語言相同，包括 convert 只差字形），Orig 為 nil，一律只輸出單語。
 func (p *Pipeline) RenderInput(ctx context.Context, itemID string, q CuesQuery) (RenderInput, error) {
 	r := p.st.Read()
-	if q.Lang == "" && q.Variant == "" {
-		arts, err := r.CurrentArtifacts(ctx, itemID, "transcript")
-		if err != nil {
-			return RenderInput{}, err
-		}
-		for i := len(arts) - 1; i >= 0; i-- {
-			if arts[i].Variant == string(subtitle.VariantTranslated) {
-				q.Lang = arts[i].Lang
-				break
-			}
-		}
+	q, err := p.renderQuery(ctx, itemID, q)
+	if err != nil {
+		return RenderInput{}, err
 	}
 	it, main, err := p.CuesWithItem(ctx, itemID, q)
 	if err != nil {
@@ -103,6 +95,133 @@ func (p *Pipeline) RenderInput(ctx context.Context, itemID string, q CuesQuery) 
 	tr.Cues = subtitle.FilterRange(tr.Cues, q.FromMS, q.ToMS)
 	out.Orig = &tr
 	return out, nil
+}
+
+// renderQuery 補上 ASS 與雙語 SRT 的預設語言：沒有指定語言與變體時，目標語言是最近產生的譯文的語言。
+func (p *Pipeline) renderQuery(ctx context.Context, itemID string, q CuesQuery) (CuesQuery, error) {
+	if q.Lang != "" || q.Variant != "" {
+		return q, nil
+	}
+	arts, err := p.st.Read().CurrentArtifacts(ctx, itemID, "transcript")
+	if err != nil {
+		return q, err
+	}
+	for i := len(arts) - 1; i >= 0; i-- {
+		if arts[i].Variant == string(subtitle.VariantTranslated) {
+			q.Lang = arts[i].Lang
+			break
+		}
+	}
+	return q, nil
+}
+
+// RenderStream 是 ASS 與雙語 SRT 的串流輸入（OUT-R5、NFR-RES-3）：選字幕的規則與 RenderInput 相同，
+// Each 逐句交出配對（subtitle.PairStream，與 PairCues 相同）。Bilingual 是至少有一句帶有原文。
+type RenderStream struct {
+	Item store.Item
+	// MainLang 是要輸出的字幕的語言；OrigLang 是雙語時原文的語言，單語時同 MainLang（assstyle.ResolveFonts 用）。
+	MainLang, OrigLang string
+	Bilingual          bool
+	main, orig         *CuesStream
+	// pairs 不為 nil 時是退回整份載入的結果。
+	pairs []subtitle.Pair
+}
+
+// Each 依序交出每一句的配對；fn 回傳錯誤時停止。
+func (rs *RenderStream) Each(fn func(subtitle.Pair) error) error {
+	if rs.pairs != nil || rs.main == nil {
+		for _, pr := range rs.pairs {
+			if err := fn(pr); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	mc, err := rs.main.cursor()
+	if err != nil {
+		return err
+	}
+	defer mc.close()
+	var orig subtitle.CueIter
+	if rs.orig != nil {
+		oc, err := rs.orig.cursor()
+		if err != nil {
+			return err
+		}
+		defer oc.close()
+		orig = oc.next
+	}
+	return subtitle.PairStream(mc.next, orig, fn)
+}
+
+// OpenRender 選出 ASS 與雙語 SRT 要輸出的字幕（同 RenderInput），不把字幕整份讀進記憶體（NFR-RES-3）。
+// 開始輸出之前先完整讀一遍：解碼錯誤、X-Notesteme-Bilingual（Bilingual）都在這時決定。兩份字幕沒有依開始時間排序、
+// 或串流解碼失敗時，退回 RenderInput 整份載入（結果與錯誤都與原本相同）；正常產生的字幕都有排序。
+// 產出檔是不可變的，所以第二遍（Each）讀到的內容與第一遍相同。
+func (p *Pipeline) OpenRender(ctx context.Context, itemID string, q CuesQuery) (*RenderStream, error) {
+	rs, err := p.openRenderStream(ctx, itemID, q)
+	var de *streamDecodeError
+	if err != nil && !errors.As(err, &de) {
+		return nil, err // 找不到、垃圾桶、損毀（已標記重跑）等，與 RenderInput 相同
+	}
+	if err == nil {
+		err = rs.Each(func(pr subtitle.Pair) error {
+			if pr.Orig != "" {
+				rs.Bilingual = true
+			}
+			return nil
+		})
+		if err == nil {
+			return rs, nil
+		}
+	}
+	// 退回整份載入：沒有排序（subtitle.ErrUnsorted）或串流解碼失敗。
+	ri, err := p.RenderInput(ctx, itemID, q)
+	if err != nil {
+		return nil, err
+	}
+	var orig []subtitle.Cue
+	out := &RenderStream{Item: ri.Item, MainLang: ri.Main.Lang, OrigLang: ri.Main.Lang}
+	if ri.Orig != nil {
+		orig, out.OrigLang = ri.Orig.Cues, ri.Orig.Lang
+	}
+	out.pairs = subtitle.PairCues(ri.Main.Cues, orig)
+	out.Bilingual = subtitle.Bilingual(out.pairs)
+	return out, nil
+}
+
+// openRenderStream 是 OpenRender 選字幕的部分（規則同 RenderInput）。標頭解碼失敗時回傳 *streamDecodeError（退回整份載入）。
+func (p *Pipeline) openRenderStream(ctx context.Context, itemID string, q CuesQuery) (*RenderStream, error) {
+	q, err := p.renderQuery(ctx, itemID, q)
+	if err != nil {
+		return nil, err
+	}
+	it, chosen, err := p.pickTranscript(ctx, itemID, q)
+	if err != nil {
+		return nil, err
+	}
+	main, err := p.openCuesStream(ctx, chosen, q)
+	if err != nil {
+		return nil, err
+	}
+	rs := &RenderStream{Item: it, main: main, MainLang: main.Header.Lang, OrigLang: main.Header.Lang}
+	if it.OriginalLang != "" && langtag.SameBase(main.Header.Lang, it.OriginalLang) {
+		return rs, nil
+	}
+	arts, err := p.st.Read().CurrentArtifacts(ctx, itemID, "transcript")
+	if err != nil {
+		return nil, err
+	}
+	origArt, ok := pickOriginal(arts, it.OriginalLang, main.Header.Lang)
+	if !ok {
+		return rs, nil
+	}
+	orig, err := p.openCuesStream(ctx, origArt, q)
+	if err != nil {
+		return nil, err
+	}
+	rs.orig, rs.OrigLang = orig, orig.Header.Lang
+	return rs, nil
 }
 
 // pickOriginal 在現行產出中挑雙語的原文：非 translated、語言與 mainLang 的主語言不同，變體依 OUT-R2 的順序；

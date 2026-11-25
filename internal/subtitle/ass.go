@@ -2,6 +2,7 @@ package subtitle
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -104,17 +105,142 @@ func Bilingual(pairs []Pair) bool {
 	return false
 }
 
+// CueIter 逐句提供 cue；ok 為 false 代表沒有更多句子。
+type CueIter func() (c Cue, ok bool, err error)
+
+// ErrUnsorted 表示 PairStream 的輸入沒有依 StartMS 非遞減排列；呼叫端改用 PairCues（整份載入）。
+var ErrUnsorted = errors.New("subtitle: cues 沒有依開始時間排序，不能串流配對")
+
+// PairStream 逐句配對 main 與 orig，依序交給 fn，結果與 PairCues 相同（NFR-RES-3：不把整份字幕載入記憶體）。
+// main 與 orig 都必須依 StartMS 非遞減排列，否則回傳 ErrUnsorted（可能已經呼叫過 fn）；orig 為 nil 時全部是單語。
+// 回傳之前會讀完 orig，所以回傳 nil 代表兩邊都完整讀過、都有排序。
+//
+// 只需要保留可能與目前或之後的 main 句重疊的原文句：main 的開始時間不會變小，所以結束時間不晚於目前 main 開始時間的
+// 原文句之後都不可能重疊（重疊量 ≤ 0，PairCues 只取重疊量 > 0 的）；orig 依開始時間排序，所以開始時間不早於
+// main 結束時間的原文句（以及之後的）還不必讀。視窗依讀入的順序保存，平手時取較早的，與 PairCues 相同。
+func PairStream(main, orig CueIter, fn func(Pair) error) error {
+	var (
+		win                []Cue
+		next               Cue
+		hasNext            bool
+		lastOrig, lastMain int64
+		started            bool
+	)
+	pull := func() error {
+		hasNext = false
+		if orig == nil {
+			return nil
+		}
+		c, ok, err := orig()
+		if err != nil || !ok {
+			return err
+		}
+		if started && c.StartMS < lastOrig {
+			return ErrUnsorted
+		}
+		started, lastOrig = true, c.StartMS
+		next, hasNext = c, true
+		return nil
+	}
+	if err := pull(); err != nil {
+		return err
+	}
+	for first := true; ; first = false {
+		m, ok, err := main()
+		if err != nil {
+			return err
+		}
+		if !ok {
+			break
+		}
+		if !first && m.StartMS < lastMain {
+			return ErrUnsorted
+		}
+		lastMain = m.StartMS
+		keep := win[:0]
+		for _, o := range win {
+			if o.EndMS > m.StartMS {
+				keep = append(keep, o)
+			}
+		}
+		win = keep
+		for hasNext && next.StartMS < m.EndMS {
+			if next.EndMS > m.StartMS {
+				win = append(win, next)
+			}
+			if err := pull(); err != nil {
+				return err
+			}
+		}
+		p := Pair{StartMS: m.StartMS, EndMS: m.EndMS, Main: m.Text}
+		best, bestOverlap := -1, int64(0)
+		for j, o := range win {
+			if ov := min(m.EndMS, o.EndMS) - max(m.StartMS, o.StartMS); ov > bestOverlap {
+				best, bestOverlap = j, ov
+			}
+		}
+		if best >= 0 {
+			p.Orig = win[best].Text
+		}
+		if err := fn(p); err != nil {
+			return err
+		}
+	}
+	for hasNext {
+		if err := pull(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SliceIter 把一份 cue 陣列包成 CueIter。
+func SliceIter(cues []Cue) CueIter {
+	i := 0
+	return func() (Cue, bool, error) {
+		if i >= len(cues) {
+			return Cue{}, false, nil
+		}
+		i++
+		return cues[i-1], true, nil
+	}
+}
+
+// BilingualSRTWriter 逐句寫出雙語 SRT（RenderBilingualSRT 的串流版本，輸出相同）。
+type BilingualSRTWriter struct {
+	bw *bufio.Writer
+	n  int
+}
+
+// NewBilingualSRTWriter 建立 BilingualSRTWriter。
+func NewBilingualSRTWriter(w io.Writer) *BilingualSRTWriter {
+	return &BilingualSRTWriter{bw: bufio.NewWriter(w)}
+}
+
+// Write 寫出一句：先是譯文，再是原文；單語的句子只有一行文字。回傳第一個寫入錯誤（client 斷線時停止）。
+func (sw *BilingualSRTWriter) Write(p Pair) error {
+	sw.n++
+	lines := cueLines(strings.ReplaceAll(p.Main, "-->", "->"))
+	if p.Orig != "" {
+		lines = append(lines, cueLines(strings.ReplaceAll(p.Orig, "-->", "->"))...)
+	}
+	fmt.Fprintf(sw.bw, "%d\n%s --> %s\n%s\n\n", sw.n, FormatSRTTime(p.StartMS), FormatSRTTime(p.EndMS), strings.Join(lines, "\n"))
+	_, err := sw.bw.Write(nil)
+	return err
+}
+
+// Close 清空緩衝。
+func (sw *BilingualSRTWriter) Close() error { return sw.bw.Flush() }
+
 // RenderBilingualSRT 串流輸出雙語 SRT：每個 cue 先是譯文，再是原文；單語的 cue 只有一行文字。
 func RenderBilingualSRT(w io.Writer, pairs []Pair) error {
-	bw := bufio.NewWriter(w)
-	for i, p := range pairs {
-		lines := cueLines(strings.ReplaceAll(p.Main, "-->", "->"))
-		if p.Orig != "" {
-			lines = append(lines, cueLines(strings.ReplaceAll(p.Orig, "-->", "->"))...)
+	sw := NewBilingualSRTWriter(w)
+	for _, p := range pairs {
+		if err := sw.Write(p); err != nil {
+			return err
 		}
-		fmt.Fprintf(bw, "%d\n%s --> %s\n%s\n\n", i+1, FormatSRTTime(p.StartMS), FormatSRTTime(p.EndMS), strings.Join(lines, "\n"))
 	}
-	return bw.Flush()
+	return sw.Close()
 }
 
 // assTime 格式化 ASS 的時間（H:MM:SS.cc）；round 為 up 時進位到下一個百分之一秒，讓 cue 不會被切短。
@@ -212,11 +338,16 @@ func (l ASSLine) styleLine(name string, border, align, marginV int) string {
 		bold, border, fmtNum(math.Max(l.Outline, 0)), fmtNum(math.Max(l.Shadow, 0)), align, marginV)
 }
 
-// RenderASS 串流輸出 ASS：兩個樣式（Translation、Primary）加上每句一個事件。
-// 雙語時依 Layout 決定：堆疊在同一個事件（第二行用 {\r樣式} 切換）、或譯文放到畫面上方（兩個事件）、或只顯示其中一種。
-// 單語（Orig 為空）時用譯文行的樣式；Layout.Show 為 primary 時用原文行的樣式。
+// ASSWriter 逐句寫出 ASS（RenderASS 的串流版本，輸出相同）：標頭與樣式只和樣式設定有關，建立時先寫出，
+// 之後每句寫出事件。
+type ASSWriter struct {
+	bw  *bufio.Writer
+	lay ASSLayout
+}
+
+// NewASSWriter 寫出 [Script Info] 與 [V4+ Styles]，以及 [Events] 的 Format 列。
 // title 寫進 [Script Info]，會先清理換行與逗號。
-func RenderASS(w io.Writer, pairs []Pair, st ASSStyle, title string) error {
+func NewASSWriter(w io.Writer, st ASSStyle, title string) *ASSWriter {
 	lay := st.Layout
 	if lay.Show == "" {
 		lay.Show = ShowBoth
@@ -245,35 +376,56 @@ func RenderASS(w io.Writer, pairs []Pair, st ASSStyle, title string) error {
 	bw.WriteString(st.Primary.styleLine("Primary", lay.BorderStyle, primAlign, lay.MarginV) + "\n\n")
 
 	bw.WriteString("[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
-	for _, p := range pairs {
-		start, end := assTime(p.StartMS, false), assTime(p.EndMS, true)
-		event := func(style, text string) {
-			if text != "" {
-				fmt.Fprintf(bw, "Dialogue: 0,%s,%s,%s,,0,0,0,,%s\n", start, end, style, text)
-			}
-		}
-		main, orig := assText(p.Main), assText(p.Orig)
-		switch {
-		case orig == "":
-			style := "Translation"
-			if lay.Show == ShowPrimary {
-				style = "Primary"
-			}
-			event(style, main)
-		case lay.Show == ShowTranslation:
-			event("Translation", main)
-		case lay.Show == ShowPrimary:
-			event("Primary", orig)
-		case lay.TranslationAt == AtTop:
-			event("Translation", main)
-			event("Primary", orig)
-		case lay.Order == OrderPrimaryFirst:
-			event("Primary", orig+`\N{\rTranslation}`+main)
-		default:
-			event("Translation", main+`\N{\rPrimary}`+orig)
+	return &ASSWriter{bw: bw, lay: lay}
+}
+
+// Write 寫出一句的事件。雙語時依 Layout 決定：堆疊在同一個事件（第二行用 {\r樣式} 切換）、或譯文放到畫面上方（兩個事件）、
+// 或只顯示其中一種。單語（Orig 為空）時用譯文行的樣式；Layout.Show 為 primary 時用原文行的樣式。
+// 回傳第一個寫入錯誤（client 斷線時停止）。
+func (aw *ASSWriter) Write(p Pair) error {
+	lay, bw := aw.lay, aw.bw
+	start, end := assTime(p.StartMS, false), assTime(p.EndMS, true)
+	event := func(style, text string) {
+		if text != "" {
+			fmt.Fprintf(bw, "Dialogue: 0,%s,%s,%s,,0,0,0,,%s\n", start, end, style, text)
 		}
 	}
-	return bw.Flush()
+	main, orig := assText(p.Main), assText(p.Orig)
+	switch {
+	case orig == "":
+		style := "Translation"
+		if lay.Show == ShowPrimary {
+			style = "Primary"
+		}
+		event(style, main)
+	case lay.Show == ShowTranslation:
+		event("Translation", main)
+	case lay.Show == ShowPrimary:
+		event("Primary", orig)
+	case lay.TranslationAt == AtTop:
+		event("Translation", main)
+		event("Primary", orig)
+	case lay.Order == OrderPrimaryFirst:
+		event("Primary", orig+`\N{\rTranslation}`+main)
+	default:
+		event("Translation", main+`\N{\rPrimary}`+orig)
+	}
+	_, err := bw.Write(nil)
+	return err
+}
+
+// Close 清空緩衝。
+func (aw *ASSWriter) Close() error { return aw.bw.Flush() }
+
+// RenderASS 串流輸出 ASS：兩個樣式（Translation、Primary）加上每句一個事件（見 ASSWriter）。
+func RenderASS(w io.Writer, pairs []Pair, st ASSStyle, title string) error {
+	aw := NewASSWriter(w, st, title)
+	for _, p := range pairs {
+		if err := aw.Write(p); err != nil {
+			return err
+		}
+	}
+	return aw.Close()
 }
 
 // ---- 解析 ----

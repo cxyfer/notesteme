@@ -260,29 +260,57 @@ type CuesStream struct {
 }
 
 // Each 依序把時間範圍內的每一句交給 fn（OUT-R3 的範圍規則與 FilterRange 相同）；fn 回傳錯誤時停止。
-// 產出檔是不可變的（新版本寫成新的檔案），sha256 已在 StreamCuesWithItem 驗證過。
+// 產出檔是不可變的（新版本寫成新的檔案），sha256 已在開啟時驗證過。
 func (s *CuesStream) Each(fn func(subtitle.Cue) error) error {
-	f, err := os.Open(s.path)
+	c, err := s.cursor()
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	cr, err := subtitle.NewCuesReader(bufio.NewReaderSize(f, 32<<10))
-	if err != nil {
-		return err
-	}
+	defer c.close()
 	for {
-		c, ok, err := cr.Next()
+		cue, ok, err := c.next()
 		if err != nil || !ok {
 			return err
 		}
-		if c.EndMS > s.q.FromMS && (s.q.ToMS < 0 || c.StartMS < s.q.ToMS) {
-			if err := fn(c); err != nil {
-				return err
-			}
+		if err := fn(cue); err != nil {
+			return err
 		}
 	}
 }
+
+// cuesCursor 逐句讀一份字幕，時間範圍外的句子略過。
+type cuesCursor struct {
+	f  *os.File
+	cr *subtitle.CuesReader
+	q  CuesQuery
+}
+
+func (s *CuesStream) cursor() (*cuesCursor, error) {
+	f, err := os.Open(s.path)
+	if err != nil {
+		return nil, err
+	}
+	cr, err := subtitle.NewCuesReader(bufio.NewReaderSize(f, 32<<10))
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	return &cuesCursor{f: f, cr: cr, q: s.q}, nil
+}
+
+func (c *cuesCursor) next() (subtitle.Cue, bool, error) {
+	for {
+		cue, ok, err := c.cr.Next()
+		if err != nil || !ok {
+			return subtitle.Cue{}, false, err
+		}
+		if cue.EndMS > c.q.FromMS && (c.q.ToMS < 0 || cue.StartMS < c.q.ToMS) {
+			return cue, true, nil
+		}
+	}
+}
+
+func (c *cuesCursor) close() { _ = c.f.Close() }
 
 // StreamCuesWithItem 同 CuesWithItem，但不把字幕整份讀進記憶體（單軌的字幕下載使用，NFR-RES-3）：
 // 先以串流計算 sha256（損毀時與 CuesWithItem 一樣標記並重跑），再讀到 cues 陣列的開頭確認格式；
@@ -292,23 +320,42 @@ func (p *Pipeline) StreamCuesWithItem(ctx context.Context, itemID string, q Cues
 	if err != nil {
 		return store.Item{}, nil, err
 	}
-	path := filepath.Join(p.dataDir, filepath.FromSlash(chosen.Path))
-	if err := verifyFileSHA256(path, chosen.SHA256); err != nil {
-		if errors.Is(err, ErrCorruptArtifact) || errors.Is(err, os.ErrNotExist) {
-			return store.Item{}, nil, p.handleCorrupt(ctx, chosen)
-		}
+	cs, err := p.openCuesStream(ctx, chosen, q)
+	var de *streamDecodeError
+	if errors.As(err, &de) {
+		err = de.err
+	}
+	if err != nil {
 		return store.Item{}, nil, err
+	}
+	return it, cs, nil
+}
+
+// streamDecodeError 是 openCuesStream 讀 cues JSON 的標頭時的錯誤（sha256 已經相符）。
+type streamDecodeError struct{ err error }
+
+func (e *streamDecodeError) Error() string { return e.err.Error() }
+func (e *streamDecodeError) Unwrap() error { return e.err }
+
+// openCuesStream 驗證產出檔的 sha256（損毀或不存在時標記並重跑，同 readTranscriptArtifact），讀出標頭。
+func (p *Pipeline) openCuesStream(ctx context.Context, a store.Artifact, q CuesQuery) (*CuesStream, error) {
+	path := filepath.Join(p.dataDir, filepath.FromSlash(a.Path))
+	if err := verifyFileSHA256(path, a.SHA256); err != nil {
+		if errors.Is(err, ErrCorruptArtifact) || errors.Is(err, os.ErrNotExist) {
+			return nil, p.handleCorrupt(ctx, a)
+		}
+		return nil, err
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return store.Item{}, nil, err
+		return nil, err
 	}
 	defer f.Close()
 	cr, err := subtitle.NewCuesReader(bufio.NewReaderSize(f, 4<<10))
 	if err != nil {
-		return store.Item{}, nil, err
+		return nil, &streamDecodeError{err}
 	}
-	return it, &CuesStream{Header: cr.Header, path: path, q: q}, nil
+	return &CuesStream{Header: cr.Header, path: path, q: q}, nil
 }
 
 // verifyFileSHA256 以串流比對檔案的 sha256；不符時回傳 ErrCorruptArtifact。

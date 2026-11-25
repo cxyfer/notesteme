@@ -100,31 +100,31 @@ func (rt *routes) bilingualSubtitles(ctx context.Context, in *subtitlesInput, fo
 		}
 		style = st.ASS()
 	}
-	ri, err := rt.d.Pipeline.RenderInput(ctx, in.ID, q)
+	// 逐句配對、逐句寫出，不把兩份字幕載入記憶體（NFR-RES-3）；是否雙語與解碼錯誤在開始輸出之前決定。
+	rs, err := rt.d.Pipeline.OpenRender(ctx, in.ID, q)
 	if err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}
-	var orig []subtitle.Cue
-	origLang := ri.Main.Lang
-	if ri.Orig != nil {
-		orig, origLang = ri.Orig.Cues, ri.Orig.Lang
-	}
-	pairs := subtitle.PairCues(ri.Main.Cues, orig)
-	bilingual := subtitle.Bilingual(pairs)
-	style = assstyle.ResolveFonts(style, ri.Main.Lang, origLang)
-	name := subtitle.DownloadFileName(ri.Item.Title, ri.Main.Lang, subtitle.FileExt(format))
+	style = assstyle.ResolveFonts(style, rs.MainLang, rs.OrigLang)
+	name := subtitle.DownloadFileName(rs.Item.Title, rs.MainLang, subtitle.FileExt(format))
 	return &huma.StreamResponse{Body: func(hc huma.Context) {
 		hc.SetHeader("Content-Type", subtitle.ContentType(format))
 		hc.SetHeader("Content-Disposition", subtitle.ContentDisposition(name))
 		hc.SetHeader("X-Content-Type-Options", "nosniff")
-		hc.SetHeader("X-Notesteme-Bilingual", strconv.FormatBool(bilingual))
+		hc.SetHeader("X-Notesteme-Bilingual", strconv.FormatBool(rs.Bilingual))
 		hc.SetStatus(http.StatusOK)
 		var w io.Writer = hc.BodyWriter()
 		var err error
 		if format == subtitle.FormatASS {
-			err = subtitle.RenderASS(w, pairs, style, ri.Item.Title)
+			aw := subtitle.NewASSWriter(w, style, rs.Item.Title)
+			if err = rs.Each(aw.Write); err == nil {
+				err = aw.Close()
+			}
 		} else {
-			err = subtitle.RenderBilingualSRT(w, pairs)
+			sw := subtitle.NewBilingualSRTWriter(w)
+			if err = rs.Each(sw.Write); err == nil {
+				err = sw.Close()
+			}
 		}
 		if err != nil {
 			rt.d.Log.WarnContext(hc.Context(), "輸出字幕時中斷", "error", err.Error())

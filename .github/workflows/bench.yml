@@ -1,7 +1,8 @@
 name: Bench
 
 # NFR 中驗證方式為 `bench` 的項目（docs/specs/nfr.md 第 1 節；bench 本身在 internal/nfrbench，資料由 internal/benchdata 產生）。
-# - schedule：每晚跑完整規模（item 與 lib10k 兩組；known-misses 另外一組，不影響其他 job 的結果）。
+# - schedule：每晚跑完整規模（item 與 lib10k 兩組）。
+# - 已知未達標的 bench 命名為 BenchmarkKnownMiss*，放在另外一個 continue-on-error 的 job（nfr.md 第 11.3 節）；目前沒有。
 # - workflow_dispatch：手動觸發，可只跑某一組、或縮小 lib-10k 的比例。
 # - pull_request：只在相關目錄有變更時觸發，而且只跑縮小規模的 smoke（不拖慢 PR；完整規模請手動觸發）。
 # 每個 bench 的門檻就是 nfr.md 的數字，超過時 go test 失敗、job 失敗；結果寫進 job summary 並上傳 artifact。
@@ -13,7 +14,7 @@ on:
       group:
         description: 要跑的組
         type: choice
-        options: [all, item, lib10k, known-misses]
+        options: [all, item, lib10k]
         default: all
       scale:
         description: lib-10k 的比例（1 是完整規模；0.05 約 1/20）
@@ -172,32 +173,4 @@ jobs:
           path: |
             bench-report.jsonl
             bench-lib.txt
-          if-no-files-found: ignore
-
-  # 已知未達標的項目（nfr.md 第 10 節逐項記錄）：照跑、照門檻判定，job 失敗但不影響其他 job 與整體的燈號。
-  known-misses:
-    name: Bench known misses (KNOWN-MISS, does not gate)
-    if: github.event_name != 'pull_request' && (inputs.group == '' || inputs.group == 'all' || inputs.group == 'known-misses')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    continue-on-error: true
-    env:
-      NOTESTEME_BENCH_REPORT: ${{ github.workspace }}/bench-report.jsonl
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: RES-3 (ASS, bilingual SRT, bundle)
-        run: go test ./internal/nfrbench $BENCH_FLAGS -bench '^BenchmarkKnownMissRes3' 2>&1 | tee -a bench-known-misses.txt
-      - name: summary
-        if: ${{ !cancelled() }}
-        run: python3 -I scripts/ci/bench-summary.py "$NOTESTEME_BENCH_REPORT" "Bench：已知未達標（KNOWN-MISS）" --known-miss >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: bench-known-misses
-          path: |
-            bench-report.jsonl
-            bench-known-misses.txt
           if-no-files-found: ignore
