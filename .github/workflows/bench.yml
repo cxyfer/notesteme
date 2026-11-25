@@ -28,6 +28,8 @@ on:
       - "internal/store/**"
       - "internal/search/**"
       - "internal/subtitle/**"
+      - "internal/output/**"
+      - "internal/vault/**"
       - "internal/pipeline/**"
       - "internal/api/**"
       - "internal/app/**"
