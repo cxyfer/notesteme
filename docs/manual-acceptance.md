@@ -11,6 +11,8 @@
 - 第 10 節：全部 37 個 `@manual` 場景（3 個非 UI、34 個 `@ui @manual`）。
 - 第 11 節：NFR-REL-1 的斷電。驗證方式是 `bench`（故障注入），但 CI 只能 `kill -9`、不能斷電，斷電的部分要用實體機器或 VM 人工做（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）。
 
+第 4～9 節裡已經由真實瀏覽器的 e2e（`web/client/e2e/`，Playwright 的 Chromium、Firefox、WebKit，`.github/workflows/browser.yml`）自動檢查的步驟，標成「**已自動化**」並寫出對應的測試；那些步驟在 browser.yml 最近一次全綠的 run 就算通過，人工只做沒有標的部分（2026-11-25，依 /goal 由實作者暫定，待 owner 追認；見 [UI README 10.32](ui/README.md#1032-真實瀏覽器的自動檢查playwright2026-11-25)）。
+
 依據：`specs/README.md` 的 Definition of Done（6.2）要求「`@manual` 場景已人工驗收」；`nfr.md` 第 1 節規定 `manual` 項目在每個里程碑結束前人工檢查，沒有達標視同驗收場景失敗，不能把該里程碑標記完成。UI 改版後，受影響的項目要重做。
 
 ### 1.1 結果怎麼記錄
@@ -41,6 +43,17 @@
 | 真 YouTube | 能連外網，用真實的 YouTube 影片或頻道。 |
 | Hub | 執行中的 `notesteme-hub` 加瀏覽器；OAuth 要用真實的供應商（Google、GitHub、Linux.do）。M5 驗收的 Hub 用 Postgres 加 S3 相容儲存（`docs/hub-deployment.md`）。 |
 | IdP | 真實的 OIDC 供應商，Client 的設定檔已啟用 OIDC（AUTH-R16）。 |
+
+### 1.3 browser.yml 的結果與截圖集
+
+- 每次 run 的 job summary 有 axe 的矩陣（頁面 × 引擎與寬度，每格是淺色／深色的 serious＋critical 節點數）與 NFR-PERF-10 的數值表。
+- artifact：
+  - `e2e-report-<引擎>`：Playwright 的 HTML 報告、`axe/results.jsonl`、`perf/*.json`，以及失敗時的 trace。
+  - `e2e-perf`：真實 10,000 列的量測。
+  - `e2e-screenshots`：截圖集，保留 30 天。
+- 截圖集只在 Chromium 產生：每頁 × 375／768／1280px × 淺色／深色的整頁截圖，路徑是 `<寬度>/<light|dark>/<頁面>.jpg`。下載方式：`gh run download <run ID> -n e2e-screenshots`。
+- 里程碑結束時，用這份截圖集對照 [design-language 第 9 節](ui/design-language.md#9-驗證方式)。截圖由 CI 產生，人只要看，不必自己逐頁截圖。
+- 驗收紀錄的備註寫 run 的連結與 commit。
 
 ## 2. NFR-RES-6：`ref-vps` 無人值守一週
 
@@ -86,6 +99,20 @@
 - 目標（`nfr.md` 第 7 節）：Web UI 支援 Chrome、Edge、Firefox、Safari 的最新兩個主要版本，以及 iOS Safari 與 Android Chrome。M1。
 - 需要的環境：Client；各瀏覽器各兩個主要版本（桌面）；iOS Safari 與 Android Chrome 的實機（手機）；一部有字幕與時間帶的真 YouTube 影片。
 
+**已自動化**（Playwright 內建的 Chromium、Firefox、WebKit 各一個版本）：
+
+- 第 1 步的每頁可開啟、沒有水平捲軸：`e2e/a11y.spec.ts`，每頁 × 三種寬度。
+- 第 2 步的淺色與深色：以 `prefers-color-scheme` 模擬。
+- 第 5 步的新增抽屜預覽與預估花費：`e2e/rwd.spec.ts`。
+- 第 6 步對話框的開啟與 Esc：`e2e/shell.spec.ts`、`e2e/keyboard.spec.ts`。
+
+仍需人工：
+
+- Edge 與各瀏覽器的「最新兩個主要版本」。
+- 桌面 Safari 本身（WebKit 不等於 Safari）。
+- 第 2 步在設定裡切換主題、重新整理後保留、沒有閃爍。
+- 第 3、4、7、8 步，以及第 6 步 Safari 的「更多」選單。
+
 對每個「瀏覽器與版本」做下面的檢查，並在紀錄的備註中寫出版本號：
 
 1. 登入（密碼）。總覽、媒體庫、佇列、設定都能開啟，沒有版面破圖、字型缺字或水平捲軸。
@@ -103,6 +130,19 @@
 
 - 目標（`nfr.md` 第 8 節）：所有功能都能只用鍵盤完成；焦點框依 UI 規格；可點擊目標至少 24×24px。M1。UI 規格見 [README 第 6 節](ui/README.md#6-無障礙)、[design-language 第 3.3、6.1 節](ui/design-language.md)。
 - 需要的環境：Client；桌面瀏覽器（至少 Chrome 與 Firefox 各一次）；不使用滑鼠或觸控板；有各種內容的資料（有字幕與章節的影音、佇列中的任務、一個失敗的步驟）。
+
+**已自動化**（三個引擎，`e2e/keyboard.spec.ts`、`e2e/a11y.spec.ts`）：
+
+- 第 1 步：skip link 是第一個 Tab，按 Enter 焦點到 `<main>`；`G` 然後 `Q`、Tab 到導覽連結按 Enter 之後，焦點都在 `<main>`。
+- 第 3 步：沿 Tab 順序走過媒體庫、佇列、設定（服務）、Prompt、影音詳情。每個焦點都檢查 `:focus-visible` 的外框（淺色 Ink、深色 Cue，2px），並確認沒有被 `overflow` 的父元素裁掉。
+- 第 4 步：新增抽屜與 `?` 說明的焦點進入、Tab 鎖定、Esc 關閉、焦點回到觸發的元素。
+- 第 8 步：axe 的 `target-size` 在每一頁 × 375／768／1280px 執行。
+
+仍需人工：
+
+- 第 2 步：每一頁逐一 Tab。自動化只走前段，沒有走完整頁。
+- 第 4 步的「更多」選單。
+- 第 5～7 步。
 
 步驟與預期結果：
 
@@ -127,6 +167,19 @@
 
 - 目標（`nfr.md` 第 8 節）：狀態不只靠顏色區分；時間帶都有文字版本；`prefers-reduced-motion` 時沒有動畫。M1。UI 規格見 [design-language 第 6.1、6.4、7 節](ui/design-language.md)。
 - 需要的環境：Client；桌面瀏覽器（Chrome 的開發人員工具可以模擬色覺缺陷與減少動態）；一個螢幕閱讀器（Windows NVDA、macOS VoiceOver 擇一）；測試資料要涵蓋每一種狀態：等待中、處理中、稍後檢查（`waiting`）、等待 Agent、完成、已略過、失敗、需要你處理、超出預算、等你決定。
+
+**已自動化**（三個引擎，`e2e/motion.spec.ts`）：
+
+- 6.1 第 2 步：每個狀態標籤都有文字與圖示，不同狀態的圖示形狀不同；檢查媒體庫與失敗影音的步驟分頁。
+- 6.2 第 1～3 步的「有文字」：每條時間帶（`role="img"`、`role="slider"`）都有 `aria-label` 或 `aria-valuetext`。
+- 6.3 第 2、3 步：`reduce` 時，總覽、媒體庫、佇列、影音詳情載入後沒有進行中的動畫，開新增抽屜時也沒有。另有 `no-preference` 的對照組，確認檢查本身有效。
+
+仍需人工：
+
+- 灰階與三種色覺模擬下的觀感。測試會附上灰階截圖供對照。
+- 時間帶紋理的觀感（6.1 第 3 步）。
+- 螢幕閱讀器的朗讀與 `aria-live` 宣告（6.2 第 2、4 步）。
+- 作業系統層級的「減少動態」設定，以及處理中 chunk 的「顯影」。
 
 ### 6.1 狀態不只靠顏色
 
@@ -156,6 +209,20 @@
 - 目標（`nfr.md` 第 8 節）：日期、數字、金額用 `Intl` 格式化；時間碼不隨語言改變；顯示字幕的元素設定字幕自己的 `lang`。M1。UI 規格見 [README 第 7 節](ui/README.md#7-多語系)、[design-language 4.2](ui/design-language.md#42-依語言的字型堆疊)。
 - 需要的環境：Client；桌面瀏覽器；一部原文是简中、有校正字幕（繁中）與英文翻譯的影音（或等價的資料），並且有發布日、花費、檔案大小等數字。
 
+**已自動化**（三個引擎，`e2e/i18n.spec.ts`，三種介面語言各跑一次）：
+
+- 第 1 步的 `<html lang>`。
+- 第 2 步：成本頁的金額、媒體庫的發布日，等於同一個瀏覽器在該語言的 `Intl` 輸出。
+- 第 3 步：字幕句的時間碼是 `MM:SS` 或 `H:MM:SS`，三種語言完全相同。
+- 第 4 步：英文影音的 `<h1>` 與字幕句是 `lang="en"`；繁中筆記的閱讀區是 `zh-Hant`，介面語言是简中或英文時也一樣。
+
+仍需人工：
+
+- 第 1 步的字型堆疊。
+- 第 2 步其他位置的日期與數字（事件、佇列、檔案大小）。
+- 第 4 步的摘要、時間帶 hover 說明，以及原文是简中的影音。
+- 第 5～7 步，其中第 5 步字形的觀感只能人工。
+
 步驟與預期結果：
 
 1. **`<html lang>`**：把介面語言依序切到繁中、简中、English；在開發人員工具的 Elements 確認 `<html lang>` 分別是 `zh-Hant`、`zh-Hans`、`en`，字型堆疊隨之切換。
@@ -171,12 +238,27 @@
 - 目標（`nfr.md` 第 8 節）：767px 以下的寬度可以完成三件主要的事：查看進度、處理「需要你處理」、貼網址新增。M1。UI 規格見 [README 第 8 節](ui/README.md#8-響應式)。
 - 需要的環境：手機（真實手機一支；另外用桌面瀏覽器的裝置模擬 375×667 與 767／768 的邊界各看一次）；Client；有處理中的影音、一個「需要你處理」的步驟（例如超出預算或 needs_action）。
 
+**已自動化**（三個引擎，375×667，`e2e/rwd.spec.ts`）：
+
+- 第 1 步：底部分頁列的 5 個項目，目標 ≥ 24px。
+- 第 2 步：總覽的「現在」、佇列、媒體庫的狀態。
+- 第 3 步：在總覽的「需要你處理」按「查看」，再從分段重新處理；伺服器接受請求，步驟不再顯示失敗。測試不斷言項目離開清單，因為 e2e 的 ffmpeg 是假的，重新處理可能很快又失敗。
+- 第 4 步：從分頁列的「新增」貼上網址，看到辨識結果與預估花費，開始處理後在媒體庫找到新項目。
+- 全程沒有水平捲軸。另外每一頁在 375、768px 由 `e2e/a11y.spec.ts` 檢查沒有水平捲軸。
+
+仍需人工：
+
+- 真實手機（觸控、軟體鍵盤、Safari 的網址列）。
+- 767／768 的邊界。
+- 第 5 步的播放器。
+
 步驟與預期結果：
 
 1. **導覽**：767px 以下側邊導覽消失，底部分頁列有 5 項（總覽、媒體庫、新增、佇列、更多），「新增」在中間；「更多」開啟的對話框列出其餘頁面、偏好（主題、語言）與登出；點頁面後對話框關閉。768px 以上只有側邊導覽，沒有底部分頁列。
 2. **查看進度**：總覽的「現在」列出處理中的影音與時間帶；點進影音可以看到步驟狀態；媒體庫的時間帶移到標題下方，狀態欄的文字可讀；佇列頁可以看到各資源類別與任務。
 3. **處理「需要你處理」**：總覽的「需要你處理」顯示那個步驟與它的動作按鈕；在手機上完成動作（例如「調整預算」、重試、取消）。預期結果：不需要縮放或橫向捲動，按鈕好點（目標大小見第 5 節），完成後該項目從區塊消失。
-4. **貼網址新增**：點底部的「新增」開啟抽屜，貼上 YouTube 網址，看到辨識結果與預估花費，按「開始處理」，回到媒體庫看到新項目。5. **其他**：影音詳情的播放器固定在頂部且不遮住字幕；整個流程沒有水平捲軸，文字沒有被截斷。
+4. **貼網址新增**：點底部的「新增」開啟抽屜，貼上 YouTube 網址，看到辨識結果與預估花費，按「開始處理」，回到媒體庫看到新項目。
+5. **其他**：影音詳情的播放器固定在頂部且不遮住字幕；整個流程沒有水平捲軸，文字沒有被截斷。
 
 ## 9. NFR-PERF-10：Web UI 的 LCP 與 10,000 列捲動
 
@@ -184,6 +266,26 @@
 
 - 目標：初始載入的 JS（gzip 後）< 300KB（CI 已檢查）；`ref-wsl` 上本機連線的 LCP < 2 秒；媒體庫列表虛擬化，捲動 10,000 列不掉幀。M1。
 - 需要的環境：`ref-wsl`；Client 載入 `lib-10k` 規模的資料（10,000 部影音、500 個頻道，`nfr.md` 1.2）。用 `go run ./internal/benchdata/cmd/genlib -out <資料目錄> -profile lib-10k` 產生（完整規模約十幾分鐘、數 GB；`-profile item-long` 產生步驟 3 的 3 小時影片），再以 `NOTESTEME_DATA=<資料目錄> notesteme serve` 啟動；產生器的說明見 `internal/benchdata/doc.go`。
+
+**已自動化**（`e2e/perf.spec.ts`）：
+
+- 第 1 步：Chromium 冷載入 `/library` 3 次，LCP 中位數 < 2 秒。
+- 第 2 步：捲到底的條件是沒有超過 50ms 的長工作、沒有連續 3 個以上超過 50ms 的 frame、DOM 的列數遠少於總數，判定方式見 [UI README 10.32](ui/README.md#1032-真實瀏覽器的自動檢查playwright2026-11-25) 第 7 點。
+- e2e job 每次用 200 部執行；`perf` job 用真實的 10,000 列，每晚以及 push 到 master 時執行。
+- 數值在 job summary 與 `e2e-perf` artifact。
+
+仍需人工：
+
+- 在 `ref-wsl` 上跑一次同一個測試，因為 CI 的機器不是參考環境：
+
+  ```sh
+  cd web/client && npm run e2e:build
+  NOTESTEME_E2E_PERF10K=1 NOTESTEME_E2E_DATA10K=<資料目錄> npx playwright test --project=chromium e2e/perf.spec.ts
+  ```
+
+  資料目錄第一次會自動產生，約 1～2 分鐘。結果在 `e2e/.out/perf/`。
+- macOS 的 Safari 做一次第 2 步。CI 的 WebKit 是 Linux 的軟體繪製，捲動的流暢度量不出來，見 [UI README 10.32](ui/README.md#1032-真實瀏覽器的自動檢查playwright2026-11-25) 第 7 點。
+- 第 3 步。
 
 步驟與預期結果：
 

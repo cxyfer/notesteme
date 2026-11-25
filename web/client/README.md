@@ -153,7 +153,16 @@ src/
 - 每個頁面的 axe 檢查集中在 `src/test/a11yRoutes.ts`，新增路由時加進去（`ready` 是資料載入後才出現的文字）；API 一律用 `fixtures.ts` 的 `defaultRoutes()`。axe 不進 iframe（嵌入的播放器）。
 - 鍵盤：skip link 是第一個可聚焦的元素；換頁後焦點移到 `<main>`；焦點框用 `:focus-visible`（淺色 Ink、深色 Cue）；可點擊目標至少 24×24px。
 - `prefers-reduced-motion` 時所有動畫與轉場立即完成（`base.css`）。
-- 目前不用 Playwright（記憶體有限）；需要真實瀏覽器的檢查（LCP、捲動、手機版面）列在 NFR 的 `manual`。
+- 真實瀏覽器的檢查在 `e2e/`（Playwright，Chromium、Firefox、WebKit；docs/ui/README.md 10.32）：每頁的完整 axe（含 `color-contrast`、`target-size`）× 375／768／1280px × 淺色／深色、鍵盤與焦點框、reduced-motion、三種介面語言、375px 的三件事、窄側欄與字型切片、LCP 與捲動。測試對真正建好的 `notesteme serve`（內嵌 dist）執行，資料由 `internal/benchdata` 產生，外部網路一律擋下。CI 是 `.github/workflows/browser.yml`（每晚、手動、push 到 master 且動到前端時），不在 PR 的必過檢查裡。
+- 本機執行（記憶體有限：一次一個引擎，workers 預設 2）：
+
+  ```sh
+  npm run e2e:build                        # npm run build + 建 e2e/.out/notesteme
+  npx playwright install chromium          # 第一次；Linux 另需 npx playwright install-deps chromium
+  NOTESTEME_E2E_DATA=$PWD/e2e/.out/data npx playwright test --project=chromium e2e/keyboard.spec.ts
+  ```
+
+  `NOTESTEME_E2E_DATA` 讓 benchdata 的資料在多次執行間沿用（第一次約 1 分鐘）；`NOTESTEME_E2E_SHOTS=1` 產生截圖集；`NOTESTEME_E2E_PERF10K=1`（加上 `NOTESTEME_E2E_DATA10K=<目錄>`）跑真實 10,000 列的量測。結果在 `e2e/.out/`（axe 的 `results.jsonl`、`perf/*.json`、截圖），`node scripts/e2e-summary.mjs` 產生摘要表。
 
 ### CSP 限制（NFR-SEC-1）
 

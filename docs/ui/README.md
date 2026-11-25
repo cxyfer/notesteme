@@ -231,7 +231,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 以下細節 ADR-0008 沒有規定，依 /goal 採 advisor 建議（2026-11-23，依 /goal 採 advisor 建議，待 owner 追認）：
 
 1. **工具鏈**：npm（`package-lock.json` commit、CI 用 `npm ci`）；Node 24.12.0（`.nvmrc`、`engines`、Dockerfile、CI 一致）；套件版本寫死，挑發佈至少 2 週的版本。TypeScript 用 5.9（typescript-eslint 與 openapi-typescript 還不支援 7.x）；i18next 26／react-i18next 17（27／18 是 2026-11-07 才發佈的新 major）；jsdom 29（30 以上要求 Node 24.15）。
-2. **測試**：vitest + Testing Library + axe-core（直接用 axe-core，不用已停止維護的 vitest-axe）；不引入 Playwright。jsdom 無法檢查對比，改成從 `tokens.css` 計算 §3.3 的對比表。
+2. **測試**：vitest + Testing Library + axe-core（直接用 axe-core，不用已停止維護的 vitest-axe）；不引入 Playwright。jsdom 無法檢查對比，改成從 `tokens.css` 計算 §3.3 的對比表。（2026-11-25 補上：真實瀏覽器的檢查改用 Playwright，放在 `web/client/e2e/`，由 browser.yml 在每晚與 push 到 master 時執行，不在 PR 的必過檢查裡；vitest 與 jsdom 的測試不變。見 10.32。）
 3. **路由**：TanStack Router 的程式碼式路由，集中在 `src/router.tsx`。
 4. **session 判斷**：後端沒有「目前 session」的路由，不新增；以 CSRF cookie（非 HttpOnly）當作「可能已登入」的提示，任何 401 `unauthorized` 再導到登入頁。
 5. **主題防閃爍**：CSP 不允許 inline script，改用 `light-dark()` 與 `color-scheme`：JS 載入前跟隨系統；手動選擇與系統不同時可能短暫閃一下。
@@ -902,3 +902,124 @@ pages.md §4 與 design-language.md §6.1 的時間帶圖層中，10.26 之後�
 - `src/notices.test.ts`：授權聲明與套件一致。
 
 Hub 的 typecheck、lint、測試與 build 也都通過。
+
+### 10.32 真實瀏覽器的自動檢查（Playwright）（2026-11-25）
+
+jsdom 不排版、不算對比、不跑動畫，所以 NFR-CMP-2、A11Y-1～3、I18N-3、RWD-1、PERF-10 原本有一部分只能人工驗收（`docs/manual-acceptance.md` 第 4～9 節），G1（10.31）也留下三件要在真實瀏覽器確認的事。這次把能自動化的部分改成 Playwright 的測試，在 Chromium、Firefox、WebKit 對真正建好的 `notesteme serve` 執行。下面的決定都是「（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）」。
+
+| 項目 | 位置 | 涵蓋 |
+| --- | --- | --- |
+| 每頁的完整 axe | `e2e/a11y.spec.ts`、`e2e/support/{axe.ts,routes.ts}` | `src/test/a11yRoutes.ts` 的每一頁 × 三個引擎 × 375／768／1280px × 淺色／深色；包含 jsdom 關掉的 `color-contrast` 與 `target-size`；同時檢查沒有水平捲軸 |
+| 鍵盤（NFR-A11Y-2） | `e2e/keyboard.spec.ts` | skip link、`G` 系列快捷鍵後焦點在 `<main>`、新增抽屜與 `?` 說明的焦點鎖定與歸還、媒體庫／佇列／設定／Prompt／影音詳情的焦點框（顏色依主題、不被父元素裁掉） |
+| reduced-motion 與狀態（NFR-A11Y-3） | `e2e/motion.spec.ts` | `reduce` 時載入後與開抽屜時都沒有進行中的動畫（另有 `no-preference` 的對照組）；狀態標籤都有文字與圖示，不同狀態的圖示不同；時間帶有文字；附灰階截圖 |
+| 介面語言（NFR-I18N-3） | `e2e/i18n.spec.ts` | 三種介面語言的 `<html lang>`、金額與日期等於同一個瀏覽器的 `Intl` 輸出、時間碼完全相同、字幕句與筆記帶自己的 `lang` |
+| 375px 的三件事（NFR-RWD-1） | `e2e/rwd.spec.ts` | 底部分頁列、查看進度、在總覽處理「需要你處理」、從分頁列的「新增」貼網址到媒體庫出現新項目；全程沒有水平捲軸、目標 ≥ 24px |
+| G1 的三件事 | `e2e/shell.spec.ts` | 窄側欄 tooltip 用 `elementFromPoint` 確認沒被蓋住（1000 與 768px）；1000×400、1280×400 的側欄不溢出、可捲到最後一項；繁中筆記只下載 Noto Serif TC 與拉丁字的 woff2，總量有上限 |
+| LCP 與捲動（NFR-PERF-10） | `e2e/perf.spec.ts` | 冷載入 `/library` 3 次的 LCP 中位數 < 2 秒；捲到底的長工作與連續掉幀；真實 10,000 列（`@perf10k`）在 browser.yml 的 `perf` job |
+| CI | `.github/workflows/browser.yml`、`scripts/e2e-summary.mjs` | 每晚、手動、push 到 master 且動到 `web/**`、`internal/webui/**`、`internal/benchdata/**` 時執行；不在 ci.yml、web.yml 的 PR 路徑裡。每個引擎一個 job，摘要表寫進 job summary，報告、axe 結果、perf JSON 與截圖集上傳成 artifact |
+
+1. **工具與版本**：`@playwright/test` 1.65.0、`@axe-core/playwright` 4.14.0，版本寫死；`playwright-core` 用 `overrides` 固定成同一版。`npm run e2e` 單獨執行，不影響 `npm test` 與 bundle（e2e 不在 `src/` 底下，只進 typecheck 與 lint）。這取代 10.2 第 2 點的「不引入 Playwright」。
+2. **受測對象與資料**：
+   - 受測的是 `npm run build` 後 `go build` 的 binary（內嵌 dist）；global setup 先確認 `/` 載入的是真的 `/assets/*.js`，不是 placeholder。
+   - 資料由 `internal/benchdata` 的 `genlib`（`lib-10k` 的 2%：200 部、10 個頻道，每 97 部有一部 segment 失敗，成為「需要你處理」）加上新的 `e2eseed`（筆記、摘要、章節、畫面、停用的訂閱與三筆項目、成本）產生。登入用固定的測試密碼。
+   - 假的 `yt-dlp` 與 `ffmpeg` 放在 serve 的 `PATH` 最前面；SponsorBlock 指到 `127.0.0.1:9`。
+3. **不連外部網路（NFR-TEST-1）**：
+   - Chromium 與 WebKit 用 `context.route` 擋掉非 127.0.0.1 的請求。
+   - Firefox 改用指向不存在的 loopback proxy（`127.0.0.1:9`，127.0.0.1 直連），因為 Playwright 在 Firefox 攔截請求時，axe 會讓內容程序崩潰（見第 12 點）。
+   - 三個引擎都用 `request` 事件記錄嘗試連出的網址，附在報告裡。嵌入播放器與縮圖本來就會嘗試連出，不算失敗。
+4. **axe 的判定**：
+   - serious 與 critical 一律失敗，訊息寫出頁面、引擎、寬度、主題、selector 與 axe 的說明。
+   - `color-contrast` 與 `target-size` 必須真的檢查到節點，`inapplicable` 也算失敗。
+   - `incomplete`（axe 無法判定，例如文字疊在圖片上）不算失敗，但寫進 `e2e/.out/axe/results.jsonl` 與測試附件。
+   - 不進 iframe：嵌入的 YouTube 播放器是跨來源，而且外部請求被擋。
+   - 沒有任何排除規則，門檻也沒有放寬。唯一不檢查的格子是第 12 點的 Firefox 引擎限制。
+5. **截圖集**：只在 Chromium 產生，每頁 × 3 種寬度 × 淺色／深色的整頁 JPEG（品質 70），上傳成 `e2e-screenshots` artifact（保留 30 天）。三個引擎都截會讓 artifact 太大。用途是 design-language §9 的里程碑對照，見 `docs/manual-acceptance.md` 1.3。
+6. **NFR-I18N-3 的解讀**：「不隨語言改變」只指時間碼。日期與金額在三種語言本來就不同，所以斷言的是「等於同一個瀏覽器在該語言的 `Intl` 輸出」，而不是三種語言相同。
+7. **NFR-PERF-10 的「不掉幀」**：沿用人工驗收清單第 9 節的寫法，改成可以量的三個條件，加上虛擬化：
+   - 捲動期間沒有超過 50ms 的長工作。用 `longtask`，只有 Chromium 支援；其他引擎只用下一條。
+   - 沒有連續 3 個以上超過 50ms 的 frame（約 3 個 60Hz frame）。
+   - 捲到最後一列。
+   - DOM 中的列數少於 100，也少於總數的一半。
+
+   捲動速度是每個 frame 120px（約 2 列，一般滾輪連續捲動的速度）。另外記錄 frame 間隔的 p95 與超過 33.4ms 的比例。
+
+   頁面持續掉幀時，另外量兩組數值寫進備註，供判讀：
+   - `reduce` 時的同一頁。
+   - 一份同樣列數與列高的靜態清單（基準，沒有 JS、沒有樣式）。
+
+   **Linux 的 WebKit 是引擎限制**：它沒有 GPU，整頁都是軟體繪製。CI 的 WebKit 捲動 200 列時 frame 間隔 p95 約 150ms，`reduce` 時也一樣（123～180ms），所以不是動畫造成。
+   - 在 CI 上逐一隱藏列的各部分（時間帶、縮圖、狀態欄、標題、說明列）、拿掉陰影與濾鏡、拿掉背景圖、改用系統字型，都沒有明顯改善。
+   - 列的內容全部隱藏時，p50 仍有 63ms。
+   - 靜態清單本身也只在 p95 27～65ms 之間浮動（依 runner 的負載），不適合當閘門。
+   - 同一台 runner 上，Chromium 與 Firefox 都是 p95 17～33ms，不掉幀。
+   - 處理方式：WebKit 在 Linux 掉幀時，以具名的 `test.fixme` 標出，數值照樣記錄，摘要表顯示未通過。真實 Safari 的捲動是人工驗收（`docs/manual-acceptance.md` 第 9 節）。
+
+   引擎不支援 `largest-contentful-paint` 時，LCP 的測試同樣以具名的 `test.fixme` 標出，不算通過。
+8. **10,000 列的資料**：`genlib -profile lib-10k -cues 4`。新增的 `-cues` 旗標只減少每部的字幕句數，媒體庫列表不讀字幕，所以不影響量測，但產生時間和磁碟大幅減少（本機 79 秒、335MB）。只在 `perf` job 跑（Chromium、1 個 worker，不和其他測試搶 CPU）。
+9. **字型切片的上限**：繁中筆記一頁的 woff2 上限是 1,500,000 bytes。本機的 Chromium、Firefox 與 CI 的 WebKit 實測都一樣：21 個檔案、761,900 bytes（Barlow 4、Source Serif 4 共 4、Noto Serif TC 13 片）。上限約為實測的 2 倍，保留給字數更多、用到更多切片的筆記；超過代表切片或載入方式退化。
+10. **瀏覽器的安裝**：`actions/cache` 依「Playwright 版本 × 引擎」快取 `~/.cache/ms-playwright`。cache miss 時 `npx playwright install --with-deps <引擎>`；cache hit 時只跑 `install-deps`，因為系統套件不在快取裡。
+11. **本機**：記憶體有限，一次一個引擎，workers 預設 2。`NOTESTEME_E2E_DATA` 讓資料在多次執行間沿用。`rwd.spec.ts` 會新增影音並重新處理失敗的步驟，跑過之後資料就變了：再跑一次時 RWD 的兩個測試與失敗影音的步驟分頁會失敗，要先刪掉資料目錄。CI 每次都是新資料。
+12. **Firefox 的引擎限制**（Playwright 的 Firefox 159、axe 4.14）：axe 執行中，內容程序會 SIGSEGV（signal 11，報告是 `Page crashed`），不是頁面的 JS 例外。
+    - **攔截請求時更常發生**：Playwright 在 Firefox 攔截請求時，`/costs` 約四成機率崩潰；不攔截時 10 次 0 次。所以改用 proxy（第 3 點）。
+    - **改用 proxy 之後仍會發生**：`/add` 幾乎每次都崩潰，其他頁面零星發生，本機 `/subscriptions/{id}` 約 1～2 成。
+    - **和什麼無關**：本機二分過，和單一規則（只跑 `aria-conditional-attr` 會崩，排除它也會崩）、axe 的注入方式、legacy 模式、先用 `getByRole` 或 CSS 等待都無關。同一頁只做大量 `getComputedStyle`、`elementsFromPoint` 則不會崩潰。
+    - **處理方式**：只針對 `Page crashed`，在新分頁做同樣的載入與檢查，最多 3 次，每次記在測試的 annotation（`firefox-content-crash`）。連續 3 次都崩潰才以具名的 `test.fixme` 標出，這一頁仍由 Chromium 與 WebKit 以完整規則檢查。其他錯誤照常失敗，也不加排除規則。
+    - `waitReady` 用 CSS 加文字比對等 h1 或對話框，等的是和 `getByRole` 同一個元素；其他測試照常用 `getByRole`。
+
+找到並修正的缺陷（每一項都由上面的測試防止回歸）：
+
+| 缺陷 | 找到的檢查 | 修正 |
+| --- | --- | --- |
+| 窄側欄的 tooltip 被主內容蓋住；很矮的視窗裡側欄被裁掉、捲不到最後一項 | `shell.spec.ts` | 側欄 `overflow-y: auto` 與 `z-index`；tooltip 改成 `position: fixed`，由 `AppShell` 依項目位置設定 `--tip-x`、`--tip-y`（否則會被側欄的捲動裁掉） |
+| 章節按鈕的 `aria-label` 和可見文字不一致（WCAG 2.5.3，`label-content-name-mismatch`） | axe | 拿掉 `aria-label`，改用視覺隱藏的「跳到章節」前綴加上可見的章節名與時間碼 |
+| 頁面底色（Opal）上的 Signal、Fault 文字對比不到 4.5:1；Prompt 編輯器的變數標示、停用步驟的 `opacity` 造成對比不足 | axe（`color-contrast`） | `--color-signal` 改為 `#1c756b`、`--color-fault` 改為 `#bc3f2c`（Sheet 與 Opal 上都 ≥ 4.5:1，design-language §3.1、§3.3 同步更新）；變數改用主要文字色加底線標示；停用步驟改用虛線外框，不降透明度。`contrast.test.ts` 補上 Opal 與 Booth 的組合 |
+| 核取方塊與單選的列小於 24px（WCAG 2.5.8） | axe（`target-size`） | `label.check-row` 最小高度 24px，輸入框 16px |
+| 設定頁的寬表格與長指令在 375／768px 會水平捲動，但無法用鍵盤捲動（`scrollable-region-focusable`） | axe | `TableScroll`（`src/pages/settings/shared.tsx`）讓捲動區可聚焦，並以區塊標題命名；Agent 與摘要的 `<pre>` 同樣處理 |
+| 成本與訂閱頁的寬資料表在 Firefox 375px 會水平捲動，但捲動區無法用鍵盤聚焦（`scrollable-region-focusable`） | axe（Firefox） | `TableScroll` 移到共用元件（`src/components/TableScroll.tsx`），成本、計價表、訂閱與訂閱項目的表格都改用它，以表格標題命名。回歸測試在 `src/pages/costs/costs.test.tsx` |
+| 上一列的 `TableScroll` 以表格標題命名，和所在 `<section>` 同名，成為重複的 region landmark（`landmark-unique`，moderate） | axe（三個引擎） | 捲動區的名稱加上「（可捲動的表格）」，三種語言都有（`common.tableScroll`）；`costs.test.tsx` 斷言 region 名稱不重複 |
+| 步驟分頁的步驟名稱是 h3，前面沒有 h2，標題從 h1 跳到 h3（`heading-order`，moderate） | axe（三個引擎） | 步驟清單前加視覺隱藏的 h2；`ItemPage.test.tsx` 斷言標題層級不跳級 |
+| 章節的焦點框被列表的 `overflow` 裁掉 | `keyboard.spec.ts` | 列表加內距、拿掉 `outline-offset: -2px` 的覆寫 |
+| 成本頁在 375px 出現水平捲軸：表頭裡視覺隱藏的文字是 `position: absolute`，跳出 `overflow-x` 的包裝 | `a11y.spec.ts` 的水平捲軸檢查 | `.data-table-wrap`、`.settings-table-wrap` 加 `position: relative` |
+| 捲動 10,000 列有長工作（最長 421ms、237 個；連續 5 個 frame 超過 50ms）：每次捲動都重新渲染所有可視的列，而且 `formatDate` 每次呼叫都新建 `Intl.DateTimeFormat`（profile 中占 1.9 秒） | `perf.spec.ts`（`@perf10k`） | `src/i18n/index.ts` 依語言與選項快取 `Intl` 格式器；`LibraryRow` 改為 `memo`，傳給它的函式改成穩定的。修正後本機：長工作 0 個、frame 間隔 p95 16.8ms。回歸測試：`src/i18n/i18n.test.ts`、`src/pages/library/rowMemo.test.tsx` |
+
+仍然是人工的（`docs/manual-acceptance.md`）：
+
+- 真實的 iOS Safari、Android Chrome 與各瀏覽器的「最新兩個主要版本」（CI 只有 Playwright 內建的版本）。
+- 螢幕閱讀器的朗讀。
+- 色覺模擬與灰階下的觀感（測試只斷言形狀與文字，並附灰階截圖）。
+- 字形的觀感：简中內容是否用簡體字形。
+- 實際播放 YouTube。
+- 影音詳情的字幕句列表（約 3,000 句）的捲動。
+
+CI 實測：第一次全綠的是 scratch 分支的 run [45580704096](https://github.com/cxyfer/notesteme/actions/runs/45580704096)，2026-11-25，ubuntu-latest。之前的 run 依序找到了上面的缺陷與引擎限制。
+
+- **耗時**：整個 run 10 分 24 秒。各 job 平行：
+  - build 1 分 8 秒；
+  - e2e：Chromium 4 分 54 秒、Firefox 4 分 29 秒、WebKit 5 分 57 秒；
+  - perf 9 分 11 秒，其中產生 10,000 部的資料約 1～2 分鐘。
+- **axe**：44 頁 × 3 種寬度 × 淺色／深色，每個引擎 264 次，三個引擎共 792 次。
+  - serious 與 critical 都是 0；修正 `landmark-unique` 與 `heading-order` 之後，其他等級也是 0。
+  - incomplete：Chromium 與 WebKit 各 66 項，其中 `color-contrast` 42、`label-content-name-mismatch` 12、`aria-hidden-focus` 6、`aria-valid-attr-value` 6。Firefox 126 項，另外多了 `frame-tested` 42（嵌入播放器的 iframe 被擋）以及較多的 `color-contrast`。
+  - `color-contrast` 與 `target-size` 在 264 次中都有檢查到節點。
+- **Firefox 的崩潰重跑**：`/add` 375px 淺色崩潰 2 次，第 3 次通過；`/subscriptions/{id}` 768px 淺色崩潰 1 次。沒有任何格子變成 fixme。
+- **測試數**：Chromium 162 通過、Firefox 162 通過、WebKit 161 通過加 1 個 fixme（第 7 點的捲動）。
+- **LCP**（`/library` 冷載入 3 次的中位數，門檻 2 秒）：
+
+  | 引擎與情況 | 中位數 | 樣本 |
+  | --- | --- | --- |
+  | Chromium，perf job | 420ms | 408、420、444ms |
+  | Chromium，e2e job（3 個 worker 同時跑） | 1032ms | 960、1032、1252ms |
+  | Chromium，10,000 列 | 420ms | 412、420、424ms |
+  | Firefox | 392ms | 354、392、527ms |
+  | WebKit | 1328ms | 1250、1328、1577ms |
+
+  LCP 元素都是第一列的標題。三個引擎都支援 `largest-contentful-paint`，沒有 fixme。
+- **捲動**：
+  - Chromium，perf job，199 列：p95 16.7ms，長工作 0 個，最長連續掉幀 0 個 frame。
+  - Chromium，10,000 列：18,247 個 frame，p95 16.8ms，超過 33ms 的 0.1%，最長 67ms，長工作 0 個，最長連續掉幀 1 個 frame，DOM 最多 23 列。
+  - Firefox，199 列：p95 17.3ms，最長連續掉幀 0 個 frame。
+  - WebKit，199 列：p95 127ms，最長連續掉幀 44 個 frame，未通過；靜態清單的基準是 p95 20ms。以第 7 點的引擎限制標成 fixme。
+- **本機**（WSL2，開發機，不是 `ref-wsl`），修正前後的 10,000 列：
+  - 修正前：長工作 237 個，最長 421ms；連續掉幀 5 個 frame；p95 33.4ms。
+  - 修正後：長工作 0 個；p95 16.8ms；最長連續掉幀 1 個 frame。
+  - LCP 320ms。
