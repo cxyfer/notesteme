@@ -35,17 +35,21 @@ export function StagePanel({
   const { t } = useTranslation();
   const list = orderedStages(stages);
   if (list.length === 0) return <p className="secondary">{t("item.stages.none")}</p>;
+  // 每個步驟的名稱是 h3：前面要有 h2，標題層級才不會從 h1 跳到 h3（axe heading-order，瀏覽器 e2e 找到）
   return (
-    <ol className="stages" aria-label={t("item.stages.title")}>
-      {list.map((s) => (
-        <StageRow
-          key={s.stage}
-          stage={s}
-          run={runs?.find((r) => r.stage === s.stage)}
-          handlers={handlers}
-        />
-      ))}
-    </ol>
+    <>
+      <h2 className="visually-hidden">{t("item.stages.title")}</h2>
+      <ol className="stages" aria-label={t("item.stages.title")}>
+        {list.map((s) => (
+          <StageRow
+            key={s.stage}
+            stage={s}
+            run={runs?.find((r) => r.stage === s.stage)}
+            handlers={handlers}
+          />
+        ))}
+      </ol>
+    </>
   );
 }
 

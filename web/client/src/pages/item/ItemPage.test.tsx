@@ -495,6 +495,14 @@ describe("影音詳情：步驟與動作", () => {
     });
     const { container } = await openItem("/items/item-1?tab=stages");
     expect(await screen.findByText("需要你處理：YouTube 要求登入。")).toBeTruthy();
+    // 標題層級不跳級（axe heading-order）：步驟名稱是 h3，前面要有 h2
+    const levels = [...container.querySelectorAll("main h1, main h2, main h3")].map((h) =>
+      Number(h.tagName[1]),
+    );
+    levels.forEach((l, i) => {
+      if (i > 0)
+        expect(l - levels[i - 1]!, `標題層級 ${levels.join(" → ")}`).toBeLessThanOrEqual(1);
+    });
     // 認不得的動作原樣顯示，另外提供設定頁
     expect(screen.getByRole("button", { name: "某個新動作" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "開啟設定" })).toBeTruthy();
