@@ -86,6 +86,59 @@ Feature: LLM execution, chunking and validation
     And the worker runs until idle
     Then the LLM provider "anthropic" received 5 requests for "correct"
 
+  @LLM-03 @LLM-R1 @LIB-R29
+  Scenario: The time range of each chunk of the latest split is listed
+    Given the LLM provider "anthropic" answers "correct" for chunk 1 with "correct-echo"
+    And the LLM provider "anthropic" answers "correct" for chunk 2 with "correct-wrong-count"
+    And the owner reruns "yt:long01xxxxx" from "correct"
+    And the worker runs until idle
+    When the owner sends "GET /api/items/yt:long01xxxxx/chunks"
+    Then the response status is 200
+    And the response contains:
+      """
+      { "chunks": [
+        { "stage": "correct", "chunk": 1, "status": "done", "start": "00:00:00.000", "end": "00:09:59.500", "current": true },
+        { "stage": "correct", "chunk": 2, "status": "fallback", "start": "00:10:00.000", "end": "00:19:59.500", "current": true } ] }
+      """
+    When the owner sends "GET /api/items/yt:long01xxxxx/chunks?stage=translate"
+    Then the response status is 200
+    And the response contains:
+      """
+      { "chunks": [] }
+      """
+    When the owner sends "GET /api/items/yt:long01xxxxx/chunks?stage=chapters"
+    Then the response status is 422
+
+  @LLM-03 @LLM-R8 @LIB-R29
+  Scenario: A selected time range is turned into the chunks to rerun
+    Given the LLM provider "anthropic" answers "correct" with "correct-echo"
+    And the owner reruns "yt:long01xxxxx" from "correct"
+    And the worker runs until idle
+    When the owner sends "GET /api/items/yt:long01xxxxx/chunks?stage=correct&from=599&to=601"
+    Then the response status is 200
+    And the response contains:
+      """
+      { "chunks": [ { "chunk": 1 }, { "chunk": 2 } ] }
+      """
+    When the owner sends "GET /api/items/yt:long01xxxxx/chunks?stage=correct&from=600"
+    Then the response contains:
+      """
+      { "chunks": [ { "chunk": 2, "start": "00:10:00.000" } ] }
+      """
+    When the owner sends "GET /api/items/yt:long01xxxxx/chunks?stage=correct&from=0&to=599.5"
+    Then the response contains:
+      """
+      { "chunks": [ { "chunk": 1, "end": "00:09:59.500" } ] }
+      """
+    When the owner sends "GET /api/items/yt:long01xxxxx/chunks?stage=correct&from=120&to=60"
+    Then the response status is 422
+    When the owner sends "POST /api/items/yt:long01xxxxx/rerun" with:
+      """
+      { "from": "correct", "chunks": [2] }
+      """
+    And the worker runs until idle
+    Then the LLM provider "anthropic" received 3 requests for "correct"
+
   @LLM-05 @LLM-R6
   Scenario: A rate-limit response is retried without using up validation retries
     Given the LLM provider "anthropic" fails with HTTP 429 once

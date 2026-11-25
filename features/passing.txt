@@ -171,6 +171,8 @@ LLM-execution.feature: Chunks share the same prompt prefix
 LLM-execution.feature: Invalid output is retried with the error attached
 LLM-execution.feature: After the last retry the chunk falls back and the fallback is recorded
 LLM-execution.feature: Only the failed chunk is sent again
+LLM-execution.feature: The time range of each chunk of the latest split is listed
+LLM-execution.feature: A selected time range is turned into the chunks to rerun
 LLM-execution.feature: A rate-limit response is retried without using up validation retries
 LLM-execution.feature: The provider request rate is capped
 LLM-execution.feature: Transcript text is sent as fenced data

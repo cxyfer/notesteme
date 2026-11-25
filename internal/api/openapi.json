@@ -605,6 +605,76 @@
         ],
         "type": "object"
       },
+      "ChunkSpanBody": {
+        "additionalProperties": false,
+        "properties": {
+          "chunk": {
+            "description": "chunk 編號，從 1 起算，就是 POST /api/items/{id}/rerun 的 chunks（translate 是各目標的全域編號）",
+            "format": "int64",
+            "type": "integer"
+          },
+          "current": {
+            "description": "這次切分屬於這個步驟目前（最新）的 stage run；false 是更早的執行的切分（例如之後的執行整個重用了快取，或新的執行還沒有切分）",
+            "type": "boolean"
+          },
+          "end": {
+            "description": "這個 chunk 負責輸出的最後一句的結束時間（HH:MM:SS.mmm）；輸入的字幕讀不到時省略",
+            "type": "string"
+          },
+          "lang": {
+            "description": "translate 的目標語言；其他步驟省略",
+            "type": "string"
+          },
+          "stage": {
+            "enum": [
+              "segment",
+              "correct",
+              "translate"
+            ],
+            "type": "string"
+          },
+          "start": {
+            "description": "這個 chunk 負責輸出的第一句的開始時間（HH:MM:SS.mmm；不含開頭和前一個 chunk 重疊的句子）；輸入的字幕讀不到時省略",
+            "type": "string"
+          },
+          "status": {
+            "description": "done、fallback（驗證失敗後退回，LLM-R5）是 chunk 的結果；還沒有結果時依最近一個任務：running（處理中或等待 Batch）、failed、pending",
+            "enum": [
+              "pending",
+              "running",
+              "failed",
+              "done",
+              "fallback"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "chunk",
+          "status",
+          "current"
+        ],
+        "type": "object"
+      },
+      "ChunksOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/ChunkSpanBody"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "chunks"
+        ],
+        "type": "object"
+      },
       "ClassInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -9905,6 +9975,80 @@
           }
         },
         "summary": "取消影音所有未結束的步驟，執行中的子程序整組結束（PIPE-R15）；沒有未結束的步驟時也回 200"
+      }
+    },
+    "/api/items/{id}/chunks": {
+      "get": {
+        "operationId": "items-chunks",
+        "parameters": [
+          {
+            "description": "影音 ID 或代號",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "影音 ID 或代號",
+              "type": "string"
+            }
+          },
+          {
+            "description": "只列這個步驟（segment、correct、translate）；省略時全部",
+            "explode": false,
+            "in": "query",
+            "name": "stage",
+            "schema": {
+              "description": "只列這個步驟（segment、correct、translate）；省略時全部",
+              "type": "string"
+            }
+          },
+          {
+            "description": "秒；只列結束時間晚於它的 chunk。省略時是 0",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "秒；只列結束時間晚於它的 chunk。省略時是 0",
+              "format": "double",
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          {
+            "description": "秒；只列開始時間早於它的 chunk。省略或 0 代表沒有上限；不是 0 時必須大於 from",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "秒；只列開始時間早於它的 chunk。省略或 0 代表沒有上限；不是 0 時必須大於 from",
+              "format": "double",
+              "minimum": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChunksOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "列出影音的 LLM 步驟（segment、correct、translate）最近一次切分的每個 chunk 的時間範圍與狀態（LIB-R29）；編號和 POST /api/items/{id}/rerun 的 chunks 相同。from、to（秒）只列時間範圍和 [from, to) 重疊的 chunk"
       }
     },
     "/api/items/{id}/continue": {

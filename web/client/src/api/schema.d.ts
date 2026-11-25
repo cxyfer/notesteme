@@ -662,6 +662,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/items/{id}/chunks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** 列出影音的 LLM 步驟（segment、correct、translate）最近一次切分的每個 chunk 的時間範圍與狀態（LIB-R29）；編號和 POST /api/items/{id}/rerun 的 chunks 相同。from、to（秒）只列時間範圍和 [from, to) 重疊的 chunk */
+    get: operations["items-chunks"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/items/{id}/continue": {
     parameters: {
       query?: never;
@@ -2130,6 +2147,31 @@ export interface components {
       start: string;
       /** @description 章節標題（不可信的文字，顯示時要跳脫） */
       title: string;
+    };
+    ChunkSpanBody: {
+      /**
+       * Format: int64
+       * @description chunk 編號，從 1 起算，就是 POST /api/items/{id}/rerun 的 chunks（translate 是各目標的全域編號）
+       */
+      chunk: number;
+      /** @description 這次切分屬於這個步驟目前（最新）的 stage run；false 是更早的執行的切分（例如之後的執行整個重用了快取，或新的執行還沒有切分） */
+      current: boolean;
+      /** @description 這個 chunk 負責輸出的最後一句的結束時間（HH:MM:SS.mmm）；輸入的字幕讀不到時省略 */
+      end?: string;
+      /** @description translate 的目標語言；其他步驟省略 */
+      lang?: string;
+      /** @enum {string} */
+      stage: "segment" | "correct" | "translate";
+      /** @description 這個 chunk 負責輸出的第一句的開始時間（HH:MM:SS.mmm；不含開頭和前一個 chunk 重疊的句子）；輸入的字幕讀不到時省略 */
+      start?: string;
+      /**
+       * @description done、fallback（驗證失敗後退回，LLM-R5）是 chunk 的結果；還沒有結果時依最近一個任務：running（處理中或等待 Batch）、failed、pending
+       * @enum {string}
+       */
+      status: "pending" | "running" | "failed" | "done" | "fallback";
+    };
+    ChunksOutputBody: {
+      chunks: components["schemas"]["ChunkSpanBody"][] | null;
     };
     ClassInputBody: {
       /** @description 只作用在這個資源類別；省略時作用在整個佇列 */
@@ -6127,6 +6169,45 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ItemDetail"];
+        };
+      };
+      /** @description Error */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  "items-chunks": {
+    parameters: {
+      query?: {
+        /** @description 只列這個步驟（segment、correct、translate）；省略時全部 */
+        stage?: string;
+        /** @description 秒；只列結束時間晚於它的 chunk。省略時是 0 */
+        from?: number;
+        /** @description 秒；只列開始時間早於它的 chunk。省略或 0 代表沒有上限；不是 0 時必須大於 from */
+        to?: number;
+      };
+      header?: never;
+      path: {
+        /** @description 影音 ID 或代號 */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ChunksOutputBody"];
         };
       };
       /** @description Error */

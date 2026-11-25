@@ -56,10 +56,11 @@
 | LIB-R26 | 媒體庫的篩選與分組可以存成有名稱的檢視（`saved_views` 表）。檢視存的是媒體庫的**網址參數**（LIB-R2），不是 `GET /api/items` 的參數：`q`、`platform`、`channel`、`status`（可多個）、`error_class`、`lang`、`published_from`、`published_to`（`YYYY-MM-DD`）、`dur_min`、`dur_max`（分鐘）、`timing`、`blocked`、`read_state` 與分組 `group`（`published`、`status`、`none`，省略是依頻道）；顯示方式（列｜格）不存。`GET /api/views`（`read`）依建立順序列出 `{views[{id, name, query, created_at}]}`；套用檢視就是把網址參數整組換成 `query`。 | M4 |
 | LIB-R27 | `POST /api/views`（`admin`）`{name, query}` 建立檢視，回 201 與檢視。名稱去掉前後空白後 1～60 個字元、不含控制字元，不分大小寫（Go 的 `strings.ToLower`）不得重複，重複回 409 `view_exists`「已經有名稱是「<名稱>」的檢視。」。`query` 至少要有一個參數；每個參數的值照 `GET /api/items` 的規則驗證（日期必須存在、分鐘不得小於 0、`q` 最多 200 字元、`status` 最多 96 個（每個步驟的每個狀態各一個））；不認識的參數與不合法的值回 422 `invalid_request`，`errors[].path` 是 `name` 或 `query.<參數>`。最多 100 個檢視，超過回 409 `view_limit`。 | M4 |
 | LIB-R28 | `DELETE /api/views/:id`（`admin`）刪除檢視，回 204；不存在回 404 `not_found`「找不到這個檢視。」。UI：媒體庫有套用中的篩選時，篩選列顯示「存成檢視」（輸入名稱的對話框）；已存的檢視列在篩選列下方，點一下套用，每個都可以刪除（先確認）。 | M4 |
+| LIB-R29 | LLM chunk 的時間範圍（UI 第 4 節的時間帶「處理中」「失敗」與「重新校正這段」）：`GET /api/items/:id/chunks?stage=&from=&to=`（`read`）列出 LLM 步驟（`segment`、`correct`、`translate`，依步驟順序、chunk 編號）**最近一次切分**的每個 chunk：`{chunks: [{stage, chunk, status, lang?, start?, end?, current}]}`。最近一次切分和 `POST /api/items/:id/rerun` 的 `chunks` 對照的是同一次（LLM-R8、L12），`chunk` 就是 rerun 的編號（translate 是各目標的全域編號，`lang` 是目標語言）。`start`、`end`（`HH:MM:SS.mmm`）是這個 chunk 負責輸出的句子（不含開頭和前一個 chunk 重疊的句子，LLM-R1）從第一句的開始到最後一句的結束，依切分時的輸入字幕計算；輸入讀不到（已清除或損毀）時省略，而且這個讀取不觸發 NFR-REL-2 的重跑。`status`：`done`、`fallback`（LLM-R5）是 chunk 的結果；還沒有結果時看那個 chunk 最近一個任務：`leased` 或等待 Batch 是 `running`、`failed` 是 `failed`、其他是 `pending`。`current` 為 `true` 代表這次切分屬於那個步驟目前（最新）的 stage run。`stage` 是選填的完全比對（其他值 422 `invalid_request`「stage 必須是 segment、correct 或 translate。」）；`from`、`to`（秒，不小於 0）只列時間範圍和 `[from, to)` 重疊的 chunk（沒有時間的不列），`to` 省略或 0 代表沒有上限，不是 0 時必須大於 `from`（否則 422「to 必須大於 from。」）。從來沒有切分過的步驟不出現；影音不存在 404 `not_found`、在垃圾桶中 404 `in_trash`。 | M2 |
 
 ## 介面
 
-- API：`GET /api/items`、`GET /api/items/:id`、`GET /api/items/:id/cues`、`GET /api/items/:id/media`、`GET /api/queue`、`GET /api/events`；產出的版本（LIB-R25）：`GET /api/items/:id/artifacts`、`GET /api/artifacts/:id/content`
+- API：`GET /api/items`、`GET /api/items/:id`、`GET /api/items/:id/cues`、`GET /api/items/:id/media`、`GET /api/queue`、`GET /api/events`；產出的版本（LIB-R25）：`GET /api/items/:id/artifacts`、`GET /api/artifacts/:id/content`；LLM chunk 的時間範圍（LIB-R29）：`GET /api/items/:id/chunks`
 - UI：見上方連結
 
 **`GET /api/items`（LIB-R1、R3、R4、R7）**
@@ -185,6 +186,14 @@
   - **損毀**：讀舊版本時也驗證 sha256；`handleCorrupt` 只會讓現行版本重跑，舊版本只標記並回 409，避免讀一個舊版本就觸發重新處理。
   - **沒有改 sqlc 查詢**：列表用既有的 `CurrentArtifacts` 找出各組，再用既有的 `ArtifactGroup` 讀每組的版本（每組最多保留 3 版加上被引用的版本，組數是個位數）。
   - 場景：`features/LIB-library.feature` 的「The versions of a rerun output can be listed and read for comparison」（`@M2`），步驟句型 `the version … of the … artifact of … is known as …` 已在 steps.md 登記。
+- LIB-R29 LLM chunk 的時間範圍（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：
+  - **為什麼要新端點**：UI 第 4 節的「重新校正這段」要把時間範圍換成 rerun 的 chunk 編號，時間帶的「處理中」「失敗」（design-language.md §6.1）要畫在 chunk 的時間位置上；`llm_chunks.plan_json` 只有句號（`from`、`to`），API 沒有時間。**不放在 `GET /api/items/:id`**：換算要讀輸入字幕的產出檔，詳情在每個 `stage.status` 都重新讀取（媒體庫每列都讀），不能每次都讀字幕檔。
+  - **用 rerun 對照的同一次切分**：rerun 的 `chunks` 依 `LatestLLMChunkNumbers`（L12）檢查，這個端點也取同一個 stage run，換算出來的編號才不會被 rerun 拒絕。之後的執行整個重用了快取（PIPE-R5，沒有 chunk 列）或新的執行還沒有切分時，最近一次切分是更早的 stage run 的，以 `current: false` 標出，讓時間帶不要把舊的進度畫在新的執行上。
+  - **時間不含重疊句**：重疊區的輸出以前一個 chunk 為準（LLM-R1），所以 chunk 的範圍從它第一個「自己輸出」的句子開始，相鄰的 chunk 不重疊。translate 的範圍是翻譯單位（localize 一個 cue 一個單位，translate 依句末標點組句群，TRN-R2），依同樣的規則從輸入重建單位再換回 cue。
+  - **換算放在伺服器**：`from`、`to` 的重疊規則（`end > from` 且 `start < to`）只寫在一個地方；UI 的「重新校正這段」用它取得編號再沿用重新處理對話框（rerun 本身不變，不新增時間範圍的參數）。
+  - **沒有改 sqlc 查詢**：本機與 CI 的 `sqlc diff` 要求產生的程式碼一致，兩個唯讀查詢（最近一次切分的 stage run、每個 chunk 最近一個任務的狀態）直接寫 SQL（`internal/store/chunkspans.go`，同 `SubscriptionNewItems`）。
+  - **狀態不另外發 SSE**：chunk 任務完成不發事件（同 LIB-R24），UI 在有 LLM 步驟 `running` 時定期重新讀取。
+  - 場景：`features/LLM-execution.feature` 的「The time range of each chunk of the latest split is listed」與「A selected time range is turned into the chunks to rerun」（`@M2`）。
 
 - 儲存檢視（LIB-10、LIB-R26～R28，2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：原本寫不在 M4，pages.md 寫 M4（§3 的里程碑、「存成檢視」的線框與 `GET/POST /api/views`），現在補上。決定如下：
   - **存網址參數，不存 API 參數**：媒體庫的篩選本來就在網址（LIB-R2），套用就是還原網址，UI 不必轉換；所以長度是分鐘、發布日是 `YYYY-MM-DD`，和 `GET /api/items` 不同。驗證重用 `pipeline.ItemQuery.Validate`（每次帶一個參數，錯誤才能指到欄位），規則和列表一致。

@@ -327,6 +327,7 @@ func (rt *routes) register(api huma.API) {
 	rt.registerSubtitleImport(api)
 	rt.registerOutputs(api)
 	rt.registerArtifacts(api)
+	rt.registerChunks(api)
 	rt.registerAgent(api)
 	rt.registerM2Stubs(api)
 	rt.registerM3Stubs(api)
