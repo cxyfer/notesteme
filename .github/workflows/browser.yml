@@ -145,3 +145,79 @@ jobs:
           name: e2e-screenshots
           path: web/client/e2e/.out/screenshots
           retention-days: 30
+
+  # NFR-PERF-10 的真實 10,000 列（e2e/perf.spec.ts 的 @perf10k）：只在 Chromium（longtask 與 LCP 都有），
+  # 資料由 global setup 以 genlib -profile lib-10k -cues 4 產生（列表不讀字幕，每部 4 句讓產生時間與磁碟可控）。
+  perf:
+    name: perf (10,000 rows, chromium)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      NOTESTEME_E2E_BIN: ${{ github.workspace }}/.e2e-bin/notesteme
+      NOTESTEME_E2E_PERF10K: "1"
+      NOTESTEME_E2E_WORKERS: "1"
+    defaults:
+      run:
+        working-directory: web/client
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/client/.nvmrc
+          cache: npm
+          cache-dependency-path: web/client/package-lock.json
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: npm ci
+        run: npm ci --no-audit
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: notesteme-e2e-bin
+          path: ${{ github.workspace }}/.e2e-bin
+
+      # 10,000 列的資料目錄（job 層級的 env 不能用 runner 這個 context）
+      - name: chmod binary and data dir
+        run: |
+          chmod +x "$NOTESTEME_E2E_BIN"
+          echo "NOTESTEME_E2E_DATA10K=$RUNNER_TEMP/lib10k" >> "$GITHUB_ENV"
+
+      - name: Playwright version
+        id: pw
+        run: echo "version=$(node -p 'require("@playwright/test/package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium
+
+      - name: install browser
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: install browser deps
+        if: steps.browsers.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      # 一次只跑一個 worker：量測不和其他測試搶 CPU
+      - name: perf
+        run: npx playwright test --project=chromium e2e/perf.spec.ts
+
+      - name: summary
+        if: always()
+        run: node scripts/e2e-summary.mjs "Browser e2e：NFR-PERF-10（10,000 列）" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-perf
+          path: |
+            web/client/e2e/.out/perf
+            web/client/e2e/.out/test-results
+          retention-days: 30
