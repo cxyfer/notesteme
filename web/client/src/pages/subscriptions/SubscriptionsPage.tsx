@@ -19,6 +19,7 @@ import {
   EmptyState,
   ErrorCallout,
   Spinner,
+  TableScroll,
   useToast,
 } from "../../components";
 import { formatDateTime, formatNumber } from "../../i18n";
@@ -92,7 +93,7 @@ export function SubscriptionsPage() {
 function SubscriptionTable({ list }: { list: SubscriptionView[] }) {
   const { t } = useTranslation();
   return (
-    <div className="data-table-wrap">
+    <TableScroll label={t("subs.tableCaption")}>
       <table className="data-table">
         <caption className="visually-hidden">{t("subs.tableCaption")}</caption>
         <thead>
@@ -148,7 +149,7 @@ function SubscriptionTable({ list }: { list: SubscriptionView[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

@@ -15,6 +15,7 @@ import {
   ErrorCallout,
   SelectField,
   Spinner,
+  TableScroll,
   TextField,
   useToast,
 } from "../../components";
@@ -84,7 +85,7 @@ export function PricesPanel() {
             <Button onClick={() => setEditing({})}>{t("costs.prices.add")}</Button>
           </div>
           {list.length > 0 && (
-            <div className="data-table-wrap">
+            <TableScroll label={t("costs.prices.title")}>
               <table className="data-table">
                 <caption className="visually-hidden">{t("costs.prices.title")}</caption>
                 <thead>
@@ -134,7 +135,7 @@ export function PricesPanel() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           )}
         </>
       )}

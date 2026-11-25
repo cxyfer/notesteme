@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { api, apiPath } from "../../api/client";
 import { isApiError } from "../../api/errors";
 import { queryKeys } from "../../api/queryKeys";
-import { ErrorCallout, Spinner } from "../../components";
+import { ErrorCallout, Spinner, TableScroll as SharedTableScroll } from "../../components";
 
 /** 分區裡的一個區塊（h3 標題＋內容）。 */
 export function Panel({
@@ -27,16 +27,12 @@ export function Panel({
   );
 }
 
-/**
- * 可以水平捲動的寬表格：窄螢幕上只能捲動才看得到右邊的欄，所以要能用鍵盤聚焦後以方向鍵捲動
- * （WCAG 2.1.1；瀏覽器 e2e 的 axe scrollable-region-focusable 找到，docs/ui/README.md 10.32）。
- * 名稱用所在區塊的標題。
- */
+/** 設定頁的寬表格（外觀不同，行為同 components 的 TableScroll） */
 export function TableScroll({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="settings-table-wrap" tabIndex={0} role="region" aria-label={label}>
+    <SharedTableScroll label={label} className="settings-table-wrap">
       {children}
-    </div>
+    </SharedTableScroll>
   );
 }
 

@@ -9,7 +9,15 @@ import { api } from "../../api/client";
 import { describeError } from "../../api/describeError";
 import { queryKeys } from "../../api/queryKeys";
 import type { components } from "../../api/schema";
-import { Button, ErrorCallout, SelectField, Spinner, TextField, useToast } from "../../components";
+import {
+  Button,
+  ErrorCallout,
+  SelectField,
+  Spinner,
+  TableScroll,
+  TextField,
+  useToast,
+} from "../../components";
 import { formatDateTime, formatNumber, formatUsd } from "../../i18n";
 import { usePageTitle } from "../../shell/usePageTitle";
 import { formatUsdCents } from "./money";
@@ -252,7 +260,7 @@ function GroupChart({ s, groupBy }: { s: Summary; groupBy: string }) {
       {groups.length === 0 ? (
         <p className="secondary">{t("costs.emptyRange")}</p>
       ) : (
-        <div className="data-table-wrap">
+        <TableScroll label={t("costs.chartCaption", { group: t(`costs.group.${groupBy}`) })}>
           <table className="data-table">
             <caption className="visually-hidden">
               {t("costs.chartCaption", { group: t(`costs.group.${groupBy}`) })}
@@ -299,7 +307,7 @@ function GroupChart({ s, groupBy }: { s: Summary; groupBy: string }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </section>
   );
@@ -342,7 +350,7 @@ function EntriesTable({ from, to }: { from: string; to: string }) {
       )}
       {entries.data && list.length === 0 && <p className="secondary">{t("costs.emptyRange")}</p>}
       {list.length > 0 && (
-        <div className="data-table-wrap">
+        <TableScroll label={t("costs.entries.title")}>
           <table className="data-table">
             <caption className="visually-hidden">{t("costs.entries.title")}</caption>
             <thead>
@@ -364,7 +372,7 @@ function EntriesTable({ from, to }: { from: string; to: string }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
       {entries.hasNextPage && (
         <Button onClick={() => void entries.fetchNextPage()} disabled={entries.isFetchingNextPage}>

@@ -61,6 +61,21 @@ describe("成本頁", () => {
     await expectNoA11yViolations(container);
   });
 
+  it("寬表格在可以用鍵盤聚焦的捲動區裡（375px 會水平捲動；scrollable-region-focusable）", async () => {
+    costsApi();
+    signIn();
+    renderRoute("/costs");
+    const chart = await screen.findByRole("table", { name: "依日期的花費" });
+    await screen.findByText("沒有單價的影片");
+    for (const table of screen.getAllByRole("table")) {
+      const region = table.closest('[role="region"]');
+      expect(region, `${table.getAttribute("aria-label") ?? "表格"} 不在捲動區裡`).not.toBeNull();
+      expect(region!.getAttribute("tabindex")).toBe("0");
+      expect(region!.getAttribute("aria-label")).toBeTruthy();
+    }
+    expect(chart.closest('[role="region"]')!.getAttribute("aria-label")).toBe("依日期的花費");
+  });
+
   it("沒有月預算時改用另一句；prices_stale 依 code 提供「確認計價表」", async () => {
     const api = costsApi({
       "GET /api/costs": () =>

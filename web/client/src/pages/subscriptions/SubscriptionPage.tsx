@@ -18,6 +18,7 @@ import {
   ErrorCallout,
   SelectField,
   Spinner,
+  TableScroll,
   useToast,
 } from "../../components";
 import { formatDate, formatDateTime, formatTimecode } from "../../i18n";
@@ -319,7 +320,7 @@ function Entries({ id }: { id: string }) {
       )}
       {entries.data && list.length === 0 && <p className="secondary">{t("subs.entries.empty")}</p>}
       {list.length > 0 && (
-        <div className="data-table-wrap">
+        <TableScroll label={t("subs.entries.title")}>
           <table className="data-table">
             <caption className="visually-hidden">{t("subs.entries.title")}</caption>
             <thead>
@@ -356,7 +357,7 @@ function Entries({ id }: { id: string }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
       {list.length >= limit && limit < ENTRY_MAX && (
         <Button

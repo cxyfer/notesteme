@@ -15,6 +15,7 @@ export { LoadMore, type LoadMoreProps } from "./LoadMore";
 export { SelectField, type SelectFieldProps } from "./SelectField";
 export { Spinner } from "./Spinner";
 export { STATUSES, StatusBadge, type Status } from "./StatusBadge";
+export { TableScroll, type TableScrollProps } from "./TableScroll";
 export { TextField, type TextFieldProps } from "./TextField";
 export { allowedImageUrl, Thumbnail, thumbnailUrl, type ThumbnailProps } from "./Thumbnail";
 export { ToastProvider, useToast, type ToastOptions } from "./Toast";
