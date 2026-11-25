@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -187,34 +188,39 @@ func (r *Repo) Search(ctx context.Context, q SearchQuery) (SearchPage, error) {
 	}
 	from := ` FROM search_cues sc JOIN items i ON i.id = sc.item_id WHERE ` + strings.Join(where, ` AND `)
 
-	var page SearchPage
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*)`+from, args...).Scan(&page.Total); err != nil {
-		return SearchPage{}, err
-	}
-	if q.After != nil {
-		from += ` AND (-i.created_at, i.id, ` + translationExpr + `, sc.lang, sc.cue) > (?, ?, ?, ?, ?)`
-		a := q.After
-		args = append(args, -a.CreatedAtMs, a.ItemID, a.Translation, a.Lang, a.Cue)
-	}
+	// 只掃一次符合的字幕句（NFR-PERF-9）：m 列出每個符合的句子與排序鍵，COUNT(*) OVER () 是總數（在游標過濾之前，
+	// 所以每一頁的 total 都相同）；p 依游標過濾、排序、取一頁；最後才為這一頁的列讀取內容與前後句。
+	// 原本 COUNT 與分頁各掃一次，2 字以下的掃描路徑等於掃兩次整個索引表。
 	limit := q.Limit
 	if limit <= 0 {
 		limit = search.DefaultLimit
 	}
-	rows, err := db.QueryContext(ctx, `SELECT sc.item_id, i.platform, i.external_id, i.part, i.title, i.created_at,
+	inner := `SELECT sc.id AS sid, i.created_at AS created_at, i.id AS iid, ` + translationExpr + ` AS tr, sc.lang AS lang, sc.cue AS cue,
+  COUNT(*) OVER () AS total` + from
+	cursor := ""
+	pageArgs := slices.Clone(args)
+	if q.After != nil {
+		cursor = ` WHERE (-m.created_at, m.iid, m.tr, m.lang, m.cue) > (?, ?, ?, ?, ?)`
+		a := q.After
+		pageArgs = append(pageArgs, -a.CreatedAtMs, a.ItemID, a.Translation, a.Lang, a.Cue)
+	}
+	rows, err := db.QueryContext(ctx, `SELECT p.total, sc.item_id, i.platform, i.external_id, i.part, i.title, i.created_at,
   sc.lang, sc.variant, sc.cue, sc.start_ms, sc.end_ms, sc.text,
-  (SELECT p.text FROM search_cues p WHERE p.artifact_id = sc.artifact_id AND p.cue = sc.cue - 1),
+  (SELECT b.text FROM search_cues b WHERE b.artifact_id = sc.artifact_id AND b.cue = sc.cue - 1),
   (SELECT n.text FROM search_cues n WHERE n.artifact_id = sc.artifact_id AND n.cue = sc.cue + 1),
-  `+translationExpr+from+`
-ORDER BY i.created_at DESC, i.id, `+translationExpr+`, sc.lang, sc.cue
-LIMIT ?`, append(args, limit+1)...)
+  p.tr
+FROM (SELECT * FROM (`+inner+`) m`+cursor+` ORDER BY m.created_at DESC, m.iid, m.tr, m.lang, m.cue LIMIT ?) p
+JOIN search_cues sc ON sc.id = p.sid JOIN items i ON i.id = p.iid
+ORDER BY p.created_at DESC, p.iid, p.tr, p.lang, p.cue`, append(pageArgs, limit+1)...)
 	if err != nil {
 		return SearchPage{}, err
 	}
+	var page SearchPage
 	defer rows.Close()
 	for rows.Next() {
 		var h SearchHit
 		var before, after sql.NullString
-		if err := rows.Scan(&h.ItemID, &h.Platform, &h.ExternalID, &h.Part, &h.Title, &h.Key.CreatedAtMs,
+		if err := rows.Scan(&page.Total, &h.ItemID, &h.Platform, &h.ExternalID, &h.Part, &h.Title, &h.Key.CreatedAtMs,
 			&h.Lang, &h.Variant, &h.Cue, &h.StartMS, &h.EndMS, &h.Text, &before, &after, &h.Key.Translation); err != nil {
 			return SearchPage{}, err
 		}
@@ -229,6 +235,12 @@ LIMIT ?`, append(args, limit+1)...)
 	}
 	if err := rows.Err(); err != nil {
 		return SearchPage{}, err
+	}
+	// 游標已經在最後一筆之後：這一頁沒有列可以帶出總數，另外數一次（只在翻過最後一頁時發生）。
+	if len(page.Hits) == 0 && q.After != nil {
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*)`+from, args...).Scan(&page.Total); err != nil {
+			return SearchPage{}, err
+		}
 	}
 	if len(page.Hits) > limit {
 		page.Hits = page.Hits[:limit]

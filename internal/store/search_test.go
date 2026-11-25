@@ -271,6 +271,11 @@ func TestSearchOrderingBeforeAfterAndPaging(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("分頁 = %+v", got)
 	}
+	// 游標在最後一筆（例如結果在兩次請求之間變少）：沒有結果，total 仍是全部的數量。
+	last := all.Hits[len(all.Hits)-1].Key
+	if p := runSearch(t, s, "kafka", "", 2, &last); len(p.Hits) != 0 || p.Total != 5 || p.Next != nil {
+		t.Fatalf("最後一筆之後 = %+v（total %d）", keys(p), p.Total)
+	}
 }
 
 // TestSearchPathsAgree 是差分測試（SRCH-R3）：同一個語料，3 個字以上的查詢走 trigram 索引與走 instr 掃描，
