@@ -33,7 +33,8 @@ function record(info: TestInfo, r: Omit<Result, "engine">) {
   const dir = path.join(outDir, "perf");
   mkdirSync(dir, { recursive: true });
   writeFileSync(
-    path.join(dir, `${info.project.name}-${r.case.replace(/\W+/g, "_")}.json`),
+    // 檔名保留中文（\W 會把中文也換掉，「連續掉幀」與「長工作」會寫到同一個檔案）
+    path.join(dir, `${info.project.name}-${r.case.replace(/[^\p{L}\p{N}]+/gu, "_")}.json`),
     JSON.stringify(full),
   );
   console.log(`PERF ${JSON.stringify(full)}`);
