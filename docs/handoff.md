@@ -1,17 +1,17 @@
 # 交接：開發進度（M1～M5 與 Web UI）
 
-> 更新：2026-11-25（收尾 E：/goal 剩餘規格與非功能需求，見第 1 節最上面的「收尾 E」與第 2 節的「NFR 對帳」「ADR 對帳」；下面的場景數是收尾 D6 時的數字，最近一次完整驗證是預設 tag 354、`@M3,@M4,@M5` 659，之後的切片還有新增，以 `go test ./features` 為準）。M1～M5 的後端、Client Web UI（UI-0～UI-8）與 Hub Web UI 都已推送到 master；964 個自動化場景（預設 tag 316＋`@M3,@M4,@M5` 648）全部通過（本機與 CI 驗證）。安全審查的 16 項發現已修補（第 1 節「安全修補 A／B／C」）。`@manual`、`@ui @manual`、真實樣本與真實服務的驗收屬 owner（`@pending-m0` 的 20 個 example 在本機全部通過，門檻仍是暫定值，等 M0 樣本）；做不到的清單與逐項對帳在第 2 節。repo 公開（2026-11-24）後 GitHub Actions 已經正常執行，驗證以 CI 為準；注意 `ci.yml` 之外還有 `web.yml`（Web UI，路徑過濾）、`fuzz.yml`、`docker-publish.yml`，看 `gh run list --branch master` 時要四個 workflow 都看。依 owner 的 /goal（MVP 階段不再開 PR）每個切片完成後直接推送 master。2026-11-22 前的 PR #1～#19（LOCAL、PODCAST、ESTIMATE、M2 S0～S2、S6a 等）已合併，之後的切片見 `git log`。**接手請先讀第 2 節的「2026-11-24 現況」。**
+> 更新：2026-11-25（收尾 E：/goal 剩餘規格與非功能需求，見第 1 節最上面的「收尾 E」與第 2 節的「NFR 對帳」「ADR 對帳」；下面的場景數是收尾 D6 時的數字，最近一次完整驗證是預設 tag 357、`@M3,@M4,@M5` 659，之後的切片還有新增，以 `go test ./features` 為準）。M1～M5 的後端、Client Web UI（UI-0～UI-8）與 Hub Web UI 都已推送到 master；964 個自動化場景（預設 tag 316＋`@M3,@M4,@M5` 648）全部通過（本機與 CI 驗證）。安全審查的 16 項發現已修補（第 1 節「安全修補 A／B／C」）。`@manual`、`@ui @manual`、真實樣本與真實服務的驗收屬 owner（`@pending-m0` 的 20 個 example 在本機全部通過，門檻仍是暫定值，等 M0 樣本）；做不到的清單與逐項對帳在第 2 節。repo 公開（2026-11-24）後 GitHub Actions 已經正常執行，驗證以 CI 為準；注意 `ci.yml` 之外還有 `web.yml`（Web UI，路徑過濾）、`fuzz.yml`、`docker-publish.yml`，看 `gh run list --branch master` 時要四個 workflow 都看。依 owner 的 /goal（MVP 階段不再開 PR）每個切片完成後直接推送 master。2026-11-22 前的 PR #1～#19（LOCAL、PODCAST、ESTIMATE、M2 S0～S2、S6a 等）已合併，之後的切片見 `git log`。**接手請先讀第 2 節的「2026-11-24 現況」。**
 > 用途：讓下一個 session 或協作者不用重讀全部對話就能接手。內容會隨切片推進而更新；規則與決策以規格、ADR 為準，這裡只做索引與摘要。
 
 ## 1. 現況
 
 - **收尾 E：/goal 剩餘規格與非功能需求（2026-11-25，直接推送 master，不開 PR；決定都標「（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）」，位置在各規格的待決問題與 `docs/ui/README.md` 10.25～10.31）**：
-  - **CI（`aea5be2d`、`7830bf7b`、`fb61a80b`、`770c3f2f`、`039552f8`）**：`ci.yml` 新增 `compose`（Client 的 local／vps 兩種 profile、重啟保留資料、HSTS 與 Secure cookie）、`docker-arm64`（QEMU）、`bdd-fast`（預設 tag、不開 `-race`，NFR-TEST-2 的 < 300 秒門檻）、`openapi-diff`（`oasdiff breaking`，NFR-CMP-3）、`fault`（故障注入縮小版）、binary 與 image 大小檢查（NFR-RES-5）；`web.yml` 新增每天的 `npm audit`（NFR-SEC-4）；新增 `bench.yml`（每晚，NFR 的 `bench` 類）與 `fault.yml`（每晚，每點 100 次）。**`ci.yml` 與 `web.yml` 都要看**：`fb61a80b` 之前 `web.yml` 因為測試 fixture 少了新欄位與 `hub_origin` 沒進 `nullableRefs` 而失敗。master 的 concurrency 設定會讓排隊中的 run 被新的推送取代（`cancelled` 不是失敗）。
+  - **CI（`aea5be2d`、`7830bf7b`、`fb61a80b`、`770c3f2f`、`039552f8`）**：`ci.yml` 新增 `compose`（Client 的 local／vps 兩種 profile、重啟保留資料、HSTS 與 Secure cookie）、`docker-arm64`（QEMU）、`bdd-fast`（預設 tag、不開 `-race`，NFR-TEST-2 的 < 300 秒門檻）、`openapi-diff`（`oasdiff breaking`，NFR-CMP-3）、`fault`（故障注入縮小版）、binary 與 image 大小檢查（NFR-RES-5）；`web.yml` 新增每天的 `npm audit`（NFR-SEC-4）；新增 `bench.yml`（每晚，NFR 的 `bench` 類）與 `fault.yml`（每晚，每點 100 次）、`browser.yml`（Playwright 三引擎，每晚與動到 `web/**` 的 push）。**`ci.yml` 與 `web.yml` 都要看**：`fb61a80b` 之前 `web.yml` 因為測試 fixture 少了新欄位與 `hub_origin` 沒進 `nullableRefs` 而失敗。master 的 concurrency 設定會讓排隊中的 run 被新的推送取代（`cancelled` 不是失敗）。
   - **後端與規格缺口**：fakehub 契約欄位（`e7adf929`）、`/mcp` 暫停時的限流（`bc5dee28`）、FRM 圖說（`49c3bc46`）、VAULT `download`（`1758cdf3`）、BATCH translate／summary（`0619d052`）、COST 的 ASR、Supadata、Playground 計量與估價覆寫（`02ee740e`）、`hub_origin` 與佇列的 Agent 任務（`e37bd094`、`49c804d4`、`46e34661`）、provider 列表與連線測試（`GET /api/providers`、`POST /api/providers/{id}/test`，`b1fd5b55`；停用公告的機制已有，資料是空的）、cookie 狀態（`GET /api/cookies`，SEC-R12，migration 00036，`7553e491`）、儲存檢視（`/api/views`，LIB-R26～R28，migration 00037，`b04b78f1`；`POST`／`DELETE` 要 admin，因為沒有 write scope）、`GET /api/items/{id}/artifacts` 與 `GET /api/artifacts/{id}/content`（LIB-R25，版本比較）、`stages[]` 的 `progress`／`provider`（LIB-R24）、`GET /api/items/{id}/chunks`（LIB-R29）、`GET /api/system` 的程式、schema 與工具版本（OPS-R22）、`GET /api/hooks`。
   - **UI 缺口（`docs/ui/pages.md` 的稽核結果，`2cf465ea` F1、`64d0e1ee`..`b394d3d3` F2、`832be983` F3、`612c3d59`..`a86d2e85` F4、`6a2a5725` G1）**：新增抽屜（單次覆寫、多網址、拖放、已在媒體庫中）、時間帶點擊定位、說話密度、章節線與清單、畫面刻度、處理範圍底軌、拖曳範圍後的「重新校正這段」與「複製這段字幕」、ASS 樣式選擇、版本比較、媒體庫的「有筆記」與頻道名稱、處理方案的「關鍵畫面」與「筆記」步驟、`on_user_change`、`language.fallback`、受影響訂閱的提示、系統分區的磁碟與版本、登入頁的淡化時間帶、字幕樣式縮圖比較、介面密度（design-language §5.5）、閱讀字型（Source Serif 4＋Noto Serif，自架 woff2）、Phosphor 圖示、768～1279px 的 64px 窄導覽、Markdown 連結只允許 http、https 與站內路徑。
   - **非功能需求**：`bench` 類每晚驗證（`internal/benchdata`、`internal/nfrbench`）、kill -9 故障注入（`internal/faultpoint`，build tag `faultinject`，正式 binary 不含）、並行寫入與外部服務全掛（PIPE-R17）、`request_id` 與任務欄位（`internal/logctx`）、失敗步驟的 log 片段（PIPE-R16，migration 00035）、`Accept-Language` 三語錯誤訊息（AUTH-R23，`internal/apierr` 的目錄，Client 與 Hub 都是 0 處未走目錄）、CLI 與 serve 的版本檢查（CLI-R9，不相容回 426 `client_incompatible`）。逐項狀態與數字見第 2 節「NFR 對帳」。
   - **文件對帳（`8b271e52`）**：24 份 ADR 的 218 條決定逐條對實作（修訂前 179 條已落地），不一致的在 ADR 檔尾加 `## 修訂`（ADR-0002、0004、0007、0008、0009、0010、0020、0030、0031），見第 2 節「ADR 對帳」；新增 `docs/manual-acceptance.md`（人工驗收清單與 37 個 `@manual` 場景）。
-  - **進行中（寫這份時還沒推完）**：真實瀏覽器檢查（Playwright、axe 的 `color-contrast` 與 `target-size`、三引擎三視窗、LCP 與捲動，預計 `browser.yml`）；PERF-9 與 RES-3 的第二輪最佳化。完成後要把第 2 節「NFR 對帳」的對應列與 `nfr.md` 第 10、11 節更新到最終數字。
+  - **收尾 E 後半（2026-11-25，已全部推送，master `1e901ed5` 的 `ci.yml`、`web.yml`、`browser.yml` 都綠）**：①真實瀏覽器檢查 `web/client/e2e/`（Playwright 1.65，`browser.yml`；`2dc2af46`..`1e901ed5`）：44 頁 × 375／768／1280 × 淺色／深色 × 三引擎的完整 axe（含 `color-contrast`、`target-size`，792 次 serious＋critical 為 0）、RWD-1 三件事、鍵盤與焦點框、reduced-motion、三語格式與 `lang`、字型切片、LCP（Chromium 420ms、Firefox 392ms、WebKit 1328ms）與 10,000 列捲動（Chromium p95 16.8ms、長工作 0 個）；順手修掉 12 個只有真實瀏覽器看得到的缺陷（對比、24px 目標、寬表格鍵盤捲動、tooltip 被蓋、焦點框被裁、`LibraryRow` 重渲染與 `Intl` 格式器重建造成的 421ms 長工作等，見 `docs/ui/README.md` 10.32）。**未達標：Linux CI 的 WebKit 捲動媒體庫（p95 127ms，同引擎靜態清單 20ms，原因未隔離，標具名 fixme，需要 Safari 實機）**；Firefox 159 跑 axe 偶爾內容程序崩潰（只針對該錯誤重跑 3 次）。②PERF-9／RES-3 第二輪（`3223eb4a`、`08c5644b`，migration 00038 `search_groups`／`search_text`）：全文搜尋 CI 最慢 237ms、ASS 與雙語 SRT 與 bundle 匯出增量 0.00～0.57×，兩組搬回正式 bench，`known-misses` job 已移除；③發佈輸出串流（`86605580`..`2fb02f5b`，`output.Writer.WriteFrom`）：vault／sidecar／folder 輸出增量 5.10～10.99× → 0.30～0.81×。
   - **推送過程**：多個 child 的 `git push` 被權限分類器擋下（F1、F3、O、E2、G1），我在驗證（web 全套、Go 全套、兩組 features、speccheck、coverage）後依 /goal 親自推送（必要時 rebase 並解衝突，例如 `nfr.md`、`docs/ui/README.md` 的段落編號、migration 編號、錯誤訊息目錄）；沒有任何一個被繞過。
 
 - **安全修補 B：bundle 與 Client 分享（2026-11-24，分支 `fix/bundle-share-security-hardening`，決定都標「依 /goal 採 advisor 建議，待 owner 追認」）**：
@@ -626,12 +626,12 @@
 - **規格有規則、程式沒做 → 收尾 D6 已補**：COST-R1／R5／C23 的 ASR 與 Supadata 計量與估價覆寫、BATCH-R1／R2 的 translate 與 summary、FRM-R9 shortfall 圖說、VAULT publish 的 `download` 類別（ADR-0020 §3）、HMCP-R8／HACC-R18 的 `/mcp` 停用帳號限流、ADR-0030 的 fakehub 必要欄位比對、HSHR:55 的 `hub_origin`／上傳者名稱、AGT:71 的佇列 Agent 任務與租約、VAULT 介面的 vault 與 hook 清單、OPS 的總覽告警、ENTRY 的預估花費、SUB 的「建立訂閱」與「新內容」、NOTE 的草稿預覽、DEL 的「更多」選單。
 - **規格互相矛盾 → 已更正**：PRM 第 67 行（M2 時期）寫 Playground 的試跑「不寫入帳本」，與 COST C17（收尾 D6 實作 Playground 計量）衝突；PRM 該句已改成指向 COST C17（待追認）。
 - **規格沒要求（附出處，沒做是對的）**：Range、cursor 簽章、lookup 專用限流（HREP:101～104）；取消隱藏、`my_vote`、群組列表（HREP:112、HREP-R13、HACC 路由表）；換主金鑰（HACC:109）；下架申請 IP 額度跨重啟（HACC:108，刻意不保存 IP）；email 通知、多 Hub 共用額度（HACC:70～71 不在範圍）；Client 端撤回的路由與 CLI（HSHR S12）；分享與撤回的稽核（HACC-R17 的清單沒有）；讀取稽核與 MCP 專用額度（HMCP M9、HMCP-R8）；Gemini 計價與 Gemini batch（GEM:51、58；BATCH:54）；送出後寫入 `external_id` 前中斷（BATCH:71 已知限制）；內建 LLM 單價（COST C18、R7 的處理）；Podcast transcript 事後補上（SRC:118）；CLI `items show` 文字模式列 `better_source`（CLI-cli.md:39 只列指令）；secrets 的 `vault:<id>` 憑證（VAULT:42 只定環境變數）；cookie 的 GET／DELETE（SEC:41、43）；稽核表（AUTH A21）；`agent` 選圖與 Bilibili 影片（FRM-R1、F6、F10）、取消選圖任務留下的版本目錄（FRM:72）；doctor 的 OPS 檢查與 OPS 的 MCP 介面（OPS:187，規格明寫沒有要求）。
-- **需要這個環境沒有的資源（做不到）**：真實 YouTube／Bilibili／Groq／Supadata／Gemini／Anthropic／OpenAI batch 的驗收與品質、ntfy、真實 IdP 與反向代理、Hub 的真實 OAuth（Google／GitHub／Linux.do）、R2／AWS S3、真實 git 服務與 Obsidian、Jellyfin／Plex、真實 MCP client、真實 libass 預覽與 ffmpeg 輸出的視覺品質、Windows 主機（CLI 的 WSL 場景）、repo 外的 watch skill（CLI-04）、真實網域的 ACME、`@manual` 與 `@ui @manual` 的人眼驗收、Groq 最低計費秒數與 Supadata credit 換算（要官方帳單規則）、M0 樣本（`@pending-m0` 的門檻）。
+- **需要這個環境沒有的資源（做不到）**：真實 YouTube／Bilibili／Groq／Supadata／Gemini／Anthropic／OpenAI batch 的驗收與品質、ntfy、真實 IdP 與反向代理、Hub 的真實 OAuth（Google／GitHub／Linux.do）、R2／AWS S3、真實 git 服務與 Obsidian、Jellyfin／Plex、真實 MCP client、真實 libass 預覽與 ffmpeg 輸出的視覺品質、Windows 主機（CLI 的 WSL 場景）、repo 外的 watch skill（CLI-04）、真實網域的 ACME、`@manual` 與 `@ui @manual` 的人眼驗收、Groq 最低計費秒數與 Supadata credit 換算（要官方帳單規則）、M0 樣本（`@pending-m0` 的門檻）。；收尾 E 新增：Safari 實機與 iOS／Android 實機（含 WebKit 捲動未達標的根因，需要 macOS Safari 的 profile）、Edge 與桌面 Safari、螢幕閱讀器、`ref-wsl`／`ref-vps` 參考機的量測與一週 soak（RES-6）、真實斷電（REL-1，人工驗收清單第 11 節）、首次發布後才有的「上一個發布版」升級測試與 OpenAPI diff（CMP-3、CMP-5，目前以 `schema-37` fixture 與推送前快照代替）
 - **屬於 owner 的步驟**：各規格 `status` 欄位。`docs/specs/README.md` 的定義：`implemented`＝場景全部通過，且 6.2 Definition of Done 要求「`@manual` 場景已人工驗收，結果記錄在 PR 中」，所以含 `@manual` 場景的規格不能由我改成 `implemented`。
 
 ### NFR 對帳（2026-11-25，收尾 E；48 條 NFR 逐條，數字與位置見 `docs/specs/nfr.md` 第 10、11 節）
 
-狀態：**達標**＝機制在 CI 上跑且過；**部分**＝一部分有機制；**已知未達標**＝bench 照門檻判定、沒有放寬、放在獨立的 `known-misses` job；**manual**＝只有人能做（見 [人工驗收清單](manual-acceptance.md)）。
+狀態：**達標**＝機制在 CI 上跑且過；**部分**＝一部分有機制；**已知未達標**＝照門檻判定、沒有放寬、沒有 skip，如實記錄；**manual**＝只有人能做（見 [人工驗收清單](manual-acceptance.md)）。目前 `known-misses` 沒有成員（job 已移除，之後有新的未達標項目再加回）。
 
 | ID | 狀態 | 證據 |
 |---|---|---|
@@ -643,11 +643,11 @@
 | PERF-6 | 達標 | fixture 新增到可下載 SRT 86ms，門檻 < 5s |
 | PERF-7 | 達標 | 冷啟動到 `/readyz` 142ms，門檻 < 3s |
 | PERF-8 | 優化後達標 | `items ls --json` 774ms→529ms（優化後只有一次 CI 樣本；慢 runner 估約 750～800ms），門檻 < 1s |
-| PERF-9 | **已知未達標**（第二輪最佳化進行中） | 罕見詞、片語、無結果達標；常見詞、3 字中文、語言篩選 609～1589ms（門檻 500ms）；兩字以下的掃描 1396～2995ms（門檻 2s，快的 runner 上才通過） |
-| PERF-10 | 部分 | bundle 287.9／300KB（`check-bundle.mjs`）；LCP 與 10,000 列捲動是 `manual`，Playwright 自動化進行中 |
+| PERF-9 | 達標（第二輪最佳化後） | CI 完整 lib-10k：常見詞 164ms、3 字中文 170ms、語言篩選 164ms（門檻 p95 < 500ms）；兩字以下的掃描 225～237ms（門檻 < 2s）；migration 00038 新增 `search_groups`／`search_text`（第一次開庫回填約 10.5 秒，DB 約 +11%） |
+| PERF-10 | 部分 | bundle 287.9／300KB（`check-bundle.mjs`）；LCP 達標（Chromium 420ms、Firefox 392ms；WebKit 1328ms，單一樣本曾到 2050ms，有逼近 2s 的風險）；10,000 列捲動 Chromium、Firefox 達標；**WebKit（Linux CI）捲動未達標、原因未隔離（fixme）**；Safari 實機與 `ref-wsl` 的量測屬 `manual` |
 | RES-1 | 達標 | 閒置 RSS 112MB（門檻 150）、處理中 201MB（門檻 500） |
 | RES-2 | 達標 | 閒置 CPU 0.02%（門檻 1%） |
-| RES-3 | 部分 | SRT、VTT、純文字、cues JSON 已逐句串流（增量 0.25～0.50×，門檻 < 3×）；**ASS、雙語 SRT、bundle 7.45～10.62×，已知未達標**（第二輪進行中） |
+| RES-3 | 達標 | 渲染、匯出、下載、發佈輸出（vault／sidecar／folder）全部逐句串流：SRT／VTT／純文字／cues JSON 0.25～0.38×、ASS 0.57×、雙語 SRT 0.53×、bundle 0.00×、發佈輸出 0.30～0.81×（10 小時增量 ÷ 1 小時增量，門檻 < 3×） |
 | RES-4 | 達標 | feature（PIPE-R11、R15） |
 | RES-5 | 達標 | image 322MB（門檻 800MB，字型加入後推估 +13MB，未實測）；binary 最大 32.2MB，加入閱讀字型後約 45.7MB（門檻 80MB），`ci.yml` 的 binary sizes 步驟每次檢查 |
 | RES-6 | manual | ref-vps 一週 soak，需要真實機器 |
@@ -668,23 +668,23 @@
 | OBS-2 | 達標 | PIPE-R16：failed／blocked 步驟保存最後 20 行 log（遮蔽 secret），UI 可展開 |
 | OBS-3 | 達標 | OPS-R22：`/api/system` 回程式、schema、工具版本 |
 | CMP-1 | 達標 | goreleaser 建置、`docker-arm64` job |
-| CMP-2 | manual | 四大瀏覽器與 iOS Safari、Android Chrome 的實機；Playwright 三引擎自動化進行中 |
+| CMP-2 | manual（部分自動） | Playwright 內建 Chromium、Firefox、WebKit 各跑完整 e2e；Edge、桌面 Safari、最新兩個主要版本與 iOS Safari、Android Chrome 實機仍需人工 |
 | CMP-3 | 達標（與發布版的 diff 待首次發布） | `openapi-diff` job（`oasdiff breaking` 比對推送前的快照） |
 | CMP-4 | 達標 | `TestCLIAndServeVersionsAcrossBinaries` 建 0.2.0～0.6.0 五支 binary 對 serve 0.4.0；每次 CI 的 `go` job 都跑 |
 | CMP-5 | 達標（升級測試以代替做法） | 37 個 migration 在 lib-10k 上 0.58s、問題數 0；尚無發布版，用 `internal/store/testdata/upgrade/schema-37/` 代替；首次發布後依該目錄 README 新增 fixture |
-| A11Y-1 | 達標（jsdom 限制） | axe 每頁；jsdom 關掉 `color-contrast` 與 `target-size`，Playwright 補這兩項進行中 |
-| A11Y-2 | manual（部分自動） | skip link、焦點歸還有測試；真實鍵盤與目標大小待 Playwright 與人工 |
-| A11Y-3 | manual（部分自動） | StatusBadge 形狀＋文字、reduced-motion 樣式、時間帶文字版；灰階與作業系統層級待人工 |
+| A11Y-1 | 達標 | jsdom 的 axe 每頁加真實瀏覽器的完整 axe（含 `color-contrast`、`target-size`）：44 頁 × 三種寬度 × 淺深色 × 三引擎，792 次 serious＋critical 為 0 |
+| A11Y-2 | manual（大部分自動） | skip link、換頁焦點、抽屜與說明的焦點鎖定與歸還、5 頁沿 Tab 順序檢查焦點框、`target-size`（真實瀏覽器）；每頁完整的 Tab 走訪與只用鍵盤完成三個任務仍需人工 |
+| A11Y-3 | manual（大部分自動） | 狀態有文字且圖示形狀不同、reduced-motion 時沒有進行中的動畫（含對照組）、時間帶文字版、灰階截圖；灰階與色覺模擬下的觀感、螢幕閱讀器仍需人工 |
 | I18N-1 | 達標 | `check-i18n.mjs`（三語 key 與參數一致） |
 | I18N-2 | 達標（有範圍） | Client 與 Hub 的 API 錯誤 `message` 依 `Accept-Language`（預設繁中），`internal/api` 與 domain、Hub 都是 0 處未走目錄；照 AUTH-R23，`errors[]` 的欄位說明、`details` 與外部服務原文不翻譯，所以英文介面的欄位提示仍是繁中 |
-| I18N-3 | manual（部分自動） | `Intl` 格式化與字幕 `lang` 有測試；三種語言的實際顯示待人工 |
-| RWD-1 | manual（部分自動） | TabBar 與頁面測試；767px 以下實機待 Playwright 與人工 |
+| I18N-3 | manual（大部分自動） | 三種介面語言的 `<html lang>`、金額與日期等於 `Intl` 輸出、時間碼不變、字幕與筆記的 `lang`、字型切片；字形觀感與英文版面仍需人工 |
+| RWD-1 | manual（大部分自動） | 375×667 在三引擎完成三件事、每頁 375／768px 沒有水平捲軸；真實手機與 767／768 邊界仍需人工 |
 | TEST-1 | 達標 | harness 攔截外連 |
 | TEST-2 | 達標 | 預設 tag 89 秒、`@M3,@M4,@M5` 123 秒（含編譯，不開 `-race`；`-race` 的 `bdd` job 約 23 分鐘，是另一層安全檢查） |
 | TEST-3 | 達標 | subtitle 95.8%、pipeline 84.3%、queue 85.5%、netguard 93.6% |
 | TEST-4 | 達標 | `check_steps.py`、`check_trace.py` 每次 CI |
 
-要 owner 知道的：**PERF-9、RES-3 的 ASS／雙語／bundle 在 `known-misses` job 裡，每晚照門檻判定並在 summary 標 KNOWN-MISS，不影響整體燈號**；門檻從頭到尾沒有放寬、沒有 skip。第二輪最佳化的結果會寫進 `nfr.md` 第 10、11.3 節。
+要 owner 知道的：**所有 `bench` 類 NFR 在 CI 上都達標（PERF-9、RES-3 經第二、三輪最佳化）；唯一的已知未達標是 WebKit（Linux CI）捲動媒體庫（PERF-10，原因未隔離，標具名 fixme，需要 Safari 實機）**；門檻從頭到尾沒有放寬、沒有 skip。每晚的 `bench.yml`、`fault.yml`、`browser.yml` 在 master 上都跑過。
 
 ### ADR 對帳（2026-11-25）
 
