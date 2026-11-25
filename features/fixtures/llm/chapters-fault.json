@@ -1,0 +1,8 @@
+{
+  "output": {
+    "chapters": [
+      { "cue": 1, "title": "What PostgreSQL is" },
+      { "cue": 3, "title": "How it works" }
+    ]
+  }
+}

@@ -40,24 +40,45 @@ const (
 // paidCallsFile 是付費呼叫的計數檔：放在場景根目錄（/data 之外），被殺的程序與重新啟動的程序都附加到同一個檔。
 const paidCallsFile = "paid-calls.log"
 
-// itemRef 是劇本中的影音：沒有平台字幕，字幕來自 groq（ASR，付費），再經過 correct 與 translate（LLM，付費）。
+// itemRef 是劇本中的影音：沒有平台字幕，字幕來自 groq（ASR，付費）；處理方案把 12 個步驟全部打開：
+// summary、segment、correct、translate、chapters、note 用 anthropic（LLM，付費），frames 用 rules（假 ffmpeg 的畫面），
+// publish 寫到 fs vault。
 const itemRef = "yt:fault1xxxxx"
 
 // fakeSetup 只設定程序內的 fake（假 yt-dlp 的影片、字幕來源與 LLM 的劇本），兩個階段都要執行；
 // 不打 API、不寫 DB，所以重新啟動時重放是安全的。
 const fakeSetup = `
     Given the owner is signed in
-    And a YouTube video "` + itemRef + `" titled "Fault injection run"
+    And a YouTube video "` + itemRef + `" with:
+      | field    | value               |
+      | title    | Fault injection run |
+      | duration | 7                   |
     And "` + itemRef + `" has no caption tracks
+    And the video of "` + itemRef + `" has the scenes:
+      | at       | score | color   |
+      | 00:00:01 | 0.90  | #1e3a5f |
+      | 00:00:03 | 0.80  | #ffffff |
+      | 00:00:05 | 0.70  | #3c7d3c |
     And the source "groq" returns "groq-en.json" for "` + itemRef + `"
+    And the LLM provider "anthropic" answers "segment" with "segment-keep-all"
     And the LLM provider "anthropic" answers "correct" with "correct-echo"
     And the LLM provider "anthropic" answers "translate" with "translate-echo-target"
+    And the LLM provider "anthropic" answers "summary" with "summary-kernel"
+    And the LLM provider "anthropic" answers "chapters" with "chapters-fault"
+    And the LLM provider "anthropic" answers "note" with "note-minimal"
 `
 
 // firstRun 在新的 /data 上設定處理方案、新增影音並處理到閒置。故障注入時會在中途被 SIGKILL。
 const firstRun = `Feature: fault injection (first run)
+  # 劇本含 frames、note 等 M3 步驟；步驟的領域閘門依 tag 放行（steps.md 4.13）。
+  @fault @FRM-01 @NOTE-01 @CHAP-01 @DIG-01
   Scenario: Process an item from scratch
 ` + fakeSetup + `
+    And the config file contains:
+      """
+      vaults:
+        main: { adapter: fs, path: /vault }
+      """
     And the global settings are:
       """
       language:
@@ -67,8 +88,15 @@ const firstRun = `Feature: fault injection (first run)
     And the profile "fault" is:
       """
       stages:
+        segment: { executor: api, provider: anthropic, model: fixture-model, prompt: segment-default }
         correct: { executor: api, provider: anthropic, model: fixture-model, prompt: correct-default }
         translate: { executor: api, provider: anthropic, model: fixture-model, prompt: translate-default }
+        summary: { executor: api, provider: anthropic, model: fixture-model, prompt: summary-default }
+        chapters: { executor: api, provider: anthropic, model: fixture-model, prompt: chapters-default }
+        frames: { executor: rules }
+        note: { executor: api, provider: anthropic, model: fixture-model, prompt: note-default, template: video-notes }
+      outputs:
+        - { target: vault, vault: main, formats: [srt] }
       """
     And the default profile is "fault"
     When the owner ingests "` + itemRef + `"
@@ -77,6 +105,8 @@ const firstRun = `Feature: fault injection (first run)
 
 // restartRun 在同一份 /data 上重新啟動 server（PIPE-R11）並處理到閒置；處理方案與影音都已在 DB 中。
 const restartRun = `Feature: fault injection (restart)
+  # 劇本含 frames、note 等 M3 步驟；步驟的領域閘門依 tag 放行（steps.md 4.13）。
+  @fault @FRM-01 @NOTE-01 @CHAP-01 @DIG-01
   Scenario: Continue after the process was killed
 ` + fakeSetup + `
     When the worker runs until idle
@@ -87,6 +117,8 @@ const restartRun = `Feature: fault injection (restart)
 func corruptRun(query string) string {
 	get := `"GET /api/items/` + itemRef + `/subtitles?format=srt&` + query + `"`
 	return `Feature: fault injection (corrupt artifact)
+  # 劇本含 frames、note 等 M3 步驟；步驟的領域閘門依 tag 放行（steps.md 4.13）。
+  @fault @FRM-01 @NOTE-01 @CHAP-01 @DIG-01
   Scenario: A corrupt artifact is detected, marked and regenerated
 ` + fakeSetup + `
     When the owner sends ` + get + `

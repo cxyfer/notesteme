@@ -41,17 +41,19 @@ const childTimeout = 90 * time.Second
 // 有人重構掉某個 Hit、或劇本不再經過某個步驟時，每晚的 100 次不會默默變成空跑。
 var requiredPoints = func() []string {
 	var out []string
-	for _, st := range []string{"metadata", "transcript", "normalize", "correct", "translate", "sponsorblock"} {
+	// pipeline 的 12 個步驟全部會執行（劇本的處理方案把每個步驟都打開，見 child_test.go）。
+	for _, st := range []string{"metadata", "transcript", "normalize", "summary", "segment", "correct", "translate",
+		"sponsorblock", "chapters", "frames", "note", "publish"} {
 		for _, at := range []string{faultpoint.StageStart, faultpoint.StageMid, faultpoint.StageCommit} {
 			out = append(out, faultpoint.Name(at, st))
 		}
 	}
-	return append(out,
-		faultpoint.ArtifactTmpWritten, faultpoint.ArtifactRenamed,
-		faultpoint.Name(faultpoint.PaidReturned, "groq"),
-		faultpoint.Name(faultpoint.PaidReturned, "llm.correct"), faultpoint.Name(faultpoint.PaidLanded, "llm.correct"),
-		faultpoint.Name(faultpoint.PaidReturned, "llm.translate"), faultpoint.Name(faultpoint.PaidLanded, "llm.translate"),
-	)
+	out = append(out, faultpoint.ArtifactTmpWritten, faultpoint.ArtifactRenamed, faultpoint.Name(faultpoint.PaidReturned, "groq"))
+	// 付費的 LLM 步驟：結果回來（還沒落地）與 chunk 結果已落地（還沒標記完成）。
+	for _, st := range []string{"summary", "segment", "correct", "translate", "chapters", "note"} {
+		out = append(out, faultpoint.Name(faultpoint.PaidReturned, "llm."+st), faultpoint.Name(faultpoint.PaidLanded, "llm."+st))
+	}
+	return out
 }()
 
 func envInt(t *testing.T, name string, def int) int {

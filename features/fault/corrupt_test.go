@@ -13,7 +13,7 @@ import (
 )
 
 // TestCorruptArtifactIsDetectedAndRerun 是 NFR-REL-2 的「讀取時比對 sha256，不符就標記損毀並重跑該步驟」：
-// 把劇本做完之後，每一份現行的字幕產出各做一次：改掉檔案中間的一個 byte，經 API 讀取時回 409 artifact_corrupt，
+// 把劇本做完之後，每一份現行的字幕產出（source、normalized、segmented、corrected、translated）各做一次：改掉檔案中間的一個 byte，經 API 讀取時回 409 artifact_corrupt，
 // 產出被標記損毀（corrupt_at），產生它的步驟重跑，做完之後結果與基準相同、所有產出的 sha256 相符。
 // 付費：重新產生字幕來源（groq）要再付一次（規格已記錄）；LLM 步驟的 chunk 層快取照常重用，不再呼叫 provider。
 func TestCorruptArtifactIsDetectedAndRerun(t *testing.T) {
@@ -28,6 +28,7 @@ func TestCorruptArtifactIsDetectedAndRerun(t *testing.T) {
 	cases := []struct{ variant, lang, paidAgain string }{
 		{"source", "en", "api.groq.com"},
 		{"normalized", "en", ""},
+		{"segmented", "en", ""},
 		{"corrected", "en", ""},
 		{"translated", "zh-Hant-TW", ""},
 	}

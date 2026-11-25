@@ -287,6 +287,7 @@ M3-S0（2026-11-23）已把 SponsorBlock、Gemini 登記到 fakenet（`World.Spo
 | fixture | 用途 |
 |---|---|
 | `chapters-two`、`chapters-missing-cue`、`chapters-out-of-order`、`chapters-title-too-long`、`chapters-in-sponsor` | CHAP：兩個章節（cue 2、4）與四種驗證失敗 |
+| `chapters-fault` | 故障注入的劇本（`features/fault`）：三句的 `groq-en.json` 上的兩個章節（cue 1、3） |
 | `frames-pick-six`、`frames-pick-missing` | FRM-R7：第 1 張拼圖的 6 個編號、不存在的編號 12 |
 | `note-minimal`、`note-two-sections`、`note-with-frames` | NOTE：一節（cue 1）、兩節（cue 2、4，內文引用 cue 5）、引用畫面 1 與 3 |
 | `note-missing-cue`、`note-unselected-frame`、`note-starts-with-level-3` | NOTE-R3 的驗證失敗 |
