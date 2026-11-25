@@ -33,6 +33,7 @@ func registerSources(r *Registry, s *Scenario) {
 	r.Step(`the source {string} accepts files up to {string}`, s.sourceAcceptsUpTo)
 	r.Step(`the audio of {string} is {string}`, s.audioOfIs)
 	r.Step(`yt-dlp fails for {string} with {string}`, s.ytdlpFails)
+	r.Step(`every external service is unavailable`, s.everyExternalServiceUnavailable)
 }
 
 // youtubeID 取出 yt:<id> 代號中的平台 ID。
@@ -280,6 +281,17 @@ func (s *Scenario) autoCaptionsNotReady(ref string) error {
 		v.AutoNotReady = true
 		return nil
 	})
+}
+
+// outageStderr 是外部服務全部無法使用時假 yt-dlp 的錯誤輸出（DNS 解析失敗）。
+const outageStderr = "ERROR: Unable to download webpage: <urlopen error [Errno -3] Temporary failure in name resolution> (caused by URLError(gaierror(-3, 'Temporary failure in name resolution')))"
+
+// everyExternalServiceUnavailable 讓外部服務全部持續失敗（PIPE-R17、NFR-REL-7）：假 yt-dlp 對所有影音網址失敗，
+// fakenet 上所有 fake origin 回 503。
+func (s *Scenario) everyExternalServiceUnavailable() error {
+	s.World.Tools.Outage = &faketool.Failure{Stderr: outageStderr, ExitCode: 1}
+	s.World.Net.SetDown(true)
+	return s.World.SyncTools()
 }
 
 // ytdlpFails 讓假 yt-dlp 對這部影片的所有操作（info、字幕、媒體）都以結束碼 1 失敗，並輸出指定的 stderr。

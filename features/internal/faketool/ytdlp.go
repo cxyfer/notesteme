@@ -235,6 +235,10 @@ func runYtDlp(e env, args []string) int {
 		fmt.Fprintf(e.stderr, "ERROR: [%s] %s: Unable to extract player response; please report this issue\n", platform, id)
 		return 1
 	}
+	if st.Outage.applies(op) {
+		fmt.Fprintln(e.stderr, st.Outage.Stderr)
+		return max(st.Outage.ExitCode, 1)
+	}
 	v := st.Videos[id]
 	if v != nil && v.Fail.applies(op) {
 		fmt.Fprintln(e.stderr, v.Fail.Stderr)

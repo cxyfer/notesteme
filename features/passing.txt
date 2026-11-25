@@ -264,6 +264,7 @@ PIPE-pipeline-queue.feature: A graceful shutdown releases what it cannot finish
 PIPE-pipeline-queue.feature: Each run records the settings it used
 PIPE-pipeline-queue.feature: Status changes are pushed as events
 PIPE-pipeline-queue.feature: Cancelling an item stops its running work
+PIPE-pipeline-queue.feature: Browsing, downloads and MCP keep working while every external service is down
 PRF-profiles.feature: Each layer overrides the one before it
 PRF-profiles.feature: Lists are replaced, not merged
 PRF-profiles.feature: Editing a profile does not touch finished work

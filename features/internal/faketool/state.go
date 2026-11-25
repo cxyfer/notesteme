@@ -45,6 +45,9 @@ type State struct {
 	FixturesDir string `json:"fixtures_dir,omitempty"`
 	// Videos 的 key 是平台 ID，例如 abc123xxxxx、BV1xx411c7mD。
 	Videos map[string]*Video `json:"videos,omitempty"`
+	// Outage 非 nil 時，所有影音網址的操作都照它失敗（`every external service is unavailable`，PIPE-R17），
+	// 優先於個別影片的設定；--version 照常成功。
+	Outage *Failure `json:"outage,omitempty"`
 	// Playlists 的 key 是 YouTube 播放清單 ID（例如 PL123），值是 FixturesDir/ytdlp/ 內的檔名：
 	// `yt-dlp --flat-playlist -J` 對該清單輸出這個檔案的內容。沒有登記的清單回報「播放清單不存在」。
 	Playlists map[string]string `json:"playlists,omitempty"`

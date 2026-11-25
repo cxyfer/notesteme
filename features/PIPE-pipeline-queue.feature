@@ -264,3 +264,35 @@ Feature: Pipeline and task queue
     And the owner sends "POST /api/items/yt:abc123xxxxx/cancel"
     Then the stage "metadata" of "yt:abc123xxxxx" is "skipped"
     And no task is running
+
+  @PIPE-02 @PIPE-R17
+  Scenario: Browsing, downloads and MCP keep working while every external service is down
+    Given "yt:abc123xxxxx" has manual captions in "en"
+    And the item "yt:abc123xxxxx" has been processed up to "publish"
+    And a token "reader" with scopes "read"
+    And a YouTube video "yt:new001xxxxx" titled "Added during the outage"
+    And every external service is unavailable
+    When the owner ingests "yt:new001xxxxx"
+    And the worker runs until idle
+    And the owner sends "GET /api/items"
+    Then the response status is 200
+    When the owner sends "GET /api/items/yt:abc123xxxxx"
+    Then the response status is 200
+    When the owner sends "GET /api/items/yt:abc123xxxxx/subtitles?format=srt"
+    Then the response status is 200
+    When the owner sends "GET /api/items/yt:abc123xxxxx/subtitles?format=vtt"
+    Then the response status is 200
+    When the MCP client with the token "reader" calls "get_transcript" with:
+      """
+      { "item": "yt:abc123xxxxx", "format": "srt" }
+      """
+    Then the tool result contains:
+      """
+      { "format": "srt" }
+      """
+    When the clock advances by "30s"
+    And the worker runs until idle
+    And the clock advances by "2m"
+    And the worker runs until idle
+    Then the stage "metadata" of "yt:new001xxxxx" failed with the error class "retryable"
+    And the stage "transcript" of "yt:abc123xxxxx" is "done"

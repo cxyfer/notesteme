@@ -63,10 +63,14 @@ func (n *Net) serve(h *host, w http.ResponseWriter, r *http.Request) {
 	n.mu.Lock()
 	rt := h.routes[routeKey(r.URL.EscapedPath(), r.URL.RawQuery)]
 	fallback := h.handler
-	observe := n.observer
+	observe, down := n.observer, n.down
 	n.mu.Unlock()
 	if observe != nil {
 		observe(h.name, r)
+	}
+	if down {
+		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		return
 	}
 	switch {
 	case rt != nil:
@@ -115,6 +119,17 @@ type Net struct {
 	closed     bool
 	// observer 在每個請求交給 handler 之前被呼叫（見 Observe）。
 	observer func(host string, r *http.Request)
+	// down 為 true 時所有 fake origin 都回 503（見 SetDown）。
+	down bool
+}
+
+// SetDown 讓所有 fake origin（Handle 與 Route 登記的）都回 503，不交給 handler；false 恢復。
+// 給 `every external service is unavailable`（PIPE-R17、NFR-REL-7）使用。DNS 解析與連線照常成功，
+// 所以被測程式看到的是「服務回應錯誤」，走的仍是 netguard 的真實路徑。
+func (n *Net) SetDown(down bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.down = down
 }
 
 // Observe 登記一個觀察者：每個送到 fake origin 的請求在交給 handler 之前都會先經過它

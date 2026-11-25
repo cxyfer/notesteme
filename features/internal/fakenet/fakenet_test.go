@@ -280,3 +280,33 @@ func TestDialAfterCloseDoesNotRestartServer(t *testing.T) {
 		t.Fatal("Close 之後的 Dial 不應留下連線或違規紀錄")
 	}
 }
+
+// TestSetDownAnswers503：SetDown(true) 讓所有 fake origin 回 503、不交給 handler，觀察者照樣看到請求；false 恢復。
+func TestSetDownAnswers503(t *testing.T) {
+	n := New()
+	defer n.Close()
+	n.Handle("example.com", hello("up"))
+	seen := 0
+	n.Observe(func(host string, _ *http.Request) {
+		if host == "example.com" {
+			seen++
+		}
+	})
+	c := newClient(n)
+	n.SetDown(true)
+	resp, err := c.Get("http://example.com/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("down 時 = %d", resp.StatusCode)
+	}
+	n.SetDown(false)
+	if b, _ := get(t, c, "http://example.com/"); !strings.HasPrefix(b, "up") {
+		t.Fatalf("恢復後 body = %q", b)
+	}
+	if seen != 2 {
+		t.Errorf("觀察者看到 %d 個請求，應該是 2 個", seen)
+	}
+}
