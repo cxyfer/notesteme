@@ -49,8 +49,10 @@ jobs:
         run: go vet ./...
 
       # features/fault 與 internal/faultpoint 的 on.go 只在 faultinject tag 下編譯（NFR-REL-1～3）。
+      # 只有這兩個套件的檔案隨 tag 改變（internal/faultpoint 的 TestOnlyFaultpointUsesTheTag 擋住其他地方使用這個 tag），
+      # 其餘套件的 vet 結果與上一步相同，不再重做。
       - name: go vet (faultinject)
-        run: go vet -tags faultinject ./...
+        run: go vet -tags faultinject ./internal/faultpoint ./features/fault
 
       # 驗收場景（features 套件本身）另開 bdd 與 bdd-extra 兩個 job，各自佔一台 runner；
       # 這裡只跑其餘的套件（含 features/steps、features/internal 的 harness 單元測試）。
@@ -58,13 +60,14 @@ jobs:
       - name: go test (race, without the scenarios)
         run: go test -race -count=1 -timeout 60m $(go list ./... | grep -vx 'github.com/cxyfer/notesteme/features')
 
-      # NFR-REL-1～3 的故障注入縮小版：每個故障點 kill -9 一次再重新啟動（約 25 次迭代，本機約 15 秒），
-      # 加上 REL-2 的損毀測試；每點 100 次的完整版在 fault.yml 每晚執行（docs/specs/nfr.md 第 11.1 節）。
+      # NFR-REL-1～3 的故障注入縮小版：51 個故障點各 kill -9 一次再重新啟動，與 REL-2 的損毀測試平行；
+      # 每點 100 次的完整版在 fault.yml 每晚執行（docs/specs/nfr.md 第 11.1 節）。internal/faultpoint 只跑
+      # 需要 tag 的 TestHit*：正式建置不含故障注入的檢查（會再建一次 binary）已在上一步以一般建置跑過。
       - name: fault injection (1 iteration per point)
         env:
           NOTESTEME_FAULT_ITERATIONS: "1"
           NOTESTEME_FAULT_PARALLEL: "4"
-        run: go test -tags faultinject -count=1 -timeout 15m ./features/fault ./internal/faultpoint
+        run: go test -tags faultinject -count=1 -timeout 15m -run '^(TestFaultInjection|TestCorruptArtifactIsDetectedAndRerun|TestHit.*)$' ./features/fault ./internal/faultpoint
 
   # NFR-TEST-3：核心 package 涵蓋率 >= 80%。coverage.sh 會重跑這幾個 package，獨立成一個 job 才不會拖長 go job。
   coverage:
