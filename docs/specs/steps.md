@@ -175,6 +175,7 @@
 | `Given the source {string} accepts files up to {string}` | ASR 的單檔大小上限，例如 `"25MB"` |
 | `Given the audio of {string} is {string}` | 音訊 fixture（`features/fixtures/media/`），例如長度或大小不同的檔案。`local:` 把 fixture 的長度、壓縮後大小與靜音區段併進 inbox 中的檔案；`yt:`、`bili:` 寫進假 yt-dlp 中這部影片的對應屬性。檔案不在 inbox、fixture 不存在時失敗 |
 | `Given yt-dlp fails for {string} with {string}` | yt-dlp 對這個影音的所有操作（取得資訊、下載字幕、下載媒體）都以結束碼 1 失敗，stderr 為指定的錯誤輸出。只接受 `yt:` |
+| `Given every external service is unavailable` | 外部服務全部持續失敗（PIPE-R17、NFR-REL-7）：假 yt-dlp 對所有影音網址的操作（取得資訊、下載字幕、下載媒體）都以結束碼 1 失敗，stderr 是網路錯誤（`--version` 照常成功）；fakenet 上所有 fake origin（Supadata、Groq、LLM provider、Gemini、SponsorBlock、Podcast、feed、Hub…）一律回 503，不交給 handler。可以在場景中途使用，之後的步驟都受影響；沒有對應的恢復步驟 |
 
 ### 4.4 影音與產出（`steps/items.go`、`steps/trash.go`）
 

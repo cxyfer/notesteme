@@ -41,6 +41,7 @@
 | PIPE-R14 | 步驟狀態改變時，透過 SSE（`GET /api/events`）推送事件。事件型別：`item.created`（`type`、`item`、`item_id`）、`stage.status`（另加 `stage`、`status`）。 |
 | PIPE-R15 | 可以取消某部影音的處理；取消後，執行中的子程序整組結束，步驟為 `skipped`（原因 `cancelled`）。 |
 | PIPE-R16 | 步驟成為 `failed` 或 `blocked` 時，保存讓它停下的那次執行最後最多 20 行 log（每行最多 500 bytes），寫入之前遮蔽 secret；`GET /api/items/:id` 該步驟帶 `log_excerpt`，Web UI 的步驟面板可以展開、複製這段「log 片段」，不需要進容器看 log（NFR-OBS-2）。其他狀態不帶。 |
+| PIPE-R17 | 外部服務（平台、ASR、LLM 等）長時間無法使用時，已經在本機的東西照常可用：瀏覽媒體庫（`GET /api/items`、影音詳情）、下載既有字幕（SRT、VTT）與 MCP 的查詢 tool 都照常回應，不呼叫外部服務。這段期間新增的影音照 PIPE-R2、R3 處理：重試用盡後以 `failed`（錯誤類別 `retryable`）結束，不會停在 `pending` 或 `running`，也不影響其他請求（NFR-REL-7）。 |
 
 ## 介面
 
@@ -113,3 +114,4 @@
   - **付費結果不能這樣遺失**：記錄付費結果的交易遺失，重新啟動後重跑就會再付一次錢，違反 NFR-REL-3。所以這些交易改用 `Store.TxDurable`：在獨占的寫入連線上以 `synchronous=FULL` commit，commit 回來時 WAL 已經 fsync，連同 WAL 中在它之前的交易都不會因斷電遺失。用在：付費字幕來源（Supadata、ASR）的寫回、`api` executor 的任務（LLM 的 plan、chunk、assemble）、Agent 的提交、Batch API 的結果。之後斷電只可能遺失它之後的一般交易，依上一點重跑即可。
   - 為什麼不把整個 DB 改成 `FULL`：`ref-wsl` 上每次 commit 從約 0.05ms 變成約 7ms（約 130 倍），一般寫入（session、設定、事件）全部變慢，完整的 `features/` 也會超過 NFR-TEST-2 的 5 分鐘。只對付費結果 fsync，代價是 `internal/pipeline` 的單元測試從約 122 秒變成約 142 秒。Hub 共用 `sqlitedb.Open`，不受影響（Hub 不跑 pipeline）。
   - 斷電無法在 CI 實測，列在[人工驗收清單](../manual-acceptance.md#11-nfr-rel-1斷電後-db-不損毀付費結果不遺失)。
+- PIPE-R17 與 NFR-REL-7 的驗證方式（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：NFR-REL-7 的驗證欄寫 `bench`（fake provider 全部失敗），但要驗證的是「行為不受影響」而不是數值，所以寫成 PIPE-R17 的驗收場景（API 層），由 `Given every external service is unavailable` 讓假 yt-dlp 與 fakenet 上所有 fake origin 持續失敗；`bench` 的數值面（外部服務失敗時 API 的延遲）沒有另外的目標，不另做。「長時間」以重試用盡（PIPE-R3 的 30 秒、2 分鐘）代表：場景推進 fake clock 直到新增的影音 `failed`。
