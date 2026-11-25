@@ -8,7 +8,16 @@
 //     列表在每組第一列的上方顯示組名（library/groups.ts）。「格」檢視只照分組的順序，不顯示組名。
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAddDrawer } from "../add/AddContext";
@@ -166,6 +175,16 @@ export function LibraryPage() {
     }
     setPicked({ key: keyHash, ids, last: index });
   };
+  // LibraryRow 是 memo 的：傳給列的函式要穩定，toggle 每次渲染都不同（依目前的選取），經由 ref 呼叫最新的
+  const toggleRef = useRef(toggle);
+  useLayoutEffect(() => {
+    toggleRef.current = toggle;
+  });
+  const onSelectRow = useCallback(
+    (index: number, on: boolean, shift: boolean) => toggleRef.current(index, on, shift),
+    [],
+  );
+  const onFilterChannel = useCallback((channel: string) => setSearch({ channel }), [setSearch]);
   const allLoaded = rows.length > 0 && rows.every((r) => sel.ids.has(r.id));
   const onBulkDone: BulkBarProps["onDone"] = (action, outcome) => {
     for (const x of outcome.items) {
@@ -398,10 +417,11 @@ export function LibraryPage() {
                 )}
               <LibraryRow
                 item={item}
+                index={index}
                 focusProps={focusProps}
-                onFilterChannel={(channel) => setSearch({ channel })}
+                onFilterChannel={onFilterChannel}
                 selected={sel.ids.has(item.id)}
-                onSelect={(on, shift) => toggle(index, on, shift)}
+                onSelect={onSelectRow}
               />
             </>
           )}

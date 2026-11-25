@@ -4,7 +4,7 @@
 // query key 用影音 ID：SSE 的 stage.status 讓 items.detail(item_id) 失效，只有這一列原地更新（LIB-R9）。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import type { MouseEvent } from "react";
+import { memo, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { StatusBand, type StatusBandStage } from "@shared";
@@ -55,11 +55,17 @@ const INTERACTIVE = "a, button, input, select, textarea, label, [role='button']"
 
 export interface LibraryRowProps {
   item: ApiItem;
+  /** 列在列表中的位置（onSelect 用） */
+  index: number;
   focusProps: RowFocusProps;
+  /** 要穩定（useCallback）：LibraryRow 是 memo 的，見下方 */
   onFilterChannel: (channel: string) => void;
-  /** UI-7 批次操作：有 onSelect 時列的左側有勾選框；shift 是按住 Shift 點擊（選取一段範圍） */
+  /**
+   * UI-7 批次操作：有 onSelect 時列的左側有勾選框；shift 是按住 Shift 點擊（選取一段範圍）。
+   * 要穩定（useCallback）。
+   */
   selected?: boolean;
-  onSelect?: (on: boolean, shift: boolean) => void;
+  onSelect?: (index: number, on: boolean, shift: boolean) => void;
 }
 
 /**
@@ -80,8 +86,25 @@ function useStatusNote() {
       .join(t("common.listSeparator"));
 }
 
-export function LibraryRow({
+/**
+ * memo：虛擬列表每次捲動都會重新渲染（@tanstack/react-virtual 以 flushSync 通知），
+ * 可視範圍內沒變的列不必重算（NFR-PERF-10：10,000 列捲動不掉幀，docs/ui/README.md 10.32）。
+ * focusProps 每次都是新物件，只比 tabIndex。列自己的 detail query 與語言切換照常觸發重新渲染。
+ */
+export const LibraryRow = memo(
+  LibraryRowInner,
+  (a, b) =>
+    a.item === b.item &&
+    a.index === b.index &&
+    a.selected === b.selected &&
+    a.focusProps.tabIndex === b.focusProps.tabIndex &&
+    a.onFilterChannel === b.onFilterChannel &&
+    a.onSelect === b.onSelect,
+);
+
+function LibraryRowInner({
   item,
+  index,
   focusProps,
   onFilterChannel,
   selected,
@@ -135,7 +158,7 @@ export function LibraryRow({
           checked={!!selected}
           tabIndex={focusProps.tabIndex}
           aria-label={t("library.bulk.pick", { title })}
-          onClick={(e) => onSelect(e.currentTarget.checked, e.shiftKey)}
+          onClick={(e) => onSelect(index, e.currentTarget.checked, e.shiftKey)}
           onChange={() => undefined}
         />
       )}
