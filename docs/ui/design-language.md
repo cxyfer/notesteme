@@ -33,8 +33,8 @@
 | Ink | `#1F2A3A` | 文字、主要按鈕、已完成的進度帶；用藍黑墨水色，不用純黑 |
 | Pewter | `#5F6874` | 次要文字、未完成的虛線框；分隔線使用 24% 透明度 |
 | Cue | `#F3CA40` | 只用於「現在」與「選中」 |
-| Signal | `#1E7F74` | 成功狀態的文字與圖示 |
-| Fault | `#C2412D` | 錯誤狀態，以及失敗的時間區段 |
+| Signal | `#1C756B` | 成功狀態的文字與圖示（原為 `#1E7F74`，於 Opal 只有 4.2:1，2026-11-25 加深，見 [README 10.32](README.md)） |
+| Fault | `#BC3F2C` | 錯誤狀態，以及失敗的時間區段（原為 `#C2412D`，於 Opal 只有 4.4:1，2026-11-25 加深） |
 
 ### 3.2 深色主題「放映室」
 
@@ -56,8 +56,10 @@
 | Ink 於 Opal | 12.4:1 | ✅ |
 | Pewter 於 Sheet | 5.4:1 | ✅ |
 | Pewter 於 Opal | 4.8:1 | ✅ |
-| Signal 於 Sheet | 4.6:1 | ✅ |
-| Fault 於 Sheet | 4.9:1 | ✅ |
+| Signal 於 Sheet | 5.3:1 | ✅ |
+| Signal 於 Opal | 4.8:1 | ✅ |
+| Fault 於 Sheet | 5.2:1 | ✅ |
+| Fault 於 Opal | 4.7:1 | ✅ |
 | Ink 文字於 Cue 底 | 9.2:1 | ✅ |
 | Cue 於 Opal | 1.35:1 | ❌ 淺色主題中黃色記號一律加 1px Ink 邊 |
 | Paper 於 Booth | 14.2:1 | ✅ |
@@ -67,7 +69,9 @@
 規則：
 
 - 狀態不能只靠顏色區分，一律同時有形狀或紋理差異，以及文字標籤。
-- 實作時用工具重新驗證上表，再調整 token。
+- 實作時用工具重新驗證上表，再調整 token。`web/client/src/styles/contrast.test.ts` 計算上表；瀏覽器 e2e（`web/client/e2e/a11y.spec.ts`）在三個引擎以 axe 的 `color-contrast` 檢查每一頁實際排版後的顏色（含疊色與半透明）。
+- 文字 token（Ink、Pewter、Signal、Fault 與深色對應色）在兩種底色（Opal 與 Sheet；Booth 與 Panel）上都要 ≥ 4.5:1：頁面背景就是 Opal，不能只算 Sheet。
+- 文字不疊在同色系的淡底色上（例如 Signal 字疊 Signal 16% 底）：淡底色會吃掉對比，這時文字改用 Ink／Paper，顏色只留給底色與邊框。
 
 ### 3.4 Token 命名
 

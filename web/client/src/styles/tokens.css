@@ -14,8 +14,10 @@
   --color-ink: #1f2a3a;
   --color-pewter: #5f6874;
   --color-cue: #f3ca40;
-  --color-signal: #1e7f74;
-  --color-fault: #c2412d;
+  /* Signal、Fault 原本是 #1e7f74、#c2412d：在 Opal 上只有 4.2:1、4.4:1（瀏覽器 e2e 的 axe 找到，docs/ui/README.md 10.32），
+     加深到在 Opal 與 Sheet 上都 ≥ 4.5:1。 */
+  --color-signal: #1c756b;
+  --color-fault: #bc3f2c;
   --color-booth: #131a24;
   --color-panel: #1b2431;
   --color-paper: #e3e8ee;

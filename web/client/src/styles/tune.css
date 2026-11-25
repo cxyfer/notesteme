@@ -194,8 +194,10 @@
   border-radius: var(--radius-container);
   padding: var(--space-4);
 }
-.step--off .step__body {
-  opacity: 0.6;
+/* 關閉的步驟：狀態由標題旁的「關閉」標籤（文字）表示，內容照常可讀、可編輯。
+   原本整塊 opacity: 0.6，一般文字只剩 2.5:1（瀏覽器 e2e 的 axe 找到，docs/ui/README.md 10.32）。 */
+.step--off {
+  border: 1px dashed var(--rule);
 }
 .step__title {
   display: flex;

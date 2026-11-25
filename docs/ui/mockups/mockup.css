@@ -7,8 +7,8 @@
   --color-ink: #1F2A3A;
   --color-pewter: #5F6874;
   --color-cue: #F3CA40;
-  --color-signal: #1E7F74;
-  --color-fault: #C2412D;
+  --color-signal: #1C756B;
+  --color-fault: #BC3F2C;
 
   --surface-app: var(--color-opal);
   --surface-panel: var(--color-sheet);

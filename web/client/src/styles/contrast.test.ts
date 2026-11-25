@@ -31,7 +31,9 @@ describe("token 對比", () => {
     ["pewter", "sheet", 4.5],
     ["pewter", "opal", 4.5],
     ["signal", "sheet", 4.5],
+    ["signal", "opal", 4.5], // 頁面背景就是 Opal（瀏覽器 e2e 的 axe 找到 4.2:1）
     ["fault", "sheet", 4.5],
+    ["fault", "opal", 4.5], // 危險按鈕直接放在頁面上（4.4:1）
     ["ink", "cue", 4.5],
     ["sheet", "ink", 4.5], // 主要按鈕與 toast 的文字
     ["paper", "booth", 4.5],
@@ -39,6 +41,9 @@ describe("token 對比", () => {
     ["pewter-dim", "panel", 4.5],
     ["signal-lit", "panel", 4.5],
     ["fault-lit", "panel", 4.5],
+    ["signal-lit", "booth", 4.5],
+    ["fault-lit", "booth", 4.5],
+    ["pewter-dim", "booth", 4.5],
     ["booth", "paper", 4.5], // 深色主題的主要按鈕
     ["cue", "booth", 3], // 深色主題的焦點框
     ["ink", "opal", 3], // 淺色主題的焦點框
