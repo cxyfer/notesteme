@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/metrics"
 	"strconv"
@@ -141,7 +143,7 @@ func BenchmarkRes2IdleCPU(b *testing.B) {
 // 實測單軌串流在 1、10、100 小時都落在 0.1～0.9MB）。
 //
 // 單軌的格式（SRT、VTT、純文字、cues JSON）第一輪就改成逐句串流；ASS、雙語 SRT（兩軌以時間視窗合併）與 bundle 匯出
-// （逐檔逐段寫進 zip）在第二輪改成串流之後也搬回這裡（nfr.md 第 10 節）。
+// （逐檔逐段寫進 zip）在第二輪改成串流之後也搬回這裡（nfr.md 第 10 節）。發佈輸出（outputs[] 的目標）在 BenchmarkRes3Publish。
 func BenchmarkRes3Streaming(b *testing.B) {
 	res3(b, []string{"srt", "vtt", "txt", "cues-json", "ass", "bilingual-srt", "bundle"})
 }
@@ -152,19 +154,7 @@ const res3Floor = 512 << 10
 func res3(b *testing.B, formats []string) {
 	root := shortDir(b)
 	data := root + "/data"
-	ids := map[string]string{}
-	for _, l := range []struct {
-		name string
-		cues int
-	}{{"1h", 1000}, {"10h", 10000}} {
-		p := benchdata.ItemLong
-		p.Name, p.CuesPerItem, p.Seed = "res3-"+l.name, l.cues, uint64(l.cues)
-		res, err := benchdata.Generate(context.Background(), data, p, benchdata.Options{})
-		if err != nil {
-			b.Fatal(err)
-		}
-		ids[l.name] = res.ItemIDs[0]
-	}
+	ids := res3Items(b, data)
 	s := startServer(b, data, nil)
 	c := newChecker(b)
 	for b.Loop() {
@@ -206,6 +196,119 @@ func res3(b *testing.B, formats []string) {
 				Note: fmt.Sprintf("（1h +%.2fMB、10h +%.2fMB）", float64(peak["1h"])/(1<<20), float64(peak["10h"])/(1<<20))})
 		}
 	}
+}
+
+// NFR-RES-3 的發佈輸出：publish 步驟把字幕寫進 outputs[] 的目標（OUT-R10～R12、VAULT-R5），這裡是 fs vault。
+// 量法與判定同 BenchmarkRes3Streaming：同一個 server 對 1 小時與 10 小時的影音各重跑 publish（只跑 publish 一步，
+// 每種格式一個處理方案），量「送出重跑」到「收到 publish 結束的 SSE 事件」期間存活 heap 的峰值增量，暖身一次後取 3 次的最小值。
+// 每次重跑之前（量測窗口之外）刪掉 vault 的內容，量到的是新檔的路徑（寫暫存檔、hard link、記錄 sha256）。
+// 每次都確認 publish 是 done、字幕確實寫出，而且 10 小時的檔案大於 1 小時的 5 倍：沒有寫出任何東西時增量會落在解析度以下，
+// 比值自然小於 3，這個檢查避免 bench 空跑也通過。
+func BenchmarkRes3Publish(b *testing.B) {
+	root := shortDir(b)
+	data := root + "/data"
+	vaultDir := root + "/vault"
+	ids := res3Items(b, data)
+	s := startServerConfig(b, data, nil, "vaults:\n  bench: { adapter: fs, path: "+strconv.Quote(vaultDir)+" }\n")
+	formats := []string{"srt", "vtt", "txt", "cues-json", "ass", "bilingual-srt"}
+	for _, f := range formats {
+		body := fmt.Sprintf(`{"name":"res3-%s","config":{"outputs":[{"target":"vault","vault":"bench","formats":[%q]}]}}`, f, f)
+		if _, err := s.post("/api/profiles", body, http.StatusCreated); err != nil {
+			b.Fatal(err)
+		}
+	}
+	events := stageEvents(b, s)
+	publish := func(id, f string) error {
+		body := fmt.Sprintf(`{"from":"publish","until":"publish","profile":"res3-%s"}`, f)
+		if _, err := s.post("/api/items/"+id+"/rerun", body, http.StatusAccepted); err != nil {
+			return err
+		}
+		st, err := waitStage(events, id, "publish", 2*time.Minute)
+		if err == nil && st != "done" {
+			err = fmt.Errorf("publish = %s", st)
+		}
+		return err
+	}
+	c := newChecker(b)
+	for b.Loop() {
+		for _, f := range formats {
+			peak, size := map[string]uint64{}, map[string]int64{}
+			for _, l := range []string{"1h", "10h"} {
+				if err := os.RemoveAll(vaultDir); err != nil {
+					b.Fatal(err)
+				}
+				if err := publish(ids[l], f); err != nil {
+					b.Fatal(err)
+				}
+				best := uint64(1 << 62)
+				for range 3 {
+					if err := os.RemoveAll(vaultDir); err != nil {
+						b.Fatal(err)
+					}
+					v, err := heapGrowthDuring(func() error { return publish(ids[l], f) })
+					if err != nil {
+						b.Fatal(err)
+					}
+					best = min(best, v)
+					n, err := treeSize(vaultDir)
+					if err != nil {
+						b.Fatal(err)
+					}
+					size[l] = n
+				}
+				peak[l] = best
+			}
+			if size["1h"] == 0 || size["10h"] < 5*size["1h"] {
+				b.Fatalf("%s：vault 中的字幕 1h %d bytes、10h %d bytes，不像是寫出了字幕", f, size["1h"], size["10h"])
+			}
+			ratio := float64(peak["10h"]) / float64(max(peak["1h"], res3Floor))
+			b.ReportMetric(float64(peak["10h"])/(1<<20), "publish_"+f+"_10h_peak_MB")
+			c.check(result{ID: "NFR-RES-3", Case: "publish_" + f, Metric: "peak_ratio_10h_1h", Value: ratio, Threshold: 3, Unit: "x", Data: "1h vs 10h",
+				Note: fmt.Sprintf("（vault；1h +%.2fMB、10h +%.2fMB；檔案 %.2fMB → %.2fMB）", float64(peak["1h"])/(1<<20), float64(peak["10h"])/(1<<20),
+					float64(size["1h"])/(1<<20), float64(size["10h"])/(1<<20))})
+		}
+	}
+}
+
+// res3Items 產生 1 小時（1,000 句）與 10 小時（10,000 句）的影音，回傳兩者的 ID。
+func res3Items(b *testing.B, data string) map[string]string {
+	b.Helper()
+	ids := map[string]string{}
+	for _, l := range []struct {
+		name string
+		cues int
+	}{{"1h", 1000}, {"10h", 10000}} {
+		p := benchdata.ItemLong
+		p.Name, p.CuesPerItem, p.Seed = "res3-"+l.name, l.cues, uint64(l.cues)
+		res, err := benchdata.Generate(context.Background(), data, p, benchdata.Options{})
+		if err != nil {
+			b.Fatal(err)
+		}
+		ids[l.name] = res.ItemIDs[0]
+	}
+	return ids
+}
+
+// treeSize 回傳 dir 之下一般檔案的大小總和；暫存檔（.notesteme-*.tmp）留下來時回傳錯誤。
+func treeSize(dir string) (int64, error) {
+	var n int64
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		if strings.HasPrefix(d.Name(), ".notesteme-") {
+			return fmt.Errorf("留下了暫存檔 %s", p)
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode().IsRegular() {
+			n += info.Size()
+		}
+		return nil
+	})
+	return n, err
 }
 
 // heapGrowthDuring 回傳 fn 執行期間存活 heap 的峰值減去執行前的值。請求期間另一個 goroutine 反覆執行完整的 GC，

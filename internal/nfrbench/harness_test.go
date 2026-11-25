@@ -247,15 +247,28 @@ type server struct {
 // startServer 對 data 啟動 serve。runner 為 nil 時用只回應 --version 的替身（不會真的執行工具）。
 func startServer(b testing.TB, data string, runner toolexec.Runner) *server {
 	b.Helper()
+	return startServerConfig(b, data, runner, "")
+}
+
+// startServerConfig 同 startServer，config 不是空字串時寫成設定檔（例如定義 vault）。
+func startServerConfig(b testing.TB, data string, runner toolexec.Runner, config string) *server {
+	b.Helper()
 	root := shortDir(b)
 	bin := fakeTools(b, root)
+	cfgPath := filepath.Join(root, "none.yaml")
+	if config != "" {
+		cfgPath = filepath.Join(root, "config.yaml")
+		if err := os.WriteFile(cfgPath, []byte(config), 0o600); err != nil {
+			b.Fatal(err)
+		}
+	}
 	if runner == nil {
 		runner = &ytRunner{}
 	}
 	env := app.Env{
 		Vars: map[string]string{
 			"PATH":                 bin,
-			"NOTESTEME_CONFIG":     filepath.Join(root, "none.yaml"),
+			"NOTESTEME_CONFIG":     cfgPath,
 			"NOTESTEME_DATA":       data,
 			"NOTESTEME_MASTER_KEY": "bench-master-key",
 		},
@@ -526,4 +539,68 @@ func TestMain(m *testing.M) {
 		_ = os.RemoveAll(filepath.Dir(binPath))
 	}
 	os.Exit(code)
+}
+
+// stageEvent 是 SSE 的 stage.status 事件。
+type stageEvent struct{ Type, ItemID, Stage, Status string }
+
+// stageEvents 訂閱 GET /api/events，逐一交出事件；測試結束時中斷連線。
+func stageEvents(b testing.TB, s *server) <-chan stageEvent {
+	b.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.base+"/api/events", nil)
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		cancel()
+		b.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		cancel()
+		b.Fatalf("/api/events = %d", resp.StatusCode)
+	}
+	b.Cleanup(func() { cancel(); resp.Body.Close() })
+	events := make(chan stageEvent, 256)
+	go func() {
+		defer close(events)
+		sc := bufio.NewScanner(resp.Body)
+		for sc.Scan() {
+			line, ok := strings.CutPrefix(sc.Text(), "data: ")
+			if !ok {
+				continue
+			}
+			var e struct {
+				Type   string `json:"type"`
+				ItemID string `json:"item_id"`
+				Stage  string `json:"stage"`
+				Status string `json:"status"`
+			}
+			if json.Unmarshal([]byte(line), &e) == nil {
+				events <- stageEvent{e.Type, e.ItemID, e.Stage, e.Status}
+			}
+		}
+	}()
+	return events
+}
+
+// waitStage 等 itemID 的 stage 進入結束的狀態（done、failed、skipped、blocked），回傳該狀態。
+func waitStage(events <-chan stageEvent, itemID, stage string, limit time.Duration) (string, error) {
+	timeout := time.After(limit)
+	for {
+		select {
+		case e, ok := <-events:
+			if !ok {
+				return "", fmt.Errorf("SSE 串流中斷")
+			}
+			if e.Type != "stage.status" || e.ItemID != itemID || e.Stage != stage {
+				continue
+			}
+			switch e.Status {
+			case "done", "failed", "skipped", "blocked":
+				return e.Status, nil
+			}
+		case <-timeout:
+			return "", fmt.Errorf("%s 內沒有收到 %s 的結束事件", limit, stage)
+		}
+	}
 }
