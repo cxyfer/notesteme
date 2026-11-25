@@ -136,6 +136,7 @@ test.describe("G1 閱讀字型的切片", () => {
         .join("\n"),
       contentType: "text/plain",
     });
+    console.log(`FONTS ${fonts.length} 個 woff2，共 ${total} bytes：${names.join(", ")}`);
     expect(
       names.some((n) => /noto-serif-tc/i.test(n)),
       `沒有下載 Noto Serif TC：${names.join(", ")}`,
