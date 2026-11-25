@@ -13,7 +13,7 @@
 
   | 方式 | 說明 | 在哪裡跑 |
   |---|---|---|
-  | `bench` | Go benchmark 或負載腳本，資料由產生器建立 | CI 每晚；PR 有相關變更時手動觸發 |
+  | `bench` | Go benchmark 或負載腳本，資料由產生器建立（`internal/benchdata`） | CI 每晚以完整規模執行（`.github/workflows/bench.yml`）；`workflow_dispatch` 可以只跑某一組、或縮小 `lib-10k` 的比例；PR 有相關變更時自動跑縮小規模的 smoke（位置見第 11.3 節） |
   | `ci` | 每個 PR 都跑的自動檢查（lint、掃描、axe、bundle 大小） | CI 每個 PR |
   | `feature` | 已經有對應的驗收場景，列出規則 ID | `go test ./features/...` |
   | `manual` | 發布前的人工檢查清單 | 每個里程碑結束前 |
@@ -142,6 +142,7 @@
 | 2026-11-25 | v0.1 | **NFR-CMP-4** 的 `bench` 寫成自動測試（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：`cmd/notesteme/compat_test.go` 的 `TestCLIAndServeVersionsAcrossBinaries` 以 `-ldflags -X internal/app.version=<版本>` 建出 0.2.0～0.6.0 五支 binary，`serve` 0.4.0，各版 CLI 經本機 socket 執行 `items ls`：0.3.0、0.4.0、0.5.0 結束碼 0；0.2.0、0.6.0 結束碼 1 並指出升級哪一邊；沒有版本標頭的 `/healthz` 回應不帶版本。驗證欄仍是 `bench`（建出真的 binary 對打），但跑在 CI 的 `go` job 而不是每晚：五支只差 link，建置快取熱時約 3 秒，`-short` 時略過。決定記在 [CLI 待決問題](CLI-cli.md#待決問題)。目標未改。 |
 | 2026-11-25 | v0.1 | **NFR-I18N-2** 補完（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：原本只有繁中的 103 處與 Hub 的 API 都走 `internal/apierr` 的三語目錄，`internal/api` 與 Hub 的 API 都是 0 處未走目錄。domain 套件照舊回傳繁中，目錄以原本的 `fmt` 格式字串反解出參數再填進目標語言的範本，所以既有場景的預期文字不變；欄位錯誤的頂層 `message` 改用範本 `field_invalid`；Huma 的驗證錯誤的 `message` 帶第一個錯誤的位置與三語的原因（`details` 照 Huma 的原文）；Hub 共用 `apierr.LocalizeTransformer` 與 `WriteFor`。`errors[]`、`details` 等其他欄位照 AUTH-R23 不隨語言改變，外部服務帶回的原文不翻譯，只翻譯包住它的句子。涵蓋數字、例外與理由見 [AUTH 待決問題 A29](AUTH-access.md#待決問題)。目標未改。 |
 | 2026-11-25 | v0.1 | **NFR-REL-1～4、REL-7** 的自動驗證與首次實測（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：位置見第 11.1、11.2 節，設計決定見 [PIPE 待決問題](PIPE-pipeline-queue.md#待決問題)。**REL-1～3**：故障注入在 51 個點（12 個步驟的開始、中間、提交前，產出檔 rename 前後，付費呼叫回來與落地之後）各 `kill -9` 再重新啟動；首次在 GitHub runner 上以完整規模執行（`fault.yml` 的內容，2026-11-25）：51 個點 × 100 次＝5100 次迭代全部通過，耗時 28 分 31 秒（並行 4，job 約 30 分鐘），每次都確認 DB 完整、pipeline 做完且結果與沒中斷的基準相同、每份已記錄產出的 sha256 相符、沒有殘留暫存檔、付費呼叫最多多一次（`paid.landed` 一次都不多）；重新啟動後留下、沒有 DB 記錄指向的正式產出檔共 1086 個（已知限制，不影響正確性）。REL-2 的損毀測試五種字幕產出全部通過。CI 的 `go` job 每點 1 次，約 1 分鐘；每晚由 `fault.yml` 跑每點 100 次。故障注入找到並修正兩個違反 PIPE-R11 的缺陷：產出暫存檔不會被清掉、`frames` 在 commit 前就刪掉候選畫面。**斷電**：`kill -9` 驗證不到，付費結果的交易改用 `synchronous=FULL`（`Store.TxDurable`），其他交易維持 `NORMAL`，人工步驟見[人工驗收清單](../manual-acceptance.md#11-nfr-rel-1斷電後-db-不損毀付費結果不遺失)。**REL-4**：store／queue 與 API 兩層的並行寫入測試（`-race`）沒有出現 `SQLITE_BUSY`，不需要修正；驗證欄仍寫 `bench`，實際以 `ci` 的測試達成。**REL-7**：寫成 PIPE-R17 的驗收場景（`feature`），不另做 `bench`。目標未改。 |
+| 2026-11-25 | v0.1 | **`bench` 類 NFR 的每晚 CI 與首次實測**（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：PERF-1～9、RES-1～3、REL-5、CMP-5 寫成 `internal/nfrbench` 的 Go benchmark，資料由 `internal/benchdata` 產生，`.github/workflows/bench.yml` 每晚以完整規模執行；位置與首次 CI 數字見第 11.3 節。門檻就是本文件的數字，超過時 bench 失敗。解讀：**1.2 的「每部 3 個版本的產出」**解讀為 3 個字幕版本（`source`、`normalized`、`segmented` 各一份產出檔，`segmented` 進全文索引），不是 3 次重跑；**PERF-4、5、6、7、8** 沒有寫百分位數，以取樣的**最大值**判定（最保守）：PERF-4 每種格式 30 次、PERF-5 20 次、PERF-6 10 部、PERF-7 與 PERF-8 各 10 次；**PERF-4** 經過真正的下載端點量（讀檔、驗證 sha256、解碼、渲染、寫出），比只量渲染函式更嚴；**PERF-5** 量「送出重跑請求」到「client 收到該步驟的 `stage.status`」，多含一次 HTTP 請求，是上限；**PERF-7** 的「不含 migration 與 yt-dlp 自我檢查」：先啟動一次讓 migration 跑完，之後每次都是新的程序；`/readyz` 目前不做 yt-dlp 的自我檢查（OPS-R6 的 TODO），不需要扣掉這段時間；**PERF-1、3、9** 每種查詢各自以 p95 判定（PERF-1 14 種 × 50 次、PERF-3 7 種 × 50 次、PERF-9 每種 50 次、2 字以下 30 次；PERF-9 的單頁是 API 預設的 20 筆）；**RES-1** 執行真正的 binary 讀 `/proc/<pid>/status`：閒置取就緒後 10 秒內每 200ms 的 VmRSS 最大值，處理中取 VmHWM（20 部 3 小時人工字幕的影片，yt-dlp 的替身是子程序，不計入）；**RES-2** 就緒 5 秒後取樣 60 秒的 utime＋stime；**RES-3** 的「不隨片長線性成長」：1 小時（1,000 句）與 10 小時（10,000 句）各下載 3 次，取請求期間存活 heap 比請求前多出的量的最小值，10 小時 ÷ max(1 小時, 512KB) < 3（成長不超過線性的 30%；512KB 是這個量法的解析度）；**REL-5** 的「備份不阻擋 API」：`POST /api/backup` 期間連續打 `GET /api/items?limit=50`，最慢的一次 < 1 秒；還原以真正的 binary 執行 `notesteme restore`（含還原前的快照）；**CMP-5** 的「每個 migration 在 lib-10k 規模的資料上測試」：從空的 DB 逐版往前套用，每版之前把已經存在的資料表填滿 lib-10k 的資料，最後判定 `integrity_check`、FTS 的 integrity-check 與每張表的列數（問題數 0）；因為要產生約 5GB 的資料，放在每晚而不是每個 PR。「從上一個發布版本升級」：尚無發布版，以目前 schema（37）的 fixture 代替，`internal/store/upgrade_test.go` 在 CI 的 `go` job 每次都跑；發布後的步驟見第 11.3 節。**首次 CI 實測**（scratch run 45519420142，優化前）全部達標的項目見第 11.3 節。**優化後達標**：**PERF-8** 第一次 774ms、第二次 1173ms（那台 runner 整體慢約 3 成），把列表每頁逐一查頻道名稱改成一次查詢之後 529ms（run 45531362669）。**已知未達標**（`known-misses` job，`continue-on-error`，照門檻判定、不 skip）：**PERF-9** 命中很多的查詢做了一輪最佳化（全文搜尋的命中只掃一次，`COUNT(*) OVER ()` 取代另一次計數），優化前→後（兩次 run）：常見詞 1560→945／609ms、3 字中文 2045→1589／1028ms、以語言篩選常見詞 1618→960／616ms，已知未達標：實測 609～1589ms vs 目標 500ms；2 字以下的掃描 英文 4192→2590／1786ms、中文 4435→2995／1989ms、1 字 3227→2065／1396ms，較快的 runner 上通過、較慢的超過，已知未達標：實測 1396～2995ms vs 目標 2000ms（不穩定，仍列在 known-misses）。剩下的成本是 modernc SQLite 的 trigram 索引與 instr 掃描本身（每晚的資料約 600 萬句），要再快需要換索引結構或 cgo 的 SQLite，超出一輪有限度的最佳化；**RES-3** 的 ASS、雙語 SRT 與 bundle 匯出沒有修，單軌串流不適用：ASS 要整份算樣式、雙語要配對兩軌、bundle 在記憶體中組 zip，已知未達標：實測 7.45～10.62×（ASS 7.45×、雙語 SRT 8.19×、bundle 10.62×，增量約 6.5～7.6MB）vs 目標 < 3×；SRT、VTT、純文字與 cues JSON 改為逐句串流後達標（0.25～0.50×）。目標未改。 |
 
 ## 11. 實作位置（Web UI）
 
@@ -202,3 +203,31 @@ UI-0（2026-11-23）之後各項 UI 相關需求的自動檢查放在哪裡；`m
   - `internal/app/concurrent_writes_test.go` 的 `TestConcurrentAPIWritesNeverBusy`（API 層）：8 個用戶端經 HTTP 各新增 10 部影音，穿插改佇列上限、暫停與繼續、改全域設定，同時有讀取者與備份；斷言沒有 5xx、log 中沒有 `SQLITE_BUSY`、最後的資料與寫入的一致。
   - 驗證欄寫 `bench`，但要驗證的是「不出現」而不是數值，所以寫成 `ci` 的測試；`busy_timeout` 沿用 `internal/sqlitedb` 的設定，沒有調整。
 - **NFR-REL-7**：PIPE-R17 的驗收場景（`features/PIPE-pipeline-queue.feature`，`@PIPE-R17`），由 `Given every external service is unavailable` 讓假 yt-dlp 與 fakenet 上所有 fake origin 持續失敗；驗證瀏覽媒體庫、影音詳情、SRT／VTT 下載與 MCP `get_transcript` 照常回應，新增的影音在重試用盡後以 `failed`（`retryable`）結束。理由見 [PIPE 待決問題](PIPE-pipeline-queue.md#待決問題)「PIPE-R17 與 NFR-REL-7 的驗證方式」。
+
+### 11.3 bench 的位置
+
+（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）
+
+- **資料**：`internal/benchdata`（`lib-10k`、`item-long`，決定論：同一個 seed 每晚的資料與命中數相同），`go run ./internal/benchdata/cmd/genlib -out <目錄> -profile lib-10k [-scale 0.05]` 產生；正式 binary 不依賴它（`TestNotImportedByBinaries`）。完整的 `lib-10k` 在 GitHub runner 上產生約 10～14 分鐘、約 5GB。
+- **bench**：`internal/nfrbench`。in-process 的 `serve`（真正的 HTTP handler、worker 與 SQLite，網路全部拒絕，yt-dlp／ffmpeg 是替身），或以 `NOTESTEME_BENCH_BIN` 執行真正建置的 binary。每個 bench 自己取樣固定次數（`-benchtime=1x`），以 `b.ReportMetric` 報告 p50／p95（或最大值），超過門檻時失敗；每一筆結果寫進 `NOTESTEME_BENCH_REPORT` 的 JSONL，`scripts/ci/bench-summary.py` 轉成 job summary。沒有 `NOTESTEME_BENCH_LIB` 時以 `NOTESTEME_BENCH_SCALE`（預設 0.01）的資料執行，只能當 smoke。
+- **觸發**（`.github/workflows/bench.yml`）：`schedule` 每天 18:43 UTC；`workflow_dispatch` 的 `group`（`all`、`item`、`lib10k`、`known-misses`）與 `scale`；`pull_request` 在相關目錄有變更時只跑 `smoke`（×0.01，本機約 2 分鐘），不影響 `ci.yml`。每個 job 上傳 `bench-report.jsonl` 與 go test 的輸出。每晚三個 job 平行，牆鐘時間約 15～30 分鐘。
+
+| ID | Benchmark | job | 判定 | 首次 CI 實測（run 45519420142 → 45531362669） |
+|---|---|---|---|---|
+| NFR-PERF-1 | `BenchmarkPerf1ItemsList` | `lib10k` | 14 種查詢，各 p95 < 200ms | 最慢 `group_status` 104 → 81ms |
+| NFR-PERF-2 | `BenchmarkPerf2ItemDetail` | `item` | p95 < 150ms | 詳情 1.7 → 0.9ms、cues 11.8 → 7.5ms |
+| NFR-PERF-3 | `BenchmarkPerf3TitleSearch` | `lib10k` | 7 種查詢，各 p95 < 300ms | 最慢 `q_and_filter` 26 → 20ms |
+| NFR-PERF-4 | `BenchmarkPerf4Render` | `item` | 每種格式最大值 < 100ms | 最慢 ASS 55 → 41ms |
+| NFR-PERF-5 | `BenchmarkPerf5SSE` | `item` | 最大值 < 1s | 15 → 11ms |
+| NFR-PERF-6 | `BenchmarkPerf6IngestToSRT` | `item` | 最大值 < 5s | 85 → 86ms |
+| NFR-PERF-7 | `BenchmarkPerf7ColdStart` | `item` | 最大值 < 3s | 153 → 142ms |
+| NFR-PERF-8 | `BenchmarkPerf8CLIItemsLs` | `lib10k` | 最大值 < 1s | 774 → 529ms（優化後） |
+| NFR-PERF-9 | `BenchmarkPerf9FullTextSearch`；`BenchmarkKnownMissPerf9` | `lib10k`；`known-misses` | 各 p95 < 500ms；2 字以下 < 2s | 罕見詞 7.9 → 3.3ms、片語 165 → 72ms；已知未達標見第 10 節 |
+| NFR-RES-1 | `BenchmarkRes1RSS` | `item` | 閒置 < 150MB、處理中 < 500MB | 閒置 110 → 112MB、處理中 201MB |
+| NFR-RES-2 | `BenchmarkRes2IdleCPU` | `item` | < 1% | 0.02% |
+| NFR-RES-3 | `BenchmarkRes3Streaming`；`BenchmarkKnownMissRes3` | `item`；`known-misses` | 10h ÷ max(1h, 512KB) < 3× | SRT／VTT／純文字／cues JSON 最大 0.41 → 0.50×；ASS／雙語／bundle 已知未達標見第 10 節 |
+| NFR-REL-5 | `BenchmarkRel5BackupRestore` | `lib10k` | 備份期間 API 最大值 < 1s、還原 < 300s | 13 → 8ms、67 → 58s |
+| NFR-CMP-5 | `BenchmarkCmp5Migrations`；`TestUpgradeFromReleasedSchemas` | `lib10k`；`ci.yml` 的 `go` job | 問題數 0；每份 fixture 升級後資料完整 | 37 個 migration 0.73 → 0.58s、問題 0 |
+
+- **已知未達標**：命名為 `BenchmarkKnownMiss*`，只在 `known-misses` job 跑（`continue-on-error: true`，summary 標 ⚠️ KNOWN-MISS），照門檻判定、超過照實列出，不 skip。達標之後把那一組查詢搬回原本的 bench，並在第 10 節記錄。
+- **CMP-5 的升級 fixture**：`internal/store/testdata/upgrade/schema-37/` 是目前 schema 的資料目錄（尚無發布版）。每次發布前，若 `testdata/upgrade/schema-<發布版的 schema 版本>/` 不存在，執行 `go test ./internal/store -run TestUpgradeFromReleasedSchemas -update-upgrade-fixture -count=1` 產生並提交；fixture 提交後不再修改也不刪除，之後 CI 驗證從每一個發布版升級。細節見 `internal/store/testdata/upgrade/README.md`。
