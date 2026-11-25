@@ -515,3 +515,15 @@ func requireLinux(b testing.TB) {
 		b.Skip("需要 /proc（Linux）")
 	}
 }
+
+// TestMain 在所有 bench 結束後刪除整個程序共用的暫存資料（縮小版的 lib-10k 與建置的 binary）。
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if libDir != "" && os.Getenv("NOTESTEME_BENCH_LIB") == "" {
+		_ = os.RemoveAll(libDir)
+	}
+	if binPath != "" && os.Getenv("NOTESTEME_BENCH_BIN") == "" {
+		_ = os.RemoveAll(filepath.Dir(binPath))
+	}
+	os.Exit(code)
+}
