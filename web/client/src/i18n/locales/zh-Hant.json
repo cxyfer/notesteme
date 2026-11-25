@@ -848,7 +848,9 @@
       "noCues": "這段沒有字幕",
       "copied_other": "已複製 {{count}} 句字幕。",
       "copyFailed": "無法複製：瀏覽器不允許存取剪貼簿。",
-      "clear": "取消選取"
+      "clear": "取消選取",
+      "recorrect": "重新校正這段",
+      "recorrectNone": "這段沒有已切分的校正段落。"
     },
     "source": {
       "youtube-manual": "YouTube 人工字幕",

@@ -52,6 +52,8 @@ export interface RerunDialogProps {
   stages: readonly string[];
   /** 已知的預估：從 from 開始、用現行設定做到最後的金額（SRC-R23 的 better_source.estimate_usd） */
   estimate?: { from: string; usd: number | null };
+  /** 預填的 chunk（例如時間帶「重新校正這段」換算出來的「9–10」）；只在 from 是 LLM 步驟時有作用 */
+  chunks?: string;
 }
 
 export function RerunDialog({
@@ -61,6 +63,7 @@ export function RerunDialog({
   from,
   stages,
   estimate,
+  chunks,
 }: RerunDialogProps) {
   const { t } = useTranslation();
   // 每次打開都是新的表單
@@ -77,6 +80,7 @@ export function RerunDialog({
           initialFrom={from}
           stages={stages}
           estimate={estimate}
+          initialChunks={chunks}
           onDone={() => onOpenChange(false)}
         />
       )}
@@ -89,12 +93,14 @@ function RerunForm({
   initialFrom,
   stages,
   estimate,
+  initialChunks,
   onDone,
 }: {
   itemId: string;
   initialFrom?: string;
   stages: readonly string[];
   estimate?: { from: string; usd: number | null };
+  initialChunks?: string;
   onDone: () => void;
 }) {
   const { t } = useTranslation();
@@ -116,7 +122,7 @@ function RerunForm({
   const [model, setModel] = useState("");
   const [prompt, setPrompt] = useState("");
   const [promptVersion, setPromptVersion] = useState("");
-  const [chunksText, setChunksText] = useState("");
+  const [chunksText, setChunksText] = useState(initialChunks ?? "");
   const isLlm = (LLM_STAGES as readonly string[]).includes(from);
   const chunks = isLlm ? parseChunks(chunksText) : [];
   // 預估只適用於「同一個起點、做到最後、沒有改任何設定」
@@ -201,7 +207,12 @@ function RerunForm({
           id={`${id}-from`}
           className="field__input"
           value={from}
-          onChange={(e) => setFrom(e.target.value)}
+          onChange={(e) => {
+            setFrom(e.target.value);
+            // 預填的段落是起點那個步驟的切分（例如校正的 chunk）；換到別的步驟時編號的意義不同，沒改過就清空
+            if (initialChunks && chunksText === initialChunks && e.target.value !== initialFrom)
+              setChunksText("");
+          }}
         >
           {choices.map((s) => (
             <option key={s} value={s}>

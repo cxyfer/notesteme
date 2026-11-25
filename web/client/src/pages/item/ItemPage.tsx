@@ -1,7 +1,8 @@
 // 影音詳情（docs/ui/pages.md §4；LIB-R5～R7、R11、R12；PIPE-R7、R13、R15；OBS-2）。
 //
 //   標題列（標題、頻道、平台、長度、語言）與主要動作（重新處理、下載、停止處理、刪除）
-//   完整版時間帶（StatusBand variant="full"）：與播放器同步的播放頭，點擊、方向鍵移動
+//   完整版時間帶（StatusBand variant="full"）：與播放器同步的播放頭，點擊、方向鍵移動；底軌的說話密度、章節、畫面刻度，
+//   步驟帶的 chunk 進度（LIB-R29），拖曳選取後「重新校正這段」「複製這段字幕」（docs/ui/README.md 10.26、10.30）
 //   播放器（YouTube／Bilibili 嵌入、本機／Podcast 的 HTML5 media）＋ 分頁：字幕、步驟、紀錄、輸出
 //
 // 路由參數可能是影音代號（yt:…）：detail 讀到之後，其他 API 與 query key 一律用 detail.id，SSE 的失效表才對得上。
@@ -38,7 +39,9 @@ import { ChapterList, ChapterTrack, RangeBar, chapterIndexAt, toChapters } from 
 import {
   bandSegments as chunkBandSegments,
   chunkLabel,
+  chunkList,
   chunkSummary,
+  correctChunksIn,
   stageChunks,
   useChunks,
 } from "./chunks";
@@ -253,7 +256,7 @@ function ItemView({
     },
     [chapters],
   );
-  // 時間帶拖曳選取的範圍（「複製這段字幕」；「重新校正這段」等 API 有 chunk 範圍再做）
+  // 時間帶拖曳選取的範圍（「重新校正這段」「複製這段字幕」）
   const [range, setRange] = useState<{ from: number; to: number } | null>(null);
 
   // hover 時間帶時顯示那個時間點的字幕句（和字幕分頁共用同一份快取）
@@ -320,6 +323,29 @@ function ItemView({
       ...(cs.length ? { segments: chunkBandSegments(cs) } : {}),
     };
   });
+  // 「重新校正這段」：correct 用 API 處理、而且有切分過（有時間範圍的 chunk）時才有（rerun 的 chunks 只在 api 有作用）
+  const canRecorrect =
+    byStage.get("correct")?.executor === "api" &&
+    (chunks.data ?? []).some((c) => c.stage === "correct" && !!c.start);
+  const [rerunChunks, setRerunChunks] = useState<string | undefined>();
+  const [recorrecting, setRecorrecting] = useState(false);
+  async function recorrect(r: { from: number; to: number }) {
+    setRecorrecting(true);
+    try {
+      const nums = await correctChunksIn(id, r.from, r.to);
+      if (!nums.length) {
+        toast.show({ title: t("item.range.recorrectNone") });
+        return;
+      }
+      setRerunChunks(chunkList(nums));
+      setRerunFrom("correct");
+    } catch (err) {
+      toast.show({ title: describeError(t, err) });
+    } finally {
+      setRecorrecting(false);
+    }
+  }
+
   const bandDesc = [
     density &&
       t("item.band.density", {
@@ -662,7 +688,13 @@ function ItemView({
         </p>
       )}
       {range && (
-        <RangeBar range={range} cues={hoverCues.data?.cues} onClear={() => setRange(null)} />
+        <RangeBar
+          range={range}
+          cues={hoverCues.data?.cues}
+          onClear={() => setRange(null)}
+          onRecorrect={canRecorrect ? () => void recorrect(range) : undefined}
+          recorrecting={recorrecting}
+        />
       )}
 
       <p className="visually-hidden" aria-live="polite">
@@ -763,9 +795,14 @@ function ItemView({
 
       <RerunDialog
         open={rerunFrom !== null}
-        onOpenChange={(o) => !o && setRerunFrom(null)}
+        onOpenChange={(o) => {
+          if (o) return;
+          setRerunFrom(null);
+          setRerunChunks(undefined);
+        }}
         itemId={id}
         from={rerunFrom || undefined}
+        chunks={rerunFrom === "correct" ? rerunChunks : undefined}
         stages={stages.map((s) => s.stage)}
         estimate={
           d.better_source

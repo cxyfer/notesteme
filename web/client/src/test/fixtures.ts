@@ -176,6 +176,7 @@ export function defaultRoutes() {
     "GET /api/items/{id}/outputs": () => ({ outputs: [] }),
     "GET /api/queue": () => queueStatus(),
     "GET /api/items/{id}/frames": () => framesList(),
+    "GET /api/items/{id}/chunks": () => ({ chunks: [] }),
     "GET /api/items/{id}/note": () => noteBody(),
     "GET /api/profiles": () => ({ profiles: [] }),
     // UI-4

@@ -1,7 +1,7 @@
 // 章節（pages.md §4、design-language.md §6.1 的「章節」圖層；CHAP-R7 的 GET /api/items/{id} chapters）：
 //   - ChapterTrack：時間帶底軌上的章節起點線（裝飾，底軌是 aria-hidden；可及的版本是 ChapterList）。
 //   - ChapterList：播放器下的章節清單，點擊跳播，目前的章節標 aria-current。
-//   - RangeBar：時間帶拖曳選取範圍後的「複製這段字幕」。
+//   - RangeBar：時間帶拖曳選取範圍後的「重新校正這段」與「複製這段字幕」。
 // API 的 Chapter 沒有層級，所以「### 小節只畫下半段」做不到：每個章節都畫整條線（README 10.26 第 2 點）。
 import { useTranslation } from "react-i18next";
 
@@ -123,11 +123,17 @@ export function RangeBar({
   range,
   cues,
   onClear,
+  onRecorrect,
+  recorrecting,
 }: {
   range: { from: number; to: number };
   /** 目前顯示模式的字幕；還沒有字幕時是 undefined */
   cues: readonly Cue[] | undefined;
   onClear: () => void;
+  /** 「重新校正這段」（README 10.30 第 4 點）；不能重新校正時省略，按鈕不顯示 */
+  onRecorrect?: () => void;
+  /** 正在把範圍換成 chunk 編號 */
+  recorrecting?: boolean;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -153,6 +159,11 @@ export function RangeBar({
           to: formatTimecode(range.to),
         })}
       </span>
+      {onRecorrect && (
+        <Button variant="outline" disabled={recorrecting} onClick={onRecorrect}>
+          {t("item.range.recorrect")}
+        </Button>
+      )}
       <Button variant="outline" disabled={!count} onClick={() => void copy()}>
         {count ? t("item.range.copy", { count }) : t("item.range.noCues")}
       </Button>

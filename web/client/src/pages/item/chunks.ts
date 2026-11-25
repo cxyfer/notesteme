@@ -1,6 +1,7 @@
 // LLM chunk 的時間範圍（LIB-R29，GET /api/items/{id}/chunks）：
 //   - 時間帶的步驟帶依 chunk 的時間範圍畫「處理中」「失敗」（design-language.md §6.1）；底軌的處理範圍由 StatusBand 依
 //     segments 畫出。帶子的標籤照 §6.1 狀態表的文字（「校正 9/16」「失敗：第 7 段」），完整的段落與時間另外寫成文字版本。
+//   - 「重新校正這段」：拖曳選取的時間範圍由伺服器換成 chunk 編號（from、to 的重疊規則只寫在後端）。
 // chunk 任務完成不發 SSE（LIB-R24 同樣的限制）：有 LLM 步驟 running 時每 15 秒重新讀取，stage.status 與重新連上時失效。
 import { useQuery } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
@@ -38,6 +39,18 @@ export function useChunks(id: string, stages: readonly ApiStage[]) {
     staleTime: 10_000,
     refetchInterval: running ? CHUNK_POLL_MS : false,
   });
+}
+
+/** 時間範圍內的校正 chunk 編號（伺服器依 [from, to) 的重疊換算） */
+export async function correctChunksIn(id: string, from: number, to: number): Promise<number[]> {
+  const r = await api.get<"/api/items/{id}/chunks">(apiPath("/api/items/{id}/chunks", { id }), {
+    query: { stage: "correct", from: round3(from), to: round3(to) },
+  });
+  return (r.chunks ?? []).map((c) => c.chunk).sort((a, b) => a - b);
+}
+
+function round3(s: number) {
+  return Math.round(s * 1000) / 1000;
 }
 
 const SPAN_BAND: Record<ApiChunk["status"], BandStatus> = {

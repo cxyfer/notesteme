@@ -885,7 +885,9 @@
       "copied_one": "Copied {{count}} subtitle line.",
       "copied_other": "Copied {{count}} subtitle lines.",
       "copyFailed": "Could not copy: the browser does not allow clipboard access.",
-      "clear": "Clear selection"
+      "clear": "Clear selection",
+      "recorrect": "Correct this part again",
+      "recorrectNone": "No correction parts cover this range."
     },
     "source": {
       "youtube-manual": "YouTube manual captions",

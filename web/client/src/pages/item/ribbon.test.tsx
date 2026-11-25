@@ -1,5 +1,6 @@
 // 時間帶的其他圖層（README 10.30）：說話密度、畫面刻度、處理範圍（chunk 的時間範圍）與「重新校正這段」。
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { expectNoA11yViolations } from "../../test/axe";
@@ -257,5 +258,104 @@ describe("影音詳情：步驟帶依 chunk 的時間範圍畫出處理到哪裡
     expect(
       container.querySelectorAll('.sband__band[data-stage="correct"] .sband__seg'),
     ).toHaveLength(1);
+  });
+});
+
+function sliderOf() {
+  const slider = screen.getByRole("slider");
+  slider.getBoundingClientRect = () =>
+    ({ left: 0, width: 600, top: 0, height: 100, right: 600, bottom: 100 }) as DOMRect;
+  return slider;
+}
+
+function select(slider: HTMLElement, x1: number, x2: number) {
+  fireEvent.pointerDown(slider, { clientX: x1, button: 0, pointerId: 1, isPrimary: true });
+  fireEvent.pointerMove(slider, { clientX: x2, pointerId: 1 });
+  fireEvent.pointerUp(slider, { clientX: x2, pointerId: 1 });
+}
+
+describe("影音詳情：拖曳選取後「重新校正這段」", () => {
+  it("由伺服器換成 chunk 編號，沿用重新處理對話框（預填段落），送出 rerun 的 chunks；axe 無違規", async () => {
+    const { api } = open(
+      "/items/item-1",
+      itemWithChunks("done", CHUNKS, {
+        "GET /api/items/{id}/chunks": ({ url }) => ({
+          chunks: url.searchParams.get("from") ? CHUNKS.slice(1) : CHUNKS,
+        }),
+        "POST /api/items/{id}/rerun": () => detail(item(1), []),
+      }),
+    );
+    await screen.findByRole("slider", { name: "時間帶：播放位置" });
+    const slider = sliderOf();
+    // 600px 對 120 秒：x=250 是 50 秒、x=450 是 90 秒
+    select(slider, 250, 450);
+    await userEvent.click(await screen.findByRole("button", { name: "重新校正這段" }));
+    const q = api.calls("GET", "/api/items/{id}/chunks").at(-1)!.url.searchParams;
+    expect([q.get("stage"), q.get("from"), q.get("to")]).toEqual(["correct", "50", "90"]);
+    const dialog = await screen.findByRole("dialog", { name: "重新處理" });
+    expect((within(dialog).getByLabelText("從哪個步驟開始") as HTMLSelectElement).value).toBe(
+      "correct",
+    );
+    expect((within(dialog).getByLabelText("只重跑這些段落") as HTMLInputElement).value).toBe("2–3");
+    await expectNoA11yViolations(document.body);
+    await userEvent.click(within(dialog).getByRole("button", { name: "從校正重新處理" }));
+    await waitFor(() => expect(api.calls("POST", "/api/items/item-1/rerun")).toHaveLength(1));
+    expect(
+      JSON.parse(api.calls("POST", "/api/items/item-1/rerun")[0]!.init.body as string),
+    ).toEqual({ from: "correct", chunks: [2, 3] });
+  });
+
+  it("在對話框改了起點時清空預填的段落（編號是校正的切分），送出時不帶 chunks", async () => {
+    const { api } = open(
+      "/items/item-1",
+      itemWithChunks("done", CHUNKS, {
+        "POST /api/items/{id}/rerun": () => detail(item(1), []),
+      }),
+    );
+    await screen.findByRole("slider", { name: "時間帶：播放位置" });
+    select(sliderOf(), 250, 450);
+    await userEvent.click(await screen.findByRole("button", { name: "重新校正這段" }));
+    const dialog = await screen.findByRole("dialog", { name: "重新處理" });
+    const field = within(dialog).getByLabelText("只重跑這些段落") as HTMLInputElement;
+    expect(field.value).not.toBe("");
+    await userEvent.selectOptions(within(dialog).getByLabelText("從哪個步驟開始"), "segment");
+    expect(field.value).toBe("");
+    await userEvent.click(within(dialog).getByRole("button", { name: "從分段重新處理" }));
+    await waitFor(() => expect(api.calls("POST", "/api/items/item-1/rerun")).toHaveLength(1));
+    expect(
+      JSON.parse(api.calls("POST", "/api/items/item-1/rerun")[0]!.init.body as string),
+    ).toEqual({ from: "segment" });
+  });
+
+  it("範圍內沒有 chunk 時說明，不打開對話框", async () => {
+    open(
+      "/items/item-1",
+      itemWithChunks("done", CHUNKS, {
+        "GET /api/items/{id}/chunks": ({ url }) => ({
+          chunks: url.searchParams.get("from") ? [] : CHUNKS,
+        }),
+      }),
+    );
+    await screen.findByRole("slider", { name: "時間帶：播放位置" });
+    select(sliderOf(), 250, 450);
+    await userEvent.click(await screen.findByRole("button", { name: "重新校正這段" }));
+    expect(await screen.findByText("這段沒有已切分的校正段落。")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("校正不是用 API 處理時沒有「重新校正這段」（rerun 的 chunks 只在 api 有作用）", async () => {
+    open("/items/item-1", {
+      ...itemWithChunks("done", CHUNKS),
+      "GET /api/items/{id}": () =>
+        detail(item(1, { platform: "local", duration_s: 120, original_lang: "zh-Hant" }), [
+          stage("metadata", "done"),
+          stage("transcript", "done"),
+          stage("correct", "done", { executor: "agent" }),
+        ]),
+    });
+    await screen.findByRole("slider", { name: "時間帶：播放位置" });
+    select(sliderOf(), 250, 450);
+    expect(await screen.findByRole("button", { name: /複製這段字幕/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "重新校正這段" })).toBeNull();
   });
 });
