@@ -1,0 +1,147 @@
+name: Browser e2e
+
+# 真實瀏覽器的 e2e（web/client/e2e，Playwright）：Chromium、Firefox、WebKit 對真正建好的 notesteme binary
+# （內嵌 web/client/dist）執行 serve，資料由 internal/benchdata 的 genlib 與 e2eseed 產生，不連外部網路（NFR-TEST-1）。
+# 涵蓋 NFR-A11Y-1～3、NFR-CMP-2（三個引擎）、NFR-I18N-3、NFR-RWD-1、NFR-PERF-10 中 jsdom 驗不到的部分
+# （docs/specs/nfr.md 第 11 節、docs/ui/README.md 10.32）；仍需人工的項目見 docs/manual-acceptance.md。
+#
+# 不放進 PR 必過的路徑（ci.yml、web.yml）以免拖慢 PR：每晚、手動，以及 push 到 master 且動到前端或 webui 時執行。
+on:
+  push:
+    branches: [master]
+    paths:
+      - "web/**"
+      - "internal/webui/**"
+      - "internal/benchdata/**"
+      - ".github/workflows/browser.yml"
+  schedule:
+    - cron: "41 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build binary with embedded UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/client/.nvmrc
+          cache: npm
+          cache-dependency-path: web/client/package-lock.json
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: npm ci
+        working-directory: web/client
+        run: npm ci --no-audit
+
+      - name: build UI
+        working-directory: web/client
+        run: npm run build
+
+      # 與 release 相同不帶 race；內嵌剛建好的 dist。
+      - name: build notesteme
+        run: go build -trimpath -o "$RUNNER_TEMP/bin/notesteme" ./cmd/notesteme
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notesteme-e2e-bin
+          path: ${{ runner.temp }}/bin/notesteme
+          retention-days: 3
+
+  e2e:
+    name: e2e (${{ matrix.engine }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, firefox, webkit]
+    env:
+      NOTESTEME_E2E_BIN: ${{ github.workspace }}/.e2e-bin/notesteme
+      # 截圖集只在 Chromium 產生（design-language §9 的里程碑對照；三個引擎都截會讓 artifact 太大）
+      NOTESTEME_E2E_SHOTS: ${{ matrix.engine == 'chromium' && '1' || '0' }}
+      NOTESTEME_E2E_WORKERS: "3"
+    defaults:
+      run:
+        working-directory: web/client
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/client/.nvmrc
+          cache: npm
+          cache-dependency-path: web/client/package-lock.json
+
+      # global setup 以 go run 執行 genlib 與 e2eseed
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: npm ci
+        run: npm ci --no-audit
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: notesteme-e2e-bin
+          path: ${{ github.workspace }}/.e2e-bin
+
+      - name: chmod binary
+        run: chmod +x "$NOTESTEME_E2E_BIN"
+
+      - name: Playwright version
+        id: pw
+        run: echo "version=$(node -p 'require("@playwright/test/package.json").version')" >> "$GITHUB_OUTPUT"
+
+      # 只快取瀏覽器本體；系統套件不在快取裡，cache hit 時仍要 install-deps。
+      - uses: actions/cache@v4
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-${{ matrix.engine }}
+
+      - name: install browser
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps ${{ matrix.engine }}
+
+      - name: install browser deps
+        if: steps.browsers.outputs.cache-hit == 'true'
+        run: npx playwright install-deps ${{ matrix.engine }}
+
+      - name: e2e
+        run: npx playwright test --project=${{ matrix.engine }} --grep-invert @perf10k
+
+      - name: summary
+        if: always()
+        run: node scripts/e2e-summary.mjs "Browser e2e：${{ matrix.engine }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-report-${{ matrix.engine }}
+          path: |
+            web/client/e2e/.out/report
+            web/client/e2e/.out/axe
+            web/client/e2e/.out/perf
+            web/client/e2e/.out/test-results
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.engine == 'chromium'
+        with:
+          name: e2e-screenshots
+          path: web/client/e2e/.out/screenshots
+          retention-days: 30
