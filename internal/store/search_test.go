@@ -346,7 +346,7 @@ func TestSearchIndexBuiltOnFirstOpen(t *testing.T) {
 	it, _ := seedItem(t, s, "a")
 	writeCues(t, s, it.ID, "corrected", "en", "backfill me")
 	// 模擬 migration 剛建立索引：清空索引列並把 built 設回 0。
-	if _, err := s.w.ExecContext(ctx, `DELETE FROM search_cues; UPDATE search_index_state SET built = 0`); err != nil {
+	if _, err := s.w.ExecContext(ctx, `DELETE FROM search_groups; DELETE FROM search_cues; UPDATE search_index_state SET built = 0`); err != nil {
 		t.Fatal(err)
 	}
 	checkIndex(t, s, it.ID, 0)

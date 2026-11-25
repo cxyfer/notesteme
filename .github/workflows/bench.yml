@@ -175,36 +175,21 @@ jobs:
           if-no-files-found: ignore
 
   # 已知未達標的項目（nfr.md 第 10 節逐項記錄）：照跑、照門檻判定，job 失敗但不影響其他 job 與整體的燈號。
-  # PERF-9 的資料要和 lib10k job 一樣是完整規模（沒有 NOTESTEME_BENCH_LIB 時 bench 會改用 ×0.01 的資料而「通過」）。
   known-misses:
     name: Bench known misses (KNOWN-MISS, does not gate)
     if: github.event_name != 'pull_request' && (inputs.group == '' || inputs.group == 'all' || inputs.group == 'known-misses')
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 30
     continue-on-error: true
     env:
       NOTESTEME_BENCH_REPORT: ${{ github.workspace }}/bench-report.jsonl
-      NOTESTEME_BENCH_LIB: ${{ github.workspace }}/../lib10k
-      SCALE: ${{ inputs.scale || '1' }}
     steps:
       - uses: actions/checkout@v7
-      - name: free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
-          df -h /
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: RES-3 (ASS, bilingual SRT, bundle)
         run: go test ./internal/nfrbench $BENCH_FLAGS -bench '^BenchmarkKnownMissRes3' 2>&1 | tee -a bench-known-misses.txt
-      - name: generate lib-10k
-        if: ${{ !cancelled() }}
-        run: |
-          go run ./internal/benchdata/cmd/genlib -out "$NOTESTEME_BENCH_LIB" -profile lib-10k -scale "$SCALE"
-          if [ "$SCALE" != "1" ]; then echo "NOTESTEME_BENCH_LIB_NAME=lib-10k@$SCALE" >> "$GITHUB_ENV"; fi
-      - name: PERF-9 (frequent terms, short scans)
-        if: ${{ !cancelled() }}
-        run: go test ./internal/nfrbench $BENCH_FLAGS -bench '^BenchmarkKnownMissPerf9' 2>&1 | tee -a bench-known-misses.txt
       - name: summary
         if: ${{ !cancelled() }}
         run: python3 -I scripts/ci/bench-summary.py "$NOTESTEME_BENCH_REPORT" "Bench：已知未達標（KNOWN-MISS）" --known-miss >> "$GITHUB_STEP_SUMMARY"

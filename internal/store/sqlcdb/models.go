@@ -390,9 +390,23 @@ type SearchCue struct {
 	TextFold   string
 }
 
+type SearchGroup struct {
+	FirstID    int64
+	Cues       int64
+	ItemID     string
+	ArtifactID string
+	Lang       string
+}
+
 type SearchIndexState struct {
-	ID    int64
-	Built int64
+	ID          int64
+	Built       int64
+	GroupsBuilt int64
+}
+
+type SearchText struct {
+	FirstID int64
+	Fold    string
 }
 
 type Secret struct {

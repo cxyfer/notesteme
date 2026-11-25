@@ -76,7 +76,7 @@ M4 的 migration 接在 M3 的 migration 之後（M3 規劃 `00017`；實際編�
 | `price_overrides`（plan 第 21 節）、`settings` 中的 `budget` 區段 | COST |
 | `batches (id, provider, external_id, state, submitted_at, deadline_at, task_ids_json)`、`tasks.batch_id` | BATCH |
 | `glossary_candidates` 加 `decided_term`、`decided_scope`、`decided_at`（不加 `suggestion`，候選只有 `term`，COR 規格 C4、GLOS 規格 G2） | GLOS |
-| `search_cues`（每個語言一份現行字幕的 cue 與 `text_fold`）與 `cues_fts`（FTS5 `trigram case_sensitive 1`，以 `search_cues` 為外部內容表、trigger 同步） | SRCH |
+| `search_cues`（每個語言一份現行字幕的 cue 與 `text_fold`）與 `cues_fts`（FTS5 `trigram case_sensitive 1`，以 `search_cues` 為外部內容表、trigger 同步）；`search_groups`、`search_text`（migration `00038`，NFR-PERF-9，SRCH 待決問題 S9） | SRCH |
 | `oidc_identities (issuer, subject, last_login_at)`、OIDC 登入流程的暫存狀態（state、nonce、PKCE verifier，見 AUTH 規格）、`sessions` 加 `method`（`password`、`proxy`、`oidc`） | AUTH |
 | `alert_states (kind, key, active_since, notified_at, resolved_at)`、`tool_call_stats`、cookie 的 `last_ok_at` | OPS |
 

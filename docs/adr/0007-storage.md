@@ -17,7 +17,7 @@
 - **SQLite**，使用 `modernc.org/sqlite`：
   - 純 Go 實作，不需要 CGO，可以直接跨平台編譯。
   - 開 WAL 模式。
-- **全文搜尋**用 FTS5 trigram tokenizer。trigram 無法用索引查少於 3 個字的詞，但中文常見的詞都是 2 個字，所以 2 字以下的查詢改用 `instr` 掃描。個人規模的資料量足以應付。
+- **全文搜尋**用 FTS5 trigram tokenizer。trigram 無法用索引查少於 3 個字的詞，但中文常見的詞都是 2 個字，所以 2 字以下的查詢改用 `instr` 掃描。個人規模的資料量足以應付。（2026-11-25 補註：為了 NFR-PERF-9，掃描改讀每份字幕一列的 `search_text`，比對語意與 `instr` 相同；3 字以上的命中先依「一份字幕」彙整再排序。見 SRCH 規格待決問題 S9。）
 - **全文索引只收現行版本**的校正字幕與譯文字幕，被取代的舊版本不進索引。
 - **產出存在檔案系統**：`/data/artifacts/<item-id>/<artifact-id>.<ext>`。DB 只存路徑、`sha256` 與來源紀錄。
   - 同一組 `(item, kind, variant, lang)` 預設保留最近 3 版，畫面只保留現行版本。

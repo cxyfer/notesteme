@@ -14,6 +14,7 @@ import (
 
 	"github.com/pressly/goose/v3"
 
+	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/sqlitedb"
 	"github.com/cxyfer/notesteme/internal/store"
 )
@@ -29,6 +30,10 @@ import (
 //
 // 每版的耗時與總耗時只報告（規格沒有時間門檻）；判定的是「問題數 = 0」。
 // 資料被 migration 預先寫入（例如內建樣式）的表不覆蓋也不比對列數。
+//
+// search_groups、search_text（SRCH S9）不是由 migration 而是由 migration 之後第一次 store.Open 從 search_cues 建立，
+// 所以不複製：全部 migration 之後，以「索引已經建好、groups 還沒建立」的狀態執行一次 store.Open，
+// 報告回填的耗時，並把 store 的一致性檢查（SearchIndexCheck）與列數比對算進問題數。
 func BenchmarkCmp5Migrations(b *testing.B) {
 	dir, name := lib(b)
 	src := filepath.Join(dir, store.DBFileName)
@@ -75,12 +80,16 @@ func BenchmarkCmp5Migrations(b *testing.B) {
 		if err := fillEmptyTables(ctx, db, src, filled); err != nil {
 			b.Fatal(err)
 		}
-		problems := checkMigrated(ctx, b, db, src, filled)
+		db, backfill, problems := backfillOnOpen(ctx, b, db, src, work, dstPath)
+		problems = append(problems, checkMigrated(ctx, b, db, src, filled)...)
 		_ = db.Close()
 		b.ReportMetric(total.Seconds(), "migrations_s")
 		b.ReportMetric(fillTotal.Seconds(), "fill_s")
 		writeReport(b, result{ID: "NFR-CMP-5", Case: "all_migrations", Metric: "duration", Value: total.Seconds(), Unit: "s", Data: name, Pass: true,
 			Note: fmt.Sprintf("（最慢 %s：%s；複製資料 %s；%d 個表）", slowest, slowestDur.Round(time.Millisecond), fillTotal.Round(time.Second), len(filled))})
+		b.ReportMetric(backfill.Seconds(), "search_groups_backfill_s")
+		writeReport(b, result{ID: "NFR-CMP-5", Case: "search_groups_backfill", Metric: "duration", Value: backfill.Seconds(), Unit: "s", Data: name, Pass: true,
+			Note: "（migration 00038 之後第一次開啟，從 search_cues 建立 search_groups 與 search_text）"})
 		fmt.Fprintf(os.Stderr, "    全部 migration %s（最慢 %s：%s），複製資料 %s\n", total.Round(time.Millisecond), slowest, slowestDur.Round(time.Millisecond), fillTotal.Round(time.Second))
 		for _, p := range problems {
 			fmt.Fprintln(os.Stderr, "    問題："+p)
@@ -89,6 +98,63 @@ func BenchmarkCmp5Migrations(b *testing.B) {
 			Note: strings.Join(problems, "；")})
 		_ = os.Remove(dstPath)
 	}
+}
+
+// derivedAtOpen 是第一次 store.Open 時才建立內容的資料表（SRCH S9），fillEmptyTables 不複製。
+var derivedAtOpen = []string{"search_groups", "search_text"}
+
+// backfillOnOpen 模擬既有的 DB 升級到 migration 00038 之後第一次開啟：search_cues 已經是建好的索引（built = 1）、
+// groups_built = 0。關閉 db、以 store.Open 開啟資料目錄（回填），檢查之後重新開啟 db 回傳。
+func backfillOnOpen(ctx context.Context, b *testing.B, db *sql.DB, src, work, dstPath string) (*sql.DB, time.Duration, []string) {
+	b.Helper()
+	var problems []string
+	if _, err := db.ExecContext(ctx, `UPDATE search_index_state SET built = 1, groups_built = 0`); err != nil {
+		b.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		b.Fatal(err)
+	}
+	dataDir := filepath.Join(work, "data")
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		b.Fatal(err)
+	}
+	dbPath := filepath.Join(dataDir, store.DBFileName)
+	if err := os.Rename(dstPath, dbPath); err != nil {
+		b.Fatal(err)
+	}
+	start := time.Now()
+	st, err := store.Open(ctx, dataDir, clock.Real{})
+	d := time.Since(start)
+	if err != nil {
+		b.Fatalf("migration 之後第一次開啟失敗：%v", err)
+	}
+	if err := st.CheckSearchGroups(ctx); err != nil {
+		problems = append(problems, "search_groups："+err.Error())
+	}
+	if err := st.Close(); err != nil {
+		b.Fatal(err)
+	}
+	if err := os.Rename(dbPath, dstPath); err != nil {
+		b.Fatal(err)
+	}
+	if db, err = sqlitedb.Open(dstPath, false); err != nil {
+		b.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	detach, err := attachSrc(ctx, db, src)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer detach()
+	for _, t := range derivedAtOpen {
+		var got, want int64
+		if err := db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM main."`+t+`"), (SELECT COUNT(*) FROM src."`+t+`")`).Scan(&got, &want); err != nil {
+			problems = append(problems, fmt.Sprintf("%s：%v", t, err))
+		} else if got != want {
+			problems = append(problems, fmt.Sprintf("%s 的列數 %d，來源 %d", t, got, want))
+		}
+	}
+	return db, d, problems
 }
 
 // fillEmptyTables 把 main 中還是空的、src 也有的一般資料表，以兩邊都有的欄位從 src 複製過來。
@@ -112,7 +178,7 @@ func fillEmptyTables(ctx context.Context, db *sql.DB, src string, filled map[str
 	}
 	defer func() { _, _ = db.ExecContext(ctx, `PRAGMA foreign_keys = ON`) }()
 	for _, t := range tables {
-		if _, done := filled[t]; done || !slices.Contains(srcTables, t) {
+		if _, done := filled[t]; done || !slices.Contains(srcTables, t) || slices.Contains(derivedAtOpen, t) {
 			continue
 		}
 		var n int64

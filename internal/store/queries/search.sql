@@ -14,9 +14,35 @@ DELETE FROM search_cues WHERE item_id = sqlc.arg(item_id);
 DELETE FROM search_cues;
 
 -- name: InsertSearchCue :exec
-INSERT INTO search_cues (item_id, artifact_id, lang, variant, cue, start_ms, end_ms, text, text_fold)
-VALUES (sqlc.arg(item_id), sqlc.arg(artifact_id), sqlc.arg(lang), sqlc.arg(variant), sqlc.arg(cue),
+-- The store assigns ids itself: a group's cues are contiguous, cue n at first_id + n - 1 (SRCH S9).
+INSERT INTO search_cues (id, item_id, artifact_id, lang, variant, cue, start_ms, end_ms, text, text_fold)
+VALUES (sqlc.arg(id), sqlc.arg(item_id), sqlc.arg(artifact_id), sqlc.arg(lang), sqlc.arg(variant), sqlc.arg(cue),
         sqlc.arg(start_ms), sqlc.arg(end_ms), sqlc.arg(text), sqlc.arg(text_fold));
+
+-- name: NextSearchCueID :one
+SELECT CAST(COALESCE(MAX(id), 0) + 1 AS INTEGER) FROM search_cues;
+
+-- name: InsertSearchGroup :exec
+INSERT INTO search_groups (first_id, cues, item_id, artifact_id, lang)
+VALUES (sqlc.arg(first_id), sqlc.arg(cues), sqlc.arg(item_id), sqlc.arg(artifact_id), sqlc.arg(lang));
+
+-- name: InsertSearchText :exec
+INSERT INTO search_text (first_id, fold) VALUES (sqlc.arg(first_id), sqlc.arg(fold));
+
+-- name: DeleteSearchGroupsForLang :exec
+DELETE FROM search_groups WHERE item_id = sqlc.arg(item_id) AND lang = sqlc.arg(lang);
+
+-- name: DeleteSearchGroupsForItem :exec
+DELETE FROM search_groups WHERE item_id = sqlc.arg(item_id);
+
+-- name: DeleteAllSearchGroups :exec
+DELETE FROM search_groups;
+
+-- name: SearchGroupsBuilt :one
+SELECT groups_built FROM search_index_state WHERE id = 1;
+
+-- name: SetSearchGroupsBuilt :exec
+UPDATE search_index_state SET groups_built = 1 WHERE id = 1;
 
 -- name: CountSearchCuesForItem :one
 SELECT COUNT(*) FROM search_cues WHERE item_id = sqlc.arg(item_id);

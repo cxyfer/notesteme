@@ -21,7 +21,7 @@
 |---|---|
 | SRCH-R1 | 每部影音、每個語言只索引**一份**字幕，就是這個語言目前「處理得最完整」的現行版本：原文語言依序取 `edited` > `corrected` > `segmented` > `normalized` > `source`（與 CHAP-R2 相同，多了 `source` 作為最後的後備）；每個譯文語言依序取 `edited` > `translated`。被取代的舊版本與順位較低的變體都不在索引中。結果的 `variant`、`lang` 標示命中的是哪一份。 |
 | SRCH-R2 | 索引在產出寫入的**同一個寫入交易**中更新：新的現行版本（或順位更高的新變體）寫入時，刪除這部影音、這個語言舊的索引列並寫入新的。交易成功之後的第一個搜尋就看得到新內容、看不到舊內容；交易失敗時兩邊都不變。 |
-| SRCH-R3 | 去掉前後空白後，查詢長度以 Unicode code point 計算：3 個以上用 FTS5 trigram 索引（`cues_fts MATCH ?`）；1～2 個改用掃描（`instr` 比對 `search_cues.text_fold`），所以 2 個字的中文詞也找得到。兩條路徑的語意相同：不分大小寫（Go 的 `strings.ToLower`，與 LIB-R3 一致）的子字串比對，回傳的結果與排序相同。 |
+| SRCH-R3 | 去掉前後空白後，查詢長度以 Unicode code point 計算：3 個以上用 FTS5 trigram 索引（`cues_fts MATCH ?`）；1～2 個改用掃描（逐句比對 `text_fold` 是否含有查詢，等同 `instr(text_fold, ?) > 0`；掃描的是 `search_text`，見 S9），所以 2 個字的中文詞也找得到。兩條路徑的語意相同：不分大小寫（Go 的 `strings.ToLower`，與 LIB-R3 一致）的子字串比對，回傳的結果與排序相同。 |
 | SRCH-R4 | 使用者輸入一律當作**一個字面上的片語**：把內部的 `"` 換成 `""`，整串包上一對 `"`，以參數綁定傳給 `MATCH`；不加欄位前綴、不加 `*`。所以 `OR`、`AND`、`NOT`、`NEAR(…)`、`text:`、`*`、`^`、`-`、不成對的 `"`、`(`、`)` 都照字面比對，不是查詢語法。這些輸入一律回 200（找不到就是 0 筆），不會回 422 或 500。 |
 | SRCH-R5 | 查詢的上限：去掉前後空白後是空字串時回 422 `invalid_request`，訊息「請輸入要搜尋的文字。」；超過 200 個 code point 時回 422 `invalid_request`，訊息「搜尋文字最多 200 個字。」；含控制字元（`\p{Cc}`，Tab 除外）時回 422 `invalid_request`，訊息「搜尋文字含有無法使用的字元。」。`limit` 為 1～100，預設 20，超出範圍回 422，`errors[].path` 為 `limit`。分頁用游標，格式與失效規則同 LIB 的 `GET /api/items`（HMAC、server 重啟後失效、錯誤訊息「游標不正確或已失效，請從第一頁重新讀取。」）。 |
 | SRCH-R6 | 每筆結果是一個字幕句：`{item: {id, ref, title}, lang, variant, cue, start, end, text, highlights, before, after}`。`cue` 是該句在這份字幕中的編號（從 1 起，與 `GET /api/items/:id/cues` 的順序相同）；`start`、`end` 為 `HH:MM:SS.mmm`；`text` 是字幕句的純文字原文，**不插入任何 HTML 或標記**；`highlights` 是 `[{start, end}]`，為命中範圍在 `text` 中的位移，單位是 **UTF-16 code unit**（前端 `String.prototype.slice` 可以直接用），依序、不重疊，列出這一句中所有命中的位置；`before`、`after` 是前一句與後一句的純文字（沒有時省略）。回應是 `{results, total, next_cursor}`，`total` 是符合條件的字幕句總數，最後一頁省略 `next_cursor`。 |
@@ -40,6 +40,7 @@
   - `search_cues (id INTEGER PRIMARY KEY, item_id, artifact_id, lang, variant, cue, start_ms, end_ms, text, text_fold)`：一列一個字幕句，只含 SRCH-R1 選出的那一份；`(item_id, lang)` 有索引。
   - `cues_fts`：`CREATE VIRTUAL TABLE cues_fts USING fts5(text_fold, content='search_cues', content_rowid='id', tokenize='trigram case_sensitive 1')`（外部內容表；`text_fold` 已由 Go 轉成小寫，見 S3）。寫入、刪除 `search_cues` 時同一個交易中以 trigger 同步 `cues_fts`。
   - migration 建立資料表後，以現有的現行產出建立一次索引（同一支 migration 內完成；資料量是個人規模）。
+  - `search_groups (first_id INTEGER PRIMARY KEY, cues, item_id, artifact_id, lang)`：一列一份被索引的字幕，它的句子在 `search_cues` 中是連續的 `first_id` … `first_id + cues - 1`（第 n 句的 `id` 是 `first_id + n - 1`）；`search_text (first_id, fold)`：這份字幕每一句的 `text_fold` 依 cue 順序以 U+001F 接成一列（句中原有的 U+001F 寫成 U+001E）。兩張表都是衍生資料，與 `search_cues` 在同一個交易中寫入（S9）。
 - 資源類別：不進佇列，同步請求。
 - 對 `pipeline.Stages`／`outputs` 的影響：無；只在 artifact store 寫入 transcript 產出的交易中多一個 hook。
 
@@ -77,3 +78,9 @@
   - 驗證細節：`limit` 自行解析，非整數也回 `errors[].path` 為 `limit`；查詢不合法時 `errors[].path` 為 `q`；不是合法 UTF-8 的查詢視為含無法使用的字元；`lang` 上限 256 位元組；`unsupported_mode` 的訊息回顯 `mode` 時最多 32 個字（超過截斷加「…」）。
   - MCP 的 `fulltext` 把查詢驗證交給 API（訊息相同）；MCP 對 `semantic` 等值的訊息改為「只支援 mode: title 與 fulltext。」（code 仍是 `unsupported_mode`）。CLI 只讀一頁（`--limit` 控制筆數），非 JSON 輸出時字幕中的控制字元換成空白，一句只佔一行。
   - 不做：重建索引的指令（規格沒有列；`store.RebuildSearchIndex` 已存在，之後 doctor 或 CLI 需要時可以直接用）、Web UI 的搜尋頁（屬 UI 切片）。
+- S9 索引結構的第二輪最佳化（NFR-PERF-9；2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：結果與排序不變（SRCH-R3～R8），只改查詢方式與輔助表。
+  - 問題：原本每個命中句都要 join `items`、計數（`COUNT(*) OVER ()`）、依 SRCH-R7 排序，命中很多時（lib-10k 的常見詞約 15 萬句）p95 約 0.6～1.6 秒；2 字以下的掃描要逐列讀 `search_cues`（約 600 萬列），約 1.4～3 秒。
+  - 做法：多一層「一份字幕」的 group（`search_groups`）。總數是各 group 命中句數的和，SRCH-R7 的排序只有句子編號在 group 內，所以先在 group 層級篩選（垃圾桶、`lang`）、排序，只有要回傳的那一頁才逐句找出命中、讀取內容與前後句。3 字以上：FTS 依 rowid 回傳命中，每個 rowid 以 `search_groups` 的 INTEGER PRIMARY KEY 找到所在的 group（`first_id` 不大於 rowid 的最大值），不必回到 `search_cues` 與 `items`。2 字以下：讀 `search_text`（lib-10k 約 1 萬列）在 Go 中比對，不逐句讀 `search_cues`；查詢不含 U+001E、U+001F（SRCH-R5 拒絕 Tab 以外的控制字元），所以命中不會跨句，結果與逐句 `instr` 相同。差分測試（`internal/store/search_oracle_test.go`）把改寫前的查詢原封不動當成基準，逐頁比對結果、`total` 與游標。
+  - 不重新編號既有的 `search_cues`：rowid 改變要重建整個 FTS 索引（lib-10k ×0.1 原生 sqlite3 就要 23 秒，完整規模估計約 10 分鐘）。既有索引的句子本來就是連續寫入的（`reindexSearch` 一次寫完一份），所以 group 可以直接由 `search_cues` 推出；之後的寫入由 store 自己指定 `id`（`MAX(id) + 1` 起連續），不再依賴 SQLite 的 rowid 配置。
+  - migration `00038_search_groups` 只建立空表與 `search_index_state.groups_built = 0`；之後第一次開啟時，Go 在一個交易中從 `search_cues` 建立 `search_groups` 與 `search_text`（不讀產出檔；lib-10k 約 20 秒，NFR-CMP-5 的 bench 報告這段時間）。不用 SQL 回填的原因：`group_concat(… ORDER BY id)` 是唯一保證串接順序的寫法，但 sqlc 的 SQLite 解析器不支援，而 migration 也是 sqlc 的 schema 來源。萬一有 `id` 不連續的字幕（不應該發生），那一份改由產出檔重建（同 `reindexSearch`）。
+  - 代價：lib-10k 的 DB 多約 300MB（`search_text` 等於再存一份 `text_fold`，約 +11%）；每份字幕的寫入多兩列。

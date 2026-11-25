@@ -128,19 +128,13 @@ func BenchmarkPerf3TitleSearch(b *testing.B) {
 
 // NFR-PERF-9：全文搜尋在 lib-10k 上 p95 < 500ms；2 字以下的掃描查詢 p95 < 2 秒。
 // 查詢詞見 internal/benchdata 的詞彙（決定論，每晚的命中數相同）。單頁用 API 的預設 20 筆（Web UI 的用法）。
-// 命中很多的查詢（常見詞、3 字中文、以語言篩選常見詞）與 2 字以下的掃描在 lib-10k 上已知未達標
-// （nfr.md 第 10 節），放在 BenchmarkKnownMissPerf9；這裡是已經達標的部分。
+// 命中很多的查詢（常見詞、3 字中文、以語言篩選常見詞）與 2 字以下的掃描在第一輪最佳化之後仍未達標，
+// 第二輪（search_groups、search_text，SRCH S9）之後搬回這裡（nfr.md 第 10 節）。
 func BenchmarkPerf9FullTextSearch(b *testing.B) {
 	perf9(b, []queryCase{
 		{"rare", perf9Q(benchdata.RareTerm), true},
 		{"phrase", perf9Q("the system"), false},
 		{"none", perf9Q("qqqzzzxxx"), false},
-	}, nil)
-}
-
-// BenchmarkKnownMissPerf9 是 NFR-PERF-9 已知未達標的查詢（bench.yml 的 known-misses job，資料同樣是完整的 lib-10k）。
-func BenchmarkKnownMissPerf9(b *testing.B) {
-	perf9(b, []queryCase{
 		{"common", perf9Q(benchdata.CommonTerm), true},
 		{"zh_3", perf9Q("記憶體"), true},
 		{"lang", perf9Q(benchdata.CommonTerm) + "&lang=en", true},

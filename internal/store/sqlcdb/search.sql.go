@@ -116,6 +116,15 @@ func (q *Queries) DeleteAllSearchCues(ctx context.Context) error {
 	return err
 }
 
+const deleteAllSearchGroups = `-- name: DeleteAllSearchGroups :exec
+DELETE FROM search_groups
+`
+
+func (q *Queries) DeleteAllSearchGroups(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteAllSearchGroups)
+	return err
+}
+
 const deleteSearchCuesForItem = `-- name: DeleteSearchCuesForItem :exec
 DELETE FROM search_cues WHERE item_id = ?1
 `
@@ -139,13 +148,37 @@ func (q *Queries) DeleteSearchCuesForLang(ctx context.Context, arg DeleteSearchC
 	return err
 }
 
+const deleteSearchGroupsForItem = `-- name: DeleteSearchGroupsForItem :exec
+DELETE FROM search_groups WHERE item_id = ?1
+`
+
+func (q *Queries) DeleteSearchGroupsForItem(ctx context.Context, itemID string) error {
+	_, err := q.db.ExecContext(ctx, deleteSearchGroupsForItem, itemID)
+	return err
+}
+
+const deleteSearchGroupsForLang = `-- name: DeleteSearchGroupsForLang :exec
+DELETE FROM search_groups WHERE item_id = ?1 AND lang = ?2
+`
+
+type DeleteSearchGroupsForLangParams struct {
+	ItemID string
+	Lang   string
+}
+
+func (q *Queries) DeleteSearchGroupsForLang(ctx context.Context, arg DeleteSearchGroupsForLangParams) error {
+	_, err := q.db.ExecContext(ctx, deleteSearchGroupsForLang, arg.ItemID, arg.Lang)
+	return err
+}
+
 const insertSearchCue = `-- name: InsertSearchCue :exec
-INSERT INTO search_cues (item_id, artifact_id, lang, variant, cue, start_ms, end_ms, text, text_fold)
-VALUES (?1, ?2, ?3, ?4, ?5,
-        ?6, ?7, ?8, ?9)
+INSERT INTO search_cues (id, item_id, artifact_id, lang, variant, cue, start_ms, end_ms, text, text_fold)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6,
+        ?7, ?8, ?9, ?10)
 `
 
 type InsertSearchCueParams struct {
+	ID         int64
 	ItemID     string
 	ArtifactID string
 	Lang       string
@@ -157,8 +190,10 @@ type InsertSearchCueParams struct {
 	TextFold   string
 }
 
+// The store assigns ids itself: a group's cues are contiguous, cue n at first_id + n - 1 (SRCH S9).
 func (q *Queries) InsertSearchCue(ctx context.Context, arg InsertSearchCueParams) error {
 	_, err := q.db.ExecContext(ctx, insertSearchCue,
+		arg.ID,
 		arg.ItemID,
 		arg.ArtifactID,
 		arg.Lang,
@@ -170,6 +205,66 @@ func (q *Queries) InsertSearchCue(ctx context.Context, arg InsertSearchCueParams
 		arg.TextFold,
 	)
 	return err
+}
+
+const insertSearchGroup = `-- name: InsertSearchGroup :exec
+INSERT INTO search_groups (first_id, cues, item_id, artifact_id, lang)
+VALUES (?1, ?2, ?3, ?4, ?5)
+`
+
+type InsertSearchGroupParams struct {
+	FirstID    int64
+	Cues       int64
+	ItemID     string
+	ArtifactID string
+	Lang       string
+}
+
+func (q *Queries) InsertSearchGroup(ctx context.Context, arg InsertSearchGroupParams) error {
+	_, err := q.db.ExecContext(ctx, insertSearchGroup,
+		arg.FirstID,
+		arg.Cues,
+		arg.ItemID,
+		arg.ArtifactID,
+		arg.Lang,
+	)
+	return err
+}
+
+const insertSearchText = `-- name: InsertSearchText :exec
+INSERT INTO search_text (first_id, fold) VALUES (?1, ?2)
+`
+
+type InsertSearchTextParams struct {
+	FirstID int64
+	Fold    string
+}
+
+func (q *Queries) InsertSearchText(ctx context.Context, arg InsertSearchTextParams) error {
+	_, err := q.db.ExecContext(ctx, insertSearchText, arg.FirstID, arg.Fold)
+	return err
+}
+
+const nextSearchCueID = `-- name: NextSearchCueID :one
+SELECT CAST(COALESCE(MAX(id), 0) + 1 AS INTEGER) FROM search_cues
+`
+
+func (q *Queries) NextSearchCueID(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, nextSearchCueID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const searchGroupsBuilt = `-- name: SearchGroupsBuilt :one
+SELECT groups_built FROM search_index_state WHERE id = 1
+`
+
+func (q *Queries) SearchGroupsBuilt(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, searchGroupsBuilt)
+	var groups_built int64
+	err := row.Scan(&groups_built)
+	return groups_built, err
 }
 
 const searchIndexBuilt = `-- name: SearchIndexBuilt :one
@@ -199,6 +294,15 @@ func (q *Queries) SeedItemCreatedAt(ctx context.Context, arg SeedItemCreatedAtPa
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const setSearchGroupsBuilt = `-- name: SetSearchGroupsBuilt :exec
+UPDATE search_index_state SET groups_built = 1 WHERE id = 1
+`
+
+func (q *Queries) SetSearchGroupsBuilt(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, setSearchGroupsBuilt)
+	return err
 }
 
 const setSearchIndexBuilt = `-- name: SetSearchIndexBuilt :exec
