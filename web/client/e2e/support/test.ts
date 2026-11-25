@@ -1,6 +1,9 @@
 // e2e 共用的 test：
-//   - NFR-TEST-1：瀏覽器的每個請求只放行 127.0.0.1，其餘（YouTube 嵌入播放器、i.ytimg 縮圖等）一律 abort 並記下來；
+//   - NFR-TEST-1：瀏覽器的每個請求只放行 127.0.0.1，其餘（YouTube 嵌入播放器、i.ytimg 縮圖等）一律擋下並記下來；
 //     被擋下的請求附在測試報告裡（不是失敗：頁面本來就會嘗試載入嵌入的播放器）。
+//     Chromium 與 WebKit 用 context.route 擋；Firefox 用 playwright.config.ts 的 proxy（指向不存在的 loopback 埠，
+//     127.0.0.1 直連）：Playwright 在 Firefox 攔截請求時，axe 分析頁面會讓內容程序約四成機率 SIGSEGV
+//     （docs/ui/README.md 10.32 的引擎限制）。三個引擎都用不攔截的 request 事件記錄外部請求。
 //   - env：global setup 寫下的資料（影音 ID 等）。
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -21,14 +24,18 @@ export const test = base.extend<{ env: E2EEnv; blocked: string[] }>({
   blocked: async ({}, use) => {
     await use([]);
   },
-  context: async ({ context, blocked }, use, info) => {
-    await context.route(
-      (url) => url.hostname !== "127.0.0.1",
-      (route) => {
-        blocked.push(route.request().url());
-        return route.abort("blockedbyclient");
-      },
-    );
+  context: async ({ context, blocked, browserName }, use, info) => {
+    context.on("request", (req) => {
+      if (new URL(req.url()).hostname !== "127.0.0.1" && req.url().startsWith("http")) {
+        blocked.push(req.url());
+      }
+    });
+    if (browserName !== "firefox") {
+      await context.route(
+        (url) => url.hostname !== "127.0.0.1",
+        (route) => route.abort("blockedbyclient"),
+      );
+    }
     await use(context);
     if (blocked.length > 0) {
       await info.attach("blocked-external-requests.txt", {

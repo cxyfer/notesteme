@@ -46,7 +46,12 @@ export default defineConfig({
     },
     {
       name: "firefox",
-      use: { ...devices["Desktop Firefox"], viewport: { width: 1280, height: 800 } },
+      use: {
+        ...devices["Desktop Firefox"],
+        viewport: { width: 1280, height: 800 },
+        // 外部網路走不存在的 proxy（連不上），127.0.0.1 直連：見 e2e/support/test.ts 為什麼 Firefox 不用 route
+        proxy: { server: "http://127.0.0.1:9", bypass: "127.0.0.1,localhost" },
+      },
     },
     {
       name: "webkit",

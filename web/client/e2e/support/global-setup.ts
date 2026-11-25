@@ -44,9 +44,12 @@ export default async function globalSetup() {
   const byId = (id: string) => list.items.find((i) => i.id === id);
   const seed = served.seed!;
   const ov = (await apiCall(served.base, state, "GET", "/api/overview")) as {
-    needs_you: { items: { id: string }[] };
+    needs_you: { items: { id: string; title: string }[] };
   };
-  const failed = ov.needs_you.items.map((i) => i.id);
+  // 只取 benchdata 的影音（沿用資料目錄時，之前 RWD 測試新增的影音也可能在清單上）
+  const failed = ov.needs_you.items
+    .filter((i) => /^Video \d+ about/.test(i.title))
+    .map((i) => i.id);
   if (failed.length < 2)
     throw new Error("資料裡「需要你處理」少於兩部（benchdata 每 97 部有一部 segment 失敗）");
   // 垃圾桶：固定放第 42 部（沿用資料目錄時已經在垃圾桶裡，列表就找不到它，略過）。

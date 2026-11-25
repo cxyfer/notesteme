@@ -17,18 +17,6 @@ export const WIDTHS = [
 
 const shots = process.env.NOTESTEME_E2E_SHOTS === "1";
 
-/**
- * 引擎本身的問題（docs/ui/README.md 10.32 的「引擎限制」）：Firefox 159 的內容程序在 axe 分析這一頁時
- * 約四成機率 SIGSEGV（Page crashed）。一般載入、捲動與 DOM 走訪不會崩潰；依規則分組、移除區塊或屬性二分都無法避開，
- * 不是頁面的 JS 例外。這一頁仍由 Chromium 與 WebKit 的 axe 檢查。
- */
-const FIREFOX_AXE_CRASH = new Map([
-  [
-    "/costs",
-    "Firefox 159 在 axe 分析 /costs 時內容程序 SIGSEGV（引擎問題，見 docs/ui/README.md 10.32）",
-  ],
-]);
-
 test("a11yRoutes 每一條帶 fixture ID 的路由都對應到真資料", ({ env }) => {
   expect(unmappedFixtureRoutes(env)).toEqual([]);
 });
@@ -38,10 +26,6 @@ for (const route of e2eRoutes()) {
     if (!route.auth) test.use({ storageState: { cookies: [], origins: [] } });
     for (const vp of WIDTHS) {
       test(`axe ${vp.width}px 淺色與深色`, async ({ page, env }, info) => {
-        test.fixme(
-          info.project.name === "firefox" && FIREFOX_AXE_CRASH.has(route.source),
-          FIREFOX_AXE_CRASH.get(route.source),
-        );
         const r = route.at(env);
         await page.setViewportSize(vp);
         await page.emulateMedia({ colorScheme: "light" });
@@ -52,9 +36,12 @@ for (const route of e2eRoutes()) {
         const overflow = await page.evaluate(() => {
           const extra = document.documentElement.scrollWidth - window.innerWidth;
           if (extra <= 0) return null;
-          const wide = [...document.querySelectorAll<HTMLElement>("body *")]
-            .filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1)
-            .filter((e) => !e.parentElement?.closest("[data-scroll], .settings-table-wrap"))
+          // 超出視窗的元素裡，最外層的那些（沒有同樣超出的父元素）
+          const all = [...document.querySelectorAll<HTMLElement>("body *")].filter(
+            (e) => e.getBoundingClientRect().right > window.innerWidth + 1,
+          );
+          const wide = all
+            .filter((e) => !all.includes(e.parentElement!))
             .slice(0, 5)
             .map((e) => `${e.tagName.toLowerCase()}.${e.className}`);
           return `多出 ${extra}px：${wide.join("、")}`;
