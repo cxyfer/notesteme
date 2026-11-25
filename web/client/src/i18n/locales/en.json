@@ -595,7 +595,9 @@
     },
     "band": {
       "label": "Time ribbon: playback position",
-      "valueText": "Playback position {{time}}"
+      "valueText": "Playback position {{time}}",
+      "density": "Speech density from the original subtitles: densest at {{from}}–{{to}}.",
+      "silence": "Longest silence: {{from}}–{{to}}."
     },
     "live": {
       "done": "{{stage}} finished.",

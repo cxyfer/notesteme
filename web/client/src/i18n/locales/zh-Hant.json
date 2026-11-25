@@ -569,7 +569,9 @@
     },
     "band": {
       "label": "時間帶：播放位置",
-      "valueText": "播放位置 {{time}}"
+      "valueText": "播放位置 {{time}}",
+      "density": "說話密度依原始字幕計算，最密集的是 {{from}}–{{to}}。",
+      "silence": "最長的沉默是 {{from}}–{{to}}。"
     },
     "live": {
       "done": "{{stage}}完成。",

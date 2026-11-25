@@ -40,15 +40,17 @@ export function chapterIndexAt(chapters: readonly ChapterView[], t: number): num
 export function ChapterTrack({
   chapters,
   durationS,
+  baseline = true,
 }: {
   chapters: readonly ChapterView[];
   durationS: number | null | undefined;
+  /** 還不知道說話密度時畫點狀基線（track 取代了 StatusBand 預設的基線）；有密度輪廓時傳 false */
+  baseline?: boolean;
 }) {
   const d = durationS && Number.isFinite(durationS) && durationS > 0 ? durationS : 0;
   return (
     <>
-      {/* track 取代 StatusBand 預設的點狀基線：還不知道說話密度，所以照樣畫 */}
-      <span className="sband__baseline" />
+      {baseline && <span className="sband__baseline" />}
       {d > 0 &&
         chapters
           .filter((c) => c.start > 0 && c.start < d)

@@ -144,6 +144,24 @@
   width: 1px;
   background: var(--chapter);
 }
+/* 說話密度（design-language.md §6.1）：平滑的面積輪廓，--density-fill 填色加 1px --density-line 輪廓線 */
+.item__density {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.item__density-area {
+  fill: var(--density-fill);
+  stroke: none;
+}
+.item__density-line {
+  fill: none;
+  stroke: var(--density-line);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
 /* 拖曳選取範圍之後的動作列 */
 .item__range {
   display: flex;

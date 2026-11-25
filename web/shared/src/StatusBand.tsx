@@ -11,7 +11,7 @@
 // 整條是 role="slider"（aria-valuetext 是時間碼），點擊、方向鍵移動播放頭，hover 顯示該時間的說明。
 // 新的圖層用新的選用 props 加入，不改變既有 props 的意義。
 // 完整版的選用互動（2026-11-25）：hover 的章節名稱（chapterAt）、Shift + ←／→（onShiftStep）、
-// 在底軌上拖曳選取範圍（onSelectRange、selection）。
+// 在底軌上拖曳選取範圍（onSelectRange、selection）；底軌裝飾圖層的文字版本（describedBy）。
 
 import {
   useRef,
@@ -98,6 +98,8 @@ export interface StatusBandProps {
   onSelectRange?: (from: number, to: number) => void;
   /** 目前選取的範圍（秒），畫在底軌上；null／undefined 時不畫 */
   selection?: { from: number; to: number } | null;
+  /** slider 的 aria-describedby：底軌上裝飾圖層（說話密度、處理範圍、畫面）的文字版本 */
+  describedBy?: string;
 }
 
 /** 拖曳超過這個距離（px）才算選取範圍，避免手抖把點擊變成選取 */
@@ -256,6 +258,7 @@ function FullBand({
   onShiftStep,
   onSelectRange,
   selection,
+  describedBy,
 }: StatusBandProps) {
   const d =
     durationS && Number.isFinite(durationS) && durationS > 0 ? durationS : 0;
@@ -353,6 +356,7 @@ function FullBand({
           aria-valuenow={Math.round(pos)}
           aria-valuetext={valueText ? valueText(formatted) : formatted}
           aria-disabled={d ? undefined : true}
+          aria-describedby={describedBy || undefined}
           onKeyDown={onKeyDown}
           onClick={(e) => {
             if (swallowClick.current) {

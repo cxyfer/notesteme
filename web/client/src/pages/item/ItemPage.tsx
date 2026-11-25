@@ -13,6 +13,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -35,6 +36,7 @@ import { BAND_STAGES, badgeStatus, bandStatus, type ApiItemDetail } from "../lib
 import type { ActionKind } from "./actions";
 import { ChapterList, ChapterTrack, RangeBar, chapterIndexAt, toChapters } from "./Chapters";
 import { cueAt } from "./cues";
+import { DensityTrack, densitySummary, speechDensity } from "./density";
 import { chapterTarget, ownsPlaybackKeys } from "./playKeys";
 import { CueList } from "./CueList";
 import {
@@ -257,6 +259,37 @@ function ItemView({
     },
     [hoverCues.data],
   );
+
+  // 說話密度（density.tsx）：固定用原始字幕，不跟著顯示模式變
+  const densityVariant = modes.includes("source")
+    ? "source"
+    : modes.includes("normalized")
+      ? "normalized"
+      : undefined;
+  const densityCues = useCues(id, densityVariant);
+  const densityValues = useMemo(
+    () => speechDensity(densityCues.data?.cues ?? [], d.duration_s ?? 0),
+    [densityCues.data, d.duration_s],
+  );
+  const density = useMemo(
+    () => densitySummary(densityCues.data?.cues ?? [], d.duration_s ?? 0, densityValues),
+    [densityCues.data, d.duration_s, densityValues],
+  );
+  const bandDescId = useId();
+  const bandDesc = [
+    density &&
+      t("item.band.density", {
+        from: formatTimecode(density.dense.from),
+        to: formatTimecode(density.dense.to),
+      }),
+    density?.silence &&
+      t("item.band.silence", {
+        from: formatTimecode(density.silence.from),
+        to: formatTimecode(density.silence.to),
+      }),
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const byStage = new Map(stages.map((s) => [s.stage, s]));
   const stageName = (s: string) => t(`stage.${s}`, { defaultValue: s });
@@ -567,7 +600,17 @@ function ItemView({
         valueText={(tc) => t("item.band.valueText", { time: tc })}
         describeTime={describeTime}
         describeLang={hoverCues.data?.lang}
-        track={<ChapterTrack chapters={chapters} durationS={d.duration_s} />}
+        track={
+          <>
+            <DensityTrack values={densityValues} />
+            <ChapterTrack
+              chapters={chapters}
+              durationS={d.duration_s}
+              baseline={!densityValues.length}
+            />
+          </>
+        }
+        describedBy={bandDesc ? bandDescId : undefined}
         chapterAt={chapterAt}
         onShiftStep={(dir) => {
           const to = chapterTarget(chapterStarts, time, dir);
@@ -576,6 +619,11 @@ function ItemView({
         selection={range}
         onSelectRange={(from, to) => setRange({ from, to })}
       />
+      {bandDesc && (
+        <p id={bandDescId} className="visually-hidden">
+          {bandDesc}
+        </p>
+      )}
       {range && (
         <RangeBar range={range} cues={hoverCues.data?.cues} onClear={() => setRange(null)} />
       )}

@@ -297,7 +297,8 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 | SSE：`stage.status` 讓 detail、runs 失效；產生字幕的步驟 `done` 才讓字幕失效、`publish` `done` 才讓輸出失效；頁面層級 aria-live | 完成 | `src/events/invalidation.ts` |
 | 佇列：各資源類別的通道（方格＝上限、實心＝使用中）、上限 +／−、整個佇列與各類別的暫停／繼續、暫停橫幅、任務列表（虛擬化、篩選在 URL）、「需要你處理」依步驟計數、影音層級的停止處理 | 完成 | `src/pages/queue` |
 | 時間帶的章節線與 hover 的章節名稱、播放器下的章節清單、`Shift + ←／→`、拖曳選取範圍後「複製這段字幕」 | 完成（見 10.26） | `src/pages/item/{Chapters.tsx,ItemPage.tsx}`、`web/shared/src/StatusBand.tsx` |
-| 拖曳選取後「重新校正這段」、說話密度、畫面刻度 | 未做 | 重新校正這段：API 沒有 LLM chunk 的時間範圍，`rerun` 的 `chunks` 要 chunk 編號（10.7 第 8 點）；說話密度：沒有 API；畫面刻度：`GET /frames` 已有資料，只是還沒畫，之後的切片 |
+| 說話密度 | 完成（見 10.30） | `src/pages/item/density.tsx` |
+| 拖曳選取後「重新校正這段」、畫面刻度 | 未做 | 重新校正這段：API 沒有 LLM chunk 的時間範圍，`rerun` 的 `chunks` 要 chunk 編號（10.7 第 8 點）；畫面刻度：`GET /frames` 已有資料，只是還沒畫，之後的切片 |
 | 佇列的單一任務重試／取消、「失敗與停住」清單與「全部重試」 | 完成（收尾 D1，見 10.22） | `src/pages/queue/FailedTasks.tsx`、`QueuePage.tsx` |
 | 佇列的 Agent 任務（由哪個 Agent 處理、租約剩餘時間的倒數、改用 API 處理） | 完成（見 10.23） | `src/pages/queue/QueuePage.tsx` |
 | 佇列的優先順序 | 未做 | API 缺口（10.7 第 8 點） |
@@ -322,7 +323,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
    - rerun 沒有 `estimate`／`estimate_usd`：對話框顯示「無法預估」。沒有拿 `POST /api/estimate` 代替（它針對網址，可能呼叫 yt-dlp）。（有更好的字幕來源時改顯示 `better_source.estimate_usd`，見 10.24 第 2 點。）
    - 沒有 provider 列表 API：provider 用文字輸入，建議值取自處理方案設定。（2026-11-25 起後端有 `GET /api/providers`〔SEC-R11〕，這裡還沒有改用，列為後續，見 10.25。）
    - ~~沒有列出影音有哪些字幕變體與語言的 API~~：`GET /api/items/:id/artifacts`（LIB-R25）已經能列出各變體、語言與版本（見 10.26 第 6 點），目前只用在紀錄分頁的版本比較；字幕分頁的顯示模式仍依步驟狀態推得，`edited` 仍用一次 `variant=edited` 的查詢確認，沒有改。
-   - ~~沒有章節~~、說話密度、LLM chunk 的時間範圍：時間帶只畫整條步驟狀態，沒有 chunk 進度與「重新校正這段」。章節：`GET /api/items/{id}` 已有 `chapters`（CHAP-R7），章節線、章節清單與拖曳選取後的「複製這段字幕」已做（見 10.26）。
+   - ~~沒有章節~~、~~說話密度~~（前端依原始字幕計算，見 10.30 第 1 點）、LLM chunk 的時間範圍：時間帶只畫整條步驟狀態，沒有 chunk 進度與「重新校正這段」。章節：`GET /api/items/{id}` 已有 `chapters`（CHAP-R7），章節線、章節清單與拖曳選取後的「複製這段字幕」已做（見 10.26）。
    - `ItemDetail` 沒有處理方案名稱：從設定快照的 `profile` 取（沒有就不顯示）。
    - 佇列：~~`GET /api/queue` 只列內建 worker 的任務~~：AGT A13 補上 Agent 任務與租約到期時間，佇列頁已顯示（見 10.23）；仍沒有優先順序欄位與調整優先順序的 API，頁面上明說。~~`POST /api/tasks/{id}/retry`、`cancel` 回 501~~：收尾 D1 已實作，佇列頁接上單一任務的取消與重試（見 10.22）。
    - 「需要你處理」沒有彙總 API：依步驟各查一次 `GET /api/items?status=<stage>:failed&status=<stage>:blocked&limit=1` 的 `total`（7 個請求；同一部影音可能在不同步驟各算一次）。佇列頁收到 failed／blocked／pending／done／skipped 的 `stage.status`、刪除、還原或重新連上時，2 秒 debounce 後重新讀取。
@@ -726,7 +727,7 @@ pages.md §12 的「服務與金鑰」要求每個 provider 都有「測試連�
 | 紀錄分頁：每個產出的版本，字幕與筆記可以比較兩個版本（pages.md §4「紀錄」、LIB-R11 的「可比較」） | 完成（後端加 `GET /api/items/:id/artifacts`、`GET /api/artifacts/:id/content`，LIB-R25） | `internal/api/artifacts.go`、`internal/pipeline/versions.go`、`src/pages/item/Versions.tsx` |
 
 1. **ASS 的樣式選擇**：輸出分頁的 ASS 下載按鈕旁多一個「ASS 樣式」下拉選單，選項是 `GET /api/ass-styles` 的樣式名稱（`style=` 傳的是名稱，`AssStyles.Get` 以名稱查），預設 `default`；按鈕文字是「ASS（<樣式>）」，連結帶 `&style=<名稱>`。樣式清單和設定頁共用快取、不重試；讀不到（403、501、其他錯誤）或是空的時退回原本的「ASS（預設樣式）」連結，不擋下載。選過的樣式之後不在清單中時回到 `default`，不送出會 422 的名稱。其他格式的連結不帶 `style`。
-2. **章節**：用 `GET /api/items/{id}` 的 `chapters`（CHAP-R7；UI-2 當時的延後理由「API 沒有章節」已經不成立）。時間帶的底軌畫 1px `--chapter` 直線（第一章在 0 秒不畫），自己畫的 `track` 照樣保留「還不知道說話密度」的點狀基線；線是裝飾（底軌在 `aria-hidden` 內），可及的版本是播放器下的「章節」清單：每章一個按鈕（可存取名稱「跳到章節「<標題>」（<時間>）」），點擊跳播，目前所在的章節加 `aria-current` 與左側色條（不只靠顏色）；清單最高 40vh、超過時捲動。hover 時間帶依序顯示時間碼、章節名稱、字幕句（`StatusBand` 新增選用的 `chapterAt`）。章節標題是不可信的文字，只用文字節點渲染；不知道章節的語言（平台章節是原文、LLM 章節可能是目標語言），所以不設 `lang`。**API 的 `Chapter` 沒有層級**，design-language.md §6.1 的「`###` 小節只畫下半段」做不到，每章都畫整條線。沒有章節時不顯示清單、不畫線。
+2. **章節**：用 `GET /api/items/{id}` 的 `chapters`（CHAP-R7；UI-2 當時的延後理由「API 沒有章節」已經不成立）。時間帶的底軌畫 1px `--chapter` 直線（第一章在 0 秒不畫），自己畫的 `track` 在還沒有說話密度時照樣保留點狀基線（說話密度見 10.30 第 1 點）；線是裝飾（底軌在 `aria-hidden` 內），可及的版本是播放器下的「章節」清單：每章一個按鈕（可存取名稱「跳到章節「<標題>」（<時間>）」），點擊跳播，目前所在的章節加 `aria-current` 與左側色條（不只靠顏色）；清單最高 40vh、超過時捲動。hover 時間帶依序顯示時間碼、章節名稱、字幕句（`StatusBand` 新增選用的 `chapterAt`）。章節標題是不可信的文字，只用文字節點渲染；不知道章節的語言（平台章節是原文、LLM 章節可能是目標語言），所以不設 `lang`。**API 的 `Chapter` 沒有層級**，design-language.md §6.1 的「`###` 小節只畫下半段」做不到，每章都畫整條線。沒有章節時不顯示清單、不畫線。
 3. **`Shift + ←／→`**：design-language.md §6.1 同時把 `Shift + ←／→` 寫成「跳到上一個或下一個章節」與「`Shift + 方向鍵`：選取範圍」，彼此矛盾。取保守的一邊：時間帶有焦點時 `Shift + ←／→` 跳章節（和 `[`／`]` 同一個規則：離目前章節開頭超過 2 秒時先回到開頭），範圍選取只用指標拖曳。`StatusBand` 新增選用的 `onShiftStep`，沒有傳時 `Shift + 方向鍵` 和原本一樣移動 5 秒（Hub 不受影響）。
 4. **拖曳選取與「複製這段字幕」**：pages.md §4 的拖曳選取屬於影音詳情；兩個動作中「複製這段字幕」只需要已經讀到的字幕，可以獨立做，「重新校正這段」要 LLM chunk 的時間範圍（`rerun` 的 `chunks` 是 chunk 編號，API 沒有範圍），維持不做、也不顯示停用的按鈕。`StatusBand` 新增選用的 `onSelectRange`／`selection`：在底軌上按下後水平移動超過 4px 才算選取（以內仍是點擊、會跳播），用 pointer capture，放開後吞掉同一次的 click，播放頭不動；選取的範圍以 Cue 色 18% 的區塊畫在底軌上。時間帶下方出現動作列「已選取 01:00–01:40」「複製這段字幕（N 句）」「取消選取」（動作列在 slider 之外，slider 的子元素都是裝飾）。複製的是**目前顯示模式的字幕**中和 `[from, to)` 有重疊的句子（OUT-R3 的語意），每句一行、不含時間碼（和 `txt` 下載相同）；範圍內沒有字幕時按鈕停用並寫「這段沒有字幕」。剪貼簿不能用（不是安全來源、權限被拒）時 toast「無法複製：瀏覽器不允許存取剪貼簿。」。鍵盤使用者沒有對應的範圍選取（見第 3 點）；字幕分頁的文字可以直接選取複製。
 5. **媒體庫列的補充說明**：`GET /api/items/{id}` 的 `stages[]` 在步驟 `running` 時多 `progress{done, total}`（那個 stage run 的任務完成數，沿用總覽 `now.progress` 的 `StageRunTaskProgress`，`total` 為 0 時省略）與 `provider`（設定快照的 `stages.<stage>.provider`，沒有時省略），規則是 LIB-R24。**放在詳情而不是 `ListedItem`**（brief 原本寫 `ListedItem`）：列的步驟狀態本來就讀詳情，SSE 只讓那一列的詳情失效，列表依 LIB-R9 不重抓，放在列表會停在載入時的值。狀態欄在徽章下寫「4/5 個任務，API 處理，groq」，只列有值的部分（沒有 progress 時照舊只有執行方式）；用「任務」而不是 mockup 的「段」，因為數字是任務數，LLM 步驟含規劃任務（例如一個 chunk 的校正規劃完成後是 1/2）。provider 是設定檔中的 id，原樣顯示。任務完成不發 SSE，所以只有媒體庫列在「有 running 步驟而且有 progress」時每 60 秒重新讀取詳情（`useItemDetail(id, { pollProgress: true })`，和總覽的間隔相同）；總覽、佇列等其他用 `useItemDetail` 的地方不輪詢，虛擬捲動只掛載可視範圍內的列。
@@ -813,3 +814,13 @@ pages.md §3 寫 M4 有儲存檢視（線框的「存成檢視」、`GET/POST /a
 3. **沒有已存的檢視時整排不顯示**；讀取失敗時顯示錯誤與「重試」，不影響列表。
 
 驗證：這個切片新增 `savedViews.test.tsx` 的 5 個測試（存成檢視的對話框與套用後的頁面都有 axe）與三語各 17 個 key（`library.views.*`、`errors.view_exists`、`errors.view_limit`）；併入 master 時 vitest、i18n 與初始 JS 都在預算內（推送前的數字見提交時的 CI）。
+
+### 10.30 時間帶的說話密度、畫面刻度、處理範圍與「重新校正這段」（2026-11-25）
+
+pages.md §4 與 design-language.md §6.1 的時間帶圖層中，10.26 之後還沒做的部分。下面的決定都是「（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）」。
+
+| 項目 | 狀態 | 位置 |
+| --- | --- | --- |
+| 說話密度：底軌上的平滑面積輪廓，文字版本放在時間帶的 `aria-describedby` | 完成（沒有改後端） | `src/pages/item/density.tsx`、`ItemPage.tsx`、`web/shared/src/StatusBand.tsx`（`describedBy`） |
+
+1. **說話密度**：用 `GET /api/items/{id}/cues` 的原始字幕（`source`；沒有時用 `normalized`）在前端計算，不新增後端。**固定用原始字幕、不跟著字幕分頁的顯示模式**：切換原始、校正、譯文時輪廓不會跳動；譯文的字數和原文不同，用它算出來的「說話速度」沒有意義。整段影音切成 240 個區間，每句的字數（不含空白的 code point）平均分到它的時間範圍，區間的值是「字數／秒，依重疊時間加權」（§6.1），再做 1-2-1 平滑；高度依最大值正規化（最高 85%）。原始字幕還沒有時（轉錄未完成）照舊只畫點狀基線；ASR 沒有逐段的進度，所以不畫「轉錄到一半」的輪廓。輪廓是裝飾（底軌在 `aria-hidden` 內），**文字版本是相對的描述**：「最密集的是 MM:SS–MM:SS」（長度約為全長 1/20 的視窗）與「最長的沉默是 MM:SS–MM:SS」（沒有字幕的時間，至少 5 秒；沒有時不寫），放在 visually-hidden 的段落，以 `StatusBand` 新增的選用 `describedBy` 接到 slider 的 `aria-describedby`。不寫「每秒 N 字」這類絕對數字：字數依語言而不同，沒有可比的意義。`ChapterTrack` 多一個 `baseline`，有輪廓時不畫基線。
