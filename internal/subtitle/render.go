@@ -52,17 +52,16 @@ func FileExt(format string) string {
 
 // Render 依格式把字幕串流寫入 w。
 func Render(w io.Writer, format string, t Transcript) error {
-	switch format {
-	case FormatSRT:
-		return RenderSRT(w, t.Cues)
-	case FormatVTT:
-		return RenderVTT(w, t.Cues)
-	case FormatTXT:
-		return RenderTXT(w, t.Cues)
-	case FormatCuesJSON:
-		return RenderCuesJSON(w, t)
+	cw, err := NewCueWriter(w, format, t)
+	if err != nil {
+		return err
 	}
-	return ErrUnsupportedFormat
+	for _, c := range t.Cues {
+		if err := cw.Write(c); err != nil {
+			return err
+		}
+	}
+	return cw.Close()
 }
 
 // cueLines 切成非空的行，移除會破壞 SRT／VTT 結構的空行。
@@ -78,64 +77,78 @@ func cueLines(text string) []string {
 }
 
 // RenderSRT 串流輸出 SRT；編號依輸出順序從 1 起算。
-func RenderSRT(w io.Writer, cues []Cue) error {
-	bw := bufio.NewWriter(w)
-	for i, c := range cues {
-		lines := cueLines(strings.ReplaceAll(c.Text, "-->", "->"))
-		fmt.Fprintf(bw, "%d\n%s --> %s\n%s\n\n", i+1, FormatSRTTime(c.StartMS), FormatSRTTime(c.EndMS), strings.Join(lines, "\n"))
-	}
-	return bw.Flush()
-}
+func RenderSRT(w io.Writer, cues []Cue) error { return Render(w, FormatSRT, Transcript{Cues: cues}) }
 
 var vttEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
 
 // RenderVTT 串流輸出 WebVTT；文字中的 &、<、> 依規格跳脫。
-func RenderVTT(w io.Writer, cues []Cue) error {
-	bw := bufio.NewWriter(w)
-	bw.WriteString("WEBVTT\n\n")
-	for _, c := range cues {
+func RenderVTT(w io.Writer, cues []Cue) error { return Render(w, FormatVTT, Transcript{Cues: cues}) }
+
+// RenderTXT 串流輸出純文字，每句一行。
+func RenderTXT(w io.Writer, cues []Cue) error { return Render(w, FormatTXT, Transcript{Cues: cues}) }
+
+// RenderCuesJSON 串流輸出 notesteme cues JSON（ADR-0005），逐 cue 編碼，不需整份載入記憶體。
+// 時間以毫秒整數存放。
+func RenderCuesJSON(w io.Writer, t Transcript) error { return Render(w, FormatCuesJSON, t) }
+
+// CueWriter 逐句寫出單軌的字幕格式（SRT、VTT、純文字、cues JSON），不需要先拿到整份字幕（NFR-RES-3）。
+// 輸出與 Render 完全相同；寫完要呼叫 Close 把緩衝寫出（cues JSON 也在這時補上結尾）。
+type CueWriter struct {
+	bw     *bufio.Writer
+	format string
+	n      int
+}
+
+// NewCueWriter 建立 format 的 CueWriter；header 的 Lang、Variant、Speakers 只用於 cues JSON，Cues 不會被寫出。
+func NewCueWriter(w io.Writer, format string, header Transcript) (*CueWriter, error) {
+	cw := &CueWriter{bw: bufio.NewWriter(w), format: format}
+	switch format {
+	case FormatSRT, FormatTXT:
+	case FormatVTT:
+		cw.bw.WriteString("WEBVTT\n\n")
+	case FormatCuesJSON:
+		lang, err := json.Marshal(header.Lang)
+		if err != nil {
+			return nil, err
+		}
+		variant, err := json.Marshal(header.Variant)
+		if err != nil {
+			return nil, err
+		}
+		speakers := header.Speakers
+		if speakers == nil {
+			speakers = []Speaker{}
+		}
+		sp, err := json.Marshal(speakers)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(cw.bw, `{"lang":%s,"variant":%s,"speakers":%s,"cues":[`, lang, variant, sp)
+	default:
+		return nil, ErrUnsupportedFormat
+	}
+	return cw, nil
+}
+
+// Write 寫出一句。
+func (cw *CueWriter) Write(c Cue) error {
+	cw.n++
+	bw := cw.bw
+	switch cw.format {
+	case FormatSRT:
+		lines := cueLines(strings.ReplaceAll(c.Text, "-->", "->"))
+		fmt.Fprintf(bw, "%d\n%s --> %s\n%s\n\n", cw.n, FormatSRTTime(c.StartMS), FormatSRTTime(c.EndMS), strings.Join(lines, "\n"))
+	case FormatVTT:
 		lines := cueLines(c.Text)
 		for i, l := range lines {
 			lines[i] = vttEscaper.Replace(l)
 		}
 		fmt.Fprintf(bw, "%s --> %s\n%s\n\n", FormatVTTTime(c.StartMS), FormatVTTTime(c.EndMS), strings.Join(lines, "\n"))
-	}
-	return bw.Flush()
-}
-
-// RenderTXT 串流輸出純文字，每句一行。
-func RenderTXT(w io.Writer, cues []Cue) error {
-	bw := bufio.NewWriter(w)
-	for _, c := range cues {
+	case FormatTXT:
 		bw.WriteString(strings.Join(cueLines(c.Text), " "))
 		bw.WriteByte('\n')
-	}
-	return bw.Flush()
-}
-
-// RenderCuesJSON 串流輸出 notesteme cues JSON（ADR-0005），逐 cue 編碼，不需整份載入記憶體。
-// 時間以毫秒整數存放。
-func RenderCuesJSON(w io.Writer, t Transcript) error {
-	bw := bufio.NewWriter(w)
-	lang, err := json.Marshal(t.Lang)
-	if err != nil {
-		return err
-	}
-	variant, err := json.Marshal(t.Variant)
-	if err != nil {
-		return err
-	}
-	speakers := t.Speakers
-	if speakers == nil {
-		speakers = []Speaker{}
-	}
-	sp, err := json.Marshal(speakers)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(bw, `{"lang":%s,"variant":%s,"speakers":%s,"cues":[`, lang, variant, sp)
-	for i, c := range t.Cues {
-		if i > 0 {
+	case FormatCuesJSON:
+		if cw.n > 1 {
 			bw.WriteByte(',')
 		}
 		b, err := json.Marshal(c)
@@ -144,8 +157,17 @@ func RenderCuesJSON(w io.Writer, t Transcript) error {
 		}
 		bw.Write(b)
 	}
-	bw.WriteString("]}\n")
-	return bw.Flush()
+	// bufio.Writer 記住第一個寫入錯誤；這裡回報它，讓呼叫端在 client 斷線時停止讀取。
+	_, err := bw.Write(nil)
+	return err
+}
+
+// Close 寫出結尾並清空緩衝。
+func (cw *CueWriter) Close() error {
+	if cw.format == FormatCuesJSON {
+		cw.bw.WriteString("]}\n")
+	}
+	return cw.bw.Flush()
 }
 
 // maxCuesJSONBytes 限制解碼的 cues JSON 大小（NFR-SEC-6：不可信輸入）。

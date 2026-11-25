@@ -1,10 +1,17 @@
 package pipeline
 
 import (
+	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/cxyfer/notesteme/internal/langtag"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/cxyfer/notesteme/internal/sponsorblock"
@@ -233,20 +240,110 @@ func (p *Pipeline) Cues(ctx context.Context, itemID string, q CuesQuery) (subtit
 
 // CuesWithItem 同 Cues，另外回傳影音（下載檔名要用標題）。影音在垃圾桶中時回傳 *InTrashError（DEL-R1）。
 func (p *Pipeline) CuesWithItem(ctx context.Context, itemID string, q CuesQuery) (store.Item, subtitle.Transcript, error) {
+	it, chosen, err := p.pickTranscript(ctx, itemID, q)
+	if err != nil {
+		return store.Item{}, subtitle.Transcript{}, err
+	}
+	tr, err := p.readTranscriptArtifact(ctx, chosen)
+	if err != nil {
+		return store.Item{}, subtitle.Transcript{}, err
+	}
+	tr.Cues = subtitle.FilterRange(tr.Cues, q.FromMS, q.ToMS)
+	return it, tr, nil
+}
+
+// CuesStream 是一份可以逐句讀取的字幕（NFR-RES-3）：Header 有語言、變體與講者，Cues 不使用。
+type CuesStream struct {
+	Header subtitle.Transcript
+	path   string
+	q      CuesQuery
+}
+
+// Each 依序把時間範圍內的每一句交給 fn（OUT-R3 的範圍規則與 FilterRange 相同）；fn 回傳錯誤時停止。
+// 產出檔是不可變的（新版本寫成新的檔案），sha256 已在 StreamCuesWithItem 驗證過。
+func (s *CuesStream) Each(fn func(subtitle.Cue) error) error {
+	f, err := os.Open(s.path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	cr, err := subtitle.NewCuesReader(bufio.NewReaderSize(f, 32<<10))
+	if err != nil {
+		return err
+	}
+	for {
+		c, ok, err := cr.Next()
+		if err != nil || !ok {
+			return err
+		}
+		if c.EndMS > s.q.FromMS && (s.q.ToMS < 0 || c.StartMS < s.q.ToMS) {
+			if err := fn(c); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// StreamCuesWithItem 同 CuesWithItem，但不把字幕整份讀進記憶體（單軌的字幕下載使用，NFR-RES-3）：
+// 先以串流計算 sha256（損毀時與 CuesWithItem 一樣標記並重跑），再讀到 cues 陣列的開頭確認格式；
+// 所以錯誤仍在開始輸出之前決定。字幕本身由回傳的 CuesStream 逐句讀取。
+func (p *Pipeline) StreamCuesWithItem(ctx context.Context, itemID string, q CuesQuery) (store.Item, *CuesStream, error) {
+	it, chosen, err := p.pickTranscript(ctx, itemID, q)
+	if err != nil {
+		return store.Item{}, nil, err
+	}
+	path := filepath.Join(p.dataDir, filepath.FromSlash(chosen.Path))
+	if err := verifyFileSHA256(path, chosen.SHA256); err != nil {
+		if errors.Is(err, ErrCorruptArtifact) || errors.Is(err, os.ErrNotExist) {
+			return store.Item{}, nil, p.handleCorrupt(ctx, chosen)
+		}
+		return store.Item{}, nil, err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return store.Item{}, nil, err
+	}
+	defer f.Close()
+	cr, err := subtitle.NewCuesReader(bufio.NewReaderSize(f, 4<<10))
+	if err != nil {
+		return store.Item{}, nil, err
+	}
+	return it, &CuesStream{Header: cr.Header, path: path, q: q}, nil
+}
+
+// verifyFileSHA256 以串流比對檔案的 sha256；不符時回傳 ErrCorruptArtifact。
+func verifyFileSHA256(path, want string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	if hex.EncodeToString(h.Sum(nil)) != want {
+		return fmt.Errorf("%s：%w", path, ErrCorruptArtifact)
+	}
+	return nil
+}
+
+// pickTranscript 依 q 選出要讀的字幕產出（OUT-R2 的變體順序、語言規則）。
+func (p *Pipeline) pickTranscript(ctx context.Context, itemID string, q CuesQuery) (store.Item, store.Artifact, error) {
 	r := p.st.Read()
 	it, err := r.ItemByID(ctx, itemID)
 	if err != nil {
-		return store.Item{}, subtitle.Transcript{}, err
+		return store.Item{}, store.Artifact{}, err
 	}
 	if it.DeletedAt != nil {
-		return store.Item{}, subtitle.Transcript{}, &InTrashError{ItemID: it.ID}
+		return store.Item{}, store.Artifact{}, &InTrashError{ItemID: it.ID}
 	}
 	if q.Variant != "" && !subtitle.Variant(q.Variant).Valid() {
-		return store.Item{}, subtitle.Transcript{}, invalidf("variant 必須是 source、normalized、segmented、corrected、translated 或 edited。")
+		return store.Item{}, store.Artifact{}, invalidf("variant 必須是 source、normalized、segmented、corrected、translated 或 edited。")
 	}
 	arts, err := r.CurrentArtifacts(ctx, itemID, "transcript")
 	if err != nil {
-		return store.Item{}, subtitle.Transcript{}, err
+		return store.Item{}, store.Artifact{}, err
 	}
 	// 先依語言篩選，再選變體：沒指定變體時，用篩選後還有的變體中最完整的。
 	if q.Lang != "" {
@@ -260,13 +357,13 @@ func (p *Pipeline) CuesWithItem(ctx context.Context, itemID string, q CuesQuery)
 		}
 		v, ok := subtitle.PickVariant(have)
 		if !ok {
-			return store.Item{}, subtitle.Transcript{}, ErrNoTranscript
+			return store.Item{}, store.Artifact{}, ErrNoTranscript
 		}
 		variant = v
 	}
 	arts = filterArtifacts(arts, func(a store.Artifact) bool { return a.Variant == string(variant) })
 	if len(arts) == 0 {
-		return store.Item{}, subtitle.Transcript{}, ErrNoTranscript
+		return store.Item{}, store.Artifact{}, ErrNoTranscript
 	}
 	chosen := arts[len(arts)-1] // 最近產生的
 	if q.Lang == "" && it.OriginalLang != "" {
@@ -276,12 +373,7 @@ func (p *Pipeline) CuesWithItem(ctx context.Context, itemID string, q CuesQuery)
 			}
 		}
 	}
-	tr, err := p.readTranscriptArtifact(ctx, chosen)
-	if err != nil {
-		return store.Item{}, subtitle.Transcript{}, err
-	}
-	tr.Cues = subtitle.FilterRange(tr.Cues, q.FromMS, q.ToMS)
-	return it, tr, nil
+	return it, chosen, nil
 }
 
 func filterArtifacts(in []store.Artifact, keep func(store.Artifact) bool) []store.Artifact {

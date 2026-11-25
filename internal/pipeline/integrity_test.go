@@ -269,3 +269,56 @@ func TestProducerStage(t *testing.T) {
 		}
 	}
 }
+
+// 單軌下載的串流路徑（NFR-RES-3）：內容、範圍與 Cues 相同；損毀時同樣在開始輸出之前標記並重跑。
+func TestStreamCuesMatchesCuesAndHandlesCorruption(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	r.yt.info.Tracks = []youtube.Track{{Lang: "en", Kind: "manual"}}
+	it := r.ingest(watch, nil, StageTranscript)
+	r.run()
+	for _, q := range []CuesQuery{{ToMS: -1}, {FromMS: 1000, ToMS: 3000}, {Variant: "source", Lang: "en", ToMS: -1}} {
+		want, err := r.p.Cues(ctx, it.ID, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		item, cs, err := r.p.StreamCuesWithItem(ctx, it.ID, q)
+		if err != nil || item.ID != it.ID {
+			t.Fatalf("StreamCuesWithItem = %v", err)
+		}
+		var got []subtitle.Cue
+		if err := cs.Each(func(c subtitle.Cue) error { got = append(got, c); return nil }); err != nil {
+			t.Fatal(err)
+		}
+		if cs.Header.Lang != want.Lang || cs.Header.Variant != want.Variant || len(got) != len(want.Cues) {
+			t.Errorf("%+v：串流 %s/%s %d 句，Cues %s/%s %d 句", q, cs.Header.Lang, cs.Header.Variant, len(got), want.Lang, want.Variant, len(want.Cues))
+		}
+		for i := range got {
+			if got[i].Text != want.Cues[i].Text || got[i].StartMS != want.Cues[i].StartMS {
+				t.Errorf("第 %d 句不同：%+v vs %+v", i+1, got[i], want.Cues[i])
+			}
+		}
+	}
+	stop := errors.New("stop")
+	_, cs, _ := r.p.StreamCuesWithItem(ctx, it.ID, CuesQuery{ToMS: -1})
+	if err := cs.Each(func(subtitle.Cue) error { return stop }); !errors.Is(err, stop) {
+		t.Errorf("fn 的錯誤應該原樣回傳：%v", err)
+	}
+	if _, _, err := r.p.StreamCuesWithItem(ctx, it.ID, CuesQuery{Variant: "edited", ToMS: -1}); !errors.Is(err, ErrNoTranscript) {
+		t.Errorf("沒有這個變體：%v", err)
+	}
+
+	src := currentArtifact(t, r, it.ID, subtitle.VariantSource)
+	flipByte(t, r, src)
+	_, _, err := r.p.StreamCuesWithItem(ctx, it.ID, CuesQuery{Variant: "source", ToMS: -1})
+	var ce *CorruptArtifactError
+	if !errors.As(err, &ce) || !ce.Rerun || ce.ArtifactID != src.ID {
+		t.Fatalf("讀到損毀的字幕 = %v", err)
+	}
+	if err := os.Remove(filepath.Join(r.dir, filepath.FromSlash(src.Path))); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := r.p.StreamCuesWithItem(ctx, it.ID, CuesQuery{Variant: "source", ToMS: -1}); !errors.As(err, &ce) {
+		t.Errorf("產出檔不見了 = %v", err)
+	}
+}

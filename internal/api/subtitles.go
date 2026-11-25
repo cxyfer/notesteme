@@ -51,17 +51,28 @@ func (rt *routes) getSubtitles(ctx context.Context, in *subtitlesInput) (*huma.S
 	if format == subtitle.FormatASS || format == subtitle.FormatBilingualSRT {
 		return rt.bilingualSubtitles(ctx, in, format, q)
 	}
-	it, tr, err := rt.d.Pipeline.CuesWithItem(ctx, in.ID, q)
+	// 單軌的格式逐句讀、逐句寫，不把整份字幕載入記憶體（NFR-RES-3）。
+	it, cs, err := rt.d.Pipeline.StreamCuesWithItem(ctx, in.ID, q)
 	if err != nil {
 		return nil, rt.mapErr(ctx, err)
 	}
-	name := subtitle.DownloadFileName(it.Title, tr.Lang, subtitle.FileExt(format))
+	name := subtitle.DownloadFileName(it.Title, cs.Header.Lang, subtitle.FileExt(format))
 	return &huma.StreamResponse{Body: func(hc huma.Context) {
 		hc.SetHeader("Content-Type", subtitle.ContentType(format))
 		hc.SetHeader("Content-Disposition", subtitle.ContentDisposition(name))
 		hc.SetHeader("X-Content-Type-Options", "nosniff")
 		hc.SetStatus(http.StatusOK)
-		if err := subtitle.Render(hc.BodyWriter(), format, tr); err != nil {
+		err := func() error {
+			cw, err := subtitle.NewCueWriter(hc.BodyWriter(), format, cs.Header)
+			if err != nil {
+				return err
+			}
+			if err := cs.Each(cw.Write); err != nil {
+				return err
+			}
+			return cw.Close()
+		}()
+		if err != nil {
 			// 標頭已經送出，只能記錄；連線會因內容不完整而中斷。
 			rt.d.Log.WarnContext(hc.Context(), "輸出字幕時中斷", "error", err.Error())
 		}
