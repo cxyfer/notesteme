@@ -4,6 +4,8 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
+import type { Page } from "@playwright/test";
+
 import { axeCheck } from "./support/axe";
 import { e2eRoutes, slug, unmappedFixtureRoutes } from "./support/routes";
 import { outDir } from "./support/server";
@@ -44,13 +46,17 @@ for (const route of e2eRoutes()) {
           FIREFOX_AXE_CRASH.get(route.source),
         );
         const r = route.at(env);
-        await page.setViewportSize(vp);
-        await page.emulateMedia({ colorScheme: "light" });
-        await page.goto(r.path);
-        await waitReady(page, r.heading, r.ready, r.dialog);
+        const load = async (p: Page, theme: "light" | "dark") => {
+          await p.setViewportSize(vp);
+          await p.emulateMedia({ colorScheme: theme });
+          await p.goto(r.path);
+          await waitReady(p, r.heading, r.ready, r.dialog);
+        };
+        await load(page, "light");
+        let current = page;
         const reports: string[] = [];
         // NFR-RWD-1：任何寬度都沒有整頁的水平捲軸（寬表格在自己的捲動區裡捲）
-        const overflow = await page.evaluate(() => {
+        const overflow = await current.evaluate(() => {
           const extra = document.documentElement.scrollWidth - window.innerWidth;
           if (extra <= 0) return null;
           // 超出視窗的元素裡，最外層的那些（沒有同樣超出的父元素）
@@ -68,19 +74,31 @@ for (const route of e2eRoutes()) {
             `${route.source}（${info.project.name}、${vp.width}px）頁面有水平捲軸，${overflow}`,
           );
         for (const theme of ["light", "dark"] as const) {
-          await page.emulateMedia({ colorScheme: theme });
+          const ctx = { route: route.source, width: vp.width, theme };
+          await current.emulateMedia({ colorScheme: theme });
           // 主題切換的顏色轉場要結束，axe 才量到最終的顏色
-          await settleTransitions(page);
-          const report = await axeCheck(page, info, {
-            route: route.source,
-            width: vp.width,
-            theme,
-          });
+          await settleTransitions(current);
+          let report: string;
+          try {
+            report = await axeCheck(current, info, ctx);
+          } catch (e) {
+            // 引擎限制（docs/ui/README.md 10.32 第 12 點）：Firefox 的內容程序在 axe 執行中零星 SIGSEGV。
+            // 只針對崩潰：開新分頁、同樣的檢查重跑一次並記在 annotation；再崩潰或其他錯誤照常失敗
+            if (info.project.name !== "firefox" || !/Page crashed/.test(String(e))) throw e;
+            info.annotations.push({
+              type: "firefox-content-crash",
+              description: `${route.source} ${vp.width}px ${theme}：axe 執行中 Page crashed，已在新分頁重跑`,
+            });
+            current = await page.context().newPage();
+            await load(current, theme);
+            await settleTransitions(current);
+            report = await axeCheck(current, info, ctx);
+          }
           if (report) reports.push(report);
           if (shots && info.project.name === "chromium") {
             const dir = path.join(outDir, "screenshots", `${vp.width}`, theme);
             mkdirSync(dir, { recursive: true });
-            await page.screenshot({
+            await current.screenshot({
               path: path.join(dir, `${slug(route.source)}.jpg`),
               fullPage: true,
               type: "jpeg",

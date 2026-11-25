@@ -52,8 +52,8 @@ export { expect };
  * 等頁面「就緒」：h1 出現、沒有載入中的 spinner。SSE（/api/events）一直連著，不能等 networkidle。
  * ready 給了的話再等那段文字出現。
  *
- * 這裡刻意不用 getByRole：Firefox 在 Playwright 的 role 選擇器（計算可及名稱）之後於同一頁執行 axe，
- * 內容程序必定 SIGSEGV（Page crashed；docs/ui/README.md 10.32 的引擎限制）。用 CSS 加文字比對等同一個元素。
+ * 用 CSS 加文字比對 h1 或對話框（和 getByRole 等的是同一個元素）：axe 要分析的頁面上不先跑 Playwright 的
+ * role 選擇器，Firefox 的崩潰（docs/ui/README.md 10.32 第 12 點）比較好歸因。
  */
 export async function waitReady(
   page: Page,
