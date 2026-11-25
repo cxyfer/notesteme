@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/subtitle"
@@ -31,7 +32,7 @@ func writeArtifactFile(dataDir, itemID, artifactID string, render func(io.Writer
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return "", "", 0, err
 	}
-	tmp, err := os.CreateTemp(dir, ".tmp-"+artifactID+"-*")
+	tmp, err := os.CreateTemp(dir, artifactTmpPrefix+artifactID+"-*")
 	if err != nil {
 		return "", "", 0, err
 	}
@@ -61,6 +62,50 @@ func writeArtifactFile(dataDir, itemID, artifactID string, render func(io.Writer
 		_ = d.Close()
 	}
 	return filepath.ToSlash(filepath.Join(artifactsDir, itemID, name)), hex.EncodeToString(h.Sum(nil)), cw.n, nil
+}
+
+// artifactTmpPrefix 是 writeArtifactFile 暫存檔的檔名前綴；只有它用這個前綴（CleanArtifactTemps 依此清除）。
+const artifactTmpPrefix = ".tmp-"
+
+// CleanArtifactTemps 刪除 <data>/artifacts/<item>/ 底下 writeArtifactFile 留下的暫存檔（.tmp-*），回傳刪除的數量與失敗的原因。
+//
+// 暫存檔只在任務執行期間存在：rename 之前程序被 kill -9 或斷電才會留下，沒有任何 DB 記錄指向它（NFR-REL-2）。
+// 必須在取得資料目錄的鎖之後、worker 開始執行任務之前呼叫（PIPE-R11 的重新啟動），否則會刪到正在寫的暫存檔。
+// 只處理 artifacts/ 底下第一層目錄中的一般檔案，不跟隨 symlink。
+// rename 之後、DB 記錄之前被殺而留下的正式檔不刪：它不影響正確性（沒有記錄指向它），刪除反而要判斷它是否真的沒有被引用。
+func CleanArtifactTemps(dataDir string) (int, error) {
+	root := filepath.Join(dataDir, artifactsDir)
+	items, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	var first error
+	for _, it := range items {
+		if !it.IsDir() { // DirEntry 是 lstat 語意：symlink 不是目錄
+			continue
+		}
+		dir := filepath.Join(root, it.Name())
+		files, err := os.ReadDir(dir)
+		if err != nil {
+			first = errors.Join(first, err)
+			continue
+		}
+		for _, f := range files {
+			if !f.Type().IsRegular() || !strings.HasPrefix(f.Name(), artifactTmpPrefix) {
+				continue
+			}
+			if err := os.Remove(filepath.Join(dir, f.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
+				first = errors.Join(first, err)
+				continue
+			}
+			n++
+		}
+	}
+	return n, first
 }
 
 type countWriter struct {

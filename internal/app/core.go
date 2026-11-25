@@ -14,6 +14,7 @@ import (
 	"github.com/cxyfer/notesteme/internal/config"
 	"github.com/cxyfer/notesteme/internal/logctx"
 	"github.com/cxyfer/notesteme/internal/pathguard"
+	"github.com/cxyfer/notesteme/internal/pipeline"
 	"github.com/cxyfer/notesteme/internal/secrets"
 	"github.com/cxyfer/notesteme/internal/store"
 )
@@ -132,6 +133,12 @@ func openCore(ctx context.Context, env Env, opts coreOpts) (*Server, error) {
 	}
 	// 已取得資料目錄的鎖、還沒處理任何請求：清掉 crash 留下的孤兒上傳目錄。
 	cleanOrphanUploads(ctx, s.store, cfg.Data, log)
+	// 同樣在任何任務執行之前：清掉 kill -9 或斷電時寫到一半的產出暫存檔（NFR-REL-2、PIPE-R11）。
+	if n, err := pipeline.CleanArtifactTemps(cfg.Data); err != nil {
+		log.WarnContext(ctx, "清除產出的暫存檔失敗", "removed", n, "error", err)
+	} else if n > 0 {
+		log.InfoContext(ctx, "已清除上次中斷留下的產出暫存檔", "removed", n)
+	}
 
 	hashParams, kdf := auth.ProductionParams, secrets.ProductionKDF
 	if env.Test != nil && env.Test.LowCostHashing {
