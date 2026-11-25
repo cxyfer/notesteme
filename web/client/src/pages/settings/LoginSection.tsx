@@ -12,7 +12,7 @@ import { isApiError } from "../../api/errors";
 import { queryKeys } from "../../api/queryKeys";
 import { Button, Dialog, ErrorCallout, TextField, useToast } from "../../components";
 import { formatDateTime } from "../../i18n";
-import { Loading, Panel } from "./shared";
+import { Loading, Panel, TableScroll } from "./shared";
 
 export function LoginSection() {
   return (
@@ -68,7 +68,7 @@ function Sessions() {
           actions={[{ label: t("common.retry"), onClick: () => void query.refetch() }]}
         />
       ) : (
-        <div className="settings-table-wrap">
+        <TableScroll label={t("settings.login.sessionsTitle")}>
           <table className="settings-table">
             <thead>
               <tr>
@@ -115,7 +115,7 @@ function Sessions() {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
       {error !== undefined && <ErrorCallout error={error} />}
       <Dialog

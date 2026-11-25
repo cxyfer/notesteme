@@ -168,7 +168,14 @@ function DigestRow({ d, onEdit }: { d: Digest; onEdit: () => void }) {
             <p className="settings-row__meta">
               {t("settings.digest.previewCount", { count: (preview.items ?? []).length })}
             </p>
-            <pre className="settings-code">{preview.text}</pre>
+            <pre
+              className="settings-code"
+              tabIndex={0}
+              role="region"
+              aria-label={t("settings.digest.preview")}
+            >
+              {preview.text}
+            </pre>
           </div>
         )}
       </div>

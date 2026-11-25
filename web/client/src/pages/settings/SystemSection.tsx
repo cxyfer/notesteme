@@ -14,7 +14,7 @@ import type { components } from "../../api/schema";
 import { Button, ErrorCallout, useToast } from "../../components";
 import { formatBytes, formatDateTime } from "../../i18n";
 import { browserTimeZone, fetchOverview } from "../overview/overviewQuery";
-import { Loading, NotAvailable, Panel } from "./shared";
+import { Loading, NotAvailable, Panel, TableScroll } from "./shared";
 
 type Result = components["schemas"]["Result"];
 
@@ -42,7 +42,7 @@ export function SystemSection() {
         <OpsStatus alerts={sys.alerts} backup={sys.backup} />
       </Suspense>
       <Panel title={t("settings.system.toolsTitle")}>
-        <div className="settings-table-wrap">
+        <TableScroll label={t("settings.system.toolsTitle")}>
           <table className="settings-table">
             <thead>
               <tr>
@@ -73,7 +73,7 @@ export function SystemSection() {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       </Panel>
       <YtDlp
         pinned={sys.yt_dlp.pinned}

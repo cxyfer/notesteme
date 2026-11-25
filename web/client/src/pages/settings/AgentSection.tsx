@@ -13,7 +13,7 @@ import { api, apiPath } from "../../api/client";
 import { queryKeys } from "../../api/queryKeys";
 import { Button, Dialog, ErrorCallout, TextField, useToast } from "../../components";
 import { formatDateTime } from "../../i18n";
-import { Loading, Panel, SaveError, useSettingsSection } from "./shared";
+import { Loading, Panel, SaveError, TableScroll, useSettingsSection } from "./shared";
 
 const SCOPES = ["read", "agent", "ingest", "admin"] as const;
 // AUTH-R22：7 天、30 天、90 天（預設）、1 年、不設到期；值是 expires_in（空字串代表省略）
@@ -49,7 +49,13 @@ export function AgentSection() {
     <>
       <Tokens />
       <Panel title={t("settings.agent.snippetTitle")} description={t("settings.agent.snippetHint")}>
-        <pre className="settings-code">
+        {/* 長指令在窄螢幕水平捲動：可以聚焦後用方向鍵捲動（同 TableScroll） */}
+        <pre
+          className="settings-code"
+          tabIndex={0}
+          role="region"
+          aria-label={t("settings.agent.snippetTitle")}
+        >
           <code>{claudeCodeSnippet()}</code>
         </pre>
       </Panel>
@@ -111,7 +117,7 @@ function Tokens() {
       ) : tokens.length === 0 ? (
         <p className="settings-panel__description">{t("settings.agent.noTokens")}</p>
       ) : (
-        <div className="settings-table-wrap">
+        <TableScroll label={t("settings.agent.tokensTitle")}>
           <table className="settings-table">
             <thead>
               <tr>
@@ -171,7 +177,7 @@ function Tokens() {
               })}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
       {revokeError !== undefined && <ErrorCallout error={revokeError} />}
       <CreateToken />

@@ -13,7 +13,7 @@ import type { components } from "../../api/schema";
 import { queryKeys } from "../../api/queryKeys";
 import { Button, Dialog, ErrorCallout, SelectField, TextField, useToast } from "../../components";
 import { formatDateTime } from "../../i18n";
-import { Loading, Panel, SaveError } from "./shared";
+import { Loading, Panel, SaveError, TableScroll } from "./shared";
 
 type Notifier = components["schemas"]["Info"];
 
@@ -456,7 +456,7 @@ function RecentNotifications() {
       ) : list.length === 0 ? (
         <p className="settings-note">{t("settings.notify.recentEmpty")}</p>
       ) : (
-        <div className="settings-table-wrap">
+        <TableScroll label={t("settings.notify.recentTitle")}>
           <table className="settings-table">
             <thead>
               <tr>
@@ -481,7 +481,7 @@ function RecentNotifications() {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
     </Panel>
   );
