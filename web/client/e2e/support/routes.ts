@@ -9,6 +9,8 @@ export interface Resolved {
   path: string;
   heading: string | RegExp;
   ready?: string | RegExp;
+  /** 載入後會打開的對話框名稱：打開時背景被 aria-hidden，改等對話框而不是 h1 */
+  dialog?: string;
 }
 
 export interface E2ERoute {
@@ -51,6 +53,12 @@ function overrides(env: E2EEnv): Record<string, Override> {
     "/search?q=ordered%20log": { path: "/search?q=database", heading: "搜尋字幕" },
     "/": { path: "/", heading: "總覽", ready: "需要你處理" },
     "/trash": { path: "/trash", heading: "垃圾桶", ready: env.trashedTitle },
+    // ENTRY-R2：無效的網址打開「新增」抽屜並顯示錯誤（背景的媒體庫此時 aria-hidden）
+    "/add?url=javascript%3Aalert(1)": {
+      path: "/add?url=javascript%3Aalert(1)",
+      heading: "媒體庫",
+      dialog: "新增",
+    },
   };
 }
 

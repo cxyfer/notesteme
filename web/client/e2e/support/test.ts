@@ -45,8 +45,14 @@ export { expect };
  * 等頁面「就緒」：h1 出現、沒有載入中的 spinner。SSE（/api/events）一直連著，不能等 networkidle。
  * ready 給了的話再等那段文字出現。
  */
-export async function waitReady(page: Page, heading: string | RegExp, ready?: string | RegExp) {
-  await expect(page.getByRole("heading", { level: 1, name: heading }).first()).toBeVisible();
+export async function waitReady(
+  page: Page,
+  heading: string | RegExp,
+  ready?: string | RegExp,
+  dialog?: string,
+) {
+  if (dialog) await expect(page.getByRole("dialog", { name: dialog })).toBeVisible();
+  else await expect(page.getByRole("heading", { level: 1, name: heading }).first()).toBeVisible();
   if (ready) await expect(page.getByText(ready).first()).toBeVisible();
   await expect(page.locator(".spinner")).toHaveCount(0);
   // 字型與圖片載完，版面不再移動（axe 的對比與目標大小依實際排版）
