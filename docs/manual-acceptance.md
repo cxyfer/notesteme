@@ -9,6 +9,7 @@
 
 - 第 2～9 節：`nfr.md` 中驗證方式含 `manual` 的非功能需求（NFR-RES-6、NFR-REL-6、NFR-CMP-2、NFR-A11Y-2、NFR-A11Y-3、NFR-I18N-3、NFR-RWD-1；第 9 節的 NFR-PERF-10 也含 `manual`，一併列出）。
 - 第 10 節：全部 37 個 `@manual` 場景（3 個非 UI、34 個 `@ui @manual`）。
+- 第 11 節：NFR-REL-1 的斷電。驗證方式是 `bench`（故障注入），但 CI 只能 `kill -9`、不能斷電，斷電的部分要用實體機器或 VM 人工做（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）。
 
 依據：`specs/README.md` 的 Definition of Done（6.2）要求「`@manual` 場景已人工驗收」；`nfr.md` 第 1 節規定 `manual` 項目在每個里程碑結束前人工檢查，沒有達標視同驗收場景失敗，不能把該里程碑標記完成。UI 改版後，受影響的項目要重做。
 
@@ -240,3 +241,30 @@
 | [`SUB-subscriptions.feature`](../features/SUB-subscriptions.feature) | Pasting a channel address offers to subscribe | Client | 在新增抽屜貼上頻道網址，抽屜提供「建立訂閱」而不是開始處理；建立後顯示「同一個頻道只在一台實例上訂閱，避免重複處理。」 |
 | [`SUB-subscriptions.feature`](../features/SUB-subscriptions.feature) | Importing a Takeout file reports what was created | Client、Google Takeout 的 `subscriptions.csv`（40 個頻道，其中 2 個已訂閱） | 從訂閱頁匯入後回報建立 38 個、重複 2 個。 |
 | [`VAULT-vault-output.feature`](../features/VAULT-vault-output.feature) | The output settings show the vaults and hooks from the config file | Client（設定檔定義 vault `main` 與 hook `notify`） | 設定 › 輸出列出 vault `main` 的 adapter 與根資料夾，且沒有修改路徑的方式；hook `notify` 可以選用但不能編輯。 |
+
+## 11. NFR-REL-1：斷電後 DB 不損毀、付費結果不遺失
+
+- 目標（`nfr.md` 第 4 節）：任何時間點強制結束程序或**斷電**，DB 都不會損毀；重新啟動後依 PIPE-R11 繼續。NFR-REL-3：中斷後重新啟動不會為已經拿到的結果再付一次錢。M1。
+- 為什麼要人工做：`kill -9` 的部分由 `features/fault` 的故障注入自動驗證（`nfr.md` 第 11.1 節）。斷電不一樣：程序被殺時已 commit 的交易都還在 OS 的 page cache 與 WAL 中，斷電則會丟掉還沒 fsync 的部分。CI 的 runner 沒辦法切斷自己的電源，這個環境也沒有可以斷電的 VM，所以**這個環境做不到**，要用實體機器或可以「強制關機」（不是正常關機）的 VM。
+- 依據（沒有實測之前的論證，見 PIPE 待決問題「斷電與 `synchronous`」）：
+  - DB 是 WAL＋`synchronous(NORMAL)`。SQLite 保證 WAL 模式在斷電後 DB 不會損毀，但最後一次 WAL fsync 之後 commit 的交易可能遺失，DB 回到較早的一致狀態。
+  - 遺失一般步驟的寫回是安全的：重新啟動後依 PIPE-R11 重跑，步驟以 DB 中的上游產出為輸入，結果相同；最多多一份沒有記錄指向的產出檔。
+  - 記錄付費結果的交易（付費字幕來源、LLM 的 chunk、Agent 的提交、Batch API 的結果）改用 `synchronous=FULL` commit（`Store.TxDurable`），commit 回來時 WAL 已 fsync，斷電不會遺失它與它之前的交易，所以重新啟動不會再付一次錢。
+  - 產出檔先寫暫存檔、fsync、rename、fsync 目錄，DB 之後才記錄（NFR-REL-2），所以 DB 記錄的產出檔一定已經在磁碟上。
+- 需要的環境：一台實體機器或 VM（`ref-wsl` 的 WSL2 可以用 `wsl --shutdown` 模擬，但它會先通知 Linux，比較接近「OS 當機」而不是斷電；VM 的「強制關閉電源」更好）；設定好真實或可以計費的 ASR、LLM provider（或用 provider 的用量頁面確認呼叫次數）；`NOTESTEME_MASTER_KEY` 已保存。
+
+步驟：
+
+1. 啟動 `serve`，設定一個會用到 ASR 與 LLM 的處理方案（例如沒有平台字幕的影片，`fallback: [groq]`，`correct`、`translate` 用 api executor），新增 3～5 部影音。
+2. 在處理途中（佇列頁看得到 `transcript` 或 LLM 步驟在執行）強制切斷電源。至少做三次，分別落在 ASR、LLM 的 chunk、一般步驟執行中。
+3. 開機後啟動 `serve`，登入。
+4. 在 `/data` 執行 `sqlite3 notesteme.db 'PRAGMA integrity_check'`（或 `notesteme doctor`），應該是 `ok`。
+5. 等佇列跑完，對照 provider 的用量頁面：每部影音的 ASR、每個 LLM chunk 最多比沒中斷時多一次（斷電時正在途中的那一個）。
+6. 下載每部影音的字幕（SRT、VTT），應該都能下載，內容與沒中斷時相同。
+
+預期結果：
+
+- `integrity_check` 是 `ok`；`serve` 正常啟動，不需要還原備份。
+- 每部影音都做完（沒有卡在 `running` 或 `pending` 的步驟）。
+- 已經在斷電前完成（佇列頁顯示 `done`）的付費步驟，重新啟動後沒有再呼叫 provider。
+- 斷電前剛做的少數非付費操作（例如最後幾秒改的設定）可能需要重做，這是 `synchronous(NORMAL)` 的已知取捨，不算未通過；但不能出現資料錯亂或損毀。

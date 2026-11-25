@@ -161,3 +161,29 @@ UI-0（2026-11-23）之後各項 UI 相關需求的自動檢查放在哪裡；`m
 | NFR-CMP-2 | `light-dark()` 等 CSS 功能都在支援範圍內 | 實機檢查（`manual`，見[人工驗收清單](../manual-acceptance.md#4-nfr-cmp-2瀏覽器支援)） |
 | NFR-CMP-3 | `internal/api/openapi.json` 快照（`TestOpenAPISnapshot`）、web.yml 的型別 drift 檢查、ci.yml 的 `openapi-diff`（`oasdiff breaking`，比對推送或 PR 之前的快照） | 與「上一個發布版本」的 diff（尚無發布版）。「CLI 與 API 之間檢查版本」：CLI-R9（`internal/compat`、`internal/api/middleware.go` 的 `versionMiddleware`、`internal/cli/backend.go`），見 NFR-CMP-4 的修訂紀錄 |
 | NFR-RWD-1 | 767px 以下的底部分頁列（總覽、媒體庫、新增、佇列、更多）：`src/shell/TabBar.tsx`、`src/shell/tabbar.test.tsx`、`src/styles/base.css`；三件事的頁面都已存在：進度（總覽的「現在」、佇列）、「需要你處理」（總覽、媒體庫的狀態欄）、貼網址新增（`src/add/AddDrawer.tsx`） | 在 767px 以下的真實手機或窄視窗完成這三件事（`manual`，見[人工驗收清單](../manual-acceptance.md#8-nfr-rwd-1767px-以下完成三件事)） |
+
+### 11.1 故障注入的位置（NFR-REL-1～3）
+
+第 11 節的表格是 Web UI；這一小節是可靠度類 NFR 的故障注入（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）。規則與設計決定記在 [PIPE 的待決問題](PIPE-pipeline-queue.md#待決問題)（「NFR-REL-1～3 的故障注入」「產出暫存檔的清理」「斷電與 `synchronous`」三項）。
+
+- **故障點**：`internal/faultpoint`。只在 `-tags faultinject`（unix）建置有作用；一般建置的 `Hit` 是空函式，正式 binary 不含故障注入的程式碼（`faultpoint_test.go`：`go list` 確認一般建置只編入 `off.go`、`cmd/notesteme` 依賴的是這一份，`go tool nm` 確認正式 binary 沒有任何 faultpoint 的符號；faultinject tag 只能出現在 `internal/faultpoint` 與測試檔）。`NOTESTEME_FAULT=<名稱>:<n>` 讓程序在該點第 n 次命中時對自己送 `SIGKILL`；`NOTESTEME_FAULT_TRACE` 記錄每次命中。
+
+  | 點 | 位置 | 對應 |
+  |---|---|---|
+  | `stage.start/<步驟>` | `pipeline.Handle` 讀到步驟之後 | REL-1「步驟的開始」 |
+  | `stage.mid/<步驟>` | `pipeline.Handle` 的步驟工作做完（外部呼叫已回來、產出檔已寫出）、結果寫回之前 | REL-1「中間」 |
+  | `stage.commit/<步驟>` | `applyResult` 的交易做完所有寫入、commit 之前 | REL-1「提交前」 |
+  | `artifact.tmp-written` | `writeArtifactFile` 的暫存檔 fsync 之後、rename 之前 | REL-2 |
+  | `artifact.renamed` | `writeArtifactFile` rename 並 fsync 目錄之後、DB 記錄之前 | REL-2 |
+  | `paid.returned/<來源或 llm.步驟>` | 付費字幕來源（`runFallback`）或 LLM chunk（`llmChunk`、`trnChunk`）的結果回來、還沒落地 | REL-3 |
+  | `paid.landed/llm.<步驟>` | LLM chunk 的結果已 commit、步驟還要等 assemble 才標記完成 | REL-3 |
+
+- **harness**：`features/fault`（整個套件只在 `-tags faultinject` 建置）。父程序重新執行同一個測試 binary 當子程序，子程序以 godog 跑固定劇本：`features/steps` 的步驟與 fake provider（不連真實網路，NFR-TEST-1）；一部沒有平台字幕的 YouTube 影音，字幕來自 groq（ASR），再經過 `correct`、`translate`（anthropic），加上 `metadata`、`normalize`、`sponsorblock`。每次迭代：
+  1. 子程序在指定的點被 `SIGKILL`；父程序確認結束原因是 SIGKILL，而且 trace 的最後一行就是那個點（避免空跑）。
+  2. 複製被殺當下的 DB＋WAL，`PRAGMA integrity_check` 與 `foreign_key_check`。
+  3. 另一個子程序在同一份 `/data` 上重新啟動，處理到閒置（PIPE-R11）；再檢查一次完整性。
+  4. 斷言：沒有未結束的任務、每個步驟都是 `done` 或 `skipped`、步驟狀態與現行產出（字幕句的時間與文字）與沒中斷的基準相同、每份已記錄產出的檔案存在且 sha256 與大小相符、沒有殘留的 `.tmp-*`。
+  5. 付費呼叫：fake provider 收到請求時先把「主機、路徑、body 的 sha256」附加到 `/data` 之外的計數檔並 fsync，再回應。每個請求最多比基準多一次、多一次的最多一個（被殺時在途中的那一個）；在 `paid.landed` 被殺時一個都不能多。
+- **損毀測試**（REL-2）：`TestCorruptArtifactIsDetectedAndRerun` 對 `source`、`normalized`、`corrected`、`translated` 四份字幕產出各改一個 byte，經 API 讀取時回 409 `artifact_corrupt`、產出被標記 `corrupt_at`、產生它的步驟重跑，做完後結果與基準相同。重新產生 `source` 要再呼叫一次 groq（規格已記錄的成本），其他三種不多付錢（LLM 的 chunk 層快取照常重用）。
+- **次數**：每個點的迭代次數由 `NOTESTEME_FAULT_ITERATIONS` 控制。CI 的 go job 每點 1 次（`.github/workflows/ci.yml`），每晚的 `.github/workflows/fault.yml` 每點 100 次。
+- **做不到的**：斷電。`kill -9` 不會遺失已 commit 的交易，所以故障注入驗證不到 `synchronous(NORMAL)` 在斷電時可能遺失最後幾筆交易的情況；依據與人工步驟見[人工驗收清單](../manual-acceptance.md#11-nfr-rel-1斷電後-db-不損毀付費結果不遺失)。

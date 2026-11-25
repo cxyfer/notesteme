@@ -95,3 +95,11 @@
 - 之後要注意：
   - `serve` 的 log 寫到每個場景各自的 buffer，After hook 掃描 log 與 `calls.jsonl` 中的 secret 測試值（NFR-SEC-3）。
   - client 模式的 CLI 等待任務完成時，harness 要在 CLI 執行期間推動手動 worker。
+
+## 修訂
+
+- 2026-11-25（依 /goal 由實作者暫定，待 owner 追認；NFR-REL-1～3 的故障注入實作）：
+  - 「真正的 `kill -9` 由 NFR-REL-1 的故障注入 bench 驗證」：原本只有這句話，沒有對應的實作。
+    - 實際是：故障點在 `internal/faultpoint`（只在 `-tags faultinject` 建置有作用，正式 binary 不含），harness 在 `features/fault`。它**不是**程序內的 `Server.Kill()`：父程序重新執行同一個測試 binary 當子程序，子程序以 godog 跑固定劇本，在故障點對自己送 `SIGKILL`，再由另一個子程序在同一份 `/data` 上重新啟動。細節見 `docs/specs/nfr.md` 第 11.1 節。
+    - 子程序沿用本 ADR 的測試替身（同一個 binary 扮假工具、fakenet、fake provider），所以「程序內執行」的決策不變；`When the server restarts` 仍然用 `Server.Kill()` 近似。
+  - harness 為此多了三個只給 `features/fault` 用的介面：`harness.FixedRoot`（場景根目錄沿用指定的目錄，`Close` 不刪除，讓被殺的程序與重新啟動的程序共用 `/data`）、`harness.OnNew`（World 建好之後的 hook）、`fakenet.Net.Observe`（每個請求交給 handler 之前的觀察者，用來把付費呼叫寫進程序外的計數檔）。

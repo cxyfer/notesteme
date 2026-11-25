@@ -101,3 +101,15 @@
   - **成本**：重跑走一般的流程。LLM 步驟的 chunk 層快取（`llm_chunks`，不依賴產出檔）照常重用，已付費的 chunk 不會再呼叫 provider、不新增花費；ASR、下載等其他付費步驟會重新呼叫一次（重新產生壞掉的結果本來就要付費，預算檢查照常）。
   - API 讀到損毀的產出回 409 `artifact_corrupt`，訊息說明已重新處理哪個步驟（或無法自動重新產生）。
 - log 片段的來源（2026-11-25，依 /goal 由實作者暫定，待 owner 追認；PIPE-R16、NFR-OBS-2）：採用「每次任務執行一個有上限的記憶體緩衝」，由 log handler 在輸出時同步寫入，不是讀 log 檔或全域的環形緩衝。理由：log 輸出到 stdout，程式不一定能讀回；全域緩衝要再依任務過濾，並行時其他任務的 log 會把這個任務的擠掉。代價是只有「這次執行」的 log：retryable 用盡後的片段是最後一次嘗試的；LLM 步驟由某個 chunk 讓步驟停下時，片段是那個 chunk 任務的。`budget_blocked` 在建立任務前判定的、Agent 執行逾時改成 `blocked` 的（沒有任務在執行）沒有片段，UI 只顯示錯誤類別、訊息與修正動作。
+- NFR-REL-1～3 的故障注入（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：
+  - **故障點**：`internal/faultpoint` 的 `Hit(點, 範圍)`，只在 `-tags faultinject` 建置有作用，一般建置是空函式、被內聯掉，正式 binary 沒有任何 faultpoint 的符號（`internal/faultpoint/faultpoint_test.go` 以 `go list` 與 `go tool nm` 驗證）。點的位置：每個任務的開始（`stage.start`，讀到步驟之後）、中間（`stage.mid`，步驟的工作做完、外部呼叫已回來、產出檔已寫出，結果還沒寫回）、提交前（`stage.commit`，寫回的交易做完所有寫入、還沒 commit）；產出檔的暫存檔寫完並 fsync、還沒 rename（`artifact.tmp-written`），rename 並 fsync 目錄之後、DB 記錄之前（`artifact.renamed`）；付費呼叫回來、結果還沒落地（`paid.returned`，範圍是 `groq`、`supadata` 或 `llm.<步驟>`），以及 LLM chunk 的結果已經 commit、步驟還要等 assemble 才標記完成（`paid.landed`，範圍 `llm.<步驟>`）。
+  - LLM 步驟一筆 stage run 有 plan、chunk、assemble 多個任務，`stage.*` 每個任務都會命中一次，故障注入輪流在第 1、2、3 次命中時結束程序。
+  - 字幕來源（ASR、Supadata）的結果與「步驟完成」在同一個交易中寫入，沒有「已落地、還沒標記完成」的中間狀態，所以只有 `paid.returned`；這個點被殺時，重新啟動最多再呼叫一次（還沒落地的結果本來就沒有拿到）。
+  - 測試在 `features/fault`（見 `docs/specs/nfr.md` 第 11 節）。
+- 產出暫存檔的清理（2026-11-25，故障注入發現，依 /goal 由實作者暫定，待 owner 追認）：在暫存檔寫完、rename 之前被 `kill -9`，`artifacts/<item>/.tmp-*` 會永遠留著（PIPE-R11 只清 `/data/tmp`）。啟動時、取得資料目錄的鎖之後、worker 開始之前，以 `pipeline.CleanArtifactTemps` 刪掉 `artifacts/` 第一層目錄中的 `.tmp-*` 一般檔案（只有 `writeArtifactFile` 用這個前綴；不跟隨 symlink，frames 的子目錄不處理）。rename 之後、DB 記錄之前被殺留下的正式檔**不刪**：沒有記錄指向它，不影響正確性，只多佔空間；要刪就得判斷它真的沒有被任何記錄引用，風險比留著大（已知限制，故障注入每次都統計它的數量）。
+- 斷電與 `synchronous`（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：
+  - DB 是 WAL＋`synchronous(NORMAL)`（`internal/sqlitedb`）。程序被 `kill -9` 時，已 commit 的交易都在 WAL 中，不會遺失；OS 當機或斷電時，**DB 不會損毀**，但最後一次 WAL fsync（checkpoint）之後 commit 的交易可能遺失，重新啟動後 DB 回到較早的一致狀態。
+  - 冪等性的評估：遺失的如果是一般步驟的寫回，重新啟動後依 PIPE-R11 把步驟放回 `pending` 重跑。每個步驟都以 DB 中的上游產出為輸入、寫出新的產出（新的 ID），快取鍵相同就重用；重跑的結果與第一次相同，最多多一份沒有記錄指向的產出檔（同上，已知限制）。遺失的如果是使用者剛做的修改（設定、筆記、刪除…），使用者要重做一次；這不違反 NFR-REL-1 的「DB 不會損毀」，但要寫在 NFR 的解讀中。
+  - **付費結果不能這樣遺失**：記錄付費結果的交易遺失，重新啟動後重跑就會再付一次錢，違反 NFR-REL-3。所以這些交易改用 `Store.TxDurable`：在獨占的寫入連線上以 `synchronous=FULL` commit，commit 回來時 WAL 已經 fsync，連同 WAL 中在它之前的交易都不會因斷電遺失。用在：付費字幕來源（Supadata、ASR）的寫回、`api` executor 的任務（LLM 的 plan、chunk、assemble）、Agent 的提交、Batch API 的結果。之後斷電只可能遺失它之後的一般交易，依上一點重跑即可。
+  - 為什麼不把整個 DB 改成 `FULL`：`ref-wsl` 上每次 commit 從約 0.05ms 變成約 7ms（約 130 倍），一般寫入（session、設定、事件）全部變慢，完整的 `features/` 也會超過 NFR-TEST-2 的 5 分鐘。只對付費結果 fsync，代價是 `internal/pipeline` 的單元測試從約 122 秒變成約 142 秒。Hub 共用 `sqlitedb.Open`，不受影響（Hub 不跑 pipeline）。
+  - 斷電無法在 CI 實測，列在[人工驗收清單](../manual-acceptance.md#11-nfr-rel-1斷電後-db-不損毀付費結果不遺失)。
