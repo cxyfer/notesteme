@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/faultpoint"
 	"github.com/cxyfer/notesteme/internal/llm"
 	"github.com/cxyfer/notesteme/internal/queue"
 	"github.com/cxyfer/notesteme/internal/sponsorblock"
@@ -856,6 +857,7 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 	if err != nil {
 		return result{}, err
 	}
+	paidReturned(run.Stage)
 	usage, err := json.Marshal(out.Usage)
 	if err != nil {
 		return result{}, err
@@ -871,7 +873,7 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 		p.log.WarnContext(ctx, "chunk 驗證重試用盡，退回", "item", it.ID, "stage", run.Stage, "chunk", plan.Index, "reason", reason, "detail", out.Fallback.Message)
 	}
 	res := store.ChunkResult{Status: status, Reason: reason, Output: output, Usage: usage, Detail: detail}
-	return result{task: taskDone, keepState: true, inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {
+	return result{task: taskDone, keepState: true, afterCommit: paidLanded(run.Stage), inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {
 		if fb != nil {
 			// 來源紀錄的 mode: api 與 fallback_reason（BATCH-R8）。
 			if err := tx.SetLLMChunkBatch(ctx, run.ID, plan.Index, fb.record()); err != nil {
@@ -880,6 +882,22 @@ func (p *Pipeline) llmChunk(ctx context.Context, t store.Task, run store.StageRu
 		}
 		return finishChunkTx(ctx, tx, it.ID, run, t.Priority, plan.Index, res)
 	}}, nil
+}
+
+// paidReturned 是 NFR-REL-3 的故障點：LLM chunk 的付費呼叫已經回來、結果還沒落地。一般建置是空的。
+func paidReturned(stage string) {
+	if faultpoint.Enabled {
+		faultpoint.Hit(faultpoint.PaidReturned, "llm."+stage)
+	}
+}
+
+// paidLanded 回傳 chunk 任務的 afterCommit：chunk 的結果已經 commit（落地），步驟要等 assemble 才標記完成，
+// 中間是 NFR-REL-3 的故障點。一般建置回傳 nil。
+func paidLanded(stage string) func() {
+	if !faultpoint.Enabled {
+		return nil
+	}
+	return func() { faultpoint.Hit(faultpoint.PaidLanded, "llm."+stage) }
 }
 
 // finishChunkTx 在寫回的交易中寫入一個 chunk 的結果；所有 chunk 都有結果時建立 assemble 任務（回傳 true，要喚醒 worker）。

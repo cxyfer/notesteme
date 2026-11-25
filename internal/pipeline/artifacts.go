@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cxyfer/notesteme/internal/faultpoint"
 	"github.com/cxyfer/notesteme/internal/subtitle"
 )
 
@@ -53,6 +54,7 @@ func writeArtifactFile(dataDir, itemID, artifactID string, render func(io.Writer
 	if err = tmp.Close(); err != nil {
 		return "", "", 0, err
 	}
+	faultpoint.Hit(faultpoint.ArtifactTmpWritten, "") // NFR-REL-2：暫存檔已落地、還沒 rename
 	name := artifactID + ".json"
 	if err = os.Rename(tmp.Name(), filepath.Join(dir, name)); err != nil {
 		return "", "", 0, err
@@ -61,6 +63,7 @@ func writeArtifactFile(dataDir, itemID, artifactID string, render func(io.Writer
 		_ = d.Sync() // 目錄項目也要落地；不支援的檔案系統可以略過
 		_ = d.Close()
 	}
+	faultpoint.Hit(faultpoint.ArtifactRenamed, "") // NFR-REL-2：正式檔已就位、DB 還沒記錄
 	return filepath.ToSlash(filepath.Join(artifactsDir, itemID, name)), hex.EncodeToString(h.Sum(nil)), cw.n, nil
 }
 

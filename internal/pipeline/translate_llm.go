@@ -715,6 +715,7 @@ func (p *Pipeline) trnChunk(ctx context.Context, t store.Task, run store.StageRu
 	if err != nil {
 		return result{}, err
 	}
+	paidReturned(run.Stage)
 	res, err := trnChunkResult(out, usage)
 	if err != nil {
 		return result{}, err
@@ -723,7 +724,7 @@ func (p *Pipeline) trnChunk(ctx context.Context, t store.Task, run store.StageRu
 		p.log.WarnContext(ctx, "譯文驗證重試用盡，退回原文", "item", it.ID, "chunk", w.row.Chunk, "reason", res.Reason)
 	}
 	fb := pl.Batch
-	return result{task: taskDone, keepState: true, inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {
+	return result{task: taskDone, keepState: true, afterCommit: paidLanded(run.Stage), inTx: func(ctx context.Context, tx *store.Repo) (bool, error) {
 		if fb != nil {
 			// 來源紀錄的 mode 與 fallback_reason（BATCH-R8）。
 			if err := tx.SetLLMChunkBatch(ctx, run.ID, w.row.Chunk, fb.record()); err != nil {

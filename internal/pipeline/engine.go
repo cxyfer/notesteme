@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/faultpoint"
 	"github.com/cxyfer/notesteme/internal/logctx"
 	"github.com/cxyfer/notesteme/internal/netguard"
 	"github.com/cxyfer/notesteme/internal/queue"
@@ -116,6 +117,7 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		return fmt.Errorf("讀取步驟 %s：%w", t.StageRunID, err)
 	}
 	scope.SetItemStage(run.ItemID, run.Stage)
+	faultpoint.Hit(faultpoint.StageStart, run.Stage) // NFR-REL-1
 	it, err := r.ItemByID(ctx, run.ItemID)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -199,6 +201,7 @@ func (p *Pipeline) Handle(ctx context.Context, t store.Task) error {
 		// SRC-10：transcript、sponsorblock 完成時在寫回的交易中判斷重新 Probe 的排程（SRC-R18、R20）。
 		res = p.withReprobe(res, run, eff, lang)
 	}
+	faultpoint.Hit(faultpoint.StageMid, run.Stage) // NFR-REL-1：工作做完、結果還沒寫回
 	if ctx.Err() != nil {
 		// 關閉或取消中：不寫回，已寫出的產出檔也不會有記錄指向它。
 		p.discardResultFiles(ctx, res)
@@ -589,7 +592,11 @@ func (p *Pipeline) applyResult(ctx context.Context, t store.Task, run store.Stag
 			wake = wake || created
 		}
 		// 通知事件與狀態在同一個交易（NOTIFY-R3）：鏈直接略過的最後幾個步驟也已寫入，所以放在最後判斷。
-		return p.emitRunEvent(ctx, r, it, run.Stage)
+		if err := p.emitRunEvent(ctx, r, it, run.Stage); err != nil {
+			return err
+		}
+		faultpoint.Hit(faultpoint.StageCommit, run.Stage) // NFR-REL-1：交易的寫入都做完、還沒 commit
+		return nil
 	})
 	// 租約已經失效（被放回、到期後被別人領走，或任務已被取消）：寫回的交易已整個回復，
 	// 這次的結果不算數。不是錯誤；產出檔沒有記錄指向它，一併丟棄。

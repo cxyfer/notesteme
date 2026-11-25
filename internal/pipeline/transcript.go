@@ -16,6 +16,7 @@ import (
 
 	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/errclass"
+	"github.com/cxyfer/notesteme/internal/faultpoint"
 	"github.com/cxyfer/notesteme/internal/langdetect"
 	"github.com/cxyfer/notesteme/internal/media"
 	"github.com/cxyfer/notesteme/internal/netguard"
@@ -829,6 +830,9 @@ sources:
 			srcLang.Glossary = nil // 不支援詞彙提示的來源不會收到詞彙表（COR-R7）
 		}
 		got, err := f.fetch(ctx, it, srcLang)
+		if err == nil && paidSource(id) {
+			faultpoint.Hit(faultpoint.PaidReturned, id) // NFR-REL-3：付費來源的結果回來、還沒落地
+		}
 		if !errors.Is(err, errclass.ErrNotConfigured) {
 			executed = true
 		}
