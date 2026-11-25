@@ -109,6 +109,8 @@ h3 {
   position: sticky;
   top: 0;
   height: 100vh;
+  /* 很矮的視窗（例如 1000×400）：項目比視窗高時在側欄裡捲動，不溢出到版面外 */
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -191,6 +193,9 @@ h3 {
   .nav {
     align-items: center;
     padding: 20px var(--space-2) var(--space-4);
+    /* sticky 自成堆疊脈絡：沒有 z-index 時，tooltip 的 z-index 只在側欄裡面有效，會被主內容中
+       有 transform 的元素（虛擬列表的列、時間帶）蓋住。10 低於選單（20）、對話框（40）與 toast（50）。 */
+    z-index: 10;
   }
   .nav__mark {
     padding: 0 0 var(--space-3);
@@ -238,13 +243,16 @@ h3 {
     color: inherit;
     cursor: pointer;
   }
+  /* 側欄可以捲動（overflow-y: auto 會一併裁掉水平方向超出的部分），所以 tooltip 用 position: fixed 跳出側欄：
+     座標由 AppShell 在 hover／focus 時寫進項目的 --tip-x、--tip-y（項目右緣與垂直中心）。 */
   .nav .nav__item:hover > .nav__label,
   .nav .nav__item:focus-visible > .nav__label,
   .nav .nav__add:hover > .nav__label,
   .nav .nav__add:focus-visible > .nav__label {
+    position: fixed;
     z-index: 20;
-    left: calc(100% + var(--space-2));
-    top: 50%;
+    left: calc(var(--tip-x, 64px) + var(--space-2));
+    top: var(--tip-y, 50%);
     transform: translateY(-50%);
     width: auto;
     height: auto;

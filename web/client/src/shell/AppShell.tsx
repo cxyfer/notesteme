@@ -162,6 +162,19 @@ function InsecureBanner() {
   );
 }
 
+/**
+ * 窄側欄的 tooltip 是 position: fixed（側欄可以捲動，absolute 會被裁掉，base.css）：
+ * hover 或取得焦點時，把項目在視窗中的右緣與垂直中心寫進 --tip-x、--tip-y。
+ */
+function placeTooltip(e: { target: EventTarget }) {
+  const item =
+    e.target instanceof Element ? e.target.closest<HTMLElement>(".nav__item, .nav__add") : null;
+  if (!item) return;
+  const r = item.getBoundingClientRect();
+  item.style.setProperty("--tip-x", `${r.right}px`);
+  item.style.setProperty("--tip-y", `${r.top + r.height / 2}px`);
+}
+
 function ShellLayout() {
   const { t } = useTranslation();
   const add = useAddDrawer();
@@ -223,7 +236,12 @@ function ShellLayout() {
       <InsecureBanner />
       <div className="app">
         {!narrow && (
-          <nav className="nav" aria-label={t("nav.label")}>
+          <nav
+            className="nav"
+            aria-label={t("nav.label")}
+            onPointerOver={rail ? placeTooltip : undefined}
+            onFocus={rail ? placeTooltip : undefined}
+          >
             <Link to="/" className="nav__mark">
               <span className="nav__mark-full">{t("app.name")}</span>
               {/* 窄側欄只顯示第一個字母；完整名稱留給螢幕閱讀器 */}
