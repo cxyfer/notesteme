@@ -141,6 +141,7 @@
 | 2026-11-25 | v0.1 | **NFR-OBS-1** 達成「每筆」（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：context 中沒有 request ID 的程序層級 log 帶這個程序的 boot ID（`boot-` 加 16 個十六進位字元，`logctx.BootID()`），所以每一筆 log 都有 `request_id`；原本不帶 context 的 log 呼叫都改傳 context，正式程式碼中只剩 1 處不帶（本機 socket 拒絕連線，`net.Listener.Accept` 沒有 context，帶 boot ID）。`ci` 檢查兩項：`internal/app/logfields_test.go` 斷言每一筆 log 都有 `request_id`、程序層級的 log 是 boot ID；`internal/logctx/calls_test.go` 以型別資訊掃描 `internal/` 與 `cmd/`，新增不帶 context 的 `slog` 呼叫會失敗（例外清單 `noContextAllowed` 要寫理由）。細節見 [OPS 待決問題 O26](OPS-operations.md#nfr-obs-1-的實作決定2026-11-25依-goal-由實作者暫定待-owner-追認)。目標未改。 |
 | 2026-11-25 | v0.1 | **NFR-CMP-4** 的 `bench` 寫成自動測試（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：`cmd/notesteme/compat_test.go` 的 `TestCLIAndServeVersionsAcrossBinaries` 以 `-ldflags -X internal/app.version=<版本>` 建出 0.2.0～0.6.0 五支 binary，`serve` 0.4.0，各版 CLI 經本機 socket 執行 `items ls`：0.3.0、0.4.0、0.5.0 結束碼 0；0.2.0、0.6.0 結束碼 1 並指出升級哪一邊；沒有版本標頭的 `/healthz` 回應不帶版本。驗證欄仍是 `bench`（建出真的 binary 對打），但跑在 CI 的 `go` job 而不是每晚：五支只差 link，建置快取熱時約 3 秒，`-short` 時略過。決定記在 [CLI 待決問題](CLI-cli.md#待決問題)。目標未改。 |
 | 2026-11-25 | v0.1 | **NFR-I18N-2** 補完（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：原本只有繁中的 103 處與 Hub 的 API 都走 `internal/apierr` 的三語目錄，`internal/api` 與 Hub 的 API 都是 0 處未走目錄。domain 套件照舊回傳繁中，目錄以原本的 `fmt` 格式字串反解出參數再填進目標語言的範本，所以既有場景的預期文字不變；欄位錯誤的頂層 `message` 改用範本 `field_invalid`；Huma 的驗證錯誤的 `message` 帶第一個錯誤的位置與三語的原因（`details` 照 Huma 的原文）；Hub 共用 `apierr.LocalizeTransformer` 與 `WriteFor`。`errors[]`、`details` 等其他欄位照 AUTH-R23 不隨語言改變，外部服務帶回的原文不翻譯，只翻譯包住它的句子。涵蓋數字、例外與理由見 [AUTH 待決問題 A29](AUTH-access.md#待決問題)。目標未改。 |
+| 2026-11-25 | v0.1 | **NFR-REL-1～4、REL-7** 的自動驗證與首次實測（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：位置見第 11.1、11.2 節，設計決定見 [PIPE 待決問題](PIPE-pipeline-queue.md#待決問題)。**REL-1～3**：故障注入在 51 個點（12 個步驟的開始、中間、提交前，產出檔 rename 前後，付費呼叫回來與落地之後）各 `kill -9` 再重新啟動；首次在 GitHub runner 上以完整規模執行（`fault.yml` 的內容，2026-11-25）：51 個點 × 100 次＝5100 次迭代全部通過，耗時 28 分 31 秒（並行 4，job 約 30 分鐘），每次都確認 DB 完整、pipeline 做完且結果與沒中斷的基準相同、每份已記錄產出的 sha256 相符、沒有殘留暫存檔、付費呼叫最多多一次（`paid.landed` 一次都不多）；重新啟動後留下、沒有 DB 記錄指向的正式產出檔共 1086 個（已知限制，不影響正確性）。REL-2 的損毀測試五種字幕產出全部通過。CI 的 `go` job 每點 1 次，約 1 分鐘；每晚由 `fault.yml` 跑每點 100 次。故障注入找到並修正兩個違反 PIPE-R11 的缺陷：產出暫存檔不會被清掉、`frames` 在 commit 前就刪掉候選畫面。**斷電**：`kill -9` 驗證不到，付費結果的交易改用 `synchronous=FULL`（`Store.TxDurable`），其他交易維持 `NORMAL`，人工步驟見[人工驗收清單](../manual-acceptance.md#11-nfr-rel-1斷電後-db-不損毀付費結果不遺失)。**REL-4**：store／queue 與 API 兩層的並行寫入測試（`-race`）沒有出現 `SQLITE_BUSY`，不需要修正；驗證欄仍寫 `bench`，實際以 `ci` 的測試達成。**REL-7**：寫成 PIPE-R17 的驗收場景（`feature`），不另做 `bench`。目標未改。 |
 
 ## 11. 實作位置（Web UI）
 
@@ -165,7 +166,7 @@ UI-0（2026-11-23）之後各項 UI 相關需求的自動檢查放在哪裡；`m
 
 ### 11.1 故障注入的位置（NFR-REL-1～3）
 
-第 11 節的表格是 Web UI；這一小節是可靠度類 NFR 的故障注入（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）。規則與設計決定記在 [PIPE 的待決問題](PIPE-pipeline-queue.md#待決問題)（「NFR-REL-1～3 的故障注入」「產出暫存檔的清理」「斷電與 `synchronous`」三項）。
+第 11 節的表格是 Web UI；這一小節是可靠度類 NFR 的故障注入（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）。規則與設計決定記在 [PIPE 的待決問題](PIPE-pipeline-queue.md#待決問題)（「NFR-REL-1～3 的故障注入」「產出暫存檔的清理」「frames 候選畫面的刪除時機」「斷電與 `synchronous`」四項）。
 
 - **故障點**：`internal/faultpoint`。只在 `-tags faultinject`（unix）建置有作用；一般建置的 `Hit` 是空函式，正式 binary 不含故障注入的程式碼（`faultpoint_test.go`：`go list` 確認一般建置只編入 `off.go`、`cmd/notesteme` 依賴的是這一份，`go tool nm` 確認正式 binary 沒有任何 faultpoint 的符號；faultinject tag 只能出現在 `internal/faultpoint` 與測試檔）。`NOTESTEME_FAULT=<名稱>:<n>` 讓程序在該點第 n 次命中時對自己送 `SIGKILL`；`NOTESTEME_FAULT_TRACE` 記錄每次命中。
 
@@ -179,12 +180,25 @@ UI-0（2026-11-23）之後各項 UI 相關需求的自動檢查放在哪裡；`m
   | `paid.returned/<來源或 llm.步驟>` | 付費字幕來源（`runFallback`）或 LLM chunk（`llmChunk`、`trnChunk`）的結果回來、還沒落地 | REL-3 |
   | `paid.landed/llm.<步驟>` | LLM chunk 的結果已 commit、步驟還要等 assemble 才標記完成 | REL-3 |
 
-- **harness**：`features/fault`（整個套件只在 `-tags faultinject` 建置）。父程序重新執行同一個測試 binary 當子程序，子程序以 godog 跑固定劇本：`features/steps` 的步驟與 fake provider（不連真實網路，NFR-TEST-1）；一部沒有平台字幕的 YouTube 影音，字幕來自 groq（ASR），再經過 `correct`、`translate`（anthropic），加上 `metadata`、`normalize`、`sponsorblock`。每次迭代：
+  劇本命中的點共 51 個：12 個步驟 × 3 個時點、產出檔的 2 個點、`paid.returned/groq`，以及 `summary`、`segment`、`correct`、`translate`、`chapters`、`note` 六個 LLM 步驟的 `paid.returned` 與 `paid.landed`。基準執行沒有命中其中任何一個就失敗（`requiredPoints`），重構掉某個點或劇本不再經過某個步驟時，每晚的 100 次不會默默變成空跑。
+
+- **harness**：`features/fault`（整個套件只在 `-tags faultinject` 建置）。父程序重新執行同一個測試 binary 當子程序，子程序以 godog 跑固定劇本：`features/steps` 的步驟與 fake provider（不連真實網路，NFR-TEST-1）；一部沒有平台字幕、有三個場景切換的 YouTube 影音，處理方案打開 pipeline 的全部 12 個步驟：字幕來自 groq（ASR），`summary`、`segment`、`correct`、`translate`、`chapters` 走 `api` executor（anthropic），`frames` 依規則挑畫面，`note` 用 `video-notes` 範本，`publish` 寫到 fs vault 並輸出 SRT，加上 `metadata`、`normalize`、`sponsorblock`。每次迭代：
   1. 子程序在指定的點被 `SIGKILL`；父程序確認結束原因是 SIGKILL，而且 trace 的最後一行就是那個點（避免空跑）。
   2. 複製被殺當下的 DB＋WAL，`PRAGMA integrity_check` 與 `foreign_key_check`。
   3. 另一個子程序在同一份 `/data` 上重新啟動，處理到閒置（PIPE-R11）；再檢查一次完整性。
   4. 斷言：沒有未結束的任務、每個步驟都是 `done` 或 `skipped`、步驟狀態與現行產出（字幕句的時間與文字）與沒中斷的基準相同、每份已記錄產出的檔案存在且 sha256 與大小相符、沒有殘留的 `.tmp-*`。
   5. 付費呼叫：fake provider 收到請求時先把「主機、路徑、body 的 sha256」附加到 `/data` 之外的計數檔並 fsync，再回應。每個請求最多比基準多一次、多一次的最多一個（被殺時在途中的那一個）；在 `paid.landed` 被殺時一個都不能多。
-- **損毀測試**（REL-2）：`TestCorruptArtifactIsDetectedAndRerun` 對 `source`、`normalized`、`corrected`、`translated` 四份字幕產出各改一個 byte，經 API 讀取時回 409 `artifact_corrupt`、產出被標記 `corrupt_at`、產生它的步驟重跑，做完後結果與基準相同。重新產生 `source` 要再呼叫一次 groq（規格已記錄的成本），其他三種不多付錢（LLM 的 chunk 層快取照常重用）。
-- **次數**：每個點的迭代次數由 `NOTESTEME_FAULT_ITERATIONS` 控制。CI 的 go job 每點 1 次（`.github/workflows/ci.yml`），每晚的 `.github/workflows/fault.yml` 每點 100 次。
+- **損毀測試**（REL-2）：`TestCorruptArtifactIsDetectedAndRerun` 對 `source`、`normalized`、`segmented`、`corrected`、`translated` 五份字幕產出各改一個 byte，經 API 讀取時回 409 `artifact_corrupt`、產出被標記 `corrupt_at`、產生它的步驟重跑，做完後結果與基準相同。重新產生 `source` 要再呼叫一次 groq（規格已記錄的成本），其他四種不多付錢（LLM 的 chunk 層快取照常重用）。
+- **次數**：每個點的迭代次數由 `NOTESTEME_FAULT_ITERATIONS` 控制。CI 的 go job 每點 1 次、並行 4（`.github/workflows/ci.yml`，`ref-wsl` 上約 1 分鐘，含損毀測試）；每晚的 `.github/workflows/fault.yml`（`schedule` 每天 19:47 UTC，也可 `workflow_dispatch` 指定次數）每點 100 次、並行 4，失敗時把保留的資料目錄上傳成 artifact。首次實測見第 10 節的修訂紀錄。
+- **找到的缺陷**：故障注入找到兩個真的違反 PIPE-R11 的問題，都已修正並有回歸測試：rename 之前被殺留下的 `.tmp-*` 永遠不會被清掉（`pipeline.CleanArtifactTemps`、`internal/pipeline/artifacts_clean_test.go`），以及 `frames` 在 commit 之前就刪掉候選畫面、重新啟動後步驟永久失敗（`internal/pipeline/frames_restart_test.go`）。
 - **做不到的**：斷電。`kill -9` 不會遺失已 commit 的交易，所以故障注入驗證不到 `synchronous(NORMAL)` 在斷電時可能遺失最後幾筆交易的情況；依據與人工步驟見[人工驗收清單](../manual-acceptance.md#11-nfr-rel-1斷電後-db-不損毀付費結果不遺失)。
+
+### 11.2 並行寫入與外部服務中斷的位置（NFR-REL-4、REL-7）
+
+（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）
+
+- **NFR-REL-4**：兩個測試，CI 的 `go` job 以 `-race` 跑（`go test (race, without the scenarios)`）。
+  - `internal/queue/concurrency_test.go` 的 `TestConcurrentWritesNeverBusy`（store／queue 層）：8 個寫入者各建立 25 部影音（一半用 `TxDurable`）、4 個 worker 反覆領取與完成任務、佇列設定的寫入者、3 個讀取者、`VACUUM INTO` 備份，以及 4 個在交易中「先讀再寫」同一個設定的計數者。斷言沒有任何 `SQLITE_BUSY`／`database is locked`／`BUSY_SNAPSHOT`、每個任務剛好完成一次、計數器剛好是 200（沒有遺失更新）、2 分鐘內做完（沒有卡住）。刻意把寫入連線改成 4 條時這個測試會失敗（`database is locked (5) (SQLITE_BUSY)`），證明它驗證得到「所有寫入經過同一個寫入連線」。
+  - `internal/app/concurrent_writes_test.go` 的 `TestConcurrentAPIWritesNeverBusy`（API 層）：8 個用戶端經 HTTP 各新增 10 部影音，穿插改佇列上限、暫停與繼續、改全域設定，同時有讀取者與備份；斷言沒有 5xx、log 中沒有 `SQLITE_BUSY`、最後的資料與寫入的一致。
+  - 驗證欄寫 `bench`，但要驗證的是「不出現」而不是數值，所以寫成 `ci` 的測試；`busy_timeout` 沿用 `internal/sqlitedb` 的設定，沒有調整。
+- **NFR-REL-7**：PIPE-R17 的驗收場景（`features/PIPE-pipeline-queue.feature`，`@PIPE-R17`），由 `Given every external service is unavailable` 讓假 yt-dlp 與 fakenet 上所有 fake origin 持續失敗；驗證瀏覽媒體庫、影音詳情、SRT／VTT 下載與 MCP `get_transcript` 照常回應，新增的影音在重試用盡後以 `failed`（`retryable`）結束。理由見 [PIPE 待決問題](PIPE-pipeline-queue.md#待決問題)「PIPE-R17 與 NFR-REL-7 的驗證方式」。

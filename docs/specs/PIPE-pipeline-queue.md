@@ -108,6 +108,7 @@
   - 字幕來源（ASR、Supadata）的結果與「步驟完成」在同一個交易中寫入，沒有「已落地、還沒標記完成」的中間狀態，所以只有 `paid.returned`；這個點被殺時，重新啟動最多再呼叫一次（還沒落地的結果本來就沒有拿到）。
   - 測試在 `features/fault`（見 `docs/specs/nfr.md` 第 11 節）。
 - 產出暫存檔的清理（2026-11-25，故障注入發現，依 /goal 由實作者暫定，待 owner 追認）：在暫存檔寫完、rename 之前被 `kill -9`，`artifacts/<item>/.tmp-*` 會永遠留著（PIPE-R11 只清 `/data/tmp`）。啟動時、取得資料目錄的鎖之後、worker 開始之前，以 `pipeline.CleanArtifactTemps` 刪掉 `artifacts/` 第一層目錄中的 `.tmp-*` 一般檔案（只有 `writeArtifactFile` 用這個前綴；不跟隨 symlink，frames 的子目錄不處理）。rename 之後、DB 記錄之前被殺留下的正式檔**不刪**：沒有記錄指向它，不影響正確性，只多佔空間；要刪就得判斷它真的沒有被任何記錄引用，風險比留著大（已知限制，故障注入每次都統計它的數量）。
+- frames 候選畫面的刪除時機（2026-11-25，故障注入發現，依 /goal 由實作者暫定，待 owner 追認）：`frames` 的挑選任務原本在寫回之前就刪掉 `candidates.json`；在它之後、commit 之前（`stage.mid/frames`、`stage.commit/frames`）被 `kill -9`，重新啟動後任務重跑時找不到候選畫面，步驟以永久失敗結束，`note`、`publish` 停在 `pending`，違反 PIPE-R11。改為 commit 之後才刪（`afterCommit`），commit 之前任務可以重跑任意次、結果相同；commit 之後、刪檔之前被殺，只多留一個沒有用的候選檔（同上一項的正式檔，已知限制，不影響正確性）。回歸測試是 `internal/pipeline/frames_restart_test.go`。
 - 斷電與 `synchronous`（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）：
   - DB 是 WAL＋`synchronous(NORMAL)`（`internal/sqlitedb`）。程序被 `kill -9` 時，已 commit 的交易都在 WAL 中，不會遺失；OS 當機或斷電時，**DB 不會損毀**，但最後一次 WAL fsync（checkpoint）之後 commit 的交易可能遺失，重新啟動後 DB 回到較早的一致狀態。
   - 冪等性的評估：遺失的如果是一般步驟的寫回，重新啟動後依 PIPE-R11 把步驟放回 `pending` 重跑。每個步驟都以 DB 中的上游產出為輸入、寫出新的產出（新的 ID），快取鍵相同就重用；重跑的結果與第一次相同，最多多一份沒有記錄指向的產出檔（同上，已知限制）。遺失的如果是使用者剛做的修改（設定、筆記、刪除…），使用者要重做一次；這不違反 NFR-REL-1 的「DB 不會損毀」，但要寫在 NFR 的解讀中。
