@@ -51,6 +51,9 @@ export { expect };
 /**
  * 等頁面「就緒」：h1 出現、沒有載入中的 spinner。SSE（/api/events）一直連著，不能等 networkidle。
  * ready 給了的話再等那段文字出現。
+ *
+ * 這裡刻意不用 getByRole：Firefox 在 Playwright 的 role 選擇器（計算可及名稱）之後於同一頁執行 axe，
+ * 內容程序必定 SIGSEGV（Page crashed；docs/ui/README.md 10.32 的引擎限制）。用 CSS 加文字比對等同一個元素。
  */
 export async function waitReady(
   page: Page,
@@ -58,8 +61,9 @@ export async function waitReady(
   ready?: string | RegExp,
   dialog?: string,
 ) {
-  if (dialog) await expect(page.getByRole("dialog", { name: dialog })).toBeVisible();
-  else await expect(page.getByRole("heading", { level: 1, name: heading }).first()).toBeVisible();
+  if (dialog)
+    await expect(page.locator('[role="dialog"]').filter({ hasText: dialog }).first()).toBeVisible();
+  else await expect(page.locator("h1").filter({ hasText: heading }).first()).toBeVisible();
   if (ready) await expect(page.getByText(ready).first()).toBeVisible();
   await expect(page.locator(".spinner")).toHaveCount(0);
   // 字型與圖片載完，版面不再移動（axe 的對比與目標大小依實際排版）

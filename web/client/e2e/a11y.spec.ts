@@ -17,6 +17,19 @@ export const WIDTHS = [
 
 const shots = process.env.NOTESTEME_E2E_SHOTS === "1";
 
+/**
+ * 引擎限制（docs/ui/README.md 10.32）：Playwright 的 Firefox 159 在 axe 4.14 的 `aria-conditional-attr` 規則
+ * 分析新增抽屜的「調整這次的設定」區塊（`.add__run`）時，內容程序 SIGSEGV（signal 11，Page crashed），每次都重現；
+ * 只跑這條規則、只分析這個區塊也會崩潰，個別元素與最小重現的 HTML 不會。不是頁面的 JS 例外。
+ * 這一頁在 Firefox 標成 fixme；Chromium 與 WebKit 仍以完整規則檢查。不加排除規則。
+ */
+const FIREFOX_AXE_CRASH = new Map([
+  [
+    "/add?url=javascript%3Aalert(1)",
+    "Firefox 159 在 axe 的 aria-conditional-attr 分析新增抽屜時內容程序 SIGSEGV（引擎問題，見 docs/ui/README.md 10.32）",
+  ],
+]);
+
 test("a11yRoutes 每一條帶 fixture ID 的路由都對應到真資料", ({ env }) => {
   expect(unmappedFixtureRoutes(env)).toEqual([]);
 });
@@ -26,6 +39,10 @@ for (const route of e2eRoutes()) {
     if (!route.auth) test.use({ storageState: { cookies: [], origins: [] } });
     for (const vp of WIDTHS) {
       test(`axe ${vp.width}px 淺色與深色`, async ({ page, env }, info) => {
+        test.fixme(
+          info.project.name === "firefox" && FIREFOX_AXE_CRASH.has(route.source),
+          FIREFOX_AXE_CRASH.get(route.source),
+        );
         const r = route.at(env);
         await page.setViewportSize(vp);
         await page.emulateMedia({ colorScheme: "light" });
