@@ -6,6 +6,8 @@
 //       2. 沒有「持續掉幀」：連續 3 個以上的 frame 間隔超過 50ms（約 3 個 60Hz frame）；
 //       3. DOM 中的列數遠少於總數（虛擬化）。
 //     另外記錄 rAF 間隔的 p95 與超過 33.4ms 的比例。
+//   - 頁面持續掉幀時，再在同一個引擎捲動一份靜態清單當基準：基準也持續掉幀代表引擎在這台機器上
+//     量不出來（CI 的 WebKit 是軟體繪製），以具名的 fixme 標出，數值照樣記錄（docs/ui/README.md 10.32）。
 //   - 預設用 global setup 的 200 部（驗證虛擬化與捲動到底）；@perf10k 是真實 10,000 列的一次實測，
 //     資料由 genlib -cues 4 產生（列表不讀字幕），只在 NOTESTEME_E2E_PERF10K=1 時執行（browser.yml 的 perf job）。
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -144,23 +146,50 @@ async function scrollToBottom(page: Page, total: number, timeoutMs: number) {
   );
 }
 
+/** 最長的「連續超過 50ms 的 frame」 */
+function worstStreakOf(intervals: number[]) {
+  let streak = 0;
+  let worst = 0;
+  for (const d of intervals) {
+    streak = d > 50 ? streak + 1 : 0;
+    worst = Math.max(worst, streak);
+  }
+  return worst;
+}
+
+/**
+ * 基準：同一個引擎、同一個視窗，捲動一份沒有 JS、沒有樣式的靜態清單（與媒體庫同樣的列數與列高）。
+ * 用來分辨「頁面掉幀」與「這個引擎在這台機器上連最簡單的捲動都畫不到 60Hz」（CI 的 WebKit 是軟體繪製）。
+ */
+async function baselineScroll(page: Page, rows: number) {
+  await page.setContent(
+    `<div class="vlist" style="height:720px;overflow:auto">${Array.from(
+      { length: rows },
+      (_, i) =>
+        `<div aria-posinset="${i + 1}" style="height:88px;border-bottom:1px solid #ccc">Video ${i} about databases<br>YouTube · 2025-01-01 · 12:34</div>`,
+    ).join("")}</div>`,
+  );
+  const r = await scrollToBottom(page, rows, 60_000);
+  const sorted = [...r.intervals].sort((a, b) => a - b);
+  return {
+    worstStreak: worstStreakOf(r.intervals),
+    p95: sorted[Math.ceil(sorted.length * 0.95) - 1] ?? 0,
+  };
+}
+
 function judgeScroll(
   info: TestInfo,
   label: string,
   total: number,
   r: Awaited<ReturnType<typeof scrollToBottom>>,
+  baseline?: Awaited<ReturnType<typeof baselineScroll>>,
 ) {
   const sorted = [...r.intervals].sort((a, b) => a - b);
   const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1] ?? 0;
   const slow = r.intervals.filter((d) => d > 33.4).length / Math.max(1, r.intervals.length);
-  let streak = 0;
-  let worstStreak = 0;
-  for (const d of r.intervals) {
-    streak = d > 50 ? streak + 1 : 0;
-    worstStreak = Math.max(worstStreak, streak);
-  }
+  const worstStreak = worstStreakOf(r.intervals);
   const longest = Math.max(0, ...r.longTasks);
-  const note = `${r.intervals.length} frames、p95 ${p95.toFixed(1)}ms、>33ms ${(slow * 100).toFixed(1)}%、最長 ${Math.max(...r.intervals).toFixed(0)}ms、長工作 ${r.longTaskSupported ? `${r.longTasks.length} 個（最長 ${longest.toFixed(0)}ms）` : "不支援"}、DOM 最多 ${r.maxRows} 列`;
+  const note = `${r.intervals.length} frames、p95 ${p95.toFixed(1)}ms、>33ms ${(slow * 100).toFixed(1)}%、最長 ${Math.max(...r.intervals).toFixed(0)}ms、長工作 ${r.longTaskSupported ? `${r.longTasks.length} 個（最長 ${longest.toFixed(0)}ms）` : "不支援"}、DOM 最多 ${r.maxRows} 列${baseline ? `；基準（靜態清單）連續掉幀 ${baseline.worstStreak}、p95 ${baseline.p95.toFixed(1)}ms` : ""}`;
   record(info, {
     case: `${label} 連續掉幀`,
     value: worstStreak,
@@ -181,6 +210,12 @@ function judgeScroll(
   }
   expect(r.reached, `沒有捲到第 ${total} 列（到 ${r.reached}）`).toBeGreaterThanOrEqual(total);
   expect(r.maxRows, `DOM 裡有 ${r.maxRows} 列：沒有虛擬化`).toBeLessThan(Math.min(100, total / 2));
+  // 引擎限制（docs/ui/README.md 10.32）：連靜態清單都持續掉幀時，這台機器上的這個引擎量不出頁面的流暢度。
+  // 數值照樣記錄；判定以具名的 fixme 標出，不算通過
+  test.fixme(
+    worstStreak >= 3 && !!baseline && baseline.worstStreak >= 3,
+    `${info.project.name} 在這台機器上捲動靜態清單也持續掉幀（基準 ${baseline?.worstStreak} 個 frame、p95 ${baseline?.p95.toFixed(1)}ms），量不出頁面的流暢度：${note}`,
+  );
   expect(worstStreak, `持續掉幀：${note}`).toBeLessThan(3);
   if (r.longTaskSupported) expect(longest, `長工作超過 50ms：${note}`).toBeLessThanOrEqual(50);
 }
@@ -217,7 +252,10 @@ test.describe("NFR-PERF-10", () => {
     const total = Number(await page.locator("[aria-setsize]").first().getAttribute("aria-setsize"));
     expect(total).toBeGreaterThan(150);
     const r = await scrollToBottom(page, total, 60_000);
-    judgeScroll(info, `捲動 ${total} 列`, total, r);
+    // 頁面掉幀時才量基準（同一個 page，量完頁面才換內容）
+    const baseline =
+      worstStreakOf(r.intervals) >= 3 ? await baselineScroll(page, total) : undefined;
+    judgeScroll(info, `捲動 ${total} 列`, total, r, baseline);
   });
 });
 
@@ -268,7 +306,9 @@ test.describe("NFR-PERF-10 @perf10k", () => {
     const total = Number(await page.locator("[aria-setsize]").first().getAttribute("aria-setsize"));
     expect(total).toBe(10_000);
     const r = await scrollToBottom(page, total, 12 * 60_000);
+    const baseline =
+      worstStreakOf(r.intervals) >= 3 ? await baselineScroll(page, total) : undefined;
     await ctx.close();
-    judgeScroll(info, "捲動 10,000 列", total, r);
+    judgeScroll(info, "捲動 10,000 列", total, r, baseline);
   });
 });
