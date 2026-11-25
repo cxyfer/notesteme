@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"math"
 	"math/rand/v2"
@@ -34,6 +35,9 @@ type Profile struct {
 	Variants []subtitle.Variant
 	// Seed 決定標題與字幕文字。
 	Seed uint64
+	// TranslateTo 不為空時，每部影音另有一份這個語言的譯文（translated，時間與原文相同），
+	// 給雙語 SRT 與 ASS 的量測使用（OUT-R5）。
+	TranslateTo string
 }
 
 // lib-10k 的「每部 3 個版本的產出」解讀為 3 個字幕變體 source、normalized、segmented：
@@ -45,7 +49,7 @@ var threeVariants = []subtitle.Variant{subtitle.VariantSource, subtitle.VariantN
 var Lib10k = Profile{Name: "lib-10k", Items: 10000, Channels: 500, CuesPerItem: 600, Variants: threeVariants, Seed: 1}
 
 // ItemLong 是 nfr.md 的 item-long：一部 3 小時、約 3,000 句的影片。
-var ItemLong = Profile{Name: "item-long", Items: 1, Channels: 1, CuesPerItem: 3000, Variants: threeVariants, Seed: 2}
+var ItemLong = Profile{Name: "item-long", Items: 1, Channels: 1, CuesPerItem: 3000, Variants: threeVariants, Seed: 2, TranslateTo: "zh-Hant"}
 
 // ItemLongDuration 是 item-long 的片長。
 const ItemLongDuration = 3 * time.Hour
@@ -197,6 +201,8 @@ type itemSpec struct {
 	cues      []subtitle.Cue
 	variants  []subtitle.Variant
 	failSeg   bool
+	// translated 是譯文（沒有時為 nil）。
+	translated *subtitle.Transcript
 }
 
 // 標題的主題：列表與標題搜尋的 bench 用 PostgreSQL（每 4 部一部）、Agile（每 3 部一部）篩選。
@@ -214,18 +220,27 @@ func newItemSpec(p Profile, i int) itemSpec {
 		cues[1].Timing = subtitle.TimingInterpolated
 	}
 	dur := int(cues[len(cues)-1].EndMS/1000) + 1
+	var translated *subtitle.Transcript
+	if p.TranslateTo != "" && p.TranslateTo != lang {
+		tc := Cues(len(cues), p.TranslateTo, p.Seed*7_000_001+uint64(i))
+		for k := range tc {
+			tc[k].StartMS, tc[k].EndMS, tc[k].Timing = cues[k].StartMS, cues[k].EndMS, cues[k].Timing
+		}
+		translated = &subtitle.Transcript{Lang: p.TranslateTo, Variant: subtitle.VariantTranslated, Cues: tc}
+	}
 	return itemSpec{
-		n:         i,
-		platform:  platform,
-		extID:     fmt.Sprintf("bd%s%06d", p.Name[:3], i),
-		title:     fmt.Sprintf("Video %d about %s 與 %s", i, topicsA[i%len(topicsA)], topicsB[i%len(topicsB)]),
-		lang:      lang,
-		channel:   i % p.Channels,
-		durationS: dur,
-		published: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i%900) * time.Hour),
-		cues:      cues,
-		variants:  p.Variants,
-		failSeg:   i%97 == 5 && p.Items > 1,
+		translated: translated,
+		n:          i,
+		platform:   platform,
+		extID:      fmt.Sprintf("bd%08x%06d", fnv32(p.Name), i),
+		title:      fmt.Sprintf("Video %d about %s 與 %s", i, topicsA[i%len(topicsA)], topicsB[i%len(topicsB)]),
+		lang:       lang,
+		channel:    i % p.Channels,
+		durationS:  dur,
+		published:  time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i%900) * time.Hour),
+		cues:       cues,
+		variants:   p.Variants,
+		failSeg:    i%97 == 5 && p.Items > 1,
 	}
 }
 
@@ -258,7 +273,7 @@ func writeItem(ctx context.Context, r *store.Repo, dir, snap string, s *itemSpec
 		switch {
 		case stage == pipeline.StageSegment && s.failSeg:
 			state = store.StageState{Status: store.StatusFailed, ErrorClass: "transient", Message: "benchdata: 模擬失敗"}
-		case slices.Contains(doneStages, stage):
+		case slices.Contains(doneStages, stage), stage == pipeline.StageTranslate && s.translated != nil:
 			state = store.StageState{Status: store.StatusDone}
 		}
 		if err := r.SetStageState(ctx, run.ID, state); err != nil {
@@ -293,7 +308,22 @@ func writeItem(ctx context.Context, r *store.Repo, dir, snap string, s *itemSpec
 			return "", 0, err
 		}
 	}
-	return it.ID, int64(len(s.cues)), nil
+	indexed := int64(len(s.cues))
+	if s.translated != nil {
+		art, err := WriteCuesArtifact(dir, it.ID, *s.translated, parents, map[string]any{"stage": pipeline.StageTranslate, "benchdata": true})
+		if err != nil {
+			return "", 0, err
+		}
+		a, err := r.InsertArtifact(ctx, art)
+		if err != nil {
+			return "", 0, err
+		}
+		if err := r.SetStageResult(ctx, runs[pipeline.StageTranslate], store.StageResult{Executor: "local", ImplVersion: 1, ArtifactID: a.ID}); err != nil {
+			return "", 0, err
+		}
+		indexed += int64(len(s.translated.Cues))
+	}
+	return it.ID, indexed, nil
 }
 
 func itemURL(platform, ext string) string {
@@ -441,4 +471,11 @@ func Cues(n int, lang string, seed uint64) []subtitle.Cue {
 		t += dur + int64(rng.IntN(400))
 	}
 	return cues
+}
+
+// fnv32 讓不同 profile 的影音代號不重複（同一個資料目錄可以放多個 profile）。
+func fnv32(s string) uint32 {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s))
+	return h.Sum32()
 }
