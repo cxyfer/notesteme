@@ -48,6 +48,15 @@ AUTH-access.feature: Error messages follow Accept-Language while the code stays 
 AUTH-access.feature: A message with a parameter is translated around the parameter [example 1]
 AUTH-access.feature: A message with a parameter is translated around the parameter [example 2]
 AUTH-access.feature: A message with a parameter is translated around the parameter [example 3]
+AUTH-access.feature: Request validation errors name the first problem in the chosen language [example 1]
+AUTH-access.feature: Request validation errors name the first problem in the chosen language [example 2]
+AUTH-access.feature: Request validation errors name the first problem in the chosen language [example 3]
+AUTH-access.feature: Request validation errors name the first problem in the chosen language [example 4]
+AUTH-access.feature: Errors from handlers and domain checks are translated too [example 1]
+AUTH-access.feature: Errors from handlers and domain checks are translated too [example 2]
+AUTH-access.feature: Errors from handlers and domain checks are translated too [example 3]
+AUTH-access.feature: Errors from handlers and domain checks are translated too [example 4]
+AUTH-access.feature: Errors from handlers and domain checks are translated too [example 5]
 CLI-cli.feature: A second server on the same data directory refuses to start
 CLI-cli.feature: Without a running server the CLI opens the database itself
 CLI-cli.feature: With a running server the CLI goes through it

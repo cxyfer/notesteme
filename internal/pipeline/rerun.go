@@ -286,7 +286,7 @@ func (p *Pipeline) rerunStart(ctx context.Context, r *store.Repo, itemID, from s
 // 還沒有切分過是一筆 path 為 chunks 的錯誤；編號不存在於切分中，每一個回一筆 path 為 chunks[i] 的錯誤，訊息帶現有的編號。
 func checkRerunChunks(stage string, requested, existing []int) []validate.FieldError {
 	if len(existing) == 0 {
-		return []validate.FieldError{{Path: "chunks", Message: "尚無 chunk 切分：" + stage + " 還沒有用 LLM 處理過，請先不指定 chunks 重跑。"}}
+		return []validate.FieldError{{Path: "chunks", Message: fmt.Sprintf("尚無 chunk 切分：%s 還沒有用 LLM 處理過，請先不指定 chunks 重跑。", stage)}}
 	}
 	var fs []validate.FieldError
 	for i, c := range requested {

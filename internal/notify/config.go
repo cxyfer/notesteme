@@ -333,9 +333,9 @@ func ValidateEvents(events []string) []validate.FieldError {
 		path := "events." + strconv.Itoa(i)
 		switch {
 		case !slices.Contains(Events, e):
-			errs.add(path, "不認得的事件："+e+"。")
+			errs.add(path, fmt.Sprintf("不認得的事件：%s。", e))
 		case slices.Index(events, e) != i:
-			errs.add(path, "重複的事件："+e+"。")
+			errs.add(path, fmt.Sprintf("重複的事件：%s。", e))
 		}
 	}
 	return errs

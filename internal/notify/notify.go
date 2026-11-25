@@ -169,7 +169,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Info, error) {
 	var cfg Config
 	switch {
 	case !contains(Kinds, in.Kind):
-		fields = append(fields, validate.FieldError{Path: "kind", Message: "不支援的通知種類：" + in.Kind + "。"})
+		fields = append(fields, validate.FieldError{Path: "kind", Message: fmt.Sprintf("不支援的通知種類：%s。", in.Kind)})
 	default:
 		var errs []validate.FieldError
 		cfg, errs = ValidateConfig(in.Kind, in.Config, s.d.Hosts)

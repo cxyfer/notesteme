@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"slices"
@@ -196,7 +197,7 @@ func (f fieldErrs) err() error {
 	if len(f) == 0 {
 		return nil
 	}
-	e := apierr.New(http.StatusUnprocessableEntity, apierr.CodeInvalidInput, f[0].Path+"："+f[0].Message)
+	e := apierr.Newf(http.StatusUnprocessableEntity, apierr.CodeInvalidInput, "field_invalid", f[0].Path, f[0].Message)
 	e.Errors = append([]validate.FieldError{}, f...)
 	return e
 }
@@ -209,7 +210,9 @@ func plainText(s string) bool {
 	return !strings.ContainsFunc(s, unicode.IsControl)
 }
 
-func oneOf(vals []string) string { return "必須是 " + strings.Join(vals, "、") + " 之一。" }
+func oneOf(vals []string) string {
+	return fmt.Sprintf("必須是 %s 之一。", strings.Join(vals, "、"))
+}
 
 func (f *fieldErrs) enum(path, v string, vals []string) {
 	if v != "" && !slices.Contains(vals, v) {
@@ -499,7 +502,7 @@ func (rt *routes) lookup(ctx context.Context, in *lookupInput) (*lookupOutput, e
 	var errs fieldErrs
 	switch {
 	case in.Platform == "":
-		errs.add("query.platform", "請指定平台（"+strings.Join(listPlatforms, "、")+"）。")
+		errs.add("query.platform", fmt.Sprintf("請指定平台（%s）。", strings.Join(listPlatforms, "、")))
 	default:
 		errs.enum("query.platform", in.Platform, listPlatforms)
 	}

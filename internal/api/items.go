@@ -977,9 +977,7 @@ func (rt *routes) mapErr(ctx context.Context, err error) error {
 	case errors.Is(err, pipeline.ErrChannel):
 		return newError(http.StatusUnprocessableEntity, CodeChannel, err.Error())
 	case errors.As(err, &inv):
-		e := newError(http.StatusUnprocessableEntity, CodeInvalidInput, inv.Error())
-		e.Errors = inv.Fields
-		return e
+		return fieldsError(http.StatusUnprocessableEntity, CodeInvalidInput, inv.Msg, inv.Fields)
 	case errors.As(err, &iu):
 		e := newError(http.StatusConflict, iu.Code, iu.Error())
 		e.UsedBy = iu.UsedBy

@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -188,7 +187,7 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 	cfg.DocsPath = ""
 	cfg.SchemasPath = ""
 	cfg.CreateHooks = nil
-	cfg.Transformers = append(cfg.Transformers, localizeErrors)
+	cfg.Transformers = append(cfg.Transformers, apierr.LocalizeTransformer)
 	api := humago.New(mux, cfg)
 
 	r := &routes{d: d, api: api}
@@ -375,7 +374,7 @@ func (rt *routes) readyz(ctx context.Context, _ *struct{}) (*statusOutput, error
 		}
 	}
 	if len(failed) > 0 {
-		e := newError(http.StatusServiceUnavailable, CodeNotReady, "服務尚未就緒："+strings.Join(failed, "、")+" 無法使用。")
+		e := apierr.Newf(http.StatusServiceUnavailable, CodeNotReady, "not_ready", apierr.List(failed))
 		e.Failed = failed
 		return nil, e
 	}

@@ -412,7 +412,7 @@ func CheckShareRequest(req HubShareRequest) error {
 		return e
 	}
 	if !slices.Contains(hubshare.Licenses, req.License) {
-		return hubErr(http.StatusUnprocessableEntity, "license_invalid", "不支援的授權："+clip(req.License, 100)+"。")
+		return hubErr(http.StatusUnprocessableEntity, "license_invalid", fmt.Sprintf("不支援的授權：%s。", clip(req.License, 100)))
 	}
 	return nil
 }
@@ -527,7 +527,7 @@ func (p *Pipeline) shareArtifacts(ctx context.Context, it store.Item, req HubSha
 			})
 			if i < 0 || !slices.Contains(kindOrder, want.Kind) {
 				return nil, nil, hubErr(http.StatusUnprocessableEntity, "artifact_not_found",
-					"這部影音沒有「"+clip(cmpOr(want.Variant, want.Kind), 40)+"（"+clip(cmpOr(want.Lang, "-"), 20)+"）」的字幕。")
+					fmt.Sprintf("這部影音沒有「%s（%s）」的字幕。", clip(cmpOr(want.Variant, want.Kind), 40), clip(cmpOr(want.Lang, "-"), 20)))
 			}
 			if !slices.ContainsFunc(chosen, func(a store.Artifact) bool { return a.ID == cur[i].ID }) {
 				chosen = append(chosen, cur[i])

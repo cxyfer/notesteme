@@ -1,18 +1,13 @@
 package apierr
 
 import (
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"net/http"
-	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
+	"unicode"
 )
 
 func TestNegotiate(t *testing.T) {
@@ -89,11 +84,48 @@ func TestLocalize(t *testing.T) {
 
 var placeholder = regexp.MustCompile(`\{\d+\}`)
 
-// 目錄本身：每一則都有三種語言，範本的參數三種語言相同。
+// 目錄本身：每一則都有三種語言，範本的參數三種語言相同，同一句不會出現在兩個目錄中。
 func TestCatalogComplete(t *testing.T) {
-	for k, v := range messages {
-		if strings.TrimSpace(v.hans) == "" || strings.TrimSpace(v.en) == "" {
-			t.Errorf("%q 缺少翻譯", k)
+	seen := map[string]string{}
+	for name, m := range map[string]map[string]translation{"messages": messages, "domainMessages": domainMessages, "hubMessages": hubMessages} {
+		for k, v := range m {
+			if strings.TrimSpace(v.hans) == "" || strings.TrimSpace(v.en) == "" {
+				t.Errorf("%q 缺少翻譯", k)
+			}
+			if prev, dup := seen[k]; dup && !(name == "domainMessages" && humaFixedReasons[k] != (translation{})) {
+				t.Errorf("%q 同時在 %s 與 %s", k, prev, name)
+			}
+			seen[k] = name
+		}
+	}
+	verb := regexp.MustCompile(`%[sdqvg]`)
+	for _, f := range compiledFormats {
+		n := len(verb.FindAllString(f.hant, -1))
+		for _, s := range []string{f.hans, f.en} {
+			got := placeholder.FindAllString(s, -1)
+			uniq := map[string]bool{}
+			for _, g := range got {
+				uniq[g] = true
+			}
+			if len(uniq) != n {
+				t.Errorf("格式 %q 有 %d 個參數，翻譯 %q 用了 %d 個", f.hant, n, s, len(uniq))
+			}
+		}
+	}
+	// 每一則格式以範例參數組出的句子只符合它自己（沒有歧義），而且翻譯得出來。
+	for _, f := range compiledFormats {
+		sample := strings.NewReplacer("%s", "S1", "%v", "V1", "%d", "7", "%g", "2.5", "%q", `"q1"`, "%%", "%").Replace(f.hant)
+		if !f.re.MatchString(sample) {
+			t.Errorf("格式 %q 不符合自己的範例 %q", f.hant, sample)
+			continue
+		}
+		for _, g := range compiledFormats {
+			if g.hant != f.hant && g.re.MatchString(sample) && g.literal >= f.literal {
+				t.Errorf("格式 %q 的範例 %q 也符合 %q（歧義）", f.hant, sample, g.hant)
+			}
+		}
+		if en, ok := Translate(sample, LangEn); !ok || en == sample {
+			t.Errorf("格式 %q 翻譯不出來：%q", f.hant, en)
 		}
 	}
 	for k, v := range templates {
@@ -117,118 +149,26 @@ func TestCatalogComplete(t *testing.T) {
 	}
 }
 
-// internal/api 中直接寫成字串常值的錯誤訊息都要在目錄中（NFR-I18N-2）；不是常值的（domain 錯誤的 err.Error()、
-// 字串串接）列出來，作為「尚未走目錄」的清單（見 nfr.md 第 10 節 NFR-I18N-2 的修訂紀錄）。
-func TestAPIErrorLiteralsAreInCatalog(t *testing.T) {
-	fset := token.NewFileSet()
-	files, err := filepath.Glob("../api/*.go")
-	if err != nil || len(files) == 0 {
-		t.Fatalf("找不到 internal/api：%v", err)
+// 英文的訊息、範本與格式不含中文字（漏翻的部分會原樣出現在英文介面）。
+func TestCatalogEnglishHasNoHan(t *testing.T) {
+	han := func(s string) bool {
+		return strings.ContainsFunc(s, func(r rune) bool { return unicode.Is(unicode.Han, r) })
 	}
-	var literal, dynamic, newf int
-	var notInCatalog, dynamicSites []string
-	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") {
-			continue
+	for _, m := range []map[string]translation{messages, domainMessages, hubMessages} {
+		for k, v := range m {
+			if han(v.en) {
+				t.Errorf("%q 的英文含中文字：%q", k, v.en)
+			}
 		}
-		file, err := parser.ParseFile(fset, f, nil, 0)
-		if err != nil {
-			t.Fatal(err)
+	}
+	for _, f := range compiledFormats {
+		if han(f.en) {
+			t.Errorf("格式 %q 的英文含中文字：%q", f.hant, f.en)
 		}
-		ast.Inspect(file, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			idx := -1
-			switch fn := call.Fun.(type) {
-			case *ast.Ident:
-				switch fn.Name {
-				case "newError":
-					idx = 2
-				case "errForbidden":
-					idx = 0
-				}
-			case *ast.SelectorExpr:
-				if x, ok := fn.X.(*ast.Ident); ok && x.Name == "apierr" && fn.Sel.Name == "New" {
-					idx = 2
-				}
-				// 帶參數的訊息：範本名稱必須存在
-				if x, ok := fn.X.(*ast.Ident); ok && x.Name == "apierr" && fn.Sel.Name == "Newf" && len(call.Args) > 2 {
-					newf++
-					if lit, ok := call.Args[2].(*ast.BasicLit); ok {
-						if k, _ := strconv.Unquote(lit.Value); templates[k].hant == "" {
-							t.Errorf("沒有這個訊息範本：%s", k)
-						}
-					}
-				}
-			}
-			if idx < 0 || len(call.Args) <= idx {
-				return true
-			}
-			pos := fset.Position(call.Pos())
-			site := filepath.Base(pos.Filename) + ":" + strconv.Itoa(pos.Line)
-			switch arg := call.Args[idx].(type) {
-			case *ast.BasicLit:
-				s, err := strconv.Unquote(arg.Value)
-				if err != nil {
-					t.Fatal(err)
-				}
-				literal++
-				if _, ok := messages[s]; !ok {
-					notInCatalog = append(notInCatalog, site+" "+s)
-				}
-			case *ast.Ident:
-				// newError 與 errForbidden 自己的定義（參數 message）
-				if arg.Name == "message" || arg.Name == "msg" && strings.HasPrefix(site, "errors.go") {
-					return true
-				}
-				dynamic++
-				dynamicSites = append(dynamicSites, site+" "+arg.Name)
-			default:
-				// defaultMessages[...].msg 是 DefaultMessages 的訊息，已在目錄中
-				if sel, ok := arg.(*ast.SelectorExpr); ok && sel.Sel.Name == "msg" {
-					if ix, ok := sel.X.(*ast.IndexExpr); ok {
-						if id, ok := ix.X.(*ast.Ident); ok && id.Name == "defaultMessages" {
-							literal++
-							return true
-						}
-					}
-				}
-				dynamic++
-				dynamicSites = append(dynamicSites, site+" "+exprString(fset, arg))
-			}
-			return true
-		})
 	}
-	for _, s := range notInCatalog {
-		t.Errorf("訊息不在目錄中（加進 internal/apierr/catalog.go 的 messages，或改用 Newf）：%s", s)
+	for k, v := range templates {
+		if han(v.en) {
+			t.Errorf("範本 %s 的英文含中文字：%q", k, v.en)
+		}
 	}
-	t.Logf("internal/api：字串常值 %d 處（都在目錄中）、帶參數的範本 %d 處、不是常值 %d 處", literal, newf, dynamic)
-	for _, s := range dynamicSites {
-		t.Logf("  未走目錄：%s", s)
-	}
-}
-
-func exprString(fset *token.FileSet, e ast.Expr) string {
-	start, end := fset.Position(e.Pos()), fset.Position(e.End())
-	if start.Filename != end.Filename {
-		return "?"
-	}
-	src, err := readRange(start.Filename, start.Offset, end.Offset)
-	if err != nil {
-		return "?"
-	}
-	if len(src) > 80 {
-		src = src[:80] + "…"
-	}
-	return src
-}
-
-func readRange(name string, start, end int) (string, error) {
-	b, err := os.ReadFile(name)
-	if err != nil || end > len(b) || start > end {
-		return "", err
-	}
-	return string(b[start:end]), nil
 }

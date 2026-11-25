@@ -295,7 +295,7 @@ type CreatedToken struct {
 }
 
 func invalid(fields []validate.FieldError) *apierr.Error {
-	e := apierr.New(http.StatusUnprocessableEntity, apierr.CodeInvalidInput, fields[0].Path+"："+fields[0].Message)
+	e := apierr.Newf(http.StatusUnprocessableEntity, apierr.CodeInvalidInput, "field_invalid", fields[0].Path, fields[0].Message)
 	e.Errors = fields
 	return e
 }
@@ -346,7 +346,7 @@ func (s *Service) CreateToken(ctx context.Context, p *Principal, in NewToken) (C
 		}
 	}
 	if len(notHeld) > 0 {
-		e := apierr.New(http.StatusUnprocessableEntity, CodePermissionNotHeld, "token 不能有帳號沒有的權限："+notHeld[0].Path+"。")
+		e := apierr.New(http.StatusUnprocessableEntity, CodePermissionNotHeld, fmt.Sprintf("token 不能有帳號沒有的權限：%s。", notHeld[0].Path))
 		e.Errors = notHeld
 		return CreatedToken{}, e
 	}

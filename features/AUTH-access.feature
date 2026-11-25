@@ -212,3 +212,40 @@ Feature: Sign-in and tokens
       | en       | duration_min must be a non-negative integer (seconds). |
       | zh-Hans  | duration_min 必须是不小于 0 的整数（秒）。                      |
       | ja       | duration_min 必須是不小於 0 的整數（秒）。                      |
+
+  @M1 @AUTH-01 @AUTH-R23
+  Scenario Outline: Request validation errors name the first problem in the chosen language
+    Given the server is running
+    And the owner is signed in
+    When the owner sends "<request>" with the header "Accept-Language" set to "<language>"
+    Then the response status is 422
+    And the response contains:
+      """
+      { "code": "invalid_request", "message": "<message>" }
+      """
+
+    Examples:
+      | request                  | language | message                                                                        |
+      | GET /api/items?limit=abc | en       | The request content is invalid: query.limit must be an integer.                |
+      | GET /api/items?limit=abc | zh-Hans  | 请求内容不正确：query.limit 必须是整数。                                                    |
+      | GET /api/items?limit=abc | zh-TW    | 請求內容不正確：query.limit 必須是整數。                                                    |
+      | GET /api/items?limit=999 | en       | The request content is invalid: query.limit must be less than or equal to 200. |
+
+  @M1 @AUTH-01 @AUTH-R23
+  Scenario Outline: Errors from handlers and domain checks are translated too
+    Given the server is running
+    And the owner is signed in
+    When the owner sends "<request>" with the header "Accept-Language" set to "<language>"
+    Then the response status is <status>
+    And the response contains:
+      """
+      { "code": "<code>", "message": "<message>" }
+      """
+
+    Examples:
+      | request                               | language | status | code            | message                                                             |
+      | GET /api/search?q=x&limit=999         | en       | 422    | invalid_request | limit must be an integer from 1 to 100.                             |
+      | GET /api/ass-styles/nonexistent       | en       | 404    | not_found       | This style was not found.                                           |
+      | GET /api/prompts/nonexistent/versions | en       | 404    | not_found       | This prompt was not found.                                          |
+      | GET /api/costs?group_by=bogus         | en       | 422    | invalid_request | group_by can only be day, provider, model, stage, channel or item. |
+      | GET /api/costs?group_by=bogus         | zh-Hans  | 422    | invalid_request | group_by 只能是 day、provider、model、stage、channel 或 item。           |

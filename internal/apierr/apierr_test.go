@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -19,6 +20,32 @@ func TestHumaNewErrorUsesSharedFormat(t *testing.T) {
 	}
 	if e.Code != CodeInvalidInput || e.Message != "請求內容不正確。" || len(e.Details) != 1 {
 		t.Errorf("e = %+v", e)
+	}
+}
+
+// Huma 的驗證錯誤：message 帶第一個錯誤的位置與原因，原因依語言翻譯；details 照 Huma 的原文，不隨語言改變。
+func TestHumaNewErrorNamesFirstProblem(t *testing.T) {
+	err := huma.NewError(http.StatusUnprocessableEntity, "validation failed",
+		&huma.ErrorDetail{Location: "query.limit", Message: "expected number <= 200", Value: 999},
+		&huma.ErrorDetail{Location: "body.name", Message: "expected required property name to be present"})
+	e := err.(*Error)
+	if e.Code != CodeInvalidInput || e.Message != "請求內容不正確：query.limit 必須小於或等於 200。" || len(e.Details) != 2 {
+		t.Fatalf("e = %+v", e)
+	}
+	en := Localize(e, LangEn)
+	if en.Message != "The request content is invalid: query.limit must be less than or equal to 200." || en.Code != e.Code {
+		t.Errorf("en = %+v", en)
+	}
+	if hans := Localize(e, LangZhHans); hans.Message != "请求内容不正确：query.limit 必须小于或等于 200。" {
+		t.Errorf("zh-Hans = %+v", hans)
+	}
+	if !slices.Equal(en.Details, e.Details) {
+		t.Errorf("details 隨語言改變：%v / %v", en.Details, e.Details)
+	}
+	// 不認得的原因照 Huma 的原文放進外層句子
+	other := huma.NewError(http.StatusUnprocessableEntity, "x", &huma.ErrorDetail{Location: "body.x", Message: "something new"}).(*Error)
+	if other.Message != "請求內容不正確：body.x something new。" {
+		t.Errorf("不認得的原因：%q", other.Message)
 	}
 }
 

@@ -1,10 +1,5 @@
 package apierr
 
-import (
-	"strconv"
-	"strings"
-)
-
 // 錯誤訊息目錄（NFR-I18N-2）。
 //
 //   - messages：固定的訊息，以繁中原文為 key（gettext 的做法），值是简中與 English。
@@ -129,11 +124,59 @@ var messages = map[string]translation{
 		"尚未设置 Hub。请在配置文件加入 hub.url，并在设置页填入 Hub token。",
 		"Hub is not set up. Add hub.url to the config file and enter the Hub token on the settings page.",
 	},
+
+	// handler 自己的驗證（上傳、匯入檔、批次、檢視、試跑、樣式預覽、字幕匯入）
+	"檢視至少要有一個篩選條件或分組。":                    {"检视至少要有一个筛选条件或分组。", "A saved view needs at least one filter or grouping."},
+	"名稱不能含控制字元（例如換行、tab）。":                {"名称不能含控制字符（例如换行、tab）。", "The name cannot contain control characters (such as line breaks or tabs)."},
+	"名稱不能是空的。":                            {"名称不能是空的。", "The name cannot be empty."},
+	"overrides 必須是 JSON 物件。":              {"overrides 必须是 JSON 对象。", "overrides must be a JSON object."},
+	"請提供要上傳的檔案（欄位 file）。":                 {"请提供要上传的文件（字段 file）。", "Provide the file to upload (the file field)."},
+	"overrides 太長（上限 64 KiB）。":            {"overrides 太长（上限 64 KiB）。", "overrides is too long (the limit is 64 KiB)."},
+	"一次只能上傳一個檔案（file）。":                   {"一次只能上传一个文件（file）。", "Only one file (file) can be uploaded at a time."},
+	"無法判斷檔案格式，請指定 format（srt、vtt 或 ass）。": {"无法判断文件格式，请指定 format（srt、vtt 或 ass）。", "The file format cannot be determined; specify format (srt, vtt or ass)."},
+	"檔案裡沒有任何字幕。":                          {"文件里没有任何字幕。", "The file has no subtitles."},
+	"檔案中有過長的一行。":                          {"文件中有过长的一行。", "The file has a line that is too long."},
+	"字幕檔的格式不正確。":                          {"字幕文件的格式不正确。", "The subtitle file is malformed."},
+	"lang 太長。":                            {"lang 太长。", "lang is too long."},
+	"LLM 請求失敗。":                           {"LLM 请求失败。", "The LLM request failed."},
+	"to 必須是 HH:MM:SS 或 MM:SS（可帶小數）。":      {"to 必须是 HH:MM:SS 或 MM:SS（可带小数）。", "to must be HH:MM:SS or MM:SS (decimals allowed)."},
+	"from 必須是 HH:MM:SS 或 MM:SS（可帶小數）。":    {"from 必须是 HH:MM:SS 或 MM:SS（可带小数）。", "from must be HH:MM:SS or MM:SS (decimals allowed)."},
+	"無法讀取 path 指定的檔案，或超過大小上限。":            {"无法读取 path 指定的文件，或超过大小上限。", "The file given by path cannot be read, or it exceeds the size limit."},
+	"檔案超過大小上限。":                           {"文件超过大小上限。", "The file exceeds the size limit."},
+	"無法讀取 path 指定的檔案：找不到，或不是一般檔案。":        {"无法读取 path 指定的文件：找不到，或不是普通文件。", "The file given by path cannot be read: it was not found or is not a regular file."},
+	"path 必須是絕對路徑。":                       {"path 必须是绝对路径。", "path must be an absolute path."},
+	"內容超過大小上限。":                           {"内容超过大小上限。", "The content exceeds the size limit."},
+	"請提供 path（伺服器上的檔案）或 content（檔案內容）。":   {"请提供 path（服务器上的文件）或 content（文件内容）。", "Provide path (a file on the server) or content (the file content)."},
+	"path 與 content 只能擇一。":                {"path 与 content 只能二选一。", "Provide either path or content, not both."},
+	"ids 必須有 1～100 部影音。":                  {"ids 必须有 1～100 个媒体。", "ids must have 1–100 items."},
+	"一次最多選 500 部影音。":                      {"一次最多选 500 个媒体。", "At most 500 items can be selected at once."},
+	"找不到處理方案 。":                           {"找不到处理方案 。", "The profile was not found."},
+	"from 必須是 pipeline 的步驟。":              {"from 必须是 pipeline 的步骤。", "from must be a pipeline stage."},
+	"至少要選一部影音。":                           {"至少要选一个媒体。", "Select at least one item."},
+	"item：找不到這部影音。":                       {"item：找不到这个媒体。", "item: this item was not found."},
+	"at：不是正確的時間。":                         {"at：不是正确的时间。", "at: not a valid time."},
+	"item：請指定影音。":                         {"item：请指定媒体。", "item: specify an item."},
 }
 
 // templates 是帶參數的訊息：{0}、{1}… 依序換成參數。key 是穩定的名稱，與 code 無關。
 var templates = map[string]struct{ hant, hans, en string }{
-	"forbidden_scope": {"權限不足：需要 {0} scope。", "权限不足：需要 {0} scope。", "Permission denied: the {0} scope is required."},
+	// 欄位錯誤：{0} 是路徑（不翻譯），{1} 是說明（在目錄中時一併翻譯）。繁中與 domain 套件原本的「路徑：說明」逐字相同。
+	"field_invalid":           {"{0}：{1}", "{0}：{1}", "{0}: {1}"},
+	"not_ready":               {"服務尚未就緒：{0} 無法使用。", "服务尚未就绪：{0} 无法使用。", "The service is not ready: {0} unavailable."},
+	"view_exists":             {"已經有名稱是「{0}」的檢視。", "已经有名称是「{0}」的检视。", "A saved view named \"{0}\" already exists."},
+	"view_limit":              {"最多只能儲存 {0} 個檢視，請先刪除不用的檢視。", "最多只能保存 {0} 个检视，请先删除不用的检视。", "At most {0} saved views can be stored. Delete unused views first."},
+	"search_limit":            {"limit 必須是 1～{0} 的整數。", "limit 必须是 1～{0} 的整数。", "limit must be an integer from 1 to {0}."},
+	"upload_too_many_parts":   {"欄位太多（上限 {0} 個）。", "字段太多（上限 {0} 个）。", "Too many fields (the limit is {0})."},
+	"upload_field_too_long":   {"{0} 太長。", "{0} 太长。", "{0} is too long."},
+	"upload_until_invalid":    {"until 必須是 {0} 其中之一。", "until 必须是 {0} 其中之一。", "until must be one of {0}."},
+	"upload_unknown_field":    {"不支援的欄位：{0}。", "不支持的字段：{0}。", "Unsupported field: {0}."},
+	"import_path_ext":         {"path 的副檔名必須是 {0}。", "path 的扩展名必须是 {0}。", "The extension of path must be {0}."},
+	"batch_unknown_action":    {"不支援的批次動作 {0}。", "不支持的批量操作 {0}。", "Unsupported batch action {0}."},
+	"batch_profile_not_found": {"找不到處理方案 {0}。", "找不到处理方案 {0}。", "Profile {0} was not found."},
+	// Huma 產生的驗證錯誤：{0} 是位置（body.name、query.limit），{1} 是原因（huma.go 的 humaReasons）。
+	"huma_invalid_at":   {"請求內容不正確：{0} {1}。", "请求内容不正确：{0} {1}。", "The request content is invalid: {0} {1}."},
+	"huma_malformed_at": {"請求格式不正確：{0} {1}。", "请求格式不正确：{0} {1}。", "The request is malformed: {0} {1}."},
+	"forbidden_scope":   {"權限不足：需要 {0} scope。", "权限不足：需要 {0} scope。", "Permission denied: the {0} scope is required."},
 	"proxy_user_not_allowed": {
 		"這個帳號（{0}）不能使用 Notesteme。", "这个账号（{0}）不能使用 Notesteme。", "This account ({0}) is not allowed to use Notesteme.",
 	},
@@ -162,11 +205,4 @@ var templates = map[string]struct{ hant, hans, en string }{
 		"詞彙表已有 {0} 個詞，請先刪除不用的詞再接受新的術語。", "词汇表已有 {0} 个词，请先删除不用的词再接受新的术语。",
 		"The glossary already has {0} terms. Delete unused terms before accepting new ones.",
 	},
-}
-
-func fill(tmpl string, args []string) string {
-	for i, a := range args {
-		tmpl = strings.ReplaceAll(tmpl, "{"+strconv.Itoa(i)+"}", a)
-	}
-	return tmpl
 }

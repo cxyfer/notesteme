@@ -9,7 +9,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/toolexec"
 )
@@ -364,13 +366,17 @@ func TestUpdateRejectsInvalidVersionsBeforeRunningAnything(t *testing.T) {
 		_, err := e.m.Update(context.Background(), UpdateRequest{Pin: v})
 		if !errors.Is(err, ErrInvalidVersion) {
 			t.Errorf("Pin %q：err = %v，預期 ErrInvalidVersion", v, err)
+			continue
 		}
+		assertTranslated(t, err)
 	}
 	if n := len(e.runner.argvs()); n != 0 {
 		t.Errorf("版本不合法時不該執行任何指令（%d 次）：%v", n, e.runner.argvs())
 	}
 	if _, err := e.m.Update(context.Background(), UpdateRequest{Pin: "2026.11.10", Unpin: true}); !errors.Is(err, ErrInvalidRequest) {
 		t.Errorf("pin 與 unpin 同時指定：%v", err)
+	} else {
+		assertTranslated(t, err)
 	}
 }
 
@@ -666,5 +672,14 @@ func TestPruneKeepsOnlyCurrentAndPrevious(t *testing.T) {
 		if d == "2026.10.01" {
 			t.Errorf("最舊的 venv 應該被清掉：%v", got)
 		}
+	}
+}
+
+// assertTranslated：錯誤訊息會原樣成為 API 的 message，要在 apierr 的目錄中，英文版不含中文（NFR-I18N-2）。
+func assertTranslated(t *testing.T, err error) {
+	t.Helper()
+	en, ok := apierr.Translate(err.Error(), apierr.LangEn)
+	if !ok || strings.ContainsFunc(en, func(r rune) bool { return unicode.Is(unicode.Han, r) }) {
+		t.Errorf("錯誤訊息沒有完整翻譯：%q → %q", err.Error(), en)
 	}
 }

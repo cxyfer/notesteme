@@ -134,7 +134,7 @@ func (rt *routes) limitAccount(userID string) *apierr.Error {
 func (rt *routes) limitRaw(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if e := rt.limitAnonymous(r.RemoteAddr); e != nil {
-			writeRawErr(w, e)
+			writeRawErr(w, r, e)
 			return
 		}
 		next(w, r)

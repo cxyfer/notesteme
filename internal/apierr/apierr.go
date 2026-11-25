@@ -10,8 +10,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/danielgtaylor/huma/v2"
-
 	"github.com/cxyfer/notesteme/internal/validate"
 )
 
@@ -99,30 +97,30 @@ func Newf(status int, code, key string, args ...string) *Error {
 	if !ok {
 		panic("apierr: 沒有這個訊息範本 " + key)
 	}
-	return &Error{Status: status, Code: code, Message: fill(t.hant, args), msgKey: key, msgArgs: args}
+	return &Error{Status: status, Code: code, Message: fill(t.hant, args, LangZhHant), msgKey: key, msgArgs: args}
 }
 
-// Localize 回傳 lang 語言的錯誤（NFR-I18N-2）：只換 message，code 與其他欄位不變。
+// Localize 回傳 lang 語言的錯誤（NFR-I18N-2）：只換 message，code 與其他欄位（含 details、errors）不變。
 // 繁中、目錄中沒有的訊息或 e 為 nil 時回傳 e 本身；有翻譯時回傳複本，不改動 e（錯誤值可能是共用的）。
+// 帶參數的範本（Newf）換整句、參數中目錄裡的句子也翻譯；其他訊息交給 translateText（固定句子與 domain 格式）。
 func Localize(e *Error, lang string) *Error {
 	if e == nil || lang == LangZhHant || lang == "" {
 		return e
 	}
 	msg, ok := "", false
 	if t, has := templates[e.msgKey]; e.msgKey != "" && has {
+		args := make([]string, len(e.msgArgs))
+		for i, a := range e.msgArgs {
+			args[i] = translateArg(a, lang, 1) // 參數是目錄中的句子時（例如欄位的說明）一併翻譯
+		}
 		switch lang {
 		case LangZhHans:
-			msg, ok = fill(t.hans, e.msgArgs), true
+			msg, ok = fill(t.hans, args, lang), true
 		case LangEn:
-			msg, ok = fill(t.en, e.msgArgs), true
+			msg, ok = fill(t.en, args, lang), true
 		}
-	} else if tr, has := messages[e.Message]; has {
-		switch lang {
-		case LangZhHans:
-			msg, ok = tr.hans, true
-		case LangEn:
-			msg, ok = tr.en, true
-		}
+	} else {
+		msg, ok = translateText(e.Message, lang, 0)
 	}
 	if !ok {
 		return e
@@ -135,22 +133,6 @@ func Localize(e *Error, lang string) *Error {
 // NotImplemented 是還沒有實作的路由的 501（M2 S0、M3-S0、M5-S0 的 stub）。
 func NotImplemented() *Error {
 	return New(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
-}
-
-func init() {
-	// Huma 產生的錯誤（請求驗證失敗等）也使用同一種格式。這是 Huma 的全域設定，只能在這裡設定一次。
-	huma.NewError = func(status int, msg string, errs ...error) huma.StatusError {
-		e := &Error{Status: status, Code: CodeInvalidInput, Message: msg}
-		if d, ok := DefaultMessages[status]; ok {
-			e.Code, e.Message = d.Code, d.Message
-		}
-		for _, err := range errs {
-			if err != nil {
-				e.Details = append(e.Details, err.Error())
-			}
-		}
-		return e
-	}
 }
 
 // Write 在 Huma 之外（middleware、一般 handler）寫出錯誤回應。

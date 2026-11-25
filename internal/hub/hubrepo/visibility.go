@@ -1,6 +1,7 @@
 package hubrepo
 
 import (
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -62,7 +63,7 @@ func fieldError(path, msg string) validate.FieldError {
 }
 
 func invalidField(path, msg string) *apierr.Error {
-	e := apierr.New(http.StatusUnprocessableEntity, apierr.CodeInvalidInput, path+"："+msg)
+	e := apierr.Newf(http.StatusUnprocessableEntity, apierr.CodeInvalidInput, "field_invalid", path, msg)
 	e.Errors = []validate.FieldError{fieldError(path, msg)}
 	return e
 }
@@ -72,7 +73,7 @@ func invalidField(path, msg string) *apierr.Error {
 func CheckRequested(v, site string, groupExists func(string) bool) *apierr.Error {
 	if g, ok := GroupOf(v); ok {
 		if !groupExists(g) {
-			return invalidField("visibility", "不認得的群組："+g+"。")
+			return invalidField("visibility", fmt.Sprintf("不認得的群組：%s。", g))
 		}
 		return nil
 	}
@@ -80,7 +81,7 @@ func CheckRequested(v, site string, groupExists func(string) bool) *apierr.Error
 		return invalidField("visibility", "必須是 public、authenticated、private 或 group:<群組名稱>。")
 	}
 	if rank(v) > rank(site) {
-		return invalidField("visibility", "可見度不能超過站台上限（"+site+"）。")
+		return invalidField("visibility", fmt.Sprintf("可見度不能超過站台上限（%s）。", site))
 	}
 	return nil
 }

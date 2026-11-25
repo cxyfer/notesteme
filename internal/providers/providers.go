@@ -273,7 +273,7 @@ func (c *Catalog) ping(ctx context.Context, id string, timeout time.Duration, p 
 	if p == nil {
 		return &errclass.Error{
 			Class: errclass.ClassNeedsAction, Source: id, Err: errclass.ErrNotConfigured,
-			Message: name + " 沒有設定 API key。", Actions: []string{ActionSetAPIKey},
+			Message: fmt.Sprintf("%s 沒有設定 API key。", name), Actions: []string{ActionSetAPIKey},
 		}
 	}
 	req, err := p.PingRequest(ctx)

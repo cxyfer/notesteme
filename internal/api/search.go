@@ -107,9 +107,8 @@ func (rt *routes) search(ctx context.Context, in *searchInput) (*searchOutput, e
 	if in.Limit != "" {
 		n, err := strconv.Atoi(in.Limit)
 		if err != nil || n < 1 || n > search.MaxLimit {
-			msg := fmt.Sprintf("limit 必須是 1～%d 的整數。", search.MaxLimit)
-			e := newError(http.StatusUnprocessableEntity, CodeInvalidInput, msg)
-			e.Errors = []validate.FieldError{{Path: "limit", Message: msg}}
+			e := apierr.Newf(http.StatusUnprocessableEntity, CodeInvalidInput, "search_limit", strconv.Itoa(search.MaxLimit))
+			e.Errors = []validate.FieldError{{Path: "limit", Message: e.Message}}
 			return nil, e
 		}
 		limit = n

@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/errclass"
 	"github.com/cxyfer/notesteme/internal/pipeline"
@@ -135,9 +137,7 @@ func (rt *routes) createView(ctx context.Context, in *createViewInput) (*viewOut
 	fields := validateViewName(name)
 	fields = append(fields, validateViewQuery(query)...)
 	if len(fields) > 0 {
-		e := newError(http.StatusUnprocessableEntity, CodeInvalidInput, fields[0].Path+"："+fields[0].Message)
-		e.Errors = fields
-		return nil, e
+		return nil, firstFieldError(http.StatusUnprocessableEntity, CodeInvalidInput, fields)
 	}
 	if rt.d.Store == nil {
 		return nil, newError(http.StatusNotImplemented, CodeNotImplemented, "這個功能尚未實作。")
@@ -149,9 +149,9 @@ func (rt *routes) createView(ctx context.Context, in *createViewInput) (*viewOut
 	v, err := rt.d.Store.InsertSavedView(ctx, name, raw, MaxViews)
 	switch {
 	case errors.Is(err, store.ErrViewExists):
-		return nil, newError(http.StatusConflict, CodeViewExists, fmt.Sprintf("已經有名稱是「%s」的檢視。", name))
+		return nil, apierr.Newf(http.StatusConflict, CodeViewExists, "view_exists", name)
 	case errors.Is(err, store.ErrViewLimit):
-		return nil, newError(http.StatusConflict, CodeViewLimit, fmt.Sprintf("最多只能儲存 %d 個檢視，請先刪除不用的檢視。", MaxViews))
+		return nil, apierr.Newf(http.StatusConflict, CodeViewLimit, "view_limit", strconv.Itoa(MaxViews))
 	case err != nil:
 		return nil, rt.mapErr(ctx, err)
 	}

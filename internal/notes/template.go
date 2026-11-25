@@ -58,7 +58,7 @@ func ParseTemplate(body string) (*template.Template, error) {
 		if m := lineRe.FindStringSubmatch(msg); m != nil {
 			return nil, &TemplateError{Message: fmt.Sprintf("模板第 %s 行有語法錯誤：%s。", m[1], m[2])}
 		}
-		return nil, &TemplateError{Message: "模板有語法錯誤：" + msg + "。"}
+		return nil, &TemplateError{Message: fmt.Sprintf("模板有語法錯誤：%s。", msg)}
 	}
 	if len(t.Templates()) > 1 {
 		return nil, &TemplateError{Message: "模板不能使用 define 或 block。"}
@@ -165,7 +165,7 @@ func checkArg(tree *parse.Tree, a parse.Node) error {
 
 func checkField(path string) error {
 	if !slices.Contains(templateFields, path) {
-		return &TemplateError{Message: "不認識的變數 ." + path + "。"}
+		return &TemplateError{Message: fmt.Sprintf("不認識的變數 .%s。", path)}
 	}
 	return nil
 }
@@ -182,7 +182,7 @@ func Render(body string, d Data) (string, error) {
 		if errors.As(err, &te) {
 			return "", te
 		}
-		return "", &TemplateError{Message: "模板無法套用：" + err.Error() + "。"}
+		return "", &TemplateError{Message: fmt.Sprintf("模板無法套用：%s。", err.Error())}
 	}
 	out := strings.ReplaceAll(buf.String(), "\r\n", "\n")
 	return strings.TrimRight(out, "\n") + "\n", nil

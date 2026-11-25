@@ -218,8 +218,12 @@ func (rt *routes) resumeQueue(ctx context.Context, in *classInput) (*queueOutput
 // mapQueueErr 把佇列設定的錯誤對應成 HTTP 錯誤：不認識的類別與不合法的上限是 422，其他是內部錯誤。
 func (rt *routes) mapQueueErr(ctx context.Context, err error) error {
 	if errors.Is(err, queue.ErrUnknownClass) || errors.Is(err, queue.ErrInvalidLimit) {
-		return newError(http.StatusUnprocessableEntity, CodeInvalidInput, err.Error()+"。")
+		// 訊息是 queue 包了細節的句子（加上句號）；兩種句子的格式在 apierr 的 domainFormats。
+		return newError(http.StatusUnprocessableEntity, CodeInvalidInput, queueErrorMessage(err))
 	}
 	rt.d.Log.ErrorContext(ctx, "調整佇列設定時發生錯誤", "error", err)
 	return asError(err)
 }
+
+// queueErrorMessage 是佇列設定錯誤的訊息：queue 的錯誤（「不認識的資源類別 …」「並行上限必須介於 1 與 64（…）」）加上句號。
+func queueErrorMessage(err error) string { return err.Error() + "。" }

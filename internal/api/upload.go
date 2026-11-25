@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -235,7 +236,7 @@ func (rt *routes) readUpload(ctx context.Context, mr *multipart.Reader, dir stri
 			return up, readError(err, limit)
 		}
 		if parts++; parts > maxUploadParts {
-			return up, invalid(fmt.Sprintf("欄位太多（上限 %d 個）。", maxUploadParts))
+			return up, apierr.Newf(http.StatusUnprocessableEntity, CodeInvalidInput, "upload_too_many_parts", strconv.Itoa(maxUploadParts))
 		}
 		switch part.FormName() {
 		case "file":
@@ -258,13 +259,13 @@ func (rt *routes) readUpload(ctx context.Context, mr *multipart.Reader, dir stri
 				return up, readError(err, limit)
 			}
 			if len(b) > maxFieldBytes {
-				return up, invalid(part.FormName() + " 太長。")
+				return up, apierr.Newf(http.StatusUnprocessableEntity, CodeInvalidInput, "upload_field_too_long", part.FormName())
 			}
 			if part.FormName() == "until" {
 				// 讀到就驗證：不要等整個檔案傳完（file 在 until 之後時，也在 ffprobe 之前就拒絕）。
 				up.Until = strings.TrimSpace(string(b))
 				if up.Until != "" && !pipeline.ValidStage(up.Until) {
-					return up, invalid(fmt.Sprintf("until 必須是 %v 其中之一。", pipeline.Stages))
+					return up, apierr.Newf(http.StatusUnprocessableEntity, CodeInvalidInput, "upload_until_invalid", fmt.Sprint(pipeline.Stages))
 				}
 			} else {
 				profile = strings.TrimSpace(string(b))
@@ -279,7 +280,7 @@ func (rt *routes) readUpload(ctx context.Context, mr *multipart.Reader, dir stri
 			}
 			overRaw, haveOver = b, true
 		default:
-			return up, invalid("不支援的欄位：" + part.FormName() + "。")
+			return up, apierr.Newf(http.StatusUnprocessableEntity, CodeInvalidInput, "upload_unknown_field", part.FormName())
 		}
 	}
 	if !gotFile {

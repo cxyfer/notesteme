@@ -109,24 +109,24 @@ func (e *mcpEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var ae *apierr.Error
 		if errors.As(err, &ae) && ae.Code == hubauth.CodeSuspended {
 			if le := rt.limitAnonymous(r.RemoteAddr); le != nil {
-				writeRawErr(w, le)
+				writeRawErr(w, r, le)
 				return
 			}
 		}
-		writeRawErr(w, rt.apiError(r.Context(), err))
+		writeRawErr(w, r, rt.apiError(r.Context(), err))
 		return
 	}
 	if p == nil {
 		if le := rt.limitAnonymous(r.RemoteAddr); le != nil {
-			writeRawErr(w, le)
+			writeRawErr(w, r, le)
 			return
 		}
 		w.Header().Set("WWW-Authenticate", `Bearer realm="notesteme-hub"`)
-		writeRawErr(w, apierr.New(http.StatusUnauthorized, hubauth.CodeUnauthorized, "Hub MCP 需要 Hub token（Authorization: Bearer nsh_…）。"))
+		writeRawErr(w, r, apierr.New(http.StatusUnauthorized, hubauth.CodeUnauthorized, "Hub MCP 需要 Hub token（Authorization: Bearer nsh_…）。"))
 		return
 	}
 	if oe := checkMCPOrigin(r, rt.d.Config); oe != nil {
-		writeRawErr(w, oe)
+		writeRawErr(w, r, oe)
 		return
 	}
 	if wait, ok := rt.limiter.allow(accountKey(p.User.ID), rt.rateLimits().RequestsPerMinute); !ok {
@@ -138,12 +138,12 @@ func (e *mcpEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer func() { <-e.slots }()
 	default:
 		w.Header().Set("Retry-After", "5")
-		writeRawErr(w, apierr.New(http.StatusServiceUnavailable, "busy", "同時處理的 MCP 請求太多，請稍後再試。"))
+		writeRawErr(w, r, apierr.New(http.StatusServiceUnavailable, "busy", "同時處理的 MCP 請求太多，請稍後再試。"))
 		return
 	}
 	perms, err := rt.d.Auth.EffectivePermissions(r.Context(), p)
 	if err != nil {
-		writeRawErr(w, rt.apiError(r.Context(), err))
+		writeRawErr(w, r, rt.apiError(r.Context(), err))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), hubMCPRequestTimeout)
@@ -190,7 +190,7 @@ func (e *mcpEndpoint) writeRateLimited(w http.ResponseWriter, r *http.Request, l
 			}
 		}
 	}
-	apierr.Write(w, le)
+	apierr.WriteFor(w, r, le)
 }
 
 // checkMCPOrigin 實作 HMCP-R2（同 AUTH-R11，但以 public_url 為準：Hub 通常在反向代理之後，請求本身的 scheme 不可靠）。

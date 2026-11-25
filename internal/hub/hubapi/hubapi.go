@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -78,6 +77,8 @@ func newHumaAPI(mux *http.ServeMux, d Deps) *routes {
 	cfg.DocsPath = ""
 	cfg.SchemasPath = ""
 	cfg.CreateHooks = nil
+	// 錯誤訊息依 Accept-Language 選擇語言（NFR-I18N-2，與 Client 共用 apierr 的目錄與協商）。
+	cfg.Transformers = append(cfg.Transformers, apierr.LocalizeTransformer)
 	api := humago.New(mux, cfg)
 	rt := &routes{d: d, api: api, limiter: newRateLimiter(d.Clock), takedownLimiter: newHourlyLimiter(d.Clock), uploads: newUploadGuard(d.Clock)}
 	api.UseMiddleware(rt.accessMiddleware, rt.rawOperations)
@@ -145,7 +146,7 @@ func (rt *routes) readyz(ctx context.Context, _ *struct{}) (*statusOutput, error
 		failed = append(failed, "database")
 	}
 	if len(failed) > 0 {
-		e := apierr.New(http.StatusServiceUnavailable, CodeNotReady, "服務尚未就緒："+strings.Join(failed, "、")+" 無法使用。")
+		e := apierr.Newf(http.StatusServiceUnavailable, CodeNotReady, "not_ready", apierr.List(failed))
 		e.Failed = failed
 		return nil, e
 	}
@@ -161,7 +162,7 @@ func recoverMiddleware(log *slog.Logger, next http.Handler) http.Handler {
 					panic(v)
 				}
 				log.ErrorContext(r.Context(), "Hub handler panic", "panic", v, "path", r.URL.Path)
-				apierr.Write(w, apierr.As(nil))
+				apierr.WriteFor(w, r, apierr.As(nil))
 			}
 		}()
 		next.ServeHTTP(w, r)

@@ -3,10 +3,9 @@ package api
 import (
 	"net/http"
 
-	"github.com/danielgtaylor/huma/v2"
-
 	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/pipeline"
+	"github.com/cxyfer/notesteme/internal/validate"
 )
 
 // Error 是所有錯誤回應的格式（與 Hub 共用，internal/apierr）。
@@ -75,6 +74,25 @@ func newError(status int, code, message string) *Error {
 	return &Error{Status: status, Code: code, Message: message}
 }
 
+// fieldsError 是欄位錯誤的回應（NFR-I18N-2）：msg 是 domain 錯誤的訊息，fields 放進 errors。
+// msg 是「第一個欄位的路徑：說明」時改用範本 field_invalid（繁中逐字相同；其他語言路徑不變、說明翻譯），
+// 否則照原樣（固定句子與 domain 格式由目錄翻譯）。
+func fieldsError(status int, code, msg string, fields []validate.FieldError) *Error {
+	var e *Error
+	if len(fields) > 0 && msg == fields[0].Path+"："+fields[0].Message {
+		e = apierr.Newf(status, code, "field_invalid", fields[0].Path, fields[0].Message)
+	} else {
+		e = newError(status, code, msg)
+	}
+	e.Errors = fields
+	return e
+}
+
+// firstFieldError 是以第一個欄位的「路徑：說明」為訊息的欄位錯誤（handler 自己驗證的欄位）。fields 不可以是空的。
+func firstFieldError(status int, code string, fields []validate.FieldError) *Error {
+	return fieldsError(status, code, fields[0].Path+"："+fields[0].Message, fields)
+}
+
 func errForbidden(message string) *Error {
 	return newError(http.StatusForbidden, CodeForbidden, message)
 }
@@ -105,14 +123,6 @@ var defaultMessages = func() map[int]struct{ code, msg string } {
 
 // writeError 在 Huma 之外（middleware）寫出錯誤回應；訊息依請求的 Accept-Language 選擇語言（NFR-I18N-2）。
 func writeError(w http.ResponseWriter, r *http.Request, e *Error) { apierr.WriteFor(w, r, e) }
-
-// localizeErrors 是 Huma 的 transformer：錯誤回應的訊息依 Accept-Language 選擇語言，code 不變（NFR-I18N-2）。
-func localizeErrors(ctx huma.Context, _ string, v any) (any, error) {
-	if e, ok := v.(*Error); ok {
-		return apierr.Localize(e, apierr.Negotiate(ctx.Header("Accept-Language"))), nil
-	}
-	return v, nil
-}
 
 // asError 把任意 error 轉成 *Error；不是 *Error 的一律視為內部錯誤（不洩漏細節）。
 func asError(err error) *Error { return apierr.As(err) }

@@ -189,7 +189,8 @@ func termDecisionErr(err error, prefix string) *apierr.Error {
 	var e *apierr.Error
 	switch {
 	case errors.As(err, &inv):
-		e = newError(http.StatusUnprocessableEntity, CodeInvalidInput, inv.Error())
+		e = fieldsError(http.StatusUnprocessableEntity, CodeInvalidInput, inv.Msg, inv.Fields)
+		e.Errors = nil // 批次時路徑要加上前綴
 		for _, f := range inv.Fields {
 			if prefix != "" {
 				f.Path = prefix + "." + f.Path

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/cxyfer/notesteme/internal/store"
@@ -141,7 +142,7 @@ func (p *Pipeline) profileLayer(ctx context.Context, r *store.Repo, name string)
 		}
 	}
 	if errors.Is(err, store.ErrNotFound) {
-		return ProfileLayer{}, invalidFields([]validate.FieldError{{Path: "profile", Message: "找不到處理方案「" + name + "」。"}})
+		return ProfileLayer{}, invalidFields([]validate.FieldError{{Path: "profile", Message: fmt.Sprintf("找不到處理方案「%s」。", name)}})
 	}
 	return ProfileLayer{}, err
 }

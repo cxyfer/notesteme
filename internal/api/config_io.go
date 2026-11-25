@@ -127,9 +127,7 @@ func (h *configAPI) importConfig(ctx context.Context, in *configImportInput) (*c
 	if err != nil {
 		var inv *pipeline.InvalidError
 		if errors.As(err, &inv) {
-			e := newError(http.StatusUnprocessableEntity, CodeConfigInvalid, inv.Error())
-			e.Errors = inv.Fields
-			return nil, e
+			return nil, fieldsError(http.StatusUnprocessableEntity, CodeConfigInvalid, inv.Msg, inv.Fields)
 		}
 		return nil, h.rt.mapErr(ctx, err)
 	}

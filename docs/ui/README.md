@@ -553,7 +553,7 @@ UI-1～UI-3 疊在這個骨架上。開發方式與專案慣例（目錄、路�
 9. **隱藏沒有對應的「取消隱藏」**（HREP R10 的待決）：版本頁的隱藏確認框寫明「要恢復時需等新的檢舉被駁回」，不另加入口。
 10. **在 Client 重新生成**：版本頁對 `source`／`normalized` 的字幕顯示版本 ID 與「複製」，說明貼到 Client 的「設定 → Hub」。Client 的 Hub 分區接受版本 ID 或 Hub 版本頁的網址（只取 `/versions/<id>`）。
 11. **使用者管理的群組名稱是輸入框**（附 `contributors`、`moderators` 的建議）：API 沒有列出設定檔群組的路由；`admins`（403 `admin_by_config`）與 `members` 不提供移除按鈕，自己的帳號不提供停用。**待決**：需要的話 API 加「群組清單」。
-12. **錯誤訊息的語言**：Hub 的錯誤訊息與欄位錯誤目前只有繁中；UI 對常見的 code（`errors.<code>`，例如 `own_version`、`already_reported`、`last_identity`）用自己的三語字典，其他顯示伺服器的訊息。**待決**：Hub 是否依 `Accept-Language` 產生訊息（同 Client 的 NFR-I18N-2）。
+12. **錯誤訊息的語言**：UI 對常見的 code（`errors.<code>`，例如 `own_version`、`already_reported`、`last_identity`）用自己的三語字典，其他顯示伺服器的訊息。~~**待決**：Hub 是否依 `Accept-Language` 產生訊息~~：（2026-11-25，依 /goal 由實作者暫定，待 owner 追認）Hub 的 API 與 Client 一樣依 `Accept-Language` 選擇頂層 `message` 的語言（AUTH-R23、[AUTH 待決問題 A29](../specs/AUTH-access.md#待決問題)），Hub UI 的 API client 已送這個標頭；欄位錯誤（`errors[].message`）照 AUTH-R23 不隨語言改變，仍是繁中。
 13. **Client 的「分享到 Hub」**：可選的產出由步驟狀態推測（API 沒有「這部影音有哪些產出」的清單），預設是「全部」（不送 `artifacts`，伺服器決定，HSHR-R5）；改成「只分享勾選的」時才送清單，不存在的產出由伺服器回 422 `artifact_not_found`。授權沒有預設值（HSHR-R3 要求明確選擇）。「預覽會送出的欄位」列出影音的欄位，產出的內容與來源紀錄只用文字說明。**待決**：要逐欄預覽來源紀錄，需要「試做 bundle」的 API。本機檔案不顯示按鈕。
 14. ~~**待決（API）**：`GET /api/items/:id` 沒有 `hub_origin`（上傳者），只顯示「來自 Hub 的原始字幕」~~：HSHR S23 加了 `hub_origin`，影音詳情已顯示「來自 Hub：@alice 的原始字幕」與 Hub 版本頁的連結（見 10.23）。
 15. **已分享清單**連到 Hub 的「帳號」頁（Hub 沒有單一分享的頁面）；撤回只在 Hub 進行（HSHR S12）。`hub_url` 不是 https 時不產生連結。

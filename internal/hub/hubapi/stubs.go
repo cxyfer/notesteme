@@ -64,7 +64,7 @@ func registerStubs(api huma.API) {
 }
 
 func registerRawStubs(mux *http.ServeMux) {
-	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { apierr.Write(w, apierr.NotImplemented()) })
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { apierr.WriteFor(w, r, apierr.NotImplemented()) })
 	for _, s := range RawStubs {
 		pattern := s.Path
 		if s.Method != "" {

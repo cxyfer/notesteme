@@ -162,11 +162,11 @@ func (rt *routes) download(ctx context.Context, in *downloadInput) (*fileOutput,
 	var errs fieldErrs
 	switch {
 	case len(formats) == 0:
-		errs.add("query.format", v.Kind+" 版本沒有可下載的格式。")
+		errs.add("query.format", fmt.Sprintf("%s 版本沒有可下載的格式。", v.Kind))
 	case format == "":
 		format = formats[0]
 	case !slices.Contains(formats, format):
-		errs.add("query.format", v.Kind+" 版本的 format "+oneOf(formats))
+		errs.add("query.format", fmt.Sprintf("%s 版本的 format 必須是 %s 之一。", v.Kind, strings.Join(formats, "、")))
 	}
 	if err := errs.err(); err != nil {
 		return nil, err

@@ -145,7 +145,7 @@ func (p *Pipeline) validateImport(ctx context.Context, r *store.Repo, doc *confi
 				}
 				continue
 			}
-			errs = append(errs, validate.FieldError{Path: prefix, Message: "設定無法使用：" + err.Error()})
+			errs = append(errs, validate.FieldError{Path: prefix, Message: fmt.Sprintf("設定無法使用：%s", err.Error())})
 		}
 	}
 

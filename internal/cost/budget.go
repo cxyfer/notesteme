@@ -121,7 +121,7 @@ func ParseBudget(body map[string]any) (Budget, []validate.FieldError) {
 		if !isStr {
 			errs = append(errs, validate.FieldError{Path: "timezone", Message: "不認識的時區，請用 IANA 時區名稱，例如 Asia/Taipei。"})
 		} else if _, err := loadZone(tz); err != nil {
-			errs = append(errs, validate.FieldError{Path: "timezone", Message: "不認識的時區 " + cleanValue(tz) + "，請用 IANA 時區名稱，例如 Asia/Taipei。"})
+			errs = append(errs, validate.FieldError{Path: "timezone", Message: fmt.Sprintf("不認識的時區 %s，請用 IANA 時區名稱，例如 Asia/Taipei。", cleanValue(tz))})
 		} else {
 			b.Timezone = tz
 		}

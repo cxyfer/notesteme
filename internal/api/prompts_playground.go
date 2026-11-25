@@ -112,9 +112,7 @@ func parseRange(from, to string) (fromMS, toMS int64, err error) {
 		fields = append(fields, validate.FieldError{Path: "to", Message: "to 必須是 HH:MM:SS 或 MM:SS（可帶小數）。"})
 	}
 	if len(fields) > 0 {
-		e := newError(http.StatusUnprocessableEntity, CodeInvalidInput, fields[0].Path+"："+fields[0].Message)
-		e.Errors = fields
-		return 0, 0, e
+		return 0, 0, firstFieldError(http.StatusUnprocessableEntity, CodeInvalidInput, fields)
 	}
 	return fromMS, toMS, nil
 }

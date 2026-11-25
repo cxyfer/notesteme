@@ -66,7 +66,9 @@ func setRetryAfter(set func(string, string), e *apierr.Error) {
 	}
 }
 
+// writeHumaErr 在 Huma 的 middleware 寫出錯誤；訊息依 Accept-Language 選擇語言（NFR-I18N-2）。
 func writeHumaErr(ctx huma.Context, e *apierr.Error) {
+	e = apierr.Localize(e, apierr.Negotiate(ctx.Header("Accept-Language")))
 	ctx.SetHeader("Content-Type", "application/json")
 	setRetryAfter(ctx.SetHeader, e)
 	ctx.SetStatus(e.Status)
@@ -254,21 +256,22 @@ func clearSessionCookies() []*http.Cookie {
 
 // ---- 瀏覽器的 OAuth 流程（不經過 Huma）----
 
-func writeRawErr(w http.ResponseWriter, e *apierr.Error) {
+// writeRawErr 在 Huma 之外寫出錯誤；訊息依 Accept-Language 選擇語言（NFR-I18N-2）。
+func writeRawErr(w http.ResponseWriter, r *http.Request, e *apierr.Error) {
 	w.Header().Set("Cache-Control", "no-store")
 	setRetryAfter(w.Header().Set, e)
-	apierr.Write(w, e)
+	apierr.WriteFor(w, r, e)
 }
 
 // oauthStart 是 GET /auth/<provider>/start（HACC-R1、R2）。
 func (rt *routes) oauthStart(w http.ResponseWriter, r *http.Request) {
 	if rt.d.Auth == nil {
-		writeRawErr(w, apierr.NotImplemented())
+		writeRawErr(w, r, apierr.NotImplemented())
 		return
 	}
 	u, state, err := rt.d.Auth.Begin(r.Context(), r.PathValue("provider"), hubstore.IntentLogin, "")
 	if err != nil {
-		writeRawErr(w, rt.apiError(r.Context(), err))
+		writeRawErr(w, r, rt.apiError(r.Context(), err))
 		return
 	}
 	http.SetCookie(w, oauthCookie(state))
@@ -280,7 +283,7 @@ func (rt *routes) oauthStart(w http.ResponseWriter, r *http.Request) {
 // oauthCallback 是 GET /auth/<provider>/callback（HACC-R3～R6）。成功後轉到固定的目的地，不接受轉址參數。
 func (rt *routes) oauthCallback(w http.ResponseWriter, r *http.Request) {
 	if rt.d.Auth == nil {
-		writeRawErr(w, apierr.NotImplemented())
+		writeRawErr(w, r, apierr.NotImplemented())
 		return
 	}
 	// callback 的網址帶著授權碼：不讓瀏覽器把它放進 Referer。
@@ -300,7 +303,7 @@ func (rt *routes) oauthCallback(w http.ResponseWriter, r *http.Request) {
 	// 不論成功與否，這次等待中的登入都結束了。
 	http.SetCookie(w, clearCookie(hubauth.OAuthCookie, hubauth.OAuthCookiePath, true))
 	if err != nil {
-		writeRawErr(w, rt.apiError(r.Context(), err))
+		writeRawErr(w, r, rt.apiError(r.Context(), err))
 		return
 	}
 	if res.Session != nil {

@@ -85,8 +85,8 @@ func (rt *routes) mapPromptErr(ctx context.Context, err error) error {
 	)
 	switch {
 	case errors.As(err, &inv):
-		e := newError(http.StatusUnprocessableEntity, CodeInvalidInput, inv.Error())
-		e.Errors, e.UndefinedVariables = inv.Fields, inv.Undefined
+		e := fieldsError(http.StatusUnprocessableEntity, CodeInvalidInput, inv.Msg, inv.Fields)
+		e.UndefinedVariables = inv.Undefined
 		return e
 	case errors.As(err, &iu):
 		e := newError(http.StatusConflict, CodePromptInUse, iu.Error())

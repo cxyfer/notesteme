@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/pathguard"
 )
 
@@ -43,7 +44,7 @@ func readImportInput(path, content string, maxBytes int, exts []string) ([]byte,
 		ok = ok || ext == e
 	}
 	if !ok {
-		return nil, "", invalidInput("path 的副檔名必須是 " + strings.Join(exts, "、") + "。")
+		return nil, "", apierr.Newf(http.StatusUnprocessableEntity, CodeInvalidInput, "import_path_ext", apierr.List(exts))
 	}
 	f, fi, err := pathguard.Unrestricted().Open(path)
 	if err != nil {

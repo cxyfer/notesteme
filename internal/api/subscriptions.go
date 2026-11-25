@@ -93,9 +93,7 @@ func (h *subscriptionsAPI) mapErr(ctx context.Context, err error) error {
 	case errors.As(err, &ue):
 		return newError(http.StatusUnprocessableEntity, ue.Code, ue.Message)
 	case errors.As(err, &fe):
-		e := newError(http.StatusUnprocessableEntity, CodeInvalidInput, fe.Error())
-		e.Errors = fe.Fields
-		return e
+		return fieldsError(http.StatusUnprocessableEntity, CodeInvalidInput, fe.Error(), fe.Fields)
 	case errors.As(err, &dup):
 		e := newError(http.StatusConflict, CodeDuplicateSubscription, dup.Error())
 		e.SubscriptionID = dup.SubscriptionID

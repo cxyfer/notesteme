@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/clock"
 	"github.com/cxyfer/notesteme/internal/store"
 	"github.com/cxyfer/notesteme/internal/subtitle"
@@ -152,9 +154,13 @@ func TestServiceCRUD(t *testing.T) {
 	}
 	if _, err := s.Create(ctx, "mine", "", Patch{}); !errors.Is(err, ErrExists) {
 		t.Errorf("重複名稱 err = %v，預期 ErrExists", err)
+	} else {
+		assertTranslated(t, err)
 	}
 	if _, err := s.Create(ctx, "default", "", Patch{}); !errors.Is(err, ErrExists) {
 		t.Errorf("與內建同名 err = %v，預期 ErrExists", err)
+	} else {
+		assertTranslated(t, err)
 	}
 	var inv *InvalidError
 	for _, bad := range []string{"", "Mine", "-x", "a b", strings.Repeat("a", 65)} {
@@ -268,5 +274,14 @@ func TestImportTwoStylesAndPlayRes(t *testing.T) {
 	st, err = StyleFromASS([]byte(data), ImportOptions{TranslationStyle: "eng", PrimaryStyle: "DEFAULT"})
 	if err != nil || st.Translation.Font != "Arial" || st.Primary.Font != "Noto Sans CJK TC" {
 		t.Errorf("指定樣式 = %+v，%v", st, err)
+	}
+}
+
+// assertTranslated：錯誤訊息會原樣成為 API 的 message，要在 apierr 的目錄中，英文版不含中文（NFR-I18N-2）。
+func assertTranslated(t *testing.T, err error) {
+	t.Helper()
+	en, ok := apierr.Translate(err.Error(), apierr.LangEn)
+	if !ok || strings.ContainsFunc(en, func(r rune) bool { return unicode.Is(unicode.Han, r) }) {
+		t.Errorf("錯誤訊息沒有完整翻譯：%q → %q", err.Error(), en)
 	}
 }

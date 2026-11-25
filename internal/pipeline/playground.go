@@ -250,7 +250,7 @@ func (p *Pipeline) Playground(ctx context.Context, req PlaygroundRequest) (Playg
 	meta.Glossary = glossaryForSource(terms, srcLang, picked)
 	fixed, err := llm.BuildFixed(spec, rp.Body, llm.TemplateVars{SourceLang: srcLang, Mixed: it.LangMixed}, meta)
 	if err != nil {
-		return PlaygroundResult{}, invalidFields([]validate.FieldError{{Path: "prompt", Message: "prompt 無法渲染：" + err.Error()}})
+		return PlaygroundResult{}, invalidFields([]validate.FieldError{{Path: "prompt", Message: fmt.Sprintf("prompt 無法渲染：%s", err.Error())}})
 	}
 
 	client, err := p.llm.Client(ctx, req.Provider)

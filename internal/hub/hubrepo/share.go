@@ -43,7 +43,7 @@ func ErrAttestRequired() *apierr.Error {
 
 // ErrTooLarge 是超過上傳上限（HREP-R2）。
 func ErrTooLarge(limit int64) *apierr.Error {
-	return apierr.New(http.StatusRequestEntityTooLarge, CodeBundleTooLarge, "bundle 超過 "+bundle.FormatSize(limit)+" 的上傳上限。")
+	return apierr.New(http.StatusRequestEntityTooLarge, CodeBundleTooLarge, fmt.Sprintf("bundle 超過 %s 的上傳上限。", bundle.FormatSize(limit)))
 }
 
 // ErrRemovedContent 是已依下架申請移除的內容（HREP-R9）。
@@ -110,7 +110,7 @@ func CheckShareable(b *bundle.Bundle, provs []Provenance, licenses []string) *ap
 	}
 	for _, a := range b.Manifest.Artifacts {
 		if !slices.Contains(Kinds, a.Kind) {
-			return notShareable("Hub 不接受這種產出：" + a.Kind + "。")
+			return notShareable(fmt.Sprintf("Hub 不接受這種產出：%s。", a.Kind))
 		}
 	}
 	if !slices.Contains(licenses, b.Manifest.License) {
@@ -118,7 +118,7 @@ func CheckShareable(b *bundle.Bundle, provs []Provenance, licenses []string) *ap
 		if lic == "" {
 			lic = "（沒有指定）"
 		}
-		return apierr.New(http.StatusUnprocessableEntity, CodeLicenseInvalid, "不支援的授權："+bundle.ShowEntry(lic)+"。")
+		return apierr.New(http.StatusUnprocessableEntity, CodeLicenseInvalid, fmt.Sprintf("不支援的授權：%s。", bundle.ShowEntry(lic)))
 	}
 	return nil
 }
@@ -128,7 +128,7 @@ func CheckProvenanceSize(b *bundle.Bundle) *apierr.Error {
 	for _, a := range b.Manifest.Artifacts {
 		if len(a.Provenance) > MaxProvenanceBytes {
 			return apierr.New(http.StatusUnprocessableEntity, CodeBundleInvalid,
-				"產出「"+a.ID+"」的來源紀錄超過 16 KiB。")
+				fmt.Sprintf("產出「%s」的來源紀錄超過 16 KiB。", a.ID))
 		}
 	}
 	return nil
@@ -151,7 +151,7 @@ func CheckCues(b *bundle.Bundle) *apierr.Error {
 		d, _ := b.File(a.Path)
 		t, err := subtitle.DecodeCuesJSON(bytes.NewReader(d))
 		if err != nil {
-			return apierr.New(http.StatusUnprocessableEntity, CodeBundleInvalid, "bundle 中的檔案「"+bundle.ShowEntry(a.Path)+"」不是有效的 notesteme-cues+json 字幕，已拒絕匯入。")
+			return apierr.New(http.StatusUnprocessableEntity, CodeBundleInvalid, fmt.Sprintf("bundle 中的檔案「%s」不是有效的 notesteme-cues+json 字幕，已拒絕匯入。", bundle.ShowEntry(a.Path)))
 		}
 		if len(t.Cues) > MaxCues {
 			return apierr.New(http.StatusUnprocessableEntity, CodeBundleInvalid,
@@ -199,7 +199,7 @@ var channelIDRe = regexp.MustCompile(`^[^\s\x00-\x1f\x7f]{0,256}$`)
 // CheckVideo 檢查 bundle 的影片識別：external_id 依平台的格式，頻道 ID 不能有空白或控制字元；否則 422 bundle_invalid。
 func CheckVideo(it bundle.Item) *apierr.Error {
 	if re, ok := externalIDRe[it.Platform]; !ok || !re.MatchString(it.ExternalID) || HasControl(it.ExternalID) {
-		return apierr.New(http.StatusUnprocessableEntity, CodeBundleInvalid, "item.external_id 不是 "+it.Platform+" 的影片 ID。")
+		return apierr.New(http.StatusUnprocessableEntity, CodeBundleInvalid, fmt.Sprintf("item.external_id 不是 %s 的影片 ID。", it.Platform))
 	}
 	if !channelIDRe.MatchString(it.Channel.ExternalID) || HasControl(it.Channel.ExternalID) {
 		return apierr.New(http.StatusUnprocessableEntity, CodeBundleInvalid, "item.channel.external_id 不能有空白或控制字元。")

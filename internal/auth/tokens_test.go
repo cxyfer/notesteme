@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/store"
 )
 
@@ -184,9 +186,12 @@ func TestTokenValidationAndPrincipalScopes(t *testing.T) {
 		{"ok", []string{ScopeRead}, &neg},
 	}
 	for i, c := range cases {
-		if _, err := svc.CreateToken(ctx, c.name, c.scopes, c.expiresIn); !errors.Is(err, ErrInvalidToken) {
+		_, err := svc.CreateToken(ctx, c.name, c.scopes, c.expiresIn)
+		if !errors.Is(err, ErrInvalidToken) {
 			t.Errorf("case %d: err = %v, want ErrInvalidToken", i, err)
+			continue
 		}
+		assertTranslated(t, err)
 	}
 
 	// 非 token 身分（session／local）永遠回傳 true。
@@ -226,8 +231,20 @@ func TestParseTokenDuration(t *testing.T) {
 		"soon", "200000d", "106751d25h",
 	}
 	for _, in := range invalid {
-		if got, err := ParseTokenDuration(in); !errors.Is(err, ErrInvalidToken) {
+		got, err := ParseTokenDuration(in)
+		if !errors.Is(err, ErrInvalidToken) {
 			t.Errorf("ParseTokenDuration(%q) = (%v, %v), want ErrInvalidToken", in, got, err)
+			continue
 		}
+		assertTranslated(t, err)
+	}
+}
+
+// assertTranslated：錯誤訊息會原樣成為 API 的 message，要在 apierr 的目錄中，英文版不含中文（NFR-I18N-2）。
+func assertTranslated(t *testing.T, err error) {
+	t.Helper()
+	en, ok := apierr.Translate(err.Error(), apierr.LangEn)
+	if !ok || strings.ContainsFunc(en, func(r rune) bool { return unicode.Is(unicode.Han, r) }) {
+		t.Errorf("錯誤訊息沒有完整翻譯：%q → %q", err.Error(), en)
 	}
 }

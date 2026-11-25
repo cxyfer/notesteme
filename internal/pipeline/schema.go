@@ -176,7 +176,7 @@ func checkNumberRangeOpen(lo, hi float64) func(*layerValidator, string, any) {
 func ValidateLayer(ctx context.Context, doc map[string]any, kind LayerKind, deps ValidateDeps) []validate.FieldError {
 	norm, err := normalizeDoc(doc)
 	if err != nil {
-		return []validate.FieldError{{Message: "設定不是合法的 JSON 物件：" + err.Error()}}
+		return []validate.FieldError{{Message: fmt.Sprintf("設定不是合法的 JSON 物件：%s", err.Error())}}
 	}
 	v := &layerValidator{ctx: ctx, kind: kind, deps: deps}
 	v.walk("", norm, topLevelFields, msgUnknownField)
@@ -443,7 +443,7 @@ func checkBool(v *layerValidator, path string, val any) {
 }
 
 func enumMessage(allowed []string) string {
-	return "必須是 " + strings.Join(allowed, "、") + " 其中之一。"
+	return fmt.Sprintf("必須是 %s 其中之一。", strings.Join(allowed, "、"))
 }
 
 func checkEnum(allowed ...string) func(*layerValidator, string, any) {
@@ -475,7 +475,7 @@ func checkStringList(minLen int, enum []string) func(*layerValidator, string, an
 		}
 		list := val.([]any)
 		if len(list) < minLen {
-			v.add(path, "至少要有 "+strconv.Itoa(minLen)+" 個項目。")
+			v.add(path, fmt.Sprintf("至少要有 %d 個項目。", minLen))
 			return
 		}
 		for i, e := range list {

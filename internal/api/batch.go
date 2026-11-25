@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/cxyfer/notesteme/internal/apierr"
 	"github.com/cxyfer/notesteme/internal/auth"
 	"github.com/cxyfer/notesteme/internal/cost"
 	"github.com/cxyfer/notesteme/internal/events"
@@ -130,7 +131,7 @@ func (rt *routes) batchItems(ctx context.Context, in *batchInput) (*batchOutput,
 	b := &in.Body
 	scope, ok := batchScopes[b.Action]
 	if !ok {
-		return nil, batchInvalid("action", "不支援的批次動作 "+clip(b.Action)+"。")
+		return nil, batchInvalidf("action", "batch_unknown_action", clip(b.Action))
 	}
 	if err := requireScope(ctx, scope); err != nil {
 		return nil, err
@@ -151,7 +152,7 @@ func (rt *routes) batchItems(ctx context.Context, in *batchInput) (*batchOutput,
 			return nil, batchInvalid("profile", "找不到處理方案 。")
 		}
 		if _, err := rt.d.Pipeline.Profile(ctx, b.Profile); errors.Is(err, pipeline.ErrProfileNotFound) {
-			return nil, batchInvalid("profile", "找不到處理方案 "+clip(b.Profile)+"。")
+			return nil, batchInvalidf("profile", "batch_profile_not_found", clip(b.Profile))
 		} else if err != nil {
 			return nil, rt.mapErr(ctx, err)
 		}
@@ -171,6 +172,13 @@ func (rt *routes) batchItems(ctx context.Context, in *batchInput) (*batchOutput,
 		return &batchOutput{Body: res}, nil
 	}
 	return &batchOutput{Body: rt.batchRun(ctx, b.Action, b.From, b.Profile, b.DeleteOutputs, targets)}, nil
+}
+
+// batchInvalidf 同 batchInvalid，訊息是帶參數的範本（NFR-I18N-2）。
+func batchInvalidf(path, key string, args ...string) *Error {
+	e := apierr.Newf(http.StatusUnprocessableEntity, CodeInvalidInput, key, args...)
+	e.Errors = []validate.FieldError{{Path: path, Message: e.Message}}
+	return e
 }
 
 func batchInvalid(path, msg string) *Error {

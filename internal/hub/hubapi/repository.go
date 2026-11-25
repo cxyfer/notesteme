@@ -304,12 +304,12 @@ func (rt *routes) createShare(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	p := principalFrom(ctx)
 	if p == nil {
-		writeRawErr(w, hubauth.ErrUnauthorized())
+		writeRawErr(w, r, hubauth.ErrUnauthorized())
 		return
 	}
 	if rt.d.Store == nil || rt.d.Blobs == nil || rt.d.Config == nil {
 		rt.d.Log.ErrorContext(ctx, "Hub 沒有設定儲存，無法分享")
-		writeRawErr(w, apierr.As(nil))
+		writeRawErr(w, r, apierr.As(nil))
 		return
 	}
 	out, err := rt.share(ctx, w, r, p)
@@ -318,7 +318,7 @@ func (rt *routes) createShare(w http.ResponseWriter, r *http.Request) {
 		if countsAsFailure(e) {
 			rt.uploads.recordFailure(p.User.ID)
 		}
-		writeRawErr(w, e)
+		writeRawErr(w, r, e)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
