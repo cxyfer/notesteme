@@ -90,12 +90,47 @@ export function initI18n(lang: Language = detectLanguage()) {
 }
 
 // 日期與數字一律用 Intl（NFR-I18N-3）；時間碼不隨語言改變，見 formatTimecode。
+//
+// Intl 的格式器建立很貴（Chromium 每個約 0.1ms 以上）：媒體庫捲動時每一列都會格式化日期，
+// 每次新建會讓 10,000 列的捲動出現長工作（NFR-PERF-10，docs/ui/README.md 10.32）。依語言與選項快取。
+const formatters = new Map<
+  string,
+  Intl.NumberFormat | Intl.DateTimeFormat | Intl.RelativeTimeFormat
+>();
+
+function cachedFormat<T extends Intl.NumberFormat | Intl.DateTimeFormat | Intl.RelativeTimeFormat>(
+  kind: string,
+  lang: string,
+  opts: object,
+  make: () => T,
+): T {
+  const key = `${kind}|${lang}|${JSON.stringify(opts)}`;
+  let f = formatters.get(key) as T | undefined;
+  if (!f) {
+    f = make();
+    formatters.set(key, f);
+  }
+  return f;
+}
+
+export function numberFormat(lang: string, opts: Intl.NumberFormatOptions = {}) {
+  return cachedFormat("n", lang, opts, () => new Intl.NumberFormat(lang, opts));
+}
+
+export function dateTimeFormat(lang: string, opts: Intl.DateTimeFormatOptions = {}) {
+  return cachedFormat("d", lang, opts, () => new Intl.DateTimeFormat(lang, opts));
+}
+
+function relativeTimeFormat(lang: string, opts: Intl.RelativeTimeFormatOptions) {
+  return cachedFormat("r", lang, opts, () => new Intl.RelativeTimeFormat(lang, opts));
+}
+
 export function formatNumber(n: number, lang: Language = currentLanguage()) {
-  return new Intl.NumberFormat(lang).format(n);
+  return numberFormat(lang).format(n);
 }
 
 export function formatDateTime(d: Date | string, lang: Language = currentLanguage()) {
-  return new Intl.DateTimeFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(
+  return dateTimeFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(
     typeof d === "string" ? new Date(d) : d,
   );
 }
@@ -123,12 +158,12 @@ export function formatRelativeTime(
             : abs < 365 * 86_400
               ? [Math.round(diffSec / (30 * 86_400)), "month"]
               : [Math.round(diffSec / (365 * 86_400)), "year"];
-  return new Intl.RelativeTimeFormat(lang, { numeric: "auto" }).format(value, unit);
+  return relativeTimeFormat(lang, { numeric: "auto" }).format(value, unit);
 }
 
 /** 只有日期（媒體庫的發布日） */
 export function formatDate(d: Date | string, lang: Language = currentLanguage()) {
-  return new Intl.DateTimeFormat(lang, { dateStyle: "medium" }).format(
+  return dateTimeFormat(lang, { dateStyle: "medium" }).format(
     typeof d === "string" ? new Date(d) : d,
   );
 }
@@ -153,7 +188,7 @@ export function formatBytes(n: number, lang: Language = currentLanguage()) {
     v /= 1024;
     i++;
   }
-  return new Intl.NumberFormat(lang, {
+  return numberFormat(lang, {
     style: "unit",
     unit: units[i],
     unitDisplay: "short",
@@ -163,7 +198,7 @@ export function formatBytes(n: number, lang: Language = currentLanguage()) {
 
 /** 美元金額（成本一律以 USD 記錄） */
 export function formatUsd(n: number, lang: Language = currentLanguage()) {
-  return new Intl.NumberFormat(lang, {
+  return numberFormat(lang, {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: n !== 0 && Math.abs(n) < 0.01 ? 4 : 2,
@@ -179,5 +214,5 @@ export function formatElapsed(ms: number, lang: string = currentLanguage()): str
       : min < 48 * 60
         ? [Math.floor(min / 60), "hour"]
         : [Math.floor(min / 1440), "day"];
-  return new Intl.NumberFormat(lang, { style: "unit", unit, unitDisplay: "long" }).format(value);
+  return numberFormat(lang, { style: "unit", unit, unitDisplay: "long" }).format(value);
 }

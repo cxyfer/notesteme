@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { detectLanguage, formatNumber, formatTimecode, matchLanguage } from "./index";
+import { detectLanguage, formatDate, formatNumber, formatTimecode, matchLanguage } from "./index";
 
 describe("語言", () => {
   it.each([
@@ -30,5 +30,19 @@ describe("格式化", () => {
     expect(formatTimecode(65)).toBe("01:05");
     expect(formatTimecode(3725)).toBe("1:02:05");
     expect(formatTimecode(-3)).toBe("00:00");
+  });
+
+  it("同一語言與選項的 Intl 格式器只建立一次（NFR-PERF-10：媒體庫捲動時每一列都格式化日期）", () => {
+    const spy = vi.spyOn(Intl, "DateTimeFormat");
+    try {
+      for (let i = 0; i < 50; i++) formatDate("2026-11-01T00:00:00Z", "en");
+      expect(spy.mock.calls.length).toBeLessThanOrEqual(1);
+      // 快取依語言區分：換語言仍是該語言的格式
+      expect(formatDate("2026-11-01T00:00:00Z", "en")).not.toBe(
+        formatDate("2026-11-01T00:00:00Z", "zh-Hant"),
+      );
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
