@@ -20,7 +20,8 @@
     "overview": "总览",
     "insecureNoAuth": "目前没有任何登录验证：这个实例以 --insecure-no-auth 启动，这台电脑上的任何程序都能完整操作它。请设置 NOTESTEME_PASSWORD 后不带这个参数重新启动。",
     "tabs": "标签栏",
-    "more": "更多"
+    "more": "更多",
+    "account": "偏好设置与退出登录"
   },
   "prefs": {
     "theme": "主题",

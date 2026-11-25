@@ -3,17 +3,32 @@
 // 導覽的「新增」按鈕、N 快捷鍵、焦點不在輸入框時貼上網址（docs/ui/README.md §3.2、§3.6）。
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AddProvider, useAddDrawer } from "../add/AddContext";
 import { isHttpUrl } from "../add/url";
 import { api, setUnauthorizedHandler } from "../api/client";
 import { authMethodsQuery } from "../auth/insecure";
-import { Button } from "../components";
+import { Button, Dialog, Icon, type IconComponent } from "../components";
 import { useEventStream } from "../events/useEventStream";
 import { isEditableTarget, isMac, modalOpen } from "./keyboard";
+import {
+  ChatText,
+  CurrencyCircleDollar,
+  DotsThree,
+  FilmStrip,
+  GearSix,
+  House,
+  Notebook,
+  Plus,
+  Queue,
+  Rss,
+  SlidersHorizontal,
+  Subtitles,
+} from "./navIcons";
 import { Preferences } from "./Preferences";
+import { RAIL, useMediaQuery } from "./media";
 import { TabBar, useNarrow } from "./TabBar";
 
 const ShortcutsDialog = lazy(() =>
@@ -29,34 +44,38 @@ const GO_TO = { l: "/library", q: "/queue", s: "/subscriptions" } as const;
 const GO_TIMEOUT = 1500;
 
 // M1 的導覽項目（docs/ui/README.md §2）。M2 之後的頁面（Prompt 庫、處理方案…）由各切片加進來。
-const NAV_GROUPS = [
+// 每一項都有圖示（design-language.md §5.4）：768–1279px 的窄側欄（64px）只顯示圖示，名稱在 hover／focus 時出現。
+const NAV_GROUPS: readonly {
+  label: string;
+  items: readonly { to: string; label: string; icon: IconComponent }[];
+}[] = [
   {
     label: "nav.work",
     items: [
-      { to: "/", label: "nav.overview" },
-      { to: "/library", label: "nav.library" },
-      { to: "/queue", label: "nav.queue" },
-      { to: "/subscriptions", label: "nav.subscriptions" },
+      { to: "/", label: "nav.overview", icon: House },
+      { to: "/library", label: "nav.library", icon: FilmStrip },
+      { to: "/queue", label: "nav.queue", icon: Queue },
+      { to: "/subscriptions", label: "nav.subscriptions", icon: Rss },
     ],
   },
   // M2（UI-3a）：調整（design-language.md §5.1 的三組：工作、調整、系統）
   {
     label: "nav.tune",
     items: [
-      { to: "/prompts", label: "nav.prompts" },
-      { to: "/profiles", label: "nav.profiles" },
-      { to: "/styles", label: "nav.styles" },
-      { to: "/note-templates", label: "nav.noteTemplates" },
+      { to: "/prompts", label: "nav.prompts", icon: ChatText },
+      { to: "/profiles", label: "nav.profiles", icon: SlidersHorizontal },
+      { to: "/styles", label: "nav.styles", icon: Subtitles },
+      { to: "/note-templates", label: "nav.noteTemplates", icon: Notebook },
     ],
   },
   {
     label: "nav.system",
     items: [
-      { to: "/costs", label: "nav.costs" },
-      { to: "/settings", label: "nav.settings" },
+      { to: "/costs", label: "nav.costs", icon: CurrencyCircleDollar },
+      { to: "/settings", label: "nav.settings", icon: GearSix },
     ],
   },
-] as const;
+];
 
 export function AppShell() {
   return (
@@ -151,6 +170,7 @@ function ShellLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   // UI-8：767px 以下改用底部分頁列（README §8），側邊導覽不渲染
   const narrow = useNarrow();
+  const rail = useMediaQuery(RAIL);
 
   const toLogin = useCallback(() => {
     qc.clear();
@@ -186,6 +206,15 @@ function ShellLayout() {
     }
   }
 
+  const footer = (
+    <div className="nav__footer">
+      <Preferences />
+      <Button variant="text" onClick={() => void logout()}>
+        {t("prefs.logout")}
+      </Button>
+    </div>
+  );
+
   return (
     <>
       <a className="skip-link" href="#main">
@@ -196,21 +225,21 @@ function ShellLayout() {
         {!narrow && (
           <nav className="nav" aria-label={t("nav.label")}>
             <Link to="/" className="nav__mark">
-              {t("app.name")}
+              <span className="nav__mark-full">{t("app.name")}</span>
+              {/* 窄側欄只顯示第一個字母；完整名稱留給螢幕閱讀器 */}
+              <span className="nav__mark-short" aria-hidden="true">
+                {t("app.name").slice(0, 1)}
+              </span>
             </Link>
             <Button className="nav__add" variant="primary" onClick={() => add.open()}>
-              {t("add.open")}
+              <Icon icon={Plus} size={16} className="nav__icon" />
+              <span className="nav__label">{t("add.open")}</span>
               <kbd className="nav__kbd" aria-hidden="true">
                 {t("add.hotkey")}
               </kbd>
             </Button>
             <NavGroups pathname={pathname} />
-            <div className="nav__footer">
-              <Preferences />
-              <Button variant="text" onClick={() => void logout()}>
-                {t("prefs.logout")}
-              </Button>
-            </div>
+            {rail ? <NavMore>{footer}</NavMore> : footer}
           </nav>
         )}
         {/* tabIndex=-1：skip link 與換頁時可以把焦點移到這裡 */}
@@ -225,12 +254,7 @@ function ShellLayout() {
           more={(close) => (
             <>
               <NavGroups pathname={pathname} skip={TAB_PAGES} onNavigate={close} />
-              <div className="nav__footer">
-                <Preferences />
-                <Button variant="text" onClick={() => void logout()}>
-                  {t("prefs.logout")}
-                </Button>
-              </div>
+              {footer}
             </>
           )}
         />
@@ -271,7 +295,8 @@ function NavGroups({
                     : undefined
                 }
               >
-                {t(it.label)}
+                <Icon icon={it.icon} size={16} className="nav__icon" />
+                <span className="nav__label">{t(it.label)}</span>
               </Link>
             </li>
           ))}
@@ -279,4 +304,29 @@ function NavGroups({
       </div>
     );
   });
+}
+
+/**
+ * 768–1279px 的窄側欄放不下偏好設定（下拉選單）與登出：收成一個圖示按鈕，打開對話框。
+ * 名稱不用「更多」：頁面上的「更多」選單（MoreMenu）同時可見，螢幕閱讀器會分不出來。
+ */
+function NavMore({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="nav__more">
+      <button
+        type="button"
+        className="nav__item"
+        aria-haspopup="dialog"
+        onClick={() => setOpen(true)}
+      >
+        <Icon icon={DotsThree} size={16} className="nav__icon" />
+        <span className="nav__label">{t("nav.account")}</span>
+      </button>
+      <Dialog open={open} onOpenChange={setOpen} title={t("nav.account")}>
+        <div className="tabbar__more">{children}</div>
+      </Dialog>
+    </div>
+  );
 }

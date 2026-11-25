@@ -2,27 +2,15 @@
 // 「更多」打開對話框，放其餘頁面、偏好設定與登出。只在窄螢幕時渲染（桌面的側邊導覽另外隱藏），
 // 避免兩組相同的連結同時出現在無障礙樹中。
 import { Link } from "@tanstack/react-router";
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Dialog } from "../components";
-
-const NARROW = "(max-width: 767px)";
-
-function subscribe(cb: () => void) {
-  if (typeof window.matchMedia !== "function") return () => {};
-  const m = window.matchMedia(NARROW);
-  m.addEventListener("change", cb);
-  return () => m.removeEventListener("change", cb);
-}
+import { NARROW, useMediaQuery } from "./media";
 
 /** 視窗寬度在 767px 以下（不支援 matchMedia 時當成寬螢幕） */
 export function useNarrow(): boolean {
-  return useSyncExternalStore(
-    subscribe,
-    () => typeof window.matchMedia === "function" && window.matchMedia(NARROW).matches,
-    () => false,
-  );
+  return useMediaQuery(NARROW);
 }
 
 const TABS = [

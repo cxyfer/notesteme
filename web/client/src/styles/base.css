@@ -160,6 +160,106 @@ h3 {
   gap: var(--space-2);
   padding: var(--space-2);
 }
+.icon {
+  flex: none;
+}
+.nav__mark-short {
+  display: none;
+}
+.nav__item > .nav__icon {
+  color: var(--text-secondary);
+}
+.nav__item[aria-current="page"] > .nav__icon {
+  color: inherit;
+}
+.nav__add {
+  gap: var(--space-2);
+}
+.nav__add > .nav__label {
+  flex: 1;
+  text-align: left;
+}
+
+/* 768–1279px：側邊導覽收合成 64px 的窄側欄，只剩圖示（docs/ui/README.md §8、design-language.md §5.1）。
+   名稱仍在 DOM 中（螢幕閱讀器與 accessible name 用），平常裁成 1px；hover 或鍵盤焦點時顯示成右側的 tooltip。
+   沒有展開動畫（prefers-reduced-motion 不需要另外處理）；每個目標 44×40px（WCAG 2.2 的 2.5.8 要求 24px）。
+   偏好設定與登出放不下，收進「更多」對話框（AppShell 的 NavMore）。 */
+@media (min-width: 768px) and (max-width: 1279px) {
+  .app {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+  .nav {
+    align-items: center;
+    padding: 20px var(--space-2) var(--space-4);
+  }
+  .nav__mark {
+    padding: 0 0 var(--space-3);
+  }
+  .nav .nav__mark-full,
+  .nav .nav__group,
+  .nav .nav__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .nav__mark-short {
+    display: inline;
+  }
+  .nav .nav__section {
+    padding-top: var(--space-2);
+    margin-top: var(--space-2);
+    border-top: 1px solid var(--rule);
+  }
+  .nav .nav__item,
+  .nav .nav__add {
+    position: relative;
+    justify-content: center;
+    width: 44px;
+    min-height: 40px;
+    padding: 0;
+  }
+  .nav__item > .nav__icon,
+  .nav__add > .nav__icon {
+    width: 20px;
+    height: 20px;
+  }
+  .nav__kbd {
+    display: none;
+  }
+  .nav__more {
+    margin-top: auto;
+  }
+  .nav__more .nav__item {
+    border: 0;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+  }
+  .nav .nav__item:hover > .nav__label,
+  .nav .nav__item:focus-visible > .nav__label,
+  .nav .nav__add:hover > .nav__label,
+  .nav .nav__add:focus-visible > .nav__label {
+    z-index: 20;
+    left: calc(100% + var(--space-2));
+    top: 50%;
+    transform: translateY(-50%);
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-control);
+    background: var(--text-primary);
+    color: var(--text-on-primary);
+    box-shadow: var(--shadow-float);
+    font-size: var(--font-14);
+    font-weight: 500;
+    pointer-events: none;
+  }
+}
 .main {
   padding: 20px var(--space-8) var(--space-12);
   min-width: 0;

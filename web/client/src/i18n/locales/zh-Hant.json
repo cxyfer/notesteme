@@ -20,7 +20,8 @@
     "overview": "總覽",
     "insecureNoAuth": "目前沒有任何登入驗證：這個實例以 --insecure-no-auth 啟動，這台電腦上的任何程式都能完整操作它。請設定 NOTESTEME_PASSWORD 後不帶這個旗標重新啟動。",
     "tabs": "分頁列",
-    "more": "更多"
+    "more": "更多",
+    "account": "偏好設定與登出"
   },
   "prefs": {
     "theme": "主題",
