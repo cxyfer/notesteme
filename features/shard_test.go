@@ -40,17 +40,18 @@ func parseShard(s string) (i, n int, err error) {
 }
 
 // matchTags 以 godog 的 tag 表達式語意比對：先以 "," 切成 OR 項，每項以 "&&" 切成 AND 項，"~" 表示排除。
+// 與 godog（internal/tags）相同，比對前把兩邊的 "@" 都去掉，所以 "M1" 與 "@M1" 等價。
 func matchTags(expr string, tags []string) bool {
 	has := map[string]bool{}
 	for _, t := range tags {
-		has[t] = true
+		has[strings.ReplaceAll(t, "@", "")] = true
 	}
 	for _, or := range strings.Split(expr, ",") {
 		all := true
 		for _, and := range strings.Split(or, "&&") {
 			and = strings.TrimSpace(and)
 			name, neg := strings.CutPrefix(and, "~")
-			if has[name] == neg {
+			if has[strings.ReplaceAll(name, "@", "")] == neg {
 				all = false
 				break
 			}
@@ -158,6 +159,8 @@ func TestMatchTags(t *testing.T) {
 		{"@M1", []string{"@M2"}, false},
 		{"@M1 && ~@wip", []string{"@M1", "@wip"}, false},
 		{"@M1 && ~@wip,@M2", []string{"@M2", "@wip"}, true},
+		{"M1 && ~wip", []string{"@M1"}, true},
+		{"M1 && ~wip", []string{"@M1", "@wip"}, false},
 		{defaultTags, []string{"@M1", "@AUTH-R1"}, true},
 		{defaultTags, []string{"@M2", "@manual"}, false},
 		{defaultTags, []string{"@M3"}, false},

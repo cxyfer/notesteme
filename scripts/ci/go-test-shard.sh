@@ -18,8 +18,9 @@ fi
 flags=(-race -count=1)
 mapfile -t pkgs < <(go list ./... | grep -vx 'github.com/cxyfer/notesteme/features')
 
-# -list 的輸出是每行一個名稱，夾著每個套件的 "ok  <pkg>  0.01s"；只留識別符形式的測試名稱。
-mapfile -t names < <(go test "${flags[@]}" -list '.*' "${pkgs[@]}" | grep -E '^(Test|Fuzz|Example)[A-Za-z0-9_]*$' | LC_ALL=C sort -u)
+# -list 的輸出是每行一個名稱，夾著每個套件的 "ok  <pkg>  0.01s"；只留 Test、Fuzz、Example 開頭、不含空白的名稱
+#（Go 的識別符可以有非 ASCII 字母，所以不限定 [A-Za-z0-9_]）。
+mapfile -t names < <(go test "${flags[@]}" -list '.*' "${pkgs[@]}" | grep -E '^(Test|Fuzz|Example)[^[:space:]]*$' | LC_ALL=C sort -u)
 if ((${#names[@]} == 0)); then
   echo "::error::沒有列出任何測試" >&2
   exit 1

@@ -87,6 +87,10 @@ func TestFeatures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if len(weights) == 0 {
+			// 不能讓每一份都 Skip 而看起來全部通過。
+			t.Fatalf("tag 表達式 %q 下沒有任何場景，無法分片", o.Tags)
+		}
 		files, loads := assignShards(weights, n)
 		if len(files[i]) == 0 {
 			t.Skipf("第 %d/%d 份沒有分到任何 feature 檔", i, n)
