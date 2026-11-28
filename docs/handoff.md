@@ -673,7 +673,7 @@
 | OBS-3 | 達標 | OPS-R22：`/api/system` 回程式、schema、工具版本 |
 | CMP-1 | 達標 | goreleaser 建置、`docker-arm64` job |
 | CMP-2 | manual（部分自動） | Playwright 內建 Chromium、Firefox、WebKit 各跑完整 e2e；Edge、桌面 Safari、最新兩個主要版本與 iOS Safari、Android Chrome 實機仍需人工 |
-| CMP-3 | 達標（與發布版的 diff 待首次發布） | `openapi-diff` job（`oasdiff breaking` 比對推送前的快照） |
+| CMP-3 | 達標（與發布版的 diff 待首次發布） | ci.yml 的 `lint` job（`oasdiff breaking` 比對推送前的快照） |
 | CMP-4 | 達標 | `TestCLIAndServeVersionsAcrossBinaries` 建 0.2.0～0.6.0 五支 binary 對 serve 0.4.0；每次 CI 的 `go` job 都跑 |
 | CMP-5 | 達標（升級測試以代替做法） | 37 個 migration 在 lib-10k 上 0.58s、問題數 0；尚無發布版，用 `internal/store/testdata/upgrade/schema-37/` 代替；首次發布後依該目錄 README 新增 fixture |
 | A11Y-1 | 達標 | jsdom 的 axe 每頁加真實瀏覽器的完整 axe（含 `color-contrast`、`target-size`）：44 頁 × 三種寬度 × 淺深色 × 三引擎，792 次 serious＋critical 為 0 |

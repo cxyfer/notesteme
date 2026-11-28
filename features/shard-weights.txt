@@ -1,0 +1,23 @@
+# 每個 feature 檔在預設 tag 下的耗時（毫秒），供 -features.shard 平衡各份（features/shard_test.go）。
+# 以不開 -race 的完整執行量測，由下列指令重寫；數字過時只影響平衡，不影響執行哪些場景：
+#   go test ./features -run '^TestFeatures$' -count=1 -features.record-weights
+AGT-agent-tasks.feature 19455
+AUTH-access.feature 3761
+CLI-cli.feature 2687
+COR-correct.feature 3567
+DEL-delete.feature 12800
+GRD-guards.feature 1840
+ING-ingest.feature 5108
+LIB-library.feature 7423
+LLM-execution.feature 9541
+MCP-tools.feature 2468
+NRM-normalize.feature 1973
+OPS-operations.feature 2738
+OUT-subtitle-output.feature 3706
+PIPE-pipeline-queue.feature 3905
+PRF-profiles.feature 1901
+PRM-prompts.feature 1456
+SEC-config-secrets.feature 1777
+SEG-segment.feature 1831
+SRC-transcript-sources.feature 5228
+TRN-translate.feature 2518
