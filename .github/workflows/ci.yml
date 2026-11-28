@@ -147,9 +147,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # setup-go 的快取 key 只由 cache-dependency-path 的檔案決定，所有 job 預設共用同一個 key，
+      # 由最先結束的 job（多半不開 -race）存檔，-race 的 job 每次都要重新編譯全部依賴（含 modernc.org/sqlite）。
+      # 多列一個只有 -race 的 job 會列的檔案，讓它們（go 與 bdd 的各個 shard）共用自己的 key。
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            scripts/ci/go-test-shard.sh
 
       - name: go test (race, without the scenarios)
         run: scripts/ci/go-test-shard.sh ${{ matrix.shard }} 4
@@ -206,9 +212,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # setup-go 的快取 key 只由 cache-dependency-path 的檔案決定，所有 job 預設共用同一個 key，
+      # 由最先結束的 job（多半不開 -race）存檔，-race 的 job 每次都要重新編譯全部依賴（含 modernc.org/sqlite）。
+      # 多列一個只有 -race 的 job 會列的檔案，讓它們（go 與 bdd 的各個 shard）共用自己的 key。
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            scripts/ci/go-test-shard.sh
 
       - name: go test ./features (race)
         run: go test -race -count=1 -timeout 60m ./features -features.shard=${{ matrix.shard }}/4
