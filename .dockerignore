@@ -1,5 +1,7 @@
 # Docker build context 只需要 go.mod、go.sum、cmd/、internal/ 、web/client 與 web/hub（前端原始碼）與 web/shared（共用元件）。
 *
+# image 內要附上授權條款。
+!LICENSE
 !go.mod
 !go.sum
 !cmd/

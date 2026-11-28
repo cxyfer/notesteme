@@ -1,4 +1,5 @@
-# NFR-CMP-1：跨平台建置與冒煙測試。只建置，不發布（CI 用 `goreleaser build --snapshot`）。
+# NFR-CMP-1：跨平台建置與冒煙測試。goreleaser 本身不發布：CI 用 `goreleaser build --snapshot`，
+# 發布時由 .github/workflows/release.yml 執行 `goreleaser release --skip=publish`，再把壓縮檔附到 GitHub Release。
 version: 2
 
 project_name: notesteme
@@ -54,17 +55,26 @@ archives:
         formats: [zip]
     files:
       - README.md
+      - LICENSE
+      # 內嵌的 OpenCC 字典是 Apache-2.0：發布物要附上 LICENSE 與 NOTICE（ADR-0018）。
+      - src: internal/zhconv/opencc/LICENSE
+        dst: licenses/opencc
+        strip_parent: true
+      - src: internal/zhconv/opencc/NOTICE.md
+        dst: licenses/opencc
+        strip_parent: true
   - id: notesteme-hub
     ids: [notesteme-hub]
     formats: [tar.gz]
     name_template: "notesteme-hub_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
+      - LICENSE
 
 checksum:
   name_template: checksums.txt
 
-# 不發布 GitHub release；image 由 docker-publish.yml 處理。
+# GitHub Release 由 release.yml 以 gh 建立草稿，不由 goreleaser 建立。
 release:
   disable: true
 
