@@ -1,40 +1,36 @@
-name: Docker image
+name: Release
 
-# 只有推送 release tag（含 -rc.N）時才建置；PR 與合併到 master 都不建置，
-# 以節省 Actions 額度與 GHCR 儲存空間。tag 先通過與 CI 相同的 Go／sqlc 檢查，
-# 再建置一次並以 digest 推送；冒煙測試跑的就是推上去的 digest，通過後才把
-# release tag 指向它，因此發布的 tag 不會對應到與驗證過的不同的建置。
+# 只有推送 release tag（vX.Y.Z，含 -rc.N）時才建置；PR 與合併到 master 都不建置。完整流程見 RELEASING.md。
+#   1. 驗證 tag 格式，再跑與 CI 相同的檢查。
+#   2. Client 與 Hub 的 image 各建置一次並以 digest 推送；冒煙測試跑的就是推上去的 digest。
+#   3. 用 goreleaser 建置原生 binary。
+#   4. 以上全部通過後才把 release tag 指向測過的 digest，所以發布的 tag 不會對應到沒驗證過的建置。
+#   5. 建立 GitHub Release 草稿並附上壓縮檔；說明由維護者寫好後手動公開。
 on:
   push:
     tags: ["v*"]
 
 concurrency:
-  group: docker-${{ github.workflow }}-${{ github.ref }}
+  group: release-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 env:
   REGISTRY: ghcr.io
+  # Hub 的 image 是這個名稱加上 -hub。
   IMAGE: ghcr.io/${{ github.repository }}
+  GORELEASER_VERSION: "v2.20.3"
 
 jobs:
-  # tag 可能指向沒通過 CI 的 commit（或不在 master 上），發布前再驗證一次。
-  checks:
-    name: Checks
-    uses: ./.github/workflows/ci.yml
-
-  build:
-    name: Build and push by digest
-    needs: checks
+  # 版本由 tag 決定並寫進 binary；格式不符就中止，避免發布出版本號錯亂的產物。
+  version:
+    name: Resolve version
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      value: ${{ steps.version.outputs.value }}
     steps:
-      - uses: actions/checkout@v7
-
-      # 版本由 tag 決定並寫進 binary；格式不符就中止，避免發布出版本號錯亂的 image。
       - name: Resolve version
         id: version
         run: |
@@ -48,6 +44,29 @@ jobs:
             exit 1
           fi
           echo "value=$version" >> "$GITHUB_OUTPUT"
+
+  # tag 可能指向沒通過 CI 的 commit（或不在 master 上），發布前再驗證一次。
+  checks:
+    name: Checks
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build and push by digest
+    needs: [version, checks]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      client: ${{ steps.client.outputs.digest }}
+      hub: ${{ steps.hub.outputs.digest }}
+    steps:
+      # image reference 不允許大寫；owner 或 repo 名稱含大寫時直接傳給 docker CLI 會失敗。
+      - name: Lowercase image name
+        run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
 
       - uses: docker/setup-qemu-action@v4
 
@@ -63,8 +82,8 @@ jobs:
       # 這裡只推每個 tag 專屬的暫存 tag；release tag 等冒煙測試通過後再依 digest 套用。
       # 不用 sha tag：同一個 commit 先打 -rc.N 再打正式版時，兩者的 VERSION 不同，
       # 共用 sha tag 會讓後建置的覆寫前一個。
-      - name: Image metadata
-        id: meta
+      - name: Image metadata (client)
+        id: meta-client
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
@@ -74,35 +93,83 @@ jobs:
           # 暫存 tag 之後只會被重新標記，不能改 image 內容；版本 label 要在建置時就是
           # 真正的版本號，否則會變成 staging-<tag>。
           labels: |
-            org.opencontainers.image.version=${{ steps.version.outputs.value }}
+            org.opencontainers.image.version=${{ needs.version.outputs.value }}
 
-      - name: Build and push
-        id: build
+      - name: Build and push (client)
+        id: client
         uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: VERSION=${{ steps.version.outputs.value }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ steps.meta-client.outputs.tags }}
+          labels: ${{ steps.meta-client.outputs.labels }}
+          build-args: VERSION=${{ needs.version.outputs.value }}
+          cache-from: type=gha,scope=client
+          cache-to: type=gha,mode=max,scope=client
+          provenance: mode=max
+          sbom: true
+
+      - name: Image metadata (hub)
+        id: meta-hub
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}-hub
+          flavor: latest=false
+          tags: |
+            type=raw,value=staging-${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.title=notesteme-hub
+            org.opencontainers.image.version=${{ needs.version.outputs.value }}
+
+      # 前端與 Go 的建置 stage 和 Client 共用，同一個 builder 上直接沿用。
+      - name: Build and push (hub)
+        id: hub
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          target: notesteme-hub
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-hub.outputs.tags }}
+          labels: ${{ steps.meta-hub.outputs.labels }}
+          build-args: VERSION=${{ needs.version.outputs.value }}
+          cache-from: |
+            type=gha,scope=hub
+            type=gha,scope=client
+          cache-to: type=gha,mode=max,scope=hub
           provenance: mode=max
           sbom: true
 
   smoke:
-    name: Smoke test digest
-    needs: build
+    name: Smoke test digest (${{ matrix.name }})
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: client
+            suffix: ""
+            script: deploy/docker/smoke-test.sh
+            digest: ${{ needs.build.outputs.client }}
+          - name: hub
+            suffix: "-hub"
+            script: deploy/docker/smoke-test-hub.sh
+            digest: ${{ needs.build.outputs.hub }}
     steps:
       # image reference 不允許大寫；owner 或 repo 名稱含大寫時直接傳給 docker CLI 會失敗。
       - name: Lowercase image name
-        run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+        env:
+          SUFFIX: ${{ matrix.suffix }}
+        run: |
+          image="${IMAGE}${SUFFIX}"
+          echo "IMAGE=${image,,}" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v7
 
@@ -115,19 +182,95 @@ jobs:
 
       # 以 digest 拉取：與下一步要重新標記的是同一個 image，不是本機重建的。
       - name: Smoke test
-        run: deploy/docker/smoke-test.sh "${IMAGE}@${{ needs.build.outputs.digest }}"
+        env:
+          SCRIPT: ${{ matrix.script }}
+          DIGEST: ${{ matrix.digest }}
+          VERSION: ${{ needs.version.outputs.value }}
+        run: |
+          "$SCRIPT" "${IMAGE}@${DIGEST}" "$VERSION"
+
+  binaries:
+    name: Native binaries
+    needs: [version, checks]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # .goreleaser.yaml 的 before.hooks 會建置 Web UI（npm ci && npm run build）。
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/client/.nvmrc
+
+      # 不讓 goreleaser 發布：GitHub Release 要等 image 也通過後，由下面的 job 建立。
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --clean --skip=publish
+        env:
+          # 同一個 commit 上有多個 tag（例如 -rc.N 與正式版）時，以觸發這次執行的 tag 為準。
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+
+      - name: Verify version, embedded UI and checksums
+        env:
+          VERSION: ${{ needs.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          for name in notesteme notesteme-hub; do
+            bin="$(ls dist/${name}_linux_amd64*/${name})"
+            out="$("$bin" --version)"
+            echo "$out"
+            if [ "$out" != "$name $VERSION" ]; then
+              echo "::error::$name 的版本應該是 $VERSION，實際：$out"
+              exit 1
+            fi
+            if ! grep -aq 'src="/assets/index-' "$bin"; then
+              echo "::error::$name 沒有內嵌 Web UI 的建置產物（只有 placeholder）"
+              exit 1
+            fi
+          done
+          cd dist && sha256sum -c checksums.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-archives
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+          if-no-files-found: error
 
   publish:
-    name: Promote tested digest
-    needs: [build, smoke]
+    name: Promote tested digest (${{ matrix.name }})
+    needs: [build, smoke, binaries]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: client
+            suffix: ""
+            digest: ${{ needs.build.outputs.client }}
+          - name: hub
+            suffix: "-hub"
+            digest: ${{ needs.build.outputs.hub }}
     steps:
       # image reference 不允許大寫；owner 或 repo 名稱含大寫時直接傳給 docker CLI 會失敗。
       - name: Lowercase image name
-        run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+        env:
+          SUFFIX: ${{ matrix.suffix }}
+        run: |
+          image="${IMAGE}${SUFFIX}"
+          echo "IMAGE=${image,,}" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@v4
 
@@ -154,7 +297,7 @@ jobs:
 
       - name: Retag the tested digest
         env:
-          DIGEST: ${{ needs.build.outputs.digest }}
+          DIGEST: ${{ matrix.digest }}
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           set -euo pipefail
@@ -259,7 +402,7 @@ jobs:
 
       - name: Summary
         env:
-          DIGEST: ${{ needs.build.outputs.digest }}
+          DIGEST: ${{ matrix.digest }}
           TAGS: ${{ steps.meta.outputs.tags }}
           MOVED: ${{ steps.aliases.outputs.moved }}
         run: |
@@ -273,3 +416,40 @@ jobs:
             echo
             echo "Tested digest: \`$DIGEST\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # 草稿不會對外公開：維護者寫好說明後執行 gh release edit <tag> --notes-file … --draft=false（RELEASING.md）。
+  github-release:
+    name: Draft GitHub Release
+    needs: [version, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-archives
+          path: dist
+
+      # 重新執行時只更新草稿的附件；已經公開的 Release 不覆寫。
+      - name: Create or update the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [ "$draft" != true ]; then
+              echo "::error::$TAG 的 Release 已經公開，不覆寫附件"
+              exit 1
+            fi
+            gh release upload "$TAG" dist/* --clobber
+          else
+            flags=()
+            case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
+            gh release create "$TAG" dist/* --draft --verify-tag "${flags[@]}" \
+              --title "Notesteme $VERSION" \
+              --notes "草稿：公開前依 RELEASING.md 寫入發布說明。"
+          fi
+          echo "草稿 Release 已建立：$TAG" >> "$GITHUB_STEP_SUMMARY"

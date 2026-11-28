@@ -79,6 +79,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl tini \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/notesteme-hub /usr/local/bin/notesteme-hub
+COPY LICENSE /usr/share/doc/notesteme/LICENSE
 RUN groupadd --system --gid 10001 notesteme \
  && useradd --system --uid 10001 --gid notesteme --home-dir /data --shell /usr/sbin/nologin notesteme \
  && mkdir -p /data /config \
@@ -126,6 +127,7 @@ RUN python3 -m venv /opt/yt-dlp \
 
 COPY --from=deno /deno /usr/local/bin/deno
 COPY --from=build /out/notesteme /usr/local/bin/notesteme
+COPY LICENSE /usr/share/doc/notesteme/LICENSE
 # 內嵌的 OpenCC 字典是 Apache-2.0：發布物要附上 LICENSE 與 NOTICE（ADR-0018）。
 COPY --from=build /src/internal/zhconv/opencc/LICENSE /usr/share/doc/notesteme/opencc/LICENSE
 COPY --from=build /src/internal/zhconv/opencc/NOTICE.md /usr/share/doc/notesteme/opencc/NOTICE.md

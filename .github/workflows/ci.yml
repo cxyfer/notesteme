@@ -1,6 +1,6 @@
 name: CI
 
-# 測試與檢查；docker、compose、docker-arm64 job 會在 runner 上建置 image 並啟動，但不推送。image 只在 v* tag 時由 docker-publish.yml 建置並推送。
+# 測試與檢查；docker、compose、docker-arm64 job 會在 runner 上建置 image 並啟動，但不推送。image 只在 v* tag 時由 release.yml 建置並推送（RELEASING.md）。
 on:
   push:
     branches: [master]
@@ -385,6 +385,10 @@ jobs:
         if: always()
         working-directory: deploy/docker
         run: docker compose -f compose.hub.yaml --env-file .env.hub --profile hub down -v
+
+      # 發布時對推上去的 digest 跑同一支腳本（release.yml）；這裡讓它在打 tag 之前就先被驗證。
+      - name: smoke test (hub image)
+        run: deploy/docker/smoke-test-hub.sh notesteme-hub:local
 
   # Client 的 compose.yaml 實際啟動：local profile（登入、資料在重建容器後還在、只映射到 loopback，OPS-R9）
   # 與 vps profile（vps-check 擋住沒有網域的設定、Caddy 反向代理、HTTPS、HSTS、固定位址，OPS-R19～R21）。

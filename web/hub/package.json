@@ -17,6 +17,7 @@
     "test": "vitest run && npm run check:i18n",
     "test:watch": "vitest",
     "check:i18n": "node scripts/check-i18n.mjs",
+    "gen:notices": "node scripts/gen-notices.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
     "gen:api": "openapi-typescript ../../internal/hub/hubapi/openapi.json -o src/api/schema.d.ts && prettier --write src/api/schema.d.ts",
     "check:api": "npm run gen:api && git diff --exit-code -- src/api/schema.d.ts"

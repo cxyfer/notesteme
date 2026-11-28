@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # 對建好的 image 做冒煙測試：工具齊全、啟動檢查、健康檢查、登入、資料保存與正常關閉。
 #
-# 用法：deploy/docker/smoke-test.sh <image>
+# 用法：deploy/docker/smoke-test.sh <image> [預期版本]
 set -euo pipefail
 
-IMAGE="${1:?用法：$0 <image>}"
+IMAGE="${1:?用法：$0 <image> [預期版本]}"
+VERSION="${2:-}"
 NAME="notesteme-smoke-$$"
 VOLUME="notesteme-smoke-$$"
 PASSWORD="smoke-test-password"
@@ -32,6 +33,9 @@ step "版本"
 out="$(docker run --rm "$IMAGE" --version)"
 echo "$out"
 [[ "$out" == notesteme\ * ]] || fail "--version 的輸出不正確：$out"
+if [[ -n "$VERSION" ]]; then
+  [[ "$out" == "notesteme $VERSION" ]] || fail "版本應該是 $VERSION，實際：$out"
+fi
 
 step "image 大小（NFR-RES-5）"
 # < 800MB（以 10^6 計，比 2^20 更嚴）。
@@ -39,11 +43,12 @@ size="$(docker image inspect -f '{{.Size}}' "$IMAGE")"
 echo "image 大小：$size bytes"
 (( size < 800 * 1000 * 1000 )) || fail "image 是 $size bytes，超過 800MB"
 
-step "OpenCC 授權文件"
+step "授權文件"
 run_shell 'set -e
+  test -s /usr/share/doc/notesteme/LICENSE
   test -s /usr/share/doc/notesteme/opencc/LICENSE
   test -s /usr/share/doc/notesteme/opencc/NOTICE.md
-  grep -q "Apache License" /usr/share/doc/notesteme/opencc/LICENSE' || fail "image 缺少 OpenCC 的 LICENSE 或 NOTICE"
+  grep -q "Apache License" /usr/share/doc/notesteme/opencc/LICENSE' || fail "image 缺少 LICENSE，或 OpenCC 的 LICENSE、NOTICE"
 
 step "以非 root 使用者執行"
 uid="$(docker run --rm --entrypoint id "$IMAGE" -u)"

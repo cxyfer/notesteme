@@ -11,3 +11,5 @@
 !/web/hub/dist/.gitkeep
 /web/hub/coverage/
 *.tsbuildinfo
+# 本機的暫存檔（scripts/release-notes.sh 的草稿）
+/.tmp/

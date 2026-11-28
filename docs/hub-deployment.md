@@ -38,6 +38,8 @@ docker compose -f compose.hub.yaml --env-file .env.hub --profile hub up -d --bui
 docker compose -f compose.hub.yaml --env-file .env.hub --profile hub run --rm hub doctor
 ```
 
+上面的指令從原始碼建置。要用發布的 image，在 `.env.hub` 設定 `NOTESTEME_HUB_IMAGE=ghcr.io/cxyfer/notesteme-hub:<版本>`，並把 `up -d --build` 換成 `up -d --no-build`（`compose.hub.yaml` 與設定檔範例要取自同一個版本的 tag）。
+
 `.env.hub` 的每個密鑰都要是隨機值，compose 在缺少時直接失敗（不會用預設值啟動）：
 
 | 變數 | 用途 | 產生方式 |
@@ -63,6 +65,8 @@ docker compose -f compose.hub.yaml --env-file .env.hub --profile hub run --rm hu
 git pull
 docker compose -f compose.hub.yaml --env-file .env.hub --profile hub up -d --build   # hub-migrate 會先套用新的 migration
 ```
+
+使用發布的 image 時，改成更新 `NOTESTEME_HUB_IMAGE` 的版本，`git checkout v<版本>`，再執行 `… up -d --no-build`。
 
 降版執行（資料庫的 schema 比程式新）時 Hub 拒絕啟動。升級前先做一次備份。
 
