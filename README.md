@@ -205,13 +205,12 @@ cd internal/store && sqlc generate
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 在 PR 與 push 到 `master` 時執行，不建置 image：
 
-1. **Go lint & test**：`gofmt`、`go mod tidy -diff`、`go vet`、`go test -race`。
-   同一個 job 也用 [`scripts/ci/coverage.sh`](scripts/ci/coverage.sh) 檢查 `subtitle`、`pipeline`、`queue`、`netguard` 的涵蓋率不低於 80%。
-2. **sqlc generated code**：`sqlc diff` 確認產生的程式碼沒有過期。
-3. **govulncheck**：掃描程式實際呼叫到的已知弱點。
+1. **Go lint, sqlc, govulncheck & OpenAPI**：`gofmt`、`go mod tidy -diff`、`go vet`、`govulncheck`（掃描程式實際呼叫到的已知弱點）、`oasdiff breaking`（OpenAPI 相容性），以及 `sqlc diff`／`sqlc vet` 確認產生的程式碼沒有過期。
+2. **Go test (race)**：`go test -race`，依頂層測試名稱拆成 4 個 job 平行執行（[`scripts/ci/go-test-shard.sh`](scripts/ci/go-test-shard.sh)）。測試 binary 中新的 SQLite 資料庫從已套用 migration 的範本複製（`internal/store/template.go`，`NOTESTEME_STORE_NO_TEMPLATE=1` 可關閉）。
+3. **Coverage gate**：[`scripts/ci/coverage.sh`](scripts/ci/coverage.sh) 檢查 `subtitle`、`pipeline`、`queue`、`netguard` 的涵蓋率不低於 80%。
 4. **goreleaser build**：以 [`.goreleaser.yaml`](.goreleaser.yaml) 做 snapshot 建置（linux amd64／arm64、windows amd64、darwin arm64），並對 linux/amd64 產物做 `--version` 冒煙測試；不發布。
 
-其餘 job（驗收場景、涵蓋率、故障注入、OpenAPI 相容性、Hub backend、Docker 與 compose 啟動測試等）見 workflow 檔案。這些 image 只在 runner 上建置與啟動，不推送。
+其餘 job（驗收場景、故障注入、Hub backend、Docker 與 compose 啟動測試、arm64 image 等）見 workflow 檔案。這些 image 只在 runner 上建置與啟動，不推送。只動到 `docs/`（`docs/specs/` 除外）、`README.md`、`RELEASING.md` 的變更不觸發 CI。
 
 ### Fuzz
 

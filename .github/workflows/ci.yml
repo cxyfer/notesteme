@@ -1,10 +1,28 @@
 name: CI
 
 # 測試與檢查；docker、compose、docker-arm64 job 會在 runner 上建置 image 並啟動，但不推送。image 只在 v* tag 時由 release.yml 建置並推送（RELEASING.md）。
+#
+# 只動到說明文件的變更不跑（push、pull_request）：docs/ 底下只有 docs/specs 會被測試讀取（features 的規格一致性檢查），
+# 其餘文件與根目錄的 README.md、RELEASING.md 不進任何建置或測試。workflow_call 不受 paths 影響，發布前一定完整執行。
+# paths 依序比對、後面的規則覆蓋前面的，所以 docs/specs/** 要放在 !docs/** 之後。
 on:
   push:
     branches: [master]
+    paths:
+      - "**"
+      - ".github/**"
+      - "!docs/**"
+      - "docs/specs/**"
+      - "!README.md"
+      - "!RELEASING.md"
   pull_request:
+    paths:
+      - "**"
+      - ".github/**"
+      - "!docs/**"
+      - "docs/specs/**"
+      - "!README.md"
+      - "!RELEASING.md"
   workflow_dispatch:
   # 發布 image 的 workflow 會先呼叫這裡的檢查，tag 指向未驗證的 commit 時不會發布。
   workflow_call:
@@ -23,11 +41,16 @@ env:
   GORELEASER_VERSION: "v2.20.3"
 
 jobs:
-  go:
-    name: Go lint & test
+  # 靜態檢查集中在一台 runner：各自只要數十秒，分開時每個都要佔一台 runner 並重新 checkout、setup-go。
+  # GitHub 免費方案同時執行的 job 有上限，ci、web、browser 同時觸發時，job 少一點就少一點排隊。
+  lint:
+    name: Go lint, sqlc, govulncheck & OpenAPI
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # oasdiff 要讀這次推送（或 PR）之前的 OpenAPI 快照。
+          fetch-depth: 0
 
       - uses: actions/setup-go@v7
         with:
@@ -48,11 +71,88 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      # 驗收場景（features 套件本身）另開 bdd 與 bdd-extra 兩個 job，各自佔一台 runner；
-      # 這裡只跑其餘的套件（含 features/steps、features/internal 的 harness 單元測試）。
-      # -race 下 internal/pipeline 與 internal/api 各要 10～26 分鐘，所以逾時放寬到 60m（每個測試 binary 各自計算）。
+      # 用 go.mod 的 toolchain（發布用的版本，go1.26.11）執行：標準函式庫的弱點以實際建置的版本為準。
+      # govulncheck v1.10.0 要求 Go >= 1.26，toolchain 已滿足。
+      # NFR-SEC-4：只有程式實際呼叫到的弱點才會讓指令失敗（exit 3）。
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }} ./...
+
+      # NFR-CMP-3：API 在 M1 之後不可移除欄位或改變欄位意義。比對這次推送（或 PR）之前的 OpenAPI 快照，
+      # 有破壞性變更時失敗；真的要破壞時依 NFR 的規定先寫 ADR，再把 oasdiff 輸出的那一行加進 .github/oasdiff-err-ignore.txt。
+      - name: oasdiff breaking
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            *) base="HEAD~1" ;;
+          esac
+          if [ -z "$base" ] || [ "$base" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "沒有可以比對的前一個版本（$base），略過"
+            exit 0
+          fi
+          ignore=()
+          [ -f .github/oasdiff-err-ignore.txt ] && ignore=(--err-ignore .github/oasdiff-err-ignore.txt)
+          status=0
+          for f in internal/api/openapi.json internal/hub/hubapi/openapi.json; do
+            if ! git cat-file -e "$base:$f" 2>/dev/null; then
+              echo "$f：前一個版本沒有這個檔案，略過"
+              continue
+            fi
+            git show "$base:$f" > "$RUNNER_TEMP/base.json"
+            echo "== $f（$base → HEAD）"
+            go run github.com/oasdiff/oasdiff@v1.37.0 breaking "$RUNNER_TEMP/base.json" "$f" --fail-on ERR "${ignore[@]}" || status=1
+          done
+          exit "$status"
+
+      - uses: sqlc-dev/setup-sqlc@v5
+        with:
+          sqlc-version: ${{ env.SQLC_VERSION }}
+
+      # 確認 internal/store/sqlcdb 與 queries、migrations 一致。
+      - name: sqlc diff
+        working-directory: internal/store
+        run: sqlc diff
+
+      # Hub 的 SQLite 與 Postgres backend 各有自己的 sqlc.yaml（ADR-0030 第 2 點）。
+      - name: sqlc diff (hub)
+        working-directory: internal/hub/hubstore/sqlite
+        run: sqlc diff
+
+      - name: sqlc vet (hub)
+        working-directory: internal/hub/hubstore/sqlite
+        run: sqlc vet
+
+      - name: sqlc diff (hub postgres)
+        working-directory: internal/hub/hubstore/postgres
+        run: sqlc diff
+
+      - name: sqlc vet (hub postgres)
+        working-directory: internal/hub/hubstore/postgres
+        run: sqlc vet
+
+  # 驗收場景（features 套件本身）另開 bdd 系列的 job；這裡跑其餘的套件（含 features/steps、features/internal
+  # 的 harness 單元測試）。-race 下單一 runner 要 25～40 分鐘（internal/pipeline 一個套件就近 30 分鐘），
+  # 所以依頂層測試名稱拆成 4 份平行執行（scripts/ci/go-test-shard.sh），每個測試剛好在其中一份執行一次。
+  go:
+    name: Go test (race, ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
       - name: go test (race, without the scenarios)
-        run: go test -race -count=1 -timeout 60m $(go list ./... | grep -vx 'github.com/cxyfer/notesteme/features')
+        run: scripts/ci/go-test-shard.sh ${{ matrix.shard }} 4
 
   # NFR-REL-1～3 的故障注入縮小版：51 個故障點各 kill -9 一次再重新啟動，與 REL-2 的損毀測試平行；每點 100 次的
   # 完整版在 fault.yml 每晚執行（docs/specs/nfr.md 第 11.1 節）。放在 go job 中實測會讓它多 42 秒（vet 12＋執行 30），
@@ -93,11 +193,16 @@ jobs:
       - name: coverage gate
         run: scripts/ci/coverage.sh
 
-  # 驗收場景（godog）與規格靜態檢查（features 套件）：預設 tag @M1,@M2（313 個），套用 features/passing.txt 的 ratchet。
-  # 在 -race 下本機約 22 分鐘、GitHub runner 更慢，所以獨佔一台 runner，逾時 60m。
+  # 驗收場景（godog）與規格靜態檢查（features 套件）在 -race 下執行：預設 tag @M1,@M2（357 個 pickle）。
+  # 單一 runner 要 22～25 分鐘，所以依 feature 檔拆成 4 份平行執行（-features.shard，見 features/shard_test.go），
+  # 各份的場景數接近。分片時 passing.txt 的棘輪只檢查有執行到的場景；「清單中的場景都有被執行」由 bdd-fast 檢查。
   bdd:
-    name: Scenarios (@M1,@M2, race)
+    name: Scenarios (@M1,@M2, race, ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v7
 
@@ -106,7 +211,7 @@ jobs:
           go-version-file: go.mod
 
       - name: go test ./features (race)
-        run: go test -race -count=1 -timeout 60m ./features
+        run: go test -race -count=1 -timeout 60m ./features -features.shard=${{ matrix.shard }}/4
 
   # @M3、@M4、@M5 的場景（共 630 個）全部通過；不放進 -race 的預設執行，以免逾時。
   # 預設 tag 之外的執行不套用 ratchet，這一步擋的是「任何場景 failed 或 undefined」。
@@ -149,22 +254,6 @@ jobs:
           elapsed=$((SECONDS - start))
           echo "features 預設 tag（含編譯與規格一致性檢查）：${elapsed} 秒"
           test "$elapsed" -lt 300 || { echo "::error::NFR-TEST-2：預設 tag 的場景用了 ${elapsed} 秒，超過 300 秒"; exit 1; }
-
-  vuln:
-    name: govulncheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      # 用 go.mod 的 toolchain（發布用的版本，go1.26.11）執行：標準函式庫的弱點以實際建置的版本為準。
-      # govulncheck v1.10.0 要求 Go >= 1.26，toolchain 已滿足。
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
-      # NFR-SEC-4：只有程式實際呼叫到的弱點才會讓指令失敗（exit 3）。
-      - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }} ./...
 
   release-check:
     name: goreleaser build
@@ -481,15 +570,14 @@ jobs:
 
   # NFR-CMP-1：Docker image 支援 arm64。binary 的 arm64 交叉編譯由 release-check 的 goreleaser 涵蓋；
   # 這裡真的建出 linux/arm64 的 image（Dockerfile 的 runtime 階段會在 arm64 上執行 apt、pip），
-  # 並在 QEMU 下執行它帶的外部工具，確認 image 裡的每個 binary 都是 arm64 且跑得起來。不推送。
+  # 並執行它帶的外部工具，確認 image 裡的每個 binary 都是 arm64 且跑得起來。不推送。
+  # 用原生的 arm64 runner（公開 repo 免費）：在 x86 runner 上以 QEMU 模擬要 6～10 分鐘，是 CI 最慢的 job 之一。
   docker-arm64:
     name: Docker image (arm64)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-
-      - uses: docker/setup-qemu-action@v4
 
       - uses: docker/setup-buildx-action@v4
 
@@ -507,78 +595,3 @@ jobs:
           docker run --rm --platform linux/arm64 notesteme:arm64 --version
           docker run --rm --platform linux/arm64 --entrypoint sh notesteme:arm64 -c 'set -e; yt-dlp --version; ffmpeg -hide_banner -version | head -n 1; ffprobe -hide_banner -version | head -n 1; deno --version | head -n 1'
           docker run --rm --platform linux/arm64 notesteme-hub:arm64 --version
-
-  # NFR-CMP-3：API 在 M1 之後不可移除欄位或改變欄位意義。比對這次推送（或 PR）之前的 OpenAPI 快照，
-  # 有破壞性變更時失敗；真的要破壞時依 NFR 的規定先寫 ADR，再把 oasdiff 輸出的那一行加進 .github/oasdiff-err-ignore.txt。
-  openapi-diff:
-    name: OpenAPI breaking changes
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
-      - name: oasdiff breaking
-        env:
-          EVENT: ${{ github.event_name }}
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-          PUSH_BEFORE: ${{ github.event.before }}
-        run: |
-          case "$EVENT" in
-            pull_request) base="$PR_BASE" ;;
-            push) base="$PUSH_BEFORE" ;;
-            *) base="HEAD~1" ;;
-          esac
-          if [ -z "$base" ] || [ "$base" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
-            echo "沒有可以比對的前一個版本（$base），略過"
-            exit 0
-          fi
-          ignore=()
-          [ -f .github/oasdiff-err-ignore.txt ] && ignore=(--err-ignore .github/oasdiff-err-ignore.txt)
-          status=0
-          for f in internal/api/openapi.json internal/hub/hubapi/openapi.json; do
-            if ! git cat-file -e "$base:$f" 2>/dev/null; then
-              echo "$f：前一個版本沒有這個檔案，略過"
-              continue
-            fi
-            git show "$base:$f" > "$RUNNER_TEMP/base.json"
-            echo "== $f（$base → HEAD）"
-            go run github.com/oasdiff/oasdiff@v1.37.0 breaking "$RUNNER_TEMP/base.json" "$f" --fail-on ERR "${ignore[@]}" || status=1
-          done
-          exit "$status"
-
-  sqlc:
-    name: sqlc generated code
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: sqlc-dev/setup-sqlc@v5
-        with:
-          sqlc-version: ${{ env.SQLC_VERSION }}
-
-      # 確認 internal/store/sqlcdb 與 queries、migrations 一致。
-      - name: sqlc diff
-        working-directory: internal/store
-        run: sqlc diff
-
-      # Hub 的 SQLite 與 Postgres backend 各有自己的 sqlc.yaml（ADR-0030 第 2 點）。
-      - name: sqlc diff (hub)
-        working-directory: internal/hub/hubstore/sqlite
-        run: sqlc diff
-
-      - name: sqlc vet (hub)
-        working-directory: internal/hub/hubstore/sqlite
-        run: sqlc vet
-
-      - name: sqlc diff (hub postgres)
-        working-directory: internal/hub/hubstore/postgres
-        run: sqlc diff
-
-      - name: sqlc vet (hub postgres)
-        working-directory: internal/hub/hubstore/postgres
-        run: sqlc vet
