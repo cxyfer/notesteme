@@ -450,6 +450,6 @@ jobs:
             case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
             gh release create "$TAG" dist/* --draft --verify-tag "${flags[@]}" \
               --title "Notesteme $VERSION" \
-              --notes "草稿：公開前依 RELEASING.md 寫入發布說明。"
+              --notes "Draft: write the release notes as described in RELEASING.md before publishing."
           fi
           echo "草稿 Release 已建立：$TAG" >> "$GITHUB_STEP_SUMMARY"

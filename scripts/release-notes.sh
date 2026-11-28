@@ -59,13 +59,13 @@ changes() {
 {
   cat <<'EOF'
 > [!IMPORTANT]
-> TODO：一段話說明這個版本是什麼、為什麼重要。
+> TODO: one paragraph on what this release is and why it matters.
 >
-> TODO：現有安裝升級時要注意的事（migration、改變的預設值、升級前後要做的事）；沒有就刪掉這段。
+> TODO: what changes for an existing install (migrations that run at startup, defaults that moved, anything to do before or after upgrading). Delete this paragraph when there is nothing to say.
 
 ## Highlights
 
-* **TODO**：TODO
+* **TODO**: TODO
 
 EOF
   if [[ -n "$PREV" ]]; then
@@ -78,4 +78,4 @@ EOF
 } > "$OUT"
 
 echo "wrote $OUT (${PREV:-第一個版本} -> $TAG)"
-echo "next: 填完 TODO（一個段落一行），再執行 ./scripts/release-notes-lint.sh $OUT"
+echo "next: 用英文填完 TODO（一個段落一行），再執行 ./scripts/release-notes-lint.sh $OUT"

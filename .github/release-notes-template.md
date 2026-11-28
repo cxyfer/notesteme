@@ -12,26 +12,27 @@ $EDITOR .tmp/release-notes-vX.Y.Z.md       # 填完 TODO
 
 ```markdown
 > [!IMPORTANT]
-> 一段話說明這個版本是什麼、為什麼重要。
+> One paragraph on what this release is and why it matters.
 >
-> 現有安裝要注意的事：啟動時執行的 migration、改變的預設值、升級前後要做的事。沒有就刪掉這段。
+> What changes for an existing install: migrations that run at startup, defaults that moved, anything to do before or after upgrading. Delete this paragraph when there is nothing to say.
 
 ## Highlights
 
-* **領域**：用使用者看得懂的話說明改了什麼、對他代表什麼。
+* **Area**: What changed, in plain user-facing prose, and what it means for the reader.
 
 ---
 
 ## What's Changed
-* <自動產生；第一個版本沒有這一節>
+* <generated; the first release has no such section>
 
-**Full Changelog**: <自動產生>
+**Full Changelog**: <generated>
 ```
 
 ## 規則
 
-1. **先寫提示框。** 多數讀者只看到這裡：版本是什麼，接著是會壞掉或改變的事。預發布版本要寫明並指出確切的 tag。
-2. **Highlights 寫給使用者看。** 一個領域一條，相關的 commit 合併描述，不貼 commit subject。
-3. **預設值改變要附解法。**
-4. **已知限制照實寫。** 沒達標或沒驗收的項目不省略。
-5. **內文不手動換行。** 一個段落或條列一行。
+1. **發布說明用英文撰寫。** repo 的其他文件維持中文；`What's Changed` 由 commit 與 PR 標題產生，照原文保留。
+2. **先寫提示框。** 多數讀者只看到這裡：版本是什麼，接著是會壞掉或改變的事。預發布版本要寫明並指出確切的 tag。
+3. **Highlights 寫給使用者看。** 一個領域一條，相關的 commit 合併描述，不貼 commit subject。
+4. **預設值改變要附解法。**
+5. **已知限制照實寫。** 沒達標或沒驗收的項目不省略。
+6. **內文不手動換行。** 一個段落或條列一行。

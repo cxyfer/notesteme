@@ -42,7 +42,7 @@
 1. **只對 `master` 上 CI 通過的 commit 打 tag。** workflow 檔案必須已經在那個 commit 上。
 2. **不移動、不重用已發布的 tag。** 發布物有問題時發新的 patch 版本。
 3. **發布前提交升級 fixture（NFR-CMP-5）。** `internal/store/migrations/` 最新的版本號 N 沒有 `internal/store/testdata/upgrade/schema-N/` 時，依[該目錄的 README](internal/store/testdata/upgrade/README.md) 產生並提交。
-4. **發布說明用固定格式**：[`.github/release-notes-template.md`](.github/release-notes-template.md)，由 [`scripts/release-notes.sh`](scripts/release-notes.sh) 產生骨架。每個段落與條列只用一行原始碼（GitHub 會把 release 內文的換行當成硬換行），公開前跑 [`scripts/release-notes-lint.sh`](scripts/release-notes-lint.sh)。
+4. **發布說明用英文撰寫並使用固定格式**：[`.github/release-notes-template.md`](.github/release-notes-template.md)，由 [`scripts/release-notes.sh`](scripts/release-notes.sh) 產生骨架。每個段落與條列只用一行原始碼（GitHub 會把 release 內文的換行當成硬換行），公開前跑 [`scripts/release-notes-lint.sh`](scripts/release-notes-lint.sh)。
 
 ## 步驟
 
