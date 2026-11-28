@@ -10,9 +10,7 @@ Notesteme 把影音（YouTube、Bilibili、Podcast、本機檔案）轉成字幕
 完整的目標、範圍與里程碑見 [`docs/plan.md`](docs/plan.md)。
 
 > [!NOTE]
-> **M1（擷取核心）後端已完成**：HTTP API、CLI、任務佇列、字幕來源（YouTube、Bilibili、Podcast、本機檔案）、輸出 SRT／VTT／ASS／TXT 與匯入編輯過的字幕。
-> **M2 進行中**：中文字形轉換（OpenCC）與輸出渲染已完成；LLM 步驟（斷句、校正、翻譯）與 MCP 仍在開發，**Web UI 尚未開始**。
-> 未實作的 API 會回應 `501`。進度與已知限制見 [`docs/handoff.md`](docs/handoff.md)。
+> **v0.x 是初期版本**：M1～M5 的後端、Client Web UI 與 Hub 已實作，自動化驗收場景在 CI 上執行；需要真實樣本、真實服務與實機的人工驗收尚未完成，API 與設定在 1.0 之前可能改變。進度與已知限制見 [`docs/handoff.md`](docs/handoff.md)。
 
 ## CLI
 
@@ -73,7 +71,12 @@ docker run -d --name notesteme \
 
 ### Image tag
 
-| Tag | 來源 |
+| Image | 內容 |
+|---|---|
+| `ghcr.io/cxyfer/notesteme` | Client（上面的 server 與 CLI） |
+| `ghcr.io/cxyfer/notesteme-hub` | Hub，部署方式見 [docs/hub-deployment.md](docs/hub-deployment.md) |
+
+| Tag | 指向 |
 |---|---|
 | `X.Y.Z` | `vX.Y.Z` 或 `vX.Y.Z-rc.N` tag（完整版本號） |
 | `latest` | 已發布的最高正式版；`-rc.N` 與較舊版本的 tag 不會移動它 |
@@ -81,6 +84,10 @@ docker run -d --name notesteme \
 
 > [!NOTE]
 > image 只在推送 `v*` tag 時建置，合併到 `master` 不會產生 image。
+
+### 原生 binary
+
+[GitHub Releases](https://github.com/cxyfer/notesteme/releases) 附有 `notesteme`（Linux amd64／arm64、Windows amd64、macOS arm64）與 `notesteme-hub`（Linux amd64／arm64）的壓縮檔及 `checksums.txt`。`notesteme` 執行 pipeline 需要自行安裝 `yt-dlp`、`ffmpeg`、`deno`。
 
 ### 自行建置
 
@@ -161,6 +168,8 @@ tools:
 需求：Go 1.25 以上（go.mod 的 `toolchain` 是 go1.26.11，`GOTOOLCHAIN=auto` 時自動下載；發布物以它建置）。執行 pipeline 需要 `yt-dlp`、`ffmpeg`、`deno`；測試會使用假工具，不需要安裝。
 
 ```bash
+# 內嵌 Web UI（需要 Node，版本見 web/client/.nvmrc）；略過時 binary 只有佔位頁面
+npm --prefix web/client ci && npm --prefix web/client run build
 go build -o notesteme ./cmd/notesteme
 
 # 本機啟動（預設只綁 127.0.0.1:8080）
@@ -178,7 +187,7 @@ go test -race ./...                       # 單元測試、驗收場景與規格
 go test ./features -godog.tags=@AUTH-R1   # 只跑特定 tag 的驗收場景
 ```
 
-- 驗收場景是 [`features/`](features/) 下的 Gherkin 檔，由 [godog](https://github.com/cucumber/godog) 執行；預設只跑 `@M1`，並排除 `@manual`、`@pending-m0`、`@wip`、`@ui`。
+- 驗收場景是 [`features/`](features/) 下的 Gherkin 檔，由 [godog](https://github.com/cucumber/godog) 執行；預設只跑 `@M1,@M2`（`@M3`～`@M5` 以 `-godog.tags` 指定），並排除 `@manual`、`@pending-m0`、`@wip`、`@ui`。
 - 規格與場景的寫法見 [`docs/specs/README.md`](docs/specs/README.md)，測試 harness 的設計見 [ADR-0015](docs/adr/0015-acceptance-test-harness.md)。
 - 測試不會連到外部網路：繞過 `netguard` 的連線一律失敗。
 
@@ -202,29 +211,15 @@ cd internal/store && sqlc generate
 3. **govulncheck**：掃描程式實際呼叫到的已知弱點。
 4. **goreleaser build**：以 [`.goreleaser.yaml`](.goreleaser.yaml) 做 snapshot 建置（linux amd64／arm64、windows amd64、darwin arm64），並對 linux/amd64 產物做 `--version` 冒煙測試；不發布。
 
+其餘 job（驗收場景、涵蓋率、故障注入、OpenAPI 相容性、Hub backend、Docker 與 compose 啟動測試等）見 workflow 檔案。這些 image 只在 runner 上建置與啟動，不推送。
+
 ### Fuzz
 
 [`.github/workflows/fuzz.yml`](.github/workflows/fuzz.yml) 每天（UTC）執行一次，也可手動觸發；由 [`scripts/ci/fuzz.sh`](scripts/ci/fuzz.sh) 把總預算（預設 10 分鐘）平均分給所有 `Fuzz*` 目標，失敗時上傳新產生的失敗輸入。本機可用 `FUZZ_TIME=15s scripts/ci/fuzz.sh` 快速跑一輪。
 
-### 發布 image
+### 發布
 
-[`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) 只在推送 `v*` tag（含 `-rc.N`）時執行，PR 與合併都不會建置，以節省私人 repo 的 Actions 額度：
-
-1. **Checks**：先跑與 CI 相同的 Go 與 sqlc 檢查，tag 指向沒通過檢查的 commit 時不會發布。
-2. **Build**：建置 `linux/amd64`、`linux/arm64`，以 digest 推到 `ghcr.io/cxyfer/notesteme`，只帶這個 tag 專屬的暫存 tag `staging-<tag>`；版本號取自 tag。
-3. **Smoke test**：對推上去的 digest 執行 [`deploy/docker/smoke-test.sh`](deploy/docker/smoke-test.sh)，確認：
-   - 外部工具齊全（yt-dlp、ffmpeg 含 libass、ffprobe、Deno），以非 root 執行。
-   - 沒有 master key 時拒絕啟動。
-   - `HEALTHCHECK` 轉為 healthy，`/healthz`、`/readyz` 正常，未登入時 API 回應 `401`，登入成功與失敗的行為正確。
-   - 收到 `SIGTERM` 時正常關閉，重新啟動後沿用 `/data` 中的密碼。
-4. **Promote**：測試通過後才把 release tag 指向同一個 digest，發布的 tag 不會對應到沒驗證過的建置。`latest` 與 `X.Y` 每次都重新指向已發布的最高正式版：較舊的 tag 晚完成不會讓它們倒退，失敗或尚未發布的更高 tag 也不會讓它們停在舊版。
-
-發布新版本：
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+[`.github/workflows/release.yml`](.github/workflows/release.yml) 只在推送 `v*` tag 時執行：跑完整 CI、建置並以 digest 推送 Client 與 Hub 的多架構 image、對推上去的 digest 做冒煙測試、用 goreleaser 建置原生 binary，全部通過後才套用版本 tag，最後建立附上壓縮檔的 GitHub Release 草稿。步驟、規則與失敗處理見 [RELEASING.md](RELEASING.md)。
 
 ## 文件
 
@@ -234,6 +229,7 @@ git push origin v0.1.0
 | [`docs/adr/`](docs/adr/README.md) | 架構決策紀錄 |
 | [`docs/specs/`](docs/specs/README.md) | 能力規格、故事地圖、步驟詞彙、非功能需求 |
 | [`docs/ui/`](docs/ui/README.md) | UI 規格與設計語言 |
+| [`RELEASING.md`](RELEASING.md) | 發布約定與步驟 |
 
 ## 專案結構
 
@@ -241,6 +237,11 @@ git push origin v0.1.0
 cmd/notesteme/     程式入口
 internal/          各模組（api、app、auth、pipeline、queue、store、source、subtitle 等）
 features/          Gherkin 驗收場景與 step definitions
+web/               Client 與 Hub 的 Web UI（內嵌進 binary）
 deploy/docker/     Dockerfile、compose、冒煙測試
 docs/              計畫、ADR、規格、UI
 ```
+
+## License
+
+[MIT](LICENSE)。隨附的第三方元件各依其授權：OpenCC 字典（[Apache-2.0](internal/zhconv/opencc/LICENSE)），Web UI 的字型與圖示（SIL OFL 1.1、MIT，執行中的服務在 `/third-party-notices.txt` 提供全文）。

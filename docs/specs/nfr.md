@@ -237,4 +237,4 @@ UI-0（2026-11-23）之後各項 UI 相關需求的自動檢查放在哪裡；`m
 兩次實測之間，PERF-8 與 PERF-9 有程式變更（第 10 節），其他項目沒有；那些項目的差異來自 runner（第二次的 runner 整體快約 3～4 成）。
 
 - **已知未達標**：命名為 `BenchmarkKnownMiss*`，放在另外一個 `known-misses` job 跑（`continue-on-error: true`，summary 以 `bench-summary.py --known-miss` 標 ⚠️ KNOWN-MISS），照門檻判定、超過照實列出，不 skip。達標之後把那一組查詢搬回原本的 bench，並在第 10 節記錄。第二輪最佳化（2026-11-25）之後 PERF-9 與 RES-3 都已搬回，目前沒有成員，`known-misses` job 已從 `bench.yml` 移除；之後有新的已知未達標項目時再加回。
-- **CMP-5 的升級 fixture**：`internal/store/testdata/upgrade/schema-37/` 是目前 schema 的資料目錄（尚無發布版）。每次發布前，若 `testdata/upgrade/schema-<發布版的 schema 版本>/` 不存在，執行 `go test ./internal/store -run TestUpgradeFromReleasedSchemas -update-upgrade-fixture -count=1` 產生並提交；fixture 提交後不再修改也不刪除，之後 CI 驗證從每一個發布版升級。細節見 `internal/store/testdata/upgrade/README.md`。
+- **CMP-5 的升級 fixture**：`internal/store/testdata/upgrade/schema-37/` 是首次發布前產生的資料目錄；`v0.1.0` 的 schema 是 38（`schema-38/`）。每次發布前，若 `testdata/upgrade/schema-<發布版的 schema 版本>/` 不存在，執行 `go test ./internal/store -run TestUpgradeFromReleasedSchemas -update-upgrade-fixture -count=1` 產生並提交；fixture 提交後不再修改也不刪除，之後 CI 驗證從每一個發布版升級。細節見 `internal/store/testdata/upgrade/README.md`。
