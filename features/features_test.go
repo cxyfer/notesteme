@@ -73,6 +73,28 @@ func TestFeatures(t *testing.T) {
 	o.Tags = tagExpr(opts.Tags)
 	o.Format = withRatchetFormat(opts.Format)
 	o.TestingT = t
+	full := isDefaultRun(opts)
+	if *shardFlag != "" {
+		// 分片（見 shard_test.go）：只執行分到這一份的 feature 檔，棘輪不做完整執行的檢查。
+		if len(opts.Paths) != 1 || opts.Paths[0] != featuresDir {
+			t.Fatal("-features.shard 不能與 -godog.paths 一起使用")
+		}
+		i, n, err := parseShard(*shardFlag)
+		if err != nil {
+			t.Fatal(err)
+		}
+		weights, err := shardWeights(featuresDir, o.Tags)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files, loads := assignShards(weights, n)
+		if len(files[i]) == 0 {
+			t.Skipf("第 %d/%d 份沒有分到任何 feature 檔", i, n)
+		}
+		t.Logf("第 %d/%d 份：%d 個場景，%s", i, n, loads[i], strings.Join(files[i], " "))
+		o.Paths = files[i]
+		full = false
+	}
 
 	suite := godog.TestSuite{
 		Name:                "notesteme",
@@ -85,7 +107,7 @@ func TestFeatures(t *testing.T) {
 	for _, f := range steps.HarnessFailures() {
 		t.Errorf("harness 違規：%s", f)
 	}
-	checkPassing(t, isDefaultRun(opts))
+	checkPassing(t, full)
 	if status != 0 {
 		t.Fatal("non-zero status returned, failed to run feature tests")
 	}
