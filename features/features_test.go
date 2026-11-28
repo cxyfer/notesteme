@@ -83,29 +83,53 @@ func TestFeatures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		weights, err := shardWeights(featuresDir, o.Tags)
+		pickles, err := shardWeights(featuresDir, o.Tags)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(weights) == 0 {
+		if len(pickles) == 0 {
 			// 不能讓每一份都 Skip 而看起來全部通過。
 			t.Fatalf("tag 表達式 %q 下沒有任何場景，無法分片", o.Tags)
 		}
-		files, loads := assignShards(weights, n)
+		measured, err := loadWeights(weightsFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files, loads := assignShards(shardCosts(pickles, measured), n)
 		if len(files[i]) == 0 {
 			t.Skipf("第 %d/%d 份沒有分到任何 feature 檔", i, n)
 		}
-		t.Logf("第 %d/%d 份：%d 個場景，%s", i, n, loads[i], strings.Join(files[i], " "))
+		scenarios := 0
+		for _, f := range files[i] {
+			scenarios += pickles[f]
+		}
+		t.Logf("第 %d/%d 份：%d 個場景，預估 %.1f 秒（不開 -race），%s", i, n, scenarios, float64(loads[i])/1000, strings.Join(files[i], " "))
 		o.Paths = files[i]
 		full = false
 	}
 
+	if *recordWeights && (!full || *shardFlag != "") {
+		t.Fatal("-features.record-weights 只能搭配預設 tag 與 paths、不分片使用")
+	}
+	timer := newFileTimer()
 	suite := godog.TestSuite{
-		Name:                "notesteme",
-		ScenarioInitializer: steps.Initialize,
-		Options:             &o,
+		Name: "notesteme",
+		ScenarioInitializer: func(sc *godog.ScenarioContext) {
+			if *recordWeights {
+				timer.hook(sc)
+			}
+			steps.Initialize(sc)
+		},
+		Options: &o,
 	}
 	status := suite.Run()
+	if *recordWeights && status == 0 {
+		ms := timer.finish()
+		if err := writeWeights(weightsFile, ms); err != nil {
+			t.Fatalf("寫入 %s：%v", weightsFile, err)
+		}
+		t.Logf("已重寫 %s：%d 個 feature 檔", weightsFile, len(ms))
+	}
 	// pending 場景的 After hook 錯誤會被 godog 吞掉（非 strict 模式），
 	// 所以另外讀取收集器，確保 harness 違規一定讓測試失敗。
 	for _, f := range steps.HarnessFailures() {

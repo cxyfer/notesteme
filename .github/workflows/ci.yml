@@ -201,7 +201,8 @@ jobs:
 
   # 驗收場景（godog）與規格靜態檢查（features 套件）在 -race 下執行：預設 tag @M1,@M2（357 個 pickle）。
   # 單一 runner 要 22～25 分鐘，所以依 feature 檔拆成 4 份平行執行（-features.shard，見 features/shard_test.go），
-  # 各份的場景數接近。分片時 passing.txt 的棘輪只檢查有執行到的場景；「清單中的場景都有被執行」由 bdd-fast 檢查。
+  # 依 features/shard-weights.txt 記錄的各檔耗時平衡各份。分片時 passing.txt 的棘輪只檢查有執行到的場景；
+  # 「清單中的場景都有被執行」由 bdd-fast 檢查。
   bdd:
     name: Scenarios (@M1,@M2, race, ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
